@@ -182,13 +182,11 @@ export const WEAPON_STATS = {
 // =============================================================================
 
 /**
- * How many times per second the host broadcasts game state to clients.
- * Higher = smoother but more bandwidth. Lower = choppier but less bandwidth.
+ * Default updates per second for network state broadcasts.
+ * Can be changed by host during gameplay via UI.
+ * Options: 1, 5, 10, 30
  */
-export const NETWORK_UPDATES_PER_SECOND = 3;
-
-/** Calculated interval in milliseconds between network updates */
-export const NETWORK_UPDATE_INTERVAL_MS = 1000 / NETWORK_UPDATES_PER_SECOND;
+export const DEFAULT_NETWORK_UPDATES_PER_SECOND = 10;
 
 // =============================================================================
 // AUDIO

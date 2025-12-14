@@ -7,7 +7,10 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
-import { NETWORK_UPDATE_INTERVAL_MS } from '../config';
+import { DEFAULT_NETWORK_UPDATES_PER_SECOND } from '../config';
+
+// Available update rate options
+const UPDATE_RATE_OPTIONS = [1, 5, 10, 30] as const;
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
@@ -23,6 +26,7 @@ const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
+const networkUpdatesPerSecond = ref(DEFAULT_NETWORK_UPDATES_PER_SECOND);
 
 // State broadcast interval (for host)
 let stateBroadcastInterval: ReturnType<typeof setInterval> | null = null;
@@ -332,7 +336,13 @@ function setupSceneCallbacks(): void {
 }
 
 function startStateBroadcast(): void {
-  // Broadcast state at configured rate (see config.ts)
+  // Clear existing interval if any
+  if (stateBroadcastInterval) {
+    clearInterval(stateBroadcastInterval);
+  }
+
+  // Broadcast state at current rate
+  const intervalMs = 1000 / networkUpdatesPerSecond.value;
   stateBroadcastInterval = setInterval(() => {
     const scene = gameInstance?.getScene();
     if (scene && networkRole.value === 'host') {
@@ -341,7 +351,15 @@ function startStateBroadcast(): void {
         networkManager.broadcastState(state);
       }
     }
-  }, NETWORK_UPDATE_INTERVAL_MS);
+  }, intervalMs);
+}
+
+function setNetworkUpdateRate(rate: number): void {
+  networkUpdatesPerSecond.value = rate;
+  // Restart broadcast with new rate
+  if (networkRole.value === 'host' && gameStarted.value) {
+    startStateBroadcast();
+  }
 }
 
 onMounted(() => {
@@ -399,6 +417,24 @@ onUnmounted(() => {
           <span class="player-label">{{ getPlayerName(activePlayer) }}</span>
           <span class="toggle-hint">(Click to switch)</span>
         </button>
+      </div>
+
+      <!-- Network update rate control (host only) -->
+      <div v-if="networkRole === 'host'" class="ui-overlay top-right-below">
+        <div class="update-rate-control">
+          <span class="rate-label">Updates/sec:</span>
+          <div class="rate-buttons">
+            <button
+              v-for="rate in UPDATE_RATE_OPTIONS"
+              :key="rate"
+              class="rate-btn"
+              :class="{ active: networkUpdatesPerSecond === rate }"
+              @click="setNetworkUpdateRate(rate)"
+            >
+              {{ rate }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Selection panel (bottom-left) -->
@@ -554,5 +590,59 @@ onUnmounted(() => {
 
 .restart-btn:active {
   transform: scale(0.98);
+}
+
+/* Network update rate control */
+.ui-overlay.top-right-below {
+  position: absolute;
+  top: 60px;
+  right: 10px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.update-rate-control {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid #666;
+  border-radius: 8px;
+  font-family: monospace;
+}
+
+.rate-label {
+  color: #aaa;
+  font-size: 12px;
+}
+
+.rate-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.rate-btn {
+  padding: 4px 10px;
+  background: rgba(60, 60, 60, 0.9);
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #ccc;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rate-btn:hover {
+  background: rgba(80, 80, 80, 0.9);
+  border-color: #777;
+}
+
+.rate-btn.active {
+  background: rgba(68, 68, 170, 0.9);
+  border-color: #6666cc;
+  color: white;
 }
 </style>

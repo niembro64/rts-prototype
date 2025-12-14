@@ -747,6 +747,25 @@ export class InputManager {
       return;
     }
 
+    // Check if commander is ending waypoint on a repair target (incomplete building)
+    const commander = this.getSelectedCommander();
+    if (commander?.ownership) {
+      const finalPoint = this.state.linePathPoints[this.state.linePathPoints.length - 1];
+      const repairTarget = this.findRepairTargetAt(finalPoint.x, finalPoint.y, commander.ownership.playerId);
+      if (repairTarget) {
+        // Issue repair command instead of move command
+        const command: RepairCommand = {
+          type: 'repair',
+          tick: this.world.getTick(),
+          commanderId: commander.id,
+          targetId: repairTarget.id,
+          queue: shiftHeld,
+        };
+        this.commandQueue.enqueue(command);
+        return;
+      }
+    }
+
     const pathLength = this.getPathLength(this.state.linePathPoints);
 
     // If path is very short (just a click), do a regular group move
