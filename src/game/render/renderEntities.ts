@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
-import type { Entity } from '../sim/types';
+import type { Entity, WaypointType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 
 // Colors
@@ -12,11 +12,20 @@ const HEALTH_BAR_BG = 0x333333;
 const HEALTH_BAR_FG = 0x44dd44;
 const HEALTH_BAR_LOW = 0xff4444;
 
+// Waypoint colors by type
+const WAYPOINT_COLORS: Record<WaypointType, number> = {
+  move: 0x00ff00,   // Green
+  patrol: 0x0088ff, // Blue
+  fight: 0xff4444,  // Red
+};
+
 export class EntityRenderer {
+  private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
   private world: WorldState;
 
   constructor(scene: Phaser.Scene, world: WorldState) {
+    this.scene = scene;
     this.graphics = scene.add.graphics();
     this.world = world;
   }
@@ -33,6 +42,13 @@ export class EntityRenderer {
     // Render projectiles (below units)
     for (const entity of this.world.getProjectiles()) {
       this.renderProjectile(entity);
+    }
+
+    // Render waypoints for selected units (below units but above projectiles)
+    for (const entity of this.world.getUnits()) {
+      if (entity.selectable?.selected) {
+        this.renderWaypoints(entity);
+      }
     }
 
     // Render units
@@ -105,6 +121,55 @@ export class EntityRenderer {
       if (target) {
         this.graphics.lineStyle(1, 0xff0000, 0.3);
         this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
+      }
+    }
+  }
+
+  // Render waypoints for a selected unit
+  private renderWaypoints(entity: Entity): void {
+    if (!entity.unit || entity.unit.waypoints.length === 0) return;
+
+    const { transform, unit } = entity;
+    const camera = this.scene.cameras.main;
+    const lineWidth = 2 / camera.zoom;
+    const dotRadius = 6 / camera.zoom;
+
+    const waypoints = unit.waypoints;
+    let prevX = transform.x;
+    let prevY = transform.y;
+
+    for (let i = 0; i < waypoints.length; i++) {
+      const wp = waypoints[i];
+      const color = WAYPOINT_COLORS[wp.type];
+
+      // Draw line from previous point to this waypoint
+      this.graphics.lineStyle(lineWidth, color, 0.5);
+      this.graphics.lineBetween(prevX, prevY, wp.x, wp.y);
+
+      // Draw dot at waypoint
+      this.graphics.fillStyle(color, 0.8);
+      this.graphics.fillCircle(wp.x, wp.y, dotRadius);
+
+      // Draw outline around dot
+      this.graphics.lineStyle(lineWidth * 0.5, 0xffffff, 0.6);
+      this.graphics.strokeCircle(wp.x, wp.y, dotRadius);
+
+      // Draw number on waypoint (for debugging/clarity)
+      // Skip for now - would need text objects
+
+      prevX = wp.x;
+      prevY = wp.y;
+    }
+
+    // If patrol, draw line from last waypoint back to first patrol waypoint
+    if (unit.patrolLoopIndex !== null && waypoints.length > 0) {
+      const lastWp = waypoints[waypoints.length - 1];
+      const firstPatrolWp = waypoints[unit.patrolLoopIndex];
+      if (lastWp.type === 'patrol' && firstPatrolWp) {
+        const color = WAYPOINT_COLORS['patrol'];
+        // Draw dashed-style return line (using lower alpha)
+        this.graphics.lineStyle(lineWidth, color, 0.25);
+        this.graphics.lineBetween(lastWp.x, lastWp.y, firstPatrolWp.x, firstPatrolWp.y);
       }
     }
   }

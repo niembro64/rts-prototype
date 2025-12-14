@@ -26,14 +26,26 @@ export interface Ownership {
   playerId: PlayerId;
 }
 
+// Waypoint types for unit movement
+export type WaypointType = 'move' | 'fight' | 'patrol';
+
+// Single waypoint in a unit's path queue
+export interface Waypoint {
+  x: number;
+  y: number;
+  type: WaypointType;
+}
+
 // Unit component - movable entities
 export interface Unit {
   moveSpeed: number;
   radius: number;
   hp: number;
   maxHp: number;
-  targetX: number | null;
-  targetY: number | null;
+  // Waypoint queue - units process these in order
+  waypoints: Waypoint[];
+  // Index for patrol looping (points to first patrol waypoint when looping)
+  patrolLoopIndex: number | null;
 }
 
 // Building component - static structures

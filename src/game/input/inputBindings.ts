@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
-import { CommandQueue, type SelectCommand, type MoveCommand } from '../sim/commands';
-import type { Entity, EntityId } from '../sim/types';
+import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget } from '../sim/commands';
+import type { Entity, EntityId, WaypointType } from '../sim/types';
 
 // Point in world space
 interface WorldPoint {
@@ -26,7 +26,18 @@ interface InputState {
   isDrawingLinePath: boolean;
   linePathPoints: WorldPoint[];
   linePathTargets: WorldPoint[]; // Calculated positions for each unit
+  // Waypoint mode
+  waypointMode: WaypointType;
+  // Track previous selection to detect changes
+  previousSelectedIds: Set<EntityId>;
 }
+
+// Waypoint mode colors
+const WAYPOINT_COLORS: Record<WaypointType, number> = {
+  move: 0x00ff00,   // Green
+  patrol: 0x0088ff, // Blue
+  fight: 0xff4444,  // Red
+};
 
 // Camera constraints
 const MIN_ZOOM = 0.4;
@@ -46,7 +57,13 @@ export class InputManager {
     A: Phaser.Input.Keyboard.Key;
     S: Phaser.Input.Keyboard.Key;
     D: Phaser.Input.Keyboard.Key;
+    M: Phaser.Input.Keyboard.Key;
+    F: Phaser.Input.Keyboard.Key;
+    H: Phaser.Input.Keyboard.Key;
   };
+
+  // Callback for UI to show waypoint mode changes
+  public onWaypointModeChange?: (mode: WaypointType) => void;
 
   constructor(scene: Phaser.Scene, world: WorldState, commandQueue: CommandQueue) {
     this.scene = scene;
@@ -67,6 +84,8 @@ export class InputManager {
       isDrawingLinePath: false,
       linePathPoints: [],
       linePathTargets: [],
+      waypointMode: 'move',
+      previousSelectedIds: new Set(),
     };
 
     // Selection rectangle graphics (world-space, drawn over entities)
@@ -88,10 +107,40 @@ export class InputManager {
       A: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
       S: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       D: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      M: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M),
+      F: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F),
+      H: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H),
     };
 
     this.setupPointerEvents();
     this.setupWheelEvent();
+    this.setupModeHotkeys();
+  }
+
+  // Setup waypoint mode hotkeys
+  private setupModeHotkeys(): void {
+    this.keys.M.on('down', () => {
+      this.setWaypointMode('move');
+    });
+    this.keys.F.on('down', () => {
+      this.setWaypointMode('fight');
+    });
+    this.keys.H.on('down', () => {
+      this.setWaypointMode('patrol');
+    });
+  }
+
+  // Set waypoint mode and notify UI
+  private setWaypointMode(mode: WaypointType): void {
+    if (this.state.waypointMode !== mode) {
+      this.state.waypointMode = mode;
+      this.onWaypointModeChange?.(mode);
+    }
+  }
+
+  // Get current waypoint mode
+  public getWaypointMode(): WaypointType {
+    return this.state.waypointMode;
   }
 
   private setupPointerEvents(): void {
@@ -176,7 +225,7 @@ export class InputManager {
       }
 
       if (this.state.isDrawingLinePath && !p.rightButtonDown()) {
-        this.finishLinePath();
+        this.finishLinePath(p.event.shiftKey);
         this.state.isDrawingLinePath = false;
         this.state.linePathPoints = [];
         this.state.linePathTargets = [];
@@ -360,7 +409,7 @@ export class InputManager {
   }
 
   // Finish line path and issue move commands
-  private finishLinePath(): void {
+  private finishLinePath(shiftHeld: boolean): void {
     const selectedUnits = this.world.getSelectedUnits();
     if (selectedUnits.length === 0) return;
 
@@ -375,6 +424,8 @@ export class InputManager {
         entityIds: selectedUnits.map((e) => e.id),
         targetX: target.x,
         targetY: target.y,
+        waypointType: this.state.waypointMode,
+        queue: shiftHeld,
       };
       this.commandQueue.enqueue(command);
       return;
@@ -383,17 +434,27 @@ export class InputManager {
     // Assign units to positions using closest distance
     const assignments = this.assignUnitsToTargets(selectedUnits, this.state.linePathTargets);
 
-    // Issue individual move commands for each unit
-    for (const [entityId, target] of assignments) {
-      const command: MoveCommand = {
-        type: 'move',
-        tick: this.world.getTick(),
-        entityIds: [entityId],
-        targetX: target.x,
-        targetY: target.y,
-      };
-      this.commandQueue.enqueue(command);
+    // Build individual targets array in entity order
+    const entityIds: EntityId[] = [];
+    const individualTargets: WaypointTarget[] = [];
+    for (const unit of selectedUnits) {
+      const target = assignments.get(unit.id);
+      if (target) {
+        entityIds.push(unit.id);
+        individualTargets.push({ x: target.x, y: target.y });
+      }
     }
+
+    // Issue single move command with individual targets
+    const command: MoveCommand = {
+      type: 'move',
+      tick: this.world.getTick(),
+      entityIds,
+      individualTargets,
+      waypointType: this.state.waypointMode,
+      queue: shiftHeld,
+    };
+    this.commandQueue.enqueue(command);
   }
 
   // Draw line path preview
@@ -405,9 +466,10 @@ export class InputManager {
     const camera = this.scene.cameras.main;
     const lineWidth = 2 / camera.zoom;
     const dotRadius = 8 / camera.zoom;
+    const pathColor = WAYPOINT_COLORS[this.state.waypointMode];
 
     // Draw the path line
-    this.linePathGraphics.lineStyle(lineWidth, 0xffaa00, 0.6);
+    this.linePathGraphics.lineStyle(lineWidth, pathColor, 0.6);
     this.linePathGraphics.beginPath();
     this.linePathGraphics.moveTo(this.state.linePathPoints[0].x, this.state.linePathPoints[0].y);
     for (let i = 1; i < this.state.linePathPoints.length; i++) {
@@ -416,7 +478,7 @@ export class InputManager {
     this.linePathGraphics.strokePath();
 
     // Draw dots at target positions
-    this.linePathGraphics.fillStyle(0xffaa00, 0.9);
+    this.linePathGraphics.fillStyle(pathColor, 0.9);
     for (const target of this.state.linePathTargets) {
       this.linePathGraphics.fillCircle(target.x, target.y, dotRadius);
     }
@@ -466,9 +528,35 @@ export class InputManager {
       camera.scrollY = (this.world.mapHeight - viewHeight) / 2;
     }
 
+    // Check for selection changes and reset mode to 'move'
+    this.checkSelectionChange();
+
     // Draw selection rectangle and line path
     this.drawSelectionRect();
     this.drawLinePath();
+  }
+
+  // Check if selection changed and reset waypoint mode to 'move'
+  private checkSelectionChange(): void {
+    const currentSelected = this.world.getSelectedUnits();
+    const currentIds = new Set(currentSelected.map((u) => u.id));
+
+    // Check if selection changed
+    let changed = currentIds.size !== this.state.previousSelectedIds.size;
+    if (!changed) {
+      for (const id of currentIds) {
+        if (!this.state.previousSelectedIds.has(id)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    if (changed) {
+      // Reset mode to 'move' when selection changes
+      this.setWaypointMode('move');
+      this.state.previousSelectedIds = currentIds;
+    }
   }
 
   // Draw selection rectangle (world space)

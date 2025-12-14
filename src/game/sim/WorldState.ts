@@ -184,8 +184,8 @@ export class WorldState {
         radius,
         hp: 100,
         maxHp: 100,
-        targetX: null,
-        targetY: null,
+        waypoints: [],
+        patrolLoopIndex: null,
       },
       weapon: {
         config: weaponConfig,

@@ -1,4 +1,4 @@
-import type { EntityId } from './types';
+import type { EntityId, WaypointType } from './types';
 
 // Command types
 export type CommandType = 'select' | 'move' | 'clearSelection';
@@ -16,12 +16,25 @@ export interface SelectCommand extends BaseCommand {
   additive: boolean; // Shift-click adds to selection
 }
 
-// Move command - move selected units to target
+// Waypoint target for move commands
+export interface WaypointTarget {
+  x: number;
+  y: number;
+}
+
+// Move command - move selected units to target(s)
 export interface MoveCommand extends BaseCommand {
   type: 'move';
   entityIds: EntityId[];
-  targetX: number;
-  targetY: number;
+  // Single target for group move
+  targetX?: number;
+  targetY?: number;
+  // Individual targets for line move (one per entity, same order as entityIds)
+  individualTargets?: WaypointTarget[];
+  // Waypoint type (move, fight, patrol)
+  waypointType: WaypointType;
+  // Whether to add to existing waypoints (shift-queue) or replace
+  queue: boolean;
 }
 
 // Clear selection command

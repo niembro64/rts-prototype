@@ -5,8 +5,21 @@ import { CommandQueue } from '../sim/commands';
 import { spawnInitialEntities } from '../sim/spawn';
 import { EntityRenderer } from '../render/renderEntities';
 import { InputManager } from '../input/inputBindings';
-import type { Entity, PlayerId, EntityId } from '../sim/types';
+import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
+
+// Waypoint mode display config
+const WAYPOINT_MODE_COLORS: Record<WaypointType, string> = {
+  move: '#00ff00',
+  patrol: '#0088ff',
+  fight: '#ff4444',
+};
+
+const WAYPOINT_MODE_NAMES: Record<WaypointType, string> = {
+  move: 'MOVE',
+  patrol: 'PATROL',
+  fight: 'FIGHT',
+};
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
 
@@ -23,6 +36,7 @@ export class RtsScene extends Phaser.Scene {
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private debugText!: Phaser.GameObjects.Text;
   private playerText!: Phaser.GameObjects.Text;
+  private waypointModeText!: Phaser.GameObjects.Text;
   private frameCount: number = 0;
   private fps: number = 0;
   private fpsUpdateTime: number = 0;
@@ -78,6 +92,14 @@ export class RtsScene extends Phaser.Scene {
 
     // Setup player indicator
     this.createPlayerIndicator();
+
+    // Setup waypoint mode indicator
+    this.createWaypointModeIndicator();
+
+    // Listen for waypoint mode changes
+    this.inputManager.onWaypointModeChange = (mode: WaypointType) => {
+      this.updateWaypointModeIndicator(mode);
+    };
 
     // Initialize audio on first user interaction
     this.input.once('pointerdown', () => {
@@ -226,6 +248,28 @@ export class RtsScene extends Phaser.Scene {
     this.playerText.setColor(`#${colorHex}`);
   }
 
+  // Create waypoint mode indicator
+  private createWaypointModeIndicator(): void {
+    this.waypointModeText = this.add.text(10, 170, '', {
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      color: '#00ff00',
+      backgroundColor: '#000000aa',
+      padding: { x: 10, y: 8 },
+    });
+    this.waypointModeText.setScrollFactor(0);
+    this.waypointModeText.setDepth(1001);
+    this.updateWaypointModeIndicator('move');
+  }
+
+  // Update waypoint mode indicator
+  private updateWaypointModeIndicator(mode: WaypointType): void {
+    const color = WAYPOINT_MODE_COLORS[mode];
+    const name = WAYPOINT_MODE_NAMES[mode];
+    this.waypointModeText.setText(`Mode: ${name} [M/F/H]`);
+    this.waypointModeText.setColor(color);
+  }
+
   update(time: number, delta: number): void {
     // Update FPS counter
     this.frameCount++;
@@ -300,5 +344,6 @@ export class RtsScene extends Phaser.Scene {
     this.gridGraphics?.destroy();
     this.debugText?.destroy();
     this.playerText?.destroy();
+    this.waypointModeText?.destroy();
   }
 }

@@ -1,6 +1,6 @@
 import { WorldState } from './WorldState';
 import { CommandQueue, type Command, type MoveCommand, type SelectCommand } from './commands';
-import type { Entity, EntityId } from './types';
+import type { Entity, EntityId, Waypoint } from './types';
 import {
   updateAutoTargeting,
   updateWeaponCooldowns,
@@ -121,7 +121,7 @@ export class Simulation {
     this.world.selectEntities(command.entityIds);
   }
 
-  // Execute move command with formation spreading
+  // Execute move command with waypoint queue support
   private executeMoveCommand(command: MoveCommand): void {
     const units = command.entityIds
       .map((id) => this.world.getEntity(id))
@@ -129,51 +129,105 @@ export class Simulation {
 
     if (units.length === 0) return;
 
-    // Calculate formation offsets
-    const spacing = 40; // Spacing between units
-    const unitsPerRow = Math.ceil(Math.sqrt(units.length));
+    // Handle individual targets (line move)
+    if (command.individualTargets && command.individualTargets.length === units.length) {
+      units.forEach((unit, index) => {
+        if (!unit.unit) return;
+        const target = command.individualTargets![index];
+        const waypoint: Waypoint = {
+          x: target.x,
+          y: target.y,
+          type: command.waypointType,
+        };
+        this.addWaypointToUnit(unit, waypoint, command.queue);
+      });
+    } else if (command.targetX !== undefined && command.targetY !== undefined) {
+      // Group move with formation spreading
+      const spacing = 40;
+      const unitsPerRow = Math.ceil(Math.sqrt(units.length));
 
-    units.forEach((unit, index) => {
-      if (!unit.unit) return;
+      units.forEach((unit, index) => {
+        if (!unit.unit) return;
 
-      // Grid formation offset
-      const row = Math.floor(index / unitsPerRow);
-      const col = index % unitsPerRow;
-      const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
-      const offsetY = (row - (units.length / unitsPerRow - 1) / 2) * spacing;
+        // Grid formation offset
+        const row = Math.floor(index / unitsPerRow);
+        const col = index % unitsPerRow;
+        const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
+        const offsetY = (row - (units.length / unitsPerRow - 1) / 2) * spacing;
 
-      unit.unit.targetX = command.targetX + offsetX;
-      unit.unit.targetY = command.targetY + offsetY;
-    });
+        const waypoint: Waypoint = {
+          x: command.targetX! + offsetX,
+          y: command.targetY! + offsetY,
+          type: command.waypointType,
+        };
+        this.addWaypointToUnit(unit, waypoint, command.queue);
+      });
+    }
   }
 
-  // Update unit movement
+  // Add a waypoint to a unit (respecting queue flag)
+  private addWaypointToUnit(entity: Entity, waypoint: Waypoint, queue: boolean): void {
+    if (!entity.unit) return;
+
+    if (!queue) {
+      // Replace all waypoints
+      entity.unit.waypoints = [waypoint];
+      entity.unit.patrolLoopIndex = null;
+    } else {
+      // Add to existing waypoints
+      entity.unit.waypoints.push(waypoint);
+    }
+
+    // Update patrol loop index if this is a patrol waypoint
+    if (waypoint.type === 'patrol' && entity.unit.patrolLoopIndex === null) {
+      // Mark the start of patrol loop
+      entity.unit.patrolLoopIndex = entity.unit.waypoints.length - 1;
+    }
+  }
+
+  // Update unit movement with waypoint queue processing
   private updateUnits(): void {
     for (const entity of this.world.getUnits()) {
       if (!entity.unit || !entity.body) continue;
 
       const { unit, body, transform } = entity;
-      const { targetX, targetY } = unit;
 
-      if (targetX === null || targetY === null) {
-        // No movement target, apply friction through Matter's frictionAir
+      // No waypoints - stop moving
+      if (unit.waypoints.length === 0) {
         if (body.matterBody) {
           (body.matterBody as MatterJS.BodyType).frictionAir = 0.1;
         }
         continue;
       }
 
-      // Calculate direction to target
-      const dx = targetX - transform.x;
-      const dy = targetY - transform.y;
+      // Get current waypoint
+      const currentWaypoint = unit.waypoints[0];
+
+      // Check if unit should stop moving due to combat (fight or patrol mode)
+      const isInCombat = entity.weapon?.targetEntityId !== null;
+      const shouldStopForCombat =
+        (currentWaypoint.type === 'fight' || currentWaypoint.type === 'patrol') && isInCombat;
+
+      if (shouldStopForCombat) {
+        // Stop moving but stay at current waypoint
+        if (body.matterBody) {
+          (entity as unknown as { velocityX: number; velocityY: number }).velocityX = 0;
+          (entity as unknown as { velocityX: number; velocityY: number }).velocityY = 0;
+        }
+        continue;
+      }
+
+      // Calculate direction to current waypoint
+      const dx = currentWaypoint.x - transform.x;
+      const dy = currentWaypoint.y - transform.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // If close enough, stop
+      // If close enough to waypoint, advance to next
       const stopThreshold = 5;
       if (distance < stopThreshold) {
-        unit.targetX = null;
-        unit.targetY = null;
-        // Zero out velocity
+        this.advanceWaypoint(entity);
+
+        // Zero out velocity for this frame
         if (body.matterBody) {
           (entity as unknown as { velocityX: number; velocityY: number }).velocityX = 0;
           (entity as unknown as { velocityX: number; velocityY: number }).velocityY = 0;
@@ -194,6 +248,36 @@ export class Simulation {
       if (!entity.weapon?.targetEntityId) {
         transform.rotation = Math.atan2(dy, dx);
       }
+    }
+  }
+
+  // Advance to next waypoint (with patrol loop support)
+  private advanceWaypoint(entity: Entity): void {
+    if (!entity.unit) return;
+    const unit = entity.unit;
+
+    if (unit.waypoints.length === 0) return;
+
+    const completedWaypoint = unit.waypoints[0];
+
+    // Check if we're in patrol mode and should loop
+    if (completedWaypoint.type === 'patrol' && unit.patrolLoopIndex !== null) {
+      // Move completed patrol waypoint to end of queue (after all patrol waypoints)
+      unit.waypoints.shift();
+      unit.waypoints.push(completedWaypoint);
+    } else {
+      // Remove completed waypoint
+      unit.waypoints.shift();
+
+      // If we just finished the last non-patrol waypoint and hit patrol section
+      if (unit.waypoints.length > 0 && unit.waypoints[0].type === 'patrol') {
+        unit.patrolLoopIndex = 0;
+      }
+    }
+
+    // Clear patrol loop index if no more waypoints
+    if (unit.waypoints.length === 0) {
+      unit.patrolLoopIndex = null;
     }
   }
 
