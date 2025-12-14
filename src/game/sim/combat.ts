@@ -1,5 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
+import { FIXED_TIMESTEP } from './Simulation';
 
 // Audio event types
 export interface AudioEvent {
@@ -63,6 +64,87 @@ export function findClosestEnemy(
   return closestEnemy;
 }
 
+// Normalize angle to [-PI, PI]
+function normalizeAngle(angle: number): number {
+  while (angle > Math.PI) angle -= 2 * Math.PI;
+  while (angle < -Math.PI) angle += 2 * Math.PI;
+  return angle;
+}
+
+// Rotate turret toward target angle, limited by turn rate
+function rotateTurretToward(
+  currentAngle: number,
+  targetAngle: number,
+  turnRate: number,
+  dtSec: number
+): number {
+  const diff = normalizeAngle(targetAngle - currentAngle);
+  const maxTurn = turnRate * dtSec;
+
+  if (Math.abs(diff) <= maxTurn) {
+    return targetAngle;
+  }
+
+  return currentAngle + Math.sign(diff) * maxTurn;
+}
+
+// Update turret rotation for all units (call before fireWeapons)
+export function updateTurretRotation(world: WorldState, dtMs: number): void {
+  const dtSec = dtMs / 1000;
+
+  for (const unit of world.getUnits()) {
+    if (!unit.unit || !unit.ownership) continue;
+    if (unit.unit.hp <= 0) continue;
+
+    const unitComp = unit.unit;
+    const currentTurretRotation = unitComp.turretRotation ?? unit.transform.rotation;
+
+    // Determine target angle
+    let targetAngle: number;
+
+    if (unit.weapon?.targetEntityId !== null) {
+      // Has target - aim turret at target
+      const target = world.getEntity(unit.weapon.targetEntityId!);
+      if (target) {
+        const dx = target.transform.x - unit.transform.x;
+        const dy = target.transform.y - unit.transform.y;
+        targetAngle = Math.atan2(dy, dx);
+      } else {
+        // Target doesn't exist, face movement direction
+        targetAngle = getMovementAngle(unit);
+      }
+    } else {
+      // No target - face movement direction (or body direction if stationary)
+      targetAngle = getMovementAngle(unit);
+    }
+
+    // Rotate turret toward target angle
+    unitComp.turretRotation = rotateTurretToward(
+      currentTurretRotation,
+      targetAngle,
+      unitComp.turretTurnRate,
+      dtSec
+    );
+  }
+}
+
+// Get angle to face based on movement (or body direction if stationary)
+function getMovementAngle(unit: Entity): number {
+  if (!unit.unit) return unit.transform.rotation;
+
+  const velX = unit.unit.velocityX ?? 0;
+  const velY = unit.unit.velocityY ?? 0;
+  const speed = Math.sqrt(velX * velX + velY * velY);
+
+  if (speed > 1) {
+    // Moving - face movement direction
+    return Math.atan2(velY, velX);
+  }
+
+  // Stationary - keep current turret direction (or body direction)
+  return unit.unit.turretRotation ?? unit.transform.rotation;
+}
+
 // Update auto-targeting for all units
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
@@ -124,11 +206,40 @@ export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
   }
 }
 
-// Check if a unit already has an active beam
+// Check if a unit already has an active beam that won't expire this frame
 function hasActiveBeam(world: WorldState, unitId: EntityId): boolean {
   for (const proj of world.getProjectiles()) {
     if (proj.projectile?.sourceEntityId === unitId && proj.projectile.projectileType === 'beam') {
+      // Don't count beams that will expire this frame (after timeAlive update)
+      // timeAlive is updated AFTER fireWeapons, so we need to look ahead
+      if (proj.projectile.timeAlive + FIXED_TIMESTEP >= proj.projectile.maxLifespan) {
+        continue;
+      }
       return true;
+    }
+  }
+  return false;
+}
+
+// Count active beams for a unit (for checking if there are OTHER beams besides one being removed)
+function countActiveBeams(world: WorldState, unitId: EntityId): number {
+  let count = 0;
+  for (const proj of world.getProjectiles()) {
+    if (proj.projectile?.sourceEntityId === unitId && proj.projectile.projectileType === 'beam') {
+      count++;
+    }
+  }
+  return count;
+}
+
+// Check if a unit has an expiring beam (for suppressing duplicate laserStart)
+function hasExpiringBeam(world: WorldState, unitId: EntityId): boolean {
+  for (const proj of world.getProjectiles()) {
+    if (proj.projectile?.sourceEntityId === unitId && proj.projectile.projectileType === 'beam') {
+      // Check if beam will expire this frame (after timeAlive update)
+      if (proj.projectile.timeAlive + FIXED_TIMESTEP >= proj.projectile.maxLifespan) {
+        return true;
+      }
     }
   }
   return false;
@@ -170,15 +281,10 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
       if (!canFire && !canBurstFire) continue;
     }
 
-    // Calculate direction to target
-    const dx = target.transform.x - unit.transform.x;
-    const dy = target.transform.y - unit.transform.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const dirX = dx / dist;
-    const dirY = dy / dist;
-
-    // Face the target
-    unit.transform.rotation = Math.atan2(dy, dx);
+    // Use turret direction (not target direction) - turret rotation was updated in updateTurretRotation
+    const turretAngle = unit.unit.turretRotation ?? unit.transform.rotation;
+    const dirX = Math.cos(turretAngle);
+    const dirY = Math.sin(turretAngle);
 
     const playerId = unit.ownership.playerId;
 
@@ -212,14 +318,16 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
 
     // Add fire audio event (continuous lasers use laserStart)
     if (isBeamWeapon && config.cooldown === 0) {
-      // Continuous laser - start continuous sound
-      audioEvents.push({
-        type: 'laserStart',
-        weaponId: config.id,
-        x: unit.transform.x,
-        y: unit.transform.y,
-        entityId: unit.id,
-      });
+      // Only emit laserStart if this is a NEW laser, not a replacement for an expiring one
+      if (!hasExpiringBeam(world, unit.id)) {
+        audioEvents.push({
+          type: 'laserStart',
+          weaponId: config.id,
+          x: unit.transform.x,
+          y: unit.transform.y,
+          entityId: unit.id,
+        });
+      }
     } else {
       // Regular weapon fire
       audioEvents.push({
@@ -233,7 +341,7 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
     // Create projectile(s)
     const pellets = config.pelletCount ?? 1;
     const spreadAngle = config.spreadAngle ?? 0;
-    const baseAngle = Math.atan2(dirY, dirX);
+    const baseAngle = turretAngle; // Fire in turret direction
 
     for (let i = 0; i < pellets; i++) {
       // Calculate spread
@@ -255,13 +363,16 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
 
       // Check if this is a beam/hitscan weapon
       if (config.beamDuration !== undefined) {
-        // Create beam - extend from spawn position for full range
-        // Add target radius to ensure beam reaches targets at max effective range
-        const beamLength = config.range + (target.unit?.radius ?? 0);
+        // Create beam as fixed-length ray in turret direction (damages anything it touches)
+        const beamLength = config.range;
         const endX = spawnX + cos * beamLength;
         const endY = spawnY + sin * beamLength;
-
         const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config);
+        // Store source entity for position tracking (beam follows turret direction)
+        if (beam.projectile) {
+          beam.projectile.sourceEntityId = unit.id;
+          // No targetEntityId - beam fires in fixed direction from turret
+        }
         newProjectiles.push(beam);
       } else if (config.projectileSpeed !== undefined) {
         // Create traveling projectile
@@ -304,6 +415,32 @@ export function updateProjectiles(world: WorldState, dtMs: number): void {
       entity.transform.x += proj.velocityX * dtSec;
       entity.transform.y += proj.velocityY * dtSec;
     }
+
+    // Update beam positions to follow turret direction
+    if (proj.projectileType === 'beam') {
+      const source = world.getEntity(proj.sourceEntityId);
+
+      if (source && source.unit) {
+        // Get turret direction
+        const turretAngle = source.unit.turretRotation ?? source.transform.rotation;
+        const dirX = Math.cos(turretAngle);
+        const dirY = Math.sin(turretAngle);
+
+        // Beam starts at edge of source unit
+        proj.startX = source.transform.x + dirX * (source.unit.radius + 2);
+        proj.startY = source.transform.y + dirY * (source.unit.radius + 2);
+
+        // Beam ends at fixed length (weapon range) in turret direction
+        const beamLength = proj.config.range;
+        proj.endX = proj.startX + dirX * beamLength;
+        proj.endY = proj.startY + dirY * beamLength;
+
+        // Update entity transform to match beam start (for visual reference)
+        entity.transform.x = proj.startX;
+        entity.transform.y = proj.startY;
+        entity.transform.rotation = turretAngle;
+      }
+    }
   }
 }
 
@@ -321,15 +458,20 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
 
     // Check if projectile expired
     if (proj.timeAlive >= proj.maxLifespan) {
-      // Stop continuous laser sound when beam expires
+      // Stop continuous laser sound when beam expires - but only if there's no other beam
+      // (if a new beam was created this frame, don't emit laserStop as sound continues)
       if (proj.projectileType === 'beam' && config.cooldown === 0) {
-        audioEvents.push({
-          type: 'laserStop',
-          weaponId: config.id,
-          x: projEntity.transform.x,
-          y: projEntity.transform.y,
-          entityId: proj.sourceEntityId,
-        });
+        const beamCount = countActiveBeams(world, proj.sourceEntityId);
+        // Only emit laserStop if this is the only beam (the one expiring)
+        if (beamCount <= 1) {
+          audioEvents.push({
+            type: 'laserStop',
+            weaponId: config.id,
+            x: projEntity.transform.x,
+            y: projEntity.transform.y,
+            entityId: proj.sourceEntityId,
+          });
+        }
       }
 
       // Handle splash damage on expiration for grenades

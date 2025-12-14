@@ -1,7 +1,9 @@
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId } from './types';
+import { economyManager } from './economy';
+import { COMMANDER_CONFIG } from './buildConfigs';
 
-// Unit composition for each player
+// Unit composition for each player (legacy - now only used for testing)
 interface UnitSpawnConfig {
   weaponId: string;
   count: number;
@@ -16,7 +18,21 @@ const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
   { weaponId: 'shotgun', count: 2, radius: 13, moveSpeed: 110 },
 ];
 
-// Spawn units for a player in a formation
+// Spawn a commander for a player
+function spawnCommander(
+  world: WorldState,
+  playerId: PlayerId,
+  x: number,
+  y: number,
+  facingAngle: number
+): Entity {
+  const commander = world.createCommander(x, y, playerId, COMMANDER_CONFIG);
+  commander.transform.rotation = facingAngle;
+  world.addEntity(commander);
+  return commander;
+}
+
+// Spawn units for a player in a formation (legacy - for testing)
 function spawnPlayerUnits(
   world: WorldState,
   playerId: PlayerId,
@@ -72,39 +88,82 @@ function spawnPlayerUnits(
 export function spawnInitialEntities(world: WorldState): Entity[] {
   const entities: Entity[] = [];
 
-  // Player 1 units (Blue) - left side, facing right
+  // Initialize economy for both players
+  economyManager.initPlayer(1);
+  economyManager.initPlayer(2);
+
+  // Player 1 Commander (Blue) - left side, facing right
+  const commander1 = spawnCommander(
+    world,
+    1,
+    500, // x - closer to center for quicker engagement
+    world.mapHeight / 2, // y
+    0 // facing right
+  );
+  entities.push(commander1);
+
+  // Player 2 Commander (Red) - right side, facing left
+  const commander2 = spawnCommander(
+    world,
+    2,
+    world.mapWidth - 500, // x - closer to center for quicker engagement
+    world.mapHeight / 2, // y
+    Math.PI // facing left
+  );
+  entities.push(commander2);
+
+  // Note: Neutral buildings removed - players will build their own structures
+
+  return entities;
+}
+
+// Spawn initial entities with test units (for debugging/testing)
+export function spawnInitialEntitiesWithUnits(world: WorldState): Entity[] {
+  const entities: Entity[] = [];
+
+  // Initialize economy for both players
+  economyManager.initPlayer(1);
+  economyManager.initPlayer(2);
+
+  // Player 1 Commander (Blue) - left side
+  const commander1 = spawnCommander(
+    world,
+    1,
+    200,
+    world.mapHeight / 2,
+    0
+  );
+  entities.push(commander1);
+
+  // Player 1 units - behind commander
   const player1Units = spawnPlayerUnits(
     world,
     1,
-    300, // centerX
+    350, // centerX
     world.mapHeight / 2, // centerY
     0 // facing right
   );
   entities.push(...player1Units);
 
-  // Player 2 units (Red) - right side, facing left
+  // Player 2 Commander (Red) - right side
+  const commander2 = spawnCommander(
+    world,
+    2,
+    world.mapWidth - 200,
+    world.mapHeight / 2,
+    Math.PI
+  );
+  entities.push(commander2);
+
+  // Player 2 units - behind commander
   const player2Units = spawnPlayerUnits(
     world,
     2,
-    world.mapWidth - 300, // centerX
+    world.mapWidth - 350, // centerX
     world.mapHeight / 2, // centerY
     Math.PI // facing left
   );
   entities.push(...player2Units);
-
-  // Spawn some neutral buildings (obstacles)
-  const buildings = [
-    { x: world.mapWidth / 2, y: world.mapHeight / 2 - 200, w: 100, h: 80 },
-    { x: world.mapWidth / 2, y: world.mapHeight / 2 + 200, w: 100, h: 80 },
-    { x: world.mapWidth / 2 - 300, y: world.mapHeight / 2, w: 60, h: 120 },
-    { x: world.mapWidth / 2 + 300, y: world.mapHeight / 2, w: 60, h: 120 },
-  ];
-
-  for (const b of buildings) {
-    const building = world.createBuilding(b.x, b.y, b.w, b.h);
-    world.addEntity(building);
-    entities.push(building);
-  }
 
   return entities;
 }

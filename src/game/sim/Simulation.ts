@@ -1,14 +1,19 @@
 import { WorldState } from './WorldState';
-import { CommandQueue, type Command, type MoveCommand, type SelectCommand } from './commands';
+import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type SetRallyPointCommand, type FireDGunCommand } from './commands';
 import type { Entity, EntityId, Waypoint } from './types';
 import {
   updateAutoTargeting,
+  updateTurretRotation,
   updateWeaponCooldowns,
   fireWeapons,
   updateProjectiles,
   checkProjectileCollisions,
   type AudioEvent,
 } from './combat';
+import { economyManager } from './economy';
+import { ConstructionSystem } from './construction';
+import { factoryProductionSystem } from './factoryProduction';
+import { getWeaponConfig } from './weapons';
 
 // Fixed simulation timestep (60 Hz)
 export const FIXED_TIMESTEP = 1000 / 60;
@@ -17,16 +22,29 @@ export class Simulation {
   private world: WorldState;
   private commandQueue: CommandQueue;
   private accumulator: number = 0;
+  private constructionSystem: ConstructionSystem;
 
   // Callback for when units die (to clean up physics bodies)
   public onUnitDeath?: (deadUnitIds: EntityId[]) => void;
 
+  // Callback for when buildings are destroyed
+  public onBuildingDeath?: (deadBuildingIds: EntityId[]) => void;
+
   // Callback for audio events
   public onAudioEvent?: (event: AudioEvent) => void;
+
+  // Callback for game over
+  public onGameOver?: (loserId: number) => void;
 
   constructor(world: WorldState, commandQueue: CommandQueue) {
     this.world = world;
     this.commandQueue = commandQueue;
+    this.constructionSystem = new ConstructionSystem(world.mapWidth, world.mapHeight);
+  }
+
+  // Get construction system (for placement validation)
+  getConstructionSystem(): ConstructionSystem {
+    return this.constructionSystem;
   }
 
   // Update simulation with variable delta time
@@ -50,6 +68,16 @@ export class Simulation {
       this.executeCommand(command);
     }
 
+    // Update economy (income, production)
+    economyManager.update(dtMs);
+
+    // Update construction progress
+    this.constructionSystem.update(this.world, dtMs);
+
+    // Update factory production
+    factoryProductionSystem.update(this.world, dtMs);
+    // Note: completed units are added to world in factoryProductionSystem
+
     // Update all units movement
     this.updateUnits();
 
@@ -59,7 +87,20 @@ export class Simulation {
     // Update combat systems
     this.updateCombat(dtMs);
 
+    // Check for game over (commander death)
+    this.checkGameOver();
+
     this.world.incrementTick();
+  }
+
+  // Check if any commander died
+  private checkGameOver(): void {
+    if (!this.world.isCommanderAlive(1)) {
+      this.onGameOver?.(1);
+    }
+    if (!this.world.isCommanderAlive(2)) {
+      this.onGameOver?.(2);
+    }
   }
 
   // Update combat systems
@@ -109,6 +150,18 @@ export class Simulation {
         break;
       case 'clearSelection':
         this.world.clearSelection();
+        break;
+      case 'startBuild':
+        this.executeStartBuildCommand(command);
+        break;
+      case 'queueUnit':
+        this.executeQueueUnitCommand(command);
+        break;
+      case 'setRallyPoint':
+        this.executeSetRallyPointCommand(command);
+        break;
+      case 'fireDGun':
+        this.executeFireDGunCommand(command);
         break;
     }
   }
@@ -165,6 +218,112 @@ export class Simulation {
     }
   }
 
+  // Execute start build command
+  private executeStartBuildCommand(command: StartBuildCommand): void {
+    const builder = this.world.getEntity(command.builderId);
+    if (!builder?.builder || !builder.ownership) return;
+
+    const playerId = builder.ownership.playerId;
+
+    // Start the building
+    const building = this.constructionSystem.startBuilding(
+      this.world,
+      command.buildingType,
+      command.gridX,
+      command.gridY,
+      playerId,
+      command.builderId
+    );
+
+    if (!building) {
+      // Placement failed (invalid location)
+      return;
+    }
+
+    // Move builder to building location if needed
+    if (builder.unit) {
+      const waypoint: Waypoint = {
+        x: building.transform.x,
+        y: building.transform.y,
+        type: 'move',
+      };
+      this.addWaypointToUnit(builder, waypoint, false);
+    }
+  }
+
+  // Execute queue unit command
+  private executeQueueUnitCommand(command: QueueUnitCommand): void {
+    const factory = this.world.getEntity(command.factoryId);
+    if (!factory?.factory) return;
+
+    factoryProductionSystem.queueUnit(factory, command.weaponId);
+  }
+
+  // Execute set rally point command
+  private executeSetRallyPointCommand(command: SetRallyPointCommand): void {
+    const factory = this.world.getEntity(command.factoryId);
+    if (!factory?.factory) return;
+
+    factory.factory.rallyX = command.rallyX;
+    factory.factory.rallyY = command.rallyY;
+  }
+
+  // Execute fire D-gun command
+  private executeFireDGunCommand(command: FireDGunCommand): void {
+    const commander = this.world.getEntity(command.commanderId);
+    if (!commander?.commander || !commander.ownership) return;
+
+    const playerId = commander.ownership.playerId;
+
+    // Check if we have enough energy
+    const dgunCost = commander.commander.dgunEnergyCost;
+    if (!economyManager.canAfford(playerId, dgunCost)) {
+      return;
+    }
+
+    // Spend energy
+    economyManager.spendInstant(playerId, dgunCost);
+
+    // Calculate direction to target
+    const dx = command.targetX - commander.transform.x;
+    const dy = command.targetY - commander.transform.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist === 0) return;
+
+    // Get D-gun weapon config
+    const dgunConfig = getWeaponConfig('dgun');
+    const speed = dgunConfig.projectileSpeed ?? 350;
+
+    // Calculate velocity
+    const velocityX = (dx / dist) * speed;
+    const velocityY = (dy / dist) * speed;
+
+    // Create D-gun projectile
+    const projectile = this.world.createDGunProjectile(
+      commander.transform.x,
+      commander.transform.y,
+      velocityX,
+      velocityY,
+      playerId,
+      commander.id,
+      dgunConfig
+    );
+
+    this.world.addEntity(projectile);
+
+    // Face the target
+    commander.transform.rotation = Math.atan2(dy, dx);
+
+    // Emit audio event
+    this.onAudioEvent?.({
+      type: 'fire',
+      x: commander.transform.x,
+      y: commander.transform.y,
+      weaponId: 'dgun',
+    });
+  }
+
   // Add a waypoint to a unit (respecting queue flag)
   private addWaypointToUnit(entity: Entity, waypoint: Waypoint, queue: boolean): void {
     if (!entity.unit) return;
@@ -210,10 +369,8 @@ export class Simulation {
 
       if (shouldStopForCombat) {
         // Stop moving but stay at current waypoint
-        if (body.matterBody) {
-          (entity as unknown as { velocityX: number; velocityY: number }).velocityX = 0;
-          (entity as unknown as { velocityX: number; velocityY: number }).velocityY = 0;
-        }
+        unit.velocityX = 0;
+        unit.velocityY = 0;
         continue;
       }
 
@@ -228,10 +385,8 @@ export class Simulation {
         this.advanceWaypoint(entity);
 
         // Zero out velocity for this frame
-        if (body.matterBody) {
-          (entity as unknown as { velocityX: number; velocityY: number }).velocityX = 0;
-          (entity as unknown as { velocityX: number; velocityY: number }).velocityY = 0;
-        }
+        unit.velocityX = 0;
+        unit.velocityY = 0;
         continue;
       }
 
@@ -240,14 +395,12 @@ export class Simulation {
       const vx = (dx / distance) * speed;
       const vy = (dy / distance) * speed;
 
-      // Store desired velocity for physics update
-      (entity as unknown as { velocityX: number; velocityY: number }).velocityX = vx;
-      (entity as unknown as { velocityX: number; velocityY: number }).velocityY = vy;
+      // Store velocity on unit for rendering and physics
+      unit.velocityX = vx;
+      unit.velocityY = vy;
 
-      // Update rotation to face movement direction (unless attacking)
-      if (!entity.weapon?.targetEntityId) {
-        transform.rotation = Math.atan2(dy, dx);
-      }
+      // Update body rotation to face movement direction
+      transform.rotation = Math.atan2(dy, dx);
     }
   }
 

@@ -294,11 +294,11 @@ export class RtsScene extends Phaser.Scene {
     // Update input (keyboard camera pan)
     this.inputManager.update(delta);
 
-    // Apply velocities to Matter bodies before simulation
-    this.applyUnitVelocities();
-
-    // Update simulation
+    // Update simulation (calculates velocities)
     this.simulation.update(delta);
+
+    // Apply calculated velocities to Matter bodies
+    this.applyUnitVelocities();
 
     // Render entities
     this.entityRenderer.render();
@@ -310,16 +310,16 @@ export class RtsScene extends Phaser.Scene {
   // Apply calculated velocities to Matter bodies
   private applyUnitVelocities(): void {
     for (const entity of this.world.getUnits()) {
-      if (!entity.body?.matterBody) continue;
+      if (!entity.body?.matterBody || !entity.unit) continue;
 
-      const velX = (entity as unknown as { velocityX?: number }).velocityX ?? 0;
-      const velY = (entity as unknown as { velocityY?: number }).velocityY ?? 0;
+      const velX = entity.unit.velocityX ?? 0;
+      const velY = entity.unit.velocityY ?? 0;
 
       this.matter.body.setVelocity(entity.body.matterBody, { x: velX / 60, y: velY / 60 });
 
-      // Clear stored velocity
-      (entity as unknown as { velocityX?: number }).velocityX = undefined;
-      (entity as unknown as { velocityY?: number }).velocityY = undefined;
+      // Clear stored velocity after applying
+      entity.unit.velocityX = 0;
+      entity.unit.velocityY = 0;
     }
   }
 

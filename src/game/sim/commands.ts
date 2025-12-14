@@ -1,7 +1,7 @@
-import type { EntityId, WaypointType } from './types';
+import type { EntityId, WaypointType, BuildingType } from './types';
 
 // Command types
-export type CommandType = 'select' | 'move' | 'clearSelection';
+export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'setRallyPoint' | 'fireDGun';
 
 // Base command interface
 interface BaseCommand {
@@ -42,8 +42,40 @@ export interface ClearSelectionCommand extends BaseCommand {
   type: 'clearSelection';
 }
 
+// Start build command - commander builds a structure
+export interface StartBuildCommand extends BaseCommand {
+  type: 'startBuild';
+  builderId: EntityId;
+  buildingType: BuildingType;
+  gridX: number;
+  gridY: number;
+}
+
+// Queue unit command - add unit to factory production queue
+export interface QueueUnitCommand extends BaseCommand {
+  type: 'queueUnit';
+  factoryId: EntityId;
+  weaponId: string;
+}
+
+// Set rally point command - set factory rally point
+export interface SetRallyPointCommand extends BaseCommand {
+  type: 'setRallyPoint';
+  factoryId: EntityId;
+  rallyX: number;
+  rallyY: number;
+}
+
+// Fire D-gun command - commander fires D-gun at target
+export interface FireDGunCommand extends BaseCommand {
+  type: 'fireDGun';
+  commanderId: EntityId;
+  targetX: number;
+  targetY: number;
+}
+
 // Union of all command types
-export type Command = SelectCommand | MoveCommand | ClearSelectionCommand;
+export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | SetRallyPointCommand | FireDGunCommand;
 
 // Command queue for processing commands in order
 export class CommandQueue {

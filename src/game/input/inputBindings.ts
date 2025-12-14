@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
-import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget } from '../sim/commands';
-import type { Entity, EntityId, WaypointType } from '../sim/types';
+import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget, type StartBuildCommand, type FireDGunCommand } from '../sim/commands';
+import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
+import { getBuildingConfig } from '../sim/buildConfigs';
+import { GRID_CELL_SIZE } from '../sim/grid';
 
 // Point in world space
 interface WorldPoint {
@@ -30,6 +32,14 @@ interface InputState {
   waypointMode: WaypointType;
   // Track previous selection to detect changes
   previousSelectedIds: Set<EntityId>;
+  // Building placement mode
+  isBuildMode: boolean;
+  selectedBuildingType: BuildingType | null;
+  buildGhostX: number;
+  buildGhostY: number;
+  canPlaceBuilding: boolean;
+  // D-gun mode
+  isDGunMode: boolean;
 }
 
 // Waypoint mode colors
@@ -52,6 +62,7 @@ export class InputManager {
   private state: InputState;
   private selectionGraphics: Phaser.GameObjects.Graphics;
   private linePathGraphics: Phaser.GameObjects.Graphics;
+  private buildGhostGraphics: Phaser.GameObjects.Graphics;
   private keys: {
     W: Phaser.Input.Keyboard.Key;
     A: Phaser.Input.Keyboard.Key;
@@ -60,10 +71,19 @@ export class InputManager {
     M: Phaser.Input.Keyboard.Key;
     F: Phaser.Input.Keyboard.Key;
     H: Phaser.Input.Keyboard.Key;
+    B: Phaser.Input.Keyboard.Key;
+    G: Phaser.Input.Keyboard.Key;
+    ONE: Phaser.Input.Keyboard.Key;
+    TWO: Phaser.Input.Keyboard.Key;
+    ESC: Phaser.Input.Keyboard.Key;
   };
 
   // Callback for UI to show waypoint mode changes
   public onWaypointModeChange?: (mode: WaypointType) => void;
+  // Callback for UI to show build mode changes
+  public onBuildModeChange?: (buildingType: BuildingType | null) => void;
+  // Callback for D-gun mode changes
+  public onDGunModeChange?: (active: boolean) => void;
 
   constructor(scene: Phaser.Scene, world: WorldState, commandQueue: CommandQueue) {
     this.scene = scene;
@@ -86,6 +106,12 @@ export class InputManager {
       linePathTargets: [],
       waypointMode: 'move',
       previousSelectedIds: new Set(),
+      isBuildMode: false,
+      selectedBuildingType: null,
+      buildGhostX: 0,
+      buildGhostY: 0,
+      canPlaceBuilding: false,
+      isDGunMode: false,
     };
 
     // Selection rectangle graphics (world-space, drawn over entities)
@@ -95,6 +121,10 @@ export class InputManager {
     // Line path graphics for line move command
     this.linePathGraphics = scene.add.graphics();
     this.linePathGraphics.setDepth(1000);
+
+    // Build ghost graphics
+    this.buildGhostGraphics = scene.add.graphics();
+    this.buildGhostGraphics.setDepth(999);
 
     // Setup keyboard
     const keyboard = scene.input.keyboard;
@@ -110,11 +140,17 @@ export class InputManager {
       M: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M),
       F: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F),
       H: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H),
+      B: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B),
+      G: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G),
+      ONE: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
+      TWO: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
+      ESC: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
     };
 
     this.setupPointerEvents();
     this.setupWheelEvent();
     this.setupModeHotkeys();
+    this.setupBuildHotkeys();
   }
 
   // Setup waypoint mode hotkeys
@@ -143,15 +179,142 @@ export class InputManager {
     return this.state.waypointMode;
   }
 
+  // Setup building hotkeys
+  private setupBuildHotkeys(): void {
+    // B key enters build mode (shows menu or cycles)
+    this.keys.B.on('down', () => {
+      if (this.hasSelectedCommander()) {
+        if (!this.state.isBuildMode) {
+          // Enter build mode with solar as default
+          this.enterBuildMode('solar');
+        } else {
+          // Already in build mode, cycle building type
+          this.cycleBuildingType();
+        }
+      }
+    });
+
+    // 1 key selects solar panel
+    this.keys.ONE.on('down', () => {
+      if (this.state.isBuildMode || this.hasSelectedCommander()) {
+        this.enterBuildMode('solar');
+      }
+    });
+
+    // 2 key selects factory
+    this.keys.TWO.on('down', () => {
+      if (this.state.isBuildMode || this.hasSelectedCommander()) {
+        this.enterBuildMode('factory');
+      }
+    });
+
+    // ESC cancels build mode
+    this.keys.ESC.on('down', () => {
+      if (this.state.isBuildMode) {
+        this.exitBuildMode();
+      }
+      if (this.state.isDGunMode) {
+        this.exitDGunMode();
+      }
+    });
+
+    // G key activates D-gun mode
+    this.keys.G.on('down', () => {
+      if (this.hasSelectedCommander()) {
+        if (!this.state.isDGunMode) {
+          this.enterDGunMode();
+        } else {
+          this.exitDGunMode();
+        }
+      }
+    });
+  }
+
+  // Check if a commander is selected
+  private hasSelectedCommander(): boolean {
+    const selected = this.world.getSelectedUnits();
+    return selected.some(e => e.commander !== undefined);
+  }
+
+  // Get selected commander
+  private getSelectedCommander(): Entity | null {
+    const selected = this.world.getSelectedUnits();
+    return selected.find(e => e.commander !== undefined) ?? null;
+  }
+
+  // Enter build mode with a specific building type
+  private enterBuildMode(buildingType: BuildingType): void {
+    this.state.isBuildMode = true;
+    this.state.selectedBuildingType = buildingType;
+    this.exitDGunMode();
+    this.onBuildModeChange?.(buildingType);
+  }
+
+  // Exit build mode
+  private exitBuildMode(): void {
+    this.state.isBuildMode = false;
+    this.state.selectedBuildingType = null;
+    this.buildGhostGraphics.clear();
+    this.onBuildModeChange?.(null);
+  }
+
+  // Cycle between building types
+  private cycleBuildingType(): void {
+    const types: BuildingType[] = ['solar', 'factory'];
+    const currentIndex = types.indexOf(this.state.selectedBuildingType!);
+    const nextIndex = (currentIndex + 1) % types.length;
+    this.state.selectedBuildingType = types[nextIndex];
+    this.onBuildModeChange?.(this.state.selectedBuildingType);
+  }
+
+  // Enter D-gun mode
+  private enterDGunMode(): void {
+    this.state.isDGunMode = true;
+    this.exitBuildMode();
+    this.onDGunModeChange?.(true);
+  }
+
+  // Exit D-gun mode
+  private exitDGunMode(): void {
+    this.state.isDGunMode = false;
+    this.onDGunModeChange?.(false);
+  }
+
+  // Get snapped world position for building placement
+  private getSnappedBuildPosition(worldX: number, worldY: number, buildingType: BuildingType): { x: number; y: number; gridX: number; gridY: number } {
+    const config = getBuildingConfig(buildingType);
+    const gridX = Math.floor(worldX / GRID_CELL_SIZE);
+    const gridY = Math.floor(worldY / GRID_CELL_SIZE);
+
+    // Center of building
+    const x = gridX * GRID_CELL_SIZE + (config.gridWidth * GRID_CELL_SIZE) / 2;
+    const y = gridY * GRID_CELL_SIZE + (config.gridHeight * GRID_CELL_SIZE) / 2;
+
+    return { x, y, gridX, gridY };
+  }
+
   private setupPointerEvents(): void {
     const pointer = this.scene.input;
 
     // Pointer down
     pointer.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.leftButtonDown()) {
-        // Start selection drag - convert to world coords immediately
         const camera = this.scene.cameras.main;
         const worldPoint = camera.getWorldPoint(p.x, p.y);
+
+        // Handle build mode placement
+        if (this.state.isBuildMode && this.state.selectedBuildingType) {
+          this.handleBuildClick(worldPoint.x, worldPoint.y);
+          return;
+        }
+
+        // Handle D-gun mode firing
+        if (this.state.isDGunMode) {
+          this.handleDGunClick(worldPoint.x, worldPoint.y);
+          return;
+        }
+
+        // Start selection drag - convert to world coords immediately
         this.state.isDraggingSelection = true;
         this.state.selectionStartWorldX = worldPoint.x;
         this.state.selectionStartWorldY = worldPoint.y;
@@ -165,6 +328,16 @@ export class InputManager {
         this.state.cameraStartX = this.scene.cameras.main.scrollX;
         this.state.cameraStartY = this.scene.cameras.main.scrollY;
       } else if (p.rightButtonDown()) {
+        // Cancel build/D-gun mode on right click
+        if (this.state.isBuildMode) {
+          this.exitBuildMode();
+          return;
+        }
+        if (this.state.isDGunMode) {
+          this.exitDGunMode();
+          return;
+        }
+
         // Start line path drawing if units are selected
         const selectedUnits = this.world.getSelectedUnits();
         if (selectedUnits.length > 0) {
@@ -180,10 +353,18 @@ export class InputManager {
 
     // Pointer move
     pointer.on('pointermove', (p: Phaser.Input.Pointer) => {
+      const camera = this.scene.cameras.main;
+      const worldPoint = camera.getWorldPoint(p.x, p.y);
+
+      // Update ghost position in build mode
+      if (this.state.isBuildMode && this.state.selectedBuildingType) {
+        const snapped = this.getSnappedBuildPosition(worldPoint.x, worldPoint.y, this.state.selectedBuildingType);
+        this.state.buildGhostX = snapped.x;
+        this.state.buildGhostY = snapped.y;
+      }
+
       if (this.state.isDraggingSelection) {
         // Convert to world coords immediately
-        const camera = this.scene.cameras.main;
-        const worldPoint = camera.getWorldPoint(p.x, p.y);
         this.state.selectionEndWorldX = worldPoint.x;
         this.state.selectionEndWorldY = worldPoint.y;
       }
@@ -534,6 +715,109 @@ export class InputManager {
     // Draw selection rectangle and line path
     this.drawSelectionRect();
     this.drawLinePath();
+    this.drawBuildGhost();
+  }
+
+  // Handle build click - place building
+  private handleBuildClick(worldX: number, worldY: number): void {
+    const commander = this.getSelectedCommander();
+    if (!commander || !this.state.selectedBuildingType) return;
+
+    const snapped = this.getSnappedBuildPosition(worldX, worldY, this.state.selectedBuildingType);
+
+    // Issue start build command
+    const command: StartBuildCommand = {
+      type: 'startBuild',
+      tick: this.world.getTick(),
+      builderId: commander.id,
+      buildingType: this.state.selectedBuildingType,
+      gridX: snapped.gridX,
+      gridY: snapped.gridY,
+    };
+
+    this.commandQueue.enqueue(command);
+
+    // Exit build mode after placing
+    this.exitBuildMode();
+  }
+
+  // Handle D-gun click - fire D-gun
+  private handleDGunClick(worldX: number, worldY: number): void {
+    const commander = this.getSelectedCommander();
+    if (!commander) return;
+
+    // Issue fire D-gun command
+    const command: FireDGunCommand = {
+      type: 'fireDGun',
+      tick: this.world.getTick(),
+      commanderId: commander.id,
+      targetX: worldX,
+      targetY: worldY,
+    };
+
+    this.commandQueue.enqueue(command);
+
+    // Stay in D-gun mode for rapid firing (exit with ESC or right-click)
+  }
+
+  // Draw build ghost preview
+  private drawBuildGhost(): void {
+    this.buildGhostGraphics.clear();
+
+    if (!this.state.isBuildMode || !this.state.selectedBuildingType) return;
+
+    const config = getBuildingConfig(this.state.selectedBuildingType);
+    const width = config.gridWidth * GRID_CELL_SIZE;
+    const height = config.gridHeight * GRID_CELL_SIZE;
+    const x = this.state.buildGhostX;
+    const y = this.state.buildGhostY;
+    const left = x - width / 2;
+    const top = y - height / 2;
+
+    // TODO: Check if placement is valid via construction system
+    const canPlace = true; // Placeholder
+
+    // Ghost fill
+    const ghostColor = canPlace ? 0x88ff88 : 0xff4444;
+    this.buildGhostGraphics.fillStyle(ghostColor, 0.3);
+    this.buildGhostGraphics.fillRect(left, top, width, height);
+
+    // Ghost outline
+    this.buildGhostGraphics.lineStyle(2, ghostColor, 0.8);
+    this.buildGhostGraphics.strokeRect(left, top, width, height);
+
+    // Grid lines
+    this.buildGhostGraphics.lineStyle(1, ghostColor, 0.4);
+    for (let gx = left; gx <= left + width; gx += GRID_CELL_SIZE) {
+      this.buildGhostGraphics.lineBetween(gx, top, gx, top + height);
+    }
+    for (let gy = top; gy <= top + height; gy += GRID_CELL_SIZE) {
+      this.buildGhostGraphics.lineBetween(left, gy, left + width, gy);
+    }
+
+    // Commander range indicator
+    const commander = this.getSelectedCommander();
+    if (commander?.builder) {
+      const cx = commander.transform.x;
+      const cy = commander.transform.y;
+      const range = commander.builder.buildRange;
+
+      // Draw range circle
+      this.buildGhostGraphics.lineStyle(1, 0x00ff00, 0.3);
+      this.buildGhostGraphics.strokeCircle(cx, cy, range);
+
+      // Check if building is in range
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const inRange = dist <= range;
+
+      if (!inRange) {
+        // Show line to building with warning color
+        this.buildGhostGraphics.lineStyle(1, 0xff4444, 0.5);
+        this.buildGhostGraphics.lineBetween(cx, cy, x, y);
+      }
+    }
   }
 
   // Check if selection changed and reset waypoint mode to 'move'
@@ -592,5 +876,19 @@ export class InputManager {
   destroy(): void {
     this.selectionGraphics.destroy();
     this.linePathGraphics.destroy();
+    this.buildGhostGraphics.destroy();
+  }
+
+  // Get current build mode state
+  public getBuildMode(): { active: boolean; buildingType: BuildingType | null } {
+    return {
+      active: this.state.isBuildMode,
+      buildingType: this.state.selectedBuildingType,
+    };
+  }
+
+  // Get D-gun mode state
+  public isDGunModeActive(): boolean {
+    return this.state.isDGunMode;
   }
 }

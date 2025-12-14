@@ -46,6 +46,13 @@ export interface Unit {
   waypoints: Waypoint[];
   // Index for patrol looping (points to first patrol waypoint when looping)
   patrolLoopIndex: number | null;
+  // Movement velocity (for rendering movement direction)
+  velocityX?: number;
+  velocityY?: number;
+  // Turret/weapon rotation (separate from body rotation)
+  turretRotation?: number;
+  // Turret turn rate (radians per second) - how fast the turret can rotate
+  turretTurnRate: number;
 }
 
 // Building component - static structures
@@ -127,6 +134,7 @@ export interface Projectile {
   startY?: number;
   endX?: number;                 // Beam endpoint
   endY?: number;
+  targetEntityId?: EntityId;     // Target for tracking beams (updates every frame)
 
   // Tracking which entities were hit (for piercing or single-hit)
   hitEntities: Set<EntityId>;
@@ -134,6 +142,82 @@ export interface Projectile {
 
   // AoE tracking
   hasExploded?: boolean;
+}
+
+// ==================== ECONOMY & CONSTRUCTION ====================
+
+// Economy state per player
+export interface EconomyState {
+  stockpile: number;        // Current energy
+  maxStockpile: number;     // Max energy storage
+  baseIncome: number;       // Minimum income (always received)
+  production: number;       // Energy from solar panels
+  expenditure: number;      // Current energy being spent (building/repairs)
+}
+
+// Buildable component - for entities under construction
+export interface Buildable {
+  buildProgress: number;    // 0-1 progress (1 = complete)
+  energyCost: number;       // Total energy to build
+  maxBuildRate: number;     // Max energy/sec that can be applied
+  isComplete: boolean;      // Whether construction is finished
+  isGhost: boolean;         // Whether this is a placement ghost (not yet started)
+}
+
+// Builder component - for units that can construct
+export interface Builder {
+  buildRate: number;        // Energy/sec this builder can contribute
+  buildRange: number;       // Max distance to construction site
+  currentBuildTarget: EntityId | null;  // What we're building/assisting
+}
+
+// Building type identifiers
+export type BuildingType = 'solar' | 'factory';
+
+// Building configuration
+export interface BuildingConfig {
+  id: BuildingType;
+  name: string;
+  gridWidth: number;        // Grid cells wide
+  gridHeight: number;       // Grid cells tall
+  hp: number;
+  energyCost: number;
+  maxBuildRate: number;     // Max energy/sec for construction
+  energyProduction?: number; // For solar panels
+  unitBuildRate?: number;   // For factories - max energy/sec for unit production
+}
+
+// Unit build configuration (extends weapon config concept)
+export interface UnitBuildConfig {
+  weaponId: string;
+  name: string;
+  energyCost: number;
+  maxBuildRate: number;     // Max energy/sec for construction
+  radius: number;
+  moveSpeed: number;
+  hp: number;
+}
+
+// Factory component - for unit production
+export interface Factory {
+  buildQueue: string[];     // Queue of weapon IDs to build
+  currentBuildProgress: number;  // 0-1 for current unit
+  currentBuildCost: number;      // Energy cost of current unit
+  currentBuildRate: number;      // Max rate for current unit
+  rallyX: number;           // Where completed units go
+  rallyY: number;
+  isProducing: boolean;
+}
+
+// Commander component - special abilities
+export interface Commander {
+  isDGunActive: boolean;    // D-gun mode enabled
+  dgunEnergyCost: number;   // Energy cost per d-gun shot
+}
+
+// D-gun projectile marker
+export interface DGunProjectile {
+  isDGun: boolean;
 }
 
 // Entity type discriminator
@@ -151,6 +235,13 @@ export interface Entity {
   building?: Building;
   weapon?: Weapon;
   projectile?: Projectile;
+  // New components
+  buildable?: Buildable;
+  builder?: Builder;
+  factory?: Factory;
+  commander?: Commander;
+  dgunProjectile?: DGunProjectile;
+  buildingType?: BuildingType;  // What kind of building this is
 }
 
 // Player colors

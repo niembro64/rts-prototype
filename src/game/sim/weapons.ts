@@ -100,6 +100,22 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     burstDelay: 80,
     color: 0xff88ff,
   },
+
+  // D-gun - Commander's special weapon, destroys everything
+  // Costs energy instead of cooldown
+  dgun: {
+    id: 'dgun',
+    damage: 9999,           // Instant kill
+    range: 300,
+    cooldown: 0,            // No cooldown, limited by energy
+    projectileSpeed: 350,   // Medium speed
+    projectileRadius: 25,   // Large projectile
+    projectileLifespan: 2000,
+    color: 0xff8800,        // Orange/fire color
+    splashRadius: 40,       // Destroys area
+    splashDamageFalloff: 0, // Full damage in splash
+    piercing: true,         // Hits everything in path
+  },
 };
 
 // Helper to get a weapon config by ID

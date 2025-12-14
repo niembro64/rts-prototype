@@ -116,6 +116,40 @@ export class WorldState {
     return this.getUnits().filter((e) => e.ownership?.playerId !== playerId);
   }
 
+  // Get all enemy entities (units and buildings)
+  getEnemyEntities(playerId: PlayerId): Entity[] {
+    return this.getAllEntities().filter(
+      (e) => e.ownership?.playerId !== undefined &&
+             e.ownership.playerId !== playerId &&
+             (e.type === 'unit' || e.type === 'building')
+    );
+  }
+
+  // Get commander for a player
+  getCommander(playerId: PlayerId): Entity | undefined {
+    return this.getUnits().find(
+      (e) => e.ownership?.playerId === playerId && e.commander !== undefined
+    );
+  }
+
+  // Get buildings by player
+  getBuildingsByPlayer(playerId: PlayerId): Entity[] {
+    return this.getBuildings().filter((e) => e.ownership?.playerId === playerId);
+  }
+
+  // Get factories by player
+  getFactoriesByPlayer(playerId: PlayerId): Entity[] {
+    return this.getBuildings().filter(
+      (e) => e.ownership?.playerId === playerId && e.factory !== undefined
+    );
+  }
+
+  // Check if a player's commander is alive
+  isCommanderAlive(playerId: PlayerId): boolean {
+    const commander = this.getCommander(playerId);
+    return commander !== undefined && (commander.unit?.hp ?? 0) > 0;
+  }
+
   // Get selected entities for active player
   getSelectedEntities(): Entity[] {
     return this.getAllEntities().filter(
@@ -168,7 +202,8 @@ export class WorldState {
     playerId: PlayerId,
     weaponId: string = 'minigun',
     radius: number = 15,
-    moveSpeed: number = 100
+    moveSpeed: number = 100,
+    turretTurnRate: number = 3 // radians per second (~172°/sec default)
   ): Entity {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(weaponId);
@@ -186,6 +221,8 @@ export class WorldState {
         maxHp: 100,
         waypoints: [],
         patrolLoopIndex: null,
+        turretRotation: 0, // Start facing same as body
+        turretTurnRate,
       },
       weapon: {
         config: weaponConfig,
@@ -193,6 +230,83 @@ export class WorldState {
         targetEntityId: null,
       },
     };
+    return entity;
+  }
+
+  // Create a commander unit
+  createCommander(
+    x: number,
+    y: number,
+    playerId: PlayerId,
+    config: {
+      hp: number;
+      radius: number;
+      moveSpeed: number;
+      buildRate: number;
+      buildRange: number;
+      weaponId: string;
+      dgunCost: number;
+      turretTurnRate?: number;
+    }
+  ): Entity {
+    const id = this.generateEntityId();
+    const weaponConfig = getWeaponConfig(config.weaponId);
+
+    const entity: Entity = {
+      id,
+      type: 'unit',
+      transform: { x, y, rotation: 0 },
+      selectable: { selected: false },
+      ownership: { playerId },
+      unit: {
+        moveSpeed: config.moveSpeed,
+        radius: config.radius,
+        hp: config.hp,
+        maxHp: config.hp,
+        waypoints: [],
+        patrolLoopIndex: null,
+        turretRotation: 0, // Start facing same as body
+        turretTurnRate: config.turretTurnRate ?? 3, // Default ~172°/sec
+      },
+      weapon: {
+        config: weaponConfig,
+        currentCooldown: 0,
+        targetEntityId: null,
+      },
+      builder: {
+        buildRate: config.buildRate,
+        buildRange: config.buildRange,
+        currentBuildTarget: null,
+      },
+      commander: {
+        isDGunActive: false,
+        dgunEnergyCost: config.dgunCost,
+      },
+    };
+
+    return entity;
+  }
+
+  // Create a D-gun projectile
+  createDGunProjectile(
+    x: number,
+    y: number,
+    velocityX: number,
+    velocityY: number,
+    ownerId: PlayerId,
+    sourceEntityId: EntityId,
+    config: WeaponConfig
+  ): Entity {
+    const entity = this.createProjectile(x, y, velocityX, velocityY, ownerId, sourceEntityId, config, 'traveling');
+
+    // Mark as D-gun projectile
+    entity.dgunProjectile = { isDGun: true };
+
+    // D-gun hits everything (infinite hits)
+    if (entity.projectile) {
+      entity.projectile.maxHits = Infinity;
+    }
+
     return entity;
   }
 

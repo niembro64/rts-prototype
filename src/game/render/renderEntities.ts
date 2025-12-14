@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, WaypointType } from '../sim/types';
+import type { Entity, WaypointType, BuildingType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 
 // Colors
@@ -11,6 +11,15 @@ const BUILDING_OUTLINE_COLOR = 0xaa8866;
 const HEALTH_BAR_BG = 0x333333;
 const HEALTH_BAR_FG = 0x44dd44;
 const HEALTH_BAR_LOW = 0xff4444;
+const BUILD_BAR_FG = 0xffcc00;  // Yellow for build progress
+const GHOST_COLOR = 0x88ff88;   // Green tint for placement ghost
+const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
+
+// Building type colors
+const BUILDING_TYPE_COLORS: Record<BuildingType, number> = {
+  solar: 0xffff44,   // Yellow for solar
+  factory: 0x888888, // Gray for factory
+};
 
 // Waypoint colors by type
 const WAYPOINT_COLORS: Record<WaypointType, number> = {
@@ -97,18 +106,60 @@ export class EntityRenderer {
       this.graphics.fillCircle(x, y, radius * 0.5);
     }
 
-    // Direction indicator (small line showing facing)
-    const dirLength = radius * 1.2;
-    const dirX = x + Math.cos(rotation) * dirLength;
-    const dirY = y + Math.sin(rotation) * dirLength;
-    this.graphics.lineStyle(2, 0xffffff, 1);
-    this.graphics.lineBetween(x, y, dirX, dirY);
+    // Movement direction indicator (white arrow showing body facing/movement)
+    const moveLength = radius * 1.0;
+    const moveDirX = x + Math.cos(rotation) * moveLength;
+    const moveDirY = y + Math.sin(rotation) * moveLength;
+    this.graphics.lineStyle(2, 0xaaaaaa, 0.7);
+    this.graphics.lineBetween(x, y, moveDirX, moveDirY);
+    // Small arrowhead
+    const arrowSize = 4;
+    const arrowAngle = Math.PI * 0.8;
+    this.graphics.lineBetween(
+      moveDirX,
+      moveDirY,
+      moveDirX + Math.cos(rotation + arrowAngle) * arrowSize,
+      moveDirY + Math.sin(rotation + arrowAngle) * arrowSize
+    );
+    this.graphics.lineBetween(
+      moveDirX,
+      moveDirY,
+      moveDirX + Math.cos(rotation - arrowAngle) * arrowSize,
+      moveDirY + Math.sin(rotation - arrowAngle) * arrowSize
+    );
 
-    // Weapon type indicator (small colored dot)
+    // Turret/weapon direction indicator (colored line showing aim direction)
     if (entity.weapon) {
       const weaponColor = (entity.weapon.config.color as number) ?? 0xffffff;
+      const turretRotation = unit.turretRotation ?? rotation;
+      const turretLength = radius * 1.3;
+      const turretEndX = x + Math.cos(turretRotation) * turretLength;
+      const turretEndY = y + Math.sin(turretRotation) * turretLength;
+
+      // Turret barrel line
+      this.graphics.lineStyle(3, weaponColor, 0.9);
+      this.graphics.lineBetween(x, y, turretEndX, turretEndY);
+
+      // Weapon type indicator (small colored dot at center)
       this.graphics.fillStyle(weaponColor, 0.9);
       this.graphics.fillCircle(x, y, 4);
+    }
+
+    // Commander indicator (gold star/crown)
+    if (entity.commander) {
+      // Gold circle around commander
+      this.graphics.lineStyle(2, COMMANDER_COLOR, 0.8);
+      this.graphics.strokeCircle(x, y, radius + 8);
+
+      // Small gold dots around the circle (crown points)
+      const dotCount = 5;
+      for (let i = 0; i < dotCount; i++) {
+        const angle = (i / dotCount) * Math.PI * 2 - Math.PI / 2;
+        const dotX = x + Math.cos(angle) * (radius + 8);
+        const dotY = y + Math.sin(angle) * (radius + 8);
+        this.graphics.fillStyle(COMMANDER_COLOR, 1);
+        this.graphics.fillCircle(dotX, dotY, 3);
+      }
     }
 
     // Health bar (always show)
@@ -202,6 +253,52 @@ export class EntityRenderer {
       // Core
       this.graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
       this.graphics.lineBetween(startX, startY, endX, endY);
+    } else if (entity.dgunProjectile) {
+      // D-gun projectile - big, fiery, intimidating
+      const radius = config.projectileRadius ?? 25;
+
+      // Outer glow (pulsating)
+      const pulsePhase = (projectile.timeAlive / 100) % 1;
+      const pulseRadius = radius * (1.3 + 0.2 * Math.sin(pulsePhase * Math.PI * 2));
+      this.graphics.fillStyle(0xff4400, 0.3);
+      this.graphics.fillCircle(x, y, pulseRadius);
+
+      // Middle glow
+      this.graphics.fillStyle(0xff6600, 0.5);
+      this.graphics.fillCircle(x, y, radius * 1.1);
+
+      // Main body
+      this.graphics.fillStyle(color, 0.9);
+      this.graphics.fillCircle(x, y, radius);
+
+      // Hot core
+      this.graphics.fillStyle(0xffff00, 0.8);
+      this.graphics.fillCircle(x, y, radius * 0.5);
+
+      // White-hot center
+      this.graphics.fillStyle(0xffffff, 1);
+      this.graphics.fillCircle(x, y, radius * 0.2);
+
+      // Fire trail
+      const velMag = Math.sqrt(
+        projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY
+      );
+      if (velMag > 0) {
+        const dirX = projectile.velocityX / velMag;
+        const dirY = projectile.velocityY / velMag;
+
+        for (let i = 1; i <= 5; i++) {
+          const trailX = x - dirX * i * radius * 0.8;
+          const trailY = y - dirY * i * radius * 0.8;
+          const alpha = 0.6 - i * 0.1;
+          const trailRadius = radius * (0.8 - i * 0.12);
+
+          if (alpha > 0 && trailRadius > 0) {
+            this.graphics.fillStyle(0xff4400, alpha);
+            this.graphics.fillCircle(trailX, trailY, trailRadius);
+          }
+        }
+      }
     } else {
       // Render traveling projectile as a circle
       const radius = config.projectileRadius ?? 5;
@@ -248,7 +345,7 @@ export class EntityRenderer {
   private renderBuilding(entity: Entity): void {
     if (!entity.building) return;
 
-    const { transform, building, ownership } = entity;
+    const { transform, building, ownership, buildable, buildingType } = entity;
     const { x, y } = transform;
     const { width, height, hp, maxHp } = building;
 
@@ -256,26 +353,160 @@ export class EntityRenderer {
     const left = x - width / 2;
     const top = y - height / 2;
 
-    // Get color based on ownership
-    const fillColor = ownership?.playerId
+    const isGhost = buildable?.isGhost ?? false;
+    const isComplete = buildable?.isComplete ?? true;
+    const buildProgress = buildable?.buildProgress ?? 1;
+
+    // Ghost buildings - semi-transparent wireframe
+    if (isGhost) {
+      const canPlace = true; // TODO: Check placement validity
+      const ghostColor = canPlace ? GHOST_COLOR : 0xff4444;
+      this.graphics.lineStyle(2, ghostColor, 0.6);
+      this.graphics.strokeRect(left, top, width, height);
+      this.graphics.fillStyle(ghostColor, 0.2);
+      this.graphics.fillRect(left, top, width, height);
+      return;
+    }
+
+    // Get color based on building type or ownership
+    let fillColor = ownership?.playerId
       ? this.getPlayerColor(ownership.playerId)
       : BUILDING_COLOR;
 
-    this.graphics.fillStyle(fillColor, 0.9);
-    this.graphics.fillRect(left, top, width, height);
+    // Use building type color if available
+    if (buildingType && BUILDING_TYPE_COLORS[buildingType]) {
+      fillColor = BUILDING_TYPE_COLORS[buildingType];
+    }
+
+    // Under construction - show partial fill based on progress
+    if (!isComplete) {
+      // Background (unbuilt portion)
+      this.graphics.fillStyle(0x222222, 0.7);
+      this.graphics.fillRect(left, top, width, height);
+
+      // Built portion (fill from bottom up)
+      const builtHeight = height * buildProgress;
+      const builtTop = top + height - builtHeight;
+      this.graphics.fillStyle(fillColor, 0.7);
+      this.graphics.fillRect(left, builtTop, width, builtHeight);
+
+      // Scaffold/wireframe overlay
+      this.graphics.lineStyle(1, 0xaaaaaa, 0.5);
+      const gridSize = 10;
+      for (let gx = left; gx <= left + width; gx += gridSize) {
+        this.graphics.lineBetween(gx, top, gx, top + height);
+      }
+      for (let gy = top; gy <= top + height; gy += gridSize) {
+        this.graphics.lineBetween(left, gy, left + width, gy);
+      }
+    } else {
+      // Complete building
+      this.graphics.fillStyle(fillColor, 0.9);
+      this.graphics.fillRect(left, top, width, height);
+
+      // Inner detail
+      this.graphics.lineStyle(1, 0x665533, 0.5);
+      this.graphics.strokeRect(left + 4, top + 4, width - 8, height - 8);
+    }
 
     // Outline
     this.graphics.lineStyle(3, BUILDING_OUTLINE_COLOR, 1);
     this.graphics.strokeRect(left, top, width, height);
 
-    // Inner detail
-    this.graphics.lineStyle(1, 0x665533, 0.5);
-    this.graphics.strokeRect(left + 4, top + 4, width - 8, height - 8);
+    // Bars position
+    let barY = top - 8;
+
+    // Build progress bar (if under construction)
+    if (!isComplete) {
+      this.renderBuildBar(x, barY, width, 4, buildProgress);
+      barY -= 6;
+    }
 
     // Health bar (only show if damaged)
     if (hp < maxHp) {
-      this.renderHealthBar(x, top - 10, width, 5, hp / maxHp);
+      this.renderHealthBar(x, barY, width, 4, hp / maxHp);
     }
+
+    // Factory-specific rendering
+    if (entity.factory && isComplete) {
+      this.renderFactory(entity, left, top, width, height);
+    }
+  }
+
+  // Render factory-specific elements (queue, rally point)
+  private renderFactory(entity: Entity, _left: number, top: number, width: number, height: number): void {
+    if (!entity.factory) return;
+
+    const factory = entity.factory;
+    const x = entity.transform.x;
+    const y = entity.transform.y;
+
+    // Draw rally point line and marker
+    this.graphics.lineStyle(1, 0x00ff00, 0.4);
+    this.graphics.lineBetween(x, y, factory.rallyX, factory.rallyY);
+
+    // Rally point marker (small flag)
+    this.graphics.fillStyle(0x00ff00, 0.7);
+    this.graphics.fillTriangle(
+      factory.rallyX, factory.rallyY - 8,
+      factory.rallyX + 8, factory.rallyY - 4,
+      factory.rallyX, factory.rallyY
+    );
+    this.graphics.lineStyle(1, 0x00ff00, 0.8);
+    this.graphics.lineBetween(factory.rallyX, factory.rallyY, factory.rallyX, factory.rallyY - 8);
+
+    // Production progress indicator (if producing)
+    if (factory.isProducing && factory.buildQueue.length > 0) {
+      const progress = factory.currentBuildProgress;
+      const barWidth = width * 0.8;
+      const barHeight = 6;
+      const barX = x - barWidth / 2;
+      const barY = top + height + 4;
+
+      // Background
+      this.graphics.fillStyle(HEALTH_BAR_BG, 0.8);
+      this.graphics.fillRect(barX, barY, barWidth, barHeight);
+
+      // Progress fill
+      this.graphics.fillStyle(BUILD_BAR_FG, 0.9);
+      this.graphics.fillRect(barX, barY, barWidth * progress, barHeight);
+
+      // Queue indicator (small dots for queued items)
+      const queueCount = Math.min(factory.buildQueue.length, 5);
+      const dotSpacing = 8;
+      const dotsStartX = x - ((queueCount - 1) * dotSpacing) / 2;
+      for (let i = 0; i < queueCount; i++) {
+        const dotX = dotsStartX + i * dotSpacing;
+        const dotY = barY + barHeight + 6;
+        const alpha = i === 0 ? 1 : 0.5;
+        this.graphics.fillStyle(0xffcc00, alpha);
+        this.graphics.fillCircle(dotX, dotY, 3);
+      }
+
+      // Show "+N" if more than 5 in queue
+      if (factory.buildQueue.length > 5) {
+        // Would need text for this - skip for now
+      }
+    }
+  }
+
+  // Render a build progress bar
+  private renderBuildBar(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    percent: number
+  ): void {
+    const left = x - width / 2;
+
+    // Background
+    this.graphics.fillStyle(HEALTH_BAR_BG, 0.8);
+    this.graphics.fillRect(left, y, width, height);
+
+    // Progress fill (yellow)
+    this.graphics.fillStyle(BUILD_BAR_FG, 0.9);
+    this.graphics.fillRect(left, y, width * percent, height);
   }
 
   // Render a health bar
