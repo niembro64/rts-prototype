@@ -30,13 +30,8 @@ export class RtsScene extends Phaser.Scene {
   private entityRenderer!: EntityRenderer;
   private inputManager!: InputManager;
   private gridGraphics!: Phaser.GameObjects.Graphics;
-  private debugText!: Phaser.GameObjects.Text;
-  private frameCount: number = 0;
-  private fps: number = 0;
-  private fpsUpdateTime: number = 0;
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
-  private gameOverOverlay?: Phaser.GameObjects.Container;
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -81,6 +76,12 @@ export class RtsScene extends Phaser.Scene {
     cameraHeight: number;
   }) => void;
 
+  // Callback for game over (passes winner ID)
+  public onGameOverUI?: (winnerId: PlayerId) => void;
+
+  // Callback for game restart
+  public onGameRestart?: () => void;
+
   constructor() {
     super({ key: 'RtsScene' });
   }
@@ -116,10 +117,9 @@ export class RtsScene extends Phaser.Scene {
       this.handleGameOver(loserId);
     };
 
-    // Setup camera
+    // Setup camera - no bounds so player can see outside the map
     const camera = this.cameras.main;
-    camera.setBackgroundColor(0x1a1a2e);
-    camera.setBounds(0, 0, this.world.mapWidth, this.world.mapHeight);
+    camera.setBackgroundColor(0x0a0a14); // Darker background outside the map
     // Center camera on the map
     camera.centerOn(this.world.mapWidth / 2, this.world.mapHeight / 2);
 
@@ -137,9 +137,6 @@ export class RtsScene extends Phaser.Scene {
 
     // Setup input
     this.inputManager = new InputManager(this, this.world, this.commandQueue);
-
-    // Setup debug overlay (bottom-right corner)
-    this.createDebugOverlay();
 
     // Initialize audio on first user interaction
     this.input.once('pointerdown', () => {
@@ -209,50 +206,9 @@ export class RtsScene extends Phaser.Scene {
     this.isGameOver = true;
 
     const winnerId = loserId === 1 ? 2 : 1;
-    const winnerColorHex = PLAYER_COLORS[winnerId as PlayerId].primary;
-    const winnerColor = '#' + winnerColorHex.toString(16).padStart(6, '0');
 
-    // Create overlay container (fixed to camera)
-    const camera = this.cameras.main;
-    const centerX = camera.scrollX + camera.width / 2;
-    const centerY = camera.scrollY + camera.height / 2;
-
-    this.gameOverOverlay = this.add.container(centerX, centerY);
-    this.gameOverOverlay.setScrollFactor(0);
-    this.gameOverOverlay.setDepth(1000);
-
-    // Semi-transparent background
-    const bg = this.add.rectangle(0, 0, camera.width, camera.height, 0x000000, 0.7);
-    this.gameOverOverlay.add(bg);
-
-    // Winner text
-    const winnerText = this.add.text(0, -60, `PLAYER ${winnerId} WINS!`, {
-      fontFamily: 'monospace',
-      fontSize: '48px',
-      color: winnerColor,
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    winnerText.setOrigin(0.5);
-    this.gameOverOverlay.add(winnerText);
-
-    // Loser text
-    const loserText = this.add.text(0, 10, `Player ${loserId}'s commander was destroyed`, {
-      fontFamily: 'monospace',
-      fontSize: '24px',
-      color: '#cccccc',
-    });
-    loserText.setOrigin(0.5);
-    this.gameOverOverlay.add(loserText);
-
-    // Restart hint
-    const restartText = this.add.text(0, 80, 'Press R to restart', {
-      fontFamily: 'monospace',
-      fontSize: '20px',
-      color: '#888888',
-    });
-    restartText.setOrigin(0.5);
-    this.gameOverOverlay.add(restartText);
+    // Notify Vue UI to show game over modal
+    this.onGameOverUI?.(winnerId as PlayerId);
 
     // Listen for R key to restart
     this.input.keyboard?.once('keydown-R', () => {
@@ -260,13 +216,11 @@ export class RtsScene extends Phaser.Scene {
     });
   }
 
-  // Restart the game
-  private restartGame(): void {
+  // Restart the game (public so UI can call it)
+  public restartGame(): void {
     this.isGameOver = false;
-    if (this.gameOverOverlay) {
-      this.gameOverOverlay.destroy();
-      this.gameOverOverlay = undefined;
-    }
+    // Notify UI to reset
+    this.onGameRestart?.();
     // Restart the scene
     this.scene.restart();
   }
@@ -532,6 +486,12 @@ export class RtsScene extends Phaser.Scene {
   // Draw the grid background
   private drawGrid(): void {
     this.gridGraphics = this.add.graphics();
+
+    // Fill the playable map area with a slightly lighter background
+    this.gridGraphics.fillStyle(0x1a1a2e, 1);
+    this.gridGraphics.fillRect(0, 0, this.world.mapWidth, this.world.mapHeight);
+
+    // Draw grid lines
     this.gridGraphics.lineStyle(1, GRID_COLOR, 0.3);
 
     // Vertical lines
@@ -544,34 +504,12 @@ export class RtsScene extends Phaser.Scene {
       this.gridGraphics.lineBetween(0, y, this.world.mapWidth, y);
     }
 
-    // Map border
-    this.gridGraphics.lineStyle(3, 0x4444aa, 0.8);
+    // Map border (more prominent)
+    this.gridGraphics.lineStyle(4, 0x4444aa, 1);
     this.gridGraphics.strokeRect(0, 0, this.world.mapWidth, this.world.mapHeight);
   }
 
-  // Create debug overlay (bottom-right corner)
-  private createDebugOverlay(): void {
-    this.debugText = this.add.text(0, 0, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#00ff88',
-      backgroundColor: '#000000aa',
-      padding: { x: 8, y: 6 },
-    });
-    this.debugText.setScrollFactor(0);
-    this.debugText.setDepth(1001);
-    // Position will be set in updateDebugText based on text size
-  }
-
-  update(time: number, delta: number): void {
-    // Update FPS counter
-    this.frameCount++;
-    if (time - this.fpsUpdateTime >= 1000) {
-      this.fps = this.frameCount;
-      this.frameCount = 0;
-      this.fpsUpdateTime = time;
-    }
-
+  update(_time: number, delta: number): void {
     // Skip game updates if game is over
     if (this.isGameOver) {
       // Still render but don't update simulation
@@ -593,9 +531,6 @@ export class RtsScene extends Phaser.Scene {
 
     // Render entities
     this.entityRenderer.render();
-
-    // Update debug text
-    this.updateDebugText();
 
     // Update selection info for UI
     this.updateSelectionInfo();
@@ -623,41 +558,11 @@ export class RtsScene extends Phaser.Scene {
     }
   }
 
-  // Update debug overlay text
-  private updateDebugText(): void {
-    const selectedCount = this.world.getSelectedEntities().length;
-    const unitCount = this.world.getUnits().length;
-    const projectileCount = this.world.getProjectiles().length;
-    const zoom = this.inputManager.getZoom().toFixed(2);
-    const tick = this.world.getTick();
-
-    const p1Units = this.world.getUnitsByPlayer(1).length;
-    const p2Units = this.world.getUnitsByPlayer(2).length;
-
-    this.debugText.setText(
-      [
-        `FPS: ${this.fps} | Tick: ${tick}`,
-        `Units: ${unitCount} (P1:${p1Units} P2:${p2Units})`,
-        `Projectiles: ${projectileCount} | Selected: ${selectedCount}`,
-        `Zoom: ${zoom}x | Audio: ${this.audioInitialized ? 'ON' : 'Click'}`,
-      ].join('\n')
-    );
-
-    // Position at bottom-right corner
-    const camera = this.cameras.main;
-    const padding = 10;
-    this.debugText.setPosition(
-      camera.width - this.debugText.width - padding,
-      camera.height - this.debugText.height - padding
-    );
-  }
-
   // Clean shutdown
   shutdown(): void {
     audioManager.stopAllLaserSounds();
     this.entityRenderer?.destroy();
     this.inputManager?.destroy();
     this.gridGraphics?.destroy();
-    this.debugText?.destroy();
   }
 }

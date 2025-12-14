@@ -8,6 +8,7 @@ import Minimap, { type MinimapData } from './Minimap.vue';
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
+const gameOverWinner = ref<PlayerId | null>(null);
 
 // Selection state for the panel
 const selectionInfo = reactive<SelectionInfo>({
@@ -62,6 +63,12 @@ function togglePlayer(): void {
 function handleMinimapClick(x: number, y: number): void {
   const scene = gameInstance?.getScene();
   scene?.centerCameraOn(x, y);
+}
+
+function restartGame(): void {
+  gameOverWinner.value = null;
+  const scene = gameInstance?.getScene();
+  scene?.restartGame();
 }
 
 // Selection panel actions
@@ -142,6 +149,16 @@ onMounted(() => {
         minimapData.mapHeight = data.mapHeight;
       };
 
+      // Game over callback
+      scene.onGameOverUI = (winnerId: PlayerId) => {
+        gameOverWinner.value = winnerId;
+      };
+
+      // Game restart callback
+      scene.onGameRestart = () => {
+        gameOverWinner.value = null;
+      };
+
       clearInterval(checkScene);
     }
   }, 100);
@@ -184,6 +201,20 @@ onUnmounted(() => {
 
     <!-- Minimap (bottom-right) -->
     <Minimap :data="minimapData" @click="handleMinimapClick" />
+
+    <!-- Game Over Modal -->
+    <div v-if="gameOverWinner !== null" class="game-over-modal">
+      <div class="game-over-content">
+        <h1 class="winner-text" :style="{ color: getPlayerColor(gameOverWinner) }">
+          PLAYER {{ gameOverWinner }} WINS!
+        </h1>
+        <p class="loser-text">
+          Player {{ gameOverWinner === 1 ? 2 : 1 }}'s commander was destroyed
+        </p>
+        <p class="restart-hint">Press R to restart</p>
+        <button class="restart-btn" @click="restartGame">Restart Game</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -252,5 +283,70 @@ onUnmounted(() => {
 .toggle-hint {
   font-size: 11px;
   opacity: 0.6;
+}
+
+/* Game Over Modal */
+.game-over-modal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.game-over-content {
+  text-align: center;
+  padding: 40px 60px;
+  background: rgba(20, 20, 30, 0.95);
+  border: 3px solid #4444aa;
+  border-radius: 16px;
+  box-shadow: 0 0 40px rgba(68, 68, 170, 0.5);
+}
+
+.winner-text {
+  font-family: monospace;
+  font-size: 48px;
+  margin: 0 0 20px 0;
+  text-shadow: 0 0 20px currentColor;
+}
+
+.loser-text {
+  font-family: monospace;
+  font-size: 20px;
+  color: #cccccc;
+  margin: 0 0 30px 0;
+}
+
+.restart-hint {
+  font-family: monospace;
+  font-size: 16px;
+  color: #888888;
+  margin: 0 0 20px 0;
+}
+
+.restart-btn {
+  font-family: monospace;
+  font-size: 16px;
+  padding: 12px 32px;
+  background: #4444aa;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.restart-btn:hover {
+  background: #5555cc;
+  transform: scale(1.05);
+}
+
+.restart-btn:active {
+  transform: scale(0.98);
 }
 </style>

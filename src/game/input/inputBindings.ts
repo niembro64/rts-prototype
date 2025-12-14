@@ -860,25 +860,19 @@ export class InputManager {
   // Update input
   update(_delta: number): void {
     const camera = this.scene.cameras.main;
-    // Clamp camera to map bounds (only if map is larger than viewport)
+    // Allow camera to see outside the map, but with reasonable limits
     const viewWidth = camera.width / camera.zoom;
     const viewHeight = camera.height / camera.zoom;
+    const margin = 500; // How far outside the map we can see
 
-    if (viewWidth < this.world.mapWidth) {
-      const halfWidth = viewWidth / 2;
-      camera.scrollX = Phaser.Math.Clamp(camera.scrollX, -halfWidth, this.world.mapWidth - halfWidth);
-    } else {
-      // Map fits in viewport - center it
-      camera.scrollX = (this.world.mapWidth - viewWidth) / 2;
-    }
+    // Clamp with margin around the map
+    const minX = -margin - viewWidth / 2;
+    const maxX = this.world.mapWidth + margin - viewWidth / 2;
+    const minY = -margin - viewHeight / 2;
+    const maxY = this.world.mapHeight + margin - viewHeight / 2;
 
-    if (viewHeight < this.world.mapHeight) {
-      const halfHeight = viewHeight / 2;
-      camera.scrollY = Phaser.Math.Clamp(camera.scrollY, -halfHeight, this.world.mapHeight - halfHeight);
-    } else {
-      // Map fits in viewport - center it
-      camera.scrollY = (this.world.mapHeight - viewHeight) / 2;
-    }
+    camera.scrollX = Phaser.Math.Clamp(camera.scrollX, minX, maxX);
+    camera.scrollY = Phaser.Math.Clamp(camera.scrollY, minY, maxY);
 
     // Check for selection changes and reset mode to 'move'
     this.checkSelectionChange();
