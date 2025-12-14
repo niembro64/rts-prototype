@@ -1,6 +1,6 @@
 import { WorldState } from './WorldState';
 import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type SetRallyPointCommand, type FireDGunCommand, type RepairCommand } from './commands';
-import type { Entity, EntityId, UnitAction } from './types';
+import type { Entity, EntityId, PlayerId, UnitAction } from './types';
 import {
   updateAutoTargeting,
   updateTurretRotation,
@@ -29,6 +29,12 @@ export class Simulation {
   // Current spray targets for rendering (build/heal effects)
   private currentSprayTargets: SprayTarget[] = [];
 
+  // Player IDs participating in this game
+  private playerIds: PlayerId[] = [1, 2];
+
+  // Track if game is over
+  private gameOverWinnerId: PlayerId | null = null;
+
   // Callback for when units die (to clean up physics bodies)
   public onUnitDeath?: (deadUnitIds: EntityId[]) => void;
 
@@ -41,13 +47,23 @@ export class Simulation {
   // Callback for audio events
   public onAudioEvent?: (event: AudioEvent) => void;
 
-  // Callback for game over
-  public onGameOver?: (loserId: number) => void;
+  // Callback for game over (passes winner ID)
+  public onGameOver?: (winnerId: PlayerId) => void;
 
   constructor(world: WorldState, commandQueue: CommandQueue) {
     this.world = world;
     this.commandQueue = commandQueue;
     this.constructionSystem = new ConstructionSystem(world.mapWidth, world.mapHeight);
+  }
+
+  // Set the player IDs for this game
+  setPlayerIds(playerIds: PlayerId[]): void {
+    this.playerIds = playerIds;
+  }
+
+  // Get the winner ID (null if game not over)
+  getWinnerId(): PlayerId | null {
+    return this.gameOverWinnerId;
   }
 
   // Get construction system (for placement validation)
@@ -121,13 +137,25 @@ export class Simulation {
     this.world.incrementTick();
   }
 
-  // Check if any commander died
+  // Check for game over - last commander standing wins
   private checkGameOver(): void {
-    if (!this.world.isCommanderAlive(1)) {
-      this.onGameOver?.(1);
+    if (this.gameOverWinnerId !== null) return; // Already over
+
+    // Find all players with alive commanders
+    const alivePlayers = this.playerIds.filter(playerId =>
+      this.world.isCommanderAlive(playerId)
+    );
+
+    // If only one player remains, they win
+    if (alivePlayers.length === 1) {
+      this.gameOverWinnerId = alivePlayers[0];
+      this.onGameOver?.(this.gameOverWinnerId);
     }
-    if (!this.world.isCommanderAlive(2)) {
-      this.onGameOver?.(2);
+    // If no players remain (somehow), no winner
+    else if (alivePlayers.length === 0 && this.playerIds.length > 0) {
+      // Draw or error state - just pick first player
+      this.gameOverWinnerId = this.playerIds[0];
+      this.onGameOver?.(this.gameOverWinnerId);
     }
   }
 

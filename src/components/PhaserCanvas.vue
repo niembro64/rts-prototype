@@ -1,14 +1,30 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
 import { PLAYER_COLORS, type PlayerId, type WaypointType } from '../game/sim/types';
 import SelectionPanel, { type SelectionInfo, type SelectionActions } from './SelectionPanel.vue';
 import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
+import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
+import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
+
+// Lobby state
+const showLobby = ref(true);
+const isHost = ref(false);
+const roomCode = ref('');
+const lobbyPlayers = ref<LobbyPlayer[]>([]);
+const localPlayerId = ref<PlayerId>(1);
+const lobbyError = ref<string | null>(null);
+const isConnecting = ref(false);
+const gameStarted = ref(false);
+const networkRole = ref<NetworkRole>('offline');
+
+// State broadcast interval (for host)
+let stateBroadcastInterval: ReturnType<typeof setInterval> | null = null;
 
 // Selection state for the panel
 const selectionInfo = reactive<SelectionInfo>({
@@ -42,7 +58,7 @@ const economyInfo = reactive<EconomyInfo>({
 // Minimap state
 const minimapData = reactive<MinimapData>({
   mapWidth: 2000,
-  mapHeight: 1500,
+  mapHeight: 2000,
   entities: [],
   cameraX: 0,
   cameraY: 0,
@@ -51,6 +67,13 @@ const minimapData = reactive<MinimapData>({
 });
 
 let gameInstance: GameInstance | null = null;
+
+// Show player toggle only in single-player mode (offline or hosting alone)
+const showPlayerToggle = computed(() => {
+  const isSinglePlayer = lobbyPlayers.value.length === 1;
+  const canToggle = networkRole.value === 'offline' || (networkRole.value === 'host' && isSinglePlayer);
+  return gameStarted.value && canToggle;
+});
 
 function togglePlayer(): void {
   const scene = gameInstance?.getScene();
@@ -67,8 +90,23 @@ function handleMinimapClick(x: number, y: number): void {
 
 function restartGame(): void {
   gameOverWinner.value = null;
-  const scene = gameInstance?.getScene();
-  scene?.restartGame();
+  // Return to lobby
+  gameStarted.value = false;
+  showLobby.value = true;
+  networkManager.disconnect();
+  networkRole.value = 'offline';
+  lobbyPlayers.value = [];
+  roomCode.value = '';
+
+  if (gameInstance) {
+    destroyGame(gameInstance);
+    gameInstance = null;
+  }
+
+  if (stateBroadcastInterval) {
+    clearInterval(stateBroadcastInterval);
+    stateBroadcastInterval = null;
+  }
 }
 
 // Selection panel actions
@@ -108,18 +146,146 @@ function getPlayerName(playerId: PlayerId): string {
   return PLAYER_COLORS[playerId]?.name ?? 'Unknown';
 }
 
-onMounted(() => {
+// Lobby handlers
+async function handleHost(): Promise<void> {
+  try {
+    isConnecting.value = true;
+    lobbyError.value = null;
+
+    const code = await networkManager.hostGame();
+    roomCode.value = code;
+    isHost.value = true;
+    networkRole.value = 'host';
+    localPlayerId.value = 1;
+
+    // Add self to player list
+    lobbyPlayers.value = [{
+      playerId: 1,
+      name: 'Red',
+      isHost: true,
+    }];
+
+    // Setup network callbacks
+    setupNetworkCallbacks();
+
+    isConnecting.value = false;
+  } catch (err) {
+    lobbyError.value = (err as Error).message || 'Failed to host game';
+    isConnecting.value = false;
+  }
+}
+
+async function handleJoin(code: string): Promise<void> {
+  try {
+    isConnecting.value = true;
+    lobbyError.value = null;
+
+    await networkManager.joinGame(code);
+    roomCode.value = code;
+    isHost.value = false;
+    networkRole.value = 'client';
+
+    // Setup network callbacks
+    setupNetworkCallbacks();
+
+    isConnecting.value = false;
+  } catch (err) {
+    lobbyError.value = (err as Error).message || 'Failed to join game';
+    isConnecting.value = false;
+  }
+}
+
+function handleLobbyStart(): void {
+  // Host starts the game
+  networkManager.startGame();
+}
+
+function handleLobbyCancel(): void {
+  networkManager.disconnect();
+  networkRole.value = 'offline';
+  roomCode.value = '';
+  isHost.value = false;
+  lobbyPlayers.value = [];
+  lobbyError.value = null;
+  isConnecting.value = false;
+}
+
+function setupNetworkCallbacks(): void {
+  networkManager.onPlayerJoined = (player: LobbyPlayer) => {
+    // Check if already in list
+    const existing = lobbyPlayers.value.find(p => p.playerId === player.playerId);
+    if (!existing) {
+      lobbyPlayers.value = [...lobbyPlayers.value, player];
+    }
+  };
+
+  networkManager.onPlayerLeft = (playerId: PlayerId) => {
+    lobbyPlayers.value = lobbyPlayers.value.filter(p => p.playerId !== playerId);
+  };
+
+  networkManager.onPlayerAssignment = (playerId: PlayerId) => {
+    localPlayerId.value = playerId;
+    activePlayer.value = playerId;
+  };
+
+  networkManager.onGameStart = (playerIds: PlayerId[]) => {
+    startGameWithPlayers(playerIds);
+  };
+
+  networkManager.onError = (error: string) => {
+    lobbyError.value = error;
+  };
+
+  // For clients: receive state updates
+  networkManager.onStateReceived = (state) => {
+    const scene = gameInstance?.getScene();
+    if (scene && networkRole.value === 'client') {
+      scene.applyNetworkState(state);
+
+      // Check for game over in received state
+      if (state.gameOver) {
+        gameOverWinner.value = state.gameOver.winnerId;
+      }
+    }
+  };
+
+  // For host: receive commands from clients
+  networkManager.onCommandReceived = (command, fromPlayerId) => {
+    const scene = gameInstance?.getScene();
+    if (scene && networkRole.value === 'host') {
+      scene.enqueueNetworkCommand(command, fromPlayerId);
+    }
+  };
+}
+
+function startGameWithPlayers(playerIds: PlayerId[]): void {
+  showLobby.value = false;
+  gameStarted.value = true;
+
   if (!containerRef.value) return;
 
   const rect = containerRef.value.getBoundingClientRect();
 
+  // Create game with player configuration
   gameInstance = createGame({
     parent: containerRef.value,
     width: rect.width || window.innerWidth,
     height: rect.height || window.innerHeight,
+    playerIds,
+    localPlayerId: localPlayerId.value,
+    networkRole: networkRole.value,
   });
 
-  // Listen for changes from the game
+  // Setup scene callbacks
+  setupSceneCallbacks();
+
+  // If host, start broadcasting state
+  if (networkRole.value === 'host') {
+    startStateBroadcast();
+  }
+}
+
+function setupSceneCallbacks(): void {
   const checkScene = setInterval(() => {
     const scene = gameInstance?.getScene();
     if (scene) {
@@ -162,9 +328,30 @@ onMounted(() => {
       clearInterval(checkScene);
     }
   }, 100);
+}
+
+function startStateBroadcast(): void {
+  // Broadcast state 20 times per second
+  stateBroadcastInterval = setInterval(() => {
+    const scene = gameInstance?.getScene();
+    if (scene && networkRole.value === 'host') {
+      const state = scene.getSerializedState();
+      if (state) {
+        networkManager.broadcastState(state);
+      }
+    }
+  }, 50);
+}
+
+onMounted(() => {
+  // Game is not created until lobby starts it
 });
 
 onUnmounted(() => {
+  if (stateBroadcastInterval) {
+    clearInterval(stateBroadcastInterval);
+  }
+  networkManager.disconnect();
   if (gameInstance) {
     destroyGame(gameInstance);
     gameInstance = null;
@@ -176,43 +363,61 @@ onUnmounted(() => {
   <div class="game-wrapper">
     <div ref="containerRef" class="phaser-container"></div>
 
-    <!-- Top bar with economy info -->
-    <TopBar
-      :economy="economyInfo"
-      :player-name="getPlayerName(activePlayer)"
-      :player-color="getPlayerColor(activePlayer)"
+    <!-- Lobby Modal -->
+    <LobbyModal
+      :visible="showLobby"
+      :is-host="isHost"
+      :room-code="roomCode"
+      :players="lobbyPlayers"
+      :local-player-id="localPlayerId"
+      :error="lobbyError"
+      :is-connecting="isConnecting"
+      @host="handleHost"
+      @join="handleJoin"
+      @start="handleLobbyStart"
+      @cancel="handleLobbyCancel"
     />
 
-    <!-- Top-right UI overlay -->
-    <div class="ui-overlay top-right">
-      <button
-        class="player-toggle-btn"
-        :style="{ borderColor: getPlayerColor(activePlayer) }"
-        @click="togglePlayer"
-      >
-        <span class="player-indicator" :style="{ backgroundColor: getPlayerColor(activePlayer) }"></span>
-        <span class="player-label">{{ getPlayerName(activePlayer) }}</span>
-        <span class="toggle-hint">(Click to switch)</span>
-      </button>
-    </div>
+    <!-- Game UI (only when game is running) -->
+    <template v-if="gameStarted && !showLobby">
+      <!-- Top bar with economy info -->
+      <TopBar
+        :economy="economyInfo"
+        :player-name="getPlayerName(activePlayer)"
+        :player-color="getPlayerColor(activePlayer)"
+      />
 
-    <!-- Selection panel (bottom-left) -->
-    <SelectionPanel :selection="selectionInfo" :actions="selectionActions" />
+      <!-- Player toggle (single-player only) -->
+      <div v-if="showPlayerToggle" class="ui-overlay top-right">
+        <button
+          class="player-toggle-btn"
+          :style="{ borderColor: getPlayerColor(activePlayer) }"
+          @click="togglePlayer"
+        >
+          <span class="player-indicator" :style="{ backgroundColor: getPlayerColor(activePlayer) }"></span>
+          <span class="player-label">{{ getPlayerName(activePlayer) }}</span>
+          <span class="toggle-hint">(Click to switch)</span>
+        </button>
+      </div>
 
-    <!-- Minimap (bottom-right) -->
-    <Minimap :data="minimapData" @click="handleMinimapClick" />
+      <!-- Selection panel (bottom-left) -->
+      <SelectionPanel :selection="selectionInfo" :actions="selectionActions" />
+
+      <!-- Minimap (bottom-right) -->
+      <Minimap :data="minimapData" @click="handleMinimapClick" />
+    </template>
 
     <!-- Game Over Modal -->
     <div v-if="gameOverWinner !== null" class="game-over-modal">
       <div class="game-over-content">
         <h1 class="winner-text" :style="{ color: getPlayerColor(gameOverWinner) }">
-          PLAYER {{ gameOverWinner }} WINS!
+          {{ getPlayerName(gameOverWinner).toUpperCase() }} WINS!
         </h1>
         <p class="loser-text">
-          Player {{ gameOverWinner === 1 ? 2 : 1 }}'s commander was destroyed
+          All other commanders were destroyed
         </p>
-        <p class="restart-hint">Press R to restart</p>
-        <button class="restart-btn" @click="restartGame">Restart Game</button>
+        <p class="restart-hint">Press R to return to lobby</p>
+        <button class="restart-btn" @click="restartGame">Return to Lobby</button>
       </div>
     </div>
   </div>

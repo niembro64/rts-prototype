@@ -1,13 +1,17 @@
 import Phaser from 'phaser';
 import { WorldState } from '../sim/WorldState';
 import { Simulation } from '../sim/Simulation';
-import { CommandQueue } from '../sim/commands';
+import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities } from '../sim/spawn';
 import { EntityRenderer } from '../render/renderEntities';
 import { InputManager } from '../input/inputBindings';
 import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import { economyManager } from '../sim/economy';
+import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
+import type { NetworkRole } from '../network/NetworkManager';
+import { serializeGameState } from '../network/stateSerializer';
+import type { NetworkGameState } from '../network/NetworkManager';
 
 // Weapon ID to display label
 const WEAPON_LABELS: Record<string, string> = {
@@ -32,6 +36,11 @@ export class RtsScene extends Phaser.Scene {
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
+
+  // Network configuration
+  private networkRole: NetworkRole = 'offline';
+  private localPlayerId: PlayerId = 1;
+  private playerIds: PlayerId[] = [1, 2];
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -87,35 +96,50 @@ export class RtsScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Get network configuration from pending config
+    const config = getPendingGameConfig();
+    if (config) {
+      this.networkRole = config.networkRole;
+      this.localPlayerId = config.localPlayerId;
+      this.playerIds = config.playerIds;
+      clearPendingGameConfig();
+    }
+
     // Initialize world state
     this.world = new WorldState(42);
+    this.world.setActivePlayer(this.localPlayerId);
+
     this.commandQueue = new CommandQueue();
     this.simulation = new Simulation(this.world, this.commandQueue);
+    this.simulation.setPlayerIds(this.playerIds);
 
-    // Setup death callback
-    this.simulation.onUnitDeath = (deadUnitIds: EntityId[]) => {
-      this.handleUnitDeaths(deadUnitIds);
-    };
+    // Setup callbacks (only needed for host/offline mode)
+    if (this.networkRole !== 'client') {
+      // Setup death callback
+      this.simulation.onUnitDeath = (deadUnitIds: EntityId[]) => {
+        this.handleUnitDeaths(deadUnitIds);
+      };
 
-    // Setup building death callback
-    this.simulation.onBuildingDeath = (deadBuildingIds: EntityId[]) => {
-      this.handleBuildingDeaths(deadBuildingIds);
-    };
+      // Setup building death callback
+      this.simulation.onBuildingDeath = (deadBuildingIds: EntityId[]) => {
+        this.handleBuildingDeaths(deadBuildingIds);
+      };
 
-    // Setup spawn callback (for factory-produced units)
-    this.simulation.onUnitSpawn = (newUnits: Entity[]) => {
-      this.handleUnitSpawns(newUnits);
-    };
+      // Setup spawn callback (for factory-produced units)
+      this.simulation.onUnitSpawn = (newUnits: Entity[]) => {
+        this.handleUnitSpawns(newUnits);
+      };
 
-    // Setup audio callback
-    this.simulation.onAudioEvent = (event: AudioEvent) => {
-      this.handleAudioEvent(event);
-    };
+      // Setup audio callback
+      this.simulation.onAudioEvent = (event: AudioEvent) => {
+        this.handleAudioEvent(event);
+      };
 
-    // Setup game over callback
-    this.simulation.onGameOver = (loserId: number) => {
-      this.handleGameOver(loserId);
-    };
+      // Setup game over callback
+      this.simulation.onGameOver = (winnerId: PlayerId) => {
+        this.handleGameOver(winnerId);
+      };
+    }
 
     // Setup camera - no bounds so player can see outside the map
     const camera = this.cameras.main;
@@ -126,11 +150,12 @@ export class RtsScene extends Phaser.Scene {
     // Draw grid background
     this.drawGrid();
 
-    // Spawn initial entities
-    const entities = spawnInitialEntities(this.world);
-
-    // Create Matter bodies for entities
-    this.createMatterBodies(entities);
+    // Spawn initial entities (only for host/offline mode)
+    if (this.networkRole !== 'client') {
+      const entities = spawnInitialEntities(this.world, this.playerIds);
+      // Create Matter bodies for entities
+      this.createMatterBodies(entities);
+    }
 
     // Setup renderer
     this.entityRenderer = new EntityRenderer(this, this.world);
@@ -200,15 +225,13 @@ export class RtsScene extends Phaser.Scene {
     }
   }
 
-  // Handle game over (commander died)
-  private handleGameOver(loserId: number): void {
+  // Handle game over (last commander standing)
+  private handleGameOver(winnerId: PlayerId): void {
     if (this.isGameOver) return; // Already handled
     this.isGameOver = true;
 
-    const winnerId = loserId === 1 ? 2 : 1;
-
     // Notify Vue UI to show game over modal
-    this.onGameOverUI?.(winnerId as PlayerId);
+    this.onGameOverUI?.(winnerId);
 
     // Listen for R key to restart
     this.input.keyboard?.once('keydown-R', () => {
@@ -520,14 +543,17 @@ export class RtsScene extends Phaser.Scene {
     // Update input (keyboard camera pan)
     this.inputManager.update(delta);
 
-    // Update simulation (calculates velocities)
-    this.simulation.update(delta);
+    // Only run simulation for host/offline mode
+    if (this.networkRole !== 'client') {
+      // Update simulation (calculates velocities)
+      this.simulation.update(delta);
 
-    // Apply calculated velocities to Matter bodies
-    this.applyUnitVelocities();
+      // Apply calculated velocities to Matter bodies
+      this.applyUnitVelocities();
 
-    // Pass spray targets to renderer
-    this.entityRenderer.setSprayTargets(this.simulation.getSprayTargets());
+      // Pass spray targets to renderer
+      this.entityRenderer.setSprayTargets(this.simulation.getSprayTargets());
+    }
 
     // Render entities
     this.entityRenderer.render();
@@ -540,6 +566,219 @@ export class RtsScene extends Phaser.Scene {
 
     // Update minimap for UI
     this.updateMinimapData();
+  }
+
+  // === Network methods ===
+
+  // Get serialized game state for network broadcast (host only)
+  public getSerializedState(): NetworkGameState | null {
+    if (this.networkRole !== 'host') return null;
+    const winnerId = this.simulation.getWinnerId() ?? undefined;
+    return serializeGameState(this.world, winnerId);
+  }
+
+  // Apply received network state (client only)
+  public applyNetworkState(state: NetworkGameState): void {
+    if (this.networkRole !== 'client') return;
+
+    // Clear existing entities and rebuild from state
+    // This is a simple approach - could be optimized with delta updates
+    const existingIds = new Set<number>();
+
+    // Update or create entities
+    for (const netEntity of state.entities) {
+      existingIds.add(netEntity.id);
+      const existingEntity = this.world.getEntity(netEntity.id);
+
+      if (!existingEntity) {
+        // Create new entity
+        const newEntity = this.createEntityFromNetwork(netEntity);
+        if (newEntity) {
+          this.world.addEntity(newEntity);
+        }
+      } else {
+        // Update existing entity
+        this.updateEntityFromNetwork(existingEntity, netEntity);
+      }
+    }
+
+    // Remove entities that no longer exist
+    for (const entity of this.world.getAllEntities()) {
+      if (!existingIds.has(entity.id)) {
+        if (entity.body?.matterBody) {
+          this.matter.world.remove(entity.body.matterBody);
+        }
+        this.world.removeEntity(entity.id);
+      }
+    }
+
+    // Update economy state
+    for (const [playerIdStr, eco] of Object.entries(state.economy)) {
+      const playerId = parseInt(playerIdStr) as PlayerId;
+      economyManager.setEconomyState(playerId, eco);
+    }
+
+    // Check for game over
+    if (state.gameOver && !this.isGameOver) {
+      this.isGameOver = true;
+      this.onGameOverUI?.(state.gameOver.winnerId);
+    }
+  }
+
+  // Create entity from network data
+  private createEntityFromNetwork(netEntity: NetworkGameState['entities'][0]): Entity | null {
+    const { id, type, x, y, rotation, playerId } = netEntity;
+
+    if (type === 'unit') {
+      // Create basic entity structure
+      const entity: Entity = {
+        id,
+        type: 'unit',
+        transform: { x, y, rotation },
+        ownership: playerId !== undefined ? { playerId } : undefined,
+        selectable: { selected: false },
+        unit: {
+          hp: netEntity.hp ?? 100,
+          maxHp: netEntity.maxHp ?? 100,
+          radius: netEntity.radius ?? 15,
+          moveSpeed: 100,
+          actions: [],
+          patrolStartIndex: null,
+          turretTurnRate: 3,
+          visionRange: 300,
+          turretRotation: netEntity.turretRotation ?? rotation,
+          velocityX: netEntity.velocityX ?? 0,
+          velocityY: netEntity.velocityY ?? 0,
+        },
+      };
+
+      if (netEntity.isCommander) {
+        entity.commander = {
+          isDGunActive: false,
+          dgunEnergyCost: 100,
+        };
+      }
+
+      // Create physics body
+      const body = this.matter.add.circle(x, y, netEntity.radius ?? 15, {
+        friction: 0.05,
+        frictionAir: 0.15,
+        restitution: 0.2,
+        mass: 1,
+        label: `unit_${id}`,
+      });
+      entity.body = { matterBody: body as unknown as MatterJS.BodyType };
+
+      return entity;
+    }
+
+    if (type === 'building') {
+      const entity: Entity = {
+        id,
+        type: 'building',
+        transform: { x, y, rotation },
+        ownership: playerId !== undefined ? { playerId } : undefined,
+        selectable: { selected: false },
+        building: {
+          width: netEntity.width ?? 100,
+          height: netEntity.height ?? 100,
+          hp: netEntity.hp ?? 500,
+          maxHp: netEntity.maxHp ?? 500,
+        },
+        buildable: {
+          buildProgress: netEntity.buildProgress ?? 1,
+          isComplete: netEntity.isComplete ?? true,
+          energyCost: 100,
+          maxBuildRate: 20,
+          isGhost: false,
+        },
+        buildingType: netEntity.buildingType as 'solar' | 'factory' | undefined,
+      };
+
+      if (netEntity.buildQueue !== undefined) {
+        entity.factory = {
+          buildQueue: netEntity.buildQueue,
+          currentBuildProgress: netEntity.factoryProgress ?? 0,
+          currentBuildCost: 0,
+          currentBuildRate: 0,
+          rallyX: x,
+          rallyY: y + 100,
+          isProducing: netEntity.isProducing ?? false,
+          waypoints: [],
+        };
+      }
+
+      return entity;
+    }
+
+    if (type === 'projectile') {
+      // For projectiles, we'll create a minimal representation
+      const entity: Entity = {
+        id,
+        type: 'projectile',
+        transform: { x, y, rotation },
+        ownership: playerId !== undefined ? { playerId } : undefined,
+        projectile: {
+          ownerId: playerId ?? 1,
+          sourceEntityId: 0,
+          config: { id: netEntity.weaponId ?? 'minigun', damage: 10, range: 200, cooldown: 100 },
+          projectileType: (netEntity.projectileType as 'traveling' | 'beam' | 'instant') ?? 'traveling',
+          velocityX: netEntity.velocityX ?? 0,
+          velocityY: netEntity.velocityY ?? 0,
+          timeAlive: 0,
+          maxLifespan: 2000,
+          hitEntities: new Set(),
+          maxHits: 1,
+        },
+      };
+      return entity;
+    }
+
+    return null;
+  }
+
+  // Update existing entity from network data
+  private updateEntityFromNetwork(entity: Entity, netEntity: NetworkGameState['entities'][0]): void {
+    // Update position
+    entity.transform.x = netEntity.x;
+    entity.transform.y = netEntity.y;
+    entity.transform.rotation = netEntity.rotation;
+
+    // Update physics body position
+    if (entity.body?.matterBody) {
+      this.matter.body.setPosition(entity.body.matterBody, { x: netEntity.x, y: netEntity.y });
+    }
+
+    // Update unit-specific fields
+    if (entity.unit) {
+      entity.unit.hp = netEntity.hp ?? entity.unit.hp;
+      entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
+      entity.unit.turretRotation = netEntity.turretRotation ?? entity.unit.turretRotation;
+    }
+
+    // Update building-specific fields
+    if (entity.building) {
+      entity.building.hp = netEntity.hp ?? entity.building.hp;
+      entity.building.maxHp = netEntity.maxHp ?? entity.building.maxHp;
+    }
+
+    if (entity.buildable) {
+      entity.buildable.buildProgress = netEntity.buildProgress ?? entity.buildable.buildProgress;
+      entity.buildable.isComplete = netEntity.isComplete ?? entity.buildable.isComplete;
+    }
+
+    if (entity.factory) {
+      entity.factory.buildQueue = netEntity.buildQueue ?? entity.factory.buildQueue;
+      entity.factory.currentBuildProgress = netEntity.factoryProgress ?? entity.factory.currentBuildProgress;
+      entity.factory.isProducing = netEntity.isProducing ?? entity.factory.isProducing;
+    }
+  }
+
+  // Enqueue command from network (host only)
+  public enqueueNetworkCommand(command: Command, _fromPlayerId: PlayerId): void {
+    if (this.networkRole !== 'host') return;
+    // Add command to queue - it will be processed in the next simulation tick
+    this.commandQueue.enqueue(command);
   }
 
   // Apply calculated velocities to Matter bodies

@@ -1,10 +1,15 @@
 import Phaser from 'phaser';
 import { RtsScene } from './scenes/RtsScene';
+import type { PlayerId } from './sim/types';
+import type { NetworkRole } from './network/NetworkManager';
 
 export interface GameConfig {
   parent: HTMLElement;
   width: number;
   height: number;
+  playerIds?: PlayerId[];
+  localPlayerId?: PlayerId;
+  networkRole?: NetworkRole;
 }
 
 export interface GameInstance {
@@ -12,7 +17,29 @@ export interface GameInstance {
   getScene: () => RtsScene | null;
 }
 
+// Store config globally so scene can access it
+let pendingGameConfig: {
+  playerIds: PlayerId[];
+  localPlayerId: PlayerId;
+  networkRole: NetworkRole;
+} | null = null;
+
+export function getPendingGameConfig() {
+  return pendingGameConfig;
+}
+
+export function clearPendingGameConfig() {
+  pendingGameConfig = null;
+}
+
 export function createGame(config: GameConfig): GameInstance {
+  // Store config for scene to pick up
+  pendingGameConfig = {
+    playerIds: config.playerIds ?? [1, 2],
+    localPlayerId: config.localPlayerId ?? 1,
+    networkRole: config.networkRole ?? 'offline',
+  };
+
   const phaserConfig: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent: config.parent,

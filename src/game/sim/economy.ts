@@ -43,6 +43,11 @@ export class EconomyManager {
     return this.economies.get(playerId)!;
   }
 
+  // Set full economy state for a player (used for network sync)
+  setEconomyState(playerId: PlayerId, state: EconomyState): void {
+    this.economies.set(playerId, { ...state });
+  }
+
   // Set production (called when solar panels change)
   setProduction(playerId: PlayerId, production: number): void {
     const economy = this.getOrCreateEconomy(playerId);

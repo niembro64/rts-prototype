@@ -267,8 +267,14 @@ export interface Entity {
   buildingType?: BuildingType;  // What kind of building this is
 }
 
-// Player colors
+// Player colors - assigned in join order: Red, Blue, Yellow, Green, Purple, Orange
 export const PLAYER_COLORS: Record<PlayerId, { primary: number; secondary: number; name: string }> = {
-  1: { primary: 0x4a9eff, secondary: 0x2a7edf, name: 'Blue' },
-  2: { primary: 0xff4a4a, secondary: 0xdf2a2a, name: 'Red' },
+  1: { primary: 0xff4a4a, secondary: 0xdf2a2a, name: 'Red' },
+  2: { primary: 0x4a9eff, secondary: 0x2a7edf, name: 'Blue' },
+  3: { primary: 0xffdd44, secondary: 0xdfbd24, name: 'Yellow' },
+  4: { primary: 0x44dd44, secondary: 0x24bd24, name: 'Green' },
+  5: { primary: 0xaa44ff, secondary: 0x8a24df, name: 'Purple' },
+  6: { primary: 0xff8844, secondary: 0xdf6824, name: 'Orange' },
 };
+
+export const MAX_PLAYERS = 6;

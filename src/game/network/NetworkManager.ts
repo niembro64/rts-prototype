@@ -1,0 +1,414 @@
+import Peer, { DataConnection } from 'peerjs';
+import type { PlayerId } from '../sim/types';
+import type { Command } from '../sim/commands';
+
+// Network message types
+export type NetworkMessage =
+  | { type: 'state'; data: NetworkGameState }
+  | { type: 'command'; data: Command }
+  | { type: 'playerAssignment'; playerId: PlayerId }
+  | { type: 'gameStart'; playerIds: PlayerId[] }
+  | { type: 'playerJoined'; playerId: PlayerId; playerName: string }
+  | { type: 'playerLeft'; playerId: PlayerId };
+
+// Serialized game state sent over network
+export interface NetworkGameState {
+  tick: number;
+  entities: NetworkEntity[];
+  economy: Record<PlayerId, NetworkEconomy>;
+  gameOver?: { winnerId: PlayerId };
+}
+
+export interface NetworkEntity {
+  id: number;
+  type: 'unit' | 'building' | 'projectile';
+  x: number;
+  y: number;
+  rotation: number;
+  playerId?: PlayerId;
+
+  // Unit fields
+  hp?: number;
+  maxHp?: number;
+  radius?: number;
+  velocityX?: number;
+  velocityY?: number;
+  turretRotation?: number;
+  isCommander?: boolean;
+
+  // Building fields
+  width?: number;
+  height?: number;
+  buildProgress?: number;
+  isComplete?: boolean;
+  buildingType?: string;
+
+  // Projectile fields
+  projectileType?: string;
+  weaponId?: string;
+
+  // Factory fields
+  buildQueue?: string[];
+  factoryProgress?: number;
+  isProducing?: boolean;
+}
+
+export interface NetworkEconomy {
+  stockpile: number;
+  maxStockpile: number;
+  baseIncome: number;
+  production: number;
+  expenditure: number;
+}
+
+// Player info in lobby
+export interface LobbyPlayer {
+  playerId: PlayerId;
+  name: string;
+  isHost: boolean;
+}
+
+// Generate a short room code (4 characters)
+function generateRoomCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude confusing chars
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+export type NetworkRole = 'host' | 'client' | 'offline';
+
+export class NetworkManager {
+  private peer: Peer | null = null;
+  private connections: Map<PlayerId, DataConnection> = new Map();
+  private role: NetworkRole = 'offline';
+  private roomCode: string = '';
+  private localPlayerId: PlayerId = 1;
+  private nextPlayerId: PlayerId = 2;
+  private players: Map<PlayerId, LobbyPlayer> = new Map();
+  private gameStarted: boolean = false;
+
+  // Callbacks
+  public onPlayerJoined?: (player: LobbyPlayer) => void;
+  public onPlayerLeft?: (playerId: PlayerId) => void;
+  public onStateReceived?: (state: NetworkGameState) => void;
+  public onCommandReceived?: (command: Command, fromPlayerId: PlayerId) => void;
+  public onGameStart?: (playerIds: PlayerId[]) => void;
+  public onPlayerAssignment?: (playerId: PlayerId) => void;
+  public onError?: (error: string) => void;
+  public onConnected?: () => void;
+
+  // Host a new game
+  async hostGame(): Promise<string> {
+    this.roomCode = generateRoomCode();
+    this.role = 'host';
+    this.localPlayerId = 1;
+    this.nextPlayerId = 2;
+    this.players.clear();
+    this.connections.clear();
+
+    // Add host as player 1
+    const hostPlayer: LobbyPlayer = {
+      playerId: 1,
+      name: 'Red', // First color
+      isHost: true,
+    };
+    this.players.set(1, hostPlayer);
+
+    return new Promise((resolve, reject) => {
+      // Use room code as peer ID prefix for discoverability
+      this.peer = new Peer(`rts-${this.roomCode}`);
+
+      this.peer.on('open', () => {
+        console.log('Host peer opened with ID:', this.peer?.id);
+        resolve(this.roomCode);
+      });
+
+      this.peer.on('connection', (conn) => {
+        this.handleIncomingConnection(conn);
+      });
+
+      this.peer.on('error', (err) => {
+        console.error('Peer error:', err);
+        if (err.type === 'unavailable-id') {
+          // Room code already in use, try another
+          this.peer?.destroy();
+          this.roomCode = generateRoomCode();
+          this.peer = new Peer(`rts-${this.roomCode}`);
+          this.peer.on('open', () => resolve(this.roomCode));
+          this.peer.on('connection', (conn) => this.handleIncomingConnection(conn));
+          this.peer.on('error', (e) => reject(e));
+        } else {
+          this.onError?.(err.message);
+          reject(err);
+        }
+      });
+    });
+  }
+
+  // Join an existing game
+  async joinGame(roomCode: string): Promise<void> {
+    this.roomCode = roomCode.toUpperCase();
+    this.role = 'client';
+    this.players.clear();
+    this.connections.clear();
+
+    return new Promise((resolve, reject) => {
+      this.peer = new Peer();
+
+      this.peer.on('open', () => {
+        console.log('Client peer opened, connecting to host...');
+
+        const conn = this.peer!.connect(`rts-${this.roomCode}`, {
+          reliable: true,
+        });
+
+        conn.on('open', () => {
+          console.log('Connected to host');
+          this.connections.set(1, conn); // Host is always player 1
+          this.setupConnectionHandlers(conn, 1);
+          this.onConnected?.();
+          resolve();
+        });
+
+        conn.on('error', (err) => {
+          console.error('Connection error:', err);
+          this.onError?.('Failed to connect to host');
+          reject(err);
+        });
+      });
+
+      this.peer.on('error', (err) => {
+        console.error('Peer error:', err);
+        this.onError?.(err.message);
+        reject(err);
+      });
+
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        if (this.connections.size === 0) {
+          reject(new Error('Connection timeout - room may not exist'));
+        }
+      }, 10000);
+    });
+  }
+
+  // Handle incoming connection (host only)
+  private handleIncomingConnection(conn: DataConnection): void {
+    if (this.gameStarted) {
+      // Reject late joiners
+      conn.close();
+      return;
+    }
+
+    if (this.nextPlayerId > 6) {
+      // Max players reached
+      conn.close();
+      return;
+    }
+
+    const playerId = this.nextPlayerId++;
+    this.connections.set(playerId, conn);
+
+    conn.on('open', () => {
+      console.log(`Player ${playerId} connected`);
+
+      // Get color name for this player
+      const colorNames = ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange'];
+      const playerName = colorNames[playerId - 1] || `Player ${playerId}`;
+
+      const player: LobbyPlayer = {
+        playerId,
+        name: playerName,
+        isHost: false,
+      };
+      this.players.set(playerId, player);
+
+      // Send player their assignment
+      this.sendTo(playerId, { type: 'playerAssignment', playerId });
+
+      // Send current player list to new player
+      for (const p of this.players.values()) {
+        this.sendTo(playerId, {
+          type: 'playerJoined',
+          playerId: p.playerId,
+          playerName: p.name,
+        });
+      }
+
+      // Notify all players about new player
+      this.broadcast({ type: 'playerJoined', playerId, playerName });
+      this.onPlayerJoined?.(player);
+
+      this.setupConnectionHandlers(conn, playerId);
+    });
+  }
+
+  // Setup handlers for a connection
+  private setupConnectionHandlers(conn: DataConnection, playerId: PlayerId): void {
+    conn.on('data', (data) => {
+      const message = data as NetworkMessage;
+      this.handleMessage(message, playerId);
+    });
+
+    conn.on('close', () => {
+      console.log(`Player ${playerId} disconnected`);
+      this.connections.delete(playerId);
+      this.players.delete(playerId);
+      this.onPlayerLeft?.(playerId);
+
+      if (this.role === 'host') {
+        this.broadcast({ type: 'playerLeft', playerId });
+      }
+    });
+
+    conn.on('error', (err) => {
+      console.error(`Connection error with player ${playerId}:`, err);
+    });
+  }
+
+  // Handle incoming message
+  private handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): void {
+    switch (message.type) {
+      case 'state':
+        // Client receives state from host
+        if (this.role === 'client') {
+          this.onStateReceived?.(message.data);
+        }
+        break;
+
+      case 'command':
+        // Host receives command from client
+        if (this.role === 'host') {
+          this.onCommandReceived?.(message.data, fromPlayerId);
+        }
+        break;
+
+      case 'playerAssignment':
+        // Client receives their player ID
+        if (this.role === 'client') {
+          this.localPlayerId = message.playerId;
+          this.onPlayerAssignment?.(message.playerId);
+        }
+        break;
+
+      case 'gameStart':
+        // Client receives game start signal
+        if (this.role === 'client') {
+          this.gameStarted = true;
+          this.onGameStart?.(message.playerIds);
+        }
+        break;
+
+      case 'playerJoined':
+        // Update player list
+        this.players.set(message.playerId, {
+          playerId: message.playerId,
+          name: message.playerName,
+          isHost: message.playerId === 1,
+        });
+        this.onPlayerJoined?.(this.players.get(message.playerId)!);
+        break;
+
+      case 'playerLeft':
+        this.players.delete(message.playerId);
+        this.onPlayerLeft?.(message.playerId);
+        break;
+    }
+  }
+
+  // Send message to specific player (host only)
+  private sendTo(playerId: PlayerId, message: NetworkMessage): void {
+    const conn = this.connections.get(playerId);
+    if (conn && conn.open) {
+      conn.send(message);
+    }
+  }
+
+  // Broadcast message to all connected players (host only)
+  private broadcast(message: NetworkMessage, excludePlayerId?: PlayerId): void {
+    for (const [playerId, conn] of this.connections) {
+      if (playerId !== excludePlayerId && conn.open) {
+        conn.send(message);
+      }
+    }
+  }
+
+  // Send game state to all clients (host only)
+  broadcastState(state: NetworkGameState): void {
+    if (this.role !== 'host') return;
+    this.broadcast({ type: 'state', data: state });
+  }
+
+  // Send command to host (client only)
+  sendCommand(command: Command): void {
+    if (this.role !== 'client') return;
+    const hostConn = this.connections.get(1);
+    if (hostConn && hostConn.open) {
+      hostConn.send({ type: 'command', data: command });
+    }
+  }
+
+  // Start the game (host only)
+  startGame(): void {
+    if (this.role !== 'host') return;
+    this.gameStarted = true;
+
+    let playerIds = Array.from(this.players.keys()).sort((a, b) => a - b);
+
+    // Single player mode: spawn 2 commanders so player can toggle between sides
+    if (playerIds.length === 1) {
+      playerIds = [1, 2];
+    }
+
+    this.broadcast({ type: 'gameStart', playerIds });
+    this.onGameStart?.(playerIds);
+  }
+
+  // Getters
+  getRole(): NetworkRole {
+    return this.role;
+  }
+
+  getRoomCode(): string {
+    return this.roomCode;
+  }
+
+  getLocalPlayerId(): PlayerId {
+    return this.localPlayerId;
+  }
+
+  getPlayers(): LobbyPlayer[] {
+    return Array.from(this.players.values());
+  }
+
+  getPlayerCount(): number {
+    return this.players.size;
+  }
+
+  isHost(): boolean {
+    return this.role === 'host';
+  }
+
+  isGameStarted(): boolean {
+    return this.gameStarted;
+  }
+
+  // Disconnect and cleanup
+  disconnect(): void {
+    for (const conn of this.connections.values()) {
+      conn.close();
+    }
+    this.connections.clear();
+    this.peer?.destroy();
+    this.peer = null;
+    this.role = 'offline';
+    this.gameStarted = false;
+    this.players.clear();
+  }
+}
+
+// Singleton instance
+export const networkManager = new NetworkManager();

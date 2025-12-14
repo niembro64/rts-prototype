@@ -84,35 +84,52 @@ function spawnPlayerUnits(
   return entities;
 }
 
-// Spawn initial entities for the game
-export function spawnInitialEntities(world: WorldState): Entity[] {
+// Calculate spawn positions on a circle for N players
+function getSpawnPositions(
+  world: WorldState,
+  playerCount: number
+): { x: number; y: number; facingAngle: number }[] {
+  const centerX = world.mapWidth / 2;
+  const centerY = world.mapHeight / 2;
+  // Radius that nearly touches the edges (leave 100px margin)
+  const radius = Math.min(world.mapWidth, world.mapHeight) / 2 - 100;
+
+  const positions: { x: number; y: number; facingAngle: number }[] = [];
+
+  for (let i = 0; i < playerCount; i++) {
+    // Distribute evenly around circle, starting from top
+    const angle = (i / playerCount) * Math.PI * 2 - Math.PI / 2;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    // Face toward center
+    const facingAngle = Math.atan2(centerY - y, centerX - x);
+
+    positions.push({ x, y, facingAngle });
+  }
+
+  return positions;
+}
+
+// Spawn initial entities for the game with N players
+export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = [1, 2]): Entity[] {
   const entities: Entity[] = [];
 
-  // Initialize economy for both players
-  economyManager.initPlayer(1);
-  economyManager.initPlayer(2);
+  // Initialize economy for all players
+  for (const playerId of playerIds) {
+    economyManager.initPlayer(playerId);
+  }
 
-  // Player 1 Commander (Blue) - left side, facing right
-  const commander1 = spawnCommander(
-    world,
-    1,
-    500, // x - closer to center for quicker engagement
-    world.mapHeight / 2, // y
-    0 // facing right
-  );
-  entities.push(commander1);
+  // Get spawn positions on circle
+  const spawnPositions = getSpawnPositions(world, playerIds.length);
 
-  // Player 2 Commander (Red) - right side, facing left
-  const commander2 = spawnCommander(
-    world,
-    2,
-    world.mapWidth - 500, // x - closer to center for quicker engagement
-    world.mapHeight / 2, // y
-    Math.PI // facing left
-  );
-  entities.push(commander2);
+  // Spawn commander for each player
+  for (let i = 0; i < playerIds.length; i++) {
+    const playerId = playerIds[i];
+    const pos = spawnPositions[i];
 
-  // Note: Neutral buildings removed - players will build their own structures
+    const commander = spawnCommander(world, playerId, pos.x, pos.y, pos.facingAngle);
+    entities.push(commander);
+  }
 
   return entities;
 }
