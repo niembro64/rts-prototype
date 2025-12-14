@@ -1,27 +1,33 @@
 import type { BuildingConfig, BuildingType, UnitBuildConfig } from './types';
-import { COST_MULTIPLIER } from '../../config';
+import {
+  COST_MULTIPLIER,
+  BUILDING_STATS,
+  UNIT_STATS,
+  COMMANDER_STATS,
+  SOLAR_ENERGY_PER_SECOND,
+} from '../../config';
 
 // Building configurations (costs are multiplied by COST_MULTIPLIER)
 export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   solar: {
     id: 'solar',
     name: 'Solar Panel',
-    gridWidth: 3,           // 60x60 world units
+    gridWidth: 3,
     gridHeight: 3,
-    hp: 200,
-    energyCost: 150 * COST_MULTIPLIER,
-    maxBuildRate: 20,       // Min 7.5 seconds to build
-    energyProduction: 15,   // Energy/sec when complete
+    hp: BUILDING_STATS.solar.hp,
+    energyCost: BUILDING_STATS.solar.baseCost * COST_MULTIPLIER,
+    maxBuildRate: BUILDING_STATS.solar.buildRate,
+    energyProduction: SOLAR_ENERGY_PER_SECOND,
   },
   factory: {
     id: 'factory',
     name: 'Factory',
-    gridWidth: 5,           // 100x80 world units
+    gridWidth: 5,
     gridHeight: 4,
-    hp: 800,
-    energyCost: 400 * COST_MULTIPLIER,
-    maxBuildRate: 25,       // Min 16 seconds to build
-    unitBuildRate: 20,      // Max energy/sec for unit production
+    hp: BUILDING_STATS.factory.hp,
+    energyCost: BUILDING_STATS.factory.baseCost * COST_MULTIPLIER,
+    maxBuildRate: BUILDING_STATS.factory.buildRate,
+    unitBuildRate: BUILDING_STATS.factory.unitBuildRate,
   },
 };
 
@@ -30,92 +36,92 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
   minigun: {
     weaponId: 'minigun',
     name: 'Minigun Trooper',
-    energyCost: 100 * COST_MULTIPLIER,
-    maxBuildRate: 15,       // Min 6.7 seconds
-    radius: 12,
-    moveSpeed: 120,
-    hp: 100,
+    energyCost: UNIT_STATS.minigun.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.minigun.buildRate,
+    radius: UNIT_STATS.minigun.radius,
+    moveSpeed: UNIT_STATS.minigun.moveSpeed,
+    hp: UNIT_STATS.minigun.hp,
   },
   laser: {
     weaponId: 'laser',
     name: 'Laser Trooper',
-    energyCost: 120 * COST_MULTIPLIER,
-    maxBuildRate: 15,       // Min 8 seconds
-    radius: 14,
-    moveSpeed: 100,
-    hp: 100,
+    energyCost: UNIT_STATS.laser.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.laser.buildRate,
+    radius: UNIT_STATS.laser.radius,
+    moveSpeed: UNIT_STATS.laser.moveSpeed,
+    hp: UNIT_STATS.laser.hp,
   },
   shotgun: {
     weaponId: 'shotgun',
     name: 'Shotgunner',
-    energyCost: 110 * COST_MULTIPLIER,
-    maxBuildRate: 15,       // Min 7.3 seconds
-    radius: 13,
-    moveSpeed: 110,
-    hp: 100,
+    energyCost: UNIT_STATS.shotgun.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.shotgun.buildRate,
+    radius: UNIT_STATS.shotgun.radius,
+    moveSpeed: UNIT_STATS.shotgun.moveSpeed,
+    hp: UNIT_STATS.shotgun.hp,
   },
   cannon: {
     weaponId: 'cannon',
     name: 'Cannon',
-    energyCost: 180 * COST_MULTIPLIER,
-    maxBuildRate: 12,       // Min 15 seconds
-    radius: 16,
-    moveSpeed: 80,
-    hp: 150,
+    energyCost: UNIT_STATS.cannon.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.cannon.buildRate,
+    radius: UNIT_STATS.cannon.radius,
+    moveSpeed: UNIT_STATS.cannon.moveSpeed,
+    hp: UNIT_STATS.cannon.hp,
   },
   grenade: {
     weaponId: 'grenade',
     name: 'Grenadier',
-    energyCost: 200 * COST_MULTIPLIER,
-    maxBuildRate: 10,       // Min 20 seconds
-    radius: 14,
-    moveSpeed: 90,
-    hp: 120,
+    energyCost: UNIT_STATS.grenade.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.grenade.buildRate,
+    radius: UNIT_STATS.grenade.radius,
+    moveSpeed: UNIT_STATS.grenade.moveSpeed,
+    hp: UNIT_STATS.grenade.hp,
   },
   railgun: {
     weaponId: 'railgun',
     name: 'Railgun',
-    energyCost: 220 * COST_MULTIPLIER,
-    maxBuildRate: 10,       // Min 22 seconds
-    radius: 14,
-    moveSpeed: 85,
-    hp: 100,
+    energyCost: UNIT_STATS.railgun.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.railgun.buildRate,
+    radius: UNIT_STATS.railgun.radius,
+    moveSpeed: UNIT_STATS.railgun.moveSpeed,
+    hp: UNIT_STATS.railgun.hp,
   },
   burstRifle: {
     weaponId: 'burstRifle',
     name: 'Burst Rifle',
-    energyCost: 140 * COST_MULTIPLIER,
-    maxBuildRate: 15,       // Min 9.3 seconds
-    radius: 12,
-    moveSpeed: 115,
-    hp: 100,
+    energyCost: UNIT_STATS.burstRifle.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.burstRifle.buildRate,
+    radius: UNIT_STATS.burstRifle.radius,
+    moveSpeed: UNIT_STATS.burstRifle.moveSpeed,
+    hp: UNIT_STATS.burstRifle.hp,
   },
 };
 
-// Commander stats
+// Commander stats (from config)
 export const COMMANDER_CONFIG = {
-  hp: 500,
-  maxHp: 500,
+  hp: COMMANDER_STATS.hp,
+  maxHp: COMMANDER_STATS.hp,
   radius: 20,
-  moveSpeed: 80,
-  buildRate: 25,            // Energy/sec for construction
-  buildRange: 150,          // Max distance to build
-  weaponId: 'laser',        // Uses laser weapon
-  dgunCost: 200,            // Energy cost for D-gun (20% of 1000)
+  moveSpeed: COMMANDER_STATS.moveSpeed,
+  buildRate: COMMANDER_STATS.buildRate,
+  buildRange: COMMANDER_STATS.buildRange,
+  weaponId: 'laser',
+  dgunCost: COMMANDER_STATS.dgunCost,
 };
 
 // D-gun weapon config
 export const DGUN_CONFIG = {
   id: 'dgun',
-  damage: 9999,             // Instant kill
+  damage: 9999,
   range: 300,
-  cooldown: 0,              // No cooldown, limited by energy
-  projectileSpeed: 350,     // Medium speed
-  projectileRadius: 25,     // Large projectile
-  projectileLifespan: 2000, // Long range
-  color: 0xff8800,          // Orange/fire color
-  splashRadius: 40,         // Destroys area
-  splashDamageFalloff: 0,   // Full damage in splash
+  cooldown: 0,
+  projectileSpeed: 350,
+  projectileRadius: 25,
+  projectileLifespan: 2000,
+  color: 0xff8800,
+  splashRadius: 40,
+  splashDamageFalloff: 0,
 };
 
 // Helper to get building config

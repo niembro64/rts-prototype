@@ -1,120 +1,110 @@
 import type { WeaponConfig } from './types';
+import { WEAPON_STATS } from '../../config';
 
-// Predefined weapon configurations
-// These can be extended or modified for different unit types
-
-// Target DPS: ~40-50 for all weapons, with trade-offs for special abilities
+// Weapon configurations using values from config.ts
 export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Laser - continuous beam, deals damage while on target
-  // DPS: 40 (continuous damage over beam duration)
   laser: {
     id: 'laser',
-    damage: 40, // Total damage dealt over beam duration (40 DPS continuous)
-    range: 180,
-    cooldown: 0, // No cooldown - fires continuously
-    beamDuration: 1000, // 1 second beam duration
-    beamWidth: 3,
+    damage: WEAPON_STATS.laser.damage,
+    range: WEAPON_STATS.laser.range,
+    cooldown: WEAPON_STATS.laser.cooldown,
+    beamDuration: WEAPON_STATS.laser.beamDuration,
+    beamWidth: WEAPON_STATS.laser.beamWidth,
     color: 0xff0000,
   },
 
   // Minigun - fast firing small projectiles (baseline weapon)
-  // DPS: 50 (5 damage * 10 shots/sec)
   minigun: {
     id: 'minigun',
-    damage: 5,
-    range: 150,
-    cooldown: 100,
-    projectileSpeed: 600,
+    damage: WEAPON_STATS.minigun.damage,
+    range: WEAPON_STATS.minigun.range,
+    cooldown: WEAPON_STATS.minigun.cooldown,
+    projectileSpeed: WEAPON_STATS.minigun.projectileSpeed,
     projectileRadius: 3,
     projectileLifespan: 500,
     color: 0xffff00,
   },
 
   // Shotgun - multiple pellets with spread, short range
-  // DPS: 40 (8*5=40 per shot, 1s cooldown) - requires close range
   shotgun: {
     id: 'shotgun',
-    damage: 8,
-    range: 100,
-    cooldown: 1000,
-    projectileSpeed: 500,
+    damage: WEAPON_STATS.shotgun.damage,
+    range: WEAPON_STATS.shotgun.range,
+    cooldown: WEAPON_STATS.shotgun.cooldown,
+    projectileSpeed: WEAPON_STATS.shotgun.projectileSpeed,
     projectileRadius: 4,
     projectileLifespan: 250,
-    pelletCount: 5,
+    pelletCount: WEAPON_STATS.shotgun.pelletCount,
     spreadAngle: Math.PI / 6,
     color: 0xffaa00,
   },
 
   // Cannon - slow, heavy projectile, long range
-  // DPS: 35 (70 damage / 2s) - compensated by range
   cannon: {
     id: 'cannon',
-    damage: 70,
-    range: 280,
-    cooldown: 2000,
-    projectileSpeed: 350,
+    damage: WEAPON_STATS.cannon.damage,
+    range: WEAPON_STATS.cannon.range,
+    cooldown: WEAPON_STATS.cannon.cooldown,
+    projectileSpeed: WEAPON_STATS.cannon.projectileSpeed,
     projectileRadius: 8,
     projectileLifespan: 1500,
     color: 0x888888,
   },
 
   // Grenade - splash damage, good vs groups
-  // DPS: 30 base (90 / 3s), but splash multiplies effective damage
   grenade: {
     id: 'grenade',
-    damage: 90,
-    range: 160,
-    cooldown: 3000,
-    projectileSpeed: 280,
+    damage: WEAPON_STATS.grenade.damage,
+    range: WEAPON_STATS.grenade.range,
+    cooldown: WEAPON_STATS.grenade.cooldown,
+    projectileSpeed: WEAPON_STATS.grenade.projectileSpeed,
     projectileRadius: 6,
     projectileLifespan: 1500,
-    splashRadius: 60,
+    splashRadius: WEAPON_STATS.grenade.splashRadius,
     splashDamageFalloff: 0.4,
     color: 0x44ff44,
   },
 
   // Railgun - instant hitscan, pierces targets
-  // DPS: 35 (70 / 2s), piercing compensates for lower DPS
   railgun: {
     id: 'railgun',
-    damage: 70,
-    range: 300,
-    cooldown: 2000,
-    beamDuration: 120,
-    beamWidth: 2,
+    damage: WEAPON_STATS.railgun.damage,
+    range: WEAPON_STATS.railgun.range,
+    cooldown: WEAPON_STATS.railgun.cooldown,
+    beamDuration: WEAPON_STATS.railgun.beamDuration,
+    beamWidth: WEAPON_STATS.railgun.beamWidth,
     color: 0x00ffff,
     piercing: true,
   },
 
   // Burst rifle - fires 3 shots in quick succession
-  // DPS: 40 (20*3=60 / 1.5s)
   burstRifle: {
     id: 'burstRifle',
-    damage: 20,
-    range: 170,
-    cooldown: 1500,
-    projectileSpeed: 550,
+    damage: WEAPON_STATS.burstRifle.damage,
+    range: WEAPON_STATS.burstRifle.range,
+    cooldown: WEAPON_STATS.burstRifle.cooldown,
+    projectileSpeed: WEAPON_STATS.burstRifle.projectileSpeed,
     projectileRadius: 4,
     projectileLifespan: 500,
-    burstCount: 3,
-    burstDelay: 80,
+    burstCount: WEAPON_STATS.burstRifle.burstCount,
+    burstDelay: WEAPON_STATS.burstRifle.burstDelay,
     color: 0xff88ff,
   },
 
   // D-gun - Commander's special weapon, destroys everything
-  // Costs energy instead of cooldown
   dgun: {
     id: 'dgun',
-    damage: 9999,           // Instant kill
-    range: 150,             // Short range (half distance)
-    cooldown: 0,            // No cooldown, limited by energy
-    projectileSpeed: 350,   // Medium speed
-    projectileRadius: 25,   // Large projectile
+    damage: WEAPON_STATS.dgun.damage,
+    range: WEAPON_STATS.dgun.range,
+    cooldown: 0,
+    projectileSpeed: WEAPON_STATS.dgun.projectileSpeed,
+    projectileRadius: 25,
     projectileLifespan: 2000,
-    color: 0xff8800,        // Orange/fire color
-    splashRadius: 40,       // Destroys area
-    splashDamageFalloff: 0, // Full damage in splash
-    piercing: true,         // Hits everything in path
+    color: 0xff8800,
+    splashRadius: WEAPON_STATS.dgun.splashRadius,
+    splashDamageFalloff: 0,
+    piercing: true,
   },
 };
 

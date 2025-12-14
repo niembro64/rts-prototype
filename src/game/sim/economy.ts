@@ -1,11 +1,17 @@
 import type { EconomyState, PlayerId } from './types';
+import {
+  STARTING_STOCKPILE,
+  MAX_STOCKPILE,
+  BASE_INCOME_PER_SECOND,
+  COMMANDER_STATS,
+} from '../../config';
 
-// Economy constants
+// Economy constants (using values from config.ts)
 export const ECONOMY_CONSTANTS = {
-  maxStockpile: 1000,
-  baseIncome: 5,           // Energy/sec always received
-  startingStockpile: 250,  // 25% of max
-  dgunCost: 200,           // 20% of max stockpile
+  maxStockpile: MAX_STOCKPILE,
+  baseIncome: BASE_INCOME_PER_SECOND,
+  startingStockpile: STARTING_STOCKPILE,
+  dgunCost: COMMANDER_STATS.dgunCost,
 };
 
 // Create initial economy state for a player
