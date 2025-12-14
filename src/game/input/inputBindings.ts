@@ -36,6 +36,19 @@ export class InputManager {
     D: Phaser.Input.Keyboard.Key;
   };
 
+  // Get raw screen coordinates from pointer (unaffected by camera zoom)
+  private getScreenCoords(pointer: Phaser.Input.Pointer): { x: number; y: number } {
+    const event = pointer.event as MouseEvent;
+    const canvas = this.scene.game.canvas;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
+    };
+  }
+
   constructor(scene: Phaser.Scene, world: WorldState, commandQueue: CommandQueue) {
     this.scene = scene;
     this.world = world;
@@ -54,9 +67,8 @@ export class InputManager {
       cameraStartY: 0,
     };
 
-    // Selection rectangle graphics (screen-space, fixed to camera)
+    // Selection rectangle graphics (world-space, drawn over entities)
     this.selectionGraphics = scene.add.graphics();
-    this.selectionGraphics.setScrollFactor(0);
     this.selectionGraphics.setDepth(1000);
 
     // Setup keyboard
@@ -81,18 +93,19 @@ export class InputManager {
 
     // Pointer down
     pointer.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      const screen = this.getScreenCoords(p);
       if (p.leftButtonDown()) {
         // Start selection drag
         this.state.isDraggingSelection = true;
-        this.state.selectionStartX = p.x;
-        this.state.selectionStartY = p.y;
-        this.state.selectionEndX = p.x;
-        this.state.selectionEndY = p.y;
+        this.state.selectionStartX = screen.x;
+        this.state.selectionStartY = screen.y;
+        this.state.selectionEndX = screen.x;
+        this.state.selectionEndY = screen.y;
       } else if (p.middleButtonDown()) {
         // Start camera pan
         this.state.isPanningCamera = true;
-        this.state.panStartX = p.x;
-        this.state.panStartY = p.y;
+        this.state.panStartX = screen.x;
+        this.state.panStartY = screen.y;
         this.state.cameraStartX = this.scene.cameras.main.scrollX;
         this.state.cameraStartY = this.scene.cameras.main.scrollY;
       } else if (p.rightButtonDown()) {
@@ -103,14 +116,15 @@ export class InputManager {
 
     // Pointer move
     pointer.on('pointermove', (p: Phaser.Input.Pointer) => {
+      const screen = this.getScreenCoords(p);
       if (this.state.isDraggingSelection) {
-        this.state.selectionEndX = p.x;
-        this.state.selectionEndY = p.y;
+        this.state.selectionEndX = screen.x;
+        this.state.selectionEndY = screen.y;
       }
 
       if (this.state.isPanningCamera) {
-        const dx = this.state.panStartX - p.x;
-        const dy = this.state.panStartY - p.y;
+        const dx = this.state.panStartX - screen.x;
+        const dy = this.state.panStartY - screen.y;
         const camera = this.scene.cameras.main;
         camera.scrollX = this.state.cameraStartX + dx / camera.zoom;
         camera.scrollY = this.state.cameraStartY + dy / camera.zoom;
@@ -259,23 +273,30 @@ export class InputManager {
     this.drawSelectionRect();
   }
 
-  // Draw selection rectangle (screen space)
+  // Draw selection rectangle (world space)
   private drawSelectionRect(): void {
     this.selectionGraphics.clear();
 
     if (!this.state.isDraggingSelection) return;
 
-    const x = Math.min(this.state.selectionStartX, this.state.selectionEndX);
-    const y = Math.min(this.state.selectionStartY, this.state.selectionEndY);
-    const w = Math.abs(this.state.selectionEndX - this.state.selectionStartX);
-    const h = Math.abs(this.state.selectionEndY - this.state.selectionStartY);
+    const camera = this.scene.cameras.main;
+
+    // Convert screen coordinates to world coordinates
+    const startWorld = camera.getWorldPoint(this.state.selectionStartX, this.state.selectionStartY);
+    const endWorld = camera.getWorldPoint(this.state.selectionEndX, this.state.selectionEndY);
+
+    const x = Math.min(startWorld.x, endWorld.x);
+    const y = Math.min(startWorld.y, endWorld.y);
+    const w = Math.abs(endWorld.x - startWorld.x);
+    const h = Math.abs(endWorld.y - startWorld.y);
 
     // Fill
     this.selectionGraphics.fillStyle(0x00ff88, 0.15);
     this.selectionGraphics.fillRect(x, y, w, h);
 
-    // Border
-    this.selectionGraphics.lineStyle(2, 0x00ff88, 0.8);
+    // Border (scale line width inversely with zoom so it looks consistent)
+    const lineWidth = 2 / camera.zoom;
+    this.selectionGraphics.lineStyle(lineWidth, 0x00ff88, 0.8);
     this.selectionGraphics.strokeRect(x, y, w, h);
   }
 
