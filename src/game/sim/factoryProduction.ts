@@ -1,5 +1,5 @@
 import type { WorldState } from './WorldState';
-import type { Entity } from './types';
+import type { Entity, UnitAction } from './types';
 import { economyManager } from './economy';
 import { getUnitBuildConfig, getBuildingConfig } from './buildConfigs';
 
@@ -112,14 +112,20 @@ export class FactoryProductionSystem {
       unit.unit.maxHp = config.hp;
     }
 
-    // Copy factory's waypoints to the new unit
+    // Copy factory's waypoints to the new unit as actions
     if (unit.unit && factoryComp.waypoints.length > 0) {
-      // Deep copy the waypoints
-      unit.unit.waypoints = factoryComp.waypoints.map(wp => ({
+      // Convert waypoints to actions
+      unit.unit.actions = factoryComp.waypoints.map(wp => ({
+        type: wp.type,  // WaypointType maps directly to ActionType
         x: wp.x,
         y: wp.y,
-        type: wp.type,
-      }));
+      } as UnitAction));
+
+      // Find first patrol action to set patrolStartIndex
+      const firstPatrolIndex = factoryComp.waypoints.findIndex(wp => wp.type === 'patrol');
+      if (firstPatrolIndex !== -1) {
+        unit.unit.patrolStartIndex = firstPatrolIndex;
+      }
     }
 
     // Add to world

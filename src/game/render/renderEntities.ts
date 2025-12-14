@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, WaypointType } from '../sim/types';
+import type { Entity, WaypointType, ActionType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
 
@@ -16,11 +16,20 @@ const BUILD_BAR_FG = 0xffcc00;  // Yellow for build progress
 const GHOST_COLOR = 0x88ff88;   // Green tint for placement ghost
 const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
 
-// Waypoint colors by type
+// Waypoint colors by type (legacy - for factories)
 const WAYPOINT_COLORS: Record<WaypointType, number> = {
   move: 0x00ff00,   // Green
   patrol: 0x0088ff, // Blue
   fight: 0xff4444,  // Red
+};
+
+// Action colors by type (for unit action queue)
+const ACTION_COLORS: Record<ActionType, number> = {
+  move: 0x00ff00,   // Green
+  patrol: 0x0088ff, // Blue
+  fight: 0xff4444,  // Red
+  build: 0xffcc00,  // Yellow for building
+  repair: 0x44ff44, // Light green for repair
 };
 
 // Spray effect colors
@@ -235,51 +244,59 @@ export class EntityRenderer {
     }
   }
 
-  // Render waypoints for a selected unit
+  // Render action queue for a selected unit
   private renderWaypoints(entity: Entity): void {
-    if (!entity.unit || entity.unit.waypoints.length === 0) return;
+    if (!entity.unit || entity.unit.actions.length === 0) return;
 
     const { transform, unit } = entity;
     const camera = this.scene.cameras.main;
     const lineWidth = 2 / camera.zoom;
     const dotRadius = 6 / camera.zoom;
 
-    const waypoints = unit.waypoints;
+    const actions = unit.actions;
     let prevX = transform.x;
     let prevY = transform.y;
 
-    for (let i = 0; i < waypoints.length; i++) {
-      const wp = waypoints[i];
-      const color = WAYPOINT_COLORS[wp.type];
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      const color = ACTION_COLORS[action.type];
 
-      // Draw line from previous point to this waypoint
+      // Draw line from previous point to this action target
       this.graphics.lineStyle(lineWidth, color, 0.5);
-      this.graphics.lineBetween(prevX, prevY, wp.x, wp.y);
+      this.graphics.lineBetween(prevX, prevY, action.x, action.y);
 
-      // Draw dot at waypoint
+      // Draw dot at action target
       this.graphics.fillStyle(color, 0.8);
-      this.graphics.fillCircle(wp.x, wp.y, dotRadius);
+      this.graphics.fillCircle(action.x, action.y, dotRadius);
 
       // Draw outline around dot
       this.graphics.lineStyle(lineWidth * 0.5, 0xffffff, 0.6);
-      this.graphics.strokeCircle(wp.x, wp.y, dotRadius);
+      this.graphics.strokeCircle(action.x, action.y, dotRadius);
 
-      // Draw number on waypoint (for debugging/clarity)
-      // Skip for now - would need text objects
+      // For build/repair actions, draw a square instead of circle
+      if (action.type === 'build' || action.type === 'repair') {
+        this.graphics.lineStyle(lineWidth, color, 0.8);
+        this.graphics.strokeRect(
+          action.x - dotRadius,
+          action.y - dotRadius,
+          dotRadius * 2,
+          dotRadius * 2
+        );
+      }
 
-      prevX = wp.x;
-      prevY = wp.y;
+      prevX = action.x;
+      prevY = action.y;
     }
 
-    // If patrol, draw line from last waypoint back to first patrol waypoint
-    if (unit.patrolLoopIndex !== null && waypoints.length > 0) {
-      const lastWp = waypoints[waypoints.length - 1];
-      const firstPatrolWp = waypoints[unit.patrolLoopIndex];
-      if (lastWp.type === 'patrol' && firstPatrolWp) {
-        const color = WAYPOINT_COLORS['patrol'];
+    // If patrol, draw line from last action back to first patrol action
+    if (unit.patrolStartIndex !== null && actions.length > 0) {
+      const lastAction = actions[actions.length - 1];
+      const firstPatrolAction = actions[unit.patrolStartIndex];
+      if (lastAction.type === 'patrol' && firstPatrolAction) {
+        const color = ACTION_COLORS['patrol'];
         // Draw dashed-style return line (using lower alpha)
         this.graphics.lineStyle(lineWidth, color, 0.25);
-        this.graphics.lineBetween(lastWp.x, lastWp.y, firstPatrolWp.x, firstPatrolWp.y);
+        this.graphics.lineBetween(lastAction.x, lastAction.y, firstPatrolAction.x, firstPatrolAction.y);
       }
     }
   }

@@ -26,14 +26,32 @@ export interface Ownership {
   playerId: PlayerId;
 }
 
-// Waypoint types for unit movement
+// Waypoint types for unit movement (legacy - used by factories for rally points)
 export type WaypointType = 'move' | 'fight' | 'patrol';
 
-// Single waypoint in a unit's path queue
+// Single waypoint in a unit's path queue (legacy - used by factories)
 export interface Waypoint {
   x: number;
   y: number;
   type: WaypointType;
+}
+
+// Action types for unified action queue
+export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair';
+
+// Unified action for any unit command - replaces separate waypoints and buildQueue
+export interface UnitAction {
+  type: ActionType;
+  // Target position (destination for all action types)
+  x: number;
+  y: number;
+  // For build actions (commander only)
+  buildingType?: BuildingType;
+  gridX?: number;
+  gridY?: number;
+  buildingId?: EntityId;  // Set after building entity is created
+  // For repair actions (commander only) - targetId is the entity to repair
+  targetId?: EntityId;
 }
 
 // Unit component - movable entities
@@ -42,10 +60,10 @@ export interface Unit {
   radius: number;
   hp: number;
   maxHp: number;
-  // Waypoint queue - units process these in order
-  waypoints: Waypoint[];
-  // Index for patrol looping (points to first patrol waypoint when looping)
-  patrolLoopIndex: number | null;
+  // Unified action queue - units process these in order
+  actions: UnitAction[];
+  // Index for patrol looping (points to first patrol action when looping)
+  patrolStartIndex: number | null;
   // Movement velocity (for rendering movement direction)
   velocityX?: number;
   velocityY?: number;
@@ -217,7 +235,7 @@ export interface Factory {
 export interface Commander {
   isDGunActive: boolean;    // D-gun mode enabled
   dgunEnergyCost: number;   // Energy cost per d-gun shot
-  buildQueue: EntityId[];   // Queue of buildings to construct (in order)
+  // Note: buildQueue removed - now uses unit.actions for building/repair queue
 }
 
 // D-gun projectile marker

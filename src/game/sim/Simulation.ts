@@ -1,6 +1,6 @@
 import { WorldState } from './WorldState';
-import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type SetRallyPointCommand, type FireDGunCommand } from './commands';
-import type { Entity, EntityId, Waypoint } from './types';
+import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type SetRallyPointCommand, type FireDGunCommand, type RepairCommand } from './commands';
+import type { Entity, EntityId, UnitAction } from './types';
 import {
   updateAutoTargeting,
   updateTurretRotation,
@@ -98,9 +98,12 @@ export class Simulation {
     const commanderResult = commanderAbilitiesSystem.update(this.world, dtMs);
     this.currentSprayTargets = commanderResult.sprayTargets;
 
-    // Handle completed buildings - advance commander build queues
+    // Handle completed build/repair actions - advance commander action queues
     for (const completed of commanderResult.completedBuildings) {
-      this.advanceCommanderBuildQueue(completed.commanderId, completed.buildingId);
+      const commander = this.world.getEntity(completed.commanderId);
+      if (commander) {
+        this.advanceAction(commander);
+      }
     }
 
     // Update all units movement
@@ -202,6 +205,9 @@ export class Simulation {
       case 'fireDGun':
         this.executeFireDGunCommand(command);
         break;
+      case 'repair':
+        this.executeRepairCommand(command);
+        break;
     }
   }
 
@@ -213,7 +219,7 @@ export class Simulation {
     this.world.selectEntities(command.entityIds);
   }
 
-  // Execute move command with waypoint queue support
+  // Execute move command with action queue support
   private executeMoveCommand(command: MoveCommand): void {
     const units = command.entityIds
       .map((id) => this.world.getEntity(id))
@@ -226,12 +232,12 @@ export class Simulation {
       units.forEach((unit, index) => {
         if (!unit.unit) return;
         const target = command.individualTargets![index];
-        const waypoint: Waypoint = {
+        const action: UnitAction = {
+          type: command.waypointType,
           x: target.x,
           y: target.y,
-          type: command.waypointType,
         };
-        this.addWaypointToUnit(unit, waypoint, command.queue);
+        this.addActionToUnit(unit, action, command.queue);
       });
     } else if (command.targetX !== undefined && command.targetY !== undefined) {
       // Group move with formation spreading
@@ -247,17 +253,17 @@ export class Simulation {
         const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
         const offsetY = (row - (units.length / unitsPerRow - 1) / 2) * spacing;
 
-        const waypoint: Waypoint = {
+        const action: UnitAction = {
+          type: command.waypointType,
           x: command.targetX! + offsetX,
           y: command.targetY! + offsetY,
-          type: command.waypointType,
         };
-        this.addWaypointToUnit(unit, waypoint, command.queue);
+        this.addActionToUnit(unit, action, command.queue);
       });
     }
   }
 
-  // Execute start build command
+  // Execute start build command - adds build action to unit's action queue
   private executeStartBuildCommand(command: StartBuildCommand): void {
     const builder = this.world.getEntity(command.builderId);
     if (!builder?.builder || !builder.ownership || !builder.commander || !builder.unit) return;
@@ -279,67 +285,18 @@ export class Simulation {
       return;
     }
 
-    // If not queuing, clear the existing build queue AND movement waypoints
-    if (!command.queue) {
-      builder.commander.buildQueue = [];
-      builder.unit.waypoints = [];
-      builder.unit.patrolLoopIndex = null;
-    }
-
-    // Add building to commander's build queue
-    builder.commander.buildQueue.push(building.id);
-
-    // If this is the first/only item in queue, start moving toward it
-    if (builder.commander.buildQueue.length === 1) {
-      this.moveCommanderToBuildTarget(builder, building);
-    }
-  }
-
-  // Move commander toward a build target (close enough to be in build range)
-  private moveCommanderToBuildTarget(commander: Entity, target: Entity): void {
-    if (!commander.unit || !commander.builder) return;
-
-    const buildRange = commander.builder.buildRange;
-    const dx = target.transform.x - commander.transform.x;
-    const dy = target.transform.y - commander.transform.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    // If already in range, no need to move
-    if (dist <= buildRange) return;
-
-    // Calculate position just inside build range
-    const moveDistance = dist - buildRange + 10; // Stop 10 units inside range
-    const dirX = dx / dist;
-    const dirY = dy / dist;
-
-    const waypoint: Waypoint = {
-      x: commander.transform.x + dirX * moveDistance,
-      y: commander.transform.y + dirY * moveDistance,
-      type: 'move',
+    // Create build action with building info
+    const action: UnitAction = {
+      type: 'build',
+      x: building.transform.x,
+      y: building.transform.y,
+      buildingType: command.buildingType,
+      gridX: command.gridX,
+      gridY: command.gridY,
+      buildingId: building.id,
     };
-    this.addWaypointToUnit(commander, waypoint, false);
-  }
 
-  // Advance commander's build queue after a building completes
-  private advanceCommanderBuildQueue(commanderId: EntityId, completedBuildingId: EntityId): void {
-    const commander = this.world.getEntity(commanderId);
-    if (!commander?.commander) return;
-
-    const queue = commander.commander.buildQueue;
-
-    // Remove the completed building from the queue
-    const index = queue.indexOf(completedBuildingId);
-    if (index !== -1) {
-      queue.splice(index, 1);
-    }
-
-    // If there's a next building in queue, move toward it
-    if (queue.length > 0) {
-      const nextTarget = this.world.getEntity(queue[0]);
-      if (nextTarget) {
-        this.moveCommanderToBuildTarget(commander, nextTarget);
-      }
-    }
+    this.addActionToUnit(builder, action, command.queue);
   }
 
   // Execute queue unit command
@@ -415,60 +372,112 @@ export class Simulation {
     });
   }
 
-  // Add a waypoint to a unit (respecting queue flag)
-  private addWaypointToUnit(entity: Entity, waypoint: Waypoint, queue: boolean): void {
+  // Execute repair command - adds repair action to unit's action queue
+  private executeRepairCommand(command: RepairCommand): void {
+    const commander = this.world.getEntity(command.commanderId);
+    const target = this.world.getEntity(command.targetId);
+
+    if (!commander?.commander || !commander.unit || !commander.builder) return;
+    if (!target) return;
+
+    // Target must be a buildable (incomplete building) or a damaged unit
+    const isIncompleteBuilding = target.buildable && !target.buildable.isComplete && !target.buildable.isGhost;
+    const isDamagedUnit = target.unit && target.unit.hp < target.unit.maxHp && target.unit.hp > 0;
+
+    if (!isIncompleteBuilding && !isDamagedUnit) return;
+
+    // Create repair action
+    const action: UnitAction = {
+      type: 'repair',
+      x: target.transform.x,
+      y: target.transform.y,
+      targetId: command.targetId,
+    };
+
+    this.addActionToUnit(commander, action, command.queue);
+  }
+
+  // Add an action to a unit (respecting queue flag)
+  private addActionToUnit(entity: Entity, action: UnitAction, queue: boolean): void {
     if (!entity.unit) return;
 
     if (!queue) {
-      // Replace all waypoints
-      entity.unit.waypoints = [waypoint];
-      entity.unit.patrolLoopIndex = null;
+      // Replace all actions
+      entity.unit.actions = [action];
+      entity.unit.patrolStartIndex = null;
     } else {
-      // Add to existing waypoints
-      entity.unit.waypoints.push(waypoint);
+      // Add to existing actions
+      entity.unit.actions.push(action);
     }
 
-    // Update patrol loop index if this is a patrol waypoint
-    if (waypoint.type === 'patrol' && entity.unit.patrolLoopIndex === null) {
+    // Update patrol start index if this is a patrol action
+    if (action.type === 'patrol' && entity.unit.patrolStartIndex === null) {
       // Mark the start of patrol loop
-      entity.unit.patrolLoopIndex = entity.unit.waypoints.length - 1;
+      entity.unit.patrolStartIndex = entity.unit.actions.length - 1;
     }
   }
 
-  // Update unit movement with waypoint queue processing
+  // Update unit movement with action queue processing
   private updateUnits(): void {
     for (const entity of this.world.getUnits()) {
       if (!entity.unit || !entity.body) continue;
 
       const { unit, body, transform } = entity;
 
-      // No waypoints - stop moving
-      if (unit.waypoints.length === 0) {
+      // No actions - stop moving
+      if (unit.actions.length === 0) {
         if (body.matterBody) {
           (body.matterBody as MatterJS.BodyType).frictionAir = 0.1;
         }
         continue;
       }
 
-      // Get current waypoint
-      const currentWaypoint = unit.waypoints[0];
+      // Get current action
+      const currentAction = unit.actions[0];
+
+      // For build/repair actions, check if we're in range (don't need to reach exact position)
+      if (currentAction.type === 'build' || currentAction.type === 'repair') {
+        const buildRange = entity.builder?.buildRange ?? 100;
+        const dx = currentAction.x - transform.x;
+        const dy = currentAction.y - transform.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance <= buildRange) {
+          // In range - stop moving, let commanderAbilitiesSystem handle building
+          unit.velocityX = 0;
+          unit.velocityY = 0;
+          continue;
+        }
+
+        // Move toward target until in build range
+        const speed = unit.moveSpeed;
+        const vx = (dx / distance) * speed;
+        const vy = (dy / distance) * speed;
+        unit.velocityX = vx;
+        unit.velocityY = vy;
+        transform.rotation = Math.atan2(dy, dx);
+        continue;
+      }
 
       // Check if unit should stop moving due to combat (fight or patrol mode)
       // Only stop when target is within WEAPON range (not just vision range)
       let canFireAtTarget = false;
       if (entity.weapon && entity.weapon.targetEntityId !== null) {
         const target = this.world.getEntity(entity.weapon.targetEntityId);
-        if (target?.unit) {
-          const dx = target.transform.x - entity.transform.x;
-          const dy = target.transform.y - entity.transform.y;
+        if (target?.unit || target?.building) {
+          const targetX = target.transform.x;
+          const targetY = target.transform.y;
+          const dx = targetX - entity.transform.x;
+          const dy = targetY - entity.transform.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const effectiveRange = entity.weapon.config.range + target.unit.radius;
+          const targetRadius = target.unit?.radius ?? 0;
+          const effectiveRange = entity.weapon.config.range + targetRadius;
           canFireAtTarget = dist <= effectiveRange;
         }
       }
 
       const shouldStopForCombat =
-        (currentWaypoint.type === 'fight' || currentWaypoint.type === 'patrol') && canFireAtTarget;
+        (currentAction.type === 'fight' || currentAction.type === 'patrol') && canFireAtTarget;
 
       if (shouldStopForCombat) {
         // Stop moving - target is within weapon range
@@ -477,15 +486,15 @@ export class Simulation {
         continue;
       }
 
-      // Calculate direction to current waypoint
-      const dx = currentWaypoint.x - transform.x;
-      const dy = currentWaypoint.y - transform.y;
+      // Calculate direction to action target
+      const dx = currentAction.x - transform.x;
+      const dy = currentAction.y - transform.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // If close enough to waypoint, advance to next
+      // If close enough to target, advance to next action
       const stopThreshold = 5;
       if (distance < stopThreshold) {
-        this.advanceWaypoint(entity);
+        this.advanceAction(entity);
 
         // Zero out velocity for this frame
         unit.velocityX = 0;
@@ -507,33 +516,33 @@ export class Simulation {
     }
   }
 
-  // Advance to next waypoint (with patrol loop support)
-  private advanceWaypoint(entity: Entity): void {
+  // Advance to next action (with patrol loop support)
+  private advanceAction(entity: Entity): void {
     if (!entity.unit) return;
     const unit = entity.unit;
 
-    if (unit.waypoints.length === 0) return;
+    if (unit.actions.length === 0) return;
 
-    const completedWaypoint = unit.waypoints[0];
+    const completedAction = unit.actions[0];
 
     // Check if we're in patrol mode and should loop
-    if (completedWaypoint.type === 'patrol' && unit.patrolLoopIndex !== null) {
-      // Move completed patrol waypoint to end of queue (after all patrol waypoints)
-      unit.waypoints.shift();
-      unit.waypoints.push(completedWaypoint);
+    if (completedAction.type === 'patrol' && unit.patrolStartIndex !== null) {
+      // Move completed patrol action to end of queue (after all patrol actions)
+      unit.actions.shift();
+      unit.actions.push(completedAction);
     } else {
-      // Remove completed waypoint
-      unit.waypoints.shift();
+      // Remove completed action
+      unit.actions.shift();
 
-      // If we just finished the last non-patrol waypoint and hit patrol section
-      if (unit.waypoints.length > 0 && unit.waypoints[0].type === 'patrol') {
-        unit.patrolLoopIndex = 0;
+      // If we just finished the last non-patrol action and hit patrol section
+      if (unit.actions.length > 0 && unit.actions[0].type === 'patrol') {
+        unit.patrolStartIndex = 0;
       }
     }
 
-    // Clear patrol loop index if no more waypoints
-    if (unit.waypoints.length === 0) {
-      unit.patrolLoopIndex = null;
+    // Clear patrol start index if no more actions
+    if (unit.actions.length === 0) {
+      unit.patrolStartIndex = null;
     }
   }
 

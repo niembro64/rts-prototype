@@ -230,8 +230,8 @@ export class WorldState {
         radius,
         hp: 100,
         maxHp: 100,
-        waypoints: [],
-        patrolLoopIndex: null,
+        actions: [],
+        patrolStartIndex: null,
         turretRotation: 0, // Start facing same as body
         turretTurnRate,
         visionRange: effectiveVisionRange,
@@ -279,8 +279,8 @@ export class WorldState {
         radius: config.radius,
         hp: config.hp,
         maxHp: config.hp,
-        waypoints: [],
-        patrolLoopIndex: null,
+        actions: [],
+        patrolStartIndex: null,
         turretRotation: 0, // Start facing same as body
         turretTurnRate: config.turretTurnRate ?? 3, // Default ~172°/sec
         visionRange: effectiveVisionRange,
@@ -298,7 +298,6 @@ export class WorldState {
       commander: {
         isDGunActive: false,
         dgunEnergyCost: config.dgunCost,
-        buildQueue: [],
       },
     };
 

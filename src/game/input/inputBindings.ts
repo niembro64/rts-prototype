@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
-import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget, type StartBuildCommand, type FireDGunCommand } from '../sim/commands';
+import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget, type StartBuildCommand, type FireDGunCommand, type RepairCommand } from '../sim/commands';
 import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
@@ -277,6 +277,41 @@ export class InputManager {
     return selected.find(e => e.commander !== undefined) ?? null;
   }
 
+  // Find a repairable target at a world position (incomplete building or damaged friendly unit)
+  private findRepairTargetAt(worldX: number, worldY: number, playerId: number): Entity | null {
+    // Check buildings first (incomplete ones owned by player)
+    for (const building of this.world.getBuildings()) {
+      if (building.ownership?.playerId !== playerId) continue;
+      if (!building.buildable || building.buildable.isComplete || building.buildable.isGhost) continue;
+      if (!building.building) continue;
+
+      const { x, y } = building.transform;
+      const halfW = building.building.width / 2;
+      const halfH = building.building.height / 2;
+
+      if (worldX >= x - halfW && worldX <= x + halfW &&
+          worldY >= y - halfH && worldY <= y + halfH) {
+        return building;
+      }
+    }
+
+    // Check units (damaged friendly units)
+    for (const unit of this.world.getUnits()) {
+      if (unit.ownership?.playerId !== playerId) continue;
+      if (!unit.unit || unit.unit.hp >= unit.unit.maxHp || unit.unit.hp <= 0) continue;
+
+      const dx = unit.transform.x - worldX;
+      const dy = unit.transform.y - worldY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist <= unit.unit.radius) {
+        return unit;
+      }
+    }
+
+    return null;
+  }
+
   // Enter build mode with a specific building type
   private enterBuildMode(buildingType: BuildingType): void {
     this.state.isBuildMode = true;
@@ -373,11 +408,30 @@ export class InputManager {
           return;
         }
 
+        const camera = this.scene.cameras.main;
+        const worldPoint = camera.getWorldPoint(p.x, p.y);
+
+        // Check if commander is selected and right-clicking on a repair target
+        const commander = this.getSelectedCommander();
+        if (commander?.ownership) {
+          const repairTarget = this.findRepairTargetAt(worldPoint.x, worldPoint.y, commander.ownership.playerId);
+          if (repairTarget) {
+            // Issue repair command
+            const command: RepairCommand = {
+              type: 'repair',
+              tick: this.world.getTick(),
+              commanderId: commander.id,
+              targetId: repairTarget.id,
+              queue: this.keys.SHIFT.isDown,
+            };
+            this.commandQueue.enqueue(command);
+            return;
+          }
+        }
+
         // Start line path drawing if units are selected
         const selectedUnits = this.world.getSelectedUnits();
         if (selectedUnits.length > 0) {
-          const camera = this.scene.cameras.main;
-          const worldPoint = camera.getWorldPoint(p.x, p.y);
           this.state.isDrawingLinePath = true;
           this.state.linePathPoints = [{ x: worldPoint.x, y: worldPoint.y }];
           this.state.linePathTargets = [];
@@ -386,8 +440,6 @@ export class InputManager {
           // Check if factories are selected - start factory waypoint mode
           const selectedFactories = this.world.getSelectedFactories();
           if (selectedFactories.length > 0) {
-            const camera = this.scene.cameras.main;
-            const worldPoint = camera.getWorldPoint(p.x, p.y);
             this.state.isDrawingLinePath = true;
             this.state.linePathPoints = [{ x: worldPoint.x, y: worldPoint.y }];
             this.state.linePathTargets = [{ x: worldPoint.x, y: worldPoint.y }];

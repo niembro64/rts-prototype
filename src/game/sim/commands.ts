@@ -1,7 +1,7 @@
 import type { EntityId, WaypointType, BuildingType } from './types';
 
 // Command types
-export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'setRallyPoint' | 'fireDGun';
+export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'setRallyPoint' | 'fireDGun' | 'repair';
 
 // Base command interface
 interface BaseCommand {
@@ -75,8 +75,16 @@ export interface FireDGunCommand extends BaseCommand {
   targetY: number;
 }
 
+// Repair command - commander repairs/builds a specific entity
+export interface RepairCommand extends BaseCommand {
+  type: 'repair';
+  commanderId: EntityId;
+  targetId: EntityId;
+  queue: boolean; // Whether to add to build queue (shift) or replace
+}
+
 // Union of all command types
-export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | SetRallyPointCommand | FireDGunCommand;
+export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | SetRallyPointCommand | FireDGunCommand | RepairCommand;
 
 // Command queue for processing commands in order
 export class CommandQueue {
