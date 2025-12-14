@@ -35,6 +35,8 @@ export class RtsScene extends Phaser.Scene {
   private fps: number = 0;
   private fpsUpdateTime: number = 0;
   private audioInitialized: boolean = false;
+  private isGameOver: boolean = false;
+  private gameOverOverlay?: Phaser.GameObjects.Container;
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -107,6 +109,11 @@ export class RtsScene extends Phaser.Scene {
     // Setup audio callback
     this.simulation.onAudioEvent = (event: AudioEvent) => {
       this.handleAudioEvent(event);
+    };
+
+    // Setup game over callback
+    this.simulation.onGameOver = (loserId: number) => {
+      this.handleGameOver(loserId);
     };
 
     // Setup camera
@@ -194,6 +201,74 @@ export class RtsScene extends Phaser.Scene {
       }
       this.world.removeEntity(id);
     }
+  }
+
+  // Handle game over (commander died)
+  private handleGameOver(loserId: number): void {
+    if (this.isGameOver) return; // Already handled
+    this.isGameOver = true;
+
+    const winnerId = loserId === 1 ? 2 : 1;
+    const winnerColorHex = PLAYER_COLORS[winnerId as PlayerId].primary;
+    const winnerColor = '#' + winnerColorHex.toString(16).padStart(6, '0');
+
+    // Create overlay container (fixed to camera)
+    const camera = this.cameras.main;
+    const centerX = camera.scrollX + camera.width / 2;
+    const centerY = camera.scrollY + camera.height / 2;
+
+    this.gameOverOverlay = this.add.container(centerX, centerY);
+    this.gameOverOverlay.setScrollFactor(0);
+    this.gameOverOverlay.setDepth(1000);
+
+    // Semi-transparent background
+    const bg = this.add.rectangle(0, 0, camera.width, camera.height, 0x000000, 0.7);
+    this.gameOverOverlay.add(bg);
+
+    // Winner text
+    const winnerText = this.add.text(0, -60, `PLAYER ${winnerId} WINS!`, {
+      fontFamily: 'monospace',
+      fontSize: '48px',
+      color: winnerColor,
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    winnerText.setOrigin(0.5);
+    this.gameOverOverlay.add(winnerText);
+
+    // Loser text
+    const loserText = this.add.text(0, 10, `Player ${loserId}'s commander was destroyed`, {
+      fontFamily: 'monospace',
+      fontSize: '24px',
+      color: '#cccccc',
+    });
+    loserText.setOrigin(0.5);
+    this.gameOverOverlay.add(loserText);
+
+    // Restart hint
+    const restartText = this.add.text(0, 80, 'Press R to restart', {
+      fontFamily: 'monospace',
+      fontSize: '20px',
+      color: '#888888',
+    });
+    restartText.setOrigin(0.5);
+    this.gameOverOverlay.add(restartText);
+
+    // Listen for R key to restart
+    this.input.keyboard?.once('keydown-R', () => {
+      this.restartGame();
+    });
+  }
+
+  // Restart the game
+  private restartGame(): void {
+    this.isGameOver = false;
+    if (this.gameOverOverlay) {
+      this.gameOverOverlay.destroy();
+      this.gameOverOverlay = undefined;
+    }
+    // Restart the scene
+    this.scene.restart();
   }
 
   // Handle unit spawns (create Matter bodies for factory-produced units)
@@ -495,6 +570,13 @@ export class RtsScene extends Phaser.Scene {
       this.fps = this.frameCount;
       this.frameCount = 0;
       this.fpsUpdateTime = time;
+    }
+
+    // Skip game updates if game is over
+    if (this.isGameOver) {
+      // Still render but don't update simulation
+      this.entityRenderer.render();
+      return;
     }
 
     // Update input (keyboard camera pan)

@@ -373,11 +373,11 @@ export class EntityRenderer {
     }
 
     // Scale particle count based on intensity (energy rate)
-    // At full intensity: 5 streams x 8 particles = 40 particles
-    // At minimum (10%): 2 streams x 3 particles = 6 particles
+    // At full intensity: 12 streams x 20 particles = 240 particles
+    // At minimum (10%): 4 streams x 6 particles = 24 particles
     const effectiveIntensity = intensity ?? 1;
-    const streamCount = Math.max(2, Math.floor(5 * effectiveIntensity));
-    const particlesPerStream = Math.max(3, Math.floor(8 * effectiveIntensity));
+    const streamCount = Math.max(4, Math.floor(12 * effectiveIntensity));
+    const particlesPerStream = Math.max(6, Math.floor(20 * effectiveIntensity));
     const baseTime = this.sprayParticleTime;
 
     for (let stream = 0; stream < streamCount; stream++) {
@@ -412,14 +412,14 @@ export class EntityRenderer {
         py += perpY * spreadAngle;
 
         // Particle size varies - larger near source, smaller near target
-        const sizeBase = 2 + (1 - t) * 2;
+        const sizeBase = 3 + (1 - t) * 3;
         const sizeMod = 1 + Math.sin(phase * Math.PI + stream) * 0.4;
         const particleSize = sizeBase * sizeMod;
 
         // Alpha fades in at start and out at end
         const alphaFadeIn = Math.min(1, t * 5);
         const alphaFadeOut = Math.min(1, (1 - t) * 2.5);
-        const alpha = alphaFadeIn * alphaFadeOut * 0.6;
+        const alpha = alphaFadeIn * alphaFadeOut * 0.8;
 
         // Draw the particle
         this.graphics.fillStyle(color, alpha);
@@ -434,16 +434,23 @@ export class EntityRenderer {
     }
 
     // Draw additional splatter particles at the target (scaled by intensity)
-    const splatterCount = Math.max(3, Math.floor(8 * effectiveIntensity));
+    const splatterCount = Math.max(8, Math.floor(20 * effectiveIntensity));
     for (let i = 0; i < splatterCount; i++) {
       const angle = (baseTime / 200 + i / splatterCount) * Math.PI * 2;
-      const splatterDist = (Math.sin(baseTime / 150 + i * 2) * 0.3 + 0.7) * targetSize * 0.5;
+      const splatterDist = (Math.sin(baseTime / 150 + i * 2) * 0.3 + 0.7) * targetSize * 0.6;
       const sx = targetX + Math.cos(angle) * splatterDist;
       const sy = targetY + Math.sin(angle) * splatterDist;
-      const splatterAlpha = (0.3 + Math.sin(baseTime / 100 + i) * 0.2) * effectiveIntensity;
+      const splatterAlpha = (0.5 + Math.sin(baseTime / 100 + i) * 0.3) * effectiveIntensity;
+      const splatterSize = 3 + Math.sin(baseTime / 80 + i) * 1.5;
 
       this.graphics.fillStyle(color, splatterAlpha);
-      this.graphics.fillCircle(sx, sy, 2 + Math.sin(baseTime / 80 + i) * 1);
+      this.graphics.fillCircle(sx, sy, splatterSize);
+
+      // Add glow to splatter
+      if (i % 2 === 0) {
+        this.graphics.fillStyle(0xffffff, splatterAlpha * 0.4);
+        this.graphics.fillCircle(sx, sy, splatterSize * 0.5);
+      }
     }
   }
 
