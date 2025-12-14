@@ -111,6 +111,9 @@ export class Simulation {
     // Update auto-targeting
     updateAutoTargeting(this.world);
 
+    // Update turret rotation (before firing, so weapons fire in turret direction)
+    updateTurretRotation(this.world, dtMs);
+
     // Fire weapons and create projectiles
     const fireResult = fireWeapons(this.world);
     for (const proj of fireResult.projectiles) {

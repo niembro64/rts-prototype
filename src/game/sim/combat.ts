@@ -102,9 +102,9 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
     // Determine target angle
     let targetAngle: number;
 
-    if (unit.weapon?.targetEntityId !== null) {
+    if (unit.weapon && unit.weapon.targetEntityId !== null) {
       // Has target - aim turret at target
-      const target = world.getEntity(unit.weapon.targetEntityId!);
+      const target = world.getEntity(unit.weapon.targetEntityId);
       if (target) {
         const dx = target.transform.x - unit.transform.x;
         const dy = target.transform.y - unit.transform.y;
@@ -283,8 +283,6 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
 
     // Use turret direction (not target direction) - turret rotation was updated in updateTurretRotation
     const turretAngle = unit.unit.turretRotation ?? unit.transform.rotation;
-    const dirX = Math.cos(turretAngle);
-    const dirY = Math.sin(turretAngle);
 
     const playerId = unit.ownership.playerId;
 
