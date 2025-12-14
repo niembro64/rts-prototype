@@ -7,6 +7,7 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
+import { NETWORK_UPDATE_INTERVAL_MS } from '../config';
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
@@ -331,7 +332,7 @@ function setupSceneCallbacks(): void {
 }
 
 function startStateBroadcast(): void {
-  // Broadcast state 20 times per second
+  // Broadcast state at configured rate (see config.ts)
   stateBroadcastInterval = setInterval(() => {
     const scene = gameInstance?.getScene();
     if (scene && networkRole.value === 'host') {
@@ -340,7 +341,7 @@ function startStateBroadcast(): void {
         networkManager.broadcastState(state);
       }
     }
-  }, 50);
+  }, NETWORK_UPDATE_INTERVAL_MS);
 }
 
 onMounted(() => {

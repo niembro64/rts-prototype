@@ -24,6 +24,7 @@ const WEAPON_LABELS: Record<string, string> = {
 };
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
+import { LASER_SOUND_ENABLED } from '../../config';
 
 // Grid settings
 const GRID_SIZE = 50;
@@ -191,11 +192,13 @@ export class RtsScene extends Phaser.Scene {
         audioManager.playUnitDeath(event.weaponId);
         break;
       case 'laserStart':
-        if (event.entityId !== undefined) {
+        // Only play laser sound if enabled in config
+        if (LASER_SOUND_ENABLED && event.entityId !== undefined) {
           audioManager.startLaserSound(event.entityId);
         }
         break;
       case 'laserStop':
+        // Always try to stop (in case config changed mid-game)
         if (event.entityId !== undefined) {
           audioManager.stopLaserSound(event.entityId);
         }
@@ -617,6 +620,8 @@ export class RtsScene extends Phaser.Scene {
         if (entity.body?.matterBody) {
           this.matter.world.remove(entity.body.matterBody);
         }
+        // Stop any laser sound this entity might be making (client cleanup)
+        audioManager.stopLaserSound(entity.id);
         this.world.removeEntity(entity.id);
       }
     }

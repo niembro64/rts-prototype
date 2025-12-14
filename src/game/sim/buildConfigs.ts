@@ -1,6 +1,7 @@
 import type { BuildingConfig, BuildingType, UnitBuildConfig } from './types';
+import { COST_MULTIPLIER } from '../../config';
 
-// Building configurations
+// Building configurations (costs are multiplied by COST_MULTIPLIER)
 export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   solar: {
     id: 'solar',
@@ -8,7 +9,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     gridWidth: 3,           // 60x60 world units
     gridHeight: 3,
     hp: 200,
-    energyCost: 150,
+    energyCost: 150 * COST_MULTIPLIER,
     maxBuildRate: 20,       // Min 7.5 seconds to build
     energyProduction: 15,   // Energy/sec when complete
   },
@@ -18,18 +19,18 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     gridWidth: 5,           // 100x80 world units
     gridHeight: 4,
     hp: 800,
-    energyCost: 400,
+    energyCost: 400 * COST_MULTIPLIER,
     maxBuildRate: 25,       // Min 16 seconds to build
     unitBuildRate: 20,      // Max energy/sec for unit production
   },
 };
 
-// Unit build configurations
+// Unit build configurations (costs are multiplied by COST_MULTIPLIER)
 export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
   minigun: {
     weaponId: 'minigun',
     name: 'Minigun Trooper',
-    energyCost: 100,
+    energyCost: 100 * COST_MULTIPLIER,
     maxBuildRate: 15,       // Min 6.7 seconds
     radius: 12,
     moveSpeed: 120,
@@ -38,7 +39,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
   laser: {
     weaponId: 'laser',
     name: 'Laser Trooper',
-    energyCost: 120,
+    energyCost: 120 * COST_MULTIPLIER,
     maxBuildRate: 15,       // Min 8 seconds
     radius: 14,
     moveSpeed: 100,
@@ -47,7 +48,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
   shotgun: {
     weaponId: 'shotgun',
     name: 'Shotgunner',
-    energyCost: 110,
+    energyCost: 110 * COST_MULTIPLIER,
     maxBuildRate: 15,       // Min 7.3 seconds
     radius: 13,
     moveSpeed: 110,
@@ -56,7 +57,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
   cannon: {
     weaponId: 'cannon',
     name: 'Cannon',
-    energyCost: 180,
+    energyCost: 180 * COST_MULTIPLIER,
     maxBuildRate: 12,       // Min 15 seconds
     radius: 16,
     moveSpeed: 80,
@@ -65,7 +66,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
   grenade: {
     weaponId: 'grenade',
     name: 'Grenadier',
-    energyCost: 200,
+    energyCost: 200 * COST_MULTIPLIER,
     maxBuildRate: 10,       // Min 20 seconds
     radius: 14,
     moveSpeed: 90,
@@ -74,7 +75,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
   railgun: {
     weaponId: 'railgun',
     name: 'Railgun',
-    energyCost: 220,
+    energyCost: 220 * COST_MULTIPLIER,
     maxBuildRate: 10,       // Min 22 seconds
     radius: 14,
     moveSpeed: 85,
@@ -83,7 +84,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
   burstRifle: {
     weaponId: 'burstRifle',
     name: 'Burst Rifle',
-    energyCost: 140,
+    energyCost: 140 * COST_MULTIPLIER,
     maxBuildRate: 15,       // Min 9.3 seconds
     radius: 12,
     moveSpeed: 115,
