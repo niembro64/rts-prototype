@@ -119,7 +119,7 @@ export class NetworkManager {
 
     return new Promise((resolve, reject) => {
       // Use room code as peer ID prefix for discoverability
-      this.peer = new Peer(`rts-${this.roomCode}`);
+      this.peer = new Peer(`ba-${this.roomCode}`);
 
       this.peer.on('open', () => {
         console.log('Host peer opened with ID:', this.peer?.id);
@@ -136,7 +136,7 @@ export class NetworkManager {
           // Room code already in use, try another
           this.peer?.destroy();
           this.roomCode = generateRoomCode();
-          this.peer = new Peer(`rts-${this.roomCode}`);
+          this.peer = new Peer(`ba-${this.roomCode}`);
           this.peer.on('open', () => resolve(this.roomCode));
           this.peer.on('connection', (conn) => this.handleIncomingConnection(conn));
           this.peer.on('error', (e) => reject(e));
@@ -161,7 +161,7 @@ export class NetworkManager {
       this.peer.on('open', () => {
         console.log('Client peer opened, connecting to host...');
 
-        const conn = this.peer!.connect(`rts-${this.roomCode}`, {
+        const conn = this.peer!.connect(`ba-${this.roomCode}`, {
           reliable: true,
         });
 

@@ -26,7 +26,27 @@ const emit = defineEmits<{
 }>();
 
 const joinCode = ref('');
-const showJoinInput = ref(false);
+const codeCopied = ref(false);
+
+async function copyCode() {
+  try {
+    await navigator.clipboard.writeText(props.roomCode);
+    codeCopied.value = true;
+    setTimeout(() => {
+      codeCopied.value = false;
+    }, 2000);
+  } catch (err) {
+    // Fallback: select the text
+    const codeEl = document.querySelector('.room-code') as HTMLElement;
+    if (codeEl) {
+      const range = document.createRange();
+      range.selectNodeContents(codeEl);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+  }
+}
 
 function getPlayerColor(playerId: PlayerId): string {
   const color = PLAYER_COLORS[playerId]?.primary ?? 0x888888;
@@ -35,10 +55,6 @@ function getPlayerColor(playerId: PlayerId): string {
 
 function handleHost() {
   emit('host');
-}
-
-function handleJoinClick() {
-  showJoinInput.value = true;
 }
 
 function handleJoinSubmit() {
@@ -52,7 +68,6 @@ function handleStart() {
 }
 
 function handleCancel() {
-  showJoinInput.value = false;
   joinCode.value = '';
   emit('cancel');
 }
@@ -64,51 +79,56 @@ const canStart = computed(() => {
 const isInLobby = computed(() => {
   return props.roomCode !== '';
 });
+
+const canJoin = computed(() => {
+  return joinCode.value.length >= 4;
+});
 </script>
 
 <template>
   <div v-if="visible" class="lobby-overlay">
     <div class="lobby-modal">
-      <!-- Initial screen: Host or Join -->
-      <template v-if="!isInLobby && !showJoinInput && !isConnecting">
-        <h1 class="title">RTS PROTOTYPE</h1>
-        <div class="button-group">
-          <button class="lobby-btn host-btn" @click="handleHost">
-            Host Game
-          </button>
-          <div class="divider">or</div>
-          <button class="lobby-btn join-btn" @click="handleJoinClick">
-            Join Game
-          </button>
-        </div>
-      </template>
+      <!-- Initial screen: Host and Join side by side -->
+      <template v-if="!isInLobby && !isConnecting">
+        <h1 class="title">BUDGET ANNIHILATION</h1>
+        <p class="subtitle">Multiplayer RTS</p>
 
-      <!-- Join input screen -->
-      <template v-else-if="showJoinInput && !isInLobby && !isConnecting">
-        <h1 class="title">JOIN GAME</h1>
-        <div class="join-form">
-          <label class="input-label">Room Code:</label>
-          <input
-            v-model="joinCode"
-            class="code-input"
-            type="text"
-            maxlength="4"
-            placeholder="XXXX"
-            @keyup.enter="handleJoinSubmit"
-          />
-          <div class="button-row">
-            <button class="lobby-btn cancel-btn" @click="handleCancel">
-              Back
+        <div class="options-container">
+          <!-- Host section -->
+          <div class="option-section">
+            <h2 class="option-title">Host Game</h2>
+            <p class="option-desc">Create a new game lobby</p>
+            <button class="lobby-btn host-btn" @click="handleHost">
+              Host Game
             </button>
+          </div>
+
+          <div class="divider-vertical"></div>
+
+          <!-- Join section -->
+          <div class="option-section">
+            <h2 class="option-title">Join Game</h2>
+            <p class="option-desc">Enter lobby code to join</p>
+            <input
+              v-model="joinCode"
+              class="code-input"
+              type="text"
+              maxlength="4"
+              placeholder="CODE"
+              @keyup.enter="handleJoinSubmit"
+            />
             <button
               class="lobby-btn join-btn"
-              :disabled="joinCode.length < 4"
+              :disabled="!canJoin"
               @click="handleJoinSubmit"
             >
               Join
             </button>
           </div>
         </div>
+
+        <!-- Error display -->
+        <div v-if="error" class="error-message">{{ error }}</div>
       </template>
 
       <!-- Connecting screen -->
@@ -125,8 +145,11 @@ const isInLobby = computed(() => {
         <h1 class="title">GAME LOBBY</h1>
 
         <div class="room-code-display">
-          <span class="room-label">Room Code:</span>
+          <span class="room-label">Lobby Code:</span>
           <span class="room-code">{{ roomCode }}</span>
+          <button class="copy-btn" @click="copyCode" :title="codeCopied ? 'Copied!' : 'Copy to clipboard'">
+            {{ codeCopied ? '✓' : '⧉' }}
+          </button>
         </div>
 
         <div class="players-section">
@@ -166,9 +189,6 @@ const isInLobby = computed(() => {
           <span v-else class="waiting-text">Waiting for host to start...</span>
         </div>
       </template>
-
-      <!-- Error display -->
-      <div v-if="error && !isInLobby" class="error-message">{{ error }}</div>
     </div>
   </div>
 </template>
@@ -192,7 +212,7 @@ const isInLobby = computed(() => {
   border: 2px solid #4444aa;
   border-radius: 16px;
   padding: 40px 50px;
-  min-width: 400px;
+  min-width: 500px;
   text-align: center;
   box-shadow: 0 0 60px rgba(68, 68, 170, 0.3);
 }
@@ -201,32 +221,62 @@ const isInLobby = computed(() => {
   font-family: monospace;
   font-size: 32px;
   color: #ffffff;
-  margin: 0 0 30px 0;
+  margin: 0;
   text-shadow: 0 0 20px rgba(68, 68, 170, 0.5);
 }
 
-.button-group {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  align-items: center;
-}
-
-.divider {
-  color: #666;
+.subtitle {
   font-family: monospace;
   font-size: 14px;
+  color: #888;
+  margin: 8px 0 30px 0;
+}
+
+.options-container {
+  display: flex;
+  gap: 30px;
+  align-items: stretch;
+}
+
+.option-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+}
+
+.option-title {
+  font-family: monospace;
+  font-size: 18px;
+  color: #fff;
+  margin: 0;
+}
+
+.option-desc {
+  font-family: monospace;
+  font-size: 12px;
+  color: #888;
+  margin: 0 0 10px 0;
+}
+
+.divider-vertical {
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, #4444aa, transparent);
 }
 
 .lobby-btn {
   font-family: monospace;
-  font-size: 18px;
-  padding: 14px 40px;
+  font-size: 16px;
+  padding: 12px 30px;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 200px;
+  min-width: 140px;
 }
 
 .lobby-btn:disabled {
@@ -273,36 +323,23 @@ const isInLobby = computed(() => {
   background: #777;
 }
 
-.join-form {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  align-items: center;
-}
-
-.input-label {
-  font-family: monospace;
-  font-size: 16px;
-  color: #aaa;
-}
-
 .code-input {
   font-family: monospace;
-  font-size: 32px;
+  font-size: 24px;
   text-align: center;
-  width: 150px;
-  padding: 10px;
+  width: 120px;
+  padding: 8px;
   background: rgba(0, 0, 0, 0.3);
   border: 2px solid #4444aa;
   border-radius: 8px;
   color: white;
   text-transform: uppercase;
-  letter-spacing: 8px;
+  letter-spacing: 4px;
 }
 
 .code-input::placeholder {
   color: #555;
-  letter-spacing: 8px;
+  letter-spacing: 4px;
 }
 
 .code-input:focus {
@@ -337,6 +374,23 @@ const isInLobby = computed(() => {
   color: #4a9eff;
   letter-spacing: 6px;
   font-weight: bold;
+  user-select: all;
+}
+
+.copy-btn {
+  font-size: 18px;
+  padding: 4px 10px;
+  margin-left: 12px;
+  background: rgba(74, 158, 255, 0.2);
+  border: 1px solid #4a9eff;
+  border-radius: 6px;
+  color: #4a9eff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-btn:hover {
+  background: rgba(74, 158, 255, 0.4);
 }
 
 .players-section {
