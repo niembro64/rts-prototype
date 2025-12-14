@@ -94,21 +94,13 @@ const canJoin = computed(() => {
         <p class="subtitle">Multiplayer RTS</p>
 
         <div class="options-container">
-          <!-- Host section -->
-          <div class="option-section">
-            <h2 class="option-title">Host Game</h2>
-            <p class="option-desc">Create a new game lobby</p>
-            <button class="lobby-btn host-btn" @click="handleHost">
-              Host Game
-            </button>
-          </div>
+          <button class="lobby-btn host-btn" @click="handleHost">
+            Host Game
+          </button>
 
           <div class="divider-vertical"></div>
 
-          <!-- Join section -->
-          <div class="option-section">
-            <h2 class="option-title">Join Game</h2>
-            <p class="option-desc">Enter lobby code to join</p>
+          <div class="join-section">
             <input
               v-model="joinCode"
               class="code-input"
@@ -144,12 +136,14 @@ const canJoin = computed(() => {
       <template v-else-if="isInLobby">
         <h1 class="title">GAME LOBBY</h1>
 
-        <div class="room-code-display">
-          <span class="room-label">Lobby Code:</span>
-          <span class="room-code">{{ roomCode }}</span>
-          <button class="copy-btn" @click="copyCode" :title="codeCopied ? 'Copied!' : 'Copy to clipboard'">
-            {{ codeCopied ? '✓' : '⧉' }}
-          </button>
+        <div class="room-code-display" @click="copyCode">
+          <span class="room-label">Share this code with friends:</span>
+          <div class="room-code-row">
+            <span class="room-code">{{ roomCode }}</span>
+            <button class="copy-btn" :class="{ copied: codeCopied }" :title="codeCopied ? 'Copied!' : 'Copy to clipboard'">
+              {{ codeCopied ? '✓' : '⧉' }}
+            </button>
+          </div>
         </div>
 
         <div class="players-section">
@@ -235,36 +229,19 @@ const canJoin = computed(() => {
 .options-container {
   display: flex;
   gap: 30px;
-  align-items: stretch;
-}
-
-.option-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
+  justify-content: center;
 }
 
-.option-title {
-  font-family: monospace;
-  font-size: 18px;
-  color: #fff;
-  margin: 0;
-}
-
-.option-desc {
-  font-family: monospace;
-  font-size: 12px;
-  color: #888;
-  margin: 0 0 10px 0;
+.join-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .divider-vertical {
   width: 1px;
+  height: 40px;
   background: linear-gradient(to bottom, transparent, #4444aa, transparent);
 }
 
@@ -356,41 +333,68 @@ const canJoin = computed(() => {
 
 .room-code-display {
   background: rgba(0, 0, 0, 0.3);
-  padding: 15px 25px;
-  border-radius: 8px;
+  padding: 20px 30px;
+  border-radius: 12px;
   margin-bottom: 25px;
+  cursor: pointer;
+  border: 2px solid rgba(74, 158, 255, 0.3);
+  transition: all 0.2s ease;
+}
+
+.room-code-display:hover {
+  border-color: rgba(74, 158, 255, 0.6);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .room-label {
   font-family: monospace;
   font-size: 14px;
-  color: #888;
-  margin-right: 10px;
+  color: #aaa;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.room-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
 }
 
 .room-code {
   font-family: monospace;
-  font-size: 28px;
+  font-size: 36px;
   color: #4a9eff;
-  letter-spacing: 6px;
+  letter-spacing: 8px;
   font-weight: bold;
   user-select: all;
+  text-shadow: 0 0 10px rgba(74, 158, 255, 0.4);
 }
 
 .copy-btn {
-  font-size: 18px;
-  padding: 4px 10px;
-  margin-left: 12px;
+  font-size: 20px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   background: rgba(74, 158, 255, 0.2);
   border: 1px solid #4a9eff;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #4a9eff;
   cursor: pointer;
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .copy-btn:hover {
   background: rgba(74, 158, 255, 0.4);
+}
+
+.copy-btn.copied {
+  background: rgba(68, 170, 68, 0.3);
+  border-color: #44aa44;
+  color: #44aa44;
 }
 
 .players-section {
