@@ -16,7 +16,31 @@ export interface NetworkGameState {
   tick: number;
   entities: NetworkEntity[];
   economy: Record<PlayerId, NetworkEconomy>;
+  sprayTargets?: NetworkSprayTarget[];
   gameOver?: { winnerId: PlayerId };
+}
+
+// Spray target for commander building effect
+export interface NetworkSprayTarget {
+  sourceId: number;
+  targetId: number;
+  type: 'build' | 'heal';
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+  targetWidth?: number;
+  targetHeight?: number;
+  targetRadius?: number;
+  intensity: number;
+}
+
+// Unit action for network sync
+export interface NetworkAction {
+  type: string;
+  x?: number;
+  y?: number;
+  targetId?: number;
 }
 
 export interface NetworkEntity {
@@ -36,6 +60,16 @@ export interface NetworkEntity {
   turretRotation?: number;
   isCommander?: boolean;
 
+  // Unit action queue
+  actions?: NetworkAction[];
+
+  // Weapon fields
+  weaponId?: string;
+  weaponTargetId?: number;
+
+  // Builder fields (commander)
+  buildTargetId?: number;
+
   // Building fields
   width?: number;
   height?: number;
@@ -45,12 +79,14 @@ export interface NetworkEntity {
 
   // Projectile fields
   projectileType?: string;
-  weaponId?: string;
 
   // Factory fields
   buildQueue?: string[];
   factoryProgress?: number;
   isProducing?: boolean;
+  rallyX?: number;
+  rallyY?: number;
+  factoryWaypoints?: { x: number; y: number; type: string }[];
 }
 
 export interface NetworkEconomy {

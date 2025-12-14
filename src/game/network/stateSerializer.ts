@@ -1,10 +1,15 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkGameState, NetworkEntity, NetworkEconomy } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget } from './NetworkManager';
+import type { SprayTarget } from '../sim/commanderAbilities';
 
 // Serialize WorldState to network format
-export function serializeGameState(world: WorldState, gameOverWinnerId?: PlayerId): NetworkGameState {
+export function serializeGameState(
+  world: WorldState,
+  gameOverWinnerId?: PlayerId,
+  sprayTargets?: SprayTarget[]
+): NetworkGameState {
   const entities: NetworkEntity[] = [];
 
   // Serialize all entities
@@ -30,10 +35,26 @@ export function serializeGameState(world: WorldState, gameOverWinnerId?: PlayerI
     }
   }
 
+  // Serialize spray targets
+  const netSprayTargets: NetworkSprayTarget[] | undefined = sprayTargets?.map(st => ({
+    sourceId: st.sourceId,
+    targetId: st.targetId,
+    type: st.type,
+    sourceX: st.sourceX,
+    sourceY: st.sourceY,
+    targetX: st.targetX,
+    targetY: st.targetY,
+    targetWidth: st.targetWidth,
+    targetHeight: st.targetHeight,
+    targetRadius: st.targetRadius,
+    intensity: st.intensity,
+  }));
+
   return {
     tick: world.getTick(),
     entities,
     economy,
+    sprayTargets: netSprayTargets,
     gameOver: gameOverWinnerId ? { winnerId: gameOverWinnerId } : undefined,
   };
 }
@@ -57,6 +78,27 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     netEntity.velocityY = entity.unit.velocityY ?? 0;
     netEntity.turretRotation = entity.unit.turretRotation ?? entity.transform.rotation;
     netEntity.isCommander = entity.commander !== undefined;
+
+    // Serialize action queue
+    if (entity.unit.actions && entity.unit.actions.length > 0) {
+      netEntity.actions = entity.unit.actions.map(action => ({
+        type: action.type,
+        x: action.x,
+        y: action.y,
+        targetId: action.targetId,
+      }));
+    }
+
+    // Serialize weapon state
+    if (entity.weapon) {
+      netEntity.weaponId = entity.weapon.config.id;
+      netEntity.weaponTargetId = entity.weapon.targetEntityId ?? undefined;
+    }
+
+    // Serialize builder state (commander)
+    if (entity.builder) {
+      netEntity.buildTargetId = entity.builder.currentBuildTarget ?? undefined;
+    }
   }
 
   if (entity.type === 'building' && entity.building) {
@@ -75,6 +117,13 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
       netEntity.buildQueue = [...entity.factory.buildQueue];
       netEntity.factoryProgress = entity.factory.currentBuildProgress;
       netEntity.isProducing = entity.factory.isProducing;
+      netEntity.rallyX = entity.factory.rallyX;
+      netEntity.rallyY = entity.factory.rallyY;
+      netEntity.factoryWaypoints = entity.factory.waypoints.map(wp => ({
+        x: wp.x,
+        y: wp.y,
+        type: wp.type,
+      }));
     }
   }
 

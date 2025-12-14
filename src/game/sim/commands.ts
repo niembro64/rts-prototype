@@ -1,7 +1,7 @@
 import type { EntityId, WaypointType, BuildingType } from './types';
 
 // Command types
-export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'setRallyPoint' | 'fireDGun' | 'repair';
+export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair';
 
 // Base command interface
 interface BaseCommand {
@@ -67,6 +67,21 @@ export interface SetRallyPointCommand extends BaseCommand {
   rallyY: number;
 }
 
+// Factory waypoint for waypoint commands
+export interface FactoryWaypoint {
+  x: number;
+  y: number;
+  type: WaypointType;
+}
+
+// Set factory waypoints command - set factory waypoints (replaces or adds to existing)
+export interface SetFactoryWaypointsCommand extends BaseCommand {
+  type: 'setFactoryWaypoints';
+  factoryId: EntityId;
+  waypoints: FactoryWaypoint[];
+  queue: boolean; // Whether to add to existing waypoints or replace
+}
+
 // Fire D-gun command - commander fires D-gun at target
 export interface FireDGunCommand extends BaseCommand {
   type: 'fireDGun';
@@ -84,7 +99,7 @@ export interface RepairCommand extends BaseCommand {
 }
 
 // Union of all command types
-export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | SetRallyPointCommand | FireDGunCommand | RepairCommand;
+export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand;
 
 // Command queue for processing commands in order
 export class CommandQueue {

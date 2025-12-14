@@ -8,6 +8,7 @@ import { InputManager } from '../input/inputBindings';
 import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import { economyManager } from '../sim/economy';
+import { getWeaponConfig } from '../sim/weapons';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { networkManager, type NetworkRole } from '../network/NetworkManager';
 import { serializeGameState } from '../network/stateSerializer';
@@ -578,7 +579,8 @@ export class RtsScene extends Phaser.Scene {
   public getSerializedState(): NetworkGameState | null {
     if (this.networkRole !== 'host') return null;
     const winnerId = this.simulation.getWinnerId() ?? undefined;
-    return serializeGameState(this.world, winnerId);
+    const sprayTargets = this.simulation.getSprayTargets();
+    return serializeGameState(this.world, winnerId, sprayTargets);
   }
 
   // Apply received network state (client only)
@@ -622,6 +624,26 @@ export class RtsScene extends Phaser.Scene {
       economyManager.setEconomyState(playerId, eco);
     }
 
+    // Apply spray targets for building effect
+    if (state.sprayTargets && state.sprayTargets.length > 0) {
+      const sprayTargets = state.sprayTargets.map(st => ({
+        sourceId: st.sourceId,
+        targetId: st.targetId,
+        type: st.type,
+        sourceX: st.sourceX,
+        sourceY: st.sourceY,
+        targetX: st.targetX,
+        targetY: st.targetY,
+        targetWidth: st.targetWidth,
+        targetHeight: st.targetHeight,
+        targetRadius: st.targetRadius,
+        intensity: st.intensity,
+      }));
+      this.entityRenderer.setSprayTargets(sprayTargets);
+    } else {
+      this.entityRenderer.setSprayTargets([]);
+    }
+
     // Check for game over
     if (state.gameOver && !this.isGameOver) {
       this.isGameOver = true;
@@ -634,6 +656,14 @@ export class RtsScene extends Phaser.Scene {
     const { id, type, x, y, rotation, playerId } = netEntity;
 
     if (type === 'unit') {
+      // Convert network actions to unit actions (filter out invalid ones)
+      const actions = netEntity.actions?.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
+        type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
+        x: na.x!,
+        y: na.y!,
+        targetId: na.targetId,
+      })) ?? [];
+
       // Create basic entity structure
       const entity: Entity = {
         id,
@@ -646,7 +676,7 @@ export class RtsScene extends Phaser.Scene {
           maxHp: netEntity.maxHp ?? 100,
           radius: netEntity.radius ?? 15,
           moveSpeed: 100,
-          actions: [],
+          actions,
           patrolStartIndex: null,
           turretTurnRate: 3,
           visionRange: 300,
@@ -656,10 +686,25 @@ export class RtsScene extends Phaser.Scene {
         },
       };
 
+      // Add weapon if present
+      if (netEntity.weaponId) {
+        entity.weapon = {
+          config: getWeaponConfig(netEntity.weaponId),
+          currentCooldown: 0,
+          targetEntityId: netEntity.weaponTargetId ?? null,
+        };
+      }
+
       if (netEntity.isCommander) {
         entity.commander = {
           isDGunActive: false,
           dgunEnergyCost: 100,
+        };
+        // Add builder component for commanders
+        entity.builder = {
+          buildRange: 200,
+          buildRate: 30,
+          currentBuildTarget: netEntity.buildTargetId ?? null,
         };
       }
 
@@ -705,10 +750,14 @@ export class RtsScene extends Phaser.Scene {
           currentBuildProgress: netEntity.factoryProgress ?? 0,
           currentBuildCost: 0,
           currentBuildRate: 0,
-          rallyX: x,
-          rallyY: y + 100,
+          rallyX: netEntity.rallyX ?? x,
+          rallyY: netEntity.rallyY ?? (y + 100),
           isProducing: netEntity.isProducing ?? false,
-          waypoints: [],
+          waypoints: netEntity.factoryWaypoints?.map(wp => ({
+            x: wp.x,
+            y: wp.y,
+            type: wp.type as 'move' | 'fight' | 'patrol',
+          })) ?? [],
         };
       }
 
@@ -758,6 +807,33 @@ export class RtsScene extends Phaser.Scene {
       entity.unit.hp = netEntity.hp ?? entity.unit.hp;
       entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
       entity.unit.turretRotation = netEntity.turretRotation ?? entity.unit.turretRotation;
+
+      // Update action queue
+      if (netEntity.actions) {
+        entity.unit.actions = netEntity.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
+          type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
+          x: na.x!,
+          y: na.y!,
+          targetId: na.targetId,
+        }));
+      }
+    }
+
+    // Update weapon state
+    if (entity.weapon && netEntity.weaponId) {
+      entity.weapon.targetEntityId = netEntity.weaponTargetId ?? null;
+    } else if (netEntity.weaponId && !entity.weapon) {
+      // Create weapon if it doesn't exist
+      entity.weapon = {
+        config: getWeaponConfig(netEntity.weaponId),
+        currentCooldown: 0,
+        targetEntityId: netEntity.weaponTargetId ?? null,
+      };
+    }
+
+    // Update builder state
+    if (entity.builder) {
+      entity.builder.currentBuildTarget = netEntity.buildTargetId ?? null;
     }
 
     // Update building-specific fields
@@ -775,6 +851,15 @@ export class RtsScene extends Phaser.Scene {
       entity.factory.buildQueue = netEntity.buildQueue ?? entity.factory.buildQueue;
       entity.factory.currentBuildProgress = netEntity.factoryProgress ?? entity.factory.currentBuildProgress;
       entity.factory.isProducing = netEntity.isProducing ?? entity.factory.isProducing;
+      entity.factory.rallyX = netEntity.rallyX ?? entity.factory.rallyX;
+      entity.factory.rallyY = netEntity.rallyY ?? entity.factory.rallyY;
+      if (netEntity.factoryWaypoints) {
+        entity.factory.waypoints = netEntity.factoryWaypoints.map(wp => ({
+          x: wp.x,
+          y: wp.y,
+          type: wp.type as 'move' | 'fight' | 'patrol',
+        }));
+      }
     }
   }
 

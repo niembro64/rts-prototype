@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
-import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget, type StartBuildCommand, type FireDGunCommand, type RepairCommand } from '../sim/commands';
+import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget, type StartBuildCommand, type FireDGunCommand, type RepairCommand, type SetFactoryWaypointsCommand } from '../sim/commands';
 import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
@@ -806,21 +806,18 @@ export class InputManager {
       type: this.state.waypointMode,
     };
 
-    // Apply to all selected factories
+    // Issue command for each selected factory
     for (const factory of selectedFactories) {
       if (!factory.factory) continue;
 
-      if (shiftHeld) {
-        // Queue: add to existing waypoints
-        factory.factory.waypoints.push(newWaypoint);
-      } else {
-        // Replace: clear and set new waypoint
-        factory.factory.waypoints = [newWaypoint];
-      }
-
-      // Also update legacy rally point for compatibility
-      factory.factory.rallyX = target.x;
-      factory.factory.rallyY = target.y;
+      const command: SetFactoryWaypointsCommand = {
+        type: 'setFactoryWaypoints',
+        tick: this.world.getTick(),
+        factoryId: factory.id,
+        waypoints: [newWaypoint],
+        queue: shiftHeld,
+      };
+      this.commandQueue.enqueue(command);
     }
   }
 

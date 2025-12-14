@@ -1,5 +1,5 @@
 import { WorldState } from './WorldState';
-import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type SetRallyPointCommand, type FireDGunCommand, type RepairCommand } from './commands';
+import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type SetRallyPointCommand, type SetFactoryWaypointsCommand, type FireDGunCommand, type RepairCommand } from './commands';
 import type { Entity, EntityId, PlayerId, UnitAction } from './types';
 import {
   updateAutoTargeting,
@@ -230,6 +230,9 @@ export class Simulation {
       case 'setRallyPoint':
         this.executeSetRallyPointCommand(command);
         break;
+      case 'setFactoryWaypoints':
+        this.executeSetFactoryWaypointsCommand(command);
+        break;
       case 'fireDGun':
         this.executeFireDGunCommand(command);
         break;
@@ -342,6 +345,28 @@ export class Simulation {
 
     factory.factory.rallyX = command.rallyX;
     factory.factory.rallyY = command.rallyY;
+  }
+
+  // Execute set factory waypoints command
+  private executeSetFactoryWaypointsCommand(command: SetFactoryWaypointsCommand): void {
+    const factory = this.world.getEntity(command.factoryId);
+    if (!factory?.factory) return;
+
+    if (command.queue) {
+      // Add to existing waypoints
+      for (const wp of command.waypoints) {
+        factory.factory.waypoints.push({ x: wp.x, y: wp.y, type: wp.type });
+      }
+    } else {
+      // Replace waypoints
+      factory.factory.waypoints = command.waypoints.map(wp => ({ x: wp.x, y: wp.y, type: wp.type }));
+    }
+
+    // Update rally point to first waypoint
+    if (command.waypoints.length > 0) {
+      factory.factory.rallyX = command.waypoints[0].x;
+      factory.factory.rallyY = command.waypoints[0].y;
+    }
   }
 
   // Execute fire D-gun command
