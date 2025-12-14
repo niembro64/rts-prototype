@@ -145,6 +145,47 @@ function getMovementAngle(unit: Entity): number {
   return unit.unit.turretRotation ?? unit.transform.rotation;
 }
 
+// Update laser sounds based on targeting state (not beam existence)
+// This is called every frame to ensure sounds match targeting state
+export function updateLaserSounds(world: WorldState): AudioEvent[] {
+  const audioEvents: AudioEvent[] = [];
+
+  for (const unit of world.getUnits()) {
+    if (!unit.weapon || !unit.unit || !unit.ownership) continue;
+    if (unit.unit.hp <= 0) continue;
+
+    const config = unit.weapon.config;
+    const isBeamWeapon = config.beamDuration !== undefined && config.cooldown === 0;
+
+    if (!isBeamWeapon) continue;
+
+    // Check if unit has a valid target in range
+    const hasTarget = unit.weapon.targetEntityId !== null;
+
+    if (hasTarget) {
+      // Laser should be ON - emit laserStart (AudioManager ignores if already playing)
+      audioEvents.push({
+        type: 'laserStart',
+        weaponId: config.id,
+        x: unit.transform.x,
+        y: unit.transform.y,
+        entityId: unit.id,
+      });
+    } else {
+      // Laser should be OFF - emit laserStop
+      audioEvents.push({
+        type: 'laserStop',
+        weaponId: config.id,
+        x: unit.transform.x,
+        y: unit.transform.y,
+        entityId: unit.id,
+      });
+    }
+  }
+
+  return audioEvents;
+}
+
 // Update auto-targeting for all units
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
@@ -221,30 +262,6 @@ function hasActiveBeam(world: WorldState, unitId: EntityId): boolean {
   return false;
 }
 
-// Count active beams for a unit (for checking if there are OTHER beams besides one being removed)
-function countActiveBeams(world: WorldState, unitId: EntityId): number {
-  let count = 0;
-  for (const proj of world.getProjectiles()) {
-    if (proj.projectile?.sourceEntityId === unitId && proj.projectile.projectileType === 'beam') {
-      count++;
-    }
-  }
-  return count;
-}
-
-// Check if a unit has an expiring beam (for suppressing duplicate laserStart)
-function hasExpiringBeam(world: WorldState, unitId: EntityId): boolean {
-  for (const proj of world.getProjectiles()) {
-    if (proj.projectile?.sourceEntityId === unitId && proj.projectile.projectileType === 'beam') {
-      // Check if beam will expire this frame (after timeAlive update)
-      if (proj.projectile.timeAlive + FIXED_TIMESTEP >= proj.projectile.maxLifespan) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 // Fire weapons at targets
 export function fireWeapons(world: WorldState): FireWeaponsResult {
   const newProjectiles: Entity[] = [];
@@ -314,20 +331,9 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
       }
     }
 
-    // Add fire audio event (continuous lasers use laserStart)
-    if (isBeamWeapon && config.cooldown === 0) {
-      // Only emit laserStart if this is a NEW laser, not a replacement for an expiring one
-      if (!hasExpiringBeam(world, unit.id)) {
-        audioEvents.push({
-          type: 'laserStart',
-          weaponId: config.id,
-          x: unit.transform.x,
-          y: unit.transform.y,
-          entityId: unit.id,
-        });
-      }
-    } else {
-      // Regular weapon fire
+    // Add fire audio event for non-beam weapons only
+    // Beam weapon audio is handled separately by updateLaserSounds (based on targeting state)
+    if (!isBeamWeapon) {
       audioEvents.push({
         type: 'fire',
         weaponId: config.id,
@@ -456,21 +462,7 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
 
     // Check if projectile expired
     if (proj.timeAlive >= proj.maxLifespan) {
-      // Stop continuous laser sound when beam expires - but only if there's no other beam
-      // (if a new beam was created this frame, don't emit laserStop as sound continues)
-      if (proj.projectileType === 'beam' && config.cooldown === 0) {
-        const beamCount = countActiveBeams(world, proj.sourceEntityId);
-        // Only emit laserStop if this is the only beam (the one expiring)
-        if (beamCount <= 1) {
-          audioEvents.push({
-            type: 'laserStop',
-            weaponId: config.id,
-            x: projEntity.transform.x,
-            y: projEntity.transform.y,
-            entityId: proj.sourceEntityId,
-          });
-        }
-      }
+      // Beam audio is handled by updateLaserSounds based on targeting state
 
       // Handle splash damage on expiration for grenades
       if (config.splashRadius && !proj.hasExploded) {
@@ -542,17 +534,20 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
         // Apply damage
         enemy.unit.hp -= damage;
 
-        // Add hit audio event (only once for beams, every hit for projectiles)
-        if (proj.projectileType !== 'beam' || !proj.hitEntities.has(enemy.id)) {
-          audioEvents.push({
-            type: 'hit',
-            weaponId: config.id,
-            x: enemy.transform.x,
-            y: enemy.transform.y,
-          });
-          // Mark beam as having played hit sound for this target
-          if (proj.projectileType === 'beam') {
-            proj.hitEntities.add(enemy.id);
+        // Add hit audio event (skip for continuous beams - they just have the continuous laser sound)
+        const isContinuousBeam = proj.projectileType === 'beam' && config.cooldown === 0;
+        if (!isContinuousBeam) {
+          if (proj.projectileType !== 'beam' || !proj.hitEntities.has(enemy.id)) {
+            audioEvents.push({
+              type: 'hit',
+              weaponId: config.id,
+              x: enemy.transform.x,
+              y: enemy.transform.y,
+            });
+            // Mark beam as having played hit sound for this target
+            if (proj.projectileType === 'beam') {
+              proj.hitEntities.add(enemy.id);
+            }
           }
         }
 

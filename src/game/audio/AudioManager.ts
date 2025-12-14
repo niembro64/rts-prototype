@@ -104,9 +104,10 @@ export class AudioManager {
     filter.frequency.value = 1200;
     filter.Q.value = 2;
 
-    // Fade in
-    gain.gain.setValueAtTime(0.01, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.2 * this.sfxVolume, ctx.currentTime + 0.05);
+    // Smooth fade in from near-zero (no click)
+    // Use linear ramp for smooth start from silence
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.2 * this.sfxVolume, ctx.currentTime + 0.12);
 
     osc.connect(filter).connect(gain);
     osc.start();
@@ -126,8 +127,11 @@ export class AudioManager {
       noiseFilter.frequency.value = 4000;
       noiseFilter.Q.value = 1;
 
-      noiseGain = this.createGain(0.08) ?? undefined;
+      // Create noise gain with fade-in (no click)
+      noiseGain = this.createGain(0) ?? undefined;
       if (noiseGain) {
+        noiseGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        noiseGain.gain.linearRampToValueAtTime(0.08 * this.sfxVolume, ctx.currentTime + 0.12);
         noiseSource.connect(noiseFilter).connect(noiseGain);
         noiseSource.start();
       }
@@ -150,13 +154,14 @@ export class AudioManager {
     const ctx = this.ctx;
     if (!ctx) return;
 
-    // Fade out quickly
-    sound.gainNode.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+    // Smooth fade out to near-zero (no click)
+    const fadeTime = 0.1;
+    sound.gainNode.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + fadeTime);
     if (sound.noiseGain) {
-      sound.noiseGain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+      sound.noiseGain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + fadeTime);
     }
 
-    // Stop after fade
+    // Stop after fade completes
     setTimeout(() => {
       try {
         sound.oscillator.stop();
@@ -164,7 +169,7 @@ export class AudioManager {
       } catch {
         // Ignore if already stopped
       }
-    }, 60);
+    }, fadeTime * 1000 + 20);
 
     this.activeLaserSounds.delete(entityId);
   }

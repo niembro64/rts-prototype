@@ -5,6 +5,7 @@ import {
   updateAutoTargeting,
   updateTurretRotation,
   updateWeaponCooldowns,
+  updateLaserSounds,
   fireWeapons,
   updateProjectiles,
   checkProjectileCollisions,
@@ -110,6 +111,12 @@ export class Simulation {
 
     // Update auto-targeting
     updateAutoTargeting(this.world);
+
+    // Update laser sounds based on targeting state (every frame)
+    const laserAudioEvents = updateLaserSounds(this.world);
+    for (const event of laserAudioEvents) {
+      this.onAudioEvent?.(event);
+    }
 
     // Update turret rotation (before firing, so weapons fire in turret direction)
     updateTurretRotation(this.world, dtMs);
