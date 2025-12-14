@@ -8,9 +8,16 @@ import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
 import { DEFAULT_NETWORK_UPDATES_PER_SECOND } from '../config';
+import type { HostViewMode } from '../game/scenes/RtsScene';
 
 // Available update rate options
 const UPDATE_RATE_OPTIONS = [1, 5, 10, 30] as const;
+
+// Host view mode options
+const VIEW_MODE_OPTIONS: { value: HostViewMode; label: string }[] = [
+  { value: 'simulation', label: 'Simulation' },
+  { value: 'client', label: 'Client View' },
+];
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
@@ -27,6 +34,7 @@ const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
 const networkUpdatesPerSecond = ref(DEFAULT_NETWORK_UPDATES_PER_SECOND);
+const hostViewMode = ref<HostViewMode>('simulation');
 
 // State broadcast interval (for host)
 let stateBroadcastInterval: ReturnType<typeof setInterval> | null = null;
@@ -362,6 +370,14 @@ function setNetworkUpdateRate(rate: number): void {
   }
 }
 
+function setHostViewMode(mode: HostViewMode): void {
+  const scene = gameInstance?.getScene();
+  if (scene && networkRole.value === 'host') {
+    scene.setHostViewMode(mode);
+    hostViewMode.value = mode;
+  }
+}
+
 onMounted(() => {
   // Game is not created until lobby starts it
 });
@@ -419,20 +435,41 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Network update rate control (host only) -->
+      <!-- Host Options (host only) -->
       <div v-if="networkRole === 'host'" class="ui-overlay top-right-below">
-        <div class="update-rate-control">
-          <span class="rate-label">Updates/sec:</span>
-          <div class="rate-buttons">
-            <button
-              v-for="rate in UPDATE_RATE_OPTIONS"
-              :key="rate"
-              class="rate-btn"
-              :class="{ active: networkUpdatesPerSecond === rate }"
-              @click="setNetworkUpdateRate(rate)"
-            >
-              {{ rate }}
-            </button>
+        <div class="host-options">
+          <div class="host-options-title">Host Options</div>
+
+          <!-- View Mode Toggle -->
+          <div class="option-row">
+            <span class="option-label">View:</span>
+            <div class="option-buttons">
+              <button
+                v-for="opt in VIEW_MODE_OPTIONS"
+                :key="opt.value"
+                class="option-btn"
+                :class="{ active: hostViewMode === opt.value }"
+                @click="setHostViewMode(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Network Update Rate -->
+          <div class="option-row">
+            <span class="option-label">Updates/sec:</span>
+            <div class="option-buttons">
+              <button
+                v-for="rate in UPDATE_RATE_OPTIONS"
+                :key="rate"
+                class="option-btn"
+                :class="{ active: networkUpdatesPerSecond === rate }"
+                @click="setNetworkUpdateRate(rate)"
+              >
+                {{ rate }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -592,7 +629,7 @@ onUnmounted(() => {
   transform: scale(0.98);
 }
 
-/* Network update rate control */
+/* Host Options Panel */
 .ui-overlay.top-right-below {
   position: absolute;
   top: 60px;
@@ -601,46 +638,66 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.update-rate-control {
+.host-options {
   pointer-events: auto;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.8);
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.85);
   border: 2px solid #666;
   border-radius: 8px;
   font-family: monospace;
+  min-width: 200px;
 }
 
-.rate-label {
+.host-options-title {
+  color: #4488ff;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #444;
+  margin-bottom: 2px;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.option-label {
   color: #aaa;
   font-size: 12px;
+  white-space: nowrap;
 }
 
-.rate-buttons {
+.option-buttons {
   display: flex;
   gap: 4px;
 }
 
-.rate-btn {
+.option-btn {
   padding: 4px 10px;
   background: rgba(60, 60, 60, 0.9);
   border: 1px solid #555;
   border-radius: 4px;
   color: #ccc;
   font-family: monospace;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.rate-btn:hover {
+.option-btn:hover {
   background: rgba(80, 80, 80, 0.9);
   border-color: #777;
 }
 
-.rate-btn.active {
+.option-btn.active {
   background: rgba(68, 68, 170, 0.9);
   border-color: #6666cc;
   color: white;

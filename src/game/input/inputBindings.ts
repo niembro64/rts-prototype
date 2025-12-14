@@ -5,6 +5,17 @@ import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types'
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
 
+/**
+ * InputEntitySource - Interface for entity queries used by InputManager
+ * Both WorldState and ClientViewState implement this interface
+ */
+export interface InputEntitySource {
+  getUnits(): Entity[];
+  getBuildings(): Entity[];
+  getEntity(id: EntityId): Entity | undefined;
+  getAllEntities(): Entity[];
+}
+
 // Point in world space
 interface WorldPoint {
   x: number;
@@ -56,7 +67,8 @@ const ZOOM_STEP = 0.1;
 
 export class InputManager {
   private scene: Phaser.Scene;
-  private world: WorldState;
+  private world: WorldState;  // Used for tick, activePlayerId, map dimensions
+  private entitySource: InputEntitySource;  // Used for entity queries (can be WorldState or ClientViewState)
   private commandQueue: CommandQueue;
   private state: InputState;
   private selectionGraphics: Phaser.GameObjects.Graphics;
@@ -84,6 +96,7 @@ export class InputManager {
   constructor(scene: Phaser.Scene, world: WorldState, commandQueue: CommandQueue) {
     this.scene = scene;
     this.world = world;
+    this.entitySource = world;  // Default to using WorldState for entity queries
     this.commandQueue = commandQueue;
 
     this.state = {
@@ -177,6 +190,35 @@ export class InputManager {
     return this.state;
   }
 
+  /**
+   * Set the entity source for input detection
+   * Allows switching between WorldState (simulation) and ClientViewState (client view)
+   * Commands still use this.world for tick/playerId (always the simulation)
+   */
+  public setEntitySource(source: InputEntitySource): void {
+    this.entitySource = source;
+  }
+
+  /**
+   * Get selected units from current entity source
+   * Uses world.activePlayerId for filtering
+   */
+  private getSelectedUnits(): Entity[] {
+    return this.entitySource.getUnits().filter(
+      (e) => e.selectable?.selected && e.ownership?.playerId === this.world.activePlayerId
+    );
+  }
+
+  /**
+   * Get selected factories from current entity source
+   * Uses world.activePlayerId for filtering
+   */
+  private getSelectedFactories(): Entity[] {
+    return this.entitySource.getBuildings().filter(
+      (e) => e.selectable?.selected && e.factory !== undefined && e.ownership?.playerId === this.world.activePlayerId
+    );
+  }
+
   // Public method to start build mode from UI
   public startBuildMode(buildingType: BuildingType): void {
     if (this.hasSelectedCommander()) {
@@ -202,7 +244,7 @@ export class InputManager {
 
   // Public method to queue unit at factory from UI
   public queueUnitAtFactory(factoryId: number, weaponId: string): void {
-    const factory = this.world.getEntity(factoryId);
+    const factory = this.entitySource.getEntity(factoryId);
     if (!factory?.factory) return;
 
     const command = {
@@ -267,20 +309,20 @@ export class InputManager {
 
   // Check if a commander is selected
   private hasSelectedCommander(): boolean {
-    const selected = this.world.getSelectedUnits();
+    const selected = this.getSelectedUnits();
     return selected.some(e => e.commander !== undefined);
   }
 
   // Get selected commander
   private getSelectedCommander(): Entity | null {
-    const selected = this.world.getSelectedUnits();
+    const selected = this.getSelectedUnits();
     return selected.find(e => e.commander !== undefined) ?? null;
   }
 
   // Find a repairable target at a world position (incomplete building or damaged friendly unit)
   private findRepairTargetAt(worldX: number, worldY: number, playerId: number): Entity | null {
     // Check buildings first (incomplete ones owned by player)
-    const allBuildings = this.world.getBuildings();
+    const allBuildings = this.entitySource.getBuildings();
     console.log('[findRepairTarget] Checking buildings:', {
       totalBuildings: allBuildings.length,
       lookingForPlayerId: playerId,
@@ -313,7 +355,7 @@ export class InputManager {
     }
 
     // Check units (damaged friendly units)
-    for (const unit of this.world.getUnits()) {
+    for (const unit of this.entitySource.getUnits()) {
       if (unit.ownership?.playerId !== playerId) continue;
       if (!unit.unit || unit.unit.hp >= unit.unit.maxHp || unit.unit.hp <= 0) continue;
 
@@ -455,7 +497,7 @@ export class InputManager {
         }
 
         // Start line path drawing if units are selected
-        const selectedUnits = this.world.getSelectedUnits();
+        const selectedUnits = this.getSelectedUnits();
         if (selectedUnits.length > 0) {
           this.state.isDrawingLinePath = true;
           this.state.linePathPoints = [{ x: worldPoint.x, y: worldPoint.y }];
@@ -463,7 +505,7 @@ export class InputManager {
           this.updateLinePathTargets(selectedUnits.length);
         } else {
           // Check if factories are selected - start factory waypoint mode
-          const selectedFactories = this.world.getSelectedFactories();
+          const selectedFactories = this.getSelectedFactories();
           if (selectedFactories.length > 0) {
             this.state.isDrawingLinePath = true;
             this.state.linePathPoints = [{ x: worldPoint.x, y: worldPoint.y }];
@@ -509,7 +551,7 @@ export class InputManager {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist > 10) {
           this.state.linePathPoints.push({ x: worldPoint.x, y: worldPoint.y });
-          const selectedUnits = this.world.getSelectedUnits();
+          const selectedUnits = this.getSelectedUnits();
           this.updateLinePathTargets(selectedUnits.length);
         }
       }
@@ -562,7 +604,7 @@ export class InputManager {
     const selectedIds: EntityId[] = [];
 
     // Select units in rectangle
-    for (const entity of this.world.getUnits()) {
+    for (const entity of this.entitySource.getUnits()) {
       const { x, y } = entity.transform;
       // Only select units owned by active player
       if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
@@ -575,7 +617,7 @@ export class InputManager {
 
     // Select buildings in rectangle (only if no units selected - prioritize units)
     if (selectedIds.length === 0) {
-      for (const entity of this.world.getBuildings()) {
+      for (const entity of this.entitySource.getBuildings()) {
         const { x, y } = entity.transform;
         // Only select buildings owned by active player
         if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
@@ -601,7 +643,7 @@ export class InputManager {
       let closestDist = Infinity;
 
       // Check units first
-      for (const entity of this.world.getUnits()) {
+      for (const entity of this.entitySource.getUnits()) {
         if (!entity.unit) continue;
         if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
 
@@ -617,7 +659,7 @@ export class InputManager {
 
       // Check buildings if no unit was clicked
       if (closestId === null) {
-        for (const entity of this.world.getBuildings()) {
+        for (const entity of this.entitySource.getBuildings()) {
           if (!entity.building) continue;
           if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
 
@@ -761,11 +803,11 @@ export class InputManager {
 
   // Finish line path and issue move commands (for units or factory waypoints)
   private finishLinePath(shiftHeld: boolean): void {
-    const selectedUnits = this.world.getSelectedUnits();
+    const selectedUnits = this.getSelectedUnits();
 
     // Handle factory waypoints if no units selected
     if (selectedUnits.length === 0) {
-      const selectedFactories = this.world.getSelectedFactories();
+      const selectedFactories = this.getSelectedFactories();
       if (selectedFactories.length > 0) {
         this.finishFactoryWaypoints(shiftHeld);
       }
@@ -837,7 +879,7 @@ export class InputManager {
 
   // Finish setting factory waypoints
   private finishFactoryWaypoints(shiftHeld: boolean): void {
-    const selectedFactories = this.world.getSelectedFactories();
+    const selectedFactories = this.getSelectedFactories();
     if (selectedFactories.length === 0) return;
 
     // Get the target point(s) from the line path
@@ -1031,7 +1073,7 @@ export class InputManager {
 
   // Check if selection changed and reset waypoint mode to 'move'
   private checkSelectionChange(): void {
-    const currentSelected = this.world.getSelectedUnits();
+    const currentSelected = this.getSelectedUnits();
     const currentIds = new Set(currentSelected.map((u) => u.id));
 
     // Check if selection changed

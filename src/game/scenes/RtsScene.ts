@@ -14,6 +14,10 @@ import { networkManager, type NetworkRole } from '../network/NetworkManager';
 import { serializeGameState } from '../network/stateSerializer';
 import type { NetworkGameState } from '../network/NetworkManager';
 import type { SelectCommand } from '../sim/commands';
+import { ClientViewState } from '../network/ClientViewState';
+
+// Host view modes
+export type HostViewMode = 'simulation' | 'client';
 
 // Weapon ID to display label
 const WEAPON_LABELS: Record<string, string> = {
@@ -44,6 +48,10 @@ export class RtsScene extends Phaser.Scene {
   private networkRole: NetworkRole = 'offline';
   private localPlayerId: PlayerId = 1;
   private playerIds: PlayerId[] = [1, 2];
+
+  // Host view mode - allows host to see what clients see
+  private hostViewMode: HostViewMode = 'simulation';
+  private clientViewState: ClientViewState | null = null;
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -93,6 +101,9 @@ export class RtsScene extends Phaser.Scene {
 
   // Callback for game restart
   public onGameRestart?: () => void;
+
+  // Callback for view mode change (host only)
+  public onViewModeChange?: (mode: HostViewMode) => void;
 
   constructor() {
     super({ key: 'RtsScene' });
@@ -167,6 +178,11 @@ export class RtsScene extends Phaser.Scene {
 
     // Setup input
     this.inputManager = new InputManager(this, this.world, this.commandQueue);
+
+    // Initialize ClientViewState for host mode (to show "client view")
+    if (this.networkRole === 'host') {
+      this.clientViewState = new ClientViewState();
+    }
 
     // Initialize audio on first user interaction
     this.input.once('pointerdown', () => {
@@ -552,14 +568,22 @@ export class RtsScene extends Phaser.Scene {
 
     // Only run simulation for host/offline mode
     if (this.networkRole !== 'client') {
-      // Update simulation (calculates velocities)
+      // Update simulation (calculates velocities) - ALWAYS runs for host
       this.simulation.update(delta);
 
       // Apply calculated velocities to Matter bodies
       this.applyUnitVelocities();
 
-      // Pass spray targets to renderer
-      this.entityRenderer.setSprayTargets(this.simulation.getSprayTargets());
+      // Handle rendering based on view mode
+      if (this.hostViewMode === 'client' && this.clientViewState) {
+        // Host is viewing "client view" - run prediction on ClientViewState
+        this.clientViewState.applyPrediction(delta);
+        // Use spray targets from ClientViewState
+        this.entityRenderer.setSprayTargets(this.clientViewState.getSprayTargets());
+      } else {
+        // Normal simulation view - use spray targets from simulation
+        this.entityRenderer.setSprayTargets(this.simulation.getSprayTargets());
+      }
     } else {
       // Client mode: process local-only commands (selection)
       this.processClientCommands();
@@ -584,12 +608,88 @@ export class RtsScene extends Phaser.Scene {
   // === Network methods ===
 
   // Get serialized game state for network broadcast (host only)
+  // Also feeds the state to ClientViewState for host's "client view"
   public getSerializedState(): NetworkGameState | null {
     if (this.networkRole !== 'host') return null;
     const winnerId = this.simulation.getWinnerId() ?? undefined;
     const sprayTargets = this.simulation.getSprayTargets();
     const audioEvents = this.simulation.getAndClearAudioEvents();
-    return serializeGameState(this.world, winnerId, sprayTargets, audioEvents);
+    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents);
+
+    // Feed the same state to ClientViewState (for host's "client view")
+    if (this.clientViewState && state) {
+      this.clientViewState.applyNetworkState(state);
+    }
+
+    return state;
+  }
+
+  // === Host View Mode Methods ===
+
+  /**
+   * Set the host's view mode
+   * - 'simulation': See authoritative simulation state (default)
+   * - 'client': See exactly what clients see (predicted from network state)
+   */
+  public setHostViewMode(mode: HostViewMode): void {
+    if (this.networkRole !== 'host') return;
+    if (this.hostViewMode === mode) return;
+
+    // Sync selection state when switching views
+    this.syncSelectionBetweenViews(this.hostViewMode, mode);
+
+    this.hostViewMode = mode;
+
+    // Switch renderer's entity source
+    if (mode === 'simulation') {
+      this.entityRenderer.setEntitySource(this.world);
+      this.inputManager.setEntitySource(this.world);
+    } else if (this.clientViewState) {
+      this.entityRenderer.setEntitySource(this.clientViewState);
+      this.inputManager.setEntitySource(this.clientViewState);
+    }
+
+    this.onViewModeChange?.(mode);
+  }
+
+  /**
+   * Get current host view mode
+   */
+  public getHostViewMode(): HostViewMode {
+    return this.hostViewMode;
+  }
+
+  /**
+   * Sync selection between views when toggling
+   */
+  private syncSelectionBetweenViews(fromMode: HostViewMode, toMode: HostViewMode): void {
+    if (!this.clientViewState) return;
+
+    if (fromMode === 'simulation' && toMode === 'client') {
+      // Copy selection from WorldState to ClientViewState
+      const selectedIds = new Set<EntityId>();
+      for (const entity of this.world.getAllEntities()) {
+        if (entity.selectable?.selected) {
+          selectedIds.add(entity.id);
+        }
+      }
+      this.clientViewState.setSelectedIds(selectedIds);
+    } else if (fromMode === 'client' && toMode === 'simulation') {
+      // Copy selection from ClientViewState to WorldState
+      const selectedIds = this.clientViewState.getSelectedIds();
+      for (const entity of this.world.getAllEntities()) {
+        if (entity.selectable) {
+          entity.selectable.selected = selectedIds.has(entity.id);
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if host is in client view mode
+   */
+  public isInClientViewMode(): boolean {
+    return this.networkRole === 'host' && this.hostViewMode === 'client';
   }
 
   // Apply received network state (client only)

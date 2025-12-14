@@ -1,8 +1,18 @@
 import Phaser from 'phaser';
-import type { WorldState } from '../sim/WorldState';
-import type { Entity, WaypointType, ActionType } from '../sim/types';
+import type { Entity, WaypointType, ActionType, EntityId } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
+
+/**
+ * EntitySource - Interface that both WorldState and ClientViewState implement
+ * Allows the renderer to work with either source transparently
+ */
+export interface EntitySource {
+  getUnits(): Entity[];
+  getBuildings(): Entity[];
+  getProjectiles(): Entity[];
+  getEntity(id: EntityId): Entity | undefined;
+}
 
 // Colors
 const UNIT_SELECTED_COLOR = 0x00ff88;
@@ -44,14 +54,22 @@ const BUILD_RANGE_COLOR = 0x44ff44;    // Green for build range
 export class EntityRenderer {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
-  private world: WorldState;
+  private entitySource: EntitySource;
   private sprayTargets: SprayTarget[] = [];
   private sprayParticleTime: number = 0;
 
-  constructor(scene: Phaser.Scene, world: WorldState) {
+  constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
-    this.world = world;
+    this.entitySource = entitySource;
+  }
+
+  /**
+   * Set the entity source for rendering
+   * Allows switching between WorldState (simulation view) and ClientViewState (client view)
+   */
+  setEntitySource(source: EntitySource): void {
+    this.entitySource = source;
   }
 
   // Set spray targets for rendering
@@ -67,12 +85,12 @@ export class EntityRenderer {
     this.sprayParticleTime += 16; // ~60fps
 
     // Render buildings first (below units)
-    for (const entity of this.world.getBuildings()) {
+    for (const entity of this.entitySource.getBuildings()) {
       this.renderBuilding(entity);
     }
 
     // Render projectiles (below units)
-    for (const entity of this.world.getProjectiles()) {
+    for (const entity of this.entitySource.getProjectiles()) {
       this.renderProjectile(entity);
     }
 
@@ -82,28 +100,28 @@ export class EntityRenderer {
     }
 
     // Render waypoints for selected units (below units but above projectiles)
-    for (const entity of this.world.getUnits()) {
+    for (const entity of this.entitySource.getUnits()) {
       if (entity.selectable?.selected) {
         this.renderWaypoints(entity);
       }
     }
 
     // Render waypoints for selected factories
-    for (const entity of this.world.getBuildings()) {
+    for (const entity of this.entitySource.getBuildings()) {
       if (entity.selectable?.selected && entity.factory) {
         this.renderFactoryWaypoints(entity);
       }
     }
 
     // Render range circles for selected units (below unit bodies)
-    for (const entity of this.world.getUnits()) {
+    for (const entity of this.entitySource.getUnits()) {
       if (entity.selectable?.selected) {
         this.renderRangeCircles(entity);
       }
     }
 
     // Render units
-    for (const entity of this.world.getUnits()) {
+    for (const entity of this.entitySource.getUnits()) {
       this.renderUnit(entity);
     }
   }
@@ -236,7 +254,7 @@ export class EntityRenderer {
 
     // Target line (show line to current attack target)
     if (entity.weapon?.targetEntityId != null && isSelected) {
-      const target = this.world.getEntity(entity.weapon.targetEntityId);
+      const target = this.entitySource.getEntity(entity.weapon.targetEntityId);
       if (target) {
         this.graphics.lineStyle(1, 0xff0000, 0.3);
         this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
