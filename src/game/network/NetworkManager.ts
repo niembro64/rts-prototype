@@ -11,12 +11,22 @@ export type NetworkMessage =
   | { type: 'playerJoined'; playerId: PlayerId; playerName: string }
   | { type: 'playerLeft'; playerId: PlayerId };
 
+// Audio event for network sync
+export interface NetworkAudioEvent {
+  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop';
+  weaponId: string;
+  x: number;
+  y: number;
+  entityId?: number;
+}
+
 // Serialized game state sent over network
 export interface NetworkGameState {
   tick: number;
   entities: NetworkEntity[];
   economy: Record<PlayerId, NetworkEconomy>;
   sprayTargets?: NetworkSprayTarget[];
+  audioEvents?: NetworkAudioEvent[];
   gameOver?: { winnerId: PlayerId };
 }
 
@@ -79,6 +89,10 @@ export interface NetworkEntity {
 
   // Projectile fields
   projectileType?: string;
+  beamStartX?: number;
+  beamStartY?: number;
+  beamEndX?: number;
+  beamEndY?: number;
 
   // Factory fields
   buildQueue?: string[];
@@ -154,16 +168,46 @@ export class NetworkManager {
     this.players.set(1, hostPlayer);
 
     return new Promise((resolve, reject) => {
+      let resolved = false;
+
+      // Timeout after 10 seconds
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          this.peer?.destroy();
+          reject(new Error('Connection timeout - signaling server may be unavailable'));
+        }
+      }, 10000);
+
       // Use room code as peer ID prefix for discoverability
-      this.peer = new Peer(`ba-${this.roomCode}`);
+      // Configure with debug off and connection settings
+      this.peer = new Peer(`ba-${this.roomCode}`, {
+        debug: 0, // Disable debug logging
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+          ],
+        },
+      });
 
       this.peer.on('open', () => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeout);
         console.log('Host peer opened with ID:', this.peer?.id);
         resolve(this.roomCode);
       });
 
       this.peer.on('connection', (conn) => {
         this.handleIncomingConnection(conn);
+      });
+
+      // Handle disconnection from signaling server (this is OK once game starts)
+      this.peer.on('disconnected', () => {
+        console.log('Disconnected from signaling server (this is normal for P2P)');
+        // Don't treat this as an error - P2P connections are already established
+        // Only matters if we need new players to join
       });
 
       this.peer.on('error', (err) => {
@@ -173,10 +217,33 @@ export class NetworkManager {
           this.peer?.destroy();
           this.roomCode = generateRoomCode();
           this.peer = new Peer(`ba-${this.roomCode}`);
-          this.peer.on('open', () => resolve(this.roomCode));
+          this.peer.on('open', () => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timeout);
+            resolve(this.roomCode);
+          });
           this.peer.on('connection', (conn) => this.handleIncomingConnection(conn));
-          this.peer.on('error', (e) => reject(e));
+          this.peer.on('disconnected', () => {
+            console.log('Disconnected from signaling server');
+          });
+          this.peer.on('error', (e) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timeout);
+            reject(e);
+          });
+        } else if (err.type === 'disconnected' || err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
+          // Connection to signaling server failed
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            reject(new Error('Could not connect to game server. Please try again.'));
+          }
         } else {
+          if (resolved) return;
+          resolved = true;
+          clearTimeout(timeout);
           this.onError?.(err.message);
           reject(err);
         }
@@ -192,7 +259,17 @@ export class NetworkManager {
     this.connections.clear();
 
     return new Promise((resolve, reject) => {
-      this.peer = new Peer();
+      // Generate a random ID for the client
+      const clientId = `ba-client-${Math.random().toString(36).substring(2, 10)}`;
+      this.peer = new Peer(clientId, {
+        debug: 0,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+          ],
+        },
+      });
 
       this.peer.on('open', () => {
         console.log('Client peer opened, connecting to host...');
@@ -216,8 +293,23 @@ export class NetworkManager {
         });
       });
 
+      // Handle disconnection from signaling server (OK once connected to host)
+      this.peer.on('disconnected', () => {
+        console.log('Client disconnected from signaling server (P2P still works)');
+      });
+
       this.peer.on('error', (err) => {
         console.error('Peer error:', err);
+        // Ignore signaling server disconnection errors
+        if (err.type === 'disconnected' || err.type === 'network') {
+          console.log('Signaling server issue (P2P connections still work)');
+          return;
+        }
+        if (err.type === 'peer-unavailable') {
+          this.onError?.('Game not found - check the code and try again');
+          reject(new Error('Game not found'));
+          return;
+        }
         this.onError?.(err.message);
         reject(err);
       });

@@ -35,6 +35,9 @@ export class Simulation {
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
 
+  // Pending audio events for network broadcast (cleared after each state serialization)
+  private pendingAudioEvents: AudioEvent[] = [];
+
   // Callback for when units die (to clean up physics bodies)
   public onUnitDeath?: (deadUnitIds: EntityId[]) => void;
 
@@ -74,6 +77,13 @@ export class Simulation {
   // Get current spray targets for rendering
   getSprayTargets(): SprayTarget[] {
     return this.currentSprayTargets;
+  }
+
+  // Get and clear pending audio events (for network broadcast)
+  getAndClearAudioEvents(): AudioEvent[] {
+    const events = [...this.pendingAudioEvents];
+    this.pendingAudioEvents = [];
+    return events;
   }
 
   // Update simulation with variable delta time
@@ -171,6 +181,7 @@ export class Simulation {
     const laserAudioEvents = updateLaserSounds(this.world);
     for (const event of laserAudioEvents) {
       this.onAudioEvent?.(event);
+      this.pendingAudioEvents.push(event);
     }
 
     // Update turret rotation (before firing, so weapons fire in turret direction)
@@ -185,6 +196,7 @@ export class Simulation {
     // Emit fire audio events
     for (const event of fireResult.audioEvents) {
       this.onAudioEvent?.(event);
+      this.pendingAudioEvents.push(event);
     }
 
     // Update projectile positions
@@ -196,6 +208,7 @@ export class Simulation {
     // Emit hit/death audio events
     for (const event of collisionResult.audioEvents) {
       this.onAudioEvent?.(event);
+      this.pendingAudioEvents.push(event);
     }
 
     // Notify about dead units (for physics cleanup)
@@ -417,12 +430,14 @@ export class Simulation {
     commander.transform.rotation = Math.atan2(dy, dx);
 
     // Emit audio event
-    this.onAudioEvent?.({
+    const dgunAudioEvent: AudioEvent = {
       type: 'fire',
       x: commander.transform.x,
       y: commander.transform.y,
       weaponId: 'dgun',
-    });
+    };
+    this.onAudioEvent?.(dgunAudioEvent);
+    this.pendingAudioEvents.push(dgunAudioEvent);
   }
 
   // Execute repair command - adds repair action to unit's action queue

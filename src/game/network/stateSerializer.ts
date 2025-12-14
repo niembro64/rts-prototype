@@ -1,14 +1,16 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkAudioEvent } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
+import type { AudioEvent } from '../sim/combat';
 
 // Serialize WorldState to network format
 export function serializeGameState(
   world: WorldState,
   gameOverWinnerId?: PlayerId,
-  sprayTargets?: SprayTarget[]
+  sprayTargets?: SprayTarget[],
+  audioEvents?: AudioEvent[]
 ): NetworkGameState {
   const entities: NetworkEntity[] = [];
 
@@ -50,11 +52,21 @@ export function serializeGameState(
     intensity: st.intensity,
   }));
 
+  // Serialize audio events
+  const netAudioEvents: NetworkAudioEvent[] | undefined = audioEvents?.map(ae => ({
+    type: ae.type,
+    weaponId: ae.weaponId,
+    x: ae.x,
+    y: ae.y,
+    entityId: ae.entityId,
+  }));
+
   return {
     tick: world.getTick(),
     entities,
     economy,
     sprayTargets: netSprayTargets,
+    audioEvents: netAudioEvents,
     gameOver: gameOverWinnerId ? { winnerId: gameOverWinnerId } : undefined,
   };
 }
@@ -132,6 +144,13 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     netEntity.velocityY = entity.projectile.velocityY;
     netEntity.projectileType = entity.projectile.projectileType;
     netEntity.weaponId = entity.projectile.config.id;
+    // Beam coordinates for laser/railgun rendering
+    if (entity.projectile.projectileType === 'beam') {
+      netEntity.beamStartX = entity.projectile.startX;
+      netEntity.beamStartY = entity.projectile.startY;
+      netEntity.beamEndX = entity.projectile.endX;
+      netEntity.beamEndY = entity.projectile.endY;
+    }
   }
 
   return netEntity;

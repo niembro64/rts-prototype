@@ -146,6 +146,8 @@ export class RtsScene extends Phaser.Scene {
     // Setup camera - no bounds so player can see outside the map
     const camera = this.cameras.main;
     camera.setBackgroundColor(0x0a0a14); // Darker background outside the map
+    // Start fully zoomed out to see the whole map
+    camera.setZoom(0.4);
     // Center camera on the map
     camera.centerOn(this.world.mapWidth / 2, this.world.mapHeight / 2);
 
@@ -580,7 +582,8 @@ export class RtsScene extends Phaser.Scene {
     if (this.networkRole !== 'host') return null;
     const winnerId = this.simulation.getWinnerId() ?? undefined;
     const sprayTargets = this.simulation.getSprayTargets();
-    return serializeGameState(this.world, winnerId, sprayTargets);
+    const audioEvents = this.simulation.getAndClearAudioEvents();
+    return serializeGameState(this.world, winnerId, sprayTargets, audioEvents);
   }
 
   // Apply received network state (client only)
@@ -642,6 +645,13 @@ export class RtsScene extends Phaser.Scene {
       this.entityRenderer.setSprayTargets(sprayTargets);
     } else {
       this.entityRenderer.setSprayTargets([]);
+    }
+
+    // Play audio events from host (client audio)
+    if (state.audioEvents && state.audioEvents.length > 0) {
+      for (const event of state.audioEvents) {
+        this.handleAudioEvent(event);
+      }
     }
 
     // Check for game over
@@ -765,7 +775,8 @@ export class RtsScene extends Phaser.Scene {
     }
 
     if (type === 'projectile') {
-      // For projectiles, we'll create a minimal representation
+      // Get full weapon config from weaponId for proper rendering
+      const weaponConfig = getWeaponConfig(netEntity.weaponId ?? 'minigun');
       const entity: Entity = {
         id,
         type: 'projectile',
@@ -774,14 +785,19 @@ export class RtsScene extends Phaser.Scene {
         projectile: {
           ownerId: playerId ?? 1,
           sourceEntityId: 0,
-          config: { id: netEntity.weaponId ?? 'minigun', damage: 10, range: 200, cooldown: 100 },
+          config: weaponConfig,
           projectileType: (netEntity.projectileType as 'traveling' | 'beam' | 'instant') ?? 'traveling',
           velocityX: netEntity.velocityX ?? 0,
           velocityY: netEntity.velocityY ?? 0,
           timeAlive: 0,
-          maxLifespan: 2000,
+          maxLifespan: weaponConfig.beamDuration ?? weaponConfig.projectileLifespan ?? 2000,
           hitEntities: new Set(),
           maxHits: 1,
+          // Beam coordinates
+          startX: netEntity.beamStartX,
+          startY: netEntity.beamStartY,
+          endX: netEntity.beamEndX,
+          endY: netEntity.beamEndY,
         },
       };
       return entity;
@@ -859,6 +875,19 @@ export class RtsScene extends Phaser.Scene {
           y: wp.y,
           type: wp.type as 'move' | 'fight' | 'patrol',
         }));
+      }
+    }
+
+    // Update projectile-specific fields (especially beam coordinates)
+    if (entity.projectile) {
+      entity.projectile.velocityX = netEntity.velocityX ?? entity.projectile.velocityX;
+      entity.projectile.velocityY = netEntity.velocityY ?? entity.projectile.velocityY;
+      // Update beam coordinates for proper rendering
+      if (netEntity.beamStartX !== undefined) {
+        entity.projectile.startX = netEntity.beamStartX;
+        entity.projectile.startY = netEntity.beamStartY;
+        entity.projectile.endX = netEntity.beamEndX;
+        entity.projectile.endY = netEntity.beamEndY;
       }
     }
   }
