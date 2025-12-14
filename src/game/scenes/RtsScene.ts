@@ -981,9 +981,8 @@ export class RtsScene extends Phaser.Scene {
 
       this.matter.body.setVelocity(entity.body.matterBody, { x: velX / 60, y: velY / 60 });
 
-      // Clear stored velocity after applying
-      entity.unit.velocityX = 0;
-      entity.unit.velocityY = 0;
+      // Note: Don't clear velocity - it's needed for network serialization
+      // The simulation recalculates velocity every frame anyway
     }
   }
 
