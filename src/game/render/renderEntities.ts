@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, WaypointType, BuildingType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
+import type { SprayTarget } from '../sim/commanderAbilities';
 
 // Colors
 const UNIT_SELECTED_COLOR = 0x00ff88;
@@ -28,10 +29,21 @@ const WAYPOINT_COLORS: Record<WaypointType, number> = {
   fight: 0xff4444,  // Red
 };
 
+// Spray effect colors
+const SPRAY_BUILD_COLOR = 0x44ff44;   // Green for building
+const SPRAY_HEAL_COLOR = 0x4488ff;    // Blue for healing
+
+// Range circle colors
+const VISION_RANGE_COLOR = 0xffff88;   // Yellow for vision range
+const WEAPON_RANGE_COLOR = 0xff4444;   // Red for weapon range
+const BUILD_RANGE_COLOR = 0x44ff44;    // Green for build range
+
 export class EntityRenderer {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
   private world: WorldState;
+  private sprayTargets: SprayTarget[] = [];
+  private sprayParticleTime: number = 0;
 
   constructor(scene: Phaser.Scene, world: WorldState) {
     this.scene = scene;
@@ -39,9 +51,17 @@ export class EntityRenderer {
     this.world = world;
   }
 
+  // Set spray targets for rendering
+  setSprayTargets(targets: SprayTarget[]): void {
+    this.sprayTargets = targets;
+  }
+
   // Render all entities
   render(): void {
     this.graphics.clear();
+
+    // Update particle time for spray animation
+    this.sprayParticleTime += 16; // ~60fps
 
     // Render buildings first (below units)
     for (const entity of this.world.getBuildings()) {
@@ -51,6 +71,11 @@ export class EntityRenderer {
     // Render projectiles (below units)
     for (const entity of this.world.getProjectiles()) {
       this.renderProjectile(entity);
+    }
+
+    // Render spray effects (above projectiles, below units)
+    for (const target of this.sprayTargets) {
+      this.renderSprayEffect(target);
     }
 
     // Render waypoints for selected units (below units but above projectiles)
@@ -67,9 +92,42 @@ export class EntityRenderer {
       }
     }
 
+    // Render range circles for selected units (below unit bodies)
+    for (const entity of this.world.getUnits()) {
+      if (entity.selectable?.selected) {
+        this.renderRangeCircles(entity);
+      }
+    }
+
     // Render units
     for (const entity of this.world.getUnits()) {
       this.renderUnit(entity);
+    }
+  }
+
+  // Render range circles for selected units
+  private renderRangeCircles(entity: Entity): void {
+    if (!entity.unit) return;
+
+    const { transform, unit, weapon, builder } = entity;
+    const { x, y } = transform;
+
+    // Vision range (outermost - yellow)
+    if (unit.visionRange) {
+      this.graphics.lineStyle(1, VISION_RANGE_COLOR, 0.3);
+      this.graphics.strokeCircle(x, y, unit.visionRange);
+    }
+
+    // Weapon range (red)
+    if (weapon) {
+      this.graphics.lineStyle(1.5, WEAPON_RANGE_COLOR, 0.4);
+      this.graphics.strokeCircle(x, y, weapon.config.range);
+    }
+
+    // Build range (green) - only for builders
+    if (builder) {
+      this.graphics.lineStyle(1.5, BUILD_RANGE_COLOR, 0.4);
+      this.graphics.strokeCircle(x, y, builder.buildRange);
     }
   }
 
@@ -292,6 +350,87 @@ export class EntityRenderer {
         }
       }
     }
+  }
+
+  // Render spray effect from commander to target (build/heal)
+  private renderSprayEffect(target: SprayTarget): void {
+    const color = target.type === 'build' ? SPRAY_BUILD_COLOR : SPRAY_HEAL_COLOR;
+    const { sourceX, sourceY, targetX, targetY } = target;
+
+    // Calculate direction vector
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist === 0) return;
+
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+
+    // Perpendicular vector for spray width
+    const perpX = -dirY;
+    const perpY = dirX;
+
+    // Draw multiple particles along the spray path
+    const particleCount = 12;
+    const baseTime = this.sprayParticleTime;
+
+    for (let i = 0; i < particleCount; i++) {
+      // Each particle has a different phase
+      const phase = (baseTime / 300 + i / particleCount) % 1;
+
+      // Particle position along the path (0 = source, 1 = target)
+      const t = phase;
+
+      // Base position along path
+      let px = sourceX + dx * t;
+      let py = sourceY + dy * t;
+
+      // Add spread toward target edges
+      let spreadAmount = 0;
+      if (target.targetWidth && target.targetHeight) {
+        // Building target - spread across building surface
+        const halfWidth = target.targetWidth / 2;
+        const halfHeight = target.targetHeight / 2;
+
+        // Spread increases as we get closer to target
+        spreadAmount = t * Math.max(halfWidth, halfHeight) * 0.8;
+      } else if (target.targetRadius) {
+        // Unit target - spread toward unit edges
+        spreadAmount = t * target.targetRadius * 0.8;
+      }
+
+      // Add wavy motion using sine waves with different frequencies per particle
+      const waveFreq = 3 + (i % 4);
+      const waveAmp = spreadAmount * Math.sin((baseTime / 100 + i * 0.5) * waveFreq);
+      const spreadOffset = ((i / particleCount) - 0.5) * 2 * spreadAmount;
+
+      px += perpX * (spreadOffset + waveAmp * 0.3);
+      py += perpY * (spreadOffset + waveAmp * 0.3);
+
+      // Particle size varies based on position and type
+      const sizeBase = 3;
+      const sizeMod = 1 + Math.sin(phase * Math.PI) * 0.5;
+      const particleSize = sizeBase * sizeMod;
+
+      // Alpha fades in at start and out at end
+      const alphaFadeIn = Math.min(1, t * 4);
+      const alphaFadeOut = Math.min(1, (1 - t) * 3);
+      const alpha = alphaFadeIn * alphaFadeOut * 0.7;
+
+      // Draw the particle
+      this.graphics.fillStyle(color, alpha);
+      this.graphics.fillCircle(px, py, particleSize);
+
+      // Add a glow effect for brighter particles
+      if (i % 3 === 0) {
+        this.graphics.fillStyle(0xffffff, alpha * 0.4);
+        this.graphics.fillCircle(px, py, particleSize * 0.5);
+      }
+    }
+
+    // Draw a subtle line connecting source to target
+    this.graphics.lineStyle(1, color, 0.2);
+    this.graphics.lineBetween(sourceX, sourceY, targetX, targetY);
   }
 
   // Render a projectile

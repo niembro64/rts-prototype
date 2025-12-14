@@ -94,14 +94,16 @@ export class FactoryProductionSystem {
     const spawnX = factory.transform.x;
     const spawnY = factory.transform.y;
 
-    // Create the unit
+    // Create the unit (visionRange from config or default)
     const unit = world.createUnit(
       spawnX,
       spawnY,
       playerId,
       config.weaponId,
       config.radius,
-      config.moveSpeed
+      config.moveSpeed,
+      3, // Default turret turn rate
+      config.visionRange
     );
 
     // Set HP from config

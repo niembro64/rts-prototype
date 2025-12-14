@@ -53,6 +53,8 @@ export interface Unit {
   turretRotation?: number;
   // Turret turn rate (radians per second) - how fast the turret can rotate
   turretTurnRate: number;
+  // Vision range - turret starts tracking when enemies are within this range
+  visionRange: number;
 }
 
 // Building component - static structures
@@ -196,6 +198,7 @@ export interface UnitBuildConfig {
   radius: number;
   moveSpeed: number;
   hp: number;
+  visionRange?: number;     // Optional - defaults to weapon range * 1.5
 }
 
 // Factory component - for unit production

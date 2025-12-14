@@ -210,10 +210,14 @@ export class WorldState {
     weaponId: string = 'minigun',
     radius: number = 15,
     moveSpeed: number = 100,
-    turretTurnRate: number = 3 // radians per second (~172°/sec default)
+    turretTurnRate: number = 3, // radians per second (~172°/sec default)
+    visionRange?: number // Optional - defaults to weapon range * 1.5
   ): Entity {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(weaponId);
+
+    // Default vision range to 1.5x weapon range
+    const effectiveVisionRange = visionRange ?? weaponConfig.range * 1.5;
 
     const entity: Entity = {
       id,
@@ -230,6 +234,7 @@ export class WorldState {
         patrolLoopIndex: null,
         turretRotation: 0, // Start facing same as body
         turretTurnRate,
+        visionRange: effectiveVisionRange,
       },
       weapon: {
         config: weaponConfig,
@@ -254,10 +259,14 @@ export class WorldState {
       weaponId: string;
       dgunCost: number;
       turretTurnRate?: number;
+      visionRange?: number;
     }
   ): Entity {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(config.weaponId);
+
+    // Default vision range to 1.5x weapon range
+    const effectiveVisionRange = config.visionRange ?? weaponConfig.range * 1.5;
 
     const entity: Entity = {
       id,
@@ -274,6 +283,7 @@ export class WorldState {
         patrolLoopIndex: null,
         turretRotation: 0, // Start facing same as body
         turretTurnRate: config.turretTurnRate ?? 3, // Default ~172°/sec
+        visionRange: effectiveVisionRange,
       },
       weapon: {
         config: weaponConfig,

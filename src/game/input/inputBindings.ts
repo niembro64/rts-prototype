@@ -53,7 +53,6 @@ const WAYPOINT_COLORS: Record<WaypointType, number> = {
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 2.0;
 const ZOOM_STEP = 0.1;
-const PAN_SPEED = 500;
 
 export class InputManager {
   private scene: Phaser.Scene;
@@ -64,18 +63,15 @@ export class InputManager {
   private linePathGraphics: Phaser.GameObjects.Graphics;
   private buildGhostGraphics: Phaser.GameObjects.Graphics;
   private keys: {
-    W: Phaser.Input.Keyboard.Key;
-    A: Phaser.Input.Keyboard.Key;
-    S: Phaser.Input.Keyboard.Key;
-    D: Phaser.Input.Keyboard.Key;
     M: Phaser.Input.Keyboard.Key;
     F: Phaser.Input.Keyboard.Key;
     H: Phaser.Input.Keyboard.Key;
     B: Phaser.Input.Keyboard.Key;
-    G: Phaser.Input.Keyboard.Key;
+    D: Phaser.Input.Keyboard.Key;
     ONE: Phaser.Input.Keyboard.Key;
     TWO: Phaser.Input.Keyboard.Key;
     ESC: Phaser.Input.Keyboard.Key;
+    SHIFT: Phaser.Input.Keyboard.Key;
   };
 
   // Callback for UI to show waypoint mode changes
@@ -133,18 +129,15 @@ export class InputManager {
     }
 
     this.keys = {
-      W: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      A: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      S: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      D: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
       M: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M),
       F: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F),
       H: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H),
       B: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B),
-      G: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G),
+      D: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
       ONE: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       TWO: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
       ESC: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
+      SHIFT: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
     };
 
     this.setupPointerEvents();
@@ -260,8 +253,8 @@ export class InputManager {
       }
     });
 
-    // G key activates D-gun mode
-    this.keys.G.on('down', () => {
+    // D key activates D-gun mode
+    this.keys.D.on('down', () => {
       if (this.hasSelectedCommander()) {
         if (!this.state.isDGunMode) {
           this.enterDGunMode();
@@ -812,24 +805,9 @@ export class InputManager {
     }
   }
 
-  // Update input (keyboard camera pan)
-  update(delta: number): void {
+  // Update input
+  update(_delta: number): void {
     const camera = this.scene.cameras.main;
-    const panAmount = (PAN_SPEED * delta) / 1000 / camera.zoom;
-
-    if (this.keys.W.isDown) {
-      camera.scrollY -= panAmount;
-    }
-    if (this.keys.S.isDown) {
-      camera.scrollY += panAmount;
-    }
-    if (this.keys.A.isDown) {
-      camera.scrollX -= panAmount;
-    }
-    if (this.keys.D.isDown) {
-      camera.scrollX += panAmount;
-    }
-
     // Clamp camera to map bounds (only if map is larger than viewport)
     const viewWidth = camera.width / camera.zoom;
     const viewHeight = camera.height / camera.zoom;
@@ -878,8 +856,10 @@ export class InputManager {
 
     this.commandQueue.enqueue(command);
 
-    // Exit build mode after placing
-    this.exitBuildMode();
+    // Only exit build mode if shift is NOT held (shift = continue placing same building)
+    if (!this.keys.SHIFT.isDown) {
+      this.exitBuildMode();
+    }
   }
 
   // Handle D-gun click - fire D-gun

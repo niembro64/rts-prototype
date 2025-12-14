@@ -15,6 +15,7 @@ import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
 import { getWeaponConfig } from './weapons';
+import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 
 // Fixed simulation timestep (60 Hz)
 export const FIXED_TIMESTEP = 1000 / 60;
@@ -24,6 +25,9 @@ export class Simulation {
   private commandQueue: CommandQueue;
   private accumulator: number = 0;
   private constructionSystem: ConstructionSystem;
+
+  // Current spray targets for rendering (build/heal effects)
+  private currentSprayTargets: SprayTarget[] = [];
 
   // Callback for when units die (to clean up physics bodies)
   public onUnitDeath?: (deadUnitIds: EntityId[]) => void;
@@ -49,6 +53,11 @@ export class Simulation {
   // Get construction system (for placement validation)
   getConstructionSystem(): ConstructionSystem {
     return this.constructionSystem;
+  }
+
+  // Get current spray targets for rendering
+  getSprayTargets(): SprayTarget[] {
+    return this.currentSprayTargets;
   }
 
   // Update simulation with variable delta time
@@ -84,6 +93,10 @@ export class Simulation {
     if (productionResult.completedUnits.length > 0 && this.onUnitSpawn) {
       this.onUnitSpawn(productionResult.completedUnits);
     }
+
+    // Update commander auto-build and auto-heal
+    const commanderResult = commanderAbilitiesSystem.update(this.world, dtMs);
+    this.currentSprayTargets = commanderResult.sprayTargets;
 
     // Update all units movement
     this.updateUnits();
@@ -379,12 +392,24 @@ export class Simulation {
       const currentWaypoint = unit.waypoints[0];
 
       // Check if unit should stop moving due to combat (fight or patrol mode)
-      const isInCombat = entity.weapon?.targetEntityId !== null;
+      // Only stop when target is within WEAPON range (not just vision range)
+      let canFireAtTarget = false;
+      if (entity.weapon && entity.weapon.targetEntityId !== null) {
+        const target = this.world.getEntity(entity.weapon.targetEntityId);
+        if (target?.unit) {
+          const dx = target.transform.x - entity.transform.x;
+          const dy = target.transform.y - entity.transform.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const effectiveRange = entity.weapon.config.range + target.unit.radius;
+          canFireAtTarget = dist <= effectiveRange;
+        }
+      }
+
       const shouldStopForCombat =
-        (currentWaypoint.type === 'fight' || currentWaypoint.type === 'patrol') && isInCombat;
+        (currentWaypoint.type === 'fight' || currentWaypoint.type === 'patrol') && canFireAtTarget;
 
       if (shouldStopForCombat) {
-        // Stop moving but stay at current waypoint
+        // Stop moving - target is within weapon range
         unit.velocityX = 0;
         unit.velocityY = 0;
         continue;

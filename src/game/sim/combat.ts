@@ -64,6 +64,21 @@ export function findClosestEnemy(
   return closestEnemy;
 }
 
+// Check if target is within weapon range
+function isInWeaponRange(unit: Entity, target: Entity): boolean {
+  if (!unit.weapon || !target.unit) return false;
+
+  const dist = distance(
+    unit.transform.x,
+    unit.transform.y,
+    target.transform.x,
+    target.transform.y
+  );
+
+  const effectiveRange = unit.weapon.config.range + target.unit.radius;
+  return dist <= effectiveRange;
+}
+
 // Normalize angle to [-PI, PI]
 function normalizeAngle(angle: number): number {
   while (angle > Math.PI) angle -= 2 * Math.PI;
@@ -159,10 +174,16 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
 
     if (!isBeamWeapon) continue;
 
-    // Check if unit has a valid target in range
-    const hasTarget = unit.weapon.targetEntityId !== null;
+    // Check if unit has a valid target in weapon range (not just vision range)
+    let hasTargetInRange = false;
+    if (unit.weapon.targetEntityId !== null) {
+      const target = world.getEntity(unit.weapon.targetEntityId);
+      if (target && target.unit && target.unit.hp > 0) {
+        hasTargetInRange = isInWeaponRange(unit, target);
+      }
+    }
 
-    if (hasTarget) {
+    if (hasTargetInRange) {
       // Laser should be ON - emit laserStart (AudioManager ignores if already playing)
       audioEvents.push({
         type: 'laserStart',
@@ -187,15 +208,17 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
 }
 
 // Update auto-targeting for all units
+// Uses vision range for target acquisition (turret tracking)
+// Firing only happens when target is within weapon range (checked in fireWeapons)
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
     if (!unit.weapon || !unit.ownership || !unit.unit) continue;
     if (unit.unit.hp <= 0) continue;
 
     const weapon = unit.weapon;
-    const range = weapon.config.range;
+    const visionRange = unit.unit.visionRange;
 
-    // Check if current target is still valid
+    // Check if current target is still valid (within vision range)
     if (weapon.targetEntityId !== null) {
       const target = world.getEntity(weapon.targetEntityId);
       if (target && target.unit && target.unit.hp > 0) {
@@ -205,20 +228,20 @@ export function updateAutoTargeting(world: WorldState): void {
           target.transform.x,
           target.transform.y
         );
-        // Weapon fires from unit edge, so effective range is weapon range plus target radius
-        const effectiveRange = range + target.unit.radius;
+        // Use vision range for target retention
+        const effectiveVisionRange = visionRange + target.unit.radius;
 
-        // Target still valid and in range
-        if (dist <= effectiveRange) {
+        // Target still valid and in vision range - keep tracking
+        if (dist <= effectiveVisionRange) {
           continue;
         }
       }
-      // Target invalid or out of range, clear it
+      // Target invalid or out of vision range, clear it
       weapon.targetEntityId = null;
     }
 
-    // Find new target
-    const enemy = findClosestEnemy(world, unit, range);
+    // Find new target within vision range
+    const enemy = findClosestEnemy(world, unit, visionRange);
     if (enemy) {
       weapon.targetEntityId = enemy.id;
     }
@@ -282,6 +305,12 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
     if (!target || !target.unit || target.unit.hp <= 0) {
       weapon.targetEntityId = null;
       continue;
+    }
+
+    // Check if target is within weapon range (not just vision range)
+    // Turret tracks at vision range, but only fires at weapon range
+    if (!isInWeaponRange(unit, target)) {
+      continue; // Keep tracking but don't fire
     }
 
     // For beam weapons, fire continuously but only one beam at a time

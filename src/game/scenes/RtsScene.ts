@@ -488,6 +488,9 @@ export class RtsScene extends Phaser.Scene {
     // Apply calculated velocities to Matter bodies
     this.applyUnitVelocities();
 
+    // Pass spray targets to renderer
+    this.entityRenderer.setSprayTargets(this.simulation.getSprayTargets());
+
     // Render entities
     this.entityRenderer.render();
 
