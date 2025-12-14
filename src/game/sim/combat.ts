@@ -216,10 +216,11 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
 
       // Check if this is a beam/hitscan weapon
       if (config.beamDuration !== undefined) {
-        // Create beam
-        const beamLength = config.range;
-        const endX = unit.transform.x + cos * beamLength;
-        const endY = unit.transform.y + sin * beamLength;
+        // Create beam - extend from spawn position for full range
+        // Add target radius to ensure beam reaches targets at max effective range
+        const beamLength = config.range + (target.unit?.radius ?? 0);
+        const endX = spawnX + cos * beamLength;
+        const endY = spawnY + sin * beamLength;
 
         const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config);
         newProjectiles.push(beam);
