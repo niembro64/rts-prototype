@@ -235,8 +235,8 @@ export class EntityRenderer {
     this.renderHealthBar(x, y - radius - 10, radius * 2, 4, healthPercent);
 
     // Target line (show line to current attack target)
-    if (entity.weapon?.targetEntityId !== null && isSelected) {
-      const target = this.world.getEntity(entity.weapon!.targetEntityId!);
+    if (entity.weapon?.targetEntityId != null && isSelected) {
+      const target = this.world.getEntity(entity.weapon.targetEntityId);
       if (target) {
         this.graphics.lineStyle(1, 0xff0000, 0.3);
         this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);

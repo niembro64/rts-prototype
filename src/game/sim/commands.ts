@@ -111,6 +111,11 @@ export class CommandQueue {
     this.commands = [];
   }
 
+  // Get all pending commands
+  getAll(): Command[] {
+    return [...this.commands];
+  }
+
   // Get pending command count
   getPendingCount(): number {
     return this.commands.length;

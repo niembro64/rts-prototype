@@ -9,9 +9,10 @@ import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import { economyManager } from '../sim/economy';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
-import type { NetworkRole } from '../network/NetworkManager';
+import { networkManager, type NetworkRole } from '../network/NetworkManager';
 import { serializeGameState } from '../network/stateSerializer';
 import type { NetworkGameState } from '../network/NetworkManager';
+import type { SelectCommand } from '../sim/commands';
 
 // Weapon ID to display label
 const WEAPON_LABELS: Record<string, string> = {
@@ -553,6 +554,9 @@ export class RtsScene extends Phaser.Scene {
 
       // Pass spray targets to renderer
       this.entityRenderer.setSprayTargets(this.simulation.getSprayTargets());
+    } else {
+      // Client mode: process local-only commands (selection)
+      this.processClientCommands();
     }
 
     // Render entities
@@ -779,6 +783,34 @@ export class RtsScene extends Phaser.Scene {
     if (this.networkRole !== 'host') return;
     // Add command to queue - it will be processed in the next simulation tick
     this.commandQueue.enqueue(command);
+  }
+
+  // Process commands for client mode
+  // Selection is handled locally, other commands are sent to host
+  private processClientCommands(): void {
+    const commands = this.commandQueue.getAll();
+    this.commandQueue.clear();
+
+    for (const command of commands) {
+      if (command.type === 'select') {
+        // Selection is local-only, process it here
+        this.executeSelectCommand(command as SelectCommand);
+      } else if (command.type === 'clearSelection') {
+        // Clear selection is also local-only
+        this.world.clearSelection();
+      } else {
+        // Send other commands to host
+        networkManager.sendCommand(command);
+      }
+    }
+  }
+
+  // Execute select command (for client-side selection)
+  private executeSelectCommand(command: SelectCommand): void {
+    if (!command.additive) {
+      this.world.clearSelection();
+    }
+    this.world.selectEntities(command.entityIds);
   }
 
   // Apply calculated velocities to Matter bodies
