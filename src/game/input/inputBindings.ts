@@ -1,7 +1,13 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
 import { CommandQueue, type SelectCommand, type MoveCommand } from '../sim/commands';
-import type { EntityId } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
+
+// Point in world space
+interface WorldPoint {
+  x: number;
+  y: number;
+}
 
 // Input state
 interface InputState {
@@ -16,6 +22,10 @@ interface InputState {
   panStartY: number;
   cameraStartX: number;
   cameraStartY: number;
+  // Line move state
+  isDrawingLinePath: boolean;
+  linePathPoints: WorldPoint[];
+  linePathTargets: WorldPoint[]; // Calculated positions for each unit
 }
 
 // Camera constraints
@@ -30,6 +40,7 @@ export class InputManager {
   private commandQueue: CommandQueue;
   private state: InputState;
   private selectionGraphics: Phaser.GameObjects.Graphics;
+  private linePathGraphics: Phaser.GameObjects.Graphics;
   private keys: {
     W: Phaser.Input.Keyboard.Key;
     A: Phaser.Input.Keyboard.Key;
@@ -53,11 +64,18 @@ export class InputManager {
       panStartY: 0,
       cameraStartX: 0,
       cameraStartY: 0,
+      isDrawingLinePath: false,
+      linePathPoints: [],
+      linePathTargets: [],
     };
 
     // Selection rectangle graphics (world-space, drawn over entities)
     this.selectionGraphics = scene.add.graphics();
     this.selectionGraphics.setDepth(1000);
+
+    // Line path graphics for line move command
+    this.linePathGraphics = scene.add.graphics();
+    this.linePathGraphics.setDepth(1000);
 
     // Setup keyboard
     const keyboard = scene.input.keyboard;
@@ -98,8 +116,16 @@ export class InputManager {
         this.state.cameraStartX = this.scene.cameras.main.scrollX;
         this.state.cameraStartY = this.scene.cameras.main.scrollY;
       } else if (p.rightButtonDown()) {
-        // Issue move command
-        this.handleRightClick(p);
+        // Start line path drawing if units are selected
+        const selectedUnits = this.world.getSelectedUnits();
+        if (selectedUnits.length > 0) {
+          const camera = this.scene.cameras.main;
+          const worldPoint = camera.getWorldPoint(p.x, p.y);
+          this.state.isDrawingLinePath = true;
+          this.state.linePathPoints = [{ x: worldPoint.x, y: worldPoint.y }];
+          this.state.linePathTargets = [];
+          this.updateLinePathTargets(selectedUnits.length);
+        }
       }
     });
 
@@ -120,6 +146,21 @@ export class InputManager {
         camera.scrollX = this.state.cameraStartX + dx / camera.zoom;
         camera.scrollY = this.state.cameraStartY + dy / camera.zoom;
       }
+
+      if (this.state.isDrawingLinePath) {
+        const camera = this.scene.cameras.main;
+        const worldPoint = camera.getWorldPoint(p.x, p.y);
+        // Add point if it's far enough from the last point (to avoid too many points)
+        const lastPoint = this.state.linePathPoints[this.state.linePathPoints.length - 1];
+        const dx = worldPoint.x - lastPoint.x;
+        const dy = worldPoint.y - lastPoint.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 10) {
+          this.state.linePathPoints.push({ x: worldPoint.x, y: worldPoint.y });
+          const selectedUnits = this.world.getSelectedUnits();
+          this.updateLinePathTargets(selectedUnits.length);
+        }
+      }
     });
 
     // Pointer up
@@ -132,6 +173,14 @@ export class InputManager {
 
       if (this.state.isPanningCamera && !p.middleButtonDown()) {
         this.state.isPanningCamera = false;
+      }
+
+      if (this.state.isDrawingLinePath && !p.rightButtonDown()) {
+        this.finishLinePath();
+        this.state.isDrawingLinePath = false;
+        this.state.linePathPoints = [];
+        this.state.linePathTargets = [];
+        this.linePathGraphics.clear();
       }
     });
 
@@ -211,23 +260,172 @@ export class InputManager {
     this.commandQueue.enqueue(command);
   }
 
-  // Handle right click for move command
-  private handleRightClick(pointer: Phaser.Input.Pointer): void {
+  // Calculate total length of a path
+  private getPathLength(points: WorldPoint[]): number {
+    let length = 0;
+    for (let i = 1; i < points.length; i++) {
+      const dx = points[i].x - points[i - 1].x;
+      const dy = points[i].y - points[i - 1].y;
+      length += Math.sqrt(dx * dx + dy * dy);
+    }
+    return length;
+  }
+
+  // Get a point at a specific distance along the path
+  private getPointAtDistance(points: WorldPoint[], targetDist: number): WorldPoint {
+    if (points.length === 0) return { x: 0, y: 0 };
+    if (points.length === 1) return { x: points[0].x, y: points[0].y };
+
+    let traveled = 0;
+    for (let i = 1; i < points.length; i++) {
+      const dx = points[i].x - points[i - 1].x;
+      const dy = points[i].y - points[i - 1].y;
+      const segmentLength = Math.sqrt(dx * dx + dy * dy);
+
+      if (traveled + segmentLength >= targetDist) {
+        // The target point is on this segment
+        const remaining = targetDist - traveled;
+        const t = segmentLength > 0 ? remaining / segmentLength : 0;
+        return {
+          x: points[i - 1].x + dx * t,
+          y: points[i - 1].y + dy * t,
+        };
+      }
+      traveled += segmentLength;
+    }
+
+    // Return the last point if we've gone past the end
+    return { x: points[points.length - 1].x, y: points[points.length - 1].y };
+  }
+
+  // Update the calculated target positions along the path
+  private updateLinePathTargets(unitCount: number): void {
+    if (unitCount === 0 || this.state.linePathPoints.length === 0) {
+      this.state.linePathTargets = [];
+      return;
+    }
+
+    const pathLength = this.getPathLength(this.state.linePathPoints);
+    const targets: WorldPoint[] = [];
+
+    if (unitCount === 1) {
+      // Single unit goes to the end of the path
+      const lastPoint = this.state.linePathPoints[this.state.linePathPoints.length - 1];
+      targets.push({ x: lastPoint.x, y: lastPoint.y });
+    } else {
+      // Distribute units evenly along the path
+      for (let i = 0; i < unitCount; i++) {
+        const t = i / (unitCount - 1); // 0 to 1
+        const dist = t * pathLength;
+        targets.push(this.getPointAtDistance(this.state.linePathPoints, dist));
+      }
+    }
+
+    this.state.linePathTargets = targets;
+  }
+
+  // Assign units to target positions using closest distance (greedy algorithm)
+  private assignUnitsToTargets(units: Entity[], targets: WorldPoint[]): Map<EntityId, WorldPoint> {
+    const assignments = new Map<EntityId, WorldPoint>();
+    const remainingUnits = [...units];
+    const remainingTargets = [...targets];
+
+    while (remainingUnits.length > 0 && remainingTargets.length > 0) {
+      let bestUnit: Entity | null = null;
+      let bestTarget: WorldPoint | null = null;
+      let bestDist = Infinity;
+
+      // Find the closest unit-target pair
+      for (const unit of remainingUnits) {
+        for (const target of remainingTargets) {
+          const dx = unit.transform.x - target.x;
+          const dy = unit.transform.y - target.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestUnit = unit;
+            bestTarget = target;
+          }
+        }
+      }
+
+      if (bestUnit && bestTarget) {
+        assignments.set(bestUnit.id, bestTarget);
+        remainingUnits.splice(remainingUnits.indexOf(bestUnit), 1);
+        remainingTargets.splice(remainingTargets.indexOf(bestTarget), 1);
+      }
+    }
+
+    return assignments;
+  }
+
+  // Finish line path and issue move commands
+  private finishLinePath(): void {
     const selectedUnits = this.world.getSelectedUnits();
     if (selectedUnits.length === 0) return;
 
+    const pathLength = this.getPathLength(this.state.linePathPoints);
+
+    // If path is very short (just a click), do a regular group move
+    if (pathLength < 20) {
+      const target = this.state.linePathPoints[this.state.linePathPoints.length - 1];
+      const command: MoveCommand = {
+        type: 'move',
+        tick: this.world.getTick(),
+        entityIds: selectedUnits.map((e) => e.id),
+        targetX: target.x,
+        targetY: target.y,
+      };
+      this.commandQueue.enqueue(command);
+      return;
+    }
+
+    // Assign units to positions using closest distance
+    const assignments = this.assignUnitsToTargets(selectedUnits, this.state.linePathTargets);
+
+    // Issue individual move commands for each unit
+    for (const [entityId, target] of assignments) {
+      const command: MoveCommand = {
+        type: 'move',
+        tick: this.world.getTick(),
+        entityIds: [entityId],
+        targetX: target.x,
+        targetY: target.y,
+      };
+      this.commandQueue.enqueue(command);
+    }
+  }
+
+  // Draw line path preview
+  private drawLinePath(): void {
+    this.linePathGraphics.clear();
+
+    if (!this.state.isDrawingLinePath || this.state.linePathPoints.length === 0) return;
+
     const camera = this.scene.cameras.main;
-    const worldPoint = camera.getWorldPoint(pointer.x, pointer.y);
+    const lineWidth = 2 / camera.zoom;
+    const dotRadius = 8 / camera.zoom;
 
-    const command: MoveCommand = {
-      type: 'move',
-      tick: this.world.getTick(),
-      entityIds: selectedUnits.map((e) => e.id),
-      targetX: worldPoint.x,
-      targetY: worldPoint.y,
-    };
+    // Draw the path line
+    this.linePathGraphics.lineStyle(lineWidth, 0xffaa00, 0.6);
+    this.linePathGraphics.beginPath();
+    this.linePathGraphics.moveTo(this.state.linePathPoints[0].x, this.state.linePathPoints[0].y);
+    for (let i = 1; i < this.state.linePathPoints.length; i++) {
+      this.linePathGraphics.lineTo(this.state.linePathPoints[i].x, this.state.linePathPoints[i].y);
+    }
+    this.linePathGraphics.strokePath();
 
-    this.commandQueue.enqueue(command);
+    // Draw dots at target positions
+    this.linePathGraphics.fillStyle(0xffaa00, 0.9);
+    for (const target of this.state.linePathTargets) {
+      this.linePathGraphics.fillCircle(target.x, target.y, dotRadius);
+    }
+
+    // Draw outline around dots
+    this.linePathGraphics.lineStyle(lineWidth, 0xffffff, 0.8);
+    for (const target of this.state.linePathTargets) {
+      this.linePathGraphics.strokeCircle(target.x, target.y, dotRadius);
+    }
   }
 
   // Update input (keyboard camera pan)
@@ -268,8 +466,9 @@ export class InputManager {
       camera.scrollY = (this.world.mapHeight - viewHeight) / 2;
     }
 
-    // Draw selection rectangle
+    // Draw selection rectangle and line path
     this.drawSelectionRect();
+    this.drawLinePath();
   }
 
   // Draw selection rectangle (world space)
@@ -304,5 +503,6 @@ export class InputManager {
   // Clean up
   destroy(): void {
     this.selectionGraphics.destroy();
+    this.linePathGraphics.destroy();
   }
 }
