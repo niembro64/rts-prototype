@@ -94,6 +94,11 @@ export class RtsScene extends Phaser.Scene {
       this.handleUnitDeaths(deadUnitIds);
     };
 
+    // Setup building death callback
+    this.simulation.onBuildingDeath = (deadBuildingIds: EntityId[]) => {
+      this.handleBuildingDeaths(deadBuildingIds);
+    };
+
     // Setup spawn callback (for factory-produced units)
     this.simulation.onUnitSpawn = (newUnits: Entity[]) => {
       this.handleUnitSpawns(newUnits);
@@ -174,6 +179,19 @@ export class RtsScene extends Phaser.Scene {
       }
       // Stop any laser sound this unit was making
       audioManager.stopLaserSound(id);
+      this.world.removeEntity(id);
+    }
+  }
+
+  // Handle building deaths (remove from world and clean up construction grid)
+  private handleBuildingDeaths(deadBuildingIds: EntityId[]): void {
+    const constructionSystem = this.simulation.getConstructionSystem();
+    for (const id of deadBuildingIds) {
+      const entity = this.world.getEntity(id);
+      if (entity) {
+        // Clean up construction grid occupancy and energy production
+        constructionSystem.onBuildingDestroyed(entity);
+      }
       this.world.removeEntity(id);
     }
   }

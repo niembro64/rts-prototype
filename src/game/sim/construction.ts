@@ -172,9 +172,9 @@ export class ConstructionSystem {
     // Add to world
     world.addEntity(entity);
 
-    // Assign builder
+    // Assign builder (only for non-commanders - commanders use their buildQueue instead)
     const builder = world.getEntity(builderId);
-    if (builder?.builder) {
+    if (builder?.builder && !builder.commander) {
       builder.builder.currentBuildTarget = entity.id;
     }
 

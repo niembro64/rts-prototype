@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, WaypointType, BuildingType } from '../sim/types';
+import type { Entity, WaypointType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
 
@@ -15,12 +15,6 @@ const HEALTH_BAR_LOW = 0xff4444;
 const BUILD_BAR_FG = 0xffcc00;  // Yellow for build progress
 const GHOST_COLOR = 0x88ff88;   // Green tint for placement ghost
 const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
-
-// Building type colors
-const BUILDING_TYPE_COLORS: Record<BuildingType, number> = {
-  solar: 0xffff44,   // Yellow for solar
-  factory: 0x888888, // Gray for factory
-};
 
 // Waypoint colors by type
 const WAYPOINT_COLORS: Record<WaypointType, number> = {
@@ -355,7 +349,7 @@ export class EntityRenderer {
   // Render spray effect from commander to target (build/heal)
   private renderSprayEffect(target: SprayTarget): void {
     const color = target.type === 'build' ? SPRAY_BUILD_COLOR : SPRAY_HEAL_COLOR;
-    const { sourceX, sourceY, targetX, targetY } = target;
+    const { sourceX, sourceY, targetX, targetY, intensity } = target;
 
     // Calculate direction vector
     const dx = targetX - sourceX;
@@ -370,67 +364,87 @@ export class EntityRenderer {
     const perpX = -dirY;
     const perpY = dirX;
 
-    // Draw multiple particles along the spray path
-    const particleCount = 12;
+    // Calculate target size for spread
+    let targetSize = 30; // default
+    if (target.targetWidth && target.targetHeight) {
+      targetSize = Math.max(target.targetWidth, target.targetHeight);
+    } else if (target.targetRadius) {
+      targetSize = target.targetRadius * 2;
+    }
+
+    // Scale particle count based on intensity (energy rate)
+    // At full intensity: 5 streams x 8 particles = 40 particles
+    // At minimum (10%): 2 streams x 3 particles = 6 particles
+    const effectiveIntensity = intensity ?? 1;
+    const streamCount = Math.max(2, Math.floor(5 * effectiveIntensity));
+    const particlesPerStream = Math.max(3, Math.floor(8 * effectiveIntensity));
     const baseTime = this.sprayParticleTime;
 
-    for (let i = 0; i < particleCount; i++) {
-      // Each particle has a different phase
-      const phase = (baseTime / 300 + i / particleCount) % 1;
+    for (let stream = 0; stream < streamCount; stream++) {
+      // Each stream has a different angle offset (fan pattern)
+      const streamAngle = ((stream / (streamCount - 1)) - 0.5) * 1.2; // -0.6 to 0.6 radians spread
 
-      // Particle position along the path (0 = source, 1 = target)
-      const t = phase;
+      for (let i = 0; i < particlesPerStream; i++) {
+        // Each particle has a different phase
+        const phase = (baseTime / 250 + i / particlesPerStream + stream * 0.13) % 1;
 
-      // Base position along path
-      let px = sourceX + dx * t;
-      let py = sourceY + dy * t;
+        // Particle position along the path (0 = source, 1 = target)
+        const t = phase;
 
-      // Add spread toward target edges
-      let spreadAmount = 0;
-      if (target.targetWidth && target.targetHeight) {
-        // Building target - spread across building surface
-        const halfWidth = target.targetWidth / 2;
-        const halfHeight = target.targetHeight / 2;
+        // Base position along path with stream angle offset
+        const streamOffsetX = perpX * streamAngle * t * targetSize * 0.8;
+        const streamOffsetY = perpY * streamAngle * t * targetSize * 0.8;
 
-        // Spread increases as we get closer to target
-        spreadAmount = t * Math.max(halfWidth, halfHeight) * 0.8;
-      } else if (target.targetRadius) {
-        // Unit target - spread toward unit edges
-        spreadAmount = t * target.targetRadius * 0.8;
-      }
+        let px = sourceX + dx * t + streamOffsetX;
+        let py = sourceY + dy * t + streamOffsetY;
 
-      // Add wavy motion using sine waves with different frequencies per particle
-      const waveFreq = 3 + (i % 4);
-      const waveAmp = spreadAmount * Math.sin((baseTime / 100 + i * 0.5) * waveFreq);
-      const spreadOffset = ((i / particleCount) - 0.5) * 2 * spreadAmount;
+        // Add chaotic spray motion
+        const chaos1 = Math.sin(baseTime / 80 + i * 2.3 + stream * 1.7) * 8 * t;
+        const chaos2 = Math.cos(baseTime / 60 + i * 1.9 + stream * 2.1) * 6 * t;
 
-      px += perpX * (spreadOffset + waveAmp * 0.3);
-      py += perpY * (spreadOffset + waveAmp * 0.3);
+        px += perpX * chaos1 + dirX * chaos2 * 0.3;
+        py += perpY * chaos1 + dirY * chaos2 * 0.3;
 
-      // Particle size varies based on position and type
-      const sizeBase = 3;
-      const sizeMod = 1 + Math.sin(phase * Math.PI) * 0.5;
-      const particleSize = sizeBase * sizeMod;
+        // Add extra spread near the target
+        const spreadNearTarget = t * t * targetSize * 0.4;
+        const spreadAngle = Math.sin(baseTime / 100 + i * 3 + stream) * spreadNearTarget;
+        px += perpX * spreadAngle;
+        py += perpY * spreadAngle;
 
-      // Alpha fades in at start and out at end
-      const alphaFadeIn = Math.min(1, t * 4);
-      const alphaFadeOut = Math.min(1, (1 - t) * 3);
-      const alpha = alphaFadeIn * alphaFadeOut * 0.7;
+        // Particle size varies - larger near source, smaller near target
+        const sizeBase = 2 + (1 - t) * 2;
+        const sizeMod = 1 + Math.sin(phase * Math.PI + stream) * 0.4;
+        const particleSize = sizeBase * sizeMod;
 
-      // Draw the particle
-      this.graphics.fillStyle(color, alpha);
-      this.graphics.fillCircle(px, py, particleSize);
+        // Alpha fades in at start and out at end
+        const alphaFadeIn = Math.min(1, t * 5);
+        const alphaFadeOut = Math.min(1, (1 - t) * 2.5);
+        const alpha = alphaFadeIn * alphaFadeOut * 0.6;
 
-      // Add a glow effect for brighter particles
-      if (i % 3 === 0) {
-        this.graphics.fillStyle(0xffffff, alpha * 0.4);
-        this.graphics.fillCircle(px, py, particleSize * 0.5);
+        // Draw the particle
+        this.graphics.fillStyle(color, alpha);
+        this.graphics.fillCircle(px, py, particleSize);
+
+        // Add a glow effect for some particles
+        if ((i + stream) % 3 === 0) {
+          this.graphics.fillStyle(0xffffff, alpha * 0.5);
+          this.graphics.fillCircle(px, py, particleSize * 0.4);
+        }
       }
     }
 
-    // Draw a subtle line connecting source to target
-    this.graphics.lineStyle(1, color, 0.2);
-    this.graphics.lineBetween(sourceX, sourceY, targetX, targetY);
+    // Draw additional splatter particles at the target (scaled by intensity)
+    const splatterCount = Math.max(3, Math.floor(8 * effectiveIntensity));
+    for (let i = 0; i < splatterCount; i++) {
+      const angle = (baseTime / 200 + i / splatterCount) * Math.PI * 2;
+      const splatterDist = (Math.sin(baseTime / 150 + i * 2) * 0.3 + 0.7) * targetSize * 0.5;
+      const sx = targetX + Math.cos(angle) * splatterDist;
+      const sy = targetY + Math.sin(angle) * splatterDist;
+      const splatterAlpha = (0.3 + Math.sin(baseTime / 100 + i) * 0.2) * effectiveIntensity;
+
+      this.graphics.fillStyle(color, splatterAlpha);
+      this.graphics.fillCircle(sx, sy, 2 + Math.sin(baseTime / 80 + i) * 1);
+    }
   }
 
   // Render a projectile
@@ -553,7 +567,7 @@ export class EntityRenderer {
   private renderBuilding(entity: Entity): void {
     if (!entity.building) return;
 
-    const { transform, building, ownership, buildable, buildingType } = entity;
+    const { transform, building, ownership, buildable } = entity;
     const { x, y } = transform;
     const { width, height, hp, maxHp } = building;
 
@@ -583,15 +597,10 @@ export class EntityRenderer {
       this.graphics.strokeRect(left - 4, top - 4, width + 8, height + 8);
     }
 
-    // Get color based on building type or ownership
-    let fillColor = ownership?.playerId
+    // Get color based on ownership (team color)
+    const fillColor = ownership?.playerId
       ? this.getPlayerColor(ownership.playerId)
       : BUILDING_COLOR;
-
-    // Use building type color if available
-    if (buildingType && BUILDING_TYPE_COLORS[buildingType]) {
-      fillColor = BUILDING_TYPE_COLORS[buildingType];
-    }
 
     // Under construction - show partial fill based on progress
     if (!isComplete) {

@@ -844,7 +844,7 @@ export class InputManager {
 
     const snapped = this.getSnappedBuildPosition(worldX, worldY, this.state.selectedBuildingType);
 
-    // Issue start build command
+    // Issue start build command (shift = queue, no shift = replace)
     const command: StartBuildCommand = {
       type: 'startBuild',
       tick: this.world.getTick(),
@@ -852,6 +852,7 @@ export class InputManager {
       buildingType: this.state.selectedBuildingType,
       gridX: snapped.gridX,
       gridY: snapped.gridY,
+      queue: this.keys.SHIFT.isDown,
     };
 
     this.commandQueue.enqueue(command);

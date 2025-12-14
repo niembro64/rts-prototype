@@ -19,6 +19,7 @@ export interface FireWeaponsResult {
 
 export interface CollisionResult {
   deadUnitIds: EntityId[];
+  deadBuildingIds: EntityId[];
   audioEvents: AudioEvent[];
 }
 
@@ -29,7 +30,7 @@ function distance(x1: number, y1: number, x2: number, y2: number): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// Find closest enemy unit within range
+// Find closest enemy (unit or building) within range
 export function findClosestEnemy(
   world: WorldState,
   unit: Entity,
@@ -37,36 +38,61 @@ export function findClosestEnemy(
 ): Entity | null {
   if (!unit.ownership) return null;
 
-  const enemies = world.getEnemyUnits(unit.ownership.playerId);
+  const enemies = world.getEnemyEntities(unit.ownership.playerId);
   let closestEnemy: Entity | null = null;
   let closestDistance = Infinity;
 
   for (const enemy of enemies) {
-    if (!enemy.unit || enemy.unit.hp <= 0) continue;
+    // Check units
+    if (enemy.unit) {
+      if (enemy.unit.hp <= 0) continue;
 
-    const dist = distance(
-      unit.transform.x,
-      unit.transform.y,
-      enemy.transform.x,
-      enemy.transform.y
-    );
+      const dist = distance(
+        unit.transform.x,
+        unit.transform.y,
+        enemy.transform.x,
+        enemy.transform.y
+      );
 
-    // Check if in range - weapon fires from unit edge, so effective range
-    // is weapon range plus target radius (to hit target's edge)
-    const effectiveRange = range + enemy.unit.radius;
+      // Effective range is weapon range plus target radius
+      const effectiveRange = range + enemy.unit.radius;
 
-    if (dist <= effectiveRange && dist < closestDistance) {
-      closestDistance = dist;
-      closestEnemy = enemy;
+      if (dist <= effectiveRange && dist < closestDistance) {
+        closestDistance = dist;
+        closestEnemy = enemy;
+      }
+    }
+
+    // Check buildings
+    if (enemy.building) {
+      if (enemy.building.hp <= 0) continue;
+
+      const dist = distance(
+        unit.transform.x,
+        unit.transform.y,
+        enemy.transform.x,
+        enemy.transform.y
+      );
+
+      // Use diagonal of building as effective target radius
+      const bWidth = enemy.building.width;
+      const bHeight = enemy.building.height;
+      const buildingRadius = Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
+      const effectiveRange = range + buildingRadius;
+
+      if (dist <= effectiveRange && dist < closestDistance) {
+        closestDistance = dist;
+        closestEnemy = enemy;
+      }
     }
   }
 
   return closestEnemy;
 }
 
-// Check if target is within weapon range
+// Check if target is within weapon range (supports units and buildings)
 function isInWeaponRange(unit: Entity, target: Entity): boolean {
-  if (!unit.weapon || !target.unit) return false;
+  if (!unit.weapon) return false;
 
   const dist = distance(
     unit.transform.x,
@@ -75,7 +101,19 @@ function isInWeaponRange(unit: Entity, target: Entity): boolean {
     target.transform.y
   );
 
-  const effectiveRange = unit.weapon.config.range + target.unit.radius;
+  // Calculate effective range based on target type
+  let targetRadius: number;
+  if (target.unit) {
+    targetRadius = target.unit.radius;
+  } else if (target.building) {
+    const bWidth = target.building.width;
+    const bHeight = target.building.height;
+    targetRadius = Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
+  } else {
+    return false;
+  }
+
+  const effectiveRange = unit.weapon.config.range + targetRadius;
   return dist <= effectiveRange;
 }
 
@@ -178,8 +216,12 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
     let hasTargetInRange = false;
     if (unit.weapon.targetEntityId !== null) {
       const target = world.getEntity(unit.weapon.targetEntityId);
-      if (target && target.unit && target.unit.hp > 0) {
-        hasTargetInRange = isInWeaponRange(unit, target);
+      if (target) {
+        const targetIsUnit = target.unit && target.unit.hp > 0;
+        const targetIsBuilding = target.building && target.building.hp > 0;
+        if (targetIsUnit || targetIsBuilding) {
+          hasTargetInRange = isInWeaponRange(unit, target);
+        }
       }
     }
 
@@ -221,7 +263,22 @@ export function updateAutoTargeting(world: WorldState): void {
     // Check if current target is still valid (within vision range)
     if (weapon.targetEntityId !== null) {
       const target = world.getEntity(weapon.targetEntityId);
-      if (target && target.unit && target.unit.hp > 0) {
+
+      // Check if target is a valid unit or building
+      let targetIsValid = false;
+      let targetRadius = 0;
+
+      if (target?.unit && target.unit.hp > 0) {
+        targetIsValid = true;
+        targetRadius = target.unit.radius;
+      } else if (target?.building && target.building.hp > 0) {
+        targetIsValid = true;
+        const bWidth = target.building.width;
+        const bHeight = target.building.height;
+        targetRadius = Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
+      }
+
+      if (targetIsValid && target) {
         const dist = distance(
           unit.transform.x,
           unit.transform.y,
@@ -229,7 +286,7 @@ export function updateAutoTargeting(world: WorldState): void {
           target.transform.y
         );
         // Use vision range for target retention
-        const effectiveVisionRange = visionRange + target.unit.radius;
+        const effectiveVisionRange = visionRange + targetRadius;
 
         // Target still valid and in vision range - keep tracking
         if (dist <= effectiveVisionRange) {
@@ -240,7 +297,7 @@ export function updateAutoTargeting(world: WorldState): void {
       weapon.targetEntityId = null;
     }
 
-    // Find new target within vision range
+    // Find new target within vision range (units or buildings)
     const enemy = findClosestEnemy(world, unit, visionRange);
     if (enemy) {
       weapon.targetEntityId = enemy.id;
@@ -302,7 +359,15 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
     if (weapon.targetEntityId === null) continue;
 
     const target = world.getEntity(weapon.targetEntityId);
-    if (!target || !target.unit || target.unit.hp <= 0) {
+    if (!target) {
+      weapon.targetEntityId = null;
+      continue;
+    }
+
+    // Check if target is alive (unit or building)
+    const targetIsUnit = target.unit && target.unit.hp > 0;
+    const targetIsBuilding = target.building && target.building.hp > 0;
+    if (!targetIsUnit && !targetIsBuilding) {
       weapon.targetEntityId = null;
       continue;
     }
@@ -478,9 +543,11 @@ export function updateProjectiles(world: WorldState, dtMs: number): void {
 }
 
 // Check projectile collisions and apply damage
+// Friendly fire is enabled - projectiles hit ALL units and buildings
 export function checkProjectileCollisions(world: WorldState, dtMs: number): CollisionResult {
   const projectilesToRemove: EntityId[] = [];
   const unitsToRemove: EntityId[] = [];
+  const buildingsToRemove: EntityId[] = [];
   const audioEvents: AudioEvent[] = [];
 
   for (const projEntity of world.getProjectiles()) {
@@ -495,7 +562,7 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
 
       // Handle splash damage on expiration for grenades
       if (config.splashRadius && !proj.hasExploded) {
-        const splashHits = applyAoEDamage(world, projEntity, unitsToRemove);
+        const splashHits = applyAoEDamage(world, projEntity, unitsToRemove, buildingsToRemove);
         proj.hasExploded = true;
 
         // Add explosion audio event if there were hits or it's a grenade
@@ -512,14 +579,14 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
       continue;
     }
 
-    // Get potential targets (enemies of projectile owner)
-    const enemies = world.getEnemyUnits(proj.ownerId);
+    // Get ALL units (friendly fire enabled) - exclude the source unit
+    const allUnits = world.getUnits().filter(u => u.id !== proj.sourceEntityId);
 
-    for (const enemy of enemies) {
-      if (!enemy.unit || enemy.unit.hp <= 0) continue;
+    for (const target of allUnits) {
+      if (!target.unit || target.unit.hp <= 0) continue;
 
       // For non-beam projectiles, skip if already hit this entity
-      if (proj.projectileType !== 'beam' && proj.hitEntities.has(enemy.id)) continue;
+      if (proj.projectileType !== 'beam' && proj.hitEntities.has(target.id)) continue;
 
       let hit = false;
 
@@ -530,9 +597,9 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
           proj.startY ?? projEntity.transform.y,
           proj.endX ?? projEntity.transform.x,
           proj.endY ?? projEntity.transform.y,
-          enemy.transform.x,
-          enemy.transform.y,
-          enemy.unit.radius + (config.beamWidth ?? 2) / 2
+          target.transform.x,
+          target.transform.y,
+          target.unit.radius + (config.beamWidth ?? 2) / 2
         );
       } else {
         // Circle-circle intersection for projectiles
@@ -540,10 +607,10 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
         const dist = distance(
           projEntity.transform.x,
           projEntity.transform.y,
-          enemy.transform.x,
-          enemy.transform.y
+          target.transform.x,
+          target.transform.y
         );
-        hit = dist <= projRadius + enemy.unit.radius;
+        hit = dist <= projRadius + target.unit.radius;
       }
 
       if (hit) {
@@ -557,49 +624,146 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
         } else {
           // Regular projectiles deal full damage on hit
           damage = config.damage;
-          proj.hitEntities.add(enemy.id);
+          proj.hitEntities.add(target.id);
         }
 
         // Apply damage
-        enemy.unit.hp -= damage;
+        target.unit.hp -= damage;
 
         // Add hit audio event (skip for continuous beams - they just have the continuous laser sound)
         const isContinuousBeam = proj.projectileType === 'beam' && config.cooldown === 0;
         if (!isContinuousBeam) {
-          if (proj.projectileType !== 'beam' || !proj.hitEntities.has(enemy.id)) {
+          if (proj.projectileType !== 'beam' || !proj.hitEntities.has(target.id)) {
             audioEvents.push({
               type: 'hit',
               weaponId: config.id,
-              x: enemy.transform.x,
-              y: enemy.transform.y,
+              x: target.transform.x,
+              y: target.transform.y,
             });
             // Mark beam as having played hit sound for this target
             if (proj.projectileType === 'beam') {
-              proj.hitEntities.add(enemy.id);
+              proj.hitEntities.add(target.id);
             }
           }
         }
 
         // Check for splash damage (only for non-beam projectiles)
         if (config.splashRadius && !proj.hasExploded && proj.projectileType !== 'beam') {
-          applyAoEDamage(world, projEntity, unitsToRemove);
+          applyAoEDamage(world, projEntity, unitsToRemove, buildingsToRemove);
           proj.hasExploded = true;
         }
 
         // Check if unit died
-        if (enemy.unit.hp <= 0 && !unitsToRemove.includes(enemy.id)) {
+        if (target.unit.hp <= 0 && !unitsToRemove.includes(target.id)) {
           // Add death audio event based on the dying unit's weapon type
-          const deathWeaponId = enemy.weapon?.config.id ?? 'minigun';
+          const deathWeaponId = target.weapon?.config.id ?? 'minigun';
           audioEvents.push({
             type: 'death',
             weaponId: deathWeaponId,
-            x: enemy.transform.x,
-            y: enemy.transform.y,
+            x: target.transform.x,
+            y: target.transform.y,
           });
-          unitsToRemove.push(enemy.id);
+          unitsToRemove.push(target.id);
         }
 
         // Check if projectile should be removed (beams persist for full duration)
+        if (proj.hitEntities.size >= proj.maxHits && proj.projectileType !== 'beam') {
+          projectilesToRemove.push(projEntity.id);
+          break;
+        }
+      }
+    }
+
+    // Check building collisions (friendly fire enabled)
+    const allBuildings = world.getBuildings();
+
+    for (const building of allBuildings) {
+      if (!building.building || building.building.hp <= 0) continue;
+
+      // For non-beam projectiles, skip if already hit this entity
+      if (proj.projectileType !== 'beam' && proj.hitEntities.has(building.id)) continue;
+
+      const bWidth = building.building.width;
+      const bHeight = building.building.height;
+      const bLeft = building.transform.x - bWidth / 2;
+      const bTop = building.transform.y - bHeight / 2;
+
+      let hit = false;
+
+      if (proj.projectileType === 'beam') {
+        // Line-rectangle intersection for beams
+        hit = lineRectIntersection(
+          proj.startX ?? projEntity.transform.x,
+          proj.startY ?? projEntity.transform.y,
+          proj.endX ?? projEntity.transform.x,
+          proj.endY ?? projEntity.transform.y,
+          bLeft,
+          bTop,
+          bWidth,
+          bHeight
+        );
+      } else {
+        // Circle-rectangle intersection for projectiles
+        const projRadius = config.projectileRadius ?? 5;
+        hit = circleRectIntersection(
+          projEntity.transform.x,
+          projEntity.transform.y,
+          projRadius,
+          bLeft,
+          bTop,
+          bWidth,
+          bHeight
+        );
+      }
+
+      if (hit) {
+        // Calculate damage based on projectile type
+        let damage: number;
+        if (proj.projectileType === 'beam') {
+          const beamDuration = config.beamDuration ?? 150;
+          damage = (config.damage / beamDuration) * dtMs;
+        } else {
+          damage = config.damage;
+          proj.hitEntities.add(building.id);
+        }
+
+        // Apply damage to building
+        building.building.hp -= damage;
+
+        // Add hit audio event
+        const isContinuousBeam = proj.projectileType === 'beam' && config.cooldown === 0;
+        if (!isContinuousBeam) {
+          if (proj.projectileType !== 'beam' || !proj.hitEntities.has(building.id)) {
+            audioEvents.push({
+              type: 'hit',
+              weaponId: config.id,
+              x: building.transform.x,
+              y: building.transform.y,
+            });
+            if (proj.projectileType === 'beam') {
+              proj.hitEntities.add(building.id);
+            }
+          }
+        }
+
+        // Check for splash damage
+        if (config.splashRadius && !proj.hasExploded && proj.projectileType !== 'beam') {
+          applyAoEDamage(world, projEntity, unitsToRemove, buildingsToRemove);
+          proj.hasExploded = true;
+        }
+
+        // Check if building destroyed
+        if (building.building.hp <= 0 && !buildingsToRemove.includes(building.id)) {
+          audioEvents.push({
+            type: 'death',
+            weaponId: config.id,
+            x: building.transform.x,
+            y: building.transform.y,
+          });
+          buildingsToRemove.push(building.id);
+        }
+
+        // Check if projectile should be removed
         if (proj.hitEntities.size >= proj.maxHits && proj.projectileType !== 'beam') {
           projectilesToRemove.push(projEntity.id);
           break;
@@ -624,11 +788,82 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
     world.removeEntity(id);
   }
 
-  return { deadUnitIds: unitsToRemove, audioEvents };
+  return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, audioEvents };
+}
+
+// Circle-rectangle intersection test
+function circleRectIntersection(
+  cx: number,
+  cy: number,
+  radius: number,
+  rectX: number,
+  rectY: number,
+  rectWidth: number,
+  rectHeight: number
+): boolean {
+  // Find closest point on rectangle to circle center
+  const closestX = Math.max(rectX, Math.min(cx, rectX + rectWidth));
+  const closestY = Math.max(rectY, Math.min(cy, rectY + rectHeight));
+
+  // Calculate distance from closest point to circle center
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+
+  return (dx * dx + dy * dy) <= (radius * radius);
+}
+
+// Line-rectangle intersection test
+function lineRectIntersection(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rectX: number,
+  rectY: number,
+  rectWidth: number,
+  rectHeight: number
+): boolean {
+  // Check if line intersects any of the 4 edges of the rectangle
+  const left = rectX;
+  const right = rectX + rectWidth;
+  const top = rectY;
+  const bottom = rectY + rectHeight;
+
+  // Check if either endpoint is inside the rectangle
+  if ((x1 >= left && x1 <= right && y1 >= top && y1 <= bottom) ||
+      (x2 >= left && x2 <= right && y2 >= top && y2 <= bottom)) {
+    return true;
+  }
+
+  // Check intersection with each edge
+  return lineLineIntersection(x1, y1, x2, y2, left, top, right, top) ||     // Top
+         lineLineIntersection(x1, y1, x2, y2, left, bottom, right, bottom) || // Bottom
+         lineLineIntersection(x1, y1, x2, y2, left, top, left, bottom) ||     // Left
+         lineLineIntersection(x1, y1, x2, y2, right, top, right, bottom);     // Right
+}
+
+// Line-line intersection test
+function lineLineIntersection(
+  x1: number, y1: number, x2: number, y2: number,
+  x3: number, y3: number, x4: number, y4: number
+): boolean {
+  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+  if (Math.abs(denom) < 0.0001) return false; // Lines are parallel
+
+  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+
+  return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1;
 }
 
 // Apply AoE damage around a point - returns number of hits
-function applyAoEDamage(world: WorldState, projEntity: Entity, unitsToRemove: EntityId[]): number {
+// Friendly fire enabled - damages ALL units and buildings in range
+function applyAoEDamage(
+  world: WorldState,
+  projEntity: Entity,
+  unitsToRemove: EntityId[],
+  buildingsToRemove: EntityId[]
+): number {
   if (!projEntity.projectile) return 0;
 
   const proj = projEntity.projectile;
@@ -636,22 +871,24 @@ function applyAoEDamage(world: WorldState, projEntity: Entity, unitsToRemove: En
   const splashRadius = config.splashRadius ?? 0;
   const falloff = config.splashDamageFalloff ?? 0.5;
 
-  const enemies = world.getEnemyUnits(proj.ownerId);
   let hitCount = 0;
 
-  for (const enemy of enemies) {
-    if (!enemy.unit || enemy.unit.hp <= 0) continue;
-    if (proj.hitEntities.has(enemy.id)) continue; // Don't double-hit
+  // Damage ALL units (friendly fire enabled) - exclude source unit
+  const allUnits = world.getUnits().filter(u => u.id !== proj.sourceEntityId);
+
+  for (const target of allUnits) {
+    if (!target.unit || target.unit.hp <= 0) continue;
+    if (proj.hitEntities.has(target.id)) continue; // Don't double-hit
 
     const dist = distance(
       projEntity.transform.x,
       projEntity.transform.y,
-      enemy.transform.x,
-      enemy.transform.y
+      target.transform.x,
+      target.transform.y
     );
 
-    if (dist <= splashRadius + enemy.unit.radius) {
-      proj.hitEntities.add(enemy.id);
+    if (dist <= splashRadius + target.unit.radius) {
+      proj.hitEntities.add(target.id);
       hitCount++;
 
       // Calculate damage with falloff
@@ -659,10 +896,47 @@ function applyAoEDamage(world: WorldState, projEntity: Entity, unitsToRemove: En
       const damageMultiplier = 1 - distRatio * (1 - falloff);
       const damage = config.damage * damageMultiplier;
 
-      enemy.unit.hp -= damage;
+      target.unit.hp -= damage;
 
-      if (enemy.unit.hp <= 0 && !unitsToRemove.includes(enemy.id)) {
-        unitsToRemove.push(enemy.id);
+      if (target.unit.hp <= 0 && !unitsToRemove.includes(target.id)) {
+        unitsToRemove.push(target.id);
+      }
+    }
+  }
+
+  // Damage ALL buildings in splash radius
+  const allBuildings = world.getBuildings();
+
+  for (const building of allBuildings) {
+    if (!building.building || building.building.hp <= 0) continue;
+    if (proj.hitEntities.has(building.id)) continue; // Don't double-hit
+
+    // Calculate distance from explosion to building center
+    const dist = distance(
+      projEntity.transform.x,
+      projEntity.transform.y,
+      building.transform.x,
+      building.transform.y
+    );
+
+    // Use diagonal of building as effective radius for splash check
+    const bWidth = building.building.width;
+    const bHeight = building.building.height;
+    const buildingRadius = Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
+
+    if (dist <= splashRadius + buildingRadius) {
+      proj.hitEntities.add(building.id);
+      hitCount++;
+
+      // Calculate damage with falloff
+      const distRatio = Math.min(1, dist / splashRadius);
+      const damageMultiplier = 1 - distRatio * (1 - falloff);
+      const damage = config.damage * damageMultiplier;
+
+      building.building.hp -= damage;
+
+      if (building.building.hp <= 0 && !buildingsToRemove.includes(building.id)) {
+        buildingsToRemove.push(building.id);
       }
     }
   }

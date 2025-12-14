@@ -98,6 +98,11 @@ export class Simulation {
     const commanderResult = commanderAbilitiesSystem.update(this.world, dtMs);
     this.currentSprayTargets = commanderResult.sprayTargets;
 
+    // Handle completed buildings - advance commander build queues
+    for (const completed of commanderResult.completedBuildings) {
+      this.advanceCommanderBuildQueue(completed.commanderId, completed.buildingId);
+    }
+
     // Update all units movement
     this.updateUnits();
 
@@ -165,6 +170,11 @@ export class Simulation {
     // Notify about dead units (for physics cleanup)
     if (collisionResult.deadUnitIds.length > 0 && this.onUnitDeath) {
       this.onUnitDeath(collisionResult.deadUnitIds);
+    }
+
+    // Notify about dead buildings (for cleanup)
+    if (collisionResult.deadBuildingIds.length > 0 && this.onBuildingDeath) {
+      this.onBuildingDeath(collisionResult.deadBuildingIds);
     }
   }
 
@@ -250,11 +260,11 @@ export class Simulation {
   // Execute start build command
   private executeStartBuildCommand(command: StartBuildCommand): void {
     const builder = this.world.getEntity(command.builderId);
-    if (!builder?.builder || !builder.ownership) return;
+    if (!builder?.builder || !builder.ownership || !builder.commander || !builder.unit) return;
 
     const playerId = builder.ownership.playerId;
 
-    // Start the building
+    // Start the building (creates the ghost/under-construction building)
     const building = this.constructionSystem.startBuilding(
       this.world,
       command.buildingType,
@@ -269,14 +279,66 @@ export class Simulation {
       return;
     }
 
-    // Move builder to building location if needed
-    if (builder.unit) {
-      const waypoint: Waypoint = {
-        x: building.transform.x,
-        y: building.transform.y,
-        type: 'move',
-      };
-      this.addWaypointToUnit(builder, waypoint, false);
+    // If not queuing, clear the existing build queue AND movement waypoints
+    if (!command.queue) {
+      builder.commander.buildQueue = [];
+      builder.unit.waypoints = [];
+      builder.unit.patrolLoopIndex = null;
+    }
+
+    // Add building to commander's build queue
+    builder.commander.buildQueue.push(building.id);
+
+    // If this is the first/only item in queue, start moving toward it
+    if (builder.commander.buildQueue.length === 1) {
+      this.moveCommanderToBuildTarget(builder, building);
+    }
+  }
+
+  // Move commander toward a build target (close enough to be in build range)
+  private moveCommanderToBuildTarget(commander: Entity, target: Entity): void {
+    if (!commander.unit || !commander.builder) return;
+
+    const buildRange = commander.builder.buildRange;
+    const dx = target.transform.x - commander.transform.x;
+    const dy = target.transform.y - commander.transform.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // If already in range, no need to move
+    if (dist <= buildRange) return;
+
+    // Calculate position just inside build range
+    const moveDistance = dist - buildRange + 10; // Stop 10 units inside range
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+
+    const waypoint: Waypoint = {
+      x: commander.transform.x + dirX * moveDistance,
+      y: commander.transform.y + dirY * moveDistance,
+      type: 'move',
+    };
+    this.addWaypointToUnit(commander, waypoint, false);
+  }
+
+  // Advance commander's build queue after a building completes
+  private advanceCommanderBuildQueue(commanderId: EntityId, completedBuildingId: EntityId): void {
+    const commander = this.world.getEntity(commanderId);
+    if (!commander?.commander) return;
+
+    const queue = commander.commander.buildQueue;
+
+    // Remove the completed building from the queue
+    const index = queue.indexOf(completedBuildingId);
+    if (index !== -1) {
+      queue.splice(index, 1);
+    }
+
+    // If there's a next building in queue, move toward it
+    if (queue.length > 0) {
+      const nextTarget = this.world.getEntity(queue[0]);
+      if (nextTarget) {
+        this.moveCommanderToBuildTarget(commander, nextTarget);
+      }
     }
   }
 

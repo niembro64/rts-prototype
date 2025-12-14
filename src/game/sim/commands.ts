@@ -49,6 +49,7 @@ export interface StartBuildCommand extends BaseCommand {
   buildingType: BuildingType;
   gridX: number;
   gridY: number;
+  queue: boolean; // Whether to add to build queue (shift) or replace
 }
 
 // Queue unit command - add unit to factory production queue

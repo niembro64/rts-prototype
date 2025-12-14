@@ -298,6 +298,7 @@ export class WorldState {
       commander: {
         isDGunActive: false,
         dgunEnergyCost: config.dgunCost,
+        buildQueue: [],
       },
     };
 

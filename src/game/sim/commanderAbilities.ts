@@ -14,11 +14,13 @@ export interface SprayTarget {
   targetWidth?: number;     // For buildings
   targetHeight?: number;
   targetRadius?: number;    // For units
+  intensity: number;        // 0-1 based on energy rate (affects particle count)
 }
 
 // Result of commander abilities update
 export interface CommanderAbilitiesResult {
   sprayTargets: SprayTarget[];
+  completedBuildings: { commanderId: EntityId; buildingId: EntityId }[];
 }
 
 // Distance between two points
@@ -28,12 +30,13 @@ function distance(x1: number, y1: number, x2: number, y2: number): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// Commander abilities system - handles auto-build and auto-heal
+// Commander abilities system - handles build queue and auto-heal
 export class CommanderAbilitiesSystem {
-  // Update all commanders' auto-build and auto-heal
+  // Update all commanders' building and healing
   update(world: WorldState, dtMs: number): CommanderAbilitiesResult {
     const dtSec = dtMs / 1000;
     const sprayTargets: SprayTarget[] = [];
+    const completedBuildings: { commanderId: EntityId; buildingId: EntityId }[] = [];
 
     // Find all commanders
     for (const commander of world.getUnits()) {
@@ -46,21 +49,26 @@ export class CommanderAbilitiesSystem {
       const commanderX = commander.transform.x;
       const commanderY = commander.transform.y;
 
-      // Find targets to build/heal within range
-      const buildTargets = this.findBuildTargets(world, commander, playerId, buildRange);
+      // Get current build target from queue (only build ONE thing at a time)
+      const currentBuildTarget = this.getCurrentBuildTarget(world, commander, buildRange);
+
+      // Find factories to assist and units to heal (these are secondary, only when not building)
+      const factoryTargets = currentBuildTarget ? [] : this.findFactoryTargets(world, commander, playerId, buildRange);
       const healTargets = this.findHealTargets(world, commander, playerId, buildRange);
 
-      // Calculate total targets and split energy between them
-      const totalTargets = buildTargets.length + healTargets.length;
+      // Calculate targets: 1 build target (if any) + factories + heal targets
+      const hasBuildTarget = currentBuildTarget !== null;
+      const totalTargets = (hasBuildTarget ? 1 : 0) + factoryTargets.length + healTargets.length;
       if (totalTargets === 0) continue;
 
       // Energy per target per second (split evenly)
       const energyPerTargetPerSec = buildRate / totalTargets;
       const energyNeededPerTarget = energyPerTargetPerSec * dtSec;
 
-      // Process build targets
-      for (const target of buildTargets) {
-        if (!target.buildable) continue;
+      // Process current build target (only one at a time from queue)
+      const buildable = currentBuildTarget?.buildable;
+      if (currentBuildTarget && buildable) {
+        const target = currentBuildTarget;
 
         // Try to spend energy
         const energySpent = economyManager.trySpendEnergy(playerId, energyNeededPerTarget);
@@ -68,38 +76,71 @@ export class CommanderAbilitiesSystem {
 
         if (energySpent > 0) {
           // Calculate progress from energy spent
-          const progressGained = energySpent / target.buildable.energyCost;
-          target.buildable.buildProgress += progressGained;
+          const progressGained = energySpent / buildable.energyCost;
+          buildable.buildProgress += progressGained;
 
           // Check if complete
-          if (target.buildable.buildProgress >= 1) {
-            target.buildable.buildProgress = 1;
-            target.buildable.isComplete = true;
+          if (buildable.buildProgress >= 1) {
+            buildable.buildProgress = 1;
+            buildable.isComplete = true;
             this.onConstructionComplete(world, target, playerId);
+            completedBuildings.push({ commanderId: commander.id, buildingId: target.id });
           }
-
-          // Add spray effect
-          sprayTargets.push({
-            sourceId: commander.id,
-            targetId: target.id,
-            type: 'build',
-            sourceX: commanderX,
-            sourceY: commanderY,
-            targetX: target.transform.x,
-            targetY: target.transform.y,
-            targetWidth: target.building?.width,
-            targetHeight: target.building?.height,
-          });
         }
+
+        // Always add spray effect - intensity based on energy rate
+        const intensity = energyNeededPerTarget > 0 ? energySpent / energyNeededPerTarget : 0;
+        sprayTargets.push({
+          sourceId: commander.id,
+          targetId: target.id,
+          type: 'build',
+          sourceX: commanderX,
+          sourceY: commanderY,
+          targetX: target.transform.x,
+          targetY: target.transform.y,
+          targetWidth: target.building?.width,
+          targetHeight: target.building?.height,
+          intensity: Math.max(0.1, intensity),
+        });
       }
 
-      // Process heal targets
+      // Process factory targets (only when not building from queue)
+      for (const target of factoryTargets) {
+        if (!target.factory) continue;
+
+        // Try to spend energy
+        const energySpent = economyManager.trySpendEnergy(playerId, energyNeededPerTarget);
+        economyManager.recordExpenditure(playerId, energySpent / dtSec);
+
+        if (energySpent > 0) {
+          // Add progress to factory's current build
+          const progressGained = energySpent / target.factory.currentBuildCost;
+          target.factory.currentBuildProgress += progressGained;
+        }
+
+        // Always add spray effect - intensity based on energy rate
+        const intensity = energyNeededPerTarget > 0 ? energySpent / energyNeededPerTarget : 0;
+        sprayTargets.push({
+          sourceId: commander.id,
+          targetId: target.id,
+          type: 'build',
+          sourceX: commanderX,
+          sourceY: commanderY,
+          targetX: target.transform.x,
+          targetY: target.transform.y,
+          targetWidth: target.building?.width,
+          targetHeight: target.building?.height,
+          intensity: Math.max(0.1, intensity),
+        });
+      }
+
+      // Process heal targets (always heal units in range)
       for (const target of healTargets) {
         if (!target.unit) continue;
 
-        // Calculate healing cost (same as build - energy per HP)
+        // Calculate healing cost
         const hpToHeal = target.unit.maxHp - target.unit.hp;
-        const healCostPerHp = 0.5; // Cost 0.5 energy per HP healed
+        const healCostPerHp = 0.5;
 
         // Try to spend energy
         const energySpent = economyManager.trySpendEnergy(playerId, energyNeededPerTarget);
@@ -114,27 +155,64 @@ export class CommanderAbilitiesSystem {
           if (target.unit.hp > target.unit.maxHp) {
             target.unit.hp = target.unit.maxHp;
           }
-
-          // Add spray effect
-          sprayTargets.push({
-            sourceId: commander.id,
-            targetId: target.id,
-            type: 'heal',
-            sourceX: commanderX,
-            sourceY: commanderY,
-            targetX: target.transform.x,
-            targetY: target.transform.y,
-            targetRadius: target.unit.radius,
-          });
         }
+
+        // Always add spray effect - intensity based on energy rate
+        const intensity = energyNeededPerTarget > 0 ? energySpent / energyNeededPerTarget : 0;
+        sprayTargets.push({
+          sourceId: commander.id,
+          targetId: target.id,
+          type: 'heal',
+          sourceX: commanderX,
+          sourceY: commanderY,
+          targetX: target.transform.x,
+          targetY: target.transform.y,
+          targetRadius: target.unit.radius,
+          intensity: Math.max(0.1, intensity),
+        });
       }
     }
 
-    return { sprayTargets };
+    return { sprayTargets, completedBuildings };
   }
 
-  // Find buildings under construction within range
-  private findBuildTargets(
+  // Get the current build target from commander's queue (first incomplete building in range)
+  private getCurrentBuildTarget(
+    world: WorldState,
+    commander: Entity,
+    buildRange: number
+  ): Entity | null {
+    if (!commander.commander) return null;
+
+    const queue = commander.commander.buildQueue;
+    if (queue.length === 0) return null;
+
+    // Get the first building in queue
+    const targetId = queue[0];
+    const target = world.getEntity(targetId);
+
+    // Check if target is valid and in range
+    if (!target || !target.buildable || target.buildable.isComplete || target.buildable.isGhost) {
+      return null;
+    }
+
+    // Check if in range
+    const dist = distance(
+      commander.transform.x,
+      commander.transform.y,
+      target.transform.x,
+      target.transform.y
+    );
+
+    if (dist <= buildRange) {
+      return target;
+    }
+
+    return null;
+  }
+
+  // Find factories that are producing units within range
+  private findFactoryTargets(
     world: WorldState,
     commander: Entity,
     playerId: PlayerId,
@@ -146,8 +224,9 @@ export class CommanderAbilitiesSystem {
       // Only our buildings
       if (building.ownership?.playerId !== playerId) continue;
 
-      // Only buildings under construction
-      if (!building.buildable || building.buildable.isComplete || building.buildable.isGhost) continue;
+      // Only completed factories that are actively producing
+      if (!building.factory || !building.buildable?.isComplete) continue;
+      if (!building.factory.isProducing) continue;
 
       // Check range
       const dist = distance(

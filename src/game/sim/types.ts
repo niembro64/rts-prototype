@@ -217,6 +217,7 @@ export interface Factory {
 export interface Commander {
   isDGunActive: boolean;    // D-gun mode enabled
   dgunEnergyCost: number;   // Energy cost per d-gun shot
+  buildQueue: EntityId[];   // Queue of buildings to construct (in order)
 }
 
 // D-gun projectile marker

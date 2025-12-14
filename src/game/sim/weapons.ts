@@ -106,7 +106,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   dgun: {
     id: 'dgun',
     damage: 9999,           // Instant kill
-    range: 300,
+    range: 150,             // Short range (half distance)
     cooldown: 0,            // No cooldown, limited by energy
     projectileSpeed: 350,   // Medium speed
     projectileRadius: 25,   // Large projectile

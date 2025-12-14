@@ -42,6 +42,13 @@ const props = defineProps<{
 
 const showPanel = computed(() => props.selection.unitCount > 0 || props.selection.hasFactory);
 
+// Status panel shows when factory has a queue
+const showStatusPanel = computed(() =>
+  props.selection.hasFactory &&
+  props.selection.factoryQueue &&
+  props.selection.factoryQueue.length > 0
+);
+
 const waypointModes: { mode: WaypointType; label: string; key: string; color: string }[] = [
   { mode: 'move', label: 'Move', key: 'M', color: '#00ff00' },
   { mode: 'fight', label: 'Fight', key: 'F', color: '#ff4444' },
@@ -59,10 +66,25 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
   { weaponId: 'cannon', label: 'Cannon', cost: 200 },
   { weaponId: 'shotgun', label: 'Shotgun', cost: 120 },
 ];
+
+// Queue units with modifier key support (Shift=5, Ctrl=100)
+function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: string) {
+  let count = 1;
+  if (event.ctrlKey) {
+    count = 100;
+  } else if (event.shiftKey) {
+    count = 5;
+  }
+
+  for (let i = 0; i < count; i++) {
+    props.actions.queueUnit(factoryId, weaponId);
+  }
+}
 </script>
 
 <template>
-  <div v-if="showPanel" class="selection-panel">
+  <!-- OPTIONS PANEL (left side) -->
+  <div v-if="showPanel" class="options-panel">
     <!-- Unit count display -->
     <div class="panel-header">
       <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
@@ -117,20 +139,20 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
         >
           <span class="btn-label">D-Gun</span>
           <span class="btn-cost">200E</span>
-          <span class="btn-key">G</span>
+          <span class="btn-key">D</span>
         </button>
       </div>
     </div>
 
     <!-- Unit production (for factory) -->
     <div v-if="selection.hasFactory && selection.factoryId" class="button-group">
-      <div class="group-label">Produce</div>
+      <div class="group-label">Produce <span class="modifier-hint">(Shift=5, Ctrl=100)</span></div>
       <div class="buttons">
         <button
           v-for="uo in unitOptions"
           :key="uo.weaponId"
           class="action-btn produce-btn"
-          @click="actions.queueUnit(selection.factoryId!, uo.weaponId)"
+          @click="queueUnitsWithModifier($event, selection.factoryId!, uo.weaponId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
           <span class="btn-cost">{{ uo.cost }}E</span>
@@ -138,17 +160,33 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
       </div>
     </div>
 
-    <!-- Production queue display (for factory) -->
-    <div v-if="selection.hasFactory && selection.factoryQueue && selection.factoryQueue.length > 0" class="queue-section">
-      <div class="group-label">Queue ({{ selection.factoryQueue.length }})</div>
+    <!-- Message area (always present to prevent modal resize) -->
+    <div class="message-area">
+      <span v-if="selection.isBuildMode || selection.isDGunMode">
+        Press ESC or Right-click to cancel
+      </span>
+      <span v-else>&nbsp;</span>
+    </div>
+  </div>
 
-      <!-- Current production progress bar -->
-      <div v-if="selection.factoryIsProducing" class="progress-bar">
+  <!-- STATUS PANEL (right side) - shows queue and production status -->
+  <div v-if="showStatusPanel" class="status-panel">
+    <div class="panel-header">
+      <span class="status-title">Production Status</span>
+    </div>
+
+    <!-- Current production progress bar -->
+    <div v-if="selection.factoryIsProducing" class="progress-section">
+      <div class="group-label">Building</div>
+      <div class="progress-bar">
         <div class="progress-fill" :style="{ width: (selection.factoryProgress ?? 0) * 100 + '%' }"></div>
-        <span class="progress-label">{{ selection.factoryQueue[0]?.label }}</span>
+        <span class="progress-label">{{ selection.factoryQueue?.[0]?.label }}</span>
       </div>
+    </div>
 
-      <!-- Queue items -->
+    <!-- Queue items -->
+    <div v-if="selection.factoryQueue && selection.factoryQueue.length > 0" class="queue-section">
+      <div class="group-label">Queue ({{ selection.factoryQueue.length }})</div>
       <div class="queue-items">
         <div
           v-for="(item, index) in selection.factoryQueue"
@@ -164,19 +202,15 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
         </div>
       </div>
     </div>
-
-    <!-- Cancel hint when in build/dgun mode -->
-    <div v-if="selection.isBuildMode || selection.isDGunMode" class="cancel-hint">
-      Press ESC or Right-click to cancel
-    </div>
   </div>
 </template>
 
 <style scoped>
-.selection-panel {
+/* Base panel styles */
+.options-panel,
+.status-panel {
   position: absolute;
   bottom: 20px;
-  left: 20px;
   background: rgba(0, 0, 0, 0.85);
   border: 2px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
@@ -186,6 +220,50 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
   color: white;
   pointer-events: auto;
   z-index: 1000;
+}
+
+/* Options panel on left */
+.options-panel {
+  left: 20px;
+}
+
+/* Status panel on right */
+.status-panel {
+  right: 20px;
+  width: 220px;
+  height: 280px;
+  border-color: rgba(255, 204, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+
+.status-panel .panel-header {
+  flex-shrink: 0;
+}
+
+.status-panel .progress-section {
+  flex-shrink: 0;
+}
+
+.status-panel .queue-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.status-panel .queue-items {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.status-title {
+  color: #ffcc00;
+}
+
+.progress-section {
+  margin-bottom: 10px;
 }
 
 .panel-header {
@@ -213,6 +291,12 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
   color: rgba(255, 255, 255, 0.6);
   margin-bottom: 4px;
   text-transform: uppercase;
+}
+
+.modifier-hint {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: none;
 }
 
 .buttons {
@@ -277,11 +361,12 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
   --btn-color: #0088ff;
 }
 
-.cancel-hint {
+.message-area {
   font-size: 10px;
   color: rgba(255, 255, 255, 0.5);
   margin-top: 8px;
   text-align: center;
+  min-height: 14px;
 }
 
 /* Queue section styles */
@@ -322,10 +407,30 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
 
 .queue-items {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 4px;
-  max-height: 80px;
+  max-height: 120px;
   overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Custom scrollbar for queue */
+.queue-items::-webkit-scrollbar {
+  width: 6px;
+}
+
+.queue-items::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.queue-items::-webkit-scrollbar-thumb {
+  background: rgba(255, 204, 0, 0.5);
+  border-radius: 3px;
+}
+
+.queue-items::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 204, 0, 0.7);
 }
 
 .queue-item {
@@ -339,6 +444,7 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .queue-item:hover {
