@@ -1,53 +1,103 @@
 import type { WorldState } from './WorldState';
-import type { Entity } from './types';
+import type { Entity, PlayerId } from './types';
+
+// Unit composition for each player
+interface UnitSpawnConfig {
+  weaponId: string;
+  count: number;
+  radius?: number;
+  moveSpeed?: number;
+}
+
+const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
+  { weaponId: 'minigun', count: 3, radius: 12, moveSpeed: 120 },
+  { weaponId: 'laser', count: 2, radius: 14, moveSpeed: 100 },
+  { weaponId: 'cannon', count: 2, radius: 16, moveSpeed: 80 },
+  { weaponId: 'shotgun', count: 2, radius: 13, moveSpeed: 110 },
+];
+
+// Spawn units for a player in a formation
+function spawnPlayerUnits(
+  world: WorldState,
+  playerId: PlayerId,
+  centerX: number,
+  centerY: number,
+  facingAngle: number
+): Entity[] {
+  const entities: Entity[] = [];
+  const spacing = 50;
+  let unitIndex = 0;
+
+  for (const config of PLAYER_UNIT_COMPOSITION) {
+    for (let i = 0; i < config.count; i++) {
+      // Arrange in a grid formation
+      const row = Math.floor(unitIndex / 4);
+      const col = unitIndex % 4;
+
+      // Offset from center
+      const localX = (col - 1.5) * spacing;
+      const localY = row * spacing;
+
+      // Rotate based on facing angle
+      const cos = Math.cos(facingAngle);
+      const sin = Math.sin(facingAngle);
+      const rotatedX = localX * cos - localY * sin;
+      const rotatedY = localX * sin + localY * cos;
+
+      const x = centerX + rotatedX;
+      const y = centerY + rotatedY;
+
+      const unit = world.createUnit(
+        x,
+        y,
+        playerId,
+        config.weaponId,
+        config.radius ?? 15,
+        config.moveSpeed ?? 100
+      );
+
+      // Set initial rotation to face the enemy
+      unit.transform.rotation = facingAngle;
+
+      world.addEntity(unit);
+      entities.push(unit);
+      unitIndex++;
+    }
+  }
+
+  return entities;
+}
 
 // Spawn initial entities for the game
 export function spawnInitialEntities(world: WorldState): Entity[] {
   const entities: Entity[] = [];
 
-  // Spawn some units in a cluster
-  const unitCount = 8;
-  const centerX = 300;
-  const centerY = 300;
-  const spread = 80;
+  // Player 1 units (Blue) - left side, facing right
+  const player1Units = spawnPlayerUnits(
+    world,
+    1,
+    300, // centerX
+    world.mapHeight / 2, // centerY
+    0 // facing right
+  );
+  entities.push(...player1Units);
 
-  for (let i = 0; i < unitCount; i++) {
-    const angle = (i / unitCount) * Math.PI * 2;
-    const radius = spread * (0.5 + world.rng.next() * 0.5);
-    const x = centerX + Math.cos(angle) * radius;
-    const y = centerY + Math.sin(angle) * radius;
+  // Player 2 units (Red) - right side, facing left
+  const player2Units = spawnPlayerUnits(
+    world,
+    2,
+    world.mapWidth - 300, // centerX
+    world.mapHeight / 2, // centerY
+    Math.PI // facing left
+  );
+  entities.push(...player2Units);
 
-    const unit = world.createUnit(x, y, 15, 120);
-    world.addEntity(unit);
-    entities.push(unit);
-  }
-
-  // Spawn a second group of units
-  const group2Count = 5;
-  const group2CenterX = 600;
-  const group2CenterY = 400;
-
-  for (let i = 0; i < group2Count; i++) {
-    const angle = (i / group2Count) * Math.PI * 2;
-    const radius = 60 * (0.5 + world.rng.next() * 0.5);
-    const x = group2CenterX + Math.cos(angle) * radius;
-    const y = group2CenterY + Math.sin(angle) * radius;
-
-    const unit = world.createUnit(x, y, 12, 150);
-    world.addEntity(unit);
-    entities.push(unit);
-  }
-
-  // Spawn some buildings (obstacles)
+  // Spawn some neutral buildings (obstacles)
   const buildings = [
-    { x: 500, y: 200, w: 80, h: 60 },
-    { x: 800, y: 500, w: 100, h: 100 },
-    { x: 200, y: 600, w: 60, h: 120 },
-    { x: 1000, y: 300, w: 120, h: 80 },
-    { x: 400, y: 800, w: 150, h: 50 },
-    { x: 1200, y: 700, w: 80, h: 80 },
-    { x: 700, y: 1000, w: 100, h: 60 },
-    { x: 1500, y: 400, w: 90, h: 90 },
+    { x: world.mapWidth / 2, y: world.mapHeight / 2 - 200, w: 100, h: 80 },
+    { x: world.mapWidth / 2, y: world.mapHeight / 2 + 200, w: 100, h: 80 },
+    { x: world.mapWidth / 2 - 300, y: world.mapHeight / 2, w: 60, h: 120 },
+    { x: world.mapWidth / 2 + 300, y: world.mapHeight / 2, w: 60, h: 120 },
   ];
 
   for (const b of buildings) {

@@ -5,7 +5,10 @@ import { CommandQueue } from '../sim/commands';
 import { spawnInitialEntities } from '../sim/spawn';
 import { EntityRenderer } from '../render/renderEntities';
 import { InputManager } from '../input/inputBindings';
-import type { Entity } from '../sim/types';
+import type { Entity, PlayerId, EntityId } from '../sim/types';
+import { PLAYER_COLORS } from '../sim/types';
+import { audioManager } from '../audio/AudioManager';
+import type { AudioEvent } from '../sim/combat';
 
 // Grid settings
 const GRID_SIZE = 50;
@@ -19,9 +22,14 @@ export class RtsScene extends Phaser.Scene {
   private inputManager!: InputManager;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private debugText!: Phaser.GameObjects.Text;
+  private playerText!: Phaser.GameObjects.Text;
   private frameCount: number = 0;
   private fps: number = 0;
   private fpsUpdateTime: number = 0;
+  private audioInitialized: boolean = false;
+
+  // Callback for UI to know when player changes
+  public onPlayerChange?: (playerId: PlayerId) => void;
 
   constructor() {
     super({ key: 'RtsScene' });
@@ -33,11 +41,22 @@ export class RtsScene extends Phaser.Scene {
     this.commandQueue = new CommandQueue();
     this.simulation = new Simulation(this.world, this.commandQueue);
 
+    // Setup death callback
+    this.simulation.onUnitDeath = (deadUnitIds: EntityId[]) => {
+      this.handleUnitDeaths(deadUnitIds);
+    };
+
+    // Setup audio callback
+    this.simulation.onAudioEvent = (event: AudioEvent) => {
+      this.handleAudioEvent(event);
+    };
+
     // Setup camera
     const camera = this.cameras.main;
     camera.setBackgroundColor(0x1a1a2e);
     camera.setBounds(0, 0, this.world.mapWidth, this.world.mapHeight);
-    camera.setScroll(0, 0);
+    // Center camera on the map
+    camera.centerOn(this.world.mapWidth / 2, this.world.mapHeight / 2);
 
     // Draw grid background
     this.drawGrid();
@@ -56,6 +75,65 @@ export class RtsScene extends Phaser.Scene {
 
     // Setup debug overlay
     this.createDebugOverlay();
+
+    // Setup player indicator
+    this.createPlayerIndicator();
+
+    // Initialize audio on first user interaction
+    this.input.once('pointerdown', () => {
+      if (!this.audioInitialized) {
+        audioManager.init();
+        this.audioInitialized = true;
+      }
+    });
+  }
+
+  // Handle audio events from simulation
+  private handleAudioEvent(event: AudioEvent): void {
+    if (!this.audioInitialized) return;
+
+    switch (event.type) {
+      case 'fire':
+        audioManager.playWeaponFire(event.weaponId);
+        break;
+      case 'hit':
+        audioManager.playWeaponHit(event.weaponId);
+        break;
+      case 'death':
+        audioManager.playUnitDeath(event.weaponId);
+        break;
+    }
+  }
+
+  // Handle unit deaths (cleanup Matter bodies)
+  private handleUnitDeaths(deadUnitIds: EntityId[]): void {
+    for (const id of deadUnitIds) {
+      const entity = this.world.getEntity(id);
+      if (entity?.body?.matterBody) {
+        this.matter.world.remove(entity.body.matterBody);
+      }
+      this.world.removeEntity(id);
+    }
+  }
+
+  // Switch active player
+  public switchPlayer(playerId: PlayerId): void {
+    this.world.setActivePlayer(playerId);
+    this.updatePlayerIndicator();
+    if (this.onPlayerChange) {
+      this.onPlayerChange(playerId);
+    }
+  }
+
+  // Toggle between players
+  public togglePlayer(): void {
+    const newPlayer = this.world.activePlayerId === 1 ? 2 : 1;
+    this.switchPlayer(newPlayer);
+  }
+
+  // Get current active player
+  public getActivePlayer(): PlayerId {
+    return this.world.activePlayerId;
   }
 
   // Create Matter.js physics bodies for entities
@@ -125,6 +203,29 @@ export class RtsScene extends Phaser.Scene {
     this.debugText.setDepth(1001);
   }
 
+  // Create player indicator
+  private createPlayerIndicator(): void {
+    this.playerText = this.add.text(10, 130, '', {
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      color: '#ffffff',
+      backgroundColor: '#000000aa',
+      padding: { x: 10, y: 8 },
+    });
+    this.playerText.setScrollFactor(0);
+    this.playerText.setDepth(1001);
+    this.updatePlayerIndicator();
+  }
+
+  // Update player indicator text
+  private updatePlayerIndicator(): void {
+    const playerId = this.world.activePlayerId;
+    const playerInfo = PLAYER_COLORS[playerId];
+    const colorHex = playerInfo.primary.toString(16).padStart(6, '0');
+    this.playerText.setText(`Player: ${playerInfo.name}`);
+    this.playerText.setColor(`#${colorHex}`);
+  }
+
   update(time: number, delta: number): void {
     // Update FPS counter
     this.frameCount++;
@@ -170,16 +271,24 @@ export class RtsScene extends Phaser.Scene {
   private updateDebugText(): void {
     const selectedCount = this.world.getSelectedEntities().length;
     const entityCount = this.world.getEntityCount();
+    const unitCount = this.world.getUnits().length;
+    const projectileCount = this.world.getProjectiles().length;
     const zoom = this.inputManager.getZoom().toFixed(2);
     const tick = this.world.getTick();
+
+    const p1Units = this.world.getUnitsByPlayer(1).length;
+    const p2Units = this.world.getUnitsByPlayer(2).length;
 
     this.debugText.setText(
       [
         `FPS: ${this.fps}`,
         `Entities: ${entityCount}`,
+        `Units: ${unitCount} (P1: ${p1Units}, P2: ${p2Units})`,
+        `Projectiles: ${projectileCount}`,
         `Selected: ${selectedCount}`,
         `Zoom: ${zoom}x`,
         `Tick: ${tick}`,
+        `Audio: ${this.audioInitialized ? 'ON' : 'Click to enable'}`,
       ].join('\n')
     );
   }
@@ -190,5 +299,6 @@ export class RtsScene extends Phaser.Scene {
     this.inputManager?.destroy();
     this.gridGraphics?.destroy();
     this.debugText?.destroy();
+    this.playerText?.destroy();
   }
 }

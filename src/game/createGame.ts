@@ -7,7 +7,12 @@ export interface GameConfig {
   height: number;
 }
 
-export function createGame(config: GameConfig): Phaser.Game {
+export interface GameInstance {
+  game: Phaser.Game;
+  getScene: () => RtsScene | null;
+}
+
+export function createGame(config: GameConfig): GameInstance {
   const phaserConfig: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent: config.parent,
@@ -40,17 +45,21 @@ export function createGame(config: GameConfig): Phaser.Game {
     },
   };
 
-  return new Phaser.Game(phaserConfig);
+  const game = new Phaser.Game(phaserConfig);
+
+  return {
+    game,
+    getScene: () => {
+      const scene = game.scene.getScene('RtsScene');
+      return scene instanceof RtsScene ? scene : null;
+    },
+  };
 }
 
-export function destroyGame(game: Phaser.Game): void {
-  // Shutdown all scenes first
-  game.scene.getScenes(true).forEach((scene) => {
-    if (scene instanceof RtsScene) {
-      scene.shutdown();
-    }
-  });
-
-  // Destroy the game instance
-  game.destroy(true);
+export function destroyGame(instance: GameInstance): void {
+  const scene = instance.getScene();
+  if (scene) {
+    scene.shutdown();
+  }
+  instance.game.destroy(true);
 }

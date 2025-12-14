@@ -1,0 +1,483 @@
+import type { WorldState } from './WorldState';
+import type { Entity, EntityId } from './types';
+
+// Audio event types
+export interface AudioEvent {
+  type: 'fire' | 'hit' | 'death';
+  weaponId: string;
+  x: number;
+  y: number;
+}
+
+// Combat result containing entities and audio events
+export interface FireWeaponsResult {
+  projectiles: Entity[];
+  audioEvents: AudioEvent[];
+}
+
+export interface CollisionResult {
+  deadUnitIds: EntityId[];
+  audioEvents: AudioEvent[];
+}
+
+// Distance between two points
+function distance(x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Find closest enemy unit within range
+export function findClosestEnemy(
+  world: WorldState,
+  unit: Entity,
+  range: number
+): Entity | null {
+  if (!unit.ownership) return null;
+
+  const enemies = world.getEnemyUnits(unit.ownership.playerId);
+  let closestEnemy: Entity | null = null;
+  let closestDistance = Infinity;
+
+  for (const enemy of enemies) {
+    if (!enemy.unit || enemy.unit.hp <= 0) continue;
+
+    const dist = distance(
+      unit.transform.x,
+      unit.transform.y,
+      enemy.transform.x,
+      enemy.transform.y
+    );
+
+    // Check if in range (accounting for unit radii)
+    const effectiveRange = range + (unit.unit?.radius ?? 0) + enemy.unit.radius;
+
+    if (dist <= effectiveRange && dist < closestDistance) {
+      closestDistance = dist;
+      closestEnemy = enemy;
+    }
+  }
+
+  return closestEnemy;
+}
+
+// Update auto-targeting for all units
+export function updateAutoTargeting(world: WorldState): void {
+  for (const unit of world.getUnits()) {
+    if (!unit.weapon || !unit.ownership || !unit.unit) continue;
+    if (unit.unit.hp <= 0) continue;
+
+    const weapon = unit.weapon;
+    const range = weapon.config.range;
+
+    // Check if current target is still valid
+    if (weapon.targetEntityId !== null) {
+      const target = world.getEntity(weapon.targetEntityId);
+      if (target && target.unit && target.unit.hp > 0) {
+        const dist = distance(
+          unit.transform.x,
+          unit.transform.y,
+          target.transform.x,
+          target.transform.y
+        );
+        const effectiveRange = range + unit.unit.radius + target.unit.radius;
+
+        // Target still valid and in range
+        if (dist <= effectiveRange) {
+          continue;
+        }
+      }
+      // Target invalid or out of range, clear it
+      weapon.targetEntityId = null;
+    }
+
+    // Find new target
+    const enemy = findClosestEnemy(world, unit, range);
+    if (enemy) {
+      weapon.targetEntityId = enemy.id;
+    }
+  }
+}
+
+// Update weapon cooldowns
+export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
+  for (const unit of world.getUnits()) {
+    if (!unit.weapon) continue;
+
+    if (unit.weapon.currentCooldown > 0) {
+      unit.weapon.currentCooldown -= dtMs;
+      if (unit.weapon.currentCooldown < 0) {
+        unit.weapon.currentCooldown = 0;
+      }
+    }
+
+    // Update burst cooldown
+    if (unit.weapon.burstCooldown !== undefined && unit.weapon.burstCooldown > 0) {
+      unit.weapon.burstCooldown -= dtMs;
+      if (unit.weapon.burstCooldown < 0) {
+        unit.weapon.burstCooldown = 0;
+      }
+    }
+  }
+}
+
+// Fire weapons at targets
+export function fireWeapons(world: WorldState): FireWeaponsResult {
+  const newProjectiles: Entity[] = [];
+  const audioEvents: AudioEvent[] = [];
+
+  for (const unit of world.getUnits()) {
+    if (!unit.weapon || !unit.ownership || !unit.unit) continue;
+    if (unit.unit.hp <= 0) continue;
+
+    const weapon = unit.weapon;
+
+    // Check if we have a target
+    if (weapon.targetEntityId === null) continue;
+
+    const target = world.getEntity(weapon.targetEntityId);
+    if (!target || !target.unit || target.unit.hp <= 0) {
+      weapon.targetEntityId = null;
+      continue;
+    }
+
+    // Check if off cooldown
+    const canFire = weapon.currentCooldown <= 0;
+    const canBurstFire =
+      weapon.burstShotsRemaining !== undefined &&
+      weapon.burstShotsRemaining > 0 &&
+      (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
+
+    if (!canFire && !canBurstFire) continue;
+
+    // Calculate direction to target
+    const dx = target.transform.x - unit.transform.x;
+    const dy = target.transform.y - unit.transform.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+
+    // Face the target
+    unit.transform.rotation = Math.atan2(dy, dx);
+
+    const config = weapon.config;
+    const playerId = unit.ownership.playerId;
+
+    // Handle burst fire
+    if (canBurstFire && weapon.burstShotsRemaining !== undefined) {
+      weapon.burstShotsRemaining--;
+      weapon.burstCooldown = config.burstDelay ?? 80;
+
+      if (weapon.burstShotsRemaining <= 0) {
+        weapon.burstShotsRemaining = undefined;
+        weapon.burstCooldown = undefined;
+      }
+    } else if (canFire) {
+      // Start cooldown
+      weapon.currentCooldown = config.cooldown;
+
+      // Initialize burst if applicable
+      if (config.burstCount && config.burstCount > 1) {
+        weapon.burstShotsRemaining = config.burstCount - 1; // -1 because we're firing one now
+        weapon.burstCooldown = config.burstDelay ?? 80;
+      }
+    }
+
+    // Add fire audio event
+    audioEvents.push({
+      type: 'fire',
+      weaponId: config.id,
+      x: unit.transform.x,
+      y: unit.transform.y,
+    });
+
+    // Create projectile(s)
+    const pellets = config.pelletCount ?? 1;
+    const spreadAngle = config.spreadAngle ?? 0;
+    const baseAngle = Math.atan2(dirY, dirX);
+
+    for (let i = 0; i < pellets; i++) {
+      // Calculate spread
+      let angle = baseAngle;
+      if (pellets > 1 && spreadAngle > 0) {
+        const spreadOffset = (i / (pellets - 1) - 0.5) * spreadAngle;
+        angle += spreadOffset;
+      } else if (pellets === 1 && spreadAngle > 0) {
+        // Random spread for single pellet
+        angle += (world.rng.next() - 0.5) * spreadAngle;
+      }
+
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+
+      // Spawn position (at edge of unit)
+      const spawnX = unit.transform.x + cos * (unit.unit.radius + 2);
+      const spawnY = unit.transform.y + sin * (unit.unit.radius + 2);
+
+      // Check if this is a beam/hitscan weapon
+      if (config.beamDuration !== undefined) {
+        // Create beam
+        const beamLength = config.range;
+        const endX = unit.transform.x + cos * beamLength;
+        const endY = unit.transform.y + sin * beamLength;
+
+        const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config);
+        newProjectiles.push(beam);
+      } else if (config.projectileSpeed !== undefined) {
+        // Create traveling projectile
+        const speed = config.projectileSpeed;
+        const velX = cos * speed;
+        const velY = sin * speed;
+
+        const projectile = world.createProjectile(
+          spawnX,
+          spawnY,
+          velX,
+          velY,
+          playerId,
+          unit.id,
+          config,
+          'traveling'
+        );
+        newProjectiles.push(projectile);
+      }
+    }
+  }
+
+  return { projectiles: newProjectiles, audioEvents };
+}
+
+// Update projectile positions
+export function updateProjectiles(world: WorldState, dtMs: number): void {
+  const dtSec = dtMs / 1000;
+
+  for (const entity of world.getProjectiles()) {
+    if (!entity.projectile) continue;
+
+    const proj = entity.projectile;
+
+    // Update time alive
+    proj.timeAlive += dtMs;
+
+    // Move traveling projectiles
+    if (proj.projectileType === 'traveling') {
+      entity.transform.x += proj.velocityX * dtSec;
+      entity.transform.y += proj.velocityY * dtSec;
+    }
+  }
+}
+
+// Check projectile collisions and apply damage
+export function checkProjectileCollisions(world: WorldState): CollisionResult {
+  const projectilesToRemove: EntityId[] = [];
+  const unitsToRemove: EntityId[] = [];
+  const audioEvents: AudioEvent[] = [];
+
+  for (const projEntity of world.getProjectiles()) {
+    if (!projEntity.projectile || !projEntity.ownership) continue;
+
+    const proj = projEntity.projectile;
+    const config = proj.config;
+
+    // Check if projectile expired
+    if (proj.timeAlive >= proj.maxLifespan) {
+      // Handle splash damage on expiration for grenades
+      if (config.splashRadius && !proj.hasExploded) {
+        const splashHits = applyAoEDamage(world, projEntity, unitsToRemove);
+        proj.hasExploded = true;
+
+        // Add explosion audio event if there were hits or it's a grenade
+        if (splashHits > 0 || config.id === 'grenade') {
+          audioEvents.push({
+            type: 'hit',
+            weaponId: config.id,
+            x: projEntity.transform.x,
+            y: projEntity.transform.y,
+          });
+        }
+      }
+      projectilesToRemove.push(projEntity.id);
+      continue;
+    }
+
+    // Get potential targets (enemies of projectile owner)
+    const enemies = world.getEnemyUnits(proj.ownerId);
+
+    for (const enemy of enemies) {
+      if (!enemy.unit || enemy.unit.hp <= 0) continue;
+      if (proj.hitEntities.has(enemy.id)) continue; // Already hit this entity
+
+      let hit = false;
+
+      if (proj.projectileType === 'beam') {
+        // Line-circle intersection for beams
+        hit = lineCircleIntersection(
+          proj.startX ?? projEntity.transform.x,
+          proj.startY ?? projEntity.transform.y,
+          proj.endX ?? projEntity.transform.x,
+          proj.endY ?? projEntity.transform.y,
+          enemy.transform.x,
+          enemy.transform.y,
+          enemy.unit.radius + (config.beamWidth ?? 2) / 2
+        );
+      } else {
+        // Circle-circle intersection for projectiles
+        const projRadius = config.projectileRadius ?? 5;
+        const dist = distance(
+          projEntity.transform.x,
+          projEntity.transform.y,
+          enemy.transform.x,
+          enemy.transform.y
+        );
+        hit = dist <= projRadius + enemy.unit.radius;
+      }
+
+      if (hit) {
+        proj.hitEntities.add(enemy.id);
+
+        // Apply damage
+        enemy.unit.hp -= config.damage;
+
+        // Add hit audio event
+        audioEvents.push({
+          type: 'hit',
+          weaponId: config.id,
+          x: enemy.transform.x,
+          y: enemy.transform.y,
+        });
+
+        // Check for splash damage
+        if (config.splashRadius && !proj.hasExploded) {
+          applyAoEDamage(world, projEntity, unitsToRemove);
+          proj.hasExploded = true;
+        }
+
+        // Check if unit died
+        if (enemy.unit.hp <= 0) {
+          // Add death audio event based on the dying unit's weapon type
+          const deathWeaponId = enemy.weapon?.config.id ?? 'minigun';
+          audioEvents.push({
+            type: 'death',
+            weaponId: deathWeaponId,
+            x: enemy.transform.x,
+            y: enemy.transform.y,
+          });
+          unitsToRemove.push(enemy.id);
+        }
+
+        // Check if projectile should be removed
+        if (proj.hitEntities.size >= proj.maxHits) {
+          projectilesToRemove.push(projEntity.id);
+          break;
+        }
+      }
+    }
+
+    // Check if projectile is out of bounds
+    const margin = 100;
+    if (
+      projEntity.transform.x < -margin ||
+      projEntity.transform.x > world.mapWidth + margin ||
+      projEntity.transform.y < -margin ||
+      projEntity.transform.y > world.mapHeight + margin
+    ) {
+      projectilesToRemove.push(projEntity.id);
+    }
+  }
+
+  // Remove expired projectiles
+  for (const id of projectilesToRemove) {
+    world.removeEntity(id);
+  }
+
+  return { deadUnitIds: unitsToRemove, audioEvents };
+}
+
+// Apply AoE damage around a point - returns number of hits
+function applyAoEDamage(world: WorldState, projEntity: Entity, unitsToRemove: EntityId[]): number {
+  if (!projEntity.projectile) return 0;
+
+  const proj = projEntity.projectile;
+  const config = proj.config;
+  const splashRadius = config.splashRadius ?? 0;
+  const falloff = config.splashDamageFalloff ?? 0.5;
+
+  const enemies = world.getEnemyUnits(proj.ownerId);
+  let hitCount = 0;
+
+  for (const enemy of enemies) {
+    if (!enemy.unit || enemy.unit.hp <= 0) continue;
+    if (proj.hitEntities.has(enemy.id)) continue; // Don't double-hit
+
+    const dist = distance(
+      projEntity.transform.x,
+      projEntity.transform.y,
+      enemy.transform.x,
+      enemy.transform.y
+    );
+
+    if (dist <= splashRadius + enemy.unit.radius) {
+      proj.hitEntities.add(enemy.id);
+      hitCount++;
+
+      // Calculate damage with falloff
+      const distRatio = Math.min(1, dist / splashRadius);
+      const damageMultiplier = 1 - distRatio * (1 - falloff);
+      const damage = config.damage * damageMultiplier;
+
+      enemy.unit.hp -= damage;
+
+      if (enemy.unit.hp <= 0 && !unitsToRemove.includes(enemy.id)) {
+        unitsToRemove.push(enemy.id);
+      }
+    }
+  }
+
+  return hitCount;
+}
+
+// Line-circle intersection test
+function lineCircleIntersection(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  cx: number,
+  cy: number,
+  r: number
+): boolean {
+  // Vector from line start to circle center
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const fx = x1 - cx;
+  const fy = y1 - cy;
+
+  const a = dx * dx + dy * dy;
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - r * r;
+
+  let discriminant = b * b - 4 * a * c;
+
+  if (discriminant < 0) {
+    return false;
+  }
+
+  discriminant = Math.sqrt(discriminant);
+
+  const t1 = (-b - discriminant) / (2 * a);
+  const t2 = (-b + discriminant) / (2 * a);
+
+  // Check if intersection is on the line segment
+  return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+}
+
+// Remove dead units and clean up their Matter bodies
+export function removeDeadUnits(world: WorldState, deadUnitIds: EntityId[], scene: Phaser.Scene): void {
+  for (const id of deadUnitIds) {
+    const entity = world.getEntity(id);
+    if (entity?.body?.matterBody) {
+      scene.matter.world.remove(entity.body.matterBody);
+    }
+    world.removeEntity(id);
+  }
+}

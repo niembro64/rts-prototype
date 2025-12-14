@@ -6,10 +6,11 @@ import type { EntityId } from '../sim/types';
 // Input state
 interface InputState {
   isDraggingSelection: boolean;
-  selectionStartX: number;
-  selectionStartY: number;
-  selectionEndX: number;
-  selectionEndY: number;
+  // Selection stored in WORLD coordinates (not screen)
+  selectionStartWorldX: number;
+  selectionStartWorldY: number;
+  selectionEndWorldX: number;
+  selectionEndWorldY: number;
   isPanningCamera: boolean;
   panStartX: number;
   panStartY: number;
@@ -36,19 +37,6 @@ export class InputManager {
     D: Phaser.Input.Keyboard.Key;
   };
 
-  // Get raw screen coordinates from pointer (unaffected by camera zoom)
-  private getScreenCoords(pointer: Phaser.Input.Pointer): { x: number; y: number } {
-    const event = pointer.event as MouseEvent;
-    const canvas = this.scene.game.canvas;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: (event.clientX - rect.left) * scaleX,
-      y: (event.clientY - rect.top) * scaleY,
-    };
-  }
-
   constructor(scene: Phaser.Scene, world: WorldState, commandQueue: CommandQueue) {
     this.scene = scene;
     this.world = world;
@@ -56,10 +44,10 @@ export class InputManager {
 
     this.state = {
       isDraggingSelection: false,
-      selectionStartX: 0,
-      selectionStartY: 0,
-      selectionEndX: 0,
-      selectionEndY: 0,
+      selectionStartWorldX: 0,
+      selectionStartWorldY: 0,
+      selectionEndWorldX: 0,
+      selectionEndWorldY: 0,
       isPanningCamera: false,
       panStartX: 0,
       panStartY: 0,
@@ -93,19 +81,20 @@ export class InputManager {
 
     // Pointer down
     pointer.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      const screen = this.getScreenCoords(p);
       if (p.leftButtonDown()) {
-        // Start selection drag
+        // Start selection drag - convert to world coords immediately
+        const camera = this.scene.cameras.main;
+        const worldPoint = camera.getWorldPoint(p.x, p.y);
         this.state.isDraggingSelection = true;
-        this.state.selectionStartX = screen.x;
-        this.state.selectionStartY = screen.y;
-        this.state.selectionEndX = screen.x;
-        this.state.selectionEndY = screen.y;
+        this.state.selectionStartWorldX = worldPoint.x;
+        this.state.selectionStartWorldY = worldPoint.y;
+        this.state.selectionEndWorldX = worldPoint.x;
+        this.state.selectionEndWorldY = worldPoint.y;
       } else if (p.middleButtonDown()) {
         // Start camera pan
         this.state.isPanningCamera = true;
-        this.state.panStartX = screen.x;
-        this.state.panStartY = screen.y;
+        this.state.panStartX = p.x;
+        this.state.panStartY = p.y;
         this.state.cameraStartX = this.scene.cameras.main.scrollX;
         this.state.cameraStartY = this.scene.cameras.main.scrollY;
       } else if (p.rightButtonDown()) {
@@ -116,15 +105,17 @@ export class InputManager {
 
     // Pointer move
     pointer.on('pointermove', (p: Phaser.Input.Pointer) => {
-      const screen = this.getScreenCoords(p);
       if (this.state.isDraggingSelection) {
-        this.state.selectionEndX = screen.x;
-        this.state.selectionEndY = screen.y;
+        // Convert to world coords immediately
+        const camera = this.scene.cameras.main;
+        const worldPoint = camera.getWorldPoint(p.x, p.y);
+        this.state.selectionEndWorldX = worldPoint.x;
+        this.state.selectionEndWorldY = worldPoint.y;
       }
 
       if (this.state.isPanningCamera) {
-        const dx = this.state.panStartX - screen.x;
-        const dy = this.state.panStartY - screen.y;
+        const dx = this.state.panStartX - p.x;
+        const dy = this.state.panStartY - p.y;
         const camera = this.scene.cameras.main;
         camera.scrollX = this.state.cameraStartX + dx / camera.zoom;
         camera.scrollY = this.state.cameraStartY + dy / camera.zoom;
@@ -160,16 +151,11 @@ export class InputManager {
 
   // Finish selection and issue select command
   private finishSelection(additive: boolean): void {
-    const camera = this.scene.cameras.main;
-
-    // Convert screen coordinates to world coordinates
-    const startWorld = camera.getWorldPoint(this.state.selectionStartX, this.state.selectionStartY);
-    const endWorld = camera.getWorldPoint(this.state.selectionEndX, this.state.selectionEndY);
-
-    const minX = Math.min(startWorld.x, endWorld.x);
-    const maxX = Math.max(startWorld.x, endWorld.x);
-    const minY = Math.min(startWorld.y, endWorld.y);
-    const maxY = Math.max(startWorld.y, endWorld.y);
+    // Already in world coordinates
+    const minX = Math.min(this.state.selectionStartWorldX, this.state.selectionEndWorldX);
+    const maxX = Math.max(this.state.selectionStartWorldX, this.state.selectionEndWorldX);
+    const minY = Math.min(this.state.selectionStartWorldY, this.state.selectionEndWorldY);
+    const maxY = Math.max(this.state.selectionStartWorldY, this.state.selectionEndWorldY);
 
     // Find entities in selection rectangle
     const selectedIds: EntityId[] = [];
@@ -184,22 +170,22 @@ export class InputManager {
     }
 
     // If no drag (click), check for single unit click
-    const dragThreshold = 5;
+    // Use world coords - threshold scales with typical unit radius
+    const dragThreshold = 10;
     const dragDist = Math.sqrt(
-      Math.pow(this.state.selectionEndX - this.state.selectionStartX, 2) +
-        Math.pow(this.state.selectionEndY - this.state.selectionStartY, 2)
+      Math.pow(this.state.selectionEndWorldX - this.state.selectionStartWorldX, 2) +
+        Math.pow(this.state.selectionEndWorldY - this.state.selectionStartWorldY, 2)
     );
 
     if (dragDist < dragThreshold) {
-      // Single click - find closest unit to click point
-      const clickWorld = camera.getWorldPoint(this.state.selectionStartX, this.state.selectionStartY);
+      // Single click - find closest unit to click point (already in world coords)
       let closestId: EntityId | null = null;
       let closestDist = Infinity;
 
       for (const entity of this.world.getUnits()) {
         if (!entity.unit) continue;
-        const dx = entity.transform.x - clickWorld.x;
-        const dy = entity.transform.y - clickWorld.y;
+        const dx = entity.transform.x - this.state.selectionStartWorldX;
+        const dy = entity.transform.y - this.state.selectionStartWorldY;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < entity.unit.radius && dist < closestDist) {
@@ -262,12 +248,25 @@ export class InputManager {
       camera.scrollX += panAmount;
     }
 
-    // Clamp camera to map bounds
-    const halfWidth = camera.width / 2 / camera.zoom;
-    const halfHeight = camera.height / 2 / camera.zoom;
+    // Clamp camera to map bounds (only if map is larger than viewport)
+    const viewWidth = camera.width / camera.zoom;
+    const viewHeight = camera.height / camera.zoom;
 
-    camera.scrollX = Phaser.Math.Clamp(camera.scrollX, -halfWidth, this.world.mapWidth - halfWidth);
-    camera.scrollY = Phaser.Math.Clamp(camera.scrollY, -halfHeight, this.world.mapHeight - halfHeight);
+    if (viewWidth < this.world.mapWidth) {
+      const halfWidth = viewWidth / 2;
+      camera.scrollX = Phaser.Math.Clamp(camera.scrollX, -halfWidth, this.world.mapWidth - halfWidth);
+    } else {
+      // Map fits in viewport - center it
+      camera.scrollX = (this.world.mapWidth - viewWidth) / 2;
+    }
+
+    if (viewHeight < this.world.mapHeight) {
+      const halfHeight = viewHeight / 2;
+      camera.scrollY = Phaser.Math.Clamp(camera.scrollY, -halfHeight, this.world.mapHeight - halfHeight);
+    } else {
+      // Map fits in viewport - center it
+      camera.scrollY = (this.world.mapHeight - viewHeight) / 2;
+    }
 
     // Draw selection rectangle
     this.drawSelectionRect();
@@ -281,14 +280,11 @@ export class InputManager {
 
     const camera = this.scene.cameras.main;
 
-    // Convert screen coordinates to world coordinates
-    const startWorld = camera.getWorldPoint(this.state.selectionStartX, this.state.selectionStartY);
-    const endWorld = camera.getWorldPoint(this.state.selectionEndX, this.state.selectionEndY);
-
-    const x = Math.min(startWorld.x, endWorld.x);
-    const y = Math.min(startWorld.y, endWorld.y);
-    const w = Math.abs(endWorld.x - startWorld.x);
-    const h = Math.abs(endWorld.y - startWorld.y);
+    // Already in world coordinates - use directly
+    const x = Math.min(this.state.selectionStartWorldX, this.state.selectionEndWorldX);
+    const y = Math.min(this.state.selectionStartWorldY, this.state.selectionEndWorldY);
+    const w = Math.abs(this.state.selectionEndWorldX - this.state.selectionStartWorldX);
+    const h = Math.abs(this.state.selectionEndWorldY - this.state.selectionStartWorldY);
 
     // Fill
     this.selectionGraphics.fillStyle(0x00ff88, 0.15);

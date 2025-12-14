@@ -1,6 +1,14 @@
 import { WorldState } from './WorldState';
 import { CommandQueue, type Command, type MoveCommand, type SelectCommand } from './commands';
-import type { Entity } from './types';
+import type { Entity, EntityId } from './types';
+import {
+  updateAutoTargeting,
+  updateWeaponCooldowns,
+  fireWeapons,
+  updateProjectiles,
+  checkProjectileCollisions,
+  type AudioEvent,
+} from './combat';
 
 // Fixed simulation timestep (60 Hz)
 export const FIXED_TIMESTEP = 1000 / 60;
@@ -9,6 +17,12 @@ export class Simulation {
   private world: WorldState;
   private commandQueue: CommandQueue;
   private accumulator: number = 0;
+
+  // Callback for when units die (to clean up physics bodies)
+  public onUnitDeath?: (deadUnitIds: EntityId[]) => void;
+
+  // Callback for audio events
+  public onAudioEvent?: (event: AudioEvent) => void;
 
   constructor(world: WorldState, commandQueue: CommandQueue) {
     this.world = world;
@@ -21,13 +35,13 @@ export class Simulation {
 
     // Process fixed timesteps
     while (this.accumulator >= FIXED_TIMESTEP) {
-      this.fixedUpdate(FIXED_TIMESTEP / 1000);
+      this.fixedUpdate(FIXED_TIMESTEP);
       this.accumulator -= FIXED_TIMESTEP;
     }
   }
 
   // Fixed timestep update
-  private fixedUpdate(dt: number): void {
+  private fixedUpdate(dtMs: number): void {
     const tick = this.world.getTick();
 
     // Process commands for this tick
@@ -36,13 +50,52 @@ export class Simulation {
       this.executeCommand(command);
     }
 
-    // Update all units
-    this.updateUnits(dt);
+    // Update all units movement
+    this.updateUnits();
 
     // Sync transforms from Matter bodies
     this.syncTransformsFromBodies();
 
+    // Update combat systems
+    this.updateCombat(dtMs);
+
     this.world.incrementTick();
+  }
+
+  // Update combat systems
+  private updateCombat(dtMs: number): void {
+    // Update weapon cooldowns
+    updateWeaponCooldowns(this.world, dtMs);
+
+    // Update auto-targeting
+    updateAutoTargeting(this.world);
+
+    // Fire weapons and create projectiles
+    const fireResult = fireWeapons(this.world);
+    for (const proj of fireResult.projectiles) {
+      this.world.addEntity(proj);
+    }
+
+    // Emit fire audio events
+    for (const event of fireResult.audioEvents) {
+      this.onAudioEvent?.(event);
+    }
+
+    // Update projectile positions
+    updateProjectiles(this.world, dtMs);
+
+    // Check projectile collisions and get dead units
+    const collisionResult = checkProjectileCollisions(this.world);
+
+    // Emit hit/death audio events
+    for (const event of collisionResult.audioEvents) {
+      this.onAudioEvent?.(event);
+    }
+
+    // Notify about dead units (for physics cleanup)
+    if (collisionResult.deadUnitIds.length > 0 && this.onUnitDeath) {
+      this.onUnitDeath(collisionResult.deadUnitIds);
+    }
   }
 
   // Execute a command
@@ -95,7 +148,7 @@ export class Simulation {
   }
 
   // Update unit movement
-  private updateUnits(_dt: number): void {
+  private updateUnits(): void {
     for (const entity of this.world.getUnits()) {
       if (!entity.unit || !entity.body) continue;
 
@@ -103,7 +156,7 @@ export class Simulation {
       const { targetX, targetY } = unit;
 
       if (targetX === null || targetY === null) {
-        // No target, apply friction through Matter's frictionAir
+        // No movement target, apply friction through Matter's frictionAir
         if (body.matterBody) {
           (body.matterBody as MatterJS.BodyType).frictionAir = 0.1;
         }
@@ -137,8 +190,10 @@ export class Simulation {
       (entity as unknown as { velocityX: number; velocityY: number }).velocityX = vx;
       (entity as unknown as { velocityX: number; velocityY: number }).velocityY = vy;
 
-      // Update rotation to face movement direction
-      transform.rotation = Math.atan2(dy, dx);
+      // Update rotation to face movement direction (unless attacking)
+      if (!entity.weapon?.targetEntityId) {
+        transform.rotation = Math.atan2(dy, dx);
+      }
     }
   }
 
@@ -148,7 +203,7 @@ export class Simulation {
       if (entity.body?.matterBody) {
         entity.transform.x = entity.body.matterBody.position.x;
         entity.transform.y = entity.body.matterBody.position.y;
-        entity.transform.rotation = entity.body.matterBody.angle;
+        // Don't sync rotation from physics - we control it manually
       }
     }
   }

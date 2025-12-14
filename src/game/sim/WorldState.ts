@@ -1,4 +1,5 @@
-import type { Entity, EntityId, EntityType } from './types';
+import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
+import { getWeaponConfig } from './weapons';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -38,6 +39,9 @@ export class WorldState {
   private nextEntityId: EntityId = 1;
   private tick: number = 0;
   public rng: SeededRNG;
+
+  // Current player being controlled
+  public activePlayerId: PlayerId = 1;
 
   // Map dimensions
   public readonly mapWidth: number = 2000;
@@ -97,14 +101,33 @@ export class WorldState {
     return this.getEntitiesByType('building');
   }
 
-  // Get selected entities
-  getSelectedEntities(): Entity[] {
-    return this.getAllEntities().filter((e) => e.selectable?.selected);
+  // Get all projectiles
+  getProjectiles(): Entity[] {
+    return this.getEntitiesByType('projectile');
   }
 
-  // Get selected units
+  // Get units by player
+  getUnitsByPlayer(playerId: PlayerId): Entity[] {
+    return this.getUnits().filter((e) => e.ownership?.playerId === playerId);
+  }
+
+  // Get enemy units (not owned by specified player)
+  getEnemyUnits(playerId: PlayerId): Entity[] {
+    return this.getUnits().filter((e) => e.ownership?.playerId !== playerId);
+  }
+
+  // Get selected entities for active player
+  getSelectedEntities(): Entity[] {
+    return this.getAllEntities().filter(
+      (e) => e.selectable?.selected && e.ownership?.playerId === this.activePlayerId
+    );
+  }
+
+  // Get selected units for active player
   getSelectedUnits(): Entity[] {
-    return this.getUnits().filter((e) => e.selectable?.selected);
+    return this.getUnits().filter(
+      (e) => e.selectable?.selected && e.ownership?.playerId === this.activePlayerId
+    );
   }
 
   // Entity count
@@ -112,33 +135,50 @@ export class WorldState {
     return this.entities.size;
   }
 
-  // Clear all selections
+  // Clear all selections (only for active player's units)
   clearSelection(): void {
     for (const entity of this.entities.values()) {
-      if (entity.selectable) {
+      if (entity.selectable && entity.ownership?.playerId === this.activePlayerId) {
         entity.selectable.selected = false;
       }
     }
   }
 
-  // Select entities by IDs
+  // Select entities by IDs (only if owned by active player)
   selectEntities(ids: EntityId[]): void {
     for (const id of ids) {
       const entity = this.entities.get(id);
-      if (entity?.selectable) {
+      if (entity?.selectable && entity.ownership?.playerId === this.activePlayerId) {
         entity.selectable.selected = true;
       }
     }
   }
 
-  // Create a unit entity
-  createUnit(x: number, y: number, radius: number = 15, moveSpeed: number = 100): Entity {
+  // Switch active player
+  setActivePlayer(playerId: PlayerId): void {
+    // Clear current selections when switching
+    this.clearSelection();
+    this.activePlayerId = playerId;
+  }
+
+  // Create a unit entity with player ownership and weapon
+  createUnit(
+    x: number,
+    y: number,
+    playerId: PlayerId,
+    weaponId: string = 'minigun',
+    radius: number = 15,
+    moveSpeed: number = 100
+  ): Entity {
     const id = this.generateEntityId();
+    const weaponConfig = getWeaponConfig(weaponId);
+
     const entity: Entity = {
       id,
       type: 'unit',
       transform: { x, y, rotation: 0 },
       selectable: { selected: false },
+      ownership: { playerId },
       unit: {
         moveSpeed,
         radius,
@@ -147,12 +187,17 @@ export class WorldState {
         targetX: null,
         targetY: null,
       },
+      weapon: {
+        config: weaponConfig,
+        currentCooldown: 0,
+        targetEntityId: null,
+      },
     };
     return entity;
   }
 
   // Create a building entity
-  createBuilding(x: number, y: number, width: number, height: number): Entity {
+  createBuilding(x: number, y: number, width: number, height: number, playerId?: PlayerId): Entity {
     const id = this.generateEntityId();
     const entity: Entity = {
       id,
@@ -165,6 +210,84 @@ export class WorldState {
         maxHp: 500,
       },
     };
+
+    if (playerId !== undefined) {
+      entity.ownership = { playerId };
+    }
+
+    return entity;
+  }
+
+  // Create a projectile entity
+  createProjectile(
+    x: number,
+    y: number,
+    velocityX: number,
+    velocityY: number,
+    ownerId: PlayerId,
+    sourceEntityId: EntityId,
+    config: WeaponConfig,
+    projectileType: ProjectileType = 'traveling'
+  ): Entity {
+    const id = this.generateEntityId();
+
+    // Calculate rotation from velocity
+    const rotation = Math.atan2(velocityY, velocityX);
+
+    // Determine max lifespan
+    let maxLifespan = config.projectileLifespan ?? 2000;
+    if (projectileType === 'beam') {
+      maxLifespan = config.beamDuration ?? 150;
+    } else if (projectileType === 'instant') {
+      maxLifespan = 16; // One frame essentially
+    }
+
+    // Determine max hits (piercing or single hit)
+    const maxHits = config.piercing ? Infinity : 1;
+
+    const projectile: Projectile = {
+      ownerId,
+      sourceEntityId,
+      config,
+      projectileType,
+      velocityX,
+      velocityY,
+      timeAlive: 0,
+      maxLifespan,
+      hitEntities: new Set(),
+      maxHits,
+    };
+
+    const entity: Entity = {
+      id,
+      type: 'projectile',
+      transform: { x, y, rotation },
+      ownership: { playerId: ownerId },
+      projectile,
+    };
+
+    return entity;
+  }
+
+  // Create a beam projectile (special case)
+  createBeam(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    ownerId: PlayerId,
+    sourceEntityId: EntityId,
+    config: WeaponConfig
+  ): Entity {
+    const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, 'beam');
+
+    if (entity.projectile) {
+      entity.projectile.startX = startX;
+      entity.projectile.startY = startY;
+      entity.projectile.endX = endX;
+      entity.projectile.endY = endY;
+    }
+
     return entity;
   }
 }
