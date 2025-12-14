@@ -85,7 +85,7 @@ export class Simulation {
     updateProjectiles(this.world, dtMs);
 
     // Check projectile collisions and get dead units
-    const collisionResult = checkProjectileCollisions(this.world);
+    const collisionResult = checkProjectileCollisions(this.world, dtMs);
 
     // Emit hit/death audio events
     for (const event of collisionResult.audioEvents) {

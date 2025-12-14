@@ -124,16 +124,28 @@ export class RtsScene extends Phaser.Scene {
       case 'death':
         audioManager.playUnitDeath(event.weaponId);
         break;
+      case 'laserStart':
+        if (event.entityId !== undefined) {
+          audioManager.startLaserSound(event.entityId);
+        }
+        break;
+      case 'laserStop':
+        if (event.entityId !== undefined) {
+          audioManager.stopLaserSound(event.entityId);
+        }
+        break;
     }
   }
 
-  // Handle unit deaths (cleanup Matter bodies)
+  // Handle unit deaths (cleanup Matter bodies and audio)
   private handleUnitDeaths(deadUnitIds: EntityId[]): void {
     for (const id of deadUnitIds) {
       const entity = this.world.getEntity(id);
       if (entity?.body?.matterBody) {
         this.matter.world.remove(entity.body.matterBody);
       }
+      // Stop any laser sound this unit was making
+      audioManager.stopLaserSound(id);
       this.world.removeEntity(id);
     }
   }
@@ -339,6 +351,7 @@ export class RtsScene extends Phaser.Scene {
 
   // Clean shutdown
   shutdown(): void {
+    audioManager.stopAllLaserSounds();
     this.entityRenderer?.destroy();
     this.inputManager?.destroy();
     this.gridGraphics?.destroy();

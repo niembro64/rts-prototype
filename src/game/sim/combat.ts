@@ -3,10 +3,11 @@ import type { Entity, EntityId } from './types';
 
 // Audio event types
 export interface AudioEvent {
-  type: 'fire' | 'hit' | 'death';
+  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop';
   weaponId: string;
   x: number;
   y: number;
+  entityId?: EntityId; // For tracking continuous sounds
 }
 
 // Combat result containing entities and audio events
@@ -49,8 +50,9 @@ export function findClosestEnemy(
       enemy.transform.y
     );
 
-    // Check if in range (accounting for unit radii)
-    const effectiveRange = range + (unit.unit?.radius ?? 0) + enemy.unit.radius;
+    // Check if in range - weapon fires from unit edge, so effective range
+    // is weapon range plus target radius (to hit target's edge)
+    const effectiveRange = range + enemy.unit.radius;
 
     if (dist <= effectiveRange && dist < closestDistance) {
       closestDistance = dist;
@@ -80,7 +82,8 @@ export function updateAutoTargeting(world: WorldState): void {
           target.transform.x,
           target.transform.y
         );
-        const effectiveRange = range + unit.unit.radius + target.unit.radius;
+        // Weapon fires from unit edge, so effective range is weapon range plus target radius
+        const effectiveRange = range + target.unit.radius;
 
         // Target still valid and in range
         if (dist <= effectiveRange) {
@@ -121,6 +124,16 @@ export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
   }
 }
 
+// Check if a unit already has an active beam
+function hasActiveBeam(world: WorldState, unitId: EntityId): boolean {
+  for (const proj of world.getProjectiles()) {
+    if (proj.projectile?.sourceEntityId === unitId && proj.projectile.projectileType === 'beam') {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Fire weapons at targets
 export function fireWeapons(world: WorldState): FireWeaponsResult {
   const newProjectiles: Entity[] = [];
@@ -131,6 +144,8 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
     if (unit.unit.hp <= 0) continue;
 
     const weapon = unit.weapon;
+    const config = weapon.config;
+    const isBeamWeapon = config.beamDuration !== undefined;
 
     // Check if we have a target
     if (weapon.targetEntityId === null) continue;
@@ -141,14 +156,19 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
       continue;
     }
 
-    // Check if off cooldown
-    const canFire = weapon.currentCooldown <= 0;
-    const canBurstFire =
-      weapon.burstShotsRemaining !== undefined &&
-      weapon.burstShotsRemaining > 0 &&
-      (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
+    // For beam weapons, fire continuously but only one beam at a time
+    if (isBeamWeapon) {
+      if (hasActiveBeam(world, unit.id)) continue; // Already has a beam active
+    } else {
+      // Check if off cooldown for non-beam weapons
+      const canFire = weapon.currentCooldown <= 0;
+      const canBurstFire =
+        weapon.burstShotsRemaining !== undefined &&
+        weapon.burstShotsRemaining > 0 &&
+        (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
 
-    if (!canFire && !canBurstFire) continue;
+      if (!canFire && !canBurstFire) continue;
+    }
 
     // Calculate direction to target
     const dx = target.transform.x - unit.transform.x;
@@ -160,36 +180,55 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
     // Face the target
     unit.transform.rotation = Math.atan2(dy, dx);
 
-    const config = weapon.config;
     const playerId = unit.ownership.playerId;
 
-    // Handle burst fire
-    if (canBurstFire && weapon.burstShotsRemaining !== undefined) {
-      weapon.burstShotsRemaining--;
-      weapon.burstCooldown = config.burstDelay ?? 80;
+    // Handle cooldowns for non-beam weapons
+    if (!isBeamWeapon) {
+      const canFire = weapon.currentCooldown <= 0;
+      const canBurstFire =
+        weapon.burstShotsRemaining !== undefined &&
+        weapon.burstShotsRemaining > 0 &&
+        (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
 
-      if (weapon.burstShotsRemaining <= 0) {
-        weapon.burstShotsRemaining = undefined;
-        weapon.burstCooldown = undefined;
-      }
-    } else if (canFire) {
-      // Start cooldown
-      weapon.currentCooldown = config.cooldown;
-
-      // Initialize burst if applicable
-      if (config.burstCount && config.burstCount > 1) {
-        weapon.burstShotsRemaining = config.burstCount - 1; // -1 because we're firing one now
+      if (canBurstFire && weapon.burstShotsRemaining !== undefined) {
+        weapon.burstShotsRemaining--;
         weapon.burstCooldown = config.burstDelay ?? 80;
+
+        if (weapon.burstShotsRemaining <= 0) {
+          weapon.burstShotsRemaining = undefined;
+          weapon.burstCooldown = undefined;
+        }
+      } else if (canFire) {
+        // Start cooldown
+        weapon.currentCooldown = config.cooldown;
+
+        // Initialize burst if applicable
+        if (config.burstCount && config.burstCount > 1) {
+          weapon.burstShotsRemaining = config.burstCount - 1; // -1 because we're firing one now
+          weapon.burstCooldown = config.burstDelay ?? 80;
+        }
       }
     }
 
-    // Add fire audio event
-    audioEvents.push({
-      type: 'fire',
-      weaponId: config.id,
-      x: unit.transform.x,
-      y: unit.transform.y,
-    });
+    // Add fire audio event (continuous lasers use laserStart)
+    if (isBeamWeapon && config.cooldown === 0) {
+      // Continuous laser - start continuous sound
+      audioEvents.push({
+        type: 'laserStart',
+        weaponId: config.id,
+        x: unit.transform.x,
+        y: unit.transform.y,
+        entityId: unit.id,
+      });
+    } else {
+      // Regular weapon fire
+      audioEvents.push({
+        type: 'fire',
+        weaponId: config.id,
+        x: unit.transform.x,
+        y: unit.transform.y,
+      });
+    }
 
     // Create projectile(s)
     const pellets = config.pelletCount ?? 1;
@@ -269,7 +308,7 @@ export function updateProjectiles(world: WorldState, dtMs: number): void {
 }
 
 // Check projectile collisions and apply damage
-export function checkProjectileCollisions(world: WorldState): CollisionResult {
+export function checkProjectileCollisions(world: WorldState, dtMs: number): CollisionResult {
   const projectilesToRemove: EntityId[] = [];
   const unitsToRemove: EntityId[] = [];
   const audioEvents: AudioEvent[] = [];
@@ -282,6 +321,17 @@ export function checkProjectileCollisions(world: WorldState): CollisionResult {
 
     // Check if projectile expired
     if (proj.timeAlive >= proj.maxLifespan) {
+      // Stop continuous laser sound when beam expires
+      if (proj.projectileType === 'beam' && config.cooldown === 0) {
+        audioEvents.push({
+          type: 'laserStop',
+          weaponId: config.id,
+          x: projEntity.transform.x,
+          y: projEntity.transform.y,
+          entityId: proj.sourceEntityId,
+        });
+      }
+
       // Handle splash damage on expiration for grenades
       if (config.splashRadius && !proj.hasExploded) {
         const splashHits = applyAoEDamage(world, projEntity, unitsToRemove);
@@ -306,7 +356,9 @@ export function checkProjectileCollisions(world: WorldState): CollisionResult {
 
     for (const enemy of enemies) {
       if (!enemy.unit || enemy.unit.hp <= 0) continue;
-      if (proj.hitEntities.has(enemy.id)) continue; // Already hit this entity
+
+      // For non-beam projectiles, skip if already hit this entity
+      if (proj.projectileType !== 'beam' && proj.hitEntities.has(enemy.id)) continue;
 
       let hit = false;
 
@@ -334,27 +386,44 @@ export function checkProjectileCollisions(world: WorldState): CollisionResult {
       }
 
       if (hit) {
-        proj.hitEntities.add(enemy.id);
+        // Calculate damage based on projectile type
+        let damage: number;
+        if (proj.projectileType === 'beam') {
+          // Beams deal continuous damage over their duration
+          // damage config represents total damage, spread over beamDuration
+          const beamDuration = config.beamDuration ?? 150;
+          damage = (config.damage / beamDuration) * dtMs;
+        } else {
+          // Regular projectiles deal full damage on hit
+          damage = config.damage;
+          proj.hitEntities.add(enemy.id);
+        }
 
         // Apply damage
-        enemy.unit.hp -= config.damage;
+        enemy.unit.hp -= damage;
 
-        // Add hit audio event
-        audioEvents.push({
-          type: 'hit',
-          weaponId: config.id,
-          x: enemy.transform.x,
-          y: enemy.transform.y,
-        });
+        // Add hit audio event (only once for beams, every hit for projectiles)
+        if (proj.projectileType !== 'beam' || !proj.hitEntities.has(enemy.id)) {
+          audioEvents.push({
+            type: 'hit',
+            weaponId: config.id,
+            x: enemy.transform.x,
+            y: enemy.transform.y,
+          });
+          // Mark beam as having played hit sound for this target
+          if (proj.projectileType === 'beam') {
+            proj.hitEntities.add(enemy.id);
+          }
+        }
 
-        // Check for splash damage
-        if (config.splashRadius && !proj.hasExploded) {
+        // Check for splash damage (only for non-beam projectiles)
+        if (config.splashRadius && !proj.hasExploded && proj.projectileType !== 'beam') {
           applyAoEDamage(world, projEntity, unitsToRemove);
           proj.hasExploded = true;
         }
 
         // Check if unit died
-        if (enemy.unit.hp <= 0) {
+        if (enemy.unit.hp <= 0 && !unitsToRemove.includes(enemy.id)) {
           // Add death audio event based on the dying unit's weapon type
           const deathWeaponId = enemy.weapon?.config.id ?? 'minigun';
           audioEvents.push({
@@ -366,8 +435,8 @@ export function checkProjectileCollisions(world: WorldState): CollisionResult {
           unitsToRemove.push(enemy.id);
         }
 
-        // Check if projectile should be removed
-        if (proj.hitEntities.size >= proj.maxHits) {
+        // Check if projectile should be removed (beams persist for full duration)
+        if (proj.hitEntities.size >= proj.maxHits && proj.projectileType !== 'beam') {
           projectilesToRemove.push(projEntity.id);
           break;
         }

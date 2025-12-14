@@ -1,9 +1,20 @@
 // Procedural audio generation using Web Audio API
 
+// Active continuous sound (for lasers)
+interface ContinuousSound {
+  oscillator: OscillatorNode;
+  gainNode: GainNode;
+  noiseSource?: AudioBufferSourceNode;
+  noiseGain?: GainNode;
+}
+
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private initialized = false;
+
+  // Track active continuous sounds by entity ID
+  private activeLaserSounds: Map<number, ContinuousSound> = new Map();
 
   // Volume controls
   public masterVolume = 0.3;
@@ -61,30 +72,134 @@ export class AudioManager {
 
   // ==================== WEAPON FIRE SOUNDS ====================
 
-  // Laser fire - sine wave frequency sweep
-  playLaserFire(pitch: number = 1): void {
+  // Start continuous laser sound (call when beam starts)
+  startLaserSound(entityId: number, pitch: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
-    const gain = this.createGain(0.25);
+    // Don't start if already playing for this entity
+    if (this.activeLaserSounds.has(entityId)) return;
+
+    // Main oscillator - continuous tone
+    const osc = ctx.createOscillator();
+    const gain = this.createGain(0.15);
     if (!gain) return;
 
-    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 180 * pitch;
+
+    // Add slight wobble for more interesting sound
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.type = 'sine';
+    lfo.frequency.value = 8; // 8 Hz wobble
+    lfoGain.gain.value = 15; // ±15 Hz variation
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    lfo.start();
+
+    // Filter for warmth
     const filter = ctx.createBiquadFilter();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1200 * pitch, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(300 * pitch, ctx.currentTime + 0.15);
-
     filter.type = 'lowpass';
-    filter.frequency.value = 2000;
+    filter.frequency.value = 1200;
+    filter.Q.value = 2;
 
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+    // Fade in
+    gain.gain.setValueAtTime(0.01, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.2 * this.sfxVolume, ctx.currentTime + 0.05);
 
     osc.connect(filter).connect(gain);
     osc.start();
-    osc.stop(ctx.currentTime + 0.15);
+
+    // Add high-frequency hiss/crackle layer
+    const noiseBuffer = this.createNoiseBuffer(10); // Long buffer for looping
+    let noiseSource: AudioBufferSourceNode | undefined;
+    let noiseGain: GainNode | undefined;
+
+    if (noiseBuffer) {
+      noiseSource = ctx.createBufferSource();
+      noiseSource.buffer = noiseBuffer;
+      noiseSource.loop = true;
+
+      const noiseFilter = ctx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.value = 4000;
+      noiseFilter.Q.value = 1;
+
+      noiseGain = this.createGain(0.08) ?? undefined;
+      if (noiseGain) {
+        noiseSource.connect(noiseFilter).connect(noiseGain);
+        noiseSource.start();
+      }
+    }
+
+    // Store reference to stop later
+    this.activeLaserSounds.set(entityId, {
+      oscillator: osc,
+      gainNode: gain,
+      noiseSource,
+      noiseGain,
+    });
+  }
+
+  // Stop continuous laser sound (call when beam ends)
+  stopLaserSound(entityId: number): void {
+    const sound = this.activeLaserSounds.get(entityId);
+    if (!sound) return;
+
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    // Fade out quickly
+    sound.gainNode.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+    if (sound.noiseGain) {
+      sound.noiseGain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+    }
+
+    // Stop after fade
+    setTimeout(() => {
+      try {
+        sound.oscillator.stop();
+        sound.noiseSource?.stop();
+      } catch {
+        // Ignore if already stopped
+      }
+    }, 60);
+
+    this.activeLaserSounds.delete(entityId);
+  }
+
+  // Stop all laser sounds (cleanup)
+  stopAllLaserSounds(): void {
+    for (const entityId of this.activeLaserSounds.keys()) {
+      this.stopLaserSound(entityId);
+    }
+  }
+
+  // Legacy method for compatibility - now starts continuous sound briefly
+  playLaserFire(pitch: number = 1): void {
+    // For single-shot laser effects (like railgun), use a short burst
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    const gain = this.createGain(0.2);
+    if (!gain) return;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(300 * pitch, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(150 * pitch, ctx.currentTime + 0.12);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1500;
+
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+
+    osc.connect(filter).connect(gain);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
   }
 
   // Minigun fire - short punchy noise burst
