@@ -680,6 +680,11 @@ export class RtsScene extends Phaser.Scene {
         x: na.x!,
         y: na.y!,
         targetId: na.targetId,
+        // Build action fields
+        buildingType: na.buildingType as 'solar' | 'factory' | undefined,
+        gridX: na.gridX,
+        gridY: na.gridY,
+        buildingId: na.buildingId,
       })) ?? [];
 
       // Create basic entity structure
@@ -842,6 +847,11 @@ export class RtsScene extends Phaser.Scene {
           x: na.x!,
           y: na.y!,
           targetId: na.targetId,
+          // Build action fields
+          buildingType: na.buildingType as 'solar' | 'factory' | undefined,
+          gridX: na.gridX,
+          gridY: na.gridY,
+          buildingId: na.buildingId,
         }));
       }
     }

@@ -98,6 +98,11 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         x: action.x,
         y: action.y,
         targetId: action.targetId,
+        // Build action fields
+        buildingType: action.buildingType,
+        gridX: action.gridX,
+        gridY: action.gridY,
+        buildingId: action.buildingId,
       }));
     }
 

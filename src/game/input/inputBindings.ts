@@ -280,7 +280,24 @@ export class InputManager {
   // Find a repairable target at a world position (incomplete building or damaged friendly unit)
   private findRepairTargetAt(worldX: number, worldY: number, playerId: number): Entity | null {
     // Check buildings first (incomplete ones owned by player)
-    for (const building of this.world.getBuildings()) {
+    const allBuildings = this.world.getBuildings();
+    console.log('[findRepairTarget] Checking buildings:', {
+      totalBuildings: allBuildings.length,
+      lookingForPlayerId: playerId,
+      clickPos: { x: worldX, y: worldY },
+    });
+    for (const building of allBuildings) {
+      const skipReason: string[] = [];
+      if (building.ownership?.playerId !== playerId) skipReason.push(`wrong owner (${building.ownership?.playerId})`);
+      if (!building.buildable) skipReason.push('no buildable');
+      else if (building.buildable.isComplete) skipReason.push('complete');
+      else if (building.buildable.isGhost) skipReason.push('ghost');
+      if (!building.building) skipReason.push('no building component');
+
+      if (skipReason.length > 0) {
+        console.log(`[findRepairTarget] Skipping building ${building.id}:`, skipReason.join(', '));
+        continue;
+      }
       if (building.ownership?.playerId !== playerId) continue;
       if (!building.buildable || building.buildable.isComplete || building.buildable.isGhost) continue;
       if (!building.building) continue;
@@ -415,6 +432,13 @@ export class InputManager {
         const commander = this.getSelectedCommander();
         if (commander?.ownership) {
           const repairTarget = this.findRepairTargetAt(worldPoint.x, worldPoint.y, commander.ownership.playerId);
+          console.log('[Input] Repair target check:', {
+            hasCommander: !!commander,
+            playerId: commander.ownership.playerId,
+            clickPos: { x: worldPoint.x, y: worldPoint.y },
+            repairTargetFound: !!repairTarget,
+            repairTargetId: repairTarget?.id,
+          });
           if (repairTarget) {
             // Issue repair command
             const command: RepairCommand = {
@@ -424,6 +448,7 @@ export class InputManager {
               targetId: repairTarget.id,
               queue: this.keys.SHIFT.isDown,
             };
+            console.log('[Input] Creating RepairCommand:', command);
             this.commandQueue.enqueue(command);
             return;
           }

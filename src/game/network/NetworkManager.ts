@@ -51,6 +51,11 @@ export interface NetworkAction {
   x?: number;
   y?: number;
   targetId?: number;
+  // Build action fields
+  buildingType?: string;
+  gridX?: number;
+  gridY?: number;
+  buildingId?: number;  // Entity ID of the building being constructed
 }
 
 export interface NetworkEntity {
