@@ -167,7 +167,7 @@ export class InputManager {
   }
 
   // Set waypoint mode and notify UI
-  private setWaypointMode(mode: WaypointType): void {
+  public setWaypointMode(mode: WaypointType): void {
     if (this.state.waypointMode !== mode) {
       this.state.waypointMode = mode;
       this.onWaypointModeChange?.(mode);
@@ -177,6 +177,48 @@ export class InputManager {
   // Get current waypoint mode
   public getWaypointMode(): WaypointType {
     return this.state.waypointMode;
+  }
+
+  // Get current input state (for UI)
+  public getState(): Readonly<InputState> {
+    return this.state;
+  }
+
+  // Public method to start build mode from UI
+  public startBuildMode(buildingType: BuildingType): void {
+    if (this.hasSelectedCommander()) {
+      this.enterBuildMode(buildingType);
+    }
+  }
+
+  // Public method to cancel build mode from UI
+  public cancelBuildMode(): void {
+    this.exitBuildMode();
+  }
+
+  // Public method to toggle D-gun mode from UI
+  public toggleDGunMode(): void {
+    if (this.hasSelectedCommander()) {
+      if (this.state.isDGunMode) {
+        this.exitDGunMode();
+      } else {
+        this.enterDGunMode();
+      }
+    }
+  }
+
+  // Public method to queue unit at factory from UI
+  public queueUnitAtFactory(factoryId: number, weaponId: string): void {
+    const factory = this.world.getEntity(factoryId);
+    if (!factory?.factory) return;
+
+    const command = {
+      type: 'queueUnit' as const,
+      tick: this.world.getTick(),
+      factoryId: factoryId,
+      weaponId: weaponId,
+    };
+    this.commandQueue.enqueue(command);
   }
 
   // Setup building hotkeys
@@ -347,6 +389,16 @@ export class InputManager {
           this.state.linePathPoints = [{ x: worldPoint.x, y: worldPoint.y }];
           this.state.linePathTargets = [];
           this.updateLinePathTargets(selectedUnits.length);
+        } else {
+          // Check if factories are selected - start factory waypoint mode
+          const selectedFactories = this.world.getSelectedFactories();
+          if (selectedFactories.length > 0) {
+            const camera = this.scene.cameras.main;
+            const worldPoint = camera.getWorldPoint(p.x, p.y);
+            this.state.isDrawingLinePath = true;
+            this.state.linePathPoints = [{ x: worldPoint.x, y: worldPoint.y }];
+            this.state.linePathTargets = [{ x: worldPoint.x, y: worldPoint.y }];
+          }
         }
       }
     });
@@ -439,8 +491,11 @@ export class InputManager {
     // Find entities in selection rectangle
     const selectedIds: EntityId[] = [];
 
+    // Select units in rectangle
     for (const entity of this.world.getUnits()) {
       const { x, y } = entity.transform;
+      // Only select units owned by active player
+      if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
 
       // Check if entity center is in selection box
       if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
@@ -448,7 +503,21 @@ export class InputManager {
       }
     }
 
-    // If no drag (click), check for single unit click
+    // Select buildings in rectangle (only if no units selected - prioritize units)
+    if (selectedIds.length === 0) {
+      for (const entity of this.world.getBuildings()) {
+        const { x, y } = entity.transform;
+        // Only select buildings owned by active player
+        if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
+
+        // Check if entity center is in selection box
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+          selectedIds.push(entity.id);
+        }
+      }
+    }
+
+    // If no drag (click), check for single entity click
     // Use world coords - threshold scales with typical unit radius
     const dragThreshold = 10;
     const dragDist = Math.sqrt(
@@ -457,12 +526,15 @@ export class InputManager {
     );
 
     if (dragDist < dragThreshold) {
-      // Single click - find closest unit to click point (already in world coords)
+      // Single click - find closest entity to click point
       let closestId: EntityId | null = null;
       let closestDist = Infinity;
 
+      // Check units first
       for (const entity of this.world.getUnits()) {
         if (!entity.unit) continue;
+        if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
+
         const dx = entity.transform.x - this.state.selectionStartWorldX;
         const dy = entity.transform.y - this.state.selectionStartWorldY;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -470,6 +542,34 @@ export class InputManager {
         if (dist < entity.unit.radius && dist < closestDist) {
           closestDist = dist;
           closestId = entity.id;
+        }
+      }
+
+      // Check buildings if no unit was clicked
+      if (closestId === null) {
+        for (const entity of this.world.getBuildings()) {
+          if (!entity.building) continue;
+          if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
+
+          const { x, y } = entity.transform;
+          const halfW = entity.building.width / 2;
+          const halfH = entity.building.height / 2;
+          const clickX = this.state.selectionStartWorldX;
+          const clickY = this.state.selectionStartWorldY;
+
+          // Check if click is inside building bounds
+          if (clickX >= x - halfW && clickX <= x + halfW &&
+              clickY >= y - halfH && clickY <= y + halfH) {
+            // Calculate distance to center for tie-breaking
+            const dx = x - clickX;
+            const dy = y - clickY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestId = entity.id;
+            }
+          }
         }
       }
 
@@ -589,10 +689,18 @@ export class InputManager {
     return assignments;
   }
 
-  // Finish line path and issue move commands
+  // Finish line path and issue move commands (for units or factory waypoints)
   private finishLinePath(shiftHeld: boolean): void {
     const selectedUnits = this.world.getSelectedUnits();
-    if (selectedUnits.length === 0) return;
+
+    // Handle factory waypoints if no units selected
+    if (selectedUnits.length === 0) {
+      const selectedFactories = this.world.getSelectedFactories();
+      if (selectedFactories.length > 0) {
+        this.finishFactoryWaypoints(shiftHeld);
+      }
+      return;
+    }
 
     const pathLength = this.getPathLength(this.state.linePathPoints);
 
@@ -636,6 +744,39 @@ export class InputManager {
       queue: shiftHeld,
     };
     this.commandQueue.enqueue(command);
+  }
+
+  // Finish setting factory waypoints
+  private finishFactoryWaypoints(shiftHeld: boolean): void {
+    const selectedFactories = this.world.getSelectedFactories();
+    if (selectedFactories.length === 0) return;
+
+    // Get the target point(s) from the line path
+    const target = this.state.linePathPoints[this.state.linePathPoints.length - 1];
+
+    // Create the new waypoint
+    const newWaypoint = {
+      x: target.x,
+      y: target.y,
+      type: this.state.waypointMode,
+    };
+
+    // Apply to all selected factories
+    for (const factory of selectedFactories) {
+      if (!factory.factory) continue;
+
+      if (shiftHeld) {
+        // Queue: add to existing waypoints
+        factory.factory.waypoints.push(newWaypoint);
+      } else {
+        // Replace: clear and set new waypoint
+        factory.factory.waypoints = [newWaypoint];
+      }
+
+      // Also update legacy rally point for compatibility
+      factory.factory.rallyX = target.x;
+      factory.factory.rallyY = target.y;
+    }
   }
 
   // Draw line path preview

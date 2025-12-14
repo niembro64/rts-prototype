@@ -7,18 +7,14 @@ import { EntityRenderer } from '../render/renderEntities';
 import { InputManager } from '../input/inputBindings';
 import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
+import { economyManager } from '../sim/economy';
 
-// Waypoint mode display config
-const WAYPOINT_MODE_COLORS: Record<WaypointType, string> = {
-  move: '#00ff00',
-  patrol: '#0088ff',
-  fight: '#ff4444',
-};
-
-const WAYPOINT_MODE_NAMES: Record<WaypointType, string> = {
-  move: 'MOVE',
-  patrol: 'PATROL',
-  fight: 'FIGHT',
+// Weapon ID to display label
+const WEAPON_LABELS: Record<string, string> = {
+  minigun: 'Minigun',
+  laser: 'Laser',
+  cannon: 'Cannon',
+  shotgun: 'Shotgun',
 };
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
@@ -35,8 +31,6 @@ export class RtsScene extends Phaser.Scene {
   private inputManager!: InputManager;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private debugText!: Phaser.GameObjects.Text;
-  private playerText!: Phaser.GameObjects.Text;
-  private waypointModeText!: Phaser.GameObjects.Text;
   private frameCount: number = 0;
   private fps: number = 0;
   private fpsUpdateTime: number = 0;
@@ -44,6 +38,46 @@ export class RtsScene extends Phaser.Scene {
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
+
+  // Callback for UI to know when selection changes
+  public onSelectionChange?: (info: {
+    unitCount: number;
+    hasCommander: boolean;
+    hasFactory: boolean;
+    factoryId?: number;
+    commanderId?: number;
+    waypointMode: WaypointType;
+    isBuildMode: boolean;
+    selectedBuildingType: string | null;
+    isDGunMode: boolean;
+    factoryQueue?: { weaponId: string; label: string }[];
+    factoryProgress?: number;
+    factoryIsProducing?: boolean;
+  }) => void;
+
+  // Callback for UI to know when economy changes
+  public onEconomyChange?: (info: {
+    stockpile: number;
+    maxStockpile: number;
+    income: number;
+    baseIncome: number;
+    production: number;
+    expenditure: number;
+    netFlow: number;
+    solarCount: number;
+    factoryCount: number;
+  }) => void;
+
+  // Callback for minimap updates
+  public onMinimapUpdate?: (data: {
+    mapWidth: number;
+    mapHeight: number;
+    entities: { x: number; y: number; type: 'unit' | 'building'; color: string; isSelected?: boolean }[];
+    cameraX: number;
+    cameraY: number;
+    cameraWidth: number;
+    cameraHeight: number;
+  }) => void;
 
   constructor() {
     super({ key: 'RtsScene' });
@@ -58,6 +92,11 @@ export class RtsScene extends Phaser.Scene {
     // Setup death callback
     this.simulation.onUnitDeath = (deadUnitIds: EntityId[]) => {
       this.handleUnitDeaths(deadUnitIds);
+    };
+
+    // Setup spawn callback (for factory-produced units)
+    this.simulation.onUnitSpawn = (newUnits: Entity[]) => {
+      this.handleUnitSpawns(newUnits);
     };
 
     // Setup audio callback
@@ -87,19 +126,8 @@ export class RtsScene extends Phaser.Scene {
     // Setup input
     this.inputManager = new InputManager(this, this.world, this.commandQueue);
 
-    // Setup debug overlay
+    // Setup debug overlay (bottom-right corner)
     this.createDebugOverlay();
-
-    // Setup player indicator
-    this.createPlayerIndicator();
-
-    // Setup waypoint mode indicator
-    this.createWaypointModeIndicator();
-
-    // Listen for waypoint mode changes
-    this.inputManager.onWaypointModeChange = (mode: WaypointType) => {
-      this.updateWaypointModeIndicator(mode);
-    };
 
     // Initialize audio on first user interaction
     this.input.once('pointerdown', () => {
@@ -150,10 +178,31 @@ export class RtsScene extends Phaser.Scene {
     }
   }
 
+  // Handle unit spawns (create Matter bodies for factory-produced units)
+  private handleUnitSpawns(newUnits: Entity[]): void {
+    for (const entity of newUnits) {
+      if (entity.type === 'unit' && entity.unit) {
+        // Create circle body for unit
+        const body = this.matter.add.circle(
+          entity.transform.x,
+          entity.transform.y,
+          entity.unit.radius,
+          {
+            friction: 0.05,
+            frictionAir: 0.15,
+            restitution: 0.2,
+            mass: 1,
+            label: `unit_${entity.id}`,
+          }
+        );
+        entity.body = { matterBody: body as unknown as MatterJS.BodyType };
+      }
+    }
+  }
+
   // Switch active player
   public switchPlayer(playerId: PlayerId): void {
     this.world.setActivePlayer(playerId);
-    this.updatePlayerIndicator();
     if (this.onPlayerChange) {
       this.onPlayerChange(playerId);
     }
@@ -168,6 +217,189 @@ export class RtsScene extends Phaser.Scene {
   // Get current active player
   public getActivePlayer(): PlayerId {
     return this.world.activePlayerId;
+  }
+
+  // Set waypoint mode via UI
+  public setWaypointMode(mode: WaypointType): void {
+    this.inputManager.setWaypointMode(mode);
+    this.updateSelectionInfo();
+  }
+
+  // Start build mode via UI
+  public startBuildMode(buildingType: 'solar' | 'factory'): void {
+    this.inputManager.startBuildMode(buildingType);
+    this.updateSelectionInfo();
+  }
+
+  // Cancel build mode via UI
+  public cancelBuildMode(): void {
+    this.inputManager.cancelBuildMode();
+    this.updateSelectionInfo();
+  }
+
+  // Toggle D-Gun mode via UI
+  public toggleDGunMode(): void {
+    this.inputManager.toggleDGunMode();
+    this.updateSelectionInfo();
+  }
+
+  // Queue unit production via UI
+  public queueFactoryUnit(factoryId: number, weaponId: string): void {
+    this.inputManager.queueUnitAtFactory(factoryId, weaponId);
+  }
+
+  // Cancel a queue item at a factory
+  public cancelFactoryQueueItem(factoryId: number, index: number): void {
+    const factory = this.world.getEntity(factoryId);
+    if (!factory?.factory) return;
+
+    // Remove the item at the given index
+    if (index >= 0 && index < factory.factory.buildQueue.length) {
+      factory.factory.buildQueue.splice(index, 1);
+
+      // If we removed the first item and it was being built, reset production
+      if (index === 0) {
+        factory.factory.currentBuildProgress = 0;
+        factory.factory.isProducing = factory.factory.buildQueue.length > 0;
+      }
+    }
+  }
+
+  // Center camera on a world position (used by minimap click)
+  public centerCameraOn(x: number, y: number): void {
+    const camera = this.cameras.main;
+    camera.centerOn(x, y);
+  }
+
+  // Update selection info and notify UI
+  public updateSelectionInfo(): void {
+    if (!this.onSelectionChange) return;
+
+    const selectedUnits = this.world.getSelectedUnits();
+    const selectedBuildings = this.world.getBuildings().filter(
+      b => b.selectable?.selected && b.ownership?.playerId === this.world.activePlayerId
+    );
+
+    // Check for commander
+    const commander = selectedUnits.find(u => u.commander !== undefined);
+
+    // Check for factory
+    const factory = selectedBuildings.find(b => b.factory !== undefined);
+
+    const inputState = this.inputManager.getState();
+
+    // Get factory queue info if factory is selected
+    let factoryQueue: { weaponId: string; label: string }[] | undefined;
+    let factoryProgress: number | undefined;
+    let factoryIsProducing: boolean | undefined;
+
+    if (factory?.factory) {
+      const f = factory.factory;
+      factoryQueue = f.buildQueue.map(weaponId => ({
+        weaponId,
+        label: WEAPON_LABELS[weaponId] ?? weaponId,
+      }));
+      factoryProgress = f.currentBuildProgress;
+      factoryIsProducing = f.isProducing;
+    }
+
+    this.onSelectionChange({
+      unitCount: selectedUnits.length,
+      hasCommander: commander !== undefined,
+      hasFactory: factory !== undefined,
+      factoryId: factory?.id,
+      commanderId: commander?.id,
+      waypointMode: inputState.waypointMode,
+      isBuildMode: inputState.isBuildMode,
+      selectedBuildingType: inputState.selectedBuildingType,
+      isDGunMode: inputState.isDGunMode,
+      factoryQueue,
+      factoryProgress,
+      factoryIsProducing,
+    });
+  }
+
+  // Update economy info and notify UI
+  public updateEconomyInfo(): void {
+    if (!this.onEconomyChange) return;
+
+    const playerId = this.world.activePlayerId;
+    const economy = economyManager.getEconomy(playerId);
+    if (!economy) return;
+
+    // Count buildings for this player
+    const playerBuildings = this.world.getBuildingsByPlayer(playerId);
+    const solarCount = playerBuildings.filter(b => b.buildingType === 'solar').length;
+    const factoryCount = playerBuildings.filter(b => b.buildingType === 'factory').length;
+
+    const income = economy.baseIncome + economy.production;
+    const netFlow = income - economy.expenditure;
+
+    this.onEconomyChange({
+      stockpile: economy.stockpile,
+      maxStockpile: economy.maxStockpile,
+      income,
+      baseIncome: economy.baseIncome,
+      production: economy.production,
+      expenditure: economy.expenditure,
+      netFlow,
+      solarCount,
+      factoryCount,
+    });
+  }
+
+  // Update minimap data and notify UI
+  public updateMinimapData(): void {
+    if (!this.onMinimapUpdate) return;
+
+    const camera = this.cameras.main;
+    const entities: { x: number; y: number; type: 'unit' | 'building'; color: string; isSelected?: boolean }[] = [];
+
+    // Add units to minimap
+    for (const unit of this.world.getUnits()) {
+      const playerId = unit.ownership?.playerId;
+      const color = playerId ? PLAYER_COLORS[playerId]?.primary : 0x888888;
+      const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
+
+      entities.push({
+        x: unit.transform.x,
+        y: unit.transform.y,
+        type: 'unit',
+        color: colorHex,
+        isSelected: unit.selectable?.selected,
+      });
+    }
+
+    // Add buildings to minimap
+    for (const building of this.world.getBuildings()) {
+      const playerId = building.ownership?.playerId;
+      const color = playerId ? PLAYER_COLORS[playerId]?.primary : 0x888888;
+      const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
+
+      entities.push({
+        x: building.transform.x,
+        y: building.transform.y,
+        type: 'building',
+        color: colorHex,
+        isSelected: building.selectable?.selected,
+      });
+    }
+
+    // Calculate camera viewport in world coordinates
+    const cameraX = camera.scrollX;
+    const cameraY = camera.scrollY;
+    const cameraWidth = camera.width / camera.zoom;
+    const cameraHeight = camera.height / camera.zoom;
+
+    this.onMinimapUpdate({
+      mapWidth: this.world.mapWidth,
+      mapHeight: this.world.mapHeight,
+      entities,
+      cameraX,
+      cameraY,
+      cameraWidth,
+      cameraHeight,
+    });
   }
 
   // Create Matter.js physics bodies for entities
@@ -224,62 +456,18 @@ export class RtsScene extends Phaser.Scene {
     this.gridGraphics.strokeRect(0, 0, this.world.mapWidth, this.world.mapHeight);
   }
 
-  // Create debug overlay
+  // Create debug overlay (bottom-right corner)
   private createDebugOverlay(): void {
-    this.debugText = this.add.text(10, 10, '', {
+    this.debugText = this.add.text(0, 0, '', {
       fontFamily: 'monospace',
-      fontSize: '14px',
+      fontSize: '12px',
       color: '#00ff88',
       backgroundColor: '#000000aa',
-      padding: { x: 10, y: 8 },
+      padding: { x: 8, y: 6 },
     });
     this.debugText.setScrollFactor(0);
     this.debugText.setDepth(1001);
-  }
-
-  // Create player indicator
-  private createPlayerIndicator(): void {
-    this.playerText = this.add.text(10, 130, '', {
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      color: '#ffffff',
-      backgroundColor: '#000000aa',
-      padding: { x: 10, y: 8 },
-    });
-    this.playerText.setScrollFactor(0);
-    this.playerText.setDepth(1001);
-    this.updatePlayerIndicator();
-  }
-
-  // Update player indicator text
-  private updatePlayerIndicator(): void {
-    const playerId = this.world.activePlayerId;
-    const playerInfo = PLAYER_COLORS[playerId];
-    const colorHex = playerInfo.primary.toString(16).padStart(6, '0');
-    this.playerText.setText(`Player: ${playerInfo.name}`);
-    this.playerText.setColor(`#${colorHex}`);
-  }
-
-  // Create waypoint mode indicator
-  private createWaypointModeIndicator(): void {
-    this.waypointModeText = this.add.text(10, 170, '', {
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      color: '#00ff00',
-      backgroundColor: '#000000aa',
-      padding: { x: 10, y: 8 },
-    });
-    this.waypointModeText.setScrollFactor(0);
-    this.waypointModeText.setDepth(1001);
-    this.updateWaypointModeIndicator('move');
-  }
-
-  // Update waypoint mode indicator
-  private updateWaypointModeIndicator(mode: WaypointType): void {
-    const color = WAYPOINT_MODE_COLORS[mode];
-    const name = WAYPOINT_MODE_NAMES[mode];
-    this.waypointModeText.setText(`Mode: ${name} [M/F/H]`);
-    this.waypointModeText.setColor(color);
+    // Position will be set in updateDebugText based on text size
   }
 
   update(time: number, delta: number): void {
@@ -305,6 +493,15 @@ export class RtsScene extends Phaser.Scene {
 
     // Update debug text
     this.updateDebugText();
+
+    // Update selection info for UI
+    this.updateSelectionInfo();
+
+    // Update economy info for UI
+    this.updateEconomyInfo();
+
+    // Update minimap for UI
+    this.updateMinimapData();
   }
 
   // Apply calculated velocities to Matter bodies
@@ -326,7 +523,6 @@ export class RtsScene extends Phaser.Scene {
   // Update debug overlay text
   private updateDebugText(): void {
     const selectedCount = this.world.getSelectedEntities().length;
-    const entityCount = this.world.getEntityCount();
     const unitCount = this.world.getUnits().length;
     const projectileCount = this.world.getProjectiles().length;
     const zoom = this.inputManager.getZoom().toFixed(2);
@@ -337,15 +533,19 @@ export class RtsScene extends Phaser.Scene {
 
     this.debugText.setText(
       [
-        `FPS: ${this.fps}`,
-        `Entities: ${entityCount}`,
-        `Units: ${unitCount} (P1: ${p1Units}, P2: ${p2Units})`,
-        `Projectiles: ${projectileCount}`,
-        `Selected: ${selectedCount}`,
-        `Zoom: ${zoom}x`,
-        `Tick: ${tick}`,
-        `Audio: ${this.audioInitialized ? 'ON' : 'Click to enable'}`,
+        `FPS: ${this.fps} | Tick: ${tick}`,
+        `Units: ${unitCount} (P1:${p1Units} P2:${p2Units})`,
+        `Projectiles: ${projectileCount} | Selected: ${selectedCount}`,
+        `Zoom: ${zoom}x | Audio: ${this.audioInitialized ? 'ON' : 'Click'}`,
       ].join('\n')
+    );
+
+    // Position at bottom-right corner
+    const camera = this.cameras.main;
+    const padding = 10;
+    this.debugText.setPosition(
+      camera.width - this.debugText.width - padding,
+      camera.height - this.debugText.height - padding
     );
   }
 
@@ -356,7 +556,5 @@ export class RtsScene extends Phaser.Scene {
     this.inputManager?.destroy();
     this.gridGraphics?.destroy();
     this.debugText?.destroy();
-    this.playerText?.destroy();
-    this.waypointModeText?.destroy();
   }
 }

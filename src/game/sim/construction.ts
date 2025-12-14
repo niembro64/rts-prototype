@@ -162,6 +162,7 @@ export class ConstructionSystem {
         rallyX,
         rallyY,
         isProducing: false,
+        waypoints: [{ x: rallyX, y: rallyY, type: 'move' }],
       };
     }
 

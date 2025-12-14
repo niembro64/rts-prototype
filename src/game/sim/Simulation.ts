@@ -28,6 +28,9 @@ export class Simulation {
   // Callback for when units die (to clean up physics bodies)
   public onUnitDeath?: (deadUnitIds: EntityId[]) => void;
 
+  // Callback for when units are spawned (to create physics bodies)
+  public onUnitSpawn?: (newUnits: Entity[]) => void;
+
   // Callback for when buildings are destroyed
   public onBuildingDeath?: (deadBuildingIds: EntityId[]) => void;
 
@@ -76,8 +79,11 @@ export class Simulation {
     this.constructionSystem.update(this.world, dtMs);
 
     // Update factory production
-    factoryProductionSystem.update(this.world, dtMs);
-    // Note: completed units are added to world in factoryProductionSystem
+    const productionResult = factoryProductionSystem.update(this.world, dtMs);
+    // Notify about newly spawned units (need physics bodies)
+    if (productionResult.completedUnits.length > 0 && this.onUnitSpawn) {
+      this.onUnitSpawn(productionResult.completedUnits);
+    }
 
     // Update all units movement
     this.updateUnits();

@@ -60,6 +60,13 @@ export class EntityRenderer {
       }
     }
 
+    // Render waypoints for selected factories
+    for (const entity of this.world.getBuildings()) {
+      if (entity.selectable?.selected && entity.factory) {
+        this.renderFactoryWaypoints(entity);
+      }
+    }
+
     // Render units
     for (const entity of this.world.getUnits()) {
       this.renderUnit(entity);
@@ -225,6 +232,68 @@ export class EntityRenderer {
     }
   }
 
+  // Render waypoints for a selected factory
+  private renderFactoryWaypoints(entity: Entity): void {
+    if (!entity.factory || entity.factory.waypoints.length === 0) return;
+
+    const { transform, factory } = entity;
+    const camera = this.scene.cameras.main;
+    const lineWidth = 2 / camera.zoom;
+    const dotRadius = 6 / camera.zoom;
+
+    const waypoints = factory.waypoints;
+    let prevX = transform.x;
+    let prevY = transform.y;
+
+    for (let i = 0; i < waypoints.length; i++) {
+      const wp = waypoints[i];
+      const color = WAYPOINT_COLORS[wp.type];
+
+      // Draw line from previous point to this waypoint
+      this.graphics.lineStyle(lineWidth, color, 0.5);
+      this.graphics.lineBetween(prevX, prevY, wp.x, wp.y);
+
+      // Draw dot at waypoint
+      this.graphics.fillStyle(color, 0.8);
+      this.graphics.fillCircle(wp.x, wp.y, dotRadius);
+
+      // Draw outline around dot
+      this.graphics.lineStyle(lineWidth * 0.5, 0xffffff, 0.6);
+      this.graphics.strokeCircle(wp.x, wp.y, dotRadius);
+
+      // Draw a small flag marker on last waypoint to indicate rally point
+      if (i === waypoints.length - 1) {
+        this.graphics.fillStyle(color, 0.9);
+        this.graphics.fillTriangle(
+          wp.x, wp.y - 10,
+          wp.x + 10, wp.y - 5,
+          wp.x, wp.y
+        );
+        this.graphics.lineStyle(1, color, 1);
+        this.graphics.lineBetween(wp.x, wp.y, wp.x, wp.y - 10);
+      }
+
+      prevX = wp.x;
+      prevY = wp.y;
+    }
+
+    // If last waypoint is patrol, draw line back to first patrol waypoint
+    if (waypoints.length > 0) {
+      const lastWp = waypoints[waypoints.length - 1];
+      if (lastWp.type === 'patrol') {
+        // Find first patrol waypoint
+        const firstPatrolIndex = waypoints.findIndex(wp => wp.type === 'patrol');
+        if (firstPatrolIndex >= 0) {
+          const firstPatrolWp = waypoints[firstPatrolIndex];
+          const color = WAYPOINT_COLORS['patrol'];
+          // Draw dashed-style return line (using lower alpha)
+          this.graphics.lineStyle(lineWidth, color, 0.25);
+          this.graphics.lineBetween(lastWp.x, lastWp.y, firstPatrolWp.x, firstPatrolWp.y);
+        }
+      }
+    }
+  }
+
   // Render a projectile
   private renderProjectile(entity: Entity): void {
     if (!entity.projectile) return;
@@ -368,6 +437,13 @@ export class EntityRenderer {
       return;
     }
 
+    // Selection indicator
+    const isSelected = entity.selectable?.selected ?? false;
+    if (isSelected) {
+      this.graphics.lineStyle(3, UNIT_SELECTED_COLOR, 1);
+      this.graphics.strokeRect(left - 4, top - 4, width + 8, height + 8);
+    }
+
     // Get color based on building type or ownership
     let fillColor = ownership?.playerId
       ? this.getPlayerColor(ownership.playerId)
@@ -440,20 +516,24 @@ export class EntityRenderer {
     const factory = entity.factory;
     const x = entity.transform.x;
     const y = entity.transform.y;
+    const isSelected = entity.selectable?.selected ?? false;
 
-    // Draw rally point line and marker
-    this.graphics.lineStyle(1, 0x00ff00, 0.4);
-    this.graphics.lineBetween(x, y, factory.rallyX, factory.rallyY);
+    // Only draw simple rally point when NOT selected (waypoints are drawn separately when selected)
+    if (!isSelected) {
+      // Draw rally point line and marker
+      this.graphics.lineStyle(1, 0x00ff00, 0.4);
+      this.graphics.lineBetween(x, y, factory.rallyX, factory.rallyY);
 
-    // Rally point marker (small flag)
-    this.graphics.fillStyle(0x00ff00, 0.7);
-    this.graphics.fillTriangle(
-      factory.rallyX, factory.rallyY - 8,
-      factory.rallyX + 8, factory.rallyY - 4,
-      factory.rallyX, factory.rallyY
-    );
-    this.graphics.lineStyle(1, 0x00ff00, 0.8);
-    this.graphics.lineBetween(factory.rallyX, factory.rallyY, factory.rallyX, factory.rallyY - 8);
+      // Rally point marker (small flag)
+      this.graphics.fillStyle(0x00ff00, 0.7);
+      this.graphics.fillTriangle(
+        factory.rallyX, factory.rallyY - 8,
+        factory.rallyX + 8, factory.rallyY - 4,
+        factory.rallyX, factory.rallyY
+      );
+      this.graphics.lineStyle(1, 0x00ff00, 0.8);
+      this.graphics.lineBetween(factory.rallyX, factory.rallyY, factory.rallyX, factory.rallyY - 8);
+    }
 
     // Production progress indicator (if producing)
     if (factory.isProducing && factory.buildQueue.length > 0) {

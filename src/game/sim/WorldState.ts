@@ -164,6 +164,13 @@ export class WorldState {
     );
   }
 
+  // Get selected factories for active player
+  getSelectedFactories(): Entity[] {
+    return this.getBuildings().filter(
+      (e) => e.selectable?.selected && e.factory !== undefined && e.ownership?.playerId === this.activePlayerId
+    );
+  }
+
   // Entity count
   getEntityCount(): number {
     return this.entities.size;
@@ -323,6 +330,7 @@ export class WorldState {
         hp: 500,
         maxHp: 500,
       },
+      selectable: { selected: false },
     };
 
     if (playerId !== undefined) {

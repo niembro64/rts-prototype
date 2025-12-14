@@ -204,9 +204,10 @@ export interface Factory {
   currentBuildProgress: number;  // 0-1 for current unit
   currentBuildCost: number;      // Energy cost of current unit
   currentBuildRate: number;      // Max rate for current unit
-  rallyX: number;           // Where completed units go
+  rallyX: number;           // Where completed units go (legacy, first waypoint)
   rallyY: number;
   isProducing: boolean;
+  waypoints: Waypoint[];    // Waypoints inherited by produced units
 }
 
 // Commander component - special abilities

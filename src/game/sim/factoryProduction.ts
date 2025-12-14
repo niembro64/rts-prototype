@@ -1,5 +1,5 @@
 import type { WorldState } from './WorldState';
-import type { Entity, Waypoint } from './types';
+import type { Entity } from './types';
 import { economyManager } from './economy';
 import { getUnitBuildConfig, getBuildingConfig } from './buildConfigs';
 
@@ -110,14 +110,14 @@ export class FactoryProductionSystem {
       unit.unit.maxHp = config.hp;
     }
 
-    // Add move waypoint to rally point
-    const waypoint: Waypoint = {
-      x: factoryComp.rallyX,
-      y: factoryComp.rallyY,
-      type: 'move',
-    };
-    if (unit.unit) {
-      unit.unit.waypoints = [waypoint];
+    // Copy factory's waypoints to the new unit
+    if (unit.unit && factoryComp.waypoints.length > 0) {
+      // Deep copy the waypoints
+      unit.unit.waypoints = factoryComp.waypoints.map(wp => ({
+        x: wp.x,
+        y: wp.y,
+        type: wp.type,
+      }));
     }
 
     // Add to world
