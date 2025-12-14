@@ -563,6 +563,9 @@ export class RtsScene extends Phaser.Scene {
     } else {
       // Client mode: process local-only commands (selection)
       this.processClientCommands();
+
+      // Client-side prediction: apply velocities and update positions
+      this.applyClientPrediction(delta);
     }
 
     // Render entities
@@ -828,6 +831,9 @@ export class RtsScene extends Phaser.Scene {
       entity.unit.hp = netEntity.hp ?? entity.unit.hp;
       entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
       entity.unit.turretRotation = netEntity.turretRotation ?? entity.unit.turretRotation;
+      // Update velocity for client-side prediction
+      entity.unit.velocityX = netEntity.velocityX ?? 0;
+      entity.unit.velocityY = netEntity.velocityY ?? 0;
 
       // Update action queue
       if (netEntity.actions) {
@@ -930,6 +936,39 @@ export class RtsScene extends Phaser.Scene {
       this.world.clearSelection();
     }
     this.world.selectEntities(command.entityIds);
+  }
+
+  // Client-side prediction: apply velocities to predict positions between network updates
+  private applyClientPrediction(delta: number): void {
+    const dtSec = delta / 1000;
+
+    // Predict unit positions using Matter.js physics
+    for (const entity of this.world.getUnits()) {
+      if (!entity.body?.matterBody || !entity.unit) continue;
+
+      const velX = entity.unit.velocityX ?? 0;
+      const velY = entity.unit.velocityY ?? 0;
+
+      // Apply velocity to Matter body (velocity is in units/sec, Matter expects units/frame at 60fps)
+      this.matter.body.setVelocity(entity.body.matterBody, { x: velX / 60, y: velY / 60 });
+
+      // Sync transform from physics body position
+      entity.transform.x = entity.body.matterBody.position.x;
+      entity.transform.y = entity.body.matterBody.position.y;
+    }
+
+    // Predict projectile positions (no physics body, direct position update)
+    for (const entity of this.world.getProjectiles()) {
+      if (!entity.projectile) continue;
+
+      const proj = entity.projectile;
+
+      // Only predict traveling projectiles (beams snap to host position)
+      if (proj.projectileType === 'traveling') {
+        entity.transform.x += proj.velocityX * dtSec;
+        entity.transform.y += proj.velocityY * dtSec;
+      }
+    }
   }
 
   // Apply calculated velocities to Matter bodies
