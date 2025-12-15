@@ -226,13 +226,11 @@ function handleLobbyCancel(): void {
 function handleOffline(): void {
   // Start game in offline mode without network
   networkRole.value = 'offline';
-  showLobby.value = false;
-  gameStarted.value = true;
   localPlayerId.value = 1;
 
-  // Create game immediately
+  // Create game immediately with single player
   nextTick(() => {
-    createGame([1]);
+    startGameWithPlayers([1]);
   });
 }
 

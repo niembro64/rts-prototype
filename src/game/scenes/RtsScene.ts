@@ -365,20 +365,56 @@ export class RtsScene extends Phaser.Scene {
   }
 
   // Get the current entity source based on view mode
-  private getCurrentEntitySource(): { getUnits: () => Entity[], getBuildings: () => Entity[], getSelectedUnits: () => Entity[] } {
+  // When in client view, ALL entity queries should go through ClientViewState
+  private getCurrentEntitySource(): {
+    getUnits: () => Entity[],
+    getBuildings: () => Entity[],
+    getProjectiles: () => Entity[],
+    getAllEntities: () => Entity[],
+    getEntity: (id: EntityId) => Entity | undefined,
+    getSelectedUnits: () => Entity[],
+    getSelectedBuildings: () => Entity[],
+    getBuildingsByPlayer: (playerId: PlayerId) => Entity[],
+    getUnitsByPlayer: (playerId: PlayerId) => Entity[],
+  } {
+    const playerId = this.world.activePlayerId; // Player ID is always from world (it's "who am I")
+
     if (this.hostViewMode === 'client' && this.clientViewState) {
+      const cvs = this.clientViewState;
       return {
-        getUnits: () => this.clientViewState!.getUnits(),
-        getBuildings: () => this.clientViewState!.getBuildings(),
-        getSelectedUnits: () => this.clientViewState!.getUnits().filter(
-          e => e.selectable?.selected && e.ownership?.playerId === this.world.activePlayerId
+        getUnits: () => cvs.getUnits(),
+        getBuildings: () => cvs.getBuildings(),
+        getProjectiles: () => cvs.getProjectiles(),
+        getAllEntities: () => cvs.getAllEntities(),
+        getEntity: (id: EntityId) => cvs.getEntity(id),
+        getSelectedUnits: () => cvs.getUnits().filter(
+          e => e.selectable?.selected && e.ownership?.playerId === playerId
+        ),
+        getSelectedBuildings: () => cvs.getBuildings().filter(
+          b => b.selectable?.selected && b.ownership?.playerId === playerId
+        ),
+        getBuildingsByPlayer: (pid: PlayerId) => cvs.getBuildings().filter(
+          b => b.ownership?.playerId === pid
+        ),
+        getUnitsByPlayer: (pid: PlayerId) => cvs.getUnits().filter(
+          u => u.ownership?.playerId === pid
         ),
       };
     }
+
+    // Simulation view - use WorldState
     return {
       getUnits: () => this.world.getUnits(),
       getBuildings: () => this.world.getBuildings(),
+      getProjectiles: () => this.world.getProjectiles(),
+      getAllEntities: () => this.world.getAllEntities(),
+      getEntity: (id: EntityId) => this.world.getEntity(id),
       getSelectedUnits: () => this.world.getSelectedUnits(),
+      getSelectedBuildings: () => this.world.getBuildings().filter(
+        b => b.selectable?.selected && b.ownership?.playerId === playerId
+      ),
+      getBuildingsByPlayer: (pid: PlayerId) => this.world.getBuildingsByPlayer(pid),
+      getUnitsByPlayer: (pid: PlayerId) => this.world.getUnitsByPlayer(pid),
     };
   }
 
@@ -388,9 +424,7 @@ export class RtsScene extends Phaser.Scene {
 
     const entitySource = this.getCurrentEntitySource();
     const selectedUnits = entitySource.getSelectedUnits();
-    const selectedBuildings = entitySource.getBuildings().filter(
-      b => b.selectable?.selected && b.ownership?.playerId === this.world.activePlayerId
-    );
+    const selectedBuildings = entitySource.getSelectedBuildings();
 
     // Check for commander
     const commander = selectedUnits.find(u => u.commander !== undefined);
@@ -439,8 +473,9 @@ export class RtsScene extends Phaser.Scene {
     const economy = economyManager.getEconomy(playerId);
     if (!economy) return;
 
-    // Count buildings for this player
-    const playerBuildings = this.world.getBuildingsByPlayer(playerId);
+    // Count buildings for this player - use current entity source for view mode awareness
+    const entitySource = this.getCurrentEntitySource();
+    const playerBuildings = entitySource.getBuildingsByPlayer(playerId);
     const solarCount = playerBuildings.filter(b => b.buildingType === 'solar').length;
     const factoryCount = playerBuildings.filter(b => b.buildingType === 'factory').length;
 
@@ -588,7 +623,15 @@ export class RtsScene extends Phaser.Scene {
 
     // Only run simulation for host/offline mode
     if (this.networkRole !== 'client') {
+      // IMPORTANT: In client view mode, intercept selection commands BEFORE simulation
+      // This ensures selection is applied to ClientViewState, not WorldState
+      if (this.hostViewMode === 'client' && this.clientViewState) {
+        // Process selection commands locally on ClientViewState (before simulation consumes them)
+        this.processClientViewCommands();
+      }
+
       // Update simulation (calculates velocities) - ALWAYS runs for host
+      // Note: In client view mode, selection commands have been removed from queue above
       this.simulation.update(delta);
 
       // Apply calculated velocities to Matter bodies
@@ -596,8 +639,6 @@ export class RtsScene extends Phaser.Scene {
 
       // Handle rendering based on view mode
       if (this.hostViewMode === 'client' && this.clientViewState) {
-        // Host is viewing "client view" - process selection locally on ClientViewState
-        this.processClientViewCommands();
         // Run prediction on ClientViewState
         this.clientViewState.applyPrediction(delta);
         // Use spray targets from ClientViewState
