@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
 import { PLAYER_COLORS, type PlayerId, type WaypointType } from '../game/sim/types';
 import SelectionPanel, { type SelectionInfo, type SelectionActions } from './SelectionPanel.vue';
@@ -223,6 +223,19 @@ function handleLobbyCancel(): void {
   isConnecting.value = false;
 }
 
+function handleOffline(): void {
+  // Start game in offline mode without network
+  networkRole.value = 'offline';
+  showLobby.value = false;
+  gameStarted.value = true;
+  localPlayerId.value = 1;
+
+  // Create game immediately
+  nextTick(() => {
+    createGame([1]);
+  });
+}
+
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
     // Check if already in list
@@ -411,6 +424,7 @@ onUnmounted(() => {
       @join="handleJoin"
       @start="handleLobbyStart"
       @cancel="handleLobbyCancel"
+      @offline="handleOffline"
     />
 
     <!-- Game UI (only when game is running) -->

@@ -23,6 +23,7 @@ const emit = defineEmits<{
   (e: 'join', roomCode: string): void;
   (e: 'start'): void;
   (e: 'cancel'): void;
+  (e: 'offline'): void;
 }>();
 
 const joinCode = ref('');
@@ -55,6 +56,10 @@ function getPlayerColor(playerId: PlayerId): string {
 
 function handleHost() {
   emit('host');
+}
+
+function handleOffline() {
+  emit('offline');
 }
 
 function handleJoinSubmit() {
@@ -117,6 +122,12 @@ const canJoin = computed(() => {
               Join
             </button>
           </div>
+        </div>
+
+        <div class="offline-section">
+          <button class="lobby-btn offline-btn" @click="handleOffline">
+            Play Offline
+          </button>
         </div>
 
         <!-- Error display -->
@@ -298,6 +309,22 @@ const canJoin = computed(() => {
 
 .cancel-btn:hover {
   background: #777;
+}
+
+.offline-section {
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(68, 68, 170, 0.3);
+}
+
+.offline-btn {
+  background: #665588;
+  color: white;
+}
+
+.offline-btn:hover {
+  background: #7766aa;
+  transform: scale(1.02);
 }
 
 .code-input {

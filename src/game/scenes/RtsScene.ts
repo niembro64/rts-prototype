@@ -1079,12 +1079,19 @@ export class RtsScene extends Phaser.Scene {
     const commands = this.commandQueue.getAll();
     this.commandQueue.clear();
 
+    // Debug: log commands being processed
+    if (commands.length > 0) {
+      console.log(`[ClientViewCommands] Processing ${commands.length} commands:`, commands.map(c => c.type));
+    }
+
     for (const command of commands) {
       if (command.type === 'select') {
         // Selection is local to current view, process it on ClientViewState
+        console.log(`[ClientViewCommands] Select command:`, (command as SelectCommand).entityIds);
         this.executeClientViewSelectCommand(command as SelectCommand);
       } else if (command.type === 'clearSelection') {
         // Clear selection on ClientViewState
+        console.log(`[ClientViewCommands] Clear selection`);
         this.clientViewState.clearSelection();
       } else {
         // Other commands go to the simulation (re-enqueue them)

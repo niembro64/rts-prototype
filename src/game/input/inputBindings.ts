@@ -600,6 +600,11 @@ export class InputManager {
     const minY = Math.min(this.state.selectionStartWorldY, this.state.selectionEndWorldY);
     const maxY = Math.max(this.state.selectionStartWorldY, this.state.selectionEndWorldY);
 
+    // Debug: log entity source info
+    const units = this.entitySource.getUnits();
+    console.log(`[Selection] EntitySource has ${units.length} units, activePlayerId: ${this.world.activePlayerId}`);
+    console.log(`[Selection] Click area: (${minX.toFixed(0)}, ${minY.toFixed(0)}) to (${maxX.toFixed(0)}, ${maxY.toFixed(0)})`);
+
     // Find entities in selection rectangle
     const selectedIds: EntityId[] = [];
 
@@ -607,10 +612,15 @@ export class InputManager {
     for (const entity of this.entitySource.getUnits()) {
       const { x, y } = entity.transform;
       // Only select units owned by active player
-      if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
+      if (entity.ownership?.playerId !== this.world.activePlayerId) {
+        // Debug: log skipped units
+        console.log(`[Selection] Skipped unit ${entity.id} - owner ${entity.ownership?.playerId} != active ${this.world.activePlayerId}`);
+        continue;
+      }
 
       // Check if entity center is in selection box
       if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+        console.log(`[Selection] Found unit ${entity.id} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
         selectedIds.push(entity.id);
       }
     }
@@ -699,6 +709,7 @@ export class InputManager {
       additive,
     };
 
+    console.log(`[Selection] Enqueueing select command:`, { entityIds: selectedIds, additive });
     this.commandQueue.enqueue(command);
   }
 
