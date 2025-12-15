@@ -18,6 +18,14 @@ export interface LegConfig {
   // Smaller = snaps more forward (front legs), larger = snaps more sideways (back legs)
   // Positive = right side, negative = left side
   snapTargetAngle: number;
+
+  // Snap distance: how far from attachment point the foot snaps to (as multiplier of total leg length)
+  // Larger = snaps farther out (front legs reach farther), smaller = snaps closer (back legs)
+  snapDistanceMultiplier: number;
+
+  // Extension threshold: how extended the leg must be before considering a snap (0-1)
+  // Front legs can snap earlier (~0.85), back legs must be fully extended (~0.95)
+  extensionThreshold: number;
 }
 
 export class ArachnidLeg {
@@ -87,8 +95,8 @@ export class ArachnidLeg {
     const dy = this.groundY - attachY;
     const distToGround = Math.sqrt(dx * dx + dy * dy);
 
-    // Check if leg is extended enough to consider snapping
-    if (distToGround >= this.totalLength * 0.85) {
+    // Check if leg is extended enough to consider snapping (configurable per leg)
+    if (distToGround >= this.totalLength * this.config.extensionThreshold) {
       // Check if the ground point is behind the attachment point enough to trigger snap
       // Use unit rotation to determine angle from forward
       const groundAngle = Math.atan2(dy, dx);
@@ -109,8 +117,8 @@ export class ArachnidLeg {
 
   // Initialize ground point at a natural resting position
   private initializeGroundPoint(attachX: number, attachY: number, unitRotation: number): void {
-    // Place foot at target snap angle, at comfortable distance
-    const restDistance = this.totalLength * 0.7;
+    // Place foot at target snap angle and distance
+    const restDistance = this.totalLength * this.config.snapDistanceMultiplier;
     const angle = unitRotation + this.config.snapTargetAngle;
 
     this.groundX = attachX + Math.cos(angle) * restDistance;
@@ -127,8 +135,8 @@ export class ArachnidLeg {
     velocityX: number,
     velocityY: number
   ): void {
-    // Calculate target position using the snap target angle
-    const snapDistance = this.totalLength * 0.7;
+    // Calculate target position using the snap target angle and distance
+    const snapDistance = this.totalLength * this.config.snapDistanceMultiplier;
     const snapAngle = unitRotation + this.config.snapTargetAngle;
 
     // Add some velocity-based offset to place foot ahead of where we're going
