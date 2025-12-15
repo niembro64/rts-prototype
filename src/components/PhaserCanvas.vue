@@ -66,6 +66,8 @@ const economyInfo = reactive<EconomyInfo>({
   netFlow: 5,
   solarCount: 0,
   factoryCount: 0,
+  unitCount: 1,
+  unitCap: 60,
 });
 
 // Minimap state

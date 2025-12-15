@@ -67,6 +67,14 @@ export class FactoryProductionSystem {
 
       // Check if unit is complete
       if (factoryComp.currentBuildProgress >= 1) {
+        // Check unit cap before creating
+        if (!world.canPlayerBuildUnit(playerId)) {
+          // At unit cap - pause production (don't remove from queue)
+          factoryComp.isProducing = false;
+          factoryComp.currentBuildProgress = 1; // Keep at 100% ready
+          continue;
+        }
+
         // Create the unit
         const unit = this.createUnit(world, factory, unitConfig);
         if (unit) {

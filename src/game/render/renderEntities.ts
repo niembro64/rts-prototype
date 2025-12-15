@@ -58,9 +58,6 @@ export class EntityRenderer {
   private sprayTargets: SprayTarget[] = [];
   private sprayParticleTime: number = 0;
 
-  // Debug: track source name
-  private sourceType: 'world' | 'clientView' = 'world';
-
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
@@ -73,7 +70,6 @@ export class EntityRenderer {
    */
   setEntitySource(source: EntitySource, sourceType: 'world' | 'clientView' = 'world'): void {
     this.entitySource = source;
-    this.sourceType = sourceType;
     console.log(`[Render] Entity source switched to: ${sourceType}`);
   }
 
@@ -163,10 +159,7 @@ export class EntityRenderer {
     return PLAYER_COLORS[playerId]?.primary ?? 0x888888;
   }
 
-  // Debug: track last logged radius for commanders
-  private debugLastLogTime = 0;
-
-  // Render a unit (circle)
+  // Render a unit with weapon-specific shape
   private renderUnit(entity: Entity): void {
     if (!entity.unit) return;
 
@@ -175,101 +168,50 @@ export class EntityRenderer {
     const { radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
     const playerId = ownership?.playerId;
+    const weaponId = entity.weapon?.config.id ?? 'minigun';
 
-    // Debug: log commander radius every 2 seconds
-    if (entity.commander) {
-      const now = Date.now();
-      if (now - this.debugLastLogTime > 2000) {
-        console.log(`[Render ${this.sourceType}] Commander ${entity.id} radius: ${radius}`);
-        this.debugLastLogTime = now;
-      }
-    }
-
-    // Get player color
-    const playerColor = this.getPlayerColor(playerId);
+    // Get player color with weapon-based tint variation
+    const baseColor = this.getPlayerColor(playerId);
+    const playerColor = this.getWeaponTintedColor(baseColor, weaponId);
+    const weaponColor = (entity.weapon?.config.color as number) ?? 0xffffff;
 
     // Selection ring
     if (isSelected) {
       this.graphics.lineStyle(3, UNIT_SELECTED_COLOR, 1);
-      this.graphics.strokeCircle(x, y, radius + 4);
+      this.graphics.strokeCircle(x, y, radius + 5);
     }
 
-    // Unit body
+    // Draw weapon-specific body shape
     const fillColor = isSelected ? UNIT_SELECTED_COLOR : playerColor;
     this.graphics.fillStyle(fillColor, 0.9);
-    this.graphics.fillCircle(x, y, radius);
+    this.drawUnitShape(x, y, radius, rotation, weaponId);
 
     // Outline
     this.graphics.lineStyle(2, UNIT_OUTLINE_COLOR, 0.8);
-    this.graphics.strokeCircle(x, y, radius);
+    this.drawUnitShape(x, y, radius, rotation, weaponId, true);
 
-    // Inner circle showing player color when selected
+    // Inner accent showing player color when selected
     if (isSelected) {
       this.graphics.fillStyle(playerColor, 1);
-      this.graphics.fillCircle(x, y, radius * 0.5);
+      this.graphics.fillCircle(x, y, radius * 0.35);
     }
 
-    // Movement direction indicator (white arrow showing body facing/movement)
-    const moveLength = radius * 1.0;
-    const moveDirX = x + Math.cos(rotation) * moveLength;
-    const moveDirY = y + Math.sin(rotation) * moveLength;
-    this.graphics.lineStyle(2, 0xaaaaaa, 0.7);
-    this.graphics.lineBetween(x, y, moveDirX, moveDirY);
-    // Small arrowhead
-    const arrowSize = 4;
-    const arrowAngle = Math.PI * 0.8;
-    this.graphics.lineBetween(
-      moveDirX,
-      moveDirY,
-      moveDirX + Math.cos(rotation + arrowAngle) * arrowSize,
-      moveDirY + Math.sin(rotation + arrowAngle) * arrowSize
-    );
-    this.graphics.lineBetween(
-      moveDirX,
-      moveDirY,
-      moveDirX + Math.cos(rotation - arrowAngle) * arrowSize,
-      moveDirY + Math.sin(rotation - arrowAngle) * arrowSize
-    );
-
-    // Turret/weapon direction indicator (colored line showing aim direction)
+    // Turret/weapon direction indicator
     if (entity.weapon) {
-      const weaponColor = (entity.weapon.config.color as number) ?? 0xffffff;
       const turretRotation = unit.turretRotation ?? rotation;
-      const turretLength = radius * 1.3;
-      const turretEndX = x + Math.cos(turretRotation) * turretLength;
-      const turretEndY = y + Math.sin(turretRotation) * turretLength;
-
-      // Turret barrel line
-      this.graphics.lineStyle(3, weaponColor, 0.9);
-      this.graphics.lineBetween(x, y, turretEndX, turretEndY);
-
-      // Weapon type indicator (small colored dot at center)
-      this.graphics.fillStyle(weaponColor, 0.9);
-      this.graphics.fillCircle(x, y, 4);
+      this.drawWeaponTurret(x, y, radius, turretRotation, weaponId, weaponColor);
     }
 
     // Commander indicator (gold star/crown)
     if (entity.commander) {
-      // Gold circle around commander
-      this.graphics.lineStyle(2, COMMANDER_COLOR, 0.8);
-      this.graphics.strokeCircle(x, y, radius + 8);
-
-      // Small gold dots around the circle (crown points)
-      const dotCount = 5;
-      for (let i = 0; i < dotCount; i++) {
-        const angle = (i / dotCount) * Math.PI * 2 - Math.PI / 2;
-        const dotX = x + Math.cos(angle) * (radius + 8);
-        const dotY = y + Math.sin(angle) * (radius + 8);
-        this.graphics.fillStyle(COMMANDER_COLOR, 1);
-        this.graphics.fillCircle(dotX, dotY, 3);
-      }
+      this.renderCommanderCrown(x, y, radius);
     }
 
-    // Health bar (always show)
+    // Health bar
     const healthPercent = hp / maxHp;
     this.renderHealthBar(x, y - radius - 10, radius * 2, 4, healthPercent);
 
-    // Target line (show line to current attack target)
+    // Target line when selected
     if (entity.weapon?.targetEntityId != null && isSelected) {
       const target = this.entitySource.getEntity(entity.weapon.targetEntityId);
       if (target) {
@@ -277,6 +219,245 @@ export class EntityRenderer {
         this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
       }
     }
+  }
+
+  // Get a slightly tinted color based on weapon type
+  private getWeaponTintedColor(baseColor: number, weaponId: string): number {
+    const r = (baseColor >> 16) & 0xff;
+    const g = (baseColor >> 8) & 0xff;
+    const b = baseColor & 0xff;
+
+    // Small color shifts based on weapon
+    switch (weaponId) {
+      case 'laser': return this.shiftColor(r, g, b, 10, -5, 15); // Slightly purple
+      case 'minigun': return baseColor; // Base color
+      case 'shotgun': return this.shiftColor(r, g, b, 15, 10, -10); // Slightly orange
+      case 'cannon': return this.shiftColor(r, g, b, -10, -10, 0); // Darker
+      case 'grenade': return this.shiftColor(r, g, b, 5, 15, -15); // Slightly green-yellow
+      case 'railgun': return this.shiftColor(r, g, b, -5, 10, 20); // Slightly cyan
+      case 'burstRifle': return this.shiftColor(r, g, b, 15, 0, 5); // Slightly red
+      default: return baseColor;
+    }
+  }
+
+  private shiftColor(r: number, g: number, b: number, dr: number, dg: number, db: number): number {
+    const clamp = (v: number) => Math.max(0, Math.min(255, v));
+    return (clamp(r + dr) << 16) | (clamp(g + dg) << 8) | clamp(b + db);
+  }
+
+  // Draw unit shape based on weapon type
+  private drawUnitShape(x: number, y: number, radius: number, rotation: number, weaponId: string, strokeOnly = false): void {
+    switch (weaponId) {
+      case 'minigun':
+        // Hexagon - versatile baseline
+        this.drawPolygon(x, y, radius, 6, rotation, strokeOnly);
+        break;
+      case 'laser':
+        // Diamond - precise/elegant
+        this.drawPolygon(x, y, radius * 1.1, 4, rotation + Math.PI / 4, strokeOnly);
+        break;
+      case 'shotgun':
+        // Wide triangle/wedge - aggressive close range
+        this.drawWedge(x, y, radius, rotation, strokeOnly);
+        break;
+      case 'cannon':
+        // Square/tank - heavy and sturdy
+        this.drawPolygon(x, y, radius * 1.05, 4, rotation, strokeOnly);
+        break;
+      case 'grenade':
+        // Circle with bumps - explosive
+        this.drawBumpyCircle(x, y, radius, 5, strokeOnly);
+        break;
+      case 'railgun':
+        // Elongated diamond - sleek and fast
+        this.drawElongatedDiamond(x, y, radius, rotation, strokeOnly);
+        break;
+      case 'burstRifle':
+        // Triangle - aggressive
+        this.drawPolygon(x, y, radius * 1.1, 3, rotation - Math.PI / 2, strokeOnly);
+        break;
+      default:
+        // Fallback circle
+        if (strokeOnly) {
+          this.graphics.strokeCircle(x, y, radius);
+        } else {
+          this.graphics.fillCircle(x, y, radius);
+        }
+    }
+  }
+
+  private drawPolygon(x: number, y: number, radius: number, sides: number, rotation: number, strokeOnly: boolean): void {
+    const points: number[] = [];
+    for (let i = 0; i < sides; i++) {
+      const angle = rotation + (i / sides) * Math.PI * 2;
+      points.push(x + Math.cos(angle) * radius);
+      points.push(y + Math.sin(angle) * radius);
+    }
+    if (strokeOnly) {
+      this.graphics.strokePoints(points, true);
+    } else {
+      this.graphics.fillPoints(points, true);
+    }
+  }
+
+  private drawWedge(x: number, y: number, radius: number, rotation: number, strokeOnly: boolean): void {
+    // Wide front, narrow back
+    const frontAngle = Math.PI * 0.35;
+    const points = [
+      x + Math.cos(rotation) * radius * 1.2, // Front point
+      y + Math.sin(rotation) * radius * 1.2,
+      x + Math.cos(rotation + frontAngle) * radius * 0.9, // Front-left
+      y + Math.sin(rotation + frontAngle) * radius * 0.9,
+      x + Math.cos(rotation + Math.PI) * radius * 0.7, // Back
+      y + Math.sin(rotation + Math.PI) * radius * 0.7,
+      x + Math.cos(rotation - frontAngle) * radius * 0.9, // Front-right
+      y + Math.sin(rotation - frontAngle) * radius * 0.9,
+    ];
+    if (strokeOnly) {
+      this.graphics.strokePoints(points, true);
+    } else {
+      this.graphics.fillPoints(points, true);
+    }
+  }
+
+  private drawBumpyCircle(x: number, y: number, radius: number, bumps: number, strokeOnly: boolean): void {
+    const points: number[] = [];
+    const segments = 32;
+    for (let i = 0; i < segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      const bumpOffset = Math.sin(angle * bumps) * radius * 0.15;
+      const r = radius + bumpOffset;
+      points.push(x + Math.cos(angle) * r);
+      points.push(y + Math.sin(angle) * r);
+    }
+    if (strokeOnly) {
+      this.graphics.strokePoints(points, true);
+    } else {
+      this.graphics.fillPoints(points, true);
+    }
+  }
+
+  private drawElongatedDiamond(x: number, y: number, radius: number, rotation: number, strokeOnly: boolean): void {
+    const points = [
+      x + Math.cos(rotation) * radius * 1.4, // Front (elongated)
+      y + Math.sin(rotation) * radius * 1.4,
+      x + Math.cos(rotation + Math.PI / 2) * radius * 0.6, // Side (narrow)
+      y + Math.sin(rotation + Math.PI / 2) * radius * 0.6,
+      x + Math.cos(rotation + Math.PI) * radius * 0.9, // Back
+      y + Math.sin(rotation + Math.PI) * radius * 0.9,
+      x + Math.cos(rotation - Math.PI / 2) * radius * 0.6, // Other side
+      y + Math.sin(rotation - Math.PI / 2) * radius * 0.6,
+    ];
+    if (strokeOnly) {
+      this.graphics.strokePoints(points, true);
+    } else {
+      this.graphics.fillPoints(points, true);
+    }
+  }
+
+  // Draw weapon turret based on weapon type
+  private drawWeaponTurret(x: number, y: number, radius: number, turretRotation: number, weaponId: string, weaponColor: number): void {
+    const turretLength = radius * 1.3;
+    const turretEndX = x + Math.cos(turretRotation) * turretLength;
+    const turretEndY = y + Math.sin(turretRotation) * turretLength;
+
+    switch (weaponId) {
+      case 'minigun':
+        // Triple barrel
+        this.graphics.lineStyle(2, weaponColor, 0.9);
+        for (let i = -1; i <= 1; i++) {
+          const offset = i * 2;
+          const perpX = Math.cos(turretRotation + Math.PI / 2) * offset;
+          const perpY = Math.sin(turretRotation + Math.PI / 2) * offset;
+          this.graphics.lineBetween(x + perpX, y + perpY, turretEndX + perpX, turretEndY + perpY);
+        }
+        break;
+      case 'laser':
+        // Glowing beam emitter
+        this.graphics.lineStyle(4, weaponColor, 0.7);
+        this.graphics.lineBetween(x, y, turretEndX, turretEndY);
+        this.graphics.fillStyle(weaponColor, 0.9);
+        this.graphics.fillCircle(turretEndX, turretEndY, 3);
+        break;
+      case 'shotgun':
+        // Wide barrel
+        this.graphics.lineStyle(5, weaponColor, 0.8);
+        this.graphics.lineBetween(x, y, turretEndX * 0.9 + x * 0.1, turretEndY * 0.9 + y * 0.1);
+        break;
+      case 'cannon':
+        // Thick barrel with muzzle
+        this.graphics.lineStyle(4, weaponColor, 0.9);
+        this.graphics.lineBetween(x, y, turretEndX, turretEndY);
+        this.graphics.fillStyle(0x333333, 1);
+        this.graphics.fillCircle(turretEndX, turretEndY, 4);
+        break;
+      case 'grenade':
+        // Mortar tube
+        this.graphics.lineStyle(4, weaponColor, 0.8);
+        const shortLen = turretLength * 0.7;
+        this.graphics.lineBetween(
+          x, y,
+          x + Math.cos(turretRotation) * shortLen,
+          y + Math.sin(turretRotation) * shortLen
+        );
+        break;
+      case 'railgun':
+        // Long thin barrel with charge indicator
+        this.graphics.lineStyle(2, weaponColor, 1);
+        this.graphics.lineBetween(x, y, turretEndX * 1.2 + x * -0.2, turretEndY * 1.2 + y * -0.2);
+        this.graphics.fillStyle(0x00ffff, 0.8);
+        this.graphics.fillCircle(x, y, 3);
+        break;
+      case 'burstRifle':
+        // Double barrel
+        this.graphics.lineStyle(2, weaponColor, 0.9);
+        const perpDist = 2;
+        const perpX = Math.cos(turretRotation + Math.PI / 2) * perpDist;
+        const perpY = Math.sin(turretRotation + Math.PI / 2) * perpDist;
+        this.graphics.lineBetween(x + perpX, y + perpY, turretEndX + perpX, turretEndY + perpY);
+        this.graphics.lineBetween(x - perpX, y - perpY, turretEndX - perpX, turretEndY - perpY);
+        break;
+      default:
+        this.graphics.lineStyle(3, weaponColor, 0.9);
+        this.graphics.lineBetween(x, y, turretEndX, turretEndY);
+    }
+
+    // Weapon center dot
+    this.graphics.fillStyle(weaponColor, 0.9);
+    this.graphics.fillCircle(x, y, 3);
+  }
+
+  // Render commander crown
+  private renderCommanderCrown(x: number, y: number, radius: number): void {
+    // Gold circle
+    this.graphics.lineStyle(2, COMMANDER_COLOR, 0.9);
+    this.graphics.strokeCircle(x, y, radius + 8);
+
+    // Crown points (5 points)
+    const dotCount = 5;
+    for (let i = 0; i < dotCount; i++) {
+      const angle = (i / dotCount) * Math.PI * 2 - Math.PI / 2;
+      const dotX = x + Math.cos(angle) * (radius + 8);
+      const dotY = y + Math.sin(angle) * (radius + 8);
+      // Star shape at each point
+      this.graphics.fillStyle(COMMANDER_COLOR, 1);
+      this.drawStar(dotX, dotY, 4, 5);
+    }
+
+    // Inner gold ring
+    this.graphics.lineStyle(1, COMMANDER_COLOR, 0.5);
+    this.graphics.strokeCircle(x, y, radius + 3);
+  }
+
+  private drawStar(x: number, y: number, size: number, points: number): void {
+    const starPoints: number[] = [];
+    for (let i = 0; i < points * 2; i++) {
+      const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+      const r = i % 2 === 0 ? size : size * 0.4;
+      starPoints.push(x + Math.cos(angle) * r);
+      starPoints.push(y + Math.sin(angle) * r);
+    }
+    this.graphics.fillPoints(starPoints, true);
   }
 
   // Render action queue for a selected unit
@@ -714,16 +895,99 @@ export class EntityRenderer {
     if (entity.factory && isComplete) {
       this.renderFactory(entity, left, top, width, height);
     }
+
+    // Solar panel-specific rendering
+    if (entity.buildingType === 'solar' && isComplete) {
+      this.renderSolarPanel(entity, left, top, width, height);
+    }
   }
 
   // Render factory-specific elements (queue, rally point)
-  private renderFactory(entity: Entity, _left: number, top: number, width: number, height: number): void {
+  private renderFactory(entity: Entity, left: number, top: number, width: number, height: number): void {
     if (!entity.factory) return;
 
     const factory = entity.factory;
     const x = entity.transform.x;
     const y = entity.transform.y;
     const isSelected = entity.selectable?.selected ?? false;
+    const isProducing = factory.isProducing;
+    const playerColor = this.getPlayerColor(entity.ownership?.playerId);
+
+    // ========== FACTORY VISUAL DETAILS ==========
+
+    // Inner machinery area (darker background)
+    const machineMargin = 8;
+    this.graphics.fillStyle(0x1a1a1a, 0.9);
+    this.graphics.fillRect(left + machineMargin, top + machineMargin, width - machineMargin * 2, height - machineMargin * 2);
+
+    // Animated gear/cogs - spin when producing
+    const gearPhase = isProducing ? (this.sprayParticleTime / 1000) : 0;
+    this.renderGear(left + width * 0.25, top + height * 0.35, 12, gearPhase, playerColor);
+    this.renderGear(left + width * 0.75, top + height * 0.35, 10, -gearPhase * 1.3, playerColor);
+    this.renderGear(left + width * 0.5, top + height * 0.6, 14, gearPhase * 0.8, playerColor);
+
+    // Conveyor belt exit (bottom center)
+    const conveyorWidth = width * 0.4;
+    const conveyorHeight = 8;
+    const conveyorX = x - conveyorWidth / 2;
+    const conveyorY = top + height - conveyorHeight - 4;
+
+    this.graphics.fillStyle(0x333333, 1);
+    this.graphics.fillRect(conveyorX, conveyorY, conveyorWidth, conveyorHeight);
+
+    // Conveyor belt lines (animated when producing)
+    const beltOffset = isProducing ? (this.sprayParticleTime / 50) % 8 : 0;
+    this.graphics.lineStyle(1, 0x555555, 0.8);
+    for (let i = -1; i < conveyorWidth / 8 + 1; i++) {
+      const lineX = conveyorX + i * 8 + beltOffset;
+      if (lineX >= conveyorX && lineX <= conveyorX + conveyorWidth) {
+        this.graphics.lineBetween(lineX, conveyorY, lineX, conveyorY + conveyorHeight);
+      }
+    }
+
+    // Chimney/smokestack
+    const chimneyWidth = 10;
+    const chimneyHeight = 18;
+    const chimneyX = left + width - 15;
+    const chimneyY = top - chimneyHeight + 5;
+
+    // Chimney body
+    this.graphics.fillStyle(0x444444, 1);
+    this.graphics.fillRect(chimneyX, chimneyY, chimneyWidth, chimneyHeight);
+    this.graphics.lineStyle(1, 0x666666, 0.8);
+    this.graphics.strokeRect(chimneyX, chimneyY, chimneyWidth, chimneyHeight);
+
+    // Chimney cap
+    this.graphics.fillStyle(0x333333, 1);
+    this.graphics.fillRect(chimneyX - 2, chimneyY - 3, chimneyWidth + 4, 4);
+
+    // Smoke particles when producing
+    if (isProducing) {
+      this.renderSmoke(chimneyX + chimneyWidth / 2, chimneyY - 5);
+    }
+
+    // Status lights (corner indicators)
+    const lightRadius = 3;
+    const lightMargin = 6;
+
+    // Top-left light - power status (green = ready)
+    this.graphics.fillStyle(0x44ff44, 0.9);
+    this.graphics.fillCircle(left + lightMargin, top + lightMargin, lightRadius);
+
+    // Top-right light - production status (yellow when producing, dim when idle)
+    const prodLightColor = isProducing ? 0xffcc00 : 0x555533;
+    const prodLightAlpha = isProducing ? 0.9 + Math.sin(this.sprayParticleTime / 100) * 0.1 : 0.5;
+    this.graphics.fillStyle(prodLightColor, prodLightAlpha);
+    this.graphics.fillCircle(left + width - lightMargin, top + lightMargin, lightRadius);
+
+    // Production glow effect when building
+    if (isProducing) {
+      const glowIntensity = 0.15 + Math.sin(this.sprayParticleTime / 200) * 0.1;
+      this.graphics.fillStyle(0xffcc00, glowIntensity);
+      this.graphics.fillRect(left, top, width, height);
+    }
+
+    // ========== RALLY POINT ==========
 
     // Only draw simple rally point when NOT selected (waypoints are drawn separately when selected)
     if (!isSelected) {
@@ -742,8 +1006,10 @@ export class EntityRenderer {
       this.graphics.lineBetween(factory.rallyX, factory.rallyY, factory.rallyX, factory.rallyY - 8);
     }
 
+    // ========== PRODUCTION PROGRESS ==========
+
     // Production progress indicator (if producing)
-    if (factory.isProducing && factory.buildQueue.length > 0) {
+    if (isProducing && factory.buildQueue.length > 0) {
       const progress = factory.currentBuildProgress;
       const barWidth = width * 0.8;
       const barHeight = 6;
@@ -769,12 +1035,161 @@ export class EntityRenderer {
         this.graphics.fillStyle(0xffcc00, alpha);
         this.graphics.fillCircle(dotX, dotY, 3);
       }
+    }
+  }
 
-      // Show "+N" if more than 5 in queue
-      if (factory.buildQueue.length > 5) {
-        // Would need text for this - skip for now
+  // Render a gear/cog shape
+  private renderGear(x: number, y: number, radius: number, rotation: number, color: number): void {
+    const teeth = 6;
+    const innerRadius = radius * 0.6;
+    const toothHeight = radius * 0.35;
+
+    // Gear body
+    this.graphics.fillStyle(color, 0.7);
+    this.graphics.fillCircle(x, y, innerRadius);
+
+    // Teeth
+    for (let i = 0; i < teeth; i++) {
+      const angle = rotation + (i / teeth) * Math.PI * 2;
+      const toothWidth = (Math.PI * 2 / teeth) * 0.4;
+
+      const innerX1 = x + Math.cos(angle - toothWidth) * innerRadius;
+      const innerY1 = y + Math.sin(angle - toothWidth) * innerRadius;
+      const outerX1 = x + Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
+      const outerY1 = y + Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
+      const outerX2 = x + Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
+      const outerY2 = y + Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
+      const innerX2 = x + Math.cos(angle + toothWidth) * innerRadius;
+      const innerY2 = y + Math.sin(angle + toothWidth) * innerRadius;
+
+      this.graphics.fillStyle(color, 0.7);
+      this.graphics.fillPoints([innerX1, innerY1, outerX1, outerY1, outerX2, outerY2, innerX2, innerY2], true);
+    }
+
+    // Center hole
+    this.graphics.fillStyle(0x1a1a1a, 1);
+    this.graphics.fillCircle(x, y, radius * 0.25);
+
+    // Outline
+    this.graphics.lineStyle(1, 0x333333, 0.5);
+    this.graphics.strokeCircle(x, y, innerRadius);
+  }
+
+  // Render smoke particles
+  private renderSmoke(x: number, y: number): void {
+    const particleCount = 8;
+    const baseTime = this.sprayParticleTime;
+
+    for (let i = 0; i < particleCount; i++) {
+      // Each particle rises and fades
+      const phase = ((baseTime / 800 + i / particleCount) % 1);
+      const lifetime = phase;
+
+      // Rise and drift
+      const riseY = y - lifetime * 30;
+      const driftX = x + Math.sin(baseTime / 300 + i * 2) * 8 * lifetime;
+
+      // Size grows as it rises
+      const size = 3 + lifetime * 6;
+
+      // Fade out as it rises
+      const alpha = (1 - lifetime) * 0.4;
+
+      if (alpha > 0.05) {
+        this.graphics.fillStyle(0x888888, alpha);
+        this.graphics.fillCircle(driftX, riseY, size);
       }
     }
+  }
+
+  // Render solar panel visual details
+  private renderSolarPanel(entity: Entity, left: number, top: number, width: number, height: number): void {
+    const playerColor = this.getPlayerColor(entity.ownership?.playerId);
+
+    // Panel grid - dark blue photovoltaic cells
+    const cellMargin = 4;
+    const cellGap = 2;
+    const innerLeft = left + cellMargin;
+    const innerTop = top + cellMargin;
+    const innerWidth = width - cellMargin * 2;
+    const innerHeight = height - cellMargin * 2;
+
+    // Dark panel background
+    this.graphics.fillStyle(0x0a1428, 1);
+    this.graphics.fillRect(innerLeft, innerTop, innerWidth, innerHeight);
+
+    // Solar cell grid (3x2 cells)
+    const cellsX = 3;
+    const cellsY = 2;
+    const cellWidth = (innerWidth - cellGap * (cellsX + 1)) / cellsX;
+    const cellHeight = (innerHeight - cellGap * (cellsY + 1)) / cellsY;
+
+    for (let cy = 0; cy < cellsY; cy++) {
+      for (let cx = 0; cx < cellsX; cx++) {
+        const cellX = innerLeft + cellGap + cx * (cellWidth + cellGap);
+        const cellY = innerTop + cellGap + cy * (cellHeight + cellGap);
+
+        // Cell base (dark blue)
+        this.graphics.fillStyle(0x1a3050, 1);
+        this.graphics.fillRect(cellX, cellY, cellWidth, cellHeight);
+
+        // Cell gradient simulation (lighter at top)
+        this.graphics.fillStyle(0x2a4060, 0.6);
+        this.graphics.fillRect(cellX, cellY, cellWidth, cellHeight * 0.4);
+
+        // Grid lines on each cell
+        this.graphics.lineStyle(1, 0x102030, 0.8);
+        // Horizontal line
+        this.graphics.lineBetween(cellX, cellY + cellHeight / 2, cellX + cellWidth, cellY + cellHeight / 2);
+        // Vertical line
+        this.graphics.lineBetween(cellX + cellWidth / 2, cellY, cellX + cellWidth / 2, cellY + cellHeight);
+      }
+    }
+
+    // Shimmer effect (subtle moving highlight)
+    const shimmerPhase = (this.sprayParticleTime / 2000) % 1;
+    const shimmerX = innerLeft + shimmerPhase * innerWidth * 1.5 - innerWidth * 0.25;
+    const shimmerWidth = innerWidth * 0.3;
+
+    if (shimmerX > innerLeft - shimmerWidth && shimmerX < innerLeft + innerWidth) {
+      // Gradient shimmer (brighter in center)
+      for (let i = 0; i < 5; i++) {
+        const segX = shimmerX + i * (shimmerWidth / 5);
+        const segW = shimmerWidth / 5;
+        const alpha = (i < 2.5) ? i * 0.04 : (4 - i) * 0.04;
+
+        if (segX >= innerLeft && segX + segW <= innerLeft + innerWidth) {
+          this.graphics.fillStyle(0xffffff, alpha);
+          this.graphics.fillRect(segX, innerTop, segW, innerHeight);
+        }
+      }
+    }
+
+    // Frame corners (player color accents)
+    const cornerSize = 6;
+    this.graphics.fillStyle(playerColor, 0.9);
+
+    // Top-left corner
+    this.graphics.fillRect(left, top, cornerSize, 2);
+    this.graphics.fillRect(left, top, 2, cornerSize);
+
+    // Top-right corner
+    this.graphics.fillRect(left + width - cornerSize, top, cornerSize, 2);
+    this.graphics.fillRect(left + width - 2, top, 2, cornerSize);
+
+    // Bottom-left corner
+    this.graphics.fillRect(left, top + height - 2, cornerSize, 2);
+    this.graphics.fillRect(left, top + height - cornerSize, 2, cornerSize);
+
+    // Bottom-right corner
+    this.graphics.fillRect(left + width - cornerSize, top + height - 2, cornerSize, 2);
+    this.graphics.fillRect(left + width - 2, top + height - cornerSize, 2, cornerSize);
+
+    // Small power indicator LED
+    const ledX = left + width - 8;
+    const ledY = top + 8;
+    this.graphics.fillStyle(0x44ff44, 0.9);
+    this.graphics.fillCircle(ledX, ledY, 2);
   }
 
   // Render a build progress bar

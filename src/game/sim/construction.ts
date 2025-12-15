@@ -148,11 +148,11 @@ export class ConstructionSystem {
 
     // Add factory component if it's a factory
     if (buildingType === 'factory') {
-      // Calculate rally point (10% toward map center)
+      // Calculate rally point (50% toward map center)
       const mapCenterX = world.mapWidth / 2;
       const mapCenterY = world.mapHeight / 2;
-      const rallyX = worldPos.x + (mapCenterX - worldPos.x) * 0.1;
-      const rallyY = worldPos.y + (mapCenterY - worldPos.y) * 0.1;
+      const rallyX = worldPos.x + (mapCenterX - worldPos.x) * 0.5;
+      const rallyY = worldPos.y + (mapCenterY - worldPos.y) * 0.5;
 
       entity.factory = {
         buildQueue: [],

@@ -114,6 +114,9 @@ function getSpawnPositions(
 export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = [1, 2]): Entity[] {
   const entities: Entity[] = [];
 
+  // Set player count for unit cap calculation
+  world.playerCount = playerIds.length;
+
   // Initialize economy for all players
   for (const playerId of playerIds) {
     economyManager.initPlayer(playerId);

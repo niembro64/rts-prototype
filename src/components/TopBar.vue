@@ -11,6 +11,8 @@ export interface EconomyInfo {
   netFlow: number;      // income - expenditure
   solarCount: number;
   factoryCount: number;
+  unitCount: number;    // Current units for this player
+  unitCap: number;      // Max units allowed for this player
 }
 
 const props = defineProps<{
@@ -40,6 +42,15 @@ const netFlowSign = computed(() => {
   if (props.economy.netFlow > 0) return '+';
   return '';
 });
+
+const unitCapColor = computed(() => {
+  const pct = (props.economy.unitCount / props.economy.unitCap) * 100;
+  if (pct >= 100) return '#ff4444';
+  if (pct >= 80) return '#ffcc00';
+  return '#00ff88';
+});
+
+const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unitCap);
 </script>
 
 <template>
@@ -92,6 +103,15 @@ const netFlowSign = computed(() => {
       <div class="stat-label">Net</div>
       <div class="stat-value net-flow" :style="{ color: netFlowColor }">
         {{ netFlowSign }}{{ economy.netFlow.toFixed(1) }}/s
+      </div>
+    </div>
+
+    <!-- Unit count -->
+    <div class="economy-section units">
+      <div class="stat-label">Units</div>
+      <div class="stat-value" :style="{ color: unitCapColor }">
+        {{ economy.unitCount }} / {{ economy.unitCap }}
+        <span v-if="isAtUnitCap" class="cap-warning" title="At unit cap!">(MAX)</span>
       </div>
     </div>
 
@@ -237,5 +257,19 @@ const netFlowSign = computed(() => {
 
 .building-count.factory {
   color: #88ccff;
+}
+
+.units {
+  min-width: 80px;
+}
+
+.cap-warning {
+  font-size: 10px;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.5; }
 }
 </style>

@@ -83,6 +83,8 @@ export class RtsScene extends Phaser.Scene {
     netFlow: number;
     solarCount: number;
     factoryCount: number;
+    unitCount: number;
+    unitCap: number;
   }) => void;
 
   // Callback for minimap updates
@@ -479,6 +481,10 @@ export class RtsScene extends Phaser.Scene {
     const solarCount = playerBuildings.filter(b => b.buildingType === 'solar').length;
     const factoryCount = playerBuildings.filter(b => b.buildingType === 'factory').length;
 
+    // Count units for this player
+    const unitCount = entitySource.getUnitsByPlayer(playerId).length;
+    const unitCap = this.world.getUnitCapPerPlayer();
+
     const income = economy.baseIncome + economy.production;
     const netFlow = income - economy.expenditure;
 
@@ -492,6 +498,8 @@ export class RtsScene extends Phaser.Scene {
       netFlow,
       solarCount,
       factoryCount,
+      unitCount,
+      unitCap,
     });
   }
 

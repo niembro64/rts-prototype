@@ -1,5 +1,6 @@
 import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
 import { getWeaponConfig } from './weapons';
+import { MAX_TOTAL_UNITS } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -43,12 +44,32 @@ export class WorldState {
   // Current player being controlled
   public activePlayerId: PlayerId = 1;
 
+  // Number of players in the game (for unit cap calculation)
+  public playerCount: number = 2;
+
   // Map dimensions
   public readonly mapWidth: number = 2000;
   public readonly mapHeight: number = 2000;
 
   constructor(seed: number = 12345) {
     this.rng = new SeededRNG(seed);
+  }
+
+  // Get unit cap per player (total units / number of players)
+  getUnitCapPerPlayer(): number {
+    return Math.floor(MAX_TOTAL_UNITS / this.playerCount);
+  }
+
+  // Check if player can build more units
+  canPlayerBuildUnit(playerId: PlayerId): boolean {
+    const currentUnitCount = this.getUnitsByPlayer(playerId).length;
+    return currentUnitCount < this.getUnitCapPerPlayer();
+  }
+
+  // Get remaining unit capacity for a player
+  getRemainingUnitCapacity(playerId: PlayerId): number {
+    const currentUnitCount = this.getUnitsByPlayer(playerId).length;
+    return Math.max(0, this.getUnitCapPerPlayer() - currentUnitCount);
   }
 
   // Generate next deterministic entity ID

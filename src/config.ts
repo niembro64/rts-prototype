@@ -17,6 +17,16 @@ export const MAX_STOCKPILE = 1000;
 /** Base energy income per second (before solar panels) */
 export const BASE_INCOME_PER_SECOND = 10;
 
+// =============================================================================
+// UNIT CAP
+// =============================================================================
+
+/**
+ * Maximum total units across all players.
+ * This is divided evenly among players (e.g., 120 total / 2 players = 60 each)
+ */
+export const MAX_TOTAL_UNITS = 120;
+
 /** Energy produced per second by each completed solar panel */
 export const SOLAR_ENERGY_PER_SECOND = 50;
 
