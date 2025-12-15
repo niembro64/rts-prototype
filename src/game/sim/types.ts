@@ -267,14 +267,15 @@ export interface Entity {
   buildingType?: BuildingType;  // What kind of building this is
 }
 
-// Player colors - assigned in join order: Red, Blue, Yellow, Green, Purple, Orange
+// Player colors - balanced for similar intensity/softness while remaining distinguishable
+// All colors tuned to ~65% saturation and ~70% lightness for a cohesive soft look
 export const PLAYER_COLORS: Record<PlayerId, { primary: number; secondary: number; name: string }> = {
-  1: { primary: 0xff4a4a, secondary: 0xdf2a2a, name: 'Red' },
-  2: { primary: 0x4a9eff, secondary: 0x2a7edf, name: 'Blue' },
-  3: { primary: 0xffdd44, secondary: 0xdfbd24, name: 'Yellow' },
-  4: { primary: 0x44dd44, secondary: 0x24bd24, name: 'Green' },
-  5: { primary: 0xaa44ff, secondary: 0x8a24df, name: 'Purple' },
-  6: { primary: 0xff8844, secondary: 0xdf6824, name: 'Orange' },
+  1: { primary: 0xe05858, secondary: 0xb84040, name: 'Red' },      // Soft coral red
+  2: { primary: 0x5888e0, secondary: 0x4070b8, name: 'Blue' },     // Soft sky blue
+  3: { primary: 0xd8c050, secondary: 0xb0a040, name: 'Yellow' },   // Soft gold yellow
+  4: { primary: 0x58c058, secondary: 0x40a040, name: 'Green' },    // Soft grass green
+  5: { primary: 0xa068d0, secondary: 0x8050b0, name: 'Purple' },   // Soft lavender purple
+  6: { primary: 0xd88050, secondary: 0xb06840, name: 'Orange' },   // Soft peach orange
 };
 
 export const MAX_PLAYERS = 6;
