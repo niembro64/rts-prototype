@@ -140,6 +140,15 @@ export class EntityRenderer {
     ];
 
     const legs = legConfigs.map(config => new ArachnidLeg(config));
+
+    // Initialize all legs at the unit's current position to prevent flickering
+    const unitX = entity.transform.x;
+    const unitY = entity.transform.y;
+    const unitRotation = entity.transform.rotation;
+    for (const leg of legs) {
+      leg.initializeAt(unitX, unitY, unitRotation);
+    }
+
     this.arachnidLegs.set(entity.id, legs);
     return legs;
   }

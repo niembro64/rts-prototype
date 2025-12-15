@@ -60,6 +60,25 @@ export class ArachnidLeg {
     return this.config.upperLegLength + this.config.lowerLegLength;
   }
 
+  // Initialize leg at a specific unit position (call immediately after construction)
+  // This prevents flickering from legs starting at (0,0)
+  initializeAt(unitX: number, unitY: number, unitRotation: number): void {
+    const cos = Math.cos(unitRotation);
+    const sin = Math.sin(unitRotation);
+    const attachX = unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY;
+    const attachY = unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY;
+
+    // Place foot at target snap angle and distance
+    const restDistance = this.totalLength * this.config.snapDistanceMultiplier;
+    const angle = unitRotation + this.config.snapTargetAngle;
+
+    this.groundX = attachX + Math.cos(angle) * restDistance;
+    this.groundY = attachY + Math.sin(angle) * restDistance;
+    this.targetGroundX = this.groundX;
+    this.targetGroundY = this.groundY;
+    this.initialized = true;
+  }
+
   // Initialize or update the leg based on unit position
   update(
     unitX: number,
