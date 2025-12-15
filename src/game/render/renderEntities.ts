@@ -51,6 +51,17 @@ const VISION_RANGE_COLOR = 0xffff88;   // Yellow for vision range
 const WEAPON_RANGE_COLOR = 0xff4444;   // Red for weapon range
 const BUILD_RANGE_COLOR = 0x44ff44;    // Green for build range
 
+// Unit display names by weapon ID
+const UNIT_NAMES: Record<string, string> = {
+  scout: 'Scout',
+  burst: 'Burst',
+  beam: 'Beam',
+  brawl: 'Brawl',
+  mortar: 'Mortar',
+  snipe: 'Snipe',
+  tank: 'Tank',
+};
+
 export class EntityRenderer {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
@@ -58,10 +69,47 @@ export class EntityRenderer {
   private sprayTargets: SprayTarget[] = [];
   private sprayParticleTime: number = 0;
 
+  // Text labels for selected entities
+  private labelPool: Phaser.GameObjects.Text[] = [];
+  private activeLabelCount: number = 0;
+
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
     this.entitySource = entitySource;
+  }
+
+  // Get or create a text label from the pool
+  private getLabel(): Phaser.GameObjects.Text {
+    if (this.activeLabelCount < this.labelPool.length) {
+      const label = this.labelPool[this.activeLabelCount];
+      label.setVisible(true);
+      this.activeLabelCount++;
+      return label;
+    }
+
+    // Create new label
+    const label = this.scene.add.text(0, 0, '', {
+      fontSize: '12px',
+      fontFamily: 'monospace',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
+      align: 'center',
+    });
+    label.setOrigin(0.5, 1); // Center horizontally, anchor at bottom
+    label.setDepth(1000); // Above everything
+    this.labelPool.push(label);
+    this.activeLabelCount++;
+    return label;
+  }
+
+  // Reset label pool for next frame
+  private resetLabels(): void {
+    for (let i = 0; i < this.activeLabelCount; i++) {
+      this.labelPool[i].setVisible(false);
+    }
+    this.activeLabelCount = 0;
   }
 
   /**
@@ -81,6 +129,7 @@ export class EntityRenderer {
   // Render all entities
   render(): void {
     this.graphics.clear();
+    this.resetLabels(); // Reset text labels for this frame
 
     // Update particle time for spray animation
     this.sprayParticleTime += 16; // ~60fps
@@ -124,6 +173,48 @@ export class EntityRenderer {
     // Render units
     for (const entity of this.entitySource.getUnits()) {
       this.renderUnit(entity);
+    }
+
+    // Render labels for selected entities (last, on top of everything)
+    this.renderSelectedLabels();
+  }
+
+  // Render labels above selected units and buildings
+  private renderSelectedLabels(): void {
+    // Labels for selected units
+    for (const entity of this.entitySource.getUnits()) {
+      if (entity.selectable?.selected && entity.unit) {
+        const { x, y } = entity.transform;
+        const { radius } = entity.unit;
+        const weaponId = entity.weapon?.config.id ?? 'scout';
+
+        // Commander gets special label
+        const name = entity.commander ? 'Commander' : (UNIT_NAMES[weaponId] ?? weaponId);
+
+        const label = this.getLabel();
+        label.setText(name);
+        label.setPosition(x, y - radius - 18); // Above health bar
+      }
+    }
+
+    // Labels for selected buildings
+    for (const entity of this.entitySource.getBuildings()) {
+      if (entity.selectable?.selected && entity.building) {
+        const { x, y } = entity.transform;
+        const { height } = entity.building;
+
+        // Determine building type using buildingType property
+        let name = 'Building';
+        if (entity.buildingType === 'factory') {
+          name = 'Factory';
+        } else if (entity.buildingType === 'solar') {
+          name = 'Solar';
+        }
+
+        const label = this.getLabel();
+        label.setText(name);
+        label.setPosition(x, y - height / 2 - 14); // Above building
+      }
     }
   }
 

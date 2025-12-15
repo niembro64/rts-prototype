@@ -354,6 +354,8 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
     const weapon = unit.weapon;
     const config = weapon.config;
     const isBeamWeapon = config.beamDuration !== undefined;
+    const isContinuousBeam = isBeamWeapon && config.cooldown === 0;
+    const isCooldownBeam = isBeamWeapon && config.cooldown > 0;
 
     // Check if we have a target
     if (weapon.targetEntityId === null) continue;
@@ -378,11 +380,11 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
       continue; // Keep tracking but don't fire
     }
 
-    // For beam weapons, fire continuously but only one beam at a time
-    if (isBeamWeapon) {
+    // For continuous beam weapons, fire continuously but only one beam at a time
+    if (isContinuousBeam) {
       if (hasActiveBeam(world, unit.id)) continue; // Already has a beam active
     } else {
-      // Check if off cooldown for non-beam weapons
+      // Check if off cooldown for projectile weapons AND cooldown-based beam weapons
       const canFire = weapon.currentCooldown <= 0;
       const canBurstFire =
         weapon.burstShotsRemaining !== undefined &&
@@ -390,6 +392,9 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
         (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
 
       if (!canFire && !canBurstFire) continue;
+
+      // For cooldown beams, also check no active beam (shouldn't happen but safety check)
+      if (isCooldownBeam && hasActiveBeam(world, unit.id)) continue;
     }
 
     // Use turret direction (not target direction) - turret rotation was updated in updateTurretRotation
@@ -397,8 +402,8 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
 
     const playerId = unit.ownership.playerId;
 
-    // Handle cooldowns for non-beam weapons
-    if (!isBeamWeapon) {
+    // Handle cooldowns for non-continuous-beam weapons
+    if (!isContinuousBeam) {
       const canFire = weapon.currentCooldown <= 0;
       const canBurstFire =
         weapon.burstShotsRemaining !== undefined &&
@@ -425,9 +430,9 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
       }
     }
 
-    // Add fire audio event for non-beam weapons only
-    // Beam weapon audio is handled separately by updateLaserSounds (based on targeting state)
-    if (!isBeamWeapon) {
+    // Add fire audio event for non-beam weapons AND cooldown-based beam weapons
+    // Continuous beam audio is handled separately by updateLaserSounds (based on targeting state)
+    if (!isBeamWeapon || isCooldownBeam) {
       audioEvents.push({
         type: 'fire',
         weaponId: config.id,

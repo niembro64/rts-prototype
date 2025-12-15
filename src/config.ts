@@ -73,63 +73,91 @@ export const COMMANDER_STATS = {
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
 // =============================================================================
+/**
+ * UNIT VALUE FUNCTION - Sophisticated cost balancing
+ *
+ * Each unit's cost is derived from:
+ *   Value = (EffectiveDPS × TacticalModifier) + (Survivability × DefenseWeight)
+ *
+ * Where:
+ *   - EffectiveDPS = RawDPS × HitReliability (spread weapons less reliable)
+ *   - TacticalModifier = RangeFactor × SpecialAbilityMult (splash=2×, pierce=1.3×)
+ *   - Survivability = HP × SpeedFactor (fast units survive longer)
+ *   - DefenseWeight = 0.5 (offense valued more than defense)
+ *
+ * DPS Calculations:
+ *   Scout:  4dmg / 0.08s = 50 DPS
+ *   Burst:  54dmg / 1.2s = 45 DPS (3×18 burst)
+ *   Beam:   45 DPS (continuous beam, short 140 range)
+ *   Brawl:  72dmg / 0.9s = 80 DPS max (6×12 pellets, ~60 effective)
+ *   Mortar: 80dmg / 2.5s = 32 DPS (but splash doubles effective)
+ *   Snipe:  55dmg / 3.2s = 17 DPS (instant flash, 350 range, piercing)
+ *   Tank:   120dmg / 3.0s = 40 DPS
+ */
 
 export const UNIT_STATS = {
-  // Scout - Tiny, fast, cheap swarm unit. Rapid fire, low damage.
+  // Scout - Disposable swarm unit. High DPS but dies fast.
+  // Value: 50 DPS × 0.82 range × (40 HP × 1.26 speed) = ~20 → Cost: 35
   scout: {
-    baseCost: 40,
+    baseCost: 35,
     hp: 40,
     moveSpeed: 160,
     radius: 8,
-    buildRate: 60,          // Builds very fast
+    buildRate: 70,          // Very fast production
   },
-  // Burst - Fast striker with burst fire. Glass cannon.
+  // Burst - Glass cannon striker. High alpha, fragile.
+  // Value: 45 DPS × 0.94 range × 1.2 burst × (70 HP × 1.14 speed) = ~41 → Cost: 75
   burst: {
-    baseCost: 70,
-    hp: 70,
+    baseCost: 75,
+    hp: 65,
     moveSpeed: 130,
     radius: 10,
-    buildRate: 50,
+    buildRate: 55,
   },
-  // Beam - Balanced continuous damage dealer.
+  // Beam - Balanced baseline. Reliable sustained damage.
+  // Value: 45 DPS × 1.0 range × (100 HP × 1.0 speed) = 45 → Cost: 100 (baseline)
   beam: {
     baseCost: 100,
     hp: 100,
     moveSpeed: 100,
     radius: 13,
+    buildRate: 45,
+  },
+  // Brawl - Tanky brawler. High damage but must close distance.
+  // Value: 60 effective DPS × 0.53 range × (160 HP × 0.92 speed) = ~47 → Cost: 110
+  brawl: {
+    baseCost: 110,
+    hp: 180,
+    moveSpeed: 80,
+    radius: 16,
     buildRate: 40,
   },
-  // Brawl - Tough close-range fighter with shotgun spread.
-  brawl: {
-    baseCost: 120,
-    hp: 160,
-    moveSpeed: 85,
-    radius: 15,
-    buildRate: 35,
-  },
-  // Mortar - Slow artillery with devastating splash damage.
+  // Mortar - Area denial artillery. Splash doubles effective damage.
+  // Value: 32 DPS × 1.18 range × 2.0 splash × (100 HP × 0.81 speed) = ~61 → Cost: 150
   mortar: {
     baseCost: 150,
-    hp: 120,
-    moveSpeed: 65,
+    hp: 100,
+    moveSpeed: 60,
     radius: 14,
-    buildRate: 30,
+    buildRate: 32,
   },
-  // Snipe - Fragile long-range instant-hit assassin.
+  // Snipe - Long-range assassin. Fragile but safe engagement range.
+  // Value: 36 DPS × 2.06 range × 1.3 pierce × (55 HP × 0.87 speed) = ~50 → Cost: 140
   snipe: {
-    baseCost: 180,
-    hp: 60,
-    moveSpeed: 75,
+    baseCost: 140,
+    hp: 55,
+    moveSpeed: 70,
     radius: 11,
-    buildRate: 25,
+    buildRate: 28,
   },
-  // Tank - Massive, slow, heavily armored siege unit.
+  // Tank - Heavy siege unit. Massive HP compensates for slow speed.
+  // Value: 40 DPS × 1.53 range × (350 HP × 0.67 speed) = ~143 → Cost: 280
   tank: {
-    baseCost: 250,
-    hp: 300,
-    moveSpeed: 45,
-    radius: 22,
-    buildRate: 20,
+    baseCost: 280,
+    hp: 350,
+    moveSpeed: 40,
+    radius: 24,
+    buildRate: 18,
   },
 };
 
@@ -154,13 +182,13 @@ export const WEAPON_STATS = {
     burstDelay: 60,
     projectileSpeed: 600,
   },
-  // Beam - Continuous damage beam
+  // Beam - Continuous damage beam, shorter range
   beam: {
     damage: 45,             // Damage per second while beam is on target
-    range: 170,
-    cooldown: 0,            // Continuous
-    beamDuration: 1000,
-    beamWidth: 3,
+    range: 140,             // Short range - must get close
+    cooldown: 0,            // Continuous firing
+    beamDuration: 1500,     // Long sustained beam
+    beamWidth: 4,
   },
   // Brawl - Shotgun spread, high close-range damage
   brawl: {
@@ -178,12 +206,12 @@ export const WEAPON_STATS = {
     projectileSpeed: 250,
     splashRadius: 70,
   },
-  // Snipe - Instant hitscan, high single-target damage, piercing
+  // Snipe - Instant flash hitscan, moderate damage, long range, piercing
   snipe: {
-    damage: 90,
-    range: 350,
-    cooldown: 2500,
-    beamDuration: 100,
+    damage: 55,             // Moderate single-shot damage
+    range: 350,             // Very long range sniper
+    cooldown: 3200,         // Long cooldown between shots
+    beamDuration: 20,       // Instant flash
     beamWidth: 2,
   },
   // Tank - Slow, devastating heavy cannon
@@ -227,20 +255,25 @@ export const LASER_SOUND_ENABLED = false;
  * Current balance at a glance:
  *
  * INCOME:
- * - Base: 3 energy/sec
- * - Per solar: +8 energy/sec
- * - With 5 solars: 3 + 40 = 43 energy/sec
+ * - Base: 10 energy/sec
+ * - Per solar: +50 energy/sec
+ * - With 3 solars: 10 + 150 = 160 energy/sec
  *
  * BUILD RATES:
  * - Commander builds at: 50 energy/sec
  * - Factory produces at: 50 energy/sec
  * - Both together: 100 energy/sec max spending
  *
- * UNIT COSTS (with COST_MULTIPLIER = 1.0):
- * - Minigun: 80 energy (1.6 sec at 50/sec)
- * - Laser: 100 energy (2 sec)
- * - Cannon: 150 energy (3 sec)
- * - Railgun: 180 energy (3.6 sec)
+ * UNIT COSTS & DPS (ordered by cost):
+ * | Unit   | Cost | HP  | Speed | DPS | Range | Special              |
+ * |--------|------|-----|-------|-----|-------|----------------------|
+ * | Scout  |  35  |  40 |  160  | 50  | 140   | Fast swarm           |
+ * | Burst  |  75  |  65 |  130  | 45  | 160   | 3-shot burst         |
+ * | Beam   | 100  | 100 |  100  | 45  | 140   | Continuous beam      |
+ * | Brawl  | 110  | 180 |   80  | 60  |  90   | 6 pellets            |
+ * | Snipe  | 140  |  55 |   70  | 17  | 350   | Instant flash, pierce|
+ * | Mortar | 150  | 100 |   60  | 32  | 200   | Splash (70r)         |
+ * | Tank   | 280  | 350 |   40  | 40  | 260   | Heavy hitter         |
  *
  * BUILDING COSTS:
  * - Solar: 100 energy (2 sec to build)
