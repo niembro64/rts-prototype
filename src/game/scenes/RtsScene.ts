@@ -25,6 +25,9 @@ const WEAPON_LABELS: Record<string, string> = {
   laser: 'Laser',
   cannon: 'Cannon',
   shotgun: 'Shotgun',
+  grenade: 'Grenade',
+  railgun: 'Railgun',
+  burstRifle: 'Burst Rifle',
 };
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';

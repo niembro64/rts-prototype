@@ -173,7 +173,8 @@ export class EntityRenderer {
     // Get player color with weapon-based tint variation
     const baseColor = this.getPlayerColor(playerId);
     const playerColor = this.getWeaponTintedColor(baseColor, weaponId);
-    const weaponColor = (entity.weapon?.config.color as number) ?? 0xffffff;
+    // Use team-based weapon color instead of static weapon config color
+    const weaponColor = this.getTeamWeaponColor(baseColor, weaponId);
 
     // Selection ring
     if (isSelected) {
@@ -221,22 +222,42 @@ export class EntityRenderer {
     }
   }
 
-  // Get a slightly tinted color based on weapon type
+  // Get a slightly tinted color based on weapon type (for unit body)
   private getWeaponTintedColor(baseColor: number, weaponId: string): number {
     const r = (baseColor >> 16) & 0xff;
     const g = (baseColor >> 8) & 0xff;
     const b = baseColor & 0xff;
 
-    // Small color shifts based on weapon
+    // Small color shifts based on weapon - all stay within team color palette
     switch (weaponId) {
-      case 'laser': return this.shiftColor(r, g, b, 10, -5, 15); // Slightly purple
+      case 'laser': return this.shiftColor(r, g, b, 20, 20, 30); // Lighter
       case 'minigun': return baseColor; // Base color
-      case 'shotgun': return this.shiftColor(r, g, b, 15, 10, -10); // Slightly orange
-      case 'cannon': return this.shiftColor(r, g, b, -10, -10, 0); // Darker
-      case 'grenade': return this.shiftColor(r, g, b, 5, 15, -15); // Slightly green-yellow
-      case 'railgun': return this.shiftColor(r, g, b, -5, 10, 20); // Slightly cyan
-      case 'burstRifle': return this.shiftColor(r, g, b, 15, 0, 5); // Slightly red
+      case 'shotgun': return this.shiftColor(r, g, b, 30, 10, 0); // Warmer/brighter
+      case 'cannon': return this.shiftColor(r, g, b, -30, -30, -20); // Darker
+      case 'grenade': return this.shiftColor(r, g, b, 10, 20, 0); // Slightly lighter
+      case 'railgun': return this.shiftColor(r, g, b, 0, 20, 40); // Cooler/brighter
+      case 'burstRifle': return this.shiftColor(r, g, b, 25, 0, 10); // Warmer
       default: return baseColor;
+    }
+  }
+
+  // Get team-based weapon color for turrets and projectiles
+  private getTeamWeaponColor(baseColor: number, weaponId: string): number {
+    const r = (baseColor >> 16) & 0xff;
+    const g = (baseColor >> 8) & 0xff;
+    const b = baseColor & 0xff;
+
+    // Different brightness/saturation variations for each weapon type
+    // All colors stay within the team's color family
+    switch (weaponId) {
+      case 'minigun': return this.shiftColor(r, g, b, 60, 60, 60); // Bright/white-ish
+      case 'laser': return this.shiftColor(r, g, b, 80, 50, 80); // Very bright, slight pink/cyan
+      case 'shotgun': return this.shiftColor(r, g, b, 50, 30, 0); // Warm bright
+      case 'cannon': return this.shiftColor(r, g, b, -20, -20, -20); // Darker metallic
+      case 'grenade': return this.shiftColor(r, g, b, 40, 60, 20); // Lighter
+      case 'railgun': return this.shiftColor(r, g, b, 30, 70, 100); // Cyan-shifted bright
+      case 'burstRifle': return this.shiftColor(r, g, b, 70, 40, 60); // Pink-ish bright
+      default: return this.shiftColor(r, g, b, 50, 50, 50);
     }
   }
 
@@ -680,10 +701,12 @@ export class EntityRenderer {
   private renderProjectile(entity: Entity): void {
     if (!entity.projectile) return;
 
-    const { transform, projectile } = entity;
+    const { transform, projectile, ownership } = entity;
     const { x, y } = transform;
     const config = projectile.config;
-    const color = (config.color as number) ?? 0xffffff;
+    // Use team-based color instead of static weapon color
+    const baseColor = this.getPlayerColor(ownership?.playerId);
+    const color = this.getTeamWeaponColor(baseColor, config.id ?? 'minigun');
 
     if (projectile.projectileType === 'beam') {
       // Render beam as a line
