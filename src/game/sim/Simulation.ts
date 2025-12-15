@@ -199,8 +199,11 @@ export class Simulation {
       this.pendingAudioEvents.push(event);
     }
 
-    // Update projectile positions
-    updateProjectiles(this.world, dtMs);
+    // Update projectile positions and remove orphaned beams (from dead units)
+    const orphanedProjectiles = updateProjectiles(this.world, dtMs);
+    for (const id of orphanedProjectiles) {
+      this.world.removeEntity(id);
+    }
 
     // Check projectile collisions and get dead units
     const collisionResult = checkProjectileCollisions(this.world, dtMs);

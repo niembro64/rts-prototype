@@ -186,10 +186,12 @@ export class RtsScene extends Phaser.Scene {
     // Spawn initial entities (only for host/offline mode)
     if (this.networkRole !== 'client') {
       if (this.backgroundMode) {
-        // Background mode: initialize economy and spawn random units
-        this.world.playerCount = 2;
-        economyManager.initPlayer(1);
-        economyManager.initPlayer(2);
+        // Background mode: initialize economy for 4 players and spawn random units
+        this.world.playerCount = 4;
+        economyManager.initPlayer(1); // Red
+        economyManager.initPlayer(2); // Blue
+        economyManager.initPlayer(3); // Yellow
+        economyManager.initPlayer(4); // Green
         this.spawnBackgroundUnits(true); // Initial spawn
       } else {
         // Normal mode: spawn commanders
@@ -1257,28 +1259,55 @@ export class RtsScene extends Phaser.Scene {
   // Available unit types for background spawning
   private readonly BACKGROUND_UNIT_TYPES = Object.keys(UNIT_STATS) as (keyof typeof UNIT_STATS)[];
 
-  // Spawn units for the background battle
+  // Spawn units for the background battle (4 players: Red, Blue, Yellow, Green)
   private spawnBackgroundUnits(initialSpawn: boolean): void {
-    const unitCapPerPlayer = Math.floor(MAX_TOTAL_UNITS / 2);
+    const numPlayers = 4;
+    const unitCapPerPlayer = Math.floor(MAX_TOTAL_UNITS / numPlayers);
     const spawnMargin = 100; // Distance from map edge for spawning
     const mapWidth = this.world.mapWidth;
     const mapHeight = this.world.mapHeight;
 
-    // Count current units per player
+    // How many to spawn this cycle per player
+    const unitsToSpawnPerPlayer = initialSpawn ? Math.min(15, unitCapPerPlayer) : 1;
+
+    // Player 1 (Red) - top of map, moving down
     const player1Units = this.world.getUnitsByPlayer(1).length;
-    const player2Units = this.world.getUnitsByPlayer(2).length;
-
-    // How many to spawn this cycle
-    const unitsToSpawnPerPlayer = initialSpawn ? Math.min(20, unitCapPerPlayer) : 2;
-
-    // Spawn for Player 1 (blue) - bottom of map
     for (let i = 0; i < unitsToSpawnPerPlayer && player1Units + i < unitCapPerPlayer; i++) {
-      this.spawnBackgroundUnit(1, spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight - spawnMargin, 0, spawnMargin);
+      this.spawnBackgroundUnit(1,
+        spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin, // spawn at top
+        spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight, // target bottom
+        Math.PI / 2 // facing down
+      );
     }
 
-    // Spawn for Player 2 (red) - top of map
+    // Player 2 (Blue) - bottom of map, moving up
+    const player2Units = this.world.getUnitsByPlayer(2).length;
     for (let i = 0; i < unitsToSpawnPerPlayer && player2Units + i < unitCapPerPlayer; i++) {
-      this.spawnBackgroundUnit(2, spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin, mapHeight);
+      this.spawnBackgroundUnit(2,
+        spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight, // spawn at bottom
+        spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin, // target top
+        -Math.PI / 2 // facing up
+      );
+    }
+
+    // Player 3 (Yellow) - left of map, moving right
+    const player3Units = this.world.getUnitsByPlayer(3).length;
+    for (let i = 0; i < unitsToSpawnPerPlayer && player3Units + i < unitCapPerPlayer; i++) {
+      this.spawnBackgroundUnit(3,
+        spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin, // spawn at left
+        mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin, // target right
+        0 // facing right
+      );
+    }
+
+    // Player 4 (Green) - right of map, moving left
+    const player4Units = this.world.getUnitsByPlayer(4).length;
+    for (let i = 0; i < unitsToSpawnPerPlayer && player4Units + i < unitCapPerPlayer; i++) {
+      this.spawnBackgroundUnit(4,
+        mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin, // spawn at right
+        spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin, // target left
+        Math.PI // facing left
+      );
     }
   }
 
@@ -1289,8 +1318,11 @@ export class RtsScene extends Phaser.Scene {
     maxX: number,
     minY: number,
     maxY: number,
+    targetMinX: number,
+    targetMaxX: number,
     targetMinY: number,
-    targetMaxY: number
+    targetMaxY: number,
+    initialRotation: number
   ): void {
     // Random position within spawn area
     const x = minX + Math.random() * (maxX - minX);
@@ -1310,11 +1342,11 @@ export class RtsScene extends Phaser.Scene {
       stats.moveSpeed
     );
 
-    // Set initial rotation (facing opposite direction)
-    unit.transform.rotation = playerId === 1 ? -Math.PI / 2 : Math.PI / 2;
+    // Set initial rotation
+    unit.transform.rotation = initialRotation;
 
     // Add fight waypoint to opposite side of map
-    const targetX = minX + Math.random() * (maxX - minX);
+    const targetX = targetMinX + Math.random() * (targetMaxX - targetMinX);
     const targetY = targetMinY + Math.random() * (targetMaxY - targetMinY);
 
     if (unit.unit) {

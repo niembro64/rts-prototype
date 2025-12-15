@@ -501,9 +501,10 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
   return { projectiles: newProjectiles, audioEvents };
 }
 
-// Update projectile positions
-export function updateProjectiles(world: WorldState, dtMs: number): void {
+// Update projectile positions - returns IDs of projectiles to remove (e.g., orphaned beams)
+export function updateProjectiles(world: WorldState, dtMs: number): EntityId[] {
   const dtSec = dtMs / 1000;
+  const projectilesToRemove: EntityId[] = [];
 
   for (const entity of world.getProjectiles()) {
     if (!entity.projectile) continue;
@@ -523,6 +524,12 @@ export function updateProjectiles(world: WorldState, dtMs: number): void {
     if (proj.projectileType === 'beam') {
       const source = world.getEntity(proj.sourceEntityId);
 
+      // Remove beam if source unit is dead or gone
+      if (!source || !source.unit || source.unit.hp <= 0) {
+        projectilesToRemove.push(entity.id);
+        continue;
+      }
+
       if (source && source.unit) {
         // Get turret direction
         const turretAngle = source.unit.turretRotation ?? source.transform.rotation;
@@ -533,10 +540,30 @@ export function updateProjectiles(world: WorldState, dtMs: number): void {
         proj.startX = source.transform.x + dirX * (source.unit.radius + 2);
         proj.startY = source.transform.y + dirY * (source.unit.radius + 2);
 
-        // Beam ends at fixed length (weapon range) in turret direction
+        // Initially set beam to full length
         const beamLength = proj.config.range;
-        proj.endX = proj.startX + dirX * beamLength;
-        proj.endY = proj.startY + dirY * beamLength;
+        const fullEndX = proj.startX + dirX * beamLength;
+        const fullEndY = proj.startY + dirY * beamLength;
+
+        // Find closest hit to truncate beam
+        const closestT = findClosestBeamHit(
+          world,
+          proj.startX, proj.startY,
+          fullEndX, fullEndY,
+          proj.sourceEntityId,
+          proj.config.beamWidth ?? 2
+        );
+
+        // Set beam end based on closest hit (or full length if no hit)
+        // Extend slightly past hit point (t + 0.05) to ensure collision detection works
+        if (closestT !== null && closestT < 1) {
+          const extendedT = Math.min(closestT + 0.05, 1.0);
+          proj.endX = proj.startX + (fullEndX - proj.startX) * extendedT;
+          proj.endY = proj.startY + (fullEndY - proj.startY) * extendedT;
+        } else {
+          proj.endX = fullEndX;
+          proj.endY = fullEndY;
+        }
 
         // Update entity transform to match beam start (for visual reference)
         entity.transform.x = proj.startX;
@@ -545,6 +572,58 @@ export function updateProjectiles(world: WorldState, dtMs: number): void {
       }
     }
   }
+
+  return projectilesToRemove;
+}
+
+// Find the closest hit point along a beam (returns T value 0-1, or null if no hit)
+function findClosestBeamHit(
+  world: WorldState,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  sourceEntityId: EntityId,
+  beamWidth: number
+): number | null {
+  let closestT: number | null = null;
+
+  // Check all units (except source)
+  for (const unit of world.getUnits()) {
+    if (unit.id === sourceEntityId) continue;
+    if (!unit.unit || unit.unit.hp <= 0) continue;
+
+    const t = lineCircleIntersectionT(
+      startX, startY, endX, endY,
+      unit.transform.x, unit.transform.y,
+      unit.unit.radius + beamWidth / 2
+    );
+
+    if (t !== null && (closestT === null || t < closestT)) {
+      closestT = t;
+    }
+  }
+
+  // Check all buildings
+  for (const building of world.getBuildings()) {
+    if (!building.building || building.building.hp <= 0) continue;
+
+    const bWidth = building.building.width;
+    const bHeight = building.building.height;
+    const rectX = building.transform.x - bWidth / 2;
+    const rectY = building.transform.y - bHeight / 2;
+
+    const t = lineRectIntersectionT(
+      startX, startY, endX, endY,
+      rectX, rectY, bWidth, bHeight
+    );
+
+    if (t !== null && (closestT === null || t < closestT)) {
+      closestT = t;
+    }
+  }
+
+  return closestT;
 }
 
 // Check projectile collisions and apply damage
@@ -847,18 +926,12 @@ function lineRectIntersection(
          lineLineIntersection(x1, y1, x2, y2, right, top, right, bottom);     // Right
 }
 
-// Line-line intersection test
+// Line-line intersection test (boolean)
 function lineLineIntersection(
   x1: number, y1: number, x2: number, y2: number,
   x3: number, y3: number, x4: number, y4: number
 ): boolean {
-  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
-  if (Math.abs(denom) < 0.0001) return false; // Lines are parallel
-
-  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
-  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
-
-  return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1;
+  return lineLineIntersectionT(x1, y1, x2, y2, x3, y3, x4, y4) !== null;
 }
 
 // Apply AoE damage around a point - returns number of hits
@@ -959,6 +1032,20 @@ function lineCircleIntersection(
   cy: number,
   r: number
 ): boolean {
+  const t = lineCircleIntersectionT(x1, y1, x2, y2, cx, cy, r);
+  return t !== null;
+}
+
+// Line-circle intersection - returns parametric T value (0-1) of first intersection, or null
+function lineCircleIntersectionT(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  cx: number,
+  cy: number,
+  r: number
+): number | null {
   // Vector from line start to circle center
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -972,7 +1059,7 @@ function lineCircleIntersection(
   let discriminant = b * b - 4 * a * c;
 
   if (discriminant < 0) {
-    return false;
+    return null;
   }
 
   discriminant = Math.sqrt(discriminant);
@@ -980,8 +1067,68 @@ function lineCircleIntersection(
   const t1 = (-b - discriminant) / (2 * a);
   const t2 = (-b + discriminant) / (2 * a);
 
-  // Check if intersection is on the line segment
-  return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+  // Return smallest t in valid range [0, 1]
+  if (t1 >= 0 && t1 <= 1) return t1;
+  if (t2 >= 0 && t2 <= 1) return t2;
+  return null;
+}
+
+// Line-rectangle intersection - returns parametric T value (0-1) of first intersection, or null
+function lineRectIntersectionT(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rectX: number,
+  rectY: number,
+  rectWidth: number,
+  rectHeight: number
+): number | null {
+  const left = rectX;
+  const right = rectX + rectWidth;
+  const top = rectY;
+  const bottom = rectY + rectHeight;
+
+  // If start point is inside rectangle, intersection is at t=0
+  if (x1 >= left && x1 <= right && y1 >= top && y1 <= bottom) {
+    return 0;
+  }
+
+  // Check intersection with each edge, track smallest t
+  let minT: number | null = null;
+
+  const edges = [
+    [left, top, right, top],       // Top
+    [left, bottom, right, bottom], // Bottom
+    [left, top, left, bottom],     // Left
+    [right, top, right, bottom],   // Right
+  ];
+
+  for (const [x3, y3, x4, y4] of edges) {
+    const t = lineLineIntersectionT(x1, y1, x2, y2, x3, y3, x4, y4);
+    if (t !== null && (minT === null || t < minT)) {
+      minT = t;
+    }
+  }
+
+  return minT;
+}
+
+// Line-line intersection - returns T value for first line, or null
+function lineLineIntersectionT(
+  x1: number, y1: number, x2: number, y2: number,
+  x3: number, y3: number, x4: number, y4: number
+): number | null {
+  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+  if (Math.abs(denom) < 0.0001) return null; // Lines are parallel
+
+  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+
+  if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
+    return ua;
+  }
+  return null;
 }
 
 // Remove dead units and clean up their Matter bodies
