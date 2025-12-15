@@ -123,6 +123,7 @@ function getSpawnPositions(
 
 // Spawn initial entities for the game with N players
 export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = [1, 2]): Entity[] {
+  console.log('[spawn] spawnInitialEntities called with playerIds:', playerIds);
   const entities: Entity[] = [];
 
   // Set player count for unit cap calculation
@@ -141,10 +142,13 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
     const playerId = playerIds[i];
     const pos = spawnPositions[i];
 
+    console.log(`[spawn] Creating commander for player ${playerId} at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})`);
     const commander = spawnCommander(world, playerId, pos.x, pos.y, pos.facingAngle);
+    console.log(`[spawn] Commander created with id=${commander.id}, type=${commander.type}`);
     entities.push(commander);
   }
 
+  console.log(`[spawn] Total entities spawned: ${entities.length}`);
   return entities;
 }
 
