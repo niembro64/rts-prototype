@@ -10,6 +10,7 @@ export interface GameConfig {
   playerIds?: PlayerId[];
   localPlayerId?: PlayerId;
   networkRole?: NetworkRole;
+  backgroundMode?: boolean;
 }
 
 export interface GameInstance {
@@ -22,6 +23,7 @@ let pendingGameConfig: {
   playerIds: PlayerId[];
   localPlayerId: PlayerId;
   networkRole: NetworkRole;
+  backgroundMode: boolean;
 } | null = null;
 
 export function getPendingGameConfig() {
@@ -38,6 +40,7 @@ export function createGame(config: GameConfig): GameInstance {
     playerIds: config.playerIds ?? [1, 2],
     localPlayerId: config.localPlayerId ?? 1,
     networkRole: config.networkRole ?? 'offline',
+    backgroundMode: config.backgroundMode ?? false,
   };
 
   const phaserConfig: Phaser.Types.Core.GameConfig = {

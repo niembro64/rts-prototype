@@ -194,7 +194,7 @@ const canJoin = computed(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(10, 10, 20, 0.95);
+  background: rgba(10, 10, 20, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;

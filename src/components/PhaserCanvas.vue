@@ -20,8 +20,12 @@ const VIEW_MODE_OPTIONS: { value: HostViewMode; label: string }[] = [
 ];
 
 const containerRef = ref<HTMLDivElement | null>(null);
+const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
+
+// Background battle game instance (runs behind lobby)
+let backgroundGameInstance: GameInstance | null = null;
 
 // Lobby state
 const showLobby = ref(true);
@@ -83,6 +87,31 @@ const minimapData = reactive<MinimapData>({
 
 let gameInstance: GameInstance | null = null;
 
+// Start the background battle (runs behind lobby)
+function startBackgroundBattle(): void {
+  if (backgroundGameInstance || !backgroundContainerRef.value) return;
+
+  const rect = backgroundContainerRef.value.getBoundingClientRect();
+
+  backgroundGameInstance = createGame({
+    parent: backgroundContainerRef.value,
+    width: rect.width || window.innerWidth,
+    height: rect.height || window.innerHeight,
+    playerIds: [1, 2],
+    localPlayerId: 1,
+    networkRole: 'offline',
+    backgroundMode: true,
+  });
+}
+
+// Stop the background battle
+function stopBackgroundBattle(): void {
+  if (backgroundGameInstance) {
+    destroyGame(backgroundGameInstance);
+    backgroundGameInstance = null;
+  }
+}
+
 // Show player toggle only in single-player mode (offline or hosting alone)
 const showPlayerToggle = computed(() => {
   const isSinglePlayer = lobbyPlayers.value.length === 1;
@@ -122,6 +151,11 @@ function restartGame(): void {
     clearInterval(stateBroadcastInterval);
     stateBroadcastInterval = null;
   }
+
+  // Restart the background battle
+  nextTick(() => {
+    startBackgroundBattle();
+  });
 }
 
 // Selection panel actions
@@ -288,6 +322,9 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
   showLobby.value = false;
   gameStarted.value = true;
 
+  // Stop the background battle
+  stopBackgroundBattle();
+
   if (!containerRef.value) return;
 
   const rect = containerRef.value.getBoundingClientRect();
@@ -392,7 +429,10 @@ function setHostViewMode(mode: HostViewMode): void {
 }
 
 onMounted(() => {
-  // Game is not created until lobby starts it
+  // Start the background battle behind the lobby
+  nextTick(() => {
+    startBackgroundBattle();
+  });
 });
 
 onUnmounted(() => {
@@ -400,6 +440,7 @@ onUnmounted(() => {
     clearInterval(stateBroadcastInterval);
   }
   networkManager.disconnect();
+  stopBackgroundBattle();
   if (gameInstance) {
     destroyGame(gameInstance);
     gameInstance = null;
@@ -409,7 +450,11 @@ onUnmounted(() => {
 
 <template>
   <div class="game-wrapper">
-    <div ref="containerRef" class="phaser-container"></div>
+    <!-- Background battle container (runs behind lobby) -->
+    <div ref="backgroundContainerRef" class="background-battle-container" v-show="showLobby"></div>
+
+    <!-- Main game container -->
+    <div ref="containerRef" class="phaser-container" v-show="!showLobby"></div>
 
     <!-- Lobby Modal -->
     <LobbyModal
@@ -522,6 +567,16 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+.background-battle-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 0;
 }
 
 .phaser-container canvas {

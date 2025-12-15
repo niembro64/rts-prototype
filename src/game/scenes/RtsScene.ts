@@ -28,7 +28,7 @@ const WEAPON_LABELS: Record<string, string> = {
 };
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
-import { LASER_SOUND_ENABLED } from '../../config';
+import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS } from '../../config';
 
 // Grid settings
 const GRID_SIZE = 50;
@@ -48,6 +48,11 @@ export class RtsScene extends Phaser.Scene {
   private networkRole: NetworkRole = 'offline';
   private localPlayerId: PlayerId = 1;
   private playerIds: PlayerId[] = [1, 2];
+
+  // Background mode (no input, no UI, endless battle)
+  private backgroundMode: boolean = false;
+  private backgroundSpawnTimer: number = 0;
+  private readonly BACKGROUND_SPAWN_INTERVAL: number = 500; // ms between spawn attempts
 
   // Host view mode - allows host to see what clients see
   private hostViewMode: HostViewMode = 'simulation';
@@ -118,6 +123,7 @@ export class RtsScene extends Phaser.Scene {
       this.networkRole = config.networkRole;
       this.localPlayerId = config.localPlayerId;
       this.playerIds = config.playerIds;
+      this.backgroundMode = config.backgroundMode;
       clearPendingGameConfig();
     }
 
@@ -151,10 +157,12 @@ export class RtsScene extends Phaser.Scene {
         this.handleAudioEvent(event);
       };
 
-      // Setup game over callback
-      this.simulation.onGameOver = (winnerId: PlayerId) => {
-        this.handleGameOver(winnerId);
-      };
+      // Setup game over callback (skip in background mode - never ends)
+      if (!this.backgroundMode) {
+        this.simulation.onGameOver = (winnerId: PlayerId) => {
+          this.handleGameOver(winnerId);
+        };
+      }
     }
 
     // Setup camera - no bounds so player can see outside the map
@@ -170,29 +178,43 @@ export class RtsScene extends Phaser.Scene {
 
     // Spawn initial entities (only for host/offline mode)
     if (this.networkRole !== 'client') {
-      const entities = spawnInitialEntities(this.world, this.playerIds);
-      // Create Matter bodies for entities
-      this.createMatterBodies(entities);
+      if (this.backgroundMode) {
+        // Background mode: initialize economy and spawn random units
+        this.world.playerCount = 2;
+        economyManager.initPlayer(1);
+        economyManager.initPlayer(2);
+        this.spawnBackgroundUnits(true); // Initial spawn
+      } else {
+        // Normal mode: spawn commanders
+        const entities = spawnInitialEntities(this.world, this.playerIds);
+        // Create Matter bodies for entities
+        this.createMatterBodies(entities);
+      }
     }
 
     // Setup renderer
     this.entityRenderer = new EntityRenderer(this, this.world);
 
-    // Setup input
-    this.inputManager = new InputManager(this, this.world, this.commandQueue);
+    // Setup input (skip in background mode - no player interaction)
+    if (!this.backgroundMode) {
+      this.inputManager = new InputManager(this, this.world, this.commandQueue);
+    }
 
     // Initialize ClientViewState for host mode (to show "client view")
-    if (this.networkRole === 'host') {
+    // Skip in background mode
+    if (this.networkRole === 'host' && !this.backgroundMode) {
       this.clientViewState = new ClientViewState();
     }
 
-    // Initialize audio on first user interaction
-    this.input.once('pointerdown', () => {
-      if (!this.audioInitialized) {
-        audioManager.init();
-        this.audioInitialized = true;
-      }
-    });
+    // Initialize audio on first user interaction (skip in background mode)
+    if (!this.backgroundMode) {
+      this.input.once('pointerdown', () => {
+        if (!this.audioInitialized) {
+          audioManager.init();
+          this.audioInitialized = true;
+        }
+      });
+    }
   }
 
   // Handle audio events from simulation
@@ -619,15 +641,17 @@ export class RtsScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    // Skip game updates if game is over
-    if (this.isGameOver) {
+    // Skip game updates if game is over (not applicable in background mode)
+    if (this.isGameOver && !this.backgroundMode) {
       // Still render but don't update simulation
       this.entityRenderer.render();
       return;
     }
 
-    // Update input (keyboard camera pan)
-    this.inputManager.update(delta);
+    // Update input (keyboard camera pan) - skip in background mode
+    if (!this.backgroundMode && this.inputManager) {
+      this.inputManager.update(delta);
+    }
 
     // Only run simulation for host/offline mode
     if (this.networkRole !== 'client') {
@@ -644,6 +668,15 @@ export class RtsScene extends Phaser.Scene {
 
       // Apply calculated velocities to Matter bodies
       this.applyUnitVelocities();
+
+      // Background mode: continuously spawn units
+      if (this.backgroundMode) {
+        this.backgroundSpawnTimer += delta;
+        if (this.backgroundSpawnTimer >= this.BACKGROUND_SPAWN_INTERVAL) {
+          this.backgroundSpawnTimer = 0;
+          this.spawnBackgroundUnits(false);
+        }
+      }
 
       // Handle rendering based on view mode
       if (this.hostViewMode === 'client' && this.clientViewState) {
@@ -666,14 +699,17 @@ export class RtsScene extends Phaser.Scene {
     // Render entities
     this.entityRenderer.render();
 
-    // Update selection info for UI
-    this.updateSelectionInfo();
+    // Update UI (skip in background mode - no UI)
+    if (!this.backgroundMode) {
+      // Update selection info for UI
+      this.updateSelectionInfo();
 
-    // Update economy info for UI
-    this.updateEconomyInfo();
+      // Update economy info for UI
+      this.updateEconomyInfo();
 
-    // Update minimap for UI
-    this.updateMinimapData();
+      // Update minimap for UI
+      this.updateMinimapData();
+    }
   }
 
   // === Network methods ===
@@ -1206,6 +1242,94 @@ export class RtsScene extends Phaser.Scene {
 
       // Note: Don't clear velocity - it's needed for network serialization
       // The simulation recalculates velocity every frame anyway
+    }
+  }
+
+  // === Background Mode Methods ===
+
+  // Available unit types for background spawning
+  private readonly BACKGROUND_UNIT_TYPES = Object.keys(UNIT_STATS) as (keyof typeof UNIT_STATS)[];
+
+  // Spawn units for the background battle
+  private spawnBackgroundUnits(initialSpawn: boolean): void {
+    const unitCapPerPlayer = Math.floor(MAX_TOTAL_UNITS / 2);
+    const spawnMargin = 100; // Distance from map edge for spawning
+    const mapWidth = this.world.mapWidth;
+    const mapHeight = this.world.mapHeight;
+
+    // Count current units per player
+    const player1Units = this.world.getUnitsByPlayer(1).length;
+    const player2Units = this.world.getUnitsByPlayer(2).length;
+
+    // How many to spawn this cycle
+    const unitsToSpawnPerPlayer = initialSpawn ? Math.min(20, unitCapPerPlayer) : 2;
+
+    // Spawn for Player 1 (blue) - bottom of map
+    for (let i = 0; i < unitsToSpawnPerPlayer && player1Units + i < unitCapPerPlayer; i++) {
+      this.spawnBackgroundUnit(1, spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight - spawnMargin, 0, spawnMargin);
+    }
+
+    // Spawn for Player 2 (red) - top of map
+    for (let i = 0; i < unitsToSpawnPerPlayer && player2Units + i < unitCapPerPlayer; i++) {
+      this.spawnBackgroundUnit(2, spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin, mapHeight);
+    }
+  }
+
+  // Spawn a single background unit with a fight waypoint to opposite side
+  private spawnBackgroundUnit(
+    playerId: PlayerId,
+    minX: number,
+    maxX: number,
+    minY: number,
+    maxY: number,
+    targetMinY: number,
+    targetMaxY: number
+  ): void {
+    // Random position within spawn area
+    const x = minX + Math.random() * (maxX - minX);
+    const y = minY + Math.random() * (maxY - minY);
+
+    // Random unit type
+    const unitType = this.BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * this.BACKGROUND_UNIT_TYPES.length)];
+    const stats = UNIT_STATS[unitType];
+
+    // Create the unit
+    const unit = this.world.createUnit(
+      x,
+      y,
+      playerId,
+      unitType,
+      stats.radius,
+      stats.moveSpeed
+    );
+
+    // Set initial rotation (facing opposite direction)
+    unit.transform.rotation = playerId === 1 ? -Math.PI / 2 : Math.PI / 2;
+
+    // Add fight waypoint to opposite side of map
+    const targetX = minX + Math.random() * (maxX - minX);
+    const targetY = targetMinY + Math.random() * (targetMaxY - targetMinY);
+
+    if (unit.unit) {
+      unit.unit.actions = [{
+        type: 'fight',
+        x: targetX,
+        y: targetY,
+      }];
+    }
+
+    this.world.addEntity(unit);
+
+    // Create physics body
+    if (unit.unit) {
+      const body = this.matter.add.circle(x, y, unit.unit.radius, {
+        friction: 0.05,
+        frictionAir: 0.15,
+        restitution: 0.2,
+        mass: 1,
+        label: `unit_${unit.id}`,
+      });
+      unit.body = { matterBody: body as unknown as MatterJS.BodyType };
     }
   }
 
