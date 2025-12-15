@@ -168,8 +168,12 @@ export class RtsScene extends Phaser.Scene {
     // Setup camera - no bounds so player can see outside the map
     const camera = this.cameras.main;
     camera.setBackgroundColor(0x0a0a14); // Darker background outside the map
-    // Start fully zoomed out to see the whole map
-    camera.setZoom(0.4);
+
+    // Set zoom level - background mode is more zoomed in to show the action
+    const NORMAL_GAME_ZOOM = 0.4;
+    const BACKGROUND_GAME_ZOOM = 1.0;
+    camera.setZoom(this.backgroundMode ? BACKGROUND_GAME_ZOOM : NORMAL_GAME_ZOOM);
+
     // Center camera on the map
     camera.centerOn(this.world.mapWidth / 2, this.world.mapHeight / 2);
 
