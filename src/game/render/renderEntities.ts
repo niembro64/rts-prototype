@@ -111,22 +111,22 @@ export class EntityRenderer {
     const upperLen = legLength * 0.55;
     const lowerLen = legLength * 0.55;
 
-    let legConfigs: LegConfig[];
+    // Define left side legs only, then mirror to create right side
+    let leftSideConfigs: LegConfig[];
 
     if (legCount === 6) {
-      // Create 6 legs - 3 on each side (insect style)
-      // Front leg: snaps to 30° forward, triggers at 90° (perpendicular)
-      // Middle leg: snaps to ~60°, triggers at ~130°
-      // Back leg: snaps to 90° (perpendicular), triggers at 170° (10° from straight back) or full extension
-      legConfigs = [
-        // Left side (negative Y offset) - legs 0-2 front to back
+      // Insect: 3 legs per side (front to back)
+      // Front: snaps to 30° forward, triggers at 90°
+      // Middle: snaps to ~60°, triggers at ~130°
+      // Back: snaps to 90°, triggers at 170° or full extension
+      leftSideConfigs = [
         {
           attachOffsetX: radius * 0.5,
           attachOffsetY: -radius * 0.35,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.17,
+          snapTargetAngle: -Math.PI * 0.3,
           snapDistanceMultiplier: 0.75,
           extensionThreshold: 0.85,
         },
@@ -135,8 +135,8 @@ export class EntityRenderer {
           attachOffsetY: -radius * 0.4,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.72,
-          snapTargetAngle: -Math.PI * 0.33,
+          snapTriggerAngle: Math.PI * 0.8,
+          snapTargetAngle: -Math.PI * 0.4,
           snapDistanceMultiplier: 0.7,
           extensionThreshold: 0.88,
         },
@@ -146,58 +146,24 @@ export class EntityRenderer {
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.944,
-          snapTargetAngle: -Math.PI * 0.5,
-          snapDistanceMultiplier: 0.5,
-          extensionThreshold: 0.97,
-        },
-
-        // Right side (positive Y offset) - legs 3-5 front to back (mirror of left)
-        {
-          attachOffsetX: radius * 0.5,
-          attachOffsetY: radius * 0.35,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: Math.PI * 0.17,
-          snapDistanceMultiplier: 0.75,
-          extensionThreshold: 0.85,
-        },
-        {
-          attachOffsetX: 0,
-          attachOffsetY: radius * 0.4,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.72,
-          snapTargetAngle: Math.PI * 0.33,
-          snapDistanceMultiplier: 0.7,
-          extensionThreshold: 0.88,
-        },
-        {
-          attachOffsetX: -radius * 0.5,
-          attachOffsetY: radius * 0.35,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.944,
-          snapTargetAngle: Math.PI * 0.5,
+          snapTargetAngle: -Math.PI * 0.3,
           snapDistanceMultiplier: 0.5,
           extensionThreshold: 0.97,
         },
       ];
     } else {
-      // Create 8 legs - 4 on each side (arachnid style)
-      // Front leg: snaps to 45° forward, triggers at 90° (perpendicular)
-      // Back leg: snaps to 90° (perpendicular), triggers when nearly straight back (~170°)
-      // Middle legs interpolate between these extremes
-      legConfigs = [
-        // Left side (negative Y offset) - legs 0-3 front to back
+      // Arachnid: 4 legs per side (front to back)
+      // Front: snaps to 45° forward, triggers at 90°
+      // Back: snaps to 90°, triggers at ~170°
+      leftSideConfigs = [
         {
           attachOffsetX: radius * 0.6,
           attachOffsetY: -radius * 0.5,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.25,
-          snapDistanceMultiplier: 0.92,
+          snapTargetAngle: -Math.PI * 0.1,
+          snapDistanceMultiplier: 0.99,
           extensionThreshold: 0.88,
         },
         {
@@ -216,7 +182,7 @@ export class EntityRenderer {
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.8,
-          snapTargetAngle: -Math.PI * 0.42,
+          snapTargetAngle: -Math.PI * 0.55,
           snapDistanceMultiplier: 0.82,
           extensionThreshold: 0.9,
         },
@@ -225,55 +191,22 @@ export class EntityRenderer {
           attachOffsetY: -radius * 0.5,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.94,
-          snapTargetAngle: -Math.PI * 0.5,
-          snapDistanceMultiplier: 0.75,
-          extensionThreshold: 0.92,
-        },
-
-        // Right side (positive Y offset) - legs 4-7 front to back (mirror of left)
-        {
-          attachOffsetX: radius * 0.6,
-          attachOffsetY: radius * 0.5,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: Math.PI * 0.25,
-          snapDistanceMultiplier: 0.92,
-          extensionThreshold: 0.88,
-        },
-        {
-          attachOffsetX: radius * 0.25,
-          attachOffsetY: radius * 0.5,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.65,
-          snapTargetAngle: Math.PI * 0.33,
-          snapDistanceMultiplier: 0.88,
-          extensionThreshold: 0.89,
-        },
-        {
-          attachOffsetX: -radius * 0.2,
-          attachOffsetY: radius * 0.5,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.8,
-          snapTargetAngle: Math.PI * 0.42,
-          snapDistanceMultiplier: 0.82,
-          extensionThreshold: 0.9,
-        },
-        {
-          attachOffsetX: -radius * 0.55,
-          attachOffsetY: radius * 0.5,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.94,
-          snapTargetAngle: Math.PI * 0.5,
-          snapDistanceMultiplier: 0.75,
-          extensionThreshold: 0.92,
+          snapTriggerAngle: Math.PI * 0.99,
+          snapTargetAngle: -Math.PI * 0.7,
+          snapDistanceMultiplier: 0.5,
+          extensionThreshold: 0.98,
         },
       ];
     }
+
+    // Mirror left side to create right side (flip Y offset and snap target angle)
+    const rightSideConfigs: LegConfig[] = leftSideConfigs.map((leg) => ({
+      ...leg,
+      attachOffsetY: -leg.attachOffsetY,
+      snapTargetAngle: -leg.snapTargetAngle,
+    }));
+
+    const legConfigs = [...leftSideConfigs, ...rightSideConfigs];
 
     const legs = legConfigs.map((config) => new ArachnidLeg(config));
 
