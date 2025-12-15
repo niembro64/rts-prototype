@@ -37,6 +37,13 @@ import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS } from '../../config';
 const GRID_SIZE = 50;
 const GRID_COLOR = 0x333355;
 
+// Calculate unit mass based on radius (proportional to area)
+// Scout (radius 8) = mass 1, Tank (radius 24) = mass 9
+const BASE_RADIUS = 8; // Scout is the baseline
+function getUnitMass(radius: number): number {
+  return Math.pow(radius / BASE_RADIUS, 2);
+}
+
 export class RtsScene extends Phaser.Scene {
   private world!: WorldState;
   private simulation!: Simulation;
@@ -317,7 +324,7 @@ export class RtsScene extends Phaser.Scene {
             friction: 0.05,
             frictionAir: 0.15,
             restitution: 0.2,
-            mass: 1,
+            mass: getUnitMass(entity.unit.radius),
             label: `unit_${entity.id}`,
           }
         );
@@ -593,12 +600,12 @@ export class RtsScene extends Phaser.Scene {
   private createMatterBodies(entities: Entity[]): void {
     for (const entity of entities) {
       if (entity.type === 'unit' && entity.unit) {
-        // Circle body for units
+        // Circle body for units - mass proportional to size
         const body = this.matter.add.circle(entity.transform.x, entity.transform.y, entity.unit.radius, {
           friction: 0.05,
           frictionAir: 0.15,
           restitution: 0.2,
-          mass: 1,
+          mass: getUnitMass(entity.unit.radius),
           label: `unit_${entity.id}`,
         });
 
@@ -947,12 +954,13 @@ export class RtsScene extends Phaser.Scene {
         };
       }
 
-      // Create physics body
-      const body = this.matter.add.circle(x, y, netEntity.radius ?? 15, {
+      // Create physics body - mass proportional to size
+      const unitRadius = netEntity.radius ?? 15;
+      const body = this.matter.add.circle(x, y, unitRadius, {
         friction: 0.05,
         frictionAir: 0.15,
         restitution: 0.2,
-        mass: 1,
+        mass: getUnitMass(unitRadius),
         label: `unit_${id}`,
       });
       entity.body = { matterBody: body as unknown as MatterJS.BodyType };
@@ -1359,13 +1367,13 @@ export class RtsScene extends Phaser.Scene {
 
     this.world.addEntity(unit);
 
-    // Create physics body
+    // Create physics body - mass proportional to size
     if (unit.unit) {
       const body = this.matter.add.circle(x, y, unit.unit.radius, {
         friction: 0.05,
         frictionAir: 0.15,
         restitution: 0.2,
-        mass: 1,
+        mass: getUnitMass(unit.unit.radius),
         label: `unit_${unit.id}`,
       });
       unit.body = { matterBody: body as unknown as MatterJS.BodyType };
