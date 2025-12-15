@@ -28,10 +28,12 @@ const WEAPON_LABELS: Record<string, string> = {
   mortar: 'Mortar',
   snipe: 'Snipe',
   tank: 'Tank',
+  arachnid: 'Arachnid',
 };
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
 import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS } from '../../config';
+import { createWeaponsForUnitType } from '../sim/factoryProduction';
 
 // Grid settings
 const GRID_SIZE = 50;
@@ -1001,21 +1003,25 @@ export class RtsScene extends Phaser.Scene {
           moveSpeed: unitMoveSpeed,
           actions,
           patrolStartIndex: null,
-          turretTurnRate: 3,
-          visionRange: 300,
-          turretRotation: netEntity.turretRotation ?? rotation,
           velocityX: netEntity.velocityX ?? 0,
           velocityY: netEntity.velocityY ?? 0,
         },
       };
 
-      // Add weapon if present
-      if (netEntity.weaponId) {
-        entity.weapon = {
-          config: getWeaponConfig(netEntity.weaponId),
+      // Add weapons from network state - all weapons are independent
+      if (netEntity.weapons && netEntity.weapons.length > 0) {
+        entity.weapons = netEntity.weapons.map(nw => ({
+          config: getWeaponConfig(nw.configId),
           currentCooldown: 0,
-          targetEntityId: netEntity.weaponTargetId ?? null,
-        };
+          targetEntityId: nw.targetId ?? null,
+          seeRange: nw.seeRange,
+          fireRange: nw.fireRange,
+          turretRotation: nw.turretRotation,
+          turretTurnRate: nw.turretTurnRate,
+          offsetX: nw.offsetX,
+          offsetY: nw.offsetY,
+          isFiring: nw.isFiring,
+        }));
       }
 
       if (netEntity.isCommander) {
@@ -1138,7 +1144,7 @@ export class RtsScene extends Phaser.Scene {
       entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
       entity.unit.collisionRadius = netEntity.collisionRadius ?? entity.unit.collisionRadius;
       entity.unit.moveSpeed = netEntity.moveSpeed ?? entity.unit.moveSpeed;
-      entity.unit.turretRotation = netEntity.turretRotation ?? entity.unit.turretRotation;
+      // Note: turret rotation is per-weapon, updated in weapon state update below
       // Update velocity for client-side prediction
       entity.unit.velocityX = netEntity.velocityX ?? 0;
       entity.unit.velocityY = netEntity.velocityY ?? 0;
@@ -1159,16 +1165,33 @@ export class RtsScene extends Phaser.Scene {
       }
     }
 
-    // Update weapon state
-    if (entity.weapon && netEntity.weaponId) {
-      entity.weapon.targetEntityId = netEntity.weaponTargetId ?? null;
-    } else if (netEntity.weaponId && !entity.weapon) {
-      // Create weapon if it doesn't exist
-      entity.weapon = {
-        config: getWeaponConfig(netEntity.weaponId),
-        currentCooldown: 0,
-        targetEntityId: netEntity.weaponTargetId ?? null,
-      };
+    // Update all weapons from network state - each weapon is independent
+    if (netEntity.weapons && netEntity.weapons.length > 0) {
+      if (entity.weapons && entity.weapons.length === netEntity.weapons.length) {
+        // Update each weapon's state
+        for (let i = 0; i < netEntity.weapons.length; i++) {
+          entity.weapons[i].targetEntityId = netEntity.weapons[i].targetId ?? null;
+          entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
+          entity.weapons[i].seeRange = netEntity.weapons[i].seeRange;
+          entity.weapons[i].fireRange = netEntity.weapons[i].fireRange;
+          entity.weapons[i].turretTurnRate = netEntity.weapons[i].turretTurnRate;
+          entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
+        }
+      } else {
+        // Recreate weapons array if length changed
+        entity.weapons = netEntity.weapons.map(nw => ({
+          config: getWeaponConfig(nw.configId),
+          currentCooldown: 0,
+          targetEntityId: nw.targetId ?? null,
+          seeRange: nw.seeRange,
+          fireRange: nw.fireRange,
+          turretRotation: nw.turretRotation,
+          turretTurnRate: nw.turretTurnRate,
+          offsetX: nw.offsetX,
+          offsetY: nw.offsetY,
+          isFiring: nw.isFiring,
+        }));
+      }
     }
 
     // Update builder state
@@ -1418,15 +1441,16 @@ export class RtsScene extends Phaser.Scene {
     const unitType = this.BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * this.BACKGROUND_UNIT_TYPES.length)];
     const stats = UNIT_STATS[unitType];
 
-    // Create the unit
-    const unit = this.world.createUnit(
+    // Create the unit using base method and set weapons for this unit type
+    const unit = this.world.createUnitBase(
       x,
       y,
       playerId,
-      unitType,
       stats.collisionRadius,
-      stats.moveSpeed
+      stats.moveSpeed,
+      stats.hp
     );
+    unit.weapons = createWeaponsForUnitType(unitType, stats.collisionRadius);
 
     // Set initial rotation
     unit.transform.rotation = initialRotation;

@@ -160,6 +160,16 @@ export const UNIT_STATS = {
     collisionRadius: 24,
     buildRate: 18,
   },
+  // Arachnid - Titan spider unit. 4 beam lasers + 4 snipe lasers, 8 legs.
+  // Combined DPS: 4×45 (beam) + 4×17 (snipe) = ~248 DPS across multiple ranges
+  // Extremely slow, massive HP pool, very expensive. Apex predator.
+  arachnid: {
+    baseCost: 1800,
+    hp: 1200,
+    moveSpeed: 25,
+    collisionRadius: 38,
+    buildRate: 8,           // Very slow to produce
+  },
 };
 
 // =============================================================================
@@ -229,6 +239,16 @@ export const WEAPON_STATS = {
     projectileSpeed: 350,
     splashRadius: 40,
   },
+  // Arachnid - Multi-weapon titan (4 beam + 4 snipe lasers)
+  // This config is for the primary weapon slot; sub-weapons are handled specially
+  arachnid: {
+    damage: 0,              // Placeholder - actual damage from sub-weapons
+    range: 350,             // Max range (snipe range)
+    cooldown: 0,            // Multi-weapon system handles its own cooldowns
+    // Sub-weapon counts
+    beamCount: 4,           // 4 continuous beam lasers
+    snipeCount: 4,          // 4 sniper lasers
+  },
 };
 
 // =============================================================================
@@ -266,15 +286,16 @@ export const LASER_SOUND_ENABLED = false;
  * - Both together: 100 energy/sec max spending
  *
  * UNIT COSTS & DPS (ordered by cost):
- * | Unit   | Cost | HP  | Speed | DPS | Range | Special              |
- * |--------|------|-----|-------|-----|-------|----------------------|
- * | Scout  |  35  |  40 |  160  | 50  | 140   | Fast swarm           |
- * | Burst  |  75  |  65 |  130  | 45  | 160   | 3-shot burst         |
- * | Beam   | 100  | 100 |  100  | 45  | 140   | Continuous beam      |
- * | Brawl  | 110  | 180 |   80  | 60  |  90   | 6 pellets            |
- * | Snipe  | 140  |  55 |   70  | 17  | 350   | Instant flash, pierce|
- * | Mortar | 150  | 100 |   60  | 32  | 200   | Splash (70r)         |
- * | Tank   | 280  | 350 |   40  | 40  | 260   | Heavy hitter         |
+ * | Unit     | Cost | HP   | Speed | DPS | Range | Special              |
+ * |----------|------|------|-------|-----|-------|----------------------|
+ * | Scout    |   35 |   40 |  160  |  50 | 140   | Fast swarm           |
+ * | Burst    |   75 |   65 |  130  |  45 | 160   | 3-shot burst         |
+ * | Beam     |  100 |  100 |  100  |  45 | 140   | Continuous beam      |
+ * | Brawl    |  110 |  180 |   80  |  60 |  90   | 6 pellets            |
+ * | Snipe    |  140 |   55 |   70  |  17 | 350   | Instant flash, pierce|
+ * | Mortar   |  150 |  100 |   60  |  32 | 200   | Splash (70r)         |
+ * | Tank     |  280 |  350 |   40  |  40 | 260   | Heavy hitter         |
+ * | Arachnid | 1800 | 1200 |   25  | 248 | 350   | 4 beam + 4 snipe     |
  *
  * BUILDING COSTS:
  * - Solar: 100 energy (2 sec to build)

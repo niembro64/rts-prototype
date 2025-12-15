@@ -58,6 +58,19 @@ export interface NetworkAction {
   buildingId?: number;  // Entity ID of the building being constructed
 }
 
+// Weapon data for network sync (supports multi-weapon units)
+export interface NetworkWeapon {
+  configId: string;
+  targetId?: number;
+  seeRange: number;
+  fireRange: number;
+  turretRotation: number;
+  turretTurnRate: number;
+  offsetX: number;
+  offsetY: number;
+  isFiring: boolean;  // Whether weapon is actively firing at target in range
+}
+
 export interface NetworkEntity {
   id: number;
   type: 'unit' | 'building' | 'projectile';
@@ -79,9 +92,10 @@ export interface NetworkEntity {
   // Unit action queue
   actions?: NetworkAction[];
 
-  // Weapon fields
+  // Weapon ID - used for projectile type identification
   weaponId?: string;
-  weaponTargetId?: number;
+  // All unit weapons - each weapon is independent
+  weapons?: NetworkWeapon[];
 
   // Builder fields (commander)
   buildTargetId?: number;

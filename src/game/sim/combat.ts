@@ -30,91 +30,16 @@ function distance(x1: number, y1: number, x2: number, y2: number): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// Find closest enemy (unit or building) within range
-export function findClosestEnemy(
-  world: WorldState,
-  unit: Entity,
-  range: number
-): Entity | null {
-  if (!unit.ownership) return null;
-
-  const enemies = world.getEnemyEntities(unit.ownership.playerId);
-  let closestEnemy: Entity | null = null;
-  let closestDistance = Infinity;
-
-  for (const enemy of enemies) {
-    // Check units
-    if (enemy.unit) {
-      if (enemy.unit.hp <= 0) continue;
-
-      const dist = distance(
-        unit.transform.x,
-        unit.transform.y,
-        enemy.transform.x,
-        enemy.transform.y
-      );
-
-      // Effective range is weapon range plus target radius
-      const effectiveRange = range + enemy.unit.collisionRadius;
-
-      if (dist <= effectiveRange && dist < closestDistance) {
-        closestDistance = dist;
-        closestEnemy = enemy;
-      }
-    }
-
-    // Check buildings
-    if (enemy.building) {
-      if (enemy.building.hp <= 0) continue;
-
-      const dist = distance(
-        unit.transform.x,
-        unit.transform.y,
-        enemy.transform.x,
-        enemy.transform.y
-      );
-
-      // Use diagonal of building as effective target radius
-      const bWidth = enemy.building.width;
-      const bHeight = enemy.building.height;
-      const buildingRadius = Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
-      const effectiveRange = range + buildingRadius;
-
-      if (dist <= effectiveRange && dist < closestDistance) {
-        closestDistance = dist;
-        closestEnemy = enemy;
-      }
-    }
-  }
-
-  return closestEnemy;
-}
-
-// Check if target is within weapon range (supports units and buildings)
-function isInWeaponRange(unit: Entity, target: Entity): boolean {
-  if (!unit.weapon) return false;
-
-  const dist = distance(
-    unit.transform.x,
-    unit.transform.y,
-    target.transform.x,
-    target.transform.y
-  );
-
-  // Calculate effective range based on target type
-  let targetRadius: number;
+// Get target radius for range calculations
+function getTargetRadius(target: Entity): number {
   if (target.unit) {
-    targetRadius = target.unit.collisionRadius;
+    return target.unit.collisionRadius;
   } else if (target.building) {
     const bWidth = target.building.width;
     const bHeight = target.building.height;
-    targetRadius = Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
-  } else {
-    return false;
+    return Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
   }
-
-  const effectiveRange = unit.weapon.config.range + targetRadius;
-  return dist <= effectiveRange;
+  return 0;
 }
 
 // Normalize angle to [-PI, PI]
@@ -142,46 +67,53 @@ function rotateTurretToward(
 }
 
 // Update turret rotation for all units (call before fireWeapons)
+// Each weapon uses its own turretTurnRate
 export function updateTurretRotation(world: WorldState, dtMs: number): void {
   const dtSec = dtMs / 1000;
 
   for (const unit of world.getUnits()) {
-    if (!unit.unit || !unit.ownership) continue;
+    if (!unit.unit || !unit.ownership || !unit.weapons) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const unitComp = unit.unit;
-    const currentTurretRotation = unitComp.turretRotation ?? unit.transform.rotation;
+    const cos = Math.cos(unit.transform.rotation);
+    const sin = Math.sin(unit.transform.rotation);
 
-    // Determine target angle
-    let targetAngle: number;
+    // Update each weapon's turret rotation using its own turretTurnRate
+    for (const weapon of unit.weapons) {
+      let targetAngle: number;
 
-    if (unit.weapon && unit.weapon.targetEntityId !== null) {
-      // Has target - aim turret at target
-      const target = world.getEntity(unit.weapon.targetEntityId);
-      if (target) {
-        const dx = target.transform.x - unit.transform.x;
-        const dy = target.transform.y - unit.transform.y;
-        targetAngle = Math.atan2(dy, dx);
+      if (weapon.targetEntityId !== null) {
+        const target = world.getEntity(weapon.targetEntityId);
+        if (target) {
+          // Calculate angle from weapon position to target (using rotated coordinates)
+          const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
+          const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
+          const dx = target.transform.x - weaponX;
+          const dy = target.transform.y - weaponY;
+          targetAngle = Math.atan2(dy, dx);
+        } else {
+          targetAngle = getMovementAngle(unit);
+        }
       } else {
-        // Target doesn't exist, face movement direction
+        // No target - face movement direction (or body direction if stationary)
         targetAngle = getMovementAngle(unit);
       }
-    } else {
-      // No target - face movement direction (or body direction if stationary)
-      targetAngle = getMovementAngle(unit);
-    }
 
-    // Rotate turret toward target angle
-    unitComp.turretRotation = rotateTurretToward(
-      currentTurretRotation,
-      targetAngle,
-      unitComp.turretTurnRate,
-      dtSec
-    );
+      // Rotate turret toward target angle using weapon's own turn rate
+      // Each weapon operates independently - unit has no control
+      weapon.turretRotation = rotateTurretToward(
+        weapon.turretRotation,
+        targetAngle,
+        weapon.turretTurnRate,
+        dtSec
+      );
+    }
+    // Note: No syncing to unit - weapons are fully independent
   }
 }
 
 // Get angle to face based on movement (or body direction if stationary)
+// Used by weapons when they have no target - they face movement direction
 function getMovementAngle(unit: Entity): number {
   if (!unit.unit) return unit.transform.rotation;
 
@@ -194,8 +126,8 @@ function getMovementAngle(unit: Entity): number {
     return Math.atan2(velY, velX);
   }
 
-  // Stationary - keep current turret direction (or body direction)
-  return unit.unit.turretRotation ?? unit.transform.rotation;
+  // Stationary - use body direction (weapons maintain their own rotation)
+  return unit.transform.rotation;
 }
 
 // Update laser sounds based on targeting state (not beam existence)
@@ -204,45 +136,58 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
   const audioEvents: AudioEvent[] = [];
 
   for (const unit of world.getUnits()) {
-    if (!unit.weapon || !unit.unit || !unit.ownership) continue;
+    if (!unit.weapons || !unit.unit || !unit.ownership) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const config = unit.weapon.config;
-    const isBeamWeapon = config.beamDuration !== undefined && config.cooldown === 0;
+    const cos = Math.cos(unit.transform.rotation);
+    const sin = Math.sin(unit.transform.rotation);
 
-    if (!isBeamWeapon) continue;
+    // Check each weapon for beam sounds
+    for (let i = 0; i < unit.weapons.length; i++) {
+      const weapon = unit.weapons[i];
+      const config = weapon.config;
+      const isBeamWeapon = config.beamDuration !== undefined && config.cooldown === 0;
 
-    // Check if unit has a valid target in weapon range (not just vision range)
-    let hasTargetInRange = false;
-    if (unit.weapon.targetEntityId !== null) {
-      const target = world.getEntity(unit.weapon.targetEntityId);
-      if (target) {
-        const targetIsUnit = target.unit && target.unit.hp > 0;
-        const targetIsBuilding = target.building && target.building.hp > 0;
-        if (targetIsUnit || targetIsBuilding) {
-          hasTargetInRange = isInWeaponRange(unit, target);
+      if (!isBeamWeapon) continue;
+
+      // Check if weapon has a valid target in weapon's fire range
+      let hasTargetInRange = false;
+      if (weapon.targetEntityId !== null) {
+        const target = world.getEntity(weapon.targetEntityId);
+        if (target) {
+          const targetIsUnit = target.unit && target.unit.hp > 0;
+          const targetIsBuilding = target.building && target.building.hp > 0;
+          if (targetIsUnit || targetIsBuilding) {
+            // Calculate weapon position
+            const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
+            const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
+            const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
+            const targetRadius = getTargetRadius(target);
+            hasTargetInRange = dist <= weapon.fireRange + targetRadius;
+          }
         }
       }
-    }
 
-    if (hasTargetInRange) {
-      // Laser should be ON - emit laserStart (AudioManager ignores if already playing)
-      audioEvents.push({
-        type: 'laserStart',
-        weaponId: config.id,
-        x: unit.transform.x,
-        y: unit.transform.y,
-        entityId: unit.id,
-      });
-    } else {
-      // Laser should be OFF - emit laserStop
-      audioEvents.push({
-        type: 'laserStop',
-        weaponId: config.id,
-        x: unit.transform.x,
-        y: unit.transform.y,
-        entityId: unit.id,
-      });
+      // Use unique entity ID based on unit ID and weapon index
+      const soundEntityId = unit.id * 100 + i;
+
+      if (hasTargetInRange) {
+        audioEvents.push({
+          type: 'laserStart',
+          weaponId: config.id,
+          x: unit.transform.x,
+          y: unit.transform.y,
+          entityId: soundEntityId,
+        });
+      } else {
+        audioEvents.push({
+          type: 'laserStop',
+          weaponId: config.id,
+          x: unit.transform.x,
+          y: unit.transform.y,
+          entityId: soundEntityId,
+        });
+      }
     }
   }
 
@@ -250,57 +195,84 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
 }
 
 // Update auto-targeting for all units
-// Uses vision range for target acquisition (turret tracking)
-// Firing only happens when target is within weapon range (checked in fireWeapons)
+// Each weapon independently finds its own target using its own seeRange
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
-    if (!unit.weapon || !unit.ownership || !unit.unit) continue;
+    if (!unit.ownership || !unit.unit || !unit.weapons) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const weapon = unit.weapon;
-    const visionRange = unit.unit.visionRange;
+    const playerId = unit.ownership.playerId;
+    const cos = Math.cos(unit.transform.rotation);
+    const sin = Math.sin(unit.transform.rotation);
 
-    // Check if current target is still valid (within vision range)
-    if (weapon.targetEntityId !== null) {
-      const target = world.getEntity(weapon.targetEntityId);
+    // Each weapon finds its own target using its own seeRange
+    for (const weapon of unit.weapons) {
+      // Calculate weapon position in world coordinates (rotated)
+      const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
+      const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
 
-      // Check if target is a valid unit or building
-      let targetIsValid = false;
-      let targetRadius = 0;
+      // Use weapon's own seeRange for tracking
+      const trackingRange = weapon.seeRange;
 
-      if (target?.unit && target.unit.hp > 0) {
-        targetIsValid = true;
-        targetRadius = target.unit.collisionRadius;
-      } else if (target?.building && target.building.hp > 0) {
-        targetIsValid = true;
-        const bWidth = target.building.width;
-        const bHeight = target.building.height;
-        targetRadius = Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
+      // Check if current target is still valid
+      if (weapon.targetEntityId !== null) {
+        const target = world.getEntity(weapon.targetEntityId);
+
+        let targetIsValid = false;
+        let targetRadius = 0;
+
+        if (target?.unit && target.unit.hp > 0) {
+          targetIsValid = true;
+          targetRadius = target.unit.collisionRadius;
+        } else if (target?.building && target.building.hp > 0) {
+          targetIsValid = true;
+          targetRadius = getTargetRadius(target);
+        }
+
+        if (targetIsValid && target) {
+          const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
+          const effectiveTrackingRange = trackingRange + targetRadius;
+
+          // Target still valid and in tracking range - keep tracking
+          if (dist <= effectiveTrackingRange * 1.2) { // Allow some leeway
+            continue;
+          }
+        }
+        // Target invalid or out of tracking range, clear it
+        weapon.targetEntityId = null;
       }
 
-      if (targetIsValid && target) {
-        const dist = distance(
-          unit.transform.x,
-          unit.transform.y,
-          target.transform.x,
-          target.transform.y
-        );
-        // Use vision range for target retention
-        const effectiveVisionRange = visionRange + targetRadius;
+      // Find new target - use weapon's seeRange for acquisition
+      const enemies = world.getEnemyEntities(playerId);
+      let closestEnemy: Entity | null = null;
+      let closestDist = Infinity;
 
-        // Target still valid and in vision range - keep tracking
-        if (dist <= effectiveVisionRange) {
-          continue;
+      for (const enemy of enemies) {
+        let isAlive = false;
+        let enemyRadius = 0;
+
+        if (enemy.unit && enemy.unit.hp > 0) {
+          isAlive = true;
+          enemyRadius = enemy.unit.collisionRadius;
+        } else if (enemy.building && enemy.building.hp > 0) {
+          isAlive = true;
+          enemyRadius = getTargetRadius(enemy);
+        }
+
+        if (!isAlive) continue;
+
+        const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
+        const effectiveTrackingRange = trackingRange + enemyRadius;
+
+        if (dist <= effectiveTrackingRange && dist < closestDist) {
+          closestDist = dist;
+          closestEnemy = enemy;
         }
       }
-      // Target invalid or out of vision range, clear it
-      weapon.targetEntityId = null;
-    }
 
-    // Find new target within vision range (units or buildings)
-    const enemy = findClosestEnemy(world, unit, visionRange);
-    if (enemy) {
-      weapon.targetEntityId = enemy.id;
+      if (closestEnemy) {
+        weapon.targetEntityId = closestEnemy.id;
+      }
     }
   }
 }
@@ -308,192 +280,216 @@ export function updateAutoTargeting(world: WorldState): void {
 // Update weapon cooldowns
 export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
   for (const unit of world.getUnits()) {
-    if (!unit.weapon) continue;
+    if (!unit.weapons) continue;
 
-    if (unit.weapon.currentCooldown > 0) {
-      unit.weapon.currentCooldown -= dtMs;
-      if (unit.weapon.currentCooldown < 0) {
-        unit.weapon.currentCooldown = 0;
+    for (const weapon of unit.weapons) {
+      if (weapon.currentCooldown > 0) {
+        weapon.currentCooldown -= dtMs;
+        if (weapon.currentCooldown < 0) {
+          weapon.currentCooldown = 0;
+        }
       }
-    }
 
-    // Update burst cooldown
-    if (unit.weapon.burstCooldown !== undefined && unit.weapon.burstCooldown > 0) {
-      unit.weapon.burstCooldown -= dtMs;
-      if (unit.weapon.burstCooldown < 0) {
-        unit.weapon.burstCooldown = 0;
+      // Update burst cooldown
+      if (weapon.burstCooldown !== undefined && weapon.burstCooldown > 0) {
+        weapon.burstCooldown -= dtMs;
+        if (weapon.burstCooldown < 0) {
+          weapon.burstCooldown = 0;
+        }
       }
     }
   }
 }
 
-// Check if a unit already has an active beam that won't expire this frame
-function hasActiveBeam(world: WorldState, unitId: EntityId): boolean {
+// Check if a specific weapon has an active beam (by weapon index)
+function hasActiveWeaponBeam(world: WorldState, unitId: EntityId, weaponIndex: number): boolean {
   for (const proj of world.getProjectiles()) {
-    if (proj.projectile?.sourceEntityId === unitId && proj.projectile.projectileType === 'beam') {
-      // Don't count beams that will expire this frame (after timeAlive update)
-      // timeAlive is updated AFTER fireWeapons, so we need to look ahead
-      if (proj.projectile.timeAlive + FIXED_TIMESTEP >= proj.projectile.maxLifespan) {
-        continue;
-      }
-      return true;
-    }
+    if (!proj.projectile) continue;
+    if (proj.projectile.sourceEntityId !== unitId) continue;
+    if (proj.projectile.projectileType !== 'beam') continue;
+    // Check if this beam belongs to this weapon (stored in config metadata)
+    if ((proj.projectile.config as { weaponIndex?: number }).weaponIndex !== weaponIndex) continue;
+    // Don't count beams that will expire this frame
+    if (proj.projectile.timeAlive + FIXED_TIMESTEP >= proj.projectile.maxLifespan) continue;
+    return true;
   }
   return false;
 }
 
-// Fire weapons at targets
+// Update isFiring state for all weapons
+// This should be called before movement decisions are made
+export function updateWeaponFiringState(world: WorldState): void {
+  for (const unit of world.getUnits()) {
+    if (!unit.weapons) continue;
+
+    const unitCos = Math.cos(unit.transform.rotation);
+    const unitSin = Math.sin(unit.transform.rotation);
+
+    for (const weapon of unit.weapons) {
+      // Default to not firing
+      weapon.isFiring = false;
+
+      // Check if weapon has a valid target
+      if (weapon.targetEntityId === null) continue;
+
+      const target = world.getEntity(weapon.targetEntityId);
+      if (!target) continue;
+
+      // Check if target is alive
+      const targetIsUnit = target.unit && target.unit.hp > 0;
+      const targetIsBuilding = target.building && target.building.hp > 0;
+      if (!targetIsUnit && !targetIsBuilding) continue;
+
+      // Calculate weapon position
+      const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
+      const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+
+      // Check if target is in weapon's fire range
+      const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
+      const targetRadius = getTargetRadius(target);
+
+      if (dist <= weapon.fireRange + targetRadius) {
+        weapon.isFiring = true;
+      }
+    }
+  }
+}
+
+// Fire weapons at targets - unified for all units
+// Each weapon fires independently based on its own state
 export function fireWeapons(world: WorldState): FireWeaponsResult {
   const newProjectiles: Entity[] = [];
   const audioEvents: AudioEvent[] = [];
 
   for (const unit of world.getUnits()) {
-    if (!unit.weapon || !unit.ownership || !unit.unit) continue;
+    if (!unit.ownership || !unit.unit || !unit.weapons) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const weapon = unit.weapon;
-    const config = weapon.config;
-    const isBeamWeapon = config.beamDuration !== undefined;
-    const isContinuousBeam = isBeamWeapon && config.cooldown === 0;
-    const isCooldownBeam = isBeamWeapon && config.cooldown > 0;
-
-    // Check if we have a target
-    if (weapon.targetEntityId === null) continue;
-
-    const target = world.getEntity(weapon.targetEntityId);
-    if (!target) {
-      weapon.targetEntityId = null;
-      continue;
-    }
-
-    // Check if target is alive (unit or building)
-    const targetIsUnit = target.unit && target.unit.hp > 0;
-    const targetIsBuilding = target.building && target.building.hp > 0;
-    if (!targetIsUnit && !targetIsBuilding) {
-      weapon.targetEntityId = null;
-      continue;
-    }
-
-    // Check if target is within weapon range (not just vision range)
-    // Turret tracks at vision range, but only fires at weapon range
-    if (!isInWeaponRange(unit, target)) {
-      continue; // Keep tracking but don't fire
-    }
-
-    // For continuous beam weapons, fire continuously but only one beam at a time
-    if (isContinuousBeam) {
-      if (hasActiveBeam(world, unit.id)) continue; // Already has a beam active
-    } else {
-      // Check if off cooldown for projectile weapons AND cooldown-based beam weapons
-      const canFire = weapon.currentCooldown <= 0;
-      const canBurstFire =
-        weapon.burstShotsRemaining !== undefined &&
-        weapon.burstShotsRemaining > 0 &&
-        (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
-
-      if (!canFire && !canBurstFire) continue;
-
-      // For cooldown beams, also check no active beam (shouldn't happen but safety check)
-      if (isCooldownBeam && hasActiveBeam(world, unit.id)) continue;
-    }
-
-    // Use turret direction (not target direction) - turret rotation was updated in updateTurretRotation
-    const turretAngle = unit.unit.turretRotation ?? unit.transform.rotation;
-
     const playerId = unit.ownership.playerId;
+    const unitCos = Math.cos(unit.transform.rotation);
+    const unitSin = Math.sin(unit.transform.rotation);
 
-    // Handle cooldowns for non-continuous-beam weapons
-    if (!isContinuousBeam) {
-      const canFire = weapon.currentCooldown <= 0;
-      const canBurstFire =
-        weapon.burstShotsRemaining !== undefined &&
-        weapon.burstShotsRemaining > 0 &&
-        (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
+    // Fire each weapon independently
+    for (let weaponIndex = 0; weaponIndex < unit.weapons.length; weaponIndex++) {
+      const weapon = unit.weapons[weaponIndex];
+      const config = weapon.config;
+      const isBeamWeapon = config.beamDuration !== undefined;
+      const isContinuousBeam = isBeamWeapon && config.cooldown === 0;
+      const isCooldownBeam = isBeamWeapon && config.cooldown > 0;
 
-      if (canBurstFire && weapon.burstShotsRemaining !== undefined) {
-        weapon.burstShotsRemaining--;
-        weapon.burstCooldown = config.burstDelay ?? 80;
+      // Skip if weapon is not firing (target not in range or no target)
+      if (!weapon.isFiring) continue;
 
-        if (weapon.burstShotsRemaining <= 0) {
-          weapon.burstShotsRemaining = undefined;
-          weapon.burstCooldown = undefined;
-        }
-      } else if (canFire) {
-        // Start cooldown
-        weapon.currentCooldown = config.cooldown;
+      const target = world.getEntity(weapon.targetEntityId!);
+      if (!target) {
+        weapon.targetEntityId = null;
+        weapon.isFiring = false;
+        continue;
+      }
 
-        // Initialize burst if applicable
-        if (config.burstCount && config.burstCount > 1) {
-          weapon.burstShotsRemaining = config.burstCount - 1; // -1 because we're firing one now
+      // Calculate weapon position in world coordinates
+      const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
+      const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+
+      // Check cooldown / active beam
+      if (isContinuousBeam) {
+        if (hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
+      } else {
+        const canFire = weapon.currentCooldown <= 0;
+        const canBurstFire = weapon.burstShotsRemaining !== undefined &&
+          weapon.burstShotsRemaining > 0 &&
+          (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
+
+        if (!canFire && !canBurstFire) continue;
+
+        if (isCooldownBeam && hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
+      }
+
+      // Handle cooldowns
+      if (!isContinuousBeam) {
+        const canFire = weapon.currentCooldown <= 0;
+        const canBurstFire = weapon.burstShotsRemaining !== undefined &&
+          weapon.burstShotsRemaining > 0 &&
+          (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
+
+        if (canBurstFire && weapon.burstShotsRemaining !== undefined) {
+          weapon.burstShotsRemaining--;
           weapon.burstCooldown = config.burstDelay ?? 80;
+          if (weapon.burstShotsRemaining <= 0) {
+            weapon.burstShotsRemaining = undefined;
+            weapon.burstCooldown = undefined;
+          }
+        } else if (canFire) {
+          weapon.currentCooldown = config.cooldown;
+          if (config.burstCount && config.burstCount > 1) {
+            weapon.burstShotsRemaining = config.burstCount - 1;
+            weapon.burstCooldown = config.burstDelay ?? 80;
+          }
         }
       }
-    }
 
-    // Add fire audio event for non-beam weapons AND cooldown-based beam weapons
-    // Continuous beam audio is handled separately by updateLaserSounds (based on targeting state)
-    if (!isBeamWeapon || isCooldownBeam) {
-      audioEvents.push({
-        type: 'fire',
-        weaponId: config.id,
-        x: unit.transform.x,
-        y: unit.transform.y,
-      });
-    }
-
-    // Create projectile(s)
-    const pellets = config.pelletCount ?? 1;
-    const spreadAngle = config.spreadAngle ?? 0;
-    const baseAngle = turretAngle; // Fire in turret direction
-
-    for (let i = 0; i < pellets; i++) {
-      // Calculate spread
-      let angle = baseAngle;
-      if (pellets > 1 && spreadAngle > 0) {
-        const spreadOffset = (i / (pellets - 1) - 0.5) * spreadAngle;
-        angle += spreadOffset;
-      } else if (pellets === 1 && spreadAngle > 0) {
-        // Random spread for single pellet
-        angle += (world.rng.next() - 0.5) * spreadAngle;
+      // Add fire audio event
+      if (!isBeamWeapon || isCooldownBeam) {
+        audioEvents.push({
+          type: 'fire',
+          weaponId: config.id,
+          x: weaponX,
+          y: weaponY,
+        });
       }
 
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
+      // Fire the weapon in turret direction
+      const turretAngle = weapon.turretRotation;
 
-      // Spawn position (at edge of unit)
-      const spawnX = unit.transform.x + cos * (unit.unit.collisionRadius + 2);
-      const spawnY = unit.transform.y + sin * (unit.unit.collisionRadius + 2);
+      // Create projectile(s)
+      const pellets = config.pelletCount ?? 1;
+      const spreadAngle = config.spreadAngle ?? 0;
 
-      // Check if this is a beam/hitscan weapon
-      if (config.beamDuration !== undefined) {
-        // Create beam as fixed-length ray in turret direction (damages anything it touches)
-        const beamLength = config.range;
-        const endX = spawnX + cos * beamLength;
-        const endY = spawnY + sin * beamLength;
-        const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config);
-        // Store source entity for position tracking (beam follows turret direction)
-        if (beam.projectile) {
-          beam.projectile.sourceEntityId = unit.id;
-          // No targetEntityId - beam fires in fixed direction from turret
+      for (let i = 0; i < pellets; i++) {
+        // Calculate spread
+        let angle = turretAngle;
+        if (pellets > 1 && spreadAngle > 0) {
+          const spreadOffset = (i / (pellets - 1) - 0.5) * spreadAngle;
+          angle += spreadOffset;
+        } else if (pellets === 1 && spreadAngle > 0) {
+          angle += (world.rng.next() - 0.5) * spreadAngle;
         }
-        newProjectiles.push(beam);
-      } else if (config.projectileSpeed !== undefined) {
-        // Create traveling projectile
-        const speed = config.projectileSpeed;
-        const velX = cos * speed;
-        const velY = sin * speed;
 
-        const projectile = world.createProjectile(
-          spawnX,
-          spawnY,
-          velX,
-          velY,
-          playerId,
-          unit.id,
-          config,
-          'traveling'
-        );
-        newProjectiles.push(projectile);
+        const fireCos = Math.cos(angle);
+        const fireSin = Math.sin(angle);
+
+        // Spawn position
+        const spawnX = weaponX + fireCos * 5;
+        const spawnY = weaponY + fireSin * 5;
+
+        if (isBeamWeapon) {
+          // Create beam using weapon's fireRange
+          const beamLength = weapon.fireRange;
+          const endX = spawnX + fireCos * beamLength;
+          const endY = spawnY + fireSin * beamLength;
+
+          // Create config with weaponIndex for beam tracking
+          const beamConfig = { ...config, weaponIndex };
+          const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, beamConfig);
+          if (beam.projectile) {
+            beam.projectile.sourceEntityId = unit.id;
+          }
+          newProjectiles.push(beam);
+        } else if (config.projectileSpeed !== undefined) {
+          // Create traveling projectile
+          const speed = config.projectileSpeed;
+          const projectile = world.createProjectile(
+            spawnX,
+            spawnY,
+            fireCos * speed,
+            fireSin * speed,
+            playerId,
+            unit.id,
+            config,
+            'traveling'
+          );
+          newProjectiles.push(projectile);
+        }
       }
     }
   }
@@ -525,20 +521,35 @@ export function updateProjectiles(world: WorldState, dtMs: number): EntityId[] {
       const source = world.getEntity(proj.sourceEntityId);
 
       // Remove beam if source unit is dead or gone
-      if (!source || !source.unit || source.unit.hp <= 0) {
+      if (!source || !source.unit || source.unit.hp <= 0 || !source.weapons) {
         projectilesToRemove.push(entity.id);
         continue;
       }
 
-      if (source && source.unit) {
-        // Get turret direction
-        const turretAngle = source.unit.turretRotation ?? source.transform.rotation;
+      if (source && source.unit && source.weapons) {
+        // Get weapon index from config
+        const weaponIndex = (proj.config as { weaponIndex?: number }).weaponIndex ?? 0;
+        const weapon = source.weapons[weaponIndex];
+
+        if (!weapon) {
+          projectilesToRemove.push(entity.id);
+          continue;
+        }
+
+        // Get turret direction from specific weapon
+        const turretAngle = weapon.turretRotation;
         const dirX = Math.cos(turretAngle);
         const dirY = Math.sin(turretAngle);
 
-        // Beam starts at edge of source unit
-        proj.startX = source.transform.x + dirX * (source.unit.collisionRadius + 2);
-        proj.startY = source.transform.y + dirY * (source.unit.collisionRadius + 2);
+        // Calculate weapon position in world coordinates
+        const unitCos = Math.cos(source.transform.rotation);
+        const unitSin = Math.sin(source.transform.rotation);
+        const weaponX = source.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
+        const weaponY = source.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+
+        // Beam starts at weapon position
+        proj.startX = weaponX + dirX * 5;
+        proj.startY = weaponY + dirY * 5;
 
         // Initially set beam to full length
         const beamLength = proj.config.range;
@@ -752,7 +763,12 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
         // Check if unit died
         if (target.unit.hp <= 0 && !unitsToRemove.includes(target.id)) {
           // Add death audio event based on the dying unit's weapon type
-          const deathWeaponId = target.weapon?.config.id ?? 'scout';
+          // Loop through all weapons to get type
+          let deathWeaponId = 'scout';
+          const targetWeapons = target.weapons ?? [];
+          for (const weapon of targetWeapons) {
+            deathWeaponId = weapon.config.id;
+          }
           audioEvents.push({
             type: 'death',
             weaponId: deathWeaponId,

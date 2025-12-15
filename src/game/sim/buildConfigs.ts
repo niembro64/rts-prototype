@@ -96,6 +96,16 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     moveSpeed: UNIT_STATS.tank.moveSpeed,
     hp: UNIT_STATS.tank.hp,
   },
+  arachnid: {
+    weaponId: 'arachnid',
+    name: 'Arachnid',
+    energyCost: UNIT_STATS.arachnid.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.arachnid.buildRate,
+    collisionRadius: UNIT_STATS.arachnid.collisionRadius,
+    moveSpeed: UNIT_STATS.arachnid.moveSpeed,
+    hp: UNIT_STATS.arachnid.hp,
+    weaponSeeRange: 400,  // Extended tracking range for titan weapons
+  },
 };
 
 // Commander stats (from config)

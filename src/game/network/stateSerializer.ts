@@ -89,7 +89,13 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     netEntity.moveSpeed = entity.unit.moveSpeed;
     netEntity.velocityX = entity.unit.velocityX ?? 0;
     netEntity.velocityY = entity.unit.velocityY ?? 0;
-    netEntity.turretRotation = entity.unit.turretRotation ?? entity.transform.rotation;
+    // Turret rotation for network display - loop through all weapons
+    let turretRot = entity.transform.rotation;
+    const weapons = entity.weapons ?? [];
+    for (const weapon of weapons) {
+      turretRot = weapon.turretRotation;
+    }
+    netEntity.turretRotation = turretRot;
     netEntity.isCommander = entity.commander !== undefined;
 
     // Serialize action queue
@@ -107,10 +113,19 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
       }));
     }
 
-    // Serialize weapon state
-    if (entity.weapon) {
-      netEntity.weaponId = entity.weapon.config.id;
-      netEntity.weaponTargetId = entity.weapon.targetEntityId ?? undefined;
+    // Serialize all weapons - each weapon operates independently
+    if (entity.weapons && entity.weapons.length > 0) {
+      netEntity.weapons = entity.weapons.map(w => ({
+        configId: w.config.id,
+        targetId: w.targetEntityId ?? undefined,
+        seeRange: w.seeRange,
+        fireRange: w.fireRange,
+        turretRotation: w.turretRotation,
+        turretTurnRate: w.turretTurnRate,
+        offsetX: w.offsetX,
+        offsetY: w.offsetY,
+        isFiring: w.isFiring,
+      }));
     }
 
     // Serialize builder state (commander)

@@ -68,6 +68,7 @@ const unitOptions: { weaponId: string; label: string; cost: number }[] = [
   { weaponId: 'snipe', label: 'Snipe', cost: 140 },
   { weaponId: 'mortar', label: 'Mortar', cost: 150 },
   { weaponId: 'tank', label: 'Tank', cost: 280 },
+  { weaponId: 'arachnid', label: 'Arachnid', cost: 1800 },
 ];
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)

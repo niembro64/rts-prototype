@@ -5,6 +5,7 @@ import {
   updateAutoTargeting,
   updateTurretRotation,
   updateWeaponCooldowns,
+  updateWeaponFiringState,
   updateLaserSounds,
   fireWeapons,
   updateProjectiles,
@@ -174,8 +175,11 @@ export class Simulation {
     // Update weapon cooldowns
     updateWeaponCooldowns(this.world, dtMs);
 
-    // Update auto-targeting
+    // Update auto-targeting (each weapon finds its own target)
     updateAutoTargeting(this.world);
+
+    // Update weapon firing state (sets isFiring based on target being in range)
+    updateWeaponFiringState(this.world);
 
     // Update laser sounds based on targeting state (every frame)
     const laserAudioEvents = updateLaserSounds(this.world);
@@ -531,24 +535,15 @@ export class Simulation {
       }
 
       // Check if unit should stop moving due to combat (fight or patrol mode)
-      // Only stop when target is within WEAPON range (not just vision range)
-      let canFireAtTarget = false;
-      if (entity.weapon && entity.weapon.targetEntityId !== null) {
-        const target = this.world.getEntity(entity.weapon.targetEntityId);
-        if (target?.unit || target?.building) {
-          const targetX = target.transform.x;
-          const targetY = target.transform.y;
-          const dx = targetX - entity.transform.x;
-          const dy = targetY - entity.transform.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const targetCollisionRadius = target.unit?.collisionRadius ?? 0;
-          const effectiveRange = entity.weapon.config.range + targetCollisionRadius;
-          canFireAtTarget = dist <= effectiveRange;
-        }
+      // Only stop when ALL weapons are actively firing (isFiring set by combat system)
+      let allWeaponsCanFire = false;
+      if (entity.weapons && entity.weapons.length > 0) {
+        // Check if ALL weapons are firing - weapon.isFiring is set by updateWeaponFiringState
+        allWeaponsCanFire = entity.weapons.every(weapon => weapon.isFiring);
       }
 
       const shouldStopForCombat =
-        (currentAction.type === 'fight' || currentAction.type === 'patrol') && canFireAtTarget;
+        (currentAction.type === 'fight' || currentAction.type === 'patrol') && allWeaponsCanFire;
 
       if (shouldStopForCombat) {
         // Stop moving - target is within weapon range

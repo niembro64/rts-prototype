@@ -1,7 +1,8 @@
 import type { WorldState } from './WorldState';
-import type { Entity, UnitAction } from './types';
+import type { Entity, UnitAction, UnitWeapon } from './types';
 import { economyManager } from './economy';
 import { getUnitBuildConfig, getBuildingConfig } from './buildConfigs';
+import { getWeaponConfig } from './weapons';
 
 // Factory production result
 export interface FactoryProductionResult {
@@ -102,23 +103,18 @@ export class FactoryProductionSystem {
     const spawnX = factory.transform.x;
     const spawnY = factory.transform.y;
 
-    // Create the unit (visionRange from config or default)
-    const unit = world.createUnit(
+    // Create base unit entity (weapons will be set below)
+    const unit = world.createUnitBase(
       spawnX,
       spawnY,
       playerId,
-      config.weaponId,
       config.collisionRadius,
       config.moveSpeed,
-      3, // Default turret turn rate
-      config.visionRange
+      config.hp
     );
 
-    // Set HP from config
-    if (unit.unit) {
-      unit.unit.hp = config.hp;
-      unit.unit.maxHp = config.hp;
-    }
+    // Create weapons for this unit type - all units go through the same path
+    unit.weapons = this.createWeaponsForUnit(config);
 
     // Copy factory's waypoints to the new unit as actions
     if (unit.unit && factoryComp.waypoints.length > 0) {
@@ -197,7 +193,156 @@ export class FactoryProductionSystem {
         : 0,
     }));
   }
+
+  // Create weapons array for any unit type - unified approach for all units
+  private createWeaponsForUnit(config: ReturnType<typeof getUnitBuildConfig>): UnitWeapon[] {
+    if (!config) return [];
+
+    const unitType = config.weaponId;
+    const radius = config.collisionRadius;
+
+    // Arachnid has 8 scout cannons arranged in two rows
+    if (unitType === 'arachnid') {
+      const scoutConfig = getWeaponConfig('scout');
+      const turretTurnRate = 4;
+      const seeRange = config.weaponSeeRange ?? 400;
+      const fireRange = config.weaponFireRange ?? scoutConfig.range;
+
+      const weapons: UnitWeapon[] = [];
+
+      // 4 cannons in front row
+      const frontSpacing = radius * 0.35;
+      const frontForwardOffset = radius * 0.8;
+      for (let i = 0; i < 4; i++) {
+        const lateralOffset = (i - 1.5) * frontSpacing;
+        weapons.push({
+          config: { ...scoutConfig },
+          currentCooldown: 0,
+          targetEntityId: null,
+          seeRange,
+          fireRange,
+          turretRotation: 0,
+          turretTurnRate,
+          offsetX: frontForwardOffset,
+          offsetY: lateralOffset,
+          isFiring: false,
+        });
+      }
+
+      // 4 cannons in back row
+      const backSpacing = radius * 0.4;
+      const backForwardOffset = radius * 0.35;
+      for (let i = 0; i < 4; i++) {
+        const lateralOffset = (i - 1.5) * backSpacing;
+        weapons.push({
+          config: { ...scoutConfig },
+          currentCooldown: 0,
+          targetEntityId: null,
+          seeRange,
+          fireRange,
+          turretRotation: 0,
+          turretTurnRate,
+          offsetX: backForwardOffset,
+          offsetY: lateralOffset,
+          isFiring: false,
+        });
+      }
+
+      return weapons;
+    }
+
+    // All other units: single weapon matching their type
+    const weaponConfig = getWeaponConfig(unitType);
+    const seeRange = config.weaponSeeRange ?? weaponConfig.range * 1.5;
+    const fireRange = config.weaponFireRange ?? weaponConfig.range;
+
+    return [{
+      config: { ...weaponConfig },
+      currentCooldown: 0,
+      targetEntityId: null,
+      seeRange,
+      fireRange,
+      turretRotation: 0,
+      turretTurnRate: 3,
+      offsetX: 0,
+      offsetY: 0,
+      isFiring: false,
+    }];
+  }
 }
 
 // Singleton instance
 export const factoryProductionSystem = new FactoryProductionSystem();
+
+// Create weapons array for any unit type - call this when creating units outside of factory
+export function createWeaponsForUnitType(unitType: string, radius: number): UnitWeapon[] {
+  const config = getUnitBuildConfig(unitType);
+
+  // Arachnid has 8 scout cannons arranged in two rows
+  if (unitType === 'arachnid') {
+    const scoutConfig = getWeaponConfig('scout');
+    const turretTurnRate = 4;
+    const seeRange = config?.weaponSeeRange ?? 400;
+    const fireRange = config?.weaponFireRange ?? scoutConfig.range;
+
+    const weapons: UnitWeapon[] = [];
+
+    // 4 cannons in front row
+    const frontSpacing = radius * 0.35;
+    const frontForwardOffset = radius * 0.8;
+    for (let i = 0; i < 4; i++) {
+      const lateralOffset = (i - 1.5) * frontSpacing;
+      weapons.push({
+        config: { ...scoutConfig },
+        currentCooldown: 0,
+        targetEntityId: null,
+        seeRange,
+        fireRange,
+        turretRotation: 0,
+        turretTurnRate,
+        offsetX: frontForwardOffset,
+        offsetY: lateralOffset,
+        isFiring: false,
+      });
+    }
+
+    // 4 cannons in back row
+    const backSpacing = radius * 0.4;
+    const backForwardOffset = radius * 0.35;
+    for (let i = 0; i < 4; i++) {
+      const lateralOffset = (i - 1.5) * backSpacing;
+      weapons.push({
+        config: { ...scoutConfig },
+        currentCooldown: 0,
+        targetEntityId: null,
+        seeRange,
+        fireRange,
+        turretRotation: 0,
+        turretTurnRate,
+        offsetX: backForwardOffset,
+        offsetY: lateralOffset,
+        isFiring: false,
+      });
+    }
+
+    return weapons;
+  }
+
+  // All other units: single weapon matching their type
+  const weaponConfig = getWeaponConfig(unitType);
+  const seeRange = config?.weaponSeeRange ?? weaponConfig.range * 1.5;
+  const fireRange = config?.weaponFireRange ?? weaponConfig.range;
+
+  return [{
+    config: { ...weaponConfig },
+    currentCooldown: 0,
+    targetEntityId: null,
+    seeRange,
+    fireRange,
+    turretRotation: 0,
+    turretTurnRate: 3,
+    offsetX: 0,
+    offsetY: 0,
+    isFiring: false,
+  }];
+}

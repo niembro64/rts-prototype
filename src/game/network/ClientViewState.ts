@@ -174,21 +174,25 @@ export class ClientViewState {
           moveSpeed: netEntity.moveSpeed ?? 100,
           actions,
           patrolStartIndex: null,
-          turretTurnRate: 3,
-          visionRange: 300,
-          turretRotation: netEntity.turretRotation ?? rotation,
           velocityX: netEntity.velocityX ?? 0,
           velocityY: netEntity.velocityY ?? 0,
         },
       };
 
-      // Add weapon if present
-      if (netEntity.weaponId) {
-        entity.weapon = {
-          config: getWeaponConfig(netEntity.weaponId),
+      // Add weapons from network state - all weapons are independent
+      if (netEntity.weapons && netEntity.weapons.length > 0) {
+        entity.weapons = netEntity.weapons.map(nw => ({
+          config: getWeaponConfig(nw.configId),
           currentCooldown: 0,
-          targetEntityId: netEntity.weaponTargetId ?? null,
-        };
+          targetEntityId: nw.targetId ?? null,
+          seeRange: nw.seeRange,
+          fireRange: nw.fireRange,
+          turretRotation: nw.turretRotation,
+          turretTurnRate: nw.turretTurnRate,
+          offsetX: nw.offsetX,
+          offsetY: nw.offsetY,
+          isFiring: nw.isFiring,
+        }));
       }
 
       if (netEntity.isCommander) {
@@ -298,9 +302,9 @@ export class ClientViewState {
       entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
       entity.unit.collisionRadius = netEntity.collisionRadius ?? entity.unit.collisionRadius;
       entity.unit.moveSpeed = netEntity.moveSpeed ?? entity.unit.moveSpeed;
-      entity.unit.turretRotation = netEntity.turretRotation ?? entity.unit.turretRotation;
       entity.unit.velocityX = netEntity.velocityX ?? 0;
       entity.unit.velocityY = netEntity.velocityY ?? 0;
+      // Note: turret rotation is per-weapon, updated below in weapon state update
 
       // Update action queue
       if (netEntity.actions) {
@@ -317,9 +321,13 @@ export class ClientViewState {
       }
     }
 
-    // Update weapon state
-    if (entity.weapon && netEntity.weaponId) {
-      entity.weapon.targetEntityId = netEntity.weaponTargetId ?? null;
+    // Update all weapons from network state - each weapon is independent
+    if (netEntity.weapons && netEntity.weapons.length > 0 && entity.weapons) {
+      for (let i = 0; i < netEntity.weapons.length && i < entity.weapons.length; i++) {
+        entity.weapons[i].targetEntityId = netEntity.weapons[i].targetId ?? null;
+        entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
+        entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
+      }
     }
 
     // Update builder state

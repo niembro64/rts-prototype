@@ -55,6 +55,8 @@ export interface UnitAction {
 }
 
 // Unit component - movable entities
+// Note: Vision/tracking range and fire range are per-weapon properties in UnitWeapon
+// Note: Turret rotation is per-weapon - units have no control over weapons
 export interface Unit {
   moveSpeed: number;
   collisionRadius: number;  // Hitbox size for physics and click detection
@@ -67,12 +69,6 @@ export interface Unit {
   // Movement velocity (for rendering movement direction)
   velocityX?: number;
   velocityY?: number;
-  // Turret/weapon rotation (separate from body rotation)
-  turretRotation?: number;
-  // Turret turn rate (radians per second) - how fast the turret can rotate
-  turretTurnRate: number;
-  // Vision range - turret starts tracking when enemies are within this range
-  visionRange: number;
 }
 
 // Building component - static structures
@@ -119,11 +115,28 @@ export interface WeaponConfig {
   [key: string]: unknown;
 }
 
-// Weapon component - attached to units
-export interface Weapon {
+// Unified weapon component - all units use an array of these
+// Each weapon is fully self-contained and independent from other weapons
+export interface UnitWeapon {
   config: WeaponConfig;
   currentCooldown: number;       // Time until can fire again (ms)
   targetEntityId: EntityId | null; // Current target
+
+  // Per-weapon range properties
+  seeRange: number;              // Tracking range - turret starts rotating when enemies are within this
+  fireRange: number;             // Attack range - weapon fires when enemies are within this
+
+  // Turret rotation for this specific weapon
+  turretRotation: number;
+  turretTurnRate: number;        // Radians per second - how fast this weapon's turret rotates
+
+  // Offset from unit center (for rendering and firing origin)
+  // Single-weapon units have offsetX=0, offsetY=0
+  offsetX: number;
+  offsetY: number;
+
+  // Firing state - set by combat system, read by unit for movement decisions
+  isFiring: boolean;             // True when this weapon is actively firing at a target in range
 
   // Burst state
   burstShotsRemaining?: number;
@@ -208,6 +221,7 @@ export interface BuildingConfig {
 }
 
 // Unit build configuration (extends weapon config concept)
+// Note: Vision/tracking range is now per-weapon, not per-unit
 export interface UnitBuildConfig {
   weaponId: string;
   name: string;
@@ -216,7 +230,9 @@ export interface UnitBuildConfig {
   collisionRadius: number;  // Hitbox size for physics
   moveSpeed: number;
   hp: number;
-  visionRange?: number;     // Optional - defaults to weapon range * 1.5
+  // Per-weapon range settings (applied to each weapon created)
+  weaponSeeRange?: number;  // Optional tracking range - defaults to weapon config range * 1.5
+  weaponFireRange?: number; // Optional fire range - defaults to weapon config range
 }
 
 // Factory component - for unit production
@@ -256,7 +272,7 @@ export interface Entity {
   ownership?: Ownership;
   unit?: Unit;
   building?: Building;
-  weapon?: Weapon;
+  weapons?: UnitWeapon[];      // Array of weapons - all units use this
   projectile?: Projectile;
   // New components
   buildable?: Buildable;

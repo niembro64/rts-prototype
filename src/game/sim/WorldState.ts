@@ -223,22 +223,17 @@ export class WorldState {
     this.activePlayerId = playerId;
   }
 
-  // Create a unit entity with player ownership and weapon
-  createUnit(
+  // Create a base unit entity without weapons (weapons set separately)
+  // Use this when you need to set up custom weapons arrays
+  createUnitBase(
     x: number,
     y: number,
     playerId: PlayerId,
-    weaponId: string = 'scout',
     collisionRadius: number = 15,
     moveSpeed: number = 100,
-    turretTurnRate: number = 3, // radians per second (~172°/sec default)
-    visionRange?: number // Optional - defaults to weapon range * 1.5
+    hp: number = 100
   ): Entity {
     const id = this.generateEntityId();
-    const weaponConfig = getWeaponConfig(weaponId);
-
-    // Default vision range to 1.5x weapon range
-    const effectiveVisionRange = visionRange ?? weaponConfig.range * 1.5;
 
     const entity: Entity = {
       id,
@@ -249,24 +244,57 @@ export class WorldState {
       unit: {
         moveSpeed,
         collisionRadius,
-        hp: 100,
-        maxHp: 100,
+        hp,
+        maxHp: hp,
         actions: [],
         patrolStartIndex: null,
-        turretRotation: 0, // Start facing same as body
-        turretTurnRate,
-        visionRange: effectiveVisionRange,
       },
-      weapon: {
-        config: weaponConfig,
-        currentCooldown: 0,
-        targetEntityId: null,
-      },
+      weapons: [], // Weapons set by caller
     };
     return entity;
   }
 
+  // Create a unit entity with a single weapon
+  // Weapons operate independently - unit has no control over them
+  createUnit(
+    x: number,
+    y: number,
+    playerId: PlayerId,
+    weaponId: string = 'scout',
+    collisionRadius: number = 15,
+    moveSpeed: number = 100,
+    turretTurnRate: number = 3, // radians per second (~172°/sec default) - for weapons
+    weaponSeeRange?: number,    // Optional per-weapon tracking range
+    weaponFireRange?: number    // Optional per-weapon fire range
+  ): Entity {
+    const weaponConfig = getWeaponConfig(weaponId);
+
+    // Default ranges from weapon config
+    const seeRange = weaponSeeRange ?? weaponConfig.range * 1.5;
+    const fireRange = weaponFireRange ?? weaponConfig.range;
+
+    const entity = this.createUnitBase(x, y, playerId, collisionRadius, moveSpeed, 100);
+
+    // Set up single weapon
+    entity.weapons = [{
+      config: weaponConfig,
+      currentCooldown: 0,
+      targetEntityId: null,
+      seeRange,
+      fireRange,
+      turretRotation: 0,
+      turretTurnRate,
+      offsetX: 0,
+      offsetY: 0,
+      isFiring: false,
+    }];
+
+    return entity;
+  }
+
   // Create a commander unit
+  // All range properties (seeRange, fireRange) are now per-weapon
+  // Turret rotation is entirely per-weapon - units have no control over weapons
   createCommander(
     x: number,
     y: number,
@@ -280,14 +308,17 @@ export class WorldState {
       weaponId: string;
       dgunCost: number;
       turretTurnRate?: number;
-      visionRange?: number;
+      weaponSeeRange?: number;
+      weaponFireRange?: number;
     }
   ): Entity {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(config.weaponId);
+    const turretTurnRate = config.turretTurnRate ?? 3;
 
-    // Default vision range to 1.5x weapon range
-    const effectiveVisionRange = config.visionRange ?? weaponConfig.range * 1.5;
+    // Default ranges from weapon config
+    const seeRange = config.weaponSeeRange ?? weaponConfig.range * 1.5;
+    const fireRange = config.weaponFireRange ?? weaponConfig.range;
 
     const entity: Entity = {
       id,
@@ -302,15 +333,21 @@ export class WorldState {
         maxHp: config.hp,
         actions: [],
         patrolStartIndex: null,
-        turretRotation: 0, // Start facing same as body
-        turretTurnRate: config.turretTurnRate ?? 3, // Default ~172°/sec
-        visionRange: effectiveVisionRange,
       },
-      weapon: {
+      // Single weapon in array
+      // Weapons operate independently - unit has no control over them
+      weapons: [{
         config: weaponConfig,
         currentCooldown: 0,
         targetEntityId: null,
-      },
+        seeRange,                        // Weapon's tracking range
+        fireRange,                       // Weapon's firing range
+        turretRotation: 0,               // Weapon's independent turret rotation
+        turretTurnRate,                  // Weapon's turret rotation speed
+        offsetX: 0,
+        offsetY: 0,
+        isFiring: false,                 // Weapon reports firing state to unit
+      }],
       builder: {
         buildRate: config.buildRate,
         buildRange: config.buildRange,
