@@ -712,7 +712,6 @@ export class EntityRenderer {
   private readonly BLACK = 0x1a1a1a;
   private readonly GRAY = 0x606060;
   private readonly GRAY_LIGHT = 0x909090;
-  private readonly GRAY_DARK = 0x404040;
 
   // Get player color
   private getPlayerColor(playerId: number | undefined): number {
@@ -916,9 +915,11 @@ export class EntityRenderer {
         this.renderCommanderCrown(x, y, radius);
       }
 
-      // Health bar
+      // Health bar (only show if damaged)
       const healthPercent = hp / maxHp;
-      this.renderHealthBar(x, y - radius - 10, radius * 2, 4, healthPercent);
+      if (healthPercent < 1) {
+        this.renderHealthBar(x, y - radius - 10, radius * 2, 4, healthPercent);
+      }
 
       // Target lines when selected - show for all weapons
       if (entity.weapons && isSelected) {
@@ -1059,7 +1060,7 @@ export class EntityRenderer {
         const tx = x + cos * tp.dx - sin * tp.dy;
         const ty = y + sin * tp.dx + cos * tp.dy;
         const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.GRAY_DARK, this.GRAY);
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
       }
 
       // Main body (aggressive triangle pointing forward) - dark colored
@@ -1351,7 +1352,7 @@ export class EntityRenderer {
         const tx = x + cos * tp.dx - sin * tp.dy;
         const ty = y + sin * tp.dx + cos * tp.dy;
         const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY);
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
       }
 
       // Main body (hexagon) - gray base
@@ -1505,7 +1506,7 @@ export class EntityRenderer {
         // Draw animated tread
         const tx = x + offsetX;
         const ty = y + offsetY;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.GRAY_DARK, this.WHITE);
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
       }
 
       // Hull (square) - base color
@@ -1803,8 +1804,8 @@ export class EntityRenderer {
     const linearOffset = treadRotation * wheelRadius;
     const normalizedOffset = ((linearOffset % lineSpacing) + lineSpacing) % lineSpacing;
 
-    // Draw animated tread lines (thick and obvious)
-    this.graphics.lineStyle(2, lineColor, 0.9);
+    // Draw animated tread lines (thick and obvious - striations that grip the ground)
+    this.graphics.lineStyle(4, lineColor, 0.9);
     for (let i = 0; i <= numLines; i++) {
       let lineOffset = (i - numLines / 2) * lineSpacing + normalizedOffset;
       // Clamp to visible range
