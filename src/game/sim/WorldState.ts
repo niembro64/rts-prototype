@@ -229,7 +229,7 @@ export class WorldState {
     y: number,
     playerId: PlayerId,
     weaponId: string = 'scout',
-    radius: number = 15,
+    collisionRadius: number = 15,
     moveSpeed: number = 100,
     turretTurnRate: number = 3, // radians per second (~172°/sec default)
     visionRange?: number // Optional - defaults to weapon range * 1.5
@@ -248,7 +248,7 @@ export class WorldState {
       ownership: { playerId },
       unit: {
         moveSpeed,
-        radius,
+        collisionRadius,
         hp: 100,
         maxHp: 100,
         actions: [],
@@ -273,7 +273,7 @@ export class WorldState {
     playerId: PlayerId,
     config: {
       hp: number;
-      radius: number;
+      collisionRadius: number;
       moveSpeed: number;
       buildRate: number;
       buildRange: number;
@@ -297,7 +297,7 @@ export class WorldState {
       ownership: { playerId },
       unit: {
         moveSpeed: config.moveSpeed,
-        radius: config.radius,
+        collisionRadius: config.collisionRadius,
         hp: config.hp,
         maxHp: config.hp,
         actions: [],

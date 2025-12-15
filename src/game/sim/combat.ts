@@ -55,7 +55,7 @@ export function findClosestEnemy(
       );
 
       // Effective range is weapon range plus target radius
-      const effectiveRange = range + enemy.unit.radius;
+      const effectiveRange = range + enemy.unit.collisionRadius;
 
       if (dist <= effectiveRange && dist < closestDistance) {
         closestDistance = dist;
@@ -104,7 +104,7 @@ function isInWeaponRange(unit: Entity, target: Entity): boolean {
   // Calculate effective range based on target type
   let targetRadius: number;
   if (target.unit) {
-    targetRadius = target.unit.radius;
+    targetRadius = target.unit.collisionRadius;
   } else if (target.building) {
     const bWidth = target.building.width;
     const bHeight = target.building.height;
@@ -270,7 +270,7 @@ export function updateAutoTargeting(world: WorldState): void {
 
       if (target?.unit && target.unit.hp > 0) {
         targetIsValid = true;
-        targetRadius = target.unit.radius;
+        targetRadius = target.unit.collisionRadius;
       } else if (target?.building && target.building.hp > 0) {
         targetIsValid = true;
         const bWidth = target.building.width;
@@ -461,8 +461,8 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
       const sin = Math.sin(angle);
 
       // Spawn position (at edge of unit)
-      const spawnX = unit.transform.x + cos * (unit.unit.radius + 2);
-      const spawnY = unit.transform.y + sin * (unit.unit.radius + 2);
+      const spawnX = unit.transform.x + cos * (unit.unit.collisionRadius + 2);
+      const spawnY = unit.transform.y + sin * (unit.unit.collisionRadius + 2);
 
       // Check if this is a beam/hitscan weapon
       if (config.beamDuration !== undefined) {
@@ -537,8 +537,8 @@ export function updateProjectiles(world: WorldState, dtMs: number): EntityId[] {
         const dirY = Math.sin(turretAngle);
 
         // Beam starts at edge of source unit
-        proj.startX = source.transform.x + dirX * (source.unit.radius + 2);
-        proj.startY = source.transform.y + dirY * (source.unit.radius + 2);
+        proj.startX = source.transform.x + dirX * (source.unit.collisionRadius + 2);
+        proj.startY = source.transform.y + dirY * (source.unit.collisionRadius + 2);
 
         // Initially set beam to full length
         const beamLength = proj.config.range;
@@ -596,7 +596,7 @@ function findClosestBeamHit(
     const t = lineCircleIntersectionT(
       startX, startY, endX, endY,
       unit.transform.x, unit.transform.y,
-      unit.unit.radius + beamWidth / 2
+      unit.unit.collisionRadius + beamWidth / 2
     );
 
     if (t !== null && (closestT === null || t < closestT)) {
@@ -683,7 +683,7 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
           proj.endY ?? projEntity.transform.y,
           target.transform.x,
           target.transform.y,
-          target.unit.radius + (config.beamWidth ?? 2) / 2
+          target.unit.collisionRadius + (config.beamWidth ?? 2) / 2
         );
       } else {
         // Circle-circle intersection for projectiles
@@ -694,7 +694,7 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
           target.transform.x,
           target.transform.y
         );
-        hit = dist <= projRadius + target.unit.radius;
+        hit = dist <= projRadius + target.unit.collisionRadius;
       }
 
       if (hit) {
@@ -965,7 +965,7 @@ function applyAoEDamage(
       target.transform.y
     );
 
-    if (dist <= splashRadius + target.unit.radius) {
+    if (dist <= splashRadius + target.unit.collisionRadius) {
       proj.hitEntities.add(target.id);
       hitCount++;
 

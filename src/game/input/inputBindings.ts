@@ -363,7 +363,7 @@ export class InputManager {
       const dy = unit.transform.y - worldY;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (dist <= unit.unit.radius) {
+      if (dist <= unit.unit.collisionRadius) {
         return unit;
       }
     }
@@ -661,7 +661,7 @@ export class InputManager {
         const dy = entity.transform.y - this.state.selectionStartWorldY;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < entity.unit.radius && dist < closestDist) {
+        if (dist < entity.unit.collisionRadius && dist < closestDist) {
           closestDist = dist;
           closestId = entity.id;
         }

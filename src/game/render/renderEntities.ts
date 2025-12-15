@@ -184,7 +184,7 @@ export class EntityRenderer {
     for (const entity of this.entitySource.getUnits()) {
       if (entity.selectable?.selected && entity.unit) {
         const { x, y } = entity.transform;
-        const { radius } = entity.unit;
+        const { collisionRadius } = entity.unit;
         const weaponId = entity.weapon?.config.id ?? 'scout';
 
         // Commander gets special label
@@ -192,7 +192,7 @@ export class EntityRenderer {
 
         const label = this.getLabel();
         label.setText(name);
-        label.setPosition(x, y - radius - 18); // Above health bar
+        label.setPosition(x, y - collisionRadius - 18); // Above health bar
       }
     }
 
@@ -295,7 +295,7 @@ export class EntityRenderer {
 
     const { transform, unit, selectable, ownership } = entity;
     const { x, y, rotation } = transform;
-    const { radius, hp, maxHp } = unit;
+    const { collisionRadius: radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
     const playerId = ownership?.playerId;
     const weaponId = entity.weapon?.config.id ?? 'scout';

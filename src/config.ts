@@ -65,6 +65,7 @@ export const BUILDING_STATS = {
 export const COMMANDER_STATS = {
   hp: 500,
   moveSpeed: 80,
+  collisionRadius: 20,      // Hitbox size for physics/collision
   buildRate: 50,            // Max energy/sec for construction
   buildRange: 150,          // Max distance to build
   dgunCost: 200,            // Energy cost per D-gun shot
@@ -102,7 +103,7 @@ export const UNIT_STATS = {
     baseCost: 35,
     hp: 40,
     moveSpeed: 160,
-    radius: 8,
+    collisionRadius: 8,     // Hitbox size for physics/collision
     buildRate: 70,          // Very fast production
   },
   // Burst - Glass cannon striker. High alpha, fragile.
@@ -111,7 +112,7 @@ export const UNIT_STATS = {
     baseCost: 75,
     hp: 65,
     moveSpeed: 130,
-    radius: 10,
+    collisionRadius: 10,
     buildRate: 55,
   },
   // Beam - Balanced baseline. Reliable sustained damage.
@@ -120,7 +121,7 @@ export const UNIT_STATS = {
     baseCost: 100,
     hp: 100,
     moveSpeed: 100,
-    radius: 13,
+    collisionRadius: 13,
     buildRate: 45,
   },
   // Brawl - Tanky brawler. High damage but must close distance.
@@ -129,7 +130,7 @@ export const UNIT_STATS = {
     baseCost: 110,
     hp: 180,
     moveSpeed: 80,
-    radius: 16,
+    collisionRadius: 16,
     buildRate: 40,
   },
   // Mortar - Area denial artillery. Splash doubles effective damage.
@@ -138,7 +139,7 @@ export const UNIT_STATS = {
     baseCost: 150,
     hp: 100,
     moveSpeed: 60,
-    radius: 14,
+    collisionRadius: 14,
     buildRate: 32,
   },
   // Snipe - Long-range assassin. Fragile but safe engagement range.
@@ -147,7 +148,7 @@ export const UNIT_STATS = {
     baseCost: 140,
     hp: 55,
     moveSpeed: 70,
-    radius: 11,
+    collisionRadius: 11,
     buildRate: 28,
   },
   // Tank - Heavy siege unit. Massive HP compensates for slow speed.
@@ -156,7 +157,7 @@ export const UNIT_STATS = {
     baseCost: 280,
     hp: 350,
     moveSpeed: 40,
-    radius: 24,
+    collisionRadius: 24,
     buildRate: 18,
   },
 };

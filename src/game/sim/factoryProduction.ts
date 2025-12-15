@@ -108,7 +108,7 @@ export class FactoryProductionSystem {
       spawnY,
       playerId,
       config.weaponId,
-      config.radius,
+      config.collisionRadius,
       config.moveSpeed,
       3, // Default turret turn rate
       config.visionRange

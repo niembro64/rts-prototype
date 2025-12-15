@@ -37,11 +37,15 @@ import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS } from '../../config';
 const GRID_SIZE = 50;
 const GRID_COLOR = 0x333355;
 
-// Calculate unit mass based on radius (proportional to area)
-// Scout (radius 8) = mass 1, Tank (radius 24) = mass 9
-const BASE_RADIUS = 8; // Scout is the baseline
-function getUnitMass(radius: number): number {
-  return Math.pow(radius / BASE_RADIUS, 2);
+// Calculate unit mass based on collision radius cubed and inverse speed
+// Heavier units (larger, slower) have much more mass than light, fast units
+// Formula: mass = (radius³ / baseRadius³) × (baseSpeed / speed)
+const BASE_COLLISION_RADIUS = 8;   // Scout baseline
+const BASE_MOVE_SPEED = 160;       // Scout baseline (fastest unit)
+function getUnitMass(collisionRadius: number, moveSpeed: number): number {
+  const volumeFactor = Math.pow(collisionRadius / BASE_COLLISION_RADIUS, 3);
+  const speedFactor = BASE_MOVE_SPEED / Math.max(moveSpeed, 1); // Prevent div by zero
+  return volumeFactor * speedFactor;
 }
 
 export class RtsScene extends Phaser.Scene {
@@ -319,12 +323,12 @@ export class RtsScene extends Phaser.Scene {
         const body = this.matter.add.circle(
           entity.transform.x,
           entity.transform.y,
-          entity.unit.radius,
+          entity.unit.collisionRadius,
           {
             friction: 0.05,
             frictionAir: 0.15,
             restitution: 0.2,
-            mass: getUnitMass(entity.unit.radius),
+            mass: getUnitMass(entity.unit.collisionRadius, entity.unit.moveSpeed),
             label: `unit_${entity.id}`,
           }
         );
@@ -600,12 +604,12 @@ export class RtsScene extends Phaser.Scene {
   private createMatterBodies(entities: Entity[]): void {
     for (const entity of entities) {
       if (entity.type === 'unit' && entity.unit) {
-        // Circle body for units - mass proportional to size
-        const body = this.matter.add.circle(entity.transform.x, entity.transform.y, entity.unit.radius, {
+        // Circle body for units - mass based on size and speed
+        const body = this.matter.add.circle(entity.transform.x, entity.transform.y, entity.unit.collisionRadius, {
           friction: 0.05,
           frictionAir: 0.15,
           restitution: 0.2,
-          mass: getUnitMass(entity.unit.radius),
+          mass: getUnitMass(entity.unit.collisionRadius, entity.unit.moveSpeed),
           label: `unit_${entity.id}`,
         });
 
@@ -911,6 +915,8 @@ export class RtsScene extends Phaser.Scene {
       })) ?? [];
 
       // Create basic entity structure
+      const unitCollisionRadius = netEntity.collisionRadius ?? 15;
+      const unitMoveSpeed = netEntity.moveSpeed ?? 100;
       const entity: Entity = {
         id,
         type: 'unit',
@@ -920,8 +926,8 @@ export class RtsScene extends Phaser.Scene {
         unit: {
           hp: netEntity.hp ?? 100,
           maxHp: netEntity.maxHp ?? 100,
-          radius: netEntity.radius ?? 15,
-          moveSpeed: 100,
+          collisionRadius: unitCollisionRadius,
+          moveSpeed: unitMoveSpeed,
           actions,
           patrolStartIndex: null,
           turretTurnRate: 3,
@@ -954,13 +960,12 @@ export class RtsScene extends Phaser.Scene {
         };
       }
 
-      // Create physics body - mass proportional to size
-      const unitRadius = netEntity.radius ?? 15;
-      const body = this.matter.add.circle(x, y, unitRadius, {
+      // Create physics body - mass based on size and speed
+      const body = this.matter.add.circle(x, y, unitCollisionRadius, {
         friction: 0.05,
         frictionAir: 0.15,
         restitution: 0.2,
-        mass: getUnitMass(unitRadius),
+        mass: getUnitMass(unitCollisionRadius, unitMoveSpeed),
         label: `unit_${id}`,
       });
       entity.body = { matterBody: body as unknown as MatterJS.BodyType };
@@ -1059,7 +1064,8 @@ export class RtsScene extends Phaser.Scene {
     if (entity.unit) {
       entity.unit.hp = netEntity.hp ?? entity.unit.hp;
       entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
-      entity.unit.radius = netEntity.radius ?? entity.unit.radius;
+      entity.unit.collisionRadius = netEntity.collisionRadius ?? entity.unit.collisionRadius;
+      entity.unit.moveSpeed = netEntity.moveSpeed ?? entity.unit.moveSpeed;
       entity.unit.turretRotation = netEntity.turretRotation ?? entity.unit.turretRotation;
       // Update velocity for client-side prediction
       entity.unit.velocityX = netEntity.velocityX ?? 0;
@@ -1346,7 +1352,7 @@ export class RtsScene extends Phaser.Scene {
       y,
       playerId,
       unitType,
-      stats.radius,
+      stats.collisionRadius,
       stats.moveSpeed
     );
 
@@ -1367,13 +1373,13 @@ export class RtsScene extends Phaser.Scene {
 
     this.world.addEntity(unit);
 
-    // Create physics body - mass proportional to size
+    // Create physics body - mass based on size and speed
     if (unit.unit) {
-      const body = this.matter.add.circle(x, y, unit.unit.radius, {
+      const body = this.matter.add.circle(x, y, unit.unit.collisionRadius, {
         friction: 0.05,
         frictionAir: 0.15,
         restitution: 0.2,
-        mass: getUnitMass(unit.unit.radius),
+        mass: getUnitMass(unit.unit.collisionRadius, unit.unit.moveSpeed),
         label: `unit_${unit.id}`,
       });
       unit.body = { matterBody: body as unknown as MatterJS.BodyType };

@@ -57,7 +57,7 @@ export interface UnitAction {
 // Unit component - movable entities
 export interface Unit {
   moveSpeed: number;
-  radius: number;
+  collisionRadius: number;  // Hitbox size for physics and click detection
   hp: number;
   maxHp: number;
   // Unified action queue - units process these in order
@@ -213,7 +213,7 @@ export interface UnitBuildConfig {
   name: string;
   energyCost: number;
   maxBuildRate: number;     // Max energy/sec for construction
-  radius: number;
+  collisionRadius: number;  // Hitbox size for physics
   moveSpeed: number;
   hp: number;
   visionRange?: number;     // Optional - defaults to weapon range * 1.5

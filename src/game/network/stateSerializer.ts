@@ -85,11 +85,8 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   if (entity.type === 'unit' && entity.unit) {
     netEntity.hp = entity.unit.hp;
     netEntity.maxHp = entity.unit.maxHp;
-    netEntity.radius = entity.unit.radius;
-    // Debug: log radius serialization for commanders
-    if (entity.commander) {
-      console.log(`[Serialize] Commander ${entity.id} radius: ${entity.unit.radius} -> netEntity.radius: ${netEntity.radius}`);
-    }
+    netEntity.collisionRadius = entity.unit.collisionRadius;
+    netEntity.moveSpeed = entity.unit.moveSpeed;
     netEntity.velocityX = entity.unit.velocityX ?? 0;
     netEntity.velocityY = entity.unit.velocityY ?? 0;
     netEntity.turretRotation = entity.unit.turretRotation ?? entity.transform.rotation;
@@ -193,7 +190,8 @@ export function applyNetworkState(
       // Unit fields
       hp: netEntity.hp,
       maxHp: netEntity.maxHp,
-      radius: netEntity.radius,
+      collisionRadius: netEntity.collisionRadius,
+      moveSpeed: netEntity.moveSpeed,
       velocityX: netEntity.velocityX,
       velocityY: netEntity.velocityY,
       turretRotation: netEntity.turretRotation,
@@ -239,7 +237,8 @@ export interface DisplayEntity {
   // Unit fields
   hp?: number;
   maxHp?: number;
-  radius?: number;
+  collisionRadius?: number;
+  moveSpeed?: number;
   velocityX?: number;
   velocityY?: number;
   turretRotation?: number;

@@ -7,15 +7,15 @@ import { COMMANDER_CONFIG } from './buildConfigs';
 interface UnitSpawnConfig {
   weaponId: string;
   count: number;
-  radius?: number;
+  collisionRadius?: number;
   moveSpeed?: number;
 }
 
 const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
-  { weaponId: 'scout', count: 3, radius: 8, moveSpeed: 160 },
-  { weaponId: 'beam', count: 2, radius: 13, moveSpeed: 100 },
-  { weaponId: 'tank', count: 1, radius: 22, moveSpeed: 45 },
-  { weaponId: 'brawl', count: 2, radius: 15, moveSpeed: 85 },
+  { weaponId: 'scout', count: 3, collisionRadius: 8, moveSpeed: 160 },
+  { weaponId: 'beam', count: 2, collisionRadius: 13, moveSpeed: 100 },
+  { weaponId: 'tank', count: 1, collisionRadius: 22, moveSpeed: 45 },
+  { weaponId: 'brawl', count: 2, collisionRadius: 15, moveSpeed: 85 },
 ];
 
 // Spawn a commander for a player
@@ -68,7 +68,7 @@ function spawnPlayerUnits(
         y,
         playerId,
         config.weaponId,
-        config.radius ?? 15,
+        config.collisionRadius ?? 15,
         config.moveSpeed ?? 100
       );
 

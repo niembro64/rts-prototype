@@ -541,8 +541,8 @@ export class Simulation {
           const dx = targetX - entity.transform.x;
           const dy = targetY - entity.transform.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const targetRadius = target.unit?.radius ?? 0;
-          const effectiveRange = entity.weapon.config.range + targetRadius;
+          const targetCollisionRadius = target.unit?.collisionRadius ?? 0;
+          const effectiveRange = entity.weapon.config.range + targetCollisionRadius;
           canFireAtTarget = dist <= effectiveRange;
         }
       }
