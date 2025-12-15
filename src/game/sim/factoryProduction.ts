@@ -197,77 +197,7 @@ export class FactoryProductionSystem {
   // Create weapons array for any unit type - unified approach for all units
   private createWeaponsForUnit(config: ReturnType<typeof getUnitBuildConfig>): UnitWeapon[] {
     if (!config) return [];
-
-    const unitType = config.weaponId;
-    const radius = config.collisionRadius;
-
-    // Arachnid has 8 scout cannons arranged in two rows
-    if (unitType === 'arachnid') {
-      const scoutConfig = getWeaponConfig('scout');
-      const turretTurnRate = 4;
-      const seeRange = config.weaponSeeRange ?? 400;
-      const fireRange = config.weaponFireRange ?? scoutConfig.range;
-
-      const weapons: UnitWeapon[] = [];
-
-      // 4 cannons in front row
-      const frontSpacing = radius * 0.35;
-      const frontForwardOffset = radius * 0.8;
-      for (let i = 0; i < 4; i++) {
-        const lateralOffset = (i - 1.5) * frontSpacing;
-        weapons.push({
-          config: { ...scoutConfig },
-          currentCooldown: 0,
-          targetEntityId: null,
-          seeRange,
-          fireRange,
-          turretRotation: 0,
-          turretTurnRate,
-          offsetX: frontForwardOffset,
-          offsetY: lateralOffset,
-          isFiring: false,
-        });
-      }
-
-      // 4 cannons in back row
-      const backSpacing = radius * 0.4;
-      const backForwardOffset = radius * 0.35;
-      for (let i = 0; i < 4; i++) {
-        const lateralOffset = (i - 1.5) * backSpacing;
-        weapons.push({
-          config: { ...scoutConfig },
-          currentCooldown: 0,
-          targetEntityId: null,
-          seeRange,
-          fireRange,
-          turretRotation: 0,
-          turretTurnRate,
-          offsetX: backForwardOffset,
-          offsetY: lateralOffset,
-          isFiring: false,
-        });
-      }
-
-      return weapons;
-    }
-
-    // All other units: single weapon matching their type
-    const weaponConfig = getWeaponConfig(unitType);
-    const seeRange = config.weaponSeeRange ?? weaponConfig.range * 1.5;
-    const fireRange = config.weaponFireRange ?? weaponConfig.range;
-
-    return [{
-      config: { ...weaponConfig },
-      currentCooldown: 0,
-      targetEntityId: null,
-      seeRange,
-      fireRange,
-      turretRotation: 0,
-      turretTurnRate: 3,
-      offsetX: 0,
-      offsetY: 0,
-      isFiring: false,
-    }];
+    return createWeaponsForUnitType(config.weaponId, config.collisionRadius);
   }
 }
 
@@ -278,22 +208,22 @@ export const factoryProductionSystem = new FactoryProductionSystem();
 export function createWeaponsForUnitType(unitType: string, radius: number): UnitWeapon[] {
   const config = getUnitBuildConfig(unitType);
 
-  // Arachnid has 8 scout cannons arranged in two rows
+  // Arachnid has 8 beam lasers arranged in two rows
   if (unitType === 'arachnid') {
-    const scoutConfig = getWeaponConfig('scout');
+    const beamConfig = getWeaponConfig('beam');
     const turretTurnRate = 4;
     const seeRange = config?.weaponSeeRange ?? 400;
-    const fireRange = config?.weaponFireRange ?? scoutConfig.range;
+    const fireRange = config?.weaponFireRange ?? beamConfig.range;
 
     const weapons: UnitWeapon[] = [];
 
-    // 4 cannons in front row
+    // 4 beam lasers in front row
     const frontSpacing = radius * 0.35;
     const frontForwardOffset = radius * 0.8;
     for (let i = 0; i < 4; i++) {
       const lateralOffset = (i - 1.5) * frontSpacing;
       weapons.push({
-        config: { ...scoutConfig },
+        config: { ...beamConfig },
         currentCooldown: 0,
         targetEntityId: null,
         seeRange,
@@ -306,13 +236,13 @@ export function createWeaponsForUnitType(unitType: string, radius: number): Unit
       });
     }
 
-    // 4 cannons in back row
+    // 4 beam lasers in back row
     const backSpacing = radius * 0.4;
     const backForwardOffset = radius * 0.35;
     for (let i = 0; i < 4; i++) {
       const lateralOffset = (i - 1.5) * backSpacing;
       weapons.push({
-        config: { ...scoutConfig },
+        config: { ...beamConfig },
         currentCooldown: 0,
         targetEntityId: null,
         seeRange,

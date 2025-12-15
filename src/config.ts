@@ -164,7 +164,7 @@ export const UNIT_STATS = {
   // Combined DPS: 4×45 (beam) + 4×17 (snipe) = ~248 DPS across multiple ranges
   // Extremely slow, massive HP pool, very expensive. Apex predator.
   arachnid: {
-    baseCost: 18,
+    baseCost: 1000,
     hp: 1200,
     moveSpeed: 25,
     collisionRadius: 38,
