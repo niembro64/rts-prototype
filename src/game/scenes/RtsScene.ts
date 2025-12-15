@@ -737,6 +737,9 @@ export class RtsScene extends Phaser.Scene {
     // Update Arachnid leg animations (client-side only, visual effect)
     this.entityRenderer.updateArachnidLegs(delta);
 
+    // Update tread/wheel animations (client-side only, visual effect)
+    this.entityRenderer.updateTreads(delta);
+
     // Skip game updates if game is over (not applicable in background mode)
     if (this.isGameOver && !this.backgroundMode) {
       // Still render but don't update simulation

@@ -3,6 +3,16 @@ import type { Entity, WaypointType, ActionType, EntityId } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
+import {
+  type TankTreadSetup,
+  type VehicleWheelSetup,
+  createTankTreads,
+  createBrawlTreads,
+  createScoutWheelSetup,
+  createBurstWheelSetup,
+  createMortarWheelSetup,
+  createFourWheelSetup,
+} from './Tread';
 
 /**
  * EntitySource - Interface that both WorldState and ClientViewState implement
@@ -90,6 +100,12 @@ export class EntityRenderer {
 
   // Arachnid legs storage (entity ID -> array of 8 legs)
   private arachnidLegs: Map<EntityId, ArachnidLeg[]> = new Map();
+
+  // Tank treads storage (entity ID -> left/right tread pair)
+  private tankTreads: Map<EntityId, TankTreadSetup> = new Map();
+
+  // Vehicle wheels storage (entity ID -> wheel array)
+  private vehicleWheels: Map<EntityId, VehicleWheelSetup> = new Map();
 
   // Rendering mode flags
   private skipTurrets: boolean = false;
@@ -260,6 +276,138 @@ export class EntityRenderer {
         );
       }
     }
+  }
+
+  // Get or create treads for a tracked unit (tank or brawl)
+  private getOrCreateTreads(entity: Entity, unitType: 'tank' | 'brawl'): TankTreadSetup {
+    const existing = this.tankTreads.get(entity.id);
+    if (existing) return existing;
+
+    const radius = entity.unit?.collisionRadius ?? 24;
+    const treads = unitType === 'tank'
+      ? createTankTreads(radius, 2.0)
+      : createBrawlTreads(radius, 2.0);
+
+    // Initialize treads at the unit's current position
+    treads.leftTread.initializeAt(
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.rotation
+    );
+    treads.rightTread.initializeAt(
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.rotation
+    );
+
+    this.tankTreads.set(entity.id, treads);
+    return treads;
+  }
+
+  // Convenience method for tank treads (used by drawTankUnit)
+  getTankTreads(entityId: EntityId): TankTreadSetup | undefined {
+    return this.tankTreads.get(entityId);
+  }
+
+  // Get or create vehicle wheels based on unit type
+  private getOrCreateVehicleWheels(entity: Entity): VehicleWheelSetup | null {
+    const existing = this.vehicleWheels.get(entity.id);
+    if (existing) return existing;
+
+    const radius = entity.unit?.collisionRadius ?? 10;
+    const weaponId = entity.weapons?.[0]?.config.id;
+
+    let wheelSetup: VehicleWheelSetup | null = null;
+
+    switch (weaponId) {
+      case 'scout':
+        wheelSetup = createScoutWheelSetup(radius, 2.0);
+        break;
+      case 'burst':
+        wheelSetup = createBurstWheelSetup(radius, 2.0);
+        break;
+      case 'mortar':
+        wheelSetup = createMortarWheelSetup(radius, 2.0);
+        break;
+      case 'snipe':
+        wheelSetup = createFourWheelSetup(radius, 2.0);
+        break;
+      default:
+        return null;
+    }
+
+    // Initialize wheels at the unit's current position
+    for (const wheel of wheelSetup.wheels) {
+      wheel.initializeAt(
+        entity.transform.x,
+        entity.transform.y,
+        entity.transform.rotation
+      );
+    }
+
+    this.vehicleWheels.set(entity.id, wheelSetup);
+    return wheelSetup;
+  }
+
+  // Update all tank treads and vehicle wheels (call each frame with dtMs)
+  updateTreads(dtMs: number): void {
+    // Clean up treads/wheels for entities that no longer exist
+    const existingIds = new Set(this.entitySource.getUnits().map((e) => e.id));
+    for (const id of this.tankTreads.keys()) {
+      if (!existingIds.has(id)) {
+        this.tankTreads.delete(id);
+      }
+    }
+    for (const id of this.vehicleWheels.keys()) {
+      if (!existingIds.has(id)) {
+        this.vehicleWheels.delete(id);
+      }
+    }
+
+    // Update treads for all tracked/wheeled units
+    for (const entity of this.entitySource.getUnits()) {
+      if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
+        continue;
+
+      const weaponId = entity.weapons[0].config.id;
+
+      // Handle tracked vehicles (tank and brawl)
+      if (weaponId === 'tank' || weaponId === 'brawl') {
+        const unitType = weaponId as 'tank' | 'brawl';
+        const treads = this.getOrCreateTreads(entity, unitType);
+        treads.leftTread.update(
+          entity.transform.x,
+          entity.transform.y,
+          entity.transform.rotation,
+          dtMs
+        );
+        treads.rightTread.update(
+          entity.transform.x,
+          entity.transform.y,
+          entity.transform.rotation,
+          dtMs
+        );
+        continue;
+      }
+
+      // Handle wheeled vehicles
+      const wheelSetup = this.getOrCreateVehicleWheels(entity);
+      if (wheelSetup) {
+        for (const wheel of wheelSetup.wheels) {
+          wheel.update(
+            entity.transform.x,
+            entity.transform.y,
+            entity.transform.rotation,
+            dtMs
+          );
+        }
+      }
+    }
+  }
+
+  // Get vehicle wheels for rendering (used by draw methods)
+  getVehicleWheels(entityId: EntityId): VehicleWheelSetup | undefined {
+    return this.vehicleWheels.get(entityId);
   }
 
   // Add a new explosion effect
@@ -564,6 +712,7 @@ export class EntityRenderer {
   private readonly BLACK = 0x1a1a1a;
   private readonly GRAY = 0x606060;
   private readonly GRAY_LIGHT = 0x909090;
+  private readonly GRAY_DARK = 0x404040;
 
   // Get player color
   private getPlayerColor(playerId: number | undefined): number {
@@ -793,7 +942,7 @@ export class EntityRenderer {
 
   // ==================== UNIT TYPE RENDERERS ====================
 
-  // Scout: Fast wheeled unit - 2 wheels, light body, dark accents
+  // Scout: Fast recon unit - 4 small treads, sleek diamond body
   private drawScoutUnit(
     x: number,
     y: number,
@@ -810,45 +959,46 @@ export class EntityRenderer {
       const cos = Math.cos(bodyRot);
       const sin = Math.sin(bodyRot);
 
-      // Two wheels (white) - perpendicular to movement
-      const wheelOffset = r * 0.7;
-      const wheelRadius = r * 0.35;
-      this.graphics.fillStyle(this.WHITE, 0.9);
-      this.graphics.fillCircle(
-        x - sin * wheelOffset,
-        y + cos * wheelOffset,
-        wheelRadius
-      );
-      this.graphics.fillCircle(
-        x + sin * wheelOffset,
-        y - cos * wheelOffset,
-        wheelRadius
-      );
-      // Wheel hubs (dark)
-      this.graphics.fillStyle(dark, 1);
-      this.graphics.fillCircle(
-        x - sin * wheelOffset,
-        y + cos * wheelOffset,
-        wheelRadius * 0.4
-      );
-      this.graphics.fillCircle(
-        x + sin * wheelOffset,
-        y - cos * wheelOffset,
-        wheelRadius * 0.4
-      );
+      // Get tread animation data
+      const wheelSetup = this.getVehicleWheels(entity.id);
 
-      // Body (circle) - light colored
+      // Four treads at corners
+      const treadDistX = r * 0.6;
+      const treadDistY = r * 0.7;
+      const treadLength = r * 0.5;
+      const treadWidth = r * 0.22;
+
+      const treadPositions = [
+        { dx: treadDistX, dy: treadDistY },   // Front right
+        { dx: treadDistX, dy: -treadDistY },  // Front left
+        { dx: -treadDistX, dy: treadDistY },  // Rear right
+        { dx: -treadDistX, dy: -treadDistY }, // Rear left
+      ];
+
+      for (let i = 0; i < treadPositions.length; i++) {
+        const tp = treadPositions[i];
+        const tx = x + cos * tp.dx - sin * tp.dy;
+        const ty = y + sin * tp.dx + cos * tp.dy;
+        const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
+      }
+
+      // Main body (diamond/rhombus shape) - light colored
       const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
       this.graphics.fillStyle(bodyColor, 0.95);
-      this.graphics.fillCircle(x, y, r * 0.75);
+      this.drawPolygon(x, y, r * 0.55, 4, bodyRot + Math.PI / 4);
 
-      // Base color ring accent
-      this.graphics.lineStyle(2, base, 0.9);
-      this.graphics.strokeCircle(x, y, r * 0.55);
+      // Inner accent (base color)
+      this.graphics.fillStyle(base, 0.85);
+      this.drawPolygon(x, y, r * 0.35, 4, bodyRot + Math.PI / 4);
 
-      // Center dot (black)
-      this.graphics.fillStyle(this.BLACK, 1);
+      // Center hub (dark)
+      this.graphics.fillStyle(dark, 0.9);
       this.graphics.fillCircle(x, y, r * 0.15);
+
+      // Turret mount (white)
+      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillCircle(x, y, r * 0.1);
     }
 
     // Turret pass
@@ -856,8 +1006,8 @@ export class EntityRenderer {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Turret - triple tiny barrels (dark)
-        const turretLen = r * 1.1;
+        // Triple rapid-fire barrels
+        const turretLen = r * 1.0;
         this.graphics.lineStyle(1.5, dark, 0.9);
         for (let i = -1; i <= 1; i++) {
           const offset = i * 2;
@@ -871,7 +1021,7 @@ export class EntityRenderer {
     }
   }
 
-  // Burst: Aggressive striker - 3 wheels in triangle, dark body, light accents
+  // Burst: Aggressive striker - 4 treads, angular wedge body
   private drawBurstUnit(
     x: number,
     y: number,
@@ -885,31 +1035,51 @@ export class EntityRenderer {
   ): void {
     // Body pass
     if (!this.turretsOnly) {
-      // Three wheels (gray) in triangle formation
-      const wheelDist = r * 0.85;
-      const wheelRadius = r * 0.25;
-      for (let i = 0; i < 3; i++) {
-        const angle = bodyRot + (i / 3) * Math.PI * 2;
-        const wx = x + Math.cos(angle) * wheelDist;
-        const wy = y + Math.sin(angle) * wheelDist;
-        this.graphics.fillStyle(this.GRAY, 0.9);
-        this.graphics.fillCircle(wx, wy, wheelRadius);
-        this.graphics.fillStyle(this.BLACK, 1);
-        this.graphics.fillCircle(wx, wy, wheelRadius * 0.35);
+      const cos = Math.cos(bodyRot);
+      const sin = Math.sin(bodyRot);
+
+      // Get tread animation data
+      const wheelSetup = this.getVehicleWheels(entity.id);
+
+      // Four treads at corners
+      const treadDistX = r * 0.65;
+      const treadDistY = r * 0.75;
+      const treadLength = r * 0.55;
+      const treadWidth = r * 0.24;
+
+      const treadPositions = [
+        { dx: treadDistX, dy: treadDistY },
+        { dx: treadDistX, dy: -treadDistY },
+        { dx: -treadDistX, dy: treadDistY },
+        { dx: -treadDistX, dy: -treadDistY },
+      ];
+
+      for (let i = 0; i < treadPositions.length; i++) {
+        const tp = treadPositions[i];
+        const tx = x + cos * tp.dx - sin * tp.dy;
+        const ty = y + sin * tp.dx + cos * tp.dy;
+        const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.GRAY_DARK, this.GRAY);
       }
 
-      // Body (triangle) - dark colored
+      // Main body (aggressive triangle pointing forward) - dark colored
       const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
       this.graphics.fillStyle(bodyColor, 0.95);
-      this.drawPolygon(x, y, r * 0.9, 3, bodyRot);
+      this.drawPolygon(x, y, r * 0.6, 3, bodyRot);
 
-      // Light accent triangle inside
-      this.graphics.fillStyle(light, 0.7);
-      this.drawPolygon(x, y, r * 0.45, 3, bodyRot);
+      // Inner wedge accent (base color)
+      this.graphics.fillStyle(base, 0.85);
+      this.drawPolygon(x, y, r * 0.38, 3, bodyRot);
 
-      // Turret base (white)
-      this.graphics.fillStyle(this.WHITE, 0.9);
-      this.graphics.fillCircle(x, y, r * 0.2);
+      // Aggressive front stripe (light)
+      this.graphics.fillStyle(light, 0.8);
+      const stripeX = x + cos * r * 0.25;
+      const stripeY = y + sin * r * 0.25;
+      this.drawOrientedRect(stripeX, stripeY, r * 0.15, r * 0.35, bodyRot);
+
+      // Turret mount (white)
+      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillCircle(x, y, r * 0.12);
     }
 
     // Turret pass
@@ -917,26 +1087,16 @@ export class EntityRenderer {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Double barrel turret (base color)
-        const turretLen = r * 1.2;
+        // Dual burst cannons
+        const turretLen = r * 1.1;
         this.graphics.lineStyle(2.5, base, 0.95);
         const perpDist = 3;
         const perpX = Math.cos(turretRot + Math.PI / 2) * perpDist;
         const perpY = Math.sin(turretRot + Math.PI / 2) * perpDist;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineBetween(
-          x + perpX,
-          y + perpY,
-          endX + perpX,
-          endY + perpY
-        );
-        this.graphics.lineBetween(
-          x - perpX,
-          y - perpY,
-          endX - perpX,
-          endY - perpY
-        );
+        this.graphics.lineBetween(x + perpX, y + perpY, endX + perpX, endY + perpY);
+        this.graphics.lineBetween(x - perpX, y - perpY, endX - perpX, endY - perpY);
       }
     }
   }
@@ -1093,46 +1253,32 @@ export class EntityRenderer {
       const cos = Math.cos(bodyRot);
       const sin = Math.sin(bodyRot);
 
-      // Two wide treads (black with gray detail)
-      const treadOffset = r * 0.75;
-      const treadLength = r * 1.4;
-      const treadWidth = r * 0.4;
+      // Get tread animation data
+      const treads = this.getTankTreads(entity.id);
+
+      // Two large treads on left and right sides (brawl is shorter than tank)
+      const treadOffset = r * 0.85;   // Distance from center to tread
+      const treadLength = r * 1.7;    // Slightly shorter than tank
+      const treadWidth = r * 0.55;    // Wide treads
 
       for (const side of [-1, 1]) {
         const offsetX = -sin * treadOffset * side;
         const offsetY = cos * treadOffset * side;
 
-        // Tread body (black)
-        this.graphics.fillStyle(this.BLACK, 0.95);
-        this.drawOrientedRect(
-          x + offsetX,
-          y + offsetY,
-          treadLength,
-          treadWidth,
-          bodyRot
-        );
+        // Get tread rotation for this side
+        const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
+        const treadRotation = tread?.getRotation() ?? 0;
 
-        // Tread detail lines (gray)
-        this.graphics.lineStyle(1, this.GRAY, 0.7);
-        for (let i = -3; i <= 3; i++) {
-          const lineOffset = i * (treadLength / 7);
-          const lx = x + offsetX + cos * lineOffset;
-          const ly = y + offsetY + sin * lineOffset;
-          const perpX = -sin * treadWidth * 0.45;
-          const perpY = cos * treadWidth * 0.45;
-          this.graphics.lineBetween(
-            lx - perpX,
-            ly - perpY,
-            lx + perpX,
-            ly + perpY
-          );
-        }
+        // Draw animated tread
+        const tx = x + offsetX;
+        const ty = y + offsetY;
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
       }
 
       // Body (pentagon) - dark with gray armor plates
       const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
       this.graphics.fillStyle(bodyColor, 0.95);
-      this.drawPolygon(x, y, r * 0.85, 5, bodyRot);
+      this.drawPolygon(x, y, r * 0.8, 5, bodyRot);
 
       // Gray armor plate
       this.graphics.fillStyle(this.GRAY, 0.8);
@@ -1167,7 +1313,7 @@ export class EntityRenderer {
     }
   }
 
-  // Mortar: Artillery with 4 stabilizer legs - hexagon body, tall mortar tube
+  // Mortar: Artillery platform - 4 treads, hexagonal base, mortar tube
   private drawMortarUnit(
     x: number,
     y: number,
@@ -1181,34 +1327,49 @@ export class EntityRenderer {
   ): void {
     // Body pass
     if (!this.turretsOnly) {
-      // Four stabilizer legs (white struts with black feet)
-      const legDist = r * 1.0;
-      for (let i = 0; i < 4; i++) {
-        const angle = bodyRot + (i / 4) * Math.PI * 2 + Math.PI / 4;
-        const footX = x + Math.cos(angle) * legDist;
-        const footY = y + Math.sin(angle) * legDist;
+      const cos = Math.cos(bodyRot);
+      const sin = Math.sin(bodyRot);
 
-        // Leg strut (white)
-        this.graphics.lineStyle(2.5, this.WHITE, 0.9);
-        this.graphics.lineBetween(x, y, footX, footY);
+      // Get tread animation data
+      const wheelSetup = this.getVehicleWheels(entity.id);
 
-        // Foot pad (black)
-        this.graphics.fillStyle(this.BLACK, 0.95);
-        this.graphics.fillCircle(footX, footY, r * 0.15);
+      // Four treads at corners
+      const treadDistX = r * 0.65;
+      const treadDistY = r * 0.7;
+      const treadLength = r * 0.5;
+      const treadWidth = r * 0.22;
+
+      const treadPositions = [
+        { dx: treadDistX, dy: treadDistY },
+        { dx: treadDistX, dy: -treadDistY },
+        { dx: -treadDistX, dy: treadDistY },
+        { dx: -treadDistX, dy: -treadDistY },
+      ];
+
+      for (let i = 0; i < treadPositions.length; i++) {
+        const tp = treadPositions[i];
+        const tx = x + cos * tp.dx - sin * tp.dy;
+        const ty = y + sin * tp.dx + cos * tp.dy;
+        const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY);
       }
 
-      // Body (hexagon) - gray base
+      // Main body (hexagon) - gray base
       const bodyColor = selected ? UNIT_SELECTED_COLOR : this.GRAY;
       this.graphics.fillStyle(bodyColor, 0.95);
-      this.drawPolygon(x, y, r * 0.75, 6, bodyRot);
+      this.drawPolygon(x, y, r * 0.55, 6, bodyRot);
 
-      // Base color hexagon inside
+      // Inner platform (base color)
       this.graphics.fillStyle(base, 0.85);
-      this.drawPolygon(x, y, r * 0.5, 6, bodyRot);
+      this.drawPolygon(x, y, r * 0.4, 6, bodyRot);
 
-      // Dark center
+      // Artillery base plate (dark)
       this.graphics.fillStyle(dark, 0.9);
       this.graphics.fillCircle(x, y, r * 0.25);
+
+      // Turret pivot (white)
+      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillCircle(x, y, r * 0.12);
     }
 
     // Turret pass
@@ -1216,21 +1377,21 @@ export class EntityRenderer {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Mortar tube (light, shorter and thicker)
-        const turretLen = r * 0.8;
+        // Thick mortar tube
+        const turretLen = r * 0.75;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(5, light, 0.9);
+        this.graphics.lineStyle(6, light, 0.9);
         this.graphics.lineBetween(x, y, endX, endY);
 
         // Muzzle ring (white)
         this.graphics.lineStyle(2, this.WHITE, 0.95);
-        this.graphics.strokeCircle(endX, endY, r * 0.15);
+        this.graphics.strokeCircle(endX, endY, r * 0.12);
       }
     }
   }
 
-  // Snipe: Long-range wheeled platform - 4 wheels, rectangular body, long thin barrel
+  // Snipe: Long-range sniper platform - 4 treads, elongated body, precision barrel
   private drawSnipeUnit(
     x: number,
     y: number,
@@ -1247,50 +1408,46 @@ export class EntityRenderer {
       const cos = Math.cos(bodyRot);
       const sin = Math.sin(bodyRot);
 
-      // Four wheels (black with white hubs) at corners
-      const wheelDistX = r * 0.7;
-      const wheelDistY = r * 0.4;
-      const wheelRadius = r * 0.22;
-      const wheelPositions = [
-        { dx: wheelDistX, dy: wheelDistY },
-        { dx: wheelDistX, dy: -wheelDistY },
-        { dx: -wheelDistX, dy: wheelDistY },
-        { dx: -wheelDistX, dy: -wheelDistY },
+      // Get tread animation data
+      const wheelSetup = this.getVehicleWheels(entity.id);
+
+      // Four treads at corners
+      const treadDistX = r * 0.7;
+      const treadDistY = r * 0.6;
+      const treadLength = r * 0.55;
+      const treadWidth = r * 0.2;
+
+      const treadPositions = [
+        { dx: treadDistX, dy: treadDistY },
+        { dx: treadDistX, dy: -treadDistY },
+        { dx: -treadDistX, dy: treadDistY },
+        { dx: -treadDistX, dy: -treadDistY },
       ];
 
-      for (const wp of wheelPositions) {
-        const wx = x + cos * wp.dx - sin * wp.dy;
-        const wy = y + sin * wp.dx + cos * wp.dy;
-        // Wheel (black)
-        this.graphics.fillStyle(this.BLACK, 0.95);
-        this.graphics.fillCircle(wx, wy, wheelRadius);
-        // Hub (white)
-        this.graphics.fillStyle(this.WHITE, 0.9);
-        this.graphics.fillCircle(wx, wy, wheelRadius * 0.4);
+      for (let i = 0; i < treadPositions.length; i++) {
+        const tp = treadPositions[i];
+        const tx = x + cos * tp.dx - sin * tp.dy;
+        const ty = y + sin * tp.dx + cos * tp.dy;
+        const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
       }
 
-      // Body (rectangle) - light colored, high-tech look
+      // Main body (elongated rectangle) - light colored, high-tech
       const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
       this.graphics.fillStyle(bodyColor, 0.95);
-      this.drawOrientedRect(x, y, r * 1.6, r * 0.75, bodyRot);
+      this.drawOrientedRect(x, y, r * 1.2, r * 0.5, bodyRot);
 
-      // Dark tech panel
+      // Dark tech core
       this.graphics.fillStyle(dark, 0.85);
-      this.drawOrientedRect(x, y, r * 1.0, r * 0.45, bodyRot);
+      this.drawOrientedRect(x, y, r * 0.8, r * 0.35, bodyRot);
 
-      // Base color stripe
+      // Base color targeting stripe
       this.graphics.fillStyle(base, 0.9);
-      this.drawOrientedRect(
-        x - cos * r * 0.3,
-        y - sin * r * 0.3,
-        r * 0.15,
-        r * 0.5,
-        bodyRot
-      );
+      this.drawOrientedRect(x - cos * r * 0.25, y - sin * r * 0.25, r * 0.1, r * 0.3, bodyRot);
 
-      // Scope (small white circle at turret base)
-      this.graphics.fillStyle(this.WHITE, 0.9);
-      this.graphics.fillCircle(x, y, r * 0.15);
+      // Scope/sensor array (white)
+      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillCircle(x, y, r * 0.1);
     }
 
     // Turret pass
@@ -1298,16 +1455,16 @@ export class EntityRenderer {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Long thin sniper barrel (gray with white tip)
-        const turretLen = r * 1.8;
+        // Long precision sniper barrel
+        const turretLen = r * 1.6;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(2, this.GRAY, 0.95);
+        this.graphics.lineStyle(2.5, this.GRAY, 0.95);
         this.graphics.lineBetween(x, y, endX, endY);
 
-        // Muzzle flash point (light)
-        this.graphics.fillStyle(light, 0.8);
-        this.graphics.fillCircle(endX, endY, r * 0.1);
+        // Muzzle tip (light)
+        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillCircle(endX, endY, r * 0.08);
       }
     }
   }
@@ -1329,72 +1486,44 @@ export class EntityRenderer {
       const cos = Math.cos(bodyRot);
       const sin = Math.sin(bodyRot);
 
-      // Two massive treads (dark with white detail)
-      const treadOffset = r * 0.85;
-      const treadLength = r * 1.8;
-      const treadWidth = r * 0.5;
+      // Get tread rotation for animation
+      const treads = this.getTankTreads(entity.id);
+
+      // Two massive treads on left and right sides
+      const treadOffset = r * 0.9;   // Distance from center to tread
+      const treadLength = r * 2.0;   // Very long treads
+      const treadWidth = r * 0.6;    // Wide treads
 
       for (const side of [-1, 1]) {
         const offsetX = -sin * treadOffset * side;
         const offsetY = cos * treadOffset * side;
 
-        // Tread body (very dark)
-        this.graphics.fillStyle(dark, 0.95);
-        this.drawOrientedRect(
-          x + offsetX,
-          y + offsetY,
-          treadLength,
-          treadWidth,
-          bodyRot
-        );
+        // Get tread rotation for this side
+        const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
+        const treadRotation = tread?.getRotation() ?? 0;
 
-        // Tread wheels (white circles along tread)
-        const numWheels = 4;
-        for (let i = 0; i < numWheels; i++) {
-          const wheelOffset =
-            (i - (numWheels - 1) / 2) * (treadLength / (numWheels + 0.5));
-          const wx = x + offsetX + cos * wheelOffset;
-          const wy = y + offsetY + sin * wheelOffset;
-          this.graphics.fillStyle(this.WHITE, 0.85);
-          this.graphics.fillCircle(wx, wy, treadWidth * 0.35);
-          this.graphics.fillStyle(this.BLACK, 0.9);
-          this.graphics.fillCircle(wx, wy, treadWidth * 0.15);
-        }
-
-        // Tread edge lines (gray)
-        this.graphics.lineStyle(1, this.GRAY_LIGHT, 0.7);
-        const perpX = -sin * treadWidth * 0.5;
-        const perpY = cos * treadWidth * 0.5;
-        this.graphics.lineBetween(
-          x + offsetX + cos * treadLength * 0.5 + perpX,
-          y + offsetY + sin * treadLength * 0.5 + perpY,
-          x + offsetX - cos * treadLength * 0.5 + perpX,
-          y + offsetY - sin * treadLength * 0.5 + perpY
-        );
-        this.graphics.lineBetween(
-          x + offsetX + cos * treadLength * 0.5 - perpX,
-          y + offsetY + sin * treadLength * 0.5 - perpY,
-          x + offsetX - cos * treadLength * 0.5 - perpX,
-          y + offsetY - sin * treadLength * 0.5 - perpY
-        );
+        // Draw animated tread
+        const tx = x + offsetX;
+        const ty = y + offsetY;
+        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.GRAY_DARK, this.WHITE);
       }
 
       // Hull (square) - base color
       const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
       this.graphics.fillStyle(bodyColor, 0.95);
-      this.drawPolygon(x, y, r * 0.9, 4, bodyRot);
+      this.drawPolygon(x, y, r * 0.85, 4, bodyRot);
 
       // Gray armor plate on hull
       this.graphics.fillStyle(this.GRAY, 0.85);
-      this.drawPolygon(x, y, r * 0.6, 4, bodyRot);
+      this.drawPolygon(x, y, r * 0.55, 4, bodyRot);
 
       // Black inner
       this.graphics.fillStyle(this.BLACK, 0.8);
-      this.graphics.fillCircle(x, y, r * 0.3);
+      this.graphics.fillCircle(x, y, r * 0.28);
 
       // Turret pivot (white)
       this.graphics.fillStyle(this.WHITE, 0.9);
-      this.graphics.fillCircle(x, y, r * 0.2);
+      this.graphics.fillCircle(x, y, r * 0.18);
     }
 
     // Turret pass
@@ -1633,6 +1762,81 @@ export class EntityRenderer {
       },
     ];
     this.graphics.fillPoints(points, true);
+  }
+
+  // Draw an animated tread (track system) at the given position
+  // treadRotation is the animation value from the Tread class
+  private drawAnimatedTread(
+    x: number,
+    y: number,
+    treadLength: number,
+    treadWidth: number,
+    bodyRot: number,
+    treadRotation: number,
+    treadColor: number = this.BLACK,
+    lineColor: number = this.GRAY
+  ): void {
+    const cos = Math.cos(bodyRot);
+    const sin = Math.sin(bodyRot);
+
+    // Draw tread body (dark rectangle)
+    this.graphics.fillStyle(treadColor, 0.95);
+    this.drawOrientedRect(x, y, treadLength, treadWidth, bodyRot);
+
+    // Draw tread outline for visibility
+    this.graphics.lineStyle(1.5, lineColor, 0.9);
+    const halfLen = treadLength / 2;
+    const halfWid = treadWidth / 2;
+    const corners = [
+      { x: x + cos * halfLen - sin * halfWid, y: y + sin * halfLen + cos * halfWid },
+      { x: x + cos * halfLen + sin * halfWid, y: y + sin * halfLen - cos * halfWid },
+      { x: x - cos * halfLen + sin * halfWid, y: y - sin * halfLen - cos * halfWid },
+      { x: x - cos * halfLen - sin * halfWid, y: y - sin * halfLen + cos * halfWid },
+    ];
+    this.graphics.lineBetween(corners[0].x, corners[0].y, corners[1].x, corners[1].y);
+    this.graphics.lineBetween(corners[2].x, corners[2].y, corners[3].x, corners[3].y);
+
+    // Calculate line spacing and animation offset - more lines for better visibility
+    const numLines = 7;
+    const lineSpacing = treadLength / (numLines + 1);
+    const wheelRadius = treadWidth * 0.35;
+    const linearOffset = treadRotation * wheelRadius;
+    const normalizedOffset = ((linearOffset % lineSpacing) + lineSpacing) % lineSpacing;
+
+    // Draw animated tread lines (thick and obvious)
+    this.graphics.lineStyle(2, lineColor, 0.9);
+    for (let i = 0; i <= numLines; i++) {
+      let lineOffset = (i - numLines / 2) * lineSpacing + normalizedOffset;
+      // Clamp to visible range
+      if (lineOffset > treadLength * 0.45) lineOffset -= lineSpacing;
+      if (lineOffset < -treadLength * 0.45) lineOffset += lineSpacing;
+
+      const lx = x + cos * lineOffset;
+      const ly = y + sin * lineOffset;
+      const perpX = -sin * treadWidth * 0.45;
+      const perpY = cos * treadWidth * 0.45;
+      this.graphics.lineBetween(lx - perpX, ly - perpY, lx + perpX, ly + perpY);
+    }
+
+    // Draw drive wheels at each end (larger and more visible)
+    this.graphics.fillStyle(lineColor, 0.95);
+    const endOffset = treadLength * 0.42;
+    const wheelSize = treadWidth * 0.35;
+    this.graphics.fillCircle(x + cos * endOffset, y + sin * endOffset, wheelSize);
+    this.graphics.fillCircle(x - cos * endOffset, y - sin * endOffset, wheelSize);
+
+    // Draw rotating spokes on drive wheels
+    this.graphics.lineStyle(1.5, treadColor, 0.9);
+    for (const endDir of [1, -1]) {
+      const wx = x + cos * endOffset * endDir;
+      const wy = y + sin * endOffset * endDir;
+      for (let spoke = 0; spoke < 4; spoke++) {
+        const spokeAngle = treadRotation + (spoke * Math.PI) / 2;
+        const spokeEndX = wx + Math.cos(spokeAngle) * wheelSize * 0.8;
+        const spokeEndY = wy + Math.sin(spokeAngle) * wheelSize * 0.8;
+        this.graphics.lineBetween(wx, wy, spokeEndX, spokeEndY);
+      }
+    }
   }
 
   // Render commander crown
