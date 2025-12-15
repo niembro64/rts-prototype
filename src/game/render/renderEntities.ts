@@ -147,7 +147,7 @@ export class EntityRenderer {
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.944,
           snapTargetAngle: -Math.PI * 0.3,
-          snapDistanceMultiplier: 0.5,
+          snapDistanceMultiplier: 0.7,
           extensionThreshold: 0.97,
         },
       ];
