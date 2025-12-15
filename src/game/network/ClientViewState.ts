@@ -201,6 +201,8 @@ export class ClientViewState {
           buildRate: 30,
           currentBuildTarget: netEntity.buildTargetId ?? null,
         };
+        // Debug: log radius when creating commander
+        console.log(`[ClientView Create] Commander ${id} netEntity.radius: ${netEntity.radius}, entity.unit.radius: ${entity.unit?.radius}`);
       }
 
       return entity;
@@ -294,8 +296,14 @@ export class ClientViewState {
 
     // Update unit-specific fields
     if (entity.unit) {
+      const oldRadius = entity.unit.radius;
       entity.unit.hp = netEntity.hp ?? entity.unit.hp;
       entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
+      entity.unit.radius = netEntity.radius ?? entity.unit.radius;
+      // Debug: log radius update for commanders (only when different)
+      if (entity.commander && oldRadius !== entity.unit.radius) {
+        console.log(`[ClientView Update] Commander ${entity.id} radius changed: ${oldRadius} -> ${entity.unit.radius} (net: ${netEntity.radius})`);
+      }
       entity.unit.turretRotation = netEntity.turretRotation ?? entity.unit.turretRotation;
       entity.unit.velocityX = netEntity.velocityX ?? 0;
       entity.unit.velocityY = netEntity.velocityY ?? 0;

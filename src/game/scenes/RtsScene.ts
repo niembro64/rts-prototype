@@ -364,12 +364,31 @@ export class RtsScene extends Phaser.Scene {
     camera.centerOn(x, y);
   }
 
+  // Get the current entity source based on view mode
+  private getCurrentEntitySource(): { getUnits: () => Entity[], getBuildings: () => Entity[], getSelectedUnits: () => Entity[] } {
+    if (this.hostViewMode === 'client' && this.clientViewState) {
+      return {
+        getUnits: () => this.clientViewState!.getUnits(),
+        getBuildings: () => this.clientViewState!.getBuildings(),
+        getSelectedUnits: () => this.clientViewState!.getUnits().filter(
+          e => e.selectable?.selected && e.ownership?.playerId === this.world.activePlayerId
+        ),
+      };
+    }
+    return {
+      getUnits: () => this.world.getUnits(),
+      getBuildings: () => this.world.getBuildings(),
+      getSelectedUnits: () => this.world.getSelectedUnits(),
+    };
+  }
+
   // Update selection info and notify UI
   public updateSelectionInfo(): void {
     if (!this.onSelectionChange) return;
 
-    const selectedUnits = this.world.getSelectedUnits();
-    const selectedBuildings = this.world.getBuildings().filter(
+    const entitySource = this.getCurrentEntitySource();
+    const selectedUnits = entitySource.getSelectedUnits();
+    const selectedBuildings = entitySource.getBuildings().filter(
       b => b.selectable?.selected && b.ownership?.playerId === this.world.activePlayerId
     );
 
@@ -446,10 +465,11 @@ export class RtsScene extends Phaser.Scene {
     if (!this.onMinimapUpdate) return;
 
     const camera = this.cameras.main;
+    const entitySource = this.getCurrentEntitySource();
     const entities: { x: number; y: number; type: 'unit' | 'building'; color: string; isSelected?: boolean }[] = [];
 
     // Add units to minimap
-    for (const unit of this.world.getUnits()) {
+    for (const unit of entitySource.getUnits()) {
       const playerId = unit.ownership?.playerId;
       const color = playerId ? PLAYER_COLORS[playerId]?.primary : 0x888888;
       const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
@@ -464,7 +484,7 @@ export class RtsScene extends Phaser.Scene {
     }
 
     // Add buildings to minimap
-    for (const building of this.world.getBuildings()) {
+    for (const building of entitySource.getBuildings()) {
       const playerId = building.ownership?.playerId;
       const color = playerId ? PLAYER_COLORS[playerId]?.primary : 0x888888;
       const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
@@ -576,7 +596,9 @@ export class RtsScene extends Phaser.Scene {
 
       // Handle rendering based on view mode
       if (this.hostViewMode === 'client' && this.clientViewState) {
-        // Host is viewing "client view" - run prediction on ClientViewState
+        // Host is viewing "client view" - process selection locally on ClientViewState
+        this.processClientViewCommands();
+        // Run prediction on ClientViewState
         this.clientViewState.applyPrediction(delta);
         // Use spray targets from ClientViewState
         this.entityRenderer.setSprayTargets(this.clientViewState.getSprayTargets());
@@ -642,10 +664,10 @@ export class RtsScene extends Phaser.Scene {
 
     // Switch renderer's entity source
     if (mode === 'simulation') {
-      this.entityRenderer.setEntitySource(this.world);
+      this.entityRenderer.setEntitySource(this.world, 'world');
       this.inputManager.setEntitySource(this.world);
     } else if (this.clientViewState) {
-      this.entityRenderer.setEntitySource(this.clientViewState);
+      this.entityRenderer.setEntitySource(this.clientViewState, 'clientView');
       this.inputManager.setEntitySource(this.clientViewState);
     }
 
@@ -935,6 +957,7 @@ export class RtsScene extends Phaser.Scene {
     if (entity.unit) {
       entity.unit.hp = netEntity.hp ?? entity.unit.hp;
       entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
+      entity.unit.radius = netEntity.radius ?? entity.unit.radius;
       entity.unit.turretRotation = netEntity.turretRotation ?? entity.unit.turretRotation;
       // Update velocity for client-side prediction
       entity.unit.velocityX = netEntity.velocityX ?? 0;
@@ -1046,6 +1069,40 @@ export class RtsScene extends Phaser.Scene {
       this.world.clearSelection();
     }
     this.world.selectEntities(command.entityIds);
+  }
+
+  // Process commands for host's client view mode
+  // Selection is handled locally on ClientViewState, other commands go to simulation
+  private processClientViewCommands(): void {
+    if (!this.clientViewState) return;
+
+    const commands = this.commandQueue.getAll();
+    this.commandQueue.clear();
+
+    for (const command of commands) {
+      if (command.type === 'select') {
+        // Selection is local to current view, process it on ClientViewState
+        this.executeClientViewSelectCommand(command as SelectCommand);
+      } else if (command.type === 'clearSelection') {
+        // Clear selection on ClientViewState
+        this.clientViewState.clearSelection();
+      } else {
+        // Other commands go to the simulation (re-enqueue them)
+        this.commandQueue.enqueue(command);
+      }
+    }
+  }
+
+  // Execute select command on ClientViewState
+  private executeClientViewSelectCommand(command: SelectCommand): void {
+    if (!this.clientViewState) return;
+
+    if (!command.additive) {
+      this.clientViewState.clearSelection();
+    }
+    for (const id of command.entityIds) {
+      this.clientViewState.selectEntity(id);
+    }
   }
 
   // Client-side prediction: apply velocities to predict positions between network updates

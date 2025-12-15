@@ -86,6 +86,10 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     netEntity.hp = entity.unit.hp;
     netEntity.maxHp = entity.unit.maxHp;
     netEntity.radius = entity.unit.radius;
+    // Debug: log radius serialization for commanders
+    if (entity.commander) {
+      console.log(`[Serialize] Commander ${entity.id} radius: ${entity.unit.radius} -> netEntity.radius: ${netEntity.radius}`);
+    }
     netEntity.velocityX = entity.unit.velocityX ?? 0;
     netEntity.velocityY = entity.unit.velocityY ?? 0;
     netEntity.turretRotation = entity.unit.turretRotation ?? entity.transform.rotation;

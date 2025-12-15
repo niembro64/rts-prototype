@@ -58,6 +58,9 @@ export class EntityRenderer {
   private sprayTargets: SprayTarget[] = [];
   private sprayParticleTime: number = 0;
 
+  // Debug: track source name
+  private sourceType: 'world' | 'clientView' = 'world';
+
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
@@ -68,8 +71,10 @@ export class EntityRenderer {
    * Set the entity source for rendering
    * Allows switching between WorldState (simulation view) and ClientViewState (client view)
    */
-  setEntitySource(source: EntitySource): void {
+  setEntitySource(source: EntitySource, sourceType: 'world' | 'clientView' = 'world'): void {
     this.entitySource = source;
+    this.sourceType = sourceType;
+    console.log(`[Render] Entity source switched to: ${sourceType}`);
   }
 
   // Set spray targets for rendering
@@ -158,6 +163,9 @@ export class EntityRenderer {
     return PLAYER_COLORS[playerId]?.primary ?? 0x888888;
   }
 
+  // Debug: track last logged radius for commanders
+  private debugLastLogTime = 0;
+
   // Render a unit (circle)
   private renderUnit(entity: Entity): void {
     if (!entity.unit) return;
@@ -167,6 +175,15 @@ export class EntityRenderer {
     const { radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
     const playerId = ownership?.playerId;
+
+    // Debug: log commander radius every 2 seconds
+    if (entity.commander) {
+      const now = Date.now();
+      if (now - this.debugLastLogTime > 2000) {
+        console.log(`[Render ${this.sourceType}] Commander ${entity.id} radius: ${radius}`);
+        this.debugLastLogTime = now;
+      }
+    }
 
     // Get player color
     const playerColor = this.getPlayerColor(playerId);
