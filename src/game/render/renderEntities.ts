@@ -287,11 +287,10 @@ export class EntityRenderer {
   }
 
   private drawPolygon(x: number, y: number, radius: number, sides: number, rotation: number, strokeOnly: boolean): void {
-    const points: number[] = [];
+    const points: { x: number; y: number }[] = [];
     for (let i = 0; i < sides; i++) {
       const angle = rotation + (i / sides) * Math.PI * 2;
-      points.push(x + Math.cos(angle) * radius);
-      points.push(y + Math.sin(angle) * radius);
+      points.push({ x: x + Math.cos(angle) * radius, y: y + Math.sin(angle) * radius });
     }
     if (strokeOnly) {
       this.graphics.strokePoints(points, true);
@@ -304,14 +303,10 @@ export class EntityRenderer {
     // Wide front, narrow back
     const frontAngle = Math.PI * 0.35;
     const points = [
-      x + Math.cos(rotation) * radius * 1.2, // Front point
-      y + Math.sin(rotation) * radius * 1.2,
-      x + Math.cos(rotation + frontAngle) * radius * 0.9, // Front-left
-      y + Math.sin(rotation + frontAngle) * radius * 0.9,
-      x + Math.cos(rotation + Math.PI) * radius * 0.7, // Back
-      y + Math.sin(rotation + Math.PI) * radius * 0.7,
-      x + Math.cos(rotation - frontAngle) * radius * 0.9, // Front-right
-      y + Math.sin(rotation - frontAngle) * radius * 0.9,
+      { x: x + Math.cos(rotation) * radius * 1.2, y: y + Math.sin(rotation) * radius * 1.2 }, // Front point
+      { x: x + Math.cos(rotation + frontAngle) * radius * 0.9, y: y + Math.sin(rotation + frontAngle) * radius * 0.9 }, // Front-left
+      { x: x + Math.cos(rotation + Math.PI) * radius * 0.7, y: y + Math.sin(rotation + Math.PI) * radius * 0.7 }, // Back
+      { x: x + Math.cos(rotation - frontAngle) * radius * 0.9, y: y + Math.sin(rotation - frontAngle) * radius * 0.9 }, // Front-right
     ];
     if (strokeOnly) {
       this.graphics.strokePoints(points, true);
@@ -321,14 +316,13 @@ export class EntityRenderer {
   }
 
   private drawBumpyCircle(x: number, y: number, radius: number, bumps: number, strokeOnly: boolean): void {
-    const points: number[] = [];
+    const points: { x: number; y: number }[] = [];
     const segments = 32;
     for (let i = 0; i < segments; i++) {
       const angle = (i / segments) * Math.PI * 2;
       const bumpOffset = Math.sin(angle * bumps) * radius * 0.15;
       const r = radius + bumpOffset;
-      points.push(x + Math.cos(angle) * r);
-      points.push(y + Math.sin(angle) * r);
+      points.push({ x: x + Math.cos(angle) * r, y: y + Math.sin(angle) * r });
     }
     if (strokeOnly) {
       this.graphics.strokePoints(points, true);
@@ -339,14 +333,10 @@ export class EntityRenderer {
 
   private drawElongatedDiamond(x: number, y: number, radius: number, rotation: number, strokeOnly: boolean): void {
     const points = [
-      x + Math.cos(rotation) * radius * 1.4, // Front (elongated)
-      y + Math.sin(rotation) * radius * 1.4,
-      x + Math.cos(rotation + Math.PI / 2) * radius * 0.6, // Side (narrow)
-      y + Math.sin(rotation + Math.PI / 2) * radius * 0.6,
-      x + Math.cos(rotation + Math.PI) * radius * 0.9, // Back
-      y + Math.sin(rotation + Math.PI) * radius * 0.9,
-      x + Math.cos(rotation - Math.PI / 2) * radius * 0.6, // Other side
-      y + Math.sin(rotation - Math.PI / 2) * radius * 0.6,
+      { x: x + Math.cos(rotation) * radius * 1.4, y: y + Math.sin(rotation) * radius * 1.4 }, // Front (elongated)
+      { x: x + Math.cos(rotation + Math.PI / 2) * radius * 0.6, y: y + Math.sin(rotation + Math.PI / 2) * radius * 0.6 }, // Side (narrow)
+      { x: x + Math.cos(rotation + Math.PI) * radius * 0.9, y: y + Math.sin(rotation + Math.PI) * radius * 0.9 }, // Back
+      { x: x + Math.cos(rotation - Math.PI / 2) * radius * 0.6, y: y + Math.sin(rotation - Math.PI / 2) * radius * 0.6 }, // Other side
     ];
     if (strokeOnly) {
       this.graphics.strokePoints(points, true);
@@ -450,12 +440,11 @@ export class EntityRenderer {
   }
 
   private drawStar(x: number, y: number, size: number, points: number): void {
-    const starPoints: number[] = [];
+    const starPoints: { x: number; y: number }[] = [];
     for (let i = 0; i < points * 2; i++) {
       const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
       const r = i % 2 === 0 ? size : size * 0.4;
-      starPoints.push(x + Math.cos(angle) * r);
-      starPoints.push(y + Math.sin(angle) * r);
+      starPoints.push({ x: x + Math.cos(angle) * r, y: y + Math.sin(angle) * r });
     }
     this.graphics.fillPoints(starPoints, true);
   }
@@ -1053,17 +1042,15 @@ export class EntityRenderer {
       const angle = rotation + (i / teeth) * Math.PI * 2;
       const toothWidth = (Math.PI * 2 / teeth) * 0.4;
 
-      const innerX1 = x + Math.cos(angle - toothWidth) * innerRadius;
-      const innerY1 = y + Math.sin(angle - toothWidth) * innerRadius;
-      const outerX1 = x + Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
-      const outerY1 = y + Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
-      const outerX2 = x + Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
-      const outerY2 = y + Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
-      const innerX2 = x + Math.cos(angle + toothWidth) * innerRadius;
-      const innerY2 = y + Math.sin(angle + toothWidth) * innerRadius;
+      const toothPoints = [
+        { x: x + Math.cos(angle - toothWidth) * innerRadius, y: y + Math.sin(angle - toothWidth) * innerRadius },
+        { x: x + Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight), y: y + Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight) },
+        { x: x + Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight), y: y + Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight) },
+        { x: x + Math.cos(angle + toothWidth) * innerRadius, y: y + Math.sin(angle + toothWidth) * innerRadius },
+      ];
 
       this.graphics.fillStyle(color, 0.7);
-      this.graphics.fillPoints([innerX1, innerY1, outerX1, outerY1, outerX2, outerY2, innerX2, innerY2], true);
+      this.graphics.fillPoints(toothPoints, true);
     }
 
     // Center hole
