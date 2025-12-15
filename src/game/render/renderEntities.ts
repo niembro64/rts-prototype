@@ -359,11 +359,11 @@ export class EntityRenderer {
     return (clamp(r + delta) << 16) | (clamp(g + delta) << 8) | clamp(b + delta);
   }
 
-  // Draw unit shape based on weapon type
+  // Draw unit shape based on weapon type (all simple geometric shapes)
   private drawUnitShape(x: number, y: number, radius: number, rotation: number, weaponId: string, strokeOnly = false): void {
     switch (weaponId) {
       case 'scout':
-        // Small circle - fast, nimble
+        // Circle - fast, nimble
         if (strokeOnly) {
           this.graphics.strokeCircle(x, y, radius);
         } else {
@@ -371,32 +371,36 @@ export class EntityRenderer {
         }
         break;
       case 'burst':
-        // Triangle - aggressive striker
-        this.drawPolygon(x, y, radius * 1.1, 3, rotation - Math.PI / 2, strokeOnly);
+        // Triangle - aggressive striker, points in movement direction
+        this.drawPolygon(x, y, radius * 1.1, 3, rotation, strokeOnly);
         break;
       case 'beam':
-        // Diamond - precise/elegant
-        this.drawPolygon(x, y, radius * 1.1, 4, rotation + Math.PI / 4, strokeOnly);
+        // Diamond - precise, vertex points in movement direction
+        this.drawPolygon(x, y, radius * 1.1, 4, rotation, strokeOnly);
         break;
       case 'brawl':
-        // Wide wedge - aggressive close range
-        this.drawWedge(x, y, radius, rotation, strokeOnly);
+        // Pentagon - sturdy brawler, points in movement direction
+        this.drawPolygon(x, y, radius * 1.05, 5, rotation, strokeOnly);
         break;
       case 'mortar':
-        // Circle with bumps - explosive
-        this.drawBumpyCircle(x, y, radius, 5, strokeOnly);
+        // Hexagon - artillery
+        this.drawPolygon(x, y, radius * 1.05, 6, rotation, strokeOnly);
         break;
       case 'snipe':
-        // Elongated diamond - sleek and precise
-        this.drawElongatedDiamond(x, y, radius, rotation, strokeOnly);
+        // Rectangle - long range precision
+        this.drawRectangle(x, y, radius * 1.8, radius * 0.9, rotation, strokeOnly);
         break;
       case 'tank':
-        // Large square - heavy and sturdy
+        // Square - heavy and sturdy
         this.drawPolygon(x, y, radius * 1.05, 4, rotation, strokeOnly);
         break;
       default:
-        // Fallback hexagon
-        this.drawPolygon(x, y, radius, 6, rotation, strokeOnly);
+        // Fallback circle
+        if (strokeOnly) {
+          this.graphics.strokeCircle(x, y, radius);
+        } else {
+          this.graphics.fillCircle(x, y, radius);
+        }
     }
   }
 
@@ -413,45 +417,20 @@ export class EntityRenderer {
     }
   }
 
-  private drawWedge(x: number, y: number, radius: number, rotation: number, strokeOnly: boolean): void {
-    // Wide front, narrow back
-    const frontAngle = Math.PI * 0.35;
-    const points = [
-      { x: x + Math.cos(rotation) * radius * 1.2, y: y + Math.sin(rotation) * radius * 1.2 }, // Front point
-      { x: x + Math.cos(rotation + frontAngle) * radius * 0.9, y: y + Math.sin(rotation + frontAngle) * radius * 0.9 }, // Front-left
-      { x: x + Math.cos(rotation + Math.PI) * radius * 0.7, y: y + Math.sin(rotation + Math.PI) * radius * 0.7 }, // Back
-      { x: x + Math.cos(rotation - frontAngle) * radius * 0.9, y: y + Math.sin(rotation - frontAngle) * radius * 0.9 }, // Front-right
-    ];
-    if (strokeOnly) {
-      this.graphics.strokePoints(points, true);
-    } else {
-      this.graphics.fillPoints(points, true);
-    }
-  }
+  private drawRectangle(x: number, y: number, length: number, width: number, rotation: number, strokeOnly: boolean): void {
+    // Rectangle oriented along the rotation direction
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const halfLength = length / 2;
+    const halfWidth = width / 2;
 
-  private drawBumpyCircle(x: number, y: number, radius: number, bumps: number, strokeOnly: boolean): void {
-    const points: { x: number; y: number }[] = [];
-    const segments = 32;
-    for (let i = 0; i < segments; i++) {
-      const angle = (i / segments) * Math.PI * 2;
-      const bumpOffset = Math.sin(angle * bumps) * radius * 0.15;
-      const r = radius + bumpOffset;
-      points.push({ x: x + Math.cos(angle) * r, y: y + Math.sin(angle) * r });
-    }
-    if (strokeOnly) {
-      this.graphics.strokePoints(points, true);
-    } else {
-      this.graphics.fillPoints(points, true);
-    }
-  }
-
-  private drawElongatedDiamond(x: number, y: number, radius: number, rotation: number, strokeOnly: boolean): void {
     const points = [
-      { x: x + Math.cos(rotation) * radius * 1.4, y: y + Math.sin(rotation) * radius * 1.4 }, // Front (elongated)
-      { x: x + Math.cos(rotation + Math.PI / 2) * radius * 0.6, y: y + Math.sin(rotation + Math.PI / 2) * radius * 0.6 }, // Side (narrow)
-      { x: x + Math.cos(rotation + Math.PI) * radius * 0.9, y: y + Math.sin(rotation + Math.PI) * radius * 0.9 }, // Back
-      { x: x + Math.cos(rotation - Math.PI / 2) * radius * 0.6, y: y + Math.sin(rotation - Math.PI / 2) * radius * 0.6 }, // Other side
+      { x: x + cos * halfLength - sin * halfWidth, y: y + sin * halfLength + cos * halfWidth },   // Front-right
+      { x: x + cos * halfLength + sin * halfWidth, y: y + sin * halfLength - cos * halfWidth },   // Front-left
+      { x: x - cos * halfLength + sin * halfWidth, y: y - sin * halfLength - cos * halfWidth },   // Back-left
+      { x: x - cos * halfLength - sin * halfWidth, y: y - sin * halfLength + cos * halfWidth },   // Back-right
     ];
+
     if (strokeOnly) {
       this.graphics.strokePoints(points, true);
     } else {
