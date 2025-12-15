@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { WorldState } from '../sim/WorldState';
 import { EntityRenderer } from '../render/renderEntities';
-import type { PlayerId, Entity } from '../sim/types';
+import type { PlayerId, Entity, UnitAction } from '../sim/types';
 import { UNIT_BUILD_CONFIGS } from '../sim/buildConfigs';
 import {
   updateWeaponCooldowns,
@@ -20,29 +20,17 @@ const GRID_COLOR = 0x333355;
 const SPAWN_INTERVAL = 800; // ms between spawns
 const MAX_UNITS_PER_TEAM = 25;
 
-// Simple unit data for manual movement
-interface ShowcaseUnit {
-  entity: Entity;
-  targetX: number;
-  targetY: number;
-  speed: number;
-}
-
 export class ShowcaseScene extends Phaser.Scene {
   private world!: WorldState;
   private entityRenderer!: EntityRenderer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private timeSinceLastSpawn = 0;
   private weaponTypes: string[] = [];
-  private showcaseUnits: ShowcaseUnit[] = [];
-  private debugText!: Phaser.GameObjects.Text;
-
   constructor() {
     super({ key: 'ShowcaseScene' });
   }
 
   create(): void {
-    console.log('[ShowcaseScene] create() called');
 
     // Initialize world state
     this.world = new WorldState(42);
@@ -52,10 +40,10 @@ export class ShowcaseScene extends Phaser.Scene {
     // Get all weapon types
     this.weaponTypes = Object.keys(UNIT_BUILD_CONFIGS);
 
-    // Setup camera
+    // Setup camera - more zoomed in than real game (which starts at 0.4)
     const camera = this.cameras.main;
     camera.setBackgroundColor(0x0a0a14);
-    camera.setZoom(0.5);
+    camera.setZoom(1.0);
     camera.centerOn(this.world.mapWidth / 2, this.world.mapHeight / 2);
 
     // Draw grid background
@@ -69,16 +57,6 @@ export class ShowcaseScene extends Phaser.Scene {
       this.spawnUnit(1);
       this.spawnUnit(2);
     }
-
-    // Debug text (fixed to screen, not world)
-    this.debugText = this.add.text(10, 10, 'DEBUG', {
-      fontSize: '16px',
-      color: '#00ff00',
-      backgroundColor: '#000000aa',
-      padding: { x: 8, y: 4 },
-    });
-    this.debugText.setScrollFactor(0);
-    this.debugText.setDepth(1000);
   }
 
   private drawGrid(): void {
@@ -106,7 +84,7 @@ export class ShowcaseScene extends Phaser.Scene {
     const weaponId = this.weaponTypes[Math.floor(Math.random() * this.weaponTypes.length)];
     const unitConfig = UNIT_BUILD_CONFIGS[weaponId];
 
-    // Spawn position
+    // Spawn position - teams on opposite sides
     const x = margin + Math.random() * (mapWidth - margin * 2);
     let y: number;
     let targetY: number;
@@ -132,30 +110,33 @@ export class ShowcaseScene extends Phaser.Scene {
       unit.unit.hp = unitConfig.hp;
       unit.unit.maxHp = unitConfig.hp;
 
+      // Set initial rotation toward target
       const angle = Math.atan2(targetY - y, targetX - x);
       unit.transform.rotation = angle;
       unit.unit.turretRotation = angle;
+
+      // Add patrol actions - fight toward enemy side, then loop back
+      // This creates continuous back-and-forth fighting behavior
+      const returnX = margin + Math.random() * (mapWidth - margin * 2);
+      const returnY = y; // Return to spawn side
+
+      const fightAction1: UnitAction = {
+        type: 'patrol',
+        x: targetX,
+        y: targetY,
+      };
+
+      const fightAction2: UnitAction = {
+        type: 'patrol',
+        x: returnX,
+        y: returnY,
+      };
+
+      unit.unit.actions = [fightAction1, fightAction2];
+      unit.unit.patrolStartIndex = 0; // Start patrol loop immediately
     }
 
     this.world.addEntity(unit);
-
-    console.log(`[ShowcaseScene] spawned unit id=${unit.id} at (${x.toFixed(0)}, ${y.toFixed(0)}) -> (${targetX.toFixed(0)}, ${targetY.toFixed(0)})`);
-
-    // Track for manual movement
-    this.showcaseUnits.push({
-      entity: unit,
-      targetX,
-      targetY,
-      speed: unitConfig.moveSpeed,
-    });
-  }
-
-  private removeUnit(showcaseUnit: ShowcaseUnit): void {
-    const index = this.showcaseUnits.indexOf(showcaseUnit);
-    if (index > -1) {
-      this.showcaseUnits.splice(index, 1);
-    }
-    this.world.removeEntity(showcaseUnit.entity.id);
   }
 
   private frameCount = 0;
@@ -163,69 +144,11 @@ export class ShowcaseScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.frameCount++;
     const dtSec = delta / 1000;
-
-    // Debug log every 60 frames
-    if (this.frameCount % 60 === 0) {
-      console.log(`[ShowcaseScene] update frame=${this.frameCount}, units=${this.showcaseUnits.length}, worldUnits=${this.world.getUnits().length}`);
-    }
-
-    // Manually move all units toward their targets
-    for (let i = this.showcaseUnits.length - 1; i >= 0; i--) {
-      const su = this.showcaseUnits[i];
-      const entity = su.entity;
-
-      if (!entity.unit) continue;
-
-      // Calculate direction to target
-      const dx = su.targetX - entity.transform.x;
-      const dy = su.targetY - entity.transform.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      // If reached target, remove unit
-      if (dist < 20) {
-        this.removeUnit(su);
-        continue;
-      }
-
-      // Move toward target
-      const moveX = (dx / dist) * su.speed * dtSec;
-      const moveY = (dy / dist) * su.speed * dtSec;
-
-      // Debug: log first unit's movement
-      if (i === 0 && this.frameCount % 60 === 0) {
-        console.log(`[ShowcaseScene] unit0 pos=(${entity.transform.x.toFixed(1)}, ${entity.transform.y.toFixed(1)}) move=(${moveX.toFixed(2)}, ${moveY.toFixed(2)}) speed=${su.speed}`);
-      }
-
-      entity.transform.x += moveX;
-      entity.transform.y += moveY;
-      entity.transform.rotation = Math.atan2(dy, dx);
-
-      // Note: turretRotation is handled by updateTurretRotation() in combat system
-      // It will aim at enemies when targeting, or face movement direction when not
-
-      // Store velocity for rendering
-      entity.unit.velocityX = (dx / dist) * su.speed;
-      entity.unit.velocityY = (dy / dist) * su.speed;
-    }
-
-    // Spawn new units periodically
-    this.timeSinceLastSpawn += delta;
-    if (this.timeSinceLastSpawn >= SPAWN_INTERVAL) {
-      this.timeSinceLastSpawn = 0;
-
-      const player1Count = this.showcaseUnits.filter(su => su.entity.ownership?.playerId === 1).length;
-      const player2Count = this.showcaseUnits.filter(su => su.entity.ownership?.playerId === 2).length;
-
-      if (player1Count < MAX_UNITS_PER_TEAM) {
-        this.spawnUnit(1);
-      }
-      if (player2Count < MAX_UNITS_PER_TEAM) {
-        this.spawnUnit(2);
-      }
-    }
-
-    // Convert to ms for combat functions
     const dtMs = delta;
+    const units = this.world.getUnits();
+
+    // Update unit movement using real game mechanics (fight mode behavior)
+    this.updateUnitMovement(dtSec);
 
     // Run combat systems
     updateWeaponCooldowns(this.world, dtMs);
@@ -244,16 +167,26 @@ export class ShowcaseScene extends Phaser.Scene {
     // Check collisions and handle damage/deaths
     const collisionResult = checkProjectileCollisions(this.world, dtMs);
 
-    // Remove dead units from our tracking list and world
+    // Remove dead units from world
     if (collisionResult.deadUnitIds.length > 0) {
       for (const deadId of collisionResult.deadUnitIds) {
-        // Remove from showcase tracking
-        const idx = this.showcaseUnits.findIndex(su => su.entity.id === deadId);
-        if (idx > -1) {
-          this.showcaseUnits.splice(idx, 1);
-        }
-        // Remove from world
         this.world.removeEntity(deadId);
+      }
+    }
+
+    // Spawn new units periodically to keep the battle going
+    this.timeSinceLastSpawn += delta;
+    if (this.timeSinceLastSpawn >= SPAWN_INTERVAL) {
+      this.timeSinceLastSpawn = 0;
+
+      const player1Count = units.filter(u => u.ownership?.playerId === 1).length;
+      const player2Count = units.filter(u => u.ownership?.playerId === 2).length;
+
+      if (player1Count < MAX_UNITS_PER_TEAM) {
+        this.spawnUnit(1);
+      }
+      if (player2Count < MAX_UNITS_PER_TEAM) {
+        this.spawnUnit(2);
       }
     }
 
@@ -268,13 +201,117 @@ export class ShowcaseScene extends Phaser.Scene {
 
     // Render entities
     this.entityRenderer.render();
+  }
 
-    // Update debug text
-    const firstUnit = this.showcaseUnits[0]?.entity;
-    const posInfo = firstUnit
-      ? `pos=(${firstUnit.transform.x.toFixed(0)}, ${firstUnit.transform.y.toFixed(0)})`
-      : 'no units';
-    this.debugText.setText(`Frame: ${this.frameCount} | Units: ${this.showcaseUnits.length} | ${posInfo}`);
+  // Movement update using real game mechanics - same as Simulation.updateUnits()
+  private updateUnitMovement(dtSec: number): void {
+    for (const entity of this.world.getUnits()) {
+      if (!entity.unit) continue;
+
+      const { unit, transform } = entity;
+
+      // Skip dead units
+      if (unit.hp <= 0) continue;
+
+      // No actions - stop moving
+      if (unit.actions.length === 0) {
+        unit.velocityX = 0;
+        unit.velocityY = 0;
+        continue;
+      }
+
+      // Get current action
+      const currentAction = unit.actions[0];
+
+      // Check if unit should stop moving due to combat (fight or patrol mode)
+      // Only stop when target is within WEAPON range (not just vision range)
+      let canFireAtTarget = false;
+      if (entity.weapon && entity.weapon.targetEntityId !== null) {
+        const target = this.world.getEntity(entity.weapon.targetEntityId);
+        if (target?.unit || target?.building) {
+          const targetX = target.transform.x;
+          const targetY = target.transform.y;
+          const dx = targetX - entity.transform.x;
+          const dy = targetY - entity.transform.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const targetRadius = target.unit?.radius ?? 0;
+          const effectiveRange = entity.weapon.config.range + targetRadius;
+          canFireAtTarget = dist <= effectiveRange;
+        }
+      }
+
+      const shouldStopForCombat =
+        (currentAction.type === 'fight' || currentAction.type === 'patrol') && canFireAtTarget;
+
+      if (shouldStopForCombat) {
+        // Stop moving - target is within weapon range
+        unit.velocityX = 0;
+        unit.velocityY = 0;
+        continue;
+      }
+
+      // Calculate direction to action target
+      const dx = currentAction.x - transform.x;
+      const dy = currentAction.y - transform.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // If close enough to target, advance to next action
+      const stopThreshold = 20;
+      if (distance < stopThreshold) {
+        this.advanceAction(entity);
+
+        // Zero out velocity for this frame
+        unit.velocityX = 0;
+        unit.velocityY = 0;
+        continue;
+      }
+
+      // Calculate velocity
+      const speed = unit.moveSpeed;
+      const vx = (dx / distance) * speed;
+      const vy = (dy / distance) * speed;
+
+      // Store velocity on unit for rendering and combat system
+      unit.velocityX = vx;
+      unit.velocityY = vy;
+
+      // Update position directly (no physics bodies in showcase)
+      transform.x += vx * dtSec;
+      transform.y += vy * dtSec;
+
+      // Update body rotation to face movement direction
+      transform.rotation = Math.atan2(dy, dx);
+    }
+  }
+
+  // Advance to next action (with patrol loop support) - same as Simulation.advanceAction()
+  private advanceAction(entity: Entity): void {
+    if (!entity.unit) return;
+    const unit = entity.unit;
+
+    if (unit.actions.length === 0) return;
+
+    const completedAction = unit.actions[0];
+
+    // Check if we're in patrol mode and should loop
+    if (completedAction.type === 'patrol' && unit.patrolStartIndex !== null) {
+      // Move completed patrol action to end of queue (after all patrol actions)
+      unit.actions.shift();
+      unit.actions.push(completedAction);
+    } else {
+      // Remove completed action
+      unit.actions.shift();
+
+      // If we just finished the last non-patrol action and hit patrol section
+      if (unit.actions.length > 0 && unit.actions[0].type === 'patrol') {
+        unit.patrolStartIndex = 0;
+      }
+    }
+
+    // Clear patrol start index if no more actions
+    if (unit.actions.length === 0) {
+      unit.patrolStartIndex = null;
+    }
   }
 
   shutdown(): void {

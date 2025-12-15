@@ -1,21 +1,23 @@
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId } from './types';
 import { economyManager } from './economy';
-import { COMMANDER_CONFIG } from './buildConfigs';
+import { COMMANDER_CONFIG, UNIT_BUILD_CONFIGS } from './buildConfigs';
 
-// Unit composition for each player (legacy - now only used for testing)
+// Unit composition for each player - all unit types
 interface UnitSpawnConfig {
   weaponId: string;
   count: number;
-  radius?: number;
-  moveSpeed?: number;
 }
 
+// Include all 7 unit types
 const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
-  { weaponId: 'minigun', count: 3, radius: 12, moveSpeed: 120 },
-  { weaponId: 'laser', count: 2, radius: 14, moveSpeed: 100 },
-  { weaponId: 'cannon', count: 2, radius: 16, moveSpeed: 80 },
-  { weaponId: 'shotgun', count: 2, radius: 13, moveSpeed: 110 },
+  { weaponId: 'minigun', count: 2 },
+  { weaponId: 'laser', count: 2 },
+  { weaponId: 'cannon', count: 1 },
+  { weaponId: 'shotgun', count: 2 },
+  { weaponId: 'grenade', count: 1 },
+  { weaponId: 'railgun', count: 1 },
+  { weaponId: 'burstRifle', count: 2 },
 ];
 
 // Spawn a commander for a player
@@ -32,7 +34,7 @@ function spawnCommander(
   return commander;
 }
 
-// Spawn units for a player in a formation (legacy - for testing)
+// Spawn units for a player in a formation
 function spawnPlayerUnits(
   world: WorldState,
   playerId: PlayerId,
@@ -45,6 +47,9 @@ function spawnPlayerUnits(
   let unitIndex = 0;
 
   for (const config of PLAYER_UNIT_COMPOSITION) {
+    const unitConfig = UNIT_BUILD_CONFIGS[config.weaponId];
+    if (!unitConfig) continue;
+
     for (let i = 0; i < config.count; i++) {
       // Arrange in a grid formation
       const row = Math.floor(unitIndex / 4);
@@ -68,9 +73,15 @@ function spawnPlayerUnits(
         y,
         playerId,
         config.weaponId,
-        config.radius ?? 15,
-        config.moveSpeed ?? 100
+        unitConfig.radius,
+        unitConfig.moveSpeed
       );
+
+      // Set HP from config
+      if (unit.unit) {
+        unit.unit.hp = unitConfig.hp;
+        unit.unit.maxHp = unitConfig.hp;
+      }
 
       // Set initial rotation to face the enemy
       unit.transform.rotation = facingAngle;
