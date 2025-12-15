@@ -3,6 +3,14 @@ import { WorldState } from '../sim/WorldState';
 import { EntityRenderer } from '../render/renderEntities';
 import type { PlayerId, Entity } from '../sim/types';
 import { UNIT_BUILD_CONFIGS } from '../sim/buildConfigs';
+import {
+  updateWeaponCooldowns,
+  updateAutoTargeting,
+  updateTurretRotation,
+  fireWeapons,
+  updateProjectiles,
+  checkProjectileCollisions,
+} from '../sim/combat';
 
 // Grid settings
 const GRID_SIZE = 50;
@@ -192,9 +200,8 @@ export class ShowcaseScene extends Phaser.Scene {
       entity.transform.y += moveY;
       entity.transform.rotation = Math.atan2(dy, dx);
 
-      if (entity.unit.turretRotation !== undefined) {
-        entity.unit.turretRotation = entity.transform.rotation;
-      }
+      // Note: turretRotation is handled by updateTurretRotation() in combat system
+      // It will aim at enemies when targeting, or face movement direction when not
 
       // Store velocity for rendering
       entity.unit.velocityX = (dx / dist) * su.speed;
@@ -214,6 +221,39 @@ export class ShowcaseScene extends Phaser.Scene {
       }
       if (player2Count < MAX_UNITS_PER_TEAM) {
         this.spawnUnit(2);
+      }
+    }
+
+    // Convert to ms for combat functions
+    const dtMs = delta;
+
+    // Run combat systems
+    updateWeaponCooldowns(this.world, dtMs);
+    updateAutoTargeting(this.world);
+    updateTurretRotation(this.world, dtMs);
+
+    // Fire weapons and add projectiles to world
+    const fireResult = fireWeapons(this.world);
+    for (const proj of fireResult.projectiles) {
+      this.world.addEntity(proj);
+    }
+
+    // Update projectile positions
+    updateProjectiles(this.world, dtMs);
+
+    // Check collisions and handle damage/deaths
+    const collisionResult = checkProjectileCollisions(this.world, dtMs);
+
+    // Remove dead units from our tracking list and world
+    if (collisionResult.deadUnitIds.length > 0) {
+      for (const deadId of collisionResult.deadUnitIds) {
+        // Remove from showcase tracking
+        const idx = this.showcaseUnits.findIndex(su => su.entity.id === deadId);
+        if (idx > -1) {
+          this.showcaseUnits.splice(idx, 1);
+        }
+        // Remove from world
+        this.world.removeEntity(deadId);
       }
     }
 
