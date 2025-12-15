@@ -322,30 +322,34 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
   showLobby.value = false;
   gameStarted.value = true;
 
-  // Stop the background battle
+  // Stop the background battle first
   stopBackgroundBattle();
 
-  if (!containerRef.value) return;
+  // Small delay to ensure WebGL cleanup before creating new game
+  setTimeout(() => {
+    if (!containerRef.value) return;
 
-  const rect = containerRef.value.getBoundingClientRect();
+    const rect = containerRef.value.getBoundingClientRect();
 
-  // Create game with player configuration
-  gameInstance = createGame({
-    parent: containerRef.value,
-    width: rect.width || window.innerWidth,
-    height: rect.height || window.innerHeight,
-    playerIds,
-    localPlayerId: localPlayerId.value,
-    networkRole: networkRole.value,
-  });
+    // Create game with player configuration (explicitly set backgroundMode: false)
+    gameInstance = createGame({
+      parent: containerRef.value,
+      width: rect.width || window.innerWidth,
+      height: rect.height || window.innerHeight,
+      playerIds,
+      localPlayerId: localPlayerId.value,
+      networkRole: networkRole.value,
+      backgroundMode: false,
+    });
 
-  // Setup scene callbacks
-  setupSceneCallbacks();
+    // Setup scene callbacks
+    setupSceneCallbacks();
 
-  // If host, start broadcasting state
-  if (networkRole.value === 'host') {
-    startStateBroadcast();
-  }
+    // If host, start broadcasting state
+    if (networkRole.value === 'host') {
+      startStateBroadcast();
+    }
+  }, 100);
 }
 
 function setupSceneCallbacks(): void {

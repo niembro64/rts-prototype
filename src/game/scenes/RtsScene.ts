@@ -39,7 +39,7 @@ export class RtsScene extends Phaser.Scene {
   private simulation!: Simulation;
   private commandQueue!: CommandQueue;
   private entityRenderer!: EntityRenderer;
-  private inputManager!: InputManager;
+  private inputManager: InputManager | null = null;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
@@ -338,31 +338,31 @@ export class RtsScene extends Phaser.Scene {
 
   // Set waypoint mode via UI
   public setWaypointMode(mode: WaypointType): void {
-    this.inputManager.setWaypointMode(mode);
+    this.inputManager?.setWaypointMode(mode);
     this.updateSelectionInfo();
   }
 
   // Start build mode via UI
   public startBuildMode(buildingType: 'solar' | 'factory'): void {
-    this.inputManager.startBuildMode(buildingType);
+    this.inputManager?.startBuildMode(buildingType);
     this.updateSelectionInfo();
   }
 
   // Cancel build mode via UI
   public cancelBuildMode(): void {
-    this.inputManager.cancelBuildMode();
+    this.inputManager?.cancelBuildMode();
     this.updateSelectionInfo();
   }
 
   // Toggle D-Gun mode via UI
   public toggleDGunMode(): void {
-    this.inputManager.toggleDGunMode();
+    this.inputManager?.toggleDGunMode();
     this.updateSelectionInfo();
   }
 
   // Queue unit production via UI
   public queueFactoryUnit(factoryId: number, weaponId: string): void {
-    this.inputManager.queueUnitAtFactory(factoryId, weaponId);
+    this.inputManager?.queueUnitAtFactory(factoryId, weaponId);
   }
 
   // Cancel a queue item at a factory
@@ -456,7 +456,7 @@ export class RtsScene extends Phaser.Scene {
     // Check for factory
     const factory = selectedBuildings.find(b => b.factory !== undefined);
 
-    const inputState = this.inputManager.getState();
+    const inputState = this.inputManager?.getState();
 
     // Get factory queue info if factory is selected
     let factoryQueue: { weaponId: string; label: string }[] | undefined;
@@ -479,10 +479,10 @@ export class RtsScene extends Phaser.Scene {
       hasFactory: factory !== undefined,
       factoryId: factory?.id,
       commanderId: commander?.id,
-      waypointMode: inputState.waypointMode,
-      isBuildMode: inputState.isBuildMode,
-      selectedBuildingType: inputState.selectedBuildingType,
-      isDGunMode: inputState.isDGunMode,
+      waypointMode: inputState?.waypointMode ?? 'move',
+      isBuildMode: inputState?.isBuildMode ?? false,
+      selectedBuildingType: inputState?.selectedBuildingType ?? null,
+      isDGunMode: inputState?.isDGunMode ?? false,
       factoryQueue,
       factoryProgress,
       factoryIsProducing,
@@ -750,10 +750,10 @@ export class RtsScene extends Phaser.Scene {
     // Switch renderer's entity source
     if (mode === 'simulation') {
       this.entityRenderer.setEntitySource(this.world, 'world');
-      this.inputManager.setEntitySource(this.world);
+      this.inputManager?.setEntitySource(this.world);
     } else if (this.clientViewState) {
       this.entityRenderer.setEntitySource(this.clientViewState, 'clientView');
-      this.inputManager.setEntitySource(this.clientViewState);
+      this.inputManager?.setEntitySource(this.clientViewState);
     }
 
     this.onViewModeChange?.(mode);
