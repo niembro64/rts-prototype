@@ -101,8 +101,8 @@ export class EntityRenderer {
     this.entitySource = entitySource;
   }
 
-  // Get or create legs for an Arachnid unit
-  private getOrCreateLegs(entity: Entity): ArachnidLeg[] {
+  // Get or create legs for a legged unit (arachnid: 8 legs, beam/insect: 6 legs)
+  private getOrCreateLegs(entity: Entity, legCount: 6 | 8 = 8): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
 
@@ -111,33 +111,59 @@ export class EntityRenderer {
     const upperLen = legLength * 0.55;
     const lowerLen = legLength * 0.55;
 
-    // Create 8 legs - 4 on each side
-    // All parameters vary continuously from front to back:
-    // - Front legs: trigger early, snap far forward, reach very far out
-    // - Back legs: trigger late, snap backward, reach closer
-    const legConfigs: LegConfig[] = [
-      // Left side (negative Y offset) - legs 0-3 front to back
-      // Front legs: trigger at ~90° (PI*0.5), snap to 45° forward (PI*0.25), high extension threshold
-      // Back legs: trigger at ~150° (PI*0.83), snap to ~70° sideways (PI*0.39), must be fully stretched
-      { attachOffsetX: radius * 0.6, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-        snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
-      { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-        snapTriggerAngle: Math.PI * 0.61, snapTargetAngle: -Math.PI * 0.30, snapDistanceMultiplier: 0.88, extensionThreshold: 0.92 },
-      { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-        snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: -Math.PI * 0.34, snapDistanceMultiplier: 0.82, extensionThreshold: 0.94 },
-      { attachOffsetX: -radius * 0.55, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-        snapTriggerAngle: Math.PI * 0.83, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.75, extensionThreshold: 0.96 },
+    let legConfigs: LegConfig[];
 
-      // Right side (positive Y offset) - legs 4-7 front to back (mirror of left)
-      { attachOffsetX: radius * 0.6, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-        snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
-      { attachOffsetX: radius * 0.25, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-        snapTriggerAngle: Math.PI * 0.61, snapTargetAngle: Math.PI * 0.30, snapDistanceMultiplier: 0.88, extensionThreshold: 0.92 },
-      { attachOffsetX: -radius * 0.2, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-        snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: Math.PI * 0.34, snapDistanceMultiplier: 0.82, extensionThreshold: 0.94 },
-      { attachOffsetX: -radius * 0.55, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-        snapTriggerAngle: Math.PI * 0.83, snapTargetAngle: Math.PI * 0.39, snapDistanceMultiplier: 0.75, extensionThreshold: 0.96 },
-    ];
+    if (legCount === 6) {
+      // Create 6 legs - 3 on each side (insect style)
+      // All parameters vary continuously from front to back:
+      // - Front legs: trigger early, snap far forward, reach very far out
+      // - Back legs: trigger late, snap backward, reach closer
+      legConfigs = [
+        // Left side (negative Y offset) - legs 0-2 front to back
+        { attachOffsetX: radius * 0.5, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
+        { attachOffsetX: 0, attachOffsetY: -radius * 0.55, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.32, snapDistanceMultiplier: 0.85, extensionThreshold: 0.92 },
+        { attachOffsetX: -radius * 0.5, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.80, snapTargetAngle: -Math.PI * 0.38, snapDistanceMultiplier: 0.78, extensionThreshold: 0.95 },
+
+        // Right side (positive Y offset) - legs 3-5 front to back (mirror of left)
+        { attachOffsetX: radius * 0.5, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
+        { attachOffsetX: 0, attachOffsetY: radius * 0.55, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: Math.PI * 0.32, snapDistanceMultiplier: 0.85, extensionThreshold: 0.92 },
+        { attachOffsetX: -radius * 0.5, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.80, snapTargetAngle: Math.PI * 0.38, snapDistanceMultiplier: 0.78, extensionThreshold: 0.95 },
+      ];
+    } else {
+      // Create 8 legs - 4 on each side (arachnid style)
+      // All parameters vary continuously from front to back:
+      // - Front legs: trigger early, snap far forward, reach very far out
+      // - Back legs: trigger late, snap backward, reach closer
+      legConfigs = [
+        // Left side (negative Y offset) - legs 0-3 front to back
+        // Front legs: trigger at ~90° (PI*0.5), snap to 45° forward (PI*0.25), high extension threshold
+        // Back legs: trigger at ~150° (PI*0.83), snap to ~70° sideways (PI*0.39), must be fully stretched
+        { attachOffsetX: radius * 0.6, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
+        { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.61, snapTargetAngle: -Math.PI * 0.30, snapDistanceMultiplier: 0.88, extensionThreshold: 0.92 },
+        { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: -Math.PI * 0.34, snapDistanceMultiplier: 0.82, extensionThreshold: 0.94 },
+        { attachOffsetX: -radius * 0.55, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.83, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.75, extensionThreshold: 0.96 },
+
+        // Right side (positive Y offset) - legs 4-7 front to back (mirror of left)
+        { attachOffsetX: radius * 0.6, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
+        { attachOffsetX: radius * 0.25, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.61, snapTargetAngle: Math.PI * 0.30, snapDistanceMultiplier: 0.88, extensionThreshold: 0.92 },
+        { attachOffsetX: -radius * 0.2, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: Math.PI * 0.34, snapDistanceMultiplier: 0.82, extensionThreshold: 0.94 },
+        { attachOffsetX: -radius * 0.55, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.83, snapTargetAngle: Math.PI * 0.39, snapDistanceMultiplier: 0.75, extensionThreshold: 0.96 },
+      ];
+    }
 
     const legs = legConfigs.map(config => new ArachnidLeg(config));
 
@@ -153,7 +179,7 @@ export class EntityRenderer {
     return legs;
   }
 
-  // Update all Arachnid legs (call each frame with dtMs)
+  // Update all legged unit legs (call each frame with dtMs)
   updateArachnidLegs(dtMs: number): void {
     // Clean up legs for entities that no longer exist
     const existingIds = new Set(this.entitySource.getUnits().map(e => e.id));
@@ -163,11 +189,18 @@ export class EntityRenderer {
       }
     }
 
-    // Update legs for all Arachnid units
+    // Update legs for all legged units (arachnid: 8 legs, beam/insect: 6 legs)
     for (const entity of this.entitySource.getUnits()) {
-      if (!entity.unit || !entity.weapons || entity.weapons.length <= 1) continue;
+      if (!entity.unit || !entity.weapons || entity.weapons.length === 0) continue;
 
-      const legs = this.getOrCreateLegs(entity);
+      // Check if this is an arachnid (multiple weapons) or beam unit (single beam weapon)
+      const isArachnid = entity.weapons.length > 1;
+      const isBeam = entity.weapons.length === 1 && entity.weapons[0].config.id === 'beam';
+
+      if (!isArachnid && !isBeam) continue;
+
+      const legCount = isArachnid ? 8 : 6;
+      const legs = this.getOrCreateLegs(entity, legCount);
       const velX = entity.unit.velocityX ?? 0;
       const velY = entity.unit.velocityY ?? 0;
 
@@ -475,7 +508,6 @@ export class EntityRenderer {
   private readonly BLACK = 0x1a1a1a;
   private readonly GRAY = 0x606060;
   private readonly GRAY_LIGHT = 0x909090;
-  private readonly GRAY_DARK = 0x404040;
 
   // Get player color
   private getPlayerColor(playerId: number | undefined): number {
@@ -716,61 +748,105 @@ export class EntityRenderer {
     }
   }
 
-  // Beam: Hovering unit with legs - 4 legs, base body, white beam emitter
+  // Beam/Insect: 6-legged insect with a single beam laser
   private drawBeamUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
 
+    const cos = Math.cos(bodyRot);
+    const sin = Math.sin(bodyRot);
+
     // Body pass
     if (!this.turretsOnly) {
-      // Four legs (gray with white feet) - spider-like
-      const legLength = r * 0.9;
-      const footSize = r * 0.18;
-      for (let i = 0; i < 4; i++) {
-        const angle = bodyRot + Math.PI / 4 + (i / 4) * Math.PI * 2;
-        const midAngle = angle + 0.3; // Bent outward
-        const midX = x + Math.cos(midAngle) * legLength * 0.5;
-        const midY = y + Math.sin(midAngle) * legLength * 0.5;
-        const footX = x + Math.cos(angle) * legLength;
-        const footY = y + Math.sin(angle) * legLength;
+      const legThickness = 2.5;
+      const footSize = r * 0.14;
 
-        // Leg segments (dark gray)
-        this.graphics.lineStyle(2, this.GRAY_DARK, 0.9);
-        this.graphics.lineBetween(x, y, midX, midY);
-        this.graphics.lineBetween(midX, midY, footX, footY);
+      // Get legs for this entity (creates them if they don't exist)
+      const legs = this.getOrCreateLegs(entity, 6);
 
-        // Feet (white)
-        this.graphics.fillStyle(this.WHITE, 0.9);
-        this.graphics.fillCircle(footX, footY, footSize);
+      // Draw all 6 legs using the Leg class positions
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i];
+        const side = i < 3 ? -1 : 1; // First 3 legs are left side, last 3 are right side
+
+        // Get positions from leg class
+        const attach = leg.getAttachmentPoint(x, y, bodyRot);
+        const foot = leg.getFootPosition();
+        const knee = leg.getKneePosition(attach.x, attach.y, side);
+
+        // Draw leg segments
+        // Upper leg (thicker, darker)
+        this.graphics.lineStyle(legThickness + 0.5, dark, 0.95);
+        this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+
+        // Lower leg (thinner, lighter)
+        this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
+        this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+
+        // Knee joint (small circle)
+        this.graphics.fillStyle(this.BLACK, 0.9);
+        this.graphics.fillCircle(knee.x, knee.y, legThickness);
+
+        // Foot (light when sliding, white when planted)
+        const footColor = leg.isCurrentlySliding() ? light : this.WHITE;
+        this.graphics.fillStyle(footColor, 0.9);
+        this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
-      // Body (diamond) - base color
+      // Body (hexagonal insect shape)
       const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
       this.graphics.fillStyle(bodyColor, 0.95);
-      this.drawPolygon(x, y, r * 0.8, 4, bodyRot);
 
-      // Dark inner diamond
+      // Draw body as elongated hexagon (insect-like)
+      const bodyLength = r * 0.9;
+      const bodyWidth = r * 0.55;
+      const bodyPoints = [
+        { x: x + cos * bodyLength - sin * bodyWidth * 0.3, y: y + sin * bodyLength + cos * bodyWidth * 0.3 },
+        { x: x + cos * bodyLength * 0.4 - sin * bodyWidth, y: y + sin * bodyLength * 0.4 + cos * bodyWidth },
+        { x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.7, y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.7 },
+        { x: x - cos * bodyLength - sin * bodyWidth * 0.3, y: y - sin * bodyLength + cos * bodyWidth * 0.3 },
+        { x: x - cos * bodyLength + sin * bodyWidth * 0.3, y: y - sin * bodyLength - cos * bodyWidth * 0.3 },
+        { x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.7, y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.7 },
+        { x: x + cos * bodyLength * 0.4 + sin * bodyWidth, y: y + sin * bodyLength * 0.4 - cos * bodyWidth },
+        { x: x + cos * bodyLength + sin * bodyWidth * 0.3, y: y + sin * bodyLength - cos * bodyWidth * 0.3 },
+      ];
+      this.graphics.fillPoints(bodyPoints, true);
+
+      // Inner carapace pattern (dark)
       this.graphics.fillStyle(dark, 0.8);
-      this.drawPolygon(x, y, r * 0.45, 4, bodyRot);
+      this.drawPolygon(x, y, r * 0.4, 6, bodyRot);
 
-      // Base glow
+      // Central eye/sensor (light glow)
       this.graphics.fillStyle(light, 0.9);
-      this.graphics.fillCircle(x, y, r * 0.25);
+      this.graphics.fillCircle(x, y, r * 0.2);
+      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillCircle(x, y, r * 0.1);
     }
 
-    // Turret pass
+    // Turret pass - single beam emitter at front
     if (!this.skipTurrets) {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Beam emitter turret (light with white glow)
-        const turretLen = r * 1.1;
-        const endX = x + Math.cos(turretRot) * turretLen;
-        const endY = y + Math.sin(turretRot) * turretLen;
+
+        // Beam emitter mounted at front of body
+        const emitterForwardOffset = r * 0.6;
+        const emitterX = x + cos * emitterForwardOffset;
+        const emitterY = y + sin * emitterForwardOffset;
+
+        // Beam emitter base (glowing orb)
+        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillCircle(emitterX, emitterY, r * 0.18);
+
+        // Beam barrel
+        const beamLen = r * 0.7;
+        const beamEndX = emitterX + Math.cos(turretRot) * beamLen;
+        const beamEndY = emitterY + Math.sin(turretRot) * beamLen;
         this.graphics.lineStyle(4, light, 0.8);
-        this.graphics.lineBetween(x, y, endX, endY);
-        // White glow at emitter tip
+        this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
+
+        // Emitter glow at tip
         this.graphics.fillStyle(this.WHITE, 0.95);
-        this.graphics.fillCircle(endX, endY, r * 0.2);
+        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.12);
       }
     }
   }
