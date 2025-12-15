@@ -91,6 +91,10 @@ export class EntityRenderer {
   // Arachnid legs storage (entity ID -> array of 8 legs)
   private arachnidLegs: Map<EntityId, ArachnidLeg[]> = new Map();
 
+  // Rendering mode flags
+  private skipTurrets: boolean = false;
+  private turretsOnly: boolean = false;
+
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
@@ -255,22 +259,12 @@ export class EntityRenderer {
     // Update particle time for spray animation
     this.sprayParticleTime += 16; // ~60fps
 
-    // Render buildings first (below units)
+    // 1. Render buildings first (bottom layer)
     for (const entity of this.entitySource.getBuildings()) {
       this.renderBuilding(entity);
     }
 
-    // Render projectiles (below units)
-    for (const entity of this.entitySource.getProjectiles()) {
-      this.renderProjectile(entity);
-    }
-
-    // Render spray effects (above projectiles, below units)
-    for (const target of this.sprayTargets) {
-      this.renderSprayEffect(target);
-    }
-
-    // Render waypoints for selected units (below units but above projectiles)
+    // Render waypoints for selected units (below units)
     for (const entity of this.entitySource.getUnits()) {
       if (entity.selectable?.selected) {
         this.renderWaypoints(entity);
@@ -291,12 +285,32 @@ export class EntityRenderer {
       }
     }
 
-    // Render units
+    // 2. Render unit bodies (no turrets)
+    this.skipTurrets = true;
+    this.turretsOnly = false;
     for (const entity of this.entitySource.getUnits()) {
       this.renderUnit(entity);
     }
 
-    // Render explosion effects (above everything except labels)
+    // 3. Render turrets only (above unit bodies)
+    this.skipTurrets = false;
+    this.turretsOnly = true;
+    for (const entity of this.entitySource.getUnits()) {
+      this.renderUnit(entity);
+    }
+    this.turretsOnly = false;
+
+    // 4. Render projectiles and lasers
+    for (const entity of this.entitySource.getProjectiles()) {
+      this.renderProjectile(entity);
+    }
+
+    // Render spray effects (lasers for building/healing)
+    for (const target of this.sprayTargets) {
+      this.renderSprayEffect(target);
+    }
+
+    // 5. Render explosion effects (above everything except labels)
     for (const explosion of this.explosions) {
       this.renderExplosion(explosion);
     }
@@ -523,8 +537,8 @@ export class EntityRenderer {
     const light = this.getColorLight(base);
     const dark = this.getColorDark(base);
 
-    // Selection ring
-    if (isSelected) {
+    // Selection ring (only on body pass)
+    if (isSelected && !this.turretsOnly) {
       this.graphics.lineStyle(3, UNIT_SELECTED_COLOR, 1);
       this.graphics.strokeCircle(x, y, radius + 5);
     }
@@ -559,23 +573,26 @@ export class EntityRenderer {
         this.drawScoutUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
     }
 
-    // Commander indicator (gold star/crown)
-    if (entity.commander) {
-      this.renderCommanderCrown(x, y, radius);
-    }
+    // Commander indicator, health bar, target lines (only on body pass)
+    if (!this.turretsOnly) {
+      // Commander indicator (gold star/crown)
+      if (entity.commander) {
+        this.renderCommanderCrown(x, y, radius);
+      }
 
-    // Health bar
-    const healthPercent = hp / maxHp;
-    this.renderHealthBar(x, y - radius - 10, radius * 2, 4, healthPercent);
+      // Health bar
+      const healthPercent = hp / maxHp;
+      this.renderHealthBar(x, y - radius - 10, radius * 2, 4, healthPercent);
 
-    // Target lines when selected - show for all weapons
-    if (entity.weapons && isSelected) {
-      for (const weapon of entity.weapons) {
-        if (weapon.targetEntityId != null) {
-          const target = this.entitySource.getEntity(weapon.targetEntityId);
-          if (target) {
-            this.graphics.lineStyle(1, 0xff0000, 0.3);
-            this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
+      // Target lines when selected - show for all weapons
+      if (entity.weapons && isSelected) {
+        for (const weapon of entity.weapons) {
+          if (weapon.targetEntityId != null) {
+            const target = this.entitySource.getEntity(weapon.targetEntityId);
+            if (target) {
+              this.graphics.lineStyle(1, 0xff0000, 0.3);
+              this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
+            }
           }
         }
       }
@@ -587,533 +604,578 @@ export class EntityRenderer {
   // Scout: Fast wheeled unit - 2 wheels, light body, dark accents
   private drawScoutUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
 
-    // Two wheels (white) - perpendicular to movement
-    const wheelOffset = r * 0.7;
-    const wheelRadius = r * 0.35;
-    this.graphics.fillStyle(this.WHITE, 0.9);
-    this.graphics.fillCircle(x - sin * wheelOffset, y + cos * wheelOffset, wheelRadius);
-    this.graphics.fillCircle(x + sin * wheelOffset, y - cos * wheelOffset, wheelRadius);
-    // Wheel hubs (dark)
-    this.graphics.fillStyle(dark, 1);
-    this.graphics.fillCircle(x - sin * wheelOffset, y + cos * wheelOffset, wheelRadius * 0.4);
-    this.graphics.fillCircle(x + sin * wheelOffset, y - cos * wheelOffset, wheelRadius * 0.4);
+    // Body pass
+    if (!this.turretsOnly) {
+      const cos = Math.cos(bodyRot);
+      const sin = Math.sin(bodyRot);
 
-    // Body (circle) - light colored
-    const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
-    this.graphics.fillStyle(bodyColor, 0.95);
-    this.graphics.fillCircle(x, y, r * 0.75);
+      // Two wheels (white) - perpendicular to movement
+      const wheelOffset = r * 0.7;
+      const wheelRadius = r * 0.35;
+      this.graphics.fillStyle(this.WHITE, 0.9);
+      this.graphics.fillCircle(x - sin * wheelOffset, y + cos * wheelOffset, wheelRadius);
+      this.graphics.fillCircle(x + sin * wheelOffset, y - cos * wheelOffset, wheelRadius);
+      // Wheel hubs (dark)
+      this.graphics.fillStyle(dark, 1);
+      this.graphics.fillCircle(x - sin * wheelOffset, y + cos * wheelOffset, wheelRadius * 0.4);
+      this.graphics.fillCircle(x + sin * wheelOffset, y - cos * wheelOffset, wheelRadius * 0.4);
 
-    // Base color ring accent
-    this.graphics.lineStyle(2, base, 0.9);
-    this.graphics.strokeCircle(x, y, r * 0.55);
+      // Body (circle) - light colored
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
+      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillCircle(x, y, r * 0.75);
 
-    // Draw turrets for all weapons
-    const weapons = entity.weapons ?? [];
-    for (const weapon of weapons) {
-      const turretRot = weapon.turretRotation;
-      // Turret - triple tiny barrels (dark)
-      const turretLen = r * 1.1;
-      this.graphics.lineStyle(1.5, dark, 0.9);
-      for (let i = -1; i <= 1; i++) {
-        const offset = i * 2;
-        const perpX = Math.cos(turretRot + Math.PI / 2) * offset;
-        const perpY = Math.sin(turretRot + Math.PI / 2) * offset;
-        const endX = x + Math.cos(turretRot) * turretLen + perpX;
-        const endY = y + Math.sin(turretRot) * turretLen + perpY;
-        this.graphics.lineBetween(x + perpX, y + perpY, endX, endY);
-      }
+      // Base color ring accent
+      this.graphics.lineStyle(2, base, 0.9);
+      this.graphics.strokeCircle(x, y, r * 0.55);
+
+      // Center dot (black)
+      this.graphics.fillStyle(this.BLACK, 1);
+      this.graphics.fillCircle(x, y, r * 0.15);
     }
 
-    // Center dot (black)
-    this.graphics.fillStyle(this.BLACK, 1);
-    this.graphics.fillCircle(x, y, r * 0.15);
+    // Turret pass
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
+      for (const weapon of weapons) {
+        const turretRot = weapon.turretRotation;
+        // Turret - triple tiny barrels (dark)
+        const turretLen = r * 1.1;
+        this.graphics.lineStyle(1.5, dark, 0.9);
+        for (let i = -1; i <= 1; i++) {
+          const offset = i * 2;
+          const perpX = Math.cos(turretRot + Math.PI / 2) * offset;
+          const perpY = Math.sin(turretRot + Math.PI / 2) * offset;
+          const endX = x + Math.cos(turretRot) * turretLen + perpX;
+          const endY = y + Math.sin(turretRot) * turretLen + perpY;
+          this.graphics.lineBetween(x + perpX, y + perpY, endX, endY);
+        }
+      }
+    }
   }
 
   // Burst: Aggressive striker - 3 wheels in triangle, dark body, light accents
   private drawBurstUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
 
-    // Three wheels (gray) in triangle formation
-    const wheelDist = r * 0.85;
-    const wheelRadius = r * 0.25;
-    for (let i = 0; i < 3; i++) {
-      const angle = bodyRot + (i / 3) * Math.PI * 2;
-      const wx = x + Math.cos(angle) * wheelDist;
-      const wy = y + Math.sin(angle) * wheelDist;
-      this.graphics.fillStyle(this.GRAY, 0.9);
-      this.graphics.fillCircle(wx, wy, wheelRadius);
-      this.graphics.fillStyle(this.BLACK, 1);
-      this.graphics.fillCircle(wx, wy, wheelRadius * 0.35);
+    // Body pass
+    if (!this.turretsOnly) {
+      // Three wheels (gray) in triangle formation
+      const wheelDist = r * 0.85;
+      const wheelRadius = r * 0.25;
+      for (let i = 0; i < 3; i++) {
+        const angle = bodyRot + (i / 3) * Math.PI * 2;
+        const wx = x + Math.cos(angle) * wheelDist;
+        const wy = y + Math.sin(angle) * wheelDist;
+        this.graphics.fillStyle(this.GRAY, 0.9);
+        this.graphics.fillCircle(wx, wy, wheelRadius);
+        this.graphics.fillStyle(this.BLACK, 1);
+        this.graphics.fillCircle(wx, wy, wheelRadius * 0.35);
+      }
+
+      // Body (triangle) - dark colored
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
+      this.graphics.fillStyle(bodyColor, 0.95);
+      this.drawPolygon(x, y, r * 0.9, 3, bodyRot);
+
+      // Light accent triangle inside
+      this.graphics.fillStyle(light, 0.7);
+      this.drawPolygon(x, y, r * 0.45, 3, bodyRot);
+
+      // Turret base (white)
+      this.graphics.fillStyle(this.WHITE, 0.9);
+      this.graphics.fillCircle(x, y, r * 0.2);
     }
 
-    // Body (triangle) - dark colored
-    const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-    this.graphics.fillStyle(bodyColor, 0.95);
-    this.drawPolygon(x, y, r * 0.9, 3, bodyRot);
-
-    // Light accent triangle inside
-    this.graphics.fillStyle(light, 0.7);
-    this.drawPolygon(x, y, r * 0.45, 3, bodyRot);
-
-    // Draw turrets for all weapons
-    const weapons = entity.weapons ?? [];
-    for (const weapon of weapons) {
-      const turretRot = weapon.turretRotation;
-      // Double barrel turret (base color)
-      const turretLen = r * 1.2;
-      this.graphics.lineStyle(2.5, base, 0.95);
-      const perpDist = 3;
-      const perpX = Math.cos(turretRot + Math.PI / 2) * perpDist;
-      const perpY = Math.sin(turretRot + Math.PI / 2) * perpDist;
-      const endX = x + Math.cos(turretRot) * turretLen;
-      const endY = y + Math.sin(turretRot) * turretLen;
-      this.graphics.lineBetween(x + perpX, y + perpY, endX + perpX, endY + perpY);
-      this.graphics.lineBetween(x - perpX, y - perpY, endX - perpX, endY - perpY);
+    // Turret pass
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
+      for (const weapon of weapons) {
+        const turretRot = weapon.turretRotation;
+        // Double barrel turret (base color)
+        const turretLen = r * 1.2;
+        this.graphics.lineStyle(2.5, base, 0.95);
+        const perpDist = 3;
+        const perpX = Math.cos(turretRot + Math.PI / 2) * perpDist;
+        const perpY = Math.sin(turretRot + Math.PI / 2) * perpDist;
+        const endX = x + Math.cos(turretRot) * turretLen;
+        const endY = y + Math.sin(turretRot) * turretLen;
+        this.graphics.lineBetween(x + perpX, y + perpY, endX + perpX, endY + perpY);
+        this.graphics.lineBetween(x - perpX, y - perpY, endX - perpX, endY - perpY);
+      }
     }
-
-    // Turret base (white)
-    this.graphics.fillStyle(this.WHITE, 0.9);
-    this.graphics.fillCircle(x, y, r * 0.2);
   }
 
   // Beam: Hovering unit with legs - 4 legs, base body, white beam emitter
   private drawBeamUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
 
-    // Four legs (gray with white feet) - spider-like
-    const legLength = r * 0.9;
-    const footSize = r * 0.18;
-    for (let i = 0; i < 4; i++) {
-      const angle = bodyRot + Math.PI / 4 + (i / 4) * Math.PI * 2;
-      const midAngle = angle + 0.3; // Bent outward
-      const midX = x + Math.cos(midAngle) * legLength * 0.5;
-      const midY = y + Math.sin(midAngle) * legLength * 0.5;
-      const footX = x + Math.cos(angle) * legLength;
-      const footY = y + Math.sin(angle) * legLength;
+    // Body pass
+    if (!this.turretsOnly) {
+      // Four legs (gray with white feet) - spider-like
+      const legLength = r * 0.9;
+      const footSize = r * 0.18;
+      for (let i = 0; i < 4; i++) {
+        const angle = bodyRot + Math.PI / 4 + (i / 4) * Math.PI * 2;
+        const midAngle = angle + 0.3; // Bent outward
+        const midX = x + Math.cos(midAngle) * legLength * 0.5;
+        const midY = y + Math.sin(midAngle) * legLength * 0.5;
+        const footX = x + Math.cos(angle) * legLength;
+        const footY = y + Math.sin(angle) * legLength;
 
-      // Leg segments (dark gray)
-      this.graphics.lineStyle(2, this.GRAY_DARK, 0.9);
-      this.graphics.lineBetween(x, y, midX, midY);
-      this.graphics.lineBetween(midX, midY, footX, footY);
+        // Leg segments (dark gray)
+        this.graphics.lineStyle(2, this.GRAY_DARK, 0.9);
+        this.graphics.lineBetween(x, y, midX, midY);
+        this.graphics.lineBetween(midX, midY, footX, footY);
 
-      // Feet (white)
-      this.graphics.fillStyle(this.WHITE, 0.9);
-      this.graphics.fillCircle(footX, footY, footSize);
+        // Feet (white)
+        this.graphics.fillStyle(this.WHITE, 0.9);
+        this.graphics.fillCircle(footX, footY, footSize);
+      }
+
+      // Body (diamond) - base color
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
+      this.graphics.fillStyle(bodyColor, 0.95);
+      this.drawPolygon(x, y, r * 0.8, 4, bodyRot);
+
+      // Dark inner diamond
+      this.graphics.fillStyle(dark, 0.8);
+      this.drawPolygon(x, y, r * 0.45, 4, bodyRot);
+
+      // Base glow
+      this.graphics.fillStyle(light, 0.9);
+      this.graphics.fillCircle(x, y, r * 0.25);
     }
 
-    // Body (diamond) - base color
-    const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
-    this.graphics.fillStyle(bodyColor, 0.95);
-    this.drawPolygon(x, y, r * 0.8, 4, bodyRot);
-
-    // Dark inner diamond
-    this.graphics.fillStyle(dark, 0.8);
-    this.drawPolygon(x, y, r * 0.45, 4, bodyRot);
-
-    // Draw turrets for all weapons
-    const weapons = entity.weapons ?? [];
-    for (const weapon of weapons) {
-      const turretRot = weapon.turretRotation;
-      // Beam emitter turret (light with white glow)
-      const turretLen = r * 1.1;
-      const endX = x + Math.cos(turretRot) * turretLen;
-      const endY = y + Math.sin(turretRot) * turretLen;
-      this.graphics.lineStyle(4, light, 0.8);
-      this.graphics.lineBetween(x, y, endX, endY);
-      // White glow at emitter tip
-      this.graphics.fillStyle(this.WHITE, 0.95);
-      this.graphics.fillCircle(endX, endY, r * 0.2);
+    // Turret pass
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
+      for (const weapon of weapons) {
+        const turretRot = weapon.turretRotation;
+        // Beam emitter turret (light with white glow)
+        const turretLen = r * 1.1;
+        const endX = x + Math.cos(turretRot) * turretLen;
+        const endY = y + Math.sin(turretRot) * turretLen;
+        this.graphics.lineStyle(4, light, 0.8);
+        this.graphics.lineBetween(x, y, endX, endY);
+        // White glow at emitter tip
+        this.graphics.fillStyle(this.WHITE, 0.95);
+        this.graphics.fillCircle(endX, endY, r * 0.2);
+      }
     }
-    // Base glow
-    this.graphics.fillStyle(light, 0.9);
-    this.graphics.fillCircle(x, y, r * 0.25);
   }
 
   // Brawl: Heavy treaded unit - wide treads, bulky dark body, gray armor
   private drawBrawlUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
 
-    // Two wide treads (black with gray detail)
-    const treadOffset = r * 0.75;
-    const treadLength = r * 1.4;
-    const treadWidth = r * 0.4;
+    // Body pass
+    if (!this.turretsOnly) {
+      const cos = Math.cos(bodyRot);
+      const sin = Math.sin(bodyRot);
 
-    for (const side of [-1, 1]) {
-      const offsetX = -sin * treadOffset * side;
-      const offsetY = cos * treadOffset * side;
+      // Two wide treads (black with gray detail)
+      const treadOffset = r * 0.75;
+      const treadLength = r * 1.4;
+      const treadWidth = r * 0.4;
 
-      // Tread body (black)
-      this.graphics.fillStyle(this.BLACK, 0.95);
-      this.drawOrientedRect(x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot);
+      for (const side of [-1, 1]) {
+        const offsetX = -sin * treadOffset * side;
+        const offsetY = cos * treadOffset * side;
 
-      // Tread detail lines (gray)
-      this.graphics.lineStyle(1, this.GRAY, 0.7);
-      for (let i = -3; i <= 3; i++) {
-        const lineOffset = i * (treadLength / 7);
-        const lx = x + offsetX + cos * lineOffset;
-        const ly = y + offsetY + sin * lineOffset;
-        const perpX = -sin * treadWidth * 0.45;
-        const perpY = cos * treadWidth * 0.45;
-        this.graphics.lineBetween(lx - perpX, ly - perpY, lx + perpX, ly + perpY);
+        // Tread body (black)
+        this.graphics.fillStyle(this.BLACK, 0.95);
+        this.drawOrientedRect(x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot);
+
+        // Tread detail lines (gray)
+        this.graphics.lineStyle(1, this.GRAY, 0.7);
+        for (let i = -3; i <= 3; i++) {
+          const lineOffset = i * (treadLength / 7);
+          const lx = x + offsetX + cos * lineOffset;
+          const ly = y + offsetY + sin * lineOffset;
+          const perpX = -sin * treadWidth * 0.45;
+          const perpY = cos * treadWidth * 0.45;
+          this.graphics.lineBetween(lx - perpX, ly - perpY, lx + perpX, ly + perpY);
+        }
+      }
+
+      // Body (pentagon) - dark with gray armor plates
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
+      this.graphics.fillStyle(bodyColor, 0.95);
+      this.drawPolygon(x, y, r * 0.85, 5, bodyRot);
+
+      // Gray armor plate
+      this.graphics.fillStyle(this.GRAY, 0.8);
+      this.drawPolygon(x, y, r * 0.5, 5, bodyRot);
+
+      // Base color accent ring
+      this.graphics.lineStyle(2, base, 0.9);
+      this.graphics.strokeCircle(x, y, r * 0.35);
+
+      // White muzzle
+      this.graphics.fillStyle(this.WHITE, 0.9);
+      this.graphics.fillCircle(x, y, r * 0.18);
+    }
+
+    // Turret pass
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
+      for (const weapon of weapons) {
+        const turretRot = weapon.turretRotation;
+        // Wide shotgun barrel (light)
+        const turretLen = r * 1.0;
+        const endX = x + Math.cos(turretRot) * turretLen;
+        const endY = y + Math.sin(turretRot) * turretLen;
+        this.graphics.lineStyle(5, light, 0.85);
+        this.graphics.lineBetween(x, y, endX * 0.9 + x * 0.1, endY * 0.9 + y * 0.1);
       }
     }
-
-    // Body (pentagon) - dark with gray armor plates
-    const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-    this.graphics.fillStyle(bodyColor, 0.95);
-    this.drawPolygon(x, y, r * 0.85, 5, bodyRot);
-
-    // Gray armor plate
-    this.graphics.fillStyle(this.GRAY, 0.8);
-    this.drawPolygon(x, y, r * 0.5, 5, bodyRot);
-
-    // Base color accent ring
-    this.graphics.lineStyle(2, base, 0.9);
-    this.graphics.strokeCircle(x, y, r * 0.35);
-
-    // Draw turrets for all weapons
-    const weapons = entity.weapons ?? [];
-    for (const weapon of weapons) {
-      const turretRot = weapon.turretRotation;
-      // Wide shotgun barrel (light)
-      const turretLen = r * 1.0;
-      const endX = x + Math.cos(turretRot) * turretLen;
-      const endY = y + Math.sin(turretRot) * turretLen;
-      this.graphics.lineStyle(5, light, 0.85);
-      this.graphics.lineBetween(x, y, endX * 0.9 + x * 0.1, endY * 0.9 + y * 0.1);
-    }
-
-    // White muzzle
-    this.graphics.fillStyle(this.WHITE, 0.9);
-    this.graphics.fillCircle(x, y, r * 0.18);
   }
 
   // Mortar: Artillery with 4 stabilizer legs - hexagon body, tall mortar tube
   private drawMortarUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
 
-    // Four stabilizer legs (white struts with black feet)
-    const legDist = r * 1.0;
-    for (let i = 0; i < 4; i++) {
-      const angle = bodyRot + (i / 4) * Math.PI * 2 + Math.PI / 4;
-      const footX = x + Math.cos(angle) * legDist;
-      const footY = y + Math.sin(angle) * legDist;
+    // Body pass
+    if (!this.turretsOnly) {
+      // Four stabilizer legs (white struts with black feet)
+      const legDist = r * 1.0;
+      for (let i = 0; i < 4; i++) {
+        const angle = bodyRot + (i / 4) * Math.PI * 2 + Math.PI / 4;
+        const footX = x + Math.cos(angle) * legDist;
+        const footY = y + Math.sin(angle) * legDist;
 
-      // Leg strut (white)
-      this.graphics.lineStyle(2.5, this.WHITE, 0.9);
-      this.graphics.lineBetween(x, y, footX, footY);
+        // Leg strut (white)
+        this.graphics.lineStyle(2.5, this.WHITE, 0.9);
+        this.graphics.lineBetween(x, y, footX, footY);
 
-      // Foot pad (black)
-      this.graphics.fillStyle(this.BLACK, 0.95);
-      this.graphics.fillCircle(footX, footY, r * 0.15);
+        // Foot pad (black)
+        this.graphics.fillStyle(this.BLACK, 0.95);
+        this.graphics.fillCircle(footX, footY, r * 0.15);
+      }
+
+      // Body (hexagon) - gray base
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : this.GRAY;
+      this.graphics.fillStyle(bodyColor, 0.95);
+      this.drawPolygon(x, y, r * 0.75, 6, bodyRot);
+
+      // Base color hexagon inside
+      this.graphics.fillStyle(base, 0.85);
+      this.drawPolygon(x, y, r * 0.5, 6, bodyRot);
+
+      // Dark center
+      this.graphics.fillStyle(dark, 0.9);
+      this.graphics.fillCircle(x, y, r * 0.25);
     }
 
-    // Body (hexagon) - gray base
-    const bodyColor = selected ? UNIT_SELECTED_COLOR : this.GRAY;
-    this.graphics.fillStyle(bodyColor, 0.95);
-    this.drawPolygon(x, y, r * 0.75, 6, bodyRot);
+    // Turret pass
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
+      for (const weapon of weapons) {
+        const turretRot = weapon.turretRotation;
+        // Mortar tube (light, shorter and thicker)
+        const turretLen = r * 0.8;
+        const endX = x + Math.cos(turretRot) * turretLen;
+        const endY = y + Math.sin(turretRot) * turretLen;
+        this.graphics.lineStyle(5, light, 0.9);
+        this.graphics.lineBetween(x, y, endX, endY);
 
-    // Base color hexagon inside
-    this.graphics.fillStyle(base, 0.85);
-    this.drawPolygon(x, y, r * 0.5, 6, bodyRot);
-
-    // Dark center
-    this.graphics.fillStyle(dark, 0.9);
-    this.graphics.fillCircle(x, y, r * 0.25);
-
-    // Draw turrets for all weapons
-    const weapons = entity.weapons ?? [];
-    for (const weapon of weapons) {
-      const turretRot = weapon.turretRotation;
-      // Mortar tube (light, shorter and thicker)
-      const turretLen = r * 0.8;
-      const endX = x + Math.cos(turretRot) * turretLen;
-      const endY = y + Math.sin(turretRot) * turretLen;
-      this.graphics.lineStyle(5, light, 0.9);
-      this.graphics.lineBetween(x, y, endX, endY);
-
-      // Muzzle ring (white)
-      this.graphics.lineStyle(2, this.WHITE, 0.95);
-      this.graphics.strokeCircle(endX, endY, r * 0.15);
+        // Muzzle ring (white)
+        this.graphics.lineStyle(2, this.WHITE, 0.95);
+        this.graphics.strokeCircle(endX, endY, r * 0.15);
+      }
     }
   }
 
   // Snipe: Long-range wheeled platform - 4 wheels, rectangular body, long thin barrel
   private drawSnipeUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
 
-    // Four wheels (black with white hubs) at corners
-    const wheelDistX = r * 0.7;
-    const wheelDistY = r * 0.4;
-    const wheelRadius = r * 0.22;
-    const wheelPositions = [
-      { dx: wheelDistX, dy: wheelDistY },
-      { dx: wheelDistX, dy: -wheelDistY },
-      { dx: -wheelDistX, dy: wheelDistY },
-      { dx: -wheelDistX, dy: -wheelDistY },
-    ];
+    // Body pass
+    if (!this.turretsOnly) {
+      const cos = Math.cos(bodyRot);
+      const sin = Math.sin(bodyRot);
 
-    for (const wp of wheelPositions) {
-      const wx = x + cos * wp.dx - sin * wp.dy;
-      const wy = y + sin * wp.dx + cos * wp.dy;
-      // Wheel (black)
-      this.graphics.fillStyle(this.BLACK, 0.95);
-      this.graphics.fillCircle(wx, wy, wheelRadius);
-      // Hub (white)
+      // Four wheels (black with white hubs) at corners
+      const wheelDistX = r * 0.7;
+      const wheelDistY = r * 0.4;
+      const wheelRadius = r * 0.22;
+      const wheelPositions = [
+        { dx: wheelDistX, dy: wheelDistY },
+        { dx: wheelDistX, dy: -wheelDistY },
+        { dx: -wheelDistX, dy: wheelDistY },
+        { dx: -wheelDistX, dy: -wheelDistY },
+      ];
+
+      for (const wp of wheelPositions) {
+        const wx = x + cos * wp.dx - sin * wp.dy;
+        const wy = y + sin * wp.dx + cos * wp.dy;
+        // Wheel (black)
+        this.graphics.fillStyle(this.BLACK, 0.95);
+        this.graphics.fillCircle(wx, wy, wheelRadius);
+        // Hub (white)
+        this.graphics.fillStyle(this.WHITE, 0.9);
+        this.graphics.fillCircle(wx, wy, wheelRadius * 0.4);
+      }
+
+      // Body (rectangle) - light colored, high-tech look
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
+      this.graphics.fillStyle(bodyColor, 0.95);
+      this.drawOrientedRect(x, y, r * 1.6, r * 0.75, bodyRot);
+
+      // Dark tech panel
+      this.graphics.fillStyle(dark, 0.85);
+      this.drawOrientedRect(x, y, r * 1.0, r * 0.45, bodyRot);
+
+      // Base color stripe
+      this.graphics.fillStyle(base, 0.9);
+      this.drawOrientedRect(x - cos * r * 0.3, y - sin * r * 0.3, r * 0.15, r * 0.5, bodyRot);
+
+      // Scope (small white circle at turret base)
       this.graphics.fillStyle(this.WHITE, 0.9);
-      this.graphics.fillCircle(wx, wy, wheelRadius * 0.4);
+      this.graphics.fillCircle(x, y, r * 0.15);
     }
 
-    // Body (rectangle) - light colored, high-tech look
-    const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
-    this.graphics.fillStyle(bodyColor, 0.95);
-    this.drawOrientedRect(x, y, r * 1.6, r * 0.75, bodyRot);
+    // Turret pass
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
+      for (const weapon of weapons) {
+        const turretRot = weapon.turretRotation;
+        // Long thin sniper barrel (gray with white tip)
+        const turretLen = r * 1.8;
+        const endX = x + Math.cos(turretRot) * turretLen;
+        const endY = y + Math.sin(turretRot) * turretLen;
+        this.graphics.lineStyle(2, this.GRAY, 0.95);
+        this.graphics.lineBetween(x, y, endX, endY);
 
-    // Dark tech panel
-    this.graphics.fillStyle(dark, 0.85);
-    this.drawOrientedRect(x, y, r * 1.0, r * 0.45, bodyRot);
-
-    // Base color stripe
-    this.graphics.fillStyle(base, 0.9);
-    this.drawOrientedRect(x - cos * r * 0.3, y - sin * r * 0.3, r * 0.15, r * 0.5, bodyRot);
-
-    // Draw turrets for all weapons
-    const weapons = entity.weapons ?? [];
-    for (const weapon of weapons) {
-      const turretRot = weapon.turretRotation;
-      // Long thin sniper barrel (gray with white tip)
-      const turretLen = r * 1.8;
-      const endX = x + Math.cos(turretRot) * turretLen;
-      const endY = y + Math.sin(turretRot) * turretLen;
-      this.graphics.lineStyle(2, this.GRAY, 0.95);
-      this.graphics.lineBetween(x, y, endX, endY);
-
-      // Muzzle flash point (light)
-      this.graphics.fillStyle(light, 0.8);
-      this.graphics.fillCircle(endX, endY, r * 0.1);
+        // Muzzle flash point (light)
+        this.graphics.fillStyle(light, 0.8);
+        this.graphics.fillCircle(endX, endY, r * 0.1);
+      }
     }
-
-    // Scope (small white circle at turret base)
-    this.graphics.fillStyle(this.WHITE, 0.9);
-    this.graphics.fillCircle(x, y, r * 0.15);
   }
 
   // Tank: Heavy tracked unit - massive treads, square turret, thick cannon
   private drawTankUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
 
-    // Two massive treads (dark with white detail)
-    const treadOffset = r * 0.85;
-    const treadLength = r * 1.8;
-    const treadWidth = r * 0.5;
+    // Body pass
+    if (!this.turretsOnly) {
+      const cos = Math.cos(bodyRot);
+      const sin = Math.sin(bodyRot);
 
-    for (const side of [-1, 1]) {
-      const offsetX = -sin * treadOffset * side;
-      const offsetY = cos * treadOffset * side;
+      // Two massive treads (dark with white detail)
+      const treadOffset = r * 0.85;
+      const treadLength = r * 1.8;
+      const treadWidth = r * 0.5;
 
-      // Tread body (very dark)
-      this.graphics.fillStyle(dark, 0.95);
-      this.drawOrientedRect(x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot);
+      for (const side of [-1, 1]) {
+        const offsetX = -sin * treadOffset * side;
+        const offsetY = cos * treadOffset * side;
 
-      // Tread wheels (white circles along tread)
-      const numWheels = 4;
-      for (let i = 0; i < numWheels; i++) {
-        const wheelOffset = (i - (numWheels - 1) / 2) * (treadLength / (numWheels + 0.5));
-        const wx = x + offsetX + cos * wheelOffset;
-        const wy = y + offsetY + sin * wheelOffset;
-        this.graphics.fillStyle(this.WHITE, 0.85);
-        this.graphics.fillCircle(wx, wy, treadWidth * 0.35);
-        this.graphics.fillStyle(this.BLACK, 0.9);
-        this.graphics.fillCircle(wx, wy, treadWidth * 0.15);
+        // Tread body (very dark)
+        this.graphics.fillStyle(dark, 0.95);
+        this.drawOrientedRect(x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot);
+
+        // Tread wheels (white circles along tread)
+        const numWheels = 4;
+        for (let i = 0; i < numWheels; i++) {
+          const wheelOffset = (i - (numWheels - 1) / 2) * (treadLength / (numWheels + 0.5));
+          const wx = x + offsetX + cos * wheelOffset;
+          const wy = y + offsetY + sin * wheelOffset;
+          this.graphics.fillStyle(this.WHITE, 0.85);
+          this.graphics.fillCircle(wx, wy, treadWidth * 0.35);
+          this.graphics.fillStyle(this.BLACK, 0.9);
+          this.graphics.fillCircle(wx, wy, treadWidth * 0.15);
+        }
+
+        // Tread edge lines (gray)
+        this.graphics.lineStyle(1, this.GRAY_LIGHT, 0.7);
+        const perpX = -sin * treadWidth * 0.5;
+        const perpY = cos * treadWidth * 0.5;
+        this.graphics.lineBetween(
+          x + offsetX + cos * treadLength * 0.5 + perpX,
+          y + offsetY + sin * treadLength * 0.5 + perpY,
+          x + offsetX - cos * treadLength * 0.5 + perpX,
+          y + offsetY - sin * treadLength * 0.5 + perpY
+        );
+        this.graphics.lineBetween(
+          x + offsetX + cos * treadLength * 0.5 - perpX,
+          y + offsetY + sin * treadLength * 0.5 - perpY,
+          x + offsetX - cos * treadLength * 0.5 - perpX,
+          y + offsetY - sin * treadLength * 0.5 - perpY
+        );
       }
 
-      // Tread edge lines (gray)
-      this.graphics.lineStyle(1, this.GRAY_LIGHT, 0.7);
-      const perpX = -sin * treadWidth * 0.5;
-      const perpY = cos * treadWidth * 0.5;
-      this.graphics.lineBetween(
-        x + offsetX + cos * treadLength * 0.5 + perpX,
-        y + offsetY + sin * treadLength * 0.5 + perpY,
-        x + offsetX - cos * treadLength * 0.5 + perpX,
-        y + offsetY - sin * treadLength * 0.5 + perpY
-      );
-      this.graphics.lineBetween(
-        x + offsetX + cos * treadLength * 0.5 - perpX,
-        y + offsetY + sin * treadLength * 0.5 - perpY,
-        x + offsetX - cos * treadLength * 0.5 - perpX,
-        y + offsetY - sin * treadLength * 0.5 - perpY
-      );
+      // Hull (square) - base color
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
+      this.graphics.fillStyle(bodyColor, 0.95);
+      this.drawPolygon(x, y, r * 0.9, 4, bodyRot);
+
+      // Gray armor plate on hull
+      this.graphics.fillStyle(this.GRAY, 0.85);
+      this.drawPolygon(x, y, r * 0.6, 4, bodyRot);
+
+      // Black inner
+      this.graphics.fillStyle(this.BLACK, 0.8);
+      this.graphics.fillCircle(x, y, r * 0.3);
+
+      // Turret pivot (white)
+      this.graphics.fillStyle(this.WHITE, 0.9);
+      this.graphics.fillCircle(x, y, r * 0.2);
     }
 
-    // Hull (square) - base color
-    const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
-    this.graphics.fillStyle(bodyColor, 0.95);
-    this.drawPolygon(x, y, r * 0.9, 4, bodyRot);
+    // Turret pass
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
+      for (const weapon of weapons) {
+        const turretRot = weapon.turretRotation;
+        // Heavy cannon barrel (light with dark muzzle)
+        const turretLen = r * 1.4;
+        const endX = x + Math.cos(turretRot) * turretLen;
+        const endY = y + Math.sin(turretRot) * turretLen;
+        this.graphics.lineStyle(7, light, 0.9);
+        this.graphics.lineBetween(x, y, endX, endY);
 
-    // Gray armor plate on hull
-    this.graphics.fillStyle(this.GRAY, 0.85);
-    this.drawPolygon(x, y, r * 0.6, 4, bodyRot);
-
-    // Black inner
-    this.graphics.fillStyle(this.BLACK, 0.8);
-    this.graphics.fillCircle(x, y, r * 0.3);
-
-    // Draw turrets for all weapons
-    const weapons = entity.weapons ?? [];
-    for (const weapon of weapons) {
-      const turretRot = weapon.turretRotation;
-      // Heavy cannon barrel (light with dark muzzle)
-      const turretLen = r * 1.4;
-      const endX = x + Math.cos(turretRot) * turretLen;
-      const endY = y + Math.sin(turretRot) * turretLen;
-      this.graphics.lineStyle(7, light, 0.9);
-      this.graphics.lineBetween(x, y, endX, endY);
-
-      // Muzzle brake (dark)
-      this.graphics.fillStyle(dark, 1);
-      this.graphics.fillCircle(endX, endY, r * 0.2);
+        // Muzzle brake (dark)
+        this.graphics.fillStyle(dark, 1);
+        this.graphics.fillCircle(endX, endY, r * 0.2);
+      }
     }
-
-    // Turret pivot (white)
-    this.graphics.fillStyle(this.WHITE, 0.9);
-    this.graphics.fillCircle(x, y, r * 0.2);
   }
 
   // Arachnid: Titan spider unit - 8 animated legs, 8 beam weapons
   private drawArachnidUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
+
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 
-    const legThickness = 3;
-    const footSize = r * 0.12;
+    // Body pass
+    if (!this.turretsOnly) {
+      const legThickness = 3;
+      const footSize = r * 0.12;
 
-    // Get legs for this entity (creates them if they don't exist)
-    const legs = this.getOrCreateLegs(entity);
+      // Get legs for this entity (creates them if they don't exist)
+      const legs = this.getOrCreateLegs(entity);
 
-    // Draw all 8 legs using the Leg class positions
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
+      // Draw all 8 legs using the Leg class positions
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i];
+        const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
 
-      // Get positions from leg class
-      const attach = leg.getAttachmentPoint(x, y, bodyRot);
-      const foot = leg.getFootPosition();
-      const knee = leg.getKneePosition(attach.x, attach.y, side);
+        // Get positions from leg class
+        const attach = leg.getAttachmentPoint(x, y, bodyRot);
+        const foot = leg.getFootPosition();
+        const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-      // Draw leg segments
-      // Upper leg (thicker, darker)
-      this.graphics.lineStyle(legThickness + 1, dark, 0.95);
-      this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+        // Draw leg segments
+        // Upper leg (thicker, darker)
+        this.graphics.lineStyle(legThickness + 1, dark, 0.95);
+        this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-      // Lower leg (thinner, lighter)
-      this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
-      this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+        // Lower leg (thinner, lighter)
+        this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
+        this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-      // Knee joint (small circle)
-      this.graphics.fillStyle(this.BLACK, 0.9);
-      this.graphics.fillCircle(knee.x, knee.y, legThickness);
+        // Knee joint (small circle)
+        this.graphics.fillStyle(this.BLACK, 0.9);
+        this.graphics.fillCircle(knee.x, knee.y, legThickness);
 
-      // Foot (light when sliding, white when planted)
-      const footColor = leg.isCurrentlySliding() ? light : this.WHITE;
-      this.graphics.fillStyle(footColor, 0.9);
-      this.graphics.fillCircle(foot.x, foot.y, footSize);
+        // Foot (light when sliding, white when planted)
+        const footColor = leg.isCurrentlySliding() ? light : this.WHITE;
+        this.graphics.fillStyle(footColor, 0.9);
+        this.graphics.fillCircle(foot.x, foot.y, footSize);
+      }
+
+      // Main body (elongated octagon/oval shape)
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
+      this.graphics.fillStyle(bodyColor, 0.95);
+
+      // Draw body as elongated hexagon
+      const bodyLength = r * 1.2;
+      const bodyWidth = r * 0.7;
+      const bodyPoints = [
+        { x: x + cos * bodyLength - sin * bodyWidth * 0.5, y: y + sin * bodyLength + cos * bodyWidth * 0.5 },
+        { x: x + cos * bodyLength * 0.7 - sin * bodyWidth, y: y + sin * bodyLength * 0.7 + cos * bodyWidth },
+        { x: x - cos * bodyLength * 0.3 - sin * bodyWidth, y: y - sin * bodyLength * 0.3 + cos * bodyWidth },
+        { x: x - cos * bodyLength - sin * bodyWidth * 0.5, y: y - sin * bodyLength + cos * bodyWidth * 0.5 },
+        { x: x - cos * bodyLength + sin * bodyWidth * 0.5, y: y - sin * bodyLength - cos * bodyWidth * 0.5 },
+        { x: x - cos * bodyLength * 0.3 + sin * bodyWidth, y: y - sin * bodyLength * 0.3 - cos * bodyWidth },
+        { x: x + cos * bodyLength * 0.7 + sin * bodyWidth, y: y + sin * bodyLength * 0.7 - cos * bodyWidth },
+        { x: x + cos * bodyLength + sin * bodyWidth * 0.5, y: y + sin * bodyLength - cos * bodyWidth * 0.5 },
+      ];
+      this.graphics.fillPoints(bodyPoints, true);
+
+      // Inner carapace pattern (base color)
+      this.graphics.fillStyle(base, 0.8);
+      this.drawPolygon(x, y, r * 0.5, 6, bodyRot);
+
+      // Central eye/sensor cluster (light)
+      this.graphics.fillStyle(light, 0.9);
+      this.graphics.fillCircle(x, y, r * 0.25);
+      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillCircle(x, y, r * 0.12);
     }
 
-    // Main body (elongated octagon/oval shape)
-    const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-    this.graphics.fillStyle(bodyColor, 0.95);
+    // Turret pass - 8 beam emitters (4 front row, 4 back row)
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
 
-    // Draw body as elongated hexagon
-    const bodyLength = r * 1.2;
-    const bodyWidth = r * 0.7;
-    const bodyPoints = [
-      { x: x + cos * bodyLength - sin * bodyWidth * 0.5, y: y + sin * bodyLength + cos * bodyWidth * 0.5 },
-      { x: x + cos * bodyLength * 0.7 - sin * bodyWidth, y: y + sin * bodyLength * 0.7 + cos * bodyWidth },
-      { x: x - cos * bodyLength * 0.3 - sin * bodyWidth, y: y - sin * bodyLength * 0.3 + cos * bodyWidth },
-      { x: x - cos * bodyLength - sin * bodyWidth * 0.5, y: y - sin * bodyLength + cos * bodyWidth * 0.5 },
-      { x: x - cos * bodyLength + sin * bodyWidth * 0.5, y: y - sin * bodyLength - cos * bodyWidth * 0.5 },
-      { x: x - cos * bodyLength * 0.3 + sin * bodyWidth, y: y - sin * bodyLength * 0.3 - cos * bodyWidth },
-      { x: x + cos * bodyLength * 0.7 + sin * bodyWidth, y: y + sin * bodyLength * 0.7 - cos * bodyWidth },
-      { x: x + cos * bodyLength + sin * bodyWidth * 0.5, y: y + sin * bodyLength - cos * bodyWidth * 0.5 },
-    ];
-    this.graphics.fillPoints(bodyPoints, true);
+      // Front row beam emitters (weapons 0-3)
+      const frontSpacing = r * 0.35;
+      const frontForwardOffset = r * 0.8;
+      for (let i = 0; i < 4; i++) {
+        const lateralOffset = (i - 1.5) * frontSpacing;
+        const emitterX = x + cos * frontForwardOffset - sin * lateralOffset;
+        const emitterY = y + sin * frontForwardOffset + cos * lateralOffset;
 
-    // Inner carapace pattern (base color)
-    this.graphics.fillStyle(base, 0.8);
-    this.drawPolygon(x, y, r * 0.5, 6, bodyRot);
+        // Get turret rotation for this weapon
+        const weaponTurret = weapons[i]?.turretRotation ?? bodyRot;
 
-    // Central eye/sensor cluster (light)
-    this.graphics.fillStyle(light, 0.9);
-    this.graphics.fillCircle(x, y, r * 0.25);
-    this.graphics.fillStyle(this.WHITE, 0.95);
-    this.graphics.fillCircle(x, y, r * 0.12);
+        // Beam emitter (glowing orb with beam line)
+        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillCircle(emitterX, emitterY, r * 0.12);
 
-    // Draw weapons - 8 beam emitters (4 front row, 4 back row)
-    // Get turret rotations from weapons array
-    const weapons = entity.weapons ?? [];
+        // Beam barrel
+        const beamLen = r * 0.6;
+        const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
+        const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
+        this.graphics.lineStyle(3, light, 0.8);
+        this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
 
-    // Front row beam emitters (weapons 0-3)
-    const frontSpacing = r * 0.35;
-    const frontForwardOffset = r * 0.8;
-    for (let i = 0; i < 4; i++) {
-      const lateralOffset = (i - 1.5) * frontSpacing;
-      const emitterX = x + cos * frontForwardOffset - sin * lateralOffset;
-      const emitterY = y + sin * frontForwardOffset + cos * lateralOffset;
+        // Emitter glow
+        this.graphics.fillStyle(this.WHITE, 0.8);
+        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
+      }
 
-      // Get turret rotation for this weapon
-      const weaponTurret = weapons[i]?.turretRotation ?? bodyRot;
+      // Back row beam emitters (weapons 4-7)
+      const backSpacing = r * 0.4;
+      const backForwardOffset = r * 0.35;
+      for (let i = 0; i < 4; i++) {
+        const lateralOffset = (i - 1.5) * backSpacing;
+        const emitterX = x + cos * backForwardOffset - sin * lateralOffset;
+        const emitterY = y + sin * backForwardOffset + cos * lateralOffset;
 
-      // Beam emitter (glowing orb with beam line)
-      this.graphics.fillStyle(light, 0.9);
-      this.graphics.fillCircle(emitterX, emitterY, r * 0.12);
+        // Get turret rotation for this weapon (indices 4-7)
+        const weaponTurret = weapons[4 + i]?.turretRotation ?? bodyRot;
 
-      // Beam barrel
-      const beamLen = r * 0.6;
-      const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
-      const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
-      this.graphics.lineStyle(3, light, 0.8);
-      this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
+        // Beam emitter (glowing orb with beam line)
+        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillCircle(emitterX, emitterY, r * 0.12);
 
-      // Emitter glow
-      this.graphics.fillStyle(this.WHITE, 0.8);
-      this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
-    }
+        // Beam barrel
+        const beamLen = r * 0.6;
+        const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
+        const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
+        this.graphics.lineStyle(3, light, 0.8);
+        this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
 
-    // Back row beam emitters (weapons 4-7)
-    const backSpacing = r * 0.4;
-    const backForwardOffset = r * 0.35;
-    for (let i = 0; i < 4; i++) {
-      const lateralOffset = (i - 1.5) * backSpacing;
-      const emitterX = x + cos * backForwardOffset - sin * lateralOffset;
-      const emitterY = y + sin * backForwardOffset + cos * lateralOffset;
-
-      // Get turret rotation for this weapon (indices 4-7)
-      const weaponTurret = weapons[4 + i]?.turretRotation ?? bodyRot;
-
-      // Beam emitter (glowing orb with beam line)
-      this.graphics.fillStyle(light, 0.9);
-      this.graphics.fillCircle(emitterX, emitterY, r * 0.12);
-
-      // Beam barrel
-      const beamLen = r * 0.6;
-      const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
-      const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
-      this.graphics.lineStyle(3, light, 0.8);
-      this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
-
-      // Emitter glow
-      this.graphics.fillStyle(this.WHITE, 0.8);
-      this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
+        // Emitter glow
+        this.graphics.fillStyle(this.WHITE, 0.8);
+        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
+      }
     }
   }
 
