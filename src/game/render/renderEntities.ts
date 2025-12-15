@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { Entity, WaypointType, ActionType, EntityId } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
+import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 
 /**
  * EntitySource - Interface that both WorldState and ClientViewState implement
@@ -87,10 +88,75 @@ export class EntityRenderer {
   // Explosion effects
   private explosions: ExplosionEffect[] = [];
 
+  // Arachnid legs storage (entity ID -> array of 8 legs)
+  private arachnidLegs: Map<EntityId, ArachnidLeg[]> = new Map();
+
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
     this.entitySource = entitySource;
+  }
+
+  // Get or create legs for an Arachnid unit
+  private getOrCreateLegs(entity: Entity): ArachnidLeg[] {
+    const existing = this.arachnidLegs.get(entity.id);
+    if (existing) return existing;
+
+    const radius = entity.unit?.collisionRadius ?? 40;
+    const legLength = radius * 1.4;
+    const upperLen = legLength * 0.55;
+    const lowerLen = legLength * 0.55;
+
+    // Create 8 legs - 4 on each side
+    // Leg positions: front to back, with angles pointing outward
+    const legConfigs: LegConfig[] = [
+      // Left side (negative Y offset) - legs 1-4 front to back
+      { attachOffsetX: radius * 0.6, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: -Math.PI / 4 },      // Front-left
+      { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: -Math.PI / 3 },     // Front-mid-left
+      { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: -Math.PI * 2 / 3 }, // Back-mid-left
+      { attachOffsetX: -radius * 0.55, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: -Math.PI * 3 / 4 }, // Back-left
+
+      // Right side (positive Y offset) - legs 5-8 front to back
+      { attachOffsetX: radius * 0.6, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: Math.PI / 4 },       // Front-right
+      { attachOffsetX: radius * 0.25, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: Math.PI / 3 },      // Front-mid-right
+      { attachOffsetX: -radius * 0.2, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: Math.PI * 2 / 3 },  // Back-mid-right
+      { attachOffsetX: -radius * 0.55, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: Math.PI * 3 / 4 }, // Back-right
+    ];
+
+    const legs = legConfigs.map(config => new ArachnidLeg(config));
+    this.arachnidLegs.set(entity.id, legs);
+    return legs;
+  }
+
+  // Update all Arachnid legs (call each frame with dtMs)
+  updateArachnidLegs(dtMs: number): void {
+    // Clean up legs for entities that no longer exist
+    const existingIds = new Set(this.entitySource.getUnits().map(e => e.id));
+    for (const id of this.arachnidLegs.keys()) {
+      if (!existingIds.has(id)) {
+        this.arachnidLegs.delete(id);
+      }
+    }
+
+    // Update legs for all Arachnid units
+    for (const entity of this.entitySource.getUnits()) {
+      if (!entity.unit || !entity.weapons || entity.weapons.length <= 1) continue;
+
+      const legs = this.getOrCreateLegs(entity);
+      const velX = entity.unit.velocityX ?? 0;
+      const velY = entity.unit.velocityY ?? 0;
+
+      for (const leg of legs) {
+        leg.update(
+          entity.transform.x,
+          entity.transform.y,
+          entity.transform.rotation,
+          velX,
+          velY,
+          dtMs
+        );
+      }
+    }
   }
 
   // Add a new explosion effect
@@ -910,121 +976,45 @@ export class EntityRenderer {
     this.graphics.fillCircle(x, y, r * 0.2);
   }
 
-  // Arachnid: Titan spider unit - 8 animated legs, 4 beam + 4 snipe weapons
+  // Arachnid: Titan spider unit - 8 animated legs, 8 beam weapons
   private drawArachnidUnit(x: number, y: number, r: number, bodyRot: number,
     base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 
-    // Check if unit is moving (has velocity)
-    const velX = entity.unit?.velocityX ?? 0;
-    const velY = entity.unit?.velocityY ?? 0;
-    const speed = Math.sqrt(velX * velX + velY * velY);
-    const isMoving = speed > 1; // Consider moving if speed > 1
-
-    // Animation time - only advance when moving, cycle over ~1.5 seconds for walking
-    // Use a static walk phase when stationary
-    const walkCycle = isMoving ? (this.sprayParticleTime / 1500) % 1 : 0;
-
-    // Draw 8 spider legs (4 on each side)
-    // Legs are numbered 1-4 from front to back on each side
-    // Walking pattern: opposite sides offset by 0.5, legs move in sequence
-    // Left side: leg2 at 0, leg4 at 0.25, leg1 at 0.5, leg3 at 0.75
-    // Right side: same pattern but offset by 0.5 (180 degrees)
-
-    const legLength = r * 1.4;        // Total leg reach
-    const upperLegLength = legLength * 0.55;
-    const lowerLegLength = legLength * 0.55;
     const legThickness = 3;
     const footSize = r * 0.12;
 
-    // Leg attachment points along the body (front to back)
-    const legAttachments = [
-      { offset: 0.6, angle: 0.4 },   // Leg 1 - front, angled forward
-      { offset: 0.25, angle: 0.15 }, // Leg 2 - front-mid
-      { offset: -0.2, angle: -0.15 },// Leg 3 - back-mid
-      { offset: -0.55, angle: -0.35 },// Leg 4 - back, angled backward
-    ];
+    // Get legs for this entity (creates them if they don't exist)
+    const legs = this.getOrCreateLegs(entity);
 
-    // Phase offsets for each leg (when it starts its lift cycle)
-    const leftLegPhases = [0.5, 0, 0.75, 0.25];  // Legs 1,2,3,4 on left
-    const rightLegPhases = [0, 0.5, 0.25, 0.75]; // Legs 1,2,3,4 on right (offset by 0.5)
+    // Draw all 8 legs using the Leg class positions
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
 
-    // Draw legs for both sides
-    for (const side of [-1, 1]) { // -1 = left, 1 = right
-      const phases = side === -1 ? leftLegPhases : rightLegPhases;
+      // Get positions from leg class
+      const attach = leg.getAttachmentPoint(x, y, bodyRot);
+      const foot = leg.getFootPosition();
+      const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-      for (let legIndex = 0; legIndex < 4; legIndex++) {
-        const attach = legAttachments[legIndex];
-        const phase = phases[legIndex];
+      // Draw leg segments
+      // Upper leg (thicker, darker)
+      this.graphics.lineStyle(legThickness + 1, dark, 0.95);
+      this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-        // Calculate leg lift cycle (0-1 where 0.2-0.4 is lifted)
-        // When not moving, all legs stay planted
-        const legCycle = (walkCycle + phase) % 1;
-        const isLifted = isMoving && legCycle > 0.2 && legCycle < 0.4;
-        const liftProgress = isLifted
-          ? Math.sin(((legCycle - 0.2) / 0.2) * Math.PI) // Smooth lift curve
-          : 0;
+      // Lower leg (thinner, lighter)
+      this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
+      this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-        // Base attachment point on body
-        const attachX = x + cos * attach.offset * r - sin * side * r * 0.5;
-        const attachY = y + sin * attach.offset * r + cos * side * r * 0.5;
+      // Knee joint (small circle)
+      this.graphics.fillStyle(this.BLACK, 0.9);
+      this.graphics.fillCircle(knee.x, knee.y, legThickness);
 
-        // Foot target position (where the foot wants to be)
-        // When lifted, foot moves forward; when stationary or planted, stays in neutral position
-        // Mirror the attach.angle for the right side so legs are symmetric
-        const baseFootAngle = bodyRot + (Math.PI / 2 * side) + attach.angle * (-side);
-        const footForwardOffset = isLifted
-          ? (legCycle - 0.3) * legLength * 0.8  // Move forward during lift
-          : (isMoving ? -0.1 * legLength : 0); // Slight backward drift when planted and moving, neutral when stationary
-
-        const targetFootX = attachX + Math.cos(baseFootAngle) * legLength + cos * footForwardOffset;
-        const targetFootY = attachY + Math.sin(baseFootAngle) * legLength + sin * footForwardOffset;
-
-        // Lift the foot off ground when in lift phase
-        const footLiftHeight = liftProgress * r * 0.4;
-
-        // Calculate knee position using inverse kinematics approximation
-        // The knee bends outward and upward
-        const dx = targetFootX - attachX;
-        const dy = targetFootY - attachY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const clampedDist = Math.min(dist, upperLegLength + lowerLegLength * 0.95);
-
-        // Knee angle calculation (bend outward)
-        const midAngle = Math.atan2(dy, dx);
-        const bendAmount = Math.sqrt(Math.max(0, 1 - (clampedDist / (upperLegLength + lowerLegLength)) ** 2));
-        const kneeBend = bendAmount * 0.8 + 0.2; // Always some bend
-
-        const kneeX = attachX + Math.cos(midAngle) * upperLegLength +
-                      Math.cos(midAngle + Math.PI / 2 * side) * kneeBend * r * 0.4 -
-                      sin * footLiftHeight * 0.5;
-        const kneeY = attachY + Math.sin(midAngle) * upperLegLength +
-                      Math.sin(midAngle + Math.PI / 2 * side) * kneeBend * r * 0.4 -
-                      cos * footLiftHeight * 0.5;
-
-        // Foot position (lifted when in motion)
-        const footX = targetFootX - sin * footLiftHeight * side * 0.3;
-        const footY = targetFootY + cos * footLiftHeight * side * 0.3 - footLiftHeight;
-
-        // Draw leg segments
-        // Upper leg (thicker, darker)
-        this.graphics.lineStyle(legThickness + 1, dark, 0.95);
-        this.graphics.lineBetween(attachX, attachY, kneeX, kneeY);
-
-        // Lower leg (thinner, lighter)
-        this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
-        this.graphics.lineBetween(kneeX, kneeY, footX, footY);
-
-        // Knee joint (small circle)
-        this.graphics.fillStyle(this.BLACK, 0.9);
-        this.graphics.fillCircle(kneeX, kneeY, legThickness);
-
-        // Foot (white when planted, light when lifted)
-        const footColor = isLifted ? light : this.WHITE;
-        this.graphics.fillStyle(footColor, 0.9);
-        this.graphics.fillCircle(footX, footY, footSize);
-      }
+      // Foot (light when sliding, white when planted)
+      const footColor = leg.isCurrentlySliding() ? light : this.WHITE;
+      this.graphics.fillStyle(footColor, 0.9);
+      this.graphics.fillCircle(foot.x, foot.y, footSize);
     }
 
     // Main body (elongated octagon/oval shape)
