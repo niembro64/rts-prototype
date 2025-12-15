@@ -19,10 +19,10 @@ export interface EntitySource {
 export interface ExplosionEffect {
   x: number;
   y: number;
-  radius: number;           // Maximum radius of explosion
-  color: number;            // Base color
-  lifetime: number;         // Total lifetime in ms
-  elapsed: number;          // Time elapsed in ms
+  radius: number; // Maximum radius of explosion
+  color: number; // Base color
+  lifetime: number; // Total lifetime in ms
+  elapsed: number; // Time elapsed in ms
   type: 'impact' | 'death'; // Type affects visual style
 }
 
@@ -33,34 +33,34 @@ const BUILDING_OUTLINE_COLOR = 0xaa8866;
 const HEALTH_BAR_BG = 0x333333;
 const HEALTH_BAR_FG = 0x44dd44;
 const HEALTH_BAR_LOW = 0xff4444;
-const BUILD_BAR_FG = 0xffcc00;  // Yellow for build progress
-const GHOST_COLOR = 0x88ff88;   // Green tint for placement ghost
+const BUILD_BAR_FG = 0xffcc00; // Yellow for build progress
+const GHOST_COLOR = 0x88ff88; // Green tint for placement ghost
 const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
 
 // Waypoint colors by type (legacy - for factories)
 const WAYPOINT_COLORS: Record<WaypointType, number> = {
-  move: 0x00ff00,   // Green
+  move: 0x00ff00, // Green
   patrol: 0x0088ff, // Blue
-  fight: 0xff4444,  // Red
+  fight: 0xff4444, // Red
 };
 
 // Action colors by type (for unit action queue)
 const ACTION_COLORS: Record<ActionType, number> = {
-  move: 0x00ff00,   // Green
+  move: 0x00ff00, // Green
   patrol: 0x0088ff, // Blue
-  fight: 0xff4444,  // Red
-  build: 0xffcc00,  // Yellow for building
+  fight: 0xff4444, // Red
+  build: 0xffcc00, // Yellow for building
   repair: 0x44ff44, // Light green for repair
 };
 
 // Spray effect colors
-const SPRAY_BUILD_COLOR = 0x44ff44;   // Green for building
-const SPRAY_HEAL_COLOR = 0x4488ff;    // Blue for healing
+const SPRAY_BUILD_COLOR = 0x44ff44; // Green for building
+const SPRAY_HEAL_COLOR = 0x4488ff; // Blue for healing
 
 // Range circle colors
-const VISION_RANGE_COLOR = 0xffff88;   // Yellow for vision range
-const WEAPON_RANGE_COLOR = 0xff4444;   // Red for weapon range
-const BUILD_RANGE_COLOR = 0x44ff44;    // Green for build range
+const VISION_RANGE_COLOR = 0xffff88; // Yellow for vision range
+const WEAPON_RANGE_COLOR = 0xff4444; // Red for weapon range
+const BUILD_RANGE_COLOR = 0x44ff44; // Green for build range
 
 // Unit display names by weapon ID
 const UNIT_NAMES: Record<string, string> = {
@@ -107,7 +107,7 @@ export class EntityRenderer {
     if (existing) return existing;
 
     const radius = entity.unit?.collisionRadius ?? 40;
-    const legLength = radius * 1.4;
+    const legLength = radius * 1.9;
     const upperLen = legLength * 0.55;
     const lowerLen = legLength * 0.55;
 
@@ -115,57 +115,167 @@ export class EntityRenderer {
 
     if (legCount === 6) {
       // Create 6 legs - 3 on each side (insect style)
-      // All parameters vary continuously from front to back:
-      // - Front legs: trigger early, snap far forward, reach very far out
-      // - Back legs: trigger late, snap backward, reach closer
+      // Front leg: snaps to 30° forward, triggers at 90° (perpendicular)
+      // Middle leg: snaps to ~60°, triggers at ~130°
+      // Back leg: snaps to 90° (perpendicular), triggers at 170° (10° from straight back) or full extension
       legConfigs = [
         // Left side (negative Y offset) - legs 0-2 front to back
-        { attachOffsetX: radius * 0.5, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
-        { attachOffsetX: 0, attachOffsetY: -radius * 0.55, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.32, snapDistanceMultiplier: 0.85, extensionThreshold: 0.92 },
-        { attachOffsetX: -radius * 0.5, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.80, snapTargetAngle: -Math.PI * 0.38, snapDistanceMultiplier: 0.78, extensionThreshold: 0.95 },
+        {
+          attachOffsetX: radius * 0.5,
+          attachOffsetY: -radius * 0.35,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.5,
+          snapTargetAngle: -Math.PI * 0.17,
+          snapDistanceMultiplier: 0.75,
+          extensionThreshold: 0.85,
+        },
+        {
+          attachOffsetX: 0,
+          attachOffsetY: -radius * 0.4,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.72,
+          snapTargetAngle: -Math.PI * 0.33,
+          snapDistanceMultiplier: 0.7,
+          extensionThreshold: 0.88,
+        },
+        {
+          attachOffsetX: -radius * 0.5,
+          attachOffsetY: -radius * 0.35,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.944,
+          snapTargetAngle: -Math.PI * 0.5,
+          snapDistanceMultiplier: 0.5,
+          extensionThreshold: 0.97,
+        },
 
         // Right side (positive Y offset) - legs 3-5 front to back (mirror of left)
-        { attachOffsetX: radius * 0.5, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
-        { attachOffsetX: 0, attachOffsetY: radius * 0.55, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: Math.PI * 0.32, snapDistanceMultiplier: 0.85, extensionThreshold: 0.92 },
-        { attachOffsetX: -radius * 0.5, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.80, snapTargetAngle: Math.PI * 0.38, snapDistanceMultiplier: 0.78, extensionThreshold: 0.95 },
+        {
+          attachOffsetX: radius * 0.5,
+          attachOffsetY: radius * 0.35,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.5,
+          snapTargetAngle: Math.PI * 0.17,
+          snapDistanceMultiplier: 0.75,
+          extensionThreshold: 0.85,
+        },
+        {
+          attachOffsetX: 0,
+          attachOffsetY: radius * 0.4,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.72,
+          snapTargetAngle: Math.PI * 0.33,
+          snapDistanceMultiplier: 0.7,
+          extensionThreshold: 0.88,
+        },
+        {
+          attachOffsetX: -radius * 0.5,
+          attachOffsetY: radius * 0.35,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.944,
+          snapTargetAngle: Math.PI * 0.5,
+          snapDistanceMultiplier: 0.5,
+          extensionThreshold: 0.97,
+        },
       ];
     } else {
       // Create 8 legs - 4 on each side (arachnid style)
-      // All parameters vary continuously from front to back:
-      // - Front legs: trigger early, snap far forward, reach very far out
-      // - Back legs: trigger late, snap backward, reach closer
+      // Front leg: snaps to 45° forward, triggers at 90° (perpendicular)
+      // Back leg: snaps to 90° (perpendicular), triggers when nearly straight back (~170°)
+      // Middle legs interpolate between these extremes
       legConfigs = [
         // Left side (negative Y offset) - legs 0-3 front to back
-        // Front legs: trigger at ~90° (PI*0.5), snap to 45° forward (PI*0.25), high extension threshold
-        // Back legs: trigger at ~150° (PI*0.83), snap to ~70° sideways (PI*0.39), must be fully stretched
-        { attachOffsetX: radius * 0.6, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
-        { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.61, snapTargetAngle: -Math.PI * 0.30, snapDistanceMultiplier: 0.88, extensionThreshold: 0.92 },
-        { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: -Math.PI * 0.34, snapDistanceMultiplier: 0.82, extensionThreshold: 0.94 },
-        { attachOffsetX: -radius * 0.55, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.83, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.75, extensionThreshold: 0.96 },
+        {
+          attachOffsetX: radius * 0.6,
+          attachOffsetY: -radius * 0.5,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.5,
+          snapTargetAngle: -Math.PI * 0.25,
+          snapDistanceMultiplier: 0.92,
+          extensionThreshold: 0.88,
+        },
+        {
+          attachOffsetX: radius * 0.25,
+          attachOffsetY: -radius * 0.5,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.65,
+          snapTargetAngle: -Math.PI * 0.33,
+          snapDistanceMultiplier: 0.88,
+          extensionThreshold: 0.89,
+        },
+        {
+          attachOffsetX: -radius * 0.2,
+          attachOffsetY: -radius * 0.5,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.8,
+          snapTargetAngle: -Math.PI * 0.42,
+          snapDistanceMultiplier: 0.82,
+          extensionThreshold: 0.9,
+        },
+        {
+          attachOffsetX: -radius * 0.55,
+          attachOffsetY: -radius * 0.5,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.94,
+          snapTargetAngle: -Math.PI * 0.5,
+          snapDistanceMultiplier: 0.75,
+          extensionThreshold: 0.92,
+        },
 
         // Right side (positive Y offset) - legs 4-7 front to back (mirror of left)
-        { attachOffsetX: radius * 0.6, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.50, snapTargetAngle: Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.90 },
-        { attachOffsetX: radius * 0.25, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.61, snapTargetAngle: Math.PI * 0.30, snapDistanceMultiplier: 0.88, extensionThreshold: 0.92 },
-        { attachOffsetX: -radius * 0.2, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: Math.PI * 0.34, snapDistanceMultiplier: 0.82, extensionThreshold: 0.94 },
-        { attachOffsetX: -radius * 0.55, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.83, snapTargetAngle: Math.PI * 0.39, snapDistanceMultiplier: 0.75, extensionThreshold: 0.96 },
+        {
+          attachOffsetX: radius * 0.6,
+          attachOffsetY: radius * 0.5,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.5,
+          snapTargetAngle: Math.PI * 0.25,
+          snapDistanceMultiplier: 0.92,
+          extensionThreshold: 0.88,
+        },
+        {
+          attachOffsetX: radius * 0.25,
+          attachOffsetY: radius * 0.5,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.65,
+          snapTargetAngle: Math.PI * 0.33,
+          snapDistanceMultiplier: 0.88,
+          extensionThreshold: 0.89,
+        },
+        {
+          attachOffsetX: -radius * 0.2,
+          attachOffsetY: radius * 0.5,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.8,
+          snapTargetAngle: Math.PI * 0.42,
+          snapDistanceMultiplier: 0.82,
+          extensionThreshold: 0.9,
+        },
+        {
+          attachOffsetX: -radius * 0.55,
+          attachOffsetY: radius * 0.5,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.94,
+          snapTargetAngle: Math.PI * 0.5,
+          snapDistanceMultiplier: 0.75,
+          extensionThreshold: 0.92,
+        },
       ];
     }
 
-    const legs = legConfigs.map(config => new ArachnidLeg(config));
+    const legs = legConfigs.map((config) => new ArachnidLeg(config));
 
     // Initialize all legs at the unit's current position to prevent flickering
     const unitX = entity.transform.x;
@@ -182,7 +292,7 @@ export class EntityRenderer {
   // Update all legged unit legs (call each frame with dtMs)
   updateArachnidLegs(dtMs: number): void {
     // Clean up legs for entities that no longer exist
-    const existingIds = new Set(this.entitySource.getUnits().map(e => e.id));
+    const existingIds = new Set(this.entitySource.getUnits().map((e) => e.id));
     for (const id of this.arachnidLegs.keys()) {
       if (!existingIds.has(id)) {
         this.arachnidLegs.delete(id);
@@ -191,11 +301,13 @@ export class EntityRenderer {
 
     // Update legs for all legged units (arachnid: 8 legs, beam/insect: 6 legs)
     for (const entity of this.entitySource.getUnits()) {
-      if (!entity.unit || !entity.weapons || entity.weapons.length === 0) continue;
+      if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
+        continue;
 
       // Check if this is an arachnid (multiple weapons) or beam unit (single beam weapon)
       const isArachnid = entity.weapons.length > 1;
-      const isBeam = entity.weapons.length === 1 && entity.weapons[0].config.id === 'beam';
+      const isBeam =
+        entity.weapons.length === 1 && entity.weapons[0].config.id === 'beam';
 
       if (!isArachnid && !isBeam) continue;
 
@@ -218,7 +330,13 @@ export class EntityRenderer {
   }
 
   // Add a new explosion effect
-  addExplosion(x: number, y: number, radius: number, color: number, type: 'impact' | 'death'): void {
+  addExplosion(
+    x: number,
+    y: number,
+    radius: number,
+    color: number,
+    type: 'impact' | 'death'
+  ): void {
     // Base lifetime scales with radius - larger explosions last longer
     // Base: 150ms for a radius of 8, scales proportionally
     const baseRadius = 8;
@@ -240,7 +358,7 @@ export class EntityRenderer {
   // Update explosion effects (call each frame with dtMs)
   updateExplosions(dtMs: number): void {
     // Update elapsed time and remove expired explosions
-    this.explosions = this.explosions.filter(exp => {
+    this.explosions = this.explosions.filter((exp) => {
       exp.elapsed += dtMs;
       return exp.elapsed < exp.lifetime;
     });
@@ -283,7 +401,10 @@ export class EntityRenderer {
    * Set the entity source for rendering
    * Allows switching between WorldState (simulation view) and ClientViewState (client view)
    */
-  setEntitySource(source: EntitySource, sourceType: 'world' | 'clientView' = 'world'): void {
+  setEntitySource(
+    source: EntitySource,
+    sourceType: 'world' | 'clientView' = 'world'
+  ): void {
     this.entitySource = source;
     console.log(`[Render] Entity source switched to: ${sourceType}`);
   }
@@ -446,7 +567,9 @@ export class EntityRenderer {
         }
 
         // Commander gets special label
-        const name = entity.commander ? 'Commander' : (UNIT_NAMES[weaponId] ?? weaponId);
+        const name = entity.commander
+          ? 'Commander'
+          : UNIT_NAMES[weaponId] ?? weaponId;
 
         const label = this.getLabel();
         label.setText(name);
@@ -484,12 +607,12 @@ export class EntityRenderer {
 
     // Vision/tracking range (outermost - yellow) - show max seeRange from all weapons
     if (weapons && weapons.length > 0) {
-      const maxSeeRange = Math.max(...weapons.map(w => w.seeRange));
+      const maxSeeRange = Math.max(...weapons.map((w) => w.seeRange));
       this.graphics.lineStyle(1, VISION_RANGE_COLOR, 0.3);
       this.graphics.strokeCircle(x, y, maxSeeRange);
 
       // Fire range (red) - show max fireRange from all weapons
-      const maxFireRange = Math.max(...weapons.map(w => w.fireRange));
+      const maxFireRange = Math.max(...weapons.map((w) => w.fireRange));
       this.graphics.lineStyle(1.5, WEAPON_RANGE_COLOR, 0.4);
       this.graphics.strokeCircle(x, y, maxFireRange);
     }
@@ -587,31 +710,121 @@ export class EntityRenderer {
     // Draw unit based on weapon type - each draw method loops through all weapons
     switch (weaponId) {
       case 'scout':
-        this.drawScoutUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawScoutUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
         break;
       case 'burst':
-        this.drawBurstUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawBurstUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
         break;
       case 'beam':
-        this.drawBeamUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawBeamUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
         break;
       case 'brawl':
-        this.drawBrawlUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawBrawlUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
         break;
       case 'mortar':
-        this.drawMortarUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawMortarUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
         break;
       case 'snipe':
-        this.drawSnipeUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawSnipeUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
         break;
       case 'tank':
-        this.drawTankUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawTankUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
         break;
       case 'arachnid':
-        this.drawArachnidUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawArachnidUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
         break;
       default:
-        this.drawScoutUnit(x, y, radius, rotation, base, light, dark, isSelected, entity);
+        this.drawScoutUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
     }
 
     // Commander indicator, health bar, target lines (only on body pass)
@@ -632,7 +845,12 @@ export class EntityRenderer {
             const target = this.entitySource.getEntity(weapon.targetEntityId);
             if (target) {
               this.graphics.lineStyle(1, 0xff0000, 0.3);
-              this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
+              this.graphics.lineBetween(
+                x,
+                y,
+                target.transform.x,
+                target.transform.y
+              );
             }
           }
         }
@@ -643,9 +861,17 @@ export class EntityRenderer {
   // ==================== UNIT TYPE RENDERERS ====================
 
   // Scout: Fast wheeled unit - 2 wheels, light body, dark accents
-  private drawScoutUnit(x: number, y: number, r: number, bodyRot: number,
-    base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-
+  private drawScoutUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
     // Body pass
     if (!this.turretsOnly) {
       const cos = Math.cos(bodyRot);
@@ -655,12 +881,28 @@ export class EntityRenderer {
       const wheelOffset = r * 0.7;
       const wheelRadius = r * 0.35;
       this.graphics.fillStyle(this.WHITE, 0.9);
-      this.graphics.fillCircle(x - sin * wheelOffset, y + cos * wheelOffset, wheelRadius);
-      this.graphics.fillCircle(x + sin * wheelOffset, y - cos * wheelOffset, wheelRadius);
+      this.graphics.fillCircle(
+        x - sin * wheelOffset,
+        y + cos * wheelOffset,
+        wheelRadius
+      );
+      this.graphics.fillCircle(
+        x + sin * wheelOffset,
+        y - cos * wheelOffset,
+        wheelRadius
+      );
       // Wheel hubs (dark)
       this.graphics.fillStyle(dark, 1);
-      this.graphics.fillCircle(x - sin * wheelOffset, y + cos * wheelOffset, wheelRadius * 0.4);
-      this.graphics.fillCircle(x + sin * wheelOffset, y - cos * wheelOffset, wheelRadius * 0.4);
+      this.graphics.fillCircle(
+        x - sin * wheelOffset,
+        y + cos * wheelOffset,
+        wheelRadius * 0.4
+      );
+      this.graphics.fillCircle(
+        x + sin * wheelOffset,
+        y - cos * wheelOffset,
+        wheelRadius * 0.4
+      );
 
       // Body (circle) - light colored
       const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
@@ -697,9 +939,17 @@ export class EntityRenderer {
   }
 
   // Burst: Aggressive striker - 3 wheels in triangle, dark body, light accents
-  private drawBurstUnit(x: number, y: number, r: number, bodyRot: number,
-    base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-
+  private drawBurstUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
     // Body pass
     if (!this.turretsOnly) {
       // Three wheels (gray) in triangle formation
@@ -742,16 +992,34 @@ export class EntityRenderer {
         const perpY = Math.sin(turretRot + Math.PI / 2) * perpDist;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineBetween(x + perpX, y + perpY, endX + perpX, endY + perpY);
-        this.graphics.lineBetween(x - perpX, y - perpY, endX - perpX, endY - perpY);
+        this.graphics.lineBetween(
+          x + perpX,
+          y + perpY,
+          endX + perpX,
+          endY + perpY
+        );
+        this.graphics.lineBetween(
+          x - perpX,
+          y - perpY,
+          endX - perpX,
+          endY - perpY
+        );
       }
     }
   }
 
   // Beam/Insect: 6-legged insect with a single beam laser
-  private drawBeamUnit(x: number, y: number, r: number, bodyRot: number,
-    base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-
+  private drawBeamUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 
@@ -800,14 +1068,38 @@ export class EntityRenderer {
       const bodyLength = r * 0.9;
       const bodyWidth = r * 0.55;
       const bodyPoints = [
-        { x: x + cos * bodyLength - sin * bodyWidth * 0.3, y: y + sin * bodyLength + cos * bodyWidth * 0.3 },
-        { x: x + cos * bodyLength * 0.4 - sin * bodyWidth, y: y + sin * bodyLength * 0.4 + cos * bodyWidth },
-        { x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.7, y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.7 },
-        { x: x - cos * bodyLength - sin * bodyWidth * 0.3, y: y - sin * bodyLength + cos * bodyWidth * 0.3 },
-        { x: x - cos * bodyLength + sin * bodyWidth * 0.3, y: y - sin * bodyLength - cos * bodyWidth * 0.3 },
-        { x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.7, y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.7 },
-        { x: x + cos * bodyLength * 0.4 + sin * bodyWidth, y: y + sin * bodyLength * 0.4 - cos * bodyWidth },
-        { x: x + cos * bodyLength + sin * bodyWidth * 0.3, y: y + sin * bodyLength - cos * bodyWidth * 0.3 },
+        {
+          x: x + cos * bodyLength - sin * bodyWidth * 0.3,
+          y: y + sin * bodyLength + cos * bodyWidth * 0.3,
+        },
+        {
+          x: x + cos * bodyLength * 0.4 - sin * bodyWidth,
+          y: y + sin * bodyLength * 0.4 + cos * bodyWidth,
+        },
+        {
+          x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.7,
+          y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.7,
+        },
+        {
+          x: x - cos * bodyLength - sin * bodyWidth * 0.3,
+          y: y - sin * bodyLength + cos * bodyWidth * 0.3,
+        },
+        {
+          x: x - cos * bodyLength + sin * bodyWidth * 0.3,
+          y: y - sin * bodyLength - cos * bodyWidth * 0.3,
+        },
+        {
+          x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.7,
+          y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.7,
+        },
+        {
+          x: x + cos * bodyLength * 0.4 + sin * bodyWidth,
+          y: y + sin * bodyLength * 0.4 - cos * bodyWidth,
+        },
+        {
+          x: x + cos * bodyLength + sin * bodyWidth * 0.3,
+          y: y + sin * bodyLength - cos * bodyWidth * 0.3,
+        },
       ];
       this.graphics.fillPoints(bodyPoints, true);
 
@@ -852,9 +1144,17 @@ export class EntityRenderer {
   }
 
   // Brawl: Heavy treaded unit - wide treads, bulky dark body, gray armor
-  private drawBrawlUnit(x: number, y: number, r: number, bodyRot: number,
-    base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-
+  private drawBrawlUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
     // Body pass
     if (!this.turretsOnly) {
       const cos = Math.cos(bodyRot);
@@ -871,7 +1171,13 @@ export class EntityRenderer {
 
         // Tread body (black)
         this.graphics.fillStyle(this.BLACK, 0.95);
-        this.drawOrientedRect(x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot);
+        this.drawOrientedRect(
+          x + offsetX,
+          y + offsetY,
+          treadLength,
+          treadWidth,
+          bodyRot
+        );
 
         // Tread detail lines (gray)
         this.graphics.lineStyle(1, this.GRAY, 0.7);
@@ -881,7 +1187,12 @@ export class EntityRenderer {
           const ly = y + offsetY + sin * lineOffset;
           const perpX = -sin * treadWidth * 0.45;
           const perpY = cos * treadWidth * 0.45;
-          this.graphics.lineBetween(lx - perpX, ly - perpY, lx + perpX, ly + perpY);
+          this.graphics.lineBetween(
+            lx - perpX,
+            ly - perpY,
+            lx + perpX,
+            ly + perpY
+          );
         }
       }
 
@@ -913,15 +1224,28 @@ export class EntityRenderer {
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
         this.graphics.lineStyle(5, light, 0.85);
-        this.graphics.lineBetween(x, y, endX * 0.9 + x * 0.1, endY * 0.9 + y * 0.1);
+        this.graphics.lineBetween(
+          x,
+          y,
+          endX * 0.9 + x * 0.1,
+          endY * 0.9 + y * 0.1
+        );
       }
     }
   }
 
   // Mortar: Artillery with 4 stabilizer legs - hexagon body, tall mortar tube
-  private drawMortarUnit(x: number, y: number, r: number, bodyRot: number,
-    base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-
+  private drawMortarUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
     // Body pass
     if (!this.turretsOnly) {
       // Four stabilizer legs (white struts with black feet)
@@ -974,9 +1298,17 @@ export class EntityRenderer {
   }
 
   // Snipe: Long-range wheeled platform - 4 wheels, rectangular body, long thin barrel
-  private drawSnipeUnit(x: number, y: number, r: number, bodyRot: number,
-    base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-
+  private drawSnipeUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
     // Body pass
     if (!this.turretsOnly) {
       const cos = Math.cos(bodyRot);
@@ -1015,7 +1347,13 @@ export class EntityRenderer {
 
       // Base color stripe
       this.graphics.fillStyle(base, 0.9);
-      this.drawOrientedRect(x - cos * r * 0.3, y - sin * r * 0.3, r * 0.15, r * 0.5, bodyRot);
+      this.drawOrientedRect(
+        x - cos * r * 0.3,
+        y - sin * r * 0.3,
+        r * 0.15,
+        r * 0.5,
+        bodyRot
+      );
 
       // Scope (small white circle at turret base)
       this.graphics.fillStyle(this.WHITE, 0.9);
@@ -1042,9 +1380,17 @@ export class EntityRenderer {
   }
 
   // Tank: Heavy tracked unit - massive treads, square turret, thick cannon
-  private drawTankUnit(x: number, y: number, r: number, bodyRot: number,
-    base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-
+  private drawTankUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
     // Body pass
     if (!this.turretsOnly) {
       const cos = Math.cos(bodyRot);
@@ -1061,12 +1407,19 @@ export class EntityRenderer {
 
         // Tread body (very dark)
         this.graphics.fillStyle(dark, 0.95);
-        this.drawOrientedRect(x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot);
+        this.drawOrientedRect(
+          x + offsetX,
+          y + offsetY,
+          treadLength,
+          treadWidth,
+          bodyRot
+        );
 
         // Tread wheels (white circles along tread)
         const numWheels = 4;
         for (let i = 0; i < numWheels; i++) {
-          const wheelOffset = (i - (numWheels - 1) / 2) * (treadLength / (numWheels + 0.5));
+          const wheelOffset =
+            (i - (numWheels - 1) / 2) * (treadLength / (numWheels + 0.5));
           const wx = x + offsetX + cos * wheelOffset;
           const wy = y + offsetY + sin * wheelOffset;
           this.graphics.fillStyle(this.WHITE, 0.85);
@@ -1131,9 +1484,17 @@ export class EntityRenderer {
   }
 
   // Arachnid: Titan spider unit - 8 animated legs, 8 beam weapons
-  private drawArachnidUnit(x: number, y: number, r: number, bodyRot: number,
-    base: number, light: number, dark: number, selected: boolean, entity: Entity): void {
-
+  private drawArachnidUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 
@@ -1182,14 +1543,38 @@ export class EntityRenderer {
       const bodyLength = r * 1.2;
       const bodyWidth = r * 0.7;
       const bodyPoints = [
-        { x: x + cos * bodyLength - sin * bodyWidth * 0.5, y: y + sin * bodyLength + cos * bodyWidth * 0.5 },
-        { x: x + cos * bodyLength * 0.7 - sin * bodyWidth, y: y + sin * bodyLength * 0.7 + cos * bodyWidth },
-        { x: x - cos * bodyLength * 0.3 - sin * bodyWidth, y: y - sin * bodyLength * 0.3 + cos * bodyWidth },
-        { x: x - cos * bodyLength - sin * bodyWidth * 0.5, y: y - sin * bodyLength + cos * bodyWidth * 0.5 },
-        { x: x - cos * bodyLength + sin * bodyWidth * 0.5, y: y - sin * bodyLength - cos * bodyWidth * 0.5 },
-        { x: x - cos * bodyLength * 0.3 + sin * bodyWidth, y: y - sin * bodyLength * 0.3 - cos * bodyWidth },
-        { x: x + cos * bodyLength * 0.7 + sin * bodyWidth, y: y + sin * bodyLength * 0.7 - cos * bodyWidth },
-        { x: x + cos * bodyLength + sin * bodyWidth * 0.5, y: y + sin * bodyLength - cos * bodyWidth * 0.5 },
+        {
+          x: x + cos * bodyLength - sin * bodyWidth * 0.5,
+          y: y + sin * bodyLength + cos * bodyWidth * 0.5,
+        },
+        {
+          x: x + cos * bodyLength * 0.7 - sin * bodyWidth,
+          y: y + sin * bodyLength * 0.7 + cos * bodyWidth,
+        },
+        {
+          x: x - cos * bodyLength * 0.3 - sin * bodyWidth,
+          y: y - sin * bodyLength * 0.3 + cos * bodyWidth,
+        },
+        {
+          x: x - cos * bodyLength - sin * bodyWidth * 0.5,
+          y: y - sin * bodyLength + cos * bodyWidth * 0.5,
+        },
+        {
+          x: x - cos * bodyLength + sin * bodyWidth * 0.5,
+          y: y - sin * bodyLength - cos * bodyWidth * 0.5,
+        },
+        {
+          x: x - cos * bodyLength * 0.3 + sin * bodyWidth,
+          y: y - sin * bodyLength * 0.3 - cos * bodyWidth,
+        },
+        {
+          x: x + cos * bodyLength * 0.7 + sin * bodyWidth,
+          y: y + sin * bodyLength * 0.7 - cos * bodyWidth,
+        },
+        {
+          x: x + cos * bodyLength + sin * bodyWidth * 0.5,
+          y: y + sin * bodyLength - cos * bodyWidth * 0.5,
+        },
       ];
       this.graphics.fillPoints(bodyPoints, true);
 
@@ -1266,26 +1651,53 @@ export class EntityRenderer {
 
   // ==================== SHAPE HELPERS ====================
 
-  private drawPolygon(x: number, y: number, radius: number, sides: number, rotation: number): void {
+  private drawPolygon(
+    x: number,
+    y: number,
+    radius: number,
+    sides: number,
+    rotation: number
+  ): void {
     const points: { x: number; y: number }[] = [];
     for (let i = 0; i < sides; i++) {
       const angle = rotation + (i / sides) * Math.PI * 2;
-      points.push({ x: x + Math.cos(angle) * radius, y: y + Math.sin(angle) * radius });
+      points.push({
+        x: x + Math.cos(angle) * radius,
+        y: y + Math.sin(angle) * radius,
+      });
     }
     this.graphics.fillPoints(points, true);
   }
 
-  private drawOrientedRect(x: number, y: number, length: number, width: number, rotation: number): void {
+  private drawOrientedRect(
+    x: number,
+    y: number,
+    length: number,
+    width: number,
+    rotation: number
+  ): void {
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);
     const halfLength = length / 2;
     const halfWidth = width / 2;
 
     const points = [
-      { x: x + cos * halfLength - sin * halfWidth, y: y + sin * halfLength + cos * halfWidth },
-      { x: x + cos * halfLength + sin * halfWidth, y: y + sin * halfLength - cos * halfWidth },
-      { x: x - cos * halfLength + sin * halfWidth, y: y - sin * halfLength - cos * halfWidth },
-      { x: x - cos * halfLength - sin * halfWidth, y: y - sin * halfLength + cos * halfWidth },
+      {
+        x: x + cos * halfLength - sin * halfWidth,
+        y: y + sin * halfLength + cos * halfWidth,
+      },
+      {
+        x: x + cos * halfLength + sin * halfWidth,
+        y: y + sin * halfLength - cos * halfWidth,
+      },
+      {
+        x: x - cos * halfLength + sin * halfWidth,
+        y: y - sin * halfLength - cos * halfWidth,
+      },
+      {
+        x: x - cos * halfLength - sin * halfWidth,
+        y: y - sin * halfLength + cos * halfWidth,
+      },
     ];
     this.graphics.fillPoints(points, true);
   }
@@ -1317,7 +1729,10 @@ export class EntityRenderer {
     for (let i = 0; i < points * 2; i++) {
       const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
       const r = i % 2 === 0 ? size : size * 0.4;
-      starPoints.push({ x: x + Math.cos(angle) * r, y: y + Math.sin(angle) * r });
+      starPoints.push({
+        x: x + Math.cos(angle) * r,
+        y: y + Math.sin(angle) * r,
+      });
     }
     this.graphics.fillPoints(starPoints, true);
   }
@@ -1374,7 +1789,12 @@ export class EntityRenderer {
         const color = ACTION_COLORS['patrol'];
         // Draw dashed-style return line (using lower alpha)
         this.graphics.lineStyle(lineWidth, color, 0.25);
-        this.graphics.lineBetween(lastAction.x, lastAction.y, firstPatrolAction.x, firstPatrolAction.y);
+        this.graphics.lineBetween(
+          lastAction.x,
+          lastAction.y,
+          firstPatrolAction.x,
+          firstPatrolAction.y
+        );
       }
     }
   }
@@ -1412,9 +1832,12 @@ export class EntityRenderer {
       if (i === waypoints.length - 1) {
         this.graphics.fillStyle(color, 0.9);
         this.graphics.fillTriangle(
-          wp.x, wp.y - 10,
-          wp.x + 10, wp.y - 5,
-          wp.x, wp.y
+          wp.x,
+          wp.y - 10,
+          wp.x + 10,
+          wp.y - 5,
+          wp.x,
+          wp.y
         );
         this.graphics.lineStyle(1, color, 1);
         this.graphics.lineBetween(wp.x, wp.y, wp.x, wp.y - 10);
@@ -1429,13 +1852,20 @@ export class EntityRenderer {
       const lastWp = waypoints[waypoints.length - 1];
       if (lastWp.type === 'patrol') {
         // Find first patrol waypoint
-        const firstPatrolIndex = waypoints.findIndex(wp => wp.type === 'patrol');
+        const firstPatrolIndex = waypoints.findIndex(
+          (wp) => wp.type === 'patrol'
+        );
         if (firstPatrolIndex >= 0) {
           const firstPatrolWp = waypoints[firstPatrolIndex];
           const color = WAYPOINT_COLORS['patrol'];
           // Draw dashed-style return line (using lower alpha)
           this.graphics.lineStyle(lineWidth, color, 0.25);
-          this.graphics.lineBetween(lastWp.x, lastWp.y, firstPatrolWp.x, firstPatrolWp.y);
+          this.graphics.lineBetween(
+            lastWp.x,
+            lastWp.y,
+            firstPatrolWp.x,
+            firstPatrolWp.y
+          );
         }
       }
     }
@@ -1443,7 +1873,8 @@ export class EntityRenderer {
 
   // Render spray effect from commander to target (build/heal)
   private renderSprayEffect(target: SprayTarget): void {
-    const color = target.type === 'build' ? SPRAY_BUILD_COLOR : SPRAY_HEAL_COLOR;
+    const color =
+      target.type === 'build' ? SPRAY_BUILD_COLOR : SPRAY_HEAL_COLOR;
     const { sourceX, sourceY, targetX, targetY, intensity } = target;
 
     // Calculate direction vector
@@ -1477,11 +1908,12 @@ export class EntityRenderer {
 
     for (let stream = 0; stream < streamCount; stream++) {
       // Each stream has a different angle offset (fan pattern)
-      const streamAngle = ((stream / (streamCount - 1)) - 0.5) * 1.2; // -0.6 to 0.6 radians spread
+      const streamAngle = (stream / (streamCount - 1) - 0.5) * 1.2; // -0.6 to 0.6 radians spread
 
       for (let i = 0; i < particlesPerStream; i++) {
         // Each particle has a different phase
-        const phase = (baseTime / 250 + i / particlesPerStream + stream * 0.13) % 1;
+        const phase =
+          (baseTime / 250 + i / particlesPerStream + stream * 0.13) % 1;
 
         // Particle position along the path (0 = source, 1 = target)
         const t = phase;
@@ -1502,7 +1934,8 @@ export class EntityRenderer {
 
         // Add extra spread near the target
         const spreadNearTarget = t * t * targetSize * 0.4;
-        const spreadAngle = Math.sin(baseTime / 100 + i * 3 + stream) * spreadNearTarget;
+        const spreadAngle =
+          Math.sin(baseTime / 100 + i * 3 + stream) * spreadNearTarget;
         px += perpX * spreadAngle;
         py += perpY * spreadAngle;
 
@@ -1532,10 +1965,12 @@ export class EntityRenderer {
     const splatterCount = Math.max(8, Math.floor(20 * effectiveIntensity));
     for (let i = 0; i < splatterCount; i++) {
       const angle = (baseTime / 200 + i / splatterCount) * Math.PI * 2;
-      const splatterDist = (Math.sin(baseTime / 150 + i * 2) * 0.3 + 0.7) * targetSize * 0.6;
+      const splatterDist =
+        (Math.sin(baseTime / 150 + i * 2) * 0.3 + 0.7) * targetSize * 0.6;
       const sx = targetX + Math.cos(angle) * splatterDist;
       const sy = targetY + Math.sin(angle) * splatterDist;
-      const splatterAlpha = (0.5 + Math.sin(baseTime / 100 + i) * 0.3) * effectiveIntensity;
+      const splatterAlpha =
+        (0.5 + Math.sin(baseTime / 100 + i) * 0.3) * effectiveIntensity;
       const splatterSize = 3 + Math.sin(baseTime / 80 + i) * 1.5;
 
       this.graphics.fillStyle(color, splatterAlpha);
@@ -1600,8 +2035,11 @@ export class EntityRenderer {
       // Spark particles radiating outward
       const sparkCount = 6;
       for (let i = 0; i < sparkCount; i++) {
-        const angle = (this.sprayParticleTime / 150 + i / sparkCount) * Math.PI * 2;
-        const sparkDist = explosionRadius * (0.8 + Math.sin(this.sprayParticleTime / 50 + i * 2) * 0.4);
+        const angle =
+          (this.sprayParticleTime / 150 + i / sparkCount) * Math.PI * 2;
+        const sparkDist =
+          explosionRadius *
+          (0.8 + Math.sin(this.sprayParticleTime / 50 + i * 2) * 0.4);
         const sx = endX + Math.cos(angle) * sparkDist;
         const sy = endY + Math.sin(angle) * sparkDist;
         this.graphics.fillStyle(color, 0.7);
@@ -1613,7 +2051,8 @@ export class EntityRenderer {
 
       // Outer glow (pulsating)
       const pulsePhase = (projectile.timeAlive / 100) % 1;
-      const pulseRadius = radius * (1.3 + 0.2 * Math.sin(pulsePhase * Math.PI * 2));
+      const pulseRadius =
+        radius * (1.3 + 0.2 * Math.sin(pulsePhase * Math.PI * 2));
       this.graphics.fillStyle(0xff4400, 0.3);
       this.graphics.fillCircle(x, y, pulseRadius);
 
@@ -1635,7 +2074,8 @@ export class EntityRenderer {
 
       // Fire trail
       const velMag = Math.sqrt(
-        projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY
+        projectile.velocityX * projectile.velocityX +
+          projectile.velocityY * projectile.velocityY
       );
       if (velMag > 0) {
         const dirX = projectile.velocityX / velMag;
@@ -1660,7 +2100,8 @@ export class EntityRenderer {
       // Trail effect (draw previous positions)
       const trailLength = config.trailLength ?? 3;
       const velMag = Math.sqrt(
-        projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY
+        projectile.velocityX * projectile.velocityX +
+          projectile.velocityY * projectile.velocityY
       );
       if (velMag > 0) {
         const dirX = projectile.velocityX / velMag;
@@ -1795,7 +2236,13 @@ export class EntityRenderer {
   }
 
   // Render factory-specific elements (queue, rally point)
-  private renderFactory(entity: Entity, left: number, top: number, width: number, height: number): void {
+  private renderFactory(
+    entity: Entity,
+    left: number,
+    top: number,
+    width: number,
+    height: number
+  ): void {
     if (!entity.factory) return;
 
     const factory = entity.factory;
@@ -1810,13 +2257,36 @@ export class EntityRenderer {
     // Inner machinery area (darker background)
     const machineMargin = 8;
     this.graphics.fillStyle(0x1a1a1a, 0.9);
-    this.graphics.fillRect(left + machineMargin, top + machineMargin, width - machineMargin * 2, height - machineMargin * 2);
+    this.graphics.fillRect(
+      left + machineMargin,
+      top + machineMargin,
+      width - machineMargin * 2,
+      height - machineMargin * 2
+    );
 
     // Animated gear/cogs - spin when producing
-    const gearPhase = isProducing ? (this.sprayParticleTime / 1000) : 0;
-    this.renderGear(left + width * 0.25, top + height * 0.35, 12, gearPhase, playerColor);
-    this.renderGear(left + width * 0.75, top + height * 0.35, 10, -gearPhase * 1.3, playerColor);
-    this.renderGear(left + width * 0.5, top + height * 0.6, 14, gearPhase * 0.8, playerColor);
+    const gearPhase = isProducing ? this.sprayParticleTime / 1000 : 0;
+    this.renderGear(
+      left + width * 0.25,
+      top + height * 0.35,
+      12,
+      gearPhase,
+      playerColor
+    );
+    this.renderGear(
+      left + width * 0.75,
+      top + height * 0.35,
+      10,
+      -gearPhase * 1.3,
+      playerColor
+    );
+    this.renderGear(
+      left + width * 0.5,
+      top + height * 0.6,
+      14,
+      gearPhase * 0.8,
+      playerColor
+    );
 
     // Conveyor belt exit (bottom center)
     const conveyorWidth = width * 0.4;
@@ -1833,7 +2303,12 @@ export class EntityRenderer {
     for (let i = -1; i < conveyorWidth / 8 + 1; i++) {
       const lineX = conveyorX + i * 8 + beltOffset;
       if (lineX >= conveyorX && lineX <= conveyorX + conveyorWidth) {
-        this.graphics.lineBetween(lineX, conveyorY, lineX, conveyorY + conveyorHeight);
+        this.graphics.lineBetween(
+          lineX,
+          conveyorY,
+          lineX,
+          conveyorY + conveyorHeight
+        );
       }
     }
 
@@ -1864,13 +2339,23 @@ export class EntityRenderer {
 
     // Top-left light - power status (green = ready)
     this.graphics.fillStyle(0x44ff44, 0.9);
-    this.graphics.fillCircle(left + lightMargin, top + lightMargin, lightRadius);
+    this.graphics.fillCircle(
+      left + lightMargin,
+      top + lightMargin,
+      lightRadius
+    );
 
     // Top-right light - production status (yellow when producing, dim when idle)
     const prodLightColor = isProducing ? 0xffcc00 : 0x555533;
-    const prodLightAlpha = isProducing ? 0.9 + Math.sin(this.sprayParticleTime / 100) * 0.1 : 0.5;
+    const prodLightAlpha = isProducing
+      ? 0.9 + Math.sin(this.sprayParticleTime / 100) * 0.1
+      : 0.5;
     this.graphics.fillStyle(prodLightColor, prodLightAlpha);
-    this.graphics.fillCircle(left + width - lightMargin, top + lightMargin, lightRadius);
+    this.graphics.fillCircle(
+      left + width - lightMargin,
+      top + lightMargin,
+      lightRadius
+    );
 
     // Production glow effect when building
     if (isProducing) {
@@ -1890,12 +2375,20 @@ export class EntityRenderer {
       // Rally point marker (small flag)
       this.graphics.fillStyle(0x00ff00, 0.7);
       this.graphics.fillTriangle(
-        factory.rallyX, factory.rallyY - 8,
-        factory.rallyX + 8, factory.rallyY - 4,
-        factory.rallyX, factory.rallyY
+        factory.rallyX,
+        factory.rallyY - 8,
+        factory.rallyX + 8,
+        factory.rallyY - 4,
+        factory.rallyX,
+        factory.rallyY
       );
       this.graphics.lineStyle(1, 0x00ff00, 0.8);
-      this.graphics.lineBetween(factory.rallyX, factory.rallyY, factory.rallyX, factory.rallyY - 8);
+      this.graphics.lineBetween(
+        factory.rallyX,
+        factory.rallyY,
+        factory.rallyX,
+        factory.rallyY - 8
+      );
     }
 
     // ========== PRODUCTION PROGRESS ==========
@@ -1931,7 +2424,13 @@ export class EntityRenderer {
   }
 
   // Render a gear/cog shape
-  private renderGear(x: number, y: number, radius: number, rotation: number, color: number): void {
+  private renderGear(
+    x: number,
+    y: number,
+    radius: number,
+    rotation: number,
+    color: number
+  ): void {
     const teeth = 6;
     const innerRadius = radius * 0.6;
     const toothHeight = radius * 0.35;
@@ -1943,13 +2442,33 @@ export class EntityRenderer {
     // Teeth
     for (let i = 0; i < teeth; i++) {
       const angle = rotation + (i / teeth) * Math.PI * 2;
-      const toothWidth = (Math.PI * 2 / teeth) * 0.4;
+      const toothWidth = ((Math.PI * 2) / teeth) * 0.4;
 
       const toothPoints = [
-        { x: x + Math.cos(angle - toothWidth) * innerRadius, y: y + Math.sin(angle - toothWidth) * innerRadius },
-        { x: x + Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight), y: y + Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight) },
-        { x: x + Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight), y: y + Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight) },
-        { x: x + Math.cos(angle + toothWidth) * innerRadius, y: y + Math.sin(angle + toothWidth) * innerRadius },
+        {
+          x: x + Math.cos(angle - toothWidth) * innerRadius,
+          y: y + Math.sin(angle - toothWidth) * innerRadius,
+        },
+        {
+          x:
+            x +
+            Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight),
+          y:
+            y +
+            Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight),
+        },
+        {
+          x:
+            x +
+            Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight),
+          y:
+            y +
+            Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight),
+        },
+        {
+          x: x + Math.cos(angle + toothWidth) * innerRadius,
+          y: y + Math.sin(angle + toothWidth) * innerRadius,
+        },
       ];
 
       this.graphics.fillStyle(color, 0.7);
@@ -1972,7 +2491,7 @@ export class EntityRenderer {
 
     for (let i = 0; i < particleCount; i++) {
       // Each particle rises and fades
-      const phase = ((baseTime / 800 + i / particleCount) % 1);
+      const phase = (baseTime / 800 + i / particleCount) % 1;
       const lifetime = phase;
 
       // Rise and drift
@@ -1993,7 +2512,13 @@ export class EntityRenderer {
   }
 
   // Render solar panel visual details
-  private renderSolarPanel(entity: Entity, left: number, top: number, width: number, height: number): void {
+  private renderSolarPanel(
+    entity: Entity,
+    left: number,
+    top: number,
+    width: number,
+    height: number
+  ): void {
     const playerColor = this.getPlayerColor(entity.ownership?.playerId);
 
     // Panel grid - dark blue photovoltaic cells
@@ -2030,23 +2555,37 @@ export class EntityRenderer {
         // Grid lines on each cell
         this.graphics.lineStyle(1, 0x102030, 0.8);
         // Horizontal line
-        this.graphics.lineBetween(cellX, cellY + cellHeight / 2, cellX + cellWidth, cellY + cellHeight / 2);
+        this.graphics.lineBetween(
+          cellX,
+          cellY + cellHeight / 2,
+          cellX + cellWidth,
+          cellY + cellHeight / 2
+        );
         // Vertical line
-        this.graphics.lineBetween(cellX + cellWidth / 2, cellY, cellX + cellWidth / 2, cellY + cellHeight);
+        this.graphics.lineBetween(
+          cellX + cellWidth / 2,
+          cellY,
+          cellX + cellWidth / 2,
+          cellY + cellHeight
+        );
       }
     }
 
     // Shimmer effect (subtle moving highlight)
     const shimmerPhase = (this.sprayParticleTime / 2000) % 1;
-    const shimmerX = innerLeft + shimmerPhase * innerWidth * 1.5 - innerWidth * 0.25;
+    const shimmerX =
+      innerLeft + shimmerPhase * innerWidth * 1.5 - innerWidth * 0.25;
     const shimmerWidth = innerWidth * 0.3;
 
-    if (shimmerX > innerLeft - shimmerWidth && shimmerX < innerLeft + innerWidth) {
+    if (
+      shimmerX > innerLeft - shimmerWidth &&
+      shimmerX < innerLeft + innerWidth
+    ) {
       // Gradient shimmer (brighter in center)
       for (let i = 0; i < 5; i++) {
         const segX = shimmerX + i * (shimmerWidth / 5);
         const segW = shimmerWidth / 5;
-        const alpha = (i < 2.5) ? i * 0.04 : (4 - i) * 0.04;
+        const alpha = i < 2.5 ? i * 0.04 : (4 - i) * 0.04;
 
         if (segX >= innerLeft && segX + segW <= innerLeft + innerWidth) {
           this.graphics.fillStyle(0xffffff, alpha);
@@ -2072,8 +2611,18 @@ export class EntityRenderer {
     this.graphics.fillRect(left, top + height - cornerSize, 2, cornerSize);
 
     // Bottom-right corner
-    this.graphics.fillRect(left + width - cornerSize, top + height - 2, cornerSize, 2);
-    this.graphics.fillRect(left + width - 2, top + height - cornerSize, 2, cornerSize);
+    this.graphics.fillRect(
+      left + width - cornerSize,
+      top + height - 2,
+      cornerSize,
+      2
+    );
+    this.graphics.fillRect(
+      left + width - 2,
+      top + height - cornerSize,
+      2,
+      cornerSize
+    );
 
     // Small power indicator LED
     const ledX = left + width - 8;
