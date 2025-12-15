@@ -228,7 +228,7 @@ export class WorldState {
     x: number,
     y: number,
     playerId: PlayerId,
-    weaponId: string = 'minigun',
+    weaponId: string = 'scout',
     radius: number = 15,
     moveSpeed: number = 100,
     turretTurnRate: number = 3, // radians per second (~172°/sec default)

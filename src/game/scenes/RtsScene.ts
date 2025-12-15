@@ -21,13 +21,13 @@ export type HostViewMode = 'simulation' | 'client';
 
 // Weapon ID to display label
 const WEAPON_LABELS: Record<string, string> = {
-  minigun: 'Minigun',
-  laser: 'Laser',
-  cannon: 'Cannon',
-  shotgun: 'Shotgun',
-  grenade: 'Grenade',
-  railgun: 'Railgun',
-  burstRifle: 'Burst Rifle',
+  scout: 'Scout',
+  burst: 'Burst',
+  beam: 'Beam',
+  brawl: 'Brawl',
+  mortar: 'Mortar',
+  snipe: 'Snipe',
+  tank: 'Tank',
 };
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';

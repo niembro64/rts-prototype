@@ -61,13 +61,13 @@ const buildingOptions: { type: 'solar' | 'factory'; label: string; key: string; 
 ];
 
 const unitOptions: { weaponId: string; label: string; cost: number }[] = [
-  { weaponId: 'minigun', label: 'Minigun', cost: 80 },
-  { weaponId: 'shotgun', label: 'Shotgun', cost: 90 },
-  { weaponId: 'laser', label: 'Laser', cost: 100 },
-  { weaponId: 'burstRifle', label: 'Burst Rifle', cost: 120 },
-  { weaponId: 'cannon', label: 'Cannon', cost: 150 },
-  { weaponId: 'grenade', label: 'Grenade', cost: 160 },
-  { weaponId: 'railgun', label: 'Railgun', cost: 180 },
+  { weaponId: 'scout', label: 'Scout', cost: 40 },
+  { weaponId: 'burst', label: 'Burst', cost: 70 },
+  { weaponId: 'beam', label: 'Beam', cost: 100 },
+  { weaponId: 'brawl', label: 'Brawl', cost: 120 },
+  { weaponId: 'mortar', label: 'Mortar', cost: 150 },
+  { weaponId: 'snipe', label: 'Snipe', cost: 180 },
+  { weaponId: 'tank', label: 'Tank', cost: 250 },
 ];
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)

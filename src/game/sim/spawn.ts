@@ -12,10 +12,10 @@ interface UnitSpawnConfig {
 }
 
 const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
-  { weaponId: 'minigun', count: 3, radius: 12, moveSpeed: 120 },
-  { weaponId: 'laser', count: 2, radius: 14, moveSpeed: 100 },
-  { weaponId: 'cannon', count: 2, radius: 16, moveSpeed: 80 },
-  { weaponId: 'shotgun', count: 2, radius: 13, moveSpeed: 110 },
+  { weaponId: 'scout', count: 3, radius: 8, moveSpeed: 160 },
+  { weaponId: 'beam', count: 2, radius: 13, moveSpeed: 100 },
+  { weaponId: 'tank', count: 1, radius: 22, moveSpeed: 45 },
+  { weaponId: 'brawl', count: 2, radius: 15, moveSpeed: 85 },
 ];
 
 // Spawn a commander for a player

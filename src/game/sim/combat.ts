@@ -565,8 +565,8 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
         const splashHits = applyAoEDamage(world, projEntity, unitsToRemove, buildingsToRemove);
         proj.hasExploded = true;
 
-        // Add explosion audio event if there were hits or it's a grenade
-        if (splashHits > 0 || config.id === 'grenade') {
+        // Add explosion audio event if there were hits or it's a mortar
+        if (splashHits > 0 || config.id === 'mortar') {
           audioEvents.push({
             type: 'hit',
             weaponId: config.id,
@@ -656,7 +656,7 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
         // Check if unit died
         if (target.unit.hp <= 0 && !unitsToRemove.includes(target.id)) {
           // Add death audio event based on the dying unit's weapon type
-          const deathWeaponId = target.weapon?.config.id ?? 'minigun';
+          const deathWeaponId = target.weapon?.config.id ?? 'scout';
           audioEvents.push({
             type: 'death',
             weaponId: deathWeaponId,

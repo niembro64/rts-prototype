@@ -223,87 +223,89 @@ export class EntityRenderer {
   }
 
   // Get a slightly tinted color based on weapon type (for unit body)
+  // Uses only lightness/darkness variations, no hue shifts
   private getWeaponTintedColor(baseColor: number, weaponId: string): number {
     const r = (baseColor >> 16) & 0xff;
     const g = (baseColor >> 8) & 0xff;
     const b = baseColor & 0xff;
 
-    // Small color shifts based on weapon - all stay within team color palette
+    // Lightness/darkness variations only - no hue changes
     switch (weaponId) {
-      case 'laser': return this.shiftColor(r, g, b, 20, 20, 30); // Lighter
-      case 'minigun': return baseColor; // Base color
-      case 'shotgun': return this.shiftColor(r, g, b, 30, 10, 0); // Warmer/brighter
-      case 'cannon': return this.shiftColor(r, g, b, -30, -30, -20); // Darker
-      case 'grenade': return this.shiftColor(r, g, b, 10, 20, 0); // Slightly lighter
-      case 'railgun': return this.shiftColor(r, g, b, 0, 20, 40); // Cooler/brighter
-      case 'burstRifle': return this.shiftColor(r, g, b, 25, 0, 10); // Warmer
+      case 'scout': return this.shiftColorUniform(r, g, b, 70); // Very light (almost white)
+      case 'burst': return this.shiftColorUniform(r, g, b, 40); // Light
+      case 'beam': return baseColor; // Base color (unchanged)
+      case 'brawl': return this.shiftColorUniform(r, g, b, -20); // Slightly dark
+      case 'mortar': return this.shiftColorUniform(r, g, b, -40); // Medium dark
+      case 'snipe': return this.shiftColorUniform(r, g, b, 20); // Slightly light (high contrast)
+      case 'tank': return this.shiftColorUniform(r, g, b, -70); // Very dark (almost black)
       default: return baseColor;
     }
   }
 
   // Get team-based weapon color for turrets and projectiles
+  // Uses only lightness/darkness/saturation variations
   private getTeamWeaponColor(baseColor: number, weaponId: string): number {
     const r = (baseColor >> 16) & 0xff;
     const g = (baseColor >> 8) & 0xff;
     const b = baseColor & 0xff;
 
-    // Different brightness/saturation variations for each weapon type
-    // All colors stay within the team's color family
+    // Different brightness variations for each weapon type
     switch (weaponId) {
-      case 'minigun': return this.shiftColor(r, g, b, 60, 60, 60); // Bright/white-ish
-      case 'laser': return this.shiftColor(r, g, b, 80, 50, 80); // Very bright, slight pink/cyan
-      case 'shotgun': return this.shiftColor(r, g, b, 50, 30, 0); // Warm bright
-      case 'cannon': return this.shiftColor(r, g, b, -20, -20, -20); // Darker metallic
-      case 'grenade': return this.shiftColor(r, g, b, 40, 60, 20); // Lighter
-      case 'railgun': return this.shiftColor(r, g, b, 30, 70, 100); // Cyan-shifted bright
-      case 'burstRifle': return this.shiftColor(r, g, b, 70, 40, 60); // Pink-ish bright
-      default: return this.shiftColor(r, g, b, 50, 50, 50);
+      case 'scout': return this.shiftColorUniform(r, g, b, 100); // Near white
+      case 'burst': return this.shiftColorUniform(r, g, b, 60); // Bright
+      case 'beam': return this.shiftColorUniform(r, g, b, 80); // Very bright beam
+      case 'brawl': return this.shiftColorUniform(r, g, b, 30); // Medium bright
+      case 'mortar': return this.shiftColorUniform(r, g, b, 50); // Bright (visible splash)
+      case 'snipe': return this.shiftColorUniform(r, g, b, 120); // Near white (piercing)
+      case 'tank': return this.shiftColorUniform(r, g, b, -30); // Dark heavy shell
+      default: return this.shiftColorUniform(r, g, b, 50);
     }
   }
 
-  private shiftColor(r: number, g: number, b: number, dr: number, dg: number, db: number): number {
+  // Shift all color channels uniformly (lighter or darker)
+  private shiftColorUniform(r: number, g: number, b: number, delta: number): number {
     const clamp = (v: number) => Math.max(0, Math.min(255, v));
-    return (clamp(r + dr) << 16) | (clamp(g + dg) << 8) | clamp(b + db);
+    return (clamp(r + delta) << 16) | (clamp(g + delta) << 8) | clamp(b + delta);
   }
 
   // Draw unit shape based on weapon type
   private drawUnitShape(x: number, y: number, radius: number, rotation: number, weaponId: string, strokeOnly = false): void {
     switch (weaponId) {
-      case 'minigun':
-        // Hexagon - versatile baseline
-        this.drawPolygon(x, y, radius, 6, rotation, strokeOnly);
-        break;
-      case 'laser':
-        // Diamond - precise/elegant
-        this.drawPolygon(x, y, radius * 1.1, 4, rotation + Math.PI / 4, strokeOnly);
-        break;
-      case 'shotgun':
-        // Wide triangle/wedge - aggressive close range
-        this.drawWedge(x, y, radius, rotation, strokeOnly);
-        break;
-      case 'cannon':
-        // Square/tank - heavy and sturdy
-        this.drawPolygon(x, y, radius * 1.05, 4, rotation, strokeOnly);
-        break;
-      case 'grenade':
-        // Circle with bumps - explosive
-        this.drawBumpyCircle(x, y, radius, 5, strokeOnly);
-        break;
-      case 'railgun':
-        // Elongated diamond - sleek and fast
-        this.drawElongatedDiamond(x, y, radius, rotation, strokeOnly);
-        break;
-      case 'burstRifle':
-        // Triangle - aggressive
-        this.drawPolygon(x, y, radius * 1.1, 3, rotation - Math.PI / 2, strokeOnly);
-        break;
-      default:
-        // Fallback circle
+      case 'scout':
+        // Small circle - fast, nimble
         if (strokeOnly) {
           this.graphics.strokeCircle(x, y, radius);
         } else {
           this.graphics.fillCircle(x, y, radius);
         }
+        break;
+      case 'burst':
+        // Triangle - aggressive striker
+        this.drawPolygon(x, y, radius * 1.1, 3, rotation - Math.PI / 2, strokeOnly);
+        break;
+      case 'beam':
+        // Diamond - precise/elegant
+        this.drawPolygon(x, y, radius * 1.1, 4, rotation + Math.PI / 4, strokeOnly);
+        break;
+      case 'brawl':
+        // Wide wedge - aggressive close range
+        this.drawWedge(x, y, radius, rotation, strokeOnly);
+        break;
+      case 'mortar':
+        // Circle with bumps - explosive
+        this.drawBumpyCircle(x, y, radius, 5, strokeOnly);
+        break;
+      case 'snipe':
+        // Elongated diamond - sleek and precise
+        this.drawElongatedDiamond(x, y, radius, rotation, strokeOnly);
+        break;
+      case 'tank':
+        // Large square - heavy and sturdy
+        this.drawPolygon(x, y, radius * 1.05, 4, rotation, strokeOnly);
+        break;
+      default:
+        // Fallback hexagon
+        this.drawPolygon(x, y, radius, 6, rotation, strokeOnly);
     }
   }
 
@@ -373,60 +375,60 @@ export class EntityRenderer {
     const turretEndY = y + Math.sin(turretRotation) * turretLength;
 
     switch (weaponId) {
-      case 'minigun':
-        // Triple barrel
-        this.graphics.lineStyle(2, weaponColor, 0.9);
+      case 'scout':
+        // Triple tiny barrels - rapid fire
+        this.graphics.lineStyle(1.5, weaponColor, 0.9);
         for (let i = -1; i <= 1; i++) {
-          const offset = i * 2;
+          const offset = i * 1.5;
           const perpX = Math.cos(turretRotation + Math.PI / 2) * offset;
           const perpY = Math.sin(turretRotation + Math.PI / 2) * offset;
           this.graphics.lineBetween(x + perpX, y + perpY, turretEndX + perpX, turretEndY + perpY);
         }
         break;
-      case 'laser':
+      case 'burst':
+        // Double barrel - burst fire
+        this.graphics.lineStyle(2, weaponColor, 0.9);
+        const burstPerpDist = 2;
+        const burstPerpX = Math.cos(turretRotation + Math.PI / 2) * burstPerpDist;
+        const burstPerpY = Math.sin(turretRotation + Math.PI / 2) * burstPerpDist;
+        this.graphics.lineBetween(x + burstPerpX, y + burstPerpY, turretEndX + burstPerpX, turretEndY + burstPerpY);
+        this.graphics.lineBetween(x - burstPerpX, y - burstPerpY, turretEndX - burstPerpX, turretEndY - burstPerpY);
+        break;
+      case 'beam':
         // Glowing beam emitter
         this.graphics.lineStyle(4, weaponColor, 0.7);
         this.graphics.lineBetween(x, y, turretEndX, turretEndY);
         this.graphics.fillStyle(weaponColor, 0.9);
         this.graphics.fillCircle(turretEndX, turretEndY, 3);
         break;
-      case 'shotgun':
-        // Wide barrel
+      case 'brawl':
+        // Wide shotgun barrel
         this.graphics.lineStyle(5, weaponColor, 0.8);
         this.graphics.lineBetween(x, y, turretEndX * 0.9 + x * 0.1, turretEndY * 0.9 + y * 0.1);
         break;
-      case 'cannon':
-        // Thick barrel with muzzle
-        this.graphics.lineStyle(4, weaponColor, 0.9);
-        this.graphics.lineBetween(x, y, turretEndX, turretEndY);
-        this.graphics.fillStyle(0x333333, 1);
-        this.graphics.fillCircle(turretEndX, turretEndY, 4);
-        break;
-      case 'grenade':
-        // Mortar tube
+      case 'mortar':
+        // Short mortar tube
         this.graphics.lineStyle(4, weaponColor, 0.8);
-        const shortLen = turretLength * 0.7;
+        const mortarLen = turretLength * 0.7;
         this.graphics.lineBetween(
           x, y,
-          x + Math.cos(turretRotation) * shortLen,
-          y + Math.sin(turretRotation) * shortLen
+          x + Math.cos(turretRotation) * mortarLen,
+          y + Math.sin(turretRotation) * mortarLen
         );
         break;
-      case 'railgun':
-        // Long thin barrel with charge indicator
+      case 'snipe':
+        // Long thin sniper barrel
         this.graphics.lineStyle(2, weaponColor, 1);
-        this.graphics.lineBetween(x, y, turretEndX * 1.2 + x * -0.2, turretEndY * 1.2 + y * -0.2);
-        this.graphics.fillStyle(0x00ffff, 0.8);
-        this.graphics.fillCircle(x, y, 3);
+        this.graphics.lineBetween(x, y, turretEndX * 1.3 + x * -0.3, turretEndY * 1.3 + y * -0.3);
+        this.graphics.fillStyle(weaponColor, 0.8);
+        this.graphics.fillCircle(x, y, 2);
         break;
-      case 'burstRifle':
-        // Double barrel
-        this.graphics.lineStyle(2, weaponColor, 0.9);
-        const perpDist = 2;
-        const perpX = Math.cos(turretRotation + Math.PI / 2) * perpDist;
-        const perpY = Math.sin(turretRotation + Math.PI / 2) * perpDist;
-        this.graphics.lineBetween(x + perpX, y + perpY, turretEndX + perpX, turretEndY + perpY);
-        this.graphics.lineBetween(x - perpX, y - perpY, turretEndX - perpX, turretEndY - perpY);
+      case 'tank':
+        // Thick heavy cannon barrel
+        this.graphics.lineStyle(6, weaponColor, 0.9);
+        this.graphics.lineBetween(x, y, turretEndX, turretEndY);
+        this.graphics.fillStyle(0x222222, 1);
+        this.graphics.fillCircle(turretEndX, turretEndY, 5);
         break;
       default:
         this.graphics.lineStyle(3, weaponColor, 0.9);

@@ -2,94 +2,95 @@ import type { WeaponConfig } from './types';
 import { WEAPON_STATS } from '../../config';
 
 // Weapon configurations using values from config.ts
+// Note: color is no longer used - colors are team-based in renderer
 export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
-  // Laser - continuous beam, deals damage while on target
-  laser: {
-    id: 'laser',
-    damage: WEAPON_STATS.laser.damage,
-    range: WEAPON_STATS.laser.range,
-    cooldown: WEAPON_STATS.laser.cooldown,
-    beamDuration: WEAPON_STATS.laser.beamDuration,
-    beamWidth: WEAPON_STATS.laser.beamWidth,
-    color: 0xff0000,
+  // Scout - rapid fire small projectiles
+  scout: {
+    id: 'scout',
+    damage: WEAPON_STATS.scout.damage,
+    range: WEAPON_STATS.scout.range,
+    cooldown: WEAPON_STATS.scout.cooldown,
+    projectileSpeed: WEAPON_STATS.scout.projectileSpeed,
+    projectileRadius: 2,
+    projectileLifespan: 400,
+    color: 0xffffff, // Not used - team colors applied
   },
 
-  // Minigun - fast firing small projectiles (baseline weapon)
-  minigun: {
-    id: 'minigun',
-    damage: WEAPON_STATS.minigun.damage,
-    range: WEAPON_STATS.minigun.range,
-    cooldown: WEAPON_STATS.minigun.cooldown,
-    projectileSpeed: WEAPON_STATS.minigun.projectileSpeed,
+  // Burst - fires 3 shots in quick succession
+  burst: {
+    id: 'burst',
+    damage: WEAPON_STATS.burst.damage,
+    range: WEAPON_STATS.burst.range,
+    cooldown: WEAPON_STATS.burst.cooldown,
+    projectileSpeed: WEAPON_STATS.burst.projectileSpeed,
     projectileRadius: 3,
     projectileLifespan: 500,
-    color: 0xffff00,
+    burstCount: WEAPON_STATS.burst.burstCount,
+    burstDelay: WEAPON_STATS.burst.burstDelay,
+    color: 0xffffff,
   },
 
-  // Shotgun - multiple pellets with spread, short range
-  shotgun: {
-    id: 'shotgun',
-    damage: WEAPON_STATS.shotgun.damage,
-    range: WEAPON_STATS.shotgun.range,
-    cooldown: WEAPON_STATS.shotgun.cooldown,
-    projectileSpeed: WEAPON_STATS.shotgun.projectileSpeed,
+  // Beam - continuous beam, deals damage while on target
+  beam: {
+    id: 'beam',
+    damage: WEAPON_STATS.beam.damage,
+    range: WEAPON_STATS.beam.range,
+    cooldown: WEAPON_STATS.beam.cooldown,
+    beamDuration: WEAPON_STATS.beam.beamDuration,
+    beamWidth: WEAPON_STATS.beam.beamWidth,
+    color: 0xffffff,
+  },
+
+  // Brawl - shotgun spread, multiple pellets
+  brawl: {
+    id: 'brawl',
+    damage: WEAPON_STATS.brawl.damage,
+    range: WEAPON_STATS.brawl.range,
+    cooldown: WEAPON_STATS.brawl.cooldown,
+    projectileSpeed: WEAPON_STATS.brawl.projectileSpeed,
     projectileRadius: 4,
-    projectileLifespan: 250,
-    pelletCount: WEAPON_STATS.shotgun.pelletCount,
-    spreadAngle: Math.PI / 6,
-    color: 0xffaa00,
+    projectileLifespan: 300,
+    pelletCount: WEAPON_STATS.brawl.pelletCount,
+    spreadAngle: Math.PI / 5,
+    color: 0xffffff,
   },
 
-  // Cannon - slow, heavy projectile, long range
-  cannon: {
-    id: 'cannon',
-    damage: WEAPON_STATS.cannon.damage,
-    range: WEAPON_STATS.cannon.range,
-    cooldown: WEAPON_STATS.cannon.cooldown,
-    projectileSpeed: WEAPON_STATS.cannon.projectileSpeed,
-    projectileRadius: 8,
-    projectileLifespan: 1500,
-    color: 0x888888,
-  },
-
-  // Grenade - splash damage, good vs groups
-  grenade: {
-    id: 'grenade',
-    damage: WEAPON_STATS.grenade.damage,
-    range: WEAPON_STATS.grenade.range,
-    cooldown: WEAPON_STATS.grenade.cooldown,
-    projectileSpeed: WEAPON_STATS.grenade.projectileSpeed,
-    projectileRadius: 6,
-    projectileLifespan: 1500,
-    splashRadius: WEAPON_STATS.grenade.splashRadius,
+  // Mortar - splash damage artillery
+  mortar: {
+    id: 'mortar',
+    damage: WEAPON_STATS.mortar.damage,
+    range: WEAPON_STATS.mortar.range,
+    cooldown: WEAPON_STATS.mortar.cooldown,
+    projectileSpeed: WEAPON_STATS.mortar.projectileSpeed,
+    projectileRadius: 7,
+    projectileLifespan: 2000,
+    splashRadius: WEAPON_STATS.mortar.splashRadius,
     splashDamageFalloff: 0.4,
-    color: 0x44ff44,
+    color: 0xffffff,
   },
 
-  // Railgun - instant hitscan, pierces targets
-  railgun: {
-    id: 'railgun',
-    damage: WEAPON_STATS.railgun.damage,
-    range: WEAPON_STATS.railgun.range,
-    cooldown: WEAPON_STATS.railgun.cooldown,
-    beamDuration: WEAPON_STATS.railgun.beamDuration,
-    beamWidth: WEAPON_STATS.railgun.beamWidth,
-    color: 0x00ffff,
+  // Snipe - instant hitscan, pierces targets
+  snipe: {
+    id: 'snipe',
+    damage: WEAPON_STATS.snipe.damage,
+    range: WEAPON_STATS.snipe.range,
+    cooldown: WEAPON_STATS.snipe.cooldown,
+    beamDuration: WEAPON_STATS.snipe.beamDuration,
+    beamWidth: WEAPON_STATS.snipe.beamWidth,
+    color: 0xffffff,
     piercing: true,
   },
 
-  // Burst rifle - fires 3 shots in quick succession
-  burstRifle: {
-    id: 'burstRifle',
-    damage: WEAPON_STATS.burstRifle.damage,
-    range: WEAPON_STATS.burstRifle.range,
-    cooldown: WEAPON_STATS.burstRifle.cooldown,
-    projectileSpeed: WEAPON_STATS.burstRifle.projectileSpeed,
-    projectileRadius: 4,
-    projectileLifespan: 500,
-    burstCount: WEAPON_STATS.burstRifle.burstCount,
-    burstDelay: WEAPON_STATS.burstRifle.burstDelay,
-    color: 0xff88ff,
+  // Tank - slow, heavy projectile
+  tank: {
+    id: 'tank',
+    damage: WEAPON_STATS.tank.damage,
+    range: WEAPON_STATS.tank.range,
+    cooldown: WEAPON_STATS.tank.cooldown,
+    projectileSpeed: WEAPON_STATS.tank.projectileSpeed,
+    projectileRadius: 10,
+    projectileLifespan: 1800,
+    color: 0xffffff,
   },
 
   // D-gun - Commander's special weapon, destroys everything

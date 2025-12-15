@@ -427,25 +427,25 @@ export class AudioManager {
     const finalPitch = pitch * variation;
 
     switch (weaponId) {
-      case 'laser':
+      case 'beam':
         this.playLaserFire(finalPitch);
         break;
-      case 'minigun':
+      case 'scout':
         this.playMinigunFire(finalPitch);
         break;
-      case 'cannon':
+      case 'tank':
         this.playCannonFire(finalPitch);
         break;
-      case 'shotgun':
+      case 'brawl':
         this.playShotgunFire(finalPitch);
         break;
-      case 'grenade':
+      case 'mortar':
         this.playGrenadeFire(finalPitch);
         break;
-      case 'railgun':
+      case 'snipe':
         this.playRailgunFire(finalPitch);
         break;
-      case 'burstRifle':
+      case 'burst':
         this.playBurstRifleFire(finalPitch);
         break;
       default:
@@ -603,14 +603,14 @@ export class AudioManager {
   // Generic hit by weapon ID
   playWeaponHit(weaponId: string): void {
     switch (weaponId) {
-      case 'laser':
-      case 'railgun':
+      case 'beam':
+      case 'snipe':
         this.playLaserHit();
         break;
-      case 'cannon':
+      case 'tank':
         this.playHeavyHit();
         break;
-      case 'grenade':
+      case 'mortar':
         this.playExplosionHit();
         break;
       default:
@@ -767,17 +767,17 @@ export class AudioManager {
   // Death sound based on weapon type (determines unit "class")
   playUnitDeath(weaponId: string): void {
     switch (weaponId) {
-      case 'minigun':
-      case 'burstRifle':
+      case 'scout':
+      case 'burst':
         this.playSmallDeath();
         break;
-      case 'laser':
-      case 'shotgun':
-      case 'railgun':
+      case 'beam':
+      case 'brawl':
+      case 'snipe':
         this.playMediumDeath();
         break;
-      case 'cannon':
-      case 'grenade':
+      case 'tank':
+      case 'mortar':
         this.playLargeDeath();
         break;
       default:

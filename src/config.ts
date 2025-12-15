@@ -75,54 +75,61 @@ export const COMMANDER_STATS = {
 // =============================================================================
 
 export const UNIT_STATS = {
-  minigun: {
-    baseCost: 80,
-    hp: 100,
-    moveSpeed: 120,
-    radius: 12,
-    buildRate: 40,          // Max energy/sec factory spends on this unit
+  // Scout - Tiny, fast, cheap swarm unit. Rapid fire, low damage.
+  scout: {
+    baseCost: 40,
+    hp: 40,
+    moveSpeed: 160,
+    radius: 8,
+    buildRate: 60,          // Builds very fast
   },
-  laser: {
+  // Burst - Fast striker with burst fire. Glass cannon.
+  burst: {
+    baseCost: 70,
+    hp: 70,
+    moveSpeed: 130,
+    radius: 10,
+    buildRate: 50,
+  },
+  // Beam - Balanced continuous damage dealer.
+  beam: {
     baseCost: 100,
     hp: 100,
     moveSpeed: 100,
-    radius: 14,
-    buildRate: 40,
-  },
-  shotgun: {
-    baseCost: 90,
-    hp: 100,
-    moveSpeed: 110,
     radius: 13,
     buildRate: 40,
   },
-  cannon: {
+  // Brawl - Tough close-range fighter with shotgun spread.
+  brawl: {
+    baseCost: 120,
+    hp: 160,
+    moveSpeed: 85,
+    radius: 15,
+    buildRate: 35,
+  },
+  // Mortar - Slow artillery with devastating splash damage.
+  mortar: {
     baseCost: 150,
-    hp: 150,
-    moveSpeed: 80,
-    radius: 16,
+    hp: 120,
+    moveSpeed: 65,
+    radius: 14,
     buildRate: 30,
   },
-  grenade: {
-    baseCost: 160,
-    hp: 120,
-    moveSpeed: 90,
-    radius: 14,
-    buildRate: 25,
-  },
-  railgun: {
+  // Snipe - Fragile long-range instant-hit assassin.
+  snipe: {
     baseCost: 180,
-    hp: 100,
-    moveSpeed: 85,
-    radius: 14,
+    hp: 60,
+    moveSpeed: 75,
+    radius: 11,
     buildRate: 25,
   },
-  burstRifle: {
-    baseCost: 120,
-    hp: 100,
-    moveSpeed: 115,
-    radius: 12,
-    buildRate: 35,
+  // Tank - Massive, slow, heavily armored siege unit.
+  tank: {
+    baseCost: 250,
+    hp: 300,
+    moveSpeed: 45,
+    radius: 22,
+    buildRate: 20,
   },
 };
 
@@ -131,54 +138,62 @@ export const UNIT_STATS = {
 // =============================================================================
 
 export const WEAPON_STATS = {
-  minigun: {
-    damage: 5,
-    range: 150,
-    cooldown: 100,          // ms between shots
+  // Scout - Rapid fire, low damage per shot
+  scout: {
+    damage: 4,
+    range: 140,
+    cooldown: 80,           // Very fast fire rate
+    projectileSpeed: 650,
+  },
+  // Burst - 3-shot burst, medium damage
+  burst: {
+    damage: 18,
+    range: 160,
+    cooldown: 1200,
+    burstCount: 3,
+    burstDelay: 60,
     projectileSpeed: 600,
   },
-  laser: {
-    damage: 40,             // Damage per second while beam is on target
-    range: 180,
+  // Beam - Continuous damage beam
+  beam: {
+    damage: 45,             // Damage per second while beam is on target
+    range: 170,
     cooldown: 0,            // Continuous
     beamDuration: 1000,
     beamWidth: 3,
   },
-  shotgun: {
-    damage: 8,              // Per pellet
-    range: 100,
-    cooldown: 1000,
-    pelletCount: 5,
-    projectileSpeed: 500,
+  // Brawl - Shotgun spread, high close-range damage
+  brawl: {
+    damage: 12,             // Per pellet
+    range: 90,
+    cooldown: 900,
+    pelletCount: 6,
+    projectileSpeed: 450,
   },
-  cannon: {
-    damage: 70,
-    range: 280,
-    cooldown: 2000,
-    projectileSpeed: 350,
+  // Mortar - Slow, high splash damage
+  mortar: {
+    damage: 80,
+    range: 200,
+    cooldown: 2500,
+    projectileSpeed: 250,
+    splashRadius: 70,
   },
-  grenade: {
+  // Snipe - Instant hitscan, high single-target damage, piercing
+  snipe: {
     damage: 90,
-    range: 160,
-    cooldown: 3000,
-    projectileSpeed: 280,
-    splashRadius: 60,
-  },
-  railgun: {
-    damage: 70,
-    range: 300,
-    cooldown: 2000,
-    beamDuration: 120,
+    range: 350,
+    cooldown: 2500,
+    beamDuration: 100,
     beamWidth: 2,
   },
-  burstRifle: {
-    damage: 20,
-    range: 170,
-    cooldown: 1500,
-    burstCount: 3,
-    burstDelay: 80,
-    projectileSpeed: 550,
+  // Tank - Slow, devastating heavy cannon
+  tank: {
+    damage: 120,
+    range: 260,
+    cooldown: 3000,
+    projectileSpeed: 300,
   },
+  // D-gun (commander special)
   dgun: {
     damage: 9999,
     range: 150,
