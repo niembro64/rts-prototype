@@ -108,19 +108,37 @@ export class EntityRenderer {
     const lowerLen = legLength * 0.55;
 
     // Create 8 legs - 4 on each side
-    // Leg positions: front to back, with angles pointing outward
+    // Front legs: trigger early, snap far forward
+    // Back legs: trigger late, snap more sideways
+    // Continuous progression from front to back
     const legConfigs: LegConfig[] = [
-      // Left side (negative Y offset) - legs 1-4 front to back
-      { attachOffsetX: radius * 0.6, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: -Math.PI / 4 },      // Front-left
-      { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: -Math.PI / 3 },     // Front-mid-left
-      { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: -Math.PI * 2 / 3 }, // Back-mid-left
-      { attachOffsetX: -radius * 0.55, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: -Math.PI * 3 / 4 }, // Back-left
+      // Left side (negative Y offset) - legs 0-3 front to back
+      // Front-left: triggers at 50°, snaps to 20° forward-left
+      { attachOffsetX: radius * 0.6, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+        snapTriggerAngle: Math.PI * 0.28, snapTargetAngle: -Math.PI * 0.11 },
+      // Front-mid-left: triggers at 70°, snaps to 45° left
+      { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+        snapTriggerAngle: Math.PI * 0.39, snapTargetAngle: -Math.PI * 0.25 },
+      // Back-mid-left: triggers at 100°, snaps to 75° left
+      { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+        snapTriggerAngle: Math.PI * 0.56, snapTargetAngle: -Math.PI * 0.42 },
+      // Back-left: triggers at 130°, snaps to 110° back-left
+      { attachOffsetX: -radius * 0.55, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+        snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: -Math.PI * 0.61 },
 
-      // Right side (positive Y offset) - legs 5-8 front to back
-      { attachOffsetX: radius * 0.6, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: Math.PI / 4 },       // Front-right
-      { attachOffsetX: radius * 0.25, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: Math.PI / 3 },      // Front-mid-right
-      { attachOffsetX: -radius * 0.2, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: Math.PI * 2 / 3 },  // Back-mid-right
-      { attachOffsetX: -radius * 0.55, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapAngle: Math.PI * 3 / 4 }, // Back-right
+      // Right side (positive Y offset) - legs 4-7 front to back (mirror of left)
+      // Front-right: triggers at 50°, snaps to 20° forward-right
+      { attachOffsetX: radius * 0.6, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+        snapTriggerAngle: Math.PI * 0.28, snapTargetAngle: Math.PI * 0.11 },
+      // Front-mid-right: triggers at 70°, snaps to 45° right
+      { attachOffsetX: radius * 0.25, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+        snapTriggerAngle: Math.PI * 0.39, snapTargetAngle: Math.PI * 0.25 },
+      // Back-mid-right: triggers at 100°, snaps to 75° right
+      { attachOffsetX: -radius * 0.2, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+        snapTriggerAngle: Math.PI * 0.56, snapTargetAngle: Math.PI * 0.42 },
+      // Back-right: triggers at 130°, snaps to 110° back-right
+      { attachOffsetX: -radius * 0.55, attachOffsetY: radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen,
+        snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: Math.PI * 0.61 },
     ];
 
     const legs = legConfigs.map(config => new ArachnidLeg(config));

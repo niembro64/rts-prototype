@@ -9,9 +9,15 @@ export interface LegConfig {
   upperLegLength: number;
   lowerLegLength: number;
 
-  // Snap angle: direction to snap when leg needs to move (radians from forward)
+  // Snap trigger angle: how far behind (from forward) the foot must be to trigger snap
+  // Smaller = triggers earlier (front legs), larger = triggers later (back legs)
+  // Value is in radians from forward direction (e.g., PI/2 = 90° behind)
+  snapTriggerAngle: number;
+
+  // Snap target angle: direction to snap TO when leg needs to move (radians from forward)
+  // Smaller = snaps more forward (front legs), larger = snaps more sideways (back legs)
   // Positive = right side, negative = left side
-  snapAngle: number;
+  snapTargetAngle: number;
 }
 
 export class ArachnidLeg {
@@ -81,10 +87,10 @@ export class ArachnidLeg {
     const dy = this.groundY - attachY;
     const distToGround = Math.sqrt(dx * dx + dy * dy);
 
-    // Check if leg is fully extended
-    if (distToGround >= this.totalLength * 0.95) {
-      // Check if the ground point is behind the attachment point (relative to movement)
-      // Use unit rotation to determine "behind"
+    // Check if leg is extended enough to consider snapping
+    if (distToGround >= this.totalLength * 0.85) {
+      // Check if the ground point is behind the attachment point enough to trigger snap
+      // Use unit rotation to determine angle from forward
       const groundAngle = Math.atan2(dy, dx);
       const forwardAngle = unitRotation;
       let angleDiff = groundAngle - forwardAngle;
@@ -93,8 +99,9 @@ export class ArachnidLeg {
       while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
       while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-      // If ground point is more than 90 degrees from forward, it's "behind"
-      if (Math.abs(angleDiff) > Math.PI / 2) {
+      // Trigger snap when foot is past the trigger angle threshold
+      // Front legs trigger earlier (smaller threshold), back legs later (larger threshold)
+      if (Math.abs(angleDiff) > this.config.snapTriggerAngle) {
         this.startSlide(attachX, attachY, unitRotation, velocityX, velocityY);
       }
     }
@@ -102,9 +109,9 @@ export class ArachnidLeg {
 
   // Initialize ground point at a natural resting position
   private initializeGroundPoint(attachX: number, attachY: number, unitRotation: number): void {
-    // Place foot at snap angle, at comfortable distance
+    // Place foot at target snap angle, at comfortable distance
     const restDistance = this.totalLength * 0.7;
-    const angle = unitRotation + this.config.snapAngle;
+    const angle = unitRotation + this.config.snapTargetAngle;
 
     this.groundX = attachX + Math.cos(angle) * restDistance;
     this.groundY = attachY + Math.sin(angle) * restDistance;
@@ -120,9 +127,9 @@ export class ArachnidLeg {
     velocityX: number,
     velocityY: number
   ): void {
-    // Calculate target position: 45 degrees outward from forward
+    // Calculate target position using the snap target angle
     const snapDistance = this.totalLength * 0.7;
-    const snapAngle = unitRotation + this.config.snapAngle;
+    const snapAngle = unitRotation + this.config.snapTargetAngle;
 
     // Add some velocity-based offset to place foot ahead of where we're going
     const speed = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
