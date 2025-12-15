@@ -94,7 +94,13 @@ export class EntityRenderer {
 
   // Add a new explosion effect
   addExplosion(x: number, y: number, radius: number, color: number, type: 'impact' | 'death'): void {
-    const lifetime = type === 'death' ? 400 : 200; // Death explosions last longer
+    // Base lifetime scales with radius - larger explosions last longer
+    // Base: 150ms for a radius of 8, scales proportionally
+    const baseRadius = 8;
+    const baseLifetime = type === 'death' ? 300 : 150;
+    const radiusScale = Math.sqrt(radius / baseRadius); // Square root for less extreme scaling
+    const lifetime = baseLifetime * radiusScale;
+
     this.explosions.push({
       x,
       y,
@@ -175,11 +181,6 @@ export class EntityRenderer {
       this.renderBuilding(entity);
     }
 
-    // Render explosion effects (below projectiles, above buildings)
-    for (const explosion of this.explosions) {
-      this.renderExplosion(explosion);
-    }
-
     // Render projectiles (below units)
     for (const entity of this.entitySource.getProjectiles()) {
       this.renderProjectile(entity);
@@ -214,6 +215,11 @@ export class EntityRenderer {
     // Render units
     for (const entity of this.entitySource.getUnits()) {
       this.renderUnit(entity);
+    }
+
+    // Render explosion effects (above everything except labels)
+    for (const explosion of this.explosions) {
+      this.renderExplosion(explosion);
     }
 
     // Render labels for selected entities (last, on top of everything)
