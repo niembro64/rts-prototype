@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { RtsScene } from './scenes/RtsScene';
+import { ShowcaseScene } from './scenes/ShowcaseScene';
 import type { PlayerId } from './sim/types';
 import type { NetworkRole } from './network/NetworkManager';
 
@@ -84,6 +85,49 @@ export function createGame(config: GameConfig): GameInstance {
 }
 
 export function destroyGame(instance: GameInstance): void {
+  const scene = instance.getScene();
+  if (scene) {
+    scene.shutdown();
+  }
+  instance.game.destroy(true);
+}
+
+// Showcase game instance (for lobby background)
+export interface ShowcaseInstance {
+  game: Phaser.Game;
+  getScene: () => ShowcaseScene | null;
+}
+
+export function createShowcase(config: { parent: HTMLElement; width: number; height: number }): ShowcaseInstance {
+  const phaserConfig: Phaser.Types.Core.GameConfig = {
+    type: Phaser.AUTO,
+    parent: config.parent,
+    width: config.width,
+    height: config.height,
+    backgroundColor: '#0a0a14',
+    scene: [ShowcaseScene],
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
+    render: {
+      antialias: true,
+      pixelArt: false,
+    },
+  };
+
+  const game = new Phaser.Game(phaserConfig);
+
+  return {
+    game,
+    getScene: () => {
+      const scene = game.scene.getScene('ShowcaseScene');
+      return scene instanceof ShowcaseScene ? scene : null;
+    },
+  };
+}
+
+export function destroyShowcase(instance: ShowcaseInstance): void {
   const scene = instance.getScene();
   if (scene) {
     scene.shutdown();

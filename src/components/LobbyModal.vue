@@ -23,7 +23,6 @@ const emit = defineEmits<{
   (e: 'join', roomCode: string): void;
   (e: 'start'): void;
   (e: 'cancel'): void;
-  (e: 'offline'): void;
 }>();
 
 const joinCode = ref('');
@@ -56,10 +55,6 @@ function getPlayerColor(playerId: PlayerId): string {
 
 function handleHost() {
   emit('host');
-}
-
-function handleOffline() {
-  emit('offline');
 }
 
 function handleJoinSubmit() {
@@ -98,112 +93,6 @@ const canJoin = computed(() => {
         <h1 class="title">BUDGET ANNIHILATION</h1>
         <p class="subtitle">Multiplayer RTS</p>
 
-        <!-- Game Preview Section -->
-        <div class="preview-section">
-          <div class="preview-row">
-            <!-- Commander Preview -->
-            <div class="preview-item">
-              <svg width="50" height="50" viewBox="0 0 50 50">
-                <!-- Crown ring -->
-                <circle cx="25" cy="25" r="20" fill="none" stroke="#ffd700" stroke-width="2" />
-                <!-- Crown stars -->
-                <polygon points="25,5 26.5,9 30.5,9 27.5,12 28.5,16 25,14 21.5,16 22.5,12 19.5,9 23.5,9" fill="#ffd700" />
-                <polygon points="45,25 41,26.5 41,30.5 38,27.5 34,28.5 36,25 34,21.5 38,22.5 41,19.5 41,23.5" fill="#ffd700" />
-                <polygon points="5,25 9,26.5 9,30.5 12,27.5 16,28.5 14,25 16,21.5 12,22.5 9,19.5 9,23.5" fill="#ffd700" />
-                <polygon points="25,45 26.5,41 30.5,41 27.5,38 28.5,34 25,36 21.5,34 22.5,38 19.5,41 23.5,41" fill="#ffd700" />
-                <polygon points="39,11 37,14 39,17 36,16.5 34,19 34.5,16 32,14 35,14 36.5,11 37.5,14" fill="#ffd700" />
-                <!-- Hexagon body -->
-                <polygon points="25,12 35,18.5 35,31.5 25,38 15,31.5 15,18.5" fill="#4488ff" stroke="#ffffff" stroke-width="2" />
-                <!-- Turret -->
-                <line x1="25" y1="25" x2="25" y2="10" stroke="#88ccff" stroke-width="3" />
-                <circle cx="25" cy="25" r="4" fill="#88ccff" />
-              </svg>
-              <span class="preview-label">Commander</span>
-            </div>
-
-            <!-- Laser Unit -->
-            <div class="preview-item">
-              <svg width="40" height="40" viewBox="0 0 40 40">
-                <polygon points="20,5 35,20 20,35 5,20" fill="#cc44ff" stroke="#ffffff" stroke-width="2" />
-                <line x1="20" y1="20" x2="20" y2="3" stroke="#ff00ff" stroke-width="3" />
-                <circle cx="20" cy="3" r="3" fill="#ff00ff" />
-              </svg>
-              <span class="preview-label">Laser</span>
-            </div>
-
-            <!-- Cannon Unit -->
-            <div class="preview-item">
-              <svg width="40" height="40" viewBox="0 0 40 40">
-                <rect x="8" y="8" width="24" height="24" fill="#448844" stroke="#ffffff" stroke-width="2" />
-                <line x1="20" y1="20" x2="20" y2="3" stroke="#666666" stroke-width="4" />
-                <circle cx="20" cy="3" r="4" fill="#333333" />
-              </svg>
-              <span class="preview-label">Cannon</span>
-            </div>
-
-            <!-- Railgun Unit -->
-            <div class="preview-item">
-              <svg width="40" height="40" viewBox="0 0 40 40">
-                <polygon points="20,2 26,17 26,28 20,38 14,28 14,17" fill="#4488cc" stroke="#ffffff" stroke-width="2" />
-                <line x1="20" y1="20" x2="20" y2="0" stroke="#00ffff" stroke-width="2" />
-                <circle cx="20" cy="20" r="3" fill="#00ffff" />
-              </svg>
-              <span class="preview-label">Railgun</span>
-            </div>
-          </div>
-
-          <div class="preview-row buildings">
-            <!-- Factory -->
-            <div class="preview-item building">
-              <svg width="60" height="50" viewBox="0 0 60 50">
-                <!-- Main body -->
-                <rect x="5" y="10" width="50" height="35" fill="#886644" stroke="#aa8866" stroke-width="2" />
-                <!-- Inner machinery -->
-                <rect x="10" y="15" width="40" height="25" fill="#1a1a1a" />
-                <!-- Gears -->
-                <circle cx="20" cy="25" r="6" fill="#4488ff" stroke="#333" stroke-width="1" />
-                <circle cx="40" cy="25" r="5" fill="#4488ff" stroke="#333" stroke-width="1" />
-                <circle cx="30" cy="32" r="7" fill="#4488ff" stroke="#333" stroke-width="1" />
-                <!-- Chimney -->
-                <rect x="42" y="0" width="8" height="12" fill="#444444" stroke="#666" stroke-width="1" />
-                <rect x="40" y="-2" width="12" height="3" fill="#333333" />
-                <!-- Conveyor -->
-                <rect x="22" y="38" width="16" height="5" fill="#333333" />
-                <!-- Status lights -->
-                <circle cx="10" cy="15" r="2" fill="#44ff44" />
-                <circle cx="50" cy="15" r="2" fill="#ffcc00" />
-              </svg>
-              <span class="preview-label">Factory</span>
-            </div>
-
-            <!-- Solar Panel -->
-            <div class="preview-item building">
-              <svg width="50" height="40" viewBox="0 0 50 40">
-                <!-- Frame -->
-                <rect x="3" y="3" width="44" height="34" fill="#0a1428" stroke="#aa8866" stroke-width="2" />
-                <!-- Solar cells grid -->
-                <rect x="6" y="6" width="12" height="13" fill="#1a3050" />
-                <rect x="19" y="6" width="12" height="13" fill="#1a3050" />
-                <rect x="32" y="6" width="12" height="13" fill="#1a3050" />
-                <rect x="6" y="21" width="12" height="13" fill="#1a3050" />
-                <rect x="19" y="21" width="12" height="13" fill="#1a3050" />
-                <rect x="32" y="21" width="12" height="13" fill="#1a3050" />
-                <!-- Cell lines -->
-                <line x1="12" y1="6" x2="12" y2="19" stroke="#102030" stroke-width="1" />
-                <line x1="6" y1="12.5" x2="18" y2="12.5" stroke="#102030" stroke-width="1" />
-                <!-- Corner accents -->
-                <rect x="3" y="3" width="6" height="2" fill="#4488ff" />
-                <rect x="3" y="3" width="2" height="6" fill="#4488ff" />
-                <rect x="41" y="3" width="6" height="2" fill="#4488ff" />
-                <rect x="45" y="3" width="2" height="6" fill="#4488ff" />
-                <!-- LED -->
-                <circle cx="43" cy="8" r="2" fill="#44ff44" />
-              </svg>
-              <span class="preview-label">Solar Panel</span>
-            </div>
-          </div>
-        </div>
-
         <div class="options-container">
           <button class="lobby-btn host-btn" @click="handleHost">
             Host Game
@@ -225,15 +114,9 @@ const canJoin = computed(() => {
               :disabled="!canJoin"
               @click="handleJoinSubmit"
             >
-              Join
+              Join Game
             </button>
           </div>
-        </div>
-
-        <div class="offline-section">
-          <button class="lobby-btn offline-btn" @click="handleOffline">
-            Play Offline
-          </button>
         </div>
 
         <!-- Error display -->
@@ -311,21 +194,23 @@ const canJoin = computed(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(10, 10, 20, 0.95);
+  background: rgba(10, 10, 20, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 3000;
+  backdrop-filter: blur(2px);
 }
 
 .lobby-modal {
-  background: rgba(20, 20, 35, 0.98);
+  background: rgba(15, 15, 30, 0.9);
   border: 2px solid #4444aa;
   border-radius: 16px;
   padding: 40px 50px;
   min-width: 500px;
   text-align: center;
-  box-shadow: 0 0 60px rgba(68, 68, 170, 0.3);
+  box-shadow: 0 0 60px rgba(68, 68, 170, 0.4), 0 0 100px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
 }
 
 .title {
@@ -340,51 +225,7 @@ const canJoin = computed(() => {
   font-family: monospace;
   font-size: 14px;
   color: #888;
-  margin: 8px 0 20px 0;
-}
-
-.preview-section {
-  margin-bottom: 25px;
-  padding: 15px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
-  border: 1px solid rgba(68, 68, 170, 0.2);
-}
-
-.preview-row {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  margin-bottom: 15px;
-}
-
-.preview-row.buildings {
-  margin-bottom: 0;
-}
-
-.preview-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-.preview-item svg {
-  filter: drop-shadow(0 0 4px rgba(68, 136, 255, 0.4));
-  transition: transform 0.2s ease;
-}
-
-.preview-item:hover svg {
-  transform: scale(1.1);
-  filter: drop-shadow(0 0 8px rgba(68, 136, 255, 0.6));
-}
-
-.preview-label {
-  font-family: monospace;
-  font-size: 10px;
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  margin: 8px 0 30px 0;
 }
 
 .options-container {
@@ -396,13 +237,14 @@ const canJoin = computed(() => {
 
 .join-section {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 10px;
 }
 
 .divider-vertical {
   width: 1px;
-  height: 40px;
+  height: 80px;
   background: linear-gradient(to bottom, transparent, #4444aa, transparent);
 }
 
@@ -459,22 +301,6 @@ const canJoin = computed(() => {
 
 .cancel-btn:hover {
   background: #777;
-}
-
-.offline-section {
-  margin-top: 25px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(68, 68, 170, 0.3);
-}
-
-.offline-btn {
-  background: #665588;
-  color: white;
-}
-
-.offline-btn:hover {
-  background: #7766aa;
-  transform: scale(1.02);
 }
 
 .code-input {

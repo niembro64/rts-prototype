@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
-import { createGame, destroyGame, type GameInstance } from '../game/createGame';
+import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
+import { createGame, destroyGame, createShowcase, destroyShowcase, type GameInstance, type ShowcaseInstance } from '../game/createGame';
 import { PLAYER_COLORS, type PlayerId, type WaypointType } from '../game/sim/types';
 import SelectionPanel, { type SelectionInfo, type SelectionActions } from './SelectionPanel.vue';
 import TopBar, { type EconomyInfo } from './TopBar.vue';
@@ -20,8 +20,12 @@ const VIEW_MODE_OPTIONS: { value: HostViewMode; label: string }[] = [
 ];
 
 const containerRef = ref<HTMLDivElement | null>(null);
+const showcaseContainerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
+
+// Showcase instance for lobby background
+let showcaseInstance: ShowcaseInstance | null = null;
 
 // Lobby state
 const showLobby = ref(true);
@@ -225,17 +229,6 @@ function handleLobbyCancel(): void {
   isConnecting.value = false;
 }
 
-function handleOffline(): void {
-  // Start game in offline mode without network
-  networkRole.value = 'offline';
-  localPlayerId.value = 1;
-
-  // Create game immediately with single player
-  nextTick(() => {
-    startGameWithPlayers([1]);
-  });
-}
-
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
     // Check if already in list
@@ -391,8 +384,44 @@ function setHostViewMode(mode: HostViewMode): void {
   }
 }
 
+// Create showcase background for lobby
+function createShowcaseBackground(): void {
+  if (showcaseInstance || !showcaseContainerRef.value) return;
+
+  const rect = showcaseContainerRef.value.getBoundingClientRect();
+  showcaseInstance = createShowcase({
+    parent: showcaseContainerRef.value,
+    width: rect.width || window.innerWidth,
+    height: rect.height || window.innerHeight,
+  });
+}
+
+// Destroy showcase background
+function destroyShowcaseBackground(): void {
+  if (showcaseInstance) {
+    destroyShowcase(showcaseInstance);
+    showcaseInstance = null;
+  }
+}
+
 onMounted(() => {
-  // Game is not created until lobby starts it
+  // Create showcase background when lobby is shown
+  nextTick(() => {
+    if (showLobby.value) {
+      createShowcaseBackground();
+    }
+  });
+});
+
+// Watch for lobby visibility changes to manage showcase
+watch(showLobby, (visible) => {
+  if (visible) {
+    nextTick(() => {
+      createShowcaseBackground();
+    });
+  } else {
+    destroyShowcaseBackground();
+  }
 });
 
 onUnmounted(() => {
@@ -404,12 +433,17 @@ onUnmounted(() => {
     destroyGame(gameInstance);
     gameInstance = null;
   }
+  destroyShowcaseBackground();
 });
 </script>
 
 <template>
   <div class="game-wrapper">
-    <div ref="containerRef" class="phaser-container"></div>
+    <!-- Showcase background (only when lobby is visible) -->
+    <div v-if="showLobby" ref="showcaseContainerRef" class="showcase-container"></div>
+
+    <!-- Game canvas (only when game is running) -->
+    <div v-if="!showLobby" ref="containerRef" class="phaser-container"></div>
 
     <!-- Lobby Modal -->
     <LobbyModal
@@ -424,7 +458,6 @@ onUnmounted(() => {
       @join="handleJoin"
       @start="handleLobbyStart"
       @cancel="handleLobbyCancel"
-      @offline="handleOffline"
     />
 
     <!-- Game UI (only when game is running) -->
@@ -525,6 +558,20 @@ onUnmounted(() => {
 }
 
 .phaser-container canvas {
+  display: block;
+}
+
+.showcase-container {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+}
+
+.showcase-container canvas {
   display: block;
 }
 
