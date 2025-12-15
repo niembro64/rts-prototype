@@ -48,6 +48,35 @@ function getUnitMass(collisionRadius: number, moveSpeed: number): number {
   return volumeFactor * speedFactor;
 }
 
+// Create a physics body with proper mass settings
+// Matter.js sometimes ignores mass in options, so we set it explicitly after creation
+function createUnitBody(
+  matter: Phaser.Physics.Matter.MatterPhysics,
+  x: number,
+  y: number,
+  collisionRadius: number,
+  moveSpeed: number,
+  label: string
+): MatterJS.BodyType {
+  const mass = getUnitMass(collisionRadius, moveSpeed);
+
+  const body = matter.add.circle(x, y, collisionRadius, {
+    friction: 0.01,        // Low ground friction
+    frictionAir: 0.08,     // Lower air friction to let collision effects show
+    frictionStatic: 0.1,
+    restitution: 0.3,      // Some bounce
+    label,
+  });
+
+  // Explicitly set mass after creation (Matter.js option doesn't always work)
+  matter.body.setMass(body, mass);
+
+  // Set inertia based on mass - heavier units resist rotation more
+  matter.body.setInertia(body, mass * collisionRadius * collisionRadius * 0.5);
+
+  return body as unknown as MatterJS.BodyType;
+}
+
 export class RtsScene extends Phaser.Scene {
   private world!: WorldState;
   private simulation!: Simulation;
@@ -239,6 +268,15 @@ export class RtsScene extends Phaser.Scene {
 
   // Handle audio events from simulation
   private handleAudioEvent(event: AudioEvent): void {
+    // Always handle visual effects even if audio not initialized
+    if (event.type === 'hit' || event.type === 'projectileExpire') {
+      // Add impact explosion at hit/termination location
+      // Size based on weapon type (larger for heavy weapons)
+      const explosionRadius = this.getExplosionRadius(event.weaponId);
+      const explosionColor = 0xff8844; // Orange-ish for impacts
+      this.entityRenderer.addExplosion(event.x, event.y, explosionRadius, explosionColor, 'impact');
+    }
+
     if (!this.audioInitialized) return;
 
     switch (event.type) {
@@ -263,18 +301,52 @@ export class RtsScene extends Phaser.Scene {
           audioManager.stopLaserSound(event.entityId);
         }
         break;
+      case 'projectileExpire':
+        // No sound for projectile expiration (visual only)
+        break;
     }
+  }
+
+  // Get explosion radius based on weapon type
+  private getExplosionRadius(weaponId: string): number {
+    const weaponSizes: Record<string, number> = {
+      scout: 6,
+      burst: 7,
+      beam: 5,
+      brawl: 10,
+      mortar: 18,
+      snipe: 8,
+      tank: 15,
+      dgun: 30,
+    };
+    return weaponSizes[weaponId] ?? 8;
   }
 
   // Handle unit deaths (cleanup Matter bodies and audio)
   private handleUnitDeaths(deadUnitIds: EntityId[]): void {
     for (const id of deadUnitIds) {
       const entity = this.world.getEntity(id);
-      if (entity?.body?.matterBody) {
-        this.matter.world.remove(entity.body.matterBody);
+      if (entity) {
+        // Add death explosion at 1.2x collision radius
+        if (entity.unit) {
+          const radius = entity.unit.collisionRadius * 1.2;
+          const playerColor = entity.ownership?.playerId
+            ? PLAYER_COLORS[entity.ownership.playerId]?.primary ?? 0xff6600
+            : 0xff6600;
+          this.entityRenderer.addExplosion(
+            entity.transform.x,
+            entity.transform.y,
+            radius,
+            playerColor,
+            'death'
+          );
+        }
+        if (entity.body?.matterBody) {
+          this.matter.world.remove(entity.body.matterBody);
+        }
+        // Stop any laser sound this unit was making
+        audioManager.stopLaserSound(id);
       }
-      // Stop any laser sound this unit was making
-      audioManager.stopLaserSound(id);
       this.world.removeEntity(id);
     }
   }
@@ -319,20 +391,16 @@ export class RtsScene extends Phaser.Scene {
   private handleUnitSpawns(newUnits: Entity[]): void {
     for (const entity of newUnits) {
       if (entity.type === 'unit' && entity.unit) {
-        // Create circle body for unit
-        const body = this.matter.add.circle(
+        // Create circle body for unit with proper mass
+        const body = createUnitBody(
+          this.matter,
           entity.transform.x,
           entity.transform.y,
           entity.unit.collisionRadius,
-          {
-            friction: 0.05,
-            frictionAir: 0.15,
-            restitution: 0.2,
-            mass: getUnitMass(entity.unit.collisionRadius, entity.unit.moveSpeed),
-            label: `unit_${entity.id}`,
-          }
+          entity.unit.moveSpeed,
+          `unit_${entity.id}`
         );
-        entity.body = { matterBody: body as unknown as MatterJS.BodyType };
+        entity.body = { matterBody: body };
       }
     }
   }
@@ -604,16 +672,16 @@ export class RtsScene extends Phaser.Scene {
   private createMatterBodies(entities: Entity[]): void {
     for (const entity of entities) {
       if (entity.type === 'unit' && entity.unit) {
-        // Circle body for units - mass based on size and speed
-        const body = this.matter.add.circle(entity.transform.x, entity.transform.y, entity.unit.collisionRadius, {
-          friction: 0.05,
-          frictionAir: 0.15,
-          restitution: 0.2,
-          mass: getUnitMass(entity.unit.collisionRadius, entity.unit.moveSpeed),
-          label: `unit_${entity.id}`,
-        });
-
-        entity.body = { matterBody: body as unknown as MatterJS.BodyType };
+        // Circle body for units with proper mass
+        const body = createUnitBody(
+          this.matter,
+          entity.transform.x,
+          entity.transform.y,
+          entity.unit.collisionRadius,
+          entity.unit.moveSpeed,
+          `unit_${entity.id}`
+        );
+        entity.body = { matterBody: body };
       } else if (entity.type === 'building' && entity.building) {
         // Rectangle body for buildings (static)
         const body = this.matter.add.rectangle(
@@ -661,6 +729,9 @@ export class RtsScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    // Update explosion effects (always, even when game is over for nice visuals)
+    this.entityRenderer.updateExplosions(delta);
+
     // Skip game updates if game is over (not applicable in background mode)
     if (this.isGameOver && !this.backgroundMode) {
       // Still render but don't update simulation
@@ -960,15 +1031,16 @@ export class RtsScene extends Phaser.Scene {
         };
       }
 
-      // Create physics body - mass based on size and speed
-      const body = this.matter.add.circle(x, y, unitCollisionRadius, {
-        friction: 0.05,
-        frictionAir: 0.15,
-        restitution: 0.2,
-        mass: getUnitMass(unitCollisionRadius, unitMoveSpeed),
-        label: `unit_${id}`,
-      });
-      entity.body = { matterBody: body as unknown as MatterJS.BodyType };
+      // Create physics body with proper mass
+      const body = createUnitBody(
+        this.matter,
+        x,
+        y,
+        unitCollisionRadius,
+        unitMoveSpeed,
+        `unit_${id}`
+      );
+      entity.body = { matterBody: body };
 
       return entity;
     }
@@ -1373,16 +1445,17 @@ export class RtsScene extends Phaser.Scene {
 
     this.world.addEntity(unit);
 
-    // Create physics body - mass based on size and speed
+    // Create physics body with proper mass
     if (unit.unit) {
-      const body = this.matter.add.circle(x, y, unit.unit.collisionRadius, {
-        friction: 0.05,
-        frictionAir: 0.15,
-        restitution: 0.2,
-        mass: getUnitMass(unit.unit.collisionRadius, unit.unit.moveSpeed),
-        label: `unit_${unit.id}`,
-      });
-      unit.body = { matterBody: body as unknown as MatterJS.BodyType };
+      const body = createUnitBody(
+        this.matter,
+        x,
+        y,
+        unit.unit.collisionRadius,
+        unit.unit.moveSpeed,
+        `unit_${unit.id}`
+      );
+      unit.body = { matterBody: body };
     }
   }
 

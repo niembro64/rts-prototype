@@ -14,6 +14,17 @@ export interface EntitySource {
   getEntity(id: EntityId): Entity | undefined;
 }
 
+// Explosion effect data
+export interface ExplosionEffect {
+  x: number;
+  y: number;
+  radius: number;           // Maximum radius of explosion
+  color: number;            // Base color
+  lifetime: number;         // Total lifetime in ms
+  elapsed: number;          // Time elapsed in ms
+  type: 'impact' | 'death'; // Type affects visual style
+}
+
 // Colors
 const UNIT_SELECTED_COLOR = 0x00ff88;
 const BUILDING_COLOR = 0x886644;
@@ -72,10 +83,36 @@ export class EntityRenderer {
   private labelPool: Phaser.GameObjects.Text[] = [];
   private activeLabelCount: number = 0;
 
+  // Explosion effects
+  private explosions: ExplosionEffect[] = [];
+
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
     this.entitySource = entitySource;
+  }
+
+  // Add a new explosion effect
+  addExplosion(x: number, y: number, radius: number, color: number, type: 'impact' | 'death'): void {
+    const lifetime = type === 'death' ? 400 : 200; // Death explosions last longer
+    this.explosions.push({
+      x,
+      y,
+      radius,
+      color,
+      lifetime,
+      elapsed: 0,
+      type,
+    });
+  }
+
+  // Update explosion effects (call each frame with dtMs)
+  updateExplosions(dtMs: number): void {
+    // Update elapsed time and remove expired explosions
+    this.explosions = this.explosions.filter(exp => {
+      exp.elapsed += dtMs;
+      return exp.elapsed < exp.lifetime;
+    });
   }
 
   // Get or create a text label from the pool
@@ -138,6 +175,11 @@ export class EntityRenderer {
       this.renderBuilding(entity);
     }
 
+    // Render explosion effects (below projectiles, above buildings)
+    for (const explosion of this.explosions) {
+      this.renderExplosion(explosion);
+    }
+
     // Render projectiles (below units)
     for (const entity of this.entitySource.getProjectiles()) {
       this.renderProjectile(entity);
@@ -176,6 +218,71 @@ export class EntityRenderer {
 
     // Render labels for selected entities (last, on top of everything)
     this.renderSelectedLabels();
+  }
+
+  // Render an explosion effect
+  private renderExplosion(exp: ExplosionEffect): void {
+    const progress = exp.elapsed / exp.lifetime;
+
+    if (exp.type === 'death') {
+      // Death explosion - expanding ring with particles
+      const currentRadius = exp.radius * (0.3 + progress * 0.7);
+      const alpha = 1 - progress;
+
+      // Outer glow
+      this.graphics.fillStyle(exp.color, alpha * 0.3);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.3);
+
+      // Main explosion
+      this.graphics.fillStyle(exp.color, alpha * 0.6);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius);
+
+      // Hot core (orange to white)
+      const coreProgress = Math.min(1, progress * 2);
+      const coreRadius = currentRadius * (0.6 - coreProgress * 0.4);
+      if (coreRadius > 0) {
+        this.graphics.fillStyle(0xff6600, alpha * 0.8);
+        this.graphics.fillCircle(exp.x, exp.y, coreRadius);
+        this.graphics.fillStyle(0xffffff, alpha * (1 - coreProgress));
+        this.graphics.fillCircle(exp.x, exp.y, coreRadius * 0.5);
+      }
+
+      // Expanding ring
+      const ringAlpha = alpha * 0.5;
+      const ringRadius = exp.radius * (0.5 + progress);
+      this.graphics.lineStyle(3 * (1 - progress) + 1, exp.color, ringAlpha);
+      this.graphics.strokeCircle(exp.x, exp.y, ringRadius);
+
+      // Debris particles
+      const particleCount = 8;
+      for (let i = 0; i < particleCount; i++) {
+        const angle = (i / particleCount) * Math.PI * 2 + progress * 2;
+        const particleDist = exp.radius * (0.3 + progress * 1.2);
+        const px = exp.x + Math.cos(angle) * particleDist;
+        const py = exp.y + Math.sin(angle) * particleDist;
+        const particleSize = 3 * (1 - progress);
+        if (particleSize > 0.5) {
+          this.graphics.fillStyle(exp.color, alpha * 0.7);
+          this.graphics.fillCircle(px, py, particleSize);
+        }
+      }
+    } else {
+      // Impact explosion - quick flash
+      const currentRadius = exp.radius * (0.5 + progress * 0.5);
+      const alpha = 1 - progress * progress; // Faster fadeout
+
+      // Outer flash
+      this.graphics.fillStyle(exp.color, alpha * 0.4);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.2);
+
+      // Core flash
+      this.graphics.fillStyle(0xffffff, alpha * 0.8);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.4);
+
+      // Colored middle
+      this.graphics.fillStyle(exp.color, alpha * 0.7);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.7);
+    }
   }
 
   // Render labels above selected units and buildings
@@ -1044,6 +1151,34 @@ export class EntityRenderer {
       // Core
       this.graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
       this.graphics.lineBetween(startX, startY, endX, endY);
+
+      // Continuous explosion effect at beam endpoint
+      const explosionRadius = beamWidth * 2 + 6;
+      const pulsePhase = (this.sprayParticleTime / 80) % 1;
+      const pulseScale = 0.8 + Math.sin(pulsePhase * Math.PI * 2) * 0.2;
+
+      // Outer glow at endpoint
+      this.graphics.fillStyle(color, 0.4);
+      this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 1.3);
+
+      // Main explosion area
+      this.graphics.fillStyle(color, 0.6);
+      this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
+
+      // Hot core
+      this.graphics.fillStyle(0xffffff, 0.8);
+      this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
+
+      // Spark particles radiating outward
+      const sparkCount = 6;
+      for (let i = 0; i < sparkCount; i++) {
+        const angle = (this.sprayParticleTime / 150 + i / sparkCount) * Math.PI * 2;
+        const sparkDist = explosionRadius * (0.8 + Math.sin(this.sprayParticleTime / 50 + i * 2) * 0.4);
+        const sx = endX + Math.cos(angle) * sparkDist;
+        const sy = endY + Math.sin(angle) * sparkDist;
+        this.graphics.fillStyle(color, 0.7);
+        this.graphics.fillCircle(sx, sy, 2);
+      }
     } else if (entity.dgunProjectile) {
       // D-gun projectile - big, fiery, intimidating
       const radius = config.projectileRadius ?? 25;

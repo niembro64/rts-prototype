@@ -4,7 +4,7 @@ import { FIXED_TIMESTEP } from './Simulation';
 
 // Audio event types
 export interface AudioEvent {
-  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop';
+  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'projectileExpire';
   weaponId: string;
   x: number;
   y: number;
@@ -659,6 +659,18 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number): Coll
           });
         }
       }
+
+      // Add projectile expire event for traveling projectiles (not beams)
+      // This creates an explosion effect at projectile termination point
+      if (proj.projectileType === 'traveling' && !proj.hasExploded) {
+        audioEvents.push({
+          type: 'projectileExpire',
+          weaponId: config.id,
+          x: projEntity.transform.x,
+          y: projEntity.transform.y,
+        });
+      }
+
       projectilesToRemove.push(projEntity.id);
       continue;
     }

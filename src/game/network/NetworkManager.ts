@@ -13,7 +13,7 @@ export type NetworkMessage =
 
 // Audio event for network sync
 export interface NetworkAudioEvent {
-  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop';
+  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'projectileExpire';
   weaponId: string;
   x: number;
   y: number;
