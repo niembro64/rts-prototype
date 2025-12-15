@@ -90,28 +90,30 @@ export class ArachnidLeg {
       return;
     }
 
-    // Check if leg is stretched too far behind - need to snap
+    // Check if leg needs to snap - either distance or angle threshold triggers it
     const dx = this.groundX - attachX;
     const dy = this.groundY - attachY;
     const distToGround = Math.sqrt(dx * dx + dy * dy);
 
-    // Check if leg is extended enough to consider snapping (configurable per leg)
-    if (distToGround >= this.totalLength * this.config.extensionThreshold) {
-      // Check if the ground point is behind the attachment point enough to trigger snap
-      // Use unit rotation to determine angle from forward
-      const groundAngle = Math.atan2(dy, dx);
-      const forwardAngle = unitRotation;
-      let angleDiff = groundAngle - forwardAngle;
+    // Check angle - how far behind is the foot?
+    const groundAngle = Math.atan2(dy, dx);
+    let angleDiff = groundAngle - unitRotation;
+    // Normalize to [-PI, PI]
+    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-      // Normalize to [-PI, PI]
-      while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-      while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+    // Angle triggers if foot is too far behind
+    const angleTriggered = Math.abs(angleDiff) > this.config.snapTriggerAngle;
 
-      // Trigger snap when foot is past the trigger angle threshold
-      // Front legs trigger earlier (smaller threshold), back legs later (larger threshold)
-      if (Math.abs(angleDiff) > this.config.snapTriggerAngle) {
-        this.startSlide(attachX, attachY, unitRotation, velocityX, velocityY);
-      }
+    // Distance only triggers if foot is also behind perpendicular (not in forward zone)
+    // This prevents jittering when leg snaps forward but is still fully extended
+    const isBehindPerpendicular = Math.abs(angleDiff) > Math.PI * 0.5;
+    const distanceTriggered = isBehindPerpendicular &&
+      distToGround >= this.totalLength * this.config.extensionThreshold;
+
+    // Snap if EITHER condition is met
+    if (distanceTriggered || angleTriggered) {
+      this.startSlide(attachX, attachY, unitRotation, velocityX, velocityY);
     }
   }
 
