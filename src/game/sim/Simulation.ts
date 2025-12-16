@@ -538,7 +538,7 @@ export class Simulation {
         const vy = (dy / distance) * speed;
         unit.velocityX = vx;
         unit.velocityY = vy;
-        transform.rotation = Math.atan2(dy, dx);
+        // Rotation is set by syncTransformsFromBodies based on actual movement
         continue;
       }
 
@@ -584,9 +584,7 @@ export class Simulation {
       // Store velocity on unit for rendering and physics
       unit.velocityX = vx;
       unit.velocityY = vy;
-
-      // Update body rotation to face movement direction
-      transform.rotation = Math.atan2(dy, dx);
+      // Rotation is set by syncTransformsFromBodies based on actual movement
     }
   }
 
@@ -620,13 +618,30 @@ export class Simulation {
     }
   }
 
-  // Sync transforms from Matter.js bodies
+  // Sync transforms from Matter.js bodies and update rotation based on actual movement
   private syncTransformsFromBodies(): void {
     for (const entity of this.world.getAllEntities()) {
       if (entity.body?.matterBody) {
+        // Store previous position
+        const prevX = entity.transform.x;
+        const prevY = entity.transform.y;
+
+        // Sync position from physics
         entity.transform.x = entity.body.matterBody.position.x;
         entity.transform.y = entity.body.matterBody.position.y;
-        // Don't sync rotation from physics - we control it manually
+
+        // Update rotation based on ACTUAL movement direction (not intended)
+        // This ensures units face where they're actually going, even when pushed by collisions
+        if (entity.unit) {
+          const actualDx = entity.transform.x - prevX;
+          const actualDy = entity.transform.y - prevY;
+          const actualSpeed = Math.sqrt(actualDx * actualDx + actualDy * actualDy);
+
+          // Only update rotation if actually moving (threshold prevents jitter when stationary)
+          if (actualSpeed > 0.5) {
+            entity.transform.rotation = Math.atan2(actualDy, actualDx);
+          }
+        }
       }
     }
   }
