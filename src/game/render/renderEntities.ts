@@ -2321,20 +2321,6 @@ export class EntityRenderer {
       this.graphics.lineBetween(lx - perpX, ly - perpY, lx + perpX, ly + perpY);
     }
 
-    // Draw drive wheels at each end (larger and more visible)
-    this.graphics.fillStyle(lineColor, 0.95);
-    const endOffset = treadLength * 0.42;
-    const wheelSize = treadWidth * 0.35;
-    this.graphics.fillCircle(
-      x + cos * endOffset,
-      y + sin * endOffset,
-      wheelSize
-    );
-    this.graphics.fillCircle(
-      x - cos * endOffset,
-      y - sin * endOffset,
-      wheelSize
-    );
   }
 
   // Render commander crown
