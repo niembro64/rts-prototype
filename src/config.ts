@@ -68,7 +68,7 @@ export const WAVE_PULL_STRENGTH = 180;
  * Units moving fast when they die will have explosions trailing their motion.
  * 0 = ignore unit velocity, 1.0 = realistic, 5.0+ = exaggerated
  */
-export const EXPLOSION_VELOCITY_MULTIPLIER = 300.0;
+export const EXPLOSION_VELOCITY_MULTIPLIER = 3000.0;
 
 /**
  * Multiplier for the impact force/damage direction.
@@ -76,7 +76,7 @@ export const EXPLOSION_VELOCITY_MULTIPLIER = 300.0;
  * This uses the knockback force from the weapon that killed them.
  * 0 = ignore impact, 1.0 = realistic, 5.0+ = exaggerated
  */
-export const EXPLOSION_IMPACT_FORCE_MULTIPLIER = 800.0;
+export const EXPLOSION_IMPACT_FORCE_MULTIPLIER = 8000.0;
 
 /**
  * Multiplier for the attacker's projectile/beam direction.
@@ -84,14 +84,14 @@ export const EXPLOSION_IMPACT_FORCE_MULTIPLIER = 800.0;
  * For beams, this is the direction from attacker to target.
  * 0 = ignore attacker direction, 1.0 = realistic, 5.0+ = exaggerated
  */
-export const EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER = 500.0;
+export const EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER = 5000.0;
 
 /**
  * Base explosion momentum even when all factors are zero.
  * Adds a minimum "oomph" to all explosions regardless of context.
  * This is raw velocity units added to the final momentum.
  */
-export const EXPLOSION_BASE_MOMENTUM = 50;
+export const EXPLOSION_BASE_MOMENTUM = 500;
 
 // =============================================================================
 // BUILDING STATS
@@ -126,6 +126,18 @@ export const COMMANDER_STATS = {
 };
 
 // =============================================================================
+// PHYSICS TUNING
+// =============================================================================
+
+/**
+ * Global mass multiplier for all units.
+ * Higher values = heavier units = slower acceleration, more momentum, more "weighty" feel.
+ * 1.0 = use raw mass values from UNIT_STATS
+ * 5.0 = units feel 5x heavier (similar to old demo feel)
+ */
+export const UNIT_MASS_MULTIPLIER = 5.0;
+
+// =============================================================================
 // UNIT STATS (base values before any multipliers)
 // =============================================================================
 /**
@@ -155,7 +167,7 @@ export const UNIT_STATS = {
   scout: {
     baseCost: 35,
     hp: 40,
-    moveSpeed: 260,
+    moveSpeed: 360,
     collisionRadius: 8,
     mass: 10,        // Light and zippy
     buildRate: 70,
@@ -173,7 +185,7 @@ export const UNIT_STATS = {
   daddy: {
     baseCost: 500,
     hp: 100,
-    moveSpeed: 100,
+    moveSpeed: 200,
     collisionRadius: 13,
     mass: 25,       // Medium baseline
     buildRate: 45,
@@ -209,9 +221,9 @@ export const UNIT_STATS = {
   tank: {
     baseCost: 280,
     hp: 350,
-    moveSpeed: 200,
+    moveSpeed: 5000,
     collisionRadius: 24,
-    mass: 50,       // Heavy tank
+    mass: 500,       // Heavy tank
     buildRate: 18,
   },
   // Widow - Titan spider unit. 6 beam lasers + 1 sonic wave, 8 legs.
@@ -220,14 +232,14 @@ export const UNIT_STATS = {
     hp: 1200,
     moveSpeed: 1000,
     collisionRadius: 38,
-    mass: 50,      // Massive titan
+    mass: 240,      // Massive titan
     buildRate: 8,
   },
   // Insect - Small 4-legged unit with continuous wave AoE damage.
   insect: {
     baseCost: 90,
     hp: 80,
-    moveSpeed: 100,
+    moveSpeed: 200,
     collisionRadius: 11,
     mass: 18,
     buildRate: 50,

@@ -41,6 +41,7 @@ import {
   EXPLOSION_IMPACT_FORCE_MULTIPLIER,
   EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
   EXPLOSION_BASE_MOMENTUM,
+  UNIT_MASS_MULTIPLIER,
 } from '../../config';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
@@ -57,6 +58,9 @@ function createUnitBody(
   mass: number,
   label: string
 ): MatterJS.BodyType {
+  // Apply global mass multiplier for physics feel tuning
+  const physicsMass = mass * UNIT_MASS_MULTIPLIER;
+
   const body = matter.add.circle(x, y, collisionRadius, {
     friction: 0.01,        // Low ground friction
     frictionAir: 0.15,     // Higher air friction - units slow down quickly when not thrusting
@@ -66,10 +70,10 @@ function createUnitBody(
   });
 
   // Explicitly set mass after creation (Matter.js option doesn't always work)
-  matter.body.setMass(body, mass);
+  matter.body.setMass(body, physicsMass);
 
   // Set inertia based on mass - heavier units resist rotation more
-  matter.body.setInertia(body, mass * collisionRadius * collisionRadius * 0.5);
+  matter.body.setInertia(body, physicsMass * collisionRadius * collisionRadius * 0.5);
 
   return body as unknown as MatterJS.BodyType;
 }
@@ -1589,6 +1593,7 @@ export class RtsScene extends Phaser.Scene {
       playerId,
       stats.collisionRadius,
       stats.moveSpeed,
+      stats.mass,  // Mass was missing - stats.hp was being passed as mass!
       stats.hp
     );
     unit.weapons = createWeaponsFromDefinition(unitType, stats.collisionRadius);
