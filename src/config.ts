@@ -157,7 +157,7 @@ export const UNIT_STATS = {
     hp: 40,
     moveSpeed: 260,
     collisionRadius: 8,
-    mass: 1,        // Light and zippy
+    mass: 10,        // Light and zippy
     buildRate: 70,
   },
   // Burst - Glass cannon striker. High alpha, fragile.
