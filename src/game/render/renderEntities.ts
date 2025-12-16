@@ -14,6 +14,7 @@ import {
   createFourWheelSetup,
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
+import { getGraphicsConfig } from './graphicsSettings';
 
 /**
  * EntitySource - Interface that both WorldState and ClientViewState implement
@@ -346,6 +347,14 @@ export class EntityRenderer {
 
   // Update all legged unit legs (call each frame with dtMs)
   updateArachnidLegs(dtMs: number): void {
+    const gfxConfig = getGraphicsConfig();
+
+    // Skip leg updates entirely if legs are disabled (low/medium quality)
+    if (gfxConfig.legs === 'none') {
+      this.arachnidLegs.clear();
+      return;
+    }
+
     // Clean up legs for entities that no longer exist
     const existingIds = new Set(this.entitySource.getUnits().map((e) => e.id));
     for (const id of this.arachnidLegs.keys()) {
@@ -354,7 +363,7 @@ export class EntityRenderer {
       }
     }
 
-    // Update legs for all legged units using unit definitions
+    // Update legs for all legged units using unit definitions (high quality)
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
         continue;
@@ -735,6 +744,20 @@ export class EntityRenderer {
   // Render an explosion effect
   private renderExplosion(exp: ExplosionEffect): void {
     const progress = exp.elapsed / exp.lifetime;
+    const gfxConfig = getGraphicsConfig();
+
+    // Low quality: simple flash for all explosions
+    if (gfxConfig.explosionLayers === 0) {
+      const currentRadius = exp.radius * (0.5 + progress * 0.5);
+      const alpha = 1 - progress * progress;
+      this.graphics.fillStyle(exp.color, alpha * 0.4);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.2);
+      this.graphics.fillStyle(0xffffff, alpha * 0.8);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.4);
+      this.graphics.fillStyle(exp.color, alpha * 0.7);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.7);
+      return;
+    }
 
     if (exp.type === 'death') {
       // ========================================================================
@@ -805,8 +828,9 @@ export class EntityRenderer {
 
       // ------------------------------------------------------------------------
       // LAYER 1: SMOKE CLOUDS (uses VELOCITY - trails behind moving unit)
+      // Skip on medium quality (explosionLayers <= 2)
       // ------------------------------------------------------------------------
-      if (progress > 0.1) {
+      if (gfxConfig.explosionLayers > 2 && progress > 0.1) {
         const smokeCount = 6 + Math.floor(velStrength * 4);
         for (let i = 0; i < smokeCount; i++) {
           const smokeProgress = Math.max(0, (progress - 0.1 - i * 0.02) * 1.8);
@@ -1001,8 +1025,9 @@ export class EntityRenderer {
       // ------------------------------------------------------------------------
       // LAYER 8: FIRE EMBERS (uses VELOCITY - trail behind moving unit)
       // Embers drift in the opposite direction of unit velocity (trailing effect)
+      // Skip on medium quality (explosionLayers <= 2)
       // ------------------------------------------------------------------------
-      if (progress > 0.15) {
+      if (gfxConfig.explosionLayers > 2 && progress > 0.15) {
         const emberCount = 10 + Math.floor(velStrength * 8);
         for (let i = 0; i < emberCount; i++) {
           const emberProgress = Math.max(0, (progress - 0.15 - seededRandom(i + 500) * 0.2) * 2.0);
@@ -1044,8 +1069,9 @@ export class EntityRenderer {
       // ------------------------------------------------------------------------
       // LAYER 9: MOMENTUM TRAIL (uses COMBINED - overall momentum stream)
       // Hot streak of particles in the combined direction of all forces
+      // Skip on medium quality (explosionLayers <= 2)
       // ------------------------------------------------------------------------
-      if (hasCombined && combinedStrength > 0.3) {
+      if (gfxConfig.explosionLayers > 2 && hasCombined && combinedStrength > 0.3) {
         const trailCount = Math.floor(combinedStrength * 15);
         for (let i = 0; i < trailCount; i++) {
           const trailT = i / trailCount;

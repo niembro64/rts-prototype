@@ -9,6 +9,11 @@ import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
 import { DEFAULT_NETWORK_UPDATES_PER_SECOND } from '../config';
 import type { HostViewMode } from '../game/scenes/RtsScene';
+import {
+  getGraphicsQuality,
+  setGraphicsQuality,
+  type GraphicsQuality,
+} from '../game/render/graphicsSettings';
 
 // Available update rate options
 const UPDATE_RATE_OPTIONS = [1, 5, 10, 30] as const;
@@ -17,6 +22,13 @@ const UPDATE_RATE_OPTIONS = [1, 5, 10, 30] as const;
 const VIEW_MODE_OPTIONS: { value: HostViewMode; label: string }[] = [
   { value: 'simulation', label: 'Simulation' },
   { value: 'client', label: 'Client View' },
+];
+
+// Graphics quality options
+const GRAPHICS_OPTIONS: { value: GraphicsQuality; label: string }[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Med' },
+  { value: 'high', label: 'High' },
 ];
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -40,6 +52,7 @@ const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
 const networkUpdatesPerSecond = ref(DEFAULT_NETWORK_UPDATES_PER_SECOND);
 const hostViewMode = ref<HostViewMode>('simulation');
+const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 
 // State broadcast interval (for host)
 let stateBroadcastInterval: ReturnType<typeof setInterval> | null = null;
@@ -275,6 +288,11 @@ function toggleSpectateMode(): void {
   spectateMode.value = !spectateMode.value;
 }
 
+function changeGraphicsQuality(quality: GraphicsQuality): void {
+  setGraphicsQuality(quality);
+  graphicsQuality.value = quality;
+}
+
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
     // Check if already in list
@@ -495,6 +513,22 @@ onUnmounted(() => {
     >
       ☰
     </button>
+
+    <!-- Graphics quality toggle (always visible) -->
+    <div class="graphics-options">
+      <span class="graphics-label">GFX:</span>
+      <div class="graphics-buttons">
+        <button
+          v-for="opt in GRAPHICS_OPTIONS"
+          :key="opt.value"
+          class="graphics-btn"
+          :class="{ active: graphicsQuality === opt.value }"
+          @click="changeGraphicsQuality(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+    </div>
 
     <!-- Game UI (only when game is running) -->
     <template v-if="gameStarted && !showLobby">
@@ -820,6 +854,57 @@ onUnmounted(() => {
 .spectate-toggle-btn:hover {
   background: rgba(40, 40, 60, 0.95);
   border-color: #6666cc;
+  color: white;
+}
+
+/* Graphics quality options */
+.graphics-options {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 3001;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid #444;
+  border-radius: 6px;
+  font-family: monospace;
+}
+
+.graphics-label {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.graphics-buttons {
+  display: flex;
+  gap: 3px;
+}
+
+.graphics-btn {
+  padding: 3px 8px;
+  background: rgba(60, 60, 60, 0.8);
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #aaa;
+  font-family: monospace;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.graphics-btn:hover {
+  background: rgba(80, 80, 80, 0.9);
+  border-color: #777;
+  color: #ddd;
+}
+
+.graphics-btn.active {
+  background: rgba(68, 136, 68, 0.9);
+  border-color: #6a6;
   color: white;
 }
 </style>
