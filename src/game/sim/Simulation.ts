@@ -1,5 +1,5 @@
 import { WorldState } from './WorldState';
-import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type SetRallyPointCommand, type SetFactoryWaypointsCommand, type FireDGunCommand, type RepairCommand } from './commands';
+import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type CancelQueueItemCommand, type SetRallyPointCommand, type SetFactoryWaypointsCommand, type FireDGunCommand, type RepairCommand } from './commands';
 import type { Entity, EntityId, PlayerId, UnitAction } from './types';
 import {
   updateAutoTargeting,
@@ -309,6 +309,9 @@ export class Simulation {
       case 'queueUnit':
         this.executeQueueUnitCommand(command);
         break;
+      case 'cancelQueueItem':
+        this.executeCancelQueueItemCommand(command);
+        break;
       case 'setRallyPoint':
         this.executeSetRallyPointCommand(command);
         break;
@@ -418,6 +421,14 @@ export class Simulation {
     if (!factory?.factory) return;
 
     factoryProductionSystem.queueUnit(factory, command.weaponId);
+  }
+
+  // Execute cancel queue item command
+  private executeCancelQueueItemCommand(command: CancelQueueItemCommand): void {
+    const factory = this.world.getEntity(command.factoryId);
+    if (!factory?.factory) return;
+
+    factoryProductionSystem.dequeueUnit(factory, command.index);
   }
 
   // Execute set rally point command

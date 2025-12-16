@@ -1,5 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
+import { PLAYER_COLORS } from './types';
 import { FIXED_TIMESTEP } from './Simulation';
 import { DamageSystem } from './damage';
 import type { DeathContext } from './damage/types';
@@ -16,6 +17,19 @@ export interface AudioEvent {
   x: number;
   y: number;
   entityId?: EntityId; // For tracking continuous sounds
+
+  // Death context (only for 'death' events) - for directional explosion effects
+  deathContext?: {
+    velocityX: number;
+    velocityY: number;
+    penetrationDirX: number;
+    penetrationDirY: number;
+    attackerDirX: number;
+    attackerDirY: number;
+    attackMagnitude: number;
+    radius: number;       // Unit's collision radius for explosion size
+    color: number;        // Player color for explosion
+  };
 }
 
 // Combat result containing entities and audio events
@@ -953,11 +967,26 @@ export function checkProjectileCollisions(
           for (const weapon of targetWeapons) {
             deathWeaponId = weapon.config.id;
           }
+          // Get death context for directional explosion
+          const ctx = result.deathContexts.get(id);
+          const playerId = target?.ownership?.playerId ?? 1;
+          const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
           audioEvents.push({
             type: 'death',
             weaponId: deathWeaponId,
             x: target?.transform.x ?? 0,
             y: target?.transform.y ?? 0,
+            deathContext: ctx ? {
+              velocityX: target?.unit?.velocityX ?? 0,
+              velocityY: target?.unit?.velocityY ?? 0,
+              penetrationDirX: ctx.penetrationDirX,
+              penetrationDirY: ctx.penetrationDirY,
+              attackerDirX: ctx.attackerDirX,
+              attackerDirY: ctx.attackerDirY,
+              attackMagnitude: ctx.attackMagnitude,
+              radius: target?.unit?.collisionRadius ?? 15,
+              color: playerColor,
+            } : undefined,
           });
           unitsToRemove.push(id);
         }
@@ -965,11 +994,24 @@ export function checkProjectileCollisions(
       for (const id of result.killedBuildingIds) {
         if (!buildingsToRemove.includes(id)) {
           const building = world.getEntity(id);
+          const playerId = building?.ownership?.playerId ?? 1;
+          const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
           audioEvents.push({
             type: 'death',
             weaponId: config.id,
             x: building?.transform.x ?? 0,
             y: building?.transform.y ?? 0,
+            deathContext: {
+              velocityX: 0,
+              velocityY: 0,
+              penetrationDirX: 0,
+              penetrationDirY: -1,
+              attackerDirX: 0,
+              attackerDirY: 0,
+              attackMagnitude: 50,
+              radius: (building?.building?.width ?? 100) / 2,
+              color: playerColor,
+            },
           });
           buildingsToRemove.push(id);
         }
@@ -1060,11 +1102,26 @@ export function checkProjectileCollisions(
           for (const weapon of targetWeapons) {
             deathWeaponId = weapon.config.id;
           }
+          // Get death context for directional explosion
+          const ctx = result.deathContexts.get(id);
+          const playerId = target?.ownership?.playerId ?? 1;
+          const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
           audioEvents.push({
             type: 'death',
             weaponId: deathWeaponId,
             x: target?.transform.x ?? 0,
             y: target?.transform.y ?? 0,
+            deathContext: ctx ? {
+              velocityX: target?.unit?.velocityX ?? 0,
+              velocityY: target?.unit?.velocityY ?? 0,
+              penetrationDirX: ctx.penetrationDirX,
+              penetrationDirY: ctx.penetrationDirY,
+              attackerDirX: ctx.attackerDirX,
+              attackerDirY: ctx.attackerDirY,
+              attackMagnitude: ctx.attackMagnitude,
+              radius: target?.unit?.collisionRadius ?? 15,
+              color: playerColor,
+            } : undefined,
           });
           unitsToRemove.push(id);
         }
@@ -1072,11 +1129,24 @@ export function checkProjectileCollisions(
       for (const id of result.killedBuildingIds) {
         if (!buildingsToRemove.includes(id)) {
           const building = world.getEntity(id);
+          const playerId = building?.ownership?.playerId ?? 1;
+          const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
           audioEvents.push({
             type: 'death',
             weaponId: config.id,
             x: building?.transform.x ?? 0,
             y: building?.transform.y ?? 0,
+            deathContext: {
+              velocityX: 0,
+              velocityY: 0,
+              penetrationDirX: 0,
+              penetrationDirY: -1,
+              attackerDirX: 0,
+              attackerDirY: 0,
+              attackMagnitude: 50,
+              radius: (building?.building?.width ?? 100) / 2,
+              color: playerColor,
+            },
           });
           buildingsToRemove.push(id);
         }

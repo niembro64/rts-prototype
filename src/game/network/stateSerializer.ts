@@ -52,13 +52,14 @@ export function serializeGameState(
     intensity: st.intensity,
   }));
 
-  // Serialize audio events
+  // Serialize audio events (including death context for explosions)
   const netAudioEvents: NetworkAudioEvent[] | undefined = audioEvents?.map(ae => ({
     type: ae.type,
     weaponId: ae.weaponId,
     x: ae.x,
     y: ae.y,
     entityId: ae.entityId,
+    deathContext: ae.deathContext,
   }));
 
   return {

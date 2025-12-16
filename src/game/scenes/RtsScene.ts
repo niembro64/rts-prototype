@@ -273,7 +273,7 @@ export class RtsScene extends Phaser.Scene {
     }
   }
 
-  // Handle audio events from simulation
+  // Handle audio events from simulation (or network)
   private handleAudioEvent(event: AudioEvent): void {
     // Always handle visual effects even if audio not initialized
     if (event.type === 'hit' || event.type === 'projectileExpire') {
@@ -282,6 +282,48 @@ export class RtsScene extends Phaser.Scene {
       const explosionRadius = this.getExplosionRadius(event.weaponId);
       const explosionColor = 0xff8844; // Orange-ish for impacts
       this.entityRenderer.addExplosion(event.x, event.y, explosionRadius, explosionColor, 'impact');
+    }
+
+    // Handle death explosions (visual) - uses death context from event
+    if (event.type === 'death' && event.deathContext) {
+      const ctx = event.deathContext;
+      const radius = ctx.radius * 2.5; // Death explosions are 2.5x collision radius
+
+      // Apply same multipliers as host-side death handling
+      const velocityX = ctx.velocityX * EXPLOSION_VELOCITY_MULTIPLIER;
+      const velocityY = ctx.velocityY * EXPLOSION_VELOCITY_MULTIPLIER;
+
+      const penetrationX = ctx.penetrationDirX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+      const penetrationY = ctx.penetrationDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+
+      const attackScale = Math.min(ctx.attackMagnitude / 50, 2);
+      const attackerX = ctx.attackerDirX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale * 100;
+      const attackerY = ctx.attackerDirY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale * 100;
+
+      // Add base momentum
+      let baseVelX = velocityX;
+      let baseVelY = velocityY;
+      const combinedX = velocityX + penetrationX + attackerX;
+      const combinedY = velocityY + penetrationY + attackerY;
+      const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
+      if (combinedMag > 0 && EXPLOSION_BASE_MOMENTUM > 0) {
+        baseVelX += (combinedX / combinedMag) * EXPLOSION_BASE_MOMENTUM;
+        baseVelY += (combinedY / combinedMag) * EXPLOSION_BASE_MOMENTUM;
+      }
+
+      this.entityRenderer.addExplosion(
+        event.x,
+        event.y,
+        radius,
+        ctx.color,
+        'death',
+        baseVelX,
+        baseVelY,
+        penetrationX,
+        penetrationY,
+        attackerX,
+        attackerY
+      );
     }
 
     if (!this.audioInitialized) return;
@@ -512,19 +554,7 @@ export class RtsScene extends Phaser.Scene {
 
   // Cancel a queue item at a factory
   public cancelFactoryQueueItem(factoryId: number, index: number): void {
-    const factory = this.world.getEntity(factoryId);
-    if (!factory?.factory) return;
-
-    // Remove the item at the given index
-    if (index >= 0 && index < factory.factory.buildQueue.length) {
-      factory.factory.buildQueue.splice(index, 1);
-
-      // If we removed the first item and it was being built, reset production
-      if (index === 0) {
-        factory.factory.currentBuildProgress = 0;
-        factory.factory.isProducing = factory.factory.buildQueue.length > 0;
-      }
-    }
+    this.inputManager?.cancelQueueItemAtFactory(factoryId, index);
   }
 
   // Center camera on a world position (used by minimap click)

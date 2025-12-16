@@ -18,6 +18,19 @@ export interface NetworkAudioEvent {
   x: number;
   y: number;
   entityId?: number;
+
+  // Death context (only for 'death' events) - for directional explosion effects
+  deathContext?: {
+    velocityX: number;
+    velocityY: number;
+    penetrationDirX: number;
+    penetrationDirY: number;
+    attackerDirX: number;
+    attackerDirY: number;
+    attackMagnitude: number;
+    radius: number;
+    color: number;
+  };
 }
 
 // Serialized game state sent over network

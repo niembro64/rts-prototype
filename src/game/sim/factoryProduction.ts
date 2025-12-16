@@ -162,12 +162,14 @@ export class FactoryProductionSystem {
       return false;
     }
 
-    // Can't remove currently building item (index 0) if in progress
-    if (index === 0 && factory.factory.isProducing) {
-      return false;
+    factory.factory.buildQueue.splice(index, 1);
+
+    // If we removed the first item (currently building), reset production
+    if (index === 0) {
+      factory.factory.currentBuildProgress = 0;
+      factory.factory.isProducing = factory.factory.buildQueue.length > 0;
     }
 
-    factory.factory.buildQueue.splice(index, 1);
     return true;
   }
 

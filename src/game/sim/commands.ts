@@ -1,7 +1,7 @@
 import type { EntityId, WaypointType, BuildingType } from './types';
 
 // Command types
-export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair';
+export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'cancelQueueItem' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair';
 
 // Base command interface
 interface BaseCommand {
@@ -59,6 +59,13 @@ export interface QueueUnitCommand extends BaseCommand {
   weaponId: string;
 }
 
+// Cancel queue item command - remove unit from factory production queue
+export interface CancelQueueItemCommand extends BaseCommand {
+  type: 'cancelQueueItem';
+  factoryId: EntityId;
+  index: number;
+}
+
 // Set rally point command - set factory rally point
 export interface SetRallyPointCommand extends BaseCommand {
   type: 'setRallyPoint';
@@ -99,7 +106,7 @@ export interface RepairCommand extends BaseCommand {
 }
 
 // Union of all command types
-export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand;
+export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | CancelQueueItemCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand;
 
 // Command queue for processing commands in order
 export class CommandQueue {

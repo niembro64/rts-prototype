@@ -256,6 +256,20 @@ export class InputManager {
     this.commandQueue.enqueue(command);
   }
 
+  // Public method to cancel queue item at factory from UI
+  public cancelQueueItemAtFactory(factoryId: number, index: number): void {
+    const factory = this.entitySource.getEntity(factoryId);
+    if (!factory?.factory) return;
+
+    const command = {
+      type: 'cancelQueueItem' as const,
+      tick: this.world.getTick(),
+      factoryId: factoryId,
+      index: index,
+    };
+    this.commandQueue.enqueue(command);
+  }
+
   // Setup building hotkeys
   private setupBuildHotkeys(): void {
     // B key enters build mode (shows menu or cycles)
