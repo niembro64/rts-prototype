@@ -270,6 +270,17 @@ export const WEAPON_STATS = {
 };
 
 // =============================================================================
+// BACKGROUND GAME SETTINGS
+// =============================================================================
+
+/**
+ * Unit spawn distribution for background battle.
+ * - true: Inverse cost weighting (cheaper units spawn more frequently)
+ * - false: Flat distribution (all units equally likely)
+ */
+export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING = true;
+
+// =============================================================================
 // NETWORKING
 // =============================================================================
 

@@ -32,7 +32,7 @@ const WEAPON_LABELS: Record<string, string> = {
 };
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
-import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS } from '../../config';
+import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS, BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING } from '../../config';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
 // Grid settings
@@ -1383,6 +1383,42 @@ export class RtsScene extends Phaser.Scene {
   // Available unit types for background spawning
   private readonly BACKGROUND_UNIT_TYPES = Object.keys(UNIT_STATS) as (keyof typeof UNIT_STATS)[];
 
+  // Precomputed inverse cost weights for weighted random selection
+  private backgroundUnitWeights: { type: keyof typeof UNIT_STATS; weight: number }[] = [];
+  private backgroundTotalWeight: number = 0;
+
+  // Initialize background unit weights (call once)
+  private initBackgroundUnitWeights(): void {
+    if (this.backgroundUnitWeights.length > 0) return; // Already initialized
+
+    // Calculate inverse cost weights: weight = 1 / cost
+    // This makes cheaper units spawn more frequently
+    for (const unitType of this.BACKGROUND_UNIT_TYPES) {
+      const cost = UNIT_STATS[unitType].baseCost;
+      const weight = 1 / cost;
+      this.backgroundUnitWeights.push({ type: unitType, weight });
+      this.backgroundTotalWeight += weight;
+    }
+  }
+
+  // Select a random unit type based on inverse cost weighting
+  private selectWeightedUnitType(): keyof typeof UNIT_STATS {
+    this.initBackgroundUnitWeights();
+
+    const random = Math.random() * this.backgroundTotalWeight;
+    let cumulative = 0;
+
+    for (const entry of this.backgroundUnitWeights) {
+      cumulative += entry.weight;
+      if (random <= cumulative) {
+        return entry.type;
+      }
+    }
+
+    // Fallback (shouldn't reach here)
+    return this.backgroundUnitWeights[this.backgroundUnitWeights.length - 1].type;
+  }
+
   // Spawn units for the background battle (4 players: Red, Blue, Yellow, Green)
   private spawnBackgroundUnits(initialSpawn: boolean): void {
     const numPlayers = 4;
@@ -1452,8 +1488,10 @@ export class RtsScene extends Phaser.Scene {
     const x = minX + Math.random() * (maxX - minX);
     const y = minY + Math.random() * (maxY - minY);
 
-    // Random unit type
-    const unitType = this.BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * this.BACKGROUND_UNIT_TYPES.length)];
+    // Select unit type based on config (weighted by inverse cost or flat distribution)
+    const unitType = BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING
+      ? this.selectWeightedUnitType()
+      : this.BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * this.BACKGROUND_UNIT_TYPES.length)];
     const stats = UNIT_STATS[unitType];
 
     // Create the unit using base method and set weapons for this unit type
