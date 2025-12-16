@@ -61,12 +61,15 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
 }
 
 // Arachnid weapon creation - 6 beam lasers at hexagon + 1 sonic in center
+// Arachnid weapons have 1.5x the normal vision and fire range
 function createArachnidWeapons(radius: number, definition: UnitDefinition): UnitWeapon[] {
   const beamConfig = getWeaponConfig('beam');
   const sonicConfig = getWeaponConfig('sonic');
   const turretTurnRate = 0.3;
-  const seeRange = definition.weaponSeeRange ?? 400;
-  const fireRange = definition.weaponFireRange ?? beamConfig.range;
+  const rangeMultiplier = 1.5; // Arachnid has extended range
+  const baseSeeRange = definition.weaponSeeRange ?? 400;
+  const seeRange = baseSeeRange * rangeMultiplier;
+  const fireRange = (definition.weaponFireRange ?? beamConfig.range) * rangeMultiplier;
 
   const weapons: UnitWeapon[] = [];
 
@@ -93,13 +96,13 @@ function createArachnidWeapons(radius: number, definition: UnitDefinition): Unit
     });
   }
 
-  // 1 sonic wave weapon in center
+  // 1 sonic wave weapon in center (also gets 1.5x range)
   weapons.push({
     config: { ...sonicConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    seeRange: seeRange * 0.5,
-    fireRange: sonicConfig.range,
+    seeRange: seeRange * 0.5, // Still half of beam seeRange, but that's now 1.5x larger
+    fireRange: sonicConfig.range * rangeMultiplier,
     turretRotation: 0,
     turretTurnRate: turretTurnRate * 1.5,
     offsetX: hexForwardOffset,

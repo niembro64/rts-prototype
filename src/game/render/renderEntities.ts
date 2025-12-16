@@ -1750,48 +1750,17 @@ export class EntityRenderer {
         this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
-      // Main body (elongated octagon/oval shape)
+      // Main body (hexagonal shape matching inner hexagon, but larger)
       const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
       this.graphics.fillStyle(bodyColor, 0.95);
 
-      // Draw body as elongated hexagon
-      const bodyLength = r * 1.2;
-      const bodyWidth = r * 0.7;
-      const bodyPoints = [
-        {
-          x: x + cos * bodyLength - sin * bodyWidth * 0.5,
-          y: y + sin * bodyLength + cos * bodyWidth * 0.5,
-        },
-        {
-          x: x + cos * bodyLength * 0.7 - sin * bodyWidth,
-          y: y + sin * bodyLength * 0.7 + cos * bodyWidth,
-        },
-        {
-          x: x - cos * bodyLength * 0.3 - sin * bodyWidth,
-          y: y - sin * bodyLength * 0.3 + cos * bodyWidth,
-        },
-        {
-          x: x - cos * bodyLength - sin * bodyWidth * 0.5,
-          y: y - sin * bodyLength + cos * bodyWidth * 0.5,
-        },
-        {
-          x: x - cos * bodyLength + sin * bodyWidth * 0.5,
-          y: y - sin * bodyLength - cos * bodyWidth * 0.5,
-        },
-        {
-          x: x - cos * bodyLength * 0.3 + sin * bodyWidth,
-          y: y - sin * bodyLength * 0.3 - cos * bodyWidth,
-        },
-        {
-          x: x + cos * bodyLength * 0.7 + sin * bodyWidth,
-          y: y + sin * bodyLength * 0.7 - cos * bodyWidth,
-        },
-        {
-          x: x + cos * bodyLength + sin * bodyWidth * 0.5,
-          y: y + sin * bodyLength - cos * bodyWidth * 0.5,
-        },
-      ];
-      this.graphics.fillPoints(bodyPoints, true);
+      // Draw body as hexagon - larger than inner hexagon, same rotation (30° so flat edge faces forward)
+      const bodyHexRadius = r * 0.95; // Larger than inner hexagon (0.65)
+      const bodyHexForwardOffset = r * 0.35; // Shifted forward slightly less than inner
+      const bodyHexRotationOffset = Math.PI / 6; // 30° rotation to match inner hexagon
+      const bodyHexCenterX = x + cos * bodyHexForwardOffset;
+      const bodyHexCenterY = y + sin * bodyHexForwardOffset;
+      this.drawPolygon(bodyHexCenterX, bodyHexCenterY, bodyHexRadius, 6, bodyRot + bodyHexRotationOffset);
 
       // Inner carapace pattern (base color) - shifted forward, larger hexagon, rotated 30°
       const hexRadius = r * 0.65;
