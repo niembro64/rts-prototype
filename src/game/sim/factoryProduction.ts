@@ -211,7 +211,7 @@ export function createWeaponsForUnitType(unitType: string, radius: number): Unit
   // Arachnid has 8 beam lasers arranged in two rows
   if (unitType === 'arachnid') {
     const beamConfig = getWeaponConfig('beam');
-    const turretTurnRate = 4;
+    const turretTurnRate = 0.3; // Slow turret rotation for heavy arachnid
     const seeRange = config?.weaponSeeRange ?? 400;
     const fireRange = config?.weaponFireRange ?? beamConfig.range;
 
@@ -270,7 +270,7 @@ export function createWeaponsForUnitType(unitType: string, radius: number): Unit
     seeRange,
     fireRange,
     turretRotation: 0,
-    turretTurnRate: 3,
+    turretTurnRate: 1,
     offsetX: 0,
     offsetY: 0,
     isFiring: false,
