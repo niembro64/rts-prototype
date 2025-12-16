@@ -3235,8 +3235,6 @@ export class EntityRenderer {
 
     const factory = entity.factory;
     const x = entity.transform.x;
-    const y = entity.transform.y;
-    const isSelected = entity.selectable?.selected ?? false;
     const isProducing = factory.isProducing;
     const playerColor = this.getPlayerColor(entity.ownership?.playerId);
 
@@ -3352,32 +3350,8 @@ export class EntityRenderer {
       this.graphics.fillRect(left, top, width, height);
     }
 
-    // ========== RALLY POINT ==========
-
-    // Only draw simple rally point when NOT selected (waypoints are drawn separately when selected)
-    if (!isSelected) {
-      // Draw rally point line and marker
-      this.graphics.lineStyle(1, 0x00ff00, 0.4);
-      this.graphics.lineBetween(x, y, factory.rallyX, factory.rallyY);
-
-      // Rally point marker (small flag)
-      this.graphics.fillStyle(0x00ff00, 0.7);
-      this.graphics.fillTriangle(
-        factory.rallyX,
-        factory.rallyY - 8,
-        factory.rallyX + 8,
-        factory.rallyY - 4,
-        factory.rallyX,
-        factory.rallyY
-      );
-      this.graphics.lineStyle(1, 0x00ff00, 0.8);
-      this.graphics.lineBetween(
-        factory.rallyX,
-        factory.rallyY,
-        factory.rallyX,
-        factory.rallyY - 8
-      );
-    }
+    // Rally point is only shown when factory is selected (via renderFactoryWaypoints)
+    // No rally point indicator for unselected factories to avoid cross-player visibility
 
     // ========== PRODUCTION PROGRESS ==========
 
