@@ -118,7 +118,7 @@ export const UNIT_STATS = {
   // Daddy - Balanced baseline. Reliable sustained damage. (Daddy long legs appearance)
   // Value: 45 DPS × 1.0 range × (100 HP × 1.0 speed) = 45 → Cost: 100 (baseline)
   daddy: {
-    baseCost: 100,
+    baseCost: 300,
     hp: 100,
     moveSpeed: 100,
     collisionRadius: 13,
@@ -164,7 +164,7 @@ export const UNIT_STATS = {
   // Combined DPS: 6×45 (beam) + 40 (sonic) = ~310 DPS across multiple ranges
   // Extremely slow, massive HP pool, very expensive. Apex predator.
   widow: {
-    baseCost: 1000,
+    baseCost: 600,
     hp: 1200,
     moveSpeed: 25,
     collisionRadius: 38,
