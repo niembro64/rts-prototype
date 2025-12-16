@@ -1,15 +1,11 @@
 /**
  * ClientViewState - Manages the "client view" of the game state
  *
- * This class provides the same abstraction for:
- * 1. Actual network clients receiving state from host
- * 2. Host's "client view" mode (seeing what clients see)
- *
- * It receives serialized NetworkGameState and:
- * - Maintains its own entity state (separate from simulation)
- * - Applies network state updates (snapping to received positions)
- * - Runs velocity-based prediction between updates
- * - Provides entities for rendering
+ * Uses SNAPSHOT INTERPOLATION for smooth rendering:
+ * - Buffers recent snapshots from host
+ * - Renders entities interpolated between past snapshots
+ * - Units appear ~100-150ms behind host but motion is perfectly smooth
+ * - This is the industry standard (Source Engine, Overwatch, etc.)
  */
 
 import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
@@ -18,8 +14,29 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { getWeaponConfig } from '../sim/weapons';
 import { economyManager } from '../sim/economy';
 
+// Snapshot buffer entry
+interface Snapshot {
+  timestamp: number;  // When this snapshot was received (client time)
+  tick: number;       // Host tick number
+  entities: Map<EntityId, NetworkEntity>;
+}
+
+// How far behind real-time to render (ms)
+// Higher = more buffer for network jitter, smoother but more latency
+// Lower = less latency but may run out of snapshots on lag spikes
+const INTERPOLATION_DELAY = 100;  // Render 100ms in the past
+
+// Maximum snapshots to buffer (oldest get dropped)
+const MAX_SNAPSHOTS = 30;
+
 export class ClientViewState {
-  // Entity storage (separate from simulation WorldState)
+  // Snapshot buffer for interpolation (sorted by timestamp, oldest first)
+  private snapshots: Snapshot[] = [];
+
+  // Current render timestamp (client time - INTERPOLATION_DELAY)
+  private renderTimestamp: number = 0;
+
+  // Entity storage for rendering (interpolated positions)
   private entities: Map<EntityId, Entity> = new Map();
 
   // Current spray targets for rendering
@@ -37,51 +54,51 @@ export class ClientViewState {
   // Selection state (synced from main view)
   private selectedIds: Set<EntityId> = new Set();
 
+  // Client time when we started (for timestamp calculation)
+  private startTime: number = performance.now();
+
   constructor() {}
 
   /**
-   * Apply received network state - this is called at network tick rate
-   * Same logic used by actual clients and host's client view
+   * Get current client time in ms
+   */
+  private getClientTime(): number {
+    return performance.now() - this.startTime;
+  }
+
+  /**
+   * Apply received network state - stores snapshot in buffer
    */
   applyNetworkState(state: NetworkGameState): void {
     this.currentTick = state.tick;
-    const existingIds = new Set<EntityId>();
 
-    // Update or create entities
+    // Create snapshot with current timestamp
+    const snapshot: Snapshot = {
+      timestamp: this.getClientTime(),
+      tick: state.tick,
+      entities: new Map(),
+    };
+
+    // Store all entity data
     for (const netEntity of state.entities) {
-      existingIds.add(netEntity.id);
-      const existingEntity = this.entities.get(netEntity.id);
-
-      if (!existingEntity) {
-        // Create new entity
-        const newEntity = this.createEntityFromNetwork(netEntity);
-        if (newEntity) {
-          // Preserve selection state
-          if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
-            newEntity.selectable.selected = true;
-          }
-          this.entities.set(newEntity.id, newEntity);
-        }
-      } else {
-        // Update existing entity (snap to new position)
-        this.updateEntityFromNetwork(existingEntity, netEntity);
-      }
+      snapshot.entities.set(netEntity.id, netEntity);
     }
 
-    // Remove entities that no longer exist
-    for (const [id] of this.entities) {
-      if (!existingIds.has(id)) {
-        this.entities.delete(id);
-      }
+    // Add to buffer
+    this.snapshots.push(snapshot);
+
+    // Trim old snapshots
+    while (this.snapshots.length > MAX_SNAPSHOTS) {
+      this.snapshots.shift();
     }
 
-    // Update economy state
+    // Update economy state (immediate, not interpolated)
     for (const [playerIdStr, eco] of Object.entries(state.economy)) {
       const playerId = parseInt(playerIdStr) as PlayerId;
       economyManager.setEconomyState(playerId, eco);
     }
 
-    // Store spray targets for rendering
+    // Store spray targets for rendering (immediate)
     if (state.sprayTargets && state.sprayTargets.length > 0) {
       this.sprayTargets = state.sprayTargets.map(st => ({
         sourceId: st.sourceId,
@@ -110,35 +127,352 @@ export class ClientViewState {
   }
 
   /**
-   * Apply velocity-based prediction between network updates
-   * Same logic used by actual clients and host's client view
+   * Update interpolated entity positions for rendering
+   * Called every frame with delta time
    */
-  applyPrediction(deltaMs: number): void {
-    const dtSec = deltaMs / 1000;
+  applyPrediction(_deltaMs: number): void {
+    // Advance render timestamp (deltaMs not used - we use wall clock time)
+    this.renderTimestamp = this.getClientTime() - INTERPOLATION_DELAY;
 
-    // Predict unit positions using velocity
-    for (const entity of this.entities.values()) {
-      if (entity.type !== 'unit' || !entity.unit) continue;
-
-      const velX = entity.unit.velocityX ?? 0;
-      const velY = entity.unit.velocityY ?? 0;
-
-      // Direct position update (no physics engine)
-      entity.transform.x += velX * dtSec;
-      entity.transform.y += velY * dtSec;
+    // Need at least 2 snapshots to interpolate
+    if (this.snapshots.length < 2) {
+      // Not enough data - just use latest snapshot if available
+      if (this.snapshots.length === 1) {
+        this.applySnapshotDirect(this.snapshots[0]);
+      }
+      return;
     }
 
-    // Predict projectile positions
-    for (const entity of this.entities.values()) {
-      if (entity.type !== 'projectile' || !entity.projectile) continue;
+    // Find the two snapshots to interpolate between
+    // We want: snapshot1.timestamp <= renderTimestamp <= snapshot2.timestamp
+    let snapshot1: Snapshot | null = null;
+    let snapshot2: Snapshot | null = null;
 
-      const proj = entity.projectile;
-
-      // Only predict traveling projectiles (beams snap to host position)
-      if (proj.projectileType === 'traveling') {
-        entity.transform.x += proj.velocityX * dtSec;
-        entity.transform.y += proj.velocityY * dtSec;
+    for (let i = 0; i < this.snapshots.length - 1; i++) {
+      if (this.snapshots[i].timestamp <= this.renderTimestamp &&
+          this.snapshots[i + 1].timestamp >= this.renderTimestamp) {
+        snapshot1 = this.snapshots[i];
+        snapshot2 = this.snapshots[i + 1];
+        break;
       }
+    }
+
+    // If render time is before all snapshots, use oldest
+    if (!snapshot1 && this.renderTimestamp < this.snapshots[0].timestamp) {
+      this.applySnapshotDirect(this.snapshots[0]);
+      return;
+    }
+
+    // If render time is after all snapshots, extrapolate from last two
+    if (!snapshot1) {
+      snapshot1 = this.snapshots[this.snapshots.length - 2];
+      snapshot2 = this.snapshots[this.snapshots.length - 1];
+    }
+
+    // Calculate interpolation factor (0 = snapshot1, 1 = snapshot2)
+    const timeDiff = snapshot2!.timestamp - snapshot1!.timestamp;
+    let t = timeDiff > 0 ? (this.renderTimestamp - snapshot1!.timestamp) / timeDiff : 0;
+
+    // Clamp to [0, 1.5] - allow slight extrapolation if we're ahead
+    t = Math.max(0, Math.min(1.5, t));
+
+    // Interpolate all entities
+    this.interpolateSnapshots(snapshot1!, snapshot2!, t);
+  }
+
+  /**
+   * Apply a snapshot directly (no interpolation)
+   */
+  private applySnapshotDirect(snapshot: Snapshot): void {
+    const existingIds = new Set<EntityId>();
+
+    for (const [id, netEntity] of snapshot.entities) {
+      existingIds.add(id);
+      const existing = this.entities.get(id);
+
+      if (!existing) {
+        const newEntity = this.createEntityFromNetwork(netEntity);
+        if (newEntity) {
+          if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
+            newEntity.selectable.selected = true;
+          }
+          this.entities.set(id, newEntity);
+        }
+      } else {
+        this.updateEntityDirect(existing, netEntity);
+      }
+    }
+
+    // Remove entities no longer in snapshot
+    for (const [id] of this.entities) {
+      if (!existingIds.has(id)) {
+        this.entities.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Interpolate between two snapshots
+   */
+  private interpolateSnapshots(snap1: Snapshot, snap2: Snapshot, t: number): void {
+    const existingIds = new Set<EntityId>();
+
+    // Process all entities that exist in either snapshot
+    const allEntityIds = new Set([...snap1.entities.keys(), ...snap2.entities.keys()]);
+
+    for (const id of allEntityIds) {
+      existingIds.add(id);
+      const net1 = snap1.entities.get(id);
+      const net2 = snap2.entities.get(id);
+
+      const existing = this.entities.get(id);
+
+      if (!net1 && net2) {
+        // Entity appeared in snap2 - create it at snap2 position
+        if (!existing) {
+          const newEntity = this.createEntityFromNetwork(net2);
+          if (newEntity) {
+            if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
+              newEntity.selectable.selected = true;
+            }
+            this.entities.set(id, newEntity);
+          }
+        } else {
+          this.updateEntityDirect(existing, net2);
+        }
+      } else if (net1 && !net2) {
+        // Entity disappeared in snap2 - keep showing at snap1 position until it's gone
+        if (!existing) {
+          const newEntity = this.createEntityFromNetwork(net1);
+          if (newEntity) {
+            this.entities.set(id, newEntity);
+          }
+        } else {
+          this.updateEntityDirect(existing, net1);
+        }
+      } else if (net1 && net2) {
+        // Entity exists in both - interpolate!
+        if (!existing) {
+          const newEntity = this.createEntityFromNetwork(net2);
+          if (newEntity) {
+            if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
+              newEntity.selectable.selected = true;
+            }
+            this.entities.set(id, newEntity);
+            this.interpolateEntity(newEntity, net1, net2, t);
+          }
+        } else {
+          this.interpolateEntity(existing, net1, net2, t);
+        }
+      }
+    }
+
+    // Remove entities no longer in either snapshot
+    for (const [id] of this.entities) {
+      if (!existingIds.has(id)) {
+        this.entities.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Interpolate a single entity between two network states
+   */
+  private interpolateEntity(entity: Entity, net1: NetworkEntity, net2: NetworkEntity, t: number): void {
+    // Interpolate position
+    entity.transform.x = net1.x + (net2.x - net1.x) * t;
+    entity.transform.y = net1.y + (net2.y - net1.y) * t;
+
+    // Interpolate rotation (handle angle wrapping)
+    let rotDiff = net2.rotation - net1.rotation;
+    while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+    while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+    entity.transform.rotation = net1.rotation + rotDiff * t;
+
+    // Update unit fields (use snap2 for non-interpolated values)
+    if (entity.unit) {
+      entity.unit.hp = net2.hp ?? entity.unit.hp;
+      entity.unit.maxHp = net2.maxHp ?? entity.unit.maxHp;
+      entity.unit.collisionRadius = net2.collisionRadius ?? entity.unit.collisionRadius;
+      entity.unit.moveSpeed = net2.moveSpeed ?? entity.unit.moveSpeed;
+
+      // Interpolate velocity for smooth visual effects
+      const vel1X = net1.velocityX ?? 0;
+      const vel1Y = net1.velocityY ?? 0;
+      const vel2X = net2.velocityX ?? 0;
+      const vel2Y = net2.velocityY ?? 0;
+      entity.unit.velocityX = vel1X + (vel2X - vel1X) * t;
+      entity.unit.velocityY = vel1Y + (vel2Y - vel1Y) * t;
+
+      // Update action queue (use latest)
+      if (net2.actions) {
+        entity.unit.actions = net2.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
+          type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
+          x: na.x!,
+          y: na.y!,
+          targetId: na.targetId,
+          buildingType: na.buildingType as BuildingType | undefined,
+          gridX: na.gridX,
+          gridY: na.gridY,
+          buildingId: na.buildingId,
+        }));
+      }
+    }
+
+    // Update weapons (use latest, interpolate turret rotation)
+    if (net2.weapons && net2.weapons.length > 0 && entity.weapons) {
+      for (let i = 0; i < net2.weapons.length && i < entity.weapons.length; i++) {
+        const w1 = net1.weapons?.[i];
+        const w2 = net2.weapons[i];
+
+        entity.weapons[i].targetEntityId = w2.targetId ?? null;
+        entity.weapons[i].isFiring = w2.isFiring;
+        entity.weapons[i].currentSliceAngle = w2.currentSliceAngle;
+
+        // Interpolate turret rotation
+        if (w1 && w2) {
+          let turretDiff = w2.turretRotation - w1.turretRotation;
+          while (turretDiff > Math.PI) turretDiff -= Math.PI * 2;
+          while (turretDiff < -Math.PI) turretDiff += Math.PI * 2;
+          entity.weapons[i].turretRotation = w1.turretRotation + turretDiff * t;
+        } else {
+          entity.weapons[i].turretRotation = w2.turretRotation;
+        }
+      }
+    }
+
+    // Update builder state
+    if (entity.builder && net2.buildTargetId !== undefined) {
+      entity.builder.currentBuildTarget = net2.buildTargetId;
+    }
+
+    // Update building fields
+    if (entity.building) {
+      entity.building.hp = net2.hp ?? entity.building.hp;
+      entity.building.maxHp = net2.maxHp ?? entity.building.maxHp;
+    }
+
+    if (entity.buildable) {
+      // Interpolate build progress for smooth construction visual
+      const prog1 = net1.buildProgress ?? 0;
+      const prog2 = net2.buildProgress ?? 0;
+      entity.buildable.buildProgress = prog1 + (prog2 - prog1) * t;
+      entity.buildable.isComplete = net2.isComplete ?? entity.buildable.isComplete;
+    }
+
+    if (entity.factory) {
+      entity.factory.buildQueue = net2.buildQueue ?? entity.factory.buildQueue;
+      // Interpolate factory progress
+      const fProg1 = net1.factoryProgress ?? 0;
+      const fProg2 = net2.factoryProgress ?? 0;
+      entity.factory.currentBuildProgress = fProg1 + (fProg2 - fProg1) * t;
+      entity.factory.isProducing = net2.isProducing ?? entity.factory.isProducing;
+      if (net2.rallyX !== undefined) entity.factory.rallyX = net2.rallyX;
+      if (net2.rallyY !== undefined) entity.factory.rallyY = net2.rallyY;
+    }
+
+    // Update projectile fields
+    if (entity.projectile) {
+      // Interpolate projectile velocity
+      const pVel1X = net1.velocityX ?? 0;
+      const pVel1Y = net1.velocityY ?? 0;
+      const pVel2X = net2.velocityX ?? 0;
+      const pVel2Y = net2.velocityY ?? 0;
+      entity.projectile.velocityX = pVel1X + (pVel2X - pVel1X) * t;
+      entity.projectile.velocityY = pVel1Y + (pVel2Y - pVel1Y) * t;
+
+      // Interpolate beam positions
+      if (net1.beamStartX !== undefined && net2.beamStartX !== undefined) {
+        entity.projectile.startX = net1.beamStartX + (net2.beamStartX - net1.beamStartX) * t;
+      } else if (net2.beamStartX !== undefined) {
+        entity.projectile.startX = net2.beamStartX;
+      }
+      if (net1.beamStartY !== undefined && net2.beamStartY !== undefined) {
+        entity.projectile.startY = net1.beamStartY + (net2.beamStartY - net1.beamStartY) * t;
+      } else if (net2.beamStartY !== undefined) {
+        entity.projectile.startY = net2.beamStartY;
+      }
+      if (net1.beamEndX !== undefined && net2.beamEndX !== undefined) {
+        entity.projectile.endX = net1.beamEndX + (net2.beamEndX - net1.beamEndX) * t;
+      } else if (net2.beamEndX !== undefined) {
+        entity.projectile.endX = net2.beamEndX;
+      }
+      if (net1.beamEndY !== undefined && net2.beamEndY !== undefined) {
+        entity.projectile.endY = net1.beamEndY + (net2.beamEndY - net1.beamEndY) * t;
+      } else if (net2.beamEndY !== undefined) {
+        entity.projectile.endY = net2.beamEndY;
+      }
+    }
+  }
+
+  /**
+   * Update entity directly from network data (no interpolation)
+   */
+  private updateEntityDirect(entity: Entity, netEntity: NetworkEntity): void {
+    entity.transform.x = netEntity.x;
+    entity.transform.y = netEntity.y;
+    entity.transform.rotation = netEntity.rotation;
+
+    if (entity.unit) {
+      entity.unit.hp = netEntity.hp ?? entity.unit.hp;
+      entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
+      entity.unit.collisionRadius = netEntity.collisionRadius ?? entity.unit.collisionRadius;
+      entity.unit.moveSpeed = netEntity.moveSpeed ?? entity.unit.moveSpeed;
+      entity.unit.velocityX = netEntity.velocityX ?? 0;
+      entity.unit.velocityY = netEntity.velocityY ?? 0;
+
+      if (netEntity.actions) {
+        entity.unit.actions = netEntity.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
+          type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
+          x: na.x!,
+          y: na.y!,
+          targetId: na.targetId,
+          buildingType: na.buildingType as BuildingType | undefined,
+          gridX: na.gridX,
+          gridY: na.gridY,
+          buildingId: na.buildingId,
+        }));
+      }
+    }
+
+    if (netEntity.weapons && netEntity.weapons.length > 0 && entity.weapons) {
+      for (let i = 0; i < netEntity.weapons.length && i < entity.weapons.length; i++) {
+        entity.weapons[i].targetEntityId = netEntity.weapons[i].targetId ?? null;
+        entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
+        entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
+        entity.weapons[i].currentSliceAngle = netEntity.weapons[i].currentSliceAngle;
+      }
+    }
+
+    if (entity.builder && netEntity.buildTargetId !== undefined) {
+      entity.builder.currentBuildTarget = netEntity.buildTargetId;
+    }
+
+    if (entity.building) {
+      entity.building.hp = netEntity.hp ?? entity.building.hp;
+      entity.building.maxHp = netEntity.maxHp ?? entity.building.maxHp;
+    }
+
+    if (entity.buildable) {
+      entity.buildable.buildProgress = netEntity.buildProgress ?? entity.buildable.buildProgress;
+      entity.buildable.isComplete = netEntity.isComplete ?? entity.buildable.isComplete;
+    }
+
+    if (entity.factory) {
+      entity.factory.buildQueue = netEntity.buildQueue ?? entity.factory.buildQueue;
+      entity.factory.currentBuildProgress = netEntity.factoryProgress ?? entity.factory.currentBuildProgress;
+      entity.factory.isProducing = netEntity.isProducing ?? entity.factory.isProducing;
+      if (netEntity.rallyX !== undefined) entity.factory.rallyX = netEntity.rallyX;
+      if (netEntity.rallyY !== undefined) entity.factory.rallyY = netEntity.rallyY;
+    }
+
+    if (entity.projectile) {
+      entity.projectile.velocityX = netEntity.velocityX ?? entity.projectile.velocityX;
+      entity.projectile.velocityY = netEntity.velocityY ?? entity.projectile.velocityY;
+      if (netEntity.beamStartX !== undefined) entity.projectile.startX = netEntity.beamStartX;
+      if (netEntity.beamStartY !== undefined) entity.projectile.startY = netEntity.beamStartY;
+      if (netEntity.beamEndX !== undefined) entity.projectile.endX = netEntity.beamEndX;
+      if (netEntity.beamEndY !== undefined) entity.projectile.endY = netEntity.beamEndY;
     }
   }
 
@@ -149,7 +483,6 @@ export class ClientViewState {
     const { id, type, x, y, rotation, playerId } = netEntity;
 
     if (type === 'unit') {
-      // Convert network actions to unit actions
       const actions = netEntity.actions?.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
         type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
         x: na.x!,
@@ -180,7 +513,6 @@ export class ClientViewState {
         },
       };
 
-      // Add weapons from network state - all weapons are independent
       if (netEntity.weapons && netEntity.weapons.length > 0) {
         entity.weapons = netEntity.weapons.map(nw => ({
           config: getWeaponConfig(nw.configId),
@@ -291,86 +623,6 @@ export class ClientViewState {
     return null;
   }
 
-  /**
-   * Update an existing entity with network data
-   */
-  private updateEntityFromNetwork(entity: Entity, netEntity: NetworkEntity): void {
-    // Snap position to host position
-    entity.transform.x = netEntity.x;
-    entity.transform.y = netEntity.y;
-    entity.transform.rotation = netEntity.rotation;
-
-    // Update unit-specific fields
-    if (entity.unit) {
-      entity.unit.hp = netEntity.hp ?? entity.unit.hp;
-      entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
-      entity.unit.collisionRadius = netEntity.collisionRadius ?? entity.unit.collisionRadius;
-      entity.unit.moveSpeed = netEntity.moveSpeed ?? entity.unit.moveSpeed;
-      entity.unit.velocityX = netEntity.velocityX ?? 0;
-      entity.unit.velocityY = netEntity.velocityY ?? 0;
-      // Note: turret rotation is per-weapon, updated below in weapon state update
-
-      // Update action queue
-      if (netEntity.actions) {
-        entity.unit.actions = netEntity.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
-          type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
-          x: na.x!,
-          y: na.y!,
-          targetId: na.targetId,
-          buildingType: na.buildingType as BuildingType | undefined,
-          gridX: na.gridX,
-          gridY: na.gridY,
-          buildingId: na.buildingId,
-        }));
-      }
-    }
-
-    // Update all weapons from network state - each weapon is independent
-    if (netEntity.weapons && netEntity.weapons.length > 0 && entity.weapons) {
-      for (let i = 0; i < netEntity.weapons.length && i < entity.weapons.length; i++) {
-        entity.weapons[i].targetEntityId = netEntity.weapons[i].targetId ?? null;
-        entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
-        entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
-        // Sync wave weapon slice angle for visual rendering
-        entity.weapons[i].currentSliceAngle = netEntity.weapons[i].currentSliceAngle;
-      }
-    }
-
-    // Update builder state
-    if (entity.builder && netEntity.buildTargetId !== undefined) {
-      entity.builder.currentBuildTarget = netEntity.buildTargetId;
-    }
-
-    // Update building-specific fields
-    if (entity.building) {
-      entity.building.hp = netEntity.hp ?? entity.building.hp;
-      entity.building.maxHp = netEntity.maxHp ?? entity.building.maxHp;
-    }
-
-    if (entity.buildable) {
-      entity.buildable.buildProgress = netEntity.buildProgress ?? entity.buildable.buildProgress;
-      entity.buildable.isComplete = netEntity.isComplete ?? entity.buildable.isComplete;
-    }
-
-    if (entity.factory) {
-      entity.factory.buildQueue = netEntity.buildQueue ?? entity.factory.buildQueue;
-      entity.factory.currentBuildProgress = netEntity.factoryProgress ?? entity.factory.currentBuildProgress;
-      entity.factory.isProducing = netEntity.isProducing ?? entity.factory.isProducing;
-      if (netEntity.rallyX !== undefined) entity.factory.rallyX = netEntity.rallyX;
-      if (netEntity.rallyY !== undefined) entity.factory.rallyY = netEntity.rallyY;
-    }
-
-    // Update projectile-specific fields
-    if (entity.projectile) {
-      entity.projectile.velocityX = netEntity.velocityX ?? entity.projectile.velocityX;
-      entity.projectile.velocityY = netEntity.velocityY ?? entity.projectile.velocityY;
-      if (netEntity.beamStartX !== undefined) entity.projectile.startX = netEntity.beamStartX;
-      if (netEntity.beamStartY !== undefined) entity.projectile.startY = netEntity.beamStartY;
-      if (netEntity.beamEndX !== undefined) entity.projectile.endX = netEntity.beamEndX;
-      if (netEntity.beamEndY !== undefined) entity.projectile.endY = netEntity.beamEndY;
-    }
-  }
-
   // === Accessors for rendering and input ===
 
   getEntity(id: EntityId): Entity | undefined {
@@ -415,7 +667,6 @@ export class ClientViewState {
 
   setSelectedIds(ids: Set<EntityId>): void {
     this.selectedIds = new Set(ids);
-    // Update entity selection state
     for (const entity of this.entities.values()) {
       if (entity.selectable) {
         entity.selectable.selected = this.selectedIds.has(entity.id);
@@ -505,9 +756,11 @@ export class ClientViewState {
 
   clear(): void {
     this.entities.clear();
+    this.snapshots = [];
     this.sprayTargets = [];
     this.pendingAudioEvents = [];
     this.gameOverWinnerId = null;
     this.selectedIds.clear();
+    this.renderTimestamp = 0;
   }
 }
