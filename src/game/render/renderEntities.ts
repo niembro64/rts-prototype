@@ -140,7 +140,7 @@ export class EntityRenderer {
           upperLegLength: upperLen * 0.9,
           lowerLegLength: lowerLen * 0.9,
           snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.15,
+          snapTargetAngle: -Math.PI * 0.05,
           snapDistanceMultiplier: 0.9,
           extensionThreshold: 0.85,
         },
@@ -149,10 +149,10 @@ export class EntityRenderer {
           attachOffsetY: -radius * 0.5,
           upperLegLength: upperLen * 0.9,
           lowerLegLength: lowerLen * 0.9,
-          snapTriggerAngle: Math.PI * 0.9,
-          snapTargetAngle: -Math.PI * 0.65,
-          snapDistanceMultiplier: 0.6,
-          extensionThreshold: 0.92,
+          snapTriggerAngle: Math.PI * 0.99,
+          snapTargetAngle: -Math.PI * 0.1,
+          snapDistanceMultiplier: 0.2,
+          extensionThreshold: 0.9,
         },
       ];
     } else if (legCount === 6) {
