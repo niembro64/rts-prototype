@@ -35,6 +35,10 @@ export interface ExplosionEffect {
   lifetime: number; // Total lifetime in ms
   elapsed: number; // Time elapsed in ms
   type: 'impact' | 'death'; // Type affects visual style
+  // Directional momentum - inherited from destroyed unit
+  momentumX?: number; // Velocity X component at death
+  momentumY?: number; // Velocity Y component at death
+  momentumMagnitude?: number; // Cached magnitude for directional bias
 }
 
 // Colors
@@ -503,12 +507,15 @@ export class EntityRenderer {
   }
 
   // Add a new explosion effect
+  // Optional velocityX/Y captures unit momentum at death for directional explosions
   addExplosion(
     x: number,
     y: number,
     radius: number,
     color: number,
-    type: 'impact' | 'death'
+    type: 'impact' | 'death',
+    velocityX?: number,
+    velocityY?: number
   ): void {
     // Base lifetime scales with radius - larger explosions last longer
     // Base: 150ms for a radius of 8, scales proportionally
@@ -516,6 +523,12 @@ export class EntityRenderer {
     const baseLifetime = type === 'death' ? 600 : 150;
     const radiusScale = Math.sqrt(radius / baseRadius); // Square root for less extreme scaling
     const lifetime = baseLifetime * radiusScale;
+
+    // Calculate momentum magnitude for directional bias
+    let momentumMagnitude: number | undefined;
+    if (velocityX !== undefined && velocityY !== undefined) {
+      momentumMagnitude = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
+    }
 
     this.explosions.push({
       x,
@@ -525,6 +538,9 @@ export class EntityRenderer {
       lifetime,
       elapsed: 0,
       type,
+      momentumX: velocityX,
+      momentumY: velocityY,
+      momentumMagnitude,
     });
   }
 
@@ -668,52 +684,425 @@ export class EntityRenderer {
     this.renderSelectedLabels();
   }
 
+  // Render an elliptical glow stretched in a direction (for directional explosions)
+  private renderDirectionalGlow(
+    x: number, y: number,
+    radiusX: number, radiusY: number,
+    rotation: number,
+    color: number, alpha: number
+  ): void {
+    // Draw ellipse using line segments rotated to the momentum direction
+    const segments = 24;
+    this.graphics.fillStyle(color, alpha);
+    this.graphics.beginPath();
+
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      // Ellipse point in local space
+      const localX = Math.cos(angle) * radiusX;
+      const localY = Math.sin(angle) * radiusY;
+      // Rotate to world space
+      const worldX = x + localX * cos - localY * sin;
+      const worldY = y + localX * sin + localY * cos;
+
+      if (i === 0) {
+        this.graphics.moveTo(worldX, worldY);
+      } else {
+        this.graphics.lineTo(worldX, worldY);
+      }
+    }
+
+    this.graphics.closePath();
+    this.graphics.fillPath();
+  }
+
   // Render an explosion effect
   private renderExplosion(exp: ExplosionEffect): void {
     const progress = exp.elapsed / exp.lifetime;
 
     if (exp.type === 'death') {
-      // Death explosion - expanding ring with particles
-      const currentRadius = exp.radius * (0.3 + progress * 0.7);
+      // ========================================================================
+      // COMPLEX DIRECTIONAL DEATH EXPLOSION
+      // Features: Multiple shockwaves, spark trails, fire particles, debris chunks,
+      // energy arcs, smoke clouds, and momentum-biased everything
+      // ========================================================================
+
       const alpha = 1 - progress;
+      const earlyProgress = Math.min(1, progress * 3); // Fast initial burst
+      const lateProgress = Math.max(0, (progress - 0.5) * 2); // Late lingering phase
 
-      // Outer glow
-      this.graphics.fillStyle(exp.color, alpha * 0.3);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.3);
-
-      // Main explosion
-      this.graphics.fillStyle(exp.color, alpha * 0.6);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius);
-
-      // Hot core (orange to white)
-      const coreProgress = Math.min(1, progress * 2);
-      const coreRadius = currentRadius * (0.6 - coreProgress * 0.4);
-      if (coreRadius > 0) {
-        this.graphics.fillStyle(0xff6600, alpha * 0.8);
-        this.graphics.fillCircle(exp.x, exp.y, coreRadius);
-        this.graphics.fillStyle(0xffffff, alpha * (1 - coreProgress));
-        this.graphics.fillCircle(exp.x, exp.y, coreRadius * 0.5);
+      // Calculate momentum direction and strength (0-1 normalized)
+      let momentumDirX = 0;
+      let momentumDirY = 0;
+      let momentumStrength = 0;
+      let momentumAngle = 0;
+      const hasMomentum = exp.momentumMagnitude && exp.momentumMagnitude > 10;
+      if (hasMomentum && exp.momentumX !== undefined && exp.momentumY !== undefined) {
+        momentumDirX = exp.momentumX / exp.momentumMagnitude!;
+        momentumDirY = exp.momentumY / exp.momentumMagnitude!;
+        momentumAngle = Math.atan2(momentumDirY, momentumDirX);
+        // Cap at 400 units/sec for max effect (higher threshold with multiplier)
+        momentumStrength = Math.min(exp.momentumMagnitude! / 400, 1);
       }
 
-      // Expanding ring
-      const ringAlpha = alpha * 0.5;
-      const ringRadius = exp.radius * (0.5 + progress);
-      this.graphics.lineStyle(3 * (1 - progress) + 1, exp.color, ringAlpha);
-      this.graphics.strokeCircle(exp.x, exp.y, ringRadius);
+      // Dynamic center that drifts with momentum over time
+      const driftDistance = hasMomentum ? exp.radius * 0.8 * progress * momentumStrength : 0;
+      const centerX = exp.x + momentumDirX * driftDistance;
+      const centerY = exp.y + momentumDirY * driftDistance;
 
-      // Debris particles
-      const particleCount = 8;
-      for (let i = 0; i < particleCount; i++) {
-        const angle = (i / particleCount) * Math.PI * 2 + progress * 2;
-        const particleDist = exp.radius * (0.3 + progress * 1.2);
-        const px = exp.x + Math.cos(angle) * particleDist;
-        const py = exp.y + Math.sin(angle) * particleDist;
-        const particleSize = 3 * (1 - progress);
-        if (particleSize > 0.5) {
-          this.graphics.fillStyle(exp.color, alpha * 0.7);
-          this.graphics.fillCircle(px, py, particleSize);
+      // Use deterministic "random" based on explosion position for consistent particles
+      const seed = (exp.x * 1000 + exp.y) % 10000;
+      const seededRandom = (i: number) => {
+        const x = Math.sin(seed + i * 127.1) * 43758.5453;
+        return x - Math.floor(x);
+      };
+
+      // ------------------------------------------------------------------------
+      // LAYER 1: SMOKE CLOUDS (render first, behind everything)
+      // ------------------------------------------------------------------------
+      if (progress > 0.1) {
+        const smokeCount = 6 + Math.floor(momentumStrength * 4);
+        for (let i = 0; i < smokeCount; i++) {
+          const smokeProgress = Math.max(0, (progress - 0.1 - i * 0.03) * 1.5);
+          if (smokeProgress <= 0 || smokeProgress > 1) continue;
+
+          // Smoke drifts upward and in momentum direction
+          const baseAngle = seededRandom(i + 100) * Math.PI * 2;
+          let smokeAngle = baseAngle;
+          let smokeDist = exp.radius * (0.3 + smokeProgress * 0.8) * (0.7 + seededRandom(i + 101) * 0.6);
+
+          if (hasMomentum) {
+            // Bias smoke toward momentum direction
+            const alignment = Math.cos(baseAngle - momentumAngle);
+            if (alignment > 0) {
+              smokeDist *= 1 + alignment * momentumStrength * 0.5;
+              smokeAngle = baseAngle - (baseAngle - momentumAngle) * 0.2 * momentumStrength;
+            }
+          }
+
+          const smokeX = centerX + Math.cos(smokeAngle) * smokeDist;
+          const smokeY = centerY + Math.sin(smokeAngle) * smokeDist - smokeProgress * 8; // Drift up
+          const smokeSize = exp.radius * 0.3 * (1 - smokeProgress * 0.5) * (0.8 + seededRandom(i + 102) * 0.4);
+          const smokeAlpha = 0.15 * (1 - smokeProgress);
+
+          this.graphics.fillStyle(0x444444, smokeAlpha);
+          this.graphics.fillCircle(smokeX, smokeY, smokeSize);
         }
       }
+
+      // ------------------------------------------------------------------------
+      // LAYER 2: OUTER GLOW / HEAT DISTORTION (stretched with momentum)
+      // ------------------------------------------------------------------------
+      const glowRadius = exp.radius * (0.4 + earlyProgress * 0.8);
+      if (hasMomentum && momentumStrength > 0.15) {
+        const stretchFactor = 1 + momentumStrength * 0.8;
+        // Multiple stretched glows for depth
+        this.renderDirectionalGlow(centerX, centerY, glowRadius * 1.5, glowRadius * 1.5 * stretchFactor, momentumAngle, 0x331100, alpha * 0.2);
+        this.renderDirectionalGlow(centerX, centerY, glowRadius * 1.2, glowRadius * 1.2 * stretchFactor, momentumAngle, exp.color, alpha * 0.25);
+      } else {
+        this.graphics.fillStyle(0x331100, alpha * 0.2);
+        this.graphics.fillCircle(centerX, centerY, glowRadius * 1.5);
+        this.graphics.fillStyle(exp.color, alpha * 0.25);
+        this.graphics.fillCircle(centerX, centerY, glowRadius * 1.2);
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 3: MULTIPLE SHOCKWAVE RINGS (staggered timing)
+      // ------------------------------------------------------------------------
+      const ringCount = 3;
+      for (let r = 0; r < ringCount; r++) {
+        const ringDelay = r * 0.12;
+        const ringProgress = Math.max(0, Math.min(1, (progress - ringDelay) * 1.5));
+        if (ringProgress <= 0) continue;
+
+        const ringRadius = exp.radius * (0.3 + ringProgress * (1.2 + r * 0.3));
+        const ringThickness = (4 - r) * (1 - ringProgress) + 1;
+        const ringAlpha = alpha * (0.6 - r * 0.15) * (1 - ringProgress * 0.5);
+
+        // Offset rings in momentum direction
+        const ringOffsetMult = hasMomentum ? momentumStrength * 0.4 * (r + 1) : 0;
+        const ringX = centerX + momentumDirX * ringRadius * ringOffsetMult;
+        const ringY = centerY + momentumDirY * ringRadius * ringOffsetMult;
+
+        this.graphics.lineStyle(ringThickness, r === 0 ? 0xffffff : exp.color, ringAlpha);
+        this.graphics.strokeCircle(ringX, ringY, ringRadius);
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 4: MAIN FIREBALL (color gradient from white to orange to red)
+      // ------------------------------------------------------------------------
+      const fireRadius = exp.radius * (0.5 + earlyProgress * 0.4) * (1 - lateProgress * 0.6);
+      if (fireRadius > 1) {
+        // Outer fire (darker)
+        this.graphics.fillStyle(0xaa2200, alpha * 0.5);
+        this.graphics.fillCircle(centerX, centerY, fireRadius * 1.1);
+
+        // Main fire body
+        this.graphics.fillStyle(0xff4400, alpha * 0.65);
+        this.graphics.fillCircle(centerX, centerY, fireRadius);
+
+        // Inner fire (brighter)
+        this.graphics.fillStyle(0xff8800, alpha * 0.7);
+        this.graphics.fillCircle(centerX, centerY, fireRadius * 0.7);
+
+        // Hot core
+        const coreAlpha = alpha * (1 - earlyProgress * 0.7);
+        if (coreAlpha > 0.1) {
+          this.graphics.fillStyle(0xffcc44, coreAlpha);
+          this.graphics.fillCircle(centerX, centerY, fireRadius * 0.4);
+          this.graphics.fillStyle(0xffffff, coreAlpha * 0.8);
+          this.graphics.fillCircle(centerX, centerY, fireRadius * 0.2);
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 5: ENERGY ARCS / LIGHTNING (early phase only)
+      // ------------------------------------------------------------------------
+      if (progress < 0.4) {
+        const arcCount = 4 + Math.floor(momentumStrength * 3);
+        const arcAlpha = (1 - progress * 2.5) * 0.7;
+
+        for (let i = 0; i < arcCount; i++) {
+          const baseAngle = (i / arcCount) * Math.PI * 2 + seededRandom(i + 200) * 0.5;
+          let arcAngle = baseAngle;
+          let arcLength = exp.radius * (0.5 + progress * 1.5) * (0.6 + seededRandom(i + 201) * 0.8);
+
+          // Bias arcs toward momentum
+          if (hasMomentum) {
+            const alignment = Math.cos(baseAngle - momentumAngle);
+            if (alignment > 0) {
+              arcLength *= 1 + alignment * momentumStrength * 0.7;
+              arcAngle = baseAngle - (baseAngle - momentumAngle) * 0.3 * momentumStrength;
+            }
+          }
+
+          // Draw jagged lightning arc
+          this.graphics.lineStyle(2, 0x88ccff, arcAlpha);
+          this.graphics.beginPath();
+          this.graphics.moveTo(centerX, centerY);
+
+          const segments = 3;
+          let px = centerX, py = centerY;
+          for (let s = 1; s <= segments; s++) {
+            const segDist = (arcLength / segments) * s;
+            const jitter = (seededRandom(i * 10 + s) - 0.5) * 0.4;
+            const segAngle = arcAngle + jitter;
+            px = centerX + Math.cos(segAngle) * segDist;
+            py = centerY + Math.sin(segAngle) * segDist;
+            this.graphics.lineTo(px, py);
+          }
+          this.graphics.strokePath();
+
+          // Bright tip
+          this.graphics.fillStyle(0xffffff, arcAlpha);
+          this.graphics.fillCircle(px, py, 2);
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 6: SPARK PARTICLES WITH TRAILS
+      // ------------------------------------------------------------------------
+      const sparkCount = 16 + Math.floor(momentumStrength * 12);
+      for (let i = 0; i < sparkCount; i++) {
+        const sparkDelay = seededRandom(i + 300) * 0.15;
+        const sparkProgress = Math.max(0, Math.min(1, (progress - sparkDelay) * 1.3));
+        if (sparkProgress <= 0) continue;
+
+        const baseAngle = (i / sparkCount) * Math.PI * 2 + seededRandom(i + 301) * 0.3;
+        const sparkSpeed = 0.8 + seededRandom(i + 302) * 0.6;
+
+        // Calculate momentum bias
+        let finalAngle = baseAngle;
+        let distMult = 1;
+        if (hasMomentum) {
+          let angleDiff = baseAngle - momentumAngle;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+          const alignment = Math.cos(angleDiff);
+          if (alignment > 0) {
+            distMult = 1 + alignment * momentumStrength * 1.2;
+            finalAngle = baseAngle - angleDiff * 0.4 * momentumStrength;
+          } else {
+            distMult = 1 + alignment * momentumStrength * 0.4;
+          }
+        }
+
+        const sparkDist = exp.radius * (0.2 + sparkProgress * 1.5) * sparkSpeed * distMult;
+        const sparkX = centerX + Math.cos(finalAngle) * sparkDist;
+        const sparkY = centerY + Math.sin(finalAngle) * sparkDist;
+
+        // Draw spark trail
+        const trailLength = Math.min(sparkDist * 0.3, 15) * (1 - sparkProgress * 0.5);
+        if (trailLength > 2) {
+          const trailStartX = sparkX - Math.cos(finalAngle) * trailLength;
+          const trailStartY = sparkY - Math.sin(finalAngle) * trailLength;
+          this.graphics.lineStyle(2, 0xffaa44, alpha * 0.5 * (1 - sparkProgress));
+          this.graphics.lineBetween(trailStartX, trailStartY, sparkX, sparkY);
+        }
+
+        // Spark head
+        const sparkSize = (2.5 + seededRandom(i + 303) * 2) * (1 - sparkProgress * 0.7);
+        if (sparkSize > 0.5) {
+          this.graphics.fillStyle(0xffdd88, alpha * 0.9 * (1 - sparkProgress * 0.5));
+          this.graphics.fillCircle(sparkX, sparkY, sparkSize);
+          this.graphics.fillStyle(0xffffff, alpha * 0.6 * (1 - sparkProgress));
+          this.graphics.fillCircle(sparkX, sparkY, sparkSize * 0.5);
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 7: DEBRIS CHUNKS (larger, slower pieces)
+      // ------------------------------------------------------------------------
+      const debrisCount = 8 + Math.floor(momentumStrength * 6);
+      for (let i = 0; i < debrisCount; i++) {
+        const debrisDelay = seededRandom(i + 400) * 0.1;
+        const debrisProgress = Math.max(0, Math.min(1, (progress - debrisDelay) * 0.9));
+        if (debrisProgress <= 0) continue;
+
+        const baseAngle = seededRandom(i + 401) * Math.PI * 2;
+        const debrisSpeed = 0.5 + seededRandom(i + 402) * 0.5;
+
+        // Heavy momentum bias for debris
+        let finalAngle = baseAngle;
+        let distMult = 1;
+        if (hasMomentum) {
+          let angleDiff = baseAngle - momentumAngle;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+          const alignment = Math.cos(angleDiff);
+          if (alignment > 0) {
+            distMult = 1 + alignment * momentumStrength * 1.5;
+            finalAngle = baseAngle - angleDiff * 0.5 * momentumStrength;
+          } else {
+            distMult = Math.max(0.3, 1 + alignment * momentumStrength * 0.6);
+          }
+        }
+
+        // Debris falls with gravity simulation
+        const debrisDist = exp.radius * (0.3 + debrisProgress * 1.0) * debrisSpeed * distMult;
+        const gravityDrop = debrisProgress * debrisProgress * 20; // Parabolic fall
+        const debrisX = centerX + Math.cos(finalAngle) * debrisDist;
+        const debrisY = centerY + Math.sin(finalAngle) * debrisDist + gravityDrop;
+
+        // Debris size varies and shrinks over time
+        const debrisSize = (3 + seededRandom(i + 403) * 4) * (1 - debrisProgress * 0.4);
+        if (debrisSize > 1) {
+          // Dark debris with bright edge
+          this.graphics.fillStyle(0x332211, alpha * 0.8);
+          this.graphics.fillCircle(debrisX, debrisY, debrisSize);
+          this.graphics.fillStyle(0x664422, alpha * 0.5);
+          this.graphics.fillCircle(debrisX - debrisSize * 0.3, debrisY - debrisSize * 0.3, debrisSize * 0.5);
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 8: FIRE EMBERS (small glowing bits that linger)
+      // ------------------------------------------------------------------------
+      if (progress > 0.2) {
+        const emberCount = 10 + Math.floor(momentumStrength * 8);
+        for (let i = 0; i < emberCount; i++) {
+          const emberProgress = Math.max(0, (progress - 0.2 - seededRandom(i + 500) * 0.3) * 1.5);
+          if (emberProgress <= 0 || emberProgress > 1) continue;
+
+          const baseAngle = seededRandom(i + 501) * Math.PI * 2;
+          let emberAngle = baseAngle;
+          let emberDist = exp.radius * (0.4 + emberProgress * 0.6) * (0.5 + seededRandom(i + 502) * 0.5);
+
+          if (hasMomentum) {
+            const alignment = Math.cos(baseAngle - momentumAngle);
+            if (alignment > 0) {
+              emberDist *= 1 + alignment * momentumStrength * 0.8;
+              emberAngle = baseAngle - (baseAngle - momentumAngle) * 0.25 * momentumStrength;
+            }
+          }
+
+          // Embers float upward
+          const emberX = centerX + Math.cos(emberAngle) * emberDist;
+          const emberY = centerY + Math.sin(emberAngle) * emberDist - emberProgress * 15;
+
+          // Flickering brightness
+          const flicker = 0.7 + Math.sin(emberProgress * 20 + i) * 0.3;
+          const emberSize = (1.5 + seededRandom(i + 503) * 1.5) * (1 - emberProgress * 0.6);
+          const emberAlpha = alpha * 0.8 * flicker * (1 - emberProgress * 0.7);
+
+          if (emberSize > 0.5 && emberAlpha > 0.05) {
+            this.graphics.fillStyle(0xff6600, emberAlpha);
+            this.graphics.fillCircle(emberX, emberY, emberSize);
+            this.graphics.fillStyle(0xffcc00, emberAlpha * 0.6);
+            this.graphics.fillCircle(emberX, emberY, emberSize * 0.5);
+          }
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 9: MOMENTUM TRAIL (concentrated debris stream for high momentum)
+      // ------------------------------------------------------------------------
+      if (hasMomentum && momentumStrength > 0.3) {
+        const trailCount = Math.floor(momentumStrength * 15);
+        for (let i = 0; i < trailCount; i++) {
+          const trailT = i / trailCount;
+          const trailProgress = Math.max(0, Math.min(1, (progress - trailT * 0.3) * 1.4));
+          if (trailProgress <= 0) continue;
+
+          // Trail follows momentum direction with slight spread
+          const spreadAngle = (seededRandom(i + 600) - 0.5) * 0.6 * (1 - momentumStrength * 0.5);
+          const trailAngle = momentumAngle + spreadAngle;
+          const trailDist = exp.radius * (0.5 + trailProgress * 2.0 + trailT * 0.8) * (0.8 + momentumStrength * 0.4);
+
+          const trailX = exp.x + Math.cos(trailAngle) * trailDist;
+          const trailY = exp.y + Math.sin(trailAngle) * trailDist;
+
+          // Size decreases along trail
+          const trailSize = (3 + seededRandom(i + 601) * 2) * (1 - trailT * 0.5) * (1 - trailProgress * 0.6);
+          const trailAlpha = alpha * 0.7 * (1 - trailT * 0.3) * (1 - trailProgress * 0.5);
+
+          if (trailSize > 0.5 && trailAlpha > 0.05) {
+            // Hot streak
+            this.graphics.fillStyle(0xff8844, trailAlpha);
+            this.graphics.fillCircle(trailX, trailY, trailSize);
+            this.graphics.fillStyle(0xffcc88, trailAlpha * 0.5);
+            this.graphics.fillCircle(trailX, trailY, trailSize * 0.4);
+          }
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 10: SECONDARY EXPLOSIONS (for very high momentum)
+      // ------------------------------------------------------------------------
+      if (hasMomentum && momentumStrength > 0.6 && progress > 0.15 && progress < 0.6) {
+        const secondaryCount = Math.floor((momentumStrength - 0.5) * 4);
+        for (let i = 0; i < secondaryCount; i++) {
+          const secDelay = 0.15 + seededRandom(i + 700) * 0.2;
+          const secProgress = Math.max(0, Math.min(1, (progress - secDelay) * 3));
+          if (secProgress <= 0 || secProgress >= 1) continue;
+
+          // Secondary explosions along momentum path
+          const secDist = exp.radius * (0.8 + i * 0.5 + seededRandom(i + 701) * 0.3);
+          const secAngle = momentumAngle + (seededRandom(i + 702) - 0.5) * 0.4;
+          const secX = exp.x + Math.cos(secAngle) * secDist;
+          const secY = exp.y + Math.sin(secAngle) * secDist;
+          const secRadius = exp.radius * 0.3 * (1 - secProgress);
+          const secAlpha = (1 - secProgress) * 0.6;
+
+          // Mini fireball
+          this.graphics.fillStyle(0xff6600, secAlpha * 0.7);
+          this.graphics.fillCircle(secX, secY, secRadius);
+          this.graphics.fillStyle(0xffcc44, secAlpha * 0.5);
+          this.graphics.fillCircle(secX, secY, secRadius * 0.5);
+          this.graphics.fillStyle(0xffffff, secAlpha * 0.3);
+          this.graphics.fillCircle(secX, secY, secRadius * 0.2);
+
+          // Mini shockwave
+          this.graphics.lineStyle(2 * (1 - secProgress), 0xffffff, secAlpha * 0.4);
+          this.graphics.strokeCircle(secX, secY, secRadius * (1 + secProgress));
+        }
+      }
+
     } else {
       // Impact explosion - quick flash
       const currentRadius = exp.radius * (0.5 + progress * 0.5);

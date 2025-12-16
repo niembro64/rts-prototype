@@ -32,7 +32,7 @@ const WEAPON_LABELS: Record<string, string> = {
 };
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
-import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS, BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING } from '../../config';
+import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS, BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING, EXPLOSION_MOMENTUM_MULTIPLIER } from '../../config';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
 // Grid settings
@@ -316,17 +316,23 @@ export class RtsScene extends Phaser.Scene {
       const entity = this.world.getEntity(id);
       if (entity) {
         // Add death explosion at 2.5x collision radius
+        // Pass unit velocity for directional explosion effect
         if (entity.unit) {
           const radius = entity.unit.collisionRadius * 2.5;
           const playerColor = entity.ownership?.playerId
             ? PLAYER_COLORS[entity.ownership.playerId]?.primary ?? 0xff6600
             : 0xff6600;
+          // Capture velocity for directional explosion (apply momentum multiplier)
+          const velocityX = (entity.unit.velocityX ?? 0) * EXPLOSION_MOMENTUM_MULTIPLIER;
+          const velocityY = (entity.unit.velocityY ?? 0) * EXPLOSION_MOMENTUM_MULTIPLIER;
           this.entityRenderer.addExplosion(
             entity.transform.x,
             entity.transform.y,
             radius,
             playerColor,
-            'death'
+            'death',
+            velocityX,
+            velocityY
           );
         }
         if (entity.body?.matterBody) {

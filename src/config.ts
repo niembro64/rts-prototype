@@ -55,7 +55,14 @@ export const KNOCKBACK_FORCE_MULTIPLIER = 150;
  * Pull strength for sonic wave weapons (units per second toward wave origin).
  * Higher = stronger pull effect.
  */
-export const WAVE_PULL_STRENGTH = 80;
+export const WAVE_PULL_STRENGTH = 180;
+
+/**
+ * Multiplier for explosion momentum inheritance from destroyed units.
+ * The unit's velocity at death is multiplied by this value for the explosion effect.
+ * 1.0 = realistic momentum, 2.0 = exaggerated, 3.0+ = very dramatic
+ */
+export const EXPLOSION_MOMENTUM_MULTIPLIER = 50;
 
 // =============================================================================
 // BUILDING STATS
