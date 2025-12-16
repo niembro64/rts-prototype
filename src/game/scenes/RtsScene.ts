@@ -39,15 +39,9 @@ import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 const GRID_SIZE = 50;
 const GRID_COLOR = 0x333355;
 
-// Calculate unit mass based on collision radius cubed and inverse speed
-// Heavier units (larger, slower) have much more mass than light, fast units
-// Formula: mass = (radius³ / baseRadius³) × (baseSpeed / speed)
-const BASE_COLLISION_RADIUS = 8;   // Scout baseline
-const BASE_MOVE_SPEED = 160;       // Scout baseline (fastest unit)
-function getUnitMass(collisionRadius: number, moveSpeed: number): number {
-  const volumeFactor = Math.pow(collisionRadius / BASE_COLLISION_RADIUS, 3);
-  const speedFactor = BASE_MOVE_SPEED / Math.max(moveSpeed, 1); // Prevent div by zero
-  return volumeFactor * speedFactor;
+// All units have the same mass for now - simplifies force-based physics tuning
+function getUnitMass(_collisionRadius: number, _moveSpeed: number): number {
+  return 50;
 }
 
 // Create a physics body with proper mass settings
@@ -64,9 +58,9 @@ function createUnitBody(
 
   const body = matter.add.circle(x, y, collisionRadius, {
     friction: 0.01,        // Low ground friction
-    frictionAir: 0.08,     // Lower air friction to let collision effects show
+    frictionAir: 0.15,     // Higher air friction - units slow down quickly when not thrusting
     frictionStatic: 0.1,
-    restitution: 0.3,      // Some bounce
+    restitution: 0.2,      // Less bounce
     label,
   });
 
@@ -1363,18 +1357,50 @@ export class RtsScene extends Phaser.Scene {
     }
   }
 
-  // Apply calculated velocities to Matter bodies
+  // Apply forces to Matter bodies - simple force toward waypoint, friction handles the rest
   private applyUnitVelocities(): void {
+    const forceAccumulator = this.simulation.getForceAccumulator();
+
     for (const entity of this.world.getUnits()) {
       if (!entity.body?.matterBody || !entity.unit) continue;
 
-      const velX = entity.unit.velocityX ?? 0;
-      const velY = entity.unit.velocityY ?? 0;
+      const matterBody = entity.body.matterBody as MatterJS.BodyType;
 
-      this.matter.body.setVelocity(entity.body.matterBody, { x: velX / 60, y: velY / 60 });
+      // Get the direction unit wants to move (stored as velocityX/Y, but we treat as direction)
+      const dirX = entity.unit.velocityX ?? 0;
+      const dirY = entity.unit.velocityY ?? 0;
+      const dirMag = Math.sqrt(dirX * dirX + dirY * dirY);
 
-      // Note: Don't clear velocity - it's needed for network serialization
-      // The simulation recalculates velocity every frame anyway
+      // Calculate thrust force toward waypoint
+      // Force is proportional to moveSpeed - faster units have more thrust
+      let thrustX = 0;
+      let thrustY = 0;
+      if (dirMag > 0) {
+        // Normalize direction and apply thrust based on unit's moveSpeed
+        const thrustStrength = entity.unit.moveSpeed * 0.0003; // Tunable thrust factor
+        thrustX = (dirX / dirMag) * thrustStrength;
+        thrustY = (dirY / dirMag) * thrustStrength;
+      }
+
+      // Get external forces (like wave pull) from the accumulator
+      const externalForce = forceAccumulator.getFinalForce(entity.id);
+      const externalFx = (externalForce?.fx ?? 0) / 3600; // Scale down significantly
+      const externalFy = (externalForce?.fy ?? 0) / 3600;
+
+      // Combine thrust and external forces
+      let totalForceX = thrustX + externalFx;
+      let totalForceY = thrustY + externalFy;
+
+      // Safety: skip NaN/Infinity values
+      if (!Number.isFinite(totalForceX) || !Number.isFinite(totalForceY)) {
+        continue;
+      }
+
+      // Apply force at center of mass
+      this.matter.body.applyForce(matterBody, matterBody.position, {
+        x: totalForceX,
+        y: totalForceY,
+      });
     }
   }
 

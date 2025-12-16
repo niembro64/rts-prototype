@@ -2,7 +2,7 @@ import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
 import { FIXED_TIMESTEP } from './Simulation';
 import { DamageSystem } from './damage';
-import type { VelocityAccumulator } from './VelocityAccumulator';
+import type { ForceAccumulator } from './ForceAccumulator';
 
 // Audio event types
 export interface AudioEvent {
@@ -594,7 +594,7 @@ export function applyWaveDamage(
   world: WorldState,
   dtMs: number,
   damageSystem: DamageSystem,
-  velocityAccumulator?: VelocityAccumulator
+  forceAccumulator?: ForceAccumulator
 ): void {
   const dtSec = dtMs / 1000;
   if (dtSec <= 0) return;
@@ -669,19 +669,21 @@ export function applyWaveDamage(
         const dy = weaponY - target.transform.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist > 0) {
-          // Normalize and add pull to velocity accumulator (units/sec)
-          const pullVelX = (dx / dist) * WAVE_PULL_STRENGTH;
-          const pullVelY = (dy / dist) * WAVE_PULL_STRENGTH;
+        if (dist > 0 && forceAccumulator) {
+          // Get target's mass from its body (default to 1 if no physics body)
+          const targetMass = (target.body?.matterBody as { mass?: number })?.mass ?? 1;
 
-          // Add pull velocity to accumulator (or directly to unit if no accumulator)
-          if (velocityAccumulator) {
-            velocityAccumulator.addVelocity(target.id, pullVelX, pullVelY, 'wave_pull');
-          } else {
-            // Fallback: directly modify velocity
-            target.unit.velocityX = (target.unit.velocityX ?? 0) + pullVelX;
-            target.unit.velocityY = (target.unit.velocityY ?? 0) + pullVelY;
-          }
+          // Add directional force toward wave origin
+          // affectedByMass=true so heavier units resist the pull more
+          forceAccumulator.addDirectionalForce(
+            target.id,
+            dx,  // direction X (toward wave origin)
+            dy,  // direction Y (toward wave origin)
+            WAVE_PULL_STRENGTH,
+            targetMass,
+            true,  // heavier units resist pull
+            'wave_pull'
+          );
         }
       }
     }

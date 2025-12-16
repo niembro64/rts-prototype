@@ -20,7 +20,7 @@ import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
 import { getWeaponConfig } from './weapons';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
-import { VelocityAccumulator } from './VelocityAccumulator';
+import { ForceAccumulator } from './ForceAccumulator';
 
 // Fixed simulation timestep (60 Hz)
 export const FIXED_TIMESTEP = 1000 / 60;
@@ -31,7 +31,7 @@ export class Simulation {
   private accumulator: number = 0;
   private constructionSystem: ConstructionSystem;
   private damageSystem: DamageSystem;
-  private velocityAccumulator: VelocityAccumulator = new VelocityAccumulator();
+  private forceAccumulator: ForceAccumulator = new ForceAccumulator();
 
   // Current spray targets for rendering (build/heal effects)
   private currentSprayTargets: SprayTarget[] = [];
@@ -140,20 +140,20 @@ export class Simulation {
       }
     }
 
-    // Clear velocity accumulator for this frame
-    this.velocityAccumulator.clear();
+    // Clear force accumulator for this frame
+    this.forceAccumulator.clear();
 
-    // Update all units movement (adds to velocity accumulator)
+    // Update all units movement (calculates target velocities)
     this.updateUnits();
 
     // Sync transforms from Matter bodies
     this.syncTransformsFromBodies();
 
-    // Update combat systems (may add more velocity contributions like wave pull)
+    // Update combat systems (adds external forces like wave pull)
     this.updateCombat(dtMs);
 
-    // Finalize and apply accumulated velocities to all units
-    this.applyAccumulatedVelocities();
+    // Finalize force accumulator (sums all contributions)
+    this.forceAccumulator.finalize();
 
     // Check for game over (commander death)
     this.checkGameOver();
@@ -220,7 +220,8 @@ export class Simulation {
     updateWaveWeaponState(this.world, dtMs);
 
     // Apply wave weapon damage (continuous AoE for sonic units)
-    applyWaveDamage(this.world, dtMs, this.damageSystem, this.velocityAccumulator);
+    // Pass force accumulator for wave pull effect
+    applyWaveDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
 
     // Update projectile positions and remove orphaned beams (from dead units)
     const orphanedProjectiles = updateProjectiles(this.world, dtMs, this.damageSystem);
@@ -551,107 +552,72 @@ export class Simulation {
   }
 
   // Update unit movement with action queue processing
+  // velocityX/Y represents thrust direction - if 0, no thrust is applied and friction slows the unit
   private updateUnits(): void {
     for (const entity of this.world.getUnits()) {
       if (!entity.unit || !entity.body) continue;
 
-      const { unit, body, transform } = entity;
+      const { unit, transform } = entity;
 
-      // No actions - stop moving (no velocity contribution)
+      // Default: no thrust (friction will slow the unit)
+      unit.velocityX = 0;
+      unit.velocityY = 0;
+
+      // No actions - no thrust needed
       if (unit.actions.length === 0) {
-        if (body.matterBody) {
-          (body.matterBody as MatterJS.BodyType).frictionAir = 0.1;
-        }
-        // Add zero velocity to accumulator so unit is tracked
-        this.velocityAccumulator.addVelocity(entity.id, 0, 0, 'movement');
         continue;
       }
 
       // Get current action
       const currentAction = unit.actions[0];
 
-      // For build/repair actions, check if we're in range (don't need to reach exact position)
+      // For build/repair actions, check if we're in range
       if (currentAction.type === 'build' || currentAction.type === 'repair') {
         const buildRange = entity.builder?.buildRange ?? 100;
         const dx = currentAction.x - transform.x;
         const dy = currentAction.y - transform.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
+        // In range - no thrust needed
         if (distance <= buildRange) {
-          // In range - stop moving, let commanderAbilitiesSystem handle building
-          this.velocityAccumulator.addVelocity(entity.id, 0, 0, 'movement');
           continue;
         }
 
-        // Move toward target until in build range
-        const speed = unit.moveSpeed;
-        const vx = (dx / distance) * speed;
-        const vy = (dy / distance) * speed;
-        this.velocityAccumulator.addVelocity(entity.id, vx, vy, 'movement');
+        // Thrust toward target
+        unit.velocityX = (dx / distance) * unit.moveSpeed;
+        unit.velocityY = (dy / distance) * unit.moveSpeed;
         continue;
       }
 
-      // Check if unit should stop moving due to combat (fight or patrol mode)
-      // Only stop when ALL weapons have targets within their fightstopRange
-      // This means the unit has enemies close enough for all weapons to engage effectively
-      let allWeaponsInFightstopRange = false;
-      if (entity.weapons && entity.weapons.length > 0) {
-        // Check if ALL weapons have targets in fightstop range
-        // inFightstopRange is set by updateWeaponFiringState in combat.ts
-        allWeaponsInFightstopRange = entity.weapons.every(weapon => weapon.inFightstopRange);
+      // Check if unit should stop for combat (fight or patrol mode with target in range)
+      if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
+        const allWeaponsInFightstopRange = entity.weapons?.every(w => w.inFightstopRange) ?? false;
+        if (allWeaponsInFightstopRange) {
+          // No thrust - let friction stop the unit while it fights
+          continue;
+        }
       }
 
-      const shouldStopForCombat =
-        (currentAction.type === 'fight' || currentAction.type === 'patrol') && allWeaponsInFightstopRange;
-
-      if (shouldStopForCombat) {
-        // Stop moving - target is within weapon range
-        this.velocityAccumulator.addVelocity(entity.id, 0, 0, 'movement');
-        continue;
-      }
-
-      // Calculate direction to action target
+      // Calculate direction to waypoint
       const dx = currentAction.x - transform.x;
       const dy = currentAction.y - transform.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // If close enough to target, advance to next action
-      const stopThreshold = 5;
-      if (distance < stopThreshold) {
+      // Close enough to waypoint - advance to next action, no thrust
+      if (distance < 15) {
         this.advanceAction(entity);
-
-        // Zero out velocity for this frame
-        this.velocityAccumulator.addVelocity(entity.id, 0, 0, 'movement');
         continue;
       }
 
-      // Calculate velocity toward target
-      const speed = unit.moveSpeed;
-      const vx = (dx / distance) * speed;
-      const vy = (dy / distance) * speed;
-
-      // Add movement velocity to accumulator
-      this.velocityAccumulator.addVelocity(entity.id, vx, vy, 'movement');
+      // Thrust toward waypoint
+      unit.velocityX = (dx / distance) * unit.moveSpeed;
+      unit.velocityY = (dy / distance) * unit.moveSpeed;
     }
   }
 
-  // Apply all accumulated velocities to units
-  private applyAccumulatedVelocities(): void {
-    this.velocityAccumulator.finalize();
-
-    for (const entity of this.world.getUnits()) {
-      if (!entity.unit) continue;
-
-      const finalVel = this.velocityAccumulator.getFinalVelocity(entity.id);
-      if (finalVel) {
-        entity.unit.velocityX = finalVel.vx;
-        entity.unit.velocityY = finalVel.vy;
-      } else {
-        // No velocity contributions - unit is stationary
-        entity.unit.velocityX = 0;
-        entity.unit.velocityY = 0;
-      }
-    }
+  // Get force accumulator for external force application (used by RtsScene)
+  getForceAccumulator(): ForceAccumulator {
+    return this.forceAccumulator;
   }
 
   // Advance to next action (with patrol loop support)
