@@ -116,6 +116,14 @@ export class EntityRenderer {
   // Vehicle wheels storage (entity ID -> wheel array)
   private vehicleWheels: Map<EntityId, VehicleWheelSetup> = new Map();
 
+  // Per-projectile random offsets for visual variety
+  private beamRandomOffsets: Map<EntityId, {
+    phaseOffset: number;      // Random offset for pulse timing
+    rotationOffset: number;   // Random rotation for sparks
+    sizeScale: number;        // Random size multiplier (0.8-1.2)
+    pulseSpeed: number;       // Random pulse speed multiplier
+  }> = new Map();
+
   // Rendering mode flags
   private skipTurrets: boolean = false;
   private turretsOnly: boolean = false;
@@ -620,6 +628,13 @@ export class EntityRenderer {
     this.turretsOnly = false;
 
     // 4. Render projectiles and lasers
+    // Clean up beam random offsets for projectiles that no longer exist
+    const existingProjectileIds = new Set(this.entitySource.getProjectiles().map((e) => e.id));
+    for (const id of this.beamRandomOffsets.keys()) {
+      if (!existingProjectileIds.has(id)) {
+        this.beamRandomOffsets.delete(id);
+      }
+    }
     for (const entity of this.entitySource.getProjectiles()) {
       this.renderProjectile(entity);
     }
@@ -2586,6 +2601,18 @@ export class EntityRenderer {
       const endY = projectile.endY ?? y;
       const beamWidth = config.beamWidth ?? 2;
 
+      // Get or create random offsets for this beam (for visual variety)
+      let randomOffsets = this.beamRandomOffsets.get(entity.id);
+      if (!randomOffsets) {
+        randomOffsets = {
+          phaseOffset: Math.random() * Math.PI * 2,
+          rotationOffset: Math.random() * Math.PI * 2,
+          sizeScale: 0.8 + Math.random() * 0.4,  // 0.8-1.2
+          pulseSpeed: 0.7 + Math.random() * 0.6,  // 0.7-1.3
+        };
+        this.beamRandomOffsets.set(entity.id, randomOffsets);
+      }
+
       // Outer glow
       this.graphics.lineStyle(beamWidth + 4, color, 0.3);
       this.graphics.lineBetween(startX, startY, endX, endY);
@@ -2598,10 +2625,12 @@ export class EntityRenderer {
       this.graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
       this.graphics.lineBetween(startX, startY, endX, endY);
 
-      // Continuous explosion effect at beam endpoint
-      const explosionRadius = beamWidth * 2 + 6;
-      const pulsePhase = (this.sprayParticleTime / 80) % 1;
-      const pulseScale = 0.8 + Math.sin(pulsePhase * Math.PI * 2) * 0.2;
+      // Continuous explosion effect at beam endpoint with per-beam randomness
+      const baseRadius = beamWidth * 2 + 6;
+      const explosionRadius = baseRadius * randomOffsets.sizeScale;
+      const pulseTime = this.sprayParticleTime * randomOffsets.pulseSpeed;
+      const pulsePhase = ((pulseTime / 80) + randomOffsets.phaseOffset) % (Math.PI * 2);
+      const pulseScale = 0.8 + Math.sin(pulsePhase) * 0.2;
 
       // Outer glow at endpoint
       this.graphics.fillStyle(color, 0.4);
@@ -2615,14 +2644,14 @@ export class EntityRenderer {
       this.graphics.fillStyle(0xffffff, 0.8);
       this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
 
-      // Spark particles radiating outward
+      // Spark particles radiating outward with per-beam rotation offset
       const sparkCount = 6;
       for (let i = 0; i < sparkCount; i++) {
-        const angle =
-          (this.sprayParticleTime / 150 + i / sparkCount) * Math.PI * 2;
+        const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
+        const angle = baseAngle + randomOffsets.rotationOffset;
         const sparkDist =
           explosionRadius *
-          (0.8 + Math.sin(this.sprayParticleTime / 50 + i * 2) * 0.4);
+          (0.8 + Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
         const sx = endX + Math.cos(angle) * sparkDist;
         const sy = endY + Math.sin(angle) * sparkDist;
         this.graphics.fillStyle(color, 0.7);
