@@ -1750,6 +1750,83 @@ export class EntityRenderer {
         this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
+      // Abdomen / "butt" region - large chonky rear section
+      const abdomenOffset = -r * 0.9; // Behind the main body
+      const abdomenCenterX = x + cos * abdomenOffset;
+      const abdomenCenterY = y + sin * abdomenOffset;
+      const abdomenLength = r * 1.1; // Long
+      const abdomenWidth = r * 0.85; // Wide and chonky
+
+      // Main abdomen shape (dark color)
+      const abdomenColor = selected ? UNIT_SELECTED_COLOR : dark;
+      this.graphics.fillStyle(abdomenColor, 0.95);
+
+      // Draw abdomen as an elongated oval/egg shape pointing backward
+      // Use a rounded polygon with more points at the back for a bulbous look
+      const abdomenPoints: { x: number; y: number }[] = [];
+      const numPoints = 12;
+      for (let i = 0; i < numPoints; i++) {
+        const angle = (i / numPoints) * Math.PI * 2;
+        // Elongate backward (negative local X) and make it bulbous
+        const localAngle = angle + Math.PI; // Rotate so bulge faces backward
+        const bulge = 1 + 0.3 * Math.pow(Math.cos(localAngle), 2); // Extra bulge at back
+        const rx = abdomenLength * (0.5 + 0.5 * Math.abs(Math.cos(angle))) * bulge;
+        const ry = abdomenWidth * (0.7 + 0.3 * Math.abs(Math.sin(angle)));
+        const localX = Math.cos(angle) * rx * 0.7;
+        const localY = Math.sin(angle) * ry;
+        abdomenPoints.push({
+          x: abdomenCenterX + cos * localX - sin * localY,
+          y: abdomenCenterY + sin * localX + cos * localY,
+        });
+      }
+      this.graphics.fillPoints(abdomenPoints, true);
+
+      // Abdomen segments/stripes (base color for contrast)
+      this.graphics.fillStyle(base, 0.6);
+      const stripeCount = 4;
+      for (let s = 0; s < stripeCount; s++) {
+        const stripeOffset = abdomenOffset - abdomenLength * 0.15 - s * (abdomenLength * 0.18);
+        const stripeWidth = abdomenWidth * (0.7 - s * 0.12); // Narrower toward back
+        const stripeCenterX = x + cos * stripeOffset;
+        const stripeCenterY = y + sin * stripeOffset;
+
+        // Draw stripe as thin ellipse
+        this.graphics.beginPath();
+        for (let i = 0; i <= 16; i++) {
+          const angle = (i / 16) * Math.PI * 2;
+          const localX = Math.cos(angle) * (r * 0.08);
+          const localY = Math.sin(angle) * stripeWidth;
+          const px = stripeCenterX + cos * localX - sin * localY;
+          const py = stripeCenterY + sin * localX + cos * localY;
+          if (i === 0) {
+            this.graphics.moveTo(px, py);
+          } else {
+            this.graphics.lineTo(px, py);
+          }
+        }
+        this.graphics.closePath();
+        this.graphics.fillPath();
+      }
+
+      // Spinnerets at the tip (light colored details)
+      const spinneretOffset = abdomenOffset - abdomenLength * 0.85;
+      const spinneretX = x + cos * spinneretOffset;
+      const spinneretY = y + sin * spinneretOffset;
+      this.graphics.fillStyle(light, 0.8);
+      this.graphics.fillCircle(spinneretX, spinneretY, r * 0.12);
+      // Small side spinnerets
+      const sideSpinneretDist = r * 0.15;
+      this.graphics.fillCircle(
+        spinneretX - sin * sideSpinneretDist,
+        spinneretY + cos * sideSpinneretDist,
+        r * 0.07
+      );
+      this.graphics.fillCircle(
+        spinneretX + sin * sideSpinneretDist,
+        spinneretY - cos * sideSpinneretDist,
+        r * 0.07
+      );
+
       // Main body (hexagonal shape matching inner hexagon, but larger)
       const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
       this.graphics.fillStyle(bodyColor, 0.95);
