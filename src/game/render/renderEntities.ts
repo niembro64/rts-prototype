@@ -237,9 +237,9 @@ export class EntityRenderer {
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.15,  // Slightly forward
-          snapDistanceMultiplier: 0.9,
-          extensionThreshold: 0.9,
+          snapTargetAngle: -Math.PI * 0.2,  // Slightly forward
+          snapDistanceMultiplier: 0.99,
+          extensionThreshold: 0.99,
         },
         // Middle leg - perpendicular/sideways
         {
@@ -247,10 +247,10 @@ export class EntityRenderer {
           attachOffsetY: -radius * 0.45,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.7,
-          snapTargetAngle: -Math.PI * 0.4,  // Sideways
+          snapTriggerAngle: Math.PI * 0.8,
+          snapTargetAngle: -Math.PI * 0.3,  // Sideways
           snapDistanceMultiplier: 0.85,
-          extensionThreshold: 0.89,
+          extensionThreshold: 0.99,
         },
         // Back leg - points backward-sideways (still negative like arachnid)
         {
@@ -259,8 +259,8 @@ export class EntityRenderer {
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.99,
-          snapTargetAngle: -Math.PI * 0.3,  // Backward-sideways (negative!)
-          snapDistanceMultiplier: 0.8,
+          snapTargetAngle: -Math.PI * 0.4,  // Backward-sideways (negative!)
+          snapDistanceMultiplier: 0.6,
           extensionThreshold: 0.99,
         },
       ];
@@ -277,9 +277,9 @@ export class EntityRenderer {
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.1,
+          snapTargetAngle: -Math.PI * 0.2,
           snapDistanceMultiplier: 0.99,
-          extensionThreshold: 0.88,
+          extensionThreshold: 0.99,
         },
         {
           attachOffsetX: radius * 0.25,
@@ -289,17 +289,17 @@ export class EntityRenderer {
           snapTriggerAngle: Math.PI * 0.65,
           snapTargetAngle: -Math.PI * 0.33,
           snapDistanceMultiplier: 0.88,
-          extensionThreshold: 0.89,
+          extensionThreshold: 0.99,
         },
         {
           attachOffsetX: -radius * 0.2,
           attachOffsetY: -radius * 0.5,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.8,
-          snapTargetAngle: -Math.PI * 0.55,
+          snapTriggerAngle: Math.PI * 0.9,
+          snapTargetAngle: -Math.PI * 0.4,
           snapDistanceMultiplier: 0.82,
-          extensionThreshold: 0.9,
+          extensionThreshold: 0.99,
         },
         {
           attachOffsetX: -radius * 0.55,
@@ -309,7 +309,7 @@ export class EntityRenderer {
           snapTriggerAngle: Math.PI * 0.99,
           snapTargetAngle: -Math.PI * 0.7,
           snapDistanceMultiplier: 0.5,
-          extensionThreshold: 0.98,
+          extensionThreshold: 0.99,
         },
       ];
     }

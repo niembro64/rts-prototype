@@ -369,6 +369,14 @@ export class ClientViewState {
       entity.factory.isProducing = net2.isProducing ?? entity.factory.isProducing;
       if (net2.rallyX !== undefined) entity.factory.rallyX = net2.rallyX;
       if (net2.rallyY !== undefined) entity.factory.rallyY = net2.rallyY;
+      // Update factory waypoints
+      if (net2.factoryWaypoints) {
+        entity.factory.waypoints = net2.factoryWaypoints.map(wp => ({
+          x: wp.x,
+          y: wp.y,
+          type: wp.type as 'move' | 'fight' | 'patrol',
+        }));
+      }
     }
 
     // Update projectile fields
@@ -464,6 +472,14 @@ export class ClientViewState {
       entity.factory.isProducing = netEntity.isProducing ?? entity.factory.isProducing;
       if (netEntity.rallyX !== undefined) entity.factory.rallyX = netEntity.rallyX;
       if (netEntity.rallyY !== undefined) entity.factory.rallyY = netEntity.rallyY;
+      // Update factory waypoints
+      if (netEntity.factoryWaypoints) {
+        entity.factory.waypoints = netEntity.factoryWaypoints.map(wp => ({
+          x: wp.x,
+          y: wp.y,
+          type: wp.type as 'move' | 'fight' | 'patrol',
+        }));
+      }
     }
 
     if (entity.projectile) {
