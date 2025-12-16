@@ -534,7 +534,7 @@ export class RtsScene extends Phaser.Scene {
   }
 
   // Get the current entity source based on view mode
-  // When in client view, ALL entity queries should go through ClientViewState
+  // When in client view or actual client mode, ALL entity queries should go through ClientViewState
   private getCurrentEntitySource(): {
     getUnits: () => Entity[],
     getBuildings: () => Entity[],
@@ -548,7 +548,11 @@ export class RtsScene extends Phaser.Scene {
   } {
     const playerId = this.world.activePlayerId; // Player ID is always from world (it's "who am I")
 
-    if (this.hostViewMode === 'client' && this.clientViewState) {
+    // Use ClientViewState for: actual clients OR host's client view mode
+    const useClientViewState = this.networkRole === 'client' ||
+                                (this.hostViewMode === 'client' && this.clientViewState);
+
+    if (useClientViewState && this.clientViewState) {
       const cvs = this.clientViewState;
       return {
         getUnits: () => cvs.getUnits(),
@@ -993,18 +997,20 @@ export class RtsScene extends Phaser.Scene {
   }
 
   // Process commands for client mode
-  // Selection is handled locally, other commands are sent to host
+  // Selection is handled locally on ClientViewState, other commands are sent to host
   private processClientCommands(): void {
+    if (!this.clientViewState) return;
+
     const commands = this.commandQueue.getAll();
     this.commandQueue.clear();
 
     for (const command of commands) {
       if (command.type === 'select') {
-        // Selection is local-only, process it here
-        this.executeSelectCommand(command as SelectCommand);
+        // Selection is local-only, process it on ClientViewState
+        this.executeClientSelectCommand(command as SelectCommand);
       } else if (command.type === 'clearSelection') {
-        // Clear selection is also local-only
-        this.world.clearSelection();
+        // Clear selection on ClientViewState
+        this.clientViewState.clearSelection();
       } else {
         // Send other commands to host
         networkManager.sendCommand(command);
@@ -1012,12 +1018,16 @@ export class RtsScene extends Phaser.Scene {
     }
   }
 
-  // Execute select command (for client-side selection)
-  private executeSelectCommand(command: SelectCommand): void {
+  // Execute select command on ClientViewState (for client-side selection)
+  private executeClientSelectCommand(command: SelectCommand): void {
+    if (!this.clientViewState) return;
+
     if (!command.additive) {
-      this.world.clearSelection();
+      this.clientViewState.clearSelection();
     }
-    this.world.selectEntities(command.entityIds);
+    for (const id of command.entityIds) {
+      this.clientViewState.selectEntity(id);
+    }
   }
 
   // Process commands for host's client view mode
