@@ -984,18 +984,19 @@ export class EntityRenderer {
 
       // ------------------------------------------------------------------------
       // LAYER 6: SPARK PARTICLES WITH TRAILS (uses ATTACKER - penetration effect)
-      // Sparks shoot out in the direction the projectile/beam was traveling
+      // Sparks EXPLODE out in the direction the projectile/beam was traveling
+      // This is the main "ripping through" effect
       // ------------------------------------------------------------------------
-      const sparkCount = 16 + Math.floor(attackStrength * 12);
+      const sparkCount = 24 + Math.floor(attackStrength * 20); // Many more sparks
       for (let i = 0; i < sparkCount; i++) {
-        const sparkDelay = seededRandom(i + 300) * 0.15;
-        const sparkProgress = Math.max(0, Math.min(1, (progress - sparkDelay) * 1.3));
+        const sparkDelay = seededRandom(i + 300) * 0.12; // Faster spawn
+        const sparkProgress = Math.max(0, Math.min(1, (progress - sparkDelay) * 1.5)); // Faster animation
         if (sparkProgress <= 0) continue;
 
         const baseAngle = (i / sparkCount) * Math.PI * 2 + seededRandom(i + 301) * 0.3;
-        const sparkSpeed = 0.8 + seededRandom(i + 302) * 0.6;
+        const sparkSpeed = 1.0 + seededRandom(i + 302) * 1.0; // Faster sparks
 
-        // Calculate ATTACKER direction bias (sparks penetrate through in attacker direction)
+        // Calculate ATTACKER direction bias - EXTREME penetration effect
         let finalAngle = baseAngle;
         let distMult = 1;
         if (hasAttacker) {
@@ -1005,35 +1006,84 @@ export class EntityRenderer {
 
           const alignment = Math.cos(angleDiff);
           if (alignment > 0) {
-            // Strong bias toward attacker direction (penetration effect)
-            distMult = 1 + alignment * attackStrength * 1.5;
-            finalAngle = baseAngle - angleDiff * 0.5 * attackStrength;
+            // MASSIVE bias toward attacker direction - ripping through!
+            distMult = 1 + alignment * attackStrength * 3.0;
+            finalAngle = baseAngle - angleDiff * 0.7 * attackStrength; // Pull hard toward attack dir
           } else {
-            // Fewer sparks go backwards
-            distMult = 1 + alignment * attackStrength * 0.3;
+            // Almost nothing goes backwards
+            distMult = Math.max(0.1, 1 + alignment * attackStrength * 0.8);
           }
         }
 
-        const sparkDist = exp.radius * (0.2 + sparkProgress * 1.5) * sparkSpeed * distMult;
+        const sparkDist = exp.radius * (0.3 + sparkProgress * 2.5) * sparkSpeed * distMult; // Travel further
         const sparkX = centerX + Math.cos(finalAngle) * sparkDist;
         const sparkY = centerY + Math.sin(finalAngle) * sparkDist;
 
-        // Draw spark trail
-        const trailLength = Math.min(sparkDist * 0.3, 15) * (1 - sparkProgress * 0.5);
+        // Draw LONG spark trail - the key visual for "ripping through"
+        const trailLength = Math.min(sparkDist * 0.5, 30) * (1 - sparkProgress * 0.3); // Much longer trails
         if (trailLength > 2) {
           const trailStartX = sparkX - Math.cos(finalAngle) * trailLength;
           const trailStartY = sparkY - Math.sin(finalAngle) * trailLength;
-          this.graphics.lineStyle(2, 0xffaa44, alpha * 0.5 * (1 - sparkProgress));
+          // Gradient trail - brighter at head
+          this.graphics.lineStyle(3, 0xff6622, alpha * 0.3 * (1 - sparkProgress));
           this.graphics.lineBetween(trailStartX, trailStartY, sparkX, sparkY);
+          this.graphics.lineStyle(2, 0xffaa44, alpha * 0.6 * (1 - sparkProgress));
+          const midX = (trailStartX + sparkX) / 2;
+          const midY = (trailStartY + sparkY) / 2;
+          this.graphics.lineBetween(midX, midY, sparkX, sparkY);
         }
 
-        // Spark head
-        const sparkSize = (2.5 + seededRandom(i + 303) * 2) * (1 - sparkProgress * 0.7);
+        // Bigger, brighter spark head
+        const sparkSize = (3.5 + seededRandom(i + 303) * 3) * (1 - sparkProgress * 0.6);
         if (sparkSize > 0.5) {
-          this.graphics.fillStyle(0xffdd88, alpha * 0.9 * (1 - sparkProgress * 0.5));
+          this.graphics.fillStyle(0xffdd88, alpha * 0.95 * (1 - sparkProgress * 0.4));
           this.graphics.fillCircle(sparkX, sparkY, sparkSize);
-          this.graphics.fillStyle(0xffffff, alpha * 0.6 * (1 - sparkProgress));
+          this.graphics.fillStyle(0xffffff, alpha * 0.8 * (1 - sparkProgress * 0.5));
           this.graphics.fillCircle(sparkX, sparkY, sparkSize * 0.5);
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 6B: PENETRATION FRAGMENTS - Hot metal chunks ripping through
+      // Concentrated spray of larger fragments in the attack direction
+      // ------------------------------------------------------------------------
+      if (hasAttacker && attackStrength > 0.2) {
+        const fragmentCount = 8 + Math.floor(attackStrength * 15);
+        for (let i = 0; i < fragmentCount; i++) {
+          const fragDelay = seededRandom(i + 350) * 0.08;
+          const fragProgress = Math.max(0, Math.min(1, (progress - fragDelay) * 1.8));
+          if (fragProgress <= 0) continue;
+
+          // Tight cone in attack direction
+          const coneSpread = 0.5 * (1 - attackStrength * 0.3); // Tighter cone with stronger attacks
+          const fragAngle = attackAngle + (seededRandom(i + 351) - 0.5) * coneSpread;
+          const fragSpeed = 1.5 + seededRandom(i + 352) * 1.5;
+
+          const fragDist = exp.radius * (0.5 + fragProgress * 3.5) * fragSpeed;
+          const fragX = centerX + Math.cos(fragAngle) * fragDist;
+          const fragY = centerY + Math.sin(fragAngle) * fragDist;
+
+          // Fragment trail - molten metal streaks
+          const fragTrailLen = Math.min(fragDist * 0.4, 25);
+          if (fragTrailLen > 3) {
+            const trailStartX = fragX - Math.cos(fragAngle) * fragTrailLen;
+            const trailStartY = fragY - Math.sin(fragAngle) * fragTrailLen;
+            this.graphics.lineStyle(4, 0xff4400, alpha * 0.4 * (1 - fragProgress));
+            this.graphics.lineBetween(trailStartX, trailStartY, fragX, fragY);
+            this.graphics.lineStyle(2, 0xffaa00, alpha * 0.7 * (1 - fragProgress));
+            this.graphics.lineBetween(trailStartX, trailStartY, fragX, fragY);
+          }
+
+          // Hot fragment head - glowing metal chunk
+          const fragSize = (4 + seededRandom(i + 353) * 4) * (1 - fragProgress * 0.5);
+          if (fragSize > 1) {
+            this.graphics.fillStyle(0xff6600, alpha * 0.9 * (1 - fragProgress * 0.3));
+            this.graphics.fillCircle(fragX, fragY, fragSize);
+            this.graphics.fillStyle(0xffcc44, alpha * 0.7 * (1 - fragProgress * 0.4));
+            this.graphics.fillCircle(fragX, fragY, fragSize * 0.6);
+            this.graphics.fillStyle(0xffffff, alpha * 0.5 * (1 - fragProgress * 0.5));
+            this.graphics.fillCircle(fragX, fragY, fragSize * 0.25);
+          }
         }
       }
 
@@ -1162,34 +1212,82 @@ export class EntityRenderer {
 
       // ------------------------------------------------------------------------
       // LAYER 10: SECONDARY EXPLOSIONS (uses ATTACKER - penetration path)
-      // Mini explosions along the path of the projectile/beam that killed the unit
+      // Chain of explosions RIPPING along the projectile/beam path through the unit
       // ------------------------------------------------------------------------
-      if (hasAttacker && attackStrength > 0.5 && progress > 0.15 && progress < 0.6) {
-        const secondaryCount = Math.floor((attackStrength - 0.4) * 5);
+      if (hasAttacker && attackStrength > 0.15 && progress > 0.05 && progress < 0.7) {
+        const secondaryCount = 4 + Math.floor(attackStrength * 10); // More explosions
         for (let i = 0; i < secondaryCount; i++) {
-          const secDelay = 0.15 + seededRandom(i + 700) * 0.2;
-          const secProgress = Math.max(0, Math.min(1, (progress - secDelay) * 3));
+          const secDelay = 0.05 + i * 0.04 + seededRandom(i + 700) * 0.08; // Staggered chain
+          const secProgress = Math.max(0, Math.min(1, (progress - secDelay) * 2.5));
           if (secProgress <= 0 || secProgress >= 1) continue;
 
-          // Secondary explosions along ATTACKER path (penetration effect)
-          const secDist = exp.radius * (0.8 + i * 0.5 + seededRandom(i + 701) * 0.3);
-          const secAngle = attackAngle + (seededRandom(i + 702) - 0.5) * 0.3;
+          // Secondary explosions along ATTACKER path - spreading further out
+          const secDist = exp.radius * (0.6 + i * 0.7 + seededRandom(i + 701) * 0.4);
+          const secAngle = attackAngle + (seededRandom(i + 702) - 0.5) * 0.25; // Tighter spread
           const secX = exp.x + Math.cos(secAngle) * secDist;
           const secY = exp.y + Math.sin(secAngle) * secDist;
-          const secRadius = exp.radius * 0.3 * (1 - secProgress);
-          const secAlpha = (1 - secProgress) * 0.6;
+          const secRadius = exp.radius * (0.35 + seededRandom(i + 703) * 0.15) * (1 - secProgress * 0.7);
+          const secAlpha = (1 - secProgress * 0.8) * 0.75;
 
-          // Mini fireball
-          this.graphics.fillStyle(0xff6600, secAlpha * 0.7);
+          // Bigger, brighter mini fireball
+          this.graphics.fillStyle(0xdd3300, secAlpha * 0.6);
+          this.graphics.fillCircle(secX, secY, secRadius * 1.3);
+          this.graphics.fillStyle(0xff6600, secAlpha * 0.8);
           this.graphics.fillCircle(secX, secY, secRadius);
-          this.graphics.fillStyle(0xffcc44, secAlpha * 0.5);
-          this.graphics.fillCircle(secX, secY, secRadius * 0.5);
-          this.graphics.fillStyle(0xffffff, secAlpha * 0.3);
-          this.graphics.fillCircle(secX, secY, secRadius * 0.2);
+          this.graphics.fillStyle(0xffaa44, secAlpha * 0.7);
+          this.graphics.fillCircle(secX, secY, secRadius * 0.6);
+          this.graphics.fillStyle(0xffdd88, secAlpha * 0.5);
+          this.graphics.fillCircle(secX, secY, secRadius * 0.35);
+          this.graphics.fillStyle(0xffffff, secAlpha * 0.4);
+          this.graphics.fillCircle(secX, secY, secRadius * 0.15);
 
-          // Mini shockwave
-          this.graphics.lineStyle(2 * (1 - secProgress), 0xffffff, secAlpha * 0.4);
-          this.graphics.strokeCircle(secX, secY, secRadius * (1 + secProgress));
+          // Mini shockwave ring
+          this.graphics.lineStyle(3 * (1 - secProgress) + 1, 0xffaa44, secAlpha * 0.5);
+          this.graphics.strokeCircle(secX, secY, secRadius * (1 + secProgress * 0.8));
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // LAYER 11: EXIT WOUND BURST - Final explosive spray exiting the unit
+      // A concentrated burst where the attack "exits" the unit
+      // ------------------------------------------------------------------------
+      if (hasAttacker && attackStrength > 0.3 && progress > 0.1 && progress < 0.5) {
+        const exitProgress = Math.max(0, Math.min(1, (progress - 0.1) * 3));
+        const exitDist = exp.radius * (1.5 + exitProgress * 2.5);
+        const exitX = exp.x + Math.cos(attackAngle) * exitDist;
+        const exitY = exp.y + Math.sin(attackAngle) * exitDist;
+
+        // Exit wound flash
+        const exitRadius = exp.radius * 0.6 * (1 - exitProgress * 0.6) * attackStrength;
+        const exitAlpha = (1 - exitProgress) * 0.8;
+
+        if (exitRadius > 2) {
+          // Outer glow
+          this.graphics.fillStyle(0xff4400, exitAlpha * 0.4);
+          this.graphics.fillCircle(exitX, exitY, exitRadius * 1.5);
+          // Main burst
+          this.graphics.fillStyle(0xff8844, exitAlpha * 0.7);
+          this.graphics.fillCircle(exitX, exitY, exitRadius);
+          // Hot core
+          this.graphics.fillStyle(0xffcc88, exitAlpha * 0.6);
+          this.graphics.fillCircle(exitX, exitY, exitRadius * 0.5);
+          this.graphics.fillStyle(0xffffff, exitAlpha * 0.5);
+          this.graphics.fillCircle(exitX, exitY, exitRadius * 0.2);
+
+          // Spray of mini-sparks from exit point
+          const exitSparkCount = 6 + Math.floor(attackStrength * 8);
+          for (let i = 0; i < exitSparkCount; i++) {
+            const sparkAngle = attackAngle + (seededRandom(i + 800) - 0.5) * 1.2;
+            const sparkDist = exitRadius * (0.5 + exitProgress * 2) * (0.8 + seededRandom(i + 801) * 0.6);
+            const sparkX = exitX + Math.cos(sparkAngle) * sparkDist;
+            const sparkY = exitY + Math.sin(sparkAngle) * sparkDist;
+            const sparkSize = (2 + seededRandom(i + 802) * 2) * (1 - exitProgress * 0.7);
+
+            if (sparkSize > 0.5) {
+              this.graphics.fillStyle(0xffdd88, exitAlpha * 0.8);
+              this.graphics.fillCircle(sparkX, sparkY, sparkSize);
+            }
+          }
         }
       }
 
