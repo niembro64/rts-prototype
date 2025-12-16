@@ -1791,29 +1791,32 @@ export class EntityRenderer {
       ];
       this.graphics.fillPoints(bodyPoints, true);
 
-      // Inner carapace pattern (base color) - shifted forward
-      const hexForwardOffset = r * 0.35;
+      // Inner carapace pattern (base color) - shifted forward, larger hexagon, rotated 30°
+      const hexRadius = r * 0.65;
+      const hexForwardOffset = r * 0.5;
+      const hexRotationOffset = Math.PI / 6; // Rotate 30° so flat edge faces forward
       const hexCenterX = x + cos * hexForwardOffset;
       const hexCenterY = y + sin * hexForwardOffset;
       this.graphics.fillStyle(base, 0.8);
-      this.drawPolygon(hexCenterX, hexCenterY, r * 0.5, 6, bodyRot);
+      this.drawPolygon(hexCenterX, hexCenterY, hexRadius, 6, bodyRot + hexRotationOffset);
 
-      // Central eye/sensor cluster (light) - at hexagon center
+      // Central sonic emitter orb (light) - at hexagon center
       this.graphics.fillStyle(light, 0.9);
-      this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.25);
+      this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.3);
       this.graphics.fillStyle(this.WHITE, 0.95);
-      this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.12);
+      this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.15);
     }
 
-    // Turret pass - 6 beam emitters at hexagon points
+    // Turret pass - 6 beam emitters at hexagon corners + sonic wave at center
     if (!this.skipTurrets) {
       const weapons = entity.weapons ?? [];
-      const hexRadius = r * 0.5;
-      const hexForwardOffset = r * 0.35; // Match the forward shift
+      const hexRadius = r * 0.65;
+      const hexForwardOffset = r * 0.5;
+      const hexRotationOffset = Math.PI / 6; // Match the 30° rotation
 
-      // 6 beam emitters at hexagon vertices (shifted forward)
+      // 6 beam emitters at hexagon vertices (shifted forward, rotated)
       for (let i = 0; i < 6; i++) {
-        const angle = (i * Math.PI) / 3; // 0, 60, 120, 180, 240, 300 degrees
+        const angle = (i * Math.PI) / 3 + hexRotationOffset; // 30, 90, 150, 210, 270, 330 degrees
         const localX = Math.cos(angle) * hexRadius + hexForwardOffset;
         const localY = Math.sin(angle) * hexRadius;
         const emitterX = x + cos * localX - sin * localY;
@@ -1836,6 +1839,29 @@ export class EntityRenderer {
         // Emitter tip glow
         this.graphics.fillStyle(this.WHITE, 0.8);
         this.graphics.fillCircle(beamEndX, beamEndY, r * 0.06);
+      }
+
+      // Sonic wave weapon at center (weapon index 6)
+      const sonicWeapon = weapons[6];
+      if (sonicWeapon?.config.isWaveWeapon) {
+        const hexCenterX = x + cos * hexForwardOffset;
+        const hexCenterY = y + sin * hexForwardOffset;
+        const sliceAngle = sonicWeapon.currentSliceAngle ?? Math.PI / 16;
+        const waveRange = sonicWeapon.fireRange ?? 150;
+        const turretAngle = sonicWeapon.turretRotation;
+
+        // Use the same wave effect as the sonic unit
+        if (sliceAngle > 0) {
+          this.renderWaveEffect(
+            hexCenterX,
+            hexCenterY,
+            turretAngle,
+            sliceAngle,
+            waveRange,
+            light,
+            base
+          );
+        }
       }
     }
   }

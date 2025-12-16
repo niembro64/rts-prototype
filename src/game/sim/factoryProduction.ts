@@ -208,9 +208,10 @@ export const factoryProductionSystem = new FactoryProductionSystem();
 export function createWeaponsForUnitType(unitType: string, radius: number): UnitWeapon[] {
   const config = getUnitBuildConfig(unitType);
 
-  // Arachnid has 6 beam lasers at the hexagon points on top of its body
+  // Arachnid has 6 beam lasers at hexagon corners + 1 sonic wave weapon in center
   if (unitType === 'arachnid') {
     const beamConfig = getWeaponConfig('beam');
+    const sonicConfig = getWeaponConfig('sonic');
     const turretTurnRate = 0.3; // Slow turret rotation for heavy arachnid
     const seeRange = config?.weaponSeeRange ?? 400;
     const fireRange = config?.weaponFireRange ?? beamConfig.range;
@@ -218,11 +219,12 @@ export function createWeaponsForUnitType(unitType: string, radius: number): Unit
     const weapons: UnitWeapon[] = [];
 
     // 6 beam lasers at the 6 vertices of the inner hexagon, shifted forward
-    const hexRadius = radius * 0.5;
-    const hexForwardOffset = radius * 0.35; // Shift hexagon center toward front
+    const hexRadius = radius * 0.65; // Larger hexagon
+    const hexForwardOffset = radius * 0.5; // Shift hexagon center toward front
+    const hexRotationOffset = Math.PI / 6; // Rotate 30° so flat edge faces forward
     for (let i = 0; i < 6; i++) {
-      // Hexagon vertices at 60° intervals, starting from front (angle 0)
-      const angle = (i * Math.PI) / 3; // 0, 60, 120, 180, 240, 300 degrees
+      // Hexagon vertices at 60° intervals, rotated so flat side faces front
+      const angle = (i * Math.PI) / 3 + hexRotationOffset; // 30, 90, 150, 210, 270, 330 degrees
       const offsetX = Math.cos(angle) * hexRadius + hexForwardOffset;
       const offsetY = Math.sin(angle) * hexRadius;
       weapons.push({
@@ -238,6 +240,23 @@ export function createWeaponsForUnitType(unitType: string, radius: number): Unit
         isFiring: false,
       });
     }
+
+    // 1 sonic wave weapon in the center of the hexagon
+    const sonicHexForwardOffset = radius * 0.5; // Match the hexagon center
+    weapons.push({
+      config: { ...sonicConfig },
+      currentCooldown: 0,
+      targetEntityId: null,
+      seeRange: seeRange * 0.5, // Shorter sight range for sonic
+      fireRange: sonicConfig.range,
+      turretRotation: 0,
+      turretTurnRate: turretTurnRate * 1.5, // Slightly faster turret for wave weapon
+      offsetX: sonicHexForwardOffset, // Center of hexagon
+      offsetY: 0,
+      isFiring: false,
+      waveTransitionProgress: 0,
+      currentSliceAngle: sonicConfig.waveAngleIdle ?? Math.PI / 16,
+    });
 
     return weapons;
   }
