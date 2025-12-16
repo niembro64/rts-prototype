@@ -170,6 +170,16 @@ export const UNIT_STATS = {
     collisionRadius: 38,
     buildRate: 8,           // Very slow to produce
   },
+  // Sonic - Small 4-legged spider with continuous wave AoE damage.
+  // Pie-slice damage field with inverse-square falloff (1/d²).
+  // High damage up close, fades rapidly with distance.
+  sonic: {
+    baseCost: 90,
+    hp: 80,
+    moveSpeed: 110,
+    collisionRadius: 11,
+    buildRate: 50,
+  },
 };
 
 // =============================================================================
@@ -248,6 +258,14 @@ export const WEAPON_STATS = {
     // Sub-weapon counts
     beamCount: 4,           // 4 continuous beam lasers
     snipeCount: 4,          // 4 sniper lasers
+  },
+  // Sonic - Continuous pie-slice AoE with inverse-square damage falloff
+  // Damage falls off as 1/(distance²) - devastating up close, weak at range
+  sonic: {
+    damage: 40,             // Base DPS at point-blank (before falloff)
+    range: 150,             // Maximum range of the wave slice
+    cooldown: 0,            // Continuous (always on when targeting)
+    sliceAngle: Math.PI / 4, // 45-degree pie slice (half-angle = 22.5°)
   },
 };
 

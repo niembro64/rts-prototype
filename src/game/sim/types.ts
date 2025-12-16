@@ -111,6 +111,13 @@ export interface WeaponConfig {
   color?: number;                // Projectile/beam color
   trailLength?: number;          // Visual trail length
 
+  // Wave weapon properties (sonic)
+  sliceAngle?: number;           // Angle of pie-slice AoE (radians)
+  isWaveWeapon?: boolean;        // True if this is a continuous wave weapon
+
+  // Piercing properties
+  piercing?: boolean;            // Can pierce through multiple targets
+
   // Future extensibility - any additional params
   [key: string]: unknown;
 }

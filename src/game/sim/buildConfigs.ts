@@ -106,6 +106,15 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     hp: UNIT_STATS.arachnid.hp,
     weaponSeeRange: 400,  // Extended tracking range for titan weapons
   },
+  sonic: {
+    weaponId: 'sonic',
+    name: 'Sonic',
+    energyCost: UNIT_STATS.sonic.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.sonic.buildRate,
+    collisionRadius: UNIT_STATS.sonic.collisionRadius,
+    moveSpeed: UNIT_STATS.sonic.moveSpeed,
+    hp: UNIT_STATS.sonic.hp,
+  },
 };
 
 // Commander stats (from config)

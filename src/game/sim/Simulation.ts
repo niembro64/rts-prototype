@@ -8,6 +8,7 @@ import {
   updateWeaponFiringState,
   updateLaserSounds,
   fireWeapons,
+  applyWaveDamage,
   updateProjectiles,
   checkProjectileCollisions,
   type AudioEvent,
@@ -202,6 +203,9 @@ export class Simulation {
       this.onAudioEvent?.(event);
       this.pendingAudioEvents.push(event);
     }
+
+    // Apply wave weapon damage (continuous AoE for sonic units)
+    applyWaveDamage(this.world, dtMs);
 
     // Update projectile positions and remove orphaned beams (from dead units)
     const orphanedProjectiles = updateProjectiles(this.world, dtMs);

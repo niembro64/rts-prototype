@@ -107,6 +107,18 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     splashDamageFalloff: 0,
     piercing: true,
   },
+
+  // Sonic - Continuous pie-slice wave weapon with inverse-square damage falloff
+  // Damages all enemies within the slice, no projectiles created
+  sonic: {
+    id: 'sonic',
+    damage: WEAPON_STATS.sonic.damage,
+    range: WEAPON_STATS.sonic.range,
+    cooldown: WEAPON_STATS.sonic.cooldown,
+    sliceAngle: WEAPON_STATS.sonic.sliceAngle,
+    isWaveWeapon: true,
+    color: 0xffffff,
+  },
 };
 
 // Helper to get a weapon config by ID

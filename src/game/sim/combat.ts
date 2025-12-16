@@ -497,6 +497,112 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
   return { projectiles: newProjectiles, audioEvents };
 }
 
+// Apply wave weapon damage (continuous pie-slice AoE with inverse-square falloff)
+// Wave weapons like Sonic deal damage to all enemies within a pie-slice area
+export function applyWaveDamage(world: WorldState, dtMs: number): void {
+  const dtSec = dtMs / 1000;
+  if (dtSec <= 0) return;
+
+  for (const unit of world.getUnits()) {
+    if (!unit.ownership || !unit.unit || !unit.weapons) continue;
+    if (unit.unit.hp <= 0) continue;
+
+    const playerId = unit.ownership.playerId;
+    const unitCos = Math.cos(unit.transform.rotation);
+    const unitSin = Math.sin(unit.transform.rotation);
+
+    for (const weapon of unit.weapons) {
+      const config = weapon.config;
+
+      // Only process wave weapons
+      if (!config.isWaveWeapon) continue;
+
+      // Only deal damage when firing (has a target)
+      if (!weapon.isFiring) continue;
+
+      // Wave weapon properties
+      const sliceHalfAngle = (config.sliceAngle ?? Math.PI / 4) / 2; // Half the total slice angle
+      const maxRange = weapon.fireRange;
+      const baseDamage = config.damage; // DPS at reference distance
+
+      // Calculate weapon position
+      const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
+      const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+
+      // Get turret direction
+      const turretAngle = weapon.turretRotation;
+
+      // Check all enemy units
+      for (const enemy of world.getUnits()) {
+        if (!enemy.unit || !enemy.ownership) continue;
+        if (enemy.ownership.playerId === playerId) continue; // Skip friendlies
+        if (enemy.unit.hp <= 0) continue; // Skip dead units
+
+        const enemyX = enemy.transform.x;
+        const enemyY = enemy.transform.y;
+        const enemyRadius = enemy.unit.collisionRadius;
+
+        // Check distance
+        const dx = enemyX - weaponX;
+        const dy = enemyY - weaponY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Skip if out of range (accounting for enemy radius)
+        if (dist > maxRange + enemyRadius) continue;
+
+        // Calculate angle to enemy
+        const angleToEnemy = Math.atan2(dy, dx);
+        const angleDiff = normalizeAngle(angleToEnemy - turretAngle);
+
+        // Check if within pie slice angle (account for enemy radius)
+        const angularSize = dist > 0 ? Math.atan2(enemyRadius, dist) : Math.PI;
+        if (Math.abs(angleDiff) > sliceHalfAngle + angularSize) continue;
+
+        // Enemy is in the slice - apply constant damage
+        const damage = baseDamage * dtSec;
+
+        // Apply damage
+        enemy.unit.hp -= damage;
+      }
+
+      // Check all enemy buildings
+      for (const building of world.getBuildings()) {
+        if (!building.building || !building.ownership) continue;
+        if (building.ownership.playerId === playerId) continue; // Skip friendly buildings
+        if (building.building.hp <= 0) continue; // Skip destroyed buildings
+
+        const buildingX = building.transform.x;
+        const buildingY = building.transform.y;
+        const bWidth = building.building.width;
+        const bHeight = building.building.height;
+        const buildingRadius = Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
+
+        // Check distance
+        const dx = buildingX - weaponX;
+        const dy = buildingY - weaponY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Skip if out of range
+        if (dist > maxRange + buildingRadius) continue;
+
+        // Calculate angle to building
+        const angleToBuilding = Math.atan2(dy, dx);
+        const angleDiff = normalizeAngle(angleToBuilding - turretAngle);
+
+        // Check if within pie slice angle
+        const angularSize = dist > 0 ? Math.atan2(buildingRadius, dist) : Math.PI;
+        if (Math.abs(angleDiff) > sliceHalfAngle + angularSize) continue;
+
+        // Building is in the slice - apply constant damage
+        const damage = baseDamage * dtSec;
+
+        // Apply damage
+        building.building.hp -= damage;
+      }
+    }
+  }
+}
+
 // Update projectile positions - returns IDs of projectiles to remove (e.g., orphaned beams)
 export function updateProjectiles(world: WorldState, dtMs: number): EntityId[] {
   const dtSec = dtMs / 1000;

@@ -82,6 +82,7 @@ const UNIT_NAMES: Record<string, string> = {
   snipe: 'Snipe',
   tank: 'Tank',
   arachnid: 'Arachnid',
+  sonic: 'Sonic',
 };
 
 export class EntityRenderer {
@@ -117,8 +118,8 @@ export class EntityRenderer {
     this.entitySource = entitySource;
   }
 
-  // Get or create legs for a legged unit (arachnid: 8 legs, beam/insect: 6 legs)
-  private getOrCreateLegs(entity: Entity, legCount: 6 | 8 = 8): ArachnidLeg[] {
+  // Get or create legs for a legged unit (arachnid: 8 legs, beam/insect: 6 legs, sonic: 4 legs)
+  private getOrCreateLegs(entity: Entity, legCount: 4 | 6 | 8 = 8): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
 
@@ -130,7 +131,31 @@ export class EntityRenderer {
     // Define left side legs only, then mirror to create right side
     let leftSideConfigs: LegConfig[];
 
-    if (legCount === 6) {
+    if (legCount === 4) {
+      // Sonic: 2 legs per side (front and back) - compact spider stance
+      leftSideConfigs = [
+        {
+          attachOffsetX: radius * 0.4,
+          attachOffsetY: -radius * 0.5,
+          upperLegLength: upperLen * 0.9,
+          lowerLegLength: lowerLen * 0.9,
+          snapTriggerAngle: Math.PI * 0.5,
+          snapTargetAngle: -Math.PI * 0.15,
+          snapDistanceMultiplier: 0.9,
+          extensionThreshold: 0.85,
+        },
+        {
+          attachOffsetX: -radius * 0.4,
+          attachOffsetY: -radius * 0.5,
+          upperLegLength: upperLen * 0.9,
+          lowerLegLength: lowerLen * 0.9,
+          snapTriggerAngle: Math.PI * 0.9,
+          snapTargetAngle: -Math.PI * 0.65,
+          snapDistanceMultiplier: 0.6,
+          extensionThreshold: 0.92,
+        },
+      ];
+    } else if (legCount === 6) {
       // Insect: 3 legs per side (front to back)
       // Front: snaps to 30° forward, triggers at 90°
       // Middle: snaps to ~60°, triggers at ~130°
@@ -248,19 +273,21 @@ export class EntityRenderer {
       }
     }
 
-    // Update legs for all legged units (arachnid: 8 legs, beam/insect: 6 legs)
+    // Update legs for all legged units (arachnid: 8 legs, beam/insect: 6 legs, sonic: 4 legs)
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
         continue;
 
-      // Check if this is an arachnid (multiple weapons) or beam unit (single beam weapon)
+      // Check if this is an arachnid, beam unit, or sonic unit
       const isArachnid = entity.weapons.length > 1;
       const isBeam =
         entity.weapons.length === 1 && entity.weapons[0].config.id === 'beam';
+      const isSonic =
+        entity.weapons.length === 1 && entity.weapons[0].config.id === 'sonic';
 
-      if (!isArachnid && !isBeam) continue;
+      if (!isArachnid && !isBeam && !isSonic) continue;
 
-      const legCount = isArachnid ? 8 : 6;
+      const legCount = isArachnid ? 8 : isSonic ? 4 : 6;
       const legs = this.getOrCreateLegs(entity, legCount);
       const velX = entity.unit.velocityX ?? 0;
       const velY = entity.unit.velocityY ?? 0;
@@ -883,6 +910,19 @@ export class EntityRenderer {
         break;
       case 'arachnid':
         this.drawArachnidUnit(
+          x,
+          y,
+          radius,
+          rotation,
+          base,
+          light,
+          dark,
+          isSelected,
+          entity
+        );
+        break;
+      case 'sonic':
+        this.drawSonicUnit(
           x,
           y,
           radius,
@@ -1710,6 +1750,176 @@ export class EntityRenderer {
         this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
       }
     }
+  }
+
+  // Sonic: Small 4-legged spider with central wave emitter orb
+  private drawSonicUnit(
+    x: number,
+    y: number,
+    r: number,
+    bodyRot: number,
+    base: number,
+    light: number,
+    dark: number,
+    selected: boolean,
+    entity: Entity
+  ): void {
+    const cos = Math.cos(bodyRot);
+    const sin = Math.sin(bodyRot);
+
+    // Body pass
+    if (!this.turretsOnly) {
+      const legThickness = 2;
+      const footSize = r * 0.12;
+
+      // Get legs for this entity (creates them if they don't exist)
+      const legs = this.getOrCreateLegs(entity, 4);
+
+      // Draw all 4 legs
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i];
+        const side = i < 2 ? -1 : 1; // First 2 legs are left, last 2 are right
+
+        const attach = leg.getAttachmentPoint(x, y, bodyRot);
+        const foot = leg.getFootPosition();
+        const knee = leg.getKneePosition(attach.x, attach.y, side);
+
+        // Upper leg (thicker, darker)
+        this.graphics.lineStyle(legThickness + 0.5, dark, 0.95);
+        this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+
+        // Lower leg (thinner, lighter)
+        this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
+        this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+
+        // Knee joint
+        this.graphics.fillStyle(this.BLACK, 0.9);
+        this.graphics.fillCircle(knee.x, knee.y, legThickness);
+
+        // Foot
+        const footColor = leg.isCurrentlySliding() ? light : this.WHITE;
+        this.graphics.fillStyle(footColor, 0.9);
+        this.graphics.fillCircle(foot.x, foot.y, footSize);
+      }
+
+      // Body (compact oval shape)
+      const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
+      this.graphics.fillStyle(bodyColor, 0.95);
+
+      // Draw compact body as rounded hexagon
+      const bodyLength = r * 0.6;
+      const bodyWidth = r * 0.5;
+      const bodyPoints = [
+        { x: x + cos * bodyLength - sin * bodyWidth * 0.3, y: y + sin * bodyLength + cos * bodyWidth * 0.3 },
+        { x: x + cos * bodyLength * 0.5 - sin * bodyWidth, y: y + sin * bodyLength * 0.5 + cos * bodyWidth },
+        { x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.8, y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.8 },
+        { x: x - cos * bodyLength - sin * bodyWidth * 0.3, y: y - sin * bodyLength + cos * bodyWidth * 0.3 },
+        { x: x - cos * bodyLength + sin * bodyWidth * 0.3, y: y - sin * bodyLength - cos * bodyWidth * 0.3 },
+        { x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.8, y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.8 },
+        { x: x + cos * bodyLength * 0.5 + sin * bodyWidth, y: y + sin * bodyLength * 0.5 - cos * bodyWidth },
+        { x: x + cos * bodyLength + sin * bodyWidth * 0.3, y: y + sin * bodyLength - cos * bodyWidth * 0.3 },
+      ];
+      this.graphics.fillPoints(bodyPoints, true);
+
+      // Inner pattern (dark)
+      this.graphics.fillStyle(dark, 0.8);
+      this.drawPolygon(x, y, r * 0.3, 6, bodyRot);
+
+      // Central orb base (light glow)
+      this.graphics.fillStyle(light, 0.9);
+      this.graphics.fillCircle(x, y, r * 0.25);
+      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillCircle(x, y, r * 0.15);
+    }
+
+    // Turret pass - wave effect emanating from central orb
+    if (!this.skipTurrets) {
+      const weapons = entity.weapons ?? [];
+      for (const weapon of weapons) {
+        if (!weapon.isFiring) continue; // Only render when active
+
+        const turretRot = weapon.turretRotation;
+        const sliceAngle = weapon.config.sliceAngle ?? Math.PI / 4;
+        const maxRange = weapon.fireRange;
+
+        // Render pie-slice wave effect
+        this.renderWaveEffect(x, y, turretRot, sliceAngle, maxRange, light, base);
+      }
+    }
+  }
+
+  // Render wave weapon pie-slice effect with pulsing sine waves
+  private renderWaveEffect(
+    x: number,
+    y: number,
+    rotation: number,
+    sliceAngle: number, // Total angle of the pie slice
+    maxRange: number,
+    primaryColor: number,
+    secondaryColor: number
+  ): void {
+    // Pulsing animation based on time
+    const time = Date.now() / 1000;
+    const pulseSpeed = 3; // Pulses per second
+    const waveCount = 5; // Number of wave arcs
+    const halfAngle = sliceAngle / 2;
+
+    // Draw pie-slice background (faded)
+    this.graphics.fillStyle(primaryColor, 0.15);
+    this.graphics.beginPath();
+    this.graphics.moveTo(x, y);
+    this.graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
+    this.graphics.closePath();
+    this.graphics.fill();
+
+    // Draw edge lines of pie slice
+    this.graphics.lineStyle(2, primaryColor, 0.5);
+    const edge1X = x + Math.cos(rotation - halfAngle) * maxRange;
+    const edge1Y = y + Math.sin(rotation - halfAngle) * maxRange;
+    const edge2X = x + Math.cos(rotation + halfAngle) * maxRange;
+    const edge2Y = y + Math.sin(rotation + halfAngle) * maxRange;
+    this.graphics.lineBetween(x, y, edge1X, edge1Y);
+    this.graphics.lineBetween(x, y, edge2X, edge2Y);
+
+    // Draw pulsing sine wave arcs
+    for (let i = 0; i < waveCount; i++) {
+      // Each wave pulses outward
+      const basePhase = (time * pulseSpeed + i / waveCount) % 1;
+      const waveRadius = basePhase * maxRange;
+
+      // Uniform intensity with slight fade at edges for visual appeal
+      const alpha = 0.5;
+
+      // Draw arc with sine wave modulation
+      const segments = 16;
+      this.graphics.lineStyle(2.5, primaryColor, alpha);
+      this.graphics.beginPath();
+
+      for (let j = 0; j <= segments; j++) {
+        const t = j / segments;
+        const angle = rotation - halfAngle + t * sliceAngle;
+
+        // Add sine wave ripple perpendicular to arc direction
+        const sineOffset = Math.sin(t * Math.PI * 4 + time * 10) * 4 * (1 - basePhase);
+        const r = waveRadius + sineOffset;
+
+        const px = x + Math.cos(angle) * r;
+        const py = y + Math.sin(angle) * r;
+
+        if (j === 0) {
+          this.graphics.moveTo(px, py);
+        } else {
+          this.graphics.lineTo(px, py);
+        }
+      }
+      this.graphics.strokePath();
+    }
+
+    // Draw outer arc boundary
+    this.graphics.lineStyle(2, secondaryColor, 0.4);
+    this.graphics.beginPath();
+    this.graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
+    this.graphics.strokePath();
   }
 
   // ==================== SHAPE HELPERS ====================
