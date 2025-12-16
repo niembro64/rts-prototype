@@ -14,6 +14,7 @@ import {
   checkProjectileCollisions,
   type AudioEvent,
 } from './combat';
+import { DamageSystem } from './damage';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
@@ -28,6 +29,7 @@ export class Simulation {
   private commandQueue: CommandQueue;
   private accumulator: number = 0;
   private constructionSystem: ConstructionSystem;
+  private damageSystem: DamageSystem;
 
   // Current spray targets for rendering (build/heal effects)
   private currentSprayTargets: SprayTarget[] = [];
@@ -60,6 +62,7 @@ export class Simulation {
     this.world = world;
     this.commandQueue = commandQueue;
     this.constructionSystem = new ConstructionSystem(world.mapWidth, world.mapHeight);
+    this.damageSystem = new DamageSystem(world);
   }
 
   // Set the player IDs for this game
@@ -209,16 +212,16 @@ export class Simulation {
     updateWaveWeaponState(this.world, dtMs);
 
     // Apply wave weapon damage (continuous AoE for sonic units)
-    applyWaveDamage(this.world, dtMs);
+    applyWaveDamage(this.world, dtMs, this.damageSystem);
 
     // Update projectile positions and remove orphaned beams (from dead units)
-    const orphanedProjectiles = updateProjectiles(this.world, dtMs);
+    const orphanedProjectiles = updateProjectiles(this.world, dtMs, this.damageSystem);
     for (const id of orphanedProjectiles) {
       this.world.removeEntity(id);
     }
 
     // Check projectile collisions and get dead units
-    const collisionResult = checkProjectileCollisions(this.world, dtMs);
+    const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem);
 
     // Emit hit/death audio events
     for (const event of collisionResult.audioEvents) {

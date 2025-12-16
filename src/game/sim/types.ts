@@ -171,6 +171,10 @@ export interface Projectile {
   velocityX: number;
   velocityY: number;
 
+  // Previous position (for swept collision detection - prevents tunneling)
+  prevX?: number;
+  prevY?: number;
+
   // Lifespan
   timeAlive: number;             // How long it's existed (ms)
   maxLifespan: number;           // When to remove (ms)
