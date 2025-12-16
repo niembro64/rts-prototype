@@ -46,15 +46,15 @@ export const COST_MULTIPLIER = 1.0;
 
 export const BUILDING_STATS = {
   solar: {
-    baseCost: 100,          // Base energy cost (before multiplier)
+    baseCost: 100, // Base energy cost (before multiplier)
     hp: 200,
-    buildRate: 30,          // Max energy/sec commander can spend building this
+    buildRate: 30, // Max energy/sec commander can spend building this
   },
   factory: {
-    baseCost: 300,          // Base energy cost (before multiplier)
+    baseCost: 300, // Base energy cost (before multiplier)
     hp: 800,
-    buildRate: 40,          // Max energy/sec commander can spend building this
-    unitBuildRate: 50,      // Max energy/sec factory spends producing units
+    buildRate: 40, // Max energy/sec commander can spend building this
+    unitBuildRate: 50, // Max energy/sec factory spends producing units
   },
 };
 
@@ -65,10 +65,10 @@ export const BUILDING_STATS = {
 export const COMMANDER_STATS = {
   hp: 500,
   moveSpeed: 80,
-  collisionRadius: 20,      // Hitbox size for physics/collision
-  buildRate: 50,            // Max energy/sec for construction
-  buildRange: 150,          // Max distance to build
-  dgunCost: 200,            // Energy cost per D-gun shot
+  collisionRadius: 20, // Hitbox size for physics/collision
+  buildRate: 50, // Max energy/sec for construction
+  buildRange: 150, // Max distance to build
+  dgunCost: 200, // Energy cost per D-gun shot
 };
 
 // =============================================================================
@@ -103,8 +103,8 @@ export const UNIT_STATS = {
     baseCost: 35,
     hp: 40,
     moveSpeed: 160,
-    collisionRadius: 8,     // Hitbox size for physics/collision
-    buildRate: 70,          // Very fast production
+    collisionRadius: 8, // Hitbox size for physics/collision
+    buildRate: 70, // Very fast production
   },
   // Burst - Glass cannon striker. High alpha, fragile.
   // Value: 45 DPS × 0.94 range × 1.2 burst × (70 HP × 1.14 speed) = ~41 → Cost: 75
@@ -168,7 +168,7 @@ export const UNIT_STATS = {
     hp: 1200,
     moveSpeed: 25,
     collisionRadius: 38,
-    buildRate: 8,           // Very slow to produce
+    buildRate: 8, // Very slow to produce
   },
   // Sonic - Small 4-legged spider with continuous wave AoE damage.
   // Pie-slice damage field with inverse-square falloff (1/d²).
@@ -266,7 +266,7 @@ export const WEAPON_STATS = {
     range: 150, // Maximum range of the wave slice
     cooldown: 0, // Continuous (always on when targeting)
     waveAngleIdle: 0, // Angle when not firing (narrow beam)
-    waveAngleAttack: Math.PI * 2, // Angle when firing (45° wide slice)
+    waveAngleAttack: Math.PI, // Angle when firing (45° wide slice)
     waveTransitionTime: 2000, // Time (ms) to transition between idle and attack
   },
 };

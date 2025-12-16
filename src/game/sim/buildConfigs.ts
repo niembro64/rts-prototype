@@ -114,6 +114,8 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     collisionRadius: UNIT_STATS.sonic.collisionRadius,
     moveSpeed: UNIT_STATS.sonic.moveSpeed,
     hp: UNIT_STATS.sonic.hp,
+    weaponSeeRange: 100,   // Smaller sight range - must get close to detect targets
+    weaponFireRange: 150,  // Larger attack range - wave extends beyond sight
   },
 };
 
@@ -140,7 +142,7 @@ export const DGUN_CONFIG = {
   projectileLifespan: 2000,
   color: 0xff8800,
   splashRadius: 40,
-  splashDamageFalloff: 0,
+  splashDamageFalloff: 1, // Full damage at edge (no falloff)
 };
 
 // Helper to get building config

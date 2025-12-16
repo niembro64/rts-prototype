@@ -104,7 +104,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     projectileLifespan: 2000,
     color: 0xff8800,
     splashRadius: WEAPON_STATS.dgun.splashRadius,
-    splashDamageFalloff: 0,
+    splashDamageFalloff: 1, // Full damage at edge (no falloff)
     piercing: true,
   },
 

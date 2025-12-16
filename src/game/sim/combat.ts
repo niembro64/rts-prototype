@@ -536,7 +536,9 @@ export function updateWaveWeaponState(world: WorldState, dtMs: number): void {
 }
 
 // Apply wave weapon damage (continuous pie-slice AoE)
-// Wave weapons like Sonic deal damage to all enemies within a pie-slice area
+// Wave weapons like Sonic AIM at a specific target (for turret rotation) but deal damage
+// to ALL units and buildings within the pie-slice area, not just the target.
+// The slice expands/contracts based on firing state (see updateWaveWeaponState).
 export function applyWaveDamage(world: WorldState, dtMs: number): void {
   const dtSec = dtMs / 1000;
   if (dtSec <= 0) return;

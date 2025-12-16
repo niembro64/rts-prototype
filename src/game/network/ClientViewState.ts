@@ -328,6 +328,8 @@ export class ClientViewState {
         entity.weapons[i].targetEntityId = netEntity.weapons[i].targetId ?? null;
         entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
         entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
+        // Sync wave weapon slice angle for visual rendering
+        entity.weapons[i].currentSliceAngle = netEntity.weapons[i].currentSliceAngle;
       }
     }
 
