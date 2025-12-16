@@ -572,44 +572,50 @@ export class EntityRenderer {
     // Update particle time for spray animation
     this.sprayParticleTime += 16; // ~60fps
 
-    // 1. Render buildings first (bottom layer)
+    // 1. Render buildings first (bottom layer) - skip dead buildings
     for (const entity of this.entitySource.getBuildings()) {
-      this.renderBuilding(entity);
+      if (entity.building && entity.building.hp > 0) {
+        this.renderBuilding(entity);
+      }
     }
 
-    // Render waypoints for selected units (below units)
+    // Render waypoints for selected units (below units) - skip dead units
     for (const entity of this.entitySource.getUnits()) {
-      if (entity.selectable?.selected) {
+      if (entity.selectable?.selected && entity.unit && entity.unit.hp > 0) {
         this.renderWaypoints(entity);
       }
     }
 
-    // Render waypoints for selected factories
+    // Render waypoints for selected factories - skip dead buildings
     for (const entity of this.entitySource.getBuildings()) {
-      if (entity.selectable?.selected && entity.factory) {
+      if (entity.selectable?.selected && entity.factory && entity.building && entity.building.hp > 0) {
         this.renderFactoryWaypoints(entity);
       }
     }
 
-    // Render range circles for selected units (below unit bodies)
+    // Render range circles for selected units (below unit bodies) - skip dead units
     for (const entity of this.entitySource.getUnits()) {
-      if (entity.selectable?.selected) {
+      if (entity.selectable?.selected && entity.unit && entity.unit.hp > 0) {
         this.renderRangeCircles(entity);
       }
     }
 
-    // 2. Render unit bodies (no turrets)
+    // 2. Render unit bodies (no turrets) - skip dead units
     this.skipTurrets = true;
     this.turretsOnly = false;
     for (const entity of this.entitySource.getUnits()) {
-      this.renderUnit(entity);
+      if (entity.unit && entity.unit.hp > 0) {
+        this.renderUnit(entity);
+      }
     }
 
-    // 3. Render turrets only (above unit bodies)
+    // 3. Render turrets only (above unit bodies) - skip dead units
     this.skipTurrets = false;
     this.turretsOnly = true;
     for (const entity of this.entitySource.getUnits()) {
-      this.renderUnit(entity);
+      if (entity.unit && entity.unit.hp > 0) {
+        this.renderUnit(entity);
+      }
     }
     this.turretsOnly = false;
 
@@ -697,11 +703,11 @@ export class EntityRenderer {
     }
   }
 
-  // Render labels above selected units and buildings
+  // Render labels above selected units and buildings - skip dead entities
   private renderSelectedLabels(): void {
-    // Labels for selected units
+    // Labels for selected units - skip dead units
     for (const entity of this.entitySource.getUnits()) {
-      if (entity.selectable?.selected && entity.unit) {
+      if (entity.selectable?.selected && entity.unit && entity.unit.hp > 0) {
         const { x, y } = entity.transform;
         const { collisionRadius } = entity.unit;
         // Detect unit type by checking all weapons
@@ -727,9 +733,9 @@ export class EntityRenderer {
       }
     }
 
-    // Labels for selected buildings
+    // Labels for selected buildings - skip dead buildings
     for (const entity of this.entitySource.getBuildings()) {
-      if (entity.selectable?.selected && entity.building) {
+      if (entity.selectable?.selected && entity.building && entity.building.hp > 0) {
         const { x, y } = entity.transform;
         const { height } = entity.building;
 

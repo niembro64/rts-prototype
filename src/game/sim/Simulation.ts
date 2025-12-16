@@ -238,6 +238,45 @@ export class Simulation {
     if (collisionResult.deadBuildingIds.length > 0 && this.onBuildingDeath) {
       this.onBuildingDeath(collisionResult.deadBuildingIds);
     }
+
+    // Safety cleanup - remove any dead entities that slipped through
+    this.cleanupDeadEntities();
+  }
+
+  // Cleanup pass - removes any entities with HP <= 0 that weren't caught by normal death handling
+  // This is a safety net to ensure dead entities don't persist in the world
+  private cleanupDeadEntities(): void {
+    const deadUnitIds: EntityId[] = [];
+    const deadBuildingIds: EntityId[] = [];
+
+    // Check all units for death
+    for (const entity of this.world.getUnits()) {
+      if (entity.unit && entity.unit.hp <= 0) {
+        deadUnitIds.push(entity.id);
+      }
+    }
+
+    // Check all buildings for death
+    for (const entity of this.world.getBuildings()) {
+      if (entity.building && entity.building.hp <= 0) {
+        deadBuildingIds.push(entity.id);
+      }
+    }
+
+    // Remove dead entities and notify callbacks
+    if (deadUnitIds.length > 0) {
+      this.onUnitDeath?.(deadUnitIds);
+      for (const id of deadUnitIds) {
+        this.world.removeEntity(id);
+      }
+    }
+
+    if (deadBuildingIds.length > 0) {
+      this.onBuildingDeath?.(deadBuildingIds);
+      for (const id of deadBuildingIds) {
+        this.world.removeEntity(id);
+      }
+    }
   }
 
   // Execute a command
