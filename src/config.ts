@@ -266,7 +266,7 @@ export const WEAPON_STATS = {
     range: 150, // Maximum range of the wave slice
     cooldown: 0, // Continuous (always on when targeting)
     waveAngleIdle: 0, // Angle when not firing (narrow beam)
-    waveAngleAttack: Math.PI, // Angle when firing (45° wide slice)
+    waveAngleAttack: Math.PI * 0.75, // Angle when firing (45° wide slice)
     waveTransitionTime: 2000, // Time (ms) to transition between idle and attack
   },
 };

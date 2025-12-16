@@ -211,7 +211,7 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.sonic.buildRate,
     locomotion: 'legs',
     legStyle: 'insect',
-    weaponSeeRange: 100,
+    weaponSeeRange: 200,   // Must see beyond fire range to target enemies approaching
     weaponFireRange: 150,
   },
 };
