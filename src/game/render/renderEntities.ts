@@ -2075,57 +2075,72 @@ export class EntityRenderer {
     primaryColor: number,
     _secondaryColor: number
   ): void {
-    // Pulsing animation based on time
     const time = Date.now() / 1000;
-    const pulseSpeed = 3; // Pulses per second
-    const waveCount = 6; // Number of wave arcs
     const halfAngle = sliceAngle / 2;
 
-    // Draw multiple fading fill layers to create soft edge gradient
-    const gradientLayers = 5;
-    for (let layer = 0; layer < gradientLayers; layer++) {
-      const layerRatio = (gradientLayers - layer) / gradientLayers;
-      const layerRadius = maxRange * layerRatio;
-      const layerAlpha = 0.08 * (1 - layer / gradientLayers); // Fade out toward center
+    // 1. Draw single faint pie slice showing the active zone
+    this.graphics.fillStyle(primaryColor, 0.08);
+    this.graphics.beginPath();
+    this.graphics.moveTo(x, y);
+    this.graphics.arc(
+      x,
+      y,
+      maxRange,
+      rotation - halfAngle,
+      rotation + halfAngle,
+      false
+    );
+    this.graphics.closePath();
+    this.graphics.fill();
 
-      this.graphics.fillStyle(primaryColor, layerAlpha);
-      this.graphics.beginPath();
-      this.graphics.moveTo(x, y);
-      this.graphics.arc(
-        x,
-        y,
-        layerRadius,
-        rotation - halfAngle,
-        rotation + halfAngle,
-        false
-      );
-      this.graphics.closePath();
-      this.graphics.fill();
-    }
+    // Draw pie slice border
+    this.graphics.lineStyle(1, primaryColor, 0.2);
+    this.graphics.beginPath();
+    this.graphics.moveTo(x, y);
+    this.graphics.lineTo(
+      x + Math.cos(rotation - halfAngle) * maxRange,
+      y + Math.sin(rotation - halfAngle) * maxRange
+    );
+    this.graphics.arc(
+      x,
+      y,
+      maxRange,
+      rotation - halfAngle,
+      rotation + halfAngle,
+      false
+    );
+    this.graphics.lineTo(x, y);
+    this.graphics.strokePath();
 
-    // Draw pulsing sine wave arcs that fade toward the edge
+    // 2. Draw wavy lines pulling INWARD (from outer edge toward center)
+    const waveCount = 5; // Number of wave arcs
+    const pullSpeed = 0.8; // How fast waves pull inward
+
     for (let i = 0; i < waveCount; i++) {
-      // Each wave pulses outward
-      const basePhase = (time * pulseSpeed + i / waveCount) % 1;
+      // Waves start at edge and pull toward center (inverted phase)
+      const basePhase = (1 - ((time * pullSpeed + i / waveCount) % 1));
       const waveRadius = basePhase * maxRange;
 
-      // Fade out as wave approaches edge
-      const edgeFade = 1 - basePhase;
-      const alpha = 0.5 * edgeFade;
+      // Fade based on position - stronger near the edge, fading toward center
+      const edgeFade = basePhase; // Stronger when further out
+      const alpha = 0.6 * edgeFade;
 
-      if (alpha < 0.05) continue; // Skip nearly invisible waves
+      if (alpha < 0.05 || waveRadius < 10) continue; // Skip nearly invisible waves
 
-      // Draw arc with sine wave modulation
-      const segments = 16;
-      this.graphics.lineStyle(2.5 * edgeFade + 0.5, primaryColor, alpha);
+      // Draw wavy arc with more pronounced sine modulation
+      const segments = 24;
+      const waveAmplitude = 8 * edgeFade; // Wavy-ness amplitude
+      const waveFrequency = 6; // How many waves along the arc
+
+      this.graphics.lineStyle(2 * edgeFade + 1, primaryColor, alpha);
       this.graphics.beginPath();
 
       for (let j = 0; j <= segments; j++) {
         const t = j / segments;
         const angle = rotation - halfAngle + t * sliceAngle;
 
-        // Add sine wave ripple perpendicular to arc direction
-        const sineOffset = Math.sin(t * Math.PI * 4 + time * 10) * 4 * edgeFade;
+        // Add sine wave ripple - animate it to look like it's pulling inward
+        const sineOffset = Math.sin(t * Math.PI * waveFrequency + time * 3) * waveAmplitude;
         const r = waveRadius + sineOffset;
 
         const px = x + Math.cos(angle) * r;
@@ -2137,6 +2152,33 @@ export class EntityRenderer {
           this.graphics.lineTo(px, py);
         }
       }
+      this.graphics.strokePath();
+    }
+
+    // 3. Draw subtle radial "pull lines" converging on center
+    const pullLineCount = 8;
+    for (let i = 0; i < pullLineCount; i++) {
+      const lineAngle = rotation - halfAngle + (i + 0.5) / pullLineCount * sliceAngle;
+
+      // Animate dashes moving inward
+      const dashPhase = (time * 2 + i * 0.3) % 1;
+      const dashStart = maxRange * (0.3 + dashPhase * 0.5);
+      const dashEnd = maxRange * (0.1 + dashPhase * 0.5);
+
+      if (dashStart > maxRange * 0.9) continue; // Don't draw past edge
+
+      const alpha = 0.25 * (1 - dashPhase); // Fade as it gets closer to center
+
+      this.graphics.lineStyle(1.5, primaryColor, alpha);
+      this.graphics.beginPath();
+      this.graphics.moveTo(
+        x + Math.cos(lineAngle) * dashStart,
+        y + Math.sin(lineAngle) * dashStart
+      );
+      this.graphics.lineTo(
+        x + Math.cos(lineAngle) * dashEnd,
+        y + Math.sin(lineAngle) * dashEnd
+      );
       this.graphics.strokePath();
     }
   }

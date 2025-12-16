@@ -20,6 +20,7 @@ import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
 import { getWeaponConfig } from './weapons';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
+import { VelocityAccumulator } from './VelocityAccumulator';
 
 // Fixed simulation timestep (60 Hz)
 export const FIXED_TIMESTEP = 1000 / 60;
@@ -30,6 +31,7 @@ export class Simulation {
   private accumulator: number = 0;
   private constructionSystem: ConstructionSystem;
   private damageSystem: DamageSystem;
+  private velocityAccumulator: VelocityAccumulator = new VelocityAccumulator();
 
   // Current spray targets for rendering (build/heal effects)
   private currentSprayTargets: SprayTarget[] = [];
@@ -138,14 +140,20 @@ export class Simulation {
       }
     }
 
-    // Update all units movement
+    // Clear velocity accumulator for this frame
+    this.velocityAccumulator.clear();
+
+    // Update all units movement (adds to velocity accumulator)
     this.updateUnits();
 
     // Sync transforms from Matter bodies
     this.syncTransformsFromBodies();
 
-    // Update combat systems
+    // Update combat systems (may add more velocity contributions like wave pull)
     this.updateCombat(dtMs);
+
+    // Finalize and apply accumulated velocities to all units
+    this.applyAccumulatedVelocities();
 
     // Check for game over (commander death)
     this.checkGameOver();
@@ -212,7 +220,7 @@ export class Simulation {
     updateWaveWeaponState(this.world, dtMs);
 
     // Apply wave weapon damage (continuous AoE for sonic units)
-    applyWaveDamage(this.world, dtMs, this.damageSystem);
+    applyWaveDamage(this.world, dtMs, this.damageSystem, this.velocityAccumulator);
 
     // Update projectile positions and remove orphaned beams (from dead units)
     const orphanedProjectiles = updateProjectiles(this.world, dtMs, this.damageSystem);
@@ -549,11 +557,13 @@ export class Simulation {
 
       const { unit, body, transform } = entity;
 
-      // No actions - stop moving
+      // No actions - stop moving (no velocity contribution)
       if (unit.actions.length === 0) {
         if (body.matterBody) {
           (body.matterBody as MatterJS.BodyType).frictionAir = 0.1;
         }
+        // Add zero velocity to accumulator so unit is tracked
+        this.velocityAccumulator.addVelocity(entity.id, 0, 0, 'movement');
         continue;
       }
 
@@ -569,8 +579,7 @@ export class Simulation {
 
         if (distance <= buildRange) {
           // In range - stop moving, let commanderAbilitiesSystem handle building
-          unit.velocityX = 0;
-          unit.velocityY = 0;
+          this.velocityAccumulator.addVelocity(entity.id, 0, 0, 'movement');
           continue;
         }
 
@@ -578,9 +587,7 @@ export class Simulation {
         const speed = unit.moveSpeed;
         const vx = (dx / distance) * speed;
         const vy = (dy / distance) * speed;
-        unit.velocityX = vx;
-        unit.velocityY = vy;
-        // Rotation is set by syncTransformsFromBodies based on actual movement
+        this.velocityAccumulator.addVelocity(entity.id, vx, vy, 'movement');
         continue;
       }
 
@@ -599,8 +606,7 @@ export class Simulation {
 
       if (shouldStopForCombat) {
         // Stop moving - target is within weapon range
-        unit.velocityX = 0;
-        unit.velocityY = 0;
+        this.velocityAccumulator.addVelocity(entity.id, 0, 0, 'movement');
         continue;
       }
 
@@ -615,20 +621,36 @@ export class Simulation {
         this.advanceAction(entity);
 
         // Zero out velocity for this frame
-        unit.velocityX = 0;
-        unit.velocityY = 0;
+        this.velocityAccumulator.addVelocity(entity.id, 0, 0, 'movement');
         continue;
       }
 
-      // Calculate velocity
+      // Calculate velocity toward target
       const speed = unit.moveSpeed;
       const vx = (dx / distance) * speed;
       const vy = (dy / distance) * speed;
 
-      // Store velocity on unit for rendering and physics
-      unit.velocityX = vx;
-      unit.velocityY = vy;
-      // Rotation is set by syncTransformsFromBodies based on actual movement
+      // Add movement velocity to accumulator
+      this.velocityAccumulator.addVelocity(entity.id, vx, vy, 'movement');
+    }
+  }
+
+  // Apply all accumulated velocities to units
+  private applyAccumulatedVelocities(): void {
+    this.velocityAccumulator.finalize();
+
+    for (const entity of this.world.getUnits()) {
+      if (!entity.unit) continue;
+
+      const finalVel = this.velocityAccumulator.getFinalVelocity(entity.id);
+      if (finalVel) {
+        entity.unit.velocityX = finalVel.vx;
+        entity.unit.velocityY = finalVel.vy;
+      } else {
+        // No velocity contributions - unit is stationary
+        entity.unit.velocityX = 0;
+        entity.unit.velocityY = 0;
+      }
     }
   }
 

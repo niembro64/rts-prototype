@@ -2,6 +2,7 @@ import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
 import { FIXED_TIMESTEP } from './Simulation';
 import { DamageSystem } from './damage';
+import type { VelocityAccumulator } from './VelocityAccumulator';
 
 // Audio event types
 export interface AudioEvent {
@@ -560,7 +561,41 @@ export function updateWaveWeaponState(world: WorldState, dtMs: number): void {
 // to ALL units and buildings within the pie-slice area, not just the target.
 // The slice expands/contracts based on firing state (see updateWaveWeaponState).
 // Uses DamageSystem for unified area damage with slice support.
-export function applyWaveDamage(world: WorldState, dtMs: number, damageSystem: DamageSystem): void {
+// Also applies a pull effect, drawing units toward the wave origin.
+
+// Pull strength in units per second (how fast units are pulled toward wave origin)
+const WAVE_PULL_STRENGTH = 35;
+
+// Helper: Check if a point is within a pie slice
+function isPointInSlice(
+  px: number, py: number,
+  originX: number, originY: number,
+  sliceDirection: number,
+  sliceHalfAngle: number,
+  maxRadius: number,
+  targetRadius: number
+): boolean {
+  const dx = px - originX;
+  const dy = py - originY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  // Check distance (accounting for target radius)
+  if (dist > maxRadius + targetRadius) return false;
+
+  // Check angle (accounting for target angular size)
+  const angleToPoint = Math.atan2(dy, dx);
+  const angleDiff = normalizeAngle(angleToPoint - sliceDirection);
+  const angularSize = dist > 0 ? Math.atan2(targetRadius, dist) : Math.PI;
+
+  return Math.abs(angleDiff) <= sliceHalfAngle + angularSize;
+}
+
+export function applyWaveDamage(
+  world: WorldState,
+  dtMs: number,
+  damageSystem: DamageSystem,
+  velocityAccumulator?: VelocityAccumulator
+): void {
   const dtSec = dtMs / 1000;
   if (dtSec <= 0) return;
 
@@ -570,6 +605,7 @@ export function applyWaveDamage(world: WorldState, dtMs: number, damageSystem: D
 
     const unitCos = Math.cos(unit.transform.rotation);
     const unitSin = Math.sin(unit.transform.rotation);
+    const sourcePlayerId = unit.ownership.playerId;
 
     for (const weapon of unit.weapons) {
       const config = weapon.config;
@@ -591,6 +627,7 @@ export function applyWaveDamage(world: WorldState, dtMs: number, damageSystem: D
 
       // Get turret direction
       const turretAngle = weapon.turretRotation;
+      const sliceHalfAngle = currentAngle / 2;
 
       // Apply area damage with slice using unified DamageSystem
       damageSystem.applyDamage({
@@ -606,6 +643,47 @@ export function applyWaveDamage(world: WorldState, dtMs: number, damageSystem: D
         sliceAngle: currentAngle,
         sliceDirection: turretAngle,
       });
+
+      // Apply pull effect to all enemy units in the slice
+      for (const target of world.getUnits()) {
+        if (!target.unit || target.unit.hp <= 0) continue;
+        // Don't pull friendly units
+        if (target.ownership?.playerId === sourcePlayerId) continue;
+        // Don't pull self
+        if (target.id === unit.id) continue;
+
+        const targetRadius = target.unit.collisionRadius;
+
+        // Check if target is in the wave slice
+        if (!isPointInSlice(
+          target.transform.x, target.transform.y,
+          weaponX, weaponY,
+          turretAngle,
+          sliceHalfAngle,
+          weapon.fireRange,
+          targetRadius
+        )) continue;
+
+        // Calculate pull direction (toward wave origin)
+        const dx = weaponX - target.transform.x;
+        const dy = weaponY - target.transform.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 0) {
+          // Normalize and add pull to velocity accumulator (units/sec)
+          const pullVelX = (dx / dist) * WAVE_PULL_STRENGTH;
+          const pullVelY = (dy / dist) * WAVE_PULL_STRENGTH;
+
+          // Add pull velocity to accumulator (or directly to unit if no accumulator)
+          if (velocityAccumulator) {
+            velocityAccumulator.addVelocity(target.id, pullVelX, pullVelY, 'wave_pull');
+          } else {
+            // Fallback: directly modify velocity
+            target.unit.velocityX = (target.unit.velocityX ?? 0) + pullVelX;
+            target.unit.velocityY = (target.unit.velocityY ?? 0) + pullVelY;
+          }
+        }
+      }
     }
   }
 }
