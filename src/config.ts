@@ -117,7 +117,7 @@ export const BUILDING_STATS = {
 
 export const COMMANDER_STATS = {
   hp: 500,
-  moveSpeed: 80,
+  moveSpeed: 800,
   collisionRadius: 20,
   mass: 60,           // Heavy commander unit
   buildRate: 50,
