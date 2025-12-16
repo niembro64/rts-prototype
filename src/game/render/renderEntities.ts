@@ -127,7 +127,10 @@ export class EntityRenderer {
 
   // Get or create legs for a legged unit
   // Styles: 'arachnid' (8 chunky), 'daddy' (8 long thin), 'insect' (6 medium)
-  private getOrCreateLegs(entity: Entity, legStyle: 'arachnid' | 'daddy' | 'insect' = 'arachnid'): ArachnidLeg[] {
+  private getOrCreateLegs(
+    entity: Entity,
+    legStyle: 'arachnid' | 'daddy' | 'insect' = 'arachnid'
+  ): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
 
@@ -339,14 +342,18 @@ export class EntityRenderer {
   }
 
   // Get or create treads for a tracked unit (tank or brawl)
-  private getOrCreateTreads(entity: Entity, unitType: 'tank' | 'brawl'): TankTreadSetup {
+  private getOrCreateTreads(
+    entity: Entity,
+    unitType: 'tank' | 'brawl'
+  ): TankTreadSetup {
     const existing = this.tankTreads.get(entity.id);
     if (existing) return existing;
 
     const radius = entity.unit?.collisionRadius ?? 24;
-    const treads = unitType === 'tank'
-      ? createTankTreads(radius, 2.0)
-      : createBrawlTreads(radius, 2.0);
+    const treads =
+      unitType === 'tank'
+        ? createTankTreads(radius, 2.0)
+        : createBrawlTreads(radius, 2.0);
 
     // Initialize treads at the unit's current position
     treads.leftTread.initializeAt(
@@ -1043,9 +1050,9 @@ export class EntityRenderer {
       const treadWidth = r * 0.22;
 
       const treadPositions = [
-        { dx: treadDistX, dy: treadDistY },   // Front right
-        { dx: treadDistX, dy: -treadDistY },  // Front left
-        { dx: -treadDistX, dy: treadDistY },  // Rear right
+        { dx: treadDistX, dy: treadDistY }, // Front right
+        { dx: treadDistX, dy: -treadDistY }, // Front left
+        { dx: -treadDistX, dy: treadDistY }, // Rear right
         { dx: -treadDistX, dy: -treadDistY }, // Rear left
       ];
 
@@ -1054,7 +1061,16 @@ export class EntityRenderer {
         const tx = x + cos * tp.dx - sin * tp.dy;
         const ty = y + sin * tp.dx + cos * tp.dy;
         const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
+        this.drawAnimatedTread(
+          tx,
+          ty,
+          treadLength,
+          treadWidth,
+          bodyRot,
+          treadRotation,
+          this.BLACK,
+          this.GRAY_LIGHT
+        );
       }
 
       // Main body (diamond/rhombus shape) - light colored
@@ -1133,7 +1149,16 @@ export class EntityRenderer {
         const tx = x + cos * tp.dx - sin * tp.dy;
         const ty = y + sin * tp.dx + cos * tp.dy;
         const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
+        this.drawAnimatedTread(
+          tx,
+          ty,
+          treadLength,
+          treadWidth,
+          bodyRot,
+          treadRotation,
+          this.BLACK,
+          this.GRAY_LIGHT
+        );
       }
 
       // Main body (aggressive triangle pointing forward) - dark colored
@@ -1169,8 +1194,18 @@ export class EntityRenderer {
         const perpY = Math.sin(turretRot + Math.PI / 2) * perpDist;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineBetween(x + perpX, y + perpY, endX + perpX, endY + perpY);
-        this.graphics.lineBetween(x - perpX, y - perpY, endX - perpX, endY - perpY);
+        this.graphics.lineBetween(
+          x + perpX,
+          y + perpY,
+          endX + perpX,
+          endY + perpY
+        );
+        this.graphics.lineBetween(
+          x - perpX,
+          y - perpY,
+          endX - perpX,
+          endY - perpY
+        );
       }
     }
   }
@@ -1209,22 +1244,21 @@ export class EntityRenderer {
         const foot = leg.getFootPosition();
         const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-        // Draw leg segments
-        // Upper leg (thicker, darker)
+        // Draw leg segments (both use dark team color)
+        // Upper leg (slightly thicker)
         this.graphics.lineStyle(legThickness + 0.5, dark, 0.95);
         this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-        // Lower leg (thinner, lighter)
-        this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
+        // Lower leg
+        this.graphics.lineStyle(legThickness, dark, 0.9);
         this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-        // Knee joint (small circle)
-        this.graphics.fillStyle(this.BLACK, 0.9);
+        // Knee joint (light team color)
+        this.graphics.fillStyle(light, 0.9);
         this.graphics.fillCircle(knee.x, knee.y, legThickness);
 
-        // Foot (light when sliding, white when planted)
-        const footColor = leg.isCurrentlySliding() ? light : this.WHITE;
-        this.graphics.fillStyle(footColor, 0.9);
+        // Foot (light team color)
+        this.graphics.fillStyle(light, 0.9);
         this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
@@ -1332,9 +1366,9 @@ export class EntityRenderer {
       const treads = this.getTankTreads(entity.id);
 
       // Two large treads on left and right sides (brawl is shorter than tank)
-      const treadOffset = r * 0.85;   // Distance from center to tread
-      const treadLength = r * 1.7;    // Slightly shorter than tank
-      const treadWidth = r * 0.55;    // Wide treads
+      const treadOffset = r * 0.85; // Distance from center to tread
+      const treadLength = r * 1.7; // Slightly shorter than tank
+      const treadWidth = r * 0.55; // Wide treads
 
       for (const side of [-1, 1]) {
         const offsetX = -sin * treadOffset * side;
@@ -1347,7 +1381,16 @@ export class EntityRenderer {
         // Draw animated tread
         const tx = x + offsetX;
         const ty = y + offsetY;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
+        this.drawAnimatedTread(
+          tx,
+          ty,
+          treadLength,
+          treadWidth,
+          bodyRot,
+          treadRotation,
+          this.BLACK,
+          this.GRAY_LIGHT
+        );
       }
 
       // Body (pentagon) - dark with gray armor plates
@@ -1426,7 +1469,16 @@ export class EntityRenderer {
         const tx = x + cos * tp.dx - sin * tp.dy;
         const ty = y + sin * tp.dx + cos * tp.dy;
         const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
+        this.drawAnimatedTread(
+          tx,
+          ty,
+          treadLength,
+          treadWidth,
+          bodyRot,
+          treadRotation,
+          this.BLACK,
+          this.GRAY_LIGHT
+        );
       }
 
       // Main body (hexagon) - gray base
@@ -1504,7 +1556,16 @@ export class EntityRenderer {
         const tx = x + cos * tp.dx - sin * tp.dy;
         const ty = y + sin * tp.dx + cos * tp.dy;
         const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
+        this.drawAnimatedTread(
+          tx,
+          ty,
+          treadLength,
+          treadWidth,
+          bodyRot,
+          treadRotation,
+          this.BLACK,
+          this.GRAY_LIGHT
+        );
       }
 
       // Main body (elongated rectangle) - light colored, high-tech
@@ -1518,7 +1579,13 @@ export class EntityRenderer {
 
       // Base color targeting stripe
       this.graphics.fillStyle(base, 0.9);
-      this.drawOrientedRect(x - cos * r * 0.25, y - sin * r * 0.25, r * 0.1, r * 0.3, bodyRot);
+      this.drawOrientedRect(
+        x - cos * r * 0.25,
+        y - sin * r * 0.25,
+        r * 0.1,
+        r * 0.3,
+        bodyRot
+      );
 
       // Scope/sensor array (white)
       this.graphics.fillStyle(this.WHITE, 0.95);
@@ -1565,9 +1632,9 @@ export class EntityRenderer {
       const treads = this.getTankTreads(entity.id);
 
       // Two massive treads on left and right sides
-      const treadOffset = r * 0.9;   // Distance from center to tread
-      const treadLength = r * 2.0;   // Very long treads
-      const treadWidth = r * 0.6;    // Wide treads
+      const treadOffset = r * 0.9; // Distance from center to tread
+      const treadLength = r * 2.0; // Very long treads
+      const treadWidth = r * 0.6; // Wide treads
 
       for (const side of [-1, 1]) {
         const offsetX = -sin * treadOffset * side;
@@ -1580,7 +1647,16 @@ export class EntityRenderer {
         // Draw animated tread
         const tx = x + offsetX;
         const ty = y + offsetY;
-        this.drawAnimatedTread(tx, ty, treadLength, treadWidth, bodyRot, treadRotation, this.BLACK, this.GRAY_LIGHT);
+        this.drawAnimatedTread(
+          tx,
+          ty,
+          treadLength,
+          treadWidth,
+          bodyRot,
+          treadRotation,
+          this.BLACK,
+          this.GRAY_LIGHT
+        );
       }
 
       // Hull (square) - base color
@@ -1654,22 +1730,21 @@ export class EntityRenderer {
         const foot = leg.getFootPosition();
         const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-        // Draw leg segments
-        // Upper leg (thicker, darker)
+        // Draw leg segments (both use dark team color)
+        // Upper leg (slightly thicker)
         this.graphics.lineStyle(legThickness + 1, dark, 0.95);
         this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-        // Lower leg (thinner, lighter)
-        this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
+        // Lower leg
+        this.graphics.lineStyle(legThickness, dark, 0.9);
         this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-        // Knee joint (small circle)
-        this.graphics.fillStyle(this.BLACK, 0.9);
+        // Knee joint (light team color)
+        this.graphics.fillStyle(light, 0.9);
         this.graphics.fillCircle(knee.x, knee.y, legThickness);
 
-        // Foot (light when sliding, white when planted)
-        const footColor = leg.isCurrentlySliding() ? light : this.WHITE;
-        this.graphics.fillStyle(footColor, 0.9);
+        // Foot (light team color)
+        this.graphics.fillStyle(light, 0.9);
         this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
@@ -1820,21 +1895,21 @@ export class EntityRenderer {
         const foot = leg.getFootPosition();
         const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-        // Upper leg (thicker, darker)
+        // Draw leg segments (both use dark team color)
+        // Upper leg (slightly thicker)
         this.graphics.lineStyle(legThickness + 0.5, dark, 0.95);
         this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-        // Lower leg (thinner, lighter)
-        this.graphics.lineStyle(legThickness, this.GRAY, 0.9);
+        // Lower leg
+        this.graphics.lineStyle(legThickness, dark, 0.9);
         this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-        // Knee joint
-        this.graphics.fillStyle(this.BLACK, 0.9);
-        this.graphics.fillCircle(knee.x, knee.y, legThickness);
+        // Knee joint (light team color)
+        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillCircle(knee.x, knee.y, legThickness * 0.4);
 
-        // Foot
-        const footColor = leg.isCurrentlySliding() ? light : this.WHITE;
-        this.graphics.fillStyle(footColor, 0.9);
+        // Foot (light team color)
+        this.graphics.fillStyle(light, 0.9);
         this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
@@ -1846,14 +1921,38 @@ export class EntityRenderer {
       const bodyLength = r * 0.6;
       const bodyWidth = r * 0.5;
       const bodyPoints = [
-        { x: x + cos * bodyLength - sin * bodyWidth * 0.3, y: y + sin * bodyLength + cos * bodyWidth * 0.3 },
-        { x: x + cos * bodyLength * 0.5 - sin * bodyWidth, y: y + sin * bodyLength * 0.5 + cos * bodyWidth },
-        { x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.8, y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.8 },
-        { x: x - cos * bodyLength - sin * bodyWidth * 0.3, y: y - sin * bodyLength + cos * bodyWidth * 0.3 },
-        { x: x - cos * bodyLength + sin * bodyWidth * 0.3, y: y - sin * bodyLength - cos * bodyWidth * 0.3 },
-        { x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.8, y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.8 },
-        { x: x + cos * bodyLength * 0.5 + sin * bodyWidth, y: y + sin * bodyLength * 0.5 - cos * bodyWidth },
-        { x: x + cos * bodyLength + sin * bodyWidth * 0.3, y: y + sin * bodyLength - cos * bodyWidth * 0.3 },
+        {
+          x: x + cos * bodyLength - sin * bodyWidth * 0.3,
+          y: y + sin * bodyLength + cos * bodyWidth * 0.3,
+        },
+        {
+          x: x + cos * bodyLength * 0.5 - sin * bodyWidth,
+          y: y + sin * bodyLength * 0.5 + cos * bodyWidth,
+        },
+        {
+          x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.8,
+          y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.8,
+        },
+        {
+          x: x - cos * bodyLength - sin * bodyWidth * 0.3,
+          y: y - sin * bodyLength + cos * bodyWidth * 0.3,
+        },
+        {
+          x: x - cos * bodyLength + sin * bodyWidth * 0.3,
+          y: y - sin * bodyLength - cos * bodyWidth * 0.3,
+        },
+        {
+          x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.8,
+          y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.8,
+        },
+        {
+          x: x + cos * bodyLength * 0.5 + sin * bodyWidth,
+          y: y + sin * bodyLength * 0.5 - cos * bodyWidth,
+        },
+        {
+          x: x + cos * bodyLength + sin * bodyWidth * 0.3,
+          y: y + sin * bodyLength - cos * bodyWidth * 0.3,
+        },
       ];
       this.graphics.fillPoints(bodyPoints, true);
 
@@ -1880,7 +1979,15 @@ export class EntityRenderer {
         const maxRange = weapon.fireRange;
 
         // Render pie-slice wave effect
-        this.renderWaveEffect(x, y, turretRot, sliceAngle, maxRange, light, base);
+        this.renderWaveEffect(
+          x,
+          y,
+          turretRot,
+          sliceAngle,
+          maxRange,
+          light,
+          base
+        );
       }
     }
   }
@@ -1911,7 +2018,14 @@ export class EntityRenderer {
       this.graphics.fillStyle(primaryColor, layerAlpha);
       this.graphics.beginPath();
       this.graphics.moveTo(x, y);
-      this.graphics.arc(x, y, layerRadius, rotation - halfAngle, rotation + halfAngle, false);
+      this.graphics.arc(
+        x,
+        y,
+        layerRadius,
+        rotation - halfAngle,
+        rotation + halfAngle,
+        false
+      );
       this.graphics.closePath();
       this.graphics.fill();
     }
@@ -2031,20 +2145,43 @@ export class EntityRenderer {
     const halfLen = treadLength / 2;
     const halfWid = treadWidth / 2;
     const corners = [
-      { x: x + cos * halfLen - sin * halfWid, y: y + sin * halfLen + cos * halfWid },
-      { x: x + cos * halfLen + sin * halfWid, y: y + sin * halfLen - cos * halfWid },
-      { x: x - cos * halfLen + sin * halfWid, y: y - sin * halfLen - cos * halfWid },
-      { x: x - cos * halfLen - sin * halfWid, y: y - sin * halfLen + cos * halfWid },
+      {
+        x: x + cos * halfLen - sin * halfWid,
+        y: y + sin * halfLen + cos * halfWid,
+      },
+      {
+        x: x + cos * halfLen + sin * halfWid,
+        y: y + sin * halfLen - cos * halfWid,
+      },
+      {
+        x: x - cos * halfLen + sin * halfWid,
+        y: y - sin * halfLen - cos * halfWid,
+      },
+      {
+        x: x - cos * halfLen - sin * halfWid,
+        y: y - sin * halfLen + cos * halfWid,
+      },
     ];
-    this.graphics.lineBetween(corners[0].x, corners[0].y, corners[1].x, corners[1].y);
-    this.graphics.lineBetween(corners[2].x, corners[2].y, corners[3].x, corners[3].y);
+    this.graphics.lineBetween(
+      corners[0].x,
+      corners[0].y,
+      corners[1].x,
+      corners[1].y
+    );
+    this.graphics.lineBetween(
+      corners[2].x,
+      corners[2].y,
+      corners[3].x,
+      corners[3].y
+    );
 
     // Calculate line spacing and animation offset - more lines for better visibility
     const numLines = 7;
     const lineSpacing = treadLength / (numLines + 1);
     const wheelRadius = treadWidth * 0.35;
     const linearOffset = treadRotation * wheelRadius;
-    const normalizedOffset = ((linearOffset % lineSpacing) + lineSpacing) % lineSpacing;
+    const normalizedOffset =
+      ((linearOffset % lineSpacing) + lineSpacing) % lineSpacing;
 
     // Draw animated tread lines (thick and obvious - striations that grip the ground)
     this.graphics.lineStyle(4, lineColor, 0.9);
@@ -2065,8 +2202,16 @@ export class EntityRenderer {
     this.graphics.fillStyle(lineColor, 0.95);
     const endOffset = treadLength * 0.42;
     const wheelSize = treadWidth * 0.35;
-    this.graphics.fillCircle(x + cos * endOffset, y + sin * endOffset, wheelSize);
-    this.graphics.fillCircle(x - cos * endOffset, y - sin * endOffset, wheelSize);
+    this.graphics.fillCircle(
+      x + cos * endOffset,
+      y + sin * endOffset,
+      wheelSize
+    );
+    this.graphics.fillCircle(
+      x - cos * endOffset,
+      y - sin * endOffset,
+      wheelSize
+    );
 
     // Draw rotating spokes on drive wheels
     this.graphics.lineStyle(1.5, treadColor, 0.9);
