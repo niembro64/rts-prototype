@@ -2655,12 +2655,19 @@ export class EntityRenderer {
     treadColor: number = this.DARK_GRAY,
     lineColor: number = this.GRAY
   ): void {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
+    const gfxConfig = getGraphicsConfig();
 
     // Draw tread body (dark rectangle with slight rounding effect via outline)
     this.graphics.fillStyle(treadColor, 0.95);
     this.drawOrientedRect(x, y, treadLength, treadWidth, bodyRot);
+
+    // Low quality: just draw the rectangle, skip fibers and highlights
+    if (!gfxConfig.treadsAnimated) {
+      return;
+    }
+
+    const cos = Math.cos(bodyRot);
+    const sin = Math.sin(bodyRot);
 
     // Draw a subtle edge highlight on top edge
     this.graphics.lineStyle(1, lineColor, 0.3);

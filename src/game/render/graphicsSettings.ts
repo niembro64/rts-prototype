@@ -33,8 +33,8 @@ const GRAPHICS_CONFIGS: Record<GraphicsQuality, GraphicsConfig> = {
     antialias: false,
   },
   medium: {
-    legs: 'none', // Legs require continuous updates to track unit position, so off for performance
-    explosionLayers: 2,
+    legs: 'animated',
+    explosionLayers: 0, // Simple flash explosions
     treadsAnimated: true,
     beamGlow: false,
     antialias: true,
