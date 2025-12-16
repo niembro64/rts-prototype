@@ -545,7 +545,6 @@ export function applyWaveDamage(world: WorldState, dtMs: number): void {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const playerId = unit.ownership.playerId;
     const unitCos = Math.cos(unit.transform.rotation);
     const unitSin = Math.sin(unit.transform.rotation);
 
@@ -571,10 +570,10 @@ export function applyWaveDamage(world: WorldState, dtMs: number): void {
       // Get turret direction
       const turretAngle = weapon.turretRotation;
 
-      // Check all enemy units
+      // Check all units (friendly fire enabled - damages all except source unit)
       for (const enemy of world.getUnits()) {
         if (!enemy.unit || !enemy.ownership) continue;
-        if (enemy.ownership.playerId === playerId) continue; // Skip friendlies
+        if (enemy.id === unit.id) continue; // Skip source unit
         if (enemy.unit.hp <= 0) continue; // Skip dead units
 
         const enemyX = enemy.transform.x;
@@ -604,10 +603,10 @@ export function applyWaveDamage(world: WorldState, dtMs: number): void {
         enemy.unit.hp -= damage;
       }
 
-      // Check all enemy buildings
+      // Check all buildings (friendly fire enabled - damages all buildings)
       for (const building of world.getBuildings()) {
         if (!building.building || !building.ownership) continue;
-        if (building.ownership.playerId === playerId) continue; // Skip friendly buildings
+        // Friendly fire enabled - all buildings in slice take damage
         if (building.building.hp <= 0) continue; // Skip destroyed buildings
 
         const buildingX = building.transform.x;
