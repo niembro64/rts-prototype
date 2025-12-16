@@ -26,14 +26,27 @@ export interface LegConfig {
   // Extension threshold: how extended the leg must be before considering a snap (0-1)
   // Front legs can snap earlier (~0.85), back legs must be fully extended (~0.95)
   extensionThreshold: number;
+
+  // Lerp duration in milliseconds - how long the foot takes to move to new position
+  // Lower = faster/snappier, higher = slower/smoother
+  lerpSpeed?: number;
+}
+
+// Ease-out cubic for smooth deceleration
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 export class ArachnidLeg {
   private config: LegConfig;
 
-  // Current ground point (world coordinates) - where the foot is planted
+  // Current ground point (world coordinates) - where the foot is rendered
   private groundX: number = 0;
   private groundY: number = 0;
+
+  // Start position when lerp began
+  private startGroundX: number = 0;
+  private startGroundY: number = 0;
 
   // Target ground point when sliding to new position
   private targetGroundX: number = 0;
@@ -42,17 +55,19 @@ export class ArachnidLeg {
   // Is the foot currently sliding to a new position?
   private isSliding: boolean = false;
 
-  // Slide progress (0 = at old position, 1 = at new position)
-  private slideProgress: number = 0;
+  // Lerp progress (0 = at start position, 1 = at target position)
+  private lerpProgress: number = 0;
 
-  // Slide speed (units per second) - high enough to work with fastest units
-  private slideSpeed: number = 3000;
+  // Lerp duration in milliseconds
+  private lerpDuration: number;
 
   // Has the leg been initialized with a ground position?
   private initialized: boolean = false;
 
   constructor(config: LegConfig) {
     this.config = config;
+    // lerpSpeed is now used as duration in ms (default 150ms for snappy but smooth)
+    this.lerpDuration = config.lerpSpeed ?? 150;
   }
 
   // Get total leg length (fully extended)
@@ -74,6 +89,8 @@ export class ArachnidLeg {
 
     this.groundX = attachX + Math.cos(angle) * restDistance;
     this.groundY = attachY + Math.sin(angle) * restDistance;
+    this.startGroundX = this.groundX;
+    this.startGroundY = this.groundY;
     this.targetGroundX = this.groundX;
     this.targetGroundY = this.groundY;
     this.initialized = true;
@@ -88,8 +105,6 @@ export class ArachnidLeg {
     velocityY: number,
     dtMs: number
   ): void {
-    const dtSec = dtMs / 1000;
-
     // Calculate attachment point in world coordinates
     const cos = Math.cos(unitRotation);
     const sin = Math.sin(unitRotation);
@@ -103,24 +118,29 @@ export class ArachnidLeg {
       return;
     }
 
-    // If sliding, animate toward target
+    // If sliding, animate toward target using time-based lerp with easing
     if (this.isSliding) {
-      this.updateSlide(dtSec);
-      return;
+      this.updateLerp(dtMs);
     }
 
     // Check if leg needs to snap - either distance or angle threshold triggers it
-    const dx = this.groundX - attachX;
-    const dy = this.groundY - attachY;
+    // Use target position for checks if currently sliding, to avoid retriggering
+    const checkX = this.isSliding ? this.targetGroundX : this.groundX;
+    const checkY = this.isSliding ? this.targetGroundY : this.groundY;
+    const dx = checkX - attachX;
+    const dy = checkY - attachY;
     const distToGround = Math.sqrt(dx * dx + dy * dy);
 
     // ABSOLUTE MAXIMUM: Force snap if leg is stretched beyond physical limits (any direction)
     // This prevents infinite stretching when unit gets pushed sideways by another unit
     // Uses 105% of totalLength to allow some buffer before forcing a snap
     if (distToGround > this.totalLength * 1.05) {
-      this.startSlide(attachX, attachY, unitRotation, velocityX, velocityY);
+      this.startLerp(attachX, attachY, unitRotation, velocityX, velocityY);
       return;
     }
+
+    // Don't check for new snaps while already sliding (let the current lerp finish)
+    if (this.isSliding) return;
 
     // Check angle - how far behind is the foot?
     const groundAngle = Math.atan2(dy, dx);
@@ -140,7 +160,7 @@ export class ArachnidLeg {
 
     // Snap if EITHER condition is met
     if (distanceTriggered || angleTriggered) {
-      this.startSlide(attachX, attachY, unitRotation, velocityX, velocityY);
+      this.startLerp(attachX, attachY, unitRotation, velocityX, velocityY);
     }
   }
 
@@ -152,18 +172,24 @@ export class ArachnidLeg {
 
     this.groundX = attachX + Math.cos(angle) * restDistance;
     this.groundY = attachY + Math.sin(angle) * restDistance;
+    this.startGroundX = this.groundX;
+    this.startGroundY = this.groundY;
     this.targetGroundX = this.groundX;
     this.targetGroundY = this.groundY;
   }
 
-  // Start sliding to a new ground position
-  private startSlide(
+  // Start lerping to a new ground position
+  private startLerp(
     attachX: number,
     attachY: number,
     unitRotation: number,
     velocityX: number,
     velocityY: number
   ): void {
+    // Store current position as start
+    this.startGroundX = this.groundX;
+    this.startGroundY = this.groundY;
+
     // Calculate target position using the snap target angle and distance
     const snapDistance = this.totalLength * this.config.snapDistanceMultiplier;
     const snapAngle = unitRotation + this.config.snapTargetAngle;
@@ -183,31 +209,29 @@ export class ArachnidLeg {
     this.targetGroundY = attachY + Math.sin(targetAngle) * (snapDistance + velocityOffset);
 
     this.isSliding = true;
-    this.slideProgress = 0;
+    this.lerpProgress = 0;
   }
 
-  // Update slide animation
-  private updateSlide(dtSec: number): void {
-    const dx = this.targetGroundX - this.groundX;
-    const dy = this.targetGroundY - this.groundY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+  // Update lerp animation with easing
+  private updateLerp(dtMs: number): void {
+    // Advance progress based on time
+    this.lerpProgress += dtMs / this.lerpDuration;
 
-    if (dist < 1) {
-      // Reached target
+    if (this.lerpProgress >= 1) {
+      // Lerp complete
+      this.lerpProgress = 1;
       this.groundX = this.targetGroundX;
       this.groundY = this.targetGroundY;
       this.isSliding = false;
-      this.slideProgress = 1;
       return;
     }
 
-    // Move toward target
-    const moveAmount = this.slideSpeed * dtSec;
-    const t = Math.min(moveAmount / dist, 1);
+    // Apply easing function for smooth deceleration
+    const easedT = easeOutCubic(this.lerpProgress);
 
-    this.groundX += dx * t;
-    this.groundY += dy * t;
-    this.slideProgress = Math.min(this.slideProgress + t, 1);
+    // Interpolate position
+    this.groundX = this.startGroundX + (this.targetGroundX - this.startGroundX) * easedT;
+    this.groundY = this.startGroundY + (this.targetGroundY - this.startGroundY) * easedT;
   }
 
   // Get the current foot position (for rendering)

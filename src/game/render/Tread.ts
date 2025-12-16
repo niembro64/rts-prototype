@@ -137,7 +137,7 @@ export interface TankTreadSetup {
 // Create a pair of tank treads (left and right)
 export function createTankTreads(
   unitRadius: number,
-  rotationMultiplier: number = 2.0
+  rotationMultiplier: number = 1.0
 ): TankTreadSetup {
   const treadOffset = unitRadius * 0.85;  // Same as drawTankUnit
   const treadWidth = unitRadius * 0.5;
@@ -164,7 +164,7 @@ export function createTankTreads(
 // Brawl has narrower treads than tank
 export function createBrawlTreads(
   unitRadius: number,
-  rotationMultiplier: number = 2.0
+  rotationMultiplier: number = 1.0
 ): TankTreadSetup {
   const treadOffset = unitRadius * 0.75;  // Same as drawBrawlUnit
   const treadWidth = unitRadius * 0.4;
@@ -194,7 +194,7 @@ export interface VehicleWheelSetup {
 // Create four wheels for scout-style vehicles
 export function createScoutWheelSetup(
   unitRadius: number,
-  rotationMultiplier: number = 2.0
+  rotationMultiplier: number = 1.0
 ): VehicleWheelSetup {
   const wheelDistX = unitRadius * 0.55;  // Forward/back offset
   const wheelDistY = unitRadius * 0.65;  // Left/right offset
@@ -237,7 +237,7 @@ export function createScoutWheelSetup(
 // Create four wheels for burst-style vehicles
 export function createBurstWheelSetup(
   unitRadius: number,
-  rotationMultiplier: number = 2.0
+  rotationMultiplier: number = 1.0
 ): VehicleWheelSetup {
   const wheelDistX = unitRadius * 0.6;   // Forward/back offset
   const wheelDistY = unitRadius * 0.7;   // Left/right offset
@@ -280,7 +280,7 @@ export function createBurstWheelSetup(
 // Create four wheels for mortar-style vehicles
 export function createMortarWheelSetup(
   unitRadius: number,
-  rotationMultiplier: number = 2.0
+  rotationMultiplier: number = 1.0
 ): VehicleWheelSetup {
   const wheelDistX = unitRadius * 0.6;   // Forward/back offset
   const wheelDistY = unitRadius * 0.65;  // Left/right offset
@@ -324,7 +324,7 @@ export function createMortarWheelSetup(
 // Matches the snipe unit's wheel layout (corners of a rectangle)
 export function createFourWheelSetup(
   unitRadius: number,
-  rotationMultiplier: number = 2.0
+  rotationMultiplier: number = 1.0
 ): VehicleWheelSetup {
   // Match snipe wheel positions exactly
   const wheelDistX = unitRadius * 0.7;

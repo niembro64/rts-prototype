@@ -48,11 +48,11 @@ const BUILD_BAR_FG = 0xffcc00; // Yellow for build progress
 const GHOST_COLOR = 0x88ff88; // Green tint for placement ghost
 const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
 
-// Leg style configuration - thickness and foot size multipliers
+// Leg style configuration - thickness, foot size, and lerp duration (ms)
 const LEG_STYLE_CONFIG = {
-  arachnid: { thickness: 5, footSizeMultiplier: 0.1 },
-  daddy: { thickness: 2, footSizeMultiplier: 0.14 },
-  insect: { thickness: 4, footSizeMultiplier: 0.12 },
+  arachnid: { thickness: 5, footSizeMultiplier: 0.1, lerpSpeed: 700 },  // 200ms lerp duration
+  daddy: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 700 },    // 180ms lerp
+  insect: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 350 },   // 250ms lerp (slower/smoother)
 } as const;
 
 // Waypoint colors by type (legacy - for factories)
@@ -204,35 +204,38 @@ export class EntityRenderer {
       const lowerLen = legLength * 0.55;
 
       leftSideConfigs = [
+        // Front leg - points more sideways, triggers earlier
         {
           attachOffsetX: radius * 0.5,
           attachOffsetY: -radius * 0.35,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.2,
-          snapDistanceMultiplier: 0.9,
-          extensionThreshold: 0.99,
+          snapTargetAngle: -Math.PI * 0.2,  // More sideways, less forward
+          snapDistanceMultiplier: 0.85,
+          extensionThreshold: 0.99,  // Trigger earlier
         },
+        // Middle leg - perpendicular to body
         {
           attachOffsetX: 0,
           attachOffsetY: -radius * 0.4,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.8,
-          snapTargetAngle: -Math.PI * 0.3,
-          snapDistanceMultiplier: 0.9,
-          extensionThreshold: 0.99,
+          snapTriggerAngle: Math.PI * 0.7,
+          snapTargetAngle: -Math.PI * 0.45,  // More sideways
+          snapDistanceMultiplier: 0.85,
+          extensionThreshold: 0.88,
         },
+        // Back leg - points backward
         {
           attachOffsetX: -radius * 0.5,
           attachOffsetY: -radius * 0.35,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.944,
-          snapTargetAngle: -Math.PI * 0.5,
-          snapDistanceMultiplier: 0.5,
-          extensionThreshold: 0.99,
+          snapTriggerAngle: Math.PI * 0.8,
+          snapTargetAngle: Math.PI * 0.4,
+          snapDistanceMultiplier: 0.9,
+          extensionThreshold: 0.92,
         },
       ];
     } else {
@@ -285,14 +288,21 @@ export class EntityRenderer {
       ];
     }
 
+    // Get lerp speed for this leg style
+    const styleConfig = LEG_STYLE_CONFIG[legStyle];
+    const lerpSpeed = styleConfig.lerpSpeed;
+
+    // Add lerpSpeed to all left side configs
+    const leftWithLerp = leftSideConfigs.map((leg) => ({ ...leg, lerpSpeed }));
+
     // Mirror left side to create right side (flip Y offset and snap target angle)
-    const rightSideConfigs: LegConfig[] = leftSideConfigs.map((leg) => ({
+    const rightSideConfigs: LegConfig[] = leftWithLerp.map((leg) => ({
       ...leg,
       attachOffsetY: -leg.attachOffsetY,
       snapTargetAngle: -leg.snapTargetAngle,
     }));
 
-    const legConfigs = [...leftSideConfigs, ...rightSideConfigs];
+    const legConfigs = [...leftWithLerp, ...rightSideConfigs];
 
     const legs = legConfigs.map((config) => new ArachnidLeg(config));
 
@@ -2259,68 +2269,48 @@ export class EntityRenderer {
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 
-    // Draw tread body (dark rectangle)
+    // Draw tread body (dark rectangle with slight rounding effect via outline)
     this.graphics.fillStyle(treadColor, 0.95);
     this.drawOrientedRect(x, y, treadLength, treadWidth, bodyRot);
 
-    // Draw tread outline for visibility
-    this.graphics.lineStyle(1.5, lineColor, 0.9);
+    // Draw a subtle edge highlight on top edge
+    this.graphics.lineStyle(1, lineColor, 0.3);
     const halfLen = treadLength / 2;
     const halfWid = treadWidth / 2;
-    const corners = [
-      {
-        x: x + cos * halfLen - sin * halfWid,
-        y: y + sin * halfLen + cos * halfWid,
-      },
-      {
-        x: x + cos * halfLen + sin * halfWid,
-        y: y + sin * halfLen - cos * halfWid,
-      },
-      {
-        x: x - cos * halfLen + sin * halfWid,
-        y: y - sin * halfLen - cos * halfWid,
-      },
-      {
-        x: x - cos * halfLen - sin * halfWid,
-        y: y - sin * halfLen + cos * halfWid,
-      },
-    ];
-    this.graphics.lineBetween(
-      corners[0].x,
-      corners[0].y,
-      corners[1].x,
-      corners[1].y
-    );
-    this.graphics.lineBetween(
-      corners[2].x,
-      corners[2].y,
-      corners[3].x,
-      corners[3].y
-    );
+    const topEdgeX1 = x + cos * halfLen - sin * halfWid;
+    const topEdgeY1 = y + sin * halfLen + cos * halfWid;
+    const topEdgeX2 = x - cos * halfLen - sin * halfWid;
+    const topEdgeY2 = y - sin * halfLen + cos * halfWid;
+    this.graphics.lineBetween(topEdgeX1, topEdgeY1, topEdgeX2, topEdgeY2);
 
-    // Calculate line spacing and animation offset - more lines for better visibility
-    const numLines = 7;
-    const lineSpacing = treadLength / (numLines + 1);
+    // Fixed fiber spacing - consistent across all tread sizes
+    const FIBER_SPACING = 6;  // Spacing between fibers in pixels
+    const FIBER_THICKNESS = 2; // Thin fibers for cleaner look
+
+    // Calculate animation offset based on tread rotation
     const wheelRadius = treadWidth * 0.35;
     const linearOffset = treadRotation * wheelRadius;
-    const normalizedOffset =
-      ((linearOffset % lineSpacing) + lineSpacing) % lineSpacing;
+    const normalizedOffset = ((linearOffset % FIBER_SPACING) + FIBER_SPACING) % FIBER_SPACING;
 
-    // Draw animated tread lines (thick and obvious - striations that grip the ground)
-    this.graphics.lineStyle(4, lineColor, 0.9);
-    for (let i = 0; i <= numLines; i++) {
-      let lineOffset = (i - numLines / 2) * lineSpacing + normalizedOffset;
-      // Clamp to visible range
-      if (lineOffset > treadLength * 0.45) lineOffset -= lineSpacing;
-      if (lineOffset < -treadLength * 0.45) lineOffset += lineSpacing;
+    // Calculate how many fibers fit in the tread length
+    const visibleHalfLen = treadLength * 0.42;  // Slightly inset from edges
+    const numFibers = Math.ceil(treadLength / FIBER_SPACING) + 2;
+
+    // Draw animated tread fibers (thin lines for grip texture)
+    this.graphics.lineStyle(FIBER_THICKNESS, lineColor, 0.7);
+    for (let i = 0; i < numFibers; i++) {
+      let lineOffset = (i - numFibers / 2) * FIBER_SPACING + normalizedOffset;
+
+      // Wrap fibers that go outside visible range
+      while (lineOffset > visibleHalfLen) lineOffset -= FIBER_SPACING;
+      while (lineOffset < -visibleHalfLen) lineOffset += FIBER_SPACING;
 
       const lx = x + cos * lineOffset;
       const ly = y + sin * lineOffset;
-      const perpX = -sin * treadWidth * 0.45;
-      const perpY = cos * treadWidth * 0.45;
+      const perpX = -sin * treadWidth * 0.4;
+      const perpY = cos * treadWidth * 0.4;
       this.graphics.lineBetween(lx - perpX, ly - perpY, lx + perpX, ly + perpY);
     }
-
   }
 
   // Render commander crown
