@@ -270,8 +270,10 @@ export class WorldState {
     const weaponConfig = getWeaponConfig(weaponId);
 
     // Default ranges from weapon config
+    // Range constraint: fightstopRange < fireRange < seeRange
     const seeRange = weaponSeeRange ?? weaponConfig.range * 1.5;
     const fireRange = weaponFireRange ?? weaponConfig.range;
+    const fightstopRange = fireRange * 0.75; // Default: 75% of fire range
 
     const entity = this.createUnitBase(x, y, playerId, collisionRadius, moveSpeed, 100);
 
@@ -282,11 +284,13 @@ export class WorldState {
       targetEntityId: null,
       seeRange,
       fireRange,
+      fightstopRange,
       turretRotation: 0,
       turretTurnRate,
       offsetX: 0,
       offsetY: 0,
       isFiring: false,
+      inFightstopRange: false,
     }];
 
     return entity;
@@ -317,8 +321,10 @@ export class WorldState {
     const turretTurnRate = config.turretTurnRate ?? 3;
 
     // Default ranges from weapon config
+    // Range constraint: fightstopRange < fireRange < seeRange
     const seeRange = config.weaponSeeRange ?? weaponConfig.range * 1.5;
     const fireRange = config.weaponFireRange ?? weaponConfig.range;
+    const fightstopRange = fireRange * 0.75; // Default: 75% of fire range
 
     const entity: Entity = {
       id,
@@ -342,11 +348,13 @@ export class WorldState {
         targetEntityId: null,
         seeRange,                        // Weapon's tracking range
         fireRange,                       // Weapon's firing range
+        fightstopRange,                  // Weapon's fightstop range (unit stops in fight mode)
         turretRotation: 0,               // Weapon's independent turret rotation
         turretTurnRate,                  // Weapon's turret rotation speed
         offsetX: 0,
         offsetY: 0,
         isFiring: false,                 // Weapon reports firing state to unit
+        inFightstopRange: false,         // Weapon reports fightstop state to unit
       }],
       builder: {
         buildRate: config.buildRate,

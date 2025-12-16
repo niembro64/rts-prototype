@@ -120,11 +120,13 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         targetId: w.targetEntityId ?? undefined,
         seeRange: w.seeRange,
         fireRange: w.fireRange,
+        fightstopRange: w.fightstopRange,
         turretRotation: w.turretRotation,
         turretTurnRate: w.turretTurnRate,
         offsetX: w.offsetX,
         offsetY: w.offsetY,
         isFiring: w.isFiring,
+        inFightstopRange: w.inFightstopRange,
         currentSliceAngle: w.currentSliceAngle,
       }));
     }

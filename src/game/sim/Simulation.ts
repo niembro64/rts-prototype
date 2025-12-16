@@ -585,15 +585,17 @@ export class Simulation {
       }
 
       // Check if unit should stop moving due to combat (fight or patrol mode)
-      // Only stop when ALL weapons are actively firing (isFiring set by combat system)
-      let allWeaponsCanFire = false;
+      // Only stop when ALL weapons have targets within their fightstopRange
+      // This means the unit has enemies close enough for all weapons to engage effectively
+      let allWeaponsInFightstopRange = false;
       if (entity.weapons && entity.weapons.length > 0) {
-        // Check if ALL weapons are firing - weapon.isFiring is set by updateWeaponFiringState
-        allWeaponsCanFire = entity.weapons.every(weapon => weapon.isFiring);
+        // Check if ALL weapons have targets in fightstop range
+        // inFightstopRange is set by updateWeaponFiringState in combat.ts
+        allWeaponsInFightstopRange = entity.weapons.every(weapon => weapon.inFightstopRange);
       }
 
       const shouldStopForCombat =
-        (currentAction.type === 'fight' || currentAction.type === 'patrol') && allWeaponsCanFire;
+        (currentAction.type === 'fight' || currentAction.type === 'patrol') && allWeaponsInFightstopRange;
 
       if (shouldStopForCombat) {
         // Stop moving - target is within weapon range

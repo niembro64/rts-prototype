@@ -131,9 +131,10 @@ export interface UnitWeapon {
   currentCooldown: number;       // Time until can fire again (ms)
   targetEntityId: EntityId | null; // Current target
 
-  // Per-weapon range properties
+  // Per-weapon range properties (constraint: fightstopRange < fireRange < seeRange)
   seeRange: number;              // Tracking range - turret starts rotating when enemies are within this
   fireRange: number;             // Attack range - weapon fires when enemies are within this
+  fightstopRange: number;        // Fight mode stop range - unit stops moving in fight mode when enemy is within this
 
   // Turret rotation for this specific weapon
   turretRotation: number;
@@ -144,8 +145,9 @@ export interface UnitWeapon {
   offsetX: number;
   offsetY: number;
 
-  // Firing state - set by combat system, read by unit for movement decisions
+  // Firing/range state - set by combat system, read by unit for movement decisions
   isFiring: boolean;             // True when this weapon is actively firing at a target in range
+  inFightstopRange: boolean;     // True when target is within fightstopRange (unit should stop in fight mode)
 
   // Burst state
   burstShotsRemaining?: number;

@@ -33,18 +33,23 @@ export interface UnitDefinition {
   legStyle?: LegStyle;
 
   // Weapon configuration
-  weaponSeeRange?: number;  // Override default tracking range
-  weaponFireRange?: number; // Override default fire range
+  // Constraint: fightstopRange < fireRange < seeRange
+  weaponSeeRange?: number;       // Override default tracking range
+  weaponFireRange?: number;      // Override default fire range
+  weaponFightstopRange?: number; // Override default fightstop range (unit stops in fight mode when enemy within this)
 
   // Custom weapon creation (for multi-weapon units like arachnid)
   createWeapons?: (radius: number, definition: UnitDefinition) => UnitWeapon[];
 }
 
 // Default weapon creation - single weapon matching unit type
+// Range constraint: fightstopRange < fireRange < seeRange
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
   const weaponConfig = getWeaponConfig(definition.id);
   const seeRange = definition.weaponSeeRange ?? weaponConfig.range * 1.5;
   const fireRange = definition.weaponFireRange ?? weaponConfig.range;
+  // Default fightstopRange is 75% of fireRange - allows unit to close distance before stopping
+  const fightstopRange = definition.weaponFightstopRange ?? fireRange * 0.75;
 
   return [{
     config: { ...weaponConfig },
@@ -52,16 +57,19 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
     targetEntityId: null,
     seeRange,
     fireRange,
+    fightstopRange,
     turretRotation: 0,
     turretTurnRate: 1,
     offsetX: 0,
     offsetY: 0,
     isFiring: false,
+    inFightstopRange: false,
   }];
 }
 
 // Arachnid weapon creation - 6 beam lasers at hexagon + 1 sonic in center
 // Arachnid weapons have 1.5x the normal vision and fire range
+// Range constraint: fightstopRange < fireRange < seeRange
 function createArachnidWeapons(radius: number, definition: UnitDefinition): UnitWeapon[] {
   const beamConfig = getWeaponConfig('beam');
   const sonicConfig = getWeaponConfig('sonic');
@@ -70,6 +78,8 @@ function createArachnidWeapons(radius: number, definition: UnitDefinition): Unit
   const baseSeeRange = definition.weaponSeeRange ?? 400;
   const seeRange = baseSeeRange * rangeMultiplier;
   const fireRange = (definition.weaponFireRange ?? beamConfig.range) * rangeMultiplier;
+  // Default fightstopRange is 75% of fireRange
+  const fightstopRange = (definition.weaponFightstopRange ?? fireRange * 0.75);
 
   const weapons: UnitWeapon[] = [];
 
@@ -88,26 +98,31 @@ function createArachnidWeapons(radius: number, definition: UnitDefinition): Unit
       targetEntityId: null,
       seeRange,
       fireRange,
+      fightstopRange,
       turretRotation: 0,
       turretTurnRate,
       offsetX,
       offsetY,
       isFiring: false,
+      inFightstopRange: false,
     });
   }
 
   // 1 sonic wave weapon in center (also gets 1.5x range)
+  const sonicFireRange = sonicConfig.range * rangeMultiplier;
   weapons.push({
     config: { ...sonicConfig },
     currentCooldown: 0,
     targetEntityId: null,
     seeRange: seeRange * 0.5, // Still half of beam seeRange, but that's now 1.5x larger
-    fireRange: sonicConfig.range * rangeMultiplier,
+    fireRange: sonicFireRange,
+    fightstopRange: sonicFireRange * 0.75, // Sonic also uses 75% of its fire range
     turretRotation: 0,
     turretTurnRate: turretTurnRate * 1.5,
     offsetX: hexForwardOffset,
     offsetY: 0,
     isFiring: false,
+    inFightstopRange: false,
     waveTransitionProgress: 0,
     currentSliceAngle: sonicConfig.waveAngleIdle ?? Math.PI / 16,
   });

@@ -327,8 +327,10 @@ function hasActiveWeaponBeam(world: WorldState, unitId: EntityId, weaponIndex: n
   return false;
 }
 
-// Update isFiring state for all weapons
+// Update isFiring and inFightstopRange state for all weapons
 // This should be called before movement decisions are made
+// - isFiring: true when target is within fireRange (weapon will fire)
+// - inFightstopRange: true when target is within fightstopRange (unit should consider stopping in fight mode)
 export function updateWeaponFiringState(world: WorldState): void {
   for (const unit of world.getUnits()) {
     if (!unit.weapons) continue;
@@ -337,8 +339,9 @@ export function updateWeaponFiringState(world: WorldState): void {
     const unitSin = Math.sin(unit.transform.rotation);
 
     for (const weapon of unit.weapons) {
-      // Default to not firing
+      // Default to not firing and not in fightstop range
       weapon.isFiring = false;
+      weapon.inFightstopRange = false;
 
       // Check if weapon has a valid target
       if (weapon.targetEntityId === null) continue;
@@ -355,12 +358,18 @@ export function updateWeaponFiringState(world: WorldState): void {
       const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
       const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
 
-      // Check if target is in weapon's fire range
+      // Check distance to target
       const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
       const targetRadius = getTargetRadius(target);
 
+      // Check if target is in weapon's fire range
       if (dist <= weapon.fireRange + targetRadius) {
         weapon.isFiring = true;
+      }
+
+      // Check if target is in weapon's fightstop range (tighter than fire range)
+      if (dist <= weapon.fightstopRange + targetRadius) {
+        weapon.inFightstopRange = true;
       }
     }
   }

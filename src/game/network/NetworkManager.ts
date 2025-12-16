@@ -59,16 +59,19 @@ export interface NetworkAction {
 }
 
 // Weapon data for network sync (supports multi-weapon units)
+// Range constraint: fightstopRange < fireRange < seeRange
 export interface NetworkWeapon {
   configId: string;
   targetId?: number;
   seeRange: number;
   fireRange: number;
+  fightstopRange: number;  // Unit stops in fight mode when enemy within this range
   turretRotation: number;
   turretTurnRate: number;
   offsetX: number;
   offsetY: number;
-  isFiring: boolean;  // Whether weapon is actively firing at target in range
+  isFiring: boolean;       // Whether weapon is actively firing at target in range
+  inFightstopRange: boolean; // Whether target is within fightstop range
   currentSliceAngle?: number;  // Dynamic slice angle for wave weapons
 }
 

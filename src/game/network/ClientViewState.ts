@@ -187,11 +187,13 @@ export class ClientViewState {
           targetEntityId: nw.targetId ?? null,
           seeRange: nw.seeRange,
           fireRange: nw.fireRange,
+          fightstopRange: nw.fightstopRange,
           turretRotation: nw.turretRotation,
           turretTurnRate: nw.turretTurnRate,
           offsetX: nw.offsetX,
           offsetY: nw.offsetY,
           isFiring: nw.isFiring,
+          inFightstopRange: nw.inFightstopRange,
           currentSliceAngle: nw.currentSliceAngle,
         }));
       }

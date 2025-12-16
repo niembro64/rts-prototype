@@ -1022,11 +1022,13 @@ export class RtsScene extends Phaser.Scene {
           targetEntityId: nw.targetId ?? null,
           seeRange: nw.seeRange,
           fireRange: nw.fireRange,
+          fightstopRange: nw.fightstopRange,
           turretRotation: nw.turretRotation,
           turretTurnRate: nw.turretTurnRate,
           offsetX: nw.offsetX,
           offsetY: nw.offsetY,
           isFiring: nw.isFiring,
+          inFightstopRange: nw.inFightstopRange,
           currentSliceAngle: nw.currentSliceAngle,
         }));
       }
@@ -1181,8 +1183,10 @@ export class RtsScene extends Phaser.Scene {
           entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
           entity.weapons[i].seeRange = netEntity.weapons[i].seeRange;
           entity.weapons[i].fireRange = netEntity.weapons[i].fireRange;
+          entity.weapons[i].fightstopRange = netEntity.weapons[i].fightstopRange;
           entity.weapons[i].turretTurnRate = netEntity.weapons[i].turretTurnRate;
           entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
+          entity.weapons[i].inFightstopRange = netEntity.weapons[i].inFightstopRange;
           entity.weapons[i].currentSliceAngle = netEntity.weapons[i].currentSliceAngle;
         }
       } else {
@@ -1193,11 +1197,13 @@ export class RtsScene extends Phaser.Scene {
           targetEntityId: nw.targetId ?? null,
           seeRange: nw.seeRange,
           fireRange: nw.fireRange,
+          fightstopRange: nw.fightstopRange,
           turretRotation: nw.turretRotation,
           turretTurnRate: nw.turretTurnRate,
           offsetX: nw.offsetX,
           offsetY: nw.offsetY,
           isFiring: nw.isFiring,
+          inFightstopRange: nw.inFightstopRange,
           currentSliceAngle: nw.currentSliceAngle,
         }));
       }
