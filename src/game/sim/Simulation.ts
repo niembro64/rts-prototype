@@ -650,30 +650,13 @@ export class Simulation {
     }
   }
 
-  // Sync transforms from Matter.js bodies and update rotation based on actual movement
+  // Sync transforms from Matter.js bodies (rotation is handled in RtsScene after physics)
   private syncTransformsFromBodies(): void {
     for (const entity of this.world.getAllEntities()) {
       if (entity.body?.matterBody) {
-        // Store previous position
-        const prevX = entity.transform.x;
-        const prevY = entity.transform.y;
-
         // Sync position from physics
         entity.transform.x = entity.body.matterBody.position.x;
         entity.transform.y = entity.body.matterBody.position.y;
-
-        // Update rotation based on ACTUAL movement direction (not intended)
-        // This ensures units face where they're actually going, even when pushed by collisions
-        if (entity.unit) {
-          const actualDx = entity.transform.x - prevX;
-          const actualDy = entity.transform.y - prevY;
-          const actualSpeed = Math.sqrt(actualDx * actualDx + actualDy * actualDy);
-
-          // Only update rotation if actually moving (threshold prevents jitter when stationary)
-          if (actualSpeed > 0.5) {
-            entity.transform.rotation = Math.atan2(actualDy, actualDx);
-          }
-        }
       }
     }
   }

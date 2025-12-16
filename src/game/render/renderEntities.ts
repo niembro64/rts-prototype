@@ -332,8 +332,12 @@ export class EntityRenderer {
 
       const legStyle = definition.legStyle ?? 'arachnid';
       const legs = this.getOrCreateLegs(entity, legStyle);
-      const velX = entity.unit.velocityX ?? 0;
-      const velY = entity.unit.velocityY ?? 0;
+
+      // Use actual physics body velocity, not thrust direction
+      // Scale up since Matter.js velocities are per-step, not per-second
+      const matterBody = entity.body?.matterBody as MatterJS.BodyType | undefined;
+      const velX = (matterBody?.velocity?.x ?? 0) * 60;
+      const velY = (matterBody?.velocity?.y ?? 0) * 60;
 
       for (const leg of legs) {
         leg.update(
@@ -2331,19 +2335,6 @@ export class EntityRenderer {
       y - sin * endOffset,
       wheelSize
     );
-
-    // Draw rotating spokes on drive wheels
-    this.graphics.lineStyle(1.5, treadColor, 0.9);
-    for (const endDir of [1, -1]) {
-      const wx = x + cos * endOffset * endDir;
-      const wy = y + sin * endOffset * endDir;
-      for (let spoke = 0; spoke < 4; spoke++) {
-        const spokeAngle = treadRotation + (spoke * Math.PI) / 2;
-        const spokeEndX = wx + Math.cos(spokeAngle) * wheelSize * 0.8;
-        const spokeEndY = wy + Math.sin(spokeAngle) * wheelSize * 0.8;
-        this.graphics.lineBetween(wx, wy, spokeEndX, spokeEndY);
-      }
-    }
   }
 
   // Render commander crown

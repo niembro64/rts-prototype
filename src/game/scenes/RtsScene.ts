@@ -1360,10 +1360,19 @@ export class RtsScene extends Phaser.Scene {
 
       const matterBody = entity.body.matterBody as MatterJS.BodyType;
 
+      // Sync position from physics body
+      entity.transform.x = matterBody.position.x;
+      entity.transform.y = matterBody.position.y;
+
       // Get the direction unit wants to move (stored as velocityX/Y, but we treat as direction)
       const dirX = entity.unit.velocityX ?? 0;
       const dirY = entity.unit.velocityY ?? 0;
       const dirMag = Math.sqrt(dirX * dirX + dirY * dirY);
+
+      // Update rotation to face thrust direction (where unit is trying to go)
+      if (dirMag > 0.01) {
+        entity.transform.rotation = Math.atan2(dirY, dirX);
+      }
 
       // Calculate thrust force toward waypoint
       // Force is proportional to moveSpeed - faster units have more thrust

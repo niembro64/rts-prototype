@@ -45,8 +45,8 @@ export class ArachnidLeg {
   // Slide progress (0 = at old position, 1 = at new position)
   private slideProgress: number = 0;
 
-  // Slide speed (units per second)
-  private slideSpeed: number = 400;
+  // Slide speed (units per second) - high enough to work with fastest units
+  private slideSpeed: number = 3000;
 
   // Has the leg been initialized with a ground position?
   private initialized: boolean = false;
