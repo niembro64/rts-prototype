@@ -345,8 +345,8 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
     // Setup scene callbacks
     setupSceneCallbacks();
 
-    // If host, start broadcasting state
-    if (networkRole.value === 'host') {
+    // If host or offline, start broadcasting state (offline uses it for ClientViewState)
+    if (networkRole.value === 'host' || networkRole.value === 'offline') {
       startStateBroadcast();
     }
   }, 100);
@@ -407,10 +407,14 @@ function startStateBroadcast(): void {
   const intervalMs = 1000 / networkUpdatesPerSecond.value;
   stateBroadcastInterval = setInterval(() => {
     const scene = gameInstance?.getScene();
-    if (scene && networkRole.value === 'host') {
+    if (scene && (networkRole.value === 'host' || networkRole.value === 'offline')) {
       const state = scene.getSerializedState();
       if (state) {
-        networkManager.broadcastState(state);
+        // Only broadcast to network in host mode, not offline
+        if (networkRole.value === 'host') {
+          networkManager.broadcastState(state);
+        }
+        // In both modes, getSerializedState already feeds ClientViewState
       }
     }
   }, intervalMs);
@@ -419,14 +423,14 @@ function startStateBroadcast(): void {
 function setNetworkUpdateRate(rate: number): void {
   networkUpdatesPerSecond.value = rate;
   // Restart broadcast with new rate
-  if (networkRole.value === 'host' && gameStarted.value) {
+  if ((networkRole.value === 'host' || networkRole.value === 'offline') && gameStarted.value) {
     startStateBroadcast();
   }
 }
 
 function setHostViewMode(mode: HostViewMode): void {
   const scene = gameInstance?.getScene();
-  if (scene && networkRole.value === 'host') {
+  if (scene && (networkRole.value === 'host' || networkRole.value === 'offline')) {
     scene.setHostViewMode(mode);
     hostViewMode.value = mode;
   }
@@ -498,8 +502,8 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Host Options (host only) -->
-      <div v-if="networkRole === 'host'" class="ui-overlay top-right-below">
+      <!-- Host Options (host and offline) -->
+      <div v-if="networkRole === 'host' || networkRole === 'offline'" class="ui-overlay top-right-below">
         <div class="host-options">
           <div class="host-options-title">Host Options</div>
 

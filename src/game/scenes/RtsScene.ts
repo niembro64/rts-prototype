@@ -8,7 +8,6 @@ import { InputManager } from '../input/inputBindings';
 import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import { getWeaponConfig } from '../sim/weapons';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { networkManager, type NetworkRole } from '../network/NetworkManager';
 import { serializeGameState } from '../network/stateSerializer';
@@ -250,10 +249,17 @@ export class RtsScene extends Phaser.Scene {
       this.inputManager = new InputManager(this, this.world, this.commandQueue);
     }
 
-    // Initialize ClientViewState for host mode (to show "client view")
-    // Skip in background mode
-    if (this.networkRole === 'host' && !this.backgroundMode) {
+    // Initialize ClientViewState for all non-background modes
+    // - Host/offline: Used for "client view" toggle to see what clients see
+    // - Client: Used for snapshot interpolation (the actual view)
+    if (!this.backgroundMode) {
       this.clientViewState = new ClientViewState();
+
+      // For actual clients, use ClientViewState as the primary entity source
+      if (this.networkRole === 'client') {
+        this.entityRenderer.setEntitySource(this.clientViewState, 'clientView');
+        this.inputManager?.setEntitySource(this.clientViewState);
+      }
     }
 
     // Initialize audio on first user interaction (skip in background mode)
@@ -840,8 +846,11 @@ export class RtsScene extends Phaser.Scene {
       // Client mode: process local-only commands (selection)
       this.processClientCommands();
 
-      // Client-side prediction: apply velocities and update positions
-      this.applyClientPrediction(delta);
+      // Run snapshot interpolation on ClientViewState
+      if (this.clientViewState) {
+        this.clientViewState.applyPrediction(delta);
+        // Spray targets are already set in applyNetworkState
+      }
     }
 
     // Render entities
@@ -862,10 +871,10 @@ export class RtsScene extends Phaser.Scene {
 
   // === Network methods ===
 
-  // Get serialized game state for network broadcast (host only)
+  // Get serialized game state for network broadcast (host and offline)
   // Also feeds the state to ClientViewState for host's "client view"
   public getSerializedState(): NetworkGameState | null {
-    if (this.networkRole !== 'host') return null;
+    if (this.networkRole !== 'host' && this.networkRole !== 'offline') return null;
     const winnerId = this.simulation.getWinnerId() ?? undefined;
     const sprayTargets = this.simulation.getSprayTargets();
     const audioEvents = this.simulation.getAndClearAudioEvents();
@@ -887,7 +896,7 @@ export class RtsScene extends Phaser.Scene {
    * - 'client': See exactly what clients see (predicted from network state)
    */
   public setHostViewMode(mode: HostViewMode): void {
-    if (this.networkRole !== 'host') return;
+    if (this.networkRole !== 'host' && this.networkRole !== 'offline') return;
     if (this.hostViewMode === mode) return;
 
     // Sync selection state when switching views
@@ -951,356 +960,27 @@ export class RtsScene extends Phaser.Scene {
   public applyNetworkState(state: NetworkGameState): void {
     if (this.networkRole !== 'client') return;
 
-    // Clear existing entities and rebuild from state
-    // This is a simple approach - could be optimized with delta updates
-    const existingIds = new Set<number>();
+    // Feed state to ClientViewState for snapshot interpolation
+    // ClientViewState handles entity management, economy, spray targets internally
+    if (this.clientViewState) {
+      this.clientViewState.applyNetworkState(state);
 
-    // Update or create entities
-    for (const netEntity of state.entities) {
-      existingIds.add(netEntity.id);
-      const existingEntity = this.world.getEntity(netEntity.id);
+      // Get spray targets from ClientViewState for rendering
+      this.entityRenderer.setSprayTargets(this.clientViewState.getSprayTargets());
 
-      if (!existingEntity) {
-        // Create new entity
-        const newEntity = this.createEntityFromNetwork(netEntity);
-        if (newEntity) {
-          this.world.addEntity(newEntity);
+      // Process audio events from ClientViewState
+      const audioEvents = this.clientViewState.getPendingAudioEvents();
+      if (audioEvents) {
+        for (const event of audioEvents) {
+          this.handleAudioEvent(event);
         }
-      } else {
-        // Update existing entity
-        this.updateEntityFromNetwork(existingEntity, netEntity);
-      }
-    }
-
-    // Remove entities that no longer exist
-    for (const entity of this.world.getAllEntities()) {
-      if (!existingIds.has(entity.id)) {
-        if (entity.body?.matterBody) {
-          this.matter.world.remove(entity.body.matterBody);
-        }
-        // Stop any laser sound this entity might be making (client cleanup)
-        audioManager.stopLaserSound(entity.id);
-        this.world.removeEntity(entity.id);
-      }
-    }
-
-    // Update economy state
-    for (const [playerIdStr, eco] of Object.entries(state.economy)) {
-      const playerId = parseInt(playerIdStr) as PlayerId;
-      economyManager.setEconomyState(playerId, eco);
-    }
-
-    // Apply spray targets for building effect
-    if (state.sprayTargets && state.sprayTargets.length > 0) {
-      const sprayTargets = state.sprayTargets.map(st => ({
-        sourceId: st.sourceId,
-        targetId: st.targetId,
-        type: st.type,
-        sourceX: st.sourceX,
-        sourceY: st.sourceY,
-        targetX: st.targetX,
-        targetY: st.targetY,
-        targetWidth: st.targetWidth,
-        targetHeight: st.targetHeight,
-        targetRadius: st.targetRadius,
-        intensity: st.intensity,
-      }));
-      this.entityRenderer.setSprayTargets(sprayTargets);
-    } else {
-      this.entityRenderer.setSprayTargets([]);
-    }
-
-    // Play audio events from host (client audio)
-    if (state.audioEvents && state.audioEvents.length > 0) {
-      for (const event of state.audioEvents) {
-        this.handleAudioEvent(event);
-      }
-    }
-
-    // Check for game over
-    if (state.gameOver && !this.isGameOver) {
-      this.isGameOver = true;
-      this.onGameOverUI?.(state.gameOver.winnerId);
-    }
-  }
-
-  // Create entity from network data
-  private createEntityFromNetwork(netEntity: NetworkGameState['entities'][0]): Entity | null {
-    const { id, type, x, y, rotation, playerId } = netEntity;
-
-    if (type === 'unit') {
-      // Convert network actions to unit actions (filter out invalid ones)
-      const actions = netEntity.actions?.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
-        type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
-        x: na.x!,
-        y: na.y!,
-        targetId: na.targetId,
-        // Build action fields
-        buildingType: na.buildingType as 'solar' | 'factory' | undefined,
-        gridX: na.gridX,
-        gridY: na.gridY,
-        buildingId: na.buildingId,
-      })) ?? [];
-
-      // Create basic entity structure
-      const unitCollisionRadius = netEntity.collisionRadius ?? 15;
-      const unitMoveSpeed = netEntity.moveSpeed ?? 100;
-      const unitMass = netEntity.mass ?? 25;
-      const entity: Entity = {
-        id,
-        type: 'unit',
-        transform: { x, y, rotation },
-        ownership: playerId !== undefined ? { playerId } : undefined,
-        selectable: { selected: false },
-        unit: {
-          hp: netEntity.hp ?? 100,
-          maxHp: netEntity.maxHp ?? 100,
-          collisionRadius: unitCollisionRadius,
-          moveSpeed: unitMoveSpeed,
-          mass: unitMass,
-          actions,
-          patrolStartIndex: null,
-          velocityX: netEntity.velocityX ?? 0,
-          velocityY: netEntity.velocityY ?? 0,
-        },
-      };
-
-      // Add weapons from network state - all weapons are independent
-      if (netEntity.weapons && netEntity.weapons.length > 0) {
-        entity.weapons = netEntity.weapons.map(nw => ({
-          config: getWeaponConfig(nw.configId),
-          currentCooldown: 0,
-          targetEntityId: nw.targetId ?? null,
-          seeRange: nw.seeRange,
-          fireRange: nw.fireRange,
-          fightstopRange: nw.fightstopRange,
-          turretRotation: nw.turretRotation,
-          turretTurnRate: nw.turretTurnRate,
-          offsetX: nw.offsetX,
-          offsetY: nw.offsetY,
-          isFiring: nw.isFiring,
-          inFightstopRange: nw.inFightstopRange,
-          currentSliceAngle: nw.currentSliceAngle,
-        }));
       }
 
-      if (netEntity.isCommander) {
-        entity.commander = {
-          isDGunActive: false,
-          dgunEnergyCost: 100,
-        };
-        // Add builder component for commanders
-        entity.builder = {
-          buildRange: 200,
-          buildRate: 30,
-          currentBuildTarget: netEntity.buildTargetId ?? null,
-        };
-      }
-
-      // Create physics body with proper mass
-      const body = createUnitBody(
-        this.matter,
-        x,
-        y,
-        unitCollisionRadius,
-        unitMass,
-        `unit_${id}`
-      );
-      entity.body = { matterBody: body };
-
-      return entity;
-    }
-
-    if (type === 'building') {
-      const entity: Entity = {
-        id,
-        type: 'building',
-        transform: { x, y, rotation },
-        ownership: playerId !== undefined ? { playerId } : undefined,
-        selectable: { selected: false },
-        building: {
-          width: netEntity.width ?? 100,
-          height: netEntity.height ?? 100,
-          hp: netEntity.hp ?? 500,
-          maxHp: netEntity.maxHp ?? 500,
-        },
-        buildable: {
-          buildProgress: netEntity.buildProgress ?? 1,
-          isComplete: netEntity.isComplete ?? true,
-          energyCost: 100,
-          maxBuildRate: 20,
-          isGhost: false,
-        },
-        buildingType: netEntity.buildingType as 'solar' | 'factory' | undefined,
-      };
-
-      if (netEntity.buildQueue !== undefined) {
-        entity.factory = {
-          buildQueue: netEntity.buildQueue,
-          currentBuildProgress: netEntity.factoryProgress ?? 0,
-          currentBuildCost: 0,
-          currentBuildRate: 0,
-          rallyX: netEntity.rallyX ?? x,
-          rallyY: netEntity.rallyY ?? (y + 100),
-          isProducing: netEntity.isProducing ?? false,
-          waypoints: netEntity.factoryWaypoints?.map(wp => ({
-            x: wp.x,
-            y: wp.y,
-            type: wp.type as 'move' | 'fight' | 'patrol',
-          })) ?? [],
-        };
-      }
-
-      return entity;
-    }
-
-    if (type === 'projectile') {
-      // Get full weapon config from weaponId for proper rendering
-      const weaponConfig = getWeaponConfig(netEntity.weaponId ?? 'minigun');
-      const entity: Entity = {
-        id,
-        type: 'projectile',
-        transform: { x, y, rotation },
-        ownership: playerId !== undefined ? { playerId } : undefined,
-        projectile: {
-          ownerId: playerId ?? 1,
-          sourceEntityId: 0,
-          config: weaponConfig,
-          projectileType: (netEntity.projectileType as 'traveling' | 'beam' | 'instant') ?? 'traveling',
-          velocityX: netEntity.velocityX ?? 0,
-          velocityY: netEntity.velocityY ?? 0,
-          timeAlive: 0,
-          maxLifespan: weaponConfig.beamDuration ?? weaponConfig.projectileLifespan ?? 2000,
-          hitEntities: new Set(),
-          maxHits: 1,
-          // Beam coordinates
-          startX: netEntity.beamStartX,
-          startY: netEntity.beamStartY,
-          endX: netEntity.beamEndX,
-          endY: netEntity.beamEndY,
-        },
-      };
-      return entity;
-    }
-
-    return null;
-  }
-
-  // Update existing entity from network data
-  private updateEntityFromNetwork(entity: Entity, netEntity: NetworkGameState['entities'][0]): void {
-    // Update position
-    entity.transform.x = netEntity.x;
-    entity.transform.y = netEntity.y;
-    entity.transform.rotation = netEntity.rotation;
-
-    // Update physics body position
-    if (entity.body?.matterBody) {
-      this.matter.body.setPosition(entity.body.matterBody, { x: netEntity.x, y: netEntity.y });
-    }
-
-    // Update unit-specific fields
-    if (entity.unit) {
-      entity.unit.hp = netEntity.hp ?? entity.unit.hp;
-      entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
-      entity.unit.collisionRadius = netEntity.collisionRadius ?? entity.unit.collisionRadius;
-      entity.unit.moveSpeed = netEntity.moveSpeed ?? entity.unit.moveSpeed;
-      // Note: turret rotation is per-weapon, updated in weapon state update below
-      // Update velocity for client-side prediction
-      entity.unit.velocityX = netEntity.velocityX ?? 0;
-      entity.unit.velocityY = netEntity.velocityY ?? 0;
-
-      // Update action queue
-      if (netEntity.actions) {
-        entity.unit.actions = netEntity.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
-          type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
-          x: na.x!,
-          y: na.y!,
-          targetId: na.targetId,
-          // Build action fields
-          buildingType: na.buildingType as 'solar' | 'factory' | undefined,
-          gridX: na.gridX,
-          gridY: na.gridY,
-          buildingId: na.buildingId,
-        }));
-      }
-    }
-
-    // Update all weapons from network state - each weapon is independent
-    if (netEntity.weapons && netEntity.weapons.length > 0) {
-      if (entity.weapons && entity.weapons.length === netEntity.weapons.length) {
-        // Update each weapon's state
-        for (let i = 0; i < netEntity.weapons.length; i++) {
-          entity.weapons[i].targetEntityId = netEntity.weapons[i].targetId ?? null;
-          entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
-          entity.weapons[i].seeRange = netEntity.weapons[i].seeRange;
-          entity.weapons[i].fireRange = netEntity.weapons[i].fireRange;
-          entity.weapons[i].fightstopRange = netEntity.weapons[i].fightstopRange;
-          entity.weapons[i].turretTurnRate = netEntity.weapons[i].turretTurnRate;
-          entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
-          entity.weapons[i].inFightstopRange = netEntity.weapons[i].inFightstopRange;
-          entity.weapons[i].currentSliceAngle = netEntity.weapons[i].currentSliceAngle;
-        }
-      } else {
-        // Recreate weapons array if length changed
-        entity.weapons = netEntity.weapons.map(nw => ({
-          config: getWeaponConfig(nw.configId),
-          currentCooldown: 0,
-          targetEntityId: nw.targetId ?? null,
-          seeRange: nw.seeRange,
-          fireRange: nw.fireRange,
-          fightstopRange: nw.fightstopRange,
-          turretRotation: nw.turretRotation,
-          turretTurnRate: nw.turretTurnRate,
-          offsetX: nw.offsetX,
-          offsetY: nw.offsetY,
-          isFiring: nw.isFiring,
-          inFightstopRange: nw.inFightstopRange,
-          currentSliceAngle: nw.currentSliceAngle,
-        }));
-      }
-    }
-
-    // Update builder state
-    if (entity.builder) {
-      entity.builder.currentBuildTarget = netEntity.buildTargetId ?? null;
-    }
-
-    // Update building-specific fields
-    if (entity.building) {
-      entity.building.hp = netEntity.hp ?? entity.building.hp;
-      entity.building.maxHp = netEntity.maxHp ?? entity.building.maxHp;
-    }
-
-    if (entity.buildable) {
-      entity.buildable.buildProgress = netEntity.buildProgress ?? entity.buildable.buildProgress;
-      entity.buildable.isComplete = netEntity.isComplete ?? entity.buildable.isComplete;
-    }
-
-    if (entity.factory) {
-      entity.factory.buildQueue = netEntity.buildQueue ?? entity.factory.buildQueue;
-      entity.factory.currentBuildProgress = netEntity.factoryProgress ?? entity.factory.currentBuildProgress;
-      entity.factory.isProducing = netEntity.isProducing ?? entity.factory.isProducing;
-      entity.factory.rallyX = netEntity.rallyX ?? entity.factory.rallyX;
-      entity.factory.rallyY = netEntity.rallyY ?? entity.factory.rallyY;
-      if (netEntity.factoryWaypoints) {
-        entity.factory.waypoints = netEntity.factoryWaypoints.map(wp => ({
-          x: wp.x,
-          y: wp.y,
-          type: wp.type as 'move' | 'fight' | 'patrol',
-        }));
-      }
-    }
-
-    // Update projectile-specific fields (especially beam coordinates)
-    if (entity.projectile) {
-      entity.projectile.velocityX = netEntity.velocityX ?? entity.projectile.velocityX;
-      entity.projectile.velocityY = netEntity.velocityY ?? entity.projectile.velocityY;
-      // Update beam coordinates for proper rendering
-      if (netEntity.beamStartX !== undefined) {
-        entity.projectile.startX = netEntity.beamStartX;
-        entity.projectile.startY = netEntity.beamStartY;
-        entity.projectile.endX = netEntity.beamEndX;
-        entity.projectile.endY = netEntity.beamEndY;
+      // Check for game over
+      const winnerId = this.clientViewState.getGameOverWinnerId();
+      if (winnerId !== null && !this.isGameOver) {
+        this.isGameOver = true;
+        this.onGameOverUI?.(winnerId);
       }
     }
   }
@@ -1378,39 +1058,6 @@ export class RtsScene extends Phaser.Scene {
     }
     for (const id of command.entityIds) {
       this.clientViewState.selectEntity(id);
-    }
-  }
-
-  // Client-side prediction: apply velocities to predict positions between network updates
-  private applyClientPrediction(delta: number): void {
-    const dtSec = delta / 1000;
-
-    // Predict unit positions using Matter.js physics
-    for (const entity of this.world.getUnits()) {
-      if (!entity.body?.matterBody || !entity.unit) continue;
-
-      const velX = entity.unit.velocityX ?? 0;
-      const velY = entity.unit.velocityY ?? 0;
-
-      // Apply velocity to Matter body (velocity is in units/sec, Matter expects units/frame at 60fps)
-      this.matter.body.setVelocity(entity.body.matterBody, { x: velX / 60, y: velY / 60 });
-
-      // Sync transform from physics body position
-      entity.transform.x = entity.body.matterBody.position.x;
-      entity.transform.y = entity.body.matterBody.position.y;
-    }
-
-    // Predict projectile positions (no physics body, direct position update)
-    for (const entity of this.world.getProjectiles()) {
-      if (!entity.projectile) continue;
-
-      const proj = entity.projectile;
-
-      // Only predict traveling projectiles (beams snap to host position)
-      if (proj.projectileType === 'traveling') {
-        entity.transform.x += proj.velocityX * dtSec;
-        entity.transform.y += proj.velocityY * dtSec;
-      }
     }
   }
 
