@@ -236,8 +236,8 @@ export const WEAPON_STATS = {
   },
   // Tank - Slow, devastating heavy cannon
   tank: {
-    damage: 120,
-    range: 260,
+    damage: 220,
+    range: 360,
     cooldown: 3000,
     projectileSpeed: 300,
   },
