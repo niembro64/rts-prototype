@@ -13,6 +13,7 @@ import {
   createMortarWheelSetup,
   createFourWheelSetup,
 } from './Tread';
+import { getUnitDefinition } from '../sim/unitDefinitions';
 
 /**
  * EntitySource - Interface that both WorldState and ClientViewState implement
@@ -309,21 +310,19 @@ export class EntityRenderer {
       }
     }
 
-    // Update legs for all legged units (arachnid: 8 chunky, beam: 8 daddy long legs, sonic: 6 insect)
+    // Update legs for all legged units using unit definitions
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
         continue;
 
-      // Check if this is an arachnid, beam unit, or sonic unit
-      const isArachnid = entity.weapons.length > 1;
-      const isBeam =
-        entity.weapons.length === 1 && entity.weapons[0].config.id === 'beam';
-      const isSonic =
-        entity.weapons.length === 1 && entity.weapons[0].config.id === 'sonic';
+      // Determine unit type: multi-weapon units are arachnid, otherwise use weapon ID
+      const unitType = entity.weapons.length > 1 ? 'arachnid' : entity.weapons[0].config.id;
+      const definition = getUnitDefinition(unitType);
 
-      if (!isArachnid && !isBeam && !isSonic) continue;
+      // Skip if not a legged unit
+      if (!definition || definition.locomotion !== 'legs') continue;
 
-      const legStyle = isArachnid ? 'arachnid' : isBeam ? 'daddy' : 'insect';
+      const legStyle = definition.legStyle ?? 'arachnid';
       const legs = this.getOrCreateLegs(entity, legStyle);
       const velX = entity.unit.velocityX ?? 0;
       const velY = entity.unit.velocityY ?? 0;
@@ -431,17 +430,19 @@ export class EntityRenderer {
       }
     }
 
-    // Update treads for all tracked/wheeled units
+    // Update treads for all tracked/wheeled units using unit definitions
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
         continue;
 
-      const weaponId = entity.weapons[0].config.id;
+      // Determine unit type and get definition
+      const unitType = entity.weapons.length > 1 ? 'arachnid' : entity.weapons[0].config.id;
+      const definition = getUnitDefinition(unitType);
 
-      // Handle tracked vehicles (tank and brawl)
-      if (weaponId === 'tank' || weaponId === 'brawl') {
-        const unitType = weaponId as 'tank' | 'brawl';
-        const treads = this.getOrCreateTreads(entity, unitType);
+      // Handle tracked vehicles (treads locomotion)
+      if (definition?.locomotion === 'treads') {
+        const treadType = unitType as 'tank' | 'brawl';
+        const treads = this.getOrCreateTreads(entity, treadType);
         treads.leftTread.update(
           entity.transform.x,
           entity.transform.y,
@@ -457,7 +458,8 @@ export class EntityRenderer {
         continue;
       }
 
-      // Handle wheeled vehicles
+      // Handle wheeled vehicles (wheels locomotion)
+      if (definition?.locomotion !== 'wheels') continue;
       const wheelSetup = this.getOrCreateVehicleWheels(entity);
       if (wheelSetup) {
         for (const wheel of wheelSetup.wheels) {

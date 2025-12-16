@@ -33,7 +33,7 @@ const WEAPON_LABELS: Record<string, string> = {
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
 import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS } from '../../config';
-import { createWeaponsForUnitType } from '../sim/factoryProduction';
+import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
 // Grid settings
 const GRID_SIZE = 50;
@@ -1459,7 +1459,7 @@ export class RtsScene extends Phaser.Scene {
       stats.moveSpeed,
       stats.hp
     );
-    unit.weapons = createWeaponsForUnitType(unitType, stats.collisionRadius);
+    unit.weapons = createWeaponsFromDefinition(unitType, stats.collisionRadius);
 
     // Set initial rotation
     unit.transform.rotation = initialRotation;
