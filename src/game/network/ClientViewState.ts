@@ -172,6 +172,7 @@ export class ClientViewState {
           maxHp: netEntity.maxHp ?? 100,
           collisionRadius: netEntity.collisionRadius ?? 15,
           moveSpeed: netEntity.moveSpeed ?? 100,
+          mass: netEntity.mass ?? 25,
           actions,
           patrolStartIndex: null,
           velocityX: netEntity.velocityX ?? 0,

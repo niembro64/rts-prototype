@@ -40,6 +40,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.scout.buildRate,
     collisionRadius: UNIT_STATS.scout.collisionRadius,
     moveSpeed: UNIT_STATS.scout.moveSpeed,
+    mass: UNIT_STATS.scout.mass,
     hp: UNIT_STATS.scout.hp,
   },
   burst: {
@@ -49,6 +50,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.burst.buildRate,
     collisionRadius: UNIT_STATS.burst.collisionRadius,
     moveSpeed: UNIT_STATS.burst.moveSpeed,
+    mass: UNIT_STATS.burst.mass,
     hp: UNIT_STATS.burst.hp,
   },
   daddy: {
@@ -58,6 +60,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.daddy.buildRate,
     collisionRadius: UNIT_STATS.daddy.collisionRadius,
     moveSpeed: UNIT_STATS.daddy.moveSpeed,
+    mass: UNIT_STATS.daddy.mass,
     hp: UNIT_STATS.daddy.hp,
   },
   brawl: {
@@ -67,6 +70,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.brawl.buildRate,
     collisionRadius: UNIT_STATS.brawl.collisionRadius,
     moveSpeed: UNIT_STATS.brawl.moveSpeed,
+    mass: UNIT_STATS.brawl.mass,
     hp: UNIT_STATS.brawl.hp,
   },
   shotgun: {
@@ -76,6 +80,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.shotgun.buildRate,
     collisionRadius: UNIT_STATS.shotgun.collisionRadius,
     moveSpeed: UNIT_STATS.shotgun.moveSpeed,
+    mass: UNIT_STATS.shotgun.mass,
     hp: UNIT_STATS.shotgun.hp,
   },
   snipe: {
@@ -85,6 +90,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.snipe.buildRate,
     collisionRadius: UNIT_STATS.snipe.collisionRadius,
     moveSpeed: UNIT_STATS.snipe.moveSpeed,
+    mass: UNIT_STATS.snipe.mass,
     hp: UNIT_STATS.snipe.hp,
   },
   tank: {
@@ -94,6 +100,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.tank.buildRate,
     collisionRadius: UNIT_STATS.tank.collisionRadius,
     moveSpeed: UNIT_STATS.tank.moveSpeed,
+    mass: UNIT_STATS.tank.mass,
     hp: UNIT_STATS.tank.hp,
   },
   widow: {
@@ -103,8 +110,9 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.widow.buildRate,
     collisionRadius: UNIT_STATS.widow.collisionRadius,
     moveSpeed: UNIT_STATS.widow.moveSpeed,
+    mass: UNIT_STATS.widow.mass,
     hp: UNIT_STATS.widow.hp,
-    weaponSeeRange: 400,  // Extended tracking range for titan weapons
+    weaponSeeRange: 400,
   },
   insect: {
     weaponId: 'insect',
@@ -113,9 +121,10 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     maxBuildRate: UNIT_STATS.insect.buildRate,
     collisionRadius: UNIT_STATS.insect.collisionRadius,
     moveSpeed: UNIT_STATS.insect.moveSpeed,
+    mass: UNIT_STATS.insect.mass,
     hp: UNIT_STATS.insect.hp,
-    weaponSeeRange: 100,   // Smaller sight range - must get close to detect targets
-    weaponFireRange: 150,  // Larger attack range - wave extends beyond sight
+    weaponSeeRange: 100,
+    weaponFireRange: 150,
   },
 };
 
@@ -125,6 +134,7 @@ export const COMMANDER_CONFIG = {
   maxHp: COMMANDER_STATS.hp,
   collisionRadius: COMMANDER_STATS.collisionRadius,
   moveSpeed: COMMANDER_STATS.moveSpeed,
+  mass: COMMANDER_STATS.mass,
   buildRate: COMMANDER_STATS.buildRate,
   buildRange: COMMANDER_STATS.buildRange,
   weaponId: 'daddy',  // Commander uses daddy weapon (continuous beam)

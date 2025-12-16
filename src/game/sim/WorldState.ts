@@ -231,6 +231,7 @@ export class WorldState {
     playerId: PlayerId,
     collisionRadius: number = 15,
     moveSpeed: number = 100,
+    mass: number = 25,
     hp: number = 100
   ): Entity {
     const id = this.generateEntityId();
@@ -244,6 +245,7 @@ export class WorldState {
       unit: {
         moveSpeed,
         collisionRadius,
+        mass,
         hp,
         maxHp: hp,
         actions: [],
@@ -263,6 +265,7 @@ export class WorldState {
     weaponId: string = 'scout',
     collisionRadius: number = 15,
     moveSpeed: number = 100,
+    mass: number = 25,
     turretTurnRate: number = 3, // radians per second (~172°/sec default) - for weapons
     weaponSeeRange?: number,    // Optional per-weapon tracking range
     weaponFireRange?: number    // Optional per-weapon fire range
@@ -275,7 +278,7 @@ export class WorldState {
     const fireRange = weaponFireRange ?? weaponConfig.range;
     const fightstopRange = fireRange * 0.75; // Default: 75% of fire range
 
-    const entity = this.createUnitBase(x, y, playerId, collisionRadius, moveSpeed, 100);
+    const entity = this.createUnitBase(x, y, playerId, collisionRadius, moveSpeed, mass, 100);
 
     // Set up single weapon
     entity.weapons = [{
@@ -307,6 +310,7 @@ export class WorldState {
       hp: number;
       collisionRadius: number;
       moveSpeed: number;
+      mass: number;
       buildRate: number;
       buildRange: number;
       weaponId: string;
@@ -335,6 +339,7 @@ export class WorldState {
       unit: {
         moveSpeed: config.moveSpeed,
         collisionRadius: config.collisionRadius,
+        mass: config.mass,
         hp: config.hp,
         maxHp: config.hp,
         actions: [],

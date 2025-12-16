@@ -65,10 +65,11 @@ export const BUILDING_STATS = {
 export const COMMANDER_STATS = {
   hp: 500,
   moveSpeed: 80,
-  collisionRadius: 20, // Hitbox size for physics/collision
-  buildRate: 50, // Max energy/sec for construction
-  buildRange: 150, // Max distance to build
-  dgunCost: 200, // Energy cost per D-gun shot
+  collisionRadius: 20,
+  mass: 60,           // Heavy commander unit
+  buildRate: 50,
+  buildRange: 150,
+  dgunCost: 200,
 };
 
 // =============================================================================
@@ -98,85 +99,84 @@ export const COMMANDER_STATS = {
 
 export const UNIT_STATS = {
   // Scout - Disposable swarm unit. High DPS but dies fast.
-  // Value: 50 DPS × 0.82 range × (40 HP × 1.26 speed) = ~20 → Cost: 35
   scout: {
     baseCost: 35,
     hp: 40,
-    moveSpeed: 160,
-    collisionRadius: 8, // Hitbox size for physics/collision
-    buildRate: 70, // Very fast production
+    moveSpeed: 260,
+    collisionRadius: 8,
+    mass: 1,        // Light and zippy
+    buildRate: 70,
   },
   // Burst - Glass cannon striker. High alpha, fragile.
-  // Value: 45 DPS × 0.94 range × 1.2 burst × (70 HP × 1.14 speed) = ~41 → Cost: 75
   burst: {
-    baseCost: 75,
+    baseCost: 175,
     hp: 65,
     moveSpeed: 130,
     collisionRadius: 10,
+    mass: 15,
     buildRate: 55,
   },
-  // Daddy - Balanced baseline. Reliable sustained damage. (Daddy long legs appearance)
-  // Value: 45 DPS × 1.0 range × (100 HP × 1.0 speed) = 45 → Cost: 100 (baseline)
+  // Daddy - Balanced baseline. Reliable sustained damage.
   daddy: {
-    baseCost: 300,
+    baseCost: 500,
     hp: 100,
     moveSpeed: 100,
     collisionRadius: 13,
+    mass: 25,       // Medium baseline
     buildRate: 45,
   },
   // Brawl - Tanky brawler. High damage but must close distance.
-  // Value: 60 effective DPS × 0.53 range × (160 HP × 0.92 speed) = ~47 → Cost: 110
   brawl: {
     baseCost: 110,
     hp: 180,
-    moveSpeed: 80,
+    moveSpeed: 200,
     collisionRadius: 16,
+    mass: 45,       // Heavy brawler
     buildRate: 40,
   },
-  // Shotgun - Area denial artillery. Splash doubles effective damage.
-  // Value: 32 DPS × 1.18 range × 2.0 splash × (100 HP × 0.81 speed) = ~61 → Cost: 150
+  // Shotgun - Area denial artillery. Splash damage.
   shotgun: {
     baseCost: 150,
     hp: 100,
-    moveSpeed: 60,
+    moveSpeed: 220,
     collisionRadius: 14,
+    mass: 35,
     buildRate: 32,
   },
   // Snipe - Long-range assassin. Fragile but safe engagement range.
-  // Value: 36 DPS × 2.06 range × 1.3 pierce × (55 HP × 0.87 speed) = ~50 → Cost: 140
   snipe: {
     baseCost: 140,
     hp: 55,
     moveSpeed: 70,
     collisionRadius: 11,
+    mass: 20,       // Light sniper
     buildRate: 28,
   },
   // Tank - Heavy siege unit. Massive HP compensates for slow speed.
-  // Value: 40 DPS × 1.53 range × (350 HP × 0.67 speed) = ~143 → Cost: 280
   tank: {
     baseCost: 280,
     hp: 350,
-    moveSpeed: 40,
+    moveSpeed: 100,
     collisionRadius: 24,
+    mass: 50,       // Heavy tank
     buildRate: 18,
   },
   // Widow - Titan spider unit. 6 beam lasers + 1 sonic wave, 8 legs.
-  // Combined DPS: 6×45 (beam) + 40 (sonic) = ~310 DPS across multiple ranges
-  // Extremely slow, massive HP pool, very expensive. Apex predator.
   widow: {
     baseCost: 600,
     hp: 1200,
-    moveSpeed: 25,
+    moveSpeed: 1000,
     collisionRadius: 38,
-    buildRate: 8, // Very slow to produce
+    mass: 50,      // Massive titan
+    buildRate: 8,
   },
   // Insect - Small 4-legged unit with continuous wave AoE damage.
-  // Pie-slice damage field. High damage up close, narrow 30° cone.
   insect: {
     baseCost: 90,
     hp: 80,
-    moveSpeed: 110,
+    moveSpeed: 200,
     collisionRadius: 11,
+    mass: 18,
     buildRate: 50,
   },
 };

@@ -39,23 +39,15 @@ import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 const GRID_SIZE = 50;
 const GRID_COLOR = 0x333355;
 
-// All units have the same mass for now - simplifies force-based physics tuning
-function getUnitMass(_collisionRadius: number, _moveSpeed: number): number {
-  return 50;
-}
-
-// Create a physics body with proper mass settings
-// Matter.js sometimes ignores mass in options, so we set it explicitly after creation
+// Create a physics body with explicit mass from config
 function createUnitBody(
   matter: Phaser.Physics.Matter.MatterPhysics,
   x: number,
   y: number,
   collisionRadius: number,
-  moveSpeed: number,
+  mass: number,
   label: string
 ): MatterJS.BodyType {
-  const mass = getUnitMass(collisionRadius, moveSpeed);
-
   const body = matter.add.circle(x, y, collisionRadius, {
     friction: 0.01,        // Low ground friction
     frictionAir: 0.15,     // Higher air friction - units slow down quickly when not thrusting
@@ -393,7 +385,7 @@ export class RtsScene extends Phaser.Scene {
           entity.transform.x,
           entity.transform.y,
           entity.unit.collisionRadius,
-          entity.unit.moveSpeed,
+          entity.unit.mass,
           `unit_${entity.id}`
         );
         entity.body = { matterBody: body };
@@ -674,7 +666,7 @@ export class RtsScene extends Phaser.Scene {
           entity.transform.x,
           entity.transform.y,
           entity.unit.collisionRadius,
-          entity.unit.moveSpeed,
+          entity.unit.mass,
           `unit_${entity.id}`
         );
         entity.body = { matterBody: body };
@@ -990,6 +982,7 @@ export class RtsScene extends Phaser.Scene {
       // Create basic entity structure
       const unitCollisionRadius = netEntity.collisionRadius ?? 15;
       const unitMoveSpeed = netEntity.moveSpeed ?? 100;
+      const unitMass = netEntity.mass ?? 25;
       const entity: Entity = {
         id,
         type: 'unit',
@@ -1001,6 +994,7 @@ export class RtsScene extends Phaser.Scene {
           maxHp: netEntity.maxHp ?? 100,
           collisionRadius: unitCollisionRadius,
           moveSpeed: unitMoveSpeed,
+          mass: unitMass,
           actions,
           patrolStartIndex: null,
           velocityX: netEntity.velocityX ?? 0,
@@ -1046,7 +1040,7 @@ export class RtsScene extends Phaser.Scene {
         x,
         y,
         unitCollisionRadius,
-        unitMoveSpeed,
+        unitMass,
         `unit_${id}`
       );
       entity.body = { matterBody: body };
@@ -1555,7 +1549,7 @@ export class RtsScene extends Phaser.Scene {
         x,
         y,
         unit.unit.collisionRadius,
-        unit.unit.moveSpeed,
+        unit.unit.mass,
         `unit_${unit.id}`
       );
       unit.body = { matterBody: body };

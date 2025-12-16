@@ -110,6 +110,7 @@ export class FactoryProductionSystem {
       playerId,
       config.collisionRadius,
       config.moveSpeed,
+      config.mass,
       config.hp
     );
 

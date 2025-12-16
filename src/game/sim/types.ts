@@ -60,6 +60,7 @@ export interface UnitAction {
 export interface Unit {
   moveSpeed: number;
   collisionRadius: number;  // Hitbox size for physics and click detection
+  mass: number;             // Physics mass for force-based movement
   hp: number;
   maxHp: number;
   // Unified action queue - units process these in order
@@ -248,6 +249,7 @@ export interface UnitBuildConfig {
   maxBuildRate: number;     // Max energy/sec for construction
   collisionRadius: number;  // Hitbox size for physics
   moveSpeed: number;
+  mass: number;             // Physics mass for force-based movement
   hp: number;
   // Per-weapon range settings (applied to each weapon created)
   weaponSeeRange?: number;  // Optional tracking range - defaults to weapon config range * 1.5

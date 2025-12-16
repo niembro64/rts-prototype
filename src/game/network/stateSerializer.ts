@@ -87,6 +87,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     netEntity.maxHp = entity.unit.maxHp;
     netEntity.collisionRadius = entity.unit.collisionRadius;
     netEntity.moveSpeed = entity.unit.moveSpeed;
+    netEntity.mass = entity.unit.mass;
     netEntity.velocityX = entity.unit.velocityX ?? 0;
     netEntity.velocityY = entity.unit.velocityY ?? 0;
     // Turret rotation for network display - loop through all weapons
@@ -210,6 +211,7 @@ export function applyNetworkState(
       maxHp: netEntity.maxHp,
       collisionRadius: netEntity.collisionRadius,
       moveSpeed: netEntity.moveSpeed,
+      mass: netEntity.mass,
       velocityX: netEntity.velocityX,
       velocityY: netEntity.velocityY,
       turretRotation: netEntity.turretRotation,
@@ -257,6 +259,7 @@ export interface DisplayEntity {
   maxHp?: number;
   collisionRadius?: number;
   moveSpeed?: number;
+  mass?: number;
   velocityX?: number;
   velocityY?: number;
   turretRotation?: number;

@@ -87,7 +87,8 @@ export interface NetworkEntity {
   hp?: number;
   maxHp?: number;
   collisionRadius?: number;  // Hitbox size for physics
-  moveSpeed?: number;        // For mass calculation
+  moveSpeed?: number;
+  mass?: number;             // Physics mass for force-based movement
   velocityX?: number;
   velocityY?: number;
   turretRotation?: number;
