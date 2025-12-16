@@ -66,15 +66,15 @@ const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
   { weaponId: 'burst', label: 'Burst', cost: 75 },
   { weaponId: 'brawl', label: 'Brawl', cost: 110 },
   { weaponId: 'snipe', label: 'Snipe', cost: 140 },
-  { weaponId: 'mortar', label: 'Mortar', cost: 150 },
+  { weaponId: 'shotgun', label: 'Shotgun', cost: 150 },
   { weaponId: 'tank', label: 'Tank', cost: 280 },
 ];
 
 // Bots (legs)
 const botOptions: { weaponId: string; label: string; cost: number }[] = [
-  { weaponId: 'sonic', label: 'Sonic', cost: 90 },
-  { weaponId: 'beam', label: 'Beam', cost: 100 },
-  { weaponId: 'arachnid', label: 'Arachnid', cost: 1000 },
+  { weaponId: 'insect', label: 'Insect', cost: 90 },
+  { weaponId: 'daddy', label: 'Daddy', cost: 100 },
+  { weaponId: 'widow', label: 'Widow', cost: 1000 },
 ];
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)

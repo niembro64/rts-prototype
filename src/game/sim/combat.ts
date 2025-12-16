@@ -745,8 +745,8 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number, damag
           if (!buildingsToRemove.includes(id)) buildingsToRemove.push(id);
         }
 
-        // Add explosion audio event if there were hits or it's a mortar
-        if (splashResult.hitEntityIds.length > 0 || config.id === 'mortar') {
+        // Add explosion audio event if there were hits or it's a shotgun
+        if (splashResult.hitEntityIds.length > 0 || config.id === 'shotgun') {
           audioEvents.push({
             type: 'hit',
             weaponId: config.id,

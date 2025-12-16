@@ -115,9 +115,9 @@ export const UNIT_STATS = {
     collisionRadius: 10,
     buildRate: 55,
   },
-  // Beam - Balanced baseline. Reliable sustained damage.
+  // Daddy - Balanced baseline. Reliable sustained damage. (Daddy long legs appearance)
   // Value: 45 DPS × 1.0 range × (100 HP × 1.0 speed) = 45 → Cost: 100 (baseline)
-  beam: {
+  daddy: {
     baseCost: 100,
     hp: 100,
     moveSpeed: 100,
@@ -133,9 +133,9 @@ export const UNIT_STATS = {
     collisionRadius: 16,
     buildRate: 40,
   },
-  // Mortar - Area denial artillery. Splash doubles effective damage.
+  // Shotgun - Area denial artillery. Splash doubles effective damage.
   // Value: 32 DPS × 1.18 range × 2.0 splash × (100 HP × 0.81 speed) = ~61 → Cost: 150
-  mortar: {
+  shotgun: {
     baseCost: 150,
     hp: 100,
     moveSpeed: 60,
@@ -160,20 +160,19 @@ export const UNIT_STATS = {
     collisionRadius: 24,
     buildRate: 18,
   },
-  // Arachnid - Titan spider unit. 4 beam lasers + 4 snipe lasers, 8 legs.
-  // Combined DPS: 4×45 (beam) + 4×17 (snipe) = ~248 DPS across multiple ranges
+  // Widow - Titan spider unit. 6 beam lasers + 1 sonic wave, 8 legs.
+  // Combined DPS: 6×45 (beam) + 40 (sonic) = ~310 DPS across multiple ranges
   // Extremely slow, massive HP pool, very expensive. Apex predator.
-  arachnid: {
+  widow: {
     baseCost: 1000,
     hp: 1200,
     moveSpeed: 25,
     collisionRadius: 38,
     buildRate: 8, // Very slow to produce
   },
-  // Sonic - Small 4-legged spider with continuous wave AoE damage.
-  // Pie-slice damage field with inverse-square falloff (1/d²).
-  // High damage up close, fades rapidly with distance.
-  sonic: {
+  // Insect - Small 4-legged unit with continuous wave AoE damage.
+  // Pie-slice damage field. High damage up close, narrow 30° cone.
+  insect: {
     baseCost: 90,
     hp: 80,
     moveSpeed: 110,
@@ -203,8 +202,8 @@ export const WEAPON_STATS = {
     burstDelay: 60,
     projectileSpeed: 600,
   },
-  // Beam - Continuous damage beam, shorter range
-  beam: {
+  // Daddy - Continuous damage beam, shorter range (daddy long legs unit)
+  daddy: {
     damage: 45, // Damage per second while beam is on target
     range: 140, // Short range - must get close
     cooldown: 0, // Continuous firing
@@ -219,8 +218,8 @@ export const WEAPON_STATS = {
     pelletCount: 6,
     projectileSpeed: 450,
   },
-  // Mortar - Slow, high splash damage
-  mortar: {
+  // Shotgun - Slow, high splash damage artillery
+  shotgun: {
     damage: 80,
     range: 200,
     cooldown: 2500,
@@ -249,24 +248,23 @@ export const WEAPON_STATS = {
     projectileSpeed: 350,
     splashRadius: 40,
   },
-  // Arachnid - Multi-weapon titan (4 beam + 4 snipe lasers)
+  // Widow - Multi-weapon titan (6 beam lasers + 1 sonic)
   // This config is for the primary weapon slot; sub-weapons are handled specially
-  arachnid: {
+  widow: {
     damage: 0, // Placeholder - actual damage from sub-weapons
-    range: 350, // Max range (snipe range)
+    range: 350, // Max range (beam range with 1.5x multiplier)
     cooldown: 0, // Multi-weapon system handles its own cooldowns
     // Sub-weapon counts
-    beamCount: 4, // 4 continuous beam lasers
-    snipeCount: 4, // 4 sniper lasers
+    beamCount: 6, // 6 continuous beam lasers
   },
-  // Sonic - Continuous pie-slice AoE with expanding/contracting effect
+  // Insect - Continuous pie-slice AoE with expanding/contracting effect
   // Interpolates between idle and attack angles based on firing state
-  sonic: {
+  insect: {
     damage: 40, // Base DPS at point-blank
     range: 150, // Maximum range of the wave slice
     cooldown: 0, // Continuous (always on when targeting)
     waveAngleIdle: 0, // Angle when not firing (narrow beam)
-    waveAngleAttack: Math.PI * 0.75, // Angle when firing (45° wide slice)
+    waveAngleAttack: Math.PI / 6, // Angle when firing (30° slice for baby unit)
     waveTransitionTime: 2000, // Time (ms) to transition between idle and attack
   },
 };
@@ -310,12 +308,13 @@ export const LASER_SOUND_ENABLED = false;
  * |----------|------|------|-------|-----|-------|----------------------|
  * | Scout    |   35 |   40 |  160  |  50 | 140   | Fast swarm           |
  * | Burst    |   75 |   65 |  130  |  45 | 160   | 3-shot burst         |
- * | Beam     |  100 |  100 |  100  |  45 | 140   | Continuous beam      |
+ * | Insect   |   90 |   80 |  110  |  40 | 150   | 30° wave AoE         |
+ * | Daddy    |  100 |  100 |  100  |  45 | 140   | Continuous beam      |
  * | Brawl    |  110 |  180 |   80  |  60 |  90   | 6 pellets            |
  * | Snipe    |  140 |   55 |   70  |  17 | 350   | Instant flash, pierce|
- * | Mortar   |  150 |  100 |   60  |  32 | 200   | Splash (70r)         |
+ * | Shotgun  |  150 |  100 |   60  |  32 | 200   | Splash (70r)         |
  * | Tank     |  280 |  350 |   40  |  40 | 260   | Heavy hitter         |
- * | Arachnid | 1800 | 1200 |   25  | 248 | 350   | 4 beam + 4 snipe     |
+ * | Widow    | 1000 | 1200 |   25  | 310 | 350   | 6 beam + sonic       |
  *
  * BUILDING COSTS:
  * - Solar: 100 energy (2 sec to build)

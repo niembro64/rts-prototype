@@ -13,7 +13,7 @@ interface UnitSpawnConfig {
 
 const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
   { weaponId: 'scout', count: 3, collisionRadius: 8, moveSpeed: 160 },
-  { weaponId: 'beam', count: 2, collisionRadius: 13, moveSpeed: 100 },
+  { weaponId: 'daddy', count: 2, collisionRadius: 13, moveSpeed: 100 },
   { weaponId: 'tank', count: 1, collisionRadius: 22, moveSpeed: 45 },
   { weaponId: 'brawl', count: 2, collisionRadius: 15, moveSpeed: 85 },
 ];

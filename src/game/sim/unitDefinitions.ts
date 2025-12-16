@@ -38,7 +38,7 @@ export interface UnitDefinition {
   weaponFireRange?: number;      // Override default fire range
   weaponFightstopRange?: number; // Override default fightstop range (unit stops in fight mode when enemy within this)
 
-  // Custom weapon creation (for multi-weapon units like arachnid)
+  // Custom weapon creation (for multi-weapon units like widow)
   createWeapons?: (radius: number, definition: UnitDefinition) => UnitWeapon[];
 }
 
@@ -67,23 +67,23 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   }];
 }
 
-// Arachnid weapon creation - 6 beam lasers at hexagon + 1 sonic in center
-// Arachnid weapons have 1.5x the normal vision and fire range
+// Widow weapon creation - 6 daddy lasers at hexagon + 1 insect wave in center
+// Widow weapons have 1.5x the normal vision and fire range
 // Range constraint: fightstopRange < fireRange < seeRange
-function createArachnidWeapons(radius: number, definition: UnitDefinition): UnitWeapon[] {
-  const beamConfig = getWeaponConfig('beam');
-  const sonicConfig = getWeaponConfig('sonic');
+function createWidowWeapons(radius: number, definition: UnitDefinition): UnitWeapon[] {
+  const daddyConfig = getWeaponConfig('daddy');
+  const insectConfig = getWeaponConfig('insect');
   const turretTurnRate = 0.3;
-  const rangeMultiplier = 1.5; // Arachnid has extended range
+  const rangeMultiplier = 1.5; // Widow has extended range
   const baseSeeRange = definition.weaponSeeRange ?? 400;
   const seeRange = baseSeeRange * rangeMultiplier;
-  const fireRange = (definition.weaponFireRange ?? beamConfig.range) * rangeMultiplier;
+  const fireRange = (definition.weaponFireRange ?? daddyConfig.range) * rangeMultiplier;
   // Default fightstopRange is 75% of fireRange
   const fightstopRange = (definition.weaponFightstopRange ?? fireRange * 0.75);
 
   const weapons: UnitWeapon[] = [];
 
-  // 6 beam lasers at hexagon vertices
+  // 6 daddy lasers at hexagon vertices
   const hexRadius = radius * 0.65;
   const hexForwardOffset = radius * 0.5;
   const hexRotationOffset = Math.PI / 6;
@@ -93,7 +93,7 @@ function createArachnidWeapons(radius: number, definition: UnitDefinition): Unit
     const offsetX = Math.cos(angle) * hexRadius + hexForwardOffset;
     const offsetY = Math.sin(angle) * hexRadius;
     weapons.push({
-      config: { ...beamConfig },
+      config: { ...daddyConfig },
       currentCooldown: 0,
       targetEntityId: null,
       seeRange,
@@ -108,15 +108,20 @@ function createArachnidWeapons(radius: number, definition: UnitDefinition): Unit
     });
   }
 
-  // 1 sonic wave weapon in center (also gets 1.5x range)
-  const sonicFireRange = sonicConfig.range * rangeMultiplier;
+  // 1 insect wave weapon in center (also gets 1.5x range)
+  // Widow's insect wave has full 135° attack angle (unlike baby insect's 30°)
+  const insectFireRange = insectConfig.range * rangeMultiplier;
+  const widowInsectConfig = {
+    ...insectConfig,
+    waveAngleAttack: Math.PI * 0.75, // Full 135° slice for widow
+  };
   weapons.push({
-    config: { ...sonicConfig },
+    config: widowInsectConfig,
     currentCooldown: 0,
     targetEntityId: null,
-    seeRange: seeRange * 0.5, // Still half of beam seeRange, but that's now 1.5x larger
-    fireRange: sonicFireRange,
-    fightstopRange: sonicFireRange * 0.75, // Sonic also uses 75% of its fire range
+    seeRange: seeRange * 0.5, // Still half of daddy seeRange, but that's now 1.5x larger
+    fireRange: insectFireRange,
+    fightstopRange: insectFireRange * 0.75, // Insect also uses 75% of its fire range
     turretRotation: 0,
     turretTurnRate: turretTurnRate * 1.5,
     offsetX: hexForwardOffset,
@@ -124,7 +129,7 @@ function createArachnidWeapons(radius: number, definition: UnitDefinition): Unit
     isFiring: false,
     inFightstopRange: false,
     waveTransitionProgress: 0,
-    currentSliceAngle: sonicConfig.waveAngleIdle ?? Math.PI / 16,
+    currentSliceAngle: widowInsectConfig.waveAngleIdle ?? Math.PI / 16,
   });
 
   return weapons;
@@ -152,14 +157,14 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.burst.buildRate,
     locomotion: 'wheels',
   },
-  beam: {
-    id: 'beam',
-    name: 'Beam',
-    hp: UNIT_STATS.beam.hp,
-    moveSpeed: UNIT_STATS.beam.moveSpeed,
-    collisionRadius: UNIT_STATS.beam.collisionRadius,
-    energyCost: UNIT_STATS.beam.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.beam.buildRate,
+  daddy: {
+    id: 'daddy',
+    name: 'Daddy',
+    hp: UNIT_STATS.daddy.hp,
+    moveSpeed: UNIT_STATS.daddy.moveSpeed,
+    collisionRadius: UNIT_STATS.daddy.collisionRadius,
+    energyCost: UNIT_STATS.daddy.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.daddy.buildRate,
     locomotion: 'legs',
     legStyle: 'daddy',
   },
@@ -173,14 +178,14 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.brawl.buildRate,
     locomotion: 'treads',
   },
-  mortar: {
-    id: 'mortar',
-    name: 'Mortar',
-    hp: UNIT_STATS.mortar.hp,
-    moveSpeed: UNIT_STATS.mortar.moveSpeed,
-    collisionRadius: UNIT_STATS.mortar.collisionRadius,
-    energyCost: UNIT_STATS.mortar.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.mortar.buildRate,
+  shotgun: {
+    id: 'shotgun',
+    name: 'Shotgun',
+    hp: UNIT_STATS.shotgun.hp,
+    moveSpeed: UNIT_STATS.shotgun.moveSpeed,
+    collisionRadius: UNIT_STATS.shotgun.collisionRadius,
+    energyCost: UNIT_STATS.shotgun.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.shotgun.buildRate,
     locomotion: 'wheels',
   },
   snipe: {
@@ -203,27 +208,27 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.tank.buildRate,
     locomotion: 'treads',
   },
-  arachnid: {
-    id: 'arachnid',
-    name: 'Arachnid',
-    hp: UNIT_STATS.arachnid.hp,
-    moveSpeed: UNIT_STATS.arachnid.moveSpeed,
-    collisionRadius: UNIT_STATS.arachnid.collisionRadius,
-    energyCost: UNIT_STATS.arachnid.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.arachnid.buildRate,
+  widow: {
+    id: 'widow',
+    name: 'Widow',
+    hp: UNIT_STATS.widow.hp,
+    moveSpeed: UNIT_STATS.widow.moveSpeed,
+    collisionRadius: UNIT_STATS.widow.collisionRadius,
+    energyCost: UNIT_STATS.widow.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.widow.buildRate,
     locomotion: 'legs',
     legStyle: 'arachnid',
     weaponSeeRange: 400,
-    createWeapons: createArachnidWeapons,
+    createWeapons: createWidowWeapons,
   },
-  sonic: {
-    id: 'sonic',
-    name: 'Sonic',
-    hp: UNIT_STATS.sonic.hp,
-    moveSpeed: UNIT_STATS.sonic.moveSpeed,
-    collisionRadius: UNIT_STATS.sonic.collisionRadius,
-    energyCost: UNIT_STATS.sonic.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.sonic.buildRate,
+  insect: {
+    id: 'insect',
+    name: 'Insect',
+    hp: UNIT_STATS.insect.hp,
+    moveSpeed: UNIT_STATS.insect.moveSpeed,
+    collisionRadius: UNIT_STATS.insect.collisionRadius,
+    energyCost: UNIT_STATS.insect.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.insect.buildRate,
     locomotion: 'legs',
     legStyle: 'insect',
     weaponSeeRange: 200,   // Must see beyond fire range to target enemies approaching

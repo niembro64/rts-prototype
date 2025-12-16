@@ -51,14 +51,14 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     moveSpeed: UNIT_STATS.burst.moveSpeed,
     hp: UNIT_STATS.burst.hp,
   },
-  beam: {
-    weaponId: 'beam',
-    name: 'Beam',
-    energyCost: UNIT_STATS.beam.baseCost * COST_MULTIPLIER,
-    maxBuildRate: UNIT_STATS.beam.buildRate,
-    collisionRadius: UNIT_STATS.beam.collisionRadius,
-    moveSpeed: UNIT_STATS.beam.moveSpeed,
-    hp: UNIT_STATS.beam.hp,
+  daddy: {
+    weaponId: 'daddy',
+    name: 'Daddy',
+    energyCost: UNIT_STATS.daddy.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.daddy.buildRate,
+    collisionRadius: UNIT_STATS.daddy.collisionRadius,
+    moveSpeed: UNIT_STATS.daddy.moveSpeed,
+    hp: UNIT_STATS.daddy.hp,
   },
   brawl: {
     weaponId: 'brawl',
@@ -69,14 +69,14 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     moveSpeed: UNIT_STATS.brawl.moveSpeed,
     hp: UNIT_STATS.brawl.hp,
   },
-  mortar: {
-    weaponId: 'mortar',
-    name: 'Mortar',
-    energyCost: UNIT_STATS.mortar.baseCost * COST_MULTIPLIER,
-    maxBuildRate: UNIT_STATS.mortar.buildRate,
-    collisionRadius: UNIT_STATS.mortar.collisionRadius,
-    moveSpeed: UNIT_STATS.mortar.moveSpeed,
-    hp: UNIT_STATS.mortar.hp,
+  shotgun: {
+    weaponId: 'shotgun',
+    name: 'Shotgun',
+    energyCost: UNIT_STATS.shotgun.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.shotgun.buildRate,
+    collisionRadius: UNIT_STATS.shotgun.collisionRadius,
+    moveSpeed: UNIT_STATS.shotgun.moveSpeed,
+    hp: UNIT_STATS.shotgun.hp,
   },
   snipe: {
     weaponId: 'snipe',
@@ -96,24 +96,24 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     moveSpeed: UNIT_STATS.tank.moveSpeed,
     hp: UNIT_STATS.tank.hp,
   },
-  arachnid: {
-    weaponId: 'arachnid',
-    name: 'Arachnid',
-    energyCost: UNIT_STATS.arachnid.baseCost * COST_MULTIPLIER,
-    maxBuildRate: UNIT_STATS.arachnid.buildRate,
-    collisionRadius: UNIT_STATS.arachnid.collisionRadius,
-    moveSpeed: UNIT_STATS.arachnid.moveSpeed,
-    hp: UNIT_STATS.arachnid.hp,
+  widow: {
+    weaponId: 'widow',
+    name: 'Widow',
+    energyCost: UNIT_STATS.widow.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.widow.buildRate,
+    collisionRadius: UNIT_STATS.widow.collisionRadius,
+    moveSpeed: UNIT_STATS.widow.moveSpeed,
+    hp: UNIT_STATS.widow.hp,
     weaponSeeRange: 400,  // Extended tracking range for titan weapons
   },
-  sonic: {
-    weaponId: 'sonic',
-    name: 'Sonic',
-    energyCost: UNIT_STATS.sonic.baseCost * COST_MULTIPLIER,
-    maxBuildRate: UNIT_STATS.sonic.buildRate,
-    collisionRadius: UNIT_STATS.sonic.collisionRadius,
-    moveSpeed: UNIT_STATS.sonic.moveSpeed,
-    hp: UNIT_STATS.sonic.hp,
+  insect: {
+    weaponId: 'insect',
+    name: 'Insect',
+    energyCost: UNIT_STATS.insect.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.insect.buildRate,
+    collisionRadius: UNIT_STATS.insect.collisionRadius,
+    moveSpeed: UNIT_STATS.insect.moveSpeed,
+    hp: UNIT_STATS.insect.hp,
     weaponSeeRange: 100,   // Smaller sight range - must get close to detect targets
     weaponFireRange: 150,  // Larger attack range - wave extends beyond sight
   },
@@ -127,7 +127,7 @@ export const COMMANDER_CONFIG = {
   moveSpeed: COMMANDER_STATS.moveSpeed,
   buildRate: COMMANDER_STATS.buildRate,
   buildRange: COMMANDER_STATS.buildRange,
-  weaponId: 'beam',
+  weaponId: 'daddy',  // Commander uses daddy weapon (continuous beam)
   dgunCost: COMMANDER_STATS.dgunCost,
 };
 

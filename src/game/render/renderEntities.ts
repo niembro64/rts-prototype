@@ -315,8 +315,8 @@ export class EntityRenderer {
       if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
         continue;
 
-      // Determine unit type: multi-weapon units are arachnid, otherwise use weapon ID
-      const unitType = entity.weapons.length > 1 ? 'arachnid' : entity.weapons[0].config.id;
+      // Determine unit type: multi-weapon units are widow, otherwise use weapon ID
+      const unitType = entity.weapons.length > 1 ? 'widow' : entity.weapons[0].config.id;
       const definition = getUnitDefinition(unitType);
 
       // Skip if not a legged unit
@@ -392,7 +392,7 @@ export class EntityRenderer {
       case 'burst':
         wheelSetup = createBurstWheelSetup(radius, 2.0);
         break;
-      case 'mortar':
+      case 'shotgun':
         wheelSetup = createMortarWheelSetup(radius, 2.0);
         break;
       case 'snipe':
@@ -436,7 +436,7 @@ export class EntityRenderer {
         continue;
 
       // Determine unit type and get definition
-      const unitType = entity.weapons.length > 1 ? 'arachnid' : entity.weapons[0].config.id;
+      const unitType = entity.weapons.length > 1 ? 'widow' : entity.weapons[0].config.id;
       const definition = getUnitDefinition(unitType);
 
       // Handle tracked vehicles (treads locomotion)
@@ -714,7 +714,7 @@ export class EntityRenderer {
         const weapons = entity.weapons ?? [];
         let weaponId = 'scout'; // default
         if (weapons.length > 1) {
-          weaponId = 'arachnid';
+          weaponId = 'widow';
         } else {
           // Loop through all weapons to get type
           for (const weapon of weapons) {
@@ -837,13 +837,13 @@ export class EntityRenderer {
     const playerId = ownership?.playerId;
 
     // Detect unit type by checking weapon configuration
-    // Multi-weapon units (>1 weapon) are arachnids
+    // Multi-weapon units (>1 weapon) are widows
     // Single-weapon units are identified by checking all weapons (which will all have same type)
     const weapons = entity.weapons ?? [];
     const weaponCount = weapons.length;
     let weaponId = 'scout'; // default
     if (weaponCount > 1) {
-      weaponId = 'arachnid';
+      weaponId = 'widow';
     } else if (weaponCount > 0) {
       // Check all weapons (for single-weapon units, this loops once)
       for (const weapon of weapons) {
@@ -891,7 +891,7 @@ export class EntityRenderer {
           entity
         );
         break;
-      case 'beam':
+      case 'daddy':
         this.drawBeamUnit(
           x,
           y,
@@ -917,7 +917,7 @@ export class EntityRenderer {
           entity
         );
         break;
-      case 'mortar':
+      case 'shotgun':
         this.drawMortarUnit(
           x,
           y,
@@ -956,7 +956,7 @@ export class EntityRenderer {
           entity
         );
         break;
-      case 'arachnid':
+      case 'widow':
         this.drawArachnidUnit(
           x,
           y,
@@ -969,7 +969,7 @@ export class EntityRenderer {
           entity
         );
         break;
-      case 'sonic':
+      case 'insect':
         this.drawSonicUnit(
           x,
           y,

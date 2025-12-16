@@ -427,7 +427,7 @@ export class AudioManager {
     const finalPitch = pitch * variation;
 
     switch (weaponId) {
-      case 'beam':
+      case 'daddy':
         this.playLaserFire(finalPitch);
         break;
       case 'scout':
@@ -439,7 +439,7 @@ export class AudioManager {
       case 'brawl':
         this.playShotgunFire(finalPitch);
         break;
-      case 'mortar':
+      case 'shotgun':
         this.playGrenadeFire(finalPitch);
         break;
       case 'snipe':
@@ -603,14 +603,14 @@ export class AudioManager {
   // Generic hit by weapon ID
   playWeaponHit(weaponId: string): void {
     switch (weaponId) {
-      case 'beam':
+      case 'daddy':
       case 'snipe':
         this.playLaserHit();
         break;
       case 'tank':
         this.playHeavyHit();
         break;
-      case 'mortar':
+      case 'shotgun':
         this.playExplosionHit();
         break;
       default:
@@ -769,15 +769,17 @@ export class AudioManager {
     switch (weaponId) {
       case 'scout':
       case 'burst':
+      case 'insect':
         this.playSmallDeath();
         break;
-      case 'beam':
+      case 'daddy':
       case 'brawl':
       case 'snipe':
         this.playMediumDeath();
         break;
       case 'tank':
-      case 'mortar':
+      case 'shotgun':
+      case 'widow':
         this.playLargeDeath();
         break;
       default:

@@ -30,14 +30,14 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     color: 0xffffff,
   },
 
-  // Beam - continuous beam, deals damage while on target
-  beam: {
-    id: 'beam',
-    damage: WEAPON_STATS.beam.damage,
-    range: WEAPON_STATS.beam.range,
-    cooldown: WEAPON_STATS.beam.cooldown,
-    beamDuration: WEAPON_STATS.beam.beamDuration,
-    beamWidth: WEAPON_STATS.beam.beamWidth,
+  // Daddy - continuous beam, deals damage while on target (daddy long legs unit)
+  daddy: {
+    id: 'daddy',
+    damage: WEAPON_STATS.daddy.damage,
+    range: WEAPON_STATS.daddy.range,
+    cooldown: WEAPON_STATS.daddy.cooldown,
+    beamDuration: WEAPON_STATS.daddy.beamDuration,
+    beamWidth: WEAPON_STATS.daddy.beamWidth,
     color: 0xffffff,
   },
 
@@ -55,16 +55,16 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     color: 0xffffff,
   },
 
-  // Mortar - splash damage artillery
-  mortar: {
-    id: 'mortar',
-    damage: WEAPON_STATS.mortar.damage,
-    range: WEAPON_STATS.mortar.range,
-    cooldown: WEAPON_STATS.mortar.cooldown,
-    projectileSpeed: WEAPON_STATS.mortar.projectileSpeed,
+  // Shotgun - splash damage artillery
+  shotgun: {
+    id: 'shotgun',
+    damage: WEAPON_STATS.shotgun.damage,
+    range: WEAPON_STATS.shotgun.range,
+    cooldown: WEAPON_STATS.shotgun.cooldown,
+    projectileSpeed: WEAPON_STATS.shotgun.projectileSpeed,
     projectileRadius: 7,
     projectileLifespan: 2000,
-    splashRadius: WEAPON_STATS.mortar.splashRadius,
+    splashRadius: WEAPON_STATS.shotgun.splashRadius,
     splashDamageFalloff: 0.4,
     color: 0xffffff,
   },
@@ -108,16 +108,16 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     piercing: true,
   },
 
-  // Sonic - Continuous pie-slice wave weapon with expanding/contracting effect
+  // Insect - Continuous pie-slice wave weapon with expanding/contracting effect
   // Damages all enemies within the slice, no projectiles created
-  sonic: {
-    id: 'sonic',
-    damage: WEAPON_STATS.sonic.damage,
-    range: WEAPON_STATS.sonic.range,
-    cooldown: WEAPON_STATS.sonic.cooldown,
-    waveAngleIdle: WEAPON_STATS.sonic.waveAngleIdle,
-    waveAngleAttack: WEAPON_STATS.sonic.waveAngleAttack,
-    waveTransitionTime: WEAPON_STATS.sonic.waveTransitionTime,
+  insect: {
+    id: 'insect',
+    damage: WEAPON_STATS.insect.damage,
+    range: WEAPON_STATS.insect.range,
+    cooldown: WEAPON_STATS.insect.cooldown,
+    waveAngleIdle: WEAPON_STATS.insect.waveAngleIdle,
+    waveAngleAttack: WEAPON_STATS.insect.waveAngleAttack,
+    waveTransitionTime: WEAPON_STATS.insect.waveTransitionTime,
     isWaveWeapon: true,
     color: 0xffffff,
   },
