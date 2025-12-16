@@ -125,6 +125,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         offsetX: w.offsetX,
         offsetY: w.offsetY,
         isFiring: w.isFiring,
+        currentSliceAngle: w.currentSliceAngle,
       }));
     }
 

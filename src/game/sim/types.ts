@@ -112,8 +112,10 @@ export interface WeaponConfig {
   trailLength?: number;          // Visual trail length
 
   // Wave weapon properties (sonic)
-  sliceAngle?: number;           // Angle of pie-slice AoE (radians)
   isWaveWeapon?: boolean;        // True if this is a continuous wave weapon
+  waveAngleIdle?: number;        // Angle when not firing (radians)
+  waveAngleAttack?: number;      // Angle when firing (radians)
+  waveTransitionTime?: number;   // Time (ms) to transition between idle and attack
 
   // Piercing properties
   piercing?: boolean;            // Can pierce through multiple targets
@@ -148,6 +150,10 @@ export interface UnitWeapon {
   // Burst state
   burstShotsRemaining?: number;
   burstCooldown?: number;
+
+  // Wave weapon state (sonic)
+  waveTransitionProgress?: number;  // 0 = idle angle, 1 = attack angle
+  currentSliceAngle?: number;       // Current dynamic slice angle (radians)
 }
 
 // Projectile travel types

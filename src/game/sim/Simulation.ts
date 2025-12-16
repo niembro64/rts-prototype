@@ -8,6 +8,7 @@ import {
   updateWeaponFiringState,
   updateLaserSounds,
   fireWeapons,
+  updateWaveWeaponState,
   applyWaveDamage,
   updateProjectiles,
   checkProjectileCollisions,
@@ -203,6 +204,9 @@ export class Simulation {
       this.onAudioEvent?.(event);
       this.pendingAudioEvents.push(event);
     }
+
+    // Update wave weapon state (phase transitions and dynamic slice angle)
+    updateWaveWeaponState(this.world, dtMs);
 
     // Apply wave weapon damage (continuous AoE for sonic units)
     applyWaveDamage(this.world, dtMs);

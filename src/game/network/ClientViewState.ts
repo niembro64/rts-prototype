@@ -192,6 +192,7 @@ export class ClientViewState {
           offsetX: nw.offsetX,
           offsetY: nw.offsetY,
           isFiring: nw.isFiring,
+          currentSliceAngle: nw.currentSliceAngle,
         }));
       }
 

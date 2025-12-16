@@ -69,6 +69,7 @@ export interface NetworkWeapon {
   offsetX: number;
   offsetY: number;
   isFiring: boolean;  // Whether weapon is actively firing at target in range
+  currentSliceAngle?: number;  // Dynamic slice angle for wave weapons
 }
 
 export interface NetworkEntity {

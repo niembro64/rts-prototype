@@ -329,9 +329,9 @@ export class RtsScene extends Phaser.Scene {
     for (const id of deadUnitIds) {
       const entity = this.world.getEntity(id);
       if (entity) {
-        // Add death explosion at 1.2x collision radius
+        // Add death explosion at 2.5x collision radius
         if (entity.unit) {
-          const radius = entity.unit.collisionRadius * 1.2;
+          const radius = entity.unit.collisionRadius * 2.5;
           const playerColor = entity.ownership?.playerId
             ? PLAYER_COLORS[entity.ownership.playerId]?.primary ?? 0xff6600
             : 0xff6600;
@@ -1027,6 +1027,7 @@ export class RtsScene extends Phaser.Scene {
           offsetX: nw.offsetX,
           offsetY: nw.offsetY,
           isFiring: nw.isFiring,
+          currentSliceAngle: nw.currentSliceAngle,
         }));
       }
 
@@ -1182,6 +1183,7 @@ export class RtsScene extends Phaser.Scene {
           entity.weapons[i].fireRange = netEntity.weapons[i].fireRange;
           entity.weapons[i].turretTurnRate = netEntity.weapons[i].turretTurnRate;
           entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
+          entity.weapons[i].currentSliceAngle = netEntity.weapons[i].currentSliceAngle;
         }
       } else {
         // Recreate weapons array if length changed
@@ -1196,6 +1198,7 @@ export class RtsScene extends Phaser.Scene {
           offsetX: nw.offsetX,
           offsetY: nw.offsetY,
           isFiring: nw.isFiring,
+          currentSliceAngle: nw.currentSliceAngle,
         }));
       }
     }

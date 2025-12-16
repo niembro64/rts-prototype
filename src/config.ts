@@ -191,7 +191,7 @@ export const WEAPON_STATS = {
   scout: {
     damage: 4,
     range: 140,
-    cooldown: 80,           // Very fast fire rate
+    cooldown: 80, // Very fast fire rate
     projectileSpeed: 650,
   },
   // Burst - 3-shot burst, medium damage
@@ -205,15 +205,15 @@ export const WEAPON_STATS = {
   },
   // Beam - Continuous damage beam, shorter range
   beam: {
-    damage: 45,             // Damage per second while beam is on target
-    range: 140,             // Short range - must get close
-    cooldown: 0,            // Continuous firing
-    beamDuration: 1500,     // Long sustained beam
+    damage: 45, // Damage per second while beam is on target
+    range: 140, // Short range - must get close
+    cooldown: 0, // Continuous firing
+    beamDuration: 1500, // Long sustained beam
     beamWidth: 4,
   },
   // Brawl - Shotgun spread, high close-range damage
   brawl: {
-    damage: 12,             // Per pellet
+    damage: 12, // Per pellet
     range: 90,
     cooldown: 900,
     pelletCount: 6,
@@ -229,10 +229,10 @@ export const WEAPON_STATS = {
   },
   // Snipe - Instant flash hitscan, moderate damage, long range, piercing
   snipe: {
-    damage: 55,             // Moderate single-shot damage
-    range: 350,             // Very long range sniper
-    cooldown: 3200,         // Long cooldown between shots
-    beamDuration: 20,       // Instant flash
+    damage: 55, // Moderate single-shot damage
+    range: 350, // Very long range sniper
+    cooldown: 3200, // Long cooldown between shots
+    beamDuration: 20, // Instant flash
     beamWidth: 2,
   },
   // Tank - Slow, devastating heavy cannon
@@ -252,20 +252,22 @@ export const WEAPON_STATS = {
   // Arachnid - Multi-weapon titan (4 beam + 4 snipe lasers)
   // This config is for the primary weapon slot; sub-weapons are handled specially
   arachnid: {
-    damage: 0,              // Placeholder - actual damage from sub-weapons
-    range: 350,             // Max range (snipe range)
-    cooldown: 0,            // Multi-weapon system handles its own cooldowns
+    damage: 0, // Placeholder - actual damage from sub-weapons
+    range: 350, // Max range (snipe range)
+    cooldown: 0, // Multi-weapon system handles its own cooldowns
     // Sub-weapon counts
-    beamCount: 4,           // 4 continuous beam lasers
-    snipeCount: 4,          // 4 sniper lasers
+    beamCount: 4, // 4 continuous beam lasers
+    snipeCount: 4, // 4 sniper lasers
   },
-  // Sonic - Continuous pie-slice AoE with inverse-square damage falloff
-  // Damage falls off as 1/(distance²) - devastating up close, weak at range
+  // Sonic - Continuous pie-slice AoE with expanding/contracting effect
+  // Interpolates between idle and attack angles based on firing state
   sonic: {
-    damage: 40,             // Base DPS at point-blank (before falloff)
-    range: 150,             // Maximum range of the wave slice
-    cooldown: 0,            // Continuous (always on when targeting)
-    sliceAngle: Math.PI / 4, // 45-degree pie slice (half-angle = 22.5°)
+    damage: 40, // Base DPS at point-blank
+    range: 150, // Maximum range of the wave slice
+    cooldown: 0, // Continuous (always on when targeting)
+    waveAngleIdle: 0, // Angle when not firing (narrow beam)
+    waveAngleAttack: Math.PI * 2, // Angle when firing (45° wide slice)
+    waveTransitionTime: 2000, // Time (ms) to transition between idle and attack
   },
 };
 

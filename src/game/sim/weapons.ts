@@ -108,14 +108,16 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     piercing: true,
   },
 
-  // Sonic - Continuous pie-slice wave weapon with inverse-square damage falloff
+  // Sonic - Continuous pie-slice wave weapon with expanding/contracting effect
   // Damages all enemies within the slice, no projectiles created
   sonic: {
     id: 'sonic',
     damage: WEAPON_STATS.sonic.damage,
     range: WEAPON_STATS.sonic.range,
     cooldown: WEAPON_STATS.sonic.cooldown,
-    sliceAngle: WEAPON_STATS.sonic.sliceAngle,
+    waveAngleIdle: WEAPON_STATS.sonic.waveAngleIdle,
+    waveAngleAttack: WEAPON_STATS.sonic.waveAngleAttack,
+    waveTransitionTime: WEAPON_STATS.sonic.waveTransitionTime,
     isWaveWeapon: true,
     color: 0xffffff,
   },

@@ -497,7 +497,45 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
   return { projectiles: newProjectiles, audioEvents };
 }
 
-// Apply wave weapon damage (continuous pie-slice AoE with inverse-square falloff)
+// Update wave weapon state (transition between idle and attack angles)
+// Call this before applyWaveDamage each frame
+export function updateWaveWeaponState(world: WorldState, dtMs: number): void {
+  for (const unit of world.getUnits()) {
+    if (!unit.weapons) continue;
+
+    for (const weapon of unit.weapons) {
+      const config = weapon.config;
+      if (!config.isWaveWeapon) continue;
+
+      const angleIdle = config.waveAngleIdle ?? Math.PI / 16;
+      const angleAttack = config.waveAngleAttack ?? Math.PI / 4;
+      const transitionTime = config.waveTransitionTime ?? 1000;
+
+      // Initialize wave state if not set
+      if (weapon.waveTransitionProgress === undefined) {
+        weapon.waveTransitionProgress = 0;
+        weapon.currentSliceAngle = angleIdle;
+      }
+
+      // Move progress toward target based on firing state
+      const targetProgress = weapon.isFiring ? 1 : 0;
+      const progressDelta = dtMs / transitionTime;
+
+      if (weapon.waveTransitionProgress < targetProgress) {
+        // Transitioning to attack
+        weapon.waveTransitionProgress = Math.min(weapon.waveTransitionProgress + progressDelta, 1);
+      } else if (weapon.waveTransitionProgress > targetProgress) {
+        // Transitioning to idle
+        weapon.waveTransitionProgress = Math.max(weapon.waveTransitionProgress - progressDelta, 0);
+      }
+
+      // Interpolate angle based on progress
+      weapon.currentSliceAngle = angleIdle + (angleAttack - angleIdle) * weapon.waveTransitionProgress;
+    }
+  }
+}
+
+// Apply wave weapon damage (continuous pie-slice AoE)
 // Wave weapons like Sonic deal damage to all enemies within a pie-slice area
 export function applyWaveDamage(world: WorldState, dtMs: number): void {
   const dtSec = dtMs / 1000;
@@ -517,11 +555,12 @@ export function applyWaveDamage(world: WorldState, dtMs: number): void {
       // Only process wave weapons
       if (!config.isWaveWeapon) continue;
 
-      // Only deal damage when firing (has a target)
-      if (!weapon.isFiring) continue;
+      // Only deal damage when slice angle is greater than 0 (expanding, active, or cooldown)
+      const currentAngle = weapon.currentSliceAngle ?? 0;
+      if (currentAngle <= 0) continue;
 
-      // Wave weapon properties
-      const sliceHalfAngle = (config.sliceAngle ?? Math.PI / 4) / 2; // Half the total slice angle
+      // Wave weapon properties - use dynamic slice angle
+      const sliceHalfAngle = currentAngle / 2; // Half the total slice angle
       const maxRange = weapon.fireRange;
       const baseDamage = config.damage; // DPS at reference distance
 

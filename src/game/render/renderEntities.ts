@@ -481,7 +481,7 @@ export class EntityRenderer {
     // Base lifetime scales with radius - larger explosions last longer
     // Base: 150ms for a radius of 8, scales proportionally
     const baseRadius = 8;
-    const baseLifetime = type === 'death' ? 300 : 150;
+    const baseLifetime = type === 'death' ? 600 : 150;
     const radiusScale = Math.sqrt(radius / baseRadius); // Square root for less extreme scaling
     const lifetime = baseLifetime * radiusScale;
 
@@ -1872,10 +1872,11 @@ export class EntityRenderer {
     if (!this.skipTurrets) {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
-        if (!weapon.isFiring) continue; // Only render when active
+        // Use dynamic slice angle - render when angle > 0 (expanding, active, or cooldown)
+        const sliceAngle = weapon.currentSliceAngle ?? 0;
+        if (sliceAngle <= 0) continue;
 
         const turretRot = weapon.turretRotation;
-        const sliceAngle = weapon.config.sliceAngle ?? Math.PI / 4;
         const maxRange = weapon.fireRange;
 
         // Render pie-slice wave effect

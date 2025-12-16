@@ -60,15 +60,21 @@ const buildingOptions: { type: 'solar' | 'factory'; label: string; key: string; 
   { type: 'factory', label: 'Factory', key: '2', cost: 400 },
 ];
 
-const unitOptions: { weaponId: string; label: string; cost: number }[] = [
+// Vehicles (treads/wheels)
+const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
   { weaponId: 'scout', label: 'Scout', cost: 35 },
   { weaponId: 'burst', label: 'Burst', cost: 75 },
-  { weaponId: 'beam', label: 'Beam', cost: 100 },
   { weaponId: 'brawl', label: 'Brawl', cost: 110 },
   { weaponId: 'snipe', label: 'Snipe', cost: 140 },
   { weaponId: 'mortar', label: 'Mortar', cost: 150 },
   { weaponId: 'tank', label: 'Tank', cost: 280 },
-  { weaponId: 'arachnid', label: 'Arachnid', cost: 1800 },
+];
+
+// Bots (legs)
+const botOptions: { weaponId: string; label: string; cost: number }[] = [
+  { weaponId: 'sonic', label: 'Sonic', cost: 90 },
+  { weaponId: 'beam', label: 'Beam', cost: 100 },
+  { weaponId: 'arachnid', label: 'Arachnid', cost: 1000 },
 ];
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)
@@ -148,14 +154,30 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: 
       </div>
     </div>
 
-    <!-- Unit production (for factory) -->
+    <!-- Vehicle production (for factory) -->
     <div v-if="selection.hasFactory && selection.factoryId" class="button-group">
-      <div class="group-label">Produce <span class="modifier-hint">(Shift=5, Ctrl=100)</span></div>
+      <div class="group-label">Vehicles <span class="modifier-hint">(Shift=5, Ctrl=100)</span></div>
       <div class="buttons">
         <button
-          v-for="uo in unitOptions"
+          v-for="uo in vehicleOptions"
           :key="uo.weaponId"
-          class="action-btn produce-btn"
+          class="action-btn produce-btn vehicle-btn"
+          @click="queueUnitsWithModifier($event, selection.factoryId!, uo.weaponId)"
+        >
+          <span class="btn-label">{{ uo.label }}</span>
+          <span class="btn-cost">{{ uo.cost }}E</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Bot production (for factory) -->
+    <div v-if="selection.hasFactory && selection.factoryId" class="button-group">
+      <div class="group-label">Bots</div>
+      <div class="buttons">
+        <button
+          v-for="uo in botOptions"
+          :key="uo.weaponId"
+          class="action-btn produce-btn bot-btn"
           @click="queueUnitsWithModifier($event, selection.factoryId!, uo.weaponId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
@@ -361,8 +383,12 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: 
   --btn-color: #ff6600;
 }
 
-.produce-btn {
+.produce-btn.vehicle-btn {
   --btn-color: #0088ff;
+}
+
+.produce-btn.bot-btn {
+  --btn-color: #88ff00;
 }
 
 .message-area {
