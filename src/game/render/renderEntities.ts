@@ -49,7 +49,7 @@ const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
 
 // Leg style configuration - thickness and foot size multipliers
 const LEG_STYLE_CONFIG = {
-  arachnid: { thickness: 10, footSizeMultiplier: 0.15 },
+  arachnid: { thickness: 5, footSizeMultiplier: 0.1 },
   daddy: { thickness: 2, footSizeMultiplier: 0.14 },
   insect: { thickness: 4, footSizeMultiplier: 0.12 },
 } as const;
