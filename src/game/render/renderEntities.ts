@@ -47,6 +47,13 @@ const BUILD_BAR_FG = 0xffcc00; // Yellow for build progress
 const GHOST_COLOR = 0x88ff88; // Green tint for placement ghost
 const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
 
+// Leg style configuration - thickness and foot size multipliers
+const LEG_STYLE_CONFIG = {
+  arachnid: { thickness: 10, footSizeMultiplier: 0.15 },
+  daddy: { thickness: 2, footSizeMultiplier: 0.14 },
+  insect: { thickness: 4, footSizeMultiplier: 0.12 },
+} as const;
+
 // Waypoint colors by type (legacy - for factories)
 const WAYPOINT_COLORS: Record<WaypointType, number> = {
   move: 0x00ff00, // Green
@@ -190,10 +197,10 @@ export class EntityRenderer {
           attachOffsetY: -radius * 0.35,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.4,
-          snapTargetAngle: -Math.PI * 0.1,
-          snapDistanceMultiplier: 0.95,
-          extensionThreshold: 0.85,
+          snapTriggerAngle: Math.PI * 0.5,
+          snapTargetAngle: -Math.PI * 0.2,
+          snapDistanceMultiplier: 0.9,
+          extensionThreshold: 0.99,
         },
         {
           attachOffsetX: 0,
@@ -202,8 +209,8 @@ export class EntityRenderer {
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.8,
           snapTargetAngle: -Math.PI * 0.3,
-          snapDistanceMultiplier: 0.7,
-          extensionThreshold: 0.88,
+          snapDistanceMultiplier: 0.9,
+          extensionThreshold: 0.99,
         },
         {
           attachOffsetX: -radius * 0.5,
@@ -212,8 +219,8 @@ export class EntityRenderer {
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.944,
           snapTargetAngle: -Math.PI * 0.5,
-          snapDistanceMultiplier: 0.3,
-          extensionThreshold: 0.97,
+          snapDistanceMultiplier: 0.5,
+          extensionThreshold: 0.99,
         },
       ];
     } else {
@@ -1185,8 +1192,9 @@ export class EntityRenderer {
 
     // Body pass
     if (!this.turretsOnly) {
-      const legThickness = 2.5;
-      const footSize = r * 0.14;
+      const legConfig = LEG_STYLE_CONFIG.daddy;
+      const legThickness = legConfig.thickness;
+      const footSize = r * legConfig.footSizeMultiplier;
 
       // Get legs for this entity (creates them if they don't exist)
       const legs = this.getOrCreateLegs(entity, 'daddy');
@@ -1629,11 +1637,12 @@ export class EntityRenderer {
 
     // Body pass
     if (!this.turretsOnly) {
-      const legThickness = 3;
-      const footSize = r * 0.12;
+      const legConfig = LEG_STYLE_CONFIG.arachnid;
+      const legThickness = legConfig.thickness;
+      const footSize = r * legConfig.footSizeMultiplier;
 
       // Get legs for this entity (creates them if they don't exist)
-      const legs = this.getOrCreateLegs(entity);
+      const legs = this.getOrCreateLegs(entity, 'arachnid');
 
       // Draw all 8 legs using the Leg class positions
       for (let i = 0; i < legs.length; i++) {
@@ -1795,8 +1804,9 @@ export class EntityRenderer {
 
     // Body pass
     if (!this.turretsOnly) {
-      const legThickness = 2;
-      const footSize = r * 0.12;
+      const legConfig = LEG_STYLE_CONFIG.insect;
+      const legThickness = legConfig.thickness;
+      const footSize = r * legConfig.footSizeMultiplier;
 
       // Get legs for this entity (creates them if they don't exist)
       const legs = this.getOrCreateLegs(entity, 'insect');
