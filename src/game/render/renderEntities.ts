@@ -133,8 +133,8 @@ export class EntityRenderer {
       // Daddy long legs: 4 very long thin legs per side
       // Much longer legs relative to body size
       const legLength = radius * 10;
-      const upperLen = legLength * 0.5;
-      const lowerLen = legLength * 0.55;
+      const upperLen = legLength * 0.3;
+      const lowerLen = legLength * 0.6;
 
       leftSideConfigs = [
         {
@@ -142,9 +142,9 @@ export class EntityRenderer {
           attachOffsetY: -radius * 0.4,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.45,
-          snapTargetAngle: -Math.PI * 0.08,
-          snapDistanceMultiplier: 0.95,
+          snapTriggerAngle: Math.PI * 0.3,
+          snapTargetAngle: -Math.PI * 0.2,
+          snapDistanceMultiplier: 0.9,
           extensionThreshold: 0.82,
         },
         {
@@ -172,9 +172,9 @@ export class EntityRenderer {
           attachOffsetY: -radius * 0.4,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.95,
+          snapTriggerAngle: Math.PI * 0.99,
           snapTargetAngle: -Math.PI * 0.65,
-          snapDistanceMultiplier: 0.4,
+          snapDistanceMultiplier: 0.55,
           extensionThreshold: 0.99,
         },
       ];
