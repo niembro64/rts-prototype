@@ -44,14 +44,14 @@ export interface ExplosionEffect {
   velocityY?: number;
   velocityMag?: number;
 
-  // 2. Impact force - knockback direction from the killing blow
-  // Used by: Debris chunks, shockwave rings (blown away effect)
-  impactX?: number;
-  impactY?: number;
-  impactMag?: number;
+  // 2. Penetration direction - from hit point through unit center
+  // Used by: Debris chunks, shockwave rings (where the attack entered)
+  penetrationX?: number;
+  penetrationY?: number;
+  penetrationMag?: number;
 
   // 3. Attacker direction - direction the projectile/beam was traveling
-  // Used by: Spark trails, secondary explosions (penetration effect)
+  // Used by: Spark trails, exit fragments (penetration effect)
   attackerX?: number;
   attackerY?: number;
   attackerMag?: number;
@@ -530,8 +530,8 @@ export class EntityRenderer {
   // Add a new explosion effect with three separate momentum vectors
   // Each vector affects different explosion layers for complex visual effects:
   // - velocity: unit's movement (smoke, embers trail behind)
-  // - impact: knockback force (debris blown away)
-  // - attacker: projectile direction (sparks penetrate through)
+  // - penetration: direction from hit point through center (where attack entered)
+  // - attacker: projectile direction (sparks exit through)
   addExplosion(
     x: number,
     y: number,
@@ -540,8 +540,8 @@ export class EntityRenderer {
     type: 'impact' | 'death',
     velocityX?: number,
     velocityY?: number,
-    impactX?: number,
-    impactY?: number,
+    penetrationX?: number,
+    penetrationY?: number,
     attackerX?: number,
     attackerY?: number
   ): void {
@@ -555,14 +555,14 @@ export class EntityRenderer {
     // Calculate magnitudes for each momentum vector
     const velocityMag = (velocityX !== undefined && velocityY !== undefined)
       ? Math.sqrt(velocityX * velocityX + velocityY * velocityY) : 0;
-    const impactMag = (impactX !== undefined && impactY !== undefined)
-      ? Math.sqrt(impactX * impactX + impactY * impactY) : 0;
+    const penetrationMag = (penetrationX !== undefined && penetrationY !== undefined)
+      ? Math.sqrt(penetrationX * penetrationX + penetrationY * penetrationY) : 0;
     const attackerMag = (attackerX !== undefined && attackerY !== undefined)
       ? Math.sqrt(attackerX * attackerX + attackerY * attackerY) : 0;
 
     // Calculate combined momentum (sum of all vectors)
-    const combinedX = (velocityX ?? 0) + (impactX ?? 0) + (attackerX ?? 0);
-    const combinedY = (velocityY ?? 0) + (impactY ?? 0) + (attackerY ?? 0);
+    const combinedX = (velocityX ?? 0) + (penetrationX ?? 0) + (attackerX ?? 0);
+    const combinedY = (velocityY ?? 0) + (penetrationY ?? 0) + (attackerY ?? 0);
     const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
 
     this.explosions.push({
@@ -577,10 +577,10 @@ export class EntityRenderer {
       velocityX,
       velocityY,
       velocityMag,
-      // Impact force
-      impactX,
-      impactY,
-      impactMag,
+      // Penetration direction
+      penetrationX,
+      penetrationY,
+      penetrationMag,
       // Attacker direction
       attackerX,
       attackerY,
@@ -797,14 +797,14 @@ export class EntityRenderer {
         velStrength = Math.min(exp.velocityMag! / 400, 1);
       }
 
-      // 2. IMPACT (knockback force) - affects debris, shockwaves
-      let impactDirX = 0, impactDirY = 0, impactStrength = 0, impactAngle = 0;
-      const hasImpact = (exp.impactMag ?? 0) > 10;
-      if (hasImpact) {
-        impactDirX = (exp.impactX ?? 0) / exp.impactMag!;
-        impactDirY = (exp.impactY ?? 0) / exp.impactMag!;
-        impactAngle = Math.atan2(impactDirY, impactDirX);
-        impactStrength = Math.min(exp.impactMag! / 400, 1);
+      // 2. PENETRATION (from hit point through center) - affects debris, shockwaves
+      let penDirX = 0, penDirY = 0, penStrength = 0, penAngle = 0;
+      const hasPenetration = (exp.penetrationMag ?? 0) > 10;
+      if (hasPenetration) {
+        penDirX = (exp.penetrationX ?? 0) / exp.penetrationMag!;
+        penDirY = (exp.penetrationY ?? 0) / exp.penetrationMag!;
+        penAngle = Math.atan2(penDirY, penDirX);
+        penStrength = Math.min(exp.penetrationMag! / 400, 1);
       }
 
       // 3. ATTACKER (projectile/beam direction) - affects sparks, secondary explosions
@@ -845,7 +845,7 @@ export class EntityRenderer {
       if (progress > 0.1) {
         const smokeCount = 6 + Math.floor(velStrength * 4);
         for (let i = 0; i < smokeCount; i++) {
-          const smokeProgress = Math.max(0, (progress - 0.1 - i * 0.03) * 1.5);
+          const smokeProgress = Math.max(0, (progress - 0.1 - i * 0.02) * 1.8);
           if (smokeProgress <= 0 || smokeProgress > 1) continue;
 
           // Smoke drifts upward and OPPOSITE to velocity (trails behind)
@@ -865,11 +865,16 @@ export class EntityRenderer {
 
           const smokeX = centerX + Math.cos(smokeAngle) * smokeDist;
           const smokeY = centerY + Math.sin(smokeAngle) * smokeDist - smokeProgress * 8; // Drift up
-          const smokeSize = exp.radius * 0.3 * (1 - smokeProgress * 0.5) * (0.8 + seededRandom(i + 102) * 0.4);
-          const smokeAlpha = 0.15 * (1 - smokeProgress);
 
-          this.graphics.fillStyle(0x444444, smokeAlpha);
-          this.graphics.fillCircle(smokeX, smokeY, smokeSize);
+          // Smoke fades completely when it stops moving
+          const smokeFade = 1 - smokeProgress;
+          const smokeSize = exp.radius * 0.3 * smokeFade * (0.8 + seededRandom(i + 102) * 0.4);
+          const smokeAlpha = 0.15 * smokeFade;
+
+          if (smokeFade > 0.05) {
+            this.graphics.fillStyle(0x444444, smokeAlpha);
+            this.graphics.fillCircle(smokeX, smokeY, smokeSize);
+          }
         }
       }
 
@@ -902,10 +907,10 @@ export class EntityRenderer {
         const ringThickness = (4 - r) * (1 - ringProgress) + 1;
         const ringAlpha = alpha * (0.6 - r * 0.15) * (1 - ringProgress * 0.5);
 
-        // Offset rings in IMPACT direction (direction of knockback)
-        const ringOffsetMult = hasImpact ? impactStrength * 0.5 * (r + 1) : 0;
-        const ringX = centerX + impactDirX * ringRadius * ringOffsetMult;
-        const ringY = centerY + impactDirY * ringRadius * ringOffsetMult;
+        // Offset rings in PENETRATION direction (where attack entered)
+        const ringOffsetMult = hasPenetration ? penStrength * 0.5 * (r + 1) : 0;
+        const ringX = centerX + penDirX * ringRadius * ringOffsetMult;
+        const ringY = centerY + penDirY * ringRadius * ringOffsetMult;
 
         this.graphics.lineStyle(ringThickness, r === 0 ? 0xffffff : exp.color, ringAlpha);
         this.graphics.strokeCircle(ringX, ringY, ringRadius);
@@ -1020,25 +1025,26 @@ export class EntityRenderer {
         const sparkY = centerY + Math.sin(finalAngle) * sparkDist;
 
         // Draw LONG spark trail - the key visual for "ripping through"
-        const trailLength = Math.min(sparkDist * 0.5, 30) * (1 - sparkProgress * 0.3); // Much longer trails
-        if (trailLength > 2) {
+        const sparkFade = 1 - sparkProgress; // Fade to 0 when stopped
+        const trailLength = Math.min(sparkDist * 0.5, 30) * sparkFade;
+        if (trailLength > 2 && sparkFade > 0.05) {
           const trailStartX = sparkX - Math.cos(finalAngle) * trailLength;
           const trailStartY = sparkY - Math.sin(finalAngle) * trailLength;
           // Gradient trail - brighter at head
-          this.graphics.lineStyle(3, 0xff6622, alpha * 0.3 * (1 - sparkProgress));
+          this.graphics.lineStyle(3, 0xff6622, alpha * 0.3 * sparkFade);
           this.graphics.lineBetween(trailStartX, trailStartY, sparkX, sparkY);
-          this.graphics.lineStyle(2, 0xffaa44, alpha * 0.6 * (1 - sparkProgress));
+          this.graphics.lineStyle(2, 0xffaa44, alpha * 0.6 * sparkFade);
           const midX = (trailStartX + sparkX) / 2;
           const midY = (trailStartY + sparkY) / 2;
           this.graphics.lineBetween(midX, midY, sparkX, sparkY);
         }
 
         // Bigger, brighter spark head
-        const sparkSize = (3.5 + seededRandom(i + 303) * 3) * (1 - sparkProgress * 0.6);
-        if (sparkSize > 0.5) {
-          this.graphics.fillStyle(0xffdd88, alpha * 0.95 * (1 - sparkProgress * 0.4));
+        const sparkSize = (3.5 + seededRandom(i + 303) * 3) * sparkFade;
+        if (sparkSize > 0.5 && sparkFade > 0.05) {
+          this.graphics.fillStyle(0xffdd88, alpha * 0.95 * sparkFade);
           this.graphics.fillCircle(sparkX, sparkY, sparkSize);
-          this.graphics.fillStyle(0xffffff, alpha * 0.8 * (1 - sparkProgress * 0.5));
+          this.graphics.fillStyle(0xffffff, alpha * 0.8 * sparkFade);
           this.graphics.fillCircle(sparkX, sparkY, sparkSize * 0.5);
         }
       }
@@ -1064,57 +1070,58 @@ export class EntityRenderer {
           const fragY = centerY + Math.sin(fragAngle) * fragDist;
 
           // Fragment trail - molten metal streaks
-          const fragTrailLen = Math.min(fragDist * 0.4, 25);
-          if (fragTrailLen > 3) {
+          const fragFade = 1 - fragProgress; // Fade to 0 when stopped
+          const fragTrailLen = Math.min(fragDist * 0.4, 25) * fragFade;
+          if (fragTrailLen > 3 && fragFade > 0.05) {
             const trailStartX = fragX - Math.cos(fragAngle) * fragTrailLen;
             const trailStartY = fragY - Math.sin(fragAngle) * fragTrailLen;
-            this.graphics.lineStyle(4, 0xff4400, alpha * 0.4 * (1 - fragProgress));
+            this.graphics.lineStyle(4, 0xff4400, alpha * 0.4 * fragFade);
             this.graphics.lineBetween(trailStartX, trailStartY, fragX, fragY);
-            this.graphics.lineStyle(2, 0xffaa00, alpha * 0.7 * (1 - fragProgress));
+            this.graphics.lineStyle(2, 0xffaa00, alpha * 0.7 * fragFade);
             this.graphics.lineBetween(trailStartX, trailStartY, fragX, fragY);
           }
 
           // Hot fragment head - glowing metal chunk
-          const fragSize = (4 + seededRandom(i + 353) * 4) * (1 - fragProgress * 0.5);
-          if (fragSize > 1) {
-            this.graphics.fillStyle(0xff6600, alpha * 0.9 * (1 - fragProgress * 0.3));
+          const fragSize = (4 + seededRandom(i + 353) * 4) * fragFade;
+          if (fragSize > 1 && fragFade > 0.05) {
+            this.graphics.fillStyle(0xff6600, alpha * 0.9 * fragFade);
             this.graphics.fillCircle(fragX, fragY, fragSize);
-            this.graphics.fillStyle(0xffcc44, alpha * 0.7 * (1 - fragProgress * 0.4));
+            this.graphics.fillStyle(0xffcc44, alpha * 0.7 * fragFade);
             this.graphics.fillCircle(fragX, fragY, fragSize * 0.6);
-            this.graphics.fillStyle(0xffffff, alpha * 0.5 * (1 - fragProgress * 0.5));
+            this.graphics.fillStyle(0xffffff, alpha * 0.5 * fragFade);
             this.graphics.fillCircle(fragX, fragY, fragSize * 0.25);
           }
         }
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 7: DEBRIS CHUNKS (uses IMPACT - blown away by knockback force)
-      // Debris is pushed in the direction of the knockback from the killing blow
+      // LAYER 7: DEBRIS CHUNKS (uses PENETRATION - pushed through where attack entered)
+      // Debris is pushed in the penetration direction
       // ------------------------------------------------------------------------
-      const debrisCount = 8 + Math.floor(impactStrength * 6);
+      const debrisCount = 8 + Math.floor(penStrength * 6);
       for (let i = 0; i < debrisCount; i++) {
-        const debrisDelay = seededRandom(i + 400) * 0.1;
-        const debrisProgress = Math.max(0, Math.min(1, (progress - debrisDelay) * 0.9));
+        const debrisDelay = seededRandom(i + 400) * 0.08;
+        const debrisProgress = Math.max(0, Math.min(1, (progress - debrisDelay) * 1.3));
         if (debrisProgress <= 0) continue;
 
         const baseAngle = seededRandom(i + 401) * Math.PI * 2;
         const debrisSpeed = 0.5 + seededRandom(i + 402) * 0.5;
 
-        // Heavy IMPACT bias for debris (blown away by knockback)
+        // Heavy PENETRATION bias for debris (pushed through where attack entered)
         let finalAngle = baseAngle;
         let distMult = 1;
-        if (hasImpact) {
-          let angleDiff = baseAngle - impactAngle;
+        if (hasPenetration) {
+          let angleDiff = baseAngle - penAngle;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
           const alignment = Math.cos(angleDiff);
           if (alignment > 0) {
-            // Strong bias toward impact direction (blown away)
-            distMult = 1 + alignment * impactStrength * 1.8;
-            finalAngle = baseAngle - angleDiff * 0.6 * impactStrength;
+            // Strong bias toward penetration direction
+            distMult = 1 + alignment * penStrength * 1.8;
+            finalAngle = baseAngle - angleDiff * 0.6 * penStrength;
           } else {
-            distMult = Math.max(0.2, 1 + alignment * impactStrength * 0.5);
+            distMult = Math.max(0.2, 1 + alignment * penStrength * 0.5);
           }
         }
 
@@ -1124,13 +1131,14 @@ export class EntityRenderer {
         const debrisX = centerX + Math.cos(finalAngle) * debrisDist;
         const debrisY = centerY + Math.sin(finalAngle) * debrisDist + gravityDrop;
 
-        // Debris size varies and shrinks over time
-        const debrisSize = (3 + seededRandom(i + 403) * 4) * (1 - debrisProgress * 0.4);
-        if (debrisSize > 1) {
+        // Debris fades completely when it stops moving
+        const debrisFade = 1 - debrisProgress;
+        const debrisSize = (3 + seededRandom(i + 403) * 4) * debrisFade;
+        if (debrisSize > 1 && debrisFade > 0.05) {
           // Dark debris with bright edge
-          this.graphics.fillStyle(0x332211, alpha * 0.8);
+          this.graphics.fillStyle(0x332211, alpha * 0.8 * debrisFade);
           this.graphics.fillCircle(debrisX, debrisY, debrisSize);
-          this.graphics.fillStyle(0x664422, alpha * 0.5);
+          this.graphics.fillStyle(0x664422, alpha * 0.5 * debrisFade);
           this.graphics.fillCircle(debrisX - debrisSize * 0.3, debrisY - debrisSize * 0.3, debrisSize * 0.5);
         }
       }
@@ -1139,10 +1147,10 @@ export class EntityRenderer {
       // LAYER 8: FIRE EMBERS (uses VELOCITY - trail behind moving unit)
       // Embers drift in the opposite direction of unit velocity (trailing effect)
       // ------------------------------------------------------------------------
-      if (progress > 0.2) {
+      if (progress > 0.15) {
         const emberCount = 10 + Math.floor(velStrength * 8);
         for (let i = 0; i < emberCount; i++) {
-          const emberProgress = Math.max(0, (progress - 0.2 - seededRandom(i + 500) * 0.3) * 1.5);
+          const emberProgress = Math.max(0, (progress - 0.15 - seededRandom(i + 500) * 0.2) * 2.0);
           if (emberProgress <= 0 || emberProgress > 1) continue;
 
           const baseAngle = seededRandom(i + 501) * Math.PI * 2;
@@ -1163,12 +1171,13 @@ export class EntityRenderer {
           const emberX = centerX + Math.cos(emberAngle) * emberDist;
           const emberY = centerY + Math.sin(emberAngle) * emberDist - emberProgress * 15;
 
-          // Flickering brightness
+          // Embers fade completely when they stop moving
+          const emberFade = 1 - emberProgress;
           const flicker = 0.7 + Math.sin(emberProgress * 20 + i) * 0.3;
-          const emberSize = (1.5 + seededRandom(i + 503) * 1.5) * (1 - emberProgress * 0.6);
-          const emberAlpha = alpha * 0.8 * flicker * (1 - emberProgress * 0.7);
+          const emberSize = (1.5 + seededRandom(i + 503) * 1.5) * emberFade;
+          const emberAlpha = alpha * 0.8 * flicker * emberFade;
 
-          if (emberSize > 0.5 && emberAlpha > 0.05) {
+          if (emberSize > 0.5 && emberFade > 0.05) {
             this.graphics.fillStyle(0xff6600, emberAlpha);
             this.graphics.fillCircle(emberX, emberY, emberSize);
             this.graphics.fillStyle(0xffcc00, emberAlpha * 0.6);
@@ -1185,7 +1194,7 @@ export class EntityRenderer {
         const trailCount = Math.floor(combinedStrength * 15);
         for (let i = 0; i < trailCount; i++) {
           const trailT = i / trailCount;
-          const trailProgress = Math.max(0, Math.min(1, (progress - trailT * 0.3) * 1.4));
+          const trailProgress = Math.max(0, Math.min(1, (progress - trailT * 0.2) * 1.6));
           if (trailProgress <= 0) continue;
 
           // Trail follows COMBINED direction with slight spread
@@ -1196,97 +1205,17 @@ export class EntityRenderer {
           const trailX = exp.x + Math.cos(trailAngle) * trailDist;
           const trailY = exp.y + Math.sin(trailAngle) * trailDist;
 
-          // Size decreases along trail
-          const trailSize = (3 + seededRandom(i + 601) * 2) * (1 - trailT * 0.5) * (1 - trailProgress * 0.6);
-          const trailAlpha = alpha * 0.7 * (1 - trailT * 0.3) * (1 - trailProgress * 0.5);
+          // Trail fades completely when it stops moving
+          const trailFade = 1 - trailProgress;
+          const trailSize = (3 + seededRandom(i + 601) * 2) * (1 - trailT * 0.5) * trailFade;
+          const trailAlpha = alpha * 0.7 * (1 - trailT * 0.3) * trailFade;
 
-          if (trailSize > 0.5 && trailAlpha > 0.05) {
+          if (trailSize > 0.5 && trailFade > 0.05) {
             // Hot streak
             this.graphics.fillStyle(0xff8844, trailAlpha);
             this.graphics.fillCircle(trailX, trailY, trailSize);
             this.graphics.fillStyle(0xffcc88, trailAlpha * 0.5);
             this.graphics.fillCircle(trailX, trailY, trailSize * 0.4);
-          }
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 10: SECONDARY EXPLOSIONS (uses ATTACKER - penetration path)
-      // Chain of explosions RIPPING along the projectile/beam path through the unit
-      // ------------------------------------------------------------------------
-      if (hasAttacker && attackStrength > 0.15 && progress > 0.05 && progress < 0.7) {
-        const secondaryCount = 4 + Math.floor(attackStrength * 10); // More explosions
-        for (let i = 0; i < secondaryCount; i++) {
-          const secDelay = 0.05 + i * 0.04 + seededRandom(i + 700) * 0.08; // Staggered chain
-          const secProgress = Math.max(0, Math.min(1, (progress - secDelay) * 2.5));
-          if (secProgress <= 0 || secProgress >= 1) continue;
-
-          // Secondary explosions along ATTACKER path - spreading further out
-          const secDist = exp.radius * (0.6 + i * 0.7 + seededRandom(i + 701) * 0.4);
-          const secAngle = attackAngle + (seededRandom(i + 702) - 0.5) * 0.25; // Tighter spread
-          const secX = exp.x + Math.cos(secAngle) * secDist;
-          const secY = exp.y + Math.sin(secAngle) * secDist;
-          const secRadius = exp.radius * (0.35 + seededRandom(i + 703) * 0.15) * (1 - secProgress * 0.7);
-          const secAlpha = (1 - secProgress * 0.8) * 0.75;
-
-          // Bigger, brighter mini fireball
-          this.graphics.fillStyle(0xdd3300, secAlpha * 0.6);
-          this.graphics.fillCircle(secX, secY, secRadius * 1.3);
-          this.graphics.fillStyle(0xff6600, secAlpha * 0.8);
-          this.graphics.fillCircle(secX, secY, secRadius);
-          this.graphics.fillStyle(0xffaa44, secAlpha * 0.7);
-          this.graphics.fillCircle(secX, secY, secRadius * 0.6);
-          this.graphics.fillStyle(0xffdd88, secAlpha * 0.5);
-          this.graphics.fillCircle(secX, secY, secRadius * 0.35);
-          this.graphics.fillStyle(0xffffff, secAlpha * 0.4);
-          this.graphics.fillCircle(secX, secY, secRadius * 0.15);
-
-          // Mini shockwave ring
-          this.graphics.lineStyle(3 * (1 - secProgress) + 1, 0xffaa44, secAlpha * 0.5);
-          this.graphics.strokeCircle(secX, secY, secRadius * (1 + secProgress * 0.8));
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 11: EXIT WOUND BURST - Final explosive spray exiting the unit
-      // A concentrated burst where the attack "exits" the unit
-      // ------------------------------------------------------------------------
-      if (hasAttacker && attackStrength > 0.3 && progress > 0.1 && progress < 0.5) {
-        const exitProgress = Math.max(0, Math.min(1, (progress - 0.1) * 3));
-        const exitDist = exp.radius * (1.5 + exitProgress * 2.5);
-        const exitX = exp.x + Math.cos(attackAngle) * exitDist;
-        const exitY = exp.y + Math.sin(attackAngle) * exitDist;
-
-        // Exit wound flash
-        const exitRadius = exp.radius * 0.6 * (1 - exitProgress * 0.6) * attackStrength;
-        const exitAlpha = (1 - exitProgress) * 0.8;
-
-        if (exitRadius > 2) {
-          // Outer glow
-          this.graphics.fillStyle(0xff4400, exitAlpha * 0.4);
-          this.graphics.fillCircle(exitX, exitY, exitRadius * 1.5);
-          // Main burst
-          this.graphics.fillStyle(0xff8844, exitAlpha * 0.7);
-          this.graphics.fillCircle(exitX, exitY, exitRadius);
-          // Hot core
-          this.graphics.fillStyle(0xffcc88, exitAlpha * 0.6);
-          this.graphics.fillCircle(exitX, exitY, exitRadius * 0.5);
-          this.graphics.fillStyle(0xffffff, exitAlpha * 0.5);
-          this.graphics.fillCircle(exitX, exitY, exitRadius * 0.2);
-
-          // Spray of mini-sparks from exit point
-          const exitSparkCount = 6 + Math.floor(attackStrength * 8);
-          for (let i = 0; i < exitSparkCount; i++) {
-            const sparkAngle = attackAngle + (seededRandom(i + 800) - 0.5) * 1.2;
-            const sparkDist = exitRadius * (0.5 + exitProgress * 2) * (0.8 + seededRandom(i + 801) * 0.6);
-            const sparkX = exitX + Math.cos(sparkAngle) * sparkDist;
-            const sparkY = exitY + Math.sin(sparkAngle) * sparkDist;
-            const sparkSize = (2 + seededRandom(i + 802) * 2) * (1 - exitProgress * 0.7);
-
-            if (sparkSize > 0.5) {
-              this.graphics.fillStyle(0xffdd88, exitAlpha * 0.8);
-              this.graphics.fillCircle(sparkX, sparkY, sparkSize);
-            }
           }
         }
       }

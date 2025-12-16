@@ -282,10 +282,21 @@ export class DamageSystem {
       const forceX = knockbackDirX * force;
       const forceY = knockbackDirY * force;
 
+      // Calculate hit point using T value
+      const hitX = source.startX + hit.t * (source.endX - source.startX);
+      const hitY = source.startY + hit.t * (source.endY - source.startY);
+
+      // Calculate penetration direction: from hit point through unit center
+      const penDirX = entity.transform.x - hitX;
+      const penDirY = entity.transform.y - hitY;
+      const penMag = Math.sqrt(penDirX * penDirX + penDirY * penDirY);
+      const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
+      const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
+
       // Apply damage with death context (attacker direction = beam direction)
       this.applyDamageToEntity(entity, source.damage, result, {
-        impactForceX: forceX,
-        impactForceY: forceY,
+        penetrationDirX: penNormX,
+        penetrationDirY: penNormY,
         attackerDirX: knockbackDirX,
         attackerDirY: knockbackDirY,
         attackMagnitude: source.damage,
@@ -392,10 +403,21 @@ export class DamageSystem {
       const forceX = knockbackDirX * force;
       const forceY = knockbackDirY * force;
 
+      // Calculate hit point using T value along projectile path
+      const hitX = source.prevX + hit.t * (source.currentX - source.prevX);
+      const hitY = source.prevY + hit.t * (source.currentY - source.prevY);
+
+      // Calculate penetration direction: from hit point through unit center
+      const penDirX = entity.transform.x - hitX;
+      const penDirY = entity.transform.y - hitY;
+      const penMag = Math.sqrt(penDirX * penDirX + penDirY * penDirY);
+      const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
+      const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
+
       // Apply damage with death context (attacker direction = projectile travel direction)
       this.applyDamageToEntity(entity, source.damage, result, {
-        impactForceX: forceX,
-        impactForceY: forceY,
+        penetrationDirX: penNormX,
+        penetrationDirY: penNormY,
         attackerDirX: knockbackDirX,
         attackerDirY: knockbackDirY,
         attackMagnitude: source.damage,
@@ -468,10 +490,11 @@ export class DamageSystem {
       const forceX = dirX * force;
       const forceY = dirY * force;
 
-      // Apply damage with death context (attacker direction = outward from center)
+      // For area damage, penetration direction is from explosion center through unit
+      // (same as knockback direction - outward from center)
       this.applyDamageToEntity(unit, damage, result, {
-        impactForceX: forceX,
-        impactForceY: forceY,
+        penetrationDirX: dirX,
+        penetrationDirY: dirY,
         attackerDirX: dirX,
         attackerDirY: dirY,
         attackMagnitude: damage,
@@ -521,12 +544,11 @@ export class DamageSystem {
       // Calculate direction (from center outward)
       const dirX = dist > 0 ? dx / dist : 0;
       const dirY = dist > 0 ? dy / dist : 0;
-      const force = damage * KNOCKBACK_FORCE_MULTIPLIER;
 
       // Apply damage with death context
       this.applyDamageToEntity(building, damage, result, {
-        impactForceX: dirX * force,
-        impactForceY: dirY * force,
+        penetrationDirX: dirX,
+        penetrationDirY: dirY,
         attackerDirX: dirX,
         attackerDirY: dirY,
         attackMagnitude: damage,

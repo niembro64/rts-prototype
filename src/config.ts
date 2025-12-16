@@ -68,7 +68,7 @@ export const WAVE_PULL_STRENGTH = 180;
  * Units moving fast when they die will have explosions trailing their motion.
  * 0 = ignore unit velocity, 1.0 = realistic, 5.0+ = exaggerated
  */
-export const EXPLOSION_VELOCITY_MULTIPLIER = 3000.0;
+export const EXPLOSION_VELOCITY_MULTIPLIER = 30.0;
 
 /**
  * Multiplier for the impact force/damage direction.
@@ -76,7 +76,7 @@ export const EXPLOSION_VELOCITY_MULTIPLIER = 3000.0;
  * This uses the knockback force from the weapon that killed them.
  * 0 = ignore impact, 1.0 = realistic, 5.0+ = exaggerated
  */
-export const EXPLOSION_IMPACT_FORCE_MULTIPLIER = 8000.0;
+export const EXPLOSION_IMPACT_FORCE_MULTIPLIER = 80.0;
 
 /**
  * Multiplier for the attacker's projectile/beam direction.
@@ -84,7 +84,7 @@ export const EXPLOSION_IMPACT_FORCE_MULTIPLIER = 8000.0;
  * For beams, this is the direction from attacker to target.
  * 0 = ignore attacker direction, 1.0 = realistic, 5.0+ = exaggerated
  */
-export const EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER = 5000.0;
+export const EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER = 50.0;
 
 /**
  * Base explosion momentum even when all factors are zero.

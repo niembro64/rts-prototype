@@ -61,9 +61,10 @@ export interface KnockbackInfo {
 
 // Death context - info about the killing blow for explosion effects
 export interface DeathContext {
-  // Impact force direction (the knockback force from the killing blow)
-  impactForceX: number;
-  impactForceY: number;
+  // Penetration direction: from hit point through unit center (normalized)
+  // This shows which side of the unit was hit - debris flies out the opposite side
+  penetrationDirX: number;
+  penetrationDirY: number;
   // Attacker's projectile/beam direction (direction damage traveled)
   attackerDirX: number;
   attackerDirY: number;

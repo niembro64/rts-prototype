@@ -347,17 +347,17 @@ export class RtsScene extends Phaser.Scene {
           const velocityX = (entity.unit.velocityX ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
           const velocityY = (entity.unit.velocityY ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
 
-          // 2 & 3: Impact force and attacker direction from death context
-          let impactX = 0;
-          let impactY = 0;
+          // 2 & 3: Penetration direction and attacker direction from death context
+          let penetrationX = 0;
+          let penetrationY = 0;
           let attackerX = 0;
           let attackerY = 0;
 
           const ctx = deathContexts?.get(id);
           if (ctx) {
-            // Impact force (knockback direction from the killing blow)
-            impactX = ctx.impactForceX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
-            impactY = ctx.impactForceY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+            // Penetration direction (from hit point through unit center)
+            penetrationX = ctx.penetrationDirX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+            penetrationY = ctx.penetrationDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
 
             // Attacker direction (direction the projectile/beam was traveling)
             // Scale by attack magnitude for bigger hits = bigger directional effect
@@ -370,8 +370,8 @@ export class RtsScene extends Phaser.Scene {
           // We add it to velocity since that's always present
           let baseVelX = velocityX;
           let baseVelY = velocityY;
-          const combinedX = velocityX + impactX + attackerX;
-          const combinedY = velocityY + impactY + attackerY;
+          const combinedX = velocityX + penetrationX + attackerX;
+          const combinedY = velocityY + penetrationY + attackerY;
           const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
           if (combinedMag > 0 && EXPLOSION_BASE_MOMENTUM > 0) {
             baseVelX += (combinedX / combinedMag) * EXPLOSION_BASE_MOMENTUM;
@@ -386,8 +386,8 @@ export class RtsScene extends Phaser.Scene {
             'death',
             baseVelX,
             baseVelY,
-            impactX,
-            impactY,
+            penetrationX,
+            penetrationY,
             attackerX,
             attackerY
           );
