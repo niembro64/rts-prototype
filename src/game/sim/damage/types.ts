@@ -52,6 +52,13 @@ export interface AreaDamageSource extends DamageSourceBase {
 // Union type for all damage sources
 export type AnyDamageSource = LineDamageSource | SweptDamageSource | AreaDamageSource;
 
+// Knockback info for a hit entity
+export interface KnockbackInfo {
+  entityId: EntityId;
+  forceX: number;  // Force direction X (normalized) * damage * multiplier
+  forceY: number;  // Force direction Y (normalized) * damage * multiplier
+}
+
 // Result from damage application
 export interface DamageResult {
   hitEntityIds: EntityId[];
@@ -59,6 +66,8 @@ export interface DamageResult {
   killedBuildingIds: EntityId[];
   // For line damage - where the line was blocked (0-1 parametric)
   truncationT?: number;
+  // Knockback forces to apply to hit entities
+  knockbacks: KnockbackInfo[];
 }
 
 // Hit info for sorting by distance

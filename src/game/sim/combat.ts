@@ -630,7 +630,7 @@ export function applyWaveDamage(
       const sliceHalfAngle = currentAngle / 2;
 
       // Apply area damage with slice using unified DamageSystem
-      damageSystem.applyDamage({
+      const damageResult = damageSystem.applyDamage({
         type: 'area',
         sourceEntityId: unit.id,
         ownerId: unit.ownership.playerId,
@@ -643,6 +643,9 @@ export function applyWaveDamage(
         sliceAngle: currentAngle,
         sliceDirection: turretAngle,
       });
+
+      // Apply knockback forces from damage
+      applyKnockbackForces(world, damageResult.knockbacks, forceAccumulator);
 
       // Apply pull effect to all enemy units in the slice
       for (const target of world.getUnits()) {
@@ -690,8 +693,34 @@ export function applyWaveDamage(
   }
 }
 
+// Helper to apply knockback forces from damage result
+function applyKnockbackForces(
+  world: WorldState,
+  knockbacks: { entityId: EntityId; forceX: number; forceY: number }[],
+  forceAccumulator?: ForceAccumulator
+): void {
+  if (!forceAccumulator) return;
+  for (const knockback of knockbacks) {
+    const target = world.getEntity(knockback.entityId);
+    const targetMass = (target?.body?.matterBody as { mass?: number })?.mass ?? 1;
+    forceAccumulator.addDirectionalForce(
+      knockback.entityId,
+      knockback.forceX,
+      knockback.forceY,
+      1, // force already calculated in damage system
+      targetMass,
+      true,
+      'knockback'
+    );
+  }
+}
+
 // Update projectile positions - returns IDs of projectiles to remove (e.g., orphaned beams)
-export function updateProjectiles(world: WorldState, dtMs: number, damageSystem: DamageSystem): EntityId[] {
+export function updateProjectiles(
+  world: WorldState,
+  dtMs: number,
+  damageSystem: DamageSystem
+): EntityId[] {
   const dtSec = dtMs / 1000;
   const projectilesToRemove: EntityId[] = [];
 
@@ -786,7 +815,12 @@ export function updateProjectiles(world: WorldState, dtMs: number, damageSystem:
 // Check projectile collisions and apply damage
 // Friendly fire is enabled - projectiles hit ALL units and buildings
 // Uses DamageSystem for unified collision detection (swept volumes, line damage, etc.)
-export function checkProjectileCollisions(world: WorldState, dtMs: number, damageSystem: DamageSystem): CollisionResult {
+export function checkProjectileCollisions(
+  world: WorldState,
+  dtMs: number,
+  damageSystem: DamageSystem,
+  forceAccumulator?: ForceAccumulator
+): CollisionResult {
   const projectilesToRemove: EntityId[] = [];
   const unitsToRemove: EntityId[] = [];
   const buildingsToRemove: EntityId[] = [];
@@ -816,6 +850,9 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number, damag
           falloff: config.splashDamageFalloff ?? 0.5,
         });
         proj.hasExploded = true;
+
+        // Apply knockback from splash
+        applyKnockbackForces(world, splashResult.knockbacks, forceAccumulator);
 
         // Track killed entities
         for (const id of splashResult.killedUnitIds) {
@@ -879,6 +916,9 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number, damag
         piercing: config.piercing ?? false,
         maxHits: config.piercing ? Infinity : 1,
       });
+
+      // Apply knockback from beam
+      applyKnockbackForces(world, result.knockbacks, forceAccumulator);
 
       // Handle hit audio events (skip for continuous beams)
       const isContinuousBeam = config.cooldown === 0;
@@ -952,6 +992,9 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number, damag
         maxHits: proj.maxHits - proj.hitEntities.size, // Remaining hits allowed
       });
 
+      // Apply knockback from projectile hit
+      applyKnockbackForces(world, result.knockbacks, forceAccumulator);
+
       // Track hits
       for (const hitId of result.hitEntityIds) {
         proj.hitEntities.add(hitId);
@@ -982,6 +1025,9 @@ export function checkProjectileCollisions(world: WorldState, dtMs: number, damag
           falloff: config.splashDamageFalloff ?? 0.5,
         });
         proj.hasExploded = true;
+
+        // Apply knockback from splash
+        applyKnockbackForces(world, splashResult.knockbacks, forceAccumulator);
 
         // Track splash kills
         for (const id of splashResult.killedUnitIds) {

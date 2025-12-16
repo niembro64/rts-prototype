@@ -11,6 +11,7 @@ import type {
   DamageResult,
   HitInfo,
 } from './types';
+import { KNOCKBACK_FORCE_MULTIPLIER } from '../../../config';
 
 // Normalize angle to [-PI, PI]
 function normalizeAngle(angle: number): number {
@@ -213,7 +214,15 @@ export class DamageSystem {
       hitEntityIds: [],
       killedUnitIds: [],
       killedBuildingIds: [],
+      knockbacks: [],
     };
+
+    // Calculate knockback direction (along the beam)
+    const beamDx = source.endX - source.startX;
+    const beamDy = source.endY - source.startY;
+    const beamLen = Math.sqrt(beamDx * beamDx + beamDy * beamDy);
+    const knockbackDirX = beamLen > 0 ? beamDx / beamLen : 0;
+    const knockbackDirY = beamLen > 0 ? beamDy / beamLen : 0;
 
     // Collect all hits with their T values
     const hits: HitInfo[] = [];
@@ -270,6 +279,16 @@ export class DamageSystem {
       result.hitEntityIds.push(hit.entityId);
       hitCount++;
 
+      // Add knockback for units (buildings don't get pushed)
+      if (hit.isUnit && KNOCKBACK_FORCE_MULTIPLIER > 0) {
+        const force = source.damage * KNOCKBACK_FORCE_MULTIPLIER;
+        result.knockbacks.push({
+          entityId: hit.entityId,
+          forceX: knockbackDirX * force,
+          forceY: knockbackDirY * force,
+        });
+      }
+
       // For non-piercing, record truncation point and stop
       if (!source.piercing) {
         result.truncationT = hit.t;
@@ -287,7 +306,15 @@ export class DamageSystem {
       hitEntityIds: [],
       killedUnitIds: [],
       killedBuildingIds: [],
+      knockbacks: [],
     };
+
+    // Calculate knockback direction (along projectile travel)
+    const projDx = source.currentX - source.prevX;
+    const projDy = source.currentY - source.prevY;
+    const projLen = Math.sqrt(projDx * projDx + projDy * projDy);
+    const knockbackDirX = projLen > 0 ? projDx / projLen : 0;
+    const knockbackDirY = projLen > 0 ? projDy / projLen : 0;
 
     // Collect all hits with their T values
     const hits: HitInfo[] = [];
@@ -349,6 +376,16 @@ export class DamageSystem {
       this.applyDamageToEntity(entity, source.damage, result);
       result.hitEntityIds.push(hit.entityId);
       hitCount++;
+
+      // Add knockback for units (buildings don't get pushed)
+      if (hit.isUnit && KNOCKBACK_FORCE_MULTIPLIER > 0) {
+        const force = source.damage * KNOCKBACK_FORCE_MULTIPLIER;
+        result.knockbacks.push({
+          entityId: hit.entityId,
+          forceX: knockbackDirX * force,
+          forceY: knockbackDirY * force,
+        });
+      }
     }
 
     return result;
@@ -360,6 +397,7 @@ export class DamageSystem {
       hitEntityIds: [],
       killedUnitIds: [],
       killedBuildingIds: [],
+      knockbacks: [],
     };
 
     const hasSlice = source.sliceAngle !== undefined && source.sliceDirection !== undefined;
@@ -399,6 +437,16 @@ export class DamageSystem {
 
       this.applyDamageToEntity(unit, damage, result);
       result.hitEntityIds.push(unit.id);
+
+      // Add knockback (direction is from center outward)
+      if (KNOCKBACK_FORCE_MULTIPLIER > 0 && dist > 0) {
+        const force = damage * KNOCKBACK_FORCE_MULTIPLIER;
+        result.knockbacks.push({
+          entityId: unit.id,
+          forceX: (dx / dist) * force,
+          forceY: (dy / dist) * force,
+        });
+      }
     }
 
     // Check buildings

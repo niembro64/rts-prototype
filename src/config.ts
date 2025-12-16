@@ -41,6 +41,17 @@ export const SOLAR_ENERGY_PER_SECOND = 50;
 export const COST_MULTIPLIER = 1.0;
 
 // =============================================================================
+// COMBAT PHYSICS
+// =============================================================================
+
+/**
+ * Knockback force multiplier applied when projectiles/lasers hit units.
+ * Force = damage * KNOCKBACK_FORCE_MULTIPLIER
+ * 0 = no knockback, 1.0 = normal knockback, 2.0 = double knockback
+ */
+export const KNOCKBACK_FORCE_MULTIPLIER = 0.5;
+
+// =============================================================================
 // BUILDING STATS
 // =============================================================================
 
