@@ -23,6 +23,7 @@ const emit = defineEmits<{
   (e: 'join', roomCode: string): void;
   (e: 'start'): void;
   (e: 'cancel'): void;
+  (e: 'spectate'): void;
 }>();
 
 const joinCode = ref('');
@@ -88,6 +89,15 @@ const canJoin = computed(() => {
 <template>
   <div v-if="visible" class="lobby-overlay">
     <div class="lobby-modal">
+      <!-- Spectate button (hide menu to watch background battle) -->
+      <button
+        class="spectate-btn"
+        @click="emit('spectate')"
+        title="Watch Battle"
+      >
+        ●
+      </button>
+
       <!-- Initial screen: Host and Join side by side -->
       <template v-if="!isInLobby && !isConnecting">
         <h1 class="title">BUDGET ANNIHILATION</h1>
@@ -202,6 +212,7 @@ const canJoin = computed(() => {
 }
 
 .lobby-modal {
+  position: relative;
   background: rgba(20, 20, 35, 0.98);
   border: 2px solid #4444aa;
   border-radius: 16px;
@@ -209,6 +220,30 @@ const canJoin = computed(() => {
   min-width: 500px;
   text-align: center;
   box-shadow: 0 0 60px rgba(68, 68, 170, 0.3);
+}
+
+.spectate-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: #555;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.spectate-btn:hover {
+  color: #4a9eff;
+  background: rgba(74, 158, 255, 0.1);
 }
 
 .title {

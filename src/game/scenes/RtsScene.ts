@@ -172,7 +172,8 @@ export class RtsScene extends Phaser.Scene {
 
     // Initialize world state
     this.world = new WorldState(42);
-    this.world.setActivePlayer(this.localPlayerId);
+    // In background mode, set active player to 0 (spectator - no unit selection)
+    this.world.setActivePlayer(this.backgroundMode ? 0 as PlayerId : this.localPlayerId);
 
     this.commandQueue = new CommandQueue();
     this.simulation = new Simulation(this.world, this.commandQueue);
@@ -212,10 +213,9 @@ export class RtsScene extends Phaser.Scene {
     const camera = this.cameras.main;
     camera.setBackgroundColor(0x0a0a14); // Darker background outside the map
 
-    // Set zoom level - background mode is more zoomed in to show the action
-    const NORMAL_GAME_ZOOM = 0.4;
-    const BACKGROUND_GAME_ZOOM = 1.0;
-    camera.setZoom(this.backgroundMode ? BACKGROUND_GAME_ZOOM : NORMAL_GAME_ZOOM);
+    // Set zoom level - same for both normal and background mode
+    const INITIAL_ZOOM = 0.4;
+    camera.setZoom(INITIAL_ZOOM);
 
     // Center camera on the map
     camera.centerOn(this.world.mapWidth / 2, this.world.mapHeight / 2);
@@ -244,10 +244,8 @@ export class RtsScene extends Phaser.Scene {
     // Setup renderer
     this.entityRenderer = new EntityRenderer(this, this.world);
 
-    // Setup input (skip in background mode - no player interaction)
-    if (!this.backgroundMode) {
-      this.inputManager = new InputManager(this, this.world, this.commandQueue);
-    }
+    // Setup input - in background mode, camera controls work but no unit selection (activePlayer=0)
+    this.inputManager = new InputManager(this, this.world, this.commandQueue);
 
     // Initialize ClientViewState for all non-background modes
     // - Host/offline: Used for "client view" toggle to see what clients see
@@ -262,15 +260,13 @@ export class RtsScene extends Phaser.Scene {
       }
     }
 
-    // Initialize audio on first user interaction (skip in background mode)
-    if (!this.backgroundMode) {
-      this.input.once('pointerdown', () => {
-        if (!this.audioInitialized) {
-          audioManager.init();
-          this.audioInitialized = true;
-        }
-      });
-    }
+    // Initialize audio on first user interaction
+    this.input.once('pointerdown', () => {
+      if (!this.audioInitialized) {
+        audioManager.init();
+        this.audioInitialized = true;
+      }
+    });
   }
 
   // Handle audio events from simulation (or network)
@@ -836,8 +832,8 @@ export class RtsScene extends Phaser.Scene {
       return;
     }
 
-    // Update input (keyboard camera pan) - skip in background mode
-    if (!this.backgroundMode && this.inputManager) {
+    // Update input (keyboard camera pan, zoom bounds)
+    if (this.inputManager) {
       this.inputManager.update(delta);
     }
 

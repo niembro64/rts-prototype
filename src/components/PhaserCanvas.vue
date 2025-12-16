@@ -29,6 +29,7 @@ let backgroundGameInstance: GameInstance | null = null;
 
 // Lobby state
 const showLobby = ref(true);
+const spectateMode = ref(false); // When true, hide lobby to spectate background battle
 const isHost = ref(false);
 const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
@@ -270,6 +271,10 @@ function handleOffline(): void {
   });
 }
 
+function toggleSpectateMode(): void {
+  spectateMode.value = !spectateMode.value;
+}
+
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
     // Check if already in list
@@ -466,7 +471,7 @@ onUnmounted(() => {
 
     <!-- Lobby Modal -->
     <LobbyModal
-      :visible="showLobby"
+      :visible="showLobby && !spectateMode"
       :is-host="isHost"
       :room-code="roomCode"
       :players="lobbyPlayers"
@@ -478,7 +483,18 @@ onUnmounted(() => {
       @start="handleLobbyStart"
       @cancel="handleLobbyCancel"
       @offline="handleOffline"
+      @spectate="toggleSpectateMode"
     />
+
+    <!-- Spectate mode toggle (show menu button when spectating) -->
+    <button
+      v-if="showLobby && spectateMode"
+      class="spectate-toggle-btn"
+      @click="toggleSpectateMode"
+      title="Show Menu"
+    >
+      ☰
+    </button>
 
     <!-- Game UI (only when game is running) -->
     <template v-if="gameStarted && !showLobby">
@@ -776,6 +792,33 @@ onUnmounted(() => {
 
 .option-btn.active {
   background: rgba(68, 68, 170, 0.9);
+  border-color: #6666cc;
+  color: white;
+}
+
+/* Spectate mode toggle button */
+.spectate-toggle-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3001;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: rgba(20, 20, 35, 0.9);
+  border: 2px solid #4444aa;
+  border-radius: 8px;
+  color: #aaa;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spectate-toggle-btn:hover {
+  background: rgba(40, 40, 60, 0.95);
   border-color: #6666cc;
   color: white;
 }
