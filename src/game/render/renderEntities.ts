@@ -118,48 +118,72 @@ export class EntityRenderer {
     this.entitySource = entitySource;
   }
 
-  // Get or create legs for a legged unit (arachnid: 8 legs, beam/insect: 6 legs, sonic: 4 legs)
-  private getOrCreateLegs(entity: Entity, legCount: 4 | 6 | 8 = 8): ArachnidLeg[] {
+  // Get or create legs for a legged unit
+  // Styles: 'arachnid' (8 chunky), 'daddy' (8 long thin), 'insect' (6 medium)
+  private getOrCreateLegs(entity: Entity, legStyle: 'arachnid' | 'daddy' | 'insect' = 'arachnid'): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
 
     const radius = entity.unit?.collisionRadius ?? 40;
-    const legLength = radius * 1.9;
-    const upperLen = legLength * 0.55;
-    const lowerLen = legLength * 0.55;
 
     // Define left side legs only, then mirror to create right side
     let leftSideConfigs: LegConfig[];
 
-    if (legCount === 4) {
-      // Sonic: 2 legs per side (front and back) - compact spider stance
+    if (legStyle === 'daddy') {
+      // Daddy long legs: 4 very long thin legs per side
+      // Much longer legs relative to body size
+      const legLength = radius * 10;
+      const upperLen = legLength * 0.5;
+      const lowerLen = legLength * 0.55;
+
       leftSideConfigs = [
         {
-          attachOffsetX: radius * 0.4,
-          attachOffsetY: -radius * 0.5,
-          upperLegLength: upperLen * 0.9,
-          lowerLegLength: lowerLen * 0.9,
-          snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.05,
-          snapDistanceMultiplier: 0.9,
-          extensionThreshold: 0.85,
+          attachOffsetX: radius * 0.3,
+          attachOffsetY: -radius * 0.4,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.45,
+          snapTargetAngle: -Math.PI * 0.08,
+          snapDistanceMultiplier: 0.95,
+          extensionThreshold: 0.82,
         },
         {
-          attachOffsetX: -radius * 0.4,
-          attachOffsetY: -radius * 0.5,
-          upperLegLength: upperLen * 0.9,
-          lowerLegLength: lowerLen * 0.9,
-          snapTriggerAngle: Math.PI * 0.99,
-          snapTargetAngle: -Math.PI * 0.1,
-          snapDistanceMultiplier: 0.2,
+          attachOffsetX: radius * 0.1,
+          attachOffsetY: -radius * 0.45,
+          upperLegLength: upperLen * 0.95,
+          lowerLegLength: lowerLen * 0.95,
+          snapTriggerAngle: Math.PI * 0.55,
+          snapTargetAngle: -Math.PI * 0.25,
+          snapDistanceMultiplier: 0.9,
+          extensionThreshold: 0.84,
+        },
+        {
+          attachOffsetX: -radius * 0.1,
+          attachOffsetY: -radius * 0.45,
+          upperLegLength: upperLen * 0.95,
+          lowerLegLength: lowerLen * 0.95,
+          snapTriggerAngle: Math.PI * 0.85,
+          snapTargetAngle: -Math.PI * 0.45,
+          snapDistanceMultiplier: 0.85,
           extensionThreshold: 0.9,
         },
+        {
+          attachOffsetX: -radius * 0.3,
+          attachOffsetY: -radius * 0.4,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.95,
+          snapTargetAngle: -Math.PI * 0.65,
+          snapDistanceMultiplier: 0.4,
+          extensionThreshold: 0.99,
+        },
       ];
-    } else if (legCount === 6) {
+    } else if (legStyle === 'insect') {
       // Insect: 3 legs per side (front to back)
-      // Front: snaps to 30° forward, triggers at 90°
-      // Middle: snaps to ~60°, triggers at ~130°
-      // Back: snaps to 90°, triggers at 170° or full extension
+      const legLength = radius * 1.9;
+      const upperLen = legLength * 0.55;
+      const lowerLen = legLength * 0.55;
+
       leftSideConfigs = [
         {
           attachOffsetX: radius * 0.5,
@@ -193,9 +217,11 @@ export class EntityRenderer {
         },
       ];
     } else {
-      // Arachnid: 4 legs per side (front to back)
-      // Front: snaps to 45° forward, triggers at 90°
-      // Back: snaps to 90°, triggers at ~170°
+      // Arachnid: 4 chunky legs per side (front to back)
+      const legLength = radius * 1.9;
+      const upperLen = legLength * 0.55;
+      const lowerLen = legLength * 0.55;
+
       leftSideConfigs = [
         {
           attachOffsetX: radius * 0.6,
@@ -273,7 +299,7 @@ export class EntityRenderer {
       }
     }
 
-    // Update legs for all legged units (arachnid: 8 legs, beam/insect: 6 legs, sonic: 4 legs)
+    // Update legs for all legged units (arachnid: 8 chunky, beam: 8 daddy long legs, sonic: 6 insect)
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
         continue;
@@ -287,8 +313,8 @@ export class EntityRenderer {
 
       if (!isArachnid && !isBeam && !isSonic) continue;
 
-      const legCount = isArachnid ? 8 : isSonic ? 4 : 6;
-      const legs = this.getOrCreateLegs(entity, legCount);
+      const legStyle = isArachnid ? 'arachnid' : isBeam ? 'daddy' : 'insect';
+      const legs = this.getOrCreateLegs(entity, legStyle);
       const velX = entity.unit.velocityX ?? 0;
       const velY = entity.unit.velocityY ?? 0;
 
@@ -1163,12 +1189,12 @@ export class EntityRenderer {
       const footSize = r * 0.14;
 
       // Get legs for this entity (creates them if they don't exist)
-      const legs = this.getOrCreateLegs(entity, 6);
+      const legs = this.getOrCreateLegs(entity, 'daddy');
 
-      // Draw all 6 legs using the Leg class positions
+      // Draw all 8 legs using the Leg class positions (daddy long legs style)
       for (let i = 0; i < legs.length; i++) {
         const leg = legs[i];
-        const side = i < 3 ? -1 : 1; // First 3 legs are left side, last 3 are right side
+        const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
 
         // Get positions from leg class
         const attach = leg.getAttachmentPoint(x, y, bodyRot);
@@ -1752,7 +1778,7 @@ export class EntityRenderer {
     }
   }
 
-  // Sonic: Small 4-legged spider with central wave emitter orb
+  // Sonic: Small 6-legged insect with central wave emitter orb
   private drawSonicUnit(
     x: number,
     y: number,
@@ -1773,12 +1799,12 @@ export class EntityRenderer {
       const footSize = r * 0.12;
 
       // Get legs for this entity (creates them if they don't exist)
-      const legs = this.getOrCreateLegs(entity, 4);
+      const legs = this.getOrCreateLegs(entity, 'insect');
 
-      // Draw all 4 legs
+      // Draw all 6 legs (insect style)
       for (let i = 0; i < legs.length; i++) {
         const leg = legs[i];
-        const side = i < 2 ? -1 : 1; // First 2 legs are left, last 2 are right
+        const side = i < 3 ? -1 : 1; // First 3 legs are left, last 3 are right
 
         const attach = leg.getAttachmentPoint(x, y, bodyRot);
         const foot = leg.getFootPosition();
@@ -1856,43 +1882,44 @@ export class EntityRenderer {
     sliceAngle: number, // Total angle of the pie slice
     maxRange: number,
     primaryColor: number,
-    secondaryColor: number
+    _secondaryColor: number
   ): void {
     // Pulsing animation based on time
     const time = Date.now() / 1000;
     const pulseSpeed = 3; // Pulses per second
-    const waveCount = 5; // Number of wave arcs
+    const waveCount = 6; // Number of wave arcs
     const halfAngle = sliceAngle / 2;
 
-    // Draw pie-slice background (faded)
-    this.graphics.fillStyle(primaryColor, 0.15);
-    this.graphics.beginPath();
-    this.graphics.moveTo(x, y);
-    this.graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
-    this.graphics.closePath();
-    this.graphics.fill();
+    // Draw multiple fading fill layers to create soft edge gradient
+    const gradientLayers = 5;
+    for (let layer = 0; layer < gradientLayers; layer++) {
+      const layerRatio = (gradientLayers - layer) / gradientLayers;
+      const layerRadius = maxRange * layerRatio;
+      const layerAlpha = 0.08 * (1 - layer / gradientLayers); // Fade out toward center
 
-    // Draw edge lines of pie slice
-    this.graphics.lineStyle(2, primaryColor, 0.5);
-    const edge1X = x + Math.cos(rotation - halfAngle) * maxRange;
-    const edge1Y = y + Math.sin(rotation - halfAngle) * maxRange;
-    const edge2X = x + Math.cos(rotation + halfAngle) * maxRange;
-    const edge2Y = y + Math.sin(rotation + halfAngle) * maxRange;
-    this.graphics.lineBetween(x, y, edge1X, edge1Y);
-    this.graphics.lineBetween(x, y, edge2X, edge2Y);
+      this.graphics.fillStyle(primaryColor, layerAlpha);
+      this.graphics.beginPath();
+      this.graphics.moveTo(x, y);
+      this.graphics.arc(x, y, layerRadius, rotation - halfAngle, rotation + halfAngle, false);
+      this.graphics.closePath();
+      this.graphics.fill();
+    }
 
-    // Draw pulsing sine wave arcs
+    // Draw pulsing sine wave arcs that fade toward the edge
     for (let i = 0; i < waveCount; i++) {
       // Each wave pulses outward
       const basePhase = (time * pulseSpeed + i / waveCount) % 1;
       const waveRadius = basePhase * maxRange;
 
-      // Uniform intensity with slight fade at edges for visual appeal
-      const alpha = 0.5;
+      // Fade out as wave approaches edge
+      const edgeFade = 1 - basePhase;
+      const alpha = 0.5 * edgeFade;
+
+      if (alpha < 0.05) continue; // Skip nearly invisible waves
 
       // Draw arc with sine wave modulation
       const segments = 16;
-      this.graphics.lineStyle(2.5, primaryColor, alpha);
+      this.graphics.lineStyle(2.5 * edgeFade + 0.5, primaryColor, alpha);
       this.graphics.beginPath();
 
       for (let j = 0; j <= segments; j++) {
@@ -1900,7 +1927,7 @@ export class EntityRenderer {
         const angle = rotation - halfAngle + t * sliceAngle;
 
         // Add sine wave ripple perpendicular to arc direction
-        const sineOffset = Math.sin(t * Math.PI * 4 + time * 10) * 4 * (1 - basePhase);
+        const sineOffset = Math.sin(t * Math.PI * 4 + time * 10) * 4 * edgeFade;
         const r = waveRadius + sineOffset;
 
         const px = x + Math.cos(angle) * r;
@@ -1914,12 +1941,6 @@ export class EntityRenderer {
       }
       this.graphics.strokePath();
     }
-
-    // Draw outer arc boundary
-    this.graphics.lineStyle(2, secondaryColor, 0.4);
-    this.graphics.beginPath();
-    this.graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
-    this.graphics.strokePath();
   }
 
   // ==================== SHAPE HELPERS ====================
