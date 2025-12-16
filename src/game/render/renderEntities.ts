@@ -35,10 +35,31 @@ export interface ExplosionEffect {
   lifetime: number; // Total lifetime in ms
   elapsed: number; // Time elapsed in ms
   type: 'impact' | 'death'; // Type affects visual style
-  // Directional momentum - inherited from destroyed unit
-  momentumX?: number; // Velocity X component at death
-  momentumY?: number; // Velocity Y component at death
-  momentumMagnitude?: number; // Cached magnitude for directional bias
+
+  // Three separate momentum vectors for different explosion layers:
+
+  // 1. Unit velocity - where the unit was moving when it died
+  // Used by: Smoke clouds, fire embers (trailing effect)
+  velocityX?: number;
+  velocityY?: number;
+  velocityMag?: number;
+
+  // 2. Impact force - knockback direction from the killing blow
+  // Used by: Debris chunks, shockwave rings (blown away effect)
+  impactX?: number;
+  impactY?: number;
+  impactMag?: number;
+
+  // 3. Attacker direction - direction the projectile/beam was traveling
+  // Used by: Spark trails, secondary explosions (penetration effect)
+  attackerX?: number;
+  attackerY?: number;
+  attackerMag?: number;
+
+  // Combined momentum for layers that blend all forces
+  combinedX?: number;
+  combinedY?: number;
+  combinedMag?: number;
 }
 
 // Colors
@@ -506,8 +527,11 @@ export class EntityRenderer {
     return this.vehicleWheels.get(entityId);
   }
 
-  // Add a new explosion effect
-  // Optional velocityX/Y captures unit momentum at death for directional explosions
+  // Add a new explosion effect with three separate momentum vectors
+  // Each vector affects different explosion layers for complex visual effects:
+  // - velocity: unit's movement (smoke, embers trail behind)
+  // - impact: knockback force (debris blown away)
+  // - attacker: projectile direction (sparks penetrate through)
   addExplosion(
     x: number,
     y: number,
@@ -515,7 +539,11 @@ export class EntityRenderer {
     color: number,
     type: 'impact' | 'death',
     velocityX?: number,
-    velocityY?: number
+    velocityY?: number,
+    impactX?: number,
+    impactY?: number,
+    attackerX?: number,
+    attackerY?: number
   ): void {
     // Base lifetime scales with radius - larger explosions last longer
     // Base: 150ms for a radius of 8, scales proportionally
@@ -524,11 +552,18 @@ export class EntityRenderer {
     const radiusScale = Math.sqrt(radius / baseRadius); // Square root for less extreme scaling
     const lifetime = baseLifetime * radiusScale;
 
-    // Calculate momentum magnitude for directional bias
-    let momentumMagnitude: number | undefined;
-    if (velocityX !== undefined && velocityY !== undefined) {
-      momentumMagnitude = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
-    }
+    // Calculate magnitudes for each momentum vector
+    const velocityMag = (velocityX !== undefined && velocityY !== undefined)
+      ? Math.sqrt(velocityX * velocityX + velocityY * velocityY) : 0;
+    const impactMag = (impactX !== undefined && impactY !== undefined)
+      ? Math.sqrt(impactX * impactX + impactY * impactY) : 0;
+    const attackerMag = (attackerX !== undefined && attackerY !== undefined)
+      ? Math.sqrt(attackerX * attackerX + attackerY * attackerY) : 0;
+
+    // Calculate combined momentum (sum of all vectors)
+    const combinedX = (velocityX ?? 0) + (impactX ?? 0) + (attackerX ?? 0);
+    const combinedY = (velocityY ?? 0) + (impactY ?? 0) + (attackerY ?? 0);
+    const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
 
     this.explosions.push({
       x,
@@ -538,9 +573,22 @@ export class EntityRenderer {
       lifetime,
       elapsed: 0,
       type,
-      momentumX: velocityX,
-      momentumY: velocityY,
-      momentumMagnitude,
+      // Unit velocity
+      velocityX,
+      velocityY,
+      velocityMag,
+      // Impact force
+      impactX,
+      impactY,
+      impactMag,
+      // Attacker direction
+      attackerX,
+      attackerY,
+      attackerMag,
+      // Combined
+      combinedX,
+      combinedY,
+      combinedMag,
     });
   }
 
@@ -734,24 +782,55 @@ export class EntityRenderer {
       const earlyProgress = Math.min(1, progress * 3); // Fast initial burst
       const lateProgress = Math.max(0, (progress - 0.5) * 2); // Late lingering phase
 
-      // Calculate momentum direction and strength (0-1 normalized)
-      let momentumDirX = 0;
-      let momentumDirY = 0;
-      let momentumStrength = 0;
-      let momentumAngle = 0;
-      const hasMomentum = exp.momentumMagnitude && exp.momentumMagnitude > 10;
-      if (hasMomentum && exp.momentumX !== undefined && exp.momentumY !== undefined) {
-        momentumDirX = exp.momentumX / exp.momentumMagnitude!;
-        momentumDirY = exp.momentumY / exp.momentumMagnitude!;
-        momentumAngle = Math.atan2(momentumDirY, momentumDirX);
-        // Cap at 400 units/sec for max effect (higher threshold with multiplier)
-        momentumStrength = Math.min(exp.momentumMagnitude! / 400, 1);
+      // ========================================================================
+      // CALCULATE DIRECTION & STRENGTH FOR EACH MOMENTUM TYPE
+      // Each affects different explosion layers for complex visual effects
+      // ========================================================================
+
+      // 1. VELOCITY (unit's movement) - affects smoke, embers
+      let velDirX = 0, velDirY = 0, velStrength = 0, velAngle = 0;
+      const hasVelocity = (exp.velocityMag ?? 0) > 10;
+      if (hasVelocity) {
+        velDirX = (exp.velocityX ?? 0) / exp.velocityMag!;
+        velDirY = (exp.velocityY ?? 0) / exp.velocityMag!;
+        velAngle = Math.atan2(velDirY, velDirX);
+        velStrength = Math.min(exp.velocityMag! / 400, 1);
       }
 
-      // Dynamic center that drifts with momentum over time
-      const driftDistance = hasMomentum ? exp.radius * 0.8 * progress * momentumStrength : 0;
-      const centerX = exp.x + momentumDirX * driftDistance;
-      const centerY = exp.y + momentumDirY * driftDistance;
+      // 2. IMPACT (knockback force) - affects debris, shockwaves
+      let impactDirX = 0, impactDirY = 0, impactStrength = 0, impactAngle = 0;
+      const hasImpact = (exp.impactMag ?? 0) > 10;
+      if (hasImpact) {
+        impactDirX = (exp.impactX ?? 0) / exp.impactMag!;
+        impactDirY = (exp.impactY ?? 0) / exp.impactMag!;
+        impactAngle = Math.atan2(impactDirY, impactDirX);
+        impactStrength = Math.min(exp.impactMag! / 400, 1);
+      }
+
+      // 3. ATTACKER (projectile/beam direction) - affects sparks, secondary explosions
+      let attackDirX = 0, attackDirY = 0, attackStrength = 0, attackAngle = 0;
+      const hasAttacker = (exp.attackerMag ?? 0) > 10;
+      if (hasAttacker) {
+        attackDirX = (exp.attackerX ?? 0) / exp.attackerMag!;
+        attackDirY = (exp.attackerY ?? 0) / exp.attackerMag!;
+        attackAngle = Math.atan2(attackDirY, attackDirX);
+        attackStrength = Math.min(exp.attackerMag! / 400, 1);
+      }
+
+      // 4. COMBINED (all forces) - affects main fireball, outer glow, energy arcs
+      let combinedDirX = 0, combinedDirY = 0, combinedStrength = 0, combinedAngle = 0;
+      const hasCombined = (exp.combinedMag ?? 0) > 10;
+      if (hasCombined) {
+        combinedDirX = (exp.combinedX ?? 0) / exp.combinedMag!;
+        combinedDirY = (exp.combinedY ?? 0) / exp.combinedMag!;
+        combinedAngle = Math.atan2(combinedDirY, combinedDirX);
+        combinedStrength = Math.min(exp.combinedMag! / 400, 1);
+      }
+
+      // Dynamic center that drifts with combined momentum over time
+      const driftDistance = hasCombined ? exp.radius * 0.8 * progress * combinedStrength : 0;
+      const centerX = exp.x + combinedDirX * driftDistance;
+      const centerY = exp.y + combinedDirY * driftDistance;
 
       // Use deterministic "random" based on explosion position for consistent particles
       const seed = (exp.x * 1000 + exp.y) % 10000;
@@ -761,25 +840,26 @@ export class EntityRenderer {
       };
 
       // ------------------------------------------------------------------------
-      // LAYER 1: SMOKE CLOUDS (render first, behind everything)
+      // LAYER 1: SMOKE CLOUDS (uses VELOCITY - trails behind moving unit)
       // ------------------------------------------------------------------------
       if (progress > 0.1) {
-        const smokeCount = 6 + Math.floor(momentumStrength * 4);
+        const smokeCount = 6 + Math.floor(velStrength * 4);
         for (let i = 0; i < smokeCount; i++) {
           const smokeProgress = Math.max(0, (progress - 0.1 - i * 0.03) * 1.5);
           if (smokeProgress <= 0 || smokeProgress > 1) continue;
 
-          // Smoke drifts upward and in momentum direction
+          // Smoke drifts upward and OPPOSITE to velocity (trails behind)
           const baseAngle = seededRandom(i + 100) * Math.PI * 2;
           let smokeAngle = baseAngle;
           let smokeDist = exp.radius * (0.3 + smokeProgress * 0.8) * (0.7 + seededRandom(i + 101) * 0.6);
 
-          if (hasMomentum) {
-            // Bias smoke toward momentum direction
-            const alignment = Math.cos(baseAngle - momentumAngle);
+          if (hasVelocity) {
+            // Bias smoke OPPOSITE to velocity direction (trails behind)
+            const oppositeAngle = velAngle + Math.PI;
+            const alignment = Math.cos(baseAngle - oppositeAngle);
             if (alignment > 0) {
-              smokeDist *= 1 + alignment * momentumStrength * 0.5;
-              smokeAngle = baseAngle - (baseAngle - momentumAngle) * 0.2 * momentumStrength;
+              smokeDist *= 1 + alignment * velStrength * 0.8;
+              smokeAngle = baseAngle - (baseAngle - oppositeAngle) * 0.3 * velStrength;
             }
           }
 
@@ -794,14 +874,14 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 2: OUTER GLOW / HEAT DISTORTION (stretched with momentum)
+      // LAYER 2: OUTER GLOW / HEAT DISTORTION (uses COMBINED - overall momentum)
       // ------------------------------------------------------------------------
       const glowRadius = exp.radius * (0.4 + earlyProgress * 0.8);
-      if (hasMomentum && momentumStrength > 0.15) {
-        const stretchFactor = 1 + momentumStrength * 0.8;
+      if (hasCombined && combinedStrength > 0.15) {
+        const stretchFactor = 1 + combinedStrength * 0.8;
         // Multiple stretched glows for depth
-        this.renderDirectionalGlow(centerX, centerY, glowRadius * 1.5, glowRadius * 1.5 * stretchFactor, momentumAngle, 0x331100, alpha * 0.2);
-        this.renderDirectionalGlow(centerX, centerY, glowRadius * 1.2, glowRadius * 1.2 * stretchFactor, momentumAngle, exp.color, alpha * 0.25);
+        this.renderDirectionalGlow(centerX, centerY, glowRadius * 1.5, glowRadius * 1.5 * stretchFactor, combinedAngle, 0x331100, alpha * 0.2);
+        this.renderDirectionalGlow(centerX, centerY, glowRadius * 1.2, glowRadius * 1.2 * stretchFactor, combinedAngle, exp.color, alpha * 0.25);
       } else {
         this.graphics.fillStyle(0x331100, alpha * 0.2);
         this.graphics.fillCircle(centerX, centerY, glowRadius * 1.5);
@@ -810,7 +890,7 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 3: MULTIPLE SHOCKWAVE RINGS (staggered timing)
+      // LAYER 3: MULTIPLE SHOCKWAVE RINGS (uses IMPACT - blown by knockback)
       // ------------------------------------------------------------------------
       const ringCount = 3;
       for (let r = 0; r < ringCount; r++) {
@@ -822,10 +902,10 @@ export class EntityRenderer {
         const ringThickness = (4 - r) * (1 - ringProgress) + 1;
         const ringAlpha = alpha * (0.6 - r * 0.15) * (1 - ringProgress * 0.5);
 
-        // Offset rings in momentum direction
-        const ringOffsetMult = hasMomentum ? momentumStrength * 0.4 * (r + 1) : 0;
-        const ringX = centerX + momentumDirX * ringRadius * ringOffsetMult;
-        const ringY = centerY + momentumDirY * ringRadius * ringOffsetMult;
+        // Offset rings in IMPACT direction (direction of knockback)
+        const ringOffsetMult = hasImpact ? impactStrength * 0.5 * (r + 1) : 0;
+        const ringX = centerX + impactDirX * ringRadius * ringOffsetMult;
+        const ringY = centerY + impactDirY * ringRadius * ringOffsetMult;
 
         this.graphics.lineStyle(ringThickness, r === 0 ? 0xffffff : exp.color, ringAlpha);
         this.graphics.strokeCircle(ringX, ringY, ringRadius);
@@ -859,10 +939,10 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 5: ENERGY ARCS / LIGHTNING (early phase only)
+      // LAYER 5: ENERGY ARCS / LIGHTNING (uses COMBINED - overall momentum)
       // ------------------------------------------------------------------------
       if (progress < 0.4) {
-        const arcCount = 4 + Math.floor(momentumStrength * 3);
+        const arcCount = 4 + Math.floor(combinedStrength * 3);
         const arcAlpha = (1 - progress * 2.5) * 0.7;
 
         for (let i = 0; i < arcCount; i++) {
@@ -870,12 +950,12 @@ export class EntityRenderer {
           let arcAngle = baseAngle;
           let arcLength = exp.radius * (0.5 + progress * 1.5) * (0.6 + seededRandom(i + 201) * 0.8);
 
-          // Bias arcs toward momentum
-          if (hasMomentum) {
-            const alignment = Math.cos(baseAngle - momentumAngle);
+          // Bias arcs toward COMBINED direction
+          if (hasCombined) {
+            const alignment = Math.cos(baseAngle - combinedAngle);
             if (alignment > 0) {
-              arcLength *= 1 + alignment * momentumStrength * 0.7;
-              arcAngle = baseAngle - (baseAngle - momentumAngle) * 0.3 * momentumStrength;
+              arcLength *= 1 + alignment * combinedStrength * 0.7;
+              arcAngle = baseAngle - (baseAngle - combinedAngle) * 0.3 * combinedStrength;
             }
           }
 
@@ -903,9 +983,10 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 6: SPARK PARTICLES WITH TRAILS
+      // LAYER 6: SPARK PARTICLES WITH TRAILS (uses ATTACKER - penetration effect)
+      // Sparks shoot out in the direction the projectile/beam was traveling
       // ------------------------------------------------------------------------
-      const sparkCount = 16 + Math.floor(momentumStrength * 12);
+      const sparkCount = 16 + Math.floor(attackStrength * 12);
       for (let i = 0; i < sparkCount; i++) {
         const sparkDelay = seededRandom(i + 300) * 0.15;
         const sparkProgress = Math.max(0, Math.min(1, (progress - sparkDelay) * 1.3));
@@ -914,20 +995,22 @@ export class EntityRenderer {
         const baseAngle = (i / sparkCount) * Math.PI * 2 + seededRandom(i + 301) * 0.3;
         const sparkSpeed = 0.8 + seededRandom(i + 302) * 0.6;
 
-        // Calculate momentum bias
+        // Calculate ATTACKER direction bias (sparks penetrate through in attacker direction)
         let finalAngle = baseAngle;
         let distMult = 1;
-        if (hasMomentum) {
-          let angleDiff = baseAngle - momentumAngle;
+        if (hasAttacker) {
+          let angleDiff = baseAngle - attackAngle;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
           const alignment = Math.cos(angleDiff);
           if (alignment > 0) {
-            distMult = 1 + alignment * momentumStrength * 1.2;
-            finalAngle = baseAngle - angleDiff * 0.4 * momentumStrength;
+            // Strong bias toward attacker direction (penetration effect)
+            distMult = 1 + alignment * attackStrength * 1.5;
+            finalAngle = baseAngle - angleDiff * 0.5 * attackStrength;
           } else {
-            distMult = 1 + alignment * momentumStrength * 0.4;
+            // Fewer sparks go backwards
+            distMult = 1 + alignment * attackStrength * 0.3;
           }
         }
 
@@ -955,9 +1038,10 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 7: DEBRIS CHUNKS (larger, slower pieces)
+      // LAYER 7: DEBRIS CHUNKS (uses IMPACT - blown away by knockback force)
+      // Debris is pushed in the direction of the knockback from the killing blow
       // ------------------------------------------------------------------------
-      const debrisCount = 8 + Math.floor(momentumStrength * 6);
+      const debrisCount = 8 + Math.floor(impactStrength * 6);
       for (let i = 0; i < debrisCount; i++) {
         const debrisDelay = seededRandom(i + 400) * 0.1;
         const debrisProgress = Math.max(0, Math.min(1, (progress - debrisDelay) * 0.9));
@@ -966,20 +1050,21 @@ export class EntityRenderer {
         const baseAngle = seededRandom(i + 401) * Math.PI * 2;
         const debrisSpeed = 0.5 + seededRandom(i + 402) * 0.5;
 
-        // Heavy momentum bias for debris
+        // Heavy IMPACT bias for debris (blown away by knockback)
         let finalAngle = baseAngle;
         let distMult = 1;
-        if (hasMomentum) {
-          let angleDiff = baseAngle - momentumAngle;
+        if (hasImpact) {
+          let angleDiff = baseAngle - impactAngle;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
           const alignment = Math.cos(angleDiff);
           if (alignment > 0) {
-            distMult = 1 + alignment * momentumStrength * 1.5;
-            finalAngle = baseAngle - angleDiff * 0.5 * momentumStrength;
+            // Strong bias toward impact direction (blown away)
+            distMult = 1 + alignment * impactStrength * 1.8;
+            finalAngle = baseAngle - angleDiff * 0.6 * impactStrength;
           } else {
-            distMult = Math.max(0.3, 1 + alignment * momentumStrength * 0.6);
+            distMult = Math.max(0.2, 1 + alignment * impactStrength * 0.5);
           }
         }
 
@@ -1001,10 +1086,11 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 8: FIRE EMBERS (small glowing bits that linger)
+      // LAYER 8: FIRE EMBERS (uses VELOCITY - trail behind moving unit)
+      // Embers drift in the opposite direction of unit velocity (trailing effect)
       // ------------------------------------------------------------------------
       if (progress > 0.2) {
-        const emberCount = 10 + Math.floor(momentumStrength * 8);
+        const emberCount = 10 + Math.floor(velStrength * 8);
         for (let i = 0; i < emberCount; i++) {
           const emberProgress = Math.max(0, (progress - 0.2 - seededRandom(i + 500) * 0.3) * 1.5);
           if (emberProgress <= 0 || emberProgress > 1) continue;
@@ -1013,11 +1099,13 @@ export class EntityRenderer {
           let emberAngle = baseAngle;
           let emberDist = exp.radius * (0.4 + emberProgress * 0.6) * (0.5 + seededRandom(i + 502) * 0.5);
 
-          if (hasMomentum) {
-            const alignment = Math.cos(baseAngle - momentumAngle);
+          if (hasVelocity) {
+            // Embers trail OPPOSITE to velocity direction
+            const oppositeAngle = velAngle + Math.PI;
+            const alignment = Math.cos(baseAngle - oppositeAngle);
             if (alignment > 0) {
-              emberDist *= 1 + alignment * momentumStrength * 0.8;
-              emberAngle = baseAngle - (baseAngle - momentumAngle) * 0.25 * momentumStrength;
+              emberDist *= 1 + alignment * velStrength * 1.0;
+              emberAngle = baseAngle - (baseAngle - oppositeAngle) * 0.35 * velStrength;
             }
           }
 
@@ -1040,19 +1128,20 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 9: MOMENTUM TRAIL (concentrated debris stream for high momentum)
+      // LAYER 9: MOMENTUM TRAIL (uses COMBINED - overall momentum stream)
+      // Hot streak of particles in the combined direction of all forces
       // ------------------------------------------------------------------------
-      if (hasMomentum && momentumStrength > 0.3) {
-        const trailCount = Math.floor(momentumStrength * 15);
+      if (hasCombined && combinedStrength > 0.3) {
+        const trailCount = Math.floor(combinedStrength * 15);
         for (let i = 0; i < trailCount; i++) {
           const trailT = i / trailCount;
           const trailProgress = Math.max(0, Math.min(1, (progress - trailT * 0.3) * 1.4));
           if (trailProgress <= 0) continue;
 
-          // Trail follows momentum direction with slight spread
-          const spreadAngle = (seededRandom(i + 600) - 0.5) * 0.6 * (1 - momentumStrength * 0.5);
-          const trailAngle = momentumAngle + spreadAngle;
-          const trailDist = exp.radius * (0.5 + trailProgress * 2.0 + trailT * 0.8) * (0.8 + momentumStrength * 0.4);
+          // Trail follows COMBINED direction with slight spread
+          const spreadAngle = (seededRandom(i + 600) - 0.5) * 0.6 * (1 - combinedStrength * 0.5);
+          const trailAngle = combinedAngle + spreadAngle;
+          const trailDist = exp.radius * (0.5 + trailProgress * 2.0 + trailT * 0.8) * (0.8 + combinedStrength * 0.4);
 
           const trailX = exp.x + Math.cos(trailAngle) * trailDist;
           const trailY = exp.y + Math.sin(trailAngle) * trailDist;
@@ -1072,18 +1161,19 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 10: SECONDARY EXPLOSIONS (for very high momentum)
+      // LAYER 10: SECONDARY EXPLOSIONS (uses ATTACKER - penetration path)
+      // Mini explosions along the path of the projectile/beam that killed the unit
       // ------------------------------------------------------------------------
-      if (hasMomentum && momentumStrength > 0.6 && progress > 0.15 && progress < 0.6) {
-        const secondaryCount = Math.floor((momentumStrength - 0.5) * 4);
+      if (hasAttacker && attackStrength > 0.5 && progress > 0.15 && progress < 0.6) {
+        const secondaryCount = Math.floor((attackStrength - 0.4) * 5);
         for (let i = 0; i < secondaryCount; i++) {
           const secDelay = 0.15 + seededRandom(i + 700) * 0.2;
           const secProgress = Math.max(0, Math.min(1, (progress - secDelay) * 3));
           if (secProgress <= 0 || secProgress >= 1) continue;
 
-          // Secondary explosions along momentum path
+          // Secondary explosions along ATTACKER path (penetration effect)
           const secDist = exp.radius * (0.8 + i * 0.5 + seededRandom(i + 701) * 0.3);
-          const secAngle = momentumAngle + (seededRandom(i + 702) - 0.5) * 0.4;
+          const secAngle = attackAngle + (seededRandom(i + 702) - 0.5) * 0.3;
           const secX = exp.x + Math.cos(secAngle) * secDist;
           const secY = exp.y + Math.sin(secAngle) * secDist;
           const secRadius = exp.radius * 0.3 * (1 - secProgress);

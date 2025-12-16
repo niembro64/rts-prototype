@@ -13,6 +13,7 @@ import {
   updateProjectiles,
   checkProjectileCollisions,
   type AudioEvent,
+  type DeathContext,
 } from './combat';
 import { DamageSystem } from './damage';
 import { economyManager } from './economy';
@@ -46,7 +47,8 @@ export class Simulation {
   private pendingAudioEvents: AudioEvent[] = [];
 
   // Callback for when units die (to clean up physics bodies)
-  public onUnitDeath?: (deadUnitIds: EntityId[]) => void;
+  // deathContexts contains info about the killing blow for directional explosions
+  public onUnitDeath?: (deadUnitIds: EntityId[], deathContexts?: Map<EntityId, DeathContext>) => void;
 
   // Callback for when units are spawned (to create physics bodies)
   public onUnitSpawn?: (newUnits: Entity[]) => void;
@@ -239,8 +241,9 @@ export class Simulation {
     }
 
     // Notify about dead units (for physics cleanup)
+    // Pass deathContexts for directional explosion effects
     if (collisionResult.deadUnitIds.length > 0 && this.onUnitDeath) {
-      this.onUnitDeath(collisionResult.deadUnitIds);
+      this.onUnitDeath(collisionResult.deadUnitIds, collisionResult.deathContexts);
     }
 
     // Notify about dead buildings (for cleanup)

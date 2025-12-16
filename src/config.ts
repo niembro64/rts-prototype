@@ -57,12 +57,41 @@ export const KNOCKBACK_FORCE_MULTIPLIER = 150;
  */
 export const WAVE_PULL_STRENGTH = 180;
 
+// =============================================================================
+// EXPLOSION MOMENTUM FACTORS
+// =============================================================================
+// Each factor contributes to the final explosion direction/momentum.
+// Set to 0 to disable a factor, higher values = more influence.
+
 /**
- * Multiplier for explosion momentum inheritance from destroyed units.
- * The unit's velocity at death is multiplied by this value for the explosion effect.
- * 1.0 = realistic momentum, 2.0 = exaggerated, 3.0+ = very dramatic
+ * Multiplier for the dying unit's own velocity.
+ * Units moving fast when they die will have explosions trailing their motion.
+ * 0 = ignore unit velocity, 1.0 = realistic, 5.0+ = exaggerated
  */
-export const EXPLOSION_MOMENTUM_MULTIPLIER = 50;
+export const EXPLOSION_VELOCITY_MULTIPLIER = 300.0;
+
+/**
+ * Multiplier for the impact force/damage direction.
+ * Explosions will bias toward the direction the killing blow pushed them.
+ * This uses the knockback force from the weapon that killed them.
+ * 0 = ignore impact, 1.0 = realistic, 5.0+ = exaggerated
+ */
+export const EXPLOSION_IMPACT_FORCE_MULTIPLIER = 800.0;
+
+/**
+ * Multiplier for the attacker's projectile/beam direction.
+ * Explosions will bias in the direction the projectile was traveling.
+ * For beams, this is the direction from attacker to target.
+ * 0 = ignore attacker direction, 1.0 = realistic, 5.0+ = exaggerated
+ */
+export const EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER = 500.0;
+
+/**
+ * Base explosion momentum even when all factors are zero.
+ * Adds a minimum "oomph" to all explosions regardless of context.
+ * This is raw velocity units added to the final momentum.
+ */
+export const EXPLOSION_BASE_MOMENTUM = 50;
 
 // =============================================================================
 // BUILDING STATS

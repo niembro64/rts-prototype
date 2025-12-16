@@ -2,8 +2,12 @@ import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
 import { FIXED_TIMESTEP } from './Simulation';
 import { DamageSystem } from './damage';
+import type { DeathContext } from './damage/types';
 import type { ForceAccumulator } from './ForceAccumulator';
 import { WAVE_PULL_STRENGTH } from '../../config';
+
+// Re-export DeathContext for use in RtsScene
+export type { DeathContext } from './damage/types';
 
 // Audio event types
 export interface AudioEvent {
@@ -24,6 +28,8 @@ export interface CollisionResult {
   deadUnitIds: EntityId[];
   deadBuildingIds: EntityId[];
   audioEvents: AudioEvent[];
+  // Death context for each killed unit (for directional explosion effects)
+  deathContexts: Map<EntityId, DeathContext>;
 }
 
 // Distance between two points
@@ -819,6 +825,7 @@ export function checkProjectileCollisions(
   const unitsToRemove: EntityId[] = [];
   const buildingsToRemove: EntityId[] = [];
   const audioEvents: AudioEvent[] = [];
+  const deathContexts: Map<EntityId, DeathContext> = new Map();
 
   for (const projEntity of world.getProjectiles()) {
     if (!projEntity.projectile || !projEntity.ownership) continue;
@@ -848,12 +855,16 @@ export function checkProjectileCollisions(
         // Apply knockback from splash
         applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
 
-        // Track killed entities
+        // Track killed entities and merge death contexts
         for (const id of splashResult.killedUnitIds) {
           if (!unitsToRemove.includes(id)) unitsToRemove.push(id);
         }
         for (const id of splashResult.killedBuildingIds) {
           if (!buildingsToRemove.includes(id)) buildingsToRemove.push(id);
+        }
+        // Merge death contexts from splash result
+        for (const [id, ctx] of splashResult.deathContexts) {
+          deathContexts.set(id, ctx);
         }
 
         // Add explosion audio event if there were hits or it's a shotgun
@@ -933,7 +944,7 @@ export function checkProjectileCollisions(
         }
       }
 
-      // Handle deaths
+      // Handle deaths and merge death contexts
       for (const id of result.killedUnitIds) {
         if (!unitsToRemove.includes(id)) {
           const target = world.getEntity(id);
@@ -962,6 +973,10 @@ export function checkProjectileCollisions(
           });
           buildingsToRemove.push(id);
         }
+      }
+      // Merge death contexts from beam damage
+      for (const [id, ctx] of result.deathContexts) {
+        deathContexts.set(id, ctx);
       }
     } else {
       // Traveling projectiles use swept volume collision (prevents tunneling)
@@ -1023,16 +1038,20 @@ export function checkProjectileCollisions(
         // Apply knockback from splash
         applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
 
-        // Track splash kills
+        // Track splash kills and merge death contexts
         for (const id of splashResult.killedUnitIds) {
           if (!unitsToRemove.includes(id)) unitsToRemove.push(id);
         }
         for (const id of splashResult.killedBuildingIds) {
           if (!buildingsToRemove.includes(id)) buildingsToRemove.push(id);
         }
+        // Merge death contexts from splash
+        for (const [id, ctx] of splashResult.deathContexts) {
+          deathContexts.set(id, ctx);
+        }
       }
 
-      // Handle deaths from direct hit
+      // Handle deaths from direct hit and merge death contexts
       for (const id of result.killedUnitIds) {
         if (!unitsToRemove.includes(id)) {
           const target = world.getEntity(id);
@@ -1062,6 +1081,10 @@ export function checkProjectileCollisions(
           buildingsToRemove.push(id);
         }
       }
+      // Merge death contexts from direct hit
+      for (const [id, ctx] of result.deathContexts) {
+        deathContexts.set(id, ctx);
+      }
 
       // Remove projectile if max hits reached
       if (proj.hitEntities.size >= proj.maxHits) {
@@ -1087,7 +1110,7 @@ export function checkProjectileCollisions(
     world.removeEntity(id);
   }
 
-  return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, audioEvents };
+  return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, audioEvents, deathContexts };
 }
 
 // Remove dead units and clean up their Matter bodies

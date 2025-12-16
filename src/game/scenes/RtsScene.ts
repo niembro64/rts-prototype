@@ -31,8 +31,17 @@ const WEAPON_LABELS: Record<string, string> = {
   arachnid: 'Arachnid',
 };
 import { audioManager } from '../audio/AudioManager';
-import type { AudioEvent } from '../sim/combat';
-import { LASER_SOUND_ENABLED, UNIT_STATS, MAX_TOTAL_UNITS, BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING, EXPLOSION_MOMENTUM_MULTIPLIER } from '../../config';
+import type { AudioEvent, DeathContext } from '../sim/combat';
+import {
+  LASER_SOUND_ENABLED,
+  UNIT_STATS,
+  MAX_TOTAL_UNITS,
+  BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
+  EXPLOSION_VELOCITY_MULTIPLIER,
+  EXPLOSION_IMPACT_FORCE_MULTIPLIER,
+  EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
+  EXPLOSION_BASE_MOMENTUM,
+} from '../../config';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
 // Grid settings
@@ -168,9 +177,9 @@ export class RtsScene extends Phaser.Scene {
 
     // Setup callbacks (only needed for host/offline mode)
     if (this.networkRole !== 'client') {
-      // Setup death callback
-      this.simulation.onUnitDeath = (deadUnitIds: EntityId[]) => {
-        this.handleUnitDeaths(deadUnitIds);
+      // Setup death callback (with deathContexts for directional explosions)
+      this.simulation.onUnitDeath = (deadUnitIds: EntityId[], deathContexts?: Map<EntityId, DeathContext>) => {
+        this.handleUnitDeaths(deadUnitIds, deathContexts);
       };
 
       // Setup building death callback
@@ -311,28 +320,72 @@ export class RtsScene extends Phaser.Scene {
   }
 
   // Handle unit deaths (cleanup Matter bodies and audio)
-  private handleUnitDeaths(deadUnitIds: EntityId[]): void {
+  // deathContexts contains info about the killing blow for directional explosions
+  private handleUnitDeaths(
+    deadUnitIds: EntityId[],
+    deathContexts?: Map<EntityId, DeathContext>
+  ): void {
     for (const id of deadUnitIds) {
       const entity = this.world.getEntity(id);
       if (entity) {
         // Add death explosion at 2.5x collision radius
-        // Pass unit velocity for directional explosion effect
+        // Pass three separate momentum vectors for different explosion layers:
+        // 1. Unit's own velocity - affects smoke, embers (trailing effect)
+        // 2. Impact force from killing blow - affects debris, shockwaves (blown away)
+        // 3. Attacker's projectile/beam direction - affects sparks (penetration effect)
         if (entity.unit) {
           const radius = entity.unit.collisionRadius * 2.5;
           const playerColor = entity.ownership?.playerId
             ? PLAYER_COLORS[entity.ownership.playerId]?.primary ?? 0xff6600
             : 0xff6600;
-          // Capture velocity for directional explosion (apply momentum multiplier)
-          const velocityX = (entity.unit.velocityX ?? 0) * EXPLOSION_MOMENTUM_MULTIPLIER;
-          const velocityY = (entity.unit.velocityY ?? 0) * EXPLOSION_MOMENTUM_MULTIPLIER;
+
+          // 1. Unit's velocity (scaled by multiplier)
+          const velocityX = (entity.unit.velocityX ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
+          const velocityY = (entity.unit.velocityY ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
+
+          // 2 & 3: Impact force and attacker direction from death context
+          let impactX = 0;
+          let impactY = 0;
+          let attackerX = 0;
+          let attackerY = 0;
+
+          const ctx = deathContexts?.get(id);
+          if (ctx) {
+            // Impact force (knockback direction from the killing blow)
+            impactX = ctx.impactForceX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+            impactY = ctx.impactForceY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+
+            // Attacker direction (direction the projectile/beam was traveling)
+            // Scale by attack magnitude for bigger hits = bigger directional effect
+            const attackScale = Math.min(ctx.attackMagnitude / 50, 2); // Normalize to ~1 for 50 damage
+            attackerX = ctx.attackerDirX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale * 100;
+            attackerY = ctx.attackerDirY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale * 100;
+          }
+
+          // Add base momentum to combined direction (gives minimum "oomph")
+          // We add it to velocity since that's always present
+          let baseVelX = velocityX;
+          let baseVelY = velocityY;
+          const combinedX = velocityX + impactX + attackerX;
+          const combinedY = velocityY + impactY + attackerY;
+          const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
+          if (combinedMag > 0 && EXPLOSION_BASE_MOMENTUM > 0) {
+            baseVelX += (combinedX / combinedMag) * EXPLOSION_BASE_MOMENTUM;
+            baseVelY += (combinedY / combinedMag) * EXPLOSION_BASE_MOMENTUM;
+          }
+
           this.entityRenderer.addExplosion(
             entity.transform.x,
             entity.transform.y,
             radius,
             playerColor,
             'death',
-            velocityX,
-            velocityY
+            baseVelX,
+            baseVelY,
+            impactX,
+            impactY,
+            attackerX,
+            attackerY
           );
         }
         if (entity.body?.matterBody) {

@@ -59,6 +59,18 @@ export interface KnockbackInfo {
   forceY: number;  // Force direction Y (normalized) * damage * multiplier
 }
 
+// Death context - info about the killing blow for explosion effects
+export interface DeathContext {
+  // Impact force direction (the knockback force from the killing blow)
+  impactForceX: number;
+  impactForceY: number;
+  // Attacker's projectile/beam direction (direction damage traveled)
+  attackerDirX: number;
+  attackerDirY: number;
+  // Magnitude of the attack (for scaling effects)
+  attackMagnitude: number;
+}
+
 // Result from damage application
 export interface DamageResult {
   hitEntityIds: EntityId[];
@@ -68,6 +80,8 @@ export interface DamageResult {
   truncationT?: number;
   // Knockback forces to apply to hit entities
   knockbacks: KnockbackInfo[];
+  // Death context for killed units (for directional explosion effects)
+  deathContexts: Map<EntityId, DeathContext>;
 }
 
 // Hit info for sorting by distance

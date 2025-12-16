@@ -10,6 +10,7 @@ import type {
   AreaDamageSource,
   DamageResult,
   HitInfo,
+  DeathContext,
 } from './types';
 import { KNOCKBACK_FORCE_MULTIPLIER } from '../../../config';
 
@@ -215,6 +216,7 @@ export class DamageSystem {
       killedUnitIds: [],
       killedBuildingIds: [],
       knockbacks: [],
+      deathContexts: new Map(),
     };
 
     // Calculate knockback direction (along the beam)
@@ -275,17 +277,28 @@ export class DamageSystem {
       const entity = this.world.getEntity(hit.entityId);
       if (!entity) continue;
 
-      this.applyDamageToEntity(entity, source.damage, result);
+      // Calculate knockback force for this hit
+      const force = source.damage * KNOCKBACK_FORCE_MULTIPLIER;
+      const forceX = knockbackDirX * force;
+      const forceY = knockbackDirY * force;
+
+      // Apply damage with death context (attacker direction = beam direction)
+      this.applyDamageToEntity(entity, source.damage, result, {
+        impactForceX: forceX,
+        impactForceY: forceY,
+        attackerDirX: knockbackDirX,
+        attackerDirY: knockbackDirY,
+        attackMagnitude: source.damage,
+      });
       result.hitEntityIds.push(hit.entityId);
       hitCount++;
 
       // Add knockback for units (buildings don't get pushed)
       if (hit.isUnit && KNOCKBACK_FORCE_MULTIPLIER > 0) {
-        const force = source.damage * KNOCKBACK_FORCE_MULTIPLIER;
         result.knockbacks.push({
           entityId: hit.entityId,
-          forceX: knockbackDirX * force,
-          forceY: knockbackDirY * force,
+          forceX,
+          forceY,
         });
       }
 
@@ -307,6 +320,7 @@ export class DamageSystem {
       killedUnitIds: [],
       killedBuildingIds: [],
       knockbacks: [],
+      deathContexts: new Map(),
     };
 
     // Calculate knockback direction (along projectile travel)
@@ -373,17 +387,28 @@ export class DamageSystem {
       const entity = this.world.getEntity(hit.entityId);
       if (!entity) continue;
 
-      this.applyDamageToEntity(entity, source.damage, result);
+      // Calculate knockback force for this hit
+      const force = source.damage * KNOCKBACK_FORCE_MULTIPLIER;
+      const forceX = knockbackDirX * force;
+      const forceY = knockbackDirY * force;
+
+      // Apply damage with death context (attacker direction = projectile travel direction)
+      this.applyDamageToEntity(entity, source.damage, result, {
+        impactForceX: forceX,
+        impactForceY: forceY,
+        attackerDirX: knockbackDirX,
+        attackerDirY: knockbackDirY,
+        attackMagnitude: source.damage,
+      });
       result.hitEntityIds.push(hit.entityId);
       hitCount++;
 
       // Add knockback for units (buildings don't get pushed)
       if (hit.isUnit && KNOCKBACK_FORCE_MULTIPLIER > 0) {
-        const force = source.damage * KNOCKBACK_FORCE_MULTIPLIER;
         result.knockbacks.push({
           entityId: hit.entityId,
-          forceX: knockbackDirX * force,
-          forceY: knockbackDirY * force,
+          forceX,
+          forceY,
         });
       }
     }
@@ -398,6 +423,7 @@ export class DamageSystem {
       killedUnitIds: [],
       killedBuildingIds: [],
       knockbacks: [],
+      deathContexts: new Map(),
     };
 
     const hasSlice = source.sliceAngle !== undefined && source.sliceDirection !== undefined;
@@ -435,16 +461,29 @@ export class DamageSystem {
       const damageMultiplier = 1 - distRatio * (1 - source.falloff);
       const damage = source.damage * damageMultiplier;
 
-      this.applyDamageToEntity(unit, damage, result);
+      // Calculate knockback direction (from center outward)
+      const dirX = dist > 0 ? dx / dist : 0;
+      const dirY = dist > 0 ? dy / dist : 0;
+      const force = damage * KNOCKBACK_FORCE_MULTIPLIER;
+      const forceX = dirX * force;
+      const forceY = dirY * force;
+
+      // Apply damage with death context (attacker direction = outward from center)
+      this.applyDamageToEntity(unit, damage, result, {
+        impactForceX: forceX,
+        impactForceY: forceY,
+        attackerDirX: dirX,
+        attackerDirY: dirY,
+        attackMagnitude: damage,
+      });
       result.hitEntityIds.push(unit.id);
 
       // Add knockback (direction is from center outward)
       if (KNOCKBACK_FORCE_MULTIPLIER > 0 && dist > 0) {
-        const force = damage * KNOCKBACK_FORCE_MULTIPLIER;
         result.knockbacks.push({
           entityId: unit.id,
-          forceX: (dx / dist) * force,
-          forceY: (dy / dist) * force,
+          forceX,
+          forceY,
         });
       }
     }
@@ -479,7 +518,19 @@ export class DamageSystem {
       const damageMultiplier = 1 - distRatio * (1 - source.falloff);
       const damage = source.damage * damageMultiplier;
 
-      this.applyDamageToEntity(building, damage, result);
+      // Calculate direction (from center outward)
+      const dirX = dist > 0 ? dx / dist : 0;
+      const dirY = dist > 0 ? dy / dist : 0;
+      const force = damage * KNOCKBACK_FORCE_MULTIPLIER;
+
+      // Apply damage with death context
+      this.applyDamageToEntity(building, damage, result, {
+        impactForceX: dirX * force,
+        impactForceY: dirY * force,
+        attackerDirX: dirX,
+        attackerDirY: dirY,
+        attackMagnitude: damage,
+      });
       result.hitEntityIds.push(building.id);
     }
 
@@ -487,11 +538,20 @@ export class DamageSystem {
   }
 
   // Helper to apply damage and track kills
-  private applyDamageToEntity(entity: Entity, damage: number, result: DamageResult): void {
+  private applyDamageToEntity(
+    entity: Entity,
+    damage: number,
+    result: DamageResult,
+    deathContext?: DeathContext
+  ): void {
     if (entity.unit && entity.unit.hp > 0) {
       entity.unit.hp -= damage;
       if (entity.unit.hp <= 0 && !result.killedUnitIds.includes(entity.id)) {
         result.killedUnitIds.push(entity.id);
+        // Store death context for explosion effects
+        if (deathContext) {
+          result.deathContexts.set(entity.id, deathContext);
+        }
       }
     } else if (entity.building && entity.building.hp > 0) {
       entity.building.hp -= damage;
