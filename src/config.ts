@@ -185,7 +185,7 @@ export const UNIT_STATS = {
   insect: {
     baseCost: 90,
     hp: 80,
-    moveSpeed: 200,
+    moveSpeed: 100,
     collisionRadius: 11,
     mass: 18,
     buildRate: 50,

@@ -51,8 +51,8 @@ const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
 // Leg style configuration - thickness, foot size, and lerp duration (ms)
 const LEG_STYLE_CONFIG = {
   arachnid: { thickness: 5, footSizeMultiplier: 0.1, lerpSpeed: 700 },  // 200ms lerp duration
-  daddy: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 700 },    // 180ms lerp
-  insect: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 350 },   // 250ms lerp (slower/smoother)
+  daddy: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 500 },    // 180ms lerp
+  insect: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 200 },   // 250ms lerp (slower/smoother)
 } as const;
 
 // Waypoint colors by type (legacy - for factories)
@@ -199,43 +199,44 @@ export class EntityRenderer {
       ];
     } else if (legStyle === 'insect') {
       // Insect: 3 legs per side (front to back)
+      // Pattern matches arachnid: all snapTargetAngles negative, decreasing multiplier front-to-back
       const legLength = radius * 1.9;
       const upperLen = legLength * 0.55;
       const lowerLen = legLength * 0.55;
 
       leftSideConfigs = [
-        // Front leg - points more sideways, triggers earlier
+        // Front leg - points forward-ish
         {
           attachOffsetX: radius * 0.5,
-          attachOffsetY: -radius * 0.35,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.2,  // More sideways, less forward
-          snapDistanceMultiplier: 0.85,
-          extensionThreshold: 0.99,  // Trigger earlier
-        },
-        // Middle leg - perpendicular to body
-        {
-          attachOffsetX: 0,
           attachOffsetY: -radius * 0.4,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.7,
-          snapTargetAngle: -Math.PI * 0.45,  // More sideways
-          snapDistanceMultiplier: 0.85,
-          extensionThreshold: 0.88,
+          snapTriggerAngle: Math.PI * 0.5,
+          snapTargetAngle: -Math.PI * 0.15,  // Slightly forward
+          snapDistanceMultiplier: 0.9,
+          extensionThreshold: 0.9,
         },
-        // Back leg - points backward
+        // Middle leg - perpendicular/sideways
         {
-          attachOffsetX: -radius * 0.5,
-          attachOffsetY: -radius * 0.35,
+          attachOffsetX: 0,
+          attachOffsetY: -radius * 0.45,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.8,
-          snapTargetAngle: Math.PI * 0.4,
-          snapDistanceMultiplier: 0.9,
-          extensionThreshold: 0.92,
+          snapTriggerAngle: Math.PI * 0.7,
+          snapTargetAngle: -Math.PI * 0.4,  // Sideways
+          snapDistanceMultiplier: 0.85,
+          extensionThreshold: 0.89,
+        },
+        // Back leg - points backward-sideways (still negative like arachnid)
+        {
+          attachOffsetX: -radius * 0.5,
+          attachOffsetY: -radius * 0.4,
+          upperLegLength: upperLen,
+          lowerLegLength: lowerLen,
+          snapTriggerAngle: Math.PI * 0.99,
+          snapTargetAngle: -Math.PI * 0.3,  // Backward-sideways (negative!)
+          snapDistanceMultiplier: 0.8,
+          extensionThreshold: 0.99,
         },
       ];
     } else {
@@ -814,6 +815,7 @@ export class EntityRenderer {
 
   private readonly WHITE = 0xf0f0f0;
   private readonly BLACK = 0x1a1a1a;
+  private readonly DARK_GRAY = 0x383838;
   private readonly GRAY = 0x606060;
   private readonly GRAY_LIGHT = 0x909090;
 
@@ -1084,7 +1086,7 @@ export class EntityRenderer {
       const treadDistX = r * 0.6;
       const treadDistY = r * 0.7;
       const treadLength = r * 0.5;
-      const treadWidth = r * 0.22;
+      const treadWidth = r * 0.11;
 
       const treadPositions = [
         { dx: treadDistX, dy: treadDistY }, // Front right
@@ -1105,7 +1107,7 @@ export class EntityRenderer {
           treadWidth,
           bodyRot,
           treadRotation,
-          this.BLACK,
+          this.DARK_GRAY,
           this.GRAY_LIGHT
         );
       }
@@ -1172,7 +1174,7 @@ export class EntityRenderer {
       const treadDistX = r * 0.65;
       const treadDistY = r * 0.75;
       const treadLength = r * 0.55;
-      const treadWidth = r * 0.24;
+      const treadWidth = r * 0.12;
 
       const treadPositions = [
         { dx: treadDistX, dy: treadDistY },
@@ -1193,7 +1195,7 @@ export class EntityRenderer {
           treadWidth,
           bodyRot,
           treadRotation,
-          this.BLACK,
+          this.DARK_GRAY,
           this.GRAY_LIGHT
         );
       }
@@ -1425,7 +1427,7 @@ export class EntityRenderer {
           treadWidth,
           bodyRot,
           treadRotation,
-          this.BLACK,
+          this.DARK_GRAY,
           this.GRAY_LIGHT
         );
       }
@@ -1492,7 +1494,7 @@ export class EntityRenderer {
       const treadDistX = r * 0.65;
       const treadDistY = r * 0.7;
       const treadLength = r * 0.5;
-      const treadWidth = r * 0.22;
+      const treadWidth = r * 0.11;
 
       const treadPositions = [
         { dx: treadDistX, dy: treadDistY },
@@ -1513,7 +1515,7 @@ export class EntityRenderer {
           treadWidth,
           bodyRot,
           treadRotation,
-          this.BLACK,
+          this.DARK_GRAY,
           this.GRAY_LIGHT
         );
       }
@@ -1600,7 +1602,7 @@ export class EntityRenderer {
           treadWidth,
           bodyRot,
           treadRotation,
-          this.BLACK,
+          this.DARK_GRAY,
           this.GRAY_LIGHT
         );
       }
@@ -1691,7 +1693,7 @@ export class EntityRenderer {
           treadWidth,
           bodyRot,
           treadRotation,
-          this.BLACK,
+          this.DARK_GRAY,
           this.GRAY_LIGHT
         );
       }
@@ -2263,7 +2265,7 @@ export class EntityRenderer {
     treadWidth: number,
     bodyRot: number,
     treadRotation: number,
-    treadColor: number = this.BLACK,
+    treadColor: number = this.DARK_GRAY,
     lineColor: number = this.GRAY
   ): void {
     const cos = Math.cos(bodyRot);

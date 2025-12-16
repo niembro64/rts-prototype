@@ -121,14 +121,13 @@ export class ArachnidLeg {
     // If sliding, animate toward target using time-based lerp with easing
     if (this.isSliding) {
       this.updateLerp(dtMs);
+      // Let the lerp finish - don't check for new snaps while sliding
+      return;
     }
 
-    // Check if leg needs to snap - either distance or angle threshold triggers it
-    // Use target position for checks if currently sliding, to avoid retriggering
-    const checkX = this.isSliding ? this.targetGroundX : this.groundX;
-    const checkY = this.isSliding ? this.targetGroundY : this.groundY;
-    const dx = checkX - attachX;
-    const dy = checkY - attachY;
+    // Check if leg needs to snap - use current foot position
+    const dx = this.groundX - attachX;
+    const dy = this.groundY - attachY;
     const distToGround = Math.sqrt(dx * dx + dy * dy);
 
     // ABSOLUTE MAXIMUM: Force snap if leg is stretched beyond physical limits (any direction)
@@ -138,9 +137,6 @@ export class ArachnidLeg {
       this.startLerp(attachX, attachY, unitRotation, velocityX, velocityY);
       return;
     }
-
-    // Don't check for new snaps while already sliding (let the current lerp finish)
-    if (this.isSliding) return;
 
     // Check angle - how far behind is the foot?
     const groundAngle = Math.atan2(dy, dx);
