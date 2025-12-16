@@ -1791,73 +1791,51 @@ export class EntityRenderer {
       ];
       this.graphics.fillPoints(bodyPoints, true);
 
-      // Inner carapace pattern (base color)
+      // Inner carapace pattern (base color) - shifted forward
+      const hexForwardOffset = r * 0.35;
+      const hexCenterX = x + cos * hexForwardOffset;
+      const hexCenterY = y + sin * hexForwardOffset;
       this.graphics.fillStyle(base, 0.8);
-      this.drawPolygon(x, y, r * 0.5, 6, bodyRot);
+      this.drawPolygon(hexCenterX, hexCenterY, r * 0.5, 6, bodyRot);
 
-      // Central eye/sensor cluster (light)
+      // Central eye/sensor cluster (light) - at hexagon center
       this.graphics.fillStyle(light, 0.9);
-      this.graphics.fillCircle(x, y, r * 0.25);
+      this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.25);
       this.graphics.fillStyle(this.WHITE, 0.95);
-      this.graphics.fillCircle(x, y, r * 0.12);
+      this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.12);
     }
 
-    // Turret pass - 8 beam emitters (4 front row, 4 back row)
+    // Turret pass - 6 beam emitters at hexagon points
     if (!this.skipTurrets) {
       const weapons = entity.weapons ?? [];
+      const hexRadius = r * 0.5;
+      const hexForwardOffset = r * 0.35; // Match the forward shift
 
-      // Front row beam emitters (weapons 0-3)
-      const frontSpacing = r * 0.35;
-      const frontForwardOffset = r * 0.8;
-      for (let i = 0; i < 4; i++) {
-        const lateralOffset = (i - 1.5) * frontSpacing;
-        const emitterX = x + cos * frontForwardOffset - sin * lateralOffset;
-        const emitterY = y + sin * frontForwardOffset + cos * lateralOffset;
+      // 6 beam emitters at hexagon vertices (shifted forward)
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI) / 3; // 0, 60, 120, 180, 240, 300 degrees
+        const localX = Math.cos(angle) * hexRadius + hexForwardOffset;
+        const localY = Math.sin(angle) * hexRadius;
+        const emitterX = x + cos * localX - sin * localY;
+        const emitterY = y + sin * localX + cos * localY;
 
         // Get turret rotation for this weapon
         const weaponTurret = weapons[i]?.turretRotation ?? bodyRot;
 
-        // Beam emitter (glowing orb with beam line)
+        // Beam emitter (glowing orb)
         this.graphics.fillStyle(light, 0.9);
-        this.graphics.fillCircle(emitterX, emitterY, r * 0.12);
+        this.graphics.fillCircle(emitterX, emitterY, r * 0.1);
 
         // Beam barrel
-        const beamLen = r * 0.6;
+        const beamLen = r * 0.5;
         const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
         const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
-        this.graphics.lineStyle(3, light, 0.8);
+        this.graphics.lineStyle(2.5, light, 0.8);
         this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
 
-        // Emitter glow
+        // Emitter tip glow
         this.graphics.fillStyle(this.WHITE, 0.8);
-        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
-      }
-
-      // Back row beam emitters (weapons 4-7)
-      const backSpacing = r * 0.4;
-      const backForwardOffset = r * 0.35;
-      for (let i = 0; i < 4; i++) {
-        const lateralOffset = (i - 1.5) * backSpacing;
-        const emitterX = x + cos * backForwardOffset - sin * lateralOffset;
-        const emitterY = y + sin * backForwardOffset + cos * lateralOffset;
-
-        // Get turret rotation for this weapon (indices 4-7)
-        const weaponTurret = weapons[4 + i]?.turretRotation ?? bodyRot;
-
-        // Beam emitter (glowing orb with beam line)
-        this.graphics.fillStyle(light, 0.9);
-        this.graphics.fillCircle(emitterX, emitterY, r * 0.12);
-
-        // Beam barrel
-        const beamLen = r * 0.6;
-        const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
-        const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
-        this.graphics.lineStyle(3, light, 0.8);
-        this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
-
-        // Emitter glow
-        this.graphics.fillStyle(this.WHITE, 0.8);
-        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
+        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.06);
       }
     }
   }

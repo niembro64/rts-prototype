@@ -208,7 +208,7 @@ export const factoryProductionSystem = new FactoryProductionSystem();
 export function createWeaponsForUnitType(unitType: string, radius: number): UnitWeapon[] {
   const config = getUnitBuildConfig(unitType);
 
-  // Arachnid has 8 beam lasers arranged in two rows
+  // Arachnid has 6 beam lasers at the hexagon points on top of its body
   if (unitType === 'arachnid') {
     const beamConfig = getWeaponConfig('beam');
     const turretTurnRate = 0.3; // Slow turret rotation for heavy arachnid
@@ -217,11 +217,14 @@ export function createWeaponsForUnitType(unitType: string, radius: number): Unit
 
     const weapons: UnitWeapon[] = [];
 
-    // 4 beam lasers in front row
-    const frontSpacing = radius * 0.35;
-    const frontForwardOffset = radius * 0.8;
-    for (let i = 0; i < 4; i++) {
-      const lateralOffset = (i - 1.5) * frontSpacing;
+    // 6 beam lasers at the 6 vertices of the inner hexagon, shifted forward
+    const hexRadius = radius * 0.5;
+    const hexForwardOffset = radius * 0.35; // Shift hexagon center toward front
+    for (let i = 0; i < 6; i++) {
+      // Hexagon vertices at 60° intervals, starting from front (angle 0)
+      const angle = (i * Math.PI) / 3; // 0, 60, 120, 180, 240, 300 degrees
+      const offsetX = Math.cos(angle) * hexRadius + hexForwardOffset;
+      const offsetY = Math.sin(angle) * hexRadius;
       weapons.push({
         config: { ...beamConfig },
         currentCooldown: 0,
@@ -230,27 +233,8 @@ export function createWeaponsForUnitType(unitType: string, radius: number): Unit
         fireRange,
         turretRotation: 0,
         turretTurnRate,
-        offsetX: frontForwardOffset,
-        offsetY: lateralOffset,
-        isFiring: false,
-      });
-    }
-
-    // 4 beam lasers in back row
-    const backSpacing = radius * 0.4;
-    const backForwardOffset = radius * 0.35;
-    for (let i = 0; i < 4; i++) {
-      const lateralOffset = (i - 1.5) * backSpacing;
-      weapons.push({
-        config: { ...beamConfig },
-        currentCooldown: 0,
-        targetEntityId: null,
-        seeRange,
-        fireRange,
-        turretRotation: 0,
-        turretTurnRate,
-        offsetX: backForwardOffset,
-        offsetY: lateralOffset,
+        offsetX,
+        offsetY,
         isFiring: false,
       });
     }
