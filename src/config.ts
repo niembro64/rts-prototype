@@ -47,9 +47,15 @@ export const COST_MULTIPLIER = 1.0;
 /**
  * Knockback force multiplier applied when projectiles/lasers hit units.
  * Force = damage * KNOCKBACK_FORCE_MULTIPLIER
- * 0 = no knockback, 1.0 = normal knockback, 2.0 = double knockback
+ * 0 = no knockback, higher = more knockback
  */
-export const KNOCKBACK_FORCE_MULTIPLIER = 0.5;
+export const KNOCKBACK_FORCE_MULTIPLIER = 150;
+
+/**
+ * Pull strength for sonic wave weapons (units per second toward wave origin).
+ * Higher = stronger pull effect.
+ */
+export const WAVE_PULL_STRENGTH = 80;
 
 // =============================================================================
 // BUILDING STATS

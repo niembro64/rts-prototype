@@ -3,6 +3,7 @@ import type { Entity, EntityId } from './types';
 import { FIXED_TIMESTEP } from './Simulation';
 import { DamageSystem } from './damage';
 import type { ForceAccumulator } from './ForceAccumulator';
+import { WAVE_PULL_STRENGTH } from '../../config';
 
 // Audio event types
 export interface AudioEvent {
@@ -563,9 +564,6 @@ export function updateWaveWeaponState(world: WorldState, dtMs: number): void {
 // Uses DamageSystem for unified area damage with slice support.
 // Also applies a pull effect, drawing units toward the wave origin.
 
-// Pull strength in units per second (how fast units are pulled toward wave origin)
-const WAVE_PULL_STRENGTH = 15;
-
 // Helper: Check if a point is within a pie slice
 function isPointInSlice(
   px: number, py: number,
@@ -645,7 +643,7 @@ export function applyWaveDamage(
       });
 
       // Apply knockback forces from damage
-      applyKnockbackForces(world, damageResult.knockbacks, forceAccumulator);
+      applyKnockbackForces(damageResult.knockbacks, forceAccumulator);
 
       // Apply pull effect to all enemy units in the slice
       for (const target of world.getUnits()) {
@@ -695,21 +693,17 @@ export function applyWaveDamage(
 
 // Helper to apply knockback forces from damage result
 function applyKnockbackForces(
-  world: WorldState,
   knockbacks: { entityId: EntityId; forceX: number; forceY: number }[],
   forceAccumulator?: ForceAccumulator
 ): void {
   if (!forceAccumulator) return;
   for (const knockback of knockbacks) {
-    const target = world.getEntity(knockback.entityId);
-    const targetMass = (target?.body?.matterBody as { mass?: number })?.mass ?? 1;
-    forceAccumulator.addDirectionalForce(
+    // forceX/forceY already contain the full force (direction * damage * multiplier)
+    // Use addForce directly - don't use addDirectionalForce which normalizes!
+    forceAccumulator.addForce(
       knockback.entityId,
       knockback.forceX,
       knockback.forceY,
-      1, // force already calculated in damage system
-      targetMass,
-      true,
       'knockback'
     );
   }
@@ -852,7 +846,7 @@ export function checkProjectileCollisions(
         proj.hasExploded = true;
 
         // Apply knockback from splash
-        applyKnockbackForces(world, splashResult.knockbacks, forceAccumulator);
+        applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
 
         // Track killed entities
         for (const id of splashResult.killedUnitIds) {
@@ -918,7 +912,7 @@ export function checkProjectileCollisions(
       });
 
       // Apply knockback from beam
-      applyKnockbackForces(world, result.knockbacks, forceAccumulator);
+      applyKnockbackForces(result.knockbacks, forceAccumulator);
 
       // Handle hit audio events (skip for continuous beams)
       const isContinuousBeam = config.cooldown === 0;
@@ -993,7 +987,7 @@ export function checkProjectileCollisions(
       });
 
       // Apply knockback from projectile hit
-      applyKnockbackForces(world, result.knockbacks, forceAccumulator);
+      applyKnockbackForces(result.knockbacks, forceAccumulator);
 
       // Track hits
       for (const hitId of result.hitEntityIds) {
@@ -1027,7 +1021,7 @@ export function checkProjectileCollisions(
         proj.hasExploded = true;
 
         // Apply knockback from splash
-        applyKnockbackForces(world, splashResult.knockbacks, forceAccumulator);
+        applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
 
         // Track splash kills
         for (const id of splashResult.killedUnitIds) {
