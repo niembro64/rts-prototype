@@ -196,6 +196,7 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
 
 // Update auto-targeting for all units
 // Each weapon independently finds its own target using its own seeRange
+// Units ALWAYS check for closer targets and switch to them
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
@@ -211,10 +212,13 @@ export function updateAutoTargeting(world: WorldState): void {
       const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
       const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
 
-      // Use weapon's own seeRange for tracking
+      // Use weapon's own seeRange for tracking (strict - no leeway)
       const trackingRange = weapon.seeRange;
 
-      // Check if current target is still valid
+      // Track current target distance for comparison
+      let currentTargetDist = Infinity;
+
+      // Check if current target is still valid and in range
       if (weapon.targetEntityId !== null) {
         const target = world.getEntity(weapon.targetEntityId);
 
@@ -233,16 +237,21 @@ export function updateAutoTargeting(world: WorldState): void {
           const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
           const effectiveTrackingRange = trackingRange + targetRadius;
 
-          // Target still valid and in tracking range - keep tracking
-          if (dist <= effectiveTrackingRange * 1.2) { // Allow some leeway
-            continue;
+          // Target still valid and in strict tracking range
+          if (dist <= effectiveTrackingRange) {
+            currentTargetDist = dist;
+            // Don't continue here - always check for closer targets below
+          } else {
+            // Target out of range, clear it
+            weapon.targetEntityId = null;
           }
+        } else {
+          // Target invalid (dead or gone), clear it
+          weapon.targetEntityId = null;
         }
-        // Target invalid or out of tracking range, clear it
-        weapon.targetEntityId = null;
       }
 
-      // Find new target - use weapon's seeRange for acquisition
+      // Always search for closest enemy - switch if closer than current target
       const enemies = world.getEnemyEntities(playerId);
       let closestEnemy: Entity | null = null;
       let closestDist = Infinity;
@@ -270,7 +279,8 @@ export function updateAutoTargeting(world: WorldState): void {
         }
       }
 
-      if (closestEnemy) {
+      // Switch to closer target if found, or set new target if no current target
+      if (closestEnemy && closestDist < currentTargetDist) {
         weapon.targetEntityId = closestEnemy.id;
       }
     }

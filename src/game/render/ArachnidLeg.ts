@@ -114,6 +114,14 @@ export class ArachnidLeg {
     const dy = this.groundY - attachY;
     const distToGround = Math.sqrt(dx * dx + dy * dy);
 
+    // ABSOLUTE MAXIMUM: Force snap if leg is stretched beyond physical limits (any direction)
+    // This prevents infinite stretching when unit gets pushed sideways by another unit
+    // Uses 105% of totalLength to allow some buffer before forcing a snap
+    if (distToGround > this.totalLength * 1.05) {
+      this.startSlide(attachX, attachY, unitRotation, velocityX, velocityY);
+      return;
+    }
+
     // Check angle - how far behind is the foot?
     const groundAngle = Math.atan2(dy, dx);
     let angleDiff = groundAngle - unitRotation;
