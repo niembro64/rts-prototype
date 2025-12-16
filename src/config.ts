@@ -156,7 +156,7 @@ export const UNIT_STATS = {
   tank: {
     baseCost: 280,
     hp: 350,
-    moveSpeed: 100,
+    moveSpeed: 200,
     collisionRadius: 24,
     mass: 50,       // Heavy tank
     buildRate: 18,
