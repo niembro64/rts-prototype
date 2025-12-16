@@ -732,59 +732,23 @@ export class EntityRenderer {
     this.renderSelectedLabels();
   }
 
-  // Render an elliptical glow stretched in a direction (for directional explosions)
-  private renderDirectionalGlow(
-    x: number, y: number,
-    radiusX: number, radiusY: number,
-    rotation: number,
-    color: number, alpha: number
-  ): void {
-    // Draw ellipse using line segments rotated to the momentum direction
-    const segments = 24;
-    this.graphics.fillStyle(color, alpha);
-    this.graphics.beginPath();
-
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-
-    for (let i = 0; i <= segments; i++) {
-      const angle = (i / segments) * Math.PI * 2;
-      // Ellipse point in local space
-      const localX = Math.cos(angle) * radiusX;
-      const localY = Math.sin(angle) * radiusY;
-      // Rotate to world space
-      const worldX = x + localX * cos - localY * sin;
-      const worldY = y + localX * sin + localY * cos;
-
-      if (i === 0) {
-        this.graphics.moveTo(worldX, worldY);
-      } else {
-        this.graphics.lineTo(worldX, worldY);
-      }
-    }
-
-    this.graphics.closePath();
-    this.graphics.fillPath();
-  }
-
   // Render an explosion effect
   private renderExplosion(exp: ExplosionEffect): void {
     const progress = exp.elapsed / exp.lifetime;
 
     if (exp.type === 'death') {
       // ========================================================================
-      // COMPLEX DIRECTIONAL DEATH EXPLOSION
-      // Features: Multiple shockwaves, spark trails, fire particles, debris chunks,
-      // energy arcs, smoke clouds, and momentum-biased everything
+      // DIRECTIONAL PARTICLE EXPLOSION
+      // All particles move in one of three directions:
+      // - VELOCITY: unit's movement direction (smoke, embers)
+      // - PENETRATION: from hit point through center (debris)
+      // - ATTACKER: projectile/beam direction (sparks, fragments, trail)
       // ========================================================================
 
       const alpha = 1 - progress;
-      const earlyProgress = Math.min(1, progress * 3); // Fast initial burst
-      const lateProgress = Math.max(0, (progress - 0.5) * 2); // Late lingering phase
 
       // ========================================================================
       // CALCULATE DIRECTION & STRENGTH FOR EACH MOMENTUM TYPE
-      // Each affects different explosion layers for complex visual effects
       // ========================================================================
 
       // 1. VELOCITY (unit's movement) - affects smoke, embers
@@ -879,116 +843,7 @@ export class EntityRenderer {
       }
 
       // ------------------------------------------------------------------------
-      // LAYER 2: OUTER GLOW / HEAT DISTORTION (uses COMBINED - overall momentum)
-      // ------------------------------------------------------------------------
-      const glowRadius = exp.radius * (0.4 + earlyProgress * 0.8);
-      if (hasCombined && combinedStrength > 0.15) {
-        const stretchFactor = 1 + combinedStrength * 0.8;
-        // Multiple stretched glows for depth
-        this.renderDirectionalGlow(centerX, centerY, glowRadius * 1.5, glowRadius * 1.5 * stretchFactor, combinedAngle, 0x331100, alpha * 0.2);
-        this.renderDirectionalGlow(centerX, centerY, glowRadius * 1.2, glowRadius * 1.2 * stretchFactor, combinedAngle, exp.color, alpha * 0.25);
-      } else {
-        this.graphics.fillStyle(0x331100, alpha * 0.2);
-        this.graphics.fillCircle(centerX, centerY, glowRadius * 1.5);
-        this.graphics.fillStyle(exp.color, alpha * 0.25);
-        this.graphics.fillCircle(centerX, centerY, glowRadius * 1.2);
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 3: MULTIPLE SHOCKWAVE RINGS (uses IMPACT - blown by knockback)
-      // ------------------------------------------------------------------------
-      const ringCount = 3;
-      for (let r = 0; r < ringCount; r++) {
-        const ringDelay = r * 0.12;
-        const ringProgress = Math.max(0, Math.min(1, (progress - ringDelay) * 1.5));
-        if (ringProgress <= 0) continue;
-
-        const ringRadius = exp.radius * (0.3 + ringProgress * (1.2 + r * 0.3));
-        const ringThickness = (4 - r) * (1 - ringProgress) + 1;
-        const ringAlpha = alpha * (0.6 - r * 0.15) * (1 - ringProgress * 0.5);
-
-        // Offset rings in PENETRATION direction (where attack entered)
-        const ringOffsetMult = hasPenetration ? penStrength * 0.5 * (r + 1) : 0;
-        const ringX = centerX + penDirX * ringRadius * ringOffsetMult;
-        const ringY = centerY + penDirY * ringRadius * ringOffsetMult;
-
-        this.graphics.lineStyle(ringThickness, r === 0 ? 0xffffff : exp.color, ringAlpha);
-        this.graphics.strokeCircle(ringX, ringY, ringRadius);
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 4: MAIN FIREBALL (color gradient from white to orange to red)
-      // ------------------------------------------------------------------------
-      const fireRadius = exp.radius * (0.5 + earlyProgress * 0.4) * (1 - lateProgress * 0.6);
-      if (fireRadius > 1) {
-        // Outer fire (darker)
-        this.graphics.fillStyle(0xaa2200, alpha * 0.5);
-        this.graphics.fillCircle(centerX, centerY, fireRadius * 1.1);
-
-        // Main fire body
-        this.graphics.fillStyle(0xff4400, alpha * 0.65);
-        this.graphics.fillCircle(centerX, centerY, fireRadius);
-
-        // Inner fire (brighter)
-        this.graphics.fillStyle(0xff8800, alpha * 0.7);
-        this.graphics.fillCircle(centerX, centerY, fireRadius * 0.7);
-
-        // Hot core
-        const coreAlpha = alpha * (1 - earlyProgress * 0.7);
-        if (coreAlpha > 0.1) {
-          this.graphics.fillStyle(0xffcc44, coreAlpha);
-          this.graphics.fillCircle(centerX, centerY, fireRadius * 0.4);
-          this.graphics.fillStyle(0xffffff, coreAlpha * 0.8);
-          this.graphics.fillCircle(centerX, centerY, fireRadius * 0.2);
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 5: ENERGY ARCS / LIGHTNING (uses COMBINED - overall momentum)
-      // ------------------------------------------------------------------------
-      if (progress < 0.4) {
-        const arcCount = 4 + Math.floor(combinedStrength * 3);
-        const arcAlpha = (1 - progress * 2.5) * 0.7;
-
-        for (let i = 0; i < arcCount; i++) {
-          const baseAngle = (i / arcCount) * Math.PI * 2 + seededRandom(i + 200) * 0.5;
-          let arcAngle = baseAngle;
-          let arcLength = exp.radius * (0.5 + progress * 1.5) * (0.6 + seededRandom(i + 201) * 0.8);
-
-          // Bias arcs toward COMBINED direction
-          if (hasCombined) {
-            const alignment = Math.cos(baseAngle - combinedAngle);
-            if (alignment > 0) {
-              arcLength *= 1 + alignment * combinedStrength * 0.7;
-              arcAngle = baseAngle - (baseAngle - combinedAngle) * 0.3 * combinedStrength;
-            }
-          }
-
-          // Draw jagged lightning arc
-          this.graphics.lineStyle(2, 0x88ccff, arcAlpha);
-          this.graphics.beginPath();
-          this.graphics.moveTo(centerX, centerY);
-
-          const segments = 3;
-          let px = centerX, py = centerY;
-          for (let s = 1; s <= segments; s++) {
-            const segDist = (arcLength / segments) * s;
-            const jitter = (seededRandom(i * 10 + s) - 0.5) * 0.4;
-            const segAngle = arcAngle + jitter;
-            px = centerX + Math.cos(segAngle) * segDist;
-            py = centerY + Math.sin(segAngle) * segDist;
-            this.graphics.lineTo(px, py);
-          }
-          this.graphics.strokePath();
-
-          // Bright tip
-          this.graphics.fillStyle(0xffffff, arcAlpha);
-          this.graphics.fillCircle(px, py, 2);
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 6: SPARK PARTICLES WITH TRAILS (uses ATTACKER - penetration effect)
+      // LAYER 1: SPARK PARTICLES WITH TRAILS (uses ATTACKER direction)
       // Sparks EXPLODE out in the direction the projectile/beam was traveling
       // This is the main "ripping through" effect
       // ------------------------------------------------------------------------
