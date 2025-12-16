@@ -2113,6 +2113,7 @@ export class EntityRenderer {
     this.graphics.strokePath();
 
     // 2. Draw wavy lines pulling INWARD (from outer edge toward center)
+    // Waves start transparent at edge, become visible as they approach origin
     const waveCount = 5; // Number of wave arcs
     const pullSpeed = 0.8; // How fast waves pull inward
 
@@ -2121,18 +2122,21 @@ export class EntityRenderer {
       const basePhase = (1 - ((time * pullSpeed + i / waveCount) % 1));
       const waveRadius = basePhase * maxRange;
 
-      // Fade based on position - stronger near the edge, fading toward center
-      const edgeFade = basePhase; // Stronger when further out
-      const alpha = 0.6 * edgeFade;
+      // Skip waves too close to center
+      if (waveRadius < 15) continue;
 
-      if (alpha < 0.05 || waveRadius < 10) continue; // Skip nearly invisible waves
+      // Fade IN as wave approaches center (transparent at edge, visible near origin)
+      const centerProximity = 1 - (waveRadius / maxRange); // 0 at edge, 1 at center
+      const alpha = 0.6 * centerProximity;
 
-      // Draw wavy arc with more pronounced sine modulation
+      if (alpha < 0.02) continue; // Skip fully transparent waves
+
+      // Draw wavy arc with consistent sine modulation
       const segments = 24;
-      const waveAmplitude = 8 * edgeFade; // Wavy-ness amplitude
-      const waveFrequency = 6; // How many waves along the arc
+      const waveAmplitude = 8;
+      const waveFrequency = 6;
 
-      this.graphics.lineStyle(2 * edgeFade + 1, primaryColor, alpha);
+      this.graphics.lineStyle(2, primaryColor, alpha);
       this.graphics.beginPath();
 
       for (let j = 0; j <= segments; j++) {

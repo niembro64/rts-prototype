@@ -564,7 +564,7 @@ export function updateWaveWeaponState(world: WorldState, dtMs: number): void {
 // Also applies a pull effect, drawing units toward the wave origin.
 
 // Pull strength in units per second (how fast units are pulled toward wave origin)
-const WAVE_PULL_STRENGTH = 35;
+const WAVE_PULL_STRENGTH = 15;
 
 // Helper: Check if a point is within a pie slice
 function isPointInSlice(
