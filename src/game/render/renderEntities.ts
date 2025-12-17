@@ -3332,12 +3332,13 @@ export class EntityRenderer {
     const color = this.getProjectileColor(baseColor);
 
     if (projectile.projectileType === 'beam') {
-      // Render beam as a line
+      // Render beam as a line - complexity based on graphics settings
       const startX = projectile.startX ?? x;
       const startY = projectile.startY ?? y;
       const endX = projectile.endX ?? x;
       const endY = projectile.endY ?? y;
       const beamWidth = config.beamWidth ?? 2;
+      const beamStyle = getGraphicsConfig().beamStyle;
 
       // Get or create random offsets for this beam (for visual variety)
       let randomOffsets = this.beamRandomOffsets.get(entity.id);
@@ -3351,49 +3352,78 @@ export class EntityRenderer {
         this.beamRandomOffsets.set(entity.id, randomOffsets);
       }
 
-      // Outer glow
-      this.graphics.lineStyle(beamWidth + 4, color, 0.3);
-      this.graphics.lineBetween(startX, startY, endX, endY);
+      // === BEAM LINE RENDERING ===
+      // simple: 1 line (main beam only)
+      // standard: 2 lines (main beam + core)
+      // detailed/complex: 3 lines (outer glow + main beam + core)
 
-      // Inner beam
+      if (beamStyle === 'detailed' || beamStyle === 'complex') {
+        // Outer glow (only for detailed/complex)
+        this.graphics.lineStyle(beamWidth + 4, color, 0.3);
+        this.graphics.lineBetween(startX, startY, endX, endY);
+      }
+
+      // Inner beam (all styles)
       this.graphics.lineStyle(beamWidth, color, 0.9);
       this.graphics.lineBetween(startX, startY, endX, endY);
 
-      // Core
-      this.graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
-      this.graphics.lineBetween(startX, startY, endX, endY);
+      if (beamStyle !== 'simple') {
+        // Core (standard, detailed, complex)
+        this.graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
+        this.graphics.lineBetween(startX, startY, endX, endY);
+      }
 
-      // Continuous explosion effect at beam endpoint with per-beam randomness
+      // === BEAM ENDPOINT RENDERING ===
       const baseRadius = beamWidth * 2 + 6;
       const explosionRadius = baseRadius * randomOffsets.sizeScale;
       const pulseTime = this.sprayParticleTime * randomOffsets.pulseSpeed;
       const pulsePhase = ((pulseTime / 80) + randomOffsets.phaseOffset) % (Math.PI * 2);
-      const pulseScale = 0.8 + Math.sin(pulsePhase) * 0.2;
 
-      // Outer glow at endpoint
-      this.graphics.fillStyle(color, 0.4);
-      this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 1.3);
-
-      // Main explosion area
-      this.graphics.fillStyle(color, 0.6);
-      this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
-
-      // Hot core
-      this.graphics.fillStyle(0xffffff, 0.8);
-      this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
-
-      // Spark particles radiating outward with per-beam rotation offset
-      const sparkCount = 6;
-      for (let i = 0; i < sparkCount; i++) {
-        const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
-        const angle = baseAngle + randomOffsets.rotationOffset;
-        const sparkDist =
-          explosionRadius *
-          (0.8 + Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
-        const sx = endX + Math.cos(angle) * sparkDist;
-        const sy = endY + Math.sin(angle) * sparkDist;
+      if (beamStyle === 'simple') {
+        // Simple: 1 static circle (no pulsing)
         this.graphics.fillStyle(color, 0.7);
-        this.graphics.fillCircle(sx, sy, 2);
+        this.graphics.fillCircle(endX, endY, explosionRadius * 0.8);
+      } else if (beamStyle === 'standard') {
+        // Standard: 2 pulsing circles (no sparks)
+        const pulseScale = 0.85 + Math.sin(pulsePhase) * 0.15;
+
+        // Main explosion area
+        this.graphics.fillStyle(color, 0.6);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
+
+        // Hot core
+        this.graphics.fillStyle(0xffffff, 0.8);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
+      } else {
+        // Detailed/Complex: 3 pulsing circles + sparks
+        const pulseScale = 0.8 + Math.sin(pulsePhase) * 0.2;
+
+        // Outer glow at endpoint
+        this.graphics.fillStyle(color, 0.4);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 1.3);
+
+        // Main explosion area
+        this.graphics.fillStyle(color, 0.6);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
+
+        // Hot core
+        this.graphics.fillStyle(0xffffff, 0.8);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
+
+        // Spark particles radiating outward with per-beam rotation offset
+        // detailed: 4 sparks, complex: 6 sparks
+        const sparkCount = beamStyle === 'complex' ? 6 : 4;
+        for (let i = 0; i < sparkCount; i++) {
+          const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
+          const angle = baseAngle + randomOffsets.rotationOffset;
+          const sparkDist =
+            explosionRadius *
+            (0.8 + Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
+          const sx = endX + Math.cos(angle) * sparkDist;
+          const sy = endY + Math.sin(angle) * sparkDist;
+          this.graphics.fillStyle(color, 0.7);
+          this.graphics.fillCircle(sx, sy, 2);
+        }
       }
     } else if (entity.dgunProjectile) {
       // D-gun projectile - big, fiery, intimidating

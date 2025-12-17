@@ -12,11 +12,13 @@ export type GraphicsQuality = 'auto' | 'low' | 'medium' | 'high' | 'extra';
 export type RenderMode = 'window' | 'all';
 
 export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-chunks' | 'three-velocity-complex';
+export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
 
 export interface GraphicsConfig {
   legs: 'none' | 'animated';
   explosions: ExplosionStyle;
   treadsAnimated: boolean;
+  beamStyle: BeamStyle;
   beamGlow: boolean;
   antialias: boolean;
 }
@@ -28,6 +30,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     legs: D.LEGS.low as 'none' | 'animated',
     explosions: D.EXPLOSIONS.low as ExplosionStyle,
     treadsAnimated: D.TREADS_ANIMATED.low,
+    beamStyle: D.BEAM_STYLE.low as BeamStyle,
     beamGlow: D.BEAM_GLOW.low,
     antialias: D.ANTIALIAS.low,
   },
@@ -35,6 +38,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     legs: D.LEGS.medium as 'none' | 'animated',
     explosions: D.EXPLOSIONS.medium as ExplosionStyle,
     treadsAnimated: D.TREADS_ANIMATED.medium,
+    beamStyle: D.BEAM_STYLE.medium as BeamStyle,
     beamGlow: D.BEAM_GLOW.medium,
     antialias: D.ANTIALIAS.medium,
   },
@@ -42,6 +46,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     legs: D.LEGS.high as 'none' | 'animated',
     explosions: D.EXPLOSIONS.high as ExplosionStyle,
     treadsAnimated: D.TREADS_ANIMATED.high,
+    beamStyle: D.BEAM_STYLE.high as BeamStyle,
     beamGlow: D.BEAM_GLOW.high,
     antialias: D.ANTIALIAS.high,
   },
@@ -49,6 +54,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     legs: D.LEGS.extra as 'none' | 'animated',
     explosions: D.EXPLOSIONS.extra as ExplosionStyle,
     treadsAnimated: D.TREADS_ANIMATED.extra,
+    beamStyle: D.BEAM_STYLE.extra as BeamStyle,
     beamGlow: D.BEAM_GLOW.extra,
     antialias: D.ANTIALIAS.extra,
   },

@@ -418,7 +418,16 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     extra: true,
   },
 
-  // Beam glow effects
+  // Beam rendering style
+  // Controls beam line complexity (1-3 layers) and endpoint effects (circles, pulsing, sparks)
+  BEAM_STYLE: {
+    low: 'simple',           // 1 beam line, 1 static endpoint circle
+    medium: 'standard',      // 2 beam lines, 2 pulsing endpoint circles
+    high: 'detailed',        // 3 beam lines, 3 pulsing circles + 4 sparks
+    extra: 'complex',        // 3 beam lines, 3 pulsing circles + 6 sparks
+  },
+
+  // Beam glow effects (extra bloom/glow around beams)
   BEAM_GLOW: {
     low: false,
     medium: false,
