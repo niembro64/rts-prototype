@@ -619,22 +619,25 @@ export class InputManager {
       const mapCenterX = mapWidth / 2;
       const mapCenterY = mapHeight / 2;
 
-      // Clamp center point to keep map on screen
-      // If view is larger than map, center on map center
-      // Otherwise, clamp so map edges stay within view
-      if (viewWidth >= mapWidth) {
+      // Margin allows panning slightly beyond map edges when zoomed in
+      const panMargin = 300;
+
+      // Clamp center point to keep map reasonably on screen
+      // If view is larger than map (plus margin), center on map center
+      // Otherwise, allow some margin beyond map edges
+      if (viewWidth >= mapWidth + panMargin * 2) {
         centerX = mapCenterX;
       } else {
-        const minCenterX = viewWidth / 2;
-        const maxCenterX = mapWidth - viewWidth / 2;
+        const minCenterX = viewWidth / 2 - panMargin;
+        const maxCenterX = mapWidth - viewWidth / 2 + panMargin;
         centerX = Phaser.Math.Clamp(centerX, minCenterX, maxCenterX);
       }
 
-      if (viewHeight >= mapHeight) {
+      if (viewHeight >= mapHeight + panMargin * 2) {
         centerY = mapCenterY;
       } else {
-        const minCenterY = viewHeight / 2;
-        const maxCenterY = mapHeight - viewHeight / 2;
+        const minCenterY = viewHeight / 2 - panMargin;
+        const maxCenterY = mapHeight - viewHeight / 2 + panMargin;
         centerY = Phaser.Math.Clamp(centerY, minCenterY, maxCenterY);
       }
 
@@ -1014,26 +1017,29 @@ export class InputManager {
     const mapCenterX = mapWidth / 2;
     const mapCenterY = mapHeight / 2;
 
+    // Margin allows panning slightly beyond map edges when zoomed in
+    const panMargin = 300;
+
     // Get current camera center
     let centerX = camera.midPoint.x;
     let centerY = camera.midPoint.y;
 
-    // Clamp center point to keep map on screen
-    // If view is larger than map, center on map center
-    // Otherwise, clamp so map edges stay within view
-    if (viewWidth >= mapWidth) {
+    // Clamp center point to keep map reasonably on screen
+    // If view is larger than map (plus margin), center on map center
+    // Otherwise, allow panning with margin beyond map edges
+    if (viewWidth >= mapWidth + panMargin * 2) {
       centerX = mapCenterX;
     } else {
-      const minCenterX = viewWidth / 2;
-      const maxCenterX = mapWidth - viewWidth / 2;
+      const minCenterX = viewWidth / 2 - panMargin;
+      const maxCenterX = mapWidth - viewWidth / 2 + panMargin;
       centerX = Phaser.Math.Clamp(centerX, minCenterX, maxCenterX);
     }
 
-    if (viewHeight >= mapHeight) {
+    if (viewHeight >= mapHeight + panMargin * 2) {
       centerY = mapCenterY;
     } else {
-      const minCenterY = viewHeight / 2;
-      const maxCenterY = mapHeight - viewHeight / 2;
+      const minCenterY = viewHeight / 2 - panMargin;
+      const maxCenterY = mapHeight - viewHeight / 2 + panMargin;
       centerY = Phaser.Math.Clamp(centerY, minCenterY, maxCenterY);
     }
 
