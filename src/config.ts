@@ -269,81 +269,90 @@ export const UNIT_MASS_MULTIPLIER = 5.0;
  */
 
 export const UNIT_STATS = {
-  // Scout - Disposable swarm unit. High DPS but dies fast.
+  // Scout - Disposable swarm unit. High DPS (50) but dies fast.
+  // Value: Fast harassment, good vs slow units, countered by splash
   scout: {
-    baseCost: 35,
+    baseCost: 40,
     hp: 40,
     moveSpeed: 360,
     collisionRadius: 8,
-    mass: 10,        // Light and zippy
+    mass: 10,
     buildRate: 70,
   },
-  // Burst - Glass cannon striker. High alpha, fragile.
+  // Burst - Glass cannon striker. Burst damage (54 per volley), fragile.
+  // Value: Alpha strike potential, but slow and squishy
   burst: {
-    baseCost: 175,
+    baseCost: 55,
     hp: 65,
     moveSpeed: 130,
     collisionRadius: 10,
     mass: 15,
     buildRate: 55,
   },
-  // Daddy - Balanced baseline. Reliable sustained damage.
+  // Daddy - Beam walker. Sustained 45 DPS but VERY slow turret tracking.
+  // Value: Good vs slow/stationary targets, struggles vs fast units
   daddy: {
-    baseCost: 500,
+    baseCost: 90,
     hp: 100,
     moveSpeed: 200,
     collisionRadius: 13,
-    mass: 25,       // Medium baseline
+    mass: 25,
     buildRate: 45,
   },
-  // Brawl - Tanky brawler. High damage but must close distance.
+  // Brawl - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
+  // Value: Wins close fights, but takes damage closing the gap
   brawl: {
-    baseCost: 110,
+    baseCost: 80,
     hp: 180,
     moveSpeed: 200,
     collisionRadius: 16,
-    mass: 45,       // Heavy brawler
+    mass: 45,
     buildRate: 40,
   },
-  // Shotgun - Area denial artillery. Splash damage.
+  // Shotgun - Area denial artillery. Splash damage, slow projectile.
+  // Value: Excellent vs groups, but can be dodged, mediocre vs single targets
   shotgun: {
-    baseCost: 150,
+    baseCost: 100,
     hp: 100,
     moveSpeed: 220,
     collisionRadius: 14,
     mass: 35,
     buildRate: 32,
   },
-  // Snipe - Long-range assassin. Fragile but safe engagement range.
+  // Snipe - Long-range assassin. Hitscan piercing, but low DPS (17) and can't escape.
+  // Value: Safe poke damage, but very slow and fragile if caught
   snipe: {
-    baseCost: 140,
+    baseCost: 75,
     hp: 55,
     moveSpeed: 70,
     collisionRadius: 11,
-    mass: 20,       // Light sniper
+    mass: 20,
     buildRate: 28,
   },
-  // Tank - Heavy siege unit. Massive HP compensates for slow speed.
+  // Tank - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
+  // Value: Frontline anchor, wins attrition fights, slow to reposition
   tank: {
-    baseCost: 280,
+    baseCost: 180,
     hp: 350,
-    moveSpeed: 5000,
+    moveSpeed: 60,
     collisionRadius: 24,
-    mass: 500,       // Heavy tank
+    mass: 500,
     buildRate: 18,
   },
-  // Widow - Titan spider unit. 6 beam lasers + 1 sonic wave, 8 legs.
+  // Widow - Titan spider unit. 7 beam weapons + sonic wave = 335+ DPS.
+  // Value: Army-in-one super unit, but expensive and high priority target
   widow: {
-    baseCost: 1600,
+    baseCost: 800,
     hp: 1200,
-    moveSpeed: 1000,
+    moveSpeed: 120,
     collisionRadius: 38,
-    mass: 240,      // Massive titan
+    mass: 240,
     buildRate: 8,
   },
-  // Insect - Small 4-legged unit with continuous wave AoE damage.
+  // Insect - Wave AoE unit. Continuous damage with pull, scales with 1/distance.
+  // Value: Anti-swarm, area denial, but must get moderately close for full effect
   insect: {
-    baseCost: 90,
+    baseCost: 70,
     hp: 80,
     moveSpeed: 200,
     collisionRadius: 11,
