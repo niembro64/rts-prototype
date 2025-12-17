@@ -15,6 +15,7 @@ import {
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
 import { getGraphicsConfig, getRenderMode, setCurrentZoom } from './graphicsSettings';
+import { SONIC_WAVE_DEBUG_ZONE } from '../../config';
 
 /**
  * EntitySource - Interface that both WorldState and ClientViewState implement
@@ -2810,39 +2811,41 @@ export class EntityRenderer {
     const time = Date.now() / 1000;
     const halfAngle = sliceAngle / 2;
 
-    // 1. Draw single faint pie slice showing the active zone
-    this.graphics.fillStyle(primaryColor, 0.08);
-    this.graphics.beginPath();
-    this.graphics.moveTo(x, y);
-    this.graphics.arc(
-      x,
-      y,
-      maxRange,
-      rotation - halfAngle,
-      rotation + halfAngle,
-      false
-    );
-    this.graphics.closePath();
-    this.graphics.fill();
+    // 1. Debug zone: Draw faint pie slice showing the active zone (configurable)
+    if (SONIC_WAVE_DEBUG_ZONE) {
+      this.graphics.fillStyle(primaryColor, 0.08);
+      this.graphics.beginPath();
+      this.graphics.moveTo(x, y);
+      this.graphics.arc(
+        x,
+        y,
+        maxRange,
+        rotation - halfAngle,
+        rotation + halfAngle,
+        false
+      );
+      this.graphics.closePath();
+      this.graphics.fill();
 
-    // Draw pie slice border
-    this.graphics.lineStyle(1, primaryColor, 0.2);
-    this.graphics.beginPath();
-    this.graphics.moveTo(x, y);
-    this.graphics.lineTo(
-      x + Math.cos(rotation - halfAngle) * maxRange,
-      y + Math.sin(rotation - halfAngle) * maxRange
-    );
-    this.graphics.arc(
-      x,
-      y,
-      maxRange,
-      rotation - halfAngle,
-      rotation + halfAngle,
-      false
-    );
-    this.graphics.lineTo(x, y);
-    this.graphics.strokePath();
+      // Draw pie slice border
+      this.graphics.lineStyle(1, primaryColor, 0.2);
+      this.graphics.beginPath();
+      this.graphics.moveTo(x, y);
+      this.graphics.lineTo(
+        x + Math.cos(rotation - halfAngle) * maxRange,
+        y + Math.sin(rotation - halfAngle) * maxRange
+      );
+      this.graphics.arc(
+        x,
+        y,
+        maxRange,
+        rotation - halfAngle,
+        rotation + halfAngle,
+        false
+      );
+      this.graphics.lineTo(x, y);
+      this.graphics.strokePath();
+    }
 
     // 2. Draw wavy lines pulling INWARD (from outer edge toward center)
     // Waves start transparent at edge, become visible as they approach origin
@@ -2891,17 +2894,17 @@ export class EntityRenderer {
       this.graphics.strokePath();
     }
 
-    // 3. Draw subtle radial "pull lines" converging on center
+    // 3. Draw subtle radial "pull lines" converging INWARD toward center
     const pullLineCount = 8;
     for (let i = 0; i < pullLineCount; i++) {
       const lineAngle = rotation - halfAngle + (i + 0.5) / pullLineCount * sliceAngle;
 
-      // Animate dashes moving inward
-      const dashPhase = (time * 2 + i * 0.3) % 1;
-      const dashStart = maxRange * (0.3 + dashPhase * 0.5);
-      const dashEnd = maxRange * (0.1 + dashPhase * 0.5);
+      // Animate dashes moving INWARD (start at edge, move toward center)
+      const dashPhase = (1 - ((time * 2 + i * 0.3) % 1)); // Inverted phase for inward motion
+      const dashStart = maxRange * (0.4 + dashPhase * 0.5); // Outer position (starts at 90%, ends at 40%)
+      const dashEnd = maxRange * (0.2 + dashPhase * 0.5);   // Inner position (starts at 70%, ends at 20%)
 
-      if (dashStart > maxRange * 0.9) continue; // Don't draw past edge
+      if (dashStart > maxRange * 0.95) continue; // Don't draw past edge
 
       const alpha = 0.25 * (1 - dashPhase); // Fade as it gets closer to center
 

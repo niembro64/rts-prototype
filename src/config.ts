@@ -57,6 +57,13 @@ export const KNOCKBACK_FORCE_MULTIPLIER = 150;
  */
 export const WAVE_PULL_STRENGTH = 180;
 
+/**
+ * Show the pie-chart debug zone visualization for sonic wave weapons.
+ * When true, renders a faint filled pie slice and border showing the exact effect area.
+ * Useful for debugging/tuning wave weapon ranges and angles.
+ */
+export const SONIC_WAVE_DEBUG_ZONE = false;
+
 // =============================================================================
 // EXPLOSION MOMENTUM FACTORS
 // =============================================================================
