@@ -372,8 +372,8 @@ export const WEAPON_STATS = {
     // --- Wave Effect ---
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.75, // 135° slice (much wider than insect)
-    waveTransitionTime: 1000,
-    pullPower: 1000,       // Stronger pull for titan
+    waveTransitionTime: 500,
+    pullPower: 300,       // Stronger pull for titan
   },
   // Widow's beam lasers - extended range daddy beams
   widowBeam: {
