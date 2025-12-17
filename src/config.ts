@@ -434,8 +434,8 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 10, // Fast acceleration (rad/sec²)
-    turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
+    turretTurnAccel: 9, // Fast acceleration (rad/sec²)
+    turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Widow beam lasers - extended range continuous beams
@@ -446,8 +446,8 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 10, // Fast acceleration (rad/sec²)
-    turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
+    turretTurnAccel: 9, // Fast acceleration (rad/sec²)
+    turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Widow center beam - 2x stats of widowBeam, mounted at head center
@@ -458,8 +458,8 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 10, // Fast acceleration (rad/sec²)
-    turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
+    turretTurnAccel: 9, // Fast acceleration (rad/sec²)
+    turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Insect - Continuous pie-slice wave AoE
@@ -467,7 +467,7 @@ export const WEAPON_STATS = {
     damage: 20, // Base DPS (scales with 1/distance)
     range: 400,
     cooldown: 0, // Continuous
-    turretTurnAccel: 100, // Medium acceleration (rad/sec²)
+    turretTurnAccel: 1, // Medium acceleration (rad/sec²)
     turretDrag: 0.0000001, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.125,
@@ -480,7 +480,7 @@ export const WEAPON_STATS = {
     damage: 20, // Base DPS (scales with 1/distance)
     range: 600,
     cooldown: 0, // Continuous
-    turretTurnAccel: 100, // Medium acceleration (rad/sec²)
+    turretTurnAccel: 1, // Medium acceleration (rad/sec²)
     turretDrag: 0.0000001, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.125,

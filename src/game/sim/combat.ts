@@ -119,9 +119,13 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
           // Return to forward-facing (movement direction or body direction)
           targetAngle = getMovementAngle(unit);
         } else {
-          // Stay where we are - just apply drag to slow down
+          // No target and not returning to forward - just coast with drag
+          // Apply drag (reduces velocity each frame)
           weapon.turretAngularVelocity *= (1 - weapon.turretDrag);
-          continue; // Skip the rest of turret rotation logic
+          // Still update rotation based on remaining velocity
+          weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
+          weapon.turretRotation = normalizeAngle(weapon.turretRotation);
+          continue;
         }
       }
 
@@ -138,32 +142,10 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
       // This naturally limits terminal velocity
       weapon.turretAngularVelocity *= (1 - weapon.turretDrag);
 
-      // Predictive braking: if we're going to overshoot, reduce velocity
-      // Calculate stopping distance at current velocity with drag
-      // If we'd overshoot, start braking harder
-      const stoppingFrames = Math.log(0.01) / Math.log(1 - weapon.turretDrag); // frames to reach ~1% velocity
-      const avgVelocity = weapon.turretAngularVelocity * 0.5; // rough average during deceleration
-      const estimatedOvershoot = avgVelocity * stoppingFrames * dtSec;
-
-      if (Math.abs(angleDiff) < Math.abs(estimatedOvershoot) &&
-          Math.sign(weapon.turretAngularVelocity) === accelDirection) {
-        // We're about to overshoot - apply counter-acceleration (brake)
-        weapon.turretAngularVelocity *= 0.8; // Extra braking
-      }
-
-      // If very close to target and moving slowly, snap to target
-      const velocityThreshold = 0.05; // rad/sec
-      const angleThreshold = 0.02; // ~1 degree
-      if (Math.abs(angleDiff) < angleThreshold &&
-          Math.abs(weapon.turretAngularVelocity) < velocityThreshold) {
-        weapon.turretRotation = targetAngle!;
-        weapon.turretAngularVelocity = 0;
-      } else {
-        // Update rotation based on velocity
-        weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
-        // Keep rotation normalized
-        weapon.turretRotation = normalizeAngle(weapon.turretRotation);
-      }
+      // Update rotation based on velocity
+      weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
+      // Keep rotation normalized
+      weapon.turretRotation = normalizeAngle(weapon.turretRotation);
     }
   }
 }

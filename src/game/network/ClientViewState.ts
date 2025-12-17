@@ -329,14 +329,17 @@ export class ClientViewState {
         entity.weapons[i].isFiring = w2.isFiring;
         entity.weapons[i].currentSliceAngle = w2.currentSliceAngle;
 
-        // Interpolate turret rotation
+        // Interpolate turret rotation and sync angular velocity
         if (w1 && w2) {
           let turretDiff = w2.turretRotation - w1.turretRotation;
           while (turretDiff > Math.PI) turretDiff -= Math.PI * 2;
           while (turretDiff < -Math.PI) turretDiff += Math.PI * 2;
           entity.weapons[i].turretRotation = w1.turretRotation + turretDiff * t;
+          // Interpolate angular velocity
+          entity.weapons[i].turretAngularVelocity = w1.turretAngularVelocity + (w2.turretAngularVelocity - w1.turretAngularVelocity) * t;
         } else {
           entity.weapons[i].turretRotation = w2.turretRotation;
+          entity.weapons[i].turretAngularVelocity = w2.turretAngularVelocity;
         }
       }
     }
@@ -447,6 +450,7 @@ export class ClientViewState {
       for (let i = 0; i < netEntity.weapons.length && i < entity.weapons.length; i++) {
         entity.weapons[i].targetEntityId = netEntity.weapons[i].targetId ?? null;
         entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
+        entity.weapons[i].turretAngularVelocity = netEntity.weapons[i].turretAngularVelocity;
         entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
         entity.weapons[i].currentSliceAngle = netEntity.weapons[i].currentSliceAngle;
       }
