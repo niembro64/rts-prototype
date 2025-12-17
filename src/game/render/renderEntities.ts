@@ -2682,8 +2682,8 @@ export class EntityRenderer {
         this.graphics.fillCircle(beamEndX, beamEndY, r * 0.06);
       }
 
-      // Sonic wave weapon at center (weapon index 6)
-      const sonicWeapon = weapons[6];
+      // Sonic wave weapon at center (weapon index 7: after 6 vertex beams + 1 center beam)
+      const sonicWeapon = weapons[7];
       if (sonicWeapon?.config.isWaveWeapon) {
         const hexCenterX = x + cos * hexForwardOffset;
         const hexCenterY = y + sin * hexForwardOffset;
