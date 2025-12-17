@@ -223,7 +223,9 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
 
 // Update auto-targeting for all units
 // Each weapon independently finds its own target using its own seeRange
-// Units ALWAYS check for closer targets and switch to them
+// Targeting mode determines behavior:
+// - 'nearest': Always switch to closest enemy (original behavior)
+// - 'sticky': Keep current target until it dies or leaves seeRange
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
@@ -244,6 +246,7 @@ export function updateAutoTargeting(world: WorldState): void {
 
       // Track current target distance for comparison
       let currentTargetDist = Infinity;
+      let hasValidTarget = false;
 
       // Check if current target is still valid and in range
       if (weapon.targetEntityId !== null) {
@@ -267,7 +270,13 @@ export function updateAutoTargeting(world: WorldState): void {
           // Target still valid and in strict tracking range
           if (dist <= effectiveTrackingRange) {
             currentTargetDist = dist;
-            // Don't continue here - always check for closer targets below
+            hasValidTarget = true;
+
+            // Sticky mode: keep current target, don't search for closer
+            if (weapon.targetingMode === 'sticky') {
+              continue; // Skip to next weapon
+            }
+            // Nearest mode: continue to search for closer targets below
           } else {
             // Target out of range, clear it
             weapon.targetEntityId = null;
@@ -278,7 +287,9 @@ export function updateAutoTargeting(world: WorldState): void {
         }
       }
 
-      // Always search for closest enemy - switch if closer than current target
+      // Search for closest enemy
+      // - Nearest mode: always search, switch if closer
+      // - Sticky mode: only search if no valid target (cleared above)
       const enemies = world.getEnemyEntities(playerId);
       let closestEnemy: Entity | null = null;
       let closestDist = Infinity;
@@ -306,9 +317,17 @@ export function updateAutoTargeting(world: WorldState): void {
         }
       }
 
-      // Switch to closer target if found, or set new target if no current target
-      if (closestEnemy && closestDist < currentTargetDist) {
-        weapon.targetEntityId = closestEnemy.id;
+      // Acquire target based on mode
+      if (weapon.targetingMode === 'sticky') {
+        // Sticky: only set target if we don't have one
+        if (!hasValidTarget && closestEnemy) {
+          weapon.targetEntityId = closestEnemy.id;
+        }
+      } else {
+        // Nearest: switch to closer target if found
+        if (closestEnemy && closestDist < currentTargetDist) {
+          weapon.targetEntityId = closestEnemy.id;
+        }
       }
     }
   }

@@ -534,6 +534,7 @@ export class ClientViewState {
           config: getWeaponConfig(nw.configId),
           currentCooldown: 0,
           targetEntityId: nw.targetId ?? null,
+          targetingMode: nw.targetingMode ?? 'nearest',
           seeRange: nw.seeRange,
           fireRange: nw.fireRange,
           fightstopRange: nw.fightstopRange,

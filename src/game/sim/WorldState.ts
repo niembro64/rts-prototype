@@ -1,4 +1,4 @@
-import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
+import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType, TargetingMode } from './types';
 import { getWeaponConfig } from './weapons';
 import { MAX_TOTAL_UNITS } from '../../config';
 
@@ -270,7 +270,8 @@ export class WorldState {
     mass: number = 25,
     turretTurnRate: number = 3, // radians per second (~172°/sec default) - for weapons
     weaponSeeRange?: number,    // Optional per-weapon tracking range
-    weaponFireRange?: number    // Optional per-weapon fire range
+    weaponFireRange?: number,   // Optional per-weapon fire range
+    targetingMode: TargetingMode = 'nearest' // How weapon acquires/keeps targets
   ): Entity {
     const weaponConfig = getWeaponConfig(weaponId);
 
@@ -287,6 +288,7 @@ export class WorldState {
       config: weaponConfig,
       currentCooldown: 0,
       targetEntityId: null,
+      targetingMode,
       seeRange,
       fireRange,
       fightstopRange,
@@ -320,11 +322,13 @@ export class WorldState {
       turretTurnRate?: number;
       weaponSeeRange?: number;
       weaponFireRange?: number;
+      targetingMode?: TargetingMode;
     }
   ): Entity {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(config.weaponId);
     const turretTurnRate = config.turretTurnRate ?? 3;
+    const targetingMode = config.targetingMode ?? 'nearest';
 
     // Default ranges from weapon config
     // Range constraint: fightstopRange < fireRange < seeRange
@@ -353,6 +357,7 @@ export class WorldState {
         config: weaponConfig,
         currentCooldown: 0,
         targetEntityId: null,
+        targetingMode,                   // Targeting behavior for this weapon
         seeRange,                        // Weapon's tracking range
         fireRange,                       // Weapon's firing range
         fightstopRange,                  // Weapon's fightstop range (unit stops in fight mode)

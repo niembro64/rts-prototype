@@ -80,6 +80,7 @@ export interface NetworkAction {
 export interface NetworkWeapon {
   configId: string;
   targetId?: number;
+  targetingMode?: 'nearest' | 'sticky';  // How weapon acquires/keeps targets
   seeRange: number;
   fireRange: number;
   fightstopRange: number;  // Unit stops in fight mode when enemy within this range

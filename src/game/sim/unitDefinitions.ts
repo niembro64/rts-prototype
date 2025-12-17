@@ -1,11 +1,12 @@
 // Unified Unit Definition System
 // All unit-type-specific configuration in one place
 
-import type { UnitWeapon } from './types';
+import type { UnitWeapon, TargetingMode } from './types';
 import { getWeaponConfig } from './weapons';
 import {
   COST_MULTIPLIER,
   UNIT_STATS,
+  UNIT_TARGETING_MODES,
 } from '../../config';
 
 // Locomotion types for rendering
@@ -42,6 +43,25 @@ export interface UnitDefinition {
   createWeapons?: (radius: number, definition: UnitDefinition) => UnitWeapon[];
 }
 
+// Get targeting mode for a unit type
+// Looks up from UNIT_TARGETING_MODES config, defaults to 'nearest'
+function getTargetingMode(unitId: string, weaponType?: 'beam' | 'centerBeam' | 'sonic'): TargetingMode {
+  const unitModes = UNIT_TARGETING_MODES[unitId as keyof typeof UNIT_TARGETING_MODES];
+  if (!unitModes) return 'nearest';
+
+  // For multi-weapon units, check for specific weapon type
+  if (weaponType && weaponType in unitModes) {
+    return (unitModes as Record<string, TargetingMode>)[weaponType];
+  }
+
+  // For single-weapon units or default fallback
+  if ('default' in unitModes) {
+    return (unitModes as { default: TargetingMode }).default;
+  }
+
+  return 'nearest';
+}
+
 // Default weapon creation - single weapon matching unit type
 // Range constraint: fightstopRange < fireRange < seeRange
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
@@ -53,11 +73,14 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   const fightstopRange = weaponConfig.engageRange ?? definition.weaponFightstopRange ?? fireRange * 0.75;
   // Use turretTurnRate for beams, rotationRate for wave weapons, otherwise default to 1
   const turretTurnRate = weaponConfig.turretTurnRate ?? weaponConfig.rotationRate ?? 1;
+  // Get targeting mode from config
+  const targetingMode = getTargetingMode(definition.id);
 
   return [{
     config: { ...weaponConfig },
     currentCooldown: 0,
     targetEntityId: null,
+    targetingMode,
     seeRange,
     fireRange,
     fightstopRange,
@@ -83,18 +106,21 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
   const beamSeeRange = widowBeamConfig.trackingRange ?? beamFireRange * 1.5;
   const beamFightstopRange = widowBeamConfig.engageRange ?? beamFireRange * 0.75;
   const beamTurretTurnRate = widowBeamConfig.turretTurnRate ?? 0.3;
+  const beamTargetingMode = getTargetingMode('widow', 'beam');
 
   // Center beam weapon ranges (2x the regular beam)
   const centerBeamFireRange = widowCenterBeamConfig.range;
   const centerBeamSeeRange = widowCenterBeamConfig.trackingRange ?? centerBeamFireRange * 1.5;
   const centerBeamFightstopRange = widowCenterBeamConfig.engageRange ?? centerBeamFireRange * 0.75;
   const centerBeamTurretTurnRate = widowCenterBeamConfig.turretTurnRate ?? 0.3;
+  const centerBeamTargetingMode = getTargetingMode('widow', 'centerBeam');
 
   // Sonic weapon ranges (from widowSonic config)
   const sonicFireRange = widowSonicConfig.range;
   const sonicSeeRange = widowSonicConfig.trackingRange ?? sonicFireRange * 1.5;
   const sonicFightstopRange = widowSonicConfig.engageRange ?? sonicFireRange * 0.75;
   const sonicRotationRate = widowSonicConfig.rotationRate ?? 0.45;
+  const sonicTargetingMode = getTargetingMode('widow', 'sonic');
 
   const weapons: UnitWeapon[] = [];
 
@@ -111,6 +137,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
       config: { ...widowBeamConfig },
       currentCooldown: 0,
       targetEntityId: null,
+      targetingMode: beamTargetingMode,
       seeRange: beamSeeRange,
       fireRange: beamFireRange,
       fightstopRange: beamFightstopRange,
@@ -128,6 +155,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     config: { ...widowCenterBeamConfig },
     currentCooldown: 0,
     targetEntityId: null,
+    targetingMode: centerBeamTargetingMode,
     seeRange: centerBeamSeeRange,
     fireRange: centerBeamFireRange,
     fightstopRange: centerBeamFightstopRange,
@@ -144,6 +172,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     config: { ...widowSonicConfig },
     currentCooldown: 0,
     targetEntityId: null,
+    targetingMode: sonicTargetingMode,
     seeRange: sonicSeeRange,
     fireRange: sonicFireRange,
     fightstopRange: sonicFightstopRange,

@@ -120,6 +120,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
       netEntity.weapons = entity.weapons.map(w => ({
         configId: w.config.id,
         targetId: w.targetEntityId ?? undefined,
+        targetingMode: w.targetingMode,
         seeRange: w.seeRange,
         fireRange: w.fireRange,
         fightstopRange: w.fightstopRange,

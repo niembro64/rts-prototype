@@ -140,6 +140,9 @@ export interface UnitWeapon {
   currentCooldown: number;       // Time until can fire again (ms)
   targetEntityId: EntityId | null; // Current target
 
+  // Targeting behavior - how this weapon acquires and keeps targets
+  targetingMode: TargetingMode;  // 'nearest' = always closest, 'sticky' = keep current until invalid
+
   // Per-weapon range properties (constraint: fightstopRange < fireRange < seeRange)
   seeRange: number;              // Tracking range - turret starts rotating when enemies are within this
   fireRange: number;             // Attack range - weapon fires when enemies are within this
@@ -166,6 +169,11 @@ export interface UnitWeapon {
   waveTransitionProgress?: number;  // 0 = idle angle, 1 = attack angle
   currentSliceAngle?: number;       // Current dynamic slice angle (radians)
 }
+
+// Weapon targeting modes
+// - 'nearest': Always tracks closest enemy, switches to closer targets (default)
+// - 'sticky': Stays on current target until it dies or leaves seeRange
+export type TargetingMode = 'nearest' | 'sticky';
 
 // Projectile travel types
 export type ProjectileType = 'instant' | 'traveling' | 'beam';

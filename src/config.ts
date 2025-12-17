@@ -456,6 +456,44 @@ export const WEAPON_STATS = {
 };
 
 // =============================================================================
+// WEAPON TARGETING MODES
+// =============================================================================
+/**
+ * Per-unit targeting behavior configuration.
+ * Each unit type defines how its weapons acquire and keep targets.
+ * - 'nearest': Always track closest enemy, switch to closer targets
+ * - 'sticky': Stay on current target until it dies or leaves seeRange
+ *
+ * For multi-weapon units, specify per weapon type.
+ * For single-weapon units, use 'default'.
+ */
+export const UNIT_TARGETING_MODES = {
+  // Simple projectile units - track nearest
+  scout: { default: 'nearest' as const },
+  burst: { default: 'nearest' as const },
+  brawl: { default: 'nearest' as const },
+  shotgun: { default: 'nearest' as const },
+  tank: { default: 'nearest' as const },
+
+  // Beam units - sticky (lock onto target and burn it down)
+  daddy: { default: 'sticky' as const },
+  snipe: { default: 'sticky' as const },
+
+  // Wave/AoE units - track nearest
+  insect: { default: 'nearest' as const },
+
+  // Multi-weapon titan
+  widow: {
+    beam: 'sticky' as const,        // 6 vertex beams lock onto targets
+    centerBeam: 'sticky' as const,  // Center beam locks onto target
+    sonic: 'nearest' as const,      // Sonic wave tracks nearest threat
+  },
+
+  // Commander - projectile, track nearest
+  commander: { default: 'nearest' as const },
+};
+
+// =============================================================================
 // MAP SIZE SETTINGS
 // =============================================================================
 
