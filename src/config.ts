@@ -434,7 +434,7 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
+    turretTurnAccel: 10, // Fast acceleration (rad/sec²)
     turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
   },
 
@@ -446,7 +446,7 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
+    turretTurnAccel: 10, // Fast acceleration (rad/sec²)
     turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
   },
 
@@ -458,7 +458,7 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
+    turretTurnAccel: 10, // Fast acceleration (rad/sec²)
     turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
   },
 
