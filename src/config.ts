@@ -271,34 +271,29 @@ export const WEAPON_STATS = {
   scout: {
     damage: 4,
     range: 140,
-    cooldown: 80, // Very fast fire rate
+    cooldown: 80,
     projectileSpeed: 650,
   },
+
   // Burst - 3-shot burst, medium damage
   burst: {
     damage: 18,
     range: 160,
     cooldown: 1200,
+    projectileSpeed: 600,
     burstCount: 3,
     burstDelay: 60,
-    projectileSpeed: 600,
   },
-  // Daddy - Continuous damage beam, shorter range (daddy long legs unit)
-  daddy: {
-    damage: 45, // Damage per second while beam is on target
-    range: 140, // Short range - must get close
-    cooldown: 0, // Continuous firing
-    beamDuration: 1500, // Long sustained beam
-    beamWidth: 4,
-  },
+
   // Brawl - Shotgun spread, high close-range damage
   brawl: {
-    damage: 12, // Per pellet
+    damage: 12,            // Per pellet
     range: 90,
     cooldown: 900,
-    pelletCount: 6,
     projectileSpeed: 450,
+    pelletCount: 6,
   },
+
   // Shotgun - Slow, high splash damage artillery
   shotgun: {
     damage: 80,
@@ -307,14 +302,7 @@ export const WEAPON_STATS = {
     projectileSpeed: 250,
     splashRadius: 70,
   },
-  // Snipe - Instant flash hitscan, moderate damage, long range, piercing
-  snipe: {
-    damage: 55, // Moderate single-shot damage
-    range: 350, // Very long range sniper
-    cooldown: 3200, // Long cooldown between shots
-    beamDuration: 20, // Instant flash
-    beamWidth: 2,
-  },
+
   // Tank - Slow, devastating heavy cannon
   tank: {
     damage: 220,
@@ -322,66 +310,77 @@ export const WEAPON_STATS = {
     cooldown: 3000,
     projectileSpeed: 300,
   },
-  // D-gun (commander special)
+
+  // Snipe - Instant flash hitscan, long range, piercing
+  snipe: {
+    damage: 55,
+    range: 350,
+    cooldown: 3200,
+    beamDuration: 20,      // Instant flash
+    beamWidth: 2,
+  },
+
+  // Daddy - Continuous damage beam (daddy long legs unit)
+  daddy: {
+    damage: 45,            // DPS while beam is on target
+    range: 140,
+    cooldown: 0,           // Continuous
+    beamDuration: 1500,
+    beamWidth: 4,
+  },
+
+  // Widow beam lasers - extended range continuous beams
+  widowBeam: {
+    damage: 45,
+    range: 210,
+    cooldown: 0,           // Continuous
+    beamDuration: 1500,
+    beamWidth: 4,
+  },
+
+  // Insect - Continuous pie-slice wave AoE
+  insect: {
+    damage: 20,            // Base DPS (scales with 1/distance)
+    range: 500,
+    cooldown: 0,           // Continuous
+    trackingRange: 600,    // Turret tracks at this range
+    engageRange: 400,      // Unit stops in fight mode at this range
+    rotationRate: 0.1,     // Turret turn speed (radians/sec)
+    waveAngleIdle: 0,
+    waveAngleAttack: Math.PI * 0.5,
+    waveTransitionTime: 2000,
+    pullPower: 180,
+  },
+
+  // Widow sonic wave - larger pie-slice wave AoE
+  widowSonic: {
+    damage: 20,            // Base DPS (scales with 1/distance)
+    range: 900,
+    cooldown: 0,           // Continuous
+    trackingRange: 1000,   // Turret tracks at this range
+    engageRange: 800,      // Unit stops in fight mode at this range
+    rotationRate: 0.1,     // Turret turn speed (radians/sec)
+    waveAngleIdle: 0,
+    waveAngleAttack: Math.PI * 0.75,
+    waveTransitionTime: 500,
+    pullPower: 300,
+  },
+
+  // D-gun - Commander special weapon
   dgun: {
     damage: 9999,
     range: 150,
+    cooldown: 0,           // No cooldown (energy-limited)
     projectileSpeed: 350,
     splashRadius: 40,
   },
-  // Widow - Multi-weapon titan (6 beam lasers + 1 sonic)
-  // This config is for the primary weapon slot; sub-weapons are handled specially
+
+  // Widow - Multi-weapon titan (placeholder, uses widowBeam + widowSonic)
   widow: {
-    damage: 0, // Placeholder - actual damage from sub-weapons
-    range: 350, // Max range (beam range with 1.5x multiplier)
-    cooldown: 0, // Multi-weapon system handles its own cooldowns
-    // Sub-weapon counts
-    beamCount: 6, // 6 continuous beam lasers
-  },
-  // Insect - Continuous pie-slice AoE with expanding/contracting effect
-  // Interpolates between idle and attack angles based on firing state
-  insect: {
-    // --- Combat ---
-    damage: 40,           // Base DPS
-    range: 500,           // Attack range (fire range)
-    cooldown: 0,          // Continuous (always on when targeting)
-
-    // --- Targeting ---
-    trackingRange: 600,   // Turret tracks enemies at this range
-    engageRange: 400,     // Unit stops moving in fight mode at this range
-    rotationRate: .5,    // Turret turn speed (radians/sec)
-
-    // --- Wave Effect ---
-    waveAngleIdle: 0,             // Angle when not firing
-    waveAngleAttack: Math.PI * 0.5, // Angle when firing (30° slice)
-    waveTransitionTime: 2000,     // Transition time (ms)
-    pullPower: 180,               // Pull strength toward origin (units/sec)
-  },
-  // Widow's sonic wave - larger and wider than insect's wave
-  widowSonic: {
-    // --- Combat ---
-    damage: 40,           // Base DPS
-    range: 900,           // Attack range
+    damage: 0,
+    range: 350,
     cooldown: 0,
-
-    // --- Targeting ---
-    trackingRange: 1000,   // Turret tracks enemies at this range
-    engageRange: 800,     // Unit stops moving in fight mode at this range
-    rotationRate: 0.5,   // Turret turn speed (radians/sec) - slower for titan
-
-    // --- Wave Effect ---
-    waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 0.75, // 135° slice (much wider than insect)
-    waveTransitionTime: 500,
-    pullPower: 300,       // Stronger pull for titan
-  },
-  // Widow's beam lasers - extended range daddy beams
-  widowBeam: {
-    damage: 45, // Same as daddy
-    range: 210, // Extended range (was daddy 140 × 1.5)
-    cooldown: 0,
-    beamDuration: 1500,
-    beamWidth: 4,
+    beamCount: 6,
   },
 };
 
