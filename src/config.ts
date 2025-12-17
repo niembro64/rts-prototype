@@ -391,11 +391,11 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     high: 'animated',
   },
 
-  // Explosion particle layers (0 = simple flash, 6 = full particles)
-  EXPLOSION_LAYERS: {
-    low: 0,
-    medium: 0,
-    high: 6,
+  // Explosion style
+  EXPLOSIONS: {
+    low: 'one-simple-circle',
+    medium: 'three-velocity-circles',
+    high: 'three-velocity-complex',
   },
 
   // Tread/wheel animations

@@ -11,9 +11,11 @@ import { GRAPHICS_DETAIL_DEFINITIONS } from '../../config';
 export type GraphicsQuality = 'auto' | 'low' | 'medium' | 'high';
 export type RenderMode = 'window' | 'all';
 
+export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-complex';
+
 export interface GraphicsConfig {
   legs: 'none' | 'animated';
-  explosionLayers: number;
+  explosions: ExplosionStyle;
   treadsAnimated: boolean;
   beamGlow: boolean;
   antialias: boolean;
@@ -24,21 +26,21 @@ const D = GRAPHICS_DETAIL_DEFINITIONS;
 const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig> = {
   low: {
     legs: D.LEGS.low as 'none' | 'animated',
-    explosionLayers: D.EXPLOSION_LAYERS.low,
+    explosions: D.EXPLOSIONS.low as ExplosionStyle,
     treadsAnimated: D.TREADS_ANIMATED.low,
     beamGlow: D.BEAM_GLOW.low,
     antialias: D.ANTIALIAS.low,
   },
   medium: {
     legs: D.LEGS.medium as 'none' | 'animated',
-    explosionLayers: D.EXPLOSION_LAYERS.medium,
+    explosions: D.EXPLOSIONS.medium as ExplosionStyle,
     treadsAnimated: D.TREADS_ANIMATED.medium,
     beamGlow: D.BEAM_GLOW.medium,
     antialias: D.ANTIALIAS.medium,
   },
   high: {
     legs: D.LEGS.high as 'none' | 'animated',
-    explosionLayers: D.EXPLOSION_LAYERS.high,
+    explosions: D.EXPLOSIONS.high as ExplosionStyle,
     treadsAnimated: D.TREADS_ANIMATED.high,
     beamGlow: D.BEAM_GLOW.high,
     antialias: D.ANTIALIAS.high,

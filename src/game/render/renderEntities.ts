@@ -779,9 +779,10 @@ export class EntityRenderer {
   private renderExplosion(exp: ExplosionEffect): void {
     const progress = exp.elapsed / exp.lifetime;
     const gfxConfig = getGraphicsConfig();
+    const explosionStyle = gfxConfig.explosions;
 
-    // Low quality: simple flash for all explosions
-    if (gfxConfig.explosionLayers === 0) {
+    // Low quality: one simple expanding circle
+    if (explosionStyle === 'one-simple-circle') {
       const currentRadius = exp.radius * (0.5 + progress * 0.5);
       const alpha = 1 - progress * progress;
       this.graphics.fillStyle(exp.color, alpha * 0.4);
@@ -793,6 +794,102 @@ export class EntityRenderer {
       return;
     }
 
+    // Medium quality: three velocity circles
+    if (explosionStyle === 'three-velocity-circles' && exp.type === 'death') {
+      const alpha = 1 - progress * progress;
+
+      // Get the three velocity directions
+      const hasVelocity = (exp.velocityMag ?? 0) > 10;
+      const hasPenetration = (exp.penetrationMag ?? 0) > 10;
+      const hasAttacker = (exp.attackerMag ?? 0) > 10;
+
+      // Normalize directions
+      const velDirX = hasVelocity ? (exp.velocityX ?? 0) / exp.velocityMag! : 0;
+      const velDirY = hasVelocity ? (exp.velocityY ?? 0) / exp.velocityMag! : 0;
+      const penDirX = hasPenetration ? (exp.penetrationX ?? 0) / exp.penetrationMag! : 0;
+      const penDirY = hasPenetration ? (exp.penetrationY ?? 0) / exp.penetrationMag! : 0;
+      const attackDirX = hasAttacker ? (exp.attackerX ?? 0) / exp.attackerMag! : 0;
+      const attackDirY = hasAttacker ? (exp.attackerY ?? 0) / exp.attackerMag! : 0;
+
+      // Strength factors (how far each circle travels)
+      const velStrength = hasVelocity ? Math.min(exp.velocityMag! / 300, 1.5) : 0;
+      const penStrength = hasPenetration ? Math.min(exp.penetrationMag! / 300, 1.5) : 0;
+      const attackStrength = hasAttacker ? Math.min(exp.attackerMag! / 300, 1.5) : 0;
+
+      // Base circle at center (always rendered)
+      const baseRadius = exp.radius * (0.3 + progress * 0.5);
+      const baseFade = Math.max(0, 1 - progress * 1.5);
+      if (baseFade > 0) {
+        this.graphics.fillStyle(exp.color, alpha * 0.5 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius);
+        this.graphics.fillStyle(0xffffff, alpha * 0.7 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.4);
+      }
+
+      // Circle 1: Unit velocity direction (blue-ish tint - motion trail)
+      if (hasVelocity) {
+        const velDist = exp.radius * progress * 2.0 * velStrength;
+        const velCircleX = exp.x + velDirX * velDist;
+        const velCircleY = exp.y + velDirY * velDist;
+        const velRadius = exp.radius * (0.4 + progress * 0.3) * (1 - progress * 0.5);
+        const velFade = Math.max(0, 1 - progress * 1.2);
+        if (velFade > 0 && velRadius > 2) {
+          this.graphics.fillStyle(0x4488ff, alpha * 0.4 * velFade);
+          this.graphics.fillCircle(velCircleX, velCircleY, velRadius * 1.2);
+          this.graphics.fillStyle(0x88ccff, alpha * 0.6 * velFade);
+          this.graphics.fillCircle(velCircleX, velCircleY, velRadius * 0.6);
+        }
+      }
+
+      // Circle 2: Impact/penetration direction (orange - where attack hit)
+      if (hasPenetration) {
+        const penDist = exp.radius * progress * 1.8 * penStrength;
+        const penCircleX = exp.x + penDirX * penDist;
+        const penCircleY = exp.y + penDirY * penDist;
+        const penRadius = exp.radius * (0.35 + progress * 0.35) * (1 - progress * 0.5);
+        const penFade = Math.max(0, 1 - progress * 1.2);
+        if (penFade > 0 && penRadius > 2) {
+          this.graphics.fillStyle(0xff6600, alpha * 0.5 * penFade);
+          this.graphics.fillCircle(penCircleX, penCircleY, penRadius * 1.2);
+          this.graphics.fillStyle(0xffaa44, alpha * 0.7 * penFade);
+          this.graphics.fillCircle(penCircleX, penCircleY, penRadius * 0.5);
+        }
+      }
+
+      // Circle 3: Attacker/projectile direction (red-yellow - main explosion direction)
+      if (hasAttacker) {
+        const attackDist = exp.radius * progress * 2.5 * attackStrength;
+        const attackCircleX = exp.x + attackDirX * attackDist;
+        const attackCircleY = exp.y + attackDirY * attackDist;
+        const attackRadius = exp.radius * (0.5 + progress * 0.4) * (1 - progress * 0.4);
+        const attackFade = Math.max(0, 1 - progress * 1.1);
+        if (attackFade > 0 && attackRadius > 2) {
+          this.graphics.fillStyle(0xff4422, alpha * 0.5 * attackFade);
+          this.graphics.fillCircle(attackCircleX, attackCircleY, attackRadius * 1.3);
+          this.graphics.fillStyle(0xffcc44, alpha * 0.6 * attackFade);
+          this.graphics.fillCircle(attackCircleX, attackCircleY, attackRadius * 0.6);
+          this.graphics.fillStyle(0xffffff, alpha * 0.5 * attackFade);
+          this.graphics.fillCircle(attackCircleX, attackCircleY, attackRadius * 0.25);
+        }
+      }
+
+      return;
+    }
+
+    // Medium quality fallback for non-death explosions: simple flash
+    if (explosionStyle === 'three-velocity-circles') {
+      const currentRadius = exp.radius * (0.5 + progress * 0.5);
+      const alpha = 1 - progress * progress;
+      this.graphics.fillStyle(exp.color, alpha * 0.4);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.2);
+      this.graphics.fillStyle(0xffffff, alpha * 0.8);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.4);
+      this.graphics.fillStyle(exp.color, alpha * 0.7);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.7);
+      return;
+    }
+
+    // High quality: three-velocity-complex (full particle system)
     if (exp.type === 'death') {
       // ========================================================================
       // DIRECTIONAL PARTICLE EXPLOSION
@@ -862,9 +959,8 @@ export class EntityRenderer {
 
       // ------------------------------------------------------------------------
       // LAYER 1: SMOKE CLOUDS (uses VELOCITY - trails behind moving unit)
-      // Skip on medium quality (explosionLayers <= 2)
       // ------------------------------------------------------------------------
-      if (gfxConfig.explosionLayers > 2 && progress > 0.1) {
+      if (progress > 0.1) {
         const smokeCount = 6 + Math.floor(velStrength * 4);
         for (let i = 0; i < smokeCount; i++) {
           const smokeProgress = Math.max(0, (progress - 0.1 - i * 0.02) * 1.8);
@@ -1059,9 +1155,8 @@ export class EntityRenderer {
       // ------------------------------------------------------------------------
       // LAYER 8: FIRE EMBERS (uses VELOCITY - trail behind moving unit)
       // Embers drift in the opposite direction of unit velocity (trailing effect)
-      // Skip on medium quality (explosionLayers <= 2)
       // ------------------------------------------------------------------------
-      if (gfxConfig.explosionLayers > 2 && progress > 0.15) {
+      if (progress > 0.15) {
         const emberCount = 10 + Math.floor(velStrength * 8);
         for (let i = 0; i < emberCount; i++) {
           const emberProgress = Math.max(0, (progress - 0.15 - seededRandom(i + 500) * 0.2) * 2.0);
@@ -1103,9 +1198,8 @@ export class EntityRenderer {
       // ------------------------------------------------------------------------
       // LAYER 9: MOMENTUM TRAIL (uses COMBINED - overall momentum stream)
       // Hot streak of particles in the combined direction of all forces
-      // Skip on medium quality (explosionLayers <= 2)
       // ------------------------------------------------------------------------
-      if (gfxConfig.explosionLayers > 2 && hasCombined && combinedStrength > 0.3) {
+      if (hasCombined && combinedStrength > 0.3) {
         const trailCount = Math.floor(combinedStrength * 15);
         for (let i = 0; i < trailCount; i++) {
           const trailT = i / trailCount;
