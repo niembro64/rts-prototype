@@ -31,10 +31,11 @@ const VIEW_MODE_OPTIONS: { value: HostViewMode; label: string }[] = [
 // Graphics quality options
 const GRAPHICS_OPTIONS: { value: GraphicsQuality; label: string }[] = [
   { value: 'auto', label: 'Auto' },
+  { value: 'min', label: 'Min' },
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Med' },
   { value: 'high', label: 'High' },
-  { value: 'extra', label: 'Extra' },
+  { value: 'max', label: 'Max' },
 ];
 
 // Render mode options

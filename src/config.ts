@@ -64,6 +64,58 @@ export const WAVE_PULL_STRENGTH = 180;
  */
 export const SONIC_WAVE_DEBUG_ZONE = false;
 
+/**
+ * Sonic wave inward acceleration exponent.
+ * Controls how much the sine wave arcs accelerate as they approach the origin.
+ * 1.0 = constant speed (linear)
+ * 2.0 = quadratic - starts slow, speeds up toward center
+ * 3.0 = cubic - starts very slow, accelerates more dramatically
+ * Higher values = more dramatic slow-outside, fast-inside effect
+ */
+export const SONIC_WAVE_ACCEL_EXPONENT = 1;
+
+/**
+ * Sonic wave animation speed multiplier.
+ * Controls overall animation speed of the wave visual effects.
+ * 1.0 = default speed
+ * 0.5 = half speed (slower)
+ * 2.0 = double speed (faster)
+ */
+export const SONIC_WAVE_ANIMATION_SPEED = 0.3;
+
+/** Number of concentric wave arcs in the sonic wave effect */
+export const SONIC_WAVE_COUNT = 5;
+
+/**
+ * Maximum opacity of the sonic wave arcs.
+ * Waves fade in as they approach the center, this is the peak opacity.
+ * 0.0 = invisible, 1.0 = fully opaque
+ */
+export const SONIC_WAVE_OPACITY = 0.05;
+
+/**
+ * Opacity of the simple sonic wave arc used at min detail level.
+ * 0.0 = invisible, 1.0 = fully opaque
+ */
+export const SONIC_WAVE_OPACITY_MIN_ZOOM = 0.1;
+
+/**
+ * Waviness amplitude - how much the wave arcs wobble.
+ * Higher values = more pronounced wave distortion.
+ */
+export const SONIC_WAVE_AMPLITUDE = 0;
+
+/**
+ * Waviness frequency - number of wave oscillations per arc.
+ * Higher values = more ripples along each arc.
+ */
+export const SONIC_WAVE_FREQUENCY = 10;
+
+/**
+ * Line thickness of the sonic wave arcs in pixels.
+ */
+export const SONIC_WAVE_THICKNESS = 10;
+
 // =============================================================================
 // EXPLOSION MOMENTUM FACTORS
 // =============================================================================
@@ -361,7 +413,7 @@ export const WEAPON_STATS = {
     engageRange: 800,      // Unit stops in fight mode at this range
     rotationRate: 1,     // Turret turn speed (radians/sec)
     waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 0.75,
+    waveAngleAttack: Math.PI * 0.5,
     waveTransitionTime: 500,
     pullPower: 300,
   },
@@ -446,69 +498,89 @@ export const WORLD_PADDING_PERCENT = 0.5;
 
 /**
  * Centralized graphics detail level configuration.
- * Each key defines what happens at LOW, MEDIUM, and HIGH detail levels.
+ * Each key defines what happens at each detail level: min, low, medium, high, max.
  *
- * AUTO_ZOOM_START: Zoom threshold where each detail level begins
- *   - low: 0.0 means low detail from zoom 0 until medium kicks in
- *   - medium: 0.3 means medium detail starts at zoom 0.3
+ * AUTO_ZOOM_START: Zoom threshold where each detail level begins in auto mode
+ *   - min: 0.0 means min detail from zoom 0 until low kicks in
+ *   - low: 0.3 means low detail starts at zoom 0.3
+ *   - medium: 0.6 means medium detail starts at zoom 0.6
  *   - high: 1.0 means high detail starts at zoom 1.0
+ *   - max: 2.0 means max detail starts at zoom 2.0
  */
 export const GRAPHICS_DETAIL_DEFINITIONS = {
   // Zoom thresholds for auto quality (zoom level where each tier starts)
   AUTO_ZOOM_START: {
-    low: 0.0,
+    min: 0.0,
+    low: 0.32,
     medium: 0.6,
     high: 1.0,
-    extra: 2.0,
+    max: 2.0,
   },
 
   // Leg rendering for arachnid/daddy/insect units
   LEGS: {
-    low: 'none',
+    min: 'none',
+    low: 'animated',
     medium: 'animated',
     high: 'animated',
-    extra: 'animated',
+    max: 'animated',
   },
 
   // Explosion style
   EXPLOSIONS: {
+    min: 'one-simple-circle',
     low: 'one-simple-circle',
     medium: 'three-velocity-circles',
     high: 'three-velocity-chunks',
-    extra: 'three-velocity-complex',
+    max: 'three-velocity-complex',
   },
 
   // Tread/wheel animations
   TREADS_ANIMATED: {
+    min: false,
     low: false,
     medium: true,
     high: true,
-    extra: true,
+    max: true,
   },
 
   // Beam rendering style
   // Controls beam line complexity (1-3 layers) and endpoint effects (circles, pulsing, sparks)
   BEAM_STYLE: {
-    low: 'simple',           // 1 beam line, 1 static endpoint circle
-    medium: 'standard',      // 2 beam lines, 2 pulsing endpoint circles
-    high: 'detailed',        // 3 beam lines, 3 pulsing circles + 4 sparks
-    extra: 'complex',        // 3 beam lines, 3 pulsing circles + 6 sparks
+    min: 'simple', // 1 beam line, 1 static endpoint circle
+    low: 'simple', // 1 beam line, 1 static endpoint circle
+    medium: 'standard', // 2 beam lines, 2 pulsing endpoint circles
+    high: 'detailed', // 3 beam lines, 3 pulsing circles + 4 sparks
+    max: 'complex', // 3 beam lines, 3 pulsing circles + 6 sparks
   },
 
-  // Beam glow effects (extra bloom/glow around beams)
+  // Beam glow effects (bloom/glow around beams)
   BEAM_GLOW: {
+    min: false,
     low: false,
     medium: false,
     high: true,
-    extra: true,
+    max: true,
   },
 
   // Antialiasing (requires game restart to take effect)
   ANTIALIAS: {
+    min: false,
     low: false,
     medium: true,
     high: true,
-    extra: true,
+    max: true,
+  },
+
+  // Sonic wave visual style
+  // 'simple': single static arc at outer edge, no animation
+  // 'detailed': animated wavy arcs with pull lines
+  SONIC_WAVE_STYLE: {
+    min: 'simple',
+    low: 'simple',
+    medium: 'detailed',
+    high: 'detailed',
+    max: 'detailed',
   },
 } as const;
 

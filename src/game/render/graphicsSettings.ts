@@ -8,11 +8,12 @@
 
 import { GRAPHICS_DETAIL_DEFINITIONS } from '../../config';
 
-export type GraphicsQuality = 'auto' | 'low' | 'medium' | 'high' | 'extra';
+export type GraphicsQuality = 'auto' | 'min' | 'low' | 'medium' | 'high' | 'max';
 export type RenderMode = 'window' | 'all';
 
 export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-chunks' | 'three-velocity-complex';
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
+export type SonicWaveStyle = 'simple' | 'detailed';
 
 export interface GraphicsConfig {
   legs: 'none' | 'animated';
@@ -21,11 +22,21 @@ export interface GraphicsConfig {
   beamStyle: BeamStyle;
   beamGlow: boolean;
   antialias: boolean;
+  sonicWaveStyle: SonicWaveStyle;
 }
 
 // Build configs from centralized definitions
 const D = GRAPHICS_DETAIL_DEFINITIONS;
 const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig> = {
+  min: {
+    legs: D.LEGS.min as 'none' | 'animated',
+    explosions: D.EXPLOSIONS.min as ExplosionStyle,
+    treadsAnimated: D.TREADS_ANIMATED.min,
+    beamStyle: D.BEAM_STYLE.min as BeamStyle,
+    beamGlow: D.BEAM_GLOW.min,
+    antialias: D.ANTIALIAS.min,
+    sonicWaveStyle: D.SONIC_WAVE_STYLE.min as SonicWaveStyle,
+  },
   low: {
     legs: D.LEGS.low as 'none' | 'animated',
     explosions: D.EXPLOSIONS.low as ExplosionStyle,
@@ -33,6 +44,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamStyle: D.BEAM_STYLE.low as BeamStyle,
     beamGlow: D.BEAM_GLOW.low,
     antialias: D.ANTIALIAS.low,
+    sonicWaveStyle: D.SONIC_WAVE_STYLE.low as SonicWaveStyle,
   },
   medium: {
     legs: D.LEGS.medium as 'none' | 'animated',
@@ -41,6 +53,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamStyle: D.BEAM_STYLE.medium as BeamStyle,
     beamGlow: D.BEAM_GLOW.medium,
     antialias: D.ANTIALIAS.medium,
+    sonicWaveStyle: D.SONIC_WAVE_STYLE.medium as SonicWaveStyle,
   },
   high: {
     legs: D.LEGS.high as 'none' | 'animated',
@@ -49,14 +62,16 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamStyle: D.BEAM_STYLE.high as BeamStyle,
     beamGlow: D.BEAM_GLOW.high,
     antialias: D.ANTIALIAS.high,
+    sonicWaveStyle: D.SONIC_WAVE_STYLE.high as SonicWaveStyle,
   },
-  extra: {
-    legs: D.LEGS.extra as 'none' | 'animated',
-    explosions: D.EXPLOSIONS.extra as ExplosionStyle,
-    treadsAnimated: D.TREADS_ANIMATED.extra,
-    beamStyle: D.BEAM_STYLE.extra as BeamStyle,
-    beamGlow: D.BEAM_GLOW.extra,
-    antialias: D.ANTIALIAS.extra,
+  max: {
+    legs: D.LEGS.max as 'none' | 'animated',
+    explosions: D.EXPLOSIONS.max as ExplosionStyle,
+    treadsAnimated: D.TREADS_ANIMATED.max,
+    beamStyle: D.BEAM_STYLE.max as BeamStyle,
+    beamGlow: D.BEAM_GLOW.max,
+    antialias: D.ANTIALIAS.max,
+    sonicWaveStyle: D.SONIC_WAVE_STYLE.max as SonicWaveStyle,
   },
 };
 
@@ -72,7 +87,7 @@ let currentZoom: number = 1.0; // Updated by renderer
 function loadFromStorage(): void {
   try {
     const storedQuality = localStorage.getItem(STORAGE_KEY);
-    if (storedQuality && (storedQuality === 'auto' || storedQuality === 'low' || storedQuality === 'medium' || storedQuality === 'high' || storedQuality === 'extra')) {
+    if (storedQuality && (storedQuality === 'auto' || storedQuality === 'min' || storedQuality === 'low' || storedQuality === 'medium' || storedQuality === 'high' || storedQuality === 'max')) {
       currentQuality = storedQuality;
     }
     const storedRenderMode = localStorage.getItem(RENDER_MODE_STORAGE_KEY);
@@ -127,14 +142,16 @@ export function getEffectiveQuality(): Exclude<GraphicsQuality, 'auto'> {
   // Auto mode: determine quality based on zoom level
   // Uses AUTO_ZOOM_START thresholds from config
   const zoomStart = D.AUTO_ZOOM_START;
-  if (currentZoom >= zoomStart.extra) {
-    return 'extra';
+  if (currentZoom >= zoomStart.max) {
+    return 'max';
   } else if (currentZoom >= zoomStart.high) {
     return 'high';
   } else if (currentZoom >= zoomStart.medium) {
     return 'medium';
+  } else if (currentZoom >= zoomStart.low) {
+    return 'low';
   }
-  return 'low';
+  return 'min';
 }
 
 /**
