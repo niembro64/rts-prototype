@@ -343,17 +343,17 @@ export const WEAPON_STATS = {
   insect: {
     // --- Combat ---
     damage: 40,           // Base DPS
-    range: 300,           // Attack range (fire range)
+    range: 500,           // Attack range (fire range)
     cooldown: 0,          // Continuous (always on when targeting)
 
     // --- Targeting ---
-    trackingRange: 400,   // Turret tracks enemies at this range
-    engageRange: 225,     // Unit stops moving in fight mode at this range
-    rotationRate: 1.5,    // Turret turn speed (radians/sec)
+    trackingRange: 600,   // Turret tracks enemies at this range
+    engageRange: 400,     // Unit stops moving in fight mode at this range
+    rotationRate: .5,    // Turret turn speed (radians/sec)
 
     // --- Wave Effect ---
     waveAngleIdle: 0,             // Angle when not firing
-    waveAngleAttack: Math.PI / 6, // Angle when firing (30° slice)
+    waveAngleAttack: Math.PI * 0.5, // Angle when firing (30° slice)
     waveTransitionTime: 2000,     // Transition time (ms)
     pullPower: 180,               // Pull strength toward origin (units/sec)
   },
@@ -361,13 +361,13 @@ export const WEAPON_STATS = {
   widowSonic: {
     // --- Combat ---
     damage: 40,           // Base DPS
-    range: 800,           // Attack range
+    range: 900,           // Attack range
     cooldown: 0,
 
     // --- Targeting ---
     trackingRange: 1000,   // Turret tracks enemies at this range
-    engageRange: 700,     // Unit stops moving in fight mode at this range
-    rotationRate: 0.45,   // Turret turn speed (radians/sec) - slower for titan
+    engageRange: 800,     // Unit stops moving in fight mode at this range
+    rotationRate: 0.5,   // Turret turn speed (radians/sec) - slower for titan
 
     // --- Wave Effect ---
     waveAngleIdle: 0,

@@ -601,14 +601,44 @@ export class InputManager {
       const camera = this.scene.cameras.main;
 
       // Get the world point currently at center of view
-      const centerX = camera.midPoint.x;
-      const centerY = camera.midPoint.y;
+      let centerX = camera.midPoint.x;
+      let centerY = camera.midPoint.y;
 
       // Apply zoom
       const zoomDelta = dy > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      camera.zoom = Phaser.Math.Clamp(camera.zoom + zoomDelta, ZOOM_MIN, ZOOM_MAX);
+      const newZoom = Phaser.Math.Clamp(camera.zoom + zoomDelta, ZOOM_MIN, ZOOM_MAX);
+      camera.zoom = newZoom;
 
-      // Re-center on the same world point
+      // Calculate visible area at new zoom
+      const viewWidth = camera.width / newZoom;
+      const viewHeight = camera.height / newZoom;
+
+      // Get map dimensions
+      const mapWidth = this.world.mapWidth;
+      const mapHeight = this.world.mapHeight;
+      const mapCenterX = mapWidth / 2;
+      const mapCenterY = mapHeight / 2;
+
+      // Clamp center point to keep map on screen
+      // If view is larger than map, center on map center
+      // Otherwise, clamp so map edges stay within view
+      if (viewWidth >= mapWidth) {
+        centerX = mapCenterX;
+      } else {
+        const minCenterX = viewWidth / 2;
+        const maxCenterX = mapWidth - viewWidth / 2;
+        centerX = Phaser.Math.Clamp(centerX, minCenterX, maxCenterX);
+      }
+
+      if (viewHeight >= mapHeight) {
+        centerY = mapCenterY;
+      } else {
+        const minCenterY = viewHeight / 2;
+        const maxCenterY = mapHeight - viewHeight / 2;
+        centerY = Phaser.Math.Clamp(centerY, minCenterY, maxCenterY);
+      }
+
+      // Re-center on the constrained world point
       camera.centerOn(centerX, centerY);
     });
   }
@@ -975,19 +1005,42 @@ export class InputManager {
   // Update input
   update(_delta: number): void {
     const camera = this.scene.cameras.main;
-    // Allow camera to see outside the map, but with reasonable limits
+    // Constrain camera to keep map on screen
     const viewWidth = camera.width / camera.zoom;
     const viewHeight = camera.height / camera.zoom;
-    const margin = 500; // How far outside the map we can see
 
-    // Clamp with margin around the map
-    const minX = -margin - viewWidth / 2;
-    const maxX = this.world.mapWidth + margin - viewWidth / 2;
-    const minY = -margin - viewHeight / 2;
-    const maxY = this.world.mapHeight + margin - viewHeight / 2;
+    const mapWidth = this.world.mapWidth;
+    const mapHeight = this.world.mapHeight;
+    const mapCenterX = mapWidth / 2;
+    const mapCenterY = mapHeight / 2;
 
-    camera.scrollX = Phaser.Math.Clamp(camera.scrollX, minX, maxX);
-    camera.scrollY = Phaser.Math.Clamp(camera.scrollY, minY, maxY);
+    // Get current camera center
+    let centerX = camera.midPoint.x;
+    let centerY = camera.midPoint.y;
+
+    // Clamp center point to keep map on screen
+    // If view is larger than map, center on map center
+    // Otherwise, clamp so map edges stay within view
+    if (viewWidth >= mapWidth) {
+      centerX = mapCenterX;
+    } else {
+      const minCenterX = viewWidth / 2;
+      const maxCenterX = mapWidth - viewWidth / 2;
+      centerX = Phaser.Math.Clamp(centerX, minCenterX, maxCenterX);
+    }
+
+    if (viewHeight >= mapHeight) {
+      centerY = mapCenterY;
+    } else {
+      const minCenterY = viewHeight / 2;
+      const maxCenterY = mapHeight - viewHeight / 2;
+      centerY = Phaser.Math.Clamp(centerY, minCenterY, maxCenterY);
+    }
+
+    // Apply constrained center if it changed
+    if (Math.abs(camera.midPoint.x - centerX) > 0.1 || Math.abs(camera.midPoint.y - centerY) > 0.1) {
+      camera.centerOn(centerX, centerY);
+    }
 
     // Check for selection changes and reset mode to 'move'
     this.checkSelectionChange();
