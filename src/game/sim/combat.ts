@@ -670,6 +670,9 @@ export function applyWaveDamage(
       applyKnockbackForces(damageResult.knockbacks, forceAccumulator);
 
       // Apply pull effect to all enemy units in the slice
+      // Use pullPower from weapon config, fallback to global WAVE_PULL_STRENGTH
+      const pullStrength = config.pullPower ?? WAVE_PULL_STRENGTH;
+
       for (const target of world.getUnits()) {
         if (!target.unit || target.unit.hp <= 0) continue;
         // Don't pull friendly units
@@ -704,7 +707,7 @@ export function applyWaveDamage(
             target.id,
             dx,  // direction X (toward wave origin)
             dy,  // direction Y (toward wave origin)
-            WAVE_PULL_STRENGTH,
+            pullStrength,
             targetMass,
             true,  // heavier units resist pull
             'wave_pull'

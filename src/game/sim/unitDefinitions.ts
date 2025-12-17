@@ -46,10 +46,13 @@ export interface UnitDefinition {
 // Range constraint: fightstopRange < fireRange < seeRange
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
   const weaponConfig = getWeaponConfig(definition.id);
-  const seeRange = definition.weaponSeeRange ?? weaponConfig.range * 1.5;
   const fireRange = definition.weaponFireRange ?? weaponConfig.range;
-  // Default fightstopRange is 75% of fireRange - allows unit to close distance before stopping
-  const fightstopRange = definition.weaponFightstopRange ?? fireRange * 0.75;
+  // Use trackingRange from weapon config, then unit definition, then default to range * 1.5
+  const seeRange = weaponConfig.trackingRange ?? definition.weaponSeeRange ?? weaponConfig.range * 1.5;
+  // Use engageRange from weapon config, then unit definition, then default to 75% of fireRange
+  const fightstopRange = weaponConfig.engageRange ?? definition.weaponFightstopRange ?? fireRange * 0.75;
+  // Use rotationRate from config if available (for wave weapons), otherwise default to 1
+  const turretTurnRate = weaponConfig.rotationRate ?? 1;
 
   return [{
     config: { ...weaponConfig },
@@ -59,7 +62,7 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
     fireRange,
     fightstopRange,
     turretRotation: 0,
-    turretTurnRate: 1,
+    turretTurnRate,
     offsetX: 0,
     offsetY: 0,
     isFiring: false,
@@ -67,23 +70,28 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   }];
 }
 
-// Widow weapon creation - 6 daddy lasers at hexagon + 1 insect wave in center
-// Widow weapons have 1.5x the normal vision and fire range
+// Widow weapon creation - 6 beam lasers at hexagon + 1 sonic wave in center
+// Uses explicit widowBeam and widowSonic configs from config.ts
 // Range constraint: fightstopRange < fireRange < seeRange
-function createWidowWeapons(radius: number, definition: UnitDefinition): UnitWeapon[] {
-  const daddyConfig = getWeaponConfig('daddy');
-  const insectConfig = getWeaponConfig('insect');
-  const turretTurnRate = 0.3;
-  const rangeMultiplier = 1.5; // Widow has extended range
-  const baseSeeRange = definition.weaponSeeRange ?? 400;
-  const seeRange = baseSeeRange * rangeMultiplier;
-  const fireRange = (definition.weaponFireRange ?? daddyConfig.range) * rangeMultiplier;
-  // Default fightstopRange is 75% of fireRange
-  const fightstopRange = (definition.weaponFightstopRange ?? fireRange * 0.75);
+function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWeapon[] {
+  const widowBeamConfig = getWeaponConfig('widowBeam');
+  const widowSonicConfig = getWeaponConfig('widowSonic');
+  const beamTurretTurnRate = 0.3; // Beam lasers use fixed rate
+
+  // Beam weapon ranges (from widowBeam config, with defaults)
+  const beamFireRange = widowBeamConfig.range;
+  const beamSeeRange = widowBeamConfig.trackingRange ?? beamFireRange * 1.5;
+  const beamFightstopRange = widowBeamConfig.engageRange ?? beamFireRange * 0.75;
+
+  // Sonic weapon ranges (from widowSonic config)
+  const sonicFireRange = widowSonicConfig.range;
+  const sonicSeeRange = widowSonicConfig.trackingRange ?? sonicFireRange * 1.5;
+  const sonicFightstopRange = widowSonicConfig.engageRange ?? sonicFireRange * 0.75;
+  const sonicRotationRate = widowSonicConfig.rotationRate ?? 0.45;
 
   const weapons: UnitWeapon[] = [];
 
-  // 6 daddy lasers at hexagon vertices
+  // 6 beam lasers at hexagon vertices
   const hexRadius = radius * 0.65;
   const hexForwardOffset = radius * 0.5;
   const hexRotationOffset = Math.PI / 6;
@@ -93,14 +101,14 @@ function createWidowWeapons(radius: number, definition: UnitDefinition): UnitWea
     const offsetX = Math.cos(angle) * hexRadius + hexForwardOffset;
     const offsetY = Math.sin(angle) * hexRadius;
     weapons.push({
-      config: { ...daddyConfig },
+      config: { ...widowBeamConfig },
       currentCooldown: 0,
       targetEntityId: null,
-      seeRange,
-      fireRange,
-      fightstopRange,
+      seeRange: beamSeeRange,
+      fireRange: beamFireRange,
+      fightstopRange: beamFightstopRange,
       turretRotation: 0,
-      turretTurnRate,
+      turretTurnRate: beamTurretTurnRate,
       offsetX,
       offsetY,
       isFiring: false,
@@ -108,28 +116,22 @@ function createWidowWeapons(radius: number, definition: UnitDefinition): UnitWea
     });
   }
 
-  // 1 insect wave weapon in center (also gets 1.5x range)
-  // Widow's insect wave has full 135° attack angle (unlike baby insect's 30°)
-  const insectFireRange = insectConfig.range * rangeMultiplier;
-  const widowInsectConfig = {
-    ...insectConfig,
-    waveAngleAttack: Math.PI * 0.75, // Full 135° slice for widow
-  };
+  // 1 sonic wave weapon in center
   weapons.push({
-    config: widowInsectConfig,
+    config: { ...widowSonicConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    seeRange: seeRange * 0.5, // Still half of daddy seeRange, but that's now 1.5x larger
-    fireRange: insectFireRange,
-    fightstopRange: insectFireRange * 0.75, // Insect also uses 75% of its fire range
+    seeRange: sonicSeeRange,
+    fireRange: sonicFireRange,
+    fightstopRange: sonicFightstopRange,
     turretRotation: 0,
-    turretTurnRate: turretTurnRate * 1.5,
+    turretTurnRate: sonicRotationRate,
     offsetX: hexForwardOffset,
     offsetY: 0,
     isFiring: false,
     inFightstopRange: false,
     waveTransitionProgress: 0,
-    currentSliceAngle: widowInsectConfig.waveAngleIdle ?? Math.PI / 16,
+    currentSliceAngle: widowSonicConfig.waveAngleIdle ?? Math.PI / 16,
   });
 
   return weapons;

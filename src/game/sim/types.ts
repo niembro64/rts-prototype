@@ -112,11 +112,18 @@ export interface WeaponConfig {
   color?: number;                // Projectile/beam color
   trailLength?: number;          // Visual trail length
 
+  // Targeting range overrides (optional - defaults calculated from range)
+  // Constraint: engageRange < range < trackingRange
+  trackingRange?: number;        // Range at which turret starts tracking enemies (default: range * 1.5)
+  engageRange?: number;          // Range at which unit stops moving in fight mode (default: range * 0.75)
+  rotationRate?: number;         // Turret turn rate (radians/sec)
+
   // Wave weapon properties (sonic)
   isWaveWeapon?: boolean;        // True if this is a continuous wave weapon
   waveAngleIdle?: number;        // Angle when not firing (radians)
   waveAngleAttack?: number;      // Angle when firing (radians)
   waveTransitionTime?: number;   // Time (ms) to transition between idle and attack
+  pullPower?: number;            // Pull strength toward wave origin (units/sec)
 
   // Piercing properties
   piercing?: boolean;            // Can pierce through multiple targets

@@ -341,12 +341,47 @@ export const WEAPON_STATS = {
   // Insect - Continuous pie-slice AoE with expanding/contracting effect
   // Interpolates between idle and attack angles based on firing state
   insect: {
-    damage: 40, // Base DPS at point-blank
-    range: 150, // Maximum range of the wave slice
-    cooldown: 0, // Continuous (always on when targeting)
-    waveAngleIdle: 0, // Angle when not firing (narrow beam)
-    waveAngleAttack: Math.PI / 6, // Angle when firing (30° slice for baby unit)
-    waveTransitionTime: 2000, // Time (ms) to transition between idle and attack
+    // --- Combat ---
+    damage: 40,           // Base DPS
+    range: 300,           // Attack range (fire range)
+    cooldown: 0,          // Continuous (always on when targeting)
+
+    // --- Targeting ---
+    trackingRange: 400,   // Turret tracks enemies at this range
+    engageRange: 225,     // Unit stops moving in fight mode at this range
+    rotationRate: 1.5,    // Turret turn speed (radians/sec)
+
+    // --- Wave Effect ---
+    waveAngleIdle: 0,             // Angle when not firing
+    waveAngleAttack: Math.PI / 6, // Angle when firing (30° slice)
+    waveTransitionTime: 2000,     // Transition time (ms)
+    pullPower: 180,               // Pull strength toward origin (units/sec)
+  },
+  // Widow's sonic wave - larger and wider than insect's wave
+  widowSonic: {
+    // --- Combat ---
+    damage: 40,           // Base DPS
+    range: 400,           // Attack range
+    cooldown: 0,
+
+    // --- Targeting ---
+    trackingRange: 500,   // Turret tracks enemies at this range
+    engageRange: 300,     // Unit stops moving in fight mode at this range
+    rotationRate: 0.45,   // Turret turn speed (radians/sec) - slower for titan
+
+    // --- Wave Effect ---
+    waveAngleIdle: 0,
+    waveAngleAttack: Math.PI * 0.75, // 135° slice (much wider than insect)
+    waveTransitionTime: 1000,
+    pullPower: 1000,       // Stronger pull for titan
+  },
+  // Widow's beam lasers - extended range daddy beams
+  widowBeam: {
+    damage: 45, // Same as daddy
+    range: 210, // Extended range (was daddy 140 × 1.5)
+    cooldown: 0,
+    beamDuration: 1500,
+    beamWidth: 4,
   },
 };
 
