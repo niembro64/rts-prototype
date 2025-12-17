@@ -334,7 +334,7 @@ export const UNIT_STATS = {
   },
   // Widow - Titan spider unit. 6 beam lasers + 1 sonic wave, 8 legs.
   widow: {
-    baseCost: 600,
+    baseCost: 1600,
     hp: 1200,
     moveSpeed: 1000,
     collisionRadius: 38,
