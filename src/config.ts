@@ -361,12 +361,12 @@ export const WEAPON_STATS = {
   widowSonic: {
     // --- Combat ---
     damage: 40,           // Base DPS
-    range: 400,           // Attack range
+    range: 800,           // Attack range
     cooldown: 0,
 
     // --- Targeting ---
-    trackingRange: 500,   // Turret tracks enemies at this range
-    engageRange: 300,     // Unit stops moving in fight mode at this range
+    trackingRange: 1000,   // Turret tracks enemies at this range
+    engageRange: 700,     // Unit stops moving in fight mode at this range
     rotationRate: 0.45,   // Turret turn speed (radians/sec) - slower for titan
 
     // --- Wave Effect ---

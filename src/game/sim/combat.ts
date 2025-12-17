@@ -585,8 +585,8 @@ export function updateWaveWeaponState(world: WorldState, dtMs: number): void {
 // Wave weapons like Sonic AIM at a specific target (for turret rotation) but deal damage
 // to ALL units and buildings within the pie-slice area, not just the target.
 // The slice expands/contracts based on firing state (see updateWaveWeaponState).
-// Uses DamageSystem for unified area damage with slice support.
-// Also applies a pull effect, drawing units toward the wave origin.
+// Both damage and pull scale with 1/distance - stronger effect when closer to origin.
+// Reference distance for scaling is half the weapon's fire range.
 
 // Helper: Check if a point is within a pie slice
 function isPointInSlice(
@@ -615,11 +615,14 @@ function isPointInSlice(
 export function applyWaveDamage(
   world: WorldState,
   dtMs: number,
-  damageSystem: DamageSystem,
+  _damageSystem: DamageSystem,
   forceAccumulator?: ForceAccumulator
 ): void {
   const dtSec = dtMs / 1000;
   if (dtSec <= 0) return;
+
+  // Minimum distance to prevent division by zero (units closer than this get max effect)
+  const MIN_DISTANCE = 20;
 
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
@@ -639,9 +642,14 @@ export function applyWaveDamage(
       const currentAngle = weapon.currentSliceAngle ?? 0;
       if (currentAngle <= 0) continue;
 
-      // Wave weapon properties - use dynamic slice angle
+      // Wave weapon properties
       const baseDamage = config.damage; // DPS at reference distance
-      const damage = baseDamage * dtSec;
+      const baseDamagePerFrame = baseDamage * dtSec;
+      const basePullStrength = config.pullPower ?? WAVE_PULL_STRENGTH;
+
+      // Reference distance for 1/distance scaling (half the fire range)
+      // At this distance, damage/pull equals the base config value
+      const referenceDistance = weapon.fireRange * 0.5;
 
       // Calculate weapon position
       const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
@@ -651,36 +659,20 @@ export function applyWaveDamage(
       const turretAngle = weapon.turretRotation;
       const sliceHalfAngle = currentAngle / 2;
 
-      // Apply area damage with slice using unified DamageSystem
-      const damageResult = damageSystem.applyDamage({
-        type: 'area',
-        sourceEntityId: unit.id,
-        ownerId: unit.ownership.playerId,
-        damage: damage,
-        excludeEntities: new Set(), // Wave weapons can hit same targets every frame (DPS)
-        centerX: weaponX,
-        centerY: weaponY,
-        radius: weapon.fireRange,
-        falloff: 1, // No falloff - constant damage across distance
-        sliceAngle: currentAngle,
-        sliceDirection: turretAngle,
-      });
-
-      // Apply knockback forces from damage
-      applyKnockbackForces(damageResult.knockbacks, forceAccumulator);
-
-      // Apply pull effect to all enemy units in the slice
-      // Use pullPower from weapon config, fallback to global WAVE_PULL_STRENGTH
-      const pullStrength = config.pullPower ?? WAVE_PULL_STRENGTH;
-
+      // Apply damage and pull to all enemy units in the slice
       for (const target of world.getUnits()) {
         if (!target.unit || target.unit.hp <= 0) continue;
-        // Don't pull friendly units
+        // Don't affect friendly units
         if (target.ownership?.playerId === sourcePlayerId) continue;
-        // Don't pull self
+        // Don't affect self
         if (target.id === unit.id) continue;
 
         const targetRadius = target.unit.collisionRadius;
+
+        // Calculate distance to target
+        const dx = target.transform.x - weaponX;
+        const dy = target.transform.y - weaponY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
 
         // Check if target is in the wave slice
         if (!isPointInSlice(
@@ -692,27 +684,67 @@ export function applyWaveDamage(
           targetRadius
         )) continue;
 
-        // Calculate pull direction (toward wave origin)
-        const dx = weaponX - target.transform.x;
-        const dy = weaponY - target.transform.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        // Calculate 1/distance scaling factor
+        // At referenceDistance, scale = 1. Closer = stronger, farther = weaker.
+        const effectiveDist = Math.max(dist, MIN_DISTANCE);
+        const distanceScale = referenceDistance / effectiveDist;
 
+        // Apply scaled damage directly to target
+        const scaledDamage = baseDamagePerFrame * distanceScale;
+        target.unit.hp -= scaledDamage;
+
+        // Apply scaled pull force
         if (dist > 0 && forceAccumulator) {
+          const scaledPullStrength = basePullStrength * distanceScale;
+
           // Get target's mass from its body (default to 1 if no physics body)
           const targetMass = (target.body?.matterBody as { mass?: number })?.mass ?? 1;
 
-          // Add directional force toward wave origin
+          // Add directional force toward wave origin (negate dx/dy for pull direction)
           // affectedByMass=true so heavier units resist the pull more
           forceAccumulator.addDirectionalForce(
             target.id,
-            dx,  // direction X (toward wave origin)
-            dy,  // direction Y (toward wave origin)
-            pullStrength,
+            -dx,  // direction X (toward wave origin)
+            -dy,  // direction Y (toward wave origin)
+            scaledPullStrength,
             targetMass,
             true,  // heavier units resist pull
             'wave_pull'
           );
         }
+      }
+
+      // Also apply damage to buildings in the slice
+      for (const building of world.getBuildings()) {
+        if (!building.building || building.building.hp <= 0) continue;
+        // Don't damage friendly buildings
+        if (building.ownership?.playerId === sourcePlayerId) continue;
+
+        // Calculate distance to building center
+        const dx = building.transform.x - weaponX;
+        const dy = building.transform.y - weaponY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Approximate building radius from dimensions
+        const buildingRadius = Math.max(building.building.width, building.building.height) / 2;
+
+        // Check if building is in the wave slice
+        if (!isPointInSlice(
+          building.transform.x, building.transform.y,
+          weaponX, weaponY,
+          turretAngle,
+          sliceHalfAngle,
+          weapon.fireRange,
+          buildingRadius
+        )) continue;
+
+        // Calculate 1/distance scaling factor
+        const effectiveDist = Math.max(dist, MIN_DISTANCE);
+        const distanceScale = referenceDistance / effectiveDist;
+
+        // Apply scaled damage to building
+        const scaledDamage = baseDamagePerFrame * distanceScale;
+        building.building.hp -= scaledDamage;
       }
     }
   }
