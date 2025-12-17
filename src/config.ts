@@ -458,12 +458,12 @@ export const WEAPON_STATS = {
   // Insect - Continuous pie-slice wave AoE
   insect: {
     damage: 20, // Base DPS (scales with 1/distance)
-    range: 500,
+    range: 400,
     cooldown: 0, // Continuous
     turretTurnAccel: 10, // Medium acceleration (rad/sec²)
-    turretDrag: 0.01, // Moderate drag → terminal ~1.1 rad/sec
+    turretDrag: 0.0000001, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 0.5,
+    waveAngleAttack: Math.PI * 0.125,
     waveTransitionTime: 2000,
     pullPower: 180,
   },
@@ -471,12 +471,12 @@ export const WEAPON_STATS = {
   // Widow sonic wave - larger pie-slice wave AoE
   widowSonic: {
     damage: 20, // Base DPS (scales with 1/distance)
-    range: 900,
+    range: 600,
     cooldown: 0, // Continuous
     turretTurnAccel: 10, // Medium acceleration (rad/sec²)
-    turretDrag: 0.01, // Moderate drag → terminal ~1.1 rad/sec
+    turretDrag: 0.0000001, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 0.5,
+    waveAngleAttack: Math.PI * 0.125,
     waveTransitionTime: 500,
     pullPower: 300,
   },
@@ -512,29 +512,30 @@ export const WEAPON_STATS = {
  * For single-weapon units, use 'default'.
  */
 export const UNIT_TARGETING_MODES = {
-  // Simple projectile units - track nearest
-  scout: { default: 'nearest' as const },
-  burst: { default: 'nearest' as const },
-  brawl: { default: 'nearest' as const },
-  shotgun: { default: 'nearest' as const },
-  tank: { default: 'nearest' as const },
+  // Simple projectile units - track nearest, return to forward when idle
+  scout: { default: 'nearest' as const, returnToForward: false },
+  burst: { default: 'nearest' as const, returnToForward: false },
+  brawl: { default: 'nearest' as const, returnToForward: false },
+  shotgun: { default: 'nearest' as const, returnToForward: false },
+  tank: { default: 'nearest' as const, returnToForward: false },
 
   // Beam units - sticky (lock onto target and burn it down)
-  daddy: { default: 'sticky' as const },
-  snipe: { default: 'sticky' as const },
+  daddy: { default: 'sticky' as const, returnToForward: false },
+  snipe: { default: 'sticky' as const, returnToForward: false },
 
   // Wave/AoE units - track nearest
-  insect: { default: 'nearest' as const },
+  insect: { default: 'nearest' as const, returnToForward: false },
 
   // Multi-weapon titan
   widow: {
     beam: 'sticky' as const,        // 6 vertex beams lock onto targets
     centerBeam: 'sticky' as const,  // Center beam locks onto target
     sonic: 'nearest' as const,      // Sonic wave tracks nearest threat
+    returnToForward: false,         // Widow turrets stay where they are
   },
 
   // Commander - projectile, track nearest
-  commander: { default: 'nearest' as const },
+  commander: { default: 'nearest' as const, returnToForward: false },
 };
 
 // =============================================================================

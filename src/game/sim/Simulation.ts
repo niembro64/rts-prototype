@@ -509,12 +509,12 @@ export class Simulation {
     // Face the target
     commander.transform.rotation = Math.atan2(dy, dx);
 
-    // Emit audio event
+    // Emit audio event (dgun uses cannon sound)
     const dgunAudioEvent: AudioEvent = {
       type: 'fire',
       x: commander.transform.x,
       y: commander.transform.y,
-      weaponId: 'dgun',
+      weaponId: 'cannon',
     };
     this.onAudioEvent?.(dgunAudioEvent);
     this.pendingAudioEvents.push(dgunAudioEvent);

@@ -6,14 +6,16 @@ import { DamageSystem } from './damage';
 import type { DeathContext } from './damage/types';
 import type { ForceAccumulator } from './ForceAccumulator';
 import { WAVE_PULL_STRENGTH } from '../../config';
+import type { WeaponAudioId } from '../audio/AudioManager';
 
-// Re-export DeathContext for use in RtsScene
+// Re-export types for use in other modules
 export type { DeathContext } from './damage/types';
+export type { WeaponAudioId } from '../audio/AudioManager';
 
 // Audio event types
 export interface AudioEvent {
   type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'projectileExpire';
-  weaponId: string;
+  weaponId: WeaponAudioId;
   x: number;
   y: number;
   entityId?: EntityId; // For tracking continuous sounds
@@ -95,7 +97,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
 
     // Update each weapon's turret rotation using acceleration physics
     for (const weapon of unit.weapons) {
-      let targetAngle: number;
+      let targetAngle: number | null = null;
+      let hasActiveTarget = false;
 
       if (weapon.targetEntityId !== null) {
         const target = world.getEntity(weapon.targetEntityId);
@@ -106,17 +109,24 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);
-        } else {
-          // Target lost - return to forward-facing
-          targetAngle = getMovementAngle(unit);
+          hasActiveTarget = true;
         }
-      } else {
-        // No target - return to forward-facing (movement direction or body direction)
-        targetAngle = getMovementAngle(unit);
+      }
+
+      // If no active target, check if we should return to forward
+      if (!hasActiveTarget) {
+        if (weapon.returnToForward) {
+          // Return to forward-facing (movement direction or body direction)
+          targetAngle = getMovementAngle(unit);
+        } else {
+          // Stay where we are - just apply drag to slow down
+          weapon.turretAngularVelocity *= (1 - weapon.turretDrag);
+          continue; // Skip the rest of turret rotation logic
+        }
       }
 
       // Calculate angle difference to target
-      const angleDiff = normalizeAngle(targetAngle - weapon.turretRotation);
+      const angleDiff = normalizeAngle(targetAngle! - weapon.turretRotation);
 
       // Apply acceleration toward target
       // Acceleration is proportional to direction (sign of angle difference)
@@ -146,7 +156,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
       const angleThreshold = 0.02; // ~1 degree
       if (Math.abs(angleDiff) < angleThreshold &&
           Math.abs(weapon.turretAngularVelocity) < velocityThreshold) {
-        weapon.turretRotation = targetAngle;
+        weapon.turretRotation = targetAngle!;
         weapon.turretAngularVelocity = 0;
       } else {
         // Update rotation based on velocity
@@ -220,7 +230,7 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
       if (hasTargetInRange) {
         audioEvents.push({
           type: 'laserStart',
-          weaponId: config.id,
+          weaponId: config.audioId,
           x: unit.transform.x,
           y: unit.transform.y,
           entityId: soundEntityId,
@@ -228,7 +238,7 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
       } else {
         audioEvents.push({
           type: 'laserStop',
-          weaponId: config.id,
+          weaponId: config.audioId,
           x: unit.transform.x,
           y: unit.transform.y,
           entityId: soundEntityId,
@@ -518,7 +528,7 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
       if (!isBeamWeapon || isCooldownBeam) {
         audioEvents.push({
           type: 'fire',
-          weaponId: config.id,
+          weaponId: config.audioId,
           x: weaponX,
           y: weaponY,
         });
@@ -964,7 +974,7 @@ export function checkProjectileCollisions(
         if (splashResult.hitEntityIds.length > 0 || config.id === 'shotgun') {
           audioEvents.push({
             type: 'hit',
-            weaponId: config.id,
+            weaponId: config.audioId,
             x: projEntity.transform.x,
             y: projEntity.transform.y,
           });
@@ -976,7 +986,7 @@ export function checkProjectileCollisions(
       if (proj.projectileType === 'traveling' && !proj.hasExploded) {
         audioEvents.push({
           type: 'projectileExpire',
-          weaponId: config.id,
+          weaponId: config.audioId,
           x: projEntity.transform.x,
           y: projEntity.transform.y,
         });
@@ -1027,7 +1037,7 @@ export function checkProjectileCollisions(
             if (entity) {
               audioEvents.push({
                 type: 'hit',
-                weaponId: config.id,
+                weaponId: config.audioId,
                 x: entity.transform.x,
                 y: entity.transform.y,
               });
@@ -1041,10 +1051,10 @@ export function checkProjectileCollisions(
       for (const id of result.killedUnitIds) {
         if (!unitsToRemove.includes(id)) {
           const target = world.getEntity(id);
-          let deathWeaponId = 'scout';
+          let deathWeaponId: import('../audio/AudioManager').WeaponAudioId = 'minigun';
           const targetWeapons = target?.weapons ?? [];
           for (const weapon of targetWeapons) {
-            deathWeaponId = weapon.config.id;
+            deathWeaponId = weapon.config.audioId;
           }
           // Get death context for directional explosion
           const ctx = result.deathContexts.get(id);
@@ -1079,7 +1089,7 @@ export function checkProjectileCollisions(
           const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
           audioEvents.push({
             type: 'death',
-            weaponId: config.id,
+            weaponId: config.audioId,
             x: building?.transform.x ?? 0,
             y: building?.transform.y ?? 0,
             deathContext: {
@@ -1139,7 +1149,7 @@ export function checkProjectileCollisions(
         if (entity) {
           audioEvents.push({
             type: 'hit',
-            weaponId: config.id,
+            weaponId: config.audioId,
             x: entity.transform.x,
             y: entity.transform.y,
           });
@@ -1181,10 +1191,10 @@ export function checkProjectileCollisions(
       for (const id of result.killedUnitIds) {
         if (!unitsToRemove.includes(id)) {
           const target = world.getEntity(id);
-          let deathWeaponId = 'scout';
+          let deathWeaponId: import('../audio/AudioManager').WeaponAudioId = 'minigun';
           const targetWeapons = target?.weapons ?? [];
           for (const weapon of targetWeapons) {
-            deathWeaponId = weapon.config.id;
+            deathWeaponId = weapon.config.audioId;
           }
           // Get death context for directional explosion
           const ctx = result.deathContexts.get(id);
@@ -1219,7 +1229,7 @@ export function checkProjectileCollisions(
           const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
           audioEvents.push({
             type: 'death',
-            weaponId: config.id,
+            weaponId: config.audioId,
             x: building?.transform.x ?? 0,
             y: building?.transform.y ?? 0,
             deathContext: {

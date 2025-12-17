@@ -49,7 +49,10 @@ function getTargetingMode(unitId: string, weaponType?: 'beam' | 'centerBeam' | '
 
   // For multi-weapon units, check for specific weapon type
   if (weaponType && weaponType in unitModes) {
-    return (unitModes as Record<string, TargetingMode>)[weaponType];
+    const value = (unitModes as Record<string, unknown>)[weaponType];
+    if (value === 'nearest' || value === 'sticky') {
+      return value;
+    }
   }
 
   // For single-weapon units or default fallback
@@ -58,6 +61,19 @@ function getTargetingMode(unitId: string, weaponType?: 'beam' | 'centerBeam' | '
   }
 
   return 'nearest';
+}
+
+// Get returnToForward setting for a unit type
+// Looks up from UNIT_TARGETING_MODES config, defaults to true
+function getReturnToForward(unitId: string): boolean {
+  const unitModes = UNIT_TARGETING_MODES[unitId as keyof typeof UNIT_TARGETING_MODES];
+  if (!unitModes) return true;
+
+  if ('returnToForward' in unitModes) {
+    return (unitModes as { returnToForward: boolean }).returnToForward;
+  }
+
+  return true; // Default to returning to forward
 }
 
 // Default weapon creation - single weapon matching unit type
@@ -70,14 +86,16 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   // Get turret acceleration physics values from weapon config, or use defaults
   const turretTurnAccel = weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const turretDrag = weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
-  // Get targeting mode from config
+  // Get targeting mode and return-to-forward from config
   const targetingMode = getTargetingMode(definition.id);
+  const returnToForward = getReturnToForward(definition.id);
 
   return [{
     config: { ...weaponConfig },
     currentCooldown: 0,
     targetEntityId: null,
     targetingMode,
+    returnToForward,
     seeRange,
     fireRange,
     fightstopRange,
@@ -124,6 +142,9 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
   const sonicDrag = widowSonicConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
   const sonicTargetingMode = getTargetingMode('widow', 'sonic');
 
+  // Widow's return-to-forward setting (shared by all weapons)
+  const returnToForward = getReturnToForward('widow');
+
   const weapons: UnitWeapon[] = [];
 
   // 6 beam lasers at hexagon vertices
@@ -140,6 +161,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
       currentCooldown: 0,
       targetEntityId: null,
       targetingMode: beamTargetingMode,
+      returnToForward,
       seeRange: beamSeeRange,
       fireRange: beamFireRange,
       fightstopRange: beamFightstopRange,
@@ -160,6 +182,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     currentCooldown: 0,
     targetEntityId: null,
     targetingMode: centerBeamTargetingMode,
+    returnToForward,
     seeRange: centerBeamSeeRange,
     fireRange: centerBeamFireRange,
     fightstopRange: centerBeamFightstopRange,
@@ -179,6 +202,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     currentCooldown: 0,
     targetEntityId: null,
     targetingMode: sonicTargetingMode,
+    returnToForward,
     seeRange: sonicSeeRange,
     fireRange: sonicFireRange,
     fightstopRange: sonicFightstopRange,

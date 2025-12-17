@@ -83,6 +83,7 @@ export interface Building {
 // Weapon configuration - flexible system for any weapon type
 export interface WeaponConfig {
   id: string;                    // Unique identifier (e.g., 'laser', 'minigun', 'cannon')
+  audioId: import('../audio/AudioManager').WeaponAudioId; // Audio ID for sound effects
   damage: number;                // Base damage per hit
   range: number;                 // Attack range
   cooldown: number;              // Time between attacks (ms)
@@ -139,6 +140,7 @@ export interface UnitWeapon {
 
   // Targeting behavior - how this weapon acquires and keeps targets
   targetingMode: TargetingMode;  // 'nearest' = always closest, 'sticky' = keep current until invalid
+  returnToForward: boolean;      // If true, turret rotates back to unit facing when no targets
 
   // Per-weapon range properties (constraint: fightstopRange < fireRange < seeRange)
   seeRange: number;              // Tracking range - turret starts rotating when enemies are within this

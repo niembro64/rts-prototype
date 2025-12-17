@@ -7,6 +7,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Scout - rapid fire small projectiles
   scout: {
     id: 'scout',
+    audioId: 'minigun',
     damage: WEAPON_STATS.scout.damage,
     range: WEAPON_STATS.scout.range,
     cooldown: WEAPON_STATS.scout.cooldown,
@@ -19,6 +20,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Burst - fires 3 shots in quick succession
   burst: {
     id: 'burst',
+    audioId: 'burst-rifle',
     damage: WEAPON_STATS.burst.damage,
     range: WEAPON_STATS.burst.range,
     cooldown: WEAPON_STATS.burst.cooldown,
@@ -33,6 +35,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Daddy - continuous beam, deals damage while on target (daddy long legs unit)
   daddy: {
     id: 'daddy',
+    audioId: 'beam',
     damage: WEAPON_STATS.daddy.damage,
     range: WEAPON_STATS.daddy.range,
     cooldown: WEAPON_STATS.daddy.cooldown,
@@ -46,6 +49,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Brawl - shotgun spread, multiple pellets
   brawl: {
     id: 'brawl',
+    audioId: 'shotgun',
     damage: WEAPON_STATS.brawl.damage,
     range: WEAPON_STATS.brawl.range,
     cooldown: WEAPON_STATS.brawl.cooldown,
@@ -60,6 +64,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Shotgun - splash damage artillery
   shotgun: {
     id: 'shotgun',
+    audioId: 'grenade',
     damage: WEAPON_STATS.shotgun.damage,
     range: WEAPON_STATS.shotgun.range,
     cooldown: WEAPON_STATS.shotgun.cooldown,
@@ -74,6 +79,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Snipe - instant hitscan, pierces targets
   snipe: {
     id: 'snipe',
+    audioId: 'railgun',
     damage: WEAPON_STATS.snipe.damage,
     range: WEAPON_STATS.snipe.range,
     cooldown: WEAPON_STATS.snipe.cooldown,
@@ -86,6 +92,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Tank - slow, heavy projectile
   tank: {
     id: 'tank',
+    audioId: 'cannon',
     damage: WEAPON_STATS.tank.damage,
     range: WEAPON_STATS.tank.range,
     cooldown: WEAPON_STATS.tank.cooldown,
@@ -98,6 +105,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // D-gun - Commander's special weapon, destroys everything
   dgun: {
     id: 'dgun',
+    audioId: 'cannon',
     damage: WEAPON_STATS.dgun.damage,
     range: WEAPON_STATS.dgun.range,
     cooldown: 0,
@@ -114,6 +122,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Damages all enemies within the slice, no projectiles created
   insect: {
     id: 'insect',
+    audioId: 'sonic-wave',
     damage: WEAPON_STATS.insect.damage,
     range: WEAPON_STATS.insect.range,
     cooldown: WEAPON_STATS.insect.cooldown,
@@ -130,6 +139,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Widow's beam lasers - extended range continuous beams
   widowBeam: {
     id: 'widowBeam',
+    audioId: 'beam',
     damage: WEAPON_STATS.widowBeam.damage,
     range: WEAPON_STATS.widowBeam.range,
     cooldown: WEAPON_STATS.widowBeam.cooldown,
@@ -143,6 +153,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Widow's center beam - 2x stats, mounted at head center
   widowCenterBeam: {
     id: 'widowCenterBeam',
+    audioId: 'beam',
     damage: WEAPON_STATS.widowCenterBeam.damage,
     range: WEAPON_STATS.widowCenterBeam.range,
     cooldown: WEAPON_STATS.widowCenterBeam.cooldown,
@@ -156,6 +167,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
   // Widow's sonic wave - larger and wider than insect's wave
   widowSonic: {
     id: 'widowSonic',
+    audioId: 'sonic-wave',
     damage: WEAPON_STATS.widowSonic.damage,
     range: WEAPON_STATS.widowSonic.range,
     cooldown: WEAPON_STATS.widowSonic.cooldown,
@@ -180,7 +192,7 @@ export function getWeaponConfig(id: string): WeaponConfig {
 }
 
 // Helper to create a custom weapon config
-export function createWeaponConfig(base: Partial<WeaponConfig> & { id: string }): WeaponConfig {
+export function createWeaponConfig(base: Partial<WeaponConfig> & { id: string; audioId: WeaponConfig['audioId'] }): WeaponConfig {
   return {
     damage: 10,
     range: 100,

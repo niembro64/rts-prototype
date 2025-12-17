@@ -18,6 +18,7 @@ import {
   type GraphicsQuality,
   type RenderMode,
 } from '../game/render/graphicsSettings';
+import { audioManager } from '../game/audio/AudioManager';
 
 // Available update rate options
 const UPDATE_RATE_OPTIONS = [1, 5, 10, 30] as const;
@@ -40,8 +41,14 @@ const GRAPHICS_OPTIONS: { value: GraphicsQuality; label: string }[] = [
 
 // Render mode options
 const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
-  { value: 'window', label: 'Window' },
+  { value: 'window', label: 'Visual' },
   { value: 'all', label: 'All' },
+];
+
+// Audio options
+const AUDIO_OPTIONS: { value: boolean; label: string }[] = [
+  { value: true, label: 'On' },
+  { value: false, label: 'Off' },
 ];
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -68,6 +75,7 @@ const hostViewMode = ref<HostViewMode>('simulation');
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(getEffectiveQuality());
 const renderMode = ref<RenderMode>(getRenderMode());
+const audioEnabled = ref(!audioManager.muted);
 
 // FPS and zoom tracking
 const meanFPS = ref(0);
@@ -319,6 +327,11 @@ function changeGraphicsQuality(quality: GraphicsQuality): void {
 function changeRenderMode(mode: RenderMode): void {
   setRenderMode(mode);
   renderMode.value = mode;
+}
+
+function setAudioEnabled(enabled: boolean): void {
+  audioManager.setMuted(!enabled);
+  audioEnabled.value = enabled;
 }
 
 function updateFPSStats(): void {
@@ -608,13 +621,26 @@ onUnmounted(() => {
       </div>
       <div class="gfx-divider"></div>
       <span class="graphics-label">Render:</span>
-      <div class="graphics-buttons">
+      <div class="button-group">
         <button
           v-for="opt in RENDER_OPTIONS"
           :key="opt.value"
           class="graphics-btn"
           :class="{ active: renderMode === opt.value }"
           @click="changeRenderMode(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+      <div class="gfx-divider"></div>
+      <span class="graphics-label">Audio:</span>
+      <div class="button-group">
+        <button
+          v-for="opt in AUDIO_OPTIONS"
+          :key="opt.value.toString()"
+          class="graphics-btn"
+          :class="{ active: audioEnabled === opt.value }"
+          @click="setAudioEnabled(opt.value)"
         >
           {{ opt.label }}
         </button>
@@ -1001,6 +1027,24 @@ onUnmounted(() => {
 .graphics-buttons {
   display: flex;
   gap: 3px;
+}
+
+.button-group {
+  display: flex;
+}
+
+.button-group .graphics-btn {
+  border-radius: 0;
+  margin-left: -1px;
+}
+
+.button-group .graphics-btn:first-child {
+  border-radius: 3px 0 0 3px;
+  margin-left: 0;
+}
+
+.button-group .graphics-btn:last-child {
+  border-radius: 0 3px 3px 0;
 }
 
 .graphics-btn {

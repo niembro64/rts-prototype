@@ -270,7 +270,8 @@ export class WorldState {
     mass: number = 25,
     turretTurnAccel?: number,   // Turret acceleration (rad/sec²) - uses weapon config or default
     turretDrag?: number,        // Turret drag (0-1) - uses weapon config or default
-    targetingMode: TargetingMode = 'nearest' // How weapon acquires/keeps targets
+    targetingMode: TargetingMode = 'nearest', // How weapon acquires/keeps targets
+    returnToForward: boolean = true // Whether turret returns to forward when no target
   ): Entity {
     const weaponConfig = getWeaponConfig(weaponId);
 
@@ -291,6 +292,7 @@ export class WorldState {
       currentCooldown: 0,
       targetEntityId: null,
       targetingMode,
+      returnToForward,
       seeRange,
       fireRange,
       fightstopRange,
@@ -326,11 +328,13 @@ export class WorldState {
       turretTurnAccel?: number;
       turretDrag?: number;
       targetingMode?: TargetingMode;
+      returnToForward?: boolean;
     }
   ): Entity {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(config.weaponId);
     const targetingMode = config.targetingMode ?? 'nearest';
+    const returnToForward = config.returnToForward ?? true;
 
     // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
     const fireRange = weaponConfig.range;
@@ -363,6 +367,7 @@ export class WorldState {
         currentCooldown: 0,
         targetEntityId: null,
         targetingMode,                   // Targeting behavior for this weapon
+        returnToForward,                 // Whether turret returns to forward when no target
         seeRange,                        // Weapon's tracking range
         fireRange,                       // Weapon's firing range
         fightstopRange,                  // Weapon's fightstop range (unit stops in fight mode)

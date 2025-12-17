@@ -1,6 +1,7 @@
 import Peer, { DataConnection } from 'peerjs';
 import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';
+import type { WeaponAudioId } from '../audio/AudioManager';
 
 // Network message types
 export type NetworkMessage =
@@ -14,7 +15,7 @@ export type NetworkMessage =
 // Audio event for network sync
 export interface NetworkAudioEvent {
   type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'projectileExpire';
-  weaponId: string;
+  weaponId: WeaponAudioId;
   x: number;
   y: number;
   entityId?: number;
@@ -81,6 +82,7 @@ export interface NetworkWeapon {
   configId: string;
   targetId?: number;
   targetingMode?: 'nearest' | 'sticky';  // How weapon acquires/keeps targets
+  returnToForward?: boolean;             // Whether turret returns to forward when no target
   seeRange: number;
   fireRange: number;
   fightstopRange: number;  // Unit stops in fight mode when enemy within this range

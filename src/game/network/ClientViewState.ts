@@ -535,6 +535,7 @@ export class ClientViewState {
           currentCooldown: 0,
           targetEntityId: nw.targetId ?? null,
           targetingMode: nw.targetingMode ?? 'nearest',
+          returnToForward: nw.returnToForward ?? true,
           seeRange: nw.seeRange,
           fireRange: nw.fireRange,
           fightstopRange: nw.fightstopRange,
@@ -618,6 +619,7 @@ export class ClientViewState {
           sourceEntityId: 0,
           config: netEntity.weaponId ? getWeaponConfig(netEntity.weaponId) : {
             id: 'unknown',
+            audioId: 'cannon' as const,
             damage: 10,
             range: 100,
             cooldown: 1000,
