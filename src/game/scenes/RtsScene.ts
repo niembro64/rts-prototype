@@ -43,6 +43,10 @@ import {
   UNIT_MASS_MULTIPLIER,
   ZOOM_INITIAL,
   WORLD_PADDING_PERCENT,
+  MAP_WIDTH,
+  MAP_HEIGHT,
+  BACKGROUND_MAP_WIDTH,
+  BACKGROUND_MAP_HEIGHT,
 } from '../../config';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
@@ -172,8 +176,10 @@ export class RtsScene extends Phaser.Scene {
       clearPendingGameConfig();
     }
 
-    // Initialize world state
-    this.world = new WorldState(42);
+    // Initialize world state with appropriate map size
+    const mapWidth = this.backgroundMode ? BACKGROUND_MAP_WIDTH : MAP_WIDTH;
+    const mapHeight = this.backgroundMode ? BACKGROUND_MAP_HEIGHT : MAP_HEIGHT;
+    this.world = new WorldState(42, mapWidth, mapHeight);
     // In background mode, set active player to 0 (spectator - no unit selection)
     this.world.setActivePlayer(this.backgroundMode ? 0 as PlayerId : this.localPlayerId);
 

@@ -449,6 +449,22 @@ export const WEAPON_STATS = {
 };
 
 // =============================================================================
+// MAP SIZE SETTINGS
+// =============================================================================
+
+/** Main game map width in pixels */
+export const MAP_WIDTH = 6000;
+
+/** Main game map height in pixels */
+export const MAP_HEIGHT = 6000;
+
+/** Background/setup screen map width in pixels (slightly smaller) */
+export const BACKGROUND_MAP_WIDTH = 1600;
+
+/** Background/setup screen map height in pixels */
+export const BACKGROUND_MAP_HEIGHT = 1600;
+
+// =============================================================================
 // BACKGROUND GAME SETTINGS
 // =============================================================================
 

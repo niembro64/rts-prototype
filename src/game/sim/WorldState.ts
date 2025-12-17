@@ -48,11 +48,13 @@ export class WorldState {
   public playerCount: number = 2;
 
   // Map dimensions
-  public readonly mapWidth: number = 2000;
-  public readonly mapHeight: number = 2000;
+  public readonly mapWidth: number;
+  public readonly mapHeight: number;
 
-  constructor(seed: number = 12345) {
+  constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
     this.rng = new SeededRNG(seed);
+    this.mapWidth = mapWidth;
+    this.mapHeight = mapHeight;
   }
 
   // Get unit cap per player (total units / number of players)
