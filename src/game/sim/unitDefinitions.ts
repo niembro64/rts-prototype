@@ -7,6 +7,10 @@ import {
   COST_MULTIPLIER,
   UNIT_STATS,
   UNIT_TARGETING_MODES,
+  DEFAULT_TURRET_TURN_ACCEL,
+  DEFAULT_TURRET_DRAG,
+  SEE_RANGE_MULTIPLIER,
+  FIGHTSTOP_RANGE_MULTIPLIER,
 } from '../../config';
 
 // Locomotion types for rendering
@@ -33,12 +37,6 @@ export interface UnitDefinition {
   locomotion: LocomotionType;
   legStyle?: LegStyle;
 
-  // Weapon configuration
-  // Constraint: fightstopRange < fireRange < seeRange
-  weaponSeeRange?: number;       // Override default tracking range
-  weaponFireRange?: number;      // Override default fire range
-  weaponFightstopRange?: number; // Override default fightstop range (unit stops in fight mode when enemy within this)
-
   // Custom weapon creation (for multi-weapon units like widow)
   createWeapons?: (radius: number, definition: UnitDefinition) => UnitWeapon[];
 }
@@ -63,16 +61,15 @@ function getTargetingMode(unitId: string, weaponType?: 'beam' | 'centerBeam' | '
 }
 
 // Default weapon creation - single weapon matching unit type
-// Range constraint: fightstopRange < fireRange < seeRange
+// Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
   const weaponConfig = getWeaponConfig(definition.id);
-  const fireRange = definition.weaponFireRange ?? weaponConfig.range;
-  // Use trackingRange from weapon config, then unit definition, then default to range * 1.5
-  const seeRange = weaponConfig.trackingRange ?? definition.weaponSeeRange ?? weaponConfig.range * 1.5;
-  // Use engageRange from weapon config, then unit definition, then default to 75% of fireRange
-  const fightstopRange = weaponConfig.engageRange ?? definition.weaponFightstopRange ?? fireRange * 0.75;
-  // Use turretTurnRate for beams, rotationRate for wave weapons, otherwise default to 1
-  const turretTurnRate = weaponConfig.turretTurnRate ?? weaponConfig.rotationRate ?? 1;
+  const fireRange = weaponConfig.range;
+  const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
+  const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  // Get turret acceleration physics values from weapon config, or use defaults
+  const turretTurnAccel = weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+  const turretDrag = weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
   // Get targeting mode from config
   const targetingMode = getTargetingMode(definition.id);
 
@@ -85,7 +82,9 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
     fireRange,
     fightstopRange,
     turretRotation: 0,
-    turretTurnRate,
+    turretAngularVelocity: 0,
+    turretTurnAccel,
+    turretDrag,
     offsetX: 0,
     offsetY: 0,
     isFiring: false,
@@ -95,31 +94,34 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
 
 // Widow weapon creation - 6 beam lasers at hexagon + 1 sonic wave in center
 // Uses explicit widowBeam, widowCenterBeam, and widowSonic configs from config.ts
-// Range constraint: fightstopRange < fireRange < seeRange
+// Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
 function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWeapon[] {
   const widowBeamConfig = getWeaponConfig('widowBeam');
   const widowCenterBeamConfig = getWeaponConfig('widowCenterBeam');
   const widowSonicConfig = getWeaponConfig('widowSonic');
 
-  // Beam weapon ranges (from widowBeam config, with defaults)
+  // Beam weapon ranges - use multipliers
   const beamFireRange = widowBeamConfig.range;
-  const beamSeeRange = widowBeamConfig.trackingRange ?? beamFireRange * 1.5;
-  const beamFightstopRange = widowBeamConfig.engageRange ?? beamFireRange * 0.75;
-  const beamTurretTurnRate = widowBeamConfig.turretTurnRate ?? 0.3;
+  const beamSeeRange = beamFireRange * SEE_RANGE_MULTIPLIER;
+  const beamFightstopRange = beamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const beamTurnAccel = widowBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+  const beamDrag = widowBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
   const beamTargetingMode = getTargetingMode('widow', 'beam');
 
-  // Center beam weapon ranges (2x the regular beam)
+  // Center beam weapon ranges - use multipliers
   const centerBeamFireRange = widowCenterBeamConfig.range;
-  const centerBeamSeeRange = widowCenterBeamConfig.trackingRange ?? centerBeamFireRange * 1.5;
-  const centerBeamFightstopRange = widowCenterBeamConfig.engageRange ?? centerBeamFireRange * 0.75;
-  const centerBeamTurretTurnRate = widowCenterBeamConfig.turretTurnRate ?? 0.3;
+  const centerBeamSeeRange = centerBeamFireRange * SEE_RANGE_MULTIPLIER;
+  const centerBeamFightstopRange = centerBeamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const centerBeamTurnAccel = widowCenterBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+  const centerBeamDrag = widowCenterBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
   const centerBeamTargetingMode = getTargetingMode('widow', 'centerBeam');
 
-  // Sonic weapon ranges (from widowSonic config)
+  // Sonic weapon ranges - use multipliers
   const sonicFireRange = widowSonicConfig.range;
-  const sonicSeeRange = widowSonicConfig.trackingRange ?? sonicFireRange * 1.5;
-  const sonicFightstopRange = widowSonicConfig.engageRange ?? sonicFireRange * 0.75;
-  const sonicRotationRate = widowSonicConfig.rotationRate ?? 0.45;
+  const sonicSeeRange = sonicFireRange * SEE_RANGE_MULTIPLIER;
+  const sonicFightstopRange = sonicFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const sonicTurnAccel = widowSonicConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+  const sonicDrag = widowSonicConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
   const sonicTargetingMode = getTargetingMode('widow', 'sonic');
 
   const weapons: UnitWeapon[] = [];
@@ -142,7 +144,9 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
       fireRange: beamFireRange,
       fightstopRange: beamFightstopRange,
       turretRotation: 0,
-      turretTurnRate: beamTurretTurnRate,
+      turretAngularVelocity: 0,
+      turretTurnAccel: beamTurnAccel,
+      turretDrag: beamDrag,
       offsetX,
       offsetY,
       isFiring: false,
@@ -160,7 +164,9 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     fireRange: centerBeamFireRange,
     fightstopRange: centerBeamFightstopRange,
     turretRotation: 0,
-    turretTurnRate: centerBeamTurretTurnRate,
+    turretAngularVelocity: 0,
+    turretTurnAccel: centerBeamTurnAccel,
+    turretDrag: centerBeamDrag,
     offsetX: hexForwardOffset,
     offsetY: 0,
     isFiring: false,
@@ -177,7 +183,9 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     fireRange: sonicFireRange,
     fightstopRange: sonicFightstopRange,
     turretRotation: 0,
-    turretTurnRate: sonicRotationRate,
+    turretAngularVelocity: 0,
+    turretTurnAccel: sonicTurnAccel,
+    turretDrag: sonicDrag,
     offsetX: hexForwardOffset,
     offsetY: 0,
     isFiring: false,
@@ -272,7 +280,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.widow.buildRate,
     locomotion: 'legs',
     legStyle: 'arachnid',
-    weaponSeeRange: 400,
     createWeapons: createWidowWeapons,
   },
   insect: {
@@ -285,8 +292,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.insect.buildRate,
     locomotion: 'legs',
     legStyle: 'insect',
-    weaponSeeRange: 200,   // Must see beyond fire range to target enemies approaching
-    weaponFireRange: 150,
   },
 };
 

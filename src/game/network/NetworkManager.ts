@@ -85,7 +85,9 @@ export interface NetworkWeapon {
   fireRange: number;
   fightstopRange: number;  // Unit stops in fight mode when enemy within this range
   turretRotation: number;
-  turretTurnRate: number;
+  turretAngularVelocity: number;  // Current angular velocity (rad/sec)
+  turretTurnAccel: number;        // Turret acceleration (rad/sec²)
+  turretDrag: number;             // Turret drag coefficient (0-1)
   offsetX: number;
   offsetY: number;
   isFiring: boolean;       // Whether weapon is actively firing at target in range

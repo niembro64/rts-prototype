@@ -76,25 +76,13 @@ function normalizeAngle(angle: number): number {
   return angle;
 }
 
-// Rotate turret toward target angle, limited by turn rate
-function rotateTurretToward(
-  currentAngle: number,
-  targetAngle: number,
-  turnRate: number,
-  dtSec: number
-): number {
-  const diff = normalizeAngle(targetAngle - currentAngle);
-  const maxTurn = turnRate * dtSec;
-
-  if (Math.abs(diff) <= maxTurn) {
-    return targetAngle;
-  }
-
-  return currentAngle + Math.sign(diff) * maxTurn;
-}
-
-// Update turret rotation for all units (call before fireWeapons)
-// Each weapon uses its own turretTurnRate
+// Update turret rotation for all units using acceleration-based physics
+// Each weapon has its own acceleration and drag values
+// Physics model:
+//   1. Calculate direction to target (or forward if no target)
+//   2. Apply acceleration toward target direction
+//   3. Apply drag to angular velocity
+//   4. Update rotation based on velocity
 export function updateTurretRotation(world: WorldState, dtMs: number): void {
   const dtSec = dtMs / 1000;
 
@@ -105,7 +93,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
     const cos = Math.cos(unit.transform.rotation);
     const sin = Math.sin(unit.transform.rotation);
 
-    // Update each weapon's turret rotation using its own turretTurnRate
+    // Update each weapon's turret rotation using acceleration physics
     for (const weapon of unit.weapons) {
       let targetAngle: number;
 
@@ -119,23 +107,54 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);
         } else {
+          // Target lost - return to forward-facing
           targetAngle = getMovementAngle(unit);
         }
       } else {
-        // No target - face movement direction (or body direction if stationary)
+        // No target - return to forward-facing (movement direction or body direction)
         targetAngle = getMovementAngle(unit);
       }
 
-      // Rotate turret toward target angle using weapon's own turn rate
-      // Each weapon operates independently - unit has no control
-      weapon.turretRotation = rotateTurretToward(
-        weapon.turretRotation,
-        targetAngle,
-        weapon.turretTurnRate,
-        dtSec
-      );
+      // Calculate angle difference to target
+      const angleDiff = normalizeAngle(targetAngle - weapon.turretRotation);
+
+      // Apply acceleration toward target
+      // Acceleration is proportional to direction (sign of angle difference)
+      const accelDirection = Math.sign(angleDiff);
+      weapon.turretAngularVelocity += accelDirection * weapon.turretTurnAccel * dtSec;
+
+      // Apply drag (reduces velocity each frame)
+      // Using multiplicative drag: velocity *= (1 - drag)
+      // This naturally limits terminal velocity
+      weapon.turretAngularVelocity *= (1 - weapon.turretDrag);
+
+      // Predictive braking: if we're going to overshoot, reduce velocity
+      // Calculate stopping distance at current velocity with drag
+      // If we'd overshoot, start braking harder
+      const stoppingFrames = Math.log(0.01) / Math.log(1 - weapon.turretDrag); // frames to reach ~1% velocity
+      const avgVelocity = weapon.turretAngularVelocity * 0.5; // rough average during deceleration
+      const estimatedOvershoot = avgVelocity * stoppingFrames * dtSec;
+
+      if (Math.abs(angleDiff) < Math.abs(estimatedOvershoot) &&
+          Math.sign(weapon.turretAngularVelocity) === accelDirection) {
+        // We're about to overshoot - apply counter-acceleration (brake)
+        weapon.turretAngularVelocity *= 0.8; // Extra braking
+      }
+
+      // If very close to target and moving slowly, snap to target
+      const velocityThreshold = 0.05; // rad/sec
+      const angleThreshold = 0.02; // ~1 degree
+      if (Math.abs(angleDiff) < angleThreshold &&
+          Math.abs(weapon.turretAngularVelocity) < velocityThreshold) {
+        weapon.turretRotation = targetAngle;
+        weapon.turretAngularVelocity = 0;
+      } else {
+        // Update rotation based on velocity
+        weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
+        // Keep rotation normalized
+        weapon.turretRotation = normalizeAngle(weapon.turretRotation);
+      }
     }
-    // Note: No syncing to unit - weapons are fully independent
   }
 }
 
@@ -224,8 +243,9 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
 // Update auto-targeting for all units
 // Each weapon independently finds its own target using its own seeRange
 // Targeting mode determines behavior:
-// - 'nearest': Always switch to closest enemy (original behavior)
-// - 'sticky': Keep current target until it dies or leaves seeRange
+// - 'nearest': Always switch to closest enemy (searches within seeRange)
+// - 'sticky': Keep current target until it dies or leaves seeRange,
+//             then search for new target within fightstopRange (tighter)
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
@@ -235,14 +255,11 @@ export function updateAutoTargeting(world: WorldState): void {
     const cos = Math.cos(unit.transform.rotation);
     const sin = Math.sin(unit.transform.rotation);
 
-    // Each weapon finds its own target using its own seeRange
+    // Each weapon finds its own target using its own ranges
     for (const weapon of unit.weapons) {
       // Calculate weapon position in world coordinates (rotated)
       const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
       const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
-
-      // Use weapon's own seeRange for tracking (strict - no leeway)
-      const trackingRange = weapon.seeRange;
 
       // Track current target distance for comparison
       let currentTargetDist = Infinity;
@@ -265,10 +282,10 @@ export function updateAutoTargeting(world: WorldState): void {
 
         if (targetIsValid && target) {
           const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
-          const effectiveTrackingRange = trackingRange + targetRadius;
+          const effectiveSeeRange = weapon.seeRange + targetRadius;
 
-          // Target still valid and in strict tracking range
-          if (dist <= effectiveTrackingRange) {
+          // Target still valid and in seeRange
+          if (dist <= effectiveSeeRange) {
             currentTargetDist = dist;
             hasValidTarget = true;
 
@@ -278,7 +295,7 @@ export function updateAutoTargeting(world: WorldState): void {
             }
             // Nearest mode: continue to search for closer targets below
           } else {
-            // Target out of range, clear it
+            // Target out of seeRange, clear it
             weapon.targetEntityId = null;
           }
         } else {
@@ -288,8 +305,12 @@ export function updateAutoTargeting(world: WorldState): void {
       }
 
       // Search for closest enemy
-      // - Nearest mode: always search, switch if closer
-      // - Sticky mode: only search if no valid target (cleared above)
+      // - Nearest mode: search within seeRange, switch if closer
+      // - Sticky mode: search within fightstopRange when acquiring new target (tighter search area)
+      const searchRange = (weapon.targetingMode === 'sticky' && !hasValidTarget)
+        ? weapon.fightstopRange
+        : weapon.seeRange;
+
       const enemies = world.getEnemyEntities(playerId);
       let closestEnemy: Entity | null = null;
       let closestDist = Infinity;
@@ -309,9 +330,9 @@ export function updateAutoTargeting(world: WorldState): void {
         if (!isAlive) continue;
 
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
-        const effectiveTrackingRange = trackingRange + enemyRadius;
+        const effectiveSearchRange = searchRange + enemyRadius;
 
-        if (dist <= effectiveTrackingRange && dist < closestDist) {
+        if (dist <= effectiveSearchRange && dist < closestDist) {
           closestDist = dist;
           closestEnemy = enemy;
         }

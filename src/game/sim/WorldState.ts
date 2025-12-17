@@ -1,6 +1,6 @@
 import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType, TargetingMode } from './types';
 import { getWeaponConfig } from './weapons';
-import { MAX_TOTAL_UNITS } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, SEE_RANGE_MULTIPLIER, FIGHTSTOP_RANGE_MULTIPLIER } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -268,18 +268,20 @@ export class WorldState {
     collisionRadius: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
-    turretTurnRate: number = 3, // radians per second (~172°/sec default) - for weapons
-    weaponSeeRange?: number,    // Optional per-weapon tracking range
-    weaponFireRange?: number,   // Optional per-weapon fire range
+    turretTurnAccel?: number,   // Turret acceleration (rad/sec²) - uses weapon config or default
+    turretDrag?: number,        // Turret drag (0-1) - uses weapon config or default
     targetingMode: TargetingMode = 'nearest' // How weapon acquires/keeps targets
   ): Entity {
     const weaponConfig = getWeaponConfig(weaponId);
 
-    // Default ranges from weapon config
-    // Range constraint: fightstopRange < fireRange < seeRange
-    const seeRange = weaponSeeRange ?? weaponConfig.range * 1.5;
-    const fireRange = weaponFireRange ?? weaponConfig.range;
-    const fightstopRange = fireRange * 0.75; // Default: 75% of fire range
+    // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
+    const fireRange = weaponConfig.range;
+    const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
+    const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+
+    // Turret physics - use provided values, weapon config, or global defaults
+    const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+    const drag = turretDrag ?? weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
     const entity = this.createUnitBase(x, y, playerId, collisionRadius, moveSpeed, mass, 100);
 
@@ -293,7 +295,9 @@ export class WorldState {
       fireRange,
       fightstopRange,
       turretRotation: 0,
-      turretTurnRate,
+      turretAngularVelocity: 0,
+      turretTurnAccel: accel,
+      turretDrag: drag,
       offsetX: 0,
       offsetY: 0,
       isFiring: false,
@@ -304,8 +308,8 @@ export class WorldState {
   }
 
   // Create a commander unit
-  // All range properties (seeRange, fireRange) are now per-weapon
-  // Turret rotation is entirely per-weapon - units have no control over weapons
+  // All range properties are derived from weapon config using multipliers
+  // Turret rotation uses acceleration-based physics
   createCommander(
     x: number,
     y: number,
@@ -319,22 +323,23 @@ export class WorldState {
       buildRange: number;
       weaponId: string;
       dgunCost: number;
-      turretTurnRate?: number;
-      weaponSeeRange?: number;
-      weaponFireRange?: number;
+      turretTurnAccel?: number;
+      turretDrag?: number;
       targetingMode?: TargetingMode;
     }
   ): Entity {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(config.weaponId);
-    const turretTurnRate = config.turretTurnRate ?? 3;
     const targetingMode = config.targetingMode ?? 'nearest';
 
-    // Default ranges from weapon config
-    // Range constraint: fightstopRange < fireRange < seeRange
-    const seeRange = config.weaponSeeRange ?? weaponConfig.range * 1.5;
-    const fireRange = config.weaponFireRange ?? weaponConfig.range;
-    const fightstopRange = fireRange * 0.75; // Default: 75% of fire range
+    // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
+    const fireRange = weaponConfig.range;
+    const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
+    const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+
+    // Turret physics - use provided values, weapon config, or global defaults
+    const turretTurnAccel = config.turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+    const turretDrag = config.turretDrag ?? weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
     const entity: Entity = {
       id,
@@ -362,7 +367,9 @@ export class WorldState {
         fireRange,                       // Weapon's firing range
         fightstopRange,                  // Weapon's fightstop range (unit stops in fight mode)
         turretRotation: 0,               // Weapon's independent turret rotation
-        turretTurnRate,                  // Weapon's turret rotation speed
+        turretAngularVelocity: 0,        // Current angular velocity (rad/sec)
+        turretTurnAccel,                 // Turret acceleration (rad/sec²)
+        turretDrag,                      // Turret drag coefficient
         offsetX: 0,
         offsetY: 0,
         isFiring: false,                 // Weapon reports firing state to unit

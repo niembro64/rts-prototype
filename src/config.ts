@@ -59,6 +59,37 @@ export const KNOCKBACK_FORCE_MULTIPLIER = 150;
 export const BEAM_KNOCKBACK_MULTIPLIER = 30.0;
 
 /**
+ * Default turret acceleration for weapons that don't specify their own.
+ * Units: radians/sec² - how fast the turret speeds up its rotation.
+ * Higher = snappier turret response.
+ */
+export const DEFAULT_TURRET_TURN_ACCEL = 20;
+
+/**
+ * Default turret drag for weapons that don't specify their own.
+ * Applied per frame as: velocity *= (1 - drag)
+ * Higher drag = slower terminal velocity, quicker stopping.
+ * Terminal velocity ≈ accel / (60 * drag) at 60fps
+ */
+export const DEFAULT_TURRET_DRAG = 0.15;
+
+/**
+ * Multiplier for seeRange (tracking range) relative to fireRange.
+ * seeRange = fireRange * SEE_RANGE_MULTIPLIER
+ * Turret starts tracking enemies when they enter this range.
+ * Target is lost (for sticky weapons) when they leave this range.
+ */
+export const SEE_RANGE_MULTIPLIER = 1.1;
+
+/**
+ * Multiplier for fightstopRange relative to fireRange.
+ * fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER
+ * Unit stops moving in fight/patrol mode when target is within this range.
+ * For sticky weapons, new targets are searched within this range.
+ */
+export const FIGHTSTOP_RANGE_MULTIPLIER = 0.9;
+
+/**
  * Pull strength for sonic wave weapons (units per second toward wave origin).
  * Higher = stronger pull effect.
  */
@@ -346,7 +377,7 @@ export const WEAPON_STATS = {
 
   // Brawl - Shotgun spread, high close-range damage
   brawl: {
-    damage: 12,            // Per pellet
+    damage: 12, // Per pellet
     range: 90,
     cooldown: 900,
     projectileSpeed: 450,
@@ -375,48 +406,53 @@ export const WEAPON_STATS = {
     damage: 55,
     range: 350,
     cooldown: 3200,
-    beamDuration: 20,      // Instant flash
+    beamDuration: 20, // Instant flash
     beamWidth: 2,
   },
 
   // Daddy - Continuous damage beam (daddy long legs unit)
+  // Slow, deliberate turret - low acceleration, tracks slowly
   daddy: {
-    damage: 45,            // DPS while beam is on target
+    damage: 45, // DPS while beam is on target
     range: 140,
-    cooldown: 0,           // Continuous
+    cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnRate: 0.3,   // Radians per second - beam turret rotation speed
+    turretTurnAccel: 3, // Slow acceleration (rad/sec²)
+    turretDrag: 0.15, // Moderate drag → terminal ~0.33 rad/sec
   },
 
   // Widow beam lasers - extended range continuous beams
+  // Fast, snappy turrets - high acceleration
   widowBeam: {
     damage: 45,
     range: 160,
-    cooldown: 0,           // Continuous
+    cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnRate: 3,   // Radians per second - beam turret rotation speed
+    turretTurnAccel: 30, // Fast acceleration (rad/sec²)
+    turretDrag: 0.15, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Widow center beam - 2x stats of widowBeam, mounted at head center
+  // Medium-slow turret - big gun needs time to aim
   widowCenterBeam: {
-    damage: 90,            // 2x damage
-    range: 420,            // 2x range
-    cooldown: 0,           // Continuous
-    beamDuration: 3000,    // 2x duration
-    beamWidth: 12,          // 2x width
-    turretTurnRate: 0.5,   // Radians per second - beam turret rotation speed
+    damage: 45,
+    range: 300,
+    cooldown: 0, // Continuous
+    beamDuration: 1500,
+    beamWidth: 4,
+    turretTurnAccel: 10, // Fast acceleration (rad/sec²)
+    turretDrag: 0.01, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Insect - Continuous pie-slice wave AoE
   insect: {
-    damage: 20,            // Base DPS (scales with 1/distance)
+    damage: 20, // Base DPS (scales with 1/distance)
     range: 500,
-    cooldown: 0,           // Continuous
-    trackingRange: 600,    // Turret tracks at this range
-    engageRange: 400,      // Unit stops in fight mode at this range
-    rotationRate: 1,     // Turret turn speed (radians/sec)
+    cooldown: 0, // Continuous
+    turretTurnAccel: 10, // Medium acceleration (rad/sec²)
+    turretDrag: 0.01, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.5,
     waveTransitionTime: 2000,
@@ -425,12 +461,11 @@ export const WEAPON_STATS = {
 
   // Widow sonic wave - larger pie-slice wave AoE
   widowSonic: {
-    damage: 20,            // Base DPS (scales with 1/distance)
+    damage: 20, // Base DPS (scales with 1/distance)
     range: 900,
-    cooldown: 0,           // Continuous
-    trackingRange: 1000,   // Turret tracks at this range
-    engageRange: 800,      // Unit stops in fight mode at this range
-    rotationRate: 1,     // Turret turn speed (radians/sec)
+    cooldown: 0, // Continuous
+    turretTurnAccel: 10, // Medium acceleration (rad/sec²)
+    turretDrag: 0.15, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.5,
     waveTransitionTime: 500,
@@ -441,7 +476,7 @@ export const WEAPON_STATS = {
   dgun: {
     damage: 9999,
     range: 150,
-    cooldown: 0,           // No cooldown (energy-limited)
+    cooldown: 0, // No cooldown (energy-limited)
     projectileSpeed: 350,
     splashRadius: 40,
   },

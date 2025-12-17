@@ -112,12 +112,9 @@ export interface WeaponConfig {
   color?: number;                // Projectile/beam color
   trailLength?: number;          // Visual trail length
 
-  // Targeting range overrides (optional - defaults calculated from range)
-  // Constraint: engageRange < range < trackingRange
-  trackingRange?: number;        // Range at which turret starts tracking enemies (default: range * 1.5)
-  engageRange?: number;          // Range at which unit stops moving in fight mode (default: range * 0.75)
-  rotationRate?: number;         // Turret turn rate for wave weapons (radians/sec)
-  turretTurnRate?: number;       // Turret turn rate for beam weapons (radians/sec)
+  // Turret rotation (acceleration-based physics)
+  turretTurnAccel?: number;      // Turret acceleration toward target (radians/sec²)
+  turretDrag?: number;           // Turret drag coefficient (0-1, per frame)
 
   // Wave weapon properties (sonic)
   isWaveWeapon?: boolean;        // True if this is a continuous wave weapon
@@ -148,9 +145,11 @@ export interface UnitWeapon {
   fireRange: number;             // Attack range - weapon fires when enemies are within this
   fightstopRange: number;        // Fight mode stop range - unit stops moving in fight mode when enemy is within this
 
-  // Turret rotation for this specific weapon
-  turretRotation: number;
-  turretTurnRate: number;        // Radians per second - how fast this weapon's turret rotates
+  // Turret rotation for this specific weapon (acceleration-based physics)
+  turretRotation: number;           // Current angle (radians)
+  turretAngularVelocity: number;    // Current rotational speed (radians/sec)
+  turretTurnAccel: number;          // Acceleration toward target (radians/sec²)
+  turretDrag: number;               // Drag coefficient (0-1, applied per frame as velocity *= 1-drag)
 
   // Offset from unit center (for rendering and firing origin)
   // Single-weapon units have offsetX=0, offsetY=0
