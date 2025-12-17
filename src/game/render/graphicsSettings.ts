@@ -8,10 +8,10 @@
 
 import { GRAPHICS_DETAIL_DEFINITIONS } from '../../config';
 
-export type GraphicsQuality = 'auto' | 'low' | 'medium' | 'high';
+export type GraphicsQuality = 'auto' | 'low' | 'medium' | 'high' | 'extra';
 export type RenderMode = 'window' | 'all';
 
-export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-complex';
+export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-chunks' | 'three-velocity-complex';
 
 export interface GraphicsConfig {
   legs: 'none' | 'animated';
@@ -45,6 +45,13 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamGlow: D.BEAM_GLOW.high,
     antialias: D.ANTIALIAS.high,
   },
+  extra: {
+    legs: D.LEGS.extra as 'none' | 'animated',
+    explosions: D.EXPLOSIONS.extra as ExplosionStyle,
+    treadsAnimated: D.TREADS_ANIMATED.extra,
+    beamGlow: D.BEAM_GLOW.extra,
+    antialias: D.ANTIALIAS.extra,
+  },
 };
 
 const STORAGE_KEY = 'rts-graphics-quality';
@@ -59,7 +66,7 @@ let currentZoom: number = 1.0; // Updated by renderer
 function loadFromStorage(): void {
   try {
     const storedQuality = localStorage.getItem(STORAGE_KEY);
-    if (storedQuality && (storedQuality === 'auto' || storedQuality === 'low' || storedQuality === 'medium' || storedQuality === 'high')) {
+    if (storedQuality && (storedQuality === 'auto' || storedQuality === 'low' || storedQuality === 'medium' || storedQuality === 'high' || storedQuality === 'extra')) {
       currentQuality = storedQuality;
     }
     const storedRenderMode = localStorage.getItem(RENDER_MODE_STORAGE_KEY);
@@ -114,7 +121,9 @@ export function getEffectiveQuality(): Exclude<GraphicsQuality, 'auto'> {
   // Auto mode: determine quality based on zoom level
   // Uses AUTO_ZOOM_START thresholds from config
   const zoomStart = D.AUTO_ZOOM_START;
-  if (currentZoom >= zoomStart.high) {
+  if (currentZoom >= zoomStart.extra) {
+    return 'extra';
+  } else if (currentZoom >= zoomStart.high) {
     return 'high';
   } else if (currentZoom >= zoomStart.medium) {
     return 'medium';

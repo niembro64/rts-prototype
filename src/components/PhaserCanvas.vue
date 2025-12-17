@@ -34,6 +34,7 @@ const GRAPHICS_OPTIONS: { value: GraphicsQuality; label: string }[] = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Med' },
   { value: 'high', label: 'High' },
+  { value: 'extra', label: 'Extra' },
 ];
 
 // Render mode options

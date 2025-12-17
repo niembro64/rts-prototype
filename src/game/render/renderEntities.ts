@@ -781,22 +781,35 @@ export class EntityRenderer {
     const gfxConfig = getGraphicsConfig();
     const explosionStyle = gfxConfig.explosions;
 
-    // Low quality: one simple expanding circle
+    // Low quality: one simple expanding circle with normal explosion colors
     if (explosionStyle === 'one-simple-circle') {
-      const currentRadius = exp.radius * (0.5 + progress * 0.5);
+      const currentRadius = exp.radius * (0.3 + progress * 0.7);
       const alpha = 1 - progress * progress;
-      this.graphics.fillStyle(exp.color, alpha * 0.4);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.2);
+      // Outer orange glow
+      this.graphics.fillStyle(0xff6600, alpha * 0.3);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.3);
+      // Main fireball (orange-yellow)
+      this.graphics.fillStyle(0xff8822, alpha * 0.6);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius);
+      // Inner yellow
+      this.graphics.fillStyle(0xffcc44, alpha * 0.7);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.6);
+      // Hot white core
       this.graphics.fillStyle(0xffffff, alpha * 0.8);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.4);
-      this.graphics.fillStyle(exp.color, alpha * 0.7);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.7);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.25);
       return;
     }
 
-    // Medium quality: three velocity circles
+    // Medium quality: three velocity circles with scattered particles
     if (explosionStyle === 'three-velocity-circles' && exp.type === 'death') {
       const alpha = 1 - progress * progress;
+
+      // Seeded random for consistent particles
+      const seed = (exp.x * 1000 + exp.y) % 10000;
+      const seededRandom = (i: number) => {
+        const x = Math.sin(seed + i * 127.1) * 43758.5453;
+        return x - Math.floor(x);
+      };
 
       // Get the three velocity directions
       const hasVelocity = (exp.velocityMag ?? 0) > 10;
@@ -811,65 +824,85 @@ export class EntityRenderer {
       const attackDirX = hasAttacker ? (exp.attackerX ?? 0) / exp.attackerMag! : 0;
       const attackDirY = hasAttacker ? (exp.attackerY ?? 0) / exp.attackerMag! : 0;
 
-      // Strength factors (how far each circle travels)
+      // Strength factors
       const velStrength = hasVelocity ? Math.min(exp.velocityMag! / 300, 1.5) : 0;
       const penStrength = hasPenetration ? Math.min(exp.penetrationMag! / 300, 1.5) : 0;
       const attackStrength = hasAttacker ? Math.min(exp.attackerMag! / 300, 1.5) : 0;
 
-      // Base circle at center (always rendered)
-      const baseRadius = exp.radius * (0.3 + progress * 0.5);
-      const baseFade = Math.max(0, 1 - progress * 1.5);
+      // Central fireball
+      const baseRadius = exp.radius * (0.4 + progress * 0.4);
+      const baseFade = Math.max(0, 1 - progress * 1.3);
       if (baseFade > 0) {
-        this.graphics.fillStyle(exp.color, alpha * 0.5 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius);
-        this.graphics.fillStyle(0xffffff, alpha * 0.7 * baseFade);
+        this.graphics.fillStyle(0xff6600, alpha * 0.4 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 1.2);
+        this.graphics.fillStyle(0xffaa33, alpha * 0.6 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.8);
+        this.graphics.fillStyle(0xffdd66, alpha * 0.7 * baseFade);
         this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.4);
+        this.graphics.fillStyle(0xffffff, alpha * 0.6 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.15);
       }
 
-      // Circle 1: Unit velocity direction (blue-ish tint - motion trail)
+      // Particles in unit velocity direction (smoke-ish gray particles)
       if (hasVelocity) {
-        const velDist = exp.radius * progress * 2.0 * velStrength;
-        const velCircleX = exp.x + velDirX * velDist;
-        const velCircleY = exp.y + velDirY * velDist;
-        const velRadius = exp.radius * (0.4 + progress * 0.3) * (1 - progress * 0.5);
-        const velFade = Math.max(0, 1 - progress * 1.2);
-        if (velFade > 0 && velRadius > 2) {
-          this.graphics.fillStyle(0x4488ff, alpha * 0.4 * velFade);
-          this.graphics.fillCircle(velCircleX, velCircleY, velRadius * 1.2);
-          this.graphics.fillStyle(0x88ccff, alpha * 0.6 * velFade);
-          this.graphics.fillCircle(velCircleX, velCircleY, velRadius * 0.6);
+        const particleCount = 4 + Math.floor(velStrength * 3);
+        for (let i = 0; i < particleCount; i++) {
+          const spread = (seededRandom(i + 100) - 0.5) * 0.8;
+          const angle = Math.atan2(velDirY, velDirX) + spread;
+          const speed = 0.8 + seededRandom(i + 101) * 0.6;
+          const dist = exp.radius * progress * 1.8 * speed * velStrength;
+          const px = exp.x + Math.cos(angle) * dist;
+          const py = exp.y + Math.sin(angle) * dist;
+          const pSize = (3 + seededRandom(i + 102) * 4) * (1 - progress * 0.7);
+          const pFade = Math.max(0, 1 - progress * 1.2);
+          if (pFade > 0 && pSize > 1) {
+            this.graphics.fillStyle(0x666666, alpha * 0.4 * pFade);
+            this.graphics.fillCircle(px, py, pSize);
+          }
         }
       }
 
-      // Circle 2: Impact/penetration direction (orange - where attack hit)
+      // Particles in penetration direction (orange debris)
       if (hasPenetration) {
-        const penDist = exp.radius * progress * 1.8 * penStrength;
-        const penCircleX = exp.x + penDirX * penDist;
-        const penCircleY = exp.y + penDirY * penDist;
-        const penRadius = exp.radius * (0.35 + progress * 0.35) * (1 - progress * 0.5);
-        const penFade = Math.max(0, 1 - progress * 1.2);
-        if (penFade > 0 && penRadius > 2) {
-          this.graphics.fillStyle(0xff6600, alpha * 0.5 * penFade);
-          this.graphics.fillCircle(penCircleX, penCircleY, penRadius * 1.2);
-          this.graphics.fillStyle(0xffaa44, alpha * 0.7 * penFade);
-          this.graphics.fillCircle(penCircleX, penCircleY, penRadius * 0.5);
+        const particleCount = 5 + Math.floor(penStrength * 3);
+        for (let i = 0; i < particleCount; i++) {
+          const spread = (seededRandom(i + 200) - 0.5) * 0.7;
+          const angle = Math.atan2(penDirY, penDirX) + spread;
+          const speed = 0.7 + seededRandom(i + 201) * 0.8;
+          const dist = exp.radius * progress * 2.0 * speed * penStrength;
+          const px = exp.x + Math.cos(angle) * dist;
+          const py = exp.y + Math.sin(angle) * dist;
+          const pSize = (3 + seededRandom(i + 202) * 5) * (1 - progress * 0.6);
+          const pFade = Math.max(0, 1 - progress * 1.1);
+          if (pFade > 0 && pSize > 1) {
+            this.graphics.fillStyle(0xff7722, alpha * 0.5 * pFade);
+            this.graphics.fillCircle(px, py, pSize);
+            this.graphics.fillStyle(0xffaa55, alpha * 0.4 * pFade);
+            this.graphics.fillCircle(px, py, pSize * 0.5);
+          }
         }
       }
 
-      // Circle 3: Attacker/projectile direction (red-yellow - main explosion direction)
+      // Particles in attacker direction (bright sparks - main explosion direction)
       if (hasAttacker) {
-        const attackDist = exp.radius * progress * 2.5 * attackStrength;
-        const attackCircleX = exp.x + attackDirX * attackDist;
-        const attackCircleY = exp.y + attackDirY * attackDist;
-        const attackRadius = exp.radius * (0.5 + progress * 0.4) * (1 - progress * 0.4);
-        const attackFade = Math.max(0, 1 - progress * 1.1);
-        if (attackFade > 0 && attackRadius > 2) {
-          this.graphics.fillStyle(0xff4422, alpha * 0.5 * attackFade);
-          this.graphics.fillCircle(attackCircleX, attackCircleY, attackRadius * 1.3);
-          this.graphics.fillStyle(0xffcc44, alpha * 0.6 * attackFade);
-          this.graphics.fillCircle(attackCircleX, attackCircleY, attackRadius * 0.6);
-          this.graphics.fillStyle(0xffffff, alpha * 0.5 * attackFade);
-          this.graphics.fillCircle(attackCircleX, attackCircleY, attackRadius * 0.25);
+        const particleCount = 6 + Math.floor(attackStrength * 4);
+        for (let i = 0; i < particleCount; i++) {
+          const spread = (seededRandom(i + 300) - 0.5) * 0.6;
+          const angle = Math.atan2(attackDirY, attackDirX) + spread;
+          const speed = 1.0 + seededRandom(i + 301) * 0.8;
+          const dist = exp.radius * progress * 2.5 * speed * attackStrength;
+          const px = exp.x + Math.cos(angle) * dist;
+          const py = exp.y + Math.sin(angle) * dist;
+          const pSize = (4 + seededRandom(i + 302) * 5) * (1 - progress * 0.5);
+          const pFade = Math.max(0, 1 - progress * 1.0);
+          if (pFade > 0 && pSize > 1) {
+            this.graphics.fillStyle(0xff4400, alpha * 0.6 * pFade);
+            this.graphics.fillCircle(px, py, pSize);
+            this.graphics.fillStyle(0xffcc44, alpha * 0.5 * pFade);
+            this.graphics.fillCircle(px, py, pSize * 0.6);
+            this.graphics.fillStyle(0xffffff, alpha * 0.4 * pFade);
+            this.graphics.fillCircle(px, py, pSize * 0.25);
+          }
         }
       }
 
@@ -878,18 +911,186 @@ export class EntityRenderer {
 
     // Medium quality fallback for non-death explosions: simple flash
     if (explosionStyle === 'three-velocity-circles') {
-      const currentRadius = exp.radius * (0.5 + progress * 0.5);
+      const currentRadius = exp.radius * (0.3 + progress * 0.7);
       const alpha = 1 - progress * progress;
-      this.graphics.fillStyle(exp.color, alpha * 0.4);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.2);
+      this.graphics.fillStyle(0xff6600, alpha * 0.3);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.3);
+      this.graphics.fillStyle(0xff8822, alpha * 0.6);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius);
+      this.graphics.fillStyle(0xffcc44, alpha * 0.7);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.5);
       this.graphics.fillStyle(0xffffff, alpha * 0.8);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.4);
-      this.graphics.fillStyle(exp.color, alpha * 0.7);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.7);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.2);
       return;
     }
 
-    // High quality: three-velocity-complex (full particle system)
+    // High quality: three-velocity-chunks (debris chunks with short trails)
+    if (explosionStyle === 'three-velocity-chunks' && exp.type === 'death') {
+      const alpha = 1 - progress;
+
+      // Seeded random for consistent particles
+      const seed = (exp.x * 1000 + exp.y) % 10000;
+      const seededRandom = (i: number) => {
+        const x = Math.sin(seed + i * 127.1) * 43758.5453;
+        return x - Math.floor(x);
+      };
+
+      // Get directions and strengths
+      const hasVelocity = (exp.velocityMag ?? 0) > 10;
+      const hasPenetration = (exp.penetrationMag ?? 0) > 10;
+      const hasAttacker = (exp.attackerMag ?? 0) > 10;
+
+      const velDirX = hasVelocity ? (exp.velocityX ?? 0) / exp.velocityMag! : 0;
+      const velDirY = hasVelocity ? (exp.velocityY ?? 0) / exp.velocityMag! : 0;
+      const penDirX = hasPenetration ? (exp.penetrationX ?? 0) / exp.penetrationMag! : 0;
+      const penDirY = hasPenetration ? (exp.penetrationY ?? 0) / exp.penetrationMag! : 0;
+      const attackDirX = hasAttacker ? (exp.attackerX ?? 0) / exp.attackerMag! : 0;
+      const attackDirY = hasAttacker ? (exp.attackerY ?? 0) / exp.attackerMag! : 0;
+
+      const velStrength = hasVelocity ? Math.min(exp.velocityMag! / 300, 1.5) : 0;
+      const penStrength = hasPenetration ? Math.min(exp.penetrationMag! / 300, 1.5) : 0;
+      const attackStrength = hasAttacker ? Math.min(exp.attackerMag! / 300, 1.5) : 0;
+
+      // Central fireball with glow
+      const baseRadius = exp.radius * (0.5 + progress * 0.3);
+      const baseFade = Math.max(0, 1 - progress * 1.2);
+      if (baseFade > 0) {
+        this.graphics.fillStyle(0xff4400, alpha * 0.3 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 1.4);
+        this.graphics.fillStyle(0xff6622, alpha * 0.5 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius);
+        this.graphics.fillStyle(0xffaa44, alpha * 0.7 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.6);
+        this.graphics.fillStyle(0xffdd88, alpha * 0.8 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.3);
+        this.graphics.fillStyle(0xffffff, alpha * 0.7 * baseFade);
+        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.12);
+      }
+
+      // Smoke chunks in velocity direction
+      if (hasVelocity) {
+        const chunkCount = 6 + Math.floor(velStrength * 4);
+        for (let i = 0; i < chunkCount; i++) {
+          const delay = seededRandom(i + 100) * 0.1;
+          const chunkProgress = Math.max(0, (progress - delay) * 1.3);
+          if (chunkProgress <= 0 || chunkProgress > 1) continue;
+
+          const spread = (seededRandom(i + 101) - 0.5) * 1.0;
+          const angle = Math.atan2(velDirY, velDirX) + spread;
+          const speed = 0.6 + seededRandom(i + 102) * 0.6;
+          const dist = exp.radius * chunkProgress * 1.6 * speed * velStrength;
+          const px = exp.x + Math.cos(angle) * dist;
+          const py = exp.y + Math.sin(angle) * dist - chunkProgress * 5; // Float up slightly
+
+          const chunkFade = 1 - chunkProgress;
+          const chunkSize = (4 + seededRandom(i + 103) * 5) * chunkFade;
+
+          // Short trail
+          if (chunkSize > 2 && chunkFade > 0.1) {
+            const trailLen = Math.min(dist * 0.3, 12) * chunkFade;
+            if (trailLen > 2) {
+              const tx = px - Math.cos(angle) * trailLen;
+              const ty = py - Math.sin(angle) * trailLen + chunkProgress * 2.5;
+              this.graphics.lineStyle(chunkSize * 0.6, 0x555555, alpha * 0.25 * chunkFade);
+              this.graphics.lineBetween(tx, ty, px, py);
+            }
+            this.graphics.fillStyle(0x444444, alpha * 0.4 * chunkFade);
+            this.graphics.fillCircle(px, py, chunkSize);
+          }
+        }
+      }
+
+      // Orange debris chunks in penetration direction
+      if (hasPenetration) {
+        const chunkCount = 8 + Math.floor(penStrength * 5);
+        for (let i = 0; i < chunkCount; i++) {
+          const delay = seededRandom(i + 200) * 0.08;
+          const chunkProgress = Math.max(0, (progress - delay) * 1.4);
+          if (chunkProgress <= 0 || chunkProgress > 1) continue;
+
+          const spread = (seededRandom(i + 201) - 0.5) * 0.8;
+          const angle = Math.atan2(penDirY, penDirX) + spread;
+          const speed = 0.8 + seededRandom(i + 202) * 0.7;
+          const dist = exp.radius * chunkProgress * 2.0 * speed * penStrength;
+          const px = exp.x + Math.cos(angle) * dist;
+          const py = exp.y + Math.sin(angle) * dist;
+
+          const chunkFade = 1 - chunkProgress;
+          const chunkSize = (4 + seededRandom(i + 203) * 6) * chunkFade;
+
+          if (chunkSize > 2 && chunkFade > 0.1) {
+            // Trail
+            const trailLen = Math.min(dist * 0.35, 15) * chunkFade;
+            if (trailLen > 2) {
+              const tx = px - Math.cos(angle) * trailLen;
+              const ty = py - Math.sin(angle) * trailLen;
+              this.graphics.lineStyle(chunkSize * 0.5, 0xff5500, alpha * 0.3 * chunkFade);
+              this.graphics.lineBetween(tx, ty, px, py);
+            }
+            this.graphics.fillStyle(0xff6600, alpha * 0.6 * chunkFade);
+            this.graphics.fillCircle(px, py, chunkSize);
+            this.graphics.fillStyle(0xffaa44, alpha * 0.5 * chunkFade);
+            this.graphics.fillCircle(px, py, chunkSize * 0.5);
+          }
+        }
+      }
+
+      // Bright spark chunks in attacker direction (main explosion spray)
+      if (hasAttacker) {
+        const chunkCount = 10 + Math.floor(attackStrength * 8);
+        for (let i = 0; i < chunkCount; i++) {
+          const delay = seededRandom(i + 300) * 0.06;
+          const chunkProgress = Math.max(0, (progress - delay) * 1.5);
+          if (chunkProgress <= 0 || chunkProgress > 1) continue;
+
+          const spread = (seededRandom(i + 301) - 0.5) * 0.6;
+          const angle = Math.atan2(attackDirY, attackDirX) + spread;
+          const speed = 1.0 + seededRandom(i + 302) * 1.0;
+          const dist = exp.radius * chunkProgress * 2.8 * speed * attackStrength;
+          const px = exp.x + Math.cos(angle) * dist;
+          const py = exp.y + Math.sin(angle) * dist;
+
+          const chunkFade = 1 - chunkProgress;
+          const chunkSize = (3 + seededRandom(i + 303) * 5) * chunkFade;
+
+          if (chunkSize > 1.5 && chunkFade > 0.1) {
+            // Longer bright trail
+            const trailLen = Math.min(dist * 0.4, 20) * chunkFade;
+            if (trailLen > 3) {
+              const tx = px - Math.cos(angle) * trailLen;
+              const ty = py - Math.sin(angle) * trailLen;
+              this.graphics.lineStyle(chunkSize * 0.7, 0xff6622, alpha * 0.35 * chunkFade);
+              this.graphics.lineBetween(tx, ty, px, py);
+              this.graphics.lineStyle(chunkSize * 0.4, 0xffaa44, alpha * 0.5 * chunkFade);
+              this.graphics.lineBetween((tx + px) / 2, (ty + py) / 2, px, py);
+            }
+            this.graphics.fillStyle(0xffcc44, alpha * 0.7 * chunkFade);
+            this.graphics.fillCircle(px, py, chunkSize);
+            this.graphics.fillStyle(0xffffff, alpha * 0.6 * chunkFade);
+            this.graphics.fillCircle(px, py, chunkSize * 0.4);
+          }
+        }
+      }
+
+      return;
+    }
+
+    // High quality fallback for non-death explosions
+    if (explosionStyle === 'three-velocity-chunks') {
+      const currentRadius = exp.radius * (0.3 + progress * 0.7);
+      const alpha = 1 - progress * progress;
+      this.graphics.fillStyle(0xff4400, alpha * 0.3);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.4);
+      this.graphics.fillStyle(0xff6622, alpha * 0.5);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius);
+      this.graphics.fillStyle(0xffaa44, alpha * 0.7);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.5);
+      this.graphics.fillStyle(0xffffff, alpha * 0.8);
+      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.2);
+      return;
+    }
+
+    // Extra quality: three-velocity-complex (full particle system)
     if (exp.type === 'death') {
       // ========================================================================
       // DIRECTIONAL PARTICLE EXPLOSION

@@ -382,6 +382,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     low: 0.0,
     medium: 0.6,
     high: 1.0,
+    extra: 2.0,
   },
 
   // Leg rendering for arachnid/daddy/insect units
@@ -389,13 +390,15 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     low: 'none',
     medium: 'animated',
     high: 'animated',
+    extra: 'animated',
   },
 
   // Explosion style
   EXPLOSIONS: {
     low: 'one-simple-circle',
     medium: 'three-velocity-circles',
-    high: 'three-velocity-complex',
+    high: 'three-velocity-chunks',
+    extra: 'three-velocity-complex',
   },
 
   // Tread/wheel animations
@@ -403,6 +406,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     low: false,
     medium: true,
     high: true,
+    extra: true,
   },
 
   // Beam glow effects
@@ -410,6 +414,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     low: false,
     medium: false,
     high: true,
+    extra: true,
   },
 
   // Antialiasing (requires game restart to take effect)
@@ -417,6 +422,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     low: false,
     medium: true,
     high: true,
+    extra: true,
   },
 } as const;
 
