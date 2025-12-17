@@ -38,6 +38,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     cooldown: WEAPON_STATS.daddy.cooldown,
     beamDuration: WEAPON_STATS.daddy.beamDuration,
     beamWidth: WEAPON_STATS.daddy.beamWidth,
+    turretTurnRate: WEAPON_STATS.daddy.turretTurnRate,
     color: 0xffffff,
   },
 
@@ -134,6 +135,19 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     cooldown: WEAPON_STATS.widowBeam.cooldown,
     beamDuration: WEAPON_STATS.widowBeam.beamDuration,
     beamWidth: WEAPON_STATS.widowBeam.beamWidth,
+    turretTurnRate: WEAPON_STATS.widowBeam.turretTurnRate,
+    color: 0xffffff,
+  },
+
+  // Widow's center beam - 2x stats, mounted at head center
+  widowCenterBeam: {
+    id: 'widowCenterBeam',
+    damage: WEAPON_STATS.widowCenterBeam.damage,
+    range: WEAPON_STATS.widowCenterBeam.range,
+    cooldown: WEAPON_STATS.widowCenterBeam.cooldown,
+    beamDuration: WEAPON_STATS.widowCenterBeam.beamDuration,
+    beamWidth: WEAPON_STATS.widowCenterBeam.beamWidth,
+    turretTurnRate: WEAPON_STATS.widowCenterBeam.turretTurnRate,
     color: 0xffffff,
   },
 

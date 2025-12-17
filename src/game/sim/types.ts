@@ -116,7 +116,8 @@ export interface WeaponConfig {
   // Constraint: engageRange < range < trackingRange
   trackingRange?: number;        // Range at which turret starts tracking enemies (default: range * 1.5)
   engageRange?: number;          // Range at which unit stops moving in fight mode (default: range * 0.75)
-  rotationRate?: number;         // Turret turn rate (radians/sec)
+  rotationRate?: number;         // Turret turn rate for wave weapons (radians/sec)
+  turretTurnRate?: number;       // Turret turn rate for beam weapons (radians/sec)
 
   // Wave weapon properties (sonic)
   isWaveWeapon?: boolean;        // True if this is a continuous wave weapon

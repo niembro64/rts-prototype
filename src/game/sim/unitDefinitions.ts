@@ -51,8 +51,8 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   const seeRange = weaponConfig.trackingRange ?? definition.weaponSeeRange ?? weaponConfig.range * 1.5;
   // Use engageRange from weapon config, then unit definition, then default to 75% of fireRange
   const fightstopRange = weaponConfig.engageRange ?? definition.weaponFightstopRange ?? fireRange * 0.75;
-  // Use rotationRate from config if available (for wave weapons), otherwise default to 1
-  const turretTurnRate = weaponConfig.rotationRate ?? 1;
+  // Use turretTurnRate for beams, rotationRate for wave weapons, otherwise default to 1
+  const turretTurnRate = weaponConfig.turretTurnRate ?? weaponConfig.rotationRate ?? 1;
 
   return [{
     config: { ...weaponConfig },
@@ -71,17 +71,24 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
 }
 
 // Widow weapon creation - 6 beam lasers at hexagon + 1 sonic wave in center
-// Uses explicit widowBeam and widowSonic configs from config.ts
+// Uses explicit widowBeam, widowCenterBeam, and widowSonic configs from config.ts
 // Range constraint: fightstopRange < fireRange < seeRange
 function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWeapon[] {
   const widowBeamConfig = getWeaponConfig('widowBeam');
+  const widowCenterBeamConfig = getWeaponConfig('widowCenterBeam');
   const widowSonicConfig = getWeaponConfig('widowSonic');
-  const beamTurretTurnRate = 0.3; // Beam lasers use fixed rate
 
   // Beam weapon ranges (from widowBeam config, with defaults)
   const beamFireRange = widowBeamConfig.range;
   const beamSeeRange = widowBeamConfig.trackingRange ?? beamFireRange * 1.5;
   const beamFightstopRange = widowBeamConfig.engageRange ?? beamFireRange * 0.75;
+  const beamTurretTurnRate = widowBeamConfig.turretTurnRate ?? 0.3;
+
+  // Center beam weapon ranges (2x the regular beam)
+  const centerBeamFireRange = widowCenterBeamConfig.range;
+  const centerBeamSeeRange = widowCenterBeamConfig.trackingRange ?? centerBeamFireRange * 1.5;
+  const centerBeamFightstopRange = widowCenterBeamConfig.engageRange ?? centerBeamFireRange * 0.75;
+  const centerBeamTurretTurnRate = widowCenterBeamConfig.turretTurnRate ?? 0.3;
 
   // Sonic weapon ranges (from widowSonic config)
   const sonicFireRange = widowSonicConfig.range;
@@ -115,6 +122,22 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
       inFightstopRange: false,
     });
   }
+
+  // 1 center beam at hexagon center (2x stats)
+  weapons.push({
+    config: { ...widowCenterBeamConfig },
+    currentCooldown: 0,
+    targetEntityId: null,
+    seeRange: centerBeamSeeRange,
+    fireRange: centerBeamFireRange,
+    fightstopRange: centerBeamFightstopRange,
+    turretRotation: 0,
+    turretTurnRate: centerBeamTurretTurnRate,
+    offsetX: hexForwardOffset,
+    offsetY: 0,
+    isFiring: false,
+    inFightstopRange: false,
+  });
 
   // 1 sonic wave weapon in center
   weapons.push({

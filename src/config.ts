@@ -379,15 +379,27 @@ export const WEAPON_STATS = {
     cooldown: 0,           // Continuous
     beamDuration: 1500,
     beamWidth: 4,
+    turretTurnRate: 0.3,   // Radians per second - beam turret rotation speed
   },
 
   // Widow beam lasers - extended range continuous beams
   widowBeam: {
     damage: 45,
-    range: 210,
+    range: 160,
     cooldown: 0,           // Continuous
     beamDuration: 1500,
     beamWidth: 4,
+    turretTurnRate: 3,   // Radians per second - beam turret rotation speed
+  },
+
+  // Widow center beam - 2x stats of widowBeam, mounted at head center
+  widowCenterBeam: {
+    damage: 90,            // 2x damage
+    range: 420,            // 2x range
+    cooldown: 0,           // Continuous
+    beamDuration: 3000,    // 2x duration
+    beamWidth: 8,          // 2x width
+    turretTurnRate: 0.5,   // Radians per second - beam turret rotation speed
   },
 
   // Insect - Continuous pie-slice wave AoE
