@@ -3,61 +3,46 @@
  *
  * Controls visual fidelity vs performance tradeoffs.
  * Settings are persisted to localStorage.
+ * All detail level definitions are centralized in config.ts GRAPHICS_DETAIL_DEFINITIONS.
  */
 
-import { AUTO_QUALITY_ZOOM_LOW, AUTO_QUALITY_ZOOM_MEDIUM } from '../../config';
+import { GRAPHICS_DETAIL_DEFINITIONS } from '../../config';
 
 export type GraphicsQuality = 'auto' | 'low' | 'medium' | 'high';
 export type RenderMode = 'window' | 'all';
 
 export interface GraphicsConfig {
-  // Leg rendering for arachnid/daddy/insect units
   legs: 'none' | 'animated';
-
-  // Explosion particle layers (0 = simple flash, 1-2 = some particles, 6 = full)
   explosionLayers: number;
-
-  // Tread/wheel animations
   treadsAnimated: boolean;
-
-  // Beam glow effects
   beamGlow: boolean;
-
-  // Antialiasing (requires game restart to take effect)
   antialias: boolean;
 }
 
-// Static configs for manual quality levels
+// Build configs from centralized definitions
+const D = GRAPHICS_DETAIL_DEFINITIONS;
 const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig> = {
   low: {
-    legs: 'none',
-    explosionLayers: 0,
-    treadsAnimated: false,
-    beamGlow: false,
-    antialias: false,
+    legs: D.LEGS.low as 'none' | 'animated',
+    explosionLayers: D.EXPLOSION_LAYERS.low,
+    treadsAnimated: D.TREADS_ANIMATED.low,
+    beamGlow: D.BEAM_GLOW.low,
+    antialias: D.ANTIALIAS.low,
   },
   medium: {
-    legs: 'animated',
-    explosionLayers: 0, // Simple flash explosions
-    treadsAnimated: true,
-    beamGlow: false,
-    antialias: true,
+    legs: D.LEGS.medium as 'none' | 'animated',
+    explosionLayers: D.EXPLOSION_LAYERS.medium,
+    treadsAnimated: D.TREADS_ANIMATED.medium,
+    beamGlow: D.BEAM_GLOW.medium,
+    antialias: D.ANTIALIAS.medium,
   },
   high: {
-    legs: 'animated',
-    explosionLayers: 6,
-    treadsAnimated: true,
-    beamGlow: true,
-    antialias: true,
+    legs: D.LEGS.high as 'none' | 'animated',
+    explosionLayers: D.EXPLOSION_LAYERS.high,
+    treadsAnimated: D.TREADS_ANIMATED.high,
+    beamGlow: D.BEAM_GLOW.high,
+    antialias: D.ANTIALIAS.high,
   },
-};
-
-// Zoom thresholds for auto quality (imported from config.ts)
-// When zoomed out (low zoom value), use lower quality
-const AUTO_ZOOM_THRESHOLDS = {
-  low: AUTO_QUALITY_ZOOM_LOW,    // Below this zoom = low quality
-  medium: AUTO_QUALITY_ZOOM_MEDIUM,  // Between low and this = medium quality
-  // Above medium = high quality
 };
 
 const STORAGE_KEY = 'rts-graphics-quality';
@@ -125,12 +110,14 @@ export function getEffectiveQuality(): Exclude<GraphicsQuality, 'auto'> {
   }
 
   // Auto mode: determine quality based on zoom level
-  if (currentZoom < AUTO_ZOOM_THRESHOLDS.low) {
-    return 'low';
-  } else if (currentZoom < AUTO_ZOOM_THRESHOLDS.medium) {
+  // Uses AUTO_ZOOM_START thresholds from config
+  const zoomStart = D.AUTO_ZOOM_START;
+  if (currentZoom >= zoomStart.high) {
+    return 'high';
+  } else if (currentZoom >= zoomStart.medium) {
     return 'medium';
   }
-  return 'high';
+  return 'low';
 }
 
 /**

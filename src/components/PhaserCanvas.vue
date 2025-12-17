@@ -583,13 +583,13 @@ onUnmounted(() => {
       <div class="fps-stats">
         <span class="fps-value">{{ meanFPS }}</span>
         <span class="fps-label">avg</span>
-        <span class="fps-value low">{{ lowFPS }}</span>
+        <span class="fps-value">{{ lowFPS }}</span>
         <span class="fps-label">low</span>
-        <span class="fps-value zoom">{{ currentZoom.toFixed(2) }}</span>
+        <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
         <span class="fps-label">zoom</span>
       </div>
       <div class="gfx-divider"></div>
-      <span class="graphics-label">GFX:</span>
+      <span class="graphics-label">Detail:</span>
       <div class="graphics-buttons">
         <button
           v-for="opt in GRAPHICS_OPTIONS"
@@ -969,19 +969,11 @@ onUnmounted(() => {
 }
 
 .fps-value {
-  color: #6c6;
+  color: #48f;
   font-size: 13px;
   font-weight: bold;
   min-width: 24px;
   text-align: right;
-}
-
-.fps-value.low {
-  color: #c96;
-}
-
-.fps-value.zoom {
-  color: #69c;
 }
 
 .fps-label {

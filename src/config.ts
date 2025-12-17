@@ -364,18 +364,61 @@ export const DEFAULT_NETWORK_UPDATES_PER_SECOND = 10;
 export const LASER_SOUND_ENABLED = false;
 
 // =============================================================================
-// AUTO GRAPHICS QUALITY
+// GRAPHICS DETAIL DEFINITIONS
 // =============================================================================
 
 /**
- * Zoom thresholds for automatic graphics quality adjustment.
- * When GFX is set to "Auto", the quality level changes based on camera zoom:
- * - Below AUTO_QUALITY_ZOOM_LOW: Low quality
- * - Between AUTO_QUALITY_ZOOM_LOW and AUTO_QUALITY_ZOOM_MEDIUM: Medium quality
- * - Above AUTO_QUALITY_ZOOM_MEDIUM: High quality
+ * Centralized graphics detail level configuration.
+ * Each key defines what happens at LOW, MEDIUM, and HIGH detail levels.
+ *
+ * AUTO_ZOOM_START: Zoom threshold where each detail level begins
+ *   - low: 0.0 means low detail from zoom 0 until medium kicks in
+ *   - medium: 0.3 means medium detail starts at zoom 0.3
+ *   - high: 1.0 means high detail starts at zoom 1.0
  */
-export const AUTO_QUALITY_ZOOM_LOW = 0.3;
-export const AUTO_QUALITY_ZOOM_MEDIUM = 1;
+export const GRAPHICS_DETAIL_DEFINITIONS = {
+  // Zoom thresholds for auto quality (zoom level where each tier starts)
+  AUTO_ZOOM_START: {
+    low: 0.0,
+    medium: 0.6,
+    high: 1.0,
+  },
+
+  // Leg rendering for arachnid/daddy/insect units
+  LEGS: {
+    low: 'none',
+    medium: 'animated',
+    high: 'animated',
+  },
+
+  // Explosion particle layers (0 = simple flash, 6 = full particles)
+  EXPLOSION_LAYERS: {
+    low: 0,
+    medium: 0,
+    high: 6,
+  },
+
+  // Tread/wheel animations
+  TREADS_ANIMATED: {
+    low: false,
+    medium: true,
+    high: true,
+  },
+
+  // Beam glow effects
+  BEAM_GLOW: {
+    low: false,
+    medium: false,
+    high: true,
+  },
+
+  // Antialiasing (requires game restart to take effect)
+  ANTIALIAS: {
+    low: false,
+    medium: true,
+    high: true,
+  },
+} as const;
 
 // =============================================================================
 // BALANCE SUMMARY
