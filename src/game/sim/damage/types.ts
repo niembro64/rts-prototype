@@ -34,6 +34,9 @@ export interface SweptDamageSource extends DamageSourceBase {
   currentY: number;
   radius: number;       // Projectile radius
   maxHits: number;      // Usually 1 for non-piercing projectiles
+  // Actual projectile velocity (for explosion effects)
+  velocityX?: number;
+  velocityY?: number;
 }
 
 // Area damage (splash, wave weapons)
@@ -65,10 +68,12 @@ export interface DeathContext {
   // This shows which side of the unit was hit - debris flies out the opposite side
   penetrationDirX: number;
   penetrationDirY: number;
-  // Attacker's projectile/beam direction (direction damage traveled)
-  attackerDirX: number;
-  attackerDirY: number;
-  // Magnitude of the attack (for scaling effects)
+  // Attacker's projectile/beam velocity (direction and magnitude)
+  // For projectiles: actual velocity vector
+  // For beams: direction * config magnitude
+  attackerVelX: number;
+  attackerVelY: number;
+  // Magnitude of the attack damage (for scaling effects)
   attackMagnitude: number;
 }
 

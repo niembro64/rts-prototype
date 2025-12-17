@@ -12,7 +12,7 @@ import type {
   HitInfo,
   DeathContext,
 } from './types';
-import { KNOCKBACK_FORCE_MULTIPLIER } from '../../../config';
+import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 
 // Normalize angle to [-PI, PI]
 function normalizeAngle(angle: number): number {
@@ -293,12 +293,12 @@ export class DamageSystem {
       const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
       const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
 
-      // Apply damage with death context (attacker direction = beam direction)
+      // Apply damage with death context (attacker velocity = beam direction * magnitude)
       this.applyDamageToEntity(entity, source.damage, result, {
         penetrationDirX: penNormX,
         penetrationDirY: penNormY,
-        attackerDirX: knockbackDirX,
-        attackerDirY: knockbackDirY,
+        attackerVelX: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE,
+        attackerVelY: knockbackDirY * BEAM_EXPLOSION_MAGNITUDE,
         attackMagnitude: source.damage,
       });
       result.hitEntityIds.push(hit.entityId);
@@ -414,12 +414,15 @@ export class DamageSystem {
       const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
       const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
 
-      // Apply damage with death context (attacker direction = projectile travel direction)
+      // Apply damage with death context (attacker velocity = actual projectile velocity)
+      // Use actual projectile velocity if available, otherwise fallback to direction * damage
+      const attackerVelX = source.velocityX ?? knockbackDirX * source.damage;
+      const attackerVelY = source.velocityY ?? knockbackDirY * source.damage;
       this.applyDamageToEntity(entity, source.damage, result, {
         penetrationDirX: penNormX,
         penetrationDirY: penNormY,
-        attackerDirX: knockbackDirX,
-        attackerDirY: knockbackDirY,
+        attackerVelX,
+        attackerVelY,
         attackMagnitude: source.damage,
       });
       result.hitEntityIds.push(hit.entityId);
@@ -492,11 +495,12 @@ export class DamageSystem {
 
       // For area damage, penetration direction is from explosion center through unit
       // (same as knockback direction - outward from center)
+      // Attacker velocity uses direction * force for area damage
       this.applyDamageToEntity(unit, damage, result, {
         penetrationDirX: dirX,
         penetrationDirY: dirY,
-        attackerDirX: dirX,
-        attackerDirY: dirY,
+        attackerVelX: dirX * force,
+        attackerVelY: dirY * force,
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(unit.id);
@@ -546,11 +550,12 @@ export class DamageSystem {
       const dirY = dist > 0 ? dy / dist : 0;
 
       // Apply damage with death context
+      const force = damage * KNOCKBACK_FORCE_MULTIPLIER;
       this.applyDamageToEntity(building, damage, result, {
         penetrationDirX: dirX,
         penetrationDirY: dirY,
-        attackerDirX: dirX,
-        attackerDirY: dirY,
+        attackerVelX: dirX * force,
+        attackerVelY: dirY * force,
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(building.id);

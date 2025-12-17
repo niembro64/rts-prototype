@@ -81,10 +81,19 @@ export const EXPLOSION_IMPACT_FORCE_MULTIPLIER = 80.0;
 /**
  * Multiplier for the attacker's projectile/beam direction.
  * Explosions will bias in the direction the projectile was traveling.
- * For beams, this is the direction from attacker to target.
+ * For projectiles: actual velocity is used (this multiplier is applied on top)
+ * For beams: direction * BEAM_EXPLOSION_MAGNITUDE is used
  * 0 = ignore attacker direction, 1.0 = realistic, 5.0+ = exaggerated
  */
 export const EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER = 50.0;
+
+/**
+ * Magnitude for beam weapon explosion effects.
+ * Since beams don't have velocity like projectiles, this provides
+ * a base magnitude for the attacker direction in explosions.
+ * Higher = more "push" effect from beam kills.
+ */
+export const BEAM_EXPLOSION_MAGNITUDE = 300;
 
 /**
  * Base explosion momentum even when all factors are zero.

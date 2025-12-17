@@ -21,15 +21,19 @@ export interface NetworkAudioEvent {
 
   // Death context (only for 'death' events) - for directional explosion effects
   deathContext?: {
-    velocityX: number;
-    velocityY: number;
-    penetrationDirX: number;
-    penetrationDirY: number;
-    attackerDirX: number;
-    attackerDirY: number;
+    // Unit's velocity when it died (from physics body)
+    unitVelX: number;
+    unitVelY: number;
+    // Hit direction: from hit point through unit center (normalized)
+    hitDirX: number;
+    hitDirY: number;
+    // Projectile/beam velocity (actual velocity for projectiles, direction*magnitude for beams)
+    projectileVelX: number;
+    projectileVelY: number;
+    // Magnitude of the attack damage
     attackMagnitude: number;
-    radius: number;
-    color: number;
+    radius: number;       // Unit's collision radius for explosion size
+    color: number;        // Player color for explosion
   };
 }
 

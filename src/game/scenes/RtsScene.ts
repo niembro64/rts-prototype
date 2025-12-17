@@ -286,15 +286,15 @@ export class RtsScene extends Phaser.Scene {
       const radius = ctx.radius * 2.5; // Death explosions are 2.5x collision radius
 
       // Apply same multipliers as host-side death handling
-      const velocityX = ctx.velocityX * EXPLOSION_VELOCITY_MULTIPLIER;
-      const velocityY = ctx.velocityY * EXPLOSION_VELOCITY_MULTIPLIER;
+      const velocityX = ctx.unitVelX * EXPLOSION_VELOCITY_MULTIPLIER;
+      const velocityY = ctx.unitVelY * EXPLOSION_VELOCITY_MULTIPLIER;
 
-      const penetrationX = ctx.penetrationDirX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
-      const penetrationY = ctx.penetrationDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+      const penetrationX = ctx.hitDirX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+      const penetrationY = ctx.hitDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
 
       const attackScale = Math.min(ctx.attackMagnitude / 50, 2);
-      const attackerX = ctx.attackerDirX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale * 100;
-      const attackerY = ctx.attackerDirY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale * 100;
+      const attackerX = ctx.projectileVelX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
+      const attackerY = ctx.projectileVelY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
 
       // Add base momentum
       let baseVelX = velocityX;
@@ -387,11 +387,12 @@ export class RtsScene extends Phaser.Scene {
             ? PLAYER_COLORS[entity.ownership.playerId]?.primary ?? 0xff6600
             : 0xff6600;
 
-          // 1. Unit's velocity (scaled by multiplier)
-          const velocityX = (entity.unit.velocityX ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
-          const velocityY = (entity.unit.velocityY ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
+          // 1. Unit's velocity from physics body (scaled by multiplier)
+          const bodyVel = (entity.body?.matterBody as { velocity?: { x: number; y: number } })?.velocity;
+          const velocityX = (bodyVel?.x ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
+          const velocityY = (bodyVel?.y ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
 
-          // 2 & 3: Penetration direction and attacker direction from death context
+          // 2 & 3: Hit direction and attacker velocity from death context
           let penetrationX = 0;
           let penetrationY = 0;
           let attackerX = 0;
@@ -399,15 +400,15 @@ export class RtsScene extends Phaser.Scene {
 
           const ctx = deathContexts?.get(id);
           if (ctx) {
-            // Penetration direction (from hit point through unit center)
+            // Hit direction (from hit point through unit center)
             penetrationX = ctx.penetrationDirX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
             penetrationY = ctx.penetrationDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
 
-            // Attacker direction (direction the projectile/beam was traveling)
+            // Attacker velocity (actual projectile velocity or beam direction * magnitude)
             // Scale by attack magnitude for bigger hits = bigger directional effect
             const attackScale = Math.min(ctx.attackMagnitude / 50, 2); // Normalize to ~1 for 50 damage
-            attackerX = ctx.attackerDirX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale * 100;
-            attackerY = ctx.attackerDirY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale * 100;
+            attackerX = ctx.attackerVelX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
+            attackerY = ctx.attackerVelY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
           }
 
           // Add base momentum to combined direction (gives minimum "oomph")

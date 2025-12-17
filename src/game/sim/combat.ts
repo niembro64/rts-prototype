@@ -20,12 +20,16 @@ export interface AudioEvent {
 
   // Death context (only for 'death' events) - for directional explosion effects
   deathContext?: {
-    velocityX: number;
-    velocityY: number;
-    penetrationDirX: number;
-    penetrationDirY: number;
-    attackerDirX: number;
-    attackerDirY: number;
+    // Unit's velocity when it died (from physics body)
+    unitVelX: number;
+    unitVelY: number;
+    // Hit direction: from hit point through unit center (normalized)
+    hitDirX: number;
+    hitDirY: number;
+    // Projectile/beam velocity (actual velocity for projectiles, direction*magnitude for beams)
+    projectileVelX: number;
+    projectileVelY: number;
+    // Magnitude of the attack damage
     attackMagnitude: number;
     radius: number;       // Unit's collision radius for explosion size
     color: number;        // Player color for explosion
@@ -971,18 +975,20 @@ export function checkProjectileCollisions(
           const ctx = result.deathContexts.get(id);
           const playerId = target?.ownership?.playerId ?? 1;
           const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
+          // Get physics body velocity for unit velocity
+          const bodyVel = (target?.body?.matterBody as { velocity?: { x: number; y: number } })?.velocity;
           audioEvents.push({
             type: 'death',
             weaponId: deathWeaponId,
             x: target?.transform.x ?? 0,
             y: target?.transform.y ?? 0,
             deathContext: ctx ? {
-              velocityX: target?.unit?.velocityX ?? 0,
-              velocityY: target?.unit?.velocityY ?? 0,
-              penetrationDirX: ctx.penetrationDirX,
-              penetrationDirY: ctx.penetrationDirY,
-              attackerDirX: ctx.attackerDirX,
-              attackerDirY: ctx.attackerDirY,
+              unitVelX: bodyVel?.x ?? 0,
+              unitVelY: bodyVel?.y ?? 0,
+              hitDirX: ctx.penetrationDirX,
+              hitDirY: ctx.penetrationDirY,
+              projectileVelX: ctx.attackerVelX,
+              projectileVelY: ctx.attackerVelY,
               attackMagnitude: ctx.attackMagnitude,
               radius: target?.unit?.collisionRadius ?? 15,
               color: playerColor,
@@ -1002,12 +1008,12 @@ export function checkProjectileCollisions(
             x: building?.transform.x ?? 0,
             y: building?.transform.y ?? 0,
             deathContext: {
-              velocityX: 0,
-              velocityY: 0,
-              penetrationDirX: 0,
-              penetrationDirY: -1,
-              attackerDirX: 0,
-              attackerDirY: 0,
+              unitVelX: 0,
+              unitVelY: 0,
+              hitDirX: 0,
+              hitDirY: -1,
+              projectileVelX: 0,
+              projectileVelY: 0,
               attackMagnitude: 50,
               radius: (building?.building?.width ?? 100) / 2,
               color: playerColor,
@@ -1041,6 +1047,9 @@ export function checkProjectileCollisions(
         currentY,
         radius: projRadius,
         maxHits: proj.maxHits - proj.hitEntities.size, // Remaining hits allowed
+        // Pass actual projectile velocity for explosion effects
+        velocityX: proj.velocityX,
+        velocityY: proj.velocityY,
       });
 
       // Apply knockback from projectile hit
@@ -1106,18 +1115,20 @@ export function checkProjectileCollisions(
           const ctx = result.deathContexts.get(id);
           const playerId = target?.ownership?.playerId ?? 1;
           const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
+          // Get physics body velocity for unit velocity
+          const bodyVel = (target?.body?.matterBody as { velocity?: { x: number; y: number } })?.velocity;
           audioEvents.push({
             type: 'death',
             weaponId: deathWeaponId,
             x: target?.transform.x ?? 0,
             y: target?.transform.y ?? 0,
             deathContext: ctx ? {
-              velocityX: target?.unit?.velocityX ?? 0,
-              velocityY: target?.unit?.velocityY ?? 0,
-              penetrationDirX: ctx.penetrationDirX,
-              penetrationDirY: ctx.penetrationDirY,
-              attackerDirX: ctx.attackerDirX,
-              attackerDirY: ctx.attackerDirY,
+              unitVelX: bodyVel?.x ?? 0,
+              unitVelY: bodyVel?.y ?? 0,
+              hitDirX: ctx.penetrationDirX,
+              hitDirY: ctx.penetrationDirY,
+              projectileVelX: ctx.attackerVelX,
+              projectileVelY: ctx.attackerVelY,
               attackMagnitude: ctx.attackMagnitude,
               radius: target?.unit?.collisionRadius ?? 15,
               color: playerColor,
@@ -1137,12 +1148,12 @@ export function checkProjectileCollisions(
             x: building?.transform.x ?? 0,
             y: building?.transform.y ?? 0,
             deathContext: {
-              velocityX: 0,
-              velocityY: 0,
-              penetrationDirX: 0,
-              penetrationDirY: -1,
-              attackerDirX: 0,
-              attackerDirY: 0,
+              unitVelX: 0,
+              unitVelY: 0,
+              hitDirX: 0,
+              hitDirY: -1,
+              projectileVelX: 0,
+              projectileVelY: 0,
               attackMagnitude: 50,
               radius: (building?.building?.width ?? 100) / 2,
               color: playerColor,
