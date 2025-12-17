@@ -364,6 +364,20 @@ export const DEFAULT_NETWORK_UPDATES_PER_SECOND = 10;
 export const LASER_SOUND_ENABLED = false;
 
 // =============================================================================
+// AUTO GRAPHICS QUALITY
+// =============================================================================
+
+/**
+ * Zoom thresholds for automatic graphics quality adjustment.
+ * When GFX is set to "Auto", the quality level changes based on camera zoom:
+ * - Below AUTO_QUALITY_ZOOM_LOW: Low quality
+ * - Between AUTO_QUALITY_ZOOM_LOW and AUTO_QUALITY_ZOOM_MEDIUM: Medium quality
+ * - Above AUTO_QUALITY_ZOOM_MEDIUM: High quality
+ */
+export const AUTO_QUALITY_ZOOM_LOW = 0.3;
+export const AUTO_QUALITY_ZOOM_MEDIUM = 1;
+
+// =============================================================================
 // BALANCE SUMMARY
 // =============================================================================
 /**

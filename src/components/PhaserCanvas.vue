@@ -12,7 +12,11 @@ import type { HostViewMode } from '../game/scenes/RtsScene';
 import {
   getGraphicsQuality,
   setGraphicsQuality,
+  getEffectiveQuality,
+  getRenderMode,
+  setRenderMode,
   type GraphicsQuality,
+  type RenderMode,
 } from '../game/render/graphicsSettings';
 
 // Available update rate options
@@ -26,9 +30,16 @@ const VIEW_MODE_OPTIONS: { value: HostViewMode; label: string }[] = [
 
 // Graphics quality options
 const GRAPHICS_OPTIONS: { value: GraphicsQuality; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Med' },
   { value: 'high', label: 'High' },
+];
+
+// Render mode options
+const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
+  { value: 'window', label: 'Window' },
+  { value: 'all', label: 'All' },
 ];
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -53,6 +64,16 @@ const networkRole = ref<NetworkRole>('offline');
 const networkUpdatesPerSecond = ref(DEFAULT_NETWORK_UPDATES_PER_SECOND);
 const hostViewMode = ref<HostViewMode>('simulation');
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
+const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(getEffectiveQuality());
+const renderMode = ref<RenderMode>(getRenderMode());
+
+// FPS and zoom tracking
+const meanFPS = ref(0);
+const lowFPS = ref(0);
+const currentZoom = ref(0.4);
+const fpsHistory: number[] = [];
+const FPS_HISTORY_SIZE = 120; // ~2 seconds of samples at 60fps
+let fpsUpdateInterval: ReturnType<typeof setInterval> | null = null;
 
 // State broadcast interval (for host)
 let stateBroadcastInterval: ReturnType<typeof setInterval> | null = null;
@@ -293,6 +314,43 @@ function changeGraphicsQuality(quality: GraphicsQuality): void {
   graphicsQuality.value = quality;
 }
 
+function changeRenderMode(mode: RenderMode): void {
+  setRenderMode(mode);
+  renderMode.value = mode;
+}
+
+function updateFPSStats(): void {
+  // Get FPS from whichever game instance is active
+  const game = backgroundGameInstance?.game ?? gameInstance?.game;
+  if (!game) return;
+
+  const currentFPS = game.loop.actualFps;
+
+  // Add to history
+  fpsHistory.push(currentFPS);
+  if (fpsHistory.length > FPS_HISTORY_SIZE) {
+    fpsHistory.shift();
+  }
+
+  if (fpsHistory.length > 0) {
+    // Calculate mean
+    const sum = fpsHistory.reduce((a, b) => a + b, 0);
+    meanFPS.value = Math.round(sum / fpsHistory.length);
+
+    // Calculate 99% low (1st percentile - value that 99% of frames are above)
+    const sorted = [...fpsHistory].sort((a, b) => a - b);
+    const percentileIndex = Math.floor(sorted.length * 0.01);
+    lowFPS.value = Math.round(sorted[percentileIndex] ?? sorted[0]);
+  }
+
+  // Update zoom level and effective quality
+  const scene = backgroundGameInstance?.getScene() ?? gameInstance?.getScene();
+  if (scene) {
+    currentZoom.value = scene.cameras.main.zoom;
+  }
+  effectiveQuality.value = getEffectiveQuality();
+}
+
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
     // Check if already in list
@@ -464,11 +522,17 @@ onMounted(() => {
   nextTick(() => {
     startBackgroundBattle();
   });
+
+  // Start FPS tracking
+  fpsUpdateInterval = setInterval(updateFPSStats, 100); // Update 10x per second
 });
 
 onUnmounted(() => {
   if (stateBroadcastInterval) {
     clearInterval(stateBroadcastInterval);
+  }
+  if (fpsUpdateInterval) {
+    clearInterval(fpsUpdateInterval);
   }
   networkManager.disconnect();
   stopBackgroundBattle();
@@ -516,14 +580,39 @@ onUnmounted(() => {
 
     <!-- Graphics quality toggle (always visible) -->
     <div class="graphics-options">
+      <div class="fps-stats">
+        <span class="fps-value">{{ meanFPS }}</span>
+        <span class="fps-label">avg</span>
+        <span class="fps-value low">{{ lowFPS }}</span>
+        <span class="fps-label">low</span>
+        <span class="fps-value zoom">{{ currentZoom.toFixed(2) }}</span>
+        <span class="fps-label">zoom</span>
+      </div>
+      <div class="gfx-divider"></div>
       <span class="graphics-label">GFX:</span>
       <div class="graphics-buttons">
         <button
           v-for="opt in GRAPHICS_OPTIONS"
           :key="opt.value"
           class="graphics-btn"
-          :class="{ active: graphicsQuality === opt.value }"
+          :class="{
+            active: graphicsQuality === opt.value,
+            'active-level': opt.value !== 'auto' && effectiveQuality === opt.value && graphicsQuality !== opt.value
+          }"
           @click="changeGraphicsQuality(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+      <div class="gfx-divider"></div>
+      <span class="graphics-label">Render:</span>
+      <div class="graphics-buttons">
+        <button
+          v-for="opt in RENDER_OPTIONS"
+          :key="opt.value"
+          class="graphics-btn"
+          :class="{ active: renderMode === opt.value }"
+          @click="changeRenderMode(opt.value)"
         >
           {{ opt.label }}
         </button>
@@ -873,6 +962,42 @@ onUnmounted(() => {
   font-family: monospace;
 }
 
+.fps-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.fps-value {
+  color: #6c6;
+  font-size: 13px;
+  font-weight: bold;
+  min-width: 24px;
+  text-align: right;
+}
+
+.fps-value.low {
+  color: #c96;
+}
+
+.fps-value.zoom {
+  color: #69c;
+}
+
+.fps-label {
+  color: #666;
+  font-size: 9px;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.gfx-divider {
+  width: 1px;
+  height: 14px;
+  background: #444;
+  margin: 0 6px;
+}
+
 .graphics-label {
   color: #888;
   font-size: 11px;
@@ -906,5 +1031,10 @@ onUnmounted(() => {
   background: rgba(68, 136, 68, 0.9);
   border-color: #6a6;
   color: white;
+}
+
+.graphics-btn.active-level {
+  border-color: #48f;
+  box-shadow: 0 0 4px rgba(68, 136, 255, 0.6);
 }
 </style>

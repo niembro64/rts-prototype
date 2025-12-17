@@ -14,7 +14,7 @@ import {
   createFourWheelSetup,
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
-import { getGraphicsConfig } from './graphicsSettings';
+import { getGraphicsConfig, getRenderMode, setCurrentZoom } from './graphicsSettings';
 
 /**
  * EntitySource - Interface that both WorldState and ClientViewState implement
@@ -158,6 +158,24 @@ export class EntityRenderer {
     this.scene = scene;
     this.graphics = scene.add.graphics();
     this.entitySource = entitySource;
+  }
+
+  /**
+   * Check if a point is visible within the camera viewport (with padding)
+   * Used for viewport culling when render mode is 'window'
+   */
+  private isInViewport(x: number, y: number, padding: number = 100): boolean {
+    if (getRenderMode() === 'all') {
+      return true; // Skip culling, render everything
+    }
+    const camera = this.scene.cameras.main;
+    const view = camera.worldView;
+    return (
+      x >= view.x - padding &&
+      x <= view.right + padding &&
+      y >= view.y - padding &&
+      y <= view.bottom + padding
+    );
   }
 
   // Get or create legs for a legged unit
@@ -665,12 +683,18 @@ export class EntityRenderer {
     this.graphics.clear();
     this.resetLabels(); // Reset text labels for this frame
 
+    // Update zoom level for auto quality mode
+    const camera = this.scene.cameras.main;
+    setCurrentZoom(camera.zoom);
+
     // Update particle time for spray animation
     this.sprayParticleTime += 16; // ~60fps
 
     // 1. Render buildings first (bottom layer) - skip dead buildings
     for (const entity of this.entitySource.getBuildings()) {
       if (entity.building && entity.building.hp > 0) {
+        // Viewport culling for buildings
+        if (!this.isInViewport(entity.transform.x, entity.transform.y, 150)) continue;
         this.renderBuilding(entity);
       }
     }
@@ -701,6 +725,8 @@ export class EntityRenderer {
     this.turretsOnly = false;
     for (const entity of this.entitySource.getUnits()) {
       if (entity.unit && entity.unit.hp > 0) {
+        // Viewport culling for units
+        if (!this.isInViewport(entity.transform.x, entity.transform.y, 100)) continue;
         this.renderUnit(entity);
       }
     }
@@ -710,6 +736,8 @@ export class EntityRenderer {
     this.turretsOnly = true;
     for (const entity of this.entitySource.getUnits()) {
       if (entity.unit && entity.unit.hp > 0) {
+        // Viewport culling for turrets
+        if (!this.isInViewport(entity.transform.x, entity.transform.y, 100)) continue;
         this.renderUnit(entity);
       }
     }
@@ -724,16 +752,22 @@ export class EntityRenderer {
       }
     }
     for (const entity of this.entitySource.getProjectiles()) {
+      // Viewport culling for projectiles
+      if (!this.isInViewport(entity.transform.x, entity.transform.y, 50)) continue;
       this.renderProjectile(entity);
     }
 
     // Render spray effects (lasers for building/healing)
     for (const target of this.sprayTargets) {
+      // Viewport culling for spray effects
+      if (!this.isInViewport(target.targetX, target.targetY, 50)) continue;
       this.renderSprayEffect(target);
     }
 
     // 5. Render explosion effects (above everything except labels)
     for (const explosion of this.explosions) {
+      // Viewport culling for explosions
+      if (!this.isInViewport(explosion.x, explosion.y, explosion.radius + 50)) continue;
       this.renderExplosion(explosion);
     }
 
