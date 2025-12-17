@@ -107,6 +107,10 @@ export class RtsScene extends Phaser.Scene {
   private hostViewMode: HostViewMode = 'simulation';
   private clientViewState: ClientViewState | null = null;
 
+  // Frame delta tracking for accurate FPS measurement
+  private frameDeltaHistory: number[] = [];
+  private readonly FRAME_HISTORY_SIZE = 1000;
+
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
 
@@ -857,6 +861,12 @@ export class RtsScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    // Track frame delta for accurate FPS measurement
+    this.frameDeltaHistory.push(delta);
+    if (this.frameDeltaHistory.length > this.FRAME_HISTORY_SIZE) {
+      this.frameDeltaHistory.shift();
+    }
+
     // Update explosion effects (always, even when game is over for nice visuals)
     this.entityRenderer.updateExplosions(delta);
 
@@ -992,6 +1002,26 @@ export class RtsScene extends Phaser.Scene {
    */
   public getHostViewMode(): HostViewMode {
     return this.hostViewMode;
+  }
+
+  /**
+   * Get frame delta statistics for accurate FPS measurement
+   * Returns avg and worst (lowest) FPS from actual frame deltas
+   */
+  public getFrameStats(): { avgFps: number; worstFps: number } {
+    if (this.frameDeltaHistory.length === 0) {
+      return { avgFps: 0, worstFps: 0 };
+    }
+
+    // Calculate average FPS from average delta
+    const avgDelta = this.frameDeltaHistory.reduce((a, b) => a + b, 0) / this.frameDeltaHistory.length;
+    const avgFps = 1000 / avgDelta;
+
+    // Find worst frame (highest delta = lowest FPS)
+    const worstDelta = Math.max(...this.frameDeltaHistory);
+    const worstFps = 1000 / worstDelta;
+
+    return { avgFps, worstFps };
   }
 
   /**

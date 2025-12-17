@@ -76,12 +76,15 @@ const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(getEffectiveQuali
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioEnabled = ref(!audioManager.muted);
 
-// FPS and zoom tracking
+// FPS and zoom tracking (Phaser's smoothed values)
 const meanFPS = ref(0);
 const lowFPS = ref(0);
+// Actual frame delta measurements (our own tracking)
+const actualAvgFPS = ref(0);
+const actualWorstFPS = ref(0);
 const currentZoom = ref(0.4);
 const fpsHistory: number[] = [];
-const FPS_HISTORY_SIZE = 120; // ~2 seconds of samples at 60fps
+const FPS_HISTORY_SIZE = 1000; // ~16 seconds of samples at 60fps
 let fpsUpdateInterval: ReturnType<typeof setInterval> | null = null;
 
 // State broadcast interval (for host)
@@ -349,18 +352,23 @@ function updateFPSStats(): void {
   if (fpsHistory.length > 0) {
     // Calculate mean
     const sum = fpsHistory.reduce((a, b) => a + b, 0);
-    meanFPS.value = Math.round(sum / fpsHistory.length);
+    meanFPS.value = sum / fpsHistory.length;
 
     // Calculate 99% low (1st percentile - value that 99% of frames are above)
     const sorted = [...fpsHistory].sort((a, b) => a - b);
     const percentileIndex = Math.floor(sorted.length * 0.01);
-    lowFPS.value = Math.round(sorted[percentileIndex] ?? sorted[0]);
+    lowFPS.value = sorted[percentileIndex] ?? sorted[0];
   }
 
   // Update zoom level and effective quality
   const scene = backgroundGameInstance?.getScene() ?? gameInstance?.getScene();
   if (scene) {
     currentZoom.value = scene.cameras.main.zoom;
+
+    // Get actual frame delta stats from scene
+    const frameStats = scene.getFrameStats();
+    actualAvgFPS.value = frameStats.avgFps;
+    actualWorstFPS.value = frameStats.worstFps;
   }
   effectiveQuality.value = getEffectiveQuality();
 }
@@ -595,10 +603,18 @@ onUnmounted(() => {
     <!-- Graphics quality toggle (always visible) -->
     <div class="graphics-options">
       <div class="fps-stats">
-        <span class="fps-value">{{ meanFPS }}</span>
+        <span class="fps-label">actual:</span>
+        <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
         <span class="fps-label">avg</span>
-        <span class="fps-value">{{ lowFPS }}</span>
+        <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
+        <span class="fps-label">worst</span>
+        <span class="fps-divider">|</span>
+        <span class="fps-label">phaser:</span>
+        <span class="fps-value">{{ meanFPS.toFixed(1) }}</span>
+        <span class="fps-label">avg</span>
+        <span class="fps-value">{{ lowFPS.toFixed(1) }}</span>
         <span class="fps-label">low</span>
+        <span class="fps-divider">|</span>
         <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
         <span class="fps-label">zoom</span>
       </div>
@@ -1017,6 +1033,11 @@ onUnmounted(() => {
   margin-right: 4px;
 }
 
+.fps-divider {
+  color: #444;
+  margin: 0 6px;
+}
+
 .gfx-divider {
   width: 1px;
   height: 14px;
@@ -1078,7 +1099,6 @@ onUnmounted(() => {
 }
 
 .graphics-btn.active-level {
-  border-color: #48f;
-  box-shadow: 0 0 4px rgba(68, 136, 255, 0.6);
+  color: white;
 }
 </style>

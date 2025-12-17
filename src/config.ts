@@ -432,7 +432,7 @@ export const WEAPON_STATS = {
     damage: 45, // DPS while beam is on target
     range: 140,
     cooldown: 0, // Continuous
-    beamDuration: 1500,
+    beamDuration: 1000,
     beamWidth: 4,
     turretTurnAccel: 9, // Fast acceleration (rad/sec²)
     turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
@@ -444,7 +444,7 @@ export const WEAPON_STATS = {
     damage: 45,
     range: 160,
     cooldown: 0, // Continuous
-    beamDuration: 1500,
+    beamDuration: 1000,
     beamWidth: 4,
     turretTurnAccel: 9, // Fast acceleration (rad/sec²)
     turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
@@ -456,7 +456,7 @@ export const WEAPON_STATS = {
     damage: 45,
     range: 160,
     cooldown: 0, // Continuous
-    beamDuration: 1500,
+    beamDuration: 1000,
     beamWidth: 4,
     turretTurnAccel: 9, // Fast acceleration (rad/sec²)
     turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
