@@ -599,8 +599,17 @@ export class InputManager {
   private setupWheelEvent(): void {
     this.scene.input.on('wheel', (_p: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
       const camera = this.scene.cameras.main;
+
+      // Get the world point currently at center of view
+      const centerX = camera.midPoint.x;
+      const centerY = camera.midPoint.y;
+
+      // Apply zoom
       const zoomDelta = dy > 0 ? -ZOOM_STEP : ZOOM_STEP;
       camera.zoom = Phaser.Math.Clamp(camera.zoom + zoomDelta, ZOOM_MIN, ZOOM_MAX);
+
+      // Re-center on the same world point
+      camera.centerOn(centerX, centerY);
     });
   }
 
