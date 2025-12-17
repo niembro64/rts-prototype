@@ -42,6 +42,7 @@ import {
   EXPLOSION_BASE_MOMENTUM,
   UNIT_MASS_MULTIPLIER,
   ZOOM_INITIAL,
+  WORLD_PADDING,
 } from '../../config';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
@@ -210,9 +211,17 @@ export class RtsScene extends Phaser.Scene {
       }
     }
 
-    // Setup camera - no bounds so player can see outside the map
+    // Setup camera with bounds on the extended world (map + padding)
     const camera = this.cameras.main;
-    camera.setBackgroundColor(0x0a0a14); // Darker background outside the map
+    camera.setBackgroundColor(0x0a0a14); // Dark background
+
+    // Set camera bounds to the extended world area
+    // This allows natural panning/zooming within the padded area
+    const worldX = -WORLD_PADDING;
+    const worldY = -WORLD_PADDING;
+    const worldWidth = this.world.mapWidth + WORLD_PADDING * 2;
+    const worldHeight = this.world.mapHeight + WORLD_PADDING * 2;
+    camera.setBounds(worldX, worldY, worldWidth, worldHeight);
 
     // Set zoom level - same for both normal and background mode
     camera.setZoom(ZOOM_INITIAL);
@@ -793,6 +802,16 @@ export class RtsScene extends Phaser.Scene {
   // Draw the grid background
   private drawGrid(): void {
     this.gridGraphics = this.add.graphics();
+
+    // Fill the extended world area with dark background
+    // This provides a visual buffer around the playable map
+    this.gridGraphics.fillStyle(0x08080f, 1);
+    this.gridGraphics.fillRect(
+      -WORLD_PADDING,
+      -WORLD_PADDING,
+      this.world.mapWidth + WORLD_PADDING * 2,
+      this.world.mapHeight + WORLD_PADDING * 2
+    );
 
     // Fill the playable map area with a slightly lighter background
     this.gridGraphics.fillStyle(0x1a1a2e, 1);

@@ -345,7 +345,7 @@ export const WEAPON_STATS = {
     cooldown: 0,           // Continuous
     trackingRange: 600,    // Turret tracks at this range
     engageRange: 400,      // Unit stops in fight mode at this range
-    rotationRate: 0.1,     // Turret turn speed (radians/sec)
+    rotationRate: 5,     // Turret turn speed (radians/sec)
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.5,
     waveTransitionTime: 2000,
@@ -359,7 +359,7 @@ export const WEAPON_STATS = {
     cooldown: 0,           // Continuous
     trackingRange: 1000,   // Turret tracks at this range
     engageRange: 800,      // Unit stops in fight mode at this range
-    rotationRate: 0.1,     // Turret turn speed (radians/sec)
+    rotationRate: 5,     // Turret turn speed (radians/sec)
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.75,
     waveTransitionTime: 500,
@@ -418,7 +418,7 @@ export const LASER_SOUND_ENABLED = false;
 // =============================================================================
 
 /** Minimum zoom level (zoomed out) */
-export const ZOOM_MIN = 0.1;
+export const ZOOM_MIN = 0.3;
 
 /** Maximum zoom level (zoomed in) */
 export const ZOOM_MAX = 5.0;
@@ -428,6 +428,13 @@ export const ZOOM_STEP = 0.1;
 
 /** Initial zoom level when game starts */
 export const ZOOM_INITIAL = 0.4;
+
+/**
+ * World padding around the playable map area (pixels).
+ * The canvas extends this far beyond the map edges in all directions,
+ * providing a natural buffer for zooming and panning.
+ */
+export const WORLD_PADDING = 2000;
 
 // =============================================================================
 // GRAPHICS DETAIL DEFINITIONS

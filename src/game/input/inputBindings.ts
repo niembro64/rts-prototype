@@ -601,47 +601,14 @@ export class InputManager {
       const camera = this.scene.cameras.main;
 
       // Get the world point currently at center of view
-      let centerX = camera.midPoint.x;
-      let centerY = camera.midPoint.y;
+      const centerX = camera.midPoint.x;
+      const centerY = camera.midPoint.y;
 
       // Apply zoom
       const zoomDelta = dy > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      const newZoom = Phaser.Math.Clamp(camera.zoom + zoomDelta, ZOOM_MIN, ZOOM_MAX);
-      camera.zoom = newZoom;
+      camera.zoom = Phaser.Math.Clamp(camera.zoom + zoomDelta, ZOOM_MIN, ZOOM_MAX);
 
-      // Calculate visible area at new zoom
-      const viewWidth = camera.width / newZoom;
-      const viewHeight = camera.height / newZoom;
-
-      // Get map dimensions
-      const mapWidth = this.world.mapWidth;
-      const mapHeight = this.world.mapHeight;
-      const mapCenterX = mapWidth / 2;
-      const mapCenterY = mapHeight / 2;
-
-      // Margin allows panning slightly beyond map edges when zoomed in
-      const panMargin = 300;
-
-      // Clamp center point to keep map reasonably on screen
-      // If view is larger than map (plus margin), center on map center
-      // Otherwise, allow some margin beyond map edges
-      if (viewWidth >= mapWidth + panMargin * 2) {
-        centerX = mapCenterX;
-      } else {
-        const minCenterX = viewWidth / 2 - panMargin;
-        const maxCenterX = mapWidth - viewWidth / 2 + panMargin;
-        centerX = Phaser.Math.Clamp(centerX, minCenterX, maxCenterX);
-      }
-
-      if (viewHeight >= mapHeight + panMargin * 2) {
-        centerY = mapCenterY;
-      } else {
-        const minCenterY = viewHeight / 2 - panMargin;
-        const maxCenterY = mapHeight - viewHeight / 2 + panMargin;
-        centerY = Phaser.Math.Clamp(centerY, minCenterY, maxCenterY);
-      }
-
-      // Re-center on the constrained world point
+      // Re-center on the same world point (camera bounds handle constraints)
       camera.centerOn(centerX, centerY);
     });
   }
@@ -1007,46 +974,8 @@ export class InputManager {
 
   // Update input
   update(_delta: number): void {
-    const camera = this.scene.cameras.main;
-    // Constrain camera to keep map on screen
-    const viewWidth = camera.width / camera.zoom;
-    const viewHeight = camera.height / camera.zoom;
-
-    const mapWidth = this.world.mapWidth;
-    const mapHeight = this.world.mapHeight;
-    const mapCenterX = mapWidth / 2;
-    const mapCenterY = mapHeight / 2;
-
-    // Margin allows panning slightly beyond map edges when zoomed in
-    const panMargin = 300;
-
-    // Get current camera center
-    let centerX = camera.midPoint.x;
-    let centerY = camera.midPoint.y;
-
-    // Clamp center point to keep map reasonably on screen
-    // If view is larger than map (plus margin), center on map center
-    // Otherwise, allow panning with margin beyond map edges
-    if (viewWidth >= mapWidth + panMargin * 2) {
-      centerX = mapCenterX;
-    } else {
-      const minCenterX = viewWidth / 2 - panMargin;
-      const maxCenterX = mapWidth - viewWidth / 2 + panMargin;
-      centerX = Phaser.Math.Clamp(centerX, minCenterX, maxCenterX);
-    }
-
-    if (viewHeight >= mapHeight + panMargin * 2) {
-      centerY = mapCenterY;
-    } else {
-      const minCenterY = viewHeight / 2 - panMargin;
-      const maxCenterY = mapHeight - viewHeight / 2 + panMargin;
-      centerY = Phaser.Math.Clamp(centerY, minCenterY, maxCenterY);
-    }
-
-    // Apply constrained center if it changed
-    if (Math.abs(camera.midPoint.x - centerX) > 0.1 || Math.abs(camera.midPoint.y - centerY) > 0.1) {
-      camera.centerOn(centerX, centerY);
-    }
+    // Camera bounds are handled by Phaser's camera.setBounds() in RtsScene
+    // No manual constraint logic needed
 
     // Check for selection changes and reset mode to 'move'
     this.checkSelectionChange();
