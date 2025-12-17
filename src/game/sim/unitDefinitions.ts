@@ -10,6 +10,7 @@ import {
   DEFAULT_TURRET_TURN_ACCEL,
   DEFAULT_TURRET_DRAG,
   SEE_RANGE_MULTIPLIER,
+  SEE_RANGE_MULTIPLIER_STICKY,
   FIGHTSTOP_RANGE_MULTIPLIER,
 } from '../../config';
 
@@ -77,11 +78,10 @@ function getReturnToForward(unitId: string): boolean {
 }
 
 // Default weapon creation - single weapon matching unit type
-// Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
+// Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
   const weaponConfig = getWeaponConfig(definition.id);
   const fireRange = weaponConfig.range;
-  const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
   const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   // Get turret acceleration physics values from weapon config, or use defaults
   const turretTurnAccel = weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
@@ -89,6 +89,9 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   // Get targeting mode and return-to-forward from config
   const targetingMode = getTargetingMode(definition.id);
   const returnToForward = getReturnToForward(definition.id);
+  // Sticky weapons use smaller seeRange to avoid chasing distant targets
+  const seeRangeMultiplier = targetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
+  const seeRange = fireRange * seeRangeMultiplier;
 
   return [{
     config: { ...weaponConfig },
@@ -112,35 +115,38 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
 
 // Widow weapon creation - 6 beam lasers at hexagon + 1 sonic wave in center
 // Uses explicit widowBeam, widowCenterBeam, and widowSonic configs from config.ts
-// Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
+// Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
 function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWeapon[] {
   const widowBeamConfig = getWeaponConfig('widowBeam');
   const widowCenterBeamConfig = getWeaponConfig('widowCenterBeam');
   const widowSonicConfig = getWeaponConfig('widowSonic');
 
-  // Beam weapon ranges - use multipliers
+  // Beam weapon - get targeting mode first to determine seeRange multiplier
+  const beamTargetingMode = getTargetingMode('widow', 'beam');
   const beamFireRange = widowBeamConfig.range;
-  const beamSeeRange = beamFireRange * SEE_RANGE_MULTIPLIER;
+  const beamSeeRangeMultiplier = beamTargetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
+  const beamSeeRange = beamFireRange * beamSeeRangeMultiplier;
   const beamFightstopRange = beamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const beamTurnAccel = widowBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const beamDrag = widowBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
-  const beamTargetingMode = getTargetingMode('widow', 'beam');
 
-  // Center beam weapon ranges - use multipliers
+  // Center beam weapon - get targeting mode first to determine seeRange multiplier
+  const centerBeamTargetingMode = getTargetingMode('widow', 'centerBeam');
   const centerBeamFireRange = widowCenterBeamConfig.range;
-  const centerBeamSeeRange = centerBeamFireRange * SEE_RANGE_MULTIPLIER;
+  const centerBeamSeeRangeMultiplier = centerBeamTargetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
+  const centerBeamSeeRange = centerBeamFireRange * centerBeamSeeRangeMultiplier;
   const centerBeamFightstopRange = centerBeamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const centerBeamTurnAccel = widowCenterBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const centerBeamDrag = widowCenterBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
-  const centerBeamTargetingMode = getTargetingMode('widow', 'centerBeam');
 
-  // Sonic weapon ranges - use multipliers
+  // Sonic weapon - get targeting mode first to determine seeRange multiplier
+  const sonicTargetingMode = getTargetingMode('widow', 'sonic');
   const sonicFireRange = widowSonicConfig.range;
-  const sonicSeeRange = sonicFireRange * SEE_RANGE_MULTIPLIER;
+  const sonicSeeRangeMultiplier = sonicTargetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
+  const sonicSeeRange = sonicFireRange * sonicSeeRangeMultiplier;
   const sonicFightstopRange = sonicFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const sonicTurnAccel = widowSonicConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const sonicDrag = widowSonicConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
-  const sonicTargetingMode = getTargetingMode('widow', 'sonic');
 
   // Widow's return-to-forward setting (shared by all weapons)
   const returnToForward = getReturnToForward('widow');

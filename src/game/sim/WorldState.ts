@@ -1,6 +1,6 @@
 import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType, TargetingMode } from './types';
 import { getWeaponConfig } from './weapons';
-import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, SEE_RANGE_MULTIPLIER, FIGHTSTOP_RANGE_MULTIPLIER } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, SEE_RANGE_MULTIPLIER, SEE_RANGE_MULTIPLIER_STICKY, FIGHTSTOP_RANGE_MULTIPLIER } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -275,9 +275,10 @@ export class WorldState {
   ): Entity {
     const weaponConfig = getWeaponConfig(weaponId);
 
-    // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
+    // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
     const fireRange = weaponConfig.range;
-    const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
+    const seeRangeMultiplier = targetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
+    const seeRange = fireRange * seeRangeMultiplier;
     const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
 
     // Turret physics - use provided values, weapon config, or global defaults
@@ -336,9 +337,10 @@ export class WorldState {
     const targetingMode = config.targetingMode ?? 'nearest';
     const returnToForward = config.returnToForward ?? true;
 
-    // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x)
+    // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
     const fireRange = weaponConfig.range;
-    const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
+    const seeRangeMultiplier = targetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
+    const seeRange = fireRange * seeRangeMultiplier;
     const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
 
     // Turret physics - use provided values, weapon config, or global defaults

@@ -29,9 +29,8 @@ const VIEW_MODE_OPTIONS: { value: HostViewMode; label: string }[] = [
   { value: 'client', label: 'Client View' },
 ];
 
-// Graphics quality options
-const GRAPHICS_OPTIONS: { value: GraphicsQuality; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
+// Graphics quality options - Auto is separate from quality levels
+const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
   { value: 'min', label: 'Min' },
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Med' },
@@ -605,14 +604,21 @@ onUnmounted(() => {
       </div>
       <div class="gfx-divider"></div>
       <span class="graphics-label">Detail:</span>
-      <div class="graphics-buttons">
+      <button
+        class="graphics-btn"
+        :class="{ active: graphicsQuality === 'auto' }"
+        @click="changeGraphicsQuality('auto')"
+      >
+        Auto
+      </button>
+      <div class="button-group">
         <button
-          v-for="opt in GRAPHICS_OPTIONS"
+          v-for="opt in GRAPHICS_QUALITY_LEVELS"
           :key="opt.value"
           class="graphics-btn"
           :class="{
             active: graphicsQuality === opt.value,
-            'active-level': opt.value !== 'auto' && effectiveQuality === opt.value && graphicsQuality !== opt.value
+            'active-level': effectiveQuality === opt.value && graphicsQuality !== opt.value
           }"
           @click="changeGraphicsQuality(opt.value)"
         >

@@ -38,7 +38,7 @@ export class AudioManager {
 
     this.ctx = new AudioContext();
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = this.masterVolume;
+    this.masterGain.gain.value = this.muted ? 0 : this.masterVolume;
     this.masterGain.connect(this.ctx.destination);
     this.initialized = true;
   }

@@ -77,9 +77,16 @@ export const DEFAULT_TURRET_DRAG = 0.15;
  * Multiplier for seeRange (tracking range) relative to fireRange.
  * seeRange = fireRange * SEE_RANGE_MULTIPLIER
  * Turret starts tracking enemies when they enter this range.
- * Target is lost (for sticky weapons) when they leave this range.
+ * Target is lost when they leave this range.
  */
 export const SEE_RANGE_MULTIPLIER = 1.1;
+
+/**
+ * Multiplier for seeRange for sticky targeting weapons.
+ * Sticky weapons use a smaller seeRange (0.95x) so they don't acquire
+ * targets far outside their fire range and then chase them.
+ */
+export const SEE_RANGE_MULTIPLIER_STICKY = 0.95;
 
 /**
  * Multiplier for fightstopRange relative to fireRange.
@@ -427,8 +434,8 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 3, // Slow acceleration (rad/sec²)
-    turretDrag: 0.15, // Moderate drag → terminal ~0.33 rad/sec
+    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
+    turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Widow beam lasers - extended range continuous beams
@@ -439,19 +446,19 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 30, // Fast acceleration (rad/sec²)
-    turretDrag: 0.15, // Moderate drag → terminal ~3.3 rad/sec
+    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
+    turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Widow center beam - 2x stats of widowBeam, mounted at head center
   // Medium-slow turret - big gun needs time to aim
   widowCenterBeam: {
     damage: 45,
-    range: 300,
+    range: 160,
     cooldown: 0, // Continuous
     beamDuration: 1500,
     beamWidth: 4,
-    turretTurnAccel: 10, // Fast acceleration (rad/sec²)
+    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
     turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
   },
 
@@ -460,12 +467,12 @@ export const WEAPON_STATS = {
     damage: 20, // Base DPS (scales with 1/distance)
     range: 400,
     cooldown: 0, // Continuous
-    turretTurnAccel: 10, // Medium acceleration (rad/sec²)
+    turretTurnAccel: 100, // Medium acceleration (rad/sec²)
     turretDrag: 0.0000001, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.125,
     waveTransitionTime: 2000,
-    pullPower: 180,
+    pullPower: 300,
   },
 
   // Widow sonic wave - larger pie-slice wave AoE
@@ -473,7 +480,7 @@ export const WEAPON_STATS = {
     damage: 20, // Base DPS (scales with 1/distance)
     range: 600,
     cooldown: 0, // Continuous
-    turretTurnAccel: 10, // Medium acceleration (rad/sec²)
+    turretTurnAccel: 100, // Medium acceleration (rad/sec²)
     turretDrag: 0.0000001, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.125,

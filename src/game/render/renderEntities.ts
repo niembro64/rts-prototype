@@ -2072,31 +2072,27 @@ export class EntityRenderer {
       this.graphics.fillCircle(x, y, r * 0.1);
     }
 
-    // Turret pass - single beam emitter at front
+    // Turret pass - beam emitter at center hexagon (like widow's center beam)
     if (!this.skipTurrets) {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
 
-        // Beam emitter mounted at front of body
-        const emitterForwardOffset = r * 0.6;
-        const emitterX = x + cos * emitterForwardOffset;
-        const emitterY = y + sin * emitterForwardOffset;
-
-        // Beam emitter base (glowing orb)
+        // Beam emitter at center of hexagon
+        // Emitter base (glowing orb)
         this.graphics.fillStyle(light, 0.9);
-        this.graphics.fillCircle(emitterX, emitterY, r * 0.18);
+        this.graphics.fillCircle(x, y, r * 0.12);
 
         // Beam barrel
-        const beamLen = r * 0.7;
-        const beamEndX = emitterX + Math.cos(turretRot) * beamLen;
-        const beamEndY = emitterY + Math.sin(turretRot) * beamLen;
-        this.graphics.lineStyle(4, light, 0.8);
-        this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
+        const beamLen = r * 0.6;
+        const beamEndX = x + Math.cos(turretRot) * beamLen;
+        const beamEndY = y + Math.sin(turretRot) * beamLen;
+        this.graphics.lineStyle(3.5, light, 0.8);
+        this.graphics.lineBetween(x, y, beamEndX, beamEndY);
 
-        // Emitter glow at tip
-        this.graphics.fillStyle(this.WHITE, 0.95);
-        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.12);
+        // Emitter tip glow
+        this.graphics.fillStyle(this.WHITE, 0.9);
+        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
       }
     }
   }
@@ -2680,6 +2676,29 @@ export class EntityRenderer {
         // Emitter tip glow
         this.graphics.fillStyle(this.WHITE, 0.8);
         this.graphics.fillCircle(beamEndX, beamEndY, r * 0.06);
+      }
+
+      // Center beam emitter (weapon index 6) - same style as outer beams but slightly larger
+      const centerBeamWeapon = weapons[6];
+      if (centerBeamWeapon && !centerBeamWeapon.config.isWaveWeapon) {
+        const hexCenterX = x + cos * hexForwardOffset;
+        const hexCenterY = y + sin * hexForwardOffset;
+        const centerTurret = centerBeamWeapon.turretRotation ?? bodyRot;
+
+        // Center beam emitter (glowing orb) - slightly larger than outer ones
+        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.12);
+
+        // Center beam barrel - slightly longer/thicker
+        const centerBeamLen = r * 0.6;
+        const centerBeamEndX = hexCenterX + Math.cos(centerTurret) * centerBeamLen;
+        const centerBeamEndY = hexCenterY + Math.sin(centerTurret) * centerBeamLen;
+        this.graphics.lineStyle(3.5, light, 0.8);
+        this.graphics.lineBetween(hexCenterX, hexCenterY, centerBeamEndX, centerBeamEndY);
+
+        // Center emitter tip glow - slightly larger
+        this.graphics.fillStyle(this.WHITE, 0.9);
+        this.graphics.fillCircle(centerBeamEndX, centerBeamEndY, r * 0.08);
       }
 
       // Sonic wave weapon at center (weapon index 7: after 6 vertex beams + 1 center beam)
