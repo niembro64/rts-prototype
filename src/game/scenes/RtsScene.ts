@@ -42,7 +42,7 @@ import {
   EXPLOSION_BASE_MOMENTUM,
   UNIT_MASS_MULTIPLIER,
   ZOOM_INITIAL,
-  WORLD_PADDING,
+  WORLD_PADDING_PERCENT,
 } from '../../config';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
@@ -215,12 +215,16 @@ export class RtsScene extends Phaser.Scene {
     const camera = this.cameras.main;
     camera.setBackgroundColor(0x0a0a14); // Dark background
 
+    // Calculate padding from percentage of map dimensions
+    const paddingX = this.world.mapWidth * WORLD_PADDING_PERCENT;
+    const paddingY = this.world.mapHeight * WORLD_PADDING_PERCENT;
+
     // Set camera bounds to the extended world area
     // This allows natural panning/zooming within the padded area
-    const worldX = -WORLD_PADDING;
-    const worldY = -WORLD_PADDING;
-    const worldWidth = this.world.mapWidth + WORLD_PADDING * 2;
-    const worldHeight = this.world.mapHeight + WORLD_PADDING * 2;
+    const worldX = -paddingX;
+    const worldY = -paddingY;
+    const worldWidth = this.world.mapWidth + paddingX * 2;
+    const worldHeight = this.world.mapHeight + paddingY * 2;
     camera.setBounds(worldX, worldY, worldWidth, worldHeight);
 
     // Set zoom level - same for both normal and background mode
@@ -803,14 +807,18 @@ export class RtsScene extends Phaser.Scene {
   private drawGrid(): void {
     this.gridGraphics = this.add.graphics();
 
+    // Calculate padding from percentage of map dimensions
+    const paddingX = this.world.mapWidth * WORLD_PADDING_PERCENT;
+    const paddingY = this.world.mapHeight * WORLD_PADDING_PERCENT;
+
     // Fill the extended world area with dark background
     // This provides a visual buffer around the playable map
     this.gridGraphics.fillStyle(0x08080f, 1);
     this.gridGraphics.fillRect(
-      -WORLD_PADDING,
-      -WORLD_PADDING,
-      this.world.mapWidth + WORLD_PADDING * 2,
-      this.world.mapHeight + WORLD_PADDING * 2
+      -paddingX,
+      -paddingY,
+      this.world.mapWidth + paddingX * 2,
+      this.world.mapHeight + paddingY * 2
     );
 
     // Fill the playable map area with a slightly lighter background

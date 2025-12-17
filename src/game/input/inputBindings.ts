@@ -4,7 +4,7 @@ import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget
 import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
-import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '../../config';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR } from '../../config';
 
 /**
  * InputEntitySource - Interface for entity queries used by InputManager
@@ -604,9 +604,11 @@ export class InputManager {
       const centerX = camera.midPoint.x;
       const centerY = camera.midPoint.y;
 
-      // Apply zoom
-      const zoomDelta = dy > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      camera.zoom = Phaser.Math.Clamp(camera.zoom + zoomDelta, ZOOM_MIN, ZOOM_MAX);
+      // Apply exponential zoom (multiply/divide by factor for consistent feel)
+      const newZoom = dy > 0
+        ? camera.zoom / ZOOM_FACTOR  // Scroll down = zoom out
+        : camera.zoom * ZOOM_FACTOR; // Scroll up = zoom in
+      camera.zoom = Phaser.Math.Clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
 
       // Re-center on the same world point (camera bounds handle constraints)
       camera.centerOn(centerX, centerY);
