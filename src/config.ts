@@ -45,11 +45,18 @@ export const COST_MULTIPLIER = 1.0;
 // =============================================================================
 
 /**
- * Knockback force multiplier applied when projectiles/lasers hit units.
+ * Knockback force multiplier applied when projectiles hit units.
  * Force = damage * KNOCKBACK_FORCE_MULTIPLIER
  * 0 = no knockback, higher = more knockback
  */
 export const KNOCKBACK_FORCE_MULTIPLIER = 150;
+
+/**
+ * Additional knockback multiplier for beam/laser weapons.
+ * Beams deal small damage per tick, so this scales up the pushback effect.
+ * Total beam knockback = damage * KNOCKBACK_FORCE_MULTIPLIER * BEAM_KNOCKBACK_MULTIPLIER
+ */
+export const BEAM_KNOCKBACK_MULTIPLIER = 30.0;
 
 /**
  * Pull strength for sonic wave weapons (units per second toward wave origin).
@@ -398,7 +405,7 @@ export const WEAPON_STATS = {
     range: 420,            // 2x range
     cooldown: 0,           // Continuous
     beamDuration: 3000,    // 2x duration
-    beamWidth: 8,          // 2x width
+    beamWidth: 12,          // 2x width
     turretTurnRate: 0.5,   // Radians per second - beam turret rotation speed
   },
 

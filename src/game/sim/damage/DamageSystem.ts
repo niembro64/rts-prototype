@@ -12,7 +12,7 @@ import type {
   HitInfo,
   DeathContext,
 } from './types';
-import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
+import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_KNOCKBACK_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 
 // Normalize angle to [-PI, PI]
 function normalizeAngle(angle: number): number {
@@ -277,8 +277,8 @@ export class DamageSystem {
       const entity = this.world.getEntity(hit.entityId);
       if (!entity) continue;
 
-      // Calculate knockback force for this hit
-      const force = source.damage * KNOCKBACK_FORCE_MULTIPLIER;
+      // Calculate knockback force for this hit (beams get extra multiplier)
+      const force = source.damage * KNOCKBACK_FORCE_MULTIPLIER * BEAM_KNOCKBACK_MULTIPLIER;
       const forceX = knockbackDirX * force;
       const forceY = knockbackDirY * force;
 
