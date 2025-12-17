@@ -2536,64 +2536,68 @@ export class EntityRenderer {
       this.graphics.fillPoints(abdomenPoints, true);
 
       // Red hourglass marking (like a black widow spider)
-      const hourglassColor = 0xff0000; // Classic red
-      this.graphics.fillStyle(hourglassColor, 0.9);
-
       // Hourglass center position on abdomen
       const hourglassCenterOffset = abdomenOffset - abdomenLength * 0.35;
       const hourglassCenterX = x + cos * hourglassCenterOffset;
       const hourglassCenterY = y + sin * hourglassCenterOffset;
 
       // Hourglass dimensions
-      const hourglassHeight = abdomenLength * 0.45;
-      const hourglassWidth = abdomenWidth * 0.4;
-      const waistWidth = hourglassWidth * 0.15; // Narrow middle
+      const hourglassHeight = abdomenLength * 0.5;
+      const hourglassWidth = abdomenWidth * 0.35;
+      const waistWidth = hourglassWidth * 0.2; // Narrow middle
 
-      // Draw hourglass as two triangles meeting at the waist
-      // Top triangle (toward body)
-      const topTipOffset = hourglassHeight * 0.5;
-      const topTipX = hourglassCenterX + cos * topTipOffset;
-      const topTipY = hourglassCenterY + sin * topTipOffset;
+      // Helper to get rotated point
+      const rotPoint = (centerX: number, centerY: number, localX: number, localY: number) => ({
+        x: centerX + cos * localX - sin * localY,
+        y: centerY + sin * localX + cos * localY,
+      });
 
-      // Bottom triangle (toward rear)
-      const bottomTipOffset = -hourglassHeight * 0.5;
-      const bottomTipX = hourglassCenterX + cos * bottomTipOffset;
-      const bottomTipY = hourglassCenterY + sin * bottomTipOffset;
+      // Outer hourglass with flat top and bottom
+      const topY = hourglassHeight * 0.5;
+      const bottomY = -hourglassHeight * 0.5;
 
-      // Waist points (center, left and right)
-      const waistLeftX = hourglassCenterX - sin * waistWidth;
-      const waistLeftY = hourglassCenterY + cos * waistWidth;
-      const waistRightX = hourglassCenterX + sin * waistWidth;
-      const waistRightY = hourglassCenterY - cos * waistWidth;
+      // Top flat edge (4 corners: top-left, top-right at full width)
+      const topLeft = rotPoint(hourglassCenterX, hourglassCenterY, topY, -hourglassWidth);
+      const topRight = rotPoint(hourglassCenterX, hourglassCenterY, topY, hourglassWidth);
 
-      // Wide points at top and bottom
-      const topLeftX = topTipX - sin * hourglassWidth + cos * (-hourglassHeight * 0.15);
-      const topLeftY = topTipY + cos * hourglassWidth + sin * (-hourglassHeight * 0.15);
-      const topRightX = topTipX + sin * hourglassWidth + cos * (-hourglassHeight * 0.15);
-      const topRightY = topTipY - cos * hourglassWidth + sin * (-hourglassHeight * 0.15);
+      // Bottom flat edge
+      const bottomLeft = rotPoint(hourglassCenterX, hourglassCenterY, bottomY, -hourglassWidth);
+      const bottomRight = rotPoint(hourglassCenterX, hourglassCenterY, bottomY, hourglassWidth);
 
-      const bottomLeftX = bottomTipX - sin * hourglassWidth + cos * (hourglassHeight * 0.15);
-      const bottomLeftY = bottomTipY + cos * hourglassWidth + sin * (hourglassHeight * 0.15);
-      const bottomRightX = bottomTipX + sin * hourglassWidth + cos * (hourglassHeight * 0.15);
-      const bottomRightY = bottomTipY - cos * hourglassWidth + sin * (hourglassHeight * 0.15);
+      // Waist points (narrow middle)
+      const waistLeft = rotPoint(hourglassCenterX, hourglassCenterY, 0, -waistWidth);
+      const waistRight = rotPoint(hourglassCenterX, hourglassCenterY, 0, waistWidth);
 
-      // Draw top triangle
+      // Draw outer hourglass (red fill)
+      this.graphics.fillStyle(0xff0000, 0.9);
       this.graphics.beginPath();
-      this.graphics.moveTo(topTipX, topTipY);
-      this.graphics.lineTo(topLeftX, topLeftY);
-      this.graphics.lineTo(waistLeftX, waistLeftY);
-      this.graphics.lineTo(waistRightX, waistRightY);
-      this.graphics.lineTo(topRightX, topRightY);
+      this.graphics.moveTo(topLeft.x, topLeft.y);
+      this.graphics.lineTo(topRight.x, topRight.y);
+      this.graphics.lineTo(waistRight.x, waistRight.y);
+      this.graphics.lineTo(bottomRight.x, bottomRight.y);
+      this.graphics.lineTo(bottomLeft.x, bottomLeft.y);
+      this.graphics.lineTo(waistLeft.x, waistLeft.y);
       this.graphics.closePath();
       this.graphics.fillPath();
 
-      // Draw bottom triangle
+      // Inner hourglass (darker red for depth)
+      const innerScale = 0.6;
+      const innerWaistScale = 0.5;
+      const innerTopLeft = rotPoint(hourglassCenterX, hourglassCenterY, topY * innerScale, -hourglassWidth * innerScale);
+      const innerTopRight = rotPoint(hourglassCenterX, hourglassCenterY, topY * innerScale, hourglassWidth * innerScale);
+      const innerBottomLeft = rotPoint(hourglassCenterX, hourglassCenterY, bottomY * innerScale, -hourglassWidth * innerScale);
+      const innerBottomRight = rotPoint(hourglassCenterX, hourglassCenterY, bottomY * innerScale, hourglassWidth * innerScale);
+      const innerWaistLeft = rotPoint(hourglassCenterX, hourglassCenterY, 0, -waistWidth * innerWaistScale);
+      const innerWaistRight = rotPoint(hourglassCenterX, hourglassCenterY, 0, waistWidth * innerWaistScale);
+
+      this.graphics.fillStyle(0xaa0000, 0.8);
       this.graphics.beginPath();
-      this.graphics.moveTo(bottomTipX, bottomTipY);
-      this.graphics.lineTo(bottomLeftX, bottomLeftY);
-      this.graphics.lineTo(waistLeftX, waistLeftY);
-      this.graphics.lineTo(waistRightX, waistRightY);
-      this.graphics.lineTo(bottomRightX, bottomRightY);
+      this.graphics.moveTo(innerTopLeft.x, innerTopLeft.y);
+      this.graphics.lineTo(innerTopRight.x, innerTopRight.y);
+      this.graphics.lineTo(innerWaistRight.x, innerWaistRight.y);
+      this.graphics.lineTo(innerBottomRight.x, innerBottomRight.y);
+      this.graphics.lineTo(innerBottomLeft.x, innerBottomLeft.y);
+      this.graphics.lineTo(innerWaistLeft.x, innerWaistLeft.y);
       this.graphics.closePath();
       this.graphics.fillPath();
 
