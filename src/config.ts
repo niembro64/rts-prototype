@@ -415,6 +415,22 @@ export const DEFAULT_NETWORK_UPDATES_PER_SECOND = 10;
 export const LASER_SOUND_ENABLED = false;
 
 // =============================================================================
+// CAMERA & ZOOM
+// =============================================================================
+
+/** Minimum zoom level (zoomed out) */
+export const ZOOM_MIN = 0.1;
+
+/** Maximum zoom level (zoomed in) */
+export const ZOOM_MAX = 5.0;
+
+/** Zoom change per scroll wheel tick */
+export const ZOOM_STEP = 0.1;
+
+/** Initial zoom level when game starts */
+export const ZOOM_INITIAL = 0.4;
+
+// =============================================================================
 // GRAPHICS DETAIL DEFINITIONS
 // =============================================================================
 

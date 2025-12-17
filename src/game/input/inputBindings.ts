@@ -4,6 +4,7 @@ import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget
 import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '../../config';
 
 /**
  * InputEntitySource - Interface for entity queries used by InputManager
@@ -60,10 +61,7 @@ const WAYPOINT_COLORS: Record<WaypointType, number> = {
   fight: 0xff4444,  // Red
 };
 
-// Camera constraints
-const MIN_ZOOM = 0.4;
-const MAX_ZOOM = 2.0;
-const ZOOM_STEP = 0.1;
+// Camera constraints imported from config.ts: ZOOM_MIN, ZOOM_MAX, ZOOM_STEP
 
 export class InputManager {
   private scene: Phaser.Scene;
@@ -602,7 +600,7 @@ export class InputManager {
     this.scene.input.on('wheel', (_p: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
       const camera = this.scene.cameras.main;
       const zoomDelta = dy > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      camera.zoom = Phaser.Math.Clamp(camera.zoom + zoomDelta, MIN_ZOOM, MAX_ZOOM);
+      camera.zoom = Phaser.Math.Clamp(camera.zoom + zoomDelta, ZOOM_MIN, ZOOM_MAX);
     });
   }
 

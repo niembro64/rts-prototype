@@ -41,6 +41,7 @@ import {
   EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
   EXPLOSION_BASE_MOMENTUM,
   UNIT_MASS_MULTIPLIER,
+  ZOOM_INITIAL,
 } from '../../config';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 
@@ -214,8 +215,7 @@ export class RtsScene extends Phaser.Scene {
     camera.setBackgroundColor(0x0a0a14); // Darker background outside the map
 
     // Set zoom level - same for both normal and background mode
-    const INITIAL_ZOOM = 0.4;
-    camera.setZoom(INITIAL_ZOOM);
+    camera.setZoom(ZOOM_INITIAL);
 
     // Center camera on the map
     camera.centerOn(this.world.mapWidth / 2, this.world.mapHeight / 2);
