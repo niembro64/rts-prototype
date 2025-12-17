@@ -443,7 +443,7 @@ export const WEAPON_STATS = {
     beamDuration: 1500,
     beamWidth: 4,
     turretTurnAccel: 10, // Fast acceleration (rad/sec²)
-    turretDrag: 0.01, // Moderate drag → terminal ~3.3 rad/sec
+    turretDrag: 0.00000000001, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Insect - Continuous pie-slice wave AoE
@@ -465,7 +465,7 @@ export const WEAPON_STATS = {
     range: 900,
     cooldown: 0, // Continuous
     turretTurnAccel: 10, // Medium acceleration (rad/sec²)
-    turretDrag: 0.15, // Moderate drag → terminal ~1.1 rad/sec
+    turretDrag: 0.01, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.5,
     waveTransitionTime: 500,
