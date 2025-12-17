@@ -233,10 +233,11 @@ export class RtsScene extends Phaser.Scene {
     const worldHeight = this.world.mapHeight + paddingY * 2;
     camera.setBounds(worldX, worldY, worldWidth, worldHeight);
 
-    // Set zoom level - same for both normal and background mode
-    camera.setZoom(ZOOM_INITIAL);
+    // Set initial zoom level
+    // Main game uses 0.5, background mode uses ZOOM_INITIAL
+    camera.setZoom(this.backgroundMode ? ZOOM_INITIAL : 0.5);
 
-    // Center camera on the map
+    // Center camera on the map initially (will be updated for main game after commander spawn)
     camera.centerOn(this.world.mapWidth / 2, this.world.mapHeight / 2);
 
     // Draw grid background
@@ -257,6 +258,12 @@ export class RtsScene extends Phaser.Scene {
         const entities = spawnInitialEntities(this.world, this.playerIds);
         // Create Matter bodies for entities
         this.createMatterBodies(entities);
+
+        // Center camera on local player's commander
+        const commander = this.world.getCommander(this.world.activePlayerId);
+        if (commander) {
+          camera.centerOn(commander.transform.x, commander.transform.y);
+        }
       }
     }
 

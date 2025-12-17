@@ -578,7 +578,7 @@ export const LASER_SOUND_ENABLED = false;
 // =============================================================================
 
 /** Minimum zoom level (zoomed out) */
-export const ZOOM_MIN = 0.3;
+export const ZOOM_MIN = 0.1;
 
 /** Maximum zoom level (zoomed in) */
 export const ZOOM_MAX = 5.0;
