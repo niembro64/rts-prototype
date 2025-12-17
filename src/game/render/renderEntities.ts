@@ -2535,32 +2535,67 @@ export class EntityRenderer {
       }
       this.graphics.fillPoints(abdomenPoints, true);
 
-      // Abdomen segments/stripes (base color for contrast)
-      this.graphics.fillStyle(base, 0.6);
-      const stripeCount = 4;
-      for (let s = 0; s < stripeCount; s++) {
-        const stripeOffset = abdomenOffset - abdomenLength * 0.15 - s * (abdomenLength * 0.18);
-        const stripeWidth = abdomenWidth * (0.7 - s * 0.12); // Narrower toward back
-        const stripeCenterX = x + cos * stripeOffset;
-        const stripeCenterY = y + sin * stripeOffset;
+      // Red hourglass marking (like a black widow spider)
+      const hourglassColor = 0xff0000; // Classic red
+      this.graphics.fillStyle(hourglassColor, 0.9);
 
-        // Draw stripe as thin ellipse
-        this.graphics.beginPath();
-        for (let i = 0; i <= 16; i++) {
-          const angle = (i / 16) * Math.PI * 2;
-          const localX = Math.cos(angle) * (r * 0.08);
-          const localY = Math.sin(angle) * stripeWidth;
-          const px = stripeCenterX + cos * localX - sin * localY;
-          const py = stripeCenterY + sin * localX + cos * localY;
-          if (i === 0) {
-            this.graphics.moveTo(px, py);
-          } else {
-            this.graphics.lineTo(px, py);
-          }
-        }
-        this.graphics.closePath();
-        this.graphics.fillPath();
-      }
+      // Hourglass center position on abdomen
+      const hourglassCenterOffset = abdomenOffset - abdomenLength * 0.35;
+      const hourglassCenterX = x + cos * hourglassCenterOffset;
+      const hourglassCenterY = y + sin * hourglassCenterOffset;
+
+      // Hourglass dimensions
+      const hourglassHeight = abdomenLength * 0.45;
+      const hourglassWidth = abdomenWidth * 0.4;
+      const waistWidth = hourglassWidth * 0.15; // Narrow middle
+
+      // Draw hourglass as two triangles meeting at the waist
+      // Top triangle (toward body)
+      const topTipOffset = hourglassHeight * 0.5;
+      const topTipX = hourglassCenterX + cos * topTipOffset;
+      const topTipY = hourglassCenterY + sin * topTipOffset;
+
+      // Bottom triangle (toward rear)
+      const bottomTipOffset = -hourglassHeight * 0.5;
+      const bottomTipX = hourglassCenterX + cos * bottomTipOffset;
+      const bottomTipY = hourglassCenterY + sin * bottomTipOffset;
+
+      // Waist points (center, left and right)
+      const waistLeftX = hourglassCenterX - sin * waistWidth;
+      const waistLeftY = hourglassCenterY + cos * waistWidth;
+      const waistRightX = hourglassCenterX + sin * waistWidth;
+      const waistRightY = hourglassCenterY - cos * waistWidth;
+
+      // Wide points at top and bottom
+      const topLeftX = topTipX - sin * hourglassWidth + cos * (-hourglassHeight * 0.15);
+      const topLeftY = topTipY + cos * hourglassWidth + sin * (-hourglassHeight * 0.15);
+      const topRightX = topTipX + sin * hourglassWidth + cos * (-hourglassHeight * 0.15);
+      const topRightY = topTipY - cos * hourglassWidth + sin * (-hourglassHeight * 0.15);
+
+      const bottomLeftX = bottomTipX - sin * hourglassWidth + cos * (hourglassHeight * 0.15);
+      const bottomLeftY = bottomTipY + cos * hourglassWidth + sin * (hourglassHeight * 0.15);
+      const bottomRightX = bottomTipX + sin * hourglassWidth + cos * (hourglassHeight * 0.15);
+      const bottomRightY = bottomTipY - cos * hourglassWidth + sin * (hourglassHeight * 0.15);
+
+      // Draw top triangle
+      this.graphics.beginPath();
+      this.graphics.moveTo(topTipX, topTipY);
+      this.graphics.lineTo(topLeftX, topLeftY);
+      this.graphics.lineTo(waistLeftX, waistLeftY);
+      this.graphics.lineTo(waistRightX, waistRightY);
+      this.graphics.lineTo(topRightX, topRightY);
+      this.graphics.closePath();
+      this.graphics.fillPath();
+
+      // Draw bottom triangle
+      this.graphics.beginPath();
+      this.graphics.moveTo(bottomTipX, bottomTipY);
+      this.graphics.lineTo(bottomLeftX, bottomLeftY);
+      this.graphics.lineTo(waistLeftX, waistLeftY);
+      this.graphics.lineTo(waistRightX, waistRightY);
+      this.graphics.lineTo(bottomRightX, bottomRightY);
+      this.graphics.closePath();
+      this.graphics.fillPath();
 
       // Spinnerets at the tip (light colored details)
       const spinneretOffset = abdomenOffset - abdomenLength * 0.85;
