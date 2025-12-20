@@ -1879,19 +1879,19 @@ export class EntityRenderer {
 
       // Main body (diamond/rhombus shape) - light colored
       const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
       this.drawPolygon(x, y, r * 0.55, 4, bodyRot + Math.PI / 4);
 
       // Inner accent (base color)
-      this.graphics.fillStyle(base, 0.85);
+      this.graphics.fillStyle(base, 1);
       this.drawPolygon(x, y, r * 0.35, 4, bodyRot + Math.PI / 4);
 
       // Center hub (dark)
-      this.graphics.fillStyle(dark, 0.9);
+      this.graphics.fillStyle(dark, 1);
       this.graphics.fillCircle(x, y, r * 0.15);
 
       // Turret mount (white)
-      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(x, y, r * 0.1);
     }
 
@@ -1902,7 +1902,7 @@ export class EntityRenderer {
         const turretRot = weapon.turretRotation;
         // Triple rapid-fire barrels
         const turretLen = r * 1.0;
-        this.graphics.lineStyle(1.5, dark, 0.9);
+        this.graphics.lineStyle(1.5, this.WHITE, 1);
         for (let i = -1; i <= 1; i++) {
           const offset = i * 2;
           const perpX = Math.cos(turretRot + Math.PI / 2) * offset;
@@ -1967,21 +1967,21 @@ export class EntityRenderer {
 
       // Main body (aggressive triangle pointing forward) - dark colored
       const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
       this.drawPolygon(x, y, r * 0.6, 3, bodyRot);
 
       // Inner wedge accent (base color)
-      this.graphics.fillStyle(base, 0.85);
+      this.graphics.fillStyle(base, 1);
       this.drawPolygon(x, y, r * 0.38, 3, bodyRot);
 
       // Aggressive front stripe (light)
-      this.graphics.fillStyle(light, 0.8);
+      this.graphics.fillStyle(light, 1);
       const stripeX = x + cos * r * 0.25;
       const stripeY = y + sin * r * 0.25;
       this.drawOrientedRect(stripeX, stripeY, r * 0.15, r * 0.35, bodyRot);
 
       // Turret mount (white)
-      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(x, y, r * 0.12);
     }
 
@@ -1992,7 +1992,7 @@ export class EntityRenderer {
         const turretRot = weapon.turretRotation;
         // Dual burst cannons
         const turretLen = r * 1.1;
-        this.graphics.lineStyle(2.5, base, 0.95);
+        this.graphics.lineStyle(2.5, this.WHITE, 1);
         const perpDist = 3;
         const perpX = Math.cos(turretRot + Math.PI / 2) * perpDist;
         const perpY = Math.sin(turretRot + Math.PI / 2) * perpDist;
@@ -2050,25 +2050,25 @@ export class EntityRenderer {
 
         // Draw leg segments (both use dark team color)
         // Upper leg (slightly thicker)
-        this.graphics.lineStyle(legThickness + 0.5, dark, 0.95);
+        this.graphics.lineStyle(legThickness + 0.5, dark, 1);
         this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
         // Lower leg
-        this.graphics.lineStyle(legThickness, dark, 0.9);
+        this.graphics.lineStyle(legThickness, dark, 1);
         this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
         // Knee joint (light team color)
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(light, 1);
         this.graphics.fillCircle(knee.x, knee.y, legThickness);
 
         // Foot (light team color)
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(light, 1);
         this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
       // Body (hexagonal insect shape)
       const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
 
       // Draw body as elongated hexagon (insect-like)
       const bodyLength = r * 0.9;
@@ -2110,13 +2110,13 @@ export class EntityRenderer {
       this.graphics.fillPoints(bodyPoints, true);
 
       // Inner carapace pattern (dark)
-      this.graphics.fillStyle(dark, 0.8);
+      this.graphics.fillStyle(dark, 1);
       this.drawPolygon(x, y, r * 0.4, 6, bodyRot);
 
       // Central eye/sensor (light glow)
-      this.graphics.fillStyle(light, 0.9);
+      this.graphics.fillStyle(light, 1);
       this.graphics.fillCircle(x, y, r * 0.2);
-      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(x, y, r * 0.1);
     }
 
@@ -2128,14 +2128,14 @@ export class EntityRenderer {
 
         // Beam emitter at center of hexagon
         // Emitter base (glowing orb)
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(this.WHITE, 1);
         this.graphics.fillCircle(x, y, r * 0.12);
 
         // Beam barrel
         const beamLen = r * 0.6;
         const beamEndX = x + Math.cos(turretRot) * beamLen;
         const beamEndY = y + Math.sin(turretRot) * beamLen;
-        this.graphics.lineStyle(3.5, light, 0.8);
+        this.graphics.lineStyle(3.5, this.WHITE, 1);
         this.graphics.lineBetween(x, y, beamEndX, beamEndY);
       }
     }
@@ -2191,19 +2191,19 @@ export class EntityRenderer {
 
       // Body (pentagon) - dark with gray armor plates
       const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
       this.drawPolygon(x, y, r * 0.8, 5, bodyRot);
 
       // Gray armor plate
-      this.graphics.fillStyle(this.GRAY, 0.8);
+      this.graphics.fillStyle(this.GRAY, 1);
       this.drawPolygon(x, y, r * 0.5, 5, bodyRot);
 
       // Base color accent ring
-      this.graphics.lineStyle(2, base, 0.9);
+      this.graphics.lineStyle(2, base, 1);
       this.graphics.strokeCircle(x, y, r * 0.35);
 
       // White muzzle
-      this.graphics.fillStyle(this.WHITE, 0.9);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(x, y, r * 0.18);
     }
 
@@ -2212,11 +2212,11 @@ export class EntityRenderer {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Wide shotgun barrel (light)
+        // Wide shotgun barrel (white to match muzzle)
         const turretLen = r * 1.0;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(5, light, 0.85);
+        this.graphics.lineStyle(5, this.WHITE, 1);
         this.graphics.lineBetween(
           x,
           y,
@@ -2279,19 +2279,19 @@ export class EntityRenderer {
 
       // Main body (hexagon) - gray base
       const bodyColor = selected ? UNIT_SELECTED_COLOR : this.GRAY;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
       this.drawPolygon(x, y, r * 0.55, 6, bodyRot);
 
       // Inner platform (base color)
-      this.graphics.fillStyle(base, 0.85);
+      this.graphics.fillStyle(base, 1);
       this.drawPolygon(x, y, r * 0.4, 6, bodyRot);
 
       // Artillery base plate (dark)
-      this.graphics.fillStyle(dark, 0.9);
+      this.graphics.fillStyle(dark, 1);
       this.graphics.fillCircle(x, y, r * 0.25);
 
       // Turret pivot (white)
-      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(x, y, r * 0.12);
     }
 
@@ -2300,11 +2300,11 @@ export class EntityRenderer {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Thick mortar tube
+        // Thick mortar tube (white to match pivot)
         const turretLen = r * 0.75;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(6, light, 0.9);
+        this.graphics.lineStyle(6, this.WHITE, 1);
         this.graphics.lineBetween(x, y, endX, endY);
       }
     }
@@ -2362,15 +2362,15 @@ export class EntityRenderer {
 
       // Main body (elongated rectangle) - light colored, high-tech
       const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
       this.drawOrientedRect(x, y, r * 1.2, r * 0.5, bodyRot);
 
       // Dark tech core
-      this.graphics.fillStyle(dark, 0.85);
+      this.graphics.fillStyle(dark, 1);
       this.drawOrientedRect(x, y, r * 0.8, r * 0.35, bodyRot);
 
       // Base color targeting stripe
-      this.graphics.fillStyle(base, 0.9);
+      this.graphics.fillStyle(base, 1);
       this.drawOrientedRect(
         x - cos * r * 0.25,
         y - sin * r * 0.25,
@@ -2380,7 +2380,7 @@ export class EntityRenderer {
       );
 
       // Scope/sensor array (white)
-      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(x, y, r * 0.1);
     }
 
@@ -2389,11 +2389,11 @@ export class EntityRenderer {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Long precision sniper barrel
+        // Long precision sniper barrel (white to match scope)
         const turretLen = r * 1.6;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(2.5, this.GRAY, 0.95);
+        this.graphics.lineStyle(2.5, this.WHITE, 1);
         this.graphics.lineBetween(x, y, endX, endY);
       }
     }
@@ -2449,19 +2449,19 @@ export class EntityRenderer {
 
       // Hull (square) - base color
       const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
       this.drawPolygon(x, y, r * 0.85, 4, bodyRot);
 
       // Gray armor plate on hull
-      this.graphics.fillStyle(this.GRAY, 0.85);
+      this.graphics.fillStyle(this.GRAY, 1);
       this.drawPolygon(x, y, r * 0.55, 4, bodyRot);
 
       // Black inner
-      this.graphics.fillStyle(this.BLACK, 0.8);
+      this.graphics.fillStyle(this.BLACK, 1);
       this.graphics.fillCircle(x, y, r * 0.28);
 
       // Turret pivot (white)
-      this.graphics.fillStyle(this.WHITE, 0.9);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(x, y, r * 0.18);
     }
 
@@ -2470,11 +2470,11 @@ export class EntityRenderer {
       const weapons = entity.weapons ?? [];
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
-        // Heavy cannon barrel (light with dark muzzle)
+        // Heavy cannon barrel (white to match pivot)
         const turretLen = r * 1.4;
         const endX = x + Math.cos(turretRot) * turretLen;
         const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(7, light, 0.9);
+        this.graphics.lineStyle(7, this.WHITE, 1);
         this.graphics.lineBetween(x, y, endX, endY);
       }
     }
@@ -2516,19 +2516,19 @@ export class EntityRenderer {
 
         // Draw leg segments (both use dark team color)
         // Upper leg (slightly thicker)
-        this.graphics.lineStyle(legThickness + 1, dark, 0.95);
+        this.graphics.lineStyle(legThickness + 1, dark, 1);
         this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
         // Lower leg
-        this.graphics.lineStyle(legThickness, dark, 0.9);
+        this.graphics.lineStyle(legThickness, dark, 1);
         this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
         // Knee joint (light team color)
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(light, 1);
         this.graphics.fillCircle(knee.x, knee.y, legThickness);
 
         // Foot (light team color)
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(light, 1);
         this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
@@ -2541,7 +2541,7 @@ export class EntityRenderer {
 
       // Main abdomen shape (dark color)
       const abdomenColor = selected ? UNIT_SELECTED_COLOR : dark;
-      this.graphics.fillStyle(abdomenColor, 0.95);
+      this.graphics.fillStyle(abdomenColor, 1);
 
       // Draw abdomen as an elongated oval/egg shape pointing backward
       // Use a rounded polygon with more points at the back for a bulbous look
@@ -2597,7 +2597,7 @@ export class EntityRenderer {
       const waistRight = rotPoint(hourglassCenterX, hourglassCenterY, 0, waistWidth);
 
       // Draw outer hourglass (red fill)
-      this.graphics.fillStyle(0xff0000, 0.9);
+      this.graphics.fillStyle(0xff0000, 1);
       this.graphics.beginPath();
       this.graphics.moveTo(topLeft.x, topLeft.y);
       this.graphics.lineTo(topRight.x, topRight.y);
@@ -2618,7 +2618,7 @@ export class EntityRenderer {
       const innerWaistLeft = rotPoint(hourglassCenterX, hourglassCenterY, 0, -waistWidth * innerWaistScale);
       const innerWaistRight = rotPoint(hourglassCenterX, hourglassCenterY, 0, waistWidth * innerWaistScale);
 
-      this.graphics.fillStyle(0xaa0000, 0.8);
+      this.graphics.fillStyle(0xaa0000, 1);
       this.graphics.beginPath();
       this.graphics.moveTo(innerTopLeft.x, innerTopLeft.y);
       this.graphics.lineTo(innerTopRight.x, innerTopRight.y);
@@ -2633,7 +2633,7 @@ export class EntityRenderer {
       const spinneretOffset = abdomenOffset - abdomenLength * 0.85;
       const spinneretX = x + cos * spinneretOffset;
       const spinneretY = y + sin * spinneretOffset;
-      this.graphics.fillStyle(light, 0.8);
+      this.graphics.fillStyle(light, 1);
       this.graphics.fillCircle(spinneretX, spinneretY, r * 0.12);
       // Small side spinnerets
       const sideSpinneretDist = r * 0.15;
@@ -2650,7 +2650,7 @@ export class EntityRenderer {
 
       // Main body (hexagonal shape matching inner hexagon, but larger)
       const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
 
       // Draw body as hexagon - larger than inner hexagon, same rotation (30° so flat edge faces forward)
       const bodyHexRadius = r * 0.95; // Larger than inner hexagon (0.65)
@@ -2666,13 +2666,13 @@ export class EntityRenderer {
       const hexRotationOffset = Math.PI / 6; // Rotate 30° so flat edge faces forward
       const hexCenterX = x + cos * hexForwardOffset;
       const hexCenterY = y + sin * hexForwardOffset;
-      this.graphics.fillStyle(base, 0.8);
+      this.graphics.fillStyle(base, 1);
       this.drawPolygon(hexCenterX, hexCenterY, hexRadius, 6, bodyRot + hexRotationOffset);
 
       // Central sonic emitter orb (light) - at hexagon center
-      this.graphics.fillStyle(light, 0.9);
+      this.graphics.fillStyle(light, 1);
       this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.3);
-      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.15);
     }
 
@@ -2695,14 +2695,14 @@ export class EntityRenderer {
         const weaponTurret = weapons[i]?.turretRotation ?? bodyRot;
 
         // Beam emitter (glowing orb)
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(this.WHITE, 1);
         this.graphics.fillCircle(emitterX, emitterY, r * 0.1);
 
         // Beam barrel
         const beamLen = r * 0.5;
         const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
         const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
-        this.graphics.lineStyle(2.5, light, 0.8);
+        this.graphics.lineStyle(2.5, this.WHITE, 1);
         this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
       }
 
@@ -2714,14 +2714,14 @@ export class EntityRenderer {
         const centerTurret = centerBeamWeapon.turretRotation ?? bodyRot;
 
         // Center beam emitter (glowing orb) - slightly larger than outer ones
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(this.WHITE, 1);
         this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.12);
 
         // Center beam barrel - slightly longer/thicker
         const centerBeamLen = r * 0.6;
         const centerBeamEndX = hexCenterX + Math.cos(centerTurret) * centerBeamLen;
         const centerBeamEndY = hexCenterY + Math.sin(centerTurret) * centerBeamLen;
-        this.graphics.lineStyle(3.5, light, 0.8);
+        this.graphics.lineStyle(3.5, this.WHITE, 1);
         this.graphics.lineBetween(hexCenterX, hexCenterY, centerBeamEndX, centerBeamEndY);
       }
 
@@ -2785,25 +2785,25 @@ export class EntityRenderer {
 
         // Draw leg segments (both use dark team color)
         // Upper leg (slightly thicker)
-        this.graphics.lineStyle(legThickness + 0.5, dark, 0.95);
+        this.graphics.lineStyle(legThickness + 0.5, dark, 1);
         this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
         // Lower leg
-        this.graphics.lineStyle(legThickness, dark, 0.9);
+        this.graphics.lineStyle(legThickness, dark, 1);
         this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
         // Knee joint (light team color)
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(light, 1);
         this.graphics.fillCircle(knee.x, knee.y, legThickness * 0.4);
 
         // Foot (light team color)
-        this.graphics.fillStyle(light, 0.9);
+        this.graphics.fillStyle(light, 1);
         this.graphics.fillCircle(foot.x, foot.y, footSize);
       }
 
       // Body (compact oval shape)
       const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
-      this.graphics.fillStyle(bodyColor, 0.95);
+      this.graphics.fillStyle(bodyColor, 1);
 
       // Draw compact body as rounded hexagon
       const bodyLength = r * 0.6;
@@ -2845,13 +2845,13 @@ export class EntityRenderer {
       this.graphics.fillPoints(bodyPoints, true);
 
       // Inner pattern (dark)
-      this.graphics.fillStyle(dark, 0.8);
+      this.graphics.fillStyle(dark, 1);
       this.drawPolygon(x, y, r * 0.3, 6, bodyRot);
 
       // Central orb base (light glow)
-      this.graphics.fillStyle(light, 0.9);
+      this.graphics.fillStyle(light, 1);
       this.graphics.fillCircle(x, y, r * 0.25);
-      this.graphics.fillStyle(this.WHITE, 0.95);
+      this.graphics.fillStyle(this.WHITE, 1);
       this.graphics.fillCircle(x, y, r * 0.15);
     }
 
@@ -3116,7 +3116,7 @@ export class EntityRenderer {
     const gfxConfig = getGraphicsConfig();
 
     // Draw tread body (dark rectangle with slight rounding effect via outline)
-    this.graphics.fillStyle(treadColor, 0.95);
+    this.graphics.fillStyle(treadColor, 1);
     this.drawOrientedRect(x, y, treadLength, treadWidth, bodyRot);
 
     // Low quality: just draw the rectangle, skip fibers and highlights
