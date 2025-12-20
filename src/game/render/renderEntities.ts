@@ -15,7 +15,7 @@ import {
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
 import { getGraphicsConfig, getRenderMode, setCurrentZoom } from './graphicsSettings';
-import { SONIC_WAVE_DEBUG_ZONE, SONIC_WAVE_ACCEL_EXPONENT, SONIC_WAVE_ANIMATION_SPEED, SONIC_WAVE_COUNT, SONIC_WAVE_OPACITY, SONIC_WAVE_OPACITY_MIN_ZOOM, SONIC_WAVE_AMPLITUDE, SONIC_WAVE_FREQUENCY, SONIC_WAVE_THICKNESS } from '../../config';
+import { SONIC_WAVE_SHOW_ANIMATED, SONIC_WAVE_ACCEL_EXPONENT, SONIC_WAVE_ANIMATION_SPEED, SONIC_WAVE_COUNT, SONIC_WAVE_OPACITY, SONIC_WAVE_OPACITY_MIN_ZOOM, SONIC_WAVE_AMPLITUDE, SONIC_WAVE_FREQUENCY, SONIC_WAVE_THICKNESS } from '../../config';
 
 /**
  * EntitySource - Interface that both WorldState and ClientViewState implement
@@ -2906,8 +2906,8 @@ export class EntityRenderer {
     // Apply animation speed multiplier to time
     const time = (Date.now() / 1000) * SONIC_WAVE_ANIMATION_SPEED;
 
-    // 1. Debug zone: Draw faint pie slice showing the active zone (configurable)
-    if (SONIC_WAVE_DEBUG_ZONE) {
+    // 1. Static zone: Draw faint pie slice when animated waves are disabled
+    if (!SONIC_WAVE_SHOW_ANIMATED) {
       this.graphics.fillStyle(primaryColor, 0.08);
       this.graphics.beginPath();
       this.graphics.moveTo(x, y);
@@ -2958,58 +2958,60 @@ export class EntityRenderer {
       }
     };
 
-    // 2. Draw wavy lines pulling INWARD (from outer edge toward center)
-    // Waves exist in world space; pie slice reveals which portion is visible
-    // Using acceleration exponent: waves move slowly at outside, faster near center
-    const pullSpeed = 0.8; // Base speed multiplier
-    const fullCircleSegments = 64; // Segments for full circle pattern
+    // 2. Draw wavy lines pulling INWARD (only when animated mode is enabled)
+    if (SONIC_WAVE_SHOW_ANIMATED) {
+      // Waves exist in world space; pie slice reveals which portion is visible
+      // Using acceleration exponent: waves move slowly at outside, faster near center
+      const pullSpeed = 0.8; // Base speed multiplier
+      const fullCircleSegments = 64; // Segments for full circle pattern
 
-    for (let i = 0; i < SONIC_WAVE_COUNT; i++) {
-      // Linear phase: 1 at spawn (outside) → 0 at center
-      const linearPhase = (1 - ((time * pullSpeed + i / SONIC_WAVE_COUNT) % 1));
-      // Apply acceleration curve: pow(phase, 1/exp) makes waves linger at outside, rush at center
-      // exponent > 1 = slow outside, fast inside (1/distance effect)
-      const acceleratedPhase = Math.pow(linearPhase, 1 / SONIC_WAVE_ACCEL_EXPONENT);
-      const waveRadius = acceleratedPhase * maxRange;
+      for (let i = 0; i < SONIC_WAVE_COUNT; i++) {
+        // Linear phase: 1 at spawn (outside) → 0 at center
+        const linearPhase = (1 - ((time * pullSpeed + i / SONIC_WAVE_COUNT) % 1));
+        // Apply acceleration curve: pow(phase, 1/exp) makes waves linger at outside, rush at center
+        // exponent > 1 = slow outside, fast inside (1/distance effect)
+        const acceleratedPhase = Math.pow(linearPhase, 1 / SONIC_WAVE_ACCEL_EXPONENT);
+        const waveRadius = acceleratedPhase * maxRange;
 
-      // Skip waves too close to center
-      if (waveRadius < 15) continue;
+        // Skip waves too close to center
+        if (waveRadius < 15) continue;
 
-      // Draw segments of the full-circle wave pattern, but only within the pie slice
-      this.graphics.lineStyle(SONIC_WAVE_THICKNESS, primaryColor, SONIC_WAVE_OPACITY);
+        // Draw segments of the full-circle wave pattern, but only within the pie slice
+        this.graphics.lineStyle(SONIC_WAVE_THICKNESS, primaryColor, SONIC_WAVE_OPACITY);
 
-      let inSlice = false;
-      for (let j = 0; j <= fullCircleSegments; j++) {
-        const t = j / fullCircleSegments;
-        const angle = t * Math.PI * 2; // Fixed world-space angle (0 to 2π)
+        let inSlice = false;
+        for (let j = 0; j <= fullCircleSegments; j++) {
+          const t = j / fullCircleSegments;
+          const angle = t * Math.PI * 2; // Fixed world-space angle (0 to 2π)
 
-        // Sine wave pattern is fixed in world space
-        const sineOffset = Math.sin(t * Math.PI * SONIC_WAVE_FREQUENCY * (fullCircleSegments / 24) + time * 3) * SONIC_WAVE_AMPLITUDE;
-        const r = waveRadius + sineOffset;
+          // Sine wave pattern is fixed in world space
+          const sineOffset = Math.sin(t * Math.PI * SONIC_WAVE_FREQUENCY * (fullCircleSegments / 24) + time * 3) * SONIC_WAVE_AMPLITUDE;
+          const r = waveRadius + sineOffset;
 
-        const px = x + Math.cos(angle) * r;
-        const py = y + Math.sin(angle) * r;
+          const px = x + Math.cos(angle) * r;
+          const py = y + Math.sin(angle) * r;
 
-        const currentInSlice = isAngleInSlice(angle);
+          const currentInSlice = isAngleInSlice(angle);
 
-        if (currentInSlice) {
-          if (!inSlice) {
-            // Starting a new visible segment
-            this.graphics.beginPath();
-            this.graphics.moveTo(px, py);
-            inSlice = true;
-          } else {
-            this.graphics.lineTo(px, py);
+          if (currentInSlice) {
+            if (!inSlice) {
+              // Starting a new visible segment
+              this.graphics.beginPath();
+              this.graphics.moveTo(px, py);
+              inSlice = true;
+            } else {
+              this.graphics.lineTo(px, py);
+            }
+          } else if (inSlice) {
+            // Exiting visible segment - stroke what we have
+            this.graphics.strokePath();
+            inSlice = false;
           }
-        } else if (inSlice) {
-          // Exiting visible segment - stroke what we have
-          this.graphics.strokePath();
-          inSlice = false;
         }
-      }
-      // Stroke any remaining path
-      if (inSlice) {
-        this.graphics.strokePath();
+        // Stroke any remaining path
+        if (inSlice) {
+          this.graphics.strokePath();
+        }
       }
     }
 

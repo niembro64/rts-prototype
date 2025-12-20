@@ -110,11 +110,12 @@ export const FIGHTSTOP_RANGE_MULTIPLIER = 0.9;
 export const WAVE_PULL_STRENGTH = 180;
 
 /**
- * Show the pie-chart debug zone visualization for sonic wave weapons.
- * When true, renders a faint filled pie slice and border showing the exact effect area.
- * Useful for debugging/tuning wave weapon ranges and angles.
+ * Controls sonic wave weapon visual style.
+ * When true: shows animated wavy lines pulling inward (detailed effect)
+ * When false: shows static pizza slice zone indicator
+ * Note: Radial "needle" lines always show regardless of this setting.
  */
-export const SONIC_WAVE_DEBUG_ZONE = false;
+export const SONIC_WAVE_SHOW_ANIMATED = false;
 
 /**
  * Sonic wave inward acceleration exponent.
