@@ -213,7 +213,7 @@ export class EntityRenderer {
         },
         {
           attachOffsetX: radius * 0.1,
-          attachOffsetY: -radius * 0.45,
+          attachOffsetY: -radius * 0.4,
           upperLegLength: upperLen * 0.95,
           lowerLegLength: lowerLen * 0.95,
           snapTriggerAngle: Math.PI * 0.55,
@@ -223,7 +223,7 @@ export class EntityRenderer {
         },
         {
           attachOffsetX: -radius * 0.1,
-          attachOffsetY: -radius * 0.45,
+          attachOffsetY: -radius * 0.4,
           upperLegLength: upperLen * 0.95,
           lowerLegLength: lowerLen * 0.95,
           snapTriggerAngle: Math.PI * 0.85,
@@ -233,7 +233,7 @@ export class EntityRenderer {
         },
         {
           attachOffsetX: -radius * 0.3,
-          attachOffsetY: -radius * 0.4,
+          attachOffsetY: -radius * 0.3,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.99,
@@ -252,8 +252,8 @@ export class EntityRenderer {
       leftSideConfigs = [
         // Front leg - points forward-ish
         {
-          attachOffsetX: radius * 0.5,
-          attachOffsetY: -radius * 0.4,
+          attachOffsetX: radius * 0.2,
+          attachOffsetY: -radius * 0.2,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.5,
@@ -264,7 +264,7 @@ export class EntityRenderer {
         // Middle leg - perpendicular/sideways
         {
           attachOffsetX: 0,
-          attachOffsetY: -radius * 0.45,
+          attachOffsetY: -radius * 0.2,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.8,
@@ -274,8 +274,8 @@ export class EntityRenderer {
         },
         // Back leg - points backward-sideways (still negative like arachnid)
         {
-          attachOffsetX: -radius * 0.5,
-          attachOffsetY: -radius * 0.4,
+          attachOffsetX: -radius * 0.2,
+          attachOffsetY: -radius * 0.2,
           upperLegLength: upperLen,
           lowerLegLength: lowerLen,
           snapTriggerAngle: Math.PI * 0.99,
