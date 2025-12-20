@@ -662,6 +662,10 @@ export class EntityRenderer {
     this.activeLabelCount = 0;
   }
 
+  // Current entity source type for debugging
+  private entitySourceType: 'world' | 'clientView' = 'world';
+  private waypointDebugCounter: number = 0;
+
   /**
    * Set the entity source for rendering
    * Allows switching between WorldState (simulation view) and ClientViewState (client view)
@@ -671,6 +675,7 @@ export class EntityRenderer {
     sourceType: 'world' | 'clientView' = 'world'
   ): void {
     this.entitySource = source;
+    this.entitySourceType = sourceType;
     console.log(`[Render] Entity source switched to: ${sourceType}`);
   }
 
@@ -750,6 +755,16 @@ export class EntityRenderer {
     }
 
     // Render waypoints for selected units (below units)
+    // Debug: log once per second when units are selected
+    this.waypointDebugCounter++;
+    const shouldLogWaypoints = this.waypointDebugCounter % 60 === 0;
+    if (this.selectedUnits.length > 0 && shouldLogWaypoints) {
+      console.log(`[Render] Source: ${this.entitySourceType}, rendering waypoints for ${this.selectedUnits.length} selected units`);
+      for (const entity of this.selectedUnits) {
+        console.log(`[Waypoints] Entity ${entity.id}: actions=${entity.unit?.actions?.length ?? 0}`,
+          entity.unit?.actions?.map(a => ({ type: a.type, x: a.x?.toFixed(0), y: a.y?.toFixed(0) })));
+      }
+    }
     for (const entity of this.selectedUnits) {
       this.renderWaypoints(entity);
     }

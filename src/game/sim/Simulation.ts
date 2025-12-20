@@ -235,8 +235,8 @@ export class Simulation {
     // Update turret rotation (before firing, so weapons fire in turret direction)
     updateTurretRotation(this.world, dtMs);
 
-    // Fire weapons and create projectiles
-    const fireResult = fireWeapons(this.world);
+    // Fire weapons and create projectiles (with recoil force for projectiles)
+    const fireResult = fireWeapons(this.world, this.forceAccumulator);
     for (const proj of fireResult.projectiles) {
       this.world.addEntity(proj);
     }

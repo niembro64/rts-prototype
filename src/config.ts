@@ -56,7 +56,14 @@ export const KNOCKBACK_FORCE_MULTIPLIER = 150;
  * Beams deal small damage per tick, so this scales up the pushback effect.
  * Total beam knockback = damage * KNOCKBACK_FORCE_MULTIPLIER * BEAM_KNOCKBACK_MULTIPLIER
  */
-export const BEAM_KNOCKBACK_MULTIPLIER = 30.0;
+export const BEAM_KNOCKBACK_MULTIPLIER = 1.0;
+
+/**
+ * Recoil multiplier - fraction of knockback force applied back to the firing unit.
+ * 0 = no recoil, 0.5 = 50% of knockback force applied as recoil, 1.0 = equal and opposite.
+ * Applies to projectiles and beams, but NOT sonic wave weapons.
+ */
+export const RECOIL_MULTIPLIER = 1;
 
 /**
  * Default turret acceleration for weapons that don't specify their own.
@@ -351,10 +358,10 @@ export const UNIT_STATS = {
   widow: {
     baseCost: 800,
     hp: 1200,
-    moveSpeed: 500,
+    moveSpeed: 1600,
     collisionRadius: 38,
-    mass: 240,
-    buildRate: 8,
+    mass: 500,
+    buildRate: 20,
   },
   // Insect - Wave AoE unit. Continuous damage with pull, scales with 1/distance.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
@@ -464,11 +471,11 @@ export const WEAPON_STATS = {
 
   // Insect - Continuous pie-slice wave AoE
   insect: {
-    damage: 20, // Base DPS (scales with 1/distance)
+    damage: 1, // Base DPS (scales with 1/distance)
     range: 400,
     cooldown: 0, // Continuous
     turretTurnAccel: 1, // Medium acceleration (rad/sec²)
-    turretDrag: 0.0000001, // Moderate drag → terminal ~1.1 rad/sec
+    turretDrag: 0.1, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.125,
     waveTransitionTime: 2000,
@@ -477,11 +484,11 @@ export const WEAPON_STATS = {
 
   // Widow sonic wave - larger pie-slice wave AoE
   widowSonic: {
-    damage: 20, // Base DPS (scales with 1/distance)
+    damage: 1, // Base DPS (scales with 1/distance)
     range: 600,
     cooldown: 0, // Continuous
     turretTurnAccel: 1, // Medium acceleration (rad/sec²)
-    turretDrag: 0.0000001, // Moderate drag → terminal ~1.1 rad/sec
+    turretDrag: 0.1, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
     waveAngleAttack: Math.PI * 0.125,
     waveTransitionTime: 500,
@@ -498,12 +505,12 @@ export const WEAPON_STATS = {
   },
 
   // Widow - Multi-weapon titan (placeholder, uses widowBeam + widowSonic)
-  widow: {
-    damage: 0,
-    range: 350,
-    cooldown: 0,
-    beamCount: 6,
-  },
+  // widow: {
+  //   damage: 0,
+  //   range: 350,
+  //   cooldown: 0,
+  //   beamCount: 6,
+  // },
 };
 
 // =============================================================================

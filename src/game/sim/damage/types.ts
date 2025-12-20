@@ -77,6 +77,13 @@ export interface DeathContext {
   attackMagnitude: number;
 }
 
+// Recoil info for the source unit (opposite direction of knockback)
+export interface RecoilInfo {
+  sourceEntityId: EntityId;
+  forceX: number;  // Recoil force X (opposite of knockback direction)
+  forceY: number;  // Recoil force Y (opposite of knockback direction)
+}
+
 // Result from damage application
 export interface DamageResult {
   hitEntityIds: EntityId[];
@@ -86,6 +93,8 @@ export interface DamageResult {
   truncationT?: number;
   // Knockback forces to apply to hit entities
   knockbacks: KnockbackInfo[];
+  // Recoil force to apply to the source unit (for projectiles and beams, not waves)
+  recoil?: RecoilInfo;
   // Death context for killed units (for directional explosion effects)
   deathContexts: Map<EntityId, DeathContext>;
 }

@@ -218,6 +218,7 @@ export class DamageSystem {
 
   // Line damage (beams) - sorted by distance, stops at first hit for non-piercing
   // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
+  // Note: Beam recoil is applied continuously in updateProjectiles(), not here
   private applyLineDamage(source: LineDamageSource): DamageResult {
     const result: DamageResult = {
       hitEntityIds: [],
@@ -342,6 +343,7 @@ export class DamageSystem {
   // Swept volume damage (traveling projectiles)
   // Uses line from prevPos to currentPos with projectile radius
   // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
+  // Note: Recoil for traveling projectiles is applied at fire time in fireWeapons(), not here
   private applySweptDamage(source: SweptDamageSource): DamageResult {
     const result: DamageResult = {
       hitEntityIds: [],

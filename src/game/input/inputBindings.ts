@@ -598,21 +598,28 @@ export class InputManager {
   }
 
   private setupWheelEvent(): void {
-    this.scene.input.on('wheel', (_p: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
+    this.scene.input.on('wheel', (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
       const camera = this.scene.cameras.main;
 
-      // Get the world point currently at center of view
-      const centerX = camera.midPoint.x;
-      const centerY = camera.midPoint.y;
+      // Get cursor position in world coordinates before zoom
+      const worldPointBefore = camera.getWorldPoint(pointer.x, pointer.y);
 
-      // Apply exponential zoom (multiply/divide by factor for consistent feel)
+      // Calculate new zoom level
       const newZoom = dy > 0
         ? camera.zoom / ZOOM_FACTOR  // Scroll down = zoom out
         : camera.zoom * ZOOM_FACTOR; // Scroll up = zoom in
-      camera.zoom = Phaser.Math.Clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
+      const clampedZoom = Phaser.Math.Clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
 
-      // Re-center on the same world point (camera bounds handle constraints)
-      camera.centerOn(centerX, centerY);
+      // Apply the new zoom
+      camera.zoom = clampedZoom;
+
+      // Adjust scroll to keep the world point under the cursor
+      const cursorScreenX = pointer.x - camera.width / 2;
+      const cursorScreenY = pointer.y - camera.height / 2;
+
+      // New scroll position that keeps the world point under the cursor
+      camera.scrollX = worldPointBefore.x - cursorScreenX / clampedZoom;
+      camera.scrollY = worldPointBefore.y - cursorScreenY / clampedZoom;
     });
   }
 

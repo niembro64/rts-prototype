@@ -4,7 +4,7 @@ import { PLAYER_COLORS } from './types';
 import { DamageSystem } from './damage';
 import type { DeathContext } from './damage/types';
 import type { ForceAccumulator } from './ForceAccumulator';
-import { WAVE_PULL_STRENGTH } from '../../config';
+import { WAVE_PULL_STRENGTH, KNOCKBACK_FORCE_MULTIPLIER, BEAM_KNOCKBACK_MULTIPLIER, RECOIL_MULTIPLIER } from '../../config';
 import type { WeaponAudioId } from '../audio/AudioManager';
 import { spatialGrid } from './SpatialGrid';
 import { beamIndex } from './BeamIndex';
@@ -428,7 +428,7 @@ export function updateWeaponFiringState(world: WorldState): void {
 
 // Fire weapons at targets - unified for all units
 // Each weapon fires independently based on its own state
-export function fireWeapons(world: WorldState): FireWeaponsResult {
+export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulator): FireWeaponsResult {
   const newProjectiles: Entity[] = [];
   const audioEvents: AudioEvent[] = [];
 
@@ -546,6 +546,7 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
             beam.projectile.sourceEntityId = unit.id;
           }
           newProjectiles.push(beam);
+          // Note: Beam recoil is applied continuously in applyLineDamage while dealing damage
         } else if (config.projectileSpeed !== undefined) {
           // Create traveling projectile
           const speed = config.projectileSpeed;
@@ -560,6 +561,12 @@ export function fireWeapons(world: WorldState): FireWeaponsResult {
             'traveling'
           );
           newProjectiles.push(projectile);
+
+          // Apply recoil to firing unit (opposite direction of projectile)
+          if (forceAccumulator && RECOIL_MULTIPLIER > 0) {
+            const recoilForce = config.damage * KNOCKBACK_FORCE_MULTIPLIER * RECOIL_MULTIPLIER;
+            forceAccumulator.addForce(unit.id, -fireCos * recoilForce, -fireSin * recoilForce, 'recoil');
+          }
         }
       }
     }
@@ -992,6 +999,13 @@ export function checkProjectileCollisions(
       const beamDuration = config.beamDuration ?? 150;
       const tickDamage = (config.damage / beamDuration) * dtMs;
 
+      // Calculate beam direction for recoil (applied every frame, regardless of hits)
+      const beamDx = endX - startX;
+      const beamDy = endY - startY;
+      const beamLen = Math.sqrt(beamDx * beamDx + beamDy * beamDy);
+      const beamDirX = beamLen > 0 ? beamDx / beamLen : 0;
+      const beamDirY = beamLen > 0 ? beamDy / beamLen : 0;
+
       // Apply line damage
       const result = damageSystem.applyDamage({
         type: 'line',
@@ -1008,8 +1022,20 @@ export function checkProjectileCollisions(
         maxHits: config.piercing ? Infinity : 1,
       });
 
-      // Apply knockback from beam
+      // Apply knockback from beam (only when hitting targets)
       applyKnockbackForces(result.knockbacks, forceAccumulator);
+
+      // Apply recoil to firing unit every frame the beam is active (not just on hit)
+      // Recoil is opposite to beam direction, scaled by damage and knockback multipliers
+      if (forceAccumulator && RECOIL_MULTIPLIER > 0) {
+        const recoilForce = tickDamage * KNOCKBACK_FORCE_MULTIPLIER * BEAM_KNOCKBACK_MULTIPLIER * RECOIL_MULTIPLIER;
+        forceAccumulator.addForce(
+          proj.sourceEntityId,
+          -beamDirX * recoilForce,
+          -beamDirY * recoilForce,
+          'recoil'
+        );
+      }
 
       // Handle hit audio events (skip for continuous beams)
       const isContinuousBeam = config.cooldown === 0;
@@ -1122,6 +1148,7 @@ export function checkProjectileCollisions(
 
       // Apply knockback from projectile hit
       applyKnockbackForces(result.knockbacks, forceAccumulator);
+      // Note: Recoil for traveling projectiles is applied at fire time in fireWeapons()
 
       // Track hits
       for (const hitId of result.hitEntityIds) {
