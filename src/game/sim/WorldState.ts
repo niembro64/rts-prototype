@@ -51,10 +51,44 @@ export class WorldState {
   public readonly mapWidth: number;
   public readonly mapHeight: number;
 
+  // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
+  // These caches avoid creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
+  // Invalidated when entities are added/removed
+  private cachedUnits: Entity[] = [];
+  private cachedBuildings: Entity[] = [];
+  private cachedProjectiles: Entity[] = [];
+  private cachesDirty: boolean = true;
+
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
     this.rng = new SeededRNG(seed);
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+  }
+
+  // Rebuild entity caches if dirty (called once per frame typically)
+  private rebuildCachesIfNeeded(): void {
+    if (!this.cachesDirty) return;
+
+    // Clear and rebuild - reuse existing arrays to avoid allocation
+    this.cachedUnits.length = 0;
+    this.cachedBuildings.length = 0;
+    this.cachedProjectiles.length = 0;
+
+    for (const entity of this.entities.values()) {
+      switch (entity.type) {
+        case 'unit':
+          this.cachedUnits.push(entity);
+          break;
+        case 'building':
+          this.cachedBuildings.push(entity);
+          break;
+        case 'projectile':
+          this.cachedProjectiles.push(entity);
+          break;
+      }
+    }
+
+    this.cachesDirty = false;
   }
 
   // Get unit cap per player (total units / number of players)
@@ -92,11 +126,13 @@ export class WorldState {
   // Add entity to world
   addEntity(entity: Entity): void {
     this.entities.set(entity.id, entity);
+    this.cachesDirty = true; // Invalidate caches
   }
 
   // Remove entity from world
   removeEntity(id: EntityId): void {
     this.entities.delete(id);
+    this.cachesDirty = true; // Invalidate caches
   }
 
   // Get entity by ID
@@ -109,24 +145,36 @@ export class WorldState {
     return Array.from(this.entities.values());
   }
 
-  // Get entities by type
+  // Get entities by type (uses cache for common types)
   getEntitiesByType(type: EntityType): Entity[] {
-    return this.getAllEntities().filter((e) => e.type === type);
+    switch (type) {
+      case 'unit':
+        return this.getUnits();
+      case 'building':
+        return this.getBuildings();
+      case 'projectile':
+        return this.getProjectiles();
+      default:
+        return this.getAllEntities().filter((e) => e.type === type);
+    }
   }
 
-  // Get all units
+  // Get all units (cached - DO NOT MODIFY returned array)
   getUnits(): Entity[] {
-    return this.getEntitiesByType('unit');
+    this.rebuildCachesIfNeeded();
+    return this.cachedUnits;
   }
 
-  // Get all buildings
+  // Get all buildings (cached - DO NOT MODIFY returned array)
   getBuildings(): Entity[] {
-    return this.getEntitiesByType('building');
+    this.rebuildCachesIfNeeded();
+    return this.cachedBuildings;
   }
 
-  // Get all projectiles
+  // Get all projectiles (cached - DO NOT MODIFY returned array)
   getProjectiles(): Entity[] {
-    return this.getEntitiesByType('projectile');
+    this.rebuildCachesIfNeeded();
+    return this.cachedProjectiles;
   }
 
   // Get units by player

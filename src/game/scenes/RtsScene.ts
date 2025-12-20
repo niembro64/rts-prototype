@@ -1242,35 +1242,41 @@ export class RtsScene extends Phaser.Scene {
       entity.transform.x = matterBody.position.x;
       entity.transform.y = matterBody.position.y;
 
-      // Get the direction unit wants to move (stored as velocityX/Y, but we treat as direction)
+      // Get the direction unit wants to move (stored as velocityX/Y, normalized direction)
       const dirX = entity.unit.velocityX ?? 0;
       const dirY = entity.unit.velocityY ?? 0;
       const dirMag = Math.sqrt(dirX * dirX + dirY * dirY);
 
-      // Update rotation to face thrust direction (where unit is trying to go)
+      // Update rotation to face movement direction
       if (dirMag > 0.01) {
         entity.transform.rotation = Math.atan2(dirY, dirX);
       }
 
-      // Calculate thrust force toward waypoint
-      // Force is proportional to moveSpeed - faster units have more thrust
-      let thrustX = 0;
-      let thrustY = 0;
+      // Pure Newtonian physics: F = m × a
+      // Thrust force = direction × moveSpeed × mass / MATTER_FORCE_SCALE
+      // The scale factor converts game units (pixels, mass) to Matter.js force units
+      // Heavy units apply more force but get same acceleration (a = F/m)
+      // During collisions, heavy units overpower light units due to higher force
+      const physicsMass = entity.unit.mass * UNIT_MASS_MULTIPLIER;
+      let thrustForceX = 0;
+      let thrustForceY = 0;
       if (dirMag > 0) {
-        // Normalize direction and apply thrust based on unit's moveSpeed
-        const thrustStrength = entity.unit.moveSpeed * 0.0003; // Tunable thrust factor
-        thrustX = (dirX / dirMag) * thrustStrength;
-        thrustY = (dirY / dirMag) * thrustStrength;
+        // Matter.js expects small force values - divide by scale factor
+        // This is a unit conversion, not a tuning parameter
+        const MATTER_FORCE_SCALE = 150000;
+        const thrustMagnitude = (entity.unit.moveSpeed * physicsMass) / MATTER_FORCE_SCALE;
+        thrustForceX = (dirX / dirMag) * thrustMagnitude;
+        thrustForceY = (dirY / dirMag) * thrustMagnitude;
       }
 
-      // Get external forces (like wave pull) from the accumulator
+      // Get external forces (like wave pull, knockback) from the accumulator
       const externalForce = forceAccumulator.getFinalForce(entity.id);
-      const externalFx = (externalForce?.fx ?? 0) / 3600; // Scale down significantly
+      const externalFx = (externalForce?.fx ?? 0) / 3600; // Scale down to match physics scale
       const externalFy = (externalForce?.fy ?? 0) / 3600;
 
       // Combine thrust and external forces
-      let totalForceX = thrustX + externalFx;
-      let totalForceY = thrustY + externalFy;
+      let totalForceX = thrustForceX + externalFx;
+      let totalForceY = thrustForceY + externalFy;
 
       // Safety: skip NaN/Infinity values
       if (!Number.isFinite(totalForceX) || !Number.isFinite(totalForceY)) {

@@ -79,7 +79,8 @@ const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
 
 // Current settings
-let currentQuality: GraphicsQuality = 'high';
+// Default to 'low' for performance - 'high' and 'max' explosion rendering is extremely expensive
+let currentQuality: GraphicsQuality = 'low';
 let currentRenderMode: RenderMode = 'window';
 let currentZoom: number = 1.0; // Updated by renderer
 

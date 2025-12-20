@@ -57,7 +57,44 @@ export class ClientViewState {
   // Client time when we started (for timestamp calculation)
   private startTime: number = performance.now();
 
+  // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
+  // Avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
+  private cachedUnits: Entity[] = [];
+  private cachedBuildings: Entity[] = [];
+  private cachedProjectiles: Entity[] = [];
+  private cachesDirty: boolean = true;
+
   constructor() {}
+
+  // Mark caches as needing rebuild
+  private invalidateCaches(): void {
+    this.cachesDirty = true;
+  }
+
+  // Rebuild caches if dirty
+  private rebuildCachesIfNeeded(): void {
+    if (!this.cachesDirty) return;
+
+    this.cachedUnits.length = 0;
+    this.cachedBuildings.length = 0;
+    this.cachedProjectiles.length = 0;
+
+    for (const entity of this.entities.values()) {
+      switch (entity.type) {
+        case 'unit':
+          this.cachedUnits.push(entity);
+          break;
+        case 'building':
+          this.cachedBuildings.push(entity);
+          break;
+        case 'projectile':
+          this.cachedProjectiles.push(entity);
+          break;
+      }
+    }
+
+    this.cachesDirty = false;
+  }
 
   /**
    * Get current client time in ms
@@ -209,6 +246,9 @@ export class ClientViewState {
         this.entities.delete(id);
       }
     }
+
+    // Invalidate caches since entities may have changed
+    this.invalidateCaches();
   }
 
   /**
@@ -273,6 +313,9 @@ export class ClientViewState {
         this.entities.delete(id);
       }
     }
+
+    // Invalidate caches since entities may have changed
+    this.invalidateCaches();
   }
 
   /**
@@ -658,16 +701,22 @@ export class ClientViewState {
     return Array.from(this.entities.values());
   }
 
+  // Get all units (cached - DO NOT MODIFY returned array)
   getUnits(): Entity[] {
-    return this.getAllEntities().filter(e => e.type === 'unit');
+    this.rebuildCachesIfNeeded();
+    return this.cachedUnits;
   }
 
+  // Get all buildings (cached - DO NOT MODIFY returned array)
   getBuildings(): Entity[] {
-    return this.getAllEntities().filter(e => e.type === 'building');
+    this.rebuildCachesIfNeeded();
+    return this.cachedBuildings;
   }
 
+  // Get all projectiles (cached - DO NOT MODIFY returned array)
   getProjectiles(): Entity[] {
-    return this.getAllEntities().filter(e => e.type === 'projectile');
+    this.rebuildCachesIfNeeded();
+    return this.cachedProjectiles;
   }
 
   getSprayTargets(): SprayTarget[] {
