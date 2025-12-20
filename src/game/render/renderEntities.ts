@@ -2137,10 +2137,6 @@ export class EntityRenderer {
         const beamEndY = y + Math.sin(turretRot) * beamLen;
         this.graphics.lineStyle(3.5, light, 0.8);
         this.graphics.lineBetween(x, y, beamEndX, beamEndY);
-
-        // Emitter tip glow
-        this.graphics.fillStyle(this.WHITE, 0.9);
-        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
       }
     }
   }
@@ -2310,10 +2306,6 @@ export class EntityRenderer {
         const endY = y + Math.sin(turretRot) * turretLen;
         this.graphics.lineStyle(6, light, 0.9);
         this.graphics.lineBetween(x, y, endX, endY);
-
-        // Muzzle ring (white)
-        this.graphics.lineStyle(2, this.WHITE, 0.95);
-        this.graphics.strokeCircle(endX, endY, r * 0.12);
       }
     }
   }
@@ -2403,10 +2395,6 @@ export class EntityRenderer {
         const endY = y + Math.sin(turretRot) * turretLen;
         this.graphics.lineStyle(2.5, this.GRAY, 0.95);
         this.graphics.lineBetween(x, y, endX, endY);
-
-        // Muzzle tip (light)
-        this.graphics.fillStyle(light, 0.9);
-        this.graphics.fillCircle(endX, endY, r * 0.08);
       }
     }
   }
@@ -2488,10 +2476,6 @@ export class EntityRenderer {
         const endY = y + Math.sin(turretRot) * turretLen;
         this.graphics.lineStyle(7, light, 0.9);
         this.graphics.lineBetween(x, y, endX, endY);
-
-        // Muzzle brake (dark)
-        this.graphics.fillStyle(dark, 1);
-        this.graphics.fillCircle(endX, endY, r * 0.2);
       }
     }
   }
@@ -2720,10 +2704,6 @@ export class EntityRenderer {
         const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
         this.graphics.lineStyle(2.5, light, 0.8);
         this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
-
-        // Emitter tip glow
-        this.graphics.fillStyle(this.WHITE, 0.8);
-        this.graphics.fillCircle(beamEndX, beamEndY, r * 0.06);
       }
 
       // Center beam emitter (weapon index 6) - same style as outer beams but slightly larger
@@ -2743,10 +2723,6 @@ export class EntityRenderer {
         const centerBeamEndY = hexCenterY + Math.sin(centerTurret) * centerBeamLen;
         this.graphics.lineStyle(3.5, light, 0.8);
         this.graphics.lineBetween(hexCenterX, hexCenterY, centerBeamEndX, centerBeamEndY);
-
-        // Center emitter tip glow - slightly larger
-        this.graphics.fillStyle(this.WHITE, 0.9);
-        this.graphics.fillCircle(centerBeamEndX, centerBeamEndY, r * 0.08);
       }
 
       // Sonic wave weapon at center (weapon index 7: after 6 vertex beams + 1 center beam)
