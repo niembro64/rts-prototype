@@ -600,26 +600,32 @@ export class InputManager {
   private setupWheelEvent(): void {
     this.scene.input.on('wheel', (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
       const camera = this.scene.cameras.main;
-
-      // Get cursor position in world coordinates before zoom
-      const worldPointBefore = camera.getWorldPoint(pointer.x, pointer.y);
+      const oldZoom = camera.zoom;
 
       // Calculate new zoom level
       const newZoom = dy > 0
-        ? camera.zoom / ZOOM_FACTOR  // Scroll down = zoom out
-        : camera.zoom * ZOOM_FACTOR; // Scroll up = zoom in
+        ? oldZoom / ZOOM_FACTOR  // Scroll down = zoom out
+        : oldZoom * ZOOM_FACTOR; // Scroll up = zoom in
       const clampedZoom = Phaser.Math.Clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
 
-      // Apply the new zoom
+      // Skip if zoom didn't change (at min/max)
+      if (clampedZoom === oldZoom) return;
+
+      // Cursor offset from screen center (Phaser camera is centered by default)
+      const cursorOffsetX = pointer.x - camera.width / 2;
+      const cursorOffsetY = pointer.y - camera.height / 2;
+
+      // Calculate world point under cursor with current zoom
+      // Formula: worldX = scrollX + cursorOffset / zoom
+      const worldX = camera.scrollX + cursorOffsetX / oldZoom;
+      const worldY = camera.scrollY + cursorOffsetY / oldZoom;
+
+      // Calculate new scroll to keep same world point under cursor after zoom
+      // We want: worldX = newScrollX + cursorOffset / newZoom
+      // So: newScrollX = worldX - cursorOffset / newZoom
+      camera.scrollX = worldX - cursorOffsetX / clampedZoom;
+      camera.scrollY = worldY - cursorOffsetY / clampedZoom;
       camera.zoom = clampedZoom;
-
-      // Adjust scroll to keep the world point under the cursor
-      const cursorScreenX = pointer.x - camera.width / 2;
-      const cursorScreenY = pointer.y - camera.height / 2;
-
-      // New scroll position that keeps the world point under the cursor
-      camera.scrollX = worldPointBefore.x - cursorScreenX / clampedZoom;
-      camera.scrollY = worldPointBefore.y - cursorScreenY / clampedZoom;
     });
   }
 
