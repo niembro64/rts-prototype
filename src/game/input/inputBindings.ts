@@ -4,7 +4,7 @@ import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget
 import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
-import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR } from '../../config';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER } from '../../config';
 
 /**
  * InputEntitySource - Interface for entity queries used by InputManager
@@ -546,8 +546,9 @@ export class InputManager {
       }
 
       if (this.state.isPanningCamera) {
-        const dx = this.state.panStartX - p.x;
-        const dy = this.state.panStartY - p.y;
+        // Camera moves in the direction of mouse movement (like Beyond All Reason)
+        const dx = (p.x - this.state.panStartX) * CAMERA_PAN_MULTIPLIER;
+        const dy = (p.y - this.state.panStartY) * CAMERA_PAN_MULTIPLIER;
         const camera = this.scene.cameras.main;
         camera.scrollX = this.state.cameraStartX + dx / camera.zoom;
         camera.scrollY = this.state.cameraStartY + dy / camera.zoom;

@@ -610,6 +610,9 @@ export const ZOOM_FACTOR = 1.15;
 /** Initial zoom level when game starts */
 export const ZOOM_INITIAL = 0.4;
 
+/** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
+export const CAMERA_PAN_MULTIPLIER = 6.0;
+
 /**
  * World padding as a percentage of map dimensions.
  * 0.5 = 50% padding on each side (left, right, top, bottom).
