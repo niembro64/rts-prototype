@@ -255,7 +255,7 @@ export const COMMANDER_STATS = {
  * 1.0 = use raw mass values from UNIT_STATS
  * 5.0 = units feel 5x heavier (similar to old demo feel)
  */
-export const UNIT_MASS_MULTIPLIER = 5.0;
+export const UNIT_MASS_MULTIPLIER = 10.0;
 
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
@@ -358,7 +358,7 @@ export const UNIT_STATS = {
   widow: {
     baseCost: 800,
     hp: 1200,
-    moveSpeed: 1600,
+    moveSpeed: 200,
     collisionRadius: 38,
     mass: 500,
     buildRate: 20,

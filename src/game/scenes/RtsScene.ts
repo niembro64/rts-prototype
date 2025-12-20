@@ -1252,19 +1252,20 @@ export class RtsScene extends Phaser.Scene {
         entity.transform.rotation = Math.atan2(dirY, dirX);
       }
 
-      // Pure Newtonian physics: F = m × a
-      // Thrust force = direction × moveSpeed × mass / MATTER_FORCE_SCALE
-      // The scale factor converts game units (pixels, mass) to Matter.js force units
-      // Heavy units apply more force but get same acceleration (a = F/m)
-      // During collisions, heavy units overpower light units due to higher force
-      const physicsMass = entity.unit.mass * UNIT_MASS_MULTIPLIER;
+      // Pure Newtonian physics: F = m × a, so a = F / m
+      // Thrust force uses unit's base mass (NOT multiplied by UNIT_MASS_MULTIPLIER)
+      // Body mass = unit.mass × UNIT_MASS_MULTIPLIER (set in createUnitBody)
+      // Acceleration = thrust / bodyMass = (moveSpeed × mass) / (mass × UNIT_MASS_MULTIPLIER)
+      //              = moveSpeed / UNIT_MASS_MULTIPLIER
+      // This way UNIT_MASS_MULTIPLIER actually affects acceleration (higher = slower)
+      // and heavy units still push light units in collisions due to scaled body mass
       let thrustForceX = 0;
       let thrustForceY = 0;
       if (dirMag > 0) {
         // Matter.js expects small force values - divide by scale factor
-        // This is a unit conversion, not a tuning parameter
+        // Use base mass (not multiplied) so UNIT_MASS_MULTIPLIER affects acceleration
         const MATTER_FORCE_SCALE = 150000;
-        const thrustMagnitude = (entity.unit.moveSpeed * physicsMass) / MATTER_FORCE_SCALE;
+        const thrustMagnitude = (entity.unit.moveSpeed * entity.unit.mass) / MATTER_FORCE_SCALE;
         thrustForceX = (dirX / dirMag) * thrustMagnitude;
         thrustForceY = (dirY / dirMag) * thrustMagnitude;
       }
