@@ -3102,7 +3102,7 @@ export class EntityRenderer {
   }
 
   // Draw an animated tread (track system) at the given position
-  // treadRotation is the animation value from the Tread class
+  // treadRotation is the wheel rotation in radians from the Tread class
   private drawAnimatedTread(
     x: number,
     y: number,
@@ -3114,55 +3114,53 @@ export class EntityRenderer {
     lineColor: number = this.GRAY
   ): void {
     const gfxConfig = getGraphicsConfig();
+    const cos = Math.cos(bodyRot);
+    const sin = Math.sin(bodyRot);
 
-    // Draw tread body (dark rectangle with slight rounding effect via outline)
+    // Draw tread body (dark rectangle)
     this.graphics.fillStyle(treadColor, 1);
     this.drawOrientedRect(x, y, treadLength, treadWidth, bodyRot);
 
-    // Low quality: just draw the rectangle, skip fibers and highlights
+    // Low quality: just draw the rectangle, skip tracks
     if (!gfxConfig.treadsAnimated) {
       return;
     }
 
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
+    // === TRACK DIMENSIONS ===
+    // Track spacing scales slightly with tread size but has min/max bounds
+    const TRACK_SPACING = Math.max(4, Math.min(6, treadLength / 8));
+    const TRACK_THICKNESS = 1;
+    const EDGE_INSET = 1; // Small inset from tread edges
 
-    // Draw a subtle edge highlight on top edge
-    this.graphics.lineStyle(1, lineColor, 0.3);
-    const halfLen = treadLength / 2;
-    const halfWid = treadWidth / 2;
-    const topEdgeX1 = x + cos * halfLen - sin * halfWid;
-    const topEdgeY1 = y + sin * halfLen + cos * halfWid;
-    const topEdgeX2 = x - cos * halfLen - sin * halfWid;
-    const topEdgeY2 = y - sin * halfLen + cos * halfWid;
-    this.graphics.lineBetween(topEdgeX1, topEdgeY1, topEdgeX2, topEdgeY2);
-
-    // Fixed fiber spacing - consistent across all tread sizes
-    const FIBER_SPACING = 6;  // Spacing between fibers in pixels
-    const FIBER_THICKNESS = 2; // Thin fibers for cleaner look
-
-    // Calculate animation offset based on tread rotation
+    // Convert wheel rotation to linear track movement
+    // Wheel radius is proportional to tread width (matches Tread class: ~0.35 * treadWidth)
     const wheelRadius = treadWidth * 0.35;
-    const linearOffset = treadRotation * wheelRadius;
-    const normalizedOffset = ((linearOffset % FIBER_SPACING) + FIBER_SPACING) % FIBER_SPACING;
+    const linearDistance = treadRotation * wheelRadius;
 
-    // Calculate how many fibers fit in the tread length
-    const visibleHalfLen = treadLength * 0.42;  // Slightly inset from edges
-    const numFibers = Math.ceil(treadLength / FIBER_SPACING) + 2;
+    // Normalize to track spacing for seamless looping
+    const animOffset = ((linearDistance % TRACK_SPACING) + TRACK_SPACING) % TRACK_SPACING;
 
-    // Draw animated tread fibers (thin lines for grip texture)
-    this.graphics.lineStyle(FIBER_THICKNESS, lineColor, 0.7);
-    for (let i = 0; i < numFibers; i++) {
-      let lineOffset = (i - numFibers / 2) * FIBER_SPACING + normalizedOffset;
+    // Calculate visible area for tracks
+    const halfLen = treadLength / 2 - EDGE_INSET;
+    const halfWid = treadWidth / 2 - EDGE_INSET;
 
-      // Wrap fibers that go outside visible range
-      while (lineOffset > visibleHalfLen) lineOffset -= FIBER_SPACING;
-      while (lineOffset < -visibleHalfLen) lineOffset += FIBER_SPACING;
+    // Calculate number of tracks needed
+    const numTracks = Math.ceil(treadLength / TRACK_SPACING) + 1;
 
-      const lx = x + cos * lineOffset;
-      const ly = y + sin * lineOffset;
-      const perpX = -sin * treadWidth * 0.4;
-      const perpY = cos * treadWidth * 0.4;
+    // Draw track lines
+    this.graphics.lineStyle(TRACK_THICKNESS, lineColor, 1);
+    for (let i = 0; i < numTracks; i++) {
+      const trackPos = -halfLen + animOffset + i * TRACK_SPACING;
+
+      // Skip tracks outside visible area
+      if (trackPos < -halfLen || trackPos > halfLen) continue;
+
+      // Calculate track line endpoints
+      const lx = x + cos * trackPos;
+      const ly = y + sin * trackPos;
+      const perpX = -sin * halfWid;
+      const perpY = cos * halfWid;
+
       this.graphics.lineBetween(lx - perpX, ly - perpY, lx + perpX, ly + perpY);
     }
   }
