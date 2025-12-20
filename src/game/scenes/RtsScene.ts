@@ -111,6 +111,11 @@ export class RtsScene extends Phaser.Scene {
   private frameDeltaHistory: number[] = [];
   private readonly FRAME_HISTORY_SIZE = 1000;
 
+  // Fixed timestep physics - ensures consistent physics regardless of framerate
+  private physicsAccumulator: number = 0;
+  private readonly PHYSICS_TIMESTEP = 1000 / 60; // 60Hz fixed physics (16.67ms)
+  private readonly MAX_PHYSICS_STEPS = 4; // Cap steps per frame to prevent spiral of death
+
   // UI update throttling - avoid updating every frame
   private selectionDirty: boolean = true;
   private economyUpdateTimer: number = 0;
@@ -923,14 +928,34 @@ export class RtsScene extends Phaser.Scene {
         }
       }
 
-      // Update simulation (calculates velocities) - ALWAYS runs for host
-      // Note: In client view mode, selection commands have been removed from queue above
-      this.simulation.update(delta);
+      // === FIXED TIMESTEP PHYSICS ===
+      // Accumulate frame time and run physics in fixed steps
+      // This ensures physics behaves identically regardless of framerate
+      this.physicsAccumulator += delta;
 
-      // Apply calculated velocities to Matter bodies
-      this.applyUnitVelocities();
+      // Cap accumulated time to prevent "spiral of death" when running slow
+      const maxAccumulator = this.PHYSICS_TIMESTEP * this.MAX_PHYSICS_STEPS;
+      if (this.physicsAccumulator > maxAccumulator) {
+        this.physicsAccumulator = maxAccumulator;
+      }
 
-      // Background mode: continuously spawn units
+      // Run physics in fixed timestep chunks
+      let physicsSteps = 0;
+      while (this.physicsAccumulator >= this.PHYSICS_TIMESTEP && physicsSteps < this.MAX_PHYSICS_STEPS) {
+        // Update simulation (calculates velocities) with fixed timestep
+        this.simulation.update(this.PHYSICS_TIMESTEP);
+
+        // Apply forces to Matter bodies
+        this.applyUnitVelocities();
+
+        // Step Matter.js physics with fixed timestep
+        this.matter.world.step(this.PHYSICS_TIMESTEP);
+
+        this.physicsAccumulator -= this.PHYSICS_TIMESTEP;
+        physicsSteps++;
+      }
+
+      // Background mode: continuously spawn units (uses real delta for timing)
       if (this.backgroundMode) {
         this.backgroundSpawnTimer += delta;
         if (this.backgroundSpawnTimer >= this.BACKGROUND_SPAWN_INTERVAL) {

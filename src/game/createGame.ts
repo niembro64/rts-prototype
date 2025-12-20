@@ -54,6 +54,7 @@ export function createGame(config: GameConfig): GameInstance {
       matter: {
         gravity: { x: 0, y: 0 },
         debug: false,
+        autoUpdate: false, // We manually step physics for fixed timestep
       },
     },
     scene: [RtsScene],

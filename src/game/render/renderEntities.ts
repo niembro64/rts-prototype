@@ -2148,7 +2148,7 @@ export class EntityRenderer {
     r: number,
     bodyRot: number,
     base: number,
-    light: number,
+    _light: number,
     dark: number,
     selected: boolean,
     entity: Entity
@@ -2234,7 +2234,7 @@ export class EntityRenderer {
     r: number,
     bodyRot: number,
     base: number,
-    light: number,
+    _light: number,
     dark: number,
     selected: boolean,
     entity: Entity
@@ -2406,8 +2406,8 @@ export class EntityRenderer {
     r: number,
     bodyRot: number,
     base: number,
-    light: number,
-    dark: number,
+    _light: number,
+    _dark: number,
     selected: boolean,
     entity: Entity
   ): void {
