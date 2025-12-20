@@ -543,7 +543,7 @@ export const UNIT_TARGETING_MODES = {
   // Multi-weapon titan
   widow: {
     beam: 'sticky' as const,        // 6 vertex beams lock onto targets
-    centerBeam: 'sticky' as const,  // Center beam locks onto target
+    centerBeam: 'nearest' as const,  // Center beam locks onto target
     sonic: 'nearest' as const,      // Sonic wave tracks nearest threat
     returnToForward: false,         // Widow turrets stay where they are
   },
