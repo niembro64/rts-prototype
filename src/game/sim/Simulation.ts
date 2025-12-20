@@ -22,6 +22,8 @@ import { factoryProductionSystem } from './factoryProduction';
 import { getWeaponConfig } from './weapons';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
+import { spatialGrid } from './SpatialGrid';
+import { beamIndex } from './BeamIndex';
 
 // Fixed simulation timestep (60 Hz)
 export const FIXED_TIMESTEP = 1000 / 60;
@@ -142,6 +144,14 @@ export class Simulation {
       }
     }
 
+    // Rebuild spatial grid for this frame (PERFORMANCE CRITICAL)
+    // This enables O(1) range queries instead of O(n) scans
+    this.rebuildSpatialGrid();
+
+    // Rebuild beam index for this frame (PERFORMANCE CRITICAL)
+    // This enables O(1) beam lookups instead of O(projectiles) scans
+    beamIndex.rebuild(this.world.getProjectiles(), FIXED_TIMESTEP);
+
     // Clear force accumulator for this frame
     this.forceAccumulator.clear();
 
@@ -161,6 +171,25 @@ export class Simulation {
     this.checkGameOver();
 
     this.world.incrementTick();
+  }
+
+  // Rebuild the spatial grid with current entity positions
+  private rebuildSpatialGrid(): void {
+    spatialGrid.clear();
+
+    // Add all units to spatial grid
+    for (const unit of this.world.getUnits()) {
+      if (unit.unit && unit.unit.hp > 0) {
+        spatialGrid.addUnit(unit);
+      }
+    }
+
+    // Add all buildings to spatial grid
+    for (const building of this.world.getBuildings()) {
+      if (building.building && building.building.hp > 0) {
+        spatialGrid.addBuilding(building);
+      }
+    }
   }
 
   // Check for game over - last commander standing wins

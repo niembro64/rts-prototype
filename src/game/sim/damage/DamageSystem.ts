@@ -1,5 +1,6 @@
 // Unified Damage System
 // Handles all damage types consistently: line (beams), swept (projectiles), area (splash/wave)
+// PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
@@ -13,6 +14,7 @@ import type {
   DeathContext,
 } from './types';
 import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_KNOCKBACK_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
+import { spatialGrid } from '../SpatialGrid';
 
 // Normalize angle to [-PI, PI]
 function normalizeAngle(angle: number): number {
@@ -160,6 +162,7 @@ export class DamageSystem {
 
   // Find first obstruction along a line (for beam truncation)
   // Returns the parametric T value (0-1) and entity ID of first hit
+  // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
   findLineObstruction(
     startX: number, startY: number,
     endX: number, endY: number,
@@ -169,8 +172,12 @@ export class DamageSystem {
     let closestT: number | null = null;
     let closestEntityId: EntityId | null = null;
 
+    // PERFORMANCE: Query only entities near the line using spatial grid
+    const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, endX, endY, lineWidth + 50);
+    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, endX, endY, lineWidth + 100);
+
     // Check units
-    for (const unit of this.world.getUnits()) {
+    for (const unit of nearbyUnits) {
       if (unit.id === sourceEntityId) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
@@ -187,7 +194,7 @@ export class DamageSystem {
     }
 
     // Check buildings
-    for (const building of this.world.getBuildings()) {
+    for (const building of nearbyBuildings) {
       if (!building.building || building.building.hp <= 0) continue;
 
       const bWidth = building.building.width;
@@ -210,6 +217,7 @@ export class DamageSystem {
   }
 
   // Line damage (beams) - sorted by distance, stops at first hit for non-piercing
+  // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
   private applyLineDamage(source: LineDamageSource): DamageResult {
     const result: DamageResult = {
       hitEntityIds: [],
@@ -229,8 +237,16 @@ export class DamageSystem {
     // Collect all hits with their T values
     const hits: HitInfo[] = [];
 
+    // PERFORMANCE: Query only entities near the line using spatial grid
+    const nearbyUnits = spatialGrid.queryUnitsAlongLine(
+      source.startX, source.startY, source.endX, source.endY, source.width + 50
+    );
+    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
+      source.startX, source.startY, source.endX, source.endY, source.width + 100
+    );
+
     // Check units
-    for (const unit of this.world.getUnits()) {
+    for (const unit of nearbyUnits) {
       if (unit.id === source.sourceEntityId) continue;
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
@@ -247,7 +263,7 @@ export class DamageSystem {
     }
 
     // Check buildings
-    for (const building of this.world.getBuildings()) {
+    for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
@@ -325,6 +341,7 @@ export class DamageSystem {
 
   // Swept volume damage (traveling projectiles)
   // Uses line from prevPos to currentPos with projectile radius
+  // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
   private applySweptDamage(source: SweptDamageSource): DamageResult {
     const result: DamageResult = {
       hitEntityIds: [],
@@ -344,8 +361,16 @@ export class DamageSystem {
     // Collect all hits with their T values
     const hits: HitInfo[] = [];
 
+    // PERFORMANCE: Query only entities near the projectile path using spatial grid
+    const nearbyUnits = spatialGrid.queryUnitsAlongLine(
+      source.prevX, source.prevY, source.currentX, source.currentY, source.radius + 50
+    );
+    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
+      source.prevX, source.prevY, source.currentX, source.currentY, source.radius + 100
+    );
+
     // Check units using swept collision (line-circle with combined radii)
-    for (const unit of this.world.getUnits()) {
+    for (const unit of nearbyUnits) {
       if (unit.id === source.sourceEntityId) continue;
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
@@ -365,7 +390,7 @@ export class DamageSystem {
     }
 
     // Check buildings using swept collision
-    for (const building of this.world.getBuildings()) {
+    for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
@@ -442,6 +467,7 @@ export class DamageSystem {
   }
 
   // Area damage (splash, wave)
+  // PERFORMANCE: Uses spatial grid radius query for O(k) instead of O(n)
   private applyAreaDamage(source: AreaDamageSource): DamageResult {
     const result: DamageResult = {
       hitEntityIds: [],
@@ -455,8 +481,12 @@ export class DamageSystem {
     const sliceHalfAngle = hasSlice ? source.sliceAngle! / 2 : Math.PI;
     const sliceDirection = source.sliceDirection ?? 0;
 
+    // PERFORMANCE: Query only entities within the damage radius using spatial grid
+    const nearbyUnits = spatialGrid.queryUnitsInRadius(source.centerX, source.centerY, source.radius + 50);
+    const nearbyBuildings = spatialGrid.queryBuildingsInRadius(source.centerX, source.centerY, source.radius + 100);
+
     // Check units
-    for (const unit of this.world.getUnits()) {
+    for (const unit of nearbyUnits) {
       if (unit.id === source.sourceEntityId) continue;
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
@@ -516,7 +546,7 @@ export class DamageSystem {
     }
 
     // Check buildings
-    for (const building of this.world.getBuildings()) {
+    for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 

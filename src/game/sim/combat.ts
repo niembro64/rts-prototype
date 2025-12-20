@@ -1,12 +1,13 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
 import { PLAYER_COLORS } from './types';
-import { FIXED_TIMESTEP } from './Simulation';
 import { DamageSystem } from './damage';
 import type { DeathContext } from './damage/types';
 import type { ForceAccumulator } from './ForceAccumulator';
 import { WAVE_PULL_STRENGTH } from '../../config';
 import type { WeaponAudioId } from '../audio/AudioManager';
+import { spatialGrid } from './SpatialGrid';
+import { beamIndex } from './BeamIndex';
 
 // Re-export types for use in other modules
 export type { DeathContext } from './damage/types';
@@ -238,6 +239,7 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
 // - 'nearest': Always switch to closest enemy (searches within seeRange)
 // - 'sticky': Keep current target until it dies or leaves seeRange,
 //             then search for new target within fightstopRange (tighter)
+// PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
@@ -296,30 +298,30 @@ export function updateAutoTargeting(world: WorldState): void {
         }
       }
 
-      // Search for closest enemy
+      // Search for closest enemy using SPATIAL GRID (O(k) instead of O(n))
       // - Nearest mode: search within seeRange, switch if closer
       // - Sticky mode: search within fightstopRange when acquiring new target (tighter search area)
       const searchRange = (weapon.targetingMode === 'sticky' && !hasValidTarget)
         ? weapon.fightstopRange
         : weapon.seeRange;
 
-      const enemies = world.getEnemyEntities(playerId);
+      // Use spatial grid for efficient range query
+      // Note: Returns reused array - don't store reference
+      const nearbyEnemies = spatialGrid.queryEnemyEntitiesInRadius(
+        weaponX, weaponY, searchRange, playerId
+      );
+
       let closestEnemy: Entity | null = null;
       let closestDist = Infinity;
 
-      for (const enemy of enemies) {
-        let isAlive = false;
+      for (const enemy of nearbyEnemies) {
         let enemyRadius = 0;
 
-        if (enemy.unit && enemy.unit.hp > 0) {
-          isAlive = true;
+        if (enemy.unit) {
           enemyRadius = enemy.unit.collisionRadius;
-        } else if (enemy.building && enemy.building.hp > 0) {
-          isAlive = true;
+        } else if (enemy.building) {
           enemyRadius = getTargetRadius(enemy);
         }
-
-        if (!isAlive) continue;
 
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
         const effectiveSearchRange = searchRange + enemyRadius;
@@ -371,18 +373,9 @@ export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
 }
 
 // Check if a specific weapon has an active beam (by weapon index)
-function hasActiveWeaponBeam(world: WorldState, unitId: EntityId, weaponIndex: number): boolean {
-  for (const proj of world.getProjectiles()) {
-    if (!proj.projectile) continue;
-    if (proj.projectile.sourceEntityId !== unitId) continue;
-    if (proj.projectile.projectileType !== 'beam') continue;
-    // Check if this beam belongs to this weapon (stored in config metadata)
-    if ((proj.projectile.config as { weaponIndex?: number }).weaponIndex !== weaponIndex) continue;
-    // Don't count beams that will expire this frame
-    if (proj.projectile.timeAlive + FIXED_TIMESTEP >= proj.projectile.maxLifespan) continue;
-    return true;
-  }
-  return false;
+// Uses O(1) beam index lookup instead of O(n) projectile scan
+function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, weaponIndex: number): boolean {
+  return beamIndex.hasActiveBeam(unitId, weaponIndex);
 }
 
 // Update isFiring and inFightstopRange state for all weapons
@@ -691,11 +684,14 @@ export function applyWaveDamage(
       const turretAngle = weapon.turretRotation;
       const sliceHalfAngle = currentAngle / 2;
 
-      // Apply damage and pull to all enemy units in the slice
-      for (const target of world.getUnits()) {
+      // PERFORMANCE: Use spatial grid to query only nearby enemies
+      const nearbyUnits = spatialGrid.queryEnemyUnitsInRadius(
+        weaponX, weaponY, weapon.fireRange, sourcePlayerId
+      );
+
+      // Apply damage and pull to enemy units in the slice
+      for (const target of nearbyUnits) {
         if (!target.unit || target.unit.hp <= 0) continue;
-        // Don't affect friendly units
-        if (target.ownership?.playerId === sourcePlayerId) continue;
         // Don't affect self
         if (target.id === unit.id) continue;
 
@@ -746,8 +742,13 @@ export function applyWaveDamage(
         }
       }
 
-      // Also apply damage to buildings in the slice
-      for (const building of world.getBuildings()) {
+      // PERFORMANCE: Use spatial grid to query only nearby buildings
+      const nearbyBuildings = spatialGrid.queryBuildingsInRadius(
+        weaponX, weaponY, weapon.fireRange
+      );
+
+      // Apply damage to buildings in the slice
+      for (const building of nearbyBuildings) {
         if (!building.building || building.building.hp <= 0) continue;
         // Don't damage friendly buildings
         if (building.ownership?.playerId === sourcePlayerId) continue;

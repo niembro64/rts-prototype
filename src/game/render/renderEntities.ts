@@ -679,6 +679,56 @@ export class EntityRenderer {
     this.sprayTargets = targets;
   }
 
+  // Cached visible entity arrays (reused each frame to avoid allocations)
+  private visibleUnits: Entity[] = [];
+  private visibleBuildings: Entity[] = [];
+  private visibleProjectiles: Entity[] = [];
+  private selectedUnits: Entity[] = [];
+  private selectedFactories: Entity[] = [];
+
+  // Collect all visible entities once per frame
+  // PERFORMANCE: Single pass through entities instead of multiple iterations
+  private collectVisibleEntities(): void {
+    // Clear cached arrays (reuse to avoid allocations)
+    this.visibleUnits.length = 0;
+    this.visibleBuildings.length = 0;
+    this.visibleProjectiles.length = 0;
+    this.selectedUnits.length = 0;
+    this.selectedFactories.length = 0;
+
+    // Collect visible units in a single pass
+    for (const entity of this.entitySource.getUnits()) {
+      if (!entity.unit || entity.unit.hp <= 0) continue;
+      if (!this.isInViewport(entity.transform.x, entity.transform.y, 100)) continue;
+
+      this.visibleUnits.push(entity);
+
+      // Also track selected units
+      if (entity.selectable?.selected) {
+        this.selectedUnits.push(entity);
+      }
+    }
+
+    // Collect visible buildings in a single pass
+    for (const entity of this.entitySource.getBuildings()) {
+      if (!entity.building || entity.building.hp <= 0) continue;
+      if (!this.isInViewport(entity.transform.x, entity.transform.y, 150)) continue;
+
+      this.visibleBuildings.push(entity);
+
+      // Also track selected factories
+      if (entity.selectable?.selected && entity.factory) {
+        this.selectedFactories.push(entity);
+      }
+    }
+
+    // Collect visible projectiles
+    for (const entity of this.entitySource.getProjectiles()) {
+      if (!this.isInViewport(entity.transform.x, entity.transform.y, 50)) continue;
+      this.visibleProjectiles.push(entity);
+    }
+  }
+
   // Render all entities
   render(): void {
     this.graphics.clear();
@@ -691,70 +741,53 @@ export class EntityRenderer {
     // Update particle time for spray animation
     this.sprayParticleTime += 16; // ~60fps
 
-    // 1. Render buildings first (bottom layer) - skip dead buildings
-    for (const entity of this.entitySource.getBuildings()) {
-      if (entity.building && entity.building.hp > 0) {
-        // Viewport culling for buildings
-        if (!this.isInViewport(entity.transform.x, entity.transform.y, 150)) continue;
-        this.renderBuilding(entity);
-      }
+    // PERFORMANCE: Collect all visible entities in a single pass
+    this.collectVisibleEntities();
+
+    // 1. Render buildings first (bottom layer)
+    for (const entity of this.visibleBuildings) {
+      this.renderBuilding(entity);
     }
 
-    // Render waypoints for selected units (below units) - skip dead units
-    for (const entity of this.entitySource.getUnits()) {
-      if (entity.selectable?.selected && entity.unit && entity.unit.hp > 0) {
-        this.renderWaypoints(entity);
-      }
+    // Render waypoints for selected units (below units)
+    for (const entity of this.selectedUnits) {
+      this.renderWaypoints(entity);
     }
 
-    // Render waypoints for selected factories - skip dead buildings
-    for (const entity of this.entitySource.getBuildings()) {
-      if (entity.selectable?.selected && entity.factory && entity.building && entity.building.hp > 0) {
-        this.renderFactoryWaypoints(entity);
-      }
+    // Render waypoints for selected factories
+    for (const entity of this.selectedFactories) {
+      this.renderFactoryWaypoints(entity);
     }
 
-    // Render range circles for selected units (below unit bodies) - skip dead units
-    for (const entity of this.entitySource.getUnits()) {
-      if (entity.selectable?.selected && entity.unit && entity.unit.hp > 0) {
-        this.renderRangeCircles(entity);
-      }
+    // Render range circles for selected units (below unit bodies)
+    for (const entity of this.selectedUnits) {
+      this.renderRangeCircles(entity);
     }
 
-    // 2. Render unit bodies (no turrets) - skip dead units
+    // 2. Render unit bodies (no turrets)
     this.skipTurrets = true;
     this.turretsOnly = false;
-    for (const entity of this.entitySource.getUnits()) {
-      if (entity.unit && entity.unit.hp > 0) {
-        // Viewport culling for units
-        if (!this.isInViewport(entity.transform.x, entity.transform.y, 100)) continue;
-        this.renderUnit(entity);
-      }
+    for (const entity of this.visibleUnits) {
+      this.renderUnit(entity);
     }
 
-    // 3. Render turrets only (above unit bodies) - skip dead units
+    // 3. Render turrets only (above unit bodies)
     this.skipTurrets = false;
     this.turretsOnly = true;
-    for (const entity of this.entitySource.getUnits()) {
-      if (entity.unit && entity.unit.hp > 0) {
-        // Viewport culling for turrets
-        if (!this.isInViewport(entity.transform.x, entity.transform.y, 100)) continue;
-        this.renderUnit(entity);
-      }
+    for (const entity of this.visibleUnits) {
+      this.renderUnit(entity);
     }
     this.turretsOnly = false;
 
     // 4. Render projectiles and lasers
     // Clean up beam random offsets for projectiles that no longer exist
-    const existingProjectileIds = new Set(this.entitySource.getProjectiles().map((e) => e.id));
+    const existingProjectileIds = new Set(this.visibleProjectiles.map((e) => e.id));
     for (const id of this.beamRandomOffsets.keys()) {
       if (!existingProjectileIds.has(id)) {
         this.beamRandomOffsets.delete(id);
       }
     }
-    for (const entity of this.entitySource.getProjectiles()) {
-      // Viewport culling for projectiles
-      if (!this.isInViewport(entity.transform.x, entity.transform.y, 50)) continue;
+    for (const entity of this.visibleProjectiles) {
       this.renderProjectile(entity);
     }
 

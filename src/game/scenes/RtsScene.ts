@@ -111,6 +111,16 @@ export class RtsScene extends Phaser.Scene {
   private frameDeltaHistory: number[] = [];
   private readonly FRAME_HISTORY_SIZE = 1000;
 
+  // UI update throttling - avoid updating every frame
+  private selectionDirty: boolean = true;
+  private economyUpdateTimer: number = 0;
+  private minimapUpdateTimer: number = 0;
+  private readonly ECONOMY_UPDATE_INTERVAL = 100; // ms between economy updates
+  private readonly MINIMAP_UPDATE_INTERVAL = 50; // ms between minimap updates
+  private lastCameraX: number = 0;
+  private lastCameraY: number = 0;
+  private lastCameraZoom: number = 0;
+
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
 
@@ -534,6 +544,7 @@ export class RtsScene extends Phaser.Scene {
   // Switch active player
   public switchPlayer(playerId: PlayerId): void {
     this.world.setActivePlayer(playerId);
+    this.markSelectionDirty();
     if (this.onPlayerChange) {
       this.onPlayerChange(playerId);
     }
@@ -550,28 +561,33 @@ export class RtsScene extends Phaser.Scene {
     return this.world.activePlayerId;
   }
 
+  // Mark selection info as needing update (called when selection changes)
+  public markSelectionDirty(): void {
+    this.selectionDirty = true;
+  }
+
   // Set waypoint mode via UI
   public setWaypointMode(mode: WaypointType): void {
     this.inputManager?.setWaypointMode(mode);
-    this.updateSelectionInfo();
+    this.markSelectionDirty();
   }
 
   // Start build mode via UI
   public startBuildMode(buildingType: 'solar' | 'factory'): void {
     this.inputManager?.startBuildMode(buildingType);
-    this.updateSelectionInfo();
+    this.markSelectionDirty();
   }
 
   // Cancel build mode via UI
   public cancelBuildMode(): void {
     this.inputManager?.cancelBuildMode();
-    this.updateSelectionInfo();
+    this.markSelectionDirty();
   }
 
   // Toggle D-Gun mode via UI
   public toggleDGunMode(): void {
     this.inputManager?.toggleDGunMode();
-    this.updateSelectionInfo();
+    this.markSelectionDirty();
   }
 
   // Queue unit production via UI
@@ -895,6 +911,16 @@ export class RtsScene extends Phaser.Scene {
       if (this.hostViewMode === 'client' && this.clientViewState) {
         // Process selection commands locally on ClientViewState (before simulation consumes them)
         this.processClientViewCommands();
+      } else {
+        // In simulation view, check if there are selection commands that will be processed
+        // Mark selection dirty so UI updates after simulation processes them
+        const commands = this.commandQueue.getAll();
+        for (const cmd of commands) {
+          if (cmd.type === 'select' || cmd.type === 'clearSelection') {
+            this.markSelectionDirty();
+            break;
+          }
+        }
       }
 
       // Update simulation (calculates velocities) - ALWAYS runs for host
@@ -937,16 +963,47 @@ export class RtsScene extends Phaser.Scene {
     // Render entities
     this.entityRenderer.render();
 
-    // Update UI (skip in background mode - no UI)
+    // Update UI with throttling (skip in background mode - no UI)
     if (!this.backgroundMode) {
-      // Update selection info for UI
-      this.updateSelectionInfo();
+      // Check if a producing factory is selected - need to update progress bar
+      if (!this.selectionDirty) {
+        const entitySource = this.getCurrentEntitySource();
+        const selectedBuildings = entitySource.getSelectedBuildings();
+        const hasProducingFactory = selectedBuildings.some(
+          b => b.factory?.isProducing
+        );
+        if (hasProducingFactory) {
+          this.selectionDirty = true;
+        }
+      }
 
-      // Update economy info for UI
-      this.updateEconomyInfo();
+      // Update selection info only when dirty (selection changed, mode changed, etc.)
+      if (this.selectionDirty) {
+        this.updateSelectionInfo();
+        this.selectionDirty = false;
+      }
 
-      // Update minimap for UI
-      this.updateMinimapData();
+      // Throttle economy updates
+      this.economyUpdateTimer += delta;
+      if (this.economyUpdateTimer >= this.ECONOMY_UPDATE_INTERVAL) {
+        this.economyUpdateTimer = 0;
+        this.updateEconomyInfo();
+      }
+
+      // Throttle minimap updates, but update immediately if camera moved
+      const camera = this.cameras.main;
+      const cameraMoved = camera.scrollX !== this.lastCameraX ||
+                          camera.scrollY !== this.lastCameraY ||
+                          camera.zoom !== this.lastCameraZoom;
+
+      this.minimapUpdateTimer += delta;
+      if (this.minimapUpdateTimer >= this.MINIMAP_UPDATE_INTERVAL || cameraMoved) {
+        this.minimapUpdateTimer = 0;
+        this.lastCameraX = camera.scrollX;
+        this.lastCameraY = camera.scrollY;
+        this.lastCameraZoom = camera.zoom;
+        this.updateMinimapData();
+      }
     }
   }
 
@@ -1108,6 +1165,7 @@ export class RtsScene extends Phaser.Scene {
       } else if (command.type === 'clearSelection') {
         // Clear selection on ClientViewState
         this.clientViewState.clearSelection();
+        this.markSelectionDirty();
       } else {
         // Send other commands to host
         networkManager.sendCommand(command);
@@ -1125,6 +1183,7 @@ export class RtsScene extends Phaser.Scene {
     for (const id of command.entityIds) {
       this.clientViewState.selectEntity(id);
     }
+    this.markSelectionDirty();
   }
 
   // Process commands for host's client view mode
@@ -1149,6 +1208,7 @@ export class RtsScene extends Phaser.Scene {
         // Clear selection on ClientViewState
         console.log(`[ClientViewCommands] Clear selection`);
         this.clientViewState.clearSelection();
+        this.markSelectionDirty();
       } else {
         // Other commands go to the simulation (re-enqueue them)
         this.commandQueue.enqueue(command);
@@ -1166,6 +1226,7 @@ export class RtsScene extends Phaser.Scene {
     for (const id of command.entityIds) {
       this.clientViewState.selectEntity(id);
     }
+    this.markSelectionDirty();
   }
 
   // Apply forces to Matter bodies - simple force toward waypoint, friction handles the rest
