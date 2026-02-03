@@ -259,11 +259,12 @@ export const COMMANDER_STATS = {
 export const UNIT_MASS_MULTIPLIER = 10.0;
 
 /**
- * Global speed multiplier for all unit movement.
- * Scales the velocity applied when units move toward waypoints.
- * 1.0 = default speed, 0.5 = half speed, 2.0 = double speed
+ * Global thrust multiplier for all unit movement.
+ * Scales the force applied when units accelerate toward waypoints.
+ * Higher values = faster acceleration, higher top speed.
+ * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
  */
-export const UNIT_SPEED_MULTIPLIER = 1.0;
+export const UNIT_THRUST_MULTIPLIER = 1.0;
 
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
