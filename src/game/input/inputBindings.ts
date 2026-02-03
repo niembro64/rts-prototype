@@ -13,6 +13,7 @@ import {
   WAYPOINT_COLORS,
   getSnappedBuildPosition,
 } from './helpers';
+import { magnitude } from '../math';
 
 /**
  * InputEntitySource - Interface for entity queries used by InputManager
@@ -368,7 +369,7 @@ export class InputManager {
 
       const dx = unit.transform.x - worldX;
       const dy = unit.transform.y - worldY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = magnitude(dx, dy);
 
       if (dist <= unit.unit.collisionRadius) {
         return unit;
@@ -543,7 +544,7 @@ export class InputManager {
         const lastPoint = this.state.linePathPoints[this.state.linePathPoints.length - 1];
         const dx = worldPoint.x - lastPoint.x;
         const dy = worldPoint.y - lastPoint.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = magnitude(dx, dy);
         if (dist > 10) {
           this.state.linePathPoints.push({ x: worldPoint.x, y: worldPoint.y });
           const selectedUnits = this.getSelectedUnits();
@@ -678,7 +679,7 @@ export class InputManager {
 
         const dx = entity.transform.x - this.state.selectionStartWorldX;
         const dy = entity.transform.y - this.state.selectionStartWorldY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = magnitude(dx, dy);
 
         if (dist < entity.unit.collisionRadius && dist < closestDist) {
           closestDist = dist;
@@ -704,7 +705,7 @@ export class InputManager {
             // Calculate distance to center for tie-breaking
             const dx = x - clickX;
             const dy = y - clickY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+            const dist = magnitude(dx, dy);
 
             if (dist < closestDist) {
               closestDist = dist;
@@ -984,7 +985,7 @@ export class InputManager {
       // Check if building is in range
       const dx = x - cx;
       const dy = y - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = magnitude(dx, dy);
       const inRange = dist <= range;
 
       if (!inRange) {
