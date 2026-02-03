@@ -12,6 +12,8 @@ import {
   assignUnitsToTargets,
   WAYPOINT_COLORS,
   getSnappedBuildPosition,
+  performSelection,
+  findRepairTargetAt,
 } from './helpers';
 import { magnitude } from '../math';
 
@@ -328,55 +330,8 @@ export class InputManager {
   }
 
   // Find a repairable target at a world position (incomplete building or damaged friendly unit)
-  private findRepairTargetAt(worldX: number, worldY: number, playerId: number): Entity | null {
-    // Check buildings first (incomplete ones owned by player)
-    const allBuildings = this.entitySource.getBuildings();
-    console.log('[findRepairTarget] Checking buildings:', {
-      totalBuildings: allBuildings.length,
-      lookingForPlayerId: playerId,
-      clickPos: { x: worldX, y: worldY },
-    });
-    for (const building of allBuildings) {
-      const skipReason: string[] = [];
-      if (building.ownership?.playerId !== playerId) skipReason.push(`wrong owner (${building.ownership?.playerId})`);
-      if (!building.buildable) skipReason.push('no buildable');
-      else if (building.buildable.isComplete) skipReason.push('complete');
-      else if (building.buildable.isGhost) skipReason.push('ghost');
-      if (!building.building) skipReason.push('no building component');
-
-      if (skipReason.length > 0) {
-        console.log(`[findRepairTarget] Skipping building ${building.id}:`, skipReason.join(', '));
-        continue;
-      }
-      if (building.ownership?.playerId !== playerId) continue;
-      if (!building.buildable || building.buildable.isComplete || building.buildable.isGhost) continue;
-      if (!building.building) continue;
-
-      const { x, y } = building.transform;
-      const halfW = building.building.width / 2;
-      const halfH = building.building.height / 2;
-
-      if (worldX >= x - halfW && worldX <= x + halfW &&
-          worldY >= y - halfH && worldY <= y + halfH) {
-        return building;
-      }
-    }
-
-    // Check units (damaged friendly units)
-    for (const unit of this.entitySource.getUnits()) {
-      if (unit.ownership?.playerId !== playerId) continue;
-      if (!unit.unit || unit.unit.hp >= unit.unit.maxHp || unit.unit.hp <= 0) continue;
-
-      const dx = unit.transform.x - worldX;
-      const dy = unit.transform.y - worldY;
-      const dist = magnitude(dx, dy);
-
-      if (dist <= unit.unit.collisionRadius) {
-        return unit;
-      }
-    }
-
-    return null;
+  private findRepairTarget(worldX: number, worldY: number, playerId: number): Entity | null {
+    return findRepairTargetAt(this.entitySource, worldX, worldY, playerId);
   }
 
   // Enter build mode with a specific building type
@@ -468,7 +423,7 @@ export class InputManager {
         // Check if commander is selected and right-clicking on a repair target
         const commander = this.getSelectedCommander();
         if (commander?.ownership) {
-          const repairTarget = this.findRepairTargetAt(worldPoint.x, worldPoint.y, commander.ownership.playerId);
+          const repairTarget = this.findRepairTarget(worldPoint.x, worldPoint.y, commander.ownership.playerId);
           console.log('[Input] Repair target check:', {
             hasCommander: !!commander,
             playerId: commander.ownership.playerId,
@@ -614,122 +569,23 @@ export class InputManager {
 
   // Finish selection and issue select command
   private finishSelection(additive: boolean): void {
-    // Already in world coordinates
-    const minX = Math.min(this.state.selectionStartWorldX, this.state.selectionEndWorldX);
-    const maxX = Math.max(this.state.selectionStartWorldX, this.state.selectionEndWorldX);
-    const minY = Math.min(this.state.selectionStartWorldY, this.state.selectionEndWorldY);
-    const maxY = Math.max(this.state.selectionStartWorldY, this.state.selectionEndWorldY);
-
-    // Debug: log entity source info
-    const units = this.entitySource.getUnits();
-    console.log(`[Selection] EntitySource has ${units.length} units, activePlayerId: ${this.world.activePlayerId}`);
-    console.log(`[Selection] Click area: (${minX.toFixed(0)}, ${minY.toFixed(0)}) to (${maxX.toFixed(0)}, ${maxY.toFixed(0)})`);
-
-    // Find entities in selection rectangle
-    const selectedIds: EntityId[] = [];
-
-    // Select units in rectangle
-    for (const entity of this.entitySource.getUnits()) {
-      const { x, y } = entity.transform;
-      // Only select units owned by active player
-      if (entity.ownership?.playerId !== this.world.activePlayerId) {
-        // Debug: log skipped units
-        console.log(`[Selection] Skipped unit ${entity.id} - owner ${entity.ownership?.playerId} != active ${this.world.activePlayerId}`);
-        continue;
-      }
-
-      // Check if entity center is in selection box
-      if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-        console.log(`[Selection] Found unit ${entity.id} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
-        selectedIds.push(entity.id);
-      }
-    }
-
-    // Select buildings in rectangle (only if no units selected - prioritize units)
-    if (selectedIds.length === 0) {
-      for (const entity of this.entitySource.getBuildings()) {
-        const { x, y } = entity.transform;
-        // Only select buildings owned by active player
-        if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
-
-        // Check if entity center is in selection box
-        if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-          selectedIds.push(entity.id);
-        }
-      }
-    }
-
-    // If no drag (click), check for single entity click
-    // Use world coords - threshold scales with typical unit radius
-    const dragThreshold = 10;
-    const dragDist = Math.sqrt(
-      Math.pow(this.state.selectionEndWorldX - this.state.selectionStartWorldX, 2) +
-        Math.pow(this.state.selectionEndWorldY - this.state.selectionStartWorldY, 2)
+    const result = performSelection(
+      this.entitySource,
+      this.state.selectionStartWorldX,
+      this.state.selectionStartWorldY,
+      this.state.selectionEndWorldX,
+      this.state.selectionEndWorldY,
+      this.world.activePlayerId
     );
-
-    if (dragDist < dragThreshold) {
-      // Single click - find closest entity to click point
-      let closestId: EntityId | null = null;
-      let closestDist = Infinity;
-
-      // Check units first
-      for (const entity of this.entitySource.getUnits()) {
-        if (!entity.unit) continue;
-        if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
-
-        const dx = entity.transform.x - this.state.selectionStartWorldX;
-        const dy = entity.transform.y - this.state.selectionStartWorldY;
-        const dist = magnitude(dx, dy);
-
-        if (dist < entity.unit.collisionRadius && dist < closestDist) {
-          closestDist = dist;
-          closestId = entity.id;
-        }
-      }
-
-      // Check buildings if no unit was clicked
-      if (closestId === null) {
-        for (const entity of this.entitySource.getBuildings()) {
-          if (!entity.building) continue;
-          if (entity.ownership?.playerId !== this.world.activePlayerId) continue;
-
-          const { x, y } = entity.transform;
-          const halfW = entity.building.width / 2;
-          const halfH = entity.building.height / 2;
-          const clickX = this.state.selectionStartWorldX;
-          const clickY = this.state.selectionStartWorldY;
-
-          // Check if click is inside building bounds
-          if (clickX >= x - halfW && clickX <= x + halfW &&
-              clickY >= y - halfH && clickY <= y + halfH) {
-            // Calculate distance to center for tie-breaking
-            const dx = x - clickX;
-            const dy = y - clickY;
-            const dist = magnitude(dx, dy);
-
-            if (dist < closestDist) {
-              closestDist = dist;
-              closestId = entity.id;
-            }
-          }
-        }
-      }
-
-      if (closestId !== null) {
-        selectedIds.length = 0;
-        selectedIds.push(closestId);
-      }
-    }
 
     // Issue select command
     const command: SelectCommand = {
       type: 'select',
       tick: this.world.getTick(),
-      entityIds: selectedIds,
+      entityIds: result.entityIds,
       additive,
     };
 
-    console.log(`[Selection] Enqueueing select command:`, { entityIds: selectedIds, additive });
     this.commandQueue.enqueue(command);
   }
 
@@ -755,7 +611,7 @@ export class InputManager {
     const commander = this.getSelectedCommander();
     if (commander?.ownership) {
       const finalPoint = this.state.linePathPoints[this.state.linePathPoints.length - 1];
-      const repairTarget = this.findRepairTargetAt(finalPoint.x, finalPoint.y, commander.ownership.playerId);
+      const repairTarget = this.findRepairTarget(finalPoint.x, finalPoint.y, commander.ownership.playerId);
       if (repairTarget) {
         // Issue repair command instead of move command
         const command: RepairCommand = {
