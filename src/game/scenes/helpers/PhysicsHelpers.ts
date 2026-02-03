@@ -4,7 +4,7 @@ import type Phaser from 'phaser';
 import type { Entity } from '../../sim/types';
 import type { WorldState } from '../../sim/WorldState';
 import type { ForceAccumulator } from '../../sim/ForceAccumulator';
-import { UNIT_MASS_MULTIPLIER } from '../../../config';
+import { UNIT_MASS_MULTIPLIER, UNIT_SPEED_MULTIPLIER } from '../../../config';
 import { magnitude } from '../../math';
 
 // Create a physics body with explicit mass from config
@@ -111,7 +111,7 @@ export function applyUnitVelocities(
       // Matter.js expects small force values - divide by scale factor
       // Use base mass (not multiplied) so UNIT_MASS_MULTIPLIER affects acceleration
       const MATTER_FORCE_SCALE = 150000;
-      const thrustMagnitude = (entity.unit.moveSpeed * entity.unit.mass) / MATTER_FORCE_SCALE;
+      const thrustMagnitude = (entity.unit.moveSpeed * UNIT_SPEED_MULTIPLIER * entity.unit.mass) / MATTER_FORCE_SCALE;
       thrustForceX = (dirX / dirMag) * thrustMagnitude;
       thrustForceY = (dirY / dirMag) * thrustMagnitude;
     }
