@@ -15,13 +15,7 @@ import type {
 } from './types';
 import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_KNOCKBACK_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
-
-// Normalize angle to [-PI, PI]
-function normalizeAngle(angle: number): number {
-  while (angle > Math.PI) angle -= 2 * Math.PI;
-  while (angle < -Math.PI) angle += 2 * Math.PI;
-  return angle;
-}
+import { normalizeAngle } from '../../math';
 
 // Line-circle intersection - returns parametric T value (0-1) of first intersection, or null
 function lineCircleIntersectionT(

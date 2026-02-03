@@ -13,6 +13,7 @@ import type { NetworkGameState, NetworkEntity } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
+import { lerp, lerpAngle, clamp } from '../math';
 
 // Snapshot buffer entry
 interface Snapshot {
@@ -211,7 +212,7 @@ export class ClientViewState {
     let t = timeDiff > 0 ? (this.renderTimestamp - snapshot1!.timestamp) / timeDiff : 0;
 
     // Clamp to [0, 1.5] - allow slight extrapolation if we're ahead
-    t = Math.max(0, Math.min(1.5, t));
+    t = clamp(t, 0, 1.5);
 
     // Interpolate all entities
     this.interpolateSnapshots(snapshot1!, snapshot2!, t);
@@ -323,14 +324,11 @@ export class ClientViewState {
    */
   private interpolateEntity(entity: Entity, net1: NetworkEntity, net2: NetworkEntity, t: number): void {
     // Interpolate position
-    entity.transform.x = net1.x + (net2.x - net1.x) * t;
-    entity.transform.y = net1.y + (net2.y - net1.y) * t;
+    entity.transform.x = lerp(net1.x, net2.x, t);
+    entity.transform.y = lerp(net1.y, net2.y, t);
 
     // Interpolate rotation (handle angle wrapping)
-    let rotDiff = net2.rotation - net1.rotation;
-    while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-    while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-    entity.transform.rotation = net1.rotation + rotDiff * t;
+    entity.transform.rotation = lerpAngle(net1.rotation, net2.rotation, t);
 
     // Update unit fields (use snap2 for non-interpolated values)
     if (entity.unit) {
@@ -344,8 +342,8 @@ export class ClientViewState {
       const vel1Y = net1.velocityY ?? 0;
       const vel2X = net2.velocityX ?? 0;
       const vel2Y = net2.velocityY ?? 0;
-      entity.unit.velocityX = vel1X + (vel2X - vel1X) * t;
-      entity.unit.velocityY = vel1Y + (vel2Y - vel1Y) * t;
+      entity.unit.velocityX = lerp(vel1X, vel2X, t);
+      entity.unit.velocityY = lerp(vel1Y, vel2Y, t);
 
       // Update action queue (use latest)
       if (net2.actions) {
@@ -374,12 +372,8 @@ export class ClientViewState {
 
         // Interpolate turret rotation and sync angular velocity
         if (w1 && w2) {
-          let turretDiff = w2.turretRotation - w1.turretRotation;
-          while (turretDiff > Math.PI) turretDiff -= Math.PI * 2;
-          while (turretDiff < -Math.PI) turretDiff += Math.PI * 2;
-          entity.weapons[i].turretRotation = w1.turretRotation + turretDiff * t;
-          // Interpolate angular velocity
-          entity.weapons[i].turretAngularVelocity = w1.turretAngularVelocity + (w2.turretAngularVelocity - w1.turretAngularVelocity) * t;
+          entity.weapons[i].turretRotation = lerpAngle(w1.turretRotation, w2.turretRotation, t);
+          entity.weapons[i].turretAngularVelocity = lerp(w1.turretAngularVelocity, w2.turretAngularVelocity, t);
         } else {
           entity.weapons[i].turretRotation = w2.turretRotation;
           entity.weapons[i].turretAngularVelocity = w2.turretAngularVelocity;
@@ -400,18 +394,14 @@ export class ClientViewState {
 
     if (entity.buildable) {
       // Interpolate build progress for smooth construction visual
-      const prog1 = net1.buildProgress ?? 0;
-      const prog2 = net2.buildProgress ?? 0;
-      entity.buildable.buildProgress = prog1 + (prog2 - prog1) * t;
+      entity.buildable.buildProgress = lerp(net1.buildProgress ?? 0, net2.buildProgress ?? 0, t);
       entity.buildable.isComplete = net2.isComplete ?? entity.buildable.isComplete;
     }
 
     if (entity.factory) {
       entity.factory.buildQueue = net2.buildQueue ?? entity.factory.buildQueue;
       // Interpolate factory progress
-      const fProg1 = net1.factoryProgress ?? 0;
-      const fProg2 = net2.factoryProgress ?? 0;
-      entity.factory.currentBuildProgress = fProg1 + (fProg2 - fProg1) * t;
+      entity.factory.currentBuildProgress = lerp(net1.factoryProgress ?? 0, net2.factoryProgress ?? 0, t);
       entity.factory.isProducing = net2.isProducing ?? entity.factory.isProducing;
       if (net2.rallyX !== undefined) entity.factory.rallyX = net2.rallyX;
       if (net2.rallyY !== undefined) entity.factory.rallyY = net2.rallyY;
@@ -428,31 +418,27 @@ export class ClientViewState {
     // Update projectile fields
     if (entity.projectile) {
       // Interpolate projectile velocity
-      const pVel1X = net1.velocityX ?? 0;
-      const pVel1Y = net1.velocityY ?? 0;
-      const pVel2X = net2.velocityX ?? 0;
-      const pVel2Y = net2.velocityY ?? 0;
-      entity.projectile.velocityX = pVel1X + (pVel2X - pVel1X) * t;
-      entity.projectile.velocityY = pVel1Y + (pVel2Y - pVel1Y) * t;
+      entity.projectile.velocityX = lerp(net1.velocityX ?? 0, net2.velocityX ?? 0, t);
+      entity.projectile.velocityY = lerp(net1.velocityY ?? 0, net2.velocityY ?? 0, t);
 
       // Interpolate beam positions
       if (net1.beamStartX !== undefined && net2.beamStartX !== undefined) {
-        entity.projectile.startX = net1.beamStartX + (net2.beamStartX - net1.beamStartX) * t;
+        entity.projectile.startX = lerp(net1.beamStartX, net2.beamStartX, t);
       } else if (net2.beamStartX !== undefined) {
         entity.projectile.startX = net2.beamStartX;
       }
       if (net1.beamStartY !== undefined && net2.beamStartY !== undefined) {
-        entity.projectile.startY = net1.beamStartY + (net2.beamStartY - net1.beamStartY) * t;
+        entity.projectile.startY = lerp(net1.beamStartY, net2.beamStartY, t);
       } else if (net2.beamStartY !== undefined) {
         entity.projectile.startY = net2.beamStartY;
       }
       if (net1.beamEndX !== undefined && net2.beamEndX !== undefined) {
-        entity.projectile.endX = net1.beamEndX + (net2.beamEndX - net1.beamEndX) * t;
+        entity.projectile.endX = lerp(net1.beamEndX, net2.beamEndX, t);
       } else if (net2.beamEndX !== undefined) {
         entity.projectile.endX = net2.beamEndX;
       }
       if (net1.beamEndY !== undefined && net2.beamEndY !== undefined) {
-        entity.projectile.endY = net1.beamEndY + (net2.beamEndY - net1.beamEndY) * t;
+        entity.projectile.endY = lerp(net1.beamEndY, net2.beamEndY, t);
       } else if (net2.beamEndY !== undefined) {
         entity.projectile.endY = net2.beamEndY;
       }

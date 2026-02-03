@@ -1,13 +1,10 @@
 // Combat utility functions
 
 import type { Entity } from '../types';
+import { distance, normalizeAngle, magnitude } from '../../math';
 
-// Distance between two points
-export function distance(x1: number, y1: number, x2: number, y2: number): number {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  return Math.sqrt(dx * dx + dy * dy);
-}
+// Re-export common math functions for backward compatibility
+export { distance, normalizeAngle };
 
 // Get target radius for range calculations
 export function getTargetRadius(target: Entity): number {
@@ -16,16 +13,9 @@ export function getTargetRadius(target: Entity): number {
   } else if (target.building) {
     const bWidth = target.building.width;
     const bHeight = target.building.height;
-    return Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
+    return magnitude(bWidth, bHeight) / 2;
   }
   return 0;
-}
-
-// Normalize angle to [-PI, PI]
-export function normalizeAngle(angle: number): number {
-  while (angle > Math.PI) angle -= 2 * Math.PI;
-  while (angle < -Math.PI) angle += 2 * Math.PI;
-  return angle;
 }
 
 // Get angle to face based on movement (or body direction if stationary)
@@ -35,7 +25,7 @@ export function getMovementAngle(unit: Entity): number {
 
   const velX = unit.unit.velocityX ?? 0;
   const velY = unit.unit.velocityY ?? 0;
-  const speed = Math.sqrt(velX * velX + velY * velY);
+  const speed = magnitude(velX, velY);
 
   if (speed > 1) {
     // Moving - face movement direction
