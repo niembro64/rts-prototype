@@ -367,7 +367,7 @@ export const UNIT_STATS = {
   widow: {
     baseCost: 800,
     hp: 1200,
-    moveSpeed: 200,
+    moveSpeed: 100,
     collisionRadius: 38,
     mass: 500,
     buildRate: 20,
