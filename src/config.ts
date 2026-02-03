@@ -258,6 +258,13 @@ export const COMMANDER_STATS = {
  */
 export const UNIT_MASS_MULTIPLIER = 10.0;
 
+/**
+ * Global speed multiplier for all unit movement.
+ * Scales the velocity applied when units move toward waypoints.
+ * 1.0 = default speed, 0.5 = half speed, 2.0 = double speed
+ */
+export const UNIT_SPEED_MULTIPLIER = 1.0;
+
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
 // =============================================================================
