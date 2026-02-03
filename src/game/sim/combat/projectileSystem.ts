@@ -10,6 +10,7 @@ import type { AudioEvent, FireWeaponsResult, CollisionResult } from './types';
 import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
 import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_KNOCKBACK_MULTIPLIER, RECOIL_MULTIPLIER } from '../../../config';
+import { magnitude } from '../../math';
 
 // Check if a specific weapon has an active beam (by weapon index)
 // Uses O(1) beam index lookup instead of O(n) projectile scan
@@ -378,7 +379,7 @@ export function checkProjectileCollisions(
       // Calculate beam direction for recoil (applied every frame, regardless of hits)
       const beamDx = endX - startX;
       const beamDy = endY - startY;
-      const beamLen = Math.sqrt(beamDx * beamDx + beamDy * beamDy);
+      const beamLen = magnitude(beamDx, beamDy);
       const beamDirX = beamLen > 0 ? beamDx / beamLen : 0;
       const beamDirY = beamLen > 0 ? beamDy / beamLen : 0;
 

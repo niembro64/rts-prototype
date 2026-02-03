@@ -4,6 +4,7 @@ import type { WorldState } from '../WorldState';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import { normalizeAngle } from './combatUtils';
+import { magnitude } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { WAVE_PULL_STRENGTH } from '../../../config';
 
@@ -56,7 +57,7 @@ function isPointInSlice(
 ): boolean {
   const dx = px - originX;
   const dy = py - originY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
+  const dist = magnitude(dx, dy);
 
   // Check distance (accounting for target radius)
   if (dist > maxRadius + targetRadius) return false;
@@ -138,7 +139,7 @@ export function applyWaveDamage(
         // Calculate distance to target
         const dx = target.transform.x - weaponX;
         const dy = target.transform.y - weaponY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = magnitude(dx, dy);
 
         // Check if target is in the wave slice
         if (!isPointInSlice(
@@ -194,7 +195,7 @@ export function applyWaveDamage(
         // Calculate distance to building center
         const dx = building.transform.x - weaponX;
         const dy = building.transform.y - weaponY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = magnitude(dx, dy);
 
         // Approximate building radius from dimensions
         const buildingRadius = Math.max(building.building.width, building.building.height) / 2;

@@ -15,7 +15,7 @@ import type {
 } from './types';
 import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_KNOCKBACK_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
-import { normalizeAngle } from '../../math';
+import { normalizeAngle, magnitude } from '../../math';
 
 // Line-circle intersection - returns parametric T value (0-1) of first intersection, or null
 function lineCircleIntersectionT(
@@ -110,7 +110,7 @@ function getTargetRadius(entity: Entity): number {
   } else if (entity.building) {
     const bWidth = entity.building.width;
     const bHeight = entity.building.height;
-    return Math.sqrt(bWidth * bWidth + bHeight * bHeight) / 2;
+    return magnitude(bWidth, bHeight) / 2;
   }
   return 0;
 }
@@ -126,7 +126,7 @@ function isPointInSlice(
 ): boolean {
   const dx = px - originX;
   const dy = py - originY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
+  const dist = magnitude(dx, dy);
 
   // Check distance (accounting for target radius)
   if (dist > maxRadius + targetRadius) return false;
@@ -225,7 +225,7 @@ export class DamageSystem {
     // Calculate knockback direction (along the beam)
     const beamDx = source.endX - source.startX;
     const beamDy = source.endY - source.startY;
-    const beamLen = Math.sqrt(beamDx * beamDx + beamDy * beamDy);
+    const beamLen = magnitude(beamDx, beamDy);
     const knockbackDirX = beamLen > 0 ? beamDx / beamLen : 0;
     const knockbackDirY = beamLen > 0 ? beamDy / beamLen : 0;
 
@@ -300,7 +300,7 @@ export class DamageSystem {
       // Calculate penetration direction: from hit point through unit center
       const penDirX = entity.transform.x - hitX;
       const penDirY = entity.transform.y - hitY;
-      const penMag = Math.sqrt(penDirX * penDirX + penDirY * penDirY);
+      const penMag = magnitude(penDirX, penDirY);
       const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
       const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
 
@@ -350,7 +350,7 @@ export class DamageSystem {
     // Calculate knockback direction (along projectile travel)
     const projDx = source.currentX - source.prevX;
     const projDy = source.currentY - source.prevY;
-    const projLen = Math.sqrt(projDx * projDx + projDy * projDy);
+    const projLen = magnitude(projDx, projDy);
     const knockbackDirX = projLen > 0 ? projDx / projLen : 0;
     const knockbackDirY = projLen > 0 ? projDy / projLen : 0;
 
@@ -431,7 +431,7 @@ export class DamageSystem {
       // Calculate penetration direction: from hit point through unit center
       const penDirX = entity.transform.x - hitX;
       const penDirY = entity.transform.y - hitY;
-      const penMag = Math.sqrt(penDirX * penDirX + penDirY * penDirY);
+      const penMag = magnitude(penDirX, penDirY);
       const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
       const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
 
@@ -489,7 +489,7 @@ export class DamageSystem {
 
       const dx = unit.transform.x - source.centerX;
       const dy = unit.transform.y - source.centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = magnitude(dx, dy);
       const targetRadius = unit.unit.collisionRadius;
 
       // Check distance
@@ -548,7 +548,7 @@ export class DamageSystem {
 
       const dx = building.transform.x - source.centerX;
       const dy = building.transform.y - source.centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = magnitude(dx, dy);
       const buildingRadius = getTargetRadius(building);
 
       // Check distance

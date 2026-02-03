@@ -1,5 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
+import { distance } from '../math';
 import { economyManager } from './economy';
 
 // Spray effect target info for rendering
@@ -21,13 +22,6 @@ export interface SprayTarget {
 export interface CommanderAbilitiesResult {
   sprayTargets: SprayTarget[];
   completedBuildings: { commanderId: EntityId; buildingId: EntityId }[];
-}
-
-// Distance between two points
-function distance(x1: number, y1: number, x2: number, y2: number): number {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  return Math.sqrt(dx * dx + dy * dy);
 }
 
 // Commander abilities system - handles build queue (ONE target at a time)

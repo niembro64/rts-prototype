@@ -17,6 +17,7 @@ import {
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
 import { getGraphicsConfig, getRenderMode, setCurrentZoom } from './graphicsSettings';
+import { magnitude } from '../math';
 
 // Import from helper modules
 import type { EntitySource, ExplosionEffect, UnitRenderContext, BuildingRenderContext, BeamRandomOffsets } from './types';
@@ -280,13 +281,13 @@ export class EntityRenderer {
     const radiusScale = Math.sqrt(radius / baseRadius);
     const lifetime = baseLifetime * radiusScale;
 
-    const velocityMag = (velocityX !== undefined && velocityY !== undefined) ? Math.sqrt(velocityX * velocityX + velocityY * velocityY) : 0;
-    const penetrationMag = (penetrationX !== undefined && penetrationY !== undefined) ? Math.sqrt(penetrationX * penetrationX + penetrationY * penetrationY) : 0;
-    const attackerMag = (attackerX !== undefined && attackerY !== undefined) ? Math.sqrt(attackerX * attackerX + attackerY * attackerY) : 0;
+    const velocityMag = (velocityX !== undefined && velocityY !== undefined) ? magnitude(velocityX, velocityY) : 0;
+    const penetrationMag = (penetrationX !== undefined && penetrationY !== undefined) ? magnitude(penetrationX, penetrationY) : 0;
+    const attackerMag = (attackerX !== undefined && attackerY !== undefined) ? magnitude(attackerX, attackerY) : 0;
 
     const combinedX = (velocityX ?? 0) + (penetrationX ?? 0) + (attackerX ?? 0);
     const combinedY = (velocityY ?? 0) + (penetrationY ?? 0) + (attackerY ?? 0);
-    const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
+    const combinedMag = magnitude(combinedX, combinedY);
 
     this.explosions.push({
       x, y, radius, color, lifetime, elapsed: 0, type,
@@ -704,7 +705,7 @@ export class EntityRenderer {
       this.graphics.fillStyle(0xffffff, 1);
       this.graphics.fillCircle(x, y, radius * 0.2);
 
-      const velMag = Math.sqrt(projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY);
+      const velMag = magnitude(projectile.velocityX, projectile.velocityY);
       if (velMag > 0) {
         const dirX = projectile.velocityX / velMag;
         const dirY = projectile.velocityY / velMag;
@@ -722,7 +723,7 @@ export class EntityRenderer {
     } else {
       const radius = config.projectileRadius ?? 5;
       const trailLength = config.trailLength ?? 3;
-      const velMag = Math.sqrt(projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY);
+      const velMag = magnitude(projectile.velocityX, projectile.velocityY);
 
       if (velMag > 0) {
         const dirX = projectile.velocityX / velMag;

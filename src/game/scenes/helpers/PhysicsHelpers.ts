@@ -5,6 +5,7 @@ import type { Entity } from '../../sim/types';
 import type { WorldState } from '../../sim/WorldState';
 import type { ForceAccumulator } from '../../sim/ForceAccumulator';
 import { UNIT_MASS_MULTIPLIER } from '../../../config';
+import { magnitude } from '../../math';
 
 // Create a physics body with explicit mass from config
 export function createUnitBody(
@@ -90,7 +91,7 @@ export function applyUnitVelocities(
     // Get the direction unit wants to move (stored as velocityX/Y, normalized direction)
     const dirX = entity.unit.velocityX ?? 0;
     const dirY = entity.unit.velocityY ?? 0;
-    const dirMag = Math.sqrt(dirX * dirX + dirY * dirY);
+    const dirMag = magnitude(dirX, dirY);
 
     // Update rotation to face movement direction
     if (dirMag > 0.01) {

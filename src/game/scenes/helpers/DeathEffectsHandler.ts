@@ -15,6 +15,7 @@ import {
   EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
   EXPLOSION_BASE_MOMENTUM,
 } from '../../../config';
+import { magnitude } from '../../math';
 
 // Get explosion radius based on weapon type
 export function getExplosionRadius(weaponId: string): number {
@@ -67,7 +68,7 @@ export function handleAudioEvent(
     let baseVelY = velocityY;
     const combinedX = velocityX + penetrationX + attackerX;
     const combinedY = velocityY + penetrationY + attackerY;
-    const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
+    const combinedMag = magnitude(combinedX, combinedY);
     if (combinedMag > 0 && EXPLOSION_BASE_MOMENTUM > 0) {
       baseVelX += (combinedX / combinedMag) * EXPLOSION_BASE_MOMENTUM;
       baseVelY += (combinedY / combinedMag) * EXPLOSION_BASE_MOMENTUM;
@@ -171,7 +172,7 @@ export function handleUnitDeaths(
         let baseVelY = velocityY;
         const combinedX = velocityX + penetrationX + attackerX;
         const combinedY = velocityY + penetrationY + attackerY;
-        const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
+        const combinedMag = magnitude(combinedX, combinedY);
         if (combinedMag > 0 && EXPLOSION_BASE_MOMENTUM > 0) {
           baseVelX += (combinedX / combinedMag) * EXPLOSION_BASE_MOMENTUM;
           baseVelY += (combinedY / combinedMag) * EXPLOSION_BASE_MOMENTUM;

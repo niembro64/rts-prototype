@@ -1,6 +1,7 @@
 import { WorldState } from './WorldState';
 import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type CancelQueueItemCommand, type SetRallyPointCommand, type SetFactoryWaypointsCommand, type FireDGunCommand, type RepairCommand } from './commands';
 import type { Entity, EntityId, PlayerId, UnitAction } from './types';
+import { magnitude } from '../math';
 import {
   updateAutoTargeting,
   updateTurretRotation,
@@ -510,7 +511,7 @@ export class Simulation {
     // Calculate direction to target
     const dx = command.targetX - commander.transform.x;
     const dy = command.targetY - commander.transform.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = magnitude(dx, dy);
 
     if (dist === 0) return;
 
@@ -619,7 +620,7 @@ export class Simulation {
         const buildRange = entity.builder?.buildRange ?? 100;
         const dx = currentAction.x - transform.x;
         const dy = currentAction.y - transform.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const distance = magnitude(dx, dy);
 
         // In range - no thrust needed
         if (distance <= buildRange) {
@@ -644,7 +645,7 @@ export class Simulation {
       // Calculate direction to waypoint
       const dx = currentAction.x - transform.x;
       const dy = currentAction.y - transform.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
+      const distance = magnitude(dx, dy);
 
       // Close enough to waypoint - advance to next action, no thrust
       if (distance < 15) {

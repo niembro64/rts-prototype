@@ -1,6 +1,6 @@
 // Arachnid leg class - handles leg movement and rendering (client-side only)
 
-import { normalizeAngle } from '../math';
+import { normalizeAngle, magnitude } from '../math';
 
 export interface LegConfig {
   // Attachment point offset relative to unit center (in unit's local space)
@@ -130,7 +130,7 @@ export class ArachnidLeg {
     // Check if leg needs to snap - use current foot position
     const dx = this.groundX - attachX;
     const dy = this.groundY - attachY;
-    const distToGround = Math.sqrt(dx * dx + dy * dy);
+    const distToGround = magnitude(dx, dy);
 
     // ABSOLUTE MAXIMUM: Force snap if leg is stretched beyond physical limits (any direction)
     // This prevents infinite stretching when unit gets pushed sideways by another unit
@@ -190,7 +190,7 @@ export class ArachnidLeg {
     const snapAngle = unitRotation + this.config.snapTargetAngle;
 
     // Add some velocity-based offset to place foot ahead of where we're going
-    const speed = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
+    const speed = magnitude(velocityX, velocityY);
     const velocityOffset = Math.min(speed * 0.15, snapDistance * 0.3);
 
     let targetAngle = snapAngle;
@@ -238,7 +238,7 @@ export class ArachnidLeg {
   getKneePosition(attachX: number, attachY: number, side: number): { x: number; y: number } {
     const dx = this.groundX - attachX;
     const dy = this.groundY - attachY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = magnitude(dx, dy);
 
     const upperLen = this.config.upperLegLength;
     const lowerLen = this.config.lowerLegLength;

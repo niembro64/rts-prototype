@@ -1,5 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
+import { magnitude } from '../math';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
@@ -255,7 +256,7 @@ export class ConstructionSystem {
     // Check range
     const dx = target.transform.x - builder.transform.x;
     const dy = target.transform.y - builder.transform.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = magnitude(dx, dy);
 
     if (dist > builder.builder.buildRange) {
       return false;

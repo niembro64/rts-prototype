@@ -1,4 +1,5 @@
 import type { EntityId, PlayerId } from './types';
+import { magnitude } from '../math';
 
 // Grid constants
 export const GRID_CELL_SIZE = 20; // 20x20 world units per cell
@@ -177,7 +178,7 @@ export class BuildingGrid {
         const buildingCenter = this.getBuildingCenter(gx, gy, gridWidth, gridHeight);
         const distX = buildingCenter.x - commanderX;
         const distY = buildingCenter.y - commanderY;
-        const dist = Math.sqrt(distX * distX + distY * distY);
+        const dist = magnitude(distX, distY);
 
         if (dist <= buildRange) {
           validPositions.push({ gx, gy });

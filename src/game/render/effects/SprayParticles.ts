@@ -3,6 +3,7 @@
 import Phaser from 'phaser';
 import type { SprayTarget } from '../../sim/commanderAbilities';
 import { COLORS } from '../types';
+import { magnitude } from '../../math';
 
 /**
  * Render spray effect from commander to target (build/heal)
@@ -19,7 +20,7 @@ export function renderSprayEffect(
   // Calculate direction vector
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
+  const dist = magnitude(dx, dy);
   if (dist === 0) return;
 
   const dirX = dx / dist;

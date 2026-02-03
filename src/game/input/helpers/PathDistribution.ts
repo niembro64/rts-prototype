@@ -1,6 +1,7 @@
 // Path distribution helpers for line move commands
 
 import type { Entity, EntityId } from '../../sim/types';
+import { magnitude } from '../../math';
 
 // Point in world space
 export interface WorldPoint {
@@ -14,7 +15,7 @@ export function getPathLength(points: WorldPoint[]): number {
   for (let i = 1; i < points.length; i++) {
     const dx = points[i].x - points[i - 1].x;
     const dy = points[i].y - points[i - 1].y;
-    length += Math.sqrt(dx * dx + dy * dy);
+    length += magnitude(dx, dy);
   }
   return length;
 }
@@ -28,7 +29,7 @@ export function getPointAtDistance(points: WorldPoint[], targetDist: number): Wo
   for (let i = 1; i < points.length; i++) {
     const dx = points[i].x - points[i - 1].x;
     const dy = points[i].y - points[i - 1].y;
-    const segmentLength = Math.sqrt(dx * dx + dy * dy);
+    const segmentLength = magnitude(dx, dy);
 
     if (traveled + segmentLength >= targetDist) {
       // The target point is on this segment
@@ -93,7 +94,7 @@ export function assignUnitsToTargets(
       for (const target of remainingTargets) {
         const dx = unit.transform.x - target.x;
         const dy = unit.transform.y - target.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = magnitude(dx, dy);
         if (dist < bestDist) {
           bestDist = dist;
           bestUnit = unit;

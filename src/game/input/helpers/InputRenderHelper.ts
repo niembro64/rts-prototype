@@ -4,6 +4,7 @@ import type Phaser from 'phaser';
 import type { Entity, WaypointType, BuildingType } from '../../sim/types';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
+import { magnitude } from '../../math';
 import type { WorldPoint } from './PathDistribution';
 
 // Waypoint mode colors
@@ -137,7 +138,7 @@ export function drawBuildGhost(
     // Check if building is in range
     const dx = x - cx;
     const dy = y - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = magnitude(dx, dy);
     const inRange = dist <= range;
 
     if (!inRange) {

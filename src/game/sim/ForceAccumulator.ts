@@ -1,4 +1,5 @@
 import type { EntityId } from './types';
+import { magnitude } from '../math';
 
 /**
  * Force contribution from a single source.
@@ -117,7 +118,7 @@ export class ForceAccumulator {
     source: string = 'directional'
   ): void {
     // Normalize direction
-    const len = Math.sqrt(directionX * directionX + directionY * directionY);
+    const len = magnitude(directionX, directionY);
     if (len === 0) return;
 
     const nx = directionX / len;
