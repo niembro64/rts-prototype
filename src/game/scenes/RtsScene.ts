@@ -6,7 +6,6 @@ import { spawnInitialEntities } from '../sim/spawn';
 import { EntityRenderer } from '../render/renderEntities';
 import { InputManager } from '../input/inputBindings';
 import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
-import { PLAYER_COLORS } from '../sim/types';
 import { economyManager } from '../sim/economy';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { networkManager, type NetworkRole } from '../network/NetworkManager';
@@ -17,18 +16,6 @@ import { ClientViewState } from '../network/ClientViewState';
 
 // Host view modes
 export type HostViewMode = 'simulation' | 'client';
-
-// Weapon ID to display label
-const WEAPON_LABELS: Record<string, string> = {
-  scout: 'Scout',
-  burst: 'Burst',
-  beam: 'Beam',
-  brawl: 'Brawl',
-  mortar: 'Mortar',
-  snipe: 'Snipe',
-  tank: 'Tank',
-  arachnid: 'Arachnid',
-};
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent, DeathContext } from '../sim/combat';
 import {
@@ -49,6 +36,9 @@ import {
   handleUnitDeaths,
   handleBuildingDeaths,
   spawnBackgroundUnits,
+  buildSelectionInfo,
+  buildEconomyInfo,
+  buildMinimapData,
 } from './helpers';
 
 // Grid settings
@@ -455,82 +445,25 @@ export class RtsScene extends Phaser.Scene {
     if (!this.onSelectionChange) return;
 
     const entitySource = this.getCurrentEntitySource();
-    const selectedUnits = entitySource.getSelectedUnits();
-    const selectedBuildings = entitySource.getSelectedBuildings();
-
-    // Check for commander
-    const commander = selectedUnits.find(u => u.commander !== undefined);
-
-    // Check for factory
-    const factory = selectedBuildings.find(b => b.factory !== undefined);
-
     const inputState = this.inputManager?.getState();
 
-    // Get factory queue info if factory is selected
-    let factoryQueue: { weaponId: string; label: string }[] | undefined;
-    let factoryProgress: number | undefined;
-    let factoryIsProducing: boolean | undefined;
-
-    if (factory?.factory) {
-      const f = factory.factory;
-      factoryQueue = f.buildQueue.map(weaponId => ({
-        weaponId,
-        label: WEAPON_LABELS[weaponId] ?? weaponId,
-      }));
-      factoryProgress = f.currentBuildProgress;
-      factoryIsProducing = f.isProducing;
-    }
-
-    this.onSelectionChange({
-      unitCount: selectedUnits.length,
-      hasCommander: commander !== undefined,
-      hasFactory: factory !== undefined,
-      factoryId: factory?.id,
-      commanderId: commander?.id,
-      waypointMode: inputState?.waypointMode ?? 'move',
-      isBuildMode: inputState?.isBuildMode ?? false,
-      selectedBuildingType: inputState?.selectedBuildingType ?? null,
-      isDGunMode: inputState?.isDGunMode ?? false,
-      factoryQueue,
-      factoryProgress,
-      factoryIsProducing,
-    });
+    this.onSelectionChange(buildSelectionInfo(entitySource, inputState));
   }
 
   // Update economy info and notify UI
   public updateEconomyInfo(): void {
     if (!this.onEconomyChange) return;
 
-    const playerId = this.world.activePlayerId;
-    const economy = economyManager.getEconomy(playerId);
-    if (!economy) return;
-
-    // Count buildings for this player - use current entity source for view mode awareness
     const entitySource = this.getCurrentEntitySource();
-    const playerBuildings = entitySource.getBuildingsByPlayer(playerId);
-    const solarCount = playerBuildings.filter(b => b.buildingType === 'solar').length;
-    const factoryCount = playerBuildings.filter(b => b.buildingType === 'factory').length;
+    const economyInfo = buildEconomyInfo(
+      entitySource,
+      this.world.activePlayerId,
+      this.world.getUnitCapPerPlayer()
+    );
 
-    // Count units for this player
-    const unitCount = entitySource.getUnitsByPlayer(playerId).length;
-    const unitCap = this.world.getUnitCapPerPlayer();
-
-    const income = economy.baseIncome + economy.production;
-    const netFlow = income - economy.expenditure;
-
-    this.onEconomyChange({
-      stockpile: economy.stockpile,
-      maxStockpile: economy.maxStockpile,
-      income,
-      baseIncome: economy.baseIncome,
-      production: economy.production,
-      expenditure: economy.expenditure,
-      netFlow,
-      solarCount,
-      factoryCount,
-      unitCount,
-      unitCap,
-    });
+    if (economyInfo) {
+      this.onEconomyChange(economyInfo);
+    }
   }
 
   // Update minimap data and notify UI
@@ -539,53 +472,16 @@ export class RtsScene extends Phaser.Scene {
 
     const camera = this.cameras.main;
     const entitySource = this.getCurrentEntitySource();
-    const entities: { x: number; y: number; type: 'unit' | 'building'; color: string; isSelected?: boolean }[] = [];
 
-    // Add units to minimap
-    for (const unit of entitySource.getUnits()) {
-      const playerId = unit.ownership?.playerId;
-      const color = playerId ? PLAYER_COLORS[playerId]?.primary : 0x888888;
-      const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
-
-      entities.push({
-        x: unit.transform.x,
-        y: unit.transform.y,
-        type: 'unit',
-        color: colorHex,
-        isSelected: unit.selectable?.selected,
-      });
-    }
-
-    // Add buildings to minimap
-    for (const building of entitySource.getBuildings()) {
-      const playerId = building.ownership?.playerId;
-      const color = playerId ? PLAYER_COLORS[playerId]?.primary : 0x888888;
-      const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
-
-      entities.push({
-        x: building.transform.x,
-        y: building.transform.y,
-        type: 'building',
-        color: colorHex,
-        isSelected: building.selectable?.selected,
-      });
-    }
-
-    // Calculate camera viewport in world coordinates
-    const cameraX = camera.scrollX;
-    const cameraY = camera.scrollY;
-    const cameraWidth = camera.width / camera.zoom;
-    const cameraHeight = camera.height / camera.zoom;
-
-    this.onMinimapUpdate({
-      mapWidth: this.world.mapWidth,
-      mapHeight: this.world.mapHeight,
-      entities,
-      cameraX,
-      cameraY,
-      cameraWidth,
-      cameraHeight,
-    });
+    this.onMinimapUpdate(buildMinimapData(
+      entitySource,
+      this.world.mapWidth,
+      this.world.mapHeight,
+      camera.scrollX,
+      camera.scrollY,
+      camera.width / camera.zoom,
+      camera.height / camera.zoom
+    ));
   }
 
   // Draw the grid background
