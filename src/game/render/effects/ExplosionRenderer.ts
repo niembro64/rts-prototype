@@ -3,6 +3,7 @@
 import Phaser from 'phaser';
 import type { ExplosionEffect } from '../types';
 import { getGraphicsConfig } from '../graphicsSettings';
+import { clamp01, angleDiff as computeAngleDiff } from '../../math';
 
 /**
  * Render an explosion effect based on current graphics settings
@@ -480,7 +481,7 @@ function renderComplexExplosion(
   const sparkCount = 24 + Math.floor(attackStrength * 20);
   for (let i = 0; i < sparkCount; i++) {
     const sparkDelay = seededRandom(i + 300) * 0.12;
-    const sparkProgress = Math.max(0, Math.min(1, (progress - sparkDelay) * 1.5));
+    const sparkProgress = clamp01((progress - sparkDelay) * 1.5);
     if (sparkProgress <= 0) continue;
 
     const baseAngle = (i / sparkCount) * Math.PI * 2 + seededRandom(i + 301) * 0.3;
@@ -489,14 +490,12 @@ function renderComplexExplosion(
     let finalAngle = baseAngle;
     let distMult = 1;
     if (hasAttacker) {
-      let angleDiff = baseAngle - attackAngle;
-      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+      const angDiff = computeAngleDiff(attackAngle, baseAngle);
 
-      const alignment = Math.cos(angleDiff);
+      const alignment = Math.cos(angDiff);
       if (alignment > 0) {
         distMult = 1 + alignment * attackStrength * 3.0;
-        finalAngle = baseAngle - angleDiff * 0.7 * attackStrength;
+        finalAngle = baseAngle - angDiff * 0.7 * attackStrength;
       } else {
         distMult = Math.max(0.1, 1 + alignment * attackStrength * 0.8);
       }
@@ -533,7 +532,7 @@ function renderComplexExplosion(
     const fragmentCount = 8 + Math.floor(attackStrength * 15);
     for (let i = 0; i < fragmentCount; i++) {
       const fragDelay = seededRandom(i + 350) * 0.08;
-      const fragProgress = Math.max(0, Math.min(1, (progress - fragDelay) * 1.8));
+      const fragProgress = clamp01((progress - fragDelay) * 1.8);
       if (fragProgress <= 0) continue;
 
       const coneSpread = 0.5 * (1 - attackStrength * 0.3);
@@ -571,7 +570,7 @@ function renderComplexExplosion(
   const debrisCount = 8 + Math.floor(penStrength * 6);
   for (let i = 0; i < debrisCount; i++) {
     const debrisDelay = seededRandom(i + 400) * 0.08;
-    const debrisProgress = Math.max(0, Math.min(1, (progress - debrisDelay) * 1.3));
+    const debrisProgress = clamp01((progress - debrisDelay) * 1.3);
     if (debrisProgress <= 0) continue;
 
     const baseAngle = seededRandom(i + 401) * Math.PI * 2;
@@ -580,14 +579,12 @@ function renderComplexExplosion(
     let finalAngle = baseAngle;
     let distMult = 1;
     if (hasPenetration) {
-      let angleDiff = baseAngle - penAngle;
-      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+      const angDiff = computeAngleDiff(penAngle, baseAngle);
 
-      const alignment = Math.cos(angleDiff);
+      const alignment = Math.cos(angDiff);
       if (alignment > 0) {
         distMult = 1 + alignment * penStrength * 1.8;
-        finalAngle = baseAngle - angleDiff * 0.6 * penStrength;
+        finalAngle = baseAngle - angDiff * 0.6 * penStrength;
       } else {
         distMult = Math.max(0.2, 1 + alignment * penStrength * 0.5);
       }
@@ -650,7 +647,7 @@ function renderComplexExplosion(
     const trailCount = Math.floor(combinedStrength * 15);
     for (let i = 0; i < trailCount; i++) {
       const trailT = i / trailCount;
-      const trailProgress = Math.max(0, Math.min(1, (progress - trailT * 0.2) * 1.6));
+      const trailProgress = clamp01((progress - trailT * 0.2) * 1.6);
       if (trailProgress <= 0) continue;
 
       const spreadAngle = (seededRandom(i + 600) - 0.5) * 0.6 * (1 - combinedStrength * 0.5);

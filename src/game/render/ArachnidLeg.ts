@@ -1,5 +1,7 @@
 // Arachnid leg class - handles leg movement and rendering (client-side only)
 
+import { normalizeAngle } from '../math';
+
 export interface LegConfig {
   // Attachment point offset relative to unit center (in unit's local space)
   attachOffsetX: number;  // Forward/back offset
@@ -140,10 +142,7 @@ export class ArachnidLeg {
 
     // Check angle - how far behind is the foot?
     const groundAngle = Math.atan2(dy, dx);
-    let angleDiff = groundAngle - unitRotation;
-    // Normalize to [-PI, PI]
-    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+    const angleDiff = normalizeAngle(groundAngle - unitRotation);
 
     // Angle triggers if foot is too far behind
     const angleTriggered = Math.abs(angleDiff) > this.config.snapTriggerAngle;
