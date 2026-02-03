@@ -24,7 +24,7 @@ import type { EntitySource, ExplosionEffect, UnitRenderContext, BuildingRenderCo
 import { COLORS, LEG_STYLE_CONFIG } from './types';
 import { getPlayerColor, getProjectileColor, createColorPalette } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
-import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawSonicUnit } from './units';
+import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawSonicUnit, drawCommanderUnit } from './units';
 import { renderFactory, renderSolarPanel } from './buildings';
 import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
 
@@ -88,7 +88,7 @@ export class EntityRenderer {
 
   private getOrCreateLegs(
     entity: Entity,
-    legStyle: 'arachnid' | 'daddy' | 'insect' = 'arachnid'
+    legStyle: 'arachnid' | 'daddy' | 'insect' | 'commander' = 'arachnid'
   ): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
@@ -116,6 +116,18 @@ export class EntityRenderer {
         { attachOffsetX: radius * 0.2, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.5, snapTargetAngle: -Math.PI * 0.2, snapDistanceMultiplier: 0.99, extensionThreshold: 0.99 },
         { attachOffsetX: 0, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.8, snapTargetAngle: -Math.PI * 0.3, snapDistanceMultiplier: 0.85, extensionThreshold: 0.99 },
         { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.4, snapDistanceMultiplier: 0.6, extensionThreshold: 0.99 },
+      ];
+    } else if (legStyle === 'commander') {
+      // Commander has 4 sturdy legs - 2 front, 2 back
+      const legLength = radius * 2.2;
+      const upperLen = legLength * 0.5;
+      const lowerLen = legLength * 0.5;
+
+      leftSideConfigs = [
+        // Front leg - forward facing
+        { attachOffsetX: radius * 0.4, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.45, snapTargetAngle: -Math.PI * 0.15, snapDistanceMultiplier: 0.95, extensionThreshold: 0.9 },
+        // Back leg - rear facing
+        { attachOffsetX: -radius * 0.4, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.85, snapTargetAngle: -Math.PI * 0.55, snapDistanceMultiplier: 0.7, extensionThreshold: 0.95 },
       ];
     } else {
       const legLength = radius * 1.9;
@@ -168,13 +180,21 @@ export class EntityRenderer {
     }
 
     for (const entity of this.entitySource.getUnits()) {
-      if (!entity.unit || !entity.weapons || entity.weapons.length === 0) continue;
+      if (!entity.unit) continue;
 
-      const unitType = entity.weapons.length > 1 ? 'widow' : entity.weapons[0].config.id;
-      const definition = getUnitDefinition(unitType);
-      if (!definition || definition.locomotion !== 'legs') continue;
+      // Commanders always get commander-style legs
+      let legStyle: 'arachnid' | 'daddy' | 'insect' | 'commander';
+      if (entity.commander) {
+        legStyle = 'commander';
+      } else {
+        // Non-commanders check weapon definition
+        if (!entity.weapons || entity.weapons.length === 0) continue;
+        const unitType = entity.weapons.length > 1 ? 'widow' : entity.weapons[0].config.id;
+        const definition = getUnitDefinition(unitType);
+        if (!definition || definition.locomotion !== 'legs') continue;
+        legStyle = definition.legStyle ?? 'arachnid';
+      }
 
-      const legStyle = definition.legStyle ?? 'arachnid';
       const legs = this.getOrCreateLegs(entity, legStyle);
 
       const matterBody = entity.body?.matterBody as MatterJS.BodyType | undefined;
@@ -494,17 +514,22 @@ export class EntityRenderer {
       skipTurrets: this.skipTurrets, turretsOnly: this.turretsOnly,
     };
 
-    switch (weaponId) {
-      case 'scout': drawScoutUnit(ctx, this.getVehicleWheels(entity.id)); break;
-      case 'burst': drawBurstUnit(ctx, this.getVehicleWheels(entity.id)); break;
-      case 'daddy': drawBeamUnit(ctx, this.getOrCreateLegs(entity, 'daddy')); break;
-      case 'brawl': drawBrawlUnit(ctx, this.getTankTreads(entity.id)); break;
-      case 'shotgun': drawMortarUnit(ctx, this.getVehicleWheels(entity.id)); break;
-      case 'snipe': drawSnipeUnit(ctx, this.getVehicleWheels(entity.id)); break;
-      case 'tank': drawTankUnit(ctx, this.getTankTreads(entity.id)); break;
-      case 'widow': drawArachnidUnit(ctx, this.getOrCreateLegs(entity, 'arachnid')); break;
-      case 'insect': drawSonicUnit(ctx, this.getOrCreateLegs(entity, 'insect')); break;
-      default: drawScoutUnit(ctx, this.getVehicleWheels(entity.id));
+    // Commander gets special 4-legged mech body regardless of weapon
+    if (entity.commander) {
+      drawCommanderUnit(ctx, this.getOrCreateLegs(entity, 'commander'));
+    } else {
+      switch (weaponId) {
+        case 'scout': drawScoutUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'burst': drawBurstUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'daddy': drawBeamUnit(ctx, this.getOrCreateLegs(entity, 'daddy')); break;
+        case 'brawl': drawBrawlUnit(ctx, this.getTankTreads(entity.id)); break;
+        case 'shotgun': drawMortarUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'snipe': drawSnipeUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'tank': drawTankUnit(ctx, this.getTankTreads(entity.id)); break;
+        case 'widow': drawArachnidUnit(ctx, this.getOrCreateLegs(entity, 'arachnid')); break;
+        case 'insect': drawSonicUnit(ctx, this.getOrCreateLegs(entity, 'insect')); break;
+        default: drawScoutUnit(ctx, this.getVehicleWheels(entity.id));
+      }
     }
 
     if (!this.turretsOnly) {

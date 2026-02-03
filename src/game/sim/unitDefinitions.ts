@@ -18,7 +18,7 @@ import {
 export type LocomotionType = 'wheels' | 'treads' | 'legs';
 
 // Leg styles for legged units
-export type LegStyle = 'arachnid' | 'daddy' | 'insect';
+export type LegStyle = 'arachnid' | 'daddy' | 'insect' | 'commander';
 
 // Unified unit definition - everything about a unit type in one place
 export interface UnitDefinition {

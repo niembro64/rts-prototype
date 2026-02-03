@@ -129,6 +129,7 @@ export const LEG_STYLE_CONFIG = {
   arachnid: { thickness: 5, footSizeMultiplier: 0.1, lerpSpeed: 700 },
   daddy: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 500 },
   insect: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 200 },
+  commander: { thickness: 6, footSizeMultiplier: 0.15, lerpSpeed: 400 },
 } as const;
 
 // Waypoint colors by type (legacy - for factories)
