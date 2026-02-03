@@ -32,15 +32,6 @@ const WEAPON_LABELS: Record<string, string> = {
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent, DeathContext } from '../sim/combat';
 import {
-  LASER_SOUND_ENABLED,
-  UNIT_STATS,
-  MAX_TOTAL_UNITS,
-  BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
-  EXPLOSION_VELOCITY_MULTIPLIER,
-  EXPLOSION_IMPACT_FORCE_MULTIPLIER,
-  EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
-  EXPLOSION_BASE_MOMENTUM,
-  UNIT_MASS_MULTIPLIER,
   ZOOM_INITIAL,
   WORLD_PADDING_PERCENT,
   MAP_WIDTH,
@@ -48,40 +39,21 @@ import {
   BACKGROUND_MAP_WIDTH,
   BACKGROUND_MAP_HEIGHT,
 } from '../../config';
-import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
+
+// Import helpers
+import {
+  createUnitBody,
+  createMatterBodies,
+  applyUnitVelocities,
+  handleAudioEvent,
+  handleUnitDeaths,
+  handleBuildingDeaths,
+  spawnBackgroundUnits,
+} from './helpers';
 
 // Grid settings
 const GRID_SIZE = 50;
 const GRID_COLOR = 0x333355;
-
-// Create a physics body with explicit mass from config
-function createUnitBody(
-  matter: Phaser.Physics.Matter.MatterPhysics,
-  x: number,
-  y: number,
-  collisionRadius: number,
-  mass: number,
-  label: string
-): MatterJS.BodyType {
-  // Apply global mass multiplier for physics feel tuning
-  const physicsMass = mass * UNIT_MASS_MULTIPLIER;
-
-  const body = matter.add.circle(x, y, collisionRadius, {
-    friction: 0.01,        // Low ground friction
-    frictionAir: 0.15,     // Higher air friction - units slow down quickly when not thrusting
-    frictionStatic: 0.1,
-    restitution: 0.2,      // Less bounce
-    label,
-  });
-
-  // Explicitly set mass after creation (Matter.js option doesn't always work)
-  matter.body.setMass(body, physicsMass);
-
-  // Set inertia based on mass - heavier units resist rotation more
-  matter.body.setInertia(body, physicsMass * collisionRadius * collisionRadius * 0.5);
-
-  return body as unknown as MatterJS.BodyType;
-}
 
 export class RtsScene extends Phaser.Scene {
   private world!: WorldState;
@@ -210,12 +182,12 @@ export class RtsScene extends Phaser.Scene {
     if (this.networkRole !== 'client') {
       // Setup death callback (with deathContexts for directional explosions)
       this.simulation.onUnitDeath = (deadUnitIds: EntityId[], deathContexts?: Map<EntityId, DeathContext>) => {
-        this.handleUnitDeaths(deadUnitIds, deathContexts);
+        handleUnitDeaths(this.world, this.matter, this.entityRenderer, deadUnitIds, deathContexts);
       };
 
       // Setup building death callback
       this.simulation.onBuildingDeath = (deadBuildingIds: EntityId[]) => {
-        this.handleBuildingDeaths(deadBuildingIds);
+        handleBuildingDeaths(this.world, this.simulation, deadBuildingIds);
       };
 
       // Setup spawn callback (for factory-produced units)
@@ -225,7 +197,7 @@ export class RtsScene extends Phaser.Scene {
 
       // Setup audio callback
       this.simulation.onAudioEvent = (event: AudioEvent) => {
-        this.handleAudioEvent(event);
+        handleAudioEvent(event, this.entityRenderer, this.audioInitialized);
       };
 
       // Setup game over callback (skip in background mode - never ends)
@@ -271,12 +243,12 @@ export class RtsScene extends Phaser.Scene {
         economyManager.initPlayer(2); // Blue
         economyManager.initPlayer(3); // Yellow
         economyManager.initPlayer(4); // Green
-        this.spawnBackgroundUnits(true); // Initial spawn
+        spawnBackgroundUnits(this.world, this.matter, true); // Initial spawn
       } else {
         // Normal mode: spawn commanders
         const entities = spawnInitialEntities(this.world, this.playerIds);
         // Create Matter bodies for entities
-        this.createMatterBodies(entities);
+        createMatterBodies(this.matter, entities);
 
         // Center camera on local player's commander
         const commander = this.world.getCommander(this.world.activePlayerId);
@@ -312,197 +284,6 @@ export class RtsScene extends Phaser.Scene {
         this.audioInitialized = true;
       }
     });
-  }
-
-  // Handle audio events from simulation (or network)
-  private handleAudioEvent(event: AudioEvent): void {
-    // Always handle visual effects even if audio not initialized
-    if (event.type === 'hit' || event.type === 'projectileExpire') {
-      // Add impact explosion at hit/termination location
-      // Size based on weapon type (larger for heavy weapons)
-      const explosionRadius = this.getExplosionRadius(event.weaponId);
-      const explosionColor = 0xff8844; // Orange-ish for impacts
-      this.entityRenderer.addExplosion(event.x, event.y, explosionRadius, explosionColor, 'impact');
-    }
-
-    // Handle death explosions (visual) - uses death context from event
-    if (event.type === 'death' && event.deathContext) {
-      const ctx = event.deathContext;
-      const radius = ctx.radius * 2.5; // Death explosions are 2.5x collision radius
-
-      // Apply same multipliers as host-side death handling
-      const velocityX = ctx.unitVelX * EXPLOSION_VELOCITY_MULTIPLIER;
-      const velocityY = ctx.unitVelY * EXPLOSION_VELOCITY_MULTIPLIER;
-
-      const penetrationX = ctx.hitDirX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
-      const penetrationY = ctx.hitDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
-
-      const attackScale = Math.min(ctx.attackMagnitude / 50, 2);
-      const attackerX = ctx.projectileVelX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
-      const attackerY = ctx.projectileVelY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
-
-      // Add base momentum
-      let baseVelX = velocityX;
-      let baseVelY = velocityY;
-      const combinedX = velocityX + penetrationX + attackerX;
-      const combinedY = velocityY + penetrationY + attackerY;
-      const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
-      if (combinedMag > 0 && EXPLOSION_BASE_MOMENTUM > 0) {
-        baseVelX += (combinedX / combinedMag) * EXPLOSION_BASE_MOMENTUM;
-        baseVelY += (combinedY / combinedMag) * EXPLOSION_BASE_MOMENTUM;
-      }
-
-      this.entityRenderer.addExplosion(
-        event.x,
-        event.y,
-        radius,
-        ctx.color,
-        'death',
-        baseVelX,
-        baseVelY,
-        penetrationX,
-        penetrationY,
-        attackerX,
-        attackerY
-      );
-    }
-
-    if (!this.audioInitialized) return;
-
-    switch (event.type) {
-      case 'fire':
-        audioManager.playWeaponFire(event.weaponId);
-        break;
-      case 'hit':
-        audioManager.playWeaponHit(event.weaponId);
-        break;
-      case 'death':
-        audioManager.playUnitDeath(event.weaponId);
-        break;
-      case 'laserStart':
-        // Only play laser sound if enabled in config
-        if (LASER_SOUND_ENABLED && event.entityId !== undefined) {
-          audioManager.startLaserSound(event.entityId);
-        }
-        break;
-      case 'laserStop':
-        // Always try to stop (in case config changed mid-game)
-        if (event.entityId !== undefined) {
-          audioManager.stopLaserSound(event.entityId);
-        }
-        break;
-      case 'projectileExpire':
-        // No sound for projectile expiration (visual only)
-        break;
-    }
-  }
-
-  // Get explosion radius based on weapon type
-  private getExplosionRadius(weaponId: string): number {
-    const weaponSizes: Record<string, number> = {
-      scout: 6,
-      burst: 7,
-      beam: 5,
-      brawl: 10,
-      mortar: 18,
-      snipe: 8,
-      tank: 15,
-      dgun: 30,
-    };
-    return weaponSizes[weaponId] ?? 8;
-  }
-
-  // Handle unit deaths (cleanup Matter bodies and audio)
-  // deathContexts contains info about the killing blow for directional explosions
-  private handleUnitDeaths(
-    deadUnitIds: EntityId[],
-    deathContexts?: Map<EntityId, DeathContext>
-  ): void {
-    for (const id of deadUnitIds) {
-      const entity = this.world.getEntity(id);
-      if (entity) {
-        // Add death explosion at 2.5x collision radius
-        // Pass three separate momentum vectors for different explosion layers:
-        // 1. Unit's own velocity - affects smoke, embers (trailing effect)
-        // 2. Impact force from killing blow - affects debris, shockwaves (blown away)
-        // 3. Attacker's projectile/beam direction - affects sparks (penetration effect)
-        if (entity.unit) {
-          const radius = entity.unit.collisionRadius * 2.5;
-          const playerColor = entity.ownership?.playerId
-            ? PLAYER_COLORS[entity.ownership.playerId]?.primary ?? 0xff6600
-            : 0xff6600;
-
-          // 1. Unit's velocity from physics body (scaled by multiplier)
-          const bodyVel = (entity.body?.matterBody as { velocity?: { x: number; y: number } })?.velocity;
-          const velocityX = (bodyVel?.x ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
-          const velocityY = (bodyVel?.y ?? 0) * EXPLOSION_VELOCITY_MULTIPLIER;
-
-          // 2 & 3: Hit direction and attacker velocity from death context
-          let penetrationX = 0;
-          let penetrationY = 0;
-          let attackerX = 0;
-          let attackerY = 0;
-
-          const ctx = deathContexts?.get(id);
-          if (ctx) {
-            // Hit direction (from hit point through unit center)
-            penetrationX = ctx.penetrationDirX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
-            penetrationY = ctx.penetrationDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
-
-            // Attacker velocity (actual projectile velocity or beam direction * magnitude)
-            // Scale by attack magnitude for bigger hits = bigger directional effect
-            const attackScale = Math.min(ctx.attackMagnitude / 50, 2); // Normalize to ~1 for 50 damage
-            attackerX = ctx.attackerVelX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
-            attackerY = ctx.attackerVelY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
-          }
-
-          // Add base momentum to combined direction (gives minimum "oomph")
-          // We add it to velocity since that's always present
-          let baseVelX = velocityX;
-          let baseVelY = velocityY;
-          const combinedX = velocityX + penetrationX + attackerX;
-          const combinedY = velocityY + penetrationY + attackerY;
-          const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
-          if (combinedMag > 0 && EXPLOSION_BASE_MOMENTUM > 0) {
-            baseVelX += (combinedX / combinedMag) * EXPLOSION_BASE_MOMENTUM;
-            baseVelY += (combinedY / combinedMag) * EXPLOSION_BASE_MOMENTUM;
-          }
-
-          this.entityRenderer.addExplosion(
-            entity.transform.x,
-            entity.transform.y,
-            radius,
-            playerColor,
-            'death',
-            baseVelX,
-            baseVelY,
-            penetrationX,
-            penetrationY,
-            attackerX,
-            attackerY
-          );
-        }
-        if (entity.body?.matterBody) {
-          this.matter.world.remove(entity.body.matterBody);
-        }
-        // Stop any laser sound this unit was making
-        audioManager.stopLaserSound(id);
-      }
-      this.world.removeEntity(id);
-    }
-  }
-
-  // Handle building deaths (remove from world and clean up construction grid)
-  private handleBuildingDeaths(deadBuildingIds: EntityId[]): void {
-    const constructionSystem = this.simulation.getConstructionSystem();
-    for (const id of deadBuildingIds) {
-      const entity = this.world.getEntity(id);
-      if (entity) {
-        // Clean up construction grid occupancy and energy production
-        constructionSystem.onBuildingDestroyed(entity);
-      }
-      this.world.removeEntity(id);
-    }
   }
 
   // Handle game over (last commander standing)
@@ -807,40 +588,6 @@ export class RtsScene extends Phaser.Scene {
     });
   }
 
-  // Create Matter.js physics bodies for entities
-  private createMatterBodies(entities: Entity[]): void {
-    for (const entity of entities) {
-      if (entity.type === 'unit' && entity.unit) {
-        // Circle body for units with proper mass
-        const body = createUnitBody(
-          this.matter,
-          entity.transform.x,
-          entity.transform.y,
-          entity.unit.collisionRadius,
-          entity.unit.mass,
-          `unit_${entity.id}`
-        );
-        entity.body = { matterBody: body };
-      } else if (entity.type === 'building' && entity.building) {
-        // Rectangle body for buildings (static)
-        const body = this.matter.add.rectangle(
-          entity.transform.x,
-          entity.transform.y,
-          entity.building.width,
-          entity.building.height,
-          {
-            isStatic: true,
-            friction: 0.8,
-            restitution: 0.1,
-            label: `building_${entity.id}`,
-          }
-        );
-
-        entity.body = { matterBody: body as unknown as MatterJS.BodyType };
-      }
-    }
-  }
-
   // Draw the grid background
   private drawGrid(): void {
     this.gridGraphics = this.add.graphics();
@@ -946,7 +693,7 @@ export class RtsScene extends Phaser.Scene {
         this.simulation.update(this.PHYSICS_TIMESTEP);
 
         // Apply forces to Matter bodies
-        this.applyUnitVelocities();
+        applyUnitVelocities(this.matter, this.world, this.simulation.getForceAccumulator());
 
         // Step Matter.js physics with fixed timestep
         this.matter.world.step(this.PHYSICS_TIMESTEP);
@@ -960,7 +707,7 @@ export class RtsScene extends Phaser.Scene {
         this.backgroundSpawnTimer += delta;
         if (this.backgroundSpawnTimer >= this.BACKGROUND_SPAWN_INTERVAL) {
           this.backgroundSpawnTimer = 0;
-          this.spawnBackgroundUnits(false);
+          spawnBackgroundUnits(this.world, this.matter, false);
         }
       }
 
@@ -1155,7 +902,7 @@ export class RtsScene extends Phaser.Scene {
       const audioEvents = this.clientViewState.getPendingAudioEvents();
       if (audioEvents) {
         for (const event of audioEvents) {
-          this.handleAudioEvent(event);
+          handleAudioEvent(event, this.entityRenderer, this.audioInitialized);
         }
       }
 
@@ -1252,228 +999,6 @@ export class RtsScene extends Phaser.Scene {
       this.clientViewState.selectEntity(id);
     }
     this.markSelectionDirty();
-  }
-
-  // Apply forces to Matter bodies - simple force toward waypoint, friction handles the rest
-  private applyUnitVelocities(): void {
-    const forceAccumulator = this.simulation.getForceAccumulator();
-
-    for (const entity of this.world.getUnits()) {
-      if (!entity.body?.matterBody || !entity.unit) continue;
-
-      const matterBody = entity.body.matterBody as MatterJS.BodyType;
-
-      // Sync position from physics body
-      entity.transform.x = matterBody.position.x;
-      entity.transform.y = matterBody.position.y;
-
-      // Get the direction unit wants to move (stored as velocityX/Y, normalized direction)
-      const dirX = entity.unit.velocityX ?? 0;
-      const dirY = entity.unit.velocityY ?? 0;
-      const dirMag = Math.sqrt(dirX * dirX + dirY * dirY);
-
-      // Update rotation to face movement direction
-      if (dirMag > 0.01) {
-        entity.transform.rotation = Math.atan2(dirY, dirX);
-      }
-
-      // Pure Newtonian physics: F = m × a, so a = F / m
-      // Thrust force uses unit's base mass (NOT multiplied by UNIT_MASS_MULTIPLIER)
-      // Body mass = unit.mass × UNIT_MASS_MULTIPLIER (set in createUnitBody)
-      // Acceleration = thrust / bodyMass = (moveSpeed × mass) / (mass × UNIT_MASS_MULTIPLIER)
-      //              = moveSpeed / UNIT_MASS_MULTIPLIER
-      // This way UNIT_MASS_MULTIPLIER actually affects acceleration (higher = slower)
-      // and heavy units still push light units in collisions due to scaled body mass
-      let thrustForceX = 0;
-      let thrustForceY = 0;
-      if (dirMag > 0) {
-        // Matter.js expects small force values - divide by scale factor
-        // Use base mass (not multiplied) so UNIT_MASS_MULTIPLIER affects acceleration
-        const MATTER_FORCE_SCALE = 150000;
-        const thrustMagnitude = (entity.unit.moveSpeed * entity.unit.mass) / MATTER_FORCE_SCALE;
-        thrustForceX = (dirX / dirMag) * thrustMagnitude;
-        thrustForceY = (dirY / dirMag) * thrustMagnitude;
-      }
-
-      // Get external forces (like wave pull, knockback) from the accumulator
-      const externalForce = forceAccumulator.getFinalForce(entity.id);
-      const externalFx = (externalForce?.fx ?? 0) / 3600; // Scale down to match physics scale
-      const externalFy = (externalForce?.fy ?? 0) / 3600;
-
-      // Combine thrust and external forces
-      let totalForceX = thrustForceX + externalFx;
-      let totalForceY = thrustForceY + externalFy;
-
-      // Safety: skip NaN/Infinity values
-      if (!Number.isFinite(totalForceX) || !Number.isFinite(totalForceY)) {
-        continue;
-      }
-
-      // Apply force at center of mass
-      this.matter.body.applyForce(matterBody, matterBody.position, {
-        x: totalForceX,
-        y: totalForceY,
-      });
-    }
-  }
-
-  // === Background Mode Methods ===
-
-  // Available unit types for background spawning
-  private readonly BACKGROUND_UNIT_TYPES = Object.keys(UNIT_STATS) as (keyof typeof UNIT_STATS)[];
-
-  // Precomputed inverse cost weights for weighted random selection
-  private backgroundUnitWeights: { type: keyof typeof UNIT_STATS; weight: number }[] = [];
-  private backgroundTotalWeight: number = 0;
-
-  // Initialize background unit weights (call once)
-  private initBackgroundUnitWeights(): void {
-    if (this.backgroundUnitWeights.length > 0) return; // Already initialized
-
-    // Calculate inverse cost weights: weight = 1 / cost
-    // This makes cheaper units spawn more frequently
-    for (const unitType of this.BACKGROUND_UNIT_TYPES) {
-      const cost = UNIT_STATS[unitType].baseCost;
-      const weight = 1 / cost;
-      this.backgroundUnitWeights.push({ type: unitType, weight });
-      this.backgroundTotalWeight += weight;
-    }
-  }
-
-  // Select a random unit type based on inverse cost weighting
-  private selectWeightedUnitType(): keyof typeof UNIT_STATS {
-    this.initBackgroundUnitWeights();
-
-    const random = Math.random() * this.backgroundTotalWeight;
-    let cumulative = 0;
-
-    for (const entry of this.backgroundUnitWeights) {
-      cumulative += entry.weight;
-      if (random <= cumulative) {
-        return entry.type;
-      }
-    }
-
-    // Fallback (shouldn't reach here)
-    return this.backgroundUnitWeights[this.backgroundUnitWeights.length - 1].type;
-  }
-
-  // Spawn units for the background battle (4 players: Red, Blue, Yellow, Green)
-  private spawnBackgroundUnits(initialSpawn: boolean): void {
-    const numPlayers = 4;
-    const unitCapPerPlayer = Math.floor(MAX_TOTAL_UNITS / numPlayers);
-    const spawnMargin = 100; // Distance from map edge for spawning
-    const mapWidth = this.world.mapWidth;
-    const mapHeight = this.world.mapHeight;
-
-    // How many to spawn this cycle per player
-    const unitsToSpawnPerPlayer = initialSpawn ? Math.min(15, unitCapPerPlayer) : 1;
-
-    // Player 1 (Red) - top of map, moving down
-    const player1Units = this.world.getUnitsByPlayer(1).length;
-    for (let i = 0; i < unitsToSpawnPerPlayer && player1Units + i < unitCapPerPlayer; i++) {
-      this.spawnBackgroundUnit(1,
-        spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin, // spawn at top
-        spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight, // target bottom
-        Math.PI / 2 // facing down
-      );
-    }
-
-    // Player 2 (Blue) - bottom of map, moving up
-    const player2Units = this.world.getUnitsByPlayer(2).length;
-    for (let i = 0; i < unitsToSpawnPerPlayer && player2Units + i < unitCapPerPlayer; i++) {
-      this.spawnBackgroundUnit(2,
-        spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight, // spawn at bottom
-        spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin, // target top
-        -Math.PI / 2 // facing up
-      );
-    }
-
-    // Player 3 (Yellow) - left of map, moving right
-    const player3Units = this.world.getUnitsByPlayer(3).length;
-    for (let i = 0; i < unitsToSpawnPerPlayer && player3Units + i < unitCapPerPlayer; i++) {
-      this.spawnBackgroundUnit(3,
-        spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin, // spawn at left
-        mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin, // target right
-        0 // facing right
-      );
-    }
-
-    // Player 4 (Green) - right of map, moving left
-    const player4Units = this.world.getUnitsByPlayer(4).length;
-    for (let i = 0; i < unitsToSpawnPerPlayer && player4Units + i < unitCapPerPlayer; i++) {
-      this.spawnBackgroundUnit(4,
-        mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin, // spawn at right
-        spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin, // target left
-        Math.PI // facing left
-      );
-    }
-  }
-
-  // Spawn a single background unit with a fight waypoint to opposite side
-  private spawnBackgroundUnit(
-    playerId: PlayerId,
-    minX: number,
-    maxX: number,
-    minY: number,
-    maxY: number,
-    targetMinX: number,
-    targetMaxX: number,
-    targetMinY: number,
-    targetMaxY: number,
-    initialRotation: number
-  ): void {
-    // Random position within spawn area
-    const x = minX + Math.random() * (maxX - minX);
-    const y = minY + Math.random() * (maxY - minY);
-
-    // Select unit type based on config (weighted by inverse cost or flat distribution)
-    const unitType = BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING
-      ? this.selectWeightedUnitType()
-      : this.BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * this.BACKGROUND_UNIT_TYPES.length)];
-    const stats = UNIT_STATS[unitType];
-
-    // Create the unit using base method and set weapons for this unit type
-    const unit = this.world.createUnitBase(
-      x,
-      y,
-      playerId,
-      stats.collisionRadius,
-      stats.moveSpeed,
-      stats.mass,  // Mass was missing - stats.hp was being passed as mass!
-      stats.hp
-    );
-    unit.weapons = createWeaponsFromDefinition(unitType, stats.collisionRadius);
-
-    // Set initial rotation
-    unit.transform.rotation = initialRotation;
-
-    // Add fight waypoint to opposite side of map
-    const targetX = targetMinX + Math.random() * (targetMaxX - targetMinX);
-    const targetY = targetMinY + Math.random() * (targetMaxY - targetMinY);
-
-    if (unit.unit) {
-      unit.unit.actions = [{
-        type: 'fight',
-        x: targetX,
-        y: targetY,
-      }];
-    }
-
-    this.world.addEntity(unit);
-
-    // Create physics body with proper mass
-    if (unit.unit) {
-      const body = createUnitBody(
-        this.matter,
-        x,
-        y,
-        unit.unit.collisionRadius,
-        unit.unit.mass,
-        `unit_${unit.id}`
-      );
-      unit.body = { matterBody: body };
-    }
   }
 
   // Clean shutdown

@@ -1,6 +1,8 @@
+// Entity Renderer - Main orchestrator for rendering all game entities
+// Delegates to specialized helper modules for specific rendering tasks
+
 import Phaser from 'phaser';
-import type { Entity, WaypointType, ActionType, EntityId } from '../sim/types';
-import { PLAYER_COLORS } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 import {
@@ -15,110 +17,18 @@ import {
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
 import { getGraphicsConfig, getRenderMode, setCurrentZoom } from './graphicsSettings';
-import { SONIC_WAVE_SHOW_ANIMATED, SONIC_WAVE_ACCEL_EXPONENT, SONIC_WAVE_ANIMATION_SPEED, SONIC_WAVE_COUNT, SONIC_WAVE_OPACITY, SONIC_WAVE_OPACITY_MIN_ZOOM, SONIC_WAVE_AMPLITUDE, SONIC_WAVE_FREQUENCY, SONIC_WAVE_THICKNESS } from '../../config';
 
-/**
- * EntitySource - Interface that both WorldState and ClientViewState implement
- * Allows the renderer to work with either source transparently
- */
-export interface EntitySource {
-  getUnits(): Entity[];
-  getBuildings(): Entity[];
-  getProjectiles(): Entity[];
-  getEntity(id: EntityId): Entity | undefined;
-}
+// Import from helper modules
+import type { EntitySource, ExplosionEffect, UnitRenderContext, BuildingRenderContext, BeamRandomOffsets } from './types';
+import { COLORS, LEG_STYLE_CONFIG } from './types';
+import { getPlayerColor, getProjectileColor, createColorPalette } from './helpers';
+import { renderExplosion, renderSprayEffect } from './effects';
+import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawSonicUnit } from './units';
+import { renderFactory, renderSolarPanel } from './buildings';
+import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
 
-// Explosion effect data
-export interface ExplosionEffect {
-  x: number;
-  y: number;
-  radius: number; // Maximum radius of explosion
-  color: number; // Base color
-  lifetime: number; // Total lifetime in ms
-  elapsed: number; // Time elapsed in ms
-  type: 'impact' | 'death'; // Type affects visual style
-
-  // Three separate momentum vectors for different explosion layers:
-
-  // 1. Unit velocity - where the unit was moving when it died
-  // Used by: Smoke clouds, fire embers (trailing effect)
-  velocityX?: number;
-  velocityY?: number;
-  velocityMag?: number;
-
-  // 2. Penetration direction - from hit point through unit center
-  // Used by: Debris chunks, shockwave rings (where the attack entered)
-  penetrationX?: number;
-  penetrationY?: number;
-  penetrationMag?: number;
-
-  // 3. Attacker direction - direction the projectile/beam was traveling
-  // Used by: Spark trails, exit fragments (penetration effect)
-  attackerX?: number;
-  attackerY?: number;
-  attackerMag?: number;
-
-  // Combined momentum for layers that blend all forces
-  combinedX?: number;
-  combinedY?: number;
-  combinedMag?: number;
-}
-
-// Colors
-const UNIT_SELECTED_COLOR = 0x00ff88;
-const BUILDING_COLOR = 0x886644;
-const BUILDING_OUTLINE_COLOR = 0xaa8866;
-const HEALTH_BAR_BG = 0x333333;
-const HEALTH_BAR_FG = 0x44dd44;
-const HEALTH_BAR_LOW = 0xff4444;
-const BUILD_BAR_FG = 0xffcc00; // Yellow for build progress
-const GHOST_COLOR = 0x88ff88; // Green tint for placement ghost
-const COMMANDER_COLOR = 0xffd700; // Gold for commander indicator
-
-// Leg style configuration - thickness, foot size, and lerp duration (ms)
-const LEG_STYLE_CONFIG = {
-  arachnid: { thickness: 5, footSizeMultiplier: 0.1, lerpSpeed: 700 },  // 200ms lerp duration
-  daddy: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 500 },    // 180ms lerp
-  insect: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 200 },   // 250ms lerp (slower/smoother)
-} as const;
-
-// Waypoint colors by type (legacy - for factories)
-const WAYPOINT_COLORS: Record<WaypointType, number> = {
-  move: 0x00ff00, // Green
-  patrol: 0x0088ff, // Blue
-  fight: 0xff4444, // Red
-};
-
-// Action colors by type (for unit action queue)
-const ACTION_COLORS: Record<ActionType, number> = {
-  move: 0x00ff00, // Green
-  patrol: 0x0088ff, // Blue
-  fight: 0xff4444, // Red
-  build: 0xffcc00, // Yellow for building
-  repair: 0x44ff44, // Light green for repair
-};
-
-// Spray effect colors
-const SPRAY_BUILD_COLOR = 0x44ff44; // Green for building
-const SPRAY_HEAL_COLOR = 0x4488ff; // Blue for healing
-
-// Range circle colors
-const VISION_RANGE_COLOR = 0xffff88; // Yellow for vision range
-const WEAPON_RANGE_COLOR = 0xff4444; // Red for weapon range
-const BUILD_RANGE_COLOR = 0x44ff44; // Green for build range
-
-// Unit display names by weapon ID
-const UNIT_NAMES: Record<string, string> = {
-  scout: 'Scout',
-  burst: 'Burst',
-  beam: 'Beam',
-  brawl: 'Brawl',
-  mortar: 'Mortar',
-  snipe: 'Snipe',
-  tank: 'Tank',
-  arachnid: 'Arachnid',
-  sonic: 'Sonic',
-};
+// Re-export EntitySource for external use
+export type { EntitySource, ExplosionEffect };
 
 export class EntityRenderer {
   private scene: Phaser.Scene;
@@ -134,7 +44,7 @@ export class EntityRenderer {
   // Explosion effects
   private explosions: ExplosionEffect[] = [];
 
-  // Arachnid legs storage (entity ID -> array of 8 legs)
+  // Arachnid legs storage (entity ID -> array of legs)
   private arachnidLegs: Map<EntityId, ArachnidLeg[]> = new Map();
 
   // Tank treads storage (entity ID -> left/right tread pair)
@@ -144,12 +54,7 @@ export class EntityRenderer {
   private vehicleWheels: Map<EntityId, VehicleWheelSetup> = new Map();
 
   // Per-projectile random offsets for visual variety
-  private beamRandomOffsets: Map<EntityId, {
-    phaseOffset: number;      // Random offset for pulse timing
-    rotationOffset: number;   // Random rotation for sparks
-    sizeScale: number;        // Random size multiplier (0.8-1.2)
-    pulseSpeed: number;       // Random pulse speed multiplier
-  }> = new Map();
+  private beamRandomOffsets: Map<EntityId, BeamRandomOffsets> = new Map();
 
   // Rendering mode flags
   private skipTurrets: boolean = false;
@@ -163,7 +68,6 @@ export class EntityRenderer {
 
   /**
    * Check if a point is visible within the camera viewport (with padding)
-   * Used for viewport culling when render mode is 'window'
    */
   private isInViewport(x: number, y: number, padding: number = 100): boolean {
     if (getRenderMode() === 'all') {
@@ -179,8 +83,8 @@ export class EntityRenderer {
     );
   }
 
-  // Get or create legs for a legged unit
-  // Styles: 'arachnid' (8 chunky), 'daddy' (8 long thin), 'insect' (6 medium)
+  // ==================== LEG MANAGEMENT ====================
+
   private getOrCreateLegs(
     entity: Entity,
     legStyle: 'arachnid' | 'daddy' | 'insect' = 'arachnid'
@@ -189,159 +93,45 @@ export class EntityRenderer {
     if (existing) return existing;
 
     const radius = entity.unit?.collisionRadius ?? 40;
-
-    // Define left side legs only, then mirror to create right side
     let leftSideConfigs: LegConfig[];
 
     if (legStyle === 'daddy') {
-      // Daddy long legs: 4 very long thin legs per side
-      // Much longer legs relative to body size
       const legLength = radius * 10;
       const upperLen = legLength * 0.3;
       const lowerLen = legLength * 0.6;
 
       leftSideConfigs = [
-        {
-          attachOffsetX: radius * 0.3,
-          attachOffsetY: -radius * 0.4,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.3,
-          snapTargetAngle: -Math.PI * 0.2,
-          snapDistanceMultiplier: 0.9,
-          extensionThreshold: 0.82,
-        },
-        {
-          attachOffsetX: radius * 0.1,
-          attachOffsetY: -radius * 0.4,
-          upperLegLength: upperLen * 0.95,
-          lowerLegLength: lowerLen * 0.95,
-          snapTriggerAngle: Math.PI * 0.55,
-          snapTargetAngle: -Math.PI * 0.25,
-          snapDistanceMultiplier: 0.9,
-          extensionThreshold: 0.84,
-        },
-        {
-          attachOffsetX: -radius * 0.1,
-          attachOffsetY: -radius * 0.4,
-          upperLegLength: upperLen * 0.95,
-          lowerLegLength: lowerLen * 0.95,
-          snapTriggerAngle: Math.PI * 0.85,
-          snapTargetAngle: -Math.PI * 0.45,
-          snapDistanceMultiplier: 0.85,
-          extensionThreshold: 0.9,
-        },
-        {
-          attachOffsetX: -radius * 0.3,
-          attachOffsetY: -radius * 0.3,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.99,
-          snapTargetAngle: -Math.PI * 0.65,
-          snapDistanceMultiplier: 0.55,
-          extensionThreshold: 0.99,
-        },
+        { attachOffsetX: radius * 0.3, attachOffsetY: -radius * 0.4, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.3, snapTargetAngle: -Math.PI * 0.2, snapDistanceMultiplier: 0.9, extensionThreshold: 0.82 },
+        { attachOffsetX: radius * 0.1, attachOffsetY: -radius * 0.4, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.55, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.9, extensionThreshold: 0.84 },
+        { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.4, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.85, snapTargetAngle: -Math.PI * 0.45, snapDistanceMultiplier: 0.85, extensionThreshold: 0.9 },
+        { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.3, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.65, snapDistanceMultiplier: 0.55, extensionThreshold: 0.99 },
       ];
     } else if (legStyle === 'insect') {
-      // Insect: 3 legs per side (front to back)
-      // Pattern matches arachnid: all snapTargetAngles negative, decreasing multiplier front-to-back
       const legLength = radius * 1.9;
       const upperLen = legLength * 0.55;
       const lowerLen = legLength * 0.55;
 
       leftSideConfigs = [
-        // Front leg - points forward-ish
-        {
-          attachOffsetX: radius * 0.2,
-          attachOffsetY: -radius * 0.2,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.2,  // Slightly forward
-          snapDistanceMultiplier: 0.99,
-          extensionThreshold: 0.99,
-        },
-        // Middle leg - perpendicular/sideways
-        {
-          attachOffsetX: 0,
-          attachOffsetY: -radius * 0.2,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.8,
-          snapTargetAngle: -Math.PI * 0.3,  // Sideways
-          snapDistanceMultiplier: 0.85,
-          extensionThreshold: 0.99,
-        },
-        // Back leg - points backward-sideways (still negative like arachnid)
-        {
-          attachOffsetX: -radius * 0.2,
-          attachOffsetY: -radius * 0.2,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.99,
-          snapTargetAngle: -Math.PI * 0.4,  // Backward-sideways (negative!)
-          snapDistanceMultiplier: 0.6,
-          extensionThreshold: 0.99,
-        },
+        { attachOffsetX: radius * 0.2, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.5, snapTargetAngle: -Math.PI * 0.2, snapDistanceMultiplier: 0.99, extensionThreshold: 0.99 },
+        { attachOffsetX: 0, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.8, snapTargetAngle: -Math.PI * 0.3, snapDistanceMultiplier: 0.85, extensionThreshold: 0.99 },
+        { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.4, snapDistanceMultiplier: 0.6, extensionThreshold: 0.99 },
       ];
     } else {
-      // Arachnid: 4 chunky legs per side (front to back)
       const legLength = radius * 1.9;
       const upperLen = legLength * 0.55;
       const lowerLen = legLength * 0.55;
 
       leftSideConfigs = [
-        {
-          attachOffsetX: radius * 0.6,
-          attachOffsetY: -radius * 0.5,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.5,
-          snapTargetAngle: -Math.PI * 0.2,
-          snapDistanceMultiplier: 0.99,
-          extensionThreshold: 0.99,
-        },
-        {
-          attachOffsetX: radius * 0.25,
-          attachOffsetY: -radius * 0.5,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.65,
-          snapTargetAngle: -Math.PI * 0.33,
-          snapDistanceMultiplier: 0.88,
-          extensionThreshold: 0.99,
-        },
-        {
-          attachOffsetX: -radius * 0.2,
-          attachOffsetY: -radius * 0.5,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.9,
-          snapTargetAngle: -Math.PI * 0.4,
-          snapDistanceMultiplier: 0.82,
-          extensionThreshold: 0.99,
-        },
-        {
-          attachOffsetX: -radius * 0.55,
-          attachOffsetY: -radius * 0.5,
-          upperLegLength: upperLen,
-          lowerLegLength: lowerLen,
-          snapTriggerAngle: Math.PI * 0.99,
-          snapTargetAngle: -Math.PI * 0.7,
-          snapDistanceMultiplier: 0.5,
-          extensionThreshold: 0.99,
-        },
+        { attachOffsetX: radius * 0.6, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.5, snapTargetAngle: -Math.PI * 0.2, snapDistanceMultiplier: 0.99, extensionThreshold: 0.99 },
+        { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.33, snapDistanceMultiplier: 0.88, extensionThreshold: 0.99 },
+        { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.9, snapTargetAngle: -Math.PI * 0.4, snapDistanceMultiplier: 0.82, extensionThreshold: 0.99 },
+        { attachOffsetX: -radius * 0.55, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.7, snapDistanceMultiplier: 0.5, extensionThreshold: 0.99 },
       ];
     }
 
-    // Get lerp speed for this leg style
     const styleConfig = LEG_STYLE_CONFIG[legStyle];
     const lerpSpeed = styleConfig.lerpSpeed;
-
-    // Add lerpSpeed to all left side configs
     const leftWithLerp = leftSideConfigs.map((leg) => ({ ...leg, lerpSpeed }));
-
-    // Mirror left side to create right side (flip Y offset and snap target angle)
     const rightSideConfigs: LegConfig[] = leftWithLerp.map((leg) => ({
       ...leg,
       attachOffsetY: -leg.attachOffsetY,
@@ -349,10 +139,8 @@ export class EntityRenderer {
     }));
 
     const legConfigs = [...leftWithLerp, ...rightSideConfigs];
-
     const legs = legConfigs.map((config) => new ArachnidLeg(config));
 
-    // Initialize all legs at the unit's current position to prevent flickering
     const unitX = entity.transform.x;
     const unitY = entity.transform.y;
     const unitRotation = entity.transform.rotation;
@@ -364,17 +152,13 @@ export class EntityRenderer {
     return legs;
   }
 
-  // Update all legged unit legs (call each frame with dtMs)
   updateArachnidLegs(dtMs: number): void {
     const gfxConfig = getGraphicsConfig();
-
-    // Skip leg updates entirely if legs are disabled (low/medium quality)
     if (gfxConfig.legs === 'none') {
       this.arachnidLegs.clear();
       return;
     }
 
-    // Clean up legs for entities that no longer exist
     const existingIds = new Set(this.entitySource.getUnits().map((e) => e.id));
     for (const id of this.arachnidLegs.keys()) {
       if (!existingIds.has(id)) {
@@ -382,76 +166,46 @@ export class EntityRenderer {
       }
     }
 
-    // Update legs for all legged units using unit definitions (high quality)
     for (const entity of this.entitySource.getUnits()) {
-      if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
-        continue;
+      if (!entity.unit || !entity.weapons || entity.weapons.length === 0) continue;
 
-      // Determine unit type: multi-weapon units are widow, otherwise use weapon ID
       const unitType = entity.weapons.length > 1 ? 'widow' : entity.weapons[0].config.id;
       const definition = getUnitDefinition(unitType);
-
-      // Skip if not a legged unit
       if (!definition || definition.locomotion !== 'legs') continue;
 
       const legStyle = definition.legStyle ?? 'arachnid';
       const legs = this.getOrCreateLegs(entity, legStyle);
 
-      // Use actual physics body velocity, not thrust direction
-      // Scale up since Matter.js velocities are per-step, not per-second
       const matterBody = entity.body?.matterBody as MatterJS.BodyType | undefined;
       const velX = (matterBody?.velocity?.x ?? 0) * 60;
       const velY = (matterBody?.velocity?.y ?? 0) * 60;
 
       for (const leg of legs) {
-        leg.update(
-          entity.transform.x,
-          entity.transform.y,
-          entity.transform.rotation,
-          velX,
-          velY,
-          dtMs
-        );
+        leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
       }
     }
   }
 
-  // Get or create treads for a tracked unit (tank or brawl)
-  private getOrCreateTreads(
-    entity: Entity,
-    unitType: 'tank' | 'brawl'
-  ): TankTreadSetup {
+  // ==================== TREAD MANAGEMENT ====================
+
+  private getOrCreateTreads(entity: Entity, unitType: 'tank' | 'brawl'): TankTreadSetup {
     const existing = this.tankTreads.get(entity.id);
     if (existing) return existing;
 
     const radius = entity.unit?.collisionRadius ?? 24;
-    const treads =
-      unitType === 'tank'
-        ? createTankTreads(radius, 2.0)
-        : createBrawlTreads(radius, 2.0);
+    const treads = unitType === 'tank' ? createTankTreads(radius, 2.0) : createBrawlTreads(radius, 2.0);
 
-    // Initialize treads at the unit's current position
-    treads.leftTread.initializeAt(
-      entity.transform.x,
-      entity.transform.y,
-      entity.transform.rotation
-    );
-    treads.rightTread.initializeAt(
-      entity.transform.x,
-      entity.transform.y,
-      entity.transform.rotation
-    );
+    treads.leftTread.initializeAt(entity.transform.x, entity.transform.y, entity.transform.rotation);
+    treads.rightTread.initializeAt(entity.transform.x, entity.transform.y, entity.transform.rotation);
 
     this.tankTreads.set(entity.id, treads);
     return treads;
   }
 
-  // Convenience method for tank treads (used by drawTankUnit)
   getTankTreads(entityId: EntityId): TankTreadSetup | undefined {
     return this.tankTreads.get(entityId);
   }
 
-  // Get or create vehicle wheels based on unit type
   private getOrCreateVehicleWheels(entity: Entity): VehicleWheelSetup | null {
     const existing = this.vehicleWheels.get(entity.id);
     if (existing) return existing;
@@ -460,176 +214,98 @@ export class EntityRenderer {
     const weaponId = entity.weapons?.[0]?.config.id;
 
     let wheelSetup: VehicleWheelSetup | null = null;
-
     switch (weaponId) {
-      case 'scout':
-        wheelSetup = createScoutWheelSetup(radius, 2.0);
-        break;
-      case 'burst':
-        wheelSetup = createBurstWheelSetup(radius, 2.0);
-        break;
-      case 'shotgun':
-        wheelSetup = createMortarWheelSetup(radius, 2.0);
-        break;
-      case 'snipe':
-        wheelSetup = createFourWheelSetup(radius, 2.0);
-        break;
-      default:
-        return null;
+      case 'scout': wheelSetup = createScoutWheelSetup(radius, 2.0); break;
+      case 'burst': wheelSetup = createBurstWheelSetup(radius, 2.0); break;
+      case 'shotgun': wheelSetup = createMortarWheelSetup(radius, 2.0); break;
+      case 'snipe': wheelSetup = createFourWheelSetup(radius, 2.0); break;
+      default: return null;
     }
 
-    // Initialize wheels at the unit's current position
     for (const wheel of wheelSetup.wheels) {
-      wheel.initializeAt(
-        entity.transform.x,
-        entity.transform.y,
-        entity.transform.rotation
-      );
+      wheel.initializeAt(entity.transform.x, entity.transform.y, entity.transform.rotation);
     }
 
     this.vehicleWheels.set(entity.id, wheelSetup);
     return wheelSetup;
   }
 
-  // Update all tank treads and vehicle wheels (call each frame with dtMs)
   updateTreads(dtMs: number): void {
-    // Clean up treads/wheels for entities that no longer exist
     const existingIds = new Set(this.entitySource.getUnits().map((e) => e.id));
     for (const id of this.tankTreads.keys()) {
-      if (!existingIds.has(id)) {
-        this.tankTreads.delete(id);
-      }
+      if (!existingIds.has(id)) this.tankTreads.delete(id);
     }
     for (const id of this.vehicleWheels.keys()) {
-      if (!existingIds.has(id)) {
-        this.vehicleWheels.delete(id);
-      }
+      if (!existingIds.has(id)) this.vehicleWheels.delete(id);
     }
 
-    // Update treads for all tracked/wheeled units using unit definitions
     for (const entity of this.entitySource.getUnits()) {
-      if (!entity.unit || !entity.weapons || entity.weapons.length === 0)
-        continue;
+      if (!entity.unit || !entity.weapons || entity.weapons.length === 0) continue;
 
-      // Determine unit type and get definition
       const unitType = entity.weapons.length > 1 ? 'widow' : entity.weapons[0].config.id;
       const definition = getUnitDefinition(unitType);
 
-      // Handle tracked vehicles (treads locomotion)
       if (definition?.locomotion === 'treads') {
         const treadType = unitType as 'tank' | 'brawl';
         const treads = this.getOrCreateTreads(entity, treadType);
-        treads.leftTread.update(
-          entity.transform.x,
-          entity.transform.y,
-          entity.transform.rotation,
-          dtMs
-        );
-        treads.rightTread.update(
-          entity.transform.x,
-          entity.transform.y,
-          entity.transform.rotation,
-          dtMs
-        );
+        treads.leftTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
+        treads.rightTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
         continue;
       }
 
-      // Handle wheeled vehicles (wheels locomotion)
       if (definition?.locomotion !== 'wheels') continue;
       const wheelSetup = this.getOrCreateVehicleWheels(entity);
       if (wheelSetup) {
         for (const wheel of wheelSetup.wheels) {
-          wheel.update(
-            entity.transform.x,
-            entity.transform.y,
-            entity.transform.rotation,
-            dtMs
-          );
+          wheel.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
         }
       }
     }
   }
 
-  // Get vehicle wheels for rendering (used by draw methods)
   getVehicleWheels(entityId: EntityId): VehicleWheelSetup | undefined {
     return this.vehicleWheels.get(entityId);
   }
 
-  // Add a new explosion effect with three separate momentum vectors
-  // Each vector affects different explosion layers for complex visual effects:
-  // - velocity: unit's movement (smoke, embers trail behind)
-  // - penetration: direction from hit point through center (where attack entered)
-  // - attacker: projectile direction (sparks exit through)
+  // ==================== EXPLOSION MANAGEMENT ====================
+
   addExplosion(
-    x: number,
-    y: number,
-    radius: number,
-    color: number,
-    type: 'impact' | 'death',
-    velocityX?: number,
-    velocityY?: number,
-    penetrationX?: number,
-    penetrationY?: number,
-    attackerX?: number,
-    attackerY?: number
+    x: number, y: number, radius: number, color: number, type: 'impact' | 'death',
+    velocityX?: number, velocityY?: number,
+    penetrationX?: number, penetrationY?: number,
+    attackerX?: number, attackerY?: number
   ): void {
-    // Base lifetime scales with radius - larger explosions last longer
-    // Base: 150ms for a radius of 8, scales proportionally
     const baseRadius = 8;
     const baseLifetime = type === 'death' ? 600 : 150;
-    const radiusScale = Math.sqrt(radius / baseRadius); // Square root for less extreme scaling
+    const radiusScale = Math.sqrt(radius / baseRadius);
     const lifetime = baseLifetime * radiusScale;
 
-    // Calculate magnitudes for each momentum vector
-    const velocityMag = (velocityX !== undefined && velocityY !== undefined)
-      ? Math.sqrt(velocityX * velocityX + velocityY * velocityY) : 0;
-    const penetrationMag = (penetrationX !== undefined && penetrationY !== undefined)
-      ? Math.sqrt(penetrationX * penetrationX + penetrationY * penetrationY) : 0;
-    const attackerMag = (attackerX !== undefined && attackerY !== undefined)
-      ? Math.sqrt(attackerX * attackerX + attackerY * attackerY) : 0;
+    const velocityMag = (velocityX !== undefined && velocityY !== undefined) ? Math.sqrt(velocityX * velocityX + velocityY * velocityY) : 0;
+    const penetrationMag = (penetrationX !== undefined && penetrationY !== undefined) ? Math.sqrt(penetrationX * penetrationX + penetrationY * penetrationY) : 0;
+    const attackerMag = (attackerX !== undefined && attackerY !== undefined) ? Math.sqrt(attackerX * attackerX + attackerY * attackerY) : 0;
 
-    // Calculate combined momentum (sum of all vectors)
     const combinedX = (velocityX ?? 0) + (penetrationX ?? 0) + (attackerX ?? 0);
     const combinedY = (velocityY ?? 0) + (penetrationY ?? 0) + (attackerY ?? 0);
     const combinedMag = Math.sqrt(combinedX * combinedX + combinedY * combinedY);
 
     this.explosions.push({
-      x,
-      y,
-      radius,
-      color,
-      lifetime,
-      elapsed: 0,
-      type,
-      // Unit velocity
-      velocityX,
-      velocityY,
-      velocityMag,
-      // Penetration direction
-      penetrationX,
-      penetrationY,
-      penetrationMag,
-      // Attacker direction
-      attackerX,
-      attackerY,
-      attackerMag,
-      // Combined
-      combinedX,
-      combinedY,
-      combinedMag,
+      x, y, radius, color, lifetime, elapsed: 0, type,
+      velocityX, velocityY, velocityMag,
+      penetrationX, penetrationY, penetrationMag,
+      attackerX, attackerY, attackerMag,
+      combinedX, combinedY, combinedMag,
     });
   }
 
-  // Update explosion effects (call each frame with dtMs)
   updateExplosions(dtMs: number): void {
-    // Update elapsed time and remove expired explosions
     this.explosions = this.explosions.filter((exp) => {
       exp.elapsed += dtMs;
       return exp.elapsed < exp.lifetime;
     });
   }
 
-  // Get or create a text label from the pool
+  // ==================== LABEL MANAGEMENT ====================
+
   private getLabel(): Phaser.GameObjects.Text {
     if (this.activeLabelCount < this.labelPool.length) {
       const label = this.labelPool[this.activeLabelCount];
@@ -638,7 +314,6 @@ export class EntityRenderer {
       return label;
     }
 
-    // Create new label
     const label = this.scene.add.text(0, 0, '', {
       fontSize: '12px',
       fontFamily: 'monospace',
@@ -647,14 +322,13 @@ export class EntityRenderer {
       strokeThickness: 3,
       align: 'center',
     });
-    label.setOrigin(0.5, 1); // Center horizontally, anchor at bottom
-    label.setDepth(1000); // Above everything
+    label.setOrigin(0.5, 1);
+    label.setDepth(1000);
     this.labelPool.push(label);
     this.activeLabelCount++;
     return label;
   }
 
-  // Reset label pool for next frame
   private resetLabels(): void {
     for (let i = 0; i < this.activeLabelCount; i++) {
       this.labelPool[i].setVisible(false);
@@ -662,131 +336,97 @@ export class EntityRenderer {
     this.activeLabelCount = 0;
   }
 
-  // Current entity source type for debugging
+  // ==================== ENTITY SOURCE ====================
+
   private entitySourceType: 'world' | 'clientView' = 'world';
   private waypointDebugCounter: number = 0;
 
-  /**
-   * Set the entity source for rendering
-   * Allows switching between WorldState (simulation view) and ClientViewState (client view)
-   */
-  setEntitySource(
-    source: EntitySource,
-    sourceType: 'world' | 'clientView' = 'world'
-  ): void {
+  setEntitySource(source: EntitySource, sourceType: 'world' | 'clientView' = 'world'): void {
     this.entitySource = source;
     this.entitySourceType = sourceType;
     console.log(`[Render] Entity source switched to: ${sourceType}`);
   }
 
-  // Set spray targets for rendering
   setSprayTargets(targets: SprayTarget[]): void {
     this.sprayTargets = targets;
   }
 
-  // Cached visible entity arrays (reused each frame to avoid allocations)
+  // ==================== VISIBILITY CACHING ====================
+
   private visibleUnits: Entity[] = [];
   private visibleBuildings: Entity[] = [];
   private visibleProjectiles: Entity[] = [];
   private selectedUnits: Entity[] = [];
   private selectedFactories: Entity[] = [];
 
-  // Collect all visible entities once per frame
-  // PERFORMANCE: Single pass through entities instead of multiple iterations
   private collectVisibleEntities(): void {
-    // Clear cached arrays (reuse to avoid allocations)
     this.visibleUnits.length = 0;
     this.visibleBuildings.length = 0;
     this.visibleProjectiles.length = 0;
     this.selectedUnits.length = 0;
     this.selectedFactories.length = 0;
 
-    // Collect visible units in a single pass
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit || entity.unit.hp <= 0) continue;
       if (!this.isInViewport(entity.transform.x, entity.transform.y, 100)) continue;
-
       this.visibleUnits.push(entity);
-
-      // Also track selected units
-      if (entity.selectable?.selected) {
-        this.selectedUnits.push(entity);
-      }
+      if (entity.selectable?.selected) this.selectedUnits.push(entity);
     }
 
-    // Collect visible buildings in a single pass
     for (const entity of this.entitySource.getBuildings()) {
       if (!entity.building || entity.building.hp <= 0) continue;
       if (!this.isInViewport(entity.transform.x, entity.transform.y, 150)) continue;
-
       this.visibleBuildings.push(entity);
-
-      // Also track selected factories
-      if (entity.selectable?.selected && entity.factory) {
-        this.selectedFactories.push(entity);
-      }
+      if (entity.selectable?.selected && entity.factory) this.selectedFactories.push(entity);
     }
 
-    // Collect visible projectiles
     for (const entity of this.entitySource.getProjectiles()) {
       if (!this.isInViewport(entity.transform.x, entity.transform.y, 50)) continue;
       this.visibleProjectiles.push(entity);
     }
   }
 
-  // Render all entities
+  // ==================== MAIN RENDER ====================
+
   render(): void {
     this.graphics.clear();
-    this.resetLabels(); // Reset text labels for this frame
+    this.resetLabels();
 
-    // Update zoom level for auto quality mode
     const camera = this.scene.cameras.main;
     setCurrentZoom(camera.zoom);
-
-    // Update particle time for spray animation
-    this.sprayParticleTime += 16; // ~60fps
-
-    // PERFORMANCE: Collect all visible entities in a single pass
+    this.sprayParticleTime += 16;
     this.collectVisibleEntities();
 
-    // 1. Render buildings first (bottom layer)
+    // 1. Buildings (bottom layer)
     for (const entity of this.visibleBuildings) {
       this.renderBuilding(entity);
     }
 
-    // Render waypoints for selected units (below units)
-    // Debug: log once per second when units are selected
+    // 2. Waypoints for selected units
     this.waypointDebugCounter++;
-    const shouldLogWaypoints = this.waypointDebugCounter % 60 === 0;
-    if (this.selectedUnits.length > 0 && shouldLogWaypoints) {
+    if (this.selectedUnits.length > 0 && this.waypointDebugCounter % 60 === 0) {
       console.log(`[Render] Source: ${this.entitySourceType}, rendering waypoints for ${this.selectedUnits.length} selected units`);
-      for (const entity of this.selectedUnits) {
-        console.log(`[Waypoints] Entity ${entity.id}: actions=${entity.unit?.actions?.length ?? 0}`,
-          entity.unit?.actions?.map(a => ({ type: a.type, x: a.x?.toFixed(0), y: a.y?.toFixed(0) })));
-      }
     }
     for (const entity of this.selectedUnits) {
-      this.renderWaypoints(entity);
+      renderWaypoints(this.graphics, entity, camera);
     }
-
-    // Render waypoints for selected factories
     for (const entity of this.selectedFactories) {
-      this.renderFactoryWaypoints(entity);
+      renderFactoryWaypoints(this.graphics, entity, camera);
     }
 
-    // Render range circles for selected units (below unit bodies)
+    // 3. Range circles
     for (const entity of this.selectedUnits) {
-      this.renderRangeCircles(entity);
+      renderRangeCircles(this.graphics, entity);
     }
 
-    // 2. Render unit bodies (no turrets)
+    // 4. Unit bodies
     this.skipTurrets = true;
     this.turretsOnly = false;
     for (const entity of this.visibleUnits) {
       this.renderUnit(entity);
     }
 
-    // 3. Render turrets only (above unit bodies)
+    // 5. Turrets
     this.skipTurrets = false;
     this.turretsOnly = true;
     for (const entity of this.visibleUnits) {
@@ -794,835 +434,33 @@ export class EntityRenderer {
     }
     this.turretsOnly = false;
 
-    // 4. Render projectiles and lasers
-    // Clean up beam random offsets for projectiles that no longer exist
+    // 6. Projectiles
     const existingProjectileIds = new Set(this.visibleProjectiles.map((e) => e.id));
     for (const id of this.beamRandomOffsets.keys()) {
-      if (!existingProjectileIds.has(id)) {
-        this.beamRandomOffsets.delete(id);
-      }
+      if (!existingProjectileIds.has(id)) this.beamRandomOffsets.delete(id);
     }
     for (const entity of this.visibleProjectiles) {
       this.renderProjectile(entity);
     }
 
-    // Render spray effects (lasers for building/healing)
+    // 7. Spray effects
     for (const target of this.sprayTargets) {
-      // Viewport culling for spray effects
       if (!this.isInViewport(target.targetX, target.targetY, 50)) continue;
-      this.renderSprayEffect(target);
+      renderSprayEffect(this.graphics, target, this.sprayParticleTime);
     }
 
-    // 5. Render explosion effects (above everything except labels)
+    // 8. Explosions
     for (const explosion of this.explosions) {
-      // Viewport culling for explosions
       if (!this.isInViewport(explosion.x, explosion.y, explosion.radius + 50)) continue;
-      this.renderExplosion(explosion);
+      renderExplosion(this.graphics, explosion);
     }
 
-    // Render labels for selected entities (last, on top of everything)
-    this.renderSelectedLabels();
+    // 9. Labels (topmost)
+    renderSelectedLabels(this.graphics, this.entitySource, () => this.getLabel());
   }
 
-  // Render an explosion effect
-  private renderExplosion(exp: ExplosionEffect): void {
-    const progress = exp.elapsed / exp.lifetime;
-    const gfxConfig = getGraphicsConfig();
-    const explosionStyle = gfxConfig.explosions;
+  // ==================== UNIT RENDERING ====================
 
-    // Low quality: one simple expanding circle with normal explosion colors
-    if (explosionStyle === 'one-simple-circle') {
-      const currentRadius = exp.radius * (0.3 + progress * 0.7);
-      const alpha = 1 - progress * progress;
-      // Outer orange glow
-      this.graphics.fillStyle(0xff6600, alpha * 0.3);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.3);
-      // Main fireball (orange-yellow)
-      this.graphics.fillStyle(0xff8822, alpha * 0.6);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius);
-      // Inner yellow
-      this.graphics.fillStyle(0xffcc44, alpha * 0.7);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.6);
-      // Hot white core
-      this.graphics.fillStyle(0xffffff, alpha * 0.8);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.25);
-      return;
-    }
-
-    // Medium quality: three velocity circles with scattered particles
-    if (explosionStyle === 'three-velocity-circles' && exp.type === 'death') {
-      const alpha = 1 - progress * progress;
-
-      // Seeded random for consistent particles
-      const seed = (exp.x * 1000 + exp.y) % 10000;
-      const seededRandom = (i: number) => {
-        const x = Math.sin(seed + i * 127.1) * 43758.5453;
-        return x - Math.floor(x);
-      };
-
-      // Get the three velocity directions
-      const hasVelocity = (exp.velocityMag ?? 0) > 10;
-      const hasPenetration = (exp.penetrationMag ?? 0) > 10;
-      const hasAttacker = (exp.attackerMag ?? 0) > 10;
-
-      // Normalize directions
-      const velDirX = hasVelocity ? (exp.velocityX ?? 0) / exp.velocityMag! : 0;
-      const velDirY = hasVelocity ? (exp.velocityY ?? 0) / exp.velocityMag! : 0;
-      const penDirX = hasPenetration ? (exp.penetrationX ?? 0) / exp.penetrationMag! : 0;
-      const penDirY = hasPenetration ? (exp.penetrationY ?? 0) / exp.penetrationMag! : 0;
-      const attackDirX = hasAttacker ? (exp.attackerX ?? 0) / exp.attackerMag! : 0;
-      const attackDirY = hasAttacker ? (exp.attackerY ?? 0) / exp.attackerMag! : 0;
-
-      // Strength factors
-      const velStrength = hasVelocity ? Math.min(exp.velocityMag! / 300, 1.5) : 0;
-      const penStrength = hasPenetration ? Math.min(exp.penetrationMag! / 300, 1.5) : 0;
-      const attackStrength = hasAttacker ? Math.min(exp.attackerMag! / 300, 1.5) : 0;
-
-      // Central fireball
-      const baseRadius = exp.radius * (0.4 + progress * 0.4);
-      const baseFade = Math.max(0, 1 - progress * 1.3);
-      if (baseFade > 0) {
-        this.graphics.fillStyle(0xff6600, alpha * 0.4 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 1.2);
-        this.graphics.fillStyle(0xffaa33, alpha * 0.6 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.8);
-        this.graphics.fillStyle(0xffdd66, alpha * 0.7 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.4);
-        this.graphics.fillStyle(0xffffff, alpha * 0.6 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.15);
-      }
-
-      // Particles in unit velocity direction (smoke-ish gray particles)
-      if (hasVelocity) {
-        const particleCount = 4 + Math.floor(velStrength * 3);
-        for (let i = 0; i < particleCount; i++) {
-          const spread = (seededRandom(i + 100) - 0.5) * 0.8;
-          const angle = Math.atan2(velDirY, velDirX) + spread;
-          const speed = 0.8 + seededRandom(i + 101) * 0.6;
-          const dist = exp.radius * progress * 1.8 * speed * velStrength;
-          const px = exp.x + Math.cos(angle) * dist;
-          const py = exp.y + Math.sin(angle) * dist;
-          const pSize = (3 + seededRandom(i + 102) * 4) * (1 - progress * 0.7);
-          const pFade = Math.max(0, 1 - progress * 1.2);
-          if (pFade > 0 && pSize > 1) {
-            this.graphics.fillStyle(0x666666, alpha * 0.4 * pFade);
-            this.graphics.fillCircle(px, py, pSize);
-          }
-        }
-      }
-
-      // Particles in penetration direction (orange debris)
-      if (hasPenetration) {
-        const particleCount = 5 + Math.floor(penStrength * 3);
-        for (let i = 0; i < particleCount; i++) {
-          const spread = (seededRandom(i + 200) - 0.5) * 0.7;
-          const angle = Math.atan2(penDirY, penDirX) + spread;
-          const speed = 0.7 + seededRandom(i + 201) * 0.8;
-          const dist = exp.radius * progress * 2.0 * speed * penStrength;
-          const px = exp.x + Math.cos(angle) * dist;
-          const py = exp.y + Math.sin(angle) * dist;
-          const pSize = (3 + seededRandom(i + 202) * 5) * (1 - progress * 0.6);
-          const pFade = Math.max(0, 1 - progress * 1.1);
-          if (pFade > 0 && pSize > 1) {
-            this.graphics.fillStyle(0xff7722, alpha * 0.5 * pFade);
-            this.graphics.fillCircle(px, py, pSize);
-            this.graphics.fillStyle(0xffaa55, alpha * 0.4 * pFade);
-            this.graphics.fillCircle(px, py, pSize * 0.5);
-          }
-        }
-      }
-
-      // Particles in attacker direction (bright sparks - main explosion direction)
-      if (hasAttacker) {
-        const particleCount = 6 + Math.floor(attackStrength * 4);
-        for (let i = 0; i < particleCount; i++) {
-          const spread = (seededRandom(i + 300) - 0.5) * 0.6;
-          const angle = Math.atan2(attackDirY, attackDirX) + spread;
-          const speed = 1.0 + seededRandom(i + 301) * 0.8;
-          const dist = exp.radius * progress * 2.5 * speed * attackStrength;
-          const px = exp.x + Math.cos(angle) * dist;
-          const py = exp.y + Math.sin(angle) * dist;
-          const pSize = (4 + seededRandom(i + 302) * 5) * (1 - progress * 0.5);
-          const pFade = Math.max(0, 1 - progress * 1.0);
-          if (pFade > 0 && pSize > 1) {
-            this.graphics.fillStyle(0xff4400, alpha * 0.6 * pFade);
-            this.graphics.fillCircle(px, py, pSize);
-            this.graphics.fillStyle(0xffcc44, alpha * 0.5 * pFade);
-            this.graphics.fillCircle(px, py, pSize * 0.6);
-            this.graphics.fillStyle(0xffffff, alpha * 0.4 * pFade);
-            this.graphics.fillCircle(px, py, pSize * 0.25);
-          }
-        }
-      }
-
-      return;
-    }
-
-    // Medium quality fallback for non-death explosions: simple flash
-    if (explosionStyle === 'three-velocity-circles') {
-      const currentRadius = exp.radius * (0.3 + progress * 0.7);
-      const alpha = 1 - progress * progress;
-      this.graphics.fillStyle(0xff6600, alpha * 0.3);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.3);
-      this.graphics.fillStyle(0xff8822, alpha * 0.6);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius);
-      this.graphics.fillStyle(0xffcc44, alpha * 0.7);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.5);
-      this.graphics.fillStyle(0xffffff, alpha * 0.8);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.2);
-      return;
-    }
-
-    // High quality: three-velocity-chunks (debris chunks with short trails)
-    if (explosionStyle === 'three-velocity-chunks' && exp.type === 'death') {
-      const alpha = 1 - progress;
-
-      // Seeded random for consistent particles
-      const seed = (exp.x * 1000 + exp.y) % 10000;
-      const seededRandom = (i: number) => {
-        const x = Math.sin(seed + i * 127.1) * 43758.5453;
-        return x - Math.floor(x);
-      };
-
-      // Get directions and strengths
-      const hasVelocity = (exp.velocityMag ?? 0) > 10;
-      const hasPenetration = (exp.penetrationMag ?? 0) > 10;
-      const hasAttacker = (exp.attackerMag ?? 0) > 10;
-
-      const velDirX = hasVelocity ? (exp.velocityX ?? 0) / exp.velocityMag! : 0;
-      const velDirY = hasVelocity ? (exp.velocityY ?? 0) / exp.velocityMag! : 0;
-      const penDirX = hasPenetration ? (exp.penetrationX ?? 0) / exp.penetrationMag! : 0;
-      const penDirY = hasPenetration ? (exp.penetrationY ?? 0) / exp.penetrationMag! : 0;
-      const attackDirX = hasAttacker ? (exp.attackerX ?? 0) / exp.attackerMag! : 0;
-      const attackDirY = hasAttacker ? (exp.attackerY ?? 0) / exp.attackerMag! : 0;
-
-      const velStrength = hasVelocity ? Math.min(exp.velocityMag! / 300, 1.5) : 0;
-      const penStrength = hasPenetration ? Math.min(exp.penetrationMag! / 300, 1.5) : 0;
-      const attackStrength = hasAttacker ? Math.min(exp.attackerMag! / 300, 1.5) : 0;
-
-      // Central fireball with glow
-      const baseRadius = exp.radius * (0.5 + progress * 0.3);
-      const baseFade = Math.max(0, 1 - progress * 1.2);
-      if (baseFade > 0) {
-        this.graphics.fillStyle(0xff4400, alpha * 0.3 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 1.4);
-        this.graphics.fillStyle(0xff6622, alpha * 0.5 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius);
-        this.graphics.fillStyle(0xffaa44, alpha * 0.7 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.6);
-        this.graphics.fillStyle(0xffdd88, alpha * 0.8 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.3);
-        this.graphics.fillStyle(0xffffff, alpha * 0.7 * baseFade);
-        this.graphics.fillCircle(exp.x, exp.y, baseRadius * 0.12);
-      }
-
-      // Smoke chunks in velocity direction
-      if (hasVelocity) {
-        const chunkCount = 6 + Math.floor(velStrength * 4);
-        for (let i = 0; i < chunkCount; i++) {
-          const delay = seededRandom(i + 100) * 0.1;
-          const chunkProgress = Math.max(0, (progress - delay) * 1.3);
-          if (chunkProgress <= 0 || chunkProgress > 1) continue;
-
-          const spread = (seededRandom(i + 101) - 0.5) * 1.0;
-          const angle = Math.atan2(velDirY, velDirX) + spread;
-          const speed = 0.6 + seededRandom(i + 102) * 0.6;
-          const dist = exp.radius * chunkProgress * 1.6 * speed * velStrength;
-          const px = exp.x + Math.cos(angle) * dist;
-          const py = exp.y + Math.sin(angle) * dist - chunkProgress * 5; // Float up slightly
-
-          const chunkFade = 1 - chunkProgress;
-          const chunkSize = (4 + seededRandom(i + 103) * 5) * chunkFade;
-
-          // Short trail
-          if (chunkSize > 2 && chunkFade > 0.1) {
-            const trailLen = Math.min(dist * 0.3, 12) * chunkFade;
-            if (trailLen > 2) {
-              const tx = px - Math.cos(angle) * trailLen;
-              const ty = py - Math.sin(angle) * trailLen + chunkProgress * 2.5;
-              this.graphics.lineStyle(chunkSize * 0.6, 0x555555, alpha * 0.25 * chunkFade);
-              this.graphics.lineBetween(tx, ty, px, py);
-            }
-            this.graphics.fillStyle(0x444444, alpha * 0.4 * chunkFade);
-            this.graphics.fillCircle(px, py, chunkSize);
-          }
-        }
-      }
-
-      // Orange debris chunks in penetration direction
-      if (hasPenetration) {
-        const chunkCount = 8 + Math.floor(penStrength * 5);
-        for (let i = 0; i < chunkCount; i++) {
-          const delay = seededRandom(i + 200) * 0.08;
-          const chunkProgress = Math.max(0, (progress - delay) * 1.4);
-          if (chunkProgress <= 0 || chunkProgress > 1) continue;
-
-          const spread = (seededRandom(i + 201) - 0.5) * 0.8;
-          const angle = Math.atan2(penDirY, penDirX) + spread;
-          const speed = 0.8 + seededRandom(i + 202) * 0.7;
-          const dist = exp.radius * chunkProgress * 2.0 * speed * penStrength;
-          const px = exp.x + Math.cos(angle) * dist;
-          const py = exp.y + Math.sin(angle) * dist;
-
-          const chunkFade = 1 - chunkProgress;
-          const chunkSize = (4 + seededRandom(i + 203) * 6) * chunkFade;
-
-          if (chunkSize > 2 && chunkFade > 0.1) {
-            // Trail
-            const trailLen = Math.min(dist * 0.35, 15) * chunkFade;
-            if (trailLen > 2) {
-              const tx = px - Math.cos(angle) * trailLen;
-              const ty = py - Math.sin(angle) * trailLen;
-              this.graphics.lineStyle(chunkSize * 0.5, 0xff5500, alpha * 0.3 * chunkFade);
-              this.graphics.lineBetween(tx, ty, px, py);
-            }
-            this.graphics.fillStyle(0xff6600, alpha * 0.6 * chunkFade);
-            this.graphics.fillCircle(px, py, chunkSize);
-            this.graphics.fillStyle(0xffaa44, alpha * 0.5 * chunkFade);
-            this.graphics.fillCircle(px, py, chunkSize * 0.5);
-          }
-        }
-      }
-
-      // Bright spark chunks in attacker direction (main explosion spray)
-      if (hasAttacker) {
-        const chunkCount = 10 + Math.floor(attackStrength * 8);
-        for (let i = 0; i < chunkCount; i++) {
-          const delay = seededRandom(i + 300) * 0.06;
-          const chunkProgress = Math.max(0, (progress - delay) * 1.5);
-          if (chunkProgress <= 0 || chunkProgress > 1) continue;
-
-          const spread = (seededRandom(i + 301) - 0.5) * 0.6;
-          const angle = Math.atan2(attackDirY, attackDirX) + spread;
-          const speed = 1.0 + seededRandom(i + 302) * 1.0;
-          const dist = exp.radius * chunkProgress * 2.8 * speed * attackStrength;
-          const px = exp.x + Math.cos(angle) * dist;
-          const py = exp.y + Math.sin(angle) * dist;
-
-          const chunkFade = 1 - chunkProgress;
-          const chunkSize = (3 + seededRandom(i + 303) * 5) * chunkFade;
-
-          if (chunkSize > 1.5 && chunkFade > 0.1) {
-            // Longer bright trail
-            const trailLen = Math.min(dist * 0.4, 20) * chunkFade;
-            if (trailLen > 3) {
-              const tx = px - Math.cos(angle) * trailLen;
-              const ty = py - Math.sin(angle) * trailLen;
-              this.graphics.lineStyle(chunkSize * 0.7, 0xff6622, alpha * 0.35 * chunkFade);
-              this.graphics.lineBetween(tx, ty, px, py);
-              this.graphics.lineStyle(chunkSize * 0.4, 0xffaa44, alpha * 0.5 * chunkFade);
-              this.graphics.lineBetween((tx + px) / 2, (ty + py) / 2, px, py);
-            }
-            this.graphics.fillStyle(0xffcc44, alpha * 0.7 * chunkFade);
-            this.graphics.fillCircle(px, py, chunkSize);
-            this.graphics.fillStyle(0xffffff, alpha * 0.6 * chunkFade);
-            this.graphics.fillCircle(px, py, chunkSize * 0.4);
-          }
-        }
-      }
-
-      return;
-    }
-
-    // High quality fallback for non-death explosions
-    if (explosionStyle === 'three-velocity-chunks') {
-      const currentRadius = exp.radius * (0.3 + progress * 0.7);
-      const alpha = 1 - progress * progress;
-      this.graphics.fillStyle(0xff4400, alpha * 0.3);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.4);
-      this.graphics.fillStyle(0xff6622, alpha * 0.5);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius);
-      this.graphics.fillStyle(0xffaa44, alpha * 0.7);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.5);
-      this.graphics.fillStyle(0xffffff, alpha * 0.8);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.2);
-      return;
-    }
-
-    // Extra quality: three-velocity-complex (full particle system)
-    if (exp.type === 'death') {
-      // ========================================================================
-      // DIRECTIONAL PARTICLE EXPLOSION
-      // All particles move in one of three directions:
-      // - VELOCITY: unit's movement direction (smoke, embers)
-      // - PENETRATION: from hit point through center (debris)
-      // - ATTACKER: projectile/beam direction (sparks, fragments, trail)
-      // ========================================================================
-
-      const alpha = 1 - progress;
-
-      // ========================================================================
-      // CALCULATE DIRECTION & STRENGTH FOR EACH MOMENTUM TYPE
-      // ========================================================================
-
-      // 1. VELOCITY (unit's movement) - affects smoke, embers
-      let velDirX = 0, velDirY = 0, velStrength = 0, velAngle = 0;
-      const hasVelocity = (exp.velocityMag ?? 0) > 10;
-      if (hasVelocity) {
-        velDirX = (exp.velocityX ?? 0) / exp.velocityMag!;
-        velDirY = (exp.velocityY ?? 0) / exp.velocityMag!;
-        velAngle = Math.atan2(velDirY, velDirX);
-        velStrength = Math.min(exp.velocityMag! / 400, 1);
-      }
-
-      // 2. PENETRATION (from hit point through center) - affects debris, shockwaves
-      let penDirX = 0, penDirY = 0, penStrength = 0, penAngle = 0;
-      const hasPenetration = (exp.penetrationMag ?? 0) > 10;
-      if (hasPenetration) {
-        penDirX = (exp.penetrationX ?? 0) / exp.penetrationMag!;
-        penDirY = (exp.penetrationY ?? 0) / exp.penetrationMag!;
-        penAngle = Math.atan2(penDirY, penDirX);
-        penStrength = Math.min(exp.penetrationMag! / 400, 1);
-      }
-
-      // 3. ATTACKER (projectile/beam direction) - affects sparks, secondary explosions
-      let attackDirX = 0, attackDirY = 0, attackStrength = 0, attackAngle = 0;
-      const hasAttacker = (exp.attackerMag ?? 0) > 10;
-      if (hasAttacker) {
-        attackDirX = (exp.attackerX ?? 0) / exp.attackerMag!;
-        attackDirY = (exp.attackerY ?? 0) / exp.attackerMag!;
-        attackAngle = Math.atan2(attackDirY, attackDirX);
-        attackStrength = Math.min(exp.attackerMag! / 400, 1);
-      }
-
-      // 4. COMBINED (all forces) - affects main fireball, outer glow, energy arcs
-      let combinedDirX = 0, combinedDirY = 0, combinedStrength = 0, combinedAngle = 0;
-      const hasCombined = (exp.combinedMag ?? 0) > 10;
-      if (hasCombined) {
-        combinedDirX = (exp.combinedX ?? 0) / exp.combinedMag!;
-        combinedDirY = (exp.combinedY ?? 0) / exp.combinedMag!;
-        combinedAngle = Math.atan2(combinedDirY, combinedDirX);
-        combinedStrength = Math.min(exp.combinedMag! / 400, 1);
-      }
-
-      // Dynamic center that drifts with combined momentum over time
-      const driftDistance = hasCombined ? exp.radius * 0.8 * progress * combinedStrength : 0;
-      const centerX = exp.x + combinedDirX * driftDistance;
-      const centerY = exp.y + combinedDirY * driftDistance;
-
-      // Use deterministic "random" based on explosion position for consistent particles
-      const seed = (exp.x * 1000 + exp.y) % 10000;
-      const seededRandom = (i: number) => {
-        const x = Math.sin(seed + i * 127.1) * 43758.5453;
-        return x - Math.floor(x);
-      };
-
-      // ------------------------------------------------------------------------
-      // LAYER 1: SMOKE CLOUDS (uses VELOCITY - trails behind moving unit)
-      // ------------------------------------------------------------------------
-      if (progress > 0.1) {
-        const smokeCount = 6 + Math.floor(velStrength * 4);
-        for (let i = 0; i < smokeCount; i++) {
-          const smokeProgress = Math.max(0, (progress - 0.1 - i * 0.02) * 1.8);
-          if (smokeProgress <= 0 || smokeProgress > 1) continue;
-
-          // Smoke drifts upward and OPPOSITE to velocity (trails behind)
-          const baseAngle = seededRandom(i + 100) * Math.PI * 2;
-          let smokeAngle = baseAngle;
-          let smokeDist = exp.radius * (0.3 + smokeProgress * 0.8) * (0.7 + seededRandom(i + 101) * 0.6);
-
-          if (hasVelocity) {
-            // Bias smoke OPPOSITE to velocity direction (trails behind)
-            const oppositeAngle = velAngle + Math.PI;
-            const alignment = Math.cos(baseAngle - oppositeAngle);
-            if (alignment > 0) {
-              smokeDist *= 1 + alignment * velStrength * 0.8;
-              smokeAngle = baseAngle - (baseAngle - oppositeAngle) * 0.3 * velStrength;
-            }
-          }
-
-          const smokeX = centerX + Math.cos(smokeAngle) * smokeDist;
-          const smokeY = centerY + Math.sin(smokeAngle) * smokeDist - smokeProgress * 8; // Drift up
-
-          // Smoke fades completely when it stops moving
-          const smokeFade = 1 - smokeProgress;
-          const smokeSize = exp.radius * 0.3 * smokeFade * (0.8 + seededRandom(i + 102) * 0.4);
-          const smokeAlpha = 0.15 * smokeFade;
-
-          if (smokeFade > 0.05) {
-            this.graphics.fillStyle(0x444444, smokeAlpha);
-            this.graphics.fillCircle(smokeX, smokeY, smokeSize);
-          }
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 1: SPARK PARTICLES WITH TRAILS (uses ATTACKER direction)
-      // Sparks EXPLODE out in the direction the projectile/beam was traveling
-      // This is the main "ripping through" effect
-      // ------------------------------------------------------------------------
-      const sparkCount = 24 + Math.floor(attackStrength * 20); // Many more sparks
-      for (let i = 0; i < sparkCount; i++) {
-        const sparkDelay = seededRandom(i + 300) * 0.12; // Faster spawn
-        const sparkProgress = Math.max(0, Math.min(1, (progress - sparkDelay) * 1.5)); // Faster animation
-        if (sparkProgress <= 0) continue;
-
-        const baseAngle = (i / sparkCount) * Math.PI * 2 + seededRandom(i + 301) * 0.3;
-        const sparkSpeed = 1.0 + seededRandom(i + 302) * 1.0; // Faster sparks
-
-        // Calculate ATTACKER direction bias - EXTREME penetration effect
-        let finalAngle = baseAngle;
-        let distMult = 1;
-        if (hasAttacker) {
-          let angleDiff = baseAngle - attackAngle;
-          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-          const alignment = Math.cos(angleDiff);
-          if (alignment > 0) {
-            // MASSIVE bias toward attacker direction - ripping through!
-            distMult = 1 + alignment * attackStrength * 3.0;
-            finalAngle = baseAngle - angleDiff * 0.7 * attackStrength; // Pull hard toward attack dir
-          } else {
-            // Almost nothing goes backwards
-            distMult = Math.max(0.1, 1 + alignment * attackStrength * 0.8);
-          }
-        }
-
-        const sparkDist = exp.radius * (0.3 + sparkProgress * 2.5) * sparkSpeed * distMult; // Travel further
-        const sparkX = centerX + Math.cos(finalAngle) * sparkDist;
-        const sparkY = centerY + Math.sin(finalAngle) * sparkDist;
-
-        // Draw LONG spark trail - the key visual for "ripping through"
-        const sparkFade = 1 - sparkProgress; // Fade to 0 when stopped
-        const trailLength = Math.min(sparkDist * 0.5, 30) * sparkFade;
-        if (trailLength > 2 && sparkFade > 0.05) {
-          const trailStartX = sparkX - Math.cos(finalAngle) * trailLength;
-          const trailStartY = sparkY - Math.sin(finalAngle) * trailLength;
-          // Gradient trail - brighter at head
-          this.graphics.lineStyle(3, 0xff6622, alpha * 0.3 * sparkFade);
-          this.graphics.lineBetween(trailStartX, trailStartY, sparkX, sparkY);
-          this.graphics.lineStyle(2, 0xffaa44, alpha * 0.6 * sparkFade);
-          const midX = (trailStartX + sparkX) / 2;
-          const midY = (trailStartY + sparkY) / 2;
-          this.graphics.lineBetween(midX, midY, sparkX, sparkY);
-        }
-
-        // Bigger, brighter spark head
-        const sparkSize = (3.5 + seededRandom(i + 303) * 3) * sparkFade;
-        if (sparkSize > 0.5 && sparkFade > 0.05) {
-          this.graphics.fillStyle(0xffdd88, alpha * 0.95 * sparkFade);
-          this.graphics.fillCircle(sparkX, sparkY, sparkSize);
-          this.graphics.fillStyle(0xffffff, alpha * 0.8 * sparkFade);
-          this.graphics.fillCircle(sparkX, sparkY, sparkSize * 0.5);
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 6B: PENETRATION FRAGMENTS - Hot metal chunks ripping through
-      // Concentrated spray of larger fragments in the attack direction
-      // ------------------------------------------------------------------------
-      if (hasAttacker && attackStrength > 0.2) {
-        const fragmentCount = 8 + Math.floor(attackStrength * 15);
-        for (let i = 0; i < fragmentCount; i++) {
-          const fragDelay = seededRandom(i + 350) * 0.08;
-          const fragProgress = Math.max(0, Math.min(1, (progress - fragDelay) * 1.8));
-          if (fragProgress <= 0) continue;
-
-          // Tight cone in attack direction
-          const coneSpread = 0.5 * (1 - attackStrength * 0.3); // Tighter cone with stronger attacks
-          const fragAngle = attackAngle + (seededRandom(i + 351) - 0.5) * coneSpread;
-          const fragSpeed = 1.5 + seededRandom(i + 352) * 1.5;
-
-          const fragDist = exp.radius * (0.5 + fragProgress * 3.5) * fragSpeed;
-          const fragX = centerX + Math.cos(fragAngle) * fragDist;
-          const fragY = centerY + Math.sin(fragAngle) * fragDist;
-
-          // Fragment trail - molten metal streaks
-          const fragFade = 1 - fragProgress; // Fade to 0 when stopped
-          const fragTrailLen = Math.min(fragDist * 0.4, 25) * fragFade;
-          if (fragTrailLen > 3 && fragFade > 0.05) {
-            const trailStartX = fragX - Math.cos(fragAngle) * fragTrailLen;
-            const trailStartY = fragY - Math.sin(fragAngle) * fragTrailLen;
-            this.graphics.lineStyle(4, 0xff4400, alpha * 0.4 * fragFade);
-            this.graphics.lineBetween(trailStartX, trailStartY, fragX, fragY);
-            this.graphics.lineStyle(2, 0xffaa00, alpha * 0.7 * fragFade);
-            this.graphics.lineBetween(trailStartX, trailStartY, fragX, fragY);
-          }
-
-          // Hot fragment head - glowing metal chunk
-          const fragSize = (4 + seededRandom(i + 353) * 4) * fragFade;
-          if (fragSize > 1 && fragFade > 0.05) {
-            this.graphics.fillStyle(0xff6600, alpha * 0.9 * fragFade);
-            this.graphics.fillCircle(fragX, fragY, fragSize);
-            this.graphics.fillStyle(0xffcc44, alpha * 0.7 * fragFade);
-            this.graphics.fillCircle(fragX, fragY, fragSize * 0.6);
-            this.graphics.fillStyle(0xffffff, alpha * 0.5 * fragFade);
-            this.graphics.fillCircle(fragX, fragY, fragSize * 0.25);
-          }
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 7: DEBRIS CHUNKS (uses PENETRATION - pushed through where attack entered)
-      // Debris is pushed in the penetration direction
-      // ------------------------------------------------------------------------
-      const debrisCount = 8 + Math.floor(penStrength * 6);
-      for (let i = 0; i < debrisCount; i++) {
-        const debrisDelay = seededRandom(i + 400) * 0.08;
-        const debrisProgress = Math.max(0, Math.min(1, (progress - debrisDelay) * 1.3));
-        if (debrisProgress <= 0) continue;
-
-        const baseAngle = seededRandom(i + 401) * Math.PI * 2;
-        const debrisSpeed = 0.5 + seededRandom(i + 402) * 0.5;
-
-        // Heavy PENETRATION bias for debris (pushed through where attack entered)
-        let finalAngle = baseAngle;
-        let distMult = 1;
-        if (hasPenetration) {
-          let angleDiff = baseAngle - penAngle;
-          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-          const alignment = Math.cos(angleDiff);
-          if (alignment > 0) {
-            // Strong bias toward penetration direction
-            distMult = 1 + alignment * penStrength * 1.8;
-            finalAngle = baseAngle - angleDiff * 0.6 * penStrength;
-          } else {
-            distMult = Math.max(0.2, 1 + alignment * penStrength * 0.5);
-          }
-        }
-
-        // Debris falls with gravity simulation
-        const debrisDist = exp.radius * (0.3 + debrisProgress * 1.0) * debrisSpeed * distMult;
-        const gravityDrop = debrisProgress * debrisProgress * 20; // Parabolic fall
-        const debrisX = centerX + Math.cos(finalAngle) * debrisDist;
-        const debrisY = centerY + Math.sin(finalAngle) * debrisDist + gravityDrop;
-
-        // Debris fades completely when it stops moving
-        const debrisFade = 1 - debrisProgress;
-        const debrisSize = (3 + seededRandom(i + 403) * 4) * debrisFade;
-        if (debrisSize > 1 && debrisFade > 0.05) {
-          // Dark debris with bright edge
-          this.graphics.fillStyle(0x332211, alpha * 0.8 * debrisFade);
-          this.graphics.fillCircle(debrisX, debrisY, debrisSize);
-          this.graphics.fillStyle(0x664422, alpha * 0.5 * debrisFade);
-          this.graphics.fillCircle(debrisX - debrisSize * 0.3, debrisY - debrisSize * 0.3, debrisSize * 0.5);
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 8: FIRE EMBERS (uses VELOCITY - trail behind moving unit)
-      // Embers drift in the opposite direction of unit velocity (trailing effect)
-      // ------------------------------------------------------------------------
-      if (progress > 0.15) {
-        const emberCount = 10 + Math.floor(velStrength * 8);
-        for (let i = 0; i < emberCount; i++) {
-          const emberProgress = Math.max(0, (progress - 0.15 - seededRandom(i + 500) * 0.2) * 2.0);
-          if (emberProgress <= 0 || emberProgress > 1) continue;
-
-          const baseAngle = seededRandom(i + 501) * Math.PI * 2;
-          let emberAngle = baseAngle;
-          let emberDist = exp.radius * (0.4 + emberProgress * 0.6) * (0.5 + seededRandom(i + 502) * 0.5);
-
-          if (hasVelocity) {
-            // Embers trail OPPOSITE to velocity direction
-            const oppositeAngle = velAngle + Math.PI;
-            const alignment = Math.cos(baseAngle - oppositeAngle);
-            if (alignment > 0) {
-              emberDist *= 1 + alignment * velStrength * 1.0;
-              emberAngle = baseAngle - (baseAngle - oppositeAngle) * 0.35 * velStrength;
-            }
-          }
-
-          // Embers float upward
-          const emberX = centerX + Math.cos(emberAngle) * emberDist;
-          const emberY = centerY + Math.sin(emberAngle) * emberDist - emberProgress * 15;
-
-          // Embers fade completely when they stop moving
-          const emberFade = 1 - emberProgress;
-          const flicker = 0.7 + Math.sin(emberProgress * 20 + i) * 0.3;
-          const emberSize = (1.5 + seededRandom(i + 503) * 1.5) * emberFade;
-          const emberAlpha = alpha * 0.8 * flicker * emberFade;
-
-          if (emberSize > 0.5 && emberFade > 0.05) {
-            this.graphics.fillStyle(0xff6600, emberAlpha);
-            this.graphics.fillCircle(emberX, emberY, emberSize);
-            this.graphics.fillStyle(0xffcc00, emberAlpha * 0.6);
-            this.graphics.fillCircle(emberX, emberY, emberSize * 0.5);
-          }
-        }
-      }
-
-      // ------------------------------------------------------------------------
-      // LAYER 9: MOMENTUM TRAIL (uses COMBINED - overall momentum stream)
-      // Hot streak of particles in the combined direction of all forces
-      // ------------------------------------------------------------------------
-      if (hasCombined && combinedStrength > 0.3) {
-        const trailCount = Math.floor(combinedStrength * 15);
-        for (let i = 0; i < trailCount; i++) {
-          const trailT = i / trailCount;
-          const trailProgress = Math.max(0, Math.min(1, (progress - trailT * 0.2) * 1.6));
-          if (trailProgress <= 0) continue;
-
-          // Trail follows COMBINED direction with slight spread
-          const spreadAngle = (seededRandom(i + 600) - 0.5) * 0.6 * (1 - combinedStrength * 0.5);
-          const trailAngle = combinedAngle + spreadAngle;
-          const trailDist = exp.radius * (0.5 + trailProgress * 2.0 + trailT * 0.8) * (0.8 + combinedStrength * 0.4);
-
-          const trailX = exp.x + Math.cos(trailAngle) * trailDist;
-          const trailY = exp.y + Math.sin(trailAngle) * trailDist;
-
-          // Trail fades completely when it stops moving
-          const trailFade = 1 - trailProgress;
-          const trailSize = (3 + seededRandom(i + 601) * 2) * (1 - trailT * 0.5) * trailFade;
-          const trailAlpha = alpha * 0.7 * (1 - trailT * 0.3) * trailFade;
-
-          if (trailSize > 0.5 && trailFade > 0.05) {
-            // Hot streak
-            this.graphics.fillStyle(0xff8844, trailAlpha);
-            this.graphics.fillCircle(trailX, trailY, trailSize);
-            this.graphics.fillStyle(0xffcc88, trailAlpha * 0.5);
-            this.graphics.fillCircle(trailX, trailY, trailSize * 0.4);
-          }
-        }
-      }
-
-    } else {
-      // Impact explosion - quick flash
-      const currentRadius = exp.radius * (0.5 + progress * 0.5);
-      const alpha = 1 - progress * progress; // Faster fadeout
-
-      // Outer flash
-      this.graphics.fillStyle(exp.color, alpha * 0.4);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 1.2);
-
-      // Core flash
-      this.graphics.fillStyle(0xffffff, alpha * 0.8);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.4);
-
-      // Colored middle
-      this.graphics.fillStyle(exp.color, alpha * 0.7);
-      this.graphics.fillCircle(exp.x, exp.y, currentRadius * 0.7);
-    }
-  }
-
-  // Render labels above selected units and buildings - skip dead entities
-  private renderSelectedLabels(): void {
-    // Labels for selected units - skip dead units
-    for (const entity of this.entitySource.getUnits()) {
-      if (entity.selectable?.selected && entity.unit && entity.unit.hp > 0) {
-        const { x, y } = entity.transform;
-        const { collisionRadius } = entity.unit;
-        // Detect unit type by checking all weapons
-        const weapons = entity.weapons ?? [];
-        let weaponId = 'scout'; // default
-        if (weapons.length > 1) {
-          weaponId = 'widow';
-        } else {
-          // Loop through all weapons to get type
-          for (const weapon of weapons) {
-            weaponId = weapon.config.id;
-          }
-        }
-
-        // Commander gets special label
-        const name = entity.commander
-          ? 'Commander'
-          : UNIT_NAMES[weaponId] ?? weaponId;
-
-        const label = this.getLabel();
-        label.setText(name);
-        label.setPosition(x, y - collisionRadius - 18); // Above health bar
-      }
-    }
-
-    // Labels for selected buildings - skip dead buildings
-    for (const entity of this.entitySource.getBuildings()) {
-      if (entity.selectable?.selected && entity.building && entity.building.hp > 0) {
-        const { x, y } = entity.transform;
-        const { height } = entity.building;
-
-        // Determine building type using buildingType property
-        let name = 'Building';
-        if (entity.buildingType === 'factory') {
-          name = 'Factory';
-        } else if (entity.buildingType === 'solar') {
-          name = 'Solar';
-        }
-
-        const label = this.getLabel();
-        label.setText(name);
-        label.setPosition(x, y - height / 2 - 14); // Above building
-      }
-    }
-  }
-
-  // Render range circles for selected units
-  private renderRangeCircles(entity: Entity): void {
-    if (!entity.unit) return;
-
-    const { transform, weapons, builder } = entity;
-    const { x, y } = transform;
-
-    // Vision/tracking range (outermost - yellow) - show max seeRange from all weapons
-    if (weapons && weapons.length > 0) {
-      const maxSeeRange = Math.max(...weapons.map((w) => w.seeRange));
-      this.graphics.lineStyle(1, VISION_RANGE_COLOR, 0.3);
-      this.graphics.strokeCircle(x, y, maxSeeRange);
-
-      // Fire range (red) - show max fireRange from all weapons
-      const maxFireRange = Math.max(...weapons.map((w) => w.fireRange));
-      this.graphics.lineStyle(1.5, WEAPON_RANGE_COLOR, 0.4);
-      this.graphics.strokeCircle(x, y, maxFireRange);
-    }
-
-    // Build range (green) - only for builders
-    if (builder) {
-      this.graphics.lineStyle(1.5, BUILD_RANGE_COLOR, 0.4);
-      this.graphics.strokeCircle(x, y, builder.buildRange);
-    }
-  }
-
-  // ==================== COLOR PALETTE SYSTEM ====================
-  // Each unit has access to: white, black, gray, base, light, dark
-
-  private readonly WHITE = 0xf0f0f0;
-  private readonly BLACK = 0x1a1a1a;
-  private readonly DARK_GRAY = 0x383838;
-  private readonly GRAY = 0x606060;
-  private readonly GRAY_LIGHT = 0x909090;
-
-  // Get player color
-  private getPlayerColor(playerId: number | undefined): number {
-    if (playerId === undefined) return 0x888888;
-    return PLAYER_COLORS[playerId]?.primary ?? 0x888888;
-  }
-
-  // Get light variant of a color (blend toward white)
-  private getColorLight(baseColor: number): number {
-    const r = (baseColor >> 16) & 0xff;
-    const g = (baseColor >> 8) & 0xff;
-    const b = baseColor & 0xff;
-    const blend = 0.45;
-    return (
-      (Math.round(r + (240 - r) * blend) << 16) |
-      (Math.round(g + (240 - g) * blend) << 8) |
-      Math.round(b + (240 - b) * blend)
-    );
-  }
-
-  // Get dark variant of a color (blend toward black)
-  private getColorDark(baseColor: number): number {
-    const r = (baseColor >> 16) & 0xff;
-    const g = (baseColor >> 8) & 0xff;
-    const b = baseColor & 0xff;
-    const blend = 0.45;
-    return (
-      (Math.round(r * (1 - blend)) << 16) |
-      (Math.round(g * (1 - blend)) << 8) |
-      Math.round(b * (1 - blend))
-    );
-  }
-
-  // Get projectile color (bright version of base color for visibility)
-  private getProjectileColor(baseColor: number): number {
-    return this.getColorLight(baseColor);
-  }
-
-  // Render a unit with unique visual style per weapon type
-  // All draw methods receive the full entity and loop through all weapons
   private renderUnit(entity: Entity): void {
     if (!entity.unit) return;
 
@@ -1632,192 +470,59 @@ export class EntityRenderer {
     const isSelected = selectable?.selected ?? false;
     const playerId = ownership?.playerId;
 
-    // Detect unit type by checking weapon configuration
-    // Multi-weapon units (>1 weapon) are widows
-    // Single-weapon units are identified by checking all weapons (which will all have same type)
     const weapons = entity.weapons ?? [];
     const weaponCount = weapons.length;
-    let weaponId = 'scout'; // default
+    let weaponId = 'scout';
     if (weaponCount > 1) {
       weaponId = 'widow';
     } else if (weaponCount > 0) {
-      // Check all weapons (for single-weapon units, this loops once)
-      for (const weapon of weapons) {
-        weaponId = weapon.config.id;
-        break; // Use type from any weapon
-      }
+      weaponId = weapons[0].config.id;
     }
 
-    // Get color palette for this player
-    const base = this.getPlayerColor(playerId);
-    const light = this.getColorLight(base);
-    const dark = this.getColorDark(base);
+    const palette = createColorPalette(playerId);
 
-    // Selection ring (only on body pass)
+    // Selection ring
     if (isSelected && !this.turretsOnly) {
-      this.graphics.lineStyle(3, UNIT_SELECTED_COLOR, 1);
+      this.graphics.lineStyle(3, COLORS.UNIT_SELECTED, 1);
       this.graphics.strokeCircle(x, y, radius + 5);
     }
 
-    // Draw unit based on weapon type - each draw method loops through all weapons
+    const ctx: UnitRenderContext = {
+      graphics: this.graphics,
+      x, y, radius, bodyRot: rotation, palette, isSelected, entity,
+      skipTurrets: this.skipTurrets, turretsOnly: this.turretsOnly,
+    };
+
     switch (weaponId) {
-      case 'scout':
-        this.drawScoutUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      case 'burst':
-        this.drawBurstUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      case 'daddy':
-        this.drawBeamUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      case 'brawl':
-        this.drawBrawlUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      case 'shotgun':
-        this.drawMortarUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      case 'snipe':
-        this.drawSnipeUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      case 'tank':
-        this.drawTankUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      case 'widow':
-        this.drawArachnidUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      case 'insect':
-        this.drawSonicUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
-        break;
-      default:
-        this.drawScoutUnit(
-          x,
-          y,
-          radius,
-          rotation,
-          base,
-          light,
-          dark,
-          isSelected,
-          entity
-        );
+      case 'scout': drawScoutUnit(ctx, this.getVehicleWheels(entity.id)); break;
+      case 'burst': drawBurstUnit(ctx, this.getVehicleWheels(entity.id)); break;
+      case 'daddy': drawBeamUnit(ctx, this.getOrCreateLegs(entity, 'daddy')); break;
+      case 'brawl': drawBrawlUnit(ctx, this.getTankTreads(entity.id)); break;
+      case 'shotgun': drawMortarUnit(ctx, this.getVehicleWheels(entity.id)); break;
+      case 'snipe': drawSnipeUnit(ctx, this.getVehicleWheels(entity.id)); break;
+      case 'tank': drawTankUnit(ctx, this.getTankTreads(entity.id)); break;
+      case 'widow': drawArachnidUnit(ctx, this.getOrCreateLegs(entity, 'arachnid')); break;
+      case 'insect': drawSonicUnit(ctx, this.getOrCreateLegs(entity, 'insect')); break;
+      default: drawScoutUnit(ctx, this.getVehicleWheels(entity.id));
     }
 
-    // Commander indicator, health bar, target lines (only on body pass)
     if (!this.turretsOnly) {
-      // Commander indicator (gold star/crown)
       if (entity.commander) {
-        this.renderCommanderCrown(x, y, radius);
+        renderCommanderCrown(this.graphics, x, y, radius);
       }
 
-      // Health bar (only show if damaged)
       const healthPercent = hp / maxHp;
       if (healthPercent < 1) {
         this.renderHealthBar(x, y - radius - 10, radius * 2, 4, healthPercent);
       }
 
-      // Target lines when selected - show for all weapons
-      if (entity.weapons && isSelected) {
-        for (const weapon of entity.weapons) {
+      if (weapons && isSelected) {
+        for (const weapon of weapons) {
           if (weapon.targetEntityId != null) {
             const target = this.entitySource.getEntity(weapon.targetEntityId);
             if (target) {
               this.graphics.lineStyle(1, 0xff0000, 0.3);
-              this.graphics.lineBetween(
-                x,
-                y,
-                target.transform.x,
-                target.transform.y
-              );
+              this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
             }
           }
         }
@@ -1825,1827 +530,8 @@ export class EntityRenderer {
     }
   }
 
-  // ==================== UNIT TYPE RENDERERS ====================
+  // ==================== BUILDING RENDERING ====================
 
-  // Scout: Fast recon unit - 4 small treads, sleek diamond body
-  private drawScoutUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    light: number,
-    dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    // Body pass
-    if (!this.turretsOnly) {
-      const cos = Math.cos(bodyRot);
-      const sin = Math.sin(bodyRot);
-
-      // Get tread animation data
-      const wheelSetup = this.getVehicleWheels(entity.id);
-
-      // Four treads at corners
-      const treadDistX = r * 0.6;
-      const treadDistY = r * 0.7;
-      const treadLength = r * 0.5;
-      const treadWidth = r * 0.11;
-
-      const treadPositions = [
-        { dx: treadDistX, dy: treadDistY }, // Front right
-        { dx: treadDistX, dy: -treadDistY }, // Front left
-        { dx: -treadDistX, dy: treadDistY }, // Rear right
-        { dx: -treadDistX, dy: -treadDistY }, // Rear left
-      ];
-
-      for (let i = 0; i < treadPositions.length; i++) {
-        const tp = treadPositions[i];
-        const tx = x + cos * tp.dx - sin * tp.dy;
-        const ty = y + sin * tp.dx + cos * tp.dy;
-        const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(
-          tx,
-          ty,
-          treadLength,
-          treadWidth,
-          bodyRot,
-          treadRotation,
-          this.DARK_GRAY,
-          this.GRAY_LIGHT
-        );
-      }
-
-      // Main body (diamond/rhombus shape) - light colored
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
-      this.graphics.fillStyle(bodyColor, 1);
-      this.drawPolygon(x, y, r * 0.55, 4, bodyRot + Math.PI / 4);
-
-      // Inner accent (base color)
-      this.graphics.fillStyle(base, 1);
-      this.drawPolygon(x, y, r * 0.35, 4, bodyRot + Math.PI / 4);
-
-      // Center hub (dark)
-      this.graphics.fillStyle(dark, 1);
-      this.graphics.fillCircle(x, y, r * 0.15);
-
-      // Turret mount (white)
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(x, y, r * 0.1);
-    }
-
-    // Turret pass
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      for (const weapon of weapons) {
-        const turretRot = weapon.turretRotation;
-        // Triple rapid-fire barrels
-        const turretLen = r * 1.0;
-        this.graphics.lineStyle(1.5, this.WHITE, 1);
-        for (let i = -1; i <= 1; i++) {
-          const offset = i * 2;
-          const perpX = Math.cos(turretRot + Math.PI / 2) * offset;
-          const perpY = Math.sin(turretRot + Math.PI / 2) * offset;
-          const endX = x + Math.cos(turretRot) * turretLen + perpX;
-          const endY = y + Math.sin(turretRot) * turretLen + perpY;
-          this.graphics.lineBetween(x + perpX, y + perpY, endX, endY);
-        }
-      }
-    }
-  }
-
-  // Burst: Aggressive striker - 4 treads, angular wedge body
-  private drawBurstUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    light: number,
-    dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    // Body pass
-    if (!this.turretsOnly) {
-      const cos = Math.cos(bodyRot);
-      const sin = Math.sin(bodyRot);
-
-      // Get tread animation data
-      const wheelSetup = this.getVehicleWheels(entity.id);
-
-      // Four treads at corners
-      const treadDistX = r * 0.65;
-      const treadDistY = r * 0.75;
-      const treadLength = r * 0.55;
-      const treadWidth = r * 0.12;
-
-      const treadPositions = [
-        { dx: treadDistX, dy: treadDistY },
-        { dx: treadDistX, dy: -treadDistY },
-        { dx: -treadDistX, dy: treadDistY },
-        { dx: -treadDistX, dy: -treadDistY },
-      ];
-
-      for (let i = 0; i < treadPositions.length; i++) {
-        const tp = treadPositions[i];
-        const tx = x + cos * tp.dx - sin * tp.dy;
-        const ty = y + sin * tp.dx + cos * tp.dy;
-        const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(
-          tx,
-          ty,
-          treadLength,
-          treadWidth,
-          bodyRot,
-          treadRotation,
-          this.DARK_GRAY,
-          this.GRAY_LIGHT
-        );
-      }
-
-      // Main body (aggressive triangle pointing forward) - dark colored
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-      this.graphics.fillStyle(bodyColor, 1);
-      this.drawPolygon(x, y, r * 0.6, 3, bodyRot);
-
-      // Inner wedge accent (base color)
-      this.graphics.fillStyle(base, 1);
-      this.drawPolygon(x, y, r * 0.38, 3, bodyRot);
-
-      // Aggressive front stripe (light)
-      this.graphics.fillStyle(light, 1);
-      const stripeX = x + cos * r * 0.25;
-      const stripeY = y + sin * r * 0.25;
-      this.drawOrientedRect(stripeX, stripeY, r * 0.15, r * 0.35, bodyRot);
-
-      // Turret mount (white)
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(x, y, r * 0.12);
-    }
-
-    // Turret pass
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      for (const weapon of weapons) {
-        const turretRot = weapon.turretRotation;
-        // Dual burst cannons
-        const turretLen = r * 1.1;
-        this.graphics.lineStyle(2.5, this.WHITE, 1);
-        const perpDist = 3;
-        const perpX = Math.cos(turretRot + Math.PI / 2) * perpDist;
-        const perpY = Math.sin(turretRot + Math.PI / 2) * perpDist;
-        const endX = x + Math.cos(turretRot) * turretLen;
-        const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineBetween(
-          x + perpX,
-          y + perpY,
-          endX + perpX,
-          endY + perpY
-        );
-        this.graphics.lineBetween(
-          x - perpX,
-          y - perpY,
-          endX - perpX,
-          endY - perpY
-        );
-      }
-    }
-  }
-
-  // Beam/Insect: 6-legged insect with a single beam laser
-  private drawBeamUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    light: number,
-    dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
-
-    // Body pass
-    if (!this.turretsOnly) {
-      const legConfig = LEG_STYLE_CONFIG.daddy;
-      const legThickness = legConfig.thickness;
-      const footSize = r * legConfig.footSizeMultiplier;
-
-      // Get legs for this entity (creates them if they don't exist)
-      const legs = this.getOrCreateLegs(entity, 'daddy');
-
-      // Draw all 8 legs using the Leg class positions (daddy long legs style)
-      for (let i = 0; i < legs.length; i++) {
-        const leg = legs[i];
-        const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
-
-        // Get positions from leg class
-        const attach = leg.getAttachmentPoint(x, y, bodyRot);
-        const foot = leg.getFootPosition();
-        const knee = leg.getKneePosition(attach.x, attach.y, side);
-
-        // Draw leg segments (both use dark team color)
-        // Upper leg (slightly thicker)
-        this.graphics.lineStyle(legThickness + 0.5, dark, 1);
-        this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-
-        // Lower leg
-        this.graphics.lineStyle(legThickness, dark, 1);
-        this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
-
-        // Knee joint (light team color)
-        this.graphics.fillStyle(light, 1);
-        this.graphics.fillCircle(knee.x, knee.y, legThickness);
-
-        // Foot (light team color)
-        this.graphics.fillStyle(light, 1);
-        this.graphics.fillCircle(foot.x, foot.y, footSize);
-      }
-
-      // Body (hexagonal insect shape)
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
-      this.graphics.fillStyle(bodyColor, 1);
-
-      // Draw body as elongated hexagon (insect-like)
-      const bodyLength = r * 0.9;
-      const bodyWidth = r * 0.55;
-      const bodyPoints = [
-        {
-          x: x + cos * bodyLength - sin * bodyWidth * 0.3,
-          y: y + sin * bodyLength + cos * bodyWidth * 0.3,
-        },
-        {
-          x: x + cos * bodyLength * 0.4 - sin * bodyWidth,
-          y: y + sin * bodyLength * 0.4 + cos * bodyWidth,
-        },
-        {
-          x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.7,
-          y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.7,
-        },
-        {
-          x: x - cos * bodyLength - sin * bodyWidth * 0.3,
-          y: y - sin * bodyLength + cos * bodyWidth * 0.3,
-        },
-        {
-          x: x - cos * bodyLength + sin * bodyWidth * 0.3,
-          y: y - sin * bodyLength - cos * bodyWidth * 0.3,
-        },
-        {
-          x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.7,
-          y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.7,
-        },
-        {
-          x: x + cos * bodyLength * 0.4 + sin * bodyWidth,
-          y: y + sin * bodyLength * 0.4 - cos * bodyWidth,
-        },
-        {
-          x: x + cos * bodyLength + sin * bodyWidth * 0.3,
-          y: y + sin * bodyLength - cos * bodyWidth * 0.3,
-        },
-      ];
-      this.graphics.fillPoints(bodyPoints, true);
-
-      // Inner carapace pattern (dark)
-      this.graphics.fillStyle(dark, 1);
-      this.drawPolygon(x, y, r * 0.4, 6, bodyRot);
-
-      // Central eye/sensor (light glow)
-      this.graphics.fillStyle(light, 1);
-      this.graphics.fillCircle(x, y, r * 0.2);
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(x, y, r * 0.1);
-    }
-
-    // Turret pass - beam emitter at center hexagon (like widow's center beam)
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      for (const weapon of weapons) {
-        const turretRot = weapon.turretRotation;
-
-        // Beam emitter at center of hexagon
-        // Emitter base (glowing orb)
-        this.graphics.fillStyle(this.WHITE, 1);
-        this.graphics.fillCircle(x, y, r * 0.12);
-
-        // Beam barrel
-        const beamLen = r * 0.6;
-        const beamEndX = x + Math.cos(turretRot) * beamLen;
-        const beamEndY = y + Math.sin(turretRot) * beamLen;
-        this.graphics.lineStyle(3.5, this.WHITE, 1);
-        this.graphics.lineBetween(x, y, beamEndX, beamEndY);
-      }
-    }
-  }
-
-  // Brawl: Heavy treaded unit - wide treads, bulky dark body, gray armor
-  private drawBrawlUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    _light: number,
-    dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    // Body pass
-    if (!this.turretsOnly) {
-      const cos = Math.cos(bodyRot);
-      const sin = Math.sin(bodyRot);
-
-      // Get tread animation data
-      const treads = this.getTankTreads(entity.id);
-
-      // Two large treads on left and right sides (brawl is shorter than tank)
-      const treadOffset = r * 0.85; // Distance from center to tread
-      const treadLength = r * 1.7; // Slightly shorter than tank
-      const treadWidth = r * 0.55; // Wide treads
-
-      for (const side of [-1, 1]) {
-        const offsetX = -sin * treadOffset * side;
-        const offsetY = cos * treadOffset * side;
-
-        // Get tread rotation for this side
-        const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
-        const treadRotation = tread?.getRotation() ?? 0;
-
-        // Draw animated tread
-        const tx = x + offsetX;
-        const ty = y + offsetY;
-        this.drawAnimatedTread(
-          tx,
-          ty,
-          treadLength,
-          treadWidth,
-          bodyRot,
-          treadRotation,
-          this.DARK_GRAY,
-          this.GRAY_LIGHT
-        );
-      }
-
-      // Body (pentagon) - dark with gray armor plates
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-      this.graphics.fillStyle(bodyColor, 1);
-      this.drawPolygon(x, y, r * 0.8, 5, bodyRot);
-
-      // Gray armor plate
-      this.graphics.fillStyle(this.GRAY, 1);
-      this.drawPolygon(x, y, r * 0.5, 5, bodyRot);
-
-      // Base color accent ring
-      this.graphics.lineStyle(2, base, 1);
-      this.graphics.strokeCircle(x, y, r * 0.35);
-
-      // White muzzle
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(x, y, r * 0.18);
-    }
-
-    // Turret pass
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      for (const weapon of weapons) {
-        const turretRot = weapon.turretRotation;
-        // Wide shotgun barrel (white to match muzzle)
-        const turretLen = r * 1.0;
-        const endX = x + Math.cos(turretRot) * turretLen;
-        const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(5, this.WHITE, 1);
-        this.graphics.lineBetween(
-          x,
-          y,
-          endX * 0.9 + x * 0.1,
-          endY * 0.9 + y * 0.1
-        );
-      }
-    }
-  }
-
-  // Mortar: Artillery platform - 4 treads, hexagonal base, mortar tube
-  private drawMortarUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    _light: number,
-    dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    // Body pass
-    if (!this.turretsOnly) {
-      const cos = Math.cos(bodyRot);
-      const sin = Math.sin(bodyRot);
-
-      // Get tread animation data
-      const wheelSetup = this.getVehicleWheels(entity.id);
-
-      // Four treads at corners
-      const treadDistX = r * 0.65;
-      const treadDistY = r * 0.7;
-      const treadLength = r * 0.5;
-      const treadWidth = r * 0.11;
-
-      const treadPositions = [
-        { dx: treadDistX, dy: treadDistY },
-        { dx: treadDistX, dy: -treadDistY },
-        { dx: -treadDistX, dy: treadDistY },
-        { dx: -treadDistX, dy: -treadDistY },
-      ];
-
-      for (let i = 0; i < treadPositions.length; i++) {
-        const tp = treadPositions[i];
-        const tx = x + cos * tp.dx - sin * tp.dy;
-        const ty = y + sin * tp.dx + cos * tp.dy;
-        const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(
-          tx,
-          ty,
-          treadLength,
-          treadWidth,
-          bodyRot,
-          treadRotation,
-          this.DARK_GRAY,
-          this.GRAY_LIGHT
-        );
-      }
-
-      // Main body (hexagon) - gray base
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : this.GRAY;
-      this.graphics.fillStyle(bodyColor, 1);
-      this.drawPolygon(x, y, r * 0.55, 6, bodyRot);
-
-      // Inner platform (base color)
-      this.graphics.fillStyle(base, 1);
-      this.drawPolygon(x, y, r * 0.4, 6, bodyRot);
-
-      // Artillery base plate (dark)
-      this.graphics.fillStyle(dark, 1);
-      this.graphics.fillCircle(x, y, r * 0.25);
-
-      // Turret pivot (white)
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(x, y, r * 0.12);
-    }
-
-    // Turret pass
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      for (const weapon of weapons) {
-        const turretRot = weapon.turretRotation;
-        // Thick mortar tube (white to match pivot)
-        const turretLen = r * 0.75;
-        const endX = x + Math.cos(turretRot) * turretLen;
-        const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(6, this.WHITE, 1);
-        this.graphics.lineBetween(x, y, endX, endY);
-      }
-    }
-  }
-
-  // Snipe: Long-range sniper platform - 4 treads, elongated body, precision barrel
-  private drawSnipeUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    light: number,
-    dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    // Body pass
-    if (!this.turretsOnly) {
-      const cos = Math.cos(bodyRot);
-      const sin = Math.sin(bodyRot);
-
-      // Get tread animation data
-      const wheelSetup = this.getVehicleWheels(entity.id);
-
-      // Four treads at corners
-      const treadDistX = r * 0.7;
-      const treadDistY = r * 0.6;
-      const treadLength = r * 0.55;
-      const treadWidth = r * 0.2;
-
-      const treadPositions = [
-        { dx: treadDistX, dy: treadDistY },
-        { dx: treadDistX, dy: -treadDistY },
-        { dx: -treadDistX, dy: treadDistY },
-        { dx: -treadDistX, dy: -treadDistY },
-      ];
-
-      for (let i = 0; i < treadPositions.length; i++) {
-        const tp = treadPositions[i];
-        const tx = x + cos * tp.dx - sin * tp.dy;
-        const ty = y + sin * tp.dx + cos * tp.dy;
-        const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-        this.drawAnimatedTread(
-          tx,
-          ty,
-          treadLength,
-          treadWidth,
-          bodyRot,
-          treadRotation,
-          this.DARK_GRAY,
-          this.GRAY_LIGHT
-        );
-      }
-
-      // Main body (elongated rectangle) - light colored, high-tech
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : light;
-      this.graphics.fillStyle(bodyColor, 1);
-      this.drawOrientedRect(x, y, r * 1.2, r * 0.5, bodyRot);
-
-      // Dark tech core
-      this.graphics.fillStyle(dark, 1);
-      this.drawOrientedRect(x, y, r * 0.8, r * 0.35, bodyRot);
-
-      // Base color targeting stripe
-      this.graphics.fillStyle(base, 1);
-      this.drawOrientedRect(
-        x - cos * r * 0.25,
-        y - sin * r * 0.25,
-        r * 0.1,
-        r * 0.3,
-        bodyRot
-      );
-
-      // Scope/sensor array (white)
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(x, y, r * 0.1);
-    }
-
-    // Turret pass
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      for (const weapon of weapons) {
-        const turretRot = weapon.turretRotation;
-        // Long precision sniper barrel (white to match scope)
-        const turretLen = r * 1.6;
-        const endX = x + Math.cos(turretRot) * turretLen;
-        const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(2.5, this.WHITE, 1);
-        this.graphics.lineBetween(x, y, endX, endY);
-      }
-    }
-  }
-
-  // Tank: Heavy tracked unit - massive treads, square turret, thick cannon
-  private drawTankUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    _light: number,
-    _dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    // Body pass
-    if (!this.turretsOnly) {
-      const cos = Math.cos(bodyRot);
-      const sin = Math.sin(bodyRot);
-
-      // Get tread rotation for animation
-      const treads = this.getTankTreads(entity.id);
-
-      // Two massive treads on left and right sides
-      const treadOffset = r * 0.9; // Distance from center to tread
-      const treadLength = r * 2.0; // Very long treads
-      const treadWidth = r * 0.6; // Wide treads
-
-      for (const side of [-1, 1]) {
-        const offsetX = -sin * treadOffset * side;
-        const offsetY = cos * treadOffset * side;
-
-        // Get tread rotation for this side
-        const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
-        const treadRotation = tread?.getRotation() ?? 0;
-
-        // Draw animated tread
-        const tx = x + offsetX;
-        const ty = y + offsetY;
-        this.drawAnimatedTread(
-          tx,
-          ty,
-          treadLength,
-          treadWidth,
-          bodyRot,
-          treadRotation,
-          this.DARK_GRAY,
-          this.GRAY_LIGHT
-        );
-      }
-
-      // Hull (square) - base color
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
-      this.graphics.fillStyle(bodyColor, 1);
-      this.drawPolygon(x, y, r * 0.85, 4, bodyRot);
-
-      // Gray armor plate on hull
-      this.graphics.fillStyle(this.GRAY, 1);
-      this.drawPolygon(x, y, r * 0.55, 4, bodyRot);
-
-      // Black inner
-      this.graphics.fillStyle(this.BLACK, 1);
-      this.graphics.fillCircle(x, y, r * 0.28);
-
-      // Turret pivot (white)
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(x, y, r * 0.18);
-    }
-
-    // Turret pass
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      for (const weapon of weapons) {
-        const turretRot = weapon.turretRotation;
-        // Heavy cannon barrel (white to match pivot)
-        const turretLen = r * 1.4;
-        const endX = x + Math.cos(turretRot) * turretLen;
-        const endY = y + Math.sin(turretRot) * turretLen;
-        this.graphics.lineStyle(7, this.WHITE, 1);
-        this.graphics.lineBetween(x, y, endX, endY);
-      }
-    }
-  }
-
-  // Arachnid: Titan spider unit - 8 animated legs, 8 beam weapons
-  private drawArachnidUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    light: number,
-    dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
-
-    // Body pass
-    if (!this.turretsOnly) {
-      const legConfig = LEG_STYLE_CONFIG.arachnid;
-      const legThickness = legConfig.thickness;
-      const footSize = r * legConfig.footSizeMultiplier;
-
-      // Get legs for this entity (creates them if they don't exist)
-      const legs = this.getOrCreateLegs(entity, 'arachnid');
-
-      // Draw all 8 legs using the Leg class positions
-      for (let i = 0; i < legs.length; i++) {
-        const leg = legs[i];
-        const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
-
-        // Get positions from leg class
-        const attach = leg.getAttachmentPoint(x, y, bodyRot);
-        const foot = leg.getFootPosition();
-        const knee = leg.getKneePosition(attach.x, attach.y, side);
-
-        // Draw leg segments (both use dark team color)
-        // Upper leg (slightly thicker)
-        this.graphics.lineStyle(legThickness + 1, dark, 1);
-        this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-
-        // Lower leg
-        this.graphics.lineStyle(legThickness, dark, 1);
-        this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
-
-        // Knee joint (light team color)
-        this.graphics.fillStyle(light, 1);
-        this.graphics.fillCircle(knee.x, knee.y, legThickness);
-
-        // Foot (light team color)
-        this.graphics.fillStyle(light, 1);
-        this.graphics.fillCircle(foot.x, foot.y, footSize);
-      }
-
-      // Abdomen / "butt" region - large chonky rear section
-      const abdomenOffset = -r * 0.9; // Behind the main body
-      const abdomenCenterX = x + cos * abdomenOffset;
-      const abdomenCenterY = y + sin * abdomenOffset;
-      const abdomenLength = r * 1.1; // Long
-      const abdomenWidth = r * 0.85; // Wide and chonky
-
-      // Main abdomen shape (dark color)
-      const abdomenColor = selected ? UNIT_SELECTED_COLOR : dark;
-      this.graphics.fillStyle(abdomenColor, 1);
-
-      // Draw abdomen as an elongated oval/egg shape pointing backward
-      // Use a rounded polygon with more points at the back for a bulbous look
-      const abdomenPoints: { x: number; y: number }[] = [];
-      const numPoints = 12;
-      for (let i = 0; i < numPoints; i++) {
-        const angle = (i / numPoints) * Math.PI * 2;
-        // Elongate backward (negative local X) and make it bulbous
-        const localAngle = angle + Math.PI; // Rotate so bulge faces backward
-        const bulge = 1 + 0.3 * Math.pow(Math.cos(localAngle), 2); // Extra bulge at back
-        const rx = abdomenLength * (0.5 + 0.5 * Math.abs(Math.cos(angle))) * bulge;
-        const ry = abdomenWidth * (0.7 + 0.3 * Math.abs(Math.sin(angle)));
-        const localX = Math.cos(angle) * rx * 0.7;
-        const localY = Math.sin(angle) * ry;
-        abdomenPoints.push({
-          x: abdomenCenterX + cos * localX - sin * localY,
-          y: abdomenCenterY + sin * localX + cos * localY,
-        });
-      }
-      this.graphics.fillPoints(abdomenPoints, true);
-
-      // Red hourglass marking (like a black widow spider)
-      // Hourglass center position on abdomen
-      const hourglassCenterOffset = abdomenOffset - abdomenLength * 0.35;
-      const hourglassCenterX = x + cos * hourglassCenterOffset;
-      const hourglassCenterY = y + sin * hourglassCenterOffset;
-
-      // Hourglass dimensions
-      const hourglassHeight = abdomenLength * 0.5;
-      const hourglassWidth = abdomenWidth * 0.35;
-      const waistWidth = hourglassWidth * 0.2; // Narrow middle
-
-      // Helper to get rotated point
-      const rotPoint = (centerX: number, centerY: number, localX: number, localY: number) => ({
-        x: centerX + cos * localX - sin * localY,
-        y: centerY + sin * localX + cos * localY,
-      });
-
-      // Outer hourglass with flat top and bottom
-      const topY = hourglassHeight * 0.5;
-      const bottomY = -hourglassHeight * 0.5;
-
-      // Top flat edge (4 corners: top-left, top-right at full width)
-      const topLeft = rotPoint(hourglassCenterX, hourglassCenterY, topY, -hourglassWidth);
-      const topRight = rotPoint(hourglassCenterX, hourglassCenterY, topY, hourglassWidth);
-
-      // Bottom flat edge
-      const bottomLeft = rotPoint(hourglassCenterX, hourglassCenterY, bottomY, -hourglassWidth);
-      const bottomRight = rotPoint(hourglassCenterX, hourglassCenterY, bottomY, hourglassWidth);
-
-      // Waist points (narrow middle)
-      const waistLeft = rotPoint(hourglassCenterX, hourglassCenterY, 0, -waistWidth);
-      const waistRight = rotPoint(hourglassCenterX, hourglassCenterY, 0, waistWidth);
-
-      // Draw outer hourglass (red fill)
-      this.graphics.fillStyle(0xff0000, 1);
-      this.graphics.beginPath();
-      this.graphics.moveTo(topLeft.x, topLeft.y);
-      this.graphics.lineTo(topRight.x, topRight.y);
-      this.graphics.lineTo(waistRight.x, waistRight.y);
-      this.graphics.lineTo(bottomRight.x, bottomRight.y);
-      this.graphics.lineTo(bottomLeft.x, bottomLeft.y);
-      this.graphics.lineTo(waistLeft.x, waistLeft.y);
-      this.graphics.closePath();
-      this.graphics.fillPath();
-
-      // Inner hourglass (darker red for depth)
-      const innerScale = 0.6;
-      const innerWaistScale = 0.5;
-      const innerTopLeft = rotPoint(hourglassCenterX, hourglassCenterY, topY * innerScale, -hourglassWidth * innerScale);
-      const innerTopRight = rotPoint(hourglassCenterX, hourglassCenterY, topY * innerScale, hourglassWidth * innerScale);
-      const innerBottomLeft = rotPoint(hourglassCenterX, hourglassCenterY, bottomY * innerScale, -hourglassWidth * innerScale);
-      const innerBottomRight = rotPoint(hourglassCenterX, hourglassCenterY, bottomY * innerScale, hourglassWidth * innerScale);
-      const innerWaistLeft = rotPoint(hourglassCenterX, hourglassCenterY, 0, -waistWidth * innerWaistScale);
-      const innerWaistRight = rotPoint(hourglassCenterX, hourglassCenterY, 0, waistWidth * innerWaistScale);
-
-      this.graphics.fillStyle(0xaa0000, 1);
-      this.graphics.beginPath();
-      this.graphics.moveTo(innerTopLeft.x, innerTopLeft.y);
-      this.graphics.lineTo(innerTopRight.x, innerTopRight.y);
-      this.graphics.lineTo(innerWaistRight.x, innerWaistRight.y);
-      this.graphics.lineTo(innerBottomRight.x, innerBottomRight.y);
-      this.graphics.lineTo(innerBottomLeft.x, innerBottomLeft.y);
-      this.graphics.lineTo(innerWaistLeft.x, innerWaistLeft.y);
-      this.graphics.closePath();
-      this.graphics.fillPath();
-
-      // Spinnerets at the tip (light colored details)
-      const spinneretOffset = abdomenOffset - abdomenLength * 0.85;
-      const spinneretX = x + cos * spinneretOffset;
-      const spinneretY = y + sin * spinneretOffset;
-      this.graphics.fillStyle(light, 1);
-      this.graphics.fillCircle(spinneretX, spinneretY, r * 0.12);
-      // Small side spinnerets
-      const sideSpinneretDist = r * 0.15;
-      this.graphics.fillCircle(
-        spinneretX - sin * sideSpinneretDist,
-        spinneretY + cos * sideSpinneretDist,
-        r * 0.07
-      );
-      this.graphics.fillCircle(
-        spinneretX + sin * sideSpinneretDist,
-        spinneretY - cos * sideSpinneretDist,
-        r * 0.07
-      );
-
-      // Main body (hexagonal shape matching inner hexagon, but larger)
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : dark;
-      this.graphics.fillStyle(bodyColor, 1);
-
-      // Draw body as hexagon - larger than inner hexagon, same rotation (30° so flat edge faces forward)
-      const bodyHexRadius = r * 0.95; // Larger than inner hexagon (0.65)
-      const bodyHexForwardOffset = r * 0.35; // Shifted forward slightly less than inner
-      const bodyHexRotationOffset = Math.PI / 6; // 30° rotation to match inner hexagon
-      const bodyHexCenterX = x + cos * bodyHexForwardOffset;
-      const bodyHexCenterY = y + sin * bodyHexForwardOffset;
-      this.drawPolygon(bodyHexCenterX, bodyHexCenterY, bodyHexRadius, 6, bodyRot + bodyHexRotationOffset);
-
-      // Inner carapace pattern (base color) - shifted forward, larger hexagon, rotated 30°
-      const hexRadius = r * 0.65;
-      const hexForwardOffset = r * 0.5;
-      const hexRotationOffset = Math.PI / 6; // Rotate 30° so flat edge faces forward
-      const hexCenterX = x + cos * hexForwardOffset;
-      const hexCenterY = y + sin * hexForwardOffset;
-      this.graphics.fillStyle(base, 1);
-      this.drawPolygon(hexCenterX, hexCenterY, hexRadius, 6, bodyRot + hexRotationOffset);
-
-      // Central sonic emitter orb (light) - at hexagon center
-      this.graphics.fillStyle(light, 1);
-      this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.3);
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.15);
-    }
-
-    // Turret pass - 6 beam emitters at hexagon corners + sonic wave at center
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      const hexRadius = r * 0.65;
-      const hexForwardOffset = r * 0.5;
-      const hexRotationOffset = Math.PI / 6; // Match the 30° rotation
-
-      // 6 beam emitters at hexagon vertices (shifted forward, rotated)
-      for (let i = 0; i < 6; i++) {
-        const angle = (i * Math.PI) / 3 + hexRotationOffset; // 30, 90, 150, 210, 270, 330 degrees
-        const localX = Math.cos(angle) * hexRadius + hexForwardOffset;
-        const localY = Math.sin(angle) * hexRadius;
-        const emitterX = x + cos * localX - sin * localY;
-        const emitterY = y + sin * localX + cos * localY;
-
-        // Get turret rotation for this weapon
-        const weaponTurret = weapons[i]?.turretRotation ?? bodyRot;
-
-        // Beam emitter (glowing orb)
-        this.graphics.fillStyle(this.WHITE, 1);
-        this.graphics.fillCircle(emitterX, emitterY, r * 0.1);
-
-        // Beam barrel
-        const beamLen = r * 0.5;
-        const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
-        const beamEndY = emitterY + Math.sin(weaponTurret) * beamLen;
-        this.graphics.lineStyle(2.5, this.WHITE, 1);
-        this.graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
-      }
-
-      // Center beam emitter (weapon index 6) - same style as outer beams but slightly larger
-      const centerBeamWeapon = weapons[6];
-      if (centerBeamWeapon && !centerBeamWeapon.config.isWaveWeapon) {
-        const hexCenterX = x + cos * hexForwardOffset;
-        const hexCenterY = y + sin * hexForwardOffset;
-        const centerTurret = centerBeamWeapon.turretRotation ?? bodyRot;
-
-        // Center beam emitter (glowing orb) - slightly larger than outer ones
-        this.graphics.fillStyle(this.WHITE, 1);
-        this.graphics.fillCircle(hexCenterX, hexCenterY, r * 0.12);
-
-        // Center beam barrel - slightly longer/thicker
-        const centerBeamLen = r * 0.6;
-        const centerBeamEndX = hexCenterX + Math.cos(centerTurret) * centerBeamLen;
-        const centerBeamEndY = hexCenterY + Math.sin(centerTurret) * centerBeamLen;
-        this.graphics.lineStyle(3.5, this.WHITE, 1);
-        this.graphics.lineBetween(hexCenterX, hexCenterY, centerBeamEndX, centerBeamEndY);
-      }
-
-      // Sonic wave weapon at center (weapon index 7: after 6 vertex beams + 1 center beam)
-      const sonicWeapon = weapons[7];
-      if (sonicWeapon?.config.isWaveWeapon) {
-        const hexCenterX = x + cos * hexForwardOffset;
-        const hexCenterY = y + sin * hexForwardOffset;
-        const sliceAngle = sonicWeapon.currentSliceAngle ?? Math.PI / 16;
-        const waveRange = sonicWeapon.fireRange ?? 150;
-        const turretAngle = sonicWeapon.turretRotation;
-
-        // Use the same wave effect as the sonic unit
-        if (sliceAngle > 0) {
-          this.renderWaveEffect(
-            hexCenterX,
-            hexCenterY,
-            turretAngle,
-            sliceAngle,
-            waveRange,
-            light,
-            base
-          );
-        }
-      }
-    }
-  }
-
-  // Sonic: Small 6-legged insect with central wave emitter orb
-  private drawSonicUnit(
-    x: number,
-    y: number,
-    r: number,
-    bodyRot: number,
-    base: number,
-    light: number,
-    dark: number,
-    selected: boolean,
-    entity: Entity
-  ): void {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
-
-    // Body pass
-    if (!this.turretsOnly) {
-      const legConfig = LEG_STYLE_CONFIG.insect;
-      const legThickness = legConfig.thickness;
-      const footSize = r * legConfig.footSizeMultiplier;
-
-      // Get legs for this entity (creates them if they don't exist)
-      const legs = this.getOrCreateLegs(entity, 'insect');
-
-      // Draw all 6 legs (insect style)
-      for (let i = 0; i < legs.length; i++) {
-        const leg = legs[i];
-        const side = i < 3 ? -1 : 1; // First 3 legs are left, last 3 are right
-
-        const attach = leg.getAttachmentPoint(x, y, bodyRot);
-        const foot = leg.getFootPosition();
-        const knee = leg.getKneePosition(attach.x, attach.y, side);
-
-        // Draw leg segments (both use dark team color)
-        // Upper leg (slightly thicker)
-        this.graphics.lineStyle(legThickness + 0.5, dark, 1);
-        this.graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-
-        // Lower leg
-        this.graphics.lineStyle(legThickness, dark, 1);
-        this.graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
-
-        // Knee joint (light team color)
-        this.graphics.fillStyle(light, 1);
-        this.graphics.fillCircle(knee.x, knee.y, legThickness * 0.4);
-
-        // Foot (light team color)
-        this.graphics.fillStyle(light, 1);
-        this.graphics.fillCircle(foot.x, foot.y, footSize);
-      }
-
-      // Body (compact oval shape)
-      const bodyColor = selected ? UNIT_SELECTED_COLOR : base;
-      this.graphics.fillStyle(bodyColor, 1);
-
-      // Draw compact body as rounded hexagon
-      const bodyLength = r * 0.6;
-      const bodyWidth = r * 0.5;
-      const bodyPoints = [
-        {
-          x: x + cos * bodyLength - sin * bodyWidth * 0.3,
-          y: y + sin * bodyLength + cos * bodyWidth * 0.3,
-        },
-        {
-          x: x + cos * bodyLength * 0.5 - sin * bodyWidth,
-          y: y + sin * bodyLength * 0.5 + cos * bodyWidth,
-        },
-        {
-          x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.8,
-          y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.8,
-        },
-        {
-          x: x - cos * bodyLength - sin * bodyWidth * 0.3,
-          y: y - sin * bodyLength + cos * bodyWidth * 0.3,
-        },
-        {
-          x: x - cos * bodyLength + sin * bodyWidth * 0.3,
-          y: y - sin * bodyLength - cos * bodyWidth * 0.3,
-        },
-        {
-          x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.8,
-          y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.8,
-        },
-        {
-          x: x + cos * bodyLength * 0.5 + sin * bodyWidth,
-          y: y + sin * bodyLength * 0.5 - cos * bodyWidth,
-        },
-        {
-          x: x + cos * bodyLength + sin * bodyWidth * 0.3,
-          y: y + sin * bodyLength - cos * bodyWidth * 0.3,
-        },
-      ];
-      this.graphics.fillPoints(bodyPoints, true);
-
-      // Inner pattern (dark)
-      this.graphics.fillStyle(dark, 1);
-      this.drawPolygon(x, y, r * 0.3, 6, bodyRot);
-
-      // Central orb base (light glow)
-      this.graphics.fillStyle(light, 1);
-      this.graphics.fillCircle(x, y, r * 0.25);
-      this.graphics.fillStyle(this.WHITE, 1);
-      this.graphics.fillCircle(x, y, r * 0.15);
-    }
-
-    // Turret pass - wave effect emanating from central orb
-    if (!this.skipTurrets) {
-      const weapons = entity.weapons ?? [];
-      for (const weapon of weapons) {
-        // Use dynamic slice angle - render when angle > 0 (expanding, active, or cooldown)
-        const sliceAngle = weapon.currentSliceAngle ?? 0;
-        if (sliceAngle <= 0) continue;
-
-        const turretRot = weapon.turretRotation;
-        const maxRange = weapon.fireRange;
-
-        // Render pie-slice wave effect
-        this.renderWaveEffect(
-          x,
-          y,
-          turretRot,
-          sliceAngle,
-          maxRange,
-          light,
-          base
-        );
-      }
-    }
-  }
-
-  // Render wave weapon pie-slice effect with pulsing sine waves
-  private renderWaveEffect(
-    x: number,
-    y: number,
-    rotation: number,
-    sliceAngle: number, // Total angle of the pie slice
-    maxRange: number,
-    primaryColor: number,
-    _secondaryColor: number
-  ): void {
-    const halfAngle = sliceAngle / 2;
-    const gfxConfig = getGraphicsConfig();
-
-    // Simple mode (min detail): single static arc at outer edge
-    if (gfxConfig.sonicWaveStyle === 'simple') {
-      this.graphics.lineStyle(2, primaryColor, SONIC_WAVE_OPACITY_MIN_ZOOM);
-      this.graphics.beginPath();
-      this.graphics.arc(x, y, maxRange * 0.9, rotation - halfAngle, rotation + halfAngle, false);
-      this.graphics.strokePath();
-      return;
-    }
-
-    // Detailed mode: full animated effect
-    // Apply animation speed multiplier to time
-    const time = (Date.now() / 1000) * SONIC_WAVE_ANIMATION_SPEED;
-
-    // 1. Static zone: Draw faint pie slice when animated waves are disabled
-    if (!SONIC_WAVE_SHOW_ANIMATED) {
-      this.graphics.fillStyle(primaryColor, 0.08);
-      this.graphics.beginPath();
-      this.graphics.moveTo(x, y);
-      this.graphics.arc(
-        x,
-        y,
-        maxRange,
-        rotation - halfAngle,
-        rotation + halfAngle,
-        false
-      );
-      this.graphics.closePath();
-      this.graphics.fill();
-
-      // Draw pie slice border
-      this.graphics.lineStyle(1, primaryColor, 0.2);
-      this.graphics.beginPath();
-      this.graphics.moveTo(x, y);
-      this.graphics.lineTo(
-        x + Math.cos(rotation - halfAngle) * maxRange,
-        y + Math.sin(rotation - halfAngle) * maxRange
-      );
-      this.graphics.arc(
-        x,
-        y,
-        maxRange,
-        rotation - halfAngle,
-        rotation + halfAngle,
-        false
-      );
-      this.graphics.lineTo(x, y);
-      this.graphics.strokePath();
-    }
-
-    // Helper to check if an angle is within the visible pie slice
-    const normalizeAngle = (a: number) => ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    const isAngleInSlice = (angle: number): boolean => {
-      const normAngle = normalizeAngle(angle);
-      const normRotation = normalizeAngle(rotation);
-      const startAngle = normalizeAngle(normRotation - halfAngle);
-      const endAngle = normalizeAngle(normRotation + halfAngle);
-
-      if (startAngle <= endAngle) {
-        return normAngle >= startAngle && normAngle <= endAngle;
-      } else {
-        // Slice wraps around 0
-        return normAngle >= startAngle || normAngle <= endAngle;
-      }
-    };
-
-    // 2. Draw wavy lines pulling INWARD (only when animated mode is enabled)
-    if (SONIC_WAVE_SHOW_ANIMATED) {
-      // Waves exist in world space; pie slice reveals which portion is visible
-      // Using acceleration exponent: waves move slowly at outside, faster near center
-      const pullSpeed = 0.8; // Base speed multiplier
-      const fullCircleSegments = 64; // Segments for full circle pattern
-
-      for (let i = 0; i < SONIC_WAVE_COUNT; i++) {
-        // Linear phase: 1 at spawn (outside) → 0 at center
-        const linearPhase = (1 - ((time * pullSpeed + i / SONIC_WAVE_COUNT) % 1));
-        // Apply acceleration curve: pow(phase, 1/exp) makes waves linger at outside, rush at center
-        // exponent > 1 = slow outside, fast inside (1/distance effect)
-        const acceleratedPhase = Math.pow(linearPhase, 1 / SONIC_WAVE_ACCEL_EXPONENT);
-        const waveRadius = acceleratedPhase * maxRange;
-
-        // Skip waves too close to center
-        if (waveRadius < 15) continue;
-
-        // Draw segments of the full-circle wave pattern, but only within the pie slice
-        this.graphics.lineStyle(SONIC_WAVE_THICKNESS, primaryColor, SONIC_WAVE_OPACITY);
-
-        let inSlice = false;
-        for (let j = 0; j <= fullCircleSegments; j++) {
-          const t = j / fullCircleSegments;
-          const angle = t * Math.PI * 2; // Fixed world-space angle (0 to 2π)
-
-          // Sine wave pattern is fixed in world space
-          const sineOffset = Math.sin(t * Math.PI * SONIC_WAVE_FREQUENCY * (fullCircleSegments / 24) + time * 3) * SONIC_WAVE_AMPLITUDE;
-          const r = waveRadius + sineOffset;
-
-          const px = x + Math.cos(angle) * r;
-          const py = y + Math.sin(angle) * r;
-
-          const currentInSlice = isAngleInSlice(angle);
-
-          if (currentInSlice) {
-            if (!inSlice) {
-              // Starting a new visible segment
-              this.graphics.beginPath();
-              this.graphics.moveTo(px, py);
-              inSlice = true;
-            } else {
-              this.graphics.lineTo(px, py);
-            }
-          } else if (inSlice) {
-            // Exiting visible segment - stroke what we have
-            this.graphics.strokePath();
-            inSlice = false;
-          }
-        }
-        // Stroke any remaining path
-        if (inSlice) {
-          this.graphics.strokePath();
-        }
-      }
-    }
-
-    // 3. Draw subtle radial "pull lines" converging INWARD toward center
-    // Lines exist at fixed world angles; only visible ones within pie slice are drawn
-    const totalPullLines = 24; // Fixed lines around full circle
-    for (let i = 0; i < totalPullLines; i++) {
-      const lineAngle = (i / totalPullLines) * Math.PI * 2; // Fixed world-space angle
-
-      // Only draw if this angle is within the visible pie slice
-      if (!isAngleInSlice(lineAngle)) continue;
-
-      // Animate dashes moving INWARD (start at edge, move toward center)
-      // Apply same acceleration curve as wave arcs
-      const linearDashPhase = (1 - ((time * 2 + i * 0.3) % 1));
-      const dashPhase = Math.pow(linearDashPhase, 1 / SONIC_WAVE_ACCEL_EXPONENT);
-
-      const dashStart = maxRange * (0.4 + dashPhase * 0.5); // Outer position
-      const dashEnd = maxRange * (0.2 + dashPhase * 0.5);   // Inner position
-
-      if (dashStart > maxRange * 0.95) continue; // Don't draw past edge
-
-      const alpha = 0.25 * (1 - dashPhase); // Fade as it gets closer to center
-
-      this.graphics.lineStyle(1.5, primaryColor, alpha);
-      this.graphics.beginPath();
-      this.graphics.moveTo(
-        x + Math.cos(lineAngle) * dashStart,
-        y + Math.sin(lineAngle) * dashStart
-      );
-      this.graphics.lineTo(
-        x + Math.cos(lineAngle) * dashEnd,
-        y + Math.sin(lineAngle) * dashEnd
-      );
-      this.graphics.strokePath();
-    }
-  }
-
-  // ==================== SHAPE HELPERS ====================
-
-  private drawPolygon(
-    x: number,
-    y: number,
-    radius: number,
-    sides: number,
-    rotation: number
-  ): void {
-    const points: { x: number; y: number }[] = [];
-    for (let i = 0; i < sides; i++) {
-      const angle = rotation + (i / sides) * Math.PI * 2;
-      points.push({
-        x: x + Math.cos(angle) * radius,
-        y: y + Math.sin(angle) * radius,
-      });
-    }
-    this.graphics.fillPoints(points, true);
-  }
-
-  private drawOrientedRect(
-    x: number,
-    y: number,
-    length: number,
-    width: number,
-    rotation: number
-  ): void {
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-    const halfLength = length / 2;
-    const halfWidth = width / 2;
-
-    const points = [
-      {
-        x: x + cos * halfLength - sin * halfWidth,
-        y: y + sin * halfLength + cos * halfWidth,
-      },
-      {
-        x: x + cos * halfLength + sin * halfWidth,
-        y: y + sin * halfLength - cos * halfWidth,
-      },
-      {
-        x: x - cos * halfLength + sin * halfWidth,
-        y: y - sin * halfLength - cos * halfWidth,
-      },
-      {
-        x: x - cos * halfLength - sin * halfWidth,
-        y: y - sin * halfLength + cos * halfWidth,
-      },
-    ];
-    this.graphics.fillPoints(points, true);
-  }
-
-  // Draw an animated tread (track system) at the given position
-  // treadRotation is the wheel rotation in radians from the Tread class
-  private drawAnimatedTread(
-    x: number,
-    y: number,
-    treadLength: number,
-    treadWidth: number,
-    bodyRot: number,
-    treadRotation: number,
-    treadColor: number = this.DARK_GRAY,
-    lineColor: number = this.GRAY
-  ): void {
-    const gfxConfig = getGraphicsConfig();
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
-
-    // Draw tread body (dark rectangle)
-    this.graphics.fillStyle(treadColor, 1);
-    this.drawOrientedRect(x, y, treadLength, treadWidth, bodyRot);
-
-    // Low quality: just draw the rectangle, skip tracks
-    if (!gfxConfig.treadsAnimated) {
-      return;
-    }
-
-    // === TRACK DIMENSIONS ===
-    // Track spacing scales slightly with tread size but has min/max bounds
-    const TRACK_SPACING = Math.max(4, Math.min(6, treadLength / 8));
-    const TRACK_THICKNESS = 1;
-    const EDGE_INSET = 1; // Small inset from tread edges
-
-    // Convert wheel rotation to linear track movement
-    // Wheel radius is proportional to tread width (matches Tread class: ~0.35 * treadWidth)
-    const wheelRadius = treadWidth * 0.35;
-    const linearDistance = treadRotation * wheelRadius;
-
-    // Normalize to track spacing for seamless looping
-    const animOffset = ((linearDistance % TRACK_SPACING) + TRACK_SPACING) % TRACK_SPACING;
-
-    // Calculate visible area for tracks
-    const halfLen = treadLength / 2 - EDGE_INSET;
-    const halfWid = treadWidth / 2 - EDGE_INSET;
-
-    // Calculate number of tracks needed
-    const numTracks = Math.ceil(treadLength / TRACK_SPACING) + 1;
-
-    // Draw track lines
-    this.graphics.lineStyle(TRACK_THICKNESS, lineColor, 1);
-    for (let i = 0; i < numTracks; i++) {
-      const trackPos = -halfLen + animOffset + i * TRACK_SPACING;
-
-      // Skip tracks outside visible area
-      if (trackPos < -halfLen || trackPos > halfLen) continue;
-
-      // Calculate track line endpoints
-      const lx = x + cos * trackPos;
-      const ly = y + sin * trackPos;
-      const perpX = -sin * halfWid;
-      const perpY = cos * halfWid;
-
-      this.graphics.lineBetween(lx - perpX, ly - perpY, lx + perpX, ly + perpY);
-    }
-  }
-
-  // Render commander crown
-  private renderCommanderCrown(x: number, y: number, radius: number): void {
-    // Gold circle
-    this.graphics.lineStyle(2, COMMANDER_COLOR, 0.9);
-    this.graphics.strokeCircle(x, y, radius + 8);
-
-    // Crown points (5 points)
-    const dotCount = 5;
-    for (let i = 0; i < dotCount; i++) {
-      const angle = (i / dotCount) * Math.PI * 2 - Math.PI / 2;
-      const dotX = x + Math.cos(angle) * (radius + 8);
-      const dotY = y + Math.sin(angle) * (radius + 8);
-      // Star shape at each point
-      this.graphics.fillStyle(COMMANDER_COLOR, 1);
-      this.drawStar(dotX, dotY, 4, 5);
-    }
-
-    // Inner gold ring
-    this.graphics.lineStyle(1, COMMANDER_COLOR, 0.5);
-    this.graphics.strokeCircle(x, y, radius + 3);
-  }
-
-  private drawStar(x: number, y: number, size: number, points: number): void {
-    const starPoints: { x: number; y: number }[] = [];
-    for (let i = 0; i < points * 2; i++) {
-      const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
-      const r = i % 2 === 0 ? size : size * 0.4;
-      starPoints.push({
-        x: x + Math.cos(angle) * r,
-        y: y + Math.sin(angle) * r,
-      });
-    }
-    this.graphics.fillPoints(starPoints, true);
-  }
-
-  // Render action queue for a selected unit
-  private renderWaypoints(entity: Entity): void {
-    if (!entity.unit || entity.unit.actions.length === 0) return;
-
-    const { transform, unit } = entity;
-    const camera = this.scene.cameras.main;
-    const lineWidth = 2 / camera.zoom;
-    const dotRadius = 6 / camera.zoom;
-
-    const actions = unit.actions;
-    let prevX = transform.x;
-    let prevY = transform.y;
-
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
-      const color = ACTION_COLORS[action.type];
-
-      // Draw line from previous point to this action target
-      this.graphics.lineStyle(lineWidth, color, 0.5);
-      this.graphics.lineBetween(prevX, prevY, action.x, action.y);
-
-      // Draw dot at action target
-      this.graphics.fillStyle(color, 0.8);
-      this.graphics.fillCircle(action.x, action.y, dotRadius);
-
-      // Draw outline around dot
-      this.graphics.lineStyle(lineWidth * 0.5, 0xffffff, 0.6);
-      this.graphics.strokeCircle(action.x, action.y, dotRadius);
-
-      // For build/repair actions, draw a square instead of circle
-      if (action.type === 'build' || action.type === 'repair') {
-        this.graphics.lineStyle(lineWidth, color, 0.8);
-        this.graphics.strokeRect(
-          action.x - dotRadius,
-          action.y - dotRadius,
-          dotRadius * 2,
-          dotRadius * 2
-        );
-      }
-
-      prevX = action.x;
-      prevY = action.y;
-    }
-
-    // If patrol, draw line from last action back to first patrol action
-    if (unit.patrolStartIndex !== null && actions.length > 0) {
-      const lastAction = actions[actions.length - 1];
-      const firstPatrolAction = actions[unit.patrolStartIndex];
-      if (lastAction.type === 'patrol' && firstPatrolAction) {
-        const color = ACTION_COLORS['patrol'];
-        // Draw dashed-style return line (using lower alpha)
-        this.graphics.lineStyle(lineWidth, color, 0.25);
-        this.graphics.lineBetween(
-          lastAction.x,
-          lastAction.y,
-          firstPatrolAction.x,
-          firstPatrolAction.y
-        );
-      }
-    }
-  }
-
-  // Render waypoints for a selected factory
-  private renderFactoryWaypoints(entity: Entity): void {
-    if (!entity.factory || entity.factory.waypoints.length === 0) return;
-
-    const { transform, factory } = entity;
-    const camera = this.scene.cameras.main;
-    const lineWidth = 2 / camera.zoom;
-    const dotRadius = 6 / camera.zoom;
-
-    const waypoints = factory.waypoints;
-    let prevX = transform.x;
-    let prevY = transform.y;
-
-    for (let i = 0; i < waypoints.length; i++) {
-      const wp = waypoints[i];
-      const color = WAYPOINT_COLORS[wp.type];
-
-      // Draw line from previous point to this waypoint
-      this.graphics.lineStyle(lineWidth, color, 0.5);
-      this.graphics.lineBetween(prevX, prevY, wp.x, wp.y);
-
-      // Draw dot at waypoint
-      this.graphics.fillStyle(color, 0.8);
-      this.graphics.fillCircle(wp.x, wp.y, dotRadius);
-
-      // Draw outline around dot
-      this.graphics.lineStyle(lineWidth * 0.5, 0xffffff, 0.6);
-      this.graphics.strokeCircle(wp.x, wp.y, dotRadius);
-
-      // Draw a small flag marker on last waypoint to indicate rally point
-      if (i === waypoints.length - 1) {
-        this.graphics.fillStyle(color, 0.9);
-        this.graphics.fillTriangle(
-          wp.x,
-          wp.y - 10,
-          wp.x + 10,
-          wp.y - 5,
-          wp.x,
-          wp.y
-        );
-        this.graphics.lineStyle(1, color, 1);
-        this.graphics.lineBetween(wp.x, wp.y, wp.x, wp.y - 10);
-      }
-
-      prevX = wp.x;
-      prevY = wp.y;
-    }
-
-    // If last waypoint is patrol, draw line back to first patrol waypoint
-    if (waypoints.length > 0) {
-      const lastWp = waypoints[waypoints.length - 1];
-      if (lastWp.type === 'patrol') {
-        // Find first patrol waypoint
-        const firstPatrolIndex = waypoints.findIndex(
-          (wp) => wp.type === 'patrol'
-        );
-        if (firstPatrolIndex >= 0) {
-          const firstPatrolWp = waypoints[firstPatrolIndex];
-          const color = WAYPOINT_COLORS['patrol'];
-          // Draw dashed-style return line (using lower alpha)
-          this.graphics.lineStyle(lineWidth, color, 0.25);
-          this.graphics.lineBetween(
-            lastWp.x,
-            lastWp.y,
-            firstPatrolWp.x,
-            firstPatrolWp.y
-          );
-        }
-      }
-    }
-  }
-
-  // Render spray effect from commander to target (build/heal)
-  private renderSprayEffect(target: SprayTarget): void {
-    const color =
-      target.type === 'build' ? SPRAY_BUILD_COLOR : SPRAY_HEAL_COLOR;
-    const { sourceX, sourceY, targetX, targetY, intensity } = target;
-
-    // Calculate direction vector
-    const dx = targetX - sourceX;
-    const dy = targetY - sourceY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist === 0) return;
-
-    const dirX = dx / dist;
-    const dirY = dy / dist;
-
-    // Perpendicular vector for spray width
-    const perpX = -dirY;
-    const perpY = dirX;
-
-    // Calculate target size for spread
-    let targetSize = 30; // default
-    if (target.targetWidth && target.targetHeight) {
-      targetSize = Math.max(target.targetWidth, target.targetHeight);
-    } else if (target.targetRadius) {
-      targetSize = target.targetRadius * 2;
-    }
-
-    // Scale particle count based on intensity (energy rate)
-    // At full intensity: 12 streams x 20 particles = 240 particles
-    // At minimum (10%): 4 streams x 6 particles = 24 particles
-    const effectiveIntensity = intensity ?? 1;
-    const streamCount = Math.max(4, Math.floor(12 * effectiveIntensity));
-    const particlesPerStream = Math.max(6, Math.floor(20 * effectiveIntensity));
-    const baseTime = this.sprayParticleTime;
-
-    for (let stream = 0; stream < streamCount; stream++) {
-      // Each stream has a different angle offset (fan pattern)
-      const streamAngle = (stream / (streamCount - 1) - 0.5) * 1.2; // -0.6 to 0.6 radians spread
-
-      for (let i = 0; i < particlesPerStream; i++) {
-        // Each particle has a different phase
-        const phase =
-          (baseTime / 250 + i / particlesPerStream + stream * 0.13) % 1;
-
-        // Particle position along the path (0 = source, 1 = target)
-        const t = phase;
-
-        // Base position along path with stream angle offset
-        const streamOffsetX = perpX * streamAngle * t * targetSize * 0.8;
-        const streamOffsetY = perpY * streamAngle * t * targetSize * 0.8;
-
-        let px = sourceX + dx * t + streamOffsetX;
-        let py = sourceY + dy * t + streamOffsetY;
-
-        // Add chaotic spray motion
-        const chaos1 = Math.sin(baseTime / 80 + i * 2.3 + stream * 1.7) * 8 * t;
-        const chaos2 = Math.cos(baseTime / 60 + i * 1.9 + stream * 2.1) * 6 * t;
-
-        px += perpX * chaos1 + dirX * chaos2 * 0.3;
-        py += perpY * chaos1 + dirY * chaos2 * 0.3;
-
-        // Add extra spread near the target
-        const spreadNearTarget = t * t * targetSize * 0.4;
-        const spreadAngle =
-          Math.sin(baseTime / 100 + i * 3 + stream) * spreadNearTarget;
-        px += perpX * spreadAngle;
-        py += perpY * spreadAngle;
-
-        // Particle size varies - larger near source, smaller near target
-        const sizeBase = 3 + (1 - t) * 3;
-        const sizeMod = 1 + Math.sin(phase * Math.PI + stream) * 0.4;
-        const particleSize = sizeBase * sizeMod;
-
-        // Alpha fades in at start and out at end
-        const alphaFadeIn = Math.min(1, t * 5);
-        const alphaFadeOut = Math.min(1, (1 - t) * 2.5);
-        const alpha = alphaFadeIn * alphaFadeOut * 0.8;
-
-        // Draw the particle
-        this.graphics.fillStyle(color, alpha);
-        this.graphics.fillCircle(px, py, particleSize);
-
-        // Add a glow effect for some particles
-        if ((i + stream) % 3 === 0) {
-          this.graphics.fillStyle(0xffffff, alpha * 0.5);
-          this.graphics.fillCircle(px, py, particleSize * 0.4);
-        }
-      }
-    }
-
-    // Draw additional splatter particles at the target (scaled by intensity)
-    const splatterCount = Math.max(8, Math.floor(20 * effectiveIntensity));
-    for (let i = 0; i < splatterCount; i++) {
-      const angle = (baseTime / 200 + i / splatterCount) * Math.PI * 2;
-      const splatterDist =
-        (Math.sin(baseTime / 150 + i * 2) * 0.3 + 0.7) * targetSize * 0.6;
-      const sx = targetX + Math.cos(angle) * splatterDist;
-      const sy = targetY + Math.sin(angle) * splatterDist;
-      const splatterAlpha =
-        (0.5 + Math.sin(baseTime / 100 + i) * 0.3) * effectiveIntensity;
-      const splatterSize = 3 + Math.sin(baseTime / 80 + i) * 1.5;
-
-      this.graphics.fillStyle(color, splatterAlpha);
-      this.graphics.fillCircle(sx, sy, splatterSize);
-
-      // Add glow to splatter
-      if (i % 2 === 0) {
-        this.graphics.fillStyle(0xffffff, splatterAlpha * 0.4);
-        this.graphics.fillCircle(sx, sy, splatterSize * 0.5);
-      }
-    }
-  }
-
-  // Render a projectile
-  private renderProjectile(entity: Entity): void {
-    if (!entity.projectile) return;
-
-    const { transform, projectile, ownership } = entity;
-    const { x, y } = transform;
-    const config = projectile.config;
-    // Use bright team-based color for projectile visibility
-    const baseColor = this.getPlayerColor(ownership?.playerId);
-    const color = this.getProjectileColor(baseColor);
-
-    if (projectile.projectileType === 'beam') {
-      // Render beam as a line - complexity based on graphics settings
-      const startX = projectile.startX ?? x;
-      const startY = projectile.startY ?? y;
-      const endX = projectile.endX ?? x;
-      const endY = projectile.endY ?? y;
-      const beamWidth = config.beamWidth ?? 2;
-      const beamStyle = getGraphicsConfig().beamStyle;
-
-      // Get or create random offsets for this beam (for visual variety)
-      let randomOffsets = this.beamRandomOffsets.get(entity.id);
-      if (!randomOffsets) {
-        randomOffsets = {
-          phaseOffset: Math.random() * Math.PI * 2,
-          rotationOffset: Math.random() * Math.PI * 2,
-          sizeScale: 0.8 + Math.random() * 0.4,  // 0.8-1.2
-          pulseSpeed: 0.7 + Math.random() * 0.6,  // 0.7-1.3
-        };
-        this.beamRandomOffsets.set(entity.id, randomOffsets);
-      }
-
-      // === BEAM LINE RENDERING ===
-      // simple: 1 line (main beam only)
-      // standard: 2 lines (main beam + core)
-      // detailed/complex: 3 lines (outer glow + main beam + core)
-
-      if (beamStyle === 'detailed' || beamStyle === 'complex') {
-        // Outer glow (only for detailed/complex)
-        this.graphics.lineStyle(beamWidth + 4, color, 0.3);
-        this.graphics.lineBetween(startX, startY, endX, endY);
-      }
-
-      // Inner beam (all styles)
-      this.graphics.lineStyle(beamWidth, color, 0.9);
-      this.graphics.lineBetween(startX, startY, endX, endY);
-
-      if (beamStyle !== 'simple') {
-        // Core (standard, detailed, complex)
-        this.graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
-        this.graphics.lineBetween(startX, startY, endX, endY);
-      }
-
-      // === BEAM ENDPOINT RENDERING ===
-      const baseRadius = beamWidth * 2 + 6;
-      const explosionRadius = baseRadius * randomOffsets.sizeScale;
-      const pulseTime = this.sprayParticleTime * randomOffsets.pulseSpeed;
-      const pulsePhase = ((pulseTime / 80) + randomOffsets.phaseOffset) % (Math.PI * 2);
-
-      if (beamStyle === 'simple') {
-        // Simple: 1 static circle (no pulsing)
-        this.graphics.fillStyle(color, 0.7);
-        this.graphics.fillCircle(endX, endY, explosionRadius * 0.8);
-      } else if (beamStyle === 'standard') {
-        // Standard: 2 pulsing circles (no sparks)
-        const pulseScale = 0.85 + Math.sin(pulsePhase) * 0.15;
-
-        // Main explosion area
-        this.graphics.fillStyle(color, 0.6);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
-
-        // Hot core
-        this.graphics.fillStyle(0xffffff, 0.8);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
-      } else {
-        // Detailed/Complex: 3 pulsing circles + sparks
-        const pulseScale = 0.8 + Math.sin(pulsePhase) * 0.2;
-
-        // Outer glow at endpoint
-        this.graphics.fillStyle(color, 0.4);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 1.3);
-
-        // Main explosion area
-        this.graphics.fillStyle(color, 0.6);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
-
-        // Hot core
-        this.graphics.fillStyle(0xffffff, 0.8);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
-
-        // Spark particles radiating outward with per-beam rotation offset
-        // detailed: 4 sparks, complex: 6 sparks
-        const sparkCount = beamStyle === 'complex' ? 6 : 4;
-        for (let i = 0; i < sparkCount; i++) {
-          const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
-          const angle = baseAngle + randomOffsets.rotationOffset;
-          const sparkDist =
-            explosionRadius *
-            (0.8 + Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
-          const sx = endX + Math.cos(angle) * sparkDist;
-          const sy = endY + Math.sin(angle) * sparkDist;
-          this.graphics.fillStyle(color, 0.7);
-          this.graphics.fillCircle(sx, sy, 2);
-        }
-      }
-    } else if (entity.dgunProjectile) {
-      // D-gun projectile - big, fiery, intimidating
-      const radius = config.projectileRadius ?? 25;
-
-      // Outer glow (pulsating)
-      const pulsePhase = (projectile.timeAlive / 100) % 1;
-      const pulseRadius =
-        radius * (1.3 + 0.2 * Math.sin(pulsePhase * Math.PI * 2));
-      this.graphics.fillStyle(0xff4400, 0.3);
-      this.graphics.fillCircle(x, y, pulseRadius);
-
-      // Middle glow
-      this.graphics.fillStyle(0xff6600, 0.5);
-      this.graphics.fillCircle(x, y, radius * 1.1);
-
-      // Main body
-      this.graphics.fillStyle(color, 0.9);
-      this.graphics.fillCircle(x, y, radius);
-
-      // Hot core
-      this.graphics.fillStyle(0xffff00, 0.8);
-      this.graphics.fillCircle(x, y, radius * 0.5);
-
-      // White-hot center
-      this.graphics.fillStyle(0xffffff, 1);
-      this.graphics.fillCircle(x, y, radius * 0.2);
-
-      // Fire trail
-      const velMag = Math.sqrt(
-        projectile.velocityX * projectile.velocityX +
-          projectile.velocityY * projectile.velocityY
-      );
-      if (velMag > 0) {
-        const dirX = projectile.velocityX / velMag;
-        const dirY = projectile.velocityY / velMag;
-
-        for (let i = 1; i <= 5; i++) {
-          const trailX = x - dirX * i * radius * 0.8;
-          const trailY = y - dirY * i * radius * 0.8;
-          const alpha = 0.6 - i * 0.1;
-          const trailRadius = radius * (0.8 - i * 0.12);
-
-          if (alpha > 0 && trailRadius > 0) {
-            this.graphics.fillStyle(0xff4400, alpha);
-            this.graphics.fillCircle(trailX, trailY, trailRadius);
-          }
-        }
-      }
-    } else {
-      // Render traveling projectile as a circle
-      const radius = config.projectileRadius ?? 5;
-
-      // Trail effect (draw previous positions)
-      const trailLength = config.trailLength ?? 3;
-      const velMag = Math.sqrt(
-        projectile.velocityX * projectile.velocityX +
-          projectile.velocityY * projectile.velocityY
-      );
-      if (velMag > 0) {
-        const dirX = projectile.velocityX / velMag;
-        const dirY = projectile.velocityY / velMag;
-
-        for (let i = 1; i <= trailLength; i++) {
-          const trailX = x - dirX * i * radius * 1.5;
-          const trailY = y - dirY * i * radius * 1.5;
-          const alpha = 0.5 - i * 0.15;
-          const trailRadius = radius * (1 - i * 0.2);
-
-          if (alpha > 0 && trailRadius > 0) {
-            this.graphics.fillStyle(color, alpha);
-            this.graphics.fillCircle(trailX, trailY, trailRadius);
-          }
-        }
-      }
-
-      // Main projectile
-      this.graphics.fillStyle(color, 0.9);
-      this.graphics.fillCircle(x, y, radius);
-
-      // Bright center
-      this.graphics.fillStyle(0xffffff, 0.8);
-      this.graphics.fillCircle(x, y, radius * 0.4);
-
-      // Splash radius indicator for grenades
-      if (config.splashRadius && !projectile.hasExploded) {
-        this.graphics.lineStyle(1, color, 0.2);
-        this.graphics.strokeCircle(x, y, config.splashRadius);
-      }
-    }
-  }
-
-  // Render a building (rectangle)
   private renderBuilding(entity: Entity): void {
     if (!entity.building) return;
 
@@ -3653,7 +539,6 @@ export class EntityRenderer {
     const { x, y } = transform;
     const { width, height, hp, maxHp } = building;
 
-    // Building body (centered at x, y)
     const left = x - width / 2;
     const top = y - height / 2;
 
@@ -3661,10 +546,8 @@ export class EntityRenderer {
     const isComplete = buildable?.isComplete ?? true;
     const buildProgress = buildable?.buildProgress ?? 1;
 
-    // Ghost buildings - semi-transparent wireframe
     if (isGhost) {
-      const canPlace = true; // TODO: Check placement validity
-      const ghostColor = canPlace ? GHOST_COLOR : 0xff4444;
+      const ghostColor = COLORS.GHOST;
       this.graphics.lineStyle(2, ghostColor, 0.6);
       this.graphics.strokeRect(left, top, width, height);
       this.graphics.fillStyle(ghostColor, 0.2);
@@ -3672,31 +555,21 @@ export class EntityRenderer {
       return;
     }
 
-    // Selection indicator
     const isSelected = entity.selectable?.selected ?? false;
     if (isSelected) {
-      this.graphics.lineStyle(3, UNIT_SELECTED_COLOR, 1);
+      this.graphics.lineStyle(3, COLORS.UNIT_SELECTED, 1);
       this.graphics.strokeRect(left - 4, top - 4, width + 8, height + 8);
     }
 
-    // Get color based on ownership (team color)
-    const fillColor = ownership?.playerId
-      ? this.getPlayerColor(ownership.playerId)
-      : BUILDING_COLOR;
+    const fillColor = ownership?.playerId ? getPlayerColor(ownership.playerId) : COLORS.BUILDING;
 
-    // Under construction - show partial fill based on progress
     if (!isComplete) {
-      // Background (unbuilt portion)
       this.graphics.fillStyle(0x222222, 0.7);
       this.graphics.fillRect(left, top, width, height);
-
-      // Built portion (fill from bottom up)
       const builtHeight = height * buildProgress;
       const builtTop = top + height - builtHeight;
       this.graphics.fillStyle(fillColor, 0.7);
       this.graphics.fillRect(left, builtTop, width, builtHeight);
-
-      // Scaffold/wireframe overlay
       this.graphics.lineStyle(1, 0xaaaaaa, 0.5);
       const gridSize = 10;
       for (let gx = left; gx <= left + width; gx += gridSize) {
@@ -3706,454 +579,197 @@ export class EntityRenderer {
         this.graphics.lineBetween(left, gy, left + width, gy);
       }
     } else {
-      // Complete building
       this.graphics.fillStyle(fillColor, 0.9);
       this.graphics.fillRect(left, top, width, height);
-
-      // Inner detail
       this.graphics.lineStyle(1, 0x665533, 0.5);
       this.graphics.strokeRect(left + 4, top + 4, width - 8, height - 8);
     }
 
-    // Outline
-    this.graphics.lineStyle(3, BUILDING_OUTLINE_COLOR, 1);
+    this.graphics.lineStyle(3, COLORS.BUILDING_OUTLINE, 1);
     this.graphics.strokeRect(left, top, width, height);
 
-    // Bars position
     let barY = top - 8;
-
-    // Build progress bar (if under construction)
     if (!isComplete) {
       this.renderBuildBar(x, barY, width, 4, buildProgress);
       barY -= 6;
     }
-
-    // Health bar (only show if damaged)
     if (hp < maxHp) {
       this.renderHealthBar(x, barY, width, 4, hp / maxHp);
     }
 
-    // Factory-specific rendering
+    const playerColor = getPlayerColor(ownership?.playerId);
+    const buildingCtx: BuildingRenderContext = {
+      graphics: this.graphics, entity, left, top, width, height, playerColor,
+      sprayParticleTime: this.sprayParticleTime,
+    };
+
     if (entity.factory && isComplete) {
-      this.renderFactory(entity, left, top, width, height);
+      renderFactory(buildingCtx);
     }
-
-    // Solar panel-specific rendering
     if (entity.buildingType === 'solar' && isComplete) {
-      this.renderSolarPanel(entity, left, top, width, height);
+      renderSolarPanel(buildingCtx);
     }
   }
 
-  // Render factory-specific elements (queue, rally point)
-  private renderFactory(
-    entity: Entity,
-    left: number,
-    top: number,
-    width: number,
-    height: number
-  ): void {
-    if (!entity.factory) return;
+  // ==================== PROJECTILE RENDERING ====================
 
-    const factory = entity.factory;
-    const x = entity.transform.x;
-    const isProducing = factory.isProducing;
-    const playerColor = this.getPlayerColor(entity.ownership?.playerId);
+  private renderProjectile(entity: Entity): void {
+    if (!entity.projectile) return;
 
-    // ========== FACTORY VISUAL DETAILS ==========
+    const { transform, projectile, ownership } = entity;
+    const { x, y } = transform;
+    const config = projectile.config;
+    const baseColor = getPlayerColor(ownership?.playerId);
+    const color = getProjectileColor(baseColor);
 
-    // Inner machinery area (darker background)
-    const machineMargin = 8;
-    this.graphics.fillStyle(0x1a1a1a, 0.9);
-    this.graphics.fillRect(
-      left + machineMargin,
-      top + machineMargin,
-      width - machineMargin * 2,
-      height - machineMargin * 2
-    );
+    if (projectile.projectileType === 'beam') {
+      const startX = projectile.startX ?? x;
+      const startY = projectile.startY ?? y;
+      const endX = projectile.endX ?? x;
+      const endY = projectile.endY ?? y;
+      const beamWidth = config.beamWidth ?? 2;
+      const beamStyle = getGraphicsConfig().beamStyle;
 
-    // Animated gear/cogs - spin when producing
-    const gearPhase = isProducing ? this.sprayParticleTime / 1000 : 0;
-    this.renderGear(
-      left + width * 0.25,
-      top + height * 0.35,
-      12,
-      gearPhase,
-      playerColor
-    );
-    this.renderGear(
-      left + width * 0.75,
-      top + height * 0.35,
-      10,
-      -gearPhase * 1.3,
-      playerColor
-    );
-    this.renderGear(
-      left + width * 0.5,
-      top + height * 0.6,
-      14,
-      gearPhase * 0.8,
-      playerColor
-    );
-
-    // Conveyor belt exit (bottom center)
-    const conveyorWidth = width * 0.4;
-    const conveyorHeight = 8;
-    const conveyorX = x - conveyorWidth / 2;
-    const conveyorY = top + height - conveyorHeight - 4;
-
-    this.graphics.fillStyle(0x333333, 1);
-    this.graphics.fillRect(conveyorX, conveyorY, conveyorWidth, conveyorHeight);
-
-    // Conveyor belt lines (animated when producing)
-    const beltOffset = isProducing ? (this.sprayParticleTime / 50) % 8 : 0;
-    this.graphics.lineStyle(1, 0x555555, 0.8);
-    for (let i = -1; i < conveyorWidth / 8 + 1; i++) {
-      const lineX = conveyorX + i * 8 + beltOffset;
-      if (lineX >= conveyorX && lineX <= conveyorX + conveyorWidth) {
-        this.graphics.lineBetween(
-          lineX,
-          conveyorY,
-          lineX,
-          conveyorY + conveyorHeight
-        );
+      let randomOffsets = this.beamRandomOffsets.get(entity.id);
+      if (!randomOffsets) {
+        randomOffsets = {
+          phaseOffset: Math.random() * Math.PI * 2,
+          rotationOffset: Math.random() * Math.PI * 2,
+          sizeScale: 0.8 + Math.random() * 0.4,
+          pulseSpeed: 0.7 + Math.random() * 0.6,
+        };
+        this.beamRandomOffsets.set(entity.id, randomOffsets);
       }
-    }
 
-    // Chimney/smokestack
-    const chimneyWidth = 10;
-    const chimneyHeight = 18;
-    const chimneyX = left + width - 15;
-    const chimneyY = top - chimneyHeight + 5;
-
-    // Chimney body
-    this.graphics.fillStyle(0x444444, 1);
-    this.graphics.fillRect(chimneyX, chimneyY, chimneyWidth, chimneyHeight);
-    this.graphics.lineStyle(1, 0x666666, 0.8);
-    this.graphics.strokeRect(chimneyX, chimneyY, chimneyWidth, chimneyHeight);
-
-    // Chimney cap
-    this.graphics.fillStyle(0x333333, 1);
-    this.graphics.fillRect(chimneyX - 2, chimneyY - 3, chimneyWidth + 4, 4);
-
-    // Smoke particles when producing
-    if (isProducing) {
-      this.renderSmoke(chimneyX + chimneyWidth / 2, chimneyY - 5);
-    }
-
-    // Status lights (corner indicators)
-    const lightRadius = 3;
-    const lightMargin = 6;
-
-    // Top-left light - power status (green = ready)
-    this.graphics.fillStyle(0x44ff44, 0.9);
-    this.graphics.fillCircle(
-      left + lightMargin,
-      top + lightMargin,
-      lightRadius
-    );
-
-    // Top-right light - production status (yellow when producing, dim when idle)
-    const prodLightColor = isProducing ? 0xffcc00 : 0x555533;
-    const prodLightAlpha = isProducing
-      ? 0.9 + Math.sin(this.sprayParticleTime / 100) * 0.1
-      : 0.5;
-    this.graphics.fillStyle(prodLightColor, prodLightAlpha);
-    this.graphics.fillCircle(
-      left + width - lightMargin,
-      top + lightMargin,
-      lightRadius
-    );
-
-    // Production glow effect when building
-    if (isProducing) {
-      const glowIntensity = 0.15 + Math.sin(this.sprayParticleTime / 200) * 0.1;
-      this.graphics.fillStyle(0xffcc00, glowIntensity);
-      this.graphics.fillRect(left, top, width, height);
-    }
-
-    // Rally point is only shown when factory is selected (via renderFactoryWaypoints)
-    // No rally point indicator for unselected factories to avoid cross-player visibility
-
-    // ========== PRODUCTION PROGRESS ==========
-
-    // Production progress indicator (if producing)
-    if (isProducing && factory.buildQueue.length > 0) {
-      const progress = factory.currentBuildProgress;
-      const barWidth = width * 0.8;
-      const barHeight = 6;
-      const barX = x - barWidth / 2;
-      const barY = top + height + 4;
-
-      // Background
-      this.graphics.fillStyle(HEALTH_BAR_BG, 0.8);
-      this.graphics.fillRect(barX, barY, barWidth, barHeight);
-
-      // Progress fill
-      this.graphics.fillStyle(BUILD_BAR_FG, 0.9);
-      this.graphics.fillRect(barX, barY, barWidth * progress, barHeight);
-
-      // Queue indicator (small dots for queued items)
-      const queueCount = Math.min(factory.buildQueue.length, 5);
-      const dotSpacing = 8;
-      const dotsStartX = x - ((queueCount - 1) * dotSpacing) / 2;
-      for (let i = 0; i < queueCount; i++) {
-        const dotX = dotsStartX + i * dotSpacing;
-        const dotY = barY + barHeight + 6;
-        const alpha = i === 0 ? 1 : 0.5;
-        this.graphics.fillStyle(0xffcc00, alpha);
-        this.graphics.fillCircle(dotX, dotY, 3);
+      if (beamStyle === 'detailed' || beamStyle === 'complex') {
+        this.graphics.lineStyle(beamWidth + 4, color, 0.3);
+        this.graphics.lineBetween(startX, startY, endX, endY);
       }
-    }
-  }
 
-  // Render a gear/cog shape
-  private renderGear(
-    x: number,
-    y: number,
-    radius: number,
-    rotation: number,
-    color: number
-  ): void {
-    const teeth = 6;
-    const innerRadius = radius * 0.6;
-    const toothHeight = radius * 0.35;
+      this.graphics.lineStyle(beamWidth, color, 0.9);
+      this.graphics.lineBetween(startX, startY, endX, endY);
 
-    // Gear body
-    this.graphics.fillStyle(color, 0.7);
-    this.graphics.fillCircle(x, y, innerRadius);
-
-    // Teeth
-    for (let i = 0; i < teeth; i++) {
-      const angle = rotation + (i / teeth) * Math.PI * 2;
-      const toothWidth = ((Math.PI * 2) / teeth) * 0.4;
-
-      const toothPoints = [
-        {
-          x: x + Math.cos(angle - toothWidth) * innerRadius,
-          y: y + Math.sin(angle - toothWidth) * innerRadius,
-        },
-        {
-          x:
-            x +
-            Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight),
-          y:
-            y +
-            Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight),
-        },
-        {
-          x:
-            x +
-            Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight),
-          y:
-            y +
-            Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight),
-        },
-        {
-          x: x + Math.cos(angle + toothWidth) * innerRadius,
-          y: y + Math.sin(angle + toothWidth) * innerRadius,
-        },
-      ];
-
-      this.graphics.fillStyle(color, 0.7);
-      this.graphics.fillPoints(toothPoints, true);
-    }
-
-    // Center hole
-    this.graphics.fillStyle(0x1a1a1a, 1);
-    this.graphics.fillCircle(x, y, radius * 0.25);
-
-    // Outline
-    this.graphics.lineStyle(1, 0x333333, 0.5);
-    this.graphics.strokeCircle(x, y, innerRadius);
-  }
-
-  // Render smoke particles
-  private renderSmoke(x: number, y: number): void {
-    const particleCount = 8;
-    const baseTime = this.sprayParticleTime;
-
-    for (let i = 0; i < particleCount; i++) {
-      // Each particle rises and fades
-      const phase = (baseTime / 800 + i / particleCount) % 1;
-      const lifetime = phase;
-
-      // Rise and drift
-      const riseY = y - lifetime * 30;
-      const driftX = x + Math.sin(baseTime / 300 + i * 2) * 8 * lifetime;
-
-      // Size grows as it rises
-      const size = 3 + lifetime * 6;
-
-      // Fade out as it rises
-      const alpha = (1 - lifetime) * 0.4;
-
-      if (alpha > 0.05) {
-        this.graphics.fillStyle(0x888888, alpha);
-        this.graphics.fillCircle(driftX, riseY, size);
+      if (beamStyle !== 'simple') {
+        this.graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
+        this.graphics.lineBetween(startX, startY, endX, endY);
       }
-    }
-  }
 
-  // Render solar panel visual details
-  private renderSolarPanel(
-    entity: Entity,
-    left: number,
-    top: number,
-    width: number,
-    height: number
-  ): void {
-    const playerColor = this.getPlayerColor(entity.ownership?.playerId);
+      const baseRadius = beamWidth * 2 + 6;
+      const explosionRadius = baseRadius * randomOffsets.sizeScale;
+      const pulseTime = this.sprayParticleTime * randomOffsets.pulseSpeed;
+      const pulsePhase = ((pulseTime / 80) + randomOffsets.phaseOffset) % (Math.PI * 2);
 
-    // Panel grid - dark blue photovoltaic cells
-    const cellMargin = 4;
-    const cellGap = 2;
-    const innerLeft = left + cellMargin;
-    const innerTop = top + cellMargin;
-    const innerWidth = width - cellMargin * 2;
-    const innerHeight = height - cellMargin * 2;
+      if (beamStyle === 'simple') {
+        this.graphics.fillStyle(color, 0.7);
+        this.graphics.fillCircle(endX, endY, explosionRadius * 0.8);
+      } else if (beamStyle === 'standard') {
+        const pulseScale = 0.85 + Math.sin(pulsePhase) * 0.15;
+        this.graphics.fillStyle(color, 0.6);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
+        this.graphics.fillStyle(0xffffff, 0.8);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
+      } else {
+        const pulseScale = 0.8 + Math.sin(pulsePhase) * 0.2;
+        this.graphics.fillStyle(color, 0.4);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 1.3);
+        this.graphics.fillStyle(color, 0.6);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
+        this.graphics.fillStyle(0xffffff, 0.8);
+        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
 
-    // Dark panel background
-    this.graphics.fillStyle(0x0a1428, 1);
-    this.graphics.fillRect(innerLeft, innerTop, innerWidth, innerHeight);
-
-    // Solar cell grid (3x2 cells)
-    const cellsX = 3;
-    const cellsY = 2;
-    const cellWidth = (innerWidth - cellGap * (cellsX + 1)) / cellsX;
-    const cellHeight = (innerHeight - cellGap * (cellsY + 1)) / cellsY;
-
-    for (let cy = 0; cy < cellsY; cy++) {
-      for (let cx = 0; cx < cellsX; cx++) {
-        const cellX = innerLeft + cellGap + cx * (cellWidth + cellGap);
-        const cellY = innerTop + cellGap + cy * (cellHeight + cellGap);
-
-        // Cell base (dark blue)
-        this.graphics.fillStyle(0x1a3050, 1);
-        this.graphics.fillRect(cellX, cellY, cellWidth, cellHeight);
-
-        // Cell gradient simulation (lighter at top)
-        this.graphics.fillStyle(0x2a4060, 0.6);
-        this.graphics.fillRect(cellX, cellY, cellWidth, cellHeight * 0.4);
-
-        // Grid lines on each cell
-        this.graphics.lineStyle(1, 0x102030, 0.8);
-        // Horizontal line
-        this.graphics.lineBetween(
-          cellX,
-          cellY + cellHeight / 2,
-          cellX + cellWidth,
-          cellY + cellHeight / 2
-        );
-        // Vertical line
-        this.graphics.lineBetween(
-          cellX + cellWidth / 2,
-          cellY,
-          cellX + cellWidth / 2,
-          cellY + cellHeight
-        );
-      }
-    }
-
-    // Shimmer effect (subtle moving highlight)
-    const shimmerPhase = (this.sprayParticleTime / 2000) % 1;
-    const shimmerX =
-      innerLeft + shimmerPhase * innerWidth * 1.5 - innerWidth * 0.25;
-    const shimmerWidth = innerWidth * 0.3;
-
-    if (
-      shimmerX > innerLeft - shimmerWidth &&
-      shimmerX < innerLeft + innerWidth
-    ) {
-      // Gradient shimmer (brighter in center)
-      for (let i = 0; i < 5; i++) {
-        const segX = shimmerX + i * (shimmerWidth / 5);
-        const segW = shimmerWidth / 5;
-        const alpha = i < 2.5 ? i * 0.04 : (4 - i) * 0.04;
-
-        if (segX >= innerLeft && segX + segW <= innerLeft + innerWidth) {
-          this.graphics.fillStyle(0xffffff, alpha);
-          this.graphics.fillRect(segX, innerTop, segW, innerHeight);
+        const sparkCount = beamStyle === 'complex' ? 6 : 4;
+        for (let i = 0; i < sparkCount; i++) {
+          const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
+          const angle = baseAngle + randomOffsets.rotationOffset;
+          const sparkDist = explosionRadius * (0.8 + Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
+          const sx = endX + Math.cos(angle) * sparkDist;
+          const sy = endY + Math.sin(angle) * sparkDist;
+          this.graphics.fillStyle(color, 0.7);
+          this.graphics.fillCircle(sx, sy, 2);
         }
       }
+    } else if (entity.dgunProjectile) {
+      const radius = config.projectileRadius ?? 25;
+      const pulsePhase = (projectile.timeAlive / 100) % 1;
+      const pulseRadius = radius * (1.3 + 0.2 * Math.sin(pulsePhase * Math.PI * 2));
+
+      this.graphics.fillStyle(0xff4400, 0.3);
+      this.graphics.fillCircle(x, y, pulseRadius);
+      this.graphics.fillStyle(0xff6600, 0.5);
+      this.graphics.fillCircle(x, y, radius * 1.1);
+      this.graphics.fillStyle(color, 0.9);
+      this.graphics.fillCircle(x, y, radius);
+      this.graphics.fillStyle(0xffff00, 0.8);
+      this.graphics.fillCircle(x, y, radius * 0.5);
+      this.graphics.fillStyle(0xffffff, 1);
+      this.graphics.fillCircle(x, y, radius * 0.2);
+
+      const velMag = Math.sqrt(projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY);
+      if (velMag > 0) {
+        const dirX = projectile.velocityX / velMag;
+        const dirY = projectile.velocityY / velMag;
+        for (let i = 1; i <= 5; i++) {
+          const trailX = x - dirX * i * radius * 0.8;
+          const trailY = y - dirY * i * radius * 0.8;
+          const alpha = 0.6 - i * 0.1;
+          const trailRadius = radius * (0.8 - i * 0.12);
+          if (alpha > 0 && trailRadius > 0) {
+            this.graphics.fillStyle(0xff4400, alpha);
+            this.graphics.fillCircle(trailX, trailY, trailRadius);
+          }
+        }
+      }
+    } else {
+      const radius = config.projectileRadius ?? 5;
+      const trailLength = config.trailLength ?? 3;
+      const velMag = Math.sqrt(projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY);
+
+      if (velMag > 0) {
+        const dirX = projectile.velocityX / velMag;
+        const dirY = projectile.velocityY / velMag;
+        for (let i = 1; i <= trailLength; i++) {
+          const trailX = x - dirX * i * radius * 1.5;
+          const trailY = y - dirY * i * radius * 1.5;
+          const alpha = 0.5 - i * 0.15;
+          const trailRadius = radius * (1 - i * 0.2);
+          if (alpha > 0 && trailRadius > 0) {
+            this.graphics.fillStyle(color, alpha);
+            this.graphics.fillCircle(trailX, trailY, trailRadius);
+          }
+        }
+      }
+
+      this.graphics.fillStyle(color, 0.9);
+      this.graphics.fillCircle(x, y, radius);
+      this.graphics.fillStyle(0xffffff, 0.8);
+      this.graphics.fillCircle(x, y, radius * 0.4);
+
+      if (config.splashRadius && !projectile.hasExploded) {
+        this.graphics.lineStyle(1, color, 0.2);
+        this.graphics.strokeCircle(x, y, config.splashRadius);
+      }
     }
-
-    // Frame corners (player color accents)
-    const cornerSize = 6;
-    this.graphics.fillStyle(playerColor, 0.9);
-
-    // Top-left corner
-    this.graphics.fillRect(left, top, cornerSize, 2);
-    this.graphics.fillRect(left, top, 2, cornerSize);
-
-    // Top-right corner
-    this.graphics.fillRect(left + width - cornerSize, top, cornerSize, 2);
-    this.graphics.fillRect(left + width - 2, top, 2, cornerSize);
-
-    // Bottom-left corner
-    this.graphics.fillRect(left, top + height - 2, cornerSize, 2);
-    this.graphics.fillRect(left, top + height - cornerSize, 2, cornerSize);
-
-    // Bottom-right corner
-    this.graphics.fillRect(
-      left + width - cornerSize,
-      top + height - 2,
-      cornerSize,
-      2
-    );
-    this.graphics.fillRect(
-      left + width - 2,
-      top + height - cornerSize,
-      2,
-      cornerSize
-    );
-
-    // Small power indicator LED
-    const ledX = left + width - 8;
-    const ledY = top + 8;
-    this.graphics.fillStyle(0x44ff44, 0.9);
-    this.graphics.fillCircle(ledX, ledY, 2);
   }
 
-  // Render a build progress bar
-  private renderBuildBar(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    percent: number
-  ): void {
+  // ==================== UI BARS ====================
+
+  private renderBuildBar(x: number, y: number, width: number, height: number, percent: number): void {
     const left = x - width / 2;
-
-    // Background
-    this.graphics.fillStyle(HEALTH_BAR_BG, 0.8);
+    this.graphics.fillStyle(COLORS.HEALTH_BAR_BG, 0.8);
     this.graphics.fillRect(left, y, width, height);
-
-    // Progress fill (yellow)
-    this.graphics.fillStyle(BUILD_BAR_FG, 0.9);
+    this.graphics.fillStyle(COLORS.BUILD_BAR_FG, 0.9);
     this.graphics.fillRect(left, y, width * percent, height);
   }
 
-  // Render a health bar
-  private renderHealthBar(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    percent: number
-  ): void {
+  private renderHealthBar(x: number, y: number, width: number, height: number, percent: number): void {
     const left = x - width / 2;
-
-    // Background
-    this.graphics.fillStyle(HEALTH_BAR_BG, 0.8);
+    this.graphics.fillStyle(COLORS.HEALTH_BAR_BG, 0.8);
     this.graphics.fillRect(left, y, width, height);
-
-    // Health fill (green when high, red when low)
-    const healthColor = percent > 0.3 ? HEALTH_BAR_FG : HEALTH_BAR_LOW;
+    const healthColor = percent > 0.3 ? COLORS.HEALTH_BAR_FG : COLORS.HEALTH_BAR_LOW;
     this.graphics.fillStyle(healthColor, 0.9);
     this.graphics.fillRect(left, y, width * percent, height);
   }
 
-  // Clean up
   destroy(): void {
     this.graphics.destroy();
   }

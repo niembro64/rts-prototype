@@ -1,0 +1,124 @@
+// Beam unit renderer - 6-legged insect with a single beam laser (daddy long legs style)
+
+import type { UnitRenderContext } from '../types';
+import { COLORS, LEG_STYLE_CONFIG } from '../types';
+import { drawPolygon } from '../helpers';
+import type { ArachnidLeg } from '../ArachnidLeg';
+
+export function drawBeamUnit(
+  ctx: UnitRenderContext,
+  legs: ArachnidLeg[]
+): void {
+  const { graphics, x, y, radius: r, bodyRot, palette, isSelected, skipTurrets, turretsOnly, entity } = ctx;
+  const { base, light, dark } = palette;
+  const cos = Math.cos(bodyRot);
+  const sin = Math.sin(bodyRot);
+
+  // Body pass
+  if (!turretsOnly) {
+    const legConfig = LEG_STYLE_CONFIG.daddy;
+    const legThickness = legConfig.thickness;
+    const footSize = r * legConfig.footSizeMultiplier;
+
+    // Draw all 8 legs using the Leg class positions (daddy long legs style)
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
+
+      // Get positions from leg class
+      const attach = leg.getAttachmentPoint(x, y, bodyRot);
+      const foot = leg.getFootPosition();
+      const knee = leg.getKneePosition(attach.x, attach.y, side);
+
+      // Draw leg segments (both use dark team color)
+      // Upper leg (slightly thicker)
+      graphics.lineStyle(legThickness + 0.5, dark, 1);
+      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+
+      // Lower leg
+      graphics.lineStyle(legThickness, dark, 1);
+      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+
+      // Knee joint (light team color)
+      graphics.fillStyle(light, 1);
+      graphics.fillCircle(knee.x, knee.y, legThickness);
+
+      // Foot (light team color)
+      graphics.fillStyle(light, 1);
+      graphics.fillCircle(foot.x, foot.y, footSize);
+    }
+
+    // Body (hexagonal insect shape)
+    const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
+    graphics.fillStyle(bodyColor, 1);
+
+    // Draw body as elongated hexagon (insect-like)
+    const bodyLength = r * 0.9;
+    const bodyWidth = r * 0.55;
+    const bodyPoints = [
+      {
+        x: x + cos * bodyLength - sin * bodyWidth * 0.3,
+        y: y + sin * bodyLength + cos * bodyWidth * 0.3,
+      },
+      {
+        x: x + cos * bodyLength * 0.4 - sin * bodyWidth,
+        y: y + sin * bodyLength * 0.4 + cos * bodyWidth,
+      },
+      {
+        x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.7,
+        y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.7,
+      },
+      {
+        x: x - cos * bodyLength - sin * bodyWidth * 0.3,
+        y: y - sin * bodyLength + cos * bodyWidth * 0.3,
+      },
+      {
+        x: x - cos * bodyLength + sin * bodyWidth * 0.3,
+        y: y - sin * bodyLength - cos * bodyWidth * 0.3,
+      },
+      {
+        x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.7,
+        y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.7,
+      },
+      {
+        x: x + cos * bodyLength * 0.4 + sin * bodyWidth,
+        y: y + sin * bodyLength * 0.4 - cos * bodyWidth,
+      },
+      {
+        x: x + cos * bodyLength + sin * bodyWidth * 0.3,
+        y: y + sin * bodyLength - cos * bodyWidth * 0.3,
+      },
+    ];
+    graphics.fillPoints(bodyPoints, true);
+
+    // Inner carapace pattern (dark)
+    graphics.fillStyle(dark, 1);
+    drawPolygon(graphics, x, y, r * 0.4, 6, bodyRot);
+
+    // Central eye/sensor (light glow)
+    graphics.fillStyle(light, 1);
+    graphics.fillCircle(x, y, r * 0.2);
+    graphics.fillStyle(COLORS.WHITE, 1);
+    graphics.fillCircle(x, y, r * 0.1);
+  }
+
+  // Turret pass - beam emitter at center hexagon (like widow's center beam)
+  if (!skipTurrets) {
+    const weapons = entity.weapons ?? [];
+    for (const weapon of weapons) {
+      const turretRot = weapon.turretRotation;
+
+      // Beam emitter at center of hexagon
+      // Emitter base (glowing orb)
+      graphics.fillStyle(COLORS.WHITE, 1);
+      graphics.fillCircle(x, y, r * 0.12);
+
+      // Beam barrel
+      const beamLen = r * 0.6;
+      const beamEndX = x + Math.cos(turretRot) * beamLen;
+      const beamEndY = y + Math.sin(turretRot) * beamLen;
+      graphics.lineStyle(3.5, COLORS.WHITE, 1);
+      graphics.lineBetween(x, y, beamEndX, beamEndY);
+    }
+  }
+}
