@@ -5,6 +5,14 @@ import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types'
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER } from '../../config';
+import {
+  type WorldPoint,
+  getPathLength,
+  calculateLinePathTargets,
+  assignUnitsToTargets,
+  WAYPOINT_COLORS,
+  getSnappedBuildPosition,
+} from './helpers';
 
 /**
  * InputEntitySource - Interface for entity queries used by InputManager
@@ -15,12 +23,6 @@ export interface InputEntitySource {
   getBuildings(): Entity[];
   getEntity(id: EntityId): Entity | undefined;
   getAllEntities(): Entity[];
-}
-
-// Point in world space
-interface WorldPoint {
-  x: number;
-  y: number;
 }
 
 // Input state
@@ -53,13 +55,6 @@ interface InputState {
   // D-gun mode
   isDGunMode: boolean;
 }
-
-// Waypoint mode colors
-const WAYPOINT_COLORS: Record<WaypointType, number> = {
-  move: 0x00ff00,   // Green
-  patrol: 0x0088ff, // Blue
-  fight: 0xff4444,  // Red
-};
 
 // Camera constraints imported from config.ts: ZOOM_MIN, ZOOM_MAX, ZOOM_STEP
 
@@ -421,19 +416,6 @@ export class InputManager {
     this.onDGunModeChange?.(false);
   }
 
-  // Get snapped world position for building placement
-  private getSnappedBuildPosition(worldX: number, worldY: number, buildingType: BuildingType): { x: number; y: number; gridX: number; gridY: number } {
-    const config = getBuildingConfig(buildingType);
-    const gridX = Math.floor(worldX / GRID_CELL_SIZE);
-    const gridY = Math.floor(worldY / GRID_CELL_SIZE);
-
-    // Center of building
-    const x = gridX * GRID_CELL_SIZE + (config.gridWidth * GRID_CELL_SIZE) / 2;
-    const y = gridY * GRID_CELL_SIZE + (config.gridHeight * GRID_CELL_SIZE) / 2;
-
-    return { x, y, gridX, gridY };
-  }
-
   private setupPointerEvents(): void {
     const pointer = this.scene.input;
 
@@ -534,7 +516,7 @@ export class InputManager {
 
       // Update ghost position in build mode
       if (this.state.isBuildMode && this.state.selectedBuildingType) {
-        const snapped = this.getSnappedBuildPosition(worldPoint.x, worldPoint.y, this.state.selectedBuildingType);
+        const snapped = getSnappedBuildPosition(worldPoint.x, worldPoint.y, this.state.selectedBuildingType);
         this.state.buildGhostX = snapped.x;
         this.state.buildGhostY = snapped.y;
       }
@@ -750,103 +732,9 @@ export class InputManager {
     this.commandQueue.enqueue(command);
   }
 
-  // Calculate total length of a path
-  private getPathLength(points: WorldPoint[]): number {
-    let length = 0;
-    for (let i = 1; i < points.length; i++) {
-      const dx = points[i].x - points[i - 1].x;
-      const dy = points[i].y - points[i - 1].y;
-      length += Math.sqrt(dx * dx + dy * dy);
-    }
-    return length;
-  }
-
-  // Get a point at a specific distance along the path
-  private getPointAtDistance(points: WorldPoint[], targetDist: number): WorldPoint {
-    if (points.length === 0) return { x: 0, y: 0 };
-    if (points.length === 1) return { x: points[0].x, y: points[0].y };
-
-    let traveled = 0;
-    for (let i = 1; i < points.length; i++) {
-      const dx = points[i].x - points[i - 1].x;
-      const dy = points[i].y - points[i - 1].y;
-      const segmentLength = Math.sqrt(dx * dx + dy * dy);
-
-      if (traveled + segmentLength >= targetDist) {
-        // The target point is on this segment
-        const remaining = targetDist - traveled;
-        const t = segmentLength > 0 ? remaining / segmentLength : 0;
-        return {
-          x: points[i - 1].x + dx * t,
-          y: points[i - 1].y + dy * t,
-        };
-      }
-      traveled += segmentLength;
-    }
-
-    // Return the last point if we've gone past the end
-    return { x: points[points.length - 1].x, y: points[points.length - 1].y };
-  }
-
   // Update the calculated target positions along the path
   private updateLinePathTargets(unitCount: number): void {
-    if (unitCount === 0 || this.state.linePathPoints.length === 0) {
-      this.state.linePathTargets = [];
-      return;
-    }
-
-    const pathLength = this.getPathLength(this.state.linePathPoints);
-    const targets: WorldPoint[] = [];
-
-    if (unitCount === 1) {
-      // Single unit goes to the end of the path
-      const lastPoint = this.state.linePathPoints[this.state.linePathPoints.length - 1];
-      targets.push({ x: lastPoint.x, y: lastPoint.y });
-    } else {
-      // Distribute units evenly along the path
-      for (let i = 0; i < unitCount; i++) {
-        const t = i / (unitCount - 1); // 0 to 1
-        const dist = t * pathLength;
-        targets.push(this.getPointAtDistance(this.state.linePathPoints, dist));
-      }
-    }
-
-    this.state.linePathTargets = targets;
-  }
-
-  // Assign units to target positions using closest distance (greedy algorithm)
-  private assignUnitsToTargets(units: Entity[], targets: WorldPoint[]): Map<EntityId, WorldPoint> {
-    const assignments = new Map<EntityId, WorldPoint>();
-    const remainingUnits = [...units];
-    const remainingTargets = [...targets];
-
-    while (remainingUnits.length > 0 && remainingTargets.length > 0) {
-      let bestUnit: Entity | null = null;
-      let bestTarget: WorldPoint | null = null;
-      let bestDist = Infinity;
-
-      // Find the closest unit-target pair
-      for (const unit of remainingUnits) {
-        for (const target of remainingTargets) {
-          const dx = unit.transform.x - target.x;
-          const dy = unit.transform.y - target.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < bestDist) {
-            bestDist = dist;
-            bestUnit = unit;
-            bestTarget = target;
-          }
-        }
-      }
-
-      if (bestUnit && bestTarget) {
-        assignments.set(bestUnit.id, bestTarget);
-        remainingUnits.splice(remainingUnits.indexOf(bestUnit), 1);
-        remainingTargets.splice(remainingTargets.indexOf(bestTarget), 1);
-      }
-    }
-
-    return assignments;
+    this.state.linePathTargets = calculateLinePathTargets(this.state.linePathPoints, unitCount);
   }
 
   // Finish line path and issue move commands (for units or factory waypoints)
@@ -881,7 +769,7 @@ export class InputManager {
       }
     }
 
-    const pathLength = this.getPathLength(this.state.linePathPoints);
+    const pathLength = getPathLength(this.state.linePathPoints);
 
     // If path is very short (just a click), do a regular group move
     if (pathLength < 20) {
@@ -900,7 +788,7 @@ export class InputManager {
     }
 
     // Assign units to positions using closest distance
-    const assignments = this.assignUnitsToTargets(selectedUnits, this.state.linePathTargets);
+    const assignments = assignUnitsToTargets(selectedUnits, this.state.linePathTargets);
 
     // Build individual targets array in entity order
     const entityIds: EntityId[] = [];
@@ -1007,7 +895,7 @@ export class InputManager {
     const commander = this.getSelectedCommander();
     if (!commander || !this.state.selectedBuildingType) return;
 
-    const snapped = this.getSnappedBuildPosition(worldX, worldY, this.state.selectedBuildingType);
+    const snapped = getSnappedBuildPosition(worldX, worldY, this.state.selectedBuildingType);
 
     // Issue start build command (shift = queue, no shift = replace)
     const command: StartBuildCommand = {
