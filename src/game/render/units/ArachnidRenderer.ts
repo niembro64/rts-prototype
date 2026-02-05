@@ -17,7 +17,7 @@ export function drawArachnidUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.arachnid;
+    const legConfig = LEG_STYLE_CONFIG.widow;
     const legThickness = legConfig.thickness;
     const footSize = r * legConfig.footSizeMultiplier;
 

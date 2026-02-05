@@ -4,16 +4,18 @@ import type { Entity, PlayerId, EntityId, WaypointType } from '../../sim/types';
 import { PLAYER_COLORS } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 
-// Weapon ID to display label
-const WEAPON_LABELS: Record<string, string> = {
-  scout: 'Scout',
-  burst: 'Burst',
-  beam: 'Beam',
-  brawl: 'Brawl',
-  mortar: 'Mortar',
-  snipe: 'Snipe',
-  tank: 'Tank',
-  arachnid: 'Arachnid',
+// Unit type to display label
+const UNIT_LABELS: Record<string, string> = {
+  jackal: 'Jackal',
+  mantis: 'Mantis',
+  strider: 'Strider',
+  badger: 'Badger',
+  scorpion: 'Scorpion',
+  viper: 'Viper',
+  mammoth: 'Mammoth',
+  widow: 'Widow',
+  cricket: 'Cricket',
+  commander: 'Commander',
 };
 
 // Entity source interface for UI updates
@@ -106,9 +108,9 @@ export function buildSelectionInfo(
 
   if (factory?.factory) {
     const f = factory.factory;
-    factoryQueue = f.buildQueue.map(weaponId => ({
-      weaponId,
-      label: WEAPON_LABELS[weaponId] ?? weaponId,
+    factoryQueue = f.buildQueue.map(unitType => ({
+      weaponId: unitType, // Field name kept for compatibility
+      label: UNIT_LABELS[unitType] ?? unitType,
     }));
     factoryProgress = f.currentBuildProgress;
     factoryIsProducing = f.isProducing;

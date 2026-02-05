@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { RtsScene } from './scenes/RtsScene';
 import type { PlayerId } from './sim/types';
-import type { NetworkRole } from './network/NetworkManager';
+import type { GameConnection } from './server/GameConnection';
 
 export interface GameConfig {
   parent: HTMLElement;
@@ -9,7 +9,9 @@ export interface GameConfig {
   height: number;
   playerIds?: PlayerId[];
   localPlayerId?: PlayerId;
-  networkRole?: NetworkRole;
+  gameConnection: GameConnection;
+  mapWidth: number;
+  mapHeight: number;
   backgroundMode?: boolean;
 }
 
@@ -22,7 +24,9 @@ export interface GameInstance {
 let pendingGameConfig: {
   playerIds: PlayerId[];
   localPlayerId: PlayerId;
-  networkRole: NetworkRole;
+  gameConnection: GameConnection;
+  mapWidth: number;
+  mapHeight: number;
   backgroundMode: boolean;
 } | null = null;
 
@@ -39,7 +43,9 @@ export function createGame(config: GameConfig): GameInstance {
   pendingGameConfig = {
     playerIds: config.playerIds ?? [1, 2],
     localPlayerId: config.localPlayerId ?? 1,
-    networkRole: config.networkRole ?? 'offline',
+    gameConnection: config.gameConnection,
+    mapWidth: config.mapWidth,
+    mapHeight: config.mapHeight,
     backgroundMode: config.backgroundMode ?? false,
   };
 
@@ -49,14 +55,6 @@ export function createGame(config: GameConfig): GameInstance {
     width: config.width,
     height: config.height,
     backgroundColor: '#1a1a2e',
-    physics: {
-      default: 'matter',
-      matter: {
-        gravity: { x: 0, y: 0 },
-        debug: false,
-        autoUpdate: false, // We manually step physics for fixed timestep
-      },
-    },
     scene: [RtsScene],
     scale: {
       mode: Phaser.Scale.RESIZE,

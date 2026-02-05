@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
-import type { WorldState } from '../sim/WorldState';
 import { CommandQueue, type SelectCommand, type MoveCommand, type WaypointTarget, type StartBuildCommand, type FireDGunCommand, type RepairCommand, type SetFactoryWaypointsCommand } from '../sim/commands';
-import type { Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
+import type { Entity, EntityId, PlayerId, WaypointType, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER } from '../../config';
@@ -26,6 +25,15 @@ export interface InputEntitySource {
   getBuildings(): Entity[];
   getEntity(id: EntityId): Entity | undefined;
   getAllEntities(): Entity[];
+}
+
+/**
+ * InputContext - Provides tick and player info without requiring WorldState
+ * Decouples InputManager from the simulation layer
+ */
+export interface InputContext {
+  getTick(): number;
+  activePlayerId: PlayerId;
 }
 
 // Input state
@@ -63,7 +71,7 @@ interface InputState {
 
 export class InputManager {
   private scene: Phaser.Scene;
-  private world: WorldState;  // Used for tick, activePlayerId, map dimensions
+  private context: InputContext;  // Used for tick, activePlayerId
   private entitySource: InputEntitySource;  // Used for entity queries (can be WorldState or ClientViewState)
   private commandQueue: CommandQueue;
   private state: InputState;
@@ -89,10 +97,10 @@ export class InputManager {
   // Callback for D-gun mode changes
   public onDGunModeChange?: (active: boolean) => void;
 
-  constructor(scene: Phaser.Scene, world: WorldState, commandQueue: CommandQueue) {
+  constructor(scene: Phaser.Scene, context: InputContext, entitySource: InputEntitySource, commandQueue: CommandQueue) {
     this.scene = scene;
-    this.world = world;
-    this.entitySource = world;  // Default to using WorldState for entity queries
+    this.context = context;
+    this.entitySource = entitySource;
     this.commandQueue = commandQueue;
 
     this.state = {
@@ -189,7 +197,6 @@ export class InputManager {
   /**
    * Set the entity source for input detection
    * Allows switching between WorldState (simulation) and ClientViewState (client view)
-   * Commands still use this.world for tick/playerId (always the simulation)
    */
   public setEntitySource(source: InputEntitySource): void {
     this.entitySource = source;
@@ -197,21 +204,19 @@ export class InputManager {
 
   /**
    * Get selected units from current entity source
-   * Uses world.activePlayerId for filtering
    */
   private getSelectedUnits(): Entity[] {
     return this.entitySource.getUnits().filter(
-      (e) => e.selectable?.selected && e.ownership?.playerId === this.world.activePlayerId
+      (e) => e.selectable?.selected && e.ownership?.playerId === this.context.activePlayerId
     );
   }
 
   /**
    * Get selected factories from current entity source
-   * Uses world.activePlayerId for filtering
    */
   private getSelectedFactories(): Entity[] {
     return this.entitySource.getBuildings().filter(
-      (e) => e.selectable?.selected && e.factory !== undefined && e.ownership?.playerId === this.world.activePlayerId
+      (e) => e.selectable?.selected && e.factory !== undefined && e.ownership?.playerId === this.context.activePlayerId
     );
   }
 
@@ -245,7 +250,7 @@ export class InputManager {
 
     const command = {
       type: 'queueUnit' as const,
-      tick: this.world.getTick(),
+      tick: this.context.getTick(),
       factoryId: factoryId,
       weaponId: weaponId,
     };
@@ -259,7 +264,7 @@ export class InputManager {
 
     const command = {
       type: 'cancelQueueItem' as const,
-      tick: this.world.getTick(),
+      tick: this.context.getTick(),
       factoryId: factoryId,
       index: index,
     };
@@ -435,7 +440,7 @@ export class InputManager {
             // Issue repair command
             const command: RepairCommand = {
               type: 'repair',
-              tick: this.world.getTick(),
+              tick: this.context.getTick(),
               commanderId: commander.id,
               targetId: repairTarget.id,
               queue: this.keys.SHIFT.isDown,
@@ -575,13 +580,13 @@ export class InputManager {
       this.state.selectionStartWorldY,
       this.state.selectionEndWorldX,
       this.state.selectionEndWorldY,
-      this.world.activePlayerId
+      this.context.activePlayerId
     );
 
     // Issue select command
     const command: SelectCommand = {
       type: 'select',
-      tick: this.world.getTick(),
+      tick: this.context.getTick(),
       entityIds: result.entityIds,
       additive,
     };
@@ -616,7 +621,7 @@ export class InputManager {
         // Issue repair command instead of move command
         const command: RepairCommand = {
           type: 'repair',
-          tick: this.world.getTick(),
+          tick: this.context.getTick(),
           commanderId: commander.id,
           targetId: repairTarget.id,
           queue: shiftHeld,
@@ -633,7 +638,7 @@ export class InputManager {
       const target = this.state.linePathPoints[this.state.linePathPoints.length - 1];
       const command: MoveCommand = {
         type: 'move',
-        tick: this.world.getTick(),
+        tick: this.context.getTick(),
         entityIds: selectedUnits.map((e) => e.id),
         targetX: target.x,
         targetY: target.y,
@@ -661,7 +666,7 @@ export class InputManager {
     // Issue single move command with individual targets
     const command: MoveCommand = {
       type: 'move',
-      tick: this.world.getTick(),
+      tick: this.context.getTick(),
       entityIds,
       individualTargets,
       waypointType: this.state.waypointMode,
@@ -691,7 +696,7 @@ export class InputManager {
 
       const command: SetFactoryWaypointsCommand = {
         type: 'setFactoryWaypoints',
-        tick: this.world.getTick(),
+        tick: this.context.getTick(),
         factoryId: factory.id,
         waypoints: [newWaypoint],
         queue: shiftHeld,
@@ -757,7 +762,7 @@ export class InputManager {
     // Issue start build command (shift = queue, no shift = replace)
     const command: StartBuildCommand = {
       type: 'startBuild',
-      tick: this.world.getTick(),
+      tick: this.context.getTick(),
       builderId: commander.id,
       buildingType: this.state.selectedBuildingType,
       gridX: snapped.gridX,
@@ -781,7 +786,7 @@ export class InputManager {
     // Issue fire D-gun command
     const command: FireDGunCommand = {
       type: 'fireDGun',
-      tick: this.world.getTick(),
+      tick: this.context.getTick(),
       commanderId: commander.id,
       targetX: worldX,
       targetY: worldY,

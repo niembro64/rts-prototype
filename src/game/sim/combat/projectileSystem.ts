@@ -337,8 +337,8 @@ export function checkProjectileCollisions(
           deathContexts.set(id, ctx);
         }
 
-        // Add explosion audio event if there were hits or it's a shotgun
-        if (splashResult.hitEntityIds.length > 0 || config.id === 'shotgun') {
+        // Add explosion audio event if there were hits or it's a mortar
+        if (splashResult.hitEntityIds.length > 0 || config.id === 'mortar') {
           audioEvents.push({
             type: 'hit',
             weaponId: config.audioId,

@@ -51,6 +51,7 @@ function createUnitFromNetwork(
     ownership: playerId !== undefined ? { playerId } : undefined,
     selectable: { selected: false },
     unit: {
+      unitType: netEntity.unitType ?? 'jackal',
       hp: netEntity.hp ?? 100,
       maxHp: netEntity.maxHp ?? 100,
       collisionRadius: netEntity.collisionRadius ?? 15,

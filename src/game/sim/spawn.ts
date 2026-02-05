@@ -5,17 +5,17 @@ import { COMMANDER_CONFIG } from './buildConfigs';
 
 // Unit composition for each player (legacy - now only used for testing)
 interface UnitSpawnConfig {
-  weaponId: string;
+  unitType: string;
   count: number;
   collisionRadius?: number;
   moveSpeed?: number;
 }
 
 const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
-  { weaponId: 'scout', count: 3, collisionRadius: 8, moveSpeed: 160 },
-  { weaponId: 'daddy', count: 2, collisionRadius: 13, moveSpeed: 100 },
-  { weaponId: 'tank', count: 1, collisionRadius: 22, moveSpeed: 45 },
-  { weaponId: 'brawl', count: 2, collisionRadius: 15, moveSpeed: 85 },
+  { unitType: 'jackal', count: 3, collisionRadius: 8, moveSpeed: 160 },
+  { unitType: 'strider', count: 2, collisionRadius: 13, moveSpeed: 100 },
+  { unitType: 'mammoth', count: 1, collisionRadius: 22, moveSpeed: 45 },
+  { unitType: 'badger', count: 2, collisionRadius: 15, moveSpeed: 85 },
 ];
 
 // Spawn a commander for a player
@@ -67,7 +67,7 @@ function spawnPlayerUnits(
         x,
         y,
         playerId,
-        config.weaponId,
+        config.unitType,
         config.collisionRadius ?? 15,
         config.moveSpeed ?? 100
       );

@@ -62,19 +62,19 @@ const buildingOptions: { type: 'solar' | 'factory'; label: string; key: string; 
 
 // Vehicles (treads/wheels)
 const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
-  { weaponId: 'scout', label: 'Scout', cost: 35 },
-  { weaponId: 'burst', label: 'Burst', cost: 75 },
-  { weaponId: 'brawl', label: 'Brawl', cost: 110 },
-  { weaponId: 'snipe', label: 'Snipe', cost: 140 },
-  { weaponId: 'shotgun', label: 'Shotgun', cost: 150 },
-  { weaponId: 'tank', label: 'Tank', cost: 280 },
+  { weaponId: 'jackal', label: 'Jackal', cost: 40 },
+  { weaponId: 'mantis', label: 'Mantis', cost: 55 },
+  { weaponId: 'badger', label: 'Badger', cost: 80 },
+  { weaponId: 'viper', label: 'Viper', cost: 75 },
+  { weaponId: 'scorpion', label: 'Scorpion', cost: 100 },
+  { weaponId: 'mammoth', label: 'Mammoth', cost: 180 },
 ];
 
 // Bots (legs)
 const botOptions: { weaponId: string; label: string; cost: number }[] = [
-  { weaponId: 'insect', label: 'Insect', cost: 90 },
-  { weaponId: 'daddy', label: 'Daddy', cost: 100 },
-  { weaponId: 'widow', label: 'Widow', cost: 1000 },
+  { weaponId: 'cricket', label: 'Cricket', cost: 70 },
+  { weaponId: 'strider', label: 'Strider', cost: 90 },
+  { weaponId: 'widow', label: 'Widow', cost: 800 },
 ];
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)

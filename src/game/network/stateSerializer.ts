@@ -84,6 +84,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   };
 
   if (entity.type === 'unit' && entity.unit) {
+    netEntity.unitType = entity.unit.unitType;
     netEntity.hp = entity.unit.hp;
     netEntity.maxHp = entity.unit.maxHp;
     netEntity.collisionRadius = entity.unit.collisionRadius;

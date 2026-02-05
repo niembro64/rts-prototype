@@ -1,5 +1,6 @@
 import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType, TargetingMode } from './types';
 import { getWeaponConfig } from './weapons';
+import { getUnitDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, SEE_RANGE_MULTIPLIER, SEE_RANGE_MULTIPLIER_STICKY, FIGHTSTOP_RANGE_MULTIPLIER } from '../../config';
 
 // Seeded random number generator for determinism
@@ -279,6 +280,7 @@ export class WorldState {
     x: number,
     y: number,
     playerId: PlayerId,
+    unitType: string,
     collisionRadius: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
@@ -293,6 +295,7 @@ export class WorldState {
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
+        unitType,
         moveSpeed,
         collisionRadius,
         mass,
@@ -306,13 +309,14 @@ export class WorldState {
     return entity;
   }
 
-  // Create a unit entity with a single weapon
+  // Create a unit entity with a single weapon using unit type
+  // Unit type determines the weapon type via unit definitions
   // Weapons operate independently - unit has no control over them
   createUnit(
     x: number,
     y: number,
     playerId: PlayerId,
-    weaponId: string = 'scout',
+    unitType: string = 'jackal',
     collisionRadius: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
@@ -321,7 +325,10 @@ export class WorldState {
     targetingMode: TargetingMode = 'nearest', // How weapon acquires/keeps targets
     returnToForward: boolean = true // Whether turret returns to forward when no target
   ): Entity {
-    const weaponConfig = getWeaponConfig(weaponId);
+    // Look up unit definition to get weapon type
+    const unitDef = getUnitDefinition(unitType);
+    const weaponType = unitDef?.weaponType ?? 'gatling';
+    const weaponConfig = getWeaponConfig(weaponType);
 
     // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
     const fireRange = weaponConfig.range;
@@ -333,7 +340,7 @@ export class WorldState {
     const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
     const drag = turretDrag ?? weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
-    const entity = this.createUnitBase(x, y, playerId, collisionRadius, moveSpeed, mass, 100);
+    const entity = this.createUnitBase(x, y, playerId, unitType, collisionRadius, moveSpeed, mass, 100);
 
     // Set up single weapon
     entity.weapons = [{
@@ -402,6 +409,7 @@ export class WorldState {
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
+        unitType: 'commander',
         moveSpeed: config.moveSpeed,
         collisionRadius: config.collisionRadius,
         mass: config.mass,

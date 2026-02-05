@@ -126,9 +126,9 @@ export const COLORS = {
 
 // Leg style configuration - thickness, foot size, and lerp duration (ms)
 export const LEG_STYLE_CONFIG = {
-  arachnid: { thickness: 5, footSizeMultiplier: 0.1, lerpSpeed: 700 },
-  daddy: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 500 },
-  insect: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 200 },
+  widow: { thickness: 5, footSizeMultiplier: 0.1, lerpSpeed: 700 },
+  strider: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 500 },
+  cricket: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 200 },
   commander: { thickness: 6, footSizeMultiplier: 0.15, lerpSpeed: 400 },
 } as const;
 
@@ -148,15 +148,15 @@ export const ACTION_COLORS: Record<ActionType, number> = {
   repair: 0x44ff44, // Light green for repair
 };
 
-// Unit display names by weapon ID
+// Unit display names by unit type ID
 export const UNIT_NAMES: Record<string, string> = {
-  scout: 'Scout',
-  burst: 'Burst',
-  beam: 'Beam',
-  brawl: 'Brawl',
-  mortar: 'Mortar',
-  snipe: 'Snipe',
-  tank: 'Tank',
-  arachnid: 'Arachnid',
-  sonic: 'Sonic',
+  jackal: 'Jackal',
+  mantis: 'Mantis',
+  strider: 'Strider',
+  badger: 'Badger',
+  scorpion: 'Scorpion',
+  viper: 'Viper',
+  mammoth: 'Mammoth',
+  widow: 'Widow',
+  cricket: 'Cricket',
 };

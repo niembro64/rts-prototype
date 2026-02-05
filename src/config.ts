@@ -292,9 +292,9 @@ export const UNIT_THRUST_MULTIPLIER = 3.0;
  */
 
 export const UNIT_STATS = {
-  // Scout - Disposable swarm unit. High DPS (50) but dies fast.
+  // Jackal - Disposable swarm unit. High DPS (50) but dies fast.
   // Value: Fast harassment, good vs slow units, countered by splash
-  scout: {
+  jackal: {
     baseCost: 40,
     hp: 40,
     moveSpeed: 360,
@@ -302,9 +302,9 @@ export const UNIT_STATS = {
     mass: 10,
     buildRate: 70,
   },
-  // Burst - Glass cannon striker. Burst damage (54 per volley), fragile.
+  // Mantis - Glass cannon striker. Burst damage (54 per volley), fragile.
   // Value: Alpha strike potential, but slow and squishy
-  burst: {
+  mantis: {
     baseCost: 55,
     hp: 65,
     moveSpeed: 130,
@@ -312,9 +312,9 @@ export const UNIT_STATS = {
     mass: 15,
     buildRate: 55,
   },
-  // Daddy - Beam walker. Sustained 45 DPS but VERY slow turret tracking.
+  // Strider - Beam walker. Sustained 45 DPS but VERY slow turret tracking.
   // Value: Good vs slow/stationary targets, struggles vs fast units
-  daddy: {
+  strider: {
     baseCost: 90,
     hp: 100,
     moveSpeed: 200,
@@ -322,9 +322,9 @@ export const UNIT_STATS = {
     mass: 25,
     buildRate: 45,
   },
-  // Brawl - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
+  // Badger - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
   // Value: Wins close fights, but takes damage closing the gap
-  brawl: {
+  badger: {
     baseCost: 80,
     hp: 180,
     moveSpeed: 200,
@@ -332,9 +332,9 @@ export const UNIT_STATS = {
     mass: 45,
     buildRate: 40,
   },
-  // Shotgun - Area denial artillery. Splash damage, slow projectile.
+  // Scorpion - Area denial artillery. Splash damage, slow projectile.
   // Value: Excellent vs groups, but can be dodged, mediocre vs single targets
-  shotgun: {
+  scorpion: {
     baseCost: 100,
     hp: 100,
     moveSpeed: 220,
@@ -342,9 +342,9 @@ export const UNIT_STATS = {
     mass: 35,
     buildRate: 32,
   },
-  // Snipe - Long-range assassin. Hitscan piercing, but low DPS (17) and can't escape.
+  // Viper - Long-range assassin. Hitscan piercing, but low DPS (17) and can't escape.
   // Value: Safe poke damage, but very slow and fragile if caught
-  snipe: {
+  viper: {
     baseCost: 75,
     hp: 55,
     moveSpeed: 70,
@@ -352,9 +352,9 @@ export const UNIT_STATS = {
     mass: 20,
     buildRate: 28,
   },
-  // Tank - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
+  // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
   // Value: Frontline anchor, wins attrition fights, slow to reposition
-  tank: {
+  mammoth: {
     baseCost: 180,
     hp: 350,
     moveSpeed: 60,
@@ -372,9 +372,9 @@ export const UNIT_STATS = {
     mass: 500,
     buildRate: 20,
   },
-  // Insect - Wave AoE unit. Continuous damage with pull, scales with 1/distance.
+  // Cricket - Wave AoE unit. Continuous damage with pull, scales with 1/distance.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
-  insect: {
+  cricket: {
     baseCost: 70,
     hp: 80,
     moveSpeed: 200,
@@ -389,16 +389,16 @@ export const UNIT_STATS = {
 // =============================================================================
 
 export const WEAPON_STATS = {
-  // Scout - Rapid fire, low damage per shot
-  scout: {
+  // Gatling - Rapid fire, low damage per shot (Jackal's weapon)
+  gatling: {
     damage: 4,
     range: 140,
     cooldown: 80,
     projectileSpeed: 650,
   },
 
-  // Burst - 3-shot burst, medium damage
-  burst: {
+  // Pulse - 3-shot burst, medium damage (Mantis's weapon)
+  pulse: {
     damage: 18,
     range: 160,
     cooldown: 1200,
@@ -407,8 +407,8 @@ export const WEAPON_STATS = {
     burstDelay: 60,
   },
 
-  // Brawl - Shotgun spread, high close-range damage
-  brawl: {
+  // Shotgun - Spread pellets, high close-range damage (Badger's weapon)
+  shotgun: {
     damage: 12, // Per pellet
     range: 90,
     cooldown: 900,
@@ -416,8 +416,8 @@ export const WEAPON_STATS = {
     pelletCount: 6,
   },
 
-  // Shotgun - Slow, high splash damage artillery
-  shotgun: {
+  // Mortar - Slow, high splash damage artillery (Scorpion's weapon)
+  mortar: {
     damage: 80,
     range: 200,
     cooldown: 2500,
@@ -425,16 +425,16 @@ export const WEAPON_STATS = {
     splashRadius: 70,
   },
 
-  // Tank - Slow, devastating heavy cannon
-  tank: {
+  // Cannon - Slow, devastating heavy projectile (Mammoth's weapon)
+  cannon: {
     damage: 220,
     range: 360,
     cooldown: 3000,
     projectileSpeed: 300,
   },
 
-  // Snipe - Instant flash hitscan, long range, piercing
-  snipe: {
+  // Railgun - Instant flash hitscan, long range, piercing (Viper's weapon)
+  railgun: {
     damage: 55,
     range: 350,
     cooldown: 3200,
@@ -442,9 +442,9 @@ export const WEAPON_STATS = {
     beamWidth: 2,
   },
 
-  // Daddy - Continuous damage beam (daddy long legs unit)
+  // Beam - Continuous damage beam (Strider's weapon)
   // Slow, deliberate turret - low acceleration, tracks slowly
-  daddy: {
+  beam: {
     damage: 45, // DPS while beam is on target
     range: 140,
     cooldown: 0, // Continuous
@@ -478,8 +478,8 @@ export const WEAPON_STATS = {
     turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
   },
 
-  // Insect - Continuous pie-slice wave AoE
-  insect: {
+  // Sonic - Continuous pie-slice wave AoE (Cricket's weapon)
+  sonic: {
     damage: 1, // Base DPS (scales with 1/distance)
     range: 400,
     cooldown: 0, // Continuous
@@ -504,22 +504,14 @@ export const WEAPON_STATS = {
     pullPower: 300,
   },
 
-  // D-gun - Commander special weapon
-  dgun: {
+  // Disruptor - Commander special weapon
+  disruptor: {
     damage: 9999,
     range: 150,
     cooldown: 0, // No cooldown (energy-limited)
     projectileSpeed: 350,
     splashRadius: 40,
   },
-
-  // Widow - Multi-weapon titan (placeholder, uses widowBeam + widowSonic)
-  // widow: {
-  //   damage: 0,
-  //   range: 350,
-  //   cooldown: 0,
-  //   beamCount: 6,
-  // },
 };
 
 // =============================================================================
@@ -536,18 +528,18 @@ export const WEAPON_STATS = {
  */
 export const UNIT_TARGETING_MODES = {
   // Simple projectile units - track nearest, return to forward when idle
-  scout: { default: 'nearest' as const, returnToForward: false },
-  burst: { default: 'nearest' as const, returnToForward: false },
-  brawl: { default: 'nearest' as const, returnToForward: false },
-  shotgun: { default: 'nearest' as const, returnToForward: false },
-  tank: { default: 'nearest' as const, returnToForward: false },
+  jackal: { default: 'nearest' as const, returnToForward: false },
+  mantis: { default: 'nearest' as const, returnToForward: false },
+  badger: { default: 'nearest' as const, returnToForward: false },
+  scorpion: { default: 'nearest' as const, returnToForward: false },
+  mammoth: { default: 'nearest' as const, returnToForward: false },
 
   // Beam units - sticky (lock onto target and burn it down)
-  daddy: { default: 'sticky' as const, returnToForward: false },
-  snipe: { default: 'sticky' as const, returnToForward: false },
+  strider: { default: 'sticky' as const, returnToForward: false },
+  viper: { default: 'sticky' as const, returnToForward: false },
 
   // Wave/AoE units - track nearest
-  insect: { default: 'nearest' as const, returnToForward: false },
+  cricket: { default: 'nearest' as const, returnToForward: false },
 
   // Multi-weapon titan
   widow: {
@@ -661,7 +653,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     max: 2.0,
   },
 
-  // Leg rendering for arachnid/daddy/insect units
+  // Leg rendering for widow/strider/cricket units
   LEGS: {
     min: 'none',
     low: 'animated',
@@ -747,15 +739,15 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
  * UNIT COSTS & DPS (ordered by cost):
  * | Unit     | Cost | HP   | Speed | DPS | Range | Special              |
  * |----------|------|------|-------|-----|-------|----------------------|
- * | Scout    |   35 |   40 |  160  |  50 | 140   | Fast swarm           |
- * | Burst    |   75 |   65 |  130  |  45 | 160   | 3-shot burst         |
- * | Insect   |   90 |   80 |  110  |  40 | 150   | 30° wave AoE         |
- * | Daddy    |  100 |  100 |  100  |  45 | 140   | Continuous beam      |
- * | Brawl    |  110 |  180 |   80  |  60 |  90   | 6 pellets            |
- * | Snipe    |  140 |   55 |   70  |  17 | 350   | Instant flash, pierce|
- * | Shotgun  |  150 |  100 |   60  |  32 | 200   | Splash (70r)         |
- * | Tank     |  280 |  350 |   40  |  40 | 260   | Heavy hitter         |
- * | Widow    | 1000 | 1200 |   25  | 310 | 350   | 6 beam + sonic       |
+ * | Jackal   |   40 |   40 |  360  |  50 | 140   | Fast swarm (gatling) |
+ * | Mantis   |   55 |   65 |  130  |  45 | 160   | 3-shot burst (pulse) |
+ * | Cricket  |   70 |   80 |  200  |  40 | 400   | Sonic wave AoE       |
+ * | Viper    |   75 |   55 |   70  |  17 | 350   | Railgun, pierce      |
+ * | Badger   |   80 |  180 |  200  |  60 |  90   | Shotgun spread       |
+ * | Strider  |   90 |  100 |  200  |  45 | 140   | Continuous beam      |
+ * | Scorpion |  100 |  100 |  220  |  32 | 200   | Mortar splash        |
+ * | Mammoth  |  180 |  350 |   60  |  40 | 360   | Heavy cannon         |
+ * | Widow    |  800 | 1200 |  100  | 310 | 350   | 6 beam + sonic       |
  *
  * BUILDING COSTS:
  * - Solar: 100 energy (2 sec to build)

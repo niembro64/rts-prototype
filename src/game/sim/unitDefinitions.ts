@@ -18,12 +18,15 @@ import {
 export type LocomotionType = 'wheels' | 'treads' | 'legs';
 
 // Leg styles for legged units
-export type LegStyle = 'arachnid' | 'daddy' | 'insect' | 'commander';
+export type LegStyle = 'widow' | 'strider' | 'cricket' | 'commander';
 
 // Unified unit definition - everything about a unit type in one place
 export interface UnitDefinition {
   id: string;
   name: string;
+
+  // Weapon type (references WEAPON_CONFIGS key)
+  weaponType: string;
 
   // Stats
   hp: number;
@@ -80,7 +83,7 @@ function getReturnToForward(unitId: string): boolean {
 // Default weapon creation - single weapon matching unit type
 // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
-  const weaponConfig = getWeaponConfig(definition.id);
+  const weaponConfig = getWeaponConfig(definition.weaponType);
   const fireRange = weaponConfig.range;
   const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   // Get turret acceleration physics values from weapon config, or use defaults
@@ -229,99 +232,108 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
 
 // Registry of all unit definitions
 export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
-  scout: {
-    id: 'scout',
-    name: 'Scout',
-    hp: UNIT_STATS.scout.hp,
-    moveSpeed: UNIT_STATS.scout.moveSpeed,
-    collisionRadius: UNIT_STATS.scout.collisionRadius,
-    energyCost: UNIT_STATS.scout.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.scout.buildRate,
+  jackal: {
+    id: 'jackal',
+    name: 'Jackal',
+    weaponType: 'gatling',
+    hp: UNIT_STATS.jackal.hp,
+    moveSpeed: UNIT_STATS.jackal.moveSpeed,
+    collisionRadius: UNIT_STATS.jackal.collisionRadius,
+    energyCost: UNIT_STATS.jackal.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.jackal.buildRate,
     locomotion: 'wheels',
   },
-  burst: {
-    id: 'burst',
-    name: 'Burst',
-    hp: UNIT_STATS.burst.hp,
-    moveSpeed: UNIT_STATS.burst.moveSpeed,
-    collisionRadius: UNIT_STATS.burst.collisionRadius,
-    energyCost: UNIT_STATS.burst.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.burst.buildRate,
+  mantis: {
+    id: 'mantis',
+    name: 'Mantis',
+    weaponType: 'pulse',
+    hp: UNIT_STATS.mantis.hp,
+    moveSpeed: UNIT_STATS.mantis.moveSpeed,
+    collisionRadius: UNIT_STATS.mantis.collisionRadius,
+    energyCost: UNIT_STATS.mantis.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.mantis.buildRate,
     locomotion: 'wheels',
   },
-  daddy: {
-    id: 'daddy',
-    name: 'Daddy',
-    hp: UNIT_STATS.daddy.hp,
-    moveSpeed: UNIT_STATS.daddy.moveSpeed,
-    collisionRadius: UNIT_STATS.daddy.collisionRadius,
-    energyCost: UNIT_STATS.daddy.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.daddy.buildRate,
+  strider: {
+    id: 'strider',
+    name: 'Strider',
+    weaponType: 'beam',
+    hp: UNIT_STATS.strider.hp,
+    moveSpeed: UNIT_STATS.strider.moveSpeed,
+    collisionRadius: UNIT_STATS.strider.collisionRadius,
+    energyCost: UNIT_STATS.strider.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.strider.buildRate,
     locomotion: 'legs',
-    legStyle: 'daddy',
+    legStyle: 'strider',
   },
-  brawl: {
-    id: 'brawl',
-    name: 'Brawl',
-    hp: UNIT_STATS.brawl.hp,
-    moveSpeed: UNIT_STATS.brawl.moveSpeed,
-    collisionRadius: UNIT_STATS.brawl.collisionRadius,
-    energyCost: UNIT_STATS.brawl.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.brawl.buildRate,
+  badger: {
+    id: 'badger',
+    name: 'Badger',
+    weaponType: 'shotgun',
+    hp: UNIT_STATS.badger.hp,
+    moveSpeed: UNIT_STATS.badger.moveSpeed,
+    collisionRadius: UNIT_STATS.badger.collisionRadius,
+    energyCost: UNIT_STATS.badger.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.badger.buildRate,
     locomotion: 'treads',
   },
-  shotgun: {
-    id: 'shotgun',
-    name: 'Shotgun',
-    hp: UNIT_STATS.shotgun.hp,
-    moveSpeed: UNIT_STATS.shotgun.moveSpeed,
-    collisionRadius: UNIT_STATS.shotgun.collisionRadius,
-    energyCost: UNIT_STATS.shotgun.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.shotgun.buildRate,
+  scorpion: {
+    id: 'scorpion',
+    name: 'Scorpion',
+    weaponType: 'mortar',
+    hp: UNIT_STATS.scorpion.hp,
+    moveSpeed: UNIT_STATS.scorpion.moveSpeed,
+    collisionRadius: UNIT_STATS.scorpion.collisionRadius,
+    energyCost: UNIT_STATS.scorpion.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.scorpion.buildRate,
     locomotion: 'wheels',
   },
-  snipe: {
-    id: 'snipe',
-    name: 'Snipe',
-    hp: UNIT_STATS.snipe.hp,
-    moveSpeed: UNIT_STATS.snipe.moveSpeed,
-    collisionRadius: UNIT_STATS.snipe.collisionRadius,
-    energyCost: UNIT_STATS.snipe.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.snipe.buildRate,
+  viper: {
+    id: 'viper',
+    name: 'Viper',
+    weaponType: 'railgun',
+    hp: UNIT_STATS.viper.hp,
+    moveSpeed: UNIT_STATS.viper.moveSpeed,
+    collisionRadius: UNIT_STATS.viper.collisionRadius,
+    energyCost: UNIT_STATS.viper.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.viper.buildRate,
     locomotion: 'wheels',
   },
-  tank: {
-    id: 'tank',
-    name: 'Tank',
-    hp: UNIT_STATS.tank.hp,
-    moveSpeed: UNIT_STATS.tank.moveSpeed,
-    collisionRadius: UNIT_STATS.tank.collisionRadius,
-    energyCost: UNIT_STATS.tank.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.tank.buildRate,
+  mammoth: {
+    id: 'mammoth',
+    name: 'Mammoth',
+    weaponType: 'cannon',
+    hp: UNIT_STATS.mammoth.hp,
+    moveSpeed: UNIT_STATS.mammoth.moveSpeed,
+    collisionRadius: UNIT_STATS.mammoth.collisionRadius,
+    energyCost: UNIT_STATS.mammoth.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.mammoth.buildRate,
     locomotion: 'treads',
   },
   widow: {
     id: 'widow',
     name: 'Widow',
+    weaponType: 'widowBeam', // Primary weapon type (has custom createWeapons)
     hp: UNIT_STATS.widow.hp,
     moveSpeed: UNIT_STATS.widow.moveSpeed,
     collisionRadius: UNIT_STATS.widow.collisionRadius,
     energyCost: UNIT_STATS.widow.baseCost * COST_MULTIPLIER,
     buildRate: UNIT_STATS.widow.buildRate,
     locomotion: 'legs',
-    legStyle: 'arachnid',
+    legStyle: 'widow',
     createWeapons: createWidowWeapons,
   },
-  insect: {
-    id: 'insect',
-    name: 'Insect',
-    hp: UNIT_STATS.insect.hp,
-    moveSpeed: UNIT_STATS.insect.moveSpeed,
-    collisionRadius: UNIT_STATS.insect.collisionRadius,
-    energyCost: UNIT_STATS.insect.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.insect.buildRate,
+  cricket: {
+    id: 'cricket',
+    name: 'Cricket',
+    weaponType: 'sonic',
+    hp: UNIT_STATS.cricket.hp,
+    moveSpeed: UNIT_STATS.cricket.moveSpeed,
+    collisionRadius: UNIT_STATS.cricket.collisionRadius,
+    energyCost: UNIT_STATS.cricket.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.cricket.buildRate,
     locomotion: 'legs',
-    legStyle: 'insect',
+    legStyle: 'cricket',
   },
 };
 

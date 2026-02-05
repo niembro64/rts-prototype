@@ -30,9 +30,9 @@ export class FactoryProductionSystem {
         continue;
       }
 
-      // Get current build item
-      const currentWeaponId = factoryComp.buildQueue[0];
-      const unitConfig = getUnitBuildConfig(currentWeaponId);
+      // Get current build item (unit type ID)
+      const currentUnitType = factoryComp.buildQueue[0];
+      const unitConfig = getUnitBuildConfig(currentUnitType);
 
       if (!unitConfig) {
         // Invalid unit, remove from queue
@@ -77,7 +77,7 @@ export class FactoryProductionSystem {
         }
 
         // Create the unit
-        const unit = this.createUnit(world, factory, unitConfig);
+        const unit = this.createUnit(world, factory, unitConfig, currentUnitType);
         if (unit) {
           completedUnits.push(unit);
         }
@@ -93,7 +93,7 @@ export class FactoryProductionSystem {
   }
 
   // Create a completed unit from factory
-  private createUnit(world: WorldState, factory: Entity, config: ReturnType<typeof getUnitBuildConfig>): Entity | null {
+  private createUnit(world: WorldState, factory: Entity, config: ReturnType<typeof getUnitBuildConfig>, unitType: string): Entity | null {
     if (!factory.ownership || !factory.factory || !config) return null;
 
     const playerId = factory.ownership.playerId;
@@ -108,6 +108,7 @@ export class FactoryProductionSystem {
       spawnX,
       spawnY,
       playerId,
+      unitType,
       config.collisionRadius,
       config.moveSpeed,
       config.mass,
@@ -115,7 +116,7 @@ export class FactoryProductionSystem {
     );
 
     // Create weapons for this unit type - all units go through the same path
-    unit.weapons = this.createWeaponsForUnit(config);
+    unit.weapons = this.createWeaponsForUnit(unitType, config);
 
     // Copy factory's waypoints to the new unit as actions
     if (unit.unit && factoryComp.waypoints.length > 0) {
@@ -198,9 +199,9 @@ export class FactoryProductionSystem {
   }
 
   // Create weapons array for any unit type - uses centralized unit definitions
-  private createWeaponsForUnit(config: ReturnType<typeof getUnitBuildConfig>): UnitWeapon[] {
+  private createWeaponsForUnit(unitType: string, config: ReturnType<typeof getUnitBuildConfig>): UnitWeapon[] {
     if (!config) return [];
-    return createWeaponsFromDefinition(config.weaponId, config.collisionRadius);
+    return createWeaponsFromDefinition(unitType, config.collisionRadius);
   }
 }
 

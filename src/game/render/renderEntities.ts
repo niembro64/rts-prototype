@@ -88,7 +88,7 @@ export class EntityRenderer {
 
   private getOrCreateLegs(
     entity: Entity,
-    legStyle: 'arachnid' | 'daddy' | 'insect' | 'commander' = 'arachnid'
+    legStyle: 'widow' | 'strider' | 'cricket' | 'commander' = 'widow'
   ): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
@@ -96,7 +96,7 @@ export class EntityRenderer {
     const radius = entity.unit?.collisionRadius ?? 40;
     let leftSideConfigs: LegConfig[];
 
-    if (legStyle === 'daddy') {
+    if (legStyle === 'strider') {
       const legLength = radius * 10;
       const upperLen = legLength * 0.3;
       const lowerLen = legLength * 0.6;
@@ -107,7 +107,7 @@ export class EntityRenderer {
         { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.4, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.85, snapTargetAngle: -Math.PI * 0.45, snapDistanceMultiplier: 0.85, extensionThreshold: 0.9 },
         { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.3, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.65, snapDistanceMultiplier: 0.55, extensionThreshold: 0.99 },
       ];
-    } else if (legStyle === 'insect') {
+    } else if (legStyle === 'cricket') {
       const legLength = radius * 1.9;
       const upperLen = legLength * 0.55;
       const lowerLen = legLength * 0.55;
@@ -183,23 +183,21 @@ export class EntityRenderer {
       if (!entity.unit) continue;
 
       // Commanders always get commander-style legs
-      let legStyle: 'arachnid' | 'daddy' | 'insect' | 'commander';
+      let legStyle: 'widow' | 'strider' | 'cricket' | 'commander';
       if (entity.commander) {
         legStyle = 'commander';
       } else {
-        // Non-commanders check weapon definition
-        if (!entity.weapons || entity.weapons.length === 0) continue;
-        const unitType = entity.weapons.length > 1 ? 'widow' : entity.weapons[0].config.id;
-        const definition = getUnitDefinition(unitType);
+        // Non-commanders check unit definition
+        if (!entity.unit.unitType) continue;
+        const definition = getUnitDefinition(entity.unit.unitType);
         if (!definition || definition.locomotion !== 'legs') continue;
-        legStyle = definition.legStyle ?? 'arachnid';
+        legStyle = definition.legStyle ?? 'widow';
       }
 
       const legs = this.getOrCreateLegs(entity, legStyle);
 
-      const matterBody = entity.body?.matterBody as MatterJS.BodyType | undefined;
-      const velX = (matterBody?.velocity?.x ?? 0) * 60;
-      const velY = (matterBody?.velocity?.y ?? 0) * 60;
+      const velX = (entity.unit?.velocityX ?? 0) * 60;
+      const velY = (entity.unit?.velocityY ?? 0) * 60;
 
       for (const leg of legs) {
         leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
@@ -209,12 +207,12 @@ export class EntityRenderer {
 
   // ==================== TREAD MANAGEMENT ====================
 
-  private getOrCreateTreads(entity: Entity, unitType: 'tank' | 'brawl'): TankTreadSetup {
+  private getOrCreateTreads(entity: Entity, unitType: 'mammoth' | 'badger'): TankTreadSetup {
     const existing = this.tankTreads.get(entity.id);
     if (existing) return existing;
 
     const radius = entity.unit?.collisionRadius ?? 24;
-    const treads = unitType === 'tank' ? createTankTreads(radius, 2.0) : createBrawlTreads(radius, 2.0);
+    const treads = unitType === 'mammoth' ? createTankTreads(radius, 2.0) : createBrawlTreads(radius, 2.0);
 
     treads.leftTread.initializeAt(entity.transform.x, entity.transform.y, entity.transform.rotation);
     treads.rightTread.initializeAt(entity.transform.x, entity.transform.y, entity.transform.rotation);
@@ -232,14 +230,14 @@ export class EntityRenderer {
     if (existing) return existing;
 
     const radius = entity.unit?.collisionRadius ?? 10;
-    const weaponId = entity.weapons?.[0]?.config.id;
+    const unitType = entity.unit?.unitType;
 
     let wheelSetup: VehicleWheelSetup | null = null;
-    switch (weaponId) {
-      case 'scout': wheelSetup = createScoutWheelSetup(radius, 2.0); break;
-      case 'burst': wheelSetup = createBurstWheelSetup(radius, 2.0); break;
-      case 'shotgun': wheelSetup = createMortarWheelSetup(radius, 2.0); break;
-      case 'snipe': wheelSetup = createFourWheelSetup(radius, 2.0); break;
+    switch (unitType) {
+      case 'jackal': wheelSetup = createScoutWheelSetup(radius, 2.0); break;
+      case 'mantis': wheelSetup = createBurstWheelSetup(radius, 2.0); break;
+      case 'scorpion': wheelSetup = createMortarWheelSetup(radius, 2.0); break;
+      case 'viper': wheelSetup = createFourWheelSetup(radius, 2.0); break;
       default: return null;
     }
 
@@ -263,11 +261,12 @@ export class EntityRenderer {
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit || !entity.weapons || entity.weapons.length === 0) continue;
 
-      const unitType = entity.weapons.length > 1 ? 'widow' : entity.weapons[0].config.id;
+      const unitType = entity.unit?.unitType;
+      if (!unitType) continue;
       const definition = getUnitDefinition(unitType);
 
       if (definition?.locomotion === 'treads') {
-        const treadType = unitType as 'tank' | 'brawl';
+        const treadType = unitType as 'mammoth' | 'badger';
         const treads = this.getOrCreateTreads(entity, treadType);
         treads.leftTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
         treads.rightTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
@@ -491,14 +490,8 @@ export class EntityRenderer {
     const isSelected = selectable?.selected ?? false;
     const playerId = ownership?.playerId;
 
-    const weapons = entity.weapons ?? [];
-    const weaponCount = weapons.length;
-    let weaponId = 'scout';
-    if (weaponCount > 1) {
-      weaponId = 'widow';
-    } else if (weaponCount > 0) {
-      weaponId = weapons[0].config.id;
-    }
+    // Get unit type for renderer selection
+    const unitType = unit.unitType ?? 'jackal';
 
     const palette = createColorPalette(playerId);
 
@@ -514,20 +507,21 @@ export class EntityRenderer {
       skipTurrets: this.skipTurrets, turretsOnly: this.turretsOnly,
     };
 
-    // Commander gets special 4-legged mech body regardless of weapon
+    // Commander gets special 4-legged mech body regardless of unit type
     if (entity.commander) {
       drawCommanderUnit(ctx, this.getOrCreateLegs(entity, 'commander'));
     } else {
-      switch (weaponId) {
-        case 'scout': drawScoutUnit(ctx, this.getVehicleWheels(entity.id)); break;
-        case 'burst': drawBurstUnit(ctx, this.getVehicleWheels(entity.id)); break;
-        case 'daddy': drawBeamUnit(ctx, this.getOrCreateLegs(entity, 'daddy')); break;
-        case 'brawl': drawBrawlUnit(ctx, this.getTankTreads(entity.id)); break;
-        case 'shotgun': drawMortarUnit(ctx, this.getVehicleWheels(entity.id)); break;
-        case 'snipe': drawSnipeUnit(ctx, this.getVehicleWheels(entity.id)); break;
-        case 'tank': drawTankUnit(ctx, this.getTankTreads(entity.id)); break;
-        case 'widow': drawArachnidUnit(ctx, this.getOrCreateLegs(entity, 'arachnid')); break;
-        case 'insect': drawSonicUnit(ctx, this.getOrCreateLegs(entity, 'insect')); break;
+      // Select renderer based on unit type
+      switch (unitType) {
+        case 'jackal': drawScoutUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'mantis': drawBurstUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'strider': drawBeamUnit(ctx, this.getOrCreateLegs(entity, 'strider')); break;
+        case 'badger': drawBrawlUnit(ctx, this.getTankTreads(entity.id)); break;
+        case 'scorpion': drawMortarUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'viper': drawSnipeUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'mammoth': drawTankUnit(ctx, this.getTankTreads(entity.id)); break;
+        case 'widow': drawArachnidUnit(ctx, this.getOrCreateLegs(entity, 'widow')); break;
+        case 'cricket': drawSonicUnit(ctx, this.getOrCreateLegs(entity, 'cricket')); break;
         default: drawScoutUnit(ctx, this.getVehicleWheels(entity.id));
       }
     }
@@ -542,8 +536,8 @@ export class EntityRenderer {
         this.renderHealthBar(x, y - radius - 10, radius * 2, 4, healthPercent);
       }
 
-      if (weapons && isSelected) {
-        for (const weapon of weapons) {
+      if (entity.weapons && isSelected) {
+        for (const weapon of entity.weapons) {
           if (weapon.targetEntityId != null) {
             const target = this.entitySource.getEntity(weapon.targetEntityId);
             if (target) {

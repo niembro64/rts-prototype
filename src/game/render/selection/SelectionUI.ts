@@ -18,21 +18,13 @@ export function renderSelectedLabels(
     if (entity.selectable?.selected && entity.unit && entity.unit.hp > 0) {
       const { x, y } = entity.transform;
       const { collisionRadius } = entity.unit;
-      // Detect unit type by checking all weapons
-      const weapons = entity.weapons ?? [];
-      let weaponId = 'scout'; // default
-      if (weapons.length > 1) {
-        weaponId = 'widow';
-      } else {
-        for (const weapon of weapons) {
-          weaponId = weapon.config.id;
-        }
-      }
+      // Get unit type from entity
+      const unitType = entity.unit.unitType ?? 'jackal';
 
       // Commander gets special label
       const name = entity.commander
         ? 'Commander'
-        : UNIT_NAMES[weaponId] ?? weaponId;
+        : UNIT_NAMES[unitType] ?? unitType;
 
       const label = getLabel();
       label.setText(name);

@@ -16,7 +16,7 @@ export function drawBeamUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.daddy;
+    const legConfig = LEG_STYLE_CONFIG.strider;
     const legThickness = legConfig.thickness;
     const footSize = r * legConfig.footSizeMultiplier;
 

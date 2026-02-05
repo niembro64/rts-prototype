@@ -17,7 +17,7 @@ export function drawSonicUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.insect;
+    const legConfig = LEG_STYLE_CONFIG.cricket;
     const legThickness = legConfig.thickness;
     const footSize = r * legConfig.footSizeMultiplier;
 

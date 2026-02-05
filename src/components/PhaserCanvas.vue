@@ -7,8 +7,11 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
-import { DEFAULT_NETWORK_UPDATES_PER_SECOND } from '../config';
-import type { HostViewMode } from '../game/scenes/RtsScene';
+import { DEFAULT_NETWORK_UPDATES_PER_SECOND, MAP_WIDTH, MAP_HEIGHT, BACKGROUND_MAP_WIDTH, BACKGROUND_MAP_HEIGHT } from '../config';
+import { GameServer } from '../game/server/GameServer';
+import { LocalGameConnection } from '../game/server/LocalGameConnection';
+import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
+import type { GameConnection } from '../game/server/GameConnection';
 import {
   getGraphicsQuality,
   setGraphicsQuality,
@@ -22,12 +25,6 @@ import { audioManager } from '../game/audio/AudioManager';
 
 // Available update rate options
 const UPDATE_RATE_OPTIONS = [1, 5, 10, 30] as const;
-
-// Host view mode options
-const VIEW_MODE_OPTIONS: { value: HostViewMode; label: string }[] = [
-  { value: 'simulation', label: 'Simulation' },
-  { value: 'client', label: 'Client View' },
-];
 
 // Graphics quality options - Auto is separate from quality levels
 const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
@@ -58,6 +55,11 @@ const gameOverWinner = ref<PlayerId | null>(null);
 // Background battle game instance (runs behind lobby)
 let backgroundGameInstance: GameInstance | null = null;
 
+// Current game server (owned by this component)
+let currentServer: GameServer | null = null;
+let currentConnection: GameConnection | null = null;
+let backgroundServer: GameServer | null = null;
+
 // Lobby state
 const showLobby = ref(true);
 const spectateMode = ref(false); // When true, hide lobby to spectate background battle
@@ -70,7 +72,6 @@ const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
 const networkUpdatesPerSecond = ref(DEFAULT_NETWORK_UPDATES_PER_SECOND);
-const hostViewMode = ref<HostViewMode>('simulation');
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(getEffectiveQuality());
 const renderMode = ref<RenderMode>(getRenderMode());
@@ -86,9 +87,6 @@ const currentZoom = ref(0.4);
 const fpsHistory: number[] = [];
 const FPS_HISTORY_SIZE = 1000; // ~16 seconds of samples at 60fps
 let fpsUpdateInterval: ReturnType<typeof setInterval> | null = null;
-
-// State broadcast interval (for host)
-let stateBroadcastInterval: ReturnType<typeof setInterval> | null = null;
 
 // Selection state for the panel
 const selectionInfo = reactive<SelectionInfo>({
@@ -140,19 +138,35 @@ function startBackgroundBattle(): void {
 
   const rect = backgroundContainerRef.value.getBoundingClientRect();
 
+  // Create a GameServer for background mode
+  backgroundServer = new GameServer({
+    playerIds: [1, 2, 3, 4] as PlayerId[],
+    backgroundMode: true,
+    snapshotRate: DEFAULT_NETWORK_UPDATES_PER_SECOND,
+  });
+
+  const bgConnection = new LocalGameConnection(backgroundServer);
+  backgroundServer.start();
+
   backgroundGameInstance = createGame({
     parent: backgroundContainerRef.value,
     width: rect.width || window.innerWidth,
     height: rect.height || window.innerHeight,
-    playerIds: [1, 2],
+    playerIds: [1, 2, 3, 4] as PlayerId[],
     localPlayerId: 1,
-    networkRole: 'offline',
+    gameConnection: bgConnection,
+    mapWidth: BACKGROUND_MAP_WIDTH,
+    mapHeight: BACKGROUND_MAP_HEIGHT,
     backgroundMode: true,
   });
 }
 
 // Stop the background battle
 function stopBackgroundBattle(): void {
+  if (backgroundServer) {
+    backgroundServer.stop();
+    backgroundServer = null;
+  }
   if (backgroundGameInstance) {
     destroyGame(backgroundGameInstance);
     backgroundGameInstance = null;
@@ -189,14 +203,16 @@ function restartGame(): void {
   lobbyPlayers.value = [];
   roomCode.value = '';
 
+  // Stop current server
+  if (currentServer) {
+    currentServer.stop();
+    currentServer = null;
+  }
+  currentConnection = null;
+
   if (gameInstance) {
     destroyGame(gameInstance);
     gameInstance = null;
-  }
-
-  if (stateBroadcastInterval) {
-    clearInterval(stateBroadcastInterval);
-    stateBroadcastInterval = null;
   }
 
   // Restart the background battle
@@ -398,27 +414,6 @@ function setupNetworkCallbacks(): void {
   networkManager.onError = (error: string) => {
     lobbyError.value = error;
   };
-
-  // For clients: receive state updates
-  networkManager.onStateReceived = (state) => {
-    const scene = gameInstance?.getScene();
-    if (scene && networkRole.value === 'client') {
-      scene.applyNetworkState(state);
-
-      // Check for game over in received state
-      if (state.gameOver) {
-        gameOverWinner.value = state.gameOver.winnerId;
-      }
-    }
-  };
-
-  // For host: receive commands from clients
-  networkManager.onCommandReceived = (command, fromPlayerId) => {
-    const scene = gameInstance?.getScene();
-    if (scene && networkRole.value === 'host') {
-      scene.enqueueNetworkCommand(command, fromPlayerId);
-    }
-  };
 }
 
 function startGameWithPlayers(playerIds: PlayerId[]): void {
@@ -434,24 +429,56 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
     const rect = containerRef.value.getBoundingClientRect();
 
-    // Create game with player configuration (explicitly set backgroundMode: false)
+    let gameConnection: GameConnection;
+
+    if (networkRole.value === 'host' || networkRole.value === 'offline') {
+      // Create GameServer for host/offline
+      currentServer = new GameServer({
+        playerIds,
+        snapshotRate: networkUpdatesPerSecond.value,
+      });
+
+      // Create LocalGameConnection for the host client
+      const localConnection = new LocalGameConnection(currentServer);
+      gameConnection = localConnection;
+      currentConnection = localConnection;
+
+      // If hosting, also broadcast snapshots to remote clients
+      if (networkRole.value === 'host') {
+        currentServer.addSnapshotListener((state) => {
+          networkManager.broadcastState(state);
+        });
+
+        // Receive commands from remote clients
+        networkManager.onCommandReceived = (command, _fromPlayerId) => {
+          currentServer?.receiveCommand(command);
+        };
+      }
+
+      // Start the server
+      currentServer.start();
+    } else {
+      // Client: create RemoteGameConnection wrapping networkManager
+      const remoteConnection = new RemoteGameConnection();
+      gameConnection = remoteConnection;
+      currentConnection = remoteConnection;
+    }
+
+    // Create game with player configuration
     gameInstance = createGame({
-      parent: containerRef.value,
+      parent: containerRef.value!,
       width: rect.width || window.innerWidth,
       height: rect.height || window.innerHeight,
       playerIds,
       localPlayerId: localPlayerId.value,
-      networkRole: networkRole.value,
+      gameConnection,
+      mapWidth: MAP_WIDTH,
+      mapHeight: MAP_HEIGHT,
       backgroundMode: false,
     });
 
     // Setup scene callbacks
     setupSceneCallbacks();
-
-    // If host or offline, start broadcasting state (offline uses it for ClientViewState)
-    if (networkRole.value === 'host' || networkRole.value === 'offline') {
-      startStateBroadcast();
-    }
   }, 100);
 }
 
@@ -500,42 +527,11 @@ function setupSceneCallbacks(): void {
   }, 100);
 }
 
-function startStateBroadcast(): void {
-  // Clear existing interval if any
-  if (stateBroadcastInterval) {
-    clearInterval(stateBroadcastInterval);
-  }
-
-  // Broadcast state at current rate
-  const intervalMs = 1000 / networkUpdatesPerSecond.value;
-  stateBroadcastInterval = setInterval(() => {
-    const scene = gameInstance?.getScene();
-    if (scene && (networkRole.value === 'host' || networkRole.value === 'offline')) {
-      const state = scene.getSerializedState();
-      if (state) {
-        // Only broadcast to network in host mode, not offline
-        if (networkRole.value === 'host') {
-          networkManager.broadcastState(state);
-        }
-        // In both modes, getSerializedState already feeds ClientViewState
-      }
-    }
-  }, intervalMs);
-}
-
 function setNetworkUpdateRate(rate: number): void {
   networkUpdatesPerSecond.value = rate;
-  // Restart broadcast with new rate
-  if ((networkRole.value === 'host' || networkRole.value === 'offline') && gameStarted.value) {
-    startStateBroadcast();
-  }
-}
-
-function setHostViewMode(mode: HostViewMode): void {
-  const scene = gameInstance?.getScene();
-  if (scene && (networkRole.value === 'host' || networkRole.value === 'offline')) {
-    scene.setHostViewMode(mode);
-    hostViewMode.value = mode;
+  // Update the server's snapshot rate directly
+  if (currentServer) {
+    currentServer.setSnapshotRate(rate);
   }
 }
 
@@ -550,12 +546,15 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (stateBroadcastInterval) {
-    clearInterval(stateBroadcastInterval);
-  }
   if (fpsUpdateInterval) {
     clearInterval(fpsUpdateInterval);
   }
+  // Stop servers
+  if (currentServer) {
+    currentServer.stop();
+    currentServer = null;
+  }
+  currentConnection = null;
   networkManager.disconnect();
   stopBackgroundBattle();
   if (gameInstance) {
@@ -695,22 +694,6 @@ onUnmounted(() => {
       <div v-if="networkRole === 'host' || networkRole === 'offline'" class="ui-overlay top-right-below">
         <div class="host-options">
           <div class="host-options-title">Host Options</div>
-
-          <!-- View Mode Toggle -->
-          <div class="option-row">
-            <span class="option-label">View:</span>
-            <div class="option-buttons">
-              <button
-                v-for="opt in VIEW_MODE_OPTIONS"
-                :key="opt.value"
-                class="option-btn"
-                :class="{ active: hostViewMode === opt.value }"
-                @click="setHostViewMode(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
 
           <!-- Network Update Rate -->
           <div class="option-row">

@@ -4,134 +4,134 @@ import { WEAPON_STATS } from '../../config';
 // Weapon configurations using values from config.ts
 // Note: color is no longer used - colors are team-based in renderer
 export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
-  // Scout - rapid fire small projectiles
-  scout: {
-    id: 'scout',
+  // Gatling - rapid fire small projectiles (Jackal's weapon)
+  gatling: {
+    id: 'gatling',
     audioId: 'minigun',
-    damage: WEAPON_STATS.scout.damage,
-    range: WEAPON_STATS.scout.range,
-    cooldown: WEAPON_STATS.scout.cooldown,
-    projectileSpeed: WEAPON_STATS.scout.projectileSpeed,
+    damage: WEAPON_STATS.gatling.damage,
+    range: WEAPON_STATS.gatling.range,
+    cooldown: WEAPON_STATS.gatling.cooldown,
+    projectileSpeed: WEAPON_STATS.gatling.projectileSpeed,
     projectileRadius: 2,
     projectileLifespan: 400,
     color: 0xffffff, // Not used - team colors applied
   },
 
-  // Burst - fires 3 shots in quick succession
-  burst: {
-    id: 'burst',
+  // Pulse - fires 3 shots in quick succession (Mantis's weapon)
+  pulse: {
+    id: 'pulse',
     audioId: 'burst-rifle',
-    damage: WEAPON_STATS.burst.damage,
-    range: WEAPON_STATS.burst.range,
-    cooldown: WEAPON_STATS.burst.cooldown,
-    projectileSpeed: WEAPON_STATS.burst.projectileSpeed,
+    damage: WEAPON_STATS.pulse.damage,
+    range: WEAPON_STATS.pulse.range,
+    cooldown: WEAPON_STATS.pulse.cooldown,
+    projectileSpeed: WEAPON_STATS.pulse.projectileSpeed,
     projectileRadius: 3,
     projectileLifespan: 500,
-    burstCount: WEAPON_STATS.burst.burstCount,
-    burstDelay: WEAPON_STATS.burst.burstDelay,
+    burstCount: WEAPON_STATS.pulse.burstCount,
+    burstDelay: WEAPON_STATS.pulse.burstDelay,
     color: 0xffffff,
   },
 
-  // Daddy - continuous beam, deals damage while on target (daddy long legs unit)
-  daddy: {
-    id: 'daddy',
+  // Beam - continuous beam, deals damage while on target (Strider's weapon)
+  beam: {
+    id: 'beam',
     audioId: 'beam',
-    damage: WEAPON_STATS.daddy.damage,
-    range: WEAPON_STATS.daddy.range,
-    cooldown: WEAPON_STATS.daddy.cooldown,
-    beamDuration: WEAPON_STATS.daddy.beamDuration,
-    beamWidth: WEAPON_STATS.daddy.beamWidth,
-    turretTurnAccel: WEAPON_STATS.daddy.turretTurnAccel,
-    turretDrag: WEAPON_STATS.daddy.turretDrag,
+    damage: WEAPON_STATS.beam.damage,
+    range: WEAPON_STATS.beam.range,
+    cooldown: WEAPON_STATS.beam.cooldown,
+    beamDuration: WEAPON_STATS.beam.beamDuration,
+    beamWidth: WEAPON_STATS.beam.beamWidth,
+    turretTurnAccel: WEAPON_STATS.beam.turretTurnAccel,
+    turretDrag: WEAPON_STATS.beam.turretDrag,
     color: 0xffffff,
   },
 
-  // Brawl - shotgun spread, multiple pellets
-  brawl: {
-    id: 'brawl',
-    audioId: 'shotgun',
-    damage: WEAPON_STATS.brawl.damage,
-    range: WEAPON_STATS.brawl.range,
-    cooldown: WEAPON_STATS.brawl.cooldown,
-    projectileSpeed: WEAPON_STATS.brawl.projectileSpeed,
-    projectileRadius: 4,
-    projectileLifespan: 300,
-    pelletCount: WEAPON_STATS.brawl.pelletCount,
-    spreadAngle: Math.PI / 5,
-    color: 0xffffff,
-  },
-
-  // Shotgun - splash damage artillery
+  // Shotgun - spread pellets, multiple pellets (Badger's weapon)
   shotgun: {
     id: 'shotgun',
-    audioId: 'grenade',
+    audioId: 'shotgun',
     damage: WEAPON_STATS.shotgun.damage,
     range: WEAPON_STATS.shotgun.range,
     cooldown: WEAPON_STATS.shotgun.cooldown,
     projectileSpeed: WEAPON_STATS.shotgun.projectileSpeed,
+    projectileRadius: 4,
+    projectileLifespan: 300,
+    pelletCount: WEAPON_STATS.shotgun.pelletCount,
+    spreadAngle: Math.PI / 5,
+    color: 0xffffff,
+  },
+
+  // Mortar - splash damage artillery (Scorpion's weapon)
+  mortar: {
+    id: 'mortar',
+    audioId: 'grenade',
+    damage: WEAPON_STATS.mortar.damage,
+    range: WEAPON_STATS.mortar.range,
+    cooldown: WEAPON_STATS.mortar.cooldown,
+    projectileSpeed: WEAPON_STATS.mortar.projectileSpeed,
     projectileRadius: 7,
     projectileLifespan: 2000,
-    splashRadius: WEAPON_STATS.shotgun.splashRadius,
+    splashRadius: WEAPON_STATS.mortar.splashRadius,
     splashDamageFalloff: 0.4,
     color: 0xffffff,
   },
 
-  // Snipe - instant hitscan, pierces targets
-  snipe: {
-    id: 'snipe',
+  // Railgun - instant hitscan, pierces targets (Viper's weapon)
+  railgun: {
+    id: 'railgun',
     audioId: 'railgun',
-    damage: WEAPON_STATS.snipe.damage,
-    range: WEAPON_STATS.snipe.range,
-    cooldown: WEAPON_STATS.snipe.cooldown,
-    beamDuration: WEAPON_STATS.snipe.beamDuration,
-    beamWidth: WEAPON_STATS.snipe.beamWidth,
+    damage: WEAPON_STATS.railgun.damage,
+    range: WEAPON_STATS.railgun.range,
+    cooldown: WEAPON_STATS.railgun.cooldown,
+    beamDuration: WEAPON_STATS.railgun.beamDuration,
+    beamWidth: WEAPON_STATS.railgun.beamWidth,
     color: 0xffffff,
     piercing: true,
   },
 
-  // Tank - slow, heavy projectile
-  tank: {
-    id: 'tank',
+  // Cannon - slow, heavy projectile (Mammoth's weapon)
+  cannon: {
+    id: 'cannon',
     audioId: 'cannon',
-    damage: WEAPON_STATS.tank.damage,
-    range: WEAPON_STATS.tank.range,
-    cooldown: WEAPON_STATS.tank.cooldown,
-    projectileSpeed: WEAPON_STATS.tank.projectileSpeed,
+    damage: WEAPON_STATS.cannon.damage,
+    range: WEAPON_STATS.cannon.range,
+    cooldown: WEAPON_STATS.cannon.cooldown,
+    projectileSpeed: WEAPON_STATS.cannon.projectileSpeed,
     projectileRadius: 10,
     projectileLifespan: 1800,
     color: 0xffffff,
   },
 
-  // D-gun - Commander's special weapon, destroys everything
-  dgun: {
-    id: 'dgun',
+  // Disruptor - Commander's special weapon, destroys everything
+  disruptor: {
+    id: 'disruptor',
     audioId: 'cannon',
-    damage: WEAPON_STATS.dgun.damage,
-    range: WEAPON_STATS.dgun.range,
+    damage: WEAPON_STATS.disruptor.damage,
+    range: WEAPON_STATS.disruptor.range,
     cooldown: 0,
-    projectileSpeed: WEAPON_STATS.dgun.projectileSpeed,
+    projectileSpeed: WEAPON_STATS.disruptor.projectileSpeed,
     projectileRadius: 25,
     projectileLifespan: 2000,
     color: 0xff8800,
-    splashRadius: WEAPON_STATS.dgun.splashRadius,
+    splashRadius: WEAPON_STATS.disruptor.splashRadius,
     splashDamageFalloff: 1, // Full damage at edge (no falloff)
     piercing: true,
   },
 
-  // Insect - Continuous pie-slice wave weapon with expanding/contracting effect
+  // Sonic - Continuous pie-slice wave weapon (Cricket's weapon)
   // Damages all enemies within the slice, no projectiles created
-  insect: {
-    id: 'insect',
+  sonic: {
+    id: 'sonic',
     audioId: 'sonic-wave',
-    damage: WEAPON_STATS.insect.damage,
-    range: WEAPON_STATS.insect.range,
-    cooldown: WEAPON_STATS.insect.cooldown,
-    turretTurnAccel: WEAPON_STATS.insect.turretTurnAccel,
-    turretDrag: WEAPON_STATS.insect.turretDrag,
-    waveAngleIdle: WEAPON_STATS.insect.waveAngleIdle,
-    waveAngleAttack: WEAPON_STATS.insect.waveAngleAttack,
-    waveTransitionTime: WEAPON_STATS.insect.waveTransitionTime,
-    pullPower: WEAPON_STATS.insect.pullPower,
+    damage: WEAPON_STATS.sonic.damage,
+    range: WEAPON_STATS.sonic.range,
+    cooldown: WEAPON_STATS.sonic.cooldown,
+    turretTurnAccel: WEAPON_STATS.sonic.turretTurnAccel,
+    turretDrag: WEAPON_STATS.sonic.turretDrag,
+    waveAngleIdle: WEAPON_STATS.sonic.waveAngleIdle,
+    waveAngleAttack: WEAPON_STATS.sonic.waveAngleAttack,
+    waveTransitionTime: WEAPON_STATS.sonic.waveTransitionTime,
+    pullPower: WEAPON_STATS.sonic.pullPower,
     isWaveWeapon: true,
     color: 0xffffff,
   },
