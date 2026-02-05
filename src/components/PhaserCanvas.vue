@@ -72,6 +72,7 @@ const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
 const networkUpdatesPerSecond = ref(DEFAULT_NETWORK_UPDATES_PER_SECOND);
+const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(getEffectiveQuality());
 const renderMode = ref<RenderMode>(getRenderMode());
@@ -147,6 +148,7 @@ function startBackgroundBattle(): void {
 
   const bgConnection = new LocalGameConnection(backgroundServer);
   backgroundServer.start();
+  hasServer.value = true;
 
   backgroundGameInstance = createGame({
     parent: backgroundContainerRef.value,
@@ -171,6 +173,10 @@ function stopBackgroundBattle(): void {
     destroyGame(backgroundGameInstance);
     backgroundGameInstance = null;
   }
+  // Only clear hasServer if there's no game server either
+  if (!currentServer) {
+    hasServer.value = false;
+  }
 }
 
 // Show player toggle only in single-player mode (offline or hosting alone)
@@ -179,6 +185,9 @@ const showPlayerToggle = computed(() => {
   const canToggle = networkRole.value === 'offline' || (networkRole.value === 'host' && isSinglePlayer);
   return gameStarted.value && canToggle;
 });
+
+// Show server controls when we own a server (host, offline, or background demo)
+const showServerControls = computed(() => hasServer.value);
 
 function togglePlayer(): void {
   const scene = gameInstance?.getScene();
@@ -209,6 +218,7 @@ function restartGame(): void {
     currentServer = null;
   }
   currentConnection = null;
+  hasServer.value = false;
 
   if (gameInstance) {
     destroyGame(gameInstance);
@@ -457,6 +467,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
       // Start the server
       currentServer.start();
+      hasServer.value = true;
     } else {
       // Client: create RemoteGameConnection wrapping networkManager
       const remoteConnection = new RemoteGameConnection();
@@ -529,10 +540,17 @@ function setupSceneCallbacks(): void {
 
 function setNetworkUpdateRate(rate: number): void {
   networkUpdatesPerSecond.value = rate;
-  // Update the server's snapshot rate directly
+  // Update whichever server is active
   if (currentServer) {
     currentServer.setSnapshotRate(rate);
   }
+  if (backgroundServer) {
+    backgroundServer.setSnapshotRate(rate);
+  }
+}
+
+function dismissGameOver(): void {
+  gameOverWinner.value = null;
 }
 
 onMounted(() => {
@@ -599,72 +617,95 @@ onUnmounted(() => {
       ☰
     </button>
 
-    <!-- Graphics quality toggle (always visible) -->
-    <div class="graphics-options">
-      <div class="fps-stats">
-        <span class="fps-label">actual:</span>
-        <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
-        <span class="fps-label">avg</span>
-        <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
-        <span class="fps-label">worst</span>
-        <span class="fps-divider">|</span>
-        <span class="fps-label">phaser:</span>
-        <span class="fps-value">{{ meanFPS.toFixed(1) }}</span>
-        <span class="fps-label">avg</span>
-        <span class="fps-value">{{ lowFPS.toFixed(1) }}</span>
-        <span class="fps-label">low</span>
-        <span class="fps-divider">|</span>
-        <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
-        <span class="fps-label">zoom</span>
+    <!-- Bottom control bars (always visible) -->
+    <div class="bottom-controls">
+      <!-- SERVER CONTROLS (visible when we own a server) -->
+      <div v-if="showServerControls" class="control-bar server-bar">
+        <span class="bar-label server-label">SERVER</span>
+        <div class="bar-divider"></div>
+        <span class="control-label">Updates/sec:</span>
+        <div class="button-group">
+          <button
+            v-for="rate in UPDATE_RATE_OPTIONS"
+            :key="rate"
+            class="control-btn"
+            :class="{ active: networkUpdatesPerSecond === rate }"
+            @click="setNetworkUpdateRate(rate)"
+          >
+            {{ rate }}
+          </button>
+        </div>
       </div>
-      <div class="gfx-divider"></div>
-      <span class="graphics-label">Detail:</span>
-      <button
-        class="graphics-btn"
-        :class="{ active: graphicsQuality === 'auto' }"
-        @click="changeGraphicsQuality('auto')"
-      >
-        Auto
-      </button>
-      <div class="button-group">
+
+      <!-- CLIENT CONTROLS (always visible) -->
+      <div class="control-bar client-bar">
+        <span class="bar-label client-label">CLIENT</span>
+        <div class="bar-divider"></div>
+        <div class="fps-stats">
+          <span class="fps-label">actual:</span>
+          <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
+          <span class="fps-label">worst</span>
+          <span class="fps-divider">|</span>
+          <span class="fps-label">phaser:</span>
+          <span class="fps-value">{{ meanFPS.toFixed(1) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ lowFPS.toFixed(1) }}</span>
+          <span class="fps-label">low</span>
+          <span class="fps-divider">|</span>
+          <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
+          <span class="fps-label">zoom</span>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">Detail:</span>
         <button
-          v-for="opt in GRAPHICS_QUALITY_LEVELS"
-          :key="opt.value"
-          class="graphics-btn"
-          :class="{
-            active: graphicsQuality === opt.value,
-            'active-level': effectiveQuality === opt.value && graphicsQuality !== opt.value
-          }"
-          @click="changeGraphicsQuality(opt.value)"
+          class="control-btn"
+          :class="{ active: graphicsQuality === 'auto' }"
+          @click="changeGraphicsQuality('auto')"
         >
-          {{ opt.label }}
+          Auto
         </button>
-      </div>
-      <div class="gfx-divider"></div>
-      <span class="graphics-label">Render:</span>
-      <div class="button-group">
-        <button
-          v-for="opt in RENDER_OPTIONS"
-          :key="opt.value"
-          class="graphics-btn"
-          :class="{ active: renderMode === opt.value }"
-          @click="changeRenderMode(opt.value)"
-        >
-          {{ opt.label }}
-        </button>
-      </div>
-      <div class="gfx-divider"></div>
-      <span class="graphics-label">Audio:</span>
-      <div class="button-group">
-        <button
-          v-for="opt in AUDIO_OPTIONS"
-          :key="opt.value.toString()"
-          class="graphics-btn"
-          :class="{ active: audioEnabled === opt.value }"
-          @click="setAudioEnabled(opt.value)"
-        >
-          {{ opt.label }}
-        </button>
+        <div class="button-group">
+          <button
+            v-for="opt in GRAPHICS_QUALITY_LEVELS"
+            :key="opt.value"
+            class="control-btn"
+            :class="{
+              active: graphicsQuality === opt.value,
+              'active-level': effectiveQuality === opt.value && graphicsQuality !== opt.value
+            }"
+            @click="changeGraphicsQuality(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">Render:</span>
+        <div class="button-group">
+          <button
+            v-for="opt in RENDER_OPTIONS"
+            :key="opt.value"
+            class="control-btn"
+            :class="{ active: renderMode === opt.value }"
+            @click="changeRenderMode(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">Audio:</span>
+        <div class="button-group">
+          <button
+            v-for="opt in AUDIO_OPTIONS"
+            :key="opt.value.toString()"
+            class="control-btn"
+            :class="{ active: audioEnabled === opt.value }"
+            @click="setAudioEnabled(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -690,29 +731,6 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Host Options (host and offline) -->
-      <div v-if="networkRole === 'host' || networkRole === 'offline'" class="ui-overlay top-right-below">
-        <div class="host-options">
-          <div class="host-options-title">Host Options</div>
-
-          <!-- Network Update Rate -->
-          <div class="option-row">
-            <span class="option-label">Updates/sec:</span>
-            <div class="option-buttons">
-              <button
-                v-for="rate in UPDATE_RATE_OPTIONS"
-                :key="rate"
-                class="option-btn"
-                :class="{ active: networkUpdatesPerSecond === rate }"
-                @click="setNetworkUpdateRate(rate)"
-              >
-                {{ rate }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Selection panel (bottom-left) -->
       <SelectionPanel :selection="selectionInfo" :actions="selectionActions" />
 
@@ -720,17 +738,19 @@ onUnmounted(() => {
       <Minimap :data="minimapData" @click="handleMinimapClick" />
     </template>
 
-    <!-- Game Over Modal -->
-    <div v-if="gameOverWinner !== null" class="game-over-modal">
-      <div class="game-over-content">
+    <!-- Game Over Banner (dismissible, game keeps running) -->
+    <div v-if="gameOverWinner !== null" class="game-over-banner" @click="dismissGameOver">
+      <div class="game-over-content" @click.stop>
         <h1 class="winner-text" :style="{ color: getPlayerColor(gameOverWinner) }">
           {{ getPlayerName(gameOverWinner).toUpperCase() }} WINS!
         </h1>
         <p class="loser-text">
           All other commanders were destroyed
         </p>
-        <p class="restart-hint">Press R to return to lobby</p>
-        <button class="restart-btn" @click="restartGame">Return to Lobby</button>
+        <div class="game-over-actions">
+          <button class="restart-btn" @click="restartGame">Return to Lobby</button>
+          <button class="dismiss-btn" @click="dismissGameOver">Continue Watching</button>
+        </div>
       </div>
     </div>
   </div>
@@ -813,18 +833,19 @@ onUnmounted(() => {
   opacity: 0.6;
 }
 
-/* Game Over Modal */
-.game-over-modal {
+/* Game Over Banner */
+.game-over-banner {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
+  cursor: pointer;
 }
 
 .game-over-content {
@@ -834,6 +855,7 @@ onUnmounted(() => {
   border: 3px solid #4444aa;
   border-radius: 16px;
   box-shadow: 0 0 40px rgba(68, 68, 170, 0.5);
+  cursor: default;
 }
 
 .winner-text {
@@ -850,11 +872,10 @@ onUnmounted(() => {
   margin: 0 0 30px 0;
 }
 
-.restart-hint {
-  font-family: monospace;
-  font-size: 16px;
-  color: #888888;
-  margin: 0 0 20px 0;
+.game-over-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
 }
 
 .restart-btn {
@@ -878,78 +899,27 @@ onUnmounted(() => {
   transform: scale(0.98);
 }
 
-/* Host Options Panel */
-.ui-overlay.top-right-below {
-  position: absolute;
-  top: 60px;
-  right: 10px;
-  z-index: 1000;
-  pointer-events: none;
-}
-
-.host-options {
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px;
-  background: rgba(0, 0, 0, 0.85);
-  border: 2px solid #666;
-  border-radius: 8px;
+.dismiss-btn {
   font-family: monospace;
-  min-width: 200px;
-}
-
-.host-options-title {
-  color: #4488ff;
-  font-size: 11px;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #444;
-  margin-bottom: 2px;
-}
-
-.option-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.option-label {
-  color: #aaa;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.option-buttons {
-  display: flex;
-  gap: 4px;
-}
-
-.option-btn {
-  padding: 4px 10px;
+  font-size: 16px;
+  padding: 12px 32px;
   background: rgba(60, 60, 60, 0.9);
-  border: 1px solid #555;
-  border-radius: 4px;
   color: #ccc;
-  font-family: monospace;
-  font-size: 11px;
+  border: 1px solid #666;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
 }
 
-.option-btn:hover {
+.dismiss-btn:hover {
   background: rgba(80, 80, 80, 0.9);
-  border-color: #777;
+  border-color: #888;
+  color: white;
+  transform: scale(1.05);
 }
 
-.option-btn.active {
-  background: rgba(68, 68, 170, 0.9);
-  border-color: #6666cc;
-  color: white;
+.dismiss-btn:active {
+  transform: scale(0.98);
 }
 
 /* Spectate mode toggle button */
@@ -979,20 +949,75 @@ onUnmounted(() => {
   color: white;
 }
 
-/* Graphics quality options */
-.graphics-options {
+/* Bottom control bars */
+.bottom-controls {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  bottom: 0;
+  left: 0;
+  right: 0;
   z-index: 3001;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.control-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: rgba(0, 0, 0, 0.7);
   border: 1px solid #444;
-  border-radius: 6px;
   font-family: monospace;
+  pointer-events: auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.server-bar {
+  border-bottom: none;
+  border-radius: 0;
+}
+
+.client-bar {
+  border-radius: 0;
+}
+
+.bar-label {
+  font-size: 9px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.server-label {
+  color: #fff;
+  background: rgba(68, 68, 170, 0.6);
+  border: 1px solid #6666cc;
+}
+
+.client-label {
+  color: #fff;
+  background: rgba(68, 136, 68, 0.6);
+  border: 1px solid #6a6;
+}
+
+.bar-divider {
+  width: 1px;
+  height: 14px;
+  background: #444;
+  margin: 0 4px;
+}
+
+.control-label {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .fps-stats {
@@ -1021,43 +1046,25 @@ onUnmounted(() => {
   margin: 0 6px;
 }
 
-.gfx-divider {
-  width: 1px;
-  height: 14px;
-  background: #444;
-  margin: 0 6px;
-}
-
-.graphics-label {
-  color: #888;
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.graphics-buttons {
-  display: flex;
-  gap: 3px;
-}
-
 .button-group {
   display: flex;
 }
 
-.button-group .graphics-btn {
+.button-group .control-btn {
   border-radius: 0;
   margin-left: -1px;
 }
 
-.button-group .graphics-btn:first-child {
+.button-group .control-btn:first-child {
   border-radius: 3px 0 0 3px;
   margin-left: 0;
 }
 
-.button-group .graphics-btn:last-child {
+.button-group .control-btn:last-child {
   border-radius: 0 3px 3px 0;
 }
 
-.graphics-btn {
+.control-btn {
   padding: 3px 8px;
   background: rgba(60, 60, 60, 0.8);
   border: 1px solid #555;
@@ -1069,19 +1076,19 @@ onUnmounted(() => {
   transition: all 0.15s ease;
 }
 
-.graphics-btn:hover {
+.control-btn:hover {
   background: rgba(80, 80, 80, 0.9);
   border-color: #777;
   color: #ddd;
 }
 
-.graphics-btn.active {
+.control-btn.active {
   background: rgba(68, 136, 68, 0.9);
   border-color: #6a6;
   color: white;
 }
 
-.graphics-btn.active-level {
+.control-btn.active-level {
   color: white;
 }
 </style>

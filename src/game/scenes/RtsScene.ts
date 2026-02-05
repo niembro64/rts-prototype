@@ -440,12 +440,6 @@ export class RtsScene extends Phaser.Scene {
     // Update tread/wheel animations
     this.entityRenderer.updateTreads(delta);
 
-    // Skip game updates if game is over (not applicable in background mode)
-    if (this.isGameOver && !this.backgroundMode) {
-      this.entityRenderer.render();
-      return;
-    }
-
     // Update input
     if (this.inputManager) {
       this.inputManager.update(delta);

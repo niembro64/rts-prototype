@@ -1,11 +1,10 @@
 /**
  * ClientViewState - Manages the "client view" of the game state
  *
- * Uses SNAPSHOT INTERPOLATION for smooth rendering:
- * - Buffers recent snapshots from host
- * - Renders entities interpolated between past snapshots
- * - Units appear ~100-150ms behind host but motion is perfectly smooth
- * - This is the industry standard (Source Engine, Overwatch, etc.)
+ * Uses EMA (Exponential Moving Average) + DEAD RECKONING for smooth rendering:
+ * - On snapshot: store server's authoritative state as "targets"
+ * - Every frame: dead-reckon using velocity, then drift toward server targets
+ * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
 import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
@@ -13,32 +12,21 @@ import type { NetworkGameState, NetworkEntity } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
-import { lerp, lerpAngle, clamp } from '../math';
+import { lerp, lerpAngle } from '../math';
 
-// Snapshot buffer entry
-interface Snapshot {
-  timestamp: number;  // When this snapshot was received (client time)
-  tick: number;       // Host tick number
-  entities: Map<EntityId, NetworkEntity>;
-}
-
-// How far behind real-time to render (ms)
-// Higher = more buffer for network jitter, smoother but more latency
-// Lower = less latency but may run out of snapshots on lag spikes
-const INTERPOLATION_DELAY = 100;  // Render 100ms in the past
-
-// Maximum snapshots to buffer (oldest get dropped)
-const MAX_SNAPSHOTS = 30;
+// EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
+// Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
+const POSITION_DRIFT = 0.15;
+const VELOCITY_DRIFT = 0.25;
+const ROTATION_DRIFT = 0.15;
+const PROJECTILE_DRIFT = 0.3;
 
 export class ClientViewState {
-  // Snapshot buffer for interpolation (sorted by timestamp, oldest first)
-  private snapshots: Snapshot[] = [];
-
-  // Current render timestamp (client time - INTERPOLATION_DELAY)
-  private renderTimestamp: number = 0;
-
-  // Entity storage for rendering (interpolated positions)
+  // Entity storage for rendering (client-predicted positions)
   private entities: Map<EntityId, Entity> = new Map();
+
+  // Server target state — latest authoritative snapshot per entity
+  private serverTargets: Map<EntityId, NetworkEntity> = new Map();
 
   // Current spray targets for rendering
   private sprayTargets: SprayTarget[] = [];
@@ -55,11 +43,7 @@ export class ClientViewState {
   // Selection state (synced from main view)
   private selectedIds: Set<EntityId> = new Set();
 
-  // Client time when we started (for timestamp calculation)
-  private startTime: number = performance.now();
-
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
-  // Avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
   private cachedProjectiles: Entity[] = [];
@@ -67,12 +51,10 @@ export class ClientViewState {
 
   constructor() {}
 
-  // Mark caches as needing rebuild
   private invalidateCaches(): void {
     this.cachesDirty = true;
   }
 
-  // Rebuild caches if dirty
   private rebuildCachesIfNeeded(): void {
     if (!this.cachesDirty) return;
 
@@ -98,39 +80,48 @@ export class ClientViewState {
   }
 
   /**
-   * Get current client time in ms
-   */
-  private getClientTime(): number {
-    return performance.now() - this.startTime;
-  }
-
-  /**
-   * Apply received network state - stores snapshot in buffer
+   * Apply received network state — store server targets, snap non-visual state.
+   * Visual blending toward these targets happens in applyPrediction() each frame.
    */
   applyNetworkState(state: NetworkGameState): void {
     this.currentTick = state.tick;
 
-    // Create snapshot with current timestamp
-    const snapshot: Snapshot = {
-      timestamp: this.getClientTime(),
-      tick: state.tick,
-      entities: new Map(),
-    };
+    const serverIds = new Set<EntityId>();
 
-    // Store all entity data
     for (const netEntity of state.entities) {
-      snapshot.entities.set(netEntity.id, netEntity);
+      serverIds.add(netEntity.id);
+
+      // Store as server target for per-frame drifting
+      this.serverTargets.set(netEntity.id, netEntity);
+
+      const existing = this.entities.get(netEntity.id);
+
+      if (!existing) {
+        // New entity — create at server position
+        const newEntity = createEntityFromNetwork(netEntity);
+        if (newEntity) {
+          if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
+            newEntity.selectable.selected = true;
+          }
+          this.entities.set(netEntity.id, newEntity);
+        }
+      } else {
+        // Existing entity — snap non-visual state immediately
+        this.snapNonVisualState(existing, netEntity);
+      }
     }
 
-    // Add to buffer
-    this.snapshots.push(snapshot);
-
-    // Trim old snapshots
-    while (this.snapshots.length > MAX_SNAPSHOTS) {
-      this.snapshots.shift();
+    // Remove entities no longer on the server
+    for (const [id] of this.entities) {
+      if (!serverIds.has(id)) {
+        this.entities.delete(id);
+        this.serverTargets.delete(id);
+      }
     }
 
-    // Update economy state (immediate, not interpolated)
+    this.invalidateCaches();
+
+    // Update economy state (immediate)
     for (const [playerIdStr, eco] of Object.entries(state.economy)) {
       const playerId = parseInt(playerIdStr) as PlayerId;
       economyManager.setEconomyState(playerId, eco);
@@ -165,189 +156,18 @@ export class ClientViewState {
   }
 
   /**
-   * Update interpolated entity positions for rendering
-   * Called every frame with delta time
+   * Snap non-visual state (hp, actions, targeting, building/factory fields).
+   * These don't need smooth blending — they should reflect server truth immediately.
    */
-  applyPrediction(_deltaMs: number): void {
-    // Advance render timestamp (deltaMs not used - we use wall clock time)
-    this.renderTimestamp = this.getClientTime() - INTERPOLATION_DELAY;
-
-    // Need at least 2 snapshots to interpolate
-    if (this.snapshots.length < 2) {
-      // Not enough data - just use latest snapshot if available
-      if (this.snapshots.length === 1) {
-        this.applySnapshotDirect(this.snapshots[0]);
-      }
-      return;
-    }
-
-    // Find the two snapshots to interpolate between
-    // We want: snapshot1.timestamp <= renderTimestamp <= snapshot2.timestamp
-    let snapshot1: Snapshot | null = null;
-    let snapshot2: Snapshot | null = null;
-
-    for (let i = 0; i < this.snapshots.length - 1; i++) {
-      if (this.snapshots[i].timestamp <= this.renderTimestamp &&
-          this.snapshots[i + 1].timestamp >= this.renderTimestamp) {
-        snapshot1 = this.snapshots[i];
-        snapshot2 = this.snapshots[i + 1];
-        break;
-      }
-    }
-
-    // If render time is before all snapshots, use oldest
-    if (!snapshot1 && this.renderTimestamp < this.snapshots[0].timestamp) {
-      this.applySnapshotDirect(this.snapshots[0]);
-      return;
-    }
-
-    // If render time is after all snapshots, extrapolate from last two
-    if (!snapshot1) {
-      snapshot1 = this.snapshots[this.snapshots.length - 2];
-      snapshot2 = this.snapshots[this.snapshots.length - 1];
-    }
-
-    // Calculate interpolation factor (0 = snapshot1, 1 = snapshot2)
-    const timeDiff = snapshot2!.timestamp - snapshot1!.timestamp;
-    let t = timeDiff > 0 ? (this.renderTimestamp - snapshot1!.timestamp) / timeDiff : 0;
-
-    // Clamp to [0, 1.5] - allow slight extrapolation if we're ahead
-    t = clamp(t, 0, 1.5);
-
-    // Interpolate all entities
-    this.interpolateSnapshots(snapshot1!, snapshot2!, t);
-  }
-
-  /**
-   * Apply a snapshot directly (no interpolation)
-   */
-  private applySnapshotDirect(snapshot: Snapshot): void {
-    const existingIds = new Set<EntityId>();
-
-    for (const [id, netEntity] of snapshot.entities) {
-      existingIds.add(id);
-      const existing = this.entities.get(id);
-
-      if (!existing) {
-        const newEntity = createEntityFromNetwork(netEntity);
-        if (newEntity) {
-          if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
-            newEntity.selectable.selected = true;
-          }
-          this.entities.set(id, newEntity);
-        }
-      } else {
-        this.updateEntityDirect(existing, netEntity);
-      }
-    }
-
-    // Remove entities no longer in snapshot
-    for (const [id] of this.entities) {
-      if (!existingIds.has(id)) {
-        this.entities.delete(id);
-      }
-    }
-
-    // Invalidate caches since entities may have changed
-    this.invalidateCaches();
-  }
-
-  /**
-   * Interpolate between two snapshots
-   */
-  private interpolateSnapshots(snap1: Snapshot, snap2: Snapshot, t: number): void {
-    const existingIds = new Set<EntityId>();
-
-    // Process all entities that exist in either snapshot
-    const allEntityIds = new Set([...snap1.entities.keys(), ...snap2.entities.keys()]);
-
-    for (const id of allEntityIds) {
-      existingIds.add(id);
-      const net1 = snap1.entities.get(id);
-      const net2 = snap2.entities.get(id);
-
-      const existing = this.entities.get(id);
-
-      if (!net1 && net2) {
-        // Entity appeared in snap2 - create it at snap2 position
-        if (!existing) {
-          const newEntity = createEntityFromNetwork(net2);
-          if (newEntity) {
-            if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
-              newEntity.selectable.selected = true;
-            }
-            this.entities.set(id, newEntity);
-          }
-        } else {
-          this.updateEntityDirect(existing, net2);
-        }
-      } else if (net1 && !net2) {
-        // Entity disappeared in snap2 - keep showing at snap1 position until it's gone
-        if (!existing) {
-          const newEntity = createEntityFromNetwork(net1);
-          if (newEntity) {
-            this.entities.set(id, newEntity);
-          }
-        } else {
-          this.updateEntityDirect(existing, net1);
-        }
-      } else if (net1 && net2) {
-        // Entity exists in both - interpolate!
-        if (!existing) {
-          const newEntity = createEntityFromNetwork(net2);
-          if (newEntity) {
-            if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
-              newEntity.selectable.selected = true;
-            }
-            this.entities.set(id, newEntity);
-            this.interpolateEntity(newEntity, net1, net2, t);
-          }
-        } else {
-          this.interpolateEntity(existing, net1, net2, t);
-        }
-      }
-    }
-
-    // Remove entities no longer in either snapshot
-    for (const [id] of this.entities) {
-      if (!existingIds.has(id)) {
-        this.entities.delete(id);
-      }
-    }
-
-    // Invalidate caches since entities may have changed
-    this.invalidateCaches();
-  }
-
-  /**
-   * Interpolate a single entity between two network states
-   */
-  private interpolateEntity(entity: Entity, net1: NetworkEntity, net2: NetworkEntity, t: number): void {
-    // Interpolate position
-    entity.transform.x = lerp(net1.x, net2.x, t);
-    entity.transform.y = lerp(net1.y, net2.y, t);
-
-    // Interpolate rotation (handle angle wrapping)
-    entity.transform.rotation = lerpAngle(net1.rotation, net2.rotation, t);
-
-    // Update unit fields (use snap2 for non-interpolated values)
+  private snapNonVisualState(entity: Entity, server: NetworkEntity): void {
     if (entity.unit) {
-      entity.unit.hp = net2.hp ?? entity.unit.hp;
-      entity.unit.maxHp = net2.maxHp ?? entity.unit.maxHp;
-      entity.unit.collisionRadius = net2.collisionRadius ?? entity.unit.collisionRadius;
-      entity.unit.moveSpeed = net2.moveSpeed ?? entity.unit.moveSpeed;
+      entity.unit.hp = server.hp ?? entity.unit.hp;
+      entity.unit.maxHp = server.maxHp ?? entity.unit.maxHp;
+      entity.unit.collisionRadius = server.collisionRadius ?? entity.unit.collisionRadius;
+      entity.unit.moveSpeed = server.moveSpeed ?? entity.unit.moveSpeed;
 
-      // Interpolate velocity for smooth visual effects
-      const vel1X = net1.velocityX ?? 0;
-      const vel1Y = net1.velocityY ?? 0;
-      const vel2X = net2.velocityX ?? 0;
-      const vel2Y = net2.velocityY ?? 0;
-      entity.unit.velocityX = lerp(vel1X, vel2X, t);
-      entity.unit.velocityY = lerp(vel1Y, vel2Y, t);
-
-      // Update action queue (use latest)
-      if (net2.actions) {
-        entity.unit.actions = net2.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
+      if (server.actions) {
+        entity.unit.actions = server.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
           type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
           x: na.x!,
           y: na.y!,
@@ -358,56 +178,39 @@ export class ClientViewState {
           buildingId: na.buildingId,
         }));
       }
-    }
 
-    // Update weapons (use latest, interpolate turret rotation)
-    if (net2.weapons && net2.weapons.length > 0 && entity.weapons) {
-      for (let i = 0; i < net2.weapons.length && i < entity.weapons.length; i++) {
-        const w1 = net1.weapons?.[i];
-        const w2 = net2.weapons[i];
-
-        entity.weapons[i].targetEntityId = w2.targetId ?? null;
-        entity.weapons[i].isFiring = w2.isFiring;
-        entity.weapons[i].currentSliceAngle = w2.currentSliceAngle;
-
-        // Interpolate turret rotation and sync angular velocity
-        if (w1 && w2) {
-          entity.weapons[i].turretRotation = lerpAngle(w1.turretRotation, w2.turretRotation, t);
-          entity.weapons[i].turretAngularVelocity = lerp(w1.turretAngularVelocity, w2.turretAngularVelocity, t);
-        } else {
-          entity.weapons[i].turretRotation = w2.turretRotation;
-          entity.weapons[i].turretAngularVelocity = w2.turretAngularVelocity;
+      // Snap weapon targeting state (turret rotation/velocity blended in applyPrediction)
+      if (server.weapons && server.weapons.length > 0 && entity.weapons) {
+        for (let i = 0; i < server.weapons.length && i < entity.weapons.length; i++) {
+          entity.weapons[i].targetEntityId = server.weapons[i].targetId ?? null;
+          entity.weapons[i].isFiring = server.weapons[i].isFiring;
+          entity.weapons[i].currentSliceAngle = server.weapons[i].currentSliceAngle;
         }
+      }
+
+      if (entity.builder && server.buildTargetId !== undefined) {
+        entity.builder.currentBuildTarget = server.buildTargetId;
       }
     }
 
-    // Update builder state
-    if (entity.builder && net2.buildTargetId !== undefined) {
-      entity.builder.currentBuildTarget = net2.buildTargetId;
-    }
-
-    // Update building fields
     if (entity.building) {
-      entity.building.hp = net2.hp ?? entity.building.hp;
-      entity.building.maxHp = net2.maxHp ?? entity.building.maxHp;
+      entity.building.hp = server.hp ?? entity.building.hp;
+      entity.building.maxHp = server.maxHp ?? entity.building.maxHp;
     }
 
     if (entity.buildable) {
-      // Interpolate build progress for smooth construction visual
-      entity.buildable.buildProgress = lerp(net1.buildProgress ?? 0, net2.buildProgress ?? 0, t);
-      entity.buildable.isComplete = net2.isComplete ?? entity.buildable.isComplete;
+      entity.buildable.buildProgress = server.buildProgress ?? entity.buildable.buildProgress;
+      entity.buildable.isComplete = server.isComplete ?? entity.buildable.isComplete;
     }
 
     if (entity.factory) {
-      entity.factory.buildQueue = net2.buildQueue ?? entity.factory.buildQueue;
-      // Interpolate factory progress
-      entity.factory.currentBuildProgress = lerp(net1.factoryProgress ?? 0, net2.factoryProgress ?? 0, t);
-      entity.factory.isProducing = net2.isProducing ?? entity.factory.isProducing;
-      if (net2.rallyX !== undefined) entity.factory.rallyX = net2.rallyX;
-      if (net2.rallyY !== undefined) entity.factory.rallyY = net2.rallyY;
-      // Update factory waypoints
-      if (net2.factoryWaypoints) {
-        entity.factory.waypoints = net2.factoryWaypoints.map(wp => ({
+      entity.factory.buildQueue = server.buildQueue ?? entity.factory.buildQueue;
+      entity.factory.currentBuildProgress = server.factoryProgress ?? entity.factory.currentBuildProgress;
+      entity.factory.isProducing = server.isProducing ?? entity.factory.isProducing;
+      if (server.rallyX !== undefined) entity.factory.rallyX = server.rallyX;
+      if (server.rallyY !== undefined) entity.factory.rallyY = server.rallyY;
+      if (server.factoryWaypoints) {
+        entity.factory.waypoints = server.factoryWaypoints.map(wp => ({
           x: wp.x,
           y: wp.y,
           type: wp.type as 'move' | 'fight' | 'patrol',
@@ -415,114 +218,90 @@ export class ClientViewState {
       }
     }
 
-    // Update projectile fields
+    // Beam endpoints — snap (they track source/target positions)
     if (entity.projectile) {
-      // Interpolate projectile velocity
-      entity.projectile.velocityX = lerp(net1.velocityX ?? 0, net2.velocityX ?? 0, t);
-      entity.projectile.velocityY = lerp(net1.velocityY ?? 0, net2.velocityY ?? 0, t);
-
-      // Interpolate beam positions
-      if (net1.beamStartX !== undefined && net2.beamStartX !== undefined) {
-        entity.projectile.startX = lerp(net1.beamStartX, net2.beamStartX, t);
-      } else if (net2.beamStartX !== undefined) {
-        entity.projectile.startX = net2.beamStartX;
-      }
-      if (net1.beamStartY !== undefined && net2.beamStartY !== undefined) {
-        entity.projectile.startY = lerp(net1.beamStartY, net2.beamStartY, t);
-      } else if (net2.beamStartY !== undefined) {
-        entity.projectile.startY = net2.beamStartY;
-      }
-      if (net1.beamEndX !== undefined && net2.beamEndX !== undefined) {
-        entity.projectile.endX = lerp(net1.beamEndX, net2.beamEndX, t);
-      } else if (net2.beamEndX !== undefined) {
-        entity.projectile.endX = net2.beamEndX;
-      }
-      if (net1.beamEndY !== undefined && net2.beamEndY !== undefined) {
-        entity.projectile.endY = lerp(net1.beamEndY, net2.beamEndY, t);
-      } else if (net2.beamEndY !== undefined) {
-        entity.projectile.endY = net2.beamEndY;
-      }
+      if (server.beamStartX !== undefined) entity.projectile.startX = server.beamStartX;
+      if (server.beamStartY !== undefined) entity.projectile.startY = server.beamStartY;
+      if (server.beamEndX !== undefined) entity.projectile.endX = server.beamEndX;
+      if (server.beamEndY !== undefined) entity.projectile.endY = server.beamEndY;
     }
   }
 
   /**
-   * Update entity directly from network data (no interpolation)
+   * Called every frame. Two steps:
+   * 1. Dead-reckon: advance positions using velocity
+   * 2. Drift: EMA blend position/velocity/rotation toward server targets
    */
-  private updateEntityDirect(entity: Entity, netEntity: NetworkEntity): void {
-    entity.transform.x = netEntity.x;
-    entity.transform.y = netEntity.y;
-    entity.transform.rotation = netEntity.rotation;
+  applyPrediction(deltaMs: number): void {
+    const dt = deltaMs / 1000;
 
-    if (entity.unit) {
-      entity.unit.hp = netEntity.hp ?? entity.unit.hp;
-      entity.unit.maxHp = netEntity.maxHp ?? entity.unit.maxHp;
-      entity.unit.collisionRadius = netEntity.collisionRadius ?? entity.unit.collisionRadius;
-      entity.unit.moveSpeed = netEntity.moveSpeed ?? entity.unit.moveSpeed;
-      entity.unit.velocityX = netEntity.velocityX ?? 0;
-      entity.unit.velocityY = netEntity.velocityY ?? 0;
+    // Frame-rate independent blend factors
+    const posDrift = 1 - Math.pow(1 - POSITION_DRIFT, dt * 60);
+    const velDrift = 1 - Math.pow(1 - VELOCITY_DRIFT, dt * 60);
+    const rotDrift = 1 - Math.pow(1 - ROTATION_DRIFT, dt * 60);
+    const projDrift = 1 - Math.pow(1 - PROJECTILE_DRIFT, dt * 60);
 
-      if (netEntity.actions) {
-        entity.unit.actions = netEntity.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
-          type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
-          x: na.x!,
-          y: na.y!,
-          targetId: na.targetId,
-          buildingType: na.buildingType as BuildingType | undefined,
-          gridX: na.gridX,
-          gridY: na.gridY,
-          buildingId: na.buildingId,
-        }));
+    for (const entity of this.entities.values()) {
+      const target = this.serverTargets.get(entity.id);
+
+      if (entity.type === 'unit' && entity.unit) {
+        // Step 1: Dead-reckon using current velocity
+        const vx = entity.unit.velocityX ?? 0;
+        const vy = entity.unit.velocityY ?? 0;
+        entity.transform.x += vx * dt;
+        entity.transform.y += vy * dt;
+
+        // Step 2: Drift toward server targets
+        if (target) {
+          entity.transform.x = lerp(entity.transform.x, target.x, posDrift);
+          entity.transform.y = lerp(entity.transform.y, target.y, posDrift);
+          entity.transform.rotation = lerpAngle(entity.transform.rotation, target.rotation, rotDrift);
+
+          const serverVelX = target.velocityX ?? 0;
+          const serverVelY = target.velocityY ?? 0;
+          entity.unit.velocityX = lerp(vx, serverVelX, velDrift);
+          entity.unit.velocityY = lerp(vy, serverVelY, velDrift);
+        }
+
+        // Advance turret rotations using angular velocity + drift toward server
+        if (entity.weapons) {
+          for (let i = 0; i < entity.weapons.length; i++) {
+            const weapon = entity.weapons[i];
+            weapon.turretRotation += weapon.turretAngularVelocity * dt;
+
+            // Drift turret toward server target
+            const tw = target?.weapons?.[i];
+            if (tw) {
+              weapon.turretRotation = lerpAngle(weapon.turretRotation, tw.turretRotation, rotDrift);
+              weapon.turretAngularVelocity = lerp(weapon.turretAngularVelocity, tw.turretAngularVelocity, velDrift);
+            }
+          }
+        }
+      }
+
+      if (entity.type === 'projectile' && entity.projectile) {
+        // Step 1: Dead-reckon
+        entity.transform.x += entity.projectile.velocityX * dt;
+        entity.transform.y += entity.projectile.velocityY * dt;
+
+        // Step 2: Drift toward server targets
+        if (target) {
+          entity.transform.x = lerp(entity.transform.x, target.x, projDrift);
+          entity.transform.y = lerp(entity.transform.y, target.y, projDrift);
+          entity.projectile.velocityX = lerp(entity.projectile.velocityX, target.velocityX ?? 0, velDrift);
+          entity.projectile.velocityY = lerp(entity.projectile.velocityY, target.velocityY ?? 0, velDrift);
+        }
+      }
+
+      // Buildings don't move — snap position from target
+      if (entity.type === 'building' && target) {
+        entity.transform.x = target.x;
+        entity.transform.y = target.y;
+        entity.transform.rotation = target.rotation;
       }
     }
 
-    if (netEntity.weapons && netEntity.weapons.length > 0 && entity.weapons) {
-      for (let i = 0; i < netEntity.weapons.length && i < entity.weapons.length; i++) {
-        entity.weapons[i].targetEntityId = netEntity.weapons[i].targetId ?? null;
-        entity.weapons[i].turretRotation = netEntity.weapons[i].turretRotation;
-        entity.weapons[i].turretAngularVelocity = netEntity.weapons[i].turretAngularVelocity;
-        entity.weapons[i].isFiring = netEntity.weapons[i].isFiring;
-        entity.weapons[i].currentSliceAngle = netEntity.weapons[i].currentSliceAngle;
-      }
-    }
-
-    if (entity.builder && netEntity.buildTargetId !== undefined) {
-      entity.builder.currentBuildTarget = netEntity.buildTargetId;
-    }
-
-    if (entity.building) {
-      entity.building.hp = netEntity.hp ?? entity.building.hp;
-      entity.building.maxHp = netEntity.maxHp ?? entity.building.maxHp;
-    }
-
-    if (entity.buildable) {
-      entity.buildable.buildProgress = netEntity.buildProgress ?? entity.buildable.buildProgress;
-      entity.buildable.isComplete = netEntity.isComplete ?? entity.buildable.isComplete;
-    }
-
-    if (entity.factory) {
-      entity.factory.buildQueue = netEntity.buildQueue ?? entity.factory.buildQueue;
-      entity.factory.currentBuildProgress = netEntity.factoryProgress ?? entity.factory.currentBuildProgress;
-      entity.factory.isProducing = netEntity.isProducing ?? entity.factory.isProducing;
-      if (netEntity.rallyX !== undefined) entity.factory.rallyX = netEntity.rallyX;
-      if (netEntity.rallyY !== undefined) entity.factory.rallyY = netEntity.rallyY;
-      // Update factory waypoints
-      if (netEntity.factoryWaypoints) {
-        entity.factory.waypoints = netEntity.factoryWaypoints.map(wp => ({
-          x: wp.x,
-          y: wp.y,
-          type: wp.type as 'move' | 'fight' | 'patrol',
-        }));
-      }
-    }
-
-    if (entity.projectile) {
-      entity.projectile.velocityX = netEntity.velocityX ?? entity.projectile.velocityX;
-      entity.projectile.velocityY = netEntity.velocityY ?? entity.projectile.velocityY;
-      if (netEntity.beamStartX !== undefined) entity.projectile.startX = netEntity.beamStartX;
-      if (netEntity.beamStartY !== undefined) entity.projectile.startY = netEntity.beamStartY;
-      if (netEntity.beamEndX !== undefined) entity.projectile.endX = netEntity.beamEndX;
-      if (netEntity.beamEndY !== undefined) entity.projectile.endY = netEntity.beamEndY;
-    }
+    this.invalidateCaches();
   }
 
   // === Accessors for rendering and input ===
@@ -535,19 +314,16 @@ export class ClientViewState {
     return Array.from(this.entities.values());
   }
 
-  // Get all units (cached - DO NOT MODIFY returned array)
   getUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cachedUnits;
   }
 
-  // Get all buildings (cached - DO NOT MODIFY returned array)
   getBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cachedBuildings;
   }
 
-  // Get all projectiles (cached - DO NOT MODIFY returned array)
   getProjectiles(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cachedProjectiles;
@@ -664,11 +440,11 @@ export class ClientViewState {
 
   clear(): void {
     this.entities.clear();
-    this.snapshots = [];
+    this.serverTargets.clear();
     this.sprayTargets = [];
     this.pendingAudioEvents = [];
     this.gameOverWinnerId = null;
     this.selectedIds.clear();
-    this.renderTimestamp = 0;
+    this.invalidateCaches();
   }
 }
