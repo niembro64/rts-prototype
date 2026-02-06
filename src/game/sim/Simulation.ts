@@ -95,7 +95,7 @@ export class Simulation {
 
   // Get and clear pending audio events (for network broadcast)
   getAndClearAudioEvents(): AudioEvent[] {
-    const events = [...this.pendingAudioEvents];
+    const events = this.pendingAudioEvents;
     this.pendingAudioEvents = [];
     return events;
   }
@@ -273,13 +273,13 @@ export class Simulation {
 
     // Notify about dead units (for physics cleanup)
     // Pass deathContexts for directional explosion effects
-    if (collisionResult.deadUnitIds.length > 0 && this.onUnitDeath) {
-      this.onUnitDeath(collisionResult.deadUnitIds, collisionResult.deathContexts);
+    if (collisionResult.deadUnitIds.size > 0 && this.onUnitDeath) {
+      this.onUnitDeath([...collisionResult.deadUnitIds], collisionResult.deathContexts);
     }
 
     // Notify about dead buildings (for cleanup)
-    if (collisionResult.deadBuildingIds.length > 0 && this.onBuildingDeath) {
-      this.onBuildingDeath(collisionResult.deadBuildingIds);
+    if (collisionResult.deadBuildingIds.size > 0 && this.onBuildingDeath) {
+      this.onBuildingDeath([...collisionResult.deadBuildingIds]);
     }
 
     // Safety cleanup - remove any dead entities that slipped through

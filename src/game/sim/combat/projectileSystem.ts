@@ -292,8 +292,8 @@ export function checkProjectileCollisions(
   forceAccumulator?: ForceAccumulator
 ): CollisionResult {
   const projectilesToRemove: EntityId[] = [];
-  const unitsToRemove: EntityId[] = [];
-  const buildingsToRemove: EntityId[] = [];
+  const unitsToRemove = new Set<EntityId>();
+  const buildingsToRemove = new Set<EntityId>();
   const audioEvents: AudioEvent[] = [];
   const deathContexts: Map<EntityId, import('../damage/types').DeathContext> = new Map();
 
@@ -327,10 +327,10 @@ export function checkProjectileCollisions(
 
         // Track killed entities and merge death contexts
         for (const id of splashResult.killedUnitIds) {
-          if (!unitsToRemove.includes(id)) unitsToRemove.push(id);
+          unitsToRemove.add(id);
         }
         for (const id of splashResult.killedBuildingIds) {
-          if (!buildingsToRemove.includes(id)) buildingsToRemove.push(id);
+          buildingsToRemove.add(id);
         }
         // Merge death contexts from splash result
         for (const [id, ctx] of splashResult.deathContexts) {
@@ -435,7 +435,7 @@ export function checkProjectileCollisions(
 
       // Handle deaths and merge death contexts
       for (const id of result.killedUnitIds) {
-        if (!unitsToRemove.includes(id)) {
+        if (!unitsToRemove.has(id)) {
           const target = world.getEntity(id);
           let deathWeaponId: WeaponAudioId = 'minigun';
           const targetWeapons = target?.weapons ?? [];
@@ -465,11 +465,11 @@ export function checkProjectileCollisions(
               color: playerColor,
             } : undefined,
           });
-          unitsToRemove.push(id);
+          unitsToRemove.add(id);
         }
       }
       for (const id of result.killedBuildingIds) {
-        if (!buildingsToRemove.includes(id)) {
+        if (!buildingsToRemove.has(id)) {
           const building = world.getEntity(id);
           const playerId = building?.ownership?.playerId ?? 1;
           const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
@@ -490,7 +490,7 @@ export function checkProjectileCollisions(
               color: playerColor,
             },
           });
-          buildingsToRemove.push(id);
+          buildingsToRemove.add(id);
         }
       }
       // Merge death contexts from beam damage
@@ -563,10 +563,10 @@ export function checkProjectileCollisions(
 
         // Track splash kills and merge death contexts
         for (const id of splashResult.killedUnitIds) {
-          if (!unitsToRemove.includes(id)) unitsToRemove.push(id);
+          unitsToRemove.add(id);
         }
         for (const id of splashResult.killedBuildingIds) {
-          if (!buildingsToRemove.includes(id)) buildingsToRemove.push(id);
+          buildingsToRemove.add(id);
         }
         // Merge death contexts from splash
         for (const [id, ctx] of splashResult.deathContexts) {
@@ -576,7 +576,7 @@ export function checkProjectileCollisions(
 
       // Handle deaths from direct hit and merge death contexts
       for (const id of result.killedUnitIds) {
-        if (!unitsToRemove.includes(id)) {
+        if (!unitsToRemove.has(id)) {
           const target = world.getEntity(id);
           let deathWeaponId: WeaponAudioId = 'minigun';
           const targetWeapons = target?.weapons ?? [];
@@ -606,11 +606,11 @@ export function checkProjectileCollisions(
               color: playerColor,
             } : undefined,
           });
-          unitsToRemove.push(id);
+          unitsToRemove.add(id);
         }
       }
       for (const id of result.killedBuildingIds) {
-        if (!buildingsToRemove.includes(id)) {
+        if (!buildingsToRemove.has(id)) {
           const building = world.getEntity(id);
           const playerId = building?.ownership?.playerId ?? 1;
           const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
@@ -631,7 +631,7 @@ export function checkProjectileCollisions(
               color: playerColor,
             },
           });
-          buildingsToRemove.push(id);
+          buildingsToRemove.add(id);
         }
       }
       // Merge death contexts from direct hit

@@ -46,9 +46,11 @@ export class RtsScene extends Phaser.Scene {
   // Background mode (no input, no UI, endless battle)
   private backgroundMode: boolean = false;
 
-  // Frame delta tracking for accurate FPS measurement
-  private frameDeltaHistory: number[] = [];
+  // Frame delta tracking for accurate FPS measurement (ring buffer)
   private readonly FRAME_HISTORY_SIZE = 1000;
+  private frameDeltaHistory = new Float64Array(this.FRAME_HISTORY_SIZE);
+  private frameDeltaWriteIndex = 0;
+  private frameDeltaCount = 0;
 
   // UI update throttling
   private selectionDirty: boolean = true;
@@ -425,10 +427,11 @@ export class RtsScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    // Track frame delta for accurate FPS measurement
-    this.frameDeltaHistory.push(delta);
-    if (this.frameDeltaHistory.length > this.FRAME_HISTORY_SIZE) {
-      this.frameDeltaHistory.shift();
+    // Track frame delta for accurate FPS measurement (ring buffer)
+    this.frameDeltaHistory[this.frameDeltaWriteIndex] = delta;
+    this.frameDeltaWriteIndex = (this.frameDeltaWriteIndex + 1) % this.FRAME_HISTORY_SIZE;
+    if (this.frameDeltaCount < this.FRAME_HISTORY_SIZE) {
+      this.frameDeltaCount++;
     }
 
     // Update explosion effects
@@ -532,15 +535,21 @@ export class RtsScene extends Phaser.Scene {
    * Get frame delta statistics for accurate FPS measurement
    */
   public getFrameStats(): { avgFps: number; worstFps: number } {
-    if (this.frameDeltaHistory.length === 0) {
+    const count = this.frameDeltaCount;
+    if (count === 0) {
       return { avgFps: 0, worstFps: 0 };
     }
 
-    const avgDelta = this.frameDeltaHistory.reduce((a, b) => a + b, 0) / this.frameDeltaHistory.length;
-    const avgFps = 1000 / avgDelta;
+    let sum = 0;
+    let worst = 0;
+    for (let i = 0; i < count; i++) {
+      const d = this.frameDeltaHistory[i];
+      sum += d;
+      if (d > worst) worst = d;
+    }
 
-    const worstDelta = Math.max(...this.frameDeltaHistory);
-    const worstFps = 1000 / worstDelta;
+    const avgFps = 1000 / (sum / count);
+    const worstFps = 1000 / worst;
 
     return { avgFps, worstFps };
   }

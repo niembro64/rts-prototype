@@ -216,8 +216,8 @@ export class DamageSystem {
   private applyLineDamage(source: LineDamageSource): DamageResult {
     const result: DamageResult = {
       hitEntityIds: [],
-      killedUnitIds: [],
-      killedBuildingIds: [],
+      killedUnitIds: new Set(),
+      killedBuildingIds: new Set(),
       knockbacks: [],
       deathContexts: new Map(),
     };
@@ -341,8 +341,8 @@ export class DamageSystem {
   private applySweptDamage(source: SweptDamageSource): DamageResult {
     const result: DamageResult = {
       hitEntityIds: [],
-      killedUnitIds: [],
-      killedBuildingIds: [],
+      killedUnitIds: new Set(),
+      killedBuildingIds: new Set(),
       knockbacks: [],
       deathContexts: new Map(),
     };
@@ -467,8 +467,8 @@ export class DamageSystem {
   private applyAreaDamage(source: AreaDamageSource): DamageResult {
     const result: DamageResult = {
       hitEntityIds: [],
-      killedUnitIds: [],
-      killedBuildingIds: [],
+      killedUnitIds: new Set(),
+      killedBuildingIds: new Set(),
       knockbacks: [],
       deathContexts: new Map(),
     };
@@ -599,8 +599,8 @@ export class DamageSystem {
   ): void {
     if (entity.unit && entity.unit.hp > 0) {
       entity.unit.hp -= damage;
-      if (entity.unit.hp <= 0 && !result.killedUnitIds.includes(entity.id)) {
-        result.killedUnitIds.push(entity.id);
+      if (entity.unit.hp <= 0 && !result.killedUnitIds.has(entity.id)) {
+        result.killedUnitIds.add(entity.id);
         // Store death context for explosion effects
         if (deathContext) {
           result.deathContexts.set(entity.id, deathContext);
@@ -608,8 +608,8 @@ export class DamageSystem {
       }
     } else if (entity.building && entity.building.hp > 0) {
       entity.building.hp -= damage;
-      if (entity.building.hp <= 0 && !result.killedBuildingIds.includes(entity.id)) {
-        result.killedBuildingIds.push(entity.id);
+      if (entity.building.hp <= 0 && !result.killedBuildingIds.has(entity.id)) {
+        result.killedBuildingIds.add(entity.id);
       }
     }
   }

@@ -57,6 +57,9 @@ export class EntityRenderer {
   // Per-projectile random offsets for visual variety
   private beamRandomOffsets: Map<EntityId, BeamRandomOffsets> = new Map();
 
+  // Reusable Set for per-frame entity ID lookups (avoids allocating new Set + Array each frame)
+  private _reusableIdSet: Set<EntityId> = new Set();
+
   // Rendering mode flags
   private skipTurrets: boolean = false;
   private turretsOnly: boolean = false;
@@ -172,9 +175,12 @@ export class EntityRenderer {
       return;
     }
 
-    const existingIds = new Set(this.entitySource.getUnits().map((e) => e.id));
+    this._reusableIdSet.clear();
+    for (const e of this.entitySource.getUnits()) {
+      this._reusableIdSet.add(e.id);
+    }
     for (const id of this.arachnidLegs.keys()) {
-      if (!existingIds.has(id)) {
+      if (!this._reusableIdSet.has(id)) {
         this.arachnidLegs.delete(id);
       }
     }
@@ -250,12 +256,15 @@ export class EntityRenderer {
   }
 
   updateTreads(dtMs: number): void {
-    const existingIds = new Set(this.entitySource.getUnits().map((e) => e.id));
+    this._reusableIdSet.clear();
+    for (const e of this.entitySource.getUnits()) {
+      this._reusableIdSet.add(e.id);
+    }
     for (const id of this.tankTreads.keys()) {
-      if (!existingIds.has(id)) this.tankTreads.delete(id);
+      if (!this._reusableIdSet.has(id)) this.tankTreads.delete(id);
     }
     for (const id of this.vehicleWheels.keys()) {
-      if (!existingIds.has(id)) this.vehicleWheels.delete(id);
+      if (!this._reusableIdSet.has(id)) this.vehicleWheels.delete(id);
     }
 
     for (const entity of this.entitySource.getUnits()) {
@@ -455,9 +464,12 @@ export class EntityRenderer {
     this.turretsOnly = false;
 
     // 6. Projectiles
-    const existingProjectileIds = new Set(this.visibleProjectiles.map((e) => e.id));
+    this._reusableIdSet.clear();
+    for (const e of this.visibleProjectiles) {
+      this._reusableIdSet.add(e.id);
+    }
     for (const id of this.beamRandomOffsets.keys()) {
-      if (!existingProjectileIds.has(id)) this.beamRandomOffsets.delete(id);
+      if (!this._reusableIdSet.has(id)) this.beamRandomOffsets.delete(id);
     }
     for (const entity of this.visibleProjectiles) {
       this.renderProjectile(entity);

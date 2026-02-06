@@ -41,8 +41,8 @@ export interface FireWeaponsResult {
 }
 
 export interface CollisionResult {
-  deadUnitIds: EntityId[];
-  deadBuildingIds: EntityId[];
+  deadUnitIds: Set<EntityId>;
+  deadBuildingIds: Set<EntityId>;
   audioEvents: AudioEvent[];
   // Death context for each killed unit (for directional explosion effects)
   deathContexts: Map<EntityId, DeathContext>;

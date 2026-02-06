@@ -87,8 +87,8 @@ export interface RecoilInfo {
 // Result from damage application
 export interface DamageResult {
   hitEntityIds: EntityId[];
-  killedUnitIds: EntityId[];
-  killedBuildingIds: EntityId[];
+  killedUnitIds: Set<EntityId>;
+  killedBuildingIds: Set<EntityId>;
   // For line damage - where the line was blocked (0-1 parametric)
   truncationT?: number;
   // Knockback forces to apply to hit entities
