@@ -24,7 +24,7 @@ import {
 import { audioManager } from '../game/audio/AudioManager';
 
 // Available update rate options
-const UPDATE_RATE_OPTIONS = [1, 5, 10, 30] as const;
+const UPDATE_RATE_OPTIONS = [0.3, 1, 5, 10, 20, 30] as const;
 
 // Graphics quality options - Auto is separate from quality levels
 const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
@@ -84,6 +84,9 @@ const lowFPS = ref(0);
 // Actual frame delta measurements (our own tracking)
 const actualAvgFPS = ref(0);
 const actualWorstFPS = ref(0);
+// Server tick rate stats
+const serverAvgFPS = ref(0);
+const serverWorstFPS = ref(0);
 const currentZoom = ref(0.4);
 const fpsHistory: number[] = [];
 const FPS_HISTORY_SIZE = 1000; // ~16 seconds of samples at 60fps
@@ -397,6 +400,14 @@ function updateFPSStats(): void {
     actualWorstFPS.value = frameStats.worstFps;
   }
   effectiveQuality.value = getEffectiveQuality();
+
+  // Poll server tick stats
+  const activeServer = currentServer ?? backgroundServer;
+  if (activeServer) {
+    const tickStats = activeServer.getTickStats();
+    serverAvgFPS.value = tickStats.avgFps;
+    serverWorstFPS.value = tickStats.worstFps;
+  }
 }
 
 function setupNetworkCallbacks(): void {
@@ -621,9 +632,17 @@ onUnmounted(() => {
     <div class="bottom-controls">
       <!-- SERVER CONTROLS (visible when we own a server) -->
       <div v-if="showServerControls" class="control-bar server-bar">
-        <span class="bar-label server-label">SERVER</span>
+        <span class="bar-label server-label">HOST SERVER</span>
         <div class="bar-divider"></div>
-        <span class="control-label">Updates/sec:</span>
+        <div class="fps-stats">
+          <span class="fps-label">tick:</span>
+          <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
+          <span class="fps-label">worst</span>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">Send Updates Per Second:</span>
         <div class="button-group">
           <button
             v-for="rate in UPDATE_RATE_OPTIONS"
@@ -632,14 +651,14 @@ onUnmounted(() => {
             :class="{ active: networkUpdatesPerSecond === rate }"
             @click="setNetworkUpdateRate(rate)"
           >
-            {{ rate }}
+            {{ rate.toFixed(1) }}
           </button>
         </div>
       </div>
 
       <!-- CLIENT CONTROLS (always visible) -->
       <div class="control-bar client-bar">
-        <span class="bar-label client-label">CLIENT</span>
+        <span class="bar-label client-label">PLAYER CLIENT</span>
         <div class="bar-divider"></div>
         <div class="fps-stats">
           <span class="fps-label">actual:</span>
@@ -992,6 +1011,8 @@ onUnmounted(() => {
   padding: 2px 6px;
   border-radius: 3px;
   white-space: nowrap;
+  min-width: 90px;
+  text-align: center;
 }
 
 .server-label {

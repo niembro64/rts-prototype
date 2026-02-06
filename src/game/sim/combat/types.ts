@@ -1,6 +1,6 @@
 // Combat system types and interfaces
 
-import type { EntityId } from '../types';
+import type { EntityId, PlayerId } from '../types';
 import type { DeathContext } from '../damage/types';
 import type { WeaponAudioId } from '../../audio/AudioManager';
 
@@ -34,16 +34,38 @@ export interface AudioEvent {
   };
 }
 
+// Projectile spawn event - emitted when a projectile is created in the sim
+export interface ProjectileSpawnEvent {
+  id: EntityId;
+  x: number; y: number; rotation: number;
+  velocityX: number; velocityY: number;
+  projectileType: string;
+  weaponId: string;
+  playerId: PlayerId;
+  sourceEntityId: EntityId;
+  weaponIndex: number;
+  isDGun?: boolean;
+  beamStartX?: number; beamStartY?: number;
+  beamEndX?: number; beamEndY?: number;
+}
+
+// Projectile despawn event - emitted when a projectile is removed from the sim
+export interface ProjectileDespawnEvent {
+  id: EntityId;
+}
+
 // Combat result containing entities and audio events
 export interface FireWeaponsResult {
   projectiles: import('../types').Entity[];
   audioEvents: AudioEvent[];
+  spawnEvents: ProjectileSpawnEvent[];
 }
 
 export interface CollisionResult {
   deadUnitIds: Set<EntityId>;
   deadBuildingIds: Set<EntityId>;
   audioEvents: AudioEvent[];
+  despawnEvents: ProjectileDespawnEvent[];
   // Death context for each killed unit (for directional explosion effects)
   deathContexts: Map<EntityId, DeathContext>;
 }

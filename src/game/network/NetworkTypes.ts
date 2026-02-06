@@ -39,6 +39,26 @@ export interface NetworkAudioEvent {
   };
 }
 
+// Projectile spawn event - sent once when projectile is created
+export interface NetworkProjectileSpawn {
+  id: number;
+  x: number; y: number; rotation: number;
+  velocityX: number; velocityY: number;
+  projectileType: string;
+  weaponId: string;
+  playerId: number;
+  sourceEntityId: number;
+  weaponIndex: number;
+  isDGun?: boolean;
+  beamStartX?: number; beamStartY?: number;
+  beamEndX?: number; beamEndY?: number;
+}
+
+// Projectile despawn event - sent once when projectile is removed
+export interface NetworkProjectileDespawn {
+  id: number;
+}
+
 // Serialized game state sent over network
 export interface NetworkGameState {
   tick: number;
@@ -46,6 +66,8 @@ export interface NetworkGameState {
   economy: Record<PlayerId, NetworkEconomy>;
   sprayTargets?: NetworkSprayTarget[];
   audioEvents?: NetworkAudioEvent[];
+  projectileSpawns?: NetworkProjectileSpawn[];
+  projectileDespawns?: NetworkProjectileDespawn[];
   gameOver?: { winnerId: PlayerId };
 }
 

@@ -64,6 +64,10 @@ export class GameServer {
   // Game over tracking
   private isGameOver: boolean = false;
 
+  // Tick rate tracking
+  private tickDeltaHistory: number[] = [];
+  private readonly TICK_HISTORY_SIZE = 600; // ~10 seconds at 60Hz
+
   constructor(config: GameServerConfig) {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
@@ -188,6 +192,12 @@ export class GameServer {
 
   // Main tick function
   private tick(delta: number): void {
+    // Track tick deltas for stats
+    this.tickDeltaHistory.push(delta);
+    if (this.tickDeltaHistory.length > this.TICK_HISTORY_SIZE) {
+      this.tickDeltaHistory.shift();
+    }
+
     // Fixed timestep physics
     this.physicsAccumulator += delta;
 
@@ -226,7 +236,9 @@ export class GameServer {
     const winnerId = this.simulation.getWinnerId() ?? undefined;
     const sprayTargets = this.simulation.getSprayTargets();
     const audioEvents = this.simulation.getAndClearAudioEvents();
-    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents);
+    const projectileSpawns = this.simulation.getAndClearProjectileSpawns();
+    const projectileDespawns = this.simulation.getAndClearProjectileDespawns();
+    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns);
 
     for (const listener of this.snapshotListeners) {
       listener(state);
@@ -273,5 +285,24 @@ export class GameServer {
 
   getMapHeight(): number {
     return this.world.mapHeight;
+  }
+
+  // Get tick rate stats (avg and worst FPS over recent history)
+  getTickStats(): { avgFps: number; worstFps: number } {
+    const history = this.tickDeltaHistory;
+    if (history.length === 0) return { avgFps: 0, worstFps: 0 };
+
+    let sum = 0;
+    let maxDelta = 0;
+    for (let i = 0; i < history.length; i++) {
+      sum += history[i];
+      if (history[i] > maxDelta) maxDelta = history[i];
+    }
+
+    const avgDelta = sum / history.length;
+    return {
+      avgFps: avgDelta > 0 ? 1000 / avgDelta : 0,
+      worstFps: maxDelta > 0 ? 1000 / maxDelta : 0,
+    };
   }
 }

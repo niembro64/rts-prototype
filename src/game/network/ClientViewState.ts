@@ -8,10 +8,11 @@
  */
 
 import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
-import type { NetworkGameState, NetworkEntity } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkProjectileSpawn } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
+import { getWeaponConfig } from '../sim/weapons';
 import { lerp, lerpAngle } from '../math';
 
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
@@ -19,7 +20,6 @@ import { lerp, lerpAngle } from '../math';
 const POSITION_DRIFT = 0.15;
 const VELOCITY_DRIFT = 0.25;
 const ROTATION_DRIFT = 0.15;
-const PROJECTILE_DRIFT = 0.3;
 
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
@@ -115,11 +115,29 @@ export class ClientViewState {
       }
     }
 
-    // Remove entities no longer on the server
-    for (const [id] of this.entities) {
+    // Remove non-projectile entities no longer on the server
+    // Projectiles are managed via spawn/despawn events, not the entity list
+    for (const [id, entity] of this.entities) {
+      if (entity.type === 'projectile') continue;
       if (!this._serverIds.has(id)) {
         this.entities.delete(id);
         this.serverTargets.delete(id);
+      }
+    }
+
+    // Process projectile spawn events
+    if (state.projectileSpawns) {
+      for (const spawn of state.projectileSpawns) {
+        const entity = this.createProjectileFromSpawn(spawn);
+        this.entities.set(spawn.id, entity);
+      }
+    }
+
+    // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
+    if (state.projectileDespawns) {
+      for (const despawn of state.projectileDespawns) {
+        this.entities.delete(despawn.id);
+        this.serverTargets.delete(despawn.id);
       }
     }
 
@@ -238,17 +256,7 @@ export class ClientViewState {
       }
     }
 
-    if (entity.projectile) {
-      // Update source entity ID for beam reconstruction
-      if (server.sourceEntityId !== undefined) {
-        entity.projectile.sourceEntityId = server.sourceEntityId;
-      }
-      // Beam endpoints — used as fallback; beams are reconstructed in applyPrediction
-      if (server.beamStartX !== undefined) entity.projectile.startX = server.beamStartX;
-      if (server.beamStartY !== undefined) entity.projectile.startY = server.beamStartY;
-      if (server.beamEndX !== undefined) entity.projectile.endX = server.beamEndX;
-      if (server.beamEndY !== undefined) entity.projectile.endY = server.beamEndY;
-    }
+    // Projectiles are no longer in server snapshots — handled via spawn/despawn events
   }
 
   /**
@@ -266,7 +274,6 @@ export class ClientViewState {
     const posDrift = 1 - Math.pow(1 - POSITION_DRIFT, dt * 60);
     const velDrift = 1 - Math.pow(1 - VELOCITY_DRIFT, dt * 60);
     const rotDrift = 1 - Math.pow(1 - ROTATION_DRIFT, dt * 60);
-    const projDrift = 1 - Math.pow(1 - PROJECTILE_DRIFT, dt * 60);
 
     for (const entity of this.entities.values()) {
       const target = this.serverTargets.get(entity.id);
@@ -345,17 +352,23 @@ export class ClientViewState {
             entity.transform.x = startX;
             entity.transform.y = startY;
             entity.transform.rotation = turretAngle;
+          } else {
+            // Safety: orphaned beam (source unit gone) — remove
+            this.entities.delete(entity.id);
+            this.serverTargets.delete(entity.id);
+            // caches invalidated at end of applyPrediction
           }
         } else {
-          // Traveling projectiles: dead-reckon + drift
+          // Traveling projectiles: dead-reckon only (no server target exists)
           entity.transform.x += entity.projectile.velocityX * dt;
           entity.transform.y += entity.projectile.velocityY * dt;
 
-          if (target) {
-            entity.transform.x = lerp(entity.transform.x, target.x, projDrift);
-            entity.transform.y = lerp(entity.transform.y, target.y, projDrift);
-            entity.projectile.velocityX = lerp(entity.projectile.velocityX, target.velocityX ?? 0, velDrift);
-            entity.projectile.velocityY = lerp(entity.projectile.velocityY, target.velocityY ?? 0, velDrift);
+          // Safety: auto-remove if no despawn received after generous timeout
+          entity.projectile.timeAlive += deltaMs;
+          if (entity.projectile.timeAlive > 10000) {
+            this.entities.delete(entity.id);
+            this.serverTargets.delete(entity.id);
+            // caches invalidated at end of applyPrediction
           }
         }
       }
@@ -369,6 +382,39 @@ export class ClientViewState {
     }
 
     this.invalidateCaches();
+  }
+
+  /**
+   * Create a full Entity from a projectile spawn event.
+   */
+  private createProjectileFromSpawn(spawn: NetworkProjectileSpawn): Entity {
+    const config = { ...getWeaponConfig(spawn.weaponId), weaponIndex: spawn.weaponIndex };
+    const entity: Entity = {
+      id: spawn.id,
+      type: 'projectile',
+      transform: { x: spawn.x, y: spawn.y, rotation: spawn.rotation },
+      ownership: { playerId: spawn.playerId },
+      projectile: {
+        ownerId: spawn.playerId,
+        sourceEntityId: spawn.sourceEntityId,
+        config,
+        projectileType: spawn.projectileType as 'instant' | 'traveling' | 'beam',
+        velocityX: spawn.velocityX,
+        velocityY: spawn.velocityY,
+        timeAlive: 0,
+        maxLifespan: config.projectileLifespan ?? config.beamDuration ?? 2000,
+        hitEntities: new Set(),
+        maxHits: 1,
+        startX: spawn.beamStartX,
+        startY: spawn.beamStartY,
+        endX: spawn.beamEndX,
+        endY: spawn.beamEndY,
+      },
+    };
+    if (spawn.isDGun) {
+      entity.dgunProjectile = { isDGun: true };
+    }
+    return entity;
   }
 
   // === Beam obstruction detection ===

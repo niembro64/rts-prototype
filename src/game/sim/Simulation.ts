@@ -15,6 +15,8 @@ import {
   checkProjectileCollisions,
   type AudioEvent,
   type DeathContext,
+  type ProjectileSpawnEvent,
+  type ProjectileDespawnEvent,
 } from './combat';
 import { DamageSystem } from './damage';
 import { economyManager } from './economy';
@@ -48,6 +50,10 @@ export class Simulation {
 
   // Pending audio events for network broadcast (cleared after each state serialization)
   private pendingAudioEvents: AudioEvent[] = [];
+
+  // Pending projectile spawn/despawn events for network broadcast
+  private pendingProjectileSpawns: ProjectileSpawnEvent[] = [];
+  private pendingProjectileDespawns: ProjectileDespawnEvent[] = [];
 
   // Callback for when units die (to clean up physics bodies)
   // deathContexts contains info about the killing blow for directional explosions
@@ -96,6 +102,20 @@ export class Simulation {
   getAndClearAudioEvents(): AudioEvent[] {
     const events = this.pendingAudioEvents;
     this.pendingAudioEvents = [];
+    return events;
+  }
+
+  // Get and clear pending projectile spawn events (for network broadcast)
+  getAndClearProjectileSpawns(): ProjectileSpawnEvent[] {
+    const events = this.pendingProjectileSpawns;
+    this.pendingProjectileSpawns = [];
+    return events;
+  }
+
+  // Get and clear pending projectile despawn events (for network broadcast)
+  getAndClearProjectileDespawns(): ProjectileDespawnEvent[] {
+    const events = this.pendingProjectileDespawns;
+    this.pendingProjectileDespawns = [];
     return events;
   }
 
@@ -239,6 +259,11 @@ export class Simulation {
       this.world.addEntity(proj);
     }
 
+    // Collect projectile spawn events
+    for (const event of fireResult.spawnEvents) {
+      this.pendingProjectileSpawns.push(event);
+    }
+
     // Emit fire audio events
     for (const event of fireResult.audioEvents) {
       this.onAudioEvent?.(event);
@@ -253,13 +278,21 @@ export class Simulation {
     applyWaveDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
 
     // Update projectile positions and remove orphaned beams (from dead units)
-    const orphanedProjectiles = updateProjectiles(this.world, dtMs, this.damageSystem);
-    for (const id of orphanedProjectiles) {
+    const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
+    for (const id of updateResult.orphanedIds) {
       this.world.removeEntity(id);
+    }
+    for (const event of updateResult.despawnEvents) {
+      this.pendingProjectileDespawns.push(event);
     }
 
     // Check projectile collisions and get dead units
     const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);
+
+    // Collect projectile despawn events from collisions
+    for (const event of collisionResult.despawnEvents) {
+      this.pendingProjectileDespawns.push(event);
+    }
 
     // Emit hit/death audio events
     for (const event of collisionResult.audioEvents) {
@@ -542,6 +575,22 @@ export class Simulation {
     );
 
     this.world.addEntity(projectile);
+
+    // Emit projectile spawn event for D-gun
+    this.pendingProjectileSpawns.push({
+      id: projectile.id,
+      x: commander.transform.x,
+      y: commander.transform.y,
+      rotation: Math.atan2(dy, dx),
+      velocityX,
+      velocityY,
+      projectileType: 'traveling',
+      weaponId: 'dgun',
+      playerId,
+      sourceEntityId: commander.id,
+      weaponIndex: 0,
+      isDGun: true,
+    });
 
     // Face the target
     commander.transform.rotation = Math.atan2(dy, dx);

@@ -6,7 +6,7 @@ import type { Entity, EntityId } from '../types';
 import { PLAYER_COLORS } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { AudioEvent, FireWeaponsResult, CollisionResult } from './types';
+import type { AudioEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
 import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_KNOCKBACK_MULTIPLIER, RECOIL_MULTIPLIER } from '../../../config';
@@ -41,6 +41,7 @@ function applyKnockbackForces(
 export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulator): FireWeaponsResult {
   const newProjectiles: Entity[] = [];
   const audioEvents: AudioEvent[] = [];
+  const spawnEvents: ProjectileSpawnEvent[] = [];
 
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
@@ -158,6 +159,18 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
           // Register beam in index immediately (no need for full rebuild)
           beamIndex.addBeam(unit.id, weaponIndex, beam.id);
           newProjectiles.push(beam);
+          spawnEvents.push({
+            id: beam.id,
+            x: spawnX, y: spawnY, rotation: angle,
+            velocityX: 0, velocityY: 0,
+            projectileType: 'beam',
+            weaponId: config.id,
+            playerId,
+            sourceEntityId: unit.id,
+            weaponIndex,
+            beamStartX: spawnX, beamStartY: spawnY,
+            beamEndX: endX, beamEndY: endY,
+          });
           // Note: Beam recoil is applied continuously in applyLineDamage while dealing damage
         } else if (config.projectileSpeed !== undefined) {
           // Create traveling projectile
@@ -173,6 +186,16 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
             'traveling'
           );
           newProjectiles.push(projectile);
+          spawnEvents.push({
+            id: projectile.id,
+            x: spawnX, y: spawnY, rotation: angle,
+            velocityX: fireCos * speed, velocityY: fireSin * speed,
+            projectileType: 'traveling',
+            weaponId: config.id,
+            playerId,
+            sourceEntityId: unit.id,
+            weaponIndex,
+          });
 
           // Apply recoil to firing unit (opposite direction of projectile)
           if (forceAccumulator && RECOIL_MULTIPLIER > 0) {
@@ -184,17 +207,19 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
     }
   }
 
-  return { projectiles: newProjectiles, audioEvents };
+  return { projectiles: newProjectiles, audioEvents, spawnEvents };
 }
 
 // Update projectile positions - returns IDs of projectiles to remove (e.g., orphaned beams)
+// Also returns despawn events for removed projectiles
 export function updateProjectiles(
   world: WorldState,
   dtMs: number,
   damageSystem: DamageSystem
-): EntityId[] {
+): { orphanedIds: EntityId[]; despawnEvents: ProjectileDespawnEvent[] } {
   const dtSec = dtMs / 1000;
   const projectilesToRemove: EntityId[] = [];
+  const despawnEvents: ProjectileDespawnEvent[] = [];
 
   for (const entity of world.getProjectiles()) {
     if (!entity.projectile) continue;
@@ -226,6 +251,7 @@ export function updateProjectiles(
       if (!source || !source.unit || source.unit.hp <= 0 || !source.weapons) {
         beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
         projectilesToRemove.push(entity.id);
+        despawnEvents.push({ id: entity.id });
         continue;
       }
 
@@ -235,6 +261,7 @@ export function updateProjectiles(
         if (!weapon) {
           beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
           projectilesToRemove.push(entity.id);
+          despawnEvents.push({ id: entity.id });
           continue;
         }
 
@@ -284,7 +311,7 @@ export function updateProjectiles(
     }
   }
 
-  return projectilesToRemove;
+  return { orphanedIds: projectilesToRemove, despawnEvents };
 }
 
 // Check projectile collisions and apply damage
@@ -297,6 +324,7 @@ export function checkProjectileCollisions(
   forceAccumulator?: ForceAccumulator
 ): CollisionResult {
   const projectilesToRemove: EntityId[] = [];
+  const despawnEvents: ProjectileDespawnEvent[] = [];
   const unitsToRemove = new Set<EntityId>();
   const buildingsToRemove = new Set<EntityId>();
   const audioEvents: AudioEvent[] = [];
@@ -365,6 +393,7 @@ export function checkProjectileCollisions(
       }
 
       projectilesToRemove.push(projEntity.id);
+      despawnEvents.push({ id: projEntity.id });
       continue;
     }
 
@@ -647,6 +676,7 @@ export function checkProjectileCollisions(
       // Remove projectile if max hits reached
       if (proj.hitEntities.size >= proj.maxHits) {
         projectilesToRemove.push(projEntity.id);
+        despawnEvents.push({ id: projEntity.id });
         continue;
       }
     }
@@ -660,6 +690,7 @@ export function checkProjectileCollisions(
       projEntity.transform.y > world.mapHeight + margin
     ) {
       projectilesToRemove.push(projEntity.id);
+      despawnEvents.push({ id: projEntity.id });
     }
   }
 
@@ -673,7 +704,7 @@ export function checkProjectileCollisions(
     world.removeEntity(id);
   }
 
-  return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, audioEvents, deathContexts };
+  return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, audioEvents, despawnEvents, deathContexts };
 }
 
 // Remove dead units and clean up their Matter bodies

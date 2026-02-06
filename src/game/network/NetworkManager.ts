@@ -12,6 +12,8 @@ export type {
   NetworkWeapon,
   NetworkEntity,
   NetworkEconomy,
+  NetworkProjectileSpawn,
+  NetworkProjectileDespawn,
   LobbyPlayer,
   NetworkRole,
 } from './NetworkTypes';

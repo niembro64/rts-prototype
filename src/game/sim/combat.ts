@@ -7,6 +7,8 @@ export type {
   CollisionResult,
   DeathContext,
   WeaponAudioId,
+  ProjectileSpawnEvent,
+  ProjectileDespawnEvent,
 } from './combat/types';
 
 export {

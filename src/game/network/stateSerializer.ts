@@ -1,26 +1,32 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkAudioEvent } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkAudioEvent, NetworkProjectileSpawn, NetworkProjectileDespawn } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { AudioEvent } from '../sim/combat';
+import type { ProjectileSpawnEvent, ProjectileDespawnEvent } from '../sim/combat';
 
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkEntity[] = [];
 const _sprayBuf: NetworkSprayTarget[] = [];
 const _audioBuf: NetworkAudioEvent[] = [];
+const _spawnBuf: NetworkProjectileSpawn[] = [];
+const _despawnBuf: NetworkProjectileDespawn[] = [];
 
 // Serialize WorldState to network format
 export function serializeGameState(
   world: WorldState,
   gameOverWinnerId?: PlayerId,
   sprayTargets?: SprayTarget[],
-  audioEvents?: AudioEvent[]
+  audioEvents?: AudioEvent[],
+  projectileSpawns?: ProjectileSpawnEvent[],
+  projectileDespawns?: ProjectileDespawnEvent[]
 ): NetworkGameState {
   _entityBuf.length = 0;
 
-  // Serialize all entities
+  // Serialize all entities (skip projectiles - handled via spawn/despawn events)
   for (const entity of world.getAllEntities()) {
+    if (entity.type === 'projectile') continue;
     const netEntity = serializeEntity(entity);
     if (netEntity) {
       _entityBuf.push(netEntity);
@@ -83,12 +89,47 @@ export function serializeGameState(
     netAudioEvents = _audioBuf;
   }
 
+  // Serialize projectile spawns (reuse buffer)
+  let netProjectileSpawns: NetworkProjectileSpawn[] | undefined;
+  if (projectileSpawns && projectileSpawns.length > 0) {
+    _spawnBuf.length = 0;
+    for (let i = 0; i < projectileSpawns.length; i++) {
+      const ps = projectileSpawns[i];
+      _spawnBuf.push({
+        id: ps.id,
+        x: ps.x, y: ps.y, rotation: ps.rotation,
+        velocityX: ps.velocityX, velocityY: ps.velocityY,
+        projectileType: ps.projectileType,
+        weaponId: ps.weaponId,
+        playerId: ps.playerId,
+        sourceEntityId: ps.sourceEntityId,
+        weaponIndex: ps.weaponIndex,
+        isDGun: ps.isDGun,
+        beamStartX: ps.beamStartX, beamStartY: ps.beamStartY,
+        beamEndX: ps.beamEndX, beamEndY: ps.beamEndY,
+      });
+    }
+    netProjectileSpawns = _spawnBuf;
+  }
+
+  // Serialize projectile despawns (reuse buffer)
+  let netProjectileDespawns: NetworkProjectileDespawn[] | undefined;
+  if (projectileDespawns && projectileDespawns.length > 0) {
+    _despawnBuf.length = 0;
+    for (let i = 0; i < projectileDespawns.length; i++) {
+      _despawnBuf.push({ id: projectileDespawns[i].id });
+    }
+    netProjectileDespawns = _despawnBuf;
+  }
+
   return {
     tick: world.getTick(),
     entities: _entityBuf,
     economy,
     sprayTargets: netSprayTargets,
     audioEvents: netAudioEvents,
+    projectileSpawns: netProjectileSpawns,
+    projectileDespawns: netProjectileDespawns,
     gameOver: gameOverWinnerId ? { winnerId: gameOverWinnerId } : undefined,
   };
 }
@@ -202,21 +243,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     }
   }
 
-  if (entity.type === 'projectile' && entity.projectile) {
-    netEntity.velocityX = entity.projectile.velocityX;
-    netEntity.velocityY = entity.projectile.velocityY;
-    netEntity.projectileType = entity.projectile.projectileType;
-    netEntity.weaponId = entity.projectile.config.id;
-    // Beam coordinates and source info for client-side reconstruction
-    if (entity.projectile.projectileType === 'beam') {
-      netEntity.beamStartX = entity.projectile.startX;
-      netEntity.beamStartY = entity.projectile.startY;
-      netEntity.beamEndX = entity.projectile.endX;
-      netEntity.beamEndY = entity.projectile.endY;
-      netEntity.sourceEntityId = entity.projectile.sourceEntityId;
-      netEntity.weaponIndex = (entity.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
-    }
-  }
+  // Projectiles are no longer serialized as entities — handled via spawn/despawn events
 
   return netEntity;
 }
