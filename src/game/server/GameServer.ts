@@ -16,6 +16,7 @@ import {
   createUnitBodyStandalone,
   createMatterBodiesStandalone,
   applyUnitVelocitiesStandalone,
+  syncVelocitiesFromPhysics,
   removeBodyStandalone,
   stepEngine,
 } from './PhysicsStandalone';
@@ -216,6 +217,9 @@ export class GameServer {
 
       // Step Matter.js physics
       stepEngine(this.engine, this.PHYSICS_TIMESTEP);
+
+      // Sync actual post-friction velocities to entities for snapshot serialization
+      syncVelocitiesFromPhysics(this.world, this.PHYSICS_TIMESTEP);
 
       this.physicsAccumulator -= this.PHYSICS_TIMESTEP;
       physicsSteps++;

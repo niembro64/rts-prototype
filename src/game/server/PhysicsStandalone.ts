@@ -145,6 +145,20 @@ export function applyUnitVelocitiesStandalone(
   }
 }
 
+// Sync actual Matter body velocities back to entities (for snapshot serialization).
+// simulation.update() overwrites velocityX/Y with thrust direction each tick,
+// so this must run AFTER stepEngine to capture the real post-friction velocity.
+export function syncVelocitiesFromPhysics(world: WorldState, physicsTimestepMs: number): void {
+  const perSecondScale = 1000 / physicsTimestepMs;
+  for (const entity of world.getUnits()) {
+    if (!entity.body?.matterBody || !entity.unit) continue;
+    const matterBody = entity.body.matterBody as unknown as Matter.Body;
+    // Matter velocity is displacement per step; convert to units/second for client dead-reckoning
+    entity.unit.velocityX = matterBody.velocity.x * perSecondScale;
+    entity.unit.velocityY = matterBody.velocity.y * perSecondScale;
+  }
+}
+
 // Remove a body from the engine world
 export function removeBodyStandalone(engine: Matter.Engine, matterBody: MatterJS.BodyType): void {
   Matter.Composite.remove(engine.world, matterBody as unknown as Matter.Body);
