@@ -39,6 +39,8 @@ export class NetworkManager {
   private nextPlayerId: PlayerId = 2;
   private players: Map<PlayerId, LobbyPlayer> = new Map();
   private gameStarted: boolean = false;
+  private snapshotsSent: number = 0;
+  private snapshotsReceived: number = 0;
 
   // Callbacks
   public onPlayerJoined?: (player: LobbyPlayer) => void;
@@ -283,7 +285,7 @@ export class NetworkManager {
     });
 
     conn.on('close', () => {
-      console.log(`Player ${playerId} disconnected`);
+      console.warn(`[NET] Player ${playerId} connection CLOSED (role=${this.role})`);
       this.connections.delete(playerId);
       this.players.delete(playerId);
       this.onPlayerLeft?.(playerId);
@@ -294,8 +296,31 @@ export class NetworkManager {
     });
 
     conn.on('error', (err) => {
-      console.error(`Connection error with player ${playerId}:`, err);
+      console.error(`[NET] Connection error with player ${playerId}:`, err);
     });
+
+    // Monitor underlying DataChannel state changes
+    const dc = conn.dataChannel;
+    if (dc) {
+      this.monitorDataChannel(dc, playerId);
+    } else {
+      // DataChannel may not be ready yet, monitor once it's set
+      const checkDc = setInterval(() => {
+        if (conn.dataChannel) {
+          this.monitorDataChannel(conn.dataChannel, playerId);
+          clearInterval(checkDc);
+        }
+      }, 100);
+    }
+  }
+
+  private monitorDataChannel(dc: RTCDataChannel, playerId: PlayerId): void {
+    dc.onclose = () => {
+      console.warn(`[NET] DataChannel CLOSED for player ${playerId} (state=${dc.readyState})`);
+    };
+    dc.onerror = (e) => {
+      console.error(`[NET] DataChannel ERROR for player ${playerId}:`, e);
+    };
   }
 
   // Handle incoming message
@@ -304,6 +329,12 @@ export class NetworkManager {
       case 'state':
         // Client receives state from host
         if (this.role === 'client') {
+          this.snapshotsReceived++;
+          if (this.snapshotsReceived % 100 === 0) {
+            const hostConn = this.connections.get(1);
+            const dc = hostConn?.dataChannel;
+            console.log(`[NET] Client received snapshot #${this.snapshotsReceived} (dc=${dc?.readyState ?? 'none'})`);
+          }
           this.onStateReceived?.(message.data);
         }
         break;
@@ -368,6 +399,18 @@ export class NetworkManager {
   // Send game state to all clients (host only)
   broadcastState(state: NetworkGameState): void {
     if (this.role !== 'host') return;
+    this.snapshotsSent++;
+
+    // Log every 100th snapshot with connection health
+    if (this.snapshotsSent % 100 === 0) {
+      for (const [pid, conn] of this.connections) {
+        const dc = conn.dataChannel;
+        const buffered = dc ? dc.bufferedAmount : -1;
+        const dcState = dc ? dc.readyState : 'no-dc';
+        console.log(`[NET] Host snapshot #${this.snapshotsSent} → player ${pid}: open=${conn.open} dc=${dcState} buffered=${buffered}`);
+      }
+    }
+
     this.broadcast({ type: 'state', data: state });
   }
 
