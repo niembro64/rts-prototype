@@ -128,8 +128,12 @@ export class ClientViewState {
     // Process projectile spawn events
     if (state.projectileSpawns) {
       for (const spawn of state.projectileSpawns) {
-        const entity = this.createProjectileFromSpawn(spawn);
-        this.entities.set(spawn.id, entity);
+        try {
+          const entity = this.createProjectileFromSpawn(spawn);
+          this.entities.set(spawn.id, entity);
+        } catch {
+          // Skip projectiles with unknown weapon configs (e.g. corrupted by serialization)
+        }
       }
     }
 
@@ -316,11 +320,13 @@ export class ClientViewState {
       if (entity.type === 'projectile' && entity.projectile) {
         if (entity.projectile.projectileType === 'beam') {
           // Beams: reconstruct from source unit's current position + turret rotation
+          // Beam existence is driven by the weapon's isFiring state (updated every snapshot),
+          // so lost despawn events self-correct on the next snapshot.
           const weaponIndex = (entity.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
           const source = this.entities.get(entity.projectile.sourceEntityId);
           const weapon = source?.weapons?.[weaponIndex];
 
-          if (source && weapon) {
+          if (source && weapon && weapon.isFiring) {
             const turretAngle = weapon.turretRotation;
             const dirX = Math.cos(turretAngle);
             const dirY = Math.sin(turretAngle);
@@ -353,22 +359,20 @@ export class ClientViewState {
             entity.transform.y = startY;
             entity.transform.rotation = turretAngle;
           } else {
-            // Safety: orphaned beam (source unit gone) — remove
+            // Source unit gone or weapon stopped firing — remove beam
             this.entities.delete(entity.id);
             this.serverTargets.delete(entity.id);
-            // caches invalidated at end of applyPrediction
           }
         } else {
           // Traveling projectiles: dead-reckon only (no server target exists)
           entity.transform.x += entity.projectile.velocityX * dt;
           entity.transform.y += entity.projectile.velocityY * dt;
 
-          // Safety: auto-remove if no despawn received after generous timeout
+          // Auto-remove if projectile has left the map bounds
           entity.projectile.timeAlive += deltaMs;
           if (entity.projectile.timeAlive > 10000) {
             this.entities.delete(entity.id);
             this.serverTargets.delete(entity.id);
-            // caches invalidated at end of applyPrediction
           }
         }
       }
@@ -386,13 +390,36 @@ export class ClientViewState {
 
   /**
    * Create a full Entity from a projectile spawn event.
+   * For traveling/dgun projectiles, adjusts spawn position to the client-side muzzle
+   * so bullets visually originate from the gun (same approach as beams).
    */
   private createProjectileFromSpawn(spawn: NetworkProjectileSpawn): Entity {
     const config = { ...getWeaponConfig(spawn.weaponId), weaponIndex: spawn.weaponIndex };
+
+    // Default to server position; override with client-side muzzle if source is available
+    let spawnX = spawn.x;
+    let spawnY = spawn.y;
+
+    if (spawn.projectileType !== 'beam') {
+      const source = this.entities.get(spawn.sourceEntityId);
+      const weapon = source?.weapons?.[spawn.weaponIndex];
+      if (source && weapon) {
+        const unitCos = Math.cos(source.transform.rotation);
+        const unitSin = Math.sin(source.transform.rotation);
+        const weaponX = source.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
+        const weaponY = source.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+
+        // 5 units forward from weapon in firing direction (same as server)
+        const turretAngle = weapon.turretRotation;
+        spawnX = weaponX + Math.cos(turretAngle) * 5;
+        spawnY = weaponY + Math.sin(turretAngle) * 5;
+      }
+    }
+
     const entity: Entity = {
       id: spawn.id,
       type: 'projectile',
-      transform: { x: spawn.x, y: spawn.y, rotation: spawn.rotation },
+      transform: { x: spawnX, y: spawnY, rotation: spawn.rotation },
       ownership: { playerId: spawn.playerId },
       projectile: {
         ownerId: spawn.playerId,
