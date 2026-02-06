@@ -152,9 +152,9 @@ export function renderWaveEffect(
     }
   }
 
-  // 3. Draw subtle radial "pull lines" converging INWARD toward center
+  // 3. Draw radial "pull lines" converging INWARD toward center
   // Lines exist at fixed world angles; only visible ones within pie slice are drawn
-  const totalPullLines = 24; // Fixed lines around full circle
+  const totalPullLines = 48; // Fixed lines around full circle
   for (let i = 0; i < totalPullLines; i++) {
     const lineAngle = (i / totalPullLines) * Math.PI * 2; // Fixed world-space angle
 
@@ -171,7 +171,11 @@ export function renderWaveEffect(
 
     if (dashStart > maxRange * 0.95) continue; // Don't draw past edge
 
-    const alpha = 0.25 * (1 - dashPhase); // Fade as it gets closer to center
+    // Fade in at outer edge (dashPhase near 0) AND fade out near center (dashPhase near 1)
+    // Smoothly peaks in the middle of travel
+    const fadeIn = Math.min(dashPhase * 4, 1);     // 0→1 over first 25% of travel
+    const fadeOut = Math.min((1 - dashPhase) * 3, 1); // 1→0 over last 33% of travel
+    const alpha = 0.3 * fadeIn * fadeOut;
 
     graphics.lineStyle(1.5, primaryColor, alpha);
     graphics.beginPath();
