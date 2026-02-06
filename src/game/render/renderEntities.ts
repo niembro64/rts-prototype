@@ -168,45 +168,78 @@ export class EntityRenderer {
     return legs;
   }
 
-  updateArachnidLegs(dtMs: number): void {
+  /**
+   * Combined locomotion update — legs, treads, and wheels in a single pass over units.
+   * Replaces separate updateArachnidLegs() + updateTreads() calls.
+   */
+  updateLocomotion(dtMs: number): void {
     const gfxConfig = getGraphicsConfig();
-    if (gfxConfig.legs === 'none') {
-      this.arachnidLegs.clear();
-      return;
-    }
+    const legsDisabled = gfxConfig.legs === 'none';
 
+    // Build live unit ID set once (shared for all locomotion cleanup)
     this._reusableIdSet.clear();
     for (const e of this.entitySource.getUnits()) {
       this._reusableIdSet.add(e.id);
     }
-    for (const id of this.arachnidLegs.keys()) {
-      if (!this._reusableIdSet.has(id)) {
-        this.arachnidLegs.delete(id);
+
+    // Clean up stale entries from all locomotion maps
+    if (legsDisabled) {
+      this.arachnidLegs.clear();
+    } else {
+      for (const id of this.arachnidLegs.keys()) {
+        if (!this._reusableIdSet.has(id)) this.arachnidLegs.delete(id);
       }
     }
+    for (const id of this.tankTreads.keys()) {
+      if (!this._reusableIdSet.has(id)) this.tankTreads.delete(id);
+    }
+    for (const id of this.vehicleWheels.keys()) {
+      if (!this._reusableIdSet.has(id)) this.vehicleWheels.delete(id);
+    }
 
+    // Single pass: update all locomotion types
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit) continue;
 
-      // Commanders always get commander-style legs
-      let legStyle: 'widow' | 'strider' | 'cricket' | 'commander';
+      const unitType = entity.unit.unitType;
+
+      // Commanders always get legs
       if (entity.commander) {
-        legStyle = 'commander';
-      } else {
-        // Non-commanders check unit definition
-        if (!entity.unit.unitType) continue;
-        const definition = getUnitDefinition(entity.unit.unitType);
-        if (!definition || definition.locomotion !== 'legs') continue;
-        legStyle = definition.legStyle ?? 'widow';
+        if (!legsDisabled) {
+          const legs = this.getOrCreateLegs(entity, 'commander');
+          const velX = (entity.unit.velocityX ?? 0) * 60;
+          const velY = (entity.unit.velocityY ?? 0) * 60;
+          for (const leg of legs) {
+            leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
+          }
+        }
+        continue;
       }
 
-      const legs = this.getOrCreateLegs(entity, legStyle);
+      if (!unitType) continue;
+      const definition = getUnitDefinition(unitType);
+      if (!definition) continue;
 
-      const velX = (entity.unit?.velocityX ?? 0) * 60;
-      const velY = (entity.unit?.velocityY ?? 0) * 60;
-
-      for (const leg of legs) {
-        leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
+      if (definition.locomotion === 'legs' && !legsDisabled) {
+        const legStyle = definition.legStyle ?? 'widow';
+        const legs = this.getOrCreateLegs(entity, legStyle);
+        const velX = (entity.unit.velocityX ?? 0) * 60;
+        const velY = (entity.unit.velocityY ?? 0) * 60;
+        for (const leg of legs) {
+          leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
+        }
+      } else if (definition.locomotion === 'treads') {
+        const treadType = unitType as 'mammoth' | 'badger';
+        const treads = this.getOrCreateTreads(entity, treadType);
+        treads.leftTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
+        treads.rightTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
+      } else if (definition.locomotion === 'wheels') {
+        const wheelSetup = this.getOrCreateVehicleWheels(entity);
+        if (wheelSetup) {
+          for (const wheel of wheelSetup.wheels) {
+            wheel.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
+          }
+        }
       }
     }
   }
@@ -253,43 +286,6 @@ export class EntityRenderer {
 
     this.vehicleWheels.set(entity.id, wheelSetup);
     return wheelSetup;
-  }
-
-  updateTreads(dtMs: number): void {
-    this._reusableIdSet.clear();
-    for (const e of this.entitySource.getUnits()) {
-      this._reusableIdSet.add(e.id);
-    }
-    for (const id of this.tankTreads.keys()) {
-      if (!this._reusableIdSet.has(id)) this.tankTreads.delete(id);
-    }
-    for (const id of this.vehicleWheels.keys()) {
-      if (!this._reusableIdSet.has(id)) this.vehicleWheels.delete(id);
-    }
-
-    for (const entity of this.entitySource.getUnits()) {
-      if (!entity.unit || !entity.weapons || entity.weapons.length === 0) continue;
-
-      const unitType = entity.unit?.unitType;
-      if (!unitType) continue;
-      const definition = getUnitDefinition(unitType);
-
-      if (definition?.locomotion === 'treads') {
-        const treadType = unitType as 'mammoth' | 'badger';
-        const treads = this.getOrCreateTreads(entity, treadType);
-        treads.leftTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
-        treads.rightTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
-        continue;
-      }
-
-      if (definition?.locomotion !== 'wheels') continue;
-      const wheelSetup = this.getOrCreateVehicleWheels(entity);
-      if (wheelSetup) {
-        for (const wheel of wheelSetup.wheels) {
-          wheel.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
-        }
-      }
-    }
   }
 
   getVehicleWheels(entityId: EntityId): VehicleWheelSetup | undefined {

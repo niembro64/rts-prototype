@@ -437,11 +437,8 @@ export class RtsScene extends Phaser.Scene {
     // Update explosion effects
     this.entityRenderer.updateExplosions(delta);
 
-    // Update Arachnid leg animations
-    this.entityRenderer.updateArachnidLegs(delta);
-
-    // Update tread/wheel animations
-    this.entityRenderer.updateTreads(delta);
+    // Update all locomotion (legs, treads, wheels) in a single pass
+    this.entityRenderer.updateLocomotion(delta);
 
     // Update input
     if (this.inputManager) {

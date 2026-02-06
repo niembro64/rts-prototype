@@ -43,6 +43,9 @@ export class ClientViewState {
   // Selection state (synced from main view)
   private selectedIds: Set<EntityId> = new Set();
 
+  // Reusable Set for snapshot diffing (avoids new Set() per snapshot)
+  private _serverIds: Set<EntityId> = new Set();
+
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
@@ -86,10 +89,11 @@ export class ClientViewState {
   applyNetworkState(state: NetworkGameState): void {
     this.currentTick = state.tick;
 
-    const serverIds = new Set<EntityId>();
+    // Reuse Set to avoid per-snapshot allocation
+    this._serverIds.clear();
 
     for (const netEntity of state.entities) {
-      serverIds.add(netEntity.id);
+      this._serverIds.add(netEntity.id);
 
       // Store as server target for per-frame drifting
       this.serverTargets.set(netEntity.id, netEntity);
@@ -113,7 +117,7 @@ export class ClientViewState {
 
     // Remove entities no longer on the server
     for (const [id] of this.entities) {
-      if (!serverIds.has(id)) {
+      if (!this._serverIds.has(id)) {
         this.entities.delete(id);
         this.serverTargets.delete(id);
       }
@@ -127,23 +131,28 @@ export class ClientViewState {
       economyManager.setEconomyState(playerId, eco);
     }
 
-    // Store spray targets for rendering (immediate)
+    // Store spray targets for rendering (reuse array, overwrite in place)
     if (state.sprayTargets && state.sprayTargets.length > 0) {
-      this.sprayTargets = state.sprayTargets.map(st => ({
-        sourceId: st.sourceId,
-        targetId: st.targetId,
-        type: st.type,
-        sourceX: st.sourceX,
-        sourceY: st.sourceY,
-        targetX: st.targetX,
-        targetY: st.targetY,
-        targetWidth: st.targetWidth,
-        targetHeight: st.targetHeight,
-        targetRadius: st.targetRadius,
-        intensity: st.intensity,
-      }));
+      const src = state.sprayTargets;
+      this.sprayTargets.length = src.length;
+      for (let i = 0; i < src.length; i++) {
+        const st = src[i];
+        this.sprayTargets[i] = {
+          sourceId: st.sourceId,
+          targetId: st.targetId,
+          type: st.type,
+          sourceX: st.sourceX,
+          sourceY: st.sourceY,
+          targetX: st.targetX,
+          targetY: st.targetY,
+          targetWidth: st.targetWidth,
+          targetHeight: st.targetHeight,
+          targetRadius: st.targetRadius,
+          intensity: st.intensity,
+        };
+      }
     } else {
-      this.sprayTargets = [];
+      this.sprayTargets.length = 0;
     }
 
     // Store audio events for processing
@@ -167,16 +176,23 @@ export class ClientViewState {
       entity.unit.moveSpeed = server.moveSpeed ?? entity.unit.moveSpeed;
 
       if (server.actions) {
-        entity.unit.actions = server.actions.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
-          type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
-          x: na.x!,
-          y: na.y!,
-          targetId: na.targetId,
-          buildingType: na.buildingType as BuildingType | undefined,
-          gridX: na.gridX,
-          gridY: na.gridY,
-          buildingId: na.buildingId,
-        }));
+        const src = server.actions;
+        const actions = entity.unit.actions;
+        actions.length = 0;
+        for (let i = 0; i < src.length; i++) {
+          const na = src[i];
+          if (na.x === undefined || na.y === undefined) continue;
+          actions.push({
+            type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
+            x: na.x,
+            y: na.y,
+            targetId: na.targetId,
+            buildingType: na.buildingType as BuildingType | undefined,
+            gridX: na.gridX,
+            gridY: na.gridY,
+            buildingId: na.buildingId,
+          });
+        }
       }
 
       // Snap weapon targeting state (turret rotation/velocity blended in applyPrediction)
@@ -210,11 +226,15 @@ export class ClientViewState {
       if (server.rallyX !== undefined) entity.factory.rallyX = server.rallyX;
       if (server.rallyY !== undefined) entity.factory.rallyY = server.rallyY;
       if (server.factoryWaypoints) {
-        entity.factory.waypoints = server.factoryWaypoints.map(wp => ({
-          x: wp.x,
-          y: wp.y,
-          type: wp.type as 'move' | 'fight' | 'patrol',
-        }));
+        const wps = server.factoryWaypoints;
+        entity.factory.waypoints.length = wps.length;
+        for (let i = 0; i < wps.length; i++) {
+          entity.factory.waypoints[i] = {
+            x: wps[i].x,
+            y: wps[i].y,
+            type: wps[i].type as 'move' | 'fight' | 'patrol',
+          };
+        }
       }
     }
 
@@ -431,7 +451,10 @@ export class ClientViewState {
   }
 
   getAllEntities(): Entity[] {
-    return Array.from(this.entities.values());
+    this.rebuildCachesIfNeeded();
+    // Return concatenation of cached arrays (avoids Array.from on the Map)
+    const all = this.cachedUnits.concat(this.cachedBuildings, this.cachedProjectiles);
+    return all;
   }
 
   getUnits(): Entity[] {
