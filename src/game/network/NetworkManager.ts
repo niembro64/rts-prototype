@@ -82,7 +82,7 @@ export class NetworkManager {
       // Use room code as peer ID prefix for discoverability
       // Configure with debug off and connection settings
       this.peer = new Peer(`ba-${this.roomCode}`, {
-        debug: 0, // Disable debug logging
+        debug: 0,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -176,6 +176,7 @@ export class NetworkManager {
 
         const conn = this.peer!.connect(`ba-${this.roomCode}`, {
           reliable: true,
+          serialization: 'json',
         });
 
         conn.on('open', () => {
