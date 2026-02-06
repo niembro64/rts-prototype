@@ -165,14 +165,16 @@ function createProjectileFromNetwork(
     transform: { x, y, rotation },
     projectile: {
       ownerId: playerId ?? 1,
-      sourceEntityId: 0,
-      config: netEntity.weaponId ? getWeaponConfig(netEntity.weaponId) : {
-        id: 'unknown',
-        audioId: 'cannon' as const,
-        damage: 10,
-        range: 100,
-        cooldown: 1000,
-      },
+      sourceEntityId: netEntity.sourceEntityId ?? 0,
+      config: netEntity.weaponId
+        ? { ...getWeaponConfig(netEntity.weaponId), weaponIndex: netEntity.weaponIndex }
+        : {
+          id: 'unknown',
+          audioId: 'cannon' as const,
+          damage: 10,
+          range: 100,
+          cooldown: 1000,
+        },
       projectileType: (netEntity.projectileType as 'instant' | 'traveling' | 'beam') ?? 'traveling',
       velocityX: netEntity.velocityX ?? 0,
       velocityY: netEntity.velocityY ?? 0,

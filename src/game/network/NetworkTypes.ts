@@ -142,6 +142,8 @@ export interface NetworkEntity {
   beamStartY?: number;
   beamEndX?: number;
   beamEndY?: number;
+  sourceEntityId?: number;  // Which unit fired this (for beam reconstruction)
+  weaponIndex?: number;     // Which weapon on the source unit
 
   // Factory fields
   buildQueue?: string[];

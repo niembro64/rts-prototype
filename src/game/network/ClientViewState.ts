@@ -218,8 +218,12 @@ export class ClientViewState {
       }
     }
 
-    // Beam endpoints — snap (they track source/target positions)
     if (entity.projectile) {
+      // Update source entity ID for beam reconstruction
+      if (server.sourceEntityId !== undefined) {
+        entity.projectile.sourceEntityId = server.sourceEntityId;
+      }
+      // Beam endpoints — used as fallback; beams are reconstructed in applyPrediction
       if (server.beamStartX !== undefined) entity.projectile.startX = server.beamStartX;
       if (server.beamStartY !== undefined) entity.projectile.startY = server.beamStartY;
       if (server.beamEndX !== undefined) entity.projectile.endX = server.beamEndX;
@@ -280,16 +284,46 @@ export class ClientViewState {
       }
 
       if (entity.type === 'projectile' && entity.projectile) {
-        // Step 1: Dead-reckon
-        entity.transform.x += entity.projectile.velocityX * dt;
-        entity.transform.y += entity.projectile.velocityY * dt;
+        if (entity.projectile.projectileType === 'beam') {
+          // Beams: reconstruct from source unit's current position + turret rotation
+          const weaponIndex = (entity.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
+          const source = this.entities.get(entity.projectile.sourceEntityId);
+          const weapon = source?.weapons?.[weaponIndex];
 
-        // Step 2: Drift toward server targets
-        if (target) {
-          entity.transform.x = lerp(entity.transform.x, target.x, projDrift);
-          entity.transform.y = lerp(entity.transform.y, target.y, projDrift);
-          entity.projectile.velocityX = lerp(entity.projectile.velocityX, target.velocityX ?? 0, velDrift);
-          entity.projectile.velocityY = lerp(entity.projectile.velocityY, target.velocityY ?? 0, velDrift);
+          if (source && weapon) {
+            const turretAngle = weapon.turretRotation;
+            const dirX = Math.cos(turretAngle);
+            const dirY = Math.sin(turretAngle);
+
+            // Calculate weapon position in world coordinates (same math as sim)
+            const unitCos = Math.cos(source.transform.rotation);
+            const unitSin = Math.sin(source.transform.rotation);
+            const weaponX = source.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
+            const weaponY = source.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+
+            // Beam starts 5 units forward from weapon position
+            entity.projectile.startX = weaponX + dirX * 5;
+            entity.projectile.startY = weaponY + dirY * 5;
+
+            // Beam extends to fire range (no obstruction detection on client)
+            entity.projectile.endX = entity.projectile.startX + dirX * weapon.fireRange;
+            entity.projectile.endY = entity.projectile.startY + dirY * weapon.fireRange;
+
+            entity.transform.x = entity.projectile.startX;
+            entity.transform.y = entity.projectile.startY;
+            entity.transform.rotation = turretAngle;
+          }
+        } else {
+          // Traveling projectiles: dead-reckon + drift
+          entity.transform.x += entity.projectile.velocityX * dt;
+          entity.transform.y += entity.projectile.velocityY * dt;
+
+          if (target) {
+            entity.transform.x = lerp(entity.transform.x, target.x, projDrift);
+            entity.transform.y = lerp(entity.transform.y, target.y, projDrift);
+            entity.projectile.velocityX = lerp(entity.projectile.velocityX, target.velocityX ?? 0, velDrift);
+            entity.projectile.velocityY = lerp(entity.projectile.velocityY, target.velocityY ?? 0, velDrift);
+          }
         }
       }
 

@@ -174,12 +174,14 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     netEntity.velocityY = entity.projectile.velocityY;
     netEntity.projectileType = entity.projectile.projectileType;
     netEntity.weaponId = entity.projectile.config.id;
-    // Beam coordinates for laser/railgun rendering
+    // Beam coordinates and source info for client-side reconstruction
     if (entity.projectile.projectileType === 'beam') {
       netEntity.beamStartX = entity.projectile.startX;
       netEntity.beamStartY = entity.projectile.startY;
       netEntity.beamEndX = entity.projectile.endX;
       netEntity.beamEndY = entity.projectile.endY;
+      netEntity.sourceEntityId = entity.projectile.sourceEntityId;
+      netEntity.weaponIndex = (entity.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
     }
   }
 
