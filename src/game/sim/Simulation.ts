@@ -146,9 +146,10 @@ export class Simulation {
       }
     }
 
-    // Rebuild spatial grid for this frame (PERFORMANCE CRITICAL)
-    // This enables O(1) range queries instead of O(n) scans
-    this.rebuildSpatialGrid();
+    // Update spatial grid incrementally (PERFORMANCE CRITICAL)
+    // Units: O(1) per unit that didn't cross cell boundary
+    // Buildings: only added on creation, removed on destruction (static)
+    this.updateSpatialGrid();
 
     // Rebuild beam index for this frame (PERFORMANCE CRITICAL)
     // This enables O(1) beam lookups instead of O(projectiles) scans
@@ -175,18 +176,14 @@ export class Simulation {
     this.world.incrementTick();
   }
 
-  // Rebuild the spatial grid with current entity positions
-  private rebuildSpatialGrid(): void {
-    spatialGrid.clear();
-
-    // Add all units to spatial grid
+  // Update spatial grid incrementally
+  private updateSpatialGrid(): void {
+    // Update unit positions (O(1) per unit that stayed in same cell)
     for (const unit of this.world.getUnits()) {
-      if (unit.unit && unit.unit.hp > 0) {
-        spatialGrid.addUnit(unit);
-      }
+      spatialGrid.updateUnit(unit);
     }
 
-    // Add all buildings to spatial grid
+    // Ensure buildings are tracked (addBuilding skips if already present)
     for (const building of this.world.getBuildings()) {
       if (building.building && building.building.hp > 0) {
         spatialGrid.addBuilding(building);
@@ -271,15 +268,19 @@ export class Simulation {
       this.pendingAudioEvents.push(event);
     }
 
-    // Notify about dead units (for physics cleanup)
-    // Pass deathContexts for directional explosion effects
-    if (collisionResult.deadUnitIds.size > 0 && this.onUnitDeath) {
-      this.onUnitDeath([...collisionResult.deadUnitIds], collisionResult.deathContexts);
+    // Remove dead entities from spatial grid and notify callbacks
+    if (collisionResult.deadUnitIds.size > 0) {
+      for (const id of collisionResult.deadUnitIds) {
+        spatialGrid.removeUnit(id);
+      }
+      this.onUnitDeath?.([...collisionResult.deadUnitIds], collisionResult.deathContexts);
     }
 
-    // Notify about dead buildings (for cleanup)
-    if (collisionResult.deadBuildingIds.size > 0 && this.onBuildingDeath) {
-      this.onBuildingDeath([...collisionResult.deadBuildingIds]);
+    if (collisionResult.deadBuildingIds.size > 0) {
+      for (const id of collisionResult.deadBuildingIds) {
+        spatialGrid.removeBuilding(id);
+      }
+      this.onBuildingDeath?.([...collisionResult.deadBuildingIds]);
     }
 
     // Safety cleanup - remove any dead entities that slipped through
@@ -306,8 +307,11 @@ export class Simulation {
       }
     }
 
-    // Remove dead entities and notify callbacks
+    // Remove dead entities from spatial grid, notify callbacks, and remove from world
     if (deadUnitIds.length > 0) {
+      for (const id of deadUnitIds) {
+        spatialGrid.removeUnit(id);
+      }
       this.onUnitDeath?.(deadUnitIds);
       for (const id of deadUnitIds) {
         this.world.removeEntity(id);
@@ -315,6 +319,9 @@ export class Simulation {
     }
 
     if (deadBuildingIds.length > 0) {
+      for (const id of deadBuildingIds) {
+        spatialGrid.removeBuilding(id);
+      }
       this.onBuildingDeath?.(deadBuildingIds);
       for (const id of deadBuildingIds) {
         this.world.removeEntity(id);
