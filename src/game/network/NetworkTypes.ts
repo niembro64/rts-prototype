@@ -6,7 +6,7 @@ import type { WeaponAudioId } from '../audio/AudioManager';
 
 // Network message types
 export type NetworkMessage =
-  | { type: 'state'; data: NetworkGameState }
+  | { type: 'state'; data: NetworkGameState | string }
   | { type: 'command'; data: Command }
   | { type: 'playerAssignment'; playerId: PlayerId }
   | { type: 'gameStart'; playerIds: PlayerId[] }

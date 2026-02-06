@@ -327,6 +327,8 @@ export class NetworkManager {
     switch (message.type) {
       case 'state':
         // Client receives state from host
+        // State is pre-serialized as JSON string by host to avoid expensive
+        // BinaryPack deserialization of deep object trees
         if (this.role === 'client') {
           this.snapshotsReceived++;
           if (this.snapshotsReceived % 100 === 0) {
@@ -334,7 +336,10 @@ export class NetworkManager {
             const dc = hostConn?.dataChannel;
             console.log(`[NET] Client received snapshot #${this.snapshotsReceived} (dc=${dc?.readyState ?? 'none'})`);
           }
-          this.onStateReceived?.(message.data);
+          const state: NetworkGameState = typeof message.data === 'string'
+            ? JSON.parse(message.data)
+            : message.data;
+          this.onStateReceived?.(state);
         }
         break;
 
@@ -396,21 +401,26 @@ export class NetworkManager {
   }
 
   // Send game state to all clients (host only)
+  // Pre-serializes to JSON string so PeerJS's BinaryPack only handles a flat
+  // string (trivial) instead of a deep object tree (expensive to pack/unpack).
   broadcastState(state: NetworkGameState): void {
     if (this.role !== 'host') return;
     this.snapshotsSent++;
 
-    // Log every 100th snapshot with connection health
+    // Pre-serialize once for all clients (V8-native JSON.stringify is fast)
+    const jsonString = JSON.stringify(state);
+
+    // Log every 100th snapshot with connection health + payload size
     if (this.snapshotsSent % 100 === 0) {
       for (const [pid, conn] of this.connections) {
         const dc = conn.dataChannel;
         const buffered = dc ? dc.bufferedAmount : -1;
         const dcState = dc ? dc.readyState : 'no-dc';
-        console.log(`[NET] Host snapshot #${this.snapshotsSent} → player ${pid}: open=${conn.open} dc=${dcState} buffered=${buffered}`);
+        console.log(`[NET] Host snapshot #${this.snapshotsSent} → player ${pid}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${jsonString.length}`);
       }
     }
 
-    this.broadcast({ type: 'state', data: state });
+    this.broadcast({ type: 'state', data: jsonString });
   }
 
   // Send command to host (client only)
