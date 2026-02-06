@@ -178,7 +178,6 @@ export class NetworkManager {
 
         const conn = this.peer!.connect(`ba-${this.roomCode}`, {
           reliable: true,
-          serialization: 'json',
         });
 
         conn.on('open', () => {
@@ -299,12 +298,12 @@ export class NetworkManager {
       console.error(`[NET] Connection error with player ${playerId}:`, err);
     });
 
-    // Monitor underlying DataChannel state changes
+    // Monitor underlying DataChannel state changes (use addEventListener to avoid
+    // overwriting PeerJS's internal onclose/onerror handlers)
     const dc = conn.dataChannel;
     if (dc) {
       this.monitorDataChannel(dc, playerId);
     } else {
-      // DataChannel may not be ready yet, monitor once it's set
       const checkDc = setInterval(() => {
         if (conn.dataChannel) {
           this.monitorDataChannel(conn.dataChannel, playerId);
@@ -315,12 +314,12 @@ export class NetworkManager {
   }
 
   private monitorDataChannel(dc: RTCDataChannel, playerId: PlayerId): void {
-    dc.onclose = () => {
+    dc.addEventListener('close', () => {
       console.warn(`[NET] DataChannel CLOSED for player ${playerId} (state=${dc.readyState})`);
-    };
-    dc.onerror = (e) => {
+    });
+    dc.addEventListener('error', (e) => {
       console.error(`[NET] DataChannel ERROR for player ${playerId}:`, e);
-    };
+    });
   }
 
   // Handle incoming message
