@@ -6,7 +6,7 @@ import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
-import type { NetworkGameState } from '../network/NetworkTypes';
+import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
@@ -64,6 +64,14 @@ export class RtsScene extends Phaser.Scene {
 
   // Camera centering flag (center on first snapshot)
   private hasCenteredCamera: boolean = false;
+
+  // Snapshot buffering: decouple PeerJS delivery from frame processing.
+  // PeerJS callback stores the latest snapshot instantly; update() processes once per frame.
+  // One-shot events are accumulated so dropped intermediate snapshots don't lose them.
+  private pendingSnapshot: NetworkGameState | null = null;
+  private bufferedSpawns: NetworkProjectileSpawn[] = [];
+  private bufferedDespawns: NetworkProjectileDespawn[] = [];
+  private bufferedAudio: NetworkAudioEvent[] = [];
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -139,28 +147,28 @@ export class RtsScene extends Phaser.Scene {
     // Create local command queue (for selection commands)
     this.localCommandQueue = new CommandQueue();
 
-    // Wire gameConnection snapshot to ClientViewState
+    // Wire gameConnection snapshot to buffer (processed once per frame in update).
+    // This prevents PeerJS message queue buildup from freezing remote clients —
+    // snapshots are accepted instantly, and only the latest is processed each frame.
     this.gameConnection.onSnapshot((state: NetworkGameState) => {
-      this.clientViewState.applyNetworkState(state);
-
-      // Process audio events
-      const audioEvents = this.clientViewState.getPendingAudioEvents();
-      if (audioEvents) {
-        for (const event of audioEvents) {
-          handleAudioEvent(event as AudioEvent, this.entityRenderer, this.audioInitialized);
+      // Accumulate one-shot events from all intermediate snapshots
+      if (state.projectileSpawns) {
+        for (let i = 0; i < state.projectileSpawns.length; i++) {
+          this.bufferedSpawns.push(state.projectileSpawns[i]);
         }
       }
-
-      // Check for game over
-      const winnerId = this.clientViewState.getGameOverWinnerId();
-      if (winnerId !== null && !this.isGameOver) {
-        this.handleGameOver(winnerId);
+      if (state.projectileDespawns) {
+        for (let i = 0; i < state.projectileDespawns.length; i++) {
+          this.bufferedDespawns.push(state.projectileDespawns[i]);
+        }
       }
-
-      // Center camera on first snapshot (commander position only available after snapshot)
-      if (!this.hasCenteredCamera && !this.backgroundMode) {
-        this.centerCameraOnCommander();
+      if (state.audioEvents) {
+        for (let i = 0; i < state.audioEvents.length; i++) {
+          this.bufferedAudio.push(state.audioEvents[i]);
+        }
       }
+      // Keep only the latest snapshot (entity positions, economy, game over)
+      this.pendingSnapshot = state;
     });
 
     // Wire game over callback
@@ -432,6 +440,42 @@ export class RtsScene extends Phaser.Scene {
     this.frameDeltaWriteIndex = (this.frameDeltaWriteIndex + 1) % this.FRAME_HISTORY_SIZE;
     if (this.frameDeltaCount < this.FRAME_HISTORY_SIZE) {
       this.frameDeltaCount++;
+    }
+
+    // Process buffered snapshot (at most one per frame)
+    if (this.pendingSnapshot) {
+      const state = this.pendingSnapshot;
+      this.pendingSnapshot = null;
+
+      // Replace one-shot event arrays with accumulated versions
+      // (includes events from any intermediate snapshots that were superseded)
+      state.projectileSpawns = this.bufferedSpawns.length > 0 ? this.bufferedSpawns : undefined;
+      state.projectileDespawns = this.bufferedDespawns.length > 0 ? this.bufferedDespawns : undefined;
+      state.audioEvents = this.bufferedAudio.length > 0 ? this.bufferedAudio : undefined;
+      this.bufferedSpawns = [];
+      this.bufferedDespawns = [];
+      this.bufferedAudio = [];
+
+      this.clientViewState.applyNetworkState(state);
+
+      // Process audio events
+      const audioEvents = this.clientViewState.getPendingAudioEvents();
+      if (audioEvents) {
+        for (const event of audioEvents) {
+          handleAudioEvent(event as AudioEvent, this.entityRenderer, this.audioInitialized);
+        }
+      }
+
+      // Check for game over
+      const winnerId = this.clientViewState.getGameOverWinnerId();
+      if (winnerId !== null && !this.isGameOver) {
+        this.handleGameOver(winnerId);
+      }
+
+      // Center camera on first snapshot
+      if (!this.hasCenteredCamera && !this.backgroundMode) {
+        this.centerCameraOnCommander();
+      }
     }
 
     // Update explosion effects
