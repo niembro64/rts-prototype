@@ -155,6 +155,8 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
           if (beam.projectile) {
             beam.projectile.sourceEntityId = unit.id;
           }
+          // Register beam in index immediately (no need for full rebuild)
+          beamIndex.addBeam(unit.id, weaponIndex, beam.id);
           newProjectiles.push(beam);
           // Note: Beam recoil is applied continuously in applyLineDamage while dealing damage
         } else if (config.projectileSpeed !== undefined) {
@@ -217,18 +219,21 @@ export function updateProjectiles(
     if (proj.projectileType === 'beam') {
       const source = world.getEntity(proj.sourceEntityId);
 
+      // Get weapon index from config
+      const weaponIndex = (proj.config as { weaponIndex?: number }).weaponIndex ?? 0;
+
       // Remove beam if source unit is dead or gone
       if (!source || !source.unit || source.unit.hp <= 0 || !source.weapons) {
+        beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
         projectilesToRemove.push(entity.id);
         continue;
       }
 
       if (source && source.unit && source.weapons) {
-        // Get weapon index from config
-        const weaponIndex = (proj.config as { weaponIndex?: number }).weaponIndex ?? 0;
         const weapon = source.weapons[weaponIndex];
 
         if (!weapon) {
+          beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
           projectilesToRemove.push(entity.id);
           continue;
         }
@@ -658,8 +663,13 @@ export function checkProjectileCollisions(
     }
   }
 
-  // Remove expired projectiles
+  // Remove expired projectiles (and clean up beam index for any beams)
   for (const id of projectilesToRemove) {
+    const entity = world.getEntity(id);
+    if (entity?.projectile?.projectileType === 'beam') {
+      const weaponIdx = (entity.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
+      beamIndex.removeBeam(entity.projectile.sourceEntityId, weaponIdx);
+    }
     world.removeEntity(id);
   }
 

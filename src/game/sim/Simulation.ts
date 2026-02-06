@@ -24,7 +24,6 @@ import { getWeaponConfig } from './weapons';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
-import { beamIndex } from './BeamIndex';
 import { UNIT_THRUST_MULTIPLIER } from '../../config';
 
 // Fixed simulation timestep (60 Hz)
@@ -151,9 +150,9 @@ export class Simulation {
     // Buildings: only added on creation, removed on destruction (static)
     this.updateSpatialGrid();
 
-    // Rebuild beam index for this frame (PERFORMANCE CRITICAL)
-    // This enables O(1) beam lookups instead of O(projectiles) scans
-    beamIndex.rebuild(this.world.getProjectiles(), FIXED_TIMESTEP);
+    // Beam index is maintained incrementally:
+    // - addBeam() called on beam creation in fireWeapons()
+    // - removeBeam() called on beam expiry/orphan in updateProjectiles/checkProjectileCollisions
 
     // Clear force accumulator for this frame
     this.forceAccumulator.clear();
