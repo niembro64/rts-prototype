@@ -239,6 +239,9 @@ export class ClientViewState {
   applyPrediction(deltaMs: number): void {
     const dt = deltaMs / 1000;
 
+    // Ensure caches are fresh for beam obstruction checks
+    this.rebuildCachesIfNeeded();
+
     // Frame-rate independent blend factors
     const posDrift = 1 - Math.pow(1 - POSITION_DRIFT, dt * 60);
     const velDrift = 1 - Math.pow(1 - VELOCITY_DRIFT, dt * 60);
@@ -302,15 +305,25 @@ export class ClientViewState {
             const weaponY = source.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
 
             // Beam starts 5 units forward from weapon position
-            entity.projectile.startX = weaponX + dirX * 5;
-            entity.projectile.startY = weaponY + dirY * 5;
+            const startX = weaponX + dirX * 5;
+            const startY = weaponY + dirY * 5;
 
-            // Beam extends to fire range (no obstruction detection on client)
-            entity.projectile.endX = entity.projectile.startX + dirX * weapon.fireRange;
-            entity.projectile.endY = entity.projectile.startY + dirY * weapon.fireRange;
+            // Full-range beam end
+            const fullEndX = startX + dirX * weapon.fireRange;
+            const fullEndY = startY + dirY * weapon.fireRange;
 
-            entity.transform.x = entity.projectile.startX;
-            entity.transform.y = entity.projectile.startY;
+            // Truncate at closest obstruction (units or buildings)
+            const t = this.findBeamObstruction(
+              startX, startY, fullEndX, fullEndY, entity.projectile.sourceEntityId
+            );
+
+            entity.projectile.startX = startX;
+            entity.projectile.startY = startY;
+            entity.projectile.endX = startX + (fullEndX - startX) * t;
+            entity.projectile.endY = startY + (fullEndY - startY) * t;
+
+            entity.transform.x = startX;
+            entity.transform.y = startY;
             entity.transform.rotation = turretAngle;
           }
         } else {
@@ -336,6 +349,79 @@ export class ClientViewState {
     }
 
     this.invalidateCaches();
+  }
+
+  // === Beam obstruction detection ===
+
+  /**
+   * Find the closest entity the beam hits. Returns parametric t (0-1) along the beam.
+   * 1.0 means no obstruction (full range).
+   */
+  private findBeamObstruction(
+    sx: number, sy: number, ex: number, ey: number, sourceId: number
+  ): number {
+    let closest = 1.0;
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return closest;
+
+    // Check units (line-vs-circle)
+    for (const unit of this.cachedUnits) {
+      if (unit.id === sourceId) continue;
+      const r = unit.unit?.collisionRadius ?? 15;
+      const fx = sx - unit.transform.x;
+      const fy = sy - unit.transform.y;
+      const a = lenSq;
+      const b = 2 * (fx * dx + fy * dy);
+      const c = fx * fx + fy * fy - r * r;
+      const disc = b * b - 4 * a * c;
+      if (disc < 0) continue;
+      const t = (-b - Math.sqrt(disc)) / (2 * a);
+      if (t > 0 && t < closest) closest = t;
+    }
+
+    // Check buildings (line-vs-AABB using slab method)
+    for (const bldg of this.cachedBuildings) {
+      if (bldg.id === sourceId) continue;
+      if (!bldg.building) continue;
+      const hw = bldg.building.width / 2;
+      const hh = bldg.building.height / 2;
+      const bx = bldg.transform.x;
+      const by = bldg.transform.y;
+
+      let tmin = 0;
+      let tmax = 1;
+
+      // X slab
+      if (Math.abs(dx) > 0.0001) {
+        let t1 = (bx - hw - sx) / dx;
+        let t2 = (bx + hw - sx) / dx;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
+      } else {
+        // Ray is parallel to Y — check if sx is inside x range
+        if (sx < bx - hw || sx > bx + hw) continue;
+      }
+
+      // Y slab
+      if (Math.abs(dy) > 0.0001) {
+        let t1 = (by - hh - sy) / dy;
+        let t2 = (by + hh - sy) / dy;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
+      } else {
+        if (sy < by - hh || sy > by + hh) continue;
+      }
+
+      if (tmin <= tmax && tmax > 0 && tmin < closest) {
+        closest = Math.max(tmin, 0);
+      }
+    }
+
+    return closest;
   }
 
   // === Accessors for rendering and input ===
