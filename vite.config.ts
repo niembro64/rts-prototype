@@ -10,4 +10,15 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          phaser: ['phaser'],
+          'matter-js': ['matter-js'],
+        },
+      },
+    },
+  },
 });
