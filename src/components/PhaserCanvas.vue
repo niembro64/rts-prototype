@@ -57,7 +57,6 @@ let backgroundGameInstance: GameInstance | null = null;
 
 // Current game server (owned by this component)
 let currentServer: GameServer | null = null;
-let currentConnection: GameConnection | null = null;
 let backgroundServer: GameServer | null = null;
 
 // Lobby state
@@ -220,7 +219,6 @@ function restartGame(): void {
     currentServer.stop();
     currentServer = null;
   }
-  currentConnection = null;
   hasServer.value = false;
 
   if (gameInstance) {
@@ -462,7 +460,6 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       // Create LocalGameConnection for the host client
       const localConnection = new LocalGameConnection(currentServer);
       gameConnection = localConnection;
-      currentConnection = localConnection;
 
       // If hosting, also broadcast snapshots to remote clients
       if (networkRole.value === 'host') {
@@ -483,7 +480,6 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       // Client: create RemoteGameConnection wrapping networkManager
       const remoteConnection = new RemoteGameConnection();
       gameConnection = remoteConnection;
-      currentConnection = remoteConnection;
     }
 
     // Create game with player configuration
@@ -583,7 +579,6 @@ onUnmounted(() => {
     currentServer.stop();
     currentServer = null;
   }
-  currentConnection = null;
   networkManager.disconnect();
   stopBackgroundBattle();
   if (gameInstance) {
