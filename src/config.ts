@@ -452,8 +452,8 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1000,
     beamWidth: 12,
-    turretTurnAccel: 4, // Fast acceleration (rad/sec²)
-    turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
+    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
+    turretDrag: 0.5, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Sonic - Continuous pie-slice wave AoE (Tarantula's weapon)
@@ -515,15 +515,15 @@ export const UNIT_TARGETING_MODES = {
   mammoth: { default: 'nearest' as const, returnToForward: false },
 
   // Beam units - sticky (lock onto target and burn it down)
-  daddy: { default: 'sticky' as const, returnToForward: false },
-  viper: { default: 'sticky' as const, returnToForward: false },
+  daddy: { default: 'nearest' as const, returnToForward: false },
+  viper: { default: 'nearest' as const, returnToForward: false },
 
   // Wave/AoE units - track nearest
   tarantula: { default: 'nearest' as const, returnToForward: false },
 
   // Multi-weapon titan
   widow: {
-    beam: 'sticky' as const, // 6 vertex beams lock onto targets
+    beam: 'nearest' as const, // 6 vertex beams lock onto targets
     centerBeam: 'nearest' as const, // Center beam locks onto target
     sonic: 'nearest' as const, // Sonic wave tracks nearest threat
     returnToForward: false, // Widow turrets stay where they are
