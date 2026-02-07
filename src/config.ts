@@ -49,14 +49,14 @@ export const COST_MULTIPLIER = 1.0;
  * Force = damage * KNOCKBACK_FORCE_MULTIPLIER
  * 0 = no knockback, higher = more knockback
  */
-export const KNOCKBACK_FORCE_MULTIPLIER = 150;
+export const KNOCKBACK_FORCE_MULTIPLIER = 250;
 
 /**
  * Additional knockback multiplier for beam/laser weapons.
  * Beams deal small damage per tick, so this scales up the pushback effect.
  * Total beam knockback = damage * KNOCKBACK_FORCE_MULTIPLIER * BEAM_KNOCKBACK_MULTIPLIER
  */
-export const BEAM_KNOCKBACK_MULTIPLIER = 1.0;
+export const BEAM_KNOCKBACK_MULTIPLIER = 3.0;
 
 /**
  * Recoil multiplier - fraction of knockback force applied back to the firing unit.
@@ -438,7 +438,7 @@ export const WEAPON_STATS = {
     damage: 55,
     range: 350,
     cooldown: 3200,
-    beamDuration: 20, // Instant flash
+    beamDuration: 100, // Brief flash, long enough to be visible at 10Hz snapshots
     beamWidth: 2,
   },
 
