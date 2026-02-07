@@ -9,7 +9,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { AudioEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
-import { KNOCKBACK_FORCE_MULTIPLIER, BEAM_KNOCKBACK_MULTIPLIER, RECOIL_MULTIPLIER } from '../../../config';
+import { KNOCKBACK } from '../../../config';
 import { magnitude } from '../../math';
 
 // Check if a specific weapon has an active beam (by weapon index)
@@ -198,8 +198,8 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
           });
 
           // Apply recoil to firing unit (opposite direction of projectile)
-          if (forceAccumulator && RECOIL_MULTIPLIER > 0) {
-            const recoilForce = config.damage * KNOCKBACK_FORCE_MULTIPLIER * RECOIL_MULTIPLIER;
+          if (forceAccumulator && KNOCKBACK.PROJECTILE_FIRE > 0) {
+            const recoilForce = config.damage * KNOCKBACK.PROJECTILE_FIRE;
             forceAccumulator.addForce(unit.id, -fireCos * recoilForce, -fireSin * recoilForce, 'recoil');
           }
         }
@@ -437,9 +437,9 @@ export function checkProjectileCollisions(
       applyKnockbackForces(result.knockbacks, forceAccumulator);
 
       // Apply recoil to firing unit every frame the beam is active (not just on hit)
-      // Recoil is opposite to beam direction, scaled by damage and knockback multipliers
-      if (forceAccumulator && RECOIL_MULTIPLIER > 0) {
-        const recoilForce = tickDamage * KNOCKBACK_FORCE_MULTIPLIER * BEAM_KNOCKBACK_MULTIPLIER * RECOIL_MULTIPLIER;
+      // Recoil is opposite to beam direction, scaled by beam fire knockback
+      if (forceAccumulator && KNOCKBACK.BEAM_FIRE > 0) {
+        const recoilForce = tickDamage * KNOCKBACK.BEAM_FIRE;
         forceAccumulator.addForce(
           proj.sourceEntityId,
           -beamDirX * recoilForce,

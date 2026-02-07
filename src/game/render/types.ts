@@ -124,13 +124,15 @@ export const COLORS = {
   BUILD_RANGE: 0x44ff44, // Green for build range
 } as const;
 
-// Leg style configuration - thickness, foot size, and lerp duration (ms)
+// Leg style configuration - re-exported from config.ts for convenience
+// Maps old property names to new config object
+import { LEG_CONFIG } from '../../config';
 export const LEG_STYLE_CONFIG = {
-  widow: { thickness: 5, footSizeMultiplier: 0.1, lerpSpeed: 700 },
-  daddy: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 500 },
-  tarantula: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 200 },
-  commander: { thickness: 6, footSizeMultiplier: 0.15, lerpSpeed: 400 },
-} as const;
+  widow: { thickness: LEG_CONFIG.widow.thickness, footSizeMultiplier: LEG_CONFIG.widow.footSize, lerpSpeed: LEG_CONFIG.widow.lerpDuration },
+  daddy: { thickness: LEG_CONFIG.daddy.thickness, footSizeMultiplier: LEG_CONFIG.daddy.footSize, lerpSpeed: LEG_CONFIG.daddy.lerpDuration },
+  tarantula: { thickness: LEG_CONFIG.tarantula.thickness, footSizeMultiplier: LEG_CONFIG.tarantula.footSize, lerpSpeed: LEG_CONFIG.tarantula.lerpDuration },
+  commander: { thickness: LEG_CONFIG.commander.thickness, footSizeMultiplier: LEG_CONFIG.commander.footSize, lerpSpeed: LEG_CONFIG.commander.lerpDuration },
+};
 
 // Waypoint colors by type (legacy - for factories)
 export const WAYPOINT_COLORS: Record<WaypointType, number> = {

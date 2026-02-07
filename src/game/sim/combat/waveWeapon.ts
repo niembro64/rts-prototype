@@ -6,7 +6,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import { normalizeAngle } from './combatUtils';
 import { magnitude } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
-import { WAVE_PULL_STRENGTH } from '../../../config';
+import { KNOCKBACK } from '../../../config';
 
 // Update wave weapon state (transition between idle and attack angles)
 // Call this before applyWaveDamage each frame
@@ -46,21 +46,25 @@ export function updateWaveWeaponState(world: WorldState, dtMs: number): void {
   }
 }
 
-// Helper: Check if a point is within a pie slice
+// Helper: Check if a point is within a pie slice (annular ring between minRadius and maxRadius)
 function isPointInSlice(
   px: number, py: number,
   originX: number, originY: number,
   sliceDirection: number,
   sliceHalfAngle: number,
   maxRadius: number,
-  targetRadius: number
+  targetRadius: number,
+  minRadius: number = 0
 ): boolean {
   const dx = px - originX;
   const dy = py - originY;
   const dist = magnitude(dx, dy);
 
-  // Check distance (accounting for target radius)
+  // Check outer distance (accounting for target radius)
   if (dist > maxRadius + targetRadius) return false;
+
+  // Check inner distance (target must be outside inner radius)
+  if (minRadius > 0 && dist + targetRadius < minRadius) return false;
 
   // Check angle (accounting for target angular size)
   const angleToPoint = Math.atan2(dy, dx);
@@ -109,7 +113,8 @@ export function applyWaveDamage(
       // Wave weapon properties
       const baseDamage = config.damage; // DPS at reference distance
       const baseDamagePerFrame = baseDamage * dtSec;
-      const basePullStrength = config.pullPower ?? WAVE_PULL_STRENGTH;
+      const basePullStrength = config.pullPower ?? KNOCKBACK.SONIC_PULL;
+      const innerRange = (config.waveInnerRange as number | undefined) ?? 0;
 
       // Reference distance for 1/distance scaling (half the fire range)
       // At this distance, damage/pull equals the base config value
@@ -141,14 +146,15 @@ export function applyWaveDamage(
         const dy = target.transform.y - weaponY;
         const dist = magnitude(dx, dy);
 
-        // Check if target is in the wave slice
+        // Check if target is in the wave slice (between inner and outer radius)
         if (!isPointInSlice(
           target.transform.x, target.transform.y,
           weaponX, weaponY,
           turretAngle,
           sliceHalfAngle,
           weapon.fireRange,
-          targetRadius
+          targetRadius,
+          innerRange
         )) continue;
 
         // Calculate 1/distance scaling factor
@@ -200,14 +206,15 @@ export function applyWaveDamage(
         // Approximate building radius from dimensions
         const buildingRadius = Math.max(building.building.width, building.building.height) / 2;
 
-        // Check if building is in the wave slice
+        // Check if building is in the wave slice (between inner and outer radius)
         if (!isPointInSlice(
           building.transform.x, building.transform.y,
           weaponX, weaponY,
           turretAngle,
           sliceHalfAngle,
           weapon.fireRange,
-          buildingRadius
+          buildingRadius,
+          innerRange
         )) continue;
 
         // Calculate 1/distance scaling factor

@@ -110,6 +110,7 @@ export function drawSonicUnit(
 
       const turretRot = weapon.turretRotation;
       const maxRange = weapon.fireRange;
+      const innerRange = (weapon.config.waveInnerRange as number | undefined) ?? 0;
 
       renderWaveEffect(
         graphics,
@@ -119,7 +120,8 @@ export function drawSonicUnit(
         sliceAngle,
         maxRange,
         light,
-        base
+        base,
+        innerRange
       );
     }
   }

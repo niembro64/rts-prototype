@@ -233,6 +233,7 @@ export function drawArachnidUnit(
       const waveRange = sonicWeapon.fireRange ?? 150;
       const turretAngle = sonicWeapon.turretRotation;
 
+      const waveInnerRange = (sonicWeapon.config.waveInnerRange as number | undefined) ?? 0;
       if (sliceAngle > 0) {
         renderWaveEffect(
           graphics,
@@ -242,7 +243,8 @@ export function drawArachnidUnit(
           sliceAngle,
           waveRange,
           light,
-          base
+          base,
+          waveInnerRange
         );
       }
     }

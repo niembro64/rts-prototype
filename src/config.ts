@@ -45,25 +45,19 @@ export const COST_MULTIPLIER = 1.0;
 // =============================================================================
 
 /**
- * Knockback force multiplier applied when projectiles hit units.
- * Force = damage * KNOCKBACK_FORCE_MULTIPLIER
- * 0 = no knockback, higher = more knockback
+ * Knockback forces for combat. Each value is a multiplier applied to damage.
+ * Force = damage * multiplier. 0 = disabled.
+ *
+ * HIT = push on the TARGET when struck
+ * FIRE = recoil on the SHOOTER when firing
  */
-export const KNOCKBACK_FORCE_MULTIPLIER = 250;
-
-/**
- * Additional knockback multiplier for beam/laser weapons.
- * Beams deal small damage per tick, so this scales up the pushback effect.
- * Total beam knockback = damage * KNOCKBACK_FORCE_MULTIPLIER * BEAM_KNOCKBACK_MULTIPLIER
- */
-export const BEAM_KNOCKBACK_MULTIPLIER = 3.0;
-
-/**
- * Recoil multiplier - fraction of knockback force applied back to the firing unit.
- * 0 = no recoil, 0.5 = 50% of knockback force applied as recoil, 1.0 = equal and opposite.
- * Applies to projectiles and beams, but NOT sonic wave weapons.
- */
-export const RECOIL_MULTIPLIER = 1;
+export const KNOCKBACK = {
+  PROJECTILE_HIT: 250,
+  PROJECTILE_FIRE: 250,
+  BEAM_HIT: 750,
+  BEAM_FIRE: 200,
+  SONIC_PULL: 180,    // Pull strength toward wave origin (units/sec, scales with 1/distance)
+};
 
 /**
  * Default turret acceleration for weapons that don't specify their own.
@@ -103,71 +97,54 @@ export const SEE_RANGE_MULTIPLIER_STICKY = 0.95;
  */
 export const FIGHTSTOP_RANGE_MULTIPLIER = 0.9;
 
-/**
- * Pull strength for sonic wave weapons (units per second toward wave origin).
- * Higher = stronger pull effect.
- */
-export const WAVE_PULL_STRENGTH = 180;
 
 /**
- * Controls sonic wave weapon visual style.
- * When true: shows animated wavy lines pulling inward (detailed effect)
- * When false: shows static pizza slice zone indicator
- * Note: Radial "needle" lines always show regardless of this setting.
+ * Sonic wave weapon visual configuration.
+ * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.
  */
-export const SONIC_WAVE_SHOW_ANIMATED = false;
+export const SONIC_WAVE_VISUAL = {
+  // --- Overall ---
+  showAnimatedWaves: false,      // true = animated wavy arcs, false = static filled slice
+  animationSpeed: 0.3,           // Global speed multiplier (1.0 = default, 0.5 = half)
+  accelExponent: 1,              // Inward acceleration curve (1 = linear, 2+ = slow outside/fast inside)
+
+  // --- Filled slice zone ---
+  sliceOpacity: 0.05,            // Opacity of the filled pie-slice background
+  sliceOpacityMinZoom: 0.1,      // Opacity of the simple arc at min detail level
+
+  // --- Concentric wave arcs (when showAnimatedWaves = true) ---
+  waveCount: 5,                  // Number of concentric wave arcs
+  waveOpacity: 0.05,             // Opacity of wave arcs
+  waveThickness: 10,             // Line thickness of wave arcs (px)
+  waveAmplitude: 0,              // Sine wobble amplitude (0 = smooth circles)
+  waveFrequency: 10,             // Sine wobble frequency (oscillations per arc)
+  wavePullSpeed: 0.8,            // Speed of wave arcs moving inward
+
+  // --- Particle lines (radial dashes moving inward) ---
+  particleCount: 20,             // Number of radial particle lines around full circle
+  particleSpeed: 10,              // Inward travel speed
+  particleLength: 0.1,           // Length as fraction of maxRange (0.2 = 20%)
+  particleThickness: 1,        // Line thickness (px)
+  particleOpacity: 0.3,          // Peak opacity (fades in/out during travel)
+  particleSpawnOffset: 0.5,      // Where particles start as fraction of maxRange from center
+};
+
+// =============================================================================
+// LEG RENDERING
+// =============================================================================
 
 /**
- * Sonic wave inward acceleration exponent.
- * Controls how much the sine wave arcs accelerate as they approach the origin.
- * 1.0 = constant speed (linear)
- * 2.0 = quadratic - starts slow, speeds up toward center
- * 3.0 = cubic - starts very slow, accelerates more dramatically
- * Higher values = more dramatic slow-outside, fast-inside effect
+ * Per-unit-style leg rendering configuration.
+ * thickness: line width of leg segments (px)
+ * footSize: foot circle radius as fraction of unit collision radius
+ * lerpDuration: time in ms for foot to slide to new position (lower = snappier)
  */
-export const SONIC_WAVE_ACCEL_EXPONENT = 1;
-
-/**
- * Sonic wave animation speed multiplier.
- * Controls overall animation speed of the wave visual effects.
- * 1.0 = default speed
- * 0.5 = half speed (slower)
- * 2.0 = double speed (faster)
- */
-export const SONIC_WAVE_ANIMATION_SPEED = 0.3;
-
-/** Number of concentric wave arcs in the sonic wave effect */
-export const SONIC_WAVE_COUNT = 5;
-
-/**
- * Maximum opacity of the sonic wave arcs.
- * Waves fade in as they approach the center, this is the peak opacity.
- * 0.0 = invisible, 1.0 = fully opaque
- */
-export const SONIC_WAVE_OPACITY = 0.05;
-
-/**
- * Opacity of the simple sonic wave arc used at min detail level.
- * 0.0 = invisible, 1.0 = fully opaque
- */
-export const SONIC_WAVE_OPACITY_MIN_ZOOM = 0.1;
-
-/**
- * Waviness amplitude - how much the wave arcs wobble.
- * Higher values = more pronounced wave distortion.
- */
-export const SONIC_WAVE_AMPLITUDE = 0;
-
-/**
- * Waviness frequency - number of wave oscillations per arc.
- * Higher values = more ripples along each arc.
- */
-export const SONIC_WAVE_FREQUENCY = 10;
-
-/**
- * Line thickness of the sonic wave arcs in pixels.
- */
-export const SONIC_WAVE_THICKNESS = 10;
+export const LEG_CONFIG = {
+  widow:     { thickness: 5, footSize: 0.1,  lerpDuration: 700 },
+  daddy:     { thickness: 2, footSize: 0.14, lerpDuration: 500 },
+  tarantula: { thickness: 4, footSize: 0.12, lerpDuration: 200 },
+  commander: { thickness: 6, footSize: 0.15, lerpDuration: 400 },
+};
 
 // =============================================================================
 // EXPLOSION MOMENTUM FACTORS
@@ -264,7 +241,7 @@ export const UNIT_MASS_MULTIPLIER = 10.0;
  * Higher values = faster acceleration, higher top speed.
  * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
  */
-export const UNIT_THRUST_MULTIPLIER = 3.0;
+export const UNIT_THRUST_MULTIPLIER = 8.0;
 
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
@@ -411,7 +388,7 @@ export const WEAPON_STATS = {
   shotgun: {
     damage: 12, // Per pellet
     range: 90,
-    cooldown: 900,
+    cooldown: 200,
     projectileSpeed: 450,
     pelletCount: 6,
   },
@@ -450,31 +427,31 @@ export const WEAPON_STATS = {
     cooldown: 0, // Continuous
     beamDuration: 1000,
     beamWidth: 4,
-    turretTurnAccel: 9, // Fast acceleration (rad/sec²)
-    turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
+    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
+    turretDrag: 0.5, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Widow beam lasers - extended range continuous beams
   // Fast, snappy turrets - high acceleration
   widowBeam: {
-    damage: 45,
-    range: 160,
+    damage: 45, // DPS while beam is on target
+    range: 140,
     cooldown: 0, // Continuous
     beamDuration: 1000,
     beamWidth: 4,
-    turretTurnAccel: 9, // Fast acceleration (rad/sec²)
-    turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
+    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
+    turretDrag: 0.5, // Moderate drag → terminal ~3.3 rad/sec
   },
 
   // Widow center beam - 2x stats of widowBeam, mounted at head center
   // Medium-slow turret - big gun needs time to aim
   widowCenterBeam: {
-    damage: 45,
-    range: 160,
+    damage: 65,
+    range: 200,
     cooldown: 0, // Continuous
     beamDuration: 1000,
-    beamWidth: 4,
-    turretTurnAccel: 9, // Fast acceleration (rad/sec²)
+    beamWidth: 12,
+    turretTurnAccel: 4, // Fast acceleration (rad/sec²)
     turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
   },
 
@@ -482,6 +459,7 @@ export const WEAPON_STATS = {
   sonic: {
     damage: 1, // Base DPS (scales with 1/distance)
     range: 400,
+    waveInnerRange: 40, // Inner dead zone — no damage/pull inside this radius
     cooldown: 0, // Continuous
     turretTurnAccel: 1, // Medium acceleration (rad/sec²)
     turretDrag: 0.1, // Moderate drag → terminal ~1.1 rad/sec
@@ -495,11 +473,12 @@ export const WEAPON_STATS = {
   widowSonic: {
     damage: 1, // Base DPS (scales with 1/distance)
     range: 600,
+    waveInnerRange: 120, // Inner dead zone — no damage/pull inside this radius
     cooldown: 0, // Continuous
     turretTurnAccel: 1, // Medium acceleration (rad/sec²)
     turretDrag: 0.1, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 0.125,
+    waveAngleAttack: Math.PI * 2,
     waveTransitionTime: 500,
     pullPower: 300,
   },

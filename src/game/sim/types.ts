@@ -120,6 +120,7 @@ export interface WeaponConfig {
 
   // Wave weapon properties (sonic)
   isWaveWeapon?: boolean;        // True if this is a continuous wave weapon
+  waveInnerRange?: number;       // Inner dead zone radius — no damage/pull inside this
   waveAngleIdle?: number;        // Angle when not firing (radians)
   waveAngleAttack?: number;      // Angle when firing (radians)
   waveTransitionTime?: number;   // Time (ms) to transition between idle and attack
