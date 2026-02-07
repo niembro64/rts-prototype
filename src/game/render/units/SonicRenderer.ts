@@ -1,4 +1,4 @@
-// Sonic unit renderer - Small 6-legged insect with central wave emitter orb
+// Sonic unit renderer - 8-legged tarantula with central wave emitter orb
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
@@ -17,14 +17,14 @@ export function drawSonicUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.cricket;
+    const legConfig = LEG_STYLE_CONFIG.tarantula;
     const legThickness = legConfig.thickness;
     const footSize = r * legConfig.footSizeMultiplier;
 
-    // Draw all 6 legs (insect style)
+    // Draw all 8 legs (tarantula style)
     for (let i = 0; i < legs.length; i++) {
       const leg = legs[i];
-      const side = i < 3 ? -1 : 1; // First 3 legs are left, last 3 are right
+      const side = i < 4 ? -1 : 1; // First 4 legs are left, last 4 are right
 
       const attach = leg.getAttachmentPoint(x, y, bodyRot);
       const foot = leg.getFootPosition();

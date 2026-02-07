@@ -13,7 +13,7 @@ interface UnitSpawnConfig {
 
 const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
   { unitType: 'jackal', count: 3, collisionRadius: 8, moveSpeed: 160 },
-  { unitType: 'strider', count: 2, collisionRadius: 13, moveSpeed: 100 },
+  { unitType: 'daddy', count: 2, collisionRadius: 13, moveSpeed: 100 },
   { unitType: 'mammoth', count: 1, collisionRadius: 22, moveSpeed: 45 },
   { unitType: 'badger', count: 2, collisionRadius: 15, moveSpeed: 85 },
 ];

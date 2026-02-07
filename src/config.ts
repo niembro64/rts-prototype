@@ -240,7 +240,7 @@ export const COMMANDER_STATS = {
   hp: 500,
   moveSpeed: 200,
   collisionRadius: 20,
-  mass: 60,           // Heavy commander unit
+  mass: 60, // Heavy commander unit
   buildRate: 50,
   buildRange: 150,
   dgunCost: 200,
@@ -302,20 +302,20 @@ export const UNIT_STATS = {
     mass: 10,
     buildRate: 70,
   },
-  // Mantis - Glass cannon striker. Burst damage (54 per volley), fragile.
+  // Lynx - Glass cannon striker. Burst damage (54 per volley), fragile.
   // Value: Alpha strike potential, but slow and squishy
-  mantis: {
-    baseCost: 55,
+  lynx: {
+    baseCost: 50,
     hp: 65,
     moveSpeed: 130,
     collisionRadius: 10,
     mass: 15,
     buildRate: 55,
   },
-  // Strider - Beam walker. Sustained 45 DPS but VERY slow turret tracking.
+  // Daddy - Beam walker. Sustained 45 DPS but VERY slow turret tracking.
   // Value: Good vs slow/stationary targets, struggles vs fast units
-  strider: {
-    baseCost: 90,
+  daddy: {
+    baseCost: 65,
     hp: 100,
     moveSpeed: 200,
     collisionRadius: 13,
@@ -325,7 +325,7 @@ export const UNIT_STATS = {
   // Badger - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
   // Value: Wins close fights, but takes damage closing the gap
   badger: {
-    baseCost: 80,
+    baseCost: 75,
     hp: 180,
     moveSpeed: 200,
     collisionRadius: 16,
@@ -335,7 +335,7 @@ export const UNIT_STATS = {
   // Scorpion - Area denial artillery. Splash damage, slow projectile.
   // Value: Excellent vs groups, but can be dodged, mediocre vs single targets
   scorpion: {
-    baseCost: 100,
+    baseCost: 85,
     hp: 100,
     moveSpeed: 220,
     collisionRadius: 14,
@@ -345,7 +345,7 @@ export const UNIT_STATS = {
   // Viper - Long-range assassin. Hitscan piercing, but low DPS (17) and can't escape.
   // Value: Safe poke damage, but very slow and fragile if caught
   viper: {
-    baseCost: 75,
+    baseCost: 55,
     hp: 55,
     moveSpeed: 70,
     collisionRadius: 11,
@@ -355,7 +355,7 @@ export const UNIT_STATS = {
   // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
   // Value: Frontline anchor, wins attrition fights, slow to reposition
   mammoth: {
-    baseCost: 180,
+    baseCost: 160,
     hp: 350,
     moveSpeed: 60,
     collisionRadius: 24,
@@ -365,17 +365,17 @@ export const UNIT_STATS = {
   // Widow - Titan spider unit. 7 beam weapons + sonic wave = 335+ DPS.
   // Value: Army-in-one super unit, but expensive and high priority target
   widow: {
-    baseCost: 800,
+    baseCost: 700,
     hp: 1200,
     moveSpeed: 100,
     collisionRadius: 38,
     mass: 500,
     buildRate: 20,
   },
-  // Cricket - Wave AoE unit. Continuous damage with pull, scales with 1/distance.
+  // Tarantula - Wave AoE unit. Continuous damage with pull, scales with 1/distance.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
-  cricket: {
-    baseCost: 70,
+  tarantula: {
+    baseCost: 55,
     hp: 80,
     moveSpeed: 200,
     collisionRadius: 11,
@@ -397,7 +397,7 @@ export const WEAPON_STATS = {
     projectileSpeed: 650,
   },
 
-  // Pulse - 3-shot burst, medium damage (Mantis's weapon)
+  // Pulse - 3-shot burst, medium damage (Lynx's weapon)
   pulse: {
     damage: 18,
     range: 160,
@@ -442,7 +442,7 @@ export const WEAPON_STATS = {
     beamWidth: 2,
   },
 
-  // Beam - Continuous damage beam (Strider's weapon)
+  // Beam - Continuous damage beam (Daddy's weapon)
   // Slow, deliberate turret - low acceleration, tracks slowly
   beam: {
     damage: 45, // DPS while beam is on target
@@ -478,7 +478,7 @@ export const WEAPON_STATS = {
     turretDrag: 0.1, // Moderate drag → terminal ~3.3 rad/sec
   },
 
-  // Sonic - Continuous pie-slice wave AoE (Cricket's weapon)
+  // Sonic - Continuous pie-slice wave AoE (Tarantula's weapon)
   sonic: {
     damage: 1, // Base DPS (scales with 1/distance)
     range: 400,
@@ -529,24 +529,24 @@ export const WEAPON_STATS = {
 export const UNIT_TARGETING_MODES = {
   // Simple projectile units - track nearest, return to forward when idle
   jackal: { default: 'nearest' as const, returnToForward: false },
-  mantis: { default: 'nearest' as const, returnToForward: false },
+  lynx: { default: 'nearest' as const, returnToForward: false },
   badger: { default: 'nearest' as const, returnToForward: false },
   scorpion: { default: 'nearest' as const, returnToForward: false },
   mammoth: { default: 'nearest' as const, returnToForward: false },
 
   // Beam units - sticky (lock onto target and burn it down)
-  strider: { default: 'sticky' as const, returnToForward: false },
+  daddy: { default: 'sticky' as const, returnToForward: false },
   viper: { default: 'sticky' as const, returnToForward: false },
 
   // Wave/AoE units - track nearest
-  cricket: { default: 'nearest' as const, returnToForward: false },
+  tarantula: { default: 'nearest' as const, returnToForward: false },
 
   // Multi-weapon titan
   widow: {
-    beam: 'sticky' as const,        // 6 vertex beams lock onto targets
-    centerBeam: 'nearest' as const,  // Center beam locks onto target
-    sonic: 'nearest' as const,      // Sonic wave tracks nearest threat
-    returnToForward: false,         // Widow turrets stay where they are
+    beam: 'sticky' as const, // 6 vertex beams lock onto targets
+    centerBeam: 'nearest' as const, // Center beam locks onto target
+    sonic: 'nearest' as const, // Sonic wave tracks nearest threat
+    returnToForward: false, // Widow turrets stay where they are
   },
 
   // Commander - projectile, track nearest
@@ -589,7 +589,10 @@ export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING = true;
  * Can be changed by host during gameplay via UI.
  * Options: 1, 5, 10, 30
  */
-export const DEFAULT_NETWORK_UPDATES_PER_SECOND = 10;
+export const DEFAULT_NETWORK_UPDATES_PER_SECOND = 30;
+
+/** Available options for the "Send Updates Per Second" UI control */
+export const NETWORK_UPDATE_RATE_OPTIONS = [0.3, 1, 5, 10, 20, 30, 45, 60] as const;
 
 // =============================================================================
 // AUDIO
@@ -615,8 +618,11 @@ export const ZOOM_MAX = 5.0;
  */
 export const ZOOM_FACTOR = 1.15;
 
-/** Initial zoom level when game starts */
-export const ZOOM_INITIAL = 0.4;
+/** Initial zoom level for the background demo game */
+export const ZOOM_INITIAL_DEMO = 1.32;
+
+/** Initial zoom level when a real game starts */
+export const ZOOM_INITIAL_GAME = 0.5;
 
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = 6.0;
@@ -653,7 +659,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     max: 2.0,
   },
 
-  // Leg rendering for widow/strider/cricket units
+  // Leg rendering for widow/daddy/tarantula units
   LEGS: {
     min: 'none',
     low: 'animated',
@@ -740,11 +746,11 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
  * | Unit     | Cost | HP   | Speed | DPS | Range | Special              |
  * |----------|------|------|-------|-----|-------|----------------------|
  * | Jackal   |   40 |   40 |  360  |  50 | 140   | Fast swarm (gatling) |
- * | Mantis   |   55 |   65 |  130  |  45 | 160   | 3-shot burst (pulse) |
- * | Cricket  |   70 |   80 |  200  |  40 | 400   | Sonic wave AoE       |
+ * | Lynx   |   55 |   65 |  130  |  45 | 160   | 3-shot burst (pulse) |
+ * | Tarantula|   70 |   80 |  200  |  40 | 400   | Sonic wave AoE       |
  * | Viper    |   75 |   55 |   70  |  17 | 350   | Railgun, pierce      |
  * | Badger   |   80 |  180 |  200  |  60 |  90   | Shotgun spread       |
- * | Strider  |   90 |  100 |  200  |  45 | 140   | Continuous beam      |
+ * | Daddy    |   90 |  100 |  200  |  45 | 140   | Continuous beam      |
  * | Scorpion |  100 |  100 |  220  |  32 | 200   | Mortar splash        |
  * | Mammoth  |  180 |  350 |   60  |  40 | 360   | Heavy cannon         |
  * | Widow    |  800 | 1200 |  100  | 310 | 350   | 6 beam + sonic       |

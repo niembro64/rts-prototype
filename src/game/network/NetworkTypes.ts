@@ -129,7 +129,7 @@ export interface NetworkEntity {
   playerId?: PlayerId;
 
   // Unit fields
-  unitType?: string;         // Unit type identifier (jackal, mantis, strider, etc.)
+  unitType?: string;         // Unit type identifier (jackal, lynx, daddy, etc.)
   hp?: number;
   maxHp?: number;
   collisionRadius?: number;  // Hitbox size for physics

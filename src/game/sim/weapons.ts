@@ -17,7 +17,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     color: 0xffffff, // Not used - team colors applied
   },
 
-  // Pulse - fires 3 shots in quick succession (Mantis's weapon)
+  // Pulse - fires 3 shots in quick succession (Lynx's weapon)
   pulse: {
     id: 'pulse',
     audioId: 'burst-rifle',
@@ -32,7 +32,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     color: 0xffffff,
   },
 
-  // Beam - continuous beam, deals damage while on target (Strider's weapon)
+  // Beam - continuous beam, deals damage while on target (Daddy's weapon)
   beam: {
     id: 'beam',
     audioId: 'beam',
@@ -118,7 +118,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     piercing: true,
   },
 
-  // Sonic - Continuous pie-slice wave weapon (Cricket's weapon)
+  // Sonic - Continuous pie-slice wave weapon (Tarantula's weapon)
   // Damages all enemies within the slice, no projectiles created
   sonic: {
     id: 'sonic',

@@ -1,4 +1,4 @@
-// Beam unit renderer - 6-legged insect with a single beam laser (daddy long legs style)
+// Beam unit renderer - 8-legged daddy long legs style unit with a single beam laser
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
@@ -16,7 +16,7 @@ export function drawBeamUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.strider;
+    const legConfig = LEG_STYLE_CONFIG.daddy;
     const legThickness = legConfig.thickness;
     const footSize = r * legConfig.footSizeMultiplier;
 

@@ -127,8 +127,8 @@ export const COLORS = {
 // Leg style configuration - thickness, foot size, and lerp duration (ms)
 export const LEG_STYLE_CONFIG = {
   widow: { thickness: 5, footSizeMultiplier: 0.1, lerpSpeed: 700 },
-  strider: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 500 },
-  cricket: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 200 },
+  daddy: { thickness: 2, footSizeMultiplier: 0.14, lerpSpeed: 500 },
+  tarantula: { thickness: 4, footSizeMultiplier: 0.12, lerpSpeed: 200 },
   commander: { thickness: 6, footSizeMultiplier: 0.15, lerpSpeed: 400 },
 } as const;
 
@@ -151,12 +151,12 @@ export const ACTION_COLORS: Record<ActionType, number> = {
 // Unit display names by unit type ID
 export const UNIT_NAMES: Record<string, string> = {
   jackal: 'Jackal',
-  mantis: 'Mantis',
-  strider: 'Strider',
+  lynx: 'Lynx',
+  daddy: 'Daddy',
   badger: 'Badger',
   scorpion: 'Scorpion',
   viper: 'Viper',
   mammoth: 'Mammoth',
   widow: 'Widow',
-  cricket: 'Cricket',
+  tarantula: 'Tarantula',
 };

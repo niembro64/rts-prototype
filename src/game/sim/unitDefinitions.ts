@@ -18,7 +18,7 @@ import {
 export type LocomotionType = 'wheels' | 'treads' | 'legs';
 
 // Leg styles for legged units
-export type LegStyle = 'widow' | 'strider' | 'cricket' | 'commander';
+export type LegStyle = 'widow' | 'daddy' | 'tarantula' | 'commander';
 
 // Unified unit definition - everything about a unit type in one place
 export interface UnitDefinition {
@@ -243,28 +243,28 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.jackal.buildRate,
     locomotion: 'wheels',
   },
-  mantis: {
-    id: 'mantis',
-    name: 'Mantis',
+  lynx: {
+    id: 'lynx',
+    name: 'Lynx',
     weaponType: 'pulse',
-    hp: UNIT_STATS.mantis.hp,
-    moveSpeed: UNIT_STATS.mantis.moveSpeed,
-    collisionRadius: UNIT_STATS.mantis.collisionRadius,
-    energyCost: UNIT_STATS.mantis.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.mantis.buildRate,
+    hp: UNIT_STATS.lynx.hp,
+    moveSpeed: UNIT_STATS.lynx.moveSpeed,
+    collisionRadius: UNIT_STATS.lynx.collisionRadius,
+    energyCost: UNIT_STATS.lynx.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.lynx.buildRate,
     locomotion: 'wheels',
   },
-  strider: {
-    id: 'strider',
-    name: 'Strider',
+  daddy: {
+    id: 'daddy',
+    name: 'Daddy',
     weaponType: 'beam',
-    hp: UNIT_STATS.strider.hp,
-    moveSpeed: UNIT_STATS.strider.moveSpeed,
-    collisionRadius: UNIT_STATS.strider.collisionRadius,
-    energyCost: UNIT_STATS.strider.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.strider.buildRate,
+    hp: UNIT_STATS.daddy.hp,
+    moveSpeed: UNIT_STATS.daddy.moveSpeed,
+    collisionRadius: UNIT_STATS.daddy.collisionRadius,
+    energyCost: UNIT_STATS.daddy.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.daddy.buildRate,
     locomotion: 'legs',
-    legStyle: 'strider',
+    legStyle: 'daddy',
   },
   badger: {
     id: 'badger',
@@ -323,17 +323,17 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     legStyle: 'widow',
     createWeapons: createWidowWeapons,
   },
-  cricket: {
-    id: 'cricket',
-    name: 'Cricket',
+  tarantula: {
+    id: 'tarantula',
+    name: 'Tarantula',
     weaponType: 'sonic',
-    hp: UNIT_STATS.cricket.hp,
-    moveSpeed: UNIT_STATS.cricket.moveSpeed,
-    collisionRadius: UNIT_STATS.cricket.collisionRadius,
-    energyCost: UNIT_STATS.cricket.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.cricket.buildRate,
+    hp: UNIT_STATS.tarantula.hp,
+    moveSpeed: UNIT_STATS.tarantula.moveSpeed,
+    collisionRadius: UNIT_STATS.tarantula.collisionRadius,
+    energyCost: UNIT_STATS.tarantula.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.tarantula.buildRate,
     locomotion: 'legs',
-    legStyle: 'cricket',
+    legStyle: 'tarantula',
   },
 };
 

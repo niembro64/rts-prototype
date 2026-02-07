@@ -18,7 +18,7 @@ export interface UnitRenderer {
  * Interface for leg accessor (passed to legged unit renderers)
  */
 export interface LegAccessor {
-  getOrCreateLegs: (entity: Entity, style: 'widow' | 'strider' | 'cricket') => ArachnidLeg[];
+  getOrCreateLegs: (entity: Entity, style: 'widow' | 'daddy' | 'tarantula') => ArachnidLeg[];
 }
 
 /**

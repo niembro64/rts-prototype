@@ -7,7 +7,7 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
-import { DEFAULT_NETWORK_UPDATES_PER_SECOND, MAP_WIDTH, MAP_HEIGHT, BACKGROUND_MAP_WIDTH, BACKGROUND_MAP_HEIGHT } from '../config';
+import { DEFAULT_NETWORK_UPDATES_PER_SECOND, NETWORK_UPDATE_RATE_OPTIONS, MAP_WIDTH, MAP_HEIGHT, BACKGROUND_MAP_WIDTH, BACKGROUND_MAP_HEIGHT } from '../config';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
@@ -23,8 +23,7 @@ import {
 } from '../game/render/graphicsSettings';
 import { audioManager } from '../game/audio/AudioManager';
 
-// Available update rate options
-const UPDATE_RATE_OPTIONS = [0.3, 1, 5, 10, 20, 30] as const;
+const UPDATE_RATE_OPTIONS = NETWORK_UPDATE_RATE_OPTIONS;
 
 // Graphics quality options - Auto is separate from quality levels
 const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [

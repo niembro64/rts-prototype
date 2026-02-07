@@ -63,7 +63,7 @@ const buildingOptions: { type: 'solar' | 'factory'; label: string; key: string; 
 // Vehicles (treads/wheels)
 const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
   { weaponId: 'jackal', label: 'Jackal', cost: 40 },
-  { weaponId: 'mantis', label: 'Mantis', cost: 55 },
+  { weaponId: 'lynx', label: 'Lynx', cost: 55 },
   { weaponId: 'badger', label: 'Badger', cost: 80 },
   { weaponId: 'viper', label: 'Viper', cost: 75 },
   { weaponId: 'scorpion', label: 'Scorpion', cost: 100 },
@@ -72,8 +72,8 @@ const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
 
 // Bots (legs)
 const botOptions: { weaponId: string; label: string; cost: number }[] = [
-  { weaponId: 'cricket', label: 'Cricket', cost: 70 },
-  { weaponId: 'strider', label: 'Strider', cost: 90 },
+  { weaponId: 'tarantula', label: 'Tarantula', cost: 70 },
+  { weaponId: 'daddy', label: 'Daddy', cost: 90 },
   { weaponId: 'widow', label: 'Widow', cost: 800 },
 ];
 

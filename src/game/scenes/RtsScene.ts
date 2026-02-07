@@ -11,7 +11,8 @@ import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
 import {
-  ZOOM_INITIAL,
+  ZOOM_INITIAL_DEMO,
+  ZOOM_INITIAL_GAME,
   WORLD_PADDING_PERCENT,
 } from '../../config';
 
@@ -191,7 +192,7 @@ export class RtsScene extends Phaser.Scene {
     const worldHeight = this.mapHeight + paddingY * 2;
     camera.setBounds(worldX, worldY, worldWidth, worldHeight);
 
-    camera.setZoom(this.backgroundMode ? ZOOM_INITIAL : 0.5);
+    camera.setZoom(this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME);
     camera.centerOn(this.mapWidth / 2, this.mapHeight / 2);
 
     // Draw grid background

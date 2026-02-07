@@ -91,7 +91,7 @@ export class EntityRenderer {
 
   private getOrCreateLegs(
     entity: Entity,
-    legStyle: 'widow' | 'strider' | 'cricket' | 'commander' = 'widow'
+    legStyle: 'widow' | 'daddy' | 'tarantula' | 'commander' = 'widow'
   ): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
@@ -99,7 +99,7 @@ export class EntityRenderer {
     const radius = entity.unit?.collisionRadius ?? 40;
     let leftSideConfigs: LegConfig[];
 
-    if (legStyle === 'strider') {
+    if (legStyle === 'daddy') {
       const legLength = radius * 10;
       const upperLen = legLength * 0.3;
       const lowerLen = legLength * 0.6;
@@ -110,15 +110,16 @@ export class EntityRenderer {
         { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.4, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.85, snapTargetAngle: -Math.PI * 0.45, snapDistanceMultiplier: 0.85, extensionThreshold: 0.9 },
         { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.3, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.65, snapDistanceMultiplier: 0.55, extensionThreshold: 0.99 },
       ];
-    } else if (legStyle === 'cricket') {
+    } else if (legStyle === 'tarantula') {
       const legLength = radius * 1.9;
       const upperLen = legLength * 0.55;
       const lowerLen = legLength * 0.55;
 
       leftSideConfigs = [
-        { attachOffsetX: radius * 0.2, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.5, snapTargetAngle: -Math.PI * 0.2, snapDistanceMultiplier: 0.99, extensionThreshold: 0.99 },
-        { attachOffsetX: 0, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.8, snapTargetAngle: -Math.PI * 0.3, snapDistanceMultiplier: 0.85, extensionThreshold: 0.99 },
-        { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.4, snapDistanceMultiplier: 0.6, extensionThreshold: 0.99 },
+        { attachOffsetX: radius * 0.3, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.4, snapTargetAngle: -Math.PI * 0.15, snapDistanceMultiplier: 0.99, extensionThreshold: 0.99 },
+        { attachOffsetX: radius * 0.1, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.55, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.99 },
+        { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.8, snapTargetAngle: -Math.PI * 0.35, snapDistanceMultiplier: 0.8, extensionThreshold: 0.99 },
+        { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.5, snapDistanceMultiplier: 0.6, extensionThreshold: 0.99 },
       ];
     } else if (legStyle === 'commander') {
       // Commander has 4 sturdy legs - 2 front, 2 back
@@ -133,15 +134,16 @@ export class EntityRenderer {
         { attachOffsetX: -radius * 0.4, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.85, snapTargetAngle: -Math.PI * 0.55, snapDistanceMultiplier: 0.7, extensionThreshold: 0.95 },
       ];
     } else {
+      // Widow: 4 legs per side, tuned to match daddy/tarantula snap behavior
       const legLength = radius * 1.9;
       const upperLen = legLength * 0.55;
       const lowerLen = legLength * 0.55;
 
       leftSideConfigs = [
-        { attachOffsetX: radius * 0.6, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.5, snapTargetAngle: -Math.PI * 0.2, snapDistanceMultiplier: 0.99, extensionThreshold: 0.99 },
-        { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.33, snapDistanceMultiplier: 0.88, extensionThreshold: 0.99 },
-        { attachOffsetX: -radius * 0.2, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.9, snapTargetAngle: -Math.PI * 0.4, snapDistanceMultiplier: 0.82, extensionThreshold: 0.99 },
-        { attachOffsetX: -radius * 0.55, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.7, snapDistanceMultiplier: 0.5, extensionThreshold: 0.99 },
+        { attachOffsetX: radius * 0.4, attachOffsetY: -radius * 0.4, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.35, snapTargetAngle: -Math.PI * 0.15, snapDistanceMultiplier: 0.95, extensionThreshold: 0.85 },
+        { attachOffsetX: radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.55, snapTargetAngle: -Math.PI * 0.28, snapDistanceMultiplier: 0.88, extensionThreshold: 0.88 },
+        { attachOffsetX: -radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.8, snapTargetAngle: -Math.PI * 0.42, snapDistanceMultiplier: 0.78, extensionThreshold: 0.92 },
+        { attachOffsetX: -radius * 0.4, attachOffsetY: -radius * 0.4, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.6, snapDistanceMultiplier: 0.55, extensionThreshold: 0.99 },
       ];
     }
 
@@ -274,7 +276,7 @@ export class EntityRenderer {
     let wheelSetup: VehicleWheelSetup | null = null;
     switch (unitType) {
       case 'jackal': wheelSetup = createScoutWheelSetup(radius, 2.0); break;
-      case 'mantis': wheelSetup = createBurstWheelSetup(radius, 2.0); break;
+      case 'lynx': wheelSetup = createBurstWheelSetup(radius, 2.0); break;
       case 'scorpion': wheelSetup = createMortarWheelSetup(radius, 2.0); break;
       case 'viper': wheelSetup = createFourWheelSetup(radius, 2.0); break;
       default: return null;
@@ -522,14 +524,14 @@ export class EntityRenderer {
       // Select renderer based on unit type
       switch (unitType) {
         case 'jackal': drawScoutUnit(ctx, this.getVehicleWheels(entity.id)); break;
-        case 'mantis': drawBurstUnit(ctx, this.getVehicleWheels(entity.id)); break;
-        case 'strider': drawBeamUnit(ctx, this.getOrCreateLegs(entity, 'strider')); break;
+        case 'lynx': drawBurstUnit(ctx, this.getVehicleWheels(entity.id)); break;
+        case 'daddy': drawBeamUnit(ctx, this.getOrCreateLegs(entity, 'daddy')); break;
         case 'badger': drawBrawlUnit(ctx, this.getTankTreads(entity.id)); break;
         case 'scorpion': drawMortarUnit(ctx, this.getVehicleWheels(entity.id)); break;
         case 'viper': drawSnipeUnit(ctx, this.getVehicleWheels(entity.id)); break;
         case 'mammoth': drawTankUnit(ctx, this.getTankTreads(entity.id)); break;
         case 'widow': drawArachnidUnit(ctx, this.getOrCreateLegs(entity, 'widow')); break;
-        case 'cricket': drawSonicUnit(ctx, this.getOrCreateLegs(entity, 'cricket')); break;
+        case 'tarantula': drawSonicUnit(ctx, this.getOrCreateLegs(entity, 'tarantula')); break;
         default: drawScoutUnit(ctx, this.getVehicleWheels(entity.id));
       }
     }

@@ -58,7 +58,7 @@ export interface UnitAction {
 // Note: Vision/tracking range and fire range are per-weapon properties in UnitWeapon
 // Note: Turret rotation is per-weapon - units have no control over weapons
 export interface Unit {
-  unitType: string;         // Unit type identifier (jackal, mantis, strider, etc.)
+  unitType: string;         // Unit type identifier (jackal, lynx, daddy, etc.)
   moveSpeed: number;
   collisionRadius: number;  // Hitbox size for physics and click detection
   mass: number;             // Physics mass for force-based movement

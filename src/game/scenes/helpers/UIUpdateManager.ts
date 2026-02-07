@@ -7,14 +7,14 @@ import { economyManager } from '../../sim/economy';
 // Unit type to display label
 const UNIT_LABELS: Record<string, string> = {
   jackal: 'Jackal',
-  mantis: 'Mantis',
-  strider: 'Strider',
+  lynx: 'Lynx',
+  daddy: 'Daddy',
   badger: 'Badger',
   scorpion: 'Scorpion',
   viper: 'Viper',
   mammoth: 'Mammoth',
   widow: 'Widow',
-  cricket: 'Cricket',
+  tarantula: 'Tarantula',
   commander: 'Commander',
 };
 
