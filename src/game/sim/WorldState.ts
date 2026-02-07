@@ -52,6 +52,9 @@ export class WorldState {
   public readonly mapWidth: number;
   public readonly mapHeight: number;
 
+  // Runtime thrust multiplier (set by GameServer based on game/demo mode)
+  public thrustMultiplier: number = 8.0;
+
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // These caches avoid creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
   // Invalidated when entities are added/removed

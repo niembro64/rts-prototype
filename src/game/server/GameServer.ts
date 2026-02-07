@@ -26,6 +26,8 @@ import {
   MAP_HEIGHT,
   BACKGROUND_MAP_WIDTH,
   BACKGROUND_MAP_HEIGHT,
+  UNIT_THRUST_MULTIPLIER_GAME,
+  UNIT_THRUST_MULTIPLIER_DEMO,
 } from '../../config';
 
 export interface GameServerConfig {
@@ -81,6 +83,7 @@ export class GameServer {
     const mapWidth = this.backgroundMode ? BACKGROUND_MAP_WIDTH : MAP_WIDTH;
     const mapHeight = this.backgroundMode ? BACKGROUND_MAP_HEIGHT : MAP_HEIGHT;
     this.world = new WorldState(42, mapWidth, mapHeight);
+    this.world.thrustMultiplier = this.backgroundMode ? UNIT_THRUST_MULTIPLIER_DEMO : UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player
 
     this.commandQueue = new CommandQueue();

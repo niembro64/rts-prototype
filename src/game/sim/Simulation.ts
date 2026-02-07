@@ -26,7 +26,6 @@ import { getWeaponConfig } from './weapons';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
-import { UNIT_THRUST_MULTIPLIER } from '../../config';
 
 // Fixed simulation timestep (60 Hz)
 export const FIXED_TIMESTEP = 1000 / 60;
@@ -684,8 +683,8 @@ export class Simulation {
         }
 
         // Thrust toward target
-        unit.velocityX = (dx / distance) * unit.moveSpeed * UNIT_THRUST_MULTIPLIER;
-        unit.velocityY = (dy / distance) * unit.moveSpeed * UNIT_THRUST_MULTIPLIER;
+        unit.velocityX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+        unit.velocityY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
         continue;
       }
 
@@ -710,8 +709,8 @@ export class Simulation {
       }
 
       // Thrust toward waypoint
-      unit.velocityX = (dx / distance) * unit.moveSpeed * UNIT_THRUST_MULTIPLIER;
-      unit.velocityY = (dy / distance) * unit.moveSpeed * UNIT_THRUST_MULTIPLIER;
+      unit.velocityX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+      unit.velocityY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
     }
   }
 

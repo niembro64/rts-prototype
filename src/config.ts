@@ -241,7 +241,8 @@ export const UNIT_MASS_MULTIPLIER = 10.0;
  * Higher values = faster acceleration, higher top speed.
  * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
  */
-export const UNIT_THRUST_MULTIPLIER = 8.0;
+export const UNIT_THRUST_MULTIPLIER_GAME = 8.0;
+export const UNIT_THRUST_MULTIPLIER_DEMO = 3.0;
 
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
