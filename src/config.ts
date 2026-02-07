@@ -64,7 +64,7 @@ export const KNOCKBACK = {
  * Units: radians/sec² - how fast the turret speeds up its rotation.
  * Higher = snappier turret response.
  */
-export const DEFAULT_TURRET_TURN_ACCEL = 20;
+export const DEFAULT_TURRET_TURN_ACCEL = 40;
 
 /**
  * Default turret drag for weapons that don't specify their own.
