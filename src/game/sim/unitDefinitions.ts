@@ -1,15 +1,15 @@
 // Unified Unit Definition System
 // All unit-type-specific configuration in one place
 
-import type { UnitWeapon, TargetingMode } from './types';
+import type { UnitWeapon } from './types';
 import { getWeaponConfig } from './weapons';
 import {
   COST_MULTIPLIER,
   UNIT_STATS,
-  UNIT_TARGETING_MODES,
   DEFAULT_TURRET_TURN_ACCEL,
   DEFAULT_TURRET_DRAG,
   SEE_RANGE_MULTIPLIER,
+  RELEASE_RANGE_MULTIPLIER,
   LOCK_RANGE_MULTIPLIER,
   FIGHTSTOP_RANGE_MULTIPLIER,
 } from '../../config';
@@ -45,65 +45,26 @@ export interface UnitDefinition {
   createWeapons?: (radius: number, definition: UnitDefinition) => UnitWeapon[];
 }
 
-// Get targeting mode for a unit type
-// Looks up from UNIT_TARGETING_MODES config, defaults to 'nearest'
-function getTargetingMode(unitId: string, weaponType?: 'beam' | 'centerBeam' | 'forceField'): TargetingMode {
-  const unitModes = UNIT_TARGETING_MODES[unitId as keyof typeof UNIT_TARGETING_MODES];
-  if (!unitModes) return 'nearest';
-
-  // For multi-weapon units, check for specific weapon type
-  if (weaponType && weaponType in unitModes) {
-    const value = (unitModes as Record<string, unknown>)[weaponType];
-    if (value === 'nearest' || value === 'sticky') {
-      return value;
-    }
-  }
-
-  // For single-weapon units or default fallback
-  if ('default' in unitModes) {
-    return (unitModes as { default: TargetingMode }).default;
-  }
-
-  return 'nearest';
-}
-
-// Get returnToForward setting for a unit type
-// Looks up from UNIT_TARGETING_MODES config, defaults to true
-function getReturnToForward(unitId: string): boolean {
-  const unitModes = UNIT_TARGETING_MODES[unitId as keyof typeof UNIT_TARGETING_MODES];
-  if (!unitModes) return true;
-
-  if ('returnToForward' in unitModes) {
-    return (unitModes as { returnToForward: boolean }).returnToForward;
-  }
-
-  return true; // Default to returning to forward
-}
-
 // Default weapon creation - single weapon matching unit type
-// Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
+// Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
   const weaponConfig = getWeaponConfig(definition.weaponType);
   const fireRange = weaponConfig.range;
-  const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
+  const releaseRange = fireRange * RELEASE_RANGE_MULTIPLIER;
   const lockRange = fireRange * LOCK_RANGE_MULTIPLIER;
-  // Get turret acceleration physics values from weapon config, or use defaults
+  const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const turretTurnAccel = weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const turretDrag = weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
-  // Get targeting mode and return-to-forward from config
-  const targetingMode = getTargetingMode(definition.id);
-  const returnToForward = getReturnToForward(definition.id);
-  const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
 
   return [{
     config: { ...weaponConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    targetingMode,
-    returnToForward,
     seeRange,
-    lockRange,
     fireRange,
+    releaseRange,
+    lockRange,
     fightstopRange,
     isLocked: false,
     turretRotation: 0,
@@ -119,35 +80,29 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
 
 // Widow weapon creation - 6 beam lasers at hexagon + 1 center beam + 1 force field
 // Uses explicit widowBeam, widowCenterBeam, and widowForceField configs from config.ts
-// Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
+// Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
 function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWeapon[] {
   const widowBeamConfig = getWeaponConfig('widowBeam');
   const widowCenterBeamConfig = getWeaponConfig('widowCenterBeam');
   const widowForceFieldConfig = getWeaponConfig('widowForceField');
 
-  // Beam weapon - get targeting mode first to determine seeRange multiplier
-  const beamTargetingMode = getTargetingMode('widow', 'beam');
+  // Beam weapon ranges
   const beamFireRange = widowBeamConfig.range;
   const beamSeeRange = beamFireRange * SEE_RANGE_MULTIPLIER;
+  const beamReleaseRange = beamFireRange * RELEASE_RANGE_MULTIPLIER;
   const beamLockRange = beamFireRange * LOCK_RANGE_MULTIPLIER;
   const beamFightstopRange = beamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const beamTurnAccel = widowBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const beamDrag = widowBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
-  // Center beam weapon - get targeting mode first to determine seeRange multiplier
-  const centerBeamTargetingMode = getTargetingMode('widow', 'centerBeam');
+  // Center beam weapon ranges
   const centerBeamFireRange = widowCenterBeamConfig.range;
   const centerBeamSeeRange = centerBeamFireRange * SEE_RANGE_MULTIPLIER;
+  const centerBeamReleaseRange = centerBeamFireRange * RELEASE_RANGE_MULTIPLIER;
   const centerBeamLockRange = centerBeamFireRange * LOCK_RANGE_MULTIPLIER;
   const centerBeamFightstopRange = centerBeamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const centerBeamTurnAccel = widowCenterBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const centerBeamDrag = widowCenterBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
-
-  // Force field weapons - get targeting mode (shared by push and pull)
-  const forceFieldTargetingMode = getTargetingMode('widow', 'forceField');
-
-  // Widow's return-to-forward setting (shared by all weapons)
-  const returnToForward = getReturnToForward('widow');
 
   const weapons: UnitWeapon[] = [];
 
@@ -164,11 +119,10 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
       config: { ...widowBeamConfig },
       currentCooldown: 0,
       targetEntityId: null,
-      targetingMode: beamTargetingMode,
-      returnToForward,
       seeRange: beamSeeRange,
-      lockRange: beamLockRange,
       fireRange: beamFireRange,
+      releaseRange: beamReleaseRange,
+      lockRange: beamLockRange,
       fightstopRange: beamFightstopRange,
       isLocked: false,
       turretRotation: 0,
@@ -187,11 +141,10 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     config: { ...widowCenterBeamConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    targetingMode: centerBeamTargetingMode,
-    returnToForward,
     seeRange: centerBeamSeeRange,
-    lockRange: centerBeamLockRange,
     fireRange: centerBeamFireRange,
+    releaseRange: centerBeamReleaseRange,
+    lockRange: centerBeamLockRange,
     fightstopRange: centerBeamFightstopRange,
     isLocked: false,
     turretRotation: 0,
@@ -207,6 +160,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
   // 1 force field weapon in center (dual push/pull zones)
   const ffFireRange = widowForceFieldConfig.range;
   const ffSeeRange = ffFireRange * SEE_RANGE_MULTIPLIER;
+  const ffReleaseRange = ffFireRange * RELEASE_RANGE_MULTIPLIER;
   const ffLockRange = ffFireRange * LOCK_RANGE_MULTIPLIER;
   const ffFightstopRange = ffFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const ffTurnAccel = widowForceFieldConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
@@ -216,11 +170,10 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     config: { ...widowForceFieldConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    targetingMode: forceFieldTargetingMode,
-    returnToForward,
     seeRange: ffSeeRange,
-    lockRange: ffLockRange,
     fireRange: ffFireRange,
+    releaseRange: ffReleaseRange,
+    lockRange: ffLockRange,
     fightstopRange: ffFightstopRange,
     isLocked: false,
     turretRotation: 0,

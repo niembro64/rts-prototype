@@ -444,15 +444,16 @@ export class EntityRenderer {
     // 3. Range circles
     const rangeVis = {
       see: getRangeToggle('see'),
-      lock: getRangeToggle('lock'),
       fire: getRangeToggle('fire'),
+      release: getRangeToggle('release'),
+      lock: getRangeToggle('lock'),
       fightstop: getRangeToggle('fightstop'),
       build: getRangeToggle('build'),
     };
     const showAllRanges = anyRangeToggleActive();
     const rangeUnits = showAllRanges ? this.visibleUnits : this.selectedUnits;
     for (const entity of rangeUnits) {
-      renderRangeCircles(this.graphics, entity, showAllRanges ? rangeVis : { see: true, lock: true, fire: true, fightstop: false, build: true });
+      renderRangeCircles(this.graphics, entity, showAllRanges ? rangeVis : { see: true, fire: true, release: true, lock: true, fightstop: false, build: true });
     }
 
     // 4. Unit bodies

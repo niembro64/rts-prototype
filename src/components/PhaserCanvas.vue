@@ -81,8 +81,9 @@ const renderMode = ref<RenderMode>(getRenderMode());
 const audioEnabled = ref(!audioManager.muted);
 const rangeToggles = reactive<Record<RangeType, boolean>>({
   see: getRangeToggle('see'),
-  lock: getRangeToggle('lock'),
   fire: getRangeToggle('fire'),
+  release: getRangeToggle('release'),
+  lock: getRangeToggle('lock'),
   fightstop: getRangeToggle('fightstop'),
   build: getRangeToggle('build'),
 });
@@ -746,14 +747,19 @@ onUnmounted(() => {
           >See</button>
           <button
             class="control-btn"
-            :class="{ active: rangeToggles.lock }"
-            @click="toggleRange('lock')"
-          >Lock</button>
-          <button
-            class="control-btn"
             :class="{ active: rangeToggles.fire }"
             @click="toggleRange('fire')"
           >Fire</button>
+          <button
+            class="control-btn"
+            :class="{ active: rangeToggles.release }"
+            @click="toggleRange('release')"
+          >Rel</button>
+          <button
+            class="control-btn"
+            :class="{ active: rangeToggles.lock }"
+            @click="toggleRange('lock')"
+          >Lock</button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.fightstop }"

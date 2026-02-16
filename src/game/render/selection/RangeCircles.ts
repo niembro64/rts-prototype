@@ -6,8 +6,9 @@ import { COLORS } from '../types';
 
 export interface RangeVisibility {
   see: boolean;
-  lock: boolean;
   fire: boolean;
+  release: boolean;
+  lock: boolean;
   fightstop: boolean;
   build: boolean;
 }
@@ -33,18 +34,25 @@ export function renderRangeCircles(
       graphics.strokeCircle(x, y, maxSeeRange);
     }
 
-    // Lock range (blue) - weapon commits to target (sticky lock)
-    if (visibility.lock) {
-      const maxLockRange = Math.max(...weapons.map((w) => w.lockRange));
-      graphics.lineStyle(1, COLORS.LOCK_RANGE, 0.35);
-      graphics.strokeCircle(x, y, maxLockRange);
-    }
-
-    // Fire range (red) - weapon fires when target is within this
+    // Fire range (red) - weapon fires at nearest enemy within this
     if (visibility.fire) {
       const maxFireRange = Math.max(...weapons.map((w) => w.fireRange));
       graphics.lineStyle(1.5, COLORS.WEAPON_RANGE, 0.4);
       graphics.strokeCircle(x, y, maxFireRange);
+    }
+
+    // Release range (blue) - lock release boundary (hysteresis)
+    if (visibility.release) {
+      const maxReleaseRange = Math.max(...weapons.map((w) => w.releaseRange));
+      graphics.lineStyle(1, COLORS.RELEASE_RANGE, 0.35);
+      graphics.strokeCircle(x, y, maxReleaseRange);
+    }
+
+    // Lock range (purple) - lock acquisition (weapon commits when target enters)
+    if (visibility.lock) {
+      const maxLockRange = Math.max(...weapons.map((w) => w.lockRange));
+      graphics.lineStyle(1, COLORS.LOCK_RANGE, 0.35);
+      graphics.strokeCircle(x, y, maxLockRange);
     }
 
     // Fightstop range (orange) - unit stops moving when target is within this

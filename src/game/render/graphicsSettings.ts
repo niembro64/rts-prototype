@@ -79,8 +79,8 @@ const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
 const RANGE_TOGGLE_STORAGE_PREFIX = 'rts-range-';
 
-export type RangeType = 'see' | 'lock' | 'fire' | 'fightstop' | 'build';
-export const RANGE_TYPES: RangeType[] = ['see', 'lock', 'fire', 'fightstop', 'build'];
+export type RangeType = 'see' | 'fire' | 'release' | 'lock' | 'fightstop' | 'build';
+export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'fightstop', 'build'];
 
 // Current settings
 // Default to 'low' for performance - 'high' and 'max' explosion rendering is extremely expensive
@@ -88,8 +88,9 @@ let currentQuality: GraphicsQuality = 'low';
 let currentRenderMode: RenderMode = 'window';
 const currentRangeToggles: Record<RangeType, boolean> = {
   see: false,
-  lock: false,
   fire: false,
+  release: false,
+  lock: false,
   fightstop: false,
   build: false,
 };

@@ -111,15 +111,14 @@ export interface NetworkAction {
 }
 
 // Weapon data for network sync (supports multi-weapon units)
-// Range constraint: fightstopRange < fireRange < lockRange < seeRange
+// Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
 export interface NetworkWeapon {
   configId: string;
   targetId?: number;
-  targetingMode?: 'nearest' | 'sticky';  // How weapon acquires/keeps targets
-  returnToForward?: boolean;             // Whether turret returns to forward when no target
   seeRange: number;
-  lockRange: number;       // Sticky lock commitment range (between fireRange and seeRange)
   fireRange: number;
+  releaseRange: number;    // Lock release boundary (hysteresis)
+  lockRange: number;       // Lock acquisition range (innermost commitment zone)
   fightstopRange: number;  // Unit stops in fight mode when enemy within this range
   turretRotation: number;
   turretAngularVelocity: number;  // Current angular velocity (rad/sec)

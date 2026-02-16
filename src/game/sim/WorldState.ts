@@ -1,7 +1,7 @@
-import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType, TargetingMode } from './types';
+import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
 import { getWeaponConfig } from './weapons';
 import { getUnitDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, SEE_RANGE_MULTIPLIER, LOCK_RANGE_MULTIPLIER, FIGHTSTOP_RANGE_MULTIPLIER } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, SEE_RANGE_MULTIPLIER, RELEASE_RANGE_MULTIPLIER, LOCK_RANGE_MULTIPLIER, FIGHTSTOP_RANGE_MULTIPLIER } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -325,17 +325,16 @@ export class WorldState {
     mass: number = 25,
     turretTurnAccel?: number,   // Turret acceleration (rad/sec²) - uses weapon config or default
     turretDrag?: number,        // Turret drag (0-1) - uses weapon config or default
-    targetingMode: TargetingMode = 'nearest', // How weapon acquires/keeps targets
-    returnToForward: boolean = true // Whether turret returns to forward when no target
   ): Entity {
     // Look up unit definition to get weapon type
     const unitDef = getUnitDefinition(unitType);
     const weaponType = unitDef?.weaponType ?? 'gatling';
     const weaponConfig = getWeaponConfig(weaponType);
 
-    // Range constraint: fightstopRange (0.8x) < fireRange (1.0x) < lockRange (1.1x) < seeRange (1.3x)
+    // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
     const fireRange = weaponConfig.range;
     const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
+    const releaseRange = fireRange * RELEASE_RANGE_MULTIPLIER;
     const lockRange = fireRange * LOCK_RANGE_MULTIPLIER;
     const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
 
@@ -350,11 +349,10 @@ export class WorldState {
       config: weaponConfig,
       currentCooldown: 0,
       targetEntityId: null,
-      targetingMode,
-      returnToForward,
       seeRange,
-      lockRange,
       fireRange,
+      releaseRange,
+      lockRange,
       fightstopRange,
       isLocked: false,
       turretRotation: 0,
@@ -388,18 +386,15 @@ export class WorldState {
       dgunCost: number;
       turretTurnAccel?: number;
       turretDrag?: number;
-      targetingMode?: TargetingMode;
-      returnToForward?: boolean;
     }
   ): Entity {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(config.weaponId);
-    const targetingMode = config.targetingMode ?? 'nearest';
-    const returnToForward = config.returnToForward ?? true;
 
-    // Range constraint: fightstopRange (0.8x) < fireRange (1.0x) < lockRange (1.1x) < seeRange (1.3x)
+    // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
     const fireRange = weaponConfig.range;
     const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
+    const releaseRange = fireRange * RELEASE_RANGE_MULTIPLIER;
     const lockRange = fireRange * LOCK_RANGE_MULTIPLIER;
     const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
 
@@ -429,13 +424,12 @@ export class WorldState {
         config: weaponConfig,
         currentCooldown: 0,
         targetEntityId: null,
-        targetingMode,                   // Targeting behavior for this weapon
-        returnToForward,                 // Whether turret returns to forward when no target
-        seeRange,                        // Weapon's tracking range
-        lockRange,                       // Weapon's sticky lock commitment range
-        fireRange,                       // Weapon's firing range
-        fightstopRange,                  // Weapon's fightstop range (unit stops in fight mode)
-        isLocked: false,                 // Whether weapon has a sticky lock
+        seeRange,
+        fireRange,
+        releaseRange,
+        lockRange,
+        fightstopRange,
+        isLocked: false,
         turretRotation: 0,               // Weapon's independent turret rotation
         turretAngularVelocity: 0,        // Current angular velocity (rad/sec)
         turretTurnAccel,                 // Turret acceleration (rad/sec²)

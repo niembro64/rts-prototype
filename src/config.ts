@@ -82,13 +82,21 @@ export const DEFAULT_TURRET_DRAG = 0.15;
 export const SEE_RANGE_MULTIPLIER = 1.3;
 
 /**
- * Multiplier for lockRange (sticky commitment range) relative to fireRange.
- * lockRange = fireRange * LOCK_RANGE_MULTIPLIER
- * Weapon commits (locks) to a target when it enters this range.
- * Only locked weapons can fire. Between seeRange and lockRange, turret pre-aims but won't fire.
- * Range hierarchy: fightstopRange (0.8x) < fireRange (1.0x) < lockRange (1.1x) < seeRange (1.3x)
+ * Multiplier for releaseRange (lock release boundary) relative to fireRange.
+ * releaseRange = fireRange * RELEASE_RANGE_MULTIPLIER
+ * A locked target stays locked until it exits releaseRange (hysteresis).
+ * Since releaseRange < fireRange, lock always breaks before target leaves fire range.
  */
-export const LOCK_RANGE_MULTIPLIER = 1.1;
+export const RELEASE_RANGE_MULTIPLIER = 0.95;
+
+/**
+ * Multiplier for lockRange (lock acquisition) relative to fireRange.
+ * lockRange = fireRange * LOCK_RANGE_MULTIPLIER
+ * Weapon commits (locks) to a target when it enters lockRange.
+ * Once locked, weapon stays on target until it exits releaseRange.
+ * Range hierarchy: seeRange (1.3x) > fireRange (1.0x) > releaseRange (0.95x) > lockRange (0.85x) > fightstopRange (0.8x)
+ */
+export const LOCK_RANGE_MULTIPLIER = 0.85;
 
 /**
  * Multiplier for fightstopRange relative to fireRange.
@@ -506,45 +514,6 @@ export const WEAPON_STATS = {
     projectileMass: 20.0,
     splashRadius: 40,
   },
-};
-
-// =============================================================================
-// WEAPON TARGETING MODES
-// =============================================================================
-/**
- * Per-unit targeting behavior configuration.
- * Each unit type defines how its weapons acquire and keep targets.
- * - 'nearest': Always track closest enemy, switch to closer targets
- * - 'sticky': Stay on current target until it dies or leaves seeRange
- *
- * For multi-weapon units, specify per weapon type.
- * For single-weapon units, use 'default'.
- */
-export const UNIT_TARGETING_MODES = {
-  // Simple projectile units - track nearest, return to forward when idle
-  jackal: { default: 'sticky' as const, returnToForward: false },
-  lynx: { default: 'sticky' as const, returnToForward: false },
-  badger: { default: 'sticky' as const, returnToForward: false },
-  scorpion: { default: 'sticky' as const, returnToForward: false },
-  mammoth: { default: 'sticky' as const, returnToForward: false },
-
-  // Beam units - sticky (lock onto target and burn it down)
-  daddy: { default: 'sticky' as const, returnToForward: false },
-  viper: { default: 'sticky' as const, returnToForward: false },
-
-  // Force field/AoE units - track nearest
-  tarantula: { default: 'sticky' as const, returnToForward: false },
-
-  // Multi-weapon titan
-  widow: {
-    beam: 'sticky' as const, // 6 vertex beams lock onto targets
-    centerBeam: 'sticky' as const, // Center beam locks onto target
-    forceField: 'sticky' as const, // Force field tracks nearest threat
-    returnToForward: false, // Widow turrets stay where they are
-  },
-
-  // Commander - projectile, track nearest
-  commander: { default: 'sticky' as const, returnToForward: false },
 };
 
 // =============================================================================

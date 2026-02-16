@@ -141,14 +141,11 @@ export interface UnitWeapon {
   currentCooldown: number;       // Time until can fire again (ms)
   targetEntityId: EntityId | null; // Current target
 
-  // Targeting behavior - how this weapon acquires and keeps targets
-  targetingMode: TargetingMode;  // 'nearest' = always closest, 'sticky' = keep current until invalid
-  returnToForward: boolean;      // If true, turret rotates back to unit facing when no targets
-
-  // Per-weapon range properties (constraint: fightstopRange < fireRange < lockRange < seeRange)
-  seeRange: number;              // Tracking range - turret pre-aims when enemies are within this
-  lockRange: number;             // Lock range - weapon commits (sticky lock) when enemy enters this
-  fireRange: number;             // Attack range - weapon fires when enemies are within this
+  // Per-weapon range properties (constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange)
+  seeRange: number;              // Tracking range - turret pre-aims when enemies are within this, returns to forward when empty
+  fireRange: number;             // Attack range - weapon fires at nearest enemy within this
+  releaseRange: number;          // Lock release boundary - locked target stays locked until it exits this range (hysteresis)
+  lockRange: number;             // Lock acquisition range - weapon commits when current target enters this range
   fightstopRange: number;        // Fight mode stop range - unit stops moving in fight mode when enemy is within this
   isLocked: boolean;             // Whether weapon has a sticky lock on its target (server-only, not serialized)
 
@@ -176,10 +173,8 @@ export interface UnitWeapon {
   currentForceFieldRange?: number;        // Current dynamic outer radius
 }
 
-// Weapon targeting modes
-// - 'nearest': Always tracks closest enemy, switches to closer targets (default)
-// - 'sticky': Stays on current target until it dies or leaves seeRange
-export type TargetingMode = 'nearest' | 'sticky';
+// Note: All weapons use unified sticky targeting with lock/release hysteresis.
+// No per-weapon targeting mode config needed.
 
 // Projectile travel types
 export type ProjectileType = 'instant' | 'traveling' | 'beam';

@@ -206,10 +206,10 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         netWeapons[i] = {
           configId: w.config.id,
           targetId: w.targetEntityId ?? undefined,
-          targetingMode: w.targetingMode,
           seeRange: w.seeRange,
-          lockRange: w.lockRange,
           fireRange: w.fireRange,
+          releaseRange: w.releaseRange,
+          lockRange: w.lockRange,
           fightstopRange: w.fightstopRange,
           turretRotation: w.turretRotation,
           turretAngularVelocity: w.turretAngularVelocity,

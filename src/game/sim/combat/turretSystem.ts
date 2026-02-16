@@ -38,20 +38,9 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
         }
       }
 
-      // If no active target, check if we should return to forward
+      // If no active target, return turret to forward-facing
       if (!hasActiveTarget) {
-        if (weapon.returnToForward) {
-          // Return to forward-facing (movement direction or body direction)
-          targetAngle = getMovementAngle(unit);
-        } else {
-          // No target and not returning to forward - just coast with drag
-          // Apply drag (reduces velocity each frame)
-          weapon.turretAngularVelocity *= (1 - weapon.turretDrag);
-          // Still update rotation based on remaining velocity
-          weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
-          weapon.turretRotation = normalizeAngle(weapon.turretRotation);
-          continue;
-        }
+        targetAngle = getMovementAngle(unit);
       }
 
       // Calculate angle difference to target
