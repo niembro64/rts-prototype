@@ -608,7 +608,7 @@ export const CAMERA_PAN_MULTIPLIER = 6.0;
  * 0.5 = 50% padding on each side (left, right, top, bottom).
  * For a 2000x2000 map with 0.5, padding is 1000px on each side.
  */
-export const WORLD_PADDING_PERCENT = 0.5;
+export const WORLD_PADDING_PERCENT = 20.0;
 
 // =============================================================================
 // GRAPHICS DETAIL DEFINITIONS
