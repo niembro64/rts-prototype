@@ -485,8 +485,8 @@ export class EntityRenderer {
             this.burnMarks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth, age: 0 });
           }
         }
+        this.prevBeamEndpoints.set(beamKey, { x: ex, y: ey });
       }
-      this.prevBeamEndpoints.set(beamKey, { x: ex, y: ey });
     }
     // Clean up prev endpoints for beams that no longer exist
     for (const key of this.prevBeamEndpoints.keys()) {
