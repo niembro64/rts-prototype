@@ -1,7 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkAudioEvent, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkProjectileVelocityUpdate } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkAudioEvent, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkProjectileVelocityUpdate, NetworkGridCell } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { AudioEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -22,7 +22,9 @@ export function serializeGameState(
   audioEvents?: AudioEvent[],
   projectileSpawns?: ProjectileSpawnEvent[],
   projectileDespawns?: ProjectileDespawnEvent[],
-  projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[]
+  projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[],
+  gridCells?: NetworkGridCell[],
+  gridCellSize?: number
 ): NetworkGameState {
   _entityBuf.length = 0;
 
@@ -145,6 +147,8 @@ export function serializeGameState(
     projectileDespawns: netProjectileDespawns,
     projectileVelocityUpdates: netVelocityUpdates,
     gameOver: gameOverWinnerId ? { winnerId: gameOverWinnerId } : undefined,
+    gridCells,
+    gridCellSize,
   };
 }
 

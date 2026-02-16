@@ -69,6 +69,13 @@ export interface NetworkProjectileVelocityUpdate {
   velocityY: number;
 }
 
+// Spatial grid cell occupancy (debug visualization)
+export interface NetworkGridCell {
+  cx: number;      // Cell grid x coordinate
+  cy: number;      // Cell grid y coordinate
+  players: number[]; // Player IDs with units in this cell
+}
+
 // Serialized game state sent over network
 export interface NetworkGameState {
   tick: number;
@@ -80,6 +87,9 @@ export interface NetworkGameState {
   projectileDespawns?: NetworkProjectileDespawn[];
   projectileVelocityUpdates?: NetworkProjectileVelocityUpdate[];
   gameOver?: { winnerId: PlayerId };
+  // Spatial grid debug visualization
+  gridCells?: NetworkGridCell[];
+  gridCellSize?: number;
 }
 
 // Spray target for commander building effect

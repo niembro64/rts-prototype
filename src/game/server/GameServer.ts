@@ -26,6 +26,7 @@ import {
   UNIT_THRUST_MULTIPLIER_GAME,
   UNIT_THRUST_MULTIPLIER_DEMO,
 } from '../../config';
+import { spatialGrid } from '../sim/SpatialGrid';
 
 export interface GameServerConfig {
   playerIds: PlayerId[];
@@ -67,6 +68,9 @@ export class GameServer {
   // Tick rate tracking
   private tickDeltaHistory: number[] = [];
   private readonly TICK_HISTORY_SIZE = 600; // ~10 seconds at 60Hz
+
+  // Debug: send spatial grid occupancy info in snapshots
+  private sendGridInfo: boolean = false;
 
   constructor(config: GameServerConfig) {
     this.playerIds = config.playerIds;
@@ -244,7 +248,12 @@ export class GameServer {
     const projectileSpawns = this.simulation.getAndClearProjectileSpawns();
     const projectileDespawns = this.simulation.getAndClearProjectileDespawns();
     const projectileVelocityUpdates = this.simulation.getAndClearProjectileVelocityUpdates();
-    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates);
+
+    // Include spatial grid occupancy when debug toggle is on
+    const gridCells = this.sendGridInfo ? spatialGrid.getOccupiedCells() : undefined;
+    const gridCellSize = this.sendGridInfo ? spatialGrid.getCellSize() : undefined;
+
+    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridCellSize);
 
     for (const listener of this.snapshotListeners) {
       listener(state);
@@ -291,6 +300,11 @@ export class GameServer {
 
   getMapHeight(): number {
     return this.world.mapHeight;
+  }
+
+  // Toggle spatial grid debug info in snapshots
+  setSendGridInfo(enabled: boolean): void {
+    this.sendGridInfo = enabled;
   }
 
   // Get tick rate stats (avg and worst FPS over recent history)

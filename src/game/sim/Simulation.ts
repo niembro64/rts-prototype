@@ -706,12 +706,18 @@ export class Simulation {
         continue;
       }
 
-      // Check if unit should stop for combat (fight or patrol mode with target in range)
+      // Check if unit should stop for combat (fight or patrol mode with majority of weapons firing)
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
-        const allWeaponsInFightstopRange = entity.weapons?.every(w => w.inFightstopRange) ?? false;
-        if (allWeaponsInFightstopRange) {
-          // No thrust - let friction stop the unit while it fights
-          continue;
+        const weapons = entity.weapons;
+        if (weapons && weapons.length > 0) {
+          let firingCount = 0;
+          for (let i = 0; i < weapons.length; i++) {
+            if (weapons[i].isFiring) firingCount++;
+          }
+          if (firingCount > weapons.length / 2) {
+            // Majority of weapons are firing - stop and fight
+            continue;
+          }
         }
       }
 

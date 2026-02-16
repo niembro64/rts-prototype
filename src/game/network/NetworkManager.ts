@@ -15,6 +15,7 @@ export type {
   NetworkProjectileSpawn,
   NetworkProjectileDespawn,
   NetworkProjectileVelocityUpdate,
+  NetworkGridCell,
   LobbyPlayer,
   NetworkRole,
 } from './NetworkTypes';

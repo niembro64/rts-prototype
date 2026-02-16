@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { EntityRenderer } from '../render/renderEntities';
 import { InputManager, type InputContext } from '../input/inputBindings';
-import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
+import { PLAYER_COLORS, type Entity, type PlayerId, type EntityId, type WaypointType } from '../sim/types';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
@@ -35,6 +35,7 @@ export class RtsScene extends Phaser.Scene {
   private gameConnection!: GameConnection;
   private localCommandQueue!: CommandQueue;
   private gridGraphics!: Phaser.GameObjects.Graphics;
+  private spatialGridGraphics!: Phaser.GameObjects.Graphics;
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
 
@@ -203,6 +204,9 @@ export class RtsScene extends Phaser.Scene {
 
     // Draw grid background
     this.drawGrid();
+
+    // Create spatial grid overlay graphics (redrawn each frame when grid info is active)
+    this.spatialGridGraphics = this.add.graphics();
 
     // Setup renderer with ClientViewState as source
     this.entityRenderer = new EntityRenderer(this, this.clientViewState);
@@ -409,6 +413,32 @@ export class RtsScene extends Phaser.Scene {
     ));
   }
 
+  // Render spatial grid cell occupancy overlay (redrawn each frame)
+  private renderSpatialGridOverlay(): void {
+    this.spatialGridGraphics.clear();
+
+    const gridCells = this.clientViewState.getGridCells();
+    const cellSize = this.clientViewState.getGridCellSize();
+    if (!gridCells || gridCells.length === 0 || cellSize <= 0) return;
+
+    for (const cell of gridCells) {
+      const worldX = cell.cx * cellSize;
+      const worldY = cell.cy * cellSize;
+
+      // Draw a tinted rectangle for each player occupying this cell
+      for (const playerId of cell.players) {
+        const playerConfig = PLAYER_COLORS[playerId as PlayerId];
+        const color = playerConfig?.primary ?? 0x888888;
+        this.spatialGridGraphics.fillStyle(color, 0.15);
+        this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
+      }
+
+      // Draw cell border
+      this.spatialGridGraphics.lineStyle(1, 0x666688, 0.3);
+      this.spatialGridGraphics.strokeRect(worldX, worldY, cellSize, cellSize);
+    }
+  }
+
   // Draw the grid background
   private drawGrid(): void {
     this.gridGraphics = this.add.graphics();
@@ -506,6 +536,9 @@ export class RtsScene extends Phaser.Scene {
 
     // Set spray targets from ClientViewState
     this.entityRenderer.setSprayTargets(this.clientViewState.getSprayTargets());
+
+    // Render spatial grid debug overlay (below entities)
+    this.renderSpatialGridOverlay();
 
     // Render entities
     this.entityRenderer.render();
@@ -610,6 +643,7 @@ export class RtsScene extends Phaser.Scene {
     this.entityRenderer?.destroy();
     this.inputManager?.destroy();
     this.gridGraphics?.destroy();
+    this.spatialGridGraphics?.destroy();
     this.gameConnection?.disconnect();
   }
 }

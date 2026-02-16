@@ -8,7 +8,7 @@
  */
 
 import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
-import type { NetworkGameState, NetworkEntity, NetworkProjectileSpawn } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkProjectileSpawn, NetworkGridCell } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
@@ -45,6 +45,10 @@ export class ClientViewState {
 
   // Reusable Set for snapshot diffing (avoids new Set() per snapshot)
   private _serverIds: Set<EntityId> = new Set();
+
+  // Spatial grid debug visualization data
+  private gridCells: NetworkGridCell[] = [];
+  private gridCellSize: number = 0;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cachedUnits: Entity[] = [];
@@ -199,6 +203,10 @@ export class ClientViewState {
     if (state.gameOver) {
       this.gameOverWinnerId = state.gameOver.winnerId;
     }
+
+    // Store spatial grid debug data
+    this.gridCells = state.gridCells ?? [];
+    this.gridCellSize = state.gridCellSize ?? 0;
   }
 
   /**
@@ -669,6 +677,16 @@ export class ClientViewState {
     return results;
   }
 
+  // === Spatial grid debug data ===
+
+  getGridCells(): NetworkGridCell[] {
+    return this.gridCells;
+  }
+
+  getGridCellSize(): number {
+    return this.gridCellSize;
+  }
+
   clear(): void {
     this.entities.clear();
     this.serverTargets.clear();
@@ -676,6 +694,8 @@ export class ClientViewState {
     this.pendingAudioEvents = [];
     this.gameOverWinnerId = null;
     this.selectedIds.clear();
+    this.gridCells = [];
+    this.gridCellSize = 0;
     this.invalidateCaches();
   }
 }

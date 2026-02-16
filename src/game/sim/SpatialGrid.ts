@@ -430,6 +430,44 @@ export class SpatialGrid {
 
     return this.queryResultBuildings;
   }
+
+  /**
+   * Get the cell size (for client rendering)
+   */
+  getCellSize(): number {
+    return this.cellSize;
+  }
+
+  /**
+   * Get all occupied cells with player occupancy info (for debug visualization).
+   * Returns array of { cx, cy, players[] } for cells containing at least one unit.
+   */
+  getOccupiedCells(): { cx: number; cy: number; players: number[] }[] {
+    const result: { cx: number; cy: number; players: number[] }[] = [];
+    const playerSet = new Set<number>();
+
+    for (const [key, cell] of this.cells) {
+      if (cell.units.length === 0) continue;
+
+      // Decode bit-packed cell key
+      const cx = ((key >> 16) & 0xFFFF) - 32768;
+      const cy = (key & 0xFFFF) - 32768;
+
+      // Collect unique player IDs in this cell
+      playerSet.clear();
+      for (const unit of cell.units) {
+        if (unit.ownership?.playerId) {
+          playerSet.add(unit.ownership.playerId);
+        }
+      }
+
+      if (playerSet.size > 0) {
+        result.push({ cx, cy, players: Array.from(playerSet) });
+      }
+    }
+
+    return result;
+  }
 }
 
 // Singleton instance for the game

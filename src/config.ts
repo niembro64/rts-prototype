@@ -87,11 +87,11 @@ export const DEFAULT_TURRET_DRAG = 0.15;
  * - fightstop: Unit stops moving in fight/patrol mode when enemy is within this range.
  */
 export const RANGE_MULTIPLIERS = {
-  see: 1.3,
+  see: 2.0,
   fire: 1.0,
-  release: 0.95,
-  lock: 0.85,
-  fightstop: 0.8,
+  release: 0.9,
+  lock: 0.8,
+  fightstop: 0.7,
 };
 
 /**

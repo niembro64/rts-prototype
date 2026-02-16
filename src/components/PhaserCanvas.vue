@@ -74,6 +74,7 @@ const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
 const networkUpdatesPerSecond = ref(DEFAULT_NETWORK_UPDATES_PER_SECOND);
+const sendGridInfo = ref(false);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(getEffectiveQuality());
@@ -573,6 +574,16 @@ function setNetworkUpdateRate(rate: number): void {
   }
 }
 
+function toggleSendGridInfo(): void {
+  sendGridInfo.value = !sendGridInfo.value;
+  if (currentServer) {
+    currentServer.setSendGridInfo(sendGridInfo.value);
+  }
+  if (backgroundServer) {
+    backgroundServer.setSendGridInfo(sendGridInfo.value);
+  }
+}
+
 function dismissGameOver(): void {
   gameOverWinner.value = null;
 }
@@ -666,6 +677,14 @@ onUnmounted(() => {
             {{ rate.toFixed(1) }}
           </button>
         </div>
+        <div class="bar-divider"></div>
+        <button
+          class="control-btn"
+          :class="{ active: sendGridInfo }"
+          @click="toggleSendGridInfo"
+        >
+          Grid Info
+        </button>
       </div>
 
       <!-- CLIENT CONTROLS (always visible) -->
