@@ -794,27 +794,24 @@ export class EntityRenderer {
 
       const baseRadius = beamWidth * 2 + 6;
       const explosionRadius = baseRadius * randomOffsets.sizeScale;
-      const pulseTime = this.sprayParticleTime * randomOffsets.pulseSpeed;
-      const pulsePhase = ((pulseTime / 80) + randomOffsets.phaseOffset) % (Math.PI * 2);
 
       if (beamStyle === 'simple') {
         this.graphics.fillStyle(color, 0.7);
         this.graphics.fillCircle(endX, endY, explosionRadius * 0.8);
       } else if (beamStyle === 'standard') {
-        const pulseScale = 0.85 + Math.sin(pulsePhase) * 0.15;
         this.graphics.fillStyle(color, 0.6);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
+        this.graphics.fillCircle(endX, endY, explosionRadius);
         this.graphics.fillStyle(0xffffff, 0.8);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
+        this.graphics.fillCircle(endX, endY, explosionRadius * 0.4);
       } else {
-        const pulseScale = 0.8 + Math.sin(pulsePhase) * 0.2;
         this.graphics.fillStyle(color, 0.4);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 1.3);
+        this.graphics.fillCircle(endX, endY, explosionRadius * 1.3);
         this.graphics.fillStyle(color, 0.6);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale);
+        this.graphics.fillCircle(endX, endY, explosionRadius);
         this.graphics.fillStyle(0xffffff, 0.8);
-        this.graphics.fillCircle(endX, endY, explosionRadius * pulseScale * 0.4);
+        this.graphics.fillCircle(endX, endY, explosionRadius * 0.4);
 
+        const pulseTime = this.sprayParticleTime * randomOffsets.pulseSpeed;
         const sparkCount = beamStyle === 'complex' ? 6 : 4;
         for (let i = 0; i < sparkCount; i++) {
           const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
