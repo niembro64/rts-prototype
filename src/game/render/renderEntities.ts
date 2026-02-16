@@ -506,6 +506,7 @@ export class EntityRenderer {
       const color = (red << 16) | (green << 8);
       // Opacity: exponential decay (slow), multiplied by linear ramp
       const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU) * linear;
+      if (alpha < 0.01) continue; // Skip nearly invisible marks
       this.graphics.lineStyle(mark.width, color, alpha);
       this.graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);
       // Circles at endpoints to round caps and fill joints between segments
