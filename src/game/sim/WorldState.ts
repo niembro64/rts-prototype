@@ -61,6 +61,7 @@ export class WorldState {
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
   private cachedProjectiles: Entity[] = [];
+  private cachedAllEntities: Entity[] = [];
   private cachesDirty: boolean = true;
 
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
@@ -77,8 +78,10 @@ export class WorldState {
     this.cachedUnits.length = 0;
     this.cachedBuildings.length = 0;
     this.cachedProjectiles.length = 0;
+    this.cachedAllEntities.length = 0;
 
     for (const entity of this.entities.values()) {
+      this.cachedAllEntities.push(entity);
       switch (entity.type) {
         case 'unit':
           this.cachedUnits.push(entity);
@@ -144,9 +147,10 @@ export class WorldState {
     return this.entities.get(id);
   }
 
-  // Get all entities
+  // Get all entities (cached - DO NOT MODIFY returned array)
   getAllEntities(): Entity[] {
-    return Array.from(this.entities.values());
+    this.rebuildCachesIfNeeded();
+    return this.cachedAllEntities;
   }
 
   // Get entities by type (uses cache for common types)

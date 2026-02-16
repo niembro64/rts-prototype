@@ -4,6 +4,18 @@ import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
 import { COLORS } from '../types';
 
+// Reusable point buffers to avoid per-call allocations
+const _rectPoints = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+const _toothPoints = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+// Polygon/star point buffer - grows as needed but reuses objects
+const _polyPoints: { x: number; y: number }[] = [];
+
+function ensurePolyPoints(count: number): void {
+  while (_polyPoints.length < count) {
+    _polyPoints.push({ x: 0, y: 0 });
+  }
+}
+
 /**
  * Draw a regular polygon (triangle, square, pentagon, hexagon, etc.)
  */
@@ -15,15 +27,18 @@ export function drawPolygon(
   sides: number,
   rotation: number
 ): void {
-  const points: { x: number; y: number }[] = [];
+  ensurePolyPoints(sides);
   for (let i = 0; i < sides; i++) {
     const angle = rotation + (i / sides) * Math.PI * 2;
-    points.push({
-      x: x + Math.cos(angle) * radius,
-      y: y + Math.sin(angle) * radius,
-    });
+    _polyPoints[i].x = x + Math.cos(angle) * radius;
+    _polyPoints[i].y = y + Math.sin(angle) * radius;
   }
-  graphics.fillPoints(points, true);
+  // fillPoints reads .length, so pass a slice view — but we can just set length temporarily
+  // Phaser's fillPoints iterates by index up to array.length, so we need exact count
+  const saved = _polyPoints.length;
+  _polyPoints.length = sides;
+  graphics.fillPoints(_polyPoints, true);
+  _polyPoints.length = saved;
 }
 
 /**
@@ -42,25 +57,16 @@ export function drawOrientedRect(
   const halfLength = length / 2;
   const halfWidth = width / 2;
 
-  const points = [
-    {
-      x: x + cos * halfLength - sin * halfWidth,
-      y: y + sin * halfLength + cos * halfWidth,
-    },
-    {
-      x: x + cos * halfLength + sin * halfWidth,
-      y: y + sin * halfLength - cos * halfWidth,
-    },
-    {
-      x: x - cos * halfLength + sin * halfWidth,
-      y: y - sin * halfLength - cos * halfWidth,
-    },
-    {
-      x: x - cos * halfLength - sin * halfWidth,
-      y: y - sin * halfLength + cos * halfWidth,
-    },
-  ];
-  graphics.fillPoints(points, true);
+  _rectPoints[0].x = x + cos * halfLength - sin * halfWidth;
+  _rectPoints[0].y = y + sin * halfLength + cos * halfWidth;
+  _rectPoints[1].x = x + cos * halfLength + sin * halfWidth;
+  _rectPoints[1].y = y + sin * halfLength - cos * halfWidth;
+  _rectPoints[2].x = x - cos * halfLength + sin * halfWidth;
+  _rectPoints[2].y = y - sin * halfLength - cos * halfWidth;
+  _rectPoints[3].x = x - cos * halfLength - sin * halfWidth;
+  _rectPoints[3].y = y - sin * halfLength + cos * halfWidth;
+
+  graphics.fillPoints(_rectPoints, true);
 }
 
 /**
@@ -73,16 +79,18 @@ export function drawStar(
   size: number,
   points: number
 ): void {
-  const starPoints: { x: number; y: number }[] = [];
-  for (let i = 0; i < points * 2; i++) {
-    const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+  const count = points * 2;
+  ensurePolyPoints(count);
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
     const r = i % 2 === 0 ? size : size * 0.4;
-    starPoints.push({
-      x: x + Math.cos(angle) * r,
-      y: y + Math.sin(angle) * r,
-    });
+    _polyPoints[i].x = x + Math.cos(angle) * r;
+    _polyPoints[i].y = y + Math.sin(angle) * r;
   }
-  graphics.fillPoints(starPoints, true);
+  const saved = _polyPoints.length;
+  _polyPoints.length = count;
+  graphics.fillPoints(_polyPoints, true);
+  _polyPoints.length = saved;
 }
 
 /**
@@ -171,40 +179,22 @@ export function drawGear(
   graphics.fillStyle(color, 0.7);
   graphics.fillCircle(x, y, innerRadius);
 
-  // Teeth
+  // Teeth (reuse _toothPoints buffer)
   for (let i = 0; i < teeth; i++) {
     const angle = rotation + (i / teeth) * Math.PI * 2;
     const toothWidth = ((Math.PI * 2) / teeth) * 0.4;
 
-    const toothPoints = [
-      {
-        x: x + Math.cos(angle - toothWidth) * innerRadius,
-        y: y + Math.sin(angle - toothWidth) * innerRadius,
-      },
-      {
-        x:
-          x +
-          Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight),
-        y:
-          y +
-          Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight),
-      },
-      {
-        x:
-          x +
-          Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight),
-        y:
-          y +
-          Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight),
-      },
-      {
-        x: x + Math.cos(angle + toothWidth) * innerRadius,
-        y: y + Math.sin(angle + toothWidth) * innerRadius,
-      },
-    ];
+    _toothPoints[0].x = x + Math.cos(angle - toothWidth) * innerRadius;
+    _toothPoints[0].y = y + Math.sin(angle - toothWidth) * innerRadius;
+    _toothPoints[1].x = x + Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
+    _toothPoints[1].y = y + Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
+    _toothPoints[2].x = x + Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
+    _toothPoints[2].y = y + Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
+    _toothPoints[3].x = x + Math.cos(angle + toothWidth) * innerRadius;
+    _toothPoints[3].y = y + Math.sin(angle + toothWidth) * innerRadius;
 
     graphics.fillStyle(color, 0.7);
-    graphics.fillPoints(toothPoints, true);
+    graphics.fillPoints(_toothPoints, true);
   }
 
   // Center hole

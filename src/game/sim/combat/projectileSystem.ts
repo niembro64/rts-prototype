@@ -11,6 +11,15 @@ import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { magnitude } from '../../math';
+import type { DeathContext } from '../damage/types';
+
+// Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
+const _collisionUnitsToRemove = new Set<EntityId>();
+const _collisionBuildingsToRemove = new Set<EntityId>();
+const _collisionDeathContexts = new Map<EntityId, DeathContext>();
+const _collisionProjectilesToRemove: EntityId[] = [];
+const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
+const _collisionAudioEvents: AudioEvent[] = [];
 
 // Check if a specific weapon has an active beam (by weapon index)
 // Uses O(1) beam index lookup instead of O(n) projectile scan
@@ -69,9 +78,9 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
         continue;
       }
 
-      // Calculate weapon position in world coordinates
-      const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
-      const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+      // Use cached weapon world position from targeting phase
+      const weaponX = weapon.worldX ?? (unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY);
+      const weaponY = weapon.worldY ?? (unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY);
 
       // Check cooldown / active beam
       if (isContinuousBeam) {
@@ -265,16 +274,21 @@ export function updateProjectiles(
           continue;
         }
 
+        // Continuous beams (cooldown === 0) should never expire while source is alive and firing
+        // Reset timeAlive to prevent the 1-frame gap when beam expires and gets recreated
+        const isContinuous = (proj.config.cooldown === 0);
+        if (isContinuous && weapon.isFiring) {
+          proj.timeAlive = 0;
+        }
+
         // Get turret direction from specific weapon
         const turretAngle = weapon.turretRotation;
         const dirX = Math.cos(turretAngle);
         const dirY = Math.sin(turretAngle);
 
-        // Calculate weapon position in world coordinates
-        const unitCos = source.transform.rotCos ?? Math.cos(source.transform.rotation);
-        const unitSin = source.transform.rotSin ?? Math.sin(source.transform.rotation);
-        const weaponX = source.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
-        const weaponY = source.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+        // Use cached weapon world position from targeting phase
+        const weaponX = weapon.worldX ?? (source.transform.x + (source.transform.rotCos ?? Math.cos(source.transform.rotation)) * weapon.offsetX - (source.transform.rotSin ?? Math.sin(source.transform.rotation)) * weapon.offsetY);
+        const weaponY = weapon.worldY ?? (source.transform.y + (source.transform.rotSin ?? Math.sin(source.transform.rotation)) * weapon.offsetX + (source.transform.rotCos ?? Math.cos(source.transform.rotation)) * weapon.offsetY);
 
         // Beam starts at weapon position
         proj.startX = weaponX + dirX * 5;
@@ -323,12 +337,19 @@ export function checkProjectileCollisions(
   damageSystem: DamageSystem,
   forceAccumulator?: ForceAccumulator
 ): CollisionResult {
-  const projectilesToRemove: EntityId[] = [];
-  const despawnEvents: ProjectileDespawnEvent[] = [];
-  const unitsToRemove = new Set<EntityId>();
-  const buildingsToRemove = new Set<EntityId>();
-  const audioEvents: AudioEvent[] = [];
-  const deathContexts: Map<EntityId, import('../damage/types').DeathContext> = new Map();
+  // Reuse module-level containers (cleared each call)
+  _collisionProjectilesToRemove.length = 0;
+  _collisionDespawnEvents.length = 0;
+  _collisionUnitsToRemove.clear();
+  _collisionBuildingsToRemove.clear();
+  _collisionAudioEvents.length = 0;
+  _collisionDeathContexts.clear();
+  const projectilesToRemove = _collisionProjectilesToRemove;
+  const despawnEvents = _collisionDespawnEvents;
+  const unitsToRemove = _collisionUnitsToRemove;
+  const buildingsToRemove = _collisionBuildingsToRemove;
+  const audioEvents = _collisionAudioEvents;
+  const deathContexts = _collisionDeathContexts;
 
   for (const projEntity of world.getProjectiles()) {
     if (!projEntity.projectile || !projEntity.ownership) continue;

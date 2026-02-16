@@ -95,7 +95,7 @@ export const MAP_CAMERA_BG = 0x0a0a14; // camera clear color
 export const MAP_GRID_COLOR = MAP_BG_COLOR;
 
 // Scorched earth burn mark colors and decay
-export const BURN_COLOR_HOT = 0xff2200; // bright red start
+export const BURN_COLOR_HOT = 0x882200; // bright red start
 export const BURN_COLOR_COOL = MAP_BG_COLOR; // fades to background
 export const BURN_COLOR_TAU = 200; // color decay: red → black (ms), fast
 export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slow
@@ -515,7 +515,7 @@ export const WEAPON_STATS = {
     cooldown: 0,
     turretTurnAccel: 1,
     turretDrag: 0.5,
-    forceFieldAngle: Math.PI * 2,
+    forceFieldAngle: Math.PI * 0.25,
     forceFieldTransitionTime: 1000,
     pullPower: 300,
   },
@@ -693,11 +693,11 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   // Burn mark cutoff — how close to background color before marks stop drawing
   // Lower values = marks linger longer, higher = fewer draw calls
   BURN_MARK_ALPHA_CUTOFF: {
-    min: 0.1,
-    low: 0.1,
-    medium: 0.1,
-    high: 0.1,
-    max: 0.1,
+    min: 0.08,
+    low: 0.08,
+    medium: 0.08,
+    high: 0.08,
+    max: 0.08,
   },
 
   // Burn mark sample interval — frames to skip between placing new burn marks

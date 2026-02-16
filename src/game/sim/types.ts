@@ -163,6 +163,10 @@ export interface UnitWeapon {
   offsetX: number;
   offsetY: number;
 
+  // Cached world-space weapon position (computed once per tick in targeting phase)
+  worldX?: number;
+  worldY?: number;
+
   // Firing/range state - set by combat system, read by unit for movement decisions
   isFiring: boolean;             // True when this weapon is actively firing at a target in range
   inFightstopRange: boolean;     // True when target is within fightstopRange (unit should stop in fight mode)

@@ -130,12 +130,13 @@ export class ArachnidLeg {
     // Check if leg needs to snap - use current foot position
     const dx = this.groundX - attachX;
     const dy = this.groundY - attachY;
-    const distToGround = magnitude(dx, dy);
+    const distSq = dx * dx + dy * dy;
 
     // ABSOLUTE MAXIMUM: Force snap if leg is stretched beyond physical limits (any direction)
     // This prevents infinite stretching when unit gets pushed sideways by another unit
     // Uses 105% of totalLength to allow some buffer before forcing a snap
-    if (distToGround > this.totalLength * 1.05) {
+    const maxDist = this.totalLength * 1.05;
+    if (distSq > maxDist * maxDist) {
       this.startLerp(attachX, attachY, unitRotation, velocityX, velocityY);
       return;
     }
@@ -150,8 +151,8 @@ export class ArachnidLeg {
     // Distance only triggers if foot is also behind perpendicular (not in forward zone)
     // This prevents jittering when leg snaps forward but is still fully extended
     const isBehindPerpendicular = Math.abs(angleDiff) > Math.PI * 0.5;
-    const distanceTriggered = isBehindPerpendicular &&
-      distToGround >= this.totalLength * this.config.extensionThreshold;
+    const extThresh = this.totalLength * this.config.extensionThreshold;
+    const distanceTriggered = isBehindPerpendicular && distSq >= extThresh * extThresh;
 
     // Snap if EITHER condition is met
     if (distanceTriggered || angleTriggered) {

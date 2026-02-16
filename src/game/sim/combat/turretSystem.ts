@@ -29,9 +29,9 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
       if (weapon.targetEntityId !== null) {
         const target = world.getEntity(weapon.targetEntityId);
         if (target) {
-          // Calculate angle from weapon position to target (using rotated coordinates)
-          const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
-          const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
+          // Use cached weapon world position from targeting phase
+          const weaponX = weapon.worldX ?? (unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY);
+          const weaponY = weapon.worldY ?? (unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY);
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);

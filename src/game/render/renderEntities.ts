@@ -82,6 +82,7 @@ export class EntityRenderer {
   // Cached range visibility objects (avoids per-frame allocation)
   private _rangeVisToggle = { see: false, fire: false, release: false, lock: false, fightstop: false, build: false };
   private _rangeVisSelected = { see: true, fire: true, release: true, lock: true, fightstop: false, build: true };
+  private _activeBeamKeys: Set<string> = new Set();
 
   // Rendering mode flags
   private skipTurrets: boolean = false;
@@ -472,7 +473,8 @@ export class EntityRenderer {
     // 0. Sample beam endpoints for scorched earth burn marks (line segments)
     // Key by sourceEntityId:weaponIndex so tracking survives beam entity respawns
     this._reusableIdSet.clear();
-    const activeBeamKeys = new Set<string>();
+    this._activeBeamKeys.clear();
+    const activeBeamKeys = this._activeBeamKeys;
     const sampleBurn = this.burnMarkFrameCounter === 0;
     this.burnMarkFrameCounter = (this.burnMarkFrameCounter + 1) % (gfxConfig.burnMarkFramesSkip + 1);
     for (const entity of this.entitySource.getProjectiles()) {
@@ -501,9 +503,13 @@ export class EntityRenderer {
     for (const key of this.prevBeamEndpoints.keys()) {
       if (!activeBeamKeys.has(key)) this.prevBeamEndpoints.delete(key);
     }
-    // Cap burn marks to prevent unbounded growth
+    // Cap burn marks to prevent unbounded growth (copy newest to front, O(MAX) not O(n) like splice)
     if (this.burnMarks.length > MAX_BURN_MARKS) {
-      this.burnMarks.splice(0, this.burnMarks.length - MAX_BURN_MARKS);
+      const excess = this.burnMarks.length - MAX_BURN_MARKS;
+      for (let i = 0; i < MAX_BURN_MARKS; i++) {
+        this.burnMarks[i] = this.burnMarks[i + excess];
+      }
+      this.burnMarks.length = MAX_BURN_MARKS;
     }
 
     // 0b. Render scorched earth burn marks (below everything, fully opaque)
