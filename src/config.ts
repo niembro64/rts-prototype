@@ -240,7 +240,7 @@ export const UNIT_MASS_MULTIPLIER = 10.0;
  * 1.0 = use raw projectileMass values from WEAPON_STATS
  * Higher = more recoil/knockback, lower = less
  */
-export const PROJECTILE_MASS_MULTIPLIER = 10.0;
+export const PROJECTILE_MASS_MULTIPLIER = 1.0;
 
 /**
  * Global thrust multiplier for all unit movement.

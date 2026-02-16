@@ -7,7 +7,7 @@ import type { ProjectileVelocityUpdateEvent } from './types';
 import { normalizeAngle } from './combatUtils';
 import { magnitude } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
-import { KNOCKBACK } from '../../../config';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 
 // Update wave weapon state (transition between idle and attack angles)
 // Call this before applyWaveDamage each frame
@@ -257,8 +257,7 @@ export function applyWaveDamage(
         const dist = magnitude(dx, dy);
 
         // Uniform pull strength (no distance scaling), inversely with projectile mass
-        // Use raw projectileMass (not PROJECTILE_MASS_MULTIPLIER, which is for Matter.js knockback)
-        const projMass = proj.config.projectileMass ?? 1;
+        const projMass = (proj.config.projectileMass ?? 1) * PROJECTILE_MASS_MULTIPLIER;
         const pullAccel = basePullStrength / projMass;
 
         // Apply pull as velocity delta toward wave origin
