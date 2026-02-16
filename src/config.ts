@@ -535,7 +535,7 @@ export const WEAPON_STATS = {
   forceField: {
     forceFieldInnerRadius: 40, // No effect inside this
     forceFieldMiddleRadius: 140, // Push/pull boundary
-    forceFieldOuterRadius: 160, // Pull stops here
+    forceFieldOuterRadius: 170, // Pull stops here
     damage: 1,
     cooldown: 0,
     turretTurnAccel: 1,
@@ -547,8 +547,8 @@ export const WEAPON_STATS = {
 
   // Widow force field — push inner, pull outer
   widowForceField: {
-    forceFieldInnerRadius: 70, // No effect inside this
-    forceFieldMiddleRadius: 100, // Push/pull boundary
+    forceFieldInnerRadius: 100, // No effect inside this
+    forceFieldMiddleRadius: 130, // Push/pull boundary
     forceFieldOuterRadius: 300, // Pull stops here
     damage: 1,
     cooldown: 0,
