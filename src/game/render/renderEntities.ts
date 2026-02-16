@@ -40,7 +40,7 @@ interface BurnMark {
 }
 const BURN_COLOR_TAU = 200;   // color decay: red → black (ms), fast
 const BURN_ALPHA_TAU = 2000;  // opacity decay: opaque → transparent (ms), slow
-const BURN_LIFETIME = BURN_ALPHA_TAU * 4; // remove when alpha < ~2%
+const BURN_LIFETIME = 5000;   // hard cutoff — marks fully gone by this time
 const MAX_BURN_MARKS = 5000;
 
 export class EntityRenderer {
@@ -497,13 +497,15 @@ export class EntityRenderer {
       const midX = (mark.x1 + mark.x2) * 0.5;
       const midY = (mark.y1 + mark.y2) * 0.5;
       if (!this.isInViewport(midX, midY, 50)) continue;
-      // Color: exponential decay red → black (fast)
-      const colorDecay = Math.exp(-mark.age / BURN_COLOR_TAU);
+      // Linear ramp 1→0 over lifetime ensures full disappearance
+      const linear = 1 - mark.age / BURN_LIFETIME;
+      // Color: exponential decay red → black (fast), multiplied by linear ramp
+      const colorDecay = Math.exp(-mark.age / BURN_COLOR_TAU) * linear;
       const red = Math.round(255 * colorDecay);
       const green = Math.round(34 * colorDecay);
       const color = (red << 16) | (green << 8);
-      // Opacity: exponential decay opaque → transparent (slow)
-      const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU);
+      // Opacity: exponential decay (slow), multiplied by linear ramp
+      const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU) * linear;
       this.graphics.lineStyle(mark.width, color, alpha);
       this.graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);
     }
