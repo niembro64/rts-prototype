@@ -508,6 +508,11 @@ export class EntityRenderer {
       const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU) * linear;
       this.graphics.lineStyle(mark.width, color, alpha);
       this.graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);
+      // Circles at endpoints to round caps and fill joints between segments
+      const r = mark.width / 2;
+      this.graphics.fillStyle(color, alpha);
+      this.graphics.fillCircle(mark.x1, mark.y1, r);
+      this.graphics.fillCircle(mark.x2, mark.y2, r);
     }
 
     // 1. Buildings (bottom layer)
