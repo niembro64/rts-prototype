@@ -670,6 +670,16 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     max: true,
   },
 
+  // Burn mark alpha cutoff — marks below this opacity are not drawn
+  // Lower values = more lingering scorch marks, higher = fewer draw calls
+  BURN_MARK_ALPHA_CUTOFF: {
+    min: 0.5,
+    low: 0.3,
+    medium: 0.1,
+    high: 0.03,
+    max: 0.01,
+  },
+
   // Force field visual style
   // 'simple': single static arc at outer edge, no animation
   // 'detailed': animated wavy arcs with pull lines
