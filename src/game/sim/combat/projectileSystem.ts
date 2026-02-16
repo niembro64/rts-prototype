@@ -10,7 +10,6 @@ import type { AudioEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEve
 import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
-import { magnitude } from '../../math';
 import type { DeathContext } from '../damage/types';
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
@@ -300,18 +299,24 @@ export function updateProjectiles(
         const fullEndY = proj.startY + dirY * beamLength;
 
         // Find closest obstruction using unified DamageSystem
+        // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness)
+        const currentTick = world.getTick();
         const beamWidth = proj.config.beamWidth ?? 2;
-        const obstruction = damageSystem.findLineObstruction(
-          proj.startX, proj.startY,
-          fullEndX, fullEndY,
-          proj.sourceEntityId,
-          beamWidth
-        );
+        if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= 3) {
+          const obstruction = damageSystem.findLineObstruction(
+            proj.startX, proj.startY,
+            fullEndX, fullEndY,
+            proj.sourceEntityId,
+            beamWidth
+          );
+          proj.obstructionT = obstruction ? obstruction.t : undefined;
+          proj.obstructionTick = currentTick;
+        }
 
         // Truncate beam exactly at obstruction point (no extension needed)
-        if (obstruction) {
-          proj.endX = proj.startX + (fullEndX - proj.startX) * obstruction.t;
-          proj.endY = proj.startY + (fullEndY - proj.startY) * obstruction.t;
+        if (proj.obstructionT !== undefined) {
+          proj.endX = proj.startX + (fullEndX - proj.startX) * proj.obstructionT;
+          proj.endY = proj.startY + (fullEndY - proj.startY) * proj.obstructionT;
         } else {
           proj.endX = fullEndX;
           proj.endY = fullEndY;
@@ -420,45 +425,45 @@ export function checkProjectileCollisions(
 
     // Handle different projectile types with unified damage system
     if (proj.projectileType === 'beam') {
-      // Beam damage uses line damage source
-      const startX = proj.startX ?? projEntity.transform.x;
-      const startY = proj.startY ?? projEntity.transform.y;
-      const endX = proj.endX ?? projEntity.transform.x;
-      const endY = proj.endY ?? projEntity.transform.y;
+      // Beam damage uses the impact circle at the truncated beam endpoint.
+      // This matches the rendered impact effect and is more forgiving than line intersection,
+      // which fails when knockback pushes targets past the stale truncation point.
+      const impactX = proj.endX ?? projEntity.transform.x;
+      const impactY = proj.endY ?? projEntity.transform.y;
       const beamWidth = config.beamWidth ?? 2;
+      const impactRadius = beamWidth * 2 + 6; // Matches rendered impact circle size
 
       // Calculate per-tick damage for continuous beams
       const beamDuration = config.beamDuration ?? 150;
       const tickDamage = (config.damage / beamDuration) * dtMs;
 
-      // Calculate beam direction for recoil (applied every frame, regardless of hits)
-      const beamDx = endX - startX;
-      const beamDy = endY - startY;
-      const beamLen = magnitude(beamDx, beamDy);
-      const beamDirX = beamLen > 0 ? beamDx / beamLen : 0;
-      const beamDirY = beamLen > 0 ? beamDy / beamLen : 0;
+      // Beam direction for recoil and knockback
+      const beamAngle = projEntity.transform.rotation;
+      const beamDirX = Math.cos(beamAngle);
+      const beamDirY = Math.sin(beamAngle);
 
-      // Apply line damage
+      // Apply area damage at impact circle (full damage, no falloff)
       const result = damageSystem.applyDamage({
-        type: 'line',
+        type: 'area',
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
         damage: tickDamage,
-        excludeEntities: new Set(), // Beams can hit same targets repeatedly
-        startX,
-        startY,
-        endX,
-        endY,
-        width: beamWidth,
-        piercing: config.piercing ?? false,
-        maxHits: config.piercing ? Infinity : 1,
+        excludeEntities: new Set(),
+        centerX: impactX,
+        centerY: impactY,
+        radius: impactRadius,
+        falloff: 1,
       });
 
-      // Apply knockback from beam (only when hitting targets)
-      applyKnockbackForces(result.knockbacks, forceAccumulator);
+      // Override area knockback with beam-direction knockback (BEAM_HIT, not SPLASH)
+      if (forceAccumulator && KNOCKBACK.BEAM_HIT > 0) {
+        for (const hitId of result.hitEntityIds) {
+          const force = tickDamage * KNOCKBACK.BEAM_HIT;
+          forceAccumulator.addForce(hitId, beamDirX * force, beamDirY * force, 'knockback');
+        }
+      }
 
       // Apply recoil to firing unit every frame the beam is active (not just on hit)
-      // Recoil is opposite to beam direction, scaled by beam fire knockback
       if (forceAccumulator && KNOCKBACK.BEAM_FIRE > 0) {
         const recoilForce = tickDamage * KNOCKBACK.BEAM_FIRE;
         forceAccumulator.addForce(

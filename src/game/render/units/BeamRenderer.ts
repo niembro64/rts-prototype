@@ -42,13 +42,13 @@ export function drawBeamUnit(
       graphics.lineStyle(legThickness, dark, 1);
       graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-      // Knee joint (light team color)
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(knee.x, knee.y, legThickness);
-
-      // Foot (light team color)
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(foot.x, foot.y, footSize);
+      // Knee joint + foot detail (skip at low LOD)
+      if (ctx.lodTier >= 3) {
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(knee.x, knee.y, legThickness);
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(foot.x, foot.y, footSize);
+      }
     }
 
     // Body (hexagonal insect shape)

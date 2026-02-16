@@ -43,13 +43,13 @@ export function drawArachnidUnit(
       graphics.lineStyle(legThickness, dark, 1);
       graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-      // Knee joint (light team color)
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(knee.x, knee.y, legThickness);
-
-      // Foot (light team color)
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(foot.x, foot.y, footSize);
+      // Knee joint + foot detail (skip at low LOD)
+      if (ctx.lodTier >= 3) {
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(knee.x, knee.y, legThickness);
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(foot.x, foot.y, footSize);
+      }
     }
 
     // Abdomen / "butt" region - large chonky rear section
@@ -77,7 +77,10 @@ export function drawArachnidUnit(
     }
     graphics.fillPoints(_abdomenPoints, true);
 
-    // Red hourglass marking (like a black widow spider)
+    // Red hourglass marking (like a black widow spider) — LOD 2: skip detail
+    if (ctx.lodTier < 3) {
+      // Skip hourglass + spinnerets at LOD 2
+    } else {
     const hourglassCenterOffset = abdomenOffset - abdomenLength * 0.35;
     const hourglassCenterX = x + cos * hourglassCenterOffset;
     const hourglassCenterY = y + sin * hourglassCenterOffset;
@@ -140,6 +143,7 @@ export function drawArachnidUnit(
       spinneretY - cos * sideSpinneretDist,
       r * 0.07
     );
+    } // end LOD 3 hourglass + spinnerets
 
     // Main body (hexagon)
     const bodyColor = isSelected ? COLORS.UNIT_SELECTED : dark;
@@ -213,6 +217,7 @@ export function drawArachnidUnit(
     }
 
     // Force field weapon at center (index 7) — renders both push and pull zones
+    const forceSimple = ctx.lodTier < 3;
     const hexCenterX = x + cos * hexForwardOffset;
     const hexCenterY = y + sin * hexForwardOffset;
     for (let i = 7; i < weapons.length; i++) {
@@ -236,7 +241,7 @@ export function drawArachnidUnit(
         renderForceFieldEffect(
           graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pushOuter,
           tintColor(light, 0.4), tintColor(base, 0.4),
-          pushInner, true
+          pushInner, true, forceSimple
         );
       }
 
@@ -247,7 +252,7 @@ export function drawArachnidUnit(
         renderForceFieldEffect(
           graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pullOuter,
           tintColor(light, -0.4), tintColor(base, -0.4),
-          pullInner, false
+          pullInner, false, forceSimple
         );
       }
     }

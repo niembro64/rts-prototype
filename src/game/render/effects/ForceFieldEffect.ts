@@ -18,14 +18,15 @@ export function renderForceFieldEffect(
   primaryColor: number,
   _secondaryColor: number,
   innerRange: number = 0,
-  pushOutward: boolean = false
+  pushOutward: boolean = false,
+  forceSimple: boolean = false
 ): void {
   const halfAngle = sliceAngle / 2;
   const gfxConfig = getGraphicsConfig();
   const v = FORCE_FIELD_VISUAL;
 
-  // Simple mode (min detail): single static arc at outer edge
-  if (gfxConfig.forceFieldStyle === 'simple') {
+  // Simple mode (min detail or LOD forced): single static arc at outer edge
+  if (forceSimple || gfxConfig.forceFieldStyle === 'simple') {
     graphics.lineStyle(2, primaryColor, v.sliceOpacityMinZoom);
     graphics.beginPath();
     graphics.arc(x, y, maxRange * 0.9, rotation - halfAngle, rotation + halfAngle, false);

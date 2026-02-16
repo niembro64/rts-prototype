@@ -55,6 +55,10 @@ export class Simulation {
   private pendingProjectileDespawns: ProjectileDespawnEvent[] = [];
   private pendingProjectileVelocityUpdates: ProjectileVelocityUpdateEvent[] = [];
 
+  // Reusable buffers for cleanupDeadEntities (avoid per-tick allocations)
+  private _deadUnitIdsBuf: EntityId[] = [];
+  private _deadBuildingIdsBuf: EntityId[] = [];
+
   // Callback for when units die (to clean up physics bodies)
   // deathContexts contains info about the killing blow for directional explosions
   public onUnitDeath?: (deadUnitIds: EntityId[], deathContexts?: Map<EntityId, DeathContext>) => void;
@@ -252,13 +256,7 @@ export class Simulation {
 
   // Update combat systems
   private updateCombat(dtMs: number): void {
-    // Cache rotation sin/cos for all units (used by targeting, turret, firing, beam systems)
-    for (const unit of this.world.getUnits()) {
-      unit.transform.rotCos = Math.cos(unit.transform.rotation);
-      unit.transform.rotSin = Math.sin(unit.transform.rotation);
-    }
-
-    // Update weapon cooldowns
+    // Update weapon cooldowns + cache rotation sin/cos (merged into single loop)
     updateWeaponCooldowns(this.world, dtMs);
 
     // Update auto-targeting and firing state in a single pass
@@ -346,8 +344,10 @@ export class Simulation {
   // Cleanup pass - removes any entities with HP <= 0 that weren't caught by normal death handling
   // This is a safety net to ensure dead entities don't persist in the world
   private cleanupDeadEntities(): void {
-    const deadUnitIds: EntityId[] = [];
-    const deadBuildingIds: EntityId[] = [];
+    const deadUnitIds = this._deadUnitIdsBuf;
+    const deadBuildingIds = this._deadBuildingIdsBuf;
+    deadUnitIds.length = 0;
+    deadBuildingIds.length = 0;
 
     // Check all units for death
     for (const entity of this.world.getUnits()) {
@@ -431,37 +431,46 @@ export class Simulation {
 
   // Execute move command with action queue support
   private executeMoveCommand(command: MoveCommand): void {
-    const units = command.entityIds
-      .map((id) => this.world.getEntity(id))
-      .filter((e): e is Entity => e !== undefined && e.type === 'unit');
+    // Collect valid units without .map/.filter allocation
+    const entityIds = command.entityIds;
+    let unitCount = 0;
 
-    if (units.length === 0) return;
+    // First pass: count valid units to size the iteration
+    for (let i = 0; i < entityIds.length; i++) {
+      const e = this.world.getEntity(entityIds[i]);
+      if (e !== undefined && e.type === 'unit') unitCount++;
+    }
+
+    if (unitCount === 0) return;
 
     // Handle individual targets (line move)
-    if (command.individualTargets && command.individualTargets.length === units.length) {
-      units.forEach((unit, index) => {
-        if (!unit.unit) return;
-        const target = command.individualTargets![index];
+    if (command.individualTargets && command.individualTargets.length === entityIds.length) {
+      for (let i = 0; i < entityIds.length; i++) {
+        const unit = this.world.getEntity(entityIds[i]);
+        if (!unit || unit.type !== 'unit' || !unit.unit) continue;
+        const target = command.individualTargets[i];
         const action: UnitAction = {
           type: command.waypointType,
           x: target.x,
           y: target.y,
         };
         this.addActionToUnit(unit, action, command.queue);
-      });
+      }
     } else if (command.targetX !== undefined && command.targetY !== undefined) {
       // Group move with formation spreading
       const spacing = 40;
-      const unitsPerRow = Math.ceil(Math.sqrt(units.length));
+      const unitsPerRow = Math.ceil(Math.sqrt(unitCount));
 
-      units.forEach((unit, index) => {
-        if (!unit.unit) return;
+      let index = 0;
+      for (let i = 0; i < entityIds.length; i++) {
+        const unit = this.world.getEntity(entityIds[i]);
+        if (!unit || unit.type !== 'unit' || !unit.unit) continue;
 
         // Grid formation offset
         const row = Math.floor(index / unitsPerRow);
         const col = index % unitsPerRow;
         const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
-        const offsetY = (row - (units.length / unitsPerRow - 1) / 2) * spacing;
+        const offsetY = (row - (unitCount / unitsPerRow - 1) / 2) * spacing;
 
         const action: UnitAction = {
           type: command.waypointType,
@@ -469,7 +478,8 @@ export class Simulation {
           y: command.targetY! + offsetY,
         };
         this.addActionToUnit(unit, action, command.queue);
-      });
+        index++;
+      }
     }
   }
 

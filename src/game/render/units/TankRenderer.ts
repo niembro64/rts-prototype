@@ -22,6 +22,7 @@ export function drawTankUnit(
     const treadLength = r * 2.0; // Very long treads
     const treadWidth = r * 0.6; // Wide treads
 
+    const skipTreadDetail = ctx.lodTier < 3;
     for (const side of [-1, 1]) {
       const offsetX = -sin * treadOffset * side;
       const offsetY = cos * treadOffset * side;
@@ -42,7 +43,8 @@ export function drawTankUnit(
         bodyRot,
         treadRotation,
         COLORS.DARK_GRAY,
-        COLORS.GRAY_LIGHT
+        COLORS.GRAY_LIGHT,
+        skipTreadDetail
       );
     }
 

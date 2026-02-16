@@ -30,6 +30,7 @@ export function drawMortarUnit(
       { dx: -treadDistX, dy: -treadDistY },
     ];
 
+    const skipTreadDetail = ctx.lodTier < 3;
     for (let i = 0; i < treadPositions.length; i++) {
       const tp = treadPositions[i];
       const tx = x + cos * tp.dx - sin * tp.dy;
@@ -44,7 +45,8 @@ export function drawMortarUnit(
         bodyRot,
         treadRotation,
         COLORS.DARK_GRAY,
-        COLORS.GRAY_LIGHT
+        COLORS.GRAY_LIGHT,
+        skipTreadDetail
       );
     }
 

@@ -31,29 +31,36 @@ export function drawCommanderUnit(
       const knee = leg.getKneePosition(attach.x, attach.y, side);
 
       // Draw leg segments - commander has thicker, more mechanical legs
-      // Upper leg (thick and armored)
-      graphics.lineStyle(legThickness + 2, dark, 1);
-      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-      graphics.lineStyle(legThickness, base, 1);
-      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+      if (ctx.lodTier >= 3) {
+        // Full detail: dual-layer armored legs
+        graphics.lineStyle(legThickness + 2, dark, 1);
+        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+        graphics.lineStyle(legThickness, base, 1);
+        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-      // Lower leg (slightly thinner)
-      graphics.lineStyle(legThickness + 1, dark, 1);
-      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
-      graphics.lineStyle(legThickness - 1, base, 1);
-      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+        graphics.lineStyle(legThickness + 1, dark, 1);
+        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+        graphics.lineStyle(legThickness - 1, base, 1);
+        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-      // Knee joint (armored joint)
-      graphics.fillStyle(dark, 1);
-      graphics.fillCircle(knee.x, knee.y, legThickness + 1);
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(knee.x, knee.y, legThickness - 1);
+        // Knee joint (armored joint)
+        graphics.fillStyle(dark, 1);
+        graphics.fillCircle(knee.x, knee.y, legThickness + 1);
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(knee.x, knee.y, legThickness - 1);
 
-      // Foot (heavy, grounded)
-      graphics.fillStyle(dark, 1);
-      graphics.fillCircle(foot.x, foot.y, footSize + 2);
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(foot.x, foot.y, footSize);
+        // Foot (heavy, grounded)
+        graphics.fillStyle(dark, 1);
+        graphics.fillCircle(foot.x, foot.y, footSize + 2);
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(foot.x, foot.y, footSize);
+      } else {
+        // Low LOD: single-layer leg segments, no joints/feet
+        graphics.lineStyle(legThickness + 1, dark, 1);
+        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+        graphics.lineStyle(legThickness, dark, 1);
+        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+      }
     }
 
     // Main body - imposing rectangular chassis

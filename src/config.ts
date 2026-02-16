@@ -224,7 +224,7 @@ export const EXPLOSION_BASE_MOMENTUM = 500;
  */
 export const DEBRIS_CONFIG = {
   /** Maximum debris fragments alive at once (oldest evicted first) */
-  maxFragments: 60,
+  maxFragments: 300,
 
   // --- Launch velocities ---
 
@@ -247,12 +247,10 @@ export const DEBRIS_CONFIG = {
   drag: 0.99,
 
   // --- Color decay ---
-  // Two-stage fade: original color → black (hot decay), then black → background (cool decay)
+  // Single-stage fade: original color → background color
 
-  /** Time constant for color → black transition (ms). Lower = faster darkening. */
-  colorDecayTau: 500,
-  /** Time constant for black → background fade (ms). Lower = faster disappearance. */
-  fadeDecayTau: 3000,
+  /** Time constant for baseColor → background fade (ms). Lower = faster disappearance. */
+  fadeDecayTau: 800,
 };
 
 // =============================================================================
@@ -313,8 +311,8 @@ export const PROJECTILE_MASS_MULTIPLIER = 1.0;
  * Higher values = faster acceleration, higher top speed.
  * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
  */
-export const UNIT_THRUST_MULTIPLIER_GAME = 5.0;
-export const UNIT_THRUST_MULTIPLIER_DEMO = 5.0;
+export const UNIT_THRUST_MULTIPLIER_GAME = 3.0;
+export const UNIT_THRUST_MULTIPLIER_DEMO = 3.0;
 
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
@@ -623,7 +621,7 @@ export const LASER_SOUND_ENABLED = false;
 // =============================================================================
 
 /** Minimum zoom level (zoomed out) */
-export const ZOOM_MIN = 0.1;
+export const ZOOM_MIN = 0.5;
 
 /** Maximum zoom level (zoomed in) */
 export const ZOOM_MAX = 5.0;
@@ -659,22 +657,10 @@ export const WORLD_PADDING_PERCENT = 20.0;
  * Centralized graphics detail level configuration.
  * Each key defines what happens at each detail level: min, low, medium, high, max.
  *
- * AUTO_ZOOM_START: Zoom threshold where each detail level begins in auto mode
- *   - min: 0.0 means min detail from zoom 0 until low kicks in
- *   - low: 0.3 means low detail starts at zoom 0.3
- *   - medium: 0.6 means medium detail starts at zoom 0.6
- *   - high: 1.0 means high detail starts at zoom 1.0
- *   - max: 2.0 means max detail starts at zoom 2.0
+ * Auto-quality zoom thresholds are computed from ZOOM_MIN/ZOOM_MAX using
+ * logarithmic spacing (see graphicsSettings.ts getEffectiveQuality).
  */
 export const GRAPHICS_DETAIL_DEFINITIONS = {
-  // Zoom thresholds for auto quality (zoom level where each tier starts)
-  AUTO_ZOOM_START: {
-    min: 0.0,
-    low: 0.32,
-    medium: 0.6,
-    high: 1.0,
-    max: 2.0,
-  },
 
   // Leg rendering for widow/daddy/tarantula units
   LEGS: {

@@ -22,6 +22,7 @@ export function drawBrawlUnit(
     const treadLength = r * 1.7; // Slightly shorter than tank
     const treadWidth = r * 0.55; // Wide treads
 
+    const skipTreadDetail = ctx.lodTier < 3;
     for (const side of [-1, 1]) {
       const offsetX = -sin * treadOffset * side;
       const offsetY = cos * treadOffset * side;
@@ -42,7 +43,8 @@ export function drawBrawlUnit(
         bodyRot,
         treadRotation,
         COLORS.DARK_GRAY,
-        COLORS.GRAY_LIGHT
+        COLORS.GRAY_LIGHT,
+        skipTreadDetail
       );
     }
 

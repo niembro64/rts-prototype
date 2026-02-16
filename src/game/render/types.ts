@@ -71,6 +71,8 @@ export interface UnitRenderContext {
   entity: Entity;
   skipTurrets: boolean;
   turretsOnly: boolean;
+  /** LOD tier: 0=skip, 1=dot, 2=body only (no legs), 3=full detail */
+  lodTier: number;
 }
 
 // Context passed to building renderers

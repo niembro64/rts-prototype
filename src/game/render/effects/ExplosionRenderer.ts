@@ -6,11 +6,12 @@ import { getGraphicsConfig } from '../graphicsSettings';
 import { clamp01, angleDiff as computeAngleDiff } from '../../math';
 
 /**
- * Render an explosion effect based on current graphics settings
+ * Render an explosion effect based on current graphics settings.
+ * Quality is determined solely by zoom-based graphics config.
  */
 export function renderExplosion(
   graphics: Phaser.GameObjects.Graphics,
-  exp: ExplosionEffect
+  exp: ExplosionEffect,
 ): void {
   const progress = exp.elapsed / exp.lifetime;
   const gfxConfig = getGraphicsConfig();
@@ -629,9 +630,8 @@ function renderComplexExplosion(
       const emberY = centerY + Math.sin(emberAngle) * emberDist - emberProgress * 15;
 
       const emberFade = 1 - emberProgress;
-      const flicker = 0.7 + Math.sin(emberProgress * 20 + i) * 0.3;
       const emberSize = (1.5 + seededRandom(i + 503) * 1.5) * emberFade;
-      const emberAlpha = alpha * 0.8 * flicker * emberFade;
+      const emberAlpha = alpha * 0.8 * emberFade;
 
       if (emberSize > 0.5 && emberFade > 0.05) {
         graphics.fillStyle(0xff6600, emberAlpha);

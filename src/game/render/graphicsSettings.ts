@@ -6,7 +6,7 @@
  * All detail level definitions are centralized in config.ts GRAPHICS_DETAIL_DEFINITIONS.
  */
 
-import { GRAPHICS_DETAIL_DEFINITIONS } from '../../config';
+import { GRAPHICS_DETAIL_DEFINITIONS, ZOOM_MIN, ZOOM_MAX } from '../../config';
 
 export type GraphicsQuality = 'auto' | 'min' | 'low' | 'medium' | 'high' | 'max';
 export type RenderMode = 'window' | 'all';
@@ -165,21 +165,29 @@ export function setCurrentZoom(zoom: number): void {
  * If quality is 'auto', returns the appropriate level based on zoom
  * Exported so UI can show which quality level is actually active
  */
+// Auto-quality zoom thresholds: 4 logarithmically-spaced boundaries
+// dividing [ZOOM_MIN, ZOOM_MAX] into 5 equal bands on a log scale.
+// threshold[i] = ZOOM_MIN * (ZOOM_MAX/ZOOM_MIN)^(i/5), i=1..4
+const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
+const _autoZoomLow    = ZOOM_MIN * Math.pow(_zoomRatio, 1 / 5); // ~0.91
+const _autoZoomMedium = ZOOM_MIN * Math.pow(_zoomRatio, 2 / 5); // ~1.66
+const _autoZoomHigh   = ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5); // ~3.02
+const _autoZoomMax    = ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5); // ~5.49
+
 export function getEffectiveQuality(): Exclude<GraphicsQuality, 'auto'> {
   if (currentQuality !== 'auto') {
     return currentQuality;
   }
 
   // Auto mode: determine quality based on zoom level
-  // Uses AUTO_ZOOM_START thresholds from config
-  const zoomStart = D.AUTO_ZOOM_START;
-  if (currentZoom >= zoomStart.max) {
+  // Logarithmic spacing gives equal perceived zoom range per tier
+  if (currentZoom >= _autoZoomMax) {
     return 'max';
-  } else if (currentZoom >= zoomStart.high) {
+  } else if (currentZoom >= _autoZoomHigh) {
     return 'high';
-  } else if (currentZoom >= zoomStart.medium) {
+  } else if (currentZoom >= _autoZoomMedium) {
     return 'medium';
-  } else if (currentZoom >= zoomStart.low) {
+  } else if (currentZoom >= _autoZoomLow) {
     return 'low';
   }
   return 'min';

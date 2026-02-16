@@ -13,8 +13,8 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
     if (!unit.weapons || !unit.unit || !unit.ownership) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const cos = Math.cos(unit.transform.rotation);
-    const sin = Math.sin(unit.transform.rotation);
+    const cos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
+    const sin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
 
     // Check each weapon for beam sounds
     for (let i = 0; i < unit.weapons.length; i++) {

@@ -41,13 +41,13 @@ export function drawForceFieldUnit(
       graphics.lineStyle(legThickness, dark, 1);
       graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-      // Knee joint
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(knee.x, knee.y, legThickness * 0.4);
-
-      // Foot
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(foot.x, foot.y, footSize);
+      // Knee joint + foot detail (skip at low LOD)
+      if (ctx.lodTier >= 3) {
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(knee.x, knee.y, legThickness * 0.4);
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(foot.x, foot.y, footSize);
+      }
     }
 
     // Body (compact oval shape)
@@ -88,6 +88,7 @@ export function drawForceFieldUnit(
 
   // Turret pass - force field effect emanating from central orb
   if (!skipTurrets) {
+    const forceSimple = ctx.lodTier < 3;
     const weapons = entity.weapons ?? [];
     for (const weapon of weapons) {
       if (!weapon.config.isForceField) continue;
@@ -109,7 +110,7 @@ export function drawForceFieldUnit(
         renderForceFieldEffect(
           graphics, x, y, turretRot, sliceAngle, pushOuter,
           tintColor(light, 0.4), tintColor(base, 0.4),
-          pushInner, true
+          pushInner, true, forceSimple
         );
       }
 
@@ -120,7 +121,7 @@ export function drawForceFieldUnit(
         renderForceFieldEffect(
           graphics, x, y, turretRot, sliceAngle, pullOuter,
           tintColor(light, -0.4), tintColor(base, -0.4),
-          pullInner, false
+          pullInner, false, forceSimple
         );
       }
     }

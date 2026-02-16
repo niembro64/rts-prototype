@@ -101,7 +101,8 @@ export function drawAnimatedTread(
   bodyRot: number,
   treadRotation: number,
   treadColor: number = COLORS.DARK_GRAY,
-  lineColor: number = COLORS.GRAY_LIGHT
+  lineColor: number = COLORS.GRAY_LIGHT,
+  skipDetail: boolean = false
 ): void {
   const gfxConfig = getGraphicsConfig();
   const cos = Math.cos(bodyRot);
@@ -111,8 +112,8 @@ export function drawAnimatedTread(
   graphics.fillStyle(treadColor, 1);
   drawOrientedRect(graphics, x, y, treadLength, treadWidth, bodyRot);
 
-  // Low quality: just draw the rectangle, skip tracks
-  if (!gfxConfig.treadsAnimated) {
+  // Low quality or LOD: just draw the rectangle, skip animated track marks
+  if (skipDetail || !gfxConfig.treadsAnimated) {
     return;
   }
 

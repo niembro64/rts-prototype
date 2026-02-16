@@ -124,9 +124,13 @@ export function updateTargetingAndFiringState(world: WorldState): void {
   }
 }
 
-// Update weapon cooldowns
+// Update weapon cooldowns and cache rotation sin/cos (merged to avoid extra iteration)
 export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
   for (const unit of world.getUnits()) {
+    // Cache rotation sin/cos (used by targeting, turret, firing, beam systems)
+    unit.transform.rotCos = Math.cos(unit.transform.rotation);
+    unit.transform.rotSin = Math.sin(unit.transform.rotation);
+
     if (!unit.weapons) continue;
 
     for (const weapon of unit.weapons) {

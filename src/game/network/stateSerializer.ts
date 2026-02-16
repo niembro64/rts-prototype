@@ -13,6 +13,8 @@ const _audioBuf: NetworkAudioEvent[] = [];
 const _spawnBuf: NetworkProjectileSpawn[] = [];
 const _despawnBuf: NetworkProjectileDespawn[] = [];
 const _velUpdateBuf: NetworkProjectileVelocityUpdate[] = [];
+const _economyBuf: Record<PlayerId, NetworkEconomy> = {} as Record<PlayerId, NetworkEconomy>;
+const _economyKeys: PlayerId[] = [];
 
 // Serialize WorldState to network format
 export function serializeGameState(
@@ -40,12 +42,18 @@ export function serializeGameState(
     if (netEntity) _entityBuf.push(netEntity);
   }
 
-  // Serialize economy for all players
-  const economy: Record<PlayerId, NetworkEconomy> = {};
+  // Serialize economy for all players (reuse object to avoid per-snapshot allocation)
+  // Clear previous entries
+  for (const key of _economyKeys) {
+    delete _economyBuf[key];
+  }
+  _economyKeys.length = 0;
   for (let playerId = 1; playerId <= 6; playerId++) {
     const eco = economyManager.getEconomy(playerId as PlayerId);
     if (eco) {
-      economy[playerId as PlayerId] = {
+      const pid = playerId as PlayerId;
+      _economyKeys.push(pid);
+      _economyBuf[pid] = {
         stockpile: eco.stockpile,
         maxStockpile: eco.maxStockpile,
         baseIncome: eco.baseIncome,
@@ -143,7 +151,7 @@ export function serializeGameState(
   return {
     tick: world.getTick(),
     entities: _entityBuf,
-    economy,
+    economy: _economyBuf,
     sprayTargets: netSprayTargets,
     audioEvents: netAudioEvents,
     projectileSpawns: netProjectileSpawns,

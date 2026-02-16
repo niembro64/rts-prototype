@@ -212,6 +212,8 @@ export interface Projectile {
   endX?: number;                 // Beam endpoint
   endY?: number;
   targetEntityId?: EntityId;     // Target for tracking beams (updates every frame)
+  obstructionT?: number;         // Cached obstruction t value (0-1, undefined = no obstruction)
+  obstructionTick?: number;      // Tick when obstruction was last computed
 
   // Tracking which entities were hit (for piercing or single-hit)
   hitEntities: Set<EntityId>;

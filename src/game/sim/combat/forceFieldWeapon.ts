@@ -45,20 +45,23 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
 }
 
 // Compute the effective push and pull zone boundaries from transition progress + config
+// Reusable object to avoid allocation per call
+const _zones = { innerRadius: 0, middleRadius: 0, outerRadius: 0, pushInner: 0, pushOuter: 0, pullInner: 0, pullOuter: 0 };
+
 function getForceFieldZones(config: { forceFieldInnerRange?: number | unknown; forceFieldMiddleRadius?: number | unknown; range: number }, progress: number) {
   const innerRadius = (config.forceFieldInnerRange as number | undefined) ?? 0;
   const middleRadius = (config.forceFieldMiddleRadius as number | undefined) ?? config.range;
   const outerRadius = config.range;
 
-  // Push zone: inner boundary shrinks from middle toward innerRadius
-  const pushInner = middleRadius - (middleRadius - innerRadius) * progress;
-  const pushOuter = middleRadius;
+  _zones.innerRadius = innerRadius;
+  _zones.middleRadius = middleRadius;
+  _zones.outerRadius = outerRadius;
+  _zones.pushInner = middleRadius - (middleRadius - innerRadius) * progress;
+  _zones.pushOuter = middleRadius;
+  _zones.pullInner = middleRadius;
+  _zones.pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
 
-  // Pull zone: outer boundary grows from middle toward outerRadius
-  const pullInner = middleRadius;
-  const pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
-
-  return { innerRadius, middleRadius, outerRadius, pushInner, pushOuter, pullInner, pullOuter };
+  return _zones;
 }
 
 // Helper: Check if a point is within a pie slice (annular ring between minRadius and maxRadius)
@@ -105,8 +108,8 @@ export function applyForceFieldDamage(
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const unitCos = Math.cos(unit.transform.rotation);
-    const unitSin = Math.sin(unit.transform.rotation);
+    const unitCos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
+    const unitSin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
     const sourcePlayerId = unit.ownership.playerId;
 
     for (const weapon of unit.weapons) {

@@ -55,9 +55,11 @@ interface DebrisFragment {
   color: number;                 // cached RGB (updated during aging)
   baseColor: number;             // original color at creation
   age: number;                   // ms since creation
+  shape: 'line' | 'rect';       // line = segment + caps, rect = filled rectangle
 }
 const MAX_DEBRIS = DEBRIS_CONFIG.maxFragments;
 const DEBRIS_DRAG = DEBRIS_CONFIG.drag;
+const _debrisRectPts = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
 
 // Per-unit-type debris piece template (local coordinates relative to unit center)
 interface DebrisPieceTemplate {
@@ -67,6 +69,7 @@ interface DebrisPieceTemplate {
   width: number;
   angle: number;       // local angle offset
   colorType: 'base' | 'dark' | 'light' | 'gray' | 'white';
+  shape: 'line' | 'rect';
 }
 
 // Cached debris templates per unit type
@@ -89,7 +92,7 @@ function getDebrisPieces(unitType: string, radius: number): DebrisPieceTemplate[
   const pieces: DebrisPieceTemplate[] = [];
 
   // Helper: add polygon edges as debris
-  const addPolygonEdges = (cx: number, cy: number, polyR: number, sides: number, rot: number, width: number, color: DebrisPieceTemplate['colorType']) => {
+  const addPolygonEdges = (cx: number, cy: number, polyR: number, sides: number, rot: number, width: number, color: DebrisPieceTemplate['colorType'], shape: 'line' | 'rect' = 'line') => {
     for (let i = 0; i < sides; i++) {
       const a1 = rot + (i / sides) * Math.PI * 2;
       const a2 = rot + ((i + 1) / sides) * Math.PI * 2;
@@ -101,7 +104,7 @@ function getDebrisPieces(unitType: string, radius: number): DebrisPieceTemplate[
       const my = (y1 + y2) / 2;
       const dx = x2 - x1;
       const dy = y2 - y1;
-      pieces.push({ localX: mx, localY: my, length: Math.sqrt(dx * dx + dy * dy), width, angle: Math.atan2(dy, dx), colorType: color });
+      pieces.push({ localX: mx, localY: my, length: Math.sqrt(dx * dx + dy * dy), width, angle: Math.atan2(dy, dx), colorType: color, shape });
     }
   };
 
@@ -109,166 +112,220 @@ function getDebrisPieces(unitType: string, radius: number): DebrisPieceTemplate[
   const addBarrel = (ox: number, oy: number, len: number, width: number, angle: number, color: DebrisPieceTemplate['colorType']) => {
     const mx = ox + Math.cos(angle) * len / 2;
     const my = oy + Math.sin(angle) * len / 2;
-    pieces.push({ localX: mx, localY: my, length: len, width, angle, colorType: color });
+    pieces.push({ localX: mx, localY: my, length: len, width, angle, colorType: color, shape: 'line' });
   };
 
   switch (unitType) {
-    case 'widow':
-    case 'tarantula': {
-      // 8 legs: upper + lower segments
+    case 'widow': {
+      // 8 legs — rendered at 6px thickness
       const legLen = r * 1.9;
       const upperLen = legLen * 0.55;
       const lowerLen = legLen * 0.55;
-      const legW = 2.5;
-      // 4 left + 4 right attachment points (simplified radial)
       for (let i = 0; i < 8; i++) {
         const side = i < 4 ? -1 : 1;
         const idx = i < 4 ? i : i - 4;
         const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
         const ax = Math.cos(attachAngle) * r * 0.4;
         const ay = Math.sin(attachAngle) * r * 0.4;
-        // Upper leg
-        pieces.push({ localX: ax, localY: ay, length: upperLen, width: legW + 1, angle: attachAngle, colorType: 'dark' });
-        // Lower leg
+        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 7, angle: attachAngle, colorType: 'dark', shape: 'line' });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
-        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: legW, angle: attachAngle, colorType: 'dark' });
+        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 6, angle: attachAngle, colorType: 'dark', shape: 'line' });
       }
-      // Body hexagon edges
-      addPolygonEdges(r * 0.35, 0, r * 0.95, 6, Math.PI / 6, 3, 'dark');
-      // Turret barrels (6 emitters)
+      // Abdomen — large oval chunk at rear, r*1.1 long × r*0.85 wide
+      pieces.push({ localX: -r * 0.9, localY: 0, length: r * 1.1, width: r * 0.85, angle: 0, colorType: 'dark', shape: 'rect' });
+      // Body hexagon edges — outer hex r*0.95 centered at r*0.35 forward
+      addPolygonEdges(r * 0.35, 0, r * 0.95, 6, Math.PI / 6, r * 0.3, 'dark', 'rect');
+      // 6 beam emitters — r*0.5 long, 2.5px wide
       for (let i = 0; i < 6; i++) {
         const a = (i * Math.PI) / 3 + Math.PI / 6;
         const ex = Math.cos(a) * r * 0.65 + r * 0.5;
         const ey = Math.sin(a) * r * 0.65;
-        addBarrel(ex, ey, r * 0.5, 2, a, 'white');
+        addBarrel(ex, ey, r * 0.5, 2.5, a, 'white');
       }
+      // Center beam — r*0.6 long, 3.5px wide
+      addBarrel(r * 0.5, 0, r * 0.6, 3.5, 0, 'white');
       break;
     }
 
-    case 'daddy': {
-      // 8 long legs
-      const legLen = r * 10;
-      const upperLen = legLen * 0.3;
-      const lowerLen = legLen * 0.6;
-      const legW = 3;
+    case 'tarantula': {
+      // 8 legs — rendered at 4-4.5px thickness (thinner than widow)
+      const legLen = r * 1.9;
+      const upperLen = legLen * 0.55;
+      const lowerLen = legLen * 0.55;
       for (let i = 0; i < 8; i++) {
         const side = i < 4 ? -1 : 1;
         const idx = i < 4 ? i : i - 4;
         const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
         const ax = Math.cos(attachAngle) * r * 0.4;
         const ay = Math.sin(attachAngle) * r * 0.4;
-        pieces.push({ localX: ax, localY: ay, length: upperLen, width: legW + 1, angle: attachAngle, colorType: 'dark' });
+        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 4.5, angle: attachAngle, colorType: 'dark', shape: 'line' });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
-        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: legW, angle: attachAngle, colorType: 'dark' });
+        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 4, angle: attachAngle, colorType: 'dark', shape: 'line' });
       }
-      // Body polygon
-      addPolygonEdges(0, 0, r * 0.7, 6, 0, 3, 'base');
-      // Central beam barrel
-      addBarrel(0, 0, r * 1.2, 4, 0, 'white');
+      // Compact body — 8-point shape ~r*0.6 × r*0.5
+      addPolygonEdges(0, 0, r * 0.5, 6, 0, r * 0.2, 'dark', 'rect');
+      // Inner carapace hex r*0.3
+      addPolygonEdges(0, 0, r * 0.3, 6, 0, r * 0.12, 'light', 'rect');
+      break;
+    }
+
+    case 'daddy': {
+      // 8 long spindly legs — rendered at only 2-2.5px thickness
+      const legLen = r * 10;
+      const upperLen = legLen * 0.3;
+      const lowerLen = legLen * 0.6;
+      for (let i = 0; i < 8; i++) {
+        const side = i < 4 ? -1 : 1;
+        const idx = i < 4 ? i : i - 4;
+        const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const ax = Math.cos(attachAngle) * r * 0.4;
+        const ay = Math.sin(attachAngle) * r * 0.4;
+        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 2.5, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        const kx = ax + Math.cos(attachAngle) * upperLen;
+        const ky = ay + Math.sin(attachAngle) * upperLen;
+        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 2, angle: attachAngle, colorType: 'dark', shape: 'line' });
+      }
+      // Elongated body — r*0.9 long × r*0.55 wide
+      addPolygonEdges(0, 0, r * 0.5, 6, 0, r * 0.2, 'base', 'rect');
+      // Central beam emitter — r*0.6 long, 3.5px wide
+      addBarrel(0, 0, r * 0.6, 3.5, 0, 'white');
       break;
     }
 
     case 'commander': {
-      // 4 legs (2 per side)
+      // 4 heavy legs — rendered at 6-8px thickness
       const legLen = r * 2.2;
       const upperLen = legLen * 0.5;
       const lowerLen = legLen * 0.5;
-      const legW = 3;
       for (let i = 0; i < 4; i++) {
         const side = i < 2 ? -1 : 1;
         const idx = i < 2 ? i : i - 2;
         const attachAngle = (idx === 0 ? 0.3 : -0.3) * Math.PI + Math.PI / 2 * side;
         const ax = Math.cos(attachAngle) * r * 0.5;
         const ay = Math.sin(attachAngle) * r * 0.5;
-        pieces.push({ localX: ax, localY: ay, length: upperLen, width: legW + 1, angle: attachAngle, colorType: 'dark' });
+        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 8, angle: attachAngle, colorType: 'dark', shape: 'line' });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
-        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: legW, angle: attachAngle, colorType: 'dark' });
+        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 7, angle: attachAngle, colorType: 'dark', shape: 'line' });
       }
-      // Body polygon
-      addPolygonEdges(0, 0, r * 0.8, 6, 0, 3, 'base');
-      // DGun barrel
-      addBarrel(0, 0, r * 1.5, 5, 0, 'white');
+      // Angular chassis — r*0.85 × r*0.7
+      addPolygonEdges(0, 0, r * 0.8, 6, 0, r * 0.25, 'base', 'rect');
+      // Shoulder pylons — r*0.2 squares offset r*0.55 sideways
+      for (const side of [-1, 1]) {
+        pieces.push({ localX: 0, localY: r * 0.55 * side, length: r * 0.4, width: r * 0.4, angle: 0, colorType: 'dark', shape: 'rect' });
+      }
+      // Beam weapon barrel — r*0.7 long, 6px wide
+      addBarrel(r * 0.3, 0, r * 0.7, 6, 0, 'white');
       break;
     }
 
     case 'mammoth': {
-      // 2 treads split into segments
+      // 2 heavy treads — r*2.0 long × r*0.6 wide, offset r*0.9
       const treadLen = r * 2.0;
       const treadOffset = r * 0.9;
       for (const side of [-1, 1]) {
         for (let i = 0; i < 3; i++) {
           const segLen = treadLen / 3;
           const sx = (i - 1) * segLen;
-          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * 0.5, angle: 0, colorType: 'gray' });
+          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * 0.6, angle: 0, colorType: 'gray', shape: 'rect' });
         }
       }
-      // Hull square edges
-      addPolygonEdges(0, 0, r * 0.85, 4, 0, 3, 'base');
-      // Heavy cannon barrel
+      // Hull square — r*0.85
+      addPolygonEdges(0, 0, r * 0.85, 4, 0, r * 0.35, 'base', 'rect');
+      // Heavy cannon — r*1.4 long, 7px wide
       addBarrel(0, 0, r * 1.4, 7, 0, 'white');
       break;
     }
 
     case 'badger': {
-      // 2 treads
+      // 2 treads — r*1.7 long × r*0.5 wide, offset r*0.85
       const treadLen = r * 1.7;
       const treadOffset = r * 0.85;
       for (const side of [-1, 1]) {
         for (let i = 0; i < 2; i++) {
           const segLen = treadLen / 2;
           const sx = (i - 0.5) * segLen;
-          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * 0.4, angle: 0, colorType: 'gray' });
+          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * 0.5, angle: 0, colorType: 'gray', shape: 'rect' });
         }
       }
-      // Body pentagon edges
-      addPolygonEdges(0, 0, r * 0.8, 5, 0, 3, 'dark');
-      // Shotgun barrel
+      // Body pentagon — r*0.8
+      addPolygonEdges(0, 0, r * 0.8, 5, 0, r * 0.25, 'dark', 'rect');
+      // Shotgun barrel — r*1.0 long, 5px wide
       addBarrel(0, 0, r * 1.0, 5, 0, 'white');
       break;
     }
 
-    case 'jackal':
-    case 'lynx':
-    case 'scorpion':
-    case 'viper': {
-      // 4 small wheel rectangles
-      const wheelDistX = r * 0.6;
-      const wheelDistY = r * 0.7;
-      const wheelLen = r * 0.5;
-      const wheelW = r * 0.11;
+    case 'jackal': {
+      // 4 wheels — at r*0.6/r*0.7, tread r*0.5 × r*0.11
       for (const sx of [-1, 1]) {
         for (const sy of [-1, 1]) {
-          pieces.push({ localX: wheelDistX * sx, localY: wheelDistY * sy, length: wheelLen, width: wheelW, angle: 0, colorType: 'gray' });
+          pieces.push({ localX: r * 0.6 * sx, localY: r * 0.7 * sy, length: r * 0.5, width: r * 0.11, angle: 0, colorType: 'gray', shape: 'rect' });
         }
       }
-      // Diamond body edges (4 sides)
-      addPolygonEdges(0, 0, r * 0.55, 4, Math.PI / 4, 2, 'light');
-      // Inner accent
-      addPolygonEdges(0, 0, r * 0.35, 4, Math.PI / 4, 1.5, 'base');
-      // Turret barrel(s)
-      if (unitType === 'jackal') {
-        // Triple barrels
-        for (let i = -1; i <= 1; i++) {
-          addBarrel(0, i * 2, r * 1.0, 1.5, 0, 'white');
-        }
-      } else if (unitType === 'viper') {
-        addBarrel(0, 0, r * 1.2, 2, 0, 'white');
-      } else if (unitType === 'lynx') {
-        addBarrel(0, -2, r * 0.8, 2, 0, 'white');
-        addBarrel(0, 2, r * 0.8, 2, 0, 'white');
-      } else {
-        // scorpion
-        addBarrel(0, 0, r * 0.8, 3, 0, 'white');
+      // Diamond body — r*0.55
+      addPolygonEdges(0, 0, r * 0.55, 4, Math.PI / 4, r * 0.15, 'light', 'rect');
+      // Inner accent — r*0.35
+      addPolygonEdges(0, 0, r * 0.35, 4, Math.PI / 4, r * 0.1, 'base', 'rect');
+      // Triple barrels — r*1.0 long, 1.5px wide
+      for (let i = -1; i <= 1; i++) {
+        addBarrel(0, i * 2, r * 1.0, 1.5, 0, 'white');
       }
+      break;
+    }
+
+    case 'lynx': {
+      // 4 wheels — at r*0.65/r*0.75, tread r*0.55 × r*0.12
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          pieces.push({ localX: r * 0.65 * sx, localY: r * 0.75 * sy, length: r * 0.55, width: r * 0.12, angle: 0, colorType: 'gray', shape: 'rect' });
+        }
+      }
+      // Triangle body — r*0.6
+      addPolygonEdges(0, 0, r * 0.6, 3, -Math.PI / 2, r * 0.15, 'light', 'rect');
+      // Inner wedge — r*0.38
+      addPolygonEdges(0, 0, r * 0.38, 3, -Math.PI / 2, r * 0.1, 'base', 'rect');
+      // Dual burst barrels — r*1.1 long, 2.5px wide, 3px apart
+      addBarrel(0, -3, r * 1.1, 2.5, 0, 'white');
+      addBarrel(0, 3, r * 1.1, 2.5, 0, 'white');
+      break;
+    }
+
+    case 'scorpion': {
+      // 4 wheels — at r*0.65/r*0.7, tread r*0.5 × r*0.11
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          pieces.push({ localX: r * 0.65 * sx, localY: r * 0.7 * sy, length: r * 0.5, width: r * 0.11, angle: 0, colorType: 'gray', shape: 'rect' });
+        }
+      }
+      // Hexagon body — r*0.55
+      addPolygonEdges(0, 0, r * 0.55, 6, 0, r * 0.15, 'gray', 'rect');
+      // Inner platform — r*0.4
+      addPolygonEdges(0, 0, r * 0.4, 6, 0, r * 0.1, 'base', 'rect');
+      // Mortar tube — r*0.75 long, 6px wide
+      addBarrel(0, 0, r * 0.75, 6, 0, 'white');
+      break;
+    }
+
+    case 'viper': {
+      // 4 wheels — at r*0.7/r*0.6, tread r*0.55 × r*0.2 (wider than others)
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          pieces.push({ localX: r * 0.7 * sx, localY: r * 0.6 * sy, length: r * 0.55, width: r * 0.2, angle: 0, colorType: 'gray', shape: 'rect' });
+        }
+      }
+      // Elongated rect body — r*1.2 × r*0.5 split into 2 halves
+      pieces.push({ localX: r * 0.3, localY: 0, length: r * 0.6, width: r * 0.5, angle: 0, colorType: 'light', shape: 'rect' });
+      pieces.push({ localX: -r * 0.3, localY: 0, length: r * 0.6, width: r * 0.5, angle: 0, colorType: 'base', shape: 'rect' });
+      // Long sniper barrel — r*1.6 long, 2.5px wide
+      addBarrel(0, 0, r * 1.6, 2.5, 0, 'white');
       break;
     }
 
     default: {
       // Generic fallback: hexagon body + barrel
-      addPolygonEdges(0, 0, r * 0.6, 6, 0, 2, 'base');
+      addPolygonEdges(0, 0, r * 0.6, 6, 0, r * 0.15, 'base', 'rect');
       addBarrel(0, 0, r * 1.0, 2, 0, 'white');
       break;
     }
@@ -324,6 +381,9 @@ export class EntityRenderer {
   // Rendering mode flags
   private skipTurrets: boolean = false;
   private turretsOnly: boolean = false;
+
+  // Cached camera zoom for LOD calculations (updated each frame)
+  private cameraZoom: number = 1;
 
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
@@ -643,6 +703,7 @@ export class EntityRenderer {
         color: fragColor,
         baseColor: fragColor,
         age: 0,
+        shape: t.shape,
       });
     }
 
@@ -688,15 +749,14 @@ export class EntityRenderer {
     }
     this.burnMarks.length = burnWrite;
 
-    // Age debris fragments — physics update + two-stage color decay (baseColor → black → background)
-    const debrisColorTau = DEBRIS_CONFIG.colorDecayTau;
+    // Age debris fragments — physics update + single-stage color decay (baseColor → background)
     const debrisFadeTau = DEBRIS_CONFIG.fadeDecayTau;
     let debrisWrite = 0;
     for (let i = 0; i < this.debrisFragments.length; i++) {
       const frag = this.debrisFragments[i];
       frag.age += dtMs;
-      const coolBlend = 1 - Math.exp(-frag.age / debrisFadeTau);
-      if (coolBlend < 1 - burnCutoff) {
+      const fadeBlend = 1 - Math.exp(-frag.age / debrisFadeTau);
+      if (fadeBlend < 1 - burnCutoff) {
         // Update physics
         const dtSec = dtMs / 1000;
         frag.x += frag.vx * dtSec;
@@ -705,14 +765,14 @@ export class EntityRenderer {
         frag.vy *= DEBRIS_DRAG;
         frag.rotation += frag.angularVel * dtSec;
         frag.angularVel *= DEBRIS_DRAG;
-        // Two-stage color: baseColor → black → background
-        const hotDecay = Math.exp(-frag.age / debrisColorTau);
+        // Direct blend: baseColor → background
+        const keep = 1 - fadeBlend;
         const fragR = (frag.baseColor >> 16) & 0xFF;
         const fragG = (frag.baseColor >> 8) & 0xFF;
         const fragB = frag.baseColor & 0xFF;
-        const r = Math.round(fragR * hotDecay + BURN_COOL_RGB.r * coolBlend);
-        const g = Math.round(fragG * hotDecay + BURN_COOL_RGB.g * coolBlend);
-        const b = Math.round(fragB * hotDecay + BURN_COOL_RGB.b * coolBlend);
+        const r = Math.round(fragR * keep + BURN_COOL_RGB.r * fadeBlend);
+        const g = Math.round(fragG * keep + BURN_COOL_RGB.g * fadeBlend);
+        const b = Math.round(fragB * keep + BURN_COOL_RGB.b * fadeBlend);
         frag.color = (r << 16) | (g << 8) | b;
         this.debrisFragments[debrisWrite++] = frag;
       }
@@ -804,6 +864,7 @@ export class EntityRenderer {
     this.resetLabels();
 
     const camera = this.scene.cameras.main;
+    this.cameraZoom = camera.zoom;
     setCurrentZoom(camera.zoom);
     const gfxConfig = getGraphicsConfig();
     this.sprayParticleTime += 16;
@@ -873,16 +934,32 @@ export class EntityRenderer {
       const fragCos = Math.cos(frag.rotation);
       const fragSin = Math.sin(frag.rotation);
       const halfLen = frag.length / 2;
-      const x1 = frag.x - fragCos * halfLen;
-      const y1 = frag.y - fragSin * halfLen;
-      const x2 = frag.x + fragCos * halfLen;
-      const y2 = frag.y + fragSin * halfLen;
-      this.graphics.lineStyle(frag.width, frag.color, 1);
-      this.graphics.lineBetween(x1, y1, x2, y2);
-      const capR = frag.width / 2;
-      this.graphics.fillStyle(frag.color, 1);
-      this.graphics.fillCircle(x1, y1, capR);
-      this.graphics.fillCircle(x2, y2, capR);
+      if (frag.shape === 'rect') {
+        // Filled oriented rectangle — 4 rotated corners
+        const halfW = frag.width / 2;
+        const dx = fragCos * halfLen;
+        const dy = fragSin * halfLen;
+        const nx = -fragSin * halfW;
+        const ny = fragCos * halfW;
+        _debrisRectPts[0].x = frag.x - dx + nx; _debrisRectPts[0].y = frag.y - dy + ny;
+        _debrisRectPts[1].x = frag.x + dx + nx; _debrisRectPts[1].y = frag.y + dy + ny;
+        _debrisRectPts[2].x = frag.x + dx - nx; _debrisRectPts[2].y = frag.y + dy - ny;
+        _debrisRectPts[3].x = frag.x - dx - nx; _debrisRectPts[3].y = frag.y - dy - ny;
+        this.graphics.fillStyle(frag.color, 1);
+        this.graphics.fillPoints(_debrisRectPts, true);
+      } else {
+        // Line segment with rounded caps
+        const x1 = frag.x - fragCos * halfLen;
+        const y1 = frag.y - fragSin * halfLen;
+        const x2 = frag.x + fragCos * halfLen;
+        const y2 = frag.y + fragSin * halfLen;
+        this.graphics.lineStyle(frag.width, frag.color, 1);
+        this.graphics.lineBetween(x1, y1, x2, y2);
+        const capR = frag.width / 2;
+        this.graphics.fillStyle(frag.color, 1);
+        this.graphics.fillCircle(x1, y1, capR);
+        this.graphics.fillCircle(x2, y2, capR);
+      }
     }
 
     // 1. Buildings (bottom layer)
@@ -945,7 +1022,7 @@ export class EntityRenderer {
       renderSprayEffect(this.graphics, target, this.sprayParticleTime);
     }
 
-    // 8. Explosions
+    // 8. Explosions (quality determined by zoom-based graphics config)
     for (const explosion of this.explosions) {
       if (!this.isInViewport(explosion.x, explosion.y, explosion.radius + 50)) continue;
       renderExplosion(this.graphics, explosion);
@@ -964,12 +1041,19 @@ export class EntityRenderer {
     const { x, y, rotation } = transform;
     const { collisionRadius: radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
-    const playerId = ownership?.playerId;
+
+    // LOD: compute screen-space radius for detail level
+    // Tier 0: skip entirely (sub-pixel), Tier 1: legs/treads visible but no inner detail,
+    // Tier 2: body detail but no tread tracks or leg joints, Tier 3: full detail
+    const screenRadius = radius * this.cameraZoom;
+    const lodTier = screenRadius < 2 ? 0 : screenRadius < 6 ? 1 : screenRadius < 12 ? 2 : 3;
+
+    // LOD 0: unit is sub-pixel, skip entirely
+    if (lodTier === 0) return;
 
     // Get unit type for renderer selection
     const unitType = unit.unitType ?? 'jackal';
-
-    const palette = createColorPalette(playerId);
+    const palette = createColorPalette(ownership?.playerId);
 
     // Selection ring
     if (isSelected && !this.turretsOnly) {
@@ -981,6 +1065,7 @@ export class EntityRenderer {
       graphics: this.graphics,
       x, y, radius, bodyRot: rotation, palette, isSelected, entity,
       skipTurrets: this.skipTurrets, turretsOnly: this.turretsOnly,
+      lodTier,
     };
 
     // Commander gets special 4-legged mech body regardless of unit type
@@ -1137,7 +1222,10 @@ export class EntityRenderer {
         this.beamRandomOffsets.set(entity.id, randomOffsets);
       }
 
-      if (beamStyle === 'detailed' || beamStyle === 'complex') {
+      // Beam LOD: at low zoom, downgrade beam style to reduce draw calls
+      const effectiveBeamStyle = this.cameraZoom < 0.3 ? 'simple' : beamStyle;
+
+      if (effectiveBeamStyle === 'detailed' || effectiveBeamStyle === 'complex') {
         this.graphics.lineStyle(beamWidth + 4, color, 0.3);
         this.graphics.lineBetween(startX, startY, endX, endY);
       }
@@ -1145,7 +1233,7 @@ export class EntityRenderer {
       this.graphics.lineStyle(beamWidth, color, 0.9);
       this.graphics.lineBetween(startX, startY, endX, endY);
 
-      if (beamStyle !== 'simple') {
+      if (effectiveBeamStyle !== 'simple') {
         this.graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
         this.graphics.lineBetween(startX, startY, endX, endY);
       }
@@ -1153,10 +1241,10 @@ export class EntityRenderer {
       const baseRadius = beamWidth * 2 + 6;
       const explosionRadius = baseRadius * randomOffsets.sizeScale;
 
-      if (beamStyle === 'simple') {
+      if (effectiveBeamStyle === 'simple') {
         this.graphics.fillStyle(color, 0.7);
         this.graphics.fillCircle(endX, endY, explosionRadius * 0.8);
-      } else if (beamStyle === 'standard') {
+      } else if (effectiveBeamStyle === 'standard') {
         this.graphics.fillStyle(color, 0.6);
         this.graphics.fillCircle(endX, endY, explosionRadius);
         this.graphics.fillStyle(0xffffff, 0.8);
@@ -1170,7 +1258,7 @@ export class EntityRenderer {
         this.graphics.fillCircle(endX, endY, explosionRadius * 0.4);
 
         const pulseTime = this.sprayParticleTime * randomOffsets.pulseSpeed;
-        const sparkCount = beamStyle === 'complex' ? 6 : 4;
+        const sparkCount = effectiveBeamStyle === 'complex' ? 6 : 4;
         for (let i = 0; i < sparkCount; i++) {
           const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
           const angle = baseAngle + randomOffsets.rotationOffset;
