@@ -33,12 +33,9 @@ export function drawPolygon(
     _polyPoints[i].x = x + Math.cos(angle) * radius;
     _polyPoints[i].y = y + Math.sin(angle) * radius;
   }
-  // fillPoints reads .length, so pass a slice view — but we can just set length temporarily
-  // Phaser's fillPoints iterates by index up to array.length, so we need exact count
-  const saved = _polyPoints.length;
+  // Truncate to exact count for fillPoints (ensurePolyPoints will regrow if needed)
   _polyPoints.length = sides;
   graphics.fillPoints(_polyPoints, true);
-  _polyPoints.length = saved;
 }
 
 /**
@@ -87,10 +84,8 @@ export function drawStar(
     _polyPoints[i].x = x + Math.cos(angle) * r;
     _polyPoints[i].y = y + Math.sin(angle) * r;
   }
-  const saved = _polyPoints.length;
   _polyPoints.length = count;
   graphics.fillPoints(_polyPoints, true);
-  _polyPoints.length = saved;
 }
 
 /**
