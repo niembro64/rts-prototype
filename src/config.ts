@@ -89,16 +89,16 @@ export function hexToRgb(c: number): { r: number; g: number; b: number } {
 }
 
 // Map colors
-export const MAP_BG_COLOR = 0x1a1a2e;         // in-bounds background
-export const MAP_OOB_COLOR = 0x08080f;         // out-of-bounds background
-export const MAP_CAMERA_BG = 0x0a0a14;         // camera clear color
-export const MAP_GRID_COLOR = 0x333355;        // grid lines
+export const MAP_BG_COLOR = 0x0a0e0f; // in-bounds background
+export const MAP_OOB_COLOR = 0x08080f; // out-of-bounds background
+export const MAP_CAMERA_BG = 0x0a0a14; // camera clear color
+export const MAP_GRID_COLOR = MAP_BG_COLOR;
 
 // Scorched earth burn mark colors and decay
-export const BURN_COLOR_HOT = 0xff2200;        // bright red start
-export const BURN_COLOR_COOL = MAP_BG_COLOR;   // fades to background
-export const BURN_COLOR_TAU = 200;   // color decay: red → black (ms), fast
-export const BURN_COOL_TAU = 2000;   // color decay: black → background (ms), slow
+export const BURN_COLOR_HOT = 0xff2200; // bright red start
+export const BURN_COLOR_COOL = MAP_BG_COLOR; // fades to background
+export const BURN_COLOR_TAU = 200; // color decay: red → black (ms), fast
+export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slow
 
 /**
  * Range multipliers relative to fireRange (1.0x).
@@ -693,8 +693,8 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   // Burn mark cutoff — how close to background color before marks stop drawing
   // Lower values = marks linger longer, higher = fewer draw calls
   BURN_MARK_ALPHA_CUTOFF: {
-    min: 0.5,
-    low: 0.3,
+    min: 0.1,
+    low: 0.1,
     medium: 0.1,
     high: 0.1,
     max: 0.1,
@@ -703,11 +703,11 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   // Burn mark sample interval — frames to skip between placing new burn marks
   // 0 = every frame, 1 = every other frame, 3 = every 4th frame, etc.
   BURN_MARK_FRAMES_SKIP: {
-    min: 10,
-    low: 8,
-    medium: 6,
-    high: 4,
-    max: 2,
+    min: 5,
+    low: 5,
+    medium: 5,
+    high: 5,
+    max: 5,
   },
 
   // Force field visual style
@@ -721,4 +721,3 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     max: 'detailed',
   },
 } as const;
-

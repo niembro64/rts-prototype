@@ -17,6 +17,28 @@ import { KNOCKBACK, BEAM_EXPLOSION_MAGNITUDE, PROJECTILE_MASS_MULTIPLIER } from 
 import { spatialGrid } from '../SpatialGrid';
 import { normalizeAngle, magnitude } from '../../math';
 
+// Reusable DamageResult to avoid per-call allocations
+const _reusableResult: DamageResult = {
+  hitEntityIds: [],
+  killedUnitIds: new Set(),
+  killedBuildingIds: new Set(),
+  knockbacks: [],
+  deathContexts: new Map(),
+};
+function resetResult(): DamageResult {
+  _reusableResult.hitEntityIds.length = 0;
+  _reusableResult.killedUnitIds.clear();
+  _reusableResult.killedBuildingIds.clear();
+  _reusableResult.truncationT = undefined;
+  _reusableResult.knockbacks.length = 0;
+  _reusableResult.recoil = undefined;
+  _reusableResult.deathContexts.clear();
+  return _reusableResult;
+}
+
+// Reusable HitInfo array for line/swept damage sorting
+const _reusableHits: HitInfo[] = [];
+
 // Line-circle intersection - returns parametric T value (0-1) of first intersection, or null
 function lineCircleIntersectionT(
   x1: number, y1: number,
@@ -214,13 +236,7 @@ export class DamageSystem {
   // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
   // Note: Beam recoil is applied continuously in updateProjectiles(), not here
   private applyLineDamage(source: LineDamageSource): DamageResult {
-    const result: DamageResult = {
-      hitEntityIds: [],
-      killedUnitIds: new Set(),
-      killedBuildingIds: new Set(),
-      knockbacks: [],
-      deathContexts: new Map(),
-    };
+    const result = resetResult();
 
     // Calculate knockback direction (along the beam)
     const beamDx = source.endX - source.startX;
@@ -230,7 +246,8 @@ export class DamageSystem {
     const knockbackDirY = beamLen > 0 ? beamDy / beamLen : 0;
 
     // Collect all hits with their T values
-    const hits: HitInfo[] = [];
+    _reusableHits.length = 0;
+    const hits = _reusableHits;
 
     // PERFORMANCE: Query only entities near the line using spatial grid
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(
@@ -339,13 +356,7 @@ export class DamageSystem {
   // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
   // Note: Recoil for traveling projectiles is applied at fire time in fireWeapons(), not here
   private applySweptDamage(source: SweptDamageSource): DamageResult {
-    const result: DamageResult = {
-      hitEntityIds: [],
-      killedUnitIds: new Set(),
-      killedBuildingIds: new Set(),
-      knockbacks: [],
-      deathContexts: new Map(),
-    };
+    const result = resetResult();
 
     // Calculate knockback direction (along projectile travel)
     const projDx = source.currentX - source.prevX;
@@ -355,7 +366,8 @@ export class DamageSystem {
     const knockbackDirY = projLen > 0 ? projDy / projLen : 0;
 
     // Collect all hits with their T values
-    const hits: HitInfo[] = [];
+    _reusableHits.length = 0;
+    const hits = _reusableHits;
 
     // PERFORMANCE: Query only entities near the projectile path using spatial grid
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(
@@ -467,13 +479,7 @@ export class DamageSystem {
   // Area damage (splash, wave)
   // PERFORMANCE: Uses spatial grid radius query for O(k) instead of O(n)
   private applyAreaDamage(source: AreaDamageSource): DamageResult {
-    const result: DamageResult = {
-      hitEntityIds: [],
-      killedUnitIds: new Set(),
-      killedBuildingIds: new Set(),
-      knockbacks: [],
-      deathContexts: new Map(),
-    };
+    const result = resetResult();
 
     const hasSlice = source.sliceAngle !== undefined && source.sliceDirection !== undefined;
     const sliceHalfAngle = hasSlice ? source.sliceAngle! / 2 : Math.PI;

@@ -18,8 +18,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
     if (!unit.unit || !unit.ownership || !unit.weapons) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const cos = Math.cos(unit.transform.rotation);
-    const sin = Math.sin(unit.transform.rotation);
+    const cos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
+    const sin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
 
     // Update each weapon's turret rotation using acceleration physics
     for (const weapon of unit.weapons) {

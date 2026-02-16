@@ -38,6 +38,7 @@ interface BurnMark {
   x2: number; y2: number; // segment end
   width: number;           // beam width
   age: number;             // ms since creation
+  color: number;           // cached RGB color (updated during aging)
 }
 const BURN_HOT_RGB = hexToRgb(BURN_COLOR_HOT);
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
@@ -77,6 +78,10 @@ export class EntityRenderer {
 
   // Reusable Set for per-frame entity ID lookups (avoids allocating new Set + Array each frame)
   private _reusableIdSet: Set<EntityId> = new Set();
+
+  // Cached range visibility objects (avoids per-frame allocation)
+  private _rangeVisToggle = { see: false, fire: false, release: false, lock: false, fightstop: false, build: false };
+  private _rangeVisSelected = { see: true, fire: true, release: true, lock: true, fightstop: false, build: true };
 
   // Rendering mode flags
   private skipTurrets: boolean = false;
@@ -354,15 +359,22 @@ export class EntityRenderer {
     }
     this.explosions.length = writeIdx;
 
-    // Age burn marks and prune ones that have blended to background
+    // Age burn marks, compute cached color, and prune ones that have blended to background
     const burnCutoff = getGraphicsConfig().burnMarkAlphaCutoff;
     let burnWrite = 0;
     for (let i = 0; i < this.burnMarks.length; i++) {
-      this.burnMarks[i].age += dtMs;
+      const mark = this.burnMarks[i];
+      mark.age += dtMs;
       // coolBlend approaches 1 as mark fades to background; prune when close enough
-      const coolBlend = 1 - Math.exp(-this.burnMarks[i].age / BURN_COOL_TAU);
+      const coolBlend = 1 - Math.exp(-mark.age / BURN_COOL_TAU);
       if (coolBlend < 1 - burnCutoff) {
-        this.burnMarks[burnWrite++] = this.burnMarks[i];
+        // Cache color so render pass doesn't recompute exp() per mark
+        const hotDecay = Math.exp(-mark.age / BURN_COLOR_TAU);
+        const red = Math.round(BURN_HOT_RGB.r * hotDecay + BURN_COOL_RGB.r * coolBlend);
+        const green = Math.round(BURN_HOT_RGB.g * hotDecay + BURN_COOL_RGB.g * coolBlend);
+        const blue = Math.round(BURN_HOT_RGB.b * hotDecay + BURN_COOL_RGB.b * coolBlend);
+        mark.color = (red << 16) | (green << 8) | blue;
+        this.burnMarks[burnWrite++] = mark;
       }
     }
     this.burnMarks.length = burnWrite;
@@ -402,13 +414,8 @@ export class EntityRenderer {
 
   // ==================== ENTITY SOURCE ====================
 
-  private entitySourceType: 'world' | 'clientView' = 'world';
-  private waypointDebugCounter: number = 0;
-
-  setEntitySource(source: EntitySource, sourceType: 'world' | 'clientView' = 'world'): void {
+  setEntitySource(source: EntitySource): void {
     this.entitySource = source;
-    this.entitySourceType = sourceType;
-    console.log(`[Render] Entity source switched to: ${sourceType}`);
   }
 
   setSprayTargets(targets: SprayTarget[]): void {
@@ -459,7 +466,6 @@ export class EntityRenderer {
     const camera = this.scene.cameras.main;
     setCurrentZoom(camera.zoom);
     const gfxConfig = getGraphicsConfig();
-    const burnCutoff = gfxConfig.burnMarkAlphaCutoff;
     this.sprayParticleTime += 16;
     this.collectVisibleEntities();
 
@@ -485,7 +491,7 @@ export class EntityRenderer {
           const dx = ex - prev.x;
           const dy = ey - prev.y;
           if (dx * dx + dy * dy > 1) {
-            this.burnMarks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth, age: 0 });
+            this.burnMarks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth, age: 0, color: BURN_COLOR_HOT });
           }
         }
         this.prevBeamEndpoints.set(beamKey, { x: ex, y: ey });
@@ -501,26 +507,16 @@ export class EntityRenderer {
     }
 
     // 0b. Render scorched earth burn marks (below everything, fully opaque)
-    // Two-stage color blend: red → black (fast), then black → background (slow)
+    // Color is pre-computed during aging pass in updateExplosions()
     for (let i = 0; i < this.burnMarks.length; i++) {
       const mark = this.burnMarks[i];
       const midX = (mark.x1 + mark.x2) * 0.5;
       const midY = (mark.y1 + mark.y2) * 0.5;
       if (!this.isInViewport(midX, midY, 50)) continue;
-      // hotDecay: 1→0 fast (red contribution fades to black)
-      const hotDecay = Math.exp(-mark.age / BURN_COLOR_TAU);
-      // coolBlend: 0→1 slow (black blends toward background)
-      const coolBlend = 1 - Math.exp(-mark.age / BURN_COOL_TAU);
-      if (coolBlend > 1 - burnCutoff) continue;
-      const red = Math.round(BURN_HOT_RGB.r * hotDecay + BURN_COOL_RGB.r * coolBlend);
-      const green = Math.round(BURN_HOT_RGB.g * hotDecay + BURN_COOL_RGB.g * coolBlend);
-      const blue = Math.round(BURN_HOT_RGB.b * hotDecay + BURN_COOL_RGB.b * coolBlend);
-      const color = (red << 16) | (green << 8) | blue;
-      this.graphics.lineStyle(mark.width, color, 1);
+      this.graphics.lineStyle(mark.width, mark.color, 1);
       this.graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);
-      // Circles at endpoints to round caps and fill joints between segments
       const r = mark.width / 2;
-      this.graphics.fillStyle(color, 1);
+      this.graphics.fillStyle(mark.color, 1);
       this.graphics.fillCircle(mark.x1, mark.y1, r);
       this.graphics.fillCircle(mark.x2, mark.y2, r);
     }
@@ -531,10 +527,6 @@ export class EntityRenderer {
     }
 
     // 2. Waypoints for selected units
-    this.waypointDebugCounter++;
-    if (this.selectedUnits.length > 0 && this.waypointDebugCounter % 60 === 0) {
-      console.log(`[Render] Source: ${this.entitySourceType}, rendering waypoints for ${this.selectedUnits.length} selected units`);
-    }
     for (const entity of this.selectedUnits) {
       renderWaypoints(this.graphics, entity, camera);
     }
@@ -542,19 +534,20 @@ export class EntityRenderer {
       renderFactoryWaypoints(this.graphics, entity, camera);
     }
 
-    // 3. Range circles
-    const rangeVis = {
-      see: getRangeToggle('see'),
-      fire: getRangeToggle('fire'),
-      release: getRangeToggle('release'),
-      lock: getRangeToggle('lock'),
-      fightstop: getRangeToggle('fightstop'),
-      build: getRangeToggle('build'),
-    };
+    // 3. Range circles (reuse cached visibility objects to avoid per-frame allocation)
     const showAllRanges = anyRangeToggleActive();
+    if (showAllRanges) {
+      this._rangeVisToggle.see = getRangeToggle('see');
+      this._rangeVisToggle.fire = getRangeToggle('fire');
+      this._rangeVisToggle.release = getRangeToggle('release');
+      this._rangeVisToggle.lock = getRangeToggle('lock');
+      this._rangeVisToggle.fightstop = getRangeToggle('fightstop');
+      this._rangeVisToggle.build = getRangeToggle('build');
+    }
+    const rangeVis = showAllRanges ? this._rangeVisToggle : this._rangeVisSelected;
     const rangeUnits = showAllRanges ? this.visibleUnits : this.selectedUnits;
     for (const entity of rangeUnits) {
-      renderRangeCircles(this.graphics, entity, showAllRanges ? rangeVis : { see: true, fire: true, release: true, lock: true, fightstop: false, build: true });
+      renderRangeCircles(this.graphics, entity, rangeVis);
     }
 
     // 4. Unit bodies
@@ -572,16 +565,14 @@ export class EntityRenderer {
     }
     this.turretsOnly = false;
 
-    // 6. Projectiles
+    // 6. Projectiles (clean up stale beam offsets inline)
     this._reusableIdSet.clear();
-    for (const e of this.visibleProjectiles) {
-      this._reusableIdSet.add(e.id);
+    for (const entity of this.visibleProjectiles) {
+      this._reusableIdSet.add(entity.id);
+      this.renderProjectile(entity);
     }
     for (const id of this.beamRandomOffsets.keys()) {
       if (!this._reusableIdSet.has(id)) this.beamRandomOffsets.delete(id);
-    }
-    for (const entity of this.visibleProjectiles) {
-      this.renderProjectile(entity);
     }
 
     // 7. Spray effects

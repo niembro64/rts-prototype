@@ -28,8 +28,8 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     if (unit.unit.hp <= 0) continue;
 
     const playerId = unit.ownership.playerId;
-    const cos = Math.cos(unit.transform.rotation);
-    const sin = Math.sin(unit.transform.rotation);
+    const cos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
+    const sin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
 
     for (const weapon of unit.weapons) {
       // Reset firing state each tick

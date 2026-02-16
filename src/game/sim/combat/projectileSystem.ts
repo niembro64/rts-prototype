@@ -48,8 +48,8 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
     if (unit.unit.hp <= 0) continue;
 
     const playerId = unit.ownership.playerId;
-    const unitCos = Math.cos(unit.transform.rotation);
-    const unitSin = Math.sin(unit.transform.rotation);
+    const unitCos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
+    const unitSin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
 
     // Fire each weapon independently
     for (let weaponIndex = 0; weaponIndex < unit.weapons.length; weaponIndex++) {
@@ -271,8 +271,8 @@ export function updateProjectiles(
         const dirY = Math.sin(turretAngle);
 
         // Calculate weapon position in world coordinates
-        const unitCos = Math.cos(source.transform.rotation);
-        const unitSin = Math.sin(source.transform.rotation);
+        const unitCos = source.transform.rotCos ?? Math.cos(source.transform.rotation);
+        const unitSin = source.transform.rotSin ?? Math.sin(source.transform.rotation);
         const weaponX = source.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
         const weaponY = source.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
 
@@ -578,38 +578,8 @@ export function checkProjectileCollisions(
         }
       }
 
-      // Handle splash damage on first hit
-      if (result.hitEntityIds.length > 0 && config.splashRadius && !proj.hasExploded) {
-        const splashResult = damageSystem.applyDamage({
-          type: 'area',
-          sourceEntityId: proj.sourceEntityId,
-          ownerId: projEntity.ownership.playerId,
-          damage: config.damage,
-          excludeEntities: proj.hitEntities,
-          centerX: projEntity.transform.x,
-          centerY: projEntity.transform.y,
-          radius: config.splashRadius,
-          falloff: config.splashDamageFalloff ?? 0.5,
-        });
-        proj.hasExploded = true;
-
-        // Apply knockback from splash
-        applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
-
-        // Track splash kills and merge death contexts
-        for (const id of splashResult.killedUnitIds) {
-          unitsToRemove.add(id);
-        }
-        for (const id of splashResult.killedBuildingIds) {
-          buildingsToRemove.add(id);
-        }
-        // Merge death contexts from splash
-        for (const [id, ctx] of splashResult.deathContexts) {
-          deathContexts.set(id, ctx);
-        }
-      }
-
-      // Handle deaths from direct hit and merge death contexts
+      // Handle deaths from direct hit BEFORE splash (result is reusable singleton)
+      const hadHits = result.hitEntityIds.length > 0;
       for (const id of result.killedUnitIds) {
         if (!unitsToRemove.has(id)) {
           const target = world.getEntity(id);
@@ -672,6 +642,37 @@ export function checkProjectileCollisions(
       // Merge death contexts from direct hit
       for (const [id, ctx] of result.deathContexts) {
         deathContexts.set(id, ctx);
+      }
+
+      // Handle splash damage on first hit (safe: result fully consumed above)
+      if (hadHits && config.splashRadius && !proj.hasExploded) {
+        const splashResult = damageSystem.applyDamage({
+          type: 'area',
+          sourceEntityId: proj.sourceEntityId,
+          ownerId: projEntity.ownership.playerId,
+          damage: config.damage,
+          excludeEntities: proj.hitEntities,
+          centerX: projEntity.transform.x,
+          centerY: projEntity.transform.y,
+          radius: config.splashRadius,
+          falloff: config.splashDamageFalloff ?? 0.5,
+        });
+        proj.hasExploded = true;
+
+        // Apply knockback from splash
+        applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
+
+        // Track splash kills and merge death contexts
+        for (const id of splashResult.killedUnitIds) {
+          unitsToRemove.add(id);
+        }
+        for (const id of splashResult.killedBuildingIds) {
+          buildingsToRemove.add(id);
+        }
+        // Merge death contexts from splash
+        for (const [id, ctx] of splashResult.deathContexts) {
+          deathContexts.set(id, ctx);
+        }
       }
 
       // Remove projectile if max hits reached

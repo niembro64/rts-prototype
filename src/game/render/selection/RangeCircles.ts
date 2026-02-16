@@ -27,39 +27,35 @@ export function renderRangeCircles(
   const { x, y } = transform;
 
   if (weapons && weapons.length > 0) {
-    // See range (yellow) - outermost tracking range, turret pre-aims
+    // Single pass to find all max ranges
+    let maxSee = 0, maxFire = 0, maxRelease = 0, maxLock = 0, maxFightstop = 0;
+    for (const w of weapons) {
+      if (w.seeRange > maxSee) maxSee = w.seeRange;
+      if (w.fireRange > maxFire) maxFire = w.fireRange;
+      if (w.releaseRange > maxRelease) maxRelease = w.releaseRange;
+      if (w.lockRange > maxLock) maxLock = w.lockRange;
+      if (w.fightstopRange > maxFightstop) maxFightstop = w.fightstopRange;
+    }
+
     if (visibility.see) {
-      const maxSeeRange = Math.max(...weapons.map((w) => w.seeRange));
       graphics.lineStyle(1, COLORS.VISION_RANGE, 0.3);
-      graphics.strokeCircle(x, y, maxSeeRange);
+      graphics.strokeCircle(x, y, maxSee);
     }
-
-    // Fire range (red) - weapon fires at nearest enemy within this
     if (visibility.fire) {
-      const maxFireRange = Math.max(...weapons.map((w) => w.fireRange));
       graphics.lineStyle(1.5, COLORS.WEAPON_RANGE, 0.4);
-      graphics.strokeCircle(x, y, maxFireRange);
+      graphics.strokeCircle(x, y, maxFire);
     }
-
-    // Release range (blue) - lock release boundary (hysteresis)
     if (visibility.release) {
-      const maxReleaseRange = Math.max(...weapons.map((w) => w.releaseRange));
       graphics.lineStyle(1, COLORS.RELEASE_RANGE, 0.35);
-      graphics.strokeCircle(x, y, maxReleaseRange);
+      graphics.strokeCircle(x, y, maxRelease);
     }
-
-    // Lock range (purple) - lock acquisition (weapon commits when target enters)
     if (visibility.lock) {
-      const maxLockRange = Math.max(...weapons.map((w) => w.lockRange));
       graphics.lineStyle(1, COLORS.LOCK_RANGE, 0.35);
-      graphics.strokeCircle(x, y, maxLockRange);
+      graphics.strokeCircle(x, y, maxLock);
     }
-
-    // Fightstop range (orange) - unit stops moving when target is within this
     if (visibility.fightstop) {
-      const maxFightstopRange = Math.max(...weapons.map((w) => w.fightstopRange));
       graphics.lineStyle(1, COLORS.FIGHTSTOP_RANGE, 0.3);
-      graphics.strokeCircle(x, y, maxFightstopRange);
+      graphics.strokeCircle(x, y, maxFightstop);
     }
   }
 

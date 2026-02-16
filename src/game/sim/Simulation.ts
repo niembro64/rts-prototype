@@ -247,6 +247,12 @@ export class Simulation {
 
   // Update combat systems
   private updateCombat(dtMs: number): void {
+    // Cache rotation sin/cos for all units (used by targeting, turret, firing, beam systems)
+    for (const unit of this.world.getUnits()) {
+      unit.transform.rotCos = Math.cos(unit.transform.rotation);
+      unit.transform.rotSin = Math.sin(unit.transform.rotation);
+    }
+
     // Update weapon cooldowns
     updateWeaponCooldowns(this.world, dtMs);
 

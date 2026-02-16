@@ -9,6 +9,9 @@ export interface Transform {
   x: number;
   y: number;
   rotation: number;
+  // Cached cos/sin of rotation — updated once per tick by Simulation.updateRotationCache()
+  rotCos?: number;
+  rotSin?: number;
 }
 
 // Body component - reference to Matter.js body

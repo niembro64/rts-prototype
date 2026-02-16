@@ -251,7 +251,7 @@ export class RtsScene extends Phaser.Scene {
 
     // Setup renderer with ClientViewState as source
     this.entityRenderer = new EntityRenderer(this, this.clientViewState);
-    this.entityRenderer.setEntitySource(this.clientViewState, 'clientView');
+    this.entityRenderer.setEntitySource(this.clientViewState);
 
     // Setup input context
     const inputContext: InputContext = {
