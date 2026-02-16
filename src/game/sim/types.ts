@@ -92,6 +92,7 @@ export interface WeaponConfig {
   // Projectile properties (optional based on weapon type)
   projectileSpeed?: number;      // Speed of projectile (undefined = hitscan)
   projectileRadius?: number;     // Size of projectile hitbox
+  projectileMass?: number;       // Mass of projectile (for momentum-based recoil/knockback)
   projectileLifespan?: number;   // Max time projectile exists (ms)
 
   // Beam/laser properties

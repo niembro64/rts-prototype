@@ -3,6 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
+import type { ProjectileVelocityUpdateEvent } from './types';
 import { normalizeAngle } from './combatUtils';
 import { magnitude } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
@@ -85,9 +86,11 @@ export function applyWaveDamage(
   dtMs: number,
   _damageSystem: DamageSystem,
   forceAccumulator?: ForceAccumulator
-): void {
+): ProjectileVelocityUpdateEvent[] {
   const dtSec = dtMs / 1000;
-  if (dtSec <= 0) return;
+  if (dtSec <= 0) return [];
+
+  const velocityUpdates: ProjectileVelocityUpdateEvent[] = [];
 
   // Minimum distance to prevent division by zero (units closer than this get max effect)
   const MIN_DISTANCE = 20;
@@ -113,7 +116,7 @@ export function applyWaveDamage(
       // Wave weapon properties
       const baseDamage = config.damage; // DPS at reference distance
       const baseDamagePerFrame = baseDamage * dtSec;
-      const basePullStrength = config.pullPower ?? KNOCKBACK.SONIC_PULL;
+      const basePullStrength = (config.pullPower ?? 0) * KNOCKBACK.SONIC_PULL_MULTIPLIER;
       const innerRange = (config.waveInnerRange as number | undefined) ?? 0;
 
       // Reference distance for 1/distance scaling (half the fire range)
@@ -225,6 +228,58 @@ export function applyWaveDamage(
         const scaledDamage = baseDamagePerFrame * distanceScale;
         building.building.hp -= scaledDamage;
       }
+
+      // Pull enemy projectiles within the wave slice
+      // Heavier projectiles resist the pull more (force / mass)
+      for (const projEntity of world.getProjectiles()) {
+        const proj = projEntity.projectile;
+        if (!proj) continue;
+        // Only affect traveling projectiles
+        if (proj.projectileType !== 'traveling') continue;
+        // Only affect enemy projectiles
+        if (proj.ownerId === sourcePlayerId) continue;
+
+        const projRadius = proj.config.projectileRadius ?? 5;
+
+        // Check if projectile is in the wave slice
+        if (!isPointInSlice(
+          projEntity.transform.x, projEntity.transform.y,
+          weaponX, weaponY,
+          turretAngle,
+          sliceHalfAngle,
+          weapon.fireRange,
+          projRadius,
+          innerRange
+        )) continue;
+
+        const dx = projEntity.transform.x - weaponX;
+        const dy = projEntity.transform.y - weaponY;
+        const dist = magnitude(dx, dy);
+
+        // Uniform pull strength (no distance scaling), inversely with projectile mass
+        // Use raw projectileMass (not PROJECTILE_MASS_MULTIPLIER, which is for Matter.js knockback)
+        const projMass = proj.config.projectileMass ?? 1;
+        const pullAccel = basePullStrength / projMass;
+
+        // Apply pull as velocity delta toward wave origin
+        const dirX = dist > 0 ? dx / dist : 0;
+        const dirY = dist > 0 ? dy / dist : 0;
+        proj.velocityX += -dirX * pullAccel * dtSec;
+        proj.velocityY += -dirY * pullAccel * dtSec;
+
+        // Update projectile rotation to match new velocity direction
+        projEntity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+
+        velocityUpdates.push({
+          id: projEntity.id,
+          x: projEntity.transform.x,
+          y: projEntity.transform.y,
+          velocityX: proj.velocityX,
+          velocityY: proj.velocityY,
+        });
+      }
     }
   }
+
+  return velocityUpdates;
 }

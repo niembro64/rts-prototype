@@ -9,6 +9,7 @@ export type {
   WeaponAudioId,
   ProjectileSpawnEvent,
   ProjectileDespawnEvent,
+  ProjectileVelocityUpdateEvent,
 } from './combat/types';
 
 export {

@@ -17,6 +17,7 @@ import {
   type DeathContext,
   type ProjectileSpawnEvent,
   type ProjectileDespawnEvent,
+  type ProjectileVelocityUpdateEvent,
 } from './combat';
 import { DamageSystem } from './damage';
 import { economyManager } from './economy';
@@ -50,9 +51,10 @@ export class Simulation {
   // Pending audio events for network broadcast (cleared after each state serialization)
   private pendingAudioEvents: AudioEvent[] = [];
 
-  // Pending projectile spawn/despawn events for network broadcast
+  // Pending projectile spawn/despawn/velocity-update events for network broadcast
   private pendingProjectileSpawns: ProjectileSpawnEvent[] = [];
   private pendingProjectileDespawns: ProjectileDespawnEvent[] = [];
+  private pendingProjectileVelocityUpdates: ProjectileVelocityUpdateEvent[] = [];
 
   // Callback for when units die (to clean up physics bodies)
   // deathContexts contains info about the killing blow for directional explosions
@@ -115,6 +117,13 @@ export class Simulation {
   getAndClearProjectileDespawns(): ProjectileDespawnEvent[] {
     const events = this.pendingProjectileDespawns;
     this.pendingProjectileDespawns = [];
+    return events;
+  }
+
+  // Get and clear pending projectile velocity update events (for network broadcast)
+  getAndClearProjectileVelocityUpdates(): ProjectileVelocityUpdateEvent[] {
+    const events = this.pendingProjectileVelocityUpdates;
+    this.pendingProjectileVelocityUpdates = [];
     return events;
   }
 
@@ -274,7 +283,10 @@ export class Simulation {
 
     // Apply wave weapon damage (continuous AoE for sonic units)
     // Pass force accumulator for wave pull effect
-    applyWaveDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
+    const waveVelocityUpdates = applyWaveDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
+    for (const event of waveVelocityUpdates) {
+      this.pendingProjectileVelocityUpdates.push(event);
+    }
 
     // Update projectile positions and remove orphaned beams (from dead units)
     const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);

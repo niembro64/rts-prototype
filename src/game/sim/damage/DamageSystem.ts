@@ -13,7 +13,7 @@ import type {
   HitInfo,
   DeathContext,
 } from './types';
-import { KNOCKBACK, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
+import { KNOCKBACK, BEAM_EXPLOSION_MAGNITUDE, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
 import { normalizeAngle, magnitude } from '../../math';
 
@@ -419,8 +419,10 @@ export class DamageSystem {
       const entity = this.world.getEntity(hit.entityId);
       if (!entity) continue;
 
-      // Calculate knockback force for this hit
-      const force = source.damage * KNOCKBACK.PROJECTILE_HIT;
+      // Calculate momentum-based knockback (p = mv)
+      const projMass = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER;
+      const projSpeed = magnitude(source.velocityX ?? 0, source.velocityY ?? 0);
+      const force = projMass * projSpeed;
       const forceX = knockbackDirX * force;
       const forceY = knockbackDirY * force;
 
@@ -450,7 +452,7 @@ export class DamageSystem {
       hitCount++;
 
       // Add knockback for units (buildings don't get pushed)
-      if (hit.isUnit && KNOCKBACK.PROJECTILE_HIT > 0) {
+      if (hit.isUnit && projMass > 0) {
         result.knockbacks.push({
           entityId: hit.entityId,
           forceX,
@@ -515,7 +517,7 @@ export class DamageSystem {
       // Calculate knockback direction (from center outward)
       const dirX = dist > 0 ? dx / dist : 0;
       const dirY = dist > 0 ? dy / dist : 0;
-      const force = damage * KNOCKBACK.PROJECTILE_HIT;
+      const force = damage * KNOCKBACK.SPLASH;
       const forceX = dirX * force;
       const forceY = dirY * force;
 
@@ -532,7 +534,7 @@ export class DamageSystem {
       result.hitEntityIds.push(unit.id);
 
       // Add knockback (direction is from center outward)
-      if (KNOCKBACK.PROJECTILE_HIT > 0 && dist > 0) {
+      if (KNOCKBACK.SPLASH > 0 && dist > 0) {
         result.knockbacks.push({
           entityId: unit.id,
           forceX,
@@ -576,7 +578,7 @@ export class DamageSystem {
       const dirY = dist > 0 ? dy / dist : 0;
 
       // Apply damage with death context
-      const force = damage * KNOCKBACK.PROJECTILE_HIT;
+      const force = damage * KNOCKBACK.SPLASH;
       this.applyDamageToEntity(building, damage, result, {
         penetrationDirX: dirX,
         penetrationDirY: dirY,

@@ -1,10 +1,10 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkAudioEvent, NetworkProjectileSpawn, NetworkProjectileDespawn } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkAudioEvent, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkProjectileVelocityUpdate } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { AudioEvent } from '../sim/combat';
-import type { ProjectileSpawnEvent, ProjectileDespawnEvent } from '../sim/combat';
+import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkEntity[] = [];
@@ -12,6 +12,7 @@ const _sprayBuf: NetworkSprayTarget[] = [];
 const _audioBuf: NetworkAudioEvent[] = [];
 const _spawnBuf: NetworkProjectileSpawn[] = [];
 const _despawnBuf: NetworkProjectileDespawn[] = [];
+const _velUpdateBuf: NetworkProjectileVelocityUpdate[] = [];
 
 // Serialize WorldState to network format
 export function serializeGameState(
@@ -20,7 +21,8 @@ export function serializeGameState(
   sprayTargets?: SprayTarget[],
   audioEvents?: AudioEvent[],
   projectileSpawns?: ProjectileSpawnEvent[],
-  projectileDespawns?: ProjectileDespawnEvent[]
+  projectileDespawns?: ProjectileDespawnEvent[],
+  projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[]
 ): NetworkGameState {
   _entityBuf.length = 0;
 
@@ -122,6 +124,17 @@ export function serializeGameState(
     netProjectileDespawns = _despawnBuf;
   }
 
+  // Serialize projectile velocity updates (reuse buffer)
+  let netVelocityUpdates: NetworkProjectileVelocityUpdate[] | undefined;
+  if (projectileVelocityUpdates && projectileVelocityUpdates.length > 0) {
+    _velUpdateBuf.length = 0;
+    for (let i = 0; i < projectileVelocityUpdates.length; i++) {
+      const vu = projectileVelocityUpdates[i];
+      _velUpdateBuf.push({ id: vu.id, x: vu.x, y: vu.y, velocityX: vu.velocityX, velocityY: vu.velocityY });
+    }
+    netVelocityUpdates = _velUpdateBuf;
+  }
+
   return {
     tick: world.getTick(),
     entities: _entityBuf,
@@ -130,6 +143,7 @@ export function serializeGameState(
     audioEvents: netAudioEvents,
     projectileSpawns: netProjectileSpawns,
     projectileDespawns: netProjectileDespawns,
+    projectileVelocityUpdates: netVelocityUpdates,
     gameOver: gameOverWinnerId ? { winnerId: gameOverWinnerId } : undefined,
   };
 }

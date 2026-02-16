@@ -9,7 +9,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { AudioEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
-import { KNOCKBACK } from '../../../config';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { magnitude } from '../../math';
 
 // Check if a specific weapon has an active beam (by weapon index)
@@ -197,9 +197,9 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
             weaponIndex,
           });
 
-          // Apply recoil to firing unit (opposite direction of projectile)
-          if (forceAccumulator && KNOCKBACK.PROJECTILE_FIRE > 0) {
-            const recoilForce = config.damage * KNOCKBACK.PROJECTILE_FIRE;
+          // Apply recoil to firing unit (momentum-based: p = mv)
+          if (forceAccumulator && config.projectileMass && config.projectileMass > 0) {
+            const recoilForce = config.projectileMass * PROJECTILE_MASS_MULTIPLIER * (config.projectileSpeed ?? 0);
             forceAccumulator.addForce(unit.id, -fireCos * recoilForce, -fireSin * recoilForce, 'recoil');
           }
         }
@@ -555,6 +555,7 @@ export function checkProjectileCollisions(
         // Pass actual projectile velocity for explosion effects
         velocityX: proj.velocityX,
         velocityY: proj.velocityY,
+        projectileMass: proj.config.projectileMass,
       });
 
       // Apply knockback from projectile hit

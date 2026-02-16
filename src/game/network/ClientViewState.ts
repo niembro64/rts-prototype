@@ -145,6 +145,21 @@ export class ClientViewState {
       }
     }
 
+    // Process projectile velocity updates (sonic pull deflection)
+    // Snap position to server's authoritative value to correct dead-reckoning drift
+    if (state.projectileVelocityUpdates) {
+      for (const vu of state.projectileVelocityUpdates) {
+        const entity = this.entities.get(vu.id);
+        if (entity?.projectile) {
+          entity.transform.x = vu.x;
+          entity.transform.y = vu.y;
+          entity.projectile.velocityX = vu.velocityX;
+          entity.projectile.velocityY = vu.velocityY;
+          entity.transform.rotation = Math.atan2(vu.velocityY, vu.velocityX);
+        }
+      }
+    }
+
     this.invalidateCaches();
 
     // Update economy state (immediate)

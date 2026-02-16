@@ -14,6 +14,7 @@ export type {
   NetworkEconomy,
   NetworkProjectileSpawn,
   NetworkProjectileDespawn,
+  NetworkProjectileVelocityUpdate,
   LobbyPlayer,
   NetworkRole,
 } from './NetworkTypes';

@@ -245,7 +245,8 @@ export class GameServer {
     const audioEvents = this.simulation.getAndClearAudioEvents();
     const projectileSpawns = this.simulation.getAndClearProjectileSpawns();
     const projectileDespawns = this.simulation.getAndClearProjectileDespawns();
-    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns);
+    const projectileVelocityUpdates = this.simulation.getAndClearProjectileVelocityUpdates();
+    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates);
 
     for (const listener of this.snapshotListeners) {
       listener(state);

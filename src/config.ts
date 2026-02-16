@@ -52,11 +52,10 @@ export const COST_MULTIPLIER = 1.0;
  * FIRE = recoil on the SHOOTER when firing
  */
 export const KNOCKBACK = {
-  PROJECTILE_HIT: 250,
-  PROJECTILE_FIRE: 250,
   BEAM_HIT: 750,
   BEAM_FIRE: 200,
-  SONIC_PULL: 180,    // Pull strength toward wave origin (units/sec, scales with 1/distance)
+  SONIC_PULL_MULTIPLIER: 2.0,  // Multiplier applied to each weapon's pullPower
+  SPLASH: 250,        // Knockback multiplier for area/splash explosions (mortar/disruptor)
 };
 
 /**
@@ -236,13 +235,21 @@ export const COMMANDER_STATS = {
 export const UNIT_MASS_MULTIPLIER = 10.0;
 
 /**
+ * Global mass multiplier for all projectiles.
+ * Scales recoil on shooter, knockback on target, and resistance to sonic pull.
+ * 1.0 = use raw projectileMass values from WEAPON_STATS
+ * Higher = more recoil/knockback, lower = less
+ */
+export const PROJECTILE_MASS_MULTIPLIER = 10.0;
+
+/**
  * Global thrust multiplier for all unit movement.
  * Scales the force applied when units accelerate toward waypoints.
  * Higher values = faster acceleration, higher top speed.
  * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
  */
 export const UNIT_THRUST_MULTIPLIER_GAME = 8.0;
-export const UNIT_THRUST_MULTIPLIER_DEMO = 3.0;
+export const UNIT_THRUST_MULTIPLIER_DEMO = 8.0;
 
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
@@ -373,6 +380,7 @@ export const WEAPON_STATS = {
     range: 140,
     cooldown: 80,
     projectileSpeed: 650,
+    projectileMass: 0.3,
   },
 
   // Pulse - 3-shot burst, medium damage (Lynx's weapon)
@@ -381,6 +389,7 @@ export const WEAPON_STATS = {
     range: 160,
     cooldown: 1200,
     projectileSpeed: 600,
+    projectileMass: 1.0,
     burstCount: 3,
     burstDelay: 60,
   },
@@ -391,6 +400,7 @@ export const WEAPON_STATS = {
     range: 90,
     cooldown: 200,
     projectileSpeed: 450,
+    projectileMass: 0.5,
     pelletCount: 6,
   },
 
@@ -400,6 +410,7 @@ export const WEAPON_STATS = {
     range: 200,
     cooldown: 2500,
     projectileSpeed: 250,
+    projectileMass: 8.0,
     splashRadius: 70,
   },
 
@@ -409,6 +420,7 @@ export const WEAPON_STATS = {
     range: 360,
     cooldown: 3000,
     projectileSpeed: 300,
+    projectileMass: 15.0,
   },
 
   // Railgun - Instant flash hitscan, long range, piercing (Viper's weapon)
@@ -490,6 +502,7 @@ export const WEAPON_STATS = {
     range: 150,
     cooldown: 0, // No cooldown (energy-limited)
     projectileSpeed: 350,
+    projectileMass: 20.0,
     splashRadius: 40,
   },
 };

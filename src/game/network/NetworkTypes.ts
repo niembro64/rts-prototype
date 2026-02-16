@@ -59,6 +59,16 @@ export interface NetworkProjectileDespawn {
   id: number;
 }
 
+// Projectile velocity update - sent when a projectile's velocity changes (e.g. sonic pull)
+// Includes server position so clients can correct dead-reckoned drift
+export interface NetworkProjectileVelocityUpdate {
+  id: number;
+  x: number;
+  y: number;
+  velocityX: number;
+  velocityY: number;
+}
+
 // Serialized game state sent over network
 export interface NetworkGameState {
   tick: number;
@@ -68,6 +78,7 @@ export interface NetworkGameState {
   audioEvents?: NetworkAudioEvent[];
   projectileSpawns?: NetworkProjectileSpawn[];
   projectileDespawns?: NetworkProjectileDespawn[];
+  projectileVelocityUpdates?: NetworkProjectileVelocityUpdate[];
   gameOver?: { winnerId: PlayerId };
 }
 

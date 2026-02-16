@@ -37,6 +37,8 @@ export interface SweptDamageSource extends DamageSourceBase {
   // Actual projectile velocity (for explosion effects)
   velocityX?: number;
   velocityY?: number;
+  // Projectile mass (for momentum-based knockback: p = mv)
+  projectileMass?: number;
 }
 
 // Area damage (splash, wave weapons)

@@ -6,7 +6,7 @@ import type { Entity, PlayerId, EntityId, WaypointType } from '../sim/types';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
-import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent } from '../network/NetworkTypes';
+import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent, NetworkProjectileVelocityUpdate } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
@@ -73,6 +73,7 @@ export class RtsScene extends Phaser.Scene {
   private bufferedSpawns: NetworkProjectileSpawn[] = [];
   private bufferedDespawns: NetworkProjectileDespawn[] = [];
   private bufferedAudio: NetworkAudioEvent[] = [];
+  private bufferedVelocityUpdates: NetworkProjectileVelocityUpdate[] = [];
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -166,6 +167,11 @@ export class RtsScene extends Phaser.Scene {
       if (state.audioEvents) {
         for (let i = 0; i < state.audioEvents.length; i++) {
           this.bufferedAudio.push(state.audioEvents[i]);
+        }
+      }
+      if (state.projectileVelocityUpdates) {
+        for (let i = 0; i < state.projectileVelocityUpdates.length; i++) {
+          this.bufferedVelocityUpdates.push(state.projectileVelocityUpdates[i]);
         }
       }
       // Keep only the latest snapshot (entity positions, economy, game over)
@@ -453,9 +459,11 @@ export class RtsScene extends Phaser.Scene {
       state.projectileSpawns = this.bufferedSpawns.length > 0 ? this.bufferedSpawns : undefined;
       state.projectileDespawns = this.bufferedDespawns.length > 0 ? this.bufferedDespawns : undefined;
       state.audioEvents = this.bufferedAudio.length > 0 ? this.bufferedAudio : undefined;
+      state.projectileVelocityUpdates = this.bufferedVelocityUpdates.length > 0 ? this.bufferedVelocityUpdates : undefined;
       this.bufferedSpawns = [];
       this.bufferedDespawns = [];
       this.bufferedAudio = [];
+      this.bufferedVelocityUpdates = [];
 
       this.clientViewState.applyNetworkState(state);
 
