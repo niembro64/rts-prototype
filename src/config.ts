@@ -680,6 +680,16 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     max: 0.01,
   },
 
+  // Burn mark sample interval — frames to skip between placing new burn marks
+  // 0 = every frame, 1 = every other frame, 3 = every 4th frame, etc.
+  BURN_MARK_FRAMES_SKIP: {
+    min: 10,
+    low: 5,
+    medium: 3,
+    high: 1,
+    max: 0,
+  },
+
   // Force field visual style
   // 'simple': single static arc at outer edge, no animation
   // 'detailed': animated wavy arcs with pull lines

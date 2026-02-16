@@ -23,6 +23,7 @@ export interface GraphicsConfig {
   beamGlow: boolean;
   antialias: boolean;
   burnMarkAlphaCutoff: number;
+  burnMarkFramesSkip: number;
   forceFieldStyle: ForceFieldStyle;
 }
 
@@ -37,6 +38,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamGlow: D.BEAM_GLOW.min,
     antialias: D.ANTIALIAS.min,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.min,
+    burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.min,
     forceFieldStyle: D.FORCE_FIELD_STYLE.min as ForceFieldStyle,
   },
   low: {
@@ -47,6 +49,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamGlow: D.BEAM_GLOW.low,
     antialias: D.ANTIALIAS.low,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.low,
+    burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.low,
     forceFieldStyle: D.FORCE_FIELD_STYLE.low as ForceFieldStyle,
   },
   medium: {
@@ -57,6 +60,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamGlow: D.BEAM_GLOW.medium,
     antialias: D.ANTIALIAS.medium,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.medium,
+    burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.medium,
     forceFieldStyle: D.FORCE_FIELD_STYLE.medium as ForceFieldStyle,
   },
   high: {
@@ -67,6 +71,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamGlow: D.BEAM_GLOW.high,
     antialias: D.ANTIALIAS.high,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.high,
+    burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.high,
     forceFieldStyle: D.FORCE_FIELD_STYLE.high as ForceFieldStyle,
   },
   max: {
@@ -77,6 +82,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamGlow: D.BEAM_GLOW.max,
     antialias: D.ANTIALIAS.max,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.max,
+    burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.max,
     forceFieldStyle: D.FORCE_FIELD_STYLE.max as ForceFieldStyle,
   },
 };

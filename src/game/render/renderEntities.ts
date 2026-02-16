@@ -73,6 +73,7 @@ export class EntityRenderer {
   private burnMarks: BurnMark[] = [];
   // Keyed by "sourceEntityId:weaponIndex" so endpoint tracking survives beam entity ID changes
   private prevBeamEndpoints: Map<string, { x: number; y: number }> = new Map();
+  private burnMarkFrameCounter: number = 0;
 
   // Reusable Set for per-frame entity ID lookups (avoids allocating new Set + Array each frame)
   private _reusableIdSet: Set<EntityId> = new Set();
@@ -454,7 +455,8 @@ export class EntityRenderer {
 
     const camera = this.scene.cameras.main;
     setCurrentZoom(camera.zoom);
-    const burnAlphaCutoff = getGraphicsConfig().burnMarkAlphaCutoff;
+    const gfxConfig = getGraphicsConfig();
+    const burnAlphaCutoff = gfxConfig.burnMarkAlphaCutoff;
     this.sprayParticleTime += 16;
     this.collectVisibleEntities();
 
@@ -462,6 +464,8 @@ export class EntityRenderer {
     // Key by sourceEntityId:weaponIndex so tracking survives beam entity respawns
     this._reusableIdSet.clear();
     const activeBeamKeys = new Set<string>();
+    const sampleBurn = this.burnMarkFrameCounter === 0;
+    this.burnMarkFrameCounter = (this.burnMarkFrameCounter + 1) % (gfxConfig.burnMarkFramesSkip + 1);
     for (const entity of this.entitySource.getProjectiles()) {
       const proj = entity.projectile;
       if (!proj || proj.projectileType !== 'beam') continue;
@@ -472,13 +476,14 @@ export class EntityRenderer {
       const ex = proj.endX ?? entity.transform.x;
       const ey = proj.endY ?? entity.transform.y;
       const beamWidth = proj.config.beamWidth ?? 2;
-      const prev = this.prevBeamEndpoints.get(beamKey);
-      if (prev) {
-        // Create a line segment from previous endpoint to current
-        const dx = ex - prev.x;
-        const dy = ey - prev.y;
-        if (dx * dx + dy * dy > 1) {
-          this.burnMarks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth, age: 0 });
+      if (sampleBurn) {
+        const prev = this.prevBeamEndpoints.get(beamKey);
+        if (prev) {
+          const dx = ex - prev.x;
+          const dy = ey - prev.y;
+          if (dx * dx + dy * dy > 1) {
+            this.burnMarks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth, age: 0 });
+          }
         }
       }
       this.prevBeamEndpoints.set(beamKey, { x: ex, y: ey });
