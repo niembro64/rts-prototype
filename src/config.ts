@@ -74,6 +74,13 @@ export const DEFAULT_TURRET_TURN_ACCEL = 40;
 export const DEFAULT_TURRET_DRAG = 0.15;
 
 /**
+ * Whether turrets return to forward-facing (movement direction) when they have no target.
+ * true = turrets snap back to face forward when idle.
+ * false = turrets hold their last rotation when idle.
+ */
+export const TURRET_RETURN_TO_FORWARD = false;
+
+/**
  * Range multipliers relative to fireRange (1.0x).
  * All ranges are derived from a weapon's base fireRange.
  *
@@ -87,7 +94,7 @@ export const DEFAULT_TURRET_DRAG = 0.15;
  * - fightstop: Unit stops moving in fight/patrol mode when enemy is within this range.
  */
 export const RANGE_MULTIPLIERS = {
-  see: 2.0,
+  see: 1.2,
   fire: 1.0,
   release: 0.9,
   lock: 0.8,
@@ -457,7 +464,7 @@ export const WEAPON_STATS = {
   // Medium-slow turret - big gun needs time to aim
   widowCenterBeam: {
     damage: 100,
-    range: 300,
+    range: 200,
     cooldown: 0, // Continuous
     beamDuration: 1000,
     beamWidth: 12,
@@ -483,7 +490,7 @@ export const WEAPON_STATS = {
   widowForceField: {
     forceFieldInnerRadius: 70, // No effect inside this
     forceFieldMiddleRadius: 100, // Push/pull boundary
-    forceFieldOuterRadius: 400, // Pull stops here
+    forceFieldOuterRadius: 300, // Pull stops here
     damage: 1,
     cooldown: 0,
     turretTurnAccel: 1,
@@ -675,36 +682,3 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   },
 } as const;
 
-// =============================================================================
-// BALANCE SUMMARY
-// =============================================================================
-/**
- * Current balance at a glance:
- *
- * INCOME:
- * - Base: 10 energy/sec
- * - Per solar: +50 energy/sec
- * - With 3 solars: 10 + 150 = 160 energy/sec
- *
- * BUILD RATES:
- * - Commander builds at: 50 energy/sec
- * - Factory produces at: 50 energy/sec
- * - Both together: 100 energy/sec max spending
- *
- * UNIT COSTS & DPS (ordered by cost):
- * | Unit     | Cost | HP   | Speed | DPS | Range | Special              |
- * |----------|------|------|-------|-----|-------|----------------------|
- * | Jackal   |   40 |   40 |  360  |  50 | 140   | Fast swarm (gatling) |
- * | Lynx   |   55 |   65 |  130  |  45 | 160   | 3-shot burst (pulse) |
- * | Tarantula|   70 |   80 |  200  |  40 | 400   | Force field AoE      |
- * | Viper    |   75 |   55 |   70  |  17 | 350   | Railgun, pierce      |
- * | Badger   |   80 |  180 |  200  |  60 |  90   | Shotgun spread       |
- * | Daddy    |   90 |  100 |  200  |  45 | 140   | Continuous beam      |
- * | Scorpion |  100 |  100 |  220  |  32 | 200   | Mortar splash        |
- * | Mammoth  |  180 |  350 |   60  |  40 | 360   | Heavy cannon         |
- * | Widow    |  800 | 1200 |  100  | 310 | 350   | 6 beam + force field |
- *
- * BUILDING COSTS:
- * - Solar: 100 energy (2 sec to build)
- * - Factory: 300 energy (6 sec to build)
- */

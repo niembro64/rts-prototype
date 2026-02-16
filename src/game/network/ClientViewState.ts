@@ -48,6 +48,7 @@ export class ClientViewState {
 
   // Spatial grid debug visualization data
   private gridCells: NetworkGridCell[] = [];
+  private gridSearchCells: NetworkGridCell[] = [];
   private gridCellSize: number = 0;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
@@ -206,6 +207,7 @@ export class ClientViewState {
 
     // Store spatial grid debug data
     this.gridCells = state.gridCells ?? [];
+    this.gridSearchCells = state.gridSearchCells ?? [];
     this.gridCellSize = state.gridCellSize ?? 0;
   }
 
@@ -683,6 +685,10 @@ export class ClientViewState {
     return this.gridCells;
   }
 
+  getGridSearchCells(): NetworkGridCell[] {
+    return this.gridSearchCells;
+  }
+
   getGridCellSize(): number {
     return this.gridCellSize;
   }
@@ -695,6 +701,7 @@ export class ClientViewState {
     this.gameOverWinnerId = null;
     this.selectedIds.clear();
     this.gridCells = [];
+    this.gridSearchCells = [];
     this.gridCellSize = 0;
     this.invalidateCaches();
   }

@@ -117,7 +117,6 @@ export function drawAnimatedTread(
   // Track spacing scales slightly with tread size but has min/max bounds
   const TRACK_SPACING = Math.max(4, Math.min(6, treadLength / 8));
   const TRACK_THICKNESS = 1;
-  const EDGE_INSET = 1; // Small inset from tread edges
 
   // Convert wheel rotation to linear track movement
   // Wheel radius is proportional to tread width (matches Tread class: ~0.35 * treadWidth)
@@ -127,8 +126,9 @@ export function drawAnimatedTread(
   // Normalize to track spacing for seamless looping
   const animOffset = ((linearDistance % TRACK_SPACING) + TRACK_SPACING) % TRACK_SPACING;
 
-  // Calculate visible area for tracks
-  const halfLen = treadLength / 2 - EDGE_INSET;
+  // Track lines extend to full length (top/bottom) but inset from sides
+  const EDGE_INSET = 1;
+  const halfLen = treadLength / 2;
   const halfWid = treadWidth / 2 - EDGE_INSET;
 
   // Calculate number of tracks needed

@@ -89,6 +89,7 @@ export interface NetworkGameState {
   gameOver?: { winnerId: PlayerId };
   // Spatial grid debug visualization
   gridCells?: NetworkGridCell[];
+  gridSearchCells?: NetworkGridCell[];
   gridCellSize?: number;
 }
 

@@ -74,13 +74,20 @@ export function getProjectileColor(baseColor: number): number {
 }
 
 /**
- * Create a full color palette from a player ID
+ * Create a full color palette from a player ID.
+ * Cached — only 6 possible player IDs so palettes are computed once and reused.
  */
+const _paletteCache = new Map<number | undefined, ColorPalette>();
+
 export function createColorPalette(playerId: number | undefined): ColorPalette {
+  let cached = _paletteCache.get(playerId);
+  if (cached) return cached;
   const base = getPlayerColor(playerId);
-  return {
+  cached = {
     base,
     light: getColorLight(base),
     dark: getColorDark(base),
   };
+  _paletteCache.set(playerId, cached);
+  return cached;
 }

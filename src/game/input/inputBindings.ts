@@ -857,26 +857,35 @@ export class InputManager {
     }
   }
 
-  // Check if selection changed and reset waypoint mode to 'move'
+  // Check if selection changed and reset waypoint mode to 'move'.
+  // Zero-allocation: iterates cached units array directly instead of .filter() + .map() + new Set().
   private checkSelectionChange(): void {
-    const currentSelected = this.getSelectedUnits();
-    const currentIds = new Set(currentSelected.map((u) => u.id));
+    const units = this.entitySource.getUnits();
+    const playerId = this.context.activePlayerId;
+    const prev = this.state.previousSelectedIds;
 
-    // Check if selection changed
-    let changed = currentIds.size !== this.state.previousSelectedIds.size;
-    if (!changed) {
-      for (const id of currentIds) {
-        if (!this.state.previousSelectedIds.has(id)) {
-          changed = true;
-          break;
-        }
+    // Count currently selected units and check if any are new
+    let currentCount = 0;
+    let changed = false;
+    for (const u of units) {
+      if (u.selectable?.selected && u.ownership?.playerId === playerId) {
+        currentCount++;
+        if (!prev.has(u.id)) changed = true;
       }
     }
 
+    // Size mismatch means something was deselected
+    if (!changed && currentCount !== prev.size) changed = true;
+
     if (changed) {
-      // Reset mode to 'move' when selection changes
       this.setWaypointMode('move');
-      this.state.previousSelectedIds = currentIds;
+      // Rebuild previousSelectedIds in place (reuse Set, avoid new allocation)
+      prev.clear();
+      for (const u of units) {
+        if (u.selectable?.selected && u.ownership?.playerId === playerId) {
+          prev.add(u.id);
+        }
+      }
     }
   }
 

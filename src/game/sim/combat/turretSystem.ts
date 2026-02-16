@@ -2,6 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import { normalizeAngle, getMovementAngle } from './combatUtils';
+import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 
 // Update turret rotation for all units using acceleration-based physics
 // Each weapon has its own acceleration and drag values
@@ -38,9 +39,17 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
         }
       }
 
-      // If no active target, return turret to forward-facing
+      // If no active target, optionally return turret to forward-facing
       if (!hasActiveTarget) {
-        targetAngle = getMovementAngle(unit);
+        if (TURRET_RETURN_TO_FORWARD) {
+          targetAngle = getMovementAngle(unit);
+        } else {
+          // Hold current rotation — just apply drag to slow down
+          weapon.turretAngularVelocity *= (1 - weapon.turretDrag);
+          weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
+          weapon.turretRotation = normalizeAngle(weapon.turretRotation);
+          continue;
+        }
       }
 
       // Calculate angle difference to target

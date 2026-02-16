@@ -7,7 +7,7 @@ import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities } from '../sim/spawn';
 import { serializeGameState } from '../network/stateSerializer';
-import type { NetworkGameState } from '../network/NetworkTypes';
+import type { NetworkGameState, NetworkGridCell } from '../network/NetworkTypes';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
@@ -249,11 +249,12 @@ export class GameServer {
     const projectileDespawns = this.simulation.getAndClearProjectileDespawns();
     const projectileVelocityUpdates = this.simulation.getAndClearProjectileVelocityUpdates();
 
-    // Include spatial grid occupancy when debug toggle is on
+    // Include spatial grid occupancy and search cells when debug toggle is on
     const gridCells = this.sendGridInfo ? spatialGrid.getOccupiedCells() : undefined;
+    const gridSearchCells = this.sendGridInfo ? this.computeSearchCells() : undefined;
     const gridCellSize = this.sendGridInfo ? spatialGrid.getCellSize() : undefined;
 
-    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridCellSize);
+    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
 
     for (const listener of this.snapshotListeners) {
       listener(state);
@@ -305,6 +306,59 @@ export class GameServer {
   // Toggle spatial grid debug info in snapshots
   setSendGridInfo(enabled: boolean): void {
     this.sendGridInfo = enabled;
+  }
+
+  // Compute per-team search cells: the bounding box of cells each unit's seeRange covers
+  private computeSearchCells(): NetworkGridCell[] {
+    const cellSize = spatialGrid.getCellSize();
+    if (cellSize <= 0) return [];
+
+    // Map from bit-packed cell key to Set of player IDs searching that cell
+    const cellMap = new Map<number, Set<number>>();
+
+    for (const unit of this.world.getUnits()) {
+      if (!unit.unit || unit.unit.hp <= 0 || !unit.weapons || unit.weapons.length === 0) continue;
+      const playerId = unit.ownership?.playerId;
+      if (playerId === undefined) continue;
+
+      // Find max seeRange across all weapons
+      let maxSeeRange = 0;
+      for (let i = 0; i < unit.weapons.length; i++) {
+        if (unit.weapons[i].seeRange > maxSeeRange) {
+          maxSeeRange = unit.weapons[i].seeRange;
+        }
+      }
+      if (maxSeeRange <= 0) continue;
+
+      const x = unit.transform.x;
+      const y = unit.transform.y;
+      const minCx = Math.floor((x - maxSeeRange) / cellSize);
+      const maxCx = Math.floor((x + maxSeeRange) / cellSize);
+      const minCy = Math.floor((y - maxSeeRange) / cellSize);
+      const maxCy = Math.floor((y + maxSeeRange) / cellSize);
+
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          // Bit-pack key: offset by 10000 to handle negative coords
+          const key = (cx + 10000) * 20000 + (cy + 10000);
+          let players = cellMap.get(key);
+          if (!players) {
+            players = new Set();
+            cellMap.set(key, players);
+          }
+          players.add(playerId);
+        }
+      }
+    }
+
+    // Convert to NetworkGridCell array
+    const result: NetworkGridCell[] = [];
+    for (const [key, players] of cellMap) {
+      const cx = Math.floor(key / 20000) - 10000;
+      const cy = (key % 20000) - 10000;
+      result.push({ cx, cy, players: Array.from(players) });
+    }
+    return result;
   }
 
   // Get tick rate stats (avg and worst FPS over recent history)

@@ -24,17 +24,20 @@ export function serializeGameState(
   projectileDespawns?: ProjectileDespawnEvent[],
   projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[],
   gridCells?: NetworkGridCell[],
+  gridSearchCells?: NetworkGridCell[],
   gridCellSize?: number
 ): NetworkGameState {
   _entityBuf.length = 0;
 
-  // Serialize all entities (skip projectiles - handled via spawn/despawn events)
-  for (const entity of world.getAllEntities()) {
-    if (entity.type === 'projectile') continue;
+  // Serialize units and buildings (projectiles handled via spawn/despawn events)
+  // Uses cached getUnits()/getBuildings() to avoid Array.from() allocation from getAllEntities()
+  for (const entity of world.getUnits()) {
     const netEntity = serializeEntity(entity);
-    if (netEntity) {
-      _entityBuf.push(netEntity);
-    }
+    if (netEntity) _entityBuf.push(netEntity);
+  }
+  for (const entity of world.getBuildings()) {
+    const netEntity = serializeEntity(entity);
+    if (netEntity) _entityBuf.push(netEntity);
   }
 
   // Serialize economy for all players
@@ -148,6 +151,7 @@ export function serializeGameState(
     projectileVelocityUpdates: netVelocityUpdates,
     gameOver: gameOverWinnerId ? { winnerId: gameOverWinnerId } : undefined,
     gridCells,
+    gridSearchCells,
     gridCellSize,
   };
 }

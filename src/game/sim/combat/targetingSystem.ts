@@ -5,7 +5,7 @@ import type { Entity } from '../types';
 import { distance, getTargetRadius } from './combatUtils';
 import { spatialGrid } from '../SpatialGrid';
 
-// Update auto-targeting for all units
+// Update auto-targeting and firing state for all units in a single pass.
 // Each weapon independently finds its own target using its own ranges.
 // All weapons use unified sticky targeting with lock/release hysteresis:
 //
@@ -18,8 +18,11 @@ import { spatialGrid } from '../SpatialGrid';
 //   Since releaseRange < fireRange, lock always breaks while target is still fireable.
 //   Turret returns to forward when no enemies in seeRange.
 //
+// Also sets isFiring and inFightstopRange (previously a separate pass with redundant
+// sin/cos + weapon position math).
+//
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
-export function updateAutoTargeting(world: WorldState): void {
+export function updateTargetingAndFiringState(world: WorldState): void {
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
     if (unit.unit.hp <= 0) continue;
@@ -29,6 +32,10 @@ export function updateAutoTargeting(world: WorldState): void {
     const sin = Math.sin(unit.transform.rotation);
 
     for (const weapon of unit.weapons) {
+      // Reset firing state each tick
+      weapon.isFiring = false;
+      weapon.inFightstopRange = false;
+
       const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
       const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
 
@@ -58,7 +65,9 @@ export function updateAutoTargeting(world: WorldState): void {
               weapon.isLocked = false;
               weapon.targetEntityId = null; // Clear so nearest search picks fresh target
             } else {
-              // Lock held — target still within releaseRange
+              // Lock held — compute firing state and skip search
+              if (dist <= weapon.fireRange + targetRadius) weapon.isFiring = true;
+              if (dist <= weapon.fightstopRange + targetRadius) weapon.inFightstopRange = true;
               continue; // Happy path, skip search
             }
           }
@@ -88,13 +97,17 @@ export function updateAutoTargeting(world: WorldState): void {
         }
       }
 
-      // Step 3: Assign target — fire at nearest in fireRange, or pre-aim at nearest in seeRange
+      // Step 3: Assign target and compute firing state
       if (closestInFireRange) {
         weapon.targetEntityId = closestInFireRange.id;
         // Acquire lock if target is within lockRange
         const targetRadius = closestInFireRange.unit ? closestInFireRange.unit.collisionRadius
           : (closestInFireRange.building ? getTargetRadius(closestInFireRange) : 0);
         weapon.isLocked = closestInFireRangeDist <= weapon.lockRange + targetRadius;
+        weapon.isFiring = true; // Target is in fireRange by definition
+        if (closestInFireRangeDist <= weapon.fightstopRange + targetRadius) {
+          weapon.inFightstopRange = true;
+        }
       } else if (closestInSeeRange) {
         // Pre-aim only (turret tracks, no firing)
         weapon.targetEntityId = closestInSeeRange.id;
@@ -127,54 +140,6 @@ export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
         if (weapon.burstCooldown < 0) {
           weapon.burstCooldown = 0;
         }
-      }
-    }
-  }
-}
-
-// Update isFiring and inFightstopRange state for all weapons
-// This should be called before movement decisions are made
-// - isFiring: true when target is within fireRange (weapon will fire)
-// - inFightstopRange: true when target is within fightstopRange (unit should consider stopping in fight mode)
-export function updateWeaponFiringState(world: WorldState): void {
-  for (const unit of world.getUnits()) {
-    if (!unit.weapons) continue;
-
-    const unitCos = Math.cos(unit.transform.rotation);
-    const unitSin = Math.sin(unit.transform.rotation);
-
-    for (const weapon of unit.weapons) {
-      // Default to not firing and not in fightstop range
-      weapon.isFiring = false;
-      weapon.inFightstopRange = false;
-
-      // Check if weapon has a valid target
-      if (weapon.targetEntityId === null) continue;
-
-      const target = world.getEntity(weapon.targetEntityId);
-      if (!target) continue;
-
-      // Check if target is alive
-      const targetIsUnit = target.unit && target.unit.hp > 0;
-      const targetIsBuilding = target.building && target.building.hp > 0;
-      if (!targetIsUnit && !targetIsBuilding) continue;
-
-      // Calculate weapon position
-      const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
-      const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
-
-      // Check distance to target
-      const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
-      const targetRadius = getTargetRadius(target);
-
-      // Check if target is in weapon's fire range
-      if (dist <= weapon.fireRange + targetRadius) {
-        weapon.isFiring = true;
-      }
-
-      // Check if target is in weapon's fightstop range (tighter than fire range)
-      if (dist <= weapon.fightstopRange + targetRadius) {
-        weapon.inFightstopRange = true;
       }
     }
   }

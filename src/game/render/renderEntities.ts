@@ -31,6 +31,17 @@ import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderW
 // Re-export EntitySource for external use
 export type { EntitySource, ExplosionEffect };
 
+// Scorched earth burn mark left by beam weapons — line segments matching beam width
+interface BurnMark {
+  x1: number; y1: number; // segment start
+  x2: number; y2: number; // segment end
+  width: number;           // beam width
+  age: number;             // ms since creation
+}
+const BURN_LIFETIME = 2000; // ms before fully faded
+const BURN_TIME_CONSTANT = 400; // exponential decay time constant (ms)
+const MAX_BURN_MARKS = 5000;
+
 export class EntityRenderer {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
@@ -56,6 +67,11 @@ export class EntityRenderer {
 
   // Per-projectile random offsets for visual variety
   private beamRandomOffsets: Map<EntityId, BeamRandomOffsets> = new Map();
+
+  // Scorched earth: burn marks left by beam weapons
+  private burnMarks: BurnMark[] = [];
+  // Keyed by "sourceEntityId:weaponIndex" so endpoint tracking survives beam entity ID changes
+  private prevBeamEndpoints: Map<string, { x: number; y: number }> = new Map();
 
   // Reusable Set for per-frame entity ID lookups (avoids allocating new Set + Array each frame)
   private _reusableIdSet: Set<EntityId> = new Set();
@@ -325,10 +341,26 @@ export class EntityRenderer {
   }
 
   updateExplosions(dtMs: number): void {
-    this.explosions = this.explosions.filter((exp) => {
+    // In-place compaction avoids .filter() array allocation every frame
+    let writeIdx = 0;
+    for (let i = 0; i < this.explosions.length; i++) {
+      const exp = this.explosions[i];
       exp.elapsed += dtMs;
-      return exp.elapsed < exp.lifetime;
-    });
+      if (exp.elapsed < exp.lifetime) {
+        this.explosions[writeIdx++] = exp;
+      }
+    }
+    this.explosions.length = writeIdx;
+
+    // Age burn marks and prune expired ones
+    let burnWrite = 0;
+    for (let i = 0; i < this.burnMarks.length; i++) {
+      this.burnMarks[i].age += dtMs;
+      if (this.burnMarks[i].age < BURN_LIFETIME) {
+        this.burnMarks[burnWrite++] = this.burnMarks[i];
+      }
+    }
+    this.burnMarks.length = burnWrite;
   }
 
   // ==================== LABEL MANAGEMENT ====================
@@ -423,6 +455,57 @@ export class EntityRenderer {
     setCurrentZoom(camera.zoom);
     this.sprayParticleTime += 16;
     this.collectVisibleEntities();
+
+    // 0. Sample beam endpoints for scorched earth burn marks (line segments)
+    // Key by sourceEntityId:weaponIndex so tracking survives beam entity respawns
+    this._reusableIdSet.clear();
+    const activeBeamKeys = new Set<string>();
+    for (const entity of this.entitySource.getProjectiles()) {
+      const proj = entity.projectile;
+      if (!proj || proj.projectileType !== 'beam') continue;
+      this._reusableIdSet.add(entity.id);
+      const weaponIndex = (proj.config as { weaponIndex?: number }).weaponIndex ?? 0;
+      const beamKey = `${proj.sourceEntityId}:${weaponIndex}`;
+      activeBeamKeys.add(beamKey);
+      const ex = proj.endX ?? entity.transform.x;
+      const ey = proj.endY ?? entity.transform.y;
+      const beamWidth = proj.config.beamWidth ?? 2;
+      const prev = this.prevBeamEndpoints.get(beamKey);
+      if (prev) {
+        // Create a line segment from previous endpoint to current
+        const dx = ex - prev.x;
+        const dy = ey - prev.y;
+        if (dx * dx + dy * dy > 1) {
+          this.burnMarks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth, age: 0 });
+        }
+      }
+      this.prevBeamEndpoints.set(beamKey, { x: ex, y: ey });
+    }
+    // Clean up prev endpoints for beams that no longer exist
+    for (const key of this.prevBeamEndpoints.keys()) {
+      if (!activeBeamKeys.has(key)) this.prevBeamEndpoints.delete(key);
+    }
+    // Cap burn marks to prevent unbounded growth
+    if (this.burnMarks.length > MAX_BURN_MARKS) {
+      this.burnMarks.splice(0, this.burnMarks.length - MAX_BURN_MARKS);
+    }
+
+    // 0b. Render scorched earth burn marks (below everything)
+    for (let i = 0; i < this.burnMarks.length; i++) {
+      const mark = this.burnMarks[i];
+      const midX = (mark.x1 + mark.x2) * 0.5;
+      const midY = (mark.y1 + mark.y2) * 0.5;
+      if (!this.isInViewport(midX, midY, 50)) continue;
+      const t = mark.age / BURN_LIFETIME; // 0→1
+      // Color: bright red (0xff2200) → black
+      const red = Math.round(255 * (1 - t));
+      const green = Math.round(34 * (1 - t));
+      const color = (red << 16) | (green << 8);
+      // Opacity: exponential decay
+      const alpha = Math.exp(-mark.age / BURN_TIME_CONSTANT);
+      this.graphics.lineStyle(mark.width, color, alpha);
+      this.graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);
+    }
 
     // 1. Buildings (bottom layer)
     for (const entity of this.visibleBuildings) {

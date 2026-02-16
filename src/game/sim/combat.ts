@@ -17,9 +17,8 @@ export {
 } from './combat/turretSystem';
 
 export {
-  updateAutoTargeting,
+  updateTargetingAndFiringState,
   updateWeaponCooldowns,
-  updateWeaponFiringState,
 } from './combat/targetingSystem';
 
 export {

@@ -3,10 +3,9 @@ import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type 
 import type { Entity, EntityId, PlayerId, UnitAction } from './types';
 import { magnitude } from '../math';
 import {
-  updateAutoTargeting,
+  updateTargetingAndFiringState,
   updateTurretRotation,
   updateWeaponCooldowns,
-  updateWeaponFiringState,
   updateLaserSounds,
   fireWeapons,
   updateForceFieldState,
@@ -251,11 +250,8 @@ export class Simulation {
     // Update weapon cooldowns
     updateWeaponCooldowns(this.world, dtMs);
 
-    // Update auto-targeting (each weapon finds its own target)
-    updateAutoTargeting(this.world);
-
-    // Update weapon firing state (sets isFiring based on target being in range)
-    updateWeaponFiringState(this.world);
+    // Update auto-targeting and firing state in a single pass
+    updateTargetingAndFiringState(this.world);
 
     // Update laser sounds based on targeting state (every frame)
     const laserAudioEvents = updateLaserSounds(this.world);

@@ -39,6 +39,20 @@ export class RtsScene extends Phaser.Scene {
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
 
+  // Cached entity source adapter — built once in create(), closures read this.localPlayerId
+  // so they always use the current player. Avoids 9 closure allocations per call.
+  private entitySourceAdapter!: {
+    getUnits: () => Entity[];
+    getBuildings: () => Entity[];
+    getProjectiles: () => Entity[];
+    getAllEntities: () => Entity[];
+    getEntity: (id: EntityId) => Entity | undefined;
+    getSelectedUnits: () => Entity[];
+    getSelectedBuildings: () => Entity[];
+    getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
+    getUnitsByPlayer: (playerId: PlayerId) => Entity[];
+  };
+
   // Config values
   private localPlayerId: PlayerId = 1;
   private playerIds: PlayerId[] = [1, 2];
@@ -147,6 +161,28 @@ export class RtsScene extends Phaser.Scene {
     // Create ClientViewState (always the entity source)
     this.clientViewState = new ClientViewState();
 
+    // Build entity source adapter once — closures capture `this` so they always
+    // read the current localPlayerId and clientViewState
+    this.entitySourceAdapter = {
+      getUnits: () => this.clientViewState.getUnits(),
+      getBuildings: () => this.clientViewState.getBuildings(),
+      getProjectiles: () => this.clientViewState.getProjectiles(),
+      getAllEntities: () => this.clientViewState.getAllEntities(),
+      getEntity: (id: EntityId) => this.clientViewState.getEntity(id),
+      getSelectedUnits: () => this.clientViewState.getUnits().filter(
+        e => e.selectable?.selected && e.ownership?.playerId === this.localPlayerId
+      ),
+      getSelectedBuildings: () => this.clientViewState.getBuildings().filter(
+        b => b.selectable?.selected && b.ownership?.playerId === this.localPlayerId
+      ),
+      getBuildingsByPlayer: (pid: PlayerId) => this.clientViewState.getBuildings().filter(
+        b => b.ownership?.playerId === pid
+      ),
+      getUnitsByPlayer: (pid: PlayerId) => this.clientViewState.getUnits().filter(
+        u => u.ownership?.playerId === pid
+      ),
+    };
+
     // Create local command queue (for selection commands)
     this.localCommandQueue = new CommandQueue();
 
@@ -206,7 +242,9 @@ export class RtsScene extends Phaser.Scene {
     this.drawGrid();
 
     // Create spatial grid overlay graphics (redrawn each frame when grid info is active)
+    // Additive blend so overlapping team colors combine naturally
     this.spatialGridGraphics = this.add.graphics();
+    this.spatialGridGraphics.setBlendMode(Phaser.BlendModes.ADD);
 
     // Setup renderer with ClientViewState as source
     this.entityRenderer = new EntityRenderer(this, this.clientViewState);
@@ -333,40 +371,9 @@ export class RtsScene extends Phaser.Scene {
     this.cameras.main.centerOn(x, y);
   }
 
-  // Get current entity source - always ClientViewState
-  private getCurrentEntitySource(): {
-    getUnits: () => Entity[],
-    getBuildings: () => Entity[],
-    getProjectiles: () => Entity[],
-    getAllEntities: () => Entity[],
-    getEntity: (id: EntityId) => Entity | undefined,
-    getSelectedUnits: () => Entity[],
-    getSelectedBuildings: () => Entity[],
-    getBuildingsByPlayer: (playerId: PlayerId) => Entity[],
-    getUnitsByPlayer: (playerId: PlayerId) => Entity[],
-  } {
-    const playerId = this.localPlayerId;
-    const cvs = this.clientViewState;
-
-    return {
-      getUnits: () => cvs.getUnits(),
-      getBuildings: () => cvs.getBuildings(),
-      getProjectiles: () => cvs.getProjectiles(),
-      getAllEntities: () => cvs.getAllEntities(),
-      getEntity: (id: EntityId) => cvs.getEntity(id),
-      getSelectedUnits: () => cvs.getUnits().filter(
-        e => e.selectable?.selected && e.ownership?.playerId === playerId
-      ),
-      getSelectedBuildings: () => cvs.getBuildings().filter(
-        b => b.selectable?.selected && b.ownership?.playerId === playerId
-      ),
-      getBuildingsByPlayer: (pid: PlayerId) => cvs.getBuildings().filter(
-        b => b.ownership?.playerId === pid
-      ),
-      getUnitsByPlayer: (pid: PlayerId) => cvs.getUnits().filter(
-        u => u.ownership?.playerId === pid
-      ),
-    };
+  // Get current entity source — returns cached adapter (zero allocations per call)
+  private getCurrentEntitySource() {
+    return this.entitySourceAdapter;
   }
 
   // Update selection info and notify UI
@@ -413,23 +420,37 @@ export class RtsScene extends Phaser.Scene {
     ));
   }
 
-  // Render spatial grid cell occupancy overlay (redrawn each frame)
+  // Render spatial grid debug overlay (search cells + occupancy cells)
   private renderSpatialGridOverlay(): void {
     this.spatialGridGraphics.clear();
 
-    const gridCells = this.clientViewState.getGridCells();
     const cellSize = this.clientViewState.getGridCellSize();
-    if (!gridCells || gridCells.length === 0 || cellSize <= 0) return;
+    if (cellSize <= 0) return;
 
+    // Draw search cells first (bottom layer): subtle fill, no borders
+    const searchCells = this.clientViewState.getGridSearchCells();
+    for (const cell of searchCells) {
+      const worldX = cell.cx * cellSize;
+      const worldY = cell.cy * cellSize;
+
+      for (const playerId of cell.players) {
+        const playerConfig = PLAYER_COLORS[playerId as PlayerId];
+        const color = playerConfig?.primary ?? 0x888888;
+        this.spatialGridGraphics.fillStyle(color, 0.04);
+        this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
+      }
+    }
+
+    // Draw occupancy cells second (top layer): more pronounced fill + borders
+    const gridCells = this.clientViewState.getGridCells();
     for (const cell of gridCells) {
       const worldX = cell.cx * cellSize;
       const worldY = cell.cy * cellSize;
 
-      // Draw a tinted rectangle for each player occupying this cell
       for (const playerId of cell.players) {
         const playerConfig = PLAYER_COLORS[playerId as PlayerId];
         const color = playerConfig?.primary ?? 0x888888;
-        this.spatialGridGraphics.fillStyle(color, 0.15);
+        this.spatialGridGraphics.fillStyle(color, 0.25);
         this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
       }
 
