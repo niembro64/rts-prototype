@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
-import { BURN_COLOR_TAU, BURN_ALPHA_TAU, BURN_LIFETIME } from '../../config';
+import { BURN_COLOR_TAU, BURN_ALPHA_TAU } from '../../config';
 import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 import {
   type TankTreadSetup,
@@ -39,7 +39,7 @@ interface BurnMark {
   width: number;           // beam width
   age: number;             // ms since creation
 }
-// BURN_COLOR_TAU, BURN_ALPHA_TAU, BURN_LIFETIME imported from config
+// BURN_COLOR_TAU, BURN_ALPHA_TAU imported from config
 const MAX_BURN_MARKS = 5000;
 
 export class EntityRenderer {
@@ -353,11 +353,12 @@ export class EntityRenderer {
     }
     this.explosions.length = writeIdx;
 
-    // Age burn marks and prune expired ones
+    // Age burn marks and prune ones below alpha cutoff
+    const burnCutoff = getGraphicsConfig().burnMarkAlphaCutoff;
     let burnWrite = 0;
     for (let i = 0; i < this.burnMarks.length; i++) {
       this.burnMarks[i].age += dtMs;
-      if (this.burnMarks[i].age < BURN_LIFETIME) {
+      if (Math.exp(-this.burnMarks[i].age / BURN_ALPHA_TAU) >= burnCutoff) {
         this.burnMarks[burnWrite++] = this.burnMarks[i];
       }
     }
@@ -502,15 +503,13 @@ export class EntityRenderer {
       const midX = (mark.x1 + mark.x2) * 0.5;
       const midY = (mark.y1 + mark.y2) * 0.5;
       if (!this.isInViewport(midX, midY, 50)) continue;
-      // Linear ramp 1→0 over lifetime ensures full disappearance
-      const linear = 1 - mark.age / BURN_LIFETIME;
-      // Color: exponential decay red → black (fast), multiplied by linear ramp
-      const colorDecay = Math.exp(-mark.age / BURN_COLOR_TAU) * linear;
+      // Color: exponential decay red → black (fast)
+      const colorDecay = Math.exp(-mark.age / BURN_COLOR_TAU);
       const red = Math.round(255 * colorDecay);
       const green = Math.round(34 * colorDecay);
       const color = (red << 16) | (green << 8);
-      // Opacity: exponential decay (slow), multiplied by linear ramp
-      const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU) * linear;
+      // Opacity: exponential decay (slow) — pruned by alpha cutoff
+      const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU);
       if (alpha < burnAlphaCutoff) continue;
       this.graphics.lineStyle(mark.width, color, alpha);
       this.graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);

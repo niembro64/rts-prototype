@@ -83,7 +83,6 @@ export const TURRET_RETURN_TO_FORWARD = false;
 // Scorched earth burn mark decay constants
 export const BURN_COLOR_TAU = 200;   // color decay: red → black (ms), fast
 export const BURN_ALPHA_TAU = 2000;  // opacity decay: opaque → transparent (ms), slow
-export const BURN_LIFETIME = 5000;   // hard cutoff — marks fully gone by this time (ms)
 
 /**
  * Range multipliers relative to fireRange (1.0x).
