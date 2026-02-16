@@ -1,7 +1,7 @@
 import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
 import { getWeaponConfig } from './weapons';
 import { getUnitDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, SEE_RANGE_MULTIPLIER, RELEASE_RANGE_MULTIPLIER, LOCK_RANGE_MULTIPLIER, FIGHTSTOP_RANGE_MULTIPLIER } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, RANGE_MULTIPLIERS } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -333,10 +333,10 @@ export class WorldState {
 
     // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
     const fireRange = weaponConfig.range;
-    const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
-    const releaseRange = fireRange * RELEASE_RANGE_MULTIPLIER;
-    const lockRange = fireRange * LOCK_RANGE_MULTIPLIER;
-    const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+    const seeRange = fireRange * RANGE_MULTIPLIERS.see;
+    const releaseRange = fireRange * RANGE_MULTIPLIERS.release;
+    const lockRange = fireRange * RANGE_MULTIPLIERS.lock;
+    const fightstopRange = fireRange * RANGE_MULTIPLIERS.fightstop;
 
     // Turret physics - use provided values, weapon config, or global defaults
     const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
@@ -393,10 +393,10 @@ export class WorldState {
 
     // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
     const fireRange = weaponConfig.range;
-    const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
-    const releaseRange = fireRange * RELEASE_RANGE_MULTIPLIER;
-    const lockRange = fireRange * LOCK_RANGE_MULTIPLIER;
-    const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+    const seeRange = fireRange * RANGE_MULTIPLIERS.see;
+    const releaseRange = fireRange * RANGE_MULTIPLIERS.release;
+    const lockRange = fireRange * RANGE_MULTIPLIERS.lock;
+    const fightstopRange = fireRange * RANGE_MULTIPLIERS.fightstop;
 
     // Turret physics - use provided values, weapon config, or global defaults
     const turretTurnAccel = config.turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;

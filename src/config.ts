@@ -74,37 +74,25 @@ export const DEFAULT_TURRET_TURN_ACCEL = 40;
 export const DEFAULT_TURRET_DRAG = 0.15;
 
 /**
- * Multiplier for seeRange (tracking range) relative to fireRange.
- * seeRange = fireRange * SEE_RANGE_MULTIPLIER
- * Turret starts pre-aiming at enemies when they enter this range.
- * Target is dropped entirely when they leave this range.
+ * Range multipliers relative to fireRange (1.0x).
+ * All ranges are derived from a weapon's base fireRange.
+ *
+ * Hierarchy (outer to inner):
+ *   seeRange (1.3x) > fireRange (1.0x) > releaseRange (0.95x) > lockRange (0.85x) > fightstopRange (0.8x)
+ *
+ * - see: Turret pre-aims at approaching enemies. Target dropped when they leave.
+ * - fire: Weapon fires at nearest enemy within this range (1.0x, the base).
+ * - release: Lock release boundary (hysteresis). Locked target stays locked until exiting.
+ * - lock: Lock acquisition. Weapon commits (sticky) when current target enters this range.
+ * - fightstop: Unit stops moving in fight/patrol mode when enemy is within this range.
  */
-export const SEE_RANGE_MULTIPLIER = 1.3;
-
-/**
- * Multiplier for releaseRange (lock release boundary) relative to fireRange.
- * releaseRange = fireRange * RELEASE_RANGE_MULTIPLIER
- * A locked target stays locked until it exits releaseRange (hysteresis).
- * Since releaseRange < fireRange, lock always breaks before target leaves fire range.
- */
-export const RELEASE_RANGE_MULTIPLIER = 0.95;
-
-/**
- * Multiplier for lockRange (lock acquisition) relative to fireRange.
- * lockRange = fireRange * LOCK_RANGE_MULTIPLIER
- * Weapon commits (locks) to a target when it enters lockRange.
- * Once locked, weapon stays on target until it exits releaseRange.
- * Range hierarchy: seeRange (1.3x) > fireRange (1.0x) > releaseRange (0.95x) > lockRange (0.85x) > fightstopRange (0.8x)
- */
-export const LOCK_RANGE_MULTIPLIER = 0.85;
-
-/**
- * Multiplier for fightstopRange relative to fireRange.
- * fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER
- * Unit stops moving in fight/patrol mode when target is within this range.
- * For sticky weapons, new targets are searched within this range.
- */
-export const FIGHTSTOP_RANGE_MULTIPLIER = 0.8;
+export const RANGE_MULTIPLIERS = {
+  see: 1.3,
+  fire: 1.0,
+  release: 0.95,
+  lock: 0.85,
+  fightstop: 0.8,
+};
 
 /**
  * Force field weapon visual configuration.

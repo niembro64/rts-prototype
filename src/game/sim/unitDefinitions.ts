@@ -8,10 +8,7 @@ import {
   UNIT_STATS,
   DEFAULT_TURRET_TURN_ACCEL,
   DEFAULT_TURRET_DRAG,
-  SEE_RANGE_MULTIPLIER,
-  RELEASE_RANGE_MULTIPLIER,
-  LOCK_RANGE_MULTIPLIER,
-  FIGHTSTOP_RANGE_MULTIPLIER,
+  RANGE_MULTIPLIERS,
 } from '../../config';
 
 // Locomotion types for rendering
@@ -50,10 +47,10 @@ export interface UnitDefinition {
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
   const weaponConfig = getWeaponConfig(definition.weaponType);
   const fireRange = weaponConfig.range;
-  const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
-  const releaseRange = fireRange * RELEASE_RANGE_MULTIPLIER;
-  const lockRange = fireRange * LOCK_RANGE_MULTIPLIER;
-  const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const seeRange = fireRange * RANGE_MULTIPLIERS.see;
+  const releaseRange = fireRange * RANGE_MULTIPLIERS.release;
+  const lockRange = fireRange * RANGE_MULTIPLIERS.lock;
+  const fightstopRange = fireRange * RANGE_MULTIPLIERS.fightstop;
   const turretTurnAccel = weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const turretDrag = weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
@@ -88,19 +85,19 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
 
   // Beam weapon ranges
   const beamFireRange = widowBeamConfig.range;
-  const beamSeeRange = beamFireRange * SEE_RANGE_MULTIPLIER;
-  const beamReleaseRange = beamFireRange * RELEASE_RANGE_MULTIPLIER;
-  const beamLockRange = beamFireRange * LOCK_RANGE_MULTIPLIER;
-  const beamFightstopRange = beamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const beamSeeRange = beamFireRange * RANGE_MULTIPLIERS.see;
+  const beamReleaseRange = beamFireRange * RANGE_MULTIPLIERS.release;
+  const beamLockRange = beamFireRange * RANGE_MULTIPLIERS.lock;
+  const beamFightstopRange = beamFireRange * RANGE_MULTIPLIERS.fightstop;
   const beamTurnAccel = widowBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const beamDrag = widowBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
   // Center beam weapon ranges
   const centerBeamFireRange = widowCenterBeamConfig.range;
-  const centerBeamSeeRange = centerBeamFireRange * SEE_RANGE_MULTIPLIER;
-  const centerBeamReleaseRange = centerBeamFireRange * RELEASE_RANGE_MULTIPLIER;
-  const centerBeamLockRange = centerBeamFireRange * LOCK_RANGE_MULTIPLIER;
-  const centerBeamFightstopRange = centerBeamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const centerBeamSeeRange = centerBeamFireRange * RANGE_MULTIPLIERS.see;
+  const centerBeamReleaseRange = centerBeamFireRange * RANGE_MULTIPLIERS.release;
+  const centerBeamLockRange = centerBeamFireRange * RANGE_MULTIPLIERS.lock;
+  const centerBeamFightstopRange = centerBeamFireRange * RANGE_MULTIPLIERS.fightstop;
   const centerBeamTurnAccel = widowCenterBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const centerBeamDrag = widowCenterBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
@@ -159,10 +156,10 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
 
   // 1 force field weapon in center (dual push/pull zones)
   const ffFireRange = widowForceFieldConfig.range;
-  const ffSeeRange = ffFireRange * SEE_RANGE_MULTIPLIER;
-  const ffReleaseRange = ffFireRange * RELEASE_RANGE_MULTIPLIER;
-  const ffLockRange = ffFireRange * LOCK_RANGE_MULTIPLIER;
-  const ffFightstopRange = ffFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const ffSeeRange = ffFireRange * RANGE_MULTIPLIERS.see;
+  const ffReleaseRange = ffFireRange * RANGE_MULTIPLIERS.release;
+  const ffLockRange = ffFireRange * RANGE_MULTIPLIERS.lock;
+  const ffFightstopRange = ffFireRange * RANGE_MULTIPLIERS.fightstop;
   const ffTurnAccel = widowForceFieldConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const ffDrag = widowForceFieldConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
