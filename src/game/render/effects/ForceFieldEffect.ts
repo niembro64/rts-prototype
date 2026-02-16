@@ -1,14 +1,14 @@
-// Wave weapon effect renderer (sonic unit pie-slice effect)
+// Force field effect renderer (pie-slice effect)
 
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
-import { SONIC_WAVE_VISUAL } from '../../../config';
+import { FORCE_FIELD_VISUAL } from '../../../config';
 
 /**
- * Render wave weapon pie-slice effect with pulsing sine waves.
+ * Render force field pie-slice effect with pulsing sine waves.
  * Renders an annular ring between innerRange and maxRange.
  */
-export function renderWaveEffect(
+export function renderForceFieldEffect(
   graphics: Phaser.GameObjects.Graphics,
   x: number,
   y: number,
@@ -17,14 +17,15 @@ export function renderWaveEffect(
   maxRange: number,
   primaryColor: number,
   _secondaryColor: number,
-  innerRange: number = 0
+  innerRange: number = 0,
+  pushOutward: boolean = false
 ): void {
   const halfAngle = sliceAngle / 2;
   const gfxConfig = getGraphicsConfig();
-  const v = SONIC_WAVE_VISUAL;
+  const v = FORCE_FIELD_VISUAL;
 
   // Simple mode (min detail): single static arc at outer edge
-  if (gfxConfig.sonicWaveStyle === 'simple') {
+  if (gfxConfig.forceFieldStyle === 'simple') {
     graphics.lineStyle(2, primaryColor, v.sliceOpacityMinZoom);
     graphics.beginPath();
     graphics.arc(x, y, maxRange * 0.9, rotation - halfAngle, rotation + halfAngle, false);
@@ -70,17 +71,16 @@ export function renderWaveEffect(
     }
   };
 
-  // 2. Draw wavy lines pulling INWARD (only when animated mode is enabled)
+  // 2. Draw wavy arcs traveling through the ring band
   if (v.showAnimatedWaves) {
     const fullCircleSegments = 64;
 
     for (let i = 0; i < v.waveCount; i++) {
-      const linearPhase = (1 - ((time * v.wavePullSpeed + i / v.waveCount) % 1));
-      const acceleratedPhase = Math.pow(linearPhase, 1 / v.accelExponent);
-      const waveRadius = acceleratedPhase * maxRange;
+      const phase = (time * v.wavePullSpeed + i / v.waveCount) % 1;
+      const t = pushOutward ? phase : 1 - phase;
+      const waveRadius = innerRange + (maxRange - innerRange) * t;
 
-      // Skip waves inside inner range or too close to center
-      if (waveRadius < Math.max(15, innerRange)) continue;
+      if (waveRadius < innerRange || waveRadius > maxRange) continue;
 
       graphics.lineStyle(v.waveThickness, primaryColor, v.waveOpacity);
 
@@ -116,7 +116,7 @@ export function renderWaveEffect(
     }
   }
 
-  // 3. Draw radial particle lines converging INWARD toward center
+  // 3. Draw radial particle dashes traveling through the ring band
   // Deterministic pseudo-random hash — stable within a cycle but changes each cycle
   const hash = (n: number) => {
     let h = (n | 0) * 2654435761;
@@ -124,47 +124,63 @@ export function renderWaveEffect(
     return ((h >>> 16) ^ h) / 4294967296 + 0.5; // 0..1
   };
 
-  // Effective range band for particles (only between inner and outer)
   const rangeBand = maxRange - innerRange;
+  if (rangeBand <= 0) return;
 
-  for (let i = 0; i < v.particleCount; i++) {
-    // Each particle has a fixed phase offset so they don't all cycle together
-    const basePhaseOffset = hash(i + 9999);
-    const rawPhase = time * v.particleSpeed + basePhaseOffset;
-    // Cycle number changes each time the particle loops — used to re-randomize
-    const cycle = Math.floor(rawPhase);
-    const linearDashPhase = 1 - (rawPhase % 1);
-    const dashPhase = Math.pow(linearDashPhase, 1 / v.accelExponent);
+  // Particle length: fraction of band, but at least 6px so always visible in thin bands
+  const dashLen = Math.max(rangeBand * v.particleLength, 6);
 
-    // Seed combines particle index + cycle so angle/position change each loop
-    const seed = i * 7919 + cycle * 104729;
+  // Particles move at constant world-space speed, positions computed over a fixed
+  // reference range so they never jump when the visible band changes during transitions.
+  const realTime = Date.now() / 1000;
+  const pxPerSec = v.particleSpeed * 20;
+  const REF_RANGE = 1200; // Fixed wrapping range (px) — independent of band width
 
-    // Fully random angle each cycle
-    const lineAngle = hash(seed) * Math.PI * 2;
+  // Scale particle count so ~particleCount are visible in the current band
+  const effectiveCount = Math.min(
+    Math.ceil(v.particleCount * REF_RANGE / Math.max(rangeBand, 10)),
+    200
+  );
 
+  for (let i = 0; i < effectiveCount; i++) {
+    // Stable offset per particle (world px)
+    const offset = hash(i + 9999) * REF_RANGE;
+
+    // Absolute position cycling over the fixed reference range
+    const totalDist = realTime * pxPerSec + offset;
+    const refPos = ((totalDist % REF_RANGE) + REF_RANGE) % REF_RANGE;
+
+    // Map to world radius: push = outward, pull = inward
+    const radius = pushOutward ? refPos : (REF_RANGE - refPos);
+
+    // Only draw if within the current visible band
+    if (radius < innerRange || radius > maxRange) continue;
+
+    // Angle: re-randomize at wrap-around (invisible since wrap is outside visible band)
+    const cycle = Math.floor(totalDist / REF_RANGE);
+    const lineAngle = hash(i * 7919 + cycle * 104729) * Math.PI * 2;
     if (!isAngleInSlice(lineAngle)) continue;
 
-    // Particles travel within the range band (innerRange to maxRange)
-    const spawnJitter = hash(seed + 5555) * 0.3;
-    const dashStart = innerRange + rangeBand * (v.particleSpawnOffset + spawnJitter + dashPhase * 0.5);
-    const dashEnd = innerRange + rangeBand * (v.particleSpawnOffset + spawnJitter - v.particleLength + dashPhase * 0.5);
+    // Clamp dash endpoints to stay within [innerRange, maxRange]
+    const rNear = Math.max(radius - dashLen / 2, innerRange);
+    const rFar = Math.min(radius + dashLen / 2, maxRange);
+    if (rFar <= rNear) continue;
 
-    if (dashStart > maxRange * 0.95) continue;
-    if (dashEnd < innerRange) continue;
-
-    const fadeIn = Math.min(dashPhase * 4, 1);
-    const fadeOut = Math.min((1 - dashPhase) * 3, 1);
-    const alpha = v.particleOpacity * fadeIn * fadeOut;
+    // Fade near edges of the visible band
+    const distFromInner = radius - innerRange;
+    const distFromOuter = maxRange - radius;
+    const edgeFade = Math.min(distFromInner / 20, distFromOuter / 20, 1);
+    const alpha = v.particleOpacity * edgeFade;
 
     graphics.lineStyle(v.particleThickness, primaryColor, alpha);
     graphics.beginPath();
     graphics.moveTo(
-      x + Math.cos(lineAngle) * dashStart,
-      y + Math.sin(lineAngle) * dashStart
+      x + Math.cos(lineAngle) * rNear,
+      y + Math.sin(lineAngle) * rNear
     );
     graphics.lineTo(
-      x + Math.cos(lineAngle) * Math.max(dashEnd, innerRange),
-      y + Math.sin(lineAngle) * Math.max(dashEnd, innerRange)
+      x + Math.cos(lineAngle) * rFar,
+      y + Math.sin(lineAngle) * rFar
     );
     graphics.strokePath();
   }

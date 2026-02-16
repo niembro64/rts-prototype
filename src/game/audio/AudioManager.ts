@@ -9,7 +9,7 @@ export type WeaponAudioId =
   | 'grenade'
   | 'railgun'
   | 'burst-rifle'
-  | 'sonic-wave';
+  | 'force-field';
 
 // Active continuous sound (for lasers)
 interface ContinuousSound {
@@ -521,8 +521,8 @@ export class AudioManager {
     }
   }
 
-  // Widow sonic - deep resonant pulse
-  playSonicWaveFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  // Force field - deep resonant pulse
+  playForceFieldFire(pitch: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -616,8 +616,8 @@ export class AudioManager {
       case 'burst-rifle':
         this.playBurstRifleFire(finalPitch, volumeMultiplier);
         break;
-      case 'sonic-wave':
-        this.playSonicWaveFire(finalPitch, volumeMultiplier * 0.01);
+      case 'force-field':
+        this.playForceFieldFire(finalPitch, volumeMultiplier * 0.01);
         break;
       default:
         // throw error
@@ -983,7 +983,7 @@ export class AudioManager {
     switch (weaponId) {
       case 'minigun':
       case 'burst-rifle':
-      case 'sonic-wave':
+      case 'force-field':
         this.playSmallDeath(volumeMultiplier);
         break;
       case 'beam':

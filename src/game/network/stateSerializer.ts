@@ -208,6 +208,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
           targetId: w.targetEntityId ?? undefined,
           targetingMode: w.targetingMode,
           seeRange: w.seeRange,
+          lockRange: w.lockRange,
           fireRange: w.fireRange,
           fightstopRange: w.fightstopRange,
           turretRotation: w.turretRotation,
@@ -218,7 +219,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
           offsetY: w.offsetY,
           isFiring: w.isFiring,
           inFightstopRange: w.inFightstopRange,
-          currentSliceAngle: w.currentSliceAngle,
+          currentForceFieldRange: w.currentForceFieldRange,
         };
       }
       netEntity.weapons = netWeapons;

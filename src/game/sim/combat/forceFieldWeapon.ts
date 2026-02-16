@@ -1,4 +1,4 @@
-// Wave weapon system - pie-slice AoE damage with pull effect
+// Force field weapon system - dual-zone pie-slice AoE with push (inner) and pull (outer)
 
 import type { WorldState } from '../WorldState';
 import type { DamageSystem } from '../damage';
@@ -9,42 +9,56 @@ import { magnitude } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 
-// Update wave weapon state (transition between idle and attack angles)
-// Call this before applyWaveDamage each frame
-export function updateWaveWeaponState(world: WorldState, dtMs: number): void {
+// Update force field state (transition progress 0→1)
+// Both push and pull zones grow outward from middleRadius simultaneously.
+// currentForceFieldRange is repurposed to carry the progress (0→1) for serialization.
+export function updateForceFieldState(world: WorldState, dtMs: number): void {
   for (const unit of world.getUnits()) {
     if (!unit.weapons) continue;
 
     for (const weapon of unit.weapons) {
       const config = weapon.config;
-      if (!config.isWaveWeapon) continue;
+      if (!config.isForceField) continue;
 
-      const angleIdle = config.waveAngleIdle ?? Math.PI / 16;
-      const angleAttack = config.waveAngleAttack ?? Math.PI / 4;
-      const transitionTime = config.waveTransitionTime ?? 1000;
+      const transitionTime = config.forceFieldTransitionTime ?? 1000;
 
-      // Initialize wave state if not set
-      if (weapon.waveTransitionProgress === undefined) {
-        weapon.waveTransitionProgress = 0;
-        weapon.currentSliceAngle = angleIdle;
+      // Initialize
+      if (weapon.forceFieldTransitionProgress === undefined) {
+        weapon.forceFieldTransitionProgress = 0;
+        weapon.currentForceFieldRange = 0;
       }
 
       // Move progress toward target based on firing state
       const targetProgress = weapon.isFiring ? 1 : 0;
       const progressDelta = dtMs / transitionTime;
 
-      if (weapon.waveTransitionProgress < targetProgress) {
-        // Transitioning to attack
-        weapon.waveTransitionProgress = Math.min(weapon.waveTransitionProgress + progressDelta, 1);
-      } else if (weapon.waveTransitionProgress > targetProgress) {
-        // Transitioning to idle
-        weapon.waveTransitionProgress = Math.max(weapon.waveTransitionProgress - progressDelta, 0);
+      if (weapon.forceFieldTransitionProgress < targetProgress) {
+        weapon.forceFieldTransitionProgress = Math.min(weapon.forceFieldTransitionProgress + progressDelta, 1);
+      } else if (weapon.forceFieldTransitionProgress > targetProgress) {
+        weapon.forceFieldTransitionProgress = Math.max(weapon.forceFieldTransitionProgress - progressDelta, 0);
       }
 
-      // Interpolate angle based on progress
-      weapon.currentSliceAngle = angleIdle + (angleAttack - angleIdle) * weapon.waveTransitionProgress;
+      // Serialize progress as currentForceFieldRange (0→1)
+      weapon.currentForceFieldRange = weapon.forceFieldTransitionProgress;
     }
   }
+}
+
+// Compute the effective push and pull zone boundaries from transition progress + config
+function getForceFieldZones(config: { forceFieldInnerRange?: number | unknown; forceFieldMiddleRadius?: number | unknown; range: number }, progress: number) {
+  const innerRadius = (config.forceFieldInnerRange as number | undefined) ?? 0;
+  const middleRadius = (config.forceFieldMiddleRadius as number | undefined) ?? config.range;
+  const outerRadius = config.range;
+
+  // Push zone: inner boundary shrinks from middle toward innerRadius
+  const pushInner = middleRadius - (middleRadius - innerRadius) * progress;
+  const pushOuter = middleRadius;
+
+  // Pull zone: outer boundary grows from middle toward outerRadius
+  const pullInner = middleRadius;
+  const pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
+
+  return { innerRadius, middleRadius, outerRadius, pushInner, pushOuter, pullInner, pullOuter };
 }
 
 // Helper: Check if a point is within a pie slice (annular ring between minRadius and maxRadius)
@@ -75,12 +89,8 @@ function isPointInSlice(
   return Math.abs(angleDiff) <= sliceHalfAngle + angularSize;
 }
 
-// Apply wave weapon damage (continuous pie-slice AoE)
-// Wave weapons like Sonic AIM at a specific target (for turret rotation) but deal damage
-// to ALL units and buildings within the pie-slice area, not just the target.
-// The slice expands/contracts based on firing state (see updateWaveWeaponState).
-// Damage and pull are uniform within the slice (no distance scaling).
-export function applyWaveDamage(
+// Apply force field damage (continuous pie-slice AoE with dual push/pull zones)
+export function applyForceFieldDamage(
   world: WorldState,
   dtMs: number,
   _damageSystem: DamageSystem,
@@ -101,145 +111,122 @@ export function applyWaveDamage(
 
     for (const weapon of unit.weapons) {
       const config = weapon.config;
+      if (!config.isForceField) continue;
 
-      // Only process wave weapons
-      if (!config.isWaveWeapon) continue;
+      const progress = weapon.forceFieldTransitionProgress ?? (weapon.currentForceFieldRange ?? 0);
+      if (progress <= 0) continue;
 
-      // Only deal damage when slice angle is greater than 0 (expanding, active, or cooldown)
-      const currentAngle = weapon.currentSliceAngle ?? 0;
-      if (currentAngle <= 0) continue;
+      const zones = getForceFieldZones(config, progress);
 
-      // Wave weapon properties (uniform — no distance scaling)
+      // Overall effective range (union of push and pull zones)
+      const effectiveOuter = Math.max(zones.pushOuter, zones.pullOuter);
+      const effectiveInner = Math.min(zones.pushInner, zones.pullInner);
+
+      if (effectiveOuter <= effectiveInner) continue;
+
       const baseDamagePerFrame = config.damage * dtSec;
-      const basePullStrength = (config.pullPower ?? 0) * KNOCKBACK.SONIC_PULL_MULTIPLIER;
-      const innerRange = (config.waveInnerRange as number | undefined) ?? 0;
+      const basePullStrength = (config.pullPower ?? 0) * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER;
 
-      // Calculate weapon position
+      const sliceAngle = config.forceFieldAngle ?? Math.PI / 4;
+      const sliceHalfAngle = sliceAngle / 2;
+
       const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
       const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
 
-      // Get turret direction
       const turretAngle = weapon.turretRotation;
-      const sliceHalfAngle = currentAngle / 2;
 
-      // PERFORMANCE: Use spatial grid to query only nearby enemies
+      // --- Enemy units ---
       const nearbyUnits = spatialGrid.queryEnemyUnitsInRadius(
-        weaponX, weaponY, weapon.fireRange, sourcePlayerId
+        weaponX, weaponY, effectiveOuter, sourcePlayerId
       );
 
-      // Apply damage and pull to enemy units in the slice
       for (const target of nearbyUnits) {
         if (!target.unit || target.unit.hp <= 0) continue;
-        // Don't affect self
         if (target.id === unit.id) continue;
 
         const targetRadius = target.unit.collisionRadius;
-
-        // Calculate distance to target
         const dx = target.transform.x - weaponX;
         const dy = target.transform.y - weaponY;
         const dist = magnitude(dx, dy);
 
-        // Check if target is in the wave slice (between inner and outer radius)
+        // Check if in overall slice
         if (!isPointInSlice(
           target.transform.x, target.transform.y,
-          weaponX, weaponY,
-          turretAngle,
-          sliceHalfAngle,
-          weapon.fireRange,
-          targetRadius,
-          innerRange
+          weaponX, weaponY, turretAngle, sliceHalfAngle,
+          effectiveOuter, targetRadius, effectiveInner
         )) continue;
 
-        // Apply uniform damage (no distance scaling)
+        // Determine which zone: push (inner to middle) or pull (middle to outer)
+        const inPush = dist < zones.middleRadius && zones.pushOuter > zones.pushInner;
+        const inPull = dist >= zones.middleRadius && zones.pullOuter > zones.pullInner;
+
+        if (!inPush && !inPull) continue;
+
         target.unit.hp -= baseDamagePerFrame;
 
-        // Apply uniform pull force
         if (dist > 0 && forceAccumulator) {
-          // Get target's mass from its body (default to 1 if no physics body)
           const targetMass = (target.body?.matterBody as { mass?: number })?.mass ?? 1;
+          const pullDir = inPush ? 1 : -1; // push outward in inner zone, pull inward in outer zone
 
-          // Add directional force toward wave origin (negate dx/dy for pull direction)
-          // affectedByMass=true so heavier units resist the pull more
           forceAccumulator.addDirectionalForce(
             target.id,
-            -dx,  // direction X (toward wave origin)
-            -dy,  // direction Y (toward wave origin)
-            basePullStrength,
-            targetMass,
-            true,  // heavier units resist pull
-            'wave_pull'
+            pullDir * dx, pullDir * dy,
+            basePullStrength, targetMass,
+            true, 'force_field_pull'
           );
         }
       }
 
-      // PERFORMANCE: Use spatial grid to query only nearby buildings
+      // --- Buildings ---
       const nearbyBuildings = spatialGrid.queryBuildingsInRadius(
-        weaponX, weaponY, weapon.fireRange
+        weaponX, weaponY, effectiveOuter
       );
 
-      // Apply damage to buildings in the slice
       for (const building of nearbyBuildings) {
         if (!building.building || building.building.hp <= 0) continue;
-        // Don't damage friendly buildings
         if (building.ownership?.playerId === sourcePlayerId) continue;
 
-        // Approximate building radius from dimensions
         const buildingRadius = Math.max(building.building.width, building.building.height) / 2;
 
-        // Check if building is in the wave slice (between inner and outer radius)
         if (!isPointInSlice(
           building.transform.x, building.transform.y,
-          weaponX, weaponY,
-          turretAngle,
-          sliceHalfAngle,
-          weapon.fireRange,
-          buildingRadius,
-          innerRange
+          weaponX, weaponY, turretAngle, sliceHalfAngle,
+          effectiveOuter, buildingRadius, effectiveInner
         )) continue;
 
-        // Apply uniform damage to building (no distance scaling)
         building.building.hp -= baseDamagePerFrame;
       }
 
-      // Pull enemy projectiles within the wave slice
-      // Heavier projectiles resist the pull more (force / mass)
+      // --- Projectiles ---
       for (const projEntity of world.getProjectiles()) {
         const proj = projEntity.projectile;
         if (!proj) continue;
-        // Only affect traveling projectiles
         if (proj.projectileType !== 'traveling') continue;
-        // Only affect enemy projectiles
         if (proj.ownerId === sourcePlayerId) continue;
 
         const projRadius = proj.config.projectileRadius ?? 5;
 
-        // Check if projectile is in the wave slice
         if (!isPointInSlice(
           projEntity.transform.x, projEntity.transform.y,
-          weaponX, weaponY,
-          turretAngle,
-          sliceHalfAngle,
-          weapon.fireRange,
-          projRadius,
-          innerRange
+          weaponX, weaponY, turretAngle, sliceHalfAngle,
+          effectiveOuter, projRadius, effectiveInner
         )) continue;
 
         const dx = projEntity.transform.x - weaponX;
         const dy = projEntity.transform.y - weaponY;
         const dist = magnitude(dx, dy);
 
-        // Uniform pull strength (no distance scaling), inversely with projectile mass
+        const inPush = dist < zones.middleRadius;
+        const pullDir = inPush ? 1 : -1;
+
         const projMass = (proj.config.projectileMass ?? 1) * PROJECTILE_MASS_MULTIPLIER;
         const pullAccel = basePullStrength / projMass;
 
-        // Apply pull as velocity delta toward wave origin
         const dirX = dist > 0 ? dx / dist : 0;
         const dirY = dist > 0 ? dy / dist : 0;
-        proj.velocityX += -dirX * pullAccel * dtSec;
-        proj.velocityY += -dirY * pullAccel * dtSec;
+        proj.velocityX += pullDir * dirX * pullAccel * dtSec;
+        proj.velocityY += pullDir * dirY * pullAccel * dtSec;
 
-        // Update projectile rotation to match new velocity direction
         projEntity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
 
         velocityUpdates.push({

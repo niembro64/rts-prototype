@@ -16,8 +16,8 @@ export { updateAutoTargeting, updateWeaponCooldowns, updateWeaponFiringState } f
 // Laser sounds
 export { updateLaserSounds } from './laserSoundSystem';
 
-// Wave weapons
-export { updateWaveWeaponState, applyWaveDamage } from './waveWeapon';
+// Force field weapons
+export { updateForceFieldState, applyForceFieldDamage } from './forceFieldWeapon';
 
 // Projectiles
 export { fireWeapons, updateProjectiles, checkProjectileCollisions, removeDeadUnits } from './projectileSystem';

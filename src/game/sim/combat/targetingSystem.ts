@@ -8,9 +8,12 @@ import { spatialGrid } from '../SpatialGrid';
 // Update auto-targeting for all units
 // Each weapon independently finds its own target using its own seeRange
 // Targeting mode determines behavior:
-// - 'nearest': Always switch to closest enemy (searches within seeRange)
-// - 'sticky': Keep current target until it dies or leaves seeRange,
-//             then search for new target within fightstopRange (tighter)
+// - 'nearest': Always switch to closest enemy (searches within seeRange). isLocked always true.
+// - 'sticky': Two-phase targeting with lockRange between fireRange and seeRange.
+//   Phase 1 (pre-aim): Target acquired at seeRange, turret turns, but weapon won't fire (isLocked=false).
+//   Phase 2 (locked): Target enters lockRange → isLocked=true. Weapon will fire when target reaches fireRange.
+//   Lock breaks when target leaves lockRange. Target dropped entirely when it leaves seeRange.
+//   When locked on target outside fireRange, switches to alternative within fireRange if available.
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
 export function updateAutoTargeting(world: WorldState): void {
   for (const unit of world.getUnits()) {
@@ -27,95 +30,135 @@ export function updateAutoTargeting(world: WorldState): void {
       const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
       const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
 
-      // Track current target distance for comparison
-      let currentTargetDist = Infinity;
-      let hasValidTarget = false;
+      // --- Nearest mode: unchanged, always targets closest in seeRange ---
+      if (weapon.targetingMode === 'nearest') {
+        weapon.isLocked = true; // Nearest mode always fires when in range
+        let currentTargetDist = Infinity;
 
-      // Check if current target is still valid and in range
-      if (weapon.targetEntityId !== null) {
-        const target = world.getEntity(weapon.targetEntityId);
+        // Validate current target
+        if (weapon.targetEntityId !== null) {
+          const target = world.getEntity(weapon.targetEntityId);
+          let targetIsValid = false;
+          let targetRadius = 0;
+          if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.collisionRadius; }
+          else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
-        let targetIsValid = false;
-        let targetRadius = 0;
-
-        if (target?.unit && target.unit.hp > 0) {
-          targetIsValid = true;
-          targetRadius = target.unit.collisionRadius;
-        } else if (target?.building && target.building.hp > 0) {
-          targetIsValid = true;
-          targetRadius = getTargetRadius(target);
-        }
-
-        if (targetIsValid && target) {
-          const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
-          const effectiveSeeRange = weapon.seeRange + targetRadius;
-
-          // Target still valid and in seeRange
-          if (dist <= effectiveSeeRange) {
-            currentTargetDist = dist;
-            hasValidTarget = true;
-
-            // Sticky mode: keep current target, don't search for closer
-            if (weapon.targetingMode === 'sticky') {
-              continue; // Skip to next weapon
+          if (targetIsValid && target) {
+            const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
+            if (dist <= weapon.seeRange + targetRadius) {
+              currentTargetDist = dist;
+            } else {
+              weapon.targetEntityId = null;
             }
-            // Nearest mode: continue to search for closer targets below
           } else {
-            // Target out of seeRange, clear it
             weapon.targetEntityId = null;
           }
-        } else {
-          // Target invalid (dead or gone), clear it
-          weapon.targetEntityId = null;
-        }
-      }
-
-      // Search for closest enemy using SPATIAL GRID (O(k) instead of O(n))
-      // - Nearest mode: search within seeRange, switch if closer
-      // - Sticky mode: search within fightstopRange when acquiring new target (tighter search area)
-      const searchRange = (weapon.targetingMode === 'sticky' && !hasValidTarget)
-        ? weapon.fightstopRange
-        : weapon.seeRange;
-
-      // Use spatial grid for efficient range query
-      // Note: Returns reused array - don't store reference
-      const nearbyEnemies = spatialGrid.queryEnemyEntitiesInRadius(
-        weaponX, weaponY, searchRange, playerId
-      );
-
-      let closestEnemy: Entity | null = null;
-      let closestDist = Infinity;
-
-      for (const enemy of nearbyEnemies) {
-        let enemyRadius = 0;
-
-        if (enemy.unit) {
-          enemyRadius = enemy.unit.collisionRadius;
-        } else if (enemy.building) {
-          enemyRadius = getTargetRadius(enemy);
         }
 
-        const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
-        const effectiveSearchRange = searchRange + enemyRadius;
-
-        if (dist <= effectiveSearchRange && dist < closestDist) {
-          closestDist = dist;
-          closestEnemy = enemy;
+        // Search for closer target
+        const nearbyEnemies = spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weapon.seeRange, playerId);
+        let closestEnemy: Entity | null = null;
+        let closestDist = Infinity;
+        for (const enemy of nearbyEnemies) {
+          const enemyRadius = enemy.unit ? enemy.unit.collisionRadius : (enemy.building ? getTargetRadius(enemy) : 0);
+          const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
+          if (dist <= weapon.seeRange + enemyRadius && dist < closestDist) {
+            closestDist = dist;
+            closestEnemy = enemy;
+          }
         }
-      }
-
-      // Acquire target based on mode
-      if (weapon.targetingMode === 'sticky') {
-        // Sticky: only set target if we don't have one
-        if (!hasValidTarget && closestEnemy) {
-          weapon.targetEntityId = closestEnemy.id;
-        }
-      } else {
-        // Nearest: switch to closer target if found
         if (closestEnemy && closestDist < currentTargetDist) {
           weapon.targetEntityId = closestEnemy.id;
         }
+        continue;
       }
+
+      // --- Sticky mode: two-phase targeting with lockRange ---
+
+      // Step 1: Validate current target and update lock state
+      if (weapon.targetEntityId !== null) {
+        const target = world.getEntity(weapon.targetEntityId);
+        let targetIsValid = false;
+        let targetRadius = 0;
+        if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.collisionRadius; }
+        else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
+
+        if (!targetIsValid || !target) {
+          // Target dead or gone — clear everything
+          weapon.targetEntityId = null;
+          weapon.isLocked = false;
+        } else {
+          const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
+          const effectiveSeeRange = weapon.seeRange + targetRadius;
+          const effectiveLockRange = weapon.lockRange + targetRadius;
+          const effectiveFireRange = weapon.fireRange + targetRadius;
+
+          if (dist > effectiveSeeRange) {
+            // Target left seeRange — drop entirely
+            weapon.targetEntityId = null;
+            weapon.isLocked = false;
+          } else if (dist > effectiveLockRange) {
+            // Target in seeRange but outside lockRange — keep for pre-aim, clear lock
+            weapon.isLocked = false;
+          } else if (dist <= effectiveFireRange) {
+            // Target in fireRange — happy path, ensure locked
+            weapon.isLocked = true;
+            continue; // No need to search for alternatives
+          } else {
+            // Target in lockRange but outside fireRange — hold lock
+            // But search for alternative in fireRange below
+            weapon.isLocked = true;
+          }
+        }
+      }
+
+      // Step 2: Search for targets
+      // If locked on target at lockRange (but outside fireRange), look for alternative in fireRange
+      // If no target or no lock, find nearest in seeRange for pre-aim
+      const needFireRangeAlternative = weapon.isLocked && weapon.targetEntityId !== null;
+
+      const nearbyEnemies = spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weapon.seeRange, playerId);
+
+      let closestInSeeRange: Entity | null = null;
+      let closestInSeeRangeDist = Infinity;
+      let closestInFireRange: Entity | null = null;
+      let closestInFireRangeDist = Infinity;
+      let closestInLockRange: Entity | null = null;
+      let closestInLockRangeDist = Infinity;
+
+      for (const enemy of nearbyEnemies) {
+        const enemyRadius = enemy.unit ? enemy.unit.collisionRadius : (enemy.building ? getTargetRadius(enemy) : 0);
+        const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
+
+        if (dist <= weapon.seeRange + enemyRadius && dist < closestInSeeRangeDist) {
+          closestInSeeRangeDist = dist;
+          closestInSeeRange = enemy;
+        }
+        if (dist <= weapon.lockRange + enemyRadius && dist < closestInLockRangeDist) {
+          closestInLockRangeDist = dist;
+          closestInLockRange = enemy;
+        }
+        if (dist <= weapon.fireRange + enemyRadius && dist < closestInFireRangeDist) {
+          closestInFireRangeDist = dist;
+          closestInFireRange = enemy;
+        }
+      }
+
+      if (needFireRangeAlternative && closestInFireRange) {
+        // Locked on target outside fireRange, but found alternative in fireRange — switch
+        weapon.targetEntityId = closestInFireRange.id;
+        weapon.isLocked = true;
+      } else if (!weapon.isLocked) {
+        // No lock — find nearest for pre-aim, lock if within lockRange
+        if (closestInLockRange) {
+          weapon.targetEntityId = closestInLockRange.id;
+          weapon.isLocked = true;
+        } else if (closestInSeeRange) {
+          weapon.targetEntityId = closestInSeeRange.id;
+          weapon.isLocked = false; // Pre-aim only
+        }
+      }
+      // If locked and no fire-range alternative, keep current lock (already set above)
     }
   }
 }
@@ -159,6 +202,9 @@ export function updateWeaponFiringState(world: WorldState): void {
       // Default to not firing and not in fightstop range
       weapon.isFiring = false;
       weapon.inFightstopRange = false;
+
+      // Only locked weapons can fire (pre-aiming weapons don't fire)
+      if (!weapon.isLocked) continue;
 
       // Check if weapon has a valid target
       if (weapon.targetEntityId === null) continue;

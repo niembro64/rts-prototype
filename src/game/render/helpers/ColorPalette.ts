@@ -42,6 +42,31 @@ export function getColorDark(baseColor: number): number {
 }
 
 /**
+ * Tint a color toward white (amount > 0) or black (amount < 0).
+ * amount in range [-1, 1]. Typical subtle tint: ±0.15
+ */
+export function tintColor(color: number, amount: number): number {
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8) & 0xff;
+  const b = color & 0xff;
+  const t = Math.abs(amount);
+  if (amount > 0) {
+    // Blend toward white
+    return (
+      (Math.round(r + (255 - r) * t) << 16) |
+      (Math.round(g + (255 - g) * t) << 8) |
+      Math.round(b + (255 - b) * t)
+    );
+  }
+  // Blend toward black
+  return (
+    (Math.round(r * (1 - t)) << 16) |
+    (Math.round(g * (1 - t)) << 8) |
+    Math.round(b * (1 - t))
+  );
+}
+
+/**
  * Get projectile color (bright version of base color for visibility)
  */
 export function getProjectileColor(baseColor: number): number {

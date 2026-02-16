@@ -119,8 +119,10 @@ export const COLORS = {
   SPRAY_HEAL: 0x4488ff, // Blue for healing
 
   // Range circles
-  VISION_RANGE: 0xffff88, // Yellow for vision range
-  WEAPON_RANGE: 0xff4444, // Red for weapon range
+  VISION_RANGE: 0xffff88, // Yellow for vision/see range
+  LOCK_RANGE: 0x44aaff, // Blue for lock range (sticky commitment)
+  WEAPON_RANGE: 0xff4444, // Red for fire range
+  FIGHTSTOP_RANGE: 0xff8844, // Orange for fightstop range
   BUILD_RANGE: 0x44ff44, // Green for build range
 } as const;
 

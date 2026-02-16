@@ -116,7 +116,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     weaponSeeRange: 400,
   },
   tarantula: {
-    weaponId: 'sonic',
+    weaponId: 'forceField',
     name: 'Tarantula',
     energyCost: UNIT_STATS.tarantula.baseCost * COST_MULTIPLIER,
     maxBuildRate: UNIT_STATS.tarantula.buildRate,

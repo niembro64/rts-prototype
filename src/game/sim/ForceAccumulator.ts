@@ -8,7 +8,7 @@ import { magnitude } from '../math';
 export interface ForceContribution {
   fx: number;  // Force in X direction (Newtons-ish, units depend on mass scale)
   fy: number;  // Force in Y direction
-  source: string;  // For debugging: 'steering', 'wave_pull', 'knockback', 'collision_avoidance'
+  source: string;  // For debugging: 'steering', 'force_field_pull', 'knockback', 'collision_avoidance'
 }
 
 /**

@@ -7,7 +7,7 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
-import { DEFAULT_NETWORK_UPDATES_PER_SECOND, NETWORK_UPDATE_RATE_OPTIONS, MAP_SETTINGS } from '../config';
+import { DEFAULT_NETWORK_UPDATES_PER_SECOND, NETWORK_UPDATE_RATE_OPTIONS, MAP_SETTINGS, SHOW_LOBBY_ON_STARTUP } from '../config';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
@@ -18,8 +18,12 @@ import {
   getEffectiveQuality,
   getRenderMode,
   setRenderMode,
+  getRangeToggle,
+  setRangeToggle,
+  RANGE_TYPES,
   type GraphicsQuality,
   type RenderMode,
+  type RangeType,
 } from '../game/render/graphicsSettings';
 import { audioManager } from '../game/audio/AudioManager';
 
@@ -60,7 +64,7 @@ let backgroundServer: GameServer | null = null;
 
 // Lobby state
 const showLobby = ref(true);
-const spectateMode = ref(false); // When true, hide lobby to spectate background battle
+const spectateMode = ref(!SHOW_LOBBY_ON_STARTUP); // When true, hide lobby to spectate background battle
 const isHost = ref(false);
 const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
@@ -75,6 +79,13 @@ const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(getEffectiveQuality());
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioEnabled = ref(!audioManager.muted);
+const rangeToggles = reactive<Record<RangeType, boolean>>({
+  see: getRangeToggle('see'),
+  lock: getRangeToggle('lock'),
+  fire: getRangeToggle('fire'),
+  fightstop: getRangeToggle('fightstop'),
+  build: getRangeToggle('build'),
+});
 
 // FPS and zoom tracking (Phaser's smoothed values)
 const meanFPS = ref(0);
@@ -360,6 +371,12 @@ function changeRenderMode(mode: RenderMode): void {
 function setAudioEnabled(enabled: boolean): void {
   audioManager.setMuted(!enabled);
   audioEnabled.value = enabled;
+}
+
+function toggleRange(type: RangeType): void {
+  const newValue = !rangeToggles[type];
+  setRangeToggle(type, newValue);
+  rangeToggles[type] = newValue;
 }
 
 function updateFPSStats(): void {
@@ -718,6 +735,35 @@ onUnmounted(() => {
           >
             {{ opt.label }}
           </button>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">Ranges:</span>
+        <div class="button-group">
+          <button
+            class="control-btn"
+            :class="{ active: rangeToggles.see }"
+            @click="toggleRange('see')"
+          >See</button>
+          <button
+            class="control-btn"
+            :class="{ active: rangeToggles.lock }"
+            @click="toggleRange('lock')"
+          >Lock</button>
+          <button
+            class="control-btn"
+            :class="{ active: rangeToggles.fire }"
+            @click="toggleRange('fire')"
+          >Fire</button>
+          <button
+            class="control-btn"
+            :class="{ active: rangeToggles.fightstop }"
+            @click="toggleRange('fightstop')"
+          >Stop</button>
+          <button
+            class="control-btn"
+            :class="{ active: rangeToggles.build }"
+            @click="toggleRange('build')"
+          >Build</button>
         </div>
       </div>
     </div>

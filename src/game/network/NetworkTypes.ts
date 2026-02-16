@@ -59,7 +59,7 @@ export interface NetworkProjectileDespawn {
   id: number;
 }
 
-// Projectile velocity update - sent when a projectile's velocity changes (e.g. sonic pull)
+// Projectile velocity update - sent when a projectile's velocity changes (e.g. force field pull)
 // Includes server position so clients can correct dead-reckoned drift
 export interface NetworkProjectileVelocityUpdate {
   id: number;
@@ -111,13 +111,14 @@ export interface NetworkAction {
 }
 
 // Weapon data for network sync (supports multi-weapon units)
-// Range constraint: fightstopRange < fireRange < seeRange
+// Range constraint: fightstopRange < fireRange < lockRange < seeRange
 export interface NetworkWeapon {
   configId: string;
   targetId?: number;
   targetingMode?: 'nearest' | 'sticky';  // How weapon acquires/keeps targets
   returnToForward?: boolean;             // Whether turret returns to forward when no target
   seeRange: number;
+  lockRange: number;       // Sticky lock commitment range (between fireRange and seeRange)
   fireRange: number;
   fightstopRange: number;  // Unit stops in fight mode when enemy within this range
   turretRotation: number;
@@ -128,7 +129,7 @@ export interface NetworkWeapon {
   offsetY: number;
   isFiring: boolean;       // Whether weapon is actively firing at target in range
   inFightstopRange: boolean; // Whether target is within fightstop range
-  currentSliceAngle?: number;  // Dynamic slice angle for wave weapons
+  currentForceFieldRange?: number;  // Dynamic outer radius for force field weapons
 }
 
 export interface NetworkEntity {

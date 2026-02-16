@@ -2,8 +2,8 @@
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
-import { drawPolygon } from '../helpers';
-import { renderWaveEffect } from '../effects';
+import { drawPolygon, tintColor } from '../helpers';
+import { renderForceFieldEffect } from '../effects';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
 export function drawArachnidUnit(
@@ -173,14 +173,14 @@ export function drawArachnidUnit(
     graphics.fillStyle(base, 1);
     drawPolygon(graphics, hexCenterX, hexCenterY, hexRadius, 6, bodyRot + hexRotationOffset);
 
-    // Central sonic emitter orb
+    // Central force field emitter orb
     graphics.fillStyle(light, 1);
     graphics.fillCircle(hexCenterX, hexCenterY, r * 0.3);
     graphics.fillStyle(COLORS.WHITE, 1);
     graphics.fillCircle(hexCenterX, hexCenterY, r * 0.15);
   }
 
-  // Turret pass - 6 beam emitters at hexagon corners + sonic wave at center
+  // Turret pass - 6 beam emitters at hexagon corners + force field at center
   if (!skipTurrets) {
     const weapons = entity.weapons ?? [];
     const hexRadius = r * 0.65;
@@ -209,7 +209,7 @@ export function drawArachnidUnit(
 
     // Center beam emitter (weapon index 6)
     const centerBeamWeapon = weapons[6];
-    if (centerBeamWeapon && !centerBeamWeapon.config.isWaveWeapon) {
+    if (centerBeamWeapon && !centerBeamWeapon.config.isForceField) {
       const hexCenterX = x + cos * hexForwardOffset;
       const hexCenterY = y + sin * hexForwardOffset;
       const centerTurret = centerBeamWeapon.turretRotation ?? bodyRot;
@@ -224,27 +224,42 @@ export function drawArachnidUnit(
       graphics.lineBetween(hexCenterX, hexCenterY, centerBeamEndX, centerBeamEndY);
     }
 
-    // Sonic wave weapon at center (weapon index 7)
-    const sonicWeapon = weapons[7];
-    if (sonicWeapon?.config.isWaveWeapon) {
-      const hexCenterX = x + cos * hexForwardOffset;
-      const hexCenterY = y + sin * hexForwardOffset;
-      const sliceAngle = sonicWeapon.currentSliceAngle ?? Math.PI / 16;
-      const waveRange = sonicWeapon.fireRange ?? 150;
-      const turretAngle = sonicWeapon.turretRotation;
+    // Force field weapon at center (index 7) — renders both push and pull zones
+    const hexCenterX = x + cos * hexForwardOffset;
+    const hexCenterY = y + sin * hexForwardOffset;
+    for (let i = 7; i < weapons.length; i++) {
+      const weapon = weapons[i];
+      if (!weapon?.config.isForceField) continue;
 
-      const waveInnerRange = (sonicWeapon.config.waveInnerRange as number | undefined) ?? 0;
-      if (sliceAngle > 0) {
-        renderWaveEffect(
-          graphics,
-          hexCenterX,
-          hexCenterY,
-          turretAngle,
-          sliceAngle,
-          waveRange,
-          light,
-          base,
-          waveInnerRange
+      const progress = weapon.currentForceFieldRange ?? 0;
+      if (progress <= 0) continue;
+
+      const innerRadius = (weapon.config.forceFieldInnerRange as number | undefined) ?? 0;
+      const middleRadius = (weapon.config.forceFieldMiddleRadius as number | undefined) ?? weapon.fireRange;
+      const outerRadius = weapon.fireRange;
+
+      const turretAngle = weapon.turretRotation;
+      const sliceAngle = weapon.config.forceFieldAngle ?? Math.PI / 4;
+
+      // Push zone: grows inward from middleRadius toward innerRadius
+      const pushInner = middleRadius - (middleRadius - innerRadius) * progress;
+      const pushOuter = middleRadius;
+      if (pushOuter > pushInner) {
+        renderForceFieldEffect(
+          graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pushOuter,
+          tintColor(light, 0.4), tintColor(base, 0.4),
+          pushInner, true
+        );
+      }
+
+      // Pull zone: grows outward from middleRadius toward outerRadius
+      const pullInner = middleRadius;
+      const pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
+      if (pullOuter > pullInner) {
+        renderForceFieldEffect(
+          graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pullOuter,
+          tintColor(light, -0.4), tintColor(base, -0.4),
+          pullInner, false
         );
       }
     }

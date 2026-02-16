@@ -1,12 +1,12 @@
-// Sonic unit renderer - 8-legged tarantula with central wave emitter orb
+// Force field unit renderer - 8-legged tarantula with central force field emitter orb
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
-import { drawPolygon } from '../helpers';
-import { renderWaveEffect } from '../effects';
+import { drawPolygon, tintColor } from '../helpers';
+import { renderForceFieldEffect } from '../effects';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
-export function drawSonicUnit(
+export function drawForceFieldUnit(
   ctx: UnitRenderContext,
   legs: ArachnidLeg[]
 ): void {
@@ -101,28 +101,43 @@ export function drawSonicUnit(
     graphics.fillCircle(x, y, r * 0.15);
   }
 
-  // Turret pass - wave effect emanating from central orb
+  // Turret pass - force field effect emanating from central orb
   if (!skipTurrets) {
     const weapons = entity.weapons ?? [];
     for (const weapon of weapons) {
-      const sliceAngle = weapon.currentSliceAngle ?? 0;
-      if (sliceAngle <= 0) continue;
+      if (!weapon.config.isForceField) continue;
+
+      const progress = weapon.currentForceFieldRange ?? 0;
+      if (progress <= 0) continue;
+
+      const innerRadius = (weapon.config.forceFieldInnerRange as number | undefined) ?? 0;
+      const middleRadius = (weapon.config.forceFieldMiddleRadius as number | undefined) ?? weapon.fireRange;
+      const outerRadius = weapon.fireRange;
 
       const turretRot = weapon.turretRotation;
-      const maxRange = weapon.fireRange;
-      const innerRange = (weapon.config.waveInnerRange as number | undefined) ?? 0;
+      const sliceAngle = weapon.config.forceFieldAngle ?? Math.PI / 4;
 
-      renderWaveEffect(
-        graphics,
-        x,
-        y,
-        turretRot,
-        sliceAngle,
-        maxRange,
-        light,
-        base,
-        innerRange
-      );
+      // Push zone: grows inward from middleRadius toward innerRadius
+      const pushInner = middleRadius - (middleRadius - innerRadius) * progress;
+      const pushOuter = middleRadius;
+      if (pushOuter > pushInner) {
+        renderForceFieldEffect(
+          graphics, x, y, turretRot, sliceAngle, pushOuter,
+          tintColor(light, 0.4), tintColor(base, 0.4),
+          pushInner, true
+        );
+      }
+
+      // Pull zone: grows outward from middleRadius toward outerRadius
+      const pullInner = middleRadius;
+      const pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
+      if (pullOuter > pullInner) {
+        renderForceFieldEffect(
+          graphics, x, y, turretRot, sliceAngle, pullOuter,
+          tintColor(light, -0.4), tintColor(base, -0.4),
+          pullInner, false
+        );
+      }
     }
   }
 }

@@ -145,7 +145,7 @@ export class ClientViewState {
       }
     }
 
-    // Process projectile velocity updates (sonic pull deflection)
+    // Process projectile velocity updates (force field pull deflection)
     // Snap position to server's authoritative value to correct dead-reckoning drift
     if (state.projectileVelocityUpdates) {
       for (const vu of state.projectileVelocityUpdates) {
@@ -237,7 +237,7 @@ export class ClientViewState {
         for (let i = 0; i < server.weapons.length && i < entity.weapons.length; i++) {
           entity.weapons[i].targetEntityId = server.weapons[i].targetId ?? null;
           entity.weapons[i].isFiring = server.weapons[i].isFiring;
-          entity.weapons[i].currentSliceAngle = server.weapons[i].currentSliceAngle;
+          entity.weapons[i].currentForceFieldRange = server.weapons[i].currentForceFieldRange;
         }
       }
 

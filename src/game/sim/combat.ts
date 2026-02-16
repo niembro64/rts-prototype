@@ -27,9 +27,9 @@ export {
 } from './combat/laserSoundSystem';
 
 export {
-  updateWaveWeaponState,
-  applyWaveDamage,
-} from './combat/waveWeapon';
+  updateForceFieldState,
+  applyForceFieldDamage,
+} from './combat/forceFieldWeapon';
 
 export {
   fireWeapons,

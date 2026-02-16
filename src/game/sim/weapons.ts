@@ -124,22 +124,23 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     piercing: true,
   },
 
-  // Sonic - Continuous pie-slice wave weapon (Tarantula's weapon)
-  // Damages all enemies within the slice, no projectiles created
-  sonic: {
-    id: 'sonic',
-    audioId: 'sonic-wave',
-    damage: WEAPON_STATS.sonic.damage,
-    range: WEAPON_STATS.sonic.range,
-    waveInnerRange: WEAPON_STATS.sonic.waveInnerRange,
-    cooldown: WEAPON_STATS.sonic.cooldown,
-    turretTurnAccel: WEAPON_STATS.sonic.turretTurnAccel,
-    turretDrag: WEAPON_STATS.sonic.turretDrag,
-    waveAngleIdle: WEAPON_STATS.sonic.waveAngleIdle,
-    waveAngleAttack: WEAPON_STATS.sonic.waveAngleAttack,
-    waveTransitionTime: WEAPON_STATS.sonic.waveTransitionTime,
-    pullPower: WEAPON_STATS.sonic.pullPower,
-    isWaveWeapon: true,
+  // Force field - Dual push/pull zones (Tarantula)
+  // Inner zone (innerRadius→middleRadius) pushes outward
+  // Outer zone (middleRadius→outerRadius) pulls inward
+  forceField: {
+    id: 'forceField',
+    audioId: 'force-field',
+    damage: WEAPON_STATS.forceField.damage,
+    range: WEAPON_STATS.forceField.forceFieldOuterRadius,
+    forceFieldInnerRange: WEAPON_STATS.forceField.forceFieldInnerRadius,
+    forceFieldMiddleRadius: WEAPON_STATS.forceField.forceFieldMiddleRadius,
+    cooldown: WEAPON_STATS.forceField.cooldown,
+    turretTurnAccel: WEAPON_STATS.forceField.turretTurnAccel,
+    turretDrag: WEAPON_STATS.forceField.turretDrag,
+    forceFieldAngle: WEAPON_STATS.forceField.forceFieldAngle,
+    forceFieldTransitionTime: WEAPON_STATS.forceField.forceFieldTransitionTime,
+    pullPower: WEAPON_STATS.forceField.pullPower,
+    isForceField: true,
     color: 0xffffff,
   },
 
@@ -171,21 +172,21 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
     color: 0xffffff,
   },
 
-  // Widow's sonic wave - larger and wider than insect's wave
-  widowSonic: {
-    id: 'widowSonic',
-    audioId: 'sonic-wave',
-    damage: WEAPON_STATS.widowSonic.damage,
-    range: WEAPON_STATS.widowSonic.range,
-    waveInnerRange: WEAPON_STATS.widowSonic.waveInnerRange,
-    cooldown: WEAPON_STATS.widowSonic.cooldown,
-    turretTurnAccel: WEAPON_STATS.widowSonic.turretTurnAccel,
-    turretDrag: WEAPON_STATS.widowSonic.turretDrag,
-    waveAngleIdle: WEAPON_STATS.widowSonic.waveAngleIdle,
-    waveAngleAttack: WEAPON_STATS.widowSonic.waveAngleAttack,
-    waveTransitionTime: WEAPON_STATS.widowSonic.waveTransitionTime,
-    pullPower: WEAPON_STATS.widowSonic.pullPower,
-    isWaveWeapon: true,
+  // Widow force field - Dual push/pull zones
+  widowForceField: {
+    id: 'widowForceField',
+    audioId: 'force-field',
+    damage: WEAPON_STATS.widowForceField.damage,
+    range: WEAPON_STATS.widowForceField.forceFieldOuterRadius,
+    forceFieldInnerRange: WEAPON_STATS.widowForceField.forceFieldInnerRadius,
+    forceFieldMiddleRadius: WEAPON_STATS.widowForceField.forceFieldMiddleRadius,
+    cooldown: WEAPON_STATS.widowForceField.cooldown,
+    turretTurnAccel: WEAPON_STATS.widowForceField.turretTurnAccel,
+    turretDrag: WEAPON_STATS.widowForceField.turretDrag,
+    forceFieldAngle: WEAPON_STATS.widowForceField.forceFieldAngle,
+    forceFieldTransitionTime: WEAPON_STATS.widowForceField.forceFieldTransitionTime,
+    pullPower: WEAPON_STATS.widowForceField.pullPower,
+    isForceField: true,
     color: 0xffffff,
   },
 };

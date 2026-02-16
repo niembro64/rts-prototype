@@ -54,7 +54,7 @@ export interface ProjectileDespawnEvent {
   id: EntityId;
 }
 
-// Projectile velocity update event - emitted when a projectile's velocity changes (e.g. sonic pull)
+// Projectile velocity update event - emitted when a projectile's velocity changes (e.g. force field pull)
 // Includes position so clients can correct dead-reckoned drift
 export interface ProjectileVelocityUpdateEvent {
   id: EntityId;

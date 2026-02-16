@@ -72,8 +72,10 @@ function createUnitFromNetwork(
       targetingMode: nw.targetingMode ?? 'nearest',
       returnToForward: nw.returnToForward ?? true,
       seeRange: nw.seeRange,
+      lockRange: nw.lockRange,
       fireRange: nw.fireRange,
       fightstopRange: nw.fightstopRange,
+      isLocked: false, // Client doesn't use isLocked (server-only state)
       turretRotation: nw.turretRotation,
       turretAngularVelocity: nw.turretAngularVelocity,
       turretTurnAccel: nw.turretTurnAccel,
@@ -82,7 +84,7 @@ function createUnitFromNetwork(
       offsetY: nw.offsetY,
       isFiring: nw.isFiring,
       inFightstopRange: nw.inFightstopRange,
-      currentSliceAngle: nw.currentSliceAngle,
+      currentForceFieldRange: nw.currentForceFieldRange,
     }));
   }
 

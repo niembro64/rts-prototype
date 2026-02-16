@@ -9,8 +9,8 @@ import {
   updateWeaponFiringState,
   updateLaserSounds,
   fireWeapons,
-  updateWaveWeaponState,
-  applyWaveDamage,
+  updateForceFieldState,
+  applyForceFieldDamage,
   updateProjectiles,
   checkProjectileCollisions,
   type AudioEvent,
@@ -131,6 +131,12 @@ export class Simulation {
   update(deltaMs: number): void {
     this.accumulator += deltaMs;
 
+    // Cap accumulator to prevent runaway catch-up loops (max ~10 frames behind)
+    const MAX_ACCUMULATOR = FIXED_TIMESTEP * 10;
+    if (this.accumulator > MAX_ACCUMULATOR) {
+      this.accumulator = MAX_ACCUMULATOR;
+    }
+
     // Process fixed timesteps
     while (this.accumulator >= FIXED_TIMESTEP) {
       this.fixedUpdate(FIXED_TIMESTEP);
@@ -191,7 +197,7 @@ export class Simulation {
     // Sync transforms from Matter bodies
     this.syncTransformsFromBodies();
 
-    // Update combat systems (adds external forces like wave pull)
+    // Update combat systems (adds external forces like force field pull)
     this.updateCombat(dtMs);
 
     // Finalize force accumulator (sums all contributions)
@@ -278,13 +284,13 @@ export class Simulation {
       this.pendingAudioEvents.push(event);
     }
 
-    // Update wave weapon state (phase transitions and dynamic slice angle)
-    updateWaveWeaponState(this.world, dtMs);
+    // Update force field state (range transitions)
+    updateForceFieldState(this.world, dtMs);
 
-    // Apply wave weapon damage (continuous AoE for sonic units)
-    // Pass force accumulator for wave pull effect
-    const waveVelocityUpdates = applyWaveDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
-    for (const event of waveVelocityUpdates) {
+    // Apply force field damage (continuous AoE for force field units)
+    // Pass force accumulator for force field pull effect
+    const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
+    for (const event of forceFieldVelocityUpdates) {
       this.pendingProjectileVelocityUpdates.push(event);
     }
 

@@ -10,7 +10,7 @@ import {
   DEFAULT_TURRET_TURN_ACCEL,
   DEFAULT_TURRET_DRAG,
   SEE_RANGE_MULTIPLIER,
-  SEE_RANGE_MULTIPLIER_STICKY,
+  LOCK_RANGE_MULTIPLIER,
   FIGHTSTOP_RANGE_MULTIPLIER,
 } from '../../config';
 
@@ -47,7 +47,7 @@ export interface UnitDefinition {
 
 // Get targeting mode for a unit type
 // Looks up from UNIT_TARGETING_MODES config, defaults to 'nearest'
-function getTargetingMode(unitId: string, weaponType?: 'beam' | 'centerBeam' | 'sonic'): TargetingMode {
+function getTargetingMode(unitId: string, weaponType?: 'beam' | 'centerBeam' | 'forceField'): TargetingMode {
   const unitModes = UNIT_TARGETING_MODES[unitId as keyof typeof UNIT_TARGETING_MODES];
   if (!unitModes) return 'nearest';
 
@@ -86,15 +86,14 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   const weaponConfig = getWeaponConfig(definition.weaponType);
   const fireRange = weaponConfig.range;
   const fightstopRange = fireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const lockRange = fireRange * LOCK_RANGE_MULTIPLIER;
   // Get turret acceleration physics values from weapon config, or use defaults
   const turretTurnAccel = weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const turretDrag = weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
   // Get targeting mode and return-to-forward from config
   const targetingMode = getTargetingMode(definition.id);
   const returnToForward = getReturnToForward(definition.id);
-  // Sticky weapons use smaller seeRange to avoid chasing distant targets
-  const seeRangeMultiplier = targetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
-  const seeRange = fireRange * seeRangeMultiplier;
+  const seeRange = fireRange * SEE_RANGE_MULTIPLIER;
 
   return [{
     config: { ...weaponConfig },
@@ -103,8 +102,10 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
     targetingMode,
     returnToForward,
     seeRange,
+    lockRange,
     fireRange,
     fightstopRange,
+    isLocked: false,
     turretRotation: 0,
     turretAngularVelocity: 0,
     turretTurnAccel,
@@ -116,19 +117,19 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   }];
 }
 
-// Widow weapon creation - 6 beam lasers at hexagon + 1 sonic wave in center
-// Uses explicit widowBeam, widowCenterBeam, and widowSonic configs from config.ts
+// Widow weapon creation - 6 beam lasers at hexagon + 1 center beam + 1 force field
+// Uses explicit widowBeam, widowCenterBeam, and widowForceField configs from config.ts
 // Range constraint: fightstopRange (0.9x) < fireRange (1.0x) < seeRange (1.1x or 0.95x for sticky)
 function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWeapon[] {
   const widowBeamConfig = getWeaponConfig('widowBeam');
   const widowCenterBeamConfig = getWeaponConfig('widowCenterBeam');
-  const widowSonicConfig = getWeaponConfig('widowSonic');
+  const widowForceFieldConfig = getWeaponConfig('widowForceField');
 
   // Beam weapon - get targeting mode first to determine seeRange multiplier
   const beamTargetingMode = getTargetingMode('widow', 'beam');
   const beamFireRange = widowBeamConfig.range;
-  const beamSeeRangeMultiplier = beamTargetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
-  const beamSeeRange = beamFireRange * beamSeeRangeMultiplier;
+  const beamSeeRange = beamFireRange * SEE_RANGE_MULTIPLIER;
+  const beamLockRange = beamFireRange * LOCK_RANGE_MULTIPLIER;
   const beamFightstopRange = beamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const beamTurnAccel = widowBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const beamDrag = widowBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
@@ -136,20 +137,14 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
   // Center beam weapon - get targeting mode first to determine seeRange multiplier
   const centerBeamTargetingMode = getTargetingMode('widow', 'centerBeam');
   const centerBeamFireRange = widowCenterBeamConfig.range;
-  const centerBeamSeeRangeMultiplier = centerBeamTargetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
-  const centerBeamSeeRange = centerBeamFireRange * centerBeamSeeRangeMultiplier;
+  const centerBeamSeeRange = centerBeamFireRange * SEE_RANGE_MULTIPLIER;
+  const centerBeamLockRange = centerBeamFireRange * LOCK_RANGE_MULTIPLIER;
   const centerBeamFightstopRange = centerBeamFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
   const centerBeamTurnAccel = widowCenterBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const centerBeamDrag = widowCenterBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
-  // Sonic weapon - get targeting mode first to determine seeRange multiplier
-  const sonicTargetingMode = getTargetingMode('widow', 'sonic');
-  const sonicFireRange = widowSonicConfig.range;
-  const sonicSeeRangeMultiplier = sonicTargetingMode === 'sticky' ? SEE_RANGE_MULTIPLIER_STICKY : SEE_RANGE_MULTIPLIER;
-  const sonicSeeRange = sonicFireRange * sonicSeeRangeMultiplier;
-  const sonicFightstopRange = sonicFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
-  const sonicTurnAccel = widowSonicConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-  const sonicDrag = widowSonicConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+  // Force field weapons - get targeting mode (shared by push and pull)
+  const forceFieldTargetingMode = getTargetingMode('widow', 'forceField');
 
   // Widow's return-to-forward setting (shared by all weapons)
   const returnToForward = getReturnToForward('widow');
@@ -172,8 +167,10 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
       targetingMode: beamTargetingMode,
       returnToForward,
       seeRange: beamSeeRange,
+      lockRange: beamLockRange,
       fireRange: beamFireRange,
       fightstopRange: beamFightstopRange,
+      isLocked: false,
       turretRotation: 0,
       turretAngularVelocity: 0,
       turretTurnAccel: beamTurnAccel,
@@ -193,8 +190,10 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     targetingMode: centerBeamTargetingMode,
     returnToForward,
     seeRange: centerBeamSeeRange,
+    lockRange: centerBeamLockRange,
     fireRange: centerBeamFireRange,
     fightstopRange: centerBeamFightstopRange,
+    isLocked: false,
     turretRotation: 0,
     turretAngularVelocity: 0,
     turretTurnAccel: centerBeamTurnAccel,
@@ -205,26 +204,33 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     inFightstopRange: false,
   });
 
-  // 1 sonic wave weapon in center
+  // 1 force field weapon in center (dual push/pull zones)
+  const ffFireRange = widowForceFieldConfig.range;
+  const ffSeeRange = ffFireRange * SEE_RANGE_MULTIPLIER;
+  const ffLockRange = ffFireRange * LOCK_RANGE_MULTIPLIER;
+  const ffFightstopRange = ffFireRange * FIGHTSTOP_RANGE_MULTIPLIER;
+  const ffTurnAccel = widowForceFieldConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+  const ffDrag = widowForceFieldConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+
   weapons.push({
-    config: { ...widowSonicConfig },
+    config: { ...widowForceFieldConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    targetingMode: sonicTargetingMode,
+    targetingMode: forceFieldTargetingMode,
     returnToForward,
-    seeRange: sonicSeeRange,
-    fireRange: sonicFireRange,
-    fightstopRange: sonicFightstopRange,
+    seeRange: ffSeeRange,
+    lockRange: ffLockRange,
+    fireRange: ffFireRange,
+    fightstopRange: ffFightstopRange,
+    isLocked: false,
     turretRotation: 0,
     turretAngularVelocity: 0,
-    turretTurnAccel: sonicTurnAccel,
-    turretDrag: sonicDrag,
+    turretTurnAccel: ffTurnAccel,
+    turretDrag: ffDrag,
     offsetX: hexForwardOffset,
     offsetY: 0,
     isFiring: false,
     inFightstopRange: false,
-    waveTransitionProgress: 0,
-    currentSliceAngle: widowSonicConfig.waveAngleIdle ?? Math.PI / 16,
   });
 
   return weapons;
@@ -326,7 +332,7 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
   tarantula: {
     id: 'tarantula',
     name: 'Tarantula',
-    weaponType: 'sonic',
+    weaponType: 'forceField',
     hp: UNIT_STATS.tarantula.hp,
     moveSpeed: UNIT_STATS.tarantula.moveSpeed,
     collisionRadius: UNIT_STATS.tarantula.collisionRadius,

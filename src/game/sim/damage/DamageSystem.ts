@@ -1,5 +1,5 @@
 // Unified Damage System
-// Handles all damage types consistently: line (beams), swept (projectiles), area (splash/wave)
+// Handles all damage types consistently: line (beams), swept (projectiles), area (splash/force field)
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';

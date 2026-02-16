@@ -41,8 +41,8 @@ export interface SweptDamageSource extends DamageSourceBase {
   projectileMass?: number;
 }
 
-// Area damage (splash, wave weapons)
-// Damages all entities within a radius, with optional pie-slice for wave weapons
+// Area damage (splash, force field weapons)
+// Damages all entities within a radius, with optional pie-slice for force field weapons
 export interface AreaDamageSource extends DamageSourceBase {
   type: 'area';
   centerX: number;

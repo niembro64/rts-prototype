@@ -13,7 +13,7 @@ export type RenderMode = 'window' | 'all';
 
 export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-chunks' | 'three-velocity-complex';
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
-export type SonicWaveStyle = 'simple' | 'detailed';
+export type ForceFieldStyle = 'simple' | 'detailed';
 
 export interface GraphicsConfig {
   legs: 'none' | 'animated';
@@ -22,7 +22,7 @@ export interface GraphicsConfig {
   beamStyle: BeamStyle;
   beamGlow: boolean;
   antialias: boolean;
-  sonicWaveStyle: SonicWaveStyle;
+  forceFieldStyle: ForceFieldStyle;
 }
 
 // Build configs from centralized definitions
@@ -35,7 +35,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamStyle: D.BEAM_STYLE.min as BeamStyle,
     beamGlow: D.BEAM_GLOW.min,
     antialias: D.ANTIALIAS.min,
-    sonicWaveStyle: D.SONIC_WAVE_STYLE.min as SonicWaveStyle,
+    forceFieldStyle: D.FORCE_FIELD_STYLE.min as ForceFieldStyle,
   },
   low: {
     legs: D.LEGS.low as 'none' | 'animated',
@@ -44,7 +44,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamStyle: D.BEAM_STYLE.low as BeamStyle,
     beamGlow: D.BEAM_GLOW.low,
     antialias: D.ANTIALIAS.low,
-    sonicWaveStyle: D.SONIC_WAVE_STYLE.low as SonicWaveStyle,
+    forceFieldStyle: D.FORCE_FIELD_STYLE.low as ForceFieldStyle,
   },
   medium: {
     legs: D.LEGS.medium as 'none' | 'animated',
@@ -53,7 +53,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamStyle: D.BEAM_STYLE.medium as BeamStyle,
     beamGlow: D.BEAM_GLOW.medium,
     antialias: D.ANTIALIAS.medium,
-    sonicWaveStyle: D.SONIC_WAVE_STYLE.medium as SonicWaveStyle,
+    forceFieldStyle: D.FORCE_FIELD_STYLE.medium as ForceFieldStyle,
   },
   high: {
     legs: D.LEGS.high as 'none' | 'animated',
@@ -62,7 +62,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamStyle: D.BEAM_STYLE.high as BeamStyle,
     beamGlow: D.BEAM_GLOW.high,
     antialias: D.ANTIALIAS.high,
-    sonicWaveStyle: D.SONIC_WAVE_STYLE.high as SonicWaveStyle,
+    forceFieldStyle: D.FORCE_FIELD_STYLE.high as ForceFieldStyle,
   },
   max: {
     legs: D.LEGS.max as 'none' | 'animated',
@@ -71,17 +71,28 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     beamStyle: D.BEAM_STYLE.max as BeamStyle,
     beamGlow: D.BEAM_GLOW.max,
     antialias: D.ANTIALIAS.max,
-    sonicWaveStyle: D.SONIC_WAVE_STYLE.max as SonicWaveStyle,
+    forceFieldStyle: D.FORCE_FIELD_STYLE.max as ForceFieldStyle,
   },
 };
 
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
+const RANGE_TOGGLE_STORAGE_PREFIX = 'rts-range-';
+
+export type RangeType = 'see' | 'lock' | 'fire' | 'fightstop' | 'build';
+export const RANGE_TYPES: RangeType[] = ['see', 'lock', 'fire', 'fightstop', 'build'];
 
 // Current settings
 // Default to 'low' for performance - 'high' and 'max' explosion rendering is extremely expensive
 let currentQuality: GraphicsQuality = 'low';
 let currentRenderMode: RenderMode = 'window';
+const currentRangeToggles: Record<RangeType, boolean> = {
+  see: false,
+  lock: false,
+  fire: false,
+  fightstop: false,
+  build: false,
+};
 let currentZoom: number = 1.0; // Updated by renderer
 
 // Load from localStorage on module init
@@ -94,6 +105,12 @@ function loadFromStorage(): void {
     const storedRenderMode = localStorage.getItem(RENDER_MODE_STORAGE_KEY);
     if (storedRenderMode && (storedRenderMode === 'window' || storedRenderMode === 'all')) {
       currentRenderMode = storedRenderMode;
+    }
+    for (const rt of RANGE_TYPES) {
+      const stored = localStorage.getItem(RANGE_TOGGLE_STORAGE_PREFIX + rt);
+      if (stored === 'true') {
+        currentRangeToggles[rt] = true;
+      }
     }
   } catch {
     // localStorage not available, use default
@@ -186,4 +203,30 @@ export function setRenderMode(mode: RenderMode): void {
   } catch {
     // localStorage not available
   }
+}
+
+/**
+ * Get whether a specific range type is shown for all units
+ */
+export function getRangeToggle(type: RangeType): boolean {
+  return currentRangeToggles[type];
+}
+
+/**
+ * Set whether a specific range type is shown for all units (persists to localStorage)
+ */
+export function setRangeToggle(type: RangeType, show: boolean): void {
+  currentRangeToggles[type] = show;
+  try {
+    localStorage.setItem(RANGE_TOGGLE_STORAGE_PREFIX + type, String(show));
+  } catch {
+    // localStorage not available
+  }
+}
+
+/**
+ * Check if any range toggle is active
+ */
+export function anyRangeToggleActive(): boolean {
+  return RANGE_TYPES.some(rt => currentRangeToggles[rt]);
 }

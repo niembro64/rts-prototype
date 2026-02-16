@@ -119,13 +119,13 @@ export interface WeaponConfig {
   turretTurnAccel?: number;      // Turret acceleration toward target (radians/sec²)
   turretDrag?: number;           // Turret drag coefficient (0-1, per frame)
 
-  // Wave weapon properties (sonic)
-  isWaveWeapon?: boolean;        // True if this is a continuous wave weapon
-  waveInnerRange?: number;       // Inner dead zone radius — no damage/pull inside this
-  waveAngleIdle?: number;        // Angle when not firing (radians)
-  waveAngleAttack?: number;      // Angle when firing (radians)
-  waveTransitionTime?: number;   // Time (ms) to transition between idle and attack
-  pullPower?: number;            // Pull strength toward wave origin (units/sec)
+  // Force field properties
+  isForceField?: boolean;        // True if this is a continuous force field weapon
+  forceFieldInnerRange?: number; // Inner dead zone radius — no damage/pull inside this
+  forceFieldAngle?: number;      // Constant angle of the force field (radians)
+  forceFieldTransitionTime?: number; // Time (ms) to transition between idle and attack range
+  pullPower?: number;            // Pull strength toward force field origin (units/sec)
+  pullDirection?: 1 | -1;        // 1 = push outward, -1 = pull inward (default -1)
 
   // Piercing properties
   piercing?: boolean;            // Can pierce through multiple targets
@@ -145,10 +145,12 @@ export interface UnitWeapon {
   targetingMode: TargetingMode;  // 'nearest' = always closest, 'sticky' = keep current until invalid
   returnToForward: boolean;      // If true, turret rotates back to unit facing when no targets
 
-  // Per-weapon range properties (constraint: fightstopRange < fireRange < seeRange)
-  seeRange: number;              // Tracking range - turret starts rotating when enemies are within this
+  // Per-weapon range properties (constraint: fightstopRange < fireRange < lockRange < seeRange)
+  seeRange: number;              // Tracking range - turret pre-aims when enemies are within this
+  lockRange: number;             // Lock range - weapon commits (sticky lock) when enemy enters this
   fireRange: number;             // Attack range - weapon fires when enemies are within this
   fightstopRange: number;        // Fight mode stop range - unit stops moving in fight mode when enemy is within this
+  isLocked: boolean;             // Whether weapon has a sticky lock on its target (server-only, not serialized)
 
   // Turret rotation for this specific weapon (acceleration-based physics)
   turretRotation: number;           // Current angle (radians)
@@ -169,9 +171,9 @@ export interface UnitWeapon {
   burstShotsRemaining?: number;
   burstCooldown?: number;
 
-  // Wave weapon state (sonic)
-  waveTransitionProgress?: number;  // 0 = idle angle, 1 = attack angle
-  currentSliceAngle?: number;       // Current dynamic slice angle (radians)
+  // Force field state
+  forceFieldTransitionProgress?: number;  // 0 = inner range, 1 = full range
+  currentForceFieldRange?: number;        // Current dynamic outer radius
 }
 
 // Weapon targeting modes

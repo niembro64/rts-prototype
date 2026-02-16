@@ -4,6 +4,7 @@ export {
   getPlayerColor,
   getColorLight,
   getColorDark,
+  tintColor,
   getProjectileColor,
   createColorPalette,
 } from './ColorPalette';

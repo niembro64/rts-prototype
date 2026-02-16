@@ -11,12 +11,12 @@ export function getWeaponValue(config: WeaponConfig): number {
   // --- baseDPS ---
   let baseDPS: number;
   const isBeam = config.beamDuration !== undefined && !config.projectileSpeed;
-  const isWave = !!config.isWaveWeapon;
+  const isForceField = !!config.isForceField;
   const isShotgun = (config.pelletCount ?? 0) > 1;
   const isBurst = (config.burstCount ?? 0) > 1;
 
-  if (isWave) {
-    // Sonic wave: damage field is base DPS, but scales with 1/distance.
+  if (isForceField) {
+    // Force field: damage field is base DPS, but scales with 1/distance.
     // Effective DPS at ~60% of fire range: baseDamage * (0.5 / 0.6)
     baseDPS = config.damage * (0.5 / 0.6);
   } else if (isBeam && config.cooldown === 0) {
@@ -46,7 +46,7 @@ export function getWeaponValue(config: WeaponConfig): number {
 
   // --- deliveryFactor --- how reliably damage is delivered
   let deliveryFactor: number;
-  if (isWave) {
+  if (isForceField) {
     deliveryFactor = 0.6;
   } else if (isBeam) {
     // Hitscan (beam/railgun)
@@ -80,7 +80,7 @@ export function getWeaponValue(config: WeaponConfig): number {
 
   // --- aoeFactor --- area effect multiplier
   let aoeFactor = 1.0;
-  if (isWave) {
+  if (isForceField) {
     aoeFactor = 2.0; // Hits all enemies in cone continuously
   } else if (config.splashRadius !== undefined && config.splashRadius > 0) {
     aoeFactor = 1 + (config.splashRadius / 100) * 0.8;
@@ -88,7 +88,7 @@ export function getWeaponValue(config: WeaponConfig): number {
     aoeFactor = 1.3;
   }
 
-  // --- pullBonus --- flat bonus for sonic pull utility
+  // --- pullBonus --- flat bonus for force field pull utility
   const pullBonus = (config.pullPower ?? 0) > 0 ? config.pullPower! * 0.05 : 0;
 
   return baseDPS * rangeFactor * deliveryFactor * turretFactor * aoeFactor + pullBonus;

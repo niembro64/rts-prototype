@@ -54,7 +54,7 @@ export const COST_MULTIPLIER = 1.0;
 export const KNOCKBACK = {
   BEAM_HIT: 750,
   BEAM_FIRE: 200,
-  SONIC_PULL_MULTIPLIER: 2.0, // Multiplier applied to each weapon's pullPower
+  FORCE_FIELD_PULL_MULTIPLIER: 2.0, // Multiplier applied to each weapon's pullPower
   SPLASH: 250, // Knockback multiplier for area/splash explosions (mortar/disruptor)
 };
 
@@ -76,17 +76,19 @@ export const DEFAULT_TURRET_DRAG = 0.15;
 /**
  * Multiplier for seeRange (tracking range) relative to fireRange.
  * seeRange = fireRange * SEE_RANGE_MULTIPLIER
- * Turret starts tracking enemies when they enter this range.
- * Target is lost when they leave this range.
+ * Turret starts pre-aiming at enemies when they enter this range.
+ * Target is dropped entirely when they leave this range.
  */
-export const SEE_RANGE_MULTIPLIER = 1.1;
+export const SEE_RANGE_MULTIPLIER = 1.3;
 
 /**
- * Multiplier for seeRange for sticky targeting weapons.
- * Sticky weapons use a smaller seeRange (0.95x) so they don't acquire
- * targets far outside their fire range and then chase them.
+ * Multiplier for lockRange (sticky commitment range) relative to fireRange.
+ * lockRange = fireRange * LOCK_RANGE_MULTIPLIER
+ * Weapon commits (locks) to a target when it enters this range.
+ * Only locked weapons can fire. Between seeRange and lockRange, turret pre-aims but won't fire.
+ * Range hierarchy: fightstopRange (0.8x) < fireRange (1.0x) < lockRange (1.1x) < seeRange (1.3x)
  */
-export const SEE_RANGE_MULTIPLIER_STICKY = 0.95;
+export const LOCK_RANGE_MULTIPLIER = 1.1;
 
 /**
  * Multiplier for fightstopRange relative to fireRange.
@@ -94,13 +96,13 @@ export const SEE_RANGE_MULTIPLIER_STICKY = 0.95;
  * Unit stops moving in fight/patrol mode when target is within this range.
  * For sticky weapons, new targets are searched within this range.
  */
-export const FIGHTSTOP_RANGE_MULTIPLIER = 0.9;
+export const FIGHTSTOP_RANGE_MULTIPLIER = 0.8;
 
 /**
- * Sonic wave weapon visual configuration.
+ * Force field weapon visual configuration.
  * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.
  */
-export const SONIC_WAVE_VISUAL = {
+export const FORCE_FIELD_VISUAL = {
   // --- Overall ---
   showAnimatedWaves: false, // true = animated wavy arcs, false = static filled slice
   animationSpeed: 0.3, // Global speed multiplier (1.0 = default, 0.5 = half)
@@ -235,7 +237,7 @@ export const UNIT_MASS_MULTIPLIER = 10.0;
 
 /**
  * Global mass multiplier for all projectiles.
- * Scales recoil on shooter, knockback on target, and resistance to sonic pull.
+ * Scales recoil on shooter, knockback on target, and resistance to force field pull.
  * 1.0 = use raw projectileMass values from WEAPON_STATS
  * Higher = more recoil/knockback, lower = less
  */
@@ -346,7 +348,7 @@ export const UNIT_STATS = {
     mass: 500,
     buildRate: 18,
   },
-  // Widow - Titan spider unit. 7 beam weapons + sonic wave = 335+ DPS.
+  // Widow - Titan spider unit. 7 beam weapons + force field = 335+ DPS.
   // Value: Army-in-one super unit, but expensive and high priority target
   widow: {
     baseCost: 700,
@@ -356,7 +358,7 @@ export const UNIT_STATS = {
     mass: 500,
     buildRate: 20,
   },
-  // Tarantula - Wave AoE unit. Continuous damage with pull, scales with 1/distance.
+  // Tarantula - Force field AoE unit. Continuous damage with pull.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
   tarantula: {
     baseCost: 55,
@@ -435,7 +437,7 @@ export const WEAPON_STATS = {
   // Slow, deliberate turret - low acceleration, tracks slowly
   beam: {
     damage: 45, // DPS while beam is on target
-    range: 140,
+    range: 150,
     cooldown: 0, // Continuous
     beamDuration: 1000,
     beamWidth: 4,
@@ -447,7 +449,7 @@ export const WEAPON_STATS = {
   // Fast, snappy turrets - high acceleration
   widowBeam: {
     damage: 45, // DPS while beam is on target
-    range: 140,
+    range: 105,
     cooldown: 0, // Continuous
     beamDuration: 1000,
     beamWidth: 4,
@@ -458,40 +460,40 @@ export const WEAPON_STATS = {
   // Widow center beam - 2x stats of widowBeam, mounted at head center
   // Medium-slow turret - big gun needs time to aim
   widowCenterBeam: {
-    damage: 65,
-    range: 200,
+    damage: 100,
+    range: 300,
     cooldown: 0, // Continuous
     beamDuration: 1000,
     beamWidth: 12,
     turretTurnAccel: 100, // Fast acceleration (rad/sec²)
-    turretDrag: 0.5, // Moderate drag → terminal ~3.3 rad/sec
+    turretDrag: 0.75, // Moderate drag → terminal ~3.3 rad/sec
   },
 
-  // Sonic - Continuous pie-slice wave AoE (Tarantula's weapon)
-  sonic: {
-    damage: 1, // Base DPS (scales with 1/distance)
-    range: 800,
-    waveInnerRange: 120, // Inner dead zone — no damage/pull inside this radius
-    cooldown: 0, // Continuous
-    turretTurnAccel: 1, // Medium acceleration (rad/sec²)
-    turretDrag: 0.01, // Moderate drag → terminal ~1.1 rad/sec
-    waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 0.25,
-    waveTransitionTime: 1000,
+  // Tarantula force field — push inner, pull outer
+  forceField: {
+    forceFieldInnerRadius: 40, // No effect inside this
+    forceFieldMiddleRadius: 140, // Push/pull boundary
+    forceFieldOuterRadius: 160, // Pull stops here
+    damage: 1,
+    cooldown: 0,
+    turretTurnAccel: 1,
+    turretDrag: 0.01,
+    forceFieldAngle: Math.PI * 0.25,
+    forceFieldTransitionTime: 1000,
     pullPower: 300,
   },
 
-  // Widow sonic wave - larger pie-slice wave AoE
-  widowSonic: {
-    damage: 1, // Base DPS (scales with 1/distance)
-    range: 800,
-    waveInnerRange: 160, // Inner dead zone — no damage/pull inside this radius
-    cooldown: 0, // Continuous
-    turretTurnAccel: 1, // Medium acceleration (rad/sec²)
-    turretDrag: 0.01, // Moderate drag → terminal ~1.1 rad/sec
-    waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 0.5,
-    waveTransitionTime: 1000,
+  // Widow force field — push inner, pull outer
+  widowForceField: {
+    forceFieldInnerRadius: 70, // No effect inside this
+    forceFieldMiddleRadius: 100, // Push/pull boundary
+    forceFieldOuterRadius: 400, // Pull stops here
+    damage: 1,
+    cooldown: 0,
+    turretTurnAccel: 1,
+    turretDrag: 0.5,
+    forceFieldAngle: Math.PI * 2,
+    forceFieldTransitionTime: 1000,
     pullPower: 300,
   },
 
@@ -520,29 +522,29 @@ export const WEAPON_STATS = {
  */
 export const UNIT_TARGETING_MODES = {
   // Simple projectile units - track nearest, return to forward when idle
-  jackal: { default: 'nearest' as const, returnToForward: false },
-  lynx: { default: 'nearest' as const, returnToForward: false },
-  badger: { default: 'nearest' as const, returnToForward: false },
-  scorpion: { default: 'nearest' as const, returnToForward: false },
-  mammoth: { default: 'nearest' as const, returnToForward: false },
+  jackal: { default: 'sticky' as const, returnToForward: false },
+  lynx: { default: 'sticky' as const, returnToForward: false },
+  badger: { default: 'sticky' as const, returnToForward: false },
+  scorpion: { default: 'sticky' as const, returnToForward: false },
+  mammoth: { default: 'sticky' as const, returnToForward: false },
 
   // Beam units - sticky (lock onto target and burn it down)
-  daddy: { default: 'nearest' as const, returnToForward: false },
-  viper: { default: 'nearest' as const, returnToForward: false },
+  daddy: { default: 'sticky' as const, returnToForward: false },
+  viper: { default: 'sticky' as const, returnToForward: false },
 
-  // Wave/AoE units - track nearest
-  tarantula: { default: 'nearest' as const, returnToForward: false },
+  // Force field/AoE units - track nearest
+  tarantula: { default: 'sticky' as const, returnToForward: false },
 
   // Multi-weapon titan
   widow: {
-    beam: 'nearest' as const, // 6 vertex beams lock onto targets
-    centerBeam: 'nearest' as const, // Center beam locks onto target
-    sonic: 'nearest' as const, // Sonic wave tracks nearest threat
+    beam: 'sticky' as const, // 6 vertex beams lock onto targets
+    centerBeam: 'sticky' as const, // Center beam locks onto target
+    forceField: 'sticky' as const, // Force field tracks nearest threat
     returnToForward: false, // Widow turrets stay where they are
   },
 
   // Commander - projectile, track nearest
-  commander: { default: 'nearest' as const, returnToForward: false },
+  commander: { default: 'sticky' as const, returnToForward: false },
 };
 
 // =============================================================================
@@ -564,6 +566,9 @@ export const MAP_SETTINGS = {
  * - false: Flat distribution (all units equally likely)
  */
 export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING = true;
+
+/** Whether to show the lobby modal on startup. If false, starts in spectate mode. */
+export const SHOW_LOBBY_ON_STARTUP = false;
 
 // =============================================================================
 // NETWORKING
@@ -701,10 +706,10 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     max: true,
   },
 
-  // Sonic wave visual style
+  // Force field visual style
   // 'simple': single static arc at outer edge, no animation
   // 'detailed': animated wavy arcs with pull lines
-  SONIC_WAVE_STYLE: {
+  FORCE_FIELD_STYLE: {
     min: 'simple',
     low: 'simple',
     medium: 'detailed',
@@ -734,13 +739,13 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
  * |----------|------|------|-------|-----|-------|----------------------|
  * | Jackal   |   40 |   40 |  360  |  50 | 140   | Fast swarm (gatling) |
  * | Lynx   |   55 |   65 |  130  |  45 | 160   | 3-shot burst (pulse) |
- * | Tarantula|   70 |   80 |  200  |  40 | 400   | Sonic wave AoE       |
+ * | Tarantula|   70 |   80 |  200  |  40 | 400   | Force field AoE      |
  * | Viper    |   75 |   55 |   70  |  17 | 350   | Railgun, pierce      |
  * | Badger   |   80 |  180 |  200  |  60 |  90   | Shotgun spread       |
  * | Daddy    |   90 |  100 |  200  |  45 | 140   | Continuous beam      |
  * | Scorpion |  100 |  100 |  220  |  32 | 200   | Mortar splash        |
  * | Mammoth  |  180 |  350 |   60  |  40 | 360   | Heavy cannon         |
- * | Widow    |  800 | 1200 |  100  | 310 | 350   | 6 beam + sonic       |
+ * | Widow    |  800 | 1200 |  100  | 310 | 350   | 6 beam + force field |
  *
  * BUILDING COSTS:
  * - Solar: 100 energy (2 sec to build)

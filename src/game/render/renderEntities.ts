@@ -16,7 +16,7 @@ import {
   createFourWheelSetup,
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
-import { getGraphicsConfig, getRenderMode, setCurrentZoom } from './graphicsSettings';
+import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
 
 // Import from helper modules
@@ -24,7 +24,7 @@ import type { EntitySource, ExplosionEffect, UnitRenderContext, BuildingRenderCo
 import { COLORS, LEG_STYLE_CONFIG } from './types';
 import { getPlayerColor, getProjectileColor, createColorPalette } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
-import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawSonicUnit, drawCommanderUnit } from './units';
+import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawForceFieldUnit, drawCommanderUnit } from './units';
 import { renderFactory, renderSolarPanel } from './buildings';
 import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
 
@@ -442,8 +442,17 @@ export class EntityRenderer {
     }
 
     // 3. Range circles
-    for (const entity of this.selectedUnits) {
-      renderRangeCircles(this.graphics, entity);
+    const rangeVis = {
+      see: getRangeToggle('see'),
+      lock: getRangeToggle('lock'),
+      fire: getRangeToggle('fire'),
+      fightstop: getRangeToggle('fightstop'),
+      build: getRangeToggle('build'),
+    };
+    const showAllRanges = anyRangeToggleActive();
+    const rangeUnits = showAllRanges ? this.visibleUnits : this.selectedUnits;
+    for (const entity of rangeUnits) {
+      renderRangeCircles(this.graphics, entity, showAllRanges ? rangeVis : { see: true, lock: true, fire: true, fightstop: false, build: true });
     }
 
     // 4. Unit bodies
@@ -531,7 +540,7 @@ export class EntityRenderer {
         case 'viper': drawSnipeUnit(ctx, this.getVehicleWheels(entity.id)); break;
         case 'mammoth': drawTankUnit(ctx, this.getTankTreads(entity.id)); break;
         case 'widow': drawArachnidUnit(ctx, this.getOrCreateLegs(entity, 'widow')); break;
-        case 'tarantula': drawSonicUnit(ctx, this.getOrCreateLegs(entity, 'tarantula')); break;
+        case 'tarantula': drawForceFieldUnit(ctx, this.getOrCreateLegs(entity, 'tarantula')); break;
         default: drawScoutUnit(ctx, this.getVehicleWheels(entity.id));
       }
     }
