@@ -538,8 +538,8 @@ export const WEAPON_STATS = {
     forceFieldOuterRadius: 170, // Pull stops here
     damage: 1,
     cooldown: 0,
-    turretTurnAccel: 1,
-    turretDrag: 0.01,
+    turretTurnAccel: 30,
+    turretDrag: 0.5,
     forceFieldAngle: Math.PI * 0.25,
     forceFieldTransitionTime: 1000,
     pullPower: 300,
@@ -552,8 +552,8 @@ export const WEAPON_STATS = {
     forceFieldOuterRadius: 300, // Pull stops here
     damage: 1,
     cooldown: 0,
-    turretTurnAccel: 1,
-    turretDrag: 0.01,
+    turretTurnAccel: 30,
+    turretDrag: 0.5,
     forceFieldAngle: Math.PI * 0.25,
     forceFieldTransitionTime: 1000,
     pullPower: 300,
