@@ -553,7 +553,7 @@ export const WEAPON_STATS = {
     damage: 1,
     cooldown: 0,
     turretTurnAccel: 1,
-    turretDrag: 0.5,
+    turretDrag: 0.01,
     forceFieldAngle: Math.PI * 0.25,
     forceFieldTransitionTime: 1000,
     pullPower: 300,
