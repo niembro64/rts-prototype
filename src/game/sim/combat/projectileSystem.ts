@@ -518,6 +518,8 @@ export function checkProjectileCollisions(
               attackMagnitude: ctx.attackMagnitude,
               radius: target?.unit?.collisionRadius ?? 15,
               color: playerColor,
+              unitType: target?.unit?.unitType,
+              rotation: target?.transform.rotation ?? 0,
             } : undefined,
           });
           unitsToRemove.add(id);
@@ -630,6 +632,8 @@ export function checkProjectileCollisions(
               attackMagnitude: ctx.attackMagnitude,
               radius: target?.unit?.collisionRadius ?? 15,
               color: playerColor,
+              unitType: target?.unit?.unitType,
+              rotation: target?.transform.rotation ?? 0,
             } : undefined,
           });
           unitsToRemove.add(id);

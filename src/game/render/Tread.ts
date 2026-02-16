@@ -26,6 +26,9 @@ export class Tread {
   // Has the tread been initialized with a position?
   private initialized: boolean = false;
 
+  // Cached output object to avoid per-frame allocation
+  private _attach = { x: 0, y: 0 };
+
   constructor(config: TreadConfig) {
     this.config = config;
   }
@@ -102,7 +105,7 @@ export class Tread {
     return this.currentRotation;
   }
 
-  // Get attachment point in world coordinates
+  // Get attachment point in world coordinates — returns cached object, do not store
   getAttachmentPoint(
     unitX: number,
     unitY: number,
@@ -110,10 +113,9 @@ export class Tread {
   ): { x: number; y: number } {
     const cos = Math.cos(unitRotation);
     const sin = Math.sin(unitRotation);
-    return {
-      x: unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY,
-      y: unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY,
-    };
+    this._attach.x = unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY;
+    this._attach.y = unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY;
+    return this._attach;
   }
 
   // Get the wheel radius (for rendering calculations)

@@ -6,6 +6,9 @@ import { drawPolygon, tintColor } from '../helpers';
 import { renderForceFieldEffect } from '../effects';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
+// Pre-allocated reusable point array for abdomen shape (avoids 12 object allocations per frame per unit)
+const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 12 }, () => ({ x: 0, y: 0 }));
+
 export function drawArachnidUnit(
   ctx: UnitRenderContext,
   legs: ArachnidLeg[]
@@ -60,23 +63,19 @@ export function drawArachnidUnit(
     const abdomenColor = isSelected ? COLORS.UNIT_SELECTED : dark;
     graphics.fillStyle(abdomenColor, 1);
 
-    // Draw abdomen as an elongated oval/egg shape pointing backward
-    const abdomenPoints: { x: number; y: number }[] = [];
-    const numPoints = 12;
-    for (let i = 0; i < numPoints; i++) {
-      const angle = (i / numPoints) * Math.PI * 2;
+    // Draw abdomen as an elongated oval/egg shape pointing backward — reuse pooled array
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
       const localAngle = angle + Math.PI;
       const bulge = 1 + 0.3 * Math.pow(Math.cos(localAngle), 2);
       const rx = abdomenLength * (0.5 + 0.5 * Math.abs(Math.cos(angle))) * bulge;
       const ry = abdomenWidth * (0.7 + 0.3 * Math.abs(Math.sin(angle)));
       const localX = Math.cos(angle) * rx * 0.7;
       const localY = Math.sin(angle) * ry;
-      abdomenPoints.push({
-        x: abdomenCenterX + cos * localX - sin * localY,
-        y: abdomenCenterY + sin * localX + cos * localY,
-      });
+      _abdomenPoints[i].x = abdomenCenterX + cos * localX - sin * localY;
+      _abdomenPoints[i].y = abdomenCenterY + sin * localX + cos * localY;
     }
-    graphics.fillPoints(abdomenPoints, true);
+    graphics.fillPoints(_abdomenPoints, true);
 
     // Red hourglass marking (like a black widow spider)
     const hourglassCenterOffset = abdomenOffset - abdomenLength * 0.35;
@@ -87,51 +86,40 @@ export function drawArachnidUnit(
     const hourglassWidth = abdomenWidth * 0.35;
     const waistWidth = hourglassWidth * 0.2;
 
-    const rotPoint = (centerX: number, centerY: number, localX: number, localY: number) => ({
-      x: centerX + cos * localX - sin * localY,
-      y: centerY + sin * localX + cos * localY,
-    });
-
+    // Inline rotated point helper (avoids closure + 12 object allocations per frame)
+    const hcx = hourglassCenterX;
+    const hcy = hourglassCenterY;
     const topY = hourglassHeight * 0.5;
     const bottomY = -hourglassHeight * 0.5;
-
-    const topLeft = rotPoint(hourglassCenterX, hourglassCenterY, topY, -hourglassWidth);
-    const topRight = rotPoint(hourglassCenterX, hourglassCenterY, topY, hourglassWidth);
-    const bottomLeft = rotPoint(hourglassCenterX, hourglassCenterY, bottomY, -hourglassWidth);
-    const bottomRight = rotPoint(hourglassCenterX, hourglassCenterY, bottomY, hourglassWidth);
-    const waistLeft = rotPoint(hourglassCenterX, hourglassCenterY, 0, -waistWidth);
-    const waistRight = rotPoint(hourglassCenterX, hourglassCenterY, 0, waistWidth);
 
     // Outer hourglass (red)
     graphics.fillStyle(0xff0000, 1);
     graphics.beginPath();
-    graphics.moveTo(topLeft.x, topLeft.y);
-    graphics.lineTo(topRight.x, topRight.y);
-    graphics.lineTo(waistRight.x, waistRight.y);
-    graphics.lineTo(bottomRight.x, bottomRight.y);
-    graphics.lineTo(bottomLeft.x, bottomLeft.y);
-    graphics.lineTo(waistLeft.x, waistLeft.y);
+    graphics.moveTo(hcx + cos * topY - sin * (-hourglassWidth), hcy + sin * topY + cos * (-hourglassWidth));
+    graphics.lineTo(hcx + cos * topY - sin * hourglassWidth, hcy + sin * topY + cos * hourglassWidth);
+    graphics.lineTo(hcx - sin * waistWidth, hcy + cos * waistWidth);
+    graphics.lineTo(hcx + cos * bottomY - sin * hourglassWidth, hcy + sin * bottomY + cos * hourglassWidth);
+    graphics.lineTo(hcx + cos * bottomY - sin * (-hourglassWidth), hcy + sin * bottomY + cos * (-hourglassWidth));
+    graphics.lineTo(hcx - sin * (-waistWidth), hcy + cos * (-waistWidth));
     graphics.closePath();
     graphics.fillPath();
 
     // Inner hourglass (darker red)
     const innerScale = 0.6;
     const innerWaistScale = 0.5;
-    const innerTopLeft = rotPoint(hourglassCenterX, hourglassCenterY, topY * innerScale, -hourglassWidth * innerScale);
-    const innerTopRight = rotPoint(hourglassCenterX, hourglassCenterY, topY * innerScale, hourglassWidth * innerScale);
-    const innerBottomLeft = rotPoint(hourglassCenterX, hourglassCenterY, bottomY * innerScale, -hourglassWidth * innerScale);
-    const innerBottomRight = rotPoint(hourglassCenterX, hourglassCenterY, bottomY * innerScale, hourglassWidth * innerScale);
-    const innerWaistLeft = rotPoint(hourglassCenterX, hourglassCenterY, 0, -waistWidth * innerWaistScale);
-    const innerWaistRight = rotPoint(hourglassCenterX, hourglassCenterY, 0, waistWidth * innerWaistScale);
+    const iTopY = topY * innerScale;
+    const iBotY = bottomY * innerScale;
+    const iHW = hourglassWidth * innerScale;
+    const iWW = waistWidth * innerWaistScale;
 
     graphics.fillStyle(0xaa0000, 1);
     graphics.beginPath();
-    graphics.moveTo(innerTopLeft.x, innerTopLeft.y);
-    graphics.lineTo(innerTopRight.x, innerTopRight.y);
-    graphics.lineTo(innerWaistRight.x, innerWaistRight.y);
-    graphics.lineTo(innerBottomRight.x, innerBottomRight.y);
-    graphics.lineTo(innerBottomLeft.x, innerBottomLeft.y);
-    graphics.lineTo(innerWaistLeft.x, innerWaistLeft.y);
+    graphics.moveTo(hcx + cos * iTopY - sin * (-iHW), hcy + sin * iTopY + cos * (-iHW));
+    graphics.lineTo(hcx + cos * iTopY - sin * iHW, hcy + sin * iTopY + cos * iHW);
+    graphics.lineTo(hcx - sin * iWW, hcy + cos * iWW);
+    graphics.lineTo(hcx + cos * iBotY - sin * iHW, hcy + sin * iBotY + cos * iHW);
+    graphics.lineTo(hcx + cos * iBotY - sin * (-iHW), hcy + sin * iBotY + cos * (-iHW));
+    graphics.lineTo(hcx - sin * (-iWW), hcy + cos * (-iWW));
     graphics.closePath();
     graphics.fillPath();
 

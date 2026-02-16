@@ -55,6 +55,7 @@ export class ClientViewState {
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
   private cachedProjectiles: Entity[] = [];
+  private cachedAll: Entity[] = [];
   private cachesDirty: boolean = true;
 
   constructor() {}
@@ -69,8 +70,10 @@ export class ClientViewState {
     this.cachedUnits.length = 0;
     this.cachedBuildings.length = 0;
     this.cachedProjectiles.length = 0;
+    this.cachedAll.length = 0;
 
     for (const entity of this.entities.values()) {
+      this.cachedAll.push(entity);
       switch (entity.type) {
         case 'unit':
           this.cachedUnits.push(entity);
@@ -550,9 +553,7 @@ export class ClientViewState {
 
   getAllEntities(): Entity[] {
     this.rebuildCachesIfNeeded();
-    // Return concatenation of cached arrays (avoids Array.from on the Map)
-    const all = this.cachedUnits.concat(this.cachedBuildings, this.cachedProjectiles);
-    return all;
+    return this.cachedAll;
   }
 
   getUnits(): Entity[] {

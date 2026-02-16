@@ -9,6 +9,9 @@ import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 export class ConstructionSystem {
   private buildingGrid: BuildingGrid;
 
+  // Reverse index: targetId → builders array, rebuilt once per tick
+  private buildersByTarget: Map<EntityId, Entity[]> = new Map();
+
   constructor(mapWidth: number, mapHeight: number) {
     this.buildingGrid = new BuildingGrid(mapWidth, mapHeight);
   }
@@ -22,6 +25,19 @@ export class ConstructionSystem {
   update(world: WorldState, dtMs: number): void {
     const dtSec = dtMs / 1000;
 
+    // Build reverse index of builders → targets once per tick (O(n) instead of O(n²))
+    this.buildersByTarget.clear();
+    for (const entity of world.getAllEntities()) {
+      const targetId = entity.builder?.currentBuildTarget;
+      if (targetId == null) continue;
+      let arr = this.buildersByTarget.get(targetId);
+      if (!arr) {
+        arr = [];
+        this.buildersByTarget.set(targetId, arr);
+      }
+      arr.push(entity);
+    }
+
     // Process all buildable entities
     for (const entity of world.getAllEntities()) {
       if (!entity.buildable || entity.buildable.isComplete || entity.buildable.isGhost) {
@@ -32,9 +48,9 @@ export class ConstructionSystem {
       const playerId = entity.ownership?.playerId;
       if (!playerId) continue;
 
-      // Find all builders targeting this entity
-      const builders = this.findBuildersFor(world, entity.id);
-      if (builders.length === 0) continue;
+      // Find all builders targeting this entity — O(1) lookup
+      const builders = this.buildersByTarget.get(entity.id);
+      if (!builders || builders.length === 0) continue;
 
       // Calculate total build rate from all builders
       let totalBuildRate = 0;
@@ -67,23 +83,15 @@ export class ConstructionSystem {
     }
   }
 
-  // Find all builders targeting an entity
-  private findBuildersFor(world: WorldState, targetId: EntityId): Entity[] {
-    const builders: Entity[] = [];
-    for (const entity of world.getAllEntities()) {
-      if (entity.builder?.currentBuildTarget === targetId) {
-        builders.push(entity);
-      }
-    }
-    return builders;
-  }
-
   // Called when construction completes
-  private onConstructionComplete(world: WorldState, entity: Entity): void {
-    // Clear all builder targets for this entity
-    for (const builder of world.getAllEntities()) {
-      if (builder.builder?.currentBuildTarget === entity.id) {
-        builder.builder.currentBuildTarget = null;
+  private onConstructionComplete(_world: WorldState, entity: Entity): void {
+    // Clear all builder targets for this entity using the reverse index (O(k) not O(n))
+    const builders = this.buildersByTarget.get(entity.id);
+    if (builders) {
+      for (const builder of builders) {
+        if (builder.builder) {
+          builder.builder.currentBuildTarget = null;
+        }
       }
     }
 

@@ -36,6 +36,8 @@ export interface NetworkAudioEvent {
     attackMagnitude: number;
     radius: number;       // Unit's collision radius for explosion size
     color: number;        // Player color for explosion
+    unitType?: string;    // Unit type (e.g. 'widow', 'mammoth') for debris generation
+    rotation?: number;    // Unit's body rotation at death
   };
 }
 

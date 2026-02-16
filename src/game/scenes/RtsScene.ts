@@ -84,6 +84,14 @@ export class RtsScene extends Phaser.Scene {
   // Camera centering flag (center on first snapshot)
   private hasCenteredCamera: boolean = false;
 
+  // Cached per-frame query results (rebuilt once per frame, returned by adapter)
+  private _cachedSelectedUnits: Entity[] = [];
+  private _cachedSelectedBuildings: Entity[] = [];
+  private _cachedPlayerUnits: Entity[] = [];
+  private _cachedPlayerBuildings: Entity[] = [];
+  private _cachedPlayerIdForUnits: PlayerId = -1 as PlayerId;
+  private _cachedPlayerIdForBuildings: PlayerId = -1 as PlayerId;
+
   // Snapshot buffering: decouple PeerJS delivery from frame processing.
   // PeerJS callback stores the latest snapshot instantly; update() processes once per frame.
   // One-shot events are accumulated so dropped intermediate snapshots don't lose them.
@@ -172,18 +180,28 @@ export class RtsScene extends Phaser.Scene {
       getProjectiles: () => this.clientViewState.getProjectiles(),
       getAllEntities: () => this.clientViewState.getAllEntities(),
       getEntity: (id: EntityId) => this.clientViewState.getEntity(id),
-      getSelectedUnits: () => this.clientViewState.getUnits().filter(
-        e => e.selectable?.selected && e.ownership?.playerId === this.localPlayerId
-      ),
-      getSelectedBuildings: () => this.clientViewState.getBuildings().filter(
-        b => b.selectable?.selected && b.ownership?.playerId === this.localPlayerId
-      ),
-      getBuildingsByPlayer: (pid: PlayerId) => this.clientViewState.getBuildings().filter(
-        b => b.ownership?.playerId === pid
-      ),
-      getUnitsByPlayer: (pid: PlayerId) => this.clientViewState.getUnits().filter(
-        u => u.ownership?.playerId === pid
-      ),
+      getSelectedUnits: () => this._cachedSelectedUnits,
+      getSelectedBuildings: () => this._cachedSelectedBuildings,
+      getBuildingsByPlayer: (pid: PlayerId) => {
+        if (pid !== this._cachedPlayerIdForBuildings) {
+          this._cachedPlayerBuildings.length = 0;
+          for (const b of this.clientViewState.getBuildings()) {
+            if (b.ownership?.playerId === pid) this._cachedPlayerBuildings.push(b);
+          }
+          this._cachedPlayerIdForBuildings = pid;
+        }
+        return this._cachedPlayerBuildings;
+      },
+      getUnitsByPlayer: (pid: PlayerId) => {
+        if (pid !== this._cachedPlayerIdForUnits) {
+          this._cachedPlayerUnits.length = 0;
+          for (const u of this.clientViewState.getUnits()) {
+            if (u.ownership?.playerId === pid) this._cachedPlayerUnits.push(u);
+          }
+          this._cachedPlayerIdForUnits = pid;
+        }
+        return this._cachedPlayerUnits;
+      },
     };
 
     // Create local command queue (for selection commands)
@@ -540,6 +558,24 @@ export class RtsScene extends Phaser.Scene {
         this.centerCameraOnCommander();
       }
     }
+
+    // Rebuild per-frame cached query results (avoids repeated .filter() per frame)
+    this._cachedSelectedUnits.length = 0;
+    this._cachedSelectedBuildings.length = 0;
+    const pid = this.localPlayerId;
+    for (const e of this.clientViewState.getUnits()) {
+      if (e.selectable?.selected && e.ownership?.playerId === pid) {
+        this._cachedSelectedUnits.push(e);
+      }
+    }
+    for (const b of this.clientViewState.getBuildings()) {
+      if (b.selectable?.selected && b.ownership?.playerId === pid) {
+        this._cachedSelectedBuildings.push(b);
+      }
+    }
+    // Invalidate per-player caches (rebuilt lazily on first access)
+    this._cachedPlayerIdForUnits = -1 as PlayerId;
+    this._cachedPlayerIdForBuildings = -1 as PlayerId;
 
     // Update explosion effects
     this.entityRenderer.updateExplosions(delta);

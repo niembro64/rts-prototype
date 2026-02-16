@@ -31,6 +31,8 @@ export interface AudioEvent {
     attackMagnitude: number;
     radius: number;       // Unit's collision radius for explosion size
     color: number;        // Player color for explosion
+    unitType?: string;    // Unit type for debris generation
+    rotation?: number;    // Unit's body rotation at death
   };
 }
 

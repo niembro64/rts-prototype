@@ -66,6 +66,11 @@ export class ArachnidLeg {
   // Has the leg been initialized with a ground position?
   private initialized: boolean = false;
 
+  // Cached output objects to avoid per-frame allocations
+  private _foot = { x: 0, y: 0 };
+  private _knee = { x: 0, y: 0 };
+  private _attach = { x: 0, y: 0 };
+
   constructor(config: LegConfig) {
     this.config = config;
     // lerpSpeed is now used as duration in ms (default 150ms for snappy but smooth)
@@ -230,9 +235,11 @@ export class ArachnidLeg {
     this.groundY = this.startGroundY + (this.targetGroundY - this.startGroundY) * easedT;
   }
 
-  // Get the current foot position (for rendering)
+  // Get the current foot position (for rendering) — returns cached object, do not store
   getFootPosition(): { x: number; y: number } {
-    return { x: this.groundX, y: this.groundY };
+    this._foot.x = this.groundX;
+    this._foot.y = this.groundY;
+    return this._foot;
   }
 
   // Get the knee position using inverse kinematics
@@ -270,10 +277,10 @@ export class ArachnidLeg {
     const bendDirection = side > 0 ? 1 : -1;
     const kneeAngle = angleToFoot + bendDirection * angleB;
 
-    const kneeX = attachX + Math.cos(kneeAngle) * upperLen;
-    const kneeY = attachY + Math.sin(kneeAngle) * upperLen;
+    this._knee.x = attachX + Math.cos(kneeAngle) * upperLen;
+    this._knee.y = attachY + Math.sin(kneeAngle) * upperLen;
 
-    return { x: kneeX, y: kneeY };
+    return this._knee;
   }
 
   // Check if the leg is currently sliding
@@ -281,13 +288,12 @@ export class ArachnidLeg {
     return this.isSliding;
   }
 
-  // Get attachment point in world coordinates
+  // Get attachment point in world coordinates — returns cached object, do not store
   getAttachmentPoint(unitX: number, unitY: number, unitRotation: number): { x: number; y: number } {
     const cos = Math.cos(unitRotation);
     const sin = Math.sin(unitRotation);
-    return {
-      x: unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY,
-      y: unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY,
-    };
+    this._attach.x = unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY;
+    this._attach.y = unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY;
+    return this._attach;
   }
 }

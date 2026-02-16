@@ -94,7 +94,10 @@ export class SpatialGrid {
     if (oldKey !== undefined) {
       const oldCell = this.cells.get(oldKey);
       if (oldCell) {
-        const idx = oldCell.units.findIndex(e => e.id === entity.id);
+        let idx = -1;
+        for (let j = 0; j < oldCell.units.length; j++) {
+          if (oldCell.units[j].id === entity.id) { idx = j; break; }
+        }
         if (idx !== -1) {
           const last = oldCell.units.length - 1;
           if (idx !== last) oldCell.units[idx] = oldCell.units[last];
@@ -118,7 +121,10 @@ export class SpatialGrid {
 
     const cell = this.cells.get(key);
     if (cell) {
-      const idx = cell.units.findIndex(e => e.id === id);
+      let idx = -1;
+      for (let j = 0; j < cell.units.length; j++) {
+        if (cell.units[j].id === id) { idx = j; break; }
+      }
       if (idx !== -1) {
         const last = cell.units.length - 1;
         if (idx !== last) cell.units[idx] = cell.units[last];
@@ -168,7 +174,10 @@ export class SpatialGrid {
     for (const key of keys) {
       const cell = this.cells.get(key);
       if (cell) {
-        const idx = cell.buildings.findIndex(e => e.id === id);
+        let idx = -1;
+        for (let j = 0; j < cell.buildings.length; j++) {
+          if (cell.buildings[j].id === id) { idx = j; break; }
+        }
         if (idx !== -1) {
           const last = cell.buildings.length - 1;
           if (idx !== last) cell.buildings[idx] = cell.buildings[last];

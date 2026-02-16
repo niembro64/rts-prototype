@@ -82,6 +82,16 @@ export function handleAudioEvent(
       attackerX,
       attackerY
     );
+
+    // Generate debris fragments from unit visual pieces
+    if (ctx.unitType) {
+      entityRenderer.addDebris(
+        event.x, event.y,
+        ctx.unitType, ctx.rotation ?? 0,
+        ctx.radius, ctx.color,
+        ctx.hitDirX, ctx.hitDirY
+      );
+    }
   }
 
   if (!audioInitialized) return;

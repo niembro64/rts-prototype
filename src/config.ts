@@ -215,6 +215,47 @@ export const BEAM_EXPLOSION_MAGNITUDE = 300;
 export const EXPLOSION_BASE_MOMENTUM = 500;
 
 // =============================================================================
+// DEATH DEBRIS
+// =============================================================================
+
+/**
+ * When a unit dies, its visual pieces (legs, treads, body panels, turret barrels)
+ * fly apart as line-segment debris. These settings control the physics and decay.
+ */
+export const DEBRIS_CONFIG = {
+  /** Maximum debris fragments alive at once (oldest evicted first) */
+  maxFragments: 60,
+
+  // --- Launch velocities ---
+
+  /** Minimum random outward speed (px/sec) */
+  randomSpeedMin: 50,
+  /** Random speed range added on top of min (px/sec) — actual = min + rand*range */
+  randomSpeedRange: 200,
+
+  /** Minimum speed along hit direction (px/sec) — biases debris away from attacker */
+  hitBiasMin: 80,
+  /** Random range added to hit bias (px/sec) */
+  hitBiasRange: 120,
+
+  /** Max angular velocity magnitude (rad/sec) — actual is ±half this value */
+  angularSpeedMax: 30,
+
+  // --- Physics decay ---
+
+  /** Per-frame velocity multiplier (0–1). Lower = more drag. Applied to vx, vy, and angular vel. */
+  drag: 0.99,
+
+  // --- Color decay ---
+  // Two-stage fade: original color → black (hot decay), then black → background (cool decay)
+
+  /** Time constant for color → black transition (ms). Lower = faster darkening. */
+  colorDecayTau: 500,
+  /** Time constant for black → background fade (ms). Lower = faster disappearance. */
+  fadeDecayTau: 3000,
+};
+
+// =============================================================================
 // BUILDING STATS
 // =============================================================================
 
@@ -306,7 +347,7 @@ export const UNIT_STATS = {
   jackal: {
     baseCost: 40,
     hp: 40,
-    moveSpeed: 360,
+    moveSpeed: 300,
     collisionRadius: 8,
     mass: 10,
     buildRate: 70,
@@ -316,7 +357,7 @@ export const UNIT_STATS = {
   lynx: {
     baseCost: 50,
     hp: 65,
-    moveSpeed: 130,
+    moveSpeed: 170,
     collisionRadius: 10,
     mass: 15,
     buildRate: 55,
@@ -401,9 +442,9 @@ export const WEAPON_STATS = {
   // Gatling - Rapid fire, low damage per shot (Jackal's weapon)
   gatling: {
     damage: 4,
-    range: 140,
+    range: 130,
     cooldown: 80,
-    projectileSpeed: 650,
+    projectileSpeed: 400,
     projectileMass: 0.3,
   },
 
@@ -412,7 +453,7 @@ export const WEAPON_STATS = {
     damage: 18,
     range: 160,
     cooldown: 1200,
-    projectileSpeed: 600,
+    projectileSpeed: 500,
     projectileMass: 1.0,
     burstCount: 3,
     burstDelay: 60,

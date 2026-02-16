@@ -5,6 +5,9 @@ import { COLORS, LEG_STYLE_CONFIG } from '../types';
 import { drawPolygon } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
+// Pre-allocated reusable point array for body shape (avoids 8 object allocations per frame per unit)
+const _bodyPoints: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+
 export function drawBeamUnit(
   ctx: UnitRenderContext,
   legs: ArachnidLeg[]
@@ -52,44 +55,26 @@ export function drawBeamUnit(
     const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
     graphics.fillStyle(bodyColor, 1);
 
-    // Draw body as elongated hexagon (insect-like)
+    // Draw body as elongated hexagon (insect-like) — reuse pooled point array
     const bodyLength = r * 0.9;
     const bodyWidth = r * 0.55;
-    const bodyPoints = [
-      {
-        x: x + cos * bodyLength - sin * bodyWidth * 0.3,
-        y: y + sin * bodyLength + cos * bodyWidth * 0.3,
-      },
-      {
-        x: x + cos * bodyLength * 0.4 - sin * bodyWidth,
-        y: y + sin * bodyLength * 0.4 + cos * bodyWidth,
-      },
-      {
-        x: x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.7,
-        y: y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.7,
-      },
-      {
-        x: x - cos * bodyLength - sin * bodyWidth * 0.3,
-        y: y - sin * bodyLength + cos * bodyWidth * 0.3,
-      },
-      {
-        x: x - cos * bodyLength + sin * bodyWidth * 0.3,
-        y: y - sin * bodyLength - cos * bodyWidth * 0.3,
-      },
-      {
-        x: x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.7,
-        y: y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.7,
-      },
-      {
-        x: x + cos * bodyLength * 0.4 + sin * bodyWidth,
-        y: y + sin * bodyLength * 0.4 - cos * bodyWidth,
-      },
-      {
-        x: x + cos * bodyLength + sin * bodyWidth * 0.3,
-        y: y + sin * bodyLength - cos * bodyWidth * 0.3,
-      },
-    ];
-    graphics.fillPoints(bodyPoints, true);
+    _bodyPoints[0].x = x + cos * bodyLength - sin * bodyWidth * 0.3;
+    _bodyPoints[0].y = y + sin * bodyLength + cos * bodyWidth * 0.3;
+    _bodyPoints[1].x = x + cos * bodyLength * 0.4 - sin * bodyWidth;
+    _bodyPoints[1].y = y + sin * bodyLength * 0.4 + cos * bodyWidth;
+    _bodyPoints[2].x = x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.7;
+    _bodyPoints[2].y = y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.7;
+    _bodyPoints[3].x = x - cos * bodyLength - sin * bodyWidth * 0.3;
+    _bodyPoints[3].y = y - sin * bodyLength + cos * bodyWidth * 0.3;
+    _bodyPoints[4].x = x - cos * bodyLength + sin * bodyWidth * 0.3;
+    _bodyPoints[4].y = y - sin * bodyLength - cos * bodyWidth * 0.3;
+    _bodyPoints[5].x = x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.7;
+    _bodyPoints[5].y = y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.7;
+    _bodyPoints[6].x = x + cos * bodyLength * 0.4 + sin * bodyWidth;
+    _bodyPoints[6].y = y + sin * bodyLength * 0.4 - cos * bodyWidth;
+    _bodyPoints[7].x = x + cos * bodyLength + sin * bodyWidth * 0.3;
+    _bodyPoints[7].y = y + sin * bodyLength - cos * bodyWidth * 0.3;
+    graphics.fillPoints(_bodyPoints, true);
 
     // Inner carapace pattern (dark)
     graphics.fillStyle(dark, 1);

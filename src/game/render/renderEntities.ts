@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
-import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
+import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb, DEBRIS_CONFIG } from '../../config';
 import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 import {
   type TankTreadSetup,
@@ -44,6 +44,240 @@ const BURN_HOT_RGB = hexToRgb(BURN_COLOR_HOT);
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 const MAX_BURN_MARKS = 5000;
 
+// Death debris fragment — line segment with physics, color decay like burn marks
+interface DebrisFragment {
+  x: number; y: number;         // current center position
+  vx: number; vy: number;       // velocity (pixels/sec)
+  rotation: number;              // current angle of the segment
+  angularVel: number;            // rotation speed (rad/sec)
+  length: number;                // segment length
+  width: number;                 // line width
+  color: number;                 // cached RGB (updated during aging)
+  baseColor: number;             // original color at creation
+  age: number;                   // ms since creation
+}
+const MAX_DEBRIS = DEBRIS_CONFIG.maxFragments;
+const DEBRIS_DRAG = DEBRIS_CONFIG.drag;
+
+// Per-unit-type debris piece template (local coordinates relative to unit center)
+interface DebrisPieceTemplate {
+  localX: number;
+  localY: number;
+  length: number;
+  width: number;
+  angle: number;       // local angle offset
+  colorType: 'base' | 'dark' | 'light' | 'gray' | 'white';
+}
+
+// Cached debris templates per unit type
+const debrisTemplateCache: Map<string, DebrisPieceTemplate[]> = new Map();
+
+function getDebrisTemplateKey(unitType: string, radius: number): string {
+  return `${unitType}:${Math.round(radius)}`;
+}
+
+/**
+ * Generate debris piece templates for a unit type.
+ * These are in local coordinates (relative to unit center, unrotated).
+ */
+function getDebrisPieces(unitType: string, radius: number): DebrisPieceTemplate[] {
+  const key = getDebrisTemplateKey(unitType, radius);
+  const cached = debrisTemplateCache.get(key);
+  if (cached) return cached;
+
+  const r = radius;
+  const pieces: DebrisPieceTemplate[] = [];
+
+  // Helper: add polygon edges as debris
+  const addPolygonEdges = (cx: number, cy: number, polyR: number, sides: number, rot: number, width: number, color: DebrisPieceTemplate['colorType']) => {
+    for (let i = 0; i < sides; i++) {
+      const a1 = rot + (i / sides) * Math.PI * 2;
+      const a2 = rot + ((i + 1) / sides) * Math.PI * 2;
+      const x1 = cx + Math.cos(a1) * polyR;
+      const y1 = cy + Math.sin(a1) * polyR;
+      const x2 = cx + Math.cos(a2) * polyR;
+      const y2 = cy + Math.sin(a2) * polyR;
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      pieces.push({ localX: mx, localY: my, length: Math.sqrt(dx * dx + dy * dy), width, angle: Math.atan2(dy, dx), colorType: color });
+    }
+  };
+
+  // Helper: add a barrel/line segment
+  const addBarrel = (ox: number, oy: number, len: number, width: number, angle: number, color: DebrisPieceTemplate['colorType']) => {
+    const mx = ox + Math.cos(angle) * len / 2;
+    const my = oy + Math.sin(angle) * len / 2;
+    pieces.push({ localX: mx, localY: my, length: len, width, angle, colorType: color });
+  };
+
+  switch (unitType) {
+    case 'widow':
+    case 'tarantula': {
+      // 8 legs: upper + lower segments
+      const legLen = r * 1.9;
+      const upperLen = legLen * 0.55;
+      const lowerLen = legLen * 0.55;
+      const legW = 2.5;
+      // 4 left + 4 right attachment points (simplified radial)
+      for (let i = 0; i < 8; i++) {
+        const side = i < 4 ? -1 : 1;
+        const idx = i < 4 ? i : i - 4;
+        const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const ax = Math.cos(attachAngle) * r * 0.4;
+        const ay = Math.sin(attachAngle) * r * 0.4;
+        // Upper leg
+        pieces.push({ localX: ax, localY: ay, length: upperLen, width: legW + 1, angle: attachAngle, colorType: 'dark' });
+        // Lower leg
+        const kx = ax + Math.cos(attachAngle) * upperLen;
+        const ky = ay + Math.sin(attachAngle) * upperLen;
+        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: legW, angle: attachAngle, colorType: 'dark' });
+      }
+      // Body hexagon edges
+      addPolygonEdges(r * 0.35, 0, r * 0.95, 6, Math.PI / 6, 3, 'dark');
+      // Turret barrels (6 emitters)
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI) / 3 + Math.PI / 6;
+        const ex = Math.cos(a) * r * 0.65 + r * 0.5;
+        const ey = Math.sin(a) * r * 0.65;
+        addBarrel(ex, ey, r * 0.5, 2, a, 'white');
+      }
+      break;
+    }
+
+    case 'daddy': {
+      // 8 long legs
+      const legLen = r * 10;
+      const upperLen = legLen * 0.3;
+      const lowerLen = legLen * 0.6;
+      const legW = 3;
+      for (let i = 0; i < 8; i++) {
+        const side = i < 4 ? -1 : 1;
+        const idx = i < 4 ? i : i - 4;
+        const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const ax = Math.cos(attachAngle) * r * 0.4;
+        const ay = Math.sin(attachAngle) * r * 0.4;
+        pieces.push({ localX: ax, localY: ay, length: upperLen, width: legW + 1, angle: attachAngle, colorType: 'dark' });
+        const kx = ax + Math.cos(attachAngle) * upperLen;
+        const ky = ay + Math.sin(attachAngle) * upperLen;
+        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: legW, angle: attachAngle, colorType: 'dark' });
+      }
+      // Body polygon
+      addPolygonEdges(0, 0, r * 0.7, 6, 0, 3, 'base');
+      // Central beam barrel
+      addBarrel(0, 0, r * 1.2, 4, 0, 'white');
+      break;
+    }
+
+    case 'commander': {
+      // 4 legs (2 per side)
+      const legLen = r * 2.2;
+      const upperLen = legLen * 0.5;
+      const lowerLen = legLen * 0.5;
+      const legW = 3;
+      for (let i = 0; i < 4; i++) {
+        const side = i < 2 ? -1 : 1;
+        const idx = i < 2 ? i : i - 2;
+        const attachAngle = (idx === 0 ? 0.3 : -0.3) * Math.PI + Math.PI / 2 * side;
+        const ax = Math.cos(attachAngle) * r * 0.5;
+        const ay = Math.sin(attachAngle) * r * 0.5;
+        pieces.push({ localX: ax, localY: ay, length: upperLen, width: legW + 1, angle: attachAngle, colorType: 'dark' });
+        const kx = ax + Math.cos(attachAngle) * upperLen;
+        const ky = ay + Math.sin(attachAngle) * upperLen;
+        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: legW, angle: attachAngle, colorType: 'dark' });
+      }
+      // Body polygon
+      addPolygonEdges(0, 0, r * 0.8, 6, 0, 3, 'base');
+      // DGun barrel
+      addBarrel(0, 0, r * 1.5, 5, 0, 'white');
+      break;
+    }
+
+    case 'mammoth': {
+      // 2 treads split into segments
+      const treadLen = r * 2.0;
+      const treadOffset = r * 0.9;
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const segLen = treadLen / 3;
+          const sx = (i - 1) * segLen;
+          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * 0.5, angle: 0, colorType: 'gray' });
+        }
+      }
+      // Hull square edges
+      addPolygonEdges(0, 0, r * 0.85, 4, 0, 3, 'base');
+      // Heavy cannon barrel
+      addBarrel(0, 0, r * 1.4, 7, 0, 'white');
+      break;
+    }
+
+    case 'badger': {
+      // 2 treads
+      const treadLen = r * 1.7;
+      const treadOffset = r * 0.85;
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 2; i++) {
+          const segLen = treadLen / 2;
+          const sx = (i - 0.5) * segLen;
+          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * 0.4, angle: 0, colorType: 'gray' });
+        }
+      }
+      // Body pentagon edges
+      addPolygonEdges(0, 0, r * 0.8, 5, 0, 3, 'dark');
+      // Shotgun barrel
+      addBarrel(0, 0, r * 1.0, 5, 0, 'white');
+      break;
+    }
+
+    case 'jackal':
+    case 'lynx':
+    case 'scorpion':
+    case 'viper': {
+      // 4 small wheel rectangles
+      const wheelDistX = r * 0.6;
+      const wheelDistY = r * 0.7;
+      const wheelLen = r * 0.5;
+      const wheelW = r * 0.11;
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          pieces.push({ localX: wheelDistX * sx, localY: wheelDistY * sy, length: wheelLen, width: wheelW, angle: 0, colorType: 'gray' });
+        }
+      }
+      // Diamond body edges (4 sides)
+      addPolygonEdges(0, 0, r * 0.55, 4, Math.PI / 4, 2, 'light');
+      // Inner accent
+      addPolygonEdges(0, 0, r * 0.35, 4, Math.PI / 4, 1.5, 'base');
+      // Turret barrel(s)
+      if (unitType === 'jackal') {
+        // Triple barrels
+        for (let i = -1; i <= 1; i++) {
+          addBarrel(0, i * 2, r * 1.0, 1.5, 0, 'white');
+        }
+      } else if (unitType === 'viper') {
+        addBarrel(0, 0, r * 1.2, 2, 0, 'white');
+      } else if (unitType === 'lynx') {
+        addBarrel(0, -2, r * 0.8, 2, 0, 'white');
+        addBarrel(0, 2, r * 0.8, 2, 0, 'white');
+      } else {
+        // scorpion
+        addBarrel(0, 0, r * 0.8, 3, 0, 'white');
+      }
+      break;
+    }
+
+    default: {
+      // Generic fallback: hexagon body + barrel
+      addPolygonEdges(0, 0, r * 0.6, 6, 0, 2, 'base');
+      addBarrel(0, 0, r * 1.0, 2, 0, 'white');
+      break;
+    }
+  }
+
+  debrisTemplateCache.set(key, pieces);
+  return pieces;
+}
+
 export class EntityRenderer {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
@@ -75,6 +309,9 @@ export class EntityRenderer {
   // Keyed by "sourceEntityId:weaponIndex" so endpoint tracking survives beam entity ID changes
   private prevBeamEndpoints: Map<string, { x: number; y: number }> = new Map();
   private burnMarkFrameCounter: number = 0;
+
+  // Death debris fragments
+  private debrisFragments: DebrisFragment[] = [];
 
   // Reusable Set for per-frame entity ID lookups (avoids allocating new Set + Array each frame)
   private _reusableIdSet: Set<EntityId> = new Set();
@@ -348,6 +585,77 @@ export class EntityRenderer {
     });
   }
 
+  /**
+   * Add debris fragments for a destroyed unit.
+   * Generates pieces from a per-unit-type template, applies random velocities with hit-direction bias.
+   */
+  addDebris(
+    x: number, y: number,
+    unitType: string, rotation: number,
+    radius: number, color: number,
+    hitDirX: number, hitDirY: number
+  ): void {
+    const templates = getDebrisPieces(unitType, radius);
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+
+    // Resolve color types from the player color
+    const baseR = (color >> 16) & 0xFF;
+    const baseG = (color >> 8) & 0xFF;
+    const baseB = color & 0xFF;
+    const darkColor = ((baseR >> 1) << 16) | ((baseG >> 1) << 8) | (baseB >> 1);
+    const lightR = Math.min(255, baseR + 60);
+    const lightG = Math.min(255, baseG + 60);
+    const lightB = Math.min(255, baseB + 60);
+    const lightColor = (lightR << 16) | (lightG << 8) | lightB;
+    const colorMap: Record<string, number> = {
+      base: color,
+      dark: darkColor,
+      light: lightColor,
+      gray: 0x606060,
+      white: 0xf0f0f0,
+    };
+
+    for (let i = 0; i < templates.length; i++) {
+      const t = templates[i];
+      // Transform local position by unit rotation
+      const wx = x + cos * t.localX - sin * t.localY;
+      const wy = y + sin * t.localX + cos * t.localY;
+
+      // Random velocity with hit-direction bias
+      const randAngle = Math.random() * Math.PI * 2;
+      const randMag = DEBRIS_CONFIG.randomSpeedMin + Math.random() * DEBRIS_CONFIG.randomSpeedRange;
+      const hitBias = DEBRIS_CONFIG.hitBiasMin + Math.random() * DEBRIS_CONFIG.hitBiasRange;
+      const vx = Math.cos(randAngle) * randMag + hitDirX * hitBias;
+      const vy = Math.sin(randAngle) * randMag + hitDirY * hitBias;
+
+      const angularVel = (Math.random() - 0.5) * DEBRIS_CONFIG.angularSpeedMax;
+
+      const fragColor = colorMap[t.colorType] ?? color;
+
+      this.debrisFragments.push({
+        x: wx, y: wy,
+        vx, vy,
+        rotation: rotation + t.angle,
+        angularVel,
+        length: t.length,
+        width: t.width,
+        color: fragColor,
+        baseColor: fragColor,
+        age: 0,
+      });
+    }
+
+    // Cap debris
+    if (this.debrisFragments.length > MAX_DEBRIS) {
+      const excess = this.debrisFragments.length - MAX_DEBRIS;
+      for (let i = 0; i < MAX_DEBRIS; i++) {
+        this.debrisFragments[i] = this.debrisFragments[i + excess];
+      }
+      this.debrisFragments.length = MAX_DEBRIS;
+    }
+  }
+
   updateExplosions(dtMs: number): void {
     // In-place compaction avoids .filter() array allocation every frame
     let writeIdx = 0;
@@ -379,6 +687,37 @@ export class EntityRenderer {
       }
     }
     this.burnMarks.length = burnWrite;
+
+    // Age debris fragments — physics update + two-stage color decay (baseColor → black → background)
+    const debrisColorTau = DEBRIS_CONFIG.colorDecayTau;
+    const debrisFadeTau = DEBRIS_CONFIG.fadeDecayTau;
+    let debrisWrite = 0;
+    for (let i = 0; i < this.debrisFragments.length; i++) {
+      const frag = this.debrisFragments[i];
+      frag.age += dtMs;
+      const coolBlend = 1 - Math.exp(-frag.age / debrisFadeTau);
+      if (coolBlend < 1 - burnCutoff) {
+        // Update physics
+        const dtSec = dtMs / 1000;
+        frag.x += frag.vx * dtSec;
+        frag.y += frag.vy * dtSec;
+        frag.vx *= DEBRIS_DRAG;
+        frag.vy *= DEBRIS_DRAG;
+        frag.rotation += frag.angularVel * dtSec;
+        frag.angularVel *= DEBRIS_DRAG;
+        // Two-stage color: baseColor → black → background
+        const hotDecay = Math.exp(-frag.age / debrisColorTau);
+        const fragR = (frag.baseColor >> 16) & 0xFF;
+        const fragG = (frag.baseColor >> 8) & 0xFF;
+        const fragB = frag.baseColor & 0xFF;
+        const r = Math.round(fragR * hotDecay + BURN_COOL_RGB.r * coolBlend);
+        const g = Math.round(fragG * hotDecay + BURN_COOL_RGB.g * coolBlend);
+        const b = Math.round(fragB * hotDecay + BURN_COOL_RGB.b * coolBlend);
+        frag.color = (r << 16) | (g << 8) | b;
+        this.debrisFragments[debrisWrite++] = frag;
+      }
+    }
+    this.debrisFragments.length = debrisWrite;
   }
 
   // ==================== LABEL MANAGEMENT ====================
@@ -525,6 +864,25 @@ export class EntityRenderer {
       this.graphics.fillStyle(mark.color, 1);
       this.graphics.fillCircle(mark.x1, mark.y1, r);
       this.graphics.fillCircle(mark.x2, mark.y2, r);
+    }
+
+    // 0c. Death debris fragments
+    for (let i = 0; i < this.debrisFragments.length; i++) {
+      const frag = this.debrisFragments[i];
+      if (!this.isInViewport(frag.x, frag.y, frag.length)) continue;
+      const fragCos = Math.cos(frag.rotation);
+      const fragSin = Math.sin(frag.rotation);
+      const halfLen = frag.length / 2;
+      const x1 = frag.x - fragCos * halfLen;
+      const y1 = frag.y - fragSin * halfLen;
+      const x2 = frag.x + fragCos * halfLen;
+      const y2 = frag.y + fragSin * halfLen;
+      this.graphics.lineStyle(frag.width, frag.color, 1);
+      this.graphics.lineBetween(x1, y1, x2, y2);
+      const capR = frag.width / 2;
+      this.graphics.fillStyle(frag.color, 1);
+      this.graphics.fillCircle(x1, y1, capR);
+      this.graphics.fillCircle(x2, y2, capR);
     }
 
     // 1. Buildings (bottom layer)
@@ -903,6 +1261,12 @@ export class EntityRenderer {
     const healthColor = percent > 0.3 ? COLORS.HEALTH_BAR_FG : COLORS.HEALTH_BAR_LOW;
     this.graphics.fillStyle(healthColor, 0.9);
     this.graphics.fillRect(left, y, width * percent, height);
+  }
+
+  clearEffects(): void {
+    this.debrisFragments.length = 0;
+    this.burnMarks.length = 0;
+    this.explosions.length = 0;
   }
 
   destroy(): void {

@@ -227,18 +227,23 @@ export class Simulation {
   private checkGameOver(): void {
     if (this.gameOverWinnerId !== null) return; // Already over
 
-    // Find all players with alive commanders
-    const alivePlayers = this.playerIds.filter(playerId =>
-      this.world.isCommanderAlive(playerId)
-    );
+    // Count alive commanders without allocating a filtered array
+    let aliveCount = 0;
+    let lastAliveId = 0;
+    for (let i = 0; i < this.playerIds.length; i++) {
+      if (this.world.isCommanderAlive(this.playerIds[i])) {
+        aliveCount++;
+        lastAliveId = this.playerIds[i];
+      }
+    }
 
     // If only one player remains, they win
-    if (alivePlayers.length === 1) {
-      this.gameOverWinnerId = alivePlayers[0];
+    if (aliveCount === 1) {
+      this.gameOverWinnerId = lastAliveId;
       this.onGameOver?.(this.gameOverWinnerId);
     }
     // If no players remain (somehow), no winner
-    else if (alivePlayers.length === 0 && this.playerIds.length > 0) {
+    else if (aliveCount === 0 && this.playerIds.length > 0) {
       // Draw or error state - just pick first player
       this.gameOverWinnerId = this.playerIds[0];
       this.onGameOver?.(this.gameOverWinnerId);
