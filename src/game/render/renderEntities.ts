@@ -4,6 +4,7 @@
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
+import { BURN_COLOR_TAU, BURN_ALPHA_TAU, BURN_LIFETIME } from '../../config';
 import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 import {
   type TankTreadSetup,
@@ -38,9 +39,7 @@ interface BurnMark {
   width: number;           // beam width
   age: number;             // ms since creation
 }
-const BURN_COLOR_TAU = 200;   // color decay: red → black (ms), fast
-const BURN_ALPHA_TAU = 2000;  // opacity decay: opaque → transparent (ms), slow
-const BURN_LIFETIME = 5000;   // hard cutoff — marks fully gone by this time
+// BURN_COLOR_TAU, BURN_ALPHA_TAU, BURN_LIFETIME imported from config
 const MAX_BURN_MARKS = 5000;
 
 export class EntityRenderer {
