@@ -80,16 +80,23 @@ export const DEFAULT_TURRET_DRAG = 0.15;
  */
 export const TURRET_RETURN_TO_FORWARD = false;
 
+// Color conversion utilities
+export function hexToStr(c: number): string {
+  return '#' + c.toString(16).padStart(6, '0');
+}
+export function hexToRgb(c: number): { r: number; g: number; b: number } {
+  return { r: (c >> 16) & 0xff, g: (c >> 8) & 0xff, b: c & 0xff };
+}
+
 // Map colors
 export const MAP_BG_COLOR = 0x1a1a2e;         // in-bounds background
-export const MAP_BG_COLOR_STR = '#1a1a2e';     // same as above for Phaser config
 export const MAP_OOB_COLOR = 0x08080f;         // out-of-bounds background
 export const MAP_CAMERA_BG = 0x0a0a14;         // camera clear color
 export const MAP_GRID_COLOR = 0x333355;        // grid lines
 
 // Scorched earth burn mark colors and decay
-export const BURN_COLOR_HOT = { r: 255, g: 34, b: 0 };   // bright red start
-export const BURN_COLOR_COOL = { r: 26, g: 26, b: 46 };   // fades to background (MAP_BG_COLOR)
+export const BURN_COLOR_HOT = 0xff2200;        // bright red start
+export const BURN_COLOR_COOL = MAP_BG_COLOR;   // fades to background
 export const BURN_COLOR_TAU = 200;   // color decay: hot → cool (ms), fast
 export const BURN_ALPHA_TAU = 1000;  // opacity decay: opaque → transparent (ms), slow
 
@@ -689,18 +696,18 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     min: 0.5,
     low: 0.3,
     medium: 0.1,
-    high: 0.03,
-    max: 0.01,
+    high: 0.1,
+    max: 0.1,
   },
 
   // Burn mark sample interval — frames to skip between placing new burn marks
   // 0 = every frame, 1 = every other frame, 3 = every 4th frame, etc.
   BURN_MARK_FRAMES_SKIP: {
-    min: 10,
-    low: 5,
-    medium: 3,
-    high: 1,
-    max: 0,
+    min: 30,
+    low: 20,
+    medium: 10,
+    high: 10,
+    max: 5,
   },
 
   // Force field visual style

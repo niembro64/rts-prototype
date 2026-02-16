@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
-import { BURN_COLOR_TAU, BURN_ALPHA_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL } from '../../config';
+import { BURN_COLOR_TAU, BURN_ALPHA_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
 import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 import {
   type TankTreadSetup,
@@ -39,7 +39,8 @@ interface BurnMark {
   width: number;           // beam width
   age: number;             // ms since creation
 }
-// BURN_COLOR_TAU, BURN_ALPHA_TAU imported from config
+const BURN_HOT_RGB = hexToRgb(BURN_COLOR_HOT);
+const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 const MAX_BURN_MARKS = 5000;
 
 export class EntityRenderer {
@@ -505,9 +506,9 @@ export class EntityRenderer {
       if (!this.isInViewport(midX, midY, 50)) continue;
       // Color: lerp from hot → cool (background) using exponential decay
       const t = Math.exp(-mark.age / BURN_COLOR_TAU);
-      const red = Math.round(BURN_COLOR_HOT.r * t + BURN_COLOR_COOL.r * (1 - t));
-      const green = Math.round(BURN_COLOR_HOT.g * t + BURN_COLOR_COOL.g * (1 - t));
-      const blue = Math.round(BURN_COLOR_HOT.b * t + BURN_COLOR_COOL.b * (1 - t));
+      const red = Math.round(BURN_HOT_RGB.r * t + BURN_COOL_RGB.r * (1 - t));
+      const green = Math.round(BURN_HOT_RGB.g * t + BURN_COOL_RGB.g * (1 - t));
+      const blue = Math.round(BURN_HOT_RGB.b * t + BURN_COOL_RGB.b * (1 - t));
       const color = (red << 16) | (green << 8) | blue;
       // Opacity: exponential decay (slow) — pruned by alpha cutoff
       const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU);
