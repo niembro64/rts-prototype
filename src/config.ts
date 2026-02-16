@@ -97,8 +97,8 @@ export const MAP_GRID_COLOR = 0x333355;        // grid lines
 // Scorched earth burn mark colors and decay
 export const BURN_COLOR_HOT = 0xff2200;        // bright red start
 export const BURN_COLOR_COOL = MAP_BG_COLOR;   // fades to background
-export const BURN_COLOR_TAU = 200;   // color decay: hot → cool (ms), fast
-export const BURN_ALPHA_TAU = 1000;  // opacity decay: opaque → transparent (ms), slow
+export const BURN_COLOR_TAU = 200;   // color decay: red → black (ms), fast
+export const BURN_COOL_TAU = 2000;   // color decay: black → background (ms), slow
 
 /**
  * Range multipliers relative to fireRange (1.0x).
@@ -690,8 +690,8 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     max: true,
   },
 
-  // Burn mark alpha cutoff — marks below this opacity are not drawn
-  // Lower values = more lingering scorch marks, higher = fewer draw calls
+  // Burn mark cutoff — how close to background color before marks stop drawing
+  // Lower values = marks linger longer, higher = fewer draw calls
   BURN_MARK_ALPHA_CUTOFF: {
     min: 0.5,
     low: 0.3,
@@ -703,11 +703,11 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   // Burn mark sample interval — frames to skip between placing new burn marks
   // 0 = every frame, 1 = every other frame, 3 = every 4th frame, etc.
   BURN_MARK_FRAMES_SKIP: {
-    min: 30,
-    low: 20,
-    medium: 10,
-    high: 10,
-    max: 5,
+    min: 10,
+    low: 8,
+    medium: 6,
+    high: 4,
+    max: 2,
   },
 
   // Force field visual style

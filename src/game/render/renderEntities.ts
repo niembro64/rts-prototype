@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
-import { BURN_COLOR_TAU, BURN_ALPHA_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
+import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
 import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 import {
   type TankTreadSetup,
@@ -354,12 +354,14 @@ export class EntityRenderer {
     }
     this.explosions.length = writeIdx;
 
-    // Age burn marks and prune ones below alpha cutoff
+    // Age burn marks and prune ones that have blended to background
     const burnCutoff = getGraphicsConfig().burnMarkAlphaCutoff;
     let burnWrite = 0;
     for (let i = 0; i < this.burnMarks.length; i++) {
       this.burnMarks[i].age += dtMs;
-      if (Math.exp(-this.burnMarks[i].age / BURN_ALPHA_TAU) >= burnCutoff) {
+      // coolBlend approaches 1 as mark fades to background; prune when close enough
+      const coolBlend = 1 - Math.exp(-this.burnMarks[i].age / BURN_COOL_TAU);
+      if (coolBlend < 1 - burnCutoff) {
         this.burnMarks[burnWrite++] = this.burnMarks[i];
       }
     }
@@ -457,7 +459,7 @@ export class EntityRenderer {
     const camera = this.scene.cameras.main;
     setCurrentZoom(camera.zoom);
     const gfxConfig = getGraphicsConfig();
-    const burnAlphaCutoff = gfxConfig.burnMarkAlphaCutoff;
+    const burnCutoff = gfxConfig.burnMarkAlphaCutoff;
     this.sprayParticleTime += 16;
     this.collectVisibleEntities();
 
@@ -498,26 +500,27 @@ export class EntityRenderer {
       this.burnMarks.splice(0, this.burnMarks.length - MAX_BURN_MARKS);
     }
 
-    // 0b. Render scorched earth burn marks (below everything)
+    // 0b. Render scorched earth burn marks (below everything, fully opaque)
+    // Two-stage color blend: red → black (fast), then black → background (slow)
     for (let i = 0; i < this.burnMarks.length; i++) {
       const mark = this.burnMarks[i];
       const midX = (mark.x1 + mark.x2) * 0.5;
       const midY = (mark.y1 + mark.y2) * 0.5;
       if (!this.isInViewport(midX, midY, 50)) continue;
-      // Color: lerp from hot → cool (background) using exponential decay
-      const t = Math.exp(-mark.age / BURN_COLOR_TAU);
-      const red = Math.round(BURN_HOT_RGB.r * t + BURN_COOL_RGB.r * (1 - t));
-      const green = Math.round(BURN_HOT_RGB.g * t + BURN_COOL_RGB.g * (1 - t));
-      const blue = Math.round(BURN_HOT_RGB.b * t + BURN_COOL_RGB.b * (1 - t));
+      // hotDecay: 1→0 fast (red contribution fades to black)
+      const hotDecay = Math.exp(-mark.age / BURN_COLOR_TAU);
+      // coolBlend: 0→1 slow (black blends toward background)
+      const coolBlend = 1 - Math.exp(-mark.age / BURN_COOL_TAU);
+      if (coolBlend > 1 - burnCutoff) continue;
+      const red = Math.round(BURN_HOT_RGB.r * hotDecay + BURN_COOL_RGB.r * coolBlend);
+      const green = Math.round(BURN_HOT_RGB.g * hotDecay + BURN_COOL_RGB.g * coolBlend);
+      const blue = Math.round(BURN_HOT_RGB.b * hotDecay + BURN_COOL_RGB.b * coolBlend);
       const color = (red << 16) | (green << 8) | blue;
-      // Opacity: exponential decay (slow) — pruned by alpha cutoff
-      const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU);
-      if (alpha < burnAlphaCutoff) continue;
-      this.graphics.lineStyle(mark.width, color, alpha);
+      this.graphics.lineStyle(mark.width, color, 1);
       this.graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);
       // Circles at endpoints to round caps and fill joints between segments
       const r = mark.width / 2;
-      this.graphics.fillStyle(color, alpha);
+      this.graphics.fillStyle(color, 1);
       this.graphics.fillCircle(mark.x1, mark.y1, r);
       this.graphics.fillCircle(mark.x2, mark.y2, r);
     }
