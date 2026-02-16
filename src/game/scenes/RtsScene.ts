@@ -14,6 +14,10 @@ import {
   ZOOM_INITIAL_DEMO,
   ZOOM_INITIAL_GAME,
   WORLD_PADDING_PERCENT,
+  MAP_BG_COLOR,
+  MAP_OOB_COLOR,
+  MAP_CAMERA_BG,
+  MAP_GRID_COLOR,
 } from '../../config';
 
 // Import helpers
@@ -26,7 +30,6 @@ import {
 
 // Grid settings
 const GRID_SIZE = 50;
-const GRID_COLOR = 0x333355;
 
 export class RtsScene extends Phaser.Scene {
   private clientViewState!: ClientViewState;
@@ -224,7 +227,7 @@ export class RtsScene extends Phaser.Scene {
 
     // Setup camera with bounds
     const camera = this.cameras.main;
-    camera.setBackgroundColor(0x0a0a14);
+    camera.setBackgroundColor(MAP_CAMERA_BG);
 
     const paddingX = this.mapWidth * WORLD_PADDING_PERCENT;
     const paddingY = this.mapHeight * WORLD_PADDING_PERCENT;
@@ -467,7 +470,7 @@ export class RtsScene extends Phaser.Scene {
     const paddingX = this.mapWidth * WORLD_PADDING_PERCENT;
     const paddingY = this.mapHeight * WORLD_PADDING_PERCENT;
 
-    this.gridGraphics.fillStyle(0x08080f, 1);
+    this.gridGraphics.fillStyle(MAP_OOB_COLOR, 1);
     this.gridGraphics.fillRect(
       -paddingX,
       -paddingY,
@@ -475,10 +478,10 @@ export class RtsScene extends Phaser.Scene {
       this.mapHeight + paddingY * 2
     );
 
-    this.gridGraphics.fillStyle(0x1a1a2e, 1);
+    this.gridGraphics.fillStyle(MAP_BG_COLOR, 1);
     this.gridGraphics.fillRect(0, 0, this.mapWidth, this.mapHeight);
 
-    this.gridGraphics.lineStyle(1, GRID_COLOR, 0.3);
+    this.gridGraphics.lineStyle(1, MAP_GRID_COLOR, 0.3);
 
     for (let x = 0; x <= this.mapWidth; x += GRID_SIZE) {
       this.gridGraphics.lineBetween(x, 0, x, this.mapHeight);

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { RtsScene } from './scenes/RtsScene';
 import type { PlayerId } from './sim/types';
 import type { GameConnection } from './server/GameConnection';
+import { MAP_BG_COLOR_STR } from '../config';
 
 export interface GameConfig {
   parent: HTMLElement;
@@ -54,7 +55,7 @@ export function createGame(config: GameConfig): GameInstance {
     parent: config.parent,
     width: config.width,
     height: config.height,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: MAP_BG_COLOR_STR,
     scene: [RtsScene],
     scale: {
       mode: Phaser.Scale.RESIZE,

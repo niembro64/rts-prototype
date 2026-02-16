@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
-import { BURN_COLOR_TAU, BURN_ALPHA_TAU } from '../../config';
+import { BURN_COLOR_TAU, BURN_ALPHA_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL } from '../../config';
 import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 import {
   type TankTreadSetup,
@@ -503,11 +503,12 @@ export class EntityRenderer {
       const midX = (mark.x1 + mark.x2) * 0.5;
       const midY = (mark.y1 + mark.y2) * 0.5;
       if (!this.isInViewport(midX, midY, 50)) continue;
-      // Color: exponential decay red → black (fast)
-      const colorDecay = Math.exp(-mark.age / BURN_COLOR_TAU);
-      const red = Math.round(255 * colorDecay);
-      const green = Math.round(34 * colorDecay);
-      const color = (red << 16) | (green << 8);
+      // Color: lerp from hot → cool (background) using exponential decay
+      const t = Math.exp(-mark.age / BURN_COLOR_TAU);
+      const red = Math.round(BURN_COLOR_HOT.r * t + BURN_COLOR_COOL.r * (1 - t));
+      const green = Math.round(BURN_COLOR_HOT.g * t + BURN_COLOR_COOL.g * (1 - t));
+      const blue = Math.round(BURN_COLOR_HOT.b * t + BURN_COLOR_COOL.b * (1 - t));
+      const color = (red << 16) | (green << 8) | blue;
       // Opacity: exponential decay (slow) — pruned by alpha cutoff
       const alpha = Math.exp(-mark.age / BURN_ALPHA_TAU);
       if (alpha < burnAlphaCutoff) continue;

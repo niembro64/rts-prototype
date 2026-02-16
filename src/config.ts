@@ -80,9 +80,18 @@ export const DEFAULT_TURRET_DRAG = 0.15;
  */
 export const TURRET_RETURN_TO_FORWARD = false;
 
-// Scorched earth burn mark decay constants
-export const BURN_COLOR_TAU = 200;   // color decay: red → black (ms), fast
-export const BURN_ALPHA_TAU = 2000;  // opacity decay: opaque → transparent (ms), slow
+// Map colors
+export const MAP_BG_COLOR = 0x1a1a2e;         // in-bounds background
+export const MAP_BG_COLOR_STR = '#1a1a2e';     // same as above for Phaser config
+export const MAP_OOB_COLOR = 0x08080f;         // out-of-bounds background
+export const MAP_CAMERA_BG = 0x0a0a14;         // camera clear color
+export const MAP_GRID_COLOR = 0x333355;        // grid lines
+
+// Scorched earth burn mark colors and decay
+export const BURN_COLOR_HOT = { r: 255, g: 34, b: 0 };   // bright red start
+export const BURN_COLOR_COOL = { r: 26, g: 26, b: 46 };   // fades to background (MAP_BG_COLOR)
+export const BURN_COLOR_TAU = 200;   // color decay: hot → cool (ms), fast
+export const BURN_ALPHA_TAU = 1000;  // opacity decay: opaque → transparent (ms), slow
 
 /**
  * Range multipliers relative to fireRange (1.0x).
