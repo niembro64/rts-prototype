@@ -7,7 +7,7 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
-import { DEFAULT_NETWORK_UPDATES_PER_SECOND, NETWORK_UPDATE_RATE_OPTIONS, MAP_WIDTH, MAP_HEIGHT, BACKGROUND_MAP_WIDTH, BACKGROUND_MAP_HEIGHT } from '../config';
+import { DEFAULT_NETWORK_UPDATES_PER_SECOND, NETWORK_UPDATE_RATE_OPTIONS, MAP_SETTINGS } from '../config';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
@@ -158,8 +158,8 @@ function startBackgroundBattle(): void {
     playerIds: [1, 2, 3, 4] as PlayerId[],
     localPlayerId: 1,
     gameConnection: bgConnection,
-    mapWidth: BACKGROUND_MAP_WIDTH,
-    mapHeight: BACKGROUND_MAP_HEIGHT,
+    mapWidth: MAP_SETTINGS.demo.width,
+    mapHeight: MAP_SETTINGS.demo.height,
     backgroundMode: true,
   });
 }
@@ -489,8 +489,8 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       playerIds,
       localPlayerId: localPlayerId.value,
       gameConnection,
-      mapWidth: MAP_WIDTH,
-      mapHeight: MAP_HEIGHT,
+      mapWidth: MAP_SETTINGS.game.width,
+      mapHeight: MAP_SETTINGS.game.height,
       backgroundMode: false,
     });
 

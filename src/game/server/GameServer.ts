@@ -22,10 +22,7 @@ import {
 } from './PhysicsStandalone';
 import { spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import {
-  MAP_WIDTH,
-  MAP_HEIGHT,
-  BACKGROUND_MAP_WIDTH,
-  BACKGROUND_MAP_HEIGHT,
+  MAP_SETTINGS,
   UNIT_THRUST_MULTIPLIER_GAME,
   UNIT_THRUST_MULTIPLIER_DEMO,
 } from '../../config';
@@ -80,8 +77,9 @@ export class GameServer {
     this.engine = createStandaloneEngine();
 
     // Initialize world state with appropriate map size
-    const mapWidth = this.backgroundMode ? BACKGROUND_MAP_WIDTH : MAP_WIDTH;
-    const mapHeight = this.backgroundMode ? BACKGROUND_MAP_HEIGHT : MAP_HEIGHT;
+    const mapConfig = this.backgroundMode ? MAP_SETTINGS.demo : MAP_SETTINGS.game;
+    const mapWidth = mapConfig.width;
+    const mapHeight = mapConfig.height;
     this.world = new WorldState(42, mapWidth, mapHeight);
     this.world.thrustMultiplier = this.backgroundMode ? UNIT_THRUST_MULTIPLIER_DEMO : UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player

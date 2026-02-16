@@ -54,8 +54,8 @@ export const COST_MULTIPLIER = 1.0;
 export const KNOCKBACK = {
   BEAM_HIT: 750,
   BEAM_FIRE: 200,
-  SONIC_PULL_MULTIPLIER: 2.0,  // Multiplier applied to each weapon's pullPower
-  SPLASH: 250,        // Knockback multiplier for area/splash explosions (mortar/disruptor)
+  SONIC_PULL_MULTIPLIER: 2.0, // Multiplier applied to each weapon's pullPower
+  SPLASH: 250, // Knockback multiplier for area/splash explosions (mortar/disruptor)
 };
 
 /**
@@ -96,36 +96,35 @@ export const SEE_RANGE_MULTIPLIER_STICKY = 0.95;
  */
 export const FIGHTSTOP_RANGE_MULTIPLIER = 0.9;
 
-
 /**
  * Sonic wave weapon visual configuration.
  * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.
  */
 export const SONIC_WAVE_VISUAL = {
   // --- Overall ---
-  showAnimatedWaves: false,      // true = animated wavy arcs, false = static filled slice
-  animationSpeed: 0.3,           // Global speed multiplier (1.0 = default, 0.5 = half)
-  accelExponent: 1,              // Inward acceleration curve (1 = linear, 2+ = slow outside/fast inside)
+  showAnimatedWaves: false, // true = animated wavy arcs, false = static filled slice
+  animationSpeed: 0.3, // Global speed multiplier (1.0 = default, 0.5 = half)
+  accelExponent: 1, // Inward acceleration curve (1 = linear, 2+ = slow outside/fast inside)
 
   // --- Filled slice zone ---
-  sliceOpacity: 0.05,            // Opacity of the filled pie-slice background
-  sliceOpacityMinZoom: 0.1,      // Opacity of the simple arc at min detail level
+  sliceOpacity: 0.05, // Opacity of the filled pie-slice background
+  sliceOpacityMinZoom: 0.1, // Opacity of the simple arc at min detail level
 
   // --- Concentric wave arcs (when showAnimatedWaves = true) ---
-  waveCount: 5,                  // Number of concentric wave arcs
-  waveOpacity: 0.05,             // Opacity of wave arcs
-  waveThickness: 10,             // Line thickness of wave arcs (px)
-  waveAmplitude: 0,              // Sine wobble amplitude (0 = smooth circles)
-  waveFrequency: 10,             // Sine wobble frequency (oscillations per arc)
-  wavePullSpeed: 0.8,            // Speed of wave arcs moving inward
+  waveCount: 5, // Number of concentric wave arcs
+  waveOpacity: 0.05, // Opacity of wave arcs
+  waveThickness: 10, // Line thickness of wave arcs (px)
+  waveAmplitude: 0, // Sine wobble amplitude (0 = smooth circles)
+  waveFrequency: 10, // Sine wobble frequency (oscillations per arc)
+  wavePullSpeed: 0.8, // Speed of wave arcs moving inward
 
   // --- Particle lines (radial dashes moving inward) ---
-  particleCount: 20,             // Number of radial particle lines around full circle
-  particleSpeed: 10,              // Inward travel speed
-  particleLength: 0.1,           // Length as fraction of maxRange (0.2 = 20%)
-  particleThickness: 1,        // Line thickness (px)
-  particleOpacity: 0.3,          // Peak opacity (fades in/out during travel)
-  particleSpawnOffset: 0.5,      // Where particles start as fraction of maxRange from center
+  particleCount: 20, // Number of radial particle lines around full circle
+  particleSpeed: 10, // Inward travel speed
+  particleLength: 0.1, // Length as fraction of maxRange (0.2 = 20%)
+  particleThickness: 1, // Line thickness (px)
+  particleOpacity: 0.3, // Peak opacity (fades in/out during travel)
+  particleSpawnOffset: 0.5, // Where particles start as fraction of maxRange from center
 };
 
 // =============================================================================
@@ -139,8 +138,8 @@ export const SONIC_WAVE_VISUAL = {
  * lerpDuration: time in ms for foot to slide to new position (lower = snappier)
  */
 export const LEG_CONFIG = {
-  widow:     { thickness: 5, footSize: 0.1,  lerpDuration: 700 },
-  daddy:     { thickness: 2, footSize: 0.14, lerpDuration: 500 },
+  widow: { thickness: 6, footSize: 0.1, lerpDuration: 600 },
+  daddy: { thickness: 2, footSize: 0.14, lerpDuration: 300 },
   tarantula: { thickness: 4, footSize: 0.12, lerpDuration: 200 },
   commander: { thickness: 6, footSize: 0.15, lerpDuration: 400 },
 };
@@ -248,8 +247,8 @@ export const PROJECTILE_MASS_MULTIPLIER = 1.0;
  * Higher values = faster acceleration, higher top speed.
  * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
  */
-export const UNIT_THRUST_MULTIPLIER_GAME = 8.0;
-export const UNIT_THRUST_MULTIPLIER_DEMO = 8.0;
+export const UNIT_THRUST_MULTIPLIER_GAME = 5.0;
+export const UNIT_THRUST_MULTIPLIER_DEMO = 5.0;
 
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
@@ -351,7 +350,7 @@ export const UNIT_STATS = {
   // Value: Army-in-one super unit, but expensive and high priority target
   widow: {
     baseCost: 700,
-    hp: 1200,
+    hp: 2000,
     moveSpeed: 100,
     collisionRadius: 38,
     mass: 500,
@@ -400,7 +399,7 @@ export const WEAPON_STATS = {
     range: 90,
     cooldown: 200,
     projectileSpeed: 450,
-    projectileMass: 0.5,
+    projectileMass: 2,
     pelletCount: 6,
   },
 
@@ -410,7 +409,7 @@ export const WEAPON_STATS = {
     range: 200,
     cooldown: 2500,
     projectileSpeed: 250,
-    projectileMass: 8.0,
+    projectileMass: 2.0,
     splashRadius: 70,
   },
 
@@ -420,7 +419,7 @@ export const WEAPON_STATS = {
     range: 360,
     cooldown: 3000,
     projectileSpeed: 300,
-    projectileMass: 15.0,
+    projectileMass: 3.0,
   },
 
   // Railgun - Instant flash hitscan, long range, piercing (Viper's weapon)
@@ -471,28 +470,28 @@ export const WEAPON_STATS = {
   // Sonic - Continuous pie-slice wave AoE (Tarantula's weapon)
   sonic: {
     damage: 1, // Base DPS (scales with 1/distance)
-    range: 400,
-    waveInnerRange: 40, // Inner dead zone — no damage/pull inside this radius
+    range: 800,
+    waveInnerRange: 120, // Inner dead zone — no damage/pull inside this radius
     cooldown: 0, // Continuous
     turretTurnAccel: 1, // Medium acceleration (rad/sec²)
-    turretDrag: 0.1, // Moderate drag → terminal ~1.1 rad/sec
+    turretDrag: 0.01, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 0.125,
-    waveTransitionTime: 2000,
+    waveAngleAttack: Math.PI * 0.25,
+    waveTransitionTime: 1000,
     pullPower: 300,
   },
 
   // Widow sonic wave - larger pie-slice wave AoE
   widowSonic: {
     damage: 1, // Base DPS (scales with 1/distance)
-    range: 600,
-    waveInnerRange: 120, // Inner dead zone — no damage/pull inside this radius
+    range: 800,
+    waveInnerRange: 160, // Inner dead zone — no damage/pull inside this radius
     cooldown: 0, // Continuous
     turretTurnAccel: 1, // Medium acceleration (rad/sec²)
-    turretDrag: 0.1, // Moderate drag → terminal ~1.1 rad/sec
+    turretDrag: 0.01, // Moderate drag → terminal ~1.1 rad/sec
     waveAngleIdle: 0,
-    waveAngleAttack: Math.PI * 2,
-    waveTransitionTime: 500,
+    waveAngleAttack: Math.PI * 0.5,
+    waveTransitionTime: 1000,
     pullPower: 300,
   },
 
@@ -550,17 +549,10 @@ export const UNIT_TARGETING_MODES = {
 // MAP SIZE SETTINGS
 // =============================================================================
 
-/** Main game map width in pixels */
-export const MAP_WIDTH = 6000;
-
-/** Main game map height in pixels */
-export const MAP_HEIGHT = 6000;
-
-/** Background/setup screen map width in pixels (slightly smaller) */
-export const BACKGROUND_MAP_WIDTH = 1600;
-
-/** Background/setup screen map height in pixels */
-export const BACKGROUND_MAP_HEIGHT = 1600;
+export const MAP_SETTINGS = {
+  game: { width: 2_000, height: 2_000 },
+  demo: { width: 1_600, height: 1_600 },
+};
 
 // =============================================================================
 // BACKGROUND GAME SETTINGS
@@ -585,7 +577,9 @@ export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING = true;
 export const DEFAULT_NETWORK_UPDATES_PER_SECOND = 30;
 
 /** Available options for the "Send Updates Per Second" UI control */
-export const NETWORK_UPDATE_RATE_OPTIONS = [0.3, 1, 5, 10, 20, 30, 45, 60] as const;
+export const NETWORK_UPDATE_RATE_OPTIONS = [
+  0.3, 1, 5, 10, 20, 30, 45, 60,
+] as const;
 
 // =============================================================================
 // AUDIO
