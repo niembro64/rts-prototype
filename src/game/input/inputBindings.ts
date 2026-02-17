@@ -37,6 +37,13 @@ export class InputManager {
   private cameraController: CameraController;
   private commandController: CommandController;
 
+  // Stored for cleanup
+  private keys: { M: Phaser.Input.Keyboard.Key; F: Phaser.Input.Keyboard.Key; H: Phaser.Input.Keyboard.Key };
+  private pointerDownHandler!: (p: Phaser.Input.Pointer) => void;
+  private pointerMoveHandler!: (p: Phaser.Input.Pointer) => void;
+  private pointerUpHandler!: (p: Phaser.Input.Pointer) => void;
+  private contextMenuHandler!: (e: Event) => void;
+
   // Callback for UI to show waypoint mode changes
   public get onWaypointModeChange(): ((mode: WaypointType) => void) | undefined {
     return this.selectionController.onWaypointModeChange;
@@ -109,6 +116,9 @@ export class InputManager {
       scene, context, entitySource, commandQueue, this.state, linePathGraphics,
       this.selectionController, this.buildingController, keys.SHIFT,
     );
+
+    // Store keys for cleanup
+    this.keys = { M: keys.M, F: keys.F, H: keys.H };
 
     // Setup event handlers
     this.setupPointerEvents();
@@ -184,7 +194,7 @@ export class InputManager {
     const pointer = this.scene.input;
 
     // Pointer down
-    pointer.on('pointerdown', (p: Phaser.Input.Pointer) => {
+    this.pointerDownHandler = (p: Phaser.Input.Pointer) => {
       if (p.leftButtonDown()) {
         const camera = this.scene.cameras.main;
         const worldPoint = camera.getWorldPoint(p.x, p.y);
@@ -211,10 +221,11 @@ export class InputManager {
         const worldPoint = camera.getWorldPoint(p.x, p.y);
         this.commandController.handleRightClickDown(worldPoint.x, worldPoint.y);
       }
-    });
+    };
+    pointer.on('pointerdown', this.pointerDownHandler);
 
     // Pointer move
-    pointer.on('pointermove', (p: Phaser.Input.Pointer) => {
+    this.pointerMoveHandler = (p: Phaser.Input.Pointer) => {
       const camera = this.scene.cameras.main;
       const worldPoint = camera.getWorldPoint(p.x, p.y);
 
@@ -232,10 +243,11 @@ export class InputManager {
       if (this.state.isDrawingLinePath) {
         this.commandController.handleLinePathMove(worldPoint.x, worldPoint.y);
       }
-    });
+    };
+    pointer.on('pointermove', this.pointerMoveHandler);
 
     // Pointer up
-    pointer.on('pointerup', (p: Phaser.Input.Pointer) => {
+    this.pointerUpHandler = (p: Phaser.Input.Pointer) => {
       if (this.state.isDraggingSelection && !p.leftButtonDown()) {
         this.selectionController.endDrag(p.event.shiftKey);
       }
@@ -247,12 +259,14 @@ export class InputManager {
       if (this.state.isDrawingLinePath && !p.rightButtonDown()) {
         this.commandController.endLinePath(p.event.shiftKey);
       }
-    });
+    };
+    pointer.on('pointerup', this.pointerUpHandler);
 
     // Disable context menu
-    this.scene.game.canvas.addEventListener('contextmenu', (e) => {
+    this.contextMenuHandler = (e: Event) => {
       e.preventDefault();
-    });
+    };
+    this.scene.game.canvas.addEventListener('contextmenu', this.contextMenuHandler);
   }
 
   // Update input
@@ -286,6 +300,21 @@ export class InputManager {
 
   // Clean up
   destroy(): void {
+    // Remove keyboard listeners
+    this.keys.M.removeAllListeners();
+    this.keys.F.removeAllListeners();
+    this.keys.H.removeAllListeners();
+
+    // Remove pointer listeners
+    this.scene.input.off('pointerdown', this.pointerDownHandler);
+    this.scene.input.off('pointermove', this.pointerMoveHandler);
+    this.scene.input.off('pointerup', this.pointerUpHandler);
+
+    // Remove canvas contextmenu listener
+    this.scene.game.canvas.removeEventListener('contextmenu', this.contextMenuHandler);
+
+    // Destroy sub-controllers
+    this.cameraController.destroy();
     this.selectionController.destroy();
     this.buildingController.destroy();
     this.commandController.destroy();

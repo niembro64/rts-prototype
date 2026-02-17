@@ -188,6 +188,10 @@ let statsHistoryStartTime = 0;
 
 let gameInstance: GameInstance | null = null;
 
+// Polling interval IDs for cleanup
+let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
+let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
+
 // Start the background battle (runs behind lobby)
 function startBackgroundBattle(): void {
   if (backgroundGameInstance || !backgroundContainerRef.value) return;
@@ -219,7 +223,14 @@ function startBackgroundBattle(): void {
   });
 
   // Wire combat stats callback for background scene
-  const checkBgScene = setInterval(() => {
+  let bgAttempts = 0;
+  checkBgSceneInterval = setInterval(() => {
+    bgAttempts++;
+    if (bgAttempts > 50) {
+      if (checkBgSceneInterval) clearInterval(checkBgSceneInterval);
+      checkBgSceneInterval = null;
+      return;
+    }
     const bgScene = backgroundGameInstance?.getScene();
     if (bgScene) {
       bgScene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
@@ -233,13 +244,18 @@ function startBackgroundBattle(): void {
           combatStatsHistory.value.shift();
         }
       };
-      clearInterval(checkBgScene);
+      if (checkBgSceneInterval) clearInterval(checkBgSceneInterval);
+      checkBgSceneInterval = null;
     }
   }, 100);
 }
 
 // Stop the background battle
 function stopBackgroundBattle(): void {
+  if (checkBgSceneInterval) {
+    clearInterval(checkBgSceneInterval);
+    checkBgSceneInterval = null;
+  }
   if (backgroundServer) {
     backgroundServer.stop();
     backgroundServer = null;
@@ -606,7 +622,14 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 }
 
 function setupSceneCallbacks(): void {
-  const checkScene = setInterval(() => {
+  let sceneAttempts = 0;
+  checkSceneInterval = setInterval(() => {
+    sceneAttempts++;
+    if (sceneAttempts > 50) {
+      if (checkSceneInterval) clearInterval(checkSceneInterval);
+      checkSceneInterval = null;
+      return;
+    }
     const scene = gameInstance?.getScene();
     if (scene) {
       // Player change callback
@@ -658,7 +681,8 @@ function setupSceneCallbacks(): void {
         }
       };
 
-      clearInterval(checkScene);
+      if (checkSceneInterval) clearInterval(checkSceneInterval);
+      checkSceneInterval = null;
     }
   }, 100);
 }
@@ -710,6 +734,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (fpsUpdateInterval) {
     clearInterval(fpsUpdateInterval);
+  }
+  if (checkSceneInterval) {
+    clearInterval(checkSceneInterval);
+    checkSceneInterval = null;
   }
   window.removeEventListener('keydown', handleCombatStatsKeydown);
   // Stop servers

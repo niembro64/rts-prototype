@@ -9,10 +9,33 @@ import type { InputState } from './InputState';
 export class CameraController {
   private scene: Phaser.Scene;
   private state: InputState;
+  private wheelHandler: (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => void;
 
   constructor(scene: Phaser.Scene, state: InputState) {
     this.scene = scene;
     this.state = state;
+
+    this.wheelHandler = (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
+      const camera = this.scene.cameras.main;
+      const oldZoom = camera.zoom;
+
+      const newZoom = dy > 0
+        ? oldZoom / ZOOM_FACTOR
+        : oldZoom * ZOOM_FACTOR;
+      const clampedZoom = Phaser.Math.Clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
+
+      if (clampedZoom === oldZoom) return;
+
+      const cursorOffsetX = pointer.x - camera.width / 2;
+      const cursorOffsetY = pointer.y - camera.height / 2;
+
+      const worldX = camera.scrollX + cursorOffsetX / oldZoom;
+      const worldY = camera.scrollY + cursorOffsetY / oldZoom;
+
+      camera.scrollX = worldX - cursorOffsetX / clampedZoom;
+      camera.scrollY = worldY - cursorOffsetY / clampedZoom;
+      camera.zoom = clampedZoom;
+    };
   }
 
   /** Start camera pan from a screen-space point */
@@ -41,35 +64,11 @@ export class CameraController {
 
   /** Setup wheel zoom event */
   setupWheelEvent(): void {
-    this.scene.input.on('wheel', (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
-      const camera = this.scene.cameras.main;
-      const oldZoom = camera.zoom;
+    this.scene.input.on('wheel', this.wheelHandler);
+  }
 
-      // Calculate new zoom level
-      const newZoom = dy > 0
-        ? oldZoom / ZOOM_FACTOR  // Scroll down = zoom out
-        : oldZoom * ZOOM_FACTOR; // Scroll up = zoom in
-      const clampedZoom = Phaser.Math.Clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
-
-      // Skip if zoom didn't change (at min/max)
-      if (clampedZoom === oldZoom) return;
-
-      // Cursor offset from screen center (Phaser camera is centered by default)
-      const cursorOffsetX = pointer.x - camera.width / 2;
-      const cursorOffsetY = pointer.y - camera.height / 2;
-
-      // Calculate world point under cursor with current zoom
-      // Formula: worldX = scrollX + cursorOffset / zoom
-      const worldX = camera.scrollX + cursorOffsetX / oldZoom;
-      const worldY = camera.scrollY + cursorOffsetY / oldZoom;
-
-      // Calculate new scroll to keep same world point under cursor after zoom
-      // We want: worldX = newScrollX + cursorOffset / newZoom
-      // So: newScrollX = worldX - cursorOffset / newZoom
-      camera.scrollX = worldX - cursorOffsetX / clampedZoom;
-      camera.scrollY = worldY - cursorOffsetY / clampedZoom;
-      camera.zoom = clampedZoom;
-    });
+  destroy(): void {
+    this.scene.input.off('wheel', this.wheelHandler);
   }
 
   // Get current zoom level

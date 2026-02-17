@@ -312,6 +312,11 @@ export class BuildingPlacementController {
   }
 
   destroy(): void {
+    this.keys.B.removeAllListeners();
+    this.keys.D.removeAllListeners();
+    this.keys.ONE.removeAllListeners();
+    this.keys.TWO.removeAllListeners();
+    this.keys.ESC.removeAllListeners();
     this.buildGhostGraphics.destroy();
   }
 

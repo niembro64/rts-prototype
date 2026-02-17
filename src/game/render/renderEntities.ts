@@ -502,6 +502,14 @@ export class EntityRenderer {
   }
 
   destroy(): void {
+    for (const label of this.labelPool) {
+      label.destroy();
+    }
+    this.labelPool.length = 0;
+    this.activeLabelCount = 0;
+    this.beamRandomOffsets.clear();
+    this.minigunSpins.clear();
+    this.clearEffects();
     this.graphics.destroy();
   }
 }

@@ -27,6 +27,9 @@ export class AudioManager {
   // Track active continuous sounds by entity ID
   private activeLaserSounds: Map<number, ContinuousSound> = new Map();
 
+  // Track pending fade-out timeouts for cleanup
+  private pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
+
   // Volume controls
   public masterVolume = 0.3;
   public sfxVolume = 0.5;
@@ -186,7 +189,8 @@ export class AudioManager {
     }
 
     // Stop after fade completes
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
+      this.pendingTimeouts.delete(timeoutId);
       try {
         sound.oscillator.stop();
         sound.noiseSource?.stop();
@@ -194,6 +198,7 @@ export class AudioManager {
         // Ignore if already stopped
       }
     }, fadeTime * 1000 + 20);
+    this.pendingTimeouts.add(timeoutId);
 
     this.activeLaserSounds.delete(entityId);
   }
@@ -203,6 +208,11 @@ export class AudioManager {
     for (const entityId of this.activeLaserSounds.keys()) {
       this.stopLaserSound(entityId);
     }
+    // Clear any remaining pending timeouts
+    for (const id of this.pendingTimeouts) {
+      clearTimeout(id);
+    }
+    this.pendingTimeouts.clear();
   }
 
   // Legacy method for compatibility - now starts continuous sound briefly
