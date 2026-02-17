@@ -106,22 +106,21 @@ function lineRectIntersectionT(
     return 0;
   }
 
-  // Check intersection with each edge, track smallest t
+  // Check intersection with each edge, track smallest t (inline to avoid array allocation)
   let minT: number | null = null;
 
-  const edges: [number, number, number, number][] = [
-    [left, top, right, top],       // Top
-    [left, bottom, right, bottom], // Bottom
-    [left, top, left, bottom],     // Left
-    [right, top, right, bottom],   // Right
-  ];
-
-  for (const [x3, y3, x4, y4] of edges) {
-    const t = lineLineIntersectionT(x1, y1, x2, y2, x3, y3, x4, y4);
-    if (t !== null && (minT === null || t < minT)) {
-      minT = t;
-    }
-  }
+  // Top edge
+  let t = lineLineIntersectionT(x1, y1, x2, y2, left, top, right, top);
+  if (t !== null && (minT === null || t < minT)) minT = t;
+  // Bottom edge
+  t = lineLineIntersectionT(x1, y1, x2, y2, left, bottom, right, bottom);
+  if (t !== null && (minT === null || t < minT)) minT = t;
+  // Left edge
+  t = lineLineIntersectionT(x1, y1, x2, y2, left, top, left, bottom);
+  if (t !== null && (minT === null || t < minT)) minT = t;
+  // Right edge
+  t = lineLineIntersectionT(x1, y1, x2, y2, right, top, right, bottom);
+  if (t !== null && (minT === null || t < minT)) minT = t;
 
   return minT;
 }

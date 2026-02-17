@@ -21,6 +21,14 @@ const _collisionProjectilesToRemove: EntityId[] = [];
 const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionAudioEvents: AudioEvent[] = [];
 
+// Reusable empty set for beam area damage (avoids allocating new Set per beam per frame)
+const _emptyExcludeSet = new Set<EntityId>();
+
+// Reusable arrays for fireWeapons (avoids per-frame allocation)
+const _fireNewProjectiles: Entity[] = [];
+const _fireAudioEvents: AudioEvent[] = [];
+const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
+
 // Check if a specific weapon has an active beam (by weapon index)
 // Uses O(1) beam index lookup instead of O(n) projectile scan
 function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, weaponIndex: number): boolean {
@@ -48,9 +56,12 @@ function applyKnockbackForces(
 // Fire weapons at targets - unified for all units
 // Each weapon fires independently based on its own state
 export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulator): FireWeaponsResult {
-  const newProjectiles: Entity[] = [];
-  const audioEvents: AudioEvent[] = [];
-  const spawnEvents: ProjectileSpawnEvent[] = [];
+  _fireNewProjectiles.length = 0;
+  _fireAudioEvents.length = 0;
+  _fireSpawnEvents.length = 0;
+  const newProjectiles = _fireNewProjectiles;
+  const audioEvents = _fireAudioEvents;
+  const spawnEvents = _fireSpawnEvents;
 
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.weapons) continue;
@@ -166,9 +177,9 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
           const endX = spawnX + fireCos * beamLength;
           const endY = spawnY + fireSin * beamLength;
 
-          // Create config with weaponIndex for beam tracking
-          const beamConfig = { ...config, weaponIndex };
-          const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, beamConfig);
+          // Tag config with weaponIndex for beam tracking (mutate in place — each weapon has its own config copy)
+          config.weaponIndex = weaponIndex;
+          const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config);
           if (beam.projectile) {
             beam.projectile.sourceEntityId = unit.id;
           }
@@ -465,7 +476,7 @@ export function checkProjectileCollisions(
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
         damage: tickDamage,
-        excludeEntities: new Set(),
+        excludeEntities: _emptyExcludeSet,
         centerX: impactX,
         centerY: impactY,
         radius: impactRadius,

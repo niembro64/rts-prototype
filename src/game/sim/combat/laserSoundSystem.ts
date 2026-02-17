@@ -5,10 +5,14 @@ import type { AudioEvent } from './types';
 import { distance, getTargetRadius } from './combatUtils';
 import { getWeaponWorldPosition } from '../../math';
 
+// Reusable array for laser sound events (avoids per-frame allocation)
+const _laserAudioEvents: AudioEvent[] = [];
+
 // Update laser sounds based on targeting state (not beam existence)
 // This is called every frame to ensure sounds match targeting state
 export function updateLaserSounds(world: WorldState): AudioEvent[] {
-  const audioEvents: AudioEvent[] = [];
+  _laserAudioEvents.length = 0;
+  const audioEvents = _laserAudioEvents;
 
   for (const unit of world.getUnits()) {
     if (!unit.weapons || !unit.unit || !unit.ownership) continue;

@@ -114,7 +114,7 @@ export class EntityRenderer {
 
     for (const entity of units) {
       const unitType = entity.unit?.unitType;
-      if (unitType !== 'jackal' && unitType !== 'lynx') continue;
+      if (unitType !== 'jackal' && unitType !== 'lynx' && unitType !== 'badger') continue;
 
       let state = this.minigunSpins.get(entity.id);
       if (!state) {

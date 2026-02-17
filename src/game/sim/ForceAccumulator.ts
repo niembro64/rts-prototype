@@ -16,6 +16,7 @@ export interface ForceContribution {
  */
 interface EntityForces {
   contributions: ForceContribution[];
+  contributionCount: number;  // How many contributions are active (avoids .length = 0 + push overhead)
   finalFx: number;
   finalFy: number;
 }
@@ -23,22 +24,11 @@ interface EntityForces {
 /**
  * ForceAccumulator - Unified force management for physics-based movement.
  *
- * This replaces the old velocity-based system with proper force-based physics:
- *
- * OLD WAY (broken):
- *   - Calculate desired velocity
- *   - setVelocity() directly on Matter body
- *   - Mass is ignored, collisions are overwritten
- *
- * NEW WAY (elegant):
- *   - Calculate desired velocity (target)
- *   - Apply steering FORCE toward target: F = (Vtarget - Vcurrent) * strength * mass
- *   - External effects (wave pull, knockback) also apply forces
- *   - Matter.js resolves all forces, respecting mass (F = ma → a = F/m)
- *   - Heavy units accelerate slower, light units are nimble
+ * Optimized to reuse Map entries and contribution arrays across frames
+ * to avoid GC pressure from per-frame allocations.
  *
  * Usage per frame:
- *   1. clear() - Start fresh
+ *   1. clear() - Reset contribution counts (entries stay allocated)
  *   2. addSteeringForce() - Movement toward waypoints
  *   3. addForce() - External effects (wave pull, knockback, etc.)
  *   4. finalize() - Sum all forces
@@ -49,9 +39,14 @@ export class ForceAccumulator {
 
   /**
    * Clear all accumulated forces (call at start of each frame).
+   * Reuses Map entries — just resets contribution counts.
    */
   clear(): void {
-    this.forces.clear();
+    for (const entry of this.forces.values()) {
+      entry.contributionCount = 0;
+      entry.finalFx = 0;
+      entry.finalFy = 0;
+    }
   }
 
   /**
@@ -61,26 +56,24 @@ export class ForceAccumulator {
   addForce(entityId: EntityId, fx: number, fy: number, source: string = 'unknown'): void {
     let entry = this.forces.get(entityId);
     if (!entry) {
-      entry = { contributions: [], finalFx: 0, finalFy: 0 };
+      entry = { contributions: [], contributionCount: 0, finalFx: 0, finalFy: 0 };
       this.forces.set(entityId, entry);
     }
-    entry.contributions.push({ fx, fy, source });
+    const idx = entry.contributionCount++;
+    if (idx < entry.contributions.length) {
+      // Reuse existing contribution object
+      const c = entry.contributions[idx];
+      c.fx = fx;
+      c.fy = fy;
+      c.source = source;
+    } else {
+      // Grow the array (rare after warmup)
+      entry.contributions.push({ fx, fy, source });
+    }
   }
 
   /**
    * Add a steering force to move toward a target velocity.
-   *
-   * This is the core of the movement system:
-   * - targetVelX/Y: The velocity the unit WANTS to have (from waypoint direction × moveSpeed)
-   * - currentVelX/Y: The velocity the unit CURRENTLY has (from Matter body)
-   * - mass: Unit's mass (affects how quickly it can change velocity)
-   * - steeringStrength: How aggressively to steer (0.1 = gentle, 1.0 = aggressive)
-   *
-   * Formula: Force = (target - current) * strength * mass
-   *
-   * Why multiply by mass? So that F = ma gives us: a = (target - current) * strength
-   * This means all units accelerate at similar rates toward their target, but heavier
-   * units require more force to do so (and thus resist external forces better).
    */
   addSteeringForce(
     entityId: EntityId,
@@ -91,22 +84,15 @@ export class ForceAccumulator {
     mass: number,
     steeringStrength: number = 0.5
   ): void {
-    // Calculate velocity error
     const errorX = targetVelX - currentVelX;
     const errorY = targetVelY - currentVelY;
-
-    // Calculate steering force (proportional to error, scaled by mass)
     const fx = errorX * steeringStrength * mass;
     const fy = errorY * steeringStrength * mass;
-
     this.addForce(entityId, fx, fy, 'steering');
   }
 
   /**
    * Add a directional force (like wave pull or knockback).
-   *
-   * @param strength - Base force strength (will be multiplied by mass for consistency)
-   * @param affectedByMass - If true, heavy units resist the force more
    */
   addDirectionalForce(
     entityId: EntityId,
@@ -117,22 +103,17 @@ export class ForceAccumulator {
     affectedByMass: boolean = true,
     source: string = 'directional'
   ): void {
-    // Normalize direction
     const len = magnitude(directionX, directionY);
     if (len === 0) return;
 
     const nx = directionX / len;
     const ny = directionY / len;
 
-    // If affected by mass, lighter units get pushed more (divide by mass)
-    // If not affected, all units get same acceleration (multiply by mass to cancel in F=ma)
     let fx: number, fy: number;
     if (affectedByMass) {
-      // Light units get pushed more: F = strength (so a = strength/mass)
       fx = nx * strength;
       fy = ny * strength;
     } else {
-      // All units get same acceleration: F = strength * mass (so a = strength)
       fx = nx * strength * mass;
       fy = ny * strength * mass;
     }
@@ -147,9 +128,10 @@ export class ForceAccumulator {
     for (const entry of this.forces.values()) {
       entry.finalFx = 0;
       entry.finalFy = 0;
-      for (const contrib of entry.contributions) {
-        entry.finalFx += contrib.fx;
-        entry.finalFy += contrib.fy;
+      const count = entry.contributionCount;
+      for (let i = 0; i < count; i++) {
+        entry.finalFx += entry.contributions[i].fx;
+        entry.finalFy += entry.contributions[i].fy;
       }
     }
   }
@@ -159,7 +141,7 @@ export class ForceAccumulator {
    */
   getFinalForce(entityId: EntityId): { fx: number; fy: number } | null {
     const entry = this.forces.get(entityId);
-    if (!entry) return null;
+    if (!entry || entry.contributionCount === 0) return null;
     return { fx: entry.finalFx, fy: entry.finalFy };
   }
 
@@ -167,7 +149,8 @@ export class ForceAccumulator {
    * Check if entity has any force contributions.
    */
   hasForce(entityId: EntityId): boolean {
-    return this.forces.has(entityId);
+    const entry = this.forces.get(entityId);
+    return entry !== undefined && entry.contributionCount > 0;
   }
 
   /**
@@ -181,7 +164,9 @@ export class ForceAccumulator {
    * Debug: get all contributions for an entity.
    */
   getContributions(entityId: EntityId): ForceContribution[] {
-    return this.forces.get(entityId)?.contributions ?? [];
+    const entry = this.forces.get(entityId);
+    if (!entry) return [];
+    return entry.contributions.slice(0, entry.contributionCount);
   }
 }
 

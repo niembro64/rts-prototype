@@ -66,22 +66,43 @@ export function drawBrawlUnit(
     graphics.fillCircle(x, y, r * 0.18);
   }
 
-  // Turret pass
+  // Turret pass — 6 revolving barrels fanning at shotgun spread angles
   if (!skipTurrets) {
     const weapons = entity.weapons ?? [];
+    const spin = ctx.minigunSpinAngle;
+    const pelletCount = 6;
+    const spreadAngle = Math.PI / 5; // Must match weapon config
+    const barrelLen = r * 0.9;
+    const orbitRadius = 1.8; // Perpendicular orbit for revolving effect
+    const depthScale = 0.1;
+
     for (const weapon of weapons) {
       const turretRot = weapon.turretRotation;
-      // Wide shotgun barrel (white to match muzzle)
-      const turretLen = r * 1.0;
-      const endX = x + Math.cos(turretRot) * turretLen;
-      const endY = y + Math.sin(turretRot) * turretLen;
-      graphics.lineStyle(5, COLORS.WHITE, 1);
-      graphics.lineBetween(
-        x,
-        y,
-        endX * 0.9 + x * 0.1,
-        endY * 0.9 + y * 0.1
-      );
+
+      for (let i = 0; i < pelletCount; i++) {
+        // Each barrel sits at its pellet's spread angle
+        const spreadOffset = (i / (pelletCount - 1) - 0.5) * spreadAngle;
+        const barrelAngle = turretRot + spreadOffset;
+        const fwdCos = Math.cos(barrelAngle);
+        const fwdSin = Math.sin(barrelAngle);
+
+        // Revolving orbit: each barrel phase-shifted, orbits perpendicular to its own angle
+        const phase = spin + i * (Math.PI * 2 / pelletCount);
+        const lateralOffset = Math.sin(phase) * orbitRadius;
+        const depthFactor = 1.0 - Math.cos(phase) * depthScale;
+        const len = barrelLen * depthFactor;
+
+        const perpCos = Math.cos(barrelAngle + Math.PI / 2);
+        const perpSin = Math.sin(barrelAngle + Math.PI / 2);
+        const offX = perpCos * lateralOffset;
+        const offY = perpSin * lateralOffset;
+
+        const endX = x + fwdCos * len + offX;
+        const endY = y + fwdSin * len + offY;
+
+        graphics.lineStyle(1.5, COLORS.WHITE, 1);
+        graphics.lineBetween(x + offX * 0.3, y + offY * 0.3, endX, endY);
+      }
     }
   }
 }

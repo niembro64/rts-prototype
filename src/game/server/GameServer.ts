@@ -67,8 +67,10 @@ export class GameServer {
   // Game over tracking
   private isGameOver: boolean = false;
 
-  // Tick rate tracking
-  private tickDeltaHistory: number[] = [];
+  // Tick rate tracking (ring buffer to avoid O(n) shift)
+  private tickDeltaHistory: Float64Array;
+  private tickDeltaIndex: number = 0;
+  private tickDeltaCount: number = 0;
   private readonly TICK_HISTORY_SIZE = 600; // ~10 seconds at 60Hz
 
   // Debug: send spatial grid occupancy info in snapshots
@@ -78,6 +80,7 @@ export class GameServer {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
     this.snapshotRateHz = config.snapshotRate ?? 10;
+    this.tickDeltaHistory = new Float64Array(this.TICK_HISTORY_SIZE);
 
     // Create standalone Matter.js engine
     this.engine = createStandaloneEngine();
@@ -208,10 +211,9 @@ export class GameServer {
   // Main tick function
   private tick(delta: number): void {
     // Track tick deltas for stats
-    this.tickDeltaHistory.push(delta);
-    if (this.tickDeltaHistory.length > this.TICK_HISTORY_SIZE) {
-      this.tickDeltaHistory.shift();
-    }
+    this.tickDeltaHistory[this.tickDeltaIndex] = delta;
+    this.tickDeltaIndex = (this.tickDeltaIndex + 1) % this.TICK_HISTORY_SIZE;
+    if (this.tickDeltaCount < this.TICK_HISTORY_SIZE) this.tickDeltaCount++;
 
     // Fixed timestep physics
     this.physicsAccumulator += delta;
@@ -382,17 +384,18 @@ export class GameServer {
 
   // Get tick rate stats (avg and worst FPS over recent history)
   getTickStats(): { avgFps: number; worstFps: number } {
-    const history = this.tickDeltaHistory;
-    if (history.length === 0) return { avgFps: 0, worstFps: 0 };
+    const count = this.tickDeltaCount;
+    if (count === 0) return { avgFps: 0, worstFps: 0 };
 
+    const history = this.tickDeltaHistory;
     let sum = 0;
     let maxDelta = 0;
-    for (let i = 0; i < history.length; i++) {
+    for (let i = 0; i < count; i++) {
       sum += history[i];
       if (history[i] > maxDelta) maxDelta = history[i];
     }
 
-    const avgDelta = sum / history.length;
+    const avgDelta = sum / count;
     return {
       avgFps: avgDelta > 0 ? 1000 / avgDelta : 0,
       worstFps: maxDelta > 0 ? 1000 / maxDelta : 0,
