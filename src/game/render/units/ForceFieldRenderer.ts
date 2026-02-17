@@ -96,7 +96,7 @@ export function drawForceFieldUnit(
       const turretRot = weapon.turretRotation;
 
       // Grate turret (floating bars, 4 bars for smaller unit)
-      drawForceFieldGrate(graphics, x, y, turretRot, r * 0.7, r * 0.35, 1.5, 4);
+      drawForceFieldGrate(graphics, x, y, turretRot, r * 0.7, r * 0.45, 1.5, 4);
 
       const progress = weapon.currentForceFieldRange ?? 0;
       if (progress <= 0) continue;
