@@ -532,8 +532,10 @@ export class RtsScene extends Phaser.Scene {
     }
 
     // Drive server simulation from Phaser's update loop (one tick per frame)
+    // Emit snapshot inline so it's available immediately this frame
     if (this.localServer) {
       this.localServer.tick(delta);
+      this.localServer.emitSnapshot();
     }
 
     // Process buffered snapshot (at most one per frame)

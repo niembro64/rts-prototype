@@ -208,10 +208,9 @@ export class GameServer {
     }
   }
 
-  // Start in manual mode: only snapshot broadcast, caller drives tick() externally
+  // Start in manual mode: caller drives tick() and emitSnapshot() externally
   startManual(): void {
     this.lastTickTime = performance.now();
-    this.startSnapshotBroadcast();
   }
 
   // Main tick function (public so Phaser update() can drive it directly)
@@ -265,7 +264,7 @@ export class GameServer {
   }
 
   // Emit a snapshot to all listeners
-  private emitSnapshot(): void {
+  emitSnapshot(): void {
     const winnerId = this.simulation.getWinnerId() ?? undefined;
     const sprayTargets = this.simulation.getSprayTargets();
     const audioEvents = this.simulation.getAndClearAudioEvents();
