@@ -82,12 +82,11 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   }];
 }
 
-// Widow weapon creation - 6 beam lasers at hexagon + 1 mega beam + 1 mega force field
-// Uses beam, megaBeam, and megaForceField configs from config.ts
+// Widow weapon creation - 6 beam lasers at hexagon + 1 mega force field
+// Uses beam and megaForceField configs from config.ts
 // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
 function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWeapon[] {
   const beamConfig = getWeaponConfig('beam');
-  const megaBeamConfig = getWeaponConfig('megaBeam');
   const megaForceFieldConfig = getWeaponConfig('megaForceField');
 
   // Beam weapon ranges
@@ -98,15 +97,6 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
   const beamFightstopRange = beamFireRange * RANGE_MULTIPLIERS.fightstop;
   const beamTurnAccel = beamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const beamDrag = beamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
-
-  // Mega beam weapon ranges
-  const megaBeamFireRange = megaBeamConfig.range;
-  const megaBeamSeeRange = megaBeamFireRange * RANGE_MULTIPLIERS.see;
-  const megaBeamReleaseRange = megaBeamFireRange * RANGE_MULTIPLIERS.release;
-  const megaBeamLockRange = megaBeamFireRange * RANGE_MULTIPLIERS.lock;
-  const megaBeamFightstopRange = megaBeamFireRange * RANGE_MULTIPLIERS.fightstop;
-  const megaBeamTurnAccel = megaBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-  const megaBeamDrag = megaBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
   const weapons: UnitWeapon[] = [];
 
@@ -139,27 +129,6 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
       inFightstopRange: false,
     });
   }
-
-  // 1 mega beam at hexagon center
-  weapons.push({
-    config: { ...megaBeamConfig },
-    currentCooldown: 0,
-    targetEntityId: null,
-    seeRange: megaBeamSeeRange,
-    fireRange: megaBeamFireRange,
-    releaseRange: megaBeamReleaseRange,
-    lockRange: megaBeamLockRange,
-    fightstopRange: megaBeamFightstopRange,
-    isLocked: false,
-    turretRotation: 0,
-    turretAngularVelocity: 0,
-    turretTurnAccel: megaBeamTurnAccel,
-    turretDrag: megaBeamDrag,
-    offsetX: hexForwardOffset,
-    offsetY: 0,
-    isFiring: false,
-    inFightstopRange: false,
-  });
 
   // 1 mega force field in center (dual push/pull zones)
   const ffFireRange = megaForceFieldConfig.range;
@@ -220,7 +189,7 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
   daddy: {
     id: 'daddy',
     name: 'Daddy',
-    weaponType: 'beam',
+    weaponType: 'megaBeam',
     hp: UNIT_STATS.daddy.hp,
     moveSpeed: UNIT_STATS.daddy.moveSpeed,
     collisionRadius: UNIT_STATS.daddy.collisionRadius,

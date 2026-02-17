@@ -423,7 +423,7 @@ export const UNIT_STATS = {
     mass: 15,
     buildRate: 55,
   },
-  // Daddy - Beam walker. Sustained 45 DPS but VERY slow turret tracking.
+  // Daddy - Heavy beam walker. Mega beam, sustained DPS but VERY slow turret tracking.
   // Value: Good vs slow/stationary targets, struggles vs fast units
   daddy: {
     baseCost: 105,
@@ -473,7 +473,7 @@ export const UNIT_STATS = {
     mass: 500,
     buildRate: 18,
   },
-  // Widow - Titan spider unit. 7 beam weapons + force field = 335+ DPS.
+  // Widow - Titan spider unit. 6 beam weapons + force field.
   // Value: Army-in-one super unit, but expensive and high priority target
   widow: {
     baseCost: 600,

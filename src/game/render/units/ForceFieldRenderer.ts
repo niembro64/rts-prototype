@@ -2,7 +2,7 @@
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
-import { drawPolygon, tintColor } from '../helpers';
+import { drawPolygon, drawForceFieldGrate, tintColor } from '../helpers';
 import { renderForceFieldEffect } from '../effects';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -74,11 +74,11 @@ export function drawForceFieldUnit(
     _bodyPoints[7].y = y + sin * bodyLength - cos * bodyWidth * 0.3;
     graphics.fillPoints(_bodyPoints, true);
 
-    if (ctx.lod === 'high') {
-      // Inner pattern (dark)
-      graphics.fillStyle(dark, 1);
-      drawPolygon(graphics, x, y, r * 0.3, 6, bodyRot);
+    // Inner carapace pattern (matches widow hex style)
+    graphics.fillStyle(base, 1);
+    drawPolygon(graphics, x, y, r * 0.35, 6, bodyRot);
 
+    if (ctx.lod === 'high') {
       // Central orb base (light glow)
       graphics.fillStyle(light, 1);
       graphics.fillCircle(x, y, r * 0.25);
@@ -87,11 +87,16 @@ export function drawForceFieldUnit(
     }
   }
 
-  // Turret pass - force field effect emanating from central orb
+  // Turret pass - grate antenna + force field effect emanating from central orb
   if (!skipTurrets) {
     const weapons = entity.weapons ?? [];
     for (const weapon of weapons) {
       if (!weapon.config.isForceField) continue;
+
+      const turretRot = weapon.turretRotation;
+
+      // Grate turret (floating bars, 4 bars for smaller unit)
+      drawForceFieldGrate(graphics, x, y, turretRot, r * 0.7, r * 0.35, 1.5, 4);
 
       const progress = weapon.currentForceFieldRange ?? 0;
       if (progress <= 0) continue;
@@ -100,7 +105,6 @@ export function drawForceFieldUnit(
       const middleRadius = (weapon.config.forceFieldMiddleRadius as number | undefined) ?? weapon.fireRange;
       const outerRadius = weapon.fireRange;
 
-      const turretRot = weapon.turretRotation;
       const sliceAngle = weapon.config.forceFieldAngle ?? Math.PI / 4;
 
       // Push zone: grows inward from middleRadius toward innerRadius

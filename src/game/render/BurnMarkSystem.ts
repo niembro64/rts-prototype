@@ -53,7 +53,7 @@ export class BurnMarkSystem {
           const dx = ex - prev.x;
           const dy = ey - prev.y;
           if (dx * dx + dy * dy > 1) {
-            this.marks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth, age: 0, color: BURN_COLOR_HOT });
+            this.marks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth * 2, age: 0, color: BURN_COLOR_HOT });
           }
         }
         this.prevBeamEndpoints.set(beamKey, { x: ex, y: ey });

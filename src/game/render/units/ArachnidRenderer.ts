@@ -1,8 +1,8 @@
-// Arachnid (Widow) unit renderer - Titan spider unit with 8 animated legs, 8 weapons
+// Arachnid (Widow) unit renderer - Titan spider unit with 8 animated legs, 6 beams + force field
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
-import { drawPolygon, tintColor } from '../helpers';
+import { drawPolygon, drawForceFieldGrate, tintColor } from '../helpers';
 import { renderForceFieldEffect } from '../effects';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -198,25 +198,8 @@ export function drawArachnidUnit(
         graphics.lineStyle(2.5, COLORS.WHITE, 1);
         graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
       }
-
-      // Center beam emitter (weapon index 6)
-      const centerBeamWeapon = weapons[6];
-      if (centerBeamWeapon && !centerBeamWeapon.config.isForceField) {
-        const hexCenterX = x + cos * hexForwardOffset;
-        const hexCenterY = y + sin * hexForwardOffset;
-        const centerTurret = centerBeamWeapon.turretRotation ?? bodyRot;
-
-        graphics.fillStyle(COLORS.WHITE, 1);
-        graphics.fillCircle(hexCenterX, hexCenterY, r * 0.12);
-
-        const centerBeamLen = r * 0.6;
-        const centerBeamEndX = hexCenterX + Math.cos(centerTurret) * centerBeamLen;
-        const centerBeamEndY = hexCenterY + Math.sin(centerTurret) * centerBeamLen;
-        graphics.lineStyle(3.5, COLORS.WHITE, 1);
-        graphics.lineBetween(hexCenterX, hexCenterY, centerBeamEndX, centerBeamEndY);
-      }
     } else {
-      // Low: 6 simple white bars at hex corners (no emitter dots) + center bar
+      // Low: 6 simple white bars at hex corners (no emitter dots)
       const hexRadius = r * 0.65;
       const hexRotationOffset = Math.PI / 6;
 
@@ -234,27 +217,21 @@ export function drawArachnidUnit(
         graphics.lineStyle(2.5, COLORS.WHITE, 1);
         graphics.lineBetween(emitterX, emitterY, beamEndX, beamEndY);
       }
-
-      // Center bar
-      const centerBeamWeapon = weapons[6];
-      if (centerBeamWeapon && !centerBeamWeapon.config.isForceField) {
-        const hexCenterX = x + cos * hexForwardOffset;
-        const hexCenterY = y + sin * hexForwardOffset;
-        const centerTurret = centerBeamWeapon.turretRotation ?? bodyRot;
-        const centerBeamLen = r * 0.6;
-        const endX = hexCenterX + Math.cos(centerTurret) * centerBeamLen;
-        const endY = hexCenterY + Math.sin(centerTurret) * centerBeamLen;
-        graphics.lineStyle(3.5, COLORS.WHITE, 1);
-        graphics.lineBetween(hexCenterX, hexCenterY, endX, endY);
-      }
     }
 
-    // Force field weapon at center (index 7) — renders both push and pull zones
+    // Force field weapon at center (index 6) — grate turret + push/pull zones
     const hexCenterX = x + cos * hexForwardOffset;
     const hexCenterY = y + sin * hexForwardOffset;
-    for (let i = 7; i < weapons.length; i++) {
+    for (let i = 6; i < weapons.length; i++) {
       const weapon = weapons[i];
       if (!weapon?.config.isForceField) continue;
+
+      const turretAngle = weapon.turretRotation;
+
+      // Grate turret (floating bars, 5 bars for larger unit) — offset forward from hex center
+      const grateOriginX = hexCenterX + Math.cos(turretAngle) * r * 0.07;
+      const grateOriginY = hexCenterY + Math.sin(turretAngle) * r * 0.07;
+      drawForceFieldGrate(graphics, grateOriginX, grateOriginY, turretAngle, r * 0.55, r * 0.25, 2.5, 5);
 
       const progress = weapon.currentForceFieldRange ?? 0;
       if (progress <= 0) continue;
@@ -263,7 +240,6 @@ export function drawArachnidUnit(
       const middleRadius = (weapon.config.forceFieldMiddleRadius as number | undefined) ?? weapon.fireRange;
       const outerRadius = weapon.fireRange;
 
-      const turretAngle = weapon.turretRotation;
       const sliceAngle = weapon.config.forceFieldAngle ?? Math.PI / 4;
 
       // Push zone: grows inward from middleRadius toward innerRadius

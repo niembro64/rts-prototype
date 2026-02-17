@@ -158,6 +158,48 @@ export function drawAnimatedTread(
 }
 
 /**
+ * Draw a force field grate turret — floating horizontal bars
+ * that get shorter the farther they are from the origin (TV antenna style).
+ * @param originX - turret mount point X
+ * @param originY - turret mount point Y
+ * @param turretRot - turret rotation in radians
+ * @param grateLength - how far out the grate extends
+ * @param maxHalfWidth - half-width of the widest (closest) bar
+ * @param thickness - line thickness
+ * @param barCount - number of bars to draw
+ */
+export function drawForceFieldGrate(
+  graphics: Phaser.GameObjects.Graphics,
+  originX: number,
+  originY: number,
+  turretRot: number,
+  grateLength: number,
+  maxHalfWidth: number,
+  thickness: number,
+  barCount: number,
+): void {
+  const fwdX = Math.cos(turretRot);
+  const fwdY = Math.sin(turretRot);
+  const perpX = -fwdY;
+  const perpY = fwdX;
+
+  // Floating horizontal bars, longest at base, shortest at tip
+  graphics.lineStyle(thickness, COLORS.WHITE, 1);
+  for (let i = 0; i < barCount; i++) {
+    const t = i / (barCount - 1); // 0 (closest) to 1 (farthest)
+    const dist = grateLength * (0.15 + t * 0.85);
+    const halfWidth = maxHalfWidth * (1 - t * 0.7); // taper to 30% at tip
+
+    const cx = originX + fwdX * dist;
+    const cy = originY + fwdY * dist;
+    graphics.lineBetween(
+      cx - perpX * halfWidth, cy - perpY * halfWidth,
+      cx + perpX * halfWidth, cy + perpY * halfWidth,
+    );
+  }
+}
+
+/**
  * Render a gear/cog shape
  */
 export function drawGear(

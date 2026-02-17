@@ -14,5 +14,6 @@ export {
   drawOrientedRect,
   drawStar,
   drawAnimatedTread,
+  drawForceFieldGrate,
   drawGear,
 } from './GeometryHelpers';
