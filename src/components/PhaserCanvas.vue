@@ -43,7 +43,7 @@ const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
 
 // Render mode options
 const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
-  { value: 'window', label: 'VISUAL' },
+  { value: 'window', label: 'VIS' },
   { value: 'padded', label: 'V+30%' },
   { value: 'all', label: 'ALL' },
 ];
@@ -696,7 +696,15 @@ onUnmounted(() => {
       <div v-if="showServerControls" class="control-bar server-bar">
         <span class="bar-label server-label">HOST SERVER</span>
         <div class="bar-divider"></div>
-        <span class="control-label">SNAPSHOT RATE:</span>
+        <div class="fps-stats">
+          <span class="fps-label">tick:</span>
+          <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
+          <span class="fps-label">worst</span>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">SNAPSHOT:</span>
         <div class="button-group">
           <button
             v-for="rate in UPDATE_RATE_OPTIONS"
@@ -714,23 +722,26 @@ onUnmounted(() => {
           :class="{ active: sendGridInfo }"
           @click="toggleSendGridInfo"
         >
-          GRID INFO
+          GRID
         </button>
-        <div class="bar-divider"></div>
-        <div class="fps-stats">
-          <span class="fps-label">tick rate:</span>
-          <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
-          <span class="fps-label">avg</span>
-          <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
-          <span class="fps-label">worst</span>
-        </div>
       </div>
 
       <!-- CLIENT CONTROLS (always visible) -->
       <div class="control-bar client-bar">
         <span class="bar-label client-label">PLAYER CLIENT</span>
         <div class="bar-divider"></div>
-        <span class="control-label">DETAIL:</span>
+        <div class="fps-stats">
+          <span class="fps-label">fps:</span>
+          <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
+          <span class="fps-label">worst</span>
+          <span class="fps-divider">|</span>
+          <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
+          <span class="fps-label">zoom</span>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">LOD:</span>
         <button
           class="control-btn"
           :class="{ active: graphicsQuality === 'auto' }"
@@ -754,7 +765,7 @@ onUnmounted(() => {
         </div>
         <div class="bar-divider"></div>
         <span class="control-label">RENDER:</span>
-        <div class="button-group button-group-md">
+        <div class="button-group">
           <button
             v-for="opt in RENDER_OPTIONS"
             :key="opt.value"
@@ -773,7 +784,7 @@ onUnmounted(() => {
         >AUDIO</button>
         <div class="bar-divider"></div>
         <span class="control-label">UNIT RANGES:</span>
-        <div class="button-group button-group-md">
+        <div class="button-group">
           <button
             class="control-btn"
             :class="{ active: rangeToggles.see }"
@@ -803,24 +814,7 @@ onUnmounted(() => {
             class="control-btn"
             :class="{ active: rangeToggles.build }"
             @click="toggleRange('build')"
-          >BUILD</button>
-        </div>
-        <div class="bar-divider"></div>
-        <div class="fps-stats">
-          <span class="fps-label">frame rate:</span>
-          <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
-          <span class="fps-label">avg</span>
-          <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
-          <span class="fps-label">worst</span>
-          <span class="fps-divider">|</span>
-          <span class="fps-label">phaser:</span>
-          <span class="fps-value">{{ meanFPS.toFixed(1) }}</span>
-          <span class="fps-label">avg</span>
-          <span class="fps-value">{{ lowFPS.toFixed(1) }}</span>
-          <span class="fps-label">low</span>
-          <span class="fps-divider">|</span>
-          <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
-          <span class="fps-label">zoom</span>
+          >BLD</button>
         </div>
       </div>
     </div>
@@ -1182,7 +1176,7 @@ onUnmounted(() => {
   border-radius: 0;
   margin-left: -1px;
   flex: 1 1 0;
-  min-width: 32px;
+  min-width: 28px;
   text-align: center;
   overflow: hidden;
 }
@@ -1196,12 +1190,8 @@ onUnmounted(() => {
   border-radius: 0 3px 3px 0;
 }
 
-.button-group-md .control-btn {
-  min-width: 52px;
-}
-
 .control-btn {
-  padding: 3px 8px;
+  padding: 3px 6px;
   background: rgba(60, 60, 60, 0.8);
   border: 1px solid #555;
   border-radius: 3px;
