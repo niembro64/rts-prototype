@@ -65,7 +65,7 @@ const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
   { weaponId: 'jackal', label: 'Jackal', cost: 40 },
   { weaponId: 'lynx', label: 'Lynx', cost: 55 },
   { weaponId: 'badger', label: 'Badger', cost: 80 },
-  { weaponId: 'scorpion', label: 'Scorpion', cost: 100 },
+  { weaponId: 'mongoose', label: 'Mongoose', cost: 100 },
   { weaponId: 'mammoth', label: 'Mammoth', cost: 180 },
 ];
 

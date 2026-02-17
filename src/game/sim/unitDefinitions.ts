@@ -12,7 +12,7 @@ import {
 } from '../../config';
 
 // Union type of all unit type identifiers
-export type UnitType = 'jackal' | 'lynx' | 'daddy' | 'badger' | 'scorpion'
+export type UnitType = 'jackal' | 'lynx' | 'daddy' | 'badger' | 'mongoose'
   | 'recluse' | 'mammoth' | 'widow' | 'tarantula' | 'commander';
 
 // Locomotion types for rendering
@@ -82,31 +82,31 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
   }];
 }
 
-// Widow weapon creation - 6 beam lasers at hexagon + 1 center beam + 1 force field
-// Uses explicit widowBeam, widowCenterBeam, and widowForceField configs from config.ts
+// Widow weapon creation - 6 beam lasers at hexagon + 1 mega beam + 1 mega force field
+// Uses beam, megaBeam, and megaForceField configs from config.ts
 // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
 function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWeapon[] {
-  const widowBeamConfig = getWeaponConfig('widowBeam');
-  const widowCenterBeamConfig = getWeaponConfig('widowCenterBeam');
-  const widowForceFieldConfig = getWeaponConfig('widowForceField');
+  const beamConfig = getWeaponConfig('beam');
+  const megaBeamConfig = getWeaponConfig('megaBeam');
+  const megaForceFieldConfig = getWeaponConfig('megaForceField');
 
   // Beam weapon ranges
-  const beamFireRange = widowBeamConfig.range;
+  const beamFireRange = beamConfig.range;
   const beamSeeRange = beamFireRange * RANGE_MULTIPLIERS.see;
   const beamReleaseRange = beamFireRange * RANGE_MULTIPLIERS.release;
   const beamLockRange = beamFireRange * RANGE_MULTIPLIERS.lock;
   const beamFightstopRange = beamFireRange * RANGE_MULTIPLIERS.fightstop;
-  const beamTurnAccel = widowBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-  const beamDrag = widowBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+  const beamTurnAccel = beamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+  const beamDrag = beamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
-  // Center beam weapon ranges
-  const centerBeamFireRange = widowCenterBeamConfig.range;
-  const centerBeamSeeRange = centerBeamFireRange * RANGE_MULTIPLIERS.see;
-  const centerBeamReleaseRange = centerBeamFireRange * RANGE_MULTIPLIERS.release;
-  const centerBeamLockRange = centerBeamFireRange * RANGE_MULTIPLIERS.lock;
-  const centerBeamFightstopRange = centerBeamFireRange * RANGE_MULTIPLIERS.fightstop;
-  const centerBeamTurnAccel = widowCenterBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-  const centerBeamDrag = widowCenterBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+  // Mega beam weapon ranges
+  const megaBeamFireRange = megaBeamConfig.range;
+  const megaBeamSeeRange = megaBeamFireRange * RANGE_MULTIPLIERS.see;
+  const megaBeamReleaseRange = megaBeamFireRange * RANGE_MULTIPLIERS.release;
+  const megaBeamLockRange = megaBeamFireRange * RANGE_MULTIPLIERS.lock;
+  const megaBeamFightstopRange = megaBeamFireRange * RANGE_MULTIPLIERS.fightstop;
+  const megaBeamTurnAccel = megaBeamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+  const megaBeamDrag = megaBeamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
   const weapons: UnitWeapon[] = [];
 
@@ -120,7 +120,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     const offsetX = Math.cos(angle) * hexRadius + hexForwardOffset;
     const offsetY = Math.sin(angle) * hexRadius;
     weapons.push({
-      config: { ...widowBeamConfig },
+      config: { ...beamConfig },
       currentCooldown: 0,
       targetEntityId: null,
       seeRange: beamSeeRange,
@@ -140,38 +140,38 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     });
   }
 
-  // 1 center beam at hexagon center (2x stats)
+  // 1 mega beam at hexagon center
   weapons.push({
-    config: { ...widowCenterBeamConfig },
+    config: { ...megaBeamConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    seeRange: centerBeamSeeRange,
-    fireRange: centerBeamFireRange,
-    releaseRange: centerBeamReleaseRange,
-    lockRange: centerBeamLockRange,
-    fightstopRange: centerBeamFightstopRange,
+    seeRange: megaBeamSeeRange,
+    fireRange: megaBeamFireRange,
+    releaseRange: megaBeamReleaseRange,
+    lockRange: megaBeamLockRange,
+    fightstopRange: megaBeamFightstopRange,
     isLocked: false,
     turretRotation: 0,
     turretAngularVelocity: 0,
-    turretTurnAccel: centerBeamTurnAccel,
-    turretDrag: centerBeamDrag,
+    turretTurnAccel: megaBeamTurnAccel,
+    turretDrag: megaBeamDrag,
     offsetX: hexForwardOffset,
     offsetY: 0,
     isFiring: false,
     inFightstopRange: false,
   });
 
-  // 1 force field weapon in center (dual push/pull zones)
-  const ffFireRange = widowForceFieldConfig.range;
+  // 1 mega force field in center (dual push/pull zones)
+  const ffFireRange = megaForceFieldConfig.range;
   const ffSeeRange = ffFireRange * RANGE_MULTIPLIERS.see;
   const ffReleaseRange = ffFireRange * RANGE_MULTIPLIERS.release;
   const ffLockRange = ffFireRange * RANGE_MULTIPLIERS.lock;
   const ffFightstopRange = ffFireRange * RANGE_MULTIPLIERS.fightstop;
-  const ffTurnAccel = widowForceFieldConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-  const ffDrag = widowForceFieldConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+  const ffTurnAccel = megaForceFieldConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
+  const ffDrag = megaForceFieldConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
   weapons.push({
-    config: { ...widowForceFieldConfig },
+    config: { ...megaForceFieldConfig },
     currentCooldown: 0,
     targetEntityId: null,
     seeRange: ffSeeRange,
@@ -240,15 +240,15 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.badger.buildRate,
     locomotion: 'treads',
   },
-  scorpion: {
-    id: 'scorpion',
-    name: 'Scorpion',
+  mongoose: {
+    id: 'mongoose',
+    name: 'Mongoose',
     weaponType: 'mortar',
-    hp: UNIT_STATS.scorpion.hp,
-    moveSpeed: UNIT_STATS.scorpion.moveSpeed,
-    collisionRadius: UNIT_STATS.scorpion.collisionRadius,
-    energyCost: UNIT_STATS.scorpion.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.scorpion.buildRate,
+    hp: UNIT_STATS.mongoose.hp,
+    moveSpeed: UNIT_STATS.mongoose.moveSpeed,
+    collisionRadius: UNIT_STATS.mongoose.collisionRadius,
+    energyCost: UNIT_STATS.mongoose.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.mongoose.buildRate,
     locomotion: 'wheels',
   },
   recluse: {
@@ -262,7 +262,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.recluse.buildRate,
     locomotion: 'legs',
     legStyle: 'recluse',
-    weaponOffsetX: -UNIT_STATS.recluse.collisionRadius * 0.5,
   },
   mammoth: {
     id: 'mammoth',
@@ -278,7 +277,7 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
   widow: {
     id: 'widow',
     name: 'Widow',
-    weaponType: 'widowBeam', // Primary weapon type (has custom createWeapons)
+    weaponType: 'beam', // Primary weapon type (has custom createWeapons)
     hp: UNIT_STATS.widow.hp,
     moveSpeed: UNIT_STATS.widow.moveSpeed,
     collisionRadius: UNIT_STATS.widow.collisionRadius,

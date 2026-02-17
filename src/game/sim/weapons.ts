@@ -4,7 +4,7 @@ import { WEAPON_STATS } from '../../config';
 
 // Union type of all registered weapon config keys
 export type WeaponId = 'gatling' | 'pulse' | 'beam' | 'shotgun' | 'mortar' | 'railgun'
-  | 'cannon' | 'disruptor' | 'forceField' | 'widowBeam' | 'widowCenterBeam' | 'widowForceField';
+  | 'cannon' | 'disruptor' | 'forceField' | 'megaBeam' | 'megaForceField';
 
 // Weapon configurations using values from config.ts
 // Note: color is no longer used - colors are team-based in renderer
@@ -69,7 +69,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     color: 0xffffff,
   },
 
-  // Mortar - splash damage artillery (Scorpion's weapon)
+  // Mortar - splash damage artillery (Mongoose's weapon)
   mortar: {
     id: 'mortar',
     audioId: 'grenade',
@@ -149,48 +149,34 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     color: 0xffffff,
   },
 
-  // Widow's beam lasers - extended range continuous beams
-  widowBeam: {
-    id: 'widowBeam',
+  // Mega beam - heavy beam, mounted at head center (Widow)
+  megaBeam: {
+    id: 'megaBeam',
     audioId: 'beam',
-    damage: WEAPON_STATS.widowBeam.damage,
-    range: WEAPON_STATS.widowBeam.range,
-    cooldown: WEAPON_STATS.widowBeam.cooldown,
-    beamDuration: WEAPON_STATS.widowBeam.beamDuration,
-    beamWidth: WEAPON_STATS.widowBeam.beamWidth,
-    turretTurnAccel: WEAPON_STATS.widowBeam.turretTurnAccel,
-    turretDrag: WEAPON_STATS.widowBeam.turretDrag,
+    damage: WEAPON_STATS.megaBeam.damage,
+    range: WEAPON_STATS.megaBeam.range,
+    cooldown: WEAPON_STATS.megaBeam.cooldown,
+    beamDuration: WEAPON_STATS.megaBeam.beamDuration,
+    beamWidth: WEAPON_STATS.megaBeam.beamWidth,
+    turretTurnAccel: WEAPON_STATS.megaBeam.turretTurnAccel,
+    turretDrag: WEAPON_STATS.megaBeam.turretDrag,
     color: 0xffffff,
   },
 
-  // Widow's center beam - 2x stats, mounted at head center
-  widowCenterBeam: {
-    id: 'widowCenterBeam',
-    audioId: 'beam',
-    damage: WEAPON_STATS.widowCenterBeam.damage,
-    range: WEAPON_STATS.widowCenterBeam.range,
-    cooldown: WEAPON_STATS.widowCenterBeam.cooldown,
-    beamDuration: WEAPON_STATS.widowCenterBeam.beamDuration,
-    beamWidth: WEAPON_STATS.widowCenterBeam.beamWidth,
-    turretTurnAccel: WEAPON_STATS.widowCenterBeam.turretTurnAccel,
-    turretDrag: WEAPON_STATS.widowCenterBeam.turretDrag,
-    color: 0xffffff,
-  },
-
-  // Widow force field - Dual push/pull zones
-  widowForceField: {
-    id: 'widowForceField',
+  // Mega force field - Dual push/pull zones (Widow)
+  megaForceField: {
+    id: 'megaForceField',
     audioId: 'force-field',
-    damage: WEAPON_STATS.widowForceField.damage,
-    range: WEAPON_STATS.widowForceField.forceFieldOuterRadius,
-    forceFieldInnerRange: WEAPON_STATS.widowForceField.forceFieldInnerRadius,
-    forceFieldMiddleRadius: WEAPON_STATS.widowForceField.forceFieldMiddleRadius,
-    cooldown: WEAPON_STATS.widowForceField.cooldown,
-    turretTurnAccel: WEAPON_STATS.widowForceField.turretTurnAccel,
-    turretDrag: WEAPON_STATS.widowForceField.turretDrag,
-    forceFieldAngle: WEAPON_STATS.widowForceField.forceFieldAngle,
-    forceFieldTransitionTime: WEAPON_STATS.widowForceField.forceFieldTransitionTime,
-    pullPower: WEAPON_STATS.widowForceField.pullPower,
+    damage: WEAPON_STATS.megaForceField.damage,
+    range: WEAPON_STATS.megaForceField.forceFieldOuterRadius,
+    forceFieldInnerRange: WEAPON_STATS.megaForceField.forceFieldInnerRadius,
+    forceFieldMiddleRadius: WEAPON_STATS.megaForceField.forceFieldMiddleRadius,
+    cooldown: WEAPON_STATS.megaForceField.cooldown,
+    turretTurnAccel: WEAPON_STATS.megaForceField.turretTurnAccel,
+    turretDrag: WEAPON_STATS.megaForceField.turretDrag,
+    forceFieldAngle: WEAPON_STATS.megaForceField.forceFieldAngle,
+    forceFieldTransitionTime: WEAPON_STATS.megaForceField.forceFieldTransitionTime,
+    pullPower: WEAPON_STATS.megaForceField.pullPower,
     isForceField: true,
     color: 0xffffff,
   },

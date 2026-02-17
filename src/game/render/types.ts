@@ -164,7 +164,7 @@ export const UNIT_NAMES: Record<string, string> = {
   lynx: 'Lynx',
   daddy: 'Daddy',
   badger: 'Badger',
-  scorpion: 'Scorpion',
+  mongoose: 'Mongoose',
   recluse: 'Recluse',
   mammoth: 'Mammoth',
   widow: 'Widow',

@@ -34,7 +34,7 @@ const UNIT_COLORS: Record<string, string> = {
   lynx: '#3cb44b',
   daddy: '#4363d8',
   badger: '#f58231',
-  scorpion: '#911eb4',
+  mongoose: '#911eb4',
   recluse: '#42d4f4',
   mammoth: '#f032e6',
   widow: '#bfef45',

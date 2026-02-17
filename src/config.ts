@@ -166,7 +166,7 @@ export const LEG_CONFIG = {
   widow: { thickness: 6, footSize: 0.1, lerpDuration: 600 },
   daddy: { thickness: 2, footSize: 0.14, lerpDuration: 300 },
   tarantula: { thickness: 4, footSize: 0.12, lerpDuration: 200 },
-  recluse: { thickness: 1.5, footSize: 0.08, lerpDuration: 180 },
+  recluse: { thickness: 1.5, footSize: 0.08, lerpDuration: 160 },
   commander: { thickness: 6, footSize: 0.15, lerpDuration: 400 },
 };
 
@@ -374,16 +374,16 @@ export const UNIT_STATS = {
   // Badger - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
   // Value: Wins close fights, but takes damage closing the gap
   badger: {
-    baseCost: 55,
+    baseCost: 70,
     hp: 240,
     moveSpeed: 200,
     collisionRadius: 16,
     mass: 45,
     buildRate: 40,
   },
-  // Scorpion - Area denial artillery. Splash damage, slow projectile.
+  // Mongoose - Area denial artillery. Splash damage, slow projectile.
   // Value: Excellent vs groups, but can be dodged, mediocre vs single targets
-  scorpion: {
+  mongoose: {
     baseCost: 85,
     hp: 100,
     moveSpeed: 220,
@@ -395,7 +395,7 @@ export const UNIT_STATS = {
   // Value: Safe poke damage, but very slow and fragile if caught
   recluse: {
     baseCost: 75,
-    hp: 45,
+    hp: 25,
     moveSpeed: 70,
     collisionRadius: 11,
     mass: 20,
@@ -468,7 +468,7 @@ export const WEAPON_STATS = {
     pelletCount: 6,
   },
 
-  // Mortar - Slow, high splash damage artillery (Scorpion's weapon)
+  // Mortar - Slow, high splash damage artillery (Mongoose's weapon)
   mortar: {
     damage: 80,
     range: 200,
@@ -489,11 +489,11 @@ export const WEAPON_STATS = {
 
   // Railgun - Instant flash hitscan, long range, piercing (Recluse's weapon)
   railgun: {
-    damage: 55,
-    range: 350,
-    cooldown: 3200,
+    damage: 5,
+    range: 250,
+    cooldown: 300,
     beamDuration: 100, // Brief flash, long enough to be visible at 10Hz snapshots
-    beamWidth: 2,
+    beamWidth: 1,
   },
 
   // Beam - Continuous damage beam (Daddy's weapon)
@@ -508,21 +508,9 @@ export const WEAPON_STATS = {
     turretDrag: 0.5, // Moderate drag → terminal ~3.3 rad/sec
   },
 
-  // Widow beam lasers - extended range continuous beams
-  // Fast, snappy turrets - high acceleration
-  widowBeam: {
-    damage: 85, // DPS while beam is on target
-    range: 105,
-    cooldown: 0, // Continuous
-    beamDuration: 1000,
-    beamWidth: 4,
-    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
-    turretDrag: 0.5, // Moderate drag → terminal ~3.3 rad/sec
-  },
-
-  // Widow center beam - 2x stats of widowBeam, mounted at head center
+  // Mega beam - heavy beam, mounted at head center (Widow)
   // Medium-slow turret - big gun needs time to aim
-  widowCenterBeam: {
+  megaBeam: {
     damage: 100,
     range: 200,
     cooldown: 0, // Continuous
@@ -546,8 +534,8 @@ export const WEAPON_STATS = {
     pullPower: 300,
   },
 
-  // Widow force field — push inner, pull outer
-  widowForceField: {
+  // Mega force field — push inner, pull outer (Widow)
+  megaForceField: {
     forceFieldInnerRadius: 100, // No effect inside this
     forceFieldMiddleRadius: 130, // Push/pull boundary
     forceFieldOuterRadius: 300, // Pull stops here
@@ -555,7 +543,7 @@ export const WEAPON_STATS = {
     cooldown: 0,
     turretTurnAccel: 30,
     turretDrag: 0.5,
-    forceFieldAngle: Math.PI * 0.5,
+    forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 1000,
     pullPower: 300,
   },

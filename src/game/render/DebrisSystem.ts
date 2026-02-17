@@ -253,7 +253,7 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       break;
     }
 
-    case 'scorpion': {
+    case 'mongoose': {
       // 4 wheels — at r*0.65/r*0.7, tread r*0.5 × r*0.11
       for (const sx of [-1, 1]) {
         for (const sy of [-1, 1]) {
@@ -270,27 +270,25 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'recluse': {
-      // 8 spindly legs — thin lines radiating outward
-      const legLen = r * 2.4;
+      // 8 short legs (4 per side) — thin lines
+      const legLen = r * 1.0;
       const upperLen = legLen * 0.5;
-      const lowerLen = legLen * 0.55;
+      const lowerLen = legLen * 0.5;
       for (let i = 0; i < 8; i++) {
         const side = i < 4 ? -1 : 1;
         const idx = i < 4 ? i : i - 4;
-        const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
-        const ax = Math.cos(attachAngle) * r * 0.15;
-        const ay = Math.sin(attachAngle) * r * 0.15;
+        const attachAngle = (idx / 4 - 0.375) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const ax = Math.cos(attachAngle) * r * 0.1;
+        const ay = Math.sin(attachAngle) * r * 0.1;
         pieces.push({ localX: ax, localY: ay, length: upperLen, width: 2, angle: attachAngle, colorType: 'dark', shape: 'line' });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
         pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 1.5, angle: attachAngle, colorType: 'dark', shape: 'line' });
       }
-      // Abdomen — rear oval
-      pieces.push({ localX: -r * 0.35, localY: 0, length: r * 0.55, width: r * 0.45, angle: 0, colorType: 'base', shape: 'rect' });
-      // Cephalothorax — front
-      pieces.push({ localX: r * 0.3, localY: 0, length: r * 0.4, width: r * 0.35, angle: 0, colorType: 'light', shape: 'rect' });
-      // Long railgun barrel — r*1.6 long, 2px wide
-      addBarrel(0, 0, r * 1.6, 2, 0, 'white');
+      // Tiny round body
+      pieces.push({ localX: 0, localY: 0, length: r * 0.2, width: r * 0.2, angle: 0, colorType: 'base', shape: 'rect' });
+      // Long railgun barrel — r*1.6 long, 1.5px wide
+      addBarrel(0, 0, r * 1.6, 1.5, 0, 'white');
       break;
     }
 

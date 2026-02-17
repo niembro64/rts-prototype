@@ -74,15 +74,15 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     mass: UNIT_STATS.badger.mass,
     hp: UNIT_STATS.badger.hp,
   },
-  scorpion: {
+  mongoose: {
     weaponId: 'mortar',
-    name: 'Scorpion',
-    energyCost: UNIT_STATS.scorpion.baseCost * COST_MULTIPLIER,
-    maxBuildRate: UNIT_STATS.scorpion.buildRate,
-    collisionRadius: UNIT_STATS.scorpion.collisionRadius,
-    moveSpeed: UNIT_STATS.scorpion.moveSpeed,
-    mass: UNIT_STATS.scorpion.mass,
-    hp: UNIT_STATS.scorpion.hp,
+    name: 'Mongoose',
+    energyCost: UNIT_STATS.mongoose.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.mongoose.buildRate,
+    collisionRadius: UNIT_STATS.mongoose.collisionRadius,
+    moveSpeed: UNIT_STATS.mongoose.moveSpeed,
+    mass: UNIT_STATS.mongoose.mass,
+    hp: UNIT_STATS.mongoose.hp,
   },
   recluse: {
     weaponId: 'railgun',
@@ -105,7 +105,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     hp: UNIT_STATS.mammoth.hp,
   },
   widow: {
-    weaponId: 'widowBeam',
+    weaponId: 'beam',
     name: 'Widow',
     energyCost: UNIT_STATS.widow.baseCost * COST_MULTIPLIER,
     maxBuildRate: UNIT_STATS.widow.buildRate,
