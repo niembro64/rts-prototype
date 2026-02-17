@@ -66,42 +66,38 @@ export function drawBrawlUnit(
     graphics.fillCircle(x, y, r * 0.18);
   }
 
-  // Turret pass — 6 revolving barrels fanning at shotgun spread angles
+  // Turret pass — 5-barrel revolving minigun
   if (!skipTurrets) {
     const weapons = entity.weapons ?? [];
     const spin = ctx.minigunSpinAngle;
-    const pelletCount = 6;
-    const spreadAngle = Math.PI / 5; // Must match weapon config
-    const barrelLen = r * 0.9;
-    const orbitRadius = 1.8; // Perpendicular orbit for revolving effect
-    const depthScale = 0.1;
+    const barrelCount = 5;
+    const barrelLen = r * 1.0;
+    const orbitRadius = 3.0;     // Perpendicular orbit radius (cylinder width)
+    const depthScale = 0.12;     // Foreshortening for depth illusion
+    const TWO_PI_FIFTH = (2 * Math.PI) / barrelCount;
 
     for (const weapon of weapons) {
       const turretRot = weapon.turretRotation;
+      const fwdCos = Math.cos(turretRot);
+      const fwdSin = Math.sin(turretRot);
+      const perpCos = Math.cos(turretRot + Math.PI / 2);
+      const perpSin = Math.sin(turretRot + Math.PI / 2);
 
-      for (let i = 0; i < pelletCount; i++) {
-        // Each barrel sits at its pellet's spread angle
-        const spreadOffset = (i / (pelletCount - 1) - 0.5) * spreadAngle;
-        const barrelAngle = turretRot + spreadOffset;
-        const fwdCos = Math.cos(barrelAngle);
-        const fwdSin = Math.sin(barrelAngle);
-
-        // Revolving orbit: each barrel phase-shifted, orbits perpendicular to its own angle
-        const phase = spin + i * (Math.PI * 2 / pelletCount);
+      for (let i = 0; i < barrelCount; i++) {
+        // 5 barrels equally spaced around the cylinder (2π/5 apart)
+        const phase = spin + i * TWO_PI_FIFTH;
         const lateralOffset = Math.sin(phase) * orbitRadius;
         const depthFactor = 1.0 - Math.cos(phase) * depthScale;
         const len = barrelLen * depthFactor;
 
-        const perpCos = Math.cos(barrelAngle + Math.PI / 2);
-        const perpSin = Math.sin(barrelAngle + Math.PI / 2);
         const offX = perpCos * lateralOffset;
         const offY = perpSin * lateralOffset;
 
         const endX = x + fwdCos * len + offX;
         const endY = y + fwdSin * len + offY;
 
-        graphics.lineStyle(1.5, COLORS.WHITE, 1);
-        graphics.lineBetween(x + offX * 0.3, y + offY * 0.3, endX, endY);
+        graphics.lineStyle(2, COLORS.WHITE, 1);
+        graphics.lineBetween(x + offX, y + offY, endX, endY);
       }
     }
   }

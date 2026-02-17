@@ -124,11 +124,12 @@ export class EntityRenderer {
 
       // Check if any weapon is firing
       const firing = entity.weapons?.some(w => w.isFiring) ?? false;
+      const idleSpeed = 2.0; // Slow idle spin so barrels are always visibly rotating
 
       if (firing) {
         state.speed = Math.min(state.speed + EntityRenderer.MINIGUN_ACCEL * dtSec, EntityRenderer.MINIGUN_MAX_SPEED);
       } else {
-        state.speed = Math.max(state.speed - EntityRenderer.MINIGUN_DECEL * dtSec, 0);
+        state.speed = Math.max(state.speed - EntityRenderer.MINIGUN_DECEL * dtSec, idleSpeed);
       }
 
       state.angle += state.speed * dtSec;
