@@ -790,11 +790,11 @@ onUnmounted(() => {
         <span class="bar-label server-label">HOST SERVER</span>
         <div class="bar-divider"></div>
         <div class="fps-stats">
-          <span class="fps-label">tps:</span>
+          <span class="control-label">TPS:</span>
           <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
           <span class="fps-label">avg</span>
           <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
-          <span class="fps-label">worst</span>
+          <span class="fps-label">low</span>
         </div>
         <div class="bar-divider"></div>
         <span class="control-label">SNAPSHOT:</span>
@@ -824,14 +824,16 @@ onUnmounted(() => {
         <span class="bar-label client-label">PLAYER CLIENT</span>
         <div class="bar-divider"></div>
         <div class="fps-stats">
-          <span class="fps-label">fps:</span>
+          <span class="control-label">FPS:</span>
           <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
           <span class="fps-label">avg</span>
           <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
-          <span class="fps-label">worst</span>
-          <span class="fps-divider">|</span>
+          <span class="fps-label">low</span>
+        </div>
+        <div class="bar-divider"></div>
+        <div class="fps-stats">
+          <span class="control-label">ZOOM:</span>
           <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
-          <span class="fps-label">zoom</span>
         </div>
         <div class="bar-divider"></div>
         <span class="control-label">LOD:</span>
