@@ -697,7 +697,7 @@ onUnmounted(() => {
         <span class="bar-label server-label">HOST SERVER</span>
         <div class="bar-divider"></div>
         <div class="fps-stats">
-          <span class="fps-label">tick:</span>
+          <span class="fps-label">tps:</span>
           <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
           <span class="fps-label">avg</span>
           <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
@@ -1149,7 +1149,7 @@ onUnmounted(() => {
 }
 
 .fps-value {
-  color: #fff;
+  color: #b0b0b0;
   font-size: 13px;
   font-weight: bold;
   min-width: 24px;

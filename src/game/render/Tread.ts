@@ -131,237 +131,59 @@ export class Tread {
 
 // Factory functions for common tread configurations
 
+import { TREAD_CONFIG, WHEEL_CONFIG } from '../../config';
+
 export interface TankTreadSetup {
   leftTread: Tread;
   rightTread: Tread;
-}
-
-// Create a pair of tank treads (left and right)
-export function createTankTreads(
-  unitRadius: number,
-  rotationMultiplier: number = 1.0
-): TankTreadSetup {
-  const treadOffset = unitRadius * 0.85;  // Same as drawTankUnit
-  const treadWidth = unitRadius * 0.5;
-  const wheelRadius = treadWidth * 0.35;  // Same as drawn wheel size
-
-  const leftTread = new Tread({
-    attachOffsetX: 0,
-    attachOffsetY: -treadOffset,  // Left side (negative Y)
-    wheelRadius: wheelRadius,
-    rotationSpeedMultiplier: rotationMultiplier,
-  });
-
-  const rightTread = new Tread({
-    attachOffsetX: 0,
-    attachOffsetY: treadOffset,   // Right side (positive Y)
-    wheelRadius: wheelRadius,
-    rotationSpeedMultiplier: rotationMultiplier,
-  });
-
-  return { leftTread, rightTread };
-}
-
-// Create a pair of brawl treads (left and right)
-// Brawl has narrower treads than tank
-export function createBrawlTreads(
-  unitRadius: number,
-  rotationMultiplier: number = 1.0
-): TankTreadSetup {
-  const treadOffset = unitRadius * 0.75;  // Same as drawBrawlUnit
-  const treadWidth = unitRadius * 0.4;
-  const wheelRadius = treadWidth * 0.3;   // Smaller wheels for brawl
-
-  const leftTread = new Tread({
-    attachOffsetX: 0,
-    attachOffsetY: -treadOffset,  // Left side (negative Y)
-    wheelRadius: wheelRadius,
-    rotationSpeedMultiplier: rotationMultiplier,
-  });
-
-  const rightTread = new Tread({
-    attachOffsetX: 0,
-    attachOffsetY: treadOffset,   // Right side (positive Y)
-    wheelRadius: wheelRadius,
-    rotationSpeedMultiplier: rotationMultiplier,
-  });
-
-  return { leftTread, rightTread };
 }
 
 export interface VehicleWheelSetup {
   wheels: Tread[];  // Array of 2-4 wheels
 }
 
-// Create four wheels for scout-style vehicles
-export function createScoutWheelSetup(
-  unitRadius: number,
-  rotationMultiplier: number = 1.0
-): VehicleWheelSetup {
-  const wheelDistX = unitRadius * 0.55;  // Forward/back offset
-  const wheelDistY = unitRadius * 0.65;  // Left/right offset
-  const wheelRadius = unitRadius * 0.28;
+// Create a pair of tank treads (left and right) from TREAD_CONFIG
+export function createTreadPair(
+  unitType: 'mammoth' | 'badger' | 'lynx',
+  unitRadius: number
+): TankTreadSetup {
+  const cfg = TREAD_CONFIG[unitType];
+  const treadOffset = unitRadius * cfg.treadOffset;
+  const wheelRadius = unitRadius * cfg.wheelRadius;
 
-  const wheels = [
-    // Front right
-    new Tread({
-      attachOffsetX: wheelDistX,
-      attachOffsetY: wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Front left
-    new Tread({
-      attachOffsetX: wheelDistX,
-      attachOffsetY: -wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Rear right
-    new Tread({
-      attachOffsetX: -wheelDistX,
-      attachOffsetY: wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Rear left
-    new Tread({
-      attachOffsetX: -wheelDistX,
-      attachOffsetY: -wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-  ];
+  const leftTread = new Tread({
+    attachOffsetX: 0,
+    attachOffsetY: -treadOffset,
+    wheelRadius,
+    rotationSpeedMultiplier: cfg.rotationSpeed,
+  });
 
-  return { wheels };
+  const rightTread = new Tread({
+    attachOffsetX: 0,
+    attachOffsetY: treadOffset,
+    wheelRadius,
+    rotationSpeedMultiplier: cfg.rotationSpeed,
+  });
+
+  return { leftTread, rightTread };
 }
 
-// Create four wheels for burst-style vehicles
-export function createBurstWheelSetup(
-  unitRadius: number,
-  rotationMultiplier: number = 1.0
+// Create four wheels from WHEEL_CONFIG
+export function createVehicleWheelSetup(
+  unitType: 'jackal' | 'mongoose',
+  unitRadius: number
 ): VehicleWheelSetup {
-  const wheelDistX = unitRadius * 0.6;   // Forward/back offset
-  const wheelDistY = unitRadius * 0.7;   // Left/right offset
-  const wheelRadius = unitRadius * 0.25;
+  const cfg = WHEEL_CONFIG[unitType];
+  const wheelDistX = unitRadius * cfg.wheelDistX;
+  const wheelDistY = unitRadius * cfg.wheelDistY;
+  const wheelRadius = unitRadius * cfg.wheelRadius;
+  const rotMult = cfg.rotationSpeed;
 
   const wheels = [
-    // Front right
-    new Tread({
-      attachOffsetX: wheelDistX,
-      attachOffsetY: wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Front left
-    new Tread({
-      attachOffsetX: wheelDistX,
-      attachOffsetY: -wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Rear right
-    new Tread({
-      attachOffsetX: -wheelDistX,
-      attachOffsetY: wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Rear left
-    new Tread({
-      attachOffsetX: -wheelDistX,
-      attachOffsetY: -wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-  ];
-
-  return { wheels };
-}
-
-// Create four wheels for mortar-style vehicles
-export function createMortarWheelSetup(
-  unitRadius: number,
-  rotationMultiplier: number = 1.0
-): VehicleWheelSetup {
-  const wheelDistX = unitRadius * 0.6;   // Forward/back offset
-  const wheelDistY = unitRadius * 0.65;  // Left/right offset
-  const wheelRadius = unitRadius * 0.22;
-
-  const wheels = [
-    // Front right
-    new Tread({
-      attachOffsetX: wheelDistX,
-      attachOffsetY: wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Front left
-    new Tread({
-      attachOffsetX: wheelDistX,
-      attachOffsetY: -wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Rear right
-    new Tread({
-      attachOffsetX: -wheelDistX,
-      attachOffsetY: wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Rear left
-    new Tread({
-      attachOffsetX: -wheelDistX,
-      attachOffsetY: -wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-  ];
-
-  return { wheels };
-}
-
-// Create four wheels - for snipe style vehicles
-// Matches the snipe unit's wheel layout (corners of a rectangle)
-export function createFourWheelSetup(
-  unitRadius: number,
-  rotationMultiplier: number = 1.0
-): VehicleWheelSetup {
-  // Match snipe wheel positions exactly
-  const wheelDistX = unitRadius * 0.7;
-  const wheelDistY = unitRadius * 0.5;
-  const wheelRadius = unitRadius * 0.22;
-
-  const wheels = [
-    // Front right (matches snipe's first wheel position)
-    new Tread({
-      attachOffsetX: wheelDistX,
-      attachOffsetY: wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Front left
-    new Tread({
-      attachOffsetX: wheelDistX,
-      attachOffsetY: -wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Rear right
-    new Tread({
-      attachOffsetX: -wheelDistX,
-      attachOffsetY: wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
-    // Rear left
-    new Tread({
-      attachOffsetX: -wheelDistX,
-      attachOffsetY: -wheelDistY,
-      wheelRadius: wheelRadius,
-      rotationSpeedMultiplier: rotationMultiplier,
-    }),
+    new Tread({ attachOffsetX: wheelDistX, attachOffsetY: wheelDistY, wheelRadius, rotationSpeedMultiplier: rotMult }),
+    new Tread({ attachOffsetX: wheelDistX, attachOffsetY: -wheelDistY, wheelRadius, rotationSpeedMultiplier: rotMult }),
+    new Tread({ attachOffsetX: -wheelDistX, attachOffsetY: wheelDistY, wheelRadius, rotationSpeedMultiplier: rotMult }),
+    new Tread({ attachOffsetX: -wheelDistX, attachOffsetY: -wheelDistY, wheelRadius, rotationSpeedMultiplier: rotMult }),
   ];
 
   return { wheels };

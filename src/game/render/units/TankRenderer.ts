@@ -4,6 +4,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawAnimatedTread } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
+import { TREAD_CONFIG } from '../../../config';
 
 export function drawTankUnit(
   ctx: UnitRenderContext,
@@ -19,9 +20,10 @@ export function drawTankUnit(
       const cos = Math.cos(bodyRot);
       const sin = Math.sin(bodyRot);
 
-      const treadOffset = r * 0.9;
-      const treadLength = r * 2.0;
-      const treadWidth = r * 0.6;
+      const cfg = TREAD_CONFIG.mammoth;
+      const treadOffset = r * cfg.treadOffset;
+      const treadLength = r * cfg.treadLength;
+      const treadWidth = r * cfg.treadWidth;
 
       for (const side of [-1, 1]) {
         const offsetX = -sin * treadOffset * side;

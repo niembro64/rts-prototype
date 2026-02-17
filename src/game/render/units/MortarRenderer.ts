@@ -4,6 +4,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawAnimatedTread } from '../helpers';
 import type { VehicleWheelSetup } from '../Tread';
+import { WHEEL_CONFIG } from '../../../config';
 
 export function drawMortarUnit(
   ctx: UnitRenderContext,
@@ -19,10 +20,11 @@ export function drawMortarUnit(
       const cos = Math.cos(bodyRot);
       const sin = Math.sin(bodyRot);
 
-      const treadDistX = r * 0.65;
-      const treadDistY = r * 0.7;
-      const treadLength = r * 0.5;
-      const treadWidth = r * 0.11;
+      const cfg = WHEEL_CONFIG.mongoose;
+      const treadDistX = r * cfg.wheelDistX;
+      const treadDistY = r * cfg.wheelDistY;
+      const treadLength = r * cfg.treadLength;
+      const treadWidth = r * cfg.treadWidth;
 
       const treadPositions = [
         { dx: treadDistX, dy: treadDistY },

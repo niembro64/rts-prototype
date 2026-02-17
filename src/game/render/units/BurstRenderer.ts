@@ -4,6 +4,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawOrientedRect, drawAnimatedTread } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
+import { TREAD_CONFIG } from '../../../config';
 
 export function drawBurstUnit(
   ctx: UnitRenderContext,
@@ -19,9 +20,10 @@ export function drawBurstUnit(
       const cos = Math.cos(bodyRot);
       const sin = Math.sin(bodyRot);
 
-      const treadOffset = r * 0.8;
-      const treadLength = r * 1.6;
-      const treadWidth = r * 0.45;
+      const cfg = TREAD_CONFIG.lynx;
+      const treadOffset = r * cfg.treadOffset;
+      const treadLength = r * cfg.treadLength;
+      const treadWidth = r * cfg.treadWidth;
 
       for (const side of [-1, 1]) {
         const offsetX = -sin * treadOffset * side;

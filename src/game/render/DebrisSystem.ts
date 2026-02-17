@@ -2,7 +2,7 @@
 // Extracted from renderEntities.ts
 
 import Phaser from 'phaser';
-import { BURN_COLOR_COOL, hexToRgb, DEBRIS_CONFIG } from '../../config';
+import { BURN_COLOR_COOL, hexToRgb, DEBRIS_CONFIG, TREAD_CONFIG, WHEEL_CONFIG } from '../../config';
 
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 
@@ -185,14 +185,15 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'mammoth': {
-      // 2 heavy treads — r*2.0 long × r*0.6 wide, offset r*0.9
-      const treadLen = r * 2.0;
-      const treadOffset = r * 0.9;
+      // 2 heavy treads from config
+      const mc = TREAD_CONFIG.mammoth;
+      const treadLen = r * mc.treadLength;
+      const treadOffset = r * mc.treadOffset;
       for (const side of [-1, 1]) {
         for (let i = 0; i < 3; i++) {
           const segLen = treadLen / 3;
           const sx = (i - 1) * segLen;
-          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * 0.6, angle: 0, colorType: 'gray', shape: 'rect' });
+          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * mc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
         }
       }
       // Hull square — r*0.85
@@ -203,14 +204,15 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'badger': {
-      // 2 treads — r*1.7 long × r*0.5 wide, offset r*0.85
-      const treadLen = r * 1.7;
-      const treadOffset = r * 0.85;
+      // 2 treads from config
+      const bc = TREAD_CONFIG.badger;
+      const treadLen = r * bc.treadLength;
+      const treadOffset = r * bc.treadOffset;
       for (const side of [-1, 1]) {
         for (let i = 0; i < 2; i++) {
           const segLen = treadLen / 2;
           const sx = (i - 0.5) * segLen;
-          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * 0.5, angle: 0, colorType: 'gray', shape: 'rect' });
+          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * bc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
         }
       }
       // Body pentagon — r*0.8
@@ -221,10 +223,11 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'jackal': {
-      // 4 wheels — at r*0.6/r*0.7, tread r*0.5 × r*0.11
+      // 4 wheels from config
+      const jc = WHEEL_CONFIG.jackal;
       for (const sx of [-1, 1]) {
         for (const sy of [-1, 1]) {
-          pieces.push({ localX: r * 0.6 * sx, localY: r * 0.7 * sy, length: r * 0.5, width: r * 0.11, angle: 0, colorType: 'gray', shape: 'rect' });
+          pieces.push({ localX: r * jc.wheelDistX * sx, localY: r * jc.wheelDistY * sy, length: r * jc.treadLength, width: r * jc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
         }
       }
       // Diamond body — r*0.55
@@ -239,9 +242,10 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'lynx': {
-      // 2 large side treads — r*1.6 × r*0.45 at r*0.8 offset
+      // 2 large side treads from config
+      const lc = TREAD_CONFIG.lynx;
       for (const sy of [-1, 1]) {
-        pieces.push({ localX: 0, localY: r * 0.8 * sy, length: r * 1.6, width: r * 0.45, angle: 0, colorType: 'gray', shape: 'rect' });
+        pieces.push({ localX: 0, localY: r * lc.treadOffset * sy, length: r * lc.treadLength, width: r * lc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
       }
       // Triangle body — r*0.6
       addPolygonEdges(0, 0, r * 0.6, 3, -Math.PI / 2, r * 0.15, 'light', 'rect');
@@ -254,10 +258,11 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'mongoose': {
-      // 4 wheels — at r*0.65/r*0.7, tread r*0.5 × r*0.11
+      // 4 wheels from config
+      const mgc = WHEEL_CONFIG.mongoose;
       for (const sx of [-1, 1]) {
         for (const sy of [-1, 1]) {
-          pieces.push({ localX: r * 0.65 * sx, localY: r * 0.7 * sy, length: r * 0.5, width: r * 0.11, angle: 0, colorType: 'gray', shape: 'rect' });
+          pieces.push({ localX: r * mgc.wheelDistX * sx, localY: r * mgc.wheelDistY * sy, length: r * mgc.treadLength, width: r * mgc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
         }
       }
       // Hexagon body — r*0.55

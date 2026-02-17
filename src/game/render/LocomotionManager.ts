@@ -6,10 +6,8 @@ import { ArachnidLeg, type LegConfig } from './ArachnidLeg';
 import {
   type TankTreadSetup,
   type VehicleWheelSetup,
-  createTankTreads,
-  createBrawlTreads,
-  createScoutWheelSetup,
-  createMortarWheelSetup,
+  createTreadPair,
+  createVehicleWheelSetup,
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
 import { getGraphicsConfig } from './graphicsSettings';
@@ -127,7 +125,7 @@ export class LocomotionManager {
     if (existing) return existing;
 
     const radius = entity.unit?.collisionRadius ?? 24;
-    const treads = unitType === 'mammoth' ? createTankTreads(radius, 2.0) : createBrawlTreads(radius, 2.0);
+    const treads = createTreadPair(unitType, radius);
 
     treads.leftTread.initializeAt(entity.transform.x, entity.transform.y, entity.transform.rotation);
     treads.rightTread.initializeAt(entity.transform.x, entity.transform.y, entity.transform.rotation);
@@ -148,10 +146,10 @@ export class LocomotionManager {
     const unitType = entity.unit?.unitType;
 
     let wheelSetup: VehicleWheelSetup | null = null;
-    switch (unitType) {
-      case 'jackal': wheelSetup = createScoutWheelSetup(radius, 2.0); break;
-      case 'mongoose': wheelSetup = createMortarWheelSetup(radius, 2.0); break;
-      default: return null;
+    if (unitType === 'jackal' || unitType === 'mongoose') {
+      wheelSetup = createVehicleWheelSetup(unitType, radius);
+    } else {
+      return null;
     }
 
     for (const wheel of wheelSetup.wheels) {

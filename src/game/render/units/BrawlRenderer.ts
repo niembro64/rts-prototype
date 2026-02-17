@@ -4,6 +4,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawAnimatedTread } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
+import { TREAD_CONFIG } from '../../../config';
 
 export function drawBrawlUnit(
   ctx: UnitRenderContext,
@@ -19,9 +20,10 @@ export function drawBrawlUnit(
       const cos = Math.cos(bodyRot);
       const sin = Math.sin(bodyRot);
 
-      const treadOffset = r * 0.85;
-      const treadLength = r * 1.7;
-      const treadWidth = r * 0.55;
+      const cfg = TREAD_CONFIG.badger;
+      const treadOffset = r * cfg.treadOffset;
+      const treadLength = r * cfg.treadLength;
+      const treadWidth = r * cfg.treadWidth;
 
       for (const side of [-1, 1]) {
         const offsetX = -sin * treadOffset * side;

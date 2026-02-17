@@ -170,6 +170,36 @@ export const LEG_CONFIG = {
   commander: { thickness: 6, footSize: 0.15, lerpDuration: 400 },
 };
 
+/**
+ * Per-unit tread rendering configuration (2 treads: left/right).
+ * All values are multipliers of unit collision radius.
+ * treadOffset: lateral distance from center to tread center
+ * treadLength: length of tread rectangle
+ * treadWidth: width of tread rectangle
+ * wheelRadius: internal wheel radius for rotation animation
+ * rotationSpeed: visual rotation multiplier (higher = treads spin faster)
+ */
+export const TREAD_CONFIG = {
+  mammoth: { treadOffset: 0.90, treadLength: 2.0, treadWidth: 0.60, wheelRadius: 0.175, rotationSpeed: 1.0 },
+  badger:  { treadOffset: 0.85, treadLength: 1.7, treadWidth: 0.55, wheelRadius: 0.12,  rotationSpeed: 1.0 },
+  lynx:    { treadOffset: 0.80, treadLength: 1.6, treadWidth: 0.45, wheelRadius: 0.12,  rotationSpeed: 1.0 },
+};
+
+/**
+ * Per-unit wheel rendering configuration (4 wheels).
+ * All values are multipliers of unit collision radius.
+ * wheelDistX: forward/back distance from center to wheel
+ * wheelDistY: lateral distance from center to wheel
+ * treadLength: length of drawn mini-tread at each wheel
+ * treadWidth: width of drawn mini-tread at each wheel
+ * wheelRadius: wheel radius for rotation animation
+ * rotationSpeed: visual rotation multiplier (higher = wheels spin faster)
+ */
+export const WHEEL_CONFIG = {
+  jackal:   { wheelDistX: 0.60, wheelDistY: 0.70, treadLength: 0.50, treadWidth: 0.15, wheelRadius: 0.28, rotationSpeed: 1.0 },
+  mongoose: { wheelDistX: 0.65, wheelDistY: 0.70, treadLength: 0.50, treadWidth: 0.3, wheelRadius: 0.22, rotationSpeed: 1.0 },
+};
+
 // =============================================================================
 // EXPLOSION MOMENTUM FACTORS
 // =============================================================================
@@ -398,7 +428,7 @@ export const UNIT_STATS = {
     hp: 25,
     moveSpeed: 200,
     collisionRadius: 11,
-    mass: 3,
+    mass: 9,
     buildRate: 28,
   },
   // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
@@ -455,7 +485,7 @@ export const WEAPON_STATS = {
     projectileSpeed: 500,
     projectileMass: 1.0,
     burstCount: 3,
-    burstDelay: 60,
+    burstDelay: 40,
   },
 
   // Shotgun - Spread pellets, high close-range damage (Badger's weapon)
