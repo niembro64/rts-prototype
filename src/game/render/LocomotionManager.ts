@@ -9,9 +9,7 @@ import {
   createTankTreads,
   createBrawlTreads,
   createScoutWheelSetup,
-  createBurstWheelSetup,
   createMortarWheelSetup,
-  createFourWheelSetup,
 } from './Tread';
 import { getUnitDefinition } from '../sim/unitDefinitions';
 import { getGraphicsConfig } from './graphicsSettings';
@@ -33,7 +31,7 @@ export class LocomotionManager {
 
   getOrCreateLegs(
     entity: Entity,
-    legStyle: 'widow' | 'daddy' | 'tarantula' | 'commander' = 'widow'
+    legStyle: 'widow' | 'daddy' | 'tarantula' | 'recluse' | 'commander' = 'widow'
   ): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
@@ -43,49 +41,61 @@ export class LocomotionManager {
 
     if (legStyle === 'daddy') {
       const legLength = radius * 10;
-      const upperLen = legLength * 0.3;
-      const lowerLen = legLength * 0.6;
+      const upperLen = legLength * 0.45;
+      const lowerLen = upperLen * 1.2;
 
       leftSideConfigs = [
-        { attachOffsetX: radius * 0.3, attachOffsetY: -radius * 0.4, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.3, snapTargetAngle: -Math.PI * 0.2, snapDistanceMultiplier: 0.9, extensionThreshold: 0.82 },
-        { attachOffsetX: radius * 0.1, attachOffsetY: -radius * 0.4, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.55, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.9, extensionThreshold: 0.84 },
-        { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.4, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.85, snapTargetAngle: -Math.PI * 0.45, snapDistanceMultiplier: 0.85, extensionThreshold: 0.9 },
-        { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.3, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.65, snapDistanceMultiplier: 0.55, extensionThreshold: 0.99 },
+        { attachOffsetX: radius * 0.3, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+        { attachOffsetX: radius * 0.1, attachOffsetY: -radius * 0.25, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.70, extensionThreshold: 0.97 },
+        { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.4, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.40, snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
+        { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.3, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.50, extensionThreshold: 0.99 },
       ];
     } else if (legStyle === 'tarantula') {
       const legLength = radius * 1.9;
       const upperLen = legLength * 0.55;
-      const lowerLen = legLength * 0.55;
+      const lowerLen = upperLen * 1.2;
 
       leftSideConfigs = [
-        { attachOffsetX: radius * 0.3, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.4, snapTargetAngle: -Math.PI * 0.15, snapDistanceMultiplier: 0.99, extensionThreshold: 0.99 },
-        { attachOffsetX: radius * 0.1, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.55, snapTargetAngle: -Math.PI * 0.25, snapDistanceMultiplier: 0.92, extensionThreshold: 0.99 },
-        { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.8, snapTargetAngle: -Math.PI * 0.35, snapDistanceMultiplier: 0.8, extensionThreshold: 0.99 },
-        { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.5, snapDistanceMultiplier: 0.6, extensionThreshold: 0.99 },
+        { attachOffsetX: radius * 0.3, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+        { attachOffsetX: radius * 0.1, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.70, extensionThreshold: 0.97 },
+        { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.40, snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
+        { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.50, extensionThreshold: 0.99 },
+      ];
+    } else if (legStyle === 'recluse') {
+      // Recluse: tiny spider with thin, spindly legs — 4 per side
+      const legLength = radius * 2.4;
+      const upperLen = legLength * 0.5;
+      const lowerLen = upperLen * 1.2;
+
+      leftSideConfigs = [
+        { attachOffsetX: radius * 0.25, attachOffsetY: -radius * 0.08, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+        { attachOffsetX: radius * 0.08, attachOffsetY: -radius * 0.1, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.70, extensionThreshold: 0.97 },
+        { attachOffsetX: -radius * 0.08, attachOffsetY: -radius * 0.15, upperLegLength: upperLen * 0.9, lowerLegLength: lowerLen * 0.9, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.40, snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
+        { attachOffsetX: -radius * 0.25, attachOffsetY: -radius * 0.12, upperLegLength: upperLen * 0.85, lowerLegLength: lowerLen * 0.85, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.50, extensionThreshold: 0.99 },
       ];
     } else if (legStyle === 'commander') {
       // Commander has 4 sturdy legs - 2 front, 2 back
       const legLength = radius * 2.2;
       const upperLen = legLength * 0.5;
-      const lowerLen = legLength * 0.5;
+      const lowerLen = upperLen * 1.2;
 
       leftSideConfigs = [
-        // Front leg - forward facing
-        { attachOffsetX: radius * 0.4, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.45, snapTargetAngle: -Math.PI * 0.15, snapDistanceMultiplier: 0.95, extensionThreshold: 0.9 },
-        // Back leg - rear facing
-        { attachOffsetX: -radius * 0.4, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.85, snapTargetAngle: -Math.PI * 0.55, snapDistanceMultiplier: 0.7, extensionThreshold: 0.95 },
+        // Front leg - forward facing (uses leg 0 averages)
+        { attachOffsetX: radius * 0.4, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+        // Back leg - rear facing (uses leg 3 averages)
+        { attachOffsetX: -radius * 0.4, attachOffsetY: -radius * 0.5, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.50, extensionThreshold: 0.99 },
       ];
     } else {
       // Widow: 4 legs per side, tuned to match daddy/tarantula snap behavior
       const legLength = radius * 1.9;
       const upperLen = legLength * 0.55;
-      const lowerLen = legLength * 0.55;
+      const lowerLen = upperLen * 1.2;
 
       leftSideConfigs = [
-        { attachOffsetX: radius * 0.4, attachOffsetY: -radius * 0.4, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.35, snapTargetAngle: -Math.PI * 0.15, snapDistanceMultiplier: 0.95, extensionThreshold: 0.85 },
-        { attachOffsetX: radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.55, snapTargetAngle: -Math.PI * 0.28, snapDistanceMultiplier: 0.88, extensionThreshold: 0.88 },
-        { attachOffsetX: -radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.8, snapTargetAngle: -Math.PI * 0.42, snapDistanceMultiplier: 0.78, extensionThreshold: 0.92 },
-        { attachOffsetX: -radius * 0.4, attachOffsetY: -radius * 0.4, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.6, snapDistanceMultiplier: 0.55, extensionThreshold: 0.99 },
+        { attachOffsetX: radius * 0.4, attachOffsetY: -radius * 0.4, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+        { attachOffsetX: radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.70, extensionThreshold: 0.97 },
+        { attachOffsetX: -radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.40, snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
+        { attachOffsetX: -radius * 0.4, attachOffsetY: -radius * 0.4, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.50, extensionThreshold: 0.99 },
       ];
     }
 
@@ -112,7 +122,7 @@ export class LocomotionManager {
     return legs;
   }
 
-  private getOrCreateTreads(entity: Entity, unitType: 'mammoth' | 'badger'): TankTreadSetup {
+  private getOrCreateTreads(entity: Entity, unitType: 'mammoth' | 'badger' | 'lynx'): TankTreadSetup {
     const existing = this.tankTreads.get(entity.id);
     if (existing) return existing;
 
@@ -140,9 +150,7 @@ export class LocomotionManager {
     let wheelSetup: VehicleWheelSetup | null = null;
     switch (unitType) {
       case 'jackal': wheelSetup = createScoutWheelSetup(radius, 2.0); break;
-      case 'lynx': wheelSetup = createBurstWheelSetup(radius, 2.0); break;
       case 'scorpion': wheelSetup = createMortarWheelSetup(radius, 2.0); break;
-      case 'viper': wheelSetup = createFourWheelSetup(radius, 2.0); break;
       default: return null;
     }
 
@@ -219,7 +227,7 @@ export class LocomotionManager {
           leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
         }
       } else if (definition.locomotion === 'treads') {
-        const treadType = unitType as 'mammoth' | 'badger';
+        const treadType = unitType as 'mammoth' | 'badger' | 'lynx';
         const treads = this.getOrCreateTreads(entity, treadType);
         treads.leftTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
         treads.rightTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);

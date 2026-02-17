@@ -49,7 +49,8 @@ export function renderProjectile(
       graphics.lineBetween(startX, startY, endX, endY);
     }
 
-    graphics.lineStyle(beamWidth, color, 0.9);
+    const beamAlpha = effectiveBeamStyle === 'simple' ? 1 : 0.9;
+    graphics.lineStyle(beamWidth, color, beamAlpha);
     graphics.lineBetween(startX, startY, endX, endY);
 
     if (effectiveBeamStyle !== 'simple') {
@@ -61,8 +62,8 @@ export function renderProjectile(
     const explosionRadius = baseRadius * randomOffsets.sizeScale;
 
     if (effectiveBeamStyle === 'simple') {
-      graphics.fillStyle(color, 0.7);
-      graphics.fillCircle(endX, endY, explosionRadius * 0.8);
+      graphics.fillStyle(color, 1);
+      graphics.fillCircle(endX, endY, explosionRadius);
     } else if (effectiveBeamStyle === 'standard') {
       graphics.fillStyle(color, 0.6);
       graphics.fillCircle(endX, endY, explosionRadius);

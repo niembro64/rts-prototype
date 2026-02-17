@@ -48,14 +48,14 @@ export function drawTankUnit(
       );
     }
 
-    // Hull (square) - base color
+    // Hull (pentagon) - base color
     const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
     graphics.fillStyle(bodyColor, 1);
-    drawPolygon(graphics, x, y, r * 0.85, 4, bodyRot);
+    drawPolygon(graphics, x, y, r * 0.85, 5, bodyRot);
 
     // Gray armor plate on hull
     graphics.fillStyle(COLORS.GRAY, 1);
-    drawPolygon(graphics, x, y, r * 0.55, 4, bodyRot);
+    drawPolygon(graphics, x, y, r * 0.55, 5, bodyRot);
 
     // Black inner
     graphics.fillStyle(COLORS.BLACK, 1);

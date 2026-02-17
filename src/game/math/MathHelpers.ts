@@ -107,14 +107,15 @@ export function directionTo(
 /**
  * Compute weapon world position from unit transform and weapon offset.
  * Applies 2D rotation transform: offset rotated by unit rotation + unit position.
+ * Uses a reusable output object to avoid per-call allocations in the hot path.
  */
+const _wpOut = { x: 0, y: 0 };
 export function getWeaponWorldPosition(
   unitX: number, unitY: number,
   cos: number, sin: number,
   offsetX: number, offsetY: number
 ): { x: number; y: number } {
-  return {
-    x: unitX + cos * offsetX - sin * offsetY,
-    y: unitY + sin * offsetX + cos * offsetY,
-  };
+  _wpOut.x = unitX + cos * offsetX - sin * offsetY;
+  _wpOut.y = unitY + sin * offsetX + cos * offsetY;
+  return _wpOut;
 }

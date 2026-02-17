@@ -73,6 +73,8 @@ export interface UnitRenderContext {
   turretsOnly: boolean;
   /** LOD tier: 0=skip, 1=dot, 2=body only (no legs), 3=full detail */
   lodTier: number;
+  /** Minigun barrel spin angle in radians (for multi-barrel units) */
+  minigunSpinAngle: number;
 }
 
 // Context passed to building renderers
@@ -136,6 +138,7 @@ export const LEG_STYLE_CONFIG = {
   widow: { thickness: LEG_CONFIG.widow.thickness, footSizeMultiplier: LEG_CONFIG.widow.footSize, lerpSpeed: LEG_CONFIG.widow.lerpDuration },
   daddy: { thickness: LEG_CONFIG.daddy.thickness, footSizeMultiplier: LEG_CONFIG.daddy.footSize, lerpSpeed: LEG_CONFIG.daddy.lerpDuration },
   tarantula: { thickness: LEG_CONFIG.tarantula.thickness, footSizeMultiplier: LEG_CONFIG.tarantula.footSize, lerpSpeed: LEG_CONFIG.tarantula.lerpDuration },
+  recluse: { thickness: LEG_CONFIG.recluse.thickness, footSizeMultiplier: LEG_CONFIG.recluse.footSize, lerpSpeed: LEG_CONFIG.recluse.lerpDuration },
   commander: { thickness: LEG_CONFIG.commander.thickness, footSizeMultiplier: LEG_CONFIG.commander.footSize, lerpSpeed: LEG_CONFIG.commander.lerpDuration },
 };
 
@@ -162,7 +165,7 @@ export const UNIT_NAMES: Record<string, string> = {
   daddy: 'Daddy',
   badger: 'Badger',
   scorpion: 'Scorpion',
-  viper: 'Viper',
+  recluse: 'Recluse',
   mammoth: 'Mammoth',
   widow: 'Widow',
   tarantula: 'Tarantula',

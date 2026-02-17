@@ -39,10 +39,8 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       // Compute and cache weapon world position (reused by turret, firing, beam systems)
       const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offsetX, weapon.offsetY);
-      weapon.worldX = wp.x;
-      weapon.worldY = wp.y;
-      const weaponX = wp.x;
-      const weaponY = wp.y;
+      const weaponX = weapon.worldX = wp.x;
+      const weaponY = weapon.worldY = wp.y;
 
       // Step 1: Validate current target and update lock state
       if (weapon.targetEntityId !== null) {

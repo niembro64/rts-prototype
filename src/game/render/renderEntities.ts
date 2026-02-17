@@ -50,6 +50,9 @@ export class EntityRenderer {
   // Death debris fragments
   private debrisSystem = new DebrisSystem();
 
+  // Minigun barrel spin state per entity: { angle (rad), speed (rad/sec) }
+  private minigunSpins: Map<EntityId, { angle: number; speed: number }> = new Map();
+
   // Reusable Set for per-frame entity ID lookups (avoids allocating new Set + Array each frame)
   private _reusableIdSet: Set<EntityId> = new Set();
 
@@ -90,6 +93,50 @@ export class EntityRenderer {
 
   updateLocomotion(dtMs: number): void {
     this.locomotion.updateLocomotion(this.entitySource, dtMs);
+  }
+
+  // ==================== MINIGUN SPIN ====================
+
+  private static readonly MINIGUN_MAX_SPEED = 50;   // ~8 rev/sec
+  private static readonly MINIGUN_ACCEL = 80;        // rad/sec² spin-up
+  private static readonly MINIGUN_DECEL = 30;        // rad/sec² spin-down
+
+  updateMinigunSpins(dtMs: number): void {
+    const dtSec = dtMs / 1000;
+    const units = this.entitySource.getUnits();
+
+    // Build live ID set for cleanup
+    this._reusableIdSet.clear();
+    for (const u of units) this._reusableIdSet.add(u.id);
+    for (const id of this.minigunSpins.keys()) {
+      if (!this._reusableIdSet.has(id)) this.minigunSpins.delete(id);
+    }
+
+    for (const entity of units) {
+      const unitType = entity.unit?.unitType;
+      if (unitType !== 'jackal' && unitType !== 'lynx') continue;
+
+      let state = this.minigunSpins.get(entity.id);
+      if (!state) {
+        state = { angle: 0, speed: 0 };
+        this.minigunSpins.set(entity.id, state);
+      }
+
+      // Check if any weapon is firing
+      const firing = entity.weapons?.some(w => w.isFiring) ?? false;
+
+      if (firing) {
+        state.speed = Math.min(state.speed + EntityRenderer.MINIGUN_ACCEL * dtSec, EntityRenderer.MINIGUN_MAX_SPEED);
+      } else {
+        state.speed = Math.max(state.speed - EntityRenderer.MINIGUN_DECEL * dtSec, 0);
+      }
+
+      state.angle += state.speed * dtSec;
+    }
+  }
+
+  private getMinigunSpinAngle(entityId: EntityId): number {
+    return this.minigunSpins.get(entityId)?.angle ?? 0;
   }
 
   // ==================== EXPLOSION MANAGEMENT ====================
@@ -360,6 +407,7 @@ export class EntityRenderer {
       x, y, radius, bodyRot: rotation, palette, isSelected, entity,
       skipTurrets: this.skipTurrets, turretsOnly: this.turretsOnly,
       lodTier,
+      minigunSpinAngle: this.getMinigunSpinAngle(entity.id),
     };
 
     // Commander gets special 4-legged mech body regardless of unit type
@@ -369,11 +417,11 @@ export class EntityRenderer {
       // Select renderer based on unit type
       switch (unitType) {
         case 'jackal': drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
-        case 'lynx': drawBurstUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
+        case 'lynx': drawBurstUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
         case 'daddy': drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'daddy')); break;
         case 'badger': drawBrawlUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
         case 'scorpion': drawMortarUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
-        case 'viper': drawSnipeUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
+        case 'recluse': drawSnipeUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'recluse')); break;
         case 'mammoth': drawTankUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
         case 'widow': drawArachnidUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'widow')); break;
         case 'tarantula': drawForceFieldUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'tarantula')); break;

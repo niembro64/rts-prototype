@@ -48,14 +48,14 @@ export function drawBrawlUnit(
       );
     }
 
-    // Body (pentagon) - dark with gray armor plates
+    // Body (diamond) - dark with gray armor plates
     const bodyColor = isSelected ? COLORS.UNIT_SELECTED : dark;
     graphics.fillStyle(bodyColor, 1);
-    drawPolygon(graphics, x, y, r * 0.8, 5, bodyRot);
+    drawPolygon(graphics, x, y, r * 0.8, 4, bodyRot);
 
     // Gray armor plate
     graphics.fillStyle(COLORS.GRAY, 1);
-    drawPolygon(graphics, x, y, r * 0.5, 5, bodyRot);
+    drawPolygon(graphics, x, y, r * 0.5, 4, bodyRot);
 
     // Base color accent ring
     graphics.lineStyle(2, base, 1);

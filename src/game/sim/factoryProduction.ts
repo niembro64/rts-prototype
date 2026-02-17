@@ -3,6 +3,7 @@ import type { Entity, UnitAction, UnitWeapon } from './types';
 import { economyManager } from './economy';
 import { getUnitBuildConfig, getBuildingConfig } from './buildConfigs';
 import { createWeaponsFromDefinition } from './unitDefinitions';
+import { aimTurretsToward } from './turretInit';
 
 // Factory production result
 export interface FactoryProductionResult {
@@ -133,6 +134,9 @@ export class FactoryProductionSystem {
         unit.unit.patrolStartIndex = firstPatrolIndex;
       }
     }
+
+    // Aim turrets toward map center
+    aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
 
     // Add to world
     world.addEntity(unit);

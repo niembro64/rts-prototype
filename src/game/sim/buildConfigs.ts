@@ -84,15 +84,15 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     mass: UNIT_STATS.scorpion.mass,
     hp: UNIT_STATS.scorpion.hp,
   },
-  viper: {
+  recluse: {
     weaponId: 'railgun',
-    name: 'Viper',
-    energyCost: UNIT_STATS.viper.baseCost * COST_MULTIPLIER,
-    maxBuildRate: UNIT_STATS.viper.buildRate,
-    collisionRadius: UNIT_STATS.viper.collisionRadius,
-    moveSpeed: UNIT_STATS.viper.moveSpeed,
-    mass: UNIT_STATS.viper.mass,
-    hp: UNIT_STATS.viper.hp,
+    name: 'Recluse',
+    energyCost: UNIT_STATS.recluse.baseCost * COST_MULTIPLIER,
+    maxBuildRate: UNIT_STATS.recluse.buildRate,
+    collisionRadius: UNIT_STATS.recluse.collisionRadius,
+    moveSpeed: UNIT_STATS.recluse.moveSpeed,
+    mass: UNIT_STATS.recluse.mass,
+    hp: UNIT_STATS.recluse.hp,
   },
   mammoth: {
     weaponId: 'cannon',

@@ -4,6 +4,7 @@ import type Matter from 'matter-js';
 import type { Entity, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
+import { aimTurretsToward } from '../sim/turretInit';
 import { createUnitBodyStandalone, toPhaserBody } from './PhysicsStandalone';
 import {
   UNIT_STATS,
@@ -81,6 +82,7 @@ function spawnBackgroundUnitStandalone(
   unit.weapons = createWeaponsFromDefinition(unitType, stats.collisionRadius);
 
   unit.transform.rotation = initialRotation;
+  aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
 
   const targetX = targetMinX + Math.random() * (targetMaxX - targetMinX);
   const targetY = targetMinY + Math.random() * (targetMaxY - targetMinY);

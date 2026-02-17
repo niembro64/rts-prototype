@@ -559,7 +559,25 @@ export class RtsScene extends Phaser.Scene {
       }
     }
 
-    // Rebuild per-frame cached query results (avoids repeated .filter() per frame)
+    // Update explosion effects
+    this.entityRenderer.updateExplosions(delta);
+
+    // Update all locomotion (legs, treads, wheels) in a single pass
+    this.entityRenderer.updateLocomotion(delta);
+
+    // Update minigun barrel spin (acceleration/deceleration)
+    this.entityRenderer.updateMinigunSpins(delta);
+
+    // Update input
+    if (this.inputManager) {
+      this.inputManager.update(delta);
+    }
+
+    // Process local commands (selection local, others sent to server)
+    this.processLocalCommands();
+
+    // Rebuild per-frame cached query results AFTER processing commands
+    // (selection commands modify entity.selectable.selected, so cache must reflect that)
     this._cachedSelectedUnits.length = 0;
     this._cachedSelectedBuildings.length = 0;
     const pid = this.localPlayerId;
@@ -576,20 +594,6 @@ export class RtsScene extends Phaser.Scene {
     // Invalidate per-player caches (rebuilt lazily on first access)
     this._cachedPlayerIdForUnits = -1 as PlayerId;
     this._cachedPlayerIdForBuildings = -1 as PlayerId;
-
-    // Update explosion effects
-    this.entityRenderer.updateExplosions(delta);
-
-    // Update all locomotion (legs, treads, wheels) in a single pass
-    this.entityRenderer.updateLocomotion(delta);
-
-    // Update input
-    if (this.inputManager) {
-      this.inputManager.update(delta);
-    }
-
-    // Process local commands (selection local, others sent to server)
-    this.processLocalCommands();
 
     // Run snapshot interpolation
     this.clientViewState.applyPrediction(delta);

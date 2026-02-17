@@ -85,7 +85,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     color: 0xffffff,
   },
 
-  // Railgun - instant hitscan, pierces targets (Viper's weapon)
+  // Railgun - instant hitscan, pierces targets (Recluse's weapon)
   railgun: {
     id: 'railgun',
     audioId: 'railgun',

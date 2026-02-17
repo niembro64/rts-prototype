@@ -11,7 +11,7 @@ const UNIT_LABELS: Record<string, string> = {
   daddy: 'Daddy',
   badger: 'Badger',
   scorpion: 'Scorpion',
-  viper: 'Viper',
+  recluse: 'Recluse',
   mammoth: 'Mammoth',
   widow: 'Widow',
   tarantula: 'Tarantula',

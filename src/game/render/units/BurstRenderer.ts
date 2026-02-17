@@ -1,13 +1,13 @@
-// Burst unit renderer - Aggressive striker with 4 treads, angular wedge body
+// Burst unit renderer - Aggressive striker with large square treads, angular wedge body
 
 import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawOrientedRect, drawAnimatedTread } from '../helpers';
-import type { VehicleWheelSetup } from '../Tread';
+import type { TankTreadSetup } from '../Tread';
 
 export function drawBurstUnit(
   ctx: UnitRenderContext,
-  wheelSetup: VehicleWheelSetup | undefined
+  treads: TankTreadSetup | undefined
 ): void {
   const { graphics, x, y, radius: r, bodyRot, palette, isSelected, skipTurrets, turretsOnly, entity } = ctx;
   const { base, light, dark } = palette;
@@ -17,25 +17,21 @@ export function drawBurstUnit(
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 
-    // Four treads at corners
-    const treadDistX = r * 0.65;
-    const treadDistY = r * 0.75;
-    const treadLength = r * 0.55;
-    const treadWidth = r * 0.12;
-
-    const treadPositions = [
-      { dx: treadDistX, dy: treadDistY },
-      { dx: treadDistX, dy: -treadDistY },
-      { dx: -treadDistX, dy: treadDistY },
-      { dx: -treadDistX, dy: -treadDistY },
-    ];
+    // Two large treads on left and right sides
+    const treadOffset = r * 0.8;
+    const treadLength = r * 1.6;
+    const treadWidth = r * 0.45;
 
     const skipTreadDetail = ctx.lodTier < 3;
-    for (let i = 0; i < treadPositions.length; i++) {
-      const tp = treadPositions[i];
-      const tx = x + cos * tp.dx - sin * tp.dy;
-      const ty = y + sin * tp.dx + cos * tp.dy;
-      const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
+    for (const side of [-1, 1]) {
+      const offsetX = -sin * treadOffset * side;
+      const offsetY = cos * treadOffset * side;
+
+      const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
+      const treadRotation = tread?.getRotation() ?? 0;
+
+      const tx = x + offsetX;
+      const ty = y + offsetY;
       drawAnimatedTread(
         graphics,
         tx,
@@ -50,14 +46,14 @@ export function drawBurstUnit(
       );
     }
 
-    // Main body (aggressive triangle pointing forward) - dark colored
+    // Main body (inverted triangle — wide front, narrow rear) - dark colored
     const bodyColor = isSelected ? COLORS.UNIT_SELECTED : dark;
     graphics.fillStyle(bodyColor, 1);
-    drawPolygon(graphics, x, y, r * 0.6, 3, bodyRot);
+    drawPolygon(graphics, x, y, r * 0.6, 3, bodyRot + Math.PI);
 
     // Inner wedge accent (base color)
     graphics.fillStyle(base, 1);
-    drawPolygon(graphics, x, y, r * 0.38, 3, bodyRot);
+    drawPolygon(graphics, x, y, r * 0.38, 3, bodyRot + Math.PI);
 
     // Aggressive front stripe (light)
     graphics.fillStyle(light, 1);
@@ -70,31 +66,35 @@ export function drawBurstUnit(
     graphics.fillCircle(x, y, r * 0.12);
   }
 
-  // Turret pass
+  // Turret pass — 2-barrel minigun with sinusoidal rotation
   if (!skipTurrets) {
     const weapons = entity.weapons ?? [];
+    const spin = ctx.minigunSpinAngle;
+    const orbitRadius = 3.5;   // px, perpendicular orbit radius
+    const depthScale = 0.1;    // foreshortening amount
+    const baseTurretLen = r * 1.1;
+
     for (const weapon of weapons) {
       const turretRot = weapon.turretRotation;
-      // Dual burst cannons
-      const turretLen = r * 1.1;
-      graphics.lineStyle(2.5, COLORS.WHITE, 1);
-      const perpDist = 3;
-      const perpX = Math.cos(turretRot + Math.PI / 2) * perpDist;
-      const perpY = Math.sin(turretRot + Math.PI / 2) * perpDist;
-      const endX = x + Math.cos(turretRot) * turretLen;
-      const endY = y + Math.sin(turretRot) * turretLen;
-      graphics.lineBetween(
-        x + perpX,
-        y + perpY,
-        endX + perpX,
-        endY + perpY
-      );
-      graphics.lineBetween(
-        x - perpX,
-        y - perpY,
-        endX - perpX,
-        endY - perpY
-      );
+      const perpCos = Math.cos(turretRot + Math.PI / 2);
+      const perpSin = Math.sin(turretRot + Math.PI / 2);
+      const fwdCos = Math.cos(turretRot);
+      const fwdSin = Math.sin(turretRot);
+
+      for (let i = 0; i < 2; i++) {
+        const phase = spin + i * Math.PI; // 180° apart
+        const lateralOffset = Math.sin(phase) * orbitRadius;
+        const depthFactor = 1.0 - Math.cos(phase) * depthScale;
+        const turretLen = baseTurretLen * depthFactor;
+
+        const offX = perpCos * lateralOffset;
+        const offY = perpSin * lateralOffset;
+        const endX = x + fwdCos * turretLen + offX;
+        const endY = y + fwdSin * turretLen + offY;
+
+        graphics.lineStyle(2.5, COLORS.WHITE, 1);
+        graphics.lineBetween(x + offX, y + offY, endX, endY);
+      }
     }
   }
 }

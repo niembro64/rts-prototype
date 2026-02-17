@@ -166,6 +166,7 @@ export const LEG_CONFIG = {
   widow: { thickness: 6, footSize: 0.1, lerpDuration: 600 },
   daddy: { thickness: 2, footSize: 0.14, lerpDuration: 300 },
   tarantula: { thickness: 4, footSize: 0.12, lerpDuration: 200 },
+  recluse: { thickness: 1.5, footSize: 0.08, lerpDuration: 180 },
   commander: { thickness: 6, footSize: 0.15, lerpDuration: 400 },
 };
 
@@ -390,9 +391,9 @@ export const UNIT_STATS = {
     mass: 35,
     buildRate: 32,
   },
-  // Viper - Long-range assassin. Hitscan piercing, but low DPS (17) and can't escape.
+  // Recluse - Long-range assassin spider. Hitscan piercing, but low DPS (17) and can't escape.
   // Value: Safe poke damage, but very slow and fragile if caught
-  viper: {
+  recluse: {
     baseCost: 55,
     hp: 55,
     moveSpeed: 70,
@@ -486,7 +487,7 @@ export const WEAPON_STATS = {
     projectileMass: 3.0,
   },
 
-  // Railgun - Instant flash hitscan, long range, piercing (Viper's weapon)
+  // Railgun - Instant flash hitscan, long range, piercing (Recluse's weapon)
   railgun: {
     damage: 55,
     range: 350,

@@ -65,13 +65,13 @@ const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
   { weaponId: 'jackal', label: 'Jackal', cost: 40 },
   { weaponId: 'lynx', label: 'Lynx', cost: 55 },
   { weaponId: 'badger', label: 'Badger', cost: 80 },
-  { weaponId: 'viper', label: 'Viper', cost: 75 },
   { weaponId: 'scorpion', label: 'Scorpion', cost: 100 },
   { weaponId: 'mammoth', label: 'Mammoth', cost: 180 },
 ];
 
 // Bots (legs)
 const botOptions: { weaponId: string; label: string; cost: number }[] = [
+  { weaponId: 'recluse', label: 'Recluse', cost: 75 },
   { weaponId: 'tarantula', label: 'Tarantula', cost: 70 },
   { weaponId: 'daddy', label: 'Daddy', cost: 90 },
   { weaponId: 'widow', label: 'Widow', cost: 800 },

@@ -79,9 +79,15 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
       }
 
       // Use cached weapon world position from targeting phase
-      const wp = weapon.worldX !== undefined ? { x: weapon.worldX, y: weapon.worldY! } : getWeaponWorldPosition(unit.transform.x, unit.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
-      const weaponX = wp.x;
-      const weaponY = wp.y;
+      let weaponX: number, weaponY: number;
+      if (weapon.worldX !== undefined) {
+        weaponX = weapon.worldX;
+        weaponY = weapon.worldY!;
+      } else {
+        const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
+        weaponX = wp.x;
+        weaponY = wp.y;
+      }
 
       // Check cooldown / active beam
       if (isContinuousBeam) {
@@ -290,9 +296,15 @@ export function updateProjectiles(
         // Use cached weapon world position from targeting phase
         const srcCos = source.transform.rotCos ?? Math.cos(source.transform.rotation);
         const srcSin = source.transform.rotSin ?? Math.sin(source.transform.rotation);
-        const wp = weapon.worldX !== undefined ? { x: weapon.worldX, y: weapon.worldY! } : getWeaponWorldPosition(source.transform.x, source.transform.y, srcCos, srcSin, weapon.offsetX, weapon.offsetY);
-        const weaponX = wp.x;
-        const weaponY = wp.y;
+        let weaponX: number, weaponY: number;
+        if (weapon.worldX !== undefined) {
+          weaponX = weapon.worldX;
+          weaponY = weapon.worldY!;
+        } else {
+          const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, srcCos, srcSin, weapon.offsetX, weapon.offsetY);
+          weaponX = wp.x;
+          weaponY = wp.y;
+        }
 
         // Beam starts at weapon position
         proj.startX = weaponX + dirX * 5;

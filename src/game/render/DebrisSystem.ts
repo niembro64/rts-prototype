@@ -239,11 +239,9 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'lynx': {
-      // 4 wheels — at r*0.65/r*0.75, tread r*0.55 × r*0.12
-      for (const sx of [-1, 1]) {
-        for (const sy of [-1, 1]) {
-          pieces.push({ localX: r * 0.65 * sx, localY: r * 0.75 * sy, length: r * 0.55, width: r * 0.12, angle: 0, colorType: 'gray', shape: 'rect' });
-        }
+      // 2 large side treads — r*1.6 × r*0.45 at r*0.8 offset
+      for (const sy of [-1, 1]) {
+        pieces.push({ localX: 0, localY: r * 0.8 * sy, length: r * 1.6, width: r * 0.45, angle: 0, colorType: 'gray', shape: 'rect' });
       }
       // Triangle body — r*0.6
       addPolygonEdges(0, 0, r * 0.6, 3, -Math.PI / 2, r * 0.15, 'light', 'rect');
@@ -271,18 +269,28 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       break;
     }
 
-    case 'viper': {
-      // 4 wheels — at r*0.7/r*0.6, tread r*0.55 × r*0.2 (wider than others)
-      for (const sx of [-1, 1]) {
-        for (const sy of [-1, 1]) {
-          pieces.push({ localX: r * 0.7 * sx, localY: r * 0.6 * sy, length: r * 0.55, width: r * 0.2, angle: 0, colorType: 'gray', shape: 'rect' });
-        }
+    case 'recluse': {
+      // 8 spindly legs — thin lines radiating outward
+      const legLen = r * 2.4;
+      const upperLen = legLen * 0.5;
+      const lowerLen = legLen * 0.55;
+      for (let i = 0; i < 8; i++) {
+        const side = i < 4 ? -1 : 1;
+        const idx = i < 4 ? i : i - 4;
+        const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const ax = Math.cos(attachAngle) * r * 0.15;
+        const ay = Math.sin(attachAngle) * r * 0.15;
+        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 2, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        const kx = ax + Math.cos(attachAngle) * upperLen;
+        const ky = ay + Math.sin(attachAngle) * upperLen;
+        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 1.5, angle: attachAngle, colorType: 'dark', shape: 'line' });
       }
-      // Elongated rect body — r*1.2 × r*0.5 split into 2 halves
-      pieces.push({ localX: r * 0.3, localY: 0, length: r * 0.6, width: r * 0.5, angle: 0, colorType: 'light', shape: 'rect' });
-      pieces.push({ localX: -r * 0.3, localY: 0, length: r * 0.6, width: r * 0.5, angle: 0, colorType: 'base', shape: 'rect' });
-      // Long sniper barrel — r*1.6 long, 2.5px wide
-      addBarrel(0, 0, r * 1.6, 2.5, 0, 'white');
+      // Abdomen — rear oval
+      pieces.push({ localX: -r * 0.35, localY: 0, length: r * 0.55, width: r * 0.45, angle: 0, colorType: 'base', shape: 'rect' });
+      // Cephalothorax — front
+      pieces.push({ localX: r * 0.3, localY: 0, length: r * 0.4, width: r * 0.35, angle: 0, colorType: 'light', shape: 'rect' });
+      // Long railgun barrel — r*1.6 long, 2px wide
+      addBarrel(0, 0, r * 1.6, 2, 0, 'white');
       break;
     }
 

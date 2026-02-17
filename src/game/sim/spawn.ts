@@ -2,6 +2,7 @@ import type { WorldState } from './WorldState';
 import type { Entity, PlayerId } from './types';
 import { economyManager } from './economy';
 import { COMMANDER_CONFIG } from './buildConfigs';
+import { aimTurretsToward } from './turretInit';
 
 // Unit composition for each player (legacy - now only used for testing)
 interface UnitSpawnConfig {
@@ -28,6 +29,7 @@ function spawnCommander(
 ): Entity {
   const commander = world.createCommander(x, y, playerId, COMMANDER_CONFIG);
   commander.transform.rotation = facingAngle;
+  aimTurretsToward(commander, world.mapWidth / 2, world.mapHeight / 2);
   world.addEntity(commander);
   return commander;
 }
@@ -74,6 +76,7 @@ function spawnPlayerUnits(
 
       // Set initial rotation to face the enemy
       unit.transform.rotation = facingAngle;
+      aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
 
       world.addEntity(unit);
       entities.push(unit);

@@ -13,13 +13,13 @@ import {
 
 // Union type of all unit type identifiers
 export type UnitType = 'jackal' | 'lynx' | 'daddy' | 'badger' | 'scorpion'
-  | 'viper' | 'mammoth' | 'widow' | 'tarantula' | 'commander';
+  | 'recluse' | 'mammoth' | 'widow' | 'tarantula' | 'commander';
 
 // Locomotion types for rendering
 export type LocomotionType = 'wheels' | 'treads' | 'legs';
 
 // Leg styles for legged units
-export type LegStyle = 'widow' | 'daddy' | 'tarantula' | 'commander';
+export type LegStyle = 'widow' | 'daddy' | 'tarantula' | 'recluse' | 'commander';
 
 // Unified unit definition - everything about a unit type in one place
 export interface UnitDefinition {
@@ -41,6 +41,9 @@ export interface UnitDefinition {
   // Locomotion (for rendering)
   locomotion: LocomotionType;
   legStyle?: LegStyle;
+
+  // Weapon offset from unit center (in unit-local space, positive X = forward)
+  weaponOffsetX?: number;
 
   // Custom weapon creation (for multi-weapon units like widow)
   createWeapons?: (radius: number, definition: UnitDefinition) => UnitWeapon[];
@@ -72,7 +75,7 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
     turretAngularVelocity: 0,
     turretTurnAccel,
     turretDrag,
-    offsetX: 0,
+    offsetX: definition.weaponOffsetX ?? 0,
     offsetY: 0,
     isFiring: false,
     inFightstopRange: false,
@@ -212,7 +215,7 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     collisionRadius: UNIT_STATS.lynx.collisionRadius,
     energyCost: UNIT_STATS.lynx.baseCost * COST_MULTIPLIER,
     buildRate: UNIT_STATS.lynx.buildRate,
-    locomotion: 'wheels',
+    locomotion: 'treads',
   },
   daddy: {
     id: 'daddy',
@@ -248,16 +251,18 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     buildRate: UNIT_STATS.scorpion.buildRate,
     locomotion: 'wheels',
   },
-  viper: {
-    id: 'viper',
-    name: 'Viper',
+  recluse: {
+    id: 'recluse',
+    name: 'Recluse',
     weaponType: 'railgun',
-    hp: UNIT_STATS.viper.hp,
-    moveSpeed: UNIT_STATS.viper.moveSpeed,
-    collisionRadius: UNIT_STATS.viper.collisionRadius,
-    energyCost: UNIT_STATS.viper.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.viper.buildRate,
-    locomotion: 'wheels',
+    hp: UNIT_STATS.recluse.hp,
+    moveSpeed: UNIT_STATS.recluse.moveSpeed,
+    collisionRadius: UNIT_STATS.recluse.collisionRadius,
+    energyCost: UNIT_STATS.recluse.baseCost * COST_MULTIPLIER,
+    buildRate: UNIT_STATS.recluse.buildRate,
+    locomotion: 'legs',
+    legStyle: 'recluse',
+    weaponOffsetX: -UNIT_STATS.recluse.collisionRadius * 0.5,
   },
   mammoth: {
     id: 'mammoth',
