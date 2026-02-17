@@ -754,7 +754,7 @@ onUnmounted(() => {
         </div>
         <div class="bar-divider"></div>
         <span class="control-label">RENDER:</span>
-        <div class="button-group">
+        <div class="button-group button-group-md">
           <button
             v-for="opt in RENDER_OPTIONS"
             :key="opt.value"
@@ -772,8 +772,8 @@ onUnmounted(() => {
           @click="setAudioEnabled(!audioEnabled)"
         >AUDIO</button>
         <div class="bar-divider"></div>
-        <span class="control-label">RANGES:</span>
-        <div class="button-group">
+        <span class="control-label">UNIT RANGES:</span>
+        <div class="button-group button-group-md">
           <button
             class="control-btn"
             :class="{ active: rangeToggles.see }"
@@ -1194,6 +1194,10 @@ onUnmounted(() => {
 
 .button-group .control-btn:last-child {
   border-radius: 0 3px 3px 0;
+}
+
+.button-group-md .control-btn {
+  min-width: 42px;
 }
 
 .control-btn {
