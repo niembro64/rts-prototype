@@ -1197,7 +1197,7 @@ onUnmounted(() => {
 }
 
 .button-group-md .control-btn {
-  min-width: 42px;
+  min-width: 52px;
 }
 
 .control-btn {
