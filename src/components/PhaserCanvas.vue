@@ -888,7 +888,7 @@ onUnmounted(() => {
             :class="{ active: projRangeToggles.collision }"
             @click="toggleProjRange('collision')"
           >
-            COL
+            COLSN
           </button>
           <button
             class="control-btn"
