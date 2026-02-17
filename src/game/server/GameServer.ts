@@ -104,7 +104,14 @@ export class GameServer {
       economyManager.initPlayer(2);
       economyManager.initPlayer(3);
       economyManager.initPlayer(4);
-      spawnBackgroundUnitsStandalone(this.world, this.engine, true);
+      const initialUnits = spawnBackgroundUnitsStandalone(this.world, this.engine, true);
+      const tracker = this.simulation.getCombatStatsTracker();
+      for (const unit of initialUnits) {
+        if (unit.unit?.unitType && unit.ownership) {
+          tracker.registerEntity(unit.id, unit.ownership.playerId, unit.unit.unitType);
+          tracker.recordUnitProduced(unit.ownership.playerId, unit.unit.unitType);
+        }
+      }
     } else {
       const entities = spawnInitialEntities(this.world, this.playerIds);
       createMatterBodiesStandalone(this.engine, entities);
@@ -237,7 +244,14 @@ export class GameServer {
       this.backgroundSpawnTimer += delta;
       if (this.backgroundSpawnTimer >= this.BACKGROUND_SPAWN_INTERVAL) {
         this.backgroundSpawnTimer = 0;
-        spawnBackgroundUnitsStandalone(this.world, this.engine, false);
+        const spawnedUnits = spawnBackgroundUnitsStandalone(this.world, this.engine, false);
+        const tracker = this.simulation.getCombatStatsTracker();
+        for (const unit of spawnedUnits) {
+          if (unit.unit?.unitType && unit.ownership) {
+            tracker.registerEntity(unit.id, unit.ownership.playerId, unit.unit.unitType);
+            tracker.recordUnitProduced(unit.ownership.playerId, unit.unit.unitType);
+          }
+        }
       }
     }
   }
@@ -257,6 +271,9 @@ export class GameServer {
     const gridCellSize = this.sendGridInfo ? spatialGrid.getCellSize() : undefined;
 
     const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
+
+    // Add combat stats to snapshot
+    state.combatStats = this.simulation.getCombatStatsSnapshot();
 
     for (const listener of this.snapshotListeners) {
       listener(state);

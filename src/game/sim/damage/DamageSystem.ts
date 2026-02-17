@@ -4,6 +4,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
+import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type {
   AnyDamageSource,
   LineDamageSource,
@@ -162,6 +163,8 @@ function isPointInSlice(
 }
 
 export class DamageSystem {
+  public statsTracker?: CombatStatsTracker;
+
   constructor(private world: WorldState) {}
 
   // Main entry point - apply any damage source
@@ -322,7 +325,7 @@ export class DamageSystem {
       const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
 
       // Apply damage with death context (attacker velocity = beam direction * magnitude)
-      this.applyDamageToEntity(entity, source.damage, result, {
+      this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
         penetrationDirX: penNormX,
         penetrationDirY: penNormY,
         attackerVelX: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE,
@@ -453,7 +456,7 @@ export class DamageSystem {
       // Use actual projectile velocity if available, otherwise fallback to direction * damage
       const attackerVelX = source.velocityX ?? knockbackDirX * source.damage;
       const attackerVelY = source.velocityY ?? knockbackDirY * source.damage;
-      this.applyDamageToEntity(entity, source.damage, result, {
+      this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
         penetrationDirX: penNormX,
         penetrationDirY: penNormY,
         attackerVelX,
@@ -530,7 +533,7 @@ export class DamageSystem {
       // For area damage, penetration direction is from explosion center through unit
       // (same as knockback direction - outward from center)
       // Attacker velocity uses direction * force for area damage
-      this.applyDamageToEntity(unit, damage, result, {
+      this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
         penetrationDirX: dirX,
         penetrationDirY: dirY,
         attackerVelX: dirX * force,
@@ -585,7 +588,7 @@ export class DamageSystem {
 
       // Apply damage with death context
       const force = damage * KNOCKBACK.SPLASH;
-      this.applyDamageToEntity(building, damage, result, {
+      this.applyDamageToEntity(building, damage, result, source.sourceEntityId, {
         penetrationDirX: dirX,
         penetrationDirY: dirY,
         attackerVelX: dirX * force,
@@ -603,21 +606,29 @@ export class DamageSystem {
     entity: Entity,
     damage: number,
     result: DamageResult,
+    sourceEntityId: EntityId,
     deathContext?: DeathContext
   ): void {
     if (entity.unit && entity.unit.hp > 0) {
+      // Cap recorded damage at remaining HP to avoid overkill inflation
+      const actualDamage = Math.min(damage, entity.unit.hp);
+      this.statsTracker?.recordDamage(sourceEntityId, entity.id, actualDamage);
       entity.unit.hp -= damage;
       if (entity.unit.hp <= 0 && !result.killedUnitIds.has(entity.id)) {
         result.killedUnitIds.add(entity.id);
+        this.statsTracker?.recordKill(sourceEntityId, entity.id);
         // Store death context for explosion effects
         if (deathContext) {
           result.deathContexts.set(entity.id, deathContext);
         }
       }
     } else if (entity.building && entity.building.hp > 0) {
+      const actualDamage = Math.min(damage, entity.building.hp);
+      this.statsTracker?.recordDamage(sourceEntityId, entity.id, actualDamage);
       entity.building.hp -= damage;
       if (entity.building.hp <= 0 && !result.killedBuildingIds.has(entity.id)) {
         result.killedBuildingIds.add(entity.id);
+        this.statsTracker?.recordKill(sourceEntityId, entity.id);
       }
     }
   }

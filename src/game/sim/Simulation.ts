@@ -19,6 +19,7 @@ import {
   type ProjectileVelocityUpdateEvent,
 } from './combat';
 import { DamageSystem } from './damage';
+import { CombatStatsTracker, type CombatStatsSnapshot } from './CombatStatsTracker';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
@@ -37,6 +38,7 @@ export class Simulation {
   private constructionSystem: ConstructionSystem;
   private damageSystem: DamageSystem;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
+  private combatStatsTracker: CombatStatsTracker;
 
   // Current spray targets for rendering (build/heal effects)
   private currentSprayTargets: SprayTarget[] = [];
@@ -79,7 +81,9 @@ export class Simulation {
     this.world = world;
     this.commandQueue = commandQueue;
     this.constructionSystem = new ConstructionSystem(world.mapWidth, world.mapHeight);
+    this.combatStatsTracker = new CombatStatsTracker(world);
     this.damageSystem = new DamageSystem(world);
+    this.damageSystem.statsTracker = this.combatStatsTracker;
   }
 
   // Set the player IDs for this game
@@ -130,6 +134,16 @@ export class Simulation {
     return events;
   }
 
+  // Get combat stats snapshot for network broadcast
+  getCombatStatsSnapshot(): CombatStatsSnapshot {
+    return this.combatStatsTracker.getSnapshot();
+  }
+
+  // Get the combat stats tracker (for recording external events like background spawns)
+  getCombatStatsTracker(): CombatStatsTracker {
+    return this.combatStatsTracker;
+  }
+
   // Update simulation with variable delta time
   update(deltaMs: number): void {
     this.accumulator += deltaMs;
@@ -165,9 +179,15 @@ export class Simulation {
 
     // Update factory production
     const productionResult = factoryProductionSystem.update(this.world, dtMs);
-    // Notify about newly spawned units (need physics bodies)
-    if (productionResult.completedUnits.length > 0 && this.onUnitSpawn) {
-      this.onUnitSpawn(productionResult.completedUnits);
+    // Record production stats and notify about newly spawned units (need physics bodies)
+    if (productionResult.completedUnits.length > 0) {
+      for (const unit of productionResult.completedUnits) {
+        if (unit.unit?.unitType && unit.ownership) {
+          this.combatStatsTracker.registerEntity(unit.id, unit.ownership.playerId, unit.unit.unitType);
+          this.combatStatsTracker.recordUnitProduced(unit.ownership.playerId, unit.unit.unitType);
+        }
+      }
+      this.onUnitSpawn?.(productionResult.completedUnits);
     }
 
     // Update commander auto-build and auto-heal
@@ -294,7 +314,7 @@ export class Simulation {
 
     // Apply force field damage (continuous AoE for force field units)
     // Pass force accumulator for force field pull effect
-    const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
+    const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator, this.combatStatsTracker);
     for (const event of forceFieldVelocityUpdates) {
       this.pendingProjectileVelocityUpdates.push(event);
     }
@@ -325,6 +345,10 @@ export class Simulation {
     // Remove dead entities from spatial grid and notify callbacks
     if (collisionResult.deadUnitIds.size > 0) {
       for (const id of collisionResult.deadUnitIds) {
+        const entity = this.world.getEntity(id);
+        if (entity?.unit?.unitType && entity.ownership) {
+          this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
+        }
         spatialGrid.removeUnit(id);
       }
       this.onUnitDeath?.([...collisionResult.deadUnitIds], collisionResult.deathContexts);
@@ -366,6 +390,10 @@ export class Simulation {
     // Remove dead entities from spatial grid, notify callbacks, and remove from world
     if (deadUnitIds.length > 0) {
       for (const id of deadUnitIds) {
+        const entity = this.world.getEntity(id);
+        if (entity?.unit?.unitType && entity.ownership) {
+          this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
+        }
         spatialGrid.removeUnit(id);
       }
       this.onUnitDeath?.(deadUnitIds);

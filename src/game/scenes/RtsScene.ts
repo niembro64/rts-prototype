@@ -6,7 +6,7 @@ import { PLAYER_COLORS, type Entity, type PlayerId, type EntityId, type Waypoint
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
-import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent, NetworkProjectileVelocityUpdate } from '../network/NetworkTypes';
+import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent, NetworkProjectileVelocityUpdate, NetworkCombatStats } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
@@ -77,6 +77,8 @@ export class RtsScene extends Phaser.Scene {
   private minimapUpdateTimer: number = 0;
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
   private readonly MINIMAP_UPDATE_INTERVAL = 50;
+  private combatStatsUpdateTimer: number = 0;
+  private readonly COMBAT_STATS_UPDATE_INTERVAL = 500;
   private lastCameraX: number = 0;
   private lastCameraY: number = 0;
   private lastCameraZoom: number = 0;
@@ -151,6 +153,9 @@ export class RtsScene extends Phaser.Scene {
 
   // Callback for game restart
   public onGameRestart?: () => void;
+
+  // Callback for combat stats updates
+  public onCombatStatsUpdate?: (stats: NetworkCombatStats) => void;
 
   constructor() {
     super({ key: 'RtsScene' });
@@ -644,6 +649,16 @@ export class RtsScene extends Phaser.Scene {
         this.lastCameraY = camera.scrollY;
         this.lastCameraZoom = camera.zoom;
         this.updateMinimapData();
+      }
+    }
+
+    // Combat stats update (runs in all modes including background for demo)
+    this.combatStatsUpdateTimer += delta;
+    if (this.combatStatsUpdateTimer >= this.COMBAT_STATS_UPDATE_INTERVAL) {
+      this.combatStatsUpdateTimer = 0;
+      const stats = this.clientViewState.getCombatStats();
+      if (stats && this.onCombatStatsUpdate) {
+        this.onCombatStatsUpdate(stats);
       }
     }
   }

@@ -3,6 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
+import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type { ProjectileVelocityUpdateEvent } from './types';
 import { normalizeAngle } from './combatUtils';
 import { magnitude } from '../../math';
@@ -97,7 +98,8 @@ export function applyForceFieldDamage(
   world: WorldState,
   dtMs: number,
   _damageSystem: DamageSystem,
-  forceAccumulator?: ForceAccumulator
+  forceAccumulator?: ForceAccumulator,
+  statsTracker?: CombatStatsTracker
 ): ProjectileVelocityUpdateEvent[] {
   const dtSec = dtMs / 1000;
   if (dtSec <= 0) return [];
@@ -165,7 +167,16 @@ export function applyForceFieldDamage(
 
         if (!inPush && !inPull) continue;
 
+        const wasAlive = target.unit.hp > 0;
+        if (wasAlive) {
+          // Cap recorded damage at remaining HP to avoid overkill inflation
+          const actualDamage = Math.min(baseDamagePerFrame, target.unit.hp);
+          statsTracker?.recordDamage(unit.id, target.id, actualDamage);
+        }
         target.unit.hp -= baseDamagePerFrame;
+        if (wasAlive && target.unit.hp <= 0) {
+          statsTracker?.recordKill(unit.id, target.id);
+        }
 
         if (dist > 0 && forceAccumulator) {
           const targetMass = (target.body?.matterBody as { mass?: number })?.mass ?? 1;
@@ -197,7 +208,15 @@ export function applyForceFieldDamage(
           effectiveOuter, buildingRadius, effectiveInner
         )) continue;
 
+        const bWasAlive = building.building.hp > 0;
+        if (bWasAlive) {
+          const actualDamage = Math.min(baseDamagePerFrame, building.building.hp);
+          statsTracker?.recordDamage(unit.id, building.id, actualDamage);
+        }
         building.building.hp -= baseDamagePerFrame;
+        if (bWasAlive && building.building.hp <= 0) {
+          statsTracker?.recordKill(unit.id, building.id);
+        }
       }
 
       // --- Projectiles ---

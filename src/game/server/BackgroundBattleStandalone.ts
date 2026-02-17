@@ -117,7 +117,8 @@ export function spawnBackgroundUnitsStandalone(
   world: WorldState,
   engine: Matter.Engine,
   initialSpawn: boolean
-): void {
+): Entity[] {
+  const spawned: Entity[] = [];
   const numPlayers = 4;
   const unitCapPerPlayer = Math.floor(MAX_TOTAL_UNITS / numPlayers);
   const spawnMargin = 100;
@@ -129,40 +130,46 @@ export function spawnBackgroundUnitsStandalone(
   // Player 1 (Red) - top of map, moving down
   const player1Units = world.getUnitsByPlayer(1).length;
   for (let i = 0; i < unitsToSpawnPerPlayer && player1Units + i < unitCapPerPlayer; i++) {
-    spawnBackgroundUnitStandalone(world, engine, 1,
+    const unit = spawnBackgroundUnitStandalone(world, engine, 1,
       spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin,
       spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight,
       Math.PI / 2
     );
+    if (unit) spawned.push(unit);
   }
 
   // Player 2 (Blue) - bottom of map, moving up
   const player2Units = world.getUnitsByPlayer(2).length;
   for (let i = 0; i < unitsToSpawnPerPlayer && player2Units + i < unitCapPerPlayer; i++) {
-    spawnBackgroundUnitStandalone(world, engine, 2,
+    const unit = spawnBackgroundUnitStandalone(world, engine, 2,
       spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight,
       spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin,
       -Math.PI / 2
     );
+    if (unit) spawned.push(unit);
   }
 
   // Player 3 (Yellow) - left of map, moving right
   const player3Units = world.getUnitsByPlayer(3).length;
   for (let i = 0; i < unitsToSpawnPerPlayer && player3Units + i < unitCapPerPlayer; i++) {
-    spawnBackgroundUnitStandalone(world, engine, 3,
+    const unit = spawnBackgroundUnitStandalone(world, engine, 3,
       spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin,
       mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin,
       0
     );
+    if (unit) spawned.push(unit);
   }
 
   // Player 4 (Green) - right of map, moving left
   const player4Units = world.getUnitsByPlayer(4).length;
   for (let i = 0; i < unitsToSpawnPerPlayer && player4Units + i < unitCapPerPlayer; i++) {
-    spawnBackgroundUnitStandalone(world, engine, 4,
+    const unit = spawnBackgroundUnitStandalone(world, engine, 4,
       mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin,
       spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin,
       Math.PI
     );
+    if (unit) spawned.push(unit);
   }
+
+  return spawned;
 }

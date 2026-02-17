@@ -8,7 +8,7 @@
  */
 
 import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
-import type { NetworkGameState, NetworkEntity, NetworkProjectileSpawn, NetworkGridCell } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkProjectileSpawn, NetworkGridCell, NetworkCombatStats } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
@@ -51,6 +51,9 @@ export class ClientViewState {
   private gridCells: NetworkGridCell[] = [];
   private gridSearchCells: NetworkGridCell[] = [];
   private gridCellSize: number = 0;
+
+  // Combat stats from latest snapshot
+  private combatStats: NetworkCombatStats | null = null;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
@@ -187,6 +190,11 @@ export class ClientViewState {
     this.gridCells = state.gridCells ?? [];
     this.gridSearchCells = state.gridSearchCells ?? [];
     this.gridCellSize = state.gridCellSize ?? 0;
+
+    // Store combat stats
+    if (state.combatStats) {
+      this.combatStats = state.combatStats;
+    }
   }
 
   /**
@@ -665,6 +673,10 @@ export class ClientViewState {
 
   getGridCellSize(): number {
     return this.gridCellSize;
+  }
+
+  getCombatStats(): NetworkCombatStats | null {
+    return this.combatStats;
   }
 
   clear(): void {

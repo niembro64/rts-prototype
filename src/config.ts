@@ -344,7 +344,7 @@ export const UNIT_STATS = {
   // Jackal - Disposable swarm unit. High DPS (50) but dies fast.
   // Value: Fast harassment, good vs slow units, countered by splash
   jackal: {
-    baseCost: 40,
+    baseCost: 25,
     hp: 40,
     moveSpeed: 300,
     collisionRadius: 8,
@@ -354,7 +354,7 @@ export const UNIT_STATS = {
   // Lynx - Glass cannon striker. Burst damage (54 per volley), fragile.
   // Value: Alpha strike potential, but slow and squishy
   lynx: {
-    baseCost: 50,
+    baseCost: 40,
     hp: 65,
     moveSpeed: 170,
     collisionRadius: 10,
@@ -364,8 +364,8 @@ export const UNIT_STATS = {
   // Daddy - Beam walker. Sustained 45 DPS but VERY slow turret tracking.
   // Value: Good vs slow/stationary targets, struggles vs fast units
   daddy: {
-    baseCost: 65,
-    hp: 100,
+    baseCost: 105,
+    hp: 60,
     moveSpeed: 200,
     collisionRadius: 13,
     mass: 25,
@@ -374,8 +374,8 @@ export const UNIT_STATS = {
   // Badger - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
   // Value: Wins close fights, but takes damage closing the gap
   badger: {
-    baseCost: 75,
-    hp: 180,
+    baseCost: 55,
+    hp: 240,
     moveSpeed: 200,
     collisionRadius: 16,
     mass: 45,
@@ -394,8 +394,8 @@ export const UNIT_STATS = {
   // Recluse - Long-range assassin spider. Hitscan piercing, but low DPS (17) and can't escape.
   // Value: Safe poke damage, but very slow and fragile if caught
   recluse: {
-    baseCost: 55,
-    hp: 55,
+    baseCost: 75,
+    hp: 45,
     moveSpeed: 70,
     collisionRadius: 11,
     mass: 20,
@@ -404,8 +404,8 @@ export const UNIT_STATS = {
   // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
   // Value: Frontline anchor, wins attrition fights, slow to reposition
   mammoth: {
-    baseCost: 160,
-    hp: 350,
+    baseCost: 260,
+    hp: 1050,
     moveSpeed: 60,
     collisionRadius: 24,
     mass: 500,
@@ -414,18 +414,18 @@ export const UNIT_STATS = {
   // Widow - Titan spider unit. 7 beam weapons + force field = 335+ DPS.
   // Value: Army-in-one super unit, but expensive and high priority target
   widow: {
-    baseCost: 700,
-    hp: 2000,
+    baseCost: 600,
+    hp: 3000,
     moveSpeed: 100,
     collisionRadius: 38,
-    mass: 500,
+    mass: 800,
     buildRate: 20,
   },
   // Tarantula - Force field AoE unit. Continuous damage with pull.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
   tarantula: {
-    baseCost: 55,
-    hp: 80,
+    baseCost: 35,
+    hp: 200,
     moveSpeed: 200,
     collisionRadius: 11,
     mass: 18,
@@ -440,7 +440,7 @@ export const UNIT_STATS = {
 export const WEAPON_STATS = {
   // Gatling - Rapid fire, low damage per shot (Jackal's weapon)
   gatling: {
-    damage: 4,
+    damage: 1,
     range: 130,
     cooldown: 80,
     projectileSpeed: 400,
@@ -449,7 +449,7 @@ export const WEAPON_STATS = {
 
   // Pulse - 3-shot burst, medium damage (Lynx's weapon)
   pulse: {
-    damage: 18,
+    damage: 6,
     range: 160,
     cooldown: 1200,
     projectileSpeed: 500,
@@ -460,7 +460,7 @@ export const WEAPON_STATS = {
 
   // Shotgun - Spread pellets, high close-range damage (Badger's weapon)
   shotgun: {
-    damage: 12, // Per pellet
+    damage: 5, // Per pellet
     range: 90,
     cooldown: 200,
     projectileSpeed: 450,
@@ -473,17 +473,17 @@ export const WEAPON_STATS = {
     damage: 80,
     range: 200,
     cooldown: 2500,
-    projectileSpeed: 250,
+    projectileSpeed: 100,
     projectileMass: 2.0,
     splashRadius: 70,
   },
 
   // Cannon - Slow, devastating heavy projectile (Mammoth's weapon)
   cannon: {
-    damage: 220,
+    damage: 260,
     range: 360,
     cooldown: 3000,
-    projectileSpeed: 300,
+    projectileSpeed: 400,
     projectileMass: 3.0,
   },
 
@@ -499,7 +499,7 @@ export const WEAPON_STATS = {
   // Beam - Continuous damage beam (Daddy's weapon)
   // Slow, deliberate turret - low acceleration, tracks slowly
   beam: {
-    damage: 45, // DPS while beam is on target
+    damage: 85, // DPS while beam is on target
     range: 150,
     cooldown: 0, // Continuous
     beamDuration: 1000,
@@ -511,7 +511,7 @@ export const WEAPON_STATS = {
   // Widow beam lasers - extended range continuous beams
   // Fast, snappy turrets - high acceleration
   widowBeam: {
-    damage: 45, // DPS while beam is on target
+    damage: 85, // DPS while beam is on target
     range: 105,
     cooldown: 0, // Continuous
     beamDuration: 1000,
@@ -535,8 +535,8 @@ export const WEAPON_STATS = {
   // Tarantula force field — push inner, pull outer
   forceField: {
     forceFieldInnerRadius: 40, // No effect inside this
-    forceFieldMiddleRadius: 140, // Push/pull boundary
-    forceFieldOuterRadius: 170, // Pull stops here
+    forceFieldMiddleRadius: 200, // Push/pull boundary
+    forceFieldOuterRadius: 230, // Pull stops here
     damage: 1,
     cooldown: 0,
     turretTurnAccel: 30,

@@ -78,6 +78,23 @@ export interface NetworkGridCell {
   players: number[]; // Player IDs with units in this cell
 }
 
+// Per-unit-type combat stats
+export interface NetworkUnitTypeStats {
+  enemyDamageDealt: number;
+  enemyKills: number;
+  friendlyDamageDealt: number;
+  friendlyKills: number;
+  unitsProduced: number;
+  unitsLost: number;
+  totalCostSpent: number;
+}
+
+// Combat stats for all players + global aggregate
+export interface NetworkCombatStats {
+  players: Record<number, Record<string, NetworkUnitTypeStats>>;
+  global: Record<string, NetworkUnitTypeStats>;
+}
+
 // Serialized game state sent over network
 export interface NetworkGameState {
   tick: number;
@@ -89,6 +106,7 @@ export interface NetworkGameState {
   projectileDespawns?: NetworkProjectileDespawn[];
   projectileVelocityUpdates?: NetworkProjectileVelocityUpdate[];
   gameOver?: { winnerId: PlayerId };
+  combatStats?: NetworkCombatStats;
   // Spatial grid debug visualization
   gridCells?: NetworkGridCell[];
   gridSearchCells?: NetworkGridCell[];

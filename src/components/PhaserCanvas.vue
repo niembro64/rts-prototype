@@ -6,6 +6,9 @@ import SelectionPanel, { type SelectionInfo, type SelectionActions } from './Sel
 import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
+import CombatStatsModal from './CombatStatsModal.vue';
+import type { NetworkCombatStats } from '../game/network/NetworkTypes';
+import type { StatsSnapshot } from './combatStatsUtils';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
 import { DEFAULT_NETWORK_UPDATES_PER_SECOND, NETWORK_UPDATE_RATE_OPTIONS, MAP_SETTINGS, SHOW_LOBBY_ON_STARTUP } from '../config';
 import { GameServer } from '../game/server/GameServer';
@@ -145,6 +148,13 @@ const minimapData = reactive<MinimapData>({
   cameraHeight: 600,
 });
 
+// Combat stats state
+const combatStats = ref<NetworkCombatStats | null>(null);
+const showCombatStats = ref(true);
+const combatStatsViewMode = ref<'global' | 'player'>('global');
+const combatStatsHistory = ref<StatsSnapshot[]>([]);
+let statsHistoryStartTime = 0;
+
 let gameInstance: GameInstance | null = null;
 
 // Start the background battle (runs behind lobby)
@@ -175,6 +185,19 @@ function startBackgroundBattle(): void {
     mapHeight: MAP_SETTINGS.demo.height,
     backgroundMode: true,
   });
+
+  // Wire combat stats callback for background scene
+  const checkBgScene = setInterval(() => {
+    const bgScene = backgroundGameInstance?.getScene();
+    if (bgScene) {
+      bgScene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
+        combatStats.value = stats;
+        if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
+        combatStatsHistory.value.push({ timestamp: Date.now() - statsHistoryStartTime, stats });
+      };
+      clearInterval(checkBgScene);
+    }
+  }, 100);
 }
 
 // Stop the background battle
@@ -191,6 +214,8 @@ function stopBackgroundBattle(): void {
   if (!currentServer) {
     hasServer.value = false;
   }
+  combatStatsHistory.value = [];
+  statsHistoryStartTime = 0;
 }
 
 // Show player toggle only in single-player mode (offline or hosting alone)
@@ -218,6 +243,8 @@ function handleMinimapClick(x: number, y: number): void {
 
 function restartGame(): void {
   gameOverWinner.value = null;
+  combatStatsHistory.value = [];
+  statsHistoryStartTime = 0;
   // Return to lobby
   gameStarted.value = false;
   showLobby.value = true;
@@ -558,6 +585,13 @@ function setupSceneCallbacks(): void {
         gameOverWinner.value = null;
       };
 
+      // Combat stats callback
+      scene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
+        combatStats.value = stats;
+        if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
+        combatStatsHistory.value.push({ timestamp: Date.now() - statsHistoryStartTime, stats });
+      };
+
       clearInterval(checkScene);
     }
   }, 100);
@@ -588,6 +622,12 @@ function dismissGameOver(): void {
   gameOverWinner.value = null;
 }
 
+function handleCombatStatsKeydown(e: KeyboardEvent): void {
+  if (e.key === '`') {
+    showCombatStats.value = !showCombatStats.value;
+  }
+}
+
 onMounted(() => {
   // Start the background battle behind the lobby
   nextTick(() => {
@@ -596,12 +636,16 @@ onMounted(() => {
 
   // Start FPS tracking
   fpsUpdateInterval = setInterval(updateFPSStats, 100); // Update 10x per second
+
+  // Listen for backtick to toggle combat stats
+  window.addEventListener('keydown', handleCombatStatsKeydown);
 });
 
 onUnmounted(() => {
   if (fpsUpdateInterval) {
     clearInterval(fpsUpdateInterval);
   }
+  window.removeEventListener('keydown', handleCombatStatsKeydown);
   // Stop servers
   if (currentServer) {
     currentServer.stop();
@@ -821,6 +865,16 @@ onUnmounted(() => {
       <!-- Minimap (bottom-right) -->
       <Minimap :data="minimapData" @click="handleMinimapClick" />
     </template>
+
+    <!-- Combat Stats Modal -->
+    <CombatStatsModal
+      :visible="showCombatStats"
+      :stats="combatStats"
+      :view-mode="combatStatsViewMode"
+      :stats-history="combatStatsHistory"
+      @update:view-mode="combatStatsViewMode = $event"
+      @close="showCombatStats = false"
+    />
 
     <!-- Game Over Banner (dismissible, game keeps running) -->
     <div v-if="gameOverWinner !== null" class="game-over-banner" @click="dismissGameOver">
