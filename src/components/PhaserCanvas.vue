@@ -34,23 +34,18 @@ const UPDATE_RATE_OPTIONS = NETWORK_UPDATE_RATE_OPTIONS;
 
 // Graphics quality options - Auto is separate from quality levels
 const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
-  { value: 'min', label: 'Min' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Med' },
-  { value: 'high', label: 'High' },
-  { value: 'max', label: 'Max' },
+  { value: 'min', label: 'MIN' },
+  { value: 'low', label: 'LOW' },
+  { value: 'medium', label: 'MED' },
+  { value: 'high', label: 'HIGH' },
+  { value: 'max', label: 'MAX' },
 ];
 
 // Render mode options
 const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
-  { value: 'window', label: 'Visual' },
-  { value: 'all', label: 'All' },
-];
-
-// Audio options
-const AUDIO_OPTIONS: { value: boolean; label: string }[] = [
-  { value: true, label: 'On' },
-  { value: false, label: 'Off' },
+  { value: 'window', label: 'VISUAL' },
+  { value: 'padded', label: 'V+30%' },
+  { value: 'all', label: 'ALL' },
 ];
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -171,7 +166,7 @@ function startBackgroundBattle(): void {
   });
 
   const bgConnection = new LocalGameConnection(backgroundServer);
-  backgroundServer.start();
+  backgroundServer.startManual();
   hasServer.value = true;
 
   backgroundGameInstance = createGame({
@@ -184,6 +179,7 @@ function startBackgroundBattle(): void {
     mapWidth: MAP_SETTINGS.demo.width,
     mapHeight: MAP_SETTINGS.demo.height,
     backgroundMode: true,
+    gameServer: backgroundServer,
   });
 
   // Wire combat stats callback for background scene
@@ -518,8 +514,8 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
         };
       }
 
-      // Start the server
-      currentServer.start();
+      // Start the server in manual mode (Phaser update() drives ticks)
+      currentServer.startManual();
       hasServer.value = true;
     } else {
       // Client: create RemoteGameConnection wrapping networkManager
@@ -538,6 +534,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       mapWidth: MAP_SETTINGS.game.width,
       mapHeight: MAP_SETTINGS.game.height,
       backgroundMode: false,
+      gameServer: currentServer ?? undefined,
     });
 
     // Setup scene callbacks
@@ -701,15 +698,7 @@ onUnmounted(() => {
       <div v-if="showServerControls" class="control-bar server-bar">
         <span class="bar-label server-label">HOST SERVER</span>
         <div class="bar-divider"></div>
-        <div class="fps-stats">
-          <span class="fps-label">tick:</span>
-          <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
-          <span class="fps-label">avg</span>
-          <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
-          <span class="fps-label">worst</span>
-        </div>
-        <div class="bar-divider"></div>
-        <span class="control-label">Send Updates Per Second:</span>
+        <span class="control-label">SEND UPDATES/SEC:</span>
         <div class="button-group">
           <button
             v-for="rate in UPDATE_RATE_OPTIONS"
@@ -727,38 +716,29 @@ onUnmounted(() => {
           :class="{ active: sendGridInfo }"
           @click="toggleSendGridInfo"
         >
-          Grid Info
+          GRID INFO
         </button>
+        <div class="bar-divider"></div>
+        <div class="fps-stats">
+          <span class="fps-label">tick:</span>
+          <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
+          <span class="fps-label">worst</span>
+        </div>
       </div>
 
       <!-- CLIENT CONTROLS (always visible) -->
       <div class="control-bar client-bar">
         <span class="bar-label client-label">PLAYER CLIENT</span>
         <div class="bar-divider"></div>
-        <div class="fps-stats">
-          <span class="fps-label">actual:</span>
-          <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
-          <span class="fps-label">avg</span>
-          <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
-          <span class="fps-label">worst</span>
-          <span class="fps-divider">|</span>
-          <span class="fps-label">phaser:</span>
-          <span class="fps-value">{{ meanFPS.toFixed(1) }}</span>
-          <span class="fps-label">avg</span>
-          <span class="fps-value">{{ lowFPS.toFixed(1) }}</span>
-          <span class="fps-label">low</span>
-          <span class="fps-divider">|</span>
-          <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
-          <span class="fps-label">zoom</span>
-        </div>
-        <div class="bar-divider"></div>
-        <span class="control-label">Detail:</span>
+        <span class="control-label">DETAIL:</span>
         <button
           class="control-btn"
           :class="{ active: graphicsQuality === 'auto' }"
           @click="changeGraphicsQuality('auto')"
         >
-          Auto
+          AUTO
         </button>
         <div class="button-group">
           <button
@@ -775,7 +755,7 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="bar-divider"></div>
-        <span class="control-label">Render:</span>
+        <span class="control-label">RENDER:</span>
         <div class="button-group">
           <button
             v-for="opt in RENDER_OPTIONS"
@@ -788,51 +768,61 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="bar-divider"></div>
-        <span class="control-label">Audio:</span>
-        <div class="button-group">
-          <button
-            v-for="opt in AUDIO_OPTIONS"
-            :key="opt.value.toString()"
-            class="control-btn"
-            :class="{ active: audioEnabled === opt.value }"
-            @click="setAudioEnabled(opt.value)"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
+        <button
+          class="control-btn"
+          :class="{ active: audioEnabled }"
+          @click="setAudioEnabled(!audioEnabled)"
+        >AUDIO</button>
         <div class="bar-divider"></div>
-        <span class="control-label">Ranges:</span>
+        <span class="control-label">RANGES:</span>
         <div class="button-group">
           <button
             class="control-btn"
             :class="{ active: rangeToggles.see }"
             @click="toggleRange('see')"
-          >See</button>
+          >SEE</button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.fire }"
             @click="toggleRange('fire')"
-          >Fire</button>
+          >FIRE</button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.release }"
             @click="toggleRange('release')"
-          >Rel</button>
+          >REL</button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.lock }"
             @click="toggleRange('lock')"
-          >Lock</button>
+          >LOCK</button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.fightstop }"
             @click="toggleRange('fightstop')"
-          >Stop</button>
+          >STOP</button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.build }"
             @click="toggleRange('build')"
-          >Build</button>
+          >BUILD</button>
+        </div>
+        <div class="bar-divider"></div>
+        <div class="fps-stats">
+          <span class="fps-label">actual:</span>
+          <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
+          <span class="fps-label">worst</span>
+          <span class="fps-divider">|</span>
+          <span class="fps-label">phaser:</span>
+          <span class="fps-value">{{ meanFPS.toFixed(1) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ lowFPS.toFixed(1) }}</span>
+          <span class="fps-label">low</span>
+          <span class="fps-divider">|</span>
+          <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
+          <span class="fps-label">zoom</span>
         </div>
       </div>
     </div>
@@ -1130,7 +1120,7 @@ onUnmounted(() => {
   padding: 2px 6px;
   border-radius: 3px;
   white-space: nowrap;
-  min-width: 90px;
+  width: 100px;
   text-align: center;
 }
 
@@ -1167,7 +1157,7 @@ onUnmounted(() => {
 }
 
 .fps-value {
-  color: #48f;
+  color: #fff;
   font-size: 13px;
   font-weight: bold;
   min-width: 24px;
@@ -1193,6 +1183,8 @@ onUnmounted(() => {
 .button-group .control-btn {
   border-radius: 0;
   margin-left: -1px;
+  flex: 1 1 0;
+  text-align: center;
 }
 
 .button-group .control-btn:first-child {
@@ -1212,6 +1204,7 @@ onUnmounted(() => {
   color: #aaa;
   font-family: monospace;
   font-size: 10px;
+  text-transform: uppercase;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -1222,9 +1215,15 @@ onUnmounted(() => {
   color: #ddd;
 }
 
-.control-btn.active {
+.client-bar .control-btn.active {
   background: rgba(68, 136, 68, 0.9);
   border-color: #6a6;
+  color: white;
+}
+
+.server-bar .control-btn.active {
+  background: rgba(68, 68, 170, 0.9);
+  border-color: #6666cc;
   color: white;
 }
 

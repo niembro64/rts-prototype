@@ -566,7 +566,7 @@ export const WEAPON_STATS = {
 
 export const MAP_SETTINGS = {
   game: { width: 2_000, height: 2_000 },
-  demo: { width: 1_600, height: 1_600 },
+  demo: { width: 1_600, height: 9_00 },
 };
 
 // =============================================================================

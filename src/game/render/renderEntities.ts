@@ -76,16 +76,20 @@ export class EntityRenderer {
    * Check if a point is visible within the camera viewport (with padding)
    */
   private isInViewport(x: number, y: number, padding: number = 100): boolean {
-    if (getRenderMode() === 'all') {
+    const mode = getRenderMode();
+    if (mode === 'all') {
       return true; // Skip culling, render everything
     }
     const camera = this.scene.cameras.main;
     const view = camera.worldView;
+    // 'padded' mode: add 30% of viewport dimensions as extra margin
+    const extra = mode === 'padded' ? Math.max(view.width, view.height) * 0.3 : 0;
+    const p = padding + extra;
     return (
-      x >= view.x - padding &&
-      x <= view.right + padding &&
-      y >= view.y - padding &&
-      y <= view.bottom + padding
+      x >= view.x - p &&
+      x <= view.right + p &&
+      y >= view.y - p &&
+      y <= view.bottom + p
     );
   }
 

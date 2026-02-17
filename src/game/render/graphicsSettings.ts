@@ -9,7 +9,7 @@
 import { GRAPHICS_DETAIL_DEFINITIONS, ZOOM_MIN, ZOOM_MAX } from '../../config';
 
 export type GraphicsQuality = 'auto' | 'min' | 'low' | 'medium' | 'high' | 'max';
-export type RenderMode = 'window' | 'all';
+export type RenderMode = 'window' | 'padded' | 'all';
 
 export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-chunks' | 'three-velocity-complex';
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
@@ -116,7 +116,7 @@ function loadFromStorage(): void {
       currentQuality = storedQuality;
     }
     const storedRenderMode = localStorage.getItem(RENDER_MODE_STORAGE_KEY);
-    if (storedRenderMode && (storedRenderMode === 'window' || storedRenderMode === 'all')) {
+    if (storedRenderMode && (storedRenderMode === 'window' || storedRenderMode === 'padded' || storedRenderMode === 'all')) {
       currentRenderMode = storedRenderMode;
     }
     for (const rt of RANGE_TYPES) {

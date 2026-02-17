@@ -208,8 +208,14 @@ export class GameServer {
     }
   }
 
-  // Main tick function
-  private tick(delta: number): void {
+  // Start in manual mode: only snapshot broadcast, caller drives tick() externally
+  startManual(): void {
+    this.lastTickTime = performance.now();
+    this.startSnapshotBroadcast();
+  }
+
+  // Main tick function (public so Phaser update() can drive it directly)
+  tick(delta: number): void {
     // Track tick deltas for stats
     this.tickDeltaHistory[this.tickDeltaIndex] = delta;
     this.tickDeltaIndex = (this.tickDeltaIndex + 1) % this.TICK_HISTORY_SIZE;
