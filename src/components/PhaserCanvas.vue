@@ -705,7 +705,7 @@ onUnmounted(() => {
             :class="{ active: snapshotRate === rate }"
             @click="setNetworkUpdateRate(rate)"
           >
-            {{ rate === 'realtime' ? 'RT' : (rate as number).toFixed(1) }}
+            {{ rate === 'realtime' ? 'RT' : (rate as number) < 5 ? (rate as number).toFixed(1) : (rate as number) }}
           </button>
         </div>
         <div class="bar-divider"></div>
