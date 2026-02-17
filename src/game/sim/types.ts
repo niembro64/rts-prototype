@@ -108,7 +108,6 @@ export interface WeaponConfig {
 
   // AoE/splash properties
   splashRadius?: number;         // Radius of splash damage
-  splashDamageFalloff?: number;  // Damage multiplier at edge (0-1)
 
   // Burst fire properties
   burstCount?: number;           // Shots per burst

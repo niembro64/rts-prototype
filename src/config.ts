@@ -180,9 +180,27 @@ export const LEG_CONFIG = {
  * rotationSpeed: visual rotation multiplier (higher = treads spin faster)
  */
 export const TREAD_CONFIG = {
-  mammoth: { treadOffset: 0.90, treadLength: 2.0, treadWidth: 0.60, wheelRadius: 0.175, rotationSpeed: 1.0 },
-  badger:  { treadOffset: 0.85, treadLength: 1.7, treadWidth: 0.55, wheelRadius: 0.12,  rotationSpeed: 1.0 },
-  lynx:    { treadOffset: 0.80, treadLength: 1.6, treadWidth: 0.45, wheelRadius: 0.12,  rotationSpeed: 1.0 },
+  mammoth: {
+    treadOffset: 0.9,
+    treadLength: 2.0,
+    treadWidth: 0.6,
+    wheelRadius: 0.175,
+    rotationSpeed: 1.0,
+  },
+  badger: {
+    treadOffset: 0.85,
+    treadLength: 1.7,
+    treadWidth: 0.55,
+    wheelRadius: 0.12,
+    rotationSpeed: 1.0,
+  },
+  lynx: {
+    treadOffset: 0.8,
+    treadLength: 1.6,
+    treadWidth: 0.45,
+    wheelRadius: 0.12,
+    rotationSpeed: 1.0,
+  },
 };
 
 /**
@@ -196,8 +214,22 @@ export const TREAD_CONFIG = {
  * rotationSpeed: visual rotation multiplier (higher = wheels spin faster)
  */
 export const WHEEL_CONFIG = {
-  jackal:   { wheelDistX: 0.60, wheelDistY: 0.70, treadLength: 0.50, treadWidth: 0.15, wheelRadius: 0.28, rotationSpeed: 1.0 },
-  mongoose: { wheelDistX: 0.65, wheelDistY: 0.70, treadLength: 0.50, treadWidth: 0.3, wheelRadius: 0.22, rotationSpeed: 1.0 },
+  jackal: {
+    wheelDistX: 0.6,
+    wheelDistY: 0.7,
+    treadLength: 0.5,
+    treadWidth: 0.15,
+    wheelRadius: 0.28,
+    rotationSpeed: 1.0,
+  },
+  mongoose: {
+    wheelDistX: 0.65,
+    wheelDistY: 0.7,
+    treadLength: 0.5,
+    treadWidth: 0.3,
+    wheelRadius: 0.22,
+    rotationSpeed: 1.0,
+  },
 };
 
 // =============================================================================
@@ -331,7 +363,7 @@ export const UNIT_MASS_MULTIPLIER = 10.0;
 /**
  * Global mass multiplier for all projectiles.
  * Scales recoil on shooter, knockback on target, and resistance to force field pull.
- * 1.0 = use raw projectileMass values from WEAPON_STATS
+ * 1.0 = use raw mass values from PROJECTILE_STATS
  * Higher = more recoil/knockback, lower = less
  */
 export const PROJECTILE_MASS_MULTIPLIER = 1.0;
@@ -464,114 +496,152 @@ export const UNIT_STATS = {
 };
 
 // =============================================================================
-// WEAPON STATS
+// PROJECTILE STATS — what the projectile IS
+// =============================================================================
+
+export const PROJECTILE_STATS = {
+  lightRound: {
+    damage: 1,
+    speed: 400,
+    mass: 0.3,
+    radius: 2,
+    lifespan: 400,
+    splashRadius: 5,
+  },
+  pulseBolt: {
+    damage: 6,
+    speed: 500,
+    mass: 1.0,
+    radius: 3,
+    lifespan: 500,
+    splashRadius: 8,
+  },
+  buckshot: {
+    damage: 5,
+    speed: 450,
+    mass: 4,
+    radius: 4,
+    lifespan: 300,
+    splashRadius: 10,
+  },
+  mortarShell: {
+    damage: 80,
+    speed: 100,
+    mass: 2.0,
+    radius: 7,
+    lifespan: 2000,
+    splashRadius: 70,
+  },
+  cannonShell: {
+    damage: 260,
+    speed: 400,
+    mass: 3.0,
+    radius: 10,
+    lifespan: 1800,
+    splashRadius: 25,
+  },
+  railBeam: {
+    damage: 10,
+    beamDuration: 100,
+    beamWidth: 1,
+    piercing: true as const,
+  },
+  laserBeam: { damage: 85, beamDuration: 1000, beamWidth: 4 },
+  heavyLaserBeam: { damage: 100, beamDuration: 1000, beamWidth: 12 },
+  disruptorBolt: {
+    damage: 9999,
+    speed: 350,
+    mass: 20.0,
+    radius: 25,
+    lifespan: 2000,
+    splashRadius: 40,
+    piercing: true as const,
+  },
+};
+
+// =============================================================================
+// WEAPON STATS — how the weapon DELIVERS the projectile
 // =============================================================================
 
 export const WEAPON_STATS = {
-  // Gatling - Rapid fire, low damage per shot (Jackal's weapon)
   gatling: {
-    damage: 1,
+    projectile: 'lightRound' as const,
+    audioId: 'minigun' as const,
     range: 110,
     cooldown: 80,
-    projectileSpeed: 400,
-    projectileMass: 0.3,
   },
-
-  // Pulse - 3-shot burst, medium damage (Lynx's weapon)
   pulse: {
-    damage: 6,
+    projectile: 'pulseBolt' as const,
+    audioId: 'burst-rifle' as const,
     range: 160,
     cooldown: 1200,
-    projectileSpeed: 500,
-    projectileMass: 1.0,
     burstCount: 3,
     burstDelay: 40,
   },
-
-  // Shotgun - Spread pellets, high close-range damage (Badger's weapon)
   shotgun: {
-    damage: 5, // Per pellet
+    projectile: 'buckshot' as const,
+    audioId: 'shotgun' as const,
     range: 90,
     cooldown: 100,
-    projectileSpeed: 450,
-    projectileMass: 4,
     pelletCount: 2,
-    spreadAngle: Math.PI / 2, // Total cone angle (radians)
+    spreadAngle: Math.PI / 2,
   },
-
-  // Mortar - Slow, high splash damage artillery (Mongoose's weapon)
   mortar: {
-    damage: 80,
+    projectile: 'mortarShell' as const,
+    audioId: 'grenade' as const,
     range: 200,
     cooldown: 2500,
-    projectileSpeed: 100,
-    projectileMass: 2.0,
-    splashRadius: 70,
   },
-
-  // Cannon - Slow, devastating heavy projectile (Mammoth's weapon)
   cannon: {
-    damage: 260,
+    projectile: 'cannonShell' as const,
+    audioId: 'cannon' as const,
     range: 360,
     cooldown: 3000,
-    projectileSpeed: 400,
-    projectileMass: 3.0,
   },
-
-  // Railgun - Instant flash hitscan, long range, piercing (Recluse's weapon)
   railgun: {
-    damage: 10,
+    projectile: 'railBeam' as const,
+    audioId: 'railgun' as const,
     range: 250,
     cooldown: 2000,
-    beamDuration: 100, // Brief flash, long enough to be visible at 10Hz snapshots
-    beamWidth: 1,
   },
-
-  // Beam - Continuous damage beam (Daddy's weapon)
-  // Slow, deliberate turret - low acceleration, tracks slowly
   beam: {
-    damage: 85, // DPS while beam is on target
+    projectile: 'laserBeam' as const,
+    audioId: 'beam' as const,
     range: 150,
-    cooldown: 0, // Continuous
-    beamDuration: 1000,
-    beamWidth: 4,
-    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
-    turretDrag: 0.5, // Moderate drag → terminal ~3.3 rad/sec
+    cooldown: 0,
+    turretTurnAccel: 100,
+    turretDrag: 0.5,
   },
-
-  // Mega beam - heavy beam, mounted at head center (Widow)
-  // Medium-slow turret - big gun needs time to aim
   megaBeam: {
-    damage: 100,
+    projectile: 'heavyLaserBeam' as const,
+    audioId: 'beam' as const,
     range: 200,
-    cooldown: 0, // Continuous
-    beamDuration: 1000,
-    beamWidth: 12,
-    turretTurnAccel: 100, // Fast acceleration (rad/sec²)
-    turretDrag: 0.75, // Moderate drag → terminal ~3.3 rad/sec
+    cooldown: 0,
+    turretTurnAccel: 100,
+    turretDrag: 0.75,
   },
 
-  // Tarantula force field — push inner, pull outer
+  // Force fields — no projectile, damage applied directly
   forceField: {
-    forceFieldInnerRadius: 40, // No effect inside this
-    forceFieldMiddleRadius: 200, // Push/pull boundary
-    forceFieldOuterRadius: 230, // Pull stops here
+    audioId: 'force-field' as const,
     damage: 1,
     cooldown: 0,
+    forceFieldInnerRadius: 40,
+    forceFieldMiddleRadius: 200,
+    forceFieldOuterRadius: 230,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 0.25,
     forceFieldTransitionTime: 1000,
     pullPower: 300,
   },
-
-  // Mega force field — push inner, pull outer (Widow)
   megaForceField: {
-    forceFieldInnerRadius: 100, // No effect inside this
-    forceFieldMiddleRadius: 130, // Push/pull boundary
-    forceFieldOuterRadius: 300, // Pull stops here
+    audioId: 'force-field' as const,
     damage: 1,
     cooldown: 0,
+    forceFieldInnerRadius: 100,
+    forceFieldMiddleRadius: 130,
+    forceFieldOuterRadius: 300,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
@@ -579,14 +649,11 @@ export const WEAPON_STATS = {
     pullPower: 300,
   },
 
-  // Disruptor - Commander special weapon
   disruptor: {
-    damage: 9999,
+    projectile: 'disruptorBolt' as const,
+    audioId: 'cannon' as const,
     range: 150,
-    cooldown: 0, // No cooldown (energy-limited)
-    projectileSpeed: 350,
-    projectileMass: 20.0,
-    splashRadius: 40,
+    cooldown: 0,
   },
 };
 
@@ -627,7 +694,14 @@ export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 30;
 
 /** Available options for the "Send Updates Per Second" UI control */
 export const SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
-  0.3, 1, 5, 10, 20, 30, 45, 60, 'realtime',
+  1,
+  5,
+  10,
+  20,
+  30,
+  45,
+  60,
+  'realtime',
 ] as const;
 
 // =============================================================================
@@ -682,7 +756,6 @@ export const WORLD_PADDING_PERCENT = 20.0;
  * logarithmic spacing (see graphicsSettings.ts getEffectiveQuality).
  */
 export const GRAPHICS_DETAIL_DEFINITIONS = {
-
   // Leg rendering for widow/daddy/tarantula units
   LEGS: {
     min: 'none',

@@ -7,7 +7,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { BurnMarkSystem } from './BurnMarkSystem';
 import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
-import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive, setCurrentZoom } from './graphicsSettings';
+import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
 
 // Import from helper modules
@@ -18,7 +18,7 @@ import { renderExplosion, renderSprayEffect } from './effects';
 import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawForceFieldUnit, drawCommanderUnit } from './units';
 import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
 import { renderBuilding } from './BuildingRenderer';
-import { renderProjectile } from './ProjectileRenderer';
+import { renderProjectile, renderProjRangeCircles } from './ProjectileRenderer';
 import { renderBuildBar, renderHealthBar } from './UIBars';
 
 // Re-export EntitySource for external use
@@ -59,6 +59,7 @@ export class EntityRenderer {
   // Cached range visibility objects (avoids per-frame allocation)
   private _rangeVisToggle = { see: false, fire: false, release: false, lock: false, fightstop: false, build: false };
   private _rangeVisSelected = { see: true, fire: true, release: true, lock: true, fightstop: false, build: true };
+  private _projRangeVis = { collision: false, splash: false };
   // Rendering mode flags
   private skipTurrets: boolean = false;
   private turretsOnly: boolean = false;
@@ -361,6 +362,15 @@ export class EntityRenderer {
     }
     for (const id of this.beamRandomOffsets.keys()) {
       if (!this._reusableIdSet.has(id)) this.beamRandomOffsets.delete(id);
+    }
+
+    // 6b. Projectile range circles (collision + splash radii)
+    if (anyProjRangeToggleActive()) {
+      this._projRangeVis.collision = getProjRangeToggle('collision');
+      this._projRangeVis.splash = getProjRangeToggle('splash');
+      for (const entity of this.visibleProjectiles) {
+        renderProjRangeCircles(this.graphics, entity, this._projRangeVis);
+      }
     }
 
     // 7. Spray effects

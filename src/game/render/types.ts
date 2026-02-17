@@ -132,6 +132,10 @@ export const COLORS = {
   LOCK_RANGE: 0xaa44ff, // Purple for lock range (lock acquisition)
   FIGHTSTOP_RANGE: 0xff8844, // Orange for fightstop range
   BUILD_RANGE: 0x44ff44, // Green for build range
+
+  // Projectile range circles
+  PROJ_COLLISION_RANGE: 0x44ffff, // Cyan for collision radius
+  PROJ_SPLASH_RANGE: 0xff8844, // Orange for splash radius
 } as const;
 
 // Leg style configuration - re-exported from config.ts for convenience

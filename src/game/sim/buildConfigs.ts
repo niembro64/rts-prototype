@@ -153,7 +153,6 @@ export const DGUN_CONFIG = {
   projectileLifespan: 2000,
   color: 0xff8800,
   splashRadius: 40,
-  splashDamageFalloff: 1, // Full damage at edge (no falloff)
 };
 
 // Helper to get building config

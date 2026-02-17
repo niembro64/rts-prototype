@@ -3,6 +3,7 @@
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
 import type { BeamRandomOffsets, LodLevel } from './types';
+import { COLORS } from './types';
 import { getPlayerColor, getProjectileColor } from './helpers';
 import { getGraphicsConfig } from './graphicsSettings';
 import { magnitude } from '../math';
@@ -145,9 +146,34 @@ export function renderProjectile(
     graphics.fillStyle(0xffffff, 0.8);
     graphics.fillCircle(x, y, radius * 0.4);
 
-    if (config.splashRadius && !projectile.hasExploded) {
-      graphics.lineStyle(1, color, 0.2);
-      graphics.strokeCircle(x, y, config.splashRadius);
-    }
+  }
+}
+
+/**
+ * Render proj range circles (collision radius and/or splash radius) on in-flight projectiles.
+ * Skips beams. Called when any proj range toggle is active.
+ */
+export function renderProjRangeCircles(
+  graphics: Phaser.GameObjects.Graphics,
+  entity: Entity,
+  visibility: { collision: boolean; splash: boolean },
+): void {
+  if (!entity.projectile) return;
+  const proj = entity.projectile;
+  // Skip beams — they don't have collision/splash radii
+  if (proj.projectileType === 'beam') return;
+
+  const { x, y } = entity.transform;
+  const config = proj.config;
+
+  if (visibility.collision) {
+    const radius = config.projectileRadius ?? 5;
+    graphics.lineStyle(1, COLORS.PROJ_COLLISION_RANGE, 0.5);
+    graphics.strokeCircle(x, y, radius);
+  }
+
+  if (visibility.splash && config.splashRadius && !proj.hasExploded) {
+    graphics.lineStyle(1, COLORS.PROJ_SPLASH_RANGE, 0.3);
+    graphics.strokeCircle(x, y, config.splashRadius);
   }
 }

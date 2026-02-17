@@ -1,16 +1,32 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
-import { PLAYER_COLORS, type PlayerId, type WaypointType } from '../game/sim/types';
-import SelectionPanel, { type SelectionInfo, type SelectionActions } from './SelectionPanel.vue';
+import {
+  PLAYER_COLORS,
+  type PlayerId,
+  type WaypointType,
+} from '../game/sim/types';
+import SelectionPanel, {
+  type SelectionInfo,
+  type SelectionActions,
+} from './SelectionPanel.vue';
 import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import CombatStatsModal from './CombatStatsModal.vue';
 import type { NetworkCombatStats } from '../game/network/NetworkTypes';
 import type { StatsSnapshot } from './combatStatsUtils';
-import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
-import { DEFAULT_SNAPSHOT_RATE, SNAPSHOT_RATE_OPTIONS, MAP_SETTINGS, SHOW_LOBBY_ON_STARTUP, type SnapshotRate } from '../config';
+import {
+  networkManager,
+  type NetworkRole,
+} from '../game/network/NetworkManager';
+import {
+  DEFAULT_SNAPSHOT_RATE,
+  SNAPSHOT_RATE_OPTIONS,
+  MAP_SETTINGS,
+  SHOW_LOBBY_ON_STARTUP,
+  type SnapshotRate,
+} from '../config';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
@@ -23,10 +39,13 @@ import {
   setRenderMode,
   getRangeToggle,
   setRangeToggle,
+  getProjRangeToggle,
+  setProjRangeToggle,
   RANGE_TYPES,
   type GraphicsQuality,
   type RenderMode,
   type RangeType,
+  type ProjRangeType,
 } from '../game/render/graphicsSettings';
 import { audioManager } from '../game/audio/AudioManager';
 
@@ -75,7 +94,9 @@ const snapshotRate = ref<SnapshotRate>(DEFAULT_SNAPSHOT_RATE);
 const sendGridInfo = ref(false);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
-const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(getEffectiveQuality());
+const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(
+  getEffectiveQuality(),
+);
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioEnabled = ref(!audioManager.muted);
 const rangeToggles = reactive<Record<RangeType, boolean>>({
@@ -85,6 +106,10 @@ const rangeToggles = reactive<Record<RangeType, boolean>>({
   lock: getRangeToggle('lock'),
   fightstop: getRangeToggle('fightstop'),
   build: getRangeToggle('build'),
+});
+const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
+  collision: getProjRangeToggle('collision'),
+  splash: getProjRangeToggle('splash'),
 });
 
 // FPS and zoom tracking (Phaser's smoothed values)
@@ -189,7 +214,10 @@ function startBackgroundBattle(): void {
       bgScene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
         combatStats.value = stats;
         if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
-        combatStatsHistory.value.push({ timestamp: Date.now() - statsHistoryStartTime, stats });
+        combatStatsHistory.value.push({
+          timestamp: Date.now() - statsHistoryStartTime,
+          stats,
+        });
       };
       clearInterval(checkBgScene);
     }
@@ -217,7 +245,9 @@ function stopBackgroundBattle(): void {
 // Show player toggle only in single-player mode (offline or hosting alone)
 const showPlayerToggle = computed(() => {
   const isSinglePlayer = lobbyPlayers.value.length === 1;
-  const canToggle = networkRole.value === 'offline' || (networkRole.value === 'host' && isSinglePlayer);
+  const canToggle =
+    networkRole.value === 'offline' ||
+    (networkRole.value === 'host' && isSinglePlayer);
   return gameStarted.value && canToggle;
 });
 
@@ -317,11 +347,13 @@ async function handleHost(): Promise<void> {
     localPlayerId.value = 1;
 
     // Add self to player list
-    lobbyPlayers.value = [{
-      playerId: 1,
-      name: 'Red',
-      isHost: true,
-    }];
+    lobbyPlayers.value = [
+      {
+        playerId: 1,
+        name: 'Red',
+        isHost: true,
+      },
+    ];
 
     // Setup network callbacks
     setupNetworkCallbacks();
@@ -404,6 +436,12 @@ function toggleRange(type: RangeType): void {
   rangeToggles[type] = newValue;
 }
 
+function toggleProjRange(type: ProjRangeType): void {
+  const newValue = !projRangeToggles[type];
+  setProjRangeToggle(type, newValue);
+  projRangeToggles[type] = newValue;
+}
+
 function updateFPSStats(): void {
   // Get FPS from whichever game instance is active
   const game = backgroundGameInstance?.game ?? gameInstance?.game;
@@ -452,14 +490,18 @@ function updateFPSStats(): void {
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
     // Check if already in list
-    const existing = lobbyPlayers.value.find(p => p.playerId === player.playerId);
+    const existing = lobbyPlayers.value.find(
+      (p) => p.playerId === player.playerId,
+    );
     if (!existing) {
       lobbyPlayers.value = [...lobbyPlayers.value, player];
     }
   };
 
   networkManager.onPlayerLeft = (playerId: PlayerId) => {
-    lobbyPlayers.value = lobbyPlayers.value.filter(p => p.playerId !== playerId);
+    lobbyPlayers.value = lobbyPlayers.value.filter(
+      (p) => p.playerId !== playerId,
+    );
   };
 
   networkManager.onPlayerAssignment = (playerId: PlayerId) => {
@@ -584,7 +626,10 @@ function setupSceneCallbacks(): void {
       scene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
         combatStats.value = stats;
         if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
-        combatStatsHistory.value.push({ timestamp: Date.now() - statsHistoryStartTime, stats });
+        combatStatsHistory.value.push({
+          timestamp: Date.now() - statsHistoryStartTime,
+          stats,
+        });
       };
 
       clearInterval(checkScene);
@@ -658,7 +703,11 @@ onUnmounted(() => {
 <template>
   <div class="game-wrapper">
     <!-- Background battle container (runs behind lobby) -->
-    <div ref="backgroundContainerRef" class="background-battle-container" v-show="showLobby"></div>
+    <div
+      ref="backgroundContainerRef"
+      class="background-battle-container"
+      v-show="showLobby"
+    ></div>
 
     <!-- Main game container -->
     <div ref="containerRef" class="phaser-container" v-show="!showLobby"></div>
@@ -713,7 +762,7 @@ onUnmounted(() => {
             :class="{ active: snapshotRate === rate }"
             @click="setNetworkUpdateRate(rate)"
           >
-            {{ rate === 'realtime' ? 'RT' : (rate as number) < 5 ? (rate as number).toFixed(1) : (rate as number) }}
+            {{ rate === 'realtime' ? 'RT' : (rate as number) }}
           </button>
         </div>
         <div class="bar-divider"></div>
@@ -756,7 +805,8 @@ onUnmounted(() => {
             class="control-btn"
             :class="{
               active: graphicsQuality === opt.value,
-              'active-level': effectiveQuality === opt.value && graphicsQuality !== opt.value
+              'active-level':
+                effectiveQuality === opt.value && graphicsQuality !== opt.value,
             }"
             @click="changeGraphicsQuality(opt.value)"
           >
@@ -781,7 +831,9 @@ onUnmounted(() => {
           class="control-btn"
           :class="{ active: audioEnabled }"
           @click="setAudioEnabled(!audioEnabled)"
-        >AUDIO</button>
+        >
+          AUDIO
+        </button>
         <div class="bar-divider"></div>
         <span class="control-label">UNIT RANGES:</span>
         <div class="button-group">
@@ -789,32 +841,62 @@ onUnmounted(() => {
             class="control-btn"
             :class="{ active: rangeToggles.see }"
             @click="toggleRange('see')"
-          >SEE</button>
+          >
+            SEE
+          </button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.fire }"
             @click="toggleRange('fire')"
-          >FIRE</button>
+          >
+            FIRE
+          </button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.release }"
             @click="toggleRange('release')"
-          >REL</button>
+          >
+            REL
+          </button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.lock }"
             @click="toggleRange('lock')"
-          >LOCK</button>
+          >
+            LOCK
+          </button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.fightstop }"
             @click="toggleRange('fightstop')"
-          >STOP</button>
+          >
+            STOP
+          </button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.build }"
             @click="toggleRange('build')"
-          >BLD</button>
+          >
+            BLD
+          </button>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">PROJ RANGES:</span>
+        <div class="button-group">
+          <button
+            class="control-btn"
+            :class="{ active: projRangeToggles.collision }"
+            @click="toggleProjRange('collision')"
+          >
+            COL
+          </button>
+          <button
+            class="control-btn"
+            :class="{ active: projRangeToggles.splash }"
+            @click="toggleProjRange('splash')"
+          >
+            SPLASH
+          </button>
         </div>
       </div>
     </div>
@@ -835,7 +917,10 @@ onUnmounted(() => {
           :style="{ borderColor: getPlayerColor(activePlayer) }"
           @click="togglePlayer"
         >
-          <span class="player-indicator" :style="{ backgroundColor: getPlayerColor(activePlayer) }"></span>
+          <span
+            class="player-indicator"
+            :style="{ backgroundColor: getPlayerColor(activePlayer) }"
+          ></span>
           <span class="player-label">{{ getPlayerName(activePlayer) }}</span>
           <span class="toggle-hint">(Click to switch)</span>
         </button>
@@ -859,17 +944,26 @@ onUnmounted(() => {
     />
 
     <!-- Game Over Banner (dismissible, game keeps running) -->
-    <div v-if="gameOverWinner !== null" class="game-over-banner" @click="dismissGameOver">
+    <div
+      v-if="gameOverWinner !== null"
+      class="game-over-banner"
+      @click="dismissGameOver"
+    >
       <div class="game-over-content" @click.stop>
-        <h1 class="winner-text" :style="{ color: getPlayerColor(gameOverWinner) }">
+        <h1
+          class="winner-text"
+          :style="{ color: getPlayerColor(gameOverWinner) }"
+        >
           {{ getPlayerName(gameOverWinner).toUpperCase() }} WINS!
         </h1>
-        <p class="loser-text">
-          All other commanders were destroyed
-        </p>
+        <p class="loser-text">All other commanders were destroyed</p>
         <div class="game-over-actions">
-          <button class="restart-btn" @click="restartGame">Return to Lobby</button>
-          <button class="dismiss-btn" @click="dismissGameOver">Continue Watching</button>
+          <button class="restart-btn" @click="restartGame">
+            Return to Lobby
+          </button>
+          <button class="dismiss-btn" @click="dismissGameOver">
+            Continue Watching
+          </button>
         </div>
       </div>
     </div>

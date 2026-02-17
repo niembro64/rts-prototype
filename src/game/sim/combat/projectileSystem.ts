@@ -402,7 +402,7 @@ export function checkProjectileCollisions(
           centerX: projEntity.transform.x,
           centerY: projEntity.transform.y,
           radius: config.splashRadius,
-          falloff: config.splashDamageFalloff ?? 0.5,
+          falloff: 1,
         });
         proj.hasExploded = true;
 
@@ -710,7 +710,7 @@ export function checkProjectileCollisions(
           centerX: projEntity.transform.x,
           centerY: projEntity.transform.y,
           radius: config.splashRadius,
-          falloff: config.splashDamageFalloff ?? 0.5,
+          falloff: 1,
         });
         proj.hasExploded = true;
 

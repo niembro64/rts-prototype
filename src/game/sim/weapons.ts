@@ -1,182 +1,152 @@
 import type { WeaponConfig } from './types';
-import { WEAPON_STATS } from '../../config';
+import { WEAPON_STATS, PROJECTILE_STATS } from '../../config';
 
+type ProjectileKey = keyof typeof PROJECTILE_STATS;
+
+/** Map PROJECTILE_STATS fields → WeaponConfig fields (renamed where needed) */
+function getProjectileConfig(key: ProjectileKey) {
+  const p = PROJECTILE_STATS[key];
+  return {
+    damage: p.damage,
+    ...('speed' in p && { projectileSpeed: p.speed }),
+    ...('mass' in p && { projectileMass: p.mass }),
+    ...('radius' in p && { projectileRadius: p.radius }),
+    ...('lifespan' in p && { projectileLifespan: p.lifespan }),
+    ...('splashRadius' in p && { splashRadius: p.splashRadius }),
+    ...('piercing' in p && { piercing: p.piercing }),
+    ...('beamDuration' in p && { beamDuration: p.beamDuration }),
+    ...('beamWidth' in p && { beamWidth: p.beamWidth }),
+  };
+}
 
 // Union type of all registered weapon config keys
 export type WeaponId = 'gatling' | 'pulse' | 'beam' | 'shotgun' | 'mortar' | 'railgun'
   | 'cannon' | 'disruptor' | 'forceField' | 'megaBeam' | 'megaForceField';
 
-// Weapon configurations using values from config.ts
-// Note: color is no longer used - colors are team-based in renderer
+const ws = WEAPON_STATS;
+
+// Weapon configurations — merges PROJECTILE_STATS + WEAPON_STATS into flat WeaponConfig
 export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
-  // Gatling - rapid fire small projectiles (Jackal's weapon)
   gatling: {
     id: 'gatling',
-    audioId: 'minigun',
-    damage: WEAPON_STATS.gatling.damage,
-    range: WEAPON_STATS.gatling.range,
-    cooldown: WEAPON_STATS.gatling.cooldown,
-    projectileSpeed: WEAPON_STATS.gatling.projectileSpeed,
-    projectileMass: WEAPON_STATS.gatling.projectileMass,
-    projectileRadius: 2,
-    projectileLifespan: 400,
-    color: 0xffffff, // Not used - team colors applied
+    ...getProjectileConfig(ws.gatling.projectile),
+    audioId: ws.gatling.audioId,
+    range: ws.gatling.range,
+    cooldown: ws.gatling.cooldown,
+    color: 0xffffff,
   },
 
-  // Pulse - fires 3 shots in quick succession (Lynx's weapon)
   pulse: {
     id: 'pulse',
-    audioId: 'burst-rifle',
-    damage: WEAPON_STATS.pulse.damage,
-    range: WEAPON_STATS.pulse.range,
-    cooldown: WEAPON_STATS.pulse.cooldown,
-    projectileSpeed: WEAPON_STATS.pulse.projectileSpeed,
-    projectileMass: WEAPON_STATS.pulse.projectileMass,
-    projectileRadius: 3,
-    projectileLifespan: 500,
-    burstCount: WEAPON_STATS.pulse.burstCount,
-    burstDelay: WEAPON_STATS.pulse.burstDelay,
+    ...getProjectileConfig(ws.pulse.projectile),
+    audioId: ws.pulse.audioId,
+    range: ws.pulse.range,
+    cooldown: ws.pulse.cooldown,
+    burstCount: ws.pulse.burstCount,
+    burstDelay: ws.pulse.burstDelay,
     color: 0xffffff,
   },
 
-  // Beam - continuous beam, deals damage while on target (Daddy's weapon)
   beam: {
     id: 'beam',
-    audioId: 'beam',
-    damage: WEAPON_STATS.beam.damage,
-    range: WEAPON_STATS.beam.range,
-    cooldown: WEAPON_STATS.beam.cooldown,
-    beamDuration: WEAPON_STATS.beam.beamDuration,
-    beamWidth: WEAPON_STATS.beam.beamWidth,
-    turretTurnAccel: WEAPON_STATS.beam.turretTurnAccel,
-    turretDrag: WEAPON_STATS.beam.turretDrag,
+    ...getProjectileConfig(ws.beam.projectile),
+    audioId: ws.beam.audioId,
+    range: ws.beam.range,
+    cooldown: ws.beam.cooldown,
+    turretTurnAccel: ws.beam.turretTurnAccel,
+    turretDrag: ws.beam.turretDrag,
     color: 0xffffff,
   },
 
-  // Shotgun - spread pellets, multiple pellets (Badger's weapon)
   shotgun: {
     id: 'shotgun',
-    audioId: 'shotgun',
-    damage: WEAPON_STATS.shotgun.damage,
-    range: WEAPON_STATS.shotgun.range,
-    cooldown: WEAPON_STATS.shotgun.cooldown,
-    projectileSpeed: WEAPON_STATS.shotgun.projectileSpeed,
-    projectileMass: WEAPON_STATS.shotgun.projectileMass,
-    projectileRadius: 4,
-    projectileLifespan: 300,
-    pelletCount: WEAPON_STATS.shotgun.pelletCount,
-    spreadAngle: WEAPON_STATS.shotgun.spreadAngle,
+    ...getProjectileConfig(ws.shotgun.projectile),
+    audioId: ws.shotgun.audioId,
+    range: ws.shotgun.range,
+    cooldown: ws.shotgun.cooldown,
+    pelletCount: ws.shotgun.pelletCount,
+    spreadAngle: ws.shotgun.spreadAngle,
     color: 0xffffff,
   },
 
-  // Mortar - splash damage artillery (Mongoose's weapon)
   mortar: {
     id: 'mortar',
-    audioId: 'grenade',
-    damage: WEAPON_STATS.mortar.damage,
-    range: WEAPON_STATS.mortar.range,
-    cooldown: WEAPON_STATS.mortar.cooldown,
-    projectileSpeed: WEAPON_STATS.mortar.projectileSpeed,
-    projectileMass: WEAPON_STATS.mortar.projectileMass,
-    projectileRadius: 7,
-    projectileLifespan: 2000,
-    splashRadius: WEAPON_STATS.mortar.splashRadius,
-    splashDamageFalloff: 0.4,
+    ...getProjectileConfig(ws.mortar.projectile),
+    audioId: ws.mortar.audioId,
+    range: ws.mortar.range,
+    cooldown: ws.mortar.cooldown,
     color: 0xffffff,
   },
 
-  // Railgun - instant hitscan, pierces targets (Recluse's weapon)
   railgun: {
     id: 'railgun',
-    audioId: 'railgun',
-    damage: WEAPON_STATS.railgun.damage,
-    range: WEAPON_STATS.railgun.range,
-    cooldown: WEAPON_STATS.railgun.cooldown,
-    beamDuration: WEAPON_STATS.railgun.beamDuration,
-    beamWidth: WEAPON_STATS.railgun.beamWidth,
+    ...getProjectileConfig(ws.railgun.projectile),
+    audioId: ws.railgun.audioId,
+    range: ws.railgun.range,
+    cooldown: ws.railgun.cooldown,
     color: 0xffffff,
-    piercing: true,
   },
 
-  // Cannon - slow, heavy projectile (Mammoth's weapon)
   cannon: {
     id: 'cannon',
-    audioId: 'cannon',
-    damage: WEAPON_STATS.cannon.damage,
-    range: WEAPON_STATS.cannon.range,
-    cooldown: WEAPON_STATS.cannon.cooldown,
-    projectileSpeed: WEAPON_STATS.cannon.projectileSpeed,
-    projectileMass: WEAPON_STATS.cannon.projectileMass,
-    projectileRadius: 10,
-    projectileLifespan: 1800,
+    ...getProjectileConfig(ws.cannon.projectile),
+    audioId: ws.cannon.audioId,
+    range: ws.cannon.range,
+    cooldown: ws.cannon.cooldown,
     color: 0xffffff,
   },
 
-  // Disruptor - Commander's special weapon, destroys everything
   disruptor: {
     id: 'disruptor',
-    audioId: 'cannon',
-    damage: WEAPON_STATS.disruptor.damage,
-    range: WEAPON_STATS.disruptor.range,
-    cooldown: 0,
-    projectileSpeed: WEAPON_STATS.disruptor.projectileSpeed,
-    projectileMass: WEAPON_STATS.disruptor.projectileMass,
-    projectileRadius: 25,
-    projectileLifespan: 2000,
+    ...getProjectileConfig(ws.disruptor.projectile),
+    audioId: ws.disruptor.audioId,
+    range: ws.disruptor.range,
+    cooldown: ws.disruptor.cooldown,
     color: 0xff8800,
-    splashRadius: WEAPON_STATS.disruptor.splashRadius,
-    splashDamageFalloff: 1, // Full damage at edge (no falloff)
-    piercing: true,
   },
 
-  // Force field - Dual push/pull zones (Tarantula)
-  // Inner zone (innerRadius→middleRadius) pushes outward
-  // Outer zone (middleRadius→outerRadius) pulls inward
+  // Force fields — no projectile, all fields from WEAPON_STATS directly
   forceField: {
     id: 'forceField',
-    audioId: 'force-field',
-    damage: WEAPON_STATS.forceField.damage,
-    range: WEAPON_STATS.forceField.forceFieldOuterRadius,
-    forceFieldInnerRange: WEAPON_STATS.forceField.forceFieldInnerRadius,
-    forceFieldMiddleRadius: WEAPON_STATS.forceField.forceFieldMiddleRadius,
-    cooldown: WEAPON_STATS.forceField.cooldown,
-    turretTurnAccel: WEAPON_STATS.forceField.turretTurnAccel,
-    turretDrag: WEAPON_STATS.forceField.turretDrag,
-    forceFieldAngle: WEAPON_STATS.forceField.forceFieldAngle,
-    forceFieldTransitionTime: WEAPON_STATS.forceField.forceFieldTransitionTime,
-    pullPower: WEAPON_STATS.forceField.pullPower,
+    audioId: ws.forceField.audioId,
+    damage: ws.forceField.damage,
+    range: ws.forceField.forceFieldOuterRadius,
+    forceFieldInnerRange: ws.forceField.forceFieldInnerRadius,
+    forceFieldMiddleRadius: ws.forceField.forceFieldMiddleRadius,
+    cooldown: ws.forceField.cooldown,
+    turretTurnAccel: ws.forceField.turretTurnAccel,
+    turretDrag: ws.forceField.turretDrag,
+    forceFieldAngle: ws.forceField.forceFieldAngle,
+    forceFieldTransitionTime: ws.forceField.forceFieldTransitionTime,
+    pullPower: ws.forceField.pullPower,
     isForceField: true,
     color: 0xffffff,
   },
 
-  // Mega beam - heavy beam, mounted at head center (Widow)
   megaBeam: {
     id: 'megaBeam',
-    audioId: 'beam',
-    damage: WEAPON_STATS.megaBeam.damage,
-    range: WEAPON_STATS.megaBeam.range,
-    cooldown: WEAPON_STATS.megaBeam.cooldown,
-    beamDuration: WEAPON_STATS.megaBeam.beamDuration,
-    beamWidth: WEAPON_STATS.megaBeam.beamWidth,
-    turretTurnAccel: WEAPON_STATS.megaBeam.turretTurnAccel,
-    turretDrag: WEAPON_STATS.megaBeam.turretDrag,
+    ...getProjectileConfig(ws.megaBeam.projectile),
+    audioId: ws.megaBeam.audioId,
+    range: ws.megaBeam.range,
+    cooldown: ws.megaBeam.cooldown,
+    turretTurnAccel: ws.megaBeam.turretTurnAccel,
+    turretDrag: ws.megaBeam.turretDrag,
     color: 0xffffff,
   },
 
-  // Mega force field - Dual push/pull zones (Widow)
   megaForceField: {
     id: 'megaForceField',
-    audioId: 'force-field',
-    damage: WEAPON_STATS.megaForceField.damage,
-    range: WEAPON_STATS.megaForceField.forceFieldOuterRadius,
-    forceFieldInnerRange: WEAPON_STATS.megaForceField.forceFieldInnerRadius,
-    forceFieldMiddleRadius: WEAPON_STATS.megaForceField.forceFieldMiddleRadius,
-    cooldown: WEAPON_STATS.megaForceField.cooldown,
-    turretTurnAccel: WEAPON_STATS.megaForceField.turretTurnAccel,
-    turretDrag: WEAPON_STATS.megaForceField.turretDrag,
-    forceFieldAngle: WEAPON_STATS.megaForceField.forceFieldAngle,
-    forceFieldTransitionTime: WEAPON_STATS.megaForceField.forceFieldTransitionTime,
-    pullPower: WEAPON_STATS.megaForceField.pullPower,
+    audioId: ws.megaForceField.audioId,
+    damage: ws.megaForceField.damage,
+    range: ws.megaForceField.forceFieldOuterRadius,
+    forceFieldInnerRange: ws.megaForceField.forceFieldInnerRadius,
+    forceFieldMiddleRadius: ws.megaForceField.forceFieldMiddleRadius,
+    cooldown: ws.megaForceField.cooldown,
+    turretTurnAccel: ws.megaForceField.turretTurnAccel,
+    turretDrag: ws.megaForceField.turretDrag,
+    forceFieldAngle: ws.megaForceField.forceFieldAngle,
+    forceFieldTransitionTime: ws.megaForceField.forceFieldTransitionTime,
+    pullPower: ws.megaForceField.pullPower,
     isForceField: true,
     color: 0xffffff,
   },
