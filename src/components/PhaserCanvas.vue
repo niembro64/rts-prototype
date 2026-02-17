@@ -10,7 +10,7 @@ import CombatStatsModal from './CombatStatsModal.vue';
 import type { NetworkCombatStats } from '../game/network/NetworkTypes';
 import type { StatsSnapshot } from './combatStatsUtils';
 import { networkManager, type NetworkRole } from '../game/network/NetworkManager';
-import { DEFAULT_NETWORK_UPDATES_PER_SECOND, NETWORK_UPDATE_RATE_OPTIONS, MAP_SETTINGS, SHOW_LOBBY_ON_STARTUP } from '../config';
+import { DEFAULT_SNAPSHOT_RATE, SNAPSHOT_RATE_OPTIONS, MAP_SETTINGS, SHOW_LOBBY_ON_STARTUP, type SnapshotRate } from '../config';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
@@ -30,7 +30,7 @@ import {
 } from '../game/render/graphicsSettings';
 import { audioManager } from '../game/audio/AudioManager';
 
-const UPDATE_RATE_OPTIONS = NETWORK_UPDATE_RATE_OPTIONS;
+const UPDATE_RATE_OPTIONS = SNAPSHOT_RATE_OPTIONS;
 
 // Graphics quality options - Auto is separate from quality levels
 const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
@@ -71,7 +71,7 @@ const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
-const networkUpdatesPerSecond = ref(DEFAULT_NETWORK_UPDATES_PER_SECOND);
+const snapshotRate = ref<SnapshotRate>(DEFAULT_SNAPSHOT_RATE);
 const sendGridInfo = ref(false);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
@@ -162,10 +162,10 @@ function startBackgroundBattle(): void {
   backgroundServer = new GameServer({
     playerIds: [1, 2, 3, 4] as PlayerId[],
     backgroundMode: true,
-    snapshotRate: DEFAULT_NETWORK_UPDATES_PER_SECOND,
   });
 
   const bgConnection = new LocalGameConnection(backgroundServer);
+  backgroundServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
   backgroundServer.startManual();
   hasServer.value = true;
 
@@ -493,10 +493,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
     if (networkRole.value === 'host' || networkRole.value === 'offline') {
       // Create GameServer for host/offline
-      currentServer = new GameServer({
-        playerIds,
-        snapshotRate: networkUpdatesPerSecond.value,
-      });
+      currentServer = new GameServer({ playerIds });
 
       // Create LocalGameConnection for the host client
       const localConnection = new LocalGameConnection(currentServer);
@@ -514,7 +511,8 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
         };
       }
 
-      // Start the server in manual mode (Phaser update() drives ticks)
+      // Configure snapshot rate and start in manual mode (Phaser update() drives ticks)
+      currentServer.setSnapshotRate(snapshotRate.value);
       currentServer.startManual();
       hasServer.value = true;
     } else {
@@ -594,8 +592,8 @@ function setupSceneCallbacks(): void {
   }, 100);
 }
 
-function setNetworkUpdateRate(rate: number): void {
-  networkUpdatesPerSecond.value = rate;
+function setNetworkUpdateRate(rate: SnapshotRate): void {
+  snapshotRate.value = rate;
   // Update whichever server is active
   if (currentServer) {
     currentServer.setSnapshotRate(rate);
@@ -698,16 +696,16 @@ onUnmounted(() => {
       <div v-if="showServerControls" class="control-bar server-bar">
         <span class="bar-label server-label">HOST SERVER</span>
         <div class="bar-divider"></div>
-        <span class="control-label">SEND UPDATES/SEC:</span>
+        <span class="control-label">SNAPSHOTS/SEC:</span>
         <div class="button-group">
           <button
             v-for="rate in UPDATE_RATE_OPTIONS"
-            :key="rate"
+            :key="String(rate)"
             class="control-btn"
-            :class="{ active: networkUpdatesPerSecond === rate }"
+            :class="{ active: snapshotRate === rate }"
             @click="setNetworkUpdateRate(rate)"
           >
-            {{ rate.toFixed(1) }}
+            {{ rate === 'realtime' ? 'RT' : (rate as number).toFixed(1) }}
           </button>
         </div>
         <div class="bar-divider"></div>

@@ -587,16 +587,17 @@ export const SHOW_LOBBY_ON_STARTUP = false;
 // NETWORKING
 // =============================================================================
 
+export type SnapshotRate = number | 'realtime';
+
 /**
- * Default updates per second for network state broadcasts.
- * Can be changed by host during gameplay via UI.
- * Options: 1, 5, 10, 30
+ * Default snapshot rate. 'realtime' emits inline every frame (~60Hz).
+ * Numeric values use a setInterval at the given Hz.
  */
-export const DEFAULT_NETWORK_UPDATES_PER_SECOND = 30;
+export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 'realtime';
 
 /** Available options for the "Send Updates Per Second" UI control */
-export const NETWORK_UPDATE_RATE_OPTIONS = [
-  0.3, 1, 5, 10, 20, 30, 45, 60,
+export const SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
+  0.3, 1, 5, 10, 20, 30, 45, 60, 'realtime',
 ] as const;
 
 // =============================================================================

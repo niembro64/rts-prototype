@@ -56,6 +56,9 @@ export class GameServer {
   private lastTickTime: number = 0;
   private snapshotRateHz: number;
 
+  // When true, caller drives emitSnapshot() inline (no interval)
+  inlineSnapshots: boolean = true;
+
   // Background mode
   private backgroundSpawnTimer: number = 0;
   private readonly BACKGROUND_SPAWN_INTERVAL: number = 500;
@@ -312,10 +315,17 @@ export class GameServer {
     this.gameOverListeners.push(callback);
   }
 
-  // Change snapshot emission rate
-  setSnapshotRate(hz: number): void {
-    this.snapshotRateHz = hz;
-    if (this.snapshotInterval) {
+  // Change snapshot emission rate, or switch to real-time (inline) mode
+  setSnapshotRate(hz: number | 'realtime'): void {
+    if (hz === 'realtime') {
+      this.inlineSnapshots = true;
+      if (this.snapshotInterval) {
+        clearInterval(this.snapshotInterval);
+        this.snapshotInterval = null;
+      }
+    } else {
+      this.inlineSnapshots = false;
+      this.snapshotRateHz = hz;
       this.startSnapshotBroadcast();
     }
   }
