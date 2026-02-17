@@ -14,7 +14,7 @@ export function getPlayerColor(playerId: number | undefined): number {
 /**
  * Get light variant of a color (blend toward white)
  */
-export function getColorLight(baseColor: number): number {
+export function getPlayerColorLight(baseColor: number): number {
   const r = (baseColor >> 16) & 0xff;
   const g = (baseColor >> 8) & 0xff;
   const b = baseColor & 0xff;
@@ -29,7 +29,7 @@ export function getColorLight(baseColor: number): number {
 /**
  * Get dark variant of a color (blend toward black)
  */
-export function getColorDark(baseColor: number): number {
+export function getPlayerColorDark(baseColor: number): number {
   const r = (baseColor >> 16) & 0xff;
   const g = (baseColor >> 8) & 0xff;
   const b = baseColor & 0xff;
@@ -70,7 +70,7 @@ export function tintColor(color: number, amount: number): number {
  * Get projectile color (bright version of base color for visibility)
  */
 export function getProjectileColor(baseColor: number): number {
-  return getColorLight(baseColor);
+  return getPlayerColorLight(baseColor);
 }
 
 /**
@@ -85,8 +85,8 @@ export function createColorPalette(playerId: number | undefined): ColorPalette {
   const base = getPlayerColor(playerId);
   cached = {
     base,
-    light: getColorLight(base),
-    dark: getColorDark(base),
+    light: getPlayerColorLight(base),
+    dark: getPlayerColorDark(base),
   };
   _paletteCache.set(playerId, cached);
   return cached;

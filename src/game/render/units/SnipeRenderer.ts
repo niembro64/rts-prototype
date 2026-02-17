@@ -70,8 +70,10 @@ export function drawSnipeUnit(
       const endX = x + Math.cos(turretRot) * barrelLen;
       const endY = y + Math.sin(turretRot) * barrelLen;
 
-      graphics.fillStyle(COLORS.WHITE, 1);
-      graphics.fillCircle(x, y, r * 0.06);
+      if (ctx.lod === 'high') {
+        graphics.fillStyle(COLORS.WHITE, 1);
+        graphics.fillCircle(x, y, r * 0.06);
+      }
       graphics.lineStyle(1.5, COLORS.WHITE, 1);
       graphics.lineBetween(x, y, endX, endY);
     }

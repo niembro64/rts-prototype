@@ -141,26 +141,31 @@ export function drawCommanderUnit(
       const mountX = x + cos * r * 0.3;
       const mountY = y + sin * r * 0.3;
 
-      // Beam housing
-      graphics.fillStyle(dark, 1);
-      graphics.fillCircle(mountX, mountY, r * 0.2);
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(mountX, mountY, r * 0.15);
-
-      // Beam barrel (long, imposing)
       const beamLen = r * 0.7;
       const beamEndX = mountX + turretCos * beamLen;
       const beamEndY = mountY + turretSin * beamLen;
 
-      // Barrel housing
-      graphics.lineStyle(6, dark, 1);
-      graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
-      graphics.lineStyle(4, light, 1);
-      graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
+      if (ctx.lod === 'high') {
+        // Beam housing
+        graphics.fillStyle(dark, 1);
+        graphics.fillCircle(mountX, mountY, r * 0.2);
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(mountX, mountY, r * 0.15);
 
-      // Emitter tip
-      graphics.fillStyle(COLORS.WHITE, 1);
-      graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
+        // Dual-layer barrel
+        graphics.lineStyle(6, dark, 1);
+        graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
+        graphics.lineStyle(4, light, 1);
+        graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
+
+        // Emitter tip
+        graphics.fillStyle(COLORS.WHITE, 1);
+        graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
+      } else {
+        // Low: simple white bar
+        graphics.lineStyle(4, COLORS.WHITE, 1);
+        graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
+      }
     }
   }
 }

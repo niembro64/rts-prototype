@@ -91,16 +91,16 @@ export function drawBeamUnit(
     const weapons = entity.weapons ?? [];
     for (const weapon of weapons) {
       const turretRot = weapon.turretRotation;
-
-      // Beam emitter at center of hexagon
-      // Emitter base (glowing orb)
-      graphics.fillStyle(COLORS.WHITE, 1);
-      graphics.fillCircle(x, y, r * 0.12);
-
-      // Beam barrel
       const beamLen = r * 0.6;
       const beamEndX = x + Math.cos(turretRot) * beamLen;
       const beamEndY = y + Math.sin(turretRot) * beamLen;
+
+      if (ctx.lod === 'high') {
+        // Emitter base (glowing orb)
+        graphics.fillStyle(COLORS.WHITE, 1);
+        graphics.fillCircle(x, y, r * 0.12);
+      }
+
       graphics.lineStyle(3.5, COLORS.WHITE, 1);
       graphics.lineBetween(x, y, beamEndX, beamEndY);
     }

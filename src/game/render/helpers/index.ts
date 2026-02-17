@@ -2,8 +2,8 @@
 
 export {
   getPlayerColor,
-  getColorLight,
-  getColorDark,
+  getPlayerColorLight as getColorLight,
+  getPlayerColorDark as getColorDark,
   tintColor,
   getProjectileColor,
   createColorPalette,

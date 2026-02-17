@@ -353,8 +353,10 @@ export class EntityRenderer {
     }
     this.turretsOnly = false;
 
-    // 6. Projectiles (clean up stale beam offsets inline)
-    const projectileLod: LodLevel = this.cameraZoom < 0.3 ? 'min' : this.cameraZoom < 0.8 ? 'low' : 'high';
+    // 6. Projectiles (clean up stale beam offsets inline, cap LOD by quality)
+    const projQuality = getEffectiveQuality();
+    const zoomProjLod: LodLevel = this.cameraZoom < 0.3 ? 'min' : this.cameraZoom < 0.8 ? 'low' : 'high';
+    const projectileLod: LodLevel = projQuality === 'min' ? 'min' : projQuality === 'low' ? (zoomProjLod === 'high' ? 'low' : zoomProjLod) : zoomProjLod;
     this._reusableIdSet.clear();
     for (const entity of this.visibleProjectiles) {
       this._reusableIdSet.add(entity.id);
@@ -399,15 +401,20 @@ export class EntityRenderer {
     const { collisionRadius: radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
 
-    // LOD: compute screen-space radius for detail level
+    // LOD: compute screen-space radius for detail level, capped by graphics quality
     const screenRadius = radius * this.cameraZoom;
     if (screenRadius < 2) return; // sub-pixel skip
-    const lod: LodLevel = getEffectiveQuality() === 'min' ? 'min'
-      : screenRadius < 6 ? 'min' : screenRadius < 12 ? 'low' : 'high';
+    const quality = getEffectiveQuality();
+    const zoomLod: LodLevel = screenRadius < 6 ? 'min' : screenRadius < 12 ? 'low' : 'high';
+    const lod: LodLevel = quality === 'min' ? 'min' : quality === 'low' ? (zoomLod === 'high' ? 'low' : zoomLod) : zoomLod;
 
     // Get unit type for renderer selection
     const unitType = unit.unitType ?? 'jackal';
-    const palette = createColorPalette(ownership?.playerId);
+    const fullPalette = createColorPalette(ownership?.playerId);
+    // At low/min: use only the base player color, no light/dark variants
+    const palette = (lod === 'min' || lod === 'low')
+      ? { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base }
+      : fullPalette;
 
     // 'min': colored dot — skip all unit rendering
     if (lod === 'min') {
