@@ -506,7 +506,9 @@ export const PROJECTILE_STATS = {
     mass: 0.3,
     radius: 2,
     lifespan: 400,
-    splashRadius: 5,
+    primaryDamageRadius: 5,
+    secondaryDamageRadius: 10,
+    splashOnExpiry: false,
   },
   pulseBolt: {
     damage: 6,
@@ -514,7 +516,9 @@ export const PROJECTILE_STATS = {
     mass: 1.0,
     radius: 3,
     lifespan: 500,
-    splashRadius: 8,
+    primaryDamageRadius: 8,
+    secondaryDamageRadius: 15,
+    splashOnExpiry: false,
   },
   buckshot: {
     damage: 5,
@@ -522,7 +526,9 @@ export const PROJECTILE_STATS = {
     mass: 4,
     radius: 4,
     lifespan: 300,
-    splashRadius: 10,
+    primaryDamageRadius: 10,
+    secondaryDamageRadius: 18,
+    splashOnExpiry: false,
   },
   mortarShell: {
     damage: 80,
@@ -530,7 +536,9 @@ export const PROJECTILE_STATS = {
     mass: 2.0,
     radius: 7,
     lifespan: 2000,
-    splashRadius: 70,
+    primaryDamageRadius: 70,
+    secondaryDamageRadius: 110,
+    splashOnExpiry: true,
   },
   cannonShell: {
     damage: 260,
@@ -538,23 +546,30 @@ export const PROJECTILE_STATS = {
     mass: 3.0,
     radius: 10,
     lifespan: 1800,
-    splashRadius: 25,
+    primaryDamageRadius: 25,
+    secondaryDamageRadius: 45,
+    splashOnExpiry: true,
   },
   railBeam: {
     damage: 10,
     beamDuration: 100,
     beamWidth: 1,
+    primaryDamageRadius: 8,
+    secondaryDamageRadius: 15,
+    splashOnExpiry: false,
     piercing: true as const,
   },
-  laserBeam: { damage: 85, beamDuration: 1000, beamWidth: 4 },
-  heavyLaserBeam: { damage: 100, beamDuration: 1000, beamWidth: 12 },
+  laserBeam: { damage: 85, beamDuration: 1000, beamWidth: 4, primaryDamageRadius: 14, secondaryDamageRadius: 25, splashOnExpiry: false },
+  heavyLaserBeam: { damage: 100, beamDuration: 1000, beamWidth: 12, primaryDamageRadius: 30, secondaryDamageRadius: 50, splashOnExpiry: false },
   disruptorBolt: {
     damage: 9999,
     speed: 350,
     mass: 20.0,
     radius: 25,
     lifespan: 2000,
-    splashRadius: 40,
+    primaryDamageRadius: 40,
+    secondaryDamageRadius: 70,
+    splashOnExpiry: true,
     piercing: true as const,
   },
 };
@@ -710,6 +725,16 @@ export const SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
 
 /** Enable or disable the continuous laser beam sound effect */
 export const LASER_SOUND_ENABLED = false;
+
+// =============================================================================
+// UI
+// =============================================================================
+
+/** Maximum number of combat stats snapshots to retain (~10Hz → 600 = ~1 minute) */
+export const COMBAT_STATS_HISTORY_MAX = 200;
+
+/** Whether the Combat Statistics modal is visible on page load */
+export const COMBAT_STATS_VISIBLE_ON_LOAD = false;
 
 // =============================================================================
 // CAMERA & ZOOM

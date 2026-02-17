@@ -82,8 +82,8 @@ export function getWeaponValue(config: WeaponConfig): number {
   let aoeFactor = 1.0;
   if (isForceField) {
     aoeFactor = 2.0; // Hits all enemies in cone continuously
-  } else if (config.splashRadius !== undefined && config.splashRadius > 0) {
-    aoeFactor = 1 + (config.splashRadius / 100) * 0.8;
+  } else if (config.primaryDamageRadius !== undefined && config.primaryDamageRadius > 0) {
+    aoeFactor = 1 + (config.primaryDamageRadius / 100) * 0.8;
   } else if (config.piercing) {
     aoeFactor = 1.3;
   }

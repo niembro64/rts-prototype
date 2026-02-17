@@ -10,21 +10,22 @@ import {
   EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
   EXPLOSION_BASE_MOMENTUM,
 } from '../../../config';
+import { WEAPON_CONFIGS } from '../../sim/weapons';
 import { magnitude } from '../../math';
 
-// Get explosion radius based on weapon type
+// Get explosion radius based on weapon type (uses primaryDamageRadius from config)
 export function getExplosionRadius(weaponId: string): number {
-  const weaponSizes: Record<string, number> = {
-    gatling: 6,
-    pulse: 7,
-    beam: 5,
-    shotgun: 10,
-    mortar: 18,
-    railgun: 8,
-    cannon: 15,
-    disruptor: 30,
-  };
-  return weaponSizes[weaponId] ?? 8;
+  const config = WEAPON_CONFIGS[weaponId as keyof typeof WEAPON_CONFIGS];
+  if (config?.primaryDamageRadius) {
+    return config.primaryDamageRadius as number;
+  }
+  return 8; // fallback
+}
+
+// Get secondary explosion radius based on weapon type
+function getSecondaryExplosionRadius(weaponId: string): number | undefined {
+  const config = WEAPON_CONFIGS[weaponId as keyof typeof WEAPON_CONFIGS];
+  return config?.secondaryDamageRadius as number | undefined;
 }
 
 // Handle audio events from simulation (or network)
@@ -38,8 +39,13 @@ export function handleAudioEvent(
     // Add impact explosion at hit/termination location
     // Size based on weapon type (larger for heavy weapons)
     const explosionRadius = getExplosionRadius(event.weaponId);
+    const secondaryRadius = getSecondaryExplosionRadius(event.weaponId);
     const explosionColor = 0xff8844; // Orange-ish for impacts
-    entityRenderer.addExplosion(event.x, event.y, explosionRadius, explosionColor, 'impact');
+    entityRenderer.addExplosion(
+      event.x, event.y, explosionRadius, explosionColor, 'impact',
+      undefined, undefined, undefined, undefined, undefined, undefined,
+      explosionRadius, secondaryRadius,
+    );
   }
 
   // Handle death explosions (visual) - uses death context from event

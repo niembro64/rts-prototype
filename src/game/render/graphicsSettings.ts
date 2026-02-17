@@ -95,8 +95,8 @@ const PROJ_RANGE_TOGGLE_STORAGE_PREFIX = 'rts-proj-range-';
 export type RangeType = 'see' | 'fire' | 'release' | 'lock' | 'fightstop' | 'build';
 export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'fightstop', 'build'];
 
-export type ProjRangeType = 'collision' | 'splash';
-export const PROJ_RANGE_TYPES: ProjRangeType[] = ['collision', 'splash'];
+export type ProjRangeType = 'collision' | 'primary' | 'secondary';
+export const PROJ_RANGE_TYPES: ProjRangeType[] = ['collision', 'primary', 'secondary'];
 
 // Current settings
 // Default to 'low' for performance - 'high' and 'max' explosion rendering is extremely expensive
@@ -112,7 +112,8 @@ const currentRangeToggles: Record<RangeType, boolean> = {
 };
 const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
   collision: false,
-  splash: false,
+  primary: false,
+  secondary: false,
 };
 let currentZoom: number = 1.0; // Updated by renderer
 

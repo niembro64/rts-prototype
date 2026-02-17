@@ -59,7 +59,7 @@ export class EntityRenderer {
   // Cached range visibility objects (avoids per-frame allocation)
   private _rangeVisToggle = { see: false, fire: false, release: false, lock: false, fightstop: false, build: false };
   private _rangeVisSelected = { see: true, fire: true, release: true, lock: true, fightstop: false, build: true };
-  private _projRangeVis = { collision: false, splash: false };
+  private _projRangeVis = { collision: false, primary: false, secondary: false };
   // Rendering mode flags
   private skipTurrets: boolean = false;
   private turretsOnly: boolean = false;
@@ -151,7 +151,8 @@ export class EntityRenderer {
     x: number, y: number, radius: number, color: number, type: 'impact' | 'death',
     velocityX?: number, velocityY?: number,
     penetrationX?: number, penetrationY?: number,
-    attackerX?: number, attackerY?: number
+    attackerX?: number, attackerY?: number,
+    primaryRadius?: number, secondaryRadius?: number,
   ): void {
     const baseRadius = 8;
     const baseLifetime = type === 'death' ? 600 : 150;
@@ -172,6 +173,7 @@ export class EntityRenderer {
       penetrationX, penetrationY, penetrationMag,
       attackerX, attackerY, attackerMag,
       combinedX, combinedY, combinedMag,
+      primaryRadius, secondaryRadius,
     });
   }
 
@@ -369,7 +371,8 @@ export class EntityRenderer {
     // 6b. Projectile range circles (collision + splash radii)
     if (anyProjRangeToggleActive()) {
       this._projRangeVis.collision = getProjRangeToggle('collision');
-      this._projRangeVis.splash = getProjRangeToggle('splash');
+      this._projRangeVis.primary = getProjRangeToggle('primary');
+      this._projRangeVis.secondary = getProjRangeToggle('secondary');
       for (const entity of this.visibleProjectiles) {
         renderProjRangeCircles(this.graphics, entity, this._projRangeVis);
       }

@@ -107,7 +107,9 @@ export interface WeaponConfig {
   spreadAngle?: number;          // Angle of spread (radians)
 
   // AoE/splash properties
-  splashRadius?: number;         // Radius of splash damage
+  primaryDamageRadius?: number;    // Radius of full (primary) damage
+  secondaryDamageRadius?: number;  // Radius of reduced (20%) secondary damage
+  splashOnExpiry?: boolean;        // If true, splash damage applies when projectile lifespan expires (not just on direct hit)
 
   // Burst fire properties
   burstCount?: number;           // Shots per burst

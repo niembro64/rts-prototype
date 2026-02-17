@@ -152,7 +152,9 @@ export const DGUN_CONFIG = {
   projectileRadius: 25,
   projectileLifespan: 2000,
   color: 0xff8800,
-  splashRadius: 40,
+  primaryDamageRadius: 40,
+  secondaryDamageRadius: 70,
+  splashOnExpiry: true,
 };
 
 // Helper to get building config

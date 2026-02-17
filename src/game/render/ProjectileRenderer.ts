@@ -30,6 +30,7 @@ export function renderProjectile(
     const endY = projectile.endY ?? y;
     const beamWidth = config.beamWidth ?? 2;
     const beamStyle = getGraphicsConfig().beamStyle;
+    const hasCollision = projectile.obstructionT !== undefined;
 
     let randomOffsets = beamRandomOffsets.get(entity.id);
     if (!randomOffsets) {
@@ -47,47 +48,42 @@ export function renderProjectile(
     if (lod === 'min') effectiveBeamStyle = 'simple';
     else if (lod === 'low' && beamStyle !== 'simple') effectiveBeamStyle = 'standard';
 
+    // Outer glow layer (detailed/complex only)
     if (effectiveBeamStyle === 'detailed' || effectiveBeamStyle === 'complex') {
       graphics.lineStyle(beamWidth + 4, color, 0.3);
       graphics.lineBetween(startX, startY, endX, endY);
     }
 
-    const beamAlpha = effectiveBeamStyle === 'simple' ? 1 : 0.9;
-    graphics.lineStyle(beamWidth, color, beamAlpha);
+    // Main beam line — always white
+    graphics.lineStyle(beamWidth, 0xffffff, 1);
     graphics.lineBetween(startX, startY, endX, endY);
 
-    if (effectiveBeamStyle !== 'simple') {
-      graphics.lineStyle(beamWidth / 2, 0xffffff, 1);
-      graphics.lineBetween(startX, startY, endX, endY);
-    }
+    // Endpoint ball — always drawn at collision radius (beamWidth), always white
+    graphics.fillStyle(0xffffff, 1);
+    graphics.fillCircle(endX, endY, beamWidth);
 
-    // Endpoint effect — skip entirely at min
-    if (lod !== 'min') {
-      const baseRadius = beamWidth * 2 + 6;
-      const explosionRadius = baseRadius * randomOffsets.sizeScale;
+    // Collision-triggered damage radii highlights (medium+ detail only)
+    if (hasCollision && lod === 'high') {
+      const primaryRadius = config.primaryDamageRadius ?? (beamWidth * 2 + 6);
 
-      if (effectiveBeamStyle === 'simple') {
-        graphics.fillStyle(color, 1);
-        graphics.fillCircle(endX, endY, explosionRadius);
-      } else if (effectiveBeamStyle === 'standard') {
-        graphics.fillStyle(color, 0.6);
-        graphics.fillCircle(endX, endY, explosionRadius);
-        graphics.fillStyle(0xffffff, 0.8);
-        graphics.fillCircle(endX, endY, explosionRadius * 0.4);
-      } else {
-        graphics.fillStyle(color, 0.4);
-        graphics.fillCircle(endX, endY, explosionRadius * 1.3);
-        graphics.fillStyle(color, 0.6);
-        graphics.fillCircle(endX, endY, explosionRadius);
-        graphics.fillStyle(0xffffff, 0.8);
-        graphics.fillCircle(endX, endY, explosionRadius * 0.4);
+      if (effectiveBeamStyle === 'standard') {
+        // Standard: primary glow ring
+        graphics.fillStyle(color, 0.15);
+        graphics.fillCircle(endX, endY, primaryRadius);
+      } else if (effectiveBeamStyle === 'detailed' || effectiveBeamStyle === 'complex') {
+        // Detailed/complex: primary + secondary glow rings + sparks
+        const secondaryRadius = config.secondaryDamageRadius ?? primaryRadius;
+        graphics.fillStyle(color, 0.08);
+        graphics.fillCircle(endX, endY, secondaryRadius);
+        graphics.fillStyle(color, 0.15);
+        graphics.fillCircle(endX, endY, primaryRadius);
 
         const pulseTime = sprayParticleTime * randomOffsets.pulseSpeed;
         const sparkCount = effectiveBeamStyle === 'complex' ? 6 : 4;
         for (let i = 0; i < sparkCount; i++) {
           const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
           const angle = baseAngle + randomOffsets.rotationOffset;
-          const sparkDist = explosionRadius * (0.8 + Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
+          const sparkDist = primaryRadius * (0.8 + Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
           const sx = endX + Math.cos(angle) * sparkDist;
           const sy = endY + Math.sin(angle) * sparkDist;
           graphics.fillStyle(color, 0.7);
@@ -180,28 +176,36 @@ export function renderProjectile(
 }
 
 /**
- * Render proj range circles (collision radius and/or splash radius) on in-flight projectiles.
- * For beams, shows the impact area circle at the endpoint under SPLASH toggle.
+ * Render proj range circles (collision, primary, secondary radii) on in-flight projectiles.
+ * For beams, shows primary/secondary circles at the endpoint.
  * Called when any proj range toggle is active.
  */
 export function renderProjRangeCircles(
   graphics: Phaser.GameObjects.Graphics,
   entity: Entity,
-  visibility: { collision: boolean; splash: boolean },
+  visibility: { collision: boolean; primary: boolean; secondary: boolean },
 ): void {
   if (!entity.projectile) return;
   const proj = entity.projectile;
   const config = proj.config;
 
   if (proj.projectileType === 'beam') {
-    // Beam endpoint impact area: beamWidth * 2 + 6 (matches DamageSystem)
-    if (visibility.splash) {
-      const endX = proj.endX ?? entity.transform.x;
-      const endY = proj.endY ?? entity.transform.y;
-      const beamWidth = config.beamWidth ?? 2;
-      const impactRadius = beamWidth * 2 + 6;
-      graphics.lineStyle(1, COLORS.PROJ_SPLASH_RANGE, 0.3);
-      graphics.strokeCircle(endX, endY, impactRadius);
+    const endX = proj.endX ?? entity.transform.x;
+    const endY = proj.endY ?? entity.transform.y;
+    const beamWidth = config.beamWidth ?? 2;
+    const primaryRadius = config.primaryDamageRadius ?? (beamWidth * 2 + 6);
+
+    if (visibility.collision) {
+      graphics.lineStyle(1, COLORS.PROJ_COLLISION_RANGE, 0.5);
+      graphics.strokeCircle(endX, endY, beamWidth);
+    }
+    if (visibility.primary) {
+      graphics.lineStyle(1, COLORS.PROJ_PRIMARY_RANGE, 0.3);
+      graphics.strokeCircle(endX, endY, primaryRadius);
+    }
+    if (visibility.secondary && config.secondaryDamageRadius) {
+      graphics.lineStyle(1, COLORS.PROJ_SECONDARY_RANGE, 0.3);
+      graphics.strokeCircle(endX, endY, config.secondaryDamageRadius);
     }
     return;
   }
@@ -214,8 +218,13 @@ export function renderProjRangeCircles(
     graphics.strokeCircle(x, y, radius);
   }
 
-  if (visibility.splash && config.splashRadius && !proj.hasExploded) {
-    graphics.lineStyle(1, COLORS.PROJ_SPLASH_RANGE, 0.3);
-    graphics.strokeCircle(x, y, config.splashRadius);
+  if (visibility.primary && config.primaryDamageRadius && !proj.hasExploded) {
+    graphics.lineStyle(1, COLORS.PROJ_PRIMARY_RANGE, 0.3);
+    graphics.strokeCircle(x, y, config.primaryDamageRadius);
+  }
+
+  if (visibility.secondary && config.secondaryDamageRadius && !proj.hasExploded) {
+    graphics.lineStyle(1, COLORS.PROJ_SECONDARY_RANGE, 0.3);
+    graphics.strokeCircle(x, y, config.secondaryDamageRadius);
   }
 }

@@ -50,6 +50,10 @@ export interface ExplosionEffect {
   combinedX?: number;
   combinedY?: number;
   combinedMag?: number;
+
+  // Dual damage radii for min-detail explosion animation
+  primaryRadius?: number;
+  secondaryRadius?: number;
 }
 
 // Color palette for unit rendering
@@ -134,8 +138,9 @@ export const COLORS = {
   BUILD_RANGE: 0x44ff44, // Green for build range
 
   // Projectile range circles
-  PROJ_COLLISION_RANGE: 0x44ffff, // Cyan for collision radius
-  PROJ_SPLASH_RANGE: 0xff8844, // Orange for splash radius
+  PROJ_COLLISION_RANGE: 0xff0000, // Bright red for collision radius
+  PROJ_PRIMARY_RANGE: 0xff8844, // Orange for primary damage radius
+  PROJ_SECONDARY_RANGE: 0xffdd44, // Yellow for secondary damage radius
 } as const;
 
 // Leg style configuration - re-exported from config.ts for convenience

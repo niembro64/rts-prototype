@@ -72,11 +72,14 @@ function renderSimpleCircle(
   exp: ExplosionEffect,
   progress: number
 ): void {
-  const currentRadius = exp.radius * (0.3 + progress * 0.7);
+  // Use primaryRadius → secondaryRadius when available, else default 0.3→1.3 scaling
+  const startRadius = exp.primaryRadius ?? exp.radius * 0.3;
+  const endRadius = exp.secondaryRadius ?? exp.radius * 1.3;
+  const currentRadius = startRadius + (endRadius - startRadius) * progress;
   const alpha = 1 - progress * progress;
   // Outer orange glow
   graphics.fillStyle(0xff6600, alpha * 0.3);
-  graphics.fillCircle(exp.x, exp.y, currentRadius * 1.3);
+  graphics.fillCircle(exp.x, exp.y, currentRadius * 1.1);
   // Main fireball (orange-yellow)
   graphics.fillStyle(0xff8822, alpha * 0.6);
   graphics.fillCircle(exp.x, exp.y, currentRadius);

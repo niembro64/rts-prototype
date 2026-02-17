@@ -364,6 +364,7 @@ export class ClientViewState {
             entity.projectile.startY = startY;
             entity.projectile.endX = startX + (fullEndX - startX) * t;
             entity.projectile.endY = startY + (fullEndY - startY) * t;
+            entity.projectile.obstructionT = t < 1 ? t : undefined;
 
             entity.transform.x = startX;
             entity.transform.y = startY;

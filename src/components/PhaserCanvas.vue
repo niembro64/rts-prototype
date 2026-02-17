@@ -25,6 +25,8 @@ import {
   SNAPSHOT_RATE_OPTIONS,
   MAP_SETTINGS,
   SHOW_LOBBY_ON_STARTUP,
+  COMBAT_STATS_HISTORY_MAX,
+  COMBAT_STATS_VISIBLE_ON_LOAD,
   type SnapshotRate,
 } from '../config';
 import { GameServer } from '../game/server/GameServer';
@@ -109,7 +111,8 @@ const rangeToggles = reactive<Record<RangeType, boolean>>({
 });
 const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
   collision: getProjRangeToggle('collision'),
-  splash: getProjRangeToggle('splash'),
+  primary: getProjRangeToggle('primary'),
+  secondary: getProjRangeToggle('secondary'),
 });
 
 // FPS and zoom tracking (Phaser's smoothed values)
@@ -170,7 +173,7 @@ const minimapData = reactive<MinimapData>({
 
 // Combat stats state
 const combatStats = ref<NetworkCombatStats | null>(null);
-const showCombatStats = ref(true);
+const showCombatStats = ref(COMBAT_STATS_VISIBLE_ON_LOAD);
 const combatStatsViewMode = ref<'global' | 'player'>('global');
 const combatStatsHistory = ref<StatsSnapshot[]>([]);
 let statsHistoryStartTime = 0;
@@ -218,6 +221,9 @@ function startBackgroundBattle(): void {
           timestamp: Date.now() - statsHistoryStartTime,
           stats,
         });
+        if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
+          combatStatsHistory.value.shift();
+        }
       };
       clearInterval(checkBgScene);
     }
@@ -630,6 +636,9 @@ function setupSceneCallbacks(): void {
           timestamp: Date.now() - statsHistoryStartTime,
           stats,
         });
+        if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
+          combatStatsHistory.value.shift();
+        }
       };
 
       clearInterval(checkScene);
@@ -849,7 +858,7 @@ onUnmounted(() => {
             :class="{ active: rangeToggles.fire }"
             @click="toggleRange('fire')"
           >
-            FIRE
+            FIR
           </button>
           <button
             class="control-btn"
@@ -863,14 +872,14 @@ onUnmounted(() => {
             :class="{ active: rangeToggles.lock }"
             @click="toggleRange('lock')"
           >
-            LOCK
+            LCK
           </button>
           <button
             class="control-btn"
             :class="{ active: rangeToggles.fightstop }"
             @click="toggleRange('fightstop')"
           >
-            STOP
+            STP
           </button>
           <button
             class="control-btn"
@@ -888,14 +897,21 @@ onUnmounted(() => {
             :class="{ active: projRangeToggles.collision }"
             @click="toggleProjRange('collision')"
           >
-            COLSN
+            COL
           </button>
           <button
             class="control-btn"
-            :class="{ active: projRangeToggles.splash }"
-            @click="toggleProjRange('splash')"
+            :class="{ active: projRangeToggles.primary }"
+            @click="toggleProjRange('primary')"
           >
-            SPLSH
+            PRM
+          </button>
+          <button
+            class="control-btn"
+            :class="{ active: projRangeToggles.secondary }"
+            @click="toggleProjRange('secondary')"
+          >
+            SEC
           </button>
         </div>
       </div>
