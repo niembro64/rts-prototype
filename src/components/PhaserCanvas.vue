@@ -909,7 +909,7 @@ onUnmounted(() => {
           AUDIO
         </button>
         <div class="bar-divider"></div>
-        <span class="control-label">UNIT RANGES:</span>
+        <span class="control-label">TURRET RANGES:</span>
         <div class="button-group">
           <button
             class="control-btn"
