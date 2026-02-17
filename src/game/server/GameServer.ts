@@ -7,7 +7,8 @@ import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities } from '../sim/spawn';
 import { serializeGameState } from '../network/stateSerializer';
-import type { NetworkGameState, NetworkGridCell } from '../network/NetworkTypes';
+import type { NetworkGridCell } from '../network/NetworkTypes';
+import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
@@ -19,6 +20,7 @@ import {
   syncVelocitiesFromPhysics,
   removeBodyStandalone,
   stepEngine,
+  toPhaserBody,
 } from './PhysicsStandalone';
 import { spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import {
@@ -59,8 +61,8 @@ export class GameServer {
   private readonly BACKGROUND_SPAWN_INTERVAL: number = 500;
 
   // Snapshot listeners
-  private snapshotListeners: ((state: NetworkGameState) => void)[] = [];
-  private gameOverListeners: ((winnerId: PlayerId) => void)[] = [];
+  private snapshotListeners: SnapshotCallback[] = [];
+  private gameOverListeners: GameOverCallback[] = [];
 
   // Game over tracking
   private isGameOver: boolean = false;
@@ -147,7 +149,7 @@ export class GameServer {
             entity.unit.mass,
             `unit_${entity.id}`
           );
-          entity.body = { matterBody: body as unknown as MatterJS.BodyType };
+          entity.body = { matterBody: toPhaserBody(body) };
         }
       }
     };
@@ -277,12 +279,12 @@ export class GameServer {
   }
 
   // Add a snapshot listener
-  addSnapshotListener(callback: (state: NetworkGameState) => void): void {
+  addSnapshotListener(callback: SnapshotCallback): void {
     this.snapshotListeners.push(callback);
   }
 
   // Add a game over listener
-  addGameOverListener(callback: (winnerId: PlayerId) => void): void {
+  addGameOverListener(callback: GameOverCallback): void {
     this.gameOverListeners.push(callback);
   }
 

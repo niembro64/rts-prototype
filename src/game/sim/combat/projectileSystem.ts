@@ -9,6 +9,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { AudioEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
+import { getWeaponWorldPosition } from '../../math';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import type { DeathContext } from '../damage/types';
 
@@ -78,8 +79,9 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
       }
 
       // Use cached weapon world position from targeting phase
-      const weaponX = weapon.worldX ?? (unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY);
-      const weaponY = weapon.worldY ?? (unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY);
+      const wp = weapon.worldX !== undefined ? { x: weapon.worldX, y: weapon.worldY! } : getWeaponWorldPosition(unit.transform.x, unit.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
+      const weaponX = wp.x;
+      const weaponY = wp.y;
 
       // Check cooldown / active beam
       if (isContinuousBeam) {
@@ -286,8 +288,11 @@ export function updateProjectiles(
         const dirY = Math.sin(turretAngle);
 
         // Use cached weapon world position from targeting phase
-        const weaponX = weapon.worldX ?? (source.transform.x + (source.transform.rotCos ?? Math.cos(source.transform.rotation)) * weapon.offsetX - (source.transform.rotSin ?? Math.sin(source.transform.rotation)) * weapon.offsetY);
-        const weaponY = weapon.worldY ?? (source.transform.y + (source.transform.rotSin ?? Math.sin(source.transform.rotation)) * weapon.offsetX + (source.transform.rotCos ?? Math.cos(source.transform.rotation)) * weapon.offsetY);
+        const srcCos = source.transform.rotCos ?? Math.cos(source.transform.rotation);
+        const srcSin = source.transform.rotSin ?? Math.sin(source.transform.rotation);
+        const wp = weapon.worldX !== undefined ? { x: weapon.worldX, y: weapon.worldY! } : getWeaponWorldPosition(source.transform.x, source.transform.y, srcCos, srcSin, weapon.offsetX, weapon.offsetY);
+        const weaponX = wp.x;
+        const weaponY = wp.y;
 
         // Beam starts at weapon position
         proj.startX = weaponX + dirX * 5;

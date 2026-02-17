@@ -1,9 +1,14 @@
 import type { WeaponConfig } from './types';
 import { WEAPON_STATS } from '../../config';
 
+
+// Union type of all registered weapon config keys
+export type WeaponId = 'gatling' | 'pulse' | 'beam' | 'shotgun' | 'mortar' | 'railgun'
+  | 'cannon' | 'disruptor' | 'forceField' | 'widowBeam' | 'widowCenterBeam' | 'widowForceField';
+
 // Weapon configurations using values from config.ts
 // Note: color is no longer used - colors are team-based in renderer
-export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
+export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   // Gatling - rapid fire small projectiles (Jackal's weapon)
   gatling: {
     id: 'gatling',
@@ -193,7 +198,7 @@ export const WEAPON_CONFIGS: Record<string, WeaponConfig> = {
 
 // Helper to get a weapon config by ID
 export function getWeaponConfig(id: string): WeaponConfig {
-  const config = WEAPON_CONFIGS[id];
+  const config = WEAPON_CONFIGS[id as WeaponId];
   if (!config) {
     throw new Error(`Unknown weapon config: ${id}`);
   }

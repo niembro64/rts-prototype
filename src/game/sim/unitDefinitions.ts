@@ -2,7 +2,7 @@
 // All unit-type-specific configuration in one place
 
 import type { UnitWeapon } from './types';
-import { getWeaponConfig } from './weapons';
+import { getWeaponConfig, type WeaponId } from './weapons';
 import {
   COST_MULTIPLIER,
   UNIT_STATS,
@@ -10,6 +10,10 @@ import {
   DEFAULT_TURRET_DRAG,
   RANGE_MULTIPLIERS,
 } from '../../config';
+
+// Union type of all unit type identifiers
+export type UnitType = 'jackal' | 'lynx' | 'daddy' | 'badger' | 'scorpion'
+  | 'viper' | 'mammoth' | 'widow' | 'tarantula' | 'commander';
 
 // Locomotion types for rendering
 export type LocomotionType = 'wheels' | 'treads' | 'legs';
@@ -19,11 +23,11 @@ export type LegStyle = 'widow' | 'daddy' | 'tarantula' | 'commander';
 
 // Unified unit definition - everything about a unit type in one place
 export interface UnitDefinition {
-  id: string;
+  id: UnitType;
   name: string;
 
   // Weapon type (references WEAPON_CONFIGS key)
-  weaponType: string;
+  weaponType: WeaponId;
 
   // Stats
   hp: number;

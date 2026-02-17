@@ -1,16 +1,13 @@
 // LocalGameConnection - In-memory bridge between GameServer and local client (host)
 
-import type { GameConnection } from './GameConnection';
+import type { GameConnection, SnapshotCallback, AudioEventCallback, GameOverCallback } from './GameConnection';
 import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
-import type { NetworkGameState } from '../network/NetworkTypes';
-import type { AudioEvent } from '../sim/combat';
-import type { PlayerId } from '../sim/types';
 
 export class LocalGameConnection implements GameConnection {
   private server: GameServer;
-  private snapshotCallback: ((state: NetworkGameState) => void) | null = null;
-  private gameOverCallback: ((winnerId: PlayerId) => void) | null = null;
+  private snapshotCallback: SnapshotCallback | null = null;
+  private gameOverCallback: GameOverCallback | null = null;
 
   constructor(server: GameServer) {
     this.server = server;
@@ -29,15 +26,15 @@ export class LocalGameConnection implements GameConnection {
     this.server.receiveCommand(command);
   }
 
-  onSnapshot(callback: (state: NetworkGameState) => void): void {
+  onSnapshot(callback: SnapshotCallback): void {
     this.snapshotCallback = callback;
   }
 
-  onAudioEvent(_callback: (event: AudioEvent) => void): void {
+  onAudioEvent(_callback: AudioEventCallback): void {
     // Not used for local - audio events come through snapshots
   }
 
-  onGameOver(callback: (winnerId: PlayerId) => void): void {
+  onGameOver(callback: GameOverCallback): void {
     this.gameOverCallback = callback;
   }
 

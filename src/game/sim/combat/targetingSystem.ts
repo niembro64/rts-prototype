@@ -3,6 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { distance, getTargetRadius } from './combatUtils';
+import { getWeaponWorldPosition } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 
 // Update auto-targeting and firing state for all units in a single pass.
@@ -37,10 +38,11 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       weapon.inFightstopRange = false;
 
       // Compute and cache weapon world position (reused by turret, firing, beam systems)
-      const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
-      const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
-      weapon.worldX = weaponX;
-      weapon.worldY = weaponY;
+      const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offsetX, weapon.offsetY);
+      weapon.worldX = wp.x;
+      weapon.worldY = wp.y;
+      const weaponX = wp.x;
+      const weaponY = wp.y;
 
       // Step 1: Validate current target and update lock state
       if (weapon.targetEntityId !== null) {

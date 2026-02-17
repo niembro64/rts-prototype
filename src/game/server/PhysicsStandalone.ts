@@ -7,6 +7,18 @@ import type { ForceAccumulator } from '../sim/ForceAccumulator';
 import { UNIT_MASS_MULTIPLIER } from '../../config';
 import { magnitude } from '../math';
 
+
+// Type bridge helpers for standalone Matter.Body <-> Phaser's MatterJS.BodyType
+// Standalone matter-js and Phaser's bundled version use structurally identical but
+// nominally different types, requiring a double cast to bridge between them.
+export function toMatterBody(phaserBody: MatterJS.BodyType): Matter.Body {
+  return phaserBody as unknown as Matter.Body;
+}
+
+export function toPhaserBody(standaloneBody: Matter.Body): MatterJS.BodyType {
+  return standaloneBody as unknown as MatterJS.BodyType;
+}
+
 // Create a standalone Matter.js engine with zero gravity
 export function createStandaloneEngine(): Matter.Engine {
   return Matter.Engine.create({
@@ -77,7 +89,7 @@ export function createMatterBodiesStandalone(
         entity.unit.mass,
         `unit_${entity.id}`
       );
-      entity.body = { matterBody: body as unknown as MatterJS.BodyType };
+      entity.body = { matterBody: toPhaserBody(body) };
     } else if (entity.type === 'building' && entity.building) {
       const body = createBuildingBodyStandalone(
         engine,
@@ -87,7 +99,7 @@ export function createMatterBodiesStandalone(
         entity.building.height,
         `building_${entity.id}`
       );
-      entity.body = { matterBody: body as unknown as MatterJS.BodyType };
+      entity.body = { matterBody: toPhaserBody(body) };
     }
   }
 }
@@ -101,7 +113,7 @@ export function applyUnitVelocitiesStandalone(
   for (const entity of world.getUnits()) {
     if (!entity.body?.matterBody || !entity.unit) continue;
 
-    const matterBody = entity.body.matterBody as unknown as Matter.Body;
+    const matterBody = toMatterBody(entity.body.matterBody);
 
     // Sync position from physics body
     entity.transform.x = matterBody.position.x;
@@ -152,7 +164,7 @@ export function syncVelocitiesFromPhysics(world: WorldState, physicsTimestepMs: 
   const perSecondScale = 1000 / physicsTimestepMs;
   for (const entity of world.getUnits()) {
     if (!entity.body?.matterBody || !entity.unit) continue;
-    const matterBody = entity.body.matterBody as unknown as Matter.Body;
+    const matterBody = toMatterBody(entity.body.matterBody);
     // Matter velocity is displacement per step; convert to units/second for client dead-reckoning
     entity.unit.velocityX = matterBody.velocity.x * perSecondScale;
     entity.unit.velocityY = matterBody.velocity.y * perSecondScale;
@@ -161,7 +173,7 @@ export function syncVelocitiesFromPhysics(world: WorldState, physicsTimestepMs: 
 
 // Remove a body from the engine world
 export function removeBodyStandalone(engine: Matter.Engine, matterBody: MatterJS.BodyType): void {
-  Matter.Composite.remove(engine.world, matterBody as unknown as Matter.Body);
+  Matter.Composite.remove(engine.world, toMatterBody(matterBody));
 }
 
 // Step the physics engine

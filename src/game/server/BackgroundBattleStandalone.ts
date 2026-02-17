@@ -4,7 +4,7 @@ import type Matter from 'matter-js';
 import type { Entity, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
-import { createUnitBodyStandalone } from './PhysicsStandalone';
+import { createUnitBodyStandalone, toPhaserBody } from './PhysicsStandalone';
 import {
   UNIT_STATS,
   MAX_TOTAL_UNITS,
@@ -104,7 +104,7 @@ function spawnBackgroundUnitStandalone(
       unit.unit.mass,
       `unit_${unit.id}`
     );
-    unit.body = { matterBody: body as unknown as MatterJS.BodyType };
+    unit.body = { matterBody: toPhaserBody(body) };
   }
 
   return unit;

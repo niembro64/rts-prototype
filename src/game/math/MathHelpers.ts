@@ -103,3 +103,18 @@ export function directionTo(
 ): { x: number; y: number } {
   return normalizeAndScale(x2 - x1, y2 - y1, scale);
 }
+
+/**
+ * Compute weapon world position from unit transform and weapon offset.
+ * Applies 2D rotation transform: offset rotated by unit rotation + unit position.
+ */
+export function getWeaponWorldPosition(
+  unitX: number, unitY: number,
+  cos: number, sin: number,
+  offsetX: number, offsetY: number
+): { x: number; y: number } {
+  return {
+    x: unitX + cos * offsetX - sin * offsetY,
+    y: unitY + sin * offsetX + cos * offsetY,
+  };
+}

@@ -2,6 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import { normalizeAngle, getMovementAngle } from './combatUtils';
+import { getWeaponWorldPosition } from '../../math';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 
 // Update turret rotation for all units using acceleration-based physics
@@ -30,8 +31,9 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
         const target = world.getEntity(weapon.targetEntityId);
         if (target) {
           // Use cached weapon world position from targeting phase
-          const weaponX = weapon.worldX ?? (unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY);
-          const weaponY = weapon.worldY ?? (unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY);
+          const wp = weapon.worldX !== undefined ? { x: weapon.worldX, y: weapon.worldY! } : getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offsetX, weapon.offsetY);
+          const weaponX = wp.x;
+          const weaponY = wp.y;
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);

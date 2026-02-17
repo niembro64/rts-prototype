@@ -3,6 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { AudioEvent } from './types';
 import { distance, getTargetRadius } from './combatUtils';
+import { getWeaponWorldPosition } from '../../math';
 
 // Update laser sounds based on targeting state (not beam existence)
 // This is called every frame to ensure sounds match targeting state
@@ -33,8 +34,9 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
           const targetIsBuilding = target.building && target.building.hp > 0;
           if (targetIsUnit || targetIsBuilding) {
             // Calculate weapon position
-            const weaponX = unit.transform.x + cos * weapon.offsetX - sin * weapon.offsetY;
-            const weaponY = unit.transform.y + sin * weapon.offsetX + cos * weapon.offsetY;
+            const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offsetX, weapon.offsetY);
+            const weaponX = wp.x;
+            const weaponY = wp.y;
             const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
             const targetRadius = getTargetRadius(target);
             hasTargetInRange = dist <= weapon.fireRange + targetRadius;

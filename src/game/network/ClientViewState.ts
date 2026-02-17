@@ -13,7 +13,8 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getWeaponConfig } from '../sim/weapons';
-import { lerp, lerpAngle } from '../math';
+import { lerp, lerpAngle, getWeaponWorldPosition } from '../math';
+import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
 // Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
@@ -52,42 +53,16 @@ export class ClientViewState {
   private gridCellSize: number = 0;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
-  private cachedUnits: Entity[] = [];
-  private cachedBuildings: Entity[] = [];
-  private cachedProjectiles: Entity[] = [];
-  private cachedAll: Entity[] = [];
-  private cachesDirty: boolean = true;
+  private cache = new EntityCacheManager();
 
   constructor() {}
 
   private invalidateCaches(): void {
-    this.cachesDirty = true;
+    this.cache.invalidate();
   }
 
   private rebuildCachesIfNeeded(): void {
-    if (!this.cachesDirty) return;
-
-    this.cachedUnits.length = 0;
-    this.cachedBuildings.length = 0;
-    this.cachedProjectiles.length = 0;
-    this.cachedAll.length = 0;
-
-    for (const entity of this.entities.values()) {
-      this.cachedAll.push(entity);
-      switch (entity.type) {
-        case 'unit':
-          this.cachedUnits.push(entity);
-          break;
-        case 'building':
-          this.cachedBuildings.push(entity);
-          break;
-        case 'projectile':
-          this.cachedProjectiles.push(entity);
-          break;
-      }
-    }
-
-    this.cachesDirty = false;
+    this.cache.rebuildIfNeeded(this.entities);
   }
 
   /**
@@ -362,12 +337,11 @@ export class ClientViewState {
             // Calculate weapon position in world coordinates (same math as sim)
             const unitCos = Math.cos(source.transform.rotation);
             const unitSin = Math.sin(source.transform.rotation);
-            const weaponX = source.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
-            const weaponY = source.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+            const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
 
             // Beam starts 5 units forward from weapon position
-            const startX = weaponX + dirX * 5;
-            const startY = weaponY + dirY * 5;
+            const startX = wp.x + dirX * 5;
+            const startY = wp.y + dirY * 5;
 
             // Full-range beam end
             const fullEndX = startX + dirX * weapon.fireRange;
@@ -434,13 +408,12 @@ export class ClientViewState {
       if (source && weapon) {
         const unitCos = Math.cos(source.transform.rotation);
         const unitSin = Math.sin(source.transform.rotation);
-        const weaponX = source.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
-        const weaponY = source.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+        const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
 
         // 5 units forward from weapon in firing direction (same as server)
         const turretAngle = weapon.turretRotation;
-        spawnX = weaponX + Math.cos(turretAngle) * 5;
-        spawnY = weaponY + Math.sin(turretAngle) * 5;
+        spawnX = wp.x + Math.cos(turretAngle) * 5;
+        spawnY = wp.y + Math.sin(turretAngle) * 5;
       }
     }
 
@@ -488,7 +461,7 @@ export class ClientViewState {
     if (lenSq === 0) return closest;
 
     // Check units (line-vs-circle)
-    for (const unit of this.cachedUnits) {
+    for (const unit of this.cache.getUnits()) {
       if (unit.id === sourceId) continue;
       const r = unit.unit?.collisionRadius ?? 15;
       const fx = sx - unit.transform.x;
@@ -503,7 +476,7 @@ export class ClientViewState {
     }
 
     // Check buildings (line-vs-AABB using slab method)
-    for (const bldg of this.cachedBuildings) {
+    for (const bldg of this.cache.getBuildings()) {
       if (bldg.id === sourceId) continue;
       if (!bldg.building) continue;
       const hw = bldg.building.width / 2;
@@ -553,22 +526,22 @@ export class ClientViewState {
 
   getAllEntities(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cachedAll;
+    return this.cache.getAll();
   }
 
   getUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cachedUnits;
+    return this.cache.getUnits();
   }
 
   getBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cachedBuildings;
+    return this.cache.getBuildings();
   }
 
   getProjectiles(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cachedProjectiles;
+    return this.cache.getProjectiles();
   }
 
   getSprayTargets(): SprayTarget[] {

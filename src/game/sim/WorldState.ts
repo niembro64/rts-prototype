@@ -1,4 +1,5 @@
 import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
+import { EntityCacheManager } from './EntityCacheManager';
 import { getWeaponConfig } from './weapons';
 import { getUnitDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, RANGE_MULTIPLIERS } from '../../config';
@@ -56,13 +57,8 @@ export class WorldState {
   public thrustMultiplier: number = 8.0;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
-  // These caches avoid creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
-  // Invalidated when entities are added/removed
-  private cachedUnits: Entity[] = [];
-  private cachedBuildings: Entity[] = [];
-  private cachedProjectiles: Entity[] = [];
-  private cachedAllEntities: Entity[] = [];
-  private cachesDirty: boolean = true;
+  // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
+  private cache = new EntityCacheManager();
 
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
     this.rng = new SeededRNG(seed);
@@ -70,32 +66,8 @@ export class WorldState {
     this.mapHeight = mapHeight;
   }
 
-  // Rebuild entity caches if dirty (called once per frame typically)
   private rebuildCachesIfNeeded(): void {
-    if (!this.cachesDirty) return;
-
-    // Clear and rebuild - reuse existing arrays to avoid allocation
-    this.cachedUnits.length = 0;
-    this.cachedBuildings.length = 0;
-    this.cachedProjectiles.length = 0;
-    this.cachedAllEntities.length = 0;
-
-    for (const entity of this.entities.values()) {
-      this.cachedAllEntities.push(entity);
-      switch (entity.type) {
-        case 'unit':
-          this.cachedUnits.push(entity);
-          break;
-        case 'building':
-          this.cachedBuildings.push(entity);
-          break;
-        case 'projectile':
-          this.cachedProjectiles.push(entity);
-          break;
-      }
-    }
-
-    this.cachesDirty = false;
+    this.cache.rebuildIfNeeded(this.entities);
   }
 
   // Get unit cap per player (total units / number of players)
@@ -133,13 +105,13 @@ export class WorldState {
   // Add entity to world
   addEntity(entity: Entity): void {
     this.entities.set(entity.id, entity);
-    this.cachesDirty = true; // Invalidate caches
+    this.cache.invalidate();
   }
 
   // Remove entity from world
   removeEntity(id: EntityId): void {
     this.entities.delete(id);
-    this.cachesDirty = true; // Invalidate caches
+    this.cache.invalidate();
   }
 
   // Get entity by ID
@@ -150,7 +122,7 @@ export class WorldState {
   // Get all entities (cached - DO NOT MODIFY returned array)
   getAllEntities(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cachedAllEntities;
+    return this.cache.getAll();
   }
 
   // Get entities by type (uses cache for common types)
@@ -170,19 +142,19 @@ export class WorldState {
   // Get all units (cached - DO NOT MODIFY returned array)
   getUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cachedUnits;
+    return this.cache.getUnits();
   }
 
   // Get all buildings (cached - DO NOT MODIFY returned array)
   getBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cachedBuildings;
+    return this.cache.getBuildings();
   }
 
   // Get all projectiles (cached - DO NOT MODIFY returned array)
   getProjectiles(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cachedProjectiles;
+    return this.cache.getProjectiles();
   }
 
   // Get units by player
