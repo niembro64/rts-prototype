@@ -139,4 +139,9 @@ export class CombatStatsTracker {
 
     return { players, global };
   }
+
+  reset(): void {
+    this.stats.clear();
+    this.entityRegistry.clear();
+  }
 }

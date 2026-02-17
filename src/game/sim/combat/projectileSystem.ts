@@ -33,6 +33,21 @@ const _fireNewProjectiles: Entity[] = [];
 const _fireAudioEvents: AudioEvent[] = [];
 const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
 
+// Reset module-level reusable buffers between game sessions
+// (prevents stale entity references from surviving across sessions)
+export function resetProjectileBuffers(): void {
+  _collisionUnitsToRemove.clear();
+  _collisionBuildingsToRemove.clear();
+  _collisionDeathContexts.clear();
+  _collisionProjectilesToRemove.length = 0;
+  _collisionDespawnEvents.length = 0;
+  _collisionAudioEvents.length = 0;
+  _beamSecondaryExcludeSet.clear();
+  _fireNewProjectiles.length = 0;
+  _fireAudioEvents.length = 0;
+  _fireSpawnEvents.length = 0;
+}
+
 // Check if a specific weapon has an active beam (by weapon index)
 // Uses O(1) beam index lookup instead of O(n) projectile scan
 function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, weaponIndex: number): boolean {

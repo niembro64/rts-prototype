@@ -31,6 +31,8 @@ import {
   UNIT_THRUST_MULTIPLIER_DEMO,
 } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
+import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
+import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 
 export interface GameServerConfig {
   playerIds: PlayerId[];
@@ -219,6 +221,13 @@ export class GameServer {
     spatialGrid.clear();
     beamIndex.clear();
     economyManager.reset();
+
+    // Reset simulation-owned state (ForceAccumulator, CombatStatsTracker, pending event buffers)
+    this.simulation.resetSessionState();
+
+    // Reset module-level reusable buffers that hold stale entity references
+    resetProjectileBuffers();
+    resetDamageBuffers();
   }
 
   // Start in manual mode: caller drives tick() and emitSnapshot() externally

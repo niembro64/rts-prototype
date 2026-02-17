@@ -239,4 +239,11 @@ export class LocomotionManager {
       }
     }
   }
+
+  clear(): void {
+    this.arachnidLegs.clear();
+    this.tankTreads.clear();
+    this.vehicleWheels.clear();
+    this._reusableIdSet.clear();
+  }
 }

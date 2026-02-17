@@ -742,6 +742,22 @@ export class RtsScene extends Phaser.Scene {
     this.spatialGridGraphics?.destroy();
     this.gameConnection?.disconnect();
 
+    // Clear snapshot buffers (hold entity references from network state)
+    this.pendingSnapshot = null;
+    this.bufferedSpawns.length = 0;
+    this.bufferedDespawns.length = 0;
+    this.bufferedAudio.length = 0;
+    this.bufferedVelocityUpdates.length = 0;
+
+    // Clear cached entity arrays
+    this._cachedSelectedUnits.length = 0;
+    this._cachedSelectedBuildings.length = 0;
+    this._cachedPlayerUnits.length = 0;
+    this._cachedPlayerBuildings.length = 0;
+
+    // Null out object references to allow GC
+    this.localServer = null;
+
     // Release callback closures (prevent Vue reactive state from being retained)
     this.onPlayerChange = undefined;
     this.onSelectionChange = undefined;

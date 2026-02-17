@@ -40,6 +40,17 @@ function resetResult(): DamageResult {
 // Reusable HitInfo array for line/swept damage sorting
 const _reusableHits: HitInfo[] = [];
 
+// Reset module-level reusable buffers between game sessions
+// (prevents stale entity references from surviving across sessions)
+export function resetDamageBuffers(): void {
+  _reusableResult.hitEntityIds.length = 0;
+  _reusableResult.killedUnitIds.clear();
+  _reusableResult.killedBuildingIds.clear();
+  _reusableResult.knockbacks.length = 0;
+  _reusableResult.deathContexts.clear();
+  _reusableHits.length = 0;
+}
+
 // Line-circle intersection - returns parametric T value (0-1) of first intersection, or null
 function lineCircleIntersectionT(
   x1: number, y1: number,

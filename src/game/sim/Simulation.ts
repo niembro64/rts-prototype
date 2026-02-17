@@ -828,4 +828,16 @@ export class Simulation {
       }
     }
   }
+
+  // Reset all session state (call between game sessions to free stale references)
+  resetSessionState(): void {
+    this.forceAccumulator.reset();
+    this.combatStatsTracker.reset();
+    this.pendingAudioEvents.length = 0;
+    this.pendingProjectileSpawns.length = 0;
+    this.pendingProjectileDespawns.length = 0;
+    this.pendingProjectileVelocityUpdates.length = 0;
+    this._deadUnitIdsBuf.length = 0;
+    this._deadBuildingIdsBuf.length = 0;
+  }
 }

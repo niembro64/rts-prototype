@@ -50,6 +50,14 @@ export class ForceAccumulator {
   }
 
   /**
+   * Full reset — delete all entries (call between game sessions).
+   * Unlike clear(), this frees the Map entries themselves.
+   */
+  reset(): void {
+    this.forces.clear();
+  }
+
+  /**
    * Add a raw force to an entity.
    * Use this for external effects like wave pull, knockback, explosions.
    */

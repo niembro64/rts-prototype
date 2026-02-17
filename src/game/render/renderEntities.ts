@@ -509,6 +509,7 @@ export class EntityRenderer {
     this.activeLabelCount = 0;
     this.beamRandomOffsets.clear();
     this.minigunSpins.clear();
+    this.locomotion.clear();
     this.clearEffects();
     this.graphics.destroy();
   }
