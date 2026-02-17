@@ -308,9 +308,13 @@ export class NetworkManager {
     if (dc) {
       this.monitorDataChannel(dc, playerId);
     } else {
+      let dcAttempts = 0;
       const checkDc = setInterval(() => {
+        dcAttempts++;
         if (conn.dataChannel) {
           this.monitorDataChannel(conn.dataChannel, playerId);
+          clearInterval(checkDc);
+        } else if (dcAttempts > 50) {
           clearInterval(checkDc);
         }
       }, 100);
@@ -492,6 +496,16 @@ export class NetworkManager {
     this.role = 'offline';
     this.gameStarted = false;
     this.players.clear();
+
+    // Clear all callbacks to release closure references
+    this.onPlayerJoined = undefined;
+    this.onPlayerLeft = undefined;
+    this.onStateReceived = undefined;
+    this.onCommandReceived = undefined;
+    this.onGameStart = undefined;
+    this.onPlayerAssignment = undefined;
+    this.onError = undefined;
+    this.onConnected = undefined;
   }
 }
 

@@ -211,6 +211,8 @@ export class GameServer {
       clearInterval(this.snapshotInterval);
       this.snapshotInterval = null;
     }
+    this.snapshotListeners.length = 0;
+    this.gameOverListeners.length = 0;
   }
 
   // Start in manual mode: caller drives tick() and emitSnapshot() externally
