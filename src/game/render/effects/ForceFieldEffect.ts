@@ -3,6 +3,7 @@
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
 import { FORCE_FIELD_VISUAL } from '../../../config';
+import type { LodLevel } from '../types';
 
 /**
  * Render force field pie-slice effect with pulsing sine waves.
@@ -19,14 +20,14 @@ export function renderForceFieldEffect(
   _secondaryColor: number,
   innerRange: number = 0,
   pushOutward: boolean = false,
-  forceSimple: boolean = false
+  lod: LodLevel = 'high'
 ): void {
   const halfAngle = sliceAngle / 2;
   const gfxConfig = getGraphicsConfig();
   const v = FORCE_FIELD_VISUAL;
 
-  // Simple mode (min detail or LOD forced): single static arc at outer edge
-  if (forceSimple || gfxConfig.forceFieldStyle === 'simple') {
+  // Simple mode (low LOD or config forced): single static arc at outer edge
+  if (lod === 'low' || gfxConfig.forceFieldStyle === 'simple') {
     graphics.lineStyle(2, primaryColor, v.sliceOpacityMinZoom);
     graphics.beginPath();
     graphics.arc(x, y, maxRange * 0.9, rotation - halfAngle, rotation + halfAngle, false);

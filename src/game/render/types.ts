@@ -59,6 +59,9 @@ export interface ColorPalette {
   dark: number;
 }
 
+/** LOD level for unit rendering. 'min' = dot (handled by renderEntities before calling renderers), 'low' = simplified, 'high' = full detail */
+export type LodLevel = 'min' | 'low' | 'high';
+
 // Context passed to unit renderers
 export interface UnitRenderContext {
   graphics: Phaser.GameObjects.Graphics;
@@ -71,8 +74,8 @@ export interface UnitRenderContext {
   entity: Entity;
   skipTurrets: boolean;
   turretsOnly: boolean;
-  /** LOD tier: 0=skip, 1=dot, 2=body only (no legs), 3=full detail */
-  lodTier: number;
+  /** LOD level: renderers only ever see 'low' or 'high' ('min' is handled by the dot fast path) */
+  lod: LodLevel;
   /** Minigun barrel spin angle in radians (for multi-barrel units) */
   minigunSpinAngle: number;
 }

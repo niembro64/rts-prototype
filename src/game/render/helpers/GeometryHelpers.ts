@@ -3,6 +3,7 @@
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
 import { COLORS } from '../types';
+import type { LodLevel } from '../types';
 
 // Reusable point buffers to avoid per-call allocations
 const _rectPoints = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
@@ -102,7 +103,7 @@ export function drawAnimatedTread(
   treadRotation: number,
   treadColor: number = COLORS.DARK_GRAY,
   lineColor: number = COLORS.GRAY_LIGHT,
-  skipDetail: boolean = false
+  lod: LodLevel = 'high'
 ): void {
   const gfxConfig = getGraphicsConfig();
   const cos = Math.cos(bodyRot);
@@ -112,8 +113,8 @@ export function drawAnimatedTread(
   graphics.fillStyle(treadColor, 1);
   drawOrientedRect(graphics, x, y, treadLength, treadWidth, bodyRot);
 
-  // Low quality or LOD: just draw the rectangle, skip animated track marks
-  if (skipDetail || !gfxConfig.treadsAnimated) {
+  // Low LOD or low quality: just draw the rectangle, skip animated track marks
+  if (lod === 'low' || !gfxConfig.treadsAnimated) {
     return;
   }
 

@@ -20,35 +20,32 @@ export function drawArachnidUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.widow;
-    const legThickness = legConfig.thickness;
-    const footSize = r * legConfig.footSizeMultiplier;
+    // Legs (always drawn at low+high)
+    {
+      const legConfig = LEG_STYLE_CONFIG.widow;
+      const legThickness = legConfig.thickness;
+      const footSize = r * legConfig.footSizeMultiplier;
 
-    // Draw all 8 legs using the Leg class positions
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i];
+        const side = i < 4 ? -1 : 1;
 
-      // Get positions from leg class
-      const attach = leg.getAttachmentPoint(x, y, bodyRot);
-      const foot = leg.getFootPosition();
-      const knee = leg.getKneePosition(attach.x, attach.y, side);
+        const attach = leg.getAttachmentPoint(x, y, bodyRot);
+        const foot = leg.getFootPosition();
+        const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-      // Draw leg segments (both use dark team color)
-      // Upper leg (slightly thicker)
-      graphics.lineStyle(legThickness + 1, dark, 1);
-      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+        graphics.lineStyle(legThickness + 1, dark, 1);
+        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-      // Lower leg
-      graphics.lineStyle(legThickness, dark, 1);
-      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+        graphics.lineStyle(legThickness, dark, 1);
+        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-      // Knee joint + foot detail (skip at low LOD)
-      if (ctx.lodTier >= 3) {
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness);
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize);
+        if (ctx.lod === 'high') {
+          graphics.fillStyle(light, 1);
+          graphics.fillCircle(knee.x, knee.y, legThickness);
+          graphics.fillStyle(light, 1);
+          graphics.fillCircle(foot.x, foot.y, footSize);
+        }
       }
     }
 
@@ -77,9 +74,9 @@ export function drawArachnidUnit(
     }
     graphics.fillPoints(_abdomenPoints, true);
 
-    // Red hourglass marking (like a black widow spider) — LOD 2: skip detail
-    if (ctx.lodTier < 3) {
-      // Skip hourglass + spinnerets at LOD 2
+    // Red hourglass marking (like a black widow spider) — low LOD: skip detail
+    if (ctx.lod !== 'high') {
+      // Skip hourglass + spinnerets at low
     } else {
     const hourglassCenterOffset = abdomenOffset - abdomenLength * 0.35;
     const hourglassCenterX = x + cos * hourglassCenterOffset;
@@ -189,8 +186,10 @@ export function drawArachnidUnit(
 
       const weaponTurret = weapons[i]?.turretRotation ?? bodyRot;
 
-      graphics.fillStyle(COLORS.WHITE, 1);
-      graphics.fillCircle(emitterX, emitterY, r * 0.1);
+      if (ctx.lod === 'high') {
+        graphics.fillStyle(COLORS.WHITE, 1);
+        graphics.fillCircle(emitterX, emitterY, r * 0.1);
+      }
 
       const beamLen = r * 0.5;
       const beamEndX = emitterX + Math.cos(weaponTurret) * beamLen;
@@ -206,8 +205,10 @@ export function drawArachnidUnit(
       const hexCenterY = y + sin * hexForwardOffset;
       const centerTurret = centerBeamWeapon.turretRotation ?? bodyRot;
 
-      graphics.fillStyle(COLORS.WHITE, 1);
-      graphics.fillCircle(hexCenterX, hexCenterY, r * 0.12);
+      if (ctx.lod === 'high') {
+        graphics.fillStyle(COLORS.WHITE, 1);
+        graphics.fillCircle(hexCenterX, hexCenterY, r * 0.12);
+      }
 
       const centerBeamLen = r * 0.6;
       const centerBeamEndX = hexCenterX + Math.cos(centerTurret) * centerBeamLen;
@@ -217,7 +218,6 @@ export function drawArachnidUnit(
     }
 
     // Force field weapon at center (index 7) — renders both push and pull zones
-    const forceSimple = ctx.lodTier < 3;
     const hexCenterX = x + cos * hexForwardOffset;
     const hexCenterY = y + sin * hexForwardOffset;
     for (let i = 7; i < weapons.length; i++) {
@@ -241,7 +241,7 @@ export function drawArachnidUnit(
         renderForceFieldEffect(
           graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pushOuter,
           tintColor(light, 0.4), tintColor(base, 0.4),
-          pushInner, true, forceSimple
+          pushInner, true, ctx.lod
         );
       }
 
@@ -252,7 +252,7 @@ export function drawArachnidUnit(
         renderForceFieldEffect(
           graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pullOuter,
           tintColor(light, -0.4), tintColor(base, -0.4),
-          pullInner, false, forceSimple
+          pullInner, false, ctx.lod
         );
       }
     }

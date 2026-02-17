@@ -16,76 +16,69 @@ export function drawCommanderUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.commander;
-    const legThickness = legConfig.thickness;
-    const footSize = r * legConfig.footSizeMultiplier;
+    // Legs (always drawn at low+high)
+    {
+      const legConfig = LEG_STYLE_CONFIG.commander;
+      const legThickness = legConfig.thickness;
+      const footSize = r * legConfig.footSizeMultiplier;
 
-    // Draw all 4 legs (2 front, 2 back)
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const side = i < 2 ? -1 : 1; // First 2 legs are left side, last 2 are right side
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i];
+        const side = i < 2 ? -1 : 1;
 
-      // Get positions from leg class
-      const attach = leg.getAttachmentPoint(x, y, bodyRot);
-      const foot = leg.getFootPosition();
-      const knee = leg.getKneePosition(attach.x, attach.y, side);
+        const attach = leg.getAttachmentPoint(x, y, bodyRot);
+        const foot = leg.getFootPosition();
+        const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-      // Draw leg segments - commander has thicker, more mechanical legs
-      if (ctx.lodTier >= 3) {
-        // Full detail: dual-layer armored legs
-        graphics.lineStyle(legThickness + 2, dark, 1);
-        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-        graphics.lineStyle(legThickness, base, 1);
-        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+        if (ctx.lod === 'high') {
+          // Dual-layer armored legs
+          graphics.lineStyle(legThickness + 2, dark, 1);
+          graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+          graphics.lineStyle(legThickness, base, 1);
+          graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-        graphics.lineStyle(legThickness + 1, dark, 1);
-        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
-        graphics.lineStyle(legThickness - 1, base, 1);
-        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+          graphics.lineStyle(legThickness + 1, dark, 1);
+          graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+          graphics.lineStyle(legThickness - 1, base, 1);
+          graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-        // Knee joint (armored joint)
-        graphics.fillStyle(dark, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness + 1);
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness - 1);
+          // Knee joint (armored joint)
+          graphics.fillStyle(dark, 1);
+          graphics.fillCircle(knee.x, knee.y, legThickness + 1);
+          graphics.fillStyle(light, 1);
+          graphics.fillCircle(knee.x, knee.y, legThickness - 1);
 
-        // Foot (heavy, grounded)
-        graphics.fillStyle(dark, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize + 2);
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize);
-      } else {
-        // Low LOD: single-layer leg segments, no joints/feet
-        graphics.lineStyle(legThickness + 1, dark, 1);
-        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-        graphics.lineStyle(legThickness, dark, 1);
-        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+          // Foot (heavy, grounded)
+          graphics.fillStyle(dark, 1);
+          graphics.fillCircle(foot.x, foot.y, footSize + 2);
+          graphics.fillStyle(light, 1);
+          graphics.fillCircle(foot.x, foot.y, footSize);
+        } else {
+          // Low: simple single-layer lines, no joints/feet
+          graphics.lineStyle(legThickness, dark, 1);
+          graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+          graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+        }
       }
     }
 
     // Main body - imposing rectangular chassis
     const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
 
-    // Draw body as a robust, angular chassis
     const bodyLength = r * 0.85;
     const bodyWidth = r * 0.7;
 
     // Main chassis (angular, armored look)
     graphics.fillStyle(dark, 1);
     const chassisPoints = [
-      // Front
       { x: x + cos * bodyLength - sin * bodyWidth * 0.4, y: y + sin * bodyLength + cos * bodyWidth * 0.4 },
       { x: x + cos * bodyLength * 0.7 - sin * bodyWidth * 0.65, y: y + sin * bodyLength * 0.7 + cos * bodyWidth * 0.65 },
-      // Left side
       { x: x - cos * bodyLength * 0.3 - sin * bodyWidth * 0.7, y: y - sin * bodyLength * 0.3 + cos * bodyWidth * 0.7 },
       { x: x - cos * bodyLength * 0.7 - sin * bodyWidth * 0.5, y: y - sin * bodyLength * 0.7 + cos * bodyWidth * 0.5 },
-      // Back
       { x: x - cos * bodyLength - sin * bodyWidth * 0.3, y: y - sin * bodyLength + cos * bodyWidth * 0.3 },
       { x: x - cos * bodyLength + sin * bodyWidth * 0.3, y: y - sin * bodyLength - cos * bodyWidth * 0.3 },
-      // Right side
       { x: x - cos * bodyLength * 0.7 + sin * bodyWidth * 0.5, y: y - sin * bodyLength * 0.7 - cos * bodyWidth * 0.5 },
       { x: x - cos * bodyLength * 0.3 + sin * bodyWidth * 0.7, y: y - sin * bodyLength * 0.3 - cos * bodyWidth * 0.7 },
-      // Front right
       { x: x + cos * bodyLength * 0.7 + sin * bodyWidth * 0.65, y: y + sin * bodyLength * 0.7 - cos * bodyWidth * 0.65 },
       { x: x + cos * bodyLength + sin * bodyWidth * 0.4, y: y + sin * bodyLength - cos * bodyWidth * 0.4 },
     ];
@@ -105,35 +98,35 @@ export function drawCommanderUnit(
     ];
     graphics.fillPoints(innerPoints, true);
 
-    // Central reactor/core (glowing)
-    graphics.fillStyle(dark, 1);
-    drawPolygon(graphics, x, y, r * 0.35, 8, bodyRot + Math.PI / 8);
-    graphics.fillStyle(light, 1);
-    drawPolygon(graphics, x, y, r * 0.25, 8, bodyRot + Math.PI / 8);
+    if (ctx.lod === 'high') {
+      // Central reactor/core (glowing)
+      graphics.fillStyle(dark, 1);
+      drawPolygon(graphics, x, y, r * 0.35, 8, bodyRot + Math.PI / 8);
+      graphics.fillStyle(light, 1);
+      drawPolygon(graphics, x, y, r * 0.25, 8, bodyRot + Math.PI / 8);
 
-    // Power core glow
-    graphics.fillStyle(COLORS.WHITE, 0.8);
-    graphics.fillCircle(x, y, r * 0.12);
+      // Power core glow
+      graphics.fillStyle(COLORS.WHITE, 0.8);
+      graphics.fillCircle(x, y, r * 0.12);
 
-    // Shoulder pylons (left and right)
-    const pylonOffset = r * 0.55;
-    const pylonSize = r * 0.2;
+      // Shoulder pylons (left and right)
+      const pylonOffset = r * 0.55;
+      const pylonSize = r * 0.2;
 
-    // Left pylon
-    const leftPylonX = x - sin * pylonOffset;
-    const leftPylonY = y + cos * pylonOffset;
-    graphics.fillStyle(dark, 1);
-    drawPolygon(graphics, leftPylonX, leftPylonY, pylonSize + 2, 4, bodyRot);
-    graphics.fillStyle(light, 1);
-    drawPolygon(graphics, leftPylonX, leftPylonY, pylonSize, 4, bodyRot);
+      const leftPylonX = x - sin * pylonOffset;
+      const leftPylonY = y + cos * pylonOffset;
+      graphics.fillStyle(dark, 1);
+      drawPolygon(graphics, leftPylonX, leftPylonY, pylonSize + 2, 4, bodyRot);
+      graphics.fillStyle(light, 1);
+      drawPolygon(graphics, leftPylonX, leftPylonY, pylonSize, 4, bodyRot);
 
-    // Right pylon
-    const rightPylonX = x + sin * pylonOffset;
-    const rightPylonY = y - cos * pylonOffset;
-    graphics.fillStyle(dark, 1);
-    drawPolygon(graphics, rightPylonX, rightPylonY, pylonSize + 2, 4, bodyRot);
-    graphics.fillStyle(light, 1);
-    drawPolygon(graphics, rightPylonX, rightPylonY, pylonSize, 4, bodyRot);
+      const rightPylonX = x + sin * pylonOffset;
+      const rightPylonY = y - cos * pylonOffset;
+      graphics.fillStyle(dark, 1);
+      drawPolygon(graphics, rightPylonX, rightPylonY, pylonSize + 2, 4, bodyRot);
+      graphics.fillStyle(light, 1);
+      drawPolygon(graphics, rightPylonX, rightPylonY, pylonSize, 4, bodyRot);
+    }
   }
 
   // Turret pass - main beam weapon mounted on front

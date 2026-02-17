@@ -20,33 +20,32 @@ export function drawForceFieldUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.tarantula;
-    const legThickness = legConfig.thickness;
-    const footSize = r * legConfig.footSizeMultiplier;
+    // Legs (always drawn at low+high)
+    {
+      const legConfig = LEG_STYLE_CONFIG.tarantula;
+      const legThickness = legConfig.thickness;
+      const footSize = r * legConfig.footSizeMultiplier;
 
-    // Draw all 8 legs (tarantula style)
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const side = i < 4 ? -1 : 1; // First 4 legs are left, last 4 are right
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i];
+        const side = i < 4 ? -1 : 1;
 
-      const attach = leg.getAttachmentPoint(x, y, bodyRot);
-      const foot = leg.getFootPosition();
-      const knee = leg.getKneePosition(attach.x, attach.y, side);
+        const attach = leg.getAttachmentPoint(x, y, bodyRot);
+        const foot = leg.getFootPosition();
+        const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-      // Upper leg (slightly thicker)
-      graphics.lineStyle(legThickness + 0.5, dark, 1);
-      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+        graphics.lineStyle(legThickness + 0.5, dark, 1);
+        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-      // Lower leg
-      graphics.lineStyle(legThickness, dark, 1);
-      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+        graphics.lineStyle(legThickness, dark, 1);
+        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-      // Knee joint + foot detail (skip at low LOD)
-      if (ctx.lodTier >= 3) {
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness * 0.4);
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize);
+        if (ctx.lod === 'high') {
+          graphics.fillStyle(light, 1);
+          graphics.fillCircle(knee.x, knee.y, legThickness * 0.4);
+          graphics.fillStyle(light, 1);
+          graphics.fillCircle(foot.x, foot.y, footSize);
+        }
       }
     }
 
@@ -75,20 +74,21 @@ export function drawForceFieldUnit(
     _bodyPoints[7].y = y + sin * bodyLength - cos * bodyWidth * 0.3;
     graphics.fillPoints(_bodyPoints, true);
 
-    // Inner pattern (dark)
-    graphics.fillStyle(dark, 1);
-    drawPolygon(graphics, x, y, r * 0.3, 6, bodyRot);
+    if (ctx.lod === 'high') {
+      // Inner pattern (dark)
+      graphics.fillStyle(dark, 1);
+      drawPolygon(graphics, x, y, r * 0.3, 6, bodyRot);
 
-    // Central orb base (light glow)
-    graphics.fillStyle(light, 1);
-    graphics.fillCircle(x, y, r * 0.25);
-    graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(x, y, r * 0.15);
+      // Central orb base (light glow)
+      graphics.fillStyle(light, 1);
+      graphics.fillCircle(x, y, r * 0.25);
+      graphics.fillStyle(COLORS.WHITE, 1);
+      graphics.fillCircle(x, y, r * 0.15);
+    }
   }
 
   // Turret pass - force field effect emanating from central orb
   if (!skipTurrets) {
-    const forceSimple = ctx.lodTier < 3;
     const weapons = entity.weapons ?? [];
     for (const weapon of weapons) {
       if (!weapon.config.isForceField) continue;
@@ -110,7 +110,7 @@ export function drawForceFieldUnit(
         renderForceFieldEffect(
           graphics, x, y, turretRot, sliceAngle, pushOuter,
           tintColor(light, 0.4), tintColor(base, 0.4),
-          pushInner, true, forceSimple
+          pushInner, true, ctx.lod
         );
       }
 
@@ -121,7 +121,7 @@ export function drawForceFieldUnit(
         renderForceFieldEffect(
           graphics, x, y, turretRot, sliceAngle, pullOuter,
           tintColor(light, -0.4), tintColor(base, -0.4),
-          pullInner, false, forceSimple
+          pullInner, false, ctx.lod
         );
       }
     }

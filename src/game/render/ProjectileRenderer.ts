@@ -2,7 +2,7 @@
 
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
-import type { BeamRandomOffsets } from './types';
+import type { BeamRandomOffsets, LodLevel } from './types';
 import { getPlayerColor, getProjectileColor } from './helpers';
 import { getGraphicsConfig } from './graphicsSettings';
 import { magnitude } from '../math';
@@ -11,7 +11,7 @@ export function renderProjectile(
   graphics: Phaser.GameObjects.Graphics,
   entity: Entity,
   beamRandomOffsets: Map<EntityId, BeamRandomOffsets>,
-  cameraZoom: number,
+  lod: LodLevel,
   sprayParticleTime: number,
 ): void {
   if (!entity.projectile) return;
@@ -42,7 +42,7 @@ export function renderProjectile(
     }
 
     // Beam LOD: at low zoom, downgrade beam style to reduce draw calls
-    const effectiveBeamStyle = cameraZoom < 0.3 ? 'simple' : beamStyle;
+    const effectiveBeamStyle = lod === 'min' ? 'simple' : lod === 'low' ? 'standard' : beamStyle;
 
     if (effectiveBeamStyle === 'detailed' || effectiveBeamStyle === 'complex') {
       graphics.lineStyle(beamWidth + 4, color, 0.3);

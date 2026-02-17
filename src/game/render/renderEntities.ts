@@ -11,7 +11,7 @@ import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive,
 import { magnitude } from '../math';
 
 // Import from helper modules
-import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets } from './types';
+import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, LodLevel } from './types';
 import { COLORS } from './types';
 import { createColorPalette } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
@@ -349,10 +349,11 @@ export class EntityRenderer {
     this.turretsOnly = false;
 
     // 6. Projectiles (clean up stale beam offsets inline)
+    const projectileLod: LodLevel = this.cameraZoom < 0.3 ? 'min' : this.cameraZoom < 0.8 ? 'low' : 'high';
     this._reusableIdSet.clear();
     for (const entity of this.visibleProjectiles) {
       this._reusableIdSet.add(entity.id);
-      renderProjectile(this.graphics, entity, this.beamRandomOffsets, this.cameraZoom, this.sprayParticleTime);
+      renderProjectile(this.graphics, entity, this.beamRandomOffsets, projectileLod, this.sprayParticleTime);
     }
     for (const id of this.beamRandomOffsets.keys()) {
       if (!this._reusableIdSet.has(id)) this.beamRandomOffsets.delete(id);
@@ -385,17 +386,32 @@ export class EntityRenderer {
     const isSelected = selectable?.selected ?? false;
 
     // LOD: compute screen-space radius for detail level
-    // Tier 0: skip entirely (sub-pixel), Tier 1: legs/treads visible but no inner detail,
-    // Tier 2: body detail but no tread tracks or leg joints, Tier 3: full detail
     const screenRadius = radius * this.cameraZoom;
-    const lodTier = screenRadius < 2 ? 0 : screenRadius < 6 ? 1 : screenRadius < 12 ? 2 : 3;
-
-    // LOD 0: unit is sub-pixel, skip entirely
-    if (lodTier === 0) return;
+    if (screenRadius < 2) return; // sub-pixel skip
+    const lod: LodLevel = screenRadius < 6 ? 'min' : screenRadius < 12 ? 'low' : 'high';
 
     // Get unit type for renderer selection
     const unitType = unit.unitType ?? 'jackal';
     const palette = createColorPalette(ownership?.playerId);
+
+    // 'min': colored dot — skip all unit rendering
+    if (lod === 'min') {
+      if (this.turretsOnly) return;
+      this.graphics.fillStyle(palette.base, 1);
+      this.graphics.fillCircle(x, y, radius);
+      if (isSelected) {
+        this.graphics.lineStyle(3, COLORS.UNIT_SELECTED, 1);
+        this.graphics.strokeCircle(x, y, radius + 5);
+      }
+      if (entity.commander) {
+        renderCommanderCrown(this.graphics, x, y, radius);
+      }
+      const healthPercent = hp / maxHp;
+      if (healthPercent < 1) {
+        renderHealthBar(this.graphics, x, y - radius - 10, radius * 2, 4, healthPercent);
+      }
+      return;
+    }
 
     // Selection ring
     if (isSelected && !this.turretsOnly) {
@@ -407,8 +423,8 @@ export class EntityRenderer {
       graphics: this.graphics,
       x, y, radius, bodyRot: rotation, palette, isSelected, entity,
       skipTurrets: this.skipTurrets, turretsOnly: this.turretsOnly,
-      lodTier,
-      minigunSpinAngle: this.getMinigunSpinAngle(entity.id),
+      lod,
+      minigunSpinAngle: lod === 'low' ? 0 : this.getMinigunSpinAngle(entity.id),
     };
 
     // Commander gets special 4-legged mech body regardless of unit type

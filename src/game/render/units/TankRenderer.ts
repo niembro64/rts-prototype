@@ -14,38 +14,27 @@ export function drawTankUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
+    // Treads (always drawn at low+high)
+    {
+      const cos = Math.cos(bodyRot);
+      const sin = Math.sin(bodyRot);
 
-    // Two massive treads on left and right sides
-    const treadOffset = r * 0.9; // Distance from center to tread
-    const treadLength = r * 2.0; // Very long treads
-    const treadWidth = r * 0.6; // Wide treads
+      const treadOffset = r * 0.9;
+      const treadLength = r * 2.0;
+      const treadWidth = r * 0.6;
 
-    const skipTreadDetail = ctx.lodTier < 3;
-    for (const side of [-1, 1]) {
-      const offsetX = -sin * treadOffset * side;
-      const offsetY = cos * treadOffset * side;
+      for (const side of [-1, 1]) {
+        const offsetX = -sin * treadOffset * side;
+        const offsetY = cos * treadOffset * side;
 
-      // Get tread rotation for this side
-      const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
-      const treadRotation = tread?.getRotation() ?? 0;
+        const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
+        const treadRotation = tread?.getRotation() ?? 0;
 
-      // Draw animated tread
-      const tx = x + offsetX;
-      const ty = y + offsetY;
-      drawAnimatedTread(
-        graphics,
-        tx,
-        ty,
-        treadLength,
-        treadWidth,
-        bodyRot,
-        treadRotation,
-        COLORS.DARK_GRAY,
-        COLORS.GRAY_LIGHT,
-        skipTreadDetail
-      );
+        drawAnimatedTread(
+          graphics, x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot, treadRotation,
+          COLORS.DARK_GRAY, COLORS.GRAY_LIGHT, ctx.lod
+        );
+      }
     }
 
     // Hull (pentagon) - base color
@@ -53,17 +42,19 @@ export function drawTankUnit(
     graphics.fillStyle(bodyColor, 1);
     drawPolygon(graphics, x, y, r * 0.85, 5, bodyRot);
 
-    // Gray armor plate on hull
-    graphics.fillStyle(COLORS.GRAY, 1);
-    drawPolygon(graphics, x, y, r * 0.55, 5, bodyRot);
+    if (ctx.lod === 'high') {
+      // Gray armor plate on hull
+      graphics.fillStyle(COLORS.GRAY, 1);
+      drawPolygon(graphics, x, y, r * 0.55, 5, bodyRot);
 
-    // Black inner
-    graphics.fillStyle(COLORS.BLACK, 1);
-    graphics.fillCircle(x, y, r * 0.28);
+      // Black inner
+      graphics.fillStyle(COLORS.BLACK, 1);
+      graphics.fillCircle(x, y, r * 0.28);
 
-    // Turret pivot (white)
-    graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(x, y, r * 0.18);
+      // Turret pivot (white)
+      graphics.fillStyle(COLORS.WHITE, 1);
+      graphics.fillCircle(x, y, r * 0.18);
+    }
   }
 
   // Turret pass

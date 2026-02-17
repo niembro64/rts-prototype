@@ -19,35 +19,32 @@ export function drawBeamUnit(
 
   // Body pass
   if (!turretsOnly) {
-    const legConfig = LEG_STYLE_CONFIG.daddy;
-    const legThickness = legConfig.thickness;
-    const footSize = r * legConfig.footSizeMultiplier;
+    // Legs (always drawn at low+high)
+    {
+      const legConfig = LEG_STYLE_CONFIG.daddy;
+      const legThickness = legConfig.thickness;
+      const footSize = r * legConfig.footSizeMultiplier;
 
-    // Draw all 8 legs using the Leg class positions (daddy long legs style)
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const side = i < 4 ? -1 : 1; // First 4 legs are left side, last 4 are right side
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i];
+        const side = i < 4 ? -1 : 1;
 
-      // Get positions from leg class
-      const attach = leg.getAttachmentPoint(x, y, bodyRot);
-      const foot = leg.getFootPosition();
-      const knee = leg.getKneePosition(attach.x, attach.y, side);
+        const attach = leg.getAttachmentPoint(x, y, bodyRot);
+        const foot = leg.getFootPosition();
+        const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-      // Draw leg segments (both use dark team color)
-      // Upper leg (slightly thicker)
-      graphics.lineStyle(legThickness + 0.5, dark, 1);
-      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+        graphics.lineStyle(legThickness + 0.5, dark, 1);
+        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-      // Lower leg
-      graphics.lineStyle(legThickness, dark, 1);
-      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+        graphics.lineStyle(legThickness, dark, 1);
+        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-      // Knee joint + foot detail (skip at low LOD)
-      if (ctx.lodTier >= 3) {
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness);
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize);
+        if (ctx.lod === 'high') {
+          graphics.fillStyle(light, 1);
+          graphics.fillCircle(knee.x, knee.y, legThickness);
+          graphics.fillStyle(light, 1);
+          graphics.fillCircle(foot.x, foot.y, footSize);
+        }
       }
     }
 
@@ -76,15 +73,17 @@ export function drawBeamUnit(
     _bodyPoints[7].y = y + sin * bodyLength - cos * bodyWidth * 0.3;
     graphics.fillPoints(_bodyPoints, true);
 
-    // Inner carapace pattern (dark)
-    graphics.fillStyle(dark, 1);
-    drawPolygon(graphics, x, y, r * 0.4, 6, bodyRot);
+    if (ctx.lod === 'high') {
+      // Inner carapace pattern (dark)
+      graphics.fillStyle(dark, 1);
+      drawPolygon(graphics, x, y, r * 0.4, 6, bodyRot);
 
-    // Central eye/sensor (light glow)
-    graphics.fillStyle(light, 1);
-    graphics.fillCircle(x, y, r * 0.2);
-    graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(x, y, r * 0.1);
+      // Central eye/sensor (light glow)
+      graphics.fillStyle(light, 1);
+      graphics.fillCircle(x, y, r * 0.2);
+      graphics.fillStyle(COLORS.WHITE, 1);
+      graphics.fillCircle(x, y, r * 0.1);
+    }
   }
 
   // Turret pass - beam emitter at center hexagon (like widow's center beam)
