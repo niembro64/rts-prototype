@@ -1182,6 +1182,8 @@ onUnmounted(() => {
   border-radius: 0;
   margin-left: -1px;
   flex: 1 1 0;
+  min-width: 0;
+  width: 0;
   text-align: center;
 }
 
