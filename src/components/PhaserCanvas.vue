@@ -696,7 +696,7 @@ onUnmounted(() => {
       <div v-if="showServerControls" class="control-bar server-bar">
         <span class="bar-label server-label">HOST SERVER</span>
         <div class="bar-divider"></div>
-        <span class="control-label">SNAPSHOTS/SEC:</span>
+        <span class="control-label">SNAPSHOT RATE:</span>
         <div class="button-group">
           <button
             v-for="rate in UPDATE_RATE_OPTIONS"
@@ -718,7 +718,7 @@ onUnmounted(() => {
         </button>
         <div class="bar-divider"></div>
         <div class="fps-stats">
-          <span class="fps-label">tick:</span>
+          <span class="fps-label">tick rate:</span>
           <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
           <span class="fps-label">avg</span>
           <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
@@ -807,7 +807,7 @@ onUnmounted(() => {
         </div>
         <div class="bar-divider"></div>
         <div class="fps-stats">
-          <span class="fps-label">actual:</span>
+          <span class="fps-label">frame rate:</span>
           <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
           <span class="fps-label">avg</span>
           <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
