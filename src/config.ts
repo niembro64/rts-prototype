@@ -593,7 +593,7 @@ export type SnapshotRate = number | 'realtime';
  * Default snapshot rate. 'realtime' emits inline every frame (~60Hz).
  * Numeric values use a setInterval at the given Hz.
  */
-export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 'realtime';
+export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 30;
 
 /** Available options for the "Send Updates Per Second" UI control */
 export const SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
