@@ -27,6 +27,8 @@ import {
   SHOW_LOBBY_ON_STARTUP,
   COMBAT_STATS_HISTORY_MAX,
   COMBAT_STATS_VISIBLE_ON_LOAD,
+  UNIT_STATS,
+  UNIT_SHORT_NAMES,
   type SnapshotRate,
 } from '../config';
 import { GameServer } from '../game/server/GameServer';
@@ -95,6 +97,12 @@ const networkRole = ref<NetworkRole>('offline');
 const snapshotRate = ref<SnapshotRate>(DEFAULT_SNAPSHOT_RATE);
 const sendGridInfo = ref(false);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
+
+// Demo battle unit type toggles
+const demoUnitTypes = Object.keys(UNIT_STATS);
+const demoUnitToggles = reactive<Record<string, boolean>>(
+  Object.fromEntries(demoUnitTypes.map(t => [t, true]))
+);
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(
   getEffectiveQuality(),
@@ -259,6 +267,15 @@ const showPlayerToggle = computed(() => {
 
 // Show server controls when we own a server (host, offline, or background demo)
 const showServerControls = computed(() => hasServer.value);
+
+// Show demo battle bar only during background demo (uses reactive refs only)
+const isBackgroundBattle = computed(() => showLobby.value && !gameStarted.value && hasServer.value);
+
+function toggleDemoUnitType(unitType: string): void {
+  const newValue = !demoUnitToggles[unitType];
+  demoUnitToggles[unitType] = newValue;
+  backgroundServer?.setBackgroundUnitTypeEnabled(unitType, newValue);
+}
 
 function togglePlayer(): void {
   const scene = gameInstance?.getScene();
@@ -750,6 +767,24 @@ onUnmounted(() => {
 
     <!-- Bottom control bars (always visible) -->
     <div class="bottom-controls">
+      <!-- DEMO BATTLE CONTROLS (visible during background demo) -->
+      <div v-if="isBackgroundBattle" class="control-bar demo-bar">
+        <span class="bar-label demo-label">DEMO BATTLE</span>
+        <div class="bar-divider"></div>
+        <span class="control-label">UNITS:</span>
+        <div class="button-group">
+          <button
+            v-for="ut in demoUnitTypes"
+            :key="ut"
+            class="control-btn"
+            :class="{ active: demoUnitToggles[ut] }"
+            @click="toggleDemoUnitType(ut)"
+          >
+            {{ UNIT_SHORT_NAMES[ut] || ut }}
+          </button>
+        </div>
+      </div>
+
       <!-- SERVER CONTROLS (visible when we own a server) -->
       <div v-if="showServerControls" class="control-bar server-bar">
         <span class="bar-label server-label">HOST SERVER</span>
@@ -1210,6 +1245,11 @@ onUnmounted(() => {
   border-radius: 0;
 }
 
+.demo-bar {
+  border-bottom: none;
+  border-radius: 0;
+}
+
 .client-bar {
   border-radius: 0;
 }
@@ -1236,6 +1276,12 @@ onUnmounted(() => {
   color: #fff;
   background: rgba(68, 136, 68, 0.6);
   border: 1px solid #6a6;
+}
+
+.demo-label {
+  color: #fff;
+  background: rgba(170, 120, 40, 0.6);
+  border: 1px solid #cc9944;
 }
 
 .bar-divider {
@@ -1328,6 +1374,12 @@ onUnmounted(() => {
 .server-bar .control-btn.active {
   background: rgba(68, 68, 170, 0.9);
   border-color: #6666cc;
+  color: white;
+}
+
+.demo-bar .control-btn.active {
+  background: rgba(170, 120, 40, 0.9);
+  border-color: #cc9944;
   color: white;
 }
 

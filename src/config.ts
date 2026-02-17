@@ -682,6 +682,15 @@ export const MAP_SETTINGS = {
 };
 
 // =============================================================================
+// UNIT SHORT NAMES (for compact UI buttons)
+// =============================================================================
+
+export const UNIT_SHORT_NAMES: Record<string, string> = {
+  jackal: 'JKL', lynx: 'LNX', daddy: 'DDY', badger: 'BDG',
+  mongoose: 'MGS', recluse: 'RCL', mammoth: 'MMT', widow: 'WDW', tarantula: 'TRN',
+};
+
+// =============================================================================
 // BACKGROUND GAME SETTINGS
 // =============================================================================
 
@@ -731,7 +740,7 @@ export const LASER_SOUND_ENABLED = false;
 // =============================================================================
 
 /** Maximum number of combat stats snapshots to retain (~10Hz → 600 = ~1 minute) */
-export const COMBAT_STATS_HISTORY_MAX = 200;
+export const COMBAT_STATS_HISTORY_MAX = 50;
 
 /** Whether the Combat Statistics modal is visible on page load */
 export const COMBAT_STATS_VISIBLE_ON_LOAD = false;

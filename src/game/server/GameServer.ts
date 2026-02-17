@@ -25,6 +25,7 @@ import {
 import { spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import {
   MAP_SETTINGS,
+  UNIT_STATS,
   UNIT_THRUST_MULTIPLIER_GAME,
   UNIT_THRUST_MULTIPLIER_DEMO,
 } from '../../config';
@@ -62,6 +63,7 @@ export class GameServer {
   // Background mode
   private backgroundSpawnTimer: number = 0;
   private readonly BACKGROUND_SPAWN_INTERVAL: number = 500;
+  private backgroundAllowedTypes: Set<string> = new Set(Object.keys(UNIT_STATS));
 
   // Snapshot listeners
   private snapshotListeners: SnapshotCallback[] = [];
@@ -110,7 +112,7 @@ export class GameServer {
       economyManager.initPlayer(2);
       economyManager.initPlayer(3);
       economyManager.initPlayer(4);
-      const initialUnits = spawnBackgroundUnitsStandalone(this.world, this.engine, true);
+      const initialUnits = spawnBackgroundUnitsStandalone(this.world, this.engine, true, this.backgroundAllowedTypes);
       const tracker = this.simulation.getCombatStatsTracker();
       for (const unit of initialUnits) {
         if (unit.unit?.unitType && unit.ownership) {
@@ -254,7 +256,7 @@ export class GameServer {
       this.backgroundSpawnTimer += delta;
       if (this.backgroundSpawnTimer >= this.BACKGROUND_SPAWN_INTERVAL) {
         this.backgroundSpawnTimer = 0;
-        const spawnedUnits = spawnBackgroundUnitsStandalone(this.world, this.engine, false);
+        const spawnedUnits = spawnBackgroundUnitsStandalone(this.world, this.engine, false, this.backgroundAllowedTypes);
         const tracker = this.simulation.getCombatStatsTracker();
         for (const unit of spawnedUnits) {
           if (unit.unit?.unitType && unit.ownership) {
@@ -415,5 +417,27 @@ export class GameServer {
       avgFps: avgDelta > 0 ? 1000 / avgDelta : 0,
       worstFps: maxDelta > 0 ? 1000 / maxDelta : 0,
     };
+  }
+
+  // Background demo: toggle unit type spawning
+  setBackgroundUnitTypeEnabled(unitType: string, enabled: boolean): void {
+    if (enabled) {
+      this.backgroundAllowedTypes.add(unitType);
+    } else {
+      this.backgroundAllowedTypes.delete(unitType);
+      // Kill all existing units of this type
+      for (const unit of this.world.getUnits()) {
+        if (unit.unit?.unitType === unitType) {
+          if (unit.body?.matterBody) {
+            removeBodyStandalone(this.engine, unit.body.matterBody);
+          }
+          this.world.removeEntity(unit.id);
+        }
+      }
+    }
+  }
+
+  getBackgroundAllowedTypes(): ReadonlySet<string> {
+    return this.backgroundAllowedTypes;
   }
 }

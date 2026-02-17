@@ -59,7 +59,8 @@ function spawnBackgroundUnitStandalone(
   targetMaxX: number,
   targetMinY: number,
   targetMaxY: number,
-  initialRotation: number
+  initialRotation: number,
+  allowedTypes?: ReadonlySet<string>
 ): Entity | null {
   const x = minX + Math.random() * (maxX - minX);
   const y = minY + Math.random() * (maxY - minY);
@@ -67,6 +68,8 @@ function spawnBackgroundUnitStandalone(
   const unitType = BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING
     ? selectWeightedUnitType()
     : BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
+
+  if (allowedTypes && !allowedTypes.has(unitType)) return null;
   const stats = UNIT_STATS[unitType];
 
   const unit = world.createUnitBase(
@@ -116,7 +119,8 @@ function spawnBackgroundUnitStandalone(
 export function spawnBackgroundUnitsStandalone(
   world: WorldState,
   engine: Matter.Engine,
-  initialSpawn: boolean
+  initialSpawn: boolean,
+  allowedTypes?: ReadonlySet<string>
 ): Entity[] {
   const spawned: Entity[] = [];
   const numPlayers = 4;
@@ -133,7 +137,7 @@ export function spawnBackgroundUnitsStandalone(
     const unit = spawnBackgroundUnitStandalone(world, engine, 1,
       spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin,
       spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight,
-      Math.PI / 2
+      Math.PI / 2, allowedTypes
     );
     if (unit) spawned.push(unit);
   }
@@ -144,7 +148,7 @@ export function spawnBackgroundUnitsStandalone(
     const unit = spawnBackgroundUnitStandalone(world, engine, 2,
       spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight,
       spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin,
-      -Math.PI / 2
+      -Math.PI / 2, allowedTypes
     );
     if (unit) spawned.push(unit);
   }
@@ -155,7 +159,7 @@ export function spawnBackgroundUnitsStandalone(
     const unit = spawnBackgroundUnitStandalone(world, engine, 3,
       spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin,
       mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin,
-      0
+      0, allowedTypes
     );
     if (unit) spawned.push(unit);
   }
@@ -166,7 +170,7 @@ export function spawnBackgroundUnitsStandalone(
     const unit = spawnBackgroundUnitStandalone(world, engine, 4,
       mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin,
       spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin,
-      Math.PI
+      Math.PI, allowedTypes
     );
     if (unit) spawned.push(unit);
   }
