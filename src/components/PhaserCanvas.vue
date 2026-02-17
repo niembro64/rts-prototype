@@ -56,14 +56,14 @@ const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
   { value: 'min', label: 'MIN' },
   { value: 'low', label: 'LOW' },
   { value: 'medium', label: 'MED' },
-  { value: 'high', label: 'HIGH' },
+  { value: 'high', label: 'HI' },
   { value: 'max', label: 'MAX' },
 ];
 
 // Render mode options
 const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
   { value: 'window', label: 'VIS' },
-  { value: 'padded', label: 'V+30%' },
+  { value: 'padded', label: '+30%' },
   { value: 'all', label: 'ALL' },
 ];
 
@@ -895,7 +895,7 @@ onUnmounted(() => {
             :class="{ active: projRangeToggles.splash }"
             @click="toggleProjRange('splash')"
           >
-            SPLASH
+            SPLSH
           </button>
         </div>
       </div>

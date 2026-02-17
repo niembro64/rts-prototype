@@ -7,7 +7,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { BurnMarkSystem } from './BurnMarkSystem';
 import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
-import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, setCurrentZoom } from './graphicsSettings';
+import { getGraphicsConfig, getEffectiveQuality, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
 
 // Import from helper modules
@@ -402,7 +402,8 @@ export class EntityRenderer {
     // LOD: compute screen-space radius for detail level
     const screenRadius = radius * this.cameraZoom;
     if (screenRadius < 2) return; // sub-pixel skip
-    const lod: LodLevel = screenRadius < 6 ? 'min' : screenRadius < 12 ? 'low' : 'high';
+    const lod: LodLevel = getEffectiveQuality() === 'min' ? 'min'
+      : screenRadius < 6 ? 'min' : screenRadius < 12 ? 'low' : 'high';
 
     // Get unit type for renderer selection
     const unitType = unit.unitType ?? 'jackal';

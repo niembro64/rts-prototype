@@ -151,7 +151,8 @@ export function renderProjectile(
 
 /**
  * Render proj range circles (collision radius and/or splash radius) on in-flight projectiles.
- * Skips beams. Called when any proj range toggle is active.
+ * For beams, shows the impact area circle at the endpoint under SPLASH toggle.
+ * Called when any proj range toggle is active.
  */
 export function renderProjRangeCircles(
   graphics: Phaser.GameObjects.Graphics,
@@ -160,11 +161,22 @@ export function renderProjRangeCircles(
 ): void {
   if (!entity.projectile) return;
   const proj = entity.projectile;
-  // Skip beams — they don't have collision/splash radii
-  if (proj.projectileType === 'beam') return;
+  const config = proj.config;
+
+  if (proj.projectileType === 'beam') {
+    // Beam endpoint impact area: beamWidth * 2 + 6 (matches DamageSystem)
+    if (visibility.splash) {
+      const endX = proj.endX ?? entity.transform.x;
+      const endY = proj.endY ?? entity.transform.y;
+      const beamWidth = config.beamWidth ?? 2;
+      const impactRadius = beamWidth * 2 + 6;
+      graphics.lineStyle(1, COLORS.PROJ_SPLASH_RANGE, 0.3);
+      graphics.strokeCircle(endX, endY, impactRadius);
+    }
+    return;
+  }
 
   const { x, y } = entity.transform;
-  const config = proj.config;
 
   if (visibility.collision) {
     const radius = config.projectileRadius ?? 5;

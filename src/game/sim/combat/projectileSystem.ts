@@ -391,8 +391,9 @@ export function checkProjectileCollisions(
     if (proj.timeAlive >= proj.maxLifespan) {
       // Beam audio is handled by updateLaserSounds based on targeting state
 
-      // Handle splash damage on expiration for grenades
-      if (config.splashRadius && !proj.hasExploded) {
+      // Handle splash damage on expiration for artillery projectiles (splash radius > 15)
+      // Small projectiles (gatling, pulse, buckshot) only splash on direct hit, not on expiration
+      if (config.splashRadius && config.splashRadius > 15 && !proj.hasExploded) {
         const splashResult = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
