@@ -378,7 +378,7 @@ export const UNIT_STATS = {
     hp: 240,
     moveSpeed: 200,
     collisionRadius: 16,
-    mass: 45,
+    mass: 200,
     buildRate: 40,
   },
   // Mongoose - Area denial artillery. Splash damage, slow projectile.
@@ -394,11 +394,11 @@ export const UNIT_STATS = {
   // Recluse - Long-range assassin spider. Hitscan piercing, but low DPS (17) and can't escape.
   // Value: Safe poke damage, but very slow and fragile if caught
   recluse: {
-    baseCost: 75,
+    baseCost: 55,
     hp: 25,
-    moveSpeed: 70,
+    moveSpeed: 200,
     collisionRadius: 11,
-    mass: 20,
+    mass: 3,
     buildRate: 28,
   },
   // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
@@ -441,7 +441,7 @@ export const WEAPON_STATS = {
   // Gatling - Rapid fire, low damage per shot (Jackal's weapon)
   gatling: {
     damage: 1,
-    range: 130,
+    range: 110,
     cooldown: 80,
     projectileSpeed: 400,
     projectileMass: 0.3,
@@ -462,10 +462,11 @@ export const WEAPON_STATS = {
   shotgun: {
     damage: 5, // Per pellet
     range: 90,
-    cooldown: 200,
+    cooldown: 100,
     projectileSpeed: 450,
-    projectileMass: 2,
-    pelletCount: 6,
+    projectileMass: 4,
+    pelletCount: 2,
+    spreadAngle: Math.PI / 2, // Total cone angle (radians)
   },
 
   // Mortar - Slow, high splash damage artillery (Mongoose's weapon)
@@ -489,9 +490,9 @@ export const WEAPON_STATS = {
 
   // Railgun - Instant flash hitscan, long range, piercing (Recluse's weapon)
   railgun: {
-    damage: 5,
+    damage: 10,
     range: 250,
-    cooldown: 300,
+    cooldown: 2000,
     beamDuration: 100, // Brief flash, long enough to be visible at 10Hz snapshots
     beamWidth: 1,
   },

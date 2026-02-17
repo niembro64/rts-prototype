@@ -65,7 +65,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     projectileRadius: 4,
     projectileLifespan: 300,
     pelletCount: WEAPON_STATS.shotgun.pelletCount,
-    spreadAngle: Math.PI / 5,
+    spreadAngle: WEAPON_STATS.shotgun.spreadAngle,
     color: 0xffffff,
   },
 

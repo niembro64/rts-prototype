@@ -155,12 +155,9 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
       const spreadAngle = config.spreadAngle ?? 0;
 
       for (let i = 0; i < pellets; i++) {
-        // Calculate spread
+        // Calculate spread — each pellet gets a random angle within the cone
         let angle = turretAngle;
-        if (pellets > 1 && spreadAngle > 0) {
-          const spreadOffset = (i / (pellets - 1) - 0.5) * spreadAngle;
-          angle += spreadOffset;
-        } else if (pellets === 1 && spreadAngle > 0) {
+        if (spreadAngle > 0) {
           angle += (world.rng.next() - 0.5) * spreadAngle;
         }
 

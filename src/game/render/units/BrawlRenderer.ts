@@ -66,14 +66,17 @@ export function drawBrawlUnit(
     graphics.fillCircle(x, y, r * 0.18);
   }
 
-  // Turret pass — 5-barrel revolving minigun
+  // Turret pass — 5-barrel revolving cone (fans out at shotgun spread angle)
   if (!skipTurrets) {
     const weapons = entity.weapons ?? [];
     const spin = ctx.minigunSpinAngle;
     const barrelCount = 5;
     const barrelLen = r * 1.0;
-    const orbitRadius = 3.0;     // Perpendicular orbit radius (cylinder width)
-    const depthScale = 0.12;     // Foreshortening for depth illusion
+    const baseOrbit = 1.5;       // Tight cluster at origin
+    const spreadAngle = weapons[0]?.config.spreadAngle ?? Math.PI / 5;
+    const spreadHalf = spreadAngle / 2;
+    const tipOrbit = baseOrbit + barrelLen * Math.tan(spreadHalf); // Fan out to match bullet spread
+    const depthScale = 0.12;
     const TWO_PI_FIFTH = (2 * Math.PI) / barrelCount;
 
     for (const weapon of weapons) {
@@ -84,20 +87,25 @@ export function drawBrawlUnit(
       const perpSin = Math.sin(turretRot + Math.PI / 2);
 
       for (let i = 0; i < barrelCount; i++) {
-        // 5 barrels equally spaced around the cylinder (2π/5 apart)
+        // 5 barrels equally spaced around the cone (2π/5 apart)
         const phase = spin + i * TWO_PI_FIFTH;
-        const lateralOffset = Math.sin(phase) * orbitRadius;
-        const depthFactor = 1.0 - Math.cos(phase) * depthScale;
+        const sinPhase = Math.sin(phase);
+        const cosPhase = Math.cos(phase);
+        const depthFactor = 1.0 - cosPhase * depthScale;
         const len = barrelLen * depthFactor;
 
-        const offX = perpCos * lateralOffset;
-        const offY = perpSin * lateralOffset;
+        // Base: tight orbit
+        const baseOff = sinPhase * baseOrbit;
+        const baseX = x + perpCos * baseOff;
+        const baseY = y + perpSin * baseOff;
 
-        const endX = x + fwdCos * len + offX;
-        const endY = y + fwdSin * len + offY;
+        // Tip: wide orbit matching spread angle
+        const tipOff = sinPhase * tipOrbit;
+        const tipX = x + fwdCos * len + perpCos * tipOff;
+        const tipY = y + fwdSin * len + perpSin * tipOff;
 
-        graphics.lineStyle(2, COLORS.WHITE, 1);
-        graphics.lineBetween(x + offX, y + offY, endX, endY);
+        graphics.lineStyle(4, COLORS.WHITE, 1);
+        graphics.lineBetween(baseX, baseY, tipX, tipY);
       }
     }
   }
