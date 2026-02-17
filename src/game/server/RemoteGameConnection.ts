@@ -40,5 +40,6 @@ export class RemoteGameConnection implements GameConnection {
   disconnect(): void {
     this.snapshotCallback = null;
     this.gameOverCallback = null;
+    networkManager.onStateReceived = undefined;
   }
 }

@@ -296,6 +296,9 @@ export class RtsScene extends Phaser.Scene {
         this.audioInitialized = true;
       }
     });
+
+    // Register shutdown handler so scene.restart() triggers cleanup
+    this.events.once('shutdown', this.shutdown, this);
   }
 
   // Center camera on local player's commander from ClientViewState
@@ -734,8 +737,18 @@ export class RtsScene extends Phaser.Scene {
     audioManager.stopAllLaserSounds();
     this.entityRenderer?.destroy();
     this.inputManager?.destroy();
+    this.inputManager = null;
     this.gridGraphics?.destroy();
     this.spatialGridGraphics?.destroy();
     this.gameConnection?.disconnect();
+
+    // Release callback closures (prevent Vue reactive state from being retained)
+    this.onPlayerChange = undefined;
+    this.onSelectionChange = undefined;
+    this.onEconomyChange = undefined;
+    this.onMinimapUpdate = undefined;
+    this.onGameOverUI = undefined;
+    this.onGameRestart = undefined;
+    this.onCombatStatsUpdate = undefined;
   }
 }

@@ -12,6 +12,7 @@ import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
+import { beamIndex } from '../sim/BeamIndex';
 import {
   createStandaloneEngine,
   createUnitBodyStandalone,
@@ -213,6 +214,11 @@ export class GameServer {
     }
     this.snapshotListeners.length = 0;
     this.gameOverListeners.length = 0;
+
+    // Clear simulation singletons so entity refs don't survive across sessions
+    spatialGrid.clear();
+    beamIndex.clear();
+    economyManager.reset();
   }
 
   // Start in manual mode: caller drives tick() and emitSnapshot() externally

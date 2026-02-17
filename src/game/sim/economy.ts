@@ -134,6 +134,11 @@ export class EconomyManager {
     const economy = this.getOrCreateEconomy(playerId);
     economy.expenditure += amount;
   }
+
+  // Reset all state (call between game sessions)
+  reset(): void {
+    this.economies.clear();
+  }
 }
 
 // Singleton instance

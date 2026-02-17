@@ -108,6 +108,7 @@ export class ClientViewState {
       if (!this._serverIds.has(id)) {
         this.entities.delete(id);
         this.serverTargets.delete(id);
+        this.selectedIds.delete(id);
       }
     }
 
