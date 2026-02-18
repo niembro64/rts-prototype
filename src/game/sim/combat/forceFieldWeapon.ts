@@ -245,7 +245,7 @@ export function applyForceFieldDamage(
 
       // --- Projectiles (spatial grid query replaces full-world iteration) ---
       const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
-        weaponX, weaponY, effectiveOuter + 20, sourcePlayerId
+        weaponX, weaponY, effectiveOuter, sourcePlayerId
       );
 
       for (const projEntity of nearbyProjectiles) {
