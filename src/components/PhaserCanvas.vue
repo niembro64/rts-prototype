@@ -66,8 +66,8 @@ const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
 
 // Render mode options
 const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
-  { value: 'window', label: 'VIS' },
-  { value: 'padded', label: '+30%' },
+  { value: 'window', label: 'WIN' },
+  { value: 'padded', label: 'PAD' },
   { value: 'all', label: 'ALL' },
 ];
 

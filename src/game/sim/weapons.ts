@@ -18,6 +18,7 @@ function getProjectileConfig(key: ProjectileKey) {
     ...('piercing' in p && { piercing: p.piercing }),
     ...('beamDuration' in p && { beamDuration: p.beamDuration }),
     ...('beamWidth' in p && { beamWidth: p.beamWidth }),
+    ...('collisionRadius' in p && { collisionRadius: p.collisionRadius }),
   };
 }
 

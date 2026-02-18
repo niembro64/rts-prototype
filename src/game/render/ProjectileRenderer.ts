@@ -58,21 +58,28 @@ export function renderProjectile(
     graphics.lineStyle(beamWidth, 0xffffff, 1);
     graphics.lineBetween(startX, startY, endX, endY);
 
-    // Endpoint ball — always drawn at collision radius (beamWidth), always white
+    // Endpoint ball — always drawn at collision radius, always white
+    const collisionRadius = config.collisionRadius ?? beamWidth;
     graphics.fillStyle(0xffffff, 1);
-    graphics.fillCircle(endX, endY, beamWidth);
+    graphics.fillCircle(endX, endY, collisionRadius);
 
-    // Collision-triggered damage radii highlights (medium+ detail only)
-    if (hasCollision && lod === 'high') {
-      const primaryRadius = config.primaryDamageRadius ?? (beamWidth * 2 + 6);
+    // Collision-triggered damage radii highlights
+    if (hasCollision) {
+      const primaryRadius = config.primaryDamageRadius ?? (collisionRadius * 2 + 6);
+      const secondaryRadius = config.secondaryDamageRadius ?? primaryRadius;
 
-      if (effectiveBeamStyle === 'standard') {
+      if (lod === 'min' || lod === 'low') {
+        // Simple: just primary + secondary filled circles
+        graphics.fillStyle(color, 0.08);
+        graphics.fillCircle(endX, endY, secondaryRadius);
+        graphics.fillStyle(color, 0.15);
+        graphics.fillCircle(endX, endY, primaryRadius);
+      } else if (effectiveBeamStyle === 'standard') {
         // Standard: primary glow ring
         graphics.fillStyle(color, 0.15);
         graphics.fillCircle(endX, endY, primaryRadius);
       } else if (effectiveBeamStyle === 'detailed' || effectiveBeamStyle === 'complex') {
         // Detailed/complex: primary + secondary glow rings + sparks
-        const secondaryRadius = config.secondaryDamageRadius ?? primaryRadius;
         graphics.fillStyle(color, 0.08);
         graphics.fillCircle(endX, endY, secondaryRadius);
         graphics.fillStyle(color, 0.15);
@@ -192,12 +199,12 @@ export function renderProjRangeCircles(
   if (proj.projectileType === 'beam') {
     const endX = proj.endX ?? entity.transform.x;
     const endY = proj.endY ?? entity.transform.y;
-    const beamWidth = config.beamWidth ?? 2;
-    const primaryRadius = config.primaryDamageRadius ?? (beamWidth * 2 + 6);
+    const collisionRadius = config.collisionRadius ?? config.beamWidth ?? 2;
+    const primaryRadius = config.primaryDamageRadius ?? (collisionRadius * 2 + 6);
 
     if (visibility.collision) {
       graphics.lineStyle(1, COLORS.PROJ_COLLISION_RANGE, 0.5);
-      graphics.strokeCircle(endX, endY, beamWidth);
+      graphics.strokeCircle(endX, endY, collisionRadius);
     }
     if (visibility.primary) {
       graphics.lineStyle(1, COLORS.PROJ_PRIMARY_RANGE, 0.3);

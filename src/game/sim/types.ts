@@ -100,7 +100,8 @@ export interface WeaponConfig {
 
   // Beam/laser properties
   beamDuration?: number;         // How long beam persists (ms)
-  beamWidth?: number;            // Width of beam hitbox
+  beamWidth?: number;            // Visual width of beam line
+  collisionRadius?: number;      // Collision/hit-detection radius at beam endpoint
 
   // Spread/multi-shot properties
   pelletCount?: number;          // Number of projectiles per shot

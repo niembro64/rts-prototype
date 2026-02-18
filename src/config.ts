@@ -374,8 +374,8 @@ export const PROJECTILE_MASS_MULTIPLIER = 1.0;
  * Higher values = faster acceleration, higher top speed.
  * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
  */
-export const UNIT_THRUST_MULTIPLIER_GAME = 3.0;
-export const UNIT_THRUST_MULTIPLIER_DEMO = 3.0;
+export const UNIT_THRUST_MULTIPLIER_GAME = 6.0;
+export const UNIT_THRUST_MULTIPLIER_DEMO = 6.0;
 
 // =============================================================================
 // UNIT STATS (base values before any multipliers)
@@ -559,8 +559,24 @@ export const PROJECTILE_STATS = {
     splashOnExpiry: false,
     piercing: true as const,
   },
-  laserBeam: { damage: 85, beamDuration: 1000, beamWidth: 4, primaryDamageRadius: 14, secondaryDamageRadius: 25, splashOnExpiry: false },
-  heavyLaserBeam: { damage: 100, beamDuration: 1000, beamWidth: 12, primaryDamageRadius: 30, secondaryDamageRadius: 50, splashOnExpiry: false },
+  laserBeam: {
+    damage: 85,
+    beamDuration: 1000,
+    beamWidth: 4,
+    collisionRadius: 8,
+    primaryDamageRadius: 12,
+    secondaryDamageRadius: 60,
+    splashOnExpiry: false,
+  },
+  heavyLaserBeam: {
+    damage: 100,
+    beamDuration: 1000,
+    beamWidth: 6,
+    collisionRadius: 8,
+    primaryDamageRadius: 12,
+    secondaryDamageRadius: 20,
+    splashOnExpiry: false,
+  },
   disruptorBolt: {
     damage: 9999,
     speed: 350,
@@ -625,15 +641,15 @@ export const WEAPON_STATS = {
     range: 150,
     cooldown: 0,
     turretTurnAccel: 100,
-    turretDrag: 0.5,
+    turretDrag: 0.4,
   },
   megaBeam: {
     projectile: 'heavyLaserBeam' as const,
     audioId: 'beam' as const,
-    range: 200,
+    range: 180,
     cooldown: 0,
     turretTurnAccel: 100,
-    turretDrag: 0.75,
+    turretDrag: 0.65,
   },
 
   // Force fields — no projectile, damage applied directly
@@ -686,8 +702,15 @@ export const MAP_SETTINGS = {
 // =============================================================================
 
 export const UNIT_SHORT_NAMES: Record<string, string> = {
-  jackal: 'JKL', lynx: 'LNX', daddy: 'DDY', badger: 'BDG',
-  mongoose: 'MGS', recluse: 'RCL', mammoth: 'MMT', widow: 'WDW', tarantula: 'TRN',
+  jackal: 'JKL',
+  lynx: 'LNX',
+  daddy: 'DDY',
+  badger: 'BDG',
+  mongoose: 'MGS',
+  recluse: 'RCL',
+  mammoth: 'MMT',
+  widow: 'WDW',
+  tarantula: 'TRN',
 };
 
 // =============================================================================
@@ -860,17 +883,17 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   BURN_MARK_FRAMES_SKIP: {
     min: 5,
     low: 5,
-    medium: 5,
-    high: 5,
-    max: 5,
+    medium: 4,
+    high: 2,
+    max: 0,
   },
 
   // Force field visual style
   // 'simple': single static arc at outer edge, no animation
   // 'detailed': animated wavy arcs with pull lines
   FORCE_FIELD_STYLE: {
-    min: 'simple',
-    low: 'simple',
+    min: 'detailed',
+    low: 'detailed',
     medium: 'detailed',
     high: 'detailed',
     max: 'detailed',

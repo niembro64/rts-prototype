@@ -421,13 +421,13 @@ export function updateProjectiles(
         // Find closest obstruction using unified DamageSystem
         // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness)
         const currentTick = world.getTick();
-        const beamWidth = proj.config.beamWidth ?? 2;
+        const collisionRadius = proj.config.collisionRadius ?? proj.config.beamWidth ?? 2;
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= 3) {
           const obstruction = damageSystem.findLineObstruction(
             proj.startX, proj.startY,
             fullEndX, fullEndY,
             proj.sourceEntityId,
-            beamWidth
+            collisionRadius
           );
           proj.obstructionT = obstruction ? obstruction.t : undefined;
           proj.obstructionTick = currentTick;
@@ -580,8 +580,8 @@ export function checkProjectileCollisions(
       // Beam damage uses the impact circle at the truncated beam endpoint.
       const impactX = proj.endX ?? projEntity.transform.x;
       const impactY = proj.endY ?? projEntity.transform.y;
-      const beamWidth = config.beamWidth ?? 2;
-      const primaryRadius = config.primaryDamageRadius ?? (beamWidth * 2 + 6);
+      const collisionRadius = config.collisionRadius ?? config.beamWidth ?? 2;
+      const primaryRadius = config.primaryDamageRadius ?? (collisionRadius * 2 + 6);
 
       // Calculate per-tick damage for continuous beams
       const beamDuration = config.beamDuration ?? 150;
@@ -592,12 +592,12 @@ export function checkProjectileCollisions(
       const beamDirX = Math.cos(beamAngle);
       const beamDirY = Math.sin(beamAngle);
 
-      // Collision gate: when splashOnExpiry is false, only splash if beamWidth circle hits something
+      // Collision gate: when splashOnExpiry is false, only splash if collisionRadius circle hits something
       const useCollisionGate = !config.splashOnExpiry;
       let collisionHadHits = false;
 
       if (useCollisionGate) {
-        // Step 1: Apply damage at beamWidth (collision zone only)
+        // Step 1: Apply damage at collisionRadius (collision zone only)
         const collisionResult = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
@@ -606,13 +606,13 @@ export function checkProjectileCollisions(
           excludeEntities: _emptyExcludeSet,
           centerX: impactX,
           centerY: impactY,
-          radius: beamWidth,
+          radius: collisionRadius,
           falloff: 1,
         });
 
         collisionHadHits = collisionResult.hitEntityIds.length > 0;
 
-        // Always process collision zone kills/knockbacks (these entities are inside beamWidth)
+        // Always process collision zone kills/knockbacks (these entities are inside collisionRadius)
         if (forceAccumulator && KNOCKBACK.BEAM_HIT > 0) {
           for (const hitId of collisionResult.hitEntityIds) {
             const force = tickDamage * KNOCKBACK.BEAM_HIT;

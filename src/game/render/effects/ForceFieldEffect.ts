@@ -20,14 +20,14 @@ export function renderForceFieldEffect(
   _secondaryColor: number,
   innerRange: number = 0,
   pushOutward: boolean = false,
-  lod: LodLevel = 'high'
+  _lod: LodLevel = 'high'
 ): void {
   const halfAngle = sliceAngle / 2;
   const gfxConfig = getGraphicsConfig();
   const v = FORCE_FIELD_VISUAL;
 
-  // Simple mode (low LOD or config forced): single static arc at outer edge
-  if (lod === 'low' || gfxConfig.forceFieldStyle === 'simple') {
+  // Simple mode: single static arc at outer edge
+  if (gfxConfig.forceFieldStyle === 'simple') {
     graphics.lineStyle(2, primaryColor, v.sliceOpacityMinZoom);
     graphics.beginPath();
     graphics.arc(x, y, maxRange * 0.9, rotation - halfAngle, rotation + halfAngle, false);

@@ -14,7 +14,7 @@ import { magnitude } from '../math';
 import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, LodLevel } from './types';
 import { COLORS } from './types';
 import { createColorPalette } from './helpers';
-import { renderExplosion, renderSprayEffect } from './effects';
+import { renderExplosion, renderSprayEffect, renderForceFieldEffect } from './effects';
 import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawForceFieldUnit, drawCommanderUnit } from './units';
 import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
 import { renderBuilding } from './BuildingRenderer';
@@ -419,9 +419,32 @@ export class EntityRenderer {
       ? { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base }
       : fullPalette;
 
-    // 'min': colored dot — skip all unit rendering
+    // 'min': colored dot — skip all unit/turret rendering, but render force field effects directly
     if (lod === 'min') {
-      if (this.turretsOnly) return;
+      if (this.turretsOnly) {
+        // Render force field effects without turret geometry
+        if (entity.weapons) {
+          for (const w of entity.weapons) {
+            if (!w.config.isForceField) continue;
+            const progress = w.currentForceFieldRange ?? 0;
+            if (progress <= 0) continue;
+            const innerRadius = (w.config.forceFieldInnerRange as number | undefined) ?? 0;
+            const middleRadius = (w.config.forceFieldMiddleRadius as number | undefined) ?? w.fireRange;
+            const outerRadius = w.fireRange;
+            const sliceAngle = w.config.forceFieldAngle ?? Math.PI / 4;
+            const turretRot = w.turretRotation;
+            const pushInner = middleRadius - (middleRadius - innerRadius) * progress;
+            if (middleRadius > pushInner) {
+              renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, middleRadius, palette.base, palette.base, pushInner, true, lod);
+            }
+            const pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
+            if (pullOuter > middleRadius) {
+              renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, pullOuter, palette.base, palette.base, middleRadius, false, lod);
+            }
+          }
+        }
+        return;
+      }
       this.graphics.fillStyle(palette.base, 1);
       this.graphics.fillCircle(x, y, radius);
       if (isSelected) {
