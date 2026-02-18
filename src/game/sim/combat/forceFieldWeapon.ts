@@ -10,14 +10,29 @@ import { magnitude } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 
+// Module-level dedup map: keyed by projectile entity ID, keeps only the last velocity state
+// when a projectile is affected by multiple force fields in the same tick.
+const _velocityUpdateMap = new Map<number, ProjectileVelocityUpdateEvent>();
+const _velocityUpdateResult: ProjectileVelocityUpdateEvent[] = [];
+
+// Tracks how many force field weapons have progress > 0 (set by updateForceFieldState)
+let _activeForceFieldCount = 0;
+
+// Reset module-level buffers (call between game sessions)
+export function resetForceFieldBuffers(): void {
+  _velocityUpdateMap.clear();
+  _velocityUpdateResult.length = 0;
+  _activeForceFieldCount = 0;
+}
+
 // Update force field state (transition progress 0→1)
 // Both push and pull zones grow outward from middleRadius simultaneously.
 // currentForceFieldRange is repurposed to carry the progress (0→1) for serialization.
 export function updateForceFieldState(world: WorldState, dtMs: number): void {
-  for (const unit of world.getUnits()) {
-    if (!unit.weapons) continue;
+  _activeForceFieldCount = 0;
 
-    for (const weapon of unit.weapons) {
+  for (const unit of world.getForceFieldUnits()) {
+    for (const weapon of unit.weapons!) {
       const config = weapon.config;
       if (!config.isForceField) continue;
 
@@ -41,6 +56,10 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
 
       // Serialize progress as currentForceFieldRange (0→1)
       weapon.currentForceFieldRange = weapon.forceFieldTransitionProgress;
+
+      if (weapon.forceFieldTransitionProgress > 0) {
+        _activeForceFieldCount++;
+      }
     }
   }
 }
@@ -65,25 +84,26 @@ function getForceFieldZones(config: { forceFieldInnerRange?: number | unknown; f
   return _zones;
 }
 
-// Helper: Check if a point is within a pie slice (annular ring between minRadius and maxRadius)
-function isPointInSlice(
-  px: number, py: number,
-  originX: number, originY: number,
+// Check if a point is within a pie slice (annular ring between minRadius and maxRadius)
+// Takes pre-computed dx, dy, dist to avoid redundant sqrt when caller already has them.
+// When isFullCircle is true, skips the expensive atan2 angle checks (360° fields).
+function isPointInSlicePrecomputed(
+  dx: number, dy: number, dist: number,
   sliceDirection: number,
   sliceHalfAngle: number,
   maxRadius: number,
   targetRadius: number,
-  minRadius: number = 0
+  minRadius: number,
+  isFullCircle: boolean
 ): boolean {
-  const dx = px - originX;
-  const dy = py - originY;
-  const dist = magnitude(dx, dy);
-
   // Check outer distance (accounting for target radius)
   if (dist > maxRadius + targetRadius) return false;
 
   // Check inner distance (target must be outside inner radius)
   if (minRadius > 0 && dist + targetRadius < minRadius) return false;
+
+  // Full-circle force fields skip the angle check entirely (avoids 2x atan2)
+  if (isFullCircle) return true;
 
   // Check angle (accounting for target angular size)
   const angleToPoint = Math.atan2(dy, dx);
@@ -102,19 +122,19 @@ export function applyForceFieldDamage(
   statsTracker?: CombatStatsTracker
 ): ProjectileVelocityUpdateEvent[] {
   const dtSec = dtMs / 1000;
-  if (dtSec <= 0) return [];
+  if (dtSec <= 0 || _activeForceFieldCount === 0) return [];
 
-  const velocityUpdates: ProjectileVelocityUpdateEvent[] = [];
+  _velocityUpdateMap.clear();
 
-  for (const unit of world.getUnits()) {
-    if (!unit.ownership || !unit.unit || !unit.weapons) continue;
+  for (const unit of world.getForceFieldUnits()) {
+    if (!unit.ownership || !unit.unit) continue;
     if (unit.unit.hp <= 0) continue;
 
     const unitCos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
     const unitSin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
     const sourcePlayerId = unit.ownership.playerId;
 
-    for (const weapon of unit.weapons) {
+    for (const weapon of unit.weapons!) {
       const config = weapon.config;
       if (!config.isForceField) continue;
 
@@ -134,6 +154,7 @@ export function applyForceFieldDamage(
 
       const sliceAngle = config.forceFieldAngle ?? Math.PI / 4;
       const sliceHalfAngle = sliceAngle / 2;
+      const isFullCircle = sliceHalfAngle >= Math.PI;
 
       const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
       const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
@@ -154,11 +175,10 @@ export function applyForceFieldDamage(
         const dy = target.transform.y - weaponY;
         const dist = magnitude(dx, dy);
 
-        // Check if in overall slice
-        if (!isPointInSlice(
-          target.transform.x, target.transform.y,
-          weaponX, weaponY, turretAngle, sliceHalfAngle,
-          effectiveOuter, targetRadius, effectiveInner
+        // Check if in overall slice (precomputed avoids redundant sqrt)
+        if (!isPointInSlicePrecomputed(
+          dx, dy, dist, turretAngle, sliceHalfAngle,
+          effectiveOuter, targetRadius, effectiveInner, isFullCircle
         )) continue;
 
         // Determine which zone: push (inner to middle) or pull (middle to outer)
@@ -181,10 +201,12 @@ export function applyForceFieldDamage(
         if (dist > 0 && forceAccumulator) {
           const targetMass = (target.body?.matterBody as { mass?: number })?.mass ?? 1;
           const pullDir = inPush ? 1 : -1; // push outward in inner zone, pull inward in outer zone
+          const nx = (pullDir * dx) / dist;
+          const ny = (pullDir * dy) / dist;
 
-          forceAccumulator.addDirectionalForce(
+          forceAccumulator.addNormalizedDirectionalForce(
             target.id,
-            pullDir * dx, pullDir * dy,
+            nx, ny,
             basePullStrength, targetMass,
             true, 'force_field_pull'
           );
@@ -201,11 +223,13 @@ export function applyForceFieldDamage(
         if (building.ownership?.playerId === sourcePlayerId) continue;
 
         const buildingRadius = Math.max(building.building.width, building.building.height) / 2;
+        const bdx = building.transform.x - weaponX;
+        const bdy = building.transform.y - weaponY;
+        const bdist = magnitude(bdx, bdy);
 
-        if (!isPointInSlice(
-          building.transform.x, building.transform.y,
-          weaponX, weaponY, turretAngle, sliceHalfAngle,
-          effectiveOuter, buildingRadius, effectiveInner
+        if (!isPointInSlicePrecomputed(
+          bdx, bdy, bdist, turretAngle, sliceHalfAngle,
+          effectiveOuter, buildingRadius, effectiveInner, isFullCircle
         )) continue;
 
         const bWasAlive = building.building.hp > 0;
@@ -219,24 +243,24 @@ export function applyForceFieldDamage(
         }
       }
 
-      // --- Projectiles ---
-      for (const projEntity of world.getProjectiles()) {
-        const proj = projEntity.projectile;
-        if (!proj) continue;
-        if (proj.projectileType !== 'traveling') continue;
-        if (proj.ownerId === sourcePlayerId) continue;
+      // --- Projectiles (spatial grid query replaces full-world iteration) ---
+      const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
+        weaponX, weaponY, effectiveOuter + 20, sourcePlayerId
+      );
 
+      for (const projEntity of nearbyProjectiles) {
+        const proj = projEntity.projectile!;
         const projRadius = proj.config.projectileRadius ?? 5;
-
-        if (!isPointInSlice(
-          projEntity.transform.x, projEntity.transform.y,
-          weaponX, weaponY, turretAngle, sliceHalfAngle,
-          effectiveOuter, projRadius, effectiveInner
-        )) continue;
 
         const dx = projEntity.transform.x - weaponX;
         const dy = projEntity.transform.y - weaponY;
-        const dist = magnitude(dx, dy);
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
+
+        if (!isPointInSlicePrecomputed(
+          dx, dy, dist, turretAngle, sliceHalfAngle,
+          effectiveOuter, projRadius, effectiveInner, isFullCircle
+        )) continue;
 
         const inPush = dist < zones.middleRadius;
         const pullDir = inPush ? 1 : -1;
@@ -251,7 +275,8 @@ export function applyForceFieldDamage(
 
         projEntity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
 
-        velocityUpdates.push({
+        // Dedup: if same projectile affected by multiple force fields, keep latest
+        _velocityUpdateMap.set(projEntity.id, {
           id: projEntity.id,
           x: projEntity.transform.x,
           y: projEntity.transform.y,
@@ -262,5 +287,10 @@ export function applyForceFieldDamage(
     }
   }
 
-  return velocityUpdates;
+  // Build result from dedup map (reuse array to reduce GC pressure)
+  _velocityUpdateResult.length = 0;
+  for (const event of _velocityUpdateMap.values()) {
+    _velocityUpdateResult.push(event);
+  }
+  return _velocityUpdateResult;
 }

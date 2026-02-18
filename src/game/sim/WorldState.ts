@@ -157,6 +157,12 @@ export class WorldState {
     return this.cache.getProjectiles();
   }
 
+  // Get units with force field weapons (cached - DO NOT MODIFY returned array)
+  getForceFieldUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getForceFieldUnits();
+  }
+
   // Get units by player
   getUnitsByPlayer(playerId: PlayerId): Entity[] {
     return this.getUnits().filter((e) => e.ownership?.playerId === playerId);
