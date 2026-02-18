@@ -272,7 +272,6 @@ export class DamageSystem {
 
     // Check units
     for (const unit of nearbyUnits) {
-      if (unit.id === source.sourceEntityId) continue;
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
@@ -392,7 +391,6 @@ export class DamageSystem {
 
     // Check units using swept collision (line-circle with combined radii)
     for (const unit of nearbyUnits) {
-      if (unit.id === source.sourceEntityId) continue;
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
@@ -504,7 +502,6 @@ export class DamageSystem {
 
     // Check units
     for (const unit of nearbyUnits) {
-      if (unit.id === source.sourceEntityId) continue;
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
