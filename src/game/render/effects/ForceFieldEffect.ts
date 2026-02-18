@@ -22,8 +22,9 @@ export function renderForceFieldEffect(
   rotation: number,
   sliceAngle: number, // Total angle of the pie slice
   maxRange: number,
-  _primaryColor: number,
-  _secondaryColor: number,
+  color: number,
+  sliceAlpha: number,
+  particleAlpha: number,
   innerRange: number = 0,
   pushOutward: boolean = false,
   _lod: LodLevel = 'high'
@@ -33,12 +34,9 @@ export function renderForceFieldEffect(
   const v = FORCE_FIELD_VISUAL;
   const style = gfxConfig.forceFieldStyle;
 
-  // Pick color based on push/pull direction
-  const color = pushOutward ? v.pushColor : v.pullColor;
-
   // --- Minimal: faint annular fill only ---
   if (style === 'minimal') {
-    drawAnnularFill(graphics, x, y, rotation, halfAngle, maxRange, innerRange, color, v.sliceOpacity);
+    drawAnnularFill(graphics, x, y, rotation, halfAngle, maxRange, innerRange, color, sliceAlpha);
     return;
   }
 
@@ -46,7 +44,7 @@ export function renderForceFieldEffect(
   const isEnhanced = style === 'enhanced';
 
   // 1. Annular fill
-  drawAnnularFill(graphics, x, y, rotation, halfAngle, maxRange, innerRange, color, v.sliceOpacity);
+  drawAnnularFill(graphics, x, y, rotation, halfAngle, maxRange, innerRange, color, sliceAlpha);
 
   // Helper to check if an angle is within the visible pie slice
   const normalizeAngle = (a: number) => ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
@@ -120,7 +118,7 @@ export function renderForceFieldEffect(
     const distFromInner = radius - innerRange;
     const distFromOuter = maxRange - radius;
     const edgeFade = Math.min(distFromInner / 20, distFromOuter / 20, 1);
-    const alpha = v.particleOpacity * edgeFade;
+    const alpha = particleAlpha * edgeFade;
 
     // Draw the main particle dash
     graphics.lineStyle(lineThickness, color, alpha);

@@ -1,8 +1,8 @@
 import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
 import { EntityCacheManager } from './EntityCacheManager';
-import { getWeaponConfig } from './weapons';
+import { getWeaponConfig, computeWeaponRanges } from './weapons';
 import { getUnitDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG, RANGE_MULTIPLIERS } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -336,12 +336,7 @@ export class WorldState {
     const weaponType = unitDef?.weaponType ?? 'gatling';
     const weaponConfig = getWeaponConfig(weaponType);
 
-    // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
-    const fireRange = weaponConfig.range;
-    const seeRange = fireRange * RANGE_MULTIPLIERS.see;
-    const releaseRange = fireRange * RANGE_MULTIPLIERS.release;
-    const lockRange = fireRange * RANGE_MULTIPLIERS.lock;
-    const fightstopRange = fireRange * RANGE_MULTIPLIERS.fightstop;
+    const ranges = computeWeaponRanges(weaponConfig);
 
     // Turret physics - use provided values, weapon config, or global defaults
     const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
@@ -354,11 +349,7 @@ export class WorldState {
       config: weaponConfig,
       currentCooldown: 0,
       targetEntityId: null,
-      seeRange,
-      fireRange,
-      releaseRange,
-      lockRange,
-      fightstopRange,
+      ...ranges,
       isLocked: false,
       turretRotation: 0,
       turretAngularVelocity: 0,
@@ -395,12 +386,7 @@ export class WorldState {
     const id = this.generateEntityId();
     const weaponConfig = getWeaponConfig(config.weaponId);
 
-    // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
-    const fireRange = weaponConfig.range;
-    const seeRange = fireRange * RANGE_MULTIPLIERS.see;
-    const releaseRange = fireRange * RANGE_MULTIPLIERS.release;
-    const lockRange = fireRange * RANGE_MULTIPLIERS.lock;
-    const fightstopRange = fireRange * RANGE_MULTIPLIERS.fightstop;
+    const ranges = computeWeaponRanges(weaponConfig);
 
     // Turret physics - use provided values, weapon config, or global defaults
     const turretTurnAccel = config.turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
@@ -428,11 +414,7 @@ export class WorldState {
         config: weaponConfig,
         currentCooldown: 0,
         targetEntityId: null,
-        seeRange,
-        fireRange,
-        releaseRange,
-        lockRange,
-        fightstopRange,
+        ...ranges,
         isLocked: false,
         turretRotation: 0,               // Weapon's independent turret rotation
         turretAngularVelocity: 0,        // Current angular velocity (rad/sec)

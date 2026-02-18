@@ -428,18 +428,20 @@ export class EntityRenderer {
             if (!w.config.isForceField) continue;
             const progress = w.currentForceFieldRange ?? 0;
             if (progress <= 0) continue;
-            const innerRadius = (w.config.forceFieldInnerRange as number | undefined) ?? 0;
-            const middleRadius = (w.config.forceFieldMiddleRadius as number | undefined) ?? w.fireRange;
-            const outerRadius = w.fireRange;
             const sliceAngle = w.config.forceFieldAngle ?? Math.PI / 4;
             const turretRot = w.turretRotation;
-            const pushInner = middleRadius - (middleRadius - innerRadius) * progress;
-            if (middleRadius > pushInner) {
-              renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, middleRadius, palette.base, palette.base, pushInner, true, lod);
+            const { push, pull } = w.config;
+            if (push) {
+              const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
+              if (push.outerRange > pushInner) {
+                renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, push.outerRange, push.color, push.alpha, push.particleAlpha, pushInner, true, lod);
+              }
             }
-            const pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
-            if (pullOuter > middleRadius) {
-              renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, pullOuter, palette.base, palette.base, middleRadius, false, lod);
+            if (pull) {
+              const pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
+              if (pullOuter > pull.innerRange) {
+                renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, pullOuter, pull.color, pull.alpha, pull.particleAlpha, pull.innerRange, false, lod);
+              }
             }
           }
         }

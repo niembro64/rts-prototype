@@ -84,6 +84,17 @@ export interface Building {
   maxHp: number;
 }
 
+// Force field zone configuration (push or pull)
+export interface ForceFieldZoneConfig {
+  innerRange: number;     // Inner edge radius (px)
+  outerRange: number;     // Outer edge radius (px)
+  color: number;          // Zone color (hex)
+  alpha: number;          // Slice fill opacity
+  particleAlpha: number;  // Particle dash peak opacity
+  power: number;          // Force strength (push outward / pull inward)
+  damage: number;         // Damage per second in this zone
+}
+
 // Weapon configuration - flexible system for any weapon type
 export interface WeaponConfig {
   id: string;                    // Unique identifier (e.g., 'laser', 'minigun', 'cannon')
@@ -126,14 +137,22 @@ export interface WeaponConfig {
 
   // Force field properties
   isForceField?: boolean;        // True if this is a continuous force field weapon
-  forceFieldInnerRange?: number; // Inner dead zone radius — no damage/pull inside this
   forceFieldAngle?: number;      // Constant angle of the force field (radians)
   forceFieldTransitionTime?: number; // Time (ms) to transition between idle and attack range
-  pullPower?: number;            // Pull strength toward force field origin (units/sec)
-  pullDirection?: 1 | -1;        // 1 = push outward, -1 = pull inward (default -1)
+  push?: ForceFieldZoneConfig | null; // Push zone config (null = no push zone)
+  pull?: ForceFieldZoneConfig | null; // Pull zone config (null = no pull zone)
 
   // Piercing properties
   piercing?: boolean;            // Can pierce through multiple targets
+
+  // Per-weapon range multiplier overrides (null → global RANGE_MULTIPLIERS fallback)
+  rangeMultipliers?: {
+    see: number | null;
+    fire: number | null;
+    release: number | null;
+    lock: number | null;
+    fightstop: number | null;
+  };
 
   // Future extensibility - any additional params
   [key: string]: unknown;

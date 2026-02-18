@@ -160,19 +160,11 @@ export const RANGE_MULTIPLIERS = {
  * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.
  */
 export const FORCE_FIELD_VISUAL = {
-  // --- Push / Pull zone colors ---
-  pushColor: 0xffffff, // white for push zones ("white hole")
-  pullColor: 0x3366ff, // cool blue for pull zones
-
-  // --- Filled slice zone ---
-  sliceOpacity: 0.05, // Opacity of the filled pie-slice background
-
   // --- Particle lines (radial dashes moving inward) ---
   particleCount: 20, // Number of radial particle lines around full circle
   particleSpeed: 10, // Inward travel speed
   particleLength: 0.1, // Length as fraction of maxRange (0.2 = 20%)
   particleThickness: 1, // Line thickness (px)
-  particleOpacity: 0.3, // Peak opacity (fades in/out during travel)
 
   // --- Enhanced-only: electric arcs ---
   arcCount: 4, // Number of lightning arcs visible at once
@@ -568,7 +560,7 @@ export const UNIT_STATS = {
 export const PROJECTILE_STATS = {
   lightRound: {
     damage: 1,
-    speed: 400,
+    speed: 200,
     mass: 0.3,
     radius: 2,
     lifespan: 400,
@@ -666,6 +658,7 @@ export const WEAPON_STATS = {
     audioId: 'minigun' as const,
     range: 110,
     cooldown: 80,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
   pulse: {
     projectile: 'pulseBolt' as const,
@@ -674,6 +667,7 @@ export const WEAPON_STATS = {
     cooldown: 1200,
     burstCount: 3,
     burstDelay: 40,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
   shotgun: {
     projectile: 'buckshot' as const,
@@ -682,24 +676,28 @@ export const WEAPON_STATS = {
     cooldown: 100,
     pelletCount: 2,
     spreadAngle: Math.PI / 2,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
   mortar: {
     projectile: 'mortarShell' as const,
     audioId: 'grenade' as const,
     range: 200,
     cooldown: 2500,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
   cannon: {
     projectile: 'cannonShell' as const,
     audioId: 'cannon' as const,
     range: 360,
     cooldown: 3000,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
   railgun: {
     projectile: 'railBeam' as const,
     audioId: 'railgun' as const,
     range: 250,
     cooldown: 2000,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
   beam: {
     projectile: 'laserBeam' as const,
@@ -708,6 +706,7 @@ export const WEAPON_STATS = {
     cooldown: 0,
     turretTurnAccel: 100,
     turretDrag: 0.4,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
   megaBeam: {
     projectile: 'heavyLaserBeam' as const,
@@ -716,34 +715,66 @@ export const WEAPON_STATS = {
     cooldown: 0,
     turretTurnAccel: 100,
     turretDrag: 0.65,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
 
   // Force fields — no projectile, damage applied directly
+  // Inner/middle radii are ratios of range (the outer/fire radius)
   forceField: {
     audioId: 'force-field' as const,
-    damage: 1,
+    range: SPATIAL_GRID_CELL_SIZE * 0.9,
     cooldown: 0,
-    forceFieldInnerRadius: SPATIAL_GRID_CELL_SIZE * 0.2,
-    forceFieldMiddleRadius: SPATIAL_GRID_CELL_SIZE * 0.8,
-    forceFieldOuterRadius: SPATIAL_GRID_CELL_SIZE * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 1000,
-    pullPower: 300,
+    push: {
+      innerRatio: 0.0,
+      outerRatio: 0.6,
+      color: 0xffffff,
+      alpha: 0.00,
+      particleAlpha: 0.3,
+      power: 1000,
+      damage: 1,
+    },
+    pull: {
+      innerRatio: 0.6,
+      outerRatio: 0.7,
+      color: 0x3366ff,
+      alpha: 0.05,
+      particleAlpha: 0.3,
+      power: 1000,
+      damage: 1,
+    },
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
   megaForceField: {
     audioId: 'force-field' as const,
-    damage: 1,
+    range: SPATIAL_GRID_CELL_SIZE * 0.9,
     cooldown: 0,
-    forceFieldInnerRadius: SPATIAL_GRID_CELL_SIZE * 2 * 0.3,
-    forceFieldMiddleRadius: SPATIAL_GRID_CELL_SIZE * 2 * 0.5,
-    forceFieldOuterRadius: SPATIAL_GRID_CELL_SIZE * 2 * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 1000,
-    pullPower: 300,
+    push: {
+      innerRatio: 0.0,
+      outerRatio: 0.6,
+      color: 0xffffff,
+      alpha: 0.0,
+      particleAlpha: 0.3,
+      power: 1000,
+      damage: 1,
+    },
+    pull: {
+      innerRatio: 0.6,
+      outerRatio: 0.7,
+      color: 0x3366ff,
+      alpha: 0.05,
+      particleAlpha: 0.3,
+      power: 1000,
+      damage: 1,
+    },
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
 
   disruptor: {
@@ -751,6 +782,7 @@ export const WEAPON_STATS = {
     audioId: 'cannon' as const,
     range: 150,
     cooldown: 0,
+    rangeMultipliers: { see: null, fire: null, release: null, lock: null, fightstop: null },
   },
 };
 

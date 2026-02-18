@@ -2,13 +2,12 @@
 // All unit-type-specific configuration in one place
 
 import type { UnitWeapon } from './types';
-import { getWeaponConfig, type WeaponId } from './weapons';
+import { getWeaponConfig, computeWeaponRanges, type WeaponId } from './weapons';
 import {
   COST_MULTIPLIER,
   UNIT_STATS,
   DEFAULT_TURRET_TURN_ACCEL,
   DEFAULT_TURRET_DRAG,
-  RANGE_MULTIPLIERS,
 } from '../../config';
 
 // Union type of all unit type identifiers
@@ -52,11 +51,7 @@ export interface UnitDefinition {
 // Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
   const weaponConfig = getWeaponConfig(definition.weaponType);
-  const fireRange = weaponConfig.range;
-  const seeRange = fireRange * RANGE_MULTIPLIERS.see;
-  const releaseRange = fireRange * RANGE_MULTIPLIERS.release;
-  const lockRange = fireRange * RANGE_MULTIPLIERS.lock;
-  const fightstopRange = fireRange * RANGE_MULTIPLIERS.fightstop;
+  const ranges = computeWeaponRanges(weaponConfig);
   const turretTurnAccel = weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const turretDrag = weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
@@ -64,11 +59,7 @@ function createDefaultWeapons(_radius: number, definition: UnitDefinition): Unit
     config: { ...weaponConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    seeRange,
-    fireRange,
-    releaseRange,
-    lockRange,
-    fightstopRange,
+    ...ranges,
     isLocked: false,
     turretRotation: 0,
     turretAngularVelocity: 0,
@@ -89,11 +80,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
   const megaForceFieldConfig = getWeaponConfig('megaForceField');
 
   // Beam weapon ranges
-  const beamFireRange = beamConfig.range;
-  const beamSeeRange = beamFireRange * RANGE_MULTIPLIERS.see;
-  const beamReleaseRange = beamFireRange * RANGE_MULTIPLIERS.release;
-  const beamLockRange = beamFireRange * RANGE_MULTIPLIERS.lock;
-  const beamFightstopRange = beamFireRange * RANGE_MULTIPLIERS.fightstop;
+  const beamRanges = computeWeaponRanges(beamConfig);
   const beamTurnAccel = beamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const beamDrag = beamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
@@ -112,11 +99,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
       config: { ...beamConfig },
       currentCooldown: 0,
       targetEntityId: null,
-      seeRange: beamSeeRange,
-      fireRange: beamFireRange,
-      releaseRange: beamReleaseRange,
-      lockRange: beamLockRange,
-      fightstopRange: beamFightstopRange,
+      ...beamRanges,
       isLocked: false,
       turretRotation: 0,
       turretAngularVelocity: 0,
@@ -130,11 +113,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
   }
 
   // 1 mega force field in center (dual push/pull zones)
-  const ffFireRange = megaForceFieldConfig.range;
-  const ffSeeRange = ffFireRange * RANGE_MULTIPLIERS.see;
-  const ffReleaseRange = ffFireRange * RANGE_MULTIPLIERS.release;
-  const ffLockRange = ffFireRange * RANGE_MULTIPLIERS.lock;
-  const ffFightstopRange = ffFireRange * RANGE_MULTIPLIERS.fightstop;
+  const ffRanges = computeWeaponRanges(megaForceFieldConfig);
   const ffTurnAccel = megaForceFieldConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
   const ffDrag = megaForceFieldConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
 
@@ -142,11 +121,7 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
     config: { ...megaForceFieldConfig },
     currentCooldown: 0,
     targetEntityId: null,
-    seeRange: ffSeeRange,
-    fireRange: ffFireRange,
-    releaseRange: ffReleaseRange,
-    lockRange: ffLockRange,
-    fightstopRange: ffFightstopRange,
+    ...ffRanges,
     isLocked: false,
     turretRotation: 0,
     turretAngularVelocity: 0,

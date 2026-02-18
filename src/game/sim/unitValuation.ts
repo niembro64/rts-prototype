@@ -88,8 +88,9 @@ export function getWeaponValue(config: WeaponConfig): number {
     aoeFactor = 1.3;
   }
 
-  // --- pullBonus --- flat bonus for force field pull utility
-  const pullBonus = (config.pullPower ?? 0) > 0 ? config.pullPower! * 0.05 : 0;
+  // --- pullBonus --- flat bonus for force field pull/push utility
+  const totalPower = (config.push?.power ?? 0) + (config.pull?.power ?? 0);
+  const pullBonus = totalPower > 0 ? totalPower * 0.05 : 0;
 
   return baseDPS * rangeFactor * deliveryFactor * turretFactor * aoeFactor + pullBonus;
 }

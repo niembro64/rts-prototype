@@ -2,7 +2,7 @@
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
-import { drawPolygon, drawForceFieldGrate, tintColor } from '../helpers';
+import { drawPolygon, drawForceFieldGrate } from '../helpers';
 import { renderForceFieldEffect } from '../effects';
 import type { ArachnidLeg } from '../ArachnidLeg';
 import { FORCE_FIELD_TURRET } from '../../../config';
@@ -239,32 +239,31 @@ export function drawArachnidUnit(
       }
       if (progress <= 0) continue;
 
-      const innerRadius = (weapon.config.forceFieldInnerRange as number | undefined) ?? 0;
-      const middleRadius = (weapon.config.forceFieldMiddleRadius as number | undefined) ?? weapon.fireRange;
-      const outerRadius = weapon.fireRange;
-
       const sliceAngle = weapon.config.forceFieldAngle ?? Math.PI / 4;
+      const { push, pull } = weapon.config;
 
-      // Push zone: grows inward from middleRadius toward innerRadius
-      const pushInner = middleRadius - (middleRadius - innerRadius) * progress;
-      const pushOuter = middleRadius;
-      if (pushOuter > pushInner) {
-        renderForceFieldEffect(
-          graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pushOuter,
-          tintColor(light, 0.4), tintColor(base, 0.4),
-          pushInner, true, ctx.lod
-        );
+      // Push zone: grows inward from outerRange toward innerRange
+      if (push) {
+        const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
+        if (push.outerRange > pushInner) {
+          renderForceFieldEffect(
+            graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, push.outerRange,
+            push.color, push.alpha, push.particleAlpha,
+            pushInner, true, ctx.lod
+          );
+        }
       }
 
-      // Pull zone: grows outward from middleRadius toward outerRadius
-      const pullInner = middleRadius;
-      const pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
-      if (pullOuter > pullInner) {
-        renderForceFieldEffect(
-          graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pullOuter,
-          tintColor(light, -0.4), tintColor(base, -0.4),
-          pullInner, false, ctx.lod
-        );
+      // Pull zone: grows outward from innerRange toward outerRange
+      if (pull) {
+        const pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
+        if (pullOuter > pull.innerRange) {
+          renderForceFieldEffect(
+            graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pullOuter,
+            pull.color, pull.alpha, pull.particleAlpha,
+            pull.innerRange, false, ctx.lod
+          );
+        }
       }
     }
   }

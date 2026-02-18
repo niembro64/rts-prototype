@@ -66,21 +66,23 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
 
 // Compute the effective push and pull zone boundaries from transition progress + config
 // Reusable object to avoid allocation per call
-const _zones = { innerRadius: 0, middleRadius: 0, outerRadius: 0, pushInner: 0, pushOuter: 0, pullInner: 0, pullOuter: 0 };
+const _zones = { pushInner: 0, pushOuter: 0, pullInner: 0, pullOuter: 0 };
 
-function getForceFieldZones(config: { forceFieldInnerRange?: number | unknown; forceFieldMiddleRadius?: number | unknown; range: number }, progress: number) {
-  const innerRadius = (config.forceFieldInnerRange as number | undefined) ?? 0;
-  const middleRadius = (config.forceFieldMiddleRadius as number | undefined) ?? config.range;
-  const outerRadius = config.range;
-
-  _zones.innerRadius = innerRadius;
-  _zones.middleRadius = middleRadius;
-  _zones.outerRadius = outerRadius;
-  _zones.pushInner = middleRadius - (middleRadius - innerRadius) * progress;
-  _zones.pushOuter = middleRadius;
-  _zones.pullInner = middleRadius;
-  _zones.pullOuter = middleRadius + (outerRadius - middleRadius) * progress;
-
+function getForceFieldZones(push: import('../types').ForceFieldZoneConfig | null | undefined, pull: import('../types').ForceFieldZoneConfig | null | undefined, progress: number) {
+  if (push) {
+    _zones.pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
+    _zones.pushOuter = push.outerRange;
+  } else {
+    _zones.pushInner = 0;
+    _zones.pushOuter = 0;
+  }
+  if (pull) {
+    _zones.pullInner = pull.innerRange;
+    _zones.pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
+  } else {
+    _zones.pullInner = 0;
+    _zones.pullOuter = 0;
+  }
   return _zones;
 }
 
@@ -141,16 +143,26 @@ export function applyForceFieldDamage(
       const progress = weapon.forceFieldTransitionProgress ?? (weapon.currentForceFieldRange ?? 0);
       if (progress <= 0) continue;
 
-      const zones = getForceFieldZones(config, progress);
+      const push = config.push;
+      const pull = config.pull;
+      if (!push && !pull) continue;
+
+      const zones = getForceFieldZones(push, pull, progress);
 
       // Overall effective range (union of push and pull zones)
       const effectiveOuter = Math.max(zones.pushOuter, zones.pullOuter);
-      const effectiveInner = Math.min(zones.pushInner, zones.pullInner);
+      const effectiveInner = Math.min(
+        zones.pushOuter > zones.pushInner ? zones.pushInner : Infinity,
+        zones.pullOuter > zones.pullInner ? zones.pullInner : Infinity
+      );
 
       if (effectiveOuter <= effectiveInner) continue;
 
-      const baseDamagePerFrame = config.damage * dtSec;
-      const basePullStrength = (config.pullPower ?? 0) * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER;
+      // Per-zone damage and force
+      const pushDamagePerFrame = push ? push.damage * dtSec : 0;
+      const pullDamagePerFrame = pull ? pull.damage * dtSec : 0;
+      const pushStrength = push ? push.power * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
+      const pullStrength = pull ? pull.power * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
 
       const sliceAngle = config.forceFieldAngle ?? Math.PI / 4;
       const sliceHalfAngle = sliceAngle / 2;
@@ -181,19 +193,20 @@ export function applyForceFieldDamage(
           effectiveOuter, targetRadius, effectiveInner, isFullCircle
         )) continue;
 
-        // Determine which zone: push (inner to middle) or pull (middle to outer)
-        const inPush = dist < zones.middleRadius && zones.pushOuter > zones.pushInner;
-        const inPull = dist >= zones.middleRadius && zones.pullOuter > zones.pullInner;
+        // Determine which zone: push (inner) or pull (outer)
+        const inPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
+        const inPull = !inPush && zones.pullOuter > zones.pullInner && dist >= zones.pullInner;
 
         if (!inPush && !inPull) continue;
 
+        const damagePerFrame = inPush ? pushDamagePerFrame : pullDamagePerFrame;
         const wasAlive = target.unit.hp > 0;
         if (wasAlive) {
           // Cap recorded damage at remaining HP to avoid overkill inflation
-          const actualDamage = Math.min(baseDamagePerFrame, target.unit.hp);
+          const actualDamage = Math.min(damagePerFrame, target.unit.hp);
           statsTracker?.recordDamage(unit.id, target.id, actualDamage);
         }
-        target.unit.hp -= baseDamagePerFrame;
+        target.unit.hp -= damagePerFrame;
         if (wasAlive && target.unit.hp <= 0) {
           statsTracker?.recordKill(unit.id, target.id);
         }
@@ -201,13 +214,14 @@ export function applyForceFieldDamage(
         if (dist > 0 && forceAccumulator) {
           const targetMass = (target.body?.matterBody as { mass?: number })?.mass ?? 1;
           const pullDir = inPush ? 1 : -1; // push outward in inner zone, pull inward in outer zone
+          const zoneStrength = inPush ? pushStrength : pullStrength;
           const nx = (pullDir * dx) / dist;
           const ny = (pullDir * dy) / dist;
 
           forceAccumulator.addNormalizedDirectionalForce(
             target.id,
             nx, ny,
-            basePullStrength, targetMass,
+            zoneStrength, targetMass,
             true, 'force_field_pull'
           );
         }
@@ -232,12 +246,17 @@ export function applyForceFieldDamage(
           effectiveOuter, buildingRadius, effectiveInner, isFullCircle
         )) continue;
 
+        const bInPush = zones.pushOuter > zones.pushInner && bdist < zones.pushOuter;
+        const bInPull = !bInPush && zones.pullOuter > zones.pullInner && bdist >= zones.pullInner;
+        if (!bInPush && !bInPull) continue;
+
+        const bDamagePerFrame = bInPush ? pushDamagePerFrame : pullDamagePerFrame;
         const bWasAlive = building.building.hp > 0;
         if (bWasAlive) {
-          const actualDamage = Math.min(baseDamagePerFrame, building.building.hp);
+          const actualDamage = Math.min(bDamagePerFrame, building.building.hp);
           statsTracker?.recordDamage(unit.id, building.id, actualDamage);
         }
-        building.building.hp -= baseDamagePerFrame;
+        building.building.hp -= bDamagePerFrame;
         if (bWasAlive && building.building.hp <= 0) {
           statsTracker?.recordKill(unit.id, building.id);
         }
@@ -262,11 +281,15 @@ export function applyForceFieldDamage(
           effectiveOuter, projRadius, effectiveInner, isFullCircle
         )) continue;
 
-        const inPush = dist < zones.middleRadius;
-        const pullDir = inPush ? 1 : -1;
+        const pInPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
+        const pInPull = !pInPush && zones.pullOuter > zones.pullInner && dist >= zones.pullInner;
+        if (!pInPush && !pInPull) continue;
+
+        const pullDir = pInPush ? 1 : -1;
+        const pZoneStrength = pInPush ? pushStrength : pullStrength;
 
         const projMass = (proj.config.projectileMass ?? 1) * PROJECTILE_MASS_MULTIPLIER;
-        const pullAccel = basePullStrength / projMass;
+        const pullAccel = pZoneStrength / projMass;
 
         const dirX = dist > 0 ? dx / dist : 0;
         const dirY = dist > 0 ? dy / dist : 0;
