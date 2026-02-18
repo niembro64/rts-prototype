@@ -926,7 +926,7 @@ onUnmounted(() => {
         </div>
         <div class="bar-divider"></div>
         <span class="control-label">FULLSNAP:</span>
-        <div class="button-group">
+        <div class="button-group fullsnap-group">
           <button
             v-for="opt in FULLSNAP_OPTIONS"
             :key="String(opt)"
@@ -1477,6 +1477,10 @@ onUnmounted(() => {
 
 .button-group .control-btn:last-child {
   border-radius: 0 3px 3px 0;
+}
+
+.fullsnap-group .control-btn {
+  min-width: 38px;
 }
 
 .control-btn {
