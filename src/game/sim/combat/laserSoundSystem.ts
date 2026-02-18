@@ -16,7 +16,9 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
 
   for (const unit of world.getUnits()) {
     if (!unit.weapons || !unit.unit || !unit.ownership) continue;
-    if (unit.unit.hp <= 0) continue;
+
+    // Dead units must still emit laserStop so the client releases audio nodes
+    const isDead = unit.unit.hp <= 0;
 
     const cos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
     const sin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
@@ -28,6 +30,21 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
       const isBeamWeapon = config.beamDuration !== undefined && config.cooldown === 0;
 
       if (!isBeamWeapon) continue;
+
+      // Use unique entity ID based on unit ID and weapon index
+      const soundEntityId = unit.id * 100 + i;
+
+      // Dead units always get laserStop
+      if (isDead) {
+        audioEvents.push({
+          type: 'laserStop',
+          weaponId: config.audioId,
+          x: unit.transform.x,
+          y: unit.transform.y,
+          entityId: soundEntityId,
+        });
+        continue;
+      }
 
       // Check if weapon has a valid target in weapon's fire range
       let hasTargetInRange = false;
@@ -47,9 +64,6 @@ export function updateLaserSounds(world: WorldState): AudioEvent[] {
           }
         }
       }
-
-      // Use unique entity ID based on unit ID and weapon index
-      const soundEntityId = unit.id * 100 + i;
 
       if (hasTargetInRange) {
         audioEvents.push({
