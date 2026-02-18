@@ -130,22 +130,8 @@ export const FORCE_FIELD_VISUAL = {
   pushColor: 0xff6633, // warm orange-red for push zones
   pullColor: 0x3366ff, // cool blue for pull zones
 
-  // --- Overall ---
-  showAnimatedWaves: false, // true = animated wavy arcs, false = static filled slice
-  animationSpeed: 0.3, // Global speed multiplier (1.0 = default, 0.5 = half)
-  accelExponent: 1, // Inward acceleration curve (1 = linear, 2+ = slow outside/fast inside)
-
   // --- Filled slice zone ---
   sliceOpacity: 0.05, // Opacity of the filled pie-slice background
-  sliceOpacityMinZoom: 0.1, // Opacity of the simple arc at min detail level
-
-  // --- Concentric wave arcs (when showAnimatedWaves = true) ---
-  waveCount: 5, // Number of concentric wave arcs
-  waveOpacity: 0.05, // Opacity of wave arcs
-  waveThickness: 10, // Line thickness of wave arcs (px)
-  waveAmplitude: 0, // Sine wobble amplitude (0 = smooth circles)
-  waveFrequency: 10, // Sine wobble frequency (oscillations per arc)
-  wavePullSpeed: 0.8, // Speed of wave arcs moving inward
 
   // --- Particle lines (radial dashes moving inward) ---
   particleCount: 20, // Number of radial particle lines around full circle
@@ -153,7 +139,19 @@ export const FORCE_FIELD_VISUAL = {
   particleLength: 0.1, // Length as fraction of maxRange (0.2 = 20%)
   particleThickness: 1, // Line thickness (px)
   particleOpacity: 0.3, // Peak opacity (fades in/out during travel)
-  particleSpawnOffset: 0.5, // Where particles start as fraction of maxRange from center
+
+  // --- Enhanced-only: electric arcs ---
+  arcCount: 4, // Number of lightning arcs visible at once
+  arcSegments: 6, // Segments per arc (more = more jagged)
+  arcJitter: 15, // Max perpendicular offset per segment (px)
+  arcThickness: 1.5, // Line thickness of arcs (px)
+  arcOpacity: 0.5, // Peak opacity of arcs
+  arcFlickerMs: 80, // How often arcs re-randomize (ms) — lower = faster crackle
+
+  // --- Enhanced-only: particle trails ---
+  trailSegments: 3, // Number of trailing ghost segments behind each particle
+  trailSpacing: 0.6, // Spacing between trail segments as fraction of dashLen
+  trailFalloff: 0.45, // Opacity multiplier per successive trail segment
 };
 
 // =============================================================================
