@@ -62,6 +62,8 @@ export class GameServer {
   private snapshotInterval: ReturnType<typeof setInterval> | null = null;
   private lastTickTime: number = 0;
   private snapshotRateHz: number;
+  private snapshotRateDisplay: number | 'realtime';
+  private keyframeRatioDisplay: number | 'ALL' | 'NONE';
 
   // Background mode
   private backgroundSpawnTimer: number = 0;
@@ -96,6 +98,8 @@ export class GameServer {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
     this.snapshotRateHz = config.snapshotRate ?? 10;
+    this.snapshotRateDisplay = config.snapshotRate ?? 10;
+    this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
     this.tickDeltaHistory = new Float64Array(this.TICK_HISTORY_SIZE);
 
     // Create standalone Matter.js engine
@@ -346,10 +350,14 @@ export class GameServer {
       state.serverMeta = {
         tpsAvg: tickStats.avgFps,
         tpsWorst: tickStats.worstFps,
-        snapshotRate: this.snapshotRateHz,
+        snapshotRate: this.snapshotRateDisplay,
+        keyframeRatio: this.keyframeRatioDisplay,
         sendGridInfo: this.sendGridInfo,
         serverTime: currentTime,
         ipAddress: this.ipAddress,
+        allowedUnitTypes: this.backgroundMode
+          ? [...this.backgroundAllowedTypes]
+          : undefined,
       };
       this.lastSentServerTime = currentTime;
     }
@@ -371,6 +379,21 @@ export class GameServer {
 
   // Receive a command from a client
   receiveCommand(command: Command): void {
+    // Intercept server config commands (don't need tick synchronization)
+    switch (command.type) {
+      case 'setSnapshotRate':
+        this.setSnapshotRate(command.rate);
+        return;
+      case 'setKeyframeRatio':
+        this.setKeyframeRatio(command.ratio);
+        return;
+      case 'setSendGridInfo':
+        this.setSendGridInfo(command.enabled);
+        return;
+      case 'setBackgroundUnitType':
+        this.setBackgroundUnitTypeEnabled(command.unitType, command.enabled);
+        return;
+    }
     this.commandQueue.enqueue(command);
   }
 
@@ -386,12 +409,14 @@ export class GameServer {
 
   // Change keyframe ratio (fraction of snapshots that are full keyframes)
   setKeyframeRatio(ratio: KeyframeRatio): void {
+    this.keyframeRatioDisplay = ratio;
     this.keyframeRatio = ratio === 'ALL' ? 1 : ratio === 'NONE' ? 0 : ratio;
     this.snapshotCounter = 0;
   }
 
   // Change snapshot emission rate ('realtime' maps to 60Hz)
   setSnapshotRate(hz: number | 'realtime'): void {
+    this.snapshotRateDisplay = hz;
     this.snapshotRateHz = hz === 'realtime' ? 60 : hz;
     if (this.snapshotInterval) {
       this.startSnapshotBroadcast();

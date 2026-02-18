@@ -98,9 +98,6 @@ const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
-const snapshotRate = ref<SnapshotRate>(DEFAULT_SNAPSHOT_RATE);
-const keyframeRatio = ref<KeyframeRatio>(DEFAULT_KEYFRAME_RATIO);
-const sendGridInfo = ref(false);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 
 // Server metadata received from snapshots (for remote clients to display server bar)
@@ -108,11 +105,11 @@ const serverMetaFromSnapshot = ref<NetworkServerMeta | null>(null);
 const localIpAddress = ref<string>('N/A');
 const clientTime = ref<string>('');
 
-// Demo battle unit type toggles
+// Active connection for sending commands (set when server/connection is created)
+let activeConnection: GameConnection | null = null;
+
+// Demo battle unit type list (state read from snapshots)
 const demoUnitTypes = Object.keys(UNIT_STATS);
-const demoUnitToggles = reactive<Record<string, boolean>>(
-  Object.fromEntries(demoUnitTypes.map(t => [t, true]))
-);
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(
   getEffectiveQuality(),
@@ -139,9 +136,6 @@ const lowFPS = ref(0);
 // Actual frame delta measurements (our own tracking)
 const actualAvgFPS = ref(0);
 const actualWorstFPS = ref(0);
-// Server tick rate stats
-const serverAvgFPS = ref(0);
-const serverWorstFPS = ref(0);
 const currentZoom = ref(0.4);
 const fpsHistory: number[] = [];
 const FPS_HISTORY_SIZE = 1000; // ~16 seconds of samples at 60fps
@@ -216,8 +210,9 @@ function startBackgroundBattle(): void {
   });
 
   const bgConnection = new LocalGameConnection(backgroundServer);
+  activeConnection = bgConnection;
   backgroundServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
-  backgroundServer.setKeyframeRatio(keyframeRatio.value);
+  backgroundServer.setKeyframeRatio(DEFAULT_KEYFRAME_RATIO);
   backgroundServer.setIpAddress(localIpAddress.value);
   backgroundServer.start();
   hasServer.value = true;
@@ -279,8 +274,9 @@ function stopBackgroundBattle(): void {
     destroyGame(backgroundGameInstance);
     backgroundGameInstance = null;
   }
-  // Only clear hasServer if there's no game server either
+  // Only clear hasServer/activeConnection if there's no game server either
   if (!currentServer) {
+    activeConnection = null;
     hasServer.value = false;
   }
   combatStatsHistory.value = [];
@@ -302,19 +298,12 @@ const showServerControls = computed(() => hasServer.value || serverMetaFromSnaps
 // Server bar is read-only for remote clients (no local server)
 const serverBarReadonly = computed(() => !hasServer.value);
 
-// Display values: use local polling when host, snapshot meta when remote client
-const displayServerTpsAvg = computed(() =>
-  hasServer.value ? serverAvgFPS.value : (serverMetaFromSnapshot.value?.tpsAvg ?? 0)
-);
-const displayServerTpsWorst = computed(() =>
-  hasServer.value ? serverWorstFPS.value : (serverMetaFromSnapshot.value?.tpsWorst ?? 0)
-);
-const displaySnapshotRate = computed(() =>
-  hasServer.value ? snapshotRate.value : (serverMetaFromSnapshot.value?.snapshotRate ?? 10)
-);
-const displayGridInfo = computed(() =>
-  hasServer.value ? sendGridInfo.value : (serverMetaFromSnapshot.value?.sendGridInfo ?? false)
-);
+// Display values: always read from snapshot meta (server→snapshot→display)
+const displayServerTpsAvg = computed(() => serverMetaFromSnapshot.value?.tpsAvg ?? 0);
+const displayServerTpsWorst = computed(() => serverMetaFromSnapshot.value?.tpsWorst ?? 0);
+const displaySnapshotRate = computed(() => serverMetaFromSnapshot.value?.snapshotRate ?? DEFAULT_SNAPSHOT_RATE);
+const displayKeyframeRatio = computed(() => serverMetaFromSnapshot.value?.keyframeRatio ?? DEFAULT_KEYFRAME_RATIO);
+const displayGridInfo = computed(() => serverMetaFromSnapshot.value?.sendGridInfo ?? false);
 const displayServerTime = computed(() =>
   serverMetaFromSnapshot.value?.serverTime ?? ''
 );
@@ -326,9 +315,8 @@ const displayServerIp = computed(() =>
 const isBackgroundBattle = computed(() => showLobby.value && !gameStarted.value && hasServer.value);
 
 function toggleDemoUnitType(unitType: string): void {
-  const newValue = !demoUnitToggles[unitType];
-  demoUnitToggles[unitType] = newValue;
-  backgroundServer?.setBackgroundUnitTypeEnabled(unitType, newValue);
+  const current = serverMetaFromSnapshot.value?.allowedUnitTypes?.includes(unitType) ?? true;
+  activeConnection?.sendCommand({ type: 'setBackgroundUnitType', tick: 0, unitType, enabled: !current });
 }
 
 function togglePlayer(): void {
@@ -361,6 +349,7 @@ function restartGame(): void {
     currentServer.stop();
     currentServer = null;
   }
+  activeConnection = null;
   hasServer.value = false;
   serverMetaFromSnapshot.value = null;
 
@@ -555,14 +544,6 @@ function updateFPSStats(): void {
     actualWorstFPS.value = frameStats.worstFps;
   }
   effectiveQuality.value = getEffectiveQuality();
-
-  // Poll server tick stats
-  const activeServer = currentServer ?? backgroundServer;
-  if (activeServer) {
-    const tickStats = activeServer.getTickStats();
-    serverAvgFPS.value = tickStats.avgFps;
-    serverWorstFPS.value = tickStats.worstFps;
-  }
 }
 
 function setupNetworkCallbacks(): void {
@@ -617,6 +598,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
       // Create LocalGameConnection for the host client
       const localConnection = new LocalGameConnection(currentServer);
+      activeConnection = localConnection;
       gameConnection = localConnection;
 
       // If hosting, also broadcast snapshots to remote clients
@@ -631,15 +613,16 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
         };
       }
 
-      // Configure snapshot rate and start in manual mode (Phaser update() drives ticks)
-      currentServer.setSnapshotRate(snapshotRate.value);
-      currentServer.setKeyframeRatio(keyframeRatio.value);
+      // Configure snapshot rate and start
+      currentServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
+      currentServer.setKeyframeRatio(DEFAULT_KEYFRAME_RATIO);
       currentServer.setIpAddress(localIpAddress.value);
       currentServer.start();
       hasServer.value = true;
     } else {
       // Client: create RemoteGameConnection wrapping networkManager
       const remoteConnection = new RemoteGameConnection();
+      activeConnection = remoteConnection;
       gameConnection = remoteConnection;
     }
 
@@ -733,34 +716,16 @@ function setupSceneCallbacks(): void {
 }
 
 function setNetworkUpdateRate(rate: SnapshotRate): void {
-  snapshotRate.value = rate;
-  // Update whichever server is active
-  if (currentServer) {
-    currentServer.setSnapshotRate(rate);
-  }
-  if (backgroundServer) {
-    backgroundServer.setSnapshotRate(rate);
-  }
+  activeConnection?.sendCommand({ type: 'setSnapshotRate', tick: 0, rate });
 }
 
 function setKeyframeRatioValue(ratio: KeyframeRatio): void {
-  keyframeRatio.value = ratio;
-  if (currentServer) {
-    currentServer.setKeyframeRatio(ratio);
-  }
-  if (backgroundServer) {
-    backgroundServer.setKeyframeRatio(ratio);
-  }
+  activeConnection?.sendCommand({ type: 'setKeyframeRatio', tick: 0, ratio });
 }
 
 function toggleSendGridInfo(): void {
-  sendGridInfo.value = !sendGridInfo.value;
-  if (currentServer) {
-    currentServer.setSendGridInfo(sendGridInfo.value);
-  }
-  if (backgroundServer) {
-    backgroundServer.setSendGridInfo(sendGridInfo.value);
-  }
+  const current = serverMetaFromSnapshot.value?.sendGridInfo ?? false;
+  activeConnection?.sendCommand({ type: 'setSendGridInfo', tick: 0, enabled: !current });
 }
 
 function dismissGameOver(): void {
@@ -888,7 +853,7 @@ onUnmounted(() => {
             v-for="ut in demoUnitTypes"
             :key="ut"
             class="control-btn"
-            :class="{ active: demoUnitToggles[ut] }"
+            :class="{ active: serverMetaFromSnapshot?.allowedUnitTypes?.includes(ut) ?? true }"
             @click="toggleDemoUnitType(ut)"
           >
             {{ UNIT_SHORT_NAMES[ut] || ut }}
@@ -930,7 +895,7 @@ onUnmounted(() => {
             v-for="opt in FULLSNAP_OPTIONS"
             :key="String(opt)"
             class="control-btn"
-            :class="{ active: keyframeRatio === opt }"
+            :class="{ active: displayKeyframeRatio === opt }"
             @click="setKeyframeRatioValue(opt)"
           >
             {{ opt === 'ALL' ? 'ALL' : opt === 'NONE' ? 'NONE' : `1e-${Math.round(-Math.log10(opt as number))}` }}

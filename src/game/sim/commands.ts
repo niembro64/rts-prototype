@@ -1,7 +1,7 @@
 import type { EntityId, WaypointType, BuildingType } from './types';
 
 // Command types
-export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'cancelQueueItem' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair';
+export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'cancelQueueItem' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair' | 'setSnapshotRate' | 'setKeyframeRatio' | 'setSendGridInfo' | 'setBackgroundUnitType';
 
 // Base command interface
 interface BaseCommand {
@@ -105,8 +105,30 @@ export interface RepairCommand extends BaseCommand {
   queue: boolean; // Whether to add to build queue (shift) or replace
 }
 
+// Server config commands (intercepted by GameServer before CommandQueue)
+export interface SetSnapshotRateCommand extends BaseCommand {
+  type: 'setSnapshotRate';
+  rate: number | 'realtime';
+}
+
+export interface SetKeyframeRatioCommand extends BaseCommand {
+  type: 'setKeyframeRatio';
+  ratio: number | 'ALL' | 'NONE';
+}
+
+export interface SetSendGridInfoCommand extends BaseCommand {
+  type: 'setSendGridInfo';
+  enabled: boolean;
+}
+
+export interface SetBackgroundUnitTypeCommand extends BaseCommand {
+  type: 'setBackgroundUnitType';
+  unitType: string;
+  enabled: boolean;
+}
+
 // Union of all command types
-export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | CancelQueueItemCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand;
+export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | CancelQueueItemCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand | SetSnapshotRateCommand | SetKeyframeRatioCommand | SetSendGridInfoCommand | SetBackgroundUnitTypeCommand;
 
 // Command queue for processing commands in order
 export class CommandQueue {

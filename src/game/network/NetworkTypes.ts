@@ -100,9 +100,11 @@ export interface NetworkServerMeta {
   tpsAvg: number;
   tpsWorst: number;
   snapshotRate: number | 'realtime';
+  keyframeRatio: number | 'ALL' | 'NONE';
   sendGridInfo: boolean;
   serverTime: string;    // "14:34:05 MST"
   ipAddress: string;     // Public IP or "N/A"
+  allowedUnitTypes?: string[];  // Demo mode only
 }
 
 // Serialized game state sent over network
