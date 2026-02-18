@@ -145,11 +145,14 @@ export function applyForceFieldDamage(
 
       const push = config.push;
       const pull = config.pull;
-      if (!push && !pull) continue;
+      // Zones with power: null are visual-only — skip sim entirely for that zone
+      const pushSim = push != null && push.power != null;
+      const pullSim = pull != null && pull.power != null;
+      if (!pushSim && !pullSim) continue;
 
-      const zones = getForceFieldZones(push, pull, progress);
+      const zones = getForceFieldZones(pushSim ? push : null, pullSim ? pull : null, progress);
 
-      // Overall effective range (union of push and pull zones)
+      // Overall effective range (union of sim-active zones)
       const effectiveOuter = Math.max(zones.pushOuter, zones.pullOuter);
       const effectiveInner = Math.min(
         zones.pushOuter > zones.pushInner ? zones.pushInner : Infinity,
@@ -159,10 +162,10 @@ export function applyForceFieldDamage(
       if (effectiveOuter <= effectiveInner) continue;
 
       // Per-zone damage and force
-      const pushDamagePerFrame = push ? push.damage * dtSec : 0;
-      const pullDamagePerFrame = pull ? pull.damage * dtSec : 0;
-      const pushStrength = push ? push.power * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
-      const pullStrength = pull ? pull.power * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
+      const pushDamagePerFrame = pushSim ? push!.damage * dtSec : 0;
+      const pullDamagePerFrame = pullSim ? pull!.damage * dtSec : 0;
+      const pushStrength = pushSim ? push!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
+      const pullStrength = pullSim ? pull!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
 
       const sliceAngle = config.forceFieldAngle ?? Math.PI / 4;
       const sliceHalfAngle = sliceAngle / 2;

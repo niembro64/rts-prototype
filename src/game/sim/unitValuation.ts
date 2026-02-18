@@ -89,7 +89,7 @@ export function getWeaponValue(config: WeaponConfig): number {
   }
 
   // --- pullBonus --- flat bonus for force field pull/push utility
-  const totalPower = (config.push?.power ?? 0) + (config.pull?.power ?? 0);
+  const totalPower = (config.push?.power ?? 0) as number + (config.pull?.power ?? 0) as number;
   const pullBonus = totalPower > 0 ? totalPower * 0.05 : 0;
 
   return baseDPS * rangeFactor * deliveryFactor * turretFactor * aoeFactor + pullBonus;

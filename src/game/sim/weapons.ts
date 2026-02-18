@@ -5,7 +5,7 @@ type ProjectileKey = keyof typeof PROJECTILE_STATS;
 
 /** Compute a ForceFieldZoneConfig from ratio-based stats and weapon range */
 function computeZoneConfig(
-  zone: { innerRatio: number; outerRatio: number; color: number; alpha: number; particleAlpha: number; power: number; damage: number } | null | undefined,
+  zone: { innerRatio: number; outerRatio: number; color: number; alpha: number; particleAlpha: number; power: number | null; damage: number } | null | undefined,
   range: number
 ): ForceFieldZoneConfig | null {
   if (!zone) return null;

@@ -91,7 +91,7 @@ export interface ForceFieldZoneConfig {
   color: number;          // Zone color (hex)
   alpha: number;          // Slice fill opacity
   particleAlpha: number;  // Particle dash peak opacity
-  power: number;          // Force strength (push outward / pull inward)
+  power: number | null;   // Force strength (push outward / pull inward); null = visual only, skip sim
   damage: number;         // Damage per second in this zone
 }
 
