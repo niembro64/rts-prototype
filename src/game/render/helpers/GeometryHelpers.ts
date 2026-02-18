@@ -4,6 +4,7 @@ import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
 import { COLORS } from '../types';
 import type { LodLevel } from '../types';
+import type { ForceFieldTurretConfig } from '../../../config';
 
 // Reusable point buffers to avoid per-call allocations
 const _rectPoints = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
@@ -157,45 +158,108 @@ export function drawAnimatedTread(
   }
 }
 
+/** Linearly interpolate between two hex colors by factor t (0→a, 1→b). */
+function lerpColor(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  const r = (ar + (br - ar) * t) | 0;
+  const g = (ag + (bg - ag) * t) | 0;
+  const bl = (ab + (bb - ab) * t) | 0;
+  return (r << 16) | (g << 8) | bl;
+}
+
 /**
- * Draw a force field grate turret — floating horizontal bars
- * that get shorter the farther they are from the origin (TV antenna style).
- * @param originX - turret mount point X
- * @param originY - turret mount point Y
- * @param turretRot - turret rotation in radians
- * @param grateLength - how far out the grate extends
- * @param maxHalfWidth - half-width of the widest (closest) bar
- * @param thickness - line thickness
- * @param barCount - number of bars to draw
+ * Draw a force field grate turret — configurable shape pieces that taper
+ * and cluster tighter the farther they are from the origin.
+ * Pieces animate white↔blue based on force field progress.
  */
 export function drawForceFieldGrate(
   graphics: Phaser.GameObjects.Graphics,
   originX: number,
   originY: number,
   turretRot: number,
-  grateLength: number,
-  maxHalfWidth: number,
-  thickness: number,
-  barCount: number,
+  radius: number,
+  config: ForceFieldTurretConfig,
+  progress: number = 0,
+  transitionTimeMs: number = 1000,
 ): void {
+  const { shape, count, length, width, taper, baseOffset, thickness, reversePhase } = config;
+  const grateLength = radius * length;
+  const maxHalfWidth = radius * width;
+
   const fwdX = Math.cos(turretRot);
   const fwdY = Math.sin(turretRot);
   const perpX = -fwdY;
   const perpY = fwdX;
 
-  // Floating horizontal bars, longest at base, shortest at tip
-  graphics.lineStyle(thickness, COLORS.WHITE, 1);
-  for (let i = 0; i < barCount; i++) {
-    const t = i / (barCount - 1); // 0 (closest) to 1 (farthest)
-    const dist = grateLength * (0.15 + t * 0.85);
-    const halfWidth = maxHalfWidth * (1 - t * 0.7); // taper to 30% at tip
+  const TWO_PI = Math.PI * 2;
+  const SQRT3 = Math.sqrt(3);
+  const time = Date.now() / 1000;
+  const freq = TWO_PI / (transitionTimeMs / 1000);
+  const BLUE = 0x3366ff;
+  const LIGHT_BLUE = lerpColor(BLUE, COLORS.WHITE, 0.5);
+
+  // Size-proportional spacing: gap before each piece scales with its width.
+  // First two pieces keep original positions; smaller ones cluster closer.
+  const wFactor = (idx: number) => 1 - (idx / (count - 1)) * taper;
+  const span = 1 - baseOffset;
+  const uniformStep = span / (count - 1);
+  const k = uniformStep / wFactor(1);
+
+  let pos = baseOffset;
+  for (let i = 0; i < count; i++) {
+    if (i > 0) pos += k * wFactor(i);
+    const halfWidth = maxHalfWidth * wFactor(i);
+    const dist = grateLength * pos;
+
+    // Per-piece color: smooth continuum from white through light-blue to blue.
+    // Progress drives both endpoints: low drifts white→lightBlue, high drifts white→blue.
+    let color: number = COLORS.WHITE;
+    if (progress > 0) {
+      const phaseIdx = reversePhase ? (count - 1 - i) : i;
+      const phase = phaseIdx * (TWO_PI / count);
+      const sine = Math.sin(time * freq + phase);
+      const t = sine * 0.5 + 0.5; // 0→1 oscillation
+      const lo = lerpColor(COLORS.WHITE, LIGHT_BLUE, progress);
+      const hi = lerpColor(COLORS.WHITE, BLUE, progress);
+      color = lerpColor(lo, hi, t);
+    }
 
     const cx = originX + fwdX * dist;
     const cy = originY + fwdY * dist;
-    graphics.lineBetween(
-      cx - perpX * halfWidth, cy - perpY * halfWidth,
-      cx + perpX * halfWidth, cy + perpY * halfWidth,
-    );
+
+    graphics.fillStyle(color, 1);
+
+    if (shape === 'triangle') {
+      const h = halfWidth * SQRT3;
+      graphics.fillTriangle(
+        cx - perpX * halfWidth, cy - perpY * halfWidth,
+        cx + perpX * halfWidth, cy + perpY * halfWidth,
+        cx - fwdX * h, cy - fwdY * h,
+      );
+    } else if (shape === 'square') {
+      // Square centered at cx,cy with side = halfWidth * 2, aligned to turret
+      _rectPoints[0].x = cx + perpX * halfWidth + fwdX * halfWidth;
+      _rectPoints[0].y = cy + perpY * halfWidth + fwdY * halfWidth;
+      _rectPoints[1].x = cx - perpX * halfWidth + fwdX * halfWidth;
+      _rectPoints[1].y = cy - perpY * halfWidth + fwdY * halfWidth;
+      _rectPoints[2].x = cx - perpX * halfWidth - fwdX * halfWidth;
+      _rectPoints[2].y = cy - perpY * halfWidth - fwdY * halfWidth;
+      _rectPoints[3].x = cx + perpX * halfWidth - fwdX * halfWidth;
+      _rectPoints[3].y = cy + perpY * halfWidth - fwdY * halfWidth;
+      graphics.fillPoints(_rectPoints, true);
+    } else if (shape === 'hexagon') {
+      drawPolygon(graphics, cx, cy, halfWidth, 6, turretRot);
+    } else if (shape === 'circle') {
+      graphics.fillCircle(cx, cy, halfWidth);
+    } else {
+      // 'line' — horizontal bar
+      graphics.lineStyle(thickness, color, 1);
+      graphics.lineBetween(
+        cx - perpX * halfWidth, cy - perpY * halfWidth,
+        cx + perpX * halfWidth, cy + perpY * halfWidth,
+      );
+    }
   }
 }
 

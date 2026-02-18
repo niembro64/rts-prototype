@@ -5,6 +5,7 @@ import { COLORS, LEG_STYLE_CONFIG } from '../types';
 import { drawPolygon, drawForceFieldGrate, tintColor } from '../helpers';
 import { renderForceFieldEffect } from '../effects';
 import type { ArachnidLeg } from '../ArachnidLeg';
+import { FORCE_FIELD_TURRET } from '../../../config';
 
 // Pre-allocated reusable point array for abdomen shape (avoids 12 object allocations per frame per unit)
 const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 12 }, () => ({ x: 0, y: 0 }));
@@ -227,13 +228,15 @@ export function drawArachnidUnit(
       if (!weapon?.config.isForceField) continue;
 
       const turretAngle = weapon.turretRotation;
-
-      // Grate turret (floating bars, 5 bars for larger unit) — offset forward from hex center
-      const grateOriginX = hexCenterX + Math.cos(turretAngle) * r * 0.07;
-      const grateOriginY = hexCenterY + Math.sin(turretAngle) * r * 0.07;
-      drawForceFieldGrate(graphics, grateOriginX, grateOriginY, turretAngle, r * 0.55, r * 0.25, 2.5, 5);
-
       const progress = weapon.currentForceFieldRange ?? 0;
+      const transitionTimeMs = weapon.config.forceFieldTransitionTime ?? 1000;
+
+      const turretConfig = FORCE_FIELD_TURRET[weapon.config.id];
+      if (turretConfig) {
+        const grateOriginX = hexCenterX + Math.cos(turretAngle) * r * turretConfig.originOffset;
+        const grateOriginY = hexCenterY + Math.sin(turretAngle) * r * turretConfig.originOffset;
+        drawForceFieldGrate(graphics, grateOriginX, grateOriginY, turretAngle, r, turretConfig, progress, transitionTimeMs);
+      }
       if (progress <= 0) continue;
 
       const innerRadius = (weapon.config.forceFieldInnerRange as number | undefined) ?? 0;

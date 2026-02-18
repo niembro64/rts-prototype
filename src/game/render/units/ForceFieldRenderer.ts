@@ -5,6 +5,7 @@ import { COLORS, LEG_STYLE_CONFIG } from '../types';
 import { drawPolygon, drawForceFieldGrate, tintColor } from '../helpers';
 import { renderForceFieldEffect } from '../effects';
 import type { ArachnidLeg } from '../ArachnidLeg';
+import { FORCE_FIELD_TURRET } from '../../../config';
 
 // Pre-allocated reusable point array for body shape (avoids 8 object allocations per frame per unit)
 const _bodyPoints: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
@@ -94,11 +95,13 @@ export function drawForceFieldUnit(
       if (!weapon.config.isForceField) continue;
 
       const turretRot = weapon.turretRotation;
-
-      // Grate turret (floating bars, 4 bars for smaller unit)
-      drawForceFieldGrate(graphics, x, y, turretRot, r * 0.7, r * 0.45, 1.5, 4);
-
       const progress = weapon.currentForceFieldRange ?? 0;
+      const transitionTimeMs = weapon.config.forceFieldTransitionTime ?? 1000;
+
+      const turretConfig = FORCE_FIELD_TURRET[weapon.config.id];
+      if (turretConfig) {
+        drawForceFieldGrate(graphics, x, y, turretRot, r, turretConfig, progress, transitionTimeMs);
+      }
       if (progress <= 0) continue;
 
       const innerRadius = (weapon.config.forceFieldInnerRange as number | undefined) ?? 0;

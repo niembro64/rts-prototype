@@ -161,7 +161,7 @@ export const RANGE_MULTIPLIERS = {
  */
 export const FORCE_FIELD_VISUAL = {
   // --- Push / Pull zone colors ---
-  pushColor: 0xff6633, // warm orange-red for push zones
+  pushColor: 0xffffff, // white for push zones ("white hole")
   pullColor: 0x3366ff, // cool blue for pull zones
 
   // --- Filled slice zone ---
@@ -186,6 +186,49 @@ export const FORCE_FIELD_VISUAL = {
   trailSegments: 3, // Number of trailing ghost segments behind each particle
   trailSpacing: 0.6, // Spacing between trail segments as fraction of dashLen
   trailFalloff: 0.45, // Opacity multiplier per successive trail segment
+};
+
+/**
+ * Force field turret (grate) configuration per unit type.
+ * All length/width values are multipliers of the unit's collision radius.
+ */
+export type ForceFieldTurretShape = 'triangle' | 'line' | 'square' | 'hexagon' | 'circle';
+
+export interface ForceFieldTurretConfig {
+  shape: ForceFieldTurretShape; // piece geometry
+  count: number;                // number of pieces
+  length: number;               // how far turret extends (× radius)
+  width: number;                // max half-width of base piece (× radius)
+  taper: number;                // 0→1: tip shrinks to (1−taper) of base; also compresses spacing
+  baseOffset: number;           // where first piece sits (fraction of length)
+  originOffset: number;         // mount point offset along turret axis (× radius)
+  thickness: number;            // line width (px), used for 'line' shape
+  reversePhase: boolean;        // true: phase offsets run tip→base instead of base→tip
+}
+
+export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
+  forceField: {
+    shape: 'circle',
+    count: 5,
+    length: 0.0,
+    width: 0.45,
+    taper: 0.5,
+    baseOffset: 0.0,
+    originOffset: 0,
+    thickness: 1.5,
+    reversePhase: true,
+  },
+  megaForceField: {
+    shape: 'circle',
+    count: 7,
+    length: 0.0,
+    width: 0.25,
+    taper: 0.7,
+    baseOffset: 0.0,
+    originOffset: 0.0,
+    thickness: 4.5,
+    reversePhase: true,
+  },
 };
 
 // =============================================================================
@@ -693,9 +736,9 @@ export const WEAPON_STATS = {
     audioId: 'force-field' as const,
     damage: 1,
     cooldown: 0,
-    forceFieldInnerRadius: SPATIAL_GRID_CELL_SIZE * 0.3,
-    forceFieldMiddleRadius: SPATIAL_GRID_CELL_SIZE * 0.6,
-    forceFieldOuterRadius: SPATIAL_GRID_CELL_SIZE * 0.9,
+    forceFieldInnerRadius: SPATIAL_GRID_CELL_SIZE * 2 * 0.3,
+    forceFieldMiddleRadius: SPATIAL_GRID_CELL_SIZE * 2 * 0.5,
+    forceFieldOuterRadius: SPATIAL_GRID_CELL_SIZE * 2 * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
@@ -786,7 +829,7 @@ export const LASER_SOUND_ENABLED = false;
 // =============================================================================
 
 /** Maximum number of combat stats snapshots to retain (~10Hz → 600 = ~1 minute) */
-export const COMBAT_STATS_HISTORY_MAX = 50;
+export const COMBAT_STATS_HISTORY_MAX = 100;
 
 /** Whether the Combat Statistics modal is visible on page load */
 export const COMBAT_STATS_VISIBLE_ON_LOAD = false;
