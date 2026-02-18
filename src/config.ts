@@ -788,7 +788,7 @@ export const WEAPON_STATS = {
       alpha: 0.05,
       particleAlpha: 0.2,
       power: 300,
-      damage: 1,
+      damage: 0,
     },
     // pull: null,
     pull: {
@@ -798,7 +798,7 @@ export const WEAPON_STATS = {
       alpha: 0.2,
       particleAlpha: 0.2,
       power: null,
-      damage: 1,
+      damage: 0,
     },
     rangeMultipliers: {
       see: null,
@@ -823,7 +823,7 @@ export const WEAPON_STATS = {
       alpha: 0.05,
       particleAlpha: 0.2,
       power: 300,
-      damage: 1,
+      damage: 0,
     },
     // pull: null,
     pull: {
@@ -833,7 +833,7 @@ export const WEAPON_STATS = {
       alpha: 0.2,
       particleAlpha: 0.2,
       power: null,
-      damage: 1,
+      damage: 0,
     },
     rangeMultipliers: {
       see: null,
