@@ -95,6 +95,16 @@ export interface NetworkCombatStats {
   global: Record<string, NetworkUnitTypeStats>;
 }
 
+// Server metadata broadcast to all clients
+export interface NetworkServerMeta {
+  tpsAvg: number;
+  tpsWorst: number;
+  snapshotRate: number | 'realtime';
+  sendGridInfo: boolean;
+  serverTime: string;    // "14:34 MST"
+  ipAddress: string;     // Public IP or "N/A"
+}
+
 // Serialized game state sent over network
 export interface NetworkGameState {
   tick: number;
@@ -107,6 +117,7 @@ export interface NetworkGameState {
   projectileVelocityUpdates?: NetworkProjectileVelocityUpdate[];
   gameOver?: { winnerId: PlayerId };
   combatStats?: NetworkCombatStats;
+  serverMeta?: NetworkServerMeta;
   // Spatial grid debug visualization
   gridCells?: NetworkGridCell[];
   gridSearchCells?: NetworkGridCell[];

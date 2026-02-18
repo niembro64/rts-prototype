@@ -18,6 +18,7 @@ export type {
   NetworkGridCell,
   NetworkUnitTypeStats,
   NetworkCombatStats,
+  NetworkServerMeta,
   LobbyPlayer,
   NetworkRole,
 } from './NetworkTypes';

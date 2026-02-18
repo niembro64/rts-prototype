@@ -14,7 +14,7 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import CombatStatsModal from './CombatStatsModal.vue';
-import type { NetworkCombatStats } from '../game/network/NetworkTypes';
+import type { NetworkCombatStats, NetworkServerMeta } from '../game/network/NetworkTypes';
 import type { StatsSnapshot } from './combatStatsUtils';
 import {
   networkManager,
@@ -97,6 +97,11 @@ const networkRole = ref<NetworkRole>('offline');
 const snapshotRate = ref<SnapshotRate>(DEFAULT_SNAPSHOT_RATE);
 const sendGridInfo = ref(false);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
+
+// Server metadata received from snapshots (for remote clients to display server bar)
+const serverMetaFromSnapshot = ref<NetworkServerMeta | null>(null);
+const serverIpAddress = ref<string>('N/A');
+const clientTime = ref<string>('');
 
 // Demo battle unit type toggles
 const demoUnitTypes = Object.keys(UNIT_STATS);
@@ -191,6 +196,7 @@ let gameInstance: GameInstance | null = null;
 // Polling interval IDs for cleanup
 let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
+let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
 
 // Start the background battle (runs behind lobby)
 function startBackgroundBattle(): void {
@@ -206,6 +212,7 @@ function startBackgroundBattle(): void {
 
   const bgConnection = new LocalGameConnection(backgroundServer);
   backgroundServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
+  backgroundServer.setIpAddress(serverIpAddress.value);
   backgroundServer.startManual();
   hasServer.value = true;
 
@@ -244,6 +251,9 @@ function startBackgroundBattle(): void {
           combatStatsHistory.value.shift();
         }
       };
+      bgScene.onServerMetaUpdate = (meta: NetworkServerMeta) => {
+        serverMetaFromSnapshot.value = meta;
+      };
       if (checkBgSceneInterval) clearInterval(checkBgSceneInterval);
       checkBgSceneInterval = null;
     }
@@ -281,8 +291,31 @@ const showPlayerToggle = computed(() => {
   return gameStarted.value && canToggle;
 });
 
-// Show server controls when we own a server (host, offline, or background demo)
-const showServerControls = computed(() => hasServer.value);
+// Show server controls when we own a server OR when we receive server meta from snapshots (remote client)
+const showServerControls = computed(() => hasServer.value || serverMetaFromSnapshot.value !== null);
+
+// Server bar is read-only for remote clients (no local server)
+const serverBarReadonly = computed(() => !hasServer.value);
+
+// Display values: use local polling when host, snapshot meta when remote client
+const displayServerTpsAvg = computed(() =>
+  hasServer.value ? serverAvgFPS.value : (serverMetaFromSnapshot.value?.tpsAvg ?? 0)
+);
+const displayServerTpsWorst = computed(() =>
+  hasServer.value ? serverWorstFPS.value : (serverMetaFromSnapshot.value?.tpsWorst ?? 0)
+);
+const displaySnapshotRate = computed(() =>
+  hasServer.value ? snapshotRate.value : (serverMetaFromSnapshot.value?.snapshotRate ?? 10)
+);
+const displayGridInfo = computed(() =>
+  hasServer.value ? sendGridInfo.value : (serverMetaFromSnapshot.value?.sendGridInfo ?? false)
+);
+const displayServerTime = computed(() =>
+  serverMetaFromSnapshot.value?.serverTime ?? ''
+);
+const displayServerIp = computed(() =>
+  serverMetaFromSnapshot.value?.ipAddress ?? serverIpAddress.value
+);
 
 // Show demo battle bar only during background demo (uses reactive refs only)
 const isBackgroundBattle = computed(() => showLobby.value && !gameStarted.value && hasServer.value);
@@ -324,6 +357,7 @@ function restartGame(): void {
     currentServer = null;
   }
   hasServer.value = false;
+  serverMetaFromSnapshot.value = null;
 
   if (gameInstance) {
     destroyGame(gameInstance);
@@ -594,6 +628,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
       // Configure snapshot rate and start in manual mode (Phaser update() drives ticks)
       currentServer.setSnapshotRate(snapshotRate.value);
+      currentServer.setIpAddress(serverIpAddress.value);
       currentServer.startManual();
       hasServer.value = true;
     } else {
@@ -681,6 +716,11 @@ function setupSceneCallbacks(): void {
         }
       };
 
+      // Server metadata callback (for remote clients to see server bar)
+      scene.onServerMetaUpdate = (meta: NetworkServerMeta) => {
+        serverMetaFromSnapshot.value = meta;
+      };
+
       if (checkSceneInterval) clearInterval(checkSceneInterval);
       checkSceneInterval = null;
     }
@@ -727,6 +767,24 @@ onMounted(() => {
   // Start FPS tracking
   fpsUpdateInterval = setInterval(updateFPSStats, 100); // Update 10x per second
 
+  // Fetch public IP for server bar display
+  fetch('https://api.ipify.org?format=text')
+    .then(res => res.text())
+    .then(ip => { serverIpAddress.value = ip.trim(); })
+    .catch(() => { /* keep 'N/A' */ });
+
+  // Update client time every second
+  function updateClientTime() {
+    clientTime.value = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZoneName: 'short',
+    }).format(new Date());
+  }
+  updateClientTime();
+  clientTimeInterval = setInterval(updateClientTime, 1000);
+
   // Listen for backtick to toggle combat stats
   window.addEventListener('keydown', handleCombatStatsKeydown);
 });
@@ -738,6 +796,10 @@ onUnmounted(() => {
   if (checkSceneInterval) {
     clearInterval(checkSceneInterval);
     checkSceneInterval = null;
+  }
+  if (clientTimeInterval) {
+    clearInterval(clientTimeInterval);
+    clientTimeInterval = null;
   }
   window.removeEventListener('keydown', handleCombatStatsKeydown);
   // Stop servers
@@ -813,15 +875,18 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- SERVER CONTROLS (visible when we own a server) -->
-      <div v-if="showServerControls" class="control-bar server-bar">
+      <!-- SERVER CONTROLS (visible when we own a server or receive server meta) -->
+      <div v-if="showServerControls" class="control-bar server-bar" :class="{ 'server-bar-readonly': serverBarReadonly }">
         <span class="bar-label server-label">HOST SERVER</span>
+        <span v-if="displayServerTime" class="time-display server-time">{{ displayServerTime }}</span>
         <div class="bar-divider"></div>
+        <span v-if="displayServerIp" class="ip-display">{{ displayServerIp }}</span>
+        <div v-if="displayServerIp" class="bar-divider"></div>
         <div class="fps-stats">
           <span class="control-label">TPS:</span>
-          <span class="fps-value">{{ serverAvgFPS.toFixed(1) }}</span>
+          <span class="fps-value">{{ displayServerTpsAvg.toFixed(1) }}</span>
           <span class="fps-label">avg</span>
-          <span class="fps-value">{{ serverWorstFPS.toFixed(1) }}</span>
+          <span class="fps-value">{{ displayServerTpsWorst.toFixed(1) }}</span>
           <span class="fps-label">low</span>
         </div>
         <div class="bar-divider"></div>
@@ -831,7 +896,7 @@ onUnmounted(() => {
             v-for="rate in UPDATE_RATE_OPTIONS"
             :key="String(rate)"
             class="control-btn"
-            :class="{ active: snapshotRate === rate }"
+            :class="{ active: displaySnapshotRate === rate }"
             @click="setNetworkUpdateRate(rate)"
           >
             {{ rate === 'realtime' ? 'RT' : (rate as number) }}
@@ -840,7 +905,7 @@ onUnmounted(() => {
         <div class="bar-divider"></div>
         <button
           class="control-btn"
-          :class="{ active: sendGridInfo }"
+          :class="{ active: displayGridInfo }"
           @click="toggleSendGridInfo"
         >
           GRID
@@ -850,6 +915,7 @@ onUnmounted(() => {
       <!-- CLIENT CONTROLS (always visible) -->
       <div class="control-bar client-bar">
         <span class="bar-label client-label">PLAYER CLIENT</span>
+        <span v-if="clientTime" class="time-display client-time">{{ clientTime }}</span>
         <div class="bar-divider"></div>
         <div class="fps-stats">
           <span class="control-label">FPS:</span>
@@ -1415,5 +1481,43 @@ onUnmounted(() => {
 
 .control-btn.active-level {
   color: white;
+}
+
+.server-bar-readonly {
+  opacity: 0.7;
+}
+
+.server-bar-readonly .control-btn {
+  pointer-events: none;
+  cursor: default;
+}
+
+.server-bar-readonly .control-btn:hover {
+  background: rgba(60, 60, 60, 0.8);
+  border-color: #555;
+  color: #aaa;
+}
+
+.time-display {
+  font-size: 10px;
+  font-family: monospace;
+  color: #999;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.server-time {
+  color: #8888cc;
+}
+
+.client-time {
+  color: #6a6;
+}
+
+.ip-display {
+  font-size: 10px;
+  font-family: monospace;
+  color: #888;
+  white-space: nowrap;
 }
 </style>

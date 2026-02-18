@@ -7,7 +7,7 @@ import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
 import type { GameServer } from '../server/GameServer';
-import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent, NetworkProjectileVelocityUpdate, NetworkCombatStats } from '../network/NetworkTypes';
+import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent, NetworkProjectileVelocityUpdate, NetworkCombatStats, NetworkServerMeta } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
 import type { AudioEvent } from '../sim/combat';
@@ -160,6 +160,9 @@ export class RtsScene extends Phaser.Scene {
 
   // Callback for combat stats updates
   public onCombatStatsUpdate?: (stats: NetworkCombatStats) => void;
+
+  // Callback for server metadata updates (TPS, snapshot rate, IP, time)
+  public onServerMetaUpdate?: (meta: NetworkServerMeta) => void;
 
   constructor() {
     super({ key: 'RtsScene' });
@@ -560,6 +563,12 @@ export class RtsScene extends Phaser.Scene {
 
       this.clientViewState.applyNetworkState(state);
 
+      // Forward server metadata to UI
+      const serverMeta = this.clientViewState.getServerMeta();
+      if (serverMeta && this.onServerMetaUpdate) {
+        this.onServerMetaUpdate(serverMeta);
+      }
+
       // Process audio events
       const audioEvents = this.clientViewState.getPendingAudioEvents();
       if (audioEvents) {
@@ -766,5 +775,6 @@ export class RtsScene extends Phaser.Scene {
     this.onGameOverUI = undefined;
     this.onGameRestart = undefined;
     this.onCombatStatsUpdate = undefined;
+    this.onServerMetaUpdate = undefined;
   }
 }

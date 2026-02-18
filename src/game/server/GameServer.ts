@@ -84,6 +84,9 @@ export class GameServer {
   // Debug: send spatial grid occupancy info in snapshots
   private sendGridInfo: boolean = false;
 
+  // Public IP address (set by host component)
+  private ipAddress: string = 'N/A';
+
   constructor(config: GameServerConfig) {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
@@ -304,6 +307,17 @@ export class GameServer {
     // Add combat stats to snapshot
     state.combatStats = this.simulation.getCombatStatsSnapshot();
 
+    // Add server metadata to snapshot
+    const tickStats = this.getTickStats();
+    state.serverMeta = {
+      tpsAvg: tickStats.avgFps,
+      tpsWorst: tickStats.worstFps,
+      snapshotRate: this.inlineSnapshots ? 'realtime' : this.snapshotRateHz,
+      sendGridInfo: this.sendGridInfo,
+      serverTime: this.formatServerTime(),
+      ipAddress: this.ipAddress,
+    };
+
     for (const listener of this.snapshotListeners) {
       listener(state);
     }
@@ -356,6 +370,21 @@ export class GameServer {
 
   getMapHeight(): number {
     return this.world.mapHeight;
+  }
+
+  // Set the public IP address (called by host component after fetching)
+  setIpAddress(ip: string): void {
+    this.ipAddress = ip;
+  }
+
+  // Format current time as military format with timezone abbreviation (e.g. "14:34 MST")
+  private formatServerTime(): string {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZoneName: 'short',
+    }).format(new Date());
   }
 
   // Toggle spatial grid debug info in snapshots
