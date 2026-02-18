@@ -22,8 +22,7 @@ export class ConstructionSystem {
   }
 
   // Update all construction in the world
-  update(world: WorldState, dtMs: number): void {
-    const dtSec = dtMs / 1000;
+  update(world: WorldState, _dtMs: number): void {
 
     // Build reverse index of builders → targets once per tick (O(n) instead of O(n²))
     this.buildersByTarget.clear();
@@ -52,27 +51,8 @@ export class ConstructionSystem {
       const builders = this.buildersByTarget.get(entity.id);
       if (!builders || builders.length === 0) continue;
 
-      // Calculate total build rate from all builders
-      let totalBuildRate = 0;
-      for (const builder of builders) {
-        if (builder.builder) {
-          totalBuildRate += builder.builder.buildRate;
-        }
-      }
-
-      // Cap at the entity's max build rate
-      const effectiveBuildRate = Math.min(totalBuildRate, buildable.maxBuildRate);
-
-      // Calculate energy needed this tick
-      const energyNeeded = effectiveBuildRate * dtSec;
-
-      // Try to spend energy
-      const energySpent = economyManager.trySpendEnergy(playerId, energyNeeded);
-      economyManager.recordExpenditure(playerId, energySpent / dtSec); // Record as rate
-
-      // Calculate progress from energy spent
-      const progressGained = energySpent / buildable.energyCost;
-      buildable.buildProgress += progressGained;
+      // Energy spending is handled by the shared energy distribution system.
+      // Construction system just checks for completion here.
 
       // Check if complete
       if (buildable.buildProgress >= 1) {
@@ -141,7 +121,6 @@ export class ConstructionSystem {
     entity.buildable = {
       buildProgress: 0,
       energyCost: config.energyCost,
-      maxBuildRate: config.maxBuildRate,
       isComplete: false,
       isGhost: false,
     };
@@ -167,7 +146,6 @@ export class ConstructionSystem {
         buildQueue: [],
         currentBuildProgress: 0,
         currentBuildCost: 0,
-        currentBuildRate: 0,
         rallyX,
         rallyY,
         isProducing: false,
@@ -217,7 +195,6 @@ export class ConstructionSystem {
     entity.buildable = {
       buildProgress: 0,
       energyCost: config.energyCost,
-      maxBuildRate: config.maxBuildRate,
       isComplete: false,
       isGhost: true,
     };

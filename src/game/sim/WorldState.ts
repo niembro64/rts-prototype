@@ -362,7 +362,6 @@ export class WorldState {
       collisionRadius: number;
       moveSpeed: number;
       mass: number;
-      buildRate: number;
       buildRange: number;
       weaponId: string;
       dgunCost: number;
@@ -422,7 +421,6 @@ export class WorldState {
         inFightstopRange: false,         // Weapon reports fightstop state to unit
       }],
       builder: {
-        buildRate: config.buildRate,
         buildRange: config.buildRange,
         currentBuildTarget: null,
       },

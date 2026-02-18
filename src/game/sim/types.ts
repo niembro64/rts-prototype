@@ -240,14 +240,12 @@ export interface EconomyState {
 export interface Buildable {
   buildProgress: number;    // 0-1 progress (1 = complete)
   energyCost: number;       // Total energy to build
-  maxBuildRate: number;     // Max energy/sec that can be applied
   isComplete: boolean;      // Whether construction is finished
   isGhost: boolean;         // Whether this is a placement ghost (not yet started)
 }
 
 // Builder component - for units that can construct
 export interface Builder {
-  buildRate: number;        // Energy/sec this builder can contribute
   buildRange: number;       // Max distance to construction site
   currentBuildTarget: EntityId | null;  // What we're building/assisting
 }
@@ -263,9 +261,7 @@ export interface BuildingConfig {
   gridHeight: number;       // Grid cells tall
   hp: number;
   energyCost: number;
-  maxBuildRate: number;     // Max energy/sec for construction
   energyProduction?: number; // For solar panels
-  unitBuildRate?: number;   // For factories - max energy/sec for unit production
 }
 
 // Unit build configuration (extends weapon config concept)
@@ -274,7 +270,6 @@ export interface UnitBuildConfig {
   weaponId: string;
   name: string;
   energyCost: number;
-  maxBuildRate: number;     // Max energy/sec for construction
   collisionRadius: number;  // Hitbox size for physics
   moveSpeed: number;
   mass: number;             // Physics mass for force-based movement
@@ -289,7 +284,6 @@ export interface Factory {
   buildQueue: string[];     // Queue of weapon IDs to build
   currentBuildProgress: number;  // 0-1 for current unit
   currentBuildCost: number;      // Energy cost of current unit
-  currentBuildRate: number;      // Max rate for current unit
   rallyX: number;           // Where completed units go (legacy, first waypoint)
   rallyY: number;
   isProducing: boolean;

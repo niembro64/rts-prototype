@@ -94,7 +94,6 @@ function createUnitFromNetwork(
     };
     entity.builder = {
       buildRange: 200,
-      buildRate: 30,
       currentBuildTarget: netEntity.buildTargetId ?? null,
     };
   }
@@ -126,7 +125,6 @@ function createBuildingFromNetwork(
       buildProgress: netEntity.buildProgress ?? 1,
       isComplete: netEntity.isComplete ?? true,
       energyCost: 100,
-      maxBuildRate: 20,
       isGhost: false,
     },
     buildingType: netEntity.buildingType as BuildingType | undefined,
@@ -137,7 +135,6 @@ function createBuildingFromNetwork(
       buildQueue: netEntity.buildQueue,
       currentBuildProgress: netEntity.factoryProgress ?? 0,
       currentBuildCost: 0,
-      currentBuildRate: 50,
       rallyX: netEntity.rallyX ?? x,
       rallyY: netEntity.rallyY ?? y + 100,
       isProducing: netEntity.isProducing ?? false,

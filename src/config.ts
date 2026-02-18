@@ -360,13 +360,10 @@ export const BUILDING_STATS = {
   solar: {
     baseCost: 100, // Base energy cost (before multiplier)
     hp: 200,
-    buildRate: 30, // Max energy/sec commander can spend building this
   },
   factory: {
     baseCost: 300, // Base energy cost (before multiplier)
     hp: 800,
-    buildRate: 40, // Max energy/sec commander can spend building this
-    unitBuildRate: 50, // Max energy/sec factory spends producing units
   },
 };
 
@@ -379,7 +376,6 @@ export const COMMANDER_STATS = {
   moveSpeed: 200,
   collisionRadius: 20,
   mass: 60, // Heavy commander unit
-  buildRate: 50,
   buildRange: 150,
   dgunCost: 200,
 };
@@ -447,7 +443,6 @@ export const UNIT_STATS = {
     moveSpeed: 300,
     collisionRadius: 8,
     mass: 10,
-    buildRate: 70,
   },
   // Lynx - Glass cannon striker. Burst damage (54 per volley), fragile.
   // Value: Alpha strike potential, but slow and squishy
@@ -457,7 +452,6 @@ export const UNIT_STATS = {
     moveSpeed: 170,
     collisionRadius: 10,
     mass: 15,
-    buildRate: 55,
   },
   // Daddy - Heavy beam walker. Mega beam, sustained DPS but VERY slow turret tracking.
   // Value: Good vs slow/stationary targets, struggles vs fast units
@@ -467,7 +461,6 @@ export const UNIT_STATS = {
     moveSpeed: 200,
     collisionRadius: 13,
     mass: 25,
-    buildRate: 45,
   },
   // Badger - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
   // Value: Wins close fights, but takes damage closing the gap
@@ -477,7 +470,6 @@ export const UNIT_STATS = {
     moveSpeed: 200,
     collisionRadius: 16,
     mass: 200,
-    buildRate: 40,
   },
   // Mongoose - Area denial artillery. Splash damage, slow projectile.
   // Value: Excellent vs groups, but can be dodged, mediocre vs single targets
@@ -487,7 +479,6 @@ export const UNIT_STATS = {
     moveSpeed: 220,
     collisionRadius: 14,
     mass: 35,
-    buildRate: 32,
   },
   // Recluse - Long-range assassin spider. Hitscan piercing, but low DPS (17) and can't escape.
   // Value: Safe poke damage, but very slow and fragile if caught
@@ -497,7 +488,6 @@ export const UNIT_STATS = {
     moveSpeed: 200,
     collisionRadius: 11,
     mass: 9,
-    buildRate: 28,
   },
   // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
   // Value: Frontline anchor, wins attrition fights, slow to reposition
@@ -507,7 +497,6 @@ export const UNIT_STATS = {
     moveSpeed: 60,
     collisionRadius: 24,
     mass: 500,
-    buildRate: 18,
   },
   // Widow - Titan spider unit. 6 beam weapons + force field.
   // Value: Army-in-one super unit, but expensive and high priority target
@@ -517,7 +506,6 @@ export const UNIT_STATS = {
     moveSpeed: 100,
     collisionRadius: 38,
     mass: 800,
-    buildRate: 20,
   },
   // Tarantula - Force field AoE unit. Continuous damage with pull.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
@@ -527,7 +515,6 @@ export const UNIT_STATS = {
     moveSpeed: 200,
     collisionRadius: 11,
     mass: 18,
-    buildRate: 50,
   },
 };
 
@@ -773,7 +760,7 @@ export type SnapshotRate = number | 'realtime';
  * Default snapshot rate. 'realtime' emits inline every frame (~60Hz).
  * Numeric values use a setInterval at the given Hz.
  */
-export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 30;
+export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 'realtime';
 
 /** Available options for the "Send Updates Per Second" UI control */
 export const SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [

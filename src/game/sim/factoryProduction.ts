@@ -1,7 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, UnitAction, UnitWeapon } from './types';
-import { economyManager } from './economy';
-import { getUnitBuildConfig, getBuildingConfig } from './buildConfigs';
+import { getUnitBuildConfig } from './buildConfigs';
 import { createWeaponsFromDefinition } from './unitDefinitions';
 import { aimTurretsToward } from './turretInit';
 
@@ -13,8 +12,7 @@ export interface FactoryProductionResult {
 // Factory production system
 export class FactoryProductionSystem {
   // Update all factories
-  update(world: WorldState, dtMs: number): FactoryProductionResult {
-    const dtSec = dtMs / 1000;
+  update(world: WorldState, _dtMs: number): FactoryProductionResult {
     const completedUnits: Entity[] = [];
 
     for (const factory of world.getAllEntities()) {
@@ -46,26 +44,10 @@ export class FactoryProductionSystem {
         factoryComp.isProducing = true;
         factoryComp.currentBuildProgress = 0;
         factoryComp.currentBuildCost = unitConfig.energyCost;
-        factoryComp.currentBuildRate = unitConfig.maxBuildRate;
       }
 
-      // Get factory's max build rate from config
-      const factoryConfig = getBuildingConfig('factory');
-      const factoryMaxRate = factoryConfig.unitBuildRate ?? 20;
-
-      // Effective build rate is minimum of unit's max rate and factory's max rate
-      const effectiveBuildRate = Math.min(factoryComp.currentBuildRate, factoryMaxRate);
-
-      // Calculate energy needed this tick
-      const energyNeeded = effectiveBuildRate * dtSec;
-
-      // Try to spend energy
-      const energySpent = economyManager.trySpendEnergy(playerId, energyNeeded);
-      economyManager.recordExpenditure(playerId, energySpent / dtSec);
-
-      // Calculate progress
-      const progressGained = energySpent / factoryComp.currentBuildCost;
-      factoryComp.currentBuildProgress += progressGained;
+      // Energy spending is handled by the shared energy distribution system.
+      // Factory progress is advanced there; we just check for completion here.
 
       // Check if unit is complete
       if (factoryComp.currentBuildProgress >= 1) {

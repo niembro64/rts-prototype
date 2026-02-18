@@ -2,6 +2,7 @@ import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
 import { distance } from '../math';
 import { economyManager } from './economy';
+// Note: economyManager still used for onConstructionComplete (addProduction)
 
 // Spray effect target info for rendering
 export interface SprayTarget {
@@ -27,8 +28,7 @@ export interface CommanderAbilitiesResult {
 // Commander abilities system - handles build queue (ONE target at a time)
 export class CommanderAbilitiesSystem {
   // Update all commanders' building and healing
-  update(world: WorldState, dtMs: number): CommanderAbilitiesResult {
-    const dtSec = dtMs / 1000;
+  update(world: WorldState, _dtMs: number): CommanderAbilitiesResult {
     const sprayTargets: SprayTarget[] = [];
     const completedBuildings: { commanderId: EntityId; buildingId: EntityId }[] = [];
 
@@ -39,7 +39,6 @@ export class CommanderAbilitiesSystem {
 
       const playerId = commander.ownership.playerId;
       const buildRange = commander.builder.buildRange;
-      const buildRate = commander.builder.buildRate;
       const commanderX = commander.transform.x;
       const commanderY = commander.transform.y;
 
@@ -47,34 +46,21 @@ export class CommanderAbilitiesSystem {
       const currentTarget = this.getCurrentTarget(world, commander, buildRange);
       if (!currentTarget) continue;
 
-      // Full build rate goes to the single target
-      const energyNeeded = buildRate * dtSec;
+      // Energy spending is handled by the shared energy distribution system.
+      // Commander building progress is advanced there.
 
       // Check what type of target this is
       if (currentTarget.buildable && !currentTarget.buildable.isComplete) {
-        // Building an incomplete building
-        const buildable = currentTarget.buildable;
-
-        // Try to spend energy
-        const energySpent = economyManager.trySpendEnergy(playerId, energyNeeded);
-        economyManager.recordExpenditure(playerId, energySpent / dtSec);
-
-        if (energySpent > 0) {
-          // Calculate progress from energy spent
-          const progressGained = energySpent / buildable.energyCost;
-          buildable.buildProgress += progressGained;
-
-          // Check if complete
-          if (buildable.buildProgress >= 1) {
-            buildable.buildProgress = 1;
-            buildable.isComplete = true;
-            this.onConstructionComplete(world, currentTarget, playerId);
-            completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
-          }
+        // Building an incomplete building - check if complete (progress set by energy system)
+        if (currentTarget.buildable.buildProgress >= 1) {
+          currentTarget.buildable.buildProgress = 1;
+          currentTarget.buildable.isComplete = true;
+          this.onConstructionComplete(world, currentTarget, playerId);
+          completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
         }
 
-        // Always add spray effect - intensity based on energy rate
-        const intensity = energyNeeded > 0 ? energySpent / energyNeeded : 0;
+        // Spray effect - intensity based on whether we're actively building
+        const intensity = currentTarget.buildable.buildProgress < 1 ? 1 : 0;
         sprayTargets.push({
           sourceId: commander.id,
           targetId: currentTarget.id,
@@ -88,33 +74,14 @@ export class CommanderAbilitiesSystem {
           intensity: Math.max(0.1, intensity),
         });
       } else if (currentTarget.unit && currentTarget.unit.hp < currentTarget.unit.maxHp) {
-        // Healing a damaged unit
-        const unit = currentTarget.unit;
-        const hpToHeal = unit.maxHp - unit.hp;
-        const healCostPerHp = 0.5;
-
-        // Try to spend energy
-        const energySpent = economyManager.trySpendEnergy(playerId, energyNeeded);
-        economyManager.recordExpenditure(playerId, energySpent / dtSec);
-
-        if (energySpent > 0) {
-          // Calculate HP healed
-          const hpHealed = Math.min(energySpent / healCostPerHp, hpToHeal);
-          unit.hp += hpHealed;
-
-          // Cap at max HP
-          if (unit.hp > unit.maxHp) {
-            unit.hp = unit.maxHp;
-          }
-
-          // If fully healed, mark as complete so it gets removed from queue
-          if (unit.hp >= unit.maxHp) {
-            completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
-          }
+        // Healing a damaged unit - energy/progress handled by shared system
+        // Check if fully healed
+        if (currentTarget.unit.hp >= currentTarget.unit.maxHp) {
+          completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
         }
 
-        // Always add spray effect - intensity based on energy rate
-        const intensity = energyNeeded > 0 ? energySpent / energyNeeded : 0;
+        // Spray effect
+        const intensity = currentTarget.unit.hp < currentTarget.unit.maxHp ? 1 : 0;
         sprayTargets.push({
           sourceId: commander.id,
           targetId: currentTarget.id,
@@ -123,7 +90,7 @@ export class CommanderAbilitiesSystem {
           sourceY: commanderY,
           targetX: currentTarget.transform.x,
           targetY: currentTarget.transform.y,
-          targetRadius: unit.collisionRadius,
+          targetRadius: currentTarget.unit.collisionRadius,
           intensity: Math.max(0.1, intensity),
         });
       }

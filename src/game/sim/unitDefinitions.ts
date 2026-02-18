@@ -36,7 +36,6 @@ export interface UnitDefinition {
 
   // Build info
   energyCost: number;
-  buildRate: number;
 
   // Locomotion (for rendering)
   locomotion: LocomotionType;
@@ -172,7 +171,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.jackal.moveSpeed,
     collisionRadius: UNIT_STATS.jackal.collisionRadius,
     energyCost: UNIT_STATS.jackal.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.jackal.buildRate,
     locomotion: 'wheels',
   },
   lynx: {
@@ -183,7 +181,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.lynx.moveSpeed,
     collisionRadius: UNIT_STATS.lynx.collisionRadius,
     energyCost: UNIT_STATS.lynx.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.lynx.buildRate,
     locomotion: 'treads',
   },
   daddy: {
@@ -194,7 +191,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.daddy.moveSpeed,
     collisionRadius: UNIT_STATS.daddy.collisionRadius,
     energyCost: UNIT_STATS.daddy.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.daddy.buildRate,
     locomotion: 'legs',
     legStyle: 'daddy',
   },
@@ -206,7 +202,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.badger.moveSpeed,
     collisionRadius: UNIT_STATS.badger.collisionRadius,
     energyCost: UNIT_STATS.badger.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.badger.buildRate,
     locomotion: 'treads',
   },
   mongoose: {
@@ -217,7 +212,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.mongoose.moveSpeed,
     collisionRadius: UNIT_STATS.mongoose.collisionRadius,
     energyCost: UNIT_STATS.mongoose.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.mongoose.buildRate,
     locomotion: 'wheels',
   },
   recluse: {
@@ -228,7 +222,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.recluse.moveSpeed,
     collisionRadius: UNIT_STATS.recluse.collisionRadius,
     energyCost: UNIT_STATS.recluse.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.recluse.buildRate,
     locomotion: 'legs',
     legStyle: 'recluse',
   },
@@ -240,7 +233,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.mammoth.moveSpeed,
     collisionRadius: UNIT_STATS.mammoth.collisionRadius,
     energyCost: UNIT_STATS.mammoth.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.mammoth.buildRate,
     locomotion: 'treads',
   },
   widow: {
@@ -251,7 +243,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.widow.moveSpeed,
     collisionRadius: UNIT_STATS.widow.collisionRadius,
     energyCost: UNIT_STATS.widow.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.widow.buildRate,
     locomotion: 'legs',
     legStyle: 'widow',
     createWeapons: createWidowWeapons,
@@ -264,7 +255,6 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
     moveSpeed: UNIT_STATS.tarantula.moveSpeed,
     collisionRadius: UNIT_STATS.tarantula.collisionRadius,
     energyCost: UNIT_STATS.tarantula.baseCost * COST_MULTIPLIER,
-    buildRate: UNIT_STATS.tarantula.buildRate,
     locomotion: 'legs',
     legStyle: 'tarantula',
   },
