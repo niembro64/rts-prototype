@@ -126,6 +126,10 @@ export const RANGE_MULTIPLIERS = {
  * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.
  */
 export const FORCE_FIELD_VISUAL = {
+  // --- Push / Pull zone colors ---
+  pushColor: 0xff6633, // warm orange-red for push zones
+  pullColor: 0x3366ff, // cool blue for pull zones
+
   // --- Overall ---
   showAnimatedWaves: false, // true = animated wavy arcs, false = static filled slice
   animationSpeed: 0.3, // Global speed multiplier (1.0 = default, 0.5 = half)
@@ -889,13 +893,13 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   },
 
   // Force field visual style
-  // 'simple': single static arc at outer edge, no animation
-  // 'detailed': animated wavy arcs with pull lines
+  // 'minimal': faint fill only, 'simple': fill + particles,
+  // 'normal': fill + particles, 'enhanced': fill + dense particles + wavy arcs
   FORCE_FIELD_STYLE: {
-    min: 'detailed',
-    low: 'detailed',
-    medium: 'detailed',
-    high: 'detailed',
-    max: 'detailed',
+    min: 'minimal',
+    low: 'simple',
+    medium: 'normal',
+    high: 'enhanced',
+    max: 'enhanced',
   },
 } as const;

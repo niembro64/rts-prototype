@@ -13,7 +13,7 @@ export type RenderMode = 'window' | 'padded' | 'all';
 
 export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-chunks' | 'three-velocity-complex';
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
-export type ForceFieldStyle = 'simple' | 'detailed';
+export type ForceFieldStyle = 'minimal' | 'simple' | 'normal' | 'enhanced';
 
 export interface GraphicsConfig {
   legs: 'none' | 'animated';

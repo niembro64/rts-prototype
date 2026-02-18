@@ -8,6 +8,12 @@ import type { LodLevel } from '../types';
 /**
  * Render force field pie-slice effect with pulsing sine waves.
  * Renders an annular ring between innerRange and maxRange.
+ *
+ * LOD tiers:
+ *   minimal  — faint colored annular fill only
+ *   simple   — fill + particles (current counts)
+ *   normal   — fill + particles (same as simple)
+ *   enhanced — fill + 1.5× particles (1.5× speed, 2× thickness) + wavy arcs
  */
 export function renderForceFieldEffect(
   graphics: Phaser.GameObjects.Graphics,
@@ -16,7 +22,7 @@ export function renderForceFieldEffect(
   rotation: number,
   sliceAngle: number, // Total angle of the pie slice
   maxRange: number,
-  primaryColor: number,
+  _primaryColor: number,
   _secondaryColor: number,
   innerRange: number = 0,
   pushOutward: boolean = false,
@@ -25,35 +31,22 @@ export function renderForceFieldEffect(
   const halfAngle = sliceAngle / 2;
   const gfxConfig = getGraphicsConfig();
   const v = FORCE_FIELD_VISUAL;
+  const style = gfxConfig.forceFieldStyle;
 
-  // Simple mode: single static arc at outer edge
-  if (gfxConfig.forceFieldStyle === 'simple') {
-    graphics.lineStyle(2, primaryColor, v.sliceOpacityMinZoom);
-    graphics.beginPath();
-    graphics.arc(x, y, maxRange * 0.9, rotation - halfAngle, rotation + halfAngle, false);
-    graphics.strokePath();
+  // Pick color based on push/pull direction instead of caller-passed primaryColor
+  const color = pushOutward ? v.pushColor : v.pullColor;
+
+  // --- Minimal: faint annular fill only ---
+  if (style === 'minimal') {
+    drawAnnularFill(graphics, x, y, rotation, halfAngle, maxRange, innerRange, color, v.sliceOpacity);
     return;
   }
 
-  // Detailed mode: full animated effect
+  // --- Simple / Normal / Enhanced: fill + particles (+ waves for enhanced) ---
   const time = (Date.now() / 1000) * v.animationSpeed;
 
-  // 1. Static zone: Draw faint annular slice when animated waves are disabled
-  if (!v.showAnimatedWaves) {
-    graphics.fillStyle(primaryColor, v.sliceOpacity);
-    graphics.beginPath();
-    if (innerRange > 0) {
-      // Draw annulus: outer arc forward, then inner arc backward to cut out center
-      graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
-      graphics.arc(x, y, innerRange, rotation + halfAngle, rotation - halfAngle, true);
-      graphics.closePath();
-    } else {
-      graphics.moveTo(x, y);
-      graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
-      graphics.closePath();
-    }
-    graphics.fill();
-  }
+  // 1. Annular fill
+  drawAnnularFill(graphics, x, y, rotation, halfAngle, maxRange, innerRange, color, v.sliceOpacity);
 
   // Helper to check if an angle is within the visible pie slice
   const normalizeAngle = (a: number) => ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
@@ -73,8 +66,8 @@ export function renderForceFieldEffect(
     }
   };
 
-  // 2. Draw wavy arcs traveling through the ring band
-  if (v.showAnimatedWaves) {
+  // 2. Wavy arcs (enhanced only)
+  if (style === 'enhanced') {
     const fullCircleSegments = 64;
 
     for (let i = 0; i < v.waveCount; i++) {
@@ -84,14 +77,14 @@ export function renderForceFieldEffect(
 
       if (waveRadius < innerRange || waveRadius > maxRange) continue;
 
-      graphics.lineStyle(v.waveThickness, primaryColor, v.waveOpacity);
+      graphics.lineStyle(v.waveThickness * 2, color, v.waveOpacity);
 
       let inSlice = false;
       for (let j = 0; j <= fullCircleSegments; j++) {
-        const t = j / fullCircleSegments;
-        const angle = t * Math.PI * 2;
+        const segT = j / fullCircleSegments;
+        const angle = segT * Math.PI * 2;
 
-        const sineOffset = Math.sin(t * Math.PI * v.waveFrequency * (fullCircleSegments / 24) + time * 3) * v.waveAmplitude;
+        const sineOffset = Math.sin(segT * Math.PI * v.waveFrequency * (fullCircleSegments / 24) + time * 3) * v.waveAmplitude;
         const r = waveRadius + sineOffset;
 
         const px = x + Math.cos(angle) * r;
@@ -118,7 +111,7 @@ export function renderForceFieldEffect(
     }
   }
 
-  // 3. Draw radial particle dashes traveling through the ring band
+  // 3. Radial particle dashes
   // Deterministic pseudo-random hash — stable within a cycle but changes each cycle
   const hash = (n: number) => {
     let h = (n | 0) * 2654435761;
@@ -129,20 +122,27 @@ export function renderForceFieldEffect(
   const rangeBand = maxRange - innerRange;
   if (rangeBand <= 0) return;
 
+  // Enhanced tier: 1.5× counts, 1.5× speed, 2× thickness
+  const isEnhanced = style === 'enhanced';
+  const countMult = isEnhanced ? 1.5 : 1;
+  const speedMult = isEnhanced ? 1.5 : 1;
+  const thicknessMult = isEnhanced ? 2 : 1;
+
   // Particle length: fraction of band, but at least 6px so always visible in thin bands
   const dashLen = Math.max(rangeBand * v.particleLength, 6);
 
-  // Particles move at constant world-space speed, positions computed over a fixed
-  // reference range so they never jump when the visible band changes during transitions.
+  // Particles move at constant world-space speed
   const realTime = Date.now() / 1000;
-  const pxPerSec = v.particleSpeed * 20;
+  const pxPerSec = v.particleSpeed * 20 * speedMult;
   const REF_RANGE = 1200; // Fixed wrapping range (px) — independent of band width
 
   // Scale particle count so ~particleCount are visible in the current band
   const effectiveCount = Math.min(
-    Math.ceil(v.particleCount * REF_RANGE / Math.max(rangeBand, 10)),
+    Math.ceil(v.particleCount * countMult * REF_RANGE / Math.max(rangeBand, 10)),
     200
   );
+
+  const lineThickness = v.particleThickness * thicknessMult;
 
   for (let i = 0; i < effectiveCount; i++) {
     // Stable offset per particle (world px)
@@ -158,7 +158,7 @@ export function renderForceFieldEffect(
     // Only draw if within the current visible band
     if (radius < innerRange || radius > maxRange) continue;
 
-    // Angle: re-randomize at wrap-around (invisible since wrap is outside visible band)
+    // Angle: re-randomize at wrap-around
     const cycle = Math.floor(totalDist / REF_RANGE);
     const lineAngle = hash(i * 7919 + cycle * 104729) * Math.PI * 2;
     if (!isAngleInSlice(lineAngle)) continue;
@@ -174,7 +174,7 @@ export function renderForceFieldEffect(
     const edgeFade = Math.min(distFromInner / 20, distFromOuter / 20, 1);
     const alpha = v.particleOpacity * edgeFade;
 
-    graphics.lineStyle(v.particleThickness, primaryColor, alpha);
+    graphics.lineStyle(lineThickness, color, alpha);
     graphics.beginPath();
     graphics.moveTo(
       x + Math.cos(lineAngle) * rNear,
@@ -186,4 +186,26 @@ export function renderForceFieldEffect(
     );
     graphics.strokePath();
   }
+}
+
+/** Draw the faint annular (or pie-slice) fill */
+function drawAnnularFill(
+  graphics: Phaser.GameObjects.Graphics,
+  x: number, y: number,
+  rotation: number, halfAngle: number,
+  maxRange: number, innerRange: number,
+  color: number, opacity: number
+): void {
+  graphics.fillStyle(color, opacity);
+  graphics.beginPath();
+  if (innerRange > 0) {
+    graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
+    graphics.arc(x, y, innerRange, rotation + halfAngle, rotation - halfAngle, true);
+    graphics.closePath();
+  } else {
+    graphics.moveTo(x, y);
+    graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
+    graphics.closePath();
+  }
+  graphics.fill();
 }
