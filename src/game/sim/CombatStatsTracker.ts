@@ -32,9 +32,8 @@ export class CombatStatsTracker {
   private world: WorldState;
   // Registry persists entity identity after death so posthumous projectile
   // damage can still be attributed to the correct player + unit type.
-  // Entries are pruned periodically to prevent unbounded growth.
+  // Entries are pruned every tick to prevent unbounded growth.
   private entityRegistry: Map<EntityId, { playerId: PlayerId; unitType: string }> = new Map();
-  private pruneCounter: number = 0;
 
   // Cached snapshot to avoid allocations — rebuilt in-place each call
   private _snapshot: CombatStatsSnapshot = { players: {}, global: {} };
@@ -78,14 +77,10 @@ export class CombatStatsTracker {
   }
 
   /**
-   * Prune stale registry entries. Call every tick; internally rate-limits to
-   * every 300 ticks (~5s at 60Hz). After 5s all projectiles from dead entities
-   * have expired, so entries for entities no longer in the world are safe to remove.
+   * Remove registry entries for entities no longer in the world.
+   * O(1) map lookup per entry — safe to call every tick.
    */
   pruneRegistry(): void {
-    if (++this.pruneCounter < 300) return;
-    this.pruneCounter = 0;
-
     for (const id of this.entityRegistry.keys()) {
       if (!this.world.getEntity(id)) {
         this.entityRegistry.delete(id);

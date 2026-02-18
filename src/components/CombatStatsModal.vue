@@ -19,7 +19,7 @@ const emit = defineEmits<{
 }>();
 
 const selectedPlayer = ref(1);
-const displayMode = ref<'table' | 'graph'>('table');
+const displayMode = ref<'table' | 'graph'>('graph');
 
 // Continuous cost exponent for normalization.
 // Formula: metric / (produced × cost^α)
