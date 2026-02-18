@@ -242,7 +242,7 @@ export class ClientViewState {
         for (let i = 0; i < server.weapons.length && i < entity.weapons.length; i++) {
           entity.weapons[i].targetEntityId = server.weapons[i].targetId ?? null;
           entity.weapons[i].isFiring = server.weapons[i].isFiring;
-          entity.weapons[i].currentForceFieldRange = server.weapons[i].currentForceFieldRange;
+          // currentForceFieldRange is NOT snapped — dead-reckoned + drifted in applyPrediction()
         }
       }
 
@@ -332,6 +332,25 @@ export class ClientViewState {
             if (tw) {
               weapon.turretRotation = lerpAngle(weapon.turretRotation, tw.turretRotation, rotDrift);
               weapon.turretAngularVelocity = lerp(weapon.turretAngularVelocity, tw.turretAngularVelocity, velDrift);
+            }
+
+            // Dead-reckon force field expansion/contraction + drift toward server
+            if (weapon.config.isForceField && weapon.config.forceFieldTransitionTime) {
+              const cur = weapon.currentForceFieldRange ?? 0;
+              const targetProgress = weapon.isFiring ? 1 : 0;
+              const progressDelta = dt / (weapon.config.forceFieldTransitionTime / 1000);
+              let next = cur;
+              if (cur < targetProgress) {
+                next = Math.min(cur + progressDelta, 1);
+              } else if (cur > targetProgress) {
+                next = Math.max(cur - progressDelta, 0);
+              }
+              // Drift toward server's authoritative value
+              const serverRange = tw?.currentForceFieldRange;
+              if (serverRange !== undefined) {
+                next = lerp(next, serverRange, rotDrift);
+              }
+              weapon.currentForceFieldRange = next;
             }
           }
         }
