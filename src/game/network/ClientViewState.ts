@@ -78,12 +78,8 @@ export class ClientViewState {
   applyNetworkState(state: NetworkGameState): void {
     this.currentTick = state.tick;
 
-    // Reuse Set to avoid per-snapshot allocation
-    this._serverIds.clear();
-
+    // Process entity updates (present in both delta and keyframe snapshots)
     for (const netEntity of state.entities) {
-      this._serverIds.add(netEntity.id);
-
       // Store as server target for per-frame drifting
       this.serverTargets.set(netEntity.id, netEntity);
 
@@ -104,14 +100,28 @@ export class ClientViewState {
       }
     }
 
-    // Remove non-projectile entities no longer on the server
-    // Projectiles are managed via spawn/despawn events, not the entity list
-    for (const [id, entity] of this.entities) {
-      if (entity.type === 'projectile') continue;
-      if (!this._serverIds.has(id)) {
-        this.entities.delete(id);
-        this.serverTargets.delete(id);
-        this.selectedIds.delete(id);
+    if (state.isDelta) {
+      // Delta snapshot: only remove entities explicitly listed in removedEntityIds
+      if (state.removedEntityIds) {
+        for (const id of state.removedEntityIds) {
+          this.entities.delete(id);
+          this.serverTargets.delete(id);
+          this.selectedIds.delete(id);
+        }
+      }
+    } else {
+      // Full keyframe: remove non-projectile entities not present in the snapshot
+      this._serverIds.clear();
+      for (const netEntity of state.entities) {
+        this._serverIds.add(netEntity.id);
+      }
+      for (const [id, entity] of this.entities) {
+        if (entity.type === 'projectile') continue;
+        if (!this._serverIds.has(id)) {
+          this.entities.delete(id);
+          this.serverTargets.delete(id);
+          this.selectedIds.delete(id);
+        }
       }
     }
 

@@ -6,7 +6,7 @@ import { WorldState } from '../sim/WorldState';
 import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities } from '../sim/spawn';
-import { serializeGameState } from '../network/stateSerializer';
+import { serializeGameState, resetDeltaTracking } from '../network/stateSerializer';
 import type { NetworkGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -29,6 +29,7 @@ import {
   UNIT_STATS,
   UNIT_THRUST_MULTIPLIER_GAME,
   UNIT_THRUST_MULTIPLIER_DEMO,
+  SNAPSHOT_CONFIG,
 } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
@@ -80,6 +81,10 @@ export class GameServer {
   private tickDeltaIndex: number = 0;
   private tickDeltaCount: number = 0;
   private readonly TICK_HISTORY_SIZE = 600; // ~10 seconds at 60Hz
+
+  // Delta snapshot keyframe timer
+  private timeSinceKeyframe: number = 0;
+  private isFirstSnapshot: boolean = true;
 
   // Debug: send spatial grid occupancy info in snapshots
   private sendGridInfo: boolean = false;
@@ -231,6 +236,11 @@ export class GameServer {
     // Reset module-level reusable buffers that hold stale entity references
     resetProjectileBuffers();
     resetDamageBuffers();
+    resetDeltaTracking();
+
+    // Reset keyframe state for next session
+    this.isFirstSnapshot = true;
+    this.timeSinceKeyframe = 0;
   }
 
   // Start in manual mode: caller drives tick() and emitSnapshot() externally
@@ -302,7 +312,23 @@ export class GameServer {
     const gridSearchCells = this.sendGridInfo ? this.computeSearchCells() : undefined;
     const gridCellSize = this.sendGridInfo ? spatialGrid.getCellSize() : undefined;
 
-    const state = serializeGameState(this.world, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
+    // Determine if this snapshot should be a delta or a full keyframe
+    // First snapshot is always a keyframe; then delta until keyframe interval expires
+    let isDelta = false;
+    if (this.isFirstSnapshot) {
+      this.isFirstSnapshot = false;
+      this.timeSinceKeyframe = 0;
+    } else if (SNAPSHOT_CONFIG.deltaEnabled) {
+      this.timeSinceKeyframe += this.inlineSnapshots ? (1000 / 60) : (1000 / this.snapshotRateHz);
+      if (this.timeSinceKeyframe >= SNAPSHOT_CONFIG.keyframeIntervalMs) {
+        this.timeSinceKeyframe = 0;
+        // keyframe — isDelta stays false
+      } else {
+        isDelta = true;
+      }
+    }
+
+    const state = serializeGameState(this.world, isDelta, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
 
     // Add combat stats to snapshot
     state.combatStats = this.simulation.getCombatStatsSnapshot();

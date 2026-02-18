@@ -4,6 +4,26 @@
  * Adjust these values to tune gameplay, networking, and audio.
  */
 
+// Spatial grid cell size in pixels. Should be roughly 1/2 to 1/3 of typical weapon range.
+export const SPATIAL_GRID_CELL_SIZE = 150;
+
+// =============================================================================
+// SNAPSHOT / NETWORKING
+// =============================================================================
+
+export const SNAPSHOT_CONFIG = {
+  /** Enable delta snapshots (only send changed entities). When false, every snapshot is a full keyframe. */
+  deltaEnabled: true,
+  /** Interval between full keyframe snapshots (ms). Keyframes resync all entity state as a safety net. */
+  keyframeIntervalMs: 5000,
+  /** Position change threshold (px). Entity is "unchanged" if position moved less than this. */
+  positionThreshold: 0.01,
+  /** Rotation change threshold (radians). */
+  rotationThreshold: 0.001,
+  /** Velocity change threshold (px/sec). */
+  velocityThreshold: 0.01,
+};
+
 // =============================================================================
 // ECONOMY & RESOURCES
 // =============================================================================
@@ -659,12 +679,12 @@ export const WEAPON_STATS = {
     audioId: 'force-field' as const,
     damage: 1,
     cooldown: 0,
-    forceFieldInnerRadius: 40,
-    forceFieldMiddleRadius: 200,
-    forceFieldOuterRadius: 230,
+    forceFieldInnerRadius: SPATIAL_GRID_CELL_SIZE * 0.2,
+    forceFieldMiddleRadius: SPATIAL_GRID_CELL_SIZE * 0.8,
+    forceFieldOuterRadius: SPATIAL_GRID_CELL_SIZE * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
-    forceFieldAngle: Math.PI * 0.25,
+    forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 1000,
     pullPower: 300,
   },
@@ -672,9 +692,9 @@ export const WEAPON_STATS = {
     audioId: 'force-field' as const,
     damage: 1,
     cooldown: 0,
-    forceFieldInnerRadius: 100,
-    forceFieldMiddleRadius: 130,
-    forceFieldOuterRadius: 300,
+    forceFieldInnerRadius: SPATIAL_GRID_CELL_SIZE * 0.3,
+    forceFieldMiddleRadius: SPATIAL_GRID_CELL_SIZE * 0.6,
+    forceFieldOuterRadius: SPATIAL_GRID_CELL_SIZE * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
@@ -897,7 +917,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     min: 'minimal',
     low: 'simple',
     medium: 'normal',
-    high: 'enhanced',
-    max: 'enhanced',
+    high: 'normal',
+    max: 'normal',
   },
 } as const;

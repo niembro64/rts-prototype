@@ -122,6 +122,11 @@ export interface NetworkGameState {
   gridCells?: NetworkGridCell[];
   gridSearchCells?: NetworkGridCell[];
   gridCellSize?: number;
+  // Delta snapshot fields
+  /** When true, `entities` contains only changed entities since last snapshot. When false/undefined, full keyframe. */
+  isDelta?: boolean;
+  /** Entity IDs removed since last snapshot (only present on delta snapshots). */
+  removedEntityIds?: number[];
 }
 
 // Spray target for commander building effect

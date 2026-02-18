@@ -5,6 +5,7 @@ import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarge
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { AudioEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
+import { SNAPSHOT_CONFIG } from '../../config';
 
 // === Object pool for NetworkEntity (eliminates per-frame allocations) ===
 // Each frame we reset the pool index and overwrite existing objects.
@@ -73,6 +74,164 @@ function getPooledEntry(): PooledEntry {
   return _pool[_poolIndex++];
 }
 
+// === Delta change tracking ===
+// Stores lightweight fingerprint of each entity from the previous snapshot.
+// Compared against current state to detect changes.
+
+interface PrevEntityState {
+  x: number;
+  y: number;
+  rotation: number;
+  velocityX: number;
+  velocityY: number;
+  hp: number;
+  actionCount: number;
+  isFiringBits: number;    // bit-packed isFiring for all weapons
+  targetBits: number;       // bit-packed hasTarget for all weapons
+  weaponCount: number;
+  turretRots: number[];     // per-weapon turret rotation
+  turretAngVels: number[];  // per-weapon angular velocity
+  forceFieldRanges: number[]; // per-weapon force field range
+  // building
+  buildProgress: number;
+  factoryProgress: number;
+  isProducing: number;      // 0 or 1
+  buildQueueLen: number;
+}
+
+function createPrevEntityState(): PrevEntityState {
+  const turretRots: number[] = [];
+  const turretAngVels: number[] = [];
+  const forceFieldRanges: number[] = [];
+  for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) {
+    turretRots.push(0);
+    turretAngVels.push(0);
+    forceFieldRanges.push(0);
+  }
+  return {
+    x: 0, y: 0, rotation: 0,
+    velocityX: 0, velocityY: 0,
+    hp: 0, actionCount: 0,
+    isFiringBits: 0, targetBits: 0,
+    weaponCount: 0, turretRots, turretAngVels, forceFieldRanges,
+    buildProgress: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
+  };
+}
+
+const _prevStates = new Map<number, PrevEntityState>();
+const _prevEntityIds = new Set<number>();
+const _currentEntityIds = new Set<number>();
+const _removedIdsBuf: number[] = [];
+
+// Pool for PrevEntityState objects (avoid allocating on new entity)
+const _prevStatePool: PrevEntityState[] = [];
+let _prevStatePoolIndex = 0;
+
+function getPrevState(entityId: number): PrevEntityState {
+  let prev = _prevStates.get(entityId);
+  if (!prev) {
+    if (_prevStatePoolIndex < _prevStatePool.length) {
+      prev = _prevStatePool[_prevStatePoolIndex++];
+    } else {
+      prev = createPrevEntityState();
+      _prevStatePool.push(prev);
+      _prevStatePoolIndex++;
+    }
+    _prevStates.set(entityId, prev);
+  }
+  return prev;
+}
+
+function hasEntityChanged(entity: Entity, prev: PrevEntityState): boolean {
+  const posTh = SNAPSHOT_CONFIG.positionThreshold;
+  const rotTh = SNAPSHOT_CONFIG.rotationThreshold;
+  const velTh = SNAPSHOT_CONFIG.velocityThreshold;
+
+  if (Math.abs(entity.transform.x - prev.x) > posTh) return true;
+  if (Math.abs(entity.transform.y - prev.y) > posTh) return true;
+  if (Math.abs(entity.transform.rotation - prev.rotation) > rotTh) return true;
+
+  if (entity.unit) {
+    if (Math.abs((entity.unit.velocityX ?? 0) - prev.velocityX) > velTh) return true;
+    if (Math.abs((entity.unit.velocityY ?? 0) - prev.velocityY) > velTh) return true;
+    if (entity.unit.hp !== prev.hp) return true;
+    if ((entity.unit.actions?.length ?? 0) !== prev.actionCount) return true;
+
+    // Check weapon state changes
+    if (entity.weapons) {
+      if (entity.weapons.length !== prev.weaponCount) return true;
+
+      let isFiringBits = 0;
+      let targetBits = 0;
+      for (let i = 0; i < entity.weapons.length; i++) {
+        const w = entity.weapons[i];
+        if (w.isFiring) isFiringBits |= (1 << i);
+        if (w.targetEntityId) targetBits |= (1 << i);
+        if (Math.abs(w.turretRotation - prev.turretRots[i]) > rotTh) return true;
+        if (Math.abs(w.turretAngularVelocity - prev.turretAngVels[i]) > velTh) return true;
+        if (Math.abs((w.currentForceFieldRange ?? 0) - prev.forceFieldRanges[i]) > 0.001) return true;
+      }
+      if (isFiringBits !== prev.isFiringBits) return true;
+      if (targetBits !== prev.targetBits) return true;
+    }
+  }
+
+  if (entity.building) {
+    if (entity.building.hp !== prev.hp) return true;
+    if ((entity.buildable?.buildProgress ?? 0) !== prev.buildProgress) return true;
+    if (entity.factory) {
+      if ((entity.factory.currentBuildProgress ?? 0) !== prev.factoryProgress) return true;
+      if ((entity.factory.isProducing ? 1 : 0) !== prev.isProducing) return true;
+      if (entity.factory.buildQueue.length !== prev.buildQueueLen) return true;
+    }
+  }
+
+  return false;
+}
+
+function updatePrevState(entity: Entity, prev: PrevEntityState): void {
+  prev.x = entity.transform.x;
+  prev.y = entity.transform.y;
+  prev.rotation = entity.transform.rotation;
+  prev.velocityX = entity.unit?.velocityX ?? 0;
+  prev.velocityY = entity.unit?.velocityY ?? 0;
+  prev.hp = entity.unit?.hp ?? entity.building?.hp ?? 0;
+  prev.actionCount = entity.unit?.actions?.length ?? 0;
+
+  prev.isFiringBits = 0;
+  prev.targetBits = 0;
+  prev.weaponCount = entity.weapons?.length ?? 0;
+  if (entity.weapons) {
+    // Grow turret arrays if needed
+    while (prev.turretRots.length < entity.weapons.length) {
+      prev.turretRots.push(0);
+      prev.turretAngVels.push(0);
+      prev.forceFieldRanges.push(0);
+    }
+    for (let i = 0; i < entity.weapons.length; i++) {
+      const w = entity.weapons[i];
+      if (w.isFiring) prev.isFiringBits |= (1 << i);
+      if (w.targetEntityId) prev.targetBits |= (1 << i);
+      prev.turretRots[i] = w.turretRotation;
+      prev.turretAngVels[i] = w.turretAngularVelocity;
+      prev.forceFieldRanges[i] = w.currentForceFieldRange ?? 0;
+    }
+  }
+
+  prev.buildProgress = entity.buildable?.buildProgress ?? 0;
+  prev.factoryProgress = entity.factory?.currentBuildProgress ?? 0;
+  prev.isProducing = entity.factory?.isProducing ? 1 : 0;
+  prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
+}
+
+/** Reset delta tracking state (call between game sessions). */
+export function resetDeltaTracking(): void {
+  _prevStates.clear();
+  _prevEntityIds.clear();
+  _currentEntityIds.clear();
+  _prevStatePoolIndex = 0;
+}
+
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkEntity[] = [];
 const _sprayBuf: NetworkSprayTarget[] = [];
@@ -97,11 +256,16 @@ const _snapshotBuf: NetworkGameState = {
   gridCells: undefined,
   gridSearchCells: undefined,
   gridCellSize: undefined,
+  isDelta: undefined,
+  removedEntityIds: undefined,
 };
 
-// Serialize WorldState to network format
+// Serialize WorldState to network format.
+// When isDelta=true, only changed/new entities are included plus removedEntityIds.
+// When isDelta=false (keyframe), all entities are included (same as before).
 export function serializeGameState(
   world: WorldState,
+  isDelta: boolean,
   gameOverWinnerId?: PlayerId,
   sprayTargets?: SprayTarget[],
   audioEvents?: AudioEvent[],
@@ -116,19 +280,73 @@ export function serializeGameState(
   _poolIndex = 0;
   _entityBuf.length = 0;
 
+  // Track current entity IDs for removal detection
+  _currentEntityIds.clear();
+
   // Serialize units and buildings (projectiles handled via spawn/despawn events)
-  // Uses cached getUnits()/getBuildings() to avoid Array.from() allocation from getAllEntities()
+  const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
   for (const entity of world.getUnits()) {
-    const netEntity = serializeEntity(entity);
-    if (netEntity) _entityBuf.push(netEntity);
+    _currentEntityIds.add(entity.id);
+    if (deltaEnabled) {
+      const prev = getPrevState(entity.id);
+      const isNew = !_prevEntityIds.has(entity.id);
+      if (isNew || hasEntityChanged(entity, prev)) {
+        const netEntity = serializeEntity(entity);
+        if (netEntity) _entityBuf.push(netEntity);
+        updatePrevState(entity, prev);
+      }
+    } else {
+      const netEntity = serializeEntity(entity);
+      if (netEntity) _entityBuf.push(netEntity);
+      const prev = getPrevState(entity.id);
+      updatePrevState(entity, prev);
+    }
   }
   for (const entity of world.getBuildings()) {
-    const netEntity = serializeEntity(entity);
-    if (netEntity) _entityBuf.push(netEntity);
+    _currentEntityIds.add(entity.id);
+    if (deltaEnabled) {
+      const prev = getPrevState(entity.id);
+      const isNew = !_prevEntityIds.has(entity.id);
+      if (isNew || hasEntityChanged(entity, prev)) {
+        const netEntity = serializeEntity(entity);
+        if (netEntity) _entityBuf.push(netEntity);
+        updatePrevState(entity, prev);
+      }
+    } else {
+      const netEntity = serializeEntity(entity);
+      if (netEntity) _entityBuf.push(netEntity);
+      const prev = getPrevState(entity.id);
+      updatePrevState(entity, prev);
+    }
+  }
+
+  // Detect removed entities (were in previous snapshot but not current)
+  _removedIdsBuf.length = 0;
+  if (deltaEnabled) {
+    for (const prevId of _prevEntityIds) {
+      if (!_currentEntityIds.has(prevId)) {
+        _removedIdsBuf.push(prevId);
+        _prevStates.delete(prevId);
+      }
+    }
+  }
+
+  // Update previous entity ID set for next frame
+  _prevEntityIds.clear();
+  for (const id of _currentEntityIds) {
+    _prevEntityIds.add(id);
+  }
+
+  // Clean up prevStates for entities that no longer exist
+  if (!deltaEnabled) {
+    for (const id of _prevStates.keys()) {
+      if (!_currentEntityIds.has(id)) {
+        _prevStates.delete(id);
+      }
+    }
   }
 
   // Serialize economy for all players (reuse object to avoid per-snapshot allocation)
-  // Clear previous entries
   for (const key of _economyKeys) {
     delete _economyBuf[key];
   }
@@ -246,6 +464,8 @@ export function serializeGameState(
   _snapshotBuf.gridCells = gridCells;
   _snapshotBuf.gridSearchCells = gridSearchCells;
   _snapshotBuf.gridCellSize = gridCellSize;
+  _snapshotBuf.isDelta = deltaEnabled ? true : undefined;
+  _snapshotBuf.removedEntityIds = deltaEnabled && _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;
 
   return _snapshotBuf;
 }
@@ -320,11 +540,8 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     if (entity.unit.actions && entity.unit.actions.length > 0) {
       const actions = entity.unit.actions;
       const count = actions.length;
-
-      // Grow pooled actions array if needed
       while (pool.actions.length < count) pool.actions.push(createPooledAction());
       pool.actions.length = count;
-
       for (let i = 0; i < count; i++) {
         const src = actions[i];
         const dst = pool.actions[i];
@@ -344,11 +561,8 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     if (entity.weapons && entity.weapons.length > 0) {
       const weapons = entity.weapons;
       const count = weapons.length;
-
-      // Grow pooled weapons array if needed
       while (pool.weapons.length < count) pool.weapons.push(createPooledWeapon());
       pool.weapons.length = count;
-
       for (let i = 0; i < count; i++) {
         const src = weapons[i];
         const dst = pool.weapons[i];
@@ -391,7 +605,6 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     }
 
     if (entity.factory) {
-      // Reuse pooled buildQueue array
       const srcQueue = entity.factory.buildQueue;
       pool.buildQueue.length = srcQueue.length;
       for (let i = 0; i < srcQueue.length; i++) {
@@ -404,7 +617,6 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
       ne.rallyX = entity.factory.rallyX;
       ne.rallyY = entity.factory.rallyY;
 
-      // Serialize waypoints into pooled objects
       const wps = entity.factory.waypoints;
       const wpCount = wps.length;
       while (pool.waypoints.length < wpCount) pool.waypoints.push(createPooledWaypoint());
