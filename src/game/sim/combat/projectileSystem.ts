@@ -357,6 +357,22 @@ export function updateProjectiles(
       // Move projectile
       entity.transform.x += proj.velocityX * dtSec;
       entity.transform.y += proj.velocityY * dtSec;
+
+      // Check if projectile has cleared the source unit's hitbox
+      if (!proj.hasLeftSource) {
+        const source = world.getEntity(proj.sourceEntityId);
+        if (!source?.unit) {
+          proj.hasLeftSource = true; // Source dead/gone, allow collisions
+        } else {
+          const dx = entity.transform.x - source.transform.x;
+          const dy = entity.transform.y - source.transform.y;
+          const distSq = dx * dx + dy * dy;
+          const clearance = source.unit.collisionRadius + (proj.config.projectileRadius ?? 5) + 2;
+          if (distSq > clearance * clearance) {
+            proj.hasLeftSource = true;
+          }
+        }
+      }
     }
 
     // Update beam positions to follow turret direction
@@ -762,6 +778,10 @@ export function checkProjectileCollisions(
       const currentX = projEntity.transform.x;
       const currentY = projEntity.transform.y;
 
+      // Source-entity exit guard: temporarily exclude source from collision while still inside hitbox
+      const sourceGuard = !proj.hasLeftSource;
+      if (sourceGuard) proj.hitEntities.add(proj.sourceEntityId);
+
       // Apply swept damage (line from prev to current with projectile radius)
       const result = damageSystem.applyDamage({
         type: 'swept',
@@ -774,7 +794,7 @@ export function checkProjectileCollisions(
         currentX,
         currentY,
         radius: projRadius,
-        maxHits: proj.maxHits - proj.hitEntities.size, // Remaining hits allowed
+        maxHits: proj.maxHits - proj.hitEntities.size + (sourceGuard ? 1 : 0), // Compensate for phantom guard entry
         // Pass actual projectile velocity for explosion effects
         velocityX: proj.velocityX,
         velocityY: proj.velocityY,
@@ -929,6 +949,9 @@ export function checkProjectileCollisions(
           }
         }
       }
+
+      // Clean up source guard (must happen after all damage processing for this projectile)
+      if (sourceGuard) proj.hitEntities.delete(proj.sourceEntityId);
 
       // Remove projectile if max hits reached
       if (proj.hitEntities.size >= proj.maxHits) {

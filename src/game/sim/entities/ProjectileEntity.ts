@@ -50,6 +50,9 @@ export class ProjectileEntity {
   // AoE tracking
   public hasExploded: boolean = false;
 
+  // Source-entity exit guard
+  public hasLeftSource: boolean = false;
+
   // D-gun marker
   public dgunProjectile?: DGunProjectile;
 
@@ -103,6 +106,7 @@ export class ProjectileEntity {
     hitEntities: Set<EntityId>;
     maxHits: number;
     hasExploded?: boolean;
+    hasLeftSource?: boolean;
   } {
     return {
       ownerId: this.ownerId,
@@ -123,6 +127,7 @@ export class ProjectileEntity {
       hitEntities: this.hitEntities,
       maxHits: this.maxHits,
       hasExploded: this.hasExploded,
+      hasLeftSource: this.hasLeftSource,
     };
   }
 }

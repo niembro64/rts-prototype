@@ -242,6 +242,9 @@ export interface Projectile {
 
   // AoE tracking
   hasExploded?: boolean;
+
+  // Source-entity exit guard (prevents self-damage until projectile clears source hitbox)
+  hasLeftSource?: boolean;
 }
 
 // ==================== ECONOMY & CONSTRUCTION ====================

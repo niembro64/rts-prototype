@@ -522,6 +522,7 @@ export class WorldState {
       maxLifespan,
       hitEntities: new Set(),
       maxHits,
+      hasLeftSource: false,
     };
 
     const entity: Entity = {
