@@ -358,14 +358,16 @@ export function updateProjectiles(
       entity.transform.x += proj.velocityX * dtSec;
       entity.transform.y += proj.velocityY * dtSec;
 
-      // Check if projectile has cleared the source unit's hitbox
+      // Check if projectile has cleared the source unit's hitbox.
+      // Use prevX/prevY (pre-move position) so the ENTIRE swept line (prev→current)
+      // is outside the combined collision radius when the guard drops.
       if (!proj.hasLeftSource) {
         const source = world.getEntity(proj.sourceEntityId);
         if (!source?.unit) {
           proj.hasLeftSource = true; // Source dead/gone, allow collisions
         } else {
-          const dx = entity.transform.x - source.transform.x;
-          const dy = entity.transform.y - source.transform.y;
+          const dx = proj.prevX - source.transform.x;
+          const dy = proj.prevY - source.transform.y;
           const distSq = dx * dx + dy * dy;
           const clearance = source.unit.collisionRadius + (proj.config.projectileRadius ?? 5) + 2;
           if (distSq > clearance * clearance) {
