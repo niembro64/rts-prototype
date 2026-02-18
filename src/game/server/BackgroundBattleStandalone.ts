@@ -30,8 +30,25 @@ function initBackgroundUnitWeights(): void {
   }
 }
 
-function selectWeightedUnitType(): keyof typeof UNIT_STATS {
+function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): keyof typeof UNIT_STATS {
   initBackgroundUnitWeights();
+
+  // If filtering, sum only allowed weights
+  if (allowedTypes) {
+    let filteredTotal = 0;
+    for (const entry of backgroundUnitWeights) {
+      if (allowedTypes.has(entry.type)) filteredTotal += entry.weight;
+    }
+    if (filteredTotal <= 0) return backgroundUnitWeights[0].type;
+
+    const random = Math.random() * filteredTotal;
+    let cumulative = 0;
+    for (const entry of backgroundUnitWeights) {
+      if (!allowedTypes.has(entry.type)) continue;
+      cumulative += entry.weight;
+      if (random <= cumulative) return entry.type;
+    }
+  }
 
   const random = Math.random() * backgroundTotalWeight;
   let cumulative = 0;
@@ -65,11 +82,15 @@ function spawnBackgroundUnitStandalone(
   const x = minX + Math.random() * (maxX - minX);
   const y = minY + Math.random() * (maxY - minY);
 
-  const unitType = BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING
-    ? selectWeightedUnitType()
-    : BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
-
-  if (allowedTypes && !allowedTypes.has(unitType)) return null;
+  let unitType: keyof typeof UNIT_STATS;
+  if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
+    unitType = selectWeightedUnitType(allowedTypes);
+  } else if (allowedTypes && allowedTypes.size > 0) {
+    const allowed = Array.from(allowedTypes) as (keyof typeof UNIT_STATS)[];
+    unitType = allowed[Math.floor(Math.random() * allowed.length)];
+  } else {
+    unitType = BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
+  }
   const stats = UNIT_STATS[unitType];
 
   const unit = world.createUnitBase(
