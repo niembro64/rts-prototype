@@ -22,12 +22,27 @@ const POSITION_DRIFT = 0.15;
 const VELOCITY_DRIFT = 0.25;
 const ROTATION_DRIFT = 0.15;
 
+// Lightweight copy of server state used for per-frame drift in applyPrediction().
+// Owns its data (not a reference to pooled serializer objects).
+interface ServerTarget {
+  x: number;
+  y: number;
+  rotation: number;
+  velocityX: number;
+  velocityY: number;
+  weapons: { turretRotation: number; turretAngularVelocity: number; currentForceFieldRange: number | undefined }[];
+}
+
+function createServerTarget(): ServerTarget {
+  return { x: 0, y: 0, rotation: 0, velocityX: 0, velocityY: 0, weapons: [] };
+}
+
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
   private entities: Map<EntityId, Entity> = new Map();
 
-  // Server target state — latest authoritative snapshot per entity
-  private serverTargets: Map<EntityId, NetworkEntity> = new Map();
+  // Server target state — owned copies of drift-relevant fields per entity
+  private serverTargets: Map<EntityId, ServerTarget> = new Map();
 
   // Current spray targets for rendering
   private sprayTargets: SprayTarget[] = [];
@@ -80,8 +95,31 @@ export class ClientViewState {
 
     // Process entity updates (present in both delta and keyframe snapshots)
     for (const netEntity of state.entities) {
-      // Store as server target for per-frame drifting
-      this.serverTargets.set(netEntity.id, netEntity);
+      // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
+      let target = this.serverTargets.get(netEntity.id);
+      if (!target) {
+        target = createServerTarget();
+        this.serverTargets.set(netEntity.id, target);
+      }
+      target.x = netEntity.x;
+      target.y = netEntity.y;
+      target.rotation = netEntity.rotation;
+      target.velocityX = netEntity.velocityX ?? 0;
+      target.velocityY = netEntity.velocityY ?? 0;
+      const nw = netEntity.weapons;
+      if (nw) {
+        while (target.weapons.length < nw.length) {
+          target.weapons.push({ turretRotation: 0, turretAngularVelocity: 0, currentForceFieldRange: undefined });
+        }
+        target.weapons.length = nw.length;
+        for (let i = 0; i < nw.length; i++) {
+          target.weapons[i].turretRotation = nw[i].turretRotation;
+          target.weapons[i].turretAngularVelocity = nw[i].turretAngularVelocity;
+          target.weapons[i].currentForceFieldRange = nw[i].currentForceFieldRange;
+        }
+      } else {
+        target.weapons.length = 0;
+      }
 
       const existing = this.entities.get(netEntity.id);
 
