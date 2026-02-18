@@ -184,18 +184,23 @@ export const FORCE_FIELD_VISUAL = {
  * Force field turret (grate) configuration per unit type.
  * All length/width values are multipliers of the unit's collision radius.
  */
-export type ForceFieldTurretShape = 'triangle' | 'line' | 'square' | 'hexagon' | 'circle';
+export type ForceFieldTurretShape =
+  | 'triangle'
+  | 'line'
+  | 'square'
+  | 'hexagon'
+  | 'circle';
 
 export interface ForceFieldTurretConfig {
   shape: ForceFieldTurretShape; // piece geometry
-  count: number;                // number of pieces
-  length: number;               // how far turret extends (× radius)
-  width: number;                // max half-width of base piece (× radius)
-  taper: number;                // 0→1: tip shrinks to (1−taper) of base; also compresses spacing
-  baseOffset: number;           // where first piece sits (fraction of length)
-  originOffset: number;         // mount point offset along turret axis (× radius)
-  thickness: number;            // line width (px), used for 'line' shape
-  reversePhase: boolean;        // true: phase offsets run tip→base instead of base→tip
+  count: number; // number of pieces
+  length: number; // how far turret extends (× radius)
+  width: number; // max half-width of base piece (× radius)
+  taper: number; // 0→1: tip shrinks to (1−taper) of base; also compresses spacing
+  baseOffset: number; // where first piece sits (fraction of length)
+  originOffset: number; // mount point offset along turret axis (× radius)
+  thickness: number; // line width (px), used for 'line' shape
+  reversePhase: boolean; // true: phase offsets run tip→base instead of base→tip
 }
 
 export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
@@ -545,7 +550,7 @@ export const UNIT_STATS = {
   // Tarantula - Force field AoE unit. Continuous damage with pull.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
   tarantula: {
-    baseCost: 35,
+    baseCost: 600,
     hp: 200,
     moveSpeed: 200,
     collisionRadius: 11,
@@ -782,14 +787,15 @@ export const WEAPON_STATS = {
       color: 0x3366ff,
       alpha: 0.05,
       particleAlpha: 0.2,
-      power: 1000,
+      power: 300,
       damage: 1,
     },
+    // pull: null,
     pull: {
       innerRatio: 0.65,
       outerRatio: 0.7,
       color: 0x3366ff,
-      alpha: 0.05,
+      alpha: 0.2,
       particleAlpha: 0.2,
       power: null,
       damage: 1,
@@ -816,14 +822,15 @@ export const WEAPON_STATS = {
       color: 0x3366ff,
       alpha: 0.05,
       particleAlpha: 0.2,
-      power: 1000,
+      power: 300,
       damage: 1,
     },
+    // pull: null,
     pull: {
       innerRatio: 0.65,
       outerRatio: 0.7,
       color: 0x3366ff,
-      alpha: 0.05,
+      alpha: 0.2,
       particleAlpha: 0.2,
       power: null,
       damage: 1,
