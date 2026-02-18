@@ -800,6 +800,7 @@ onMounted(() => {
     clientTime.value = new Intl.DateTimeFormat('en-US', {
       hour: '2-digit',
       minute: '2-digit',
+      second: '2-digit',
       hour12: false,
       timeZoneName: 'short',
     }).format(new Date());
@@ -912,7 +913,7 @@ onUnmounted(() => {
           <span class="fps-label">low</span>
         </div>
         <div class="bar-divider"></div>
-        <span class="control-label">DIFFSNAP:</span>
+        <span class="control-label">SNAPSHOT:</span>
         <div class="button-group">
           <button
             v-for="rate in UPDATE_RATE_OPTIONS"

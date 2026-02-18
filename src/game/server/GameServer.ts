@@ -346,15 +346,21 @@ export class GameServer {
     state.combatStats = this.simulation.getCombatStatsSnapshot();
 
     // Add server metadata to snapshot
-    const tickStats = this.getTickStats();
-    state.serverMeta = {
-      tpsAvg: tickStats.avgFps,
-      tpsWorst: tickStats.worstFps,
-      snapshotRate: this.inlineSnapshots ? 'realtime' : this.snapshotRateHz,
-      sendGridInfo: this.sendGridInfo,
-      serverTime: this.formatServerTime(),
-      ipAddress: this.ipAddress,
-    };
+    // On delta snapshots, only include serverMeta when the time string changed (once per second)
+    const currentTime = this.formatServerTime();
+    const timeChanged = currentTime !== this.lastSentServerTime;
+    if (!isDelta || timeChanged) {
+      const tickStats = this.getTickStats();
+      state.serverMeta = {
+        tpsAvg: tickStats.avgFps,
+        tpsWorst: tickStats.worstFps,
+        snapshotRate: this.inlineSnapshots ? 'realtime' : this.snapshotRateHz,
+        sendGridInfo: this.sendGridInfo,
+        serverTime: currentTime,
+        ipAddress: this.ipAddress,
+      };
+      this.lastSentServerTime = currentTime;
+    }
 
     for (const listener of this.snapshotListeners) {
       listener(state);
@@ -421,14 +427,25 @@ export class GameServer {
     this.ipAddress = ip;
   }
 
-  // Format current time as military format with timezone abbreviation (e.g. "14:34 MST")
+  // Format current time as military format with timezone abbreviation (e.g. "14:34:05 MST")
+  // Caches result so delta snapshots can skip sending unchanged time
+  private lastServerTime: string = '';
+  private lastServerTimeSec: number = -1;
+  private lastSentServerTime: string = ''; // Track what was last sent so deltas can skip
   private formatServerTime(): string {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZoneName: 'short',
-    }).format(new Date());
+    const now = new Date();
+    const sec = now.getSeconds();
+    if (sec !== this.lastServerTimeSec) {
+      this.lastServerTimeSec = sec;
+      this.lastServerTime = new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZoneName: 'short',
+      }).format(now);
+    }
+    return this.lastServerTime;
   }
 
   // Toggle spatial grid debug info in snapshots

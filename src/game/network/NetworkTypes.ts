@@ -101,7 +101,7 @@ export interface NetworkServerMeta {
   tpsWorst: number;
   snapshotRate: number | 'realtime';
   sendGridInfo: boolean;
-  serverTime: string;    // "14:34 MST"
+  serverTime: string;    // "14:34:05 MST"
   ipAddress: string;     // Public IP or "N/A"
 }
 
