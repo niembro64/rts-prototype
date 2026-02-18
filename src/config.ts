@@ -496,7 +496,7 @@ export const UNIT_STATS = {
   // Daddy - Heavy beam walker. Mega beam, sustained DPS but VERY slow turret tracking.
   // Value: Good vs slow/stationary targets, struggles vs fast units
   daddy: {
-    baseCost: 105,
+    baseCost: 500,
     hp: 60,
     moveSpeed: 200,
     collisionRadius: 13,
@@ -550,7 +550,7 @@ export const UNIT_STATS = {
   // Tarantula - Force field AoE unit. Continuous damage with pull.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
   tarantula: {
-    baseCost: 600,
+    baseCost: 100,
     hp: 200,
     moveSpeed: 200,
     collisionRadius: 11,
@@ -775,7 +775,7 @@ export const WEAPON_STATS = {
   // Inner/middle radii are ratios of range (the outer/fire radius)
   forceField: {
     audioId: 'force-field' as const,
-    range: SPATIAL_GRID_CELL_SIZE * 0.9,
+    range: SPATIAL_GRID_CELL_SIZE * 1.9,
     cooldown: 0,
     turretTurnAccel: 30,
     turretDrag: 0.5,
@@ -783,7 +783,7 @@ export const WEAPON_STATS = {
     forceFieldTransitionTime: 300,
     push: {
       innerRatio: 0.0,
-      outerRatio: 0.65,
+      outerRatio: 0.68,
       color: 0x3366ff,
       alpha: 0.05,
       particleAlpha: 0.2,
@@ -792,7 +792,7 @@ export const WEAPON_STATS = {
     },
     // pull: null,
     pull: {
-      innerRatio: 0.65,
+      innerRatio: 0.68,
       outerRatio: 0.7,
       color: 0x3366ff,
       alpha: 0.2,
@@ -805,12 +805,12 @@ export const WEAPON_STATS = {
       fire: null,
       release: null,
       lock: null,
-      fightstop: null,
+      fightstop: 1.5,
     },
   },
   megaForceField: {
     audioId: 'force-field' as const,
-    range: SPATIAL_GRID_CELL_SIZE * 0.9,
+    range: SPATIAL_GRID_CELL_SIZE * 0.95,
     cooldown: 0,
     turretTurnAccel: 30,
     turretDrag: 0.5,
@@ -818,7 +818,7 @@ export const WEAPON_STATS = {
     forceFieldTransitionTime: 1000,
     push: {
       innerRatio: 0.0,
-      outerRatio: 0.65,
+      outerRatio: 0.66,
       color: 0x3366ff,
       alpha: 0.05,
       particleAlpha: 0.2,
@@ -827,7 +827,7 @@ export const WEAPON_STATS = {
     },
     // pull: null,
     pull: {
-      innerRatio: 0.65,
+      innerRatio: 0.66,
       outerRatio: 0.7,
       color: 0x3366ff,
       alpha: 0.2,
@@ -840,7 +840,7 @@ export const WEAPON_STATS = {
       fire: null,
       release: null,
       lock: null,
-      fightstop: null,
+      fightstop: 1.5,
     },
   },
 

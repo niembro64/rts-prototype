@@ -129,8 +129,8 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       }
       // Compact body — 8-point shape ~r*0.6 × r*0.5
       addPolygonEdges(0, 0, r * 0.5, 6, 0, r * 0.2, 'dark', 'rect');
-      // Inner carapace hex r*0.3
-      addPolygonEdges(0, 0, r * 0.3, 6, 0, r * 0.12, 'light', 'rect');
+      // Central beam emitter — r*0.6 long, 3.5px wide
+      addBarrel(0, 0, r * 0.6, 3.5, 0, 'white');
       break;
     }
 
@@ -152,8 +152,8 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       }
       // Elongated body — r*0.9 long × r*0.55 wide
       addPolygonEdges(0, 0, r * 0.5, 6, 0, r * 0.2, 'base', 'rect');
-      // Central beam emitter — r*0.6 long, 3.5px wide
-      addBarrel(0, 0, r * 0.6, 3.5, 0, 'white');
+      // Inner carapace hex r*0.3
+      addPolygonEdges(0, 0, r * 0.3, 6, 0, r * 0.12, 'light', 'rect');
       break;
     }
 

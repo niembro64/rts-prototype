@@ -1,4 +1,4 @@
-// Force field unit renderer - 8-legged tarantula with central force field emitter orb
+// Force field unit renderer - 8-legged daddy with central force field emitter orb
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
@@ -23,7 +23,7 @@ export function drawForceFieldUnit(
   if (!turretsOnly) {
     // Legs (always drawn at low+high)
     {
-      const legConfig = LEG_STYLE_CONFIG.tarantula;
+      const legConfig = LEG_STYLE_CONFIG.daddy;
       const legThickness = legConfig.thickness;
       const footSize = r * legConfig.footSizeMultiplier;
 

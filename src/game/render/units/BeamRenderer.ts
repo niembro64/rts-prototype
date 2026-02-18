@@ -1,4 +1,4 @@
-// Beam unit renderer - 8-legged daddy long legs style unit with a single beam laser
+// Beam unit renderer - 8-legged tarantula style unit with a single beam laser
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
@@ -21,7 +21,7 @@ export function drawBeamUnit(
   if (!turretsOnly) {
     // Legs (always drawn at low+high)
     {
-      const legConfig = LEG_STYLE_CONFIG.daddy;
+      const legConfig = LEG_STYLE_CONFIG.tarantula;
       const legThickness = legConfig.thickness;
       const footSize = r * legConfig.footSizeMultiplier;
 

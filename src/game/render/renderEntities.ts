@@ -485,13 +485,13 @@ export class EntityRenderer {
       switch (unitType) {
         case 'jackal': drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
         case 'lynx': drawBurstUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
-        case 'daddy': drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'daddy')); break;
+        case 'daddy': drawForceFieldUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'daddy')); break;
         case 'badger': drawBrawlUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
         case 'mongoose': drawMortarUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
         case 'recluse': drawSnipeUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'recluse')); break;
         case 'mammoth': drawTankUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
         case 'widow': drawArachnidUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'widow')); break;
-        case 'tarantula': drawForceFieldUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'tarantula')); break;
+        case 'tarantula': drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'tarantula')); break;
         default: drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
       }
     }

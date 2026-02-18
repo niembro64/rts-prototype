@@ -50,7 +50,7 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     hp: UNIT_STATS.lynx.hp,
   },
   daddy: {
-    weaponId: 'beam',
+    weaponId: 'forceField',
     name: 'Daddy',
     energyCost: UNIT_STATS.daddy.baseCost * COST_MULTIPLIER,
     collisionRadius: UNIT_STATS.daddy.collisionRadius,
@@ -105,15 +105,13 @@ export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
     weaponSeeRange: 400,
   },
   tarantula: {
-    weaponId: 'forceField',
+    weaponId: 'beam',
     name: 'Tarantula',
     energyCost: UNIT_STATS.tarantula.baseCost * COST_MULTIPLIER,
     collisionRadius: UNIT_STATS.tarantula.collisionRadius,
     moveSpeed: UNIT_STATS.tarantula.moveSpeed,
     mass: UNIT_STATS.tarantula.mass,
     hp: UNIT_STATS.tarantula.hp,
-    weaponSeeRange: 100,
-    weaponFireRange: 150,
   },
 };
 

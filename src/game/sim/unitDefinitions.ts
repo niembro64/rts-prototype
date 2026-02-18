@@ -161,7 +161,7 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
   daddy: {
     id: 'daddy',
     name: 'Daddy',
-    weaponType: 'megaBeam',
+    weaponType: 'forceField',
     hp: UNIT_STATS.daddy.hp,
     moveSpeed: UNIT_STATS.daddy.moveSpeed,
     collisionRadius: UNIT_STATS.daddy.collisionRadius,
@@ -225,7 +225,7 @@ export const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
   tarantula: {
     id: 'tarantula',
     name: 'Tarantula',
-    weaponType: 'forceField',
+    weaponType: 'megaBeam',
     hp: UNIT_STATS.tarantula.hp,
     moveSpeed: UNIT_STATS.tarantula.moveSpeed,
     collisionRadius: UNIT_STATS.tarantula.collisionRadius,
