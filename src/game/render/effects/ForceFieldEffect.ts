@@ -27,7 +27,8 @@ export function renderForceFieldEffect(
   particleAlpha: number,
   innerRange: number = 0,
   pushOutward: boolean = false,
-  _lod: LodLevel = 'high'
+  _lod: LodLevel = 'high',
+  instanceSeed: number = 0
 ): void {
   const halfAngle = sliceAngle / 2;
   const gfxConfig = getGraphicsConfig();
@@ -63,9 +64,9 @@ export function renderForceFieldEffect(
     }
   };
 
-  // Deterministic pseudo-random hash
+  // Deterministic pseudo-random hash (instanceSeed makes each force field unique)
   const hash = (n: number) => {
-    let h = (n | 0) * 2654435761;
+    let h = (n | 0) * 2654435761 + (instanceSeed | 0) * 1597334677;
     h = ((h >>> 16) ^ h) * 45679;
     return ((h >>> 16) ^ h) / 4294967296 + 0.5; // 0..1
   };

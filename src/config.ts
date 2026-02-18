@@ -775,7 +775,7 @@ export const WEAPON_STATS = {
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
-    forceFieldTransitionTime: 1000,
+    forceFieldTransitionTime: 300,
     push: {
       innerRatio: 0.0,
       outerRatio: 0.65,

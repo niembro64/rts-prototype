@@ -249,7 +249,7 @@ export function drawArachnidUnit(
           renderForceFieldEffect(
             graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, push.outerRange,
             push.color, push.alpha, push.particleAlpha,
-            pushInner, true, ctx.lod
+            pushInner, true, ctx.lod, entity.id
           );
         }
       }
@@ -261,7 +261,7 @@ export function drawArachnidUnit(
           renderForceFieldEffect(
             graphics, hexCenterX, hexCenterY, turretAngle, sliceAngle, pullOuter,
             pull.color, pull.alpha, pull.particleAlpha,
-            pull.innerRange, false, ctx.lod
+            pull.innerRange, false, ctx.lod, entity.id
           );
         }
       }

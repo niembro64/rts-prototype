@@ -114,7 +114,7 @@ export function drawForceFieldUnit(
           renderForceFieldEffect(
             graphics, x, y, turretRot, sliceAngle, push.outerRange,
             push.color, push.alpha, push.particleAlpha,
-            pushInner, true, ctx.lod
+            pushInner, true, ctx.lod, entity.id
           );
         }
       }
@@ -126,7 +126,7 @@ export function drawForceFieldUnit(
           renderForceFieldEffect(
             graphics, x, y, turretRot, sliceAngle, pullOuter,
             pull.color, pull.alpha, pull.particleAlpha,
-            pull.innerRange, false, ctx.lod
+            pull.innerRange, false, ctx.lod, entity.id
           );
         }
       }

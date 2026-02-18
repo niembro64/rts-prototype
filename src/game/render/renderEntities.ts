@@ -434,13 +434,13 @@ export class EntityRenderer {
             if (push) {
               const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
               if (push.outerRange > pushInner) {
-                renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, push.outerRange, push.color, push.alpha, push.particleAlpha, pushInner, true, lod);
+                renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, push.outerRange, push.color, push.alpha, push.particleAlpha, pushInner, true, lod, entity.id);
               }
             }
             if (pull) {
               const pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
               if (pullOuter > pull.innerRange) {
-                renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, pullOuter, pull.color, pull.alpha, pull.particleAlpha, pull.innerRange, false, lod);
+                renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, pullOuter, pull.color, pull.alpha, pull.particleAlpha, pull.innerRange, false, lod, entity.id);
               }
             }
           }
