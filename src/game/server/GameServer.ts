@@ -30,6 +30,8 @@ import {
   UNIT_THRUST_MULTIPLIER_GAME,
   UNIT_THRUST_MULTIPLIER_DEMO,
   SNAPSHOT_CONFIG,
+  DEFAULT_KEYFRAME_RATIO,
+  type KeyframeRatio,
 } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
@@ -82,9 +84,10 @@ export class GameServer {
   private tickDeltaCount: number = 0;
   private readonly TICK_HISTORY_SIZE = 600; // ~10 seconds at 60Hz
 
-  // Delta snapshot keyframe timer
-  private timeSinceKeyframe: number = 0;
+  // Delta snapshot keyframe ratio tracking
   private isFirstSnapshot: boolean = true;
+  private snapshotCounter: number = 0;
+  private keyframeRatio: number = typeof DEFAULT_KEYFRAME_RATIO === 'number' ? DEFAULT_KEYFRAME_RATIO : DEFAULT_KEYFRAME_RATIO === 'ALL' ? 1 : 0;
 
   // Debug: send spatial grid occupancy info in snapshots
   private sendGridInfo: boolean = false;
@@ -240,7 +243,7 @@ export class GameServer {
 
     // Reset keyframe state for next session
     this.isFirstSnapshot = true;
-    this.timeSinceKeyframe = 0;
+    this.snapshotCounter = 0;
   }
 
   // Start in manual mode: caller drives tick() and emitSnapshot() externally
@@ -313,18 +316,27 @@ export class GameServer {
     const gridCellSize = this.sendGridInfo ? spatialGrid.getCellSize() : undefined;
 
     // Determine if this snapshot should be a delta or a full keyframe
-    // First snapshot is always a keyframe; then delta until keyframe interval expires
+    // First snapshot is always a keyframe; then use ratio-based counter
     let isDelta = false;
     if (this.isFirstSnapshot) {
       this.isFirstSnapshot = false;
-      this.timeSinceKeyframe = 0;
+      this.snapshotCounter = 0;
     } else if (SNAPSHOT_CONFIG.deltaEnabled) {
-      this.timeSinceKeyframe += this.inlineSnapshots ? (1000 / 60) : (1000 / this.snapshotRateHz);
-      if (this.timeSinceKeyframe >= SNAPSHOT_CONFIG.keyframeIntervalMs) {
-        this.timeSinceKeyframe = 0;
-        // keyframe — isDelta stays false
-      } else {
+      if (this.keyframeRatio >= 1) {
+        // ALL: every snapshot is a keyframe
+        isDelta = false;
+      } else if (this.keyframeRatio <= 0) {
+        // NONE: never a keyframe after the first
         isDelta = true;
+      } else {
+        this.snapshotCounter++;
+        const keyframeInterval = Math.round(1 / this.keyframeRatio);
+        if (this.snapshotCounter >= keyframeInterval) {
+          this.snapshotCounter = 0;
+          // keyframe — isDelta stays false
+        } else {
+          isDelta = true;
+        }
       }
     }
 
@@ -372,6 +384,12 @@ export class GameServer {
   // Add a game over listener
   addGameOverListener(callback: GameOverCallback): void {
     this.gameOverListeners.push(callback);
+  }
+
+  // Change keyframe ratio (fraction of snapshots that are full keyframes)
+  setKeyframeRatio(ratio: KeyframeRatio): void {
+    this.keyframeRatio = ratio === 'ALL' ? 1 : ratio === 'NONE' ? 0 : ratio;
+    this.snapshotCounter = 0;
   }
 
   // Change snapshot emission rate, or switch to real-time (inline) mode

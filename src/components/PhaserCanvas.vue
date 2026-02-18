@@ -23,6 +23,8 @@ import {
 import {
   DEFAULT_SNAPSHOT_RATE,
   SNAPSHOT_RATE_OPTIONS,
+  DEFAULT_KEYFRAME_RATIO,
+  KEYFRAME_RATIO_OPTIONS,
   MAP_SETTINGS,
   SHOW_LOBBY_ON_STARTUP,
   COMBAT_STATS_HISTORY_MAX,
@@ -30,6 +32,7 @@ import {
   UNIT_STATS,
   UNIT_SHORT_NAMES,
   type SnapshotRate,
+  type KeyframeRatio,
 } from '../config';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
@@ -54,6 +57,7 @@ import {
 import { audioManager } from '../game/audio/AudioManager';
 
 const UPDATE_RATE_OPTIONS = SNAPSHOT_RATE_OPTIONS;
+const FULLSNAP_OPTIONS = KEYFRAME_RATIO_OPTIONS;
 
 // Graphics quality options - Auto is separate from quality levels
 const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
@@ -95,6 +99,7 @@ const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole>('offline');
 const snapshotRate = ref<SnapshotRate>(DEFAULT_SNAPSHOT_RATE);
+const keyframeRatio = ref<KeyframeRatio>(DEFAULT_KEYFRAME_RATIO);
 const sendGridInfo = ref(false);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 
@@ -212,6 +217,7 @@ function startBackgroundBattle(): void {
 
   const bgConnection = new LocalGameConnection(backgroundServer);
   backgroundServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
+  backgroundServer.setKeyframeRatio(keyframeRatio.value);
   backgroundServer.setIpAddress(localIpAddress.value);
   backgroundServer.startManual();
   hasServer.value = true;
@@ -628,6 +634,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
       // Configure snapshot rate and start in manual mode (Phaser update() drives ticks)
       currentServer.setSnapshotRate(snapshotRate.value);
+      currentServer.setKeyframeRatio(keyframeRatio.value);
       currentServer.setIpAddress(localIpAddress.value);
       currentServer.startManual();
       hasServer.value = true;
@@ -735,6 +742,16 @@ function setNetworkUpdateRate(rate: SnapshotRate): void {
   }
   if (backgroundServer) {
     backgroundServer.setSnapshotRate(rate);
+  }
+}
+
+function setKeyframeRatioValue(ratio: KeyframeRatio): void {
+  keyframeRatio.value = ratio;
+  if (currentServer) {
+    currentServer.setKeyframeRatio(ratio);
+  }
+  if (backgroundServer) {
+    backgroundServer.setKeyframeRatio(ratio);
   }
 }
 
@@ -895,7 +912,7 @@ onUnmounted(() => {
           <span class="fps-label">low</span>
         </div>
         <div class="bar-divider"></div>
-        <span class="control-label">SNAPSHOT:</span>
+        <span class="control-label">DIFFSNAP:</span>
         <div class="button-group">
           <button
             v-for="rate in UPDATE_RATE_OPTIONS"
@@ -905,6 +922,19 @@ onUnmounted(() => {
             @click="setNetworkUpdateRate(rate)"
           >
             {{ rate === 'realtime' ? 'RT' : (rate as number) }}
+          </button>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">FULLSNAP:</span>
+        <div class="button-group">
+          <button
+            v-for="opt in FULLSNAP_OPTIONS"
+            :key="String(opt)"
+            class="control-btn"
+            :class="{ active: keyframeRatio === opt }"
+            @click="setKeyframeRatioValue(opt)"
+          >
+            {{ opt === 'ALL' ? 'ALL' : opt === 'NONE' ? 'NONE' : `1e-${Math.round(-Math.log10(opt as number))}` }}
           </button>
         </div>
         <div class="bar-divider"></div>

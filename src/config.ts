@@ -14,15 +14,29 @@ export const SPATIAL_GRID_CELL_SIZE = 150;
 export const SNAPSHOT_CONFIG = {
   /** Enable delta snapshots (only send changed entities). When false, every snapshot is a full keyframe. */
   deltaEnabled: true,
-  /** Interval between full keyframe snapshots (ms). Keyframes resync all entity state as a safety net. */
-  keyframeIntervalMs: 5000,
   /** Position change threshold (px). Entity is "unchanged" if position moved less than this. */
-  positionThreshold: 0.1,
+  positionThreshold: 0.01,
   /** Rotation change threshold (radians). */
-  rotationThreshold: Math.PI,
+  rotationThreshold: Math.PI / 64,
   /** Velocity change threshold (px/sec). */
-  velocityThreshold: 0.1,
+  velocityThreshold: 0.01,
 };
+
+/** Keyframe ratio: fraction of snapshots that are full keyframes. 1 = ALL, 0 = NONE (after first). Default 1e-2 (every 100th). */
+export const DEFAULT_KEYFRAME_RATIO = 0.01;
+
+/** Available keyframe ratio options for the FULLSNAP UI control */
+export const KEYFRAME_RATIO_OPTIONS: readonly (number | 'ALL' | 'NONE')[] = [
+  'ALL',
+  0.1,    // 1e-1
+  0.01,   // 1e-2
+  0.001,  // 1e-3
+  0.0001, // 1e-4
+  0.00001,// 1e-5
+  'NONE',
+] as const;
+
+export type KeyframeRatio = number | 'ALL' | 'NONE';
 
 // =============================================================================
 // ECONOMY & RESOURCES
