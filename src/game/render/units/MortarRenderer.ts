@@ -45,8 +45,8 @@ export function drawMortarUnit(
       }
     }
 
-    // Main body (hexagon) - gray base
-    const bodyColor = isSelected ? COLORS.UNIT_SELECTED : COLORS.GRAY;
+    // Main body (hexagon)
+    const bodyColor = isSelected ? COLORS.UNIT_SELECTED : (ctx.lod === 'high' ? COLORS.GRAY : base);
     graphics.fillStyle(bodyColor, 1);
     drawPolygon(graphics, x, y, r * 0.55, 6, bodyRot);
 

@@ -28,11 +28,11 @@ export const DEFAULT_KEYFRAME_RATIO = 0.01;
 /** Available keyframe ratio options for the FULLSNAP UI control */
 export const KEYFRAME_RATIO_OPTIONS: readonly (number | 'ALL' | 'NONE')[] = [
   'ALL',
-  0.1,    // 1e-1
-  0.01,   // 1e-2
-  0.001,  // 1e-3
+  0.1, // 1e-1
+  0.01, // 1e-2
+  0.001, // 1e-3
   0.0001, // 1e-4
-  0.00001,// 1e-5
+  0.00001, // 1e-5
   'NONE',
 ] as const;
 
@@ -535,8 +535,8 @@ export const PROJECTILE_STATS = {
   },
   pulseBolt: {
     damage: 6,
-    speed: 500,
-    mass: 1.0,
+    speed: 200,
+    mass: 0.6,
     radius: 3,
     lifespan: 500,
     primaryDamageRadius: 8,
