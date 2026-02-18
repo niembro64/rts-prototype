@@ -82,6 +82,9 @@ function spawnBackgroundUnitStandalone(
   const x = minX + Math.random() * (maxX - minX);
   const y = minY + Math.random() * (maxY - minY);
 
+  // Nothing allowed — skip spawn entirely
+  if (allowedTypes && allowedTypes.size === 0) return null;
+
   let unitType: keyof typeof UNIT_STATS;
   if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
     unitType = selectWeightedUnitType(allowedTypes);
