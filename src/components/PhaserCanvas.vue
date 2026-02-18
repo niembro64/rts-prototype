@@ -100,7 +100,7 @@ const hasServer = ref(false); // True when we own a GameServer (host/offline/bac
 
 // Server metadata received from snapshots (for remote clients to display server bar)
 const serverMetaFromSnapshot = ref<NetworkServerMeta | null>(null);
-const serverIpAddress = ref<string>('N/A');
+const localIpAddress = ref<string>('N/A');
 const clientTime = ref<string>('');
 
 // Demo battle unit type toggles
@@ -212,7 +212,7 @@ function startBackgroundBattle(): void {
 
   const bgConnection = new LocalGameConnection(backgroundServer);
   backgroundServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
-  backgroundServer.setIpAddress(serverIpAddress.value);
+  backgroundServer.setIpAddress(localIpAddress.value);
   backgroundServer.startManual();
   hasServer.value = true;
 
@@ -314,7 +314,7 @@ const displayServerTime = computed(() =>
   serverMetaFromSnapshot.value?.serverTime ?? ''
 );
 const displayServerIp = computed(() =>
-  serverMetaFromSnapshot.value?.ipAddress ?? serverIpAddress.value
+  serverMetaFromSnapshot.value?.ipAddress ?? ''
 );
 
 // Show demo battle bar only during background demo (uses reactive refs only)
@@ -628,7 +628,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
       // Configure snapshot rate and start in manual mode (Phaser update() drives ticks)
       currentServer.setSnapshotRate(snapshotRate.value);
-      currentServer.setIpAddress(serverIpAddress.value);
+      currentServer.setIpAddress(localIpAddress.value);
       currentServer.startManual();
       hasServer.value = true;
     } else {
@@ -770,7 +770,7 @@ onMounted(() => {
   // Fetch public IP for server bar display
   fetch('https://api.ipify.org?format=text')
     .then(res => res.text())
-    .then(ip => { serverIpAddress.value = ip.trim(); })
+    .then(ip => { localIpAddress.value = ip.trim(); })
     .catch(() => { /* keep 'N/A' */ });
 
   // Update client time every second
@@ -917,6 +917,8 @@ onUnmounted(() => {
         <span class="bar-label client-label">PLAYER CLIENT</span>
         <span v-if="clientTime" class="time-display client-time">{{ clientTime }}</span>
         <div class="bar-divider"></div>
+        <span v-if="localIpAddress !== 'N/A'" class="ip-display">{{ localIpAddress }}</span>
+        <div v-if="localIpAddress !== 'N/A'" class="bar-divider"></div>
         <div class="fps-stats">
           <span class="control-label">FPS:</span>
           <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
