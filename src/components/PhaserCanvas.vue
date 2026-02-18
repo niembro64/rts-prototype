@@ -770,7 +770,12 @@ onMounted(() => {
   // Fetch public IP for server bar display
   fetch('https://api.ipify.org?format=text')
     .then(res => res.text())
-    .then(ip => { localIpAddress.value = ip.trim(); })
+    .then(ip => {
+      localIpAddress.value = ip.trim();
+      // Push to whichever server is already running (fetch is async)
+      backgroundServer?.setIpAddress(localIpAddress.value);
+      currentServer?.setIpAddress(localIpAddress.value);
+    })
     .catch(() => { /* keep 'N/A' */ });
 
   // Update client time every second
