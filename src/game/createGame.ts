@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { RtsScene } from './scenes/RtsScene';
 import type { PlayerId } from './sim/types';
 import type { GameConnection } from './server/GameConnection';
-import type { GameServer } from './server/GameServer';
 import { MAP_BG_COLOR, hexToStr } from '../config';
 
 export interface GameConfig {
@@ -15,7 +14,6 @@ export interface GameConfig {
   mapWidth: number;
   mapHeight: number;
   backgroundMode?: boolean;
-  gameServer?: GameServer;
 }
 
 export interface GameInstance {
@@ -31,7 +29,6 @@ let pendingGameConfig: {
   mapWidth: number;
   mapHeight: number;
   backgroundMode: boolean;
-  gameServer?: GameServer;
 } | null = null;
 
 export function getPendingGameConfig() {
@@ -51,7 +48,6 @@ export function createGame(config: GameConfig): GameInstance {
     mapWidth: config.mapWidth,
     mapHeight: config.mapHeight,
     backgroundMode: config.backgroundMode ?? false,
-    gameServer: config.gameServer,
   };
 
   const phaserConfig: Phaser.Types.Core.GameConfig = {

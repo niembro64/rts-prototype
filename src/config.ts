@@ -898,7 +898,7 @@ export const SHOW_LOBBY_ON_STARTUP = false;
 export type SnapshotRate = number | 'realtime';
 
 /**
- * Default snapshot rate. 'realtime' emits inline every frame (~60Hz).
+ * Default snapshot rate. 'realtime' maps to 60Hz via setInterval.
  * Numeric values use a setInterval at the given Hz.
  */
 export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 'realtime';

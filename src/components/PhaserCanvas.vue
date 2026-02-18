@@ -219,7 +219,7 @@ function startBackgroundBattle(): void {
   backgroundServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
   backgroundServer.setKeyframeRatio(keyframeRatio.value);
   backgroundServer.setIpAddress(localIpAddress.value);
-  backgroundServer.startManual();
+  backgroundServer.start();
   hasServer.value = true;
 
   backgroundGameInstance = createGame({
@@ -232,7 +232,6 @@ function startBackgroundBattle(): void {
     mapWidth: MAP_SETTINGS.demo.width,
     mapHeight: MAP_SETTINGS.demo.height,
     backgroundMode: true,
-    gameServer: backgroundServer,
   });
 
   // Wire combat stats callback for background scene
@@ -636,7 +635,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       currentServer.setSnapshotRate(snapshotRate.value);
       currentServer.setKeyframeRatio(keyframeRatio.value);
       currentServer.setIpAddress(localIpAddress.value);
-      currentServer.startManual();
+      currentServer.start();
       hasServer.value = true;
     } else {
       // Client: create RemoteGameConnection wrapping networkManager
@@ -655,7 +654,6 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       mapWidth: MAP_SETTINGS.game.width,
       mapHeight: MAP_SETTINGS.game.height,
       backgroundMode: false,
-      gameServer: currentServer ?? undefined,
     });
 
     // Setup scene callbacks

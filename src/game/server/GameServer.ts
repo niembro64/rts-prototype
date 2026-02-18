@@ -63,9 +63,6 @@ export class GameServer {
   private lastTickTime: number = 0;
   private snapshotRateHz: number;
 
-  // When true, caller drives emitSnapshot() inline (no interval)
-  inlineSnapshots: boolean = true;
-
   // Background mode
   private backgroundSpawnTimer: number = 0;
   private readonly BACKGROUND_SPAWN_INTERVAL: number = 500;
@@ -246,13 +243,8 @@ export class GameServer {
     this.snapshotCounter = 0;
   }
 
-  // Start in manual mode: caller drives tick() and emitSnapshot() externally
-  startManual(): void {
-    this.lastTickTime = performance.now();
-  }
-
-  // Main tick function (public so Phaser update() can drive it directly)
-  tick(delta: number): void {
+  // Main simulation tick (driven by internal setInterval)
+  private tick(delta: number): void {
     // Track tick deltas for stats
     this.tickDeltaHistory[this.tickDeltaIndex] = delta;
     this.tickDeltaIndex = (this.tickDeltaIndex + 1) % this.TICK_HISTORY_SIZE;
@@ -301,8 +293,8 @@ export class GameServer {
     }
   }
 
-  // Emit a snapshot to all listeners
-  emitSnapshot(): void {
+  // Emit a snapshot to all listeners (driven by internal snapshot interval)
+  private emitSnapshot(): void {
     const winnerId = this.simulation.getWinnerId() ?? undefined;
     const sprayTargets = this.simulation.getSprayTargets();
     const audioEvents = this.simulation.getAndClearAudioEvents();
@@ -354,7 +346,7 @@ export class GameServer {
       state.serverMeta = {
         tpsAvg: tickStats.avgFps,
         tpsWorst: tickStats.worstFps,
-        snapshotRate: this.inlineSnapshots ? 'realtime' : this.snapshotRateHz,
+        snapshotRate: this.snapshotRateHz,
         sendGridInfo: this.sendGridInfo,
         serverTime: currentTime,
         ipAddress: this.ipAddress,
@@ -398,17 +390,10 @@ export class GameServer {
     this.snapshotCounter = 0;
   }
 
-  // Change snapshot emission rate, or switch to real-time (inline) mode
+  // Change snapshot emission rate ('realtime' maps to 60Hz)
   setSnapshotRate(hz: number | 'realtime'): void {
-    if (hz === 'realtime') {
-      this.inlineSnapshots = true;
-      if (this.snapshotInterval) {
-        clearInterval(this.snapshotInterval);
-        this.snapshotInterval = null;
-      }
-    } else {
-      this.inlineSnapshots = false;
-      this.snapshotRateHz = hz;
+    this.snapshotRateHz = hz === 'realtime' ? 60 : hz;
+    if (this.snapshotInterval) {
       this.startSnapshotBroadcast();
     }
   }

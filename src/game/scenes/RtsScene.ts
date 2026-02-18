@@ -6,7 +6,6 @@ import { PLAYER_COLORS, type Entity, type PlayerId, type EntityId, type Waypoint
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
-import type { GameServer } from '../server/GameServer';
 import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent, NetworkProjectileVelocityUpdate, NetworkCombatStats, NetworkServerMeta } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
@@ -65,9 +64,6 @@ export class RtsScene extends Phaser.Scene {
 
   // Background mode (no input, no UI, endless battle)
   private backgroundMode: boolean = false;
-
-  // Local server reference (when caller drives ticks from Phaser update)
-  private localServer: GameServer | null = null;
 
   // Frame delta tracking for accurate FPS measurement (ring buffer)
   private readonly FRAME_HISTORY_SIZE = 1000;
@@ -178,7 +174,6 @@ export class RtsScene extends Phaser.Scene {
       this.gameConnection = config.gameConnection;
       this.mapWidth = config.mapWidth;
       this.mapHeight = config.mapHeight;
-      this.localServer = config.gameServer ?? null;
       clearPendingGameConfig();
     }
 
@@ -538,14 +533,6 @@ export class RtsScene extends Phaser.Scene {
       this.frameDeltaCount++;
     }
 
-    // Drive server simulation from Phaser's update loop (one tick per frame)
-    if (this.localServer) {
-      this.localServer.tick(delta);
-      if (this.localServer.inlineSnapshots) {
-        this.localServer.emitSnapshot();
-      }
-    }
-
     // Process buffered snapshot (at most one per frame)
     if (this.pendingSnapshot) {
       const state = this.pendingSnapshot;
@@ -764,9 +751,6 @@ export class RtsScene extends Phaser.Scene {
     this._cachedSelectedBuildings.length = 0;
     this._cachedPlayerUnits.length = 0;
     this._cachedPlayerBuildings.length = 0;
-
-    // Null out object references to allow GC
-    this.localServer = null;
 
     // Release callback closures (prevent Vue reactive state from being retained)
     this.onPlayerChange = undefined;
