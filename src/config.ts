@@ -17,11 +17,11 @@ export const SNAPSHOT_CONFIG = {
   /** Interval between full keyframe snapshots (ms). Keyframes resync all entity state as a safety net. */
   keyframeIntervalMs: 5000,
   /** Position change threshold (px). Entity is "unchanged" if position moved less than this. */
-  positionThreshold: 0.01,
+  positionThreshold: 0.1,
   /** Rotation change threshold (radians). */
-  rotationThreshold: 0.001,
+  rotationThreshold: Math.PI,
   /** Velocity change threshold (px/sec). */
-  velocityThreshold: 0.01,
+  velocityThreshold: 0.1,
 };
 
 // =============================================================================

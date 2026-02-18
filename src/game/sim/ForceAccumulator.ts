@@ -130,6 +130,31 @@ export class ForceAccumulator {
   }
 
   /**
+   * Add a directional force with a pre-normalized direction vector.
+   * Skips the magnitude() + division that addDirectionalForce() does internally.
+   */
+  addNormalizedDirectionalForce(
+    entityId: EntityId,
+    nx: number,
+    ny: number,
+    strength: number,
+    mass: number,
+    affectedByMass: boolean = true,
+    source: string = 'directional'
+  ): void {
+    let fx: number, fy: number;
+    if (affectedByMass) {
+      fx = nx * strength;
+      fy = ny * strength;
+    } else {
+      fx = nx * strength * mass;
+      fy = ny * strength * mass;
+    }
+
+    this.addForce(entityId, fx, fy, source);
+  }
+
+  /**
    * Finalize forces by summing all contributions.
    */
   finalize(): void {

@@ -1,4 +1,5 @@
 import type { Entity, EntityId, PlayerId } from './types';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 
 /**
  * Spatial hash grid for efficient range queries.
@@ -10,12 +11,10 @@ import type { Entity, EntityId, PlayerId } from './types';
  * Uses numeric cell keys (bit-packed) to avoid string allocation overhead.
  */
 
-// Cell size should be roughly 1/2 to 1/3 of typical weapon range
-const DEFAULT_CELL_SIZE = 150;
-
 interface GridCell {
   units: Entity[];
   buildings: Entity[];
+  projectiles: Entity[];
 }
 
 export class SpatialGrid {
@@ -28,16 +27,20 @@ export class SpatialGrid {
   // Track which cells each building spans (may span multiple cells)
   private buildingCellKeys: Map<EntityId, number[]> = new Map();
 
+  // Track which cell each projectile is in (single cell per projectile)
+  private projectileCellKey: Map<EntityId, number> = new Map();
+
   // Reusable dedup Set for multi-cell building queries (avoids per-query allocation)
   private _dedup: Set<EntityId> = new Set();
 
   // Cached arrays to avoid allocations during queries
   private readonly queryResultUnits: Entity[] = [];
   private readonly queryResultBuildings: Entity[] = [];
+  private readonly queryResultProjectiles: Entity[] = [];
   private readonly queryResultAll: Entity[] = [];
   private readonly nearbyCells: number[] = [];
 
-  constructor(cellSize: number = DEFAULT_CELL_SIZE) {
+  constructor(cellSize: number = SPATIAL_GRID_CELL_SIZE) {
     this.cellSize = cellSize;
   }
 
@@ -56,7 +59,7 @@ export class SpatialGrid {
   private getOrCreateCell(key: number): GridCell {
     let cell = this.cells.get(key);
     if (!cell) {
-      cell = { units: [], buildings: [] };
+      cell = { units: [], buildings: [], projectiles: [] };
       this.cells.set(key, cell);
     }
     return cell;
@@ -69,9 +72,11 @@ export class SpatialGrid {
     for (const cell of this.cells.values()) {
       cell.units.length = 0;
       cell.buildings.length = 0;
+      cell.projectiles.length = 0;
     }
     this.unitCellKey.clear();
     this.buildingCellKeys.clear();
+    this.projectileCellKey.clear();
   }
 
   /**
@@ -132,6 +137,61 @@ export class SpatialGrid {
       }
     }
     this.unitCellKey.delete(id);
+  }
+
+  /**
+   * Update a projectile's position in the grid. O(1) if cell didn't change.
+   */
+  updateProjectile(entity: Entity): void {
+    const newKey = this.getCellKey(entity.transform.x, entity.transform.y);
+    const oldKey = this.projectileCellKey.get(entity.id);
+
+    if (oldKey === newKey) return;
+
+    // Remove from old cell (swap-remove for O(1))
+    if (oldKey !== undefined) {
+      const oldCell = this.cells.get(oldKey);
+      if (oldCell) {
+        const arr = oldCell.projectiles;
+        let idx = -1;
+        for (let j = 0; j < arr.length; j++) {
+          if (arr[j].id === entity.id) { idx = j; break; }
+        }
+        if (idx !== -1) {
+          const last = arr.length - 1;
+          if (idx !== last) arr[idx] = arr[last];
+          arr.pop();
+        }
+      }
+    }
+
+    // Add to new cell
+    const newCell = this.getOrCreateCell(newKey);
+    newCell.projectiles.push(entity);
+    this.projectileCellKey.set(entity.id, newKey);
+  }
+
+  /**
+   * Remove a projectile from the grid (on despawn/collision)
+   */
+  removeProjectile(id: EntityId): void {
+    const key = this.projectileCellKey.get(id);
+    if (key === undefined) return;
+
+    const cell = this.cells.get(key);
+    if (cell) {
+      const arr = cell.projectiles;
+      let idx = -1;
+      for (let j = 0; j < arr.length; j++) {
+        if (arr[j].id === id) { idx = j; break; }
+      }
+      if (idx !== -1) {
+        const last = arr.length - 1;
+        if (idx !== last) arr[idx] = arr[last];
+        arr.pop();
+      }
+    }
+    this.projectileCellKey.delete(id);
   }
 
   /**
@@ -196,6 +256,8 @@ export class SpatialGrid {
       this.removeUnit(id);
     } else if (this.buildingCellKeys.has(id)) {
       this.removeBuilding(id);
+    } else if (this.projectileCellKey.has(id)) {
+      this.removeProjectile(id);
     }
   }
 
@@ -322,6 +384,35 @@ export class SpatialGrid {
     }
 
     return this.queryResultUnits;
+  }
+
+  /**
+   * Query enemy projectiles within a radius (filtered by owner player)
+   * Only returns 'traveling' projectiles. Returns a reused array - DO NOT STORE THE REFERENCE
+   */
+  queryEnemyProjectilesInRadius(x: number, y: number, radius: number, excludePlayerId: PlayerId): Entity[] {
+    this.queryResultProjectiles.length = 0;
+    this.getCellsInRadius(x, y, radius);
+
+    const radiusSq = radius * radius;
+
+    for (const key of this.nearbyCells) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+
+      for (const proj of cell.projectiles) {
+        if (!proj.projectile || proj.projectile.projectileType !== 'traveling') continue;
+        if (proj.projectile.ownerId === excludePlayerId) continue;
+
+        const dx = proj.transform.x - x;
+        const dy = proj.transform.y - y;
+        if (dx * dx + dy * dy <= radiusSq) {
+          this.queryResultProjectiles.push(proj);
+        }
+      }
+    }
+
+    return this.queryResultProjectiles;
   }
 
   /**

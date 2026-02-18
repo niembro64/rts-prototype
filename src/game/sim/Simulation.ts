@@ -10,6 +10,7 @@ import {
   fireWeapons,
   updateForceFieldState,
   applyForceFieldDamage,
+  resetForceFieldBuffers,
   updateProjectiles,
   checkProjectileCollisions,
   type AudioEvent,
@@ -55,7 +56,7 @@ export class Simulation {
   // Pending projectile spawn/despawn/velocity-update events for network broadcast
   private pendingProjectileSpawns: ProjectileSpawnEvent[] = [];
   private pendingProjectileDespawns: ProjectileDespawnEvent[] = [];
-  private pendingProjectileVelocityUpdates: ProjectileVelocityUpdateEvent[] = [];
+  private pendingProjectileVelocityUpdates = new Map<number, ProjectileVelocityUpdateEvent>();
 
   // Reusable buffers for cleanupDeadEntities (avoid per-tick allocations)
   private _deadUnitIdsBuf: EntityId[] = [];
@@ -129,8 +130,9 @@ export class Simulation {
 
   // Get and clear pending projectile velocity update events (for network broadcast)
   getAndClearProjectileVelocityUpdates(): ProjectileVelocityUpdateEvent[] {
-    const events = this.pendingProjectileVelocityUpdates;
-    this.pendingProjectileVelocityUpdates = [];
+    if (this.pendingProjectileVelocityUpdates.size === 0) return [];
+    const events = Array.from(this.pendingProjectileVelocityUpdates.values());
+    this.pendingProjectileVelocityUpdates.clear();
     return events;
   }
 
@@ -245,6 +247,11 @@ export class Simulation {
         spatialGrid.addBuilding(building);
       }
     }
+
+    // Update projectile positions (for force field spatial queries)
+    for (const proj of this.world.getProjectiles()) {
+      spatialGrid.updateProjectile(proj);
+    }
   }
 
   // Check for game over - last commander standing wins
@@ -316,15 +323,17 @@ export class Simulation {
     // Pass force accumulator for force field pull effect
     const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator, this.combatStatsTracker);
     for (const event of forceFieldVelocityUpdates) {
-      this.pendingProjectileVelocityUpdates.push(event);
+      this.pendingProjectileVelocityUpdates.set(event.id, event);
     }
 
     // Update projectile positions and remove orphaned beams (from dead units)
     const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
     for (const id of updateResult.orphanedIds) {
+      spatialGrid.removeProjectile(id);
       this.world.removeEntity(id);
     }
     for (const event of updateResult.despawnEvents) {
+      spatialGrid.removeProjectile(event.id);
       this.pendingProjectileDespawns.push(event);
     }
 
@@ -333,6 +342,7 @@ export class Simulation {
 
     // Collect projectile despawn events from collisions
     for (const event of collisionResult.despawnEvents) {
+      spatialGrid.removeProjectile(event.id);
       this.pendingProjectileDespawns.push(event);
     }
 
@@ -836,8 +846,9 @@ export class Simulation {
     this.pendingAudioEvents.length = 0;
     this.pendingProjectileSpawns.length = 0;
     this.pendingProjectileDespawns.length = 0;
-    this.pendingProjectileVelocityUpdates.length = 0;
+    this.pendingProjectileVelocityUpdates.clear();
     this._deadUnitIdsBuf.length = 0;
     this._deadBuildingIdsBuf.length = 0;
+    resetForceFieldBuffers();
   }
 }

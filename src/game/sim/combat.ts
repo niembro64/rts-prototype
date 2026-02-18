@@ -28,6 +28,7 @@ export {
 export {
   updateForceFieldState,
   applyForceFieldDamage,
+  resetForceFieldBuffers,
 } from './combat/forceFieldWeapon';
 
 export {

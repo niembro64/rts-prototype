@@ -105,7 +105,7 @@ export class RtsScene extends Phaser.Scene {
   private bufferedSpawns: NetworkProjectileSpawn[] = [];
   private bufferedDespawns: NetworkProjectileDespawn[] = [];
   private bufferedAudio: NetworkAudioEvent[] = [];
-  private bufferedVelocityUpdates: NetworkProjectileVelocityUpdate[] = [];
+  private bufferedVelocityUpdates = new Map<number, NetworkProjectileVelocityUpdate>();
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -242,7 +242,8 @@ export class RtsScene extends Phaser.Scene {
       }
       if (state.projectileVelocityUpdates) {
         for (let i = 0; i < state.projectileVelocityUpdates.length; i++) {
-          this.bufferedVelocityUpdates.push(state.projectileVelocityUpdates[i]);
+          const vu = state.projectileVelocityUpdates[i];
+          this.bufferedVelocityUpdates.set(vu.id, vu);
         }
       }
       // Keep only the latest snapshot (entity positions, economy, game over)
@@ -555,11 +556,11 @@ export class RtsScene extends Phaser.Scene {
       state.projectileSpawns = this.bufferedSpawns.length > 0 ? this.bufferedSpawns : undefined;
       state.projectileDespawns = this.bufferedDespawns.length > 0 ? this.bufferedDespawns : undefined;
       state.audioEvents = this.bufferedAudio.length > 0 ? this.bufferedAudio : undefined;
-      state.projectileVelocityUpdates = this.bufferedVelocityUpdates.length > 0 ? this.bufferedVelocityUpdates : undefined;
+      state.projectileVelocityUpdates = this.bufferedVelocityUpdates.size > 0 ? Array.from(this.bufferedVelocityUpdates.values()) : undefined;
       this.bufferedSpawns = [];
       this.bufferedDespawns = [];
       this.bufferedAudio = [];
-      this.bufferedVelocityUpdates = [];
+      this.bufferedVelocityUpdates.clear();
 
       this.clientViewState.applyNetworkState(state);
 
@@ -756,7 +757,7 @@ export class RtsScene extends Phaser.Scene {
     this.bufferedSpawns.length = 0;
     this.bufferedDespawns.length = 0;
     this.bufferedAudio.length = 0;
-    this.bufferedVelocityUpdates.length = 0;
+    this.bufferedVelocityUpdates.clear();
 
     // Clear cached entity arrays
     this._cachedSelectedUnits.length = 0;
