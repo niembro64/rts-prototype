@@ -1,6 +1,6 @@
 // Network entity creation helpers
 
-import type { Entity, BuildingType } from '../../sim/types';
+import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkEntity } from '../NetworkManager';
 import { getWeaponConfig } from '../../sim/weapons';
 
@@ -33,16 +33,23 @@ function createUnitFromNetwork(
   rotation: number,
   playerId?: number
 ): Entity {
-  const actions = netEntity.actions?.filter(na => na.x !== undefined && na.y !== undefined).map(na => ({
-    type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
-    x: na.x!,
-    y: na.y!,
-    targetId: na.targetId,
-    buildingType: na.buildingType as BuildingType | undefined,
-    gridX: na.gridX,
-    gridY: na.gridY,
-    buildingId: na.buildingId,
-  })) ?? [];
+  const actions: UnitAction[] = [];
+  if (netEntity.actions) {
+    for (let i = 0; i < netEntity.actions.length; i++) {
+      const na = netEntity.actions[i];
+      if (na.x === undefined || na.y === undefined) continue;
+      actions.push({
+        type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
+        x: na.x,
+        y: na.y,
+        targetId: na.targetId,
+        buildingType: na.buildingType as BuildingType | undefined,
+        gridX: na.gridX,
+        gridY: na.gridY,
+        buildingId: na.buildingId,
+      });
+    }
+  }
 
   const entity: Entity = {
     id,
@@ -65,26 +72,31 @@ function createUnitFromNetwork(
   };
 
   if (netEntity.weapons && netEntity.weapons.length > 0) {
-    entity.weapons = netEntity.weapons.map(nw => ({
-      config: getWeaponConfig(nw.configId),
-      currentCooldown: 0,
-      targetEntityId: nw.targetId ?? null,
-      seeRange: nw.seeRange,
-      fireRange: nw.fireRange,
-      releaseRange: nw.releaseRange,
-      lockRange: nw.lockRange,
-      fightstopRange: nw.fightstopRange,
-      isLocked: false,
-      turretRotation: nw.turretRotation,
-      turretAngularVelocity: nw.turretAngularVelocity,
-      turretTurnAccel: nw.turretTurnAccel,
-      turretDrag: nw.turretDrag,
-      offsetX: nw.offsetX,
-      offsetY: nw.offsetY,
-      isFiring: nw.isFiring,
-      inFightstopRange: nw.inFightstopRange,
-      currentForceFieldRange: nw.currentForceFieldRange,
-    }));
+    const weapons = [];
+    for (let i = 0; i < netEntity.weapons.length; i++) {
+      const nw = netEntity.weapons[i];
+      weapons.push({
+        config: getWeaponConfig(nw.configId),
+        currentCooldown: 0,
+        targetEntityId: nw.targetId ?? null,
+        seeRange: nw.seeRange,
+        fireRange: nw.fireRange,
+        releaseRange: nw.releaseRange,
+        lockRange: nw.lockRange,
+        fightstopRange: nw.fightstopRange,
+        isLocked: false,
+        turretRotation: nw.turretRotation,
+        turretAngularVelocity: nw.turretAngularVelocity,
+        turretTurnAccel: nw.turretTurnAccel,
+        turretDrag: nw.turretDrag,
+        offsetX: nw.offsetX,
+        offsetY: nw.offsetY,
+        isFiring: nw.isFiring,
+        inFightstopRange: nw.inFightstopRange,
+        currentForceFieldRange: nw.currentForceFieldRange,
+      });
+    }
+    entity.weapons = weapons;
   }
 
   if (netEntity.isCommander) {
@@ -131,6 +143,13 @@ function createBuildingFromNetwork(
   };
 
   if (netEntity.buildQueue !== undefined) {
+    const waypoints: { x: number; y: number; type: 'move' | 'fight' | 'patrol' }[] = [];
+    if (netEntity.factoryWaypoints) {
+      for (let i = 0; i < netEntity.factoryWaypoints.length; i++) {
+        const wp = netEntity.factoryWaypoints[i];
+        waypoints.push({ x: wp.x, y: wp.y, type: wp.type as 'move' | 'fight' | 'patrol' });
+      }
+    }
     entity.factory = {
       buildQueue: netEntity.buildQueue,
       currentBuildProgress: netEntity.factoryProgress ?? 0,
@@ -138,11 +157,7 @@ function createBuildingFromNetwork(
       rallyX: netEntity.rallyX ?? x,
       rallyY: netEntity.rallyY ?? y + 100,
       isProducing: netEntity.isProducing ?? false,
-      waypoints: netEntity.factoryWaypoints?.map(wp => ({
-        x: wp.x,
-        y: wp.y,
-        type: wp.type as 'move' | 'fight' | 'patrol',
-      })) ?? [],
+      waypoints,
     };
   }
 

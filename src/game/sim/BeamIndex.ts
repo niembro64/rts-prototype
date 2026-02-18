@@ -1,4 +1,4 @@
-import type { Entity, EntityId } from './types';
+import type { EntityId } from './types';
 
 /**
  * Index for O(1) beam lookup by source unit and weapon index.
@@ -58,26 +58,6 @@ export class BeamIndex {
     }
   }
 
-  /**
-   * Rebuild the index from projectiles
-   * Should be called once per frame with all current projectiles
-   */
-  rebuild(projectiles: Entity[], fixedTimestep: number): void {
-    this.clear();
-
-    for (const proj of projectiles) {
-      if (!proj.projectile) continue;
-      if (proj.projectile.projectileType !== 'beam') continue;
-
-      // Skip beams that will expire this frame
-      if (proj.projectile.timeAlive + fixedTimestep >= proj.projectile.maxLifespan) continue;
-
-      const sourceId = proj.projectile.sourceEntityId;
-      const weaponIndex = (proj.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
-
-      this.addBeam(sourceId, weaponIndex, proj.id);
-    }
-  }
 }
 
 // Singleton instance for the game

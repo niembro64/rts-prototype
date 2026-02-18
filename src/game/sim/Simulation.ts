@@ -283,26 +283,28 @@ export class Simulation {
       arr.push(idx);
     };
 
-    // 1. Factory consumers — producing a unit
-    for (const entity of this.world.getAllEntities()) {
-      if (!entity.factory?.isProducing || entity.factory.buildQueue.length === 0) continue;
-      if (!entity.ownership || !entity.buildable?.isComplete) continue;
-      const f = entity.factory;
-      const remaining = f.currentBuildCost * (1 - f.currentBuildProgress);
-      if (remaining > 0) {
-        addConsumer(entity.ownership.playerId, entity, 'factory', remaining);
+    // Single pass over all entities: collect builder targets, factories, and buildables
+    const buildTargets = this._buildTargetSet;
+    buildTargets.clear();
+    const allEntities = this.world.getAllEntities();
+
+    // First pass: collect builder targets + factory consumers
+    for (const entity of allEntities) {
+      const targetId = entity.builder?.currentBuildTarget;
+      if (targetId != null) buildTargets.add(targetId);
+
+      if (entity.factory?.isProducing && entity.factory.buildQueue.length > 0 &&
+          entity.ownership && entity.buildable?.isComplete) {
+        const f = entity.factory;
+        const remaining = f.currentBuildCost * (1 - f.currentBuildProgress);
+        if (remaining > 0) {
+          addConsumer(entity.ownership.playerId, entity, 'factory', remaining);
+        }
       }
     }
 
-    // 2. Building construction consumers — incomplete buildings with assigned builders
-    //    Build builder→target set to know which buildings are being worked on
-    const buildTargets = this._buildTargetSet;
-    buildTargets.clear();
-    for (const entity of this.world.getAllEntities()) {
-      const targetId = entity.builder?.currentBuildTarget;
-      if (targetId != null) buildTargets.add(targetId);
-    }
-    for (const entity of this.world.getAllEntities()) {
+    // Second pass: find buildables with assigned builders
+    for (const entity of allEntities) {
       if (!entity.buildable || entity.buildable.isComplete || entity.buildable.isGhost) continue;
       if (!entity.ownership) continue;
       if (!buildTargets.has(entity.id)) continue;
@@ -492,22 +494,31 @@ export class Simulation {
 
     // Remove dead entities from spatial grid and notify callbacks
     if (collisionResult.deadUnitIds.size > 0) {
+      const buf = this._deadUnitIdsBuf;
+      buf.length = 0;
       for (const id of collisionResult.deadUnitIds) {
         const entity = this.world.getEntity(id);
         if (entity?.unit?.unitType && entity.ownership) {
           this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
         }
         spatialGrid.removeUnit(id);
+        buf.push(id);
       }
-      this.onUnitDeath?.([...collisionResult.deadUnitIds], collisionResult.deathContexts);
+      this.onUnitDeath?.(buf, collisionResult.deathContexts);
     }
 
     if (collisionResult.deadBuildingIds.size > 0) {
+      const buf = this._deadBuildingIdsBuf;
+      buf.length = 0;
       for (const id of collisionResult.deadBuildingIds) {
         spatialGrid.removeBuilding(id);
+        buf.push(id);
       }
-      this.onBuildingDeath?.([...collisionResult.deadBuildingIds]);
+      this.onBuildingDeath?.(buf);
     }
+
+    // Prune stale combat stats registry entries (rate-limited internally)
+    this.combatStatsTracker.pruneRegistry();
 
     // Safety cleanup - remove any dead entities that slipped through
     this.cleanupDeadEntities();
@@ -731,8 +742,12 @@ export class Simulation {
         factory.factory.waypoints.push({ x: wp.x, y: wp.y, type: wp.type });
       }
     } else {
-      // Replace waypoints
-      factory.factory.waypoints = command.waypoints.map(wp => ({ x: wp.x, y: wp.y, type: wp.type }));
+      // Replace waypoints (reuse array)
+      factory.factory.waypoints.length = command.waypoints.length;
+      for (let i = 0; i < command.waypoints.length; i++) {
+        const wp = command.waypoints[i];
+        factory.factory.waypoints[i] = { x: wp.x, y: wp.y, type: wp.type };
+      }
     }
 
     // Update rally point to first waypoint

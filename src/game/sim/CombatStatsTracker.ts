@@ -32,7 +32,13 @@ export class CombatStatsTracker {
   private world: WorldState;
   // Registry persists entity identity after death so posthumous projectile
   // damage can still be attributed to the correct player + unit type.
+  // Entries are pruned periodically to prevent unbounded growth.
   private entityRegistry: Map<EntityId, { playerId: PlayerId; unitType: string }> = new Map();
+  private pruneCounter: number = 0;
+
+  // Cached snapshot to avoid allocations — rebuilt in-place each call
+  private _snapshot: CombatStatsSnapshot = { players: {}, global: {} };
+  private _globalAccum: Map<string, UnitTypeStats> = new Map();
 
   constructor(world: WorldState) {
     this.world = world;
@@ -71,6 +77,22 @@ export class CombatStatsTracker {
     this.entityRegistry.set(entityId, { playerId, unitType });
   }
 
+  /**
+   * Prune stale registry entries. Call every tick; internally rate-limits to
+   * every 300 ticks (~5s at 60Hz). After 5s all projectiles from dead entities
+   * have expired, so entries for entities no longer in the world are safe to remove.
+   */
+  pruneRegistry(): void {
+    if (++this.pruneCounter < 300) return;
+    this.pruneCounter = 0;
+
+    for (const id of this.entityRegistry.keys()) {
+      if (!this.world.getEntity(id)) {
+        this.entityRegistry.delete(id);
+      }
+    }
+  }
+
   recordDamage(sourceEntityId: EntityId, targetEntityId: EntityId, damageAmount: number): void {
     const source = this.resolveSource(sourceEntityId);
     if (!source) return;
@@ -107,13 +129,34 @@ export class CombatStatsTracker {
   }
 
   getSnapshot(): CombatStatsSnapshot {
-    const players: Record<number, Record<string, UnitTypeStats>> = {};
-    const globalMap = new Map<string, UnitTypeStats>();
+    const snap = this._snapshot;
+    const globalMap = this._globalAccum;
+
+    // Clear previous snapshot keys
+    for (const key in snap.players) delete snap.players[key];
+    for (const key in snap.global) delete snap.global[key];
+    globalMap.clear();
 
     for (const [playerId, playerStats] of this.stats) {
-      const playerRecord: Record<string, UnitTypeStats> = {};
+      let playerRecord = snap.players[playerId];
+      if (!playerRecord) {
+        playerRecord = {};
+        snap.players[playerId] = playerRecord;
+      }
       for (const [unitType, stats] of playerStats) {
-        playerRecord[unitType] = { ...stats };
+        // Copy stats into player record (reuse object if it exists)
+        let copy = playerRecord[unitType];
+        if (!copy) {
+          copy = createEmptyStats();
+          playerRecord[unitType] = copy;
+        }
+        copy.enemyDamageDealt = stats.enemyDamageDealt;
+        copy.enemyKills = stats.enemyKills;
+        copy.friendlyDamageDealt = stats.friendlyDamageDealt;
+        copy.friendlyKills = stats.friendlyKills;
+        copy.unitsProduced = stats.unitsProduced;
+        copy.unitsLost = stats.unitsLost;
+        copy.totalCostSpent = stats.totalCostSpent;
 
         // Aggregate into global
         let g = globalMap.get(unitType);
@@ -129,15 +172,13 @@ export class CombatStatsTracker {
         g.unitsLost += stats.unitsLost;
         g.totalCostSpent += stats.totalCostSpent;
       }
-      players[playerId] = playerRecord;
     }
 
-    const global: Record<string, UnitTypeStats> = {};
     for (const [unitType, stats] of globalMap) {
-      global[unitType] = stats;
+      snap.global[unitType] = stats;
     }
 
-    return { players, global };
+    return snap;
   }
 
   reset(): void {

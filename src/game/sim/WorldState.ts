@@ -60,6 +60,9 @@ export class WorldState {
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
   private cache = new EntityCacheManager();
 
+  // Reusable query result arrays for filtered queries (DO NOT STORE references to these)
+  private _queryBuf: Entity[] = [];
+
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
     this.rng = new SeededRNG(seed);
     this.mapWidth = mapWidth;
@@ -163,23 +166,38 @@ export class WorldState {
     return this.cache.getForceFieldUnits();
   }
 
-  // Get units by player
+  // Get units by player — returns reusable array, DO NOT STORE the reference
   getUnitsByPlayer(playerId: PlayerId): Entity[] {
-    return this.getUnits().filter((e) => e.ownership?.playerId === playerId);
+    const buf = this._queryBuf;
+    buf.length = 0;
+    for (const e of this.getUnits()) {
+      if (e.ownership?.playerId === playerId) buf.push(e);
+    }
+    return buf;
   }
 
-  // Get enemy units (not owned by specified player)
+  // Get enemy units (not owned by specified player) — returns reusable array
   getEnemyUnits(playerId: PlayerId): Entity[] {
-    return this.getUnits().filter((e) => e.ownership?.playerId !== playerId);
+    const buf = this._queryBuf;
+    buf.length = 0;
+    for (const e of this.getUnits()) {
+      if (e.ownership?.playerId !== playerId) buf.push(e);
+    }
+    return buf;
   }
 
-  // Get all enemy entities (units and buildings)
+  // Get all enemy entities (units and buildings) — returns reusable array
   getEnemyEntities(playerId: PlayerId): Entity[] {
-    return this.getAllEntities().filter(
-      (e) => e.ownership?.playerId !== undefined &&
-             e.ownership.playerId !== playerId &&
-             (e.type === 'unit' || e.type === 'building')
-    );
+    const buf = this._queryBuf;
+    buf.length = 0;
+    for (const e of this.getAllEntities()) {
+      if (e.ownership?.playerId !== undefined &&
+          e.ownership.playerId !== playerId &&
+          (e.type === 'unit' || e.type === 'building')) {
+        buf.push(e);
+      }
+    }
+    return buf;
   }
 
   // Get commander for a player
@@ -189,9 +207,14 @@ export class WorldState {
     );
   }
 
-  // Get buildings by player
+  // Get buildings by player — returns reusable array, DO NOT STORE the reference
   getBuildingsByPlayer(playerId: PlayerId): Entity[] {
-    return this.getBuildings().filter((e) => e.ownership?.playerId === playerId);
+    const buf = this._queryBuf;
+    buf.length = 0;
+    for (const e of this.getBuildings()) {
+      if (e.ownership?.playerId === playerId) buf.push(e);
+    }
+    return buf;
   }
 
   // Get factories by player
