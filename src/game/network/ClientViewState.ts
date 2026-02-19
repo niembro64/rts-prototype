@@ -263,6 +263,7 @@ export class ClientViewState {
       entity.unit.hp = server.hp ?? entity.unit.hp;
       entity.unit.maxHp = server.maxHp ?? entity.unit.maxHp;
       entity.unit.collisionRadius = server.collisionRadius ?? entity.unit.collisionRadius;
+      entity.unit.physicsRadius = server.physicsRadius ?? entity.unit.physicsRadius;
       entity.unit.moveSpeed = server.moveSpeed ?? entity.unit.moveSpeed;
 
       if (server.actions) {

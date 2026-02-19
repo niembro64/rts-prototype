@@ -192,7 +192,8 @@ export interface NetworkEntity {
   unitType?: string;         // Unit type identifier (jackal, lynx, daddy, etc.)
   hp?: number;
   maxHp?: number;
-  collisionRadius?: number;  // Hitbox size for physics
+  collisionRadius?: number;  // Visual radius
+  physicsRadius?: number;    // Hitbox radius for physics collisions
   moveSpeed?: number;
   mass?: number;             // Physics mass for force-based movement
   velocityX?: number;

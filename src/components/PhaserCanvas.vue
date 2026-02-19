@@ -108,6 +108,60 @@ const clientTime = ref<string>('');
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
 
+// localStorage keys for server settings
+const LS_SNAPSHOT_RATE = 'rts-snapshot-rate';
+const LS_KEYFRAME_RATIO = 'rts-keyframe-ratio';
+const LS_DEMO_UNITS = 'rts-demo-units';
+
+function loadStoredSnapshotRate(): SnapshotRate {
+  try {
+    const stored = localStorage.getItem(LS_SNAPSHOT_RATE);
+    if (stored === 'realtime') return 'realtime';
+    if (stored) {
+      const num = Number(stored);
+      if (!isNaN(num) && num > 0) return num;
+    }
+  } catch { /* localStorage unavailable */ }
+  return DEFAULT_SNAPSHOT_RATE;
+}
+
+function loadStoredKeyframeRatio(): KeyframeRatio {
+  try {
+    const stored = localStorage.getItem(LS_KEYFRAME_RATIO);
+    if (stored === 'ALL') return 'ALL';
+    if (stored === 'NONE') return 'NONE';
+    if (stored) {
+      const num = Number(stored);
+      if (!isNaN(num)) return num;
+    }
+  } catch { /* localStorage unavailable */ }
+  return DEFAULT_KEYFRAME_RATIO;
+}
+
+function loadStoredDemoUnits(): string[] | null {
+  try {
+    const stored = localStorage.getItem(LS_DEMO_UNITS);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch { /* localStorage unavailable */ }
+  return null;
+}
+
+function saveSnapshotRate(rate: SnapshotRate): void {
+  try { localStorage.setItem(LS_SNAPSHOT_RATE, String(rate)); } catch { /* */ }
+}
+
+function saveKeyframeRatio(ratio: KeyframeRatio): void {
+  try { localStorage.setItem(LS_KEYFRAME_RATIO, String(ratio)); } catch { /* */ }
+}
+
+function saveDemoUnits(units: string[]): void {
+  if (units.length === 0) return;
+  try { localStorage.setItem(LS_DEMO_UNITS, JSON.stringify(units)); } catch { /* */ }
+}
+
 // Demo battle unit type list (state read from snapshots)
 const demoUnitTypes = Object.keys(UNIT_STATS);
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
@@ -211,9 +265,18 @@ function startBackgroundBattle(): void {
 
   const bgConnection = new LocalGameConnection(backgroundServer);
   activeConnection = bgConnection;
-  backgroundServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
-  backgroundServer.setKeyframeRatio(DEFAULT_KEYFRAME_RATIO);
+  backgroundServer.setSnapshotRate(loadStoredSnapshotRate());
+  backgroundServer.setKeyframeRatio(loadStoredKeyframeRatio());
   backgroundServer.setIpAddress(localIpAddress.value);
+
+  // Restore stored demo unit selection
+  const storedDemoUnits = loadStoredDemoUnits();
+  if (storedDemoUnits) {
+    for (const ut of demoUnitTypes) {
+      backgroundServer.setBackgroundUnitTypeEnabled(ut, storedDemoUnits.includes(ut));
+    }
+  }
+
   backgroundServer.start();
   hasServer.value = true;
 
@@ -314,9 +377,58 @@ const displayServerIp = computed(() =>
 // Show demo battle bar only during background demo (uses reactive refs only)
 const isBackgroundBattle = computed(() => showLobby.value && !gameStarted.value && hasServer.value);
 
+const allDemoUnitsActive = computed(() => {
+  const allowed = serverMetaFromSnapshot.value?.allowedUnitTypes;
+  if (!allowed) return true; // default is all enabled
+  return demoUnitTypes.every(ut => allowed.includes(ut));
+});
+
 function toggleDemoUnitType(unitType: string): void {
   const current = serverMetaFromSnapshot.value?.allowedUnitTypes?.includes(unitType) ?? true;
   activeConnection?.sendCommand({ type: 'setBackgroundUnitType', tick: 0, unitType, enabled: !current });
+
+  // Persist updated unit list to localStorage
+  const currentList = serverMetaFromSnapshot.value?.allowedUnitTypes ?? [...demoUnitTypes];
+  const newList = current
+    ? currentList.filter(ut => ut !== unitType)
+    : [...currentList, unitType];
+  saveDemoUnits(newList);
+}
+
+function toggleAllDemoUnits(): void {
+  const enableAll = !allDemoUnitsActive.value;
+  for (const ut of demoUnitTypes) {
+    activeConnection?.sendCommand({ type: 'setBackgroundUnitType', tick: 0, unitType: ut, enabled: enableAll });
+  }
+  saveDemoUnits(enableAll ? [...demoUnitTypes] : []);
+}
+
+function resetDemoDefaults(): void {
+  // All units enabled
+  for (const ut of demoUnitTypes) {
+    activeConnection?.sendCommand({ type: 'setBackgroundUnitType', tick: 0, unitType: ut, enabled: true });
+  }
+  saveDemoUnits([...demoUnitTypes]);
+}
+
+function resetServerDefaults(): void {
+  setNetworkUpdateRate(DEFAULT_SNAPSHOT_RATE);
+  setKeyframeRatioValue(DEFAULT_KEYFRAME_RATIO);
+  if (displayGridInfo.value) {
+    toggleSendGridInfo();
+  }
+}
+
+function resetClientDefaults(): void {
+  changeGraphicsQuality('auto');
+  changeRenderMode('window');
+  setAudioEnabled(false);
+  for (const rt of RANGE_TYPES) {
+    if (rangeToggles[rt]) toggleRange(rt);
+  }
+  for (const prt of PROJ_RANGE_TYPES) {
+    if (projRangeToggles[prt]) toggleProjRange(prt);
+  }
 }
 
 function togglePlayer(): void {
@@ -483,6 +595,10 @@ function toggleSpectateMode(): void {
 }
 
 function changeGraphicsQuality(quality: GraphicsQuality): void {
+  // AUTO toggle: if already in auto, lock the current effective level
+  if (quality === 'auto' && graphicsQuality.value === 'auto') {
+    quality = effectiveQuality.value;
+  }
   setGraphicsQuality(quality);
   graphicsQuality.value = quality;
 }
@@ -613,9 +729,9 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
         };
       }
 
-      // Configure snapshot rate and start
-      currentServer.setSnapshotRate(DEFAULT_SNAPSHOT_RATE);
-      currentServer.setKeyframeRatio(DEFAULT_KEYFRAME_RATIO);
+      // Configure snapshot rate and start (restore from localStorage)
+      currentServer.setSnapshotRate(loadStoredSnapshotRate());
+      currentServer.setKeyframeRatio(loadStoredKeyframeRatio());
       currentServer.setIpAddress(localIpAddress.value);
       currentServer.start();
       hasServer.value = true;
@@ -717,10 +833,12 @@ function setupSceneCallbacks(): void {
 
 function setNetworkUpdateRate(rate: SnapshotRate): void {
   activeConnection?.sendCommand({ type: 'setSnapshotRate', tick: 0, rate });
+  saveSnapshotRate(rate);
 }
 
 function setKeyframeRatioValue(ratio: KeyframeRatio): void {
   activeConnection?.sendCommand({ type: 'setKeyframeRatio', tick: 0, ratio });
+  saveKeyframeRatio(ratio);
 }
 
 function toggleSendGridInfo(): void {
@@ -845,9 +963,16 @@ onUnmounted(() => {
     <div class="bottom-controls">
       <!-- DEMO BATTLE CONTROLS (visible during background demo) -->
       <div v-if="isBackgroundBattle" class="control-bar demo-bar">
-        <span class="bar-label demo-label">DEMO BATTLE</span>
+        <button class="bar-label demo-label" @click="resetDemoDefaults"><span class="bar-label-text">DEMO BATTLE</span><span class="bar-label-hover">DEFAULTS</span></button>
         <div class="bar-divider"></div>
         <span class="control-label">UNITS:</span>
+        <button
+          class="control-btn"
+          :class="{ active: allDemoUnitsActive }"
+          @click="toggleAllDemoUnits"
+        >
+          ALL
+        </button>
         <div class="button-group">
           <button
             v-for="ut in demoUnitTypes"
@@ -863,7 +988,7 @@ onUnmounted(() => {
 
       <!-- SERVER CONTROLS (visible when we own a server or receive server meta) -->
       <div v-if="showServerControls" class="control-bar server-bar" :class="{ 'server-bar-readonly': serverBarReadonly }">
-        <span class="bar-label server-label">HOST SERVER</span>
+        <button class="bar-label server-label" @click="resetServerDefaults"><span class="bar-label-text">HOST SERVER</span><span class="bar-label-hover">DEFAULTS</span></button>
         <span v-if="displayServerTime" class="time-display server-time">{{ displayServerTime }}</span>
         <div class="bar-divider"></div>
         <span v-if="displayServerIp" class="ip-display">{{ displayServerIp }}</span>
@@ -913,7 +1038,7 @@ onUnmounted(() => {
 
       <!-- CLIENT CONTROLS (always visible) -->
       <div class="control-bar client-bar">
-        <span class="bar-label client-label">PLAYER CLIENT</span>
+        <button class="bar-label client-label" @click="resetClientDefaults"><span class="bar-label-text">PLAYER CLIENT</span><span class="bar-label-hover">DEFAULTS</span></button>
         <span v-if="clientTime" class="time-display client-time">{{ clientTime }}</span>
         <div class="bar-divider"></div>
         <span v-if="localIpAddress !== 'N/A'" class="ip-display">{{ localIpAddress }}</span>
@@ -1361,6 +1486,25 @@ onUnmounted(() => {
   white-space: nowrap;
   width: 100px;
   text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bar-label-hover {
+  display: none;
+}
+
+.bar-label:hover .bar-label-text {
+  display: none;
+}
+
+.bar-label:hover .bar-label-hover {
+  display: inline;
+}
+
+.bar-label:active {
+  opacity: 0.7;
+  transition: all 0.05s ease;
 }
 
 .server-label {
@@ -1461,9 +1605,16 @@ onUnmounted(() => {
 }
 
 .control-btn:hover {
-  background: rgba(80, 80, 80, 0.9);
-  border-color: #777;
+  background: rgba(85, 85, 85, 0.9);
+  border-color: #888;
   color: #ddd;
+}
+
+.control-btn:active {
+  background: rgba(50, 50, 50, 0.95);
+  border-color: #666;
+  color: #ccc;
+  transition: all 0.05s ease;
 }
 
 .client-bar .control-btn.active {
@@ -1472,16 +1623,49 @@ onUnmounted(() => {
   color: white;
 }
 
+.client-bar .control-btn.active:hover {
+  background: rgba(80, 155, 80, 0.95);
+  border-color: #7b7;
+}
+
+.client-bar .control-btn.active:active {
+  background: rgba(55, 115, 55, 0.95);
+  border-color: #595;
+  transition: all 0.05s ease;
+}
+
 .server-bar .control-btn.active {
   background: rgba(68, 68, 170, 0.9);
   border-color: #6666cc;
   color: white;
 }
 
+.server-bar .control-btn.active:hover {
+  background: rgba(80, 80, 195, 0.95);
+  border-color: #7777dd;
+}
+
+.server-bar .control-btn.active:active {
+  background: rgba(55, 55, 145, 0.95);
+  border-color: #5555aa;
+  transition: all 0.05s ease;
+}
+
 .demo-bar .control-btn.active {
   background: rgba(170, 120, 40, 0.9);
   border-color: #cc9944;
   color: white;
+}
+
+.demo-bar .control-btn.active:hover {
+  background: rgba(190, 138, 50, 0.95);
+  border-color: #ddaa55;
+}
+
+.demo-bar .control-btn.active:active {
+  background: rgba(145, 100, 32, 0.95);
+  border-color: #aa8833;
+  transition: all 0.05s ease;
 }
 
 .control-btn.active-level {

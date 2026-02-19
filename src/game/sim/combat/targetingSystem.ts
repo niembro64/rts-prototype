@@ -47,7 +47,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         const target = world.getEntity(weapon.targetEntityId);
         let targetIsValid = false;
         let targetRadius = 0;
-        if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.collisionRadius; }
+        if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.physicsRadius; }
         else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
         if (!targetIsValid || !target) {
@@ -87,7 +87,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       let closestInFireRangeDist = Infinity;
 
       for (const enemy of nearbyEnemies) {
-        const enemyRadius = enemy.unit ? enemy.unit.collisionRadius : (enemy.building ? getTargetRadius(enemy) : 0);
+        const enemyRadius = enemy.unit ? enemy.unit.physicsRadius : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
 
         if (dist <= weapon.seeRange + enemyRadius && dist < closestInSeeRangeDist) {
@@ -104,7 +104,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       if (closestInFireRange) {
         weapon.targetEntityId = closestInFireRange.id;
         // Acquire lock if target is within lockRange
-        const targetRadius = closestInFireRange.unit ? closestInFireRange.unit.collisionRadius
+        const targetRadius = closestInFireRange.unit ? closestInFireRange.unit.physicsRadius
           : (closestInFireRange.building ? getTargetRadius(closestInFireRange) : 0);
         weapon.isLocked = closestInFireRangeDist <= weapon.lockRange + targetRadius;
         weapon.isFiring = true; // Target is in fireRange by definition

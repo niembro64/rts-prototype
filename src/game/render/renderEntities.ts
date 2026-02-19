@@ -9,6 +9,7 @@ import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
 import { getGraphicsConfig, getEffectiveQuality, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
+import { MINIGUN_CONFIG } from '../../config';
 
 // Import from helper modules
 import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, LodLevel } from './types';
@@ -102,10 +103,6 @@ export class EntityRenderer {
 
   // ==================== MINIGUN SPIN ====================
 
-  private static readonly MINIGUN_MAX_SPEED = 50;   // ~8 rev/sec
-  private static readonly MINIGUN_ACCEL = 80;        // rad/sec² spin-up
-  private static readonly MINIGUN_DECEL = 30;        // rad/sec² spin-down
-
   updateMinigunSpins(dtMs: number): void {
     const dtSec = dtMs / 1000;
     const units = this.entitySource.getUnits();
@@ -118,8 +115,9 @@ export class EntityRenderer {
     }
 
     for (const entity of units) {
-      const unitType = entity.unit?.unitType;
-      if (unitType !== 'jackal' && unitType !== 'lynx' && unitType !== 'badger') continue;
+      const unitType = entity.unit?.unitType as keyof typeof MINIGUN_CONFIG | undefined;
+      if (!unitType || !(unitType in MINIGUN_CONFIG)) continue;
+      const cfg = MINIGUN_CONFIG[unitType];
 
       let state = this.minigunSpins.get(entity.id);
       if (!state) {
@@ -129,12 +127,11 @@ export class EntityRenderer {
 
       // Check if any weapon is firing
       const firing = entity.weapons?.some(w => w.isFiring) ?? false;
-      const idleSpeed = 2.0; // Slow idle spin so barrels are always visibly rotating
 
       if (firing) {
-        state.speed = Math.min(state.speed + EntityRenderer.MINIGUN_ACCEL * dtSec, EntityRenderer.MINIGUN_MAX_SPEED);
+        state.speed = Math.min(state.speed + cfg.accel * dtSec, cfg.maxSpeed);
       } else {
-        state.speed = Math.max(state.speed - EntityRenderer.MINIGUN_DECEL * dtSec, idleSpeed);
+        state.speed = Math.max(state.speed - cfg.decel * dtSec, cfg.idleSpeed);
       }
 
       state.angle += state.speed * dtSec;

@@ -229,6 +229,26 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
 };
 
 // =============================================================================
+// MINIGUN / REVOLVING TURRET RENDERING
+// =============================================================================
+
+/**
+ * Per-unit revolving barrel turret configuration.
+ * barrelCount: number of barrels in the revolving cluster
+ * barrelLength: barrel length as multiplier of unit render radius
+ * maxSpeed: maximum spin speed (rad/sec) when firing
+ * accel: spin-up acceleration (rad/sec²)
+ * decel: spin-down deceleration (rad/sec²)
+ * idleSpeed: slow idle spin so barrels are always visibly rotating (rad/sec)
+ * thickness: line width of each barrel (px)
+ */
+export const MINIGUN_CONFIG = {
+  jackal:  { barrelCount: 3, barrelLength: 1.2, maxSpeed: 50, accel: 80, decel: 30, idleSpeed: 2.0, thickness: 2 },
+  lynx:    { barrelCount: 3, barrelLength: 1.0, maxSpeed: 50, accel: 80, decel: 30, idleSpeed: 2.0, thickness: 3 },
+  badger:  { barrelCount: 5, barrelLength: 1.0, maxSpeed: 50, accel: 80, decel: 30, idleSpeed: 2.0, thickness: 4 },
+};
+
+// =============================================================================
 // LEG RENDERING
 // =============================================================================
 
@@ -482,6 +502,7 @@ export const UNIT_STATS = {
     hp: 40,
     moveSpeed: 300,
     collisionRadius: 8,
+    collisionRadiusMultiplier: 1.0,
     mass: 10,
   },
   // Lynx - Glass cannon striker. Burst damage (54 per volley), fragile.
@@ -491,6 +512,7 @@ export const UNIT_STATS = {
     hp: 65,
     moveSpeed: 170,
     collisionRadius: 10,
+    collisionRadiusMultiplier: 1.0,
     mass: 15,
   },
   // Daddy - Heavy beam walker. Mega beam, sustained DPS but VERY slow turret tracking.
@@ -500,6 +522,7 @@ export const UNIT_STATS = {
     hp: 60,
     moveSpeed: 200,
     collisionRadius: 13,
+    collisionRadiusMultiplier: 1.0,
     mass: 25,
   },
   // Badger - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
@@ -509,6 +532,7 @@ export const UNIT_STATS = {
     hp: 240,
     moveSpeed: 200,
     collisionRadius: 16,
+    collisionRadiusMultiplier: 1.0,
     mass: 200,
   },
   // Mongoose - Area denial artillery. Splash damage, slow projectile.
@@ -518,6 +542,7 @@ export const UNIT_STATS = {
     hp: 100,
     moveSpeed: 220,
     collisionRadius: 14,
+    collisionRadiusMultiplier: 1.0,
     mass: 35,
   },
   // Recluse - Long-range assassin spider. Hitscan piercing, but low DPS (17) and can't escape.
@@ -527,6 +552,7 @@ export const UNIT_STATS = {
     hp: 25,
     moveSpeed: 200,
     collisionRadius: 11,
+    collisionRadiusMultiplier: 1.0,
     mass: 9,
   },
   // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
@@ -536,6 +562,7 @@ export const UNIT_STATS = {
     hp: 1050,
     moveSpeed: 60,
     collisionRadius: 24,
+    collisionRadiusMultiplier: 1.0,
     mass: 500,
   },
   // Widow - Titan spider unit. 6 beam weapons + force field.
@@ -543,9 +570,10 @@ export const UNIT_STATS = {
   widow: {
     baseCost: 600,
     hp: 3000,
-    moveSpeed: 100,
-    collisionRadius: 38,
-    mass: 800,
+    moveSpeed: 70,
+    collisionRadius: 35,
+    collisionRadiusMultiplier: 1.0,
+    mass: 200,
   },
   // Tarantula - Force field AoE unit. Continuous damage with pull.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
@@ -554,6 +582,7 @@ export const UNIT_STATS = {
     hp: 200,
     moveSpeed: 200,
     collisionRadius: 11,
+    collisionRadiusMultiplier: 1.0,
     mass: 18,
   },
 };
@@ -567,28 +596,28 @@ export const PROJECTILE_STATS = {
     damage: 1,
     speed: 200,
     mass: 0.3,
-    radius: 2,
     lifespan: 600,
+    radius: 3,
     primaryDamageRadius: 5,
-    secondaryDamageRadius: 10,
+    secondaryDamageRadius: 7,
     splashOnExpiry: false,
   },
   pulseBolt: {
     damage: 6,
     speed: 200,
-    mass: 0.6,
+    mass: 1,
     radius: 3,
-    lifespan: 600,
+    lifespan: 1000,
     primaryDamageRadius: 8,
     secondaryDamageRadius: 15,
     splashOnExpiry: false,
   },
   buckshot: {
     damage: 5,
-    speed: 250,
-    mass: 4,
+    speed: 300,
+    mass: 2,
     radius: 4,
-    lifespan: 300,
+    lifespan: 400,
     primaryDamageRadius: 10,
     secondaryDamageRadius: 18,
     splashOnExpiry: false,
@@ -596,7 +625,7 @@ export const PROJECTILE_STATS = {
   mortarShell: {
     damage: 80,
     speed: 200,
-    mass: 2.0,
+    mass: 3,
     radius: 7,
     lifespan: 2000,
     primaryDamageRadius: 70,
@@ -606,7 +635,7 @@ export const PROJECTILE_STATS = {
   cannonShell: {
     damage: 260,
     speed: 400,
-    mass: 3.0,
+    mass: 5.0,
     radius: 10,
     lifespan: 1800,
     primaryDamageRadius: 25,
@@ -663,7 +692,8 @@ export const WEAPON_STATS = {
     audioId: 'minigun' as const,
     range: 110,
     cooldown: 80,
-    rangeMultipliers: {
+    spreadAngle: Math.PI / 6,
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -678,7 +708,8 @@ export const WEAPON_STATS = {
     cooldown: 1200,
     burstCount: 3,
     burstDelay: 40,
-    rangeMultipliers: {
+    spreadAngle: Math.PI / 6,
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -693,7 +724,7 @@ export const WEAPON_STATS = {
     cooldown: 100,
     pelletCount: 2,
     spreadAngle: Math.PI / 2,
-    rangeMultipliers: {
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -706,7 +737,8 @@ export const WEAPON_STATS = {
     audioId: 'grenade' as const,
     range: 200,
     cooldown: 2500,
-    rangeMultipliers: {
+    spreadAngle: Math.PI / 8,
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -719,7 +751,8 @@ export const WEAPON_STATS = {
     audioId: 'cannon' as const,
     range: 360,
     cooldown: 3000,
-    rangeMultipliers: {
+    spreadAngle: Math.PI / 24,
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -732,7 +765,8 @@ export const WEAPON_STATS = {
     audioId: 'railgun' as const,
     range: 250,
     cooldown: 2000,
-    rangeMultipliers: {
+    spreadAngle: 0,
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -747,7 +781,7 @@ export const WEAPON_STATS = {
     cooldown: 0,
     turretTurnAccel: 100,
     turretDrag: 0.4,
-    rangeMultipliers: {
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -762,7 +796,7 @@ export const WEAPON_STATS = {
     cooldown: 0,
     turretTurnAccel: 100,
     turretDrag: 0.65,
-    rangeMultipliers: {
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -780,10 +814,10 @@ export const WEAPON_STATS = {
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
-    forceFieldTransitionTime: 300,
+    forceFieldTransitionTime: 500,
     push: {
       innerRatio: 0.0,
-      outerRatio: 0.68,
+      outerRatio: 0.8,
       color: 0x3366ff,
       alpha: 0.05,
       particleAlpha: 0.2,
@@ -792,15 +826,15 @@ export const WEAPON_STATS = {
     },
     // pull: null,
     pull: {
-      innerRatio: 0.68,
-      outerRatio: 0.7,
+      innerRatio: 0.8,
+      outerRatio: 0.82,
       color: 0x3366ff,
       alpha: 0.2,
       particleAlpha: 0.2,
       power: null,
       damage: 0,
     },
-    rangeMultipliers: {
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -810,15 +844,15 @@ export const WEAPON_STATS = {
   },
   megaForceField: {
     audioId: 'force-field' as const,
-    range: SPATIAL_GRID_CELL_SIZE * 0.95,
+    range: SPATIAL_GRID_CELL_SIZE * 1.9,
     cooldown: 0,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
-    forceFieldTransitionTime: 1000,
+    forceFieldTransitionTime: 500,
     push: {
       innerRatio: 0.0,
-      outerRatio: 0.66,
+      outerRatio: 0.5,
       color: 0x3366ff,
       alpha: 0.05,
       particleAlpha: 0.2,
@@ -827,15 +861,15 @@ export const WEAPON_STATS = {
     },
     // pull: null,
     pull: {
-      innerRatio: 0.66,
-      outerRatio: 0.7,
+      innerRatio: 0.5,
+      outerRatio: 0.52,
       color: 0x3366ff,
       alpha: 0.2,
       particleAlpha: 0.2,
       power: null,
       damage: 0,
     },
-    rangeMultipliers: {
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -849,7 +883,7 @@ export const WEAPON_STATS = {
     audioId: 'cannon' as const,
     range: 150,
     cooldown: 0,
-    rangeMultipliers: {
+    rangeMultiplierOverrides: {
       see: null,
       fire: null,
       release: null,
@@ -865,7 +899,7 @@ export const WEAPON_STATS = {
 
 export const MAP_SETTINGS = {
   game: { width: 2_000, height: 2_000 },
-  demo: { width: 1_600, height: 9_00 },
+  demo: { width: 1_600, height: 7_00 },
 };
 
 // =============================================================================
@@ -957,7 +991,7 @@ export const ZOOM_MAX = 5.0;
 export const ZOOM_FACTOR = 1.15;
 
 /** Initial zoom level for the background demo game */
-export const ZOOM_INITIAL_DEMO = 1.32;
+export const ZOOM_INITIAL_DEMO = 1.8;
 
 /** Initial zoom level when a real game starts */
 export const ZOOM_INITIAL_GAME = 0.5;

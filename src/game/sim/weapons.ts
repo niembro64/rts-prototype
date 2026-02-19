@@ -53,7 +53,8 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     audioId: ws.gatling.audioId,
     range: ws.gatling.range,
     cooldown: ws.gatling.cooldown,
-    rangeMultipliers: ws.gatling.rangeMultipliers,
+    spreadAngle: ws.gatling.spreadAngle,
+    rangeMultiplierOverrides: ws.gatling.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -65,7 +66,8 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     cooldown: ws.pulse.cooldown,
     burstCount: ws.pulse.burstCount,
     burstDelay: ws.pulse.burstDelay,
-    rangeMultipliers: ws.pulse.rangeMultipliers,
+    spreadAngle: ws.pulse.spreadAngle,
+    rangeMultiplierOverrides: ws.pulse.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -77,7 +79,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     cooldown: ws.beam.cooldown,
     turretTurnAccel: ws.beam.turretTurnAccel,
     turretDrag: ws.beam.turretDrag,
-    rangeMultipliers: ws.beam.rangeMultipliers,
+    rangeMultiplierOverrides: ws.beam.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -89,7 +91,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     cooldown: ws.shotgun.cooldown,
     pelletCount: ws.shotgun.pelletCount,
     spreadAngle: ws.shotgun.spreadAngle,
-    rangeMultipliers: ws.shotgun.rangeMultipliers,
+    rangeMultiplierOverrides: ws.shotgun.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -99,7 +101,8 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     audioId: ws.mortar.audioId,
     range: ws.mortar.range,
     cooldown: ws.mortar.cooldown,
-    rangeMultipliers: ws.mortar.rangeMultipliers,
+    spreadAngle: ws.mortar.spreadAngle,
+    rangeMultiplierOverrides: ws.mortar.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -109,7 +112,8 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     audioId: ws.railgun.audioId,
     range: ws.railgun.range,
     cooldown: ws.railgun.cooldown,
-    rangeMultipliers: ws.railgun.rangeMultipliers,
+    spreadAngle: ws.railgun.spreadAngle,
+    rangeMultiplierOverrides: ws.railgun.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -119,7 +123,8 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     audioId: ws.cannon.audioId,
     range: ws.cannon.range,
     cooldown: ws.cannon.cooldown,
-    rangeMultipliers: ws.cannon.rangeMultipliers,
+    spreadAngle: ws.cannon.spreadAngle,
+    rangeMultiplierOverrides: ws.cannon.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -129,7 +134,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     audioId: ws.disruptor.audioId,
     range: ws.disruptor.range,
     cooldown: ws.disruptor.cooldown,
-    rangeMultipliers: ws.disruptor.rangeMultipliers,
+    rangeMultiplierOverrides: ws.disruptor.rangeMultiplierOverrides,
     color: 0xff8800,
   },
 
@@ -147,7 +152,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     isForceField: true,
     push: computeZoneConfig(ws.forceField.push, ws.forceField.range),
     pull: computeZoneConfig(ws.forceField.pull, ws.forceField.range),
-    rangeMultipliers: ws.forceField.rangeMultipliers,
+    rangeMultiplierOverrides: ws.forceField.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -159,7 +164,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     cooldown: ws.megaBeam.cooldown,
     turretTurnAccel: ws.megaBeam.turretTurnAccel,
     turretDrag: ws.megaBeam.turretDrag,
-    rangeMultipliers: ws.megaBeam.rangeMultipliers,
+    rangeMultiplierOverrides: ws.megaBeam.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 
@@ -176,7 +181,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     isForceField: true,
     push: computeZoneConfig(ws.megaForceField.push, ws.megaForceField.range),
     pull: computeZoneConfig(ws.megaForceField.pull, ws.megaForceField.range),
-    rangeMultipliers: ws.megaForceField.rangeMultipliers,
+    rangeMultiplierOverrides: ws.megaForceField.rangeMultiplierOverrides,
     color: 0xffffff,
   },
 };
@@ -184,7 +189,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
 // Compute all range tiers for a weapon, using per-weapon overrides with global fallback
 export function computeWeaponRanges(config: WeaponConfig) {
   const fireRange = config.range;
-  const m = config.rangeMultipliers;
+  const m = config.rangeMultiplierOverrides;
   return {
     seeRange:       fireRange * (m?.see ?? RANGE_MULTIPLIERS.see),
     fireRange,

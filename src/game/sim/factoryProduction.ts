@@ -95,7 +95,8 @@ export class FactoryProductionSystem {
       config.collisionRadius,
       config.moveSpeed,
       config.mass,
-      config.hp
+      config.hp,
+      config.collisionRadiusMultiplier
     );
 
     // Create weapons for this unit type - all units go through the same path

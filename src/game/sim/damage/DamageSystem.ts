@@ -139,7 +139,7 @@ function lineRectIntersectionT(
 // Get target radius for collision
 function getTargetRadius(entity: Entity): number {
   if (entity.unit) {
-    return entity.unit.collisionRadius;
+    return entity.unit.physicsRadius;
   } else if (entity.building) {
     const bWidth = entity.building.width;
     const bHeight = entity.building.height;
@@ -213,7 +213,7 @@ export class DamageSystem {
       const t = lineCircleIntersectionT(
         startX, startY, endX, endY,
         unit.transform.x, unit.transform.y,
-        unit.unit.collisionRadius + lineWidth / 2
+        unit.unit.physicsRadius + lineWidth / 2
       );
 
       if (t !== null && (closestT === null || t < closestT)) {
@@ -278,7 +278,7 @@ export class DamageSystem {
       const t = lineCircleIntersectionT(
         source.startX, source.startY, source.endX, source.endY,
         unit.transform.x, unit.transform.y,
-        unit.unit.collisionRadius + source.width / 2
+        unit.unit.physicsRadius + source.width / 2
       );
 
       if (t !== null) {
@@ -395,7 +395,7 @@ export class DamageSystem {
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
       // Treat projectile path as line, combine radii for collision
-      const combinedRadius = source.radius + unit.unit.collisionRadius;
+      const combinedRadius = source.radius + unit.unit.physicsRadius;
       const t = lineCircleIntersectionT(
         source.prevX, source.prevY,
         source.currentX, source.currentY,
@@ -508,7 +508,7 @@ export class DamageSystem {
       const dx = unit.transform.x - source.centerX;
       const dy = unit.transform.y - source.centerY;
       const dist = magnitude(dx, dy);
-      const targetRadius = unit.unit.collisionRadius;
+      const targetRadius = unit.unit.physicsRadius;
 
       // Check distance
       if (dist > source.radius + targetRadius) continue;

@@ -292,7 +292,8 @@ export class WorldState {
     collisionRadius: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
-    hp: number = 100
+    hp: number = 100,
+    collisionRadiusMultiplier: number = 1.0
   ): Entity {
     const id = this.generateEntityId();
 
@@ -306,6 +307,7 @@ export class WorldState {
         unitType,
         moveSpeed,
         collisionRadius,
+        physicsRadius: collisionRadius * collisionRadiusMultiplier,
         mass,
         hp,
         maxHp: hp,
@@ -402,6 +404,7 @@ export class WorldState {
         unitType: 'commander',
         moveSpeed: config.moveSpeed,
         collisionRadius: config.collisionRadius,
+        physicsRadius: config.collisionRadius,
         mass: config.mass,
         hp: config.hp,
         maxHp: config.hp,

@@ -4,7 +4,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawAnimatedTread } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
-import { TREAD_CONFIG } from '../../../config';
+import { TREAD_CONFIG, MINIGUN_CONFIG } from '../../../config';
 
 export function drawBrawlUnit(
   ctx: UnitRenderContext,
@@ -72,10 +72,11 @@ export function drawBrawlUnit(
         graphics.lineBetween(x, y, endX, endY);
       }
     } else {
-      // Full 5-barrel revolving cone
+      // Full revolving cone
+      const cfg = MINIGUN_CONFIG.badger;
       const spin = ctx.minigunSpinAngle;
-      const barrelCount = 5;
-      const barrelLen = r * 1.0;
+      const barrelCount = cfg.barrelCount;
+      const barrelLen = r * cfg.barrelLength;
       const baseOrbit = 1.5;
       const spreadAngle = weapons[0]?.config.spreadAngle ?? Math.PI / 5;
       const spreadHalf = spreadAngle / 2;
@@ -105,7 +106,7 @@ export function drawBrawlUnit(
           const tipX = x + fwdCos * len + perpCos * tipOff;
           const tipY = y + fwdSin * len + perpSin * tipOff;
 
-          graphics.lineStyle(4, COLORS.WHITE, 1);
+          graphics.lineStyle(cfg.thickness, COLORS.WHITE, 1);
           graphics.lineBetween(baseX, baseY, tipX, tipY);
         }
       }

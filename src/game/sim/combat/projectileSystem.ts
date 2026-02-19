@@ -369,7 +369,7 @@ export function updateProjectiles(
           const dx = proj.prevX - source.transform.x;
           const dy = proj.prevY - source.transform.y;
           const distSq = dx * dx + dy * dy;
-          const clearance = source.unit.collisionRadius + (proj.config.projectileRadius ?? 5) + 2;
+          const clearance = source.unit.physicsRadius + (proj.config.projectileRadius ?? 5) + 2;
           if (distSq > clearance * clearance) {
             proj.hasLeftSource = true;
           }

@@ -4,7 +4,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawAnimatedTread } from '../helpers';
 import type { VehicleWheelSetup } from '../Tread';
-import { WHEEL_CONFIG } from '../../../config';
+import { WHEEL_CONFIG, MINIGUN_CONFIG } from '../../../config';
 
 export function drawScoutUnit(
   ctx: UnitRenderContext,
@@ -78,12 +78,14 @@ export function drawScoutUnit(
         graphics.lineBetween(x, y, endX, endY);
       }
     } else {
-      // Full 3-barrel minigun with sinusoidal rotation
+      // Full revolving minigun with sinusoidal rotation
+      const cfg = MINIGUN_CONFIG.jackal;
       const spin = ctx.minigunSpinAngle;
+      const barrelCount = cfg.barrelCount;
       const orbitRadius = 2.5;
       const depthScale = 0.12;
-      const baseTurretLen = r * 1.0;
-      const TWO_PI_THIRD = (2 * Math.PI) / 3;
+      const baseTurretLen = r * cfg.barrelLength;
+      const TWO_PI_N = (2 * Math.PI) / barrelCount;
 
       for (const weapon of weapons) {
         const turretRot = weapon.turretRotation;
@@ -92,8 +94,8 @@ export function drawScoutUnit(
         const fwdCos = Math.cos(turretRot);
         const fwdSin = Math.sin(turretRot);
 
-        for (let i = 0; i < 3; i++) {
-          const phase = spin + i * TWO_PI_THIRD;
+        for (let i = 0; i < barrelCount; i++) {
+          const phase = spin + i * TWO_PI_N;
           const lateralOffset = Math.sin(phase) * orbitRadius;
           const depthFactor = 1.0 - Math.cos(phase) * depthScale;
           const turretLen = baseTurretLen * depthFactor;
@@ -103,7 +105,7 @@ export function drawScoutUnit(
           const endX = x + fwdCos * turretLen + offX;
           const endY = y + fwdSin * turretLen + offY;
 
-          graphics.lineStyle(1.5, COLORS.WHITE, 1);
+          graphics.lineStyle(cfg.thickness, COLORS.WHITE, 1);
           graphics.lineBetween(x + offX, y + offY, endX, endY);
         }
       }

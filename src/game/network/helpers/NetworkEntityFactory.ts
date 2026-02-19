@@ -62,6 +62,7 @@ function createUnitFromNetwork(
       hp: netEntity.hp ?? 100,
       maxHp: netEntity.maxHp ?? 100,
       collisionRadius: netEntity.collisionRadius ?? 15,
+      physicsRadius: netEntity.physicsRadius ?? netEntity.collisionRadius ?? 15,
       moveSpeed: netEntity.moveSpeed ?? 100,
       mass: netEntity.mass ?? 25,
       actions,

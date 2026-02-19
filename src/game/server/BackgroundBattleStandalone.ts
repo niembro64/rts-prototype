@@ -104,7 +104,8 @@ function spawnBackgroundUnitStandalone(
     stats.collisionRadius,
     stats.moveSpeed,
     stats.mass,
-    stats.hp
+    stats.hp,
+    stats.collisionRadiusMultiplier
   );
   unit.weapons = createWeaponsFromDefinition(unitType, stats.collisionRadius);
 

@@ -85,7 +85,7 @@ export function createMatterBodiesStandalone(
         engine,
         entity.transform.x,
         entity.transform.y,
-        entity.unit.collisionRadius,
+        entity.unit.physicsRadius,
         entity.unit.mass,
         `unit_${entity.id}`
       );

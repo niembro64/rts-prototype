@@ -9,7 +9,7 @@ export { distance, normalizeAngle };
 // Get target radius for range calculations
 export function getTargetRadius(target: Entity): number {
   if (target.unit) {
-    return target.unit.collisionRadius;
+    return target.unit.physicsRadius;
   } else if (target.building) {
     const bWidth = target.building.width;
     const bHeight = target.building.height;

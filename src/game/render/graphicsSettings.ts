@@ -89,8 +89,6 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
 
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
-const RANGE_TOGGLE_STORAGE_PREFIX = 'rts-range-';
-const PROJ_RANGE_TOGGLE_STORAGE_PREFIX = 'rts-proj-range-';
 
 export type RangeType = 'see' | 'fire' | 'release' | 'lock' | 'fightstop' | 'build';
 export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'fightstop', 'build'];
@@ -99,8 +97,8 @@ export type ProjRangeType = 'collision' | 'primary' | 'secondary';
 export const PROJ_RANGE_TYPES: ProjRangeType[] = ['collision', 'primary', 'secondary'];
 
 // Current settings
-// Default to 'low' for performance - 'high' and 'max' explosion rendering is extremely expensive
-let currentQuality: GraphicsQuality = 'low';
+// Default to 'auto' - adjusts quality based on zoom level
+let currentQuality: GraphicsQuality = 'auto';
 let currentRenderMode: RenderMode = 'window';
 const currentRangeToggles: Record<RangeType, boolean> = {
   see: false,
@@ -127,18 +125,6 @@ function loadFromStorage(): void {
     const storedRenderMode = localStorage.getItem(RENDER_MODE_STORAGE_KEY);
     if (storedRenderMode && (storedRenderMode === 'window' || storedRenderMode === 'padded' || storedRenderMode === 'all')) {
       currentRenderMode = storedRenderMode;
-    }
-    for (const rt of RANGE_TYPES) {
-      const stored = localStorage.getItem(RANGE_TOGGLE_STORAGE_PREFIX + rt);
-      if (stored === 'true') {
-        currentRangeToggles[rt] = true;
-      }
-    }
-    for (const prt of PROJ_RANGE_TYPES) {
-      const stored = localStorage.getItem(PROJ_RANGE_TOGGLE_STORAGE_PREFIX + prt);
-      if (stored === 'true') {
-        currentProjRangeToggles[prt] = true;
-      }
     }
   } catch {
     // localStorage not available, use default
@@ -249,15 +235,10 @@ export function getRangeToggle(type: RangeType): boolean {
 }
 
 /**
- * Set whether a specific range type is shown for all units (persists to localStorage)
+ * Set whether a specific range type is shown for all units
  */
 export function setRangeToggle(type: RangeType, show: boolean): void {
   currentRangeToggles[type] = show;
-  try {
-    localStorage.setItem(RANGE_TOGGLE_STORAGE_PREFIX + type, String(show));
-  } catch {
-    // localStorage not available
-  }
 }
 
 /**
@@ -275,15 +256,10 @@ export function getProjRangeToggle(type: ProjRangeType): boolean {
 }
 
 /**
- * Set whether a specific proj range type is shown for all projectiles (persists to localStorage)
+ * Set whether a specific proj range type is shown for all projectiles
  */
 export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
   currentProjRangeToggles[type] = show;
-  try {
-    localStorage.setItem(PROJ_RANGE_TOGGLE_STORAGE_PREFIX + type, String(show));
-  } catch {
-    // localStorage not available
-  }
 }
 
 /**

@@ -63,7 +63,8 @@ export interface UnitAction {
 export interface Unit {
   unitType: string;         // Unit type identifier (jackal, lynx, daddy, etc.)
   moveSpeed: number;
-  collisionRadius: number;  // Hitbox size for physics and click detection
+  collisionRadius: number;  // Visual radius for rendering and click detection
+  physicsRadius: number;    // Hitbox radius for physics collisions and damage (collisionRadius * multiplier)
   mass: number;             // Physics mass for force-based movement
   hp: number;
   maxHp: number;
@@ -146,7 +147,7 @@ export interface WeaponConfig {
   piercing?: boolean;            // Can pierce through multiple targets
 
   // Per-weapon range multiplier overrides (null → global RANGE_MULTIPLIERS fallback)
-  rangeMultipliers?: {
+  rangeMultiplierOverrides?: {
     see: number | null;
     fire: number | null;
     release: number | null;
@@ -292,7 +293,8 @@ export interface UnitBuildConfig {
   weaponId: string;
   name: string;
   energyCost: number;
-  collisionRadius: number;  // Hitbox size for physics
+  collisionRadius: number;  // Visual radius
+  collisionRadiusMultiplier: number;  // Multiplier for physics hitbox (physicsRadius = collisionRadius * this)
   moveSpeed: number;
   mass: number;             // Physics mass for force-based movement
   hp: number;
