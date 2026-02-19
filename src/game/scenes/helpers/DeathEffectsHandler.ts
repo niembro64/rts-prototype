@@ -131,6 +131,15 @@ export function handleAudioEvent(
 
   if (!audioInitialized) return;
 
+  // laserStop must always be processed to clean up continuous sounds,
+  // even if the source has moved off-screen or audio scope is 'off'
+  if (event.type === 'laserStop') {
+    if (event.entityId !== undefined) {
+      audioManager.stopLaserSound(event.entityId);
+    }
+    return;
+  }
+
   // Audio scope filtering: 'off' = no audio, 'window' = viewport only,
   // 'padded' = 2x viewport area, 'all' = everything
   const audioScope = getAudioScope();
@@ -167,12 +176,6 @@ export function handleAudioEvent(
         audioManager.startLaserSound(event.entityId, 1, zoomVolume * laserEntry.volume * AUDIO.turrets.laserGain);
       }
     }
-      break;
-    case 'laserStop':
-      // Always try to stop (in case config changed mid-game)
-      if (event.entityId !== undefined) {
-        audioManager.stopLaserSound(event.entityId);
-      }
       break;
     case 'projectileExpire':
       // No sound for projectile expiration (visual only)
