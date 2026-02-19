@@ -1622,7 +1622,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 0;
+  gap: 6px;
   padding: 5px 10px;
   background: rgba(0, 0, 0, 0.7);
   border: 1px solid #444;
@@ -1709,7 +1709,6 @@ onUnmounted(() => {
   width: 1px;
   height: 14px;
   background: #444;
-  margin: 0 4px;
 }
 
 .control-label {
