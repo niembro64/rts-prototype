@@ -426,6 +426,8 @@ export function serializeGameState(
         isDGun: ps.isDGun,
         beamStartX: ps.beamStartX, beamStartY: ps.beamStartY,
         beamEndX: ps.beamEndX, beamEndY: ps.beamEndY,
+        targetEntityId: ps.targetEntityId,
+        homingTurnRate: ps.homingTurnRate,
       });
     }
     netProjectileSpawns = _spawnBuf;

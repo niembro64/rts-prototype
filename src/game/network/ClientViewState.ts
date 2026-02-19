@@ -455,7 +455,34 @@ export class ClientViewState {
             this.serverTargets.delete(entity.id);
           }
         } else {
-          // Traveling projectiles: dead-reckon only (no server target exists)
+          // Homing steering: turn velocity toward target (same math as server)
+          const proj = entity.projectile;
+          if (proj.homingTargetId !== undefined) {
+            const homingTarget = this.entities.get(proj.homingTargetId);
+            if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
+              const dx = homingTarget.transform.x - entity.transform.x;
+              const dy = homingTarget.transform.y - entity.transform.y;
+              const desiredAngle = Math.atan2(dy, dx);
+              const currentAngle = Math.atan2(proj.velocityY, proj.velocityX);
+
+              let angleDiff = desiredAngle - currentAngle;
+              while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+              while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+              const maxTurn = (proj.homingTurnRate ?? 0) * dt;
+              const turn = Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
+
+              const newAngle = currentAngle + turn;
+              const speed = Math.sqrt(proj.velocityX * proj.velocityX + proj.velocityY * proj.velocityY);
+              proj.velocityX = Math.cos(newAngle) * speed;
+              proj.velocityY = Math.sin(newAngle) * speed;
+              entity.transform.rotation = newAngle;
+            } else {
+              proj.homingTargetId = undefined;
+            }
+          }
+
+          // Traveling projectiles: dead-reckon using (possibly steered) velocity
           entity.transform.x += entity.projectile.velocityX * dt;
           entity.transform.y += entity.projectile.velocityY * dt;
 
@@ -530,6 +557,11 @@ export class ClientViewState {
     };
     if (spawn.isDGun) {
       entity.dgunProjectile = { isDGun: true };
+    }
+    // Store homing properties so client can predict curved trajectories
+    if (spawn.targetEntityId !== undefined && spawn.homingTurnRate) {
+      entity.projectile!.homingTargetId = spawn.targetEntityId;
+      entity.projectile!.homingTurnRate = spawn.homingTurnRate;
     }
     return entity;
   }

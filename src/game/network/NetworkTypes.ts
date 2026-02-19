@@ -70,6 +70,8 @@ export interface NetworkProjectileSpawn {
   isDGun?: boolean;
   beamStartX?: number; beamStartY?: number;
   beamEndX?: number; beamEndY?: number;
+  targetEntityId?: number;   // Homing target entity ID
+  homingTurnRate?: number;   // Max turn rate for homing (rad/sec)
 }
 
 // Projectile despawn event - sent once when projectile is removed

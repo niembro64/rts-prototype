@@ -497,6 +497,10 @@ export class Simulation {
       spatialGrid.removeProjectile(event.id);
       this.pendingProjectileDespawns.push(event);
     }
+    // Collect homing projectile velocity updates
+    for (const event of updateResult.velocityUpdates) {
+      this.pendingProjectileVelocityUpdates.set(event.id, event);
+    }
 
     // Check projectile collisions and get dead units
     const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);

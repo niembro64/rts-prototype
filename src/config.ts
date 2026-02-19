@@ -949,12 +949,13 @@ export const WEAPON_STATS = {
     },
   },
   shotgun: {
-    projectile: 'heavyRound' as const,
+    projectile: 'lightRound' as const,
     audioId: 'shotgun' as const,
     range: 160,
-    cooldown: 200,
+    cooldown: 50,
     pelletCount: 1,
     spreadAngle: Math.PI / 1.4,
+    homingTurnRate: 2,  // rad/sec — pellets curve toward locked target
     turret: {
       type: 'coneSpread' as const,
       barrelCount: 5,

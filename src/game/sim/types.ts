@@ -147,6 +147,9 @@ export interface WeaponConfig {
   // Piercing properties
   piercing?: boolean;            // Can pierce through multiple targets
 
+  // Homing properties
+  homingTurnRate?: number;       // If set, projectiles home toward weapon target at this turn rate (rad/sec)
+
   // Per-weapon range multiplier overrides (null → global RANGE_MULTIPLIERS fallback)
   rangeMultiplierOverrides?: {
     see: number | null;
@@ -247,6 +250,10 @@ export interface Projectile {
 
   // Source-entity exit guard (prevents self-damage until projectile clears source hitbox)
   hasLeftSource?: boolean;
+
+  // Homing (heat-seeking) properties
+  homingTargetId?: EntityId;    // Entity this projectile tracks (cleared if target dies)
+  homingTurnRate?: number;      // Max turn rate in radians/sec
 }
 
 // ==================== ECONOMY & CONSTRUCTION ====================

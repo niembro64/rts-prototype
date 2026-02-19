@@ -94,6 +94,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
     cooldown: ws.shotgun.cooldown,
     pelletCount: ws.shotgun.pelletCount,
     spreadAngle: ws.shotgun.spreadAngle,
+    homingTurnRate: ws.shotgun.homingTurnRate,
     turret: ws.shotgun.turret,
     rangeMultiplierOverrides: ws.shotgun.rangeMultiplierOverrides,
     color: 0xffffff,

@@ -98,6 +98,7 @@ export function resetProjectileBuffers(): void {
   _fireNewProjectiles.length = 0;
   _fireAudioEvents.length = 0;
   _fireSpawnEvents.length = 0;
+  _homingVelocityUpdates.length = 0;
 }
 
 // Check if a specific weapon has an active beam (by weapon index)
@@ -356,6 +357,12 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
             config,
             'traveling'
           );
+          // Set homing properties if weapon has homingTurnRate and weapon has a locked target
+          if (config.homingTurnRate && weapon.targetEntityId !== null) {
+            projectile.projectile!.homingTargetId = weapon.targetEntityId;
+            projectile.projectile!.homingTurnRate = config.homingTurnRate;
+          }
+
           newProjectiles.push(projectile);
           spawnEvents.push({
             id: projectile.id,
@@ -366,6 +373,8 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
             playerId,
             sourceEntityId: unit.id,
             weaponIndex,
+            targetEntityId: (config.homingTurnRate && weapon.targetEntityId !== null) ? weapon.targetEntityId : undefined,
+            homingTurnRate: config.homingTurnRate,
           });
 
           // Apply recoil to firing unit (momentum-based: p = mv)
@@ -381,16 +390,20 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
   return { projectiles: newProjectiles, audioEvents, spawnEvents };
 }
 
+// Reusable array for homing velocity updates (avoid per-frame allocation)
+const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
+
 // Update projectile positions - returns IDs of projectiles to remove (e.g., orphaned beams)
-// Also returns despawn events for removed projectiles
+// Also returns despawn events for removed projectiles and velocity updates for homing projectiles
 export function updateProjectiles(
   world: WorldState,
   dtMs: number,
   damageSystem: DamageSystem
-): { orphanedIds: EntityId[]; despawnEvents: ProjectileDespawnEvent[] } {
+): { orphanedIds: EntityId[]; despawnEvents: ProjectileDespawnEvent[]; velocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] } {
   const dtSec = dtMs / 1000;
   const projectilesToRemove: EntityId[] = [];
   const despawnEvents: ProjectileDespawnEvent[] = [];
+  _homingVelocityUpdates.length = 0;
 
   for (const entity of world.getProjectiles()) {
     if (!entity.projectile) continue;
@@ -425,6 +438,45 @@ export function updateProjectiles(
           if (distSq > clearance * clearance) {
             proj.hasLeftSource = true;
           }
+        }
+      }
+
+      // Homing steering: turn velocity toward target
+      if (proj.homingTargetId !== undefined) {
+        const homingTarget = world.getEntity(proj.homingTargetId);
+        if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
+          const dx = homingTarget.transform.x - entity.transform.x;
+          const dy = homingTarget.transform.y - entity.transform.y;
+          const desiredAngle = Math.atan2(dy, dx);
+          const currentAngle = Math.atan2(proj.velocityY, proj.velocityX);
+
+          // Shortest angular difference
+          let angleDiff = desiredAngle - currentAngle;
+          while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+          while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+          // Clamp to max turn rate
+          const maxTurn = (proj.homingTurnRate ?? 0) * dtSec;
+          const turn = Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
+
+          // Apply turn (preserve speed)
+          const newAngle = currentAngle + turn;
+          const speed = Math.sqrt(proj.velocityX * proj.velocityX + proj.velocityY * proj.velocityY);
+          proj.velocityX = Math.cos(newAngle) * speed;
+          proj.velocityY = Math.sin(newAngle) * speed;
+          entity.transform.rotation = newAngle;
+
+          // Emit velocity update so clients can correct dead-reckoning drift
+          _homingVelocityUpdates.push({
+            id: entity.id,
+            x: entity.transform.x,
+            y: entity.transform.y,
+            velocityX: proj.velocityX,
+            velocityY: proj.velocityY,
+          });
+        } else {
+          // Target gone/dead — fly straight (no retargeting)
+          proj.homingTargetId = undefined;
         }
       }
     }
@@ -520,7 +572,7 @@ export function updateProjectiles(
     }
   }
 
-  return { orphanedIds: projectilesToRemove, despawnEvents };
+  return { orphanedIds: projectilesToRemove, despawnEvents, velocityUpdates: _homingVelocityUpdates };
 }
 
 // Check projectile collisions and apply damage

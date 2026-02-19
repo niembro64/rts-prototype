@@ -72,6 +72,8 @@ export interface ProjectileSpawnEvent {
   isDGun?: boolean;
   beamStartX?: number; beamStartY?: number;
   beamEndX?: number; beamEndY?: number;
+  targetEntityId?: EntityId;  // Homing target (so clients know which projectiles are homing)
+  homingTurnRate?: number;    // Max turn rate for homing (rad/sec)
 }
 
 // Projectile despawn event - emitted when a projectile is removed from the sim
