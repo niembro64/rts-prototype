@@ -2,7 +2,7 @@ import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, 
 import { EntityCacheManager } from './EntityCacheManager';
 import { getWeaponConfig, computeWeaponRanges } from './weapons';
 import { getUnitDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG } from '../../config';
+import { MAX_TOTAL_UNITS } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -340,9 +340,9 @@ export class WorldState {
 
     const ranges = computeWeaponRanges(weaponConfig);
 
-    // Turret physics - use provided values, weapon config, or global defaults
-    const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-    const drag = turretDrag ?? weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+    // Turret physics - use provided values or weapon config
+    const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel!;
+    const drag = turretDrag ?? weaponConfig.turretDrag!;
 
     const entity = this.createUnitBase(x, y, playerId, unitType, collisionRadius, moveSpeed, mass, 100);
 
@@ -390,9 +390,9 @@ export class WorldState {
 
     const ranges = computeWeaponRanges(weaponConfig);
 
-    // Turret physics - use provided values, weapon config, or global defaults
-    const turretTurnAccel = config.turretTurnAccel ?? weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-    const turretDrag = config.turretDrag ?? weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+    // Turret physics - use provided values or weapon config
+    const turretTurnAccel = config.turretTurnAccel ?? weaponConfig.turretTurnAccel!;
+    const turretDrag = config.turretDrag ?? weaponConfig.turretDrag!;
 
     const entity: Entity = {
       id,

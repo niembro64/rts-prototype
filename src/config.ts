@@ -92,20 +92,6 @@ export const KNOCKBACK = {
   SPLASH: 250, // Knockback multiplier for area/splash explosions (mortar/disruptor)
 };
 
-/**
- * Default turret acceleration for weapons that don't specify their own.
- * Units: radians/sec² - how fast the turret speeds up its rotation.
- * Higher = snappier turret response.
- */
-export const DEFAULT_TURRET_TURN_ACCEL = 40;
-
-/**
- * Default turret drag for weapons that don't specify their own.
- * Applied per frame as: velocity *= (1 - drag)
- * Higher drag = slower terminal velocity, quicker stopping.
- * Terminal velocity ≈ accel / (60 * drag) at 60fps
- */
-export const DEFAULT_TURRET_DRAG = 0.15;
 
 /**
  * Whether turrets return to forward-facing (movement direction) when they have no target.
@@ -910,6 +896,8 @@ export const WEAPON_STATS = {
     range: 100,
     cooldown: 200,
     spreadAngle: Math.PI / 12,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     turret: {
       type: 'single' as const,
       barrelLength: 1.2,
@@ -931,6 +919,8 @@ export const WEAPON_STATS = {
     burstCount: 2,
     burstDelay: 80,
     spreadAngle: Math.PI / 32,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     turret: {
       type: 'multibarrel' as const,
       barrelCount: 2,
@@ -956,6 +946,8 @@ export const WEAPON_STATS = {
     pelletCount: 1,
     spreadAngle: Math.PI / 1.4,
     homingTurnRate: 3,  // rad/sec — pellets curve toward locked target
+    turretTurnAccel: 3,
+    turretDrag: 0.15,
     turret: {
       type: 'coneSpread' as const,
       barrelCount: 5,
@@ -979,6 +971,8 @@ export const WEAPON_STATS = {
     range: 300,
     cooldown: 4000,
     spreadAngle: Math.PI / 12,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     turret: {
       type: 'single' as const,
       barrelLength: 0.75,
@@ -998,6 +992,8 @@ export const WEAPON_STATS = {
     range: 360,
     cooldown: 3000,
     spreadAngle: Math.PI / 24,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     turret: {
       type: 'single' as const,
       barrelLength: 1.4,
@@ -1017,6 +1013,8 @@ export const WEAPON_STATS = {
     range: 250,
     cooldown: 2000,
     spreadAngle: 0,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     turret: {
       type: 'single' as const,
       barrelLength: 1.6,
@@ -1157,6 +1155,8 @@ export const WEAPON_STATS = {
     audioId: 'cannon' as const,
     range: 150,
     cooldown: 0,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     turret: {
       type: 'beamEmitter' as const,
       barrelLength: 0.7,

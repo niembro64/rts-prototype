@@ -1,5 +1,5 @@
 import type { WeaponConfig } from './types';
-import { UNIT_STATS, DEFAULT_TURRET_TURN_ACCEL, DEFAULT_TURRET_DRAG } from '../../config';
+import { UNIT_STATS } from '../../config';
 import { UNIT_DEFINITIONS, createWeaponsFromDefinition } from './unitDefinitions';
 
 /**
@@ -73,7 +73,7 @@ export function getWeaponValue(config: WeaponConfig): number {
     const accel = config.turretTurnAccel;
     const drag = config.turretDrag;
     const terminalVelocity = accel / (60 * drag);
-    const referenceTerminal = DEFAULT_TURRET_TURN_ACCEL / (60 * DEFAULT_TURRET_DRAG);
+    const referenceTerminal = 40 / (60 * 0.15); // reference: accel=40, drag=0.15
     turretFactor = Math.max(0.5, Math.min(1.2, terminalVelocity / referenceTerminal));
   }
   // No-turret weapons (pure projectile, fire-and-forget) stay at 1.0

@@ -6,8 +6,6 @@ import { getWeaponConfig, computeWeaponRanges, type WeaponId } from './weapons';
 import {
   COST_MULTIPLIER,
   UNIT_STATS,
-  DEFAULT_TURRET_TURN_ACCEL,
-  DEFAULT_TURRET_DRAG,
 } from '../../config';
 
 // Union type of all unit type identifiers
@@ -52,8 +50,8 @@ export interface UnitDefinition {
 function createDefaultWeapons(_radius: number, definition: UnitDefinition): UnitWeapon[] {
   const weaponConfig = getWeaponConfig(definition.weaponType);
   const ranges = computeWeaponRanges(weaponConfig);
-  const turretTurnAccel = weaponConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-  const turretDrag = weaponConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+  const turretTurnAccel = weaponConfig.turretTurnAccel!;
+  const turretDrag = weaponConfig.turretDrag!;
 
   return [{
     config: { ...weaponConfig },
@@ -81,8 +79,8 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
 
   // Beam weapon ranges
   const beamRanges = computeWeaponRanges(beamConfig);
-  const beamTurnAccel = beamConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-  const beamDrag = beamConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+  const beamTurnAccel = beamConfig.turretTurnAccel!;
+  const beamDrag = beamConfig.turretDrag!;
 
   const weapons: UnitWeapon[] = [];
 
@@ -114,8 +112,8 @@ function createWidowWeapons(radius: number, _definition: UnitDefinition): UnitWe
 
   // 1 mega force field in center (dual push/pull zones)
   const ffRanges = computeWeaponRanges(megaForceFieldConfig);
-  const ffTurnAccel = megaForceFieldConfig.turretTurnAccel ?? DEFAULT_TURRET_TURN_ACCEL;
-  const ffDrag = megaForceFieldConfig.turretDrag ?? DEFAULT_TURRET_DRAG;
+  const ffTurnAccel = megaForceFieldConfig.turretTurnAccel!;
+  const ffDrag = megaForceFieldConfig.turretDrag!;
 
   weapons.push({
     config: { ...megaForceFieldConfig },
