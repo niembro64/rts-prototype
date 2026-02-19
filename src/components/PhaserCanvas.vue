@@ -51,6 +51,8 @@ import {
   RANGE_TYPES,
   getAudioScope,
   setAudioScope,
+  getAudioSmoothing,
+  setAudioSmoothing,
   type GraphicsQuality,
   type RenderMode,
   type RangeType,
@@ -207,6 +209,7 @@ const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(
 );
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
+const audioSmoothing = ref<boolean>(getAudioSmoothing());
 audioManager.setMuted(audioScope.value === 'off');
 const rangeToggles = reactive<Record<RangeType, boolean>>({
   see: getRangeToggle('see'),
@@ -228,6 +231,9 @@ const lowFPS = ref(0);
 // Actual frame delta measurements (our own tracking)
 const actualAvgFPS = ref(0);
 const actualWorstFPS = ref(0);
+// Snapshot rate measurements (client-received)
+const snapAvgRate = ref(0);
+const snapWorstRate = ref(0);
 const currentZoom = ref(0.4);
 const fpsHistory: number[] = [];
 const FPS_HISTORY_SIZE = 1000; // ~16 seconds of samples at 60fps
@@ -471,6 +477,8 @@ function resetClientDefaults(): void {
   changeGraphicsQuality('auto');
   changeRenderMode('window');
   changeAudioScope('off');
+  setAudioSmoothing(true);
+  audioSmoothing.value = true;
   for (const rt of RANGE_TYPES) {
     if (rangeToggles[rt]) toggleRange(rt);
   }
@@ -551,6 +559,13 @@ const selectionActions: SelectionActions = {
     scene?.cancelFactoryQueueItem(factoryId, index);
   },
 };
+
+/** Format a number to always occupy exactly 4 characters (e.g. "0.34", "3.55", "35.4", " 354") */
+function fmt4(n: number): string {
+  if (n < 10) return n.toFixed(2);
+  if (n < 100) return n.toFixed(1);
+  return n.toFixed(0).padStart(4, ' ');
+}
 
 function getPlayerColor(playerId: PlayerId): string {
   const color = PLAYER_COLORS[playerId]?.primary ?? 0x888888;
@@ -674,6 +689,12 @@ function toggleProjRange(type: ProjRangeType): void {
   projRangeToggles[type] = newValue;
 }
 
+function toggleAudioSmoothing(): void {
+  const newValue = !audioSmoothing.value;
+  setAudioSmoothing(newValue);
+  audioSmoothing.value = newValue;
+}
+
 function updateFPSStats(): void {
   // Get FPS from whichever game instance is active
   const game = backgroundGameInstance?.game ?? gameInstance?.game;
@@ -707,6 +728,11 @@ function updateFPSStats(): void {
     const frameStats = scene.getFrameStats();
     actualAvgFPS.value = frameStats.avgFps;
     actualWorstFPS.value = frameStats.worstFps;
+
+    // Get snapshot rate stats from scene
+    const snapStats = scene.getSnapshotStats();
+    snapAvgRate.value = snapStats.avgRate;
+    snapWorstRate.value = snapStats.worstRate;
   }
   effectiveQuality.value = getEffectiveQuality();
 }
@@ -1058,9 +1084,9 @@ onUnmounted(() => {
         <div v-if="displayServerIp" class="bar-divider"></div>
         <div class="fps-stats">
           <span class="control-label">TPS:</span>
-          <span class="fps-value">{{ displayServerTpsAvg.toFixed(1) }}</span>
+          <span class="fps-value">{{ fmt4(displayServerTpsAvg) }}</span>
           <span class="fps-label">avg</span>
-          <span class="fps-value">{{ displayServerTpsWorst.toFixed(1) }}</span>
+          <span class="fps-value">{{ fmt4(displayServerTpsWorst) }}</span>
           <span class="fps-label">low</span>
         </div>
         <div class="bar-divider"></div>
@@ -1108,16 +1134,33 @@ onUnmounted(() => {
         <div v-if="localIpAddress !== 'N/A'" class="bar-divider"></div>
         <div class="fps-stats">
           <span class="control-label">FPS:</span>
-          <span class="fps-value">{{ actualAvgFPS.toFixed(1) }}</span>
+          <span class="fps-value">{{ fmt4(actualAvgFPS) }}</span>
           <span class="fps-label">avg</span>
-          <span class="fps-value">{{ actualWorstFPS.toFixed(1) }}</span>
+          <span class="fps-value">{{ fmt4(actualWorstFPS) }}</span>
           <span class="fps-label">low</span>
         </div>
         <div class="bar-divider"></div>
         <div class="fps-stats">
           <span class="control-label">ZOOM:</span>
-          <span class="fps-value">{{ currentZoom.toFixed(2) }}</span>
+          <span class="fps-value">{{ fmt4(currentZoom) }}</span>
         </div>
+        <div class="bar-divider"></div>
+        <div class="fps-stats">
+          <span class="control-label">SNAPS:</span>
+          <span class="fps-value">{{ fmt4(snapAvgRate) }}</span>
+          <span class="fps-label">avg</span>
+          <span class="fps-value">{{ fmt4(snapWorstRate) }}</span>
+          <span class="fps-label">low</span>
+        </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">EVENTS:</span>
+        <button
+          class="control-btn"
+          :class="{ active: audioSmoothing }"
+          @click="toggleAudioSmoothing"
+        >
+          SMOOTH
+        </button>
         <div class="bar-divider"></div>
         <span class="control-label">LOD:</span>
         <button

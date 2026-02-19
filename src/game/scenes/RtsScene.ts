@@ -21,6 +21,8 @@ import {
   COMBAT_STATS_SAMPLE_INTERVAL,
 } from '../../config';
 
+import { getAudioSmoothing } from '../render/graphicsSettings';
+
 // Import helpers
 import {
   handleAudioEvent,
@@ -72,6 +74,12 @@ export class RtsScene extends Phaser.Scene {
   private frameDeltaWriteIndex = 0;
   private frameDeltaCount = 0;
 
+  // Snapshot interval tracking for stats display (ring buffer)
+  private readonly SNAP_HISTORY_SIZE = 100;
+  private snapIntervalHistory = new Float64Array(this.SNAP_HISTORY_SIZE);
+  private snapIntervalWriteIndex = 0;
+  private snapIntervalCount = 0;
+
   // UI update throttling
   private selectionDirty: boolean = true;
   private economyUpdateTimer: number = 0;
@@ -113,6 +121,11 @@ export class RtsScene extends Phaser.Scene {
   private _velBufA: NetworkProjectileVelocityUpdate[] = [];
   private _velBufB: NetworkProjectileVelocityUpdate[] = [];
   private _velBufToggle = false;
+
+  // Audio smoothing queue: events scheduled to play at future times
+  private audioQueue: { event: NetworkAudioEvent; playAt: number }[] = [];
+  private lastSnapshotTime: number = 0;
+  private snapshotInterval: number = 100; // EMA of snapshot interval (ms)
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -544,6 +557,19 @@ export class RtsScene extends Phaser.Scene {
       this.frameDeltaCount++;
     }
 
+    // Drain audio smoothing queue: play any events whose scheduled time has arrived
+    const now = performance.now();
+    const queue = this.audioQueue;
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (now >= queue[i].playAt) {
+        const cam = this.cameras.main;
+        handleAudioEvent(queue[i].event as AudioEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
+        // Swap-remove for efficiency
+        queue[i] = queue[queue.length - 1];
+        queue.length--;
+      }
+    }
+
     // Process buffered snapshot (at most one per frame)
     if (this.pendingSnapshot) {
       const state = this.pendingSnapshot;
@@ -578,6 +604,18 @@ export class RtsScene extends Phaser.Scene {
 
       this.clientViewState.applyNetworkState(state);
 
+      // Track snapshot interval for audio smoothing (EMA) and stats (ring buffer)
+      if (this.lastSnapshotTime > 0) {
+        const snapDelta = now - this.lastSnapshotTime;
+        this.snapshotInterval = 0.8 * this.snapshotInterval + 0.2 * snapDelta;
+        this.snapIntervalHistory[this.snapIntervalWriteIndex] = snapDelta;
+        this.snapIntervalWriteIndex = (this.snapIntervalWriteIndex + 1) % this.SNAP_HISTORY_SIZE;
+        if (this.snapIntervalCount < this.SNAP_HISTORY_SIZE) {
+          this.snapIntervalCount++;
+        }
+      }
+      this.lastSnapshotTime = now;
+
       // Forward server metadata to UI
       const serverMeta = this.clientViewState.getServerMeta();
       if (serverMeta && this.onServerMetaUpdate) {
@@ -588,8 +626,18 @@ export class RtsScene extends Phaser.Scene {
       const audioEvents = this.clientViewState.getPendingAudioEvents();
       if (audioEvents) {
         const cam = this.cameras.main;
+        const smoothing = getAudioSmoothing();
         for (const event of audioEvents) {
-          handleAudioEvent(event as AudioEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
+          if (!smoothing || event.type === 'laserStart' || event.type === 'laserStop') {
+            // Play immediately: smoothing off, or state-dependent laser events
+            handleAudioEvent(event as AudioEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
+          } else {
+            // Schedule for playback spread across the snapshot interval
+            this.audioQueue.push({
+              event,
+              playAt: now + Math.random() * this.snapshotInterval,
+            });
+          }
         }
       }
 
@@ -757,6 +805,29 @@ export class RtsScene extends Phaser.Scene {
     return { avgFps, worstFps };
   }
 
+  /**
+   * Get snapshot rate statistics (avg and worst, in Hz)
+   */
+  public getSnapshotStats(): { avgRate: number; worstRate: number } {
+    const count = this.snapIntervalCount;
+    if (count === 0) {
+      return { avgRate: 0, worstRate: 0 };
+    }
+
+    let sum = 0;
+    let worst = 0;
+    for (let i = 0; i < count; i++) {
+      const d = this.snapIntervalHistory[i];
+      sum += d;
+      if (d > worst) worst = d;
+    }
+
+    const avgRate = 1000 / (sum / count);
+    const worstRate = 1000 / worst;
+
+    return { avgRate, worstRate };
+  }
+
   // Clean shutdown
   shutdown(): void {
     audioManager.stopAllLaserSounds();
@@ -778,6 +849,7 @@ export class RtsScene extends Phaser.Scene {
     this.bufferedVelocityUpdates.clear();
     this._velBufA.length = 0;
     this._velBufB.length = 0;
+    this.audioQueue.length = 0;
 
     // Clear cached entity arrays
     this._cachedSelectedUnits.length = 0;

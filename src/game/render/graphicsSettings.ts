@@ -92,6 +92,7 @@ export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'rts-audio-scope';
+const AUDIO_SMOOTHING_STORAGE_KEY = 'rts-audio-smoothing';
 
 export type RangeType = 'see' | 'fire' | 'release' | 'lock' | 'fightstop' | 'build';
 export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'fightstop', 'build'];
@@ -117,6 +118,7 @@ const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
   secondary: false,
 };
 let currentAudioScope: AudioScope = 'all';
+let currentAudioSmoothing: boolean = true;
 let currentZoom: number = 1.0; // Updated by renderer
 
 // Load from localStorage on module init
@@ -133,6 +135,10 @@ function loadFromStorage(): void {
     const storedAudioScope = localStorage.getItem(AUDIO_SCOPE_STORAGE_KEY);
     if (storedAudioScope && (storedAudioScope === 'off' || storedAudioScope === 'window' || storedAudioScope === 'padded' || storedAudioScope === 'all')) {
       currentAudioScope = storedAudioScope;
+    }
+    const storedAudioSmoothing = localStorage.getItem(AUDIO_SMOOTHING_STORAGE_KEY);
+    if (storedAudioSmoothing !== null) {
+      currentAudioSmoothing = storedAudioSmoothing === 'true';
     }
   } catch {
     // localStorage not available, use default
@@ -291,6 +297,25 @@ export function setAudioScope(scope: AudioScope): void {
   currentAudioScope = scope;
   try {
     localStorage.setItem(AUDIO_SCOPE_STORAGE_KEY, scope);
+  } catch {
+    // localStorage not available
+  }
+}
+
+/**
+ * Get current audio smoothing setting
+ */
+export function getAudioSmoothing(): boolean {
+  return currentAudioSmoothing;
+}
+
+/**
+ * Set audio smoothing (persists to localStorage)
+ */
+export function setAudioSmoothing(enabled: boolean): void {
+  currentAudioSmoothing = enabled;
+  try {
+    localStorage.setItem(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
   } catch {
     // localStorage not available
   }
