@@ -304,11 +304,12 @@ function startBackgroundBattle(): void {
     const bgScene = backgroundGameInstance?.getScene();
     if (bgScene) {
       bgScene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
-        combatStats.value = stats;
+        const cloned = structuredClone(stats);
+        combatStats.value = cloned;
         if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
         combatStatsHistory.value.push({
           timestamp: Date.now() - statsHistoryStartTime,
-          stats,
+          stats: cloned,
         });
         if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
           combatStatsHistory.value.shift();
@@ -809,11 +810,12 @@ function setupSceneCallbacks(): void {
 
       // Combat stats callback
       scene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
-        combatStats.value = stats;
+        const cloned = structuredClone(stats);
+        combatStats.value = cloned;
         if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
         combatStatsHistory.value.push({
           timestamp: Date.now() - statsHistoryStartTime,
-          stats,
+          stats: cloned,
         });
         if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
           combatStatsHistory.value.shift();
