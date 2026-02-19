@@ -39,6 +39,22 @@ export interface NetworkAudioEvent {
     unitType?: string;    // Unit type (e.g. 'widow', 'mammoth') for debris generation
     rotation?: number;    // Unit's body rotation at death
   };
+
+  // Impact context (only for 'hit' and 'projectileExpire' events) - for directional flame explosions
+  impactContext?: {
+    collisionRadius: number;     // Projectile collision radius
+    primaryRadius: number;       // Primary damage/visual radius
+    secondaryRadius: number;     // Secondary damage/visual radius
+    projectileVelX: number;      // Projectile velocity (or beam direction * magnitude)
+    projectileVelY: number;
+    projectileX: number;         // Projectile center at impact
+    projectileY: number;
+    entityVelX: number;          // Hit entity velocity (0 if no entity hit)
+    entityVelY: number;
+    entityCollisionRadius: number; // Hit entity's collision radius (0 if no entity hit)
+    penetrationDirX: number;     // Normalized: projectile center → entity center
+    penetrationDirY: number;
+  };
 }
 
 // Projectile spawn event - sent once when projectile is created

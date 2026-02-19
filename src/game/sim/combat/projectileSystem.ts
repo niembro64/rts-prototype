@@ -6,11 +6,11 @@ import type { Entity, EntityId } from '../types';
 import { PLAYER_COLORS } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { AudioEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
+import type { AudioEvent, ImpactContext, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
 import { getWeaponWorldPosition } from '../../math';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import type { DeathContext, DamageResult } from '../damage/types';
 import type { WeaponConfig, Projectile } from '../types';
 
@@ -27,6 +27,58 @@ const _emptyExcludeSet = new Set<EntityId>();
 
 // Reusable set for secondary damage exclusion (avoids per-tick allocation)
 const _beamSecondaryExcludeSet = new Set<EntityId>();
+
+// Build an ImpactContext for hit/projectileExpire audio events
+function buildImpactContext(
+  config: WeaponConfig,
+  projectileX: number, projectileY: number,
+  projectileVelX: number, projectileVelY: number,
+  collisionRadius: number,
+  entity?: Entity,
+): ImpactContext {
+  const primaryRadius = config.primaryDamageRadius ?? collisionRadius;
+  const secondaryRadius = config.secondaryDamageRadius ?? primaryRadius;
+
+  let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
+  let penDirX = 0, penDirY = 0;
+
+  if (entity) {
+    entityVelX = entity.unit?.velocityX ?? 0;
+    entityVelY = entity.unit?.velocityY ?? 0;
+    entityCollisionRadius = entity.unit?.collisionRadius ?? (entity.building ? entity.building.width / 2 : 0);
+
+    // Normalized direction from projectile center to entity center
+    const dx = entity.transform.x - projectileX;
+    const dy = entity.transform.y - projectileY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 0.001) {
+      penDirX = dx / dist;
+      penDirY = dy / dist;
+    }
+  } else {
+    // No entity hit: use projectile velocity direction as fallback penetration
+    const velMag = Math.sqrt(projectileVelX * projectileVelX + projectileVelY * projectileVelY);
+    if (velMag > 0.001) {
+      penDirX = projectileVelX / velMag;
+      penDirY = projectileVelY / velMag;
+    }
+  }
+
+  return {
+    collisionRadius,
+    primaryRadius,
+    secondaryRadius,
+    projectileVelX,
+    projectileVelY,
+    projectileX,
+    projectileY,
+    entityVelX,
+    entityVelY,
+    entityCollisionRadius,
+    penetrationDirX: penDirX,
+    penetrationDirY: penDirY,
+  };
+}
 
 // Reusable arrays for fireWeapons (avoids per-frame allocation)
 const _fireNewProjectiles: Entity[] = [];
@@ -505,7 +557,7 @@ export function checkProjectileCollisions(
       // Beam audio is handled by updateLaserSounds based on targeting state
 
       // Handle splash damage on expiration — only for projectiles with splashOnExpiry enabled
-      // Small projectiles (gatling, pulse, buckshot) only splash on direct hit, not on expiration
+      // Small projectiles (lightRound, heavyRound) only splash on direct hit, not on expiration
       if (config.primaryDamageRadius && config.splashOnExpiry && !proj.hasExploded) {
         // Primary zone: full damage
         const primaryResult = damageSystem.applyDamage({
@@ -568,11 +620,20 @@ export function checkProjectileCollisions(
 
         // Add explosion audio event if there were hits or it's a mortar
         if (primaryResult.hitEntityIds.length > 0 || config.id === 'mortar') {
+          // Use first hit entity for directional context (area splash, pick nearest)
+          const firstHitEntity = primaryResult.hitEntityIds.length > 0
+            ? world.getEntity(primaryResult.hitEntityIds[0]) : undefined;
+          const projCollisionRadius = config.collisionRadius ?? config.beamWidth ?? 2;
           audioEvents.push({
             type: 'hit',
             weaponId: config.audioId,
             x: projEntity.transform.x,
             y: projEntity.transform.y,
+            impactContext: buildImpactContext(
+              config, projEntity.transform.x, projEntity.transform.y,
+              proj.velocityX ?? 0, proj.velocityY ?? 0,
+              projCollisionRadius, firstHitEntity ?? undefined,
+            ),
           });
         }
       }
@@ -580,11 +641,17 @@ export function checkProjectileCollisions(
       // Add projectile expire event for traveling projectiles (not beams)
       // This creates an explosion effect at projectile termination point
       if (proj.projectileType === 'traveling' && !proj.hasExploded) {
+        const projRadius = config.projectileRadius ?? 5;
         audioEvents.push({
           type: 'projectileExpire',
           weaponId: config.audioId,
           x: projEntity.transform.x,
           y: projEntity.transform.y,
+          impactContext: buildImpactContext(
+            config, projEntity.transform.x, projEntity.transform.y,
+            proj.velocityX ?? 0, proj.velocityY ?? 0,
+            projRadius,
+          ),
         });
       }
 
@@ -643,7 +710,15 @@ export function checkProjectileCollisions(
             if (!proj.hitEntities.has(hitId)) {
               const entity = world.getEntity(hitId);
               if (entity) {
-                audioEvents.push({ type: 'hit', weaponId: config.audioId, x: entity.transform.x, y: entity.transform.y });
+                audioEvents.push({
+                  type: 'hit', weaponId: config.audioId,
+                  x: entity.transform.x, y: entity.transform.y,
+                  impactContext: buildImpactContext(
+                    config, impactX, impactY,
+                    beamDirX * BEAM_EXPLOSION_MAGNITUDE, beamDirY * BEAM_EXPLOSION_MAGNITUDE,
+                    collisionRadius, entity,
+                  ),
+                });
                 proj.hitEntities.add(hitId);
               }
             }
@@ -727,7 +802,15 @@ export function checkProjectileCollisions(
             if (!proj.hitEntities.has(hitId)) {
               const entity = world.getEntity(hitId);
               if (entity) {
-                audioEvents.push({ type: 'hit', weaponId: config.audioId, x: entity.transform.x, y: entity.transform.y });
+                audioEvents.push({
+                  type: 'hit', weaponId: config.audioId,
+                  x: entity.transform.x, y: entity.transform.y,
+                  impactContext: buildImpactContext(
+                    config, impactX, impactY,
+                    beamDirX * BEAM_EXPLOSION_MAGNITUDE, beamDirY * BEAM_EXPLOSION_MAGNITUDE,
+                    collisionRadius, entity,
+                  ),
+                });
                 proj.hitEntities.add(hitId);
               }
             }
@@ -811,7 +894,7 @@ export function checkProjectileCollisions(
       for (const hitId of result.hitEntityIds) {
         proj.hitEntities.add(hitId);
 
-        // Add hit audio event
+        // Add hit audio event with impact context for directional flame explosions
         const entity = world.getEntity(hitId);
         if (entity) {
           audioEvents.push({
@@ -819,6 +902,11 @@ export function checkProjectileCollisions(
             weaponId: config.audioId,
             x: entity.transform.x,
             y: entity.transform.y,
+            impactContext: buildImpactContext(
+              config, projEntity.transform.x, projEntity.transform.y,
+              proj.velocityX ?? 0, proj.velocityY ?? 0,
+              projRadius, entity,
+            ),
           });
         }
       }

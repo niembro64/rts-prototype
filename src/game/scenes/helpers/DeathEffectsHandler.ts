@@ -9,6 +9,7 @@ import {
   EXPLOSION_IMPACT_FORCE_MULTIPLIER,
   EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
   EXPLOSION_BASE_MOMENTUM,
+  FIRE_EXPLOSION,
 } from '../../../config';
 import { WEAPON_CONFIGS } from '../../sim/weapons';
 import { magnitude } from '../../math';
@@ -36,16 +37,41 @@ export function handleAudioEvent(
 ): void {
   // Always handle visual effects even if audio not initialized
   if (event.type === 'hit' || event.type === 'projectileExpire') {
-    // Add impact explosion at hit/termination location
-    // Size based on weapon type (larger for heavy weapons)
-    const explosionRadius = getExplosionRadius(event.weaponId);
-    const secondaryRadius = getSecondaryExplosionRadius(event.weaponId);
-    const explosionColor = 0xff8844; // Orange-ish for impacts
-    entityRenderer.addExplosion(
-      event.x, event.y, explosionRadius, explosionColor, 'impact',
-      undefined, undefined, undefined, undefined, undefined, undefined,
-      explosionRadius, secondaryRadius,
-    );
+    const ic = event.impactContext;
+    if (ic) {
+      // Rich impact explosion with directional data
+      const explosionRadius = ic.primaryRadius;
+
+      // Projectile velocity → "attacker" direction (how the projectile was traveling)
+      const attackerX = ic.projectileVelX * FIRE_EXPLOSION.projectileVelMult;
+      const attackerY = ic.projectileVelY * FIRE_EXPLOSION.projectileVelMult;
+
+      // Entity velocity → "velocity" direction (how the hit unit was moving)
+      const velocityX = ic.entityVelX * FIRE_EXPLOSION.entityVelMult;
+      const velocityY = ic.entityVelY * FIRE_EXPLOSION.entityVelMult;
+
+      // Penetration direction (projectile center → entity center, normalized)
+      const penetrationX = ic.penetrationDirX * FIRE_EXPLOSION.penetrationMult;
+      const penetrationY = ic.penetrationDirY * FIRE_EXPLOSION.penetrationMult;
+
+      entityRenderer.addExplosion(
+        event.x, event.y, explosionRadius, 0xff8844, 'impact',
+        velocityX, velocityY,
+        penetrationX, penetrationY,
+        attackerX, attackerY,
+        ic.collisionRadius, ic.primaryRadius, ic.secondaryRadius,
+        ic.entityCollisionRadius,
+      );
+    } else {
+      // Fallback: no impactContext (shouldn't happen but safe)
+      const explosionRadius = getExplosionRadius(event.weaponId);
+      const secondaryRadius = getSecondaryExplosionRadius(event.weaponId);
+      entityRenderer.addExplosion(
+        event.x, event.y, explosionRadius, 0xff8844, 'impact',
+        undefined, undefined, undefined, undefined, undefined, undefined,
+        undefined, explosionRadius, secondaryRadius,
+      );
+    }
   }
 
   // Handle death explosions (visual) - uses death context from event
@@ -86,7 +112,7 @@ export function handleAudioEvent(
       penetrationX,
       penetrationY,
       attackerX,
-      attackerY
+      attackerY,
     );
 
     // Generate debris fragments from unit visual pieces

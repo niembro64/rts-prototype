@@ -8,74 +8,52 @@ export function drawSnipeUnit(
   ctx: UnitRenderContext,
   legs: ArachnidLeg[]
 ): void {
-  const { graphics, x, y, radius: r, bodyRot, palette, isSelected, skipTurrets, turretsOnly, entity } = ctx;
+  const { graphics, x, y, radius: r, bodyRot, palette, isSelected } = ctx;
   const { base, light, dark } = palette;
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
 
-  // Body pass
-  if (!turretsOnly) {
-    // Legs (always drawn at low+high)
-    {
-      const legConfig = LEG_STYLE_CONFIG.recluse;
-      const legThickness = legConfig.thickness;
-      const footSize = r * legConfig.footSizeMultiplier;
-      const halfLegs = legs.length / 2;
+  // Legs (always drawn at low+high)
+  {
+    const legConfig = LEG_STYLE_CONFIG.recluse;
+    const legThickness = legConfig.thickness;
+    const footSize = r * legConfig.footSizeMultiplier;
+    const halfLegs = legs.length / 2;
 
-      for (let i = 0; i < legs.length; i++) {
-        const leg = legs[i];
-        const side = i < halfLegs ? -1 : 1;
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      const side = i < halfLegs ? -1 : 1;
 
-        const attach = leg.getAttachmentPoint(x, y, bodyRot);
-        const foot = leg.getFootPosition();
-        const knee = leg.getKneePosition(attach.x, attach.y, side);
+      const attach = leg.getAttachmentPoint(x, y, bodyRot);
+      const foot = leg.getFootPosition();
+      const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-        graphics.lineStyle(legThickness + 0.5, dark, 1);
-        graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+      graphics.lineStyle(legThickness + 0.5, dark, 1);
+      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-        graphics.lineStyle(legThickness, dark, 1);
-        graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+      graphics.lineStyle(legThickness, dark, 1);
+      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-        if (ctx.lod === 'high') {
-          graphics.fillStyle(light, 1);
-          graphics.fillCircle(knee.x, knee.y, legThickness);
-          graphics.fillCircle(foot.x, foot.y, footSize);
-        }
+      if (ctx.lod === 'high') {
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(knee.x, knee.y, legThickness);
+        graphics.fillCircle(foot.x, foot.y, footSize);
       }
-    }
-
-    // Tiny round body
-    const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
-    graphics.fillStyle(bodyColor, 1);
-    graphics.fillCircle(x, y, r * 0.2);
-
-    if (ctx.lod === 'high') {
-      // Dark center dot
-      graphics.fillStyle(dark, 1);
-      graphics.fillCircle(x, y, r * 0.1);
-
-      // Eye highlight
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(x + cos * r * 0.05, y + sin * r * 0.05, r * 0.05);
     }
   }
 
-  // Turret pass — long thin railgun barrel from body center
-  if (!skipTurrets) {
-    const weapons = entity.weapons ?? [];
+  // Tiny round body
+  const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
+  graphics.fillStyle(bodyColor, 1);
+  graphics.fillCircle(x, y, r * 0.2);
 
-    for (const weapon of weapons) {
-      const turretRot = weapon.turretRotation;
-      const barrelLen = r * 1.6;
-      const endX = x + Math.cos(turretRot) * barrelLen;
-      const endY = y + Math.sin(turretRot) * barrelLen;
+  if (ctx.lod === 'high') {
+    // Dark center dot
+    graphics.fillStyle(dark, 1);
+    graphics.fillCircle(x, y, r * 0.1);
 
-      if (ctx.lod === 'high') {
-        graphics.fillStyle(COLORS.WHITE, 1);
-        graphics.fillCircle(x, y, r * 0.06);
-      }
-      graphics.lineStyle(1.5, COLORS.WHITE, 1);
-      graphics.lineBetween(x, y, endX, endY);
-    }
+    // Eye highlight
+    graphics.fillStyle(light, 1);
+    graphics.fillCircle(x + cos * r * 0.05, y + sin * r * 0.05, r * 0.05);
   }
 }

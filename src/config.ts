@@ -229,23 +229,59 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
 };
 
 // =============================================================================
-// MINIGUN / REVOLVING TURRET RENDERING
+// TURRET RENDERING CONFIG
+// =============================================================================
+
+export interface SpinConfig {
+  idle: number;   // Slow idle spin (rad/sec)
+  max: number;    // Maximum spin speed when firing (rad/sec)
+  accel: number;  // Spin-up acceleration (rad/sec²)
+  decel: number;  // Spin-down deceleration (rad/sec²)
+}
+
+export type TurretConfig =
+  | { type: 'multibarrel'; barrelCount: number; barrelLength: number; barrelThickness: number; orbitRadius: number; depthScale: number; spin: SpinConfig }
+  | { type: 'coneSpread'; barrelCount: number; barrelLength: number; barrelThickness: number; baseOrbit: number; depthScale: number; spin: SpinConfig }
+  | { type: 'single'; barrelLength: number; barrelThickness: number }
+  | { type: 'beamEmitter'; barrelLength: number; barrelThickness: number }
+  | { type: 'forceField'; grate: ForceFieldTurretConfig };
+
+// =============================================================================
+// CHASSIS MOUNT POINTS
 // =============================================================================
 
 /**
- * Per-unit revolving barrel turret configuration.
- * barrelCount: number of barrels in the revolving cluster
- * barrelLength: barrel length as multiplier of unit render radius
- * maxSpeed: maximum spin speed (rad/sec) when firing
- * accel: spin-up acceleration (rad/sec²)
- * decel: spin-down deceleration (rad/sec²)
- * idleSpeed: slow idle spin so barrels are always visibly rotating (rad/sec)
- * thickness: line width of each barrel (px)
+ * Where weapons attach on each unit chassis.
+ * x = forward offset, y = lateral offset (both as multipliers of unit collision radius).
+ * Position is computed as: mountWorldX = unitX + cos(bodyRot)*x*r - sin(bodyRot)*y*r
  */
-export const MINIGUN_CONFIG = {
-  jackal:  { barrelCount: 3, barrelLength: 1.2, maxSpeed: 50, accel: 80, decel: 30, idleSpeed: 2.0, thickness: 2 },
-  lynx:    { barrelCount: 3, barrelLength: 1.0, maxSpeed: 50, accel: 80, decel: 30, idleSpeed: 2.0, thickness: 3 },
-  badger:  { barrelCount: 5, barrelLength: 1.0, maxSpeed: 50, accel: 80, decel: 30, idleSpeed: 2.0, thickness: 4 },
+export interface MountPoint {
+  x: number;
+  y: number;
+}
+
+export const CHASSIS_MOUNTS: Record<string, MountPoint[]> = {
+  jackal: [{ x: 0, y: 0 }],
+  lynx: [{ x: 0, y: 0 }],
+  daddy: [{ x: 0, y: 0 }],
+  badger: [{ x: 0, y: 0 }],
+  mongoose: [{ x: 0, y: 0 }],
+  recluse: [{ x: 0, y: 0 }],
+  mammoth: [{ x: 0, y: 0 }],
+  tarantula: [{ x: 0, y: 0 }],
+  commander: [{ x: 0.3, y: 0 }],
+  widow: (() => {
+    const hexR = 0.65;
+    const hexFwd = 0.5;
+    const hexRotOff = Math.PI / 6;
+    const mounts: MountPoint[] = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3 + hexRotOff;
+      mounts.push({ x: Math.cos(angle) * hexR + hexFwd, y: Math.sin(angle) * hexR });
+    }
+    mounts.push({ x: hexFwd, y: 0 }); // Force field at hex center
+    return mounts;
+  })(),
 };
 
 // =============================================================================
@@ -372,6 +408,178 @@ export const BEAM_EXPLOSION_MAGNITUDE = 300;
  * This is raw velocity units added to the final momentum.
  */
 export const EXPLOSION_BASE_MOMENTUM = 500;
+
+// =============================================================================
+// FIRE (IMPACT) EXPLOSIONS
+// =============================================================================
+
+/**
+ * Configuration for the unified fire/impact explosion renderer.
+ * All projectile hit and expire explosions use this single config.
+ */
+export const FIRE_EXPLOSION = {
+  // --- Lifetime ---
+  /** Base lifetime in ms (scaled by sqrt(radius/8)) */
+  baseLifetimeMs: 150,
+
+  // --- Per-LOD tuning (indexed: [min, low, med, high, max]) ---
+  /** Particle count multiplier per LOD tier */
+  countMult: [1, 1.5, 2.5, 4, 6] as readonly number[],
+  /** Center-drift strength per LOD tier (0 = no drift, 1 = full drift) */
+  driftScale: [0.0, 0.1, 0.25, 0.35, 0.4] as readonly number[],
+  /** Trail length multiplier per LOD tier (0 = no trails) */
+  trailMult: [0, 0, 0, 0.6, 1.0] as readonly number[],
+
+  // --- Strength normalization ---
+  /** Velocity magnitude at which strength factor saturates to 1.0 */
+  strengthNormalize: 200,
+  /** Maximum strength factor (caps directional influence) */
+  strengthMax: 1.5,
+  /** Minimum strength for directional particles (keeps them visible even with zero input) */
+  strengthFloor: 0.3,
+  /** Combined-momentum magnitude for full drift */
+  driftNormalize: 300,
+
+  // --- Core fireball (Element 1 — collision radius zone) ---
+  /** How far the core expands: collR → primR * this value */
+  coreExpandTarget: 0.5,
+  /** Core fade speed (1.0 = linear, higher = faster fade) */
+  coreFadeRate: 1.3,
+  /** Outer glow radius multiplier (relative to core radius) */
+  coreGlowScale: 1.15,
+
+  // --- Primary zone glow (Element 2) ---
+  /** Starting scale for primary glow ring (fraction of primR) */
+  primaryGlowStart: 0.7,
+  /** Expansion over lifetime (added to start) */
+  primaryGlowExpand: 0.5,
+  /** Fade rate for primary zone */
+  primaryFadeRate: 1.4,
+  /** Fill alpha for primary zone glow */
+  primaryGlowAlpha: 0.12,
+
+  // --- Secondary zone glow (Element 3) ---
+  /** Starting scale for secondary glow ring (fraction of secR) */
+  secondaryGlowStart: 0.6,
+  /** Expansion over lifetime */
+  secondaryGlowExpand: 0.5,
+  /** Fade rate for secondary zone */
+  secondaryFadeRate: 1.6,
+  /** Fill alpha for secondary zone glow */
+  secondaryGlowAlpha: 0.07,
+
+  // --- Projectile-velocity sparks (Element 4) ---
+  /** Angular spread in radians (half-width) */
+  sparkSpread: 0.5,
+  /** Distance multiplier (relative to primR) */
+  sparkDistMult: 2.2,
+  /** Base particle size */
+  sparkSizeBase: 2,
+  /** Particle size random range (added to base) */
+  sparkSizeRange: 3,
+  /** Max trail length (px) */
+  sparkTrailMax: 14,
+
+  // --- Entity-velocity smoke (Element 5) ---
+  /** Angular spread in radians */
+  smokeSpread: 0.8,
+  /** Distance multiplier (relative to primR) */
+  smokeDistMult: 1.2,
+  /** Base particle size */
+  smokeSizeBase: 2.5,
+  /** Particle size random range */
+  smokeSizeRange: 3,
+  /** Upward float per progress unit (px) */
+  smokeFloatBase: 3,
+  /** Max trail length (px) */
+  smokeTrailMax: 8,
+
+  // --- Penetration particles (Element 6) ---
+  /** Angular spread in radians */
+  penSpread: 0.6,
+  /** Distance multiplier (relative to primR) */
+  penDistMult: 1.8,
+  /** Base particle size */
+  penSizeBase: 2.5,
+  /** Particle size random range */
+  penSizeRange: 3,
+  /** Max trail length (px) */
+  penTrailMax: 12,
+
+  // --- Secondary zone particles (part of Element 3) ---
+  /** Angular spread */
+  secParticleSpread: 0.9,
+  /** Distance multiplier (relative to secR) */
+  secParticleDistMult: 0.8,
+  /** Base particle size */
+  secParticleSizeBase: 2,
+  /** Particle size random range */
+  secParticleSizeRange: 2.5,
+  /** Max trail length (px) */
+  secParticleTrailMax: 12,
+
+  // --- MAX-tier embers ---
+  /** Base ember count */
+  emberCountBase: 6,
+  /** Extra embers per unit of (velStr + penStr) */
+  emberCountPerStrength: 3,
+  /** Ember base size */
+  emberSizeBase: 1.2,
+  /** Ember size random range */
+  emberSizeRange: 1.2,
+  /** Upward float distance (px) */
+  emberFloat: 10,
+
+  // --- Colors ---
+  colors: {
+    /** Core outer glow */
+    coreGlow: 0xff6600,
+    /** Core fireball */
+    coreFireball: 0xff8822,
+    /** Hot inner core */
+    coreHot: 0xffcc44,
+    /** White-hot center */
+    coreWhite: 0xffffff,
+    /** Primary zone glow fill */
+    primaryGlow: 0xff6600,
+    /** Primary zone ring stroke */
+    primaryRing: 0xff8844,
+    /** Secondary zone glow fill */
+    secondaryGlow: 0xff4400,
+    /** Secondary zone ring stroke */
+    secondaryRing: 0xff6622,
+    /** Secondary zone particle fill */
+    secParticle: 0xff7733,
+    /** Projectile spark fill */
+    sparkFill: 0xffcc44,
+    /** Projectile spark bright center */
+    sparkCenter: 0xffffff,
+    /** Projectile spark trail */
+    sparkTrail: 0xff6622,
+    /** Smoke puff fill */
+    smokeFill: 0x555555,
+    /** Smoke puff trail */
+    smokeTrail: 0x555555,
+    /** Penetration particle fill */
+    penFill: 0xff7722,
+    /** Penetration particle inner */
+    penInner: 0xffaa55,
+    /** Penetration trail */
+    penTrail: 0xff5500,
+    /** Ember outer */
+    emberOuter: 0xff6600,
+    /** Ember inner */
+    emberInner: 0xffcc00,
+  },
+
+  // --- DeathEffectsHandler multipliers (sim→render momentum scaling) ---
+  /** Multiplier applied to projectile velocity for attacker direction */
+  projectileVelMult: 0.15,
+  /** Multiplier applied to entity velocity */
+  entityVelMult: 20.0,
+  /** Multiplier applied to penetration direction */
+  penetrationMult: 60.0,
+};
 
 // =============================================================================
 // DEATH DEBRIS
@@ -578,7 +786,7 @@ export const UNIT_STATS = {
   // Tarantula - Force field AoE unit. Continuous damage with pull.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
   tarantula: {
-    baseCost: 100,
+    baseCost: 160,
     hp: 200,
     moveSpeed: 200,
     collisionRadius: 11,
@@ -594,39 +802,29 @@ export const UNIT_STATS = {
 export const PROJECTILE_STATS = {
   lightRound: {
     damage: 1,
-    speed: 200,
+    speed: 150,
     mass: 0.3,
-    lifespan: 600,
-    radius: 3,
+    lifespan: 700,
+    radius: 1.5,
     primaryDamageRadius: 5,
     secondaryDamageRadius: 7,
     splashOnExpiry: false,
   },
-  pulseBolt: {
+  heavyRound: {
     damage: 6,
-    speed: 200,
-    mass: 1,
+    speed: 400,
+    mass: 5,
     radius: 3,
-    lifespan: 1000,
+    lifespan: 600,
     primaryDamageRadius: 8,
     secondaryDamageRadius: 15,
     splashOnExpiry: false,
   },
-  buckshot: {
-    damage: 5,
-    speed: 300,
-    mass: 2,
-    radius: 4,
-    lifespan: 400,
-    primaryDamageRadius: 10,
-    secondaryDamageRadius: 18,
-    splashOnExpiry: false,
-  },
   mortarShell: {
-    damage: 80,
+    damage: 20,
     speed: 200,
-    mass: 3,
-    radius: 7,
+    mass: 2,
+    radius: 5,
     lifespan: 2000,
     primaryDamageRadius: 70,
     secondaryDamageRadius: 110,
@@ -635,7 +833,7 @@ export const PROJECTILE_STATS = {
   cannonShell: {
     damage: 260,
     speed: 400,
-    mass: 5.0,
+    mass: 200.0,
     radius: 10,
     lifespan: 1800,
     primaryDamageRadius: 25,
@@ -690,9 +888,18 @@ export const WEAPON_STATS = {
   gatling: {
     projectile: 'lightRound' as const,
     audioId: 'minigun' as const,
-    range: 110,
-    cooldown: 80,
+    range: 100,
+    cooldown: 100,
     spreadAngle: Math.PI / 6,
+    turret: {
+      type: 'multibarrel' as const,
+      barrelCount: 3,
+      barrelLength: 1.0,
+      barrelThickness: 1.5,
+      orbitRadius: 0.3,
+      depthScale: 0.12,
+      spin: { idle: 0.1, max: 30, accel: 80, decel: 30 },
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -702,13 +909,22 @@ export const WEAPON_STATS = {
     },
   },
   pulse: {
-    projectile: 'pulseBolt' as const,
+    projectile: 'heavyRound' as const,
     audioId: 'burst-rifle' as const,
     range: 160,
-    cooldown: 1200,
-    burstCount: 3,
-    burstDelay: 40,
-    spreadAngle: Math.PI / 6,
+    cooldown: 400,
+    burstCount: 2,
+    burstDelay: 80,
+    spreadAngle: Math.PI / 24,
+    turret: {
+      type: 'multibarrel' as const,
+      barrelCount: 2,
+      barrelLength: 1.7,
+      barrelThickness: 4,
+      orbitRadius: 0.35,
+      depthScale: 0.1,
+      spin: { idle: 2.0, max: 50, accel: 80, decel: 30 },
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -718,12 +934,21 @@ export const WEAPON_STATS = {
     },
   },
   shotgun: {
-    projectile: 'buckshot' as const,
+    projectile: 'lightRound' as const,
     audioId: 'shotgun' as const,
     range: 90,
-    cooldown: 100,
-    pelletCount: 2,
-    spreadAngle: Math.PI / 2,
+    cooldown: 300,
+    pelletCount: 20,
+    spreadAngle: Math.PI / 1.4,
+    turret: {
+      type: 'coneSpread' as const,
+      barrelCount: 7,
+      barrelLength: 0.4,
+      barrelThickness: 3,
+      baseOrbit: 0.094,
+      depthScale: 0.12,
+      spin: { idle: 0.7, max: 4, accel: 80, decel: 30 },
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -737,7 +962,12 @@ export const WEAPON_STATS = {
     audioId: 'grenade' as const,
     range: 200,
     cooldown: 2500,
-    spreadAngle: Math.PI / 8,
+    spreadAngle: Math.PI / 12,
+    turret: {
+      type: 'single' as const,
+      barrelLength: 0.75,
+      barrelThickness: 6,
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -752,6 +982,11 @@ export const WEAPON_STATS = {
     range: 360,
     cooldown: 3000,
     spreadAngle: Math.PI / 24,
+    turret: {
+      type: 'single' as const,
+      barrelLength: 1.4,
+      barrelThickness: 7,
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -766,6 +1001,11 @@ export const WEAPON_STATS = {
     range: 250,
     cooldown: 2000,
     spreadAngle: 0,
+    turret: {
+      type: 'single' as const,
+      barrelLength: 1.6,
+      barrelThickness: 1.5,
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -781,6 +1021,11 @@ export const WEAPON_STATS = {
     cooldown: 0,
     turretTurnAccel: 100,
     turretDrag: 0.4,
+    turret: {
+      type: 'beamEmitter' as const,
+      barrelLength: 0.6,
+      barrelThickness: 3.5,
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -796,6 +1041,11 @@ export const WEAPON_STATS = {
     cooldown: 0,
     turretTurnAccel: 100,
     turretDrag: 0.65,
+    turret: {
+      type: 'beamEmitter' as const,
+      barrelLength: 0.5,
+      barrelThickness: 2.5,
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -815,6 +1065,10 @@ export const WEAPON_STATS = {
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 500,
+    turret: {
+      type: 'forceField' as const,
+      grate: FORCE_FIELD_TURRET.forceField,
+    },
     push: {
       innerRatio: 0.0,
       outerRatio: 0.8,
@@ -850,6 +1104,10 @@ export const WEAPON_STATS = {
     turretDrag: 0.5,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 500,
+    turret: {
+      type: 'forceField' as const,
+      grate: FORCE_FIELD_TURRET.megaForceField,
+    },
     push: {
       innerRatio: 0.0,
       outerRatio: 0.5,
@@ -883,6 +1141,11 @@ export const WEAPON_STATS = {
     audioId: 'cannon' as const,
     range: 150,
     cooldown: 0,
+    turret: {
+      type: 'beamEmitter' as const,
+      barrelLength: 0.7,
+      barrelThickness: 4,
+    },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,

@@ -9,13 +9,15 @@ import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
 import { getGraphicsConfig, getEffectiveQuality, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
-import { MINIGUN_CONFIG } from '../../config';
+import { CHASSIS_MOUNTS, FIRE_EXPLOSION } from '../../config';
+import type { TurretConfig, SpinConfig } from '../../config';
 
 // Import from helper modules
 import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, LodLevel } from './types';
 import { COLORS } from './types';
 import { createColorPalette } from './helpers';
-import { renderExplosion, renderSprayEffect, renderForceFieldEffect } from './effects';
+import { renderExplosion, renderSprayEffect } from './effects';
+import { drawTurret } from './TurretRenderer';
 import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawForceFieldUnit, drawCommanderUnit } from './units';
 import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
 import { renderBuilding } from './BuildingRenderer';
@@ -51,8 +53,8 @@ export class EntityRenderer {
   // Death debris fragments
   private debrisSystem = new DebrisSystem();
 
-  // Minigun barrel spin state per entity: { angle (rad), speed (rad/sec) }
-  private minigunSpins: Map<EntityId, { angle: number; speed: number }> = new Map();
+  // Barrel spin state per entity: { angle (rad), speed (rad/sec) }
+  private barrelSpins: Map<EntityId, { angle: number; speed: number }> = new Map();
 
   // Reusable Set for per-frame entity ID lookups (avoids allocating new Set + Array each frame)
   private _reusableIdSet: Set<EntityId> = new Set();
@@ -61,9 +63,6 @@ export class EntityRenderer {
   private _rangeVisToggle = { see: false, fire: false, release: false, lock: false, fightstop: false, build: false };
   private _rangeVisSelected = { see: true, fire: true, release: true, lock: true, fightstop: false, build: true };
   private _projRangeVis = { collision: false, primary: false, secondary: false };
-  // Rendering mode flags
-  private skipTurrets: boolean = false;
-  private turretsOnly: boolean = false;
 
   // Cached camera zoom for LOD calculations (updated each frame)
   private cameraZoom: number = 1;
@@ -101,7 +100,7 @@ export class EntityRenderer {
     this.locomotion.updateLocomotion(this.entitySource, dtMs);
   }
 
-  // ==================== MINIGUN SPIN ====================
+  // ==================== BARREL SPIN ====================
 
   updateMinigunSpins(dtMs: number): void {
     const dtSec = dtMs / 1000;
@@ -110,36 +109,45 @@ export class EntityRenderer {
     // Build live ID set for cleanup
     this._reusableIdSet.clear();
     for (const u of units) this._reusableIdSet.add(u.id);
-    for (const id of this.minigunSpins.keys()) {
-      if (!this._reusableIdSet.has(id)) this.minigunSpins.delete(id);
+    for (const id of this.barrelSpins.keys()) {
+      if (!this._reusableIdSet.has(id)) this.barrelSpins.delete(id);
     }
 
     for (const entity of units) {
-      const unitType = entity.unit?.unitType as keyof typeof MINIGUN_CONFIG | undefined;
-      if (!unitType || !(unitType in MINIGUN_CONFIG)) continue;
-      const cfg = MINIGUN_CONFIG[unitType];
+      if (!entity.weapons) continue;
 
-      let state = this.minigunSpins.get(entity.id);
+      // Find spin config from any weapon that has one (multibarrel or coneSpread)
+      let spinConfig: SpinConfig | undefined;
+      for (const w of entity.weapons) {
+        const tc = w.config.turret as TurretConfig | undefined;
+        if (tc && (tc.type === 'multibarrel' || tc.type === 'coneSpread')) {
+          spinConfig = tc.spin;
+          break;
+        }
+      }
+      if (!spinConfig) continue;
+
+      let state = this.barrelSpins.get(entity.id);
       if (!state) {
         state = { angle: 0, speed: 0 };
-        this.minigunSpins.set(entity.id, state);
+        this.barrelSpins.set(entity.id, state);
       }
 
       // Check if any weapon is firing
-      const firing = entity.weapons?.some(w => w.isFiring) ?? false;
+      const firing = entity.weapons.some(w => w.isFiring);
 
       if (firing) {
-        state.speed = Math.min(state.speed + cfg.accel * dtSec, cfg.maxSpeed);
+        state.speed = Math.min(state.speed + spinConfig.accel * dtSec, spinConfig.max);
       } else {
-        state.speed = Math.max(state.speed - cfg.decel * dtSec, cfg.idleSpeed);
+        state.speed = Math.max(state.speed - spinConfig.decel * dtSec, spinConfig.idle);
       }
 
       state.angle += state.speed * dtSec;
     }
   }
 
-  private getMinigunSpinAngle(entityId: EntityId): number {
-    return this.minigunSpins.get(entityId)?.angle ?? 0;
+  private getBarrelSpinAngle(entityId: EntityId): number {
+    return this.barrelSpins.get(entityId)?.angle ?? 0;
   }
 
   // ==================== EXPLOSION MANAGEMENT ====================
@@ -149,10 +157,11 @@ export class EntityRenderer {
     velocityX?: number, velocityY?: number,
     penetrationX?: number, penetrationY?: number,
     attackerX?: number, attackerY?: number,
-    primaryRadius?: number, secondaryRadius?: number,
+    collisionRadius?: number, primaryRadius?: number, secondaryRadius?: number,
+    entityCollisionRadius?: number,
   ): void {
     const baseRadius = 8;
-    const baseLifetime = type === 'death' ? 600 : 150;
+    const baseLifetime = type === 'death' ? 600 : FIRE_EXPLOSION.baseLifetimeMs;
     const radiusScale = Math.sqrt(radius / baseRadius);
     const lifetime = baseLifetime * radiusScale;
 
@@ -170,7 +179,8 @@ export class EntityRenderer {
       penetrationX, penetrationY, penetrationMag,
       attackerX, attackerY, attackerMag,
       combinedX, combinedY, combinedMag,
-      primaryRadius, secondaryRadius,
+      collisionRadius, primaryRadius, secondaryRadius,
+      entityCollisionRadius,
     });
   }
 
@@ -284,6 +294,16 @@ export class EntityRenderer {
     }
   }
 
+  // ==================== LOD COMPUTATION ====================
+
+  private computeUnitLod(radius: number): LodLevel {
+    const screenRadius = radius * this.cameraZoom;
+    if (screenRadius < 2) return 'min'; // sub-pixel
+    const quality = getEffectiveQuality();
+    const zoomLod: LodLevel = screenRadius < 6 ? 'min' : screenRadius < 12 ? 'low' : 'high';
+    return quality === 'min' ? 'min' : quality === 'low' ? (zoomLod === 'high' ? 'low' : zoomLod) : zoomLod;
+  }
+
   // ==================== MAIN RENDER ====================
 
   render(): void {
@@ -337,20 +357,15 @@ export class EntityRenderer {
       renderRangeCircles(this.graphics, entity, rangeVis);
     }
 
-    // 4. Unit bodies
-    this.skipTurrets = true;
-    this.turretsOnly = false;
+    // 4. Unit bodies (chassis only — no turrets)
     for (const entity of this.visibleUnits) {
-      this.renderUnit(entity);
+      this.renderUnitBody(entity);
     }
 
-    // 5. Turrets
-    this.skipTurrets = false;
-    this.turretsOnly = true;
+    // 5. Turrets (weapon-driven, rendered at mount points)
     for (const entity of this.visibleUnits) {
-      this.renderUnit(entity);
+      this.renderUnitTurrets(entity);
     }
-    this.turretsOnly = false;
 
     // 6. Projectiles (clean up stale beam offsets inline, cap LOD by quality)
     const projQuality = getEffectiveQuality();
@@ -391,9 +406,9 @@ export class EntityRenderer {
     renderSelectedLabels(this.graphics, this.entitySource, () => this.getLabel());
   }
 
-  // ==================== UNIT RENDERING ====================
+  // ==================== UNIT BODY RENDERING ====================
 
-  private renderUnit(entity: Entity): void {
+  private renderUnitBody(entity: Entity): void {
     if (!entity.unit) return;
 
     const { transform, unit, selectable, ownership } = entity;
@@ -401,12 +416,8 @@ export class EntityRenderer {
     const { collisionRadius: radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
 
-    // LOD: compute screen-space radius for detail level, capped by graphics quality
-    const screenRadius = radius * this.cameraZoom;
-    if (screenRadius < 2) return; // sub-pixel skip
-    const quality = getEffectiveQuality();
-    const zoomLod: LodLevel = screenRadius < 6 ? 'min' : screenRadius < 12 ? 'low' : 'high';
-    const lod: LodLevel = quality === 'min' ? 'min' : quality === 'low' ? (zoomLod === 'high' ? 'low' : zoomLod) : zoomLod;
+    const lod = this.computeUnitLod(radius);
+    if (lod === 'min' && radius * this.cameraZoom < 2) return; // sub-pixel skip
 
     // Get unit type for renderer selection
     const unitType = unit.unitType ?? 'jackal';
@@ -416,34 +427,8 @@ export class EntityRenderer {
       ? { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base }
       : fullPalette;
 
-    // 'min': colored dot — skip all unit/turret rendering, but render force field effects directly
+    // 'min': colored dot — skip body shape rendering
     if (lod === 'min') {
-      if (this.turretsOnly) {
-        // Render force field effects without turret geometry
-        if (entity.weapons) {
-          for (const w of entity.weapons) {
-            if (!w.config.isForceField) continue;
-            const progress = w.currentForceFieldRange ?? 0;
-            if (progress <= 0) continue;
-            const sliceAngle = w.config.forceFieldAngle ?? Math.PI / 4;
-            const turretRot = w.turretRotation;
-            const { push, pull } = w.config;
-            if (push) {
-              const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
-              if (push.outerRange > pushInner) {
-                renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, push.outerRange, push.color, push.alpha, push.particleAlpha, pushInner, true, lod, entity.id);
-              }
-            }
-            if (pull) {
-              const pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
-              if (pullOuter > pull.innerRange) {
-                renderForceFieldEffect(this.graphics, x, y, turretRot, sliceAngle, pullOuter, pull.color, pull.alpha, pull.particleAlpha, pull.innerRange, false, lod, entity.id);
-              }
-            }
-          }
-        }
-        return;
-      }
       this.graphics.fillStyle(palette.base, 1);
       this.graphics.fillCircle(x, y, radius);
       if (isSelected) {
@@ -461,7 +446,7 @@ export class EntityRenderer {
     }
 
     // Selection ring
-    if (isSelected && !this.turretsOnly) {
+    if (isSelected) {
       this.graphics.lineStyle(3, COLORS.UNIT_SELECTED, 1);
       this.graphics.strokeCircle(x, y, radius + 5);
     }
@@ -469,16 +454,14 @@ export class EntityRenderer {
     const ctx: UnitRenderContext = {
       graphics: this.graphics,
       x, y, radius, bodyRot: rotation, palette, isSelected, entity,
-      skipTurrets: this.skipTurrets, turretsOnly: this.turretsOnly,
       lod,
-      minigunSpinAngle: lod === 'low' ? 0 : this.getMinigunSpinAngle(entity.id),
     };
 
     // Commander gets special 4-legged mech body regardless of unit type
     if (entity.commander) {
       drawCommanderUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'commander'));
     } else {
-      // Select renderer based on unit type
+      // Select renderer based on unit type (body only)
       switch (unitType) {
         case 'jackal': drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
         case 'lynx': drawBurstUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
@@ -493,27 +476,60 @@ export class EntityRenderer {
       }
     }
 
-    if (!this.turretsOnly) {
-      if (entity.commander) {
-        renderCommanderCrown(this.graphics, x, y, radius);
-      }
+    // Post-body overlays
+    if (entity.commander) {
+      renderCommanderCrown(this.graphics, x, y, radius);
+    }
 
-      const healthPercent = hp / maxHp;
-      if (healthPercent < 1) {
-        renderHealthBar(this.graphics, x, y - radius - 10, radius * 2, 4, healthPercent);
-      }
+    const healthPercent = hp / maxHp;
+    if (healthPercent < 1) {
+      renderHealthBar(this.graphics, x, y - radius - 10, radius * 2, 4, healthPercent);
+    }
 
-      if (entity.weapons && isSelected) {
-        for (const weapon of entity.weapons) {
-          if (weapon.targetEntityId != null) {
-            const target = this.entitySource.getEntity(weapon.targetEntityId);
-            if (target) {
-              this.graphics.lineStyle(1, 0xff0000, 0.3);
-              this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
-            }
+    if (entity.weapons && isSelected) {
+      for (const weapon of entity.weapons) {
+        if (weapon.targetEntityId != null) {
+          const target = this.entitySource.getEntity(weapon.targetEntityId);
+          if (target) {
+            this.graphics.lineStyle(1, 0xff0000, 0.3);
+            this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
           }
         }
       }
+    }
+  }
+
+  // ==================== TURRET RENDERING (WEAPON-DRIVEN) ====================
+
+  private renderUnitTurrets(entity: Entity): void {
+    if (!entity.unit || !entity.weapons || entity.weapons.length === 0) return;
+
+    const { transform, unit, ownership } = entity;
+    const { x, y, rotation: bodyRot } = transform;
+    const r = unit.collisionRadius;
+
+    const lod = this.computeUnitLod(r);
+    if (lod === 'min' && r * this.cameraZoom < 2) return; // sub-pixel skip
+
+    const unitType = entity.commander ? 'commander' : (unit.unitType ?? 'jackal');
+    const mounts = CHASSIS_MOUNTS[unitType] ?? [{ x: 0, y: 0 }];
+
+    const fullPalette = createColorPalette(ownership?.playerId);
+    const palette = (lod === 'min' || lod === 'low')
+      ? { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base }
+      : fullPalette;
+
+    const cos = Math.cos(bodyRot);
+    const sin = Math.sin(bodyRot);
+    const spinAngle = lod === 'low' ? 0 : this.getBarrelSpinAngle(entity.id);
+
+    for (let i = 0; i < entity.weapons.length; i++) {
+      const weapon = entity.weapons[i];
+      const mount = mounts[Math.min(i, mounts.length - 1)];
+      const mountX = x + cos * mount.x * r - sin * mount.y * r;
+      const mountY = y + sin * mount.x * r + cos * mount.y * r;
+
+      drawTurret(this.graphics, mountX, mountY, r, weapon, lod, palette, spinAngle, entity.id);
     }
   }
 
@@ -530,7 +546,7 @@ export class EntityRenderer {
     this.labelPool.length = 0;
     this.activeLabelCount = 0;
     this.beamRandomOffsets.clear();
-    this.minigunSpins.clear();
+    this.barrelSpins.clear();
     this.locomotion.clear();
     this.clearEffects();
     this.graphics.destroy();

@@ -100,6 +100,7 @@ export interface ForceFieldZoneConfig {
 export interface WeaponConfig {
   id: string;                    // Unique identifier (e.g., 'laser', 'minigun', 'cannon')
   audioId: import('../audio/AudioManager').WeaponAudioId; // Audio ID for sound effects
+  turret?: import('../../config').TurretConfig; // Turret visual config (barrel type, dimensions, spin)
   damage: number;                // Base damage per hit
   range: number;                 // Attack range
   cooldown: number;              // Time between attacks (ms)

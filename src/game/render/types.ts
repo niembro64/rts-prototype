@@ -51,9 +51,13 @@ export interface ExplosionEffect {
   combinedY?: number;
   combinedMag?: number;
 
-  // Dual damage radii for min-detail explosion animation
-  primaryRadius?: number;
-  secondaryRadius?: number;
+  // Projectile/damage radii for impact explosion animation
+  collisionRadius?: number;   // Projectile collision radius (innermost zone)
+  primaryRadius?: number;     // Primary damage radius (middle zone)
+  secondaryRadius?: number;   // Secondary damage radius (outer zone)
+
+  // Collided entity's collision radius (for impact explosions)
+  entityCollisionRadius?: number;
 }
 
 // Color palette for unit rendering
@@ -76,12 +80,8 @@ export interface UnitRenderContext {
   palette: ColorPalette;
   isSelected: boolean;
   entity: Entity;
-  skipTurrets: boolean;
-  turretsOnly: boolean;
   /** LOD level: renderers only ever see 'low' or 'high' ('min' is handled by the dot fast path) */
   lod: LodLevel;
-  /** Minigun barrel spin angle in radians (for multi-barrel units) */
-  minigunSpinAngle: number;
 }
 
 // Context passed to building renderers

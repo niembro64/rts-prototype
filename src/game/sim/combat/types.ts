@@ -8,6 +8,26 @@ import type { WeaponAudioId } from '../../audio/AudioManager';
 export type { DeathContext } from '../damage/types';
 export type { WeaponAudioId } from '../../audio/AudioManager';
 
+// Impact context for hit/projectileExpire events - drives directional flame explosions
+export interface ImpactContext {
+  // Projectile radii (from weapon config)
+  collisionRadius: number;     // Projectile collision radius
+  primaryRadius: number;       // Primary damage/visual radius
+  secondaryRadius: number;     // Secondary damage/visual radius
+  // Projectile kinematics at impact
+  projectileVelX: number;      // Projectile velocity (or beam direction * magnitude)
+  projectileVelY: number;
+  projectileX: number;         // Projectile center at impact
+  projectileY: number;
+  // Collided entity data (zero when no entity hit, e.g. projectileExpire)
+  entityVelX: number;          // Hit entity velocity
+  entityVelY: number;
+  entityCollisionRadius: number; // Hit entity's collision radius
+  // Normalized direction: projectile center → entity center
+  penetrationDirX: number;
+  penetrationDirY: number;
+}
+
 // Audio event types
 export interface AudioEvent {
   type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'projectileExpire';
@@ -34,6 +54,9 @@ export interface AudioEvent {
     unitType?: string;    // Unit type for debris generation
     rotation?: number;    // Unit's body rotation at death
   };
+
+  // Impact context (only for 'hit' and 'projectileExpire' events) - for directional flame explosions
+  impactContext?: ImpactContext;
 }
 
 // Projectile spawn event - emitted when a projectile is created in the sim

@@ -2,7 +2,7 @@
 // Re-exports all combat functionality from helper modules
 
 // Types
-export type { AudioEvent, FireWeaponsResult, CollisionResult, DeathContext, WeaponAudioId } from './types';
+export type { AudioEvent, ImpactContext, FireWeaponsResult, CollisionResult, DeathContext, WeaponAudioId } from './types';
 
 // Utility functions
 export { distance, getTargetRadius, normalizeAngle, getMovementAngle } from './combatUtils';

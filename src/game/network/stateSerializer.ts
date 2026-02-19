@@ -402,6 +402,7 @@ export function serializeGameState(
         y: ae.y,
         entityId: ae.entityId,
         deathContext: ae.deathContext,
+        impactContext: ae.impactContext,
       });
     }
     netAudioEvents = _audioBuf;
