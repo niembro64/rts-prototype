@@ -105,7 +105,7 @@ export const PROJ_RANGE_TYPES: ProjRangeType[] = ['collision', 'primary', 'secon
 // Current settings
 // Default to 'auto' - adjusts quality based on zoom level
 let currentQuality: GraphicsQuality = 'auto';
-let currentRenderMode: RenderMode = 'window';
+let currentRenderMode: RenderMode = 'padded';
 const currentRangeToggles: Record<RangeType, boolean> = {
   see: false,
   fire: false,

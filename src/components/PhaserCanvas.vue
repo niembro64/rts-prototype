@@ -474,7 +474,7 @@ function resetServerDefaults(): void {
 
 function resetClientDefaults(): void {
   changeGraphicsQuality('auto');
-  changeRenderMode('window');
+  changeRenderMode('padded');
   changeAudioScope('padded');
   setAudioSmoothing(true);
   audioSmoothing.value = true;
