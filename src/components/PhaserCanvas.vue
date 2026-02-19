@@ -570,10 +570,11 @@ function formatDuration(ms: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-/** Format a number to always occupy exactly 4 characters (e.g. "0.34", "3.55", "35.4", " 354") */
+/** Format a number to always occupy exactly 4 characters (e.g. "0.34", "3.55", "35.4", "134.", "1342") */
 function fmt4(n: number): string {
   if (n < 10) return n.toFixed(2);
   if (n < 100) return n.toFixed(1);
+  if (n < 1000) return n.toFixed(0) + '.';
   return n.toFixed(0).padStart(4, ' ');
 }
 
