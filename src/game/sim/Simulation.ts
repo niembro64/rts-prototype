@@ -235,11 +235,6 @@ export class Simulation {
       }
     }
 
-    // Update spatial grid incrementally (PERFORMANCE CRITICAL)
-    // Units: O(1) per unit that didn't cross cell boundary
-    // Buildings: only added on creation, removed on destruction (static)
-    this.updateSpatialGrid();
-
     // Beam index is maintained incrementally:
     // - addBeam() called on beam creation in fireWeapons()
     // - removeBeam() called on beam expiry/orphan in updateProjectiles/checkProjectileCollisions
@@ -252,6 +247,10 @@ export class Simulation {
 
     // Sync transforms from Matter bodies
     this.syncTransformsFromBodies();
+
+    // Update spatial grid AFTER physics sync so grid cells match actual positions
+    // (PERFORMANCE CRITICAL: O(1) per unit that didn't cross cell boundary)
+    this.updateSpatialGrid();
 
     // Update combat systems (adds external forces like force field pull)
     this.updateCombat(dtMs);
