@@ -938,8 +938,8 @@ export const WEAPON_STATS = {
   shotgun: {
     projectile: 'heavyRound' as const,
     range: 160,
-    cooldown: 500,
-    pelletCount: 1,
+    cooldown: 1500,
+    pelletCount: 4,
     spreadAngle: Math.PI / 1.4,
     homingTurnRate: 3, // rad/sec — pellets curve toward locked target
     turretTurnAccel: 5,
@@ -1273,8 +1273,9 @@ export interface UnitSoundConfig {
 }
 
 export const AUDIO = {
-  masterVolume: 0.2, // Global master gain (applied to AudioContext destination)
+  masterVolume: 0.99, // Global master gain (applied to AudioContext destination)
   sfxVolume: 0.5, // SFX sub-mix multiplier (applied per gain node)
+  zoomVolumeExponent: 1.2, // How volume scales with zoom: volume = zoom^exponent (2 = inverse square, 1 = linear, 0 = no scaling)
 
   // Turret sounds (keyed by weapon id)
   turrets: {

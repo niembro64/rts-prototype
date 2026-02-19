@@ -146,9 +146,8 @@ export function handleAudioEvent(
     ) return;
   }
 
-  // Volume scales with zoom² (inverse square law: zoom 1 = reference,
-  // zoom 0.5 = 0.25x, zoom 2 = 4x). Locked at play time per-sound.
-  const zoomVolume = zoom * zoom;
+  // Volume scales with zoom^exponent (configurable). Locked at play time per-sound.
+  const zoomVolume = Math.pow(zoom, AUDIO.zoomVolumeExponent);
 
   switch (event.type) {
     case 'fire':

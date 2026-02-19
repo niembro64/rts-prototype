@@ -291,6 +291,7 @@ const showCombatStats = ref(COMBAT_STATS_VISIBLE_ON_LOAD);
 const combatStatsViewMode = ref<'global' | 'player'>('global');
 const combatStatsHistory = ref<StatsSnapshot[]>([]);
 let statsHistoryStartTime = 0;
+const battleElapsed = ref('00:00:00');
 
 let gameInstance: GameInstance | null = null;
 
@@ -480,7 +481,7 @@ function resetServerDefaults(): void {
 function resetClientDefaults(): void {
   changeGraphicsQuality('auto');
   changeRenderMode('window');
-  changeAudioScope('off');
+  changeAudioScope('padded');
   setAudioSmoothing(true);
   audioSmoothing.value = true;
   setDriftMode('slow');
@@ -565,6 +566,15 @@ const selectionActions: SelectionActions = {
     scene?.cancelFactoryQueueItem(factoryId, index);
   },
 };
+
+/** Format milliseconds as HH:MM:SS */
+function formatDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 /** Format a number to always occupy exactly 4 characters (e.g. "0.34", "3.55", "35.4", " 354") */
 function fmt4(n: number): string {
@@ -664,10 +674,6 @@ function toggleSpectateMode(): void {
 }
 
 function changeGraphicsQuality(quality: GraphicsQuality): void {
-  // AUTO toggle: if already in auto, lock the current effective level
-  if (quality === 'auto' && graphicsQuality.value === 'auto') {
-    quality = effectiveQuality.value;
-  }
   setGraphicsQuality(quality);
   graphicsQuality.value = quality;
 }
@@ -972,6 +978,11 @@ onMounted(() => {
       hour12: false,
       timeZoneName: 'short',
     }).format(new Date());
+    if (statsHistoryStartTime > 0) {
+      battleElapsed.value = formatDuration(Date.now() - statsHistoryStartTime);
+    } else {
+      battleElapsed.value = '00:00:00';
+    }
   }
   updateClientTime();
   clientTimeInterval = setInterval(updateClientTime, 1000);
@@ -1052,6 +1063,7 @@ onUnmounted(() => {
       <div v-if="isBackgroundBattle" class="control-bar demo-bar">
         <div class="control-group">
           <button class="bar-label demo-label" @click="resetDemoDefaults"><span class="bar-label-text">DEMO BATTLE</span><span class="bar-label-hover">DEFAULTS</span></button>
+          <span class="time-display demo-time">{{ battleElapsed }}</span>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
@@ -1901,6 +1913,10 @@ onUnmounted(() => {
 
 .client-time {
   color: #6a6;
+}
+
+.demo-time {
+  color: #cc9944;
 }
 
 .ip-display {

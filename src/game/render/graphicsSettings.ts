@@ -119,7 +119,7 @@ const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
   primary: false,
   secondary: false,
 };
-let currentAudioScope: AudioScope = 'all';
+let currentAudioScope: AudioScope = 'padded';
 let currentAudioSmoothing: boolean = true;
 let currentDriftMode: DriftMode = 'slow';
 let currentZoom: number = 1.0; // Updated by renderer
