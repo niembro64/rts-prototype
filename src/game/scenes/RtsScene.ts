@@ -587,8 +587,9 @@ export class RtsScene extends Phaser.Scene {
       // Process audio events
       const audioEvents = this.clientViewState.getPendingAudioEvents();
       if (audioEvents) {
+        const cam = this.cameras.main;
         for (const event of audioEvents) {
-          handleAudioEvent(event as AudioEvent, this.entityRenderer, this.audioInitialized);
+          handleAudioEvent(event as AudioEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
         }
       }
 

@@ -7,6 +7,8 @@ import {
   updateTurretRotation,
   updateWeaponCooldowns,
   updateLaserSounds,
+  emitLaserStopsForEntity,
+  emitLaserStopsForTarget,
   fireWeapons,
   updateForceFieldState,
   applyForceFieldDamage,
@@ -523,8 +525,18 @@ export class Simulation {
       buf.length = 0;
       for (const id of collisionResult.deadUnitIds) {
         const entity = this.world.getEntity(id);
-        if (entity?.unit?.unitType && entity.ownership) {
-          this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
+        if (entity) {
+          // Emit laserStop for the dying entity's own beam weapons
+          for (const evt of emitLaserStopsForEntity(entity)) {
+            this.pendingAudioEvents.push(evt);
+          }
+          // Emit laserStop for any beam weapons across the world targeting this entity
+          for (const evt of emitLaserStopsForTarget(this.world, id)) {
+            this.pendingAudioEvents.push(evt);
+          }
+          if (entity.unit?.unitType && entity.ownership) {
+            this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
+          }
         }
         spatialGrid.removeUnit(id);
         buf.push(id);
@@ -575,8 +587,18 @@ export class Simulation {
     if (deadUnitIds.length > 0) {
       for (const id of deadUnitIds) {
         const entity = this.world.getEntity(id);
-        if (entity?.unit?.unitType && entity.ownership) {
-          this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
+        if (entity) {
+          // Emit laserStop for the dying entity's own beam weapons
+          for (const evt of emitLaserStopsForEntity(entity)) {
+            this.pendingAudioEvents.push(evt);
+          }
+          // Emit laserStop for any beam weapons across the world targeting this entity
+          for (const evt of emitLaserStopsForTarget(this.world, id)) {
+            this.pendingAudioEvents.push(evt);
+          }
+          if (entity.unit?.unitType && entity.ownership) {
+            this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
+          }
         }
         spatialGrid.removeUnit(id);
       }

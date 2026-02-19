@@ -87,8 +87,11 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
   },
 };
 
+export type AudioScope = 'off' | 'window' | 'padded' | 'all';
+
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
+const AUDIO_SCOPE_STORAGE_KEY = 'rts-audio-scope';
 
 export type RangeType = 'see' | 'fire' | 'release' | 'lock' | 'fightstop' | 'build';
 export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'fightstop', 'build'];
@@ -113,6 +116,7 @@ const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
   primary: false,
   secondary: false,
 };
+let currentAudioScope: AudioScope = 'all';
 let currentZoom: number = 1.0; // Updated by renderer
 
 // Load from localStorage on module init
@@ -125,6 +129,10 @@ function loadFromStorage(): void {
     const storedRenderMode = localStorage.getItem(RENDER_MODE_STORAGE_KEY);
     if (storedRenderMode && (storedRenderMode === 'window' || storedRenderMode === 'padded' || storedRenderMode === 'all')) {
       currentRenderMode = storedRenderMode;
+    }
+    const storedAudioScope = localStorage.getItem(AUDIO_SCOPE_STORAGE_KEY);
+    if (storedAudioScope && (storedAudioScope === 'off' || storedAudioScope === 'window' || storedAudioScope === 'padded' || storedAudioScope === 'all')) {
+      currentAudioScope = storedAudioScope;
     }
   } catch {
     // localStorage not available, use default
@@ -267,4 +275,23 @@ export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
  */
 export function anyProjRangeToggleActive(): boolean {
   return PROJ_RANGE_TYPES.some(prt => currentProjRangeToggles[prt]);
+}
+
+/**
+ * Get current audio scope
+ */
+export function getAudioScope(): AudioScope {
+  return currentAudioScope;
+}
+
+/**
+ * Set audio scope (persists to localStorage)
+ */
+export function setAudioScope(scope: AudioScope): void {
+  currentAudioScope = scope;
+  try {
+    localStorage.setItem(AUDIO_SCOPE_STORAGE_KEY, scope);
+  } catch {
+    // localStorage not available
+  }
 }

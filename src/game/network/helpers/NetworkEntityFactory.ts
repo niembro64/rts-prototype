@@ -184,7 +184,6 @@ function createProjectileFromNetwork(
         ? { ...getWeaponConfig(netEntity.weaponId), weaponIndex: netEntity.weaponIndex }
         : {
           id: 'unknown',
-          audioId: 'cannon' as const,
           damage: 10,
           range: 100,
           cooldown: 1000,

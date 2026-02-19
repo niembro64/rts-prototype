@@ -8,7 +8,6 @@ import { aimTurretsToward } from '../sim/turretInit';
 import { createUnitBodyStandalone, toPhaserBody } from './PhysicsStandalone';
 import {
   UNIT_STATS,
-  MAX_TOTAL_UNITS,
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
 
@@ -149,7 +148,7 @@ export function spawnBackgroundUnitsStandalone(
 ): Entity[] {
   const spawned: Entity[] = [];
   const numPlayers = 4;
-  const unitCapPerPlayer = Math.floor(MAX_TOTAL_UNITS / numPlayers);
+  const unitCapPerPlayer = Math.floor(world.maxTotalUnits / numPlayers);
   const spawnMargin = 100;
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;

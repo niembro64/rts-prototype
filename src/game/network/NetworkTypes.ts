@@ -123,6 +123,7 @@ export interface NetworkServerMeta {
   serverTime: string;    // "14:34:05 MST"
   ipAddress: string;     // Public IP or "N/A"
   allowedUnitTypes?: string[];  // Demo mode only
+  maxTotalUnits?: number;       // Current unit cap
 }
 
 // Serialized game state sent over network

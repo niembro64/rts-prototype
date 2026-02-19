@@ -4,19 +4,20 @@ import type { EntityRenderer } from '../../render/renderEntities';
 import type { AudioEvent } from '../../sim/combat';
 import { audioManager } from '../../audio/AudioManager';
 import {
-  LASER_SOUND_ENABLED,
+  AUDIO,
   EXPLOSION_VELOCITY_MULTIPLIER,
   EXPLOSION_IMPACT_FORCE_MULTIPLIER,
   EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
   EXPLOSION_BASE_MOMENTUM,
   FIRE_EXPLOSION,
 } from '../../../config';
-import { WEAPON_CONFIGS } from '../../sim/weapons';
+import { TURRET_CONFIGS } from '../../sim/weapons';
 import { magnitude } from '../../math';
+import { getAudioScope } from '../../render/graphicsSettings';
 
 // Get explosion radius based on weapon type (uses primaryDamageRadius from config)
 export function getExplosionRadius(weaponId: string): number {
-  const config = WEAPON_CONFIGS[weaponId as keyof typeof WEAPON_CONFIGS];
+  const config = TURRET_CONFIGS[weaponId as keyof typeof TURRET_CONFIGS];
   if (config?.primaryDamageRadius) {
     return config.primaryDamageRadius as number;
   }
@@ -25,7 +26,7 @@ export function getExplosionRadius(weaponId: string): number {
 
 // Get secondary explosion radius based on weapon type
 function getSecondaryExplosionRadius(weaponId: string): number | undefined {
-  const config = WEAPON_CONFIGS[weaponId as keyof typeof WEAPON_CONFIGS];
+  const config = TURRET_CONFIGS[weaponId as keyof typeof TURRET_CONFIGS];
   return config?.secondaryDamageRadius as number | undefined;
 }
 
@@ -33,7 +34,9 @@ function getSecondaryExplosionRadius(weaponId: string): number | undefined {
 export function handleAudioEvent(
   event: AudioEvent,
   entityRenderer: EntityRenderer,
-  audioInitialized: boolean
+  audioInitialized: boolean,
+  viewport?: Phaser.Geom.Rectangle,
+  zoom: number = 1,
 ): void {
   // Always handle visual effects even if audio not initialized
   if (event.type === 'hit' || event.type === 'projectileExpire') {
@@ -128,21 +131,43 @@ export function handleAudioEvent(
 
   if (!audioInitialized) return;
 
+  // Audio scope filtering: 'off' = no audio, 'window' = viewport only,
+  // 'padded' = 2x viewport area, 'all' = everything
+  const audioScope = getAudioScope();
+  if (audioScope === 'off') return;
+  if (audioScope === 'window' && viewport) {
+    if (!viewport.contains(event.x, event.y)) return;
+  } else if (audioScope === 'padded' && viewport) {
+    const padX = viewport.width * 0.5;
+    const padY = viewport.height * 0.5;
+    if (
+      event.x < viewport.x - padX || event.x > viewport.right + padX ||
+      event.y < viewport.y - padY || event.y > viewport.bottom + padY
+    ) return;
+  }
+
+  // Volume scales with zoom² (inverse square law: zoom 1 = reference,
+  // zoom 0.5 = 0.25x, zoom 2 = 4x). Locked at play time per-sound.
+  const zoomVolume = zoom * zoom;
+
   switch (event.type) {
     case 'fire':
-      audioManager.playWeaponFire(event.weaponId);
+      audioManager.playWeaponFire(event.weaponId, 1, zoomVolume);
       break;
     case 'hit':
-      audioManager.playWeaponHit(event.weaponId);
+      audioManager.playWeaponHit(event.weaponId, zoomVolume);
       break;
     case 'death':
-      audioManager.playUnitDeath(event.weaponId);
+      audioManager.playUnitDeath(event.deathContext?.unitType ?? '', zoomVolume);
       break;
-    case 'laserStart':
-      // Only play laser sound if enabled in config
-      if (LASER_SOUND_ENABLED && event.entityId !== undefined) {
-        audioManager.startLaserSound(event.entityId);
+    case 'laserStart': {
+      if (!AUDIO.turrets.laserGain) break;
+      const laserEntry = AUDIO.turrets.sounds[event.weaponId]?.laser;
+      if (!laserEntry || !laserEntry.volume) break;
+      if (event.entityId !== undefined) {
+        audioManager.startLaserSound(event.entityId, 1, zoomVolume * laserEntry.volume * AUDIO.turrets.laserGain);
       }
+    }
       break;
     case 'laserStop':
       // Always try to stop (in case config changed mid-game)

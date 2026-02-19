@@ -1,15 +1,9 @@
+import { AUDIO } from '../../config';
+
 // Procedural audio generation using Web Audio API
 
 // Weapon type IDs for audio
-export type WeaponAudioId =
-  | 'beam'
-  | 'minigun'
-  | 'cannon'
-  | 'shotgun'
-  | 'grenade'
-  | 'railgun'
-  | 'burst-rifle'
-  | 'force-field';
+export type WeaponAudioId = string;
 
 // Active continuous sound (for lasers)
 interface ContinuousSound {
@@ -31,8 +25,8 @@ export class AudioManager {
   private pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
 
   // Volume controls
-  public masterVolume = 0.3;
-  public sfxVolume = 0.5;
+  public masterVolume = AUDIO.masterVolume;
+  public sfxVolume = AUDIO.sfxVolume;
   public muted = true;  // Default to muted
 
   // Initialize audio context (must be called after user interaction)
@@ -98,7 +92,7 @@ export class AudioManager {
   // ==================== WEAPON FIRE SOUNDS ====================
 
   // Start continuous laser sound (call when beam starts)
-  startLaserSound(entityId: number, pitch: number = 1): void {
+  startLaserSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -107,18 +101,18 @@ export class AudioManager {
 
     // Main oscillator - continuous tone (no auto-disconnect for continuous sounds)
     const osc = ctx.createOscillator();
-    const gain = this.createGain(0.15, 0);
+    const gain = this.createGain(0.15 * volumeMultiplier, 0);
     if (!gain) return;
 
     osc.type = 'sawtooth';
-    osc.frequency.value = 180 * pitch;
+    osc.frequency.value = 180 * speed;
 
     // Add slight wobble for more interesting sound
     const lfo = ctx.createOscillator();
     const lfoGain = ctx.createGain();
     lfo.type = 'sine';
-    lfo.frequency.value = 8; // 8 Hz wobble
-    lfoGain.gain.value = 15; // ±15 Hz variation
+    lfo.frequency.value = 8 * speed; // 8 Hz wobble
+    lfoGain.gain.value = 15 * speed; // ±15 Hz variation
     lfo.connect(lfoGain);
     lfoGain.connect(osc.frequency);
     lfo.start();
@@ -126,14 +120,14 @@ export class AudioManager {
     // Filter for warmth
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 1200;
+    filter.frequency.value = 1200 * speed;
     filter.Q.value = 2;
 
     // Smooth fade in from near-zero (no click)
     // Use linear ramp for smooth start from silence
     gain.gain.setValueAtTime(0.0001, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(
-      0.2 * this.sfxVolume,
+      0.2 * this.sfxVolume * volumeMultiplier,
       ctx.currentTime + 0.12
     );
 
@@ -152,7 +146,7 @@ export class AudioManager {
 
       const noiseFilter = ctx.createBiquadFilter();
       noiseFilter.type = 'bandpass';
-      noiseFilter.frequency.value = 4000;
+      noiseFilter.frequency.value = 4000 * speed;
       noiseFilter.Q.value = 1;
 
       // Create noise gain with fade-in (no click, no auto-disconnect for continuous)
@@ -160,7 +154,7 @@ export class AudioManager {
       if (noiseGain) {
         noiseGain.gain.setValueAtTime(0.0001, ctx.currentTime);
         noiseGain.gain.linearRampToValueAtTime(
-          0.08 * this.sfxVolume,
+          0.08 * this.sfxVolume * volumeMultiplier,
           ctx.currentTime + 0.12
         );
         noiseSource.connect(noiseFilter).connect(noiseGain);
@@ -226,7 +220,7 @@ export class AudioManager {
   }
 
   // Legacy method for compatibility - now starts continuous sound briefly
-  playLaserFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playLaserFire(speed: number = 1, volumeMultiplier: number = 1): void {
     // For single-shot laser effects (like railgun), use a short burst
     const ctx = this.ensureContext();
     if (!ctx) return;
@@ -236,10 +230,10 @@ export class AudioManager {
 
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(300 * pitch, ctx.currentTime);
+    osc.frequency.setValueAtTime(300 * speed, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(
-      150 * pitch,
-      ctx.currentTime + 0.12
+      150 * speed,
+      ctx.currentTime + 0.12 / speed
     );
 
     const filter = ctx.createBiquadFilter();
@@ -247,15 +241,15 @@ export class AudioManager {
     filter.frequency.value = 1500;
 
     gain.gain.setValueAtTime(0.25 * volumeMultiplier, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12 / speed);
 
     osc.connect(filter).connect(gain);
     osc.start();
-    osc.stop(ctx.currentTime + 0.12);
+    osc.stop(ctx.currentTime + 0.12 / speed);
   }
 
   // Minigun fire - short punchy noise burst
-  playMinigunFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playMinigunFire(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -263,7 +257,7 @@ export class AudioManager {
     if (!gain) return;
 
     // Noise component
-    const noiseBuffer = this.createNoiseBuffer(0.05);
+    const noiseBuffer = this.createNoiseBuffer(0.05 / speed);
     if (!noiseBuffer) return;
 
     const noise = ctx.createBufferSource();
@@ -271,11 +265,11 @@ export class AudioManager {
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.value = 1500 * pitch;
+    filter.frequency.value = 1500 * speed;
     filter.Q.value = 2;
 
     gain.gain.setValueAtTime(0.4 * volumeMultiplier, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.04 / speed);
 
     noise.connect(filter).connect(gain);
     noise.start();
@@ -285,17 +279,17 @@ export class AudioManager {
     const oscGain = this.createGain(0.1 * volumeMultiplier);
     if (oscGain) {
       osc.type = 'square';
-      osc.frequency.value = 150 * pitch;
+      osc.frequency.value = 150 * speed;
       oscGain.gain.setValueAtTime(0.2 * volumeMultiplier, ctx.currentTime);
-      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.02);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.02 / speed);
       osc.connect(oscGain);
       osc.start();
-      osc.stop(ctx.currentTime + 0.02);
+      osc.stop(ctx.currentTime + 0.02 / speed);
     }
   }
 
   // Cannon fire - deep boom
-  playCannonFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playCannonFire(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -305,21 +299,21 @@ export class AudioManager {
     if (!oscGain) return;
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(120 * pitch, ctx.currentTime);
+    osc.frequency.setValueAtTime(120 * speed, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(
-      40 * pitch,
-      ctx.currentTime + 0.3
+      40 * speed,
+      ctx.currentTime + 0.3 / speed
     );
 
     oscGain.gain.setValueAtTime(0.5 * volumeMultiplier, ctx.currentTime);
-    oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3 / speed);
 
     osc.connect(oscGain);
     osc.start();
-    osc.stop(ctx.currentTime + 0.3);
+    osc.stop(ctx.currentTime + 0.3 / speed);
 
     // Noise burst for texture
-    const noiseBuffer = this.createNoiseBuffer(0.2);
+    const noiseBuffer = this.createNoiseBuffer(0.2 / speed);
     if (!noiseBuffer) return;
 
     const noise = ctx.createBufferSource();
@@ -329,25 +323,25 @@ export class AudioManager {
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(800, ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.2);
+    filter.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.2 / speed);
 
     if (noiseGain) {
       noiseGain.gain.setValueAtTime(0.3 * volumeMultiplier, ctx.currentTime);
-      noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2 / speed);
       noise.connect(filter).connect(noiseGain);
       noise.start();
     }
   }
 
   // Shotgun fire - chunky blast
-  playShotgunFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playShotgunFire(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
     // Multiple layered noise bursts
     for (let i = 0; i < 3; i++) {
-      const delay = i * 0.008;
-      const noiseBuffer = this.createNoiseBuffer(0.1);
+      const delay = i * 0.008 / speed;
+      const noiseBuffer = this.createNoiseBuffer(0.1 / speed);
       if (!noiseBuffer) continue;
 
       const noise = ctx.createBufferSource();
@@ -355,7 +349,7 @@ export class AudioManager {
 
       const filter = ctx.createBiquadFilter();
       filter.type = 'bandpass';
-      filter.frequency.value = (800 + i * 400) * pitch;
+      filter.frequency.value = (800 + i * 400) * speed;
       filter.Q.value = 1;
 
       const gain = this.createGain(0.2 * volumeMultiplier);
@@ -367,7 +361,7 @@ export class AudioManager {
       );
       gain.gain.exponentialRampToValueAtTime(
         0.01,
-        ctx.currentTime + delay + 0.08
+        ctx.currentTime + delay + 0.08 / speed
       );
 
       noise.connect(filter).connect(gain);
@@ -379,21 +373,21 @@ export class AudioManager {
     const oscGain = this.createGain(0.25 * volumeMultiplier);
     if (oscGain) {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(100 * pitch, ctx.currentTime);
+      osc.frequency.setValueAtTime(100 * speed, ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(
-        50 * pitch,
-        ctx.currentTime + 0.1
+        50 * speed,
+        ctx.currentTime + 0.1 / speed
       );
       oscGain.gain.setValueAtTime(0.4 * volumeMultiplier, ctx.currentTime);
-      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1 / speed);
       osc.connect(oscGain);
       osc.start();
-      osc.stop(ctx.currentTime + 0.1);
+      osc.stop(ctx.currentTime + 0.1 / speed);
     }
   }
 
   // Grenade launcher - thunk sound
-  playGrenadeFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playGrenadeFire(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -402,22 +396,22 @@ export class AudioManager {
     if (!gain) return;
 
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(200 * pitch, ctx.currentTime);
+    osc.frequency.setValueAtTime(200 * speed, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(
-      80 * pitch,
-      ctx.currentTime + 0.12
+      80 * speed,
+      ctx.currentTime + 0.12 / speed
     );
 
     gain.gain.setValueAtTime(0.4 * volumeMultiplier, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12 / speed);
 
     osc.connect(gain);
     osc.start();
-    osc.stop(ctx.currentTime + 0.12);
+    osc.stop(ctx.currentTime + 0.12 / speed);
   }
 
   // Railgun - electric zap
-  playRailgunFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playRailgunFire(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -426,20 +420,20 @@ export class AudioManager {
     const gain1 = this.createGain(0.2 * volumeMultiplier);
     if (gain1) {
       osc1.type = 'sawtooth';
-      osc1.frequency.setValueAtTime(2000 * pitch, ctx.currentTime);
+      osc1.frequency.setValueAtTime(2000 * speed, ctx.currentTime);
       osc1.frequency.exponentialRampToValueAtTime(
-        500 * pitch,
-        ctx.currentTime + 0.1
+        500 * speed,
+        ctx.currentTime + 0.1 / speed
       );
       gain1.gain.setValueAtTime(0.25 * volumeMultiplier, ctx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1 / speed);
       osc1.connect(gain1);
       osc1.start();
-      osc1.stop(ctx.currentTime + 0.1);
+      osc1.stop(ctx.currentTime + 0.1 / speed);
     }
 
     // Electric crackle
-    const noiseBuffer = this.createNoiseBuffer(0.15);
+    const noiseBuffer = this.createNoiseBuffer(0.15 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
@@ -453,7 +447,7 @@ export class AudioManager {
         noiseGain.gain.setValueAtTime(0.2 * volumeMultiplier, ctx.currentTime);
         noiseGain.gain.exponentialRampToValueAtTime(
           0.01,
-          ctx.currentTime + 0.15
+          ctx.currentTime + 0.15 / speed
         );
         noise.connect(filter).connect(noiseGain);
         noise.start();
@@ -462,12 +456,12 @@ export class AudioManager {
   }
 
   // Burst rifle - quick triple tap
-  playBurstRifleFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playBurstRifleFire(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
     // Single shot sound (will be called multiple times by burst logic)
-    const noiseBuffer = this.createNoiseBuffer(0.04);
+    const noiseBuffer = this.createNoiseBuffer(0.04 / speed);
     if (!noiseBuffer) return;
 
     const noise = ctx.createBufferSource();
@@ -475,21 +469,21 @@ export class AudioManager {
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.value = 2000 * pitch;
+    filter.frequency.value = 2000 * speed;
     filter.Q.value = 1.5;
 
     const gain = this.createGain(0.2 * volumeMultiplier);
     if (!gain) return;
 
     gain.gain.setValueAtTime(0.3 * volumeMultiplier, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.04 / speed);
 
     noise.connect(filter).connect(gain);
     noise.start();
   }
 
   // Insect fire - rapid chittery clicks
-  playInsectFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playInsectFire(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -499,27 +493,27 @@ export class AudioManager {
     // High-frequency click/chirp
     const osc = ctx.createOscillator();
     osc.type = 'square';
-    osc.frequency.setValueAtTime(800 * pitch, ctx.currentTime);
+    osc.frequency.setValueAtTime(800 * speed, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(
-      400 * pitch,
-      ctx.currentTime + 0.03
+      400 * speed,
+      ctx.currentTime + 0.03 / speed
     );
 
     // Bandpass filter for that insect-like quality
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.value = 1200 * pitch;
+    filter.frequency.value = 1200 * speed;
     filter.Q.value = 3;
 
     gain.gain.setValueAtTime(0.25 * volumeMultiplier, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.03 / speed);
 
     osc.connect(filter).connect(gain);
     osc.start();
-    osc.stop(ctx.currentTime + 0.03);
+    osc.stop(ctx.currentTime + 0.03 / speed);
 
     // Add tiny noise burst for texture
-    const noiseBuffer = this.createNoiseBuffer(0.02);
+    const noiseBuffer = this.createNoiseBuffer(0.02 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
@@ -533,7 +527,7 @@ export class AudioManager {
         noiseGain.gain.setValueAtTime(0.1 * volumeMultiplier, ctx.currentTime);
         noiseGain.gain.exponentialRampToValueAtTime(
           0.01,
-          ctx.currentTime + 0.02
+          ctx.currentTime + 0.02 / speed
         );
         noise.connect(noiseFilter).connect(noiseGain);
         noise.start();
@@ -542,7 +536,7 @@ export class AudioManager {
   }
 
   // Force field - deep resonant pulse
-  playForceFieldFire(pitch: number = 1, volumeMultiplier: number = 1): void {
+  playForceFieldFire(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -551,16 +545,16 @@ export class AudioManager {
     const gain1 = this.createGain(0.35 * volumeMultiplier);
     if (gain1) {
       osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(80 * pitch, ctx.currentTime);
+      osc1.frequency.setValueAtTime(80 * speed, ctx.currentTime);
       osc1.frequency.exponentialRampToValueAtTime(
-        40 * pitch,
-        ctx.currentTime + 0.25
+        40 * speed,
+        ctx.currentTime + 0.25 / speed
       );
       gain1.gain.setValueAtTime(0.5 * volumeMultiplier, ctx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25 / speed);
       osc1.connect(gain1);
       osc1.start();
-      osc1.stop(ctx.currentTime + 0.25);
+      osc1.stop(ctx.currentTime + 0.25 / speed);
     }
 
     // Mid-range resonant tone
@@ -568,20 +562,20 @@ export class AudioManager {
     const gain2 = this.createGain(0.25 * volumeMultiplier);
     if (gain2) {
       osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(200 * pitch, ctx.currentTime);
+      osc2.frequency.setValueAtTime(200 * speed, ctx.currentTime);
       osc2.frequency.exponentialRampToValueAtTime(
-        100 * pitch,
-        ctx.currentTime + 0.2
+        100 * speed,
+        ctx.currentTime + 0.2 / speed
       );
       gain2.gain.setValueAtTime(0.35 * volumeMultiplier, ctx.currentTime);
-      gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2 / speed);
       osc2.connect(gain2);
       osc2.start();
-      osc2.stop(ctx.currentTime + 0.2);
+      osc2.stop(ctx.currentTime + 0.2 / speed);
     }
 
     // High frequency shimmer
-    const noiseBuffer = this.createNoiseBuffer(0.15);
+    const noiseBuffer = this.createNoiseBuffer(0.15 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
@@ -596,7 +590,7 @@ export class AudioManager {
         noiseGain.gain.setValueAtTime(0.2 * volumeMultiplier, ctx.currentTime);
         noiseGain.gain.exponentialRampToValueAtTime(
           0.01,
-          ctx.currentTime + 0.15
+          ctx.currentTime + 0.15 / speed
         );
         noise.connect(filter).connect(noiseGain);
         noise.start();
@@ -604,55 +598,52 @@ export class AudioManager {
     }
   }
 
+  // Unified synth dispatch table — any synth can be used for any sound slot
+  private static SYNTH_DISPATCH: Record<string, (this: AudioManager, speed: number, vol: number) => void> = {
+    // One-shot percussive / tonal
+    'laser-zap':        AudioManager.prototype.playLaserFire,
+    'minigun':          AudioManager.prototype.playMinigunFire,
+    'cannon':           AudioManager.prototype.playCannonFire,
+    'shotgun':          AudioManager.prototype.playShotgunFire,
+    'grenade':          AudioManager.prototype.playGrenadeFire,
+    'railgun':          AudioManager.prototype.playRailgunFire,
+    'burst-rifle':      AudioManager.prototype.playBurstRifleFire,
+    'force-field':      AudioManager.prototype.playForceFieldFire,
+    'insect':           AudioManager.prototype.playInsectFire,
+    'sizzle':           AudioManager.prototype.playLaserHit,
+    'bullet':           AudioManager.prototype.playBulletHit,
+    'heavy':            AudioManager.prototype.playHeavyHit,
+    'explosion':        AudioManager.prototype.playExplosionHit,
+    'small-explosion':  AudioManager.prototype.playSmallDeath,
+    'medium-explosion': AudioManager.prototype.playMediumDeath,
+    'large-explosion':  AudioManager.prototype.playLargeDeath,
+  };
+
   // Generic weapon fire by ID
   playWeaponFire(
     weaponId: WeaponAudioId,
-    pitch: number = 1,
+    _pitch: number = 1,
     volumeMultiplier: number = 1
   ): void {
-    // Add slight random variation
-    const variation = 0.9 + Math.random() * 0.2;
-    const finalPitch = pitch * variation;
+    if (!AUDIO.turrets.fireGain) return;
+    const entry = AUDIO.turrets.sounds[weaponId]?.fire;
+    if (!entry || !entry.volume) return;
 
-    switch (weaponId) {
-      case 'beam':
-        this.playLaserFire(finalPitch, volumeMultiplier);
-        break;
-      case 'minigun':
-        this.playMinigunFire(finalPitch, volumeMultiplier * 0.2);
-        break;
-      case 'cannon':
-        this.playCannonFire(finalPitch, volumeMultiplier);
-        break;
-      case 'shotgun':
-        this.playShotgunFire(finalPitch, volumeMultiplier);
-        break;
-      case 'grenade':
-        this.playGrenadeFire(finalPitch, volumeMultiplier);
-        break;
-      case 'railgun':
-        this.playRailgunFire(finalPitch, volumeMultiplier * 0.3);
-        break;
-      case 'burst-rifle':
-        this.playBurstRifleFire(finalPitch, volumeMultiplier);
-        break;
-      case 'force-field':
-        this.playForceFieldFire(finalPitch, volumeMultiplier * 0.01);
-        break;
-      default:
-        // throw error
-        throw new Error(`Unknown weapon ID: ${weaponId}`);
-    }
+    const fn = AudioManager.SYNTH_DISPATCH[entry.synth];
+    if (!fn) return;
+
+    const variation = 0.9 + Math.random() * 0.2;
+    fn.call(this, entry.playSpeed * variation, volumeMultiplier * entry.volume * AUDIO.turrets.fireGain);
   }
 
   // ==================== HIT SOUNDS ====================
 
   // Laser hit - sizzle
-  playLaserHit(): void {
+  playLaserHit(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
-    const noiseBuffer = this.createNoiseBuffer(0.08);
+    const noiseBuffer = this.createNoiseBuffer(0.08 / speed);
     if (!noiseBuffer) return;
 
     const noise = ctx.createBufferSource();
@@ -662,81 +653,104 @@ export class AudioManager {
     filter.type = 'highpass';
     filter.frequency.value = 4000;
 
-    const gain = this.createGain(0.15);
+    const gain = this.createGain(0.15 * volumeMultiplier);
     if (!gain) return;
 
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.2 * volumeMultiplier, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08 / speed);
 
     noise.connect(filter).connect(gain);
     noise.start();
   }
 
-  // Bullet hit - thud/impact
-  playBulletHit(): void {
+  // Bullet hit - short metallic tick/ping
+  playBulletHit(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
+    const t = ctx.currentTime;
 
-    const osc = ctx.createOscillator();
-    const gain = this.createGain(0.2);
-    if (!gain) return;
+    // U-shaped: lows + highs, scooped mids
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(300, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.05);
+    // Layer 1: Low sub-thump (sine, fast decay)
+    const lowOsc = ctx.createOscillator();
+    const lowGain = this.createGain(0.18 * volumeMultiplier);
+    if (!lowGain) return;
 
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+    lowOsc.type = 'sine';
+    lowOsc.frequency.setValueAtTime(100 * speed, t);
+    lowOsc.frequency.exponentialRampToValueAtTime(50 * speed, t + 0.03 / speed);
 
-    osc.connect(gain);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.05);
+    lowGain.gain.setValueAtTime(0.18 * volumeMultiplier, t);
+    lowGain.gain.exponentialRampToValueAtTime(0.01, t + 0.04 / speed);
 
-    // Small noise burst
-    const noiseBuffer = this.createNoiseBuffer(0.03);
+    lowOsc.connect(lowGain);
+    lowOsc.start(t);
+    lowOsc.stop(t + 0.04 / speed);
+
+    // Layer 2: High-frequency crack (square, very short)
+    const hiOsc = ctx.createOscillator();
+    const hiGain = this.createGain(0.12 * volumeMultiplier);
+    if (!hiGain) return;
+
+    hiOsc.type = 'square';
+    hiOsc.frequency.setValueAtTime(4000 * speed, t);
+    hiOsc.frequency.exponentialRampToValueAtTime(2000 * speed, t + 0.008 / speed);
+
+    hiGain.gain.setValueAtTime(0.12 * volumeMultiplier, t);
+    hiGain.gain.exponentialRampToValueAtTime(0.01, t + 0.012 / speed);
+
+    // Highpass to keep only the sizzle
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 2500 * speed;
+
+    hiOsc.connect(hp).connect(hiGain);
+    hiOsc.start(t);
+    hiOsc.stop(t + 0.012 / speed);
+
+    // Layer 3: Noise burst through notch (scoop 800-2000Hz mids)
+    const noiseBuffer = this.createNoiseBuffer(0.02 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
 
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 1500;
+      const notch = ctx.createBiquadFilter();
+      notch.type = 'notch';
+      notch.frequency.value = 1200 * speed;
+      notch.Q.value = 1.0;
 
-      const noiseGain = this.createGain(0.1);
+      const noiseGain = this.createGain(0.08 * volumeMultiplier);
       if (noiseGain) {
-        noiseGain.gain.setValueAtTime(0.15, ctx.currentTime);
-        noiseGain.gain.exponentialRampToValueAtTime(
-          0.01,
-          ctx.currentTime + 0.03
-        );
-        noise.connect(filter).connect(noiseGain);
-        noise.start();
+        noiseGain.gain.setValueAtTime(0.08 * volumeMultiplier, t);
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, t + 0.02 / speed);
+        noise.connect(notch).connect(noiseGain);
+        noise.start(t);
       }
     }
   }
 
   // Heavy hit (cannon)
-  playHeavyHit(): void {
+  playHeavyHit(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
     const osc = ctx.createOscillator();
-    const gain = this.createGain(0.3);
+    const gain = this.createGain(0.3 * volumeMultiplier);
     if (!gain) return;
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.15);
+    osc.frequency.setValueAtTime(150 * speed, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(50 * speed, ctx.currentTime + 0.15 / speed);
 
-    gain.gain.setValueAtTime(0.4, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.4 * volumeMultiplier, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15 / speed);
 
     osc.connect(gain);
     osc.start();
-    osc.stop(ctx.currentTime + 0.15);
+    osc.stop(ctx.currentTime + 0.15 / speed);
 
     // Impact noise
-    const noiseBuffer = this.createNoiseBuffer(0.1);
+    const noiseBuffer = this.createNoiseBuffer(0.1 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
@@ -745,12 +759,12 @@ export class AudioManager {
       filter.type = 'lowpass';
       filter.frequency.value = 800;
 
-      const noiseGain = this.createGain(0.2);
+      const noiseGain = this.createGain(0.2 * volumeMultiplier);
       if (noiseGain) {
-        noiseGain.gain.setValueAtTime(0.25, ctx.currentTime);
+        noiseGain.gain.setValueAtTime(0.25 * volumeMultiplier, ctx.currentTime);
         noiseGain.gain.exponentialRampToValueAtTime(
           0.01,
-          ctx.currentTime + 0.1
+          ctx.currentTime + 0.1 / speed
         );
         noise.connect(filter).connect(noiseGain);
         noise.start();
@@ -759,26 +773,26 @@ export class AudioManager {
   }
 
   // Explosion hit (grenade splash)
-  playExplosionHit(): void {
+  playExplosionHit(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
     // Low boom
     const osc = ctx.createOscillator();
-    const oscGain = this.createGain(0.35);
+    const oscGain = this.createGain(0.35 * volumeMultiplier);
     if (oscGain) {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(80, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.4);
-      oscGain.gain.setValueAtTime(0.5, ctx.currentTime);
-      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+      osc.frequency.setValueAtTime(80 * speed, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(20 * speed, ctx.currentTime + 0.4 / speed);
+      oscGain.gain.setValueAtTime(0.5 * volumeMultiplier, ctx.currentTime);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4 / speed);
       osc.connect(oscGain);
       osc.start();
-      osc.stop(ctx.currentTime + 0.4);
+      osc.stop(ctx.currentTime + 0.4 / speed);
     }
 
     // Explosion noise
-    const noiseBuffer = this.createNoiseBuffer(0.4);
+    const noiseBuffer = this.createNoiseBuffer(0.4 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
@@ -786,14 +800,14 @@ export class AudioManager {
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(2000, ctx.currentTime);
-      filter.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.4);
+      filter.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.4 / speed);
 
-      const noiseGain = this.createGain(0.3);
+      const noiseGain = this.createGain(0.3 * volumeMultiplier);
       if (noiseGain) {
-        noiseGain.gain.setValueAtTime(0.4, ctx.currentTime);
+        noiseGain.gain.setValueAtTime(0.4 * volumeMultiplier, ctx.currentTime);
         noiseGain.gain.exponentialRampToValueAtTime(
           0.01,
-          ctx.currentTime + 0.4
+          ctx.currentTime + 0.4 / speed
         );
         noise.connect(filter).connect(noiseGain);
         noise.start();
@@ -802,27 +816,18 @@ export class AudioManager {
   }
 
   // Generic hit by weapon ID
-  playWeaponHit(weaponId: WeaponAudioId): void {
-    switch (weaponId) {
-      case 'beam':
-      case 'railgun':
-        this.playLaserHit();
-        break;
-      case 'cannon':
-        this.playHeavyHit();
-        break;
-      case 'grenade':
-        this.playExplosionHit();
-        break;
-      default:
-        this.playBulletHit();
-    }
+  playWeaponHit(weaponId: WeaponAudioId, volumeMultiplier: number = 1): void {
+    if (!AUDIO.projectiles.hitGain) return;
+    const entry = AUDIO.projectiles.sounds[weaponId]?.hit;
+    if (!entry || !entry.volume) return;
+    const fn = AudioManager.SYNTH_DISPATCH[entry.synth];
+    if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.projectiles.hitGain);
   }
 
   // ==================== DEATH SOUNDS ====================
 
   // Small unit death - quick punchy explosion
-  playSmallDeath(volumeMultiplier: number = 1): void {
+  playSmallDeath(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -831,17 +836,17 @@ export class AudioManager {
     const oscGain = this.createGain(0.3 * volumeMultiplier);
     if (oscGain) {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(200, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.12);
+      osc.frequency.setValueAtTime(200 * speed, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40 * speed, ctx.currentTime + 0.12 / speed);
       oscGain.gain.setValueAtTime(0.4 * volumeMultiplier, ctx.currentTime);
-      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12 / speed);
       osc.connect(oscGain);
       osc.start();
-      osc.stop(ctx.currentTime + 0.12);
+      osc.stop(ctx.currentTime + 0.12 / speed);
     }
 
     // Explosion burst noise
-    const noiseBuffer = this.createNoiseBuffer(0.18);
+    const noiseBuffer = this.createNoiseBuffer(0.18 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
@@ -851,7 +856,7 @@ export class AudioManager {
       filter.frequency.setValueAtTime(2500, ctx.currentTime);
       filter.frequency.exponentialRampToValueAtTime(
         400,
-        ctx.currentTime + 0.18
+        ctx.currentTime + 0.18 / speed
       );
 
       const noiseGain = this.createGain(0.25 * volumeMultiplier);
@@ -859,7 +864,7 @@ export class AudioManager {
         noiseGain.gain.setValueAtTime(0.35 * volumeMultiplier, ctx.currentTime);
         noiseGain.gain.exponentialRampToValueAtTime(
           0.01,
-          ctx.currentTime + 0.18
+          ctx.currentTime + 0.18 / speed
         );
         noise.connect(filter).connect(noiseGain);
         noise.start();
@@ -868,7 +873,7 @@ export class AudioManager {
   }
 
   // Medium unit death - solid explosion with debris
-  playMediumDeath(volumeMultiplier: number = 1): void {
+  playMediumDeath(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -877,13 +882,13 @@ export class AudioManager {
     const oscGain = this.createGain(0.35 * volumeMultiplier);
     if (oscGain) {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(120, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(25, ctx.currentTime + 0.25);
+      osc.frequency.setValueAtTime(120 * speed, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(25 * speed, ctx.currentTime + 0.25 / speed);
       oscGain.gain.setValueAtTime(0.45 * volumeMultiplier, ctx.currentTime);
-      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25 / speed);
       osc.connect(oscGain);
       osc.start();
-      osc.stop(ctx.currentTime + 0.25);
+      osc.stop(ctx.currentTime + 0.25 / speed);
     }
 
     // Secondary mid-freq punch
@@ -891,17 +896,17 @@ export class AudioManager {
     const osc2Gain = this.createGain(0.2 * volumeMultiplier);
     if (osc2Gain) {
       osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(180, ctx.currentTime);
-      osc2.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.2);
+      osc2.frequency.setValueAtTime(180 * speed, ctx.currentTime);
+      osc2.frequency.exponentialRampToValueAtTime(50 * speed, ctx.currentTime + 0.2 / speed);
       osc2Gain.gain.setValueAtTime(0.3 * volumeMultiplier, ctx.currentTime);
-      osc2Gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      osc2Gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2 / speed);
       osc2.connect(osc2Gain);
       osc2.start();
-      osc2.stop(ctx.currentTime + 0.2);
+      osc2.stop(ctx.currentTime + 0.2 / speed);
     }
 
     // Explosion noise burst
-    const noiseBuffer = this.createNoiseBuffer(0.3);
+    const noiseBuffer = this.createNoiseBuffer(0.3 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
@@ -909,14 +914,14 @@ export class AudioManager {
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(3500, ctx.currentTime);
-      filter.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.3);
+      filter.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.3 / speed);
 
       const noiseGain = this.createGain(0.3 * volumeMultiplier);
       if (noiseGain) {
         noiseGain.gain.setValueAtTime(0.4 * volumeMultiplier, ctx.currentTime);
         noiseGain.gain.exponentialRampToValueAtTime(
           0.01,
-          ctx.currentTime + 0.3
+          ctx.currentTime + 0.3 / speed
         );
         noise.connect(filter).connect(noiseGain);
         noise.start();
@@ -925,7 +930,7 @@ export class AudioManager {
   }
 
   // Large unit death - massive explosion with rumble
-  playLargeDeath(volumeMultiplier: number = 1): void {
+  playLargeDeath(speed: number = 1, volumeMultiplier: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -934,13 +939,13 @@ export class AudioManager {
     const oscGain = this.createGain(0.45 * volumeMultiplier);
     if (oscGain) {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(80, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(15, ctx.currentTime + 0.5);
+      osc.frequency.setValueAtTime(80 * speed, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(15 * speed, ctx.currentTime + 0.5 / speed);
       oscGain.gain.setValueAtTime(0.55 * volumeMultiplier, ctx.currentTime);
-      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5 / speed);
       osc.connect(oscGain);
       osc.start();
-      osc.stop(ctx.currentTime + 0.5);
+      osc.stop(ctx.currentTime + 0.5 / speed);
     }
 
     // Secondary rumble layer
@@ -948,16 +953,16 @@ export class AudioManager {
     const osc2Gain = this.createGain(0.35 * volumeMultiplier);
     if (osc2Gain) {
       osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(100, ctx.currentTime + 0.02);
-      osc2.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.45);
+      osc2.frequency.setValueAtTime(100 * speed, ctx.currentTime + 0.02 / speed);
+      osc2.frequency.exponentialRampToValueAtTime(20 * speed, ctx.currentTime + 0.45 / speed);
       osc2Gain.gain.setValueAtTime(
         0.4 * volumeMultiplier,
-        ctx.currentTime + 0.02
+        ctx.currentTime + 0.02 / speed
       );
-      osc2Gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
+      osc2Gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45 / speed);
       osc2.connect(osc2Gain);
-      osc2.start(ctx.currentTime + 0.02);
-      osc2.stop(ctx.currentTime + 0.45);
+      osc2.start(ctx.currentTime + 0.02 / speed);
+      osc2.stop(ctx.currentTime + 0.45 / speed);
     }
 
     // Third sub-bass layer for weight
@@ -965,17 +970,17 @@ export class AudioManager {
     const osc3Gain = this.createGain(0.3 * volumeMultiplier);
     if (osc3Gain) {
       osc3.type = 'sine';
-      osc3.frequency.setValueAtTime(40, ctx.currentTime);
-      osc3.frequency.exponentialRampToValueAtTime(12, ctx.currentTime + 0.6);
+      osc3.frequency.setValueAtTime(40 * speed, ctx.currentTime);
+      osc3.frequency.exponentialRampToValueAtTime(12 * speed, ctx.currentTime + 0.6 / speed);
       osc3Gain.gain.setValueAtTime(0.35 * volumeMultiplier, ctx.currentTime);
-      osc3Gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+      osc3Gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6 / speed);
       osc3.connect(osc3Gain);
       osc3.start();
-      osc3.stop(ctx.currentTime + 0.6);
+      osc3.stop(ctx.currentTime + 0.6 / speed);
     }
 
     // Heavy explosion noise
-    const noiseBuffer = this.createNoiseBuffer(0.55);
+    const noiseBuffer = this.createNoiseBuffer(0.55 / speed);
     if (noiseBuffer) {
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer;
@@ -983,14 +988,14 @@ export class AudioManager {
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(4000, ctx.currentTime);
-      filter.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.55);
+      filter.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.55 / speed);
 
       const noiseGain = this.createGain(0.4 * volumeMultiplier);
       if (noiseGain) {
         noiseGain.gain.setValueAtTime(0.5 * volumeMultiplier, ctx.currentTime);
         noiseGain.gain.exponentialRampToValueAtTime(
           0.01,
-          ctx.currentTime + 0.55
+          ctx.currentTime + 0.55 / speed
         );
         noise.connect(filter).connect(noiseGain);
         noise.start();
@@ -998,26 +1003,13 @@ export class AudioManager {
     }
   }
 
-  // Death sound based on weapon audio type (determines unit "class")
-  playUnitDeath(weaponId: WeaponAudioId, volumeMultiplier: number = 1): void {
-    switch (weaponId) {
-      case 'minigun':
-      case 'burst-rifle':
-      case 'force-field':
-        this.playSmallDeath(volumeMultiplier);
-        break;
-      case 'beam':
-      case 'shotgun':
-      case 'railgun':
-        this.playMediumDeath(volumeMultiplier);
-        break;
-      case 'cannon':
-      case 'grenade':
-        this.playLargeDeath(volumeMultiplier);
-        break;
-      default:
-        this.playSmallDeath(volumeMultiplier);
-    }
+  // Death sound based on dying unit type
+  playUnitDeath(unitType: string, volumeMultiplier: number = 1): void {
+    if (!AUDIO.units.deathGain) return;
+    const entry = AUDIO.units.sounds[unitType]?.death;
+    if (!entry || !entry.volume) return;
+    const fn = AudioManager.SYNTH_DISPATCH[entry.synth];
+    if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.units.deathGain);
   }
 
   // Set master volume (0-1)

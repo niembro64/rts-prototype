@@ -7,7 +7,6 @@ import { PLAYER_COLORS } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { AudioEvent, ImpactContext, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
-import type { WeaponAudioId } from '../../audio/AudioManager';
 import { beamIndex } from '../BeamIndex';
 import { getWeaponWorldPosition } from '../../math';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
@@ -140,18 +139,13 @@ function processBeamKills(
   for (const id of result.killedUnitIds) {
     if (!unitsToRemove.has(id)) {
       const target = world.getEntity(id);
-      let deathWeaponId: WeaponAudioId = 'minigun';
-      const targetWeapons = target?.weapons ?? [];
-      for (const weapon of targetWeapons) {
-        deathWeaponId = weapon.config.audioId;
-      }
       const ctx = result.deathContexts.get(id);
       const playerId = target?.ownership?.playerId ?? 1;
       const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
       const bodyVel = (target?.body?.matterBody as { velocity?: { x: number; y: number } })?.velocity;
       audioEvents.push({
         type: 'death',
-        weaponId: deathWeaponId,
+        weaponId: config.id,
         x: target?.transform.x ?? 0,
         y: target?.transform.y ?? 0,
         deathContext: ctx ? {
@@ -178,7 +172,7 @@ function processBeamKills(
       const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
       audioEvents.push({
         type: 'death',
-        weaponId: config.audioId,
+        weaponId: config.id,
         x: building?.transform.x ?? 0,
         y: building?.transform.y ?? 0,
         deathContext: {
@@ -289,7 +283,7 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
       if (!isBeamWeapon || isCooldownBeam) {
         audioEvents.push({
           type: 'fire',
-          weaponId: config.audioId,
+          weaponId: config.id,
           x: weaponX,
           y: weaponY,
         });
@@ -678,7 +672,7 @@ export function checkProjectileCollisions(
           const projCollisionRadius = config.collisionRadius ?? config.beamWidth ?? 2;
           audioEvents.push({
             type: 'hit',
-            weaponId: config.audioId,
+            weaponId: config.projectileType ?? config.id,
             x: projEntity.transform.x,
             y: projEntity.transform.y,
             impactContext: buildImpactContext(
@@ -696,7 +690,7 @@ export function checkProjectileCollisions(
         const projRadius = config.projectileRadius ?? 5;
         audioEvents.push({
           type: 'projectileExpire',
-          weaponId: config.audioId,
+          weaponId: config.projectileType ?? config.id,
           x: projEntity.transform.x,
           y: projEntity.transform.y,
           impactContext: buildImpactContext(
@@ -763,7 +757,7 @@ export function checkProjectileCollisions(
               const entity = world.getEntity(hitId);
               if (entity) {
                 audioEvents.push({
-                  type: 'hit', weaponId: config.audioId,
+                  type: 'hit', weaponId: config.projectileType ?? config.id,
                   x: entity.transform.x, y: entity.transform.y,
                   impactContext: buildImpactContext(
                     config, impactX, impactY,
@@ -855,7 +849,7 @@ export function checkProjectileCollisions(
               const entity = world.getEntity(hitId);
               if (entity) {
                 audioEvents.push({
-                  type: 'hit', weaponId: config.audioId,
+                  type: 'hit', weaponId: config.projectileType ?? config.id,
                   x: entity.transform.x, y: entity.transform.y,
                   impactContext: buildImpactContext(
                     config, impactX, impactY,
@@ -952,7 +946,7 @@ export function checkProjectileCollisions(
         if (entity) {
           audioEvents.push({
             type: 'hit',
-            weaponId: config.audioId,
+            weaponId: config.projectileType ?? config.id,
             x: projEntity.transform.x,
             y: projEntity.transform.y,
             impactContext: buildImpactContext(
@@ -969,11 +963,6 @@ export function checkProjectileCollisions(
       for (const id of result.killedUnitIds) {
         if (!unitsToRemove.has(id)) {
           const target = world.getEntity(id);
-          let deathWeaponId: WeaponAudioId = 'minigun';
-          const targetWeapons = target?.weapons ?? [];
-          for (const weapon of targetWeapons) {
-            deathWeaponId = weapon.config.audioId;
-          }
           // Get death context for directional explosion
           const ctx = result.deathContexts.get(id);
           const playerId = target?.ownership?.playerId ?? 1;
@@ -982,7 +971,7 @@ export function checkProjectileCollisions(
           const bodyVel = (target?.body?.matterBody as { velocity?: { x: number; y: number } })?.velocity;
           audioEvents.push({
             type: 'death',
-            weaponId: deathWeaponId,
+            weaponId: config.id,
             x: target?.transform.x ?? 0,
             y: target?.transform.y ?? 0,
             deathContext: ctx ? {
@@ -1009,7 +998,7 @@ export function checkProjectileCollisions(
           const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
           audioEvents.push({
             type: 'death',
-            weaponId: config.audioId,
+            weaponId: config.id,
             x: building?.transform.x ?? 0,
             y: building?.transform.y ?? 0,
             deathContext: {
@@ -1101,7 +1090,7 @@ export function checkProjectileCollisions(
         // Always emit projectileExpire at the projectile's position so it produces a termination explosion
         audioEvents.push({
           type: 'projectileExpire',
-          weaponId: config.audioId,
+          weaponId: config.projectileType ?? config.id,
           x: projEntity.transform.x,
           y: projEntity.transform.y,
           impactContext: buildImpactContext(

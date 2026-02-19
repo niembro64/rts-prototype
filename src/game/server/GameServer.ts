@@ -358,6 +358,7 @@ export class GameServer {
         allowedUnitTypes: this.backgroundMode
           ? [...this.backgroundAllowedTypes]
           : undefined,
+        maxTotalUnits: this.world.maxTotalUnits,
       };
       this.lastSentServerTime = currentTime;
     }
@@ -392,6 +393,9 @@ export class GameServer {
         return;
       case 'setBackgroundUnitType':
         this.setBackgroundUnitTypeEnabled(command.unitType, command.enabled);
+        return;
+      case 'setMaxTotalUnits':
+        this.world.maxTotalUnits = command.maxTotalUnits;
         return;
     }
     this.commandQueue.enqueue(command);

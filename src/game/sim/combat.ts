@@ -23,6 +23,8 @@ export {
 
 export {
   updateLaserSounds,
+  emitLaserStopsForEntity,
+  emitLaserStopsForTarget,
 } from './combat/laserSoundSystem';
 
 export {

@@ -49,10 +49,13 @@ import {
   getProjRangeToggle,
   setProjRangeToggle,
   RANGE_TYPES,
+  getAudioScope,
+  setAudioScope,
   type GraphicsQuality,
   type RenderMode,
   type RangeType,
   type ProjRangeType,
+  type AudioScope,
 } from '../game/render/graphicsSettings';
 import { audioManager } from '../game/audio/AudioManager';
 
@@ -70,6 +73,14 @@ const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
 
 // Render mode options
 const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
+  { value: 'window', label: 'WIN' },
+  { value: 'padded', label: 'PAD' },
+  { value: 'all', label: 'ALL' },
+];
+
+// Audio scope options
+const AUDIO_OPTIONS: { value: AudioScope; label: string }[] = [
+  { value: 'off', label: 'OFF' },
   { value: 'window', label: 'WIN' },
   { value: 'padded', label: 'PAD' },
   { value: 'all', label: 'ALL' },
@@ -112,6 +123,17 @@ let activeConnection: GameConnection | null = null;
 const LS_SNAPSHOT_RATE = 'rts-snapshot-rate';
 const LS_KEYFRAME_RATIO = 'rts-keyframe-ratio';
 const LS_DEMO_UNITS = 'rts-demo-units';
+const LS_MAX_TOTAL_UNITS = 'rts-max-total-units';
+const DEFAULT_MAX_TOTAL_UNITS = 100;
+
+const MAX_UNITS_OPTIONS: { value: number; label: string }[] = [
+  { value: 10, label: '10' },
+  { value: 40, label: '40' },
+  { value: 100, label: '1h' },
+  { value: 400, label: '4h' },
+  { value: 1000, label: '1k' },
+  { value: 4000, label: '4k' },
+];
 
 function loadStoredSnapshotRate(): SnapshotRate {
   try {
@@ -162,6 +184,21 @@ function saveDemoUnits(units: string[]): void {
   try { localStorage.setItem(LS_DEMO_UNITS, JSON.stringify(units)); } catch { /* */ }
 }
 
+function loadStoredMaxTotalUnits(): number {
+  try {
+    const stored = localStorage.getItem(LS_MAX_TOTAL_UNITS);
+    if (stored) {
+      const num = Number(stored);
+      if (!isNaN(num) && num > 0) return num;
+    }
+  } catch { /* localStorage unavailable */ }
+  return DEFAULT_MAX_TOTAL_UNITS;
+}
+
+function saveMaxTotalUnits(value: number): void {
+  try { localStorage.setItem(LS_MAX_TOTAL_UNITS, String(value)); } catch { /* */ }
+}
+
 // Demo battle unit type list (state read from snapshots)
 const demoUnitTypes = Object.keys(UNIT_STATS);
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
@@ -169,7 +206,8 @@ const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(
   getEffectiveQuality(),
 );
 const renderMode = ref<RenderMode>(getRenderMode());
-const audioEnabled = ref(!audioManager.muted);
+const audioScope = ref<AudioScope>(getAudioScope());
+audioManager.setMuted(audioScope.value === 'off');
 const rangeToggles = reactive<Record<RangeType, boolean>>({
   see: getRangeToggle('see'),
   fire: getRangeToggle('fire'),
@@ -276,6 +314,9 @@ function startBackgroundBattle(): void {
       backgroundServer.setBackgroundUnitTypeEnabled(ut, storedDemoUnits.includes(ut));
     }
   }
+
+  // Restore stored max total units
+  backgroundServer.receiveCommand({ type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: loadStoredMaxTotalUnits() });
 
   backgroundServer.start();
   hasServer.value = true;
@@ -404,12 +445,18 @@ function toggleAllDemoUnits(): void {
   saveDemoUnits(enableAll ? [...demoUnitTypes] : []);
 }
 
+function changeMaxTotalUnits(value: number): void {
+  activeConnection?.sendCommand({ type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: value });
+  saveMaxTotalUnits(value);
+}
+
 function resetDemoDefaults(): void {
   // All units enabled
   for (const ut of demoUnitTypes) {
     activeConnection?.sendCommand({ type: 'setBackgroundUnitType', tick: 0, unitType: ut, enabled: true });
   }
   saveDemoUnits([...demoUnitTypes]);
+  changeMaxTotalUnits(DEFAULT_MAX_TOTAL_UNITS);
 }
 
 function resetServerDefaults(): void {
@@ -423,7 +470,7 @@ function resetServerDefaults(): void {
 function resetClientDefaults(): void {
   changeGraphicsQuality('auto');
   changeRenderMode('window');
-  setAudioEnabled(false);
+  changeAudioScope('off');
   for (const rt of RANGE_TYPES) {
     if (rangeToggles[rt]) toggleRange(rt);
   }
@@ -609,9 +656,10 @@ function changeRenderMode(mode: RenderMode): void {
   renderMode.value = mode;
 }
 
-function setAudioEnabled(enabled: boolean): void {
-  audioManager.setMuted(!enabled);
-  audioEnabled.value = enabled;
+function changeAudioScope(scope: AudioScope): void {
+  setAudioScope(scope);
+  audioScope.value = scope;
+  audioManager.setMuted(scope === 'off');
 }
 
 function toggleRange(type: RangeType): void {
@@ -986,6 +1034,19 @@ onUnmounted(() => {
             {{ UNIT_SHORT_NAMES[ut] || ut }}
           </button>
         </div>
+        <div class="bar-divider"></div>
+        <span class="control-label">CAP:</span>
+        <div class="button-group">
+          <button
+            v-for="opt in MAX_UNITS_OPTIONS"
+            :key="opt.value"
+            class="control-btn"
+            :class="{ active: serverMetaFromSnapshot?.maxTotalUnits === opt.value }"
+            @click="changeMaxTotalUnits(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
       </div>
 
       <!-- SERVER CONTROLS (visible when we own a server or receive server meta) -->
@@ -1095,13 +1156,18 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="bar-divider"></div>
-        <button
-          class="control-btn"
-          :class="{ active: audioEnabled }"
-          @click="setAudioEnabled(!audioEnabled)"
-        >
-          AUDIO
-        </button>
+        <span class="control-label">AUDIO:</span>
+        <div class="button-group">
+          <button
+            v-for="opt in AUDIO_OPTIONS"
+            :key="opt.value"
+            class="control-btn"
+            :class="{ active: audioScope === opt.value }"
+            @click="changeAudioScope(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
         <div class="bar-divider"></div>
         <span class="control-label">TURRET RANGES:</span>
         <div class="button-group">

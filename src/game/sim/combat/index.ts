@@ -14,7 +14,7 @@ export { updateTurretRotation } from './turretSystem';
 export { updateTargetingAndFiringState, updateWeaponCooldowns } from './targetingSystem';
 
 // Laser sounds
-export { updateLaserSounds } from './laserSoundSystem';
+export { updateLaserSounds, emitLaserStopsForEntity, emitLaserStopsForTarget } from './laserSoundSystem';
 
 // Force field weapons
 export { updateForceFieldState, applyForceFieldDamage } from './forceFieldWeapon';

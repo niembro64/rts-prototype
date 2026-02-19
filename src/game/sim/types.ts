@@ -98,8 +98,8 @@ export interface ForceFieldZoneConfig {
 
 // Weapon configuration - flexible system for any weapon type
 export interface WeaponConfig {
-  id: string;                    // Unique identifier (e.g., 'laser', 'minigun', 'cannon')
-  audioId: import('../audio/AudioManager').WeaponAudioId; // Audio ID for sound effects
+  id: string;                    // Unique identifier (e.g., 'gatling', 'beam', 'cannon')
+  projectileType?: string;       // Projectile stat key (e.g., 'lightRound', 'laserBeam')
   turret?: import('../../config').TurretConfig; // Turret visual config (barrel type, dimensions, spin)
   damage: number;                // Base damage per hit
   range: number;                 // Attack range

@@ -56,6 +56,9 @@ export class WorldState {
   // Runtime thrust multiplier (set by GameServer based on game/demo mode)
   public thrustMultiplier: number = 8.0;
 
+  // Configurable unit cap (can be changed at runtime via command)
+  public maxTotalUnits: number = MAX_TOTAL_UNITS;
+
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
   private cache = new EntityCacheManager();
@@ -75,7 +78,7 @@ export class WorldState {
 
   // Get unit cap per player (total units / number of players)
   getUnitCapPerPlayer(): number {
-    return Math.floor(MAX_TOTAL_UNITS / this.playerCount);
+    return Math.floor(this.maxTotalUnits / this.playerCount);
   }
 
   // Check if player can build more units

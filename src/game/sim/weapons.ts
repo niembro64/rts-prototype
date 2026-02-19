@@ -24,6 +24,7 @@ function computeZoneConfig(
 function getProjectileConfig(key: ProjectileKey) {
   const p = PROJECTILE_STATS[key];
   return {
+    projectileType: key,
     damage: p.damage,
     ...('speed' in p && { projectileSpeed: p.speed }),
     ...('mass' in p && { projectileMass: p.mass }),
@@ -45,12 +46,11 @@ export type WeaponId = 'gatling' | 'pulse' | 'beam' | 'shotgun' | 'mortar' | 'ra
 
 const ws = WEAPON_STATS;
 
-// Weapon configurations — merges PROJECTILE_STATS + WEAPON_STATS into flat WeaponConfig
-export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
+// Turret configurations — merges PROJECTILE_STATS + WEAPON_STATS into flat WeaponConfig
+export const TURRET_CONFIGS: Record<WeaponId, WeaponConfig> = {
   gatling: {
     id: 'gatling',
     ...getProjectileConfig(ws.gatling.projectile),
-    audioId: ws.gatling.audioId,
     range: ws.gatling.range,
     cooldown: ws.gatling.cooldown,
     spreadAngle: ws.gatling.spreadAngle,
@@ -64,7 +64,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   pulse: {
     id: 'pulse',
     ...getProjectileConfig(ws.pulse.projectile),
-    audioId: ws.pulse.audioId,
     range: ws.pulse.range,
     cooldown: ws.pulse.cooldown,
     burstCount: ws.pulse.burstCount,
@@ -80,7 +79,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   beam: {
     id: 'beam',
     ...getProjectileConfig(ws.beam.projectile),
-    audioId: ws.beam.audioId,
     range: ws.beam.range,
     cooldown: ws.beam.cooldown,
     turretTurnAccel: ws.beam.turretTurnAccel,
@@ -93,7 +91,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   shotgun: {
     id: 'shotgun',
     ...getProjectileConfig(ws.shotgun.projectile),
-    audioId: ws.shotgun.audioId,
     range: ws.shotgun.range,
     cooldown: ws.shotgun.cooldown,
     pelletCount: ws.shotgun.pelletCount,
@@ -109,7 +106,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   mortar: {
     id: 'mortar',
     ...getProjectileConfig(ws.mortar.projectile),
-    audioId: ws.mortar.audioId,
     range: ws.mortar.range,
     cooldown: ws.mortar.cooldown,
     spreadAngle: ws.mortar.spreadAngle,
@@ -123,7 +119,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   railgun: {
     id: 'railgun',
     ...getProjectileConfig(ws.railgun.projectile),
-    audioId: ws.railgun.audioId,
     range: ws.railgun.range,
     cooldown: ws.railgun.cooldown,
     spreadAngle: ws.railgun.spreadAngle,
@@ -137,7 +132,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   cannon: {
     id: 'cannon',
     ...getProjectileConfig(ws.cannon.projectile),
-    audioId: ws.cannon.audioId,
     range: ws.cannon.range,
     cooldown: ws.cannon.cooldown,
     spreadAngle: ws.cannon.spreadAngle,
@@ -151,7 +145,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   disruptor: {
     id: 'disruptor',
     ...getProjectileConfig(ws.disruptor.projectile),
-    audioId: ws.disruptor.audioId,
     range: ws.disruptor.range,
     cooldown: ws.disruptor.cooldown,
     turretTurnAccel: ws.disruptor.turretTurnAccel,
@@ -164,7 +157,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   // Force fields — no projectile, all fields from WEAPON_STATS directly
   forceField: {
     id: 'forceField',
-    audioId: ws.forceField.audioId,
     damage: Math.max(ws.forceField.push?.damage ?? 0, ws.forceField.pull?.damage ?? 0),
     range: ws.forceField.range,
     cooldown: ws.forceField.cooldown,
@@ -183,7 +175,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   megaBeam: {
     id: 'megaBeam',
     ...getProjectileConfig(ws.megaBeam.projectile),
-    audioId: ws.megaBeam.audioId,
     range: ws.megaBeam.range,
     cooldown: ws.megaBeam.cooldown,
     turretTurnAccel: ws.megaBeam.turretTurnAccel,
@@ -195,7 +186,6 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
 
   megaForceField: {
     id: 'megaForceField',
-    audioId: ws.megaForceField.audioId,
     damage: Math.max(ws.megaForceField.push?.damage ?? 0, ws.megaForceField.pull?.damage ?? 0),
     range: ws.megaForceField.range,
     cooldown: ws.megaForceField.cooldown,
@@ -227,7 +217,7 @@ export function computeWeaponRanges(config: WeaponConfig) {
 
 // Helper to get a weapon config by ID
 export function getWeaponConfig(id: string): WeaponConfig {
-  const config = WEAPON_CONFIGS[id as WeaponId];
+  const config = TURRET_CONFIGS[id as WeaponId];
   if (!config) {
     throw new Error(`Unknown weapon config: ${id}`);
   }
@@ -235,7 +225,7 @@ export function getWeaponConfig(id: string): WeaponConfig {
 }
 
 // Helper to create a custom weapon config
-export function createWeaponConfig(base: Partial<WeaponConfig> & { id: string; audioId: WeaponConfig['audioId'] }): WeaponConfig {
+export function createWeaponConfig(base: Partial<WeaponConfig> & { id: string }): WeaponConfig {
   return {
     damage: 10,
     range: 100,

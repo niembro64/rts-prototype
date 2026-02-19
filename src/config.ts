@@ -92,7 +92,6 @@ export const KNOCKBACK = {
   SPLASH: 250, // Knockback multiplier for area/splash explosions (mortar/disruptor)
 };
 
-
 /**
  * Whether turrets return to forward-facing (movement direction) when they have no target.
  * true = turrets snap back to face forward when idle.
@@ -892,9 +891,8 @@ export const PROJECTILE_STATS = {
 export const WEAPON_STATS = {
   gatling: {
     projectile: 'lightRound' as const,
-    audioId: 'minigun' as const,
     range: 100,
-    cooldown: 200,
+    cooldown: 400,
     spreadAngle: Math.PI / 12,
     turretTurnAccel: 200,
     turretDrag: 0.5,
@@ -913,9 +911,8 @@ export const WEAPON_STATS = {
   },
   pulse: {
     projectile: 'heavyRound' as const,
-    audioId: 'burst-rifle' as const,
     range: 160,
-    cooldown: 900,
+    cooldown: 1800,
     burstCount: 2,
     burstDelay: 80,
     spreadAngle: Math.PI / 32,
@@ -940,12 +937,11 @@ export const WEAPON_STATS = {
   },
   shotgun: {
     projectile: 'lightRound' as const,
-    audioId: 'shotgun' as const,
     range: 160,
-    cooldown: 70,
+    cooldown: 140,
     pelletCount: 1,
     spreadAngle: Math.PI / 1.4,
-    homingTurnRate: 3,  // rad/sec — pellets curve toward locked target
+    homingTurnRate: 2, // rad/sec — pellets curve toward locked target
     turretTurnAccel: 5,
     turretDrag: 0.15,
     turret: {
@@ -967,9 +963,8 @@ export const WEAPON_STATS = {
   },
   mortar: {
     projectile: 'mortarShell' as const,
-    audioId: 'grenade' as const,
     range: 400,
-    cooldown: 4000,
+    cooldown: 6000,
     spreadAngle: Math.PI / 24,
     turretTurnAccel: 40,
     turretDrag: 0.4,
@@ -988,7 +983,6 @@ export const WEAPON_STATS = {
   },
   cannon: {
     projectile: 'cannonShell' as const,
-    audioId: 'cannon' as const,
     range: 360,
     cooldown: 3000,
     spreadAngle: Math.PI / 24,
@@ -1009,7 +1003,6 @@ export const WEAPON_STATS = {
   },
   railgun: {
     projectile: 'railBeam' as const,
-    audioId: 'railgun' as const,
     range: 250,
     cooldown: 2000,
     spreadAngle: 0,
@@ -1030,7 +1023,6 @@ export const WEAPON_STATS = {
   },
   beam: {
     projectile: 'laserBeam' as const,
-    audioId: 'beam' as const,
     range: 150,
     cooldown: 0,
     turretTurnAccel: 100,
@@ -1050,7 +1042,6 @@ export const WEAPON_STATS = {
   },
   megaBeam: {
     projectile: 'heavyLaserBeam' as const,
-    audioId: 'beam' as const,
     range: 70,
     cooldown: 0,
     turretTurnAccel: 100,
@@ -1072,7 +1063,6 @@ export const WEAPON_STATS = {
   // Force fields — no projectile, damage applied directly
   // Inner/middle radii are ratios of range (the outer/fire radius)
   forceField: {
-    audioId: 'force-field' as const,
     range: SPATIAL_GRID_CELL_SIZE * 1.9,
     cooldown: 0,
     turretTurnAccel: 30,
@@ -1111,7 +1101,6 @@ export const WEAPON_STATS = {
     },
   },
   megaForceField: {
-    audioId: 'force-field' as const,
     range: SPATIAL_GRID_CELL_SIZE * 1.3,
     cooldown: 0,
     turretTurnAccel: 30,
@@ -1152,7 +1141,6 @@ export const WEAPON_STATS = {
 
   disruptor: {
     projectile: 'disruptorBolt' as const,
-    audioId: 'cannon' as const,
     range: 150,
     cooldown: 0,
     turretTurnAccel: 40,
@@ -1239,8 +1227,117 @@ export const SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
 // AUDIO
 // =============================================================================
 
-/** Enable or disable the continuous laser beam sound effect */
-export const LASER_SOUND_ENABLED = false;
+// All available synth sounds — any synth can be used for any sound slot
+export type SynthId =
+  // One-shot percussive / tonal
+  | 'laser-zap' // short bright laser fire zap
+  | 'minigun' // rapid metallic rattle
+  | 'cannon' // deep booming shot
+  | 'shotgun' // wide blast burst
+  | 'grenade' // thump launch
+  | 'railgun' // electric crack
+  | 'burst-rifle' // quick multi-tap
+  | 'force-field' // soft energy pulse
+  | 'insect' // chittering burst
+  | 'sizzle' // bright crackling impact
+  | 'bullet' // small metallic ping
+  | 'heavy' // deep thud impact
+  | 'explosion' // fiery blast
+  | 'small-explosion' // quick punchy pop
+  | 'medium-explosion' // medium rumble burst
+  | 'large-explosion' // massive rolling boom
+  // Continuous (used for laser slot)
+  | 'beam-hum'; // sustained beam drone
+
+// Sound entry: which synth to use + volume (0 = silent/skip) + playSpeed (1.0 = normal, 2.0 = twice as fast/high)
+export interface SoundEntry {
+  synth: SynthId;
+  volume: number;
+  playSpeed: number;
+}
+
+// Sounds a turret produces (keyed by weapon id: gatling, beam, etc.)
+export interface TurretSoundConfig {
+  fire?: SoundEntry;
+  laser?: SoundEntry;
+}
+
+// Sounds a projectile produces on impact (keyed by projectile type: lightRound, laserBeam, etc.)
+export interface ProjectileSoundConfig {
+  hit?: SoundEntry;
+}
+
+// Sounds a unit produces when it dies (keyed by unit type: jackal, mammoth, etc.)
+export interface UnitSoundConfig {
+  death?: SoundEntry;
+}
+
+export const AUDIO = {
+  masterVolume: 0.2, // Global master gain (applied to AudioContext destination)
+  sfxVolume: 0.5, // SFX sub-mix multiplier (applied per gain node)
+
+  // Turret sounds (keyed by weapon id)
+  turrets: {
+    fireGain: 0.5,
+    laserGain: 0.03,
+    sounds: {
+      gatling: { fire: { synth: 'burst-rifle', volume: 0.2, playSpeed: 0.5 } },
+      pulse: { fire: { synth: 'burst-rifle', volume: 0.2, playSpeed: 0.3 } },
+      beam: {
+        fire: { synth: 'laser-zap', volume: 0.2, playSpeed: 1.0 },
+        laser: { synth: 'beam-hum', volume: 1.0, playSpeed: 1.0 },
+      },
+      megaBeam: {
+        fire: { synth: 'laser-zap', volume: 0.2, playSpeed: 1.0 },
+        laser: { synth: 'beam-hum', volume: 1.0, playSpeed: 1.0 },
+      },
+      shotgun: { fire: { synth: 'burst-rifle', volume: 0.4, playSpeed: 0.2 } },
+      mortar: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 } },
+      cannon: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 0.8 } },
+      railgun: { fire: { synth: 'railgun', volume: 0.03, playSpeed: 0.6 } },
+      forceField: {
+        fire: { synth: 'force-field', volume: 0.01, playSpeed: 1.0 },
+      },
+      megaForceField: {
+        fire: { synth: 'force-field', volume: 0.01, playSpeed: 2.0 },
+      },
+      disruptor: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 } },
+    } as Record<string, TurretSoundConfig>,
+  },
+
+  // Projectile impact sounds (keyed by projectile type)
+  projectiles: {
+    hitGain: 0.0,
+    sounds: {
+      lightRound: { hit: { synth: 'heavy', volume: 0.2, playSpeed: 0.5 } },
+      heavyRound: { hit: { synth: 'heavy', volume: 0.5, playSpeed: 0.2 } },
+      // lightRound:     { hit: { synth: 'bullet',    volume: 0.2, playSpeed: 0.2 } },
+      // heavyRound:     { hit: { synth: 'bullet',    volume: 0.5, playSpeed: 0.1 } },
+      mortarShell: { hit: { synth: 'heavy', volume: 1.0, playSpeed: 0.1 } },
+      cannonShell: { hit: { synth: 'heavy', volume: 1.0, playSpeed: 0.05 } },
+      railBeam: { hit: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 } },
+      laserBeam: { hit: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 } },
+      heavyLaserBeam: { hit: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 } },
+      disruptorBolt: { hit: { synth: 'heavy', volume: 1.0, playSpeed: 1.0 } },
+    } as Record<string, ProjectileSoundConfig>,
+  },
+
+  // Unit death sounds (keyed by unit type)
+  units: {
+    deathGain: 0.0,
+    sounds: {
+      jackal: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+      lynx: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+      daddy: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+      badger: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+      mongoose: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+      recluse: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+      mammoth: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+      widow: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+      tarantula: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
+    } as Record<string, UnitSoundConfig>,
+  },
+};
 
 // =============================================================================
 // UI

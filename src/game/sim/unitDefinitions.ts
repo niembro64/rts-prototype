@@ -23,7 +23,7 @@ export interface UnitDefinition {
   id: UnitType;
   name: string;
 
-  // Weapon type (references WEAPON_CONFIGS key)
+  // Weapon type (references TURRET_CONFIGS key)
   weaponType: WeaponId;
 
   // Stats
