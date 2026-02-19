@@ -121,7 +121,7 @@ const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
 };
 let currentAudioScope: AudioScope = 'all';
 let currentAudioSmoothing: boolean = true;
-let currentDriftMode: DriftMode = 'fast';
+let currentDriftMode: DriftMode = 'slow';
 let currentZoom: number = 1.0; // Updated by renderer
 
 // Load from localStorage on module init

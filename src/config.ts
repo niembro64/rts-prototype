@@ -936,12 +936,12 @@ export const WEAPON_STATS = {
     },
   },
   shotgun: {
-    projectile: 'lightRound' as const,
+    projectile: 'heavyRound' as const,
     range: 160,
-    cooldown: 140,
+    cooldown: 500,
     pelletCount: 1,
     spreadAngle: Math.PI / 1.4,
-    homingTurnRate: 2, // rad/sec — pellets curve toward locked target
+    homingTurnRate: 3, // rad/sec — pellets curve toward locked target
     turretTurnAccel: 5,
     turretDrag: 0.15,
     turret: {
@@ -1209,7 +1209,7 @@ export type SnapshotRate = number | 'realtime';
  * Default snapshot rate. 'realtime' maps to 60Hz via setInterval.
  * Numeric values use a setInterval at the given Hz.
  */
-export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 'realtime';
+export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 20;
 
 /** Available options for the "Send Updates Per Second" UI control */
 export const SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [

@@ -483,8 +483,8 @@ function resetClientDefaults(): void {
   changeAudioScope('off');
   setAudioSmoothing(true);
   audioSmoothing.value = true;
-  setDriftMode('fast');
-  driftMode.value = 'fast';
+  setDriftMode('slow');
+  driftMode.value = 'slow';
   for (const rt of RANGE_TYPES) {
     if (rangeToggles[rt]) toggleRange(rt);
   }
