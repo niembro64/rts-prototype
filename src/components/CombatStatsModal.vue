@@ -21,16 +21,17 @@ const emit = defineEmits<{
 const selectedPlayer = ref(1);
 const displayMode = ref<'table' | 'graph'>('graph');
 
-// Continuous cost exponent for normalization.
-// Formula: metric / (produced × cost^α)
-//   α = 0  → Per Unit (raw per-capita)
-//   α = 1  → Per Cost (linear efficiency, 1v1 duels)
-//   α = 2  → Lanchester (square law, pure deathball)
-const costExponent = ref(1.5);
+// Continuous exponent for normalization.
+// Formula: metric^rawExp / (produced × cost^costExp)
+//   where rawExp = max(1, α),  costExp = min(α, 1)
+//   α = 0  → Per Unit:      metric   / produced                (raw per-capita)
+//   α = 1  → Per Cost:      metric   / (produced × cost)       (linear efficiency, 1v1 duels)
+//   α = 2  → Lanchester:    metric²  / (produced × cost)       (square law, rewards cheap mass)
+const costExponent = ref(2);
 
 // Friendly fire handling: include, ignore, or subtract team damage/kills
-const teamDamageMode = ref<FriendlyFireMode>('subtract');
-const teamKillsMode = ref<FriendlyFireMode>('subtract');
+const teamDamageMode = ref<FriendlyFireMode>('subHalf');
+const teamKillsMode = ref<FriendlyFireMode>('subHalf');
 
 // Build unit type list from definitions (excluding commander)
 const unitTypes = computed(() => {
@@ -49,6 +50,7 @@ interface RowData {
   kills: number;
   normDmg: number;
   normKills: number;
+  normAvg: number;
   weaponVal: number;
   defVal: number;
   mobVal: number;
@@ -63,13 +65,16 @@ function buildRow(unitType: string, s: NetworkUnitTypeStats | undefined, val: Un
   const damageDealt = applyFriendlyFire(s?.enemyDamageDealt ?? 0, s?.friendlyDamageDealt ?? 0, dmgMode);
   const kills = applyFriendlyFire(s?.enemyKills ?? 0, s?.friendlyKills ?? 0, killMode);
 
-  // Normalize: ÷ (produced × cost^α)
-  // Scale factor keeps numbers readable across the exponent range
-  const costPow = Math.pow(cost, alpha);
+  // Normalize: metric^rawExp / (produced × cost^costExp)
+  //   α ∈ [0,1]: ramp cost exponent 0→1, raw exponent stays 1
+  //   α ∈ [1,2]: ramp raw exponent 1→2, cost exponent stays 1
+  const rawExp = Math.max(1, alpha);
+  const costExp = Math.min(alpha, 1);
+  const costPow = Math.pow(cost, costExp);
   const divisor = produced * costPow;
-  const scale = Math.pow(100, alpha);
-  const normDmg = divisor > 0 ? (damageDealt / divisor) * scale : 0;
-  const normKills = divisor > 0 ? (kills / divisor) * scale : 0;
+  const scale = Math.pow(100, costExp);
+  const normDmg = divisor > 0 ? (Math.pow(damageDealt, rawExp) / divisor) * scale : 0;
+  const normKills = divisor > 0 ? (Math.pow(kills, rawExp) / divisor) * scale : 0;
 
   return {
     unitType,
@@ -98,7 +103,7 @@ const rows = computed<RowData[]>(() => {
     ? props.stats.global
     : props.stats.players[selectedPlayer.value] ?? {};
 
-  return unitTypes.value.map(ut => {
+  const rawRows = unitTypes.value.map(ut => {
     const def = UNIT_DEFINITIONS[ut];
     if (!def) return null;
     const cost = def.energyCost;
@@ -107,6 +112,27 @@ const rows = computed<RowData[]>(() => {
     return buildRow(ut, data[ut], val, cost, costExponent.value, teamDamageMode.value, teamKillsMode.value);
   }).filter((r): r is RowData => r !== null)
     .sort((a, b) => a.cost - b.cost);
+
+  // Min-max normalize normDmg and normKills across all unit types → [0, 1]
+  if (rawRows.length > 1) {
+    let dmgMin = Infinity, dmgMax = -Infinity;
+    let killsMin = Infinity, killsMax = -Infinity;
+    for (const r of rawRows) {
+      if (r.normDmg < dmgMin) dmgMin = r.normDmg;
+      if (r.normDmg > dmgMax) dmgMax = r.normDmg;
+      if (r.normKills < killsMin) killsMin = r.normKills;
+      if (r.normKills > killsMax) killsMax = r.normKills;
+    }
+    const dmgRange = dmgMax - dmgMin;
+    const killsRange = killsMax - killsMin;
+    for (const r of rawRows) {
+      r.normDmg = dmgRange > 0 ? (r.normDmg - dmgMin) / dmgRange : 0;
+      r.normKills = killsRange > 0 ? (r.normKills - killsMin) / killsRange : 0;
+      r.normAvg = (r.normDmg + r.normKills) / 2;
+    }
+  }
+
+  return rawRows;
 });
 
 // Compute column min/max for color scaling
@@ -143,10 +169,6 @@ const playerIds = computed(() => {
   return Object.keys(props.stats.players).map(Number).sort();
 });
 
-// Column header label based on exponent
-const normDmgLabel = computed(() => `Dmg / Cost^${costExponent.value.toFixed(3)}`);
-const normKillsLabel = computed(() => `Kills / Cost^${costExponent.value.toFixed(3)}`);
-
 function fmt(n: number, decimals = 0): string {
   if (n === 0) return '-';
   return decimals > 0 ? n.toFixed(decimals) : Math.round(n).toString();
@@ -163,106 +185,111 @@ function fmt(n: number, decimals = 0): string {
             <button
               :class="{ active: displayMode === 'table' }"
               @click="displayMode = 'table'"
-              data-tip="Show stats as a sortable table"
-            >Table</button>
+              data-tip="Sortable table"
+            >Tbl</button>
             <button
               :class="{ active: displayMode === 'graph' }"
               @click="displayMode = 'graph'"
-              data-tip="Show stats as a time-series graph"
+              data-tip="Time-series graph"
             >Graph</button>
           </div>
           <div class="btn-group">
             <button
               :class="{ active: viewMode === 'global' }"
               @click="emit('update:viewMode', 'global')"
-              data-tip="Aggregate stats across all players"
-            >Global</button>
+              data-tip="Aggregate across all players"
+            >All</button>
             <button
               :class="{ active: viewMode === 'player' }"
               @click="emit('update:viewMode', 'player')"
-              data-tip="Show stats for a single player"
-            >Per Player</button>
+              data-tip="Single player stats"
+            >P{{ selectedPlayer }}</button>
           </div>
           <select
             v-if="viewMode === 'player'"
             v-model="selectedPlayer"
             class="player-select"
           >
-            <option v-for="pid in playerIds" :key="pid" :value="pid">Player {{ pid }}</option>
+            <option v-for="pid in playerIds" :key="pid" :value="pid">P{{ pid }}</option>
           </select>
 
           <div class="norm-control">
-            <span class="control-label">Normalize:</span>
+            <span class="control-label">Norm:</span>
             <div class="btn-group">
-              <button
-                :class="{ active: costExponent === 0 }"
-                @click="costExponent = 0"
-                data-tip="alpha=0: raw per-capita (divide by unit count only, ignore cost)"
-              >Per Unit</button>
               <button
                 :class="{ active: costExponent === 1 }"
                 @click="costExponent = 1"
-                data-tip="alpha=1: linear cost efficiency (fair for 1v1 duels)"
-              >Linear</button>
+                data-tip="α=1: metric / cost (linear efficiency)"
+              >Lin</button>
               <button
                 :class="{ active: costExponent === 2 }"
                 @click="costExponent = 2"
-                data-tip="alpha=2: Lanchester square law (rewards cheap units in large battles)"
-              >Lanchester</button>
+                data-tip="α=2: metric² / cost (rewards expensive units)"
+              >Sq</button>
             </div>
             <div class="slider-row">
               <input
                 type="range"
-                min="0"
+                min="1"
                 max="2"
                 step="0.025"
                 :value="costExponent"
                 @input="costExponent = parseFloat(($event.target as HTMLInputElement).value)"
                 class="exponent-slider"
               />
-              <span class="slider-label">cost^{{ costExponent.toFixed(3) }}</span>
+              <span class="slider-label">α={{ costExponent.toFixed(2) }}</span>
             </div>
           </div>
 
           <div class="norm-control">
-            <span class="control-label" data-tip="How to handle damage dealt to friendly units">Team Dmg:</span>
+            <span class="control-label" data-tip="Friendly fire damage handling">FF Dmg:</span>
             <div class="btn-group">
-              <button
-                :class="{ active: teamDamageMode === 'ignore' }"
-                @click="teamDamageMode = 'ignore'"
-                data-tip="Only count damage dealt to enemies"
-              >Ignore</button>
               <button
                 :class="{ active: teamDamageMode === 'include' }"
                 @click="teamDamageMode = 'include'"
-                data-tip="Count enemy + friendly damage together"
-              >Include</button>
+                data-tip="Enemy + friendly damage"
+              >+</button>
+              <button
+                :class="{ active: teamDamageMode === 'ignore' }"
+                @click="teamDamageMode = 'ignore'"
+                data-tip="Enemy damage only"
+              >0</button>
+              <button
+                :class="{ active: teamDamageMode === 'subHalf' }"
+                @click="teamDamageMode = 'subHalf'"
+                data-tip="Enemy − ½ friendly damage"
+              >−½</button>
               <button
                 :class="{ active: teamDamageMode === 'subtract' }"
                 @click="teamDamageMode = 'subtract'"
-                data-tip="Enemy damage minus friendly fire damage (penalizes splash)"
-              >Subtract</button>
+                data-tip="Enemy − friendly damage"
+              >−1</button>
             </div>
           </div>
 
           <div class="norm-control">
-            <span class="control-label" data-tip="How to handle kills of friendly units">Team Kills:</span>
+            <span class="control-label" data-tip="Friendly fire kills handling">FF Kills:</span>
             <div class="btn-group">
-              <button
-                :class="{ active: teamKillsMode === 'ignore' }"
-                @click="teamKillsMode = 'ignore'"
-                data-tip="Only count enemy kills"
-              >Ignore</button>
               <button
                 :class="{ active: teamKillsMode === 'include' }"
                 @click="teamKillsMode = 'include'"
-                data-tip="Count enemy + friendly kills together"
-              >Include</button>
+                data-tip="Enemy + friendly kills"
+              >+</button>
+              <button
+                :class="{ active: teamKillsMode === 'ignore' }"
+                @click="teamKillsMode = 'ignore'"
+                data-tip="Enemy kills only"
+              >0</button>
+              <button
+                :class="{ active: teamKillsMode === 'subHalf' }"
+                @click="teamKillsMode = 'subHalf'"
+                data-tip="Enemy − ½ friendly kills"
+              >−½</button>
               <button
                 :class="{ active: teamKillsMode === 'subtract' }"
                 @click="teamKillsMode = 'subtract'"
-                data-tip="Enemy kills minus friendly kills (penalizes splash)"
-              >Subtract</button>
+                data-tip="Enemy − friendly kills"
+              >−1</button>
             </div>
           </div>
         </div>
@@ -291,8 +318,9 @@ function fmt(n: number, decimals = 0): string {
               <th data-tip="Total energy spent building this unit type: produced x cost">Total $ Spent</th>
               <th data-tip="Total HP damage dealt to enemies (adjusted by Team Dmg mode)">Total Dmg</th>
               <th data-tip="Total enemy units killed (adjusted by Team Kills mode)">Total Kills</th>
-              <th :data-tip="`Damage efficiency: damage / (produced x cost^${costExponent.toFixed(3)}), scaled by 100^alpha`">{{ normDmgLabel }}</th>
-              <th :data-tip="`Kill efficiency: kills / (produced x cost^${costExponent.toFixed(3)}), scaled by 100^alpha`">{{ normKillsLabel }}</th>
+              <th data-tip="Damage normalized to [0,1] across unit types (0 = worst, 1 = best)">Norm Dmg</th>
+              <th data-tip="Kills normalized to [0,1] across unit types (0 = worst, 1 = best)">Norm Kills</th>
+              <th data-tip="Average of Norm Dmg and Norm Kills">Norm Avg</th>
               <th data-tip="Weapon valuation score based on DPS, range, and projectile stats">Wpn Val</th>
               <th data-tip="Defensive valuation score based on HP, armor, and evasion">Def Val</th>
               <th data-tip="Mobility valuation score based on speed and turn rate">Mob Val</th>
@@ -317,10 +345,13 @@ function fmt(n: number, decimals = 0): string {
                 {{ fmt(row.kills) }}
               </td>
               <td :style="{ backgroundColor: cellColor(row.normDmg, 'normDmg') }">
-                {{ fmt(row.normDmg, 3) }}
+                {{ fmt(row.normDmg, 2) }}
               </td>
               <td :style="{ backgroundColor: cellColor(row.normKills, 'normKills') }">
-                {{ fmt(row.normKills, 3) }}
+                {{ fmt(row.normKills, 2) }}
+              </td>
+              <td :style="{ backgroundColor: cellColor(row.normAvg, 'normAvg') }">
+                {{ fmt(row.normAvg, 2) }}
               </td>
               <td>{{ row.weaponVal }}</td>
               <td>{{ row.defVal }}</td>

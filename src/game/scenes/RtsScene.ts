@@ -18,6 +18,7 @@ import {
   MAP_OOB_COLOR,
   MAP_CAMERA_BG,
   MAP_GRID_COLOR,
+  COMBAT_STATS_SAMPLE_INTERVAL,
 } from '../../config';
 
 // Import helpers
@@ -78,7 +79,7 @@ export class RtsScene extends Phaser.Scene {
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
   private readonly MINIMAP_UPDATE_INTERVAL = 50;
   private combatStatsUpdateTimer: number = 0;
-  private readonly COMBAT_STATS_UPDATE_INTERVAL = 500;
+  private readonly COMBAT_STATS_UPDATE_INTERVAL = COMBAT_STATS_SAMPLE_INTERVAL;
   private lastCameraX: number = 0;
   private lastCameraY: number = 0;
   private lastCameraZoom: number = 0;
@@ -98,10 +99,20 @@ export class RtsScene extends Phaser.Scene {
   // PeerJS callback stores the latest snapshot instantly; update() processes once per frame.
   // One-shot events are accumulated so dropped intermediate snapshots don't lose them.
   private pendingSnapshot: NetworkGameState | null = null;
-  private bufferedSpawns: NetworkProjectileSpawn[] = [];
-  private bufferedDespawns: NetworkProjectileDespawn[] = [];
-  private bufferedAudio: NetworkAudioEvent[] = [];
+  // Double-buffered event arrays (swap instead of allocating new arrays each frame)
+  private _spawnsA: NetworkProjectileSpawn[] = [];
+  private _spawnsB: NetworkProjectileSpawn[] = [];
+  private bufferedSpawns: NetworkProjectileSpawn[] = this._spawnsA;
+  private _despawnsA: NetworkProjectileDespawn[] = [];
+  private _despawnsB: NetworkProjectileDespawn[] = [];
+  private bufferedDespawns: NetworkProjectileDespawn[] = this._despawnsA;
+  private _audioA: NetworkAudioEvent[] = [];
+  private _audioB: NetworkAudioEvent[] = [];
+  private bufferedAudio: NetworkAudioEvent[] = this._audioA;
   private bufferedVelocityUpdates = new Map<number, NetworkProjectileVelocityUpdate>();
+  private _velBufA: NetworkProjectileVelocityUpdate[] = [];
+  private _velBufB: NetworkProjectileVelocityUpdate[] = [];
+  private _velBufToggle = false;
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -538,16 +549,32 @@ export class RtsScene extends Phaser.Scene {
       const state = this.pendingSnapshot;
       this.pendingSnapshot = null;
 
-      // Replace one-shot event arrays with accumulated versions
-      // (includes events from any intermediate snapshots that were superseded)
-      state.projectileSpawns = this.bufferedSpawns.length > 0 ? this.bufferedSpawns : undefined;
-      state.projectileDespawns = this.bufferedDespawns.length > 0 ? this.bufferedDespawns : undefined;
-      state.audioEvents = this.bufferedAudio.length > 0 ? this.bufferedAudio : undefined;
-      state.projectileVelocityUpdates = this.bufferedVelocityUpdates.size > 0 ? Array.from(this.bufferedVelocityUpdates.values()) : undefined;
-      this.bufferedSpawns = [];
-      this.bufferedDespawns = [];
-      this.bufferedAudio = [];
-      this.bufferedVelocityUpdates.clear();
+      // Swap double-buffered event arrays (zero allocation per frame)
+      const spawns = this.bufferedSpawns;
+      this.bufferedSpawns = (spawns === this._spawnsA) ? this._spawnsB : this._spawnsA;
+      this.bufferedSpawns.length = 0;
+      state.projectileSpawns = spawns.length > 0 ? spawns : undefined;
+
+      const despawns = this.bufferedDespawns;
+      this.bufferedDespawns = (despawns === this._despawnsA) ? this._despawnsB : this._despawnsA;
+      this.bufferedDespawns.length = 0;
+      state.projectileDespawns = despawns.length > 0 ? despawns : undefined;
+
+      const audio = this.bufferedAudio;
+      this.bufferedAudio = (audio === this._audioA) ? this._audioB : this._audioA;
+      this.bufferedAudio.length = 0;
+      state.audioEvents = audio.length > 0 ? audio : undefined;
+
+      if (this.bufferedVelocityUpdates.size > 0) {
+        const buf = this._velBufToggle ? this._velBufB : this._velBufA;
+        this._velBufToggle = !this._velBufToggle;
+        buf.length = 0;
+        for (const v of this.bufferedVelocityUpdates.values()) buf.push(v);
+        this.bufferedVelocityUpdates.clear();
+        state.projectileVelocityUpdates = buf;
+      } else {
+        state.projectileVelocityUpdates = undefined;
+      }
 
       this.clientViewState.applyNetworkState(state);
 
@@ -741,10 +768,15 @@ export class RtsScene extends Phaser.Scene {
 
     // Clear snapshot buffers (hold entity references from network state)
     this.pendingSnapshot = null;
-    this.bufferedSpawns.length = 0;
-    this.bufferedDespawns.length = 0;
-    this.bufferedAudio.length = 0;
+    this._spawnsA.length = 0;
+    this._spawnsB.length = 0;
+    this._despawnsA.length = 0;
+    this._despawnsB.length = 0;
+    this._audioA.length = 0;
+    this._audioB.length = 0;
     this.bufferedVelocityUpdates.clear();
+    this._velBufA.length = 0;
+    this._velBufB.length = 0;
 
     // Clear cached entity arrays
     this._cachedSelectedUnits.length = 0;

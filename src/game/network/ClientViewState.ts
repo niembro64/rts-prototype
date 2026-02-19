@@ -16,6 +16,9 @@ import { getWeaponConfig } from '../sim/weapons';
 import { lerp, lerpAngle, getWeaponWorldPosition } from '../math';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
+// Shared empty array constant (avoids allocating new [] on every snapshot/frame)
+const EMPTY_AUDIO: NetworkGameState['audioEvents'] = [];
+
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
 // Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
 const POSITION_DRIFT = 0.15;
@@ -230,8 +233,8 @@ export class ClientViewState {
       this.sprayTargets.length = 0;
     }
 
-    // Store audio events for processing
-    this.pendingAudioEvents = state.audioEvents ?? [];
+    // Store audio events for processing (reuse constant for empty case)
+    this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
     // Check game over
     if (state.gameOver) {
@@ -636,7 +639,7 @@ export class ClientViewState {
 
   getPendingAudioEvents(): NetworkGameState['audioEvents'] {
     const events = this.pendingAudioEvents;
-    this.pendingAudioEvents = [];
+    this.pendingAudioEvents = EMPTY_AUDIO;
     return events;
   }
 
@@ -765,7 +768,7 @@ export class ClientViewState {
     this.entities.clear();
     this.serverTargets.clear();
     this.sprayTargets = [];
-    this.pendingAudioEvents = [];
+    this.pendingAudioEvents = EMPTY_AUDIO;
     this.gameOverWinnerId = null;
     this.selectedIds.clear();
     this.gridCells = [];

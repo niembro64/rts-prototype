@@ -13,11 +13,12 @@ const props = defineProps<{
   teamKillsMode: FriendlyFireMode;
 }>();
 
-type MetricKey = 'normDmg' | 'normKills' | 'damageDealt' | 'kills' | 'survivalPct' | 'produced' | 'lost' | 'costSpent';
+type MetricKey = 'normDmg' | 'normKills' | 'normAvg' | 'damageDealt' | 'kills' | 'survivalPct' | 'produced' | 'lost' | 'costSpent';
 
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
-  { key: 'normDmg', label: 'Norm Dmg', tip: 'Damage efficiency: damage / (produced x cost^alpha), scaled by 100^alpha' },
-  { key: 'normKills', label: 'Norm Kills', tip: 'Kill efficiency: kills / (produced x cost^alpha), scaled by 100^alpha' },
+  { key: 'normAvg', label: 'Norm Avg', tip: 'Average of Norm Dmg and Norm Kills' },
+  { key: 'normDmg', label: 'Norm Dmg', tip: 'Damage normalized to [0,1] across unit types (0 = worst, 1 = best)' },
+  { key: 'normKills', label: 'Norm Kills', tip: 'Kills normalized to [0,1] across unit types (0 = worst, 1 = best)' },
   { key: 'damageDealt', label: 'Total Dmg', tip: 'Total HP damage dealt (adjusted by Team Dmg mode)' },
   { key: 'kills', label: 'Total Kills', tip: 'Total enemy units killed (adjusted by Team Kills mode)' },
   { key: 'survivalPct', label: 'Survival %', tip: 'Percentage of produced units still alive: (produced - lost) / produced' },
@@ -26,7 +27,7 @@ const METRICS: { key: MetricKey; label: string; tip: string }[] = [
   { key: 'costSpent', label: 'Cost Spent', tip: 'Total energy spent building this unit type' },
 ];
 
-const selectedMetric = ref<MetricKey>('normDmg');
+const selectedMetric = ref<MetricKey>('normAvg');
 
 // 9 distinct colors for unit types
 const UNIT_COLORS: Record<string, string> = {
@@ -52,6 +53,7 @@ const PAD = { top: 20, right: 120, bottom: 40, left: 60 };
 const plotW = W - PAD.left - PAD.right;
 const plotH = H - PAD.top - PAD.bottom;
 
+// Compute a simple (non-normalized) metric for a single unit type
 function computeMetric(s: NetworkUnitTypeStats | undefined, unitType: string, metric: MetricKey): number {
   if (!s) return 0;
   const def = UNIT_DEFINITIONS[unitType];
@@ -70,15 +72,35 @@ function computeMetric(s: NetworkUnitTypeStats | undefined, unitType: string, me
     case 'costSpent': return s.totalCostSpent ?? 0;
     case 'survivalPct': return produced > 0 ? ((produced - lost) / produced) * 100 : 0;
     case 'normDmg':
-    case 'normKills': {
+    case 'normKills':
+    case 'normAvg': {
+      // Raw (pre-min-max) norm value — normalization happens in series computation
       const alpha = props.costExponent;
-      const costPow = Math.pow(cost, alpha);
+      const rawExp = Math.max(1, alpha);
+      const costExp = Math.min(alpha, 1);
+      const costPow = Math.pow(cost, costExp);
       const divisor = produced * costPow;
-      const scale = Math.pow(100, alpha);
-      const raw = metric === 'normDmg' ? dmg : kills;
-      return divisor > 0 ? (raw / divisor) * scale : 0;
+      const scale = Math.pow(100, costExp);
+      const raw = (metric === 'normKills') ? kills : dmg;
+      return divisor > 0 ? (Math.pow(raw, rawExp) / divisor) * scale : 0;
     }
   }
+}
+
+const isNormMetric = (m: MetricKey) => m === 'normDmg' || m === 'normKills' || m === 'normAvg';
+
+// Min-max normalize an array in-place, returns the array
+function minMaxNormalize(values: number[]): number[] {
+  let min = Infinity, max = -Infinity;
+  for (const v of values) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const range = max - min;
+  for (let i = 0; i < values.length; i++) {
+    values[i] = range > 0 ? (values[i] - min) / range : 0;
+  }
+  return values;
 }
 
 interface SeriesPoint { t: number; v: number }
@@ -87,20 +109,67 @@ interface Series { unitType: string; name: string; color: string; points: Series
 const series = computed<Series[]>(() => {
   if (props.history.length === 0) return [];
 
-  return unitTypes.value.map(ut => {
-    const def = UNIT_DEFINITIONS[ut];
-    const points: SeriesPoint[] = props.history.map(snap => {
-      const data = props.viewMode === 'global'
-        ? snap.stats.global
-        : snap.stats.players[props.selectedPlayer] ?? {};
-      return { t: snap.timestamp, v: computeMetric(data[ut], ut, selectedMetric.value) };
+  const metric = selectedMetric.value;
+  const uts = unitTypes.value;
+
+  if (!isNormMetric(metric)) {
+    // Simple per-unit-type computation (no cross-unit normalization needed)
+    return uts.map(ut => {
+      const def = UNIT_DEFINITIONS[ut];
+      const points: SeriesPoint[] = props.history.map(snap => {
+        const data = props.viewMode === 'global'
+          ? snap.stats.global
+          : snap.stats.players[props.selectedPlayer] ?? {};
+        return { t: snap.timestamp, v: computeMetric(data[ut], ut, metric) };
+      });
+      return { unitType: ut, name: def?.name ?? ut, color: UNIT_COLORS[ut] ?? '#888', points };
     });
-    return {
-      unitType: ut,
-      name: def?.name ?? ut,
-      color: UNIT_COLORS[ut] ?? '#888',
-      points,
-    };
+  }
+
+  // Normalized metrics: compute raw values for all unit types at each snapshot,
+  // then min-max normalize across unit types per snapshot → [0, 1]
+  const numSnaps = props.history.length;
+  const numUnits = uts.length;
+
+  // [unitIdx][snapIdx] — raw values
+  const rawDmg: number[][] = Array.from({ length: numUnits }, () => new Array(numSnaps));
+  const rawKills: number[][] = Array.from({ length: numUnits }, () => new Array(numSnaps));
+
+  for (let si = 0; si < numSnaps; si++) {
+    const snap = props.history[si];
+    const data = props.viewMode === 'global'
+      ? snap.stats.global
+      : snap.stats.players[props.selectedPlayer] ?? {};
+
+    // Compute raw norm values for all unit types at this snapshot
+    const dmgSlice: number[] = new Array(numUnits);
+    const killsSlice: number[] = new Array(numUnits);
+    for (let ui = 0; ui < numUnits; ui++) {
+      dmgSlice[ui] = computeMetric(data[uts[ui]], uts[ui], 'normDmg');
+      killsSlice[ui] = computeMetric(data[uts[ui]], uts[ui], 'normKills');
+    }
+
+    // Min-max normalize each slice across unit types
+    minMaxNormalize(dmgSlice);
+    minMaxNormalize(killsSlice);
+
+    for (let ui = 0; ui < numUnits; ui++) {
+      rawDmg[ui][si] = dmgSlice[ui];
+      rawKills[ui][si] = killsSlice[ui];
+    }
+  }
+
+  // Build series from normalized values
+  return uts.map((ut, ui) => {
+    const def = UNIT_DEFINITIONS[ut];
+    const points: SeriesPoint[] = props.history.map((snap, si) => {
+      let v: number;
+      if (metric === 'normDmg') v = rawDmg[ui][si];
+      else if (metric === 'normKills') v = rawKills[ui][si];
+      else v = (rawDmg[ui][si] + rawKills[ui][si]) / 2; // normAvg
+      return { t: snap.timestamp, v };
+    });
+    return { unitType: ut, name: def?.name ?? ut, color: UNIT_COLORS[ut] ?? '#888', points };
   });
 });
 
@@ -125,16 +194,21 @@ function niceStep(range: number, targetTicks: number): number {
 }
 
 const yRange = computed(() => {
+  let min = 0;
   let max = 0;
   for (const s of series.value) {
     for (const p of s.points) {
       if (p.v > max) max = p.v;
+      if (p.v < min) min = p.v;
     }
   }
-  if (max === 0) max = 1;
-  // Round up to next nice step
-  const step = niceStep(max, 5);
-  return { min: 0, max: Math.ceil(max / step) * step };
+  if (max === 0 && min === 0) max = 1;
+  const range = max - min;
+  const step = niceStep(range, 5);
+  return {
+    min: min < 0 ? Math.floor(min / step) * step : 0,
+    max: Math.ceil(max / step) * step,
+  };
 });
 
 const yTicks = computed(() => {
@@ -244,20 +318,16 @@ function onMouseLeave(): void {
 }
 
 const hoverValues = computed(() => {
-  if (hoverSnapIndex.value < 0 || hoverSnapIndex.value >= props.history.length) return [];
-  const snap = props.history[hoverSnapIndex.value];
-  const data = props.viewMode === 'global'
-    ? snap.stats.global
-    : snap.stats.players[props.selectedPlayer] ?? {};
-  return unitTypes.value.map(ut => {
-    const def = UNIT_DEFINITIONS[ut];
-    return {
-      unitType: ut,
-      name: def?.name ?? ut,
-      color: UNIT_COLORS[ut] ?? '#888',
-      value: computeMetric(data[ut], ut, selectedMetric.value),
-    };
-  }).filter(r => r.value !== 0).sort((a, b) => b.value - a.value);
+  const si = hoverSnapIndex.value;
+  if (si < 0 || si >= props.history.length) return [];
+
+  // Read from precomputed series data (already normalized for norm metrics)
+  return series.value.map(s => ({
+    unitType: s.unitType,
+    name: s.name,
+    color: s.color,
+    value: si < s.points.length ? s.points[si].v : 0,
+  })).filter(r => r.value !== 0).sort((a, b) => b.value - a.value);
 });
 
 const hoverTime = computed(() => {
@@ -298,7 +368,7 @@ const hoverTime = computed(() => {
         :y1="yToPixel(tick)"
         :x2="PAD.left + plotW"
         :y2="yToPixel(tick)"
-        class="grid-line"
+        :class="tick === 0 && yRange.min < 0 ? 'zero-line' : 'grid-line'"
       />
       <line
         v-for="tick in xTicks"
@@ -455,6 +525,11 @@ const hoverTime = computed(() => {
 
 .grid-line {
   stroke: rgba(80, 100, 140, 0.15);
+  stroke-width: 1;
+}
+
+.zero-line {
+  stroke: rgba(180, 190, 210, 0.4);
   stroke-width: 1;
 }
 

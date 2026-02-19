@@ -29,6 +29,9 @@ import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 
+// Shared empty array constant (avoids per-call allocation for empty returns)
+const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
+
 // Fixed simulation timestep (60 Hz)
 export const FIXED_TIMESTEP = 1000 / 60;
 
@@ -50,13 +53,24 @@ export class Simulation {
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
 
-  // Pending audio events for network broadcast (cleared after each state serialization)
-  private pendingAudioEvents: AudioEvent[] = [];
+  // Pending audio events for network broadcast (double-buffered to avoid per-snapshot allocation)
+  private _audioA: AudioEvent[] = [];
+  private _audioB: AudioEvent[] = [];
+  private pendingAudioEvents: AudioEvent[] = this._audioA;
 
-  // Pending projectile spawn/despawn/velocity-update events for network broadcast
-  private pendingProjectileSpawns: ProjectileSpawnEvent[] = [];
-  private pendingProjectileDespawns: ProjectileDespawnEvent[] = [];
+  // Pending projectile spawn/despawn/velocity-update events (double-buffered)
+  private _spawnsA: ProjectileSpawnEvent[] = [];
+  private _spawnsB: ProjectileSpawnEvent[] = [];
+  private pendingProjectileSpawns: ProjectileSpawnEvent[] = this._spawnsA;
+
+  private _despawnsA: ProjectileDespawnEvent[] = [];
+  private _despawnsB: ProjectileDespawnEvent[] = [];
+  private pendingProjectileDespawns: ProjectileDespawnEvent[] = this._despawnsA;
+
   private pendingProjectileVelocityUpdates = new Map<number, ProjectileVelocityUpdateEvent>();
+  private _velUpdateBufA: ProjectileVelocityUpdateEvent[] = [];
+  private _velUpdateBufB: ProjectileVelocityUpdateEvent[] = [];
+  private _velUpdateToggle = false;
 
   // Reusable buffers for cleanupDeadEntities (avoid per-tick allocations)
   private _deadUnitIdsBuf: EntityId[] = [];
@@ -112,33 +126,40 @@ export class Simulation {
     return this.currentSprayTargets;
   }
 
-  // Get and clear pending audio events (for network broadcast)
+  // Get and clear pending audio events (double-buffer swap, zero allocation)
   getAndClearAudioEvents(): AudioEvent[] {
     const events = this.pendingAudioEvents;
-    this.pendingAudioEvents = [];
+    this.pendingAudioEvents = (events === this._audioA) ? this._audioB : this._audioA;
+    this.pendingAudioEvents.length = 0;
     return events;
   }
 
-  // Get and clear pending projectile spawn events (for network broadcast)
+  // Get and clear pending projectile spawn events (double-buffer swap)
   getAndClearProjectileSpawns(): ProjectileSpawnEvent[] {
     const events = this.pendingProjectileSpawns;
-    this.pendingProjectileSpawns = [];
+    this.pendingProjectileSpawns = (events === this._spawnsA) ? this._spawnsB : this._spawnsA;
+    this.pendingProjectileSpawns.length = 0;
     return events;
   }
 
-  // Get and clear pending projectile despawn events (for network broadcast)
+  // Get and clear pending projectile despawn events (double-buffer swap)
   getAndClearProjectileDespawns(): ProjectileDespawnEvent[] {
     const events = this.pendingProjectileDespawns;
-    this.pendingProjectileDespawns = [];
+    this.pendingProjectileDespawns = (events === this._despawnsA) ? this._despawnsB : this._despawnsA;
+    this.pendingProjectileDespawns.length = 0;
     return events;
   }
 
-  // Get and clear pending projectile velocity update events (for network broadcast)
+  // Get and clear pending projectile velocity update events (double-buffered)
   getAndClearProjectileVelocityUpdates(): ProjectileVelocityUpdateEvent[] {
-    if (this.pendingProjectileVelocityUpdates.size === 0) return [];
-    const events = Array.from(this.pendingProjectileVelocityUpdates.values());
-    this.pendingProjectileVelocityUpdates.clear();
-    return events;
+    const map = this.pendingProjectileVelocityUpdates;
+    if (map.size === 0) return EMPTY_VEL_UPDATES;
+    const buf = this._velUpdateToggle ? this._velUpdateBufB : this._velUpdateBufA;
+    this._velUpdateToggle = !this._velUpdateToggle;
+    buf.length = 0;
+    for (const v of map.values()) buf.push(v);
+    map.clear();
+    return buf;
   }
 
   // Get combat stats snapshot for network broadcast
@@ -996,10 +1017,18 @@ export class Simulation {
   resetSessionState(): void {
     this.forceAccumulator.reset();
     this.combatStatsTracker.reset();
-    this.pendingAudioEvents.length = 0;
-    this.pendingProjectileSpawns.length = 0;
-    this.pendingProjectileDespawns.length = 0;
+    this._audioA.length = 0;
+    this._audioB.length = 0;
+    this.pendingAudioEvents = this._audioA;
+    this._spawnsA.length = 0;
+    this._spawnsB.length = 0;
+    this.pendingProjectileSpawns = this._spawnsA;
+    this._despawnsA.length = 0;
+    this._despawnsB.length = 0;
+    this.pendingProjectileDespawns = this._despawnsA;
     this.pendingProjectileVelocityUpdates.clear();
+    this._velUpdateBufA.length = 0;
+    this._velUpdateBufB.length = 0;
     this._deadUnitIdsBuf.length = 0;
     this._deadBuildingIdsBuf.length = 0;
     this._energyConsumers.length = 0;

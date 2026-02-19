@@ -59,7 +59,7 @@ export const BASE_INCOME_PER_SECOND = 10;
  * Maximum total units across all players.
  * This is divided evenly among players (e.g., 120 total / 2 players = 60 each)
  */
-export const MAX_TOTAL_UNITS = 120;
+export const MAX_TOTAL_UNITS = 300;
 
 /** Energy produced per second by each completed solar panel */
 export const SOLAR_ENERGY_PER_SECOND = 50;
@@ -233,15 +233,31 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
 // =============================================================================
 
 export interface SpinConfig {
-  idle: number;   // Slow idle spin (rad/sec)
-  max: number;    // Maximum spin speed when firing (rad/sec)
-  accel: number;  // Spin-up acceleration (rad/sec²)
-  decel: number;  // Spin-down deceleration (rad/sec²)
+  idle: number; // Slow idle spin (rad/sec)
+  max: number; // Maximum spin speed when firing (rad/sec)
+  accel: number; // Spin-up acceleration (rad/sec²)
+  decel: number; // Spin-down deceleration (rad/sec²)
 }
 
 export type TurretConfig =
-  | { type: 'multibarrel'; barrelCount: number; barrelLength: number; barrelThickness: number; orbitRadius: number; depthScale: number; spin: SpinConfig }
-  | { type: 'coneSpread'; barrelCount: number; barrelLength: number; barrelThickness: number; baseOrbit: number; depthScale: number; spin: SpinConfig }
+  | {
+      type: 'multibarrel';
+      barrelCount: number;
+      barrelLength: number;
+      barrelThickness: number;
+      orbitRadius: number;
+      depthScale: number;
+      spin: SpinConfig;
+    }
+  | {
+      type: 'coneSpread';
+      barrelCount: number;
+      barrelLength: number;
+      barrelThickness: number;
+      baseOrbit: number;
+      depthScale: number;
+      spin: SpinConfig;
+    }
   | { type: 'single'; barrelLength: number; barrelThickness: number }
   | { type: 'beamEmitter'; barrelLength: number; barrelThickness: number }
   | { type: 'forceField'; grate: ForceFieldTurretConfig };
@@ -277,7 +293,10 @@ export const CHASSIS_MOUNTS: Record<string, MountPoint[]> = {
     const mounts: MountPoint[] = [];
     for (let i = 0; i < 6; i++) {
       const angle = (i * Math.PI) / 3 + hexRotOff;
-      mounts.push({ x: Math.cos(angle) * hexR + hexFwd, y: Math.sin(angle) * hexR });
+      mounts.push({
+        x: Math.cos(angle) * hexR + hexFwd,
+        y: Math.sin(angle) * hexR,
+      });
     }
     mounts.push({ x: hexFwd, y: 0 }); // Force field at hex center
     return mounts;
@@ -424,9 +443,9 @@ export const FIRE_EXPLOSION = {
 
   // --- Per-LOD tuning (indexed: [min, low, med, high, max]) ---
   /** Particle count multiplier per LOD tier */
-  countMult: [1, 1.5, 2.5, 4, 6] as readonly number[],
+  countMult: [1, 1.5, 1.5, 4, 6] as readonly number[],
   /** Center-drift strength per LOD tier (0 = no drift, 1 = full drift) */
-  driftScale: [0.0, 0.1, 0.25, 0.35, 0.4] as readonly number[],
+  driftScale: [0.0, 0.1, 0.15, 0.35, 0.4] as readonly number[],
   /** Trail length multiplier per LOD tier (0 = no trails) */
   trailMult: [0, 0, 0, 0.6, 1.0] as readonly number[],
 
@@ -706,7 +725,7 @@ export const UNIT_STATS = {
   // Jackal - Disposable swarm unit. High DPS (50) but dies fast.
   // Value: Fast harassment, good vs slow units, countered by splash
   jackal: {
-    baseCost: 25,
+    baseCost: 65,
     hp: 40,
     moveSpeed: 300,
     collisionRadius: 8,
@@ -716,7 +735,7 @@ export const UNIT_STATS = {
   // Lynx - Glass cannon striker. Burst damage (54 per volley), fragile.
   // Value: Alpha strike potential, but slow and squishy
   lynx: {
-    baseCost: 40,
+    baseCost: 100,
     hp: 65,
     moveSpeed: 170,
     collisionRadius: 10,
@@ -737,7 +756,7 @@ export const UNIT_STATS = {
   // Value: Wins close fights, but takes damage closing the gap
   badger: {
     baseCost: 70,
-    hp: 240,
+    hp: 200,
     moveSpeed: 200,
     collisionRadius: 16,
     collisionRadiusMultiplier: 1.0,
@@ -756,9 +775,9 @@ export const UNIT_STATS = {
   // Recluse - Long-range assassin spider. Hitscan piercing, but low DPS (17) and can't escape.
   // Value: Safe poke damage, but very slow and fragile if caught
   recluse: {
-    baseCost: 55,
-    hp: 25,
-    moveSpeed: 200,
+    baseCost: 25,
+    hp: 45,
+    moveSpeed: 120,
     collisionRadius: 11,
     collisionRadiusMultiplier: 1.0,
     mass: 9,
@@ -766,8 +785,8 @@ export const UNIT_STATS = {
   // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
   // Value: Frontline anchor, wins attrition fights, slow to reposition
   mammoth: {
-    baseCost: 260,
-    hp: 1050,
+    baseCost: 1000,
+    hp: 550,
     moveSpeed: 60,
     collisionRadius: 24,
     collisionRadiusMultiplier: 1.0,
@@ -776,8 +795,8 @@ export const UNIT_STATS = {
   // Widow - Titan spider unit. 6 beam weapons + force field.
   // Value: Army-in-one super unit, but expensive and high priority target
   widow: {
-    baseCost: 600,
-    hp: 3000,
+    baseCost: 2500,
+    hp: 2000,
     moveSpeed: 70,
     collisionRadius: 35,
     collisionRadiusMultiplier: 1.0,
@@ -786,8 +805,8 @@ export const UNIT_STATS = {
   // Tarantula - Force field AoE unit. Continuous damage with pull.
   // Value: Anti-swarm, area denial, but must get moderately close for full effect
   tarantula: {
-    baseCost: 160,
-    hp: 200,
+    baseCost: 260,
+    hp: 150,
     moveSpeed: 200,
     collisionRadius: 11,
     collisionRadiusMultiplier: 1.0,
@@ -801,31 +820,31 @@ export const UNIT_STATS = {
 
 export const PROJECTILE_STATS = {
   lightRound: {
-    damage: 1,
-    speed: 150,
+    damage: 2,
+    speed: 200,
     mass: 0.3,
-    lifespan: 700,
+    lifespan: 900,
     radius: 1.5,
     primaryDamageRadius: 5,
     secondaryDamageRadius: 7,
     splashOnExpiry: false,
   },
   heavyRound: {
-    damage: 6,
-    speed: 400,
+    damage: 4,
+    speed: 300,
     mass: 5,
-    radius: 3,
+    radius: 4,
     lifespan: 600,
     primaryDamageRadius: 8,
     secondaryDamageRadius: 15,
     splashOnExpiry: false,
   },
   mortarShell: {
-    damage: 20,
+    damage: 30,
     speed: 200,
     mass: 2,
-    radius: 5,
-    lifespan: 2000,
+    radius: 6,
+    lifespan: 1600,
     primaryDamageRadius: 70,
     secondaryDamageRadius: 110,
     splashOnExpiry: true,
@@ -859,12 +878,12 @@ export const PROJECTILE_STATS = {
     splashOnExpiry: false,
   },
   heavyLaserBeam: {
-    damage: 100,
+    damage: 70,
     beamDuration: 1000,
-    beamWidth: 6,
-    collisionRadius: 8,
-    primaryDamageRadius: 12,
-    secondaryDamageRadius: 20,
+    beamWidth: 3,
+    collisionRadius: 6,
+    primaryDamageRadius: 10,
+    secondaryDamageRadius: 16,
     splashOnExpiry: false,
   },
   disruptorBolt: {
@@ -889,16 +908,12 @@ export const WEAPON_STATS = {
     projectile: 'lightRound' as const,
     audioId: 'minigun' as const,
     range: 100,
-    cooldown: 100,
-    spreadAngle: Math.PI / 24,
+    cooldown: 200,
+    spreadAngle: Math.PI / 12,
     turret: {
-      type: 'multibarrel' as const,
-      barrelCount: 3,
-      barrelLength: 1.0,
-      barrelThickness: 1.5,
-      orbitRadius: 0.3,
-      depthScale: 0.12,
-      spin: { idle: 0.1, max: 30, accel: 80, decel: 30 },
+      type: 'single' as const,
+      barrelLength: 1.2,
+      barrelThickness: 2,
     },
     rangeMultiplierOverrides: {
       see: null,
@@ -912,10 +927,10 @@ export const WEAPON_STATS = {
     projectile: 'heavyRound' as const,
     audioId: 'burst-rifle' as const,
     range: 160,
-    cooldown: 400,
+    cooldown: 900,
     burstCount: 2,
     burstDelay: 80,
-    spreadAngle: Math.PI / 6,
+    spreadAngle: Math.PI / 32,
     turret: {
       type: 'multibarrel' as const,
       barrelCount: 2,
@@ -934,11 +949,11 @@ export const WEAPON_STATS = {
     },
   },
   shotgun: {
-    projectile: 'lightRound' as const,
+    projectile: 'heavyRound' as const,
     audioId: 'shotgun' as const,
-    range: 90,
-    cooldown: 2000,
-    pelletCount: 30,
+    range: 160,
+    cooldown: 200,
+    pelletCount: 1,
     spreadAngle: Math.PI / 1.4,
     turret: {
       type: 'coneSpread' as const,
@@ -950,11 +965,11 @@ export const WEAPON_STATS = {
       spin: { idle: 0.7, max: 10, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: {
-      see: null,
-      fire: null,
-      release: null,
-      lock: null,
-      fightstop: null,
+      see: 1,
+      fire: 0.9,
+      release: 1,
+      lock: 0.9,
+      fightstop: 0.8,
     },
   },
   mortar: {
@@ -1037,14 +1052,14 @@ export const WEAPON_STATS = {
   megaBeam: {
     projectile: 'heavyLaserBeam' as const,
     audioId: 'beam' as const,
-    range: 180,
+    range: 70,
     cooldown: 0,
     turretTurnAccel: 100,
-    turretDrag: 0.65,
+    turretDrag: 0.4,
     turret: {
       type: 'beamEmitter' as const,
-      barrelLength: 0.5,
-      barrelThickness: 2.5,
+      barrelLength: 0.4,
+      barrelThickness: 3.5,
     },
     rangeMultiplierOverrides: {
       see: null,
@@ -1230,8 +1245,11 @@ export const LASER_SOUND_ENABLED = false;
 // UI
 // =============================================================================
 
-/** Maximum number of combat stats snapshots to retain (~10Hz → 600 = ~1 minute) */
-export const COMBAT_STATS_HISTORY_MAX = 100;
+/** How often to sample combat stats for the history graph (ms) */
+export const COMBAT_STATS_SAMPLE_INTERVAL = 200;
+
+/** Maximum number of combat stats snapshots to retain (samples × interval = time window) */
+export const COMBAT_STATS_HISTORY_MAX = 25; // 1200 × 500ms = 10 minutes
 
 /** Whether the Combat Statistics modal is visible on page load */
 export const COMBAT_STATS_VISIBLE_ON_LOAD = false;
@@ -1294,8 +1312,8 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   EXPLOSIONS: {
     min: 'one-simple-circle',
     low: 'one-simple-circle',
-    medium: 'three-velocity-circles',
-    high: 'three-velocity-chunks',
+    medium: 'one-simple-circle',
+    high: 'three-velocity-circles',
     max: 'three-velocity-complex',
   },
 

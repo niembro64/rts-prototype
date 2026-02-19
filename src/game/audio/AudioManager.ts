@@ -57,14 +57,24 @@ export class AudioManager {
     return this.ctx;
   }
 
-  // Create a gain node with volume
-  private createGain(volume: number = 1): GainNode | null {
+  // Create a gain node with volume.
+  // autoDisconnectMs: ms after which the gain is disconnected from the audio graph
+  // to prevent node accumulation. Default 1000ms covers all one-shot sounds (<0.6s).
+  // Pass 0 for continuous sounds (lasers) that manage their own lifecycle.
+  private createGain(volume: number = 1, autoDisconnectMs: number = 1000): GainNode | null {
     const ctx = this.ensureContext();
     if (!ctx || !this.masterGain) return null;
 
     const gain = ctx.createGain();
     gain.gain.value = volume * this.sfxVolume;
     gain.connect(this.masterGain);
+
+    if (autoDisconnectMs > 0) {
+      setTimeout(() => {
+        try { gain.disconnect(); } catch {}
+      }, autoDisconnectMs);
+    }
+
     return gain;
   }
 
@@ -95,9 +105,9 @@ export class AudioManager {
     // Don't start if already playing for this entity
     if (this.activeLaserSounds.has(entityId)) return;
 
-    // Main oscillator - continuous tone
+    // Main oscillator - continuous tone (no auto-disconnect for continuous sounds)
     const osc = ctx.createOscillator();
-    const gain = this.createGain(0.15);
+    const gain = this.createGain(0.15, 0);
     if (!gain) return;
 
     osc.type = 'sawtooth';
@@ -145,8 +155,8 @@ export class AudioManager {
       noiseFilter.frequency.value = 4000;
       noiseFilter.Q.value = 1;
 
-      // Create noise gain with fade-in (no click)
-      noiseGain = this.createGain(0) ?? undefined;
+      // Create noise gain with fade-in (no click, no auto-disconnect for continuous)
+      noiseGain = this.createGain(0, 0) ?? undefined;
       if (noiseGain) {
         noiseGain.gain.setValueAtTime(0.0001, ctx.currentTime);
         noiseGain.gain.linearRampToValueAtTime(

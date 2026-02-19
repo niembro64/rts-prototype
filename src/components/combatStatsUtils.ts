@@ -2,7 +2,7 @@
 
 import type { NetworkCombatStats } from '../game/network/NetworkTypes';
 
-export type FriendlyFireMode = 'ignore' | 'include' | 'subtract';
+export type FriendlyFireMode = 'include' | 'ignore' | 'subHalf' | 'subtract';
 
 export interface StatsSnapshot {
   timestamp: number; // ms since history start
@@ -10,7 +10,8 @@ export interface StatsSnapshot {
 }
 
 export function applyFriendlyFire(enemy: number, friendly: number, mode: FriendlyFireMode): number {
-  if (mode === 'ignore') return enemy;
   if (mode === 'include') return enemy + friendly;
+  if (mode === 'ignore') return enemy;
+  if (mode === 'subHalf') return enemy - friendly * 0.5;
   return enemy - friendly; // subtract
 }
