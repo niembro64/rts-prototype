@@ -229,18 +229,12 @@ const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
   secondary: getProjRangeToggle('secondary'),
 });
 
-// FPS and zoom tracking (Phaser's smoothed values)
-const meanFPS = ref(0);
-const lowFPS = ref(0);
-// Actual frame delta measurements (our own tracking)
+// FPS, snapshot rate, and zoom tracking (EMA-based, polled from scene)
 const actualAvgFPS = ref(0);
 const actualWorstFPS = ref(0);
-// Snapshot rate measurements (client-received)
 const snapAvgRate = ref(0);
 const snapWorstRate = ref(0);
 const currentZoom = ref(0.4);
-const fpsHistory: number[] = [];
-const FPS_HISTORY_SIZE = 1000; // ~16 seconds of samples at 60fps
 let fpsUpdateInterval: ReturnType<typeof setInterval> | null = null;
 
 // Selection state for the panel
@@ -713,40 +707,14 @@ function changeDriftMode(mode: DriftMode): void {
 }
 
 function updateFPSStats(): void {
-  // Get FPS from whichever game instance is active
-  const game = backgroundGameInstance?.game ?? gameInstance?.game;
-  if (!game) return;
-
-  const currentFPS = game.loop.actualFps;
-
-  // Add to history
-  fpsHistory.push(currentFPS);
-  if (fpsHistory.length > FPS_HISTORY_SIZE) {
-    fpsHistory.shift();
-  }
-
-  if (fpsHistory.length > 0) {
-    // Calculate mean
-    const sum = fpsHistory.reduce((a, b) => a + b, 0);
-    meanFPS.value = sum / fpsHistory.length;
-
-    // Calculate 99% low (1st percentile - value that 99% of frames are above)
-    const sorted = [...fpsHistory].sort((a, b) => a - b);
-    const percentileIndex = Math.floor(sorted.length * 0.01);
-    lowFPS.value = sorted[percentileIndex] ?? sorted[0];
-  }
-
-  // Update zoom level and effective quality
   const scene = backgroundGameInstance?.getScene() ?? gameInstance?.getScene();
   if (scene) {
     currentZoom.value = scene.cameras.main.zoom;
 
-    // Get actual frame delta stats from scene
     const frameStats = scene.getFrameStats();
     actualAvgFPS.value = frameStats.avgFps;
     actualWorstFPS.value = frameStats.worstFps;
 
-    // Get snapshot rate stats from scene
     const snapStats = scene.getSnapshotStats();
     snapAvgRate.value = snapStats.avgRate;
     snapWorstRate.value = snapStats.worstRate;

@@ -77,11 +77,10 @@ export class GameServer {
   // Game over tracking
   private isGameOver: boolean = false;
 
-  // Tick rate tracking (ring buffer to avoid O(n) shift)
-  private tickDeltaHistory: Float64Array;
-  private tickDeltaIndex: number = 0;
-  private tickDeltaCount: number = 0;
-  private readonly TICK_HISTORY_SIZE = 600; // ~10 seconds at 60Hz
+  // Tick rate tracking (EMA-based)
+  private tpsAvg: number = 0;
+  private tpsLow: number = 0;
+  private tpsInitialized: boolean = false;
 
   // Delta snapshot keyframe ratio tracking
   private isFirstSnapshot: boolean = true;
@@ -100,7 +99,6 @@ export class GameServer {
     this.snapshotRateHz = config.snapshotRate ?? 10;
     this.snapshotRateDisplay = config.snapshotRate ?? 10;
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
-    this.tickDeltaHistory = new Float64Array(this.TICK_HISTORY_SIZE);
 
     // Create standalone Matter.js engine
     this.engine = createStandaloneEngine();
@@ -249,10 +247,20 @@ export class GameServer {
 
   // Main simulation tick (driven by internal setInterval)
   private tick(delta: number): void {
-    // Track tick deltas for stats
-    this.tickDeltaHistory[this.tickDeltaIndex] = delta;
-    this.tickDeltaIndex = (this.tickDeltaIndex + 1) % this.TICK_HISTORY_SIZE;
-    if (this.tickDeltaCount < this.TICK_HISTORY_SIZE) this.tickDeltaCount++;
+    // Track TPS via EMA
+    if (delta > 0) {
+      const tps = 1000 / delta;
+      if (!this.tpsInitialized) {
+        this.tpsAvg = tps;
+        this.tpsLow = tps;
+        this.tpsInitialized = true;
+      } else {
+        this.tpsAvg = 0.99 * this.tpsAvg + 0.01 * tps;
+        this.tpsLow = tps < this.tpsLow
+          ? 0.5 * this.tpsLow + 0.5 * tps
+          : 0.99 * this.tpsLow + 0.01 * tps;
+      }
+    }
 
     // Fixed timestep physics
     this.physicsAccumulator += delta;
@@ -520,24 +528,9 @@ export class GameServer {
     return result;
   }
 
-  // Get tick rate stats (avg and worst FPS over recent history)
+  // Get tick rate stats (EMA-based avg and low)
   getTickStats(): { avgFps: number; worstFps: number } {
-    const count = this.tickDeltaCount;
-    if (count === 0) return { avgFps: 0, worstFps: 0 };
-
-    const history = this.tickDeltaHistory;
-    let sum = 0;
-    let maxDelta = 0;
-    for (let i = 0; i < count; i++) {
-      sum += history[i];
-      if (history[i] > maxDelta) maxDelta = history[i];
-    }
-
-    const avgDelta = sum / count;
-    return {
-      avgFps: avgDelta > 0 ? 1000 / avgDelta : 0,
-      worstFps: maxDelta > 0 ? 1000 / maxDelta : 0,
-    };
+    return { avgFps: this.tpsAvg, worstFps: this.tpsLow };
   }
 
   // Background demo: toggle unit type spawning

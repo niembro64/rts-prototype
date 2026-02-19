@@ -68,17 +68,15 @@ export class RtsScene extends Phaser.Scene {
   // Background mode (no input, no UI, endless battle)
   private backgroundMode: boolean = false;
 
-  // Frame delta tracking for accurate FPS measurement (ring buffer)
-  private readonly FRAME_HISTORY_SIZE = 1000;
-  private frameDeltaHistory = new Float64Array(this.FRAME_HISTORY_SIZE);
-  private frameDeltaWriteIndex = 0;
-  private frameDeltaCount = 0;
+  // FPS tracking (EMA-based)
+  private fpsAvg: number = 0;
+  private fpsLow: number = 0;
+  private fpsInitialized: boolean = false;
 
-  // Snapshot interval tracking for stats display (ring buffer)
-  private readonly SNAP_HISTORY_SIZE = 100;
-  private snapIntervalHistory = new Float64Array(this.SNAP_HISTORY_SIZE);
-  private snapIntervalWriteIndex = 0;
-  private snapIntervalCount = 0;
+  // Snapshot rate tracking (EMA-based)
+  private snapAvg: number = 0;
+  private snapLow: number = 0;
+  private snapInitialized: boolean = false;
 
   // UI update throttling
   private selectionDirty: boolean = true;
@@ -550,11 +548,20 @@ export class RtsScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    // Track frame delta for accurate FPS measurement (ring buffer)
-    this.frameDeltaHistory[this.frameDeltaWriteIndex] = delta;
-    this.frameDeltaWriteIndex = (this.frameDeltaWriteIndex + 1) % this.FRAME_HISTORY_SIZE;
-    if (this.frameDeltaCount < this.FRAME_HISTORY_SIZE) {
-      this.frameDeltaCount++;
+    // Track FPS via EMA
+    if (delta > 0) {
+      const fps = 1000 / delta;
+      if (!this.fpsInitialized) {
+        this.fpsAvg = fps;
+        this.fpsLow = fps;
+        this.fpsInitialized = true;
+      } else {
+        this.fpsAvg = 0.99 * this.fpsAvg + 0.01 * fps;
+        // Low: fast drop (0.5 EMA) when below current, slow recovery (0.99) when above
+        this.fpsLow = fps < this.fpsLow
+          ? 0.5 * this.fpsLow + 0.5 * fps
+          : 0.99 * this.fpsLow + 0.01 * fps;
+      }
     }
 
     // Drain audio smoothing queue: play any events whose scheduled time has arrived
@@ -604,14 +611,20 @@ export class RtsScene extends Phaser.Scene {
 
       this.clientViewState.applyNetworkState(state);
 
-      // Track snapshot interval for audio smoothing (EMA) and stats (ring buffer)
+      // Track snapshot interval for audio smoothing and stats (EMA)
       if (this.lastSnapshotTime > 0) {
         const snapDelta = now - this.lastSnapshotTime;
         this.snapshotInterval = 0.8 * this.snapshotInterval + 0.2 * snapDelta;
-        this.snapIntervalHistory[this.snapIntervalWriteIndex] = snapDelta;
-        this.snapIntervalWriteIndex = (this.snapIntervalWriteIndex + 1) % this.SNAP_HISTORY_SIZE;
-        if (this.snapIntervalCount < this.SNAP_HISTORY_SIZE) {
-          this.snapIntervalCount++;
+        const snapRate = 1000 / snapDelta;
+        if (!this.snapInitialized) {
+          this.snapAvg = snapRate;
+          this.snapLow = snapRate;
+          this.snapInitialized = true;
+        } else {
+          this.snapAvg = 0.99 * this.snapAvg + 0.01 * snapRate;
+          this.snapLow = snapRate < this.snapLow
+            ? 0.5 * this.snapLow + 0.5 * snapRate
+            : 0.99 * this.snapLow + 0.01 * snapRate;
         }
       }
       this.lastSnapshotTime = now;
@@ -783,49 +796,17 @@ export class RtsScene extends Phaser.Scene {
   }
 
   /**
-   * Get frame delta statistics for accurate FPS measurement
+   * Get FPS statistics (EMA-based avg and low)
    */
   public getFrameStats(): { avgFps: number; worstFps: number } {
-    const count = this.frameDeltaCount;
-    if (count === 0) {
-      return { avgFps: 0, worstFps: 0 };
-    }
-
-    let sum = 0;
-    let worst = 0;
-    for (let i = 0; i < count; i++) {
-      const d = this.frameDeltaHistory[i];
-      sum += d;
-      if (d > worst) worst = d;
-    }
-
-    const avgFps = 1000 / (sum / count);
-    const worstFps = 1000 / worst;
-
-    return { avgFps, worstFps };
+    return { avgFps: this.fpsAvg, worstFps: this.fpsLow };
   }
 
   /**
-   * Get snapshot rate statistics (avg and worst, in Hz)
+   * Get snapshot rate statistics (EMA-based avg and low, in Hz)
    */
   public getSnapshotStats(): { avgRate: number; worstRate: number } {
-    const count = this.snapIntervalCount;
-    if (count === 0) {
-      return { avgRate: 0, worstRate: 0 };
-    }
-
-    let sum = 0;
-    let worst = 0;
-    for (let i = 0; i < count; i++) {
-      const d = this.snapIntervalHistory[i];
-      sum += d;
-      if (d > worst) worst = d;
-    }
-
-    const avgRate = 1000 / (sum / count);
-    const worstRate = 1000 / worst;
-
-    return { avgRate, worstRate };
+    return { avgRate: this.snapAvg, worstRate: this.snapLow };
   }
 
   // Clean shutdown
