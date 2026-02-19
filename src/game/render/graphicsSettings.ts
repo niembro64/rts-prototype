@@ -88,11 +88,13 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
 };
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
+export type DriftMode = 'snap' | 'fast' | 'slow';
 
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'rts-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'rts-audio-smoothing';
+const DRIFT_MODE_STORAGE_KEY = 'rts-drift-mode';
 
 export type RangeType = 'see' | 'fire' | 'release' | 'lock' | 'fightstop' | 'build';
 export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'fightstop', 'build'];
@@ -119,6 +121,7 @@ const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
 };
 let currentAudioScope: AudioScope = 'all';
 let currentAudioSmoothing: boolean = true;
+let currentDriftMode: DriftMode = 'fast';
 let currentZoom: number = 1.0; // Updated by renderer
 
 // Load from localStorage on module init
@@ -139,6 +142,10 @@ function loadFromStorage(): void {
     const storedAudioSmoothing = localStorage.getItem(AUDIO_SMOOTHING_STORAGE_KEY);
     if (storedAudioSmoothing !== null) {
       currentAudioSmoothing = storedAudioSmoothing === 'true';
+    }
+    const storedDriftMode = localStorage.getItem(DRIFT_MODE_STORAGE_KEY);
+    if (storedDriftMode && (storedDriftMode === 'snap' || storedDriftMode === 'fast' || storedDriftMode === 'slow')) {
+      currentDriftMode = storedDriftMode;
     }
   } catch {
     // localStorage not available, use default
@@ -316,6 +323,25 @@ export function setAudioSmoothing(enabled: boolean): void {
   currentAudioSmoothing = enabled;
   try {
     localStorage.setItem(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
+  } catch {
+    // localStorage not available
+  }
+}
+
+/**
+ * Get current drift mode
+ */
+export function getDriftMode(): DriftMode {
+  return currentDriftMode;
+}
+
+/**
+ * Set drift mode (persists to localStorage)
+ */
+export function setDriftMode(mode: DriftMode): void {
+  currentDriftMode = mode;
+  try {
+    localStorage.setItem(DRIFT_MODE_STORAGE_KEY, mode);
   } catch {
     // localStorage not available
   }

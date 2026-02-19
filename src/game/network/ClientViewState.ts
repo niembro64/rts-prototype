@@ -21,9 +21,13 @@ const EMPTY_AUDIO: NetworkGameState['audioEvents'] = [];
 
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
 // Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
-const POSITION_DRIFT = 0.15;
-const VELOCITY_DRIFT = 0.25;
-const ROTATION_DRIFT = 0.15;
+import { getDriftMode, type DriftMode } from '../render/graphicsSettings';
+
+const DRIFT_PRESETS: Record<DriftMode, { position: number; velocity: number; rotation: number }> = {
+  snap: { position: 1.0, velocity: 1.0, rotation: 1.0 },
+  fast: { position: 0.15, velocity: 0.25, rotation: 0.15 },
+  slow: { position: 0.04, velocity: 0.08, rotation: 0.04 },
+};
 
 // Lightweight copy of server state used for per-frame drift in applyPrediction().
 // Owns its data (not a reference to pooled serializer objects).
@@ -346,10 +350,11 @@ export class ClientViewState {
     // Ensure caches are fresh for beam obstruction checks
     this.rebuildCachesIfNeeded();
 
-    // Frame-rate independent blend factors
-    const posDrift = 1 - Math.pow(1 - POSITION_DRIFT, dt * 60);
-    const velDrift = 1 - Math.pow(1 - VELOCITY_DRIFT, dt * 60);
-    const rotDrift = 1 - Math.pow(1 - ROTATION_DRIFT, dt * 60);
+    // Frame-rate independent blend factors (driven by drift mode setting)
+    const preset = DRIFT_PRESETS[getDriftMode()];
+    const posDrift = 1 - Math.pow(1 - preset.position, dt * 60);
+    const velDrift = 1 - Math.pow(1 - preset.velocity, dt * 60);
+    const rotDrift = 1 - Math.pow(1 - preset.rotation, dt * 60);
 
     for (const entity of this.entities.values()) {
       const target = this.serverTargets.get(entity.id);
