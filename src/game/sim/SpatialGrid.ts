@@ -1,6 +1,11 @@
 import type { Entity, EntityId, PlayerId } from './types';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 
+// Maximum physicsRadius any unit can have (widow = 35). Used to pad cell search
+// in queryEnemyEntitiesInRadius so units at seeRange + physicsRadius boundary aren't
+// missed due to cell-level culling.
+const MAX_UNIT_PHYSICS_RADIUS = 40;
+
 /**
  * Spatial hash grid for efficient range queries.
  * Divides the world into cells and tracks which entities are in each cell.
@@ -421,9 +426,9 @@ export class SpatialGrid {
    */
   queryEnemyEntitiesInRadius(x: number, y: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     this.queryResultAll.length = 0;
-    this.getCellsInRadius(x, y, radius);
-
-    const radiusSq = radius * radius;
+    // Pad cell search by max physicsRadius so units at radius + physicsRadius boundary
+    // are in searched cells (per-unit distance check below does precise filtering)
+    this.getCellsInRadius(x, y, radius + MAX_UNIT_PHYSICS_RADIUS);
     this._dedup.clear();
 
     for (const key of this.nearbyCells) {
@@ -436,7 +441,10 @@ export class SpatialGrid {
 
         const dx = unit.transform.x - x;
         const dy = unit.transform.y - y;
-        if (dx * dx + dy * dy <= radiusSq) {
+        // Add unit physicsRadius to distance check (matches building behavior)
+        // so units at edge of seeRange + physicsRadius are not incorrectly excluded
+        const unitCheckRadius = radius + unit.unit.physicsRadius;
+        if (dx * dx + dy * dy <= unitCheckRadius * unitCheckRadius) {
           this.queryResultAll.push(unit);
         }
       }
