@@ -895,13 +895,14 @@ export function checkProjectileCollisions(
         proj.hitEntities.add(hitId);
 
         // Add hit audio event with impact context for directional flame explosions
+        // Position at the projectile's location (not the unit's center)
         const entity = world.getEntity(hitId);
         if (entity) {
           audioEvents.push({
             type: 'hit',
             weaponId: config.audioId,
-            x: entity.transform.x,
-            y: entity.transform.y,
+            x: projEntity.transform.x,
+            y: projEntity.transform.y,
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -1045,6 +1046,18 @@ export function checkProjectileCollisions(
 
       // Remove projectile if max hits reached
       if (proj.hitEntities.size >= proj.maxHits) {
+        // Always emit projectileExpire at the projectile's position so it produces a termination explosion
+        audioEvents.push({
+          type: 'projectileExpire',
+          weaponId: config.audioId,
+          x: projEntity.transform.x,
+          y: projEntity.transform.y,
+          impactContext: buildImpactContext(
+            config, projEntity.transform.x, projEntity.transform.y,
+            proj.velocityX ?? 0, proj.velocityY ?? 0,
+            projRadius,
+          ),
+        });
         projectilesToRemove.push(projEntity.id);
         despawnEvents.push({ id: projEntity.id });
         continue;

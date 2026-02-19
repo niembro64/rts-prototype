@@ -741,7 +741,7 @@ export const UNIT_STATS = {
     moveSpeed: 200,
     collisionRadius: 16,
     collisionRadiusMultiplier: 1.0,
-    mass: 200,
+    mass: 300,
   },
   // Mongoose - Area denial artillery. Splash damage, slow projectile.
   // Value: Excellent vs groups, but can be dodged, mediocre vs single targets
@@ -771,7 +771,7 @@ export const UNIT_STATS = {
     moveSpeed: 60,
     collisionRadius: 24,
     collisionRadiusMultiplier: 1.0,
-    mass: 500,
+    mass: 1000,
   },
   // Widow - Titan spider unit. 6 beam weapons + force field.
   // Value: Army-in-one super unit, but expensive and high priority target
@@ -890,7 +890,7 @@ export const WEAPON_STATS = {
     audioId: 'minigun' as const,
     range: 100,
     cooldown: 100,
-    spreadAngle: Math.PI / 6,
+    spreadAngle: Math.PI / 24,
     turret: {
       type: 'multibarrel' as const,
       barrelCount: 3,
@@ -915,7 +915,7 @@ export const WEAPON_STATS = {
     cooldown: 400,
     burstCount: 2,
     burstDelay: 80,
-    spreadAngle: Math.PI / 24,
+    spreadAngle: Math.PI / 6,
     turret: {
       type: 'multibarrel' as const,
       barrelCount: 2,
@@ -937,17 +937,17 @@ export const WEAPON_STATS = {
     projectile: 'lightRound' as const,
     audioId: 'shotgun' as const,
     range: 90,
-    cooldown: 300,
-    pelletCount: 20,
+    cooldown: 2000,
+    pelletCount: 30,
     spreadAngle: Math.PI / 1.4,
     turret: {
       type: 'coneSpread' as const,
-      barrelCount: 7,
-      barrelLength: 0.4,
-      barrelThickness: 3,
+      barrelCount: 5,
+      barrelLength: 0.6,
+      barrelThickness: 2,
       baseOrbit: 0.094,
       depthScale: 0.12,
-      spin: { idle: 0.7, max: 4, accel: 80, decel: 30 },
+      spin: { idle: 0.7, max: 10, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: {
       see: null,
@@ -960,8 +960,8 @@ export const WEAPON_STATS = {
   mortar: {
     projectile: 'mortarShell' as const,
     audioId: 'grenade' as const,
-    range: 200,
-    cooldown: 2500,
+    range: 300,
+    cooldown: 4000,
     spreadAngle: Math.PI / 12,
     turret: {
       type: 'single' as const,
