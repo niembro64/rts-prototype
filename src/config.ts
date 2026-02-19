@@ -755,7 +755,7 @@ export const UNIT_STATS = {
   // Badger - Tanky shotgunner. High burst (72 dmg) but must close to 90 range.
   // Value: Wins close fights, but takes damage closing the gap
   badger: {
-    baseCost: 70,
+    baseCost: 500,
     hp: 200,
     moveSpeed: 200,
     collisionRadius: 16,
@@ -775,7 +775,7 @@ export const UNIT_STATS = {
   // Recluse - Long-range assassin spider. Hitscan piercing, but low DPS (17) and can't escape.
   // Value: Safe poke damage, but very slow and fragile if caught
   recluse: {
-    baseCost: 25,
+    baseCost: 35,
     hp: 45,
     moveSpeed: 120,
     collisionRadius: 11,
@@ -785,7 +785,7 @@ export const UNIT_STATS = {
   // Mammoth - Heavy siege unit. Massive HP (350), high damage (73 DPS), long range.
   // Value: Frontline anchor, wins attrition fights, slow to reposition
   mammoth: {
-    baseCost: 1000,
+    baseCost: 1500,
     hp: 550,
     moveSpeed: 60,
     collisionRadius: 24,
@@ -795,8 +795,8 @@ export const UNIT_STATS = {
   // Widow - Titan spider unit. 6 beam weapons + force field.
   // Value: Army-in-one super unit, but expensive and high priority target
   widow: {
-    baseCost: 2500,
-    hp: 2000,
+    baseCost: 3000,
+    hp: 700,
     moveSpeed: 70,
     collisionRadius: 35,
     collisionRadiusMultiplier: 1.0,
@@ -952,10 +952,10 @@ export const WEAPON_STATS = {
     projectile: 'lightRound' as const,
     audioId: 'shotgun' as const,
     range: 160,
-    cooldown: 50,
+    cooldown: 70,
     pelletCount: 1,
     spreadAngle: Math.PI / 1.4,
-    homingTurnRate: 2,  // rad/sec — pellets curve toward locked target
+    homingTurnRate: 3,  // rad/sec — pellets curve toward locked target
     turret: {
       type: 'coneSpread' as const,
       barrelCount: 5,
