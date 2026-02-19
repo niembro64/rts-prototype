@@ -829,8 +829,8 @@ export const PROJECTILE_STATS = {
     damage: 30,
     speed: 200,
     mass: 2,
-    radius: 6,
-    lifespan: 1600,
+    radius: 13,
+    lifespan: 3000,
     primaryDamageRadius: 70,
     secondaryDamageRadius: 110,
     splashOnExpiry: true,
@@ -896,8 +896,8 @@ export const WEAPON_STATS = {
     range: 100,
     cooldown: 200,
     spreadAngle: Math.PI / 12,
-    turretTurnAccel: 40,
-    turretDrag: 0.15,
+    turretTurnAccel: 200,
+    turretDrag: 0.5,
     turret: {
       type: 'single' as const,
       barrelLength: 1.2,
@@ -946,7 +946,7 @@ export const WEAPON_STATS = {
     pelletCount: 1,
     spreadAngle: Math.PI / 1.4,
     homingTurnRate: 3,  // rad/sec — pellets curve toward locked target
-    turretTurnAccel: 3,
+    turretTurnAccel: 5,
     turretDrag: 0.15,
     turret: {
       type: 'coneSpread' as const,
@@ -955,7 +955,7 @@ export const WEAPON_STATS = {
       barrelThickness: 2,
       baseOrbit: 0.094,
       depthScale: 0.12,
-      spin: { idle: 0.7, max: 10, accel: 80, decel: 30 },
+      spin: { idle: 0.7, max: 2, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: {
       see: 1,
@@ -968,11 +968,11 @@ export const WEAPON_STATS = {
   mortar: {
     projectile: 'mortarShell' as const,
     audioId: 'grenade' as const,
-    range: 300,
+    range: 400,
     cooldown: 4000,
-    spreadAngle: Math.PI / 12,
+    spreadAngle: Math.PI / 24,
     turretTurnAccel: 40,
-    turretDrag: 0.15,
+    turretDrag: 0.4,
     turret: {
       type: 'single' as const,
       barrelLength: 0.75,
@@ -992,8 +992,8 @@ export const WEAPON_STATS = {
     range: 360,
     cooldown: 3000,
     spreadAngle: Math.PI / 24,
-    turretTurnAccel: 40,
-    turretDrag: 0.15,
+    turretTurnAccel: 200,
+    turretDrag: 0.5,
     turret: {
       type: 'single' as const,
       barrelLength: 1.4,
@@ -1112,7 +1112,7 @@ export const WEAPON_STATS = {
   },
   megaForceField: {
     audioId: 'force-field' as const,
-    range: SPATIAL_GRID_CELL_SIZE * 1.9,
+    range: SPATIAL_GRID_CELL_SIZE * 1.3,
     cooldown: 0,
     turretTurnAccel: 30,
     turretDrag: 0.5,
