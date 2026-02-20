@@ -1135,6 +1135,9 @@ export class AudioManager {
     if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.deadGain);
   }
 
+  getContext(): AudioContext | null { return this.ctx; }
+  getMasterGain(): GainNode | null { return this.masterGain; }
+
   // Set master volume (0-1)
   setMasterVolume(volume: number): void {
     this.masterVolume = Math.max(0, Math.min(1, volume));

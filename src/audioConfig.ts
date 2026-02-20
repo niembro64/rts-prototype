@@ -45,4 +45,5 @@ export const AUDIO = {
   deadGain: 0.1,       // Unit death sounds
   beamGain: 0.03,      // Continuous beam sounds
   fieldGain: 1.0,      // Continuous force field sounds
+  musicGain: 0.25,     // Procedural music volume
 };

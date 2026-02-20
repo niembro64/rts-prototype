@@ -90,8 +90,8 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'slow';
 
-export type SoundCategory = 'fire' | 'hit' | 'dead' | 'beam' | 'field';
-export const SOUND_CATEGORIES: SoundCategory[] = ['fire', 'hit', 'dead', 'beam', 'field'];
+export type SoundCategory = 'fire' | 'hit' | 'dead' | 'beam' | 'field' | 'music';
+export const SOUND_CATEGORIES: SoundCategory[] = ['fire', 'hit', 'dead', 'beam', 'field', 'music'];
 
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
@@ -139,6 +139,7 @@ const currentSoundToggles: Record<SoundCategory, boolean> = {
   dead: true,
   beam: true,
   field: true,
+  music: true,
 };
 let currentZoom: number = 1.0; // Updated by renderer
 

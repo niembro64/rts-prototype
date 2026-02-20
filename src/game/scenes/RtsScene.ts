@@ -9,6 +9,7 @@ import type { GameConnection } from '../server/GameConnection';
 import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkSimEvent, NetworkProjectileVelocityUpdate, NetworkCombatStats, NetworkServerMeta } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
+import { musicPlayer } from '../audio/MusicPlayer';
 import type { SimEvent } from '../sim/combat';
 import {
   ZOOM_INITIAL_DEMO,
@@ -22,7 +23,7 @@ import {
   EMA_CONFIG,
 } from '../../config';
 
-import { getAudioSmoothing } from '../render/graphicsSettings';
+import { getAudioSmoothing, getSoundToggle } from '../render/graphicsSettings';
 
 // Import helpers
 import {
@@ -317,6 +318,10 @@ export class RtsScene extends Phaser.Scene {
     this.input.once('pointerdown', () => {
       if (!this.audioInitialized) {
         audioManager.init();
+        musicPlayer.init(audioManager.getContext()!, audioManager.getMasterGain()!);
+        if (getSoundToggle('music')) {
+          musicPlayer.start();
+        }
         this.audioInitialized = true;
       }
     });
@@ -813,6 +818,7 @@ export class RtsScene extends Phaser.Scene {
 
   // Clean shutdown
   shutdown(): void {
+    musicPlayer.stop();
     audioManager.stopAllLaserSounds();
     audioManager.stopAllForceFieldSounds();
     this.entityRenderer?.destroy();

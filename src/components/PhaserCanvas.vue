@@ -74,6 +74,7 @@ import {
   type SoundCategory,
 } from '../game/render/graphicsSettings';
 import { audioManager } from '../game/audio/AudioManager';
+import { musicPlayer } from '../game/audio/MusicPlayer';
 
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -254,6 +255,7 @@ const soundToggles = reactive<Record<SoundCategory, boolean>>({
   dead: getSoundToggle('dead'),
   beam: getSoundToggle('beam'),
   field: getSoundToggle('field'),
+  music: getSoundToggle('music'),
 });
 audioManager.setMuted(audioScope.value === 'off');
 const rangeToggles = reactive<Record<RangeType, boolean>>({
@@ -894,7 +896,9 @@ function toggleSoundCategory(category: SoundCategory): void {
   if (!newValue) {
     if (category === 'beam') audioManager.stopAllLaserSounds();
     if (category === 'field') audioManager.stopAllForceFieldSounds();
+    if (category === 'music') musicPlayer.stop();
   }
+  if (newValue && category === 'music') musicPlayer.start();
 }
 
 const SOUND_LABELS: Record<SoundCategory, string> = {
@@ -903,6 +907,7 @@ const SOUND_LABELS: Record<SoundCategory, string> = {
   dead: 'DEAD',
   beam: 'BEAM',
   field: 'FIELD',
+  music: 'MUSIC',
 };
 
 const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
@@ -911,6 +916,7 @@ const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
   dead: 'Unit death sounds',
   beam: 'Continuous beam sounds',
   field: 'Continuous force field sounds',
+  music: 'Procedural background music',
 };
 
 function updateFPSStats(): void {
