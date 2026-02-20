@@ -2,15 +2,14 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
-import { PLAYER_COLORS } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { AudioEvent, ImpactContext, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
+import type { AudioEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getWeaponWorldPosition } from '../../math';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
-import type { DeathContext, DamageResult } from '../damage/types';
-import type { WeaponConfig, Projectile } from '../types';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
+import type { DeathContext } from '../damage/types';
+import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, applyDirectionalKnockback, emitBeamHitAudio } from './damageHelpers';
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
@@ -25,58 +24,6 @@ const _emptyExcludeSet = new Set<EntityId>();
 
 // Reusable set for secondary damage exclusion (avoids per-tick allocation)
 const _beamSecondaryExcludeSet = new Set<EntityId>();
-
-// Build an ImpactContext for hit/projectileExpire audio events
-function buildImpactContext(
-  config: WeaponConfig,
-  projectileX: number, projectileY: number,
-  projectileVelX: number, projectileVelY: number,
-  collisionRadius: number,
-  entity?: Entity,
-): ImpactContext {
-  const primaryRadius = config.primaryDamageRadius ?? collisionRadius;
-  const secondaryRadius = config.secondaryDamageRadius ?? primaryRadius;
-
-  let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
-  let penDirX = 0, penDirY = 0;
-
-  if (entity) {
-    entityVelX = entity.unit?.velocityX ?? 0;
-    entityVelY = entity.unit?.velocityY ?? 0;
-    entityCollisionRadius = entity.unit?.collisionRadius ?? (entity.building ? entity.building.width / 2 : 0);
-
-    // Normalized direction from projectile center to entity center
-    const dx = entity.transform.x - projectileX;
-    const dy = entity.transform.y - projectileY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > 0.001) {
-      penDirX = dx / dist;
-      penDirY = dy / dist;
-    }
-  } else {
-    // No entity hit: use projectile velocity direction as fallback penetration
-    const velMag = Math.sqrt(projectileVelX * projectileVelX + projectileVelY * projectileVelY);
-    if (velMag > 0.001) {
-      penDirX = projectileVelX / velMag;
-      penDirY = projectileVelY / velMag;
-    }
-  }
-
-  return {
-    collisionRadius,
-    primaryRadius,
-    secondaryRadius,
-    projectileVelX,
-    projectileVelY,
-    projectileX,
-    projectileY,
-    entityVelX,
-    entityVelY,
-    entityCollisionRadius,
-    penetrationDirX: penDirX,
-    penetrationDirY: penDirY,
-  };
-}
 
 // Reusable arrays for fireWeapons (avoids per-frame allocation)
 const _fireNewProjectiles: Entity[] = [];
@@ -103,94 +50,6 @@ export function resetProjectileBuffers(): void {
 // Uses O(1) beam index lookup instead of O(n) projectile scan
 function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, weaponIndex: number): boolean {
   return beamIndex.hasActiveBeam(unitId, weaponIndex);
-}
-
-// Helper to apply knockback forces from damage result
-function applyKnockbackForces(
-  knockbacks: { entityId: EntityId; forceX: number; forceY: number }[],
-  forceAccumulator?: ForceAccumulator
-): void {
-  if (!forceAccumulator) return;
-  for (const knockback of knockbacks) {
-    // forceX/forceY already contain the full force (direction * damage * multiplier)
-    // Use addForce directly - don't use addDirectionalForce which normalizes!
-    forceAccumulator.addForce(
-      knockback.entityId,
-      knockback.forceX,
-      knockback.forceY,
-      'knockback'
-    );
-  }
-}
-
-// Helper to process beam kill/death events from a DamageResult (avoids repeating in each zone)
-function processBeamKills(
-  result: DamageResult,
-  world: WorldState,
-  _projEntity: Entity,
-  _proj: Projectile,
-  config: WeaponConfig,
-  unitsToRemove: Set<EntityId>,
-  buildingsToRemove: Set<EntityId>,
-  audioEvents: AudioEvent[],
-  deathContexts: Map<EntityId, DeathContext>,
-): void {
-  for (const id of result.killedUnitIds) {
-    if (!unitsToRemove.has(id)) {
-      const target = world.getEntity(id);
-      const ctx = result.deathContexts.get(id);
-      const playerId = target?.ownership?.playerId ?? 1;
-      const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
-      audioEvents.push({
-        type: 'death',
-        weaponId: config.id,
-        x: target?.transform.x ?? 0,
-        y: target?.transform.y ?? 0,
-        deathContext: ctx ? {
-          unitVelX: target?.body?.physicsBody.vx ?? 0,
-          unitVelY: target?.body?.physicsBody.vy ?? 0,
-          hitDirX: ctx.penetrationDirX,
-          hitDirY: ctx.penetrationDirY,
-          projectileVelX: ctx.attackerVelX,
-          projectileVelY: ctx.attackerVelY,
-          attackMagnitude: ctx.attackMagnitude,
-          radius: target?.unit?.collisionRadius ?? 15,
-          color: playerColor,
-          unitType: target?.unit?.unitType,
-          rotation: target?.transform.rotation ?? 0,
-        } : undefined,
-      });
-      unitsToRemove.add(id);
-    }
-  }
-  for (const id of result.killedBuildingIds) {
-    if (!buildingsToRemove.has(id)) {
-      const building = world.getEntity(id);
-      const playerId = building?.ownership?.playerId ?? 1;
-      const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
-      audioEvents.push({
-        type: 'death',
-        weaponId: config.id,
-        x: building?.transform.x ?? 0,
-        y: building?.transform.y ?? 0,
-        deathContext: {
-          unitVelX: 0,
-          unitVelY: 0,
-          hitDirX: 0,
-          hitDirY: -1,
-          projectileVelX: 0,
-          projectileVelY: 0,
-          attackMagnitude: 50,
-          radius: (building?.building?.width ?? 100) / 2,
-          color: playerColor,
-        },
-      });
-      buildingsToRemove.add(id);
-    }
-  }
-  for (const [id, ctx] of result.deathContexts) {
-    deathContexts.set(id, ctx);
-  }
 }
 
 // Fire weapons at targets - unified for all units
@@ -635,15 +494,7 @@ export function checkProjectileCollisions(
         applyKnockbackForces(primaryResult.knockbacks, forceAccumulator);
 
         // Track killed entities and merge death contexts from primary
-        for (const id of primaryResult.killedUnitIds) {
-          unitsToRemove.add(id);
-        }
-        for (const id of primaryResult.killedBuildingIds) {
-          buildingsToRemove.add(id);
-        }
-        for (const [id, ctx] of primaryResult.deathContexts) {
-          deathContexts.set(id, ctx);
-        }
+        collectKillsAndDeathContexts(primaryResult, unitsToRemove, buildingsToRemove, deathContexts);
 
         // Secondary zone: 20% damage, exclude primary hits
         if (config.secondaryDamageRadius && config.secondaryDamageRadius > config.primaryDamageRadius) {
@@ -665,15 +516,7 @@ export function checkProjectileCollisions(
           });
 
           applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
-          for (const id of secondaryResult.killedUnitIds) {
-            unitsToRemove.add(id);
-          }
-          for (const id of secondaryResult.killedBuildingIds) {
-            buildingsToRemove.add(id);
-          }
-          for (const [id, ctx] of secondaryResult.deathContexts) {
-            deathContexts.set(id, ctx);
-          }
+          collectKillsAndDeathContexts(secondaryResult, unitsToRemove, buildingsToRemove, deathContexts);
         }
 
         // Add explosion audio event if there were hits or it's a mortar
@@ -756,33 +599,9 @@ export function checkProjectileCollisions(
         collisionHadHits = collisionResult.hitEntityIds.length > 0;
 
         // Always process collision zone kills/knockbacks (these entities are inside collisionRadius)
-        if (forceAccumulator && KNOCKBACK.BEAM_HIT > 0) {
-          for (const hitId of collisionResult.hitEntityIds) {
-            const force = tickDamage * KNOCKBACK.BEAM_HIT;
-            forceAccumulator.addForce(hitId, beamDirX * force, beamDirY * force, 'knockback');
-          }
-        }
-        const isContinuousBeam = config.cooldown === 0;
-        if (!isContinuousBeam) {
-          for (const hitId of collisionResult.hitEntityIds) {
-            if (!proj.hitEntities.has(hitId)) {
-              const entity = world.getEntity(hitId);
-              if (entity) {
-                audioEvents.push({
-                  type: 'hit', weaponId: config.projectileType ?? config.id,
-                  x: entity.transform.x, y: entity.transform.y,
-                  impactContext: buildImpactContext(
-                    config, impactX, impactY,
-                    beamDirX * BEAM_EXPLOSION_MAGNITUDE, beamDirY * BEAM_EXPLOSION_MAGNITUDE,
-                    collisionRadius, entity,
-                  ),
-                });
-                proj.hitEntities.add(hitId);
-              }
-            }
-          }
-        }
-        processBeamKills(collisionResult, world, projEntity, proj, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+        applyDirectionalKnockback(collisionResult.hitEntityIds, tickDamage, beamDirX, beamDirY, forceAccumulator);
+        emitBeamHitAudio(collisionResult.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, collisionRadius, audioEvents);
+        collectKillsWithDeathAudio(collisionResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
         if (collisionHadHits) {
           // Step 2: Primary zone (excluding collision hits)
@@ -801,13 +620,8 @@ export function checkProjectileCollisions(
             falloff: 1,
           });
 
-          if (forceAccumulator && KNOCKBACK.BEAM_HIT > 0) {
-            for (const hitId of primaryResult.hitEntityIds) {
-              const force = tickDamage * KNOCKBACK.BEAM_HIT;
-              forceAccumulator.addForce(hitId, beamDirX * force, beamDirY * force, 'knockback');
-            }
-          }
-          processBeamKills(primaryResult, world, projEntity, proj, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+          applyDirectionalKnockback(primaryResult.hitEntityIds, tickDamage, beamDirX, beamDirY, forceAccumulator);
+          collectKillsWithDeathAudio(primaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
           // Step 3: Secondary zone (excluding collision + primary hits)
           if (config.secondaryDamageRadius && config.secondaryDamageRadius > primaryRadius) {
@@ -825,13 +639,8 @@ export function checkProjectileCollisions(
               falloff: 1,
             });
 
-            if (forceAccumulator && KNOCKBACK.BEAM_HIT > 0) {
-              for (const hitId of secondaryResult.hitEntityIds) {
-                const force = tickDamage * 0.2 * KNOCKBACK.BEAM_HIT;
-                forceAccumulator.addForce(hitId, beamDirX * force, beamDirY * force, 'knockback');
-              }
-            }
-            processBeamKills(secondaryResult, world, projEntity, proj, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+            applyDirectionalKnockback(secondaryResult.hitEntityIds, tickDamage * 0.2, beamDirX, beamDirY, forceAccumulator);
+            collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
           }
         }
       } else {
@@ -848,33 +657,9 @@ export function checkProjectileCollisions(
           falloff: 1,
         });
 
-        if (forceAccumulator && KNOCKBACK.BEAM_HIT > 0) {
-          for (const hitId of result.hitEntityIds) {
-            const force = tickDamage * KNOCKBACK.BEAM_HIT;
-            forceAccumulator.addForce(hitId, beamDirX * force, beamDirY * force, 'knockback');
-          }
-        }
-        const isContinuousBeam = config.cooldown === 0;
-        if (!isContinuousBeam) {
-          for (const hitId of result.hitEntityIds) {
-            if (!proj.hitEntities.has(hitId)) {
-              const entity = world.getEntity(hitId);
-              if (entity) {
-                audioEvents.push({
-                  type: 'hit', weaponId: config.projectileType ?? config.id,
-                  x: entity.transform.x, y: entity.transform.y,
-                  impactContext: buildImpactContext(
-                    config, impactX, impactY,
-                    beamDirX * BEAM_EXPLOSION_MAGNITUDE, beamDirY * BEAM_EXPLOSION_MAGNITUDE,
-                    collisionRadius, entity,
-                  ),
-                });
-                proj.hitEntities.add(hitId);
-              }
-            }
-          }
-        }
-        processBeamKills(result, world, projEntity, proj, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+        applyDirectionalKnockback(result.hitEntityIds, tickDamage, beamDirX, beamDirY, forceAccumulator);
+        emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, collisionRadius, audioEvents);
+        collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
         // Secondary zone: 20% damage, exclude primary hits
         if (config.secondaryDamageRadius && config.secondaryDamageRadius > primaryRadius) {
@@ -893,13 +678,8 @@ export function checkProjectileCollisions(
             falloff: 1,
           });
 
-          if (forceAccumulator && KNOCKBACK.BEAM_HIT > 0) {
-            for (const hitId of secondaryResult.hitEntityIds) {
-              const force = tickDamage * 0.2 * KNOCKBACK.BEAM_HIT;
-              forceAccumulator.addForce(hitId, beamDirX * force, beamDirY * force, 'knockback');
-            }
-          }
-          processBeamKills(secondaryResult, world, projEntity, proj, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+          applyDirectionalKnockback(secondaryResult.hitEntityIds, tickDamage * 0.2, beamDirX, beamDirY, forceAccumulator);
+          collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
         }
       }
 
@@ -972,64 +752,7 @@ export function checkProjectileCollisions(
 
       // Handle deaths from direct hit BEFORE splash (result is reusable singleton)
       const hadHits = result.hitEntityIds.length > 0;
-      for (const id of result.killedUnitIds) {
-        if (!unitsToRemove.has(id)) {
-          const target = world.getEntity(id);
-          // Get death context for directional explosion
-          const ctx = result.deathContexts.get(id);
-          const playerId = target?.ownership?.playerId ?? 1;
-          const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
-          audioEvents.push({
-            type: 'death',
-            weaponId: config.id,
-            x: target?.transform.x ?? 0,
-            y: target?.transform.y ?? 0,
-            deathContext: ctx ? {
-              unitVelX: target?.body?.physicsBody.vx ?? 0,
-              unitVelY: target?.body?.physicsBody.vy ?? 0,
-              hitDirX: ctx.penetrationDirX,
-              hitDirY: ctx.penetrationDirY,
-              projectileVelX: ctx.attackerVelX,
-              projectileVelY: ctx.attackerVelY,
-              attackMagnitude: ctx.attackMagnitude,
-              radius: target?.unit?.collisionRadius ?? 15,
-              color: playerColor,
-              unitType: target?.unit?.unitType,
-              rotation: target?.transform.rotation ?? 0,
-            } : undefined,
-          });
-          unitsToRemove.add(id);
-        }
-      }
-      for (const id of result.killedBuildingIds) {
-        if (!buildingsToRemove.has(id)) {
-          const building = world.getEntity(id);
-          const playerId = building?.ownership?.playerId ?? 1;
-          const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
-          audioEvents.push({
-            type: 'death',
-            weaponId: config.id,
-            x: building?.transform.x ?? 0,
-            y: building?.transform.y ?? 0,
-            deathContext: {
-              unitVelX: 0,
-              unitVelY: 0,
-              hitDirX: 0,
-              hitDirY: -1,
-              projectileVelX: 0,
-              projectileVelY: 0,
-              attackMagnitude: 50,
-              radius: (building?.building?.width ?? 100) / 2,
-              color: playerColor,
-            },
-          });
-          buildingsToRemove.add(id);
-        }
-      }
-      // Merge death contexts from direct hit
-      for (const [id, ctx] of result.deathContexts) {
-        deathContexts.set(id, ctx);
-      }
+      collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
       // Handle splash damage on first hit (safe: result fully consumed above)
       if (hadHits && config.primaryDamageRadius && !proj.hasExploded) {
@@ -1051,15 +774,7 @@ export function checkProjectileCollisions(
         applyKnockbackForces(primarySplash.knockbacks, forceAccumulator);
 
         // Track primary splash kills and merge death contexts
-        for (const id of primarySplash.killedUnitIds) {
-          unitsToRemove.add(id);
-        }
-        for (const id of primarySplash.killedBuildingIds) {
-          buildingsToRemove.add(id);
-        }
-        for (const [id, ctx] of primarySplash.deathContexts) {
-          deathContexts.set(id, ctx);
-        }
+        collectKillsAndDeathContexts(primarySplash, unitsToRemove, buildingsToRemove, deathContexts);
 
         // Secondary zone: 20% damage, exclude direct hits + primary hits
         if (config.secondaryDamageRadius && config.secondaryDamageRadius > config.primaryDamageRadius) {
@@ -1080,15 +795,7 @@ export function checkProjectileCollisions(
           });
 
           applyKnockbackForces(secondarySplash.knockbacks, forceAccumulator);
-          for (const id of secondarySplash.killedUnitIds) {
-            unitsToRemove.add(id);
-          }
-          for (const id of secondarySplash.killedBuildingIds) {
-            buildingsToRemove.add(id);
-          }
-          for (const [id, ctx] of secondarySplash.deathContexts) {
-            deathContexts.set(id, ctx);
-          }
+          collectKillsAndDeathContexts(secondarySplash, unitsToRemove, buildingsToRemove, deathContexts);
         }
       }
 
