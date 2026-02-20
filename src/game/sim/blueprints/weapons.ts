@@ -147,7 +147,7 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     pull: { innerRatio: 0.8, outerRatio: 0.82, color: 0x3366ff, alpha: 0.2, particleAlpha: 0.2, power: null, damage: 0 },
     rangeMultiplierOverrides: { see: null, fire: null, release: null, lock: null, fightstop: 1.5 },
     color: 0xffffff,
-    fireSound: { synth: 'force-field', volume: 0.01, playSpeed: 1.0 },
+    fireSound: { synth: 'force-field', volume: 0.5, playSpeed: 1.0 },
   },
   megaForceField: {
     id: 'megaForceField',
@@ -163,7 +163,7 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     pull: { innerRatio: 0.5, outerRatio: 0.52, color: 0x3366ff, alpha: 0.2, particleAlpha: 0.2, power: null, damage: 0 },
     rangeMultiplierOverrides: { see: null, fire: null, release: null, lock: null, fightstop: 1.5 },
     color: 0xffffff,
-    fireSound: { synth: 'force-field', volume: 0.01, playSpeed: 2.0 },
+    fireSound: { synth: 'force-field', volume: 0.5, playSpeed: 2.0 },
   },
   disruptor: {
     id: 'disruptor',

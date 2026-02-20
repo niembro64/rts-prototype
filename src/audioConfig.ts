@@ -60,9 +60,9 @@ export const AUDIO = {
 
     // ADSR envelope
     attack: 0.0, // time to reach peak gain (seconds)
-    decay: 0.0, // time from peak to sustain level (seconds)
+    decay: 0.1, // time from peak to sustain level (seconds)
     sustain: 1.0, // sustain level as fraction of peak (0-1; 1 = no decay)
-    release: 0.0, // fade-out time after note-off (seconds; extends past MIDI duration)
+    release: 0.1, // fade-out time after note-off (seconds; extends past MIDI duration)
 
     // Vibrato (frequency LFO — pitch wobble)
     vibrato: true, // enable vibrato
@@ -76,7 +76,7 @@ export const AUDIO = {
 
     // Unison voices (multiple detuned oscillators per note for thickness/chorus)
     voices: 1, // number of oscillators per note (1 = normal, 2-4 = unison)
-    voiceDetune: 0, // detune spread in cents (e.g. 12 = voices spread ±12 cents)
+    voiceDetune: 30, // detune spread in cents (e.g. 12 = voices spread ±12 cents)
 
     // Per-note lowpass filter (applied to each oscillator)
     filter: true, // enable per-note lowpass filter

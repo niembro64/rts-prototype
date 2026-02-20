@@ -429,6 +429,7 @@ export class MusicPlayer {
 
     // Create oscillator voices
     const perVoiceGain = 1 / numVoices;
+    const period = 1 / freq; // one cycle in seconds
     for (let v = 0; v < numVoices; v++) {
       const osc = this.ctx.createOscillator();
       osc.type = mc.wave;
@@ -440,6 +441,11 @@ export class MusicPlayer {
       }
       osc.frequency.value = freq;
 
+      // Phase offset: start each voice at an evenly-spaced phase within one cycle.
+      // OscillatorNode has no phase param, so we start it earlier by a fraction of the period
+      // and let the gain envelope mask the pre-start silence.
+      const phaseOffset = numVoices > 1 ? (v / numVoices) * period : 0;
+
       // Optional vibrato LFO (modulates this oscillator's frequency)
       if (mc.vibrato) {
         const vibratoLfo = this.ctx.createOscillator();
@@ -449,7 +455,7 @@ export class MusicPlayer {
         // Depth in cents → frequency deviation: freq * (2^(cents/1200) - 1)
         vibratoGainNode.gain.value = freq * (Math.pow(2, mc.vibratoDepth / 1200) - 1);
         vibratoLfo.connect(vibratoGainNode).connect(osc.frequency);
-        vibratoLfo.start(startTime);
+        vibratoLfo.start(startTime - phaseOffset);
         vibratoLfo.stop(oscStop);
       }
 
@@ -458,7 +464,9 @@ export class MusicPlayer {
       voiceGainNode.gain.value = perVoiceGain;
       osc.connect(voiceGainNode).connect(envGain);
 
-      osc.start(startTime);
+      // Start earlier by phaseOffset so each voice begins at a different phase.
+      // The ADSR envelope is still silent before startTime, masking the early start.
+      osc.start(startTime - phaseOffset);
       osc.stop(oscStop);
     }
 

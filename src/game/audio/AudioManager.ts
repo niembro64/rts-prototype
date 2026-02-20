@@ -12,6 +12,9 @@ interface ContinuousSound {
   gainNode: GainNode;
   noiseSource?: AudioBufferSourceNode;
   noiseGain?: GainNode;
+  targetVolume: number;       // Normal gain level when audible
+  noiseTargetVolume: number;  // Normal noise gain level when audible
+  audible: boolean;           // Current audibility state
 }
 
 export class AudioManager {
@@ -165,11 +168,16 @@ export class AudioManager {
     }
 
     // Store reference to stop later
+    const targetVol = 0.2 * this.sfxVolume * volumeMultiplier;
+    const noiseTargetVol = noiseGain ? 0.08 * this.sfxVolume * volumeMultiplier : 0;
     this.activeLaserSounds.set(entityId, {
       oscillator: osc,
       gainNode: gain,
       noiseSource,
       noiseGain,
+      targetVolume: targetVol,
+      noiseTargetVolume: noiseTargetVol,
+      audible: true,
     });
   }
 
@@ -290,11 +298,16 @@ export class AudioManager {
       }
     }
 
+    const targetVol = 0.12 * this.sfxVolume * volumeMultiplier;
+    const noiseTargetVol = noiseGain ? 0.04 * this.sfxVolume * volumeMultiplier : 0;
     this.activeForceFieldSounds.set(entityId, {
       oscillator: osc,
       gainNode: gain,
       noiseSource,
       noiseGain,
+      targetVolume: targetVol,
+      noiseTargetVolume: noiseTargetVol,
+      audible: true,
     });
   }
 
@@ -336,6 +349,37 @@ export class AudioManager {
   stopAllForceFieldSounds(): void {
     for (const entityId of this.activeForceFieldSounds.keys()) {
       this.stopForceFieldSound(entityId);
+    }
+  }
+
+  // Get entity IDs with active continuous sounds (for viewport-based muting)
+  getActiveContinuousEntityIds(): number[] {
+    const ids: number[] = [];
+    for (const id of this.activeLaserSounds.keys()) ids.push(id);
+    for (const id of this.activeForceFieldSounds.keys()) ids.push(id);
+    return ids;
+  }
+
+  // Mute or unmute a continuous sound by entity ID (smooth fade)
+  setContinuousSoundAudible(entityId: number, audible: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    const sound = this.activeLaserSounds.get(entityId) ?? this.activeForceFieldSounds.get(entityId);
+    if (!sound || sound.audible === audible) return;  // No change needed
+
+    sound.audible = audible;
+    const fadeTime = 0.08;
+    const now = ctx.currentTime;
+
+    sound.gainNode.gain.cancelScheduledValues(now);
+    sound.gainNode.gain.setValueAtTime(sound.gainNode.gain.value, now);
+    sound.gainNode.gain.linearRampToValueAtTime(audible ? sound.targetVolume : 0.0001, now + fadeTime);
+
+    if (sound.noiseGain) {
+      sound.noiseGain.gain.cancelScheduledValues(now);
+      sound.noiseGain.gain.setValueAtTime(sound.noiseGain.gain.value, now);
+      sound.noiseGain.gain.linearRampToValueAtTime(audible ? sound.noiseTargetVolume : 0.0001, now + fadeTime);
     }
   }
 

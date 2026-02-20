@@ -139,7 +139,7 @@ const currentSoundToggles: Record<SoundCategory, boolean> = {
   dead: true,
   beam: true,
   field: true,
-  music: true,
+  music: false,
 };
 let currentZoom: number = 1.0; // Updated by renderer
 

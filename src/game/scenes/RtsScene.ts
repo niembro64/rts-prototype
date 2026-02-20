@@ -23,7 +23,7 @@ import {
   EMA_CONFIG,
 } from '../../config';
 
-import { getAudioSmoothing, getSoundToggle } from '../render/graphicsSettings';
+import { getAudioSmoothing, getAudioScope, getSoundToggle } from '../render/graphicsSettings';
 
 // Import helpers
 import {
@@ -670,6 +670,34 @@ export class RtsScene extends Phaser.Scene {
       // Center camera on first snapshot
       if (!this.hasCenteredCamera && !this.backgroundMode) {
         this.centerCameraOnCommander();
+      }
+    }
+
+    // Per-frame viewport check for continuous sounds (beams, force fields)
+    // Mute sounds from offscreen entities based on audio scope setting
+    const continuousIds = audioManager.getActiveContinuousEntityIds();
+    if (continuousIds.length > 0) {
+      const audioScope = getAudioScope();
+      const cam = this.cameras.main;
+      const vp = cam.worldView;
+      for (const eid of continuousIds) {
+        const entity = this.clientViewState.getEntity(eid);
+        if (!entity) continue;
+        const ex = entity.transform.x;
+        const ey = entity.transform.y;
+        let inScope = true;
+        if (audioScope === 'off') {
+          inScope = false;
+        } else if (audioScope === 'window') {
+          inScope = vp.contains(ex, ey);
+        } else if (audioScope === 'padded') {
+          const padX = vp.width * 0.5;
+          const padY = vp.height * 0.5;
+          inScope = ex >= vp.x - padX && ex <= vp.right + padX &&
+                    ey >= vp.y - padY && ey <= vp.bottom + padY;
+        }
+        // 'all' scope: always audible (inScope stays true)
+        audioManager.setContinuousSoundAudible(eid, inScope);
       }
     }
 

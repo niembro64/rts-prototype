@@ -76,7 +76,6 @@ import {
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
 
-
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
@@ -109,7 +108,6 @@ const clientTime = ref<string>('');
 
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
-
 
 function loadStoredSnapshotRate(): SnapshotRate {
   try {
@@ -468,7 +466,8 @@ const showServerControls = computed(
 const serverBarReadonly = computed(() => !hasServer.value);
 
 // Bar color theming via CSS custom properties
-type BarColorTheme = (typeof CONTROL_BARS.themes)[keyof typeof CONTROL_BARS.themes];
+type BarColorTheme =
+  (typeof CONTROL_BARS.themes)[keyof typeof CONTROL_BARS.themes];
 function barVars(theme: BarColorTheme): Record<string, string> {
   return {
     '--bar-bg': theme.barBg,
@@ -482,10 +481,18 @@ function barVars(theme: BarColorTheme): Record<string, string> {
   };
 }
 const battleBarVars = computed(() =>
-  barVars(serverBarReadonly.value ? CONTROL_BARS.themes.disabled : CONTROL_BARS.themes.battle),
+  barVars(
+    serverBarReadonly.value
+      ? CONTROL_BARS.themes.disabled
+      : CONTROL_BARS.themes.battle,
+  ),
 );
 const serverBarVars = computed(() =>
-  barVars(serverBarReadonly.value ? CONTROL_BARS.themes.disabled : CONTROL_BARS.themes.server),
+  barVars(
+    serverBarReadonly.value
+      ? CONTROL_BARS.themes.disabled
+      : CONTROL_BARS.themes.server,
+  ),
 );
 const clientBarVars = computed(() => barVars(CONTROL_BARS.themes.client));
 
@@ -504,13 +511,19 @@ const displayServerTpsWorst = computed(
   () => serverMetaFromSnapshot.value?.tpsWorst ?? 0,
 );
 const displayTickRate = computed(
-  () => serverMetaFromSnapshot.value?.tickRate ?? CONTROL_BARS.server.tickRate.default,
+  () =>
+    serverMetaFromSnapshot.value?.tickRate ??
+    CONTROL_BARS.server.tickRate.default,
 );
 const displaySnapshotRate = computed(
-  () => serverMetaFromSnapshot.value?.snapshotRate ?? CONTROL_BARS.server.snapshot.default,
+  () =>
+    serverMetaFromSnapshot.value?.snapshotRate ??
+    CONTROL_BARS.server.snapshot.default,
 );
 const displayKeyframeRatio = computed(
-  () => serverMetaFromSnapshot.value?.keyframeRatio ?? CONTROL_BARS.server.keyframe.default,
+  () =>
+    serverMetaFromSnapshot.value?.keyframeRatio ??
+    CONTROL_BARS.server.keyframe.default,
 );
 const displayGridInfo = computed(
   () => serverMetaFromSnapshot.value?.sendGridInfo ?? false,
@@ -576,7 +589,9 @@ function changeMaxTotalUnits(value: number): void {
 }
 
 function toggleProjVelInherit(): void {
-  const current = serverMetaFromSnapshot.value?.projVelInherit ?? CONTROL_BARS.battle.projVelInherit.default;
+  const current =
+    serverMetaFromSnapshot.value?.projVelInherit ??
+    CONTROL_BARS.battle.projVelInherit.default;
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
     tick: 0,
@@ -629,6 +644,18 @@ function resetClientDefaults(): void {
   }
   for (const urt of UNIT_RADIUS_TYPES) {
     if (unitRadiusToggles[urt]) toggleUnitRadius(urt);
+  }
+  // Reset sound toggles: all on except music
+  const SOUND_DEFAULTS: Record<SoundCategory, boolean> = {
+    fire: true,
+    hit: false,
+    dead: false,
+    beam: false,
+    field: true,
+    music: false,
+  };
+  for (const cat of SOUND_CATEGORIES) {
+    if (soundToggles[cat] !== SOUND_DEFAULTS[cat]) toggleSoundCategory(cat);
   }
 }
 
@@ -1278,7 +1305,9 @@ onUnmounted(() => {
             <span class="bar-label-text">{{ battleLabel }}</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
-          <span class="time-display" title="Battle elapsed time">{{ battleElapsed }}</span>
+          <span class="time-display" title="Battle elapsed time">{{
+            battleElapsed
+          }}</span>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
@@ -1356,15 +1385,21 @@ onUnmounted(() => {
             <span class="bar-label-text">HOST SERVER</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
-          <span v-if="displayServerTime" class="time-display" title="Server wall-clock time">{{
-            displayServerTime
-          }}</span>
+          <span
+            v-if="displayServerTime"
+            class="time-display"
+            title="Server wall-clock time"
+            >{{ displayServerTime }}</span
+          >
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span v-if="displayServerIp" class="ip-display" title="Server IP address">{{
-            displayServerIp
-          }}</span>
+          <span
+            v-if="displayServerIp"
+            class="ip-display"
+            title="Server IP address"
+            >{{ displayServerIp }}</span
+          >
         </div>
         <div class="control-group">
           <div v-if="displayServerIp" class="bar-divider"></div>
@@ -1384,7 +1419,9 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label" title="Server simulation ticks per second">TPS:</span>
+          <span class="control-label" title="Server simulation ticks per second"
+            >TPS:</span
+          >
           <div class="stat-bar-group">
             <div class="stat-bar">
               <div class="stat-bar-top">
@@ -1395,7 +1432,7 @@ onUnmounted(() => {
                 <div
                   class="stat-bar-fill"
                   :style="
-                    statBarStyle(displayServerTpsAvg, displayTickRate, serverBarReadonly)
+                    statBarStyle(displayServerTpsAvg, 60, serverBarReadonly)
                   "
                 ></div>
               </div>
@@ -1409,7 +1446,7 @@ onUnmounted(() => {
                 <div
                   class="stat-bar-fill"
                   :style="
-                    statBarStyle(displayServerTpsWorst, displayTickRate, serverBarReadonly)
+                    statBarStyle(displayServerTpsWorst, 60, serverBarReadonly)
                   "
                 ></div>
               </div>
@@ -1441,7 +1478,13 @@ onUnmounted(() => {
               :key="String(opt)"
               class="control-btn"
               :class="{ active: displayKeyframeRatio === opt }"
-              :title="opt === 'ALL' ? 'Every snapshot is a full keyframe' : opt === 'NONE' ? 'Never send full keyframes (delta only)' : `Full keyframe probability: ${opt}`"
+              :title="
+                opt === 'ALL'
+                  ? 'Every snapshot is a full keyframe'
+                  : opt === 'NONE'
+                    ? 'Never send full keyframes (delta only)'
+                    : `Full keyframe probability: ${opt}`
+              "
               @click="setKeyframeRatioValue(opt)"
             >
               {{
@@ -1478,17 +1521,27 @@ onUnmounted(() => {
             <span class="bar-label-text">PLAYER CLIENT</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
-          <span v-if="clientTime" class="time-display" title="Client wall-clock time">{{ clientTime }}</span>
+          <span
+            v-if="clientTime"
+            class="time-display"
+            title="Client wall-clock time"
+            >{{ clientTime }}</span
+          >
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span v-if="localIpAddress !== 'N/A'" class="ip-display" title="Public IP address">{{
-            localIpAddress
-          }}</span>
+          <span
+            v-if="localIpAddress !== 'N/A'"
+            class="ip-display"
+            title="Public IP address"
+            >{{ localIpAddress }}</span
+          >
         </div>
         <div class="control-group">
           <div v-if="localIpAddress !== 'N/A'" class="bar-divider"></div>
-          <span class="control-label" title="Client rendering frames per second">FPS:</span>
+          <span class="control-label" title="Client rendering frames per second"
+            >FPS:</span
+          >
           <div class="stat-bar-group">
             <div class="stat-bar">
               <div class="stat-bar-top">
@@ -1519,13 +1572,19 @@ onUnmounted(() => {
         <div class="control-group">
           <div class="bar-divider"></div>
           <div class="fps-stats">
-            <span class="control-label" title="Current camera zoom level">ZOOM:</span>
+            <span class="control-label" title="Current camera zoom level"
+              >ZOOM:</span
+            >
             <span class="fps-value">{{ fmt4(currentZoom) }}</span>
           </div>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label" title="Snapshots received per second from server">SPS:</span>
+          <span
+            class="control-label"
+            title="Snapshots received per second from server"
+            >SPS:</span
+          >
           <div class="stat-bar-group">
             <div class="stat-bar">
               <div class="stat-bar-top">
@@ -1538,9 +1597,7 @@ onUnmounted(() => {
                   :style="
                     statBarStyle(
                       snapAvgRate,
-                      displaySnapshotRate === 'none'
-                        ? 60
-                        : displaySnapshotRate,
+                      displaySnapshotRate === 'none' ? 60 : displaySnapshotRate,
                     )
                   "
                 ></div>
@@ -1557,9 +1614,7 @@ onUnmounted(() => {
                   :style="
                     statBarStyle(
                       snapWorstRate,
-                      displaySnapshotRate === 'none'
-                        ? 60
-                        : displaySnapshotRate,
+                      displaySnapshotRate === 'none' ? 60 : displaySnapshotRate,
                     )
                   "
                 ></div>
@@ -1647,7 +1702,13 @@ onUnmounted(() => {
               :key="opt.value"
               class="control-btn"
               :class="{ active: renderMode === opt.value }"
-              :title="opt.value === 'window' ? 'Render only visible window' : opt.value === 'padded' ? 'Render window plus padding' : 'Render entire map'"
+              :title="
+                opt.value === 'window'
+                  ? 'Render only visible window'
+                  : opt.value === 'padded'
+                    ? 'Render window plus padding'
+                    : 'Render entire map'
+              "
               @click="changeRenderMode(opt.value)"
             >
               {{ opt.label }}
@@ -1663,7 +1724,15 @@ onUnmounted(() => {
               :key="opt.value"
               class="control-btn"
               :class="{ active: audioScope === opt.value }"
-              :title="opt.value === 'off' ? 'Audio disabled' : opt.value === 'window' ? 'Play audio from visible area' : opt.value === 'padded' ? 'Play audio from visible area plus padding' : 'Play audio from entire map'"
+              :title="
+                opt.value === 'off'
+                  ? 'Audio disabled'
+                  : opt.value === 'window'
+                    ? 'Play audio from visible area'
+                    : opt.value === 'padded'
+                      ? 'Play audio from visible area plus padding'
+                      : 'Play audio from entire map'
+              "
               @click="changeAudioScope(opt.value)"
             >
               {{ opt.label }}
@@ -2216,7 +2285,6 @@ onUnmounted(() => {
 .button-group .control-btn:last-child {
   border-radius: 0 3px 3px 0;
 }
-
 
 .control-btn {
   padding: 3px 6px;
