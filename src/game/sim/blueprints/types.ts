@@ -56,6 +56,9 @@ export interface ProjectileBlueprint {
   beamDuration?: number;
   beamWidth?: number;
   collisionRadius?: number;
+  // Knockback (beams/railguns — applied per tick while active)
+  hitForce?: number;        // Push on target when hit
+  knockBackForce?: number;  // Recoil on shooter when firing
   // Audio
   hitSound?: SoundEntry;
 }
@@ -123,7 +126,7 @@ export interface LegConfigData {
   lerpDuration: number;
 }
 
-export type LegStyle = 'widow' | 'daddy' | 'tarantula' | 'recluse' | 'commander';
+export type LegStyle = 'widow' | 'daddy' | 'tarantula' | 'tick' | 'commander';
 
 export type LocomotionBlueprint =
   | { type: 'wheels'; config: WheelConfig }

@@ -6,7 +6,7 @@ import type { Entity, EntityId } from '../types';
 import { PLAYER_COLORS } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext } from './types';
-import { KNOCKBACK, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
+import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import type { DeathContext, DamageResult } from '../damage/types';
 import type { WeaponConfig, Projectile } from '../types';
 
@@ -161,17 +161,16 @@ export function collectKillsAndDeathContexts(
   for (const [id, ctx] of result.deathContexts) deathContexts.set(id, ctx);
 }
 
-// Apply directional knockback to all hit entities (beam-style: damage * KNOCKBACK.BEAM_HIT in given direction)
+// Apply directional knockback to all hit entities (flat force in given direction, already dt-scaled)
 export function applyDirectionalKnockback(
   hitEntityIds: EntityId[],
-  damage: number,
+  force: number,
   dirX: number,
   dirY: number,
   forceAccumulator?: ForceAccumulator,
 ): void {
-  if (!forceAccumulator || KNOCKBACK.BEAM_HIT <= 0) return;
+  if (!forceAccumulator || force <= 0) return;
   for (const hitId of hitEntityIds) {
-    const force = damage * KNOCKBACK.BEAM_HIT;
     forceAccumulator.addForce(hitId, dirX * force, dirY * force, 'knockback');
   }
 }

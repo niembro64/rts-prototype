@@ -54,7 +54,7 @@ export const AUDIO = {
     lfoRate: 8, // frequency wobble rate in Hz
     lfoDepth: 15, // frequency wobble depth in Hz (±)
     filterFreq: 1200, // lowpass cutoff frequency
-    filterQ: 2, // filter resonance
+    filterQ: 10, // filter resonance
     fadeIn: 0.12, // fade-in time in seconds
     oscVolume: 0.2, // main oscillator volume multiplier
     noiseVolume: 0.08, // noise layer volume multiplier
@@ -65,8 +65,8 @@ export const AUDIO = {
   // Continuous force field sound settings
   forceField: {
     wave: 'triangle' as OscillatorType, // oscillator waveform
-    freq: 60, // base frequency in Hz
-    filterFreq: 400, // lowpass cutoff frequency
+    freq: 32, // base frequency in Hz
+    filterFreq: 2000, // lowpass cutoff frequency
     filterQ: 3, // filter resonance
     fadeIn: 0.2, // fade-in time in seconds
     oscVolume: 0.12, // main oscillator volume multiplier

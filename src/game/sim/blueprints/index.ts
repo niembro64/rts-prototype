@@ -45,6 +45,8 @@ function getProjectileFields(bp: ProjectileBlueprint) {
     ...(bp.beamDuration != null && { beamDuration: bp.beamDuration }),
     ...(bp.beamWidth != null && { beamWidth: bp.beamWidth }),
     ...(bp.collisionRadius != null && { collisionRadius: bp.collisionRadius }),
+    ...(bp.hitForce != null && { hitForce: bp.hitForce }),
+    ...(bp.knockBackForce != null && { knockBackForce: bp.knockBackForce }),
   };
 }
 

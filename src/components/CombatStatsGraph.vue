@@ -36,7 +36,7 @@ const UNIT_COLORS: Record<string, string> = {
   daddy: '#4363d8',
   badger: '#f58231',
   mongoose: '#911eb4',
-  recluse: '#42d4f4',
+  tick: '#42d4f4',
   mammoth: '#f032e6',
   widow: '#bfef45',
   tarantula: '#fabed4',

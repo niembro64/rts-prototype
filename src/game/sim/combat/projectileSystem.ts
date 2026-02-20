@@ -7,7 +7,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getWeaponWorldPosition } from '../../math';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
+import { PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, applyDirectionalKnockback, emitBeamHitAudio } from './damageHelpers';
 
@@ -114,6 +114,8 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
       }
 
       // Handle cooldowns
+      // For cooldown beams, cooldown is set when the beam expires (not at fire time),
+      // so the gap between shots = beamDuration + cooldown.
       if (!isContinuousBeam) {
         const canFire = weapon.currentCooldown <= 0;
         const canBurstFire = weapon.burstShotsRemaining !== undefined &&
@@ -127,7 +129,7 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
             weapon.burstShotsRemaining = undefined;
             weapon.burstCooldown = undefined;
           }
-        } else if (canFire) {
+        } else if (canFire && !isCooldownBeam) {
           weapon.currentCooldown = config.cooldown;
           if (config.burstCount && config.burstCount > 1) {
             weapon.burstShotsRemaining = config.burstCount - 1;
@@ -578,6 +580,11 @@ export function checkProjectileCollisions(
       const beamDirX = Math.cos(beamAngle);
       const beamDirY = Math.sin(beamAngle);
 
+      // Flat per-tick forces, scaled by dt for framerate independence
+      const dtSec = dtMs / 1000;
+      const hitForcePerTick = (config.hitForce ?? 0) * dtSec;
+      const knockBackPerTick = (config.knockBackForce ?? 0) * dtSec;
+
       // Collision gate: when splashOnExpiry is false, only splash if collisionRadius circle hits something
       const useCollisionGate = !config.splashOnExpiry;
       let collisionHadHits = false;
@@ -599,7 +606,7 @@ export function checkProjectileCollisions(
         collisionHadHits = collisionResult.hitEntityIds.length > 0;
 
         // Always process collision zone kills/knockbacks (these entities are inside collisionRadius)
-        applyDirectionalKnockback(collisionResult.hitEntityIds, tickDamage, beamDirX, beamDirY, forceAccumulator);
+        applyDirectionalKnockback(collisionResult.hitEntityIds, hitForcePerTick, beamDirX, beamDirY, forceAccumulator);
         emitBeamHitAudio(collisionResult.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, collisionRadius, audioEvents);
         collectKillsWithDeathAudio(collisionResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
@@ -620,7 +627,7 @@ export function checkProjectileCollisions(
             falloff: 1,
           });
 
-          applyDirectionalKnockback(primaryResult.hitEntityIds, tickDamage, beamDirX, beamDirY, forceAccumulator);
+          applyDirectionalKnockback(primaryResult.hitEntityIds, hitForcePerTick, beamDirX, beamDirY, forceAccumulator);
           collectKillsWithDeathAudio(primaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
           // Step 3: Secondary zone (excluding collision + primary hits)
@@ -639,7 +646,7 @@ export function checkProjectileCollisions(
               falloff: 1,
             });
 
-            applyDirectionalKnockback(secondaryResult.hitEntityIds, tickDamage * 0.2, beamDirX, beamDirY, forceAccumulator);
+            applyDirectionalKnockback(secondaryResult.hitEntityIds, hitForcePerTick * 0.2, beamDirX, beamDirY, forceAccumulator);
             collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
           }
         }
@@ -657,7 +664,7 @@ export function checkProjectileCollisions(
           falloff: 1,
         });
 
-        applyDirectionalKnockback(result.hitEntityIds, tickDamage, beamDirX, beamDirY, forceAccumulator);
+        applyDirectionalKnockback(result.hitEntityIds, hitForcePerTick, beamDirX, beamDirY, forceAccumulator);
         emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, collisionRadius, audioEvents);
         collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
@@ -678,18 +685,17 @@ export function checkProjectileCollisions(
             falloff: 1,
           });
 
-          applyDirectionalKnockback(secondaryResult.hitEntityIds, tickDamage * 0.2, beamDirX, beamDirY, forceAccumulator);
+          applyDirectionalKnockback(secondaryResult.hitEntityIds, hitForcePerTick * 0.2, beamDirX, beamDirY, forceAccumulator);
           collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
         }
       }
 
       // Apply recoil to firing unit every frame the beam is active (not just on hit)
-      if (forceAccumulator && KNOCKBACK.BEAM_FIRE > 0) {
-        const recoilForce = tickDamage * KNOCKBACK.BEAM_FIRE;
+      if (forceAccumulator && knockBackPerTick > 0) {
         forceAccumulator.addForce(
           proj.sourceEntityId,
-          -beamDirX * recoilForce,
-          -beamDirY * recoilForce,
+          -beamDirX * knockBackPerTick,
+          -beamDirY * knockBackPerTick,
           'recoil'
         );
       }
@@ -839,8 +845,21 @@ export function checkProjectileCollisions(
   for (const id of projectilesToRemove) {
     const entity = world.getEntity(id);
     if (entity?.projectile?.projectileType === 'beam') {
-      const weaponIdx = (entity.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
-      beamIndex.removeBeam(entity.projectile.sourceEntityId, weaponIdx);
+      const proj = entity.projectile;
+      const weaponIdx = (proj.config as { weaponIndex?: number }).weaponIndex ?? 0;
+      beamIndex.removeBeam(proj.sourceEntityId, weaponIdx);
+
+      // For cooldown beams, start the cooldown now (after beam expires)
+      const cooldown = proj.config.cooldown;
+      if (cooldown > 0) {
+        const source = world.getEntity(proj.sourceEntityId);
+        if (source?.weapons) {
+          const weapon = source.weapons[weaponIdx];
+          if (weapon) {
+            weapon.currentCooldown = cooldown;
+          }
+        }
+      }
     }
     world.removeEntity(id);
   }

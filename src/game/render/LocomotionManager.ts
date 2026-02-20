@@ -59,8 +59,8 @@ export class LocomotionManager {
         { attachOffsetX: -radius * 0.1, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.40, snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
         { attachOffsetX: -radius * 0.3, attachOffsetY: -radius * 0.2, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.50, extensionThreshold: 0.99 },
       ];
-    } else if (legStyle === 'recluse') {
-      // Recluse: tiny spider with short legs — 4 per side
+    } else if (legStyle === 'tick') {
+      // Tick: tiny spider with short legs — 4 per side
       const legLength = radius * 1.0;
       const upperLen = legLength * 0.5;
       const lowerLen = upperLen * 1.1;

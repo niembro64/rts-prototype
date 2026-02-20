@@ -40,7 +40,14 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'wheels',
-      config: { wheelDistX: 0.6, wheelDistY: 0.7, treadLength: 0.5, treadWidth: 0.15, wheelRadius: 0.28, rotationSpeed: 1.0 },
+      config: {
+        wheelDistX: 0.6,
+        wheelDistY: 0.7,
+        treadLength: 0.5,
+        treadWidth: 0.15,
+        wheelRadius: 0.28,
+        rotationSpeed: 1.0,
+      },
     },
     renderer: 'scout',
     deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
@@ -59,7 +66,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'treads',
-      config: { treadOffset: 0.8, treadLength: 1.6, treadWidth: 0.45, wheelRadius: 0.12, rotationSpeed: 1.0 },
+      config: {
+        treadOffset: 0.8,
+        treadLength: 1.6,
+        treadWidth: 0.45,
+        wheelRadius: 0.12,
+        rotationSpeed: 1.0,
+      },
     },
     renderer: 'burst',
     deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
@@ -98,7 +111,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'treads',
-      config: { treadOffset: 0.85, treadLength: 1.7, treadWidth: 0.55, wheelRadius: 0.12, rotationSpeed: 1.0 },
+      config: {
+        treadOffset: 0.85,
+        treadLength: 1.7,
+        treadWidth: 0.55,
+        wheelRadius: 0.12,
+        rotationSpeed: 1.0,
+      },
     },
     renderer: 'brawl',
     deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
@@ -117,15 +136,22 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'wheels',
-      config: { wheelDistX: 0.65, wheelDistY: 0.7, treadLength: 0.5, treadWidth: 0.3, wheelRadius: 0.22, rotationSpeed: 1.0 },
+      config: {
+        wheelDistX: 0.65,
+        wheelDistY: 0.7,
+        treadLength: 0.5,
+        treadWidth: 0.3,
+        wheelRadius: 0.22,
+        rotationSpeed: 1.0,
+      },
     },
     renderer: 'mortar',
     deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
   },
-  recluse: {
-    id: 'recluse',
-    name: 'Recluse',
-    shortName: 'RCL',
+  tick: {
+    id: 'tick',
+    name: 'Tick',
+    shortName: 'TCK',
     hp: 45,
     moveSpeed: 120,
     collisionRadius: 11,
@@ -136,7 +162,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'legs',
-      style: 'recluse',
+      style: 'tick',
       config: { thickness: 1.5, footSize: 0.08, lerpDuration: 160 },
     },
     renderer: 'snipe',
@@ -156,7 +182,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'treads',
-      config: { treadOffset: 0.9, treadLength: 2.0, treadWidth: 0.6, wheelRadius: 0.175, rotationSpeed: 1.0 },
+      config: {
+        treadOffset: 0.9,
+        treadLength: 2.0,
+        treadWidth: 0.6,
+        wheelRadius: 0.175,
+        rotationSpeed: 1.0,
+      },
     },
     renderer: 'tank',
     deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
@@ -172,7 +204,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 200,
     baseCost: 3000,
     weapons: [
-      { weaponId: 'beam', offsetX: 0, offsetY: 0 },     // 6 beams at hex positions (offsets computed at spawn from chassisMounts)
+      { weaponId: 'beam', offsetX: 0, offsetY: 0 }, // 6 beams at hex positions (offsets computed at spawn from chassisMounts)
       { weaponId: 'beam', offsetX: 0, offsetY: 0 },
       { weaponId: 'beam', offsetX: 0, offsetY: 0 },
       { weaponId: 'beam', offsetX: 0, offsetY: 0 },
@@ -184,7 +216,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'widow',
-      config: { thickness: 6, footSize: 0.10, lerpDuration: 600 },
+      config: { thickness: 6, footSize: 0.1, lerpDuration: 600 },
     },
     renderer: 'arachnid',
     weaponSeeRange: 400,
@@ -224,7 +256,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       { weaponId: 'beam', offsetX: 0, offsetY: 0 },
       { weaponId: 'dgun', offsetX: 0, offsetY: 0 },
     ],
-    chassisMounts: [{ x: 0.3, y: 0 }, { x: 0, y: 0 }],
+    chassisMounts: [
+      { x: 0.3, y: 0 },
+      { x: 0, y: 0 },
+    ],
     locomotion: {
       type: 'legs',
       style: 'commander',
@@ -239,7 +274,15 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
 
 // Ordered list for build bar (excludes commander — not buildable)
 export const BUILDABLE_UNIT_IDS = [
-  'jackal', 'lynx', 'daddy', 'badger', 'mongoose', 'recluse', 'mammoth', 'widow', 'tarantula',
+  'jackal',
+  'lynx',
+  'daddy',
+  'badger',
+  'mongoose',
+  'tick',
+  'mammoth',
+  'widow',
+  'tarantula',
 ];
 
 export function getUnitBlueprint(id: string): UnitBlueprint {

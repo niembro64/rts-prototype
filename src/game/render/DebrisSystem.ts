@@ -276,7 +276,7 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       break;
     }
 
-    case 'recluse': {
+    case 'tick': {
       // 8 short legs (4 per side) — thin lines
       const legLen = r * 1.0;
       const upperLen = legLen * 0.5;

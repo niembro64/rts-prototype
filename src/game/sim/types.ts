@@ -115,6 +115,8 @@ export interface WeaponConfig {
   beamDuration?: number;         // How long beam persists (ms)
   beamWidth?: number;            // Visual width of beam line
   collisionRadius?: number;      // Collision/hit-detection radius at beam endpoint
+  hitForce?: number;             // Push on target per tick (beams/railguns)
+  knockBackForce?: number;       // Recoil on shooter per tick (beams/railguns)
 
   // Spread/multi-shot properties
   pelletCount?: number;          // Number of projectiles per shot

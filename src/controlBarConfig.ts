@@ -72,7 +72,7 @@ export const CONTROL_BARS = {
       daddy: 'DDY',
       badger: 'BDG',
       mongoose: 'MGS',
-      recluse: 'RCL',
+      tick: 'TCK',
       mammoth: 'MMT',
       widow: 'WDW',
       tarantula: 'TRN',

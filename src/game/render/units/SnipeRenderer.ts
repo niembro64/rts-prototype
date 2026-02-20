@@ -1,4 +1,4 @@
-// Snipe unit renderer - Recluse spider: tiny fragile sniper with railgun
+// Snipe unit renderer - Tick spider: tiny fragile sniper with railgun
 
 import type { UnitRenderContext } from '../types';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
@@ -15,7 +15,7 @@ export function drawSnipeUnit(
 
   // Legs (always drawn at low+high)
   {
-    const legConfig = LEG_STYLE_CONFIG.recluse;
+    const legConfig = LEG_STYLE_CONFIG.tick;
     const legThickness = legConfig.thickness;
     const footSize = r * legConfig.footSizeMultiplier;
     const halfLegs = legs.length / 2;

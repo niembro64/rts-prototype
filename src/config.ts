@@ -93,12 +93,9 @@ export const COST_MULTIPLIER = 1.0;
  * Knockback forces for combat. Each value is a multiplier applied to damage.
  * Force = damage * multiplier. 0 = disabled.
  *
- * HIT = push on the TARGET when struck
- * FIRE = recoil on the SHOOTER when firing
+ * Beam/railgun hitForce and knockBackForce are defined per-projectile in projectiles.ts.
  */
 export const KNOCKBACK = {
-  BEAM_HIT: 750,
-  BEAM_FIRE: 200,
   FORCE_FIELD_PULL_MULTIPLIER: 2.0, // Multiplier applied to each weapon's pullPower
   SPLASH: 250, // Knockback multiplier for area/splash explosions (mortar/disruptor)
 };

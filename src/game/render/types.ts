@@ -161,7 +161,7 @@ export const LEG_STYLE_CONFIG: Record<string, { thickness: number; footSizeMulti
   widow: legStyleFromBlueprint('widow'),
   daddy: legStyleFromBlueprint('daddy'),
   tarantula: legStyleFromBlueprint('tarantula'),
-  recluse: legStyleFromBlueprint('recluse'),
+  tick: legStyleFromBlueprint('tick'),
   commander: legStyleFromBlueprint('commander'),
 };
 
@@ -188,7 +188,7 @@ export const UNIT_NAMES: Record<string, string> = {
   daddy: 'Daddy',
   badger: 'Badger',
   mongoose: 'Mongoose',
-  recluse: 'Recluse',
+  tick: 'Tick',
   mammoth: 'Mammoth',
   widow: 'Widow',
   tarantula: 'Tarantula',
