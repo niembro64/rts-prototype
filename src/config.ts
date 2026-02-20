@@ -22,21 +22,19 @@ export const SNAPSHOT_CONFIG = {
   velocityThreshold: 0.01,
 };
 
-/** Keyframe ratio: fraction of snapshots that are full keyframes. 1 = ALL, 0 = NONE (after first). Default 1e-2 (every 100th). */
-export const DEFAULT_KEYFRAME_RATIO = 0.01;
+// Re-export bar config values used by sim/server code
+export { CONTROL_BARS } from './controlBarConfig';
+export type { SnapshotRate, KeyframeRatio } from './controlBarConfig';
+import { CONTROL_BARS } from './controlBarConfig';
 
-/** Available keyframe ratio options for the FULLSNAP UI control */
-export const KEYFRAME_RATIO_OPTIONS: readonly (number | 'ALL' | 'NONE')[] = [
-  'ALL',
-  0.1, // 1e-1
-  0.01, // 1e-2
-  0.001, // 1e-3
-  0.0001, // 1e-4
-  0.00001, // 1e-5
-  'NONE',
-] as const;
-
-export type KeyframeRatio = number | 'ALL' | 'NONE';
+export const DEFAULT_KEYFRAME_RATIO = CONTROL_BARS.server.keyframe.default;
+export const KEYFRAME_RATIO_OPTIONS = CONTROL_BARS.server.keyframe.options;
+export const DEFAULT_SNAPSHOT_RATE = CONTROL_BARS.server.snapshot.default;
+export const SNAPSHOT_RATE_OPTIONS = CONTROL_BARS.server.snapshot.options;
+export const MAX_TOTAL_UNITS = CONTROL_BARS.battle.cap.default;
+export const DEFAULT_PROJ_VEL_INHERIT = CONTROL_BARS.battle.projVelInherit.default;
+export const BAR_COLORS = CONTROL_BARS.themes;
+export const UNIT_SHORT_NAMES = CONTROL_BARS.battle.unitShortNames;
 
 // =============================================================================
 // EMA (Exponential Moving Average) STATS TRACKING
@@ -73,12 +71,6 @@ export const BASE_INCOME_PER_SECOND = 10;
 // =============================================================================
 // UNIT CAP
 // =============================================================================
-
-/**
- * Maximum total units across all players.
- * This is divided evenly among players (e.g., 120 total / 2 players = 60 each)
- */
-export const MAX_TOTAL_UNITS = 4000;
 
 /** Energy produced per second by each completed solar panel */
 export const SOLAR_ENERGY_PER_SECOND = 50;
@@ -1179,52 +1171,6 @@ export const WEAPON_STATS = {
   },
 };
 
-// =============================================================================
-// CONTROL BAR COLORS
-// =============================================================================
-
-export const BAR_COLORS = {
-  battle: {
-    barBg: 'rgba(25, 18, 6, 0.7)',
-    time: '#cc9944',
-    activeBg: 'rgba(170, 120, 40, 0.9)',
-    activeBorder: '#cc9944',
-    activeHoverBg: 'rgba(190, 138, 50, 0.95)',
-    activeHoverBorder: '#ddaa55',
-    activePressedBg: 'rgba(145, 100, 32, 0.95)',
-    activePressedBorder: '#aa8833',
-  },
-  server: {
-    barBg: 'rgba(8, 8, 25, 0.7)',
-    time: '#8888cc',
-    activeBg: 'rgba(68, 68, 170, 0.9)',
-    activeBorder: '#6666cc',
-    activeHoverBg: 'rgba(80, 80, 195, 0.95)',
-    activeHoverBorder: '#7777dd',
-    activePressedBg: 'rgba(55, 55, 145, 0.95)',
-    activePressedBorder: '#5555aa',
-  },
-  client: {
-    barBg: 'rgba(8, 20, 8, 0.7)',
-    time: '#6a6',
-    activeBg: 'rgba(68, 136, 68, 0.9)',
-    activeBorder: '#6a6',
-    activeHoverBg: 'rgba(80, 155, 80, 0.95)',
-    activeHoverBorder: '#7b7',
-    activePressedBg: 'rgba(55, 115, 55, 0.95)',
-    activePressedBorder: '#595',
-  },
-  disabled: {
-    barBg: 'rgba(15, 15, 15, 0.7)',
-    time: '#888',
-    activeBg: 'rgba(80, 80, 80, 0.9)',
-    activeBorder: '#888',
-    activeHoverBg: 'rgba(80, 80, 80, 0.9)',
-    activeHoverBorder: '#888',
-    activePressedBg: 'rgba(80, 80, 80, 0.9)',
-    activePressedBorder: '#888',
-  },
-};
 
 // =============================================================================
 // MAP SIZE SETTINGS
@@ -1235,21 +1181,6 @@ export const MAP_SETTINGS = {
   demo: { width: 1_600, height: 7_00 },
 };
 
-// =============================================================================
-// UNIT SHORT NAMES (for compact UI buttons)
-// =============================================================================
-
-export const UNIT_SHORT_NAMES: Record<string, string> = {
-  jackal: 'JKL',
-  lynx: 'LNX',
-  daddy: 'DDY',
-  badger: 'BDG',
-  mongoose: 'MGS',
-  recluse: 'RCL',
-  mammoth: 'MMT',
-  widow: 'WDW',
-  tarantula: 'TRN',
-};
 
 // =============================================================================
 // BACKGROUND GAME SETTINGS
@@ -1265,147 +1196,9 @@ export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING = true;
 /** Whether to show the lobby modal on startup. If false, starts in spectate mode. */
 export const SHOW_LOBBY_ON_STARTUP = false;
 
-// =============================================================================
-// NETWORKING
-// =============================================================================
-
-export type SnapshotRate = number | 'realtime';
-
-/**
- * Default snapshot rate. 'realtime' maps to 60Hz via setInterval.
- * Numeric values use a setInterval at the given Hz.
- */
-export const DEFAULT_SNAPSHOT_RATE: SnapshotRate = 20;
-
-/** Available options for the "Send Updates Per Second" UI control */
-export const SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
-  1,
-  5,
-  10,
-  20,
-  30,
-  45,
-  60,
-  'realtime',
-] as const;
-
-// =============================================================================
-// AUDIO
-// =============================================================================
-
-// All available synth sounds — any synth can be used for any sound slot
-export type SynthId =
-  // One-shot percussive / tonal
-  | 'laser-zap' // short bright laser fire zap
-  | 'minigun' // rapid metallic rattle
-  | 'cannon' // deep booming shot
-  | 'shotgun' // wide blast burst
-  | 'grenade' // thump launch
-  | 'railgun' // electric crack
-  | 'burst-rifle' // quick multi-tap
-  | 'force-field' // soft energy pulse
-  | 'insect' // chittering burst
-  | 'sizzle' // bright crackling impact
-  | 'bullet' // small metallic ping
-  | 'heavy' // deep thud impact
-  | 'explosion' // fiery blast
-  | 'small-explosion' // quick punchy pop
-  | 'medium-explosion' // medium rumble burst
-  | 'large-explosion' // massive rolling boom
-  // Continuous (used for laser slot)
-  | 'beam-hum'; // sustained beam drone
-
-// Sound entry: which synth to use + volume (0 = silent/skip) + playSpeed (1.0 = normal, 2.0 = twice as fast/high)
-export interface SoundEntry {
-  synth: SynthId;
-  volume: number;
-  playSpeed: number;
-}
-
-// Sounds a turret produces (keyed by weapon id: gatling, beam, etc.)
-export interface TurretSoundConfig {
-  fire?: SoundEntry;
-  laser?: SoundEntry;
-}
-
-// Sounds a projectile produces on impact (keyed by projectile type: lightRound, laserBeam, etc.)
-export interface ProjectileSoundConfig {
-  hit?: SoundEntry;
-}
-
-// Sounds a unit produces when it dies (keyed by unit type: jackal, mammoth, etc.)
-export interface UnitSoundConfig {
-  death?: SoundEntry;
-}
-
-export const AUDIO = {
-  masterVolume: 0.99, // Global master gain (applied to AudioContext destination)
-  sfxVolume: 0.5, // SFX sub-mix multiplier (applied per gain node)
-  zoomVolumeExponent: 1.2, // How volume scales with zoom: volume = zoom^exponent (2 = inverse square, 1 = linear, 0 = no scaling)
-
-  // Turret sounds (keyed by weapon id)
-  turrets: {
-    fireGain: 0.5,
-    laserGain: 0.03,
-    sounds: {
-      gatling: { fire: { synth: 'burst-rifle', volume: 0.2, playSpeed: 0.5 } },
-      pulse: { fire: { synth: 'burst-rifle', volume: 0.2, playSpeed: 0.3 } },
-      beam: {
-        fire: { synth: 'laser-zap', volume: 0.2, playSpeed: 1.0 },
-        laser: { synth: 'beam-hum', volume: 1.0, playSpeed: 1.0 },
-      },
-      megaBeam: {
-        fire: { synth: 'laser-zap', volume: 0.2, playSpeed: 1.0 },
-        laser: { synth: 'beam-hum', volume: 1.0, playSpeed: 1.0 },
-      },
-      shotgun: { fire: { synth: 'burst-rifle', volume: 0.4, playSpeed: 0.2 } },
-      mortar: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 } },
-      cannon: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 0.8 } },
-      railgun: { fire: { synth: 'railgun', volume: 0.03, playSpeed: 0.6 } },
-      forceField: {
-        fire: { synth: 'force-field', volume: 0.01, playSpeed: 1.0 },
-      },
-      megaForceField: {
-        fire: { synth: 'force-field', volume: 0.01, playSpeed: 2.0 },
-      },
-      disruptor: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 } },
-      dgun: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 } },
-    } as Record<string, TurretSoundConfig>,
-  },
-
-  // Projectile impact sounds (keyed by projectile type)
-  projectiles: {
-    hitGain: 0.0,
-    sounds: {
-      lightRound: { hit: { synth: 'heavy', volume: 0.2, playSpeed: 0.5 } },
-      heavyRound: { hit: { synth: 'heavy', volume: 0.5, playSpeed: 0.2 } },
-      // lightRound:     { hit: { synth: 'bullet',    volume: 0.2, playSpeed: 0.2 } },
-      // heavyRound:     { hit: { synth: 'bullet',    volume: 0.5, playSpeed: 0.1 } },
-      mortarShell: { hit: { synth: 'heavy', volume: 1.0, playSpeed: 0.1 } },
-      cannonShell: { hit: { synth: 'heavy', volume: 1.0, playSpeed: 0.05 } },
-      railBeam: { hit: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 } },
-      laserBeam: { hit: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 } },
-      heavyLaserBeam: { hit: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 } },
-      disruptorBolt: { hit: { synth: 'heavy', volume: 1.0, playSpeed: 1.0 } },
-    } as Record<string, ProjectileSoundConfig>,
-  },
-
-  // Unit death sounds (keyed by unit type)
-  units: {
-    deathGain: 0.0,
-    sounds: {
-      jackal: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-      lynx: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-      daddy: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-      badger: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-      mongoose: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-      recluse: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-      mammoth: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-      widow: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-      tarantula: { death: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 } },
-    } as Record<string, UnitSoundConfig>,
-  },
-};
+// Re-export audio config
+export { AUDIO } from './audioConfig';
+export type { SynthId, SoundEntry, TurretSoundConfig, ProjectileSoundConfig, UnitSoundConfig } from './audioConfig';
 
 // =============================================================================
 // UI

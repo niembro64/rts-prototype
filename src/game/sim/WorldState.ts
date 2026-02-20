@@ -2,7 +2,7 @@ import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, 
 import { EntityCacheManager } from './EntityCacheManager';
 import { getWeaponConfig, computeWeaponRanges } from './weapons';
 import { getUnitDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -60,7 +60,7 @@ export class WorldState {
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
   // Whether projectiles inherit their firing unit's velocity
-  public projVelInherit: boolean = true;
+  public projVelInherit: boolean = DEFAULT_PROJ_VEL_INHERIT;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call

@@ -3,8 +3,8 @@
 import type { EntityRenderer } from '../../render/renderEntities';
 import type { AudioEvent } from '../../sim/combat';
 import { audioManager } from '../../audio/AudioManager';
+import { AUDIO } from '../../../audioConfig';
 import {
-  AUDIO,
   EXPLOSION_VELOCITY_MULTIPLIER,
   EXPLOSION_IMPACT_FORCE_MULTIPLIER,
   EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,

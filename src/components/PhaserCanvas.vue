@@ -24,20 +24,17 @@ import {
   type NetworkRole,
 } from '../game/network/NetworkManager';
 import {
-  DEFAULT_SNAPSHOT_RATE,
-  SNAPSHOT_RATE_OPTIONS,
-  DEFAULT_KEYFRAME_RATIO,
-  KEYFRAME_RATIO_OPTIONS,
   MAP_SETTINGS,
-  BAR_COLORS,
   SHOW_LOBBY_ON_STARTUP,
   COMBAT_STATS_HISTORY_MAX,
   COMBAT_STATS_VISIBLE_ON_LOAD,
   UNIT_STATS,
-  UNIT_SHORT_NAMES,
+} from '../config';
+import {
+  CONTROL_BARS,
   type SnapshotRate,
   type KeyframeRatio,
-} from '../config';
+} from '../controlBarConfig';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
@@ -73,32 +70,6 @@ import {
 } from '../game/render/graphicsSettings';
 import { audioManager } from '../game/audio/AudioManager';
 
-const UPDATE_RATE_OPTIONS = SNAPSHOT_RATE_OPTIONS;
-const FULLSNAP_OPTIONS = KEYFRAME_RATIO_OPTIONS;
-
-// Graphics quality options - Auto is separate from quality levels
-const GRAPHICS_QUALITY_LEVELS: { value: GraphicsQuality; label: string }[] = [
-  { value: 'min', label: 'MIN' },
-  { value: 'low', label: 'LOW' },
-  { value: 'medium', label: 'MED' },
-  { value: 'high', label: 'HI' },
-  { value: 'max', label: 'MAX' },
-];
-
-// Render mode options
-const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
-  { value: 'window', label: 'WIN' },
-  { value: 'padded', label: 'PAD' },
-  { value: 'all', label: 'ALL' },
-];
-
-// Audio scope options
-const AUDIO_OPTIONS: { value: AudioScope; label: string }[] = [
-  { value: 'off', label: 'OFF' },
-  { value: 'window', label: 'WIN' },
-  { value: 'padded', label: 'PAD' },
-  { value: 'all', label: 'ALL' },
-];
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
@@ -133,28 +104,10 @@ const clientTime = ref<string>('');
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
 
-// localStorage keys for server settings
-const LS_SNAPSHOT_RATE = 'rts-snapshot-rate';
-const LS_KEYFRAME_RATIO = 'rts-keyframe-ratio';
-const LS_DEMO_UNITS = 'rts-demo-units';
-const LS_MAX_TOTAL_UNITS = 'rts-max-total-units';
-const LS_PROJ_VEL_INHERIT = 'rts-proj-vel-inherit';
-const DEFAULT_MAX_TOTAL_UNITS = 4000;
-
-const MAX_UNITS_OPTIONS: { value: number; label: string }[] = [
-  { value: 4, label: '4' },
-  { value: 10, label: '10' },
-  { value: 40, label: '40' },
-  { value: 100, label: '1h' },
-  { value: 400, label: '4h' },
-  { value: 1000, label: '1k' },
-  { value: 4000, label: '4k' },
-  { value: 10000, label: '10k' },
-];
 
 function loadStoredSnapshotRate(): SnapshotRate {
   try {
-    const stored = localStorage.getItem(LS_SNAPSHOT_RATE);
+    const stored = localStorage.getItem(CONTROL_BARS.storage.snapshotRate);
     if (stored === 'realtime') return 'realtime';
     if (stored) {
       const num = Number(stored);
@@ -163,12 +116,12 @@ function loadStoredSnapshotRate(): SnapshotRate {
   } catch {
     /* localStorage unavailable */
   }
-  return DEFAULT_SNAPSHOT_RATE;
+  return CONTROL_BARS.server.snapshot.default;
 }
 
 function loadStoredKeyframeRatio(): KeyframeRatio {
   try {
-    const stored = localStorage.getItem(LS_KEYFRAME_RATIO);
+    const stored = localStorage.getItem(CONTROL_BARS.storage.keyframeRatio);
     if (stored === 'ALL') return 'ALL';
     if (stored === 'NONE') return 'NONE';
     if (stored) {
@@ -178,12 +131,12 @@ function loadStoredKeyframeRatio(): KeyframeRatio {
   } catch {
     /* localStorage unavailable */
   }
-  return DEFAULT_KEYFRAME_RATIO;
+  return CONTROL_BARS.server.keyframe.default;
 }
 
 function loadStoredDemoUnits(): string[] | null {
   try {
-    const stored = localStorage.getItem(LS_DEMO_UNITS);
+    const stored = localStorage.getItem(CONTROL_BARS.storage.demoUnits);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed)) return parsed;
@@ -196,7 +149,7 @@ function loadStoredDemoUnits(): string[] | null {
 
 function saveSnapshotRate(rate: SnapshotRate): void {
   try {
-    localStorage.setItem(LS_SNAPSHOT_RATE, String(rate));
+    localStorage.setItem(CONTROL_BARS.storage.snapshotRate, String(rate));
   } catch {
     /* */
   }
@@ -204,7 +157,7 @@ function saveSnapshotRate(rate: SnapshotRate): void {
 
 function saveKeyframeRatio(ratio: KeyframeRatio): void {
   try {
-    localStorage.setItem(LS_KEYFRAME_RATIO, String(ratio));
+    localStorage.setItem(CONTROL_BARS.storage.keyframeRatio, String(ratio));
   } catch {
     /* */
   }
@@ -213,7 +166,7 @@ function saveKeyframeRatio(ratio: KeyframeRatio): void {
 function saveDemoUnits(units: string[]): void {
   if (units.length === 0) return;
   try {
-    localStorage.setItem(LS_DEMO_UNITS, JSON.stringify(units));
+    localStorage.setItem(CONTROL_BARS.storage.demoUnits, JSON.stringify(units));
   } catch {
     /* */
   }
@@ -221,7 +174,7 @@ function saveDemoUnits(units: string[]): void {
 
 function loadStoredMaxTotalUnits(): number {
   try {
-    const stored = localStorage.getItem(LS_MAX_TOTAL_UNITS);
+    const stored = localStorage.getItem(CONTROL_BARS.storage.maxTotalUnits);
     if (stored) {
       const num = Number(stored);
       if (!isNaN(num) && num > 0) return num;
@@ -229,12 +182,12 @@ function loadStoredMaxTotalUnits(): number {
   } catch {
     /* localStorage unavailable */
   }
-  return DEFAULT_MAX_TOTAL_UNITS;
+  return CONTROL_BARS.battle.cap.default;
 }
 
 function saveMaxTotalUnits(value: number): void {
   try {
-    localStorage.setItem(LS_MAX_TOTAL_UNITS, String(value));
+    localStorage.setItem(CONTROL_BARS.storage.maxTotalUnits, String(value));
   } catch {
     /* */
   }
@@ -242,18 +195,18 @@ function saveMaxTotalUnits(value: number): void {
 
 function loadStoredProjVelInherit(): boolean {
   try {
-    const stored = localStorage.getItem(LS_PROJ_VEL_INHERIT);
+    const stored = localStorage.getItem(CONTROL_BARS.storage.projVelInherit);
     if (stored === 'false') return false;
     if (stored === 'true') return true;
   } catch {
     /* localStorage unavailable */
   }
-  return true; // default ON
+  return CONTROL_BARS.battle.projVelInherit.default;
 }
 
 function saveProjVelInherit(enabled: boolean): void {
   try {
-    localStorage.setItem(LS_PROJ_VEL_INHERIT, String(enabled));
+    localStorage.setItem(CONTROL_BARS.storage.projVelInherit, String(enabled));
   } catch {
     /* */
   }
@@ -477,7 +430,7 @@ const showServerControls = computed(
 const serverBarReadonly = computed(() => !hasServer.value);
 
 // Bar color theming via CSS custom properties
-type BarColorTheme = (typeof BAR_COLORS)[keyof typeof BAR_COLORS];
+type BarColorTheme = (typeof CONTROL_BARS.themes)[keyof typeof CONTROL_BARS.themes];
 function barVars(theme: BarColorTheme): Record<string, string> {
   return {
     '--bar-bg': theme.barBg,
@@ -491,12 +444,12 @@ function barVars(theme: BarColorTheme): Record<string, string> {
   };
 }
 const battleBarVars = computed(() =>
-  barVars(serverBarReadonly.value ? BAR_COLORS.disabled : BAR_COLORS.battle),
+  barVars(serverBarReadonly.value ? CONTROL_BARS.themes.disabled : CONTROL_BARS.themes.battle),
 );
 const serverBarVars = computed(() =>
-  barVars(serverBarReadonly.value ? BAR_COLORS.disabled : BAR_COLORS.server),
+  barVars(serverBarReadonly.value ? CONTROL_BARS.themes.disabled : CONTROL_BARS.themes.server),
 );
-const clientBarVars = computed(() => barVars(BAR_COLORS.client));
+const clientBarVars = computed(() => barVars(CONTROL_BARS.themes.client));
 
 const battleLabel = computed(() => {
   if (networkRole.value === 'client') return 'ONLINE BATTLE';
@@ -513,10 +466,10 @@ const displayServerTpsWorst = computed(
   () => serverMetaFromSnapshot.value?.tpsWorst ?? 0,
 );
 const displaySnapshotRate = computed(
-  () => serverMetaFromSnapshot.value?.snapshotRate ?? DEFAULT_SNAPSHOT_RATE,
+  () => serverMetaFromSnapshot.value?.snapshotRate ?? CONTROL_BARS.server.snapshot.default,
 );
 const displayKeyframeRatio = computed(
-  () => serverMetaFromSnapshot.value?.keyframeRatio ?? DEFAULT_KEYFRAME_RATIO,
+  () => serverMetaFromSnapshot.value?.keyframeRatio ?? CONTROL_BARS.server.keyframe.default,
 );
 const displayGridInfo = computed(
   () => serverMetaFromSnapshot.value?.sendGridInfo ?? false,
@@ -582,7 +535,7 @@ function changeMaxTotalUnits(value: number): void {
 }
 
 function toggleProjVelInherit(): void {
-  const current = serverMetaFromSnapshot.value?.projVelInherit ?? true;
+  const current = serverMetaFromSnapshot.value?.projVelInherit ?? CONTROL_BARS.battle.projVelInherit.default;
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
     tick: 0,
@@ -602,7 +555,7 @@ function resetDemoDefaults(): void {
     });
   }
   saveDemoUnits([...demoUnitTypes]);
-  changeMaxTotalUnits(DEFAULT_MAX_TOTAL_UNITS);
+  changeMaxTotalUnits(CONTROL_BARS.battle.cap.default);
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
     tick: 0,
@@ -611,8 +564,8 @@ function resetDemoDefaults(): void {
 }
 
 function resetServerDefaults(): void {
-  setNetworkUpdateRate(DEFAULT_SNAPSHOT_RATE);
-  setKeyframeRatioValue(DEFAULT_KEYFRAME_RATIO);
+  setNetworkUpdateRate(CONTROL_BARS.server.snapshot.default);
+  setKeyframeRatioValue(CONTROL_BARS.server.keyframe.default);
   if (displayGridInfo.value) {
     toggleSendGridInfo();
   }
@@ -1272,7 +1225,7 @@ onUnmounted(() => {
               :title="`Toggle ${ut} units in demo battle`"
               @click="toggleDemoUnitType(ut)"
             >
-              {{ UNIT_SHORT_NAMES[ut] || ut }}
+              {{ CONTROL_BARS.battle.unitShortNames[ut] || ut }}
             </button>
           </div>
         </div>
@@ -1281,7 +1234,7 @@ onUnmounted(() => {
           <span class="control-label">CAP:</span>
           <div class="button-group">
             <button
-              v-for="opt in MAX_UNITS_OPTIONS"
+              v-for="opt in CONTROL_BARS.battle.cap.options"
               :key="opt.value"
               class="control-btn"
               :class="{
@@ -1373,7 +1326,7 @@ onUnmounted(() => {
           <span class="control-label">SNAPSHOT:</span>
           <div class="button-group">
             <button
-              v-for="rate in UPDATE_RATE_OPTIONS"
+              v-for="rate in CONTROL_BARS.server.snapshot.options"
               :key="String(rate)"
               class="control-btn"
               :class="{ active: displaySnapshotRate === rate }"
@@ -1389,7 +1342,7 @@ onUnmounted(() => {
           <span class="control-label">FULLSNAP:</span>
           <div class="button-group">
             <button
-              v-for="opt in FULLSNAP_OPTIONS"
+              v-for="opt in CONTROL_BARS.server.keyframe.options"
               :key="String(opt)"
               class="control-btn"
               :class="{ active: displayKeyframeRatio === opt }"
@@ -1574,7 +1527,7 @@ onUnmounted(() => {
           </button>
           <div class="button-group">
             <button
-              v-for="opt in GRAPHICS_QUALITY_LEVELS"
+              v-for="opt in CONTROL_BARS.client.graphics.options"
               :key="opt.value"
               class="control-btn"
               :class="{
@@ -1595,7 +1548,7 @@ onUnmounted(() => {
           <span class="control-label">RENDER:</span>
           <div class="button-group">
             <button
-              v-for="opt in RENDER_OPTIONS"
+              v-for="opt in CONTROL_BARS.client.render.options"
               :key="opt.value"
               class="control-btn"
               :class="{ active: renderMode === opt.value }"
@@ -1611,7 +1564,7 @@ onUnmounted(() => {
           <span class="control-label">AUDIO:</span>
           <div class="button-group">
             <button
-              v-for="opt in AUDIO_OPTIONS"
+              v-for="opt in CONTROL_BARS.client.audio.options"
               :key="opt.value"
               class="control-btn"
               :class="{ active: audioScope === opt.value }"

@@ -1,4 +1,4 @@
-import { AUDIO } from '../../config';
+import { AUDIO } from '../../audioConfig';
 
 // Procedural audio generation using Web Audio API
 
