@@ -78,7 +78,7 @@ export const BASE_INCOME_PER_SECOND = 10;
  * Maximum total units across all players.
  * This is divided evenly among players (e.g., 120 total / 2 players = 60 each)
  */
-export const MAX_TOTAL_UNITS = 300;
+export const MAX_TOTAL_UNITS = 4000;
 
 /** Energy produced per second by each completed solar panel */
 export const SOLAR_ENERGY_PER_SECOND = 50;
@@ -1186,8 +1186,6 @@ export const WEAPON_STATS = {
 export const BAR_COLORS = {
   battle: {
     barBg: 'rgba(25, 18, 6, 0.7)',
-    labelBg: 'rgba(170, 120, 40, 0.6)',
-    labelBorder: '#cc9944',
     time: '#cc9944',
     activeBg: 'rgba(170, 120, 40, 0.9)',
     activeBorder: '#cc9944',
@@ -1198,8 +1196,6 @@ export const BAR_COLORS = {
   },
   server: {
     barBg: 'rgba(8, 8, 25, 0.7)',
-    labelBg: 'rgba(68, 68, 170, 0.6)',
-    labelBorder: '#6666cc',
     time: '#8888cc',
     activeBg: 'rgba(68, 68, 170, 0.9)',
     activeBorder: '#6666cc',
@@ -1210,8 +1206,6 @@ export const BAR_COLORS = {
   },
   client: {
     barBg: 'rgba(8, 20, 8, 0.7)',
-    labelBg: 'rgba(68, 136, 68, 0.6)',
-    labelBorder: '#6a6',
     time: '#6a6',
     activeBg: 'rgba(68, 136, 68, 0.9)',
     activeBorder: '#6a6',
@@ -1222,8 +1216,6 @@ export const BAR_COLORS = {
   },
   disabled: {
     barBg: 'rgba(15, 15, 15, 0.7)',
-    labelBg: 'rgba(80, 80, 80, 0.6)',
-    labelBorder: '#666',
     time: '#888',
     activeBg: 'rgba(80, 80, 80, 0.9)',
     activeBorder: '#888',

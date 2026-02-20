@@ -60,7 +60,7 @@ export class WorldState {
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
   // Whether projectiles inherit their firing unit's velocity
-  public projVelInherit: boolean = false;
+  public projVelInherit: boolean = true;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call

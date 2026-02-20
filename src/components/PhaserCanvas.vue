@@ -14,7 +14,10 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import CombatStatsModal from './CombatStatsModal.vue';
-import type { NetworkCombatStats, NetworkServerMeta } from '../game/network/NetworkTypes';
+import type {
+  NetworkCombatStats,
+  NetworkServerMeta,
+} from '../game/network/NetworkTypes';
 import type { StatsSnapshot } from './combatStatsUtils';
 import {
   networkManager,
@@ -135,15 +138,18 @@ const LS_SNAPSHOT_RATE = 'rts-snapshot-rate';
 const LS_KEYFRAME_RATIO = 'rts-keyframe-ratio';
 const LS_DEMO_UNITS = 'rts-demo-units';
 const LS_MAX_TOTAL_UNITS = 'rts-max-total-units';
-const DEFAULT_MAX_TOTAL_UNITS = 100;
+const LS_PROJ_VEL_INHERIT = 'rts-proj-vel-inherit';
+const DEFAULT_MAX_TOTAL_UNITS = 4000;
 
 const MAX_UNITS_OPTIONS: { value: number; label: string }[] = [
+  { value: 4, label: '4' },
   { value: 10, label: '10' },
   { value: 40, label: '40' },
   { value: 100, label: '1h' },
   { value: 400, label: '4h' },
   { value: 1000, label: '1k' },
   { value: 4000, label: '4k' },
+  { value: 10000, label: '10k' },
 ];
 
 function loadStoredSnapshotRate(): SnapshotRate {
@@ -154,7 +160,9 @@ function loadStoredSnapshotRate(): SnapshotRate {
       const num = Number(stored);
       if (!isNaN(num) && num > 0) return num;
     }
-  } catch { /* localStorage unavailable */ }
+  } catch {
+    /* localStorage unavailable */
+  }
   return DEFAULT_SNAPSHOT_RATE;
 }
 
@@ -167,7 +175,9 @@ function loadStoredKeyframeRatio(): KeyframeRatio {
       const num = Number(stored);
       if (!isNaN(num)) return num;
     }
-  } catch { /* localStorage unavailable */ }
+  } catch {
+    /* localStorage unavailable */
+  }
   return DEFAULT_KEYFRAME_RATIO;
 }
 
@@ -178,21 +188,35 @@ function loadStoredDemoUnits(): string[] | null {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed)) return parsed;
     }
-  } catch { /* localStorage unavailable */ }
+  } catch {
+    /* localStorage unavailable */
+  }
   return null;
 }
 
 function saveSnapshotRate(rate: SnapshotRate): void {
-  try { localStorage.setItem(LS_SNAPSHOT_RATE, String(rate)); } catch { /* */ }
+  try {
+    localStorage.setItem(LS_SNAPSHOT_RATE, String(rate));
+  } catch {
+    /* */
+  }
 }
 
 function saveKeyframeRatio(ratio: KeyframeRatio): void {
-  try { localStorage.setItem(LS_KEYFRAME_RATIO, String(ratio)); } catch { /* */ }
+  try {
+    localStorage.setItem(LS_KEYFRAME_RATIO, String(ratio));
+  } catch {
+    /* */
+  }
 }
 
 function saveDemoUnits(units: string[]): void {
   if (units.length === 0) return;
-  try { localStorage.setItem(LS_DEMO_UNITS, JSON.stringify(units)); } catch { /* */ }
+  try {
+    localStorage.setItem(LS_DEMO_UNITS, JSON.stringify(units));
+  } catch {
+    /* */
+  }
 }
 
 function loadStoredMaxTotalUnits(): number {
@@ -202,12 +226,37 @@ function loadStoredMaxTotalUnits(): number {
       const num = Number(stored);
       if (!isNaN(num) && num > 0) return num;
     }
-  } catch { /* localStorage unavailable */ }
+  } catch {
+    /* localStorage unavailable */
+  }
   return DEFAULT_MAX_TOTAL_UNITS;
 }
 
 function saveMaxTotalUnits(value: number): void {
-  try { localStorage.setItem(LS_MAX_TOTAL_UNITS, String(value)); } catch { /* */ }
+  try {
+    localStorage.setItem(LS_MAX_TOTAL_UNITS, String(value));
+  } catch {
+    /* */
+  }
+}
+
+function loadStoredProjVelInherit(): boolean {
+  try {
+    const stored = localStorage.getItem(LS_PROJ_VEL_INHERIT);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+  } catch {
+    /* localStorage unavailable */
+  }
+  return true; // default ON
+}
+
+function saveProjVelInherit(enabled: boolean): void {
+  try {
+    localStorage.setItem(LS_PROJ_VEL_INHERIT, String(enabled));
+  } catch {
+    /* */
+  }
 }
 
 // Demo battle unit type list (state read from snapshots)
@@ -326,12 +375,19 @@ function startBackgroundBattle(): void {
   const storedDemoUnits = loadStoredDemoUnits();
   if (storedDemoUnits) {
     for (const ut of demoUnitTypes) {
-      backgroundServer.setBackgroundUnitTypeEnabled(ut, storedDemoUnits.includes(ut));
+      backgroundServer.setBackgroundUnitTypeEnabled(
+        ut,
+        storedDemoUnits.includes(ut),
+      );
     }
   }
 
   // Restore stored max total units
-  backgroundServer.receiveCommand({ type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: loadStoredMaxTotalUnits() });
+  backgroundServer.receiveCommand({
+    type: 'setMaxTotalUnits',
+    tick: 0,
+    maxTotalUnits: loadStoredMaxTotalUnits(),
+  });
 
   backgroundServer.start();
   hasServer.value = true;
@@ -413,18 +469,18 @@ const showPlayerToggle = computed(() => {
 });
 
 // Show server controls when we own a server OR when we receive server meta from snapshots (remote client)
-const showServerControls = computed(() => hasServer.value || serverMetaFromSnapshot.value !== null);
+const showServerControls = computed(
+  () => hasServer.value || serverMetaFromSnapshot.value !== null,
+);
 
 // Server bar is read-only for remote clients (no local server)
 const serverBarReadonly = computed(() => !hasServer.value);
 
 // Bar color theming via CSS custom properties
-type BarColorTheme = typeof BAR_COLORS[keyof typeof BAR_COLORS];
+type BarColorTheme = (typeof BAR_COLORS)[keyof typeof BAR_COLORS];
 function barVars(theme: BarColorTheme): Record<string, string> {
   return {
     '--bar-bg': theme.barBg,
-    '--bar-label-bg': theme.labelBg,
-    '--bar-label-border': theme.labelBorder,
     '--bar-time': theme.time,
     '--bar-active-bg': theme.activeBg,
     '--bar-active-border': theme.activeBorder,
@@ -434,46 +490,71 @@ function barVars(theme: BarColorTheme): Record<string, string> {
     '--bar-active-pressed-border': theme.activePressedBorder,
   };
 }
-const battleBarVars = computed(() => barVars(serverBarReadonly.value ? BAR_COLORS.disabled : BAR_COLORS.battle));
-const serverBarVars = computed(() => barVars(serverBarReadonly.value ? BAR_COLORS.disabled : BAR_COLORS.server));
+const battleBarVars = computed(() =>
+  barVars(serverBarReadonly.value ? BAR_COLORS.disabled : BAR_COLORS.battle),
+);
+const serverBarVars = computed(() =>
+  barVars(serverBarReadonly.value ? BAR_COLORS.disabled : BAR_COLORS.server),
+);
 const clientBarVars = computed(() => barVars(BAR_COLORS.client));
 
 const battleLabel = computed(() => {
   if (networkRole.value === 'client') return 'ONLINE BATTLE';
-  if (networkRole.value === 'host' && lobbyPlayers.value.length > 1) return 'ONLINE BATTLE';
+  if (networkRole.value === 'host' && lobbyPlayers.value.length > 1)
+    return 'ONLINE BATTLE';
   return 'LOCAL BATTLE';
 });
 
 // Display values: always read from snapshot meta (server→snapshot→display)
-const displayServerTpsAvg = computed(() => serverMetaFromSnapshot.value?.tpsAvg ?? 0);
-const displayServerTpsWorst = computed(() => serverMetaFromSnapshot.value?.tpsWorst ?? 0);
-const displaySnapshotRate = computed(() => serverMetaFromSnapshot.value?.snapshotRate ?? DEFAULT_SNAPSHOT_RATE);
-const displayKeyframeRatio = computed(() => serverMetaFromSnapshot.value?.keyframeRatio ?? DEFAULT_KEYFRAME_RATIO);
-const displayGridInfo = computed(() => serverMetaFromSnapshot.value?.sendGridInfo ?? false);
-const displayServerTime = computed(() =>
-  serverMetaFromSnapshot.value?.serverTime ?? ''
+const displayServerTpsAvg = computed(
+  () => serverMetaFromSnapshot.value?.tpsAvg ?? 0,
 );
-const displayServerIp = computed(() =>
-  serverMetaFromSnapshot.value?.ipAddress ?? ''
+const displayServerTpsWorst = computed(
+  () => serverMetaFromSnapshot.value?.tpsWorst ?? 0,
+);
+const displaySnapshotRate = computed(
+  () => serverMetaFromSnapshot.value?.snapshotRate ?? DEFAULT_SNAPSHOT_RATE,
+);
+const displayKeyframeRatio = computed(
+  () => serverMetaFromSnapshot.value?.keyframeRatio ?? DEFAULT_KEYFRAME_RATIO,
+);
+const displayGridInfo = computed(
+  () => serverMetaFromSnapshot.value?.sendGridInfo ?? false,
+);
+const displayServerTime = computed(
+  () => serverMetaFromSnapshot.value?.serverTime ?? '',
+);
+const displayServerIp = computed(
+  () => serverMetaFromSnapshot.value?.ipAddress ?? '',
 );
 
 // Show demo battle bar only during background demo (uses reactive refs only)
-const isBackgroundBattle = computed(() => showLobby.value && !gameStarted.value && hasServer.value);
+const isBackgroundBattle = computed(
+  () => showLobby.value && !gameStarted.value && hasServer.value,
+);
 
 const allDemoUnitsActive = computed(() => {
   const allowed = serverMetaFromSnapshot.value?.allowedUnitTypes;
   if (!allowed) return true; // default is all enabled
-  return demoUnitTypes.every(ut => allowed.includes(ut));
+  return demoUnitTypes.every((ut) => allowed.includes(ut));
 });
 
 function toggleDemoUnitType(unitType: string): void {
-  const current = serverMetaFromSnapshot.value?.allowedUnitTypes?.includes(unitType) ?? true;
-  activeConnection?.sendCommand({ type: 'setBackgroundUnitType', tick: 0, unitType, enabled: !current });
+  const current =
+    serverMetaFromSnapshot.value?.allowedUnitTypes?.includes(unitType) ?? true;
+  activeConnection?.sendCommand({
+    type: 'setBackgroundUnitType',
+    tick: 0,
+    unitType,
+    enabled: !current,
+  });
 
   // Persist updated unit list to localStorage
-  const currentList = serverMetaFromSnapshot.value?.allowedUnitTypes ?? [...demoUnitTypes];
+  const currentList = serverMetaFromSnapshot.value?.allowedUnitTypes ?? [
+    ...demoUnitTypes,
+  ];
   const newList = current
-    ? currentList.filter(ut => ut !== unitType)
+    ? currentList.filter((ut) => ut !== unitType)
     : [...currentList, unitType];
   saveDemoUnits(newList);
 }
@@ -481,29 +562,52 @@ function toggleDemoUnitType(unitType: string): void {
 function toggleAllDemoUnits(): void {
   const enableAll = !allDemoUnitsActive.value;
   for (const ut of demoUnitTypes) {
-    activeConnection?.sendCommand({ type: 'setBackgroundUnitType', tick: 0, unitType: ut, enabled: enableAll });
+    activeConnection?.sendCommand({
+      type: 'setBackgroundUnitType',
+      tick: 0,
+      unitType: ut,
+      enabled: enableAll,
+    });
   }
   saveDemoUnits(enableAll ? [...demoUnitTypes] : []);
 }
 
 function changeMaxTotalUnits(value: number): void {
-  activeConnection?.sendCommand({ type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: value });
+  activeConnection?.sendCommand({
+    type: 'setMaxTotalUnits',
+    tick: 0,
+    maxTotalUnits: value,
+  });
   saveMaxTotalUnits(value);
 }
 
 function toggleProjVelInherit(): void {
-  const current = serverMetaFromSnapshot.value?.projVelInherit ?? false;
-  activeConnection?.sendCommand({ type: 'setProjVelInherit', tick: 0, enabled: !current });
+  const current = serverMetaFromSnapshot.value?.projVelInherit ?? true;
+  activeConnection?.sendCommand({
+    type: 'setProjVelInherit',
+    tick: 0,
+    enabled: !current,
+  });
+  saveProjVelInherit(!current);
 }
 
 function resetDemoDefaults(): void {
   // All units enabled
   for (const ut of demoUnitTypes) {
-    activeConnection?.sendCommand({ type: 'setBackgroundUnitType', tick: 0, unitType: ut, enabled: true });
+    activeConnection?.sendCommand({
+      type: 'setBackgroundUnitType',
+      tick: 0,
+      unitType: ut,
+      enabled: true,
+    });
   }
   saveDemoUnits([...demoUnitTypes]);
   changeMaxTotalUnits(DEFAULT_MAX_TOTAL_UNITS);
-  activeConnection?.sendCommand({ type: 'setProjVelInherit', tick: 0, enabled: false });
+  activeConnection?.sendCommand({
+    type: 'setProjVelInherit',
+    tick: 0,
+    enabled: false,
+  });
 }
 
 function resetServerDefaults(): void {
@@ -622,14 +726,18 @@ function fmt4(n: number): string {
   return n.toFixed(0);
 }
 
-function statBarStyle(value: number, target = 60, gray = false): { width: string; backgroundColor: string } {
+function statBarStyle(
+  value: number,
+  target = 60,
+  gray = false,
+): { width: string; backgroundColor: string } {
   const ratio = value / target;
   const fillRatio = Math.min(Math.max(ratio, 0), 1);
   if (gray) return { width: `${fillRatio * 100}%`, backgroundColor: '#b0b0b0' };
   let r: number, g: number, b: number;
   if (ratio >= 1) {
     // 1.0 → 2.0: green (#44cc44) → blue (#4488ff)
-    const t = Math.min((ratio - 1), 1); // 0 at 1.0, 1 at 2.0
+    const t = Math.min(ratio - 1, 1); // 0 at 1.0, 1 at 2.0
     r = Math.round(0x44 + (0x44 - 0x44) * t);
     g = Math.round(0xcc + (0x88 - 0xcc) * t);
     b = Math.round(0x44 + (0xff - 0x44) * t);
@@ -872,7 +980,16 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       currentServer.setSnapshotRate(loadStoredSnapshotRate());
       currentServer.setKeyframeRatio(loadStoredKeyframeRatio());
       currentServer.setIpAddress(localIpAddress.value);
-      currentServer.receiveCommand({ type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: loadStoredMaxTotalUnits() });
+      currentServer.receiveCommand({
+        type: 'setMaxTotalUnits',
+        tick: 0,
+        maxTotalUnits: loadStoredMaxTotalUnits(),
+      });
+      currentServer.receiveCommand({
+        type: 'setProjVelInherit',
+        tick: 0,
+        enabled: loadStoredProjVelInherit(),
+      });
       currentServer.start();
       hasServer.value = true;
     } else {
@@ -984,7 +1101,11 @@ function setKeyframeRatioValue(ratio: KeyframeRatio): void {
 
 function toggleSendGridInfo(): void {
   const current = serverMetaFromSnapshot.value?.sendGridInfo ?? false;
-  activeConnection?.sendCommand({ type: 'setSendGridInfo', tick: 0, enabled: !current });
+  activeConnection?.sendCommand({
+    type: 'setSendGridInfo',
+    tick: 0,
+    enabled: !current,
+  });
 }
 
 function dismissGameOver(): void {
@@ -1008,14 +1129,16 @@ onMounted(() => {
 
   // Fetch public IP for server bar display
   fetch('https://api.ipify.org?format=text')
-    .then(res => res.text())
-    .then(ip => {
+    .then((res) => res.text())
+    .then((ip) => {
       localIpAddress.value = ip.trim();
       // Push to whichever server is already running (fetch is async)
       backgroundServer?.setIpAddress(localIpAddress.value);
       currentServer?.setIpAddress(localIpAddress.value);
     })
-    .catch(() => { /* keep 'N/A' */ });
+    .catch(() => {
+      /* keep 'N/A' */
+    });
 
   // Update client time every second
   function updateClientTime() {
@@ -1108,10 +1231,22 @@ onUnmounted(() => {
     <!-- Bottom control bars (always visible) -->
     <div class="bottom-controls">
       <!-- BATTLE CONTROLS -->
-      <div v-if="showServerControls" class="control-bar" :class="{ 'bar-readonly': serverBarReadonly }" :style="battleBarVars">
+      <div
+        v-if="showServerControls"
+        class="control-bar"
+        :class="{ 'bar-readonly': serverBarReadonly }"
+        :style="battleBarVars"
+      >
         <div class="control-group">
-          <button class="bar-label" @click="resetDemoDefaults"><span class="bar-label-text">{{ battleLabel }}</span><span class="bar-label-hover">DEFAULTS</span></button>
-          <span class="time-display">{{ battleElapsed }}</span>
+          <button
+            class="control-btn active bar-label"
+            title="Click to reset battle settings to defaults"
+            @click="resetDemoDefaults"
+          >
+            <span class="bar-label-text">{{ battleLabel }}</span
+            ><span class="bar-label-hover">DEFAULTS</span>
+          </button>
+          <span class="time-display" title="Battle elapsed time">{{ battleElapsed }}</span>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
@@ -1119,6 +1254,7 @@ onUnmounted(() => {
           <button
             class="control-btn"
             :class="{ active: allDemoUnitsActive }"
+            title="Toggle all unit types on/off"
             @click="toggleAllDemoUnits"
           >
             ALL
@@ -1128,7 +1264,12 @@ onUnmounted(() => {
               v-for="ut in demoUnitTypes"
               :key="ut"
               class="control-btn"
-              :class="{ active: serverMetaFromSnapshot?.allowedUnitTypes?.includes(ut) ?? true }"
+              :class="{
+                active:
+                  serverMetaFromSnapshot?.allowedUnitTypes?.includes(ut) ??
+                  true,
+              }"
+              :title="`Toggle ${ut} units in demo battle`"
               @click="toggleDemoUnitType(ut)"
             >
               {{ UNIT_SHORT_NAMES[ut] || ut }}
@@ -1143,7 +1284,10 @@ onUnmounted(() => {
               v-for="opt in MAX_UNITS_OPTIONS"
               :key="opt.value"
               class="control-btn"
-              :class="{ active: serverMetaFromSnapshot?.maxTotalUnits === opt.value }"
+              :class="{
+                active: serverMetaFromSnapshot?.maxTotalUnits === opt.value,
+              }"
+              :title="`Max ${opt.value} total units in demo battle`"
               @click="changeMaxTotalUnits(opt.value)"
             >
               {{ opt.label }}
@@ -1153,45 +1297,74 @@ onUnmounted(() => {
         <div class="control-group">
           <div class="bar-divider"></div>
           <span class="control-label">PROJ VEL:</span>
-          <div class="button-group">
-            <button
-              class="control-btn"
-              :class="{ active: serverMetaFromSnapshot?.projVelInherit }"
-              @click="toggleProjVelInherit"
-            >
-              INHERIT
-            </button>
-          </div>
+          <button
+            class="control-btn"
+            :class="{ active: serverMetaFromSnapshot?.projVelInherit }"
+            title="Projectiles inherit firing unit's velocity"
+            @click="toggleProjVelInherit"
+          >
+            INHERIT
+          </button>
         </div>
       </div>
 
       <!-- SERVER CONTROLS (visible when we own a server or receive server meta) -->
-      <div v-if="showServerControls" class="control-bar" :class="{ 'bar-readonly': serverBarReadonly }" :style="serverBarVars">
+      <div
+        v-if="showServerControls"
+        class="control-bar"
+        :class="{ 'bar-readonly': serverBarReadonly }"
+        :style="serverBarVars"
+      >
         <div class="control-group">
-          <button class="bar-label" @click="resetServerDefaults"><span class="bar-label-text">HOST SERVER</span><span class="bar-label-hover">DEFAULTS</span></button>
-          <span v-if="displayServerTime" class="time-display">{{ displayServerTime }}</span>
+          <button
+            class="control-btn active bar-label"
+            title="Click to reset server settings to defaults"
+            @click="resetServerDefaults"
+          >
+            <span class="bar-label-text">HOST SERVER</span
+            ><span class="bar-label-hover">DEFAULTS</span>
+          </button>
+          <span v-if="displayServerTime" class="time-display" title="Server wall-clock time">{{
+            displayServerTime
+          }}</span>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span v-if="displayServerIp" class="ip-display">{{ displayServerIp }}</span>
+          <span v-if="displayServerIp" class="ip-display" title="Server IP address">{{
+            displayServerIp
+          }}</span>
         </div>
         <div class="control-group">
           <div v-if="displayServerIp" class="bar-divider"></div>
-          <span class="control-label">TPS:</span>
+          <span class="control-label" title="Server simulation ticks per second">TPS:</span>
           <div class="stat-bar-group">
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(displayServerTpsAvg) }}</span>
                 <span class="fps-label">avg</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(displayServerTpsAvg, 60, serverBarReadonly)"></div></div>
+              <div class="stat-bar-track">
+                <div
+                  class="stat-bar-fill"
+                  :style="
+                    statBarStyle(displayServerTpsAvg, 60, serverBarReadonly)
+                  "
+                ></div>
+              </div>
             </div>
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(displayServerTpsWorst) }}</span>
                 <span class="fps-label">low</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(displayServerTpsWorst, 60, serverBarReadonly)"></div></div>
+              <div class="stat-bar-track">
+                <div
+                  class="stat-bar-fill"
+                  :style="
+                    statBarStyle(displayServerTpsWorst, 60, serverBarReadonly)
+                  "
+                ></div>
+              </div>
             </div>
           </div>
         </div>
@@ -1204,6 +1377,7 @@ onUnmounted(() => {
               :key="String(rate)"
               class="control-btn"
               :class="{ active: displaySnapshotRate === rate }"
+              :title="`Send ${rate === 'realtime' ? '60 (realtime)' : rate} snapshots per second to clients`"
               @click="setNetworkUpdateRate(rate)"
             >
               {{ rate === 'realtime' ? 'RT' : (rate as number) }}
@@ -1213,15 +1387,22 @@ onUnmounted(() => {
         <div class="control-group">
           <div class="bar-divider"></div>
           <span class="control-label">FULLSNAP:</span>
-          <div class="button-group fullsnap-group">
+          <div class="button-group">
             <button
               v-for="opt in FULLSNAP_OPTIONS"
               :key="String(opt)"
               class="control-btn"
               :class="{ active: displayKeyframeRatio === opt }"
+              :title="opt === 'ALL' ? 'Every snapshot is a full keyframe' : opt === 'NONE' ? 'Never send full keyframes (delta only)' : `Full keyframe probability: ${opt}`"
               @click="setKeyframeRatioValue(opt)"
             >
-              {{ opt === 'ALL' ? 'ALL' : opt === 'NONE' ? 'NONE' : `1e-${Math.round(-Math.log10(opt as number))}` }}
+              {{
+                opt === 'ALL'
+                  ? 'ALL'
+                  : opt === 'NONE'
+                    ? 'NONE'
+                    : `1e-${Math.round(-Math.log10(opt as number))}`
+              }}
             </button>
           </div>
         </div>
@@ -1230,6 +1411,7 @@ onUnmounted(() => {
           <button
             class="control-btn"
             :class="{ active: displayGridInfo }"
+            title="Include spatial grid debug info in snapshots"
             @click="toggleSendGridInfo"
           >
             GRID
@@ -1240,57 +1422,100 @@ onUnmounted(() => {
       <!-- CLIENT CONTROLS (always visible) -->
       <div class="control-bar" :style="clientBarVars">
         <div class="control-group">
-          <button class="bar-label" @click="resetClientDefaults"><span class="bar-label-text">PLAYER CLIENT</span><span class="bar-label-hover">DEFAULTS</span></button>
-          <span v-if="clientTime" class="time-display">{{ clientTime }}</span>
+          <button
+            class="control-btn active bar-label"
+            title="Click to reset client settings to defaults"
+            @click="resetClientDefaults"
+          >
+            <span class="bar-label-text">PLAYER CLIENT</span
+            ><span class="bar-label-hover">DEFAULTS</span>
+          </button>
+          <span v-if="clientTime" class="time-display" title="Client wall-clock time">{{ clientTime }}</span>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span v-if="localIpAddress !== 'N/A'" class="ip-display">{{ localIpAddress }}</span>
+          <span v-if="localIpAddress !== 'N/A'" class="ip-display" title="Public IP address">{{
+            localIpAddress
+          }}</span>
         </div>
         <div class="control-group">
           <div v-if="localIpAddress !== 'N/A'" class="bar-divider"></div>
-          <span class="control-label">FPS:</span>
+          <span class="control-label" title="Client rendering frames per second">FPS:</span>
           <div class="stat-bar-group">
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(actualAvgFPS) }}</span>
                 <span class="fps-label">avg</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(actualAvgFPS)"></div></div>
+              <div class="stat-bar-track">
+                <div
+                  class="stat-bar-fill"
+                  :style="statBarStyle(actualAvgFPS)"
+                ></div>
+              </div>
             </div>
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(actualWorstFPS) }}</span>
                 <span class="fps-label">low</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(actualWorstFPS)"></div></div>
+              <div class="stat-bar-track">
+                <div
+                  class="stat-bar-fill"
+                  :style="statBarStyle(actualWorstFPS)"
+                ></div>
+              </div>
             </div>
           </div>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
           <div class="fps-stats">
-            <span class="control-label">ZOOM:</span>
+            <span class="control-label" title="Current camera zoom level">ZOOM:</span>
             <span class="fps-value">{{ fmt4(currentZoom) }}</span>
           </div>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">SPS:</span>
+          <span class="control-label" title="Snapshots received per second from server">SPS:</span>
           <div class="stat-bar-group">
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(snapAvgRate) }}</span>
                 <span class="fps-label">avg</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(snapAvgRate, displaySnapshotRate === 'realtime' ? 60 : displaySnapshotRate)"></div></div>
+              <div class="stat-bar-track">
+                <div
+                  class="stat-bar-fill"
+                  :style="
+                    statBarStyle(
+                      snapAvgRate,
+                      displaySnapshotRate === 'realtime'
+                        ? 60
+                        : displaySnapshotRate,
+                    )
+                  "
+                ></div>
+              </div>
             </div>
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(snapWorstRate) }}</span>
                 <span class="fps-label">low</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(snapWorstRate, displaySnapshotRate === 'realtime' ? 60 : displaySnapshotRate)"></div></div>
+              <div class="stat-bar-track">
+                <div
+                  class="stat-bar-fill"
+                  :style="
+                    statBarStyle(
+                      snapWorstRate,
+                      displaySnapshotRate === 'realtime'
+                        ? 60
+                        : displaySnapshotRate,
+                    )
+                  "
+                ></div>
+              </div>
             </div>
           </div>
         </div>
@@ -1300,6 +1525,7 @@ onUnmounted(() => {
           <button
             class="control-btn"
             :class="{ active: audioSmoothing }"
+            title="Smooth audio events across snapshot intervals"
             @click="toggleAudioSmoothing"
           >
             SMOOTH
@@ -1312,6 +1538,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: driftMode === 'snap' }"
+              title="Snap instantly to new server state"
               @click="changeDriftMode('snap')"
             >
               SNAP
@@ -1319,6 +1546,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: driftMode === 'fast' }"
+              title="Fast interpolation to server state"
               @click="changeDriftMode('fast')"
             >
               FAST
@@ -1326,6 +1554,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: driftMode === 'slow' }"
+              title="Slow interpolation to server state"
               @click="changeDriftMode('slow')"
             >
               SLOW
@@ -1338,6 +1567,7 @@ onUnmounted(() => {
           <button
             class="control-btn"
             :class="{ active: graphicsQuality === 'auto' }"
+            title="Automatically adjust graphics quality based on FPS"
             @click="changeGraphicsQuality('auto')"
           >
             AUTO
@@ -1350,8 +1580,10 @@ onUnmounted(() => {
               :class="{
                 active: graphicsQuality === opt.value,
                 'active-level':
-                  effectiveQuality === opt.value && graphicsQuality !== opt.value,
+                  effectiveQuality === opt.value &&
+                  graphicsQuality !== opt.value,
               }"
+              :title="`${opt.value} graphics quality`"
               @click="changeGraphicsQuality(opt.value)"
             >
               {{ opt.label }}
@@ -1367,6 +1599,7 @@ onUnmounted(() => {
               :key="opt.value"
               class="control-btn"
               :class="{ active: renderMode === opt.value }"
+              :title="opt.value === 'window' ? 'Render only visible window' : opt.value === 'padded' ? 'Render window plus padding' : 'Render entire map'"
               @click="changeRenderMode(opt.value)"
             >
               {{ opt.label }}
@@ -1382,6 +1615,7 @@ onUnmounted(() => {
               :key="opt.value"
               class="control-btn"
               :class="{ active: audioScope === opt.value }"
+              :title="opt.value === 'off' ? 'Audio disabled' : opt.value === 'window' ? 'Play audio from visible area' : opt.value === 'padded' ? 'Play audio from visible area plus padding' : 'Play audio from entire map'"
               @click="changeAudioScope(opt.value)"
             >
               {{ opt.label }}
@@ -1390,11 +1624,12 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">TURRET RADIUS:</span>
+          <span class="control-label">TUR RAD:</span>
           <div class="button-group">
             <button
               class="control-btn"
               :class="{ active: rangeToggles.see }"
+              title="Show turret see range (target acquisition)"
               @click="toggleRange('see')"
             >
               SEE
@@ -1402,6 +1637,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: rangeToggles.fire }"
+              title="Show turret fire range (begin shooting)"
               @click="toggleRange('fire')"
             >
               FIR
@@ -1409,6 +1645,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: rangeToggles.release }"
+              title="Show turret release range (stop tracking)"
               @click="toggleRange('release')"
             >
               REL
@@ -1416,6 +1653,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: rangeToggles.lock }"
+              title="Show turret lock range (maintain lock)"
               @click="toggleRange('lock')"
             >
               LCK
@@ -1423,6 +1661,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: rangeToggles.fightstop }"
+              title="Show fight-stop range (stop pursuing)"
               @click="toggleRange('fightstop')"
             >
               STP
@@ -1430,6 +1669,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: rangeToggles.build }"
+              title="Show build range"
               @click="toggleRange('build')"
             >
               BLD
@@ -1438,11 +1678,12 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">PROJ RADIUS:</span>
+          <span class="control-label">PROJ RAD:</span>
           <div class="button-group">
             <button
               class="control-btn"
               :class="{ active: projRangeToggles.collision }"
+              title="Show projectile collision radius"
               @click="toggleProjRange('collision')"
             >
               COL
@@ -1450,6 +1691,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: projRangeToggles.primary }"
+              title="Show projectile primary damage radius"
               @click="toggleProjRange('primary')"
             >
               PRM
@@ -1457,6 +1699,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: projRangeToggles.secondary }"
+              title="Show projectile secondary damage radius"
               @click="toggleProjRange('secondary')"
             >
               SEC
@@ -1465,11 +1708,12 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">UNIT RADIUS:</span>
+          <span class="control-label">UNIT RAD:</span>
           <div class="button-group">
             <button
               class="control-btn"
               :class="{ active: unitRadiusToggles.collision }"
+              title="Show unit collision radius"
               @click="toggleUnitRadius('collision')"
             >
               COL
@@ -1477,6 +1721,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: unitRadiusToggles.physics }"
+              title="Show unit physics radius"
               @click="toggleUnitRadius('physics')"
             >
               PHY
@@ -1781,37 +2026,28 @@ onUnmounted(() => {
 }
 
 .bar-label {
-  font-size: 9px;
+  display: inline-grid;
   font-weight: bold;
-  text-transform: uppercase;
   letter-spacing: 1px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  white-space: nowrap;
-  width: 100px;
   text-align: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  color: #fff;
-  background: var(--bar-label-bg);
-  border: 1px solid var(--bar-label-border);
+  min-width: 105px;
+}
+
+.bar-label-text,
+.bar-label-hover {
+  grid-area: 1 / 1;
 }
 
 .bar-label-hover {
-  display: none;
+  visibility: hidden;
 }
 
 .bar-label:hover .bar-label-text {
-  display: none;
+  visibility: hidden;
 }
 
 .bar-label:hover .bar-label-hover {
-  display: inline;
-}
-
-.bar-label:active {
-  opacity: 0.7;
-  transition: all 0.05s ease;
+  visibility: visible;
 }
 
 .control-group {
@@ -1896,14 +2132,14 @@ onUnmounted(() => {
 }
 
 .button-group {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
 }
 
 .button-group .control-btn {
   border-radius: 0;
   margin-left: -1px;
-  flex: 1 1 0;
-  min-width: 28px;
   text-align: center;
   overflow: hidden;
 }
@@ -1917,9 +2153,6 @@ onUnmounted(() => {
   border-radius: 0 3px 3px 0;
 }
 
-.fullsnap-group .control-btn {
-  min-width: 38px;
-}
 
 .control-btn {
   padding: 3px 6px;
@@ -1969,11 +2202,6 @@ onUnmounted(() => {
 }
 
 .bar-readonly .control-btn {
-  pointer-events: none;
-  cursor: default;
-}
-
-.bar-readonly .bar-label {
   pointer-events: none;
   cursor: default;
 }
