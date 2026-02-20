@@ -96,32 +96,23 @@ export const CONTROL_BARS = {
   // ── Server bar ──
   server: {
     tickRate: {
-      default: 90 as TickRate,
-      options: [1, 5, 10, 20, 30, 60, 90, 120, 240] as readonly TickRate[],
+      default: 128 as TickRate,
+      options: [1, 4, 8, 16, 32, 64, 128, 256] as readonly TickRate[],
     },
     snapshot: {
-      default: 30 as SnapshotRate,
-      options: [
-        1,
-        5,
-        10,
-        20,
-        30,
-        45,
-        60,
-        120,
-        'none',
-      ] as readonly SnapshotRate[],
+      default: 32 as SnapshotRate,
+      options: [1, 4, 8, 16, 32, 64, 128, 'none'] as readonly SnapshotRate[],
     },
     keyframe: {
-      default: 0.01 as KeyframeRatio,
+      default: (1 / 64) as KeyframeRatio,
       options: [
         'ALL',
-        0.1,
-        0.01,
-        0.001,
-        0.0001,
-        0.00001,
+        1 / 4,
+        1 / 8,
+        1 / 16,
+        1 / 32,
+        1 / 64,
+        1 / 128,
         'NONE',
       ] as readonly KeyframeRatio[],
     },

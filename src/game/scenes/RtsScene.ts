@@ -6,7 +6,7 @@ import { PLAYER_COLORS, type Entity, type PlayerId, type EntityId, type Waypoint
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
-import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkSimEvent, NetworkProjectileVelocityUpdate, NetworkCombatStats, NetworkServerMeta } from '../network/NetworkTypes';
+import type { NetworkCombatStats, NetworkServerMeta } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
 import { musicPlayer } from '../audio/MusicPlayer';
@@ -33,6 +33,9 @@ import {
   buildEconomyInfo,
   buildMinimapData,
 } from './helpers';
+import { SnapshotBuffer } from './helpers/SnapshotBuffer';
+import { EmaTracker } from './helpers/EmaTracker';
+import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 
 // Grid settings
 const GRID_SIZE = 50;
@@ -71,15 +74,13 @@ export class RtsScene extends Phaser.Scene {
   // Background mode (no input, no UI, endless battle)
   private backgroundMode: boolean = false;
 
-  // FPS tracking (EMA-based)
-  private fpsAvg: number = 0;
-  private fpsLow: number = 0;
-  private fpsInitialized: boolean = false;
+  // Performance tracking (EMA-based)
+  private fpsTracker = new EmaTracker(EMA_CONFIG.fps);
+  private snapTracker = new EmaTracker(EMA_CONFIG.snaps);
 
-  // Snapshot rate tracking (EMA-based)
-  private snapAvg: number = 0;
-  private snapLow: number = 0;
-  private snapInitialized: boolean = false;
+  // Snapshot buffering and audio scheduling
+  private snapshotBuffer = new SnapshotBuffer();
+  private audioScheduler = new AudioEventScheduler();
 
   // UI update throttling
   private selectionDirty: boolean = true;
@@ -103,30 +104,6 @@ export class RtsScene extends Phaser.Scene {
   private _cachedPlayerBuildings: Entity[] = [];
   private _cachedPlayerIdForUnits: PlayerId = -1 as PlayerId;
   private _cachedPlayerIdForBuildings: PlayerId = -1 as PlayerId;
-
-  // Snapshot buffering: decouple PeerJS delivery from frame processing.
-  // PeerJS callback stores the latest snapshot instantly; update() processes once per frame.
-  // One-shot events are accumulated so dropped intermediate snapshots don't lose them.
-  private pendingSnapshot: NetworkGameState | null = null;
-  // Double-buffered event arrays (swap instead of allocating new arrays each frame)
-  private _spawnsA: NetworkProjectileSpawn[] = [];
-  private _spawnsB: NetworkProjectileSpawn[] = [];
-  private bufferedSpawns: NetworkProjectileSpawn[] = this._spawnsA;
-  private _despawnsA: NetworkProjectileDespawn[] = [];
-  private _despawnsB: NetworkProjectileDespawn[] = [];
-  private bufferedDespawns: NetworkProjectileDespawn[] = this._despawnsA;
-  private _audioA: NetworkSimEvent[] = [];
-  private _audioB: NetworkSimEvent[] = [];
-  private bufferedAudio: NetworkSimEvent[] = this._audioA;
-  private bufferedVelocityUpdates = new Map<number, NetworkProjectileVelocityUpdate>();
-  private _velBufA: NetworkProjectileVelocityUpdate[] = [];
-  private _velBufB: NetworkProjectileVelocityUpdate[] = [];
-  private _velBufToggle = false;
-
-  // Audio smoothing queue: events scheduled to play at future times
-  private audioQueue: { event: NetworkSimEvent; playAt: number }[] = [];
-  private lastSnapshotTime: number = 0;
-  private snapshotInterval: number = 100; // EMA of snapshot interval (ms)
 
   // Callback for UI to know when player changes
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -242,35 +219,8 @@ export class RtsScene extends Phaser.Scene {
     // Create local command queue (for selection commands)
     this.localCommandQueue = new CommandQueue();
 
-    // Wire gameConnection snapshot to buffer (processed once per frame in update).
-    // This prevents PeerJS message queue buildup from freezing remote clients —
-    // snapshots are accepted instantly, and only the latest is processed each frame.
-    this.gameConnection.onSnapshot((state: NetworkGameState) => {
-      // Accumulate one-shot events from all intermediate snapshots
-      if (state.projectileSpawns) {
-        for (let i = 0; i < state.projectileSpawns.length; i++) {
-          this.bufferedSpawns.push(state.projectileSpawns[i]);
-        }
-      }
-      if (state.projectileDespawns) {
-        for (let i = 0; i < state.projectileDespawns.length; i++) {
-          this.bufferedDespawns.push(state.projectileDespawns[i]);
-        }
-      }
-      if (state.audioEvents) {
-        for (let i = 0; i < state.audioEvents.length; i++) {
-          this.bufferedAudio.push(state.audioEvents[i]);
-        }
-      }
-      if (state.projectileVelocityUpdates) {
-        for (let i = 0; i < state.projectileVelocityUpdates.length; i++) {
-          const vu = state.projectileVelocityUpdates[i];
-          this.bufferedVelocityUpdates.set(vu.id, vu);
-        }
-      }
-      // Keep only the latest snapshot (entity positions, economy, game over)
-      this.pendingSnapshot = state;
-    });
+    // Wire snapshot buffer to gameConnection
+    this.snapshotBuffer.attach(this.gameConnection);
 
     // Wire game over callback
     this.gameConnection.onGameOver((winnerId: PlayerId) => {
@@ -365,9 +315,6 @@ export class RtsScene extends Phaser.Scene {
   // Switch active player (for single-player mode)
   public switchPlayer(playerId: PlayerId): void {
     this.localPlayerId = playerId;
-    // Update input context by creating new InputManager with new context
-    // (InputContext activePlayerId is read directly, but we stored it as a value)
-    // Rebuild inputManager with new context
     if (this.inputManager) {
       this.inputManager.destroy();
     }
@@ -559,83 +506,26 @@ export class RtsScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     // Track FPS via EMA
     if (delta > 0) {
-      const fps = 1000 / delta;
-      if (!this.fpsInitialized) {
-        this.fpsAvg = fps;
-        this.fpsLow = fps;
-        this.fpsInitialized = true;
-      } else {
-        this.fpsAvg = (1 - EMA_CONFIG.fps.avg) * this.fpsAvg + EMA_CONFIG.fps.avg * fps;
-        this.fpsLow = fps < this.fpsLow
-          ? (1 - EMA_CONFIG.fps.low.drop) * this.fpsLow + EMA_CONFIG.fps.low.drop * fps
-          : (1 - EMA_CONFIG.fps.low.recovery) * this.fpsLow + EMA_CONFIG.fps.low.recovery * fps;
-      }
+      this.fpsTracker.update(1000 / delta);
     }
 
     // Drain audio smoothing queue: play any events whose scheduled time has arrived
     const now = performance.now();
-    const queue = this.audioQueue;
-    for (let i = queue.length - 1; i >= 0; i--) {
-      if (now >= queue[i].playAt) {
-        const cam = this.cameras.main;
-        handleSimEvent(queue[i].event as SimEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
-        // Swap-remove for efficiency
-        queue[i] = queue[queue.length - 1];
-        queue.length--;
-      }
-    }
+    const cam = this.cameras.main;
+    this.audioScheduler.drain(now, (event) => {
+      handleSimEvent(event as SimEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
+    });
 
     // Process buffered snapshot (at most one per frame)
-    if (this.pendingSnapshot) {
-      const state = this.pendingSnapshot;
-      this.pendingSnapshot = null;
-
-      // Swap double-buffered event arrays (zero allocation per frame)
-      const spawns = this.bufferedSpawns;
-      this.bufferedSpawns = (spawns === this._spawnsA) ? this._spawnsB : this._spawnsA;
-      this.bufferedSpawns.length = 0;
-      state.projectileSpawns = spawns.length > 0 ? spawns : undefined;
-
-      const despawns = this.bufferedDespawns;
-      this.bufferedDespawns = (despawns === this._despawnsA) ? this._despawnsB : this._despawnsA;
-      this.bufferedDespawns.length = 0;
-      state.projectileDespawns = despawns.length > 0 ? despawns : undefined;
-
-      const audio = this.bufferedAudio;
-      this.bufferedAudio = (audio === this._audioA) ? this._audioB : this._audioA;
-      this.bufferedAudio.length = 0;
-      state.audioEvents = audio.length > 0 ? audio : undefined;
-
-      if (this.bufferedVelocityUpdates.size > 0) {
-        const buf = this._velBufToggle ? this._velBufB : this._velBufA;
-        this._velBufToggle = !this._velBufToggle;
-        buf.length = 0;
-        for (const v of this.bufferedVelocityUpdates.values()) buf.push(v);
-        this.bufferedVelocityUpdates.clear();
-        state.projectileVelocityUpdates = buf;
-      } else {
-        state.projectileVelocityUpdates = undefined;
-      }
-
+    const state = this.snapshotBuffer.consume();
+    if (state) {
       this.clientViewState.applyNetworkState(state);
 
-      // Track snapshot interval for audio smoothing and stats (EMA)
-      if (this.lastSnapshotTime > 0) {
-        const snapDelta = now - this.lastSnapshotTime;
-        this.snapshotInterval = 0.8 * this.snapshotInterval + 0.2 * snapDelta;
-        const snapRate = 1000 / snapDelta;
-        if (!this.snapInitialized) {
-          this.snapAvg = snapRate;
-          this.snapLow = snapRate;
-          this.snapInitialized = true;
-        } else {
-          this.snapAvg = (1 - EMA_CONFIG.snaps.avg) * this.snapAvg + EMA_CONFIG.snaps.avg * snapRate;
-          this.snapLow = snapRate < this.snapLow
-            ? (1 - EMA_CONFIG.snaps.low.drop) * this.snapLow + EMA_CONFIG.snaps.low.drop * snapRate
-            : (1 - EMA_CONFIG.snaps.low.recovery) * this.snapLow + EMA_CONFIG.snaps.low.recovery * snapRate;
-        }
+      // Track snapshot rate (EMA)
+      const snapDelta = this.audioScheduler.recordSnapshot(now);
+      if (snapDelta > 0) {
+        this.snapTracker.update(1000 / snapDelta);
       }
-      this.lastSnapshotTime = now;
 
       // Forward server metadata to UI
       const serverMeta = this.clientViewState.getServerMeta();
@@ -646,20 +536,9 @@ export class RtsScene extends Phaser.Scene {
       // Process audio events
       const audioEvents = this.clientViewState.getPendingAudioEvents();
       if (audioEvents) {
-        const cam = this.cameras.main;
-        const smoothing = getAudioSmoothing();
-        for (const event of audioEvents) {
-          if (!smoothing || event.type === 'laserStart' || event.type === 'laserStop' || event.type === 'forceFieldStart' || event.type === 'forceFieldStop') {
-            // Play immediately: smoothing off, or state-dependent continuous sound events
-            handleSimEvent(event as SimEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
-          } else {
-            // Schedule for playback spread across the snapshot interval
-            this.audioQueue.push({
-              event,
-              playAt: now + Math.random() * this.snapshotInterval,
-            });
-          }
-        }
+        this.audioScheduler.schedule(audioEvents, now, getAudioSmoothing(), (event) => {
+          handleSimEvent(event as SimEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
+        });
       }
 
       // Check for game over
@@ -679,7 +558,6 @@ export class RtsScene extends Phaser.Scene {
     const continuousSounds = audioManager.getActiveContinuousSounds();
     if (continuousSounds.length > 0) {
       const audioScope = getAudioScope();
-      const cam = this.cameras.main;
       const vp = cam.worldView;
       const zoomVolume = Math.pow(cam.zoom, AUDIO.zoomVolumeExponent);
       for (const [soundId, sourceEntityId] of continuousSounds) {
@@ -842,14 +720,14 @@ export class RtsScene extends Phaser.Scene {
    * Get FPS statistics (EMA-based avg and low)
    */
   public getFrameStats(): { avgFps: number; worstFps: number } {
-    return { avgFps: this.fpsAvg, worstFps: this.fpsLow };
+    return { avgFps: this.fpsTracker.getAvg(), worstFps: this.fpsTracker.getLow() };
   }
 
   /**
    * Get snapshot rate statistics (EMA-based avg and low, in Hz)
    */
   public getSnapshotStats(): { avgRate: number; worstRate: number } {
-    return { avgRate: this.snapAvg, worstRate: this.snapLow };
+    return { avgRate: this.snapTracker.getAvg(), worstRate: this.snapTracker.getLow() };
   }
 
   // Clean shutdown
@@ -864,18 +742,9 @@ export class RtsScene extends Phaser.Scene {
     this.spatialGridGraphics?.destroy();
     this.gameConnection?.disconnect();
 
-    // Clear snapshot buffers (hold entity references from network state)
-    this.pendingSnapshot = null;
-    this._spawnsA.length = 0;
-    this._spawnsB.length = 0;
-    this._despawnsA.length = 0;
-    this._despawnsB.length = 0;
-    this._audioA.length = 0;
-    this._audioB.length = 0;
-    this.bufferedVelocityUpdates.clear();
-    this._velBufA.length = 0;
-    this._velBufB.length = 0;
-    this.audioQueue.length = 0;
+    // Clear snapshot buffer and audio scheduler
+    this.snapshotBuffer.clear();
+    this.audioScheduler.clear();
 
     // Clear cached entity arrays
     this._cachedSelectedUnits.length = 0;

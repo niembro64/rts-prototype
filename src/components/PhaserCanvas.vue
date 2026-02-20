@@ -2,7 +2,6 @@
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
 import {
-  PLAYER_COLORS,
   type PlayerId,
   type WaypointType,
 } from '../game/sim/types';
@@ -36,6 +35,27 @@ import {
   type KeyframeRatio,
   type TickRate,
 } from '../controlBarConfig';
+import {
+  loadStoredSnapshotRate,
+  saveSnapshotRate,
+  loadStoredKeyframeRatio,
+  saveKeyframeRatio,
+  loadStoredTickRate,
+  saveTickRate,
+  loadStoredDemoUnits,
+  saveDemoUnits,
+  loadStoredMaxTotalUnits,
+  saveMaxTotalUnits,
+  loadStoredProjVelInherit,
+  saveProjVelInherit,
+} from './controlBarStorage';
+import {
+  formatDuration,
+  fmt4,
+  statBarStyle,
+  getPlayerColor,
+  getPlayerName,
+} from './uiUtils';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
@@ -108,134 +128,6 @@ const clientTime = ref<string>('');
 
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
-
-function loadStoredSnapshotRate(): SnapshotRate {
-  try {
-    const stored = localStorage.getItem(CONTROL_BARS.storage.snapshotRate);
-    if (stored === 'none') return 'none';
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  } catch {
-    /* localStorage unavailable */
-  }
-  return CONTROL_BARS.server.snapshot.default;
-}
-
-function loadStoredKeyframeRatio(): KeyframeRatio {
-  try {
-    const stored = localStorage.getItem(CONTROL_BARS.storage.keyframeRatio);
-    if (stored === 'ALL') return 'ALL';
-    if (stored === 'NONE') return 'NONE';
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num)) return num;
-    }
-  } catch {
-    /* localStorage unavailable */
-  }
-  return CONTROL_BARS.server.keyframe.default;
-}
-
-function loadStoredDemoUnits(): string[] | null {
-  try {
-    const stored = localStorage.getItem(CONTROL_BARS.storage.demoUnits);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    /* localStorage unavailable */
-  }
-  return null;
-}
-
-function saveSnapshotRate(rate: SnapshotRate): void {
-  try {
-    localStorage.setItem(CONTROL_BARS.storage.snapshotRate, String(rate));
-  } catch {
-    /* */
-  }
-}
-
-function saveKeyframeRatio(ratio: KeyframeRatio): void {
-  try {
-    localStorage.setItem(CONTROL_BARS.storage.keyframeRatio, String(ratio));
-  } catch {
-    /* */
-  }
-}
-
-function loadStoredTickRate(): TickRate {
-  try {
-    const stored = localStorage.getItem(CONTROL_BARS.storage.tickRate);
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  } catch {
-    /* localStorage unavailable */
-  }
-  return CONTROL_BARS.server.tickRate.default;
-}
-
-function saveTickRate(rate: TickRate): void {
-  try {
-    localStorage.setItem(CONTROL_BARS.storage.tickRate, String(rate));
-  } catch {
-    /* */
-  }
-}
-
-function saveDemoUnits(units: string[]): void {
-  if (units.length === 0) return;
-  try {
-    localStorage.setItem(CONTROL_BARS.storage.demoUnits, JSON.stringify(units));
-  } catch {
-    /* */
-  }
-}
-
-function loadStoredMaxTotalUnits(): number {
-  try {
-    const stored = localStorage.getItem(CONTROL_BARS.storage.maxTotalUnits);
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  } catch {
-    /* localStorage unavailable */
-  }
-  return CONTROL_BARS.battle.cap.default;
-}
-
-function saveMaxTotalUnits(value: number): void {
-  try {
-    localStorage.setItem(CONTROL_BARS.storage.maxTotalUnits, String(value));
-  } catch {
-    /* */
-  }
-}
-
-function loadStoredProjVelInherit(): boolean {
-  try {
-    const stored = localStorage.getItem(CONTROL_BARS.storage.projVelInherit);
-    if (stored === 'false') return false;
-    if (stored === 'true') return true;
-  } catch {
-    /* localStorage unavailable */
-  }
-  return CONTROL_BARS.battle.projVelInherit.default;
-}
-
-function saveProjVelInherit(enabled: boolean): void {
-  try {
-    localStorage.setItem(CONTROL_BARS.storage.projVelInherit, String(enabled));
-  } catch {
-    /* */
-  }
-}
 
 // Demo battle unit type list (state read from snapshots)
 const demoUnitTypes = BUILDABLE_UNIT_IDS;
@@ -731,63 +623,6 @@ const selectionActions: SelectionActions = {
     scene?.cancelFactoryQueueItem(factoryId, index);
   },
 };
-
-/** Format milliseconds as HH:MM:SS */
-function formatDuration(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-/** Format a number with maximum precision for its magnitude */
-function fmt4(n: number): string {
-  if (n < 10) return n.toFixed(2);
-  if (n < 100) return n.toFixed(1);
-  return n.toFixed(0);
-}
-
-function statBarStyle(
-  value: number,
-  target = 60,
-  gray = false,
-): { width: string; backgroundColor: string } {
-  const ratio = value / target;
-  const fillRatio = Math.min(Math.max(ratio, 0), 1);
-  if (gray) return { width: `${fillRatio * 100}%`, backgroundColor: '#b0b0b0' };
-  let r: number, g: number, b: number;
-  if (ratio >= 1) {
-    // 1.0 → 2.0: green (#44cc44) → blue (#4488ff)
-    const t = Math.min(ratio - 1, 1); // 0 at 1.0, 1 at 2.0
-    r = Math.round(0x44 + (0x44 - 0x44) * t);
-    g = Math.round(0xcc + (0x88 - 0xcc) * t);
-    b = Math.round(0x44 + (0xff - 0x44) * t);
-  } else if (ratio >= 0.5) {
-    // 0.5 → 1.0: yellow (#cccc00) → green (#44cc44)
-    const t = (ratio - 0.5) / 0.5;
-    r = Math.round(0xcc + (0x44 - 0xcc) * t);
-    g = Math.round(0xcc + (0xcc - 0xcc) * t);
-    b = Math.round(0x00 + (0x44 - 0x00) * t);
-  } else {
-    // 0.0 → 0.5: red (#cc2222) → yellow (#cccc00)
-    const t = ratio / 0.5;
-    r = Math.round(0xcc + (0xcc - 0xcc) * t);
-    g = Math.round(0x22 + (0xcc - 0x22) * t);
-    b = Math.round(0x22 + (0x00 - 0x22) * t);
-  }
-  const color = `rgb(${r},${g},${b})`;
-  return { width: `${fillRatio * 100}%`, backgroundColor: color };
-}
-
-function getPlayerColor(playerId: PlayerId): string {
-  const color = PLAYER_COLORS[playerId]?.primary ?? 0x888888;
-  return '#' + color.toString(16).padStart(6, '0');
-}
-
-function getPlayerName(playerId: PlayerId): string {
-  return PLAYER_COLORS[playerId]?.name ?? 'Unknown';
-}
 
 // Lobby handlers
 async function handleHost(): Promise<void> {
