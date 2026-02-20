@@ -26,6 +26,7 @@ import {
   DEFAULT_KEYFRAME_RATIO,
   KEYFRAME_RATIO_OPTIONS,
   MAP_SETTINGS,
+  BAR_COLORS,
   SHOW_LOBBY_ON_STARTUP,
   COMBAT_STATS_HISTORY_MAX,
   COMBAT_STATS_VISIBLE_ON_LOAD,
@@ -49,6 +50,7 @@ import {
   getProjRangeToggle,
   setProjRangeToggle,
   RANGE_TYPES,
+  PROJ_RANGE_TYPES,
   getAudioScope,
   setAudioScope,
   getAudioSmoothing,
@@ -408,6 +410,32 @@ const showServerControls = computed(() => hasServer.value || serverMetaFromSnaps
 // Server bar is read-only for remote clients (no local server)
 const serverBarReadonly = computed(() => !hasServer.value);
 
+// Bar color theming via CSS custom properties
+type BarColorTheme = typeof BAR_COLORS[keyof typeof BAR_COLORS];
+function barVars(theme: BarColorTheme): Record<string, string> {
+  return {
+    '--bar-bg': theme.barBg,
+    '--bar-label-bg': theme.labelBg,
+    '--bar-label-border': theme.labelBorder,
+    '--bar-time': theme.time,
+    '--bar-active-bg': theme.activeBg,
+    '--bar-active-border': theme.activeBorder,
+    '--bar-active-hover-bg': theme.activeHoverBg,
+    '--bar-active-hover-border': theme.activeHoverBorder,
+    '--bar-active-pressed-bg': theme.activePressedBg,
+    '--bar-active-pressed-border': theme.activePressedBorder,
+  };
+}
+const battleBarVars = computed(() => barVars(serverBarReadonly.value ? BAR_COLORS.disabled : BAR_COLORS.battle));
+const serverBarVars = computed(() => barVars(serverBarReadonly.value ? BAR_COLORS.disabled : BAR_COLORS.server));
+const clientBarVars = computed(() => barVars(BAR_COLORS.client));
+
+const battleLabel = computed(() => {
+  if (networkRole.value === 'client') return 'ONLINE BATTLE';
+  if (networkRole.value === 'host' && lobbyPlayers.value.length > 1) return 'ONLINE BATTLE';
+  return 'LOCAL BATTLE';
+});
+
 // Display values: always read from snapshot meta (server→snapshot→display)
 const displayServerTpsAvg = computed(() => serverMetaFromSnapshot.value?.tpsAvg ?? 0);
 const displayServerTpsWorst = computed(() => serverMetaFromSnapshot.value?.tpsWorst ?? 0);
@@ -577,25 +605,31 @@ function fmt4(n: number): string {
   return n.toFixed(0);
 }
 
-function statBarStyle(value: number): { width: string; backgroundColor: string } {
-  const ratio = value / 60;
+function statBarStyle(value: number, target = 60, gray = false): { width: string; backgroundColor: string } {
+  const ratio = value / target;
   const fillRatio = Math.min(Math.max(ratio, 0), 1);
-  let color: string;
-  if (ratio > 1) {
-    color = '#4488ff';
+  if (gray) return { width: `${fillRatio * 100}%`, backgroundColor: '#b0b0b0' };
+  let r: number, g: number, b: number;
+  if (ratio >= 1) {
+    // 1.0 → 2.0: green (#44cc44) → blue (#4488ff)
+    const t = Math.min((ratio - 1), 1); // 0 at 1.0, 1 at 2.0
+    r = Math.round(0x44 + (0x44 - 0x44) * t);
+    g = Math.round(0xcc + (0x88 - 0xcc) * t);
+    b = Math.round(0x44 + (0xff - 0x44) * t);
   } else if (ratio >= 0.5) {
-    const t = (ratio - 0.5) / 0.5; // 0 at 0.5, 1 at 1.0
-    const r = Math.round(0x44 + (0xcc - 0x44) * (1 - t));
-    const g = Math.round(0xcc + (0xcc - 0xcc) * (1 - t));
-    const b = Math.round(0x44 * t);
-    color = `rgb(${r},${g},${b})`;
+    // 0.5 → 1.0: yellow (#cccc00) → green (#44cc44)
+    const t = (ratio - 0.5) / 0.5;
+    r = Math.round(0xcc + (0x44 - 0xcc) * t);
+    g = Math.round(0xcc + (0xcc - 0xcc) * t);
+    b = Math.round(0x00 + (0x44 - 0x00) * t);
   } else {
-    const t = ratio / 0.5; // 0 at 0.0, 1 at 0.5
-    const r = Math.round(0xcc + (0xcc - 0xcc) * t);
-    const g = Math.round(0x22 + (0xcc - 0x22) * t);
-    const b = Math.round(0x22 * (1 - t));
-    color = `rgb(${r},${g},${b})`;
+    // 0.0 → 0.5: red (#cc2222) → yellow (#cccc00)
+    const t = ratio / 0.5;
+    r = Math.round(0xcc + (0xcc - 0xcc) * t);
+    g = Math.round(0x22 + (0xcc - 0x22) * t);
+    b = Math.round(0x22 + (0x00 - 0x22) * t);
   }
+  const color = `rgb(${r},${g},${b})`;
   return { width: `${fillRatio * 100}%`, backgroundColor: color };
 }
 
@@ -815,6 +849,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       currentServer.setSnapshotRate(loadStoredSnapshotRate());
       currentServer.setKeyframeRatio(loadStoredKeyframeRatio());
       currentServer.setIpAddress(localIpAddress.value);
+      currentServer.receiveCommand({ type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: loadStoredMaxTotalUnits() });
       currentServer.start();
       hasServer.value = true;
     } else {
@@ -1049,11 +1084,11 @@ onUnmounted(() => {
 
     <!-- Bottom control bars (always visible) -->
     <div class="bottom-controls">
-      <!-- DEMO BATTLE CONTROLS (visible during background demo) -->
-      <div v-if="isBackgroundBattle" class="control-bar demo-bar">
+      <!-- BATTLE CONTROLS -->
+      <div v-if="showServerControls" class="control-bar" :class="{ 'bar-readonly': serverBarReadonly }" :style="battleBarVars">
         <div class="control-group">
-          <button class="bar-label demo-label" @click="resetDemoDefaults"><span class="bar-label-text">DEMO BATTLE</span><span class="bar-label-hover">DEFAULTS</span></button>
-          <span class="time-display demo-time">{{ battleElapsed }}</span>
+          <button class="bar-label" @click="resetDemoDefaults"><span class="bar-label-text">{{ battleLabel }}</span><span class="bar-label-hover">DEFAULTS</span></button>
+          <span class="time-display">{{ battleElapsed }}</span>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
@@ -1095,10 +1130,10 @@ onUnmounted(() => {
       </div>
 
       <!-- SERVER CONTROLS (visible when we own a server or receive server meta) -->
-      <div v-if="showServerControls" class="control-bar server-bar" :class="{ 'server-bar-readonly': serverBarReadonly }">
+      <div v-if="showServerControls" class="control-bar" :class="{ 'bar-readonly': serverBarReadonly }" :style="serverBarVars">
         <div class="control-group">
-          <button class="bar-label server-label" @click="resetServerDefaults"><span class="bar-label-text">HOST SERVER</span><span class="bar-label-hover">DEFAULTS</span></button>
-          <span v-if="displayServerTime" class="time-display server-time">{{ displayServerTime }}</span>
+          <button class="bar-label" @click="resetServerDefaults"><span class="bar-label-text">HOST SERVER</span><span class="bar-label-hover">DEFAULTS</span></button>
+          <span v-if="displayServerTime" class="time-display">{{ displayServerTime }}</span>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
@@ -1113,14 +1148,14 @@ onUnmounted(() => {
                 <span class="fps-value">{{ fmt4(displayServerTpsAvg) }}</span>
                 <span class="fps-label">avg</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(displayServerTpsAvg)"></div></div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(displayServerTpsAvg, 60, serverBarReadonly)"></div></div>
             </div>
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(displayServerTpsWorst) }}</span>
                 <span class="fps-label">low</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(displayServerTpsWorst)"></div></div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(displayServerTpsWorst, 60, serverBarReadonly)"></div></div>
             </div>
           </div>
         </div>
@@ -1167,10 +1202,10 @@ onUnmounted(() => {
       </div>
 
       <!-- CLIENT CONTROLS (always visible) -->
-      <div class="control-bar client-bar">
+      <div class="control-bar" :style="clientBarVars">
         <div class="control-group">
-          <button class="bar-label client-label" @click="resetClientDefaults"><span class="bar-label-text">PLAYER CLIENT</span><span class="bar-label-hover">DEFAULTS</span></button>
-          <span v-if="clientTime" class="time-display client-time">{{ clientTime }}</span>
+          <button class="bar-label" @click="resetClientDefaults"><span class="bar-label-text">PLAYER CLIENT</span><span class="bar-label-hover">DEFAULTS</span></button>
+          <span v-if="clientTime" class="time-display">{{ clientTime }}</span>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
@@ -1205,21 +1240,21 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">SNAPS:</span>
+          <span class="control-label">SPS:</span>
           <div class="stat-bar-group">
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(snapAvgRate) }}</span>
                 <span class="fps-label">avg</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(snapAvgRate)"></div></div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(snapAvgRate, displaySnapshotRate === 'realtime' ? 60 : displaySnapshotRate)"></div></div>
             </div>
             <div class="stat-bar">
               <div class="stat-bar-top">
                 <span class="fps-value">{{ fmt4(snapWorstRate) }}</span>
                 <span class="fps-label">low</span>
               </div>
-              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(snapWorstRate)"></div></div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(snapWorstRate, displaySnapshotRate === 'realtime' ? 60 : displaySnapshotRate)"></div></div>
             </div>
           </div>
         </div>
@@ -1676,29 +1711,17 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 6px;
   padding: 5px 10px;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--bar-bg);
   border: 1px solid #444;
+  border-radius: 0;
   font-family: monospace;
   pointer-events: auto;
   width: 100%;
   box-sizing: border-box;
 }
 
-.server-bar {
-  background: rgba(8, 8, 25, 0.7);
+.control-bar:not(:last-child) {
   border-bottom: none;
-  border-radius: 0;
-}
-
-.demo-bar {
-  background: rgba(25, 18, 6, 0.7);
-  border-bottom: none;
-  border-radius: 0;
-}
-
-.client-bar {
-  background: rgba(8, 20, 8, 0.7);
-  border-radius: 0;
 }
 
 .bar-label {
@@ -1713,6 +1736,9 @@ onUnmounted(() => {
   text-align: center;
   cursor: pointer;
   transition: all 0.15s ease;
+  color: #fff;
+  background: var(--bar-label-bg);
+  border: 1px solid var(--bar-label-border);
 }
 
 .bar-label-hover {
@@ -1730,24 +1756,6 @@ onUnmounted(() => {
 .bar-label:active {
   opacity: 0.7;
   transition: all 0.05s ease;
-}
-
-.server-label {
-  color: #fff;
-  background: rgba(68, 68, 170, 0.6);
-  border: 1px solid #6666cc;
-}
-
-.client-label {
-  color: #fff;
-  background: rgba(68, 136, 68, 0.6);
-  border: 1px solid #6a6;
-}
-
-.demo-label {
-  color: #fff;
-  background: rgba(170, 120, 40, 0.6);
-  border: 1px solid #cc9944;
 }
 
 .control-group {
@@ -1883,54 +1891,20 @@ onUnmounted(() => {
   transition: all 0.05s ease;
 }
 
-.client-bar .control-btn.active {
-  background: rgba(68, 136, 68, 0.9);
-  border-color: #6a6;
+.control-btn.active {
+  background: var(--bar-active-bg);
+  border-color: var(--bar-active-border);
   color: white;
 }
 
-.client-bar .control-btn.active:hover {
-  background: rgba(80, 155, 80, 0.95);
-  border-color: #7b7;
+.control-btn.active:hover {
+  background: var(--bar-active-hover-bg);
+  border-color: var(--bar-active-hover-border);
 }
 
-.client-bar .control-btn.active:active {
-  background: rgba(55, 115, 55, 0.95);
-  border-color: #595;
-  transition: all 0.05s ease;
-}
-
-.server-bar .control-btn.active {
-  background: rgba(68, 68, 170, 0.9);
-  border-color: #6666cc;
-  color: white;
-}
-
-.server-bar .control-btn.active:hover {
-  background: rgba(80, 80, 195, 0.95);
-  border-color: #7777dd;
-}
-
-.server-bar .control-btn.active:active {
-  background: rgba(55, 55, 145, 0.95);
-  border-color: #5555aa;
-  transition: all 0.05s ease;
-}
-
-.demo-bar .control-btn.active {
-  background: rgba(170, 120, 40, 0.9);
-  border-color: #cc9944;
-  color: white;
-}
-
-.demo-bar .control-btn.active:hover {
-  background: rgba(190, 138, 50, 0.95);
-  border-color: #ddaa55;
-}
-
-.demo-bar .control-btn.active:active {
-  background: rgba(145, 100, 32, 0.95);
-  border-color: #aa8833;
+.control-btn.active:active {
+  background: var(--bar-active-pressed-bg);
+  border-color: var(--bar-active-pressed-border);
   transition: all 0.05s ease;
 }
 
@@ -1938,39 +1912,22 @@ onUnmounted(() => {
   color: white;
 }
 
-.server-bar-readonly {
-  opacity: 0.7;
-}
-
-.server-bar-readonly .control-btn {
+.bar-readonly .control-btn {
   pointer-events: none;
   cursor: default;
 }
 
-.server-bar-readonly .control-btn:hover {
-  background: rgba(60, 60, 60, 0.8);
-  border-color: #555;
-  color: #aaa;
+.bar-readonly .bar-label {
+  pointer-events: none;
+  cursor: default;
 }
 
 .time-display {
   font-size: 10px;
   font-family: monospace;
-  color: #999;
+  color: var(--bar-time, #999);
   margin-left: 4px;
   white-space: nowrap;
-}
-
-.server-time {
-  color: #8888cc;
-}
-
-.client-time {
-  color: #6a6;
-}
-
-.demo-time {
-  color: #cc9944;
 }
 
 .ip-display {

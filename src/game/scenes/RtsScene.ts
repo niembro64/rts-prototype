@@ -19,6 +19,7 @@ import {
   MAP_CAMERA_BG,
   MAP_GRID_COLOR,
   COMBAT_STATS_SAMPLE_INTERVAL,
+  EMA_CONFIG,
 } from '../../config';
 
 import { getAudioSmoothing } from '../render/graphicsSettings';
@@ -556,11 +557,10 @@ export class RtsScene extends Phaser.Scene {
         this.fpsLow = fps;
         this.fpsInitialized = true;
       } else {
-        this.fpsAvg = 0.99 * this.fpsAvg + 0.01 * fps;
-        // Low: fast drop (0.5 EMA) when below current, slow recovery (0.99) when above
+        this.fpsAvg = (1 - EMA_CONFIG.fps.avg) * this.fpsAvg + EMA_CONFIG.fps.avg * fps;
         this.fpsLow = fps < this.fpsLow
-          ? 0.5 * this.fpsLow + 0.5 * fps
-          : 0.99 * this.fpsLow + 0.01 * fps;
+          ? (1 - EMA_CONFIG.fps.low.drop) * this.fpsLow + EMA_CONFIG.fps.low.drop * fps
+          : (1 - EMA_CONFIG.fps.low.recovery) * this.fpsLow + EMA_CONFIG.fps.low.recovery * fps;
       }
     }
 
@@ -621,10 +621,10 @@ export class RtsScene extends Phaser.Scene {
           this.snapLow = snapRate;
           this.snapInitialized = true;
         } else {
-          this.snapAvg = 0.99 * this.snapAvg + 0.01 * snapRate;
+          this.snapAvg = (1 - EMA_CONFIG.snaps.avg) * this.snapAvg + EMA_CONFIG.snaps.avg * snapRate;
           this.snapLow = snapRate < this.snapLow
-            ? 0.5 * this.snapLow + 0.5 * snapRate
-            : 0.99 * this.snapLow + 0.01 * snapRate;
+            ? (1 - EMA_CONFIG.snaps.low.drop) * this.snapLow + EMA_CONFIG.snaps.low.drop * snapRate
+            : (1 - EMA_CONFIG.snaps.low.recovery) * this.snapLow + EMA_CONFIG.snaps.low.recovery * snapRate;
         }
       }
       this.lastSnapshotTime = now;

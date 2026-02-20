@@ -39,6 +39,25 @@ export const KEYFRAME_RATIO_OPTIONS: readonly (number | 'ALL' | 'NONE')[] = [
 export type KeyframeRatio = number | 'ALL' | 'NONE';
 
 // =============================================================================
+// EMA (Exponential Moving Average) STATS TRACKING
+// =============================================================================
+
+export const EMA_CONFIG = {
+  tps: {
+    avg: 0.5,
+    low: { drop: 1, recovery: 0.05 },
+  },
+  fps: {
+    avg: 0.01,
+    low: { drop: 1, recovery: 0.001 },
+  },
+  snaps: {
+    avg: 0.02,
+    low: { drop: 1, recovery: 0.002 },
+  },
+};
+
+// =============================================================================
 // ECONOMY & RESOURCES
 // =============================================================================
 
@@ -1157,6 +1176,61 @@ export const WEAPON_STATS = {
       lock: null,
       fightstop: null,
     },
+  },
+};
+
+// =============================================================================
+// CONTROL BAR COLORS
+// =============================================================================
+
+export const BAR_COLORS = {
+  battle: {
+    barBg: 'rgba(25, 18, 6, 0.7)',
+    labelBg: 'rgba(170, 120, 40, 0.6)',
+    labelBorder: '#cc9944',
+    time: '#cc9944',
+    activeBg: 'rgba(170, 120, 40, 0.9)',
+    activeBorder: '#cc9944',
+    activeHoverBg: 'rgba(190, 138, 50, 0.95)',
+    activeHoverBorder: '#ddaa55',
+    activePressedBg: 'rgba(145, 100, 32, 0.95)',
+    activePressedBorder: '#aa8833',
+  },
+  server: {
+    barBg: 'rgba(8, 8, 25, 0.7)',
+    labelBg: 'rgba(68, 68, 170, 0.6)',
+    labelBorder: '#6666cc',
+    time: '#8888cc',
+    activeBg: 'rgba(68, 68, 170, 0.9)',
+    activeBorder: '#6666cc',
+    activeHoverBg: 'rgba(80, 80, 195, 0.95)',
+    activeHoverBorder: '#7777dd',
+    activePressedBg: 'rgba(55, 55, 145, 0.95)',
+    activePressedBorder: '#5555aa',
+  },
+  client: {
+    barBg: 'rgba(8, 20, 8, 0.7)',
+    labelBg: 'rgba(68, 136, 68, 0.6)',
+    labelBorder: '#6a6',
+    time: '#6a6',
+    activeBg: 'rgba(68, 136, 68, 0.9)',
+    activeBorder: '#6a6',
+    activeHoverBg: 'rgba(80, 155, 80, 0.95)',
+    activeHoverBorder: '#7b7',
+    activePressedBg: 'rgba(55, 115, 55, 0.95)',
+    activePressedBorder: '#595',
+  },
+  disabled: {
+    barBg: 'rgba(15, 15, 15, 0.7)',
+    labelBg: 'rgba(80, 80, 80, 0.6)',
+    labelBorder: '#666',
+    time: '#888',
+    activeBg: 'rgba(80, 80, 80, 0.9)',
+    activeBorder: '#888',
+    activeHoverBg: 'rgba(80, 80, 80, 0.9)',
+    activeHoverBorder: '#888',
+    activePressedBg: 'rgba(80, 80, 80, 0.9)',
+    activePressedBorder: '#888',
   },
 };
 

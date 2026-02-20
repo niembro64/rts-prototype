@@ -34,13 +34,10 @@ import { spatialGrid } from './SpatialGrid';
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
 
-// Fixed simulation timestep (60 Hz)
-export const FIXED_TIMESTEP = 1000 / 60;
 
 export class Simulation {
   private world: WorldState;
   private commandQueue: CommandQueue;
-  private accumulator: number = 0;
   private constructionSystem: ConstructionSystem;
   private damageSystem: DamageSystem;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
@@ -174,25 +171,8 @@ export class Simulation {
     return this.combatStatsTracker;
   }
 
-  // Update simulation with variable delta time
-  update(deltaMs: number): void {
-    this.accumulator += deltaMs;
-
-    // Cap accumulator to prevent runaway catch-up loops (max ~10 frames behind)
-    const MAX_ACCUMULATOR = FIXED_TIMESTEP * 10;
-    if (this.accumulator > MAX_ACCUMULATOR) {
-      this.accumulator = MAX_ACCUMULATOR;
-    }
-
-    // Process fixed timesteps
-    while (this.accumulator >= FIXED_TIMESTEP) {
-      this.fixedUpdate(FIXED_TIMESTEP);
-      this.accumulator -= FIXED_TIMESTEP;
-    }
-  }
-
-  // Fixed timestep update
-  private fixedUpdate(dtMs: number): void {
+  // Run one simulation step with the given timestep
+  update(dtMs: number): void {
     const tick = this.world.getTick();
 
     // Process commands for this tick

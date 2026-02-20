@@ -31,6 +31,7 @@ import {
   UNIT_THRUST_MULTIPLIER_DEMO,
   SNAPSHOT_CONFIG,
   DEFAULT_KEYFRAME_RATIO,
+  EMA_CONFIG,
   type KeyframeRatio,
 } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
@@ -255,10 +256,10 @@ export class GameServer {
         this.tpsLow = tps;
         this.tpsInitialized = true;
       } else {
-        this.tpsAvg = 0.99 * this.tpsAvg + 0.01 * tps;
+        this.tpsAvg = (1 - EMA_CONFIG.tps.avg) * this.tpsAvg + EMA_CONFIG.tps.avg * tps;
         this.tpsLow = tps < this.tpsLow
-          ? 0.5 * this.tpsLow + 0.5 * tps
-          : 0.99 * this.tpsLow + 0.01 * tps;
+          ? (1 - EMA_CONFIG.tps.low.drop) * this.tpsLow + EMA_CONFIG.tps.low.drop * tps
+          : (1 - EMA_CONFIG.tps.low.recovery) * this.tpsLow + EMA_CONFIG.tps.low.recovery * tps;
       }
     }
 
