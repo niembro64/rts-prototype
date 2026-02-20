@@ -138,12 +138,15 @@ export class GameServer {
       }
     };
 
-    // Handle building deaths
+    // Handle building deaths: remove physics bodies and entities
     this.simulation.onBuildingDeath = (deadBuildingIds: EntityId[]) => {
       const constructionSystem = this.simulation.getConstructionSystem();
       for (const id of deadBuildingIds) {
         const entity = this.world.getEntity(id);
         if (entity) {
+          if (entity.body?.physicsBody) {
+            this.physics.removeBody(entity.body.physicsBody);
+          }
           constructionSystem.onBuildingDestroyed(entity);
         }
         this.world.removeEntity(id);
@@ -157,7 +160,7 @@ export class GameServer {
           const body = this.physics.createUnitBody(
             entity.transform.x,
             entity.transform.y,
-            entity.unit.collisionRadius,
+            entity.unit.physicsRadius,
             entity.unit.mass,
             `unit_${entity.id}`
           );
@@ -247,10 +250,11 @@ export class GameServer {
     }
 
     // Clamp dt to prevent spiral of death (max ~4 frames at 60Hz)
-    const dtSec = Math.min(delta / 1000, 4 / 60);
+    const dtMs = Math.min(delta, 4 * 1000 / 60);
+    const dtSec = dtMs / 1000;
 
     // Update simulation (calculates thrust velocities, runs combat, etc.)
-    this.simulation.update(delta);
+    this.simulation.update(dtMs);
 
     // Apply thrust + external forces to physics bodies
     this.applyForces();

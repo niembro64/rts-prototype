@@ -3,7 +3,7 @@ import { magnitude } from '../math';
 
 /**
  * Force contribution from a single source.
- * Forces are applied through Matter.js physics, so mass naturally affects acceleration.
+ * Forces are applied through the physics engine, so mass naturally affects acceleration.
  */
 export interface ForceContribution {
   fx: number;  // Force in X direction (Newtons-ish, units depend on mass scale)
@@ -32,7 +32,7 @@ interface EntityForces {
  *   2. addSteeringForce() - Movement toward waypoints
  *   3. addForce() - External effects (wave pull, knockback, etc.)
  *   4. finalize() - Sum all forces
- *   5. Apply to Matter bodies with matter.body.applyForce()
+ *   5. Apply to physics bodies with physics.applyForce()
  */
 export class ForceAccumulator {
   private forces: Map<EntityId, EntityForces> = new Map();

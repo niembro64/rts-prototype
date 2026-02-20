@@ -16,7 +16,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           phaser: ['phaser'],
-          'matter-js': ['matter-js'],
         },
       },
     },

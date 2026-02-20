@@ -147,8 +147,8 @@ function processBeamKills(
         x: target?.transform.x ?? 0,
         y: target?.transform.y ?? 0,
         deathContext: ctx ? {
-          unitVelX: target?.unit?.velocityX ?? 0,
-          unitVelY: target?.unit?.velocityY ?? 0,
+          unitVelX: target?.body?.physicsBody.vx ?? 0,
+          unitVelY: target?.body?.physicsBody.vy ?? 0,
           hitDirX: ctx.penetrationDirX,
           hitDirY: ctx.penetrationDirY,
           projectileVelX: ctx.attackerVelX,
@@ -971,8 +971,8 @@ export function checkProjectileCollisions(
             x: target?.transform.x ?? 0,
             y: target?.transform.y ?? 0,
             deathContext: ctx ? {
-              unitVelX: target?.unit?.velocityX ?? 0,
-              unitVelY: target?.unit?.velocityY ?? 0,
+              unitVelX: target?.body?.physicsBody.vx ?? 0,
+              unitVelY: target?.body?.physicsBody.vy ?? 0,
               hitDirX: ctx.penetrationDirX,
               hitDirY: ctx.penetrationDirY,
               projectileVelX: ctx.attackerVelX,
