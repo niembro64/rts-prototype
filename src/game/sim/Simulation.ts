@@ -225,9 +225,6 @@ export class Simulation {
     // Update all units movement (calculates target velocities)
     this.updateUnits();
 
-    // Sync transforms from Matter bodies
-    this.syncTransformsFromBodies();
-
     // Update spatial grid AFTER physics sync so grid cells match actual positions
     // (PERFORMANCE CRITICAL: O(1) per unit that didn't cross cell boundary)
     this.updateSpatialGrid();
@@ -1004,17 +1001,6 @@ export class Simulation {
     // Clear patrol start index if no more actions
     if (unit.actions.length === 0) {
       unit.patrolStartIndex = null;
-    }
-  }
-
-  // Sync transforms from Matter.js bodies (rotation is handled in RtsScene after physics)
-  private syncTransformsFromBodies(): void {
-    for (const entity of this.world.getAllEntities()) {
-      if (entity.body?.matterBody) {
-        // Sync position from physics
-        entity.transform.x = entity.body.matterBody.position.x;
-        entity.transform.y = entity.body.matterBody.position.y;
-      }
     }
   }
 

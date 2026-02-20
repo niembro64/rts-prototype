@@ -1,7 +1,6 @@
 // GameServer - Headless simulation server (no Phaser dependency)
-// Owns WorldState, Simulation, Matter.Engine, and runs the game loop via setInterval
+// Owns WorldState, Simulation, PhysicsEngine, and runs the game loop via setInterval
 
-import Matter from 'matter-js';
 import { WorldState } from '../sim/WorldState';
 import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
@@ -13,17 +12,9 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
-import {
-  createStandaloneEngine,
-  createUnitBodyStandalone,
-  createMatterBodiesStandalone,
-  applyUnitVelocitiesStandalone,
-  syncVelocitiesFromPhysics,
-  removeBodyStandalone,
-  stepEngine,
-  toPhaserBody,
-} from './PhysicsStandalone';
+import { PhysicsEngine } from './PhysicsEngine';
 import { spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
+import { magnitude } from '../math';
 import {
   MAP_SETTINGS,
   UNIT_STATS,
@@ -45,18 +36,13 @@ export interface GameServerConfig {
 }
 
 export class GameServer {
-  private engine: Matter.Engine;
+  private physics: PhysicsEngine;
   private world: WorldState;
   private simulation: Simulation;
   private commandQueue: CommandQueue;
 
   private playerIds: PlayerId[];
   private backgroundMode: boolean;
-
-  // Fixed-timestep physics
-  private physicsAccumulator: number = 0;
-  private readonly PHYSICS_TIMESTEP = 1000 / 60; // 60Hz
-  private readonly MAX_PHYSICS_STEPS = 4;
 
   // Game loop
   private gameLoopInterval: ReturnType<typeof setInterval> | null = null;
@@ -101,8 +87,8 @@ export class GameServer {
     this.snapshotRateDisplay = config.snapshotRate ?? 10;
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
-    // Create standalone Matter.js engine
-    this.engine = createStandaloneEngine();
+    // Create custom physics engine
+    this.physics = new PhysicsEngine();
 
     // Initialize world state with appropriate map size
     const mapConfig = this.backgroundMode ? MAP_SETTINGS.demo : MAP_SETTINGS.game;
@@ -126,7 +112,7 @@ export class GameServer {
       economyManager.initPlayer(2);
       economyManager.initPlayer(3);
       economyManager.initPlayer(4);
-      const initialUnits = spawnBackgroundUnitsStandalone(this.world, this.engine, true, this.backgroundAllowedTypes);
+      const initialUnits = spawnBackgroundUnitsStandalone(this.world, this.physics, true, this.backgroundAllowedTypes);
       const tracker = this.simulation.getCombatStatsTracker();
       for (const unit of initialUnits) {
         if (unit.unit?.unitType && unit.ownership) {
@@ -136,19 +122,17 @@ export class GameServer {
       }
     } else {
       const entities = spawnInitialEntities(this.world, this.playerIds);
-      createMatterBodiesStandalone(this.engine, entities);
+      this.createPhysicsBodies(entities);
     }
   }
 
   private setupSimulationCallbacks(): void {
-    // Handle unit deaths: remove matter bodies and entities
+    // Handle unit deaths: remove physics bodies and entities
     this.simulation.onUnitDeath = (deadUnitIds: EntityId[], _deathContexts?: Map<EntityId, DeathContext>) => {
       for (const id of deadUnitIds) {
         const entity = this.world.getEntity(id);
-        if (entity) {
-          if (entity.body?.matterBody) {
-            removeBodyStandalone(this.engine, entity.body.matterBody);
-          }
+        if (entity?.body?.physicsBody) {
+          this.physics.removeBody(entity.body.physicsBody);
         }
         this.world.removeEntity(id);
       }
@@ -166,19 +150,18 @@ export class GameServer {
       }
     };
 
-    // Handle unit spawns: create standalone Matter bodies
+    // Handle unit spawns: create physics bodies
     this.simulation.onUnitSpawn = (newUnits: Entity[]) => {
       for (const entity of newUnits) {
         if (entity.type === 'unit' && entity.unit) {
-          const body = createUnitBodyStandalone(
-            this.engine,
+          const body = this.physics.createUnitBody(
             entity.transform.x,
             entity.transform.y,
             entity.unit.collisionRadius,
             entity.unit.mass,
             `unit_${entity.id}`
           );
-          entity.body = { matterBody: toPhaserBody(body) };
+          entity.body = { physicsBody: body };
         }
       }
     };
@@ -246,7 +229,7 @@ export class GameServer {
     this.snapshotCounter = 0;
   }
 
-  // Main simulation tick (driven by internal setInterval)
+  // Main simulation tick — variable timestep (driven by internal setInterval)
   private tick(delta: number): void {
     // Track TPS via EMA
     if (delta > 0) {
@@ -263,38 +246,27 @@ export class GameServer {
       }
     }
 
-    // Fixed timestep physics
-    this.physicsAccumulator += delta;
+    // Clamp dt to prevent spiral of death (max ~4 frames at 60Hz)
+    const dtSec = Math.min(delta / 1000, 4 / 60);
 
-    const maxAccumulator = this.PHYSICS_TIMESTEP * this.MAX_PHYSICS_STEPS;
-    if (this.physicsAccumulator > maxAccumulator) {
-      this.physicsAccumulator = maxAccumulator;
-    }
+    // Update simulation (calculates thrust velocities, runs combat, etc.)
+    this.simulation.update(delta);
 
-    let physicsSteps = 0;
-    while (this.physicsAccumulator >= this.PHYSICS_TIMESTEP && physicsSteps < this.MAX_PHYSICS_STEPS) {
-      // Update simulation (calculates velocities)
-      this.simulation.update(this.PHYSICS_TIMESTEP);
+    // Apply thrust + external forces to physics bodies
+    this.applyForces();
 
-      // Apply forces to Matter bodies
-      applyUnitVelocitiesStandalone(this.engine, this.world, this.simulation.getForceAccumulator());
+    // Step physics (integrate + collisions)
+    this.physics.step(dtSec);
 
-      // Step Matter.js physics
-      stepEngine(this.engine, this.PHYSICS_TIMESTEP);
-
-      // Sync actual post-friction velocities to entities for snapshot serialization
-      syncVelocitiesFromPhysics(this.world, this.PHYSICS_TIMESTEP);
-
-      this.physicsAccumulator -= this.PHYSICS_TIMESTEP;
-      physicsSteps++;
-    }
+    // Sync positions/velocities from physics to entities
+    this.syncFromPhysics();
 
     // Background mode: continuously spawn units
     if (this.backgroundMode) {
       this.backgroundSpawnTimer += delta;
       if (this.backgroundSpawnTimer >= this.BACKGROUND_SPAWN_INTERVAL) {
         this.backgroundSpawnTimer = 0;
-        const spawnedUnits = spawnBackgroundUnitsStandalone(this.world, this.engine, false, this.backgroundAllowedTypes);
+        const spawnedUnits = spawnBackgroundUnitsStandalone(this.world, this.physics, false, this.backgroundAllowedTypes);
         const tracker = this.simulation.getCombatStatsTracker();
         for (const unit of spawnedUnits) {
           if (unit.unit?.unitType && unit.ownership) {
@@ -302,6 +274,94 @@ export class GameServer {
             tracker.recordUnitProduced(unit.ownership.playerId, unit.unit.unitType);
           }
         }
+      }
+    }
+  }
+
+  // Apply thrust and external forces to physics bodies
+  private applyForces(): void {
+    const forceAccumulator = this.simulation.getForceAccumulator();
+
+    for (const entity of this.world.getUnits()) {
+      if (!entity.body?.physicsBody || !entity.unit) continue;
+
+      const body = entity.body.physicsBody;
+
+      // Sync position from physics body (before force application, for rotation calc)
+      entity.transform.x = body.x;
+      entity.transform.y = body.y;
+
+      // Get the direction unit wants to move
+      const dirX = entity.unit.velocityX ?? 0;
+      const dirY = entity.unit.velocityY ?? 0;
+      const dirMag = magnitude(dirX, dirY);
+
+      // Update rotation to face movement direction
+      if (dirMag > 0.01) {
+        entity.transform.rotation = Math.atan2(dirY, dirX);
+      }
+
+      let thrustForceX = 0;
+      let thrustForceY = 0;
+      if (dirMag > 0) {
+        const MATTER_FORCE_SCALE = 150000;
+        const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
+        thrustForceX = (dirX / dirMag) * thrustMagnitude;
+        thrustForceY = (dirY / dirMag) * thrustMagnitude;
+      }
+
+      // Get external forces from the accumulator
+      const externalForce = forceAccumulator.getFinalForce(entity.id);
+      const externalFx = (externalForce?.fx ?? 0) / 3600;
+      const externalFy = (externalForce?.fy ?? 0) / 3600;
+
+      let totalForceX = thrustForceX + externalFx;
+      let totalForceY = thrustForceY + externalFy;
+
+      if (!Number.isFinite(totalForceX) || !Number.isFinite(totalForceY)) {
+        continue;
+      }
+
+      // Matter.js Verlet integration uses (F/m) * deltaTimeMs², our Euler engine uses (F/m) * dtSec.
+      // Conversion: (ms)² / (sec)² = 1000² = 1e6. With friction-first ordering this is exact.
+      this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6);
+    }
+  }
+
+  // Sync positions and velocities from physics bodies to entities
+  private syncFromPhysics(): void {
+    for (const entity of this.world.getUnits()) {
+      if (!entity.body?.physicsBody || !entity.unit) continue;
+      const body = entity.body.physicsBody;
+      entity.transform.x = body.x;
+      entity.transform.y = body.y;
+      // PhysicsBody velocities are already in px/sec — no conversion needed
+      entity.unit.velocityX = body.vx;
+      entity.unit.velocityY = body.vy;
+    }
+  }
+
+  // Create physics bodies for a list of entities
+  private createPhysicsBodies(entities: Entity[]): void {
+    for (const entity of entities) {
+      if (entity.type === 'unit' && entity.unit) {
+        const body = this.physics.createUnitBody(
+          entity.transform.x,
+          entity.transform.y,
+          entity.unit.physicsRadius,
+          entity.unit.mass,
+          `unit_${entity.id}`
+        );
+        entity.body = { physicsBody: body };
+      } else if (entity.type === 'building' && entity.building) {
+        const body = this.physics.createBuildingBody(
+          entity.transform.x,
+          entity.transform.y,
+          entity.building.width,
+          entity.building.height,
+          `building_${entity.id}`
+        );
+        entity.body = { physicsBody: body };
       }
     }
   }
@@ -543,8 +603,8 @@ export class GameServer {
       // Kill all existing units of this type
       for (const unit of this.world.getUnits()) {
         if (unit.unit?.unitType === unitType) {
-          if (unit.body?.matterBody) {
-            removeBodyStandalone(this.engine, unit.body.matterBody);
+          if (unit.body?.physicsBody) {
+            this.physics.removeBody(unit.body.physicsBody);
           }
           this.world.removeEntity(unit.id);
         }

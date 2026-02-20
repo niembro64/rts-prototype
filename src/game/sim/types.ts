@@ -14,9 +14,9 @@ export interface Transform {
   rotSin?: number;
 }
 
-// Body component - reference to Matter.js body
+// Body component - reference to physics body
 export interface Body {
-  matterBody: MatterJS.BodyType;
+  physicsBody: import('../server/PhysicsEngine').PhysicsBody;
 }
 
 // Selectable tag component

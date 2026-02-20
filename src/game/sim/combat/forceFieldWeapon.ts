@@ -215,7 +215,7 @@ export function applyForceFieldDamage(
         }
 
         if (dist > 0 && forceAccumulator) {
-          const targetMass = (target.body?.matterBody as { mass?: number })?.mass ?? 1;
+          const targetMass = target.body?.physicsBody.mass ?? 1;
           const pullDir = inPush ? 1 : -1; // push outward in inner zone, pull inward in outer zone
           const zoneStrength = inPush ? pushStrength : pullStrength;
           const nx = (pullDir * dx) / dist;

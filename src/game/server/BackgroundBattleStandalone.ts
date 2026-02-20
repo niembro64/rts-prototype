@@ -1,11 +1,10 @@
-// Background battle spawning logic (standalone Matter.js, no Phaser)
+// Background battle spawning logic (standalone physics, no Phaser)
 
-import type Matter from 'matter-js';
 import type { Entity, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 import { aimTurretsToward } from '../sim/turretInit';
-import { createUnitBodyStandalone, toPhaserBody } from './PhysicsStandalone';
+import type { PhysicsEngine } from './PhysicsEngine';
 import {
   UNIT_STATS,
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
@@ -65,7 +64,7 @@ function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): keyof typeo
 // Spawn a single background unit with standalone physics
 function spawnBackgroundUnitStandalone(
   world: WorldState,
-  engine: Matter.Engine,
+  physics: PhysicsEngine,
   playerId: PlayerId,
   minX: number,
   maxX: number,
@@ -125,15 +124,14 @@ function spawnBackgroundUnitStandalone(
   world.addEntity(unit);
 
   if (unit.unit) {
-    const body = createUnitBodyStandalone(
-      engine,
+    const body = physics.createUnitBody(
       x,
       y,
       unit.unit.collisionRadius,
       unit.unit.mass,
       `unit_${unit.id}`
     );
-    unit.body = { matterBody: toPhaserBody(body) };
+    unit.body = { physicsBody: body };
   }
 
   return unit;
@@ -142,7 +140,7 @@ function spawnBackgroundUnitStandalone(
 // Spawn units for the background battle (4 players)
 export function spawnBackgroundUnitsStandalone(
   world: WorldState,
-  engine: Matter.Engine,
+  physics: PhysicsEngine,
   initialSpawn: boolean,
   allowedTypes?: ReadonlySet<string>
 ): Entity[] {
@@ -158,7 +156,7 @@ export function spawnBackgroundUnitsStandalone(
   // Player 1 (Red) - top of map, moving down
   const player1Units = world.getUnitsByPlayer(1).length;
   for (let i = 0; i < unitsToSpawnPerPlayer && player1Units + i < unitCapPerPlayer; i++) {
-    const unit = spawnBackgroundUnitStandalone(world, engine, 1,
+    const unit = spawnBackgroundUnitStandalone(world, physics, 1,
       spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin,
       spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight,
       Math.PI / 2, allowedTypes
@@ -169,7 +167,7 @@ export function spawnBackgroundUnitsStandalone(
   // Player 2 (Blue) - bottom of map, moving up
   const player2Units = world.getUnitsByPlayer(2).length;
   for (let i = 0; i < unitsToSpawnPerPlayer && player2Units + i < unitCapPerPlayer; i++) {
-    const unit = spawnBackgroundUnitStandalone(world, engine, 2,
+    const unit = spawnBackgroundUnitStandalone(world, physics, 2,
       spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight,
       spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin,
       -Math.PI / 2, allowedTypes
@@ -180,7 +178,7 @@ export function spawnBackgroundUnitsStandalone(
   // Player 3 (Yellow) - left of map, moving right
   const player3Units = world.getUnitsByPlayer(3).length;
   for (let i = 0; i < unitsToSpawnPerPlayer && player3Units + i < unitCapPerPlayer; i++) {
-    const unit = spawnBackgroundUnitStandalone(world, engine, 3,
+    const unit = spawnBackgroundUnitStandalone(world, physics, 3,
       spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin,
       mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin,
       0, allowedTypes
@@ -191,7 +189,7 @@ export function spawnBackgroundUnitsStandalone(
   // Player 4 (Green) - right of map, moving left
   const player4Units = world.getUnitsByPlayer(4).length;
   for (let i = 0; i < unitsToSpawnPerPlayer && player4Units + i < unitCapPerPlayer; i++) {
-    const unit = spawnBackgroundUnitStandalone(world, engine, 4,
+    const unit = spawnBackgroundUnitStandalone(world, physics, 4,
       mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin,
       spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin,
       Math.PI, allowedTypes

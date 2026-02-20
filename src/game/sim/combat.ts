@@ -37,5 +37,4 @@ export {
   fireWeapons,
   updateProjectiles,
   checkProjectileCollisions,
-  removeDeadUnits,
 } from './combat/projectileSystem';

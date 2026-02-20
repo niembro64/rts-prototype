@@ -1,6 +1,5 @@
 // Projectile system - firing, movement, collision detection, and damage application
 
-import Phaser from 'phaser';
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
 import { PLAYER_COLORS } from '../types';
@@ -142,15 +141,14 @@ function processBeamKills(
       const ctx = result.deathContexts.get(id);
       const playerId = target?.ownership?.playerId ?? 1;
       const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
-      const bodyVel = (target?.body?.matterBody as { velocity?: { x: number; y: number } })?.velocity;
       audioEvents.push({
         type: 'death',
         weaponId: config.id,
         x: target?.transform.x ?? 0,
         y: target?.transform.y ?? 0,
         deathContext: ctx ? {
-          unitVelX: bodyVel?.x ?? 0,
-          unitVelY: bodyVel?.y ?? 0,
+          unitVelX: target?.unit?.velocityX ?? 0,
+          unitVelY: target?.unit?.velocityY ?? 0,
           hitDirX: ctx.penetrationDirX,
           hitDirY: ctx.penetrationDirY,
           projectileVelX: ctx.attackerVelX,
@@ -967,16 +965,14 @@ export function checkProjectileCollisions(
           const ctx = result.deathContexts.get(id);
           const playerId = target?.ownership?.playerId ?? 1;
           const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
-          // Get physics body velocity for unit velocity
-          const bodyVel = (target?.body?.matterBody as { velocity?: { x: number; y: number } })?.velocity;
           audioEvents.push({
             type: 'death',
             weaponId: config.id,
             x: target?.transform.x ?? 0,
             y: target?.transform.y ?? 0,
             deathContext: ctx ? {
-              unitVelX: bodyVel?.x ?? 0,
-              unitVelY: bodyVel?.y ?? 0,
+              unitVelX: target?.unit?.velocityX ?? 0,
+              unitVelY: target?.unit?.velocityY ?? 0,
               hitDirX: ctx.penetrationDirX,
               hitDirY: ctx.penetrationDirY,
               projectileVelX: ctx.attackerVelX,
@@ -1131,13 +1127,3 @@ export function checkProjectileCollisions(
   return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, audioEvents, despawnEvents, deathContexts };
 }
 
-// Remove dead units and clean up their Matter bodies
-export function removeDeadUnits(world: WorldState, deadUnitIds: EntityId[], scene: Phaser.Scene): void {
-  for (const id of deadUnitIds) {
-    const entity = world.getEntity(id);
-    if (entity?.body?.matterBody) {
-      scene.matter.world.remove(entity.body.matterBody);
-    }
-    world.removeEntity(id);
-  }
-}

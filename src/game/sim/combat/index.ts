@@ -20,4 +20,4 @@ export { updateLaserSounds, emitLaserStopsForEntity, emitLaserStopsForTarget } f
 export { updateForceFieldState, applyForceFieldDamage } from './forceFieldWeapon';
 
 // Projectiles
-export { fireWeapons, updateProjectiles, checkProjectileCollisions, removeDeadUnits } from './projectileSystem';
+export { fireWeapons, updateProjectiles, checkProjectileCollisions } from './projectileSystem';
