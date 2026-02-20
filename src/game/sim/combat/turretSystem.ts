@@ -47,13 +47,16 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
         }
       }
 
+      // dt-independent drag: at 60fps apply (1-drag) per frame, variable dt: pow(1-drag, dt*60)
+      const dragFactor = Math.pow(1 - weapon.turretDrag, dtSec * 60);
+
       // If no active target, optionally return turret to forward-facing
       if (!hasActiveTarget) {
         if (TURRET_RETURN_TO_FORWARD) {
           targetAngle = getMovementAngle(unit);
         } else {
           // Hold current rotation — just apply drag to slow down
-          weapon.turretAngularVelocity *= (1 - weapon.turretDrag);
+          weapon.turretAngularVelocity *= dragFactor;
           weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
           weapon.turretRotation = normalizeAngle(weapon.turretRotation);
           continue;
@@ -69,9 +72,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
       weapon.turretAngularVelocity += accelDirection * weapon.turretTurnAccel * dtSec;
 
       // Apply drag (reduces velocity each frame)
-      // Using multiplicative drag: velocity *= (1 - drag)
-      // This naturally limits terminal velocity
-      weapon.turretAngularVelocity *= (1 - weapon.turretDrag);
+      // dt-independent: naturally limits terminal velocity
+      weapon.turretAngularVelocity *= dragFactor;
 
       // Update rotation based on velocity
       weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
