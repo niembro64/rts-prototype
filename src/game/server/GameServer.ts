@@ -32,7 +32,7 @@ import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 export interface GameServerConfig {
   playerIds: PlayerId[];
   backgroundMode?: boolean;
-  snapshotRate?: number; // Hz, default 10
+  maxSnapshotsPerSec?: number; // Max snapshots/sec cap (0 = no cap)
 }
 
 export class GameServer {
@@ -46,10 +46,10 @@ export class GameServer {
 
   // Game loop
   private gameLoopInterval: ReturnType<typeof setInterval> | null = null;
-  private snapshotInterval: ReturnType<typeof setInterval> | null = null;
   private lastTickTime: number = 0;
-  private snapshotRateHz: number;
-  private snapshotRateDisplay: number | 'realtime';
+  private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
+  private maxSnapshotsDisplay: number | 'none';
+  private lastSnapshotTime: number = 0;
   private keyframeRatioDisplay: number | 'ALL' | 'NONE';
 
   // Background mode
@@ -83,8 +83,9 @@ export class GameServer {
   constructor(config: GameServerConfig) {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
-    this.snapshotRateHz = config.snapshotRate ?? 10;
-    this.snapshotRateDisplay = config.snapshotRate ?? 10;
+    const maxSnaps = config.maxSnapshotsPerSec ?? 30;
+    this.maxSnapshotIntervalMs = maxSnaps > 0 ? 1000 / maxSnaps : 0;
+    this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
     // Create custom physics engine
@@ -187,18 +188,25 @@ export class GameServer {
 
   // Start the game loop
   start(): void {
-    this.lastTickTime = performance.now();
+    const now = performance.now();
+    this.lastTickTime = now;
+    this.lastSnapshotTime = 0; // Ensure first tick always emits a snapshot
 
     // Run simulation at ~60Hz via setInterval
+    // Snapshots are emitted at end of tick, gated by maxSnapshotIntervalMs
     this.gameLoopInterval = setInterval(() => {
-      const now = performance.now();
-      const delta = now - this.lastTickTime;
-      this.lastTickTime = now;
+      const tickNow = performance.now();
+      const delta = tickNow - this.lastTickTime;
+      this.lastTickTime = tickNow;
       this.tick(delta);
-    }, 1000 / 60);
 
-    // Emit snapshots at configurable rate
-    this.startSnapshotBroadcast();
+      // Emit snapshot if enough time has elapsed since last one (or no cap)
+      const elapsed = tickNow - this.lastSnapshotTime;
+      if (this.maxSnapshotIntervalMs === 0 || elapsed >= this.maxSnapshotIntervalMs) {
+        this.lastSnapshotTime = tickNow;
+        this.emitSnapshot();
+      }
+    }, 1000 / 60);
   }
 
   // Stop the game loop
@@ -206,10 +214,6 @@ export class GameServer {
     if (this.gameLoopInterval) {
       clearInterval(this.gameLoopInterval);
       this.gameLoopInterval = null;
-    }
-    if (this.snapshotInterval) {
-      clearInterval(this.snapshotInterval);
-      this.snapshotInterval = null;
     }
     this.snapshotListeners.length = 0;
     this.gameOverListeners.length = 0;
@@ -423,7 +427,7 @@ export class GameServer {
       state.serverMeta = {
         tpsAvg: tickStats.avgFps,
         tpsWorst: tickStats.worstFps,
-        snapshotRate: this.snapshotRateDisplay,
+        snapshotRate: this.maxSnapshotsDisplay,
         keyframeRatio: this.keyframeRatioDisplay,
         sendGridInfo: this.sendGridInfo,
         serverTime: currentTime,
@@ -440,16 +444,6 @@ export class GameServer {
     for (const listener of this.snapshotListeners) {
       listener(state);
     }
-  }
-
-  private startSnapshotBroadcast(): void {
-    if (this.snapshotInterval) {
-      clearInterval(this.snapshotInterval);
-    }
-    const intervalMs = 1000 / this.snapshotRateHz;
-    this.snapshotInterval = setInterval(() => {
-      this.emitSnapshot();
-    }, intervalMs);
   }
 
   // Receive a command from a client
@@ -495,13 +489,10 @@ export class GameServer {
     this.snapshotCounter = 0;
   }
 
-  // Change snapshot emission rate ('realtime' maps to 60Hz)
-  setSnapshotRate(hz: number | 'realtime'): void {
-    this.snapshotRateDisplay = hz;
-    this.snapshotRateHz = hz === 'realtime' ? 60 : hz;
-    if (this.snapshotInterval) {
-      this.startSnapshotBroadcast();
-    }
+  // Change max snapshots per second cap ('none' = no cap, send every tick)
+  setSnapshotRate(rate: number | 'none'): void {
+    this.maxSnapshotsDisplay = rate;
+    this.maxSnapshotIntervalMs = rate === 'none' ? 0 : 1000 / rate;
   }
 
   // Get map dimensions (for scene configuration)

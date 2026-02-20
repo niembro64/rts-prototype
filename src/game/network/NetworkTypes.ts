@@ -117,7 +117,7 @@ export interface NetworkCombatStats {
 export interface NetworkServerMeta {
   tpsAvg: number;
   tpsWorst: number;
-  snapshotRate: number | 'realtime';
+  snapshotRate: number | 'none';
   keyframeRatio: number | 'ALL' | 'NONE';
   sendGridInfo: boolean;
   serverTime: string;    // "14:34:05 MST"

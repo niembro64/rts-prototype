@@ -108,7 +108,7 @@ let activeConnection: GameConnection | null = null;
 function loadStoredSnapshotRate(): SnapshotRate {
   try {
     const stored = localStorage.getItem(CONTROL_BARS.storage.snapshotRate);
-    if (stored === 'realtime') return 'realtime';
+    if (stored === 'none') return 'none';
     if (stored) {
       const num = Number(stored);
       if (!isNaN(num) && num > 0) return num;
@@ -1325,17 +1325,17 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">SNAPSHOT:</span>
+          <span class="control-label">MAX SNAPS/S:</span>
           <div class="button-group">
             <button
               v-for="rate in CONTROL_BARS.server.snapshot.options"
               :key="String(rate)"
               class="control-btn"
               :class="{ active: displaySnapshotRate === rate }"
-              :title="`Send ${rate === 'realtime' ? '60 (realtime)' : rate} snapshots per second to clients`"
+              :title="`Cap snapshots at ${rate === 'none' ? 'no limit (every tick)' : rate + '/sec'}`"
               @click="setNetworkUpdateRate(rate)"
             >
-              {{ rate === 'realtime' ? 'RT' : (rate as number) }}
+              {{ rate === 'none' ? 'NONE' : (rate as number) }}
             </button>
           </div>
         </div>
@@ -1445,7 +1445,7 @@ onUnmounted(() => {
                   :style="
                     statBarStyle(
                       snapAvgRate,
-                      displaySnapshotRate === 'realtime'
+                      displaySnapshotRate === 'none'
                         ? 60
                         : displaySnapshotRate,
                     )
@@ -1464,7 +1464,7 @@ onUnmounted(() => {
                   :style="
                     statBarStyle(
                       snapWorstRate,
-                      displaySnapshotRate === 'realtime'
+                      displaySnapshotRate === 'none'
                         ? 60
                         : displaySnapshotRate,
                     )

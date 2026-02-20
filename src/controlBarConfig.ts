@@ -5,7 +5,7 @@
  * battle/server/client bar options, and unit short names.
  */
 
-export type SnapshotRate = number | 'realtime';
+export type SnapshotRate = number | 'none';
 export type KeyframeRatio = number | 'ALL' | 'NONE';
 
 export const CONTROL_BARS = {
@@ -94,8 +94,8 @@ export const CONTROL_BARS = {
   // ── Server bar ──
   server: {
     snapshot: {
-      default: 20 as SnapshotRate,
-      options: [1, 5, 10, 20, 30, 45, 60, 'realtime'] as readonly SnapshotRate[],
+      default: 30 as SnapshotRate,
+      options: [1, 5, 10, 20, 30, 45, 60, 'none'] as readonly SnapshotRate[],
     },
     keyframe: {
       default: 0.01 as KeyframeRatio,

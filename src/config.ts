@@ -723,9 +723,9 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   ANTIALIAS: {
     min: false,
     low: false,
-    medium: true,
-    high: true,
-    max: true,
+    medium: false,
+    high: false,
+    max: false,
   },
 
   // Burn mark cutoff — how close to background color before marks stop drawing

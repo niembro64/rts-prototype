@@ -108,7 +108,7 @@ export interface RepairCommand extends BaseCommand {
 // Server config commands (intercepted by GameServer before CommandQueue)
 export interface SetSnapshotRateCommand extends BaseCommand {
   type: 'setSnapshotRate';
-  rate: number | 'realtime';
+  rate: number | 'none';
 }
 
 export interface SetKeyframeRatioCommand extends BaseCommand {
