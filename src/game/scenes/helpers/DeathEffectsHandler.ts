@@ -14,7 +14,7 @@ import {
 } from '../../../config';
 import { TURRET_CONFIGS } from '../../sim/weapons';
 import { magnitude } from '../../math';
-import { getAudioScope } from '../../render/graphicsSettings';
+import { getAudioScope, getSoundToggle } from '../../render/graphicsSettings';
 
 // Get explosion radius based on weapon type (uses primaryDamageRadius from config)
 export function getExplosionRadius(weaponId: string): number {
@@ -167,31 +167,39 @@ export function handleSimEvent(
 
   switch (event.type) {
     case 'fire':
-      audioManager.playWeaponFire(event.weaponId, 1, zoomVolume);
+      if (getSoundToggle('fire')) {
+        audioManager.playWeaponFire(event.weaponId, 1, zoomVolume);
+      }
       break;
     case 'hit':
-      audioManager.playWeaponHit(event.weaponId, zoomVolume);
+      if (getSoundToggle('hit')) {
+        audioManager.playWeaponHit(event.weaponId, zoomVolume);
+      }
       break;
     case 'death':
-      audioManager.playUnitDeath(event.deathContext?.unitType ?? '', zoomVolume);
+      if (getSoundToggle('dead')) {
+        audioManager.playUnitDeath(event.deathContext?.unitType ?? '', zoomVolume);
+      }
       break;
     case 'laserStart': {
-      if (!AUDIO.turrets.laserGain) break;
+      if (!getSoundToggle('beam')) break;
+      if (!AUDIO.beamGain) break;
       let laserEntry;
       try { laserEntry = getWeaponBlueprint(event.weaponId).laserSound; } catch { break; }
       if (!laserEntry || !laserEntry.volume) break;
       if (event.entityId !== undefined) {
-        audioManager.startLaserSound(event.entityId, 1, zoomVolume * laserEntry.volume * AUDIO.turrets.laserGain);
+        audioManager.startLaserSound(event.entityId, 1, zoomVolume * laserEntry.volume * AUDIO.beamGain);
       }
     }
       break;
     case 'forceFieldStart': {
-      if (!AUDIO.turrets.fireGain) break;
+      if (!getSoundToggle('field')) break;
+      if (!AUDIO.fieldGain) break;
       let ffEntry;
       try { ffEntry = getWeaponBlueprint(event.weaponId).fireSound; } catch { break; }
       if (!ffEntry || !ffEntry.volume) break;
       if (event.entityId !== undefined) {
-        audioManager.startForceFieldSound(event.entityId, ffEntry.playSpeed, zoomVolume * ffEntry.volume * AUDIO.turrets.fireGain);
+        audioManager.startForceFieldSound(event.entityId, ffEntry.playSpeed, zoomVolume * ffEntry.volume * AUDIO.fieldGain);
       }
     }
       break;

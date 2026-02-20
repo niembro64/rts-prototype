@@ -39,19 +39,10 @@ export const AUDIO = {
   sfxVolume: 0.9, // SFX sub-mix multiplier (applied per gain node)
   zoomVolumeExponent: 1.2, // How volume scales with zoom: volume = zoom^exponent (2 = inverse square, 1 = linear, 0 = no scaling)
 
-  // Turret fire/laser gain multipliers
-  turrets: {
-    fireGain: 1.0,
-    laserGain: 0.03,
-  },
-
-  // Projectile hit gain multiplier
-  projectiles: {
-    hitGain: 0.3,
-  },
-
-  // Unit death gain multiplier
-  units: {
-    deathGain: 0.1,
-  },
+  // Per-category gain multipliers (match SoundCategory toggles)
+  fireGain: 1.0,       // Weapon fire sounds
+  hitGain: 0.3,        // Projectile hit sounds
+  deadGain: 0.1,       // Unit death sounds
+  beamGain: 0.03,      // Continuous beam sounds
+  fieldGain: 1.0,      // Continuous force field sounds
 };

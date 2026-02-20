@@ -90,11 +90,15 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'slow';
 
+export type SoundCategory = 'fire' | 'hit' | 'dead' | 'beam' | 'field';
+export const SOUND_CATEGORIES: SoundCategory[] = ['fire', 'hit', 'dead', 'beam', 'field'];
+
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'rts-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'rts-audio-smoothing';
 const DRIFT_MODE_STORAGE_KEY = 'rts-drift-mode';
+const SOUND_TOGGLES_STORAGE_KEY = 'rts-sound-toggles';
 
 export type RangeType = 'see' | 'fire' | 'release' | 'lock' | 'fightstop' | 'build';
 export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'fightstop', 'build'];
@@ -129,6 +133,13 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
 let currentAudioScope: AudioScope = 'padded';
 let currentAudioSmoothing: boolean = true;
 let currentDriftMode: DriftMode = 'slow';
+const currentSoundToggles: Record<SoundCategory, boolean> = {
+  fire: true,
+  hit: true,
+  dead: true,
+  beam: true,
+  field: true,
+};
 let currentZoom: number = 1.0; // Updated by renderer
 
 // Load from localStorage on module init
@@ -153,6 +164,15 @@ function loadFromStorage(): void {
     const storedDriftMode = localStorage.getItem(DRIFT_MODE_STORAGE_KEY);
     if (storedDriftMode && (storedDriftMode === 'snap' || storedDriftMode === 'fast' || storedDriftMode === 'slow')) {
       currentDriftMode = storedDriftMode;
+    }
+    const storedSoundToggles = localStorage.getItem(SOUND_TOGGLES_STORAGE_KEY);
+    if (storedSoundToggles) {
+      const parsed = JSON.parse(storedSoundToggles);
+      for (const cat of SOUND_CATEGORIES) {
+        if (typeof parsed[cat] === 'boolean') {
+          currentSoundToggles[cat] = parsed[cat];
+        }
+      }
     }
   } catch {
     // localStorage not available, use default
@@ -370,6 +390,25 @@ export function setDriftMode(mode: DriftMode): void {
   currentDriftMode = mode;
   try {
     localStorage.setItem(DRIFT_MODE_STORAGE_KEY, mode);
+  } catch {
+    // localStorage not available
+  }
+}
+
+/**
+ * Get whether a sound category is enabled
+ */
+export function getSoundToggle(category: SoundCategory): boolean {
+  return currentSoundToggles[category];
+}
+
+/**
+ * Set whether a sound category is enabled (persists to localStorage)
+ */
+export function setSoundToggle(category: SoundCategory, enabled: boolean): void {
+  currentSoundToggles[category] = enabled;
+  try {
+    localStorage.setItem(SOUND_TOGGLES_STORAGE_KEY, JSON.stringify(currentSoundToggles));
   } catch {
     // localStorage not available
   }

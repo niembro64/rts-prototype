@@ -745,7 +745,7 @@ export class AudioManager {
     _pitch: number = 1,
     volumeMultiplier: number = 1
   ): void {
-    if (!AUDIO.turrets.fireGain) return;
+    if (!AUDIO.fireGain) return;
     let entry;
     try { entry = getWeaponBlueprint(weaponId).fireSound; } catch { return; }
     if (!entry || !entry.volume) return;
@@ -754,7 +754,7 @@ export class AudioManager {
     if (!fn) return;
 
     const variation = 0.9 + Math.random() * 0.2;
-    fn.call(this, entry.playSpeed * variation, volumeMultiplier * entry.volume * AUDIO.turrets.fireGain);
+    fn.call(this, entry.playSpeed * variation, volumeMultiplier * entry.volume * AUDIO.fireGain);
   }
 
   // ==================== HIT SOUNDS ====================
@@ -938,12 +938,12 @@ export class AudioManager {
 
   // Generic hit by projectile type ID
   playWeaponHit(projectileId: string, volumeMultiplier: number = 1): void {
-    if (!AUDIO.projectiles.hitGain) return;
+    if (!AUDIO.hitGain) return;
     let entry;
     try { entry = getProjectileBlueprint(projectileId).hitSound; } catch { return; }
     if (!entry || !entry.volume) return;
     const fn = AudioManager.SYNTH_DISPATCH[entry.synth];
-    if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.projectiles.hitGain);
+    if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.hitGain);
   }
 
   // ==================== DEATH SOUNDS ====================
@@ -1127,12 +1127,12 @@ export class AudioManager {
 
   // Death sound based on dying unit type
   playUnitDeath(unitType: string, volumeMultiplier: number = 1): void {
-    if (!AUDIO.units.deathGain) return;
+    if (!AUDIO.deadGain) return;
     let entry;
     try { entry = getUnitBlueprint(unitType).deathSound; } catch { return; }
     if (!entry || !entry.volume) return;
     const fn = AudioManager.SYNTH_DISPATCH[entry.synth];
-    if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.units.deathGain);
+    if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.deadGain);
   }
 
   // Set master volume (0-1)

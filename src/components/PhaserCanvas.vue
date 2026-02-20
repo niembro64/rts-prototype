@@ -61,6 +61,9 @@ import {
   setAudioSmoothing,
   getDriftMode,
   setDriftMode,
+  getSoundToggle,
+  setSoundToggle,
+  SOUND_CATEGORIES,
   type GraphicsQuality,
   type RenderMode,
   type RangeType,
@@ -68,6 +71,7 @@ import {
   type UnitRadiusType,
   type AudioScope,
   type DriftMode,
+  type SoundCategory,
 } from '../game/render/graphicsSettings';
 import { audioManager } from '../game/audio/AudioManager';
 
@@ -244,6 +248,13 @@ const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const driftMode = ref<DriftMode>(getDriftMode());
+const soundToggles = reactive<Record<SoundCategory, boolean>>({
+  fire: getSoundToggle('fire'),
+  hit: getSoundToggle('hit'),
+  dead: getSoundToggle('dead'),
+  beam: getSoundToggle('beam'),
+  field: getSoundToggle('field'),
+});
 audioManager.setMuted(audioScope.value === 'off');
 const rangeToggles = reactive<Record<RangeType, boolean>>({
   see: getRangeToggle('see'),
@@ -874,6 +885,33 @@ function changeDriftMode(mode: DriftMode): void {
   setDriftMode(mode);
   driftMode.value = mode;
 }
+
+function toggleSoundCategory(category: SoundCategory): void {
+  const newValue = !soundToggles[category];
+  setSoundToggle(category, newValue);
+  soundToggles[category] = newValue;
+  // Stop active continuous sounds immediately when toggling off
+  if (!newValue) {
+    if (category === 'beam') audioManager.stopAllLaserSounds();
+    if (category === 'field') audioManager.stopAllForceFieldSounds();
+  }
+}
+
+const SOUND_LABELS: Record<SoundCategory, string> = {
+  fire: 'FIRE',
+  hit: 'HIT',
+  dead: 'DEAD',
+  beam: 'BEAM',
+  field: 'FIELD',
+};
+
+const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
+  fire: 'Weapon fire sounds',
+  hit: 'Projectile hit sounds',
+  dead: 'Unit death sounds',
+  beam: 'Continuous beam sounds',
+  field: 'Continuous force field sounds',
+};
 
 function updateFPSStats(): void {
   const scene = backgroundGameInstance?.getScene() ?? gameInstance?.getScene();
@@ -1623,6 +1661,22 @@ onUnmounted(() => {
               @click="changeAudioScope(opt.value)"
             >
               {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="bar-divider"></div>
+          <span class="control-label">SOUNDS:</span>
+          <div class="button-group">
+            <button
+              v-for="cat in SOUND_CATEGORIES"
+              :key="cat"
+              class="control-btn"
+              :class="{ active: soundToggles[cat] }"
+              :title="SOUND_TOOLTIPS[cat]"
+              @click="toggleSoundCategory(cat)"
+            >
+              {{ SOUND_LABELS[cat] }}
             </button>
           </div>
         </div>
