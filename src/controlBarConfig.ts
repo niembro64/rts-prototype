@@ -7,6 +7,7 @@
 
 export type SnapshotRate = number | 'none';
 export type KeyframeRatio = number | 'ALL' | 'NONE';
+export type TickRate = number;
 
 export const CONTROL_BARS = {
   // ── Color themes ──
@@ -57,6 +58,7 @@ export const CONTROL_BARS = {
   storage: {
     snapshotRate: 'rts-snapshot-rate',
     keyframeRatio: 'rts-keyframe-ratio',
+    tickRate: 'rts-tick-rate',
     demoUnits: 'rts-demo-units',
     maxTotalUnits: 'rts-max-total-units',
     projVelInherit: 'rts-proj-vel-inherit',
@@ -93,6 +95,10 @@ export const CONTROL_BARS = {
 
   // ── Server bar ──
   server: {
+    tickRate: {
+      default: 60 as TickRate,
+      options: [10, 20, 30, 60, 120, 240] as readonly TickRate[],
+    },
     snapshot: {
       default: 30 as SnapshotRate,
       options: [1, 5, 10, 20, 30, 45, 60, 'none'] as readonly SnapshotRate[],

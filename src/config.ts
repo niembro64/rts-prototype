@@ -24,7 +24,7 @@ export const SNAPSHOT_CONFIG = {
 
 // Re-export bar config values used by sim/server code
 export { CONTROL_BARS } from './controlBarConfig';
-export type { SnapshotRate, KeyframeRatio } from './controlBarConfig';
+export type { SnapshotRate, KeyframeRatio, TickRate } from './controlBarConfig';
 import { CONTROL_BARS } from './controlBarConfig';
 
 export const DEFAULT_KEYFRAME_RATIO = CONTROL_BARS.server.keyframe.default;

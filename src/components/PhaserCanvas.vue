@@ -34,6 +34,7 @@ import {
   CONTROL_BARS,
   type SnapshotRate,
   type KeyframeRatio,
+  type TickRate,
 } from '../controlBarConfig';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
@@ -158,6 +159,27 @@ function saveSnapshotRate(rate: SnapshotRate): void {
 function saveKeyframeRatio(ratio: KeyframeRatio): void {
   try {
     localStorage.setItem(CONTROL_BARS.storage.keyframeRatio, String(ratio));
+  } catch {
+    /* */
+  }
+}
+
+function loadStoredTickRate(): TickRate {
+  try {
+    const stored = localStorage.getItem(CONTROL_BARS.storage.tickRate);
+    if (stored) {
+      const num = Number(stored);
+      if (!isNaN(num) && num > 0) return num;
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return CONTROL_BARS.server.tickRate.default;
+}
+
+function saveTickRate(rate: TickRate): void {
+  try {
+    localStorage.setItem(CONTROL_BARS.storage.tickRate, String(rate));
   } catch {
     /* */
   }
@@ -322,6 +344,7 @@ function startBackgroundBattle(): void {
 
   const bgConnection = new LocalGameConnection(backgroundServer);
   activeConnection = bgConnection;
+  backgroundServer.setTickRate(loadStoredTickRate());
   backgroundServer.setSnapshotRate(loadStoredSnapshotRate());
   backgroundServer.setKeyframeRatio(loadStoredKeyframeRatio());
   backgroundServer.setIpAddress(localIpAddress.value);
@@ -467,6 +490,9 @@ const displayServerTpsAvg = computed(
 const displayServerTpsWorst = computed(
   () => serverMetaFromSnapshot.value?.tpsWorst ?? 0,
 );
+const displayTickRate = computed(
+  () => serverMetaFromSnapshot.value?.tickRate ?? CONTROL_BARS.server.tickRate.default,
+);
 const displaySnapshotRate = computed(
   () => serverMetaFromSnapshot.value?.snapshotRate ?? CONTROL_BARS.server.snapshot.default,
 );
@@ -566,6 +592,7 @@ function resetDemoDefaults(): void {
 }
 
 function resetServerDefaults(): void {
+  setTickRateValue(CONTROL_BARS.server.tickRate.default);
   setNetworkUpdateRate(CONTROL_BARS.server.snapshot.default);
   setKeyframeRatioValue(CONTROL_BARS.server.keyframe.default);
   if (displayGridInfo.value) {
@@ -932,6 +959,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
       }
 
       // Configure snapshot rate and start (restore from localStorage)
+      currentServer.setTickRate(loadStoredTickRate());
       currentServer.setSnapshotRate(loadStoredSnapshotRate());
       currentServer.setKeyframeRatio(loadStoredKeyframeRatio());
       currentServer.setIpAddress(localIpAddress.value);
@@ -1047,6 +1075,11 @@ function setupSceneCallbacks(): void {
 function setNetworkUpdateRate(rate: SnapshotRate): void {
   activeConnection?.sendCommand({ type: 'setSnapshotRate', tick: 0, rate });
   saveSnapshotRate(rate);
+}
+
+function setTickRateValue(rate: TickRate): void {
+  activeConnection?.sendCommand({ type: 'setTickRate', tick: 0, rate });
+  saveTickRate(rate);
 }
 
 function setKeyframeRatioValue(ratio: KeyframeRatio): void {
@@ -1291,6 +1324,22 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div v-if="displayServerIp" class="bar-divider"></div>
+          <span class="control-label">MAX TICKS/S:</span>
+          <div class="button-group">
+            <button
+              v-for="rate in CONTROL_BARS.server.tickRate.options"
+              :key="rate"
+              class="control-btn"
+              :class="{ active: displayTickRate === rate }"
+              :title="`Target ${rate} simulation ticks per second`"
+              @click="setTickRateValue(rate)"
+            >
+              {{ rate }}
+            </button>
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="bar-divider"></div>
           <span class="control-label" title="Server simulation ticks per second">TPS:</span>
           <div class="stat-bar-group">
             <div class="stat-bar">
@@ -1302,7 +1351,7 @@ onUnmounted(() => {
                 <div
                   class="stat-bar-fill"
                   :style="
-                    statBarStyle(displayServerTpsAvg, 60, serverBarReadonly)
+                    statBarStyle(displayServerTpsAvg, displayTickRate, serverBarReadonly)
                   "
                 ></div>
               </div>
@@ -1316,7 +1365,7 @@ onUnmounted(() => {
                 <div
                   class="stat-bar-fill"
                   :style="
-                    statBarStyle(displayServerTpsWorst, 60, serverBarReadonly)
+                    statBarStyle(displayServerTpsWorst, displayTickRate, serverBarReadonly)
                   "
                 ></div>
               </div>

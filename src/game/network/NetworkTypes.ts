@@ -117,6 +117,7 @@ export interface NetworkCombatStats {
 export interface NetworkServerMeta {
   tpsAvg: number;
   tpsWorst: number;
+  tickRate: number;
   snapshotRate: number | 'none';
   keyframeRatio: number | 'ALL' | 'NONE';
   sendGridInfo: boolean;

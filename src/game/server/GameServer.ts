@@ -47,6 +47,7 @@ export class GameServer {
   // Game loop
   private gameLoopInterval: ReturnType<typeof setInterval> | null = null;
   private lastTickTime: number = 0;
+  private tickRateHz: number;
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
   private maxSnapshotsDisplay: number | 'none';
   private lastSnapshotTime: number = 0;
@@ -83,6 +84,7 @@ export class GameServer {
   constructor(config: GameServerConfig) {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
+    this.tickRateHz = 60;
     const maxSnaps = config.maxSnapshotsPerSec ?? 30;
     this.maxSnapshotIntervalMs = maxSnaps > 0 ? 1000 / maxSnaps : 0;
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
@@ -191,8 +193,14 @@ export class GameServer {
     const now = performance.now();
     this.lastTickTime = now;
     this.lastSnapshotTime = 0; // Ensure first tick always emits a snapshot
+    this.startGameLoop();
+  }
 
-    // Run simulation at ~60Hz via setInterval
+  private startGameLoop(): void {
+    if (this.gameLoopInterval) {
+      clearInterval(this.gameLoopInterval);
+    }
+    // Run simulation at configured tick rate
     // Snapshots are emitted at end of tick, gated by maxSnapshotIntervalMs
     this.gameLoopInterval = setInterval(() => {
       const tickNow = performance.now();
@@ -206,7 +214,7 @@ export class GameServer {
         this.lastSnapshotTime = tickNow;
         this.emitSnapshot();
       }
-    }, 1000 / 60);
+    }, 1000 / this.tickRateHz);
   }
 
   // Stop the game loop
@@ -427,6 +435,7 @@ export class GameServer {
       state.serverMeta = {
         tpsAvg: tickStats.avgFps,
         tpsWorst: tickStats.worstFps,
+        tickRate: this.tickRateHz,
         snapshotRate: this.maxSnapshotsDisplay,
         keyframeRatio: this.keyframeRatioDisplay,
         sendGridInfo: this.sendGridInfo,
@@ -455,6 +464,9 @@ export class GameServer {
         return;
       case 'setKeyframeRatio':
         this.setKeyframeRatio(command.ratio);
+        return;
+      case 'setTickRate':
+        this.setTickRate(command.rate);
         return;
       case 'setSendGridInfo':
         this.setSendGridInfo(command.enabled);
@@ -493,6 +505,14 @@ export class GameServer {
   setSnapshotRate(rate: number | 'none'): void {
     this.maxSnapshotsDisplay = rate;
     this.maxSnapshotIntervalMs = rate === 'none' ? 0 : 1000 / rate;
+  }
+
+  // Change simulation tick rate (restarts the game loop interval)
+  setTickRate(hz: number): void {
+    this.tickRateHz = hz;
+    if (this.gameLoopInterval) {
+      this.startGameLoop();
+    }
   }
 
   // Get map dimensions (for scene configuration)
