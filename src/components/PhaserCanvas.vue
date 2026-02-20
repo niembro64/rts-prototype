@@ -577,6 +577,28 @@ function fmt4(n: number): string {
   return n.toFixed(0);
 }
 
+function statBarStyle(value: number): { width: string; backgroundColor: string } {
+  const ratio = value / 60;
+  const fillRatio = Math.min(Math.max(ratio, 0), 1);
+  let color: string;
+  if (ratio > 1) {
+    color = '#4488ff';
+  } else if (ratio >= 0.5) {
+    const t = (ratio - 0.5) / 0.5; // 0 at 0.5, 1 at 1.0
+    const r = Math.round(0x44 + (0xcc - 0x44) * (1 - t));
+    const g = Math.round(0xcc + (0xcc - 0xcc) * (1 - t));
+    const b = Math.round(0x44 * t);
+    color = `rgb(${r},${g},${b})`;
+  } else {
+    const t = ratio / 0.5; // 0 at 0.0, 1 at 0.5
+    const r = Math.round(0xcc + (0xcc - 0xcc) * t);
+    const g = Math.round(0x22 + (0xcc - 0x22) * t);
+    const b = Math.round(0x22 * (1 - t));
+    color = `rgb(${r},${g},${b})`;
+  }
+  return { width: `${fillRatio * 100}%`, backgroundColor: color };
+}
+
 function getPlayerColor(playerId: PlayerId): string {
   const color = PLAYER_COLORS[playerId]?.primary ?? 0x888888;
   return '#' + color.toString(16).padStart(6, '0');
@@ -1084,12 +1106,22 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div v-if="displayServerIp" class="bar-divider"></div>
-          <div class="fps-stats">
-            <span class="control-label">TPS:</span>
-            <span class="fps-value">{{ fmt4(displayServerTpsAvg) }}</span>
-            <span class="fps-label">avg</span>
-            <span class="fps-value">{{ fmt4(displayServerTpsWorst) }}</span>
-            <span class="fps-label">low</span>
+          <span class="control-label">TPS:</span>
+          <div class="stat-bar-group">
+            <div class="stat-bar">
+              <div class="stat-bar-top">
+                <span class="fps-value">{{ fmt4(displayServerTpsAvg) }}</span>
+                <span class="fps-label">avg</span>
+              </div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(displayServerTpsAvg)"></div></div>
+            </div>
+            <div class="stat-bar">
+              <div class="stat-bar-top">
+                <span class="fps-value">{{ fmt4(displayServerTpsWorst) }}</span>
+                <span class="fps-label">low</span>
+              </div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(displayServerTpsWorst)"></div></div>
+            </div>
           </div>
         </div>
         <div class="control-group">
@@ -1146,12 +1178,22 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div v-if="localIpAddress !== 'N/A'" class="bar-divider"></div>
-          <div class="fps-stats">
-            <span class="control-label">FPS:</span>
-            <span class="fps-value">{{ fmt4(actualAvgFPS) }}</span>
-            <span class="fps-label">avg</span>
-            <span class="fps-value">{{ fmt4(actualWorstFPS) }}</span>
-            <span class="fps-label">low</span>
+          <span class="control-label">FPS:</span>
+          <div class="stat-bar-group">
+            <div class="stat-bar">
+              <div class="stat-bar-top">
+                <span class="fps-value">{{ fmt4(actualAvgFPS) }}</span>
+                <span class="fps-label">avg</span>
+              </div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(actualAvgFPS)"></div></div>
+            </div>
+            <div class="stat-bar">
+              <div class="stat-bar-top">
+                <span class="fps-value">{{ fmt4(actualWorstFPS) }}</span>
+                <span class="fps-label">low</span>
+              </div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(actualWorstFPS)"></div></div>
+            </div>
           </div>
         </div>
         <div class="control-group">
@@ -1163,12 +1205,22 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <div class="fps-stats">
-            <span class="control-label">SNAPS:</span>
-            <span class="fps-value">{{ fmt4(snapAvgRate) }}</span>
-            <span class="fps-label">avg</span>
-            <span class="fps-value">{{ fmt4(snapWorstRate) }}</span>
-            <span class="fps-label">low</span>
+          <span class="control-label">SNAPS:</span>
+          <div class="stat-bar-group">
+            <div class="stat-bar">
+              <div class="stat-bar-top">
+                <span class="fps-value">{{ fmt4(snapAvgRate) }}</span>
+                <span class="fps-label">avg</span>
+              </div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(snapAvgRate)"></div></div>
+            </div>
+            <div class="stat-bar">
+              <div class="stat-bar-top">
+                <span class="fps-value">{{ fmt4(snapWorstRate) }}</span>
+                <span class="fps-label">low</span>
+              </div>
+              <div class="stat-bar-track"><div class="stat-bar-fill" :style="statBarStyle(snapWorstRate)"></div></div>
+            </div>
           </div>
         </div>
         <div class="control-group">
@@ -1709,6 +1761,7 @@ onUnmounted(() => {
   width: 1px;
   height: 14px;
   background: #444;
+  margin: 0 4px;
 }
 
 .control-label {
@@ -1721,7 +1774,11 @@ onUnmounted(() => {
 .fps-stats {
   display: flex;
   align-items: baseline;
-  gap: 3px;
+  gap: 2px;
+}
+
+.fps-stats .fps-label + .fps-value {
+  margin-left: 4px;
 }
 
 .fps-value {
@@ -1739,7 +1796,34 @@ onUnmounted(() => {
   color: #666;
   font-size: 9px;
   text-transform: uppercase;
-  margin-right: 4px;
+}
+
+.stat-bar-group {
+  display: flex;
+  gap: 6px;
+}
+
+.stat-bar {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-bar-top {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.stat-bar-track {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 1px;
 }
 
 .fps-divider {
