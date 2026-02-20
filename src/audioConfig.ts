@@ -47,6 +47,34 @@ export const AUDIO = {
   fieldGain: 1.0, // Continuous force field sounds
   musicGain: 0.5, // Procedural music volume
 
+  // Continuous beam sound settings
+  beam: {
+    wave: 'sawtooth' as OscillatorType, // oscillator waveform
+    freq: 180, // base frequency in Hz
+    lfoRate: 8, // frequency wobble rate in Hz
+    lfoDepth: 15, // frequency wobble depth in Hz (±)
+    filterFreq: 1200, // lowpass cutoff frequency
+    filterQ: 2, // filter resonance
+    fadeIn: 0.12, // fade-in time in seconds
+    oscVolume: 0.2, // main oscillator volume multiplier
+    noiseVolume: 0.08, // noise layer volume multiplier
+    noiseBandFreq: 4000, // noise bandpass center frequency
+    noiseBandQ: 1, // noise bandpass Q
+  },
+
+  // Continuous force field sound settings
+  forceField: {
+    wave: 'triangle' as OscillatorType, // oscillator waveform
+    freq: 60, // base frequency in Hz
+    filterFreq: 400, // lowpass cutoff frequency
+    filterQ: 3, // filter resonance
+    fadeIn: 0.2, // fade-in time in seconds
+    oscVolume: 0.12, // main oscillator volume multiplier
+    noiseVolume: 0.04, // noise layer volume multiplier
+    noiseBandFreq: 200, // noise bandpass center frequency
+    noiseBandQ: 2, // noise bandpass Q
+  },
+
   // Music source: 'procedural' for generated music, 'midi' for MIDI file playback
   musicSource: 'midi' as 'procedural' | 'midi',
   midiFile: 'music.mid', // filename in public/

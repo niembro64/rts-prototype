@@ -15,6 +15,7 @@ interface ContinuousSound {
   targetVolume: number;       // Normal gain level when audible
   noiseTargetVolume: number;  // Normal noise gain level when audible
   audible: boolean;           // Current audibility state
+  sourceEntityId: number;     // Real entity ID (soundId = entityId*100+weaponIndex)
 }
 
 export class AudioManager {
@@ -104,20 +105,22 @@ export class AudioManager {
     // Don't start if already playing for this entity
     if (this.activeLaserSounds.has(entityId)) return;
 
+    const bc = AUDIO.beam;
+
     // Main oscillator - continuous tone (no auto-disconnect for continuous sounds)
     const osc = ctx.createOscillator();
-    const gain = this.createGain(0.15 * volumeMultiplier, 0);
+    const gain = this.createGain(0, 0);
     if (!gain) return;
 
-    osc.type = 'sawtooth';
-    osc.frequency.value = 180 * speed;
+    osc.type = bc.wave;
+    osc.frequency.value = bc.freq * speed;
 
     // Add slight wobble for more interesting sound
     const lfo = ctx.createOscillator();
     const lfoGain = ctx.createGain();
     lfo.type = 'sine';
-    lfo.frequency.value = 8 * speed; // 8 Hz wobble
-    lfoGain.gain.value = 15 * speed; // ±15 Hz variation
+    lfo.frequency.value = bc.lfoRate * speed;
+    lfoGain.gain.value = bc.lfoDepth * speed;
     lfo.connect(lfoGain);
     lfoGain.connect(osc.frequency);
     lfo.start();
@@ -125,15 +128,14 @@ export class AudioManager {
     // Filter for warmth
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 1200 * speed;
-    filter.Q.value = 2;
+    filter.frequency.value = bc.filterFreq * speed;
+    filter.Q.value = bc.filterQ;
 
     // Smooth fade in from near-zero (no click)
-    // Use linear ramp for smooth start from silence
     gain.gain.setValueAtTime(0.0001, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(
-      0.2 * this.sfxVolume * volumeMultiplier,
-      ctx.currentTime + 0.12
+      bc.oscVolume * this.sfxVolume * volumeMultiplier,
+      ctx.currentTime + bc.fadeIn
     );
 
     osc.connect(filter).connect(gain);
@@ -151,16 +153,16 @@ export class AudioManager {
 
       const noiseFilter = ctx.createBiquadFilter();
       noiseFilter.type = 'bandpass';
-      noiseFilter.frequency.value = 4000 * speed;
-      noiseFilter.Q.value = 1;
+      noiseFilter.frequency.value = bc.noiseBandFreq * speed;
+      noiseFilter.Q.value = bc.noiseBandQ;
 
       // Create noise gain with fade-in (no click, no auto-disconnect for continuous)
       noiseGain = this.createGain(0, 0) ?? undefined;
       if (noiseGain) {
         noiseGain.gain.setValueAtTime(0.0001, ctx.currentTime);
         noiseGain.gain.linearRampToValueAtTime(
-          0.08 * this.sfxVolume * volumeMultiplier,
-          ctx.currentTime + 0.12
+          bc.noiseVolume * this.sfxVolume * volumeMultiplier,
+          ctx.currentTime + bc.fadeIn
         );
         noiseSource.connect(noiseFilter).connect(noiseGain);
         noiseSource.start();
@@ -168,8 +170,8 @@ export class AudioManager {
     }
 
     // Store reference to stop later
-    const targetVol = 0.2 * this.sfxVolume * volumeMultiplier;
-    const noiseTargetVol = noiseGain ? 0.08 * this.sfxVolume * volumeMultiplier : 0;
+    const targetVol = bc.oscVolume * this.sfxVolume * volumeMultiplier;
+    const noiseTargetVol = noiseGain ? bc.noiseVolume * this.sfxVolume * volumeMultiplier : 0;
     this.activeLaserSounds.set(entityId, {
       oscillator: osc,
       gainNode: gain,
@@ -178,6 +180,7 @@ export class AudioManager {
       targetVolume: targetVol,
       noiseTargetVolume: noiseTargetVol,
       audible: true,
+      sourceEntityId: Math.floor(entityId / 100),
     });
   }
 
@@ -237,35 +240,27 @@ export class AudioManager {
     // Don't start if already playing for this entity
     if (this.activeForceFieldSounds.has(entityId)) return;
 
+    const fc = AUDIO.forceField;
+
     // Deep resonant hum (no auto-disconnect for continuous sounds)
     const osc = ctx.createOscillator();
     const gain = this.createGain(0, 0);
     if (!gain) return;
 
-    osc.type = 'triangle';
-    osc.frequency.value = 60 * speed;
-
-    // Slow wobble for pulsing effect
-    const lfo = ctx.createOscillator();
-    const lfoGain = ctx.createGain();
-    lfo.type = 'sine';
-    lfo.frequency.value = 3 * speed;
-    lfoGain.gain.value = 8 * speed;
-    lfo.connect(lfoGain);
-    lfoGain.connect(osc.frequency);
-    lfo.start();
+    osc.type = fc.wave;
+    osc.frequency.value = fc.freq * speed;
 
     // Lowpass for warmth
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 400 * speed;
-    filter.Q.value = 3;
+    filter.frequency.value = fc.filterFreq * speed;
+    filter.Q.value = fc.filterQ;
 
     // Smooth fade in
     gain.gain.setValueAtTime(0.0001, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(
-      0.12 * this.sfxVolume * volumeMultiplier,
-      ctx.currentTime + 0.2
+      fc.oscVolume * this.sfxVolume * volumeMultiplier,
+      ctx.currentTime + fc.fadeIn
     );
 
     osc.connect(filter).connect(gain);
@@ -283,23 +278,23 @@ export class AudioManager {
 
       const noiseFilter = ctx.createBiquadFilter();
       noiseFilter.type = 'bandpass';
-      noiseFilter.frequency.value = 200 * speed;
-      noiseFilter.Q.value = 2;
+      noiseFilter.frequency.value = fc.noiseBandFreq * speed;
+      noiseFilter.Q.value = fc.noiseBandQ;
 
       noiseGain = this.createGain(0, 0) ?? undefined;
       if (noiseGain) {
         noiseGain.gain.setValueAtTime(0.0001, ctx.currentTime);
         noiseGain.gain.linearRampToValueAtTime(
-          0.04 * this.sfxVolume * volumeMultiplier,
-          ctx.currentTime + 0.2
+          fc.noiseVolume * this.sfxVolume * volumeMultiplier,
+          ctx.currentTime + fc.fadeIn
         );
         noiseSource.connect(noiseFilter).connect(noiseGain);
         noiseSource.start();
       }
     }
 
-    const targetVol = 0.12 * this.sfxVolume * volumeMultiplier;
-    const noiseTargetVol = noiseGain ? 0.04 * this.sfxVolume * volumeMultiplier : 0;
+    const targetVol = fc.oscVolume * this.sfxVolume * volumeMultiplier;
+    const noiseTargetVol = noiseGain ? fc.noiseVolume * this.sfxVolume * volumeMultiplier : 0;
     this.activeForceFieldSounds.set(entityId, {
       oscillator: osc,
       gainNode: gain,
@@ -308,6 +303,7 @@ export class AudioManager {
       targetVolume: targetVol,
       noiseTargetVolume: noiseTargetVol,
       audible: true,
+      sourceEntityId: Math.floor(entityId / 100),
     });
   }
 
@@ -352,12 +348,13 @@ export class AudioManager {
     }
   }
 
-  // Get entity IDs with active continuous sounds (for viewport-based muting)
-  getActiveContinuousEntityIds(): number[] {
-    const ids: number[] = [];
-    for (const id of this.activeLaserSounds.keys()) ids.push(id);
-    for (const id of this.activeForceFieldSounds.keys()) ids.push(id);
-    return ids;
+  // Get active continuous sounds as [soundId, sourceEntityId] pairs for viewport-based muting.
+  // soundId is the synthetic ID (entityId*100+weaponIndex), sourceEntityId is the real entity.
+  getActiveContinuousSounds(): [number, number][] {
+    const pairs: [number, number][] = [];
+    for (const [soundId, sound] of this.activeLaserSounds) pairs.push([soundId, sound.sourceEntityId]);
+    for (const [soundId, sound] of this.activeForceFieldSounds) pairs.push([soundId, sound.sourceEntityId]);
+    return pairs;
   }
 
   // Mute or unmute a continuous sound by entity ID (smooth fade)

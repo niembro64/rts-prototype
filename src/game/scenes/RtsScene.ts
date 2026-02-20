@@ -675,14 +675,18 @@ export class RtsScene extends Phaser.Scene {
 
     // Per-frame viewport check for continuous sounds (beams, force fields)
     // Mute sounds from offscreen entities based on audio scope setting
-    const continuousIds = audioManager.getActiveContinuousEntityIds();
-    if (continuousIds.length > 0) {
+    const continuousSounds = audioManager.getActiveContinuousSounds();
+    if (continuousSounds.length > 0) {
       const audioScope = getAudioScope();
       const cam = this.cameras.main;
       const vp = cam.worldView;
-      for (const eid of continuousIds) {
-        const entity = this.clientViewState.getEntity(eid);
-        if (!entity) continue;
+      for (const [soundId, sourceEntityId] of continuousSounds) {
+        const entity = this.clientViewState.getEntity(sourceEntityId);
+        if (!entity) {
+          // Entity not found (died, out of view) — mute
+          audioManager.setContinuousSoundAudible(soundId, false);
+          continue;
+        }
         const ex = entity.transform.x;
         const ey = entity.transform.y;
         let inScope = true;
@@ -697,7 +701,7 @@ export class RtsScene extends Phaser.Scene {
                     ey >= vp.y - padY && ey <= vp.bottom + padY;
         }
         // 'all' scope: always audible (inScope stays true)
-        audioManager.setContinuousSoundAudible(eid, inScope);
+        audioManager.setContinuousSoundAudible(soundId, inScope);
       }
     }
 
