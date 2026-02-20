@@ -54,28 +54,46 @@ export const AUDIO = {
   // MIDI playback settings
   midi: {
     wave: 'sawtooth' as OscillatorType, // oscillator waveform: 'sine' | 'triangle' | 'square' | 'sawtooth'
-    transpose: -5, // shift all notes by N semitones (+12 = up one octave, -12 = down one octave)
+    transpose: -7, // shift all notes by N semitones (+12 = up one octave, -12 = down one octave)
     speed: 1.0, // playback speed multiplier (0.5 = half speed, 2.0 = double)
-    gain: 0.5, // base note gain before velocity scaling
-    attack: 0.01, // note attack time in seconds
-    release: 0.0, // note release time in seconds
+    gain: 0.2, // base note gain before velocity scaling
+
+    // ADSR envelope
+    attack: 0.0, // time to reach peak gain (seconds)
+    decay: 0.0, // time from peak to sustain level (seconds)
+    sustain: 1.0, // sustain level as fraction of peak (0-1; 1 = no decay)
+    release: 0.0, // fade-out time after note-off (seconds; extends past MIDI duration)
+
+    // Vibrato (frequency LFO — pitch wobble)
+    vibrato: true, // enable vibrato
+    vibratoRate: 5, // LFO speed in Hz (typical: 4-7)
+    vibratoDepth: 20, // depth in cents (typical: 10-50; 100 cents = 1 semitone)
+
+    // Tremolo (gain LFO — volume wobble)
+    tremolo: false, // enable tremolo
+    tremoloRate: 4, // LFO speed in Hz (typical: 3-8)
+    tremoloDepth: 0.2, // modulation depth 0-1 (0 = none, 1 = full silence on troughs)
+
+    // Unison voices (multiple detuned oscillators per note for thickness/chorus)
+    voices: 1, // number of oscillators per note (1 = normal, 2-4 = unison)
+    voiceDetune: 0, // detune spread in cents (e.g. 12 = voices spread ±12 cents)
 
     // Per-note lowpass filter (applied to each oscillator)
-    filter: false, // enable per-note lowpass filter
-    filterFreq: 2000, // lowpass cutoff frequency (Hz)
-    filterQ: 0.3, // filter resonance (0.1 = gentle, 10 = sharp peak)
+    filter: true, // enable per-note lowpass filter
+    filterFreq: 1000, // lowpass cutoff frequency (Hz)
+    filterQ: 0.5, // filter resonance (0.1 = gentle, 10 = sharp peak)
 
     // Master compressor (applied to combined MIDI output)
-    compressor: true, // enable dynamics compressor
-    compressorThreshold: -24, // dB level where compression begins
+    compressor: false, // enable dynamics compressor
+    compressorThreshold: -6, // dB level where compression begins
     compressorKnee: 30, // dB range for soft knee
-    compressorRatio: 4, // compression ratio (4:1)
+    compressorRatio: 2, // compression ratio (4:1)
     compressorAttack: 0.0, // compressor attack in seconds
     compressorRelease: 0.25, // compressor release in seconds
 
     // Reverb (synthetic impulse response, applied to combined MIDI output)
-    reverb: true, // enable reverb
-    reverbDecay: 2.0, // reverb tail length in seconds
+    reverb: false, // enable reverb
+    reverbDecay: 1.0, // reverb tail length in seconds
     reverbMix: 0.5, // wet/dry mix (0 = fully dry, 1 = fully wet)
   },
 };

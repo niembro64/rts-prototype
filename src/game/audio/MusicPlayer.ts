@@ -353,45 +353,121 @@ export class MusicPlayer {
     }
   }
 
-  /** Create a single MIDI note oscillator using midi config (wave, filter, envelope). */
+  /**
+   * Create MIDI note oscillator(s) with full ADSR envelope.
+   *
+   *   peak gain
+   *   /\
+   *  /  \
+   * /    \___ sustain ___
+   * |    |              |\
+   * |att |dec| sustain  |rel|
+   * |<-- duration ----->|   |
+   *                     note-off
+   *
+   * Release extends PAST the MIDI note duration (oscillator keeps playing).
+   */
   private createMidiNoteOsc(
     target: AudioNode,
     freq: number,
-    gain: number,
+    peakGain: number,
     startTime: number,
     duration: number,
   ): void {
     if (!this.ctx) return;
     const mc = AUDIO.midi;
+    const numVoices = Math.max(1, Math.round(mc.voices));
 
-    const osc = this.ctx.createOscillator();
-    const gainNode = this.ctx.createGain();
+    // ADSR timing
+    const attackEnd = startTime + mc.attack;
+    const decayEnd = attackEnd + mc.decay;
+    const sustainGain = peakGain * mc.sustain;
+    const noteOff = startTime + duration;           // MIDI note-off
+    const releaseEnd = noteOff + mc.release;         // oscillator actually stops here
+    const oscStop = releaseEnd + 0.01;               // tiny buffer past release
 
-    osc.type = mc.wave;
-    osc.frequency.value = freq;
-    gainNode.gain.setValueAtTime(0.0001, startTime);
-    gainNode.gain.linearRampToValueAtTime(gain, startTime + mc.attack);
-    gainNode.gain.setValueAtTime(gain, startTime + duration - mc.release);
-    gainNode.gain.linearRampToValueAtTime(0.0001, startTime + duration);
+    // Shared ADSR envelope gain node (all voices merge here)
+    const envGain = this.ctx.createGain();
+    envGain.gain.setValueAtTime(0.0001, startTime);
+    // Attack: ramp to peak
+    envGain.gain.linearRampToValueAtTime(peakGain, attackEnd);
+    // Decay: ramp from peak to sustain level
+    if (mc.decay > 0) {
+      envGain.gain.linearRampToValueAtTime(sustainGain, decayEnd);
+    }
+    // Sustain: hold at sustain level until note-off
+    envGain.gain.setValueAtTime(sustainGain, noteOff);
+    // Release: ramp to silence after note-off
+    if (mc.release > 0) {
+      envGain.gain.linearRampToValueAtTime(0.0001, releaseEnd);
+    } else {
+      envGain.gain.linearRampToValueAtTime(0.0001, noteOff + 0.005);
+    }
 
+    // Optional tremolo LFO (modulates envGain)
+    if (mc.tremolo) {
+      const tremoloLfo = this.ctx.createOscillator();
+      const tremoloGainNode = this.ctx.createGain();
+      tremoloLfo.type = 'sine';
+      tremoloLfo.frequency.value = mc.tremoloRate;
+      tremoloGainNode.gain.value = mc.tremoloDepth * 0.5;
+      tremoloLfo.connect(tremoloGainNode).connect(envGain.gain);
+      tremoloLfo.start(startTime);
+      tremoloLfo.stop(oscStop);
+    }
+
+    // Destination after envelope: optional filter → target
     if (mc.filter) {
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.value = mc.filterFreq;
       filter.Q.value = mc.filterQ;
-      osc.connect(filter).connect(gainNode).connect(target);
+      envGain.connect(filter).connect(target);
     } else {
-      osc.connect(gainNode).connect(target);
+      envGain.connect(target);
     }
 
-    osc.start(startTime);
-    osc.stop(startTime + duration + 0.01);
+    // Create oscillator voices
+    const perVoiceGain = 1 / numVoices;
+    for (let v = 0; v < numVoices; v++) {
+      const osc = this.ctx.createOscillator();
+      osc.type = mc.wave;
 
-    // Cleanup after note finishes
-    const cleanupDelay = (startTime - this.ctx.currentTime + duration + 0.1) * 1000;
+      // Detune spread: voices evenly spread across ±voiceDetune cents
+      if (numVoices > 1) {
+        const t = (v / (numVoices - 1)) * 2 - 1; // -1 to +1
+        osc.detune.value = t * mc.voiceDetune;
+      }
+      osc.frequency.value = freq;
+
+      // Optional vibrato LFO (modulates this oscillator's frequency)
+      if (mc.vibrato) {
+        const vibratoLfo = this.ctx.createOscillator();
+        const vibratoGainNode = this.ctx.createGain();
+        vibratoLfo.type = 'sine';
+        vibratoLfo.frequency.value = mc.vibratoRate;
+        // Depth in cents → frequency deviation: freq * (2^(cents/1200) - 1)
+        vibratoGainNode.gain.value = freq * (Math.pow(2, mc.vibratoDepth / 1200) - 1);
+        vibratoLfo.connect(vibratoGainNode).connect(osc.frequency);
+        vibratoLfo.start(startTime);
+        vibratoLfo.stop(oscStop);
+      }
+
+      // Per-voice gain scaling
+      const voiceGainNode = this.ctx.createGain();
+      voiceGainNode.gain.value = perVoiceGain;
+      osc.connect(voiceGainNode).connect(envGain);
+
+      osc.start(startTime);
+      osc.stop(oscStop);
+    }
+
+    // Cleanup after note + release finishes
+    const totalDuration = duration + mc.release;
+    const cleanupDelay = (startTime - this.ctx.currentTime + totalDuration + 0.1) * 1000;
     const tid = setTimeout(() => {
       this.pendingCleanups.delete(tid);
-      try { gainNode.disconnect(); } catch { /* */ }
+      try { envGain.disconnect(); } catch { /* */ }
     }, Math.max(cleanupDelay, 50));
     this.pendingCleanups.add(tid);
   }
