@@ -150,6 +150,9 @@ export interface WeaponConfig {
   // Homing properties
   homingTurnRate?: number;       // If set, projectiles home toward weapon target at this turn rate (rad/sec)
 
+  // Manual fire properties
+  isManualFire?: boolean;        // Weapon only fires on explicit command, skips auto-targeting
+
   // Per-weapon range multiplier overrides (null → global RANGE_MULTIPLIERS fallback)
   rangeMultiplierOverrides?: {
     see: number | null;

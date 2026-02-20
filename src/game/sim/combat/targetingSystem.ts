@@ -37,6 +37,9 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       weapon.isFiring = false;
       weapon.inFightstopRange = false;
 
+      // Skip manual-fire weapons (e.g., dgun) — they only fire on explicit command
+      if (weapon.config.isManualFire) continue;
+
       // Compute and cache weapon world position (reused by turret, firing, beam systems)
       const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offsetX, weapon.offsetY);
       const weaponX = weapon.worldX = wp.x;

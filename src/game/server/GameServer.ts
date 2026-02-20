@@ -432,6 +432,7 @@ export class GameServer {
           ? [...this.backgroundAllowedTypes]
           : undefined,
         maxTotalUnits: this.world.maxTotalUnits,
+        projVelInherit: this.world.projVelInherit,
       };
       this.lastSentServerTime = currentTime;
     }
@@ -469,6 +470,9 @@ export class GameServer {
         return;
       case 'setMaxTotalUnits':
         this.world.maxTotalUnits = command.maxTotalUnits;
+        return;
+      case 'setProjVelInherit':
+        this.world.projVelInherit = command.enabled;
         return;
     }
     this.commandQueue.enqueue(command);

@@ -124,6 +124,7 @@ export interface NetworkServerMeta {
   ipAddress: string;     // Public IP or "N/A"
   allowedUnitTypes?: string[];  // Demo mode only
   maxTotalUnits?: number;       // Current unit cap
+  projVelInherit?: boolean;     // Projectiles inherit unit velocity
 }
 
 // Serialized game state sent over network

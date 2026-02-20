@@ -102,6 +102,9 @@ export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'figh
 export type ProjRangeType = 'collision' | 'primary' | 'secondary';
 export const PROJ_RANGE_TYPES: ProjRangeType[] = ['collision', 'primary', 'secondary'];
 
+export type UnitRadiusType = 'collision' | 'physics';
+export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['collision', 'physics'];
+
 // Current settings
 // Default to 'auto' - adjusts quality based on zoom level
 let currentQuality: GraphicsQuality = 'auto';
@@ -118,6 +121,10 @@ const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
   collision: false,
   primary: false,
   secondary: false,
+};
+const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
+  collision: false,
+  physics: false,
 };
 let currentAudioScope: AudioScope = 'padded';
 let currentAudioSmoothing: boolean = true;
@@ -288,6 +295,27 @@ export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
  */
 export function anyProjRangeToggleActive(): boolean {
   return PROJ_RANGE_TYPES.some(prt => currentProjRangeToggles[prt]);
+}
+
+/**
+ * Get whether a specific unit radius type is shown
+ */
+export function getUnitRadiusToggle(type: UnitRadiusType): boolean {
+  return currentUnitRadiusToggles[type];
+}
+
+/**
+ * Set whether a specific unit radius type is shown
+ */
+export function setUnitRadiusToggle(type: UnitRadiusType, show: boolean): void {
+  currentUnitRadiusToggles[type] = show;
+}
+
+/**
+ * Check if any unit radius toggle is active
+ */
+export function anyUnitRadiusToggleActive(): boolean {
+  return UNIT_RADIUS_TYPES.some(urt => currentUnitRadiusToggles[urt]);
 }
 
 /**

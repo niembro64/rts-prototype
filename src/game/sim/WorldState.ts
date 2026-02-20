@@ -59,6 +59,9 @@ export class WorldState {
   // Configurable unit cap (can be changed at runtime via command)
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
+  // Whether projectiles inherit their firing unit's velocity
+  public projVelInherit: boolean = false;
+
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
   private cache = new EntityCacheManager();
@@ -397,6 +400,12 @@ export class WorldState {
     const turretTurnAccel = config.turretTurnAccel ?? weaponConfig.turretTurnAccel!;
     const turretDrag = config.turretDrag ?? weaponConfig.turretDrag!;
 
+    // D-gun weapon (manual fire only)
+    const dgunConfig = getWeaponConfig('dgun');
+    const dgunRanges = computeWeaponRanges(dgunConfig);
+    const dgunTurnAccel = dgunConfig.turretTurnAccel!;
+    const dgunDrag = dgunConfig.turretDrag!;
+
     const entity: Entity = {
       id,
       type: 'unit',
@@ -414,22 +423,35 @@ export class WorldState {
         actions: [],
         patrolStartIndex: null,
       },
-      // Single weapon in array
-      // Weapons operate independently - unit has no control over them
+      // Two weapons: beam (auto) + dgun (manual fire only)
       weapons: [{
         config: weaponConfig,
         currentCooldown: 0,
         targetEntityId: null,
         ...ranges,
         isLocked: false,
-        turretRotation: 0,               // Weapon's independent turret rotation
-        turretAngularVelocity: 0,        // Current angular velocity (rad/sec)
-        turretTurnAccel,                 // Turret acceleration (rad/sec²)
-        turretDrag,                      // Turret drag coefficient
+        turretRotation: 0,
+        turretAngularVelocity: 0,
+        turretTurnAccel,
+        turretDrag,
         offsetX: 0,
         offsetY: 0,
-        isFiring: false,                 // Weapon reports firing state to unit
-        inFightstopRange: false,         // Weapon reports fightstop state to unit
+        isFiring: false,
+        inFightstopRange: false,
+      }, {
+        config: dgunConfig,
+        currentCooldown: 0,
+        targetEntityId: null,
+        ...dgunRanges,
+        isLocked: false,
+        turretRotation: 0,
+        turretAngularVelocity: 0,
+        turretTurnAccel: dgunTurnAccel,
+        turretDrag: dgunDrag,
+        offsetX: 0,
+        offsetY: 0,
+        isFiring: false,
+        inFightstopRange: false,
       }],
       builder: {
         buildRange: config.buildRange,

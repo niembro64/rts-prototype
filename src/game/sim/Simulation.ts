@@ -1,7 +1,7 @@
 import { WorldState } from './WorldState';
 import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type CancelQueueItemCommand, type SetRallyPointCommand, type SetFactoryWaypointsCommand, type FireDGunCommand, type RepairCommand } from './commands';
 import type { Entity, EntityId, PlayerId, UnitAction } from './types';
-import { magnitude, distance } from '../math';
+import { magnitude, distance, getWeaponWorldPosition } from '../math';
 import {
   updateTargetingAndFiringState,
   updateTurretRotation,
@@ -26,7 +26,6 @@ import { CombatStatsTracker, type CombatStatsSnapshot } from './CombatStatsTrack
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
-import { getWeaponConfig } from './weapons';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
@@ -783,7 +782,7 @@ export class Simulation {
   // Execute fire D-gun command
   private executeFireDGunCommand(command: FireDGunCommand): void {
     const commander = this.world.getEntity(command.commanderId);
-    if (!commander?.commander || !commander.ownership) return;
+    if (!commander?.commander || !commander.ownership || !commander.weapons) return;
 
     const playerId = commander.ownership.playerId;
 
@@ -792,6 +791,11 @@ export class Simulation {
     if (!economyManager.canAfford(playerId, dgunCost)) {
       return;
     }
+
+    // Find the dgun weapon by config id
+    const dgunIdx = commander.weapons.findIndex(w => w.config.id === 'dgun');
+    if (dgunIdx < 0) return;
+    const dgunWeapon = commander.weapons[dgunIdx];
 
     // Spend energy
     economyManager.spendInstant(playerId, dgunCost);
@@ -803,23 +807,53 @@ export class Simulation {
 
     if (dist === 0) return;
 
-    // Get D-gun weapon config
-    const dgunConfig = getWeaponConfig('dgun');
-    const speed = dgunConfig.projectileSpeed ?? 350;
+    const fireAngle = Math.atan2(dy, dx);
 
-    // Calculate velocity
-    const velocityX = (dx / dist) * speed;
-    const velocityY = (dy / dist) * speed;
+    // Snap dgun turret to target direction
+    dgunWeapon.turretRotation = fireAngle;
+    dgunWeapon.turretAngularVelocity = 0;
+
+    // Compute weapon world position from unit transform + weapon offset
+    const cos = commander.transform.rotCos ?? Math.cos(commander.transform.rotation);
+    const sin = commander.transform.rotSin ?? Math.sin(commander.transform.rotation);
+    const weaponPos = getWeaponWorldPosition(
+      commander.transform.x, commander.transform.y,
+      cos, sin,
+      dgunWeapon.offsetX, dgunWeapon.offsetY
+    );
+
+    const fireCos = Math.cos(fireAngle);
+    const fireSin = Math.sin(fireAngle);
+
+    // Spawn position: weapon mount + 5px along fire direction
+    const spawnX = weaponPos.x + fireCos * 5;
+    const spawnY = weaponPos.y + fireSin * 5;
+
+    // Calculate velocity with turret-tip inheritance
+    const speed = dgunWeapon.config.projectileSpeed ?? 350;
+    let velocityX = fireCos * speed;
+    let velocityY = fireSin * speed;
+    if (this.world.projVelInherit && commander.unit) {
+      // Unit linear velocity
+      velocityX += commander.unit.velocityX ?? 0;
+      velocityY += commander.unit.velocityY ?? 0;
+      // Turret rotational velocity at fire point (tangential = omega * r)
+      const barrelDx = fireCos * 5;
+      const barrelDy = fireSin * 5;
+      const omega = dgunWeapon.turretAngularVelocity;
+      velocityX += -barrelDy * omega;
+      velocityY += barrelDx * omega;
+    }
 
     // Create D-gun projectile
     const projectile = this.world.createDGunProjectile(
-      commander.transform.x,
-      commander.transform.y,
+      spawnX,
+      spawnY,
       velocityX,
       velocityY,
       playerId,
       commander.id,
-      dgunConfig
+      dgunWeapon.config
     );
 
     this.world.addEntity(projectile);
@@ -827,28 +861,25 @@ export class Simulation {
     // Emit projectile spawn event for D-gun
     this.pendingProjectileSpawns.push({
       id: projectile.id,
-      x: commander.transform.x,
-      y: commander.transform.y,
-      rotation: Math.atan2(dy, dx),
+      x: spawnX,
+      y: spawnY,
+      rotation: fireAngle,
       velocityX,
       velocityY,
       projectileType: 'traveling',
       weaponId: 'dgun',
       playerId,
       sourceEntityId: commander.id,
-      weaponIndex: 0,
+      weaponIndex: dgunIdx,
       isDGun: true,
     });
 
-    // Face the target
-    commander.transform.rotation = Math.atan2(dy, dx);
-
-    // Emit audio event (dgun uses cannon sound)
+    // Emit audio event
     const dgunAudioEvent: AudioEvent = {
       type: 'fire',
-      x: commander.transform.x,
-      y: commander.transform.y,
-      weaponId: 'cannon',
+      x: spawnX,
+      y: spawnY,
+      weaponId: 'dgun',
     };
     this.onAudioEvent?.(dgunAudioEvent);
     this.pendingAudioEvents.push(dgunAudioEvent);

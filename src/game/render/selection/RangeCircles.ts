@@ -5,6 +5,11 @@ import type { Entity } from '../../sim/types';
 import { getWeaponWorldPosition } from '../../math';
 import { COLORS } from '../types';
 
+export interface UnitRadiusVisibility {
+  collision: boolean;
+  physics: boolean;
+}
+
 export interface RangeVisibility {
   see: boolean;
   fire: boolean;
@@ -61,5 +66,27 @@ export function renderRangeCircles(
   if (visibility.build && builder) {
     graphics.lineStyle(1.5, COLORS.BUILD_RANGE, 0.4);
     graphics.strokeCircle(x, y, builder.buildRange);
+  }
+}
+
+/**
+ * Render unit radius circles (collision and physics hitbox).
+ */
+export function renderUnitRadiusCircles(
+  graphics: Phaser.GameObjects.Graphics,
+  entity: Entity,
+  visibility: UnitRadiusVisibility
+): void {
+  if (!entity.unit) return;
+
+  const { x, y } = entity.transform;
+
+  if (visibility.collision) {
+    graphics.lineStyle(1, COLORS.UNIT_COLLISION_RADIUS, 0.5);
+    graphics.strokeCircle(x, y, entity.unit.collisionRadius);
+  }
+  if (visibility.physics) {
+    graphics.lineStyle(1, COLORS.UNIT_PHYSICS_RADIUS, 0.5);
+    graphics.strokeCircle(x, y, entity.unit.physicsRadius);
   }
 }

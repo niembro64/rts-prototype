@@ -339,11 +339,25 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
         } else if (config.projectileSpeed !== undefined) {
           // Create traveling projectile
           const speed = config.projectileSpeed;
+          let projVx = fireCos * speed;
+          let projVy = fireSin * speed;
+          if (world.projVelInherit && unit.unit) {
+            // Unit linear velocity
+            projVx += unit.unit.velocityX ?? 0;
+            projVy += unit.unit.velocityY ?? 0;
+            // Turret rotational velocity at fire point (tangential = omega * r)
+            // Fire point is 5px along barrel from weapon mount
+            const barrelDx = fireCos * 5;
+            const barrelDy = fireSin * 5;
+            const omega = weapon.turretAngularVelocity;
+            projVx += -barrelDy * omega;
+            projVy += barrelDx * omega;
+          }
           const projectile = world.createProjectile(
             spawnX,
             spawnY,
-            fireCos * speed,
-            fireSin * speed,
+            projVx,
+            projVy,
             playerId,
             unit.id,
             config,
@@ -359,7 +373,7 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
           spawnEvents.push({
             id: projectile.id,
             x: spawnX, y: spawnY, rotation: angle,
-            velocityX: fireCos * speed, velocityY: fireSin * speed,
+            velocityX: projVx, velocityY: projVy,
             projectileType: 'traveling',
             weaponId: config.id,
             playerId,

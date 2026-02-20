@@ -42,7 +42,7 @@ function getProjectileConfig(key: ProjectileKey) {
 
 // Union type of all registered weapon config keys
 export type WeaponId = 'gatling' | 'pulse' | 'beam' | 'shotgun' | 'mortar' | 'railgun'
-  | 'cannon' | 'disruptor' | 'forceField' | 'megaBeam' | 'megaForceField';
+  | 'cannon' | 'disruptor' | 'forceField' | 'megaBeam' | 'megaForceField' | 'dgun';
 
 const ws = WEAPON_STATS;
 
@@ -199,6 +199,19 @@ export const TURRET_CONFIGS: Record<WeaponId, WeaponConfig> = {
     pull: computeZoneConfig(ws.megaForceField.pull, ws.megaForceField.range),
     rangeMultiplierOverrides: ws.megaForceField.rangeMultiplierOverrides,
     color: 0xffffff,
+  },
+
+  dgun: {
+    id: 'dgun',
+    ...getProjectileConfig(ws.disruptor.projectile),
+    range: ws.disruptor.range,
+    cooldown: ws.disruptor.cooldown,
+    turretTurnAccel: ws.disruptor.turretTurnAccel,
+    turretDrag: ws.disruptor.turretDrag,
+    turret: ws.disruptor.turret,
+    rangeMultiplierOverrides: ws.disruptor.rangeMultiplierOverrides,
+    isManualFire: true,
+    color: 0xff8800,
   },
 };
 

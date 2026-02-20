@@ -289,7 +289,7 @@ export const CHASSIS_MOUNTS: Record<string, MountPoint[]> = {
   recluse: [{ x: 0, y: 0 }],
   mammoth: [{ x: 0, y: 0 }],
   tarantula: [{ x: 0, y: 0 }],
-  commander: [{ x: 0.3, y: 0 }],
+  commander: [{ x: 0.3, y: 0 }, { x: 0, y: 0 }],
   widow: (() => {
     const hexR = 0.65;
     const hexFwd = 0.5;
@@ -1377,6 +1377,7 @@ export const AUDIO = {
         fire: { synth: 'force-field', volume: 0.01, playSpeed: 2.0 },
       },
       disruptor: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 } },
+      dgun: { fire: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 } },
     } as Record<string, TurretSoundConfig>,
   },
 

@@ -136,21 +136,6 @@ export const COMMANDER_CONFIG = {
   dgunCost: COMMANDER_STATS.dgunCost,
 };
 
-// Disruptor weapon config (Commander's special weapon)
-export const DGUN_CONFIG = {
-  id: 'disruptor',
-  damage: 9999,
-  range: 300,
-  cooldown: 0,
-  projectileSpeed: 350,
-  projectileRadius: 25,
-  projectileLifespan: 2000,
-  color: 0xff8800,
-  primaryDamageRadius: 40,
-  secondaryDamageRadius: 70,
-  splashOnExpiry: true,
-};
-
 // Helper to get building config
 export function getBuildingConfig(type: BuildingType): BuildingConfig {
   return BUILDING_CONFIGS[type];

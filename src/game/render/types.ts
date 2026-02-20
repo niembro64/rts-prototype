@@ -141,6 +141,10 @@ export const COLORS = {
   PROJ_COLLISION_RANGE: 0xff0000, // Bright red for collision radius
   PROJ_PRIMARY_RANGE: 0xff8844, // Orange for primary damage radius
   PROJ_SECONDARY_RANGE: 0xffdd44, // Yellow for secondary damage radius
+
+  // Unit radius circles
+  UNIT_COLLISION_RADIUS: 0x44ffff, // Cyan for collision (visual) radius
+  UNIT_PHYSICS_RADIUS: 0xff44ff, // Magenta for physics (hitbox) radius
 } as const;
 
 // Leg style configuration - re-exported from config.ts for convenience

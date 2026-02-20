@@ -49,8 +49,11 @@ import {
   setRangeToggle,
   getProjRangeToggle,
   setProjRangeToggle,
+  getUnitRadiusToggle,
+  setUnitRadiusToggle,
   RANGE_TYPES,
   PROJ_RANGE_TYPES,
+  UNIT_RADIUS_TYPES,
   getAudioScope,
   setAudioScope,
   getAudioSmoothing,
@@ -61,6 +64,7 @@ import {
   type RenderMode,
   type RangeType,
   type ProjRangeType,
+  type UnitRadiusType,
   type AudioScope,
   type DriftMode,
 } from '../game/render/graphicsSettings';
@@ -229,6 +233,10 @@ const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
   collision: getProjRangeToggle('collision'),
   primary: getProjRangeToggle('primary'),
   secondary: getProjRangeToggle('secondary'),
+});
+const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
+  collision: getUnitRadiusToggle('collision'),
+  physics: getUnitRadiusToggle('physics'),
 });
 
 // FPS, snapshot rate, and zoom tracking (EMA-based, polled from scene)
@@ -483,6 +491,11 @@ function changeMaxTotalUnits(value: number): void {
   saveMaxTotalUnits(value);
 }
 
+function toggleProjVelInherit(): void {
+  const current = serverMetaFromSnapshot.value?.projVelInherit ?? false;
+  activeConnection?.sendCommand({ type: 'setProjVelInherit', tick: 0, enabled: !current });
+}
+
 function resetDemoDefaults(): void {
   // All units enabled
   for (const ut of demoUnitTypes) {
@@ -490,6 +503,7 @@ function resetDemoDefaults(): void {
   }
   saveDemoUnits([...demoUnitTypes]);
   changeMaxTotalUnits(DEFAULT_MAX_TOTAL_UNITS);
+  activeConnection?.sendCommand({ type: 'setProjVelInherit', tick: 0, enabled: false });
 }
 
 function resetServerDefaults(): void {
@@ -513,6 +527,9 @@ function resetClientDefaults(): void {
   }
   for (const prt of PROJ_RANGE_TYPES) {
     if (projRangeToggles[prt]) toggleProjRange(prt);
+  }
+  for (const urt of UNIT_RADIUS_TYPES) {
+    if (unitRadiusToggles[urt]) toggleUnitRadius(urt);
   }
 }
 
@@ -749,6 +766,12 @@ function toggleProjRange(type: ProjRangeType): void {
   const newValue = !projRangeToggles[type];
   setProjRangeToggle(type, newValue);
   projRangeToggles[type] = newValue;
+}
+
+function toggleUnitRadius(type: UnitRadiusType): void {
+  const newValue = !unitRadiusToggles[type];
+  setUnitRadiusToggle(type, newValue);
+  unitRadiusToggles[type] = newValue;
 }
 
 function toggleAudioSmoothing(): void {
@@ -1127,6 +1150,19 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
+        <div class="control-group">
+          <div class="bar-divider"></div>
+          <span class="control-label">PROJ VEL:</span>
+          <div class="button-group">
+            <button
+              class="control-btn"
+              :class="{ active: serverMetaFromSnapshot?.projVelInherit }"
+              @click="toggleProjVelInherit"
+            >
+              INHERIT
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- SERVER CONTROLS (visible when we own a server or receive server meta) -->
@@ -1354,7 +1390,7 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">TURRET RANGES:</span>
+          <span class="control-label">TURRET RADIUS:</span>
           <div class="button-group">
             <button
               class="control-btn"
@@ -1402,7 +1438,7 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">PROJ RANGES:</span>
+          <span class="control-label">PROJ RADIUS:</span>
           <div class="button-group">
             <button
               class="control-btn"
@@ -1424,6 +1460,26 @@ onUnmounted(() => {
               @click="toggleProjRange('secondary')"
             >
               SEC
+            </button>
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="bar-divider"></div>
+          <span class="control-label">UNIT RADIUS:</span>
+          <div class="button-group">
+            <button
+              class="control-btn"
+              :class="{ active: unitRadiusToggles.collision }"
+              @click="toggleUnitRadius('collision')"
+            >
+              COL
+            </button>
+            <button
+              class="control-btn"
+              :class="{ active: unitRadiusToggles.physics }"
+              @click="toggleUnitRadius('physics')"
+            >
+              PHY
             </button>
           </div>
         </div>

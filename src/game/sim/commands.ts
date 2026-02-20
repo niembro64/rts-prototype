@@ -1,7 +1,7 @@
 import type { EntityId, WaypointType, BuildingType } from './types';
 
 // Command types
-export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'cancelQueueItem' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair' | 'setSnapshotRate' | 'setKeyframeRatio' | 'setSendGridInfo' | 'setBackgroundUnitType' | 'setMaxTotalUnits';
+export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'cancelQueueItem' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair' | 'setSnapshotRate' | 'setKeyframeRatio' | 'setSendGridInfo' | 'setBackgroundUnitType' | 'setMaxTotalUnits' | 'setProjVelInherit';
 
 // Base command interface
 interface BaseCommand {
@@ -132,8 +132,13 @@ export interface SetMaxTotalUnitsCommand extends BaseCommand {
   maxTotalUnits: number;
 }
 
+export interface SetProjVelInheritCommand extends BaseCommand {
+  type: 'setProjVelInherit';
+  enabled: boolean;
+}
+
 // Union of all command types
-export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | CancelQueueItemCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand | SetSnapshotRateCommand | SetKeyframeRatioCommand | SetSendGridInfoCommand | SetBackgroundUnitTypeCommand | SetMaxTotalUnitsCommand;
+export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | CancelQueueItemCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand | SetSnapshotRateCommand | SetKeyframeRatioCommand | SetSendGridInfoCommand | SetBackgroundUnitTypeCommand | SetMaxTotalUnitsCommand | SetProjVelInheritCommand;
 
 // Command queue for processing commands in order
 export class CommandQueue {

@@ -7,7 +7,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { BurnMarkSystem } from './BurnMarkSystem';
 import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
-import { getGraphicsConfig, getEffectiveQuality, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, setCurrentZoom } from './graphicsSettings';
+import { getGraphicsConfig, getEffectiveQuality, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, getUnitRadiusToggle, anyUnitRadiusToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
 import { CHASSIS_MOUNTS, FIRE_EXPLOSION } from '../../config';
 import type { TurretConfig, SpinConfig } from '../../config';
@@ -19,7 +19,7 @@ import { createColorPalette } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
 import { drawTurret } from './TurretRenderer';
 import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawForceFieldUnit, drawCommanderUnit } from './units';
-import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
+import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderUnitRadiusCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
 import { renderBuilding } from './BuildingRenderer';
 import { renderProjectile, renderProjRangeCircles } from './ProjectileRenderer';
 import { renderBuildBar, renderHealthBar } from './UIBars';
@@ -63,6 +63,7 @@ export class EntityRenderer {
   private _rangeVisToggle = { see: false, fire: false, release: false, lock: false, fightstop: false, build: false };
   private _rangeVisSelected = { see: true, fire: true, release: true, lock: true, fightstop: false, build: true };
   private _projRangeVis = { collision: false, primary: false, secondary: false };
+  private _unitRadiusVis = { collision: false, physics: false };
 
   // Cached camera zoom for LOD calculations (updated each frame)
   private cameraZoom: number = 1;
@@ -387,6 +388,15 @@ export class EntityRenderer {
       this._projRangeVis.secondary = getProjRangeToggle('secondary');
       for (const entity of this.visibleProjectiles) {
         renderProjRangeCircles(this.graphics, entity, this._projRangeVis);
+      }
+    }
+
+    // 6c. Unit radius circles (collision + physics hitbox)
+    if (anyUnitRadiusToggleActive()) {
+      this._unitRadiusVis.collision = getUnitRadiusToggle('collision');
+      this._unitRadiusVis.physics = getUnitRadiusToggle('physics');
+      for (const entity of this.visibleUnits) {
+        renderUnitRadiusCircles(this.graphics, entity, this._unitRadiusVis);
       }
     }
 
