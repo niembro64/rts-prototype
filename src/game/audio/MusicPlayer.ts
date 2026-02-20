@@ -1,3 +1,4 @@
+import { Midi } from '@tonejs/midi';
 import { AUDIO } from '../../audioConfig';
 
 // A minor pentatonic scale MIDI notes by octave
@@ -25,9 +26,18 @@ const BAR_DURATION = BEAT_DURATION * 4;    // ~2.18s
 const SCHEDULER_INTERVAL = 25;             // ms
 const LOOK_AHEAD = 0.1;                    // seconds
 
+interface MidiNote {
+  midi: number;
+  time: number;
+  duration: number;
+  velocity: number;
+}
+
 export class MusicPlayer {
   private ctx: AudioContext | null = null;
   private musicGain: GainNode | null = null;
+  // The node that per-note oscillators connect to (musicGain for procedural, midiNoteTarget for MIDI with effects)
+  private midiNoteTarget: GainNode | null = null;
   private playing = false;
   private schedulerInterval: ReturnType<typeof setInterval> | null = null;
   private nextBeatTime = 0;
@@ -41,15 +51,109 @@ export class MusicPlayer {
   // Track key transposition (semitones up from original)
   private keyOffset = 0;
 
+  // MIDI playback state
+  private midiNotes: MidiNote[] | null = null;
+  private midiDuration = 0;
+  private midiLoaded = false;
+  private midiLoadPromise: Promise<void> | null = null;
+  private midiStartOffset = 0;
+  private midiPosition = 0;
+  private midiMode = false; // true when currently playing in MIDI mode
+
+  // MIDI effects chain nodes
+  private compressorNode: DynamicsCompressorNode | null = null;
+  private reverbConvolver: ConvolverNode | null = null;
+  private reverbDryGain: GainNode | null = null;
+  private reverbWetGain: GainNode | null = null;
+
   init(ctx: AudioContext, masterGain: GainNode): void {
     if (this.musicGain) return; // already initialized
     this.ctx = ctx;
     this.musicGain = ctx.createGain();
     this.musicGain.gain.value = AUDIO.musicGain;
-    this.musicGain.connect(masterGain);
+
+    // Build MIDI effects chain: midiNoteTarget → [compressor] → [reverb dry/wet] → musicGain → masterGain
+    this.buildMidiEffectsChain(ctx, masterGain);
+
+    // Kick off async MIDI load (non-blocking, but store promise so start() can await it)
+    this.midiLoadPromise = this.loadMidi();
+  }
+
+  private buildMidiEffectsChain(ctx: AudioContext, masterGain: GainNode): void {
+    const mc = AUDIO.midi;
+
+    // midiNoteTarget is what MIDI oscillators connect to
+    this.midiNoteTarget = ctx.createGain();
+    this.midiNoteTarget.gain.value = 1;
+
+    // Chain: midiNoteTarget → compressor (optional) → reverb dry/wet (optional) → musicGain → masterGain
+    let chainTail: AudioNode = this.midiNoteTarget;
+
+    // Compressor
+    if (mc.compressor) {
+      this.compressorNode = ctx.createDynamicsCompressor();
+      this.compressorNode.threshold.value = mc.compressorThreshold;
+      this.compressorNode.knee.value = mc.compressorKnee;
+      this.compressorNode.ratio.value = mc.compressorRatio;
+      this.compressorNode.attack.value = mc.compressorAttack;
+      this.compressorNode.release.value = mc.compressorRelease;
+      chainTail.connect(this.compressorNode);
+      chainTail = this.compressorNode;
+    }
+
+    // Reverb (synthetic impulse response with dry/wet mix)
+    if (mc.reverb) {
+      // Generate impulse response: decaying white noise
+      const sampleRate = ctx.sampleRate;
+      const length = Math.floor(sampleRate * mc.reverbDecay);
+      const impulse = ctx.createBuffer(2, length, sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const data = impulse.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+        }
+      }
+
+      this.reverbConvolver = ctx.createConvolver();
+      this.reverbConvolver.buffer = impulse;
+
+      this.reverbDryGain = ctx.createGain();
+      this.reverbDryGain.gain.value = 1 - mc.reverbMix;
+
+      this.reverbWetGain = ctx.createGain();
+      this.reverbWetGain.gain.value = mc.reverbMix;
+
+      // Split: chainTail → dry path + wet path → musicGain
+      chainTail.connect(this.reverbDryGain);
+      chainTail.connect(this.reverbConvolver);
+      this.reverbConvolver.connect(this.reverbWetGain);
+
+      this.reverbDryGain.connect(this.musicGain!);
+      this.reverbWetGain.connect(this.musicGain!);
+    } else {
+      // No reverb: straight through
+      chainTail.connect(this.musicGain!);
+    }
+
+    // musicGain → masterGain (final output)
+    this.musicGain!.connect(masterGain);
   }
 
   start(): void {
+    if (this.playing || !this.ctx || !this.musicGain) return;
+
+    // If MIDI mode requested but not yet loaded, wait for load then start
+    if (AUDIO.musicSource === 'midi' && !this.midiLoaded && this.midiLoadPromise) {
+      this.midiLoadPromise.then(() => {
+        if (!this.playing) this.beginPlayback();
+      });
+      return;
+    }
+
+    this.beginPlayback();
+  }
+
+  private beginPlayback(): void {
     if (this.playing || !this.ctx || !this.musicGain) return;
     this.playing = true;
 
@@ -58,10 +162,21 @@ export class MusicPlayer {
     this.musicGain.gain.setValueAtTime(0.0001, now);
     this.musicGain.gain.linearRampToValueAtTime(AUDIO.musicGain, now + 2);
 
-    // Start scheduling from next beat
-    this.nextBeatTime = now + 0.1; // small delay to let fade-in begin
-    this.currentBeat = 0;
-    this.currentBar = 0;
+    // Decide mode: use MIDI if configured and loaded, otherwise procedural
+    console.log('[MusicPlayer] beginPlayback — source:', AUDIO.musicSource, 'midiLoaded:', this.midiLoaded, 'notes:', this.midiNotes?.length ?? 0);
+    if (AUDIO.musicSource === 'midi' && this.midiLoaded && this.midiNotes) {
+      this.midiMode = true;
+      this.midiStartOffset = now + 0.1;
+      this.midiPosition = 0;
+      console.log('[MusicPlayer] Starting MIDI playback');
+    } else {
+      this.midiMode = false;
+      // Start scheduling from next beat
+      this.nextBeatTime = now + 0.1; // small delay to let fade-in begin
+      this.currentBeat = 0;
+      this.currentBar = 0;
+      console.log('[MusicPlayer] Starting procedural playback');
+    }
 
     this.schedulerInterval = setInterval(() => this.scheduleLoop(), SCHEDULER_INTERVAL);
   }
@@ -111,12 +226,178 @@ export class MusicPlayer {
       try { this.musicGain.disconnect(); } catch { /* */ }
       this.musicGain = null;
     }
+    if (this.midiNoteTarget) {
+      try { this.midiNoteTarget.disconnect(); } catch { /* */ }
+      this.midiNoteTarget = null;
+    }
+    if (this.compressorNode) {
+      try { this.compressorNode.disconnect(); } catch { /* */ }
+      this.compressorNode = null;
+    }
+    if (this.reverbConvolver) {
+      try { this.reverbConvolver.disconnect(); } catch { /* */ }
+      this.reverbConvolver = null;
+    }
+    if (this.reverbDryGain) {
+      try { this.reverbDryGain.disconnect(); } catch { /* */ }
+      this.reverbDryGain = null;
+    }
+    if (this.reverbWetGain) {
+      try { this.reverbWetGain.disconnect(); } catch { /* */ }
+      this.reverbWetGain = null;
+    }
+  }
+
+  // ---- MIDI loading ----
+
+  private async loadMidi(): Promise<void> {
+    try {
+      const url = `${import.meta.env.BASE_URL}${AUDIO.midiFile}`;
+      console.log('[MusicPlayer] Fetching MIDI:', url);
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.warn('[MusicPlayer] MIDI fetch failed:', response.status, response.statusText);
+        return;
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      console.log('[MusicPlayer] MIDI fetched, bytes:', arrayBuffer.byteLength);
+      const midi = new Midi(arrayBuffer);
+      console.log('[MusicPlayer] MIDI parsed, tracks:', midi.tracks.length);
+
+      // Collect all notes from all tracks, sorted by time
+      const notes: MidiNote[] = [];
+      for (const track of midi.tracks) {
+        console.log('[MusicPlayer] Track:', track.name, 'notes:', track.notes.length);
+        for (const note of track.notes) {
+          notes.push({
+            midi: note.midi,
+            time: note.time,
+            duration: note.duration,
+            velocity: note.velocity,
+          });
+        }
+      }
+      notes.sort((a, b) => a.time - b.time);
+
+      if (notes.length === 0) {
+        console.warn('[MusicPlayer] MIDI file has no notes');
+        return;
+      }
+
+      // Duration: end of last note
+      const lastNote = notes[notes.length - 1];
+      this.midiDuration = lastNote.time + lastNote.duration;
+      this.midiNotes = notes;
+      this.midiLoaded = true;
+      console.log('[MusicPlayer] MIDI ready:', notes.length, 'notes,', this.midiDuration.toFixed(1), 'sec');
+    } catch (err) {
+      console.error('[MusicPlayer] MIDI load error:', err);
+    }
   }
 
   // ---- Private: scheduling ----
 
   private scheduleLoop(): void {
     if (!this.ctx || !this.playing) return;
+
+    if (this.midiMode) {
+      this.scheduleMidiLoop();
+    } else {
+      this.scheduleProceduralLoop();
+    }
+  }
+
+  private scheduleMidiLoop(): void {
+    if (!this.ctx || !this.midiNotes) return;
+    const mc = AUDIO.midi;
+
+    const now = this.ctx.currentTime;
+    const deadline = now + LOOK_AHEAD;
+
+    // Calculate elapsed playback time with looping (speed-adjusted)
+    const rawElapsed = (deadline - this.midiStartOffset) * mc.speed;
+    if (rawElapsed < 0) return; // haven't started yet
+
+    // Check if we've looped past the end — reset position if needed
+    const currentElapsed = (now - this.midiStartOffset) * mc.speed;
+    const currentLoopStart = Math.floor(currentElapsed / this.midiDuration) * this.midiDuration;
+    const deadlineLoopStart = Math.floor(rawElapsed / this.midiDuration) * this.midiDuration;
+
+    // If we crossed a loop boundary, reset position to start of notes
+    if (deadlineLoopStart > currentLoopStart || (this.midiPosition >= this.midiNotes.length)) {
+      this.midiPosition = 0;
+    }
+
+    // The destination node for MIDI notes (goes through effects chain)
+    const target = this.midiNoteTarget ?? this.musicGain!;
+
+    // Schedule notes within the look-ahead window
+    while (this.midiPosition < this.midiNotes.length) {
+      const note = this.midiNotes[this.midiPosition];
+      // Convert MIDI-time note position to real time (accounting for speed)
+      const noteRealTime = this.midiStartOffset + (deadlineLoopStart + note.time) / mc.speed;
+
+      if (noteRealTime > deadline) break; // past the look-ahead window
+      if (noteRealTime < now - 0.05) {
+        // Already past, skip
+        this.midiPosition++;
+        continue;
+      }
+
+      const freq = this.midiToFreq(note.midi + mc.transpose);
+      const gain = mc.gain * note.velocity;
+      const duration = Math.max(note.duration / mc.speed, 0.05);
+
+      this.createMidiNoteOsc(target, freq, gain, noteRealTime, duration);
+      this.midiPosition++;
+    }
+  }
+
+  /** Create a single MIDI note oscillator using midi config (wave, filter, envelope). */
+  private createMidiNoteOsc(
+    target: AudioNode,
+    freq: number,
+    gain: number,
+    startTime: number,
+    duration: number,
+  ): void {
+    if (!this.ctx) return;
+    const mc = AUDIO.midi;
+
+    const osc = this.ctx.createOscillator();
+    const gainNode = this.ctx.createGain();
+
+    osc.type = mc.wave;
+    osc.frequency.value = freq;
+    gainNode.gain.setValueAtTime(0.0001, startTime);
+    gainNode.gain.linearRampToValueAtTime(gain, startTime + mc.attack);
+    gainNode.gain.setValueAtTime(gain, startTime + duration - mc.release);
+    gainNode.gain.linearRampToValueAtTime(0.0001, startTime + duration);
+
+    if (mc.filter) {
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = mc.filterFreq;
+      filter.Q.value = mc.filterQ;
+      osc.connect(filter).connect(gainNode).connect(target);
+    } else {
+      osc.connect(gainNode).connect(target);
+    }
+
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.01);
+
+    // Cleanup after note finishes
+    const cleanupDelay = (startTime - this.ctx.currentTime + duration + 0.1) * 1000;
+    const tid = setTimeout(() => {
+      this.pendingCleanups.delete(tid);
+      try { gainNode.disconnect(); } catch { /* */ }
+    }, Math.max(cleanupDelay, 50));
+    this.pendingCleanups.add(tid);
+  }
+
+  private scheduleProceduralLoop(): void {
+    if (!this.ctx) return;
     const deadline = this.ctx.currentTime + LOOK_AHEAD;
 
     while (this.nextBeatTime < deadline) {
@@ -231,7 +512,7 @@ export class MusicPlayer {
     this.createNoteOsc('triangle', freq, 0.07, time, duration, 0.02, 0.1);
   }
 
-  // ---- Note creation helpers ----
+  // ---- Note creation helpers (procedural voices) ----
 
   private createNoteOsc(
     type: OscillatorType,

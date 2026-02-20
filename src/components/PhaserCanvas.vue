@@ -916,7 +916,7 @@ const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
   dead: 'Unit death sounds',
   beam: 'Continuous beam sounds',
   field: 'Continuous force field sounds',
-  music: 'Procedural background music',
+  music: 'Background music (procedural or MIDI)',
 };
 
 function updateFPSStats(): void {
