@@ -10,7 +10,7 @@ import { createWeaponsFromDefinition } from './unitDefinitions';
 export function getWeaponValue(config: WeaponConfig): number {
   // --- baseDPS ---
   let baseDPS: number;
-  const isBeam = config.beamDuration !== undefined && !config.projectileSpeed;
+  const isBeam = config.beamWidth !== undefined && !config.projectileSpeed;
   const isForceField = !!config.isForceField;
   const isShotgun = (config.pelletCount ?? 0) > 1;
   const isBurst = (config.burstCount ?? 0) > 1;

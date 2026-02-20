@@ -74,7 +74,7 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
     for (let weaponIndex = 0; weaponIndex < unit.weapons.length; weaponIndex++) {
       const weapon = unit.weapons[weaponIndex];
       const config = weapon.config;
-      const isBeamWeapon = config.beamDuration !== undefined;
+      const isBeamWeapon = config.beamWidth !== undefined;
       const isContinuousBeam = isBeamWeapon && config.cooldown === 0;
       const isCooldownBeam = isBeamWeapon && config.cooldown > 0;
 
@@ -571,9 +571,13 @@ export function checkProjectileCollisions(
       const collisionRadius = config.collisionRadius ?? config.beamWidth ?? 2;
       const primaryRadius = config.primaryDamageRadius ?? (collisionRadius * 2 + 6);
 
-      // Calculate per-tick damage for continuous beams
-      const beamDuration = config.beamDuration ?? 150;
-      const tickDamage = (config.damage / beamDuration) * dtMs;
+      // Calculate per-tick damage:
+      // Cooldown beams (railgun): total damage spread over beamDuration
+      // Continuous beams: damage is DPS, scale by tick length
+      const dtSec = dtMs / 1000;
+      const tickDamage = config.beamDuration
+        ? (config.damage / config.beamDuration) * dtMs
+        : config.damage * dtSec;
 
       // Beam direction for recoil and knockback
       const beamAngle = projEntity.transform.rotation;
@@ -581,7 +585,6 @@ export function checkProjectileCollisions(
       const beamDirY = Math.sin(beamAngle);
 
       // Flat per-tick forces, scaled by dt for framerate independence
-      const dtSec = dtMs / 1000;
       const hitForcePerTick = (config.hitForce ?? 0) * dtSec;
       const knockBackPerTick = (config.knockBackForce ?? 0) * dtSec;
 

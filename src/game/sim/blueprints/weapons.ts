@@ -148,7 +148,6 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     id: 'beam',
     projectileId: 'laserBeam',
     range: 150,
-    cooldown: 0,
     turretTurnAccel: 100,
     turretDrag: 0.4,
     turret: { type: 'beamEmitter', barrelLength: 0.6, barrelThickness: 3.5 },
@@ -167,7 +166,6 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     id: 'megaBeam',
     projectileId: 'heavyLaserBeam',
     range: 70,
-    cooldown: 0,
     turretTurnAccel: 100,
     turretDrag: 0.4,
     turret: { type: 'beamEmitter', barrelLength: 0.4, barrelThickness: 3.5 },
@@ -185,7 +183,6 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
   forceField: {
     id: 'forceField',
     range: SPATIAL_GRID_CELL_SIZE * 1.9,
-    cooldown: 0,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     isForceField: true,
@@ -223,7 +220,6 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
   megaForceField: {
     id: 'megaForceField',
     range: SPATIAL_GRID_CELL_SIZE * 1.3,
-    cooldown: 0,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     isForceField: true,

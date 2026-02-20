@@ -61,7 +61,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
   const base: WeaponConfig = {
     id: wb.id,
     range: wb.range,
-    cooldown: wb.cooldown,
+    cooldown: wb.cooldown ?? 0,
     color: wb.color,
     turretTurnAccel: wb.turretTurnAccel,
     turretDrag: wb.turretDrag,

@@ -551,7 +551,7 @@ export class ClientViewState {
         velocityX: spawn.velocityX,
         velocityY: spawn.velocityY,
         timeAlive: 0,
-        maxLifespan: config.projectileLifespan ?? config.beamDuration ?? 2000,
+        maxLifespan: config.projectileLifespan ?? config.beamDuration ?? (config.beamWidth !== undefined ? 100 : 2000),
         hitEntities: new Set(),
         maxHits: 1,
         startX: spawn.beamStartX,

@@ -73,8 +73,7 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
   },
   laserBeam: {
     id: 'laserBeam',
-    damage: 85,
-    beamDuration: 1000,
+    damage: 3,
     beamWidth: 4,
     collisionRadius: 8,
     primaryDamageRadius: 12,
@@ -86,8 +85,7 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
   },
   heavyLaserBeam: {
     id: 'heavyLaserBeam',
-    damage: 70,
-    beamDuration: 1000,
+    damage: 3,
     beamWidth: 3,
     collisionRadius: 6,
     primaryDamageRadius: 10,

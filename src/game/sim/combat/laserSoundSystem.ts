@@ -19,7 +19,7 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
 
   for (let i = 0; i < entity.weapons.length; i++) {
     const config = entity.weapons[i].config;
-    if (config.beamDuration !== undefined && config.cooldown === 0) {
+    if (config.beamWidth !== undefined && config.cooldown === 0) {
       _laserStopOwner.push({
         type: 'laserStop',
         weaponId: config.id,
@@ -44,7 +44,7 @@ export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): 
       const weapon = unit.weapons[i];
       if (weapon.targetEntityId !== targetId) continue;
       const config = weapon.config;
-      if (config.beamDuration === undefined || config.cooldown !== 0) continue;
+      if (config.beamWidth === undefined || config.cooldown !== 0) continue;
 
       _laserStopTarget.push({
         type: 'laserStop',
@@ -77,7 +77,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
     for (let i = 0; i < unit.weapons.length; i++) {
       const weapon = unit.weapons[i];
       const config = weapon.config;
-      const isBeamWeapon = config.beamDuration !== undefined && config.cooldown === 0;
+      const isBeamWeapon = config.beamWidth !== undefined && config.cooldown === 0;
 
       if (!isBeamWeapon) continue;
 

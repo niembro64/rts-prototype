@@ -69,7 +69,7 @@ export interface WeaponBlueprint {
   id: string;
   projectileId?: string;          // references ProjectileBlueprint (absent for force fields)
   range: number;
-  cooldown: number;
+  cooldown?: number;               // omit for continuous weapons (defaults to 0)
   color: number;
   turretTurnAccel: number;
   turretDrag: number;

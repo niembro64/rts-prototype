@@ -231,7 +231,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadius: 11,
     collisionRadiusMultiplier: 1.0,
     mass: 18,
-    baseCost: 260,
+    baseCost: 460,
     weapons: [{ weaponId: 'megaBeam', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
