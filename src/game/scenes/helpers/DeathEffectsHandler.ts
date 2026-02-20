@@ -188,7 +188,7 @@ export function handleSimEvent(
       try { laserEntry = getWeaponBlueprint(event.weaponId).laserSound; } catch { break; }
       if (!laserEntry || !laserEntry.volume) break;
       if (event.entityId !== undefined) {
-        audioManager.startLaserSound(event.entityId, 1, zoomVolume * laserEntry.volume * AUDIO.beamGain);
+        audioManager.startLaserSound(event.entityId, 1, laserEntry.volume * AUDIO.beamGain, zoomVolume);
       }
     }
       break;
@@ -199,7 +199,7 @@ export function handleSimEvent(
       try { ffEntry = getWeaponBlueprint(event.weaponId).fireSound; } catch { break; }
       if (!ffEntry || !ffEntry.volume) break;
       if (event.entityId !== undefined) {
-        audioManager.startForceFieldSound(event.entityId, ffEntry.playSpeed, zoomVolume * ffEntry.volume * AUDIO.fieldGain);
+        audioManager.startForceFieldSound(event.entityId, ffEntry.playSpeed, ffEntry.volume * AUDIO.fieldGain, zoomVolume);
       }
     }
       break;

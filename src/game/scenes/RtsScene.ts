@@ -24,6 +24,7 @@ import {
 } from '../../config';
 
 import { getAudioSmoothing, getAudioScope, getSoundToggle } from '../render/graphicsSettings';
+import { AUDIO } from '../../audioConfig';
 
 // Import helpers
 import {
@@ -674,12 +675,13 @@ export class RtsScene extends Phaser.Scene {
     }
 
     // Per-frame viewport check for continuous sounds (beams, force fields)
-    // Mute sounds from offscreen entities based on audio scope setting
+    // Mute offscreen sounds and dynamically scale volume with zoom
     const continuousSounds = audioManager.getActiveContinuousSounds();
     if (continuousSounds.length > 0) {
       const audioScope = getAudioScope();
       const cam = this.cameras.main;
       const vp = cam.worldView;
+      const zoomVolume = Math.pow(cam.zoom, AUDIO.zoomVolumeExponent);
       for (const [soundId, sourceEntityId] of continuousSounds) {
         const entity = this.clientViewState.getEntity(sourceEntityId);
         if (!entity) {
@@ -702,6 +704,8 @@ export class RtsScene extends Phaser.Scene {
         }
         // 'all' scope: always audible (inScope stays true)
         audioManager.setContinuousSoundAudible(soundId, inScope);
+        // Dynamically update volume based on current zoom
+        audioManager.updateContinuousSoundZoom(soundId, zoomVolume);
       }
     }
 

@@ -12,8 +12,10 @@ interface ContinuousSound {
   gainNode: GainNode;
   noiseSource?: AudioBufferSourceNode;
   noiseGain?: GainNode;
-  targetVolume: number;       // Normal gain level when audible
-  noiseTargetVolume: number;  // Normal noise gain level when audible
+  targetVolume: number;       // Current target gain (includes zoom)
+  noiseTargetVolume: number;  // Current target noise gain (includes zoom)
+  baseOscVolume: number;      // oscVolume * sfxVolume * volumeMultiplier (without zoom)
+  baseNoiseVolume: number;    // noiseVolume * sfxVolume * volumeMultiplier (without zoom)
   audible: boolean;           // Current audibility state
   sourceEntityId: number;     // Real entity ID (soundId = entityId*100+weaponIndex)
 }
@@ -98,7 +100,9 @@ export class AudioManager {
   // ==================== WEAPON FIRE SOUNDS ====================
 
   // Start continuous laser sound (call when beam starts)
-  startLaserSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1): void {
+  // volumeMultiplier = blueprint volume * category gain (without zoom)
+  // zoomVolume = zoom-based scaling (updated dynamically per frame)
+  startLaserSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -131,10 +135,14 @@ export class AudioManager {
     filter.frequency.value = bc.filterFreq * speed;
     filter.Q.value = bc.filterQ;
 
+    // Base volumes (without zoom — zoom is applied dynamically)
+    const baseOsc = bc.oscVolume * this.sfxVolume * volumeMultiplier;
+    const baseNoise = bc.noiseVolume * this.sfxVolume * volumeMultiplier;
+
     // Smooth fade in from near-zero (no click)
     gain.gain.setValueAtTime(0.0001, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(
-      bc.oscVolume * this.sfxVolume * volumeMultiplier,
+      baseOsc * zoomVolume,
       ctx.currentTime + bc.fadeIn
     );
 
@@ -161,7 +169,7 @@ export class AudioManager {
       if (noiseGain) {
         noiseGain.gain.setValueAtTime(0.0001, ctx.currentTime);
         noiseGain.gain.linearRampToValueAtTime(
-          bc.noiseVolume * this.sfxVolume * volumeMultiplier,
+          baseNoise * zoomVolume,
           ctx.currentTime + bc.fadeIn
         );
         noiseSource.connect(noiseFilter).connect(noiseGain);
@@ -170,15 +178,15 @@ export class AudioManager {
     }
 
     // Store reference to stop later
-    const targetVol = bc.oscVolume * this.sfxVolume * volumeMultiplier;
-    const noiseTargetVol = noiseGain ? bc.noiseVolume * this.sfxVolume * volumeMultiplier : 0;
     this.activeLaserSounds.set(entityId, {
       oscillator: osc,
       gainNode: gain,
       noiseSource,
       noiseGain,
-      targetVolume: targetVol,
-      noiseTargetVolume: noiseTargetVol,
+      targetVolume: baseOsc * zoomVolume,
+      noiseTargetVolume: noiseGain ? baseNoise * zoomVolume : 0,
+      baseOscVolume: baseOsc,
+      baseNoiseVolume: noiseGain ? baseNoise : 0,
       audible: true,
       sourceEntityId: Math.floor(entityId / 100),
     });
@@ -233,7 +241,9 @@ export class AudioManager {
   }
 
   // Start continuous force field sound (call when force field becomes active)
-  startForceFieldSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1): void {
+  // volumeMultiplier = blueprint volume * category gain (without zoom)
+  // zoomVolume = zoom-based scaling (updated dynamically per frame)
+  startForceFieldSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
@@ -256,10 +266,14 @@ export class AudioManager {
     filter.frequency.value = fc.filterFreq * speed;
     filter.Q.value = fc.filterQ;
 
+    // Base volumes (without zoom — zoom is applied dynamically)
+    const baseOsc = fc.oscVolume * this.sfxVolume * volumeMultiplier;
+    const baseNoise = fc.noiseVolume * this.sfxVolume * volumeMultiplier;
+
     // Smooth fade in
     gain.gain.setValueAtTime(0.0001, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(
-      fc.oscVolume * this.sfxVolume * volumeMultiplier,
+      baseOsc * zoomVolume,
       ctx.currentTime + fc.fadeIn
     );
 
@@ -285,7 +299,7 @@ export class AudioManager {
       if (noiseGain) {
         noiseGain.gain.setValueAtTime(0.0001, ctx.currentTime);
         noiseGain.gain.linearRampToValueAtTime(
-          fc.noiseVolume * this.sfxVolume * volumeMultiplier,
+          baseNoise * zoomVolume,
           ctx.currentTime + fc.fadeIn
         );
         noiseSource.connect(noiseFilter).connect(noiseGain);
@@ -293,15 +307,15 @@ export class AudioManager {
       }
     }
 
-    const targetVol = fc.oscVolume * this.sfxVolume * volumeMultiplier;
-    const noiseTargetVol = noiseGain ? fc.noiseVolume * this.sfxVolume * volumeMultiplier : 0;
     this.activeForceFieldSounds.set(entityId, {
       oscillator: osc,
       gainNode: gain,
       noiseSource,
       noiseGain,
-      targetVolume: targetVol,
-      noiseTargetVolume: noiseTargetVol,
+      targetVolume: baseOsc * zoomVolume,
+      noiseTargetVolume: noiseGain ? baseNoise * zoomVolume : 0,
+      baseOscVolume: baseOsc,
+      baseNoiseVolume: noiseGain ? baseNoise : 0,
       audible: true,
       sourceEntityId: Math.floor(entityId / 100),
     });
@@ -377,6 +391,35 @@ export class AudioManager {
       sound.noiseGain.gain.cancelScheduledValues(now);
       sound.noiseGain.gain.setValueAtTime(sound.noiseGain.gain.value, now);
       sound.noiseGain.gain.linearRampToValueAtTime(audible ? sound.noiseTargetVolume : 0.0001, now + fadeTime);
+    }
+  }
+
+  // Update zoom-based volume for a continuous sound (called per frame)
+  updateContinuousSoundZoom(soundId: number, zoomVolume: number): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    const sound = this.activeLaserSounds.get(soundId) ?? this.activeForceFieldSounds.get(soundId);
+    if (!sound || !sound.audible) return;
+
+    const newTarget = sound.baseOscVolume * zoomVolume;
+    const newNoiseTarget = sound.baseNoiseVolume * zoomVolume;
+
+    // Only update if volume changed meaningfully (avoid redundant Web Audio calls)
+    if (Math.abs(newTarget - sound.targetVolume) < 0.0001) return;
+
+    sound.targetVolume = newTarget;
+    sound.noiseTargetVolume = newNoiseTarget;
+
+    const now = ctx.currentTime;
+    sound.gainNode.gain.cancelScheduledValues(now);
+    sound.gainNode.gain.setValueAtTime(sound.gainNode.gain.value, now);
+    sound.gainNode.gain.linearRampToValueAtTime(newTarget, now + 0.05);
+
+    if (sound.noiseGain) {
+      sound.noiseGain.gain.cancelScheduledValues(now);
+      sound.noiseGain.gain.setValueAtTime(sound.noiseGain.gain.value, now);
+      sound.noiseGain.gain.linearRampToValueAtTime(newNoiseTarget, now + 0.05);
     }
   }
 
