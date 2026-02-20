@@ -131,7 +131,8 @@ export class Tread {
 
 // Factory functions for common tread configurations
 
-import { TREAD_CONFIG, WHEEL_CONFIG } from '../../config';
+import { getUnitBlueprint } from '../sim/blueprints';
+import type { TreadConfigData, WheelConfig } from '../sim/blueprints/types';
 
 export interface TankTreadSetup {
   leftTread: Tread;
@@ -142,12 +143,13 @@ export interface VehicleWheelSetup {
   wheels: Tread[];  // Array of 2-4 wheels
 }
 
-// Create a pair of tank treads (left and right) from TREAD_CONFIG
+// Create a pair of tank treads (left and right) from blueprint locomotion config
 export function createTreadPair(
-  unitType: 'mammoth' | 'badger' | 'lynx',
+  unitType: string,
   unitRadius: number
 ): TankTreadSetup {
-  const cfg = TREAD_CONFIG[unitType];
+  const bp = getUnitBlueprint(unitType);
+  const cfg = bp.locomotion.config as TreadConfigData;
   const treadOffset = unitRadius * cfg.treadOffset;
   const wheelRadius = unitRadius * cfg.wheelRadius;
 
@@ -168,12 +170,13 @@ export function createTreadPair(
   return { leftTread, rightTread };
 }
 
-// Create four wheels from WHEEL_CONFIG
+// Create four wheels from blueprint locomotion config
 export function createVehicleWheelSetup(
-  unitType: 'jackal' | 'mongoose',
+  unitType: string,
   unitRadius: number
 ): VehicleWheelSetup {
-  const cfg = WHEEL_CONFIG[unitType];
+  const bp = getUnitBlueprint(unitType);
+  const cfg = bp.locomotion.config as WheelConfig;
   const wheelDistX = unitRadius * cfg.wheelDistX;
   const wheelDistY = unitRadius * cfg.wheelDistY;
   const wheelRadius = unitRadius * cfg.wheelRadius;

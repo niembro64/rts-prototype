@@ -4,7 +4,8 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawAnimatedTread } from '../helpers';
 import type { VehicleWheelSetup } from '../Tread';
-import { WHEEL_CONFIG } from '../../../config';
+import { getUnitBlueprint } from '../../sim/blueprints';
+import type { WheelConfig } from '../../sim/blueprints/types';
 
 export function drawMortarUnit(
   ctx: UnitRenderContext,
@@ -18,7 +19,7 @@ export function drawMortarUnit(
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 
-    const cfg = WHEEL_CONFIG.mongoose;
+    const cfg = getUnitBlueprint('mongoose').locomotion.config as WheelConfig;
     const treadDistX = r * cfg.wheelDistX;
     const treadDistY = r * cfg.wheelDistY;
     const treadLength = r * cfg.treadLength;

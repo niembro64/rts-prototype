@@ -10,7 +10,6 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.57.1",
     "peerjs": "^1.5.5",
     "phaser": "^3.80.1",
     "vue": "^3.4.21"

@@ -9,7 +9,8 @@ import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
 import { getGraphicsConfig, getEffectiveQuality, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, getUnitRadiusToggle, anyUnitRadiusToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
-import { CHASSIS_MOUNTS, FIRE_EXPLOSION } from '../../config';
+import { FIRE_EXPLOSION } from '../../config';
+import { getUnitBlueprint } from '../sim/blueprints';
 import type { TurretConfig, SpinConfig } from '../../config';
 
 // Import from helper modules
@@ -467,23 +468,23 @@ export class EntityRenderer {
       lod,
     };
 
-    // Commander gets special 4-legged mech body regardless of unit type
-    if (entity.commander) {
-      drawCommanderUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'commander'));
-    } else {
-      // Select renderer based on unit type (body only)
-      switch (unitType) {
-        case 'jackal': drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
-        case 'lynx': drawBurstUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
-        case 'daddy': drawForceFieldUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'daddy')); break;
-        case 'badger': drawBrawlUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
-        case 'mongoose': drawMortarUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
-        case 'recluse': drawSnipeUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'recluse')); break;
-        case 'mammoth': drawTankUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
-        case 'widow': drawArachnidUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'widow')); break;
-        case 'tarantula': drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, 'tarantula')); break;
-        default: drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
-      }
+    // Blueprint-driven renderer dispatch
+    let bp;
+    try { bp = getUnitBlueprint(unitType); } catch { bp = null; }
+    const renderer = bp?.renderer ?? 'scout';
+
+    switch (renderer) {
+      case 'commander': drawCommanderUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
+      case 'scout': drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
+      case 'burst': drawBurstUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
+      case 'forceField': drawForceFieldUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
+      case 'brawl': drawBrawlUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
+      case 'mortar': drawMortarUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
+      case 'snipe': drawSnipeUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
+      case 'tank': drawTankUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
+      case 'arachnid': drawArachnidUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
+      case 'beam': drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
+      default: drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
     }
 
     // Post-body overlays
@@ -522,7 +523,8 @@ export class EntityRenderer {
     if (lod === 'min' && r * this.cameraZoom < 2) return; // sub-pixel skip
 
     const unitType = entity.commander ? 'commander' : (unit.unitType ?? 'jackal');
-    const mounts = CHASSIS_MOUNTS[unitType] ?? [{ x: 0, y: 0 }];
+    let mounts: { x: number; y: number }[];
+    try { mounts = getUnitBlueprint(unitType).chassisMounts; } catch { mounts = [{ x: 0, y: 0 }]; }
 
     const fullPalette = createColorPalette(ownership?.playerId);
     const palette = (lod === 'min' || lod === 'low')

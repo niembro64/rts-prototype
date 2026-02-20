@@ -1,7 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId } from './types';
 import { economyManager } from './economy';
-import { COMMANDER_CONFIG } from './buildConfigs';
 import { aimTurretsToward } from './turretInit';
 
 // Unit composition for each player (legacy - now only used for testing)
@@ -27,7 +26,7 @@ function spawnCommander(
   y: number,
   facingAngle: number
 ): Entity {
-  const commander = world.createCommander(x, y, playerId, COMMANDER_CONFIG);
+  const commander = world.createUnitFromBlueprint(x, y, playerId, 'commander');
   commander.transform.rotation = facingAngle;
   aimTurretsToward(commander, world.mapWidth / 2, world.mapHeight / 2);
   world.addEntity(commander);

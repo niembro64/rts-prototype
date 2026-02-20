@@ -147,15 +147,22 @@ export const COLORS = {
   UNIT_PHYSICS_RADIUS: 0xff44ff, // Magenta for physics (hitbox) radius
 } as const;
 
-// Leg style configuration - re-exported from config.ts for convenience
-// Maps old property names to new config object
-import { LEG_CONFIG } from '../../config';
-export const LEG_STYLE_CONFIG = {
-  widow: { thickness: LEG_CONFIG.widow.thickness, footSizeMultiplier: LEG_CONFIG.widow.footSize, lerpSpeed: LEG_CONFIG.widow.lerpDuration },
-  daddy: { thickness: LEG_CONFIG.daddy.thickness, footSizeMultiplier: LEG_CONFIG.daddy.footSize, lerpSpeed: LEG_CONFIG.daddy.lerpDuration },
-  tarantula: { thickness: LEG_CONFIG.tarantula.thickness, footSizeMultiplier: LEG_CONFIG.tarantula.footSize, lerpSpeed: LEG_CONFIG.tarantula.lerpDuration },
-  recluse: { thickness: LEG_CONFIG.recluse.thickness, footSizeMultiplier: LEG_CONFIG.recluse.footSize, lerpSpeed: LEG_CONFIG.recluse.lerpDuration },
-  commander: { thickness: LEG_CONFIG.commander.thickness, footSizeMultiplier: LEG_CONFIG.commander.footSize, lerpSpeed: LEG_CONFIG.commander.lerpDuration },
+// Leg style configuration - derived from blueprints
+import { getUnitBlueprint } from '../sim/blueprints';
+import type { LegConfigData } from '../sim/blueprints/types';
+
+function legStyleFromBlueprint(unitId: string) {
+  const bp = getUnitBlueprint(unitId);
+  const cfg = bp.locomotion.config as LegConfigData;
+  return { thickness: cfg.thickness, footSizeMultiplier: cfg.footSize, lerpSpeed: cfg.lerpDuration };
+}
+
+export const LEG_STYLE_CONFIG: Record<string, { thickness: number; footSizeMultiplier: number; lerpSpeed: number }> = {
+  widow: legStyleFromBlueprint('widow'),
+  daddy: legStyleFromBlueprint('daddy'),
+  tarantula: legStyleFromBlueprint('tarantula'),
+  recluse: legStyleFromBlueprint('recluse'),
+  commander: legStyleFromBlueprint('commander'),
 };
 
 // Waypoint colors by type (legacy - for factories)

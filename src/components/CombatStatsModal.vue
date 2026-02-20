@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { NetworkCombatStats, NetworkUnitTypeStats } from '../game/network/NetworkTypes';
-import { UNIT_DEFINITIONS } from '../game/sim/unitDefinitions';
-import { UNIT_STATS } from '../config';
+import { UNIT_BLUEPRINTS, BUILDABLE_UNIT_IDS } from '../game/sim/blueprints';
 import { getUnitValue, type UnitValuation } from '../game/sim/unitValuation';
 import { type FriendlyFireMode, type StatsSnapshot, applyFriendlyFire } from './combatStatsUtils';
 import CombatStatsGraph from './CombatStatsGraph.vue';
@@ -34,9 +33,7 @@ const teamDamageMode = ref<FriendlyFireMode>('subHalf');
 const teamKillsMode = ref<FriendlyFireMode>('subHalf');
 
 // Build unit type list from definitions (excluding commander)
-const unitTypes = computed(() => {
-  return Object.keys(UNIT_DEFINITIONS).filter(id => id !== 'commander');
-});
+const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
 
 interface RowData {
   unitType: string;
@@ -78,7 +75,7 @@ function buildRow(unitType: string, s: NetworkUnitTypeStats | undefined, val: Un
 
   return {
     unitType,
-    name: UNIT_DEFINITIONS[unitType]?.name ?? unitType,
+    name: UNIT_BLUEPRINTS[unitType]?.name ?? unitType,
     cost,
     produced,
     lost,
@@ -104,9 +101,9 @@ const rows = computed<RowData[]>(() => {
     : props.stats.players[selectedPlayer.value] ?? {};
 
   const rawRows = unitTypes.value.map(ut => {
-    const def = UNIT_DEFINITIONS[ut];
-    if (!def) return null;
-    const cost = def.energyCost;
+    const bp = UNIT_BLUEPRINTS[ut];
+    if (!bp) return null;
+    const cost = bp.baseCost;
     let val: UnitValuation;
     try { val = getUnitValue(ut); } catch { return null; }
     return buildRow(ut, data[ut], val, cost, costExponent.value, teamDamageMode.value, teamKillsMode.value);

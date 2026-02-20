@@ -2,7 +2,9 @@
 // Extracted from renderEntities.ts
 
 import Phaser from 'phaser';
-import { BURN_COLOR_COOL, hexToRgb, DEBRIS_CONFIG, TREAD_CONFIG, WHEEL_CONFIG } from '../../config';
+import { BURN_COLOR_COOL, hexToRgb, DEBRIS_CONFIG } from '../../config';
+import { getUnitBlueprint } from '../sim/blueprints';
+import type { TreadConfigData, WheelConfig } from '../sim/blueprints/types';
 
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 
@@ -185,8 +187,8 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'mammoth': {
-      // 2 heavy treads from config
-      const mc = TREAD_CONFIG.mammoth;
+      // 2 heavy treads from blueprint
+      const mc = getUnitBlueprint('mammoth').locomotion.config as TreadConfigData;
       const treadLen = r * mc.treadLength;
       const treadOffset = r * mc.treadOffset;
       for (const side of [-1, 1]) {
@@ -204,8 +206,8 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'badger': {
-      // 2 treads from config
-      const bc = TREAD_CONFIG.badger;
+      // 2 treads from blueprint
+      const bc = getUnitBlueprint('badger').locomotion.config as TreadConfigData;
       const treadLen = r * bc.treadLength;
       const treadOffset = r * bc.treadOffset;
       for (const side of [-1, 1]) {
@@ -223,8 +225,8 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'jackal': {
-      // 4 wheels from config
-      const jc = WHEEL_CONFIG.jackal;
+      // 4 wheels from blueprint
+      const jc = getUnitBlueprint('jackal').locomotion.config as WheelConfig;
       for (const sx of [-1, 1]) {
         for (const sy of [-1, 1]) {
           pieces.push({ localX: r * jc.wheelDistX * sx, localY: r * jc.wheelDistY * sy, length: r * jc.treadLength, width: r * jc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
@@ -242,8 +244,8 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'lynx': {
-      // 2 large side treads from config
-      const lc = TREAD_CONFIG.lynx;
+      // 2 large side treads from blueprint
+      const lc = getUnitBlueprint('lynx').locomotion.config as TreadConfigData;
       for (const sy of [-1, 1]) {
         pieces.push({ localX: 0, localY: r * lc.treadOffset * sy, length: r * lc.treadLength, width: r * lc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
       }
@@ -258,8 +260,8 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
     }
 
     case 'mongoose': {
-      // 4 wheels from config
-      const mgc = WHEEL_CONFIG.mongoose;
+      // 4 wheels from blueprint
+      const mgc = getUnitBlueprint('mongoose').locomotion.config as WheelConfig;
       for (const sx of [-1, 1]) {
         for (const sy of [-1, 1]) {
           pieces.push({ localX: r * mgc.wheelDistX * sx, localY: r * mgc.wheelDistY * sy, length: r * mgc.treadLength, width: r * mgc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });

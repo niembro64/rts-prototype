@@ -2,7 +2,7 @@
 
 import type { EntityId, PlayerId } from './types';
 import type { WorldState } from './WorldState';
-import { UNIT_DEFINITIONS } from './unitDefinitions';
+import { getUnitBlueprint } from './blueprints';
 
 export interface UnitTypeStats {
   enemyDamageDealt: number;
@@ -111,11 +111,11 @@ export class CombatStatsTracker {
   }
 
   recordUnitProduced(playerId: PlayerId, unitType: string): void {
-    const def = UNIT_DEFINITIONS[unitType];
-    if (!def) return;
+    let bp;
+    try { bp = getUnitBlueprint(unitType); } catch { return; }
     const stats = this.getOrCreate(playerId, unitType);
     stats.unitsProduced += 1;
-    stats.totalCostSpent += def.energyCost;
+    stats.totalCostSpent += bp.baseCost;
   }
 
   recordUnitLost(playerId: PlayerId, unitType: string): void {

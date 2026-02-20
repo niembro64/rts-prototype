@@ -2,33 +2,32 @@
 
 import type { Entity, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
-import { createWeaponsFromDefinition } from '../sim/unitDefinitions';
 import { aimTurretsToward } from '../sim/turretInit';
 import type { PhysicsEngine } from './PhysicsEngine';
+import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../sim/blueprints';
 import {
-  UNIT_STATS,
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
 
 // Available unit types for background spawning
-const BACKGROUND_UNIT_TYPES = Object.keys(UNIT_STATS) as (keyof typeof UNIT_STATS)[];
+const BACKGROUND_UNIT_TYPES = BUILDABLE_UNIT_IDS;
 
 // Precomputed inverse cost weights for weighted random selection
-let backgroundUnitWeights: { type: keyof typeof UNIT_STATS; weight: number }[] = [];
+let backgroundUnitWeights: { type: string; weight: number }[] = [];
 let backgroundTotalWeight: number = 0;
 
 function initBackgroundUnitWeights(): void {
   if (backgroundUnitWeights.length > 0) return;
 
   for (const unitType of BACKGROUND_UNIT_TYPES) {
-    const cost = UNIT_STATS[unitType].baseCost;
-    const weight = 1 / cost;
+    const bp = getUnitBlueprint(unitType);
+    const weight = 1 / bp.baseCost;
     backgroundUnitWeights.push({ type: unitType, weight });
     backgroundTotalWeight += weight;
   }
 }
 
-function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): keyof typeof UNIT_STATS {
+function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): string {
   initBackgroundUnitWeights();
 
   // If filtering, sum only allowed weights
@@ -83,29 +82,18 @@ function spawnBackgroundUnitStandalone(
   // Nothing allowed — skip spawn entirely
   if (allowedTypes && allowedTypes.size === 0) return null;
 
-  let unitType: keyof typeof UNIT_STATS;
+  let unitType: string;
   if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
     unitType = selectWeightedUnitType(allowedTypes);
   } else if (allowedTypes && allowedTypes.size > 0) {
-    const allowed = Array.from(allowedTypes) as (keyof typeof UNIT_STATS)[];
+    const allowed = Array.from(allowedTypes);
     unitType = allowed[Math.floor(Math.random() * allowed.length)];
   } else {
     unitType = BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
   }
-  const stats = UNIT_STATS[unitType];
 
-  const unit = world.createUnitBase(
-    x,
-    y,
-    playerId,
-    unitType,
-    stats.collisionRadius,
-    stats.moveSpeed,
-    stats.mass,
-    stats.hp,
-    stats.collisionRadiusMultiplier
-  );
-  unit.weapons = createWeaponsFromDefinition(unitType, stats.collisionRadius);
+  // Create unit from blueprint
+  const unit = world.createUnitFromBlueprint(x, y, playerId, unitType);
 
   unit.transform.rotation = initialRotation;
   aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);

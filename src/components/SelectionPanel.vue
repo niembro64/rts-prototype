@@ -12,6 +12,8 @@ export interface QueueItem {
 export interface SelectionInfo {
   unitCount: number;
   hasCommander: boolean;
+  hasBuilder: boolean;
+  hasDGun: boolean;
   hasFactory: boolean;
   factoryId?: number;
   commanderId?: number;
@@ -120,8 +122,8 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: 
       </div>
     </div>
 
-    <!-- Build options (for commander) -->
-    <div v-if="selection.hasCommander" class="button-group">
+    <!-- Build options (for units with builder capability) -->
+    <div v-if="selection.hasBuilder" class="button-group">
       <div class="group-label">Build</div>
       <div class="buttons">
         <button
@@ -138,8 +140,8 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: 
       </div>
     </div>
 
-    <!-- D-Gun (for commander) -->
-    <div v-if="selection.hasCommander" class="button-group">
+    <!-- D-Gun (for units with d-gun capability) -->
+    <div v-if="selection.hasDGun" class="button-group">
       <div class="group-label">Special</div>
       <div class="buttons">
         <button

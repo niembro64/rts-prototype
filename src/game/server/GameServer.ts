@@ -14,10 +14,10 @@ import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import { PhysicsEngine } from './PhysicsEngine';
 import { spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
+import { BUILDABLE_UNIT_IDS } from '../sim/blueprints';
 import { magnitude } from '../math';
 import {
   MAP_SETTINGS,
-  UNIT_STATS,
   UNIT_THRUST_MULTIPLIER_GAME,
   UNIT_THRUST_MULTIPLIER_DEMO,
   SNAPSHOT_CONFIG,
@@ -55,7 +55,7 @@ export class GameServer {
   // Background mode
   private backgroundSpawnTimer: number = 0;
   private readonly BACKGROUND_SPAWN_INTERVAL: number = 500;
-  private backgroundAllowedTypes: Set<string> = new Set(Object.keys(UNIT_STATS));
+  private backgroundAllowedTypes: Set<string> = new Set(BUILDABLE_UNIT_IDS);
 
   // Snapshot listeners
   private snapshotListeners: SnapshotCallback[] = [];

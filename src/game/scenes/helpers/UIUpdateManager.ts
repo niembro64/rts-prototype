@@ -32,6 +32,8 @@ export interface UIEntitySource {
 export interface SelectionInfo {
   unitCount: number;
   hasCommander: boolean;
+  hasBuilder: boolean;
+  hasDGun: boolean;
   hasFactory: boolean;
   factoryId?: EntityId;
   commanderId?: EntityId;
@@ -95,8 +97,10 @@ export function buildSelectionInfo(
   const selectedUnits = entitySource.getSelectedUnits();
   const selectedBuildings = entitySource.getSelectedBuildings();
 
-  // Check for commander
+  // Check for capabilities
   const commander = selectedUnits.find(u => u.commander !== undefined);
+  const builder = selectedUnits.find(u => u.builder !== undefined);
+  const dgunner = selectedUnits.find(u => u.commander !== undefined);
 
   // Check for factory
   const factory = selectedBuildings.find(b => b.factory !== undefined);
@@ -119,6 +123,8 @@ export function buildSelectionInfo(
   return {
     unitCount: selectedUnits.length,
     hasCommander: commander !== undefined,
+    hasBuilder: builder !== undefined,
+    hasDGun: dgunner !== undefined,
     hasFactory: factory !== undefined,
     factoryId: factory?.id,
     commanderId: commander?.id,

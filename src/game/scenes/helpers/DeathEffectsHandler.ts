@@ -4,6 +4,7 @@ import type { EntityRenderer } from '../../render/renderEntities';
 import type { AudioEvent } from '../../sim/combat';
 import { audioManager } from '../../audio/AudioManager';
 import { AUDIO } from '../../../audioConfig';
+import { getWeaponBlueprint } from '../../sim/blueprints';
 import {
   EXPLOSION_VELOCITY_MULTIPLIER,
   EXPLOSION_IMPACT_FORCE_MULTIPLIER,
@@ -170,7 +171,8 @@ export function handleAudioEvent(
       break;
     case 'laserStart': {
       if (!AUDIO.turrets.laserGain) break;
-      const laserEntry = AUDIO.turrets.sounds[event.weaponId]?.laser;
+      let laserEntry;
+      try { laserEntry = getWeaponBlueprint(event.weaponId).laserSound; } catch { break; }
       if (!laserEntry || !laserEntry.volume) break;
       if (event.entityId !== undefined) {
         audioManager.startLaserSound(event.entityId, 1, zoomVolume * laserEntry.volume * AUDIO.turrets.laserGain);

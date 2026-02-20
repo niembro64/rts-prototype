@@ -133,6 +133,8 @@ export class RtsScene extends Phaser.Scene {
   public onSelectionChange?: (info: {
     unitCount: number;
     hasCommander: boolean;
+    hasBuilder: boolean;
+    hasDGun: boolean;
     hasFactory: boolean;
     factoryId?: number;
     commanderId?: number;

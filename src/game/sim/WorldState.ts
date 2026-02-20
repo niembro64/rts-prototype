@@ -1,7 +1,8 @@
 import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getWeaponConfig, computeWeaponRanges } from './weapons';
-import { getUnitDefinition } from './unitDefinitions';
+import { getUnitBlueprint } from './blueprints';
+import { createWeaponsFromDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT } from '../../config';
 
 // Seeded random number generator for determinism
@@ -325,9 +326,48 @@ export class WorldState {
     return entity;
   }
 
-  // Create a unit entity with a single weapon using unit type
-  // Unit type determines the weapon type via unit definitions
-  // Weapons operate independently - unit has no control over them
+  // Create a unit from blueprint — unified factory for ALL unit types including commander
+  createUnitFromBlueprint(
+    x: number,
+    y: number,
+    playerId: PlayerId,
+    unitId: string
+  ): Entity {
+    const bp = getUnitBlueprint(unitId);
+
+    const entity = this.createUnitBase(
+      x, y, playerId, unitId,
+      bp.collisionRadius,
+      bp.moveSpeed,
+      bp.mass,
+      bp.hp,
+      bp.collisionRadiusMultiplier
+    );
+
+    // Create weapons from blueprint definition
+    entity.weapons = createWeaponsFromDefinition(unitId, bp.collisionRadius);
+
+    // Attach builder component if blueprint specifies it
+    if (bp.builder) {
+      entity.builder = {
+        buildRange: bp.builder.buildRange,
+        currentBuildTarget: null,
+      };
+    }
+
+    // Attach commander component if blueprint specifies dgun capability
+    if (bp.dgun) {
+      entity.commander = {
+        isDGunActive: false,
+        dgunEnergyCost: bp.dgun.energyCost,
+      };
+    }
+
+    return entity;
+  }
+
+  // Legacy: Create a unit entity with a single weapon using unit type
+  // @deprecated Use createUnitFromBlueprint instead
   createUnit(
     x: number,
     y: number,
@@ -336,23 +376,20 @@ export class WorldState {
     collisionRadius: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
-    turretTurnAccel?: number,   // Turret acceleration (rad/sec²) - uses weapon config or default
-    turretDrag?: number,        // Turret drag (0-1) - uses weapon config or default
+    turretTurnAccel?: number,
+    turretDrag?: number,
   ): Entity {
-    // Look up unit definition to get weapon type
-    const unitDef = getUnitDefinition(unitType);
-    const weaponType = unitDef?.weaponType ?? 'gatling';
+    const bp = getUnitBlueprint(unitType);
+    const weaponType = bp?.weapons[0]?.weaponId ?? 'gatling';
     const weaponConfig = getWeaponConfig(weaponType);
 
     const ranges = computeWeaponRanges(weaponConfig);
 
-    // Turret physics - use provided values or weapon config
     const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel!;
     const drag = turretDrag ?? weaponConfig.turretDrag!;
 
     const entity = this.createUnitBase(x, y, playerId, unitType, collisionRadius, moveSpeed, mass, 100);
 
-    // Set up single weapon
     entity.weapons = [{
       config: weaponConfig,
       currentCooldown: 0,
@@ -372,98 +409,15 @@ export class WorldState {
     return entity;
   }
 
-  // Create a commander unit
-  // All range properties are derived from weapon config using multipliers
-  // Turret rotation uses acceleration-based physics
+  // Legacy: Create a commander unit
+  // @deprecated Use createUnitFromBlueprint('commander') instead
   createCommander(
     x: number,
     y: number,
     playerId: PlayerId,
-    config: {
-      hp: number;
-      collisionRadius: number;
-      moveSpeed: number;
-      mass: number;
-      buildRange: number;
-      weaponId: string;
-      dgunCost: number;
-      turretTurnAccel?: number;
-      turretDrag?: number;
-    }
+    _config?: unknown
   ): Entity {
-    const id = this.generateEntityId();
-    const weaponConfig = getWeaponConfig(config.weaponId);
-
-    const ranges = computeWeaponRanges(weaponConfig);
-
-    // Turret physics - use provided values or weapon config
-    const turretTurnAccel = config.turretTurnAccel ?? weaponConfig.turretTurnAccel!;
-    const turretDrag = config.turretDrag ?? weaponConfig.turretDrag!;
-
-    // D-gun weapon (manual fire only)
-    const dgunConfig = getWeaponConfig('dgun');
-    const dgunRanges = computeWeaponRanges(dgunConfig);
-    const dgunTurnAccel = dgunConfig.turretTurnAccel!;
-    const dgunDrag = dgunConfig.turretDrag!;
-
-    const entity: Entity = {
-      id,
-      type: 'unit',
-      transform: { x, y, rotation: 0 },
-      selectable: { selected: false },
-      ownership: { playerId },
-      unit: {
-        unitType: 'commander',
-        moveSpeed: config.moveSpeed,
-        collisionRadius: config.collisionRadius,
-        physicsRadius: config.collisionRadius,
-        mass: config.mass,
-        hp: config.hp,
-        maxHp: config.hp,
-        actions: [],
-        patrolStartIndex: null,
-      },
-      // Two weapons: beam (auto) + dgun (manual fire only)
-      weapons: [{
-        config: weaponConfig,
-        currentCooldown: 0,
-        targetEntityId: null,
-        ...ranges,
-        isLocked: false,
-        turretRotation: 0,
-        turretAngularVelocity: 0,
-        turretTurnAccel,
-        turretDrag,
-        offsetX: 0,
-        offsetY: 0,
-        isFiring: false,
-        inFightstopRange: false,
-      }, {
-        config: dgunConfig,
-        currentCooldown: 0,
-        targetEntityId: null,
-        ...dgunRanges,
-        isLocked: false,
-        turretRotation: 0,
-        turretAngularVelocity: 0,
-        turretTurnAccel: dgunTurnAccel,
-        turretDrag: dgunDrag,
-        offsetX: 0,
-        offsetY: 0,
-        isFiring: false,
-        inFightstopRange: false,
-      }],
-      builder: {
-        buildRange: config.buildRange,
-        currentBuildTarget: null,
-      },
-      commander: {
-        isDGunActive: false,
-        dgunEnergyCost: config.dgunCost,
-      },
-    };
-
-    return entity;
+    return this.createUnitFromBlueprint(x, y, playerId, 'commander');
   }
 
   // Create a D-gun projectile

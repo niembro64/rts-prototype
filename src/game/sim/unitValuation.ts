@@ -1,6 +1,6 @@
 import type { WeaponConfig } from './types';
-import { UNIT_STATS } from '../../config';
-import { UNIT_DEFINITIONS, createWeaponsFromDefinition } from './unitDefinitions';
+import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
+import { createWeaponsFromDefinition } from './unitDefinitions';
 
 /**
  * Compute the offensive value of a single weapon instance.
@@ -110,21 +110,17 @@ export interface UnitValuation {
  * suggestedCost = rawValue ^ 0.85   (concentration discount / Lanchester's Square Law)
  */
 export function getUnitValue(unitId: string): UnitValuation {
-  const def = UNIT_DEFINITIONS[unitId];
-  if (!def) throw new Error(`Unknown unit: ${unitId}`);
-
-  const stats = UNIT_STATS[unitId as keyof typeof UNIT_STATS];
-  if (!stats) throw new Error(`No stats for unit: ${unitId}`);
+  const bp = getUnitBlueprint(unitId);
 
   // Sum weapon values from the actual weapon array the unit spawns with
-  const weapons = createWeaponsFromDefinition(unitId, def.collisionRadius);
+  const weapons = createWeaponsFromDefinition(unitId, bp.collisionRadius);
   const weaponValue = weapons.reduce((sum, w) => sum + getWeaponValue(w.config), 0);
 
   // defensiveValue: sqrt(hp / 40) * 10  — normalized so jackal (40hp) = 10
-  const defensiveValue = Math.sqrt(stats.hp / 40) * 10;
+  const defensiveValue = Math.sqrt(bp.hp / 40) * 10;
 
   // mobilityValue: 1 + (moveSpeed - 100) / 400 * 0.3
-  const mobilityValue = 1 + ((stats.moveSpeed - 100) / 400) * 0.3;
+  const mobilityValue = 1 + ((bp.moveSpeed - 100) / 400) * 0.3;
 
   const rawValue = (weaponValue * defensiveValue * mobilityValue) / 10;
 
@@ -141,10 +137,10 @@ export function getUnitValue(unitId: string): UnitValuation {
 export function printUnitValuationTable(): void {
   const rows: Record<string, unknown>[] = [];
 
-  for (const unitId of Object.keys(UNIT_DEFINITIONS)) {
+  for (const unitId of Object.keys(UNIT_BLUEPRINTS)) {
     const val = getUnitValue(unitId);
-    const stats = UNIT_STATS[unitId as keyof typeof UNIT_STATS];
-    const currentCost = stats.baseCost;
+    const bp = getUnitBlueprint(unitId);
+    const currentCost = bp.baseCost;
 
     const delta = ((val.suggestedCost - currentCost) / currentCost) * 100;
 

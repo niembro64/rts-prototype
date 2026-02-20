@@ -28,8 +28,8 @@ import {
   SHOW_LOBBY_ON_STARTUP,
   COMBAT_STATS_HISTORY_MAX,
   COMBAT_STATS_VISIBLE_ON_LOAD,
-  UNIT_STATS,
 } from '../config';
+import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../game/sim/blueprints';
 import {
   CONTROL_BARS,
   type SnapshotRate,
@@ -213,7 +213,7 @@ function saveProjVelInherit(enabled: boolean): void {
 }
 
 // Demo battle unit type list (state read from snapshots)
-const demoUnitTypes = Object.keys(UNIT_STATS);
+const demoUnitTypes = BUILDABLE_UNIT_IDS;
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(
   getEffectiveQuality(),
@@ -253,6 +253,8 @@ let fpsUpdateInterval: ReturnType<typeof setInterval> | null = null;
 const selectionInfo = reactive<SelectionInfo>({
   unitCount: 0,
   hasCommander: false,
+  hasBuilder: false,
+  hasDGun: false,
   hasFactory: false,
   factoryId: undefined,
   commanderId: undefined,
@@ -1225,7 +1227,7 @@ onUnmounted(() => {
               :title="`Toggle ${ut} units in demo battle`"
               @click="toggleDemoUnitType(ut)"
             >
-              {{ CONTROL_BARS.battle.unitShortNames[ut] || ut }}
+              {{ getUnitBlueprint(ut).shortName }}
             </button>
           </div>
         </div>

@@ -4,7 +4,8 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawAnimatedTread } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
-import { TREAD_CONFIG } from '../../../config';
+import { getUnitBlueprint } from '../../sim/blueprints';
+import type { TreadConfigData } from '../../sim/blueprints/types';
 
 export function drawTankUnit(
   ctx: UnitRenderContext,
@@ -18,7 +19,7 @@ export function drawTankUnit(
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 
-    const cfg = TREAD_CONFIG.mammoth;
+    const cfg = getUnitBlueprint('mammoth').locomotion.config as TreadConfigData;
     const treadOffset = r * cfg.treadOffset;
     const treadLength = r * cfg.treadLength;
     const treadWidth = r * cfg.treadWidth;

@@ -1,8 +1,8 @@
 import type { WorldState } from './WorldState';
-import type { Entity, UnitAction, UnitWeapon } from './types';
-import { getUnitBuildConfig } from './buildConfigs';
-import { createWeaponsFromDefinition } from './unitDefinitions';
+import type { Entity, UnitAction } from './types';
+import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
+import { COST_MULTIPLIER } from '../../config';
 
 // Factory production result
 export interface FactoryProductionResult {
@@ -31,9 +31,9 @@ export class FactoryProductionSystem {
 
       // Get current build item (unit type ID)
       const currentUnitType = factoryComp.buildQueue[0];
-      const unitConfig = getUnitBuildConfig(currentUnitType);
+      const bp = getUnitBlueprint(currentUnitType);
 
-      if (!unitConfig) {
+      if (!bp) {
         // Invalid unit, remove from queue
         factoryComp.buildQueue.shift();
         continue;
@@ -43,7 +43,7 @@ export class FactoryProductionSystem {
       if (!factoryComp.isProducing) {
         factoryComp.isProducing = true;
         factoryComp.currentBuildProgress = 0;
-        factoryComp.currentBuildCost = unitConfig.energyCost;
+        factoryComp.currentBuildCost = bp.baseCost * COST_MULTIPLIER;
       }
 
       // Energy spending is handled by the shared energy distribution system.
@@ -60,7 +60,7 @@ export class FactoryProductionSystem {
         }
 
         // Create the unit
-        const unit = this.createUnit(world, factory, unitConfig, currentUnitType);
+        const unit = this.createUnit(world, factory, currentUnitType);
         if (unit) {
           completedUnits.push(unit);
         }
@@ -75,32 +75,18 @@ export class FactoryProductionSystem {
     return { completedUnits };
   }
 
-  // Create a completed unit from factory
-  private createUnit(world: WorldState, factory: Entity, config: ReturnType<typeof getUnitBuildConfig>, unitType: string): Entity | null {
-    if (!factory.ownership || !factory.factory || !config) return null;
+  // Create a completed unit from factory using blueprints
+  private createUnit(world: WorldState, factory: Entity, unitType: string): Entity | null {
+    if (!factory.ownership || !factory.factory) return null;
 
-    const playerId = factory.ownership.playerId;
     const factoryComp = factory.factory;
 
     // Spawn position (center of factory)
     const spawnX = factory.transform.x;
     const spawnY = factory.transform.y;
 
-    // Create base unit entity (weapons will be set below)
-    const unit = world.createUnitBase(
-      spawnX,
-      spawnY,
-      playerId,
-      unitType,
-      config.collisionRadius,
-      config.moveSpeed,
-      config.mass,
-      config.hp,
-      config.collisionRadiusMultiplier
-    );
-
-    // Create weapons for this unit type - all units go through the same path
-    unit.weapons = this.createWeaponsForUnit(unitType, config);
+    // Create unit from blueprint
+    const unit = world.createUnitFromBlueprint(spawnX, spawnY, factory.ownership.playerId, unitType);
 
     // Copy factory's waypoints to the new unit as actions
     if (unit.unit && factoryComp.waypoints.length > 0) {
@@ -128,17 +114,19 @@ export class FactoryProductionSystem {
   }
 
   // Add a unit to factory's build queue
-  queueUnit(factory: Entity, weaponId: string): boolean {
+  queueUnit(factory: Entity, unitTypeId: string): boolean {
     if (!factory.factory || !factory.buildable?.isComplete) {
       return false;
     }
 
-    const config = getUnitBuildConfig(weaponId);
-    if (!config) {
+    // Validate unit type exists in blueprints
+    try {
+      getUnitBlueprint(unitTypeId);
+    } catch {
       return false;
     }
 
-    factory.factory.buildQueue.push(weaponId);
+    factory.factory.buildQueue.push(unitTypeId);
     return true;
   }
 
@@ -183,12 +171,6 @@ export class FactoryProductionSystem {
         ? factory.factory!.currentBuildProgress
         : 0,
     }));
-  }
-
-  // Create weapons array for any unit type - uses centralized unit definitions
-  private createWeaponsForUnit(unitType: string, config: ReturnType<typeof getUnitBuildConfig>): UnitWeapon[] {
-    if (!config) return [];
-    return createWeaponsFromDefinition(unitType, config.collisionRadius);
   }
 }
 

@@ -3,15 +3,15 @@ import {
   STARTING_STOCKPILE,
   MAX_STOCKPILE,
   BASE_INCOME_PER_SECOND,
-  COMMANDER_STATS,
 } from '../../config';
+import { getUnitBlueprint } from './blueprints';
 
-// Economy constants (using values from config.ts)
+// Economy constants (using values from config.ts + blueprints)
 export const ECONOMY_CONSTANTS = {
   maxStockpile: MAX_STOCKPILE,
   baseIncome: BASE_INCOME_PER_SECOND,
   startingStockpile: STARTING_STOCKPILE,
-  dgunCost: COMMANDER_STATS.dgunCost,
+  dgunCost: getUnitBlueprint('commander').dgun!.energyCost,
 };
 
 // Create initial economy state for a player

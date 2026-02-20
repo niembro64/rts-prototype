@@ -1,4 +1,5 @@
 import { AUDIO } from '../../audioConfig';
+import { getWeaponBlueprint, getProjectileBlueprint, getUnitBlueprint } from '../sim/blueprints';
 
 // Procedural audio generation using Web Audio API
 
@@ -626,7 +627,8 @@ export class AudioManager {
     volumeMultiplier: number = 1
   ): void {
     if (!AUDIO.turrets.fireGain) return;
-    const entry = AUDIO.turrets.sounds[weaponId]?.fire;
+    let entry;
+    try { entry = getWeaponBlueprint(weaponId).fireSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = AudioManager.SYNTH_DISPATCH[entry.synth];
@@ -815,10 +817,11 @@ export class AudioManager {
     }
   }
 
-  // Generic hit by weapon ID
-  playWeaponHit(weaponId: WeaponAudioId, volumeMultiplier: number = 1): void {
+  // Generic hit by projectile type ID
+  playWeaponHit(projectileId: string, volumeMultiplier: number = 1): void {
     if (!AUDIO.projectiles.hitGain) return;
-    const entry = AUDIO.projectiles.sounds[weaponId]?.hit;
+    let entry;
+    try { entry = getProjectileBlueprint(projectileId).hitSound; } catch { return; }
     if (!entry || !entry.volume) return;
     const fn = AudioManager.SYNTH_DISPATCH[entry.synth];
     if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.projectiles.hitGain);
@@ -1006,7 +1009,8 @@ export class AudioManager {
   // Death sound based on dying unit type
   playUnitDeath(unitType: string, volumeMultiplier: number = 1): void {
     if (!AUDIO.units.deathGain) return;
-    const entry = AUDIO.units.sounds[unitType]?.death;
+    let entry;
+    try { entry = getUnitBlueprint(unitType).deathSound; } catch { return; }
     if (!entry || !entry.volume) return;
     const fn = AudioManager.SYNTH_DISPATCH[entry.synth];
     if (fn) fn.call(this, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.units.deathGain);

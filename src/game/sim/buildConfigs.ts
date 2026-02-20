@@ -1,11 +1,10 @@
-import type { BuildingConfig, BuildingType, UnitBuildConfig } from './types';
+import type { BuildingConfig, BuildingType } from './types';
 import {
   COST_MULTIPLIER,
   BUILDING_STATS,
-  UNIT_STATS,
-  COMMANDER_STATS,
   SOLAR_ENERGY_PER_SECOND,
 } from '../../config';
+import { getUnitBlueprint, BUILDABLE_UNIT_IDS } from './blueprints';
 
 // Building configurations (costs are multiplied by COST_MULTIPLIER)
 export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
@@ -28,127 +27,32 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   },
 };
 
-// Unit build configurations (costs are multiplied by COST_MULTIPLIER)
-// Keys are unit type IDs, weaponId references the weapon type
-export const UNIT_BUILD_CONFIGS: Record<string, UnitBuildConfig> = {
-  jackal: {
-    weaponId: 'gatling',
-    name: 'Jackal',
-    energyCost: UNIT_STATS.jackal.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.jackal.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.jackal.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.jackal.moveSpeed,
-    mass: UNIT_STATS.jackal.mass,
-    hp: UNIT_STATS.jackal.hp,
-  },
-  lynx: {
-    weaponId: 'pulse',
-    name: 'Lynx',
-    energyCost: UNIT_STATS.lynx.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.lynx.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.lynx.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.lynx.moveSpeed,
-    mass: UNIT_STATS.lynx.mass,
-    hp: UNIT_STATS.lynx.hp,
-  },
-  daddy: {
-    weaponId: 'forceField',
-    name: 'Daddy',
-    energyCost: UNIT_STATS.daddy.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.daddy.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.daddy.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.daddy.moveSpeed,
-    mass: UNIT_STATS.daddy.mass,
-    hp: UNIT_STATS.daddy.hp,
-  },
-  badger: {
-    weaponId: 'shotgun',
-    name: 'Badger',
-    energyCost: UNIT_STATS.badger.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.badger.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.badger.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.badger.moveSpeed,
-    mass: UNIT_STATS.badger.mass,
-    hp: UNIT_STATS.badger.hp,
-  },
-  mongoose: {
-    weaponId: 'mortar',
-    name: 'Mongoose',
-    energyCost: UNIT_STATS.mongoose.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.mongoose.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.mongoose.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.mongoose.moveSpeed,
-    mass: UNIT_STATS.mongoose.mass,
-    hp: UNIT_STATS.mongoose.hp,
-  },
-  recluse: {
-    weaponId: 'railgun',
-    name: 'Recluse',
-    energyCost: UNIT_STATS.recluse.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.recluse.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.recluse.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.recluse.moveSpeed,
-    mass: UNIT_STATS.recluse.mass,
-    hp: UNIT_STATS.recluse.hp,
-  },
-  mammoth: {
-    weaponId: 'cannon',
-    name: 'Mammoth',
-    energyCost: UNIT_STATS.mammoth.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.mammoth.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.mammoth.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.mammoth.moveSpeed,
-    mass: UNIT_STATS.mammoth.mass,
-    hp: UNIT_STATS.mammoth.hp,
-  },
-  widow: {
-    weaponId: 'beam',
-    name: 'Widow',
-    energyCost: UNIT_STATS.widow.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.widow.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.widow.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.widow.moveSpeed,
-    mass: UNIT_STATS.widow.mass,
-    hp: UNIT_STATS.widow.hp,
-    weaponSeeRange: 400,
-  },
-  tarantula: {
-    weaponId: 'beam',
-    name: 'Tarantula',
-    energyCost: UNIT_STATS.tarantula.baseCost * COST_MULTIPLIER,
-    collisionRadius: UNIT_STATS.tarantula.collisionRadius,
-    collisionRadiusMultiplier: UNIT_STATS.tarantula.collisionRadiusMultiplier,
-    moveSpeed: UNIT_STATS.tarantula.moveSpeed,
-    mass: UNIT_STATS.tarantula.mass,
-    hp: UNIT_STATS.tarantula.hp,
-  },
-};
-
-// Commander stats (from config)
-export const COMMANDER_CONFIG = {
-  hp: COMMANDER_STATS.hp,
-  maxHp: COMMANDER_STATS.hp,
-  collisionRadius: COMMANDER_STATS.collisionRadius,
-  moveSpeed: COMMANDER_STATS.moveSpeed,
-  mass: COMMANDER_STATS.mass,
-  buildRange: COMMANDER_STATS.buildRange,
-  weaponId: 'beam',  // Commander uses beam weapon (continuous beam)
-  dgunCost: COMMANDER_STATS.dgunCost,
-};
-
 // Helper to get building config
 export function getBuildingConfig(type: BuildingType): BuildingConfig {
   return BUILDING_CONFIGS[type];
 }
 
-// Helper to get unit build config
-export function getUnitBuildConfig(weaponId: string): UnitBuildConfig | undefined {
-  return UNIT_BUILD_CONFIGS[weaponId];
+// Helper to get unit build config (now backed by blueprints)
+// Returns a shim matching the old UnitBuildConfig shape for backward compatibility
+export function getUnitBuildConfig(unitId: string) {
+  const bp = getUnitBlueprint(unitId);
+  if (!bp) return undefined;
+  return {
+    weaponId: bp.weapons[0]?.weaponId ?? 'gatling',
+    name: bp.name,
+    energyCost: bp.baseCost * COST_MULTIPLIER,
+    collisionRadius: bp.collisionRadius,
+    collisionRadiusMultiplier: bp.collisionRadiusMultiplier,
+    moveSpeed: bp.moveSpeed,
+    mass: bp.mass,
+    hp: bp.hp,
+    weaponSeeRange: bp.weaponSeeRange,
+  };
 }
 
 // Get list of all buildable units
-export function getBuildableUnits(): UnitBuildConfig[] {
-  return Object.values(UNIT_BUILD_CONFIGS);
+export function getBuildableUnits() {
+  return BUILDABLE_UNIT_IDS.map(id => getUnitBuildConfig(id)!);
 }
 
 // Get list of all buildings

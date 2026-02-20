@@ -9,7 +9,7 @@ import {
   createTreadPair,
   createVehicleWheelSetup,
 } from './Tread';
-import { getUnitDefinition } from '../sim/unitDefinitions';
+import { getUnitBlueprint } from '../sim/blueprints';
 import { getGraphicsConfig } from './graphicsSettings';
 import { LEG_STYLE_CONFIG } from './types';
 import type { EntitySource } from './types';
@@ -29,7 +29,7 @@ export class LocomotionManager {
 
   getOrCreateLegs(
     entity: Entity,
-    legStyle: 'widow' | 'daddy' | 'tarantula' | 'recluse' | 'commander' = 'widow'
+    legStyle: string = 'widow'
   ): ArachnidLeg[] {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
@@ -120,7 +120,7 @@ export class LocomotionManager {
     return legs;
   }
 
-  private getOrCreateTreads(entity: Entity, unitType: 'mammoth' | 'badger' | 'lynx'): TankTreadSetup {
+  private getOrCreateTreads(entity: Entity, unitType: string): TankTreadSetup {
     const existing = this.tankTreads.get(entity.id);
     if (existing) return existing;
 
@@ -145,12 +145,8 @@ export class LocomotionManager {
     const radius = entity.unit?.collisionRadius ?? 10;
     const unitType = entity.unit?.unitType;
 
-    let wheelSetup: VehicleWheelSetup | null = null;
-    if (unitType === 'jackal' || unitType === 'mongoose') {
-      wheelSetup = createVehicleWheelSetup(unitType, radius);
-    } else {
-      return null;
-    }
+    if (!unitType) return null;
+    const wheelSetup = createVehicleWheelSetup(unitType, radius);
 
     for (const wheel of wheelSetup.wheels) {
       wheel.initializeAt(entity.transform.x, entity.transform.y, entity.transform.rotation);
@@ -213,23 +209,22 @@ export class LocomotionManager {
       }
 
       if (!unitType) continue;
-      const definition = getUnitDefinition(unitType);
-      if (!definition) continue;
+      let bp;
+      try { bp = getUnitBlueprint(unitType); } catch { continue; }
 
-      if (definition.locomotion === 'legs' && !legsDisabled) {
-        const legStyle = definition.legStyle ?? 'widow';
+      if (bp.locomotion.type === 'legs' && !legsDisabled) {
+        const legStyle = bp.locomotion.style ?? 'widow';
         const legs = this.getOrCreateLegs(entity, legStyle);
         const velX = (entity.unit.velocityX ?? 0) * 60;
         const velY = (entity.unit.velocityY ?? 0) * 60;
         for (const leg of legs) {
           leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
         }
-      } else if (definition.locomotion === 'treads') {
-        const treadType = unitType as 'mammoth' | 'badger' | 'lynx';
-        const treads = this.getOrCreateTreads(entity, treadType);
+      } else if (bp.locomotion.type === 'treads') {
+        const treads = this.getOrCreateTreads(entity, unitType);
         treads.leftTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
         treads.rightTread.update(entity.transform.x, entity.transform.y, entity.transform.rotation, dtMs);
-      } else if (definition.locomotion === 'wheels') {
+      } else if (bp.locomotion.type === 'wheels') {
         const wheelSetup = this.getOrCreateVehicleWheels(entity);
         if (wheelSetup) {
           for (const wheel of wheelSetup.wheels) {

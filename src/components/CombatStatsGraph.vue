@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { NetworkUnitTypeStats } from '../game/network/NetworkTypes';
-import { UNIT_DEFINITIONS } from '../game/sim/unitDefinitions';
+import { UNIT_BLUEPRINTS, BUILDABLE_UNIT_IDS } from '../game/sim/blueprints';
 import { type FriendlyFireMode, type StatsSnapshot, applyFriendlyFire } from './combatStatsUtils';
 
 const props = defineProps<{
@@ -42,9 +42,7 @@ const UNIT_COLORS: Record<string, string> = {
   tarantula: '#fabed4',
 };
 
-const unitTypes = computed(() =>
-  Object.keys(UNIT_DEFINITIONS).filter(id => id !== 'commander')
-);
+const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
 
 // Chart dimensions
 const W = 800;
@@ -56,9 +54,9 @@ const plotH = H - PAD.top - PAD.bottom;
 // Compute a simple (non-normalized) metric for a single unit type
 function computeMetric(s: NetworkUnitTypeStats | undefined, unitType: string, metric: MetricKey): number {
   if (!s) return 0;
-  const def = UNIT_DEFINITIONS[unitType];
-  if (!def) return 0;
-  const cost = def.energyCost;
+  const bp = UNIT_BLUEPRINTS[unitType];
+  if (!bp) return 0;
+  const cost = bp.baseCost;
   const produced = s.unitsProduced ?? 0;
   const lost = s.unitsLost ?? 0;
   const dmg = applyFriendlyFire(s.enemyDamageDealt ?? 0, s.friendlyDamageDealt ?? 0, props.teamDamageMode);
@@ -115,14 +113,14 @@ const series = computed<Series[]>(() => {
   if (!isNormMetric(metric)) {
     // Simple per-unit-type computation (no cross-unit normalization needed)
     return uts.map(ut => {
-      const def = UNIT_DEFINITIONS[ut];
+      const bp = UNIT_BLUEPRINTS[ut];
       const points: SeriesPoint[] = props.history.map(snap => {
         const data = props.viewMode === 'global'
           ? snap.stats.global
           : snap.stats.players[props.selectedPlayer] ?? {};
         return { t: snap.timestamp, v: computeMetric(data[ut], ut, metric) };
       });
-      return { unitType: ut, name: def?.name ?? ut, color: UNIT_COLORS[ut] ?? '#888', points };
+      return { unitType: ut, name: bp?.name ?? ut, color: UNIT_COLORS[ut] ?? '#888', points };
     });
   }
 
@@ -161,7 +159,7 @@ const series = computed<Series[]>(() => {
 
   // Build series from normalized values
   return uts.map((ut, ui) => {
-    const def = UNIT_DEFINITIONS[ut];
+    const bp = UNIT_BLUEPRINTS[ut];
     const points: SeriesPoint[] = props.history.map((snap, si) => {
       let v: number;
       if (metric === 'normDmg') v = rawDmg[ui][si];
@@ -169,7 +167,7 @@ const series = computed<Series[]>(() => {
       else v = (rawDmg[ui][si] + rawKills[ui][si]) / 2; // normAvg
       return { t: snap.timestamp, v };
     });
-    return { unitType: ut, name: def?.name ?? ut, color: UNIT_COLORS[ut] ?? '#888', points };
+    return { unitType: ut, name: bp?.name ?? ut, color: UNIT_COLORS[ut] ?? '#888', points };
   });
 });
 
