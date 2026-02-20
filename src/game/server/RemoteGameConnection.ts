@@ -1,6 +1,6 @@
 // RemoteGameConnection - WebRTC bridge for remote clients
 
-import type { GameConnection, SnapshotCallback, AudioEventCallback, GameOverCallback } from './GameConnection';
+import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallback } from './GameConnection';
 import type { Command } from '../sim/commands';
 import type { NetworkGameState } from '../network/NetworkTypes';
 import { networkManager } from '../network/NetworkManager';
@@ -29,7 +29,7 @@ export class RemoteGameConnection implements GameConnection {
     this.snapshotCallback = callback;
   }
 
-  onAudioEvent(_callback: AudioEventCallback): void {
+  onSimEvent(_callback: SimEventCallback): void {
     // Audio events come through snapshots for remote clients
   }
 

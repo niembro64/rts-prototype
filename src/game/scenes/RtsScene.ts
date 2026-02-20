@@ -6,10 +6,10 @@ import { PLAYER_COLORS, type Entity, type PlayerId, type EntityId, type Waypoint
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
-import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkAudioEvent, NetworkProjectileVelocityUpdate, NetworkCombatStats, NetworkServerMeta } from '../network/NetworkTypes';
+import type { NetworkGameState, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkSimEvent, NetworkProjectileVelocityUpdate, NetworkCombatStats, NetworkServerMeta } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
-import type { AudioEvent } from '../sim/combat';
+import type { SimEvent } from '../sim/combat';
 import {
   ZOOM_INITIAL_DEMO,
   ZOOM_INITIAL_GAME,
@@ -26,7 +26,7 @@ import { getAudioSmoothing } from '../render/graphicsSettings';
 
 // Import helpers
 import {
-  handleAudioEvent,
+  handleSimEvent,
   buildSelectionInfo,
   buildEconomyInfo,
   buildMinimapData,
@@ -113,16 +113,16 @@ export class RtsScene extends Phaser.Scene {
   private _despawnsA: NetworkProjectileDespawn[] = [];
   private _despawnsB: NetworkProjectileDespawn[] = [];
   private bufferedDespawns: NetworkProjectileDespawn[] = this._despawnsA;
-  private _audioA: NetworkAudioEvent[] = [];
-  private _audioB: NetworkAudioEvent[] = [];
-  private bufferedAudio: NetworkAudioEvent[] = this._audioA;
+  private _audioA: NetworkSimEvent[] = [];
+  private _audioB: NetworkSimEvent[] = [];
+  private bufferedAudio: NetworkSimEvent[] = this._audioA;
   private bufferedVelocityUpdates = new Map<number, NetworkProjectileVelocityUpdate>();
   private _velBufA: NetworkProjectileVelocityUpdate[] = [];
   private _velBufB: NetworkProjectileVelocityUpdate[] = [];
   private _velBufToggle = false;
 
   // Audio smoothing queue: events scheduled to play at future times
-  private audioQueue: { event: NetworkAudioEvent; playAt: number }[] = [];
+  private audioQueue: { event: NetworkSimEvent; playAt: number }[] = [];
   private lastSnapshotTime: number = 0;
   private snapshotInterval: number = 100; // EMA of snapshot interval (ms)
 
@@ -572,7 +572,7 @@ export class RtsScene extends Phaser.Scene {
     for (let i = queue.length - 1; i >= 0; i--) {
       if (now >= queue[i].playAt) {
         const cam = this.cameras.main;
-        handleAudioEvent(queue[i].event as AudioEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
+        handleSimEvent(queue[i].event as SimEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
         // Swap-remove for efficiency
         queue[i] = queue[queue.length - 1];
         queue.length--;
@@ -643,9 +643,9 @@ export class RtsScene extends Phaser.Scene {
         const cam = this.cameras.main;
         const smoothing = getAudioSmoothing();
         for (const event of audioEvents) {
-          if (!smoothing || event.type === 'laserStart' || event.type === 'laserStop') {
-            // Play immediately: smoothing off, or state-dependent laser events
-            handleAudioEvent(event as AudioEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
+          if (!smoothing || event.type === 'laserStart' || event.type === 'laserStop' || event.type === 'forceFieldStart' || event.type === 'forceFieldStop') {
+            // Play immediately: smoothing off, or state-dependent continuous sound events
+            handleSimEvent(event as SimEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
           } else {
             // Schedule for playback spread across the snapshot interval
             this.audioQueue.push({
@@ -814,6 +814,7 @@ export class RtsScene extends Phaser.Scene {
   // Clean shutdown
   shutdown(): void {
     audioManager.stopAllLaserSounds();
+    audioManager.stopAllForceFieldSounds();
     this.entityRenderer?.destroy();
     this.inputManager?.destroy();
     this.inputManager = null;

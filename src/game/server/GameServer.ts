@@ -386,7 +386,7 @@ export class GameServer {
   private emitSnapshot(): void {
     const winnerId = this.simulation.getWinnerId() ?? undefined;
     const sprayTargets = this.simulation.getSprayTargets();
-    const audioEvents = this.simulation.getAndClearAudioEvents();
+    const audioEvents = this.simulation.getAndClearEvents();
     const projectileSpawns = this.simulation.getAndClearProjectileSpawns();
     const projectileDespawns = this.simulation.getAndClearProjectileDespawns();
     const projectileVelocityUpdates = this.simulation.getAndClearProjectileVelocityUpdates();

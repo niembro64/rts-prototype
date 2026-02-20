@@ -2,7 +2,7 @@
 // Re-exports all combat functionality from helper modules
 
 // Types
-export type { AudioEvent, ImpactContext, FireWeaponsResult, CollisionResult, DeathContext, WeaponAudioId } from './types';
+export type { SimEvent, ImpactContext, FireWeaponsResult, CollisionResult, DeathContext, WeaponAudioId } from './types';
 
 // Utility functions
 export { distance, getTargetRadius, normalizeAngle, getMovementAngle } from './combatUtils';
@@ -15,6 +15,9 @@ export { updateTargetingAndFiringState, updateWeaponCooldowns } from './targetin
 
 // Laser sounds
 export { updateLaserSounds, emitLaserStopsForEntity, emitLaserStopsForTarget } from './laserSoundSystem';
+
+// Force field sounds
+export { updateForceFieldSounds, emitForceFieldStopsForEntity } from './forceFieldSoundSystem';
 
 // Force field weapons
 export { updateForceFieldState, applyForceFieldDamage } from './forceFieldWeapon';

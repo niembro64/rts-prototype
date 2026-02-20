@@ -1,7 +1,7 @@
 // Death effects and audio event handling
 
 import type { EntityRenderer } from '../../render/renderEntities';
-import type { AudioEvent } from '../../sim/combat';
+import type { SimEvent } from '../../sim/combat';
 import { audioManager } from '../../audio/AudioManager';
 import { AUDIO } from '../../../audioConfig';
 import { getWeaponBlueprint } from '../../sim/blueprints';
@@ -32,8 +32,8 @@ function getSecondaryExplosionRadius(weaponId: string): number | undefined {
 }
 
 // Handle audio events from simulation (or network)
-export function handleAudioEvent(
-  event: AudioEvent,
+export function handleSimEvent(
+  event: SimEvent,
   entityRenderer: EntityRenderer,
   audioInitialized: boolean,
   viewport?: Phaser.Geom.Rectangle,
@@ -132,11 +132,17 @@ export function handleAudioEvent(
 
   if (!audioInitialized) return;
 
-  // laserStop must always be processed to clean up continuous sounds,
+  // Stop events must always be processed to clean up continuous sounds,
   // even if the source has moved off-screen or audio scope is 'off'
   if (event.type === 'laserStop') {
     if (event.entityId !== undefined) {
       audioManager.stopLaserSound(event.entityId);
+    }
+    return;
+  }
+  if (event.type === 'forceFieldStop') {
+    if (event.entityId !== undefined) {
+      audioManager.stopForceFieldSound(event.entityId);
     }
     return;
   }
@@ -176,6 +182,16 @@ export function handleAudioEvent(
       if (!laserEntry || !laserEntry.volume) break;
       if (event.entityId !== undefined) {
         audioManager.startLaserSound(event.entityId, 1, zoomVolume * laserEntry.volume * AUDIO.turrets.laserGain);
+      }
+    }
+      break;
+    case 'forceFieldStart': {
+      if (!AUDIO.turrets.fireGain) break;
+      let ffEntry;
+      try { ffEntry = getWeaponBlueprint(event.weaponId).fireSound; } catch { break; }
+      if (!ffEntry || !ffEntry.volume) break;
+      if (event.entityId !== undefined) {
+        audioManager.startForceFieldSound(event.entityId, ffEntry.playSpeed, zoomVolume * ffEntry.volume * AUDIO.turrets.fireGain);
       }
     }
       break;

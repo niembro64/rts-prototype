@@ -21,6 +21,7 @@ export class AudioManager {
 
   // Track active continuous sounds by entity ID
   private activeLaserSounds: Map<number, ContinuousSound> = new Map();
+  private activeForceFieldSounds: Map<number, ContinuousSound> = new Map();
 
   // Track pending fade-out timeouts for cleanup
   private pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
@@ -218,6 +219,124 @@ export class AudioManager {
       clearTimeout(id);
     }
     this.pendingTimeouts.clear();
+  }
+
+  // Start continuous force field sound (call when force field becomes active)
+  startForceFieldSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    // Don't start if already playing for this entity
+    if (this.activeForceFieldSounds.has(entityId)) return;
+
+    // Deep resonant hum (no auto-disconnect for continuous sounds)
+    const osc = ctx.createOscillator();
+    const gain = this.createGain(0, 0);
+    if (!gain) return;
+
+    osc.type = 'triangle';
+    osc.frequency.value = 60 * speed;
+
+    // Slow wobble for pulsing effect
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.type = 'sine';
+    lfo.frequency.value = 3 * speed;
+    lfoGain.gain.value = 8 * speed;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    lfo.start();
+
+    // Lowpass for warmth
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 400 * speed;
+    filter.Q.value = 3;
+
+    // Smooth fade in
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(
+      0.12 * this.sfxVolume * volumeMultiplier,
+      ctx.currentTime + 0.2
+    );
+
+    osc.connect(filter).connect(gain);
+    osc.start();
+
+    // Add filtered noise layer for texture
+    const noiseBuffer = this.createNoiseBuffer(10);
+    let noiseSource: AudioBufferSourceNode | undefined;
+    let noiseGain: GainNode | undefined;
+
+    if (noiseBuffer) {
+      noiseSource = ctx.createBufferSource();
+      noiseSource.buffer = noiseBuffer;
+      noiseSource.loop = true;
+
+      const noiseFilter = ctx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.value = 200 * speed;
+      noiseFilter.Q.value = 2;
+
+      noiseGain = this.createGain(0, 0) ?? undefined;
+      if (noiseGain) {
+        noiseGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        noiseGain.gain.linearRampToValueAtTime(
+          0.04 * this.sfxVolume * volumeMultiplier,
+          ctx.currentTime + 0.2
+        );
+        noiseSource.connect(noiseFilter).connect(noiseGain);
+        noiseSource.start();
+      }
+    }
+
+    this.activeForceFieldSounds.set(entityId, {
+      oscillator: osc,
+      gainNode: gain,
+      noiseSource,
+      noiseGain,
+    });
+  }
+
+  // Stop continuous force field sound (call when force field deactivates)
+  stopForceFieldSound(entityId: number): void {
+    const sound = this.activeForceFieldSounds.get(entityId);
+    if (!sound) return;
+
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    const fadeTime = 0.15;
+    sound.gainNode.gain.linearRampToValueAtTime(
+      0.0001,
+      ctx.currentTime + fadeTime
+    );
+    if (sound.noiseGain) {
+      sound.noiseGain.gain.linearRampToValueAtTime(
+        0.0001,
+        ctx.currentTime + fadeTime
+      );
+    }
+
+    const timeoutId = setTimeout(() => {
+      this.pendingTimeouts.delete(timeoutId);
+      try {
+        sound.oscillator.stop();
+        sound.noiseSource?.stop();
+      } catch {
+        // Ignore if already stopped
+      }
+    }, fadeTime * 1000 + 20);
+    this.pendingTimeouts.add(timeoutId);
+
+    this.activeForceFieldSounds.delete(entityId);
+  }
+
+  // Stop all force field sounds (cleanup)
+  stopAllForceFieldSounds(): void {
+    for (const entityId of this.activeForceFieldSounds.keys()) {
+      this.stopForceFieldSound(entityId);
+    }
   }
 
   // Legacy method for compatibility - now starts continuous sound briefly

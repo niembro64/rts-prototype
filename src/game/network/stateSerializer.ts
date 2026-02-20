@@ -1,9 +1,9 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkAudioEvent, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkProjectileVelocityUpdate, NetworkGridCell, NetworkWeapon, NetworkAction } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkSimEvent, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkProjectileVelocityUpdate, NetworkGridCell, NetworkWeapon, NetworkAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
-import type { AudioEvent } from '../sim/combat';
+import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 import { SNAPSHOT_CONFIG } from '../../config';
 
@@ -235,7 +235,7 @@ export function resetDeltaTracking(): void {
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkEntity[] = [];
 const _sprayBuf: NetworkSprayTarget[] = [];
-const _audioBuf: NetworkAudioEvent[] = [];
+const _audioBuf: NetworkSimEvent[] = [];
 const _spawnBuf: NetworkProjectileSpawn[] = [];
 const _despawnBuf: NetworkProjectileDespawn[] = [];
 const _velUpdateBuf: NetworkProjectileVelocityUpdate[] = [];
@@ -268,7 +268,7 @@ export function serializeGameState(
   isDelta: boolean,
   gameOverWinnerId?: PlayerId,
   sprayTargets?: SprayTarget[],
-  audioEvents?: AudioEvent[],
+  audioEvents?: SimEvent[],
   projectileSpawns?: ProjectileSpawnEvent[],
   projectileDespawns?: ProjectileDespawnEvent[],
   projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[],
@@ -390,7 +390,7 @@ export function serializeGameState(
   }
 
   // Serialize audio events (reuse buffer)
-  let netAudioEvents: NetworkAudioEvent[] | undefined;
+  let netAudioEvents: NetworkSimEvent[] | undefined;
   if (audioEvents && audioEvents.length > 0) {
     _audioBuf.length = 0;
     for (let i = 0; i < audioEvents.length; i++) {

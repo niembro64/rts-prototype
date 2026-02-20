@@ -5,7 +5,7 @@ import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
 import { PLAYER_COLORS } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { AudioEvent, ImpactContext } from './types';
+import type { SimEvent, ImpactContext } from './types';
 import { KNOCKBACK, BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import type { DeathContext, DamageResult } from '../damage/types';
 import type { WeaponConfig, Projectile } from '../types';
@@ -88,7 +88,7 @@ export function collectKillsWithDeathAudio(
   config: WeaponConfig,
   unitsToRemove: Set<EntityId>,
   buildingsToRemove: Set<EntityId>,
-  audioEvents: AudioEvent[],
+  audioEvents: SimEvent[],
   deathContexts: Map<EntityId, DeathContext>,
 ): void {
   for (const id of result.killedUnitIds) {
@@ -187,7 +187,7 @@ export function emitBeamHitAudio(
   beamDirX: number,
   beamDirY: number,
   collisionRadius: number,
-  audioEvents: AudioEvent[],
+  audioEvents: SimEvent[],
 ): void {
   if (config.cooldown === 0) return; // Skip continuous beams
   for (const hitId of hitEntityIds) {

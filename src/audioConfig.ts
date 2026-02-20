@@ -36,22 +36,22 @@ export interface SoundEntry {
 
 export const AUDIO = {
   masterVolume: 0.99, // Global master gain (applied to AudioContext destination)
-  sfxVolume: 0.5, // SFX sub-mix multiplier (applied per gain node)
+  sfxVolume: 0.9, // SFX sub-mix multiplier (applied per gain node)
   zoomVolumeExponent: 1.2, // How volume scales with zoom: volume = zoom^exponent (2 = inverse square, 1 = linear, 0 = no scaling)
 
   // Turret fire/laser gain multipliers
   turrets: {
-    fireGain: 0.5,
+    fireGain: 1.0,
     laserGain: 0.03,
   },
 
   // Projectile hit gain multiplier
   projectiles: {
-    hitGain: 0.0,
+    hitGain: 0.3,
   },
 
   // Unit death gain multiplier
   units: {
-    deathGain: 0.0,
+    deathGain: 0.1,
   },
 };

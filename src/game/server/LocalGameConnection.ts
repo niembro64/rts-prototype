@@ -1,6 +1,6 @@
 // LocalGameConnection - In-memory bridge between GameServer and local client (host)
 
-import type { GameConnection, SnapshotCallback, AudioEventCallback, GameOverCallback } from './GameConnection';
+import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallback } from './GameConnection';
 import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 
@@ -30,7 +30,7 @@ export class LocalGameConnection implements GameConnection {
     this.snapshotCallback = callback;
   }
 
-  onAudioEvent(_callback: AudioEventCallback): void {
+  onSimEvent(_callback: SimEventCallback): void {
     // Not used for local - audio events come through snapshots
   }
 

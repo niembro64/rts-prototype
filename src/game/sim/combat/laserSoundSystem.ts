@@ -2,18 +2,18 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
-import type { AudioEvent } from './types';
+import type { SimEvent } from './types';
 import { distance, getTargetRadius } from './combatUtils';
 import { getWeaponWorldPosition } from '../../math';
 
 // Reusable array for laser sound events (avoids per-frame allocation)
-const _laserAudioEvents: AudioEvent[] = [];
-const _laserStopOwner: AudioEvent[] = [];
-const _laserStopTarget: AudioEvent[] = [];
+const _laserSimEvents: SimEvent[] = [];
+const _laserStopOwner: SimEvent[] = [];
+const _laserStopTarget: SimEvent[] = [];
 
 // Emit laserStop events for all beam weapons on a dying entity (the beam owner).
 // Must be called before the entity is removed from the world.
-export function emitLaserStopsForEntity(entity: Entity): AudioEvent[] {
+export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
   _laserStopOwner.length = 0;
   if (!entity.weapons) return _laserStopOwner;
 
@@ -34,7 +34,7 @@ export function emitLaserStopsForEntity(entity: Entity): AudioEvent[] {
 
 // Emit laserStop events for all beam weapons across the world that were targeting a dying entity.
 // This ensures sounds stop immediately when the target dies rather than waiting for retarget.
-export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): AudioEvent[] {
+export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): SimEvent[] {
   _laserStopTarget.length = 0;
 
   for (const unit of world.getUnits()) {
@@ -60,9 +60,9 @@ export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): 
 
 // Update laser sounds based on targeting state (not beam existence)
 // This is called every frame to ensure sounds match targeting state
-export function updateLaserSounds(world: WorldState): AudioEvent[] {
-  _laserAudioEvents.length = 0;
-  const audioEvents = _laserAudioEvents;
+export function updateLaserSounds(world: WorldState): SimEvent[] {
+  _laserSimEvents.length = 0;
+  const audioEvents = _laserSimEvents;
 
   for (const unit of world.getUnits()) {
     if (!unit.weapons || !unit.unit || !unit.ownership) continue;

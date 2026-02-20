@@ -28,9 +28,9 @@ export interface ImpactContext {
   penetrationDirY: number;
 }
 
-// Audio event types
-export interface AudioEvent {
-  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'projectileExpire';
+// Sim event types (drive both audio and visual effects on the client)
+export interface SimEvent {
+  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'forceFieldStart' | 'forceFieldStop' | 'projectileExpire';
   weaponId: WeaponAudioId;
   x: number;
   y: number;
@@ -94,14 +94,14 @@ export interface ProjectileVelocityUpdateEvent {
 // Combat result containing entities and audio events
 export interface FireWeaponsResult {
   projectiles: import('../types').Entity[];
-  audioEvents: AudioEvent[];
+  events: SimEvent[];
   spawnEvents: ProjectileSpawnEvent[];
 }
 
 export interface CollisionResult {
   deadUnitIds: Set<EntityId>;
   deadBuildingIds: Set<EntityId>;
-  audioEvents: AudioEvent[];
+  events: SimEvent[];
   despawnEvents: ProjectileDespawnEvent[];
   // Death context for each killed unit (for directional explosion effects)
   deathContexts: Map<EntityId, DeathContext>;

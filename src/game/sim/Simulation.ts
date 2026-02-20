@@ -9,13 +9,15 @@ import {
   updateLaserSounds,
   emitLaserStopsForEntity,
   emitLaserStopsForTarget,
+  updateForceFieldSounds,
+  emitForceFieldStopsForEntity,
   fireWeapons,
   updateForceFieldState,
   applyForceFieldDamage,
   resetForceFieldBuffers,
   updateProjectiles,
   checkProjectileCollisions,
-  type AudioEvent,
+  type SimEvent,
   type DeathContext,
   type ProjectileSpawnEvent,
   type ProjectileDespawnEvent,
@@ -52,9 +54,9 @@ export class Simulation {
   private gameOverWinnerId: PlayerId | null = null;
 
   // Pending audio events for network broadcast (double-buffered to avoid per-snapshot allocation)
-  private _audioA: AudioEvent[] = [];
-  private _audioB: AudioEvent[] = [];
-  private pendingAudioEvents: AudioEvent[] = this._audioA;
+  private _audioA: SimEvent[] = [];
+  private _audioB: SimEvent[] = [];
+  private pendingSimEvents: SimEvent[] = this._audioA;
 
   // Pending projectile spawn/despawn/velocity-update events (double-buffered)
   private _spawnsA: ProjectileSpawnEvent[] = [];
@@ -90,7 +92,7 @@ export class Simulation {
   public onBuildingDeath?: (deadBuildingIds: EntityId[]) => void;
 
   // Callback for audio events
-  public onAudioEvent?: (event: AudioEvent) => void;
+  public onSimEvent?: (event: SimEvent) => void;
 
   // Callback for game over (passes winner ID)
   public onGameOver?: (winnerId: PlayerId) => void;
@@ -125,10 +127,10 @@ export class Simulation {
   }
 
   // Get and clear pending audio events (double-buffer swap, zero allocation)
-  getAndClearAudioEvents(): AudioEvent[] {
-    const events = this.pendingAudioEvents;
-    this.pendingAudioEvents = (events === this._audioA) ? this._audioB : this._audioA;
-    this.pendingAudioEvents.length = 0;
+  getAndClearEvents(): SimEvent[] {
+    const events = this.pendingSimEvents;
+    this.pendingSimEvents = (events === this._audioA) ? this._audioB : this._audioA;
+    this.pendingSimEvents.length = 0;
     return events;
   }
 
@@ -428,10 +430,17 @@ export class Simulation {
     updateTargetingAndFiringState(this.world);
 
     // Update laser sounds based on targeting state (every frame)
-    const laserAudioEvents = updateLaserSounds(this.world);
-    for (const event of laserAudioEvents) {
-      this.onAudioEvent?.(event);
-      this.pendingAudioEvents.push(event);
+    const laserSimEvents = updateLaserSounds(this.world);
+    for (const event of laserSimEvents) {
+      this.onSimEvent?.(event);
+      this.pendingSimEvents.push(event);
+    }
+
+    // Update force field sounds based on transition progress (every frame)
+    const forceFieldSimEvents = updateForceFieldSounds(this.world.getForceFieldUnits());
+    for (const event of forceFieldSimEvents) {
+      this.onSimEvent?.(event);
+      this.pendingSimEvents.push(event);
     }
 
     // Update turret rotation (before firing, so weapons fire in turret direction)
@@ -449,9 +458,9 @@ export class Simulation {
     }
 
     // Emit fire audio events
-    for (const event of fireResult.audioEvents) {
-      this.onAudioEvent?.(event);
-      this.pendingAudioEvents.push(event);
+    for (const event of fireResult.events) {
+      this.onSimEvent?.(event);
+      this.pendingSimEvents.push(event);
     }
 
     // Update force field state (range transitions)
@@ -489,9 +498,9 @@ export class Simulation {
     }
 
     // Emit hit/death audio events
-    for (const event of collisionResult.audioEvents) {
-      this.onAudioEvent?.(event);
-      this.pendingAudioEvents.push(event);
+    for (const event of collisionResult.events) {
+      this.onSimEvent?.(event);
+      this.pendingSimEvents.push(event);
     }
 
     // Remove dead entities from spatial grid and notify callbacks
@@ -503,11 +512,15 @@ export class Simulation {
         if (entity) {
           // Emit laserStop for the dying entity's own beam weapons
           for (const evt of emitLaserStopsForEntity(entity)) {
-            this.pendingAudioEvents.push(evt);
+            this.pendingSimEvents.push(evt);
           }
           // Emit laserStop for any beam weapons across the world targeting this entity
           for (const evt of emitLaserStopsForTarget(this.world, id)) {
-            this.pendingAudioEvents.push(evt);
+            this.pendingSimEvents.push(evt);
+          }
+          // Emit forceFieldStop for the dying entity's force field weapons
+          for (const evt of emitForceFieldStopsForEntity(entity)) {
+            this.pendingSimEvents.push(evt);
           }
           if (entity.unit?.unitType && entity.ownership) {
             this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
@@ -565,11 +578,15 @@ export class Simulation {
         if (entity) {
           // Emit laserStop for the dying entity's own beam weapons
           for (const evt of emitLaserStopsForEntity(entity)) {
-            this.pendingAudioEvents.push(evt);
+            this.pendingSimEvents.push(evt);
           }
           // Emit laserStop for any beam weapons across the world targeting this entity
           for (const evt of emitLaserStopsForTarget(this.world, id)) {
-            this.pendingAudioEvents.push(evt);
+            this.pendingSimEvents.push(evt);
+          }
+          // Emit forceFieldStop for the dying entity's force field weapons
+          for (const evt of emitForceFieldStopsForEntity(entity)) {
+            this.pendingSimEvents.push(evt);
           }
           if (entity.unit?.unitType && entity.ownership) {
             this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
@@ -875,14 +892,14 @@ export class Simulation {
     });
 
     // Emit audio event
-    const dgunAudioEvent: AudioEvent = {
+    const dgunSimEvent: SimEvent = {
       type: 'fire',
       x: spawnX,
       y: spawnY,
       weaponId: 'dgun',
     };
-    this.onAudioEvent?.(dgunAudioEvent);
-    this.pendingAudioEvents.push(dgunAudioEvent);
+    this.onSimEvent?.(dgunSimEvent);
+    this.pendingSimEvents.push(dgunSimEvent);
   }
 
   // Execute repair command - adds repair action to unit's action queue
@@ -1041,7 +1058,7 @@ export class Simulation {
     this.combatStatsTracker.reset();
     this._audioA.length = 0;
     this._audioB.length = 0;
-    this.pendingAudioEvents = this._audioA;
+    this.pendingSimEvents = this._audioA;
     this._spawnsA.length = 0;
     this._spawnsB.length = 0;
     this.pendingProjectileSpawns = this._spawnsA;

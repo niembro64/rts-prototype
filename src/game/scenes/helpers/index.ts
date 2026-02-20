@@ -2,7 +2,7 @@
 
 export {
   getExplosionRadius,
-  handleAudioEvent,
+  handleSimEvent,
 } from './DeathEffectsHandler';
 export {
   type UIEntitySource,

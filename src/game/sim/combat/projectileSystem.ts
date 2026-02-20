@@ -4,7 +4,7 @@ import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { AudioEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
+import type { SimEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getWeaponWorldPosition } from '../../math';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
@@ -17,7 +17,7 @@ const _collisionBuildingsToRemove = new Set<EntityId>();
 const _collisionDeathContexts = new Map<EntityId, DeathContext>();
 const _collisionProjectilesToRemove: EntityId[] = [];
 const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
-const _collisionAudioEvents: AudioEvent[] = [];
+const _collisionSimEvents: SimEvent[] = [];
 
 // Reusable empty set for beam area damage (avoids allocating new Set per beam per frame)
 const _emptyExcludeSet = new Set<EntityId>();
@@ -27,7 +27,7 @@ const _beamSecondaryExcludeSet = new Set<EntityId>();
 
 // Reusable arrays for fireWeapons (avoids per-frame allocation)
 const _fireNewProjectiles: Entity[] = [];
-const _fireAudioEvents: AudioEvent[] = [];
+const _fireSimEvents: SimEvent[] = [];
 const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
 
 // Reset module-level reusable buffers between game sessions
@@ -38,10 +38,10 @@ export function resetProjectileBuffers(): void {
   _collisionDeathContexts.clear();
   _collisionProjectilesToRemove.length = 0;
   _collisionDespawnEvents.length = 0;
-  _collisionAudioEvents.length = 0;
+  _collisionSimEvents.length = 0;
   _beamSecondaryExcludeSet.clear();
   _fireNewProjectiles.length = 0;
-  _fireAudioEvents.length = 0;
+  _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
   _homingVelocityUpdates.length = 0;
 }
@@ -56,10 +56,10 @@ function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, weaponIndex: 
 // Each weapon fires independently based on its own state
 export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulator): FireWeaponsResult {
   _fireNewProjectiles.length = 0;
-  _fireAudioEvents.length = 0;
+  _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
   const newProjectiles = _fireNewProjectiles;
-  const audioEvents = _fireAudioEvents;
+  const audioEvents = _fireSimEvents;
   const spawnEvents = _fireSpawnEvents;
 
   for (const unit of world.getUnits()) {
@@ -136,8 +136,8 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
         }
       }
 
-      // Add fire audio event
-      if (!isBeamWeapon || isCooldownBeam) {
+      // Add fire event (skip continuous beams and force fields — they use start/stop lifecycle)
+      if ((!isBeamWeapon || isCooldownBeam) && !config.isForceField) {
         audioEvents.push({
           type: 'fire',
           weaponId: config.id,
@@ -252,7 +252,7 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
     }
   }
 
-  return { projectiles: newProjectiles, audioEvents, spawnEvents };
+  return { projectiles: newProjectiles, events: audioEvents, spawnEvents };
 }
 
 // Reusable array for homing velocity updates (avoid per-frame allocation)
@@ -454,13 +454,13 @@ export function checkProjectileCollisions(
   _collisionDespawnEvents.length = 0;
   _collisionUnitsToRemove.clear();
   _collisionBuildingsToRemove.clear();
-  _collisionAudioEvents.length = 0;
+  _collisionSimEvents.length = 0;
   _collisionDeathContexts.clear();
   const projectilesToRemove = _collisionProjectilesToRemove;
   const despawnEvents = _collisionDespawnEvents;
   const unitsToRemove = _collisionUnitsToRemove;
   const buildingsToRemove = _collisionBuildingsToRemove;
-  const audioEvents = _collisionAudioEvents;
+  const audioEvents = _collisionSimEvents;
   const deathContexts = _collisionDeathContexts;
 
   for (const projEntity of world.getProjectiles()) {
@@ -845,6 +845,6 @@ export function checkProjectileCollisions(
     world.removeEntity(id);
   }
 
-  return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, audioEvents, despawnEvents, deathContexts };
+  return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, events: audioEvents, despawnEvents, deathContexts };
 }
 

@@ -5,7 +5,7 @@ import type { Command } from '../sim/commands';
 // Re-export types from NetworkTypes for backward compatibility
 export type {
   NetworkMessage,
-  NetworkAudioEvent,
+  NetworkSimEvent,
   NetworkGameState,
   NetworkSprayTarget,
   NetworkAction,

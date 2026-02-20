@@ -13,9 +13,9 @@ export type NetworkMessage =
   | { type: 'playerJoined'; playerId: PlayerId; playerName: string }
   | { type: 'playerLeft'; playerId: PlayerId };
 
-// Audio event for network sync
-export interface NetworkAudioEvent {
-  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'projectileExpire';
+// Sim event for network sync (drives audio + visual effects on client)
+export interface NetworkSimEvent {
+  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'forceFieldStart' | 'forceFieldStop' | 'projectileExpire';
   weaponId: WeaponAudioId;
   x: number;
   y: number;
@@ -134,7 +134,7 @@ export interface NetworkGameState {
   entities: NetworkEntity[];
   economy: Record<PlayerId, NetworkEconomy>;
   sprayTargets?: NetworkSprayTarget[];
-  audioEvents?: NetworkAudioEvent[];
+  audioEvents?: NetworkSimEvent[];
   projectileSpawns?: NetworkProjectileSpawn[];
   projectileDespawns?: NetworkProjectileDespawn[];
   projectileVelocityUpdates?: NetworkProjectileVelocityUpdate[];

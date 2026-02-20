@@ -2,7 +2,7 @@
 // This file maintains backwards compatibility with existing imports
 
 export type {
-  AudioEvent,
+  SimEvent,
   FireWeaponsResult,
   CollisionResult,
   DeathContext,
@@ -26,6 +26,11 @@ export {
   emitLaserStopsForEntity,
   emitLaserStopsForTarget,
 } from './combat/laserSoundSystem';
+
+export {
+  updateForceFieldSounds,
+  emitForceFieldStopsForEntity,
+} from './combat/forceFieldSoundSystem';
 
 export {
   updateForceFieldState,
