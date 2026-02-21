@@ -86,7 +86,7 @@ export interface TurretBlueprint {
   burstDelay?: number;
   pelletCount?: number;
   homingTurnRate?: number;
-  projectileSpeed?: number;
+  launchForce?: number;
   isManualFire?: boolean;
   // Force field
   isForceField?: boolean;

@@ -96,7 +96,9 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
   if (wb.pelletCount != null) base.pelletCount = wb.pelletCount;
   if (wb.homingTurnRate != null) base.homingTurnRate = wb.homingTurnRate;
   if (wb.isManualFire != null) base.isManualFire = wb.isManualFire;
-  if (wb.projectileSpeed != null) base.projectileSpeed = wb.projectileSpeed;
+  if (wb.launchForce != null && base.projectileMass) {
+    base.projectileSpeed = wb.launchForce / base.projectileMass;
+  }
 
   return base;
 }
