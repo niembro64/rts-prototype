@@ -66,8 +66,7 @@ export class EntityRenderer {
   private _projRangeVis = { collision: false, primary: false, secondary: false };
   private _unitRadiusVis = { collision: false, physics: false };
 
-  // Cached camera zoom for LOD calculations (updated each frame)
-  private cameraZoom: number = 1;
+
 
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
@@ -298,12 +297,12 @@ export class EntityRenderer {
 
   // ==================== LOD COMPUTATION ====================
 
-  private computeUnitLod(radius: number): LodLevel {
-    const screenRadius = radius * this.cameraZoom;
-    if (screenRadius < 2) return 'min'; // sub-pixel
+  private computeLod(): LodLevel {
     const quality = getEffectiveQuality();
-    const zoomLod: LodLevel = screenRadius < 6 ? 'min' : screenRadius < 12 ? 'low' : 'high';
-    return quality === 'min' ? 'min' : quality === 'low' ? (zoomLod === 'high' ? 'low' : zoomLod) : zoomLod;
+    // Quality drives LOD directly: min→min, low→low, everything else→high
+    if (quality === 'min') return 'min';
+    if (quality === 'low') return 'low';
+    return 'high';
   }
 
   // ==================== MAIN RENDER ====================
@@ -313,7 +312,6 @@ export class EntityRenderer {
     this.resetLabels();
 
     const camera = this.scene.cameras.main;
-    this.cameraZoom = camera.zoom;
     setCurrentZoom(camera.zoom);
     const gfxConfig = getGraphicsConfig();
     this.sprayParticleTime += 16;
@@ -370,7 +368,7 @@ export class EntityRenderer {
     }
 
     // 6. Projectiles (clean up stale beam offsets inline, LOD via same system as units)
-    const projectileLod = this.computeUnitLod(10);
+    const projectileLod = this.computeLod();
     this._reusableIdSet.clear();
     for (const entity of this.visibleProjectiles) {
       this._reusableIdSet.add(entity.id);
@@ -425,7 +423,7 @@ export class EntityRenderer {
     const { collisionRadius: radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
 
-    const lod = this.computeUnitLod(radius);
+    const lod = this.computeLod();
     // Get unit type for renderer selection
     const unitType = unit.unitType ?? 'jackal';
     const fullPalette = createColorPalette(ownership?.playerId);
@@ -516,7 +514,7 @@ export class EntityRenderer {
     const { x, y, rotation: bodyRot } = transform;
     const r = unit.collisionRadius;
 
-    const lod = this.computeUnitLod(r);
+    const lod = this.computeLod();
 
     const unitType = entity.commander ? 'commander' : (unit.unitType ?? 'jackal');
     let mounts: { x: number; y: number }[];
