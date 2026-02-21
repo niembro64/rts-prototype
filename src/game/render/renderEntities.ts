@@ -369,10 +369,8 @@ export class EntityRenderer {
       this.renderUnitTurrets(entity);
     }
 
-    // 6. Projectiles (clean up stale beam offsets inline, cap LOD by quality)
-    const projQuality = getEffectiveQuality();
-    const zoomProjLod: LodLevel = this.cameraZoom < 0.3 ? 'min' : this.cameraZoom < 0.8 ? 'low' : 'high';
-    const projectileLod: LodLevel = projQuality === 'min' ? 'min' : projQuality === 'low' ? (zoomProjLod === 'high' ? 'low' : zoomProjLod) : zoomProjLod;
+    // 6. Projectiles (clean up stale beam offsets inline, LOD via same system as units)
+    const projectileLod = this.computeUnitLod(10);
     this._reusableIdSet.clear();
     for (const entity of this.visibleProjectiles) {
       this._reusableIdSet.add(entity.id);
@@ -428,8 +426,6 @@ export class EntityRenderer {
     const isSelected = selectable?.selected ?? false;
 
     const lod = this.computeUnitLod(radius);
-    if (lod === 'min' && radius * this.cameraZoom < 2) return; // sub-pixel skip
-
     // Get unit type for renderer selection
     const unitType = unit.unitType ?? 'jackal';
     const fullPalette = createColorPalette(ownership?.playerId);
@@ -521,7 +517,6 @@ export class EntityRenderer {
     const r = unit.collisionRadius;
 
     const lod = this.computeUnitLod(r);
-    if (lod === 'min' && r * this.cameraZoom < 2) return; // sub-pixel skip
 
     const unitType = entity.commander ? 'commander' : (unit.unitType ?? 'jackal');
     let mounts: { x: number; y: number }[];

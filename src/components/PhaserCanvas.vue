@@ -388,12 +388,7 @@ const serverBarVars = computed(() =>
 );
 const clientBarVars = computed(() => barVars(CONTROL_BARS.themes.client));
 
-const battleLabel = computed(() => {
-  if (networkRole.value === 'client') return 'ONLINE BATTLE';
-  if (networkRole.value === 'host' && lobbyPlayers.value.length > 1)
-    return 'ONLINE BATTLE';
-  return 'LOCAL BATTLE';
-});
+const battleLabel = 'BATTLE';
 
 // Display values: always read from snapshot meta (server→snapshot→display)
 const displayServerTpsAvg = computed(
