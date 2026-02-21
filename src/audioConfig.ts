@@ -22,6 +22,8 @@ export const harmonicSeries = [
   1 / 14,
 ];
 
+export const harmonicSeriesBaseMultipler = 32;
+
 // All available synth sounds — any synth can be used for any sound slot
 export type SynthId =
   // One-shot percussive / tonal
@@ -149,7 +151,7 @@ export const AUDIO = {
     // Beam sound settings (oscillator + LFO + filter + noise)
     beam: {
       wave: 'triangle' as OscillatorType, // oscillator waveform
-      freq: 32 / harmonicSeries[8], // base frequency in Hz
+      freq: harmonicSeriesBaseMultipler / harmonicSeries[8], // base frequency in Hz
       randomFrequencyRange: 2, // random ± Hz offset applied at start (each instance gets a unique tone)
       lfoRate: 2, // frequency wobble rate in Hz
       lfoDepth: 1, // frequency wobble depth in Hz (±)
@@ -165,11 +167,11 @@ export const AUDIO = {
     // Force field sound settings (oscillator + LFO + filter + noise)
     force: {
       wave: 'triangle' as OscillatorType, // oscillator waveform
-      freq: 32, // base frequency in Hz
+      freq: harmonicSeriesBaseMultipler / harmonicSeries[0], // base frequency in Hz
       randomFrequencyRange: 1, // random ± Hz offset applied at start (each instance gets a unique tone)
       lfoRate: 10, // frequency wobble rate in Hz
       lfoDepth: 1, // frequency wobble depth in Hz (±)
-      filterFreq: 2000, // lowpass cutoff frequency
+      filterFreq: 4000, // lowpass cutoff frequency
       filterQ: 3, // filter resonance
       fadeIn: 0.2, // fade-in time in seconds
       oscVolume: 0.12, // main oscillator volume multiplier
