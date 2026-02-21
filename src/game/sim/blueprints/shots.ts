@@ -7,9 +7,9 @@
 
 import type { ProjectileBlueprint } from './types';
 
-export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
-  lightRound: {
-    id: 'lightRound',
+export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
+  lightShot: {
+    id: 'lightShot',
     damage: 2,
     speed: 200,
     mass: 0.3,
@@ -20,8 +20,8 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     splashOnExpiry: false,
     hitSound: { synth: 'heavy', volume: 0.2, playSpeed: 0.5 },
   },
-  heavyRound: {
-    id: 'heavyRound',
+  heavyShot: {
+    id: 'heavyShot',
     damage: 4,
     speed: 300,
     mass: 5,
@@ -32,8 +32,8 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     splashOnExpiry: false,
     hitSound: { synth: 'heavy', volume: 0.5, playSpeed: 0.2 },
   },
-  mortarShell: {
-    id: 'mortarShell',
+  mortarShot: {
+    id: 'mortarShot',
     damage: 30,
     speed: 200,
     mass: 2,
@@ -44,8 +44,8 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     splashOnExpiry: true,
     hitSound: { synth: 'heavy', volume: 1.0, playSpeed: 0.1 },
   },
-  cannonShell: {
-    id: 'cannonShell',
+  cannonShot: {
+    id: 'cannonShot',
     damage: 260,
     speed: 400,
     mass: 200.0,
@@ -84,8 +84,8 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     hitSound: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 },
   },
 
-  disruptorBolt: {
-    id: 'disruptorBolt',
+  disruptorShot: {
+    id: 'disruptorShot',
     damage: 9999,
     speed: 350,
     mass: 20.0,
@@ -99,8 +99,8 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
   },
 };
 
-export function getProjectileBlueprint(id: string): ProjectileBlueprint {
-  const bp = PROJECTILE_BLUEPRINTS[id];
+export function getShotBlueprint(id: string): ProjectileBlueprint {
+  const bp = SHOT_BLUEPRINTS[id];
   if (!bp) throw new Error(`Unknown projectile blueprint: ${id}`);
   return bp;
 }

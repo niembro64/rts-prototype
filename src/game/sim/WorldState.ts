@@ -380,7 +380,7 @@ export class WorldState {
     turretDrag?: number,
   ): Entity {
     const bp = getUnitBlueprint(unitType);
-    const weaponType = bp?.weapons[0]?.weaponId ?? 'gatling';
+    const weaponType = bp?.weapons[0]?.weaponId ?? 'gatlingTurret';
     const weaponConfig = getWeaponConfig(weaponType);
 
     const ranges = computeWeaponRanges(weaponConfig);

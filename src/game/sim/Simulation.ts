@@ -810,7 +810,7 @@ export class Simulation {
     }
 
     // Find the dgun weapon by config id
-    const dgunIdx = commander.weapons.findIndex(w => w.config.id === 'dgun');
+    const dgunIdx = commander.weapons.findIndex(w => w.config.id === 'dgunTurret');
     if (dgunIdx < 0) return;
     const dgunWeapon = commander.weapons[dgunIdx];
 
@@ -884,7 +884,7 @@ export class Simulation {
       velocityX,
       velocityY,
       projectileType: 'traveling',
-      weaponId: 'dgun',
+      weaponId: 'dgunTurret',
       playerId,
       sourceEntityId: commander.id,
       weaponIndex: dgunIdx,
@@ -896,7 +896,7 @@ export class Simulation {
       type: 'fire',
       x: spawnX,
       y: spawnY,
-      weaponId: 'dgun',
+      weaponId: 'dgunTurret',
     };
     this.onSimEvent?.(dgunSimEvent);
     this.pendingSimEvents.push(dgunSimEvent);

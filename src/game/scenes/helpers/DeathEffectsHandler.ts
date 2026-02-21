@@ -4,7 +4,7 @@ import type { EntityRenderer } from '../../render/renderEntities';
 import type { SimEvent } from '../../sim/combat';
 import { audioManager } from '../../audio/AudioManager';
 import { AUDIO } from '../../../audioConfig';
-import { getWeaponBlueprint } from '../../sim/blueprints';
+import { getTurretBlueprint } from '../../sim/blueprints';
 import {
   EXPLOSION_VELOCITY_MULTIPLIER,
   EXPLOSION_IMPACT_FORCE_MULTIPLIER,
@@ -185,7 +185,7 @@ export function handleSimEvent(
       if (!getSoundToggle('beam')) break;
       if (!AUDIO.beamGain) break;
       let laserEntry;
-      try { laserEntry = getWeaponBlueprint(event.weaponId).laserSound; } catch { break; }
+      try { laserEntry = getTurretBlueprint(event.weaponId).laserSound; } catch { break; }
       if (!laserEntry || !laserEntry.volume) break;
       if (event.entityId !== undefined) {
         audioManager.startLaserSound(event.entityId, 1, laserEntry.volume * AUDIO.beamGain, zoomVolume);
@@ -196,7 +196,7 @@ export function handleSimEvent(
       if (!getSoundToggle('field')) break;
       if (!AUDIO.fieldGain) break;
       let ffEntry;
-      try { ffEntry = getWeaponBlueprint(event.weaponId).fireSound; } catch { break; }
+      try { ffEntry = getTurretBlueprint(event.weaponId).fireSound; } catch { break; }
       if (!ffEntry || !ffEntry.volume) break;
       if (event.entityId !== undefined) {
         audioManager.startForceFieldSound(event.entityId, ffEntry.playSpeed, ffEntry.volume * AUDIO.fieldGain, zoomVolume);

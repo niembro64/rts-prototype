@@ -38,7 +38,7 @@ export function getUnitBuildConfig(unitId: string) {
   const bp = getUnitBlueprint(unitId);
   if (!bp) return undefined;
   return {
-    weaponId: bp.weapons[0]?.weaponId ?? 'gatling',
+    weaponId: bp.weapons[0]?.weaponId ?? 'gatlingTurret',
     name: bp.name,
     energyCost: bp.baseCost * COST_MULTIPLIER,
     collisionRadius: bp.collisionRadius,

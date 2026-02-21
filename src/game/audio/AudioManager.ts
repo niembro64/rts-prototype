@@ -2,7 +2,7 @@
 // Delegates synth work to helper modules; owns AudioContext, master gain, and continuous sound state.
 
 import { AUDIO } from '../../audioConfig';
-import { getWeaponBlueprint, getProjectileBlueprint, getUnitBlueprint } from '../sim/blueprints';
+import { getTurretBlueprint, getShotBlueprint, getUnitBlueprint } from '../sim/blueprints';
 import type { AudioToolkit } from './audioHelpers';
 import { FIRE_SYNTHS } from './fireSynths';
 import { HIT_SYNTHS } from './hitSynths';
@@ -90,7 +90,7 @@ export class AudioManager {
   playWeaponFire(weaponId: WeaponAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
     if (!AUDIO.fireGain) return;
     let entry;
-    try { entry = getWeaponBlueprint(weaponId).fireSound; } catch { return; }
+    try { entry = getTurretBlueprint(weaponId).fireSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];
@@ -107,7 +107,7 @@ export class AudioManager {
   playWeaponHit(projectileId: string, volumeMultiplier: number = 1): void {
     if (!AUDIO.hitGain) return;
     let entry;
-    try { entry = getProjectileBlueprint(projectileId).hitSound; } catch { return; }
+    try { entry = getShotBlueprint(projectileId).hitSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];

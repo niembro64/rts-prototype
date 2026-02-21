@@ -8,10 +8,10 @@
 import { SPATIAL_GRID_CELL_SIZE, FORCE_FIELD_TURRET } from '../../../config';
 import type { WeaponBlueprint } from './types';
 
-export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
-  gatling: {
-    id: 'gatling',
-    projectileId: 'lightRound',
+export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
+  gatlingTurret: {
+    id: 'gatlingTurret',
+    projectileId: 'lightShot',
     range: 100,
     cooldown: 400,
     spreadAngle: Math.PI / 12,
@@ -28,9 +28,9 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'burst-rifle', volume: 0.2, playSpeed: 0.5 },
   },
-  pulse: {
-    id: 'pulse',
-    projectileId: 'heavyRound',
+  pulseTurret: {
+    id: 'pulseTurret',
+    projectileId: 'heavyShot',
     range: 160,
     cooldown: 1800,
     burstCount: 2,
@@ -57,9 +57,9 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'burst-rifle', volume: 0.2, playSpeed: 0.3 },
   },
-  shotgun: {
-    id: 'shotgun',
-    projectileId: 'heavyRound',
+  shotgunTurret: {
+    id: 'shotgunTurret',
+    projectileId: 'heavyShot',
     range: 160,
     cooldown: 1500,
     pelletCount: 4,
@@ -86,9 +86,9 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'burst-rifle', volume: 0.4, playSpeed: 0.2 },
   },
-  mortar: {
-    id: 'mortar',
-    projectileId: 'mortarShell',
+  mortarTurret: {
+    id: 'mortarTurret',
+    projectileId: 'mortarShot',
     range: 400,
     cooldown: 6000,
     spreadAngle: Math.PI / 24,
@@ -105,9 +105,9 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 },
   },
-  cannon: {
-    id: 'cannon',
-    projectileId: 'cannonShell',
+  cannonTurret: {
+    id: 'cannonTurret',
+    projectileId: 'cannonShot',
     range: 360,
     cooldown: 3000,
     spreadAngle: Math.PI / 24,
@@ -124,8 +124,8 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'cannon', volume: 0.2, playSpeed: 0.8 },
   },
-  laserGun: {
-    id: 'laserGun',
+  laserTurret: {
+    id: 'laserTurret',
     projectileId: 'laserShot',
     range: 100,
     cooldown: 1500,
@@ -144,8 +144,8 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'laserGun', volume: 0.03, playSpeed: 0.6 },
   },
-  beamGun: {
-    id: 'beamGun',
+  beamTurret: {
+    id: 'beamTurret',
     projectileId: 'beamShot',
     range: 150,
     turretTurnAccel: 100,
@@ -162,8 +162,8 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     fireSound: { synth: 'laser-zap', volume: 0.2, playSpeed: 1.0 },
     laserSound: { synth: 'beam-hum', volume: 1.0, playSpeed: 1.0 },
   },
-  forceField: {
-    id: 'forceField',
+  forceTurret: {
+    id: 'forceTurret',
     range: SPATIAL_GRID_CELL_SIZE * 1.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
@@ -199,8 +199,8 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'force-field', volume: 0.5, playSpeed: 1.0 },
   },
-  megaForceField: {
-    id: 'megaForceField',
+  megaForceTurret: {
+    id: 'megaForceTurret',
     range: SPATIAL_GRID_CELL_SIZE * 1.3,
     turretTurnAccel: 30,
     turretDrag: 0.5,
@@ -236,9 +236,9 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'force-field', volume: 0.5, playSpeed: 2.0 },
   },
-  disruptor: {
-    id: 'disruptor',
-    projectileId: 'disruptorBolt',
+  disruptorTurret: {
+    id: 'disruptorTurret',
+    projectileId: 'disruptorShot',
     range: 150,
     cooldown: 0,
     turretTurnAccel: 40,
@@ -254,9 +254,9 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xff8800,
     fireSound: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 },
   },
-  dgun: {
-    id: 'dgun',
-    projectileId: 'disruptorBolt',
+  dgunTurret: {
+    id: 'dgunTurret',
+    projectileId: 'disruptorShot',
     range: 150,
     cooldown: 0,
     turretTurnAccel: 40,
@@ -275,8 +275,8 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
   },
 };
 
-export function getWeaponBlueprint(id: string): WeaponBlueprint {
-  const bp = WEAPON_BLUEPRINTS[id];
+export function getTurretBlueprint(id: string): WeaponBlueprint {
+  const bp = TURRET_BLUEPRINTS[id];
   if (!bp) throw new Error(`Unknown weapon blueprint: ${id}`);
   return bp;
 }

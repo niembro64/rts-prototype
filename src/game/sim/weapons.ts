@@ -1,9 +1,9 @@
 import type { WeaponConfig } from './types';
 import { RANGE_MULTIPLIERS } from '../../config';
-import { buildAllWeaponConfigs, WEAPON_BLUEPRINTS } from './blueprints';
+import { buildAllWeaponConfigs, TURRET_BLUEPRINTS } from './blueprints';
 
 // Union type of all registered weapon config keys (derived from blueprints)
-export type WeaponId = keyof typeof WEAPON_BLUEPRINTS;
+export type WeaponId = keyof typeof TURRET_BLUEPRINTS;
 
 // Turret configurations — built from blueprints at init time
 // Same shape as before, just derived from the blueprint single source of truth

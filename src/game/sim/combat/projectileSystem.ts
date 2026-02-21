@@ -539,7 +539,7 @@ export function checkProjectileCollisions(
         }
 
         // Add explosion audio event if there were hits or it's a mortar
-        if (primaryResult.hitEntityIds.length > 0 || config.id === 'mortar') {
+        if (primaryResult.hitEntityIds.length > 0 || config.id === 'mortarTurret') {
           // Use first hit entity for directional context (area splash, pick nearest)
           const firstHitEntity = primaryResult.hitEntityIds.length > 0
             ? world.getEntity(primaryResult.hitEntityIds[0]) : undefined;

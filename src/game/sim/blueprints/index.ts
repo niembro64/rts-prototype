@@ -3,13 +3,13 @@
  */
 
 export * from './types';
-export * from './projectiles';
-export * from './weapons';
+export * from './shots';
+export * from './turrets';
 export * from './units';
 
 import type { WeaponConfig, ForceFieldZoneConfig } from '../types';
-import { PROJECTILE_BLUEPRINTS } from './projectiles';
-import { WEAPON_BLUEPRINTS } from './weapons';
+import { SHOT_BLUEPRINTS } from './shots';
+import { TURRET_BLUEPRINTS } from './turrets';
 import type { ProjectileBlueprint, ForceFieldZoneRatioConfig } from './types';
 
 /** Compute a ForceFieldZoneConfig from ratio-based blueprint data and weapon range */
@@ -55,7 +55,7 @@ function getProjectileFields(bp: ProjectileBlueprint) {
  * This produces the same shape as TURRET_CONFIGS entries in weapons.ts.
  */
 export function buildWeaponConfig(weaponId: string): WeaponConfig {
-  const wb = WEAPON_BLUEPRINTS[weaponId];
+  const wb = TURRET_BLUEPRINTS[weaponId];
   if (!wb) throw new Error(`Unknown weapon blueprint: ${weaponId}`);
 
   const base: WeaponConfig = {
@@ -72,7 +72,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
 
   // Merge projectile fields if weapon has a projectile
   if (wb.projectileId) {
-    const pb = PROJECTILE_BLUEPRINTS[wb.projectileId];
+    const pb = SHOT_BLUEPRINTS[wb.projectileId];
     if (!pb) throw new Error(`Unknown projectile in weapon ${weaponId}: ${wb.projectileId}`);
     Object.assign(base, getProjectileFields(pb));
   }
@@ -104,7 +104,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
  */
 export function buildAllWeaponConfigs(): Record<string, WeaponConfig> {
   const result: Record<string, WeaponConfig> = {};
-  for (const id of Object.keys(WEAPON_BLUEPRINTS)) {
+  for (const id of Object.keys(TURRET_BLUEPRINTS)) {
     result[id] = buildWeaponConfig(id);
   }
   return result;
