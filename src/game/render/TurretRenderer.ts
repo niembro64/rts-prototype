@@ -24,7 +24,7 @@ export function drawTurret(
   spinAngle: number,
   entityId: EntityId,
 ): void {
-  const turretConfig = weapon.config.turret as TurretConfig | undefined;
+  const turretConfig = weapon.config.turretShape as TurretConfig | undefined;
   if (!turretConfig) return;
 
   // Min LOD: only force field zones (no barrel geometry)

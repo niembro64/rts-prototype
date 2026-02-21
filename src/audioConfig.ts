@@ -2,8 +2,25 @@
  * Audio Configuration
  *
  * Global audio types, synth IDs, and master volume tuning.
- * Per-weapon/projectile/unit sound entries are now in blueprints.
+ * All per-weapon/projectile/unit sound entries are centralized here.
  */
+
+export const harmonicSeries = [
+  1 / 1,
+  1 / 2,
+  1 / 3,
+  1 / 4,
+  1 / 5,
+  1 / 6,
+  1 / 7,
+  1 / 8,
+  1 / 9,
+  1 / 10,
+  1 / 11,
+  1 / 12,
+  1 / 13,
+  1 / 14,
+];
 
 // All available synth sounds — any synth can be used for any sound slot
 export type SynthId =
@@ -47,32 +64,119 @@ export const AUDIO = {
   fieldGain: 1.0, // Continuous force field sounds
   musicGain: 0.5, // Procedural music volume
 
-  // Continuous beam sound settings
-  beam: {
-    wave: 'sawtooth' as OscillatorType, // oscillator waveform
-    freq: 180, // base frequency in Hz
-    lfoRate: 8, // frequency wobble rate in Hz
-    lfoDepth: 15, // frequency wobble depth in Hz (±)
-    filterFreq: 1200, // lowpass cutoff frequency
-    filterQ: 10, // filter resonance
-    fadeIn: 0.12, // fade-in time in seconds
-    oscVolume: 0.2, // main oscillator volume multiplier
-    noiseVolume: 0.08, // noise layer volume multiplier
-    noiseBandFreq: 4000, // noise bandpass center frequency
-    noiseBandQ: 1, // noise bandpass Q
+  // ==================== EVENT SOUNDS ====================
+  event: {
+    // Per-turret fire sounds
+    fire: {
+      gatlingTurret: {
+        synth: 'burst-rifle' as SynthId,
+        volume: 0.2,
+        playSpeed: 0.5,
+      },
+      pulseTurret: {
+        synth: 'burst-rifle' as SynthId,
+        volume: 0.2,
+        playSpeed: 0.3,
+      },
+      shotgunTurret: {
+        synth: 'burst-rifle' as SynthId,
+        volume: 0.4,
+        playSpeed: 0.2,
+      },
+      cannonTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 0.8 },
+      mortarTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
+      laserTurret: {
+        synth: 'laserGun' as SynthId,
+        volume: 0.03,
+        playSpeed: 0.6,
+      },
+      beamTurret: {
+        synth: 'laser-zap' as SynthId,
+        volume: 0.2,
+        playSpeed: 1.0,
+      },
+      forceTurret: {
+        synth: 'force-field' as SynthId,
+        volume: 0.5,
+        playSpeed: 1.0,
+      },
+      megaForceTurret: {
+        synth: 'force-field' as SynthId,
+        volume: 0.5,
+        playSpeed: 2.0,
+      },
+      disruptorTurret: {
+        synth: 'cannon' as SynthId,
+        volume: 0.2,
+        playSpeed: 1.0,
+      },
+      dgunTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
+    } as Record<string, SoundEntry>,
+
+    // Per-turret laser/continuous weapon start sounds
+    laser: {
+      beamTurret: { synth: 'beam-hum' as SynthId, volume: 1.0, playSpeed: 1.0 },
+    } as Record<string, SoundEntry>,
+
+    // Per-projectile hit sounds
+    hit: {
+      lightShot: { synth: 'heavy' as SynthId, volume: 0.2, playSpeed: 0.5 },
+      mediumShot: { synth: 'heavy' as SynthId, volume: 0.5, playSpeed: 0.2 },
+      mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
+      heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },
+      laserShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
+      beamShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
+      disruptorShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 1.0 },
+    } as Record<string, SoundEntry>,
+
+    // Per-unit death sounds
+    death: {
+      jackal: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      lynx: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      daddy: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      badger: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      mongoose: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      tick: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      mammoth: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      widow: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      tarantula: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      commander: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+    } as Record<string, SoundEntry>,
   },
 
-  // Continuous force field sound settings
-  forceField: {
-    wave: 'triangle' as OscillatorType, // oscillator waveform
-    freq: 32, // base frequency in Hz
-    filterFreq: 2000, // lowpass cutoff frequency
-    filterQ: 3, // filter resonance
-    fadeIn: 0.2, // fade-in time in seconds
-    oscVolume: 0.12, // main oscillator volume multiplier
-    noiseVolume: 0.04, // noise layer volume multiplier
-    noiseBandFreq: 200, // noise bandpass center frequency
-    noiseBandQ: 2, // noise bandpass Q
+  // ==================== CONTINUOUS SOUNDS ====================
+  continuous: {
+    // Beam sound settings (oscillator + LFO + filter + noise)
+    beam: {
+      wave: 'triangle' as OscillatorType, // oscillator waveform
+      freq: 32 / harmonicSeries[8], // base frequency in Hz
+      randomFrequencyRange: 2, // random ± Hz offset applied at start (each instance gets a unique tone)
+      lfoRate: 2, // frequency wobble rate in Hz
+      lfoDepth: 1, // frequency wobble depth in Hz (±)
+      filterFreq: 1200, // lowpass cutoff frequency
+      filterQ: 10, // filter resonance
+      fadeIn: 0.12, // fade-in time in seconds
+      oscVolume: 0.2, // main oscillator volume multiplier
+      noiseVolume: 0.08, // noise layer volume multiplier
+      noiseBandFreq: 4000, // noise bandpass center frequency
+      noiseBandQ: 1, // noise bandpass Q
+    },
+
+    // Force field sound settings (oscillator + LFO + filter + noise)
+    force: {
+      wave: 'triangle' as OscillatorType, // oscillator waveform
+      freq: 32, // base frequency in Hz
+      randomFrequencyRange: 1, // random ± Hz offset applied at start (each instance gets a unique tone)
+      lfoRate: 10, // frequency wobble rate in Hz
+      lfoDepth: 1, // frequency wobble depth in Hz (±)
+      filterFreq: 2000, // lowpass cutoff frequency
+      filterQ: 3, // filter resonance
+      fadeIn: 0.2, // fade-in time in seconds
+      oscVolume: 0.12, // main oscillator volume multiplier
+      noiseVolume: 0.04, // noise layer volume multiplier
+      noiseBandFreq: 200, // noise bandpass center frequency
+      noiseBandQ: 2, // noise bandpass Q
+    },
   },
 
   // Music source: 'procedural' for generated music, 'midi' for MIDI file playback

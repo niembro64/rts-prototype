@@ -5,6 +5,7 @@
  * Moved from PROJECTILE_STATS in config.ts.
  */
 
+import { AUDIO } from '../../../audioConfig';
 import type { ProjectileBlueprint } from './types';
 
 export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
@@ -18,7 +19,7 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     primaryDamageRadius: 5,
     secondaryDamageRadius: 7,
     splashOnExpiry: false,
-    hitSound: { synth: 'heavy', volume: 0.2, playSpeed: 0.5 },
+    hitSound: AUDIO.event.hit.lightShot,
   },
   mediumShot: {
     id: 'mediumShot',
@@ -30,7 +31,7 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     primaryDamageRadius: 8,
     secondaryDamageRadius: 15,
     splashOnExpiry: false,
-    hitSound: { synth: 'heavy', volume: 0.5, playSpeed: 0.2 },
+    hitSound: AUDIO.event.hit.mediumShot,
   },
   mortarShot: {
     id: 'mortarShot',
@@ -42,7 +43,7 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     primaryDamageRadius: 70,
     secondaryDamageRadius: 110,
     splashOnExpiry: true,
-    hitSound: { synth: 'heavy', volume: 1.0, playSpeed: 0.1 },
+    hitSound: AUDIO.event.hit.mortarShot,
   },
   heavyShot: {
     id: 'heavyShot',
@@ -54,7 +55,7 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     primaryDamageRadius: 25,
     secondaryDamageRadius: 45,
     splashOnExpiry: true,
-    hitSound: { synth: 'heavy', volume: 1.0, playSpeed: 0.05 },
+    hitSound: AUDIO.event.hit.heavyShot,
   },
   laserShot: {
     id: 'laserShot',
@@ -69,7 +70,7 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     // knockBackForce: 0,
     hitForce: 1000,
     knockBackForce: 1000,
-    hitSound: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 },
+    hitSound: AUDIO.event.hit.laserShot,
   },
   beamShot: {
     id: 'beamShot',
@@ -81,7 +82,7 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     splashOnExpiry: false,
     hitForce: 1000,
     knockBackForce: 1000,
-    hitSound: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 },
+    hitSound: AUDIO.event.hit.beamShot,
   },
 
   disruptorShot: {
@@ -95,7 +96,7 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     secondaryDamageRadius: 70,
     splashOnExpiry: true,
     piercing: true,
-    hitSound: { synth: 'heavy', volume: 1.0, playSpeed: 1.0 },
+    hitSound: AUDIO.event.hit.disruptorShot,
   },
 };
 

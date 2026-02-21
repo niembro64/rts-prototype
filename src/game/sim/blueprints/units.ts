@@ -6,6 +6,7 @@
  * CHASSIS_MOUNTS, LEG_CONFIG, TREAD_CONFIG, WHEEL_CONFIG, UNIT_SHORT_NAMES, death sounds.
  */
 
+import { AUDIO } from '../../../audioConfig';
 import type { UnitBlueprint, MountPoint } from './types';
 
 // Compute widow's hexagonal mount points
@@ -50,7 +51,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     renderer: 'scout',
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.jackal,
   },
   lynx: {
     id: 'lynx',
@@ -75,7 +76,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     renderer: 'burst',
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.lynx,
   },
   daddy: {
     id: 'daddy',
@@ -95,7 +96,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       config: { thickness: 2, footSize: 0.14, lerpDuration: 300 },
     },
     renderer: 'forceField',
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.daddy,
   },
   badger: {
     id: 'badger',
@@ -120,7 +121,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     renderer: 'brawl',
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.badger,
   },
   mongoose: {
     id: 'mongoose',
@@ -146,7 +147,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     renderer: 'mortar',
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.mongoose,
   },
   tick: {
     id: 'tick',
@@ -166,7 +167,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       config: { thickness: 1.5, footSize: 0.08, lerpDuration: 160 },
     },
     renderer: 'snipe',
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.tick,
   },
   mammoth: {
     id: 'mammoth',
@@ -191,7 +192,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     renderer: 'tank',
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.mammoth,
   },
   widow: {
     id: 'widow',
@@ -220,7 +221,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'arachnid',
     weaponSeeRange: 400,
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.widow,
   },
   tarantula: {
     id: 'tarantula',
@@ -240,7 +241,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       config: { thickness: 4, footSize: 0.12, lerpDuration: 200 },
     },
     renderer: 'beam',
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.tarantula,
   },
   commander: {
     id: 'commander',
@@ -268,7 +269,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     renderer: 'commander',
     builder: { buildRange: 150 },
     dgun: { weaponId: 'dgunTurret', energyCost: 200 },
-    deathSound: { synth: 'explosion', volume: 1.0, playSpeed: 0.3 },
+    deathSound: AUDIO.event.death.commander,
   },
 };
 

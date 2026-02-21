@@ -100,7 +100,7 @@ export interface ForceFieldZoneConfig {
 export interface WeaponConfig {
   id: string;                    // Unique identifier (e.g., 'gatlingTurret', 'beamTurret', 'cannonTurret')
   projectileType?: string;       // Projectile stat key (e.g., 'lightShot', 'beamShot')
-  turret?: import('../../config').TurretConfig; // Turret visual config (barrel type, dimensions, spin)
+  turretShape?: import('../../config').TurretConfig; // Turret visual config (barrel type, dimensions, spin)
   damage: number;                // Base damage per hit
   range: number;                 // Attack range
   cooldown: number;              // Time between attacks (ms)

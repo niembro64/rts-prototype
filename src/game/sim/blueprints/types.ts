@@ -73,7 +73,7 @@ export interface WeaponBlueprint {
   color: number;
   turretTurnAccel: number;
   turretDrag: number;
-  turret: TurretConfig;
+  turretShape: TurretConfig;
   rangeMultiplierOverrides: RangeOverrides;
   // Optional firing modifiers
   spreadAngle?: number;

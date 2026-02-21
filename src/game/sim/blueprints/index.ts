@@ -65,7 +65,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
     color: wb.color,
     turretTurnAccel: wb.turretTurnAccel,
     turretDrag: wb.turretDrag,
-    turret: wb.turret,
+    turretShape: wb.turretShape,
     rangeMultiplierOverrides: wb.rangeMultiplierOverrides,
     damage: 0, // will be overridden below
   };

@@ -6,6 +6,7 @@
  */
 
 import { SPATIAL_GRID_CELL_SIZE, FORCE_FIELD_TURRET } from '../../../config';
+import { AUDIO } from '../../../audioConfig';
 import type { WeaponBlueprint } from './types';
 
 export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
@@ -17,7 +18,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     spreadAngle: Math.PI / 12,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    turret: { type: 'single', barrelLength: 1.2, barrelThickness: 2 },
+    turretShape: { type: 'single', barrelLength: 1.2, barrelThickness: 2 },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -26,7 +27,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: null,
     },
     color: 0xffffff,
-    fireSound: { synth: 'burst-rifle', volume: 0.2, playSpeed: 0.5 },
+    fireSound: AUDIO.event.fire.gatlingTurret,
   },
   pulseTurret: {
     id: 'pulseTurret',
@@ -38,7 +39,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     spreadAngle: Math.PI / 32,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    turret: {
+    turretShape: {
       type: 'multibarrel',
       barrelCount: 2,
       barrelLength: 1.7,
@@ -55,7 +56,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: null,
     },
     color: 0xffffff,
-    fireSound: { synth: 'burst-rifle', volume: 0.2, playSpeed: 0.3 },
+    fireSound: AUDIO.event.fire.pulseTurret,
   },
   shotgunTurret: {
     id: 'shotgunTurret',
@@ -67,7 +68,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     homingTurnRate: 3,
     turretTurnAccel: 5,
     turretDrag: 0.15,
-    turret: {
+    turretShape: {
       type: 'coneSpread',
       barrelCount: 5,
       barrelLength: 0.6,
@@ -84,7 +85,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: 0.8,
     },
     color: 0xffffff,
-    fireSound: { synth: 'burst-rifle', volume: 0.4, playSpeed: 0.2 },
+    fireSound: AUDIO.event.fire.shotgunTurret,
   },
   cannonTurret: {
     id: 'cannonTurret',
@@ -94,7 +95,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     spreadAngle: Math.PI / 24,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    turret: { type: 'single', barrelLength: 1.4, barrelThickness: 7 },
+    turretShape: { type: 'single', barrelLength: 1.4, barrelThickness: 7 },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -103,7 +104,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: null,
     },
     color: 0xffffff,
-    fireSound: { synth: 'cannon', volume: 0.2, playSpeed: 0.8 },
+    fireSound: AUDIO.event.fire.cannonTurret,
   },
   mortarTurret: {
     id: 'mortarTurret',
@@ -113,7 +114,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     spreadAngle: Math.PI / 24,
     turretTurnAccel: 40,
     turretDrag: 0.4,
-    turret: { type: 'single', barrelLength: 0.75, barrelThickness: 6 },
+    turretShape: { type: 'single', barrelLength: 0.75, barrelThickness: 6 },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -122,7 +123,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: null,
     },
     color: 0xffffff,
-    fireSound: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 },
+    fireSound: AUDIO.event.fire.mortarTurret,
   },
   laserTurret: {
     id: 'laserTurret',
@@ -133,7 +134,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     spreadAngle: 0,
     turretTurnAccel: 100,
     turretDrag: 0.6,
-    turret: { type: 'single', barrelLength: 1.0, barrelThickness: 2 },
+    turretShape: { type: 'single', barrelLength: 1.0, barrelThickness: 2 },
     rangeMultiplierOverrides: {
       see: null,
       fire: 0.9,
@@ -142,7 +143,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: 0.7,
     },
     color: 0xffffff,
-    fireSound: { synth: 'laserGun', volume: 0.03, playSpeed: 0.6 },
+    fireSound: AUDIO.event.fire.laserTurret,
   },
   beamTurret: {
     id: 'beamTurret',
@@ -150,7 +151,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     range: 150,
     turretTurnAccel: 100,
     turretDrag: 0.4,
-    turret: { type: 'beamEmitter', barrelLength: 0.6, barrelThickness: 3.5 },
+    turretShape: { type: 'beamEmitter', barrelLength: 0.6, barrelThickness: 3.5 },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -159,8 +160,8 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: null,
     },
     color: 0xffffff,
-    fireSound: { synth: 'laser-zap', volume: 0.2, playSpeed: 1.0 },
-    laserSound: { synth: 'beam-hum', volume: 1.0, playSpeed: 1.0 },
+    fireSound: AUDIO.event.fire.beamTurret,
+    laserSound: AUDIO.event.laser.beamTurret,
   },
   forceTurret: {
     id: 'forceTurret',
@@ -170,7 +171,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     isForceField: true,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 500,
-    turret: { type: 'forceField', grate: FORCE_FIELD_TURRET.forceField },
+    turretShape: { type: 'forceField', grate: FORCE_FIELD_TURRET.forceField },
     push: {
       innerRatio: 0.0,
       outerRatio: 0.8,
@@ -197,7 +198,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: 1.5,
     },
     color: 0xffffff,
-    fireSound: { synth: 'force-field', volume: 0.5, playSpeed: 1.0 },
+    fireSound: AUDIO.event.fire.forceTurret,
   },
   megaForceTurret: {
     id: 'megaForceTurret',
@@ -207,7 +208,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     isForceField: true,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 500,
-    turret: { type: 'forceField', grate: FORCE_FIELD_TURRET.megaForceField },
+    turretShape: { type: 'forceField', grate: FORCE_FIELD_TURRET.megaForceField },
     push: {
       innerRatio: 0.0,
       outerRatio: 0.5,
@@ -234,7 +235,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: 1.5,
     },
     color: 0xffffff,
-    fireSound: { synth: 'force-field', volume: 0.5, playSpeed: 2.0 },
+    fireSound: AUDIO.event.fire.megaForceTurret,
   },
   disruptorTurret: {
     id: 'disruptorTurret',
@@ -243,7 +244,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     cooldown: 0,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    turret: { type: 'beamEmitter', barrelLength: 0.7, barrelThickness: 4 },
+    turretShape: { type: 'beamEmitter', barrelLength: 0.7, barrelThickness: 4 },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -252,7 +253,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: null,
     },
     color: 0xff8800,
-    fireSound: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 },
+    fireSound: AUDIO.event.fire.disruptorTurret,
   },
   dgunTurret: {
     id: 'dgunTurret',
@@ -261,7 +262,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     cooldown: 0,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    turret: { type: 'beamEmitter', barrelLength: 0.7, barrelThickness: 4 },
+    turretShape: { type: 'beamEmitter', barrelLength: 0.7, barrelThickness: 4 },
     rangeMultiplierOverrides: {
       see: null,
       fire: null,
@@ -271,7 +272,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     },
     isManualFire: true,
     color: 0xff8800,
-    fireSound: { synth: 'cannon', volume: 0.2, playSpeed: 1.0 },
+    fireSound: AUDIO.event.fire.dgunTurret,
   },
 };
 

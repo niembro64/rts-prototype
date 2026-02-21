@@ -20,6 +20,7 @@ export interface ContinuousSound {
 export interface ContinuousSoundConfig {
   wave: OscillatorType;
   freq: number;
+  randomFrequencyRange?: number;
   filterFreq: number;
   filterQ: number;
   fadeIn: number;
@@ -47,7 +48,10 @@ export function startContinuousSound(
   if (!gain) return null;
 
   osc.type = config.wave;
-  osc.frequency.value = config.freq * speed;
+  const freqOffset = config.randomFrequencyRange
+    ? (Math.random() * 2 - 1) * config.randomFrequencyRange
+    : 0;
+  osc.frequency.value = (config.freq + freqOffset) * speed;
 
   // Optional LFO for frequency wobble
   if (config.lfoRate && config.lfoDepth) {
@@ -194,10 +198,11 @@ export function updateContinuousZoom(
 
 // Get the ContinuousSoundConfig for beam from AUDIO config
 export function getBeamConfig(): ContinuousSoundConfig {
-  const bc = AUDIO.beam;
+  const bc = AUDIO.continuous.beam;
   return {
     wave: bc.wave,
     freq: bc.freq,
+    randomFrequencyRange: bc.randomFrequencyRange,
     filterFreq: bc.filterFreq,
     filterQ: bc.filterQ,
     fadeIn: bc.fadeIn,
@@ -212,10 +217,11 @@ export function getBeamConfig(): ContinuousSoundConfig {
 
 // Get the ContinuousSoundConfig for force field from AUDIO config
 export function getForceFieldConfig(): ContinuousSoundConfig {
-  const fc = AUDIO.forceField;
+  const fc = AUDIO.continuous.force;
   return {
     wave: fc.wave,
     freq: fc.freq,
+    randomFrequencyRange: fc.randomFrequencyRange,
     filterFreq: fc.filterFreq,
     filterQ: fc.filterQ,
     fadeIn: fc.fadeIn,
