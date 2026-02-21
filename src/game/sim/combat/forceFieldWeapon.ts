@@ -5,8 +5,7 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type { ProjectileVelocityUpdateEvent } from './types';
-import { normalizeAngle } from './combatUtils';
-import { magnitude } from '../../math';
+import { magnitude, isPointInSlice } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 
@@ -86,35 +85,6 @@ function getForceFieldZones(push: import('../types').ForceFieldZoneConfig | null
   return _zones;
 }
 
-// Check if a point is within a pie slice (annular ring between minRadius and maxRadius)
-// Takes pre-computed dx, dy, dist to avoid redundant sqrt when caller already has them.
-// When isFullCircle is true, skips the expensive atan2 angle checks (360° fields).
-function isPointInSlicePrecomputed(
-  dx: number, dy: number, dist: number,
-  sliceDirection: number,
-  sliceHalfAngle: number,
-  maxRadius: number,
-  targetRadius: number,
-  minRadius: number,
-  isFullCircle: boolean
-): boolean {
-  // Check outer distance (accounting for target radius)
-  if (dist > maxRadius + targetRadius) return false;
-
-  // Check inner distance (target must be outside inner radius)
-  if (minRadius > 0 && dist + targetRadius < minRadius) return false;
-
-  // Full-circle force fields skip the angle check entirely (avoids 2x atan2)
-  if (isFullCircle) return true;
-
-  // Check angle (accounting for target angular size)
-  const angleToPoint = Math.atan2(dy, dx);
-  const angleDiff = normalizeAngle(angleToPoint - sliceDirection);
-  const angularSize = dist > 0 ? Math.atan2(targetRadius, dist) : Math.PI;
-
-  return Math.abs(angleDiff) <= sliceHalfAngle + angularSize;
-}
-
 // Apply force field damage (continuous pie-slice AoE with dual push/pull zones)
 export function applyForceFieldDamage(
   world: WorldState,
@@ -191,7 +161,7 @@ export function applyForceFieldDamage(
         const dist = magnitude(dx, dy);
 
         // Check if in overall slice (precomputed avoids redundant sqrt)
-        if (!isPointInSlicePrecomputed(
+        if (!isPointInSlice(
           dx, dy, dist, turretAngle, sliceHalfAngle,
           effectiveOuter, targetRadius, effectiveInner, isFullCircle
         )) continue;
@@ -244,7 +214,7 @@ export function applyForceFieldDamage(
         const bdy = building.transform.y - weaponY;
         const bdist = magnitude(bdx, bdy);
 
-        if (!isPointInSlicePrecomputed(
+        if (!isPointInSlice(
           bdx, bdy, bdist, turretAngle, sliceHalfAngle,
           effectiveOuter, buildingRadius, effectiveInner, isFullCircle
         )) continue;
@@ -279,7 +249,7 @@ export function applyForceFieldDamage(
         const distSq = dx * dx + dy * dy;
         const dist = Math.sqrt(distSq);
 
-        if (!isPointInSlicePrecomputed(
+        if (!isPointInSlice(
           dx, dy, dist, turretAngle, sliceHalfAngle,
           effectiveOuter, projRadius, effectiveInner, isFullCircle
         )) continue;

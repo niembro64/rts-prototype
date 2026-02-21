@@ -6,10 +6,11 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
-import { getWeaponWorldPosition } from '../../math';
+import { getWeaponWorldPosition, applyHomingSteering } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, applyDirectionalKnockback, emitBeamHitAudio } from './damageHelpers';
+import { getBarrelTipOffset } from './combatUtils';
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
@@ -164,6 +165,7 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       // Create projectile(s)
       const pellets = config.pelletCount ?? 1;
       const spreadAngle = config.spreadAngle ?? 0;
+      const barrelOffset = getBarrelTipOffset(config, unit.unit.collisionRadius);
 
       for (let i = 0; i < pellets; i++) {
         // Calculate spread — each pellet gets a random angle within the cone
@@ -175,9 +177,9 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
         const fireCos = Math.cos(angle);
         const fireSin = Math.sin(angle);
 
-        // Spawn position
-        const spawnX = weaponX + fireCos * 5;
-        const spawnY = weaponY + fireSin * 5;
+        // Spawn position at barrel tip
+        const spawnX = weaponX + fireCos * barrelOffset;
+        const spawnY = weaponY + fireSin * barrelOffset;
 
         if (isBeamWeapon) {
           // Create beam using weapon's fireRange
@@ -217,9 +219,8 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
             projVx += unit.unit.velocityX ?? 0;
             projVy += unit.unit.velocityY ?? 0;
             // Turret rotational velocity at fire point (tangential = omega * r)
-            // Fire point is 5px along barrel from weapon mount
-            const barrelDx = fireCos * 5;
-            const barrelDy = fireSin * 5;
+            const barrelDx = fireCos * barrelOffset;
+            const barrelDy = fireSin * barrelOffset;
             const omega = weapon.turretAngularVelocity;
             projVx += -barrelDy * omega;
             projVy += barrelDx * omega;
@@ -322,26 +323,15 @@ export function updateProjectiles(
       if (proj.homingTargetId !== undefined) {
         const homingTarget = world.getEntity(proj.homingTargetId);
         if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
-          const dx = homingTarget.transform.x - entity.transform.x;
-          const dy = homingTarget.transform.y - entity.transform.y;
-          const desiredAngle = Math.atan2(dy, dx);
-          const currentAngle = Math.atan2(proj.velocityY, proj.velocityX);
-
-          // Shortest angular difference
-          let angleDiff = desiredAngle - currentAngle;
-          while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-          while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-
-          // Clamp to max turn rate
-          const maxTurn = (proj.homingTurnRate ?? 0) * dtSec;
-          const turn = Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
-
-          // Apply turn (preserve speed)
-          const newAngle = currentAngle + turn;
-          const speed = Math.sqrt(proj.velocityX * proj.velocityX + proj.velocityY * proj.velocityY);
-          proj.velocityX = Math.cos(newAngle) * speed;
-          proj.velocityY = Math.sin(newAngle) * speed;
-          entity.transform.rotation = newAngle;
+          const steered = applyHomingSteering(
+            proj.velocityX, proj.velocityY,
+            homingTarget.transform.x, homingTarget.transform.y,
+            entity.transform.x, entity.transform.y,
+            proj.homingTurnRate ?? 0, dtSec
+          );
+          proj.velocityX = steered.velocityX;
+          proj.velocityY = steered.velocityY;
+          entity.transform.rotation = steered.rotation;
 
           // Emit velocity update so clients can correct dead-reckoning drift
           _homingVelocityUpdates.push({
@@ -415,9 +405,10 @@ export function updateProjectiles(
           weaponY = wp.y;
         }
 
-        // Beam starts at weapon position
-        proj.startX = weaponX + dirX * 5;
-        proj.startY = weaponY + dirY * 5;
+        // Beam starts at barrel tip
+        const beamBarrelOffset = getBarrelTipOffset(proj.config, source.unit.collisionRadius);
+        proj.startX = weaponX + dirX * beamBarrelOffset;
+        proj.startY = weaponY + dirY * beamBarrelOffset;
 
         // Use weapon's fireRange for consistent beam length (not proj.config.range)
         const beamLength = weapon.ranges.engage.acquire;

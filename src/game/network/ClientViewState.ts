@@ -13,7 +13,8 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getWeaponConfig } from '../sim/weapons';
-import { lerp, lerpAngle, getWeaponWorldPosition } from '../math';
+import { getBarrelTipOffset } from '../sim/combat/combatUtils';
+import { lerp, lerpAngle, getWeaponWorldPosition, lineCircleIntersectionT, applyHomingSteering } from '../math';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
@@ -433,9 +434,10 @@ export class ClientViewState {
             const unitSin = Math.sin(source.transform.rotation);
             const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
 
-            // Beam starts 5 units forward from weapon position
-            const startX = wp.x + dirX * 5;
-            const startY = wp.y + dirY * 5;
+            // Beam starts at barrel tip
+            const beamBarrelOffset = getBarrelTipOffset(entity.projectile.config, source.unit!.collisionRadius);
+            const startX = wp.x + dirX * beamBarrelOffset;
+            const startY = wp.y + dirY * beamBarrelOffset;
 
             // Full-range beam end
             const fullEndX = startX + dirX * weapon.ranges.engage.acquire;
@@ -466,23 +468,15 @@ export class ClientViewState {
           if (proj.homingTargetId !== undefined) {
             const homingTarget = this.entities.get(proj.homingTargetId);
             if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
-              const dx = homingTarget.transform.x - entity.transform.x;
-              const dy = homingTarget.transform.y - entity.transform.y;
-              const desiredAngle = Math.atan2(dy, dx);
-              const currentAngle = Math.atan2(proj.velocityY, proj.velocityX);
-
-              let angleDiff = desiredAngle - currentAngle;
-              while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-              while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-
-              const maxTurn = (proj.homingTurnRate ?? 0) * dt;
-              const turn = Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
-
-              const newAngle = currentAngle + turn;
-              const speed = Math.sqrt(proj.velocityX * proj.velocityX + proj.velocityY * proj.velocityY);
-              proj.velocityX = Math.cos(newAngle) * speed;
-              proj.velocityY = Math.sin(newAngle) * speed;
-              entity.transform.rotation = newAngle;
+              const steered = applyHomingSteering(
+                proj.velocityX, proj.velocityY,
+                homingTarget.transform.x, homingTarget.transform.y,
+                entity.transform.x, entity.transform.y,
+                proj.homingTurnRate ?? 0, dt
+              );
+              proj.velocityX = steered.velocityX;
+              proj.velocityY = steered.velocityY;
+              entity.transform.rotation = steered.rotation;
             } else {
               proj.homingTargetId = undefined;
             }
@@ -527,15 +521,16 @@ export class ClientViewState {
     if (spawn.projectileType !== 'beam') {
       const source = this.entities.get(spawn.sourceEntityId);
       const weapon = source?.weapons?.[spawn.weaponIndex];
-      if (source && weapon) {
+      if (source && source.unit && weapon) {
         const unitCos = Math.cos(source.transform.rotation);
         const unitSin = Math.sin(source.transform.rotation);
         const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
 
-        // 5 units forward from weapon in firing direction (same as server)
+        // Forward from weapon in firing direction (same as server)
         const turretAngle = weapon.turretRotation;
-        spawnX = wp.x + Math.cos(turretAngle) * 5;
-        spawnY = wp.y + Math.sin(turretAngle) * 5;
+        const projBarrelOffset = getBarrelTipOffset(config, source.unit.collisionRadius);
+        spawnX = wp.x + Math.cos(turretAngle) * projBarrelOffset;
+        spawnY = wp.y + Math.sin(turretAngle) * projBarrelOffset;
       }
     }
 
@@ -591,15 +586,8 @@ export class ClientViewState {
     for (const unit of this.cache.getUnits()) {
       if (unit.id === sourceId) continue;
       const r = unit.unit?.collisionRadius ?? 15;
-      const fx = sx - unit.transform.x;
-      const fy = sy - unit.transform.y;
-      const a = lenSq;
-      const b = 2 * (fx * dx + fy * dy);
-      const c = fx * fx + fy * fy - r * r;
-      const disc = b * b - 4 * a * c;
-      if (disc < 0) continue;
-      const t = (-b - Math.sqrt(disc)) / (2 * a);
-      if (t > 0 && t < closest) closest = t;
+      const t = lineCircleIntersectionT(sx, sy, ex, ey, unit.transform.x, unit.transform.y, r);
+      if (t !== null && t > 0 && t < closest) closest = t;
     }
 
     // Check buildings (line-vs-AABB using slab method)

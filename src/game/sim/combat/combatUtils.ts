@@ -1,6 +1,6 @@
 // Combat utility functions
 
-import type { Entity } from '../types';
+import type { Entity, WeaponConfig } from '../types';
 import { distance, normalizeAngle, magnitude } from '../../math';
 
 // Re-export common math functions for backward compatibility
@@ -16,6 +16,14 @@ export function getTargetRadius(target: Entity): number {
     return magnitude(bWidth, bHeight) / 2;
   }
   return 0;
+}
+
+// Get barrel tip offset in pixels from weapon mount point.
+// Uses the weapon's turret barrel length scaled by the unit's visual radius.
+export function getBarrelTipOffset(config: WeaponConfig, unitRadius: number): number {
+  const turret = config.turretShape;
+  if (!turret || turret.type === 'forceField') return unitRadius;
+  return unitRadius * turret.barrelLength;
 }
 
 // Get angle to face based on movement (or body direction if stationary)

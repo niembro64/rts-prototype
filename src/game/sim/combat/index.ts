@@ -3,9 +3,10 @@
 
 // Types
 export type { SimEvent, ImpactContext, FireWeaponsResult, CollisionResult, DeathContext, WeaponAudioId } from './types';
+export type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from './types';
 
 // Utility functions
-export { distance, getTargetRadius, normalizeAngle, getMovementAngle } from './combatUtils';
+export { distance, getTargetRadius, normalizeAngle, getMovementAngle, getBarrelTipOffset } from './combatUtils';
 
 // Turret rotation
 export { updateTurretRotation } from './turretSystem';
@@ -20,7 +21,7 @@ export { updateLaserSounds, emitLaserStopsForEntity, emitLaserStopsForTarget } f
 export { updateForceFieldSounds, emitForceFieldStopsForEntity } from './forceFieldSoundSystem';
 
 // Force field weapons
-export { updateForceFieldState, applyForceFieldDamage } from './forceFieldWeapon';
+export { updateForceFieldState, applyForceFieldDamage, resetForceFieldBuffers } from './forceFieldWeapon';
 
 // Projectiles
 export { fireWeapons, updateProjectiles, checkProjectileCollisions } from './projectileSystem';

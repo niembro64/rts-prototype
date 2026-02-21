@@ -1,7 +1,9 @@
 import { WorldState } from './WorldState';
-import { CommandQueue, type Command, type MoveCommand, type SelectCommand, type StartBuildCommand, type QueueUnitCommand, type CancelQueueItemCommand, type SetRallyPointCommand, type SetFactoryWaypointsCommand, type FireDGunCommand, type RepairCommand } from './commands';
-import type { Entity, EntityId, PlayerId, UnitAction } from './types';
-import { magnitude, distance, getWeaponWorldPosition } from '../math';
+import { CommandQueue } from './commands';
+import type { Entity, EntityId, PlayerId } from './types';
+import { magnitude } from '../math';
+import { executeCommand, type CommandContext } from './commandExecution';
+import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
 import {
   updateTargetingAndFiringState,
   updateTurretRotation,
@@ -77,9 +79,7 @@ export class Simulation {
   private _deadBuildingIdsBuf: EntityId[] = [];
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
-  private _energyConsumers: { entity: Entity; type: 'factory' | 'building' | 'heal'; remainingCost: number; playerId: PlayerId }[] = [];
-  private _consumersByPlayer: Map<PlayerId, number[]> = new Map(); // playerId → indices into _energyConsumers
-  private _buildTargetSet: Set<EntityId> = new Set(); // entities being actively built by builders
+  private energyBuffers: EnergyBuffers = createEnergyBuffers();
 
   // Callback for when units die (to clean up physics bodies)
   // deathContexts contains info about the killing blow for directional explosions
@@ -177,16 +177,23 @@ export class Simulation {
     const tick = this.world.getTick();
 
     // Process commands for this tick
+    const cmdCtx: CommandContext = {
+      world: this.world,
+      constructionSystem: this.constructionSystem,
+      pendingProjectileSpawns: this.pendingProjectileSpawns,
+      pendingSimEvents: this.pendingSimEvents,
+      onSimEvent: this.onSimEvent,
+    };
     const commands = this.commandQueue.getCommandsForTick(tick);
     for (const command of commands) {
-      this.executeCommand(command);
+      executeCommand(cmdCtx, command);
     }
 
     // Update economy (income, production)
     economyManager.update(dtMs);
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
-    this.distributeEnergy(dtMs);
+    distributeEnergy(this.world, dtMs, this.energyBuffers);
 
     // Check construction completion
     this.constructionSystem.update(this.world, dtMs);
@@ -259,138 +266,6 @@ export class Simulation {
     // Update projectile positions (for force field spatial queries)
     for (const proj of this.world.getProjectiles()) {
       spatialGrid.updateProjectile(proj);
-    }
-  }
-
-  // Distribute energy equally among all active consumers for each player.
-  // Consumers: factories producing units, buildings under construction (with builders),
-  // and commanders building/healing.
-  private distributeEnergy(dtMs: number): void {
-    const dtSec = dtMs / 1000;
-    const consumers = this._energyConsumers;
-    consumers.length = 0;
-    const byPlayer = this._consumersByPlayer;
-    byPlayer.clear();
-
-    const addConsumer = (playerId: PlayerId, entity: Entity, type: 'factory' | 'building' | 'heal', remainingCost: number) => {
-      const idx = consumers.length;
-      consumers.push({ entity, type, remainingCost, playerId });
-      let arr = byPlayer.get(playerId);
-      if (!arr) {
-        arr = [];
-        byPlayer.set(playerId, arr);
-      }
-      arr.push(idx);
-    };
-
-    // Single pass over all entities: collect builder targets, factories, and buildables
-    const buildTargets = this._buildTargetSet;
-    buildTargets.clear();
-    const allEntities = this.world.getAllEntities();
-
-    // First pass: collect builder targets + factory consumers
-    for (const entity of allEntities) {
-      const targetId = entity.builder?.currentBuildTarget;
-      if (targetId != null) buildTargets.add(targetId);
-
-      if (entity.factory?.isProducing && entity.factory.buildQueue.length > 0 &&
-          entity.ownership && entity.buildable?.isComplete) {
-        const f = entity.factory;
-        const remaining = f.currentBuildCost * (1 - f.currentBuildProgress);
-        if (remaining > 0) {
-          addConsumer(entity.ownership.playerId, entity, 'factory', remaining);
-        }
-      }
-    }
-
-    // Second pass: find buildables with assigned builders
-    for (const entity of allEntities) {
-      if (!entity.buildable || entity.buildable.isComplete || entity.buildable.isGhost) continue;
-      if (!entity.ownership) continue;
-      if (!buildTargets.has(entity.id)) continue;
-      const remaining = entity.buildable.energyCost * (1 - entity.buildable.buildProgress);
-      if (remaining > 0) {
-        addConsumer(entity.ownership.playerId, entity, 'building', remaining);
-      }
-    }
-
-    // 3. Commander consumers — building or healing targets
-    for (const commander of this.world.getUnits()) {
-      if (!commander.commander || !commander.builder || !commander.ownership) continue;
-      if (!commander.unit || commander.unit.hp <= 0) continue;
-      const actions = commander.unit.actions;
-      if (actions.length === 0) continue;
-      const action = actions[0];
-      if (action.type !== 'build' && action.type !== 'repair') continue;
-
-      const targetId = action.type === 'build' ? action.buildingId : action.targetId;
-      if (!targetId) continue;
-      const target = this.world.getEntity(targetId);
-      if (!target) continue;
-
-      // Check range
-      const dist = distance(commander.transform.x, commander.transform.y, target.transform.x, target.transform.y);
-      if (dist > commander.builder.buildRange) continue;
-
-      if (target.buildable && !target.buildable.isComplete && !target.buildable.isGhost) {
-        // Commander building — check if this building is already registered as a construction consumer
-        // If so, it gets shared energy from both sources (builder + commander = 2 consumers)
-        // Actually, commander building and builder building are the same consumer (the building itself).
-        // We should not double-count. Check if already added.
-        let alreadyAdded = false;
-        const playerIndices = byPlayer.get(commander.ownership.playerId);
-        if (playerIndices) {
-          for (const idx of playerIndices) {
-            if (consumers[idx].entity.id === target.id && consumers[idx].type === 'building') {
-              alreadyAdded = true;
-              break;
-            }
-          }
-        }
-        if (!alreadyAdded) {
-          const remaining = target.buildable.energyCost * (1 - target.buildable.buildProgress);
-          if (remaining > 0) {
-            addConsumer(commander.ownership.playerId, target, 'building', remaining);
-          }
-        }
-      } else if (target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp) {
-        // Commander healing
-        const healCostPerHp = 0.5;
-        const hpToHeal = target.unit.maxHp - target.unit.hp;
-        const remaining = hpToHeal * healCostPerHp;
-        if (remaining > 0) {
-          addConsumer(commander.ownership.playerId, target, 'heal', remaining);
-        }
-      }
-    }
-
-    // Distribute stockpile equally among consumers for each player
-    for (const [playerId, indices] of byPlayer) {
-      const economy = economyManager.getEconomy(playerId);
-      if (!economy || indices.length === 0) continue;
-
-      const equalShare = economy.stockpile / indices.length;
-      let totalSpent = 0;
-
-      for (const idx of indices) {
-        const c = consumers[idx];
-        const energyToSpend = Math.min(equalShare, c.remainingCost);
-        totalSpent += energyToSpend;
-
-        if (c.type === 'factory') {
-          c.entity.factory!.currentBuildProgress += energyToSpend / c.entity.factory!.currentBuildCost;
-        } else if (c.type === 'building') {
-          c.entity.buildable!.buildProgress += energyToSpend / c.entity.buildable!.energyCost;
-        } else if (c.type === 'heal') {
-          // Convert energy to HP (healCostPerHp = 0.5)
-          const hpHealed = energyToSpend / 0.5;
-          const unit = c.entity.unit!;
-          unit.hp = Math.min(unit.hp + hpHealed, unit.maxHp);
-        }
-      }
-
-      economy.stockpile -= totalSpent;
-      economyManager.recordExpenditure(playerId, totalSpent / dtSec);
     }
   }
 
@@ -611,342 +486,6 @@ export class Simulation {
     }
   }
 
-  // Execute a command
-  private executeCommand(command: Command): void {
-    switch (command.type) {
-      case 'select':
-        this.executeSelectCommand(command);
-        break;
-      case 'move':
-        this.executeMoveCommand(command);
-        break;
-      case 'clearSelection':
-        this.world.clearSelection();
-        break;
-      case 'startBuild':
-        this.executeStartBuildCommand(command);
-        break;
-      case 'queueUnit':
-        this.executeQueueUnitCommand(command);
-        break;
-      case 'cancelQueueItem':
-        this.executeCancelQueueItemCommand(command);
-        break;
-      case 'setRallyPoint':
-        this.executeSetRallyPointCommand(command);
-        break;
-      case 'setFactoryWaypoints':
-        this.executeSetFactoryWaypointsCommand(command);
-        break;
-      case 'fireDGun':
-        this.executeFireDGunCommand(command);
-        break;
-      case 'repair':
-        this.executeRepairCommand(command);
-        break;
-    }
-  }
-
-  // Execute select command
-  private executeSelectCommand(command: SelectCommand): void {
-    if (!command.additive) {
-      this.world.clearSelection();
-    }
-    this.world.selectEntities(command.entityIds);
-  }
-
-  // Execute move command with action queue support
-  private executeMoveCommand(command: MoveCommand): void {
-    // Collect valid units without .map/.filter allocation
-    const entityIds = command.entityIds;
-    let unitCount = 0;
-
-    // First pass: count valid units to size the iteration
-    for (let i = 0; i < entityIds.length; i++) {
-      const e = this.world.getEntity(entityIds[i]);
-      if (e !== undefined && e.type === 'unit') unitCount++;
-    }
-
-    if (unitCount === 0) return;
-
-    // Handle individual targets (line move)
-    if (command.individualTargets && command.individualTargets.length === entityIds.length) {
-      for (let i = 0; i < entityIds.length; i++) {
-        const unit = this.world.getEntity(entityIds[i]);
-        if (!unit || unit.type !== 'unit' || !unit.unit) continue;
-        const target = command.individualTargets[i];
-        const action: UnitAction = {
-          type: command.waypointType,
-          x: target.x,
-          y: target.y,
-        };
-        this.addActionToUnit(unit, action, command.queue);
-      }
-    } else if (command.targetX !== undefined && command.targetY !== undefined) {
-      // Group move with formation spreading
-      const spacing = 40;
-      const unitsPerRow = Math.ceil(Math.sqrt(unitCount));
-
-      let index = 0;
-      for (let i = 0; i < entityIds.length; i++) {
-        const unit = this.world.getEntity(entityIds[i]);
-        if (!unit || unit.type !== 'unit' || !unit.unit) continue;
-
-        // Grid formation offset
-        const row = Math.floor(index / unitsPerRow);
-        const col = index % unitsPerRow;
-        const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
-        const offsetY = (row - (unitCount / unitsPerRow - 1) / 2) * spacing;
-
-        const action: UnitAction = {
-          type: command.waypointType,
-          x: command.targetX! + offsetX,
-          y: command.targetY! + offsetY,
-        };
-        this.addActionToUnit(unit, action, command.queue);
-        index++;
-      }
-    }
-  }
-
-  // Execute start build command - adds build action to unit's action queue
-  private executeStartBuildCommand(command: StartBuildCommand): void {
-    const builder = this.world.getEntity(command.builderId);
-    if (!builder?.builder || !builder.ownership || !builder.commander || !builder.unit) return;
-
-    const playerId = builder.ownership.playerId;
-
-    // Start the building (creates the ghost/under-construction building)
-    const building = this.constructionSystem.startBuilding(
-      this.world,
-      command.buildingType,
-      command.gridX,
-      command.gridY,
-      playerId,
-      command.builderId
-    );
-
-    if (!building) {
-      // Placement failed (invalid location)
-      return;
-    }
-
-    // Create build action with building info
-    const action: UnitAction = {
-      type: 'build',
-      x: building.transform.x,
-      y: building.transform.y,
-      buildingType: command.buildingType,
-      gridX: command.gridX,
-      gridY: command.gridY,
-      buildingId: building.id,
-    };
-
-    this.addActionToUnit(builder, action, command.queue);
-  }
-
-  // Execute queue unit command
-  private executeQueueUnitCommand(command: QueueUnitCommand): void {
-    const factory = this.world.getEntity(command.factoryId);
-    if (!factory?.factory) return;
-
-    factoryProductionSystem.queueUnit(factory, command.weaponId);
-  }
-
-  // Execute cancel queue item command
-  private executeCancelQueueItemCommand(command: CancelQueueItemCommand): void {
-    const factory = this.world.getEntity(command.factoryId);
-    if (!factory?.factory) return;
-
-    factoryProductionSystem.dequeueUnit(factory, command.index);
-  }
-
-  // Execute set rally point command
-  private executeSetRallyPointCommand(command: SetRallyPointCommand): void {
-    const factory = this.world.getEntity(command.factoryId);
-    if (!factory?.factory) return;
-
-    factory.factory.rallyX = command.rallyX;
-    factory.factory.rallyY = command.rallyY;
-  }
-
-  // Execute set factory waypoints command
-  private executeSetFactoryWaypointsCommand(command: SetFactoryWaypointsCommand): void {
-    const factory = this.world.getEntity(command.factoryId);
-    if (!factory?.factory) return;
-
-    if (command.queue) {
-      // Add to existing waypoints
-      for (const wp of command.waypoints) {
-        factory.factory.waypoints.push({ x: wp.x, y: wp.y, type: wp.type });
-      }
-    } else {
-      // Replace waypoints (reuse array)
-      factory.factory.waypoints.length = command.waypoints.length;
-      for (let i = 0; i < command.waypoints.length; i++) {
-        const wp = command.waypoints[i];
-        factory.factory.waypoints[i] = { x: wp.x, y: wp.y, type: wp.type };
-      }
-    }
-
-    // Update rally point to first waypoint
-    if (command.waypoints.length > 0) {
-      factory.factory.rallyX = command.waypoints[0].x;
-      factory.factory.rallyY = command.waypoints[0].y;
-    }
-  }
-
-  // Execute fire D-gun command
-  private executeFireDGunCommand(command: FireDGunCommand): void {
-    const commander = this.world.getEntity(command.commanderId);
-    if (!commander?.commander || !commander.ownership || !commander.weapons) return;
-
-    const playerId = commander.ownership.playerId;
-
-    // Check if we have enough energy
-    const dgunCost = commander.commander.dgunEnergyCost;
-    if (!economyManager.canAfford(playerId, dgunCost)) {
-      return;
-    }
-
-    // Find the dgun weapon by config id
-    const dgunIdx = commander.weapons.findIndex(w => w.config.id === 'dgunTurret');
-    if (dgunIdx < 0) return;
-    const dgunWeapon = commander.weapons[dgunIdx];
-
-    // Spend energy
-    economyManager.spendInstant(playerId, dgunCost);
-
-    // Calculate direction to target
-    const dx = command.targetX - commander.transform.x;
-    const dy = command.targetY - commander.transform.y;
-    const dist = magnitude(dx, dy);
-
-    if (dist === 0) return;
-
-    const fireAngle = Math.atan2(dy, dx);
-
-    // Snap dgun turret to target direction
-    dgunWeapon.turretRotation = fireAngle;
-    dgunWeapon.turretAngularVelocity = 0;
-
-    // Compute weapon world position from unit transform + weapon offset
-    const cos = commander.transform.rotCos ?? Math.cos(commander.transform.rotation);
-    const sin = commander.transform.rotSin ?? Math.sin(commander.transform.rotation);
-    const weaponPos = getWeaponWorldPosition(
-      commander.transform.x, commander.transform.y,
-      cos, sin,
-      dgunWeapon.offsetX, dgunWeapon.offsetY
-    );
-
-    const fireCos = Math.cos(fireAngle);
-    const fireSin = Math.sin(fireAngle);
-
-    // Spawn position: weapon mount + 5px along fire direction
-    const spawnX = weaponPos.x + fireCos * 5;
-    const spawnY = weaponPos.y + fireSin * 5;
-
-    // Calculate velocity with turret-tip inheritance
-    const speed = dgunWeapon.config.projectileSpeed ?? 350;
-    let velocityX = fireCos * speed;
-    let velocityY = fireSin * speed;
-    if (this.world.projVelInherit && commander.unit) {
-      // Unit linear velocity
-      velocityX += commander.unit.velocityX ?? 0;
-      velocityY += commander.unit.velocityY ?? 0;
-      // Turret rotational velocity at fire point (tangential = omega * r)
-      const barrelDx = fireCos * 5;
-      const barrelDy = fireSin * 5;
-      const omega = dgunWeapon.turretAngularVelocity;
-      velocityX += -barrelDy * omega;
-      velocityY += barrelDx * omega;
-    }
-
-    // Create D-gun projectile
-    const projectile = this.world.createDGunProjectile(
-      spawnX,
-      spawnY,
-      velocityX,
-      velocityY,
-      playerId,
-      commander.id,
-      dgunWeapon.config
-    );
-
-    this.world.addEntity(projectile);
-
-    // Emit projectile spawn event for D-gun
-    this.pendingProjectileSpawns.push({
-      id: projectile.id,
-      x: spawnX,
-      y: spawnY,
-      rotation: fireAngle,
-      velocityX,
-      velocityY,
-      projectileType: 'traveling',
-      weaponId: 'dgunTurret',
-      playerId,
-      sourceEntityId: commander.id,
-      weaponIndex: dgunIdx,
-      isDGun: true,
-    });
-
-    // Emit audio event
-    const dgunSimEvent: SimEvent = {
-      type: 'fire',
-      x: spawnX,
-      y: spawnY,
-      weaponId: 'dgunTurret',
-    };
-    this.onSimEvent?.(dgunSimEvent);
-    this.pendingSimEvents.push(dgunSimEvent);
-  }
-
-  // Execute repair command - adds repair action to unit's action queue
-  private executeRepairCommand(command: RepairCommand): void {
-    const commander = this.world.getEntity(command.commanderId);
-    const target = this.world.getEntity(command.targetId);
-
-    if (!commander?.commander || !commander.unit || !commander.builder) return;
-    if (!target) return;
-
-    // Target must be a buildable (incomplete building) or a damaged unit
-    const isIncompleteBuilding = target.buildable && !target.buildable.isComplete && !target.buildable.isGhost;
-    const isDamagedUnit = target.unit && target.unit.hp < target.unit.maxHp && target.unit.hp > 0;
-
-    if (!isIncompleteBuilding && !isDamagedUnit) return;
-
-    // Create repair action
-    const action: UnitAction = {
-      type: 'repair',
-      x: target.transform.x,
-      y: target.transform.y,
-      targetId: command.targetId,
-    };
-
-    this.addActionToUnit(commander, action, command.queue);
-  }
-
-  // Add an action to a unit (respecting queue flag)
-  private addActionToUnit(entity: Entity, action: UnitAction, queue: boolean): void {
-    if (!entity.unit) return;
-
-    if (!queue) {
-      // Replace all actions
-      entity.unit.actions = [action];
-      entity.unit.patrolStartIndex = null;
-    } else {
-      // Add to existing actions
-      entity.unit.actions.push(action);
-    }
-
-    // Update patrol start index if this is a patrol action
-    if (action.type === 'patrol' && entity.unit.patrolStartIndex === null) {
-      // Mark the start of patrol loop
-      entity.unit.patrolStartIndex = entity.unit.actions.length - 1;
-    }
-  }
-
   // Update unit movement with action queue processing
   // velocityX/Y represents thrust direction - if 0, no thrust is applied and friction slows the unit
   private updateUnits(): void {
@@ -1070,9 +609,7 @@ export class Simulation {
     this._velUpdateBufB.length = 0;
     this._deadUnitIdsBuf.length = 0;
     this._deadBuildingIdsBuf.length = 0;
-    this._energyConsumers.length = 0;
-    this._consumersByPlayer.clear();
-    this._buildTargetSet.clear();
+    resetEnergyBuffers(this.energyBuffers);
     resetForceFieldBuffers();
   }
 }

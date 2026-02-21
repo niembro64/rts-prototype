@@ -17,7 +17,8 @@ import type {
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
-import { normalizeAngle, magnitude } from '../../math';
+import { magnitude, lineCircleIntersectionT, lineRectIntersectionT, isPointInSlice } from '../../math';
+import { getTargetRadius } from '../combat/combatUtils';
 
 // Reusable DamageResult to avoid per-call allocations
 const _reusableResult: DamageResult = {
@@ -52,125 +53,10 @@ export function resetDamageBuffers(): void {
   _reusableHits.length = 0;
 }
 
-// Line-circle intersection - returns parametric T value (0-1) of first intersection, or null
-function lineCircleIntersectionT(
-  x1: number, y1: number,
-  x2: number, y2: number,
-  cx: number, cy: number,
-  r: number
-): number | null {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const fx = x1 - cx;
-  const fy = y1 - cy;
-
-  const a = dx * dx + dy * dy;
-  if (a === 0) return null; // Zero-length line
-
-  const b = 2 * (fx * dx + fy * dy);
-  const c = fx * fx + fy * fy - r * r;
-
-  let discriminant = b * b - 4 * a * c;
-  if (discriminant < 0) return null;
-
-  discriminant = Math.sqrt(discriminant);
-
-  const t1 = (-b - discriminant) / (2 * a);
-  const t2 = (-b + discriminant) / (2 * a);
-
-  // Return smallest t in valid range [0, 1]
-  if (t1 >= 0 && t1 <= 1) return t1;
-  if (t2 >= 0 && t2 <= 1) return t2;
-  return null;
-}
-
-// Line-line intersection - returns T value for first line, or null
-function lineLineIntersectionT(
-  x1: number, y1: number, x2: number, y2: number,
-  x3: number, y3: number, x4: number, y4: number
-): number | null {
-  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
-  if (Math.abs(denom) < 0.0001) return null; // Lines are parallel
-
-  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
-  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
-
-  if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
-    return ua;
-  }
-  return null;
-}
-
-// Line-rectangle intersection - returns parametric T value (0-1) of first intersection, or null
-function lineRectIntersectionT(
-  x1: number, y1: number,
-  x2: number, y2: number,
-  rectX: number, rectY: number,
-  rectWidth: number, rectHeight: number
-): number | null {
-  const left = rectX;
-  const right = rectX + rectWidth;
-  const top = rectY;
-  const bottom = rectY + rectHeight;
-
-  // If start point is inside rectangle, intersection is at t=0
-  if (x1 >= left && x1 <= right && y1 >= top && y1 <= bottom) {
-    return 0;
-  }
-
-  // Check intersection with each edge, track smallest t (inline to avoid array allocation)
-  let minT: number | null = null;
-
-  // Top edge
-  let t = lineLineIntersectionT(x1, y1, x2, y2, left, top, right, top);
-  if (t !== null && (minT === null || t < minT)) minT = t;
-  // Bottom edge
-  t = lineLineIntersectionT(x1, y1, x2, y2, left, bottom, right, bottom);
-  if (t !== null && (minT === null || t < minT)) minT = t;
-  // Left edge
-  t = lineLineIntersectionT(x1, y1, x2, y2, left, top, left, bottom);
-  if (t !== null && (minT === null || t < minT)) minT = t;
-  // Right edge
-  t = lineLineIntersectionT(x1, y1, x2, y2, right, top, right, bottom);
-  if (t !== null && (minT === null || t < minT)) minT = t;
-
-  return minT;
-}
-
-// Get target radius for collision
-function getTargetRadius(entity: Entity): number {
-  if (entity.unit) {
-    return entity.unit.physicsRadius;
-  } else if (entity.building) {
-    const bWidth = entity.building.width;
-    const bHeight = entity.building.height;
-    return magnitude(bWidth, bHeight) / 2;
-  }
-  return 0;
-}
-
-// Check if a point is within a pie slice
-function isPointInSlice(
-  px: number, py: number,
-  originX: number, originY: number,
-  sliceDirection: number,
-  sliceHalfAngle: number,
-  maxRadius: number,
-  targetRadius: number
-): boolean {
-  const dx = px - originX;
-  const dy = py - originY;
-  const dist = magnitude(dx, dy);
-
-  // Check distance (accounting for target radius)
-  if (dist > maxRadius + targetRadius) return false;
-
-  // Check angle (accounting for target angular size)
-  const angleToPoint = Math.atan2(dy, dx);
-  const angleDiff = normalizeAngle(angleToPoint - sliceDirection);
-  const angularSize = dist > 0 ? Math.atan2(targetRadius, dist) : Math.PI;
-
-  return Math.abs(angleDiff) <= sliceHalfAngle + angularSize;
+// Compute distance-based falloff damage for area effects
+function computeFalloffDamage(dist: number, radius: number, baseDamage: number, falloff: number): number {
+  const distRatio = Math.max(0, Math.min(1, dist / radius));
+  return baseDamage * (1 - distRatio * (1 - falloff));
 }
 
 export class DamageSystem {
@@ -516,8 +402,7 @@ export class DamageSystem {
       // Check slice angle if wave weapon
       if (hasSlice) {
         if (!isPointInSlice(
-          unit.transform.x, unit.transform.y,
-          source.centerX, source.centerY,
+          dx, dy, dist,
           sliceDirection,
           sliceHalfAngle,
           source.radius,
@@ -526,9 +411,7 @@ export class DamageSystem {
       }
 
       // Calculate damage with falloff
-      const distRatio = Math.max(0, Math.min(1, dist / source.radius));
-      const damageMultiplier = 1 - distRatio * (1 - source.falloff);
-      const damage = source.damage * damageMultiplier;
+      const damage = computeFalloffDamage(dist, source.radius, source.damage, source.falloff);
 
       // Calculate knockback direction (from center outward)
       const dirX = dist > 0 ? dx / dist : 0;
@@ -575,8 +458,7 @@ export class DamageSystem {
       // Check slice for wave weapons
       if (hasSlice) {
         if (!isPointInSlice(
-          building.transform.x, building.transform.y,
-          source.centerX, source.centerY,
+          dx, dy, dist,
           sliceDirection,
           sliceHalfAngle,
           source.radius,
@@ -585,9 +467,7 @@ export class DamageSystem {
       }
 
       // Calculate damage with falloff
-      const distRatio = Math.max(0, Math.min(1, dist / source.radius));
-      const damageMultiplier = 1 - distRatio * (1 - source.falloff);
-      const damage = source.damage * damageMultiplier;
+      const damage = computeFalloffDamage(dist, source.radius, source.damage, source.falloff);
 
       // Calculate direction (from center outward)
       const dirX = dist > 0 ? dx / dist : 0;
