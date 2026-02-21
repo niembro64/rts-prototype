@@ -20,8 +20,8 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     splashOnExpiry: false,
     hitSound: { synth: 'heavy', volume: 0.2, playSpeed: 0.5 },
   },
-  heavyShot: {
-    id: 'heavyShot',
+  mediumShot: {
+    id: 'mediumShot',
     damage: 4,
     speed: 300,
     mass: 5,
@@ -44,8 +44,8 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     splashOnExpiry: true,
     hitSound: { synth: 'heavy', volume: 1.0, playSpeed: 0.1 },
   },
-  cannonShot: {
-    id: 'cannonShot',
+  heavyShot: {
+    id: 'heavyShot',
     damage: 260,
     speed: 400,
     mass: 200.0,

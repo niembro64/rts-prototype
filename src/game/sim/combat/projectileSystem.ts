@@ -493,7 +493,7 @@ export function checkProjectileCollisions(
       // Beam audio is handled by updateLaserSounds based on targeting state
 
       // Handle splash damage on expiration — only for projectiles with splashOnExpiry enabled
-      // Small projectiles (lightRound, heavyRound) only splash on direct hit, not on expiration
+      // Small projectiles (lightShot, mediumShot) only splash on direct hit, not on expiration
       if (config.primaryDamageRadius && config.splashOnExpiry && !proj.hasExploded) {
         // Primary zone: full damage
         const primaryResult = damageSystem.applyDamage({

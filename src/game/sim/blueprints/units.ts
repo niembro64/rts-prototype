@@ -276,13 +276,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
 export const BUILDABLE_UNIT_IDS = [
   'jackal',
   'lynx',
-  'daddy',
   'badger',
   'mongoose',
-  'tick',
   'mammoth',
-  'widow',
+  'tick',
   'tarantula',
+  'daddy',
+  'widow',
 ];
 
 export function getUnitBlueprint(id: string): UnitBlueprint {
