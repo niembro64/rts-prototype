@@ -88,7 +88,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadiusMultiplier: 1.0,
     mass: 25,
     baseCost: 500,
-    weapons: [{ weaponId: 'forceTurret', offsetX: 0, offsetY: 0 }],
+    weapons: [{ weaponId: 'forceTurretLarge', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'legs',
@@ -211,7 +211,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       { weaponId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-right
       { weaponId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-right
       { weaponId: 'beamTurret7', offsetX: 0, offsetY: 0 }, // front
-      { weaponId: 'megaForceTurret', offsetX: 0, offsetY: 0 }, // center
+      { weaponId: 'forceTurretMedium', offsetX: 0, offsetY: 0 }, // center
     ],
     chassisMounts: computeWidowMounts(),
     locomotion: {

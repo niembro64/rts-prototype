@@ -118,12 +118,12 @@ export const AUDIO = {
         playSpeed: 0.6,
       },
       ..._beamFire,
-      forceTurret: {
+      forceTurretLarge: {
         synth: 'force-field' as SynthId,
         volume: 0.5,
         playSpeed: 1.0,
       },
-      megaForceTurret: {
+      forceTurretMedium: {
         synth: 'force-field' as SynthId,
         volume: 0.5,
         playSpeed: 2.0,

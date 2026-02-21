@@ -5,7 +5,13 @@
  * Merges WEAPON_STATS + turret visuals + audio from config.ts and audioConfig.ts.
  */
 
-import { SPATIAL_GRID_CELL_SIZE, FORCE_FIELD_TURRET } from '../../../config';
+import {
+  SPATIAL_GRID_CELL_SIZE,
+  FORCE_FIELD_TURRET,
+  RANGE_MULTIPLIERS_FORCE,
+  FORCE_PUSH,
+  FORCE_PULL,
+} from '../../../config';
 import { AUDIO, harmonicSeries } from '../../../audioConfig';
 import type { TurretBlueprint } from './types';
 
@@ -212,46 +218,24 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     fireSound: AUDIO.event.fire.laserTurret,
   },
   ...generateBeamTurrets(),
-  forceTurret: {
-    id: 'forceTurret',
-    range: SPATIAL_GRID_CELL_SIZE * 1.9,
+  forceTurretLarge: {
+    id: 'forceTurretLarge',
+    range: SPATIAL_GRID_CELL_SIZE * 3 * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     isForceField: true,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 500,
     turretShape: { type: 'forceField', grate: FORCE_FIELD_TURRET.forceField },
-    push: {
-      innerRatio: 0.0,
-      outerRatio: 0.99,
-      color: 0x3366ff,
-      alpha: 0.05,
-      particleAlpha: 0.2,
-      power: 300,
-      damage: 0,
-    },
-    pull: {
-      innerRatio: 0.99,
-      outerRatio: 1.0,
-      color: 0x3366ff,
-      alpha: 0.2,
-      particleAlpha: 0.0,
-      power: null,
-      damage: 0,
-    },
-    rangeMultiplierOverrides: {
-      see: null,
-      fire: null,
-      release: null,
-      lock: null,
-      fightstop: 1.2,
-    },
+    push: { ...FORCE_PUSH },
+    pull: { ...FORCE_PULL },
+    rangeMultiplierOverrides: RANGE_MULTIPLIERS_FORCE,
     color: 0xffffff,
-    fireSound: AUDIO.event.fire.forceTurret,
+    fireSound: AUDIO.event.fire.forceTurretLarge,
   },
-  megaForceTurret: {
-    id: 'megaForceTurret',
-    range: SPATIAL_GRID_CELL_SIZE * 1.3,
+  forceTurretMedium: {
+    id: 'forceTurretMedium',
+    range: SPATIAL_GRID_CELL_SIZE * 2 * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     isForceField: true,
@@ -261,33 +245,11 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       type: 'forceField',
       grate: FORCE_FIELD_TURRET.megaForceField,
     },
-    push: {
-      innerRatio: 0.0,
-      outerRatio: 0.5,
-      color: 0x3366ff,
-      alpha: 0.05,
-      particleAlpha: 0.2,
-      power: 300,
-      damage: 0,
-    },
-    pull: {
-      innerRatio: 0.5,
-      outerRatio: 0.52,
-      color: 0x3366ff,
-      alpha: 0.2,
-      particleAlpha: 0.2,
-      power: null,
-      damage: 0,
-    },
-    rangeMultiplierOverrides: {
-      see: null,
-      fire: null,
-      release: null,
-      lock: null,
-      fightstop: 1.5,
-    },
+    push: { ...FORCE_PUSH },
+    pull: { ...FORCE_PULL },
+    rangeMultiplierOverrides: RANGE_MULTIPLIERS_FORCE,
     color: 0xffffff,
-    fireSound: AUDIO.event.fire.megaForceTurret,
+    fireSound: AUDIO.event.fire.forceTurretMedium,
   },
   disruptorTurret: {
     id: 'disruptorTurret',

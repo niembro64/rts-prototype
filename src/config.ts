@@ -32,7 +32,8 @@ export const KEYFRAME_RATIO_OPTIONS = CONTROL_BARS.server.keyframe.options;
 export const DEFAULT_SNAPSHOT_RATE = CONTROL_BARS.server.snapshot.default;
 export const SNAPSHOT_RATE_OPTIONS = CONTROL_BARS.server.snapshot.options;
 export const MAX_TOTAL_UNITS = CONTROL_BARS.battle.cap.default;
-export const DEFAULT_PROJ_VEL_INHERIT = CONTROL_BARS.battle.projVelInherit.default;
+export const DEFAULT_PROJ_VEL_INHERIT =
+  CONTROL_BARS.battle.projVelInherit.default;
 export const BAR_COLORS = CONTROL_BARS.themes;
 // UNIT_SHORT_NAMES removed — now in UnitBlueprint.shortName
 
@@ -143,9 +144,36 @@ export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slo
 export const RANGE_MULTIPLIERS = {
   see: 1.0,
   fire: 0.9,
-  release: 0.8,
+  release: 0.9,
   lock: 0.7,
-  fightstop: 0.6,
+  fightstop: 0.7,
+};
+export const RANGE_MULTIPLIERS_FORCE = {
+  see: 1.0,
+  fire: 1.0,
+  release: 0.2,
+  lock: 0.1,
+  fightstop: 0.8,
+};
+
+export const FORCE_PUSH = {
+  innerRatio: 0.0,
+  outerRatio: 0.5,
+  color: 0x3366ff,
+  alpha: 0.05,
+  particleAlpha: 0.2,
+  power: 300,
+  damage: 0,
+};
+
+export const FORCE_PULL = {
+  innerRatio: 0.5,
+  outerRatio: 0.52,
+  color: 0x3366ff,
+  alpha: 0.2,
+  particleAlpha: 0.2,
+  power: null,
+  damage: 0,
 };
 
 /**
@@ -504,46 +532,46 @@ export const FIRE_EXPLOSION = {
 export const DEATH_EXPLOSION = {
   // --- Per-LOD particle counts ---
   /** Core fireball concentric circles */
-  coreCircles:       [2,     3,     4,     5,     5]     as readonly number[],
+  coreCircles: [2, 3, 4, 5, 5] as readonly number[],
   /** Smoke particles (entity velocity direction) */
-  smokeCount:        [0,     3,     4,     6,     8]     as readonly number[],
+  smokeCount: [0, 3, 4, 6, 8] as readonly number[],
   /** Debris particles (penetration direction) */
-  debrisCount:       [0,     2,     4,     7,     10]    as readonly number[],
+  debrisCount: [0, 2, 4, 7, 10] as readonly number[],
   /** Spark particles (attacker direction) */
-  sparkCount:        [0,     3,     5,     12,    24]    as readonly number[],
+  sparkCount: [0, 3, 5, 12, 24] as readonly number[],
   /** Fragment particles (tight attacker cone, high+ only) */
-  fragmentCount:     [0,     0,     0,     8,     15]    as readonly number[],
+  fragmentCount: [0, 0, 0, 8, 15] as readonly number[],
   /** Chunk particles (penetration direction with gravity, high+ only) */
-  chunkCount:        [0,     0,     0,     6,     10]    as readonly number[],
+  chunkCount: [0, 0, 0, 6, 10] as readonly number[],
   /** Embers (float up, max only) */
-  emberCount:        [0,     0,     0,     0,     12]    as readonly number[],
+  emberCount: [0, 0, 0, 0, 12] as readonly number[],
   /** Momentum trail particles (combined direction, max only) */
-  momentumCount:     [0,     0,     0,     0,     12]    as readonly number[],
+  momentumCount: [0, 0, 0, 0, 12] as readonly number[],
 
   // --- Per-particle inner highlight circles ---
-  debrisInners:      [0,     0,     1,     1,     2]     as readonly number[],
-  sparkInners:       [0,     0,     1,     1,     2]     as readonly number[],
-  fragmentInners:    [0,     0,     0,     2,     3]     as readonly number[],
-  chunkInners:       [0,     0,     0,     1,     1]     as readonly number[],
+  debrisInners: [0, 0, 1, 1, 2] as readonly number[],
+  sparkInners: [0, 0, 1, 1, 2] as readonly number[],
+  fragmentInners: [0, 0, 0, 2, 3] as readonly number[],
+  chunkInners: [0, 0, 0, 1, 1] as readonly number[],
 
   // --- Trail multipliers ---
-  smokeTrailMult:    [0,     0,     0,     0.5,   1.0]   as readonly number[],
-  debrisTrailMult:   [0,     0,     0,     0.6,   1.0]   as readonly number[],
-  sparkTrailMult:    [0,     0,     0,     0.6,   1.0]   as readonly number[],
-  sparkDualTrail:    [false, false, false, false, true]   as readonly boolean[],
-  fragmentTrailMult: [0,     0,     0,     0.8,   1.0]   as readonly number[],
+  smokeTrailMult: [0, 0, 0, 0.5, 1.0] as readonly number[],
+  debrisTrailMult: [0, 0, 0, 0.6, 1.0] as readonly number[],
+  sparkTrailMult: [0, 0, 0, 0.6, 1.0] as readonly number[],
+  sparkDualTrail: [false, false, false, false, true] as readonly boolean[],
+  fragmentTrailMult: [0, 0, 0, 0.8, 1.0] as readonly number[],
 
   // --- Spark distribution ---
   /** Whether sparks go full circle (true) or cone (false) */
-  sparkFullCircle:   [false, false, false, true,  true]  as readonly boolean[],
+  sparkFullCircle: [false, false, false, true, true] as readonly boolean[],
   /** Directional bias for spark cone (higher = tighter cone in attacker dir) */
-  sparkDirBias:      [0,     0.5,   0.8,   2.0,   3.0]   as readonly number[],
+  sparkDirBias: [0, 0.5, 0.8, 2.0, 3.0] as readonly number[],
 
   // --- Center drift ---
   /** Drift scale per LOD (fraction of radius) */
-  driftScale:        [0,     0.15,  0.25,  0.4,   0.5]   as readonly number[],
+  driftScale: [0, 0.15, 0.25, 0.4, 0.5] as readonly number[],
   /** Smoke upward float (px per progress unit) */
-  smokeFloat:        [0,     4,     5,     7,     8]     as readonly number[],
+  smokeFloat: [0, 4, 5, 7, 8] as readonly number[],
 
   // --- Strength normalization ---
   strengthNormalize: 300,
@@ -736,7 +764,6 @@ export const UNIT_THRUST_MULTIPLIER_DEMO = 6.0;
 
 // WEAPON_STATS removed — now in blueprints
 
-
 // =============================================================================
 // MAP SIZE SETTINGS
 // =============================================================================
@@ -745,7 +772,6 @@ export const MAP_SETTINGS = {
   game: { width: 2_000, height: 2_000 },
   demo: { width: 1_600, height: 7_00 },
 };
-
 
 // =============================================================================
 // BACKGROUND GAME SETTINGS
