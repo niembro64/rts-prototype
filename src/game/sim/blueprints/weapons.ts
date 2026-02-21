@@ -124,9 +124,9 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: { synth: 'cannon', volume: 0.2, playSpeed: 0.8 },
   },
-  railgun: {
-    id: 'railgun',
-    projectileId: 'railBeam',
+  laserGun: {
+    id: 'laserGun',
+    projectileId: 'laserShot',
     range: 100,
     cooldown: 1500,
     // cooldown: 3000,
@@ -142,11 +142,11 @@ export const WEAPON_BLUEPRINTS: Record<string, WeaponBlueprint> = {
       fightstop: 0.7,
     },
     color: 0xffffff,
-    fireSound: { synth: 'railgun', volume: 0.03, playSpeed: 0.6 },
+    fireSound: { synth: 'laserGun', volume: 0.03, playSpeed: 0.6 },
   },
-  beam: {
-    id: 'beam',
-    projectileId: 'laserBeam',
+  beamGun: {
+    id: 'beamGun',
+    projectileId: 'beamShot',
     range: 150,
     turretTurnAccel: 100,
     turretDrag: 0.4,

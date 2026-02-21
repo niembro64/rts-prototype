@@ -56,8 +56,8 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     splashOnExpiry: true,
     hitSound: { synth: 'heavy', volume: 1.0, playSpeed: 0.05 },
   },
-  railBeam: {
-    id: 'railBeam',
+  laserShot: {
+    id: 'laserShot',
     damage: 10,
     beamDuration: 300,
     beamWidth: 1,
@@ -71,8 +71,8 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     knockBackForce: 1000,
     hitSound: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 },
   },
-  laserBeam: {
-    id: 'laserBeam',
+  beamShot: {
+    id: 'beamShot',
     damage: 10,
     beamWidth: 4,
     collisionRadius: 8,

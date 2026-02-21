@@ -13,7 +13,7 @@ export type SynthId =
   | 'cannon' // deep booming shot
   | 'shotgun' // wide blast burst
   | 'grenade' // thump launch
-  | 'railgun' // electric crack
+  | 'laserGun' // electric crack
   | 'burst-rifle' // quick multi-tap
   | 'force-field' // soft energy pulse
   | 'insect' // chittering burst

@@ -158,7 +158,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadiusMultiplier: 1.0,
     mass: 9,
     baseCost: 35,
-    weapons: [{ weaponId: 'railgun', offsetX: 0, offsetY: 0 }],
+    weapons: [{ weaponId: 'laserGun', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'legs',
@@ -204,12 +204,12 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 200,
     baseCost: 3000,
     weapons: [
-      { weaponId: 'beam', offsetX: 0, offsetY: 0 }, // 6 beams at hex positions (offsets computed at spawn from chassisMounts)
-      { weaponId: 'beam', offsetX: 0, offsetY: 0 },
-      { weaponId: 'beam', offsetX: 0, offsetY: 0 },
-      { weaponId: 'beam', offsetX: 0, offsetY: 0 },
-      { weaponId: 'beam', offsetX: 0, offsetY: 0 },
-      { weaponId: 'beam', offsetX: 0, offsetY: 0 },
+      { weaponId: 'beamGun', offsetX: 0, offsetY: 0 }, // 6 beams at hex positions (offsets computed at spawn from chassisMounts)
+      { weaponId: 'beamGun', offsetX: 0, offsetY: 0 },
+      { weaponId: 'beamGun', offsetX: 0, offsetY: 0 },
+      { weaponId: 'beamGun', offsetX: 0, offsetY: 0 },
+      { weaponId: 'beamGun', offsetX: 0, offsetY: 0 },
+      { weaponId: 'beamGun', offsetX: 0, offsetY: 0 },
       { weaponId: 'megaForceField', offsetX: 0, offsetY: 0 }, // Force field at hex center
     ],
     chassisMounts: computeWidowMounts(),
@@ -232,7 +232,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadiusMultiplier: 1.0,
     mass: 18,
     baseCost: 460,
-    weapons: [{ weaponId: 'beam', offsetX: 0, offsetY: 0 }],
+    weapons: [{ weaponId: 'beamGun', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'legs',
@@ -253,7 +253,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 60,
     baseCost: 0,
     weapons: [
-      { weaponId: 'beam', offsetX: 0, offsetY: 0 },
+      { weaponId: 'beamGun', offsetX: 0, offsetY: 0 },
       { weaponId: 'dgun', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [
