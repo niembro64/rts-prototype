@@ -1204,10 +1204,10 @@ onUnmounted(() => {
           <button
             class="control-btn"
             :class="{ active: serverMetaFromSnapshot?.projVelInherit }"
-            title="Projectiles inherit firing unit's velocity"
+            title="Add firing unit's velocity to projectile velocity"
             @click="toggleProjVelInherit"
           >
-            INHERIT
+            ADD
           </button>
         </div>
       </div>
