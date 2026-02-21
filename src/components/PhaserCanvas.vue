@@ -750,6 +750,17 @@ function changeDriftMode(mode: DriftMode): void {
   driftMode.value = mode;
 }
 
+const allSoundsActive = computed(() =>
+  SOUND_CATEGORIES.every((cat) => soundToggles[cat]),
+);
+
+function toggleAllSounds(): void {
+  const enable = !allSoundsActive.value;
+  for (const cat of SOUND_CATEGORIES) {
+    if (soundToggles[cat] !== enable) toggleSoundCategory(cat);
+  }
+}
+
 function toggleSoundCategory(category: SoundCategory): void {
   const newValue = !soundToggles[category];
   setSoundToggle(category, newValue);
@@ -1290,7 +1301,7 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">MAX SNAPS/S:</span>
+          <span class="control-label">MAX SPS:</span>
           <div class="button-group">
             <button
               v-for="rate in CONTROL_BARS.server.snapshot.options"
@@ -1560,13 +1571,11 @@ onUnmounted(() => {
               class="control-btn"
               :class="{ active: audioScope === opt.value }"
               :title="
-                opt.value === 'off'
-                  ? 'Audio disabled'
-                  : opt.value === 'window'
-                    ? 'Play audio from visible area'
-                    : opt.value === 'padded'
-                      ? 'Play audio from visible area plus padding'
-                      : 'Play audio from entire map'
+                opt.value === 'window'
+                  ? 'Play audio from visible area'
+                  : opt.value === 'padded'
+                    ? 'Play audio from visible area plus padding'
+                    : 'Play audio from entire map'
               "
               @click="changeAudioScope(opt.value)"
             >
@@ -1577,6 +1586,14 @@ onUnmounted(() => {
         <div class="control-group">
           <div class="bar-divider"></div>
           <span class="control-label">SOUNDS:</span>
+          <button
+            class="control-btn"
+            :class="{ active: allSoundsActive }"
+            title="Toggle all sound categories on/off"
+            @click="toggleAllSounds"
+          >
+            ALL
+          </button>
           <div class="button-group">
             <button
               v-for="cat in SOUND_CATEGORIES"

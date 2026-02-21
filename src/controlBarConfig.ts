@@ -138,7 +138,6 @@ export const CONTROL_BARS = {
     },
     audio: {
       options: [
-        { value: 'off', label: 'OFF' },
         { value: 'window', label: 'WIN' },
         { value: 'padded', label: 'PAD' },
         { value: 'all', label: 'ALL' },
