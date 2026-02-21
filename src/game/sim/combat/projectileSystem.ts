@@ -373,11 +373,18 @@ export function updateProjectiles(
           continue;
         }
 
-        // Continuous beams (cooldown === 0) should never expire while source is alive and firing
-        // Reset timeAlive to prevent the 1-frame gap when beam expires and gets recreated
+        // Continuous beams: stay alive while firing, remove immediately when not
         const isContinuous = (proj.config.cooldown === 0);
-        if (isContinuous && weapon.isFiring) {
-          proj.timeAlive = 0;
+        if (isContinuous) {
+          if (weapon.isFiring) {
+            proj.timeAlive = 0;
+          } else {
+            // Remove immediately — no linger time
+            beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
+            projectilesToRemove.push(entity.id);
+            despawnEvents.push({ id: entity.id });
+            continue;
+          }
         }
 
         // Get turret direction from specific weapon

@@ -73,7 +73,7 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
   },
   laserBeam: {
     id: 'laserBeam',
-    damage: 3,
+    damage: 10,
     beamWidth: 4,
     collisionRadius: 8,
     primaryDamageRadius: 12,
@@ -83,18 +83,7 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     knockBackForce: 200,
     hitSound: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 },
   },
-  heavyLaserBeam: {
-    id: 'heavyLaserBeam',
-    damage: 3,
-    beamWidth: 3,
-    collisionRadius: 6,
-    primaryDamageRadius: 10,
-    secondaryDamageRadius: 16,
-    splashOnExpiry: false,
-    hitForce: 750,
-    knockBackForce: 200,
-    hitSound: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 },
-  },
+
   disruptorBolt: {
     id: 'disruptorBolt',
     damage: 9999,

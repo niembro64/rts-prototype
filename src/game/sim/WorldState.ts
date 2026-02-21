@@ -486,8 +486,8 @@ export class WorldState {
     let maxLifespan = config.projectileLifespan ?? 2000;
     if (projectileType === 'beam') {
       // Cooldown beams: beamDuration is the shot lifespan
-      // Continuous beams: no beamDuration, use short linger for fade-out after firing stops
-      maxLifespan = config.beamDuration ?? 100;
+      // Continuous beams: removed explicitly by projectileSystem when isFiring goes false
+      maxLifespan = config.beamDuration ?? Infinity;
     } else if (projectileType === 'instant') {
       maxLifespan = 16; // One frame essentially
     }
