@@ -41,8 +41,8 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
 }
 
 export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
-  gatlingTurret: {
-    id: 'gatlingTurret',
+  lightTurret: {
+    id: 'lightTurret',
     projectileId: 'lightShot',
     range: 100,
     cooldown: 400,
@@ -59,7 +59,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       fightstop: null,
     },
     color: 0xffffff,
-    fireSound: AUDIO.event.fire.gatlingTurret,
+    fireSound: AUDIO.event.fire.lightTurret,
   },
   pulseTurret: {
     id: 'pulseTurret',
@@ -112,11 +112,11 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       spin: { idle: 0.7, max: 2, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: {
-      see: 1,
-      fire: 0.9,
-      release: 1,
-      lock: 0.9,
-      fightstop: 0.8,
+      see: null,
+      fire: null,
+      release: null,
+      lock: null,
+      fightstop: null,
     },
     color: 0xffffff,
     fireSound: AUDIO.event.fire.shotgunTurret,
@@ -134,7 +134,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     turretDrag: 0.4,
     turretShape: {
       type: 'multibarrel',
-      barrelCount: 3,
+      barrelCount: 5,
       barrelLength: 1.5,
       barrelThickness: 5,
       orbitRadius: 0.4,
@@ -203,10 +203,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     turretShape: { type: 'single', barrelLength: 1.0, barrelThickness: 2 },
     rangeMultiplierOverrides: {
       see: null,
-      fire: 0.9,
+      fire: null,
       release: null,
       lock: null,
-      fightstop: 0.7,
+      fightstop: null,
     },
     color: 0xffffff,
     fireSound: AUDIO.event.fire.laserTurret,
@@ -223,7 +223,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     turretShape: { type: 'forceField', grate: FORCE_FIELD_TURRET.forceField },
     push: {
       innerRatio: 0.0,
-      outerRatio: 0.8,
+      outerRatio: 0.99,
       color: 0x3366ff,
       alpha: 0.05,
       particleAlpha: 0.2,
@@ -231,11 +231,11 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       damage: 0,
     },
     pull: {
-      innerRatio: 0.8,
-      outerRatio: 0.82,
+      innerRatio: 0.99,
+      outerRatio: 1.0,
       color: 0x3366ff,
       alpha: 0.2,
-      particleAlpha: 0.2,
+      particleAlpha: 0.0,
       power: null,
       damage: 0,
     },
@@ -244,7 +244,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       fire: null,
       release: null,
       lock: null,
-      fightstop: 1.5,
+      fightstop: 1.2,
     },
     color: 0xffffff,
     fireSound: AUDIO.event.fire.forceTurret,

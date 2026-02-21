@@ -95,7 +95,7 @@ export const AUDIO = {
   event: {
     // Per-turret fire sounds
     fire: {
-      gatlingTurret: {
+      lightTurret: {
         synth: 'burst-rifle' as SynthId,
         volume: 0.2,
         playSpeed: 0.5,

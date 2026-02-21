@@ -141,11 +141,11 @@ export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slo
  * - fightstop: Unit stops moving in fight/patrol mode when enemy is within this range.
  */
 export const RANGE_MULTIPLIERS = {
-  see: 1.2,
-  fire: 1.0,
-  release: 0.9,
-  lock: 0.8,
-  fightstop: 0.7,
+  see: 1.0,
+  fire: 0.9,
+  release: 0.8,
+  lock: 0.7,
+  fightstop: 0.6,
 };
 
 /**

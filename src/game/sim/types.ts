@@ -98,7 +98,7 @@ export interface ForceFieldZoneConfig {
 
 // Weapon configuration - flexible system for any weapon type
 export interface WeaponConfig {
-  id: string;                    // Unique identifier (e.g., 'gatlingTurret', 'beamTurret', 'cannonTurret')
+  id: string;                    // Unique identifier (e.g., 'lightTurret', 'beamTurret', 'cannonTurret')
   projectileType?: string;       // Projectile stat key (e.g., 'lightShot', 'beamShot')
   turretShape?: import('../../config').TurretConfig; // Turret visual config (barrel type, dimensions, spin)
   damage: number;                // Base damage per hit

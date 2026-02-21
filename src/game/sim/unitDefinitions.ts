@@ -63,7 +63,7 @@ export function getUnitDefinition(unitId: string) {
   return {
     id: bp.id as UnitType,
     name: bp.name,
-    weaponType: bp.weapons[0]?.weaponId ?? 'gatlingTurret',
+    weaponType: bp.weapons[0]?.weaponId ?? 'lightTurret',
     hp: bp.hp,
     moveSpeed: bp.moveSpeed,
     collisionRadius: bp.collisionRadius,
@@ -77,7 +77,7 @@ export function getAllUnitDefinitions() {
   return Object.values(UNIT_BLUEPRINTS).map(bp => ({
     id: bp.id as UnitType,
     name: bp.name,
-    weaponType: bp.weapons[0]?.weaponId ?? 'gatlingTurret',
+    weaponType: bp.weapons[0]?.weaponId ?? 'lightTurret',
     hp: bp.hp,
     moveSpeed: bp.moveSpeed,
     collisionRadius: bp.collisionRadius,

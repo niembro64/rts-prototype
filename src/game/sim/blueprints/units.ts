@@ -37,7 +37,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadiusMultiplier: 1.0,
     mass: 10,
     baseCost: 65,
-    weapons: [{ weaponId: 'gatlingTurret', offsetX: 0, offsetY: 0 }],
+    weapons: [{ weaponId: 'lightTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'wheels',
