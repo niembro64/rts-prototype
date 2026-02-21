@@ -51,6 +51,31 @@ export interface SoundEntry {
   synth: SynthId;
   volume: number;
   playSpeed: number;
+  freq?: number; // optional direct frequency override (Hz) for continuous sounds
+}
+
+// Generate beam sound entries for all harmonic series indices (0 = lowest pitch/biggest, 13 = highest pitch/smallest)
+const _beamFire: Record<string, SoundEntry> = {};
+const _beamLaser: Record<string, SoundEntry> = {};
+const _beamHit: Record<string, SoundEntry> = {};
+for (let i = 0; i < harmonicSeries.length; i++) {
+  const playSpeed = harmonicSeries[8] / harmonicSeries[i];
+  _beamFire[`beamTurret${i}`] = {
+    synth: 'laser-zap' as SynthId,
+    volume: 0.2,
+    playSpeed,
+  };
+  _beamLaser[`beamTurret${i}`] = {
+    synth: 'beam-hum' as SynthId,
+    volume: 1.0,
+    playSpeed: 1,
+    freq: harmonicSeriesBaseMultipler / harmonicSeries[i],
+  };
+  _beamHit[`beamShot${i}`] = {
+    synth: 'sizzle' as SynthId,
+    volume: 1.0,
+    playSpeed,
+  };
 }
 
 export const AUDIO = {
@@ -92,11 +117,7 @@ export const AUDIO = {
         volume: 0.03,
         playSpeed: 0.6,
       },
-      beamTurret: {
-        synth: 'laser-zap' as SynthId,
-        volume: 0.2,
-        playSpeed: 1.0,
-      },
+      ..._beamFire,
       forceTurret: {
         synth: 'force-field' as SynthId,
         volume: 0.5,
@@ -117,7 +138,7 @@ export const AUDIO = {
 
     // Per-turret laser/continuous weapon start sounds
     laser: {
-      beamTurret: { synth: 'beam-hum' as SynthId, volume: 1.0, playSpeed: 1.0 },
+      ..._beamLaser,
     } as Record<string, SoundEntry>,
 
     // Per-projectile hit sounds
@@ -127,7 +148,7 @@ export const AUDIO = {
       mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
       heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },
       laserShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
-      beamShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
+      ..._beamHit,
       disruptorShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 1.0 },
     } as Record<string, SoundEntry>,
 
@@ -156,7 +177,9 @@ export const AUDIO = {
       lfoRate: 2, // frequency wobble rate in Hz
       lfoDepth: 1, // frequency wobble depth in Hz (±)
       filterFreq: 1200, // lowpass cutoff frequency
-      filterQ: 10, // filter resonance
+      filterQ: 10, // lowpass filter resonance
+      highpassFreq: 80, // highpass cutoff frequency
+      highpassQ: 1, // highpass filter resonance
       fadeIn: 0.12, // fade-in time in seconds
       oscVolume: 0.2, // main oscillator volume multiplier
       noiseVolume: 0.08, // noise layer volume multiplier
@@ -172,7 +195,9 @@ export const AUDIO = {
       lfoRate: 10, // frequency wobble rate in Hz
       lfoDepth: 1, // frequency wobble depth in Hz (±)
       filterFreq: 4000, // lowpass cutoff frequency
-      filterQ: 3, // filter resonance
+      filterQ: 3, // lowpass filter resonance
+      highpassFreq: 150, // highpass cutoff frequency
+      highpassQ: 1, // highpass filter resonance
       fadeIn: 0.2, // fade-in time in seconds
       oscVolume: 0.12, // main oscillator volume multiplier
       noiseVolume: 0.04, // noise layer volume multiplier

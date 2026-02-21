@@ -6,8 +6,39 @@
  */
 
 import { SPATIAL_GRID_CELL_SIZE, FORCE_FIELD_TURRET } from '../../../config';
-import { AUDIO } from '../../../audioConfig';
+import { AUDIO, harmonicSeries } from '../../../audioConfig';
 import type { WeaponBlueprint } from './types';
+
+// Generate beam turret blueprints for all harmonic series indices
+// Index 0 = most powerful (lowest pitch, thickest barrel), index 13 = weakest (highest pitch, thinnest)
+function generateBeamTurrets(): Record<string, WeaponBlueprint> {
+  const result: Record<string, WeaponBlueprint> = {};
+  const maxI = harmonicSeries.length - 1;
+  for (let i = 0; i < harmonicSeries.length; i++) {
+    const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
+    const barrelThickness = Math.round((1.5 + 6.5 * p) * 2) / 2;
+    const range = Math.round(100 + 200 * p);
+    result[`beamTurret${i}`] = {
+      id: `beamTurret${i}`,
+      projectileId: `beamShot${i}`,
+      range,
+      turretTurnAccel: 100,
+      turretDrag: 0.4,
+      turretShape: { type: 'beamEmitter', barrelLength: 0.6, barrelThickness },
+      rangeMultiplierOverrides: {
+        see: null,
+        fire: null,
+        release: null,
+        lock: null,
+        fightstop: null,
+      },
+      color: 0xffffff,
+      fireSound: AUDIO.event.fire[`beamTurret${i}`],
+      laserSound: AUDIO.event.laser[`beamTurret${i}`],
+    };
+  }
+  return result;
+}
 
 export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
   gatlingTurret: {
@@ -145,24 +176,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     color: 0xffffff,
     fireSound: AUDIO.event.fire.laserTurret,
   },
-  beamTurret: {
-    id: 'beamTurret',
-    projectileId: 'beamShot',
-    range: 150,
-    turretTurnAccel: 100,
-    turretDrag: 0.4,
-    turretShape: { type: 'beamEmitter', barrelLength: 0.6, barrelThickness: 3.5 },
-    rangeMultiplierOverrides: {
-      see: null,
-      fire: null,
-      release: null,
-      lock: null,
-      fightstop: null,
-    },
-    color: 0xffffff,
-    fireSound: AUDIO.event.fire.beamTurret,
-    laserSound: AUDIO.event.laser.beamTurret,
-  },
+  ...generateBeamTurrets(),
   forceTurret: {
     id: 'forceTurret',
     range: SPATIAL_GRID_CELL_SIZE * 1.9,

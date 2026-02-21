@@ -13,7 +13,7 @@ import type { UnitBlueprint, MountPoint } from './types';
 function computeWidowMounts(): MountPoint[] {
   const hexR = 0.65;
   const hexFwd = 0.5;
-  const hexRotOff = Math.PI / 6;
+  const hexRotOff = Math.PI / 3;
   const mounts: MountPoint[] = [];
   for (let i = 0; i < 6; i++) {
     const angle = (i * Math.PI) / 3 + hexRotOff;
@@ -205,13 +205,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 200,
     baseCost: 3000,
     weapons: [
-      { weaponId: 'beamTurret', offsetX: 0, offsetY: 0 }, // 6 beams at hex positions (offsets computed at spawn from chassisMounts)
-      { weaponId: 'beamTurret', offsetX: 0, offsetY: 0 },
-      { weaponId: 'beamTurret', offsetX: 0, offsetY: 0 },
-      { weaponId: 'beamTurret', offsetX: 0, offsetY: 0 },
-      { weaponId: 'beamTurret', offsetX: 0, offsetY: 0 },
-      { weaponId: 'beamTurret', offsetX: 0, offsetY: 0 },
-      { weaponId: 'megaForceTurret', offsetX: 0, offsetY: 0 }, // Force field at hex center
+      { weaponId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
+      { weaponId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
+      { weaponId: 'beamTurret4', offsetX: 0, offsetY: 0 }, // back
+      { weaponId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-right
+      { weaponId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-right
+      { weaponId: 'beamTurret7', offsetX: 0, offsetY: 0 }, // front
+      { weaponId: 'megaForceTurret', offsetX: 0, offsetY: 0 }, // center
     ],
     chassisMounts: computeWidowMounts(),
     locomotion: {
@@ -233,7 +233,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadiusMultiplier: 1.0,
     mass: 18,
     baseCost: 460,
-    weapons: [{ weaponId: 'beamTurret', offsetX: 0, offsetY: 0 }],
+    weapons: [{ weaponId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'legs',
@@ -254,7 +254,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 60,
     baseCost: 0,
     weapons: [
-      { weaponId: 'beamTurret', offsetX: 0, offsetY: 0 },
+      { weaponId: 'beamTurret3', offsetX: 0, offsetY: 0 },
       { weaponId: 'dgunTurret', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [

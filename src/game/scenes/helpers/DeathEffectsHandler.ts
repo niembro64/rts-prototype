@@ -188,7 +188,7 @@ export function handleSimEvent(
       try { laserEntry = getTurretBlueprint(event.weaponId).laserSound; } catch { break; }
       if (!laserEntry || !laserEntry.volume) break;
       if (event.entityId !== undefined) {
-        audioManager.startLaserSound(event.entityId, 1, laserEntry.volume * AUDIO.beamGain, zoomVolume);
+        audioManager.startLaserSound(event.entityId, laserEntry.freq, laserEntry.volume * AUDIO.beamGain, zoomVolume);
       }
     }
       break;

@@ -23,6 +23,8 @@ export interface ContinuousSoundConfig {
   randomFrequencyRange?: number;
   filterFreq: number;
   filterQ: number;
+  highpassFreq?: number;
+  highpassQ?: number;
   fadeIn: number;
   oscVolume: number;
   noiseVolume: number;
@@ -65,11 +67,20 @@ export function startContinuousSound(
     lfo.start();
   }
 
-  // Filter
+  // Lowpass filter
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.value = config.filterFreq * speed;
   filter.Q.value = config.filterQ;
+
+  // Optional highpass filter
+  let highpass: BiquadFilterNode | undefined;
+  if (config.highpassFreq) {
+    highpass = ctx.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = config.highpassFreq;
+    highpass.Q.value = config.highpassQ ?? 1;
+  }
 
   // Base volumes (without zoom)
   const sfx = (tk as unknown as { sfxVolume: number }).sfxVolume ?? 1;
@@ -80,7 +91,11 @@ export function startContinuousSound(
   gain.gain.setValueAtTime(0.0001, ctx.currentTime);
   gain.gain.linearRampToValueAtTime(baseOsc * zoomVolume, ctx.currentTime + config.fadeIn);
 
-  osc.connect(filter).connect(gain);
+  if (highpass) {
+    osc.connect(filter).connect(highpass).connect(gain);
+  } else {
+    osc.connect(filter).connect(gain);
+  }
   osc.start();
 
   // Noise layer
@@ -205,6 +220,8 @@ export function getBeamConfig(): ContinuousSoundConfig {
     randomFrequencyRange: bc.randomFrequencyRange,
     filterFreq: bc.filterFreq,
     filterQ: bc.filterQ,
+    highpassFreq: bc.highpassFreq,
+    highpassQ: bc.highpassQ,
     fadeIn: bc.fadeIn,
     oscVolume: bc.oscVolume,
     noiseVolume: bc.noiseVolume,
@@ -224,6 +241,8 @@ export function getForceFieldConfig(): ContinuousSoundConfig {
     randomFrequencyRange: fc.randomFrequencyRange,
     filterFreq: fc.filterFreq,
     filterQ: fc.filterQ,
+    highpassFreq: fc.highpassFreq,
+    highpassQ: fc.highpassQ,
     fadeIn: fc.fadeIn,
     oscVolume: fc.oscVolume,
     noiseVolume: fc.noiseVolume,

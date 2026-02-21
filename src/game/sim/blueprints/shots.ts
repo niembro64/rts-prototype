@@ -5,8 +5,31 @@
  * Moved from PROJECTILE_STATS in config.ts.
  */
 
-import { AUDIO } from '../../../audioConfig';
+import { AUDIO, harmonicSeries } from '../../../audioConfig';
 import type { ProjectileBlueprint } from './types';
+
+// Generate beam shot blueprints for all harmonic series indices
+// Index 0 = most powerful (lowest pitch, biggest beam), index 13 = weakest (highest pitch, smallest)
+function generateBeamShots(): Record<string, ProjectileBlueprint> {
+  const result: Record<string, ProjectileBlueprint> = {};
+  const maxI = harmonicSeries.length - 1;
+  for (let i = 0; i < harmonicSeries.length; i++) {
+    const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
+    result[`beamShot${i}`] = {
+      id: `beamShot${i}`,
+      damage: Math.max(2, Math.round(2 + 28 * p)),
+      beamWidth: Math.max(1, Math.round(1 + 9 * p)),
+      collisionRadius: Math.max(2, Math.round(2 + 18 * p)),
+      primaryDamageRadius: Math.max(4, Math.round(4 + 26 * p)),
+      secondaryDamageRadius: Math.max(15, Math.round(15 + 105 * p)),
+      splashOnExpiry: false,
+      hitForce: 1000,
+      knockBackForce: 1000,
+      hitSound: AUDIO.event.hit[`beamShot${i}`],
+    };
+  }
+  return result;
+}
 
 export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
   lightShot: {
@@ -66,25 +89,11 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     secondaryDamageRadius: 15,
     splashOnExpiry: false,
     piercing: false,
-    // hitForce: 0,
-    // knockBackForce: 0,
     hitForce: 1000,
     knockBackForce: 1000,
     hitSound: AUDIO.event.hit.laserShot,
   },
-  beamShot: {
-    id: 'beamShot',
-    damage: 10,
-    beamWidth: 4,
-    collisionRadius: 8,
-    primaryDamageRadius: 12,
-    secondaryDamageRadius: 60,
-    splashOnExpiry: false,
-    hitForce: 1000,
-    knockBackForce: 1000,
-    hitSound: AUDIO.event.hit.beamShot,
-  },
-
+  ...generateBeamShots(),
   disruptorShot: {
     id: 'disruptorShot',
     damage: 9999,

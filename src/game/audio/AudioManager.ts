@@ -137,13 +137,15 @@ export class AudioManager {
 
   // ==================== CONTINUOUS SOUNDS ====================
 
-  startLaserSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
+  startLaserSound(entityId: number, freqOverride: number | undefined, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
     if (this.activeLaserSounds.has(entityId)) return;
     const tk = this.getToolkit();
     if (!tk) return;
     // Attach sfxVolume so continuousSounds helper can read it
     (tk as unknown as { sfxVolume: number }).sfxVolume = this.sfxVolume;
-    const sound = startContinuousSound(tk, getBeamConfig(), entityId, speed, volumeMultiplier, zoomVolume);
+    const config = getBeamConfig();
+    if (freqOverride !== undefined) config.freq = freqOverride;
+    const sound = startContinuousSound(tk, config, entityId, 1, volumeMultiplier, zoomVolume);
     if (sound) this.activeLaserSounds.set(entityId, sound);
   }
 

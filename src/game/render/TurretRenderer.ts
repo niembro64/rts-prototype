@@ -195,19 +195,8 @@ function drawBeamEmitterTurret(
     graphics.fillStyle(COLORS.WHITE, 1);
     graphics.fillCircle(mountX, mountY, r * 0.12);
 
-    // Thick barrels get dual-layer rendering
-    if (config.barrelThickness >= 4) {
-      graphics.lineStyle(config.barrelThickness + 2, palette.dark, 1);
-      graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
-      graphics.lineStyle(config.barrelThickness, palette.light, 1);
-      graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
-      // Emitter tip
-      graphics.fillStyle(COLORS.WHITE, 1);
-      graphics.fillCircle(beamEndX, beamEndY, r * 0.08);
-    } else {
-      graphics.lineStyle(config.barrelThickness, COLORS.WHITE, 1);
-      graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
-    }
+    graphics.lineStyle(config.barrelThickness, COLORS.WHITE, 1);
+    graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
   } else {
     graphics.lineStyle(config.barrelThickness, COLORS.WHITE, 1);
     graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);

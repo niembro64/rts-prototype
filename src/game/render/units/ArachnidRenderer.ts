@@ -145,7 +145,7 @@ export function drawArachnidUnit(
 
   const bodyHexRadius = r * 0.95;
   const bodyHexForwardOffset = r * 0.35;
-  const bodyHexRotationOffset = Math.PI / 6;
+  const bodyHexRotationOffset = Math.PI / 3;
   const bodyHexCenterX = x + cos * bodyHexForwardOffset;
   const bodyHexCenterY = y + sin * bodyHexForwardOffset;
   drawPolygon(graphics, bodyHexCenterX, bodyHexCenterY, bodyHexRadius, 6, bodyRot + bodyHexRotationOffset);
@@ -153,7 +153,7 @@ export function drawArachnidUnit(
   // Inner carapace pattern (base color)
   const hexRadius = r * 0.65;
   const hexForwardOffset = r * 0.5;
-  const hexRotationOffset = Math.PI / 6;
+  const hexRotationOffset = Math.PI / 3;
   const hexCenterX = x + cos * hexForwardOffset;
   const hexCenterY = y + sin * hexForwardOffset;
   graphics.fillStyle(base, 1);
