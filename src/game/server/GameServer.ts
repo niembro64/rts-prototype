@@ -90,13 +90,13 @@ export class GameServer {
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
-    // Create custom physics engine
-    this.physics = new PhysicsEngine();
-
     // Initialize world state with appropriate map size
     const mapConfig = this.backgroundMode ? MAP_SETTINGS.demo : MAP_SETTINGS.game;
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
+
+    // Create custom physics engine with map bounds
+    this.physics = new PhysicsEngine(mapWidth, mapHeight);
     this.world = new WorldState(42, mapWidth, mapHeight);
     this.world.thrustMultiplier = this.backgroundMode ? UNIT_THRUST_MULTIPLIER_DEMO : UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player

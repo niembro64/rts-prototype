@@ -17,9 +17,7 @@ export function drawCommanderUnit(
 
   // Legs (always drawn at low+high)
   {
-    const legConfig = LEG_STYLE_CONFIG.commander;
-    const legThickness = legConfig.thickness;
-    const footSize = r * legConfig.footSizeMultiplier;
+    const lc = LEG_STYLE_CONFIG.commander;
 
     for (let i = 0; i < legs.length; i++) {
       const leg = legs[i];
@@ -31,31 +29,38 @@ export function drawCommanderUnit(
 
       if (ctx.lod === 'high') {
         // Dual-layer armored legs
-        graphics.lineStyle(legThickness + 2, dark, 1);
+        graphics.lineStyle(lc.upperThickness, dark, 1);
         graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-        graphics.lineStyle(legThickness, base, 1);
+        graphics.lineStyle(lc.upperThickness - 2, base, 1);
         graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
 
-        graphics.lineStyle(legThickness + 1, dark, 1);
+        graphics.lineStyle(lc.lowerThickness, dark, 1);
         graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
-        graphics.lineStyle(legThickness - 1, base, 1);
+        graphics.lineStyle(lc.lowerThickness - 2, base, 1);
         graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-        // Knee joint (armored joint)
+        // Hip joint (armored)
         graphics.fillStyle(dark, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness + 1);
+        graphics.fillCircle(attach.x, attach.y, lc.hipRadius);
         graphics.fillStyle(light, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness - 1);
+        graphics.fillCircle(attach.x, attach.y, lc.hipRadius - 2);
+
+        // Knee joint (armored)
+        graphics.fillStyle(dark, 1);
+        graphics.fillCircle(knee.x, knee.y, lc.kneeRadius);
+        graphics.fillStyle(light, 1);
+        graphics.fillCircle(knee.x, knee.y, lc.kneeRadius - 2);
 
         // Foot (heavy, grounded)
         graphics.fillStyle(dark, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize + 2);
+        graphics.fillCircle(foot.x, foot.y, lc.footRadius + 2);
         graphics.fillStyle(light, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize);
+        graphics.fillCircle(foot.x, foot.y, lc.footRadius);
       } else {
         // Low: simple single-layer lines, no joints/feet
-        graphics.lineStyle(legThickness, dark, 1);
+        graphics.lineStyle(lc.upperThickness, dark, 1);
         graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+        graphics.lineStyle(lc.lowerThickness, dark, 1);
         graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
       }
     }

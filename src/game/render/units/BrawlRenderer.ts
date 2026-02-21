@@ -2,10 +2,8 @@
 
 import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
-import { drawPolygon, drawAnimatedTread } from '../helpers';
+import { drawPolygon, drawUnitTreads } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
-import { getUnitBlueprint } from '../../sim/blueprints';
-import type { TreadConfigData } from '../../sim/blueprints/types';
 
 export function drawBrawlUnit(
   ctx: UnitRenderContext,
@@ -15,28 +13,7 @@ export function drawBrawlUnit(
   const { base, dark } = palette;
 
   // Treads (always drawn at low+high)
-  {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
-
-    const cfg = getUnitBlueprint('badger').locomotion.config as TreadConfigData;
-    const treadOffset = r * cfg.treadOffset;
-    const treadLength = r * cfg.treadLength;
-    const treadWidth = r * cfg.treadWidth;
-
-    for (const side of [-1, 1]) {
-      const offsetX = -sin * treadOffset * side;
-      const offsetY = cos * treadOffset * side;
-
-      const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
-      const treadRotation = tread?.getRotation() ?? 0;
-
-      drawAnimatedTread(
-        graphics, x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot, treadRotation,
-        COLORS.DARK_GRAY, COLORS.GRAY_LIGHT, ctx.lod
-      );
-    }
-  }
+  drawUnitTreads(graphics, 'badger', x, y, r, bodyRot, treads, ctx.lod);
 
   // Body (diamond) - dark with gray armor plates
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : dark;

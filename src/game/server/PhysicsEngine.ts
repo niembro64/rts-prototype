@@ -23,6 +23,13 @@ export class PhysicsEngine {
   private bodies: PhysicsBody[] = [];
   private staticBodies: PhysicsBody[] = [];
   private dynamicBodies: PhysicsBody[] = [];
+  private mapWidth: number;
+  private mapHeight: number;
+
+  constructor(mapWidth: number, mapHeight: number) {
+    this.mapWidth = mapWidth;
+    this.mapHeight = mapHeight;
+  }
 
   // Accumulated acceleration per step (cleared after integration)
   private accelX: Map<PhysicsBody, number> = new Map();
@@ -145,6 +152,18 @@ export class PhysicsEngine {
       b.vy += ay * dtSec;
       b.x += b.vx * dtSec;
       b.y += b.vy * dtSec;
+    }
+
+    // 2b. Clamp to map boundaries
+    const mapW = this.mapWidth;
+    const mapH = this.mapHeight;
+    for (let i = 0; i < numDynamic; i++) {
+      const b = dynamic[i];
+      const r = b.radius;
+      if (b.x < r) { b.x = r; if (b.vx < 0) b.vx = 0; }
+      else if (b.x > mapW - r) { b.x = mapW - r; if (b.vx > 0) b.vx = 0; }
+      if (b.y < r) { b.y = r; if (b.vy < 0) b.vy = 0; }
+      else if (b.y > mapH - r) { b.y = mapH - r; if (b.vy > 0) b.vy = 0; }
     }
 
     // Clear accumulated forces

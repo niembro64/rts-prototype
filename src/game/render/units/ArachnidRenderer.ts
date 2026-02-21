@@ -2,8 +2,8 @@
 // Turret rendering (6 beam emitters + force field) is handled by the generic TurretRenderer
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, LEG_STYLE_CONFIG } from '../types';
-import { drawPolygon } from '../helpers';
+import { COLORS } from '../types';
+import { drawPolygon, drawLegs } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
 // Pre-allocated reusable point array for abdomen shape (avoids 12 object allocations per frame per unit)
@@ -19,33 +19,7 @@ export function drawArachnidUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
-  {
-    const legConfig = LEG_STYLE_CONFIG.widow;
-    const legThickness = legConfig.thickness;
-    const footSize = r * legConfig.footSizeMultiplier;
-
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const side = i < 4 ? -1 : 1;
-
-      const attach = leg.getAttachmentPoint(x, y, bodyRot);
-      const foot = leg.getFootPosition();
-      const knee = leg.getKneePosition(attach.x, attach.y, side);
-
-      graphics.lineStyle(legThickness + 1, dark, 1);
-      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-
-      graphics.lineStyle(legThickness, dark, 1);
-      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
-
-      if (ctx.lod === 'high') {
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness);
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize);
-      }
-    }
-  }
+  drawLegs(graphics, legs, 'widow', x, y, bodyRot, ctx.lod, dark, light);
 
   // Abdomen / "butt" region - large chonky rear section
   const abdomenOffset = -r * 0.9; // Behind the main body

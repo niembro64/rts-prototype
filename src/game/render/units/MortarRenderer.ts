@@ -2,10 +2,8 @@
 
 import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
-import { drawPolygon, drawAnimatedTread } from '../helpers';
+import { drawPolygon, drawUnitWheels } from '../helpers';
 import type { VehicleWheelSetup } from '../Tread';
-import { getUnitBlueprint } from '../../sim/blueprints';
-import type { WheelConfig } from '../../sim/blueprints/types';
 
 export function drawMortarUnit(
   ctx: UnitRenderContext,
@@ -15,34 +13,7 @@ export function drawMortarUnit(
   const { base, dark } = palette;
 
   // Wheels (always drawn at low+high)
-  {
-    const cos = Math.cos(bodyRot);
-    const sin = Math.sin(bodyRot);
-
-    const cfg = getUnitBlueprint('mongoose').locomotion.config as WheelConfig;
-    const treadDistX = r * cfg.wheelDistX;
-    const treadDistY = r * cfg.wheelDistY;
-    const treadLength = r * cfg.treadLength;
-    const treadWidth = r * cfg.treadWidth;
-
-    const treadPositions = [
-      { dx: treadDistX, dy: treadDistY },
-      { dx: treadDistX, dy: -treadDistY },
-      { dx: -treadDistX, dy: treadDistY },
-      { dx: -treadDistX, dy: -treadDistY },
-    ];
-
-    for (let i = 0; i < treadPositions.length; i++) {
-      const tp = treadPositions[i];
-      const tx = x + cos * tp.dx - sin * tp.dy;
-      const ty = y + sin * tp.dx + cos * tp.dy;
-      const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
-      drawAnimatedTread(
-        graphics, tx, ty, treadLength, treadWidth, bodyRot, treadRotation,
-        COLORS.DARK_GRAY, COLORS.GRAY_LIGHT, ctx.lod
-      );
-    }
-  }
+  drawUnitWheels(graphics, 'mongoose', x, y, r, bodyRot, wheelSetup, ctx.lod);
 
   // Main body (hexagon)
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : (ctx.lod === 'high' ? COLORS.GRAY : base);

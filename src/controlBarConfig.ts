@@ -96,8 +96,8 @@ export const CONTROL_BARS = {
   // ── Server bar ──
   server: {
     tickRate: {
-      default: 128 as TickRate,
-      options: [1, 4, 8, 16, 32, 64, 128, 256] as readonly TickRate[],
+      default: 64 as TickRate,
+      options: [1, 4, 8, 16, 32, 64, 128] as readonly TickRate[],
     },
     snapshot: {
       default: 32 as SnapshotRate,

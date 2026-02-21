@@ -160,7 +160,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 9,
     baseCost: 35,
     weapons: [{ weaponId: 'laserTurret', offsetX: 0, offsetY: 0 }],
-    chassisMounts: [{ x: 0, y: 0 }],
+    chassisMounts: [{ x: -0.45, y: 0 }],
     locomotion: {
       type: 'legs',
       style: 'tick',

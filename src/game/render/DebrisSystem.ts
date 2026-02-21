@@ -129,8 +129,13 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
         const ky = ay + Math.sin(attachAngle) * upperLen;
         pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 4, angle: attachAngle, colorType: 'dark', shape: 'line' });
       }
-      // Compact body — 8-point shape ~r*0.6 × r*0.5
-      addPolygonEdges(0, 0, r * 0.5, 6, 0, r * 0.2, 'dark', 'rect');
+      // Pedipalps — two small front feeler segments
+      pieces.push({ localX: r * 0.45, localY: -r * 0.25, length: r * 0.55, width: 3, angle: -0.35, colorType: 'dark', shape: 'line' });
+      pieces.push({ localX: r * 0.45, localY: r * 0.25, length: r * 0.55, width: 3, angle: 0.35, colorType: 'dark', shape: 'line' });
+      // Round cephalothorax — circular body r*0.6
+      addPolygonEdges(r * 0.1, 0, r * 0.5, 8, 0, r * 0.2, 'dark', 'rect');
+      // Large abdomen (butt) — 1.5x main body, oval behind
+      pieces.push({ localX: -r * 0.75, localY: 0, length: r * 1.5, width: r * 1.5, angle: 0, colorType: 'dark', shape: 'rect' });
       // Central beam emitter — r*0.6 long, 3.5px wide
       addBarrel(0, 0, r * 0.6, 3.5, 0, 'white');
       break;
@@ -292,8 +297,10 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
         const ky = ay + Math.sin(attachAngle) * upperLen;
         pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 1.5, angle: attachAngle, colorType: 'dark', shape: 'line' });
       }
-      // Tiny round body
-      pieces.push({ localX: 0, localY: 0, length: r * 0.2, width: r * 0.2, angle: 0, colorType: 'base', shape: 'rect' });
+      // Super tiny cephalothorax (leg attachment piece)
+      pieces.push({ localX: r * 0.25, localY: 0, length: r * 0.13, width: r * 0.1, angle: 0, colorType: 'base', shape: 'rect' });
+      // Huge engorged abdomen (~10x the body)
+      pieces.push({ localX: -r * 0.2, localY: 0, length: r * 0.8, width: r * 0.9, angle: 0, colorType: 'base', shape: 'rect' });
       // Long railgun barrel — r*1.6 long, 1.5px wide
       addBarrel(0, 0, r * 1.6, 1.5, 0, 'white');
       break;

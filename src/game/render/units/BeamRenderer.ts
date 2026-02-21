@@ -1,12 +1,13 @@
 // Beam unit renderer - 8-legged tarantula style unit with a single beam laser
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, LEG_STYLE_CONFIG } from '../types';
-import { drawPolygon } from '../helpers';
+import { COLORS } from '../types';
+import { drawPolygon, drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
-// Pre-allocated reusable point array for body shape (avoids 8 object allocations per frame per unit)
-const _bodyPoints: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+// Pre-allocated reusable point arrays (avoids allocations per frame per unit)
+const _bodyPoints: { x: number; y: number }[] = Array.from({ length: 12 }, () => ({ x: 0, y: 0 }));
+const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 10 }, () => ({ x: 0, y: 0 }));
 
 export function drawBeamUnit(
   ctx: UnitRenderContext,
@@ -18,68 +19,72 @@ export function drawBeamUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
+  drawLegs(graphics, legs, 'tarantula', x, y, bodyRot, ctx.lod, dark, light);
+
+  // Pedipalps — two small front-facing feeler legs
   {
-    const legConfig = LEG_STYLE_CONFIG.tarantula;
-    const legThickness = legConfig.thickness;
-    const footSize = r * legConfig.footSizeMultiplier;
+    const palpLen = r * 0.55;
+    const palpThickness = 3;
+    const palpSpread = r * 0.25;
+    const palpAngle = 0.35; // radians outward from forward axis
+    const headX = x + cos * r * 0.45;
+    const headY = y + sin * r * 0.45;
 
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const side = i < 4 ? -1 : 1;
+    for (let side = -1; side <= 1; side += 2) {
+      const baseX = headX - sin * palpSpread * side;
+      const baseY = headY + cos * palpSpread * side;
+      const tipAngle = bodyRot + palpAngle * side;
+      const tipX = baseX + Math.cos(tipAngle) * palpLen;
+      const tipY = baseY + Math.sin(tipAngle) * palpLen;
 
-      const attach = leg.getAttachmentPoint(x, y, bodyRot);
-      const foot = leg.getFootPosition();
-      const knee = leg.getKneePosition(attach.x, attach.y, side);
-
-      graphics.lineStyle(legThickness + 0.5, dark, 1);
-      graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
-
-      graphics.lineStyle(legThickness, dark, 1);
-      graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+      graphics.lineStyle(palpThickness + 0.5, dark, 1);
+      graphics.lineBetween(baseX, baseY, tipX, tipY);
 
       if (ctx.lod === 'high') {
         graphics.fillStyle(light, 1);
-        graphics.fillCircle(knee.x, knee.y, legThickness);
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(foot.x, foot.y, footSize);
+        graphics.fillCircle(tipX, tipY, palpThickness * 0.7);
       }
     }
   }
 
-  // Body (hexagonal insect shape)
+  // Abdomen (butt segment) — ~1.5x the main body, large oval behind
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
-  graphics.fillStyle(bodyColor, 1);
+  {
+    const abdCx = x - cos * r * 0.85;
+    const abdCy = y - sin * r * 0.85;
+    const abdRx = r * 0.65;  // half-width (lateral)
+    const abdRy = r * 0.9;   // half-length (along body axis) — longer than wide
+    graphics.fillStyle(bodyColor, 1);
+    drawOval(graphics, _abdomenPoints, abdCx, abdCy, abdRx, abdRy, cos, sin, 10);
 
-  // Draw body as elongated hexagon (insect-like) — reuse pooled point array
-  const bodyLength = r * 0.9;
-  const bodyWidth = r * 0.55;
-  _bodyPoints[0].x = x + cos * bodyLength - sin * bodyWidth * 0.3;
-  _bodyPoints[0].y = y + sin * bodyLength + cos * bodyWidth * 0.3;
-  _bodyPoints[1].x = x + cos * bodyLength * 0.4 - sin * bodyWidth;
-  _bodyPoints[1].y = y + sin * bodyLength * 0.4 + cos * bodyWidth;
-  _bodyPoints[2].x = x - cos * bodyLength * 0.5 - sin * bodyWidth * 0.7;
-  _bodyPoints[2].y = y - sin * bodyLength * 0.5 + cos * bodyWidth * 0.7;
-  _bodyPoints[3].x = x - cos * bodyLength - sin * bodyWidth * 0.3;
-  _bodyPoints[3].y = y - sin * bodyLength + cos * bodyWidth * 0.3;
-  _bodyPoints[4].x = x - cos * bodyLength + sin * bodyWidth * 0.3;
-  _bodyPoints[4].y = y - sin * bodyLength - cos * bodyWidth * 0.3;
-  _bodyPoints[5].x = x - cos * bodyLength * 0.5 + sin * bodyWidth * 0.7;
-  _bodyPoints[5].y = y - sin * bodyLength * 0.5 - cos * bodyWidth * 0.7;
-  _bodyPoints[6].x = x + cos * bodyLength * 0.4 + sin * bodyWidth;
-  _bodyPoints[6].y = y + sin * bodyLength * 0.4 - cos * bodyWidth;
-  _bodyPoints[7].x = x + cos * bodyLength + sin * bodyWidth * 0.3;
-  _bodyPoints[7].y = y + sin * bodyLength - cos * bodyWidth * 0.3;
-  graphics.fillPoints(_bodyPoints, true);
+    if (ctx.lod === 'high') {
+      // Dark stripe on abdomen
+      graphics.fillStyle(dark, 1);
+      graphics.fillCircle(abdCx, abdCy, r * 0.35);
+    }
+  }
+
+  // Main body (round cephalothorax)
+  graphics.fillStyle(bodyColor, 1);
+  {
+    const bodyR = r * 0.6;
+    const bodyCx = x + cos * r * 0.1;
+    const bodyCy = y + sin * r * 0.1;
+    drawOval(graphics, _bodyPoints, bodyCx, bodyCy, bodyR, bodyR, cos, sin, 12);
+  }
 
   if (ctx.lod === 'high') {
+    const bodyCx = x + cos * r * 0.1;
+    const bodyCy = y + sin * r * 0.1;
+
     // Inner carapace pattern (dark)
     graphics.fillStyle(dark, 1);
-    drawPolygon(graphics, x, y, r * 0.4, 6, bodyRot);
+    drawPolygon(graphics, bodyCx, bodyCy, r * 0.35, 6, bodyRot);
 
     // Central eye/sensor (light glow)
     graphics.fillStyle(light, 1);
-    graphics.fillCircle(x, y, r * 0.2);
+    graphics.fillCircle(bodyCx, bodyCy, r * 0.18);
     graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(x, y, r * 0.1);
+    graphics.fillCircle(bodyCx, bodyCy, r * 0.08);
   }
 }

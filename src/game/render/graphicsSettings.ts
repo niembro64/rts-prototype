@@ -11,13 +11,11 @@ import { GRAPHICS_DETAIL_DEFINITIONS, ZOOM_MIN, ZOOM_MAX } from '../../config';
 export type GraphicsQuality = 'auto' | 'min' | 'low' | 'medium' | 'high' | 'max';
 export type RenderMode = 'window' | 'padded' | 'all';
 
-export type ExplosionStyle = 'one-simple-circle' | 'three-velocity-circles' | 'three-velocity-chunks' | 'three-velocity-complex';
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
 export type ForceFieldStyle = 'minimal' | 'simple' | 'normal' | 'enhanced';
 
 export interface GraphicsConfig {
   legs: 'none' | 'animated';
-  explosions: ExplosionStyle;
   treadsAnimated: boolean;
   beamStyle: BeamStyle;
   beamGlow: boolean;
@@ -32,7 +30,7 @@ const D = GRAPHICS_DETAIL_DEFINITIONS;
 const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig> = {
   min: {
     legs: D.LEGS.min as 'none' | 'animated',
-    explosions: D.EXPLOSIONS.min as ExplosionStyle,
+
     treadsAnimated: D.TREADS_ANIMATED.min,
     beamStyle: D.BEAM_STYLE.min as BeamStyle,
     beamGlow: D.BEAM_GLOW.min,
@@ -43,7 +41,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
   },
   low: {
     legs: D.LEGS.low as 'none' | 'animated',
-    explosions: D.EXPLOSIONS.low as ExplosionStyle,
+
     treadsAnimated: D.TREADS_ANIMATED.low,
     beamStyle: D.BEAM_STYLE.low as BeamStyle,
     beamGlow: D.BEAM_GLOW.low,
@@ -54,7 +52,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
   },
   medium: {
     legs: D.LEGS.medium as 'none' | 'animated',
-    explosions: D.EXPLOSIONS.medium as ExplosionStyle,
+
     treadsAnimated: D.TREADS_ANIMATED.medium,
     beamStyle: D.BEAM_STYLE.medium as BeamStyle,
     beamGlow: D.BEAM_GLOW.medium,
@@ -65,7 +63,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
   },
   high: {
     legs: D.LEGS.high as 'none' | 'animated',
-    explosions: D.EXPLOSIONS.high as ExplosionStyle,
+
     treadsAnimated: D.TREADS_ANIMATED.high,
     beamStyle: D.BEAM_STYLE.high as BeamStyle,
     beamGlow: D.BEAM_GLOW.high,
@@ -76,7 +74,7 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
   },
   max: {
     legs: D.LEGS.max as 'none' | 'animated',
-    explosions: D.EXPLOSIONS.max as ExplosionStyle,
+
     treadsAnimated: D.TREADS_ANIMATED.max,
     beamStyle: D.BEAM_STYLE.max as BeamStyle,
     beamGlow: D.BEAM_GLOW.max,

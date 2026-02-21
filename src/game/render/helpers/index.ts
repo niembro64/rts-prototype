@@ -16,4 +16,8 @@ export {
   drawAnimatedTread,
   drawForceFieldGrate,
   drawGear,
+  drawLegs,
+  drawUnitTreads,
+  drawUnitWheels,
+  drawOval,
 } from './GeometryHelpers';

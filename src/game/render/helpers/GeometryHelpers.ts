@@ -2,9 +2,13 @@
 
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
-import { COLORS } from '../types';
+import { COLORS, LEG_STYLE_CONFIG } from '../types';
 import type { LodLevel } from '../types';
 import type { ForceFieldTurretConfig } from '../../../config';
+import type { ArachnidLeg } from '../ArachnidLeg';
+import type { TankTreadSetup, VehicleWheelSetup } from '../Tread';
+import { getUnitBlueprint } from '../../sim/blueprints';
+import type { TreadConfigData, WheelConfig } from '../../sim/blueprints/types';
 
 // Reusable point buffers to avoid per-call allocations
 const _rectPoints = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
@@ -307,4 +311,148 @@ export function drawGear(
   // Outline
   graphics.lineStyle(1, 0x333333, 0.5);
   graphics.strokeCircle(x, y, innerRadius);
+}
+
+/**
+ * Draw arachnid-style legs using a named style from LEG_STYLE_CONFIG.
+ * Shared by BeamRenderer, ArachnidRenderer, ForceFieldRenderer, SnipeRenderer.
+ */
+export function drawLegs(
+  graphics: Phaser.GameObjects.Graphics,
+  legs: ArachnidLeg[],
+  style: string,
+  x: number,
+  y: number,
+  bodyRot: number,
+  lod: LodLevel,
+  dark: number,
+  light: number
+): void {
+  const lc = LEG_STYLE_CONFIG[style];
+  const halfLegs = legs.length / 2;
+
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i];
+    const side = i < halfLegs ? -1 : 1;
+
+    const attach = leg.getAttachmentPoint(x, y, bodyRot);
+    const foot = leg.getFootPosition();
+    const knee = leg.getKneePosition(attach.x, attach.y, side);
+
+    graphics.lineStyle(lc.upperThickness, dark, 1);
+    graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+
+    graphics.lineStyle(lc.lowerThickness, dark, 1);
+    graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+
+    if (lod === 'high') {
+      graphics.fillStyle(light, 1);
+      graphics.fillCircle(attach.x, attach.y, lc.hipRadius);
+      graphics.fillCircle(knee.x, knee.y, lc.kneeRadius);
+      graphics.fillCircle(foot.x, foot.y, lc.footRadius);
+    }
+  }
+}
+
+/**
+ * Draw paired tank treads for a unit, looking up blueprint config by unit ID.
+ * Shared by BrawlRenderer, BurstRenderer, TankRenderer.
+ */
+export function drawUnitTreads(
+  graphics: Phaser.GameObjects.Graphics,
+  unitId: string,
+  x: number,
+  y: number,
+  r: number,
+  bodyRot: number,
+  treads: TankTreadSetup | undefined,
+  lod: LodLevel
+): void {
+  const cos = Math.cos(bodyRot);
+  const sin = Math.sin(bodyRot);
+
+  const cfg = getUnitBlueprint(unitId).locomotion.config as TreadConfigData;
+  const treadOffset = r * cfg.treadOffset;
+  const treadLength = r * cfg.treadLength;
+  const treadWidth = r * cfg.treadWidth;
+
+  for (const side of [-1, 1]) {
+    const offsetX = -sin * treadOffset * side;
+    const offsetY = cos * treadOffset * side;
+
+    const tread = side === -1 ? treads?.leftTread : treads?.rightTread;
+    const treadRotation = tread?.getRotation() ?? 0;
+
+    drawAnimatedTread(
+      graphics, x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot, treadRotation,
+      COLORS.DARK_GRAY, COLORS.GRAY_LIGHT, lod
+    );
+  }
+}
+
+/**
+ * Draw 4-wheel tread setup for a unit, looking up blueprint config by unit ID.
+ * Shared by ScoutRenderer, MortarRenderer.
+ */
+export function drawUnitWheels(
+  graphics: Phaser.GameObjects.Graphics,
+  unitId: string,
+  x: number,
+  y: number,
+  r: number,
+  bodyRot: number,
+  wheelSetup: VehicleWheelSetup | undefined,
+  lod: LodLevel
+): void {
+  const cos = Math.cos(bodyRot);
+  const sin = Math.sin(bodyRot);
+
+  const cfg = getUnitBlueprint(unitId).locomotion.config as WheelConfig;
+  const treadDistX = r * cfg.wheelDistX;
+  const treadDistY = r * cfg.wheelDistY;
+  const treadLength = r * cfg.treadLength;
+  const treadWidth = r * cfg.treadWidth;
+
+  const treadPositions = [
+    { dx: treadDistX, dy: treadDistY },
+    { dx: treadDistX, dy: -treadDistY },
+    { dx: -treadDistX, dy: treadDistY },
+    { dx: -treadDistX, dy: -treadDistY },
+  ];
+
+  for (let i = 0; i < treadPositions.length; i++) {
+    const tp = treadPositions[i];
+    const tx = x + cos * tp.dx - sin * tp.dy;
+    const ty = y + sin * tp.dx + cos * tp.dy;
+    const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
+    drawAnimatedTread(
+      graphics, tx, ty, treadLength, treadWidth, bodyRot, treadRotation,
+      COLORS.DARK_GRAY, COLORS.GRAY_LIGHT, lod
+    );
+  }
+}
+
+/**
+ * Draw a filled rotated oval by populating a pre-allocated point array.
+ * Shared by BeamRenderer and SnipeRenderer for body/abdomen shapes.
+ */
+export function drawOval(
+  graphics: Phaser.GameObjects.Graphics,
+  points: { x: number; y: number }[],
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  cos: number,
+  sin: number,
+  count: number
+): void {
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2;
+    const lx = Math.cos(a) * ry;
+    const ly = Math.sin(a) * rx;
+    points[i].x = cx + cos * lx - sin * ly;
+    points[i].y = cy + sin * lx + cos * ly;
+  }
+  graphics.fillPoints(points, true);
 }

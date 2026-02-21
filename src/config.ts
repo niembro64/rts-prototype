@@ -335,7 +335,7 @@ export const FIRE_EXPLOSION = {
 
   // --- Per-LOD tuning (indexed: [min, low, med, high, max]) ---
   /** Particle count multiplier per LOD tier */
-  countMult: [1, 1.5, 1.5, 4, 6] as readonly number[],
+  countMult: [1, 1.5, 2.5, 4, 6] as readonly number[],
   /** Center-drift strength per LOD tier (0 = no drift, 1 = full drift) */
   driftScale: [0.0, 0.1, 0.15, 0.35, 0.4] as readonly number[],
   /** Trail length multiplier per LOD tier (0 = no trails) */
@@ -493,6 +493,159 @@ export const FIRE_EXPLOSION = {
 };
 
 // =============================================================================
+// DEATH EXPLOSIONS
+// =============================================================================
+
+/**
+ * Configuration for the unified death explosion renderer.
+ * Per-LOD arrays indexed [min, low, med, high, max].
+ * Draw call budget: ~3, ~12, ~25, ~55, ~120.
+ */
+export const DEATH_EXPLOSION = {
+  // --- Per-LOD particle counts ---
+  /** Core fireball concentric circles */
+  coreCircles:       [2,     3,     4,     5,     5]     as readonly number[],
+  /** Smoke particles (entity velocity direction) */
+  smokeCount:        [0,     3,     4,     6,     8]     as readonly number[],
+  /** Debris particles (penetration direction) */
+  debrisCount:       [0,     2,     4,     7,     10]    as readonly number[],
+  /** Spark particles (attacker direction) */
+  sparkCount:        [0,     3,     5,     12,    24]    as readonly number[],
+  /** Fragment particles (tight attacker cone, high+ only) */
+  fragmentCount:     [0,     0,     0,     8,     15]    as readonly number[],
+  /** Chunk particles (penetration direction with gravity, high+ only) */
+  chunkCount:        [0,     0,     0,     6,     10]    as readonly number[],
+  /** Embers (float up, max only) */
+  emberCount:        [0,     0,     0,     0,     12]    as readonly number[],
+  /** Momentum trail particles (combined direction, max only) */
+  momentumCount:     [0,     0,     0,     0,     12]    as readonly number[],
+
+  // --- Per-particle inner highlight circles ---
+  debrisInners:      [0,     0,     1,     1,     2]     as readonly number[],
+  sparkInners:       [0,     0,     1,     1,     2]     as readonly number[],
+  fragmentInners:    [0,     0,     0,     2,     3]     as readonly number[],
+  chunkInners:       [0,     0,     0,     1,     1]     as readonly number[],
+
+  // --- Trail multipliers ---
+  smokeTrailMult:    [0,     0,     0,     0.5,   1.0]   as readonly number[],
+  debrisTrailMult:   [0,     0,     0,     0.6,   1.0]   as readonly number[],
+  sparkTrailMult:    [0,     0,     0,     0.6,   1.0]   as readonly number[],
+  sparkDualTrail:    [false, false, false, false, true]   as readonly boolean[],
+  fragmentTrailMult: [0,     0,     0,     0.8,   1.0]   as readonly number[],
+
+  // --- Spark distribution ---
+  /** Whether sparks go full circle (true) or cone (false) */
+  sparkFullCircle:   [false, false, false, true,  true]  as readonly boolean[],
+  /** Directional bias for spark cone (higher = tighter cone in attacker dir) */
+  sparkDirBias:      [0,     0.5,   0.8,   2.0,   3.0]   as readonly number[],
+
+  // --- Center drift ---
+  /** Drift scale per LOD (fraction of radius) */
+  driftScale:        [0,     0.15,  0.25,  0.4,   0.5]   as readonly number[],
+  /** Smoke upward float (px per progress unit) */
+  smokeFloat:        [0,     4,     5,     7,     8]     as readonly number[],
+
+  // --- Strength normalization ---
+  strengthNormalize: 300,
+  strengthMax: 1.5,
+  strengthFloor: 0.3,
+  driftNormalize: 400,
+
+  // --- Core fireball ---
+  coreExpandMult: 0.6,
+  coreFadeRate: 1.3,
+  coreGlowScale: 1.15,
+
+  // --- Particle spreads (radians half-width) ---
+  smokeSpread: 0.9,
+  debrisSpread: 0.7,
+  sparkConeSpread: 0.5,
+  fragmentSpread: 0.4,
+  chunkSpread: 1.2,
+
+  // --- Particle speed ranges ---
+  smokeSpeedBase: 0.5,
+  smokeSpeedRange: 0.5,
+  debrisSpeedBase: 0.7,
+  debrisSpeedRange: 0.7,
+  sparkSpeedBase: 0.8,
+  sparkSpeedRange: 0.8,
+  fragmentSpeedBase: 1.5,
+  fragmentSpeedRange: 1.5,
+  chunkSpeedBase: 0.4,
+  chunkSpeedRange: 0.4,
+
+  // --- Particle distance multipliers (relative to radius) ---
+  smokeDistMult: 1.4,
+  debrisDistMult: 2.0,
+  sparkDistMult: 2.5,
+  fragmentDistMult: 3.5,
+  chunkDistMult: 1.0,
+
+  // --- Particle sizes ---
+  smokeSizeBase: 3,
+  smokeSizeRange: 4,
+  debrisSizeBase: 3,
+  debrisSizeRange: 5,
+  sparkSizeBase: 2.5,
+  sparkSizeRange: 3,
+  fragmentSizeBase: 4,
+  fragmentSizeRange: 4,
+  chunkSizeBase: 3,
+  chunkSizeRange: 4,
+  emberSizeBase: 1.5,
+  emberSizeRange: 1.5,
+  momentumSizeBase: 3,
+  momentumSizeRange: 2,
+
+  // --- Trail max lengths (px) ---
+  smokeTrailMax: 10,
+  debrisTrailMax: 15,
+  sparkTrailMax: 20,
+  fragmentTrailMax: 25,
+
+  // --- Gravity / float ---
+  chunkGravity: 20,
+  emberFloat: 15,
+
+  // --- Colors ---
+  colors: {
+    // Core
+    coreGlow: 0xff6600,
+    coreFireball: 0xff8822,
+    coreHot: 0xffcc44,
+    coreWhite: 0xffffff,
+    // Smoke
+    smokeFill: 0x444444,
+    smokeTrail: 0x555555,
+    // Debris
+    debrisFill: 0xff7722,
+    debrisInner: 0xffaa55,
+    debrisTrail: 0xff5500,
+    // Sparks
+    sparkFill: 0xffdd88,
+    sparkInner: 0xffffff,
+    sparkTrail: 0xff6622,
+    sparkTrailInner: 0xffaa44,
+    // Fragments
+    fragmentFill: 0xff6600,
+    fragmentInner: 0xffcc44,
+    fragmentCenter: 0xffffff,
+    fragmentTrail: 0xff4400,
+    fragmentTrailInner: 0xffaa00,
+    // Chunks
+    chunkFill: 0x332211,
+    chunkInner: 0x664422,
+    // Embers
+    emberOuter: 0xff6600,
+    emberInner: 0xffcc00,
+    // Momentum trail
+    momentumFill: 0xff8844,
+    momentumInner: 0xffcc88,
+  },
+};
+
+// =============================================================================
 // DEATH DEBRIS
 // =============================================================================
 
@@ -630,7 +783,7 @@ export const COMBAT_STATS_VISIBLE_ON_LOAD = false;
 // =============================================================================
 
 /** Minimum zoom level (zoomed out) */
-export const ZOOM_MIN = 0.5;
+export const ZOOM_MIN = 0.2;
 
 /** Maximum zoom level (zoomed in) */
 export const ZOOM_MAX = 5.0;
@@ -677,15 +830,6 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     medium: 'animated',
     high: 'animated',
     max: 'animated',
-  },
-
-  // Explosion style
-  EXPLOSIONS: {
-    min: 'one-simple-circle',
-    low: 'one-simple-circle',
-    medium: 'one-simple-circle',
-    high: 'three-velocity-circles',
-    max: 'three-velocity-complex',
   },
 
   // Tread/wheel animations

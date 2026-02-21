@@ -750,13 +750,15 @@ function changeDriftMode(mode: DriftMode): void {
   driftMode.value = mode;
 }
 
+const SFX_CATEGORIES = SOUND_CATEGORIES.filter((c) => c !== 'music');
+
 const allSoundsActive = computed(() =>
-  SOUND_CATEGORIES.every((cat) => soundToggles[cat]),
+  SFX_CATEGORIES.every((cat) => soundToggles[cat]),
 );
 
 function toggleAllSounds(): void {
   const enable = !allSoundsActive.value;
-  for (const cat of SOUND_CATEGORIES) {
+  for (const cat of SFX_CATEGORIES) {
     if (soundToggles[cat] !== enable) toggleSoundCategory(cat);
   }
 }
@@ -1203,7 +1205,7 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">PROJ VEL:</span>
+          <span class="control-label">SHOT VEL:</span>
           <button
             class="control-btn"
             :class="{ active: serverMetaFromSnapshot?.projVelInherit }"
@@ -1596,7 +1598,7 @@ onUnmounted(() => {
           </button>
           <div class="button-group">
             <button
-              v-for="cat in SOUND_CATEGORIES"
+              v-for="cat in SFX_CATEGORIES"
               :key="cat"
               class="control-btn"
               :class="{ active: soundToggles[cat] }"
@@ -1606,6 +1608,18 @@ onUnmounted(() => {
               {{ SOUND_LABELS[cat] }}
             </button>
           </div>
+        </div>
+        <div class="control-group">
+          <div class="bar-divider"></div>
+          <span class="control-label">MUSIC:</span>
+          <button
+            class="control-btn"
+            :class="{ active: soundToggles.music }"
+            :title="SOUND_TOOLTIPS.music"
+            @click="toggleSoundCategory('music')"
+          >
+            {{ soundToggles.music ? 'ON' : 'OFF' }}
+          </button>
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
