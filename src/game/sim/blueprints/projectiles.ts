@@ -79,8 +79,8 @@ export const PROJECTILE_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
     primaryDamageRadius: 12,
     secondaryDamageRadius: 60,
     splashOnExpiry: false,
-    hitForce: 750,
-    knockBackForce: 200,
+    hitForce: 1000,
+    knockBackForce: 1000,
     hitSound: { synth: 'sizzle', volume: 1.0, playSpeed: 1.0 },
   },
 

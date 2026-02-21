@@ -447,7 +447,7 @@ export class Simulation {
     updateTurretRotation(this.world, dtMs);
 
     // Fire weapons and create projectiles (with recoil force for projectiles)
-    const fireResult = fireWeapons(this.world, this.forceAccumulator);
+    const fireResult = fireWeapons(this.world, dtMs, this.forceAccumulator);
     for (const proj of fireResult.projectiles) {
       this.world.addEntity(proj);
     }

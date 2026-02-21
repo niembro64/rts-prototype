@@ -54,7 +54,7 @@ function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, weaponIndex: 
 
 // Fire weapons at targets - unified for all units
 // Each weapon fires independently based on its own state
-export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulator): FireWeaponsResult {
+export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: ForceAccumulator): FireWeaponsResult {
   _fireNewProjectiles.length = 0;
   _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
@@ -80,6 +80,16 @@ export function fireWeapons(world: WorldState, forceAccumulator?: ForceAccumulat
 
       // Skip if weapon is not firing (target not in range or no target)
       if (!weapon.isFiring) continue;
+
+      // Apply beam/railgun recoil any time the weapon is firing (not just when beam hits)
+      if (isBeamWeapon && forceAccumulator && config.knockBackForce) {
+        const dtSec = dtMs / 1000;
+        const knockBackPerTick = config.knockBackForce * dtSec;
+        const turretAngle = weapon.turretRotation;
+        const dirX = Math.cos(turretAngle);
+        const dirY = Math.sin(turretAngle);
+        forceAccumulator.addForce(unit.id, -dirX * knockBackPerTick, -dirY * knockBackPerTick, 'recoil');
+      }
 
       const target = world.getEntity(weapon.targetEntityId!);
       if (!target) {
@@ -586,14 +596,13 @@ export function checkProjectileCollisions(
         ? (config.damage / config.beamDuration) * dtMs
         : config.damage * dtSec;
 
-      // Beam direction for recoil and knockback
+      // Beam direction for hit knockback
       const beamAngle = projEntity.transform.rotation;
       const beamDirX = Math.cos(beamAngle);
       const beamDirY = Math.sin(beamAngle);
 
-      // Flat per-tick forces, scaled by dt for framerate independence
+      // Flat per-tick hit force, scaled by dt for framerate independence
       const hitForcePerTick = (config.hitForce ?? 0) * dtSec;
-      const knockBackPerTick = (config.knockBackForce ?? 0) * dtSec;
 
       // Collision gate: when splashOnExpiry is false, only splash if collisionRadius circle hits something
       const useCollisionGate = !config.splashOnExpiry;
@@ -700,15 +709,7 @@ export function checkProjectileCollisions(
         }
       }
 
-      // Apply recoil to firing unit every frame the beam is active (not just on hit)
-      if (forceAccumulator && knockBackPerTick > 0) {
-        forceAccumulator.addForce(
-          proj.sourceEntityId,
-          -beamDirX * knockBackPerTick,
-          -beamDirY * knockBackPerTick,
-          'recoil'
-        );
-      }
+      // Note: beam recoil (knockBackForce) is applied in fireWeapons() based on weapon.isFiring state
     } else {
       // Traveling projectiles use swept volume collision (prevents tunneling)
       const projRadius = config.projectileRadius ?? 5;
