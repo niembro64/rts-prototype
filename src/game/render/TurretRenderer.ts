@@ -184,7 +184,7 @@ function drawBeamEmitterTurret(
   turretRot: number,
   config: Extract<TurretConfig, { type: 'beamEmitter' }>,
   lod: LodLevel,
-  palette: ColorPalette,
+  _palette: ColorPalette,
 ): void {
   const beamLen = r * config.barrelLength;
   const beamEndX = mountX + Math.cos(turretRot) * beamLen;

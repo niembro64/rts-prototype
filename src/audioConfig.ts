@@ -180,7 +180,9 @@ export const AUDIO = {
       filterQ: 10, // lowpass filter resonance
       highpassFreq: 80, // highpass cutoff frequency
       highpassQ: 1, // highpass filter resonance
-      fadeIn: 0.12, // fade-in time in seconds
+      fadeIn: 0.1, // fade-in time in seconds
+      pitchSlideStart: 0.3, // start frequency multiplier (1.1 = 10% higher)
+      pitchSlideTime: 0.2, // time to slide to target frequency (seconds)
       oscVolume: 0.2, // main oscillator volume multiplier
       noiseVolume: 0.08, // noise layer volume multiplier
       noiseBandFreq: 4000, // noise bandpass center frequency

@@ -26,6 +26,8 @@ export interface ContinuousSoundConfig {
   highpassFreq?: number;
   highpassQ?: number;
   fadeIn: number;
+  pitchSlideStart?: number; // start frequency multiplier (e.g. 1.1 = 10% higher)
+  pitchSlideTime?: number;  // time to exponentially slide to target freq (seconds)
   oscVolume: number;
   noiseVolume: number;
   noiseBandFreq: number;
@@ -53,7 +55,15 @@ export function startContinuousSound(
   const freqOffset = config.randomFrequencyRange
     ? (Math.random() * 2 - 1) * config.randomFrequencyRange
     : 0;
-  osc.frequency.value = (config.freq + freqOffset) * speed;
+  const targetFreq = (config.freq + freqOffset) * speed;
+
+  // Pitch slide: start higher and exponentially ramp down to target
+  if (config.pitchSlideStart && config.pitchSlideTime) {
+    osc.frequency.setValueAtTime(targetFreq * config.pitchSlideStart, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(targetFreq, ctx.currentTime + config.pitchSlideTime);
+  } else {
+    osc.frequency.value = targetFreq;
+  }
 
   // Optional LFO for frequency wobble
   if (config.lfoRate && config.lfoDepth) {
@@ -223,6 +233,8 @@ export function getBeamConfig(): ContinuousSoundConfig {
     highpassFreq: bc.highpassFreq,
     highpassQ: bc.highpassQ,
     fadeIn: bc.fadeIn,
+    pitchSlideStart: bc.pitchSlideStart,
+    pitchSlideTime: bc.pitchSlideTime,
     oscVolume: bc.oscVolume,
     noiseVolume: bc.noiseVolume,
     noiseBandFreq: bc.noiseBandFreq,
