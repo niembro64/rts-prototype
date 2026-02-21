@@ -238,7 +238,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'tarantula',
-      config: { thickness: 4, footSize: 0.12, lerpDuration: 200 },
+      config: { thickness: 6, footSize: 0.12, lerpDuration: 200 },
     },
     renderer: 'beam',
     deathSound: AUDIO.event.death.tarantula,
