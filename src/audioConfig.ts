@@ -134,6 +134,11 @@ export const AUDIO = {
         playSpeed: 1.0,
       },
       dgunTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
+      hippoGatlingTurret: {
+        synth: 'burst-rifle' as SynthId,
+        volume: 0.3,
+        playSpeed: 0.4,
+      },
     } as Record<string, SoundEntry>,
 
     // Per-turret laser/continuous weapon start sounds
@@ -164,6 +169,7 @@ export const AUDIO = {
       widow: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       tarantula: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       commander: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      hippo: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
     } as Record<string, SoundEntry>,
   },
 

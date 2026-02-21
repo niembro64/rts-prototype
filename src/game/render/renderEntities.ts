@@ -19,7 +19,7 @@ import { COLORS } from './types';
 import { createColorPalette } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
 import { drawTurret } from './TurretRenderer';
-import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawArachnidUnit, drawForceFieldUnit, drawCommanderUnit } from './units';
+import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawHippoUnit, drawArachnidUnit, drawForceFieldUnit, drawCommanderUnit } from './units';
 import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderUnitRadiusCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
 import { renderBuilding } from './BuildingRenderer';
 import { renderProjectile, renderProjRangeCircles } from './ProjectileRenderer';
@@ -482,6 +482,7 @@ export class EntityRenderer {
       case 'mortar': drawMortarUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
       case 'snipe': drawSnipeUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
       case 'tank': drawTankUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
+      case 'hippo': drawHippoUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
       case 'arachnid': drawArachnidUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
       case 'beam': drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
       default: drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));

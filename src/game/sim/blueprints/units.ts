@@ -203,7 +203,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadius: 35,
     collisionRadiusMultiplier: 1.0,
     mass: 200,
-    baseCost: 5000,
+    baseCost: 3000,
     weapons: [
       { weaponId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
       { weaponId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
@@ -222,6 +222,37 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     renderer: 'arachnid',
     weaponSeeRange: 400,
     deathSound: AUDIO.event.death.widow,
+  },
+  hippo: {
+    id: 'hippo',
+    name: 'Hippo',
+    shortName: 'HPO',
+    hp: 700,
+    moveSpeed: 55,
+    collisionRadius: 30,
+    collisionRadiusMultiplier: 1.0,
+    mass: 1500,
+    baseCost: 5000,
+    weapons: [
+      { weaponId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
+      { weaponId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
+    ],
+    chassisMounts: [
+      { x: 0.2, y: -0.7 },
+      { x: 0.2, y: 0.7 },
+    ],
+    locomotion: {
+      type: 'treads',
+      config: {
+        treadOffset: 1.1,
+        treadLength: 2.6,
+        treadWidth: 0.55,
+        wheelRadius: 0.2,
+        rotationSpeed: 1.0,
+      },
+    },
+    renderer: 'hippo',
+    deathSound: AUDIO.event.death.hippo,
   },
   tarantula: {
     id: 'tarantula',
@@ -284,6 +315,7 @@ export const BUILDABLE_UNIT_IDS = [
   'tarantula',
   'daddy',
   'widow',
+  'hippo',
 ];
 
 export function getUnitBlueprint(id: string): UnitBlueprint {

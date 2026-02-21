@@ -7,6 +7,7 @@ export { drawBrawlUnit } from './BrawlRenderer';
 export { drawMortarUnit } from './MortarRenderer';
 export { drawSnipeUnit } from './SnipeRenderer';
 export { drawTankUnit } from './TankRenderer';
+export { drawHippoUnit } from './HippoRenderer';
 export { drawArachnidUnit } from './ArachnidRenderer';
 export { drawForceFieldUnit } from './ForceFieldRenderer';
 export { drawCommanderUnit } from './CommanderRenderer';
