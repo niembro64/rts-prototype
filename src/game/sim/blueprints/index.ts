@@ -77,6 +77,13 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
         `Unknown projectile in weapon ${weaponId}: ${wb.projectileId}`,
       );
     Object.assign(base, getProjectileFields(pb));
+
+    // Derive barrelThickness from shot size
+    // Projectiles: diameter (radius * 2), beams: beam width directly
+    if (base.turretShape && base.turretShape.type !== 'forceField') {
+      const thickness = pb.beamWidth ?? (pb.radius != null ? pb.radius * 2 : 2);
+      base.turretShape = { ...base.turretShape, barrelThickness: thickness };
+    }
   }
 
   // Force field: compute zone configs from ratios

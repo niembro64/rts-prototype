@@ -68,12 +68,12 @@ function drawMultibarrelTurret(
   if (lod === 'low') {
     const endX = mountX + Math.cos(turretRot) * r * config.barrelLength;
     const endY = mountY + Math.sin(turretRot) * r * config.barrelLength;
-    graphics.lineStyle(config.barrelThickness, COLORS.WHITE, 1);
+    graphics.lineStyle(config.barrelThickness ?? 2, COLORS.WHITE, 1);
     graphics.lineBetween(mountX, mountY, endX, endY);
     return;
   }
 
-  const { barrelCount, barrelLength, barrelThickness, orbitRadius, depthScale } = config;
+  const { barrelCount, barrelLength, barrelThickness = 2, orbitRadius, depthScale } = config;
   const orbit = orbitRadius * r;
   const baseTurretLen = r * barrelLength;
   const TWO_PI_N = (2 * Math.PI) / barrelCount;
@@ -115,12 +115,12 @@ function drawConeSpreadTurret(
   if (lod === 'low') {
     const endX = mountX + Math.cos(turretRot) * r * config.barrelLength;
     const endY = mountY + Math.sin(turretRot) * r * config.barrelLength;
-    graphics.lineStyle(config.barrelThickness, COLORS.WHITE, 1);
+    graphics.lineStyle(config.barrelThickness ?? 2, COLORS.WHITE, 1);
     graphics.lineBetween(mountX, mountY, endX, endY);
     return;
   }
 
-  const { barrelCount, barrelLength, barrelThickness, baseOrbit, depthScale } = config;
+  const { barrelCount, barrelLength, barrelThickness = 2, baseOrbit, depthScale } = config;
   const barrelLen = r * barrelLength;
   const baseOrbitPx = baseOrbit * r;
   const spreadAngle = weapon.config.spreadAngle ?? Math.PI / 5;
@@ -167,11 +167,12 @@ function drawSingleBarrelTurret(
   const endX = mountX + Math.cos(turretRot) * turretLen;
   const endY = mountY + Math.sin(turretRot) * turretLen;
 
+  const thickness = config.barrelThickness ?? 2;
   if (lod === 'high') {
     graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(mountX, mountY, Math.max(r * 0.06, config.barrelThickness * 0.5));
+    graphics.fillCircle(mountX, mountY, Math.max(r * 0.06, thickness * 0.5));
   }
-  graphics.lineStyle(config.barrelThickness, COLORS.WHITE, 1);
+  graphics.lineStyle(thickness, COLORS.WHITE, 1);
   graphics.lineBetween(mountX, mountY, endX, endY);
 }
 
@@ -190,15 +191,16 @@ function drawBeamEmitterTurret(
   const beamEndX = mountX + Math.cos(turretRot) * beamLen;
   const beamEndY = mountY + Math.sin(turretRot) * beamLen;
 
+  const thickness = config.barrelThickness ?? 2;
   if (lod === 'high') {
     // Emitter housing
     graphics.fillStyle(COLORS.WHITE, 1);
     graphics.fillCircle(mountX, mountY, r * 0.12);
 
-    graphics.lineStyle(config.barrelThickness, COLORS.WHITE, 1);
+    graphics.lineStyle(thickness, COLORS.WHITE, 1);
     graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
   } else {
-    graphics.lineStyle(config.barrelThickness, COLORS.WHITE, 1);
+    graphics.lineStyle(thickness, COLORS.WHITE, 1);
     graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
   }
 }

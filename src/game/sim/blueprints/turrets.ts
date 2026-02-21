@@ -22,7 +22,6 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
   const maxI = harmonicSeries.length - 1;
   for (let i = 0; i < harmonicSeries.length; i++) {
     const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
-    const barrelThickness = Math.round((1.5 + 6.5 * p) * 2) / 2;
     const range = Math.round(100 + 200 * p);
     result[`beamTurret${i}`] = {
       id: `beamTurret${i}`,
@@ -30,7 +29,7 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
       range,
       turretTurnAccel: 100,
       turretDrag: 0.4,
-      turretShape: { type: 'beamEmitter', barrelLength: 0.6, barrelThickness },
+      turretShape: { type: 'beamEmitter', barrelLength: 0.6 },
       rangeMultiplierOverrides: {
         tracking: { acquire: null, release: null },
         engage: { acquire: null, release: null },
@@ -53,7 +52,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spreadAngle: Math.PI / 12,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    turretShape: { type: 'single', barrelLength: 1.2, barrelThickness: 2 },
+    turretShape: { type: 'single', barrelLength: 1.2 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -76,7 +75,6 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       type: 'multibarrel',
       barrelCount: 2,
       barrelLength: 1.7,
-      barrelThickness: 4,
       orbitRadius: 0.35,
       depthScale: 0.1,
       spin: { idle: 2.0, max: 30, accel: 80, decel: 30 },
@@ -103,7 +101,6 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       type: 'coneSpread',
       barrelCount: 5,
       barrelLength: 0.6,
-      barrelThickness: 2,
       baseOrbit: 0.094,
       depthScale: 0.12,
       spin: { idle: 0.7, max: 2, accel: 80, decel: 30 },
@@ -130,7 +127,6 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       type: 'multibarrel',
       barrelCount: 5,
       barrelLength: 1.5,
-      barrelThickness: 5,
       orbitRadius: 0.4,
       depthScale: 0.1,
       spin: { idle: 3, max: 40, accel: 100, decel: 30 },
@@ -151,7 +147,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spreadAngle: Math.PI / 24,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    turretShape: { type: 'single', barrelLength: 1.4, barrelThickness: 7 },
+    turretShape: { type: 'single', barrelLength: 1.4 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -168,7 +164,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spreadAngle: Math.PI / 24,
     turretTurnAccel: 40,
     turretDrag: 0.4,
-    turretShape: { type: 'single', barrelLength: 0.75, barrelThickness: 6 },
+    turretShape: { type: 'single', barrelLength: 0.75 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -185,7 +181,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spreadAngle: 0,
     turretTurnAccel: 100,
     turretDrag: 0.6,
-    turretShape: { type: 'single', barrelLength: 1.0, barrelThickness: 2 },
+    turretShape: { type: 'single', barrelLength: 1.0 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -235,7 +231,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 7000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    turretShape: { type: 'beamEmitter', barrelLength: 0.7, barrelThickness: 4 },
+    turretShape: { type: 'beamEmitter', barrelLength: 0.7 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -251,7 +247,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 7000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    turretShape: { type: 'beamEmitter', barrelLength: 0.7, barrelThickness: 4 },
+    turretShape: { type: 'beamEmitter', barrelLength: 0.7 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },

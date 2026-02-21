@@ -287,7 +287,7 @@ export type TurretConfig =
       type: 'multibarrel';
       barrelCount: number;
       barrelLength: number;
-      barrelThickness: number;
+      barrelThickness?: number;
       orbitRadius: number;
       depthScale: number;
       spin: SpinConfig;
@@ -296,13 +296,13 @@ export type TurretConfig =
       type: 'coneSpread';
       barrelCount: number;
       barrelLength: number;
-      barrelThickness: number;
+      barrelThickness?: number;
       baseOrbit: number;
       depthScale: number;
       spin: SpinConfig;
     }
-  | { type: 'single'; barrelLength: number; barrelThickness: number }
-  | { type: 'beamEmitter'; barrelLength: number; barrelThickness: number }
+  | { type: 'single'; barrelLength: number; barrelThickness?: number }
+  | { type: 'beamEmitter'; barrelLength: number; barrelThickness?: number }
   | { type: 'forceField'; grate: ForceFieldTurretConfig };
 
 // =============================================================================
