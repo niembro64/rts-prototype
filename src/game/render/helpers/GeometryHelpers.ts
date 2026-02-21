@@ -8,11 +8,21 @@ import type { ForceFieldTurretConfig } from '../../../config';
 import type { ArachnidLeg } from '../ArachnidLeg';
 import type { TankTreadSetup, VehicleWheelSetup } from '../Tread';
 import { getUnitBlueprint } from '../../sim/blueprints';
-import type { TreadConfigData, WheelConfig } from '../../sim/blueprints/types';
+import type { TreadConfig, WheelConfig } from '../../sim/blueprints/types';
 
 // Reusable point buffers to avoid per-call allocations
-const _rectPoints = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
-const _toothPoints = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+const _rectPoints = [
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+];
+const _toothPoints = [
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+];
 // Polygon/star point buffer - grows as needed but reuses objects
 const _polyPoints: { x: number; y: number }[] = [];
 
@@ -31,7 +41,7 @@ export function drawPolygon(
   y: number,
   radius: number,
   sides: number,
-  rotation: number
+  rotation: number,
 ): void {
   ensurePolyPoints(sides);
   for (let i = 0; i < sides; i++) {
@@ -53,7 +63,7 @@ export function drawOrientedRect(
   y: number,
   length: number,
   width: number,
-  rotation: number
+  rotation: number,
 ): void {
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);
@@ -80,7 +90,7 @@ export function drawStar(
   x: number,
   y: number,
   size: number,
-  points: number
+  points: number,
 ): void {
   const count = points * 2;
   ensurePolyPoints(count);
@@ -108,7 +118,7 @@ export function drawAnimatedTread(
   treadRotation: number,
   treadColor: number = COLORS.DARK_GRAY,
   lineColor: number = COLORS.GRAY_LIGHT,
-  lod: LodLevel = 'high'
+  lod: LodLevel = 'high',
 ): void {
   const gfxConfig = getGraphicsConfig();
   const cos = Math.cos(bodyRot);
@@ -134,7 +144,8 @@ export function drawAnimatedTread(
   const linearDistance = treadRotation * wheelRadius;
 
   // Normalize to track spacing for seamless looping
-  const animOffset = ((linearDistance % TRACK_SPACING) + TRACK_SPACING) % TRACK_SPACING;
+  const animOffset =
+    ((linearDistance % TRACK_SPACING) + TRACK_SPACING) % TRACK_SPACING;
 
   // Track lines extend to full length (top/bottom) but inset from sides
   const EDGE_INSET = 1;
@@ -164,8 +175,12 @@ export function drawAnimatedTread(
 
 /** Linearly interpolate between two hex colors by factor t (0→a, 1→b). */
 function lerpColor(a: number, b: number, t: number): number {
-  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
-  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  const ar = (a >> 16) & 0xff,
+    ag = (a >> 8) & 0xff,
+    ab = a & 0xff;
+  const br = (b >> 16) & 0xff,
+    bg = (b >> 8) & 0xff,
+    bb = b & 0xff;
   const r = (ar + (br - ar) * t) | 0;
   const g = (ag + (bg - ag) * t) | 0;
   const bl = (ab + (bb - ab) * t) | 0;
@@ -187,7 +202,16 @@ export function drawForceFieldGrate(
   progress: number = 0,
   transitionTimeMs: number = 1000,
 ): void {
-  const { shape, count, length, width, taper, baseOffset, thickness, reversePhase } = config;
+  const {
+    shape,
+    count,
+    length,
+    width,
+    taper,
+    baseOffset,
+    thickness,
+    reversePhase,
+  } = config;
   const grateLength = radius * length;
   const maxHalfWidth = radius * width;
 
@@ -220,7 +244,7 @@ export function drawForceFieldGrate(
     // Progress drives both endpoints: low drifts white→lightBlue, high drifts white→blue.
     let color: number = COLORS.WHITE;
     if (progress > 0) {
-      const phaseIdx = reversePhase ? (count - 1 - i) : i;
+      const phaseIdx = reversePhase ? count - 1 - i : i;
       const phase = phaseIdx * (TWO_PI / count);
       const sine = Math.sin(time * freq + phase);
       const t = sine * 0.5 + 0.5; // 0→1 oscillation
@@ -237,9 +261,12 @@ export function drawForceFieldGrate(
     if (shape === 'triangle') {
       const h = halfWidth * SQRT3;
       graphics.fillTriangle(
-        cx - perpX * halfWidth, cy - perpY * halfWidth,
-        cx + perpX * halfWidth, cy + perpY * halfWidth,
-        cx - fwdX * h, cy - fwdY * h,
+        cx - perpX * halfWidth,
+        cy - perpY * halfWidth,
+        cx + perpX * halfWidth,
+        cy + perpY * halfWidth,
+        cx - fwdX * h,
+        cy - fwdY * h,
       );
     } else if (shape === 'square') {
       // Square centered at cx,cy with side = halfWidth * 2, aligned to turret
@@ -260,8 +287,10 @@ export function drawForceFieldGrate(
       // 'line' — horizontal bar
       graphics.lineStyle(thickness, color, 1);
       graphics.lineBetween(
-        cx - perpX * halfWidth, cy - perpY * halfWidth,
-        cx + perpX * halfWidth, cy + perpY * halfWidth,
+        cx - perpX * halfWidth,
+        cy - perpY * halfWidth,
+        cx + perpX * halfWidth,
+        cy + perpY * halfWidth,
       );
     }
   }
@@ -276,7 +305,7 @@ export function drawGear(
   y: number,
   radius: number,
   rotation: number,
-  color: number
+  color: number,
 ): void {
   const teeth = 6;
   const innerRadius = radius * 0.6;
@@ -293,10 +322,14 @@ export function drawGear(
 
     _toothPoints[0].x = x + Math.cos(angle - toothWidth) * innerRadius;
     _toothPoints[0].y = y + Math.sin(angle - toothWidth) * innerRadius;
-    _toothPoints[1].x = x + Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
-    _toothPoints[1].y = y + Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
-    _toothPoints[2].x = x + Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
-    _toothPoints[2].y = y + Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
+    _toothPoints[1].x =
+      x + Math.cos(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
+    _toothPoints[1].y =
+      y + Math.sin(angle - toothWidth * 0.6) * (innerRadius + toothHeight);
+    _toothPoints[2].x =
+      x + Math.cos(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
+    _toothPoints[2].y =
+      y + Math.sin(angle + toothWidth * 0.6) * (innerRadius + toothHeight);
     _toothPoints[3].x = x + Math.cos(angle + toothWidth) * innerRadius;
     _toothPoints[3].y = y + Math.sin(angle + toothWidth) * innerRadius;
 
@@ -326,7 +359,7 @@ export function drawLegs(
   bodyRot: number,
   lod: LodLevel,
   dark: number,
-  light: number
+  light: number,
 ): void {
   const lc = LEG_STYLE_CONFIG[style];
   const halfLegs = legs.length / 2;
@@ -366,12 +399,12 @@ export function drawUnitTreads(
   r: number,
   bodyRot: number,
   treads: TankTreadSetup | undefined,
-  lod: LodLevel
+  lod: LodLevel,
 ): void {
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
 
-  const cfg = getUnitBlueprint(unitId).locomotion.config as TreadConfigData;
+  const cfg = getUnitBlueprint(unitId).locomotion.config as TreadConfig;
   const treadOffset = r * cfg.treadOffset;
   const treadLength = r * cfg.treadLength;
   const treadWidth = r * cfg.treadWidth;
@@ -384,8 +417,16 @@ export function drawUnitTreads(
     const treadRotation = tread?.getRotation() ?? 0;
 
     drawAnimatedTread(
-      graphics, x + offsetX, y + offsetY, treadLength, treadWidth, bodyRot, treadRotation,
-      COLORS.DARK_GRAY, COLORS.GRAY_LIGHT, lod
+      graphics,
+      x + offsetX,
+      y + offsetY,
+      treadLength,
+      treadWidth,
+      bodyRot,
+      treadRotation,
+      COLORS.DARK_GRAY,
+      COLORS.GRAY_LIGHT,
+      lod,
     );
   }
 }
@@ -402,7 +443,7 @@ export function drawUnitWheels(
   r: number,
   bodyRot: number,
   wheelSetup: VehicleWheelSetup | undefined,
-  lod: LodLevel
+  lod: LodLevel,
 ): void {
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
@@ -426,8 +467,16 @@ export function drawUnitWheels(
     const ty = y + sin * tp.dx + cos * tp.dy;
     const treadRotation = wheelSetup?.wheels[i]?.getRotation() ?? 0;
     drawAnimatedTread(
-      graphics, tx, ty, treadLength, treadWidth, bodyRot, treadRotation,
-      COLORS.DARK_GRAY, COLORS.GRAY_LIGHT, lod
+      graphics,
+      tx,
+      ty,
+      treadLength,
+      treadWidth,
+      bodyRot,
+      treadRotation,
+      COLORS.DARK_GRAY,
+      COLORS.GRAY_LIGHT,
+      lod,
     );
   }
 }
@@ -445,7 +494,7 @@ export function drawOval(
   ry: number,
   cos: number,
   sin: number,
-  count: number
+  count: number,
 ): void {
   for (let i = 0; i < count; i++) {
     const a = (i / count) * Math.PI * 2;

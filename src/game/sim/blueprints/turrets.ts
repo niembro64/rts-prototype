@@ -7,12 +7,12 @@
 
 import { SPATIAL_GRID_CELL_SIZE, FORCE_FIELD_TURRET } from '../../../config';
 import { AUDIO, harmonicSeries } from '../../../audioConfig';
-import type { WeaponBlueprint } from './types';
+import type { TurretBlueprint } from './types';
 
 // Generate beam turret blueprints for all harmonic series indices
 // Index 0 = most powerful (lowest pitch, thickest barrel), index 13 = weakest (highest pitch, thinnest)
-function generateBeamTurrets(): Record<string, WeaponBlueprint> {
-  const result: Record<string, WeaponBlueprint> = {};
+function generateBeamTurrets(): Record<string, TurretBlueprint> {
+  const result: Record<string, TurretBlueprint> = {};
   const maxI = harmonicSeries.length - 1;
   for (let i = 0; i < harmonicSeries.length; i++) {
     const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
@@ -40,7 +40,7 @@ function generateBeamTurrets(): Record<string, WeaponBlueprint> {
   return result;
 }
 
-export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
+export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   gatlingTurret: {
     id: 'gatlingTurret',
     projectileId: 'lightShot',
@@ -251,7 +251,10 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
     isForceField: true,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 500,
-    turretShape: { type: 'forceField', grate: FORCE_FIELD_TURRET.megaForceField },
+    turretShape: {
+      type: 'forceField',
+      grate: FORCE_FIELD_TURRET.megaForceField,
+    },
     push: {
       innerRatio: 0.0,
       outerRatio: 0.5,
@@ -319,7 +322,7 @@ export const TURRET_BLUEPRINTS: Record<string, WeaponBlueprint> = {
   },
 };
 
-export function getTurretBlueprint(id: string): WeaponBlueprint {
+export function getTurretBlueprint(id: string): TurretBlueprint {
   const bp = TURRET_BLUEPRINTS[id];
   if (!bp) throw new Error(`Unknown weapon blueprint: ${id}`);
   return bp;

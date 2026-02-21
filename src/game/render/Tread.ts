@@ -3,14 +3,14 @@
 
 export interface TreadConfig {
   // Attachment point offset relative to unit center (in unit's local space)
-  attachOffsetX: number;  // Forward/back offset (positive = forward)
-  attachOffsetY: number;  // Left/right offset (positive = right side)
+  attachOffsetX: number; // Forward/back offset (positive = forward)
+  attachOffsetY: number; // Left/right offset (positive = right side)
 
   // Wheel visual parameters
-  wheelRadius: number;    // Radius of wheels for rotation calculation
+  wheelRadius: number; // Radius of wheels for rotation calculation
 
   // Animation parameters
-  rotationSpeedMultiplier: number;  // Multiplier on velocity (default 2x for visual effect)
+  rotationSpeedMultiplier: number; // Multiplier on velocity (default 2x for visual effect)
 }
 
 export class Tread {
@@ -48,7 +48,7 @@ export class Tread {
     unitX: number,
     unitY: number,
     unitRotation: number,
-    dtMs: number
+    dtMs: number,
   ): void {
     const dtSec = dtMs / 1000;
     if (dtSec <= 0) return;
@@ -81,9 +81,11 @@ export class Tread {
     // Angular velocity = linear velocity / radius
     const wheelCircumference = 2 * Math.PI * this.config.wheelRadius;
     const distanceTraveled = forwardVelocity * dtSec;
-    const rotationDelta = (distanceTraveled / wheelCircumference) *
-                          this.config.rotationSpeedMultiplier *
-                          2 * Math.PI;
+    const rotationDelta =
+      (distanceTraveled / wheelCircumference) *
+      this.config.rotationSpeedMultiplier *
+      2 *
+      Math.PI;
 
     this.currentRotation += rotationDelta;
 
@@ -109,12 +111,14 @@ export class Tread {
   getAttachmentPoint(
     unitX: number,
     unitY: number,
-    unitRotation: number
+    unitRotation: number,
   ): { x: number; y: number } {
     const cos = Math.cos(unitRotation);
     const sin = Math.sin(unitRotation);
-    this._attach.x = unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY;
-    this._attach.y = unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY;
+    this._attach.x =
+      unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY;
+    this._attach.y =
+      unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY;
     return this._attach;
   }
 
@@ -132,7 +136,7 @@ export class Tread {
 // Factory functions for common tread configurations
 
 import { getUnitBlueprint } from '../sim/blueprints';
-import type { TreadConfigData, WheelConfig } from '../sim/blueprints/types';
+import type { TreadConfig, WheelConfig } from '../sim/blueprints/types';
 
 export interface TankTreadSetup {
   leftTread: Tread;
@@ -140,16 +144,16 @@ export interface TankTreadSetup {
 }
 
 export interface VehicleWheelSetup {
-  wheels: Tread[];  // Array of 2-4 wheels
+  wheels: Tread[]; // Array of 2-4 wheels
 }
 
 // Create a pair of tank treads (left and right) from blueprint locomotion config
 export function createTreadPair(
   unitType: string,
-  unitRadius: number
+  unitRadius: number,
 ): TankTreadSetup {
   const bp = getUnitBlueprint(unitType);
-  const cfg = bp.locomotion.config as TreadConfigData;
+  const cfg = bp.locomotion.config as TreadConfig;
   const treadOffset = unitRadius * cfg.treadOffset;
   const wheelRadius = unitRadius * cfg.wheelRadius;
 
@@ -173,7 +177,7 @@ export function createTreadPair(
 // Create four wheels from blueprint locomotion config
 export function createVehicleWheelSetup(
   unitType: string,
-  unitRadius: number
+  unitRadius: number,
 ): VehicleWheelSetup {
   const bp = getUnitBlueprint(unitType);
   const cfg = bp.locomotion.config as WheelConfig;
@@ -183,10 +187,30 @@ export function createVehicleWheelSetup(
   const rotMult = cfg.rotationSpeed;
 
   const wheels = [
-    new Tread({ attachOffsetX: wheelDistX, attachOffsetY: wheelDistY, wheelRadius, rotationSpeedMultiplier: rotMult }),
-    new Tread({ attachOffsetX: wheelDistX, attachOffsetY: -wheelDistY, wheelRadius, rotationSpeedMultiplier: rotMult }),
-    new Tread({ attachOffsetX: -wheelDistX, attachOffsetY: wheelDistY, wheelRadius, rotationSpeedMultiplier: rotMult }),
-    new Tread({ attachOffsetX: -wheelDistX, attachOffsetY: -wheelDistY, wheelRadius, rotationSpeedMultiplier: rotMult }),
+    new Tread({
+      attachOffsetX: wheelDistX,
+      attachOffsetY: wheelDistY,
+      wheelRadius,
+      rotationSpeedMultiplier: rotMult,
+    }),
+    new Tread({
+      attachOffsetX: wheelDistX,
+      attachOffsetY: -wheelDistY,
+      wheelRadius,
+      rotationSpeedMultiplier: rotMult,
+    }),
+    new Tread({
+      attachOffsetX: -wheelDistX,
+      attachOffsetY: wheelDistY,
+      wheelRadius,
+      rotationSpeedMultiplier: rotMult,
+    }),
+    new Tread({
+      attachOffsetX: -wheelDistX,
+      attachOffsetY: -wheelDistY,
+      wheelRadius,
+      rotationSpeedMultiplier: rotMult,
+    }),
   ];
 
   return { wheels };

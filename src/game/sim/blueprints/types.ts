@@ -14,7 +14,13 @@ import type {
 import type { SoundEntry } from '../../../audioConfig';
 
 // Re-export types that consumers will need
-export type { TurretConfig, MountPoint, ForceFieldTurretConfig, SpinConfig, SoundEntry };
+export type {
+  TurretConfig,
+  MountPoint,
+  ForceFieldTurretConfig,
+  SpinConfig,
+  SoundEntry,
+};
 
 // ── Range multiplier overrides (null = use global RANGE_MULTIPLIERS fallback) ──
 
@@ -40,7 +46,7 @@ export interface ForceFieldZoneRatioConfig {
 
 // ── Projectile Blueprint ──
 
-export interface ProjectileBlueprint {
+export interface ShotBlueprint {
   id: string;
   damage: number;
   primaryDamageRadius: number;
@@ -57,19 +63,19 @@ export interface ProjectileBlueprint {
   beamWidth?: number;
   collisionRadius?: number;
   // Knockback (beams/railguns — applied per tick while active)
-  hitForce?: number;        // Push on target when hit
-  knockBackForce?: number;  // Recoil on shooter when firing
+  hitForce?: number; // Push on target when hit
+  knockBackForce?: number; // Recoil on shooter when firing
   // Audio
   hitSound?: SoundEntry;
 }
 
 // ── Weapon Blueprint ──
 
-export interface WeaponBlueprint {
+export interface TurretBlueprint {
   id: string;
-  projectileId?: string;          // references ProjectileBlueprint (absent for force fields)
+  projectileId?: string; // references ProjectileBlueprint (absent for force fields)
   range: number;
-  cooldown?: number;               // omit for continuous weapons (defaults to 0)
+  cooldown?: number; // omit for continuous weapons (defaults to 0)
   color: number;
   turretTurnAccel: number;
   turretDrag: number;
@@ -95,10 +101,10 @@ export interface WeaponBlueprint {
 
 // ── Weapon Mount (where a weapon attaches on a unit) ──
 
-export interface WeaponMount {
-  weaponId: string;               // references WeaponBlueprint
-  offsetX: number;                // unit-local fraction of radius (positive = forward)
-  offsetY: number;                // unit-local fraction of radius (positive = right)
+export interface TurretMount {
+  weaponId: string; // references WeaponBlueprint
+  offsetX: number; // unit-local fraction of radius (positive = forward)
+  offsetY: number; // unit-local fraction of radius (positive = right)
 }
 
 // ── Locomotion Blueprint (discriminated union) ──
@@ -112,7 +118,7 @@ export interface WheelConfig {
   rotationSpeed: number;
 }
 
-export interface TreadConfigData {
+export interface TreadConfig {
   treadOffset: number;
   treadLength: number;
   treadWidth: number;
@@ -120,7 +126,7 @@ export interface TreadConfigData {
   rotationSpeed: number;
 }
 
-export interface LegConfigData {
+export interface LegConfig {
   thickness: number;
   footSize: number;
   lerpDuration: number;
@@ -130,8 +136,8 @@ export type LegStyle = 'widow' | 'daddy' | 'tarantula' | 'tick' | 'commander';
 
 export type LocomotionBlueprint =
   | { type: 'wheels'; config: WheelConfig }
-  | { type: 'treads'; config: TreadConfigData }
-  | { type: 'legs'; style: LegStyle; config: LegConfigData };
+  | { type: 'treads'; config: TreadConfig }
+  | { type: 'legs'; style: LegStyle; config: LegConfig };
 
 // ── Unit Blueprint ──
 
@@ -147,16 +153,16 @@ export interface UnitBlueprint {
   mass: number;
   baseCost: number;
   // Weapons
-  weapons: WeaponMount[];
+  weapons: TurretMount[];
   chassisMounts: MountPoint[];
   // Rendering
   locomotion: LocomotionBlueprint;
-  renderer: string;               // key for body draw function dispatch
+  renderer: string; // key for body draw function dispatch
   // Capabilities
   builder?: { buildRange: number };
   dgun?: { weaponId: string; energyCost: number };
   // Audio
   deathSound?: SoundEntry;
   // Overrides
-  weaponSeeRange?: number;        // widow's custom see range
+  weaponSeeRange?: number; // widow's custom see range
 }

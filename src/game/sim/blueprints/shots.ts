@@ -6,12 +6,12 @@
  */
 
 import { AUDIO, harmonicSeries } from '../../../audioConfig';
-import type { ProjectileBlueprint } from './types';
+import type { ShotBlueprint } from './types';
 
 // Generate beam shot blueprints for all harmonic series indices
 // Index 0 = most powerful (lowest pitch, biggest beam), index 13 = weakest (highest pitch, smallest)
-function generateBeamShots(): Record<string, ProjectileBlueprint> {
-  const result: Record<string, ProjectileBlueprint> = {};
+function generateBeamShots(): Record<string, ShotBlueprint> {
+  const result: Record<string, ShotBlueprint> = {};
   const maxI = harmonicSeries.length - 1;
   for (let i = 0; i < harmonicSeries.length; i++) {
     const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
@@ -31,7 +31,7 @@ function generateBeamShots(): Record<string, ProjectileBlueprint> {
   return result;
 }
 
-export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
+export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
     id: 'lightShot',
     damage: 2,
@@ -109,7 +109,7 @@ export const SHOT_BLUEPRINTS: Record<string, ProjectileBlueprint> = {
   },
 };
 
-export function getShotBlueprint(id: string): ProjectileBlueprint {
+export function getShotBlueprint(id: string): ShotBlueprint {
   const bp = SHOT_BLUEPRINTS[id];
   if (!bp) throw new Error(`Unknown projectile blueprint: ${id}`);
   return bp;

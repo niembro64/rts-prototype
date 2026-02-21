@@ -10,12 +10,12 @@ export * from './units';
 import type { WeaponConfig, ForceFieldZoneConfig } from '../types';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
-import type { ProjectileBlueprint, ForceFieldZoneRatioConfig } from './types';
+import type { ShotBlueprint, ForceFieldZoneRatioConfig } from './types';
 
 /** Compute a ForceFieldZoneConfig from ratio-based blueprint data and weapon range */
 function computeZoneConfig(
   zone: ForceFieldZoneRatioConfig | undefined,
-  range: number
+  range: number,
 ): ForceFieldZoneConfig | null {
   if (!zone) return null;
   return {
@@ -30,7 +30,7 @@ function computeZoneConfig(
 }
 
 /** Map ProjectileBlueprint fields to the flat WeaponConfig projectile fields */
-function getProjectileFields(bp: ProjectileBlueprint) {
+function getProjectileFields(bp: ShotBlueprint) {
   return {
     projectileType: bp.id,
     damage: bp.damage,
@@ -73,7 +73,10 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
   // Merge projectile fields if weapon has a projectile
   if (wb.projectileId) {
     const pb = SHOT_BLUEPRINTS[wb.projectileId];
-    if (!pb) throw new Error(`Unknown projectile in weapon ${weaponId}: ${wb.projectileId}`);
+    if (!pb)
+      throw new Error(
+        `Unknown projectile in weapon ${weaponId}: ${wb.projectileId}`,
+      );
     Object.assign(base, getProjectileFields(pb));
   }
 

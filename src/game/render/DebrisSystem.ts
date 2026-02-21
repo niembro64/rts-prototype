@@ -4,22 +4,24 @@
 import Phaser from 'phaser';
 import { BURN_COLOR_COOL, hexToRgb, DEBRIS_CONFIG } from '../../config';
 import { getUnitBlueprint } from '../sim/blueprints';
-import type { TreadConfigData, WheelConfig } from '../sim/blueprints/types';
+import type { TreadConfig, WheelConfig } from '../sim/blueprints/types';
 
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 
 // Death debris fragment — line segment with physics, color decay like burn marks
 export interface DebrisFragment {
-  x: number; y: number;         // current center position
-  vx: number; vy: number;       // velocity (pixels/sec)
-  rotation: number;              // current angle of the segment
-  angularVel: number;            // rotation speed (rad/sec)
-  length: number;                // segment length
-  width: number;                 // line width
-  color: number;                 // cached RGB (updated during aging)
-  baseColor: number;             // original color at creation
-  age: number;                   // ms since creation
-  shape: 'line' | 'rect';       // line = segment + caps, rect = filled rectangle
+  x: number;
+  y: number; // current center position
+  vx: number;
+  vy: number; // velocity (pixels/sec)
+  rotation: number; // current angle of the segment
+  angularVel: number; // rotation speed (rad/sec)
+  length: number; // segment length
+  width: number; // line width
+  color: number; // cached RGB (updated during aging)
+  baseColor: number; // original color at creation
+  age: number; // ms since creation
+  shape: 'line' | 'rect'; // line = segment + caps, rect = filled rectangle
 }
 
 // Per-unit-type debris piece template (local coordinates relative to unit center)
@@ -28,14 +30,19 @@ export interface DebrisPieceTemplate {
   localY: number;
   length: number;
   width: number;
-  angle: number;       // local angle offset
+  angle: number; // local angle offset
   colorType: 'base' | 'dark' | 'light' | 'gray' | 'white';
   shape: 'line' | 'rect';
 }
 
 const MAX_DEBRIS = DEBRIS_CONFIG.maxFragments;
 const DEBRIS_DRAG = DEBRIS_CONFIG.drag;
-const _debrisRectPts = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+const _debrisRectPts = [
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+];
 
 // Cached debris templates per unit type
 const debrisTemplateCache: Map<string, DebrisPieceTemplate[]> = new Map();
@@ -48,7 +55,10 @@ function getDebrisTemplateKey(unitType: string, radius: number): string {
  * Generate debris piece templates for a unit type.
  * These are in local coordinates (relative to unit center, unrotated).
  */
-export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTemplate[] {
+export function getDebrisPieces(
+  unitType: string,
+  radius: number,
+): DebrisPieceTemplate[] {
   const key = getDebrisTemplateKey(unitType, radius);
   const cached = debrisTemplateCache.get(key);
   if (cached) return cached;
@@ -57,7 +67,16 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
   const pieces: DebrisPieceTemplate[] = [];
 
   // Helper: add polygon edges as debris
-  const addPolygonEdges = (cx: number, cy: number, polyR: number, sides: number, rot: number, width: number, color: DebrisPieceTemplate['colorType'], shape: 'line' | 'rect' = 'line') => {
+  const addPolygonEdges = (
+    cx: number,
+    cy: number,
+    polyR: number,
+    sides: number,
+    rot: number,
+    width: number,
+    color: DebrisPieceTemplate['colorType'],
+    shape: 'line' | 'rect' = 'line',
+  ) => {
     for (let i = 0; i < sides; i++) {
       const a1 = rot + (i / sides) * Math.PI * 2;
       const a2 = rot + ((i + 1) / sides) * Math.PI * 2;
@@ -69,15 +88,38 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       const my = (y1 + y2) / 2;
       const dx = x2 - x1;
       const dy = y2 - y1;
-      pieces.push({ localX: mx, localY: my, length: Math.sqrt(dx * dx + dy * dy), width, angle: Math.atan2(dy, dx), colorType: color, shape });
+      pieces.push({
+        localX: mx,
+        localY: my,
+        length: Math.sqrt(dx * dx + dy * dy),
+        width,
+        angle: Math.atan2(dy, dx),
+        colorType: color,
+        shape,
+      });
     }
   };
 
   // Helper: add a barrel/line segment
-  const addBarrel = (ox: number, oy: number, len: number, width: number, angle: number, color: DebrisPieceTemplate['colorType']) => {
-    const mx = ox + Math.cos(angle) * len / 2;
-    const my = oy + Math.sin(angle) * len / 2;
-    pieces.push({ localX: mx, localY: my, length: len, width, angle, colorType: color, shape: 'line' });
+  const addBarrel = (
+    ox: number,
+    oy: number,
+    len: number,
+    width: number,
+    angle: number,
+    color: DebrisPieceTemplate['colorType'],
+  ) => {
+    const mx = ox + (Math.cos(angle) * len) / 2;
+    const my = oy + (Math.sin(angle) * len) / 2;
+    pieces.push({
+      localX: mx,
+      localY: my,
+      length: len,
+      width,
+      angle,
+      colorType: color,
+      shape: 'line',
+    });
   };
 
   switch (unitType) {
@@ -89,18 +131,52 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       for (let i = 0; i < 8; i++) {
         const side = i < 4 ? -1 : 1;
         const idx = i < 4 ? i : i - 4;
-        const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const attachAngle =
+          (idx / 4 - 0.5) * Math.PI * 0.8 + (Math.PI / 2) * side;
         const ax = Math.cos(attachAngle) * r * 0.4;
         const ay = Math.sin(attachAngle) * r * 0.4;
-        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 7, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: ax,
+          localY: ay,
+          length: upperLen,
+          width: 7,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
-        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 6, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: kx,
+          localY: ky,
+          length: lowerLen,
+          width: 6,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
       }
       // Abdomen — large oval chunk at rear, r*1.1 long × r*0.85 wide
-      pieces.push({ localX: -r * 0.9, localY: 0, length: r * 1.1, width: r * 0.85, angle: 0, colorType: 'dark', shape: 'rect' });
+      pieces.push({
+        localX: -r * 0.9,
+        localY: 0,
+        length: r * 1.1,
+        width: r * 0.85,
+        angle: 0,
+        colorType: 'dark',
+        shape: 'rect',
+      });
       // Body hexagon edges — outer hex r*0.95 centered at r*0.35 forward
-      addPolygonEdges(r * 0.35, 0, r * 0.95, 6, Math.PI / 6, r * 0.3, 'dark', 'rect');
+      addPolygonEdges(
+        r * 0.35,
+        0,
+        r * 0.95,
+        6,
+        Math.PI / 6,
+        r * 0.3,
+        'dark',
+        'rect',
+      );
       // 6 beam emitters — r*0.5 long, 2.5px wide
       for (let i = 0; i < 6; i++) {
         const a = (i * Math.PI) / 3 + Math.PI / 6;
@@ -121,21 +197,62 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       for (let i = 0; i < 8; i++) {
         const side = i < 4 ? -1 : 1;
         const idx = i < 4 ? i : i - 4;
-        const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const attachAngle =
+          (idx / 4 - 0.5) * Math.PI * 0.8 + (Math.PI / 2) * side;
         const ax = Math.cos(attachAngle) * r * 0.4;
         const ay = Math.sin(attachAngle) * r * 0.4;
-        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 4.5, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: ax,
+          localY: ay,
+          length: upperLen,
+          width: 4.5,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
-        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 4, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: kx,
+          localY: ky,
+          length: lowerLen,
+          width: 4,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
       }
       // Pedipalps — two small front feeler segments
-      pieces.push({ localX: r * 0.45, localY: -r * 0.25, length: r * 0.55, width: 3, angle: -0.35, colorType: 'dark', shape: 'line' });
-      pieces.push({ localX: r * 0.45, localY: r * 0.25, length: r * 0.55, width: 3, angle: 0.35, colorType: 'dark', shape: 'line' });
+      pieces.push({
+        localX: r * 0.45,
+        localY: -r * 0.25,
+        length: r * 0.55,
+        width: 3,
+        angle: -0.35,
+        colorType: 'dark',
+        shape: 'line',
+      });
+      pieces.push({
+        localX: r * 0.45,
+        localY: r * 0.25,
+        length: r * 0.55,
+        width: 3,
+        angle: 0.35,
+        colorType: 'dark',
+        shape: 'line',
+      });
       // Round cephalothorax — circular body r*0.6
       addPolygonEdges(r * 0.1, 0, r * 0.5, 8, 0, r * 0.2, 'dark', 'rect');
       // Large abdomen (butt) — 1.5x main body, oval behind
-      pieces.push({ localX: -r * 0.75, localY: 0, length: r * 1.5, width: r * 1.5, angle: 0, colorType: 'dark', shape: 'rect' });
+      pieces.push({
+        localX: -r * 0.75,
+        localY: 0,
+        length: r * 1.5,
+        width: r * 1.5,
+        angle: 0,
+        colorType: 'dark',
+        shape: 'rect',
+      });
       // Central beam emitter — r*0.6 long, 3.5px wide
       addBarrel(0, 0, r * 0.6, 3.5, 0, 'white');
       break;
@@ -149,13 +266,30 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       for (let i = 0; i < 8; i++) {
         const side = i < 4 ? -1 : 1;
         const idx = i < 4 ? i : i - 4;
-        const attachAngle = (idx / 4 - 0.5) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const attachAngle =
+          (idx / 4 - 0.5) * Math.PI * 0.8 + (Math.PI / 2) * side;
         const ax = Math.cos(attachAngle) * r * 0.4;
         const ay = Math.sin(attachAngle) * r * 0.4;
-        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 2.5, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: ax,
+          localY: ay,
+          length: upperLen,
+          width: 2.5,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
-        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 2, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: kx,
+          localY: ky,
+          length: lowerLen,
+          width: 2,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
       }
       // Elongated body — r*0.9 long × r*0.55 wide
       addPolygonEdges(0, 0, r * 0.5, 6, 0, r * 0.2, 'base', 'rect');
@@ -172,19 +306,44 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       for (let i = 0; i < 4; i++) {
         const side = i < 2 ? -1 : 1;
         const idx = i < 2 ? i : i - 2;
-        const attachAngle = (idx === 0 ? 0.3 : -0.3) * Math.PI + Math.PI / 2 * side;
+        const attachAngle =
+          (idx === 0 ? 0.3 : -0.3) * Math.PI + (Math.PI / 2) * side;
         const ax = Math.cos(attachAngle) * r * 0.5;
         const ay = Math.sin(attachAngle) * r * 0.5;
-        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 8, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: ax,
+          localY: ay,
+          length: upperLen,
+          width: 8,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
-        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 7, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: kx,
+          localY: ky,
+          length: lowerLen,
+          width: 7,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
       }
       // Angular chassis — r*0.85 × r*0.7
       addPolygonEdges(0, 0, r * 0.8, 6, 0, r * 0.25, 'base', 'rect');
       // Shoulder pylons — r*0.2 squares offset r*0.55 sideways
       for (const side of [-1, 1]) {
-        pieces.push({ localX: 0, localY: r * 0.55 * side, length: r * 0.4, width: r * 0.4, angle: 0, colorType: 'dark', shape: 'rect' });
+        pieces.push({
+          localX: 0,
+          localY: r * 0.55 * side,
+          length: r * 0.4,
+          width: r * 0.4,
+          angle: 0,
+          colorType: 'dark',
+          shape: 'rect',
+        });
       }
       // Beam weapon barrel — r*0.7 long, 6px wide
       addBarrel(r * 0.3, 0, r * 0.7, 6, 0, 'white');
@@ -193,14 +352,22 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
 
     case 'mammoth': {
       // 2 heavy treads from blueprint
-      const mc = getUnitBlueprint('mammoth').locomotion.config as TreadConfigData;
+      const mc = getUnitBlueprint('mammoth').locomotion.config as TreadConfig;
       const treadLen = r * mc.treadLength;
       const treadOffset = r * mc.treadOffset;
       for (const side of [-1, 1]) {
         for (let i = 0; i < 3; i++) {
           const segLen = treadLen / 3;
           const sx = (i - 1) * segLen;
-          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * mc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
+          pieces.push({
+            localX: sx,
+            localY: treadOffset * side,
+            length: segLen,
+            width: r * mc.treadWidth,
+            angle: 0,
+            colorType: 'gray',
+            shape: 'rect',
+          });
         }
       }
       // Hull square — r*0.85
@@ -212,14 +379,22 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
 
     case 'badger': {
       // 2 treads from blueprint
-      const bc = getUnitBlueprint('badger').locomotion.config as TreadConfigData;
+      const bc = getUnitBlueprint('badger').locomotion.config as TreadConfig;
       const treadLen = r * bc.treadLength;
       const treadOffset = r * bc.treadOffset;
       for (const side of [-1, 1]) {
         for (let i = 0; i < 2; i++) {
           const segLen = treadLen / 2;
           const sx = (i - 0.5) * segLen;
-          pieces.push({ localX: sx, localY: treadOffset * side, length: segLen, width: r * bc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
+          pieces.push({
+            localX: sx,
+            localY: treadOffset * side,
+            length: segLen,
+            width: r * bc.treadWidth,
+            angle: 0,
+            colorType: 'gray',
+            shape: 'rect',
+          });
         }
       }
       // Body pentagon — r*0.8
@@ -234,11 +409,28 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       const jc = getUnitBlueprint('jackal').locomotion.config as WheelConfig;
       for (const sx of [-1, 1]) {
         for (const sy of [-1, 1]) {
-          pieces.push({ localX: r * jc.wheelDistX * sx, localY: r * jc.wheelDistY * sy, length: r * jc.treadLength, width: r * jc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
+          pieces.push({
+            localX: r * jc.wheelDistX * sx,
+            localY: r * jc.wheelDistY * sy,
+            length: r * jc.treadLength,
+            width: r * jc.treadWidth,
+            angle: 0,
+            colorType: 'gray',
+            shape: 'rect',
+          });
         }
       }
       // Diamond body — r*0.55
-      addPolygonEdges(0, 0, r * 0.55, 4, Math.PI / 4, r * 0.15, 'light', 'rect');
+      addPolygonEdges(
+        0,
+        0,
+        r * 0.55,
+        4,
+        Math.PI / 4,
+        r * 0.15,
+        'light',
+        'rect',
+      );
       // Inner accent — r*0.35
       addPolygonEdges(0, 0, r * 0.35, 4, Math.PI / 4, r * 0.1, 'base', 'rect');
       // Triple barrels — r*1.0 long, 1.5px wide
@@ -250,12 +442,29 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
 
     case 'lynx': {
       // 2 large side treads from blueprint
-      const lc = getUnitBlueprint('lynx').locomotion.config as TreadConfigData;
+      const lc = getUnitBlueprint('lynx').locomotion.config as TreadConfig;
       for (const sy of [-1, 1]) {
-        pieces.push({ localX: 0, localY: r * lc.treadOffset * sy, length: r * lc.treadLength, width: r * lc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
+        pieces.push({
+          localX: 0,
+          localY: r * lc.treadOffset * sy,
+          length: r * lc.treadLength,
+          width: r * lc.treadWidth,
+          angle: 0,
+          colorType: 'gray',
+          shape: 'rect',
+        });
       }
       // Triangle body — r*0.6
-      addPolygonEdges(0, 0, r * 0.6, 3, -Math.PI / 2, r * 0.15, 'light', 'rect');
+      addPolygonEdges(
+        0,
+        0,
+        r * 0.6,
+        3,
+        -Math.PI / 2,
+        r * 0.15,
+        'light',
+        'rect',
+      );
       // Inner wedge — r*0.38
       addPolygonEdges(0, 0, r * 0.38, 3, -Math.PI / 2, r * 0.1, 'base', 'rect');
       // Dual burst barrels — r*1.1 long, 2.5px wide, 3px apart
@@ -269,7 +478,15 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       const mgc = getUnitBlueprint('mongoose').locomotion.config as WheelConfig;
       for (const sx of [-1, 1]) {
         for (const sy of [-1, 1]) {
-          pieces.push({ localX: r * mgc.wheelDistX * sx, localY: r * mgc.wheelDistY * sy, length: r * mgc.treadLength, width: r * mgc.treadWidth, angle: 0, colorType: 'gray', shape: 'rect' });
+          pieces.push({
+            localX: r * mgc.wheelDistX * sx,
+            localY: r * mgc.wheelDistY * sy,
+            length: r * mgc.treadLength,
+            width: r * mgc.treadWidth,
+            angle: 0,
+            colorType: 'gray',
+            shape: 'rect',
+          });
         }
       }
       // Hexagon body — r*0.55
@@ -289,18 +506,51 @@ export function getDebrisPieces(unitType: string, radius: number): DebrisPieceTe
       for (let i = 0; i < 8; i++) {
         const side = i < 4 ? -1 : 1;
         const idx = i < 4 ? i : i - 4;
-        const attachAngle = (idx / 4 - 0.375) * Math.PI * 0.8 + Math.PI / 2 * side;
+        const attachAngle =
+          (idx / 4 - 0.375) * Math.PI * 0.8 + (Math.PI / 2) * side;
         const ax = Math.cos(attachAngle) * r * 0.1;
         const ay = Math.sin(attachAngle) * r * 0.1;
-        pieces.push({ localX: ax, localY: ay, length: upperLen, width: 2, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: ax,
+          localY: ay,
+          length: upperLen,
+          width: 2,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
         const kx = ax + Math.cos(attachAngle) * upperLen;
         const ky = ay + Math.sin(attachAngle) * upperLen;
-        pieces.push({ localX: kx, localY: ky, length: lowerLen, width: 1.5, angle: attachAngle, colorType: 'dark', shape: 'line' });
+        pieces.push({
+          localX: kx,
+          localY: ky,
+          length: lowerLen,
+          width: 1.5,
+          angle: attachAngle,
+          colorType: 'dark',
+          shape: 'line',
+        });
       }
       // Super tiny cephalothorax (leg attachment piece)
-      pieces.push({ localX: r * 0.25, localY: 0, length: r * 0.13, width: r * 0.1, angle: 0, colorType: 'base', shape: 'rect' });
+      pieces.push({
+        localX: r * 0.25,
+        localY: 0,
+        length: r * 0.13,
+        width: r * 0.1,
+        angle: 0,
+        colorType: 'base',
+        shape: 'rect',
+      });
       // Huge engorged abdomen (~10x the body)
-      pieces.push({ localX: -r * 0.2, localY: 0, length: r * 0.8, width: r * 0.9, angle: 0, colorType: 'base', shape: 'rect' });
+      pieces.push({
+        localX: -r * 0.2,
+        localY: 0,
+        length: r * 0.8,
+        width: r * 0.9,
+        angle: 0,
+        colorType: 'base',
+        shape: 'rect',
+      });
       // Long railgun barrel — r*1.6 long, 1.5px wide
       addBarrel(0, 0, r * 1.6, 1.5, 0, 'white');
       break;
@@ -326,19 +576,23 @@ export class DebrisSystem {
    * Generates pieces from a per-unit-type template, applies random velocities with hit-direction bias.
    */
   addDebris(
-    x: number, y: number,
-    unitType: string, rotation: number,
-    radius: number, color: number,
-    hitDirX: number, hitDirY: number
+    x: number,
+    y: number,
+    unitType: string,
+    rotation: number,
+    radius: number,
+    color: number,
+    hitDirX: number,
+    hitDirY: number,
   ): void {
     const templates = getDebrisPieces(unitType, radius);
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);
 
     // Resolve color types from the player color
-    const baseR = (color >> 16) & 0xFF;
-    const baseG = (color >> 8) & 0xFF;
-    const baseB = color & 0xFF;
+    const baseR = (color >> 16) & 0xff;
+    const baseG = (color >> 8) & 0xff;
+    const baseB = color & 0xff;
     const darkColor = ((baseR >> 1) << 16) | ((baseG >> 1) << 8) | (baseB >> 1);
     const lightR = Math.min(255, baseR + 60);
     const lightG = Math.min(255, baseG + 60);
@@ -360,8 +614,11 @@ export class DebrisSystem {
 
       // Random velocity with hit-direction bias
       const randAngle = Math.random() * Math.PI * 2;
-      const randMag = DEBRIS_CONFIG.randomSpeedMin + Math.random() * DEBRIS_CONFIG.randomSpeedRange;
-      const hitBias = DEBRIS_CONFIG.hitBiasMin + Math.random() * DEBRIS_CONFIG.hitBiasRange;
+      const randMag =
+        DEBRIS_CONFIG.randomSpeedMin +
+        Math.random() * DEBRIS_CONFIG.randomSpeedRange;
+      const hitBias =
+        DEBRIS_CONFIG.hitBiasMin + Math.random() * DEBRIS_CONFIG.hitBiasRange;
       const vx = Math.cos(randAngle) * randMag + hitDirX * hitBias;
       const vy = Math.sin(randAngle) * randMag + hitDirY * hitBias;
 
@@ -370,8 +627,10 @@ export class DebrisSystem {
       const fragColor = colorMap[t.colorType] ?? color;
 
       this.fragments.push({
-        x: wx, y: wy,
-        vx, vy,
+        x: wx,
+        y: wy,
+        vx,
+        vy,
         rotation: rotation + t.angle,
         angularVel,
         length: t.length,
@@ -416,9 +675,9 @@ export class DebrisSystem {
         frag.angularVel *= DEBRIS_DRAG;
         // Direct blend: baseColor -> background
         const keep = 1 - fadeBlend;
-        const fragR = (frag.baseColor >> 16) & 0xFF;
-        const fragG = (frag.baseColor >> 8) & 0xFF;
-        const fragB = frag.baseColor & 0xFF;
+        const fragR = (frag.baseColor >> 16) & 0xff;
+        const fragG = (frag.baseColor >> 8) & 0xff;
+        const fragB = frag.baseColor & 0xff;
         const r = Math.round(fragR * keep + BURN_COOL_RGB.r * fadeBlend);
         const g = Math.round(fragG * keep + BURN_COOL_RGB.g * fadeBlend);
         const b = Math.round(fragB * keep + BURN_COOL_RGB.b * fadeBlend);
@@ -434,7 +693,10 @@ export class DebrisSystem {
    * @param graphics - Phaser graphics object to draw on
    * @param isInViewport - viewport culling callback (x, y, padding) => boolean
    */
-  render(graphics: Phaser.GameObjects.Graphics, isInViewport: (x: number, y: number, padding: number) => boolean): void {
+  render(
+    graphics: Phaser.GameObjects.Graphics,
+    isInViewport: (x: number, y: number, padding: number) => boolean,
+  ): void {
     for (let i = 0; i < this.fragments.length; i++) {
       const frag = this.fragments[i];
       if (!isInViewport(frag.x, frag.y, frag.length)) continue;
@@ -448,10 +710,14 @@ export class DebrisSystem {
         const dy = fragSin * halfLen;
         const nx = -fragSin * halfW;
         const ny = fragCos * halfW;
-        _debrisRectPts[0].x = frag.x - dx + nx; _debrisRectPts[0].y = frag.y - dy + ny;
-        _debrisRectPts[1].x = frag.x + dx + nx; _debrisRectPts[1].y = frag.y + dy + ny;
-        _debrisRectPts[2].x = frag.x + dx - nx; _debrisRectPts[2].y = frag.y + dy - ny;
-        _debrisRectPts[3].x = frag.x - dx - nx; _debrisRectPts[3].y = frag.y - dy - ny;
+        _debrisRectPts[0].x = frag.x - dx + nx;
+        _debrisRectPts[0].y = frag.y - dy + ny;
+        _debrisRectPts[1].x = frag.x + dx + nx;
+        _debrisRectPts[1].y = frag.y + dy + ny;
+        _debrisRectPts[2].x = frag.x + dx - nx;
+        _debrisRectPts[2].y = frag.y + dy - ny;
+        _debrisRectPts[3].x = frag.x - dx - nx;
+        _debrisRectPts[3].y = frag.y - dy - ny;
         graphics.fillStyle(frag.color, 1);
         graphics.fillPoints(_debrisRectPts, true);
       } else {
