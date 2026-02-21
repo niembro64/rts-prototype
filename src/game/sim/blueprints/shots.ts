@@ -35,7 +35,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
     id: 'lightShot',
     damage: 2,
-    speed: 200,
     mass: 0.3,
     lifespan: 900,
     radius: 1.5,
@@ -47,7 +46,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   mediumShot: {
     id: 'mediumShot',
     damage: 4,
-    speed: 300,
     mass: 5,
     radius: 4,
     lifespan: 600,
@@ -59,7 +57,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   mortarShot: {
     id: 'mortarShot',
     damage: 30,
-    speed: 200,
     mass: 2,
     radius: 13,
     lifespan: 3000,
@@ -71,7 +68,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   heavyShot: {
     id: 'heavyShot',
     damage: 260,
-    speed: 400,
     mass: 200.0,
     radius: 10,
     lifespan: 1800,
@@ -97,7 +93,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   disruptorShot: {
     id: 'disruptorShot',
     damage: 9999,
-    speed: 350,
     mass: 20.0,
     radius: 25,
     lifespan: 2000,

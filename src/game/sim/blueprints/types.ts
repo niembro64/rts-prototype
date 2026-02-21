@@ -54,7 +54,6 @@ export interface ShotBlueprint {
   splashOnExpiry: boolean;
   piercing?: boolean;
   // Bullet projectiles
-  speed?: number;
   mass?: number;
   radius?: number;
   lifespan?: number;
@@ -87,6 +86,7 @@ export interface TurretBlueprint {
   burstDelay?: number;
   pelletCount?: number;
   homingTurnRate?: number;
+  projectileSpeed?: number;
   isManualFire?: boolean;
   // Force field
   isForceField?: boolean;

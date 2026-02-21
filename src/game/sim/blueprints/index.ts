@@ -34,7 +34,6 @@ function getProjectileFields(bp: ShotBlueprint) {
   return {
     projectileType: bp.id,
     damage: bp.damage,
-    ...(bp.speed != null && { projectileSpeed: bp.speed }),
     ...(bp.mass != null && { projectileMass: bp.mass }),
     ...(bp.radius != null && { projectileRadius: bp.radius }),
     ...(bp.lifespan != null && { projectileLifespan: bp.lifespan }),
@@ -97,6 +96,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
   if (wb.pelletCount != null) base.pelletCount = wb.pelletCount;
   if (wb.homingTurnRate != null) base.homingTurnRate = wb.homingTurnRate;
   if (wb.isManualFire != null) base.isManualFire = wb.isManualFire;
+  if (wb.projectileSpeed != null) base.projectileSpeed = wb.projectileSpeed;
 
   return base;
 }
