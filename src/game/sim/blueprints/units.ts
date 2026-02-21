@@ -178,7 +178,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadius: 24,
     collisionRadiusMultiplier: 1.0,
     mass: 1000,
-    baseCost: 1500,
+    baseCost: 2500,
     weapons: [{ weaponId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -203,7 +203,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     collisionRadius: 35,
     collisionRadiusMultiplier: 1.0,
     mass: 200,
-    baseCost: 3000,
+    baseCost: 5000,
     weapons: [
       { weaponId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
       { weaponId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
