@@ -78,8 +78,8 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       const isContinuousBeam = isBeamWeapon && config.cooldown === 0;
       const isCooldownBeam = isBeamWeapon && config.cooldown > 0;
 
-      // Skip if weapon is not firing (target not in range or no target)
-      if (!weapon.isFiring) continue;
+      // Skip if weapon is not engaged (target not in range or no target)
+      if (!weapon.isEngaged) continue;
 
       // Apply beam/railgun recoil any time the weapon is firing (not just when beam hits)
       if (isBeamWeapon && forceAccumulator && config.knockBackForce) {
@@ -94,7 +94,7 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       const target = world.getEntity(weapon.targetEntityId!);
       if (!target) {
         weapon.targetEntityId = null;
-        weapon.isFiring = false;
+        weapon.isEngaged = false;
         continue;
       }
 
@@ -181,7 +181,7 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
 
         if (isBeamWeapon) {
           // Create beam using weapon's fireRange
-          const beamLength = weapon.fireRange;
+          const beamLength = weapon.ranges.engage.acquire;
           const endX = spawnX + fireCos * beamLength;
           const endY = spawnY + fireSin * beamLength;
 
@@ -386,7 +386,7 @@ export function updateProjectiles(
         // Continuous beams: stay alive while firing, remove immediately when not
         const isContinuous = (proj.config.cooldown === 0);
         if (isContinuous) {
-          if (weapon.isFiring) {
+          if (weapon.isEngaged) {
             proj.timeAlive = 0;
           } else {
             // Remove immediately — no linger time
@@ -420,7 +420,7 @@ export function updateProjectiles(
         proj.startY = weaponY + dirY * 5;
 
         // Use weapon's fireRange for consistent beam length (not proj.config.range)
-        const beamLength = weapon.fireRange;
+        const beamLength = weapon.ranges.engage.acquire;
         const fullEndX = proj.startX + dirX * beamLength;
         const fullEndY = proj.startY + dirY * beamLength;
 
@@ -709,7 +709,7 @@ export function checkProjectileCollisions(
         }
       }
 
-      // Note: beam recoil (knockBackForce) is applied in fireWeapons() based on weapon.isFiring state
+      // Note: beam recoil (knockBackForce) is applied in fireWeapons() based on weapon.isEngaged state
     } else {
       // Traveling projectiles use swept volume collision (prevents tunneling)
       const projRadius = config.projectileRadius ?? 5;

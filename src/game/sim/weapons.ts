@@ -1,5 +1,5 @@
-import type { WeaponConfig } from './types';
-import { RANGE_MULTIPLIERS } from '../../config';
+import type { WeaponConfig, TurretRanges } from './types';
+import { TURRET_RANGE_MULTIPLIERS } from '../../config';
 import { buildAllWeaponConfigs, TURRET_BLUEPRINTS } from './blueprints';
 
 // Union type of all registered weapon config keys (derived from blueprints)
@@ -7,18 +7,23 @@ export type WeaponId = keyof typeof TURRET_BLUEPRINTS;
 
 // Turret configurations — built from blueprints at init time
 // Same shape as before, just derived from the blueprint single source of truth
-export const TURRET_CONFIGS: Record<string, WeaponConfig> = buildAllWeaponConfigs();
+export const TURRET_CONFIGS: Record<string, WeaponConfig> =
+  buildAllWeaponConfigs();
 
-// Compute all range tiers for a weapon, using per-weapon overrides with global fallback
-export function computeWeaponRanges(config: WeaponConfig) {
-  const fireRange = config.range;
+// Compute hysteresis range pairs for a weapon, using per-weapon overrides with global fallback
+export function computeWeaponRanges(config: WeaponConfig): TurretRanges {
+  const baseRange = config.range;
   const m = config.rangeMultiplierOverrides;
+  const d = TURRET_RANGE_MULTIPLIERS;
   return {
-    seeRange:       fireRange * (m?.see ?? RANGE_MULTIPLIERS.see),
-    fireRange,
-    releaseRange:   fireRange * (m?.release ?? RANGE_MULTIPLIERS.release),
-    lockRange:      fireRange * (m?.lock ?? RANGE_MULTIPLIERS.lock),
-    fightstopRange: fireRange * (m?.fightstop ?? RANGE_MULTIPLIERS.fightstop),
+    tracking: {
+      acquire: baseRange * (m?.tracking.acquire ?? d.tracking.acquire),
+      release: baseRange * (m?.tracking.release ?? d.tracking.release),
+    },
+    engage: {
+      acquire: baseRange * (m?.engage.acquire ?? d.engage.acquire),
+      release: baseRange * (m?.engage.release ?? d.engage.release),
+    },
   };
 }
 
@@ -32,7 +37,9 @@ export function getWeaponConfig(id: string): WeaponConfig {
 }
 
 // Helper to create a custom weapon config
-export function createWeaponConfig(base: Partial<WeaponConfig> & { id: string }): WeaponConfig {
+export function createWeaponConfig(
+  base: Partial<WeaponConfig> & { id: string },
+): WeaponConfig {
   return {
     damage: 10,
     range: 100,

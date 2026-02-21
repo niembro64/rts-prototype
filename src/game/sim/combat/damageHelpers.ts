@@ -6,7 +6,7 @@ import type { Entity, EntityId } from '../types';
 import { PLAYER_COLORS } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext } from './types';
-import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
+import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import type { DeathContext, DamageResult } from '../damage/types';
 import type { WeaponConfig, Projectile } from '../types';
 

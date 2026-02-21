@@ -14,7 +14,8 @@ import type {
   HitInfo,
   DeathContext,
 } from './types';
-import { KNOCKBACK, BEAM_EXPLOSION_MAGNITUDE, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
+import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
 import { normalizeAngle, magnitude } from '../../math';
 

@@ -1,3 +1,35 @@
+// ── Two-state hysteresis range system ──
+// Each weapon has two states: tracking (turret aimed) and engaged (actively firing).
+// Each state uses hysteresis: acquire at a tighter range, release at a wider range.
+// This prevents state flickering when targets hover near boundaries.
+
+/** A single hysteresis pair: acquire (inner) < release (outer) */
+export interface HysteresisRange {
+  acquire: number;
+  release: number;
+}
+
+/** Nullable hysteresis pair for per-weapon overrides (null = use global default) */
+export interface HysteresisRangeOverride {
+  acquire: number | null;
+  release: number | null;
+}
+
+/** Computed absolute ranges for both weapon states (in world units) */
+export interface TurretRanges {
+  tracking: HysteresisRange;  // outer awareness boundary (turret pre-aims)
+  engage: HysteresisRange;    // firing boundary (weapon fires)
+}
+
+/** Range multipliers relative to weapon's base range */
+export type TurretRangeMultipliers = TurretRanges;
+
+/** Per-weapon range overrides (null = fall back to global default) */
+export interface TurretRangeOverrides {
+  tracking: HysteresisRangeOverride;
+  engage: HysteresisRangeOverride;
+}
+
 // Entity ID type for deterministic identification
 export type EntityId = number;
 
@@ -155,14 +187,8 @@ export interface WeaponConfig {
   // Manual fire properties
   isManualFire?: boolean;        // Weapon only fires on explicit command, skips auto-targeting
 
-  // Per-weapon range multiplier overrides (null → global RANGE_MULTIPLIERS fallback)
-  rangeMultiplierOverrides?: {
-    see: number | null;
-    fire: number | null;
-    release: number | null;
-    lock: number | null;
-    fightstop: number | null;
-  };
+  // Per-weapon range multiplier overrides (null → global default fallback)
+  rangeMultiplierOverrides?: TurretRangeOverrides;
 
   // Future extensibility - any additional params
   [key: string]: unknown;
@@ -175,13 +201,10 @@ export interface UnitWeapon {
   currentCooldown: number;       // Time until can fire again (ms)
   targetEntityId: EntityId | null; // Current target
 
-  // Per-weapon range properties (constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange)
-  seeRange: number;              // Tracking range - turret pre-aims when enemies are within this, returns to forward when empty
-  fireRange: number;             // Attack range - weapon fires at nearest enemy within this
-  releaseRange: number;          // Lock release boundary - locked target stays locked until it exits this range (hysteresis)
-  lockRange: number;             // Lock acquisition range - weapon commits when current target enters this range
-  fightstopRange: number;        // Fight mode stop range - unit stops moving in fight mode when enemy is within this
-  isLocked: boolean;             // Whether weapon has a sticky lock on its target (server-only, not serialized)
+  // Per-weapon computed ranges (hysteresis pairs for tracking and engagement)
+  ranges: TurretRanges;
+  isTracking: boolean;           // Weapon has a target and turret is aimed at it
+  isEngaged: boolean;            // Weapon is actively firing at its target
 
   // Turret rotation for this specific weapon (acceleration-based physics)
   turretRotation: number;           // Current angle (radians)
@@ -198,9 +221,6 @@ export interface UnitWeapon {
   worldX?: number;
   worldY?: number;
 
-  // Firing/range state - set by combat system, read by unit for movement decisions
-  isFiring: boolean;             // True when this weapon is actively firing at a target in range
-  inFightstopRange: boolean;     // True when target is within fightstopRange (unit should stop in fight mode)
 
   // Burst state
   burstShotsRemaining?: number;
@@ -211,7 +231,7 @@ export interface UnitWeapon {
   currentForceFieldRange?: number;        // Current dynamic outer radius
 }
 
-// Note: All weapons use unified sticky targeting with lock/release hysteresis.
+// Note: All weapons use two-state hysteresis targeting (tracking + engaged).
 // No per-weapon targeting mode config needed.
 
 // Projectile travel types

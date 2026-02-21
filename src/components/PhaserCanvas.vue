@@ -149,11 +149,10 @@ const soundToggles = reactive<Record<SoundCategory, boolean>>({
 });
 audioManager.setMuted(audioScope.value === 'off');
 const rangeToggles = reactive<Record<RangeType, boolean>>({
-  see: getRangeToggle('see'),
-  fire: getRangeToggle('fire'),
-  release: getRangeToggle('release'),
-  lock: getRangeToggle('lock'),
-  fightstop: getRangeToggle('fightstop'),
+  trackAcquire: getRangeToggle('trackAcquire'),
+  trackRelease: getRangeToggle('trackRelease'),
+  engageAcquire: getRangeToggle('engageAcquire'),
+  engageRelease: getRangeToggle('engageRelease'),
   build: getRangeToggle('build'),
 });
 const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
@@ -1622,43 +1621,35 @@ onUnmounted(() => {
           <div class="button-group">
             <button
               class="control-btn"
-              :class="{ active: rangeToggles.see }"
-              title="Show turret see range (target acquisition)"
-              @click="toggleRange('see')"
+              :class="{ active: rangeToggles.trackAcquire }"
+              title="Show tracking acquire range (start tracking target)"
+              @click="toggleRange('trackAcquire')"
             >
-              SEE
+              T.A
             </button>
             <button
               class="control-btn"
-              :class="{ active: rangeToggles.fire }"
-              title="Show turret fire range (begin shooting)"
-              @click="toggleRange('fire')"
+              :class="{ active: rangeToggles.trackRelease }"
+              title="Show tracking release range (lose target)"
+              @click="toggleRange('trackRelease')"
             >
-              FIR
+              T.R
             </button>
             <button
               class="control-btn"
-              :class="{ active: rangeToggles.release }"
-              title="Show turret release range (stop tracking)"
-              @click="toggleRange('release')"
+              :class="{ active: rangeToggles.engageAcquire }"
+              title="Show engage acquire range (start firing)"
+              @click="toggleRange('engageAcquire')"
             >
-              REL
+              E.A
             </button>
             <button
               class="control-btn"
-              :class="{ active: rangeToggles.lock }"
-              title="Show turret lock range (maintain lock)"
-              @click="toggleRange('lock')"
+              :class="{ active: rangeToggles.engageRelease }"
+              title="Show engage release range (stop firing)"
+              @click="toggleRange('engageRelease')"
             >
-              LCK
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: rangeToggles.fightstop }"
-              title="Show fight-stop range (stop pursuing)"
-              @click="toggleRange('fightstop')"
-            >
-              STP
+              E.R
             </button>
             <button
               class="control-btn"

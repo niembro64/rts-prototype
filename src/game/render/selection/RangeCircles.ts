@@ -11,11 +11,10 @@ export interface UnitRadiusVisibility {
 }
 
 export interface RangeVisibility {
-  see: boolean;
-  fire: boolean;
-  release: boolean;
-  lock: boolean;
-  fightstop: boolean;
+  trackAcquire: boolean;
+  trackRelease: boolean;
+  engageAcquire: boolean;
+  engageRelease: boolean;
   build: boolean;
 }
 
@@ -39,25 +38,21 @@ export function renderRangeCircles(
       const wx = wp.x;
       const wy = wp.y;
 
-      if (visibility.see) {
+      if (visibility.trackAcquire) {
         graphics.lineStyle(1, COLORS.VISION_RANGE, 0.3);
-        graphics.strokeCircle(wx, wy, w.seeRange);
+        graphics.strokeCircle(wx, wy, w.ranges.tracking.acquire);
       }
-      if (visibility.fire) {
+      if (visibility.trackRelease) {
+        graphics.lineStyle(1, COLORS.VISION_RANGE, 0.15);
+        graphics.strokeCircle(wx, wy, w.ranges.tracking.release);
+      }
+      if (visibility.engageAcquire) {
         graphics.lineStyle(1.5, COLORS.WEAPON_RANGE, 0.4);
-        graphics.strokeCircle(wx, wy, w.fireRange);
+        graphics.strokeCircle(wx, wy, w.ranges.engage.acquire);
       }
-      if (visibility.release) {
+      if (visibility.engageRelease) {
         graphics.lineStyle(1, COLORS.RELEASE_RANGE, 0.35);
-        graphics.strokeCircle(wx, wy, w.releaseRange);
-      }
-      if (visibility.lock) {
-        graphics.lineStyle(1, COLORS.LOCK_RANGE, 0.35);
-        graphics.strokeCircle(wx, wy, w.lockRange);
-      }
-      if (visibility.fightstop) {
-        graphics.lineStyle(1, COLORS.FIGHTSTOP_RANGE, 0.3);
-        graphics.strokeCircle(wx, wy, w.fightstopRange);
+        graphics.strokeCircle(wx, wy, w.ranges.engage.release);
       }
     }
   }

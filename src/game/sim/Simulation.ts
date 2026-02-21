@@ -985,16 +985,16 @@ export class Simulation {
         continue;
       }
 
-      // Check if unit should stop for combat (fight or patrol mode with majority of weapons firing)
+      // Check if unit should stop for combat (fight or patrol mode with majority of weapons engaged)
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
         const weapons = entity.weapons;
         if (weapons && weapons.length > 0) {
-          let firingCount = 0;
+          let engagedCount = 0;
           for (let i = 0; i < weapons.length; i++) {
-            if (weapons[i].isFiring) firingCount++;
+            if (weapons[i].isEngaged) engagedCount++;
           }
-          if (firingCount > weapons.length / 2) {
-            // Majority of weapons are firing - stop and fight
+          if (engagedCount > weapons.length / 2) {
+            // Majority of weapons are engaged — stop and fight
             continue;
           }
         }

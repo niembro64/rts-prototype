@@ -8,19 +8,16 @@ import { spatialGrid } from '../SpatialGrid';
 
 // Update auto-targeting and firing state for all units in a single pass.
 // Each weapon independently finds its own target using its own ranges.
-// All weapons use unified sticky targeting with lock/release hysteresis:
 //
-// Range hierarchy: seeRange > fireRange > releaseRange > lockRange > fightstopRange
+// Two-state hysteresis system:
+//   isTracking: turret has a target and is aimed at it
+//     - acquire: nearest enemy enters tracking.acquire range
+//     - release: tracked target exits tracking.release range (or dies)
+//   isEngaged: weapon is actively firing
+//     - acquire: tracked target enters engage.acquire range
+//     - release: tracked target exits engage.release range
 //
-// Unlocked: fire at nearest enemy in fireRange, pre-aim at nearest in seeRange.
-//   When current target enters lockRange → acquire lock.
-// Locked: stick to locked target.
-//   Lock breaks when target exits releaseRange, exits seeRange, or dies.
-//   Since releaseRange < fireRange, lock always breaks while target is still fireable.
-//   Turret returns to forward when no enemies in seeRange.
-//
-// Also sets isFiring and inFightstopRange (previously a separate pass with redundant
-// sin/cos + weapon position math).
+// Hysteresis (acquire < release) prevents state flickering at boundaries.
 //
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
 export function updateTargetingAndFiringState(world: WorldState): void {
@@ -33,19 +30,21 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     const sin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
 
     for (const weapon of unit.weapons) {
-      // Reset firing state each tick
-      weapon.isFiring = false;
-      weapon.inFightstopRange = false;
+      const r = weapon.ranges;
 
       // Skip manual-fire weapons (e.g., dgun) — they only fire on explicit command
-      if (weapon.config.isManualFire) continue;
+      if (weapon.config.isManualFire) {
+        weapon.isTracking = false;
+        weapon.isEngaged = false;
+        continue;
+      }
 
       // Compute and cache weapon world position (reused by turret, firing, beam systems)
       const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offsetX, weapon.offsetY);
       const weaponX = weapon.worldX = wp.x;
       const weaponY = weapon.worldY = wp.y;
 
-      // Step 1: Validate current target and update lock state
+      // Step 1: Validate current target with hysteresis
       if (weapon.targetEntityId !== null) {
         const target = world.getEntity(weapon.targetEntityId);
         let targetIsValid = false;
@@ -54,74 +53,68 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
         if (!targetIsValid || !target) {
-          // Target dead or gone
+          // Target dead or gone — drop everything
           weapon.targetEntityId = null;
-          weapon.isLocked = false;
+          weapon.isTracking = false;
+          weapon.isEngaged = false;
         } else {
           const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
 
-          if (dist > weapon.seeRange + targetRadius) {
-            // Target left seeRange — drop entirely
+          // Tracking hysteresis: drop when target exits tracking.release
+          if (dist > r.tracking.release + targetRadius) {
             weapon.targetEntityId = null;
-            weapon.isLocked = false;
-          } else if (weapon.isLocked) {
-            // Currently locked — check release boundary
-            if (dist > weapon.releaseRange + targetRadius) {
-              // Target exited releaseRange — break lock (still in fireRange, will switch to nearest)
-              weapon.isLocked = false;
-              weapon.targetEntityId = null; // Clear so nearest search picks fresh target
+            weapon.isTracking = false;
+            weapon.isEngaged = false;
+          } else {
+            // Target still within tracking release — maintain tracking
+            weapon.isTracking = true;
+
+            // Engage hysteresis
+            if (weapon.isEngaged) {
+              // Currently engaged — hold until target exits engage.release
+              if (dist > r.engage.release + targetRadius) {
+                weapon.isEngaged = false;
+              }
             } else {
-              // Lock held — compute firing state and skip search
-              if (dist <= weapon.fireRange + targetRadius) weapon.isFiring = true;
-              if (dist <= weapon.fightstopRange + targetRadius) weapon.inFightstopRange = true;
-              continue; // Happy path, skip search
+              // Not engaged — acquire when target enters engage.acquire
+              if (dist <= r.engage.acquire + targetRadius) {
+                weapon.isEngaged = true;
+              }
             }
+            continue; // Happy path — keep current target
           }
-          // If not locked and target in seeRange, it will be re-evaluated below via nearest search
         }
       }
 
-      // Step 2: Search for nearest enemies at each range tier
-      const nearbyEnemies = spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weapon.seeRange, playerId);
+      // Step 2: No target — search for nearest enemy within tracking.acquire range
+      const nearbyEnemies = spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, r.tracking.acquire, playerId);
 
-      let closestInSeeRange: Entity | null = null;
-      let closestInSeeRangeDist = Infinity;
-      let closestInFireRange: Entity | null = null;
-      let closestInFireRangeDist = Infinity;
+      let closestEnemy: Entity | null = null;
+      let closestDist = Infinity;
 
       for (const enemy of nearbyEnemies) {
         const enemyRadius = enemy.unit ? enemy.unit.physicsRadius : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
 
-        if (dist <= weapon.seeRange + enemyRadius && dist < closestInSeeRangeDist) {
-          closestInSeeRangeDist = dist;
-          closestInSeeRange = enemy;
-        }
-        if (dist <= weapon.fireRange + enemyRadius && dist < closestInFireRangeDist) {
-          closestInFireRangeDist = dist;
-          closestInFireRange = enemy;
+        if (dist <= r.tracking.acquire + enemyRadius && dist < closestDist) {
+          closestDist = dist;
+          closestEnemy = enemy;
         }
       }
 
-      // Step 3: Assign target and compute firing state
-      if (closestInFireRange) {
-        weapon.targetEntityId = closestInFireRange.id;
-        // Acquire lock if target is within lockRange
-        const targetRadius = closestInFireRange.unit ? closestInFireRange.unit.physicsRadius
-          : (closestInFireRange.building ? getTargetRadius(closestInFireRange) : 0);
-        weapon.isLocked = closestInFireRangeDist <= weapon.lockRange + targetRadius;
-        weapon.isFiring = true; // Target is in fireRange by definition
-        if (closestInFireRangeDist <= weapon.fightstopRange + targetRadius) {
-          weapon.inFightstopRange = true;
-        }
-      } else if (closestInSeeRange) {
-        // Pre-aim only (turret tracks, no firing)
-        weapon.targetEntityId = closestInSeeRange.id;
-        weapon.isLocked = false;
+      // Step 3: Assign new target
+      if (closestEnemy) {
+        weapon.targetEntityId = closestEnemy.id;
+        weapon.isTracking = true;
+        const targetRadius = closestEnemy.unit ? closestEnemy.unit.physicsRadius
+          : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
+        // Check if already within engage.acquire range
+        weapon.isEngaged = closestDist <= r.engage.acquire + targetRadius;
       } else {
         // No enemies — turret returns to forward (handled by turret system)
         weapon.targetEntityId = null;
-        weapon.isLocked = false;
+        weapon.isTracking = false;
+        weapon.isEngaged = false;
       }
     }
   }

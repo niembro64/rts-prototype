@@ -181,23 +181,19 @@ export interface NetworkAction {
 }
 
 // Weapon data for network sync (supports multi-weapon units)
-// Range constraint: seeRange > fireRange > releaseRange > lockRange > fightstopRange
+// Two-state hysteresis: tracking (turret aimed) + engaged (firing)
 export interface NetworkWeapon {
   configId: string;
   targetId?: number;
-  seeRange: number;
-  fireRange: number;
-  releaseRange: number;    // Lock release boundary (hysteresis)
-  lockRange: number;       // Lock acquisition range (innermost commitment zone)
-  fightstopRange: number;  // Unit stops in fight mode when enemy within this range
+  ranges: import('../sim/types').TurretRanges;
   turretRotation: number;
   turretAngularVelocity: number;  // Current angular velocity (rad/sec)
   turretTurnAccel: number;        // Turret acceleration (rad/sec²)
   turretDrag: number;             // Turret drag coefficient (0-1)
   offsetX: number;
   offsetY: number;
-  isFiring: boolean;       // Whether weapon is actively firing at target in range
-  inFightstopRange: boolean; // Whether target is within fightstop range
+  isTracking: boolean;
+  isEngaged: boolean;
   currentForceFieldRange?: number;  // Dynamic outer radius for force field weapons
 }
 

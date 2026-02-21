@@ -394,16 +394,15 @@ export class WorldState {
       config: weaponConfig,
       currentCooldown: 0,
       targetEntityId: null,
-      ...ranges,
-      isLocked: false,
+      ranges,
+      isTracking: false,
+      isEngaged: false,
       turretRotation: 0,
       turretAngularVelocity: 0,
       turretTurnAccel: accel,
       turretDrag: drag,
       offsetX: 0,
       offsetY: 0,
-      isFiring: false,
-      inFightstopRange: false,
     }];
 
     return entity;
@@ -486,7 +485,7 @@ export class WorldState {
     let maxLifespan = config.projectileLifespan ?? 2000;
     if (projectileType === 'beam') {
       // Cooldown beams: beamDuration is the shot lifespan
-      // Continuous beams: removed explicitly by projectileSystem when isFiring goes false
+      // Continuous beams: removed explicitly by projectileSystem when isEngaged goes false
       maxLifespan = config.beamDuration ?? Infinity;
     } else if (projectileType === 'instant') {
       maxLifespan = 16; // One frame essentially

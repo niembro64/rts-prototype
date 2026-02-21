@@ -110,7 +110,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
             const weaponY = wp.y;
             const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
             const targetRadius = getTargetRadius(target);
-            hasTargetInRange = dist <= weapon.fireRange + targetRadius;
+            hasTargetInRange = dist <= weapon.ranges.engage.acquire + targetRadius;
           }
         }
       }

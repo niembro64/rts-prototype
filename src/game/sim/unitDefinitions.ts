@@ -24,9 +24,11 @@ export function createWeaponsFromDefinition(unitId: string, radius: number): Uni
     const turretTurnAccel = weaponConfig.turretTurnAccel!;
     const turretDrag = weaponConfig.turretDrag!;
 
-    // Override seeRange if blueprint specifies weaponSeeRange
+    // Override tracking acquire range if blueprint specifies weaponSeeRange
     if (bp.weaponSeeRange != null) {
-      ranges.seeRange = bp.weaponSeeRange;
+      const ratio = ranges.tracking.release / ranges.tracking.acquire;
+      ranges.tracking.acquire = bp.weaponSeeRange;
+      ranges.tracking.release = bp.weaponSeeRange * ratio;
     }
 
     // For multi-weapon units (widow), offsets come from chassisMounts (world-space fractions of radius)
@@ -39,16 +41,15 @@ export function createWeaponsFromDefinition(unitId: string, radius: number): Uni
       config: { ...weaponConfig },
       currentCooldown: 0,
       targetEntityId: null,
-      ...ranges,
-      isLocked: false,
+      ranges,
+      isTracking: false,
+      isEngaged: false,
       turretRotation: 0,
       turretAngularVelocity: 0,
       turretTurnAccel,
       turretDrag,
       offsetX,
       offsetY,
-      isFiring: false,
-      inFightstopRange: false,
     });
   }
 

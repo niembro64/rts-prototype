@@ -19,9 +19,10 @@ const MAX_WAYPOINTS_PER_ENTITY = 16;
 function createPooledWeapon(): NetworkWeapon {
   return {
     configId: '', targetId: undefined,
-    seeRange: 0, fireRange: 0, releaseRange: 0, lockRange: 0, fightstopRange: 0,
+    ranges: { tracking: { acquire: 0, release: 0 }, engage: { acquire: 0, release: 0 } },
     turretRotation: 0, turretAngularVelocity: 0, turretTurnAccel: 0, turretDrag: 0,
-    offsetX: 0, offsetY: 0, isFiring: false, inFightstopRange: false,
+    offsetX: 0, offsetY: 0,
+    isTracking: false, isEngaged: false,
     currentForceFieldRange: undefined,
   };
 }
@@ -86,7 +87,7 @@ interface PrevEntityState {
   velocityY: number;
   hp: number;
   actionCount: number;
-  isFiringBits: number;    // bit-packed isFiring for all weapons
+  isEngagedBits: number;    // bit-packed isEngaged for all weapons
   targetBits: number;       // bit-packed hasTarget for all weapons
   weaponCount: number;
   turretRots: number[];     // per-weapon turret rotation
@@ -112,7 +113,7 @@ function createPrevEntityState(): PrevEntityState {
     x: 0, y: 0, rotation: 0,
     velocityX: 0, velocityY: 0,
     hp: 0, actionCount: 0,
-    isFiringBits: 0, targetBits: 0,
+    isEngagedBits: 0, targetBits: 0,
     weaponCount: 0, turretRots, turretAngVels, forceFieldRanges,
     buildProgress: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
   };
@@ -161,17 +162,17 @@ function hasEntityChanged(entity: Entity, prev: PrevEntityState): boolean {
     if (entity.weapons) {
       if (entity.weapons.length !== prev.weaponCount) return true;
 
-      let isFiringBits = 0;
+      let isEngagedBits = 0;
       let targetBits = 0;
       for (let i = 0; i < entity.weapons.length; i++) {
         const w = entity.weapons[i];
-        if (w.isFiring) isFiringBits |= (1 << i);
+        if (w.isEngaged) isEngagedBits |= (1 << i);
         if (w.targetEntityId) targetBits |= (1 << i);
         if (Math.abs(w.turretRotation - prev.turretRots[i]) > rotTh) return true;
         if (Math.abs(w.turretAngularVelocity - prev.turretAngVels[i]) > velTh) return true;
         if (Math.abs((w.currentForceFieldRange ?? 0) - prev.forceFieldRanges[i]) > 0.001) return true;
       }
-      if (isFiringBits !== prev.isFiringBits) return true;
+      if (isEngagedBits !== prev.isEngagedBits) return true;
       if (targetBits !== prev.targetBits) return true;
     }
   }
@@ -198,7 +199,7 @@ function updatePrevState(entity: Entity, prev: PrevEntityState): void {
   prev.hp = entity.unit?.hp ?? entity.building?.hp ?? 0;
   prev.actionCount = entity.unit?.actions?.length ?? 0;
 
-  prev.isFiringBits = 0;
+  prev.isEngagedBits = 0;
   prev.targetBits = 0;
   prev.weaponCount = entity.weapons?.length ?? 0;
   if (entity.weapons) {
@@ -210,7 +211,7 @@ function updatePrevState(entity: Entity, prev: PrevEntityState): void {
     }
     for (let i = 0; i < entity.weapons.length; i++) {
       const w = entity.weapons[i];
-      if (w.isFiring) prev.isFiringBits |= (1 << i);
+      if (w.isEngaged) prev.isEngagedBits |= (1 << i);
       if (w.targetEntityId) prev.targetBits |= (1 << i);
       prev.turretRots[i] = w.turretRotation;
       prev.turretAngVels[i] = w.turretAngularVelocity;
@@ -573,19 +574,17 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         const dst = pool.weapons[i];
         dst.configId = src.config.id;
         dst.targetId = src.targetEntityId ?? undefined;
-        dst.seeRange = src.seeRange;
-        dst.fireRange = src.fireRange;
-        dst.releaseRange = src.releaseRange;
-        dst.lockRange = src.lockRange;
-        dst.fightstopRange = src.fightstopRange;
+        const sr = src.ranges; const dr = dst.ranges;
+        dr.tracking.acquire = sr.tracking.acquire; dr.tracking.release = sr.tracking.release;
+        dr.engage.acquire = sr.engage.acquire; dr.engage.release = sr.engage.release;
         dst.turretRotation = src.turretRotation;
         dst.turretAngularVelocity = src.turretAngularVelocity;
         dst.turretTurnAccel = src.turretTurnAccel;
         dst.turretDrag = src.turretDrag;
         dst.offsetX = src.offsetX;
         dst.offsetY = src.offsetY;
-        dst.isFiring = src.isFiring;
-        dst.inFightstopRange = src.inFightstopRange;
+        dst.isTracking = src.isTracking;
+        dst.isEngaged = src.isEngaged;
         dst.currentForceFieldRange = src.currentForceFieldRange;
       }
       ne.weapons = pool.weapons;

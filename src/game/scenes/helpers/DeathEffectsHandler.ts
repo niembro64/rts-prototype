@@ -11,7 +11,7 @@ import {
   EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER,
   EXPLOSION_BASE_MOMENTUM,
   FIRE_EXPLOSION,
-} from '../../../config';
+} from '../../../explosionConfig';
 import { TURRET_CONFIGS } from '../../sim/weapons';
 import { magnitude } from '../../math';
 import { getAudioScope, getSoundToggle } from '../../render/graphicsSettings';

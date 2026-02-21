@@ -4,7 +4,7 @@ import Phaser from 'phaser';
 import type { ExplosionEffect } from '../types';
 import { getEffectiveQuality } from '../graphicsSettings';
 import { clamp01, angleDiff as computeAngleDiff } from '../../math';
-import { FIRE_EXPLOSION, DEATH_EXPLOSION } from '../../../config';
+import { FIRE_EXPLOSION, DEATH_EXPLOSION } from '../../../explosionConfig';
 
 /**
  * Render an explosion effect based on current graphics settings.

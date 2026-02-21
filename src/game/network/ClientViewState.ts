@@ -297,7 +297,8 @@ export class ClientViewState {
       if (server.weapons && server.weapons.length > 0 && entity.weapons) {
         for (let i = 0; i < server.weapons.length && i < entity.weapons.length; i++) {
           entity.weapons[i].targetEntityId = server.weapons[i].targetId ?? null;
-          entity.weapons[i].isFiring = server.weapons[i].isFiring;
+          entity.weapons[i].isTracking = server.weapons[i].isTracking;
+          entity.weapons[i].isEngaged = server.weapons[i].isEngaged;
           // currentForceFieldRange is NOT snapped — dead-reckoned + drifted in applyPrediction()
         }
       }
@@ -394,7 +395,7 @@ export class ClientViewState {
             // Dead-reckon force field expansion/contraction + drift toward server
             if (weapon.config.isForceField && weapon.config.forceFieldTransitionTime) {
               const cur = weapon.currentForceFieldRange ?? 0;
-              const targetProgress = weapon.isFiring ? 1 : 0;
+              const targetProgress = weapon.isEngaged ? 1 : 0;
               const progressDelta = dt / (weapon.config.forceFieldTransitionTime / 1000);
               let next = cur;
               if (cur < targetProgress) {
@@ -416,13 +417,13 @@ export class ClientViewState {
       if (entity.type === 'projectile' && entity.projectile) {
         if (entity.projectile.projectileType === 'beam') {
           // Beams: reconstruct from source unit's current position + turret rotation
-          // Beam existence is driven by the weapon's isFiring state (updated every snapshot),
+          // Beam existence is driven by the weapon's isEngaged state (updated every snapshot),
           // so lost despawn events self-correct on the next snapshot.
           const weaponIndex = (entity.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
           const source = this.entities.get(entity.projectile.sourceEntityId);
           const weapon = source?.weapons?.[weaponIndex];
 
-          if (source && weapon && weapon.isFiring) {
+          if (source && weapon && weapon.isEngaged) {
             const turretAngle = weapon.turretRotation;
             const dirX = Math.cos(turretAngle);
             const dirY = Math.sin(turretAngle);
@@ -437,8 +438,8 @@ export class ClientViewState {
             const startY = wp.y + dirY * 5;
 
             // Full-range beam end
-            const fullEndX = startX + dirX * weapon.fireRange;
-            const fullEndY = startY + dirY * weapon.fireRange;
+            const fullEndX = startX + dirX * weapon.ranges.engage.acquire;
+            const fullEndY = startY + dirY * weapon.ranges.engage.acquire;
 
             // Truncate at closest obstruction (units or buildings)
             const t = this.findBeamObstruction(

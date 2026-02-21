@@ -9,7 +9,7 @@ import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
 import { getGraphicsConfig, getEffectiveQuality, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, getUnitRadiusToggle, anyUnitRadiusToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
-import { FIRE_EXPLOSION } from '../../config';
+import { FIRE_EXPLOSION } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { TurretConfig, SpinConfig } from '../../config';
 
@@ -61,8 +61,8 @@ export class EntityRenderer {
   private _reusableIdSet: Set<EntityId> = new Set();
 
   // Cached range visibility objects (avoids per-frame allocation)
-  private _rangeVisToggle = { see: false, fire: false, release: false, lock: false, fightstop: false, build: false };
-  private _rangeVisSelected = { see: true, fire: true, release: true, lock: true, fightstop: false, build: true };
+  private _rangeVisToggle = { trackAcquire: false, trackRelease: false, engageAcquire: false, engageRelease: false, build: false };
+  private _rangeVisSelected = { trackAcquire: true, trackRelease: true, engageAcquire: true, engageRelease: true, build: true };
   private _projRangeVis = { collision: false, primary: false, secondary: false };
   private _unitRadiusVis = { collision: false, physics: false };
 
@@ -135,7 +135,7 @@ export class EntityRenderer {
       }
 
       // Check if any weapon is firing
-      const firing = entity.weapons.some(w => w.isFiring);
+      const firing = entity.weapons.some(w => w.isEngaged);
 
       if (firing) {
         state.speed = Math.min(state.speed + spinConfig.accel * dtSec, spinConfig.max);
@@ -344,11 +344,10 @@ export class EntityRenderer {
     // 3. Range circles (reuse cached visibility objects to avoid per-frame allocation)
     const showAllRanges = anyRangeToggleActive();
     if (showAllRanges) {
-      this._rangeVisToggle.see = getRangeToggle('see');
-      this._rangeVisToggle.fire = getRangeToggle('fire');
-      this._rangeVisToggle.release = getRangeToggle('release');
-      this._rangeVisToggle.lock = getRangeToggle('lock');
-      this._rangeVisToggle.fightstop = getRangeToggle('fightstop');
+      this._rangeVisToggle.trackAcquire = getRangeToggle('trackAcquire');
+      this._rangeVisToggle.trackRelease = getRangeToggle('trackRelease');
+      this._rangeVisToggle.engageAcquire = getRangeToggle('engageAcquire');
+      this._rangeVisToggle.engageRelease = getRangeToggle('engageRelease');
       this._rangeVisToggle.build = getRangeToggle('build');
     }
     const rangeVis = showAllRanges ? this._rangeVisToggle : this._rangeVisSelected;

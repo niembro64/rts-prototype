@@ -98,8 +98,8 @@ const AUDIO_SMOOTHING_STORAGE_KEY = 'rts-audio-smoothing';
 const DRIFT_MODE_STORAGE_KEY = 'rts-drift-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'rts-sound-toggles';
 
-export type RangeType = 'see' | 'fire' | 'release' | 'lock' | 'fightstop' | 'build';
-export const RANGE_TYPES: RangeType[] = ['see', 'fire', 'release', 'lock', 'fightstop', 'build'];
+export type RangeType = 'trackAcquire' | 'trackRelease' | 'engageAcquire' | 'engageRelease' | 'build';
+export const RANGE_TYPES: RangeType[] = ['trackAcquire', 'trackRelease', 'engageAcquire', 'engageRelease', 'build'];
 
 export type ProjRangeType = 'collision' | 'primary' | 'secondary';
 export const PROJ_RANGE_TYPES: ProjRangeType[] = ['collision', 'primary', 'secondary'];
@@ -112,11 +112,10 @@ export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['collision', 'physics'];
 let currentQuality: GraphicsQuality = 'auto';
 let currentRenderMode: RenderMode = 'padded';
 const currentRangeToggles: Record<RangeType, boolean> = {
-  see: false,
-  fire: false,
-  release: false,
-  lock: false,
-  fightstop: false,
+  trackAcquire: false,
+  trackRelease: false,
+  engageAcquire: false,
+  engageRelease: false,
   build: false,
 };
 const currentProjRangeToggles: Record<ProjRangeType, boolean> = {

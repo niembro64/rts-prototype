@@ -44,8 +44,8 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
         weapon.currentForceFieldRange = 0;
       }
 
-      // Move progress toward target based on firing state
-      const targetProgress = weapon.isFiring ? 1 : 0;
+      // Move progress toward target based on engaged state
+      const targetProgress = weapon.isEngaged ? 1 : 0;
       const progressDelta = dtMs / transitionTime;
 
       if (weapon.forceFieldTransitionProgress < targetProgress) {

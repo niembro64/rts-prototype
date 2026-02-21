@@ -22,15 +22,8 @@ export type {
   SoundEntry,
 };
 
-// ── Range multiplier overrides (null = use global RANGE_MULTIPLIERS fallback) ──
-
-export interface RangeOverrides {
-  see: number | null;
-  fire: number | null;
-  release: number | null;
-  lock: number | null;
-  fightstop: number | null;
-}
+import type { TurretRangeOverrides } from '../types';
+export type { TurretRangeOverrides };
 
 // ── Force field zone ratio config (ratios of weapon range) ──
 
@@ -79,7 +72,7 @@ export interface TurretBlueprint {
   turretTurnAccel: number;
   turretDrag: number;
   turretShape: TurretConfig;
-  rangeMultiplierOverrides: RangeOverrides;
+  rangeMultiplierOverrides: TurretRangeOverrides;
   // Optional firing modifiers
   spreadAngle?: number;
   burstCount?: number;

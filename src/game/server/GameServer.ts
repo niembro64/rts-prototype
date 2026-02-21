@@ -571,8 +571,8 @@ export class GameServer {
       // Find max seeRange across all weapons
       let maxSeeRange = 0;
       for (let i = 0; i < unit.weapons.length; i++) {
-        if (unit.weapons[i].seeRange > maxSeeRange) {
-          maxSeeRange = unit.weapons[i].seeRange;
+        if (unit.weapons[i].ranges.tracking.release > maxSeeRange) {
+          maxSeeRange = unit.weapons[i].ranges.tracking.release;
         }
       }
       if (maxSeeRange <= 0) continue;
