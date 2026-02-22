@@ -31,7 +31,7 @@ export class EntityCacheManager {
           this.cachedUnits.push(entity);
           if (entity.weapons) {
             for (let i = 0; i < entity.weapons.length; i++) {
-              if (entity.weapons[i].config.isForceField) {
+              if (entity.weapons[i].config.forceField) {
                 this.cachedForceFieldUnits.push(entity);
                 break;
               }

@@ -394,10 +394,10 @@ export class ClientViewState {
             }
 
             // Dead-reckon force field expansion/contraction + drift toward server
-            if (weapon.config.isForceField && weapon.config.forceFieldTransitionTime) {
+            if (weapon.config.forceField && weapon.config.forceField.transitionTime) {
               const cur = weapon.currentForceFieldRange ?? 0;
               const targetProgress = weapon.isEngaged ? 1 : 0;
-              const progressDelta = dt / (weapon.config.forceFieldTransitionTime / 1000);
+              const progressDelta = dt / (weapon.config.forceField.transitionTime / 1000);
               let next = cur;
               if (cur < targetProgress) {
                 next = Math.min(cur + progressDelta, 1);
@@ -420,7 +420,7 @@ export class ClientViewState {
           // Beams: reconstruct from source unit's current position + turret rotation
           // Beam existence is driven by the weapon's isEngaged state (updated every snapshot),
           // so lost despawn events self-correct on the next snapshot.
-          const weaponIndex = (entity.projectile.config as { weaponIndex?: number }).weaponIndex ?? 0;
+          const weaponIndex = entity.projectile.config.weaponIndex ?? 0;
           const source = this.entities.get(entity.projectile.sourceEntityId);
           const weapon = source?.weapons?.[weaponIndex];
 
@@ -547,7 +547,7 @@ export class ClientViewState {
         velocityX: spawn.velocityX,
         velocityY: spawn.velocityY,
         timeAlive: 0,
-        maxLifespan: config.projectileLifespan ?? config.beamDuration ?? (config.beamWidth !== undefined ? Infinity : 2000),
+        maxLifespan: config.projectileLifespan ?? config.beam?.duration ?? (config.beam !== undefined ? Infinity : 2000),
         hitEntities: new Set(),
         maxHits: 1,
         startX: spawn.beamStartX,

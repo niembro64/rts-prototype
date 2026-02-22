@@ -417,7 +417,7 @@ export class DamageSystem {
       // Calculate knockback direction (from center outward)
       const dirX = dist > 0 ? dx / dist : 0;
       const dirY = dist > 0 ? dy / dist : 0;
-      const force = damage * KNOCKBACK.SPLASH;
+      const force = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       const forceX = dirX * force;
       const forceY = dirY * force;
 
@@ -434,7 +434,7 @@ export class DamageSystem {
       result.hitEntityIds.push(unit.id);
 
       // Add knockback (direction is from center outward)
-      if (KNOCKBACK.SPLASH > 0 && dist > 0) {
+      if (force > 0 && dist > 0) {
         result.knockbacks.push({
           entityId: unit.id,
           forceX,
@@ -475,12 +475,12 @@ export class DamageSystem {
       const dirY = dist > 0 ? dy / dist : 0;
 
       // Apply damage with death context
-      const force = damage * KNOCKBACK.SPLASH;
+      const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       this.applyDamageToEntity(building, damage, result, source.sourceEntityId, {
         penetrationDirX: dirX,
         penetrationDirY: dirY,
-        attackerVelX: dirX * force,
-        attackerVelY: dirY * force,
+        attackerVelX: dirX * bForce,
+        attackerVelY: dirY * bForce,
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(building.id);

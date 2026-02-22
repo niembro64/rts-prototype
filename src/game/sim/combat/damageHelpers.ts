@@ -18,8 +18,8 @@ export function buildImpactContext(
   collisionRadius: number,
   entity?: Entity,
 ): ImpactContext {
-  const primaryRadius = config.primaryDamageRadius ?? collisionRadius;
-  const secondaryRadius = config.secondaryDamageRadius ?? primaryRadius;
+  const primaryRadius = config.explosion?.primary.radius ?? collisionRadius;
+  const secondaryRadius = config.explosion?.secondary.radius ?? primaryRadius;
 
   let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
   let penDirX = 0, penDirY = 0;

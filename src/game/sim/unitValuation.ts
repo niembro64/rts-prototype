@@ -10,34 +10,34 @@ import { createWeaponsFromDefinition } from './unitDefinitions';
 export function getWeaponValue(config: WeaponConfig): number {
   // --- baseDPS ---
   let baseDPS: number;
-  const isBeam = config.beamWidth !== undefined && !config.projectileSpeed;
-  const isForceField = !!config.isForceField;
-  const isShotgun = (config.pelletCount ?? 0) > 1;
-  const isBurst = (config.burstCount ?? 0) > 1;
+  const isBeam = config.beam !== undefined && !config.projectileSpeed;
+  const isForceField = !!config.forceField;
+  const isShotgun = (config.spread?.pelletCount ?? 0) > 1;
+  const isBurst = (config.burst?.count ?? 0) > 1;
 
   if (isForceField) {
     // Force field: damage field is base DPS, but scales with 1/distance.
     // Effective DPS at ~60% of fire range: baseDamage * (0.5 / 0.6)
-    baseDPS = config.collisionDamage * (0.5 / 0.6);
+    baseDPS = config.collision!.damage * (0.5 / 0.6);
   } else if (isBeam && config.cooldown === 0) {
     // Continuous beam: damage IS DPS
-    baseDPS = config.collisionDamage;
+    baseDPS = config.collision!.damage;
   } else if (isShotgun) {
     // Shotgun: damage * pelletCount / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (config.collisionDamage * config.pelletCount!) / cooldownSec;
+    baseDPS = (config.collision!.damage * config.spread!.pelletCount!) / cooldownSec;
   } else if (isBurst) {
     // Burst: damage * burstCount / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (config.collisionDamage * config.burstCount!) / cooldownSec;
+    baseDPS = (config.collision!.damage * config.burst!.count!) / cooldownSec;
   } else if (isBeam) {
     // Hitscan flash (railgun): damage / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = config.collisionDamage / cooldownSec;
+    baseDPS = config.collision!.damage / cooldownSec;
   } else {
     // Standard projectile: damage / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = config.collisionDamage / cooldownSec;
+    baseDPS = config.collision!.damage / cooldownSec;
   }
 
   // --- rangeFactor --- normalized to reference range 150, sqrt scaling
@@ -82,14 +82,14 @@ export function getWeaponValue(config: WeaponConfig): number {
   let aoeFactor = 1.0;
   if (isForceField) {
     aoeFactor = 2.0; // Hits all enemies in cone continuously
-  } else if (config.primaryDamageRadius !== undefined && config.primaryDamageRadius > 0) {
-    aoeFactor = 1 + (config.primaryDamageRadius / 100) * 0.8;
+  } else if (config.explosion?.primary.radius !== undefined && config.explosion.primary.radius > 0) {
+    aoeFactor = 1 + (config.explosion.primary.radius / 100) * 0.8;
   } else if (config.piercing) {
     aoeFactor = 1.3;
   }
 
   // --- pullBonus --- flat bonus for force field pull/push utility
-  const totalPower = (config.push?.power ?? 0) as number + (config.pull?.power ?? 0) as number;
+  const totalPower = (config.forceField?.push?.power ?? 0) as number + (config.forceField?.pull?.power ?? 0) as number;
   const pullBonus = totalPower > 0 ? totalPower * 0.05 : 0;
 
   return baseDPS * rangeFactor * deliveryFactor * turretFactor * aoeFactor + pullBonus;

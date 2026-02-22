@@ -16,7 +16,7 @@ export function emitForceFieldStopsForEntity(entity: Entity): SimEvent[] {
 
   for (let i = 0; i < entity.weapons.length; i++) {
     const config = entity.weapons[i].config;
-    if (!config.isForceField) continue;
+    if (!config.forceField) continue;
 
     _forceFieldStopOwner.push({
       type: 'forceFieldStop',
@@ -42,7 +42,7 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
     for (let i = 0; i < unit.weapons.length; i++) {
       const weapon = unit.weapons[i];
       const config = weapon.config;
-      if (!config.isForceField) continue;
+      if (!config.forceField) continue;
 
       const soundEntityId = unit.id * 100 + i;
       const progress = weapon.forceFieldTransitionProgress ?? (weapon.currentForceFieldRange ?? 0);

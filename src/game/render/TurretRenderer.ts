@@ -120,7 +120,7 @@ function drawConeSpreadTurret(
   const { barrelCount, barrelLength, barrelThickness = 2, baseOrbit, depthScale } = config;
   const barrelLen = r * barrelLength;
   const baseOrbitPx = baseOrbit * r;
-  const spreadAngle = weapon.config.spreadAngle ?? Math.PI / 5;
+  const spreadAngle = weapon.config.spread?.angle ?? Math.PI / 5;
   const spreadHalf = spreadAngle / 2;
   const tipOrbit = baseOrbitPx + barrelLen * Math.tan(spreadHalf);
   const TWO_PI_N = (2 * Math.PI) / barrelCount;
@@ -186,7 +186,7 @@ function drawForceFieldTurretFull(
 ): void {
   const turretRot = weapon.turretRotation;
   const progress = weapon.currentForceFieldRange ?? 0;
-  const transitionTimeMs = weapon.config.forceFieldTransitionTime ?? 1000;
+  const transitionTimeMs = weapon.config.forceField?.transitionTime ?? 1000;
 
   // Draw grate
   const grateOriginX = mountX + Math.cos(turretRot) * r * grateConfig.originOffset;
@@ -208,8 +208,9 @@ function drawForceFieldZones(
 ): void {
   const turretRot = weapon.turretRotation;
   const progress = weapon.currentForceFieldRange ?? 0;
-  const sliceAngle = weapon.config.forceFieldAngle ?? Math.PI / 4;
-  const { push, pull } = weapon.config;
+  const sliceAngle = weapon.config.forceField?.angle ?? Math.PI / 4;
+  const push = weapon.config.forceField?.push;
+  const pull = weapon.config.forceField?.pull;
 
   if (push) {
     const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;

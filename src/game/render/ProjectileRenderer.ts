@@ -28,7 +28,7 @@ export function renderProjectile(
     const startY = projectile.startY ?? y;
     const endX = projectile.endX ?? x;
     const endY = projectile.endY ?? y;
-    const beamWidth = config.beamWidth ?? 2;
+    const beamWidth = config.beam?.width ?? 2;
     const beamStyle = getGraphicsConfig().beamStyle;
     const hasCollision = projectile.obstructionT !== undefined;
 
@@ -59,14 +59,14 @@ export function renderProjectile(
     graphics.lineBetween(startX, startY, endX, endY);
 
     // Endpoint ball — always drawn at collision radius, always white
-    const collisionRadius = config.collisionRadius ?? beamWidth;
+    const collisionRadius = config.collision?.radius ?? beamWidth;
     graphics.fillStyle(0xffffff, 1);
     graphics.fillCircle(endX, endY, collisionRadius);
 
     // Collision-triggered damage radii highlights
     if (hasCollision) {
-      const primaryRadius = config.primaryDamageRadius ?? (collisionRadius * 2 + 6);
-      const secondaryRadius = config.secondaryDamageRadius ?? primaryRadius;
+      const primaryRadius = config.explosion?.primary.radius ?? (collisionRadius * 2 + 6);
+      const secondaryRadius = config.explosion?.secondary.radius ?? primaryRadius;
 
       if (lod === 'min' || lod === 'low') {
         // Simple: just primary + secondary filled circles
@@ -99,7 +99,7 @@ export function renderProjectile(
       }
     }
   } else if (entity.dgunProjectile) {
-    const radius = config.projectileRadius ?? 25;
+    const radius = config.collision?.radius ?? 25;
 
     if (lod === 'min') {
       // Min: just a colored circle
@@ -143,7 +143,7 @@ export function renderProjectile(
       }
     }
   } else {
-    const radius = config.projectileRadius ?? 5;
+    const radius = config.collision?.radius ?? 5;
 
     if (lod === 'min') {
       // Min: just a colored circle
@@ -199,8 +199,8 @@ export function renderProjRangeCircles(
   if (proj.projectileType === 'beam') {
     const endX = proj.endX ?? entity.transform.x;
     const endY = proj.endY ?? entity.transform.y;
-    const collisionRadius = config.collisionRadius ?? config.beamWidth ?? 2;
-    const primaryRadius = config.primaryDamageRadius ?? (collisionRadius * 2 + 6);
+    const collisionRadius = config.collision?.radius ?? 2;
+    const primaryRadius = config.explosion?.primary.radius ?? (collisionRadius * 2 + 6);
 
     if (visibility.collision) {
       graphics.lineStyle(1, COLORS.PROJ_COLLISION_RANGE, 0.5);
@@ -210,9 +210,9 @@ export function renderProjRangeCircles(
       graphics.lineStyle(1, COLORS.PROJ_PRIMARY_RANGE, 0.3);
       graphics.strokeCircle(endX, endY, primaryRadius);
     }
-    if (visibility.secondary && config.secondaryDamageRadius) {
+    if (visibility.secondary && config.explosion?.secondary.radius) {
       graphics.lineStyle(1, COLORS.PROJ_SECONDARY_RANGE, 0.3);
-      graphics.strokeCircle(endX, endY, config.secondaryDamageRadius);
+      graphics.strokeCircle(endX, endY, config.explosion.secondary.radius);
     }
     return;
   }
@@ -220,18 +220,18 @@ export function renderProjRangeCircles(
   const { x, y } = entity.transform;
 
   if (visibility.collision) {
-    const radius = config.projectileRadius ?? 5;
+    const radius = config.collision?.radius ?? 5;
     graphics.lineStyle(1, COLORS.PROJ_COLLISION_RANGE, 0.5);
     graphics.strokeCircle(x, y, radius);
   }
 
-  if (visibility.primary && config.primaryDamageRadius && !proj.hasExploded) {
+  if (visibility.primary && config.explosion?.primary.radius && !proj.hasExploded) {
     graphics.lineStyle(1, COLORS.PROJ_PRIMARY_RANGE, 0.3);
-    graphics.strokeCircle(x, y, config.primaryDamageRadius);
+    graphics.strokeCircle(x, y, config.explosion.primary.radius);
   }
 
-  if (visibility.secondary && config.secondaryDamageRadius && !proj.hasExploded) {
+  if (visibility.secondary && config.explosion?.secondary.radius && !proj.hasExploded) {
     graphics.lineStyle(1, COLORS.PROJ_SECONDARY_RANGE, 0.3);
-    graphics.strokeCircle(x, y, config.secondaryDamageRadius);
+    graphics.strokeCircle(x, y, config.explosion.secondary.radius);
   }
 }

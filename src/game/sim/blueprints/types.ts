@@ -39,23 +39,31 @@ export interface ForceFieldZoneRatioConfig {
 
 // ── Projectile Blueprint ──
 
+export interface ShotCollision {
+  radius: number;   // Collision hitbox radius (bullets: physical size, beams: endpoint circle)
+  damage: number;   // Direct hit / collision zone damage
+}
+
+export interface ShotExplosionZone {
+  radius: number;   // Splash radius for this zone
+  damage: number;   // Damage dealt within this zone
+  force: number;    // Explicit knockback force for this zone
+}
+
 export interface ShotBlueprint {
   id: string;
-  collisionDamage: number;
-  primaryRadiusDamage: number;
-  secondaryRadiusDamage: number;
-  primaryDamageRadius: number;
-  secondaryDamageRadius: number;
+  mass: number;
+  collision: ShotCollision;
+  explosion: {
+    primary: ShotExplosionZone;
+    secondary: ShotExplosionZone;
+  };
   splashOnExpiry: boolean;
   piercing?: boolean;
-  // All shots have mass (bullets: physical, beams: virtual)
-  mass: number;
-  radius?: number;
   lifespan?: number;
   // Beam projectiles
   beamDuration?: number;
-  beamWidth?: number;
-  collisionRadius?: number;
+  beamWidth?: number;   // Visual beam line width (separate from collision.radius)
   // Audio
   hitSound?: SoundEntry;
 }
@@ -72,23 +80,20 @@ export interface TurretBlueprint {
   turretDrag: number;
   turretShape: TurretConfig;
   rangeMultiplierOverrides: TurretRangeOverrides;
-  // Optional firing modifiers
-  spreadAngle?: number;
-  burstCount?: number;
-  burstDelay?: number;
-  pelletCount?: number;
+  // Optional firing modifiers (stay flat — no natural group)
   homingTurnRate?: number;
   launchForce?: number;
   isManualFire?: boolean;
-  // Force field
-  isForceField?: boolean;
-  forceFieldAngle?: number;
-  forceFieldTransitionTime?: number;
-  push?: ForceFieldZoneRatioConfig;
-  pull?: ForceFieldZoneRatioConfig;
-  // Audio
-  fireSound?: SoundEntry;
-  laserSound?: SoundEntry;
+  // Grouped
+  spread?: { angle?: number; pelletCount?: number; };
+  burst?: { count?: number; delay?: number; };
+  forceField?: {
+    angle?: number;
+    transitionTime?: number;
+    push?: ForceFieldZoneRatioConfig;
+    pull?: ForceFieldZoneRatioConfig;
+  };
+  audio?: { fireSound?: SoundEntry; laserSound?: SoundEntry; };
 }
 
 // ── Weapon Mount (where a weapon attaches on a unit) ──

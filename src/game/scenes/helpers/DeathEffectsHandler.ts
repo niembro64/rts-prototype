@@ -16,11 +16,11 @@ import { TURRET_CONFIGS } from '../../sim/weapons';
 import { magnitude } from '../../math';
 import { getAudioScope, getSoundToggle } from '../../render/graphicsSettings';
 
-// Get explosion radius based on weapon type (uses primaryDamageRadius from config)
+// Get explosion radius based on weapon type (uses explosion.primary.radius from config)
 export function getExplosionRadius(weaponId: string): number {
   const config = TURRET_CONFIGS[weaponId as keyof typeof TURRET_CONFIGS];
-  if (config?.primaryDamageRadius) {
-    return config.primaryDamageRadius as number;
+  if (config?.explosion?.primary.radius) {
+    return config.explosion.primary.radius;
   }
   return 8; // fallback
 }
@@ -28,7 +28,7 @@ export function getExplosionRadius(weaponId: string): number {
 // Get secondary explosion radius based on weapon type
 function getSecondaryExplosionRadius(weaponId: string): number | undefined {
   const config = TURRET_CONFIGS[weaponId as keyof typeof TURRET_CONFIGS];
-  return config?.secondaryDamageRadius as number | undefined;
+  return config?.explosion?.secondary.radius;
 }
 
 // Handle audio events from simulation (or network)
@@ -185,7 +185,7 @@ export function handleSimEvent(
       if (!getSoundToggle('beam')) break;
       if (!AUDIO.beamGain) break;
       let laserEntry;
-      try { laserEntry = getTurretBlueprint(event.weaponId).laserSound; } catch { break; }
+      try { laserEntry = getTurretBlueprint(event.weaponId).audio?.laserSound; } catch { break; }
       if (!laserEntry || !laserEntry.volume) break;
       if (event.entityId !== undefined) {
         audioManager.startLaserSound(event.entityId, laserEntry.freq, laserEntry.volume * AUDIO.beamGain, zoomVolume);
@@ -196,7 +196,7 @@ export function handleSimEvent(
       if (!getSoundToggle('field')) break;
       if (!AUDIO.fieldGain) break;
       let ffEntry;
-      try { ffEntry = getTurretBlueprint(event.weaponId).fireSound; } catch { break; }
+      try { ffEntry = getTurretBlueprint(event.weaponId).audio?.fireSound; } catch { break; }
       if (!ffEntry || !ffEntry.volume) break;
       if (event.entityId !== undefined) {
         audioManager.startForceFieldSound(event.entityId, ffEntry.playSpeed, ffEntry.volume * AUDIO.fieldGain, zoomVolume);

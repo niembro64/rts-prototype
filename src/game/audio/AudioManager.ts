@@ -90,7 +90,7 @@ export class AudioManager {
   playWeaponFire(weaponId: WeaponAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
     if (!AUDIO.fireGain) return;
     let entry;
-    try { entry = getTurretBlueprint(weaponId).fireSound; } catch { return; }
+    try { entry = getTurretBlueprint(weaponId).audio?.fireSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];

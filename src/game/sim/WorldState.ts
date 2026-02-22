@@ -486,7 +486,7 @@ export class WorldState {
     if (projectileType === 'beam') {
       // Cooldown beams: beamDuration is the shot lifespan
       // Continuous beams: removed explicitly by projectileSystem when isEngaged goes false
-      maxLifespan = config.beamDuration ?? Infinity;
+      maxLifespan = config.beam?.duration ?? Infinity;
     } else if (projectileType === 'instant') {
       maxLifespan = 16; // One frame essentially
     }

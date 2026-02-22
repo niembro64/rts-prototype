@@ -54,6 +54,8 @@ export interface AreaDamageSource extends DamageSourceBase {
   // Optional slice for wave weapons (if not set, full circle)
   sliceAngle?: number;      // Total slice angle in radians
   sliceDirection?: number;  // Center direction of slice in radians
+  // Explicit knockback force — when provided, used instead of damage * KNOCKBACK.SPLASH
+  knockbackForce?: number;
 }
 
 // Union type for all damage sources

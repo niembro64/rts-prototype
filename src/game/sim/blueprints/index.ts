@@ -29,23 +29,22 @@ function computeZoneConfig(
   };
 }
 
-/** Map ProjectileBlueprint fields to the flat WeaponConfig projectile fields */
+/** Map ShotBlueprint fields to the WeaponConfig projectile fields */
 function getProjectileFields(bp: ShotBlueprint) {
   return {
     projectileType: bp.id,
-    collisionDamage: bp.collisionDamage,
-    primaryRadiusDamage: bp.primaryRadiusDamage,
-    secondaryRadiusDamage: bp.secondaryRadiusDamage,
+    collision: bp.collision,
+    explosion: bp.explosion,
     projectileMass: bp.mass,
-    ...(bp.radius != null && { projectileRadius: bp.radius }),
     ...(bp.lifespan != null && { projectileLifespan: bp.lifespan }),
-    primaryDamageRadius: bp.primaryDamageRadius,
-    secondaryDamageRadius: bp.secondaryDamageRadius,
     splashOnExpiry: bp.splashOnExpiry,
     ...(bp.piercing != null && { piercing: bp.piercing }),
-    ...(bp.beamDuration != null && { beamDuration: bp.beamDuration }),
-    ...(bp.beamWidth != null && { beamWidth: bp.beamWidth }),
-    ...(bp.collisionRadius != null && { collisionRadius: bp.collisionRadius }),
+    ...((bp.beamDuration != null || bp.beamWidth != null) && {
+      beam: {
+        ...(bp.beamDuration != null && { duration: bp.beamDuration }),
+        ...(bp.beamWidth != null && { width: bp.beamWidth }),
+      },
+    }),
   };
 }
 
@@ -66,7 +65,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
     turretDrag: wb.turretDrag,
     turretShape: wb.turretShape,
     rangeMultiplierOverrides: wb.rangeMultiplierOverrides,
-    collisionDamage: 0, // will be overridden below
+    collision: { radius: 0, damage: 0 },
   };
 
   // Merge projectile fields if weapon has a projectile
@@ -79,28 +78,27 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
     Object.assign(base, getProjectileFields(pb));
 
     // Derive barrelThickness from shot size
-    // Projectiles: diameter (radius * 2), beams: beam width directly
+    // Projectiles: diameter (collision.radius * 2), beams: beam width directly
     if (base.turretShape && base.turretShape.type !== 'complexSingleEmitter') {
-      const thickness = pb.beamWidth ?? (pb.radius != null ? pb.radius * 2 : 2);
+      const thickness = pb.beamWidth ?? (pb.collision.radius > 0 ? pb.collision.radius * 2 : 2);
       base.turretShape = { ...base.turretShape, barrelThickness: thickness };
     }
   }
 
   // Force field: compute zone configs from ratios
-  if (wb.isForceField) {
-    base.isForceField = true;
-    base.forceFieldAngle = wb.forceFieldAngle;
-    base.forceFieldTransitionTime = wb.forceFieldTransitionTime;
-    base.push = computeZoneConfig(wb.push, wb.range);
-    base.pull = computeZoneConfig(wb.pull, wb.range);
-    base.collisionDamage = Math.max(wb.push?.damage ?? 0, wb.pull?.damage ?? 0);
+  if (wb.forceField) {
+    base.forceField = {
+      angle: wb.forceField.angle,
+      transitionTime: wb.forceField.transitionTime,
+      push: computeZoneConfig(wb.forceField.push, wb.range),
+      pull: computeZoneConfig(wb.forceField.pull, wb.range),
+    };
+    base.collision = { radius: 0, damage: Math.max(wb.forceField.push?.damage ?? 0, wb.forceField.pull?.damage ?? 0) };
   }
 
   // Optional firing modifiers
-  if (wb.spreadAngle != null) base.spreadAngle = wb.spreadAngle;
-  if (wb.burstCount != null) base.burstCount = wb.burstCount;
-  if (wb.burstDelay != null) base.burstDelay = wb.burstDelay;
-  if (wb.pelletCount != null) base.pelletCount = wb.pelletCount;
+  if (wb.spread) base.spread = { ...wb.spread };
+  if (wb.burst) base.burst = { ...wb.burst };
   if (wb.homingTurnRate != null) base.homingTurnRate = wb.homingTurnRate;
   if (wb.isManualFire != null) base.isManualFire = wb.isManualFire;
   if (wb.launchForce != null && base.projectileMass) {

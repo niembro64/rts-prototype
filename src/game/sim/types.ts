@@ -133,35 +133,46 @@ export interface WeaponConfig {
   id: string;                    // Unique identifier (e.g., 'lightTurret', 'beamTurret', 'cannonTurret')
   projectileType?: string;       // Projectile stat key (e.g., 'lightShot', 'beamShot')
   turretShape?: import('../../config').TurretConfig; // Turret visual config (barrel type, dimensions, spin)
-  collisionDamage: number;       // Direct hit / collision zone damage
-  primaryRadiusDamage?: number;  // Primary splash zone damage
-  secondaryRadiusDamage?: number; // Secondary splash zone damage
   range: number;                 // Attack range
   cooldown: number;              // Time between attacks (ms)
 
+  // Structured collision and explosion data (from ShotBlueprint)
+  collision?: {
+    radius: number;              // Collision hitbox radius
+    damage: number;              // Direct hit / collision zone damage
+  };
+  explosion?: {
+    primary: { radius: number; damage: number; force: number; };
+    secondary: { radius: number; damage: number; force: number; };
+  };
+
   // Projectile properties (optional based on weapon type)
   projectileSpeed?: number;      // Speed of projectile (undefined = hitscan)
-  projectileRadius?: number;     // Size of projectile hitbox
   projectileMass?: number;       // Mass of projectile (for momentum-based recoil/knockback)
   projectileLifespan?: number;   // Max time projectile exists (ms)
 
-  // Beam/laser properties
-  beamDuration?: number;         // How long beam persists (ms)
-  beamWidth?: number;            // Visual width of beam line
-  collisionRadius?: number;      // Collision/hit-detection radius at beam endpoint
-
-  // Spread/multi-shot properties
-  pelletCount?: number;          // Number of projectiles per shot
-  spreadAngle?: number;          // Angle of spread (radians)
+  // Grouped
+  beam?: {
+    duration?: number;           // How long beam persists (ms)
+    width?: number;              // Visual width of beam line
+  };
+  spread?: {
+    pelletCount?: number;        // Number of projectiles per shot
+    angle?: number;              // Angle of spread (radians)
+  };
+  burst?: {
+    count?: number;              // Shots per burst
+    delay?: number;              // Time between burst shots (ms)
+  };
+  forceField?: {
+    angle?: number;              // Constant angle of the force field (radians)
+    transitionTime?: number;     // Time (ms) to transition between idle and attack range
+    push?: ForceFieldZoneConfig | null; // Push zone config (null = no push zone)
+    pull?: ForceFieldZoneConfig | null; // Pull zone config (null = no pull zone)
+  };
 
   // AoE/splash properties
-  primaryDamageRadius?: number;    // Radius of full (primary) damage
-  secondaryDamageRadius?: number;  // Radius of reduced (20%) secondary damage
   splashOnExpiry?: boolean;        // If true, splash damage applies when projectile lifespan expires (not just on direct hit)
-
-  // Burst fire properties
-  burstCount?: number;           // Shots per burst
-  burstDelay?: number;           // Time between burst shots (ms)
 
   // Visual properties
   color?: number;                // Projectile/beam color
@@ -170,13 +181,6 @@ export interface WeaponConfig {
   // Turret rotation (acceleration-based physics)
   turretTurnAccel?: number;      // Turret acceleration toward target (radians/sec²)
   turretDrag?: number;           // Turret drag coefficient (0-1, per frame)
-
-  // Force field properties
-  isForceField?: boolean;        // True if this is a continuous force field weapon
-  forceFieldAngle?: number;      // Constant angle of the force field (radians)
-  forceFieldTransitionTime?: number; // Time (ms) to transition between idle and attack range
-  push?: ForceFieldZoneConfig | null; // Push zone config (null = no push zone)
-  pull?: ForceFieldZoneConfig | null; // Pull zone config (null = no pull zone)
 
   // Piercing properties
   piercing?: boolean;            // Can pierce through multiple targets
@@ -190,8 +194,8 @@ export interface WeaponConfig {
   // Per-weapon range multiplier overrides (null → global default fallback)
   rangeMultiplierOverrides?: TurretRangeOverrides;
 
-  // Future extensibility - any additional params
-  [key: string]: unknown;
+  // Weapon index (set at fire time for beam tracking)
+  weaponIndex?: number;
 }
 
 // Unified weapon component - all units use an array of these

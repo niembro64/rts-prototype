@@ -33,9 +33,9 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
   for (const unit of world.getForceFieldUnits()) {
     for (const weapon of unit.weapons!) {
       const config = weapon.config;
-      if (!config.isForceField) continue;
+      if (!config.forceField) continue;
 
-      const transitionTime = config.forceFieldTransitionTime ?? 1000;
+      const transitionTime = config.forceField?.transitionTime ?? 1000;
 
       // Initialize
       if (weapon.forceFieldTransitionProgress === undefined) {
@@ -108,13 +108,13 @@ export function applyForceFieldDamage(
 
     for (const weapon of unit.weapons!) {
       const config = weapon.config;
-      if (!config.isForceField) continue;
+      if (!config.forceField) continue;
 
       const progress = weapon.forceFieldTransitionProgress ?? (weapon.currentForceFieldRange ?? 0);
       if (progress <= 0) continue;
 
-      const push = config.push;
-      const pull = config.pull;
+      const push = config.forceField?.push;
+      const pull = config.forceField?.pull;
       // Zones with power: null are visual-only — skip sim entirely for that zone
       const pushSim = push != null && push.power != null;
       const pullSim = pull != null && pull.power != null;
@@ -137,7 +137,7 @@ export function applyForceFieldDamage(
       const pushStrength = pushSim ? push!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
       const pullStrength = pullSim ? pull!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
 
-      const sliceAngle = config.forceFieldAngle ?? Math.PI / 4;
+      const sliceAngle = config.forceField?.angle ?? Math.PI / 4;
       const sliceHalfAngle = sliceAngle / 2;
       const isFullCircle = sliceHalfAngle >= Math.PI;
 
@@ -242,7 +242,7 @@ export function applyForceFieldDamage(
 
       for (const projEntity of nearbyProjectiles) {
         const proj = projEntity.projectile!;
-        const projRadius = proj.config.projectileRadius ?? 5;
+        const projRadius = proj.config.collision?.radius ?? 5;
 
         const dx = projEntity.transform.x - weaponX;
         const dy = projEntity.transform.y - weaponY;
