@@ -5,6 +5,7 @@ import {
   type PlayerId,
   type WaypointType,
 } from '../game/sim/types';
+import BarDivider from './BarDivider.vue';
 import SelectionPanel, {
   type SelectionInfo,
   type SelectionActions,
@@ -52,6 +53,8 @@ import {
   saveFfAccelUnits,
   loadStoredFfAccelShots,
   saveFfAccelShots,
+  loadStoredGridInfo,
+  saveGridInfo,
 } from './controlBarStorage';
 import {
   formatDuration,
@@ -272,6 +275,26 @@ function startBackgroundBattle(): void {
     type: 'setMaxTotalUnits',
     tick: 0,
     maxTotalUnits: loadStoredMaxTotalUnits(),
+  });
+  backgroundServer.receiveCommand({
+    type: 'setProjVelInherit',
+    tick: 0,
+    enabled: loadStoredProjVelInherit(),
+  });
+  backgroundServer.receiveCommand({
+    type: 'setFfAccelUnits',
+    tick: 0,
+    enabled: loadStoredFfAccelUnits(),
+  });
+  backgroundServer.receiveCommand({
+    type: 'setFfAccelShots',
+    tick: 0,
+    enabled: loadStoredFfAccelShots(),
+  });
+  backgroundServer.receiveCommand({
+    type: 'setSendGridInfo',
+    tick: 0,
+    enabled: loadStoredGridInfo(),
   });
 
   backgroundServer.start();
@@ -526,6 +549,7 @@ function resetDemoDefaults(): void {
     tick: 0,
     enabled: false,
   });
+  saveProjVelInherit(false);
   setFfAccelUnits(CONTROL_BARS.battle.ffAccelUnits.default);
   setFfAccelShots(CONTROL_BARS.battle.ffAccelShots.default);
 }
@@ -537,6 +561,7 @@ function resetServerDefaults(): void {
   if (displayGridInfo.value) {
     toggleSendGridInfo();
   }
+  saveGridInfo(false);
 }
 
 function resetClientDefaults(): void {
@@ -921,6 +946,11 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
         tick: 0,
         enabled: loadStoredFfAccelShots(),
       });
+      currentServer.receiveCommand({
+        type: 'setSendGridInfo',
+        tick: 0,
+        enabled: loadStoredGridInfo(),
+      });
       currentServer.start();
       hasServer.value = true;
     } else {
@@ -1042,6 +1072,7 @@ function toggleSendGridInfo(): void {
     tick: 0,
     enabled: !current,
   });
+  saveGridInfo(!current);
 }
 
 function dismissGameOver(): void {
@@ -1173,7 +1204,7 @@ onUnmounted(() => {
         :class="{ 'bar-readonly': serverBarReadonly }"
         :style="battleBarVars"
       >
-        <div class="control-group">
+        <div class="bar-info">
           <button
             class="control-btn active bar-label"
             title="Click to reset battle settings to defaults"
@@ -1186,8 +1217,9 @@ onUnmounted(() => {
             battleElapsed
           }}</span>
         </div>
+        <BarDivider />
+        <div class="bar-controls">
         <div class="control-group">
-          <div class="bar-divider"></div>
           <span class="control-label">UNITS:</span>
           <button
             class="control-btn"
@@ -1215,7 +1247,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">CAP:</span>
           <div class="button-group">
             <button
@@ -1233,7 +1265,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">SHOT VEL:</span>
           <button
             class="control-btn"
@@ -1245,11 +1277,11 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">FF ACC:</span>
           <button
             class="control-btn"
-            :class="{ active: (serverMetaFromSnapshot?.ffAccelUnits ?? true) && (serverMetaFromSnapshot?.ffAccelShots ?? true) }"
+            :class="{ active: (serverMetaFromSnapshot?.ffAccelUnits ?? false) && (serverMetaFromSnapshot?.ffAccelShots ?? true) }"
             title="Toggle all force field acceleration on/off"
             @click="toggleFfAccelAll"
           >
@@ -1258,9 +1290,9 @@ onUnmounted(() => {
           <div class="button-group">
             <button
               class="control-btn"
-              :class="{ active: serverMetaFromSnapshot?.ffAccelUnits ?? true }"
+              :class="{ active: serverMetaFromSnapshot?.ffAccelUnits ?? false }"
               title="Force field accelerates enemy units"
-              @click="setFfAccelUnits(!(serverMetaFromSnapshot?.ffAccelUnits ?? true))"
+              @click="setFfAccelUnits(!(serverMetaFromSnapshot?.ffAccelUnits ?? false))"
             >
               UNIT
             </button>
@@ -1274,6 +1306,7 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
+        </div>
       </div>
 
       <!-- SERVER CONTROLS (visible when we own a server or receive server meta) -->
@@ -1283,7 +1316,7 @@ onUnmounted(() => {
         :class="{ 'bar-readonly': serverBarReadonly }"
         :style="serverBarVars"
       >
-        <div class="control-group">
+        <div class="bar-info">
           <button
             class="control-btn active bar-label"
             title="Click to reset server settings to defaults"
@@ -1293,23 +1326,21 @@ onUnmounted(() => {
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
           <span
+            v-if="displayServerIp"
+            class="ip-display"
+            title="Server IP address"
+            >{{ displayServerIp }}</span
+          >
+          <span
             v-if="displayServerTime"
             class="time-display"
             title="Server wall-clock time"
             >{{ displayServerTime }}</span
           >
         </div>
+        <BarDivider />
+        <div class="bar-controls">
         <div class="control-group">
-          <div class="bar-divider"></div>
-          <span
-            v-if="displayServerIp"
-            class="ip-display"
-            title="Server IP address"
-            >{{ displayServerIp }}</span
-          >
-        </div>
-        <div class="control-group">
-          <div v-if="displayServerIp" class="bar-divider"></div>
           <span class="control-label">MAX TPS:</span>
           <div class="button-group">
             <button
@@ -1325,7 +1356,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label" title="Server simulation ticks per second"
             >TPS:</span
           >
@@ -1361,7 +1392,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">MAX SPS:</span>
           <div class="button-group">
             <button
@@ -1377,7 +1408,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">FULLSNAP:</span>
           <div class="button-group">
             <button
@@ -1405,7 +1436,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <button
             class="control-btn"
             :class="{ active: displayGridInfo }"
@@ -1415,11 +1446,12 @@ onUnmounted(() => {
             GRID
           </button>
         </div>
+        </div>
       </div>
 
       <!-- CLIENT CONTROLS (always visible) -->
       <div class="control-bar" :style="clientBarVars">
-        <div class="control-group">
+        <div class="bar-info">
           <button
             class="control-btn active bar-label"
             title="Click to reset client settings to defaults"
@@ -1429,23 +1461,21 @@ onUnmounted(() => {
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
           <span
+            v-if="localIpAddress !== 'N/A'"
+            class="ip-display"
+            title="Public IP address"
+            >{{ localIpAddress }}</span
+          >
+          <span
             v-if="clientTime"
             class="time-display"
             title="Client wall-clock time"
             >{{ clientTime }}</span
           >
         </div>
+        <BarDivider />
+        <div class="bar-controls">
         <div class="control-group">
-          <div class="bar-divider"></div>
-          <span
-            v-if="localIpAddress !== 'N/A'"
-            class="ip-display"
-            title="Public IP address"
-            >{{ localIpAddress }}</span
-          >
-        </div>
-        <div class="control-group">
-          <div v-if="localIpAddress !== 'N/A'" class="bar-divider"></div>
           <span class="control-label" title="Client rendering frames per second"
             >FPS:</span
           >
@@ -1477,7 +1507,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <div class="fps-stats">
             <span class="control-label" title="Current camera zoom level"
               >ZOOM:</span
@@ -1486,7 +1516,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span
             class="control-label"
             title="Snapshots received per second from server"
@@ -1530,7 +1560,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">EVENTS:</span>
           <button
             class="control-btn"
@@ -1542,7 +1572,7 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">DRIFT:</span>
           <div class="button-group">
             <button
@@ -1572,7 +1602,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">LOD:</span>
           <button
             class="control-btn"
@@ -1601,7 +1631,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">RENDER:</span>
           <div class="button-group">
             <button
@@ -1623,7 +1653,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">AUDIO:</span>
           <div class="button-group">
             <button
@@ -1645,7 +1675,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">SOUNDS:</span>
           <button
             class="control-btn"
@@ -1669,7 +1699,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">MUSIC:</span>
           <button
             class="control-btn"
@@ -1681,7 +1711,7 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">TUR RAD:</span>
           <div class="button-group">
             <button
@@ -1727,7 +1757,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">PROJ RAD:</span>
           <div class="button-group">
             <button
@@ -1757,7 +1787,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="control-group">
-          <div class="bar-divider"></div>
+          <BarDivider />
           <span class="control-label">UNIT RAD:</span>
           <div class="button-group">
             <button
@@ -1785,6 +1815,7 @@ onUnmounted(() => {
               PUSH
             </button>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -2067,7 +2098,6 @@ onUnmounted(() => {
 .control-bar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px;
   padding: 5px 10px;
   background: var(--bar-bg);
@@ -2081,6 +2111,23 @@ onUnmounted(() => {
 
 .control-bar:not(:last-child) {
   border-bottom: none;
+}
+
+.bar-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.bar-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
 }
 
 .bar-label {
@@ -2115,12 +2162,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.bar-divider {
-  width: 1px;
-  height: 14px;
-  background: #444;
-  margin: 0 4px;
-}
+
 
 .control-label {
   color: #888;
@@ -2274,7 +2316,7 @@ onUnmounted(() => {
 .ip-display {
   font-size: 10px;
   font-family: monospace;
-  color: #888;
+  color: var(--bar-time, #888);
   white-space: nowrap;
 }
 </style>

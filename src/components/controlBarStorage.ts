@@ -125,3 +125,16 @@ export function loadStoredFfAccelShots(): boolean {
 export function saveFfAccelShots(enabled: boolean): void {
   try { localStorage.setItem(CONTROL_BARS.storage.ffAccelShots, String(enabled)); } catch { /* */ }
 }
+
+export function loadStoredGridInfo(): boolean {
+  try {
+    const stored = localStorage.getItem(CONTROL_BARS.storage.gridInfo);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+  } catch { /* localStorage unavailable */ }
+  return CONTROL_BARS.server.gridInfo.default;
+}
+
+export function saveGridInfo(enabled: boolean): void {
+  try { localStorage.setItem(CONTROL_BARS.storage.gridInfo, String(enabled)); } catch { /* */ }
+}

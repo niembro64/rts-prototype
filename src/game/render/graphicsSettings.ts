@@ -193,6 +193,9 @@ const AUDIO_SCOPE_STORAGE_KEY = 'rts-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'rts-audio-smoothing';
 const DRIFT_MODE_STORAGE_KEY = 'rts-drift-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'rts-sound-toggles';
+const RANGE_TOGGLES_STORAGE_KEY = 'rts-range-toggles';
+const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'rts-proj-range-toggles';
+const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
 
 export type RangeType =
   | 'trackAcquire'
@@ -307,6 +310,33 @@ function loadFromStorage(): void {
       for (const cat of SOUND_CATEGORIES) {
         if (typeof parsed[cat] === 'boolean') {
           currentSoundToggles[cat] = parsed[cat];
+        }
+      }
+    }
+    const storedRangeToggles = localStorage.getItem(RANGE_TOGGLES_STORAGE_KEY);
+    if (storedRangeToggles) {
+      const parsed = JSON.parse(storedRangeToggles);
+      for (const rt of RANGE_TYPES) {
+        if (typeof parsed[rt] === 'boolean') {
+          currentRangeToggles[rt] = parsed[rt];
+        }
+      }
+    }
+    const storedProjRangeToggles = localStorage.getItem(PROJ_RANGE_TOGGLES_STORAGE_KEY);
+    if (storedProjRangeToggles) {
+      const parsed = JSON.parse(storedProjRangeToggles);
+      for (const prt of PROJ_RANGE_TYPES) {
+        if (typeof parsed[prt] === 'boolean') {
+          currentProjRangeToggles[prt] = parsed[prt];
+        }
+      }
+    }
+    const storedUnitRadiusToggles = localStorage.getItem(UNIT_RADIUS_TOGGLES_STORAGE_KEY);
+    if (storedUnitRadiusToggles) {
+      const parsed = JSON.parse(storedUnitRadiusToggles);
+      for (const urt of UNIT_RADIUS_TYPES) {
+        if (typeof parsed[urt] === 'boolean') {
+          currentUnitRadiusToggles[urt] = parsed[urt];
         }
       }
     }
@@ -425,6 +455,9 @@ export function getRangeToggle(type: RangeType): boolean {
  */
 export function setRangeToggle(type: RangeType, show: boolean): void {
   currentRangeToggles[type] = show;
+  try {
+    localStorage.setItem(RANGE_TOGGLES_STORAGE_KEY, JSON.stringify(currentRangeToggles));
+  } catch { /* localStorage not available */ }
 }
 
 /**
@@ -446,6 +479,9 @@ export function getProjRangeToggle(type: ProjRangeType): boolean {
  */
 export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
   currentProjRangeToggles[type] = show;
+  try {
+    localStorage.setItem(PROJ_RANGE_TOGGLES_STORAGE_KEY, JSON.stringify(currentProjRangeToggles));
+  } catch { /* localStorage not available */ }
 }
 
 /**
@@ -467,6 +503,9 @@ export function getUnitRadiusToggle(type: UnitRadiusType): boolean {
  */
 export function setUnitRadiusToggle(type: UnitRadiusType, show: boolean): void {
   currentUnitRadiusToggles[type] = show;
+  try {
+    localStorage.setItem(UNIT_RADIUS_TOGGLES_STORAGE_KEY, JSON.stringify(currentUnitRadiusToggles));
+  } catch { /* localStorage not available */ }
 }
 
 /**

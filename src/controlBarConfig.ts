@@ -64,6 +64,7 @@ export const CONTROL_BARS = {
     projVelInherit: 'rts-proj-vel-inherit',
     ffAccelUnits: 'rts-ff-accel-units',
     ffAccelShots: 'rts-ff-accel-shots',
+    gridInfo: 'rts-grid-info',
   },
 
   // ── Battle bar ──
@@ -93,7 +94,7 @@ export const CONTROL_BARS = {
       ],
     },
     projVelInherit: { default: false },
-    ffAccelUnits: { default: true },
+    ffAccelUnits: { default: false },
     ffAccelShots: { default: true },
   },
 
@@ -107,6 +108,7 @@ export const CONTROL_BARS = {
       default: 32 as SnapshotRate,
       options: [1, 4, 8, 16, 32, 64, 128, 'none'] as readonly SnapshotRate[],
     },
+    gridInfo: { default: false },
     keyframe: {
       default: (1 / 64) as KeyframeRatio,
       options: [
