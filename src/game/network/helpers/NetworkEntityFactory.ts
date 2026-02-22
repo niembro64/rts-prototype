@@ -106,6 +106,7 @@ function createUnitFromNetwork(
     };
     entity.builder = {
       buildRange: 200,
+      maxEnergyUseRate: 50,
       currentBuildTarget: netEntity.buildTargetId ?? null,
     };
   }

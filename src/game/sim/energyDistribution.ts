@@ -5,18 +5,21 @@ import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
 import { distance } from '../math';
 import { economyManager } from './economy';
+import { getBuildingConfig } from './buildConfigs';
 
 interface EnergyConsumer {
   entity: Entity;
   type: 'factory' | 'building' | 'heal';
   remainingCost: number;
   playerId: PlayerId;
+  maxEnergyPerTick: number;
 }
 
 export interface EnergyBuffers {
   consumers: EnergyConsumer[];
   consumersByPlayer: Map<PlayerId, number[]>;
   buildTargetSet: Set<EntityId>;
+  maxEnergyUseRateByTarget: Map<EntityId, number>;
 }
 
 export function createEnergyBuffers(): EnergyBuffers {
@@ -24,6 +27,7 @@ export function createEnergyBuffers(): EnergyBuffers {
     consumers: [],
     consumersByPlayer: new Map(),
     buildTargetSet: new Set(),
+    maxEnergyUseRateByTarget: new Map(),
   };
 }
 
@@ -31,6 +35,7 @@ export function resetEnergyBuffers(buffers: EnergyBuffers): void {
   buffers.consumers.length = 0;
   buffers.consumersByPlayer.clear();
   buffers.buildTargetSet.clear();
+  buffers.maxEnergyUseRateByTarget.clear();
 }
 
 // Distribute energy equally among all active consumers for each player.
@@ -43,9 +48,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   const byPlayer = buffers.consumersByPlayer;
   byPlayer.clear();
 
-  const addConsumer = (playerId: PlayerId, entity: Entity, type: 'factory' | 'building' | 'heal', remainingCost: number) => {
+  const addConsumer = (playerId: PlayerId, entity: Entity, type: 'factory' | 'building' | 'heal', remainingCost: number, maxEnergyPerTick: number) => {
     const idx = consumers.length;
-    consumers.push({ entity, type, remainingCost, playerId });
+    consumers.push({ entity, type, remainingCost, playerId, maxEnergyPerTick });
     let arr = byPlayer.get(playerId);
     if (!arr) {
       arr = [];
@@ -57,19 +62,28 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // Single pass over all entities: collect builder targets, factories, and buildables
   const buildTargets = buffers.buildTargetSet;
   buildTargets.clear();
+  const maxEnergyUseRateByTarget = buffers.maxEnergyUseRateByTarget;
+  maxEnergyUseRateByTarget.clear();
   const allEntities = world.getAllEntities();
 
-  // First pass: collect builder targets + factory consumers
+  // First pass: collect builder targets + factory consumers + build rates per target
   for (const entity of allEntities) {
     const targetId = entity.builder?.currentBuildTarget;
-    if (targetId != null) buildTargets.add(targetId);
+    if (targetId != null) {
+      buildTargets.add(targetId);
+      // Accumulate builder maxEnergyUseRate for this target (for non-commander building consumers)
+      const rate = entity.builder!.maxEnergyUseRate;
+      maxEnergyUseRateByTarget.set(targetId, (maxEnergyUseRateByTarget.get(targetId) ?? 0) + rate);
+    }
 
     if (entity.factory?.isProducing && entity.factory.buildQueue.length > 0 &&
         entity.ownership && entity.buildable?.isComplete) {
       const f = entity.factory;
       const remaining = f.currentBuildCost * (1 - f.currentBuildProgress);
       if (remaining > 0) {
-        addConsumer(entity.ownership.playerId, entity, 'factory', remaining);
+        const config = getBuildingConfig(entity.buildingType!);
+        const rateCap = (config.maxEnergyUseRate ?? Infinity) * dtSec;
+        addConsumer(entity.ownership.playerId, entity, 'factory', remaining, rateCap);
       }
     }
   }
@@ -81,7 +95,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (!buildTargets.has(entity.id)) continue;
     const remaining = entity.buildable.energyCost * (1 - entity.buildable.buildProgress);
     if (remaining > 0) {
-      addConsumer(entity.ownership.playerId, entity, 'building', remaining);
+      const rateCap = (maxEnergyUseRateByTarget.get(entity.id) ?? Infinity) * dtSec;
+      addConsumer(entity.ownership.playerId, entity, 'building', remaining, rateCap);
     }
   }
 
@@ -103,6 +118,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const dist = distance(commander.transform.x, commander.transform.y, target.transform.x, target.transform.y);
     if (dist > commander.builder.buildRange) continue;
 
+    const commanderRateCap = commander.builder.maxEnergyUseRate * dtSec;
+
     if (target.buildable && !target.buildable.isComplete && !target.buildable.isGhost) {
       // Commander building — check if this building is already registered as a construction consumer
       // If so, it gets shared energy from both sources (builder + commander = 2 consumers)
@@ -121,7 +138,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (!alreadyAdded) {
         const remaining = target.buildable.energyCost * (1 - target.buildable.buildProgress);
         if (remaining > 0) {
-          addConsumer(commander.ownership.playerId, target, 'building', remaining);
+          addConsumer(commander.ownership.playerId, target, 'building', remaining, commanderRateCap);
         }
       }
     } else if (target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp) {
@@ -130,7 +147,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       const hpToHeal = target.unit.maxHp - target.unit.hp;
       const remaining = hpToHeal * healCostPerHp;
       if (remaining > 0) {
-        addConsumer(commander.ownership.playerId, target, 'heal', remaining);
+        addConsumer(commander.ownership.playerId, target, 'heal', remaining, commanderRateCap);
       }
     }
   }
@@ -145,7 +162,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
 
     for (const idx of indices) {
       const c = consumers[idx];
-      const energyToSpend = Math.min(equalShare, c.remainingCost);
+      const energyToSpend = Math.min(equalShare, c.remainingCost, c.maxEnergyPerTick);
       totalSpent += energyToSpend;
 
       if (c.type === 'factory') {

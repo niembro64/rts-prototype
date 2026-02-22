@@ -359,6 +359,7 @@ export class WorldState {
     if (bp.builder) {
       entity.builder = {
         buildRange: bp.builder.buildRange,
+        maxEnergyUseRate: bp.builder.maxEnergyUseRate,
         currentBuildTarget: null,
       };
     }

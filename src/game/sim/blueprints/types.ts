@@ -157,7 +157,7 @@ export interface UnitBlueprint {
   locomotion: LocomotionBlueprint;
   renderer: string; // key for body draw function dispatch
   // Capabilities
-  builder?: { buildRange: number };
+  builder?: { buildRange: number; maxEnergyUseRate: number };
   dgun?: { weaponId: string; energyCost: number };
   // Audio
   deathSound?: SoundEntry;

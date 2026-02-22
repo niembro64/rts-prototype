@@ -308,6 +308,7 @@ export interface Buildable {
 // Builder component - for units that can construct
 export interface Builder {
   buildRange: number;       // Max distance to construction site
+  maxEnergyUseRate: number;  // Max energy/sec this builder can spend
   currentBuildTarget: EntityId | null;  // What we're building/assisting
 }
 
@@ -323,6 +324,7 @@ export interface BuildingConfig {
   hp: number;
   energyCost: number;
   energyProduction?: number; // For solar panels
+  maxEnergyUseRate?: number;  // Max energy/sec for factory production
 }
 
 // Unit build configuration (extends weapon config concept)

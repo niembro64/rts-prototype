@@ -309,7 +309,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       config: { thickness: 6, footSize: 0.15, lerpDuration: 400 },
     },
     renderer: 'commander',
-    builder: { buildRange: 150 },
+    builder: { buildRange: 150, maxEnergyUseRate: 50 },
     dgun: { weaponId: 'dgunTurret', energyCost: 200 },
     deathSound: AUDIO.event.death.commander,
   },

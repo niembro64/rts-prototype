@@ -24,6 +24,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     gridHeight: 4,
     hp: BUILDING_STATS.factory.hp,
     energyCost: BUILDING_STATS.factory.baseCost * COST_MULTIPLIER,
+    maxEnergyUseRate: 100,
   },
 };
 
