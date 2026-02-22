@@ -1,7 +1,7 @@
 // Burst unit renderer - Aggressive striker with large square treads, angular wedge body
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, lodAtLeast } from '../types';
+import { COLORS } from '../types';
 import { drawPolygon, drawOrientedRect, drawUnitTreads } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
 
@@ -13,14 +13,14 @@ export function drawBurstUnit(
   const { base, light, dark } = palette;
 
   // Treads (always drawn at low+high)
-  drawUnitTreads(graphics, 'lynx', x, y, r, bodyRot, treads, ctx.lod);
+  drawUnitTreads(graphics, 'lynx', x, y, r, bodyRot, treads);
 
   // Main body (inverted triangle — wide front, narrow rear) - dark colored
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : dark;
   graphics.fillStyle(bodyColor, 1);
   drawPolygon(graphics, x, y, r * 0.6, 3, bodyRot + Math.PI);
 
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
 

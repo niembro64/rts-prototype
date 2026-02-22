@@ -7,15 +7,15 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { BurnMarkSystem } from './BurnMarkSystem';
 import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
-import { getGraphicsConfig, getEffectiveQuality, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, getUnitRadiusToggle, anyUnitRadiusToggleActive, setCurrentZoom } from './graphicsSettings';
+import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, getUnitRadiusToggle, anyUnitRadiusToggleActive, setCurrentZoom } from './graphicsSettings';
 import { magnitude } from '../math';
 import { FIRE_EXPLOSION } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { TurretConfig, SpinConfig } from '../../config';
 
 // Import from helper modules
-import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, LodLevel, ProjectileTrail } from './types';
-import { COLORS, lodAtLeast } from './types';
+import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, ProjectileTrail } from './types';
+import { COLORS } from './types';
 import { createColorPalette } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
 import { drawTurret } from './TurretRenderer';
@@ -133,7 +133,7 @@ export class EntityRenderer {
 
       let state = this.barrelSpins.get(entity.id);
       if (!state) {
-        state = { angle: 0, speed: 0 };
+        state = { angle: 0, speed: spinConfig.idle };
         this.barrelSpins.set(entity.id, state);
       }
 
@@ -298,12 +298,6 @@ export class EntityRenderer {
     }
   }
 
-  // ==================== LOD COMPUTATION ====================
-
-  private computeLod(): LodLevel {
-    return getEffectiveQuality();
-  }
-
   // ==================== MAIN RENDER ====================
 
   render(): void {
@@ -365,8 +359,7 @@ export class EntityRenderer {
       this.renderUnitTurrets(entity);
     }
 
-    // 6. Projectiles (clean up stale beam offsets + trail entries inline, LOD via same system as units)
-    const projectileLod = this.computeLod();
+    // 6. Projectiles (clean up stale beam offsets + trail entries inline)
     this._reusableIdSet.clear();
     for (const entity of this.visibleProjectiles) {
       this._reusableIdSet.add(entity.id);
@@ -388,7 +381,7 @@ export class EntityRenderer {
         if (trail.count < trail.capacity) trail.count++;
       }
 
-      renderProjectile(this.graphics, entity, this.beamRandomOffsets, projectileLod, this.sprayParticleTime, trail);
+      renderProjectile(this.graphics, entity, this.beamRandomOffsets, this.sprayParticleTime, trail);
     }
     for (const id of this.beamRandomOffsets.keys()) {
       if (!this._reusableIdSet.has(id)) this.beamRandomOffsets.delete(id);
@@ -442,17 +435,17 @@ export class EntityRenderer {
     const { collisionRadius: radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
 
-    const lod = this.computeLod();
+    const gfx = getGraphicsConfig();
     // Get unit type for renderer selection
     const unitType = unit.unitType ?? 'jackal';
     const fullPalette = createColorPalette(ownership?.playerId);
-    // At low/min: use only the base player color, no light/dark variants
-    const palette = (lod === 'min' || lod === 'low')
-      ? { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base }
-      : fullPalette;
+    // When palette shading is off: use only the base player color, no light/dark variants
+    const palette = gfx.paletteShading
+      ? fullPalette
+      : { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base };
 
-    // 'min': colored dot — skip body shape rendering
-    if (lod === 'min') {
+    // 'dot': colored circle only — skip body shape rendering
+    if (gfx.unitShape === 'dot') {
       this.graphics.fillStyle(palette.base, 1);
       this.graphics.fillCircle(x, y, radius);
       if (isSelected) {
@@ -478,7 +471,8 @@ export class EntityRenderer {
     const ctx: UnitRenderContext = {
       graphics: this.graphics,
       x, y, radius, bodyRot: rotation, palette, isSelected, entity,
-      lod,
+      chassisDetail: gfx.chassisDetail,
+      legJoints: gfx.legJoints,
     };
 
     // Blueprint-driven renderer dispatch
@@ -533,20 +527,19 @@ export class EntityRenderer {
     const { x, y, rotation: bodyRot } = transform;
     const r = unit.collisionRadius;
 
-    const lod = this.computeLod();
-
     const unitType = entity.commander ? 'commander' : (unit.unitType ?? 'jackal');
     let mounts: { x: number; y: number }[];
     try { mounts = getUnitBlueprint(unitType).chassisMounts; } catch { mounts = [{ x: 0, y: 0 }]; }
 
+    const gfx = getGraphicsConfig();
     const fullPalette = createColorPalette(ownership?.playerId);
-    const palette = (lod === 'min' || lod === 'low')
-      ? { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base }
-      : fullPalette;
+    const palette = gfx.paletteShading
+      ? fullPalette
+      : { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base };
 
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
-    const spinAngle = !lodAtLeast(lod, 'medium') ? 0 : this.getBarrelSpinAngle(entity.id);
+    const spinAngle = gfx.barrelSpin ? this.getBarrelSpinAngle(entity.id) : 0;
 
     for (let i = 0; i < entity.weapons.length; i++) {
       const weapon = entity.weapons[i];
@@ -554,7 +547,7 @@ export class EntityRenderer {
       const mountX = x + cos * mount.x * r - sin * mount.y * r;
       const mountY = y + sin * mount.x * r + cos * mount.y * r;
 
-      drawTurret(this.graphics, mountX, mountY, r, weapon, lod, palette, spinAngle, entity.id);
+      drawTurret(this.graphics, mountX, mountY, r, weapon, palette, spinAngle, entity.id, gfx.turretStyle);
     }
   }
 

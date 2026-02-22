@@ -2,7 +2,7 @@
 // Turret rendering is handled by the generic TurretRenderer
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, LEG_STYLE_CONFIG, lodAtLeast } from '../types';
+import { COLORS, LEG_STYLE_CONFIG } from '../types';
 import { drawPolygon } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -27,7 +27,7 @@ export function drawCommanderUnit(
       const foot = leg.getFootPosition();
       const knee = leg.getKneePosition(attach.x, attach.y, side);
 
-      if (lodAtLeast(ctx.lod, 'medium')) {
+      if (ctx.chassisDetail) {
         // Dual-layer armored legs
         graphics.lineStyle(lc.upperThickness, dark, 1);
         graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
@@ -101,7 +101,7 @@ export function drawCommanderUnit(
   ];
   graphics.fillPoints(innerPoints, true);
 
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     // Central reactor/core (glowing)
     graphics.fillStyle(dark, 1);
     drawPolygon(graphics, x, y, r * 0.35, 8, bodyRot + Math.PI / 8);

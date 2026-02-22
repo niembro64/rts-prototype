@@ -1,7 +1,7 @@
 // Scout unit renderer - Fast recon unit with 4 small treads, sleek diamond body
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, lodAtLeast } from '../types';
+import { COLORS } from '../types';
 import { drawPolygon, drawUnitWheels } from '../helpers';
 import type { VehicleWheelSetup } from '../Tread';
 
@@ -13,14 +13,14 @@ export function drawScoutUnit(
   const { base, light, dark } = palette;
 
   // Wheels (always drawn at low+high)
-  drawUnitWheels(graphics, 'jackal', x, y, r, bodyRot, wheelSetup, ctx.lod);
+  drawUnitWheels(graphics, 'jackal', x, y, r, bodyRot, wheelSetup);
 
   // Main body (diamond/rhombus shape) - light colored
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : light;
   graphics.fillStyle(bodyColor, 1);
   drawPolygon(graphics, x, y, r * 0.55, 4, bodyRot + Math.PI / 4);
 
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     // Inner accent (base color)
     graphics.fillStyle(base, 1);
     drawPolygon(graphics, x, y, r * 0.35, 4, bodyRot + Math.PI / 4);

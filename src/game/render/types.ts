@@ -67,16 +67,6 @@ export interface ColorPalette {
   dark: number;
 }
 
-/** LOD level for unit rendering. 'min' = dot (handled by renderEntities before calling renderers), 'low' = simplified, 'medium'/'high'/'max' = increasing detail */
-export type LodLevel = 'min' | 'low' | 'medium' | 'high' | 'max';
-
-/** Numeric rank for each LOD level (used by lodAtLeast) */
-const LOD_RANK: Record<LodLevel, number> = { min: 0, low: 1, medium: 2, high: 3, max: 4 };
-
-/** Returns true when `lod` is at least as detailed as `threshold`. */
-export function lodAtLeast(lod: LodLevel, threshold: LodLevel): boolean {
-  return LOD_RANK[lod] >= LOD_RANK[threshold];
-}
 
 /** Ring-buffer of historical positions for projectile trail rendering */
 export interface ProjectileTrail {
@@ -96,8 +86,10 @@ export interface UnitRenderContext {
   palette: ColorPalette;
   isSelected: boolean;
   entity: Entity;
-  /** LOD level: renderers only ever see 'low' or 'high' ('min' is handled by the dot fast path) */
-  lod: LodLevel;
+  /** Whether to render inner chassis detail (armor plates, accents, center hubs) */
+  chassisDetail: boolean;
+  /** Whether to render arachnid leg joint circles (hip/knee/foot) */
+  legJoints: boolean;
 }
 
 // Context passed to building renderers

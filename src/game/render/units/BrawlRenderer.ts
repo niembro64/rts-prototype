@@ -1,7 +1,7 @@
 // Brawl unit renderer - Heavy treaded unit with wide treads, bulky dark body
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, lodAtLeast } from '../types';
+import { COLORS } from '../types';
 import { drawPolygon, drawUnitTreads } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
 
@@ -13,14 +13,14 @@ export function drawBrawlUnit(
   const { base, dark } = palette;
 
   // Treads (always drawn at low+high)
-  drawUnitTreads(graphics, 'badger', x, y, r, bodyRot, treads, ctx.lod);
+  drawUnitTreads(graphics, 'badger', x, y, r, bodyRot, treads);
 
   // Body (diamond) - dark with gray armor plates
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : dark;
   graphics.fillStyle(bodyColor, 1);
   drawPolygon(graphics, x, y, r * 0.8, 4, bodyRot);
 
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     // Gray armor plate
     graphics.fillStyle(COLORS.GRAY, 1);
     drawPolygon(graphics, x, y, r * 0.5, 4, bodyRot);

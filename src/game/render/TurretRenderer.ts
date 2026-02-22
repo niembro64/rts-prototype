@@ -3,11 +3,12 @@
 
 import Phaser from 'phaser';
 import type { UnitWeapon, EntityId } from '../sim/types';
-import type { ColorPalette, LodLevel } from './types';
-import { COLORS, lodAtLeast } from './types';
+import type { ColorPalette } from './types';
+import { COLORS } from './types';
 import { drawForceFieldGrate } from './helpers';
 import { renderForceFieldEffect } from './effects';
 import type { TurretConfig, ForceFieldTurretConfig } from '../../config';
+import type { TurretStyle } from './graphicsSettings';
 
 /**
  * Draw a weapon's turret at the given mount point.
@@ -19,34 +20,34 @@ export function drawTurret(
   mountY: number,
   unitRadius: number,
   weapon: UnitWeapon,
-  lod: LodLevel,
   _palette: ColorPalette,
   spinAngle: number,
   entityId: EntityId,
+  turretStyle: TurretStyle = 'full',
 ): void {
   const turretConfig = weapon.config.turretShape as TurretConfig | undefined;
   if (!turretConfig) return;
 
-  // Min LOD: only force field zones (no barrel geometry)
-  if (lod === 'min') {
+  // 'none': only force field zones (no barrel geometry)
+  if (turretStyle === 'none') {
     if (turretConfig.type === 'complexSingleEmitter') {
-      drawForceFieldZonesOnly(graphics, mountX, mountY, weapon, lod, entityId);
+      drawForceFieldZonesOnly(graphics, mountX, mountY, weapon, entityId);
     }
     return;
   }
 
   switch (turretConfig.type) {
     case 'simpleMultiBarrel':
-      drawMultibarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, lod, spinAngle);
+      drawMultibarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, turretStyle, spinAngle);
       break;
     case 'coneMultiBarrel':
-      drawConeSpreadTurret(graphics, mountX, mountY, unitRadius, weapon, turretConfig, lod, spinAngle);
+      drawConeSpreadTurret(graphics, mountX, mountY, unitRadius, weapon, turretConfig, turretStyle, spinAngle);
       break;
     case 'simpleSingleBarrel':
-      drawSingleBarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, lod);
+      drawSingleBarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, turretStyle);
       break;
     case 'complexSingleEmitter':
-      drawForceFieldTurretFull(graphics, mountX, mountY, unitRadius, weapon, turretConfig.grate, lod, entityId);
+      drawForceFieldTurretFull(graphics, mountX, mountY, unitRadius, weapon, turretConfig.grate, entityId);
       break;
   }
 }
@@ -59,10 +60,10 @@ function drawMultibarrelTurret(
   r: number,
   turretRot: number,
   config: Extract<TurretConfig, { type: 'simpleMultiBarrel' }>,
-  lod: LodLevel,
+  turretStyle: TurretStyle,
   spinAngle: number,
 ): void {
-  if (lod === 'low') {
+  if (turretStyle === 'simple') {
     const endX = mountX + Math.cos(turretRot) * r * config.barrelLength;
     const endY = mountY + Math.sin(turretRot) * r * config.barrelLength;
     graphics.lineStyle(config.barrelThickness ?? 2, COLORS.WHITE, 1);
@@ -104,12 +105,12 @@ function drawConeSpreadTurret(
   r: number,
   weapon: UnitWeapon,
   config: Extract<TurretConfig, { type: 'coneMultiBarrel' }>,
-  lod: LodLevel,
+  turretStyle: TurretStyle,
   spinAngle: number,
 ): void {
   const turretRot = weapon.turretRotation;
 
-  if (lod === 'low') {
+  if (turretStyle === 'simple') {
     const endX = mountX + Math.cos(turretRot) * r * config.barrelLength;
     const endY = mountY + Math.sin(turretRot) * r * config.barrelLength;
     graphics.lineStyle(config.barrelThickness ?? 2, COLORS.WHITE, 1);
@@ -158,14 +159,14 @@ function drawSingleBarrelTurret(
   r: number,
   turretRot: number,
   config: Extract<TurretConfig, { type: 'simpleSingleBarrel' }>,
-  lod: LodLevel,
+  turretStyle: TurretStyle,
 ): void {
   const turretLen = r * config.barrelLength;
   const endX = mountX + Math.cos(turretRot) * turretLen;
   const endY = mountY + Math.sin(turretRot) * turretLen;
 
   const thickness = config.barrelThickness ?? 2;
-  if (lodAtLeast(lod, 'medium')) {
+  if (turretStyle === 'full') {
     graphics.fillStyle(COLORS.WHITE, 1);
     graphics.fillCircle(mountX, mountY, Math.max(r * 0.06, thickness * 0.5));
   }
@@ -181,7 +182,6 @@ function drawForceFieldTurretFull(
   r: number,
   weapon: UnitWeapon,
   grateConfig: ForceFieldTurretConfig,
-  lod: LodLevel,
   entityId: EntityId,
 ): void {
   const turretRot = weapon.turretRotation;
@@ -195,15 +195,14 @@ function drawForceFieldTurretFull(
 
   if (progress <= 0) return;
 
-  drawForceFieldZones(graphics, mountX, mountY, weapon, lod, entityId);
+  drawForceFieldZones(graphics, mountX, mountY, weapon, entityId);
 }
 
-// Force field zone rendering (push/pull effects) - used by both min and normal LOD paths
+// Force field zone rendering (push/pull effects)
 function drawForceFieldZones(
   graphics: Phaser.GameObjects.Graphics,
   cx: number, cy: number,
   weapon: UnitWeapon,
-  lod: LodLevel,
   entityId: EntityId,
 ): void {
   const turretRot = weapon.turretRotation;
@@ -218,7 +217,7 @@ function drawForceFieldZones(
       renderForceFieldEffect(
         graphics, cx, cy, turretRot, sliceAngle, push.outerRange,
         push.color, push.alpha, push.particleAlpha,
-        pushInner, true, lod, entityId
+        pushInner, true, entityId
       );
     }
   }
@@ -229,21 +228,20 @@ function drawForceFieldZones(
       renderForceFieldEffect(
         graphics, cx, cy, turretRot, sliceAngle, pullOuter,
         pull.color, pull.alpha, pull.particleAlpha,
-        pull.innerRange, false, lod, entityId
+        pull.innerRange, false, entityId
       );
     }
   }
 }
 
-// Min LOD path: force field zones only (no grate geometry)
+// Turret style 'none' path: force field zones only (no grate geometry)
 function drawForceFieldZonesOnly(
   graphics: Phaser.GameObjects.Graphics,
   cx: number, cy: number,
   weapon: UnitWeapon,
-  lod: LodLevel,
   entityId: EntityId,
 ): void {
   const progress = weapon.currentForceFieldRange ?? 0;
   if (progress <= 0) return;
-  drawForceFieldZones(graphics, cx, cy, weapon, lod, entityId);
+  drawForceFieldZones(graphics, cx, cy, weapon, entityId);
 }

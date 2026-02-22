@@ -3,13 +3,12 @@
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
 import { FORCE_FIELD_VISUAL } from '../../../config';
-import type { LodLevel } from '../types';
 
 /**
  * Render force field pie-slice effect.
  * Renders an annular ring between innerRange and maxRange.
  *
- * LOD tiers:
+ * Detail tiers (driven by forceFieldStyle config):
  *   minimal  — faint colored annular fill only
  *   simple   — fill + particle dashes
  *   normal   — fill + particle dashes (identical to simple)
@@ -27,7 +26,6 @@ export function renderForceFieldEffect(
   particleAlpha: number,
   innerRange: number = 0,
   pushOutward: boolean = false,
-  _lod: LodLevel = 'high',
   instanceSeed: number = 0
 ): void {
   const halfAngle = sliceAngle / 2;

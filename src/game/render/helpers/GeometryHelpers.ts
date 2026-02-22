@@ -2,8 +2,7 @@
 
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
-import { COLORS, LEG_STYLE_CONFIG, lodAtLeast } from '../types';
-import type { LodLevel } from '../types';
+import { COLORS, LEG_STYLE_CONFIG } from '../types';
 import type { ForceFieldTurretConfig } from '../../../config';
 import type { ArachnidLeg } from '../ArachnidLeg';
 import type { TankTreadSetup, VehicleWheelSetup } from '../Tread';
@@ -118,7 +117,6 @@ export function drawAnimatedTread(
   treadRotation: number,
   treadColor: number = COLORS.DARK_GRAY,
   lineColor: number = COLORS.GRAY_LIGHT,
-  lod: LodLevel = 'high',
 ): void {
   const gfxConfig = getGraphicsConfig();
   const cos = Math.cos(bodyRot);
@@ -128,8 +126,8 @@ export function drawAnimatedTread(
   graphics.fillStyle(treadColor, 1);
   drawOrientedRect(graphics, x, y, treadLength, treadWidth, bodyRot);
 
-  // Low LOD or low quality: just draw the rectangle, skip animated track marks
-  if (lod === 'low' || !gfxConfig.treadsAnimated) {
+  // Skip animated track marks when config says no animation
+  if (!gfxConfig.treadsAnimated) {
     return;
   }
 
@@ -357,7 +355,7 @@ export function drawLegs(
   x: number,
   y: number,
   bodyRot: number,
-  lod: LodLevel,
+  legJoints: boolean,
   dark: number,
   light: number,
 ): void {
@@ -378,7 +376,7 @@ export function drawLegs(
     graphics.lineStyle(lc.lowerThickness, dark, 1);
     graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-    if (lodAtLeast(lod, 'medium')) {
+    if (legJoints) {
       graphics.fillStyle(light, 1);
       graphics.fillCircle(attach.x, attach.y, lc.hipRadius);
       graphics.fillCircle(knee.x, knee.y, lc.kneeRadius);
@@ -399,7 +397,6 @@ export function drawUnitTreads(
   r: number,
   bodyRot: number,
   treads: TankTreadSetup | undefined,
-  lod: LodLevel,
 ): void {
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
@@ -424,9 +421,6 @@ export function drawUnitTreads(
       treadWidth,
       bodyRot,
       treadRotation,
-      COLORS.DARK_GRAY,
-      COLORS.GRAY_LIGHT,
-      lod,
     );
   }
 }
@@ -443,7 +437,6 @@ export function drawUnitWheels(
   r: number,
   bodyRot: number,
   wheelSetup: VehicleWheelSetup | undefined,
-  lod: LodLevel,
 ): void {
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
@@ -474,9 +467,6 @@ export function drawUnitWheels(
       treadWidth,
       bodyRot,
       treadRotation,
-      COLORS.DARK_GRAY,
-      COLORS.GRAY_LIGHT,
-      lod,
     );
   }
 }

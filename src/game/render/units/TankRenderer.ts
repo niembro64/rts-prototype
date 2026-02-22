@@ -1,7 +1,7 @@
 // Tank unit renderer - Heavy tracked unit with massive treads, square turret
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, lodAtLeast } from '../types';
+import { COLORS } from '../types';
 import { drawPolygon, drawUnitTreads } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
 
@@ -13,14 +13,14 @@ export function drawTankUnit(
   const { base } = palette;
 
   // Treads (always drawn at low+high)
-  drawUnitTreads(graphics, 'mammoth', x, y, r, bodyRot, treads, ctx.lod);
+  drawUnitTreads(graphics, 'mammoth', x, y, r, bodyRot, treads);
 
   // Hull (pentagon) - base color
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
   graphics.fillStyle(bodyColor, 1);
   drawPolygon(graphics, x, y, r * 0.85, 5, bodyRot);
 
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     // Gray armor plate on hull
     graphics.fillStyle(COLORS.GRAY, 1);
     drawPolygon(graphics, x, y, r * 0.55, 5, bodyRot);

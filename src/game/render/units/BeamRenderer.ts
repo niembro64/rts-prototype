@@ -1,7 +1,7 @@
 // Beam unit renderer - 8-legged tarantula style unit with a single beam laser
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, lodAtLeast } from '../types';
+import { COLORS } from '../types';
 import { drawPolygon, drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -19,7 +19,7 @@ export function drawBeamUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
-  drawLegs(graphics, legs, 'tarantula', x, y, bodyRot, ctx.lod, dark, light);
+  drawLegs(graphics, legs, 'tarantula', x, y, bodyRot, ctx.legJoints, dark, light);
 
   // Pedipalps — two small front-facing feeler legs
   {
@@ -40,7 +40,7 @@ export function drawBeamUnit(
       graphics.lineStyle(palpThickness + 0.5, dark, 1);
       graphics.lineBetween(baseX, baseY, tipX, tipY);
 
-      if (lodAtLeast(ctx.lod, 'medium')) {
+      if (ctx.chassisDetail) {
         graphics.fillStyle(light, 1);
         graphics.fillCircle(tipX, tipY, palpThickness * 0.7);
       }
@@ -57,7 +57,7 @@ export function drawBeamUnit(
     graphics.fillStyle(bodyColor, 1);
     drawOval(graphics, _abdomenPoints, abdCx, abdCy, abdRx, abdRy, cos, sin, 10);
 
-    if (lodAtLeast(ctx.lod, 'medium')) {
+    if (ctx.chassisDetail) {
       // Dark stripe on abdomen
       graphics.fillStyle(dark, 1);
       graphics.fillCircle(abdCx, abdCy, r * 0.35);
@@ -73,7 +73,7 @@ export function drawBeamUnit(
     drawOval(graphics, _bodyPoints, bodyCx, bodyCy, bodyR, bodyR, cos, sin, 12);
   }
 
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     const bodyCx = x + cos * r * 0.1;
     const bodyCy = y + sin * r * 0.1;
 

@@ -487,7 +487,17 @@ export const WORLD_PADDING_PERCENT = 20.0;
  * Auto-quality zoom thresholds are computed from ZOOM_MIN/ZOOM_MAX using
  * logarithmic spacing (see graphicsSettings.ts getEffectiveQuality).
  */
-export const GRAPHICS_DETAIL_DEFINITIONS = {
+export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
+  // Unit body shape rendering
+  // 'dot': colored circle only (cheapest — no body polygon, no chassis), 'full': complete body shape
+  UNIT_SHAPE: {
+    min: 'dot',
+    low: 'full',
+    medium: 'full',
+    high: 'full',
+    max: 'full',
+  },
+
   // Leg rendering for widow/daddy/tarantula units
   LEGS: {
     min: 'none',
@@ -534,14 +544,66 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
     max: false,
   },
 
+  // Unit chassis inner detail (armor plates, inner accents, center hubs, commander reactor/pylons/armored legs)
+  // false = basic shape only, true = full inner detail polygons and overlays
+  CHASSIS_DETAIL: {
+    min: false,
+    low: false,
+    medium: true,
+    high: true,
+    max: true,
+  },
+
+  // Unit palette shading — whether units use full 3-color palette (base/light/dark) or monochrome (base only)
+  // false = monochrome (base color for all), true = full light/dark shading
+  PALETTE_SHADING: {
+    min: false,
+    low: false,
+    medium: true,
+    high: true,
+    max: true,
+  },
+
+  // Turret barrel rendering complexity
+  // 'none': no barrel geometry (force field zones only at min),
+  // 'simple': single line per weapon,
+  // 'full': orbital multi-barrel, cone spread, barrel base circles
+  TURRET_STYLE: {
+    min: 'none',
+    low: 'simple',
+    medium: 'full',
+    high: 'full',
+    max: 'full',
+  },
+
+  // Multi-barrel turret spin animation (gatling/cone barrels orbit their mount point)
+  // false = barrels frozen at angle 0, true = animated spin (idle + firing acceleration)
+  BARREL_SPIN: {
+    min: false,
+    low: false,
+    medium: true,
+    high: true,
+    max: true,
+  },
+
+  // Arachnid leg joint circles (hip, knee, foot highlight circles on spider legs)
+  // false = lines only, true = joint circles drawn at attachment/knee/foot points
+  LEG_JOINTS: {
+    min: false,
+    low: false,
+    medium: true,
+    high: true,
+    max: true,
+  },
+
   // Burn mark cutoff — how close to background color before marks stop drawing
   // Lower values = marks linger longer, higher = fewer draw calls
   BURN_MARK_ALPHA_CUTOFF: {
-    min: 0.2,
-    low: 0.2,
-    medium: 0.2,
-    high: 0.08,
-    max: 0.08,
+    min: 1,
+    low: 0.3,
+    medium: 0.3,
+    high: 0.05,
+    max: 0.01,
   },
 
   // Burn mark sample interval — frames to skip between placing new burn marks
@@ -549,7 +611,8 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   BURN_MARK_FRAMES_SKIP: {
     min: 4,
     low: 3,
-    medium: 2,
+    medium: 3,
+    // medium: 2,
     high: 1,
     max: 0,
   },
@@ -561,7 +624,8 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   PROJECTILE_STYLE: {
     min: 'dot',
     low: 'core',
-    medium: 'trail',
+    medium: 'core',
+    // medium: 'trail',
     high: 'glow',
     max: 'full',
   },
@@ -575,7 +639,8 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   FIRE_EXPLOSION_STYLE: {
     min: 'flash',
     low: 'spark',
-    medium: 'burst',
+    medium: 'spark',
+    // medium: 'burst',
     high: 'blaze',
     max: 'inferno',
   },
@@ -589,7 +654,8 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   DEATH_EXPLOSION_STYLE: {
     min: 'puff',
     low: 'scatter',
-    medium: 'shatter',
+    medium: 'scatter',
+    // medium: 'shatter',
     high: 'detonate',
     max: 'obliterate',
   },

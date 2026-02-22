@@ -2,10 +2,17 @@
 
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
-import type { BeamRandomOffsets, LodLevel, ProjectileTrail } from './types';
-import { COLORS, lodAtLeast } from './types';
+import type { BeamRandomOffsets, ProjectileTrail } from './types';
+import { COLORS } from './types';
 import { getPlayerColor, getProjectileColor } from './helpers';
 import { getGraphicsConfig } from './graphicsSettings';
+import type { ProjectileStyle } from './graphicsSettings';
+
+/** Rank ordering for projectile style (used for >= comparisons) */
+const PROJ_STYLE_RANK: Record<ProjectileStyle, number> = { dot: 0, core: 1, trail: 2, glow: 3, full: 4 };
+function projStyleAtLeast(style: ProjectileStyle, threshold: ProjectileStyle): boolean {
+  return PROJ_STYLE_RANK[style] >= PROJ_STYLE_RANK[threshold];
+}
 
 /**
  * Read position i from a ProjectileTrail ring buffer.
@@ -26,7 +33,6 @@ export function renderProjectile(
   graphics: Phaser.GameObjects.Graphics,
   entity: Entity,
   beamRandomOffsets: Map<EntityId, BeamRandomOffsets>,
-  lod: LodLevel,
   sprayParticleTime: number,
   trail: ProjectileTrail | undefined,
 ): void {
@@ -39,11 +45,11 @@ export function renderProjectile(
   const color = getProjectileColor(baseColor);
 
   if (projectile.projectileType === 'beam') {
-    renderBeam(graphics, entity, beamRandomOffsets, lod, sprayParticleTime, x, y, color);
+    renderBeam(graphics, entity, beamRandomOffsets, sprayParticleTime, x, y, color);
   } else if (entity.dgunProjectile) {
-    renderDgun(graphics, lod, x, y, color, projectile, config, trail);
+    renderDgun(graphics, x, y, color, projectile, config, trail);
   } else {
-    renderRegular(graphics, lod, x, y, color, config, trail);
+    renderRegular(graphics, x, y, color, config, trail);
   }
 }
 
@@ -53,7 +59,6 @@ function renderBeam(
   graphics: Phaser.GameObjects.Graphics,
   entity: Entity,
   beamRandomOffsets: Map<EntityId, BeamRandomOffsets>,
-  lod: LodLevel,
   sprayParticleTime: number,
   x: number, y: number,
   color: number,
@@ -79,13 +84,8 @@ function renderBeam(
     beamRandomOffsets.set(entity.id, randomOffsets);
   }
 
-  // Beam LOD: downgrade beam style but never upgrade beyond quality config
-  let effectiveBeamStyle = beamStyle;
-  if (lod === 'min') effectiveBeamStyle = 'simple';
-  else if (lod === 'low' && beamStyle !== 'simple') effectiveBeamStyle = 'standard';
-
   // Outer glow layer (detailed/complex only)
-  if (effectiveBeamStyle === 'detailed' || effectiveBeamStyle === 'complex') {
+  if (beamStyle === 'detailed' || beamStyle === 'complex') {
     graphics.lineStyle(beamWidth + 4, color, 0.3);
     graphics.lineBetween(startX, startY, endX, endY);
   }
@@ -104,22 +104,22 @@ function renderBeam(
     const primaryRadius = config.explosion?.primary.radius ?? (collisionRadius * 2 + 6);
     const secondaryRadius = config.explosion?.secondary.radius ?? primaryRadius;
 
-    if (lod === 'min' || lod === 'low') {
+    if (beamStyle === 'simple') {
       graphics.fillStyle(color, 0.08);
       graphics.fillCircle(endX, endY, secondaryRadius);
       graphics.fillStyle(color, 0.15);
       graphics.fillCircle(endX, endY, primaryRadius);
-    } else if (effectiveBeamStyle === 'standard') {
+    } else if (beamStyle === 'standard') {
       graphics.fillStyle(color, 0.15);
       graphics.fillCircle(endX, endY, primaryRadius);
-    } else if (effectiveBeamStyle === 'detailed' || effectiveBeamStyle === 'complex') {
+    } else if (beamStyle === 'detailed' || beamStyle === 'complex') {
       graphics.fillStyle(color, 0.08);
       graphics.fillCircle(endX, endY, secondaryRadius);
       graphics.fillStyle(color, 0.15);
       graphics.fillCircle(endX, endY, primaryRadius);
 
       const pulseTime = sprayParticleTime * randomOffsets.pulseSpeed;
-      const sparkCount = effectiveBeamStyle === 'complex' ? 6 : 4;
+      const sparkCount = beamStyle === 'complex' ? 6 : 4;
       for (let i = 0; i < sparkCount; i++) {
         const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
         const angle = baseAngle + randomOffsets.rotationOffset;
@@ -137,7 +137,6 @@ function renderBeam(
 
 function renderRegular(
   graphics: Phaser.GameObjects.Graphics,
-  lod: LodLevel,
   x: number, y: number,
   color: number,
   config: Entity['projectile'] extends infer P ? P extends { config: infer C } ? C : never : never,
@@ -145,16 +144,17 @@ function renderRegular(
 ): void {
   const radius = config.collision?.radius ?? 5;
   const trailLength = config.trailLength ?? 3;
+  const pStyle = getGraphicsConfig().projectileStyle;
 
-  if (lod === 'min') {
-    // Min: colored circle only
+  if (pStyle === 'dot') {
+    // Dot: colored circle only
     graphics.fillStyle(color, 1);
     graphics.fillCircle(x, y, radius);
     return;
   }
 
-  if (lod === 'low') {
-    // Low: colored circle + white inner dot
+  if (pStyle === 'core') {
+    // Core: colored circle + white inner dot
     graphics.fillStyle(color, 0.9);
     graphics.fillCircle(x, y, radius);
     graphics.fillStyle(0xffffff, 0.8);
@@ -162,15 +162,15 @@ function renderRegular(
     return;
   }
 
-  // medium / high / max all use position-history trails
-  const maxTrailPts = lod === 'max' ? trailLength + 2 : trailLength;
+  // trail / glow / full all use position-history trails
+  const maxTrailPts = pStyle === 'full' ? trailLength + 2 : trailLength;
 
   // Draw trail (oldest first so head paints on top)
   if (trail && trail.count > 1) {
     const pts = Math.min(maxTrailPts, trail.count - 1); // skip index 0 (current pos)
 
-    // Max: contrail lines connecting trail points
-    if (lod === 'max' && pts >= 2) {
+    // Full: contrail lines connecting trail points
+    if (pStyle === 'full' && pts >= 2) {
       graphics.lineStyle(1, color, 0.25);
       let prevOk = trailPos(trail, 1, _tp);
       let prevX = _tp.x, prevY = _tp.y;
@@ -197,8 +197,8 @@ function renderRegular(
         graphics.fillStyle(color, alpha);
         graphics.fillCircle(_tp.x, _tp.y, trailR);
 
-        // High+Max: trail circles get white inner dots
-        if (lodAtLeast(lod, 'high')) {
+        // Glow+Full: trail circles get white inner dots
+        if (projStyleAtLeast(pStyle, 'glow')) {
           graphics.fillStyle(0xffffff, alpha * 0.6);
           graphics.fillCircle(_tp.x, _tp.y, trailR * 0.35);
         }
@@ -206,14 +206,14 @@ function renderRegular(
     }
   }
 
-  // High+Max: outer glow ring
-  if (lodAtLeast(lod, 'high')) {
+  // Glow+Full: outer glow ring
+  if (projStyleAtLeast(pStyle, 'glow')) {
     graphics.fillStyle(color, 0.3);
     graphics.fillCircle(x, y, radius * 1.4);
   }
 
-  // Max: pulsing glow halo
-  if (lod === 'max') {
+  // Full: pulsing glow halo
+  if (pStyle === 'full') {
     const pulse = 0.15 + 0.1 * Math.sin(Date.now() / 80);
     graphics.fillStyle(color, pulse);
     graphics.fillCircle(x, y, radius * 1.8);
@@ -230,7 +230,6 @@ function renderRegular(
 
 function renderDgun(
   graphics: Phaser.GameObjects.Graphics,
-  lod: LodLevel,
   x: number, y: number,
   color: number,
   projectile: NonNullable<Entity['projectile']>,
@@ -238,14 +237,15 @@ function renderDgun(
   trail: ProjectileTrail | undefined,
 ): void {
   const radius = config.collision?.radius ?? 25;
+  const pStyle = getGraphicsConfig().projectileStyle;
 
-  if (lod === 'min') {
+  if (pStyle === 'dot') {
     graphics.fillStyle(color, 1);
     graphics.fillCircle(x, y, radius);
     return;
   }
 
-  if (lod === 'low') {
+  if (pStyle === 'core') {
     graphics.fillStyle(color, 0.9);
     graphics.fillCircle(x, y, radius);
     graphics.fillStyle(0xffff00, 0.8);
@@ -254,14 +254,14 @@ function renderDgun(
   }
 
   // Determine trail point count by tier
-  const trailPts = lod === 'max' ? 7 : lod === 'high' ? 5 : 3;
+  const trailPts = pStyle === 'full' ? 7 : pStyle === 'glow' ? 5 : 3;
 
   // Draw trail from position history (oldest first)
   if (trail && trail.count > 1) {
     const pts = Math.min(trailPts, trail.count - 1);
 
-    // Max: contrail lines
-    if (lod === 'max' && pts >= 2) {
+    // Full: contrail lines
+    if (pStyle === 'full' && pts >= 2) {
       graphics.lineStyle(2, 0xff4400, 0.2);
       let prevOk = trailPos(trail, 1, _tp);
       let prevX = _tp.x, prevY = _tp.y;
@@ -287,8 +287,8 @@ function renderDgun(
         graphics.fillStyle(0xff4400, alpha);
         graphics.fillCircle(_tp.x, _tp.y, trailR);
 
-        // Max: trail points get inner glow
-        if (lod === 'max') {
+        // Full: trail points get inner glow
+        if (pStyle === 'full') {
           graphics.fillStyle(0xffff00, alpha * 0.4);
           graphics.fillCircle(_tp.x, _tp.y, trailR * 0.4);
         }
@@ -298,27 +298,27 @@ function renderDgun(
 
   const pulsePhase = (projectile.timeAlive / 100) % 1;
 
-  // High+Max: pulsing outer radius
-  if (lodAtLeast(lod, 'high')) {
+  // Glow+Full: pulsing outer radius
+  if (projStyleAtLeast(pStyle, 'glow')) {
     const pulseRadius = radius * (1.3 + 0.2 * Math.sin(pulsePhase * Math.PI * 2));
     graphics.fillStyle(0xff4400, 0.3);
     graphics.fillCircle(x, y, pulseRadius);
   }
 
-  // Max: secondary shimmer ring (out-of-phase)
-  if (lod === 'max') {
+  // Full: secondary shimmer ring (out-of-phase)
+  if (pStyle === 'full') {
     const shimmerRadius = radius * (1.5 + 0.15 * Math.sin(pulsePhase * Math.PI * 2 + Math.PI));
     graphics.fillStyle(0xff6600, 0.15);
     graphics.fillCircle(x, y, shimmerRadius);
   }
 
-  // Medium: orange glow
-  if (lod === 'medium') {
+  // Trail: orange glow
+  if (pStyle === 'trail') {
     graphics.fillStyle(0xff4400, 0.25);
     graphics.fillCircle(x, y, radius * 1.2);
   }
 
-  // Core layers (medium+)
+  // Core layers (trail+)
   graphics.fillStyle(0xff6600, 0.5);
   graphics.fillCircle(x, y, radius * 1.1);
   graphics.fillStyle(color, 0.9);

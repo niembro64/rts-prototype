@@ -1,7 +1,7 @@
 // Hippo unit renderer - Wide, low-profile titan with long treads and sharp angular hull
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, lodAtLeast } from '../types';
+import { COLORS } from '../types';
 import { drawOrientedRect, drawUnitTreads } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
 
@@ -13,14 +13,14 @@ export function drawHippoUnit(
   const { base } = palette;
 
   // Long treads, wide apart
-  drawUnitTreads(graphics, 'hippo', x, y, r, bodyRot, treads, ctx.lod);
+  drawUnitTreads(graphics, 'hippo', x, y, r, bodyRot, treads);
 
   // Hull — wide and short rectangle with sharp edges (no polygon rounding)
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
   graphics.fillStyle(bodyColor, 1);
   drawOrientedRect(graphics, x, y, r * 0.7, r * 1.6, bodyRot);
 
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     // Gray inner plate — same sharp rectangle, smaller
     graphics.fillStyle(COLORS.GRAY, 1);
     drawOrientedRect(graphics, x, y, r * 0.45, r * 1.1, bodyRot);

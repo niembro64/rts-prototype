@@ -1,7 +1,7 @@
 // Snipe unit renderer - Tick spider: tiny fragile sniper with railgun
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, lodAtLeast } from '../types';
+import { COLORS } from '../types';
 import { drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -21,7 +21,7 @@ export function drawSnipeUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
-  drawLegs(graphics, legs, 'tick', x, y, bodyRot, ctx.lod, dark, light);
+  drawLegs(graphics, legs, 'tick', x, y, bodyRot, ctx.legJoints, dark, light);
 
   // Abdomen (idiosoma) — huge engorged body behind the tiny leg piece
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
@@ -47,7 +47,7 @@ export function drawSnipeUnit(
     graphics.lineStyle(1, dark, 1);
     graphics.strokePoints(_abdomenPoints, true);
 
-    if (lodAtLeast(ctx.lod, 'medium')) {
+    if (ctx.chassisDetail) {
       // Scutum (dorsal shield) on abdomen
       const scutumR = r * 0.25;
       graphics.fillStyle(dark, 0.4);

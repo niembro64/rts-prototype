@@ -2,7 +2,7 @@
 // Turret rendering (6 beam emitters + force field) is handled by the generic TurretRenderer
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, lodAtLeast } from '../types';
+import { COLORS } from '../types';
 import { drawPolygon, drawLegs } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -19,7 +19,7 @@ export function drawArachnidUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
-  drawLegs(graphics, legs, 'widow', x, y, bodyRot, ctx.lod, dark, light);
+  drawLegs(graphics, legs, 'widow', x, y, bodyRot, ctx.legJoints, dark, light);
 
   // Abdomen / "butt" region - large chonky rear section
   const abdomenOffset = -r * 0.9; // Behind the main body
@@ -73,7 +73,7 @@ export function drawArachnidUnit(
   graphics.closePath();
   graphics.fillPath();
 
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     // Inner hourglass (darker red)
     const innerScale = 0.6;
     const innerWaistScale = 0.5;
@@ -134,7 +134,7 @@ export function drawArachnidUnit(
   drawPolygon(graphics, hexCenterX, hexCenterY, hexRadius, 6, bodyRot + hexRotationOffset);
 
   // Central force field emitter orb (high only)
-  if (lodAtLeast(ctx.lod, 'medium')) {
+  if (ctx.chassisDetail) {
     graphics.fillStyle(light, 1);
     graphics.fillCircle(hexCenterX, hexCenterY, r * 0.3);
     graphics.fillStyle(COLORS.WHITE, 1);

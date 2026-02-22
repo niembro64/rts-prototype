@@ -6,20 +6,48 @@
  * All detail level definitions are centralized in config.ts GRAPHICS_DETAIL_DEFINITIONS.
  */
 
-import { GRAPHICS_DETAIL_DEFINITIONS, ZOOM_MIN, ZOOM_MAX } from '../../config';
+import {
+  PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
+  ZOOM_MIN,
+  ZOOM_MAX,
+} from '../../config';
 
-export type GraphicsQuality = 'auto' | 'min' | 'low' | 'medium' | 'high' | 'max';
+export type GraphicsQuality =
+  | 'auto'
+  | 'min'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'max';
 export type RenderMode = 'window' | 'padded' | 'all';
 
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
 export type ForceFieldStyle = 'minimal' | 'simple' | 'normal' | 'enhanced';
 export type ProjectileStyle = 'dot' | 'core' | 'trail' | 'glow' | 'full';
-export type FireExplosionStyle = 'flash' | 'spark' | 'burst' | 'blaze' | 'inferno';
-export type DeathExplosionStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
+export type FireExplosionStyle =
+  | 'flash'
+  | 'spark'
+  | 'burst'
+  | 'blaze'
+  | 'inferno';
+export type DeathExplosionStyle =
+  | 'puff'
+  | 'scatter'
+  | 'shatter'
+  | 'detonate'
+  | 'obliterate';
+export type TurretStyle = 'none' | 'simple' | 'full';
+export type UnitShape = 'dot' | 'full';
 
 export interface GraphicsConfig {
+  unitShape: UnitShape;
   legs: 'none' | 'animated';
   treadsAnimated: boolean;
+  chassisDetail: boolean;
+  paletteShading: boolean;
+  turretStyle: TurretStyle;
+  barrelSpin: boolean;
+  legJoints: boolean;
   beamStyle: BeamStyle;
   beamGlow: boolean;
   antialias: boolean;
@@ -32,12 +60,20 @@ export interface GraphicsConfig {
 }
 
 // Build configs from centralized definitions
-const D = GRAPHICS_DETAIL_DEFINITIONS;
-const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig> = {
+const D = PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL;
+const GRAPHICS_CONFIGS: Record<
+  Exclude<GraphicsQuality, 'auto'>,
+  GraphicsConfig
+> = {
   min: {
+    unitShape: D.UNIT_SHAPE.min as UnitShape,
     legs: D.LEGS.min as 'none' | 'animated',
-
     treadsAnimated: D.TREADS_ANIMATED.min,
+    chassisDetail: D.CHASSIS_DETAIL.min,
+    paletteShading: D.PALETTE_SHADING.min,
+    turretStyle: D.TURRET_STYLE.min as TurretStyle,
+    barrelSpin: D.BARREL_SPIN.min,
+    legJoints: D.LEG_JOINTS.min,
     beamStyle: D.BEAM_STYLE.min as BeamStyle,
     beamGlow: D.BEAM_GLOW.min,
     antialias: D.ANTIALIAS.min,
@@ -49,9 +85,14 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.min as DeathExplosionStyle,
   },
   low: {
+    unitShape: D.UNIT_SHAPE.low as UnitShape,
     legs: D.LEGS.low as 'none' | 'animated',
-
     treadsAnimated: D.TREADS_ANIMATED.low,
+    chassisDetail: D.CHASSIS_DETAIL.low,
+    paletteShading: D.PALETTE_SHADING.low,
+    turretStyle: D.TURRET_STYLE.low as TurretStyle,
+    barrelSpin: D.BARREL_SPIN.low,
+    legJoints: D.LEG_JOINTS.low,
     beamStyle: D.BEAM_STYLE.low as BeamStyle,
     beamGlow: D.BEAM_GLOW.low,
     antialias: D.ANTIALIAS.low,
@@ -63,9 +104,14 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.low as DeathExplosionStyle,
   },
   medium: {
+    unitShape: D.UNIT_SHAPE.medium as UnitShape,
     legs: D.LEGS.medium as 'none' | 'animated',
-
     treadsAnimated: D.TREADS_ANIMATED.medium,
+    chassisDetail: D.CHASSIS_DETAIL.medium,
+    paletteShading: D.PALETTE_SHADING.medium,
+    turretStyle: D.TURRET_STYLE.medium as TurretStyle,
+    barrelSpin: D.BARREL_SPIN.medium,
+    legJoints: D.LEG_JOINTS.medium,
     beamStyle: D.BEAM_STYLE.medium as BeamStyle,
     beamGlow: D.BEAM_GLOW.medium,
     antialias: D.ANTIALIAS.medium,
@@ -77,9 +123,14 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.medium as DeathExplosionStyle,
   },
   high: {
+    unitShape: D.UNIT_SHAPE.high as UnitShape,
     legs: D.LEGS.high as 'none' | 'animated',
-
     treadsAnimated: D.TREADS_ANIMATED.high,
+    chassisDetail: D.CHASSIS_DETAIL.high,
+    paletteShading: D.PALETTE_SHADING.high,
+    turretStyle: D.TURRET_STYLE.high as TurretStyle,
+    barrelSpin: D.BARREL_SPIN.high,
+    legJoints: D.LEG_JOINTS.high,
     beamStyle: D.BEAM_STYLE.high as BeamStyle,
     beamGlow: D.BEAM_GLOW.high,
     antialias: D.ANTIALIAS.high,
@@ -91,9 +142,14 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.high as DeathExplosionStyle,
   },
   max: {
+    unitShape: D.UNIT_SHAPE.max as UnitShape,
     legs: D.LEGS.max as 'none' | 'animated',
-
     treadsAnimated: D.TREADS_ANIMATED.max,
+    chassisDetail: D.CHASSIS_DETAIL.max,
+    paletteShading: D.PALETTE_SHADING.max,
+    turretStyle: D.TURRET_STYLE.max as TurretStyle,
+    barrelSpin: D.BARREL_SPIN.max,
+    legJoints: D.LEG_JOINTS.max,
     beamStyle: D.BEAM_STYLE.max as BeamStyle,
     beamGlow: D.BEAM_GLOW.max,
     antialias: D.ANTIALIAS.max,
@@ -109,8 +165,21 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'slow';
 
-export type SoundCategory = 'fire' | 'hit' | 'dead' | 'beam' | 'field' | 'music';
-export const SOUND_CATEGORIES: SoundCategory[] = ['fire', 'hit', 'dead', 'beam', 'field', 'music'];
+export type SoundCategory =
+  | 'fire'
+  | 'hit'
+  | 'dead'
+  | 'beam'
+  | 'field'
+  | 'music';
+export const SOUND_CATEGORIES: SoundCategory[] = [
+  'fire',
+  'hit',
+  'dead',
+  'beam',
+  'field',
+  'music',
+];
 
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
@@ -119,11 +188,26 @@ const AUDIO_SMOOTHING_STORAGE_KEY = 'rts-audio-smoothing';
 const DRIFT_MODE_STORAGE_KEY = 'rts-drift-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'rts-sound-toggles';
 
-export type RangeType = 'trackAcquire' | 'trackRelease' | 'engageAcquire' | 'engageRelease' | 'build';
-export const RANGE_TYPES: RangeType[] = ['trackAcquire', 'trackRelease', 'engageAcquire', 'engageRelease', 'build'];
+export type RangeType =
+  | 'trackAcquire'
+  | 'trackRelease'
+  | 'engageAcquire'
+  | 'engageRelease'
+  | 'build';
+export const RANGE_TYPES: RangeType[] = [
+  'trackAcquire',
+  'trackRelease',
+  'engageAcquire',
+  'engageRelease',
+  'build',
+];
 
 export type ProjRangeType = 'collision' | 'primary' | 'secondary';
-export const PROJ_RANGE_TYPES: ProjRangeType[] = ['collision', 'primary', 'secondary'];
+export const PROJ_RANGE_TYPES: ProjRangeType[] = [
+  'collision',
+  'primary',
+  'secondary',
+];
 
 export type UnitRadiusType = 'collision' | 'physics';
 export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['collision', 'physics'];
@@ -165,23 +249,49 @@ let currentZoom: number = 1.0; // Updated by renderer
 function loadFromStorage(): void {
   try {
     const storedQuality = localStorage.getItem(STORAGE_KEY);
-    if (storedQuality && (storedQuality === 'auto' || storedQuality === 'min' || storedQuality === 'low' || storedQuality === 'medium' || storedQuality === 'high' || storedQuality === 'max')) {
+    if (
+      storedQuality &&
+      (storedQuality === 'auto' ||
+        storedQuality === 'min' ||
+        storedQuality === 'low' ||
+        storedQuality === 'medium' ||
+        storedQuality === 'high' ||
+        storedQuality === 'max')
+    ) {
       currentQuality = storedQuality;
     }
     const storedRenderMode = localStorage.getItem(RENDER_MODE_STORAGE_KEY);
-    if (storedRenderMode && (storedRenderMode === 'window' || storedRenderMode === 'padded' || storedRenderMode === 'all')) {
+    if (
+      storedRenderMode &&
+      (storedRenderMode === 'window' ||
+        storedRenderMode === 'padded' ||
+        storedRenderMode === 'all')
+    ) {
       currentRenderMode = storedRenderMode;
     }
     const storedAudioScope = localStorage.getItem(AUDIO_SCOPE_STORAGE_KEY);
-    if (storedAudioScope && (storedAudioScope === 'off' || storedAudioScope === 'window' || storedAudioScope === 'padded' || storedAudioScope === 'all')) {
+    if (
+      storedAudioScope &&
+      (storedAudioScope === 'off' ||
+        storedAudioScope === 'window' ||
+        storedAudioScope === 'padded' ||
+        storedAudioScope === 'all')
+    ) {
       currentAudioScope = storedAudioScope;
     }
-    const storedAudioSmoothing = localStorage.getItem(AUDIO_SMOOTHING_STORAGE_KEY);
+    const storedAudioSmoothing = localStorage.getItem(
+      AUDIO_SMOOTHING_STORAGE_KEY,
+    );
     if (storedAudioSmoothing !== null) {
       currentAudioSmoothing = storedAudioSmoothing === 'true';
     }
     const storedDriftMode = localStorage.getItem(DRIFT_MODE_STORAGE_KEY);
-    if (storedDriftMode && (storedDriftMode === 'snap' || storedDriftMode === 'fast' || storedDriftMode === 'slow')) {
+    if (
+      storedDriftMode &&
+      (storedDriftMode === 'snap' ||
+        storedDriftMode === 'fast' ||
+        storedDriftMode === 'slow')
+    ) {
       currentDriftMode = storedDriftMode;
     }
     const storedSoundToggles = localStorage.getItem(SOUND_TOGGLES_STORAGE_KEY);
@@ -237,10 +347,10 @@ export function setCurrentZoom(zoom: number): void {
 // dividing [ZOOM_MIN, ZOOM_MAX] into 5 equal bands on a log scale.
 // threshold[i] = ZOOM_MIN * (ZOOM_MAX/ZOOM_MIN)^(i/5), i=1..4
 const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
-const _autoZoomLow    = ZOOM_MIN * Math.pow(_zoomRatio, 1 / 5); // ~0.91
+const _autoZoomLow = ZOOM_MIN * Math.pow(_zoomRatio, 1 / 5); // ~0.91
 const _autoZoomMedium = ZOOM_MIN * Math.pow(_zoomRatio, 2 / 5); // ~1.66
-const _autoZoomHigh   = ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5); // ~3.02
-const _autoZoomMax    = ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5); // ~5.49
+const _autoZoomHigh = ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5); // ~3.02
+const _autoZoomMax = ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5); // ~5.49
 
 export function getEffectiveQuality(): Exclude<GraphicsQuality, 'auto'> {
   if (currentQuality !== 'auto') {
@@ -271,7 +381,9 @@ export function getGraphicsConfig(): GraphicsConfig {
 /**
  * Get config for a specific quality level
  */
-export function getGraphicsConfigFor(quality: Exclude<GraphicsQuality, 'auto'>): GraphicsConfig {
+export function getGraphicsConfigFor(
+  quality: Exclude<GraphicsQuality, 'auto'>,
+): GraphicsConfig {
   return GRAPHICS_CONFIGS[quality];
 }
 
@@ -312,7 +424,7 @@ export function setRangeToggle(type: RangeType, show: boolean): void {
  * Check if any range toggle is active
  */
 export function anyRangeToggleActive(): boolean {
-  return RANGE_TYPES.some(rt => currentRangeToggles[rt]);
+  return RANGE_TYPES.some((rt) => currentRangeToggles[rt]);
 }
 
 /**
@@ -333,7 +445,7 @@ export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
  * Check if any proj range toggle is active
  */
 export function anyProjRangeToggleActive(): boolean {
-  return PROJ_RANGE_TYPES.some(prt => currentProjRangeToggles[prt]);
+  return PROJ_RANGE_TYPES.some((prt) => currentProjRangeToggles[prt]);
 }
 
 /**
@@ -354,7 +466,7 @@ export function setUnitRadiusToggle(type: UnitRadiusType, show: boolean): void {
  * Check if any unit radius toggle is active
  */
 export function anyUnitRadiusToggleActive(): boolean {
-  return UNIT_RADIUS_TYPES.some(urt => currentUnitRadiusToggles[urt]);
+  return UNIT_RADIUS_TYPES.some((urt) => currentUnitRadiusToggles[urt]);
 }
 
 /**
@@ -424,10 +536,16 @@ export function getSoundToggle(category: SoundCategory): boolean {
 /**
  * Set whether a sound category is enabled (persists to localStorage)
  */
-export function setSoundToggle(category: SoundCategory, enabled: boolean): void {
+export function setSoundToggle(
+  category: SoundCategory,
+  enabled: boolean,
+): void {
   currentSoundToggles[category] = enabled;
   try {
-    localStorage.setItem(SOUND_TOGGLES_STORAGE_KEY, JSON.stringify(currentSoundToggles));
+    localStorage.setItem(
+      SOUND_TOGGLES_STORAGE_KEY,
+      JSON.stringify(currentSoundToggles),
+    );
   } catch {
     // localStorage not available
   }
