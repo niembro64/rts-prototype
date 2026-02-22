@@ -13,7 +13,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getWeaponConfig } from '../sim/weapons';
-import { getBarrelTipOffset } from '../sim/combat/combatUtils';
+import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
 import { lerp, lerpAngle, getWeaponWorldPosition, lineCircleIntersectionT, applyHomingSteering } from '../math';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
@@ -435,9 +435,9 @@ export class ClientViewState {
             const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
 
             // Beam starts at barrel tip
-            const beamBarrelOffset = getBarrelTipOffset(entity.projectile.config, source.unit!.drawScale);
-            const startX = wp.x + dirX * beamBarrelOffset;
-            const startY = wp.y + dirY * beamBarrelOffset;
+            const bt = getBarrelTipWorldPos(wp.x, wp.y, turretAngle, entity.projectile.config, source.unit!.drawScale);
+            const startX = bt.x;
+            const startY = bt.y;
 
             // Full-range beam end
             const fullEndX = startX + dirX * weapon.ranges.engage.acquire;
@@ -528,9 +528,9 @@ export class ClientViewState {
 
         // Forward from weapon in firing direction (same as server)
         const turretAngle = weapon.turretRotation;
-        const projBarrelOffset = getBarrelTipOffset(config, source.unit.drawScale);
-        spawnX = wp.x + Math.cos(turretAngle) * projBarrelOffset;
-        spawnY = wp.y + Math.sin(turretAngle) * projBarrelOffset;
+        const projBt = getBarrelTipWorldPos(wp.x, wp.y, turretAngle, config, source.unit.drawScale);
+        spawnX = projBt.x;
+        spawnY = projBt.y;
       }
     }
 

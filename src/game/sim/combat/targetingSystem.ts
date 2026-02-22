@@ -3,7 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { distance, getTargetRadius } from './combatUtils';
-import { getWeaponWorldPosition } from '../../math';
+import { getWeaponWorldPosition, getTransformCosSin } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 
 // Update auto-targeting and firing state for all units in a single pass.
@@ -26,8 +26,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     if (unit.unit.hp <= 0) continue;
 
     const playerId = unit.ownership.playerId;
-    const cos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
-    const sin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
+    const { cos, sin } = getTransformCosSin(unit.transform);
 
     for (const weapon of unit.weapons) {
       const r = weapon.ranges;

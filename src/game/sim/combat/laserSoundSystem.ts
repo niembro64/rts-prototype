@@ -4,7 +4,7 @@ import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
 import type { SimEvent } from './types';
 import { distance, getTargetRadius } from './combatUtils';
-import { getWeaponWorldPosition } from '../../math';
+import { getWeaponWorldPosition, getTransformCosSin } from '../../math';
 
 // Reusable array for laser sound events (avoids per-frame allocation)
 const _laserSimEvents: SimEvent[] = [];
@@ -70,8 +70,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
     // Dead units must still emit laserStop so the client releases audio nodes
     const isDead = unit.unit.hp <= 0;
 
-    const cos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
-    const sin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
+    const { cos, sin } = getTransformCosSin(unit.transform);
 
     // Check each weapon for beam sounds
     for (let i = 0; i < unit.weapons.length; i++) {

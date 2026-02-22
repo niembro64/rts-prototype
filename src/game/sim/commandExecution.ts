@@ -6,8 +6,8 @@ import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitC
 import type { Entity, UnitAction } from './types';
 import type { ConstructionSystem } from './construction';
 import type { SimEvent, ProjectileSpawnEvent } from './combat';
-import { magnitude, getWeaponWorldPosition } from '../math';
-import { getBarrelTipOffset } from './combat/combatUtils';
+import { magnitude, getWeaponWorldPosition, getTransformCosSin } from '../math';
+import { getBarrelTipWorldPos } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 
@@ -230,8 +230,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   dgunWeapon.turretAngularVelocity = 0;
 
   // Compute weapon world position from unit transform + weapon offset
-  const cos = commander.transform.rotCos ?? Math.cos(commander.transform.rotation);
-  const sin = commander.transform.rotSin ?? Math.sin(commander.transform.rotation);
+  const { cos, sin } = getTransformCosSin(commander.transform);
   const weaponPos = getWeaponWorldPosition(
     commander.transform.x, commander.transform.y,
     cos, sin,
@@ -242,9 +241,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const fireSin = Math.sin(fireAngle);
 
   // Spawn position at barrel tip
-  const dgunBarrelOffset = getBarrelTipOffset(dgunWeapon.config, commander.unit!.drawScale);
-  const spawnX = weaponPos.x + fireCos * dgunBarrelOffset;
-  const spawnY = weaponPos.y + fireSin * dgunBarrelOffset;
+  const bt = getBarrelTipWorldPos(weaponPos.x, weaponPos.y, fireAngle, dgunWeapon.config, commander.unit!.drawScale);
+  const spawnX = bt.x;
+  const spawnY = bt.y;
 
   // Calculate velocity with turret-tip inheritance
   const speed = dgunWeapon.config.projectileSpeed ?? 350;
@@ -255,8 +254,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     velocityX += commander.unit.velocityX ?? 0;
     velocityY += commander.unit.velocityY ?? 0;
     // Turret rotational velocity at fire point (tangential = omega * r)
-    const barrelDx = fireCos * dgunBarrelOffset;
-    const barrelDy = fireSin * dgunBarrelOffset;
+    const barrelDx = bt.x - weaponPos.x;
+    const barrelDy = bt.y - weaponPos.y;
     const omega = dgunWeapon.turretAngularVelocity;
     velocityX += -barrelDy * omega;
     velocityY += barrelDx * omega;

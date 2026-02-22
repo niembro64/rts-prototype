@@ -14,6 +14,7 @@ export {
   normalizeAndScale,
   directionTo,
   getWeaponWorldPosition,
+  getTransformCosSin,
 } from './MathHelpers';
 
 export {

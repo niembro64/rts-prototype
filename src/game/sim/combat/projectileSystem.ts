@@ -6,11 +6,11 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
-import { getWeaponWorldPosition, applyHomingSteering } from '../../math';
+import { getTransformCosSin, applyHomingSteering } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, applyDirectionalKnockback, emitBeamHitAudio } from './damageHelpers';
-import { getBarrelTipOffset } from './combatUtils';
+import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos } from './combatUtils';
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
@@ -68,8 +68,7 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
     if (unit.unit.hp <= 0) continue;
 
     const playerId = unit.ownership.playerId;
-    const unitCos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
-    const unitSin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
+    const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
 
     // Fire each weapon independently
     for (let weaponIndex = 0; weaponIndex < unit.weapons.length; weaponIndex++) {
@@ -100,15 +99,8 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       }
 
       // Use cached weapon world position from targeting phase
-      let weaponX: number, weaponY: number;
-      if (weapon.worldX !== undefined) {
-        weaponX = weapon.worldX;
-        weaponY = weapon.worldY!;
-      } else {
-        const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
-        weaponX = wp.x;
-        weaponY = wp.y;
-      }
+      const weaponWP = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, unitCos, unitSin);
+      const weaponX = weaponWP.x, weaponY = weaponWP.y;
 
       // Check cooldown / active beam
       if (isContinuousBeam) {
@@ -393,22 +385,14 @@ export function updateProjectiles(
         const dirY = Math.sin(turretAngle);
 
         // Use cached weapon world position from targeting phase
-        const srcCos = source.transform.rotCos ?? Math.cos(source.transform.rotation);
-        const srcSin = source.transform.rotSin ?? Math.sin(source.transform.rotation);
-        let weaponX: number, weaponY: number;
-        if (weapon.worldX !== undefined) {
-          weaponX = weapon.worldX;
-          weaponY = weapon.worldY!;
-        } else {
-          const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, srcCos, srcSin, weapon.offsetX, weapon.offsetY);
-          weaponX = wp.x;
-          weaponY = wp.y;
-        }
+        const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
+        const beamWP = resolveWeaponWorldPos(weapon, source.transform.x, source.transform.y, srcCos, srcSin);
+        const weaponX = beamWP.x, weaponY = beamWP.y;
 
         // Beam starts at barrel tip
-        const beamBarrelOffset = getBarrelTipOffset(proj.config, source.unit.drawScale);
-        proj.startX = weaponX + dirX * beamBarrelOffset;
-        proj.startY = weaponY + dirY * beamBarrelOffset;
+        const bt = getBarrelTipWorldPos(weaponX, weaponY, turretAngle, proj.config, source.unit.drawScale);
+        proj.startX = bt.x;
+        proj.startY = bt.y;
 
         // Use weapon's fireRange for consistent beam length (not proj.config.range)
         const beamLength = weapon.ranges.engage.acquire;

@@ -109,6 +109,13 @@ export function directionTo(
  * Applies 2D rotation transform: offset rotated by unit rotation + unit position.
  * Uses a reusable output object to avoid per-call allocations in the hot path.
  */
+const _csOut = { cos: 0, sin: 0 };
+export function getTransformCosSin(t: { rotation: number; rotCos?: number; rotSin?: number }): { cos: number; sin: number } {
+  _csOut.cos = t.rotCos ?? Math.cos(t.rotation);
+  _csOut.sin = t.rotSin ?? Math.sin(t.rotation);
+  return _csOut;
+}
+
 const _wpOut = { x: 0, y: 0 };
 export function getWeaponWorldPosition(
   unitX: number, unitY: number,

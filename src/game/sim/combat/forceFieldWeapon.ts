@@ -5,7 +5,7 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type { ProjectileVelocityUpdateEvent } from './types';
-import { magnitude, isPointInSlice } from '../../math';
+import { magnitude, isPointInSlice, getTransformCosSin } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 
@@ -102,8 +102,7 @@ export function applyForceFieldDamage(
     if (!unit.ownership || !unit.unit) continue;
     if (unit.unit.hp <= 0) continue;
 
-    const unitCos = unit.transform.rotCos ?? Math.cos(unit.transform.rotation);
-    const unitSin = unit.transform.rotSin ?? Math.sin(unit.transform.rotation);
+    const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
     const sourcePlayerId = unit.ownership.playerId;
 
     for (const weapon of unit.weapons!) {
