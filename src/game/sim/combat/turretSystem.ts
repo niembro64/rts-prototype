@@ -5,6 +5,9 @@ import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos } from './comba
 import { getTransformCosSin } from '../../math';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 
+// Cache for drag factors: avoids recomputing Math.pow per weapon when only ~4 unique drag values exist
+const _dragFactorCache = new Map<number, number>();
+
 // Update turret rotation for all units using acceleration-based physics
 // Each weapon has its own acceleration and drag values
 // Physics model:
@@ -14,6 +17,8 @@ import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 //   4. Update rotation based on velocity
 export function updateTurretRotation(world: WorldState, dtMs: number): void {
   const dtSec = dtMs / 1000;
+  const dtFrames = dtSec * 60;
+  _dragFactorCache.clear();
 
   for (const unit of world.getUnits()) {
     if (!unit.unit || !unit.ownership || !unit.weapons) continue;
@@ -40,7 +45,12 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
       }
 
       // dt-independent drag: at 60fps apply (1-drag) per frame, variable dt: pow(1-drag, dt*60)
-      const dragFactor = Math.pow(1 - weapon.turretDrag, dtSec * 60);
+      // Cached per unique turretDrag value (~4 unique values → ~4 pow calls instead of 400+)
+      let dragFactor = _dragFactorCache.get(weapon.turretDrag);
+      if (dragFactor === undefined) {
+        dragFactor = Math.pow(1 - weapon.turretDrag, dtFrames);
+        _dragFactorCache.set(weapon.turretDrag, dragFactor);
+      }
 
       // If no active target, optionally return turret to forward-facing
       if (!hasActiveTarget) {

@@ -5,7 +5,7 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type { ProjectileVelocityUpdateEvent } from './types';
-import { magnitude, isPointInSlice, getTransformCosSin } from '../../math';
+import { isPointInSlice, getTransformCosSin } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 
@@ -157,7 +157,13 @@ export function applyForceFieldDamage(
         const targetRadius = target.unit.radiusColliderUnitShot;
         const dx = target.transform.x - weaponX;
         const dy = target.transform.y - weaponY;
-        const dist = magnitude(dx, dy);
+
+        // Cheap squared-distance rejection before sqrt
+        const distSq = dx * dx + dy * dy;
+        const maxDist = effectiveOuter + targetRadius;
+        if (distSq > maxDist * maxDist) continue;
+
+        const dist = Math.sqrt(distSq);
 
         // Check if in overall slice (precomputed avoids redundant sqrt)
         if (!isPointInSlice(
@@ -211,7 +217,13 @@ export function applyForceFieldDamage(
         const buildingRadius = Math.max(building.building.width, building.building.height) / 2;
         const bdx = building.transform.x - weaponX;
         const bdy = building.transform.y - weaponY;
-        const bdist = magnitude(bdx, bdy);
+
+        // Cheap squared-distance rejection before sqrt
+        const bdistSq = bdx * bdx + bdy * bdy;
+        const bmaxDist = effectiveOuter + buildingRadius;
+        if (bdistSq > bmaxDist * bmaxDist) continue;
+
+        const bdist = Math.sqrt(bdistSq);
 
         if (!isPointInSlice(
           bdx, bdy, bdist, turretAngle, sliceHalfAngle,
@@ -246,6 +258,11 @@ export function applyForceFieldDamage(
         const dx = projEntity.transform.x - weaponX;
         const dy = projEntity.transform.y - weaponY;
         const distSq = dx * dx + dy * dy;
+
+        // Cheap squared-distance rejection before sqrt
+        const pmaxDist = effectiveOuter + projRadius;
+        if (distSq > pmaxDist * pmaxDist) continue;
+
         const dist = Math.sqrt(distSq);
 
         if (!isPointInSlice(

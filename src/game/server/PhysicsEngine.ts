@@ -136,9 +136,11 @@ export class PhysicsEngine {
     // 1. Air friction first (matches Matter.js ordering for exact force-balance equivalence)
     // dt-independent damping: at 60fps v *= (1 - frictionAir), variable dt: pow(1 - frictionAir, dt * 60)
     const dtFrames = dtSec * 60;
+    // All unit bodies share frictionAir=0.15 — hoist a single Math.pow for the common case
+    const defaultDamping = Math.pow(1 - 0.15, dtFrames);
     for (let i = 0; i < numDynamic; i++) {
       const b = dynamic[i];
-      const damping = Math.pow(1 - b.frictionAir, dtFrames);
+      const damping = b.frictionAir === 0.15 ? defaultDamping : Math.pow(1 - b.frictionAir, dtFrames);
       b.vx *= damping;
       b.vy *= damping;
     }

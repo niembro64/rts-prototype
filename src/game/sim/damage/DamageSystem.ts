@@ -394,11 +394,14 @@ export class DamageSystem {
 
       const dx = unit.transform.x - source.centerX;
       const dy = unit.transform.y - source.centerY;
-      const dist = magnitude(dx, dy);
       const targetRadius = unit.unit.radiusColliderUnitShot;
 
-      // Check distance
-      if (dist > source.radius + targetRadius) continue;
+      // Cheap squared-distance rejection before sqrt
+      const distSq = dx * dx + dy * dy;
+      const maxDist = source.radius + targetRadius;
+      if (distSq > maxDist * maxDist) continue;
+
+      const dist = Math.sqrt(distSq);
 
       // Check slice angle if wave weapon
       if (hasSlice) {
@@ -450,11 +453,14 @@ export class DamageSystem {
 
       const dx = building.transform.x - source.centerX;
       const dy = building.transform.y - source.centerY;
-      const dist = magnitude(dx, dy);
       const buildingRadius = getTargetRadius(building);
 
-      // Check distance
-      if (dist > source.radius + buildingRadius) continue;
+      // Cheap squared-distance rejection before sqrt
+      const distSq = dx * dx + dy * dy;
+      const maxDist = source.radius + buildingRadius;
+      if (distSq > maxDist * maxDist) continue;
+
+      const dist = Math.sqrt(distSq);
 
       // Check slice for wave weapons
       if (hasSlice) {
