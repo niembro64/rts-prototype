@@ -186,7 +186,12 @@ export class CameraController {
     if (arrowIntensity > 0) {
       const { arrow } = EDGE_SCROLL;
       const length = arrowIntensity * arrow.maxLength;
-      if (length >= arrow.head.length) {
+      {
+        // Scale head to fit when arrow is short
+        const headScale = length >= arrow.head.length ? 1 : length / arrow.head.length;
+        const headLen = arrow.head.length * headScale;
+        const headW = arrow.head.width * headScale;
+
         const perpX = -arrowDirY;
         const perpY = arrowDirX;
 
@@ -194,12 +199,12 @@ export class CameraController {
         const startSY = halfH + arrowDirY * arrow.gap;
         const tipSX = halfW + arrowDirX * length;
         const tipSY = halfH + arrowDirY * length;
-        const baseSX = tipSX - arrowDirX * arrow.head.length;
-        const baseSY = tipSY - arrowDirY * arrow.head.length;
-        const headLX = baseSX + perpX * arrow.head.width;
-        const headLY = baseSY + perpY * arrow.head.width;
-        const headRX = baseSX - perpX * arrow.head.width;
-        const headRY = baseSY - perpY * arrow.head.width;
+        const baseSX = tipSX - arrowDirX * headLen;
+        const baseSY = tipSY - arrowDirY * headLen;
+        const headLX = baseSX + perpX * headW;
+        const headLY = baseSY + perpY * headW;
+        const headRX = baseSX - perpX * headW;
+        const headRY = baseSY - perpY * headW;
 
         // Outline pass (thicker, behind)
         const { outline } = arrow;
