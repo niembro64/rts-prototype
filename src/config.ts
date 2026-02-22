@@ -497,7 +497,7 @@ export const EDGE_SCROLL = {
 
   // --- Arrow general ---
   arrowMaxLength: 300, // max arrow length (screen px)
-  arrowGap: 100, // gap from screen center before shaft starts (screen px)
+  arrowGap: 10, // gap from screen center before shaft starts (screen px)
   arrowDragMaxDist: 100, // mouse displacement (px) for full intensity during drag pan
 
   // --- Arrow shaft ---

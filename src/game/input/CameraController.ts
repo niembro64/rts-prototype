@@ -93,14 +93,18 @@ export class CameraController {
     const gx = (sx: number) => (sx - halfW * (1 - zoom)) / zoom;
     const gy = (sy: number) => (sy - halfH * (1 - zoom)) / zoom;
 
+    // Effective viewport center (accounts for top bar and bottom bars)
+    const topInset = EDGE_SCROLL.topBarHeight;
+    const bottomInset = getBottomBarsHeight();
+    const screenCenterX = camera.width * 0.5;
+    const screenCenterY = topInset + (camera.height - topInset - bottomInset) * 0.5;
+
     let arrowDirX = 0;
     let arrowDirY = 0;
     let arrowIntensity = 0;
 
     // --- Edge scroll ---
     if (getEdgeScrollEnabled()) {
-      const topInset = EDGE_SCROLL.topBarHeight;
-      const bottomInset = getBottomBarsHeight();
       const vpLeft = 0;
       const vpRight = camera.width;
       const vpTop = topInset;
@@ -111,8 +115,8 @@ export class CameraController {
       if (vpW > 0 && vpH > 0) {
         const borderW = vpW * EDGE_SCROLL.borderRatio;
         const borderH = vpH * EDGE_SCROLL.borderRatio;
-        const vpCenterX = vpLeft + vpW * 0.5;
-        const vpCenterY = vpTop + vpH * 0.5;
+        const vpCenterX = screenCenterX;
+        const vpCenterY = screenCenterY;
 
         // Inner ellipse semi-axes (inscribed in what was the old inner rect)
         const erx = vpW * 0.5 - borderW;
@@ -280,20 +284,21 @@ export class CameraController {
 
     // --- Draw pan direction arrow at screen center ---
     if (arrowIntensity > 0) {
-      const length = arrowIntensity * EDGE_SCROLL.arrowMaxLength;
+      const gap = EDGE_SCROLL.arrowGap;
+      const visibleLength = arrowIntensity * EDGE_SCROLL.arrowMaxLength;
 
       // Scale head to fit when arrow is short
-      const headScale = length >= EDGE_SCROLL.headLength ? 1 : length / EDGE_SCROLL.headLength;
+      const headScale = visibleLength >= EDGE_SCROLL.headLength ? 1 : visibleLength / EDGE_SCROLL.headLength;
       const headLen = EDGE_SCROLL.headLength * headScale;
       const headW = EDGE_SCROLL.headWidth * headScale;
 
       const perpX = -arrowDirY;
       const perpY = arrowDirX;
 
-      const startSX = halfW + arrowDirX * EDGE_SCROLL.arrowGap;
-      const startSY = halfH + arrowDirY * EDGE_SCROLL.arrowGap;
-      const tipSX = halfW + arrowDirX * length;
-      const tipSY = halfH + arrowDirY * length;
+      const startSX = screenCenterX + arrowDirX * gap;
+      const startSY = screenCenterY + arrowDirY * gap;
+      const tipSX = screenCenterX + arrowDirX * (gap + visibleLength);
+      const tipSY = screenCenterY + arrowDirY * (gap + visibleLength);
       const baseSX = tipSX - arrowDirX * headLen;
       const baseSY = tipSY - arrowDirY * headLen;
       const headLX = baseSX + perpX * headW;
