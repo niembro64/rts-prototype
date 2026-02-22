@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER, EDGE_SCROLL_BORDER_RATIO, EDGE_SCROLL_SPEED, EDGE_SCROLL_TOP_BAR_HEIGHT } from '../../config';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER, EDGE_SCROLL_BORDER_RATIO, EDGE_SCROLL_SPEED, EDGE_SCROLL_TOP_BAR_HEIGHT, EDGE_SCROLL_OVERLAY } from '../../config';
 import { getEdgeScrollEnabled, getBottomBarsHeight } from '../render/graphicsSettings';
 import type { InputState } from './InputState';
 
@@ -11,10 +11,16 @@ export class CameraController {
   private scene: Phaser.Scene;
   private state: InputState;
   private wheelHandler: (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => void;
+  private edgeOverlay: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, state: InputState) {
     this.scene = scene;
     this.state = state;
+
+    // Screen-fixed overlay for edge scroll border zone
+    this.edgeOverlay = scene.add.graphics();
+    this.edgeOverlay.setScrollFactor(0);
+    this.edgeOverlay.setDepth(999);
 
     this.wheelHandler = (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
       const camera = this.scene.cameras.main;
@@ -70,16 +76,16 @@ export class CameraController {
 
   destroy(): void {
     this.scene.input.off('wheel', this.wheelHandler);
+    this.edgeOverlay.destroy();
   }
 
-  /** Edge scroll: move camera when pointer is near viewport edges */
+  /** Edge scroll: move camera when pointer is near viewport edges, draw border overlay */
   updateEdgeScroll(delta: number): void {
-    if (!getEdgeScrollEnabled()) return;
-    if (this.state.isPanningCamera || this.state.isDraggingSelection || this.state.isDrawingLinePath) return;
+    this.edgeOverlay.clear();
 
-    const pointer = this.scene.input.activePointer;
+    if (!getEdgeScrollEnabled()) return;
+
     const camera = this.scene.cameras.main;
-    const dtSec = delta / 1000;
 
     // Effective viewport (exclude top bar and bottom bars)
     const topInset = EDGE_SCROLL_TOP_BAR_HEIGHT;
@@ -92,6 +98,34 @@ export class CameraController {
     const vpH = vpBottom - vpTop;
 
     if (vpW <= 0 || vpH <= 0) return;
+
+    // Border zone dimensions
+    const borderW = vpW * EDGE_SCROLL_BORDER_RATIO;
+    const borderH = vpH * EDGE_SCROLL_BORDER_RATIO;
+
+    // Draw semi-transparent border zone (4 strips)
+    this.edgeOverlay.fillStyle(EDGE_SCROLL_OVERLAY.fillColor, EDGE_SCROLL_OVERLAY.fillAlpha);
+    // Top strip
+    this.edgeOverlay.fillRect(vpLeft, vpTop, vpW, borderH);
+    // Bottom strip
+    this.edgeOverlay.fillRect(vpLeft, vpBottom - borderH, vpW, borderH);
+    // Left strip (between top and bottom strips)
+    this.edgeOverlay.fillRect(vpLeft, vpTop + borderH, borderW, vpH - borderH * 2);
+    // Right strip (between top and bottom strips)
+    this.edgeOverlay.fillRect(vpRight - borderW, vpTop + borderH, borderW, vpH - borderH * 2);
+
+    // Inner border line
+    this.edgeOverlay.lineStyle(EDGE_SCROLL_OVERLAY.strokeWidth, EDGE_SCROLL_OVERLAY.strokeColor, EDGE_SCROLL_OVERLAY.strokeAlpha);
+    this.edgeOverlay.strokeRect(
+      vpLeft + borderW, vpTop + borderH,
+      vpW - borderW * 2, vpH - borderH * 2,
+    );
+
+    // Camera scrolling
+    if (this.state.isPanningCamera || this.state.isDraggingSelection || this.state.isDrawingLinePath) return;
+
+    const pointer = this.scene.input.activePointer;
+    const dtSec = delta / 1000;
 
     // Check pointer is within the effective viewport
     const px = pointer.x;

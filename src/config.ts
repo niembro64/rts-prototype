@@ -480,6 +480,15 @@ export const EDGE_SCROLL_SPEED = 800;
 /** Edge scroll: fixed top bar height in pixels (excluded from effective viewport) */
 export const EDGE_SCROLL_TOP_BAR_HEIGHT = 50;
 
+/** Edge scroll overlay appearance */
+export const EDGE_SCROLL_OVERLAY = {
+  fillColor: 0x000000,   // Border zone fill color
+  fillAlpha: 0.8,       // Border zone fill opacity
+  strokeColor: 0x000000, // Inner border line color
+  strokeAlpha: 0.3,      // Inner border line opacity
+  strokeWidth: 1,        // Inner border line width (px)
+};
+
 /**
  * World padding as a percentage of map dimensions.
  * 0.5 = 50% padding on each side (left, right, top, bottom).
