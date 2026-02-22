@@ -1,7 +1,7 @@
 // Tank unit renderer - Heavy tracked unit with massive treads, square turret
 
 import type { UnitRenderContext } from '../types';
-import { COLORS } from '../types';
+import { COLORS, lodAtLeast } from '../types';
 import { drawPolygon, drawUnitTreads } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
 
@@ -20,7 +20,7 @@ export function drawTankUnit(
   graphics.fillStyle(bodyColor, 1);
   drawPolygon(graphics, x, y, r * 0.85, 5, bodyRot);
 
-  if (ctx.lod === 'high') {
+  if (lodAtLeast(ctx.lod, 'medium')) {
     // Gray armor plate on hull
     graphics.fillStyle(COLORS.GRAY, 1);
     drawPolygon(graphics, x, y, r * 0.55, 5, bodyRot);

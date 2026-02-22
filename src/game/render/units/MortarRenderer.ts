@@ -1,7 +1,7 @@
 // Mortar unit renderer - Artillery platform with 4 treads, hexagonal base
 
 import type { UnitRenderContext } from '../types';
-import { COLORS } from '../types';
+import { COLORS, lodAtLeast } from '../types';
 import { drawPolygon, drawUnitWheels } from '../helpers';
 import type { VehicleWheelSetup } from '../Tread';
 
@@ -16,11 +16,11 @@ export function drawMortarUnit(
   drawUnitWheels(graphics, 'mongoose', x, y, r, bodyRot, wheelSetup, ctx.lod);
 
   // Main body (hexagon)
-  const bodyColor = isSelected ? COLORS.UNIT_SELECTED : (ctx.lod === 'high' ? COLORS.GRAY : base);
+  const bodyColor = isSelected ? COLORS.UNIT_SELECTED : (lodAtLeast(ctx.lod, 'medium') ? COLORS.GRAY : base);
   graphics.fillStyle(bodyColor, 1);
   drawPolygon(graphics, x, y, r * 0.55, 6, bodyRot);
 
-  if (ctx.lod === 'high') {
+  if (lodAtLeast(ctx.lod, 'medium')) {
     // Inner platform (base color)
     graphics.fillStyle(base, 1);
     drawPolygon(graphics, x, y, r * 0.4, 6, bodyRot);

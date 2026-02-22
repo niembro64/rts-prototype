@@ -2,7 +2,7 @@
 
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '../graphicsSettings';
-import { COLORS, LEG_STYLE_CONFIG } from '../types';
+import { COLORS, LEG_STYLE_CONFIG, lodAtLeast } from '../types';
 import type { LodLevel } from '../types';
 import type { ForceFieldTurretConfig } from '../../../config';
 import type { ArachnidLeg } from '../ArachnidLeg';
@@ -378,7 +378,7 @@ export function drawLegs(
     graphics.lineStyle(lc.lowerThickness, dark, 1);
     graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
 
-    if (lod === 'high') {
+    if (lodAtLeast(lod, 'medium')) {
       graphics.fillStyle(light, 1);
       graphics.fillCircle(attach.x, attach.y, lc.hipRadius);
       graphics.fillCircle(knee.x, knee.y, lc.kneeRadius);

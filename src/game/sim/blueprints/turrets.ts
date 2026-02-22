@@ -77,7 +77,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       barrelLength: 1.7,
       orbitRadius: 0.35,
       depthScale: 0.1,
-      spin: { idle: 2.0, max: 30, accel: 80, decel: 30 },
+      spin: { idle: 0.0, max: 30, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
@@ -103,7 +103,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       barrelLength: 0.6,
       baseOrbit: 0.094,
       depthScale: 0.12,
-      spin: { idle: 0.7, max: 2, accel: 80, decel: 30 },
+      spin: { idle: 0.0, max: 2, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
@@ -127,7 +127,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       barrelLength: 1.5,
       orbitRadius: 0.4,
       depthScale: 0.1,
-      spin: { idle: 3, max: 40, accel: 100, decel: 30 },
+      spin: { idle: 0, max: 20, accel: 100, decel: 30 },
     },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },

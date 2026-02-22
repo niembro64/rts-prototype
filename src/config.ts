@@ -48,8 +48,14 @@ export const BAR_COLORS = CONTROL_BARS.themes;
 // EMA (Exponential Moving Average) STATS TRACKING
 // =============================================================================
 
-export interface EmaLowConfig { drop: number; recovery: number; }
-export interface EmaTierConfig { avg: number; low: EmaLowConfig; }
+export interface EmaLowConfig {
+  drop: number;
+  recovery: number;
+}
+export interface EmaTierConfig {
+  avg: number;
+  low: EmaLowConfig;
+}
 
 export const EMA_CONFIG: Record<string, EmaTierConfig> = {
   tps: {
@@ -153,34 +159,38 @@ export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slo
  * Hierarchy (outer to inner):
  *   tracking.release (1.1x) > tracking.acquire (1.0x) > engage.release (0.95x) > engage.acquire (0.9x)
  */
-export const TURRET_RANGE_MULTIPLIERS: import('./game/sim/types').TurretRangeMultipliers = {
-  tracking: { acquire: 1.0, release: 1.1 },
-  engage: { acquire: 0.9, release: 0.95 },
-};
-export const FORCE_TURRET_RANGE_MULTIPLIERS: import('./game/sim/types').TurretRangeMultipliers = {
-  tracking: { acquire: 1.0, release: 1.1 },
-  engage: { acquire: 1.0, release: 1.05 },
-};
+export const TURRET_RANGE_MULTIPLIERS: import('./game/sim/types').TurretRangeMultipliers =
+  {
+    tracking: { acquire: 1.0, release: 1.1 },
+    engage: { acquire: 0.9, release: 0.95 },
+  };
+export const FORCE_TURRET_RANGE_MULTIPLIERS: import('./game/sim/types').TurretRangeMultipliers =
+  {
+    tracking: { acquire: 1.0, release: 1.1 },
+    engage: { acquire: 1.0, release: 1.05 },
+  };
 
-export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig = {
-  innerRatio: 0.0,
-  outerRatio: 0.5,
-  color: 0x3366ff,
-  alpha: 0.05,
-  particleAlpha: 0.2,
-  power: 300,
-  damage: 0,
-};
+export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig =
+  {
+    innerRatio: 0.0,
+    outerRatio: 0.5,
+    color: 0x3366ff,
+    alpha: 0.05,
+    particleAlpha: 0.2,
+    power: 300,
+    damage: 0,
+  };
 
-export const FORCE_PULL: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig = {
-  innerRatio: 0.5,
-  outerRatio: 0.52,
-  color: 0x3366ff,
-  alpha: 0.2,
-  particleAlpha: 0.2,
-  power: null,
-  damage: 0,
-};
+export const FORCE_PULL: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig =
+  {
+    innerRatio: 0.5,
+    outerRatio: 0.52,
+    color: 0x3366ff,
+    alpha: 0.2,
+    particleAlpha: 0.2,
+    power: null,
+    damage: 0,
+  };
 
 /**
  * Force field weapon visual configuration.
@@ -301,7 +311,11 @@ export type TurretConfig =
       depthScale: number;
       spin: SpinConfig;
     }
-  | { type: 'simpleSingleBarrel'; barrelLength: number; barrelThickness?: number }
+  | {
+      type: 'simpleSingleBarrel';
+      barrelLength: number;
+      barrelThickness?: number;
+    }
   | { type: 'complexSingleEmitter'; grate: ForceFieldTurretConfig };
 
 // =============================================================================
@@ -323,7 +337,6 @@ export interface MountPoint {
 // LEG_CONFIG removed — now in blueprints
 // TREAD_CONFIG removed — now in blueprints
 // WHEEL_CONFIG removed — now in blueprints
-
 
 export interface BuildingStatEntry {
   baseCost: number;
@@ -389,7 +402,10 @@ export const UNIT_THRUST_MULTIPLIER_DEMO = 6.0;
 // MAP SIZE SETTINGS
 // =============================================================================
 
-export interface MapSize { width: number; height: number; }
+export interface MapSize {
+  width: number;
+  height: number;
+}
 
 export const MAP_SETTINGS: Record<string, MapSize> = {
   game: { width: 2_000, height: 2_000 },
@@ -442,7 +458,7 @@ export const ZOOM_MAX = 5.0;
  * Each scroll step multiplies/divides zoom by this factor.
  * 1.15 = 15% change per step, feels consistent at all zoom levels.
  */
-export const ZOOM_FACTOR = 1.15;
+export const ZOOM_FACTOR = 1 + 1 / 8;
 
 /** Initial zoom level for the background demo game */
 export const ZOOM_INITIAL_DEMO = 1.8;
@@ -495,7 +511,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   BEAM_STYLE: {
     min: 'simple', // 1 beam line, 1 static endpoint circle
     low: 'simple', // 1 beam line, 1 static endpoint circle
-    medium: 'standard', // 2 beam lines, 2 pulsing endpoint circles
+    medium: 'simple', // 2 beam lines, 2 pulsing endpoint circles
     high: 'detailed', // 3 beam lines, 3 pulsing circles + 4 sparks
     max: 'complex', // 3 beam lines, 3 pulsing circles + 6 sparks
   },
@@ -521,9 +537,9 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   // Burn mark cutoff — how close to background color before marks stop drawing
   // Lower values = marks linger longer, higher = fewer draw calls
   BURN_MARK_ALPHA_CUTOFF: {
-    min: 0.08,
-    low: 0.08,
-    medium: 0.08,
+    min: 0.2,
+    low: 0.2,
+    medium: 0.2,
     high: 0.08,
     max: 0.08,
   },
@@ -531,11 +547,51 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   // Burn mark sample interval — frames to skip between placing new burn marks
   // 0 = every frame, 1 = every other frame, 3 = every 4th frame, etc.
   BURN_MARK_FRAMES_SKIP: {
-    min: 5,
-    low: 5,
-    medium: 4,
-    high: 2,
+    min: 4,
+    low: 3,
+    medium: 2,
+    high: 1,
     max: 0,
+  },
+
+  // Projectile (shot) rendering style
+  // 'dot': colored circle only, 'core': circle + white inner dot,
+  // 'trail': core + position-history trail, 'glow': trail + outer glow ring + trail dots,
+  // 'full': glow + pulsing halo + contrail lines + extra trail points
+  PROJECTILE_STYLE: {
+    min: 'dot',
+    low: 'core',
+    medium: 'trail',
+    high: 'glow',
+    max: 'full',
+  },
+
+  // Fire (impact) explosion style
+  // 'flash': core fireball + zone glows + 1 particle each (~12 draws),
+  // 'spark': +hot core center + spark/pen inners, ×1.5 particles (~18 draws),
+  // 'burst': ×2.5 particles + moderate drift, no trails (~30 draws),
+  // 'blaze': ×4 particles + short trails + strong drift (~45 draws),
+  // 'inferno': ×6 particles + full trails + rising embers (~65 draws)
+  FIRE_EXPLOSION_STYLE: {
+    min: 'flash',
+    low: 'spark',
+    medium: 'burst',
+    high: 'blaze',
+    max: 'inferno',
+  },
+
+  // Death (unit wreckage) explosion style — team-colored debris from unit shape (legs, treads, panels)
+  // 'puff': core fireball only (~3 draws),
+  // 'scatter': +smoke, debris chunks, sparks in cone (~12 draws),
+  // 'shatter': more debris + inner highlights on chunks (~25 draws),
+  // 'detonate': +fragment trails, gravity chunks, full-circle sparks (~55 draws),
+  // 'obliterate': +rising embers, momentum trail, dual spark trails (~120 draws)
+  DEATH_EXPLOSION_STYLE: {
+    min: 'puff',
+    low: 'scatter',
+    medium: 'shatter',
+    high: 'detonate',
+    max: 'obliterate',
   },
 
   // Force field visual style
@@ -544,7 +600,7 @@ export const GRAPHICS_DETAIL_DEFINITIONS = {
   FORCE_FIELD_STYLE: {
     min: 'minimal',
     low: 'simple',
-    medium: 'normal',
+    medium: 'simple',
     high: 'normal',
     max: 'normal',
   },

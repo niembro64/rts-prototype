@@ -67,8 +67,24 @@ export interface ColorPalette {
   dark: number;
 }
 
-/** LOD level for unit rendering. 'min' = dot (handled by renderEntities before calling renderers), 'low' = simplified, 'high' = full detail */
-export type LodLevel = 'min' | 'low' | 'high';
+/** LOD level for unit rendering. 'min' = dot (handled by renderEntities before calling renderers), 'low' = simplified, 'medium'/'high'/'max' = increasing detail */
+export type LodLevel = 'min' | 'low' | 'medium' | 'high' | 'max';
+
+/** Numeric rank for each LOD level (used by lodAtLeast) */
+const LOD_RANK: Record<LodLevel, number> = { min: 0, low: 1, medium: 2, high: 3, max: 4 };
+
+/** Returns true when `lod` is at least as detailed as `threshold`. */
+export function lodAtLeast(lod: LodLevel, threshold: LodLevel): boolean {
+  return LOD_RANK[lod] >= LOD_RANK[threshold];
+}
+
+/** Ring-buffer of historical positions for projectile trail rendering */
+export interface ProjectileTrail {
+  positions: Float32Array;  // [x0,y0, x1,y1, ...] interleaved ring buffer
+  head: number;             // next write index (in pairs, so byte index = head*2)
+  count: number;            // valid entries (grows to capacity)
+  capacity: number;         // max number of (x,y) pairs
+}
 
 // Context passed to unit renderers
 export interface UnitRenderContext {

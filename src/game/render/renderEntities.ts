@@ -14,8 +14,8 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import type { TurretConfig, SpinConfig } from '../../config';
 
 // Import from helper modules
-import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, LodLevel } from './types';
-import { COLORS } from './types';
+import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, LodLevel, ProjectileTrail } from './types';
+import { COLORS, lodAtLeast } from './types';
 import { createColorPalette } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
 import { drawTurret } from './TurretRenderer';
@@ -47,6 +47,9 @@ export class EntityRenderer {
 
   // Per-projectile random offsets for visual variety
   private beamRandomOffsets: Map<EntityId, BeamRandomOffsets> = new Map();
+
+  // Position-history trails for projectile rendering
+  private projectileTrails: Map<EntityId, ProjectileTrail> = new Map();
 
   // Scorched earth: burn marks left by beam weapons
   private burnMarkSystem = new BurnMarkSystem();
@@ -298,11 +301,7 @@ export class EntityRenderer {
   // ==================== LOD COMPUTATION ====================
 
   private computeLod(): LodLevel {
-    const quality = getEffectiveQuality();
-    // Quality drives LOD directly: min→min, low→low, everything else→high
-    if (quality === 'min') return 'min';
-    if (quality === 'low') return 'low';
-    return 'high';
+    return getEffectiveQuality();
   }
 
   // ==================== MAIN RENDER ====================
@@ -366,15 +365,36 @@ export class EntityRenderer {
       this.renderUnitTurrets(entity);
     }
 
-    // 6. Projectiles (clean up stale beam offsets inline, LOD via same system as units)
+    // 6. Projectiles (clean up stale beam offsets + trail entries inline, LOD via same system as units)
     const projectileLod = this.computeLod();
     this._reusableIdSet.clear();
     for (const entity of this.visibleProjectiles) {
       this._reusableIdSet.add(entity.id);
-      renderProjectile(this.graphics, entity, this.beamRandomOffsets, projectileLod, this.sprayParticleTime);
+
+      // Sample position into trail ring buffer for non-beam projectiles
+      let trail: ProjectileTrail | undefined;
+      if (entity.projectile && entity.projectile.projectileType !== 'beam') {
+        trail = this.projectileTrails.get(entity.id);
+        const isDgun = !!entity.dgunProjectile;
+        const trailCap = isDgun ? 10 : (entity.projectile.config.trailLength ?? 3) + 4;
+        if (!trail || trail.capacity !== trailCap) {
+          trail = { positions: new Float32Array(trailCap * 2), head: 0, count: 0, capacity: trailCap };
+          this.projectileTrails.set(entity.id, trail);
+        }
+        const idx = trail.head * 2;
+        trail.positions[idx] = entity.transform.x;
+        trail.positions[idx + 1] = entity.transform.y;
+        trail.head = (trail.head + 1) % trail.capacity;
+        if (trail.count < trail.capacity) trail.count++;
+      }
+
+      renderProjectile(this.graphics, entity, this.beamRandomOffsets, projectileLod, this.sprayParticleTime, trail);
     }
     for (const id of this.beamRandomOffsets.keys()) {
       if (!this._reusableIdSet.has(id)) this.beamRandomOffsets.delete(id);
+    }
+    for (const id of this.projectileTrails.keys()) {
+      if (!this._reusableIdSet.has(id)) this.projectileTrails.delete(id);
     }
 
     // 6b. Projectile range circles (collision + splash radii)
@@ -526,7 +546,7 @@ export class EntityRenderer {
 
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
-    const spinAngle = lod === 'low' ? 0 : this.getBarrelSpinAngle(entity.id);
+    const spinAngle = !lodAtLeast(lod, 'medium') ? 0 : this.getBarrelSpinAngle(entity.id);
 
     for (let i = 0; i < entity.weapons.length; i++) {
       const weapon = entity.weapons[i];
@@ -542,6 +562,7 @@ export class EntityRenderer {
     this.debrisSystem.clear();
     this.burnMarkSystem.clear();
     this.explosions.length = 0;
+    this.projectileTrails.clear();
   }
 
   destroy(): void {
@@ -551,6 +572,7 @@ export class EntityRenderer {
     this.labelPool.length = 0;
     this.activeLabelCount = 0;
     this.beamRandomOffsets.clear();
+    this.projectileTrails.clear();
     this.barrelSpins.clear();
     this.locomotion.clear();
     this.clearEffects();

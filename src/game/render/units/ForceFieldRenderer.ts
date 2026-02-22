@@ -1,7 +1,7 @@
 // Force field unit renderer - 8-legged daddy with central force field emitter orb (body only)
 
 import type { UnitRenderContext } from '../types';
-import { COLORS } from '../types';
+import { COLORS, lodAtLeast } from '../types';
 import { drawPolygon, drawLegs } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -49,7 +49,7 @@ export function drawForceFieldUnit(
   graphics.fillStyle(base, 1);
   drawPolygon(graphics, x, y, r * 0.35, 6, bodyRot);
 
-  if (ctx.lod === 'high') {
+  if (lodAtLeast(ctx.lod, 'medium')) {
     // Central orb base (light glow)
     graphics.fillStyle(light, 1);
     graphics.fillCircle(x, y, r * 0.25);

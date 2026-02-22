@@ -13,6 +13,9 @@ export type RenderMode = 'window' | 'padded' | 'all';
 
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
 export type ForceFieldStyle = 'minimal' | 'simple' | 'normal' | 'enhanced';
+export type ProjectileStyle = 'dot' | 'core' | 'trail' | 'glow' | 'full';
+export type FireExplosionStyle = 'flash' | 'spark' | 'burst' | 'blaze' | 'inferno';
+export type DeathExplosionStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
 export interface GraphicsConfig {
   legs: 'none' | 'animated';
@@ -23,6 +26,9 @@ export interface GraphicsConfig {
   burnMarkAlphaCutoff: number;
   burnMarkFramesSkip: number;
   forceFieldStyle: ForceFieldStyle;
+  projectileStyle: ProjectileStyle;
+  fireExplosionStyle: FireExplosionStyle;
+  deathExplosionStyle: DeathExplosionStyle;
 }
 
 // Build configs from centralized definitions
@@ -38,6 +44,9 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.min,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.min,
     forceFieldStyle: D.FORCE_FIELD_STYLE.min as ForceFieldStyle,
+    projectileStyle: D.PROJECTILE_STYLE.min as ProjectileStyle,
+    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.min as FireExplosionStyle,
+    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.min as DeathExplosionStyle,
   },
   low: {
     legs: D.LEGS.low as 'none' | 'animated',
@@ -49,6 +58,9 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.low,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.low,
     forceFieldStyle: D.FORCE_FIELD_STYLE.low as ForceFieldStyle,
+    projectileStyle: D.PROJECTILE_STYLE.low as ProjectileStyle,
+    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.low as FireExplosionStyle,
+    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.low as DeathExplosionStyle,
   },
   medium: {
     legs: D.LEGS.medium as 'none' | 'animated',
@@ -60,6 +72,9 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.medium,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.medium,
     forceFieldStyle: D.FORCE_FIELD_STYLE.medium as ForceFieldStyle,
+    projectileStyle: D.PROJECTILE_STYLE.medium as ProjectileStyle,
+    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.medium as FireExplosionStyle,
+    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.medium as DeathExplosionStyle,
   },
   high: {
     legs: D.LEGS.high as 'none' | 'animated',
@@ -71,6 +86,9 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.high,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.high,
     forceFieldStyle: D.FORCE_FIELD_STYLE.high as ForceFieldStyle,
+    projectileStyle: D.PROJECTILE_STYLE.high as ProjectileStyle,
+    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.high as FireExplosionStyle,
+    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.high as DeathExplosionStyle,
   },
   max: {
     legs: D.LEGS.max as 'none' | 'animated',
@@ -82,6 +100,9 @@ const GRAPHICS_CONFIGS: Record<Exclude<GraphicsQuality, 'auto'>, GraphicsConfig>
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.max,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.max,
     forceFieldStyle: D.FORCE_FIELD_STYLE.max as ForceFieldStyle,
+    projectileStyle: D.PROJECTILE_STYLE.max as ProjectileStyle,
+    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.max as FireExplosionStyle,
+    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.max as DeathExplosionStyle,
   },
 };
 

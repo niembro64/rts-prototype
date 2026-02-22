@@ -1,7 +1,7 @@
 // Snipe unit renderer - Tick spider: tiny fragile sniper with railgun
 
 import type { UnitRenderContext } from '../types';
-import { COLORS } from '../types';
+import { COLORS, lodAtLeast } from '../types';
 import { drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -47,7 +47,7 @@ export function drawSnipeUnit(
     graphics.lineStyle(1, dark, 1);
     graphics.strokePoints(_abdomenPoints, true);
 
-    if (ctx.lod === 'high') {
+    if (lodAtLeast(ctx.lod, 'medium')) {
       // Scutum (dorsal shield) on abdomen
       const scutumR = r * 0.25;
       graphics.fillStyle(dark, 0.4);

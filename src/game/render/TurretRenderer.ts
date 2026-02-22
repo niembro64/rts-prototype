@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import type { UnitWeapon, EntityId } from '../sim/types';
 import type { ColorPalette, LodLevel } from './types';
-import { COLORS } from './types';
+import { COLORS, lodAtLeast } from './types';
 import { drawForceFieldGrate } from './helpers';
 import { renderForceFieldEffect } from './effects';
 import type { TurretConfig, ForceFieldTurretConfig } from '../../config';
@@ -165,7 +165,7 @@ function drawSingleBarrelTurret(
   const endY = mountY + Math.sin(turretRot) * turretLen;
 
   const thickness = config.barrelThickness ?? 2;
-  if (lod === 'high') {
+  if (lodAtLeast(lod, 'medium')) {
     graphics.fillStyle(COLORS.WHITE, 1);
     graphics.fillCircle(mountX, mountY, Math.max(r * 0.06, thickness * 0.5));
   }
