@@ -28,6 +28,7 @@ import {
   SHOW_LOBBY_ON_STARTUP,
   COMBAT_STATS_HISTORY_MAX,
   COMBAT_STATS_VISIBLE_ON_LOAD,
+  EDGE_SCROLL_BORDER_RATIO,
 } from '../config';
 import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../game/sim/blueprints';
 import {
@@ -84,7 +85,6 @@ import {
   UNIT_RADIUS_TYPES,
   getEdgeScrollEnabled,
   setEdgeScrollEnabled,
-  setBottomBarsHeight,
   getAudioScope,
   setAudioScope,
   getAudioSmoothing,
@@ -109,6 +109,7 @@ import { musicPlayer } from '../game/audio/MusicPlayer';
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 const bottomControlsRef = ref<HTMLDivElement | null>(null);
+const topBarRef = ref<InstanceType<typeof TopBar> | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 
@@ -244,7 +245,93 @@ let gameInstance: GameInstance | null = null;
 let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
 let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
-let bottomBarsObserver: ResizeObserver | null = null;
+
+// Edge scroll state (non-reactive for 60fps performance)
+let edgeScrollMouseX = -1;
+let edgeScrollMouseY = -1;
+let edgeScrollMouseActive = false;
+let edgeScrollRafId: number | null = null;
+let edgeScrollLastTime = 0;
+
+function onGameWrapperMouseMove(e: MouseEvent): void {
+  edgeScrollMouseX = e.clientX;
+  edgeScrollMouseY = e.clientY;
+  edgeScrollMouseActive = true;
+}
+
+function onGameWrapperMouseLeave(): void {
+  edgeScrollMouseActive = false;
+}
+
+function edgeScrollFrame(now: number): void {
+  edgeScrollRafId = requestAnimationFrame(edgeScrollFrame);
+
+  if (!edgeScrollEnabled.value || !edgeScrollMouseActive) {
+    edgeScrollLastTime = now;
+    return;
+  }
+
+  const dtMs = edgeScrollLastTime > 0 ? Math.min(now - edgeScrollLastTime, 50) : 0;
+  edgeScrollLastTime = now;
+  if (dtMs === 0) return;
+
+  // Get the active scene
+  const scene = gameInstance?.getScene() ?? backgroundGameInstance?.getScene();
+  if (!scene) return;
+
+  // Compute effective viewport bounds relative to the window
+  const wrapper = containerRef.value ?? backgroundContainerRef.value;
+  if (!wrapper) return;
+  const wrapperRect = wrapper.getBoundingClientRect();
+
+  // Top inset: TopBar height (only present during active game)
+  const topBarEl = topBarRef.value?.$el as HTMLElement | undefined;
+  const topInset = topBarEl?.offsetHeight ?? 0;
+  // Bottom inset: bottom controls height
+  const bottomInset = bottomControlsRef.value?.offsetHeight ?? 0;
+
+  const vpLeft = wrapperRect.left;
+  const vpRight = wrapperRect.right;
+  const vpTop = wrapperRect.top + topInset;
+  const vpBottom = wrapperRect.bottom - bottomInset;
+  const vpW = vpRight - vpLeft;
+  const vpH = vpBottom - vpTop;
+
+  if (vpW <= 0 || vpH <= 0) return;
+
+  // Check mouse is within effective viewport
+  const mx = edgeScrollMouseX;
+  const my = edgeScrollMouseY;
+  if (mx < vpLeft || mx > vpRight || my < vpTop || my > vpBottom) return;
+
+  // Normalize to [-1, +1] within viewport
+  const nx = ((mx - vpLeft) / vpW) * 2 - 1;
+  const ny = ((my - vpTop) / vpH) * 2 - 1;
+
+  const threshold = 1 - EDGE_SCROLL_BORDER_RATIO;
+  const abx = Math.abs(nx);
+  const aby = Math.abs(ny);
+
+  if (abx < threshold && aby < threshold) return;
+
+  let dx = 0;
+  let dy = 0;
+
+  if (abx >= threshold) {
+    const intensity = Math.min((abx - threshold) / EDGE_SCROLL_BORDER_RATIO, 1);
+    dx = Math.sign(nx) * intensity;
+  }
+  if (aby >= threshold) {
+    const intensity = Math.min((aby - threshold) / EDGE_SCROLL_BORDER_RATIO, 1);
+    dy = Math.sign(ny) * intensity;
+  }
+
+  // Normalize direction vector, preserve length as intensity
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len === 0) return;
+
+  scene.applyEdgeScroll((dx / len) * len, (dy / len) * len, dtMs);
+}
 
 // Start the background battle (runs behind lobby)
 function startBackgroundBattle(): void {
@@ -1149,15 +1236,8 @@ onMounted(() => {
   // Listen for backtick to toggle combat stats
   window.addEventListener('keydown', handleCombatStatsKeydown);
 
-  // Track bottom bars height for edge scroll viewport inset
-  if (bottomControlsRef.value) {
-    bottomBarsObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setBottomBarsHeight(entry.contentRect.height);
-      }
-    });
-    bottomBarsObserver.observe(bottomControlsRef.value);
-  }
+  // Start edge scroll rAF loop
+  edgeScrollRafId = requestAnimationFrame(edgeScrollFrame);
 });
 
 onUnmounted(() => {
@@ -1173,9 +1253,9 @@ onUnmounted(() => {
     clientTimeInterval = null;
   }
   window.removeEventListener('keydown', handleCombatStatsKeydown);
-  if (bottomBarsObserver) {
-    bottomBarsObserver.disconnect();
-    bottomBarsObserver = null;
+  if (edgeScrollRafId !== null) {
+    cancelAnimationFrame(edgeScrollRafId);
+    edgeScrollRafId = null;
   }
   // Stop servers
   if (currentServer) {
@@ -1192,7 +1272,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="game-wrapper">
+  <div class="game-wrapper" @mousemove="onGameWrapperMouseMove" @mouseleave="onGameWrapperMouseLeave">
     <!-- Background battle container (runs behind lobby) -->
     <div
       ref="backgroundContainerRef"
@@ -1202,6 +1282,9 @@ onUnmounted(() => {
 
     <!-- Main game container -->
     <div ref="containerRef" class="phaser-container" v-show="!showLobby"></div>
+
+    <!-- Edge scroll overlay (CSS-only border zone indicator) -->
+    <div v-if="edgeScrollEnabled" class="edge-scroll-overlay"></div>
 
     <!-- Lobby Modal -->
     <LobbyModal
@@ -1871,6 +1954,7 @@ onUnmounted(() => {
     <template v-if="gameStarted && !showLobby">
       <!-- Top bar with economy info -->
       <TopBar
+        ref="topBarRef"
         :economy="economyInfo"
         :player-name="getPlayerName(activePlayer)"
         :player-color="getPlayerColor(activePlayer)"
@@ -1961,6 +2045,17 @@ onUnmounted(() => {
 
 .phaser-container canvas {
   display: block;
+}
+
+.edge-scroll-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow: inset 0 0 60px 30px rgba(0, 0, 0, 0.8);
 }
 
 .ui-overlay.top-right {

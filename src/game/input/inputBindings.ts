@@ -271,8 +271,6 @@ export class InputManager {
 
   // Update input
   update(_delta: number): void {
-    this.cameraController.updateEdgeScroll(_delta);
-
     // Camera bounds are handled by Phaser's camera.setBounds() in RtsScene
     // No manual constraint logic needed
 

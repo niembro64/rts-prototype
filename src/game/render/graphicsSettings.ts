@@ -255,7 +255,6 @@ const currentSoundToggles: Record<SoundCategory, boolean> = {
   music: false,
 };
 let currentEdgeScrollEnabled: boolean = false;
-let currentBottomBarsHeight: number = 0;
 let currentZoom: number = 1.0; // Updated by renderer
 
 // Load from localStorage on module init
@@ -623,16 +622,3 @@ export function setEdgeScrollEnabled(enabled: boolean): void {
   }
 }
 
-/**
- * Get current bottom bars height (runtime-only, no persistence)
- */
-export function getBottomBarsHeight(): number {
-  return currentBottomBarsHeight;
-}
-
-/**
- * Set bottom bars height (runtime-only, no persistence)
- */
-export function setBottomBarsHeight(height: number): void {
-  currentBottomBarsHeight = height;
-}

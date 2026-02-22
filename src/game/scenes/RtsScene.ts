@@ -21,6 +21,7 @@ import {
   MAP_GRID_COLOR,
   COMBAT_STATS_SAMPLE_INTERVAL,
   EMA_CONFIG,
+  EDGE_SCROLL_SPEED,
 } from '../../config';
 
 import { getAudioSmoothing, getAudioScope, getSoundToggle } from '../render/graphicsSettings';
@@ -380,6 +381,22 @@ export class RtsScene extends Phaser.Scene {
   // Center camera on a world position (used by minimap click)
   public centerCameraOn(x: number, y: number): void {
     this.cameras.main.centerOn(x, y);
+  }
+
+  /**
+   * Apply edge scroll from Vue.
+   * dx, dy: normalized direction × intensity (length 0–1).
+   * dtMs: frame delta in milliseconds.
+   * Skips if user is panning, selecting, or drawing a line path.
+   */
+  public applyEdgeScroll(dx: number, dy: number, dtMs: number): void {
+    const inputState = this.inputManager?.getState();
+    if (inputState?.isPanningCamera || inputState?.isDraggingSelection || inputState?.isDrawingLinePath) return;
+
+    const cam = this.cameras.main;
+    const speed = EDGE_SCROLL_SPEED * (dtMs / 1000) / cam.zoom;
+    cam.scrollX += dx * speed;
+    cam.scrollY += dy * speed;
   }
 
   // Get current entity source — returns cached adapter (zero allocations per call)
