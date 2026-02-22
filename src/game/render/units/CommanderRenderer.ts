@@ -23,7 +23,7 @@ export function drawCommanderUnit(
       const leg = legs[i];
       const side = i < 2 ? -1 : 1;
 
-      const attach = leg.getAttachmentPoint(x, y, bodyRot);
+      const attach = leg.getAttachmentPoint(x, y, cos, sin);
       const foot = leg.getFootPosition();
       const knee = leg.getKneePosition(attach.x, attach.y, side);
 

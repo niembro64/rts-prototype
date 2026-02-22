@@ -472,7 +472,6 @@ export class EntityRenderer {
       graphics: this.graphics,
       x, y, radius, bodyRot: rotation, palette, isSelected, entity,
       chassisDetail: gfx.chassisDetail,
-      legJoints: gfx.legJoints,
     };
 
     // Blueprint-driven renderer dispatch
@@ -547,7 +546,7 @@ export class EntityRenderer {
       const mountX = x + cos * mount.x * r - sin * mount.y * r;
       const mountY = y + sin * mount.x * r + cos * mount.y * r;
 
-      drawTurret(this.graphics, mountX, mountY, r, weapon, palette, spinAngle, entity.id, gfx.turretStyle);
+      drawTurret(this.graphics, mountX, mountY, r, weapon, palette, spinAngle, entity.id, gfx.turretStyle, gfx.forceTurretStyle);
     }
   }
 

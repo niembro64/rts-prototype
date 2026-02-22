@@ -8,7 +8,7 @@ import { COLORS } from './types';
 import { drawForceFieldGrate } from './helpers';
 import { renderForceFieldEffect } from './effects';
 import type { TurretConfig, ForceFieldTurretConfig } from '../../config';
-import type { TurretStyle } from './graphicsSettings';
+import type { TurretStyle, ForceTurretStyle } from './graphicsSettings';
 
 /**
  * Draw a weapon's turret at the given mount point.
@@ -24,17 +24,25 @@ export function drawTurret(
   spinAngle: number,
   entityId: EntityId,
   turretStyle: TurretStyle = 'full',
+  forceTurretStyle: ForceTurretStyle = 'full',
 ): void {
   const turretConfig = weapon.config.turretShape as TurretConfig | undefined;
   if (!turretConfig) return;
 
-  // 'none': only force field zones (no barrel geometry)
-  if (turretStyle === 'none') {
-    if (turretConfig.type === 'complexSingleEmitter') {
+  // Force field turrets use their own separate LOD config
+  if (turretConfig.type === 'complexSingleEmitter') {
+    if (forceTurretStyle === 'none') {
       drawForceFieldZonesOnly(graphics, mountX, mountY, weapon, entityId);
+    } else if (forceTurretStyle === 'simple') {
+      drawForceFieldTurretSimple(graphics, mountX, mountY, unitRadius, weapon, turretConfig.grate, entityId);
+    } else {
+      drawForceFieldTurretFull(graphics, mountX, mountY, unitRadius, weapon, turretConfig.grate, entityId);
     }
     return;
   }
+
+  // Non-force-field turrets use turretStyle
+  if (turretStyle === 'none') return;
 
   switch (turretConfig.type) {
     case 'simpleMultiBarrel':
@@ -45,9 +53,6 @@ export function drawTurret(
       break;
     case 'simpleSingleBarrel':
       drawSingleBarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, turretStyle);
-      break;
-    case 'complexSingleEmitter':
-      drawForceFieldTurretFull(graphics, mountX, mountY, unitRadius, weapon, turretConfig.grate, entityId);
       break;
   }
 }
@@ -175,6 +180,38 @@ function drawSingleBarrelTurret(
 }
 
 // ==================== FORCE FIELD (forceField, megaForceField) ====================
+
+/** Simple force field turret: single pulsing circle + zones (no multi-ring grate) */
+function drawForceFieldTurretSimple(
+  graphics: Phaser.GameObjects.Graphics,
+  mountX: number, mountY: number,
+  r: number,
+  weapon: UnitWeapon,
+  grateConfig: ForceFieldTurretConfig,
+  entityId: EntityId,
+): void {
+  const progress = weapon.currentForceFieldRange ?? 0;
+  const transitionTimeMs = weapon.config.forceField?.transitionTime ?? 1000;
+
+  // Single pulsing circle at mount point — lerps white → blue with progress
+  // Use the same width as the full grate's outermost circle (wFactor(0) = 1)
+  let color: number = COLORS.WHITE;
+  if (progress > 0) {
+    const time = Date.now() / 1000;
+    const freq = (Math.PI * 2) / (transitionTimeMs / 1000);
+    const t = (Math.sin(time * freq) * 0.5 + 0.5) * progress;
+    // Lerp from white (0xf0f0f0) toward blue (0x3366ff)
+    const cr = (0xf0 + ((0x33 - 0xf0) * t)) | 0;
+    const cg = (0xf0 + ((0x66 - 0xf0) * t)) | 0;
+    const cb = (0xf0 + ((0xff - 0xf0) * t)) | 0;
+    color = (cr << 16) | (cg << 8) | cb;
+  }
+  graphics.fillStyle(color, 1);
+  graphics.fillCircle(mountX, mountY, r * grateConfig.width);
+
+  if (progress <= 0) return;
+  drawForceFieldZones(graphics, mountX, mountY, weapon, entityId);
+}
 
 function drawForceFieldTurretFull(
   graphics: Phaser.GameObjects.Graphics,

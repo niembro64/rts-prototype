@@ -37,17 +37,18 @@ export type DeathExplosionStyle =
   | 'detonate'
   | 'obliterate';
 export type TurretStyle = 'none' | 'simple' | 'full';
+export type ForceTurretStyle = 'none' | 'simple' | 'full';
 export type UnitShape = 'dot' | 'full';
 
 export interface GraphicsConfig {
   unitShape: UnitShape;
-  legs: 'none' | 'animated';
+  legs: 'none' | 'simple' | 'animated' | 'full';
   treadsAnimated: boolean;
   chassisDetail: boolean;
   paletteShading: boolean;
   turretStyle: TurretStyle;
+  forceTurretStyle: ForceTurretStyle;
   barrelSpin: boolean;
-  legJoints: boolean;
   beamStyle: BeamStyle;
   beamGlow: boolean;
   antialias: boolean;
@@ -67,13 +68,14 @@ const GRAPHICS_CONFIGS: Record<
 > = {
   min: {
     unitShape: D.UNIT_SHAPE.min as UnitShape,
-    legs: D.LEGS.min as 'none' | 'animated',
+    legs: D.LEGS.min as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.min,
     chassisDetail: D.CHASSIS_DETAIL.min,
     paletteShading: D.PALETTE_SHADING.min,
     turretStyle: D.TURRET_STYLE.min as TurretStyle,
+    forceTurretStyle: D.FORCE_TURRET_STYLE.min as ForceTurretStyle,
     barrelSpin: D.BARREL_SPIN.min,
-    legJoints: D.LEG_JOINTS.min,
+
     beamStyle: D.BEAM_STYLE.min as BeamStyle,
     beamGlow: D.BEAM_GLOW.min,
     antialias: D.ANTIALIAS.min,
@@ -86,13 +88,14 @@ const GRAPHICS_CONFIGS: Record<
   },
   low: {
     unitShape: D.UNIT_SHAPE.low as UnitShape,
-    legs: D.LEGS.low as 'none' | 'animated',
+    legs: D.LEGS.low as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.low,
     chassisDetail: D.CHASSIS_DETAIL.low,
     paletteShading: D.PALETTE_SHADING.low,
     turretStyle: D.TURRET_STYLE.low as TurretStyle,
+    forceTurretStyle: D.FORCE_TURRET_STYLE.low as ForceTurretStyle,
     barrelSpin: D.BARREL_SPIN.low,
-    legJoints: D.LEG_JOINTS.low,
+
     beamStyle: D.BEAM_STYLE.low as BeamStyle,
     beamGlow: D.BEAM_GLOW.low,
     antialias: D.ANTIALIAS.low,
@@ -105,13 +108,14 @@ const GRAPHICS_CONFIGS: Record<
   },
   medium: {
     unitShape: D.UNIT_SHAPE.medium as UnitShape,
-    legs: D.LEGS.medium as 'none' | 'animated',
+    legs: D.LEGS.medium as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.medium,
     chassisDetail: D.CHASSIS_DETAIL.medium,
     paletteShading: D.PALETTE_SHADING.medium,
     turretStyle: D.TURRET_STYLE.medium as TurretStyle,
+    forceTurretStyle: D.FORCE_TURRET_STYLE.medium as ForceTurretStyle,
     barrelSpin: D.BARREL_SPIN.medium,
-    legJoints: D.LEG_JOINTS.medium,
+
     beamStyle: D.BEAM_STYLE.medium as BeamStyle,
     beamGlow: D.BEAM_GLOW.medium,
     antialias: D.ANTIALIAS.medium,
@@ -124,13 +128,14 @@ const GRAPHICS_CONFIGS: Record<
   },
   high: {
     unitShape: D.UNIT_SHAPE.high as UnitShape,
-    legs: D.LEGS.high as 'none' | 'animated',
+    legs: D.LEGS.high as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.high,
     chassisDetail: D.CHASSIS_DETAIL.high,
     paletteShading: D.PALETTE_SHADING.high,
     turretStyle: D.TURRET_STYLE.high as TurretStyle,
+    forceTurretStyle: D.FORCE_TURRET_STYLE.high as ForceTurretStyle,
     barrelSpin: D.BARREL_SPIN.high,
-    legJoints: D.LEG_JOINTS.high,
+
     beamStyle: D.BEAM_STYLE.high as BeamStyle,
     beamGlow: D.BEAM_GLOW.high,
     antialias: D.ANTIALIAS.high,
@@ -143,13 +148,14 @@ const GRAPHICS_CONFIGS: Record<
   },
   max: {
     unitShape: D.UNIT_SHAPE.max as UnitShape,
-    legs: D.LEGS.max as 'none' | 'animated',
+    legs: D.LEGS.max as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.max,
     chassisDetail: D.CHASSIS_DETAIL.max,
     paletteShading: D.PALETTE_SHADING.max,
     turretStyle: D.TURRET_STYLE.max as TurretStyle,
+    forceTurretStyle: D.FORCE_TURRET_STYLE.max as ForceTurretStyle,
     barrelSpin: D.BARREL_SPIN.max,
-    legJoints: D.LEG_JOINTS.max,
+
     beamStyle: D.BEAM_STYLE.max as BeamStyle,
     beamGlow: D.BEAM_GLOW.max,
     antialias: D.ANTIALIAS.max,

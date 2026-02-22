@@ -498,20 +498,23 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 'full',
   },
 
-  // Leg rendering for widow/daddy/tarantula units
+  // Leg rendering for widow/daddy/tarantula/tick units
+  // 'none': no legs drawn or updated,
+  // 'simple': straight line per leg (no IK),
+  // 'animated': full 2-segment IK legs, 'full': IK legs + joint circles (hip/knee/foot)
   LEGS: {
     min: 'none',
-    low: 'animated',
+    low: 'simple',
     medium: 'animated',
     high: 'animated',
-    max: 'animated',
+    max: 'full',
   },
 
   // Tread/wheel animations
   TREADS_ANIMATED: {
     min: false,
     low: false,
-    medium: true,
+    medium: false,
     high: true,
     max: true,
   },
@@ -530,7 +533,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   BEAM_GLOW: {
     min: false,
     low: false,
-    medium: false,
+    medium: true,
     high: true,
     max: true,
   },
@@ -569,9 +572,22 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // 'simple': single line per weapon,
   // 'full': orbital multi-barrel, cone spread, barrel base circles
   TURRET_STYLE: {
-    min: 'none',
+    min: 'simple',
     low: 'simple',
     medium: 'full',
+    high: 'full',
+    max: 'full',
+  },
+
+  // Force field turret rendering (complexSingleEmitter grate + zones)
+  // Separate from TURRET_STYLE so force turrets can be independently tuned.
+  // 'none': force field zones only (no grate geometry),
+  // 'simple': single pulsing circle + zones,
+  // 'full': animated multi-ring grate + zones
+  FORCE_TURRET_STYLE: {
+    min: 'simple',
+    low: 'simple',
+    medium: 'simple',
     high: 'full',
     max: 'full',
   },
@@ -579,16 +595,6 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // Multi-barrel turret spin animation (gatling/cone barrels orbit their mount point)
   // false = barrels frozen at angle 0, true = animated spin (idle + firing acceleration)
   BARREL_SPIN: {
-    min: false,
-    low: false,
-    medium: true,
-    high: true,
-    max: true,
-  },
-
-  // Arachnid leg joint circles (hip, knee, foot highlight circles on spider legs)
-  // false = lines only, true = joint circles drawn at attachment/knee/foot points
-  LEG_JOINTS: {
     min: false,
     low: false,
     medium: true,

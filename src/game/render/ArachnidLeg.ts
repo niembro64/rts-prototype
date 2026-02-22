@@ -104,17 +104,18 @@ export class ArachnidLeg {
   }
 
   // Initialize or update the leg based on unit position
+  // cos/sin are pre-computed Math.cos/sin(unitRotation) — shared across all legs on the same unit
   update(
     unitX: number,
     unitY: number,
     unitRotation: number,
+    cos: number,
+    sin: number,
     velocityX: number,
     velocityY: number,
     dtMs: number
   ): void {
-    // Calculate attachment point in world coordinates
-    const cos = Math.cos(unitRotation);
-    const sin = Math.sin(unitRotation);
+    // Calculate attachment point in world coordinates (using pre-computed cos/sin)
     const attachX = unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY;
     const attachY = unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY;
 
@@ -289,9 +290,8 @@ export class ArachnidLeg {
   }
 
   // Get attachment point in world coordinates — returns cached object, do not store
-  getAttachmentPoint(unitX: number, unitY: number, unitRotation: number): { x: number; y: number } {
-    const cos = Math.cos(unitRotation);
-    const sin = Math.sin(unitRotation);
+  // cos/sin are pre-computed Math.cos/sin(unitRotation) — shared across all legs on the same unit
+  getAttachmentPoint(unitX: number, unitY: number, cos: number, sin: number): { x: number; y: number } {
     this._attach.x = unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY;
     this._attach.y = unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY;
     return this._attach;

@@ -201,8 +201,11 @@ export class LocomotionManager {
           const legs = this.getOrCreateLegs(entity, 'commander');
           const velX = (entity.unit.velocityX ?? 0) * 60;
           const velY = (entity.unit.velocityY ?? 0) * 60;
+          const rot = entity.transform.rotation;
+          const cos = Math.cos(rot);
+          const sin = Math.sin(rot);
           for (const leg of legs) {
-            leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
+            leg.update(entity.transform.x, entity.transform.y, rot, cos, sin, velX, velY, dtMs);
           }
         }
         continue;
@@ -217,8 +220,11 @@ export class LocomotionManager {
         const legs = this.getOrCreateLegs(entity, legStyle);
         const velX = (entity.unit.velocityX ?? 0) * 60;
         const velY = (entity.unit.velocityY ?? 0) * 60;
+        const rot = entity.transform.rotation;
+        const cos = Math.cos(rot);
+        const sin = Math.sin(rot);
         for (const leg of legs) {
-          leg.update(entity.transform.x, entity.transform.y, entity.transform.rotation, velX, velY, dtMs);
+          leg.update(entity.transform.x, entity.transform.y, rot, cos, sin, velX, velY, dtMs);
         }
       } else if (bp.locomotion.type === 'treads') {
         const treads = this.getOrCreateTreads(entity, unitType);

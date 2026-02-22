@@ -88,8 +88,6 @@ export interface UnitRenderContext {
   entity: Entity;
   /** Whether to render inner chassis detail (armor plates, accents, center hubs) */
   chassisDetail: boolean;
-  /** Whether to render arachnid leg joint circles (hip/knee/foot) */
-  legJoints: boolean;
 }
 
 // Context passed to building renderers

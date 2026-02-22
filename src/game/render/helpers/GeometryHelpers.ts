@@ -344,9 +344,17 @@ export function drawGear(
   graphics.strokeCircle(x, y, innerRadius);
 }
 
+// Pre-allocated position buffers for batched leg rendering (max 8 legs per unit)
+const _legAttach: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+const _legKnee: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+const _legFoot: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+
 /**
  * Draw arachnid-style legs using a named style from LEG_STYLE_CONFIG.
  * Shared by BeamRenderer, ArachnidRenderer, ForceFieldRenderer, SnipeRenderer.
+ *
+ * Optimized: pre-computes cos/sin once per unit, batches draw calls by type
+ * to minimize style changes (3 instead of 24 per unit).
  */
 export function drawLegs(
   graphics: Phaser.GameObjects.Graphics,
@@ -355,32 +363,71 @@ export function drawLegs(
   x: number,
   y: number,
   bodyRot: number,
-  legJoints: boolean,
   dark: number,
   light: number,
 ): void {
   const lc = LEG_STYLE_CONFIG[style];
-  const halfLegs = legs.length / 2;
+  const legMode = getGraphicsConfig().legs;
+  const count = legs.length;
 
-  for (let i = 0; i < legs.length; i++) {
+  // Pre-compute cos/sin once for all legs on this unit
+  const cos = Math.cos(bodyRot);
+  const sin = Math.sin(bodyRot);
+
+  if (legMode === 'simple') {
+    // Simple mode: single straight line per leg (no IK solve)
+    // Phase 1: compute all positions
+    for (let i = 0; i < count; i++) {
+      const leg = legs[i];
+      const attach = leg.getAttachmentPoint(x, y, cos, sin);
+      _legAttach[i].x = attach.x; _legAttach[i].y = attach.y;
+      const foot = leg.getFootPosition();
+      _legFoot[i].x = foot.x; _legFoot[i].y = foot.y;
+    }
+    // Phase 2: single style, draw all lines
+    const thickness = Math.max(lc.upperThickness, lc.lowerThickness);
+    graphics.lineStyle(thickness, dark, 1);
+    for (let i = 0; i < count; i++) {
+      graphics.lineBetween(_legAttach[i].x, _legAttach[i].y, _legFoot[i].x, _legFoot[i].y);
+    }
+    return;
+  }
+
+  // Animated / full mode: 2-segment IK legs (+ joint circles at 'full')
+  const halfLegs = count / 2;
+  const showJoints = legMode === 'full';
+
+  // Phase 1: compute all positions (attach, knee, foot) for every leg
+  for (let i = 0; i < count; i++) {
     const leg = legs[i];
-    const side = i < halfLegs ? -1 : 1;
-
-    const attach = leg.getAttachmentPoint(x, y, bodyRot);
+    const attach = leg.getAttachmentPoint(x, y, cos, sin);
+    _legAttach[i].x = attach.x; _legAttach[i].y = attach.y;
     const foot = leg.getFootPosition();
+    _legFoot[i].x = foot.x; _legFoot[i].y = foot.y;
+    const side = i < halfLegs ? -1 : 1;
     const knee = leg.getKneePosition(attach.x, attach.y, side);
+    _legKnee[i].x = knee.x; _legKnee[i].y = knee.y;
+  }
 
-    graphics.lineStyle(lc.upperThickness, dark, 1);
-    graphics.lineBetween(attach.x, attach.y, knee.x, knee.y);
+  // Phase 2: draw all upper segments (1 lineStyle call)
+  graphics.lineStyle(lc.upperThickness, dark, 1);
+  for (let i = 0; i < count; i++) {
+    graphics.lineBetween(_legAttach[i].x, _legAttach[i].y, _legKnee[i].x, _legKnee[i].y);
+  }
 
-    graphics.lineStyle(lc.lowerThickness, dark, 1);
-    graphics.lineBetween(knee.x, knee.y, foot.x, foot.y);
+  // Phase 3: draw all lower segments (1 lineStyle call)
+  graphics.lineStyle(lc.lowerThickness, dark, 1);
+  for (let i = 0; i < count; i++) {
+    graphics.lineBetween(_legKnee[i].x, _legKnee[i].y, _legFoot[i].x, _legFoot[i].y);
+  }
 
-    if (legJoints) {
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(attach.x, attach.y, lc.hipRadius);
-      graphics.fillCircle(knee.x, knee.y, lc.kneeRadius);
-      graphics.fillCircle(foot.x, foot.y, lc.footRadius);
+  // Phase 4: draw all joint circles (1 fillStyle call)
+  if (showJoints) {
+    graphics.fillStyle(light, 1);
+    for (let i = 0; i < count; i++) {
+      graphics.fillCircle(_legAttach[i].x, _legAttach[i].y, lc.hipRadius);
+      graphics.fillCircle(_legKnee[i].x, _legKnee[i].y, lc.kneeRadius);
+      graphics.fillCircle(_legFoot[i].x, _legFoot[i].y, lc.footRadius);
     }
   }
 }

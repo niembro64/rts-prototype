@@ -19,7 +19,7 @@ export function drawArachnidUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
-  drawLegs(graphics, legs, 'widow', x, y, bodyRot, ctx.legJoints, dark, light);
+  drawLegs(graphics, legs, 'widow', x, y, bodyRot, dark, light);
 
   // Abdomen / "butt" region - large chonky rear section
   const abdomenOffset = -r * 0.9; // Behind the main body

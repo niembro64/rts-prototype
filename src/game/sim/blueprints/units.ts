@@ -200,7 +200,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'WDW',
     hp: 700,
     moveSpeed: 70,
-    collisionRadius: 35,
+    collisionRadius: 30,
     collisionRadiusMultiplier: 1.0,
     mass: 200,
     baseCost: 3000,

@@ -21,7 +21,7 @@ export function drawSnipeUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
-  drawLegs(graphics, legs, 'tick', x, y, bodyRot, ctx.legJoints, dark, light);
+  drawLegs(graphics, legs, 'tick', x, y, bodyRot, dark, light);
 
   // Abdomen (idiosoma) — huge engorged body behind the tiny leg piece
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;

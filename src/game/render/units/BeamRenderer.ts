@@ -19,7 +19,7 @@ export function drawBeamUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
-  drawLegs(graphics, legs, 'tarantula', x, y, bodyRot, ctx.legJoints, dark, light);
+  drawLegs(graphics, legs, 'tarantula', x, y, bodyRot, dark, light);
 
   // Pedipalps — two small front-facing feeler legs
   {

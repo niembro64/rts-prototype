@@ -18,7 +18,7 @@ export function drawForceFieldUnit(
   const sin = Math.sin(bodyRot);
 
   // Legs (always drawn at low+high)
-  drawLegs(graphics, legs, 'daddy', x, y, bodyRot, ctx.legJoints, dark, light);
+  drawLegs(graphics, legs, 'daddy', x, y, bodyRot, dark, light);
 
   // Body (compact oval shape)
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
