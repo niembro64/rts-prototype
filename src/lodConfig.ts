@@ -20,21 +20,9 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 'full',
   },
   // Whether to draw the push-radius circle in 'circles' mode
-  CIRCLES_DRAW_PUSH: {
-    min: true,
-    low: true,
-    medium: true,
-    high: true,
-    max: true,
-  },
+  CIRCLES_DRAW_PUSH: true,
   // Whether to draw the shot-radius circle in 'circles' mode
-  CIRCLES_DRAW_SHOT: {
-    min: true,
-    low: true,
-    medium: true,
-    high: true,
-    max: true,
-  },
+  CIRCLES_DRAW_SHOT: true,
 
   // Leg rendering for widow/daddy/tarantula/tick units
   // 'none': no legs drawn or updated,

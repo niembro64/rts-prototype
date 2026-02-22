@@ -12,6 +12,7 @@ import { magnitude } from '../math';
 import { FIRE_EXPLOSION } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { TurretConfig, SpinConfig } from '../../config';
+import { PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL as LOD } from '../../lodConfig';
 
 // Import from helper modules
 import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, ProjectileTrail } from './types';
@@ -447,15 +448,17 @@ export class EntityRenderer {
 
     // 'circles': concentric filled circles — push radius (dark) behind shot radius (light)
     if (gfx.unitShape === 'circles') {
+      const drawPush = LOD.CIRCLES_DRAW_PUSH;
+      const drawShot = LOD.CIRCLES_DRAW_SHOT;
       const pushRadius = unit.radiusColliderUnitUnit;
       const shotRadius = unit.radiusColliderUnitShot;
-      const outerRadius = gfx.circlesDrawPush ? pushRadius : shotRadius;
-      if (gfx.circlesDrawPush) {
+      const outerRadius = drawPush ? pushRadius : shotRadius;
+      if (drawPush) {
         this.graphics.fillStyle(fullPalette.dark, 1);
         this.graphics.fillCircle(x, y, pushRadius);
       }
-      if (gfx.circlesDrawShot) {
-        this.graphics.fillStyle(fullPalette.light, 1);
+      if (drawShot) {
+        this.graphics.fillStyle(fullPalette.base, 1);
         this.graphics.fillCircle(x, y, shotRadius);
       }
       if (isSelected) {
