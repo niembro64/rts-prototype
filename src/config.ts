@@ -473,11 +473,14 @@ export const CAMERA_PAN_MULTIPLIER = 6.0;
 
 const ARROW_COLOR = 0xffffff;
 const ARROW_ALPHA = 0.2;
+const ARROW_SIZE_MULT = 20;
+
+const OVAL_ALPHA = 0.0;
 
 /** Edge scroll configuration */
 export const EDGE_SCROLL = {
   // --- Behavior ---
-  borderRatio: 0.7, // fraction of viewport from each edge that triggers scrolling
+  borderRatio: 0.2, // fraction of viewport from each edge that triggers scrolling
   speed: 3000, // world units/sec at zoom 1.0 (scales inversely with zoom)
   intensityCurve: 1, // exponent on intensity (1 = linear, 2 = quadratic, 0.5 = sqrt)
   topBarHeight: 50, // fixed top bar exclusion (px)
@@ -485,7 +488,7 @@ export const EDGE_SCROLL = {
 
   // --- Oval (inner ellipse safe zone) ---
   ovalFillColor: 0x000000,
-  ovalFillAlpha: ARROW_ALPHA,
+  ovalFillAlpha: OVAL_ALPHA,
   ovalStrokeColor: 0x00ff00,
   ovalStrokeAlpha: 0,
   ovalStrokeWidth: 5,
@@ -503,7 +506,7 @@ export const EDGE_SCROLL = {
   // --- Arrow shaft ---
   shaftColor: ARROW_COLOR,
   shaftAlpha: ARROW_ALPHA,
-  shaftWidth: 50, // line width (screen px)
+  shaftWidth: 1 * ARROW_SIZE_MULT, // line width (screen px)
 
   // --- Arrow head ---
   headFillColor: ARROW_COLOR,
@@ -511,8 +514,8 @@ export const EDGE_SCROLL = {
   headStrokeColor: ARROW_COLOR,
   headStrokeAlpha: 0.0,
   headStrokeWidth: 1, // head outline width (screen px)
-  headLength: 100, // arrowhead length (screen px)
-  headWidth: 50, // arrowhead half-width (screen px)
+  headLength: 1.5 * ARROW_SIZE_MULT, // arrowhead length (screen px)
+  headWidth: 1.2 * ARROW_SIZE_MULT, // arrowhead half-width (screen px)
 
   // --- Arrow outline (drawn behind shaft+head for contrast) ---
   outlineColor: 0x000000,

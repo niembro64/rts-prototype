@@ -248,8 +248,8 @@ export class CameraController {
           }
         }
 
-        // Apply scrolling (skip if in another drag state)
-        if (intensity > 0 && !this.state.isPanningCamera && !this.state.isDraggingSelection && !this.state.isDrawingLinePath) {
+        // Apply scrolling (skip if in another drag/click state)
+        if (intensity > 0 && !this.state.isPanningCamera && !this.state.isDraggingSelection && !this.state.isDrawingLinePath && !pointer.rightButtonDown()) {
           const relX = px - vpCenterX;
           const relY = py - vpCenterY;
           const dirLen = Math.sqrt(relX * relX + relY * relY);
