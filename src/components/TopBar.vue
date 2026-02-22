@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { fmt4, fmtSigned } from './uiUtils';
 
 export interface EconomyInfo {
   stockpile: number;
@@ -38,11 +39,6 @@ const netFlowColor = computed(() => {
   return '#888888';
 });
 
-const netFlowSign = computed(() => {
-  if (props.economy.netFlow > 0) return '+';
-  return '';
-});
-
 const unitCapColor = computed(() => {
   const pct = (props.economy.unitCount / props.economy.unitCap) * 100;
   if (pct >= 100) return '#ff4444';
@@ -66,7 +62,7 @@ const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unit
       <div class="stat-label">Energy</div>
       <div class="stat-value">
         <span class="energy-icon">⚡</span>
-        <span :style="{ color: stockpileColor }">{{ Math.floor(economy.stockpile) }}</span>
+        <span :style="{ color: stockpileColor }">{{ fmt4(Math.floor(economy.stockpile)) }}</span>
         <span class="max-value">/ {{ economy.maxStockpile }}</span>
       </div>
       <div class="stockpile-bar">
@@ -81,10 +77,10 @@ const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unit
     <div class="economy-section">
       <div class="stat-label">Income</div>
       <div class="stat-value income">
-        <span class="positive">+{{ economy.income.toFixed(1) }}/s</span>
+        <span class="positive">{{ fmtSigned(economy.income) }}/s</span>
       </div>
       <div class="stat-detail">
-        Base: {{ economy.baseIncome }} | Solar: +{{ economy.production.toFixed(1) }}
+        Base: {{ fmtSigned(economy.baseIncome) }} | Solar: {{ fmtSigned(economy.production) }}
       </div>
     </div>
 
@@ -93,7 +89,7 @@ const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unit
       <div class="stat-label">Spending</div>
       <div class="stat-value expenditure">
         <span :class="economy.expenditure > 0 ? 'negative' : 'neutral'">
-          -{{ economy.expenditure.toFixed(1) }}/s
+          {{ fmtSigned(-economy.expenditure) }}/s
         </span>
       </div>
     </div>
@@ -102,7 +98,7 @@ const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unit
     <div class="economy-section">
       <div class="stat-label">Net</div>
       <div class="stat-value net-flow" :style="{ color: netFlowColor }">
-        {{ netFlowSign }}{{ economy.netFlow.toFixed(1) }}/s
+        {{ fmtSigned(economy.netFlow) }}/s
       </div>
     </div>
 

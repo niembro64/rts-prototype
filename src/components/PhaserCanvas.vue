@@ -1260,15 +1260,15 @@ onUnmounted(() => {
           <div class="button-group">
             <button
               v-for="opt in CONTROL_BARS.battle.cap.options"
-              :key="opt.value"
+              :key="opt"
               class="control-btn"
               :class="{
-                active: serverMetaFromSnapshot?.maxTotalUnits === opt.value,
+                active: serverMetaFromSnapshot?.maxTotalUnits === opt,
               }"
-              :title="`Max ${opt.value} total units in demo battle`"
-              @click="changeMaxTotalUnits(opt.value)"
+              :title="`Max ${opt} total units`"
+              @click="changeMaxTotalUnits(opt)"
             >
-              {{ opt.label }}
+              {{ opt.toExponential(0).toUpperCase() }}
             </button>
           </div>
         </div>

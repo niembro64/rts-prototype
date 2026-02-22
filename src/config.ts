@@ -410,7 +410,7 @@ export interface MapSize {
 }
 
 export const MAP_SETTINGS: Record<string, MapSize> = {
-  game: { width: 2_000, height: 2_000 },
+  game: { width: 3_000, height: 3_000 },
   demo: { width: 1_600, height: 7_00 },
 };
 

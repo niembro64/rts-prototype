@@ -18,6 +18,12 @@ export function fmt4(n: number): string {
   return n.toFixed(0);
 }
 
+/** Format with sign prefix (+/-) and magnitude-based precision. Uses '+' for zero. */
+export function fmtSigned(n: number): string {
+  const sign = n < 0 ? '-' : '+';
+  return sign + fmt4(Math.abs(n));
+}
+
 /**
  * Generate a width + background-color style for a stat bar.
  * Green at target, yellow at half, red at zero, blue above target.

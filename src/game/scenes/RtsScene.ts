@@ -402,10 +402,12 @@ export class RtsScene extends Phaser.Scene {
     if (!this.onEconomyChange) return;
 
     const entitySource = this.getCurrentEntitySource();
+    const serverMeta = this.clientViewState.getServerMeta();
+    const maxTotal = serverMeta?.maxTotalUnits ?? 120;
     const economyInfo = buildEconomyInfo(
       entitySource,
       this.localPlayerId,
-      Math.floor(120 / this.playerIds.length) // unit cap per player
+      Math.floor(maxTotal / this.playerIds.length)
     );
 
     if (economyInfo) {
