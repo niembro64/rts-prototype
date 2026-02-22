@@ -197,6 +197,7 @@ const RANGE_TOGGLES_STORAGE_KEY = 'rts-range-toggles';
 const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'rts-proj-range-toggles';
 const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
 const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
+const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
 
 export type RangeType =
   | 'trackAcquire'
@@ -255,6 +256,7 @@ const currentSoundToggles: Record<SoundCategory, boolean> = {
   music: false,
 };
 let currentEdgeScrollEnabled: boolean = false;
+let currentDragPanEnabled: boolean = true;
 let currentBottomBarsHeight: number = 0;
 let currentZoom: number = 1.0; // Updated by renderer
 
@@ -346,6 +348,10 @@ function loadFromStorage(): void {
     const storedEdgeScroll = localStorage.getItem(EDGE_SCROLL_STORAGE_KEY);
     if (storedEdgeScroll !== null) {
       currentEdgeScrollEnabled = storedEdgeScroll === 'true';
+    }
+    const storedDragPan = localStorage.getItem(DRAG_PAN_STORAGE_KEY);
+    if (storedDragPan !== null) {
+      currentDragPanEnabled = storedDragPan === 'true';
     }
   } catch {
     // localStorage not available, use default
@@ -618,6 +624,25 @@ export function setEdgeScrollEnabled(enabled: boolean): void {
   currentEdgeScrollEnabled = enabled;
   try {
     localStorage.setItem(EDGE_SCROLL_STORAGE_KEY, String(enabled));
+  } catch {
+    // localStorage not available
+  }
+}
+
+/**
+ * Get whether drag pan (middle-click) is enabled
+ */
+export function getDragPanEnabled(): boolean {
+  return currentDragPanEnabled;
+}
+
+/**
+ * Set whether drag pan (middle-click) is enabled (persists to localStorage)
+ */
+export function setDragPanEnabled(enabled: boolean): void {
+  currentDragPanEnabled = enabled;
+  try {
+    localStorage.setItem(DRAG_PAN_STORAGE_KEY, String(enabled));
   } catch {
     // localStorage not available
   }

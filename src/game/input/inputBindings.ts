@@ -6,6 +6,7 @@ import { BuildingPlacementController } from './BuildingPlacementController';
 import { CameraController } from './CameraController';
 import { CommandController } from './CommandController';
 import { type InputState, createInitialInputState } from './InputState';
+import { getDragPanEnabled } from '../render/graphicsSettings';
 
 /**
  * InputEntitySource - Interface for entity queries used by InputManager
@@ -213,7 +214,7 @@ export class InputManager {
 
         // Start selection drag
         this.selectionController.startDrag(worldPoint.x, worldPoint.y);
-      } else if (p.middleButtonDown()) {
+      } else if (p.middleButtonDown() && getDragPanEnabled()) {
         // Start camera pan
         this.cameraController.startPan(p.x, p.y);
       } else if (p.rightButtonDown()) {

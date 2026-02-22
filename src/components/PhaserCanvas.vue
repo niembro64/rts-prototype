@@ -84,6 +84,8 @@ import {
   UNIT_RADIUS_TYPES,
   getEdgeScrollEnabled,
   setEdgeScrollEnabled,
+  getDragPanEnabled,
+  setDragPanEnabled,
   setBottomBarsHeight,
   getAudioScope,
   setAudioScope,
@@ -151,6 +153,7 @@ const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const driftMode = ref<DriftMode>(getDriftMode());
 const edgeScrollEnabled = ref(getEdgeScrollEnabled());
+const dragPanEnabled = ref(getDragPanEnabled());
 const soundToggles = reactive<Record<SoundCategory, boolean>>({
   fire: getSoundToggle('fire'),
   hit: getSoundToggle('hit'),
@@ -579,6 +582,7 @@ function resetClientDefaults(): void {
   setDriftMode('slow');
   driftMode.value = 'slow';
   if (edgeScrollEnabled.value) toggleEdgeScroll();
+  if (!dragPanEnabled.value) toggleDragPan();
   for (const rt of RANGE_TYPES) {
     if (rangeToggles[rt]) toggleRange(rt);
   }
@@ -805,6 +809,20 @@ function toggleEdgeScroll(): void {
   const newValue = !edgeScrollEnabled.value;
   setEdgeScrollEnabled(newValue);
   edgeScrollEnabled.value = newValue;
+}
+
+function toggleDragPan(): void {
+  const newValue = !dragPanEnabled.value;
+  setDragPanEnabled(newValue);
+  dragPanEnabled.value = newValue;
+}
+
+const allPanActive = computed(() => edgeScrollEnabled.value && dragPanEnabled.value);
+
+function toggleAllPan(): void {
+  const enable = !allPanActive.value;
+  if (edgeScrollEnabled.value !== enable) toggleEdgeScroll();
+  if (dragPanEnabled.value !== enable) toggleDragPan();
 }
 
 const SFX_CATEGORIES = SOUND_CATEGORIES.filter((c) => c !== 'music');
@@ -1638,15 +1656,33 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <BarDivider />
-          <span class="control-label">EDGE:</span>
+          <span class="control-label">PAN:</span>
           <button
             class="control-btn"
-            :class="{ active: edgeScrollEnabled }"
-            title="Edge scroll — move camera when mouse near viewport border"
-            @click="toggleEdgeScroll"
+            :class="{ active: allPanActive }"
+            title="Toggle all camera pan methods on/off"
+            @click="toggleAllPan"
           >
-            PAN
+            ALL
           </button>
+          <div class="button-group">
+            <button
+              class="control-btn"
+              :class="{ active: dragPanEnabled }"
+              title="Middle-click drag to pan camera"
+              @click="toggleDragPan"
+            >
+              DRAG
+            </button>
+            <button
+              class="control-btn"
+              :class="{ active: edgeScrollEnabled }"
+              title="Edge scroll — move camera when mouse near viewport border"
+              @click="toggleEdgeScroll"
+            >
+              EDGE
+            </button>
+          </div>
         </div>
         <div class="control-group">
           <BarDivider />
