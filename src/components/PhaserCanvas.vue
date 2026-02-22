@@ -1060,6 +1060,14 @@ function setTickRateValue(rate: TickRate): void {
   saveTickRate(rate);
 }
 
+function secPerFullsnap(ratio: number): string {
+  const sps = displaySnapshotRate.value === 'none'
+    ? displayTickRate.value
+    : displaySnapshotRate.value;
+  const sec = 1 / (sps * ratio);
+  return `~1 fullsnap every ${+(sec).toPrecision(2)}s`;
+}
+
 function setKeyframeRatioValue(ratio: KeyframeRatio): void {
   activeConnection?.sendCommand({ type: 'setKeyframeRatio', tick: 0, ratio });
   saveKeyframeRatio(ratio);
@@ -1421,7 +1429,7 @@ onUnmounted(() => {
                   ? 'Every snapshot is a full keyframe'
                   : opt === 'NONE'
                     ? 'Never send full keyframes (delta only)'
-                    : `Full keyframe probability: ${opt}`
+                    : secPerFullsnap(opt as number)
               "
               @click="setKeyframeRatioValue(opt)"
             >
