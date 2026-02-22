@@ -1246,7 +1246,7 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div class="bar-divider"></div>
-          <span class="control-label">FF ACCEL:</span>
+          <span class="control-label">FF ACC:</span>
           <button
             class="control-btn"
             :class="{ active: (serverMetaFromSnapshot?.ffAccelUnits ?? true) && (serverMetaFromSnapshot?.ffAccelShots ?? true) }"
