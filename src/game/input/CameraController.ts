@@ -186,34 +186,50 @@ export class CameraController {
     if (arrowIntensity > 0) {
       const { arrow } = EDGE_SCROLL;
       const length = arrowIntensity * arrow.maxLength;
-      if (length >= arrow.headLength) {
+      if (length >= arrow.head.length) {
         const perpX = -arrowDirY;
         const perpY = arrowDirX;
 
+        const startSX = halfW + arrowDirX * arrow.gap;
+        const startSY = halfH + arrowDirY * arrow.gap;
         const tipSX = halfW + arrowDirX * length;
         const tipSY = halfH + arrowDirY * length;
-        const baseSX = tipSX - arrowDirX * arrow.headLength;
-        const baseSY = tipSY - arrowDirY * arrow.headLength;
+        const baseSX = tipSX - arrowDirX * arrow.head.length;
+        const baseSY = tipSY - arrowDirY * arrow.head.length;
+        const headLX = baseSX + perpX * arrow.head.width;
+        const headLY = baseSY + perpY * arrow.head.width;
+        const headRX = baseSX - perpX * arrow.head.width;
+        const headRY = baseSY - perpY * arrow.head.width;
+
+        // Outline pass (thicker, behind)
+        const { outline } = arrow;
+        this.edgeOverlay.lineStyle((arrow.shaft.width + outline.width * 2) / zoom, outline.color, outline.alpha);
+        this.edgeOverlay.beginPath();
+        this.edgeOverlay.moveTo(gx(startSX), gy(startSY));
+        this.edgeOverlay.lineTo(gx(baseSX), gy(baseSY));
+        this.edgeOverlay.strokePath();
+
+        this.edgeOverlay.lineStyle((arrow.shaft.width + outline.width * 2) / zoom, outline.color, outline.alpha);
+        this.edgeOverlay.beginPath();
+        this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
+        this.edgeOverlay.lineTo(gx(headLX), gy(headLY));
+        this.edgeOverlay.lineTo(gx(headRX), gy(headRY));
+        this.edgeOverlay.closePath();
+        this.edgeOverlay.strokePath();
 
         // Shaft line
-        this.edgeOverlay.lineStyle(arrow.width / zoom, arrow.color, arrow.alpha);
+        this.edgeOverlay.lineStyle(arrow.shaft.width / zoom, arrow.shaft.color, arrow.shaft.alpha);
         this.edgeOverlay.beginPath();
-        this.edgeOverlay.moveTo(gx(halfW + arrowDirX * arrow.gap), gy(halfH + arrowDirY * arrow.gap));
+        this.edgeOverlay.moveTo(gx(startSX), gy(startSY));
         this.edgeOverlay.lineTo(gx(baseSX), gy(baseSY));
         this.edgeOverlay.strokePath();
 
         // Arrowhead (filled triangle)
-        this.edgeOverlay.fillStyle(arrow.color, arrow.alpha);
+        this.edgeOverlay.fillStyle(arrow.head.color, arrow.head.alpha);
         this.edgeOverlay.beginPath();
         this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
-        this.edgeOverlay.lineTo(
-          gx(baseSX + perpX * arrow.headWidth),
-          gy(baseSY + perpY * arrow.headWidth),
-        );
-        this.edgeOverlay.lineTo(
-          gx(baseSX - perpX * arrow.headWidth),
-          gy(baseSY - perpY * arrow.headWidth),
-        );
+        this.edgeOverlay.lineTo(gx(headLX), gy(headLY));
+        this.edgeOverlay.lineTo(gx(headRX), gy(headRY));
         this.edgeOverlay.closePath();
         this.edgeOverlay.fillPath();
       }

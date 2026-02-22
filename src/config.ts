@@ -489,14 +489,25 @@ export const EDGE_SCROLL = {
   },
   /** Pan direction arrow drawn at screen center */
   arrow: {
-    color: 0xffffff,
-    alpha: 0.5,
-    maxLength: 80,     // max arrow length (screen px)
-    width: 2,          // shaft line width (screen px)
-    headLength: 12,    // arrowhead length (screen px)
-    headWidth: 6,      // arrowhead half-width (screen px)
-    gap: 6,            // gap from screen center before shaft starts (screen px)
+    maxLength: 300,     // max arrow length (screen px)
+    gap: 0,            // gap from screen center before shaft starts (screen px)
     dragMaxDist: 100,  // mouse displacement (px) for full intensity during drag pan
+    shaft: {
+      color: 0xffffff,
+      alpha: 0.5,
+      width: 50,        // line width (screen px)
+    },
+    head: {
+      color: 0xffffff,
+      alpha: 0.5,
+      length: 100,      // arrowhead length (screen px)
+      width: 50,        // arrowhead half-width (screen px)
+    },
+    outline: {
+      color: 0x000000,
+      alpha: 0.0,
+      width: 1,        // extra width added around shaft/head (screen px)
+    },
   },
 };
 
