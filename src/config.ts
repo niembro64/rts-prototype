@@ -473,42 +473,48 @@ export const CAMERA_PAN_MULTIPLIER = 6.0;
 
 /** Edge scroll configuration */
 export const EDGE_SCROLL = {
-  /** Fraction of effective viewport from each edge that triggers scrolling (0.15 = 15%) */
-  borderRatio: 0.15,
-  /** World units/sec at zoom 1.0 (scales inversely with zoom) */
-  speed: 800,
-  /** Fixed top bar height in pixels (excluded from effective viewport) */
-  topBarHeight: 50,
-  /** Overlay appearance */
-  overlay: {
-    fillColor: 0x000000,   // Border zone fill color
-    fillAlpha: 0.8,        // Border zone fill opacity
-    strokeColor: 0x000000, // Inner border line color
-    strokeAlpha: 0.3,      // Inner border line opacity
-    strokeWidth: 1,        // Inner border line width (px)
-  },
-  /** Pan direction arrow drawn at screen center */
-  arrow: {
-    maxLength: 300,     // max arrow length (screen px)
-    gap: 0,            // gap from screen center before shaft starts (screen px)
-    dragMaxDist: 100,  // mouse displacement (px) for full intensity during drag pan
-    shaft: {
-      color: 0xffffff,
-      alpha: 0.5,
-      width: 50,        // line width (screen px)
-    },
-    head: {
-      color: 0xffffff,
-      alpha: 0.5,
-      length: 100,      // arrowhead length (screen px)
-      width: 50,        // arrowhead half-width (screen px)
-    },
-    outline: {
-      color: 0x000000,
-      alpha: 0.0,
-      width: 1,        // extra width added around shaft/head (screen px)
-    },
-  },
+  // --- Behavior ---
+  borderRatio: 0.15,          // fraction of viewport from each edge that triggers scrolling
+  speed: 800,                 // world units/sec at zoom 1.0 (scales inversely with zoom)
+  intensityCurve: 1,          // exponent on intensity (1 = linear, 2 = quadratic, 0.5 = sqrt)
+  topBarHeight: 50,           // fixed top bar exclusion (px)
+  depth: 999,                 // z-depth of the overlay graphics layer
+
+  // --- Oval (inner ellipse safe zone) ---
+  ovalFillColor: 0x000000,
+  ovalFillAlpha: 0.0,
+  ovalStrokeColor: 0x00ff00,
+  ovalStrokeAlpha: 0.0,
+  ovalStrokeWidth: 1,
+  ovalSegments: 10,           // number of segments to approximate the ellipse
+
+  // --- Ring (region outside the oval, between ellipse and viewport rect) ---
+  ringFillColor: 0xff0000,
+  ringFillAlpha: 0.5,
+
+  // --- Arrow general ---
+  arrowMaxLength: 300,        // max arrow length (screen px)
+  arrowGap: 0,                // gap from screen center before shaft starts (screen px)
+  arrowDragMaxDist: 100,      // mouse displacement (px) for full intensity during drag pan
+
+  // --- Arrow shaft ---
+  shaftColor: 0xffffff,
+  shaftAlpha: 0.5,
+  shaftWidth: 50,             // line width (screen px)
+
+  // --- Arrow head ---
+  headFillColor: 0xffffff,
+  headFillAlpha: 0.5,
+  headStrokeColor: 0xffffff,
+  headStrokeAlpha: 0.0,
+  headStrokeWidth: 1,         // head outline width (screen px)
+  headLength: 100,            // arrowhead length (screen px)
+  headWidth: 50,              // arrowhead half-width (screen px)
+
+  // --- Arrow outline (drawn behind shaft+head for contrast) ---
+  outlineColor: 0x000000,
+  outlineAlpha: 0.0,
+  outlineWidth: 1,            // extra width added around shaft/head (screen px)
 };
 
 /**
