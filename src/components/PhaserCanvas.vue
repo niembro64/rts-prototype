@@ -1246,7 +1246,7 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <div v-if="displayServerIp" class="bar-divider"></div>
-          <span class="control-label">MAX TICKS/S:</span>
+          <span class="control-label">MAX TPS:</span>
           <div class="button-group">
             <button
               v-for="rate in CONTROL_BARS.server.tickRate.options"

@@ -445,21 +445,29 @@ export class EntityRenderer {
       ? fullPalette
       : { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base };
 
-    // 'dot': colored circle only — skip body shape rendering
-    if (gfx.unitShape === 'dot') {
-      const dotRadius = unit.radiusColliderUnitUnit;
-      this.graphics.fillStyle(palette.base, 1);
-      this.graphics.fillCircle(x, y, dotRadius);
+    // 'circles': concentric filled circles — push radius (dark) behind shot radius (light)
+    if (gfx.unitShape === 'circles') {
+      const pushRadius = unit.radiusColliderUnitUnit;
+      const shotRadius = unit.radiusColliderUnitShot;
+      const outerRadius = gfx.circlesDrawPush ? pushRadius : shotRadius;
+      if (gfx.circlesDrawPush) {
+        this.graphics.fillStyle(fullPalette.dark, 1);
+        this.graphics.fillCircle(x, y, pushRadius);
+      }
+      if (gfx.circlesDrawShot) {
+        this.graphics.fillStyle(fullPalette.light, 1);
+        this.graphics.fillCircle(x, y, shotRadius);
+      }
       if (isSelected) {
         this.graphics.lineStyle(3, COLORS.UNIT_SELECTED, 1);
-        this.graphics.strokeCircle(x, y, dotRadius + 5);
+        this.graphics.strokeCircle(x, y, outerRadius + 5);
       }
       if (entity.commander) {
-        renderCommanderCrown(this.graphics, x, y, dotRadius);
+        renderCommanderCrown(this.graphics, x, y, outerRadius);
       }
       const healthPercent = hp / maxHp;
       if (healthPercent < 1) {
-        renderHealthBar(this.graphics, x, y - dotRadius - 10, dotRadius * 2, 4, healthPercent);
+        renderHealthBar(this.graphics, x, y - outerRadius - 10, outerRadius * 2, 4, healthPercent);
       }
       return;
     }

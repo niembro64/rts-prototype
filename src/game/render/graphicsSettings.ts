@@ -6,8 +6,8 @@
  * All detail level definitions are centralized in config.ts GRAPHICS_DETAIL_DEFINITIONS.
  */
 
+import { PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL } from '@/lodConfig';
 import {
-  PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
   ZOOM_MIN,
   ZOOM_MAX,
 } from '../../config';
@@ -38,10 +38,12 @@ export type DeathExplosionStyle =
   | 'obliterate';
 export type TurretStyle = 'none' | 'simple' | 'full';
 export type ForceTurretStyle = 'none' | 'simple' | 'full';
-export type UnitShape = 'dot' | 'full';
+export type UnitShape = 'circles' | 'full';
 
 export interface GraphicsConfig {
   unitShape: UnitShape;
+  circlesDrawPush: boolean;
+  circlesDrawShot: boolean;
   legs: 'none' | 'simple' | 'animated' | 'full';
   treadsAnimated: boolean;
   chassisDetail: boolean;
@@ -68,6 +70,8 @@ const GRAPHICS_CONFIGS: Record<
 > = {
   min: {
     unitShape: D.UNIT_SHAPE.min as UnitShape,
+    circlesDrawPush: D.CIRCLES_DRAW_PUSH.min,
+    circlesDrawShot: D.CIRCLES_DRAW_SHOT.min,
     legs: D.LEGS.min as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.min,
     chassisDetail: D.CHASSIS_DETAIL.min,
@@ -88,6 +92,8 @@ const GRAPHICS_CONFIGS: Record<
   },
   low: {
     unitShape: D.UNIT_SHAPE.low as UnitShape,
+    circlesDrawPush: D.CIRCLES_DRAW_PUSH.low,
+    circlesDrawShot: D.CIRCLES_DRAW_SHOT.low,
     legs: D.LEGS.low as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.low,
     chassisDetail: D.CHASSIS_DETAIL.low,
@@ -108,6 +114,8 @@ const GRAPHICS_CONFIGS: Record<
   },
   medium: {
     unitShape: D.UNIT_SHAPE.medium as UnitShape,
+    circlesDrawPush: D.CIRCLES_DRAW_PUSH.medium,
+    circlesDrawShot: D.CIRCLES_DRAW_SHOT.medium,
     legs: D.LEGS.medium as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.medium,
     chassisDetail: D.CHASSIS_DETAIL.medium,
@@ -128,6 +136,8 @@ const GRAPHICS_CONFIGS: Record<
   },
   high: {
     unitShape: D.UNIT_SHAPE.high as UnitShape,
+    circlesDrawPush: D.CIRCLES_DRAW_PUSH.high,
+    circlesDrawShot: D.CIRCLES_DRAW_SHOT.high,
     legs: D.LEGS.high as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.high,
     chassisDetail: D.CHASSIS_DETAIL.high,
@@ -148,6 +158,8 @@ const GRAPHICS_CONFIGS: Record<
   },
   max: {
     unitShape: D.UNIT_SHAPE.max as UnitShape,
+    circlesDrawPush: D.CIRCLES_DRAW_PUSH.max,
+    circlesDrawShot: D.CIRCLES_DRAW_SHOT.max,
     legs: D.LEGS.max as 'none' | 'simple' | 'animated' | 'full',
     treadsAnimated: D.TREADS_ANIMATED.max,
     chassisDetail: D.CHASSIS_DETAIL.max,

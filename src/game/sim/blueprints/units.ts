@@ -88,7 +88,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 200,
     unitDrawScale: 13,
     unitRadiusColliderShot: 13 * 0.6,
-    unitRadiusColliderPush: 13 * 4.5,
+    unitRadiusColliderPush: 13 * 2.5,
     mass: 25,
     baseCost: 500,
     weapons: [{ weaponId: 'forceTurretLarge', offsetX: 0, offsetY: 0 }],
