@@ -1720,7 +1720,7 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <BarDivider />
-          <span class="control-label">TUR RAD:</span>
+          <span class="control-label">TURR RAD:</span>
           <div class="button-group">
             <button
               class="control-btn"
