@@ -163,7 +163,7 @@ export class GameServer {
           const body = this.physics.createUnitBody(
             entity.transform.x,
             entity.transform.y,
-            entity.unit.physicsRadius,
+            entity.unit.radiusColliderUnitUnit,
             entity.unit.mass,
             `unit_${entity.id}`
           );
@@ -364,7 +364,7 @@ export class GameServer {
         const body = this.physics.createUnitBody(
           entity.transform.x,
           entity.transform.y,
-          entity.unit.physicsRadius,
+          entity.unit.radiusColliderUnitUnit,
           entity.unit.mass,
           `unit_${entity.id}`
         );

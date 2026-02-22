@@ -48,7 +48,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         const target = world.getEntity(weapon.targetEntityId);
         let targetIsValid = false;
         let targetRadius = 0;
-        if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.physicsRadius; }
+        if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.radiusColliderUnitShot; }
         else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
         if (!targetIsValid || !target) {
@@ -92,7 +92,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       let closestDist = Infinity;
 
       for (const enemy of nearbyEnemies) {
-        const enemyRadius = enemy.unit ? enemy.unit.physicsRadius : (enemy.building ? getTargetRadius(enemy) : 0);
+        const enemyRadius = enemy.unit ? enemy.unit.radiusColliderUnitShot : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
 
         if (dist <= r.tracking.acquire + enemyRadius && dist < closestDist) {
@@ -105,7 +105,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       if (closestEnemy) {
         weapon.targetEntityId = closestEnemy.id;
         weapon.isTracking = true;
-        const targetRadius = closestEnemy.unit ? closestEnemy.unit.physicsRadius
+        const targetRadius = closestEnemy.unit ? closestEnemy.unit.radiusColliderUnitShot
           : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
         // Check if already within engage.acquire range
         weapon.isEngaged = closestDist <= r.engage.acquire + targetRadius;

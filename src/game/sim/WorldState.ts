@@ -300,7 +300,8 @@ export class WorldState {
     moveSpeed: number = 100,
     mass: number = 25,
     hp: number = 100,
-    physicsRadius?: number
+    radiusColliderUnitShot?: number,
+    radiusColliderUnitUnit?: number
   ): Entity {
     const id = this.generateEntityId();
 
@@ -314,7 +315,8 @@ export class WorldState {
         unitType,
         moveSpeed,
         drawScale,
-        physicsRadius: physicsRadius ?? drawScale,
+        radiusColliderUnitShot: radiusColliderUnitShot ?? drawScale,
+        radiusColliderUnitUnit: radiusColliderUnitUnit ?? drawScale,
         mass,
         hp,
         maxHp: hp,
@@ -341,7 +343,8 @@ export class WorldState {
       bp.moveSpeed,
       bp.mass,
       bp.hp,
-      bp.unitPhysicsRadius
+      bp.unitRadiusColliderShot,
+      bp.unitRadiusColliderPush
     );
 
     // Create weapons from blueprint definition

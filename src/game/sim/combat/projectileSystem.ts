@@ -304,7 +304,7 @@ export function updateProjectiles(
           const dx = proj.prevX - source.transform.x;
           const dy = proj.prevY - source.transform.y;
           const distSq = dx * dx + dy * dy;
-          const clearance = source.unit.physicsRadius + (proj.config.collision?.radius ?? 5) + 2;
+          const clearance = source.unit.radiusColliderUnitShot + (proj.config.collision?.radius ?? 5) + 2;
           if (distSq > clearance * clearance) {
             proj.hasLeftSource = true;
           }
@@ -582,6 +582,16 @@ export function checkProjectileCollisions(
         ? (secondaryDamage / config.beam?.duration) * dtMs
         : secondaryDamage * dtSec;
 
+      // Per-tick explosion forces (scaled same as damage for framerate independence)
+      const primaryForce = config.explosion?.primary.force ?? 0;
+      const secondaryForce = config.explosion?.secondary.force ?? 0;
+      const tickPrimaryForce = config.beam?.duration
+        ? (primaryForce / config.beam.duration) * dtMs
+        : primaryForce * dtSec;
+      const tickSecondaryForce = config.beam?.duration
+        ? (secondaryForce / config.beam.duration) * dtMs
+        : secondaryForce * dtSec;
+
       // Beam direction for hit knockback
       const beamAngle = projEntity.transform.rotation;
       const beamDirX = Math.cos(beamAngle);
@@ -630,9 +640,10 @@ export function checkProjectileCollisions(
             centerY: impactY,
             radius: primaryRadius,
             falloff: 1,
+            knockbackForce: tickPrimaryForce,
           });
 
-          applyDirectionalKnockback(primaryResult.hitEntityIds, hitForcePerTick, beamDirX, beamDirY, forceAccumulator);
+          applyKnockbackForces(primaryResult.knockbacks, forceAccumulator);
           collectKillsWithDeathAudio(primaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
           // Step 3: Secondary zone (excluding collision + primary hits)
@@ -640,9 +651,6 @@ export function checkProjectileCollisions(
           if (secondaryRadius > primaryRadius) {
             for (const id of primaryResult.hitEntityIds) _beamSecondaryExcludeSet.add(id);
 
-            const secondarySecondaryKnockback = collisionDamage > 0
-              ? hitForcePerTick * (secondaryDamage / collisionDamage)
-              : 0;
             const secondaryResult = damageSystem.applyDamage({
               type: 'area',
               sourceEntityId: proj.sourceEntityId,
@@ -653,9 +661,10 @@ export function checkProjectileCollisions(
               centerY: impactY,
               radius: secondaryRadius,
               falloff: 1,
+              knockbackForce: tickSecondaryForce,
             });
 
-            applyDirectionalKnockback(secondaryResult.hitEntityIds, secondarySecondaryKnockback, beamDirX, beamDirY, forceAccumulator);
+            applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
             collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
           }
         }
@@ -671,9 +680,10 @@ export function checkProjectileCollisions(
           centerY: impactY,
           radius: primaryRadius,
           falloff: 1,
+          knockbackForce: tickPrimaryForce,
         });
 
-        applyDirectionalKnockback(result.hitEntityIds, hitForcePerTick, beamDirX, beamDirY, forceAccumulator);
+        applyKnockbackForces(result.knockbacks, forceAccumulator);
         emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, collisionRadius, audioEvents);
         collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
@@ -683,9 +693,6 @@ export function checkProjectileCollisions(
           _beamSecondaryExcludeSet.clear();
           for (const id of result.hitEntityIds) _beamSecondaryExcludeSet.add(id);
 
-          const secondaryKnockback = collisionDamage > 0
-            ? hitForcePerTick * (secondaryDamage / collisionDamage)
-            : 0;
           const secondaryResult = damageSystem.applyDamage({
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
@@ -696,9 +703,10 @@ export function checkProjectileCollisions(
             centerY: impactY,
             radius: noGateSecondaryRadius,
             falloff: 1,
+            knockbackForce: tickSecondaryForce,
           });
 
-          applyDirectionalKnockback(secondaryResult.hitEntityIds, secondaryKnockback, beamDirX, beamDirY, forceAccumulator);
+          applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
           collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
         }
       }

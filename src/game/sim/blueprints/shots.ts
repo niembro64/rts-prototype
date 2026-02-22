@@ -14,23 +14,35 @@ function generateBeamShots(): Record<string, ShotBlueprint> {
   const result: Record<string, ShotBlueprint> = {};
   const maxI = harmonicSeries.length - 1;
   for (let i = 0; i < harmonicSeries.length; i++) {
+
+
     const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
-    const baseDamage = Math.max(2, Math.round(2 + 28 * p));
-    const secondaryDamage = Math.max(1, Math.round(baseDamage * 0.2));
-    const collisionRadius = Math.max(2, Math.round(2 + 18 * p));
-    const primaryRadius = Math.max(4, Math.round(4 + 26 * p));
-    const secondaryRadius = Math.max(15, Math.round(15 + 105 * p));
+    const baseDamage =(2 + 28 * p);
+    const secondaryDamage = (baseDamage * 0.2);
+    const collisionRadius = (2 + 18 * p);
+    const primaryRadius = (4 + 26 * p);
+    const secondaryRadius = (15 + 105 * p);
+
+
     result[`beamShot${i}`] = {
       id: `beamShot${i}`,
-      mass: Math.max(0.01, Math.round((0.01 + 0.09 * p) * 100) / 100),
+      mass: 0.01 + 0.09 * p,
       collision: { radius: collisionRadius, damage: baseDamage },
       explosion: {
-        primary: { radius: primaryRadius, damage: baseDamage, force: baseDamage * 250 },
-        secondary: { radius: secondaryRadius, damage: secondaryDamage, force: secondaryDamage * 250 },
+        primary: {
+          radius: primaryRadius,
+          damage: baseDamage,
+          force: baseDamage * 25000,
+        },
+        secondary: {
+          radius: secondaryRadius,
+          damage: secondaryDamage,
+          force: secondaryDamage * 25000,
+        },
       },
       splashOnExpiry: false,
       beamWidth: Math.max(1, Math.round(1 + 9 * p)),
-      hitSound: AUDIO.event.hit[`beamShot${i}`],
+      hitSound: AUDIO.event.hit[`beamShot${i}`]
     };
   }
   return result;
@@ -88,7 +100,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   laserShot: {
     id: 'laserShot',
     mass: 0.05,
-    collision: { radius: 2, damage: 10 },
+    collision: { radius: 3, damage: 10 },
     explosion: {
       primary: { radius: 8, damage: 10, force: 2500 },
       secondary: { radius: 15, damage: 2, force: 500 },
@@ -105,8 +117,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 20.0,
     collision: { radius: 25, damage: 9999 },
     explosion: {
-      primary: { radius: 40, damage: 9999, force: 2499750 },
-      secondary: { radius: 70, damage: 1999.8, force: 499950 },
+      primary: { radius: 40, damage: 10_000, force: 2499750 },
+      secondary: { radius: 50, damage: 1000, force: 499950 },
     },
     splashOnExpiry: true,
     piercing: true,

@@ -161,8 +161,9 @@ const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
   secondary: getProjRangeToggle('secondary'),
 });
 const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
-  collision: getUnitRadiusToggle('collision'),
-  physics: getUnitRadiusToggle('physics'),
+  visual: getUnitRadiusToggle('visual'),
+  shot: getUnitRadiusToggle('shot'),
+  push: getUnitRadiusToggle('push'),
 });
 
 // FPS, snapshot rate, and zoom tracking (EMA-based, polled from scene)
@@ -1697,19 +1698,27 @@ onUnmounted(() => {
           <div class="button-group">
             <button
               class="control-btn"
-              :class="{ active: unitRadiusToggles.collision }"
-              title="Show unit collision radius"
-              @click="toggleUnitRadius('collision')"
+              :class="{ active: unitRadiusToggles.visual }"
+              title="Show unit visual radius (drawScale — rendering &amp; click detection)"
+              @click="toggleUnitRadius('visual')"
             >
-              COL
+              SCAL
             </button>
             <button
               class="control-btn"
-              :class="{ active: unitRadiusToggles.physics }"
-              title="Show unit physics radius"
-              @click="toggleUnitRadius('physics')"
+              :class="{ active: unitRadiusToggles.shot }"
+              title="Show unit shot collider radius (radiusColliderUnitShot — projectile/beam hit detection)"
+              @click="toggleUnitRadius('shot')"
             >
-              PHY
+              SHOT
+            </button>
+            <button
+              class="control-btn"
+              :class="{ active: unitRadiusToggles.push }"
+              title="Show unit push collider radius (radiusColliderUnitUnit — unit-unit push physics)"
+              @click="toggleUnitRadius('push')"
+            >
+              PUSH
             </button>
           </div>
         </div>

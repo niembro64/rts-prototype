@@ -210,7 +210,8 @@ export interface NetworkEntity {
   hp?: number;
   maxHp?: number;
   drawScale?: number;        // Visual radius
-  physicsRadius?: number;    // Hitbox radius for physics collisions
+  radiusColliderUnitShot?: number;  // Hitbox radius for projectile/beam hit detection
+  radiusColliderUnitUnit?: number;  // Hitbox radius for unit-unit push physics
   moveSpeed?: number;
   mass?: number;             // Physics mass for force-based movement
   velocityX?: number;

@@ -215,8 +215,8 @@ export const PROJ_RANGE_TYPES: ProjRangeType[] = [
   'secondary',
 ];
 
-export type UnitRadiusType = 'collision' | 'physics';
-export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['collision', 'physics'];
+export type UnitRadiusType = 'visual' | 'shot' | 'push';
+export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['visual', 'shot', 'push'];
 
 // Current settings
 // Default to 'auto' - adjusts quality based on zoom level
@@ -235,8 +235,9 @@ const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
   secondary: false,
 };
 const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
-  collision: false,
-  physics: false,
+  visual: false,
+  shot: false,
+  push: false,
 };
 let currentAudioScope: AudioScope = 'padded';
 let currentAudioSmoothing: boolean = true;

@@ -271,7 +271,8 @@ export class ClientViewState {
       entity.unit.hp = server.hp ?? entity.unit.hp;
       entity.unit.maxHp = server.maxHp ?? entity.unit.maxHp;
       entity.unit.drawScale = server.drawScale ?? entity.unit.drawScale;
-      entity.unit.physicsRadius = server.physicsRadius ?? entity.unit.physicsRadius;
+      entity.unit.radiusColliderUnitShot = server.radiusColliderUnitShot ?? entity.unit.radiusColliderUnitShot;
+      entity.unit.radiusColliderUnitUnit = server.radiusColliderUnitUnit ?? entity.unit.radiusColliderUnitUnit;
       entity.unit.moveSpeed = server.moveSpeed ?? entity.unit.moveSpeed;
 
       if (server.actions) {
@@ -585,7 +586,7 @@ export class ClientViewState {
     // Check units (line-vs-circle)
     for (const unit of this.cache.getUnits()) {
       if (unit.id === sourceId) continue;
-      const r = unit.unit?.drawScale ?? 15;
+      const r = unit.unit?.radiusColliderUnitShot ?? 15;
       const t = lineCircleIntersectionT(sx, sy, ex, ey, unit.transform.x, unit.transform.y, r);
       if (t !== null && t > 0 && t < closest) closest = t;
     }

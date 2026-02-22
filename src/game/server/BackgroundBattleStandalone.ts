@@ -115,7 +115,7 @@ function spawnBackgroundUnitStandalone(
     const body = physics.createUnitBody(
       x,
       y,
-      unit.unit.physicsRadius,
+      unit.unit.radiusColliderUnitUnit,
       unit.unit.mass,
       `unit_${unit.id}`
     );

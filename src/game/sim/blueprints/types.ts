@@ -146,7 +146,8 @@ export interface UnitBlueprint {
   hp: number;
   moveSpeed: number;
   unitDrawScale: number;
-  unitPhysicsRadius: number;
+  unitRadiusColliderShot: number;
+  unitRadiusColliderPush: number;
   mass: number;
   baseCost: number;
   // Weapons

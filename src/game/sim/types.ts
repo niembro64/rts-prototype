@@ -96,7 +96,8 @@ export interface Unit {
   unitType: string;         // Unit type identifier (jackal, lynx, daddy, etc.)
   moveSpeed: number;
   drawScale: number;        // Visual radius for rendering and click detection
-  physicsRadius: number;    // Hitbox radius for physics collisions and damage
+  radiusColliderUnitShot: number;  // Hitbox radius for projectile/beam hit detection
+  radiusColliderUnitUnit: number;  // Hitbox radius for unit-unit push physics
   mass: number;             // Physics mass for force-based movement
   hp: number;
   maxHp: number;
@@ -331,7 +332,8 @@ export interface UnitBuildConfig {
   name: string;
   energyCost: number;
   drawScale: number;        // Visual radius
-  physicsRadius: number;    // Physics hitbox radius
+  radiusColliderUnitShot: number;  // Hitbox radius for projectile/beam hit detection
+  radiusColliderUnitUnit: number;  // Hitbox radius for unit-unit push physics
   moveSpeed: number;
   mass: number;             // Physics mass for force-based movement
   hp: number;

@@ -6,8 +6,9 @@ import { getWeaponWorldPosition } from '../../math';
 import { COLORS } from '../types';
 
 export interface UnitRadiusVisibility {
-  collision: boolean;
-  physics: boolean;
+  visual: boolean;
+  shot: boolean;
+  push: boolean;
 }
 
 export interface RangeVisibility {
@@ -76,12 +77,16 @@ export function renderUnitRadiusCircles(
 
   const { x, y } = entity.transform;
 
-  if (visibility.collision) {
-    graphics.lineStyle(1, COLORS.UNIT_COLLISION_RADIUS, 0.5);
+  if (visibility.visual) {
+    graphics.lineStyle(1, COLORS.UNIT_SCALE_RADIUS, 0.5);
     graphics.strokeCircle(x, y, entity.unit.drawScale);
   }
-  if (visibility.physics) {
-    graphics.lineStyle(1, COLORS.UNIT_PHYSICS_RADIUS, 0.5);
-    graphics.strokeCircle(x, y, entity.unit.physicsRadius);
+  if (visibility.shot) {
+    graphics.lineStyle(1, COLORS.UNIT_SHOT_RADIUS, 0.5);
+    graphics.strokeCircle(x, y, entity.unit.radiusColliderUnitShot);
+  }
+  if (visibility.push) {
+    graphics.lineStyle(1, COLORS.UNIT_PUSH_RADIUS, 0.5);
+    graphics.strokeCircle(x, y, entity.unit.radiusColliderUnitUnit);
   }
 }

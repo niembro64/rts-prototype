@@ -154,7 +154,7 @@ export function applyForceFieldDamage(
         if (!target.unit || target.unit.hp <= 0) continue;
         if (target.id === unit.id) continue;
 
-        const targetRadius = target.unit.physicsRadius;
+        const targetRadius = target.unit.radiusColliderUnitShot;
         const dx = target.transform.x - weaponX;
         const dy = target.transform.y - weaponY;
         const dist = magnitude(dx, dy);

@@ -67,7 +67,7 @@ export class EntityRenderer {
   private _rangeVisToggle = { trackAcquire: false, trackRelease: false, engageAcquire: false, engageRelease: false, build: false };
   private _rangeVisSelected = { trackAcquire: true, trackRelease: true, engageAcquire: true, engageRelease: true, build: true };
   private _projRangeVis = { collision: false, primary: false, secondary: false };
-  private _unitRadiusVis = { collision: false, physics: false };
+  private _unitRadiusVis = { visual: false, shot: false, push: false };
 
 
 
@@ -402,8 +402,9 @@ export class EntityRenderer {
 
     // 6c. Unit radius circles (collision + physics hitbox)
     if (anyUnitRadiusToggleActive()) {
-      this._unitRadiusVis.collision = getUnitRadiusToggle('collision');
-      this._unitRadiusVis.physics = getUnitRadiusToggle('physics');
+      this._unitRadiusVis.visual = getUnitRadiusToggle('visual');
+      this._unitRadiusVis.shot = getUnitRadiusToggle('shot');
+      this._unitRadiusVis.push = getUnitRadiusToggle('push');
       for (const entity of this.visibleUnits) {
         renderUnitRadiusCircles(this.graphics, entity, this._unitRadiusVis);
       }
@@ -446,18 +447,19 @@ export class EntityRenderer {
 
     // 'dot': colored circle only — skip body shape rendering
     if (gfx.unitShape === 'dot') {
+      const dotRadius = unit.radiusColliderUnitUnit;
       this.graphics.fillStyle(palette.base, 1);
-      this.graphics.fillCircle(x, y, radius);
+      this.graphics.fillCircle(x, y, dotRadius);
       if (isSelected) {
         this.graphics.lineStyle(3, COLORS.UNIT_SELECTED, 1);
-        this.graphics.strokeCircle(x, y, radius + 5);
+        this.graphics.strokeCircle(x, y, dotRadius + 5);
       }
       if (entity.commander) {
-        renderCommanderCrown(this.graphics, x, y, radius);
+        renderCommanderCrown(this.graphics, x, y, dotRadius);
       }
       const healthPercent = hp / maxHp;
       if (healthPercent < 1) {
-        renderHealthBar(this.graphics, x, y - radius - 10, radius * 2, 4, healthPercent);
+        renderHealthBar(this.graphics, x, y - dotRadius - 10, dotRadius * 2, 4, healthPercent);
       }
       return;
     }
