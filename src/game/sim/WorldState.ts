@@ -296,11 +296,11 @@ export class WorldState {
     y: number,
     playerId: PlayerId,
     unitType: string,
-    collisionRadius: number = 15,
+    drawScale: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
     hp: number = 100,
-    collisionRadiusMultiplier: number = 1.0
+    physicsRadius?: number
   ): Entity {
     const id = this.generateEntityId();
 
@@ -313,8 +313,8 @@ export class WorldState {
       unit: {
         unitType,
         moveSpeed,
-        collisionRadius,
-        physicsRadius: collisionRadius * collisionRadiusMultiplier,
+        drawScale,
+        physicsRadius: physicsRadius ?? drawScale,
         mass,
         hp,
         maxHp: hp,
@@ -337,15 +337,15 @@ export class WorldState {
 
     const entity = this.createUnitBase(
       x, y, playerId, unitId,
-      bp.collisionRadius,
+      bp.unitDrawScale,
       bp.moveSpeed,
       bp.mass,
       bp.hp,
-      bp.collisionRadiusMultiplier
+      bp.unitPhysicsRadius
     );
 
     // Create weapons from blueprint definition
-    entity.weapons = createWeaponsFromDefinition(unitId, bp.collisionRadius);
+    entity.weapons = createWeaponsFromDefinition(unitId, bp.unitDrawScale);
 
     // Attach builder component if blueprint specifies it
     if (bp.builder) {
@@ -373,7 +373,7 @@ export class WorldState {
     y: number,
     playerId: PlayerId,
     unitType: string = 'jackal',
-    collisionRadius: number = 15,
+    drawScale: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
     turretTurnAccel?: number,
@@ -388,7 +388,7 @@ export class WorldState {
     const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel!;
     const drag = turretDrag ?? weaponConfig.turretDrag!;
 
-    const entity = this.createUnitBase(x, y, playerId, unitType, collisionRadius, moveSpeed, mass, 100);
+    const entity = this.createUnitBase(x, y, playerId, unitType, drawScale, moveSpeed, mass, 100);
 
     entity.weapons = [{
       config: weaponConfig,

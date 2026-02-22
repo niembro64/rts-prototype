@@ -7,15 +7,15 @@ import { aimTurretsToward } from './turretInit';
 interface UnitSpawnConfig {
   unitType: string;
   count: number;
-  collisionRadius?: number;
+  drawScale?: number;
   moveSpeed?: number;
 }
 
 const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
-  { unitType: 'jackal', count: 3, collisionRadius: 8, moveSpeed: 160 },
-  { unitType: 'daddy', count: 2, collisionRadius: 13, moveSpeed: 100 },
-  { unitType: 'mammoth', count: 1, collisionRadius: 22, moveSpeed: 45 },
-  { unitType: 'badger', count: 2, collisionRadius: 15, moveSpeed: 85 },
+  { unitType: 'jackal', count: 3, drawScale: 8, moveSpeed: 160 },
+  { unitType: 'daddy', count: 2, drawScale: 13, moveSpeed: 100 },
+  { unitType: 'mammoth', count: 1, drawScale: 22, moveSpeed: 45 },
+  { unitType: 'badger', count: 2, drawScale: 15, moveSpeed: 85 },
 ];
 
 // Spawn a commander for a player
@@ -69,7 +69,7 @@ function spawnPlayerUnits(
         y,
         playerId,
         config.unitType,
-        config.collisionRadius ?? 15,
+        config.drawScale ?? 15,
         config.moveSpeed ?? 100
       );
 

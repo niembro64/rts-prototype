@@ -90,7 +90,7 @@ export class CommanderAbilitiesSystem {
           sourceY: commanderY,
           targetX: currentTarget.transform.x,
           targetY: currentTarget.transform.y,
-          targetRadius: currentTarget.unit.collisionRadius,
+          targetRadius: currentTarget.unit.drawScale,
           intensity: Math.max(0.1, intensity),
         });
       }

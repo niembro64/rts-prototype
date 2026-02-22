@@ -165,7 +165,7 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       // Create projectile(s)
       const pellets = config.spread?.pelletCount ?? 1;
       const spreadAngle = config.spread?.angle ?? 0;
-      const barrelOffset = getBarrelTipOffset(config, unit.unit.collisionRadius);
+      const barrelOffset = getBarrelTipOffset(config, unit.unit.drawScale);
 
       for (let i = 0; i < pellets; i++) {
         // Calculate spread — each pellet gets a random angle within the cone
@@ -406,7 +406,7 @@ export function updateProjectiles(
         }
 
         // Beam starts at barrel tip
-        const beamBarrelOffset = getBarrelTipOffset(proj.config, source.unit.collisionRadius);
+        const beamBarrelOffset = getBarrelTipOffset(proj.config, source.unit.drawScale);
         proj.startX = weaponX + dirX * beamBarrelOffset;
         proj.startY = weaponY + dirY * beamBarrelOffset;
 

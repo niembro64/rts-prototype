@@ -432,7 +432,7 @@ export class EntityRenderer {
 
     const { transform, unit, selectable, ownership } = entity;
     const { x, y, rotation } = transform;
-    const { collisionRadius: radius, hp, maxHp } = unit;
+    const { drawScale: radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
 
     const gfx = getGraphicsConfig();
@@ -524,7 +524,7 @@ export class EntityRenderer {
 
     const { transform, unit, ownership } = entity;
     const { x, y, rotation: bodyRot } = transform;
-    const r = unit.collisionRadius;
+    const r = unit.drawScale;
 
     const unitType = entity.commander ? 'commander' : (unit.unitType ?? 'jackal');
     let mounts: { x: number; y: number }[];

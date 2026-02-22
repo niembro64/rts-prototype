@@ -270,7 +270,7 @@ export class ClientViewState {
     if (entity.unit) {
       entity.unit.hp = server.hp ?? entity.unit.hp;
       entity.unit.maxHp = server.maxHp ?? entity.unit.maxHp;
-      entity.unit.collisionRadius = server.collisionRadius ?? entity.unit.collisionRadius;
+      entity.unit.drawScale = server.drawScale ?? entity.unit.drawScale;
       entity.unit.physicsRadius = server.physicsRadius ?? entity.unit.physicsRadius;
       entity.unit.moveSpeed = server.moveSpeed ?? entity.unit.moveSpeed;
 
@@ -435,7 +435,7 @@ export class ClientViewState {
             const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
 
             // Beam starts at barrel tip
-            const beamBarrelOffset = getBarrelTipOffset(entity.projectile.config, source.unit!.collisionRadius);
+            const beamBarrelOffset = getBarrelTipOffset(entity.projectile.config, source.unit!.drawScale);
             const startX = wp.x + dirX * beamBarrelOffset;
             const startY = wp.y + dirY * beamBarrelOffset;
 
@@ -528,7 +528,7 @@ export class ClientViewState {
 
         // Forward from weapon in firing direction (same as server)
         const turretAngle = weapon.turretRotation;
-        const projBarrelOffset = getBarrelTipOffset(config, source.unit.collisionRadius);
+        const projBarrelOffset = getBarrelTipOffset(config, source.unit.drawScale);
         spawnX = wp.x + Math.cos(turretAngle) * projBarrelOffset;
         spawnY = wp.y + Math.sin(turretAngle) * projBarrelOffset;
       }
@@ -585,7 +585,7 @@ export class ClientViewState {
     // Check units (line-vs-circle)
     for (const unit of this.cache.getUnits()) {
       if (unit.id === sourceId) continue;
-      const r = unit.unit?.collisionRadius ?? 15;
+      const r = unit.unit?.drawScale ?? 15;
       const t = lineCircleIntersectionT(sx, sy, ex, ey, unit.transform.x, unit.transform.y, r);
       if (t !== null && t > 0 && t < closest) closest = t;
     }
@@ -724,10 +724,10 @@ export class ClientViewState {
     for (const entity of this.getUnits()) {
       if (playerId !== undefined && entity.ownership?.playerId !== playerId) continue;
 
-      const collisionRadius = entity.unit?.collisionRadius ?? 15;
+      const drawScale = entity.unit?.drawScale ?? 15;
       const dx = entity.transform.x - x;
       const dy = entity.transform.y - y;
-      if (dx * dx + dy * dy <= collisionRadius * collisionRadius) {
+      if (dx * dx + dy * dy <= drawScale * drawScale) {
         return entity;
       }
     }

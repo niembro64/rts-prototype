@@ -242,7 +242,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const fireSin = Math.sin(fireAngle);
 
   // Spawn position at barrel tip
-  const dgunBarrelOffset = getBarrelTipOffset(dgunWeapon.config, commander.unit!.collisionRadius);
+  const dgunBarrelOffset = getBarrelTipOffset(dgunWeapon.config, commander.unit!.drawScale);
   const spawnX = weaponPos.x + fireCos * dgunBarrelOffset;
   const spawnY = weaponPos.y + fireSin * dgunBarrelOffset;
 

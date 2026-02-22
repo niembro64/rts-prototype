@@ -49,7 +49,7 @@ export function findDamagedUnitAt(
     const dy = unit.transform.y - worldY;
     const dist = magnitude(dx, dy);
 
-    if (dist <= unit.unit.collisionRadius) {
+    if (dist <= unit.unit.drawScale) {
       return unit;
     }
   }

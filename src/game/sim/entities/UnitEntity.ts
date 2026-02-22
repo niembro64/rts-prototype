@@ -16,7 +16,7 @@ import type {
 export class UnitEntity extends GameEntity {
   // Movement properties
   public moveSpeed: number;
-  public collisionRadius: number;
+  public drawScale: number;
   public physicsRadius: number;
   public velocityX: number = 0;
   public velocityY: number = 0;
@@ -49,13 +49,13 @@ export class UnitEntity extends GameEntity {
     y: number,
     hp: number,
     moveSpeed: number,
-    collisionRadius: number,
+    drawScale: number,
     playerId: number
   ) {
     super(id, x, y, hp, hp);
     this.moveSpeed = moveSpeed;
-    this.collisionRadius = collisionRadius;
-    this.physicsRadius = collisionRadius; // Default; overridden after construction with multiplier
+    this.drawScale = drawScale;
+    this.physicsRadius = drawScale; // Default; overridden after construction
     this.ownership = { playerId };
     this.selectable = { selected: false };
   }
@@ -79,7 +79,7 @@ export class UnitEntity extends GameEntity {
     hp: number;
     maxHp: number;
     moveSpeed: number;
-    collisionRadius: number;
+    drawScale: number;
     physicsRadius: number;
     actions: UnitAction[];
     patrolStartIndex: number | null;
@@ -90,7 +90,7 @@ export class UnitEntity extends GameEntity {
       hp: this.hp,
       maxHp: this.maxHp,
       moveSpeed: this.moveSpeed,
-      collisionRadius: this.collisionRadius,
+      drawScale: this.drawScale,
       physicsRadius: this.physicsRadius,
       actions: this.actions,
       patrolStartIndex: this.patrolStartIndex,
@@ -100,11 +100,11 @@ export class UnitEntity extends GameEntity {
   }
 
   // Allow setting HP through the unit property for compatibility
-  set unit(value: { hp: number; maxHp: number; moveSpeed: number; collisionRadius: number; physicsRadius: number; actions: UnitAction[]; patrolStartIndex: number | null; velocityX?: number; velocityY?: number }) {
+  set unit(value: { hp: number; maxHp: number; moveSpeed: number; drawScale: number; physicsRadius: number; actions: UnitAction[]; patrolStartIndex: number | null; velocityX?: number; velocityY?: number }) {
     this.hp = value.hp;
     this.maxHp = value.maxHp;
     this.moveSpeed = value.moveSpeed;
-    this.collisionRadius = value.collisionRadius;
+    this.drawScale = value.drawScale;
     this.physicsRadius = value.physicsRadius;
     this.actions = value.actions;
     this.patrolStartIndex = value.patrolStartIndex;

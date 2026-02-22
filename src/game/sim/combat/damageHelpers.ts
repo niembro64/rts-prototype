@@ -27,7 +27,7 @@ export function buildImpactContext(
   if (entity) {
     entityVelX = entity.unit?.velocityX ?? 0;
     entityVelY = entity.unit?.velocityY ?? 0;
-    entityCollisionRadius = entity.unit?.collisionRadius ?? (entity.building ? entity.building.width / 2 : 0);
+    entityCollisionRadius = entity.unit?.drawScale ?? (entity.building ? entity.building.width / 2 : 0);
 
     // Normalized direction from projectile center to entity center
     const dx = entity.transform.x - projectileX;
@@ -110,7 +110,7 @@ export function collectKillsWithDeathAudio(
           projectileVelX: ctx.attackerVelX,
           projectileVelY: ctx.attackerVelY,
           attackMagnitude: ctx.attackMagnitude,
-          radius: target?.unit?.collisionRadius ?? 15,
+          radius: target?.unit?.drawScale ?? 15,
           color: playerColor,
           unitType: target?.unit?.unitType,
           rotation: target?.transform.rotation ?? 0,

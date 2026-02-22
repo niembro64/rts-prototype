@@ -38,7 +38,7 @@ export class PhysicsEngine {
   createUnitBody(
     x: number,
     y: number,
-    collisionRadius: number,
+    physicsRadius: number,
     mass: number,
     label: string
   ): PhysicsBody {
@@ -48,7 +48,7 @@ export class PhysicsEngine {
       y,
       vx: 0,
       vy: 0,
-      radius: collisionRadius,
+      radius: physicsRadius,
       mass: physicsMass,
       invMass: 1 / physicsMass,
       frictionAir: 0.15,

@@ -78,7 +78,7 @@ export function renderUnitRadiusCircles(
 
   if (visibility.collision) {
     graphics.lineStyle(1, COLORS.UNIT_COLLISION_RADIUS, 0.5);
-    graphics.strokeCircle(x, y, entity.unit.collisionRadius);
+    graphics.strokeCircle(x, y, entity.unit.drawScale);
   }
   if (visibility.physics) {
     graphics.lineStyle(1, COLORS.UNIT_PHYSICS_RADIUS, 0.5);

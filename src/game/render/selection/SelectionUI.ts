@@ -17,7 +17,7 @@ export function renderSelectedLabels(
   for (const entity of entitySource.getUnits()) {
     if (entity.selectable?.selected && entity.unit && entity.unit.hp > 0) {
       const { x, y } = entity.transform;
-      const { collisionRadius } = entity.unit;
+      const { drawScale } = entity.unit;
       // Get unit type from entity
       const unitType = entity.unit.unitType ?? 'jackal';
 
@@ -28,7 +28,7 @@ export function renderSelectedLabels(
 
       const label = getLabel();
       label.setText(name);
-      label.setPosition(x, y - collisionRadius - 18); // Above health bar
+      label.setPosition(x, y - drawScale - 18); // Above health bar
     }
   }
 

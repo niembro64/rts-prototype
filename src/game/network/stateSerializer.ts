@@ -491,7 +491,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   ne.unitType = undefined;
   ne.hp = undefined;
   ne.maxHp = undefined;
-  ne.collisionRadius = undefined;
+  ne.drawScale = undefined;
   ne.physicsRadius = undefined;
   ne.moveSpeed = undefined;
   ne.mass = undefined;
@@ -526,7 +526,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     ne.unitType = entity.unit.unitType;
     ne.hp = entity.unit.hp;
     ne.maxHp = entity.unit.maxHp;
-    ne.collisionRadius = entity.unit.collisionRadius;
+    ne.drawScale = entity.unit.drawScale;
     ne.physicsRadius = entity.unit.physicsRadius;
     ne.moveSpeed = entity.unit.moveSpeed;
     ne.mass = entity.unit.mass;
