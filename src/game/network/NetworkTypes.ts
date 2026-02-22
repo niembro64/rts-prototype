@@ -126,6 +126,8 @@ export interface NetworkServerMeta {
   allowedUnitTypes?: string[];  // Demo mode only
   maxTotalUnits?: number;       // Current unit cap
   projVelInherit?: boolean;     // Projectiles inherit unit velocity
+  ffAccelUnits?: boolean;        // Force field accelerates enemy units
+  ffAccelShots?: boolean;        // Force field accelerates enemy projectiles
 }
 
 // Serialized game state sent over network

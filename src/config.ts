@@ -41,6 +41,8 @@ export const SNAPSHOT_RATE_OPTIONS = CONTROL_BARS.server.snapshot.options;
 export const MAX_TOTAL_UNITS = CONTROL_BARS.battle.cap.default;
 export const DEFAULT_PROJ_VEL_INHERIT =
   CONTROL_BARS.battle.projVelInherit.default;
+export const DEFAULT_FF_ACCEL_UNITS = CONTROL_BARS.battle.ffAccelUnits.default;
+export const DEFAULT_FF_ACCEL_SHOTS = CONTROL_BARS.battle.ffAccelShots.default;
 export const BAR_COLORS = CONTROL_BARS.themes;
 // UNIT_SHORT_NAMES removed — now in UnitBlueprint.shortName
 

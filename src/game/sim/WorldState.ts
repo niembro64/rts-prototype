@@ -3,7 +3,7 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getWeaponConfig, computeWeaponRanges } from './weapons';
 import { getUnitBlueprint } from './blueprints';
 import { createWeaponsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS } from '../../config';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -62,6 +62,11 @@ export class WorldState {
 
   // Whether projectiles inherit their firing unit's velocity
   public projVelInherit: boolean = DEFAULT_PROJ_VEL_INHERIT;
+
+  // Whether force fields accelerate enemy units
+  public ffAccelUnits: boolean = DEFAULT_FF_ACCEL_UNITS;
+  // Whether force fields accelerate enemy projectiles
+  public ffAccelShots: boolean = DEFAULT_FF_ACCEL_SHOTS;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call

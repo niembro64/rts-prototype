@@ -99,3 +99,29 @@ export function loadStoredProjVelInherit(): boolean {
 export function saveProjVelInherit(enabled: boolean): void {
   try { localStorage.setItem(CONTROL_BARS.storage.projVelInherit, String(enabled)); } catch { /* */ }
 }
+
+export function loadStoredFfAccelUnits(): boolean {
+  try {
+    const stored = localStorage.getItem(CONTROL_BARS.storage.ffAccelUnits);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+  } catch { /* localStorage unavailable */ }
+  return CONTROL_BARS.battle.ffAccelUnits.default;
+}
+
+export function saveFfAccelUnits(enabled: boolean): void {
+  try { localStorage.setItem(CONTROL_BARS.storage.ffAccelUnits, String(enabled)); } catch { /* */ }
+}
+
+export function loadStoredFfAccelShots(): boolean {
+  try {
+    const stored = localStorage.getItem(CONTROL_BARS.storage.ffAccelShots);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+  } catch { /* localStorage unavailable */ }
+  return CONTROL_BARS.battle.ffAccelShots.default;
+}
+
+export function saveFfAccelShots(enabled: boolean): void {
+  try { localStorage.setItem(CONTROL_BARS.storage.ffAccelShots, String(enabled)); } catch { /* */ }
+}

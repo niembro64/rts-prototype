@@ -62,6 +62,8 @@ export const CONTROL_BARS = {
     demoUnits: 'rts-demo-units',
     maxTotalUnits: 'rts-max-total-units',
     projVelInherit: 'rts-proj-vel-inherit',
+    ffAccelUnits: 'rts-ff-accel-units',
+    ffAccelShots: 'rts-ff-accel-shots',
   },
 
   // ── Battle bar ──
@@ -91,6 +93,8 @@ export const CONTROL_BARS = {
       ],
     },
     projVelInherit: { default: false },
+    ffAccelUnits: { default: true },
+    ffAccelShots: { default: true },
   },
 
   // ── Server bar ──

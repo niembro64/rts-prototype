@@ -1,7 +1,7 @@
 import type { EntityId, WaypointType, BuildingType } from './types';
 
 // Command types
-export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'cancelQueueItem' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair' | 'setSnapshotRate' | 'setKeyframeRatio' | 'setTickRate' | 'setSendGridInfo' | 'setBackgroundUnitType' | 'setMaxTotalUnits' | 'setProjVelInherit';
+export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'cancelQueueItem' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair' | 'setSnapshotRate' | 'setKeyframeRatio' | 'setTickRate' | 'setSendGridInfo' | 'setBackgroundUnitType' | 'setMaxTotalUnits' | 'setProjVelInherit' | 'setFfAccelUnits' | 'setFfAccelShots';
 
 // Base command interface
 interface BaseCommand {
@@ -142,8 +142,18 @@ export interface SetProjVelInheritCommand extends BaseCommand {
   enabled: boolean;
 }
 
+export interface SetFfAccelUnitsCommand extends BaseCommand {
+  type: 'setFfAccelUnits';
+  enabled: boolean;
+}
+
+export interface SetFfAccelShotsCommand extends BaseCommand {
+  type: 'setFfAccelShots';
+  enabled: boolean;
+}
+
 // Union of all command types
-export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | CancelQueueItemCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand | SetSnapshotRateCommand | SetKeyframeRatioCommand | SetTickRateCommand | SetSendGridInfoCommand | SetBackgroundUnitTypeCommand | SetMaxTotalUnitsCommand | SetProjVelInheritCommand;
+export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | CancelQueueItemCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand | SetSnapshotRateCommand | SetKeyframeRatioCommand | SetTickRateCommand | SetSendGridInfoCommand | SetBackgroundUnitTypeCommand | SetMaxTotalUnitsCommand | SetProjVelInheritCommand | SetFfAccelUnitsCommand | SetFfAccelShotsCommand;
 
 // Command queue for processing commands in order
 export class CommandQueue {

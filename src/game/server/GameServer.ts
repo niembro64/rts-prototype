@@ -446,6 +446,8 @@ export class GameServer {
           : undefined,
         maxTotalUnits: this.world.maxTotalUnits,
         projVelInherit: this.world.projVelInherit,
+        ffAccelUnits: this.world.ffAccelUnits,
+        ffAccelShots: this.world.ffAccelShots,
       };
       this.lastSentServerTime = currentTime;
     }
@@ -479,6 +481,12 @@ export class GameServer {
         return;
       case 'setProjVelInherit':
         this.world.projVelInherit = command.enabled;
+        return;
+      case 'setFfAccelUnits':
+        this.world.ffAccelUnits = command.enabled;
+        return;
+      case 'setFfAccelShots':
+        this.world.ffAccelShots = command.enabled;
         return;
     }
     this.commandQueue.enqueue(command);

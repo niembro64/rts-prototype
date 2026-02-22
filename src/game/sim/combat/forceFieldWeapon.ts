@@ -145,10 +145,10 @@ export function applyForceFieldDamage(
 
       const turretAngle = weapon.turretRotation;
 
-      // --- Enemy units ---
-      const nearbyUnits = spatialGrid.queryEnemyUnitsInRadius(
-        weaponX, weaponY, effectiveOuter, sourcePlayerId
-      );
+      // --- Enemy units (skipped when ffAccelUnits is disabled) ---
+      const nearbyUnits = world.ffAccelUnits
+        ? spatialGrid.queryEnemyUnitsInRadius(weaponX, weaponY, effectiveOuter, sourcePlayerId)
+        : [];
 
       for (const target of nearbyUnits) {
         if (!target.unit || target.unit.hp <= 0) continue;
@@ -246,10 +246,10 @@ export function applyForceFieldDamage(
         }
       }
 
-      // --- Projectiles (spatial grid query replaces full-world iteration) ---
-      const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
-        weaponX, weaponY, effectiveOuter, sourcePlayerId
-      );
+      // --- Projectiles (skipped when ffAccelShots is disabled) ---
+      const nearbyProjectiles = world.ffAccelShots
+        ? spatialGrid.queryEnemyProjectilesInRadius(weaponX, weaponY, effectiveOuter, sourcePlayerId)
+        : [];
 
       for (const projEntity of nearbyProjectiles) {
         const proj = projEntity.projectile!;
