@@ -572,7 +572,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // 'simple': single line per weapon,
   // 'full': orbital multi-barrel, cone spread, barrel base circles
   TURRET_STYLE: {
-    min: 'simple',
+    min: 'none',
     low: 'simple',
     medium: 'full',
     high: 'full',
@@ -585,7 +585,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // 'simple': single pulsing circle + zones,
   // 'full': animated multi-ring grate + zones
   FORCE_TURRET_STYLE: {
-    min: 'simple',
+    min: 'none',
     low: 'simple',
     medium: 'simple',
     high: 'full',
