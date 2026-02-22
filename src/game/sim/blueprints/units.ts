@@ -261,7 +261,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 50,
     moveSpeed: 200,
     unitDrawScale: 11,
-    unitPhysicsRadius: 11,
+    unitPhysicsRadius: 11 * 1.3,
     mass: 18,
     baseCost: 460,
     weapons: [{ weaponId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
