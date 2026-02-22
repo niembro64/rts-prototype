@@ -95,7 +95,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     cooldown: 2_000,
     launchForce: 500,
     homingTurnRate: 2,
-    turretTurnAccel: 5,
+    turretTurnAccel: 20,
     turretDrag: 0.15,
     turretShape: {
       type: 'coneMultiBarrel',

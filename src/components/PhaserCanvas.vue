@@ -1766,7 +1766,7 @@ onUnmounted(() => {
         </div>
         <div class="control-group">
           <BarDivider />
-          <span class="control-label">PROJ RAD:</span>
+          <span class="control-label">SHOT RAD:</span>
           <div class="button-group">
             <button
               class="control-btn"
