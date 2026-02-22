@@ -39,27 +39,39 @@ function generateBeamShots(): Record<string, ShotBlueprint> {
 export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
     id: 'lightShot',
-    mass: 0.3,
+    mass: 0.5,
     collision: { radius: 1.2, damage: 2 },
     explosion: {
       primary: { radius: 5, damage: 2, force: 500 },
       secondary: { radius: 7, damage: 0.4, force: 100 },
     },
     splashOnExpiry: false,
-    lifespan: 900,
+    lifespan: 1000,
     hitSound: AUDIO.event.hit.lightShot,
   },
   mediumShot: {
     id: 'mediumShot',
-    mass: 3,
+    mass: 5,
     collision: { radius: 2.2, damage: 4 },
     explosion: {
       primary: { radius: 8, damage: 4, force: 1000 },
       secondary: { radius: 15, damage: 0.8, force: 200 },
     },
     splashOnExpiry: false,
-    lifespan: 600,
+    lifespan: 1200,
     hitSound: AUDIO.event.hit.mediumShot,
+  },
+  heavyShot: {
+    id: 'heavyShot',
+    mass: 50.0,
+    collision: { radius: 5, damage: 260 },
+    explosion: {
+      primary: { radius: 25, damage: 260, force: 65000 },
+      secondary: { radius: 45, damage: 52, force: 13000 },
+    },
+    splashOnExpiry: true,
+    lifespan: 1400,
+    hitSound: AUDIO.event.hit.heavyShot,
   },
   mortarShot: {
     id: 'mortarShot',
@@ -70,20 +82,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       secondary: { radius: 110, damage: 6, force: 1500 },
     },
     splashOnExpiry: true,
-    lifespan: 3000,
+    lifespan: 2000,
     hitSound: AUDIO.event.hit.mortarShot,
-  },
-  heavyShot: {
-    id: 'heavyShot',
-    mass: 200.0,
-    collision: { radius: 5, damage: 260 },
-    explosion: {
-      primary: { radius: 25, damage: 260, force: 65000 },
-      secondary: { radius: 45, damage: 52, force: 13000 },
-    },
-    splashOnExpiry: true,
-    lifespan: 1800,
-    hitSound: AUDIO.event.hit.heavyShot,
   },
   laserShot: {
     id: 'laserShot',

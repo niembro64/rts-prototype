@@ -11,6 +11,7 @@ import type { WeaponConfig, ForceFieldZoneConfig } from '../types';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
 import type { ShotBlueprint, ForceFieldZoneRatioConfig } from './types';
+import { BARREL_THICKNESS_MULTIPLIER } from '../../../config';
 
 /** Compute a ForceFieldZoneConfig from ratio-based blueprint data and weapon range */
 function computeZoneConfig(
@@ -77,11 +78,11 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
       );
     Object.assign(base, getProjectileFields(pb));
 
-    // Derive barrelThickness from shot size
+    // Derive barrelThickness from shot size, scaled by global multiplier
     // Projectiles: diameter (collision.radius * 2), beams: beam width directly
     if (base.turretShape && base.turretShape.type !== 'complexSingleEmitter') {
-      const thickness = pb.beamWidth ?? (pb.collision.radius > 0 ? pb.collision.radius * 2 : 2);
-      base.turretShape = { ...base.turretShape, barrelThickness: thickness };
+      const rawThickness = pb.beamWidth ?? (pb.collision.radius > 0 ? pb.collision.radius * 2 : 2);
+      base.turretShape = { ...base.turretShape, barrelThickness: rawThickness * BARREL_THICKNESS_MULTIPLIER };
     }
   }
 

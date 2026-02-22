@@ -364,6 +364,13 @@ export const UNIT_MASS_MULTIPLIER = 10.0;
 export const PROJECTILE_MASS_MULTIPLIER = 1.0;
 
 /**
+ * Barrel thickness multiplier — scales the derived barrel width on turrets.
+ * Barrel width is derived from projectile size (collision.radius * 2 for bullets, beam.width for beams).
+ * 1.0 = barrel matches projectile diameter exactly, 0.5 = half-width barrels, 2.0 = double-width.
+ */
+export const BARREL_THICKNESS_MULTIPLIER = 0.8;
+
+/**
  * Global thrust multiplier for all unit movement.
  * Scales the force applied when units accelerate toward waypoints.
  * Higher values = faster acceleration, higher top speed.
@@ -425,7 +432,7 @@ export const COMBAT_STATS_VISIBLE_ON_LOAD = false;
 // =============================================================================
 
 /** Minimum zoom level (zoomed out) */
-export const ZOOM_MIN = 0.2;
+export const ZOOM_MIN = 0.4;
 
 /** Maximum zoom level (zoomed in) */
 export const ZOOM_MAX = 5.0;

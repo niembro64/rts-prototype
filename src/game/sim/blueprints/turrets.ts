@@ -91,10 +91,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   shotgunTurret: {
     id: 'shotgunTurret',
     projectileId: 'mediumShot',
-    range: 160,
+    range: 150,
     cooldown: 2000,
-    launchForce: 1500,
-    homingTurnRate: 3,
+    launchForce: 1000,
+    homingTurnRate: 2,
     turretTurnAccel: 5,
     turretDrag: 0.15,
     turretShape: {
@@ -118,7 +118,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'heavyShot',
     range: 250,
     cooldown: 200,
-    launchForce: 80000,
+    launchForce: 8000,
     turretTurnAccel: 100,
     turretDrag: 0.4,
     turretShape: {
