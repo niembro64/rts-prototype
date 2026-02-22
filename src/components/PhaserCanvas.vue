@@ -82,6 +82,9 @@ import {
   RANGE_TYPES,
   PROJ_RANGE_TYPES,
   UNIT_RADIUS_TYPES,
+  getEdgeScrollEnabled,
+  setEdgeScrollEnabled,
+  setBottomBarsHeight,
   getAudioScope,
   setAudioScope,
   getAudioSmoothing,
@@ -105,6 +108,7 @@ import { musicPlayer } from '../game/audio/MusicPlayer';
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
+const bottomControlsRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 
@@ -146,6 +150,7 @@ const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const driftMode = ref<DriftMode>(getDriftMode());
+const edgeScrollEnabled = ref(getEdgeScrollEnabled());
 const soundToggles = reactive<Record<SoundCategory, boolean>>({
   fire: getSoundToggle('fire'),
   hit: getSoundToggle('hit'),
@@ -239,6 +244,7 @@ let gameInstance: GameInstance | null = null;
 let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
 let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
+let bottomBarsObserver: ResizeObserver | null = null;
 
 // Start the background battle (runs behind lobby)
 function startBackgroundBattle(): void {
@@ -572,6 +578,7 @@ function resetClientDefaults(): void {
   audioSmoothing.value = true;
   setDriftMode('slow');
   driftMode.value = 'slow';
+  if (edgeScrollEnabled.value) toggleEdgeScroll();
   for (const rt of RANGE_TYPES) {
     if (rangeToggles[rt]) toggleRange(rt);
   }
@@ -792,6 +799,12 @@ function toggleAudioSmoothing(): void {
 function changeDriftMode(mode: DriftMode): void {
   setDriftMode(mode);
   driftMode.value = mode;
+}
+
+function toggleEdgeScroll(): void {
+  const newValue = !edgeScrollEnabled.value;
+  setEdgeScrollEnabled(newValue);
+  edgeScrollEnabled.value = newValue;
 }
 
 const SFX_CATEGORIES = SOUND_CATEGORIES.filter((c) => c !== 'music');
@@ -1135,6 +1148,16 @@ onMounted(() => {
 
   // Listen for backtick to toggle combat stats
   window.addEventListener('keydown', handleCombatStatsKeydown);
+
+  // Track bottom bars height for edge scroll viewport inset
+  if (bottomControlsRef.value) {
+    bottomBarsObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setBottomBarsHeight(entry.contentRect.height);
+      }
+    });
+    bottomBarsObserver.observe(bottomControlsRef.value);
+  }
 });
 
 onUnmounted(() => {
@@ -1150,6 +1173,10 @@ onUnmounted(() => {
     clientTimeInterval = null;
   }
   window.removeEventListener('keydown', handleCombatStatsKeydown);
+  if (bottomBarsObserver) {
+    bottomBarsObserver.disconnect();
+    bottomBarsObserver = null;
+  }
   // Stop servers
   if (currentServer) {
     currentServer.stop();
@@ -1204,7 +1231,7 @@ onUnmounted(() => {
     </button>
 
     <!-- Bottom control bars (always visible) -->
-    <div class="bottom-controls">
+    <div ref="bottomControlsRef" class="bottom-controls">
       <!-- BATTLE CONTROLS -->
       <div
         v-if="showServerControls"
@@ -1608,6 +1635,18 @@ onUnmounted(() => {
               SLOW
             </button>
           </div>
+        </div>
+        <div class="control-group">
+          <BarDivider />
+          <span class="control-label">EDGE:</span>
+          <button
+            class="control-btn"
+            :class="{ active: edgeScrollEnabled }"
+            title="Edge scroll — move camera when mouse near viewport border"
+            @click="toggleEdgeScroll"
+          >
+            PAN
+          </button>
         </div>
         <div class="control-group">
           <BarDivider />

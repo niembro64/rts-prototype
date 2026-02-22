@@ -196,6 +196,7 @@ const SOUND_TOGGLES_STORAGE_KEY = 'rts-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'rts-range-toggles';
 const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'rts-proj-range-toggles';
 const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
+const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
 
 export type RangeType =
   | 'trackAcquire'
@@ -253,6 +254,8 @@ const currentSoundToggles: Record<SoundCategory, boolean> = {
   field: true,
   music: false,
 };
+let currentEdgeScrollEnabled: boolean = false;
+let currentBottomBarsHeight: number = 0;
 let currentZoom: number = 1.0; // Updated by renderer
 
 // Load from localStorage on module init
@@ -339,6 +342,10 @@ function loadFromStorage(): void {
           currentUnitRadiusToggles[urt] = parsed[urt];
         }
       }
+    }
+    const storedEdgeScroll = localStorage.getItem(EDGE_SCROLL_STORAGE_KEY);
+    if (storedEdgeScroll !== null) {
+      currentEdgeScrollEnabled = storedEdgeScroll === 'true';
     }
   } catch {
     // localStorage not available, use default
@@ -595,4 +602,37 @@ export function setSoundToggle(
   } catch {
     // localStorage not available
   }
+}
+
+/**
+ * Get whether edge scroll is enabled
+ */
+export function getEdgeScrollEnabled(): boolean {
+  return currentEdgeScrollEnabled;
+}
+
+/**
+ * Set whether edge scroll is enabled (persists to localStorage)
+ */
+export function setEdgeScrollEnabled(enabled: boolean): void {
+  currentEdgeScrollEnabled = enabled;
+  try {
+    localStorage.setItem(EDGE_SCROLL_STORAGE_KEY, String(enabled));
+  } catch {
+    // localStorage not available
+  }
+}
+
+/**
+ * Get current bottom bars height (runtime-only, no persistence)
+ */
+export function getBottomBarsHeight(): number {
+  return currentBottomBarsHeight;
+}
+
+/**
+ * Set bottom bars height (runtime-only, no persistence)
+ */
+export function setBottomBarsHeight(height: number): void {
+  currentBottomBarsHeight = height;
 }

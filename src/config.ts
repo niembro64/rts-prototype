@@ -471,6 +471,15 @@ export const ZOOM_INITIAL_GAME = 0.5;
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = 6.0;
 
+/** Edge scroll: fraction of effective viewport from each edge that triggers scrolling (0.15 = 15%) */
+export const EDGE_SCROLL_BORDER_RATIO = 0.15;
+
+/** Edge scroll: world units/sec at zoom 1.0 (scales inversely with zoom) */
+export const EDGE_SCROLL_SPEED = 800;
+
+/** Edge scroll: fixed top bar height in pixels (excluded from effective viewport) */
+export const EDGE_SCROLL_TOP_BAR_HEIGHT = 50;
+
 /**
  * World padding as a percentage of map dimensions.
  * 0.5 = 50% padding on each side (left, right, top, bottom).
