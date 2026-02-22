@@ -117,11 +117,11 @@ export class EntityRenderer {
     for (const entity of units) {
       if (!entity.weapons) continue;
 
-      // Find spin config from any weapon that has one (multibarrel or coneSpread)
+      // Find spin config from any weapon that has one (simpleMultiBarrel or coneMultiBarrel)
       let spinConfig: SpinConfig | undefined;
       for (const w of entity.weapons) {
         const tc = w.config.turretShape as TurretConfig | undefined;
-        if (tc && (tc.type === 'multibarrel' || tc.type === 'coneSpread')) {
+        if (tc && (tc.type === 'simpleMultiBarrel' || tc.type === 'coneMultiBarrel')) {
           spinConfig = tc.spin;
           break;
         }

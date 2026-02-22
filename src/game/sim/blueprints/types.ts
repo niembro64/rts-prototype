@@ -54,9 +54,6 @@ export interface ShotBlueprint {
   beamDuration?: number;
   beamWidth?: number;
   collisionRadius?: number;
-  // Knockback (beams/railguns — applied per tick while active)
-  hitForce?: number; // Push on target when hit
-  knockBackForce?: number; // Recoil on shooter when firing
   // Audio
   hitSound?: SoundEntry;
 }
@@ -80,6 +77,8 @@ export interface TurretBlueprint {
   pelletCount?: number;
   homingTurnRate?: number;
   launchForce?: number;
+  hitForce?: number;
+  knockBackForce?: number;
   isManualFire?: boolean;
   // Force field
   isForceField?: boolean;

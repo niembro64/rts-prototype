@@ -284,7 +284,7 @@ export interface SpinConfig {
 
 export type TurretConfig =
   | {
-      type: 'multibarrel';
+      type: 'simpleMultiBarrel';
       barrelCount: number;
       barrelLength: number;
       barrelThickness?: number;
@@ -293,7 +293,7 @@ export type TurretConfig =
       spin: SpinConfig;
     }
   | {
-      type: 'coneSpread';
+      type: 'coneMultiBarrel';
       barrelCount: number;
       barrelLength: number;
       barrelThickness?: number;
@@ -301,9 +301,8 @@ export type TurretConfig =
       depthScale: number;
       spin: SpinConfig;
     }
-  | { type: 'single'; barrelLength: number; barrelThickness?: number }
-  | { type: 'beamEmitter'; barrelLength: number; barrelThickness?: number }
-  | { type: 'forceField'; grate: ForceFieldTurretConfig };
+  | { type: 'simpleSingleBarrel'; barrelLength: number; barrelThickness?: number }
+  | { type: 'complexSingleEmitter'; grate: ForceFieldTurretConfig };
 
 // =============================================================================
 // CHASSIS MOUNT POINTS

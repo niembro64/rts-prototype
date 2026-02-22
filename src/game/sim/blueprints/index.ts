@@ -44,8 +44,6 @@ function getProjectileFields(bp: ShotBlueprint) {
     ...(bp.beamDuration != null && { beamDuration: bp.beamDuration }),
     ...(bp.beamWidth != null && { beamWidth: bp.beamWidth }),
     ...(bp.collisionRadius != null && { collisionRadius: bp.collisionRadius }),
-    ...(bp.hitForce != null && { hitForce: bp.hitForce }),
-    ...(bp.knockBackForce != null && { knockBackForce: bp.knockBackForce }),
   };
 }
 
@@ -80,7 +78,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
 
     // Derive barrelThickness from shot size
     // Projectiles: diameter (radius * 2), beams: beam width directly
-    if (base.turretShape && base.turretShape.type !== 'forceField') {
+    if (base.turretShape && base.turretShape.type !== 'complexSingleEmitter') {
       const thickness = pb.beamWidth ?? (pb.radius != null ? pb.radius * 2 : 2);
       base.turretShape = { ...base.turretShape, barrelThickness: thickness };
     }
@@ -102,6 +100,8 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
   if (wb.burstDelay != null) base.burstDelay = wb.burstDelay;
   if (wb.pelletCount != null) base.pelletCount = wb.pelletCount;
   if (wb.homingTurnRate != null) base.homingTurnRate = wb.homingTurnRate;
+  if (wb.hitForce != null) base.hitForce = wb.hitForce;
+  if (wb.knockBackForce != null) base.knockBackForce = wb.knockBackForce;
   if (wb.isManualFire != null) base.isManualFire = wb.isManualFire;
   if (wb.launchForce != null && base.projectileMass) {
     base.projectileSpeed = wb.launchForce / base.projectileMass;

@@ -29,7 +29,9 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
       range,
       turretTurnAccel: 100,
       turretDrag: 0.4,
-      turretShape: { type: 'beamEmitter', barrelLength: 0.6 },
+      turretShape: { type: 'simpleSingleBarrel', barrelLength: 0.6 },
+      hitForce: 1000,
+      knockBackForce: 1000,
       rangeMultiplierOverrides: {
         tracking: { acquire: null, release: null },
         engage: { acquire: null, release: null },
@@ -52,7 +54,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spreadAngle: Math.PI / 12,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    turretShape: { type: 'single', barrelLength: 1.2 },
+    turretShape: { type: 'simpleSingleBarrel', barrelLength: 1.2 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -72,7 +74,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     turretTurnAccel: 40,
     turretDrag: 0.15,
     turretShape: {
-      type: 'multibarrel',
+      type: 'simpleMultiBarrel',
       barrelCount: 2,
       barrelLength: 1.7,
       orbitRadius: 0.35,
@@ -98,7 +100,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     turretTurnAccel: 5,
     turretDrag: 0.15,
     turretShape: {
-      type: 'coneSpread',
+      type: 'coneMultiBarrel',
       barrelCount: 5,
       barrelLength: 0.6,
       baseOrbit: 0.094,
@@ -124,7 +126,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     turretTurnAccel: 100,
     turretDrag: 0.4,
     turretShape: {
-      type: 'multibarrel',
+      type: 'simpleMultiBarrel',
       barrelCount: 5,
       barrelLength: 1.5,
       orbitRadius: 0.4,
@@ -147,7 +149,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spreadAngle: Math.PI / 24,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    turretShape: { type: 'single', barrelLength: 1.4 },
+    turretShape: { type: 'simpleSingleBarrel', barrelLength: 1.4 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -164,7 +166,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spreadAngle: Math.PI / 24,
     turretTurnAccel: 40,
     turretDrag: 0.4,
-    turretShape: { type: 'single', barrelLength: 0.75 },
+    turretShape: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -181,7 +183,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spreadAngle: 0,
     turretTurnAccel: 100,
     turretDrag: 0.6,
-    turretShape: { type: 'single', barrelLength: 1.0 },
+    turretShape: { type: 'simpleSingleBarrel', barrelLength: 1.0 },
+    hitForce: 1000,
+    knockBackForce: 1000,
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -198,7 +202,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     isForceField: true,
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 500,
-    turretShape: { type: 'forceField', grate: FORCE_FIELD_TURRET.forceField },
+    turretShape: { type: 'complexSingleEmitter', grate: FORCE_FIELD_TURRET.forceField },
     push: { ...FORCE_PUSH },
     pull: { ...FORCE_PULL },
     rangeMultiplierOverrides: FORCE_TURRET_RANGE_MULTIPLIERS,
@@ -214,7 +218,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     forceFieldAngle: Math.PI * 2,
     forceFieldTransitionTime: 500,
     turretShape: {
-      type: 'forceField',
+      type: 'complexSingleEmitter',
       grate: FORCE_FIELD_TURRET.megaForceField,
     },
     push: { ...FORCE_PUSH },
@@ -231,7 +235,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 7000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    turretShape: { type: 'beamEmitter', barrelLength: 0.7 },
+    turretShape: { type: 'simpleSingleBarrel', barrelLength: 0.7 },
+    hitForce: 1000,
+    knockBackForce: 1000,
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -247,7 +253,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 7000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    turretShape: { type: 'beamEmitter', barrelLength: 0.7 },
+    turretShape: { type: 'simpleSingleBarrel', barrelLength: 0.7 },
+    hitForce: 1000,
+    knockBackForce: 1000,
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },

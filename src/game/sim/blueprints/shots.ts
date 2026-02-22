@@ -23,8 +23,6 @@ function generateBeamShots(): Record<string, ShotBlueprint> {
       primaryDamageRadius: Math.max(4, Math.round(4 + 26 * p)),
       secondaryDamageRadius: Math.max(15, Math.round(15 + 105 * p)),
       splashOnExpiry: false,
-      hitForce: 1000,
-      knockBackForce: 1000,
       hitSound: AUDIO.event.hit[`beamShot${i}`],
     };
   }
@@ -85,8 +83,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     secondaryDamageRadius: 15,
     splashOnExpiry: false,
     piercing: false,
-    hitForce: 1000,
-    knockBackForce: 1000,
     hitSound: AUDIO.event.hit.laserShot,
   },
   ...generateBeamShots(),

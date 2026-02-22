@@ -22,7 +22,7 @@ export function getTargetRadius(target: Entity): number {
 // Uses the weapon's turret barrel length scaled by the unit's visual radius.
 export function getBarrelTipOffset(config: WeaponConfig, unitRadius: number): number {
   const turret = config.turretShape;
-  if (!turret || turret.type === 'forceField') return unitRadius;
+  if (!turret || turret.type === 'complexSingleEmitter') return unitRadius;
   return unitRadius * turret.barrelLength;
 }
 

@@ -20,7 +20,7 @@ export function drawTurret(
   unitRadius: number,
   weapon: UnitWeapon,
   lod: LodLevel,
-  palette: ColorPalette,
+  _palette: ColorPalette,
   spinAngle: number,
   entityId: EntityId,
 ): void {
@@ -29,26 +29,23 @@ export function drawTurret(
 
   // Min LOD: only force field zones (no barrel geometry)
   if (lod === 'min') {
-    if (turretConfig.type === 'forceField') {
+    if (turretConfig.type === 'complexSingleEmitter') {
       drawForceFieldZonesOnly(graphics, mountX, mountY, weapon, lod, entityId);
     }
     return;
   }
 
   switch (turretConfig.type) {
-    case 'multibarrel':
+    case 'simpleMultiBarrel':
       drawMultibarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, lod, spinAngle);
       break;
-    case 'coneSpread':
+    case 'coneMultiBarrel':
       drawConeSpreadTurret(graphics, mountX, mountY, unitRadius, weapon, turretConfig, lod, spinAngle);
       break;
-    case 'single':
+    case 'simpleSingleBarrel':
       drawSingleBarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, lod);
       break;
-    case 'beamEmitter':
-      drawBeamEmitterTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, lod, palette);
-      break;
-    case 'forceField':
+    case 'complexSingleEmitter':
       drawForceFieldTurretFull(graphics, mountX, mountY, unitRadius, weapon, turretConfig.grate, lod, entityId);
       break;
   }
@@ -61,7 +58,7 @@ function drawMultibarrelTurret(
   mountX: number, mountY: number,
   r: number,
   turretRot: number,
-  config: Extract<TurretConfig, { type: 'multibarrel' }>,
+  config: Extract<TurretConfig, { type: 'simpleMultiBarrel' }>,
   lod: LodLevel,
   spinAngle: number,
 ): void {
@@ -106,7 +103,7 @@ function drawConeSpreadTurret(
   mountX: number, mountY: number,
   r: number,
   weapon: UnitWeapon,
-  config: Extract<TurretConfig, { type: 'coneSpread' }>,
+  config: Extract<TurretConfig, { type: 'coneMultiBarrel' }>,
   lod: LodLevel,
   spinAngle: number,
 ): void {
@@ -160,7 +157,7 @@ function drawSingleBarrelTurret(
   mountX: number, mountY: number,
   r: number,
   turretRot: number,
-  config: Extract<TurretConfig, { type: 'single' }>,
+  config: Extract<TurretConfig, { type: 'simpleSingleBarrel' }>,
   lod: LodLevel,
 ): void {
   const turretLen = r * config.barrelLength;
@@ -174,35 +171,6 @@ function drawSingleBarrelTurret(
   }
   graphics.lineStyle(thickness, COLORS.WHITE, 1);
   graphics.lineBetween(mountX, mountY, endX, endY);
-}
-
-// ==================== BEAM EMITTER (beam, megaBeam, disruptor) ====================
-
-function drawBeamEmitterTurret(
-  graphics: Phaser.GameObjects.Graphics,
-  mountX: number, mountY: number,
-  r: number,
-  turretRot: number,
-  config: Extract<TurretConfig, { type: 'beamEmitter' }>,
-  lod: LodLevel,
-  _palette: ColorPalette,
-): void {
-  const beamLen = r * config.barrelLength;
-  const beamEndX = mountX + Math.cos(turretRot) * beamLen;
-  const beamEndY = mountY + Math.sin(turretRot) * beamLen;
-
-  const thickness = config.barrelThickness ?? 2;
-  if (lod === 'high') {
-    // Emitter housing
-    graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(mountX, mountY, r * 0.12);
-
-    graphics.lineStyle(thickness, COLORS.WHITE, 1);
-    graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
-  } else {
-    graphics.lineStyle(thickness, COLORS.WHITE, 1);
-    graphics.lineBetween(mountX, mountY, beamEndX, beamEndY);
-  }
 }
 
 // ==================== FORCE FIELD (forceField, megaForceField) ====================
