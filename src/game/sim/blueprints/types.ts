@@ -41,13 +41,15 @@ export interface ForceFieldZoneRatioConfig {
 
 export interface ShotBlueprint {
   id: string;
-  damage: number;
+  collisionDamage: number;
+  primaryRadiusDamage: number;
+  secondaryRadiusDamage: number;
   primaryDamageRadius: number;
   secondaryDamageRadius: number;
   splashOnExpiry: boolean;
   piercing?: boolean;
-  // Bullet projectiles
-  mass?: number;
+  // All shots have mass (bullets: physical, beams: virtual)
+  mass: number;
   radius?: number;
   lifespan?: number;
   // Beam projectiles
@@ -77,8 +79,6 @@ export interface TurretBlueprint {
   pelletCount?: number;
   homingTurnRate?: number;
   launchForce?: number;
-  hitForce?: number;
-  knockBackForce?: number;
   isManualFire?: boolean;
   // Force field
   isForceField?: boolean;

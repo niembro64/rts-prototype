@@ -204,9 +204,10 @@ export class DamageSystem {
       const entity = this.world.getEntity(hit.entityId);
       if (!entity) continue;
 
-      // Knockback force (hitForce is already dt-scaled by caller)
-      const forceX = knockbackDirX * source.hitForce;
-      const forceY = knockbackDirY * source.hitForce;
+      // Momentum-based knockback (mass × velocity × MULTIPLIER)
+      const lineMomentum = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER * (source.velocity ?? 0);
+      const forceX = knockbackDirX * lineMomentum;
+      const forceY = knockbackDirY * lineMomentum;
 
       // Calculate hit point using T value
       const hitX = source.startX + hit.t * (source.endX - source.startX);
@@ -231,7 +232,7 @@ export class DamageSystem {
       hitCount++;
 
       // Add knockback for units (buildings don't get pushed)
-      if (hit.isUnit && source.hitForce > 0) {
+      if (hit.isUnit && lineMomentum > 0) {
         result.knockbacks.push({
           entityId: hit.entityId,
           forceX,

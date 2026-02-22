@@ -33,8 +33,10 @@ function computeZoneConfig(
 function getProjectileFields(bp: ShotBlueprint) {
   return {
     projectileType: bp.id,
-    damage: bp.damage,
-    ...(bp.mass != null && { projectileMass: bp.mass }),
+    collisionDamage: bp.collisionDamage,
+    primaryRadiusDamage: bp.primaryRadiusDamage,
+    secondaryRadiusDamage: bp.secondaryRadiusDamage,
+    projectileMass: bp.mass,
     ...(bp.radius != null && { projectileRadius: bp.radius }),
     ...(bp.lifespan != null && { projectileLifespan: bp.lifespan }),
     primaryDamageRadius: bp.primaryDamageRadius,
@@ -64,7 +66,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
     turretDrag: wb.turretDrag,
     turretShape: wb.turretShape,
     rangeMultiplierOverrides: wb.rangeMultiplierOverrides,
-    damage: 0, // will be overridden below
+    collisionDamage: 0, // will be overridden below
   };
 
   // Merge projectile fields if weapon has a projectile
@@ -91,7 +93,7 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
     base.forceFieldTransitionTime = wb.forceFieldTransitionTime;
     base.push = computeZoneConfig(wb.push, wb.range);
     base.pull = computeZoneConfig(wb.pull, wb.range);
-    base.damage = Math.max(wb.push?.damage ?? 0, wb.pull?.damage ?? 0);
+    base.collisionDamage = Math.max(wb.push?.damage ?? 0, wb.pull?.damage ?? 0);
   }
 
   // Optional firing modifiers
@@ -100,8 +102,6 @@ export function buildWeaponConfig(weaponId: string): WeaponConfig {
   if (wb.burstDelay != null) base.burstDelay = wb.burstDelay;
   if (wb.pelletCount != null) base.pelletCount = wb.pelletCount;
   if (wb.homingTurnRate != null) base.homingTurnRate = wb.homingTurnRate;
-  if (wb.hitForce != null) base.hitForce = wb.hitForce;
-  if (wb.knockBackForce != null) base.knockBackForce = wb.knockBackForce;
   if (wb.isManualFire != null) base.isManualFire = wb.isManualFire;
   if (wb.launchForce != null && base.projectileMass) {
     base.projectileSpeed = wb.launchForce / base.projectileMass;

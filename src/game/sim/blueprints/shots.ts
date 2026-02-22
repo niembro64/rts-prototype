@@ -15,9 +15,13 @@ function generateBeamShots(): Record<string, ShotBlueprint> {
   const maxI = harmonicSeries.length - 1;
   for (let i = 0; i < harmonicSeries.length; i++) {
     const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
+    const baseDamage = Math.max(2, Math.round(2 + 28 * p));
     result[`beamShot${i}`] = {
       id: `beamShot${i}`,
-      damage: Math.max(2, Math.round(2 + 28 * p)),
+      collisionDamage: baseDamage,
+      primaryRadiusDamage: baseDamage,
+      secondaryRadiusDamage: Math.max(1, Math.round(baseDamage * 0.2)),
+      mass: Math.max(0.01, Math.round((0.01 + 0.09 * p) * 100) / 100),
       beamWidth: Math.max(1, Math.round(1 + 9 * p)),
       collisionRadius: Math.max(2, Math.round(2 + 18 * p)),
       primaryDamageRadius: Math.max(4, Math.round(4 + 26 * p)),
@@ -32,7 +36,9 @@ function generateBeamShots(): Record<string, ShotBlueprint> {
 export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
     id: 'lightShot',
-    damage: 2,
+    collisionDamage: 2,
+    primaryRadiusDamage: 2,
+    secondaryRadiusDamage: 0.4,
     mass: 0.3,
     lifespan: 900,
     radius: 1.2,
@@ -43,7 +49,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   },
   mediumShot: {
     id: 'mediumShot',
-    damage: 4,
+    collisionDamage: 4,
+    primaryRadiusDamage: 4,
+    secondaryRadiusDamage: 0.8,
     mass: 3,
     radius: 2.2,
     lifespan: 600,
@@ -54,7 +62,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   },
   mortarShot: {
     id: 'mortarShot',
-    damage: 30,
+    collisionDamage: 30,
+    primaryRadiusDamage: 30,
+    secondaryRadiusDamage: 6,
     mass: 2,
     radius: 3.4,
     lifespan: 3000,
@@ -65,7 +75,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   },
   heavyShot: {
     id: 'heavyShot',
-    damage: 260,
+    collisionDamage: 260,
+    primaryRadiusDamage: 260,
+    secondaryRadiusDamage: 52,
     mass: 200.0,
     radius: 5,
     lifespan: 1800,
@@ -76,7 +88,10 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   },
   laserShot: {
     id: 'laserShot',
-    damage: 10,
+    collisionDamage: 10,
+    primaryRadiusDamage: 10,
+    secondaryRadiusDamage: 2,
+    mass: 0.05,
     beamDuration: 300,
     beamWidth: 2,
     primaryDamageRadius: 8,
@@ -88,7 +103,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   ...generateBeamShots(),
   disruptorShot: {
     id: 'disruptorShot',
-    damage: 9999,
+    collisionDamage: 9999,
+    primaryRadiusDamage: 9999,
+    secondaryRadiusDamage: 1999.8,
     mass: 20.0,
     radius: 25,
     lifespan: 2000,

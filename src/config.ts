@@ -104,7 +104,7 @@ export const COST_MULTIPLIER = 1.0;
  * Knockback forces for combat. Each value is a multiplier applied to damage.
  * Force = damage * multiplier. 0 = disabled.
  *
- * Beam/railgun hitForce and knockBackForce are defined per-projectile in projectiles.ts.
+ * Beam/railgun knockback uses momentum-based force (mass × velocity × PROJECTILE_MASS_MULTIPLIER).
  */
 export interface KnockbackConfig {
   FORCE_FIELD_PULL_MULTIPLIER: number;

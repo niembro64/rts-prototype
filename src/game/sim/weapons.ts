@@ -41,7 +41,7 @@ export function createWeaponConfig(
   base: Partial<WeaponConfig> & { id: string },
 ): WeaponConfig {
   return {
-    damage: 10,
+    collisionDamage: 10,
     range: 100,
     cooldown: 1000,
     color: 0xffffff,

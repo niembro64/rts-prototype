@@ -82,10 +82,10 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       // Skip if weapon is not engaged (target not in range or no target)
       if (!weapon.isEngaged) continue;
 
-      // Apply beam/railgun recoil any time the weapon is firing (not just when beam hits)
-      if (isBeamWeapon && forceAccumulator && config.knockBackForce) {
+      // Apply beam/railgun recoil any time the weapon is firing (momentum-based: mass × velocity)
+      if (isBeamWeapon && forceAccumulator && config.projectileMass && config.projectileSpeed) {
         const dtSec = dtMs / 1000;
-        const knockBackPerTick = config.knockBackForce * dtSec;
+        const knockBackPerTick = config.projectileMass * PROJECTILE_MASS_MULTIPLIER * config.projectileSpeed * dtSec;
         const turretAngle = weapon.turretRotation;
         const dirX = Math.cos(turretAngle);
         const dirY = Math.sin(turretAngle);
@@ -486,12 +486,12 @@ export function checkProjectileCollisions(
       // Handle splash damage on expiration — only for projectiles with splashOnExpiry enabled
       // Small projectiles (lightShot, mediumShot) only splash on direct hit, not on expiration
       if (config.primaryDamageRadius && config.splashOnExpiry && !proj.hasExploded) {
-        // Primary zone: full damage
+        // Primary zone: explicit primary radius damage
         const primaryResult = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
-          damage: config.damage,
+          damage: config.primaryRadiusDamage ?? config.collisionDamage,
           excludeEntities: proj.hitEntities,
           centerX: projEntity.transform.x,
           centerY: projEntity.transform.y,
@@ -506,7 +506,7 @@ export function checkProjectileCollisions(
         // Track killed entities and merge death contexts from primary
         collectKillsAndDeathContexts(primaryResult, unitsToRemove, buildingsToRemove, deathContexts);
 
-        // Secondary zone: 20% damage, exclude primary hits
+        // Secondary zone: explicit secondary radius damage, exclude primary hits
         if (config.secondaryDamageRadius && config.secondaryDamageRadius > config.primaryDamageRadius) {
           // Build exclude set: original hitEntities + primary hits
           _beamSecondaryExcludeSet.clear();
@@ -517,7 +517,7 @@ export function checkProjectileCollisions(
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: config.damage * 0.2,
+            damage: config.secondaryRadiusDamage ?? config.collisionDamage * 0.2,
             excludeEntities: _beamSecondaryExcludeSet,
             centerX: projEntity.transform.x,
             centerY: projEntity.transform.y,
@@ -579,21 +579,27 @@ export function checkProjectileCollisions(
       const collisionRadius = config.collisionRadius ?? config.beamWidth ?? 2;
       const primaryRadius = config.primaryDamageRadius ?? (collisionRadius * 2 + 6);
 
-      // Calculate per-tick damage:
+      // Calculate per-tick damages (collision, primary, secondary):
       // Cooldown beams (railgun): total damage spread over beamDuration
       // Continuous beams: damage is DPS, scale by tick length
       const dtSec = dtMs / 1000;
-      const tickDamage = config.beamDuration
-        ? (config.damage / config.beamDuration) * dtMs
-        : config.damage * dtSec;
+      const tickCollisionDamage = config.beamDuration
+        ? (config.collisionDamage / config.beamDuration) * dtMs
+        : config.collisionDamage * dtSec;
+      const tickPrimaryDamage = config.beamDuration
+        ? ((config.primaryRadiusDamage ?? config.collisionDamage) / config.beamDuration) * dtMs
+        : (config.primaryRadiusDamage ?? config.collisionDamage) * dtSec;
+      const tickSecondaryDamage = config.beamDuration
+        ? ((config.secondaryRadiusDamage ?? config.collisionDamage * 0.2) / config.beamDuration) * dtMs
+        : (config.secondaryRadiusDamage ?? config.collisionDamage * 0.2) * dtSec;
 
       // Beam direction for hit knockback
       const beamAngle = projEntity.transform.rotation;
       const beamDirX = Math.cos(beamAngle);
       const beamDirY = Math.sin(beamAngle);
 
-      // Flat per-tick hit force, scaled by dt for framerate independence
-      const hitForcePerTick = (config.hitForce ?? 0) * dtSec;
+      // Momentum-based per-tick hit force (mass × velocity), scaled by dt for framerate independence
+      const hitForcePerTick = (config.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER * (config.projectileSpeed ?? 0) * dtSec;
 
       // Collision gate: when splashOnExpiry is false, only splash if collisionRadius circle hits something
       const useCollisionGate = !config.splashOnExpiry;
@@ -605,7 +611,7 @@ export function checkProjectileCollisions(
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
-          damage: tickDamage,
+          damage: tickCollisionDamage,
           excludeEntities: _emptyExcludeSet,
           centerX: impactX,
           centerY: impactY,
@@ -629,7 +635,7 @@ export function checkProjectileCollisions(
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: tickDamage,
+            damage: tickPrimaryDamage,
             excludeEntities: _beamSecondaryExcludeSet,
             centerX: impactX,
             centerY: impactY,
@@ -644,11 +650,14 @@ export function checkProjectileCollisions(
           if (config.secondaryDamageRadius && config.secondaryDamageRadius > primaryRadius) {
             for (const id of primaryResult.hitEntityIds) _beamSecondaryExcludeSet.add(id);
 
+            const secondarySecondaryKnockback = config.collisionDamage > 0
+              ? hitForcePerTick * ((config.secondaryRadiusDamage ?? config.collisionDamage * 0.2) / config.collisionDamage)
+              : 0;
             const secondaryResult = damageSystem.applyDamage({
               type: 'area',
               sourceEntityId: proj.sourceEntityId,
               ownerId: projEntity.ownership.playerId,
-              damage: tickDamage * 0.2,
+              damage: tickSecondaryDamage,
               excludeEntities: _beamSecondaryExcludeSet,
               centerX: impactX,
               centerY: impactY,
@@ -656,7 +665,7 @@ export function checkProjectileCollisions(
               falloff: 1,
             });
 
-            applyDirectionalKnockback(secondaryResult.hitEntityIds, hitForcePerTick * 0.2, beamDirX, beamDirY, forceAccumulator);
+            applyDirectionalKnockback(secondaryResult.hitEntityIds, secondarySecondaryKnockback, beamDirX, beamDirY, forceAccumulator);
             collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
           }
         }
@@ -666,7 +675,7 @@ export function checkProjectileCollisions(
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
-          damage: tickDamage,
+          damage: tickPrimaryDamage,
           excludeEntities: _emptyExcludeSet,
           centerX: impactX,
           centerY: impactY,
@@ -678,16 +687,19 @@ export function checkProjectileCollisions(
         emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, collisionRadius, audioEvents);
         collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
-        // Secondary zone: 20% damage, exclude primary hits
+        // Secondary zone: explicit secondary damage, exclude primary hits
         if (config.secondaryDamageRadius && config.secondaryDamageRadius > primaryRadius) {
           _beamSecondaryExcludeSet.clear();
           for (const id of result.hitEntityIds) _beamSecondaryExcludeSet.add(id);
 
+          const secondaryKnockback = config.collisionDamage > 0
+            ? hitForcePerTick * ((config.secondaryRadiusDamage ?? config.collisionDamage * 0.2) / config.collisionDamage)
+            : 0;
           const secondaryResult = damageSystem.applyDamage({
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: tickDamage * 0.2,
+            damage: tickSecondaryDamage,
             excludeEntities: _beamSecondaryExcludeSet,
             centerX: impactX,
             centerY: impactY,
@@ -695,12 +707,12 @@ export function checkProjectileCollisions(
             falloff: 1,
           });
 
-          applyDirectionalKnockback(secondaryResult.hitEntityIds, hitForcePerTick * 0.2, beamDirX, beamDirY, forceAccumulator);
+          applyDirectionalKnockback(secondaryResult.hitEntityIds, secondaryKnockback, beamDirX, beamDirY, forceAccumulator);
           collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
         }
       }
 
-      // Note: beam recoil (knockBackForce) is applied in fireWeapons() based on weapon.isEngaged state
+      // Note: beam recoil (momentum-based) is applied in fireWeapons() based on weapon.isEngaged state
     } else {
       // Traveling projectiles use swept volume collision (prevents tunneling)
       const projRadius = config.projectileRadius ?? 5;
@@ -718,7 +730,7 @@ export function checkProjectileCollisions(
         type: 'swept',
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
-        damage: config.damage,
+        damage: config.collisionDamage,
         excludeEntities: proj.hitEntities,
         prevX,
         prevY,
@@ -764,12 +776,12 @@ export function checkProjectileCollisions(
 
       // Handle splash damage on first hit (safe: result fully consumed above)
       if (hadHits && config.primaryDamageRadius && !proj.hasExploded) {
-        // Primary zone: full damage
+        // Primary zone: explicit primary radius damage
         const primarySplash = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
-          damage: config.damage,
+          damage: config.primaryRadiusDamage ?? config.collisionDamage,
           excludeEntities: proj.hitEntities,
           centerX: projEntity.transform.x,
           centerY: projEntity.transform.y,
@@ -784,7 +796,7 @@ export function checkProjectileCollisions(
         // Track primary splash kills and merge death contexts
         collectKillsAndDeathContexts(primarySplash, unitsToRemove, buildingsToRemove, deathContexts);
 
-        // Secondary zone: 20% damage, exclude direct hits + primary hits
+        // Secondary zone: explicit secondary radius damage, exclude direct hits + primary hits
         if (config.secondaryDamageRadius && config.secondaryDamageRadius > config.primaryDamageRadius) {
           _beamSecondaryExcludeSet.clear();
           for (const id of proj.hitEntities) _beamSecondaryExcludeSet.add(id);
@@ -794,7 +806,7 @@ export function checkProjectileCollisions(
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: config.damage * 0.2,
+            damage: config.secondaryRadiusDamage ?? config.collisionDamage * 0.2,
             excludeEntities: _beamSecondaryExcludeSet,
             centerX: projEntity.transform.x,
             centerY: projEntity.transform.y,

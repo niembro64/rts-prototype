@@ -133,7 +133,9 @@ export interface WeaponConfig {
   id: string;                    // Unique identifier (e.g., 'lightTurret', 'beamTurret', 'cannonTurret')
   projectileType?: string;       // Projectile stat key (e.g., 'lightShot', 'beamShot')
   turretShape?: import('../../config').TurretConfig; // Turret visual config (barrel type, dimensions, spin)
-  damage: number;                // Base damage per hit
+  collisionDamage: number;       // Direct hit / collision zone damage
+  primaryRadiusDamage?: number;  // Primary splash zone damage
+  secondaryRadiusDamage?: number; // Secondary splash zone damage
   range: number;                 // Attack range
   cooldown: number;              // Time between attacks (ms)
 
@@ -147,8 +149,6 @@ export interface WeaponConfig {
   beamDuration?: number;         // How long beam persists (ms)
   beamWidth?: number;            // Visual width of beam line
   collisionRadius?: number;      // Collision/hit-detection radius at beam endpoint
-  hitForce?: number;             // Push on target per tick (beams/railguns)
-  knockBackForce?: number;       // Recoil on shooter per tick (beams/railguns)
 
   // Spread/multi-shot properties
   pelletCount?: number;          // Number of projectiles per shot

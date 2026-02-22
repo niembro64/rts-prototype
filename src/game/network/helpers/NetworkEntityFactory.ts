@@ -182,7 +182,7 @@ function createProjectileFromNetwork(
         ? { ...getWeaponConfig(netEntity.weaponId), weaponIndex: netEntity.weaponIndex }
         : {
           id: 'unknown',
-          damage: 10,
+          collisionDamage: 10,
           range: 100,
           cooldown: 1000,
         },

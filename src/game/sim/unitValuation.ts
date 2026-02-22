@@ -18,26 +18,26 @@ export function getWeaponValue(config: WeaponConfig): number {
   if (isForceField) {
     // Force field: damage field is base DPS, but scales with 1/distance.
     // Effective DPS at ~60% of fire range: baseDamage * (0.5 / 0.6)
-    baseDPS = config.damage * (0.5 / 0.6);
+    baseDPS = config.collisionDamage * (0.5 / 0.6);
   } else if (isBeam && config.cooldown === 0) {
     // Continuous beam: damage IS DPS
-    baseDPS = config.damage;
+    baseDPS = config.collisionDamage;
   } else if (isShotgun) {
     // Shotgun: damage * pelletCount / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (config.damage * config.pelletCount!) / cooldownSec;
+    baseDPS = (config.collisionDamage * config.pelletCount!) / cooldownSec;
   } else if (isBurst) {
     // Burst: damage * burstCount / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (config.damage * config.burstCount!) / cooldownSec;
+    baseDPS = (config.collisionDamage * config.burstCount!) / cooldownSec;
   } else if (isBeam) {
     // Hitscan flash (railgun): damage / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = config.damage / cooldownSec;
+    baseDPS = config.collisionDamage / cooldownSec;
   } else {
     // Standard projectile: damage / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = config.damage / cooldownSec;
+    baseDPS = config.collisionDamage / cooldownSec;
   }
 
   // --- rangeFactor --- normalized to reference range 150, sqrt scaling

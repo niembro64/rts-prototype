@@ -22,7 +22,8 @@ export interface LineDamageSource extends DamageSourceBase {
   width: number;        // Beam width for collision
   piercing: boolean;    // If true, hits all entities; if false, stops at first
   maxHits: number;      // Maximum entities to hit (Infinity for piercing)
-  hitForce: number;     // Push on target when hit (per tick)
+  projectileMass?: number; // Virtual projectile mass (for momentum knockback = mass × velocity)
+  velocity?: number;       // Projectile speed (for momentum knockback)
 }
 
 // Swept volume damage (traveling projectiles)
