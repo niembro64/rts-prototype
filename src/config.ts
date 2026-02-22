@@ -471,22 +471,22 @@ export const ZOOM_INITIAL_GAME = 0.5;
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = 6.0;
 
-/** Edge scroll: fraction of effective viewport from each edge that triggers scrolling (0.15 = 15%) */
-export const EDGE_SCROLL_BORDER_RATIO = 0.15;
-
-/** Edge scroll: world units/sec at zoom 1.0 (scales inversely with zoom) */
-export const EDGE_SCROLL_SPEED = 800;
-
-/** Edge scroll: fixed top bar height in pixels (excluded from effective viewport) */
-export const EDGE_SCROLL_TOP_BAR_HEIGHT = 50;
-
-/** Edge scroll overlay appearance */
-export const EDGE_SCROLL_OVERLAY = {
-  fillColor: 0x000000,   // Border zone fill color
-  fillAlpha: 0.8,       // Border zone fill opacity
-  strokeColor: 0x000000, // Inner border line color
-  strokeAlpha: 0.3,      // Inner border line opacity
-  strokeWidth: 1,        // Inner border line width (px)
+/** Edge scroll configuration */
+export const EDGE_SCROLL = {
+  /** Fraction of effective viewport from each edge that triggers scrolling (0.15 = 15%) */
+  borderRatio: 0.15,
+  /** World units/sec at zoom 1.0 (scales inversely with zoom) */
+  speed: 800,
+  /** Fixed top bar height in pixels (excluded from effective viewport) */
+  topBarHeight: 50,
+  /** Overlay appearance */
+  overlay: {
+    fillColor: 0x000000,   // Border zone fill color
+    fillAlpha: 0.8,        // Border zone fill opacity
+    strokeColor: 0x000000, // Inner border line color
+    strokeAlpha: 0.3,      // Inner border line opacity
+    strokeWidth: 1,        // Inner border line width (px)
+  },
 };
 
 /**

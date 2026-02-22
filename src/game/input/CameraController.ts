@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER, EDGE_SCROLL_BORDER_RATIO, EDGE_SCROLL_SPEED, EDGE_SCROLL_TOP_BAR_HEIGHT, EDGE_SCROLL_OVERLAY } from '../../config';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER, EDGE_SCROLL } from '../../config';
 import { getEdgeScrollEnabled, getBottomBarsHeight } from '../render/graphicsSettings';
 import type { InputState } from './InputState';
 
@@ -87,8 +87,8 @@ export class CameraController {
 
     const camera = this.scene.cameras.main;
 
-    // Effective viewport (exclude top bar and bottom bars)
-    const topInset = EDGE_SCROLL_TOP_BAR_HEIGHT;
+    // Effective viewport in screen pixels (exclude top bar and bottom bars)
+    const topInset = EDGE_SCROLL.topBarHeight;
     const bottomInset = getBottomBarsHeight();
     const vpLeft = 0;
     const vpRight = camera.width;
@@ -99,26 +99,38 @@ export class CameraController {
 
     if (vpW <= 0 || vpH <= 0) return;
 
-    // Border zone dimensions
-    const borderW = vpW * EDGE_SCROLL_BORDER_RATIO;
-    const borderH = vpH * EDGE_SCROLL_BORDER_RATIO;
+    // Border zone dimensions in screen pixels
+    const borderW = vpW * EDGE_SCROLL.borderRatio;
+    const borderH = vpH * EDGE_SCROLL.borderRatio;
+
+    // scrollFactor(0) prevents scroll but Phaser still applies zoom.
+    // Invert the zoom transform so the overlay stays pixel-perfect on screen.
+    const zoom = camera.zoom;
+    const cx = camera.width * 0.5;
+    const cy = camera.height * 0.5;
+    const gx = (sx: number) => (sx - cx * (1 - zoom)) / zoom;
+    const gy = (sy: number) => (sy - cy * (1 - zoom)) / zoom;
+    const gw = (sw: number) => sw / zoom;
+    const gh = (sh: number) => sh / zoom;
+
+    const { overlay } = EDGE_SCROLL;
 
     // Draw semi-transparent border zone (4 strips)
-    this.edgeOverlay.fillStyle(EDGE_SCROLL_OVERLAY.fillColor, EDGE_SCROLL_OVERLAY.fillAlpha);
+    this.edgeOverlay.fillStyle(overlay.fillColor, overlay.fillAlpha);
     // Top strip
-    this.edgeOverlay.fillRect(vpLeft, vpTop, vpW, borderH);
+    this.edgeOverlay.fillRect(gx(vpLeft), gy(vpTop), gw(vpW), gh(borderH));
     // Bottom strip
-    this.edgeOverlay.fillRect(vpLeft, vpBottom - borderH, vpW, borderH);
+    this.edgeOverlay.fillRect(gx(vpLeft), gy(vpBottom - borderH), gw(vpW), gh(borderH));
     // Left strip (between top and bottom strips)
-    this.edgeOverlay.fillRect(vpLeft, vpTop + borderH, borderW, vpH - borderH * 2);
+    this.edgeOverlay.fillRect(gx(vpLeft), gy(vpTop + borderH), gw(borderW), gh(vpH - borderH * 2));
     // Right strip (between top and bottom strips)
-    this.edgeOverlay.fillRect(vpRight - borderW, vpTop + borderH, borderW, vpH - borderH * 2);
+    this.edgeOverlay.fillRect(gx(vpRight - borderW), gy(vpTop + borderH), gw(borderW), gh(vpH - borderH * 2));
 
     // Inner border line
-    this.edgeOverlay.lineStyle(EDGE_SCROLL_OVERLAY.strokeWidth, EDGE_SCROLL_OVERLAY.strokeColor, EDGE_SCROLL_OVERLAY.strokeAlpha);
+    this.edgeOverlay.lineStyle(overlay.strokeWidth / zoom, overlay.strokeColor, overlay.strokeAlpha);
     this.edgeOverlay.strokeRect(
-      vpLeft + borderW, vpTop + borderH,
-      vpW - borderW * 2, vpH - borderH * 2,
+      gx(vpLeft + borderW), gy(vpTop + borderH),
+      gw(vpW - borderW * 2), gh(vpH - borderH * 2),
     );
 
     // Camera scrolling
@@ -136,7 +148,9 @@ export class CameraController {
     const nx = ((px - vpLeft) / vpW) * 2 - 1; // -1 = left edge, +1 = right edge
     const ny = ((py - vpTop) / vpH) * 2 - 1;  // -1 = top edge, +1 = bottom edge
 
-    const threshold = 1 - EDGE_SCROLL_BORDER_RATIO;
+    // In [-1,+1] normalized space, borderRatio fraction of viewport = 2*borderRatio units
+    const normBorder = 2 * EDGE_SCROLL.borderRatio;
+    const threshold = 1 - normBorder;
     const abx = Math.abs(nx);
     const aby = Math.abs(ny);
 
@@ -148,11 +162,11 @@ export class CameraController {
     let dy = 0;
 
     if (abx >= threshold) {
-      const intensity = Math.min((abx - threshold) / EDGE_SCROLL_BORDER_RATIO, 1);
+      const intensity = Math.min((abx - threshold) / normBorder, 1);
       dx = Math.sign(nx) * intensity;
     }
     if (aby >= threshold) {
-      const intensity = Math.min((aby - threshold) / EDGE_SCROLL_BORDER_RATIO, 1);
+      const intensity = Math.min((aby - threshold) / normBorder, 1);
       dy = Math.sign(ny) * intensity;
     }
 
@@ -163,7 +177,7 @@ export class CameraController {
     dy /= len;
 
     // Apply scroll (speed scales inversely with zoom for consistency)
-    const speed = EDGE_SCROLL_SPEED * dtSec / camera.zoom;
+    const speed = EDGE_SCROLL.speed * dtSec / camera.zoom;
     camera.scrollX += dx * speed * len;
     camera.scrollY += dy * speed * len;
   }
