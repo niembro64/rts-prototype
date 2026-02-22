@@ -487,6 +487,17 @@ export const EDGE_SCROLL = {
     strokeAlpha: 0.3,      // Inner border line opacity
     strokeWidth: 1,        // Inner border line width (px)
   },
+  /** Pan direction arrow drawn at screen center */
+  arrow: {
+    color: 0xffffff,
+    alpha: 0.5,
+    maxLength: 80,     // max arrow length (screen px)
+    width: 2,          // shaft line width (screen px)
+    headLength: 12,    // arrowhead length (screen px)
+    headWidth: 6,      // arrowhead half-width (screen px)
+    gap: 6,            // gap from screen center before shaft starts (screen px)
+    dragMaxDist: 100,  // mouse displacement (px) for full intensity during drag pan
+  },
 };
 
 /**

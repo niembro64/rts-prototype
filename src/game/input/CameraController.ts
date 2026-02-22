@@ -79,107 +79,145 @@ export class CameraController {
     this.edgeOverlay.destroy();
   }
 
-  /** Edge scroll: move camera when pointer is near viewport edges, draw border overlay */
+  /** Edge scroll, border overlay (only when mouse is in zone), and pan direction arrow */
   updateEdgeScroll(delta: number): void {
     this.edgeOverlay.clear();
 
-    if (!getEdgeScrollEnabled()) return;
-
     const camera = this.scene.cameras.main;
-
-    // Effective viewport in screen pixels (exclude top bar and bottom bars)
-    const topInset = EDGE_SCROLL.topBarHeight;
-    const bottomInset = getBottomBarsHeight();
-    const vpLeft = 0;
-    const vpRight = camera.width;
-    const vpTop = topInset;
-    const vpBottom = camera.height - bottomInset;
-    const vpW = vpRight - vpLeft;
-    const vpH = vpBottom - vpTop;
-
-    if (vpW <= 0 || vpH <= 0) return;
-
-    // Border zone dimensions in screen pixels
-    const borderW = vpW * EDGE_SCROLL.borderRatio;
-    const borderH = vpH * EDGE_SCROLL.borderRatio;
+    const zoom = camera.zoom;
 
     // scrollFactor(0) prevents scroll but Phaser still applies zoom.
     // Invert the zoom transform so the overlay stays pixel-perfect on screen.
-    const zoom = camera.zoom;
-    const cx = camera.width * 0.5;
-    const cy = camera.height * 0.5;
-    const gx = (sx: number) => (sx - cx * (1 - zoom)) / zoom;
-    const gy = (sy: number) => (sy - cy * (1 - zoom)) / zoom;
-    const gw = (sw: number) => sw / zoom;
-    const gh = (sh: number) => sh / zoom;
+    const halfW = camera.width * 0.5;
+    const halfH = camera.height * 0.5;
+    const gx = (sx: number) => (sx - halfW * (1 - zoom)) / zoom;
+    const gy = (sy: number) => (sy - halfH * (1 - zoom)) / zoom;
+    const gs = (s: number) => s / zoom;
 
-    const { overlay } = EDGE_SCROLL;
+    let arrowDirX = 0;
+    let arrowDirY = 0;
+    let arrowIntensity = 0;
 
-    // Draw semi-transparent border zone (4 strips)
-    this.edgeOverlay.fillStyle(overlay.fillColor, overlay.fillAlpha);
-    // Top strip
-    this.edgeOverlay.fillRect(gx(vpLeft), gy(vpTop), gw(vpW), gh(borderH));
-    // Bottom strip
-    this.edgeOverlay.fillRect(gx(vpLeft), gy(vpBottom - borderH), gw(vpW), gh(borderH));
-    // Left strip (between top and bottom strips)
-    this.edgeOverlay.fillRect(gx(vpLeft), gy(vpTop + borderH), gw(borderW), gh(vpH - borderH * 2));
-    // Right strip (between top and bottom strips)
-    this.edgeOverlay.fillRect(gx(vpRight - borderW), gy(vpTop + borderH), gw(borderW), gh(vpH - borderH * 2));
+    // --- Edge scroll ---
+    if (getEdgeScrollEnabled()) {
+      const topInset = EDGE_SCROLL.topBarHeight;
+      const bottomInset = getBottomBarsHeight();
+      const vpLeft = 0;
+      const vpRight = camera.width;
+      const vpTop = topInset;
+      const vpBottom = camera.height - bottomInset;
+      const vpW = vpRight - vpLeft;
+      const vpH = vpBottom - vpTop;
 
-    // Inner border line
-    this.edgeOverlay.lineStyle(overlay.strokeWidth / zoom, overlay.strokeColor, overlay.strokeAlpha);
-    this.edgeOverlay.strokeRect(
-      gx(vpLeft + borderW), gy(vpTop + borderH),
-      gw(vpW - borderW * 2), gh(vpH - borderH * 2),
-    );
+      if (vpW > 0 && vpH > 0) {
+        const borderW = vpW * EDGE_SCROLL.borderRatio;
+        const borderH = vpH * EDGE_SCROLL.borderRatio;
+        const vpCenterX = vpLeft + vpW * 0.5;
+        const vpCenterY = vpTop + vpH * 0.5;
 
-    // Camera scrolling
-    if (this.state.isPanningCamera || this.state.isDraggingSelection || this.state.isDrawingLinePath) return;
+        const pointer = this.scene.input.activePointer;
+        const px = pointer.x;
+        const py = pointer.y;
 
-    const pointer = this.scene.input.activePointer;
-    const dtSec = delta / 1000;
+        // Compute intensity (depth into border zone)
+        let intensity = 0;
+        if (px >= vpLeft && px <= vpRight && py >= vpTop && py <= vpBottom) {
+          const depthX = Math.max(0, (Math.abs(px - vpCenterX) - (vpW * 0.5 - borderW)) / borderW);
+          const depthY = Math.max(0, (Math.abs(py - vpCenterY) - (vpH * 0.5 - borderH)) / borderH);
+          intensity = Math.min(Math.max(depthX, depthY), 1);
+        }
 
-    // Check pointer is within the effective viewport
-    const px = pointer.x;
-    const py = pointer.y;
-    if (px < vpLeft || px > vpRight || py < vpTop || py > vpBottom) return;
+        // Only draw overlay when mouse is in the border zone
+        if (intensity > 0) {
+          const { overlay } = EDGE_SCROLL;
+          this.edgeOverlay.fillStyle(overlay.fillColor, overlay.fillAlpha);
+          // Top strip
+          this.edgeOverlay.fillRect(gx(vpLeft), gy(vpTop), gs(vpW), gs(borderH));
+          // Bottom strip
+          this.edgeOverlay.fillRect(gx(vpLeft), gy(vpBottom - borderH), gs(vpW), gs(borderH));
+          // Left strip (between top and bottom strips)
+          this.edgeOverlay.fillRect(gx(vpLeft), gy(vpTop + borderH), gs(borderW), gs(vpH - borderH * 2));
+          // Right strip (between top and bottom strips)
+          this.edgeOverlay.fillRect(gx(vpRight - borderW), gy(vpTop + borderH), gs(borderW), gs(vpH - borderH * 2));
 
-    // Normalize to [-1, +1] within viewport
-    const nx = ((px - vpLeft) / vpW) * 2 - 1; // -1 = left edge, +1 = right edge
-    const ny = ((py - vpTop) / vpH) * 2 - 1;  // -1 = top edge, +1 = bottom edge
+          // Inner border line
+          this.edgeOverlay.lineStyle(overlay.strokeWidth / zoom, overlay.strokeColor, overlay.strokeAlpha);
+          this.edgeOverlay.strokeRect(
+            gx(vpLeft + borderW), gy(vpTop + borderH),
+            gs(vpW - borderW * 2), gs(vpH - borderH * 2),
+          );
+        }
 
-    // In [-1,+1] normalized space, borderRatio fraction of viewport = 2*borderRatio units
-    const normBorder = 2 * EDGE_SCROLL.borderRatio;
-    const threshold = 1 - normBorder;
-    const abx = Math.abs(nx);
-    const aby = Math.abs(ny);
+        // Apply scrolling (skip if in another drag state)
+        if (intensity > 0 && !this.state.isPanningCamera && !this.state.isDraggingSelection && !this.state.isDrawingLinePath) {
+          let dirX = px - vpCenterX;
+          let dirY = py - vpCenterY;
+          const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+          if (dirLen > 0) {
+            dirX /= dirLen;
+            dirY /= dirLen;
+            const dtSec = delta / 1000;
+            const speed = EDGE_SCROLL.speed * intensity * dtSec / camera.zoom;
+            camera.scrollX += dirX * speed;
+            camera.scrollY += dirY * speed;
 
-    // If pointer is not in the edge zone on either axis, skip
-    if (abx < threshold && aby < threshold) return;
-
-    // Compute direction and intensity per axis
-    let dx = 0;
-    let dy = 0;
-
-    if (abx >= threshold) {
-      const intensity = Math.min((abx - threshold) / normBorder, 1);
-      dx = Math.sign(nx) * intensity;
+            arrowDirX = dirX;
+            arrowDirY = dirY;
+            arrowIntensity = intensity;
+          }
+        }
+      }
     }
-    if (aby >= threshold) {
-      const intensity = Math.min((aby - threshold) / normBorder, 1);
-      dy = Math.sign(ny) * intensity;
+
+    // --- Drag pan arrow ---
+    if (this.state.isPanningCamera) {
+      const pointer = this.scene.input.activePointer;
+      const dx = pointer.x - this.state.panStartX;
+      const dy = pointer.y - this.state.panStartY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0) {
+        arrowDirX = dx / dist;
+        arrowDirY = dy / dist;
+        arrowIntensity = Math.min(dist / EDGE_SCROLL.arrow.dragMaxDist, 1);
+      }
     }
 
-    // Normalize direction vector
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0) return;
-    dx /= len;
-    dy /= len;
+    // --- Draw pan direction arrow at screen center ---
+    if (arrowIntensity > 0) {
+      const { arrow } = EDGE_SCROLL;
+      const length = arrowIntensity * arrow.maxLength;
+      if (length >= arrow.headLength) {
+        const perpX = -arrowDirY;
+        const perpY = arrowDirX;
 
-    // Apply scroll (speed scales inversely with zoom for consistency)
-    const speed = EDGE_SCROLL.speed * dtSec / camera.zoom;
-    camera.scrollX += dx * speed * len;
-    camera.scrollY += dy * speed * len;
+        const tipSX = halfW + arrowDirX * length;
+        const tipSY = halfH + arrowDirY * length;
+        const baseSX = tipSX - arrowDirX * arrow.headLength;
+        const baseSY = tipSY - arrowDirY * arrow.headLength;
+
+        // Shaft line
+        this.edgeOverlay.lineStyle(arrow.width / zoom, arrow.color, arrow.alpha);
+        this.edgeOverlay.beginPath();
+        this.edgeOverlay.moveTo(gx(halfW + arrowDirX * arrow.gap), gy(halfH + arrowDirY * arrow.gap));
+        this.edgeOverlay.lineTo(gx(baseSX), gy(baseSY));
+        this.edgeOverlay.strokePath();
+
+        // Arrowhead (filled triangle)
+        this.edgeOverlay.fillStyle(arrow.color, arrow.alpha);
+        this.edgeOverlay.beginPath();
+        this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
+        this.edgeOverlay.lineTo(
+          gx(baseSX + perpX * arrow.headWidth),
+          gy(baseSY + perpY * arrow.headWidth),
+        );
+        this.edgeOverlay.lineTo(
+          gx(baseSX - perpX * arrow.headWidth),
+          gy(baseSY - perpY * arrow.headWidth),
+        );
+        this.edgeOverlay.closePath();
+        this.edgeOverlay.fillPath();
+      }
+    }
   }
 
   // Get current zoom level
