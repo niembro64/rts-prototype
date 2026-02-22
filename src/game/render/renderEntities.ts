@@ -553,13 +553,19 @@ export class EntityRenderer {
     const sin = Math.sin(bodyRot);
     const spinAngle = gfx.barrelSpin ? this.getBarrelSpinAngle(entity.id) : 0;
 
-    for (let i = 0; i < entity.weapons.length; i++) {
-      const weapon = entity.weapons[i];
-      const mount = mounts[Math.min(i, mounts.length - 1)];
-      const mountX = x + cos * mount.x * r - sin * mount.y * r;
-      const mountY = y + sin * mount.x * r + cos * mount.y * r;
+    // Two passes: force field turrets first (underneath), then regular turrets on top
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < entity.weapons.length; i++) {
+        const weapon = entity.weapons[i];
+        const isForceField = (weapon.config.turretShape as { type?: string } | undefined)?.type === 'complexSingleEmitter';
+        if (pass === 0 ? !isForceField : isForceField) continue;
 
-      drawTurret(this.graphics, mountX, mountY, r, weapon, palette, spinAngle, entity.id, gfx.turretStyle, gfx.forceTurretStyle);
+        const mount = mounts[Math.min(i, mounts.length - 1)];
+        const mountX = x + cos * mount.x * r - sin * mount.y * r;
+        const mountY = y + sin * mount.x * r + cos * mount.y * r;
+
+        drawTurret(this.graphics, mountX, mountY, r, weapon, palette, spinAngle, entity.id, gfx.turretStyle, gfx.forceTurretStyle);
+      }
     }
   }
 
