@@ -43,8 +43,11 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       }
 
       // Compute and cache weapon world position (reused by turret, firing, beam systems)
+      // Must copy values — getWeaponWorldPosition returns a shared singleton
       const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offset.x, weapon.offset.y);
-      weapon.worldPos = wp;
+      if (!weapon.worldPos) weapon.worldPos = { x: 0, y: 0 };
+      weapon.worldPos.x = wp.x;
+      weapon.worldPos.y = wp.y;
 
       // Step 1: Validate current target with hysteresis
       if (weapon.target !== null) {
