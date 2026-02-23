@@ -91,6 +91,7 @@ function buildRow(unitType: string, s: NetworkUnitTypeStats | undefined, val: Un
     kills,
     normDmg,
     normKills,
+    normAvg: 0,
     weaponVal: Math.round(val.weaponValue * 10) / 10,
     defVal: Math.round(val.defensiveValue * 10) / 10,
     mobVal: Math.round(val.mobilityValue * 100) / 100,
