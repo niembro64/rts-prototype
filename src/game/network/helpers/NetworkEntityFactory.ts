@@ -77,22 +77,23 @@ function createUnitFromNetwork(
     const weapons = [];
     for (let i = 0; i < netEntity.weapons.length; i++) {
       const nw = netEntity.weapons[i];
+      const t = nw.turret;
       weapons.push({
-        config: getWeaponConfig(nw.configId),
+        config: getWeaponConfig(t.id),
         currentCooldown: 0,
         targetEntityId: nw.targetId ?? null,
         ranges: {
-          tracking: { ...nw.ranges.tracking },
-          engage: { ...nw.ranges.engage },
+          tracking: { ...t.ranges.tracking },
+          engage: { ...t.ranges.engage },
         },
         isTracking: nw.isTracking,
         isEngaged: nw.isEngaged,
-        turretRotation: nw.turretRotation,
-        turretAngularVelocity: nw.turretAngularVelocity,
-        turretTurnAccel: nw.turretTurnAccel,
-        turretDrag: nw.turretDrag,
-        offsetX: nw.offset.x,
-        offsetY: nw.offset.y,
+        turretRotation: t.angular.rot,
+        turretAngularVelocity: t.angular.vel,
+        turretTurnAccel: t.angular.acc,
+        turretDrag: t.angular.drag,
+        offsetX: t.pos.offset.x,
+        offsetY: t.pos.offset.y,
         currentForceFieldRange: nw.currentForceFieldRange,
       });
     }

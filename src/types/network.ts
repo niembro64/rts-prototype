@@ -134,14 +134,20 @@ export type NetworkAction = {
 };
 
 export type NetworkWeapon = {
-  configId: string;
+  turret: {
+    id: string;
+    ranges: TurretRanges;
+    angular: {
+      rot: number;
+      vel: number;
+      acc: number;
+      drag: number;
+    };
+    pos: {
+      offset: Vec2;
+    };
+  };
   targetId?: number;
-  ranges: TurretRanges;
-  turretRotation: number;
-  turretAngularVelocity: number;
-  turretTurnAccel: number;
-  turretDrag: number;
-  offset: Vec2;
   isTracking: boolean;
   isEngaged: boolean;
   currentForceFieldRange?: number;

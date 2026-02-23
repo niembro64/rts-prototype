@@ -19,10 +19,13 @@ const MAX_WAYPOINTS_PER_ENTITY = 16;
 // Pre-allocated weapon objects per entity slot
 function createPooledWeapon(): NetworkWeapon {
   return {
-    configId: '', targetId: undefined,
-    ranges: { tracking: { acquire: 0, release: 0 }, engage: { acquire: 0, release: 0 } },
-    turretRotation: 0, turretAngularVelocity: 0, turretTurnAccel: 0, turretDrag: 0,
-    offset: { x: 0, y: 0 },
+    turret: {
+      id: '',
+      ranges: { tracking: { acquire: 0, release: 0 }, engage: { acquire: 0, release: 0 } },
+      angular: { rot: 0, vel: 0, acc: 0, drag: 0 },
+      pos: { offset: { x: 0, y: 0 } },
+    },
+    targetId: undefined,
     isTracking: false, isEngaged: false,
     currentForceFieldRange: undefined,
   };
@@ -563,16 +566,18 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
       for (let i = 0; i < count; i++) {
         const src = weapons[i];
         const dst = pool.weapons[i];
-        dst.configId = src.config.id;
-        dst.targetId = src.targetEntityId ?? undefined;
-        const sr = src.ranges; const dr = dst.ranges;
+        const t = dst.turret;
+        t.id = src.config.id;
+        const sr = src.ranges; const dr = t.ranges;
         dr.tracking.acquire = sr.tracking.acquire; dr.tracking.release = sr.tracking.release;
         dr.engage.acquire = sr.engage.acquire; dr.engage.release = sr.engage.release;
-        dst.turretRotation = src.turretRotation;
-        dst.turretAngularVelocity = src.turretAngularVelocity;
-        dst.turretTurnAccel = src.turretTurnAccel;
-        dst.turretDrag = src.turretDrag;
-        dst.offset = { x: src.offsetX, y: src.offsetY };
+        t.angular.rot = src.turretRotation;
+        t.angular.vel = src.turretAngularVelocity;
+        t.angular.acc = src.turretTurnAccel;
+        t.angular.drag = src.turretDrag;
+        t.pos.offset.x = src.offsetX;
+        t.pos.offset.y = src.offsetY;
+        dst.targetId = src.targetEntityId ?? undefined;
         dst.isTracking = src.isTracking;
         dst.isEngaged = src.isEngaged;
         dst.currentForceFieldRange = src.currentForceFieldRange;

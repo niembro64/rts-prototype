@@ -146,8 +146,8 @@ export class ClientViewState {
         }
         target.weapons.length = nw.length;
         for (let i = 0; i < nw.length; i++) {
-          target.weapons[i].turretRotation = nw[i].turretRotation;
-          target.weapons[i].turretAngularVelocity = nw[i].turretAngularVelocity;
+          target.weapons[i].turretRotation = nw[i].turret.angular.rot;
+          target.weapons[i].turretAngularVelocity = nw[i].turret.angular.vel;
           target.weapons[i].currentForceFieldRange =
             nw[i].currentForceFieldRange;
         }
