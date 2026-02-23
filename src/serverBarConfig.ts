@@ -1,4 +1,4 @@
-import type { SnapshotRate, KeyframeRatio, TickRate } from './types/server';
+import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './types/server';
 
 export const SERVER_CONFIG = {
   tickRate: {
@@ -20,7 +20,7 @@ export const SERVER_CONFIG = {
       'NONE',
     ] as readonly KeyframeRatio[],
   },
-} as const;
+} as const satisfies ServerBarConfig;
 
 // ── localStorage keys (module-private) ──
 const STORAGE_SNAPSHOT_RATE = 'rts-snapshot-rate';

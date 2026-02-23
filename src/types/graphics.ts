@@ -25,10 +25,11 @@ export type DeathExplosionStyle =
 export type TurretStyle = 'none' | 'simple' | 'full';
 export type ForceTurretStyle = 'none' | 'simple' | 'full';
 export type UnitShape = 'circles' | 'full';
+export type LegStyle = 'none' | 'simple' | 'animated' | 'full';
 
 export interface GraphicsConfig {
   unitShape: UnitShape;
-  legs: 'none' | 'simple' | 'animated' | 'full';
+  legs: LegStyle;
   treadsAnimated: boolean;
   chassisDetail: boolean;
   paletteShading: boolean;

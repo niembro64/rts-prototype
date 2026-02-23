@@ -1,3 +1,5 @@
+import type { BattleBarConfig } from './types/battle';
+
 export const BATTLE_CONFIG = {
   unitShortNames: {
     jackal: 'JKL',
@@ -26,7 +28,7 @@ export const BATTLE_CONFIG = {
   projVelInherit: { default: false },
   ffAccelUnits: { default: false },
   ffAccelShots: { default: true },
-} as const;
+} as const satisfies BattleBarConfig;
 
 // ── localStorage keys (module-private) ──
 const STORAGE_DEMO_UNITS = 'rts-demo-units';

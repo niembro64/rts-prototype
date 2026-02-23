@@ -1,3 +1,5 @@
+import type { BarThemes } from './types/bars';
+
 export const BAR_THEMES = {
   battle: {
     barBg: 'rgba(25, 18, 6, 0.7)',
@@ -39,4 +41,4 @@ export const BAR_THEMES = {
     activePressedBg: 'rgba(80, 80, 80, 0.9)',
     activePressedBorder: '#888',
   },
-} as const;
+} as const satisfies BarThemes;

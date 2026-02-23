@@ -2,6 +2,7 @@ import type {
   GraphicsQuality,
   GraphicsConfig,
   RenderMode,
+  LegStyle,
   BeamStyle,
   ForceFieldStyle,
   ProjectileStyle,
@@ -11,6 +12,7 @@ import type {
   ForceTurretStyle,
   UnitShape,
 } from './types/graphics';
+import type { ClientBarConfig } from './types/client';
 import type {
   AudioScope,
   DriftMode,
@@ -54,12 +56,19 @@ export const CLIENT_CONFIG = {
   edgeScroll: { default: false },
   dragPan: { default: true },
   sounds: {
-    default: { fire: true, hit: false, dead: false, beam: false, field: true, music: false },
+    default: {
+      fire: false,
+      hit: false,
+      dead: false,
+      beam: false,
+      field: false,
+      music: false,
+    },
   },
   rangeToggles: { default: false },
   projRangeToggles: { default: false },
   unitRadiusToggles: { default: false },
-} as const;
+} as const satisfies ClientBarConfig;
 
 // ── Constant arrays ──
 export const SOUND_CATEGORIES: SoundCategory[] = [
@@ -95,7 +104,7 @@ const GRAPHICS_CONFIGS: Record<
 > = {
   min: {
     unitShape: D.UNIT_SHAPE.min as UnitShape,
-    legs: D.LEGS.min as 'none' | 'simple' | 'animated' | 'full',
+    legs: D.LEGS.min as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.min,
     chassisDetail: D.CHASSIS_DETAIL.min,
     paletteShading: D.PALETTE_SHADING.min,
@@ -114,7 +123,7 @@ const GRAPHICS_CONFIGS: Record<
   },
   low: {
     unitShape: D.UNIT_SHAPE.low as UnitShape,
-    legs: D.LEGS.low as 'none' | 'simple' | 'animated' | 'full',
+    legs: D.LEGS.low as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.low,
     chassisDetail: D.CHASSIS_DETAIL.low,
     paletteShading: D.PALETTE_SHADING.low,
@@ -133,7 +142,7 @@ const GRAPHICS_CONFIGS: Record<
   },
   medium: {
     unitShape: D.UNIT_SHAPE.medium as UnitShape,
-    legs: D.LEGS.medium as 'none' | 'simple' | 'animated' | 'full',
+    legs: D.LEGS.medium as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.medium,
     chassisDetail: D.CHASSIS_DETAIL.medium,
     paletteShading: D.PALETTE_SHADING.medium,
@@ -152,7 +161,7 @@ const GRAPHICS_CONFIGS: Record<
   },
   high: {
     unitShape: D.UNIT_SHAPE.high as UnitShape,
-    legs: D.LEGS.high as 'none' | 'simple' | 'animated' | 'full',
+    legs: D.LEGS.high as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.high,
     chassisDetail: D.CHASSIS_DETAIL.high,
     paletteShading: D.PALETTE_SHADING.high,
@@ -171,7 +180,7 @@ const GRAPHICS_CONFIGS: Record<
   },
   max: {
     unitShape: D.UNIT_SHAPE.max as UnitShape,
-    legs: D.LEGS.max as 'none' | 'simple' | 'animated' | 'full',
+    legs: D.LEGS.max as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.max,
     chassisDetail: D.CHASSIS_DETAIL.max,
     paletteShading: D.PALETTE_SHADING.max,
@@ -309,7 +318,9 @@ function loadFromStorage(): void {
         }
       }
     }
-    const storedProjRangeToggles = localStorage.getItem(PROJ_RANGE_TOGGLES_STORAGE_KEY);
+    const storedProjRangeToggles = localStorage.getItem(
+      PROJ_RANGE_TOGGLES_STORAGE_KEY,
+    );
     if (storedProjRangeToggles) {
       const parsed = JSON.parse(storedProjRangeToggles);
       for (const prt of PROJ_RANGE_TYPES) {
@@ -318,7 +329,9 @@ function loadFromStorage(): void {
         }
       }
     }
-    const storedUnitRadiusToggles = localStorage.getItem(UNIT_RADIUS_TOGGLES_STORAGE_KEY);
+    const storedUnitRadiusToggles = localStorage.getItem(
+      UNIT_RADIUS_TOGGLES_STORAGE_KEY,
+    );
     if (storedUnitRadiusToggles) {
       const parsed = JSON.parse(storedUnitRadiusToggles);
       for (const urt of UNIT_RADIUS_TYPES) {
@@ -352,7 +365,9 @@ export function setGraphicsQuality(quality: GraphicsQuality): void {
   currentQuality = quality;
   try {
     localStorage.setItem(STORAGE_KEY, quality);
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export function setCurrentZoom(zoom: number): void {
@@ -388,7 +403,9 @@ export function setRenderMode(mode: RenderMode): void {
   currentRenderMode = mode;
   try {
     localStorage.setItem(RENDER_MODE_STORAGE_KEY, mode);
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export function getRangeToggle(type: RangeType): boolean {
@@ -398,8 +415,13 @@ export function getRangeToggle(type: RangeType): boolean {
 export function setRangeToggle(type: RangeType, show: boolean): void {
   currentRangeToggles[type] = show;
   try {
-    localStorage.setItem(RANGE_TOGGLES_STORAGE_KEY, JSON.stringify(currentRangeToggles));
-  } catch { /* */ }
+    localStorage.setItem(
+      RANGE_TOGGLES_STORAGE_KEY,
+      JSON.stringify(currentRangeToggles),
+    );
+  } catch {
+    /* */
+  }
 }
 
 export function anyRangeToggleActive(): boolean {
@@ -413,8 +435,13 @@ export function getProjRangeToggle(type: ProjRangeType): boolean {
 export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
   currentProjRangeToggles[type] = show;
   try {
-    localStorage.setItem(PROJ_RANGE_TOGGLES_STORAGE_KEY, JSON.stringify(currentProjRangeToggles));
-  } catch { /* */ }
+    localStorage.setItem(
+      PROJ_RANGE_TOGGLES_STORAGE_KEY,
+      JSON.stringify(currentProjRangeToggles),
+    );
+  } catch {
+    /* */
+  }
 }
 
 export function anyProjRangeToggleActive(): boolean {
@@ -428,8 +455,13 @@ export function getUnitRadiusToggle(type: UnitRadiusType): boolean {
 export function setUnitRadiusToggle(type: UnitRadiusType, show: boolean): void {
   currentUnitRadiusToggles[type] = show;
   try {
-    localStorage.setItem(UNIT_RADIUS_TOGGLES_STORAGE_KEY, JSON.stringify(currentUnitRadiusToggles));
-  } catch { /* */ }
+    localStorage.setItem(
+      UNIT_RADIUS_TOGGLES_STORAGE_KEY,
+      JSON.stringify(currentUnitRadiusToggles),
+    );
+  } catch {
+    /* */
+  }
 }
 
 export function anyUnitRadiusToggleActive(): boolean {
@@ -444,7 +476,9 @@ export function setAudioScope(scope: AudioScope): void {
   currentAudioScope = scope;
   try {
     localStorage.setItem(AUDIO_SCOPE_STORAGE_KEY, scope);
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export function getAudioSmoothing(): boolean {
@@ -455,7 +489,9 @@ export function setAudioSmoothing(enabled: boolean): void {
   currentAudioSmoothing = enabled;
   try {
     localStorage.setItem(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export function getDriftMode(): DriftMode {
@@ -466,7 +502,9 @@ export function setDriftMode(mode: DriftMode): void {
   currentDriftMode = mode;
   try {
     localStorage.setItem(DRIFT_MODE_STORAGE_KEY, mode);
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export function getSoundToggle(category: SoundCategory): boolean {
@@ -483,7 +521,9 @@ export function setSoundToggle(
       SOUND_TOGGLES_STORAGE_KEY,
       JSON.stringify(currentSoundToggles),
     );
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export function getEdgeScrollEnabled(): boolean {
@@ -494,7 +534,9 @@ export function setEdgeScrollEnabled(enabled: boolean): void {
   currentEdgeScrollEnabled = enabled;
   try {
     localStorage.setItem(EDGE_SCROLL_STORAGE_KEY, String(enabled));
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export function getDragPanEnabled(): boolean {
@@ -505,7 +547,9 @@ export function setDragPanEnabled(enabled: boolean): void {
   currentDragPanEnabled = enabled;
   try {
     localStorage.setItem(DRAG_PAN_STORAGE_KEY, String(enabled));
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export function getBottomBarsHeight(): number {
