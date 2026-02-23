@@ -477,26 +477,35 @@ const ARROW_SIZE_MULT = 20;
 
 const OVAL_ALPHA = 0.0;
 
+
+
+
 /** Edge scroll configuration */
 export const EDGE_SCROLL = {
   // --- Behavior ---
-  borderRatio: 0.2, // fraction of viewport from each edge that triggers scrolling
+  borderRatioInner: 0.4, // inset from viewport edge for inner oval (larger = smaller oval)
+  borderRatioOuter: 0.001, // inset from viewport edge for outer oval (smaller = larger oval)
   speed: 3000, // world units/sec at zoom 1.0 (scales inversely with zoom)
   intensityCurve: 1, // exponent on intensity (1 = linear, 2 = quadratic, 0.5 = sqrt)
   topBarHeight: 50, // fixed top bar exclusion (px)
   depth: 999, // z-depth of the overlay graphics layer
+  ovalSegments: 10, // number of segments for both ellipses
 
-  // --- Oval (inner ellipse safe zone) ---
-  ovalFillColor: 0x000000,
-  ovalFillAlpha: OVAL_ALPHA,
-  ovalStrokeColor: 0x00ff00,
-  ovalStrokeAlpha: 0,
-  ovalStrokeWidth: 5,
-  ovalSegments: 10, // number of segments to approximate the ellipse
+  // --- Inner oval (safe zone boundary) ---
+  innerOvalFillColor: 0x0044aa,
+  innerOvalFillAlpha: OVAL_ALPHA,
+  innerOvalStrokeColor: 0x4488ff,
+  innerOvalStrokeAlpha: OVAL_ALPHA,
+  innerOvalStrokeWidth: 2,
 
-  // --- Ring (region outside the oval, between ellipse and viewport rect) ---
-  ringFillColor: 0xff0000,
-  ringFillAlpha: 0.0,
+  // --- Outer oval (pan zone outer boundary) ---
+  outerOvalStrokeColor: 0xff4444,
+  outerOvalStrokeAlpha: OVAL_ALPHA,
+  outerOvalStrokeWidth: 2,
+
+  // --- Ring (pan zone between inner and outer ovals) ---
+  ringFillColor: 0xff6600,
+  ringFillAlpha: OVAL_ALPHA,
 
   // --- Arrow general ---
   arrowMaxLength: 300, // max arrow length (screen px)

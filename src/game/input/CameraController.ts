@@ -105,144 +105,106 @@ export class CameraController {
 
     // --- Edge scroll ---
     if (getEdgeScrollEnabled()) {
-      const vpLeft = 0;
-      const vpRight = camera.width;
-      const vpTop = topInset;
-      const vpBottom = camera.height - bottomInset;
-      const vpW = vpRight - vpLeft;
-      const vpH = vpBottom - vpTop;
+      const vpW = camera.width;
+      const vpH = camera.height - topInset - bottomInset;
 
       if (vpW > 0 && vpH > 0) {
-        const borderW = vpW * EDGE_SCROLL.borderRatio;
-        const borderH = vpH * EDGE_SCROLL.borderRatio;
-        const vpCenterX = screenCenterX;
-        const vpCenterY = screenCenterY;
+        const cx = screenCenterX;
+        const cy = screenCenterY;
 
-        // Inner ellipse semi-axes (inscribed in what was the old inner rect)
-        const erx = vpW * 0.5 - borderW;
-        const ery = vpH * 0.5 - borderH;
+        // Inner ellipse semi-axes
+        const irx = vpW * (0.5 - EDGE_SCROLL.borderRatioInner);
+        const iry = vpH * (0.5 - EDGE_SCROLL.borderRatioInner);
+        // Outer ellipse semi-axes
+        const orx = vpW * (0.5 - EDGE_SCROLL.borderRatioOuter);
+        const ory = vpH * (0.5 - EDGE_SCROLL.borderRatioOuter);
 
         const pointer = this.scene.input.activePointer;
         const px = pointer.x;
         const py = pointer.y;
+        const relX = px - cx;
+        const relY = py - cy;
 
-        // Compute intensity using elliptical distance
+        // Normalized elliptical distances (1.0 = on the boundary)
+        const innerEllDist = Math.sqrt((relX / irx) ** 2 + (relY / iry) ** 2);
+        const outerEllDist = Math.sqrt((relX / orx) ** 2 + (relY / ory) ** 2);
+
+        // Mouse is in the pan zone when outside inner oval and inside outer oval
         let intensity = 0;
-        if (px >= vpLeft && px <= vpRight && py >= vpTop && py <= vpBottom) {
-          const relX = px - vpCenterX;
-          const relY = py - vpCenterY;
-          const ellDist = Math.sqrt((relX / erx) ** 2 + (relY / ery) ** 2);
-
-          if (ellDist > 1) {
-            // Mouse is outside the ellipse — in the pan zone
-            const mouseDist = Math.sqrt(relX * relX + relY * relY);
-            if (mouseDist > 0) {
-              const dx = relX / mouseDist;
-              const dy = relY / mouseDist;
-
-              // Distance from center to ellipse boundary in this direction
-              const ellipseDist = 1 / Math.sqrt((dx / erx) ** 2 + (dy / ery) ** 2);
-
-              // Distance from center to viewport rect edge in this direction
-              let rectDist = Infinity;
-              if (dx !== 0) {
-                const t1 = (vpLeft - vpCenterX) / dx;
-                const t2 = (vpRight - vpCenterX) / dx;
-                if (t1 > 0) rectDist = Math.min(rectDist, t1);
-                if (t2 > 0) rectDist = Math.min(rectDist, t2);
-              }
-              if (dy !== 0) {
-                const t1 = (vpTop - vpCenterY) / dy;
-                const t2 = (vpBottom - vpCenterY) / dy;
-                if (t1 > 0) rectDist = Math.min(rectDist, t1);
-                if (t2 > 0) rectDist = Math.min(rectDist, t2);
-              }
-
-              const rawIntensity = Math.min((mouseDist - ellipseDist) / (rectDist - ellipseDist), 1);
-              intensity = Math.pow(rawIntensity, EDGE_SCROLL.intensityCurve);
-            }
+        if (innerEllDist > 1 && outerEllDist < 1) {
+          const mouseDist = Math.sqrt(relX * relX + relY * relY);
+          if (mouseDist > 0) {
+            const dx = relX / mouseDist;
+            const dy = relY / mouseDist;
+            const innerDist = 1 / Math.sqrt((dx / irx) ** 2 + (dy / iry) ** 2);
+            const outerDist = 1 / Math.sqrt((dx / orx) ** 2 + (dy / ory) ** 2);
+            const rawIntensity = Math.min((mouseDist - innerDist) / (outerDist - innerDist), 1);
+            intensity = Math.pow(rawIntensity, EDGE_SCROLL.intensityCurve);
           }
         }
 
-        // Only draw overlay when mouse is in the border zone
+        // Only draw overlay when mouse is in the pan zone
         if (intensity > 0) {
           const seg = EDGE_SCROLL.ovalSegments;
 
-          // Oval fill (inner ellipse)
-          if (EDGE_SCROLL.ovalFillAlpha > 0) {
-            this.edgeOverlay.fillStyle(EDGE_SCROLL.ovalFillColor, EDGE_SCROLL.ovalFillAlpha);
+          // Inner oval fill
+          if (EDGE_SCROLL.innerOvalFillAlpha > 0) {
+            this.edgeOverlay.fillStyle(EDGE_SCROLL.innerOvalFillColor, EDGE_SCROLL.innerOvalFillAlpha);
             this.edgeOverlay.beginPath();
             for (let i = 0; i <= seg; i++) {
               const angle = (i / seg) * Math.PI * 2;
-              const ex = vpCenterX + erx * Math.cos(angle);
-              const ey = vpCenterY + ery * Math.sin(angle);
-              if (i === 0) {
-                this.edgeOverlay.moveTo(gx(ex), gy(ey));
-              } else {
-                this.edgeOverlay.lineTo(gx(ex), gy(ey));
-              }
+              const ex = cx + irx * Math.cos(angle);
+              const ey = cy + iry * Math.sin(angle);
+              if (i === 0) this.edgeOverlay.moveTo(gx(ex), gy(ey));
+              else this.edgeOverlay.lineTo(gx(ex), gy(ey));
             }
             this.edgeOverlay.closePath();
             this.edgeOverlay.fillPath();
           }
 
-          // Ring fill (region between viewport rect and inner ellipse)
-          // Drawn as polygon segments — one per ellipse slice — to avoid
-          // Phaser's WebGL renderer ignoring path holes.
+          // Ring fill (quad strip between inner and outer ovals)
           if (EDGE_SCROLL.ringFillAlpha > 0) {
-            // CW rect corners: TR, BR, BL, TL — corner[e] sits between edge e and (e+1)%4
-            const corners = [
-              { x: vpRight, y: vpTop },
-              { x: vpRight, y: vpBottom },
-              { x: vpLeft,  y: vpBottom },
-              { x: vpLeft,  y: vpTop },
-            ];
-
             this.edgeOverlay.fillStyle(EDGE_SCROLL.ringFillColor, EDGE_SCROLL.ringFillAlpha);
             this.edgeOverlay.beginPath();
             for (let i = 0; i < seg; i++) {
               const a0 = (i / seg) * Math.PI * 2;
               const a1 = ((i + 1) / seg) * Math.PI * 2;
-
-              // Inner ellipse points
-              const ex0 = vpCenterX + erx * Math.cos(a0);
-              const ey0 = vpCenterY + ery * Math.sin(a0);
-              const ex1 = vpCenterX + erx * Math.cos(a1);
-              const ey1 = vpCenterY + ery * Math.sin(a1);
-
-              // Outer rect boundary points via ray-rect intersection
-              const r0 = this.rayRect(vpCenterX, vpCenterY, a0, vpLeft, vpTop, vpRight, vpBottom);
-              const r1 = this.rayRect(vpCenterX, vpCenterY, a1, vpLeft, vpTop, vpRight, vpBottom);
-
-              // Build polygon: ellipse arc → rect boundary (inserting corners)
-              this.edgeOverlay.moveTo(gx(ex0), gy(ey0));
-              this.edgeOverlay.lineTo(gx(r0.x), gy(r0.y));
-              // Insert CW corners between r0.edge and r1.edge
-              let e = r0.edge;
-              while (e !== r1.edge) {
-                this.edgeOverlay.lineTo(gx(corners[e].x), gy(corners[e].y));
-                e = (e + 1) % 4;
-              }
-              this.edgeOverlay.lineTo(gx(r1.x), gy(r1.y));
-              this.edgeOverlay.lineTo(gx(ex1), gy(ey1));
+              const c0 = Math.cos(a0), s0 = Math.sin(a0);
+              const c1 = Math.cos(a1), s1 = Math.sin(a1);
+              // Quad: inner0 → outer0 → outer1 → inner1
+              this.edgeOverlay.moveTo(gx(cx + irx * c0), gy(cy + iry * s0));
+              this.edgeOverlay.lineTo(gx(cx + orx * c0), gy(cy + ory * s0));
+              this.edgeOverlay.lineTo(gx(cx + orx * c1), gy(cy + ory * s1));
+              this.edgeOverlay.lineTo(gx(cx + irx * c1), gy(cy + iry * s1));
               this.edgeOverlay.closePath();
             }
             this.edgeOverlay.fillPath();
           }
 
-          // Oval stroke (inner ellipse border)
-          if (EDGE_SCROLL.ovalStrokeAlpha > 0) {
-            this.edgeOverlay.lineStyle(EDGE_SCROLL.ovalStrokeWidth / zoom, EDGE_SCROLL.ovalStrokeColor, EDGE_SCROLL.ovalStrokeAlpha);
+          // Inner oval stroke
+          if (EDGE_SCROLL.innerOvalStrokeAlpha > 0) {
+            this.edgeOverlay.lineStyle(EDGE_SCROLL.innerOvalStrokeWidth / zoom, EDGE_SCROLL.innerOvalStrokeColor, EDGE_SCROLL.innerOvalStrokeAlpha);
             this.edgeOverlay.beginPath();
             for (let i = 0; i <= seg; i++) {
               const angle = (i / seg) * Math.PI * 2;
-              const ex = vpCenterX + erx * Math.cos(angle);
-              const ey = vpCenterY + ery * Math.sin(angle);
-              if (i === 0) {
-                this.edgeOverlay.moveTo(gx(ex), gy(ey));
-              } else {
-                this.edgeOverlay.lineTo(gx(ex), gy(ey));
-              }
+              const ex = cx + irx * Math.cos(angle);
+              const ey = cy + iry * Math.sin(angle);
+              if (i === 0) this.edgeOverlay.moveTo(gx(ex), gy(ey));
+              else this.edgeOverlay.lineTo(gx(ex), gy(ey));
+            }
+            this.edgeOverlay.strokePath();
+          }
+
+          // Outer oval stroke
+          if (EDGE_SCROLL.outerOvalStrokeAlpha > 0) {
+            this.edgeOverlay.lineStyle(EDGE_SCROLL.outerOvalStrokeWidth / zoom, EDGE_SCROLL.outerOvalStrokeColor, EDGE_SCROLL.outerOvalStrokeAlpha);
+            this.edgeOverlay.beginPath();
+            for (let i = 0; i <= seg; i++) {
+              const angle = (i / seg) * Math.PI * 2;
+              const ex = cx + orx * Math.cos(angle);
+              const ey = cy + ory * Math.sin(angle);
+              if (i === 0) this.edgeOverlay.moveTo(gx(ex), gy(ey));
+              else this.edgeOverlay.lineTo(gx(ex), gy(ey));
             }
             this.edgeOverlay.strokePath();
           }
@@ -250,8 +212,6 @@ export class CameraController {
 
         // Apply scrolling (skip if in another drag/click state)
         if (intensity > 0 && !this.state.isPanningCamera && !this.state.isDraggingSelection && !this.state.isDrawingLinePath && !pointer.rightButtonDown()) {
-          const relX = px - vpCenterX;
-          const relY = py - vpCenterY;
           const dirLen = Math.sqrt(relX * relX + relY * relY);
           if (dirLen > 0) {
             const dirX = relX / dirLen;
@@ -350,24 +310,6 @@ export class CameraController {
         this.edgeOverlay.strokePath();
       }
     }
-  }
-
-  /** Ray from (cx,cy) at angle → first intersection with viewport rect, plus which edge */
-  private rayRect(
-    cx: number, cy: number, angle: number,
-    left: number, top: number, right: number, bottom: number,
-  ): { x: number; y: number; edge: number } {
-    const dx = Math.cos(angle);
-    const dy = Math.sin(angle);
-    let tMin = Infinity;
-    let edge = 0;
-
-    if (dx > 0)      { const t = (right - cx) / dx;  if (t > 0 && t < tMin) { tMin = t; edge = 1; } }
-    else if (dx < 0) { const t = (left - cx) / dx;   if (t > 0 && t < tMin) { tMin = t; edge = 3; } }
-    if (dy > 0)      { const t = (bottom - cy) / dy;  if (t > 0 && t < tMin) { tMin = t; edge = 2; } }
-    else if (dy < 0) { const t = (top - cy) / dy;    if (t > 0 && t < tMin) { tMin = t; edge = 0; } }
-
-    return { x: cx + dx * tMin, y: cy + dy * tMin, edge };
   }
 
   // Get current zoom level
