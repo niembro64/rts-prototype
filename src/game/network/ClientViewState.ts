@@ -288,8 +288,8 @@ export class ClientViewState {
   private snapNonVisualState(entity: Entity, server: NetworkEntity): void {
     const su = server.unit;
     if (entity.unit && su) {
-      entity.unit.hp = su.hp;
-      entity.unit.maxHp = su.maxHp;
+      entity.unit.hp = su.hp.curr;
+      entity.unit.maxHp = su.hp.max;
       entity.unit.drawScale = su.drawScale;
       entity.unit.radiusColliderUnitShot = su.collider.unitShot;
       entity.unit.radiusColliderUnitUnit = su.collider.unitUnit;
@@ -336,8 +336,8 @@ export class ClientViewState {
 
     const sb = server.building;
     if (entity.building && sb) {
-      entity.building.hp = sb.hp;
-      entity.building.maxHp = sb.maxHp;
+      entity.building.hp = sb.hp.curr;
+      entity.building.maxHp = sb.hp.max;
     }
 
     if (entity.buildable && sb) {
@@ -350,20 +350,19 @@ export class ClientViewState {
       entity.factory.buildQueue = sf.queue;
       entity.factory.currentBuildProgress = sf.progress;
       entity.factory.isProducing = sf.producing;
-      if (sf.rally) {
-        entity.factory.rallyX = sf.rally.x;
-        entity.factory.rallyY = sf.rally.y;
+      // waypoints[0] = rally point, rest = user-set waypoints
+      const wps = sf.waypoints;
+      if (wps.length > 0) {
+        entity.factory.rallyX = wps[0].pos.x;
+        entity.factory.rallyY = wps[0].pos.y;
       }
-      if (sf.waypoints) {
-        const wps = sf.waypoints;
-        entity.factory.waypoints.length = wps.length;
-        for (let i = 0; i < wps.length; i++) {
-          entity.factory.waypoints[i] = {
-            x: wps[i].pos.x,
-            y: wps[i].pos.y,
-            type: wps[i].type as 'move' | 'fight' | 'patrol',
-          };
-        }
+      entity.factory.waypoints.length = Math.max(0, wps.length - 1);
+      for (let i = 1; i < wps.length; i++) {
+        entity.factory.waypoints[i - 1] = {
+          x: wps[i].pos.x,
+          y: wps[i].pos.y,
+          type: wps[i].type as 'move' | 'fight' | 'patrol',
+        };
       }
     }
 

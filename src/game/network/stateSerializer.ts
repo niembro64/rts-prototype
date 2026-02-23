@@ -67,20 +67,20 @@ function createPooledEntry(): PooledEntry {
   const waypoints: { pos: Vec2; type: string }[] = [];
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createPooledWaypoint());
   return {
-    entity: { id: 0, type: 'unit', pos: { x: 0, y: 0 }, rotation: 0 },
+    entity: { id: 0, type: 'unit', pos: { x: 0, y: 0 }, rotation: 0, playerId: 1 as PlayerId },
     unitSub: {
-      unitType: '', hp: 0, maxHp: 0, drawScale: 0,
+      unitType: '', hp: { curr: 0, max: 0 }, drawScale: 0,
       collider: { unitShot: 0, unitUnit: 0 },
       moveSpeed: 0, mass: 0, velocity: { x: 0, y: 0 },
       turretRotation: 0,
     },
     buildingSub: {
-      type: '', dim: { x: 0, y: 0 }, hp: 0, maxHp: 0,
+      type: '', dim: { x: 0, y: 0 }, hp: { curr: 0, max: 0 },
       build: { progress: 0, complete: false },
     },
     factorySub: {
       queue: [], progress: 0, producing: false,
-      rally: { x: 0, y: 0 },
+      waypoints: [],
     },
     shotSub: {
       type: '', source: 0,
@@ -534,7 +534,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   ne.pos.x = entity.transform.x;
   ne.pos.y = entity.transform.y;
   ne.rotation = entity.transform.rotation;
-  ne.playerId = entity.ownership?.playerId;
+  ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
 
   // Clear nested sub-objects (prevents stale data from previous frame leaking)
   ne.unit = undefined;
@@ -546,8 +546,8 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     ne.unit = u;
 
     u.unitType = entity.unit.unitType;
-    u.hp = entity.unit.hp;
-    u.maxHp = entity.unit.maxHp;
+    u.hp.curr = entity.unit.hp;
+    u.hp.max = entity.unit.maxHp;
     u.drawScale = entity.unit.drawScale;
     u.collider.unitShot = entity.unit.radiusColliderUnitShot;
     u.collider.unitUnit = entity.unit.radiusColliderUnitUnit;
@@ -627,8 +627,8 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
 
     b.dim.x = entity.building.width;
     b.dim.y = entity.building.height;
-    b.hp = entity.building.hp;
-    b.maxHp = entity.building.maxHp;
+    b.hp.curr = entity.building.hp;
+    b.hp.max = entity.building.maxHp;
     b.type = entity.buildingType ?? '';
 
     if (entity.buildable) {
@@ -653,17 +653,19 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
 
       f.progress = entity.factory.currentBuildProgress;
       f.producing = entity.factory.isProducing;
-      f.rally.x = entity.factory.rallyX;
-      f.rally.y = entity.factory.rallyY;
 
+      // waypoints[0] = rally point, rest = user-set waypoints
       const wps = entity.factory.waypoints;
-      const wpCount = wps.length;
+      const wpCount = 1 + wps.length;
       while (pool.waypoints.length < wpCount) pool.waypoints.push(createPooledWaypoint());
       pool.waypoints.length = wpCount;
-      for (let i = 0; i < wpCount; i++) {
-        pool.waypoints[i].pos.x = wps[i].x;
-        pool.waypoints[i].pos.y = wps[i].y;
-        pool.waypoints[i].type = wps[i].type;
+      pool.waypoints[0].pos.x = entity.factory.rallyX;
+      pool.waypoints[0].pos.y = entity.factory.rallyY;
+      pool.waypoints[0].type = 'move';
+      for (let i = 0; i < wps.length; i++) {
+        pool.waypoints[i + 1].pos.x = wps[i].x;
+        pool.waypoints[i + 1].pos.y = wps[i].y;
+        pool.waypoints[i + 1].type = wps[i].type;
       }
       f.waypoints = pool.waypoints;
     }

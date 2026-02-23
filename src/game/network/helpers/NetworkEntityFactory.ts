@@ -31,7 +31,7 @@ function createUnitFromNetwork(
   x: number,
   y: number,
   rotation: number,
-  playerId?: number
+  playerId: number
 ): Entity {
   const u = netEntity.unit;
 
@@ -58,12 +58,12 @@ function createUnitFromNetwork(
     id,
     type: 'unit',
     transform: { x, y, rotation },
-    ownership: playerId !== undefined ? { playerId } : undefined,
+    ownership: { playerId },
     selectable: { selected: false },
     unit: {
       unitType: u?.unitType ?? 'jackal',
-      hp: u?.hp ?? 100,
-      maxHp: u?.maxHp ?? 100,
+      hp: u?.hp.curr ?? 100,
+      maxHp: u?.hp.max ?? 100,
       drawScale,
       radiusColliderUnitShot: u?.collider.unitShot ?? drawScale,
       radiusColliderUnitUnit: u?.collider.unitUnit ?? drawScale,
@@ -124,7 +124,7 @@ function createBuildingFromNetwork(
   x: number,
   y: number,
   rotation: number,
-  playerId?: number
+  playerId: number
 ): Entity {
   const b = netEntity.building;
 
@@ -132,13 +132,13 @@ function createBuildingFromNetwork(
     id,
     type: 'building',
     transform: { x, y, rotation },
-    ownership: playerId !== undefined ? { playerId } : undefined,
+    ownership: { playerId },
     selectable: { selected: false },
     building: {
       width: b?.dim.x ?? 100,
       height: b?.dim.y ?? 100,
-      hp: b?.hp ?? 500,
-      maxHp: b?.maxHp ?? 500,
+      hp: b?.hp.curr ?? 500,
+      maxHp: b?.hp.max ?? 500,
     },
     buildable: {
       buildProgress: b?.build.progress ?? 1,
@@ -151,19 +151,20 @@ function createBuildingFromNetwork(
 
   const f = b?.factory;
   if (f) {
+    // waypoints[0] = rally point, rest = user-set waypoints
+    const wps = f.waypoints;
+    const rally = wps[0];
     const waypoints: { x: number; y: number; type: 'move' | 'fight' | 'patrol' }[] = [];
-    if (f.waypoints) {
-      for (let i = 0; i < f.waypoints.length; i++) {
-        const wp = f.waypoints[i];
-        waypoints.push({ x: wp.pos.x, y: wp.pos.y, type: wp.type as 'move' | 'fight' | 'patrol' });
-      }
+    for (let i = 1; i < wps.length; i++) {
+      const wp = wps[i];
+      waypoints.push({ x: wp.pos.x, y: wp.pos.y, type: wp.type as 'move' | 'fight' | 'patrol' });
     }
     entity.factory = {
       buildQueue: f.queue,
       currentBuildProgress: f.progress ?? 0,
       currentBuildCost: 0,
-      rallyX: f.rally?.x ?? x,
-      rallyY: f.rally?.y ?? y + 100,
+      rallyX: rally?.pos.x ?? x,
+      rallyY: rally?.pos.y ?? y + 100,
       isProducing: f.producing ?? false,
       waypoints,
     };
@@ -178,7 +179,7 @@ function createProjectileFromNetwork(
   x: number,
   y: number,
   rotation: number,
-  playerId?: number
+  playerId: number
 ): Entity {
   const s = netEntity.shot;
 
@@ -187,7 +188,7 @@ function createProjectileFromNetwork(
     type: 'shot',
     transform: { x, y, rotation },
     projectile: {
-      ownerId: playerId ?? 1,
+      ownerId: playerId,
       sourceEntityId: s?.source ?? 0,
       config: s?.weaponId
         ? { ...getWeaponConfig(s.weaponId), weaponIndex: s.weaponIndex }

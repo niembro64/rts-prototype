@@ -149,11 +149,10 @@ export type NetworkEntity = {
   pos: Vec2;
   rotation: number;
   posEnd?: Vec2;
-  playerId?: PlayerId;
+  playerId: PlayerId;
   unit?: {
     unitType: string;
-    hp: number;
-    maxHp: number;
+    hp: { curr: number; max: number };
     drawScale: number;
     collider: { unitShot: number; unitUnit: number };
     moveSpeed: number;
@@ -168,15 +167,13 @@ export type NetworkEntity = {
   building?: {
     type: string;
     dim: Vec2;
-    hp: number;
-    maxHp: number;
+    hp: { curr: number; max: number };
     build: { progress: number; complete: boolean };
     factory?: {
       queue: string[];
       progress: number;
       producing: boolean;
-      rally: Vec2;
-      waypoints?: { pos: Vec2; type: string }[];
+      waypoints: { pos: Vec2; type: string }[];
     };
   };
   shot?: {
