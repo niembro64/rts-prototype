@@ -8,13 +8,26 @@
  */
 
 import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
-import type { NetworkGameState, NetworkEntity, NetworkProjectileSpawn, NetworkGridCell, NetworkCombatStats, NetworkServerMeta } from './NetworkManager';
+import type {
+  NetworkGameState,
+  NetworkEntity,
+  NetworkProjectileSpawn,
+  NetworkGridCell,
+  NetworkCombatStats,
+  NetworkServerMeta,
+} from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getWeaponConfig } from '../sim/weapons';
 import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
-import { lerp, lerpAngle, getWeaponWorldPosition, lineCircleIntersectionT, applyHomingSteering } from '../math';
+import {
+  lerp,
+  lerpAngle,
+  getWeaponWorldPosition,
+  lineCircleIntersectionT,
+  applyHomingSteering,
+} from '../math';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
@@ -22,10 +35,13 @@ const EMPTY_AUDIO: NetworkGameState['audioEvents'] = [];
 
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
 // Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
-import { getDriftMode } from '@/clientConfig';
+import { getDriftMode } from '@/clientBarConfig';
 import type { DriftMode } from '@/types/client';
 
-const DRIFT_PRESETS: Record<DriftMode, { position: number; velocity: number; rotation: number }> = {
+const DRIFT_PRESETS: Record<
+  DriftMode,
+  { position: number; velocity: number; rotation: number }
+> = {
   snap: { position: 1.0, velocity: 1.0, rotation: 1.0 },
   fast: { position: 0.15, velocity: 0.25, rotation: 0.15 },
   slow: { position: 0.04, velocity: 0.08, rotation: 0.04 },
@@ -39,7 +55,11 @@ interface ServerTarget {
   rotation: number;
   velocityX: number;
   velocityY: number;
-  weapons: { turretRotation: number; turretAngularVelocity: number; currentForceFieldRange: number | undefined }[];
+  weapons: {
+    turretRotation: number;
+    turretAngularVelocity: number;
+    currentForceFieldRange: number | undefined;
+  }[];
 }
 
 function createServerTarget(): ServerTarget {
@@ -118,13 +138,18 @@ export class ClientViewState {
       const nw = netEntity.weapons;
       if (nw) {
         while (target.weapons.length < nw.length) {
-          target.weapons.push({ turretRotation: 0, turretAngularVelocity: 0, currentForceFieldRange: undefined });
+          target.weapons.push({
+            turretRotation: 0,
+            turretAngularVelocity: 0,
+            currentForceFieldRange: undefined,
+          });
         }
         target.weapons.length = nw.length;
         for (let i = 0; i < nw.length; i++) {
           target.weapons[i].turretRotation = nw[i].turretRotation;
           target.weapons[i].turretAngularVelocity = nw[i].turretAngularVelocity;
-          target.weapons[i].currentForceFieldRange = nw[i].currentForceFieldRange;
+          target.weapons[i].currentForceFieldRange =
+            nw[i].currentForceFieldRange;
         }
       } else {
         target.weapons.length = 0;
@@ -272,8 +297,10 @@ export class ClientViewState {
       entity.unit.hp = server.hp ?? entity.unit.hp;
       entity.unit.maxHp = server.maxHp ?? entity.unit.maxHp;
       entity.unit.drawScale = server.drawScale ?? entity.unit.drawScale;
-      entity.unit.radiusColliderUnitShot = server.radiusColliderUnitShot ?? entity.unit.radiusColliderUnitShot;
-      entity.unit.radiusColliderUnitUnit = server.radiusColliderUnitUnit ?? entity.unit.radiusColliderUnitUnit;
+      entity.unit.radiusColliderUnitShot =
+        server.radiusColliderUnitShot ?? entity.unit.radiusColliderUnitShot;
+      entity.unit.radiusColliderUnitUnit =
+        server.radiusColliderUnitUnit ?? entity.unit.radiusColliderUnitUnit;
       entity.unit.moveSpeed = server.moveSpeed ?? entity.unit.moveSpeed;
 
       if (server.actions) {
@@ -298,7 +325,11 @@ export class ClientViewState {
 
       // Snap weapon targeting state (turret rotation/velocity blended in applyPrediction)
       if (server.weapons && server.weapons.length > 0 && entity.weapons) {
-        for (let i = 0; i < server.weapons.length && i < entity.weapons.length; i++) {
+        for (
+          let i = 0;
+          i < server.weapons.length && i < entity.weapons.length;
+          i++
+        ) {
           entity.weapons[i].targetEntityId = server.weapons[i].targetId ?? null;
           entity.weapons[i].isTracking = server.weapons[i].isTracking;
           entity.weapons[i].isEngaged = server.weapons[i].isEngaged;
@@ -317,14 +348,19 @@ export class ClientViewState {
     }
 
     if (entity.buildable) {
-      entity.buildable.buildProgress = server.buildProgress ?? entity.buildable.buildProgress;
-      entity.buildable.isComplete = server.isComplete ?? entity.buildable.isComplete;
+      entity.buildable.buildProgress =
+        server.buildProgress ?? entity.buildable.buildProgress;
+      entity.buildable.isComplete =
+        server.isComplete ?? entity.buildable.isComplete;
     }
 
     if (entity.factory) {
-      entity.factory.buildQueue = server.buildQueue ?? entity.factory.buildQueue;
-      entity.factory.currentBuildProgress = server.factoryProgress ?? entity.factory.currentBuildProgress;
-      entity.factory.isProducing = server.isProducing ?? entity.factory.isProducing;
+      entity.factory.buildQueue =
+        server.buildQueue ?? entity.factory.buildQueue;
+      entity.factory.currentBuildProgress =
+        server.factoryProgress ?? entity.factory.currentBuildProgress;
+      entity.factory.isProducing =
+        server.isProducing ?? entity.factory.isProducing;
       if (server.rallyX !== undefined) entity.factory.rallyX = server.rallyX;
       if (server.rallyY !== undefined) entity.factory.rallyY = server.rallyY;
       if (server.factoryWaypoints) {
@@ -374,7 +410,11 @@ export class ClientViewState {
         if (target) {
           entity.transform.x = lerp(entity.transform.x, target.x, posDrift);
           entity.transform.y = lerp(entity.transform.y, target.y, posDrift);
-          entity.transform.rotation = lerpAngle(entity.transform.rotation, target.rotation, rotDrift);
+          entity.transform.rotation = lerpAngle(
+            entity.transform.rotation,
+            target.rotation,
+            rotDrift,
+          );
 
           const serverVelX = target.velocityX ?? 0;
           const serverVelY = target.velocityY ?? 0;
@@ -391,15 +431,27 @@ export class ClientViewState {
             // Drift turret toward server target
             const tw = target?.weapons?.[i];
             if (tw) {
-              weapon.turretRotation = lerpAngle(weapon.turretRotation, tw.turretRotation, rotDrift);
-              weapon.turretAngularVelocity = lerp(weapon.turretAngularVelocity, tw.turretAngularVelocity, velDrift);
+              weapon.turretRotation = lerpAngle(
+                weapon.turretRotation,
+                tw.turretRotation,
+                rotDrift,
+              );
+              weapon.turretAngularVelocity = lerp(
+                weapon.turretAngularVelocity,
+                tw.turretAngularVelocity,
+                velDrift,
+              );
             }
 
             // Dead-reckon force field expansion/contraction + drift toward server
-            if (weapon.config.forceField && weapon.config.forceField.transitionTime) {
+            if (
+              weapon.config.forceField &&
+              weapon.config.forceField.transitionTime
+            ) {
               const cur = weapon.currentForceFieldRange ?? 0;
               const targetProgress = weapon.isEngaged ? 1 : 0;
-              const progressDelta = dt / (weapon.config.forceField.transitionTime / 1000);
+              const progressDelta =
+                dt / (weapon.config.forceField.transitionTime / 1000);
               let next = cur;
               if (cur < targetProgress) {
                 next = Math.min(cur + progressDelta, 1);
@@ -434,10 +486,23 @@ export class ClientViewState {
             // Calculate weapon position in world coordinates (same math as sim)
             const unitCos = Math.cos(source.transform.rotation);
             const unitSin = Math.sin(source.transform.rotation);
-            const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
+            const wp = getWeaponWorldPosition(
+              source.transform.x,
+              source.transform.y,
+              unitCos,
+              unitSin,
+              weapon.offsetX,
+              weapon.offsetY,
+            );
 
             // Beam starts at barrel tip
-            const bt = getBarrelTipWorldPos(wp.x, wp.y, turretAngle, entity.projectile.config, source.unit!.drawScale);
+            const bt = getBarrelTipWorldPos(
+              wp.x,
+              wp.y,
+              turretAngle,
+              entity.projectile.config,
+              source.unit!.drawScale,
+            );
             const startX = bt.x;
             const startY = bt.y;
 
@@ -447,7 +512,11 @@ export class ClientViewState {
 
             // Truncate at closest obstruction (units or buildings)
             const t = this.findBeamObstruction(
-              startX, startY, fullEndX, fullEndY, entity.projectile.sourceEntityId
+              startX,
+              startY,
+              fullEndX,
+              fullEndY,
+              entity.projectile.sourceEntityId,
             );
 
             entity.projectile.startX = startX;
@@ -469,12 +538,20 @@ export class ClientViewState {
           const proj = entity.projectile;
           if (proj.homingTargetId !== undefined) {
             const homingTarget = this.entities.get(proj.homingTargetId);
-            if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
+            if (
+              homingTarget &&
+              ((homingTarget.unit && homingTarget.unit.hp > 0) ||
+                (homingTarget.building && homingTarget.building.hp > 0))
+            ) {
               const steered = applyHomingSteering(
-                proj.velocityX, proj.velocityY,
-                homingTarget.transform.x, homingTarget.transform.y,
-                entity.transform.x, entity.transform.y,
-                proj.homingTurnRate ?? 0, dt
+                proj.velocityX,
+                proj.velocityY,
+                homingTarget.transform.x,
+                homingTarget.transform.y,
+                entity.transform.x,
+                entity.transform.y,
+                proj.homingTurnRate ?? 0,
+                dt,
               );
               proj.velocityX = steered.velocityX;
               proj.velocityY = steered.velocityY;
@@ -514,7 +591,10 @@ export class ClientViewState {
    * so bullets visually originate from the gun (same approach as beams).
    */
   private createProjectileFromSpawn(spawn: NetworkProjectileSpawn): Entity {
-    const config = { ...getWeaponConfig(spawn.weaponId), weaponIndex: spawn.weaponIndex };
+    const config = {
+      ...getWeaponConfig(spawn.weaponId),
+      weaponIndex: spawn.weaponIndex,
+    };
 
     // Default to server position; override with client-side muzzle if source is available
     let spawnX = spawn.x;
@@ -526,11 +606,24 @@ export class ClientViewState {
       if (source && source.unit && weapon) {
         const unitCos = Math.cos(source.transform.rotation);
         const unitSin = Math.sin(source.transform.rotation);
-        const wp = getWeaponWorldPosition(source.transform.x, source.transform.y, unitCos, unitSin, weapon.offsetX, weapon.offsetY);
+        const wp = getWeaponWorldPosition(
+          source.transform.x,
+          source.transform.y,
+          unitCos,
+          unitSin,
+          weapon.offsetX,
+          weapon.offsetY,
+        );
 
         // Forward from weapon in firing direction (same as server)
         const turretAngle = weapon.turretRotation;
-        const projBt = getBarrelTipWorldPos(wp.x, wp.y, turretAngle, config, source.unit.drawScale);
+        const projBt = getBarrelTipWorldPos(
+          wp.x,
+          wp.y,
+          turretAngle,
+          config,
+          source.unit.drawScale,
+        );
         spawnX = projBt.x;
         spawnY = projBt.y;
       }
@@ -545,11 +638,17 @@ export class ClientViewState {
         ownerId: spawn.playerId,
         sourceEntityId: spawn.sourceEntityId,
         config,
-        projectileType: spawn.projectileType as 'instant' | 'traveling' | 'beam',
+        projectileType: spawn.projectileType as
+          | 'instant'
+          | 'traveling'
+          | 'beam',
         velocityX: spawn.velocityX,
         velocityY: spawn.velocityY,
         timeAlive: 0,
-        maxLifespan: config.projectileLifespan ?? config.beam?.duration ?? (config.beam !== undefined ? Infinity : 2000),
+        maxLifespan:
+          config.projectileLifespan ??
+          config.beam?.duration ??
+          (config.beam !== undefined ? Infinity : 2000),
         hitEntities: new Set(),
         maxHits: 1,
         startX: spawn.beamStartX,
@@ -576,7 +675,11 @@ export class ClientViewState {
    * 1.0 means no obstruction (full range).
    */
   private findBeamObstruction(
-    sx: number, sy: number, ex: number, ey: number, sourceId: number
+    sx: number,
+    sy: number,
+    ex: number,
+    ey: number,
+    sourceId: number,
   ): number {
     let closest = 1.0;
     const dx = ex - sx;
@@ -588,7 +691,15 @@ export class ClientViewState {
     for (const unit of this.cache.getUnits()) {
       if (unit.id === sourceId) continue;
       const r = unit.unit?.radiusColliderUnitShot ?? 15;
-      const t = lineCircleIntersectionT(sx, sy, ex, ey, unit.transform.x, unit.transform.y, r);
+      const t = lineCircleIntersectionT(
+        sx,
+        sy,
+        ex,
+        ey,
+        unit.transform.x,
+        unit.transform.y,
+        r,
+      );
       if (t !== null && t > 0 && t < closest) closest = t;
     }
 
@@ -608,7 +719,11 @@ export class ClientViewState {
       if (Math.abs(dx) > 0.0001) {
         let t1 = (bx - hw - sx) / dx;
         let t2 = (bx + hw - sx) / dx;
-        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
         tmin = Math.max(tmin, t1);
         tmax = Math.min(tmax, t2);
       } else {
@@ -620,7 +735,11 @@ export class ClientViewState {
       if (Math.abs(dy) > 0.0001) {
         let t1 = (by - hh - sy) / dy;
         let t2 = (by + hh - sy) / dy;
-        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
         tmin = Math.max(tmin, t1);
         tmax = Math.min(tmax, t2);
       } else {
@@ -724,7 +843,8 @@ export class ClientViewState {
 
   findUnitAt(x: number, y: number, playerId?: PlayerId): Entity | null {
     for (const entity of this.getUnits()) {
-      if (playerId !== undefined && entity.ownership?.playerId !== playerId) continue;
+      if (playerId !== undefined && entity.ownership?.playerId !== playerId)
+        continue;
 
       const drawScale = entity.unit?.drawScale ?? 15;
       const dx = entity.transform.x - x;
@@ -742,15 +862,25 @@ export class ClientViewState {
 
       const hw = entity.building.width / 2;
       const hh = entity.building.height / 2;
-      if (x >= entity.transform.x - hw && x <= entity.transform.x + hw &&
-          y >= entity.transform.y - hh && y <= entity.transform.y + hh) {
+      if (
+        x >= entity.transform.x - hw &&
+        x <= entity.transform.x + hw &&
+        y >= entity.transform.y - hh &&
+        y <= entity.transform.y + hh
+      ) {
         return entity;
       }
     }
     return null;
   }
 
-  findEntitiesInRect(x1: number, y1: number, x2: number, y2: number, playerId?: PlayerId): Entity[] {
+  findEntitiesInRect(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    playerId?: PlayerId,
+  ): Entity[] {
     const minX = Math.min(x1, x2);
     const maxX = Math.max(x1, x2);
     const minY = Math.min(y1, y2);
@@ -759,10 +889,15 @@ export class ClientViewState {
     const results: Entity[] = [];
 
     for (const entity of this.getUnits()) {
-      if (playerId !== undefined && entity.ownership?.playerId !== playerId) continue;
+      if (playerId !== undefined && entity.ownership?.playerId !== playerId)
+        continue;
 
-      if (entity.transform.x >= minX && entity.transform.x <= maxX &&
-          entity.transform.y >= minY && entity.transform.y <= maxY) {
+      if (
+        entity.transform.x >= minX &&
+        entity.transform.x <= maxX &&
+        entity.transform.y >= minY &&
+        entity.transform.y <= maxY
+      ) {
         results.push(entity);
       }
     }

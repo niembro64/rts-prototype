@@ -1,7 +1,7 @@
 // Force field effect renderer (pie-slice effect)
 
 import Phaser from 'phaser';
-import { getGraphicsConfig } from '@/clientConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../../config';
 
 /**
@@ -26,7 +26,7 @@ export function renderForceFieldEffect(
   particleAlpha: number,
   innerRange: number = 0,
   pushOutward: boolean = false,
-  instanceSeed: number = 0
+  instanceSeed: number = 0,
 ): void {
   const halfAngle = sliceAngle / 2;
   const gfxConfig = getGraphicsConfig();
@@ -35,7 +35,17 @@ export function renderForceFieldEffect(
 
   // --- Minimal: faint annular fill only ---
   if (style === 'minimal') {
-    drawAnnularFill(graphics, x, y, rotation, halfAngle, maxRange, innerRange, color, sliceAlpha);
+    drawAnnularFill(
+      graphics,
+      x,
+      y,
+      rotation,
+      halfAngle,
+      maxRange,
+      innerRange,
+      color,
+      sliceAlpha,
+    );
     return;
   }
 
@@ -43,10 +53,21 @@ export function renderForceFieldEffect(
   const isEnhanced = style === 'enhanced';
 
   // 1. Annular fill
-  drawAnnularFill(graphics, x, y, rotation, halfAngle, maxRange, innerRange, color, sliceAlpha);
+  drawAnnularFill(
+    graphics,
+    x,
+    y,
+    rotation,
+    halfAngle,
+    maxRange,
+    innerRange,
+    color,
+    sliceAlpha,
+  );
 
   // Helper to check if an angle is within the visible pie slice
-  const normalizeAngle = (a: number) => ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const normalizeAngle = (a: number) =>
+    ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
   const isAngleInSlice = (angle: number): boolean => {
     if (sliceAngle >= Math.PI * 2 - 0.01) return true;
 
@@ -75,8 +96,16 @@ export function renderForceFieldEffect(
   // 2. Electric arcs (enhanced only)
   if (isEnhanced) {
     drawElectricArcs(
-      graphics, x, y, rotation, sliceAngle,
-      innerRange, rangeBand, color, v, hash
+      graphics,
+      x,
+      y,
+      rotation,
+      sliceAngle,
+      innerRange,
+      rangeBand,
+      color,
+      v,
+      hash,
     );
   }
 
@@ -92,8 +121,10 @@ export function renderForceFieldEffect(
   const REF_RANGE = 1200;
 
   const effectiveCount = Math.min(
-    Math.ceil(v.particleCount * countMult * REF_RANGE / Math.max(rangeBand, 10)),
-    200
+    Math.ceil(
+      (v.particleCount * countMult * REF_RANGE) / Math.max(rangeBand, 10),
+    ),
+    200,
   );
 
   const lineThickness = v.particleThickness * thicknessMult;
@@ -102,7 +133,7 @@ export function renderForceFieldEffect(
     const offset = hash(i + 9999) * REF_RANGE;
     const totalDist = realTime * pxPerSec + offset;
     const refPos = ((totalDist % REF_RANGE) + REF_RANGE) % REF_RANGE;
-    const radius = pushOutward ? refPos : (REF_RANGE - refPos);
+    const radius = pushOutward ? refPos : REF_RANGE - refPos;
 
     if (radius < innerRange || radius > maxRange) continue;
 
@@ -124,11 +155,11 @@ export function renderForceFieldEffect(
     graphics.beginPath();
     graphics.moveTo(
       x + Math.cos(lineAngle) * rNear,
-      y + Math.sin(lineAngle) * rNear
+      y + Math.sin(lineAngle) * rNear,
     );
     graphics.lineTo(
       x + Math.cos(lineAngle) * rFar,
-      y + Math.sin(lineAngle) * rFar
+      y + Math.sin(lineAngle) * rFar,
     );
     graphics.strokePath();
 
@@ -157,11 +188,11 @@ export function renderForceFieldEffect(
         graphics.beginPath();
         graphics.moveTo(
           x + Math.cos(lineAngle) * cNear,
-          y + Math.sin(lineAngle) * cNear
+          y + Math.sin(lineAngle) * cNear,
         );
         graphics.lineTo(
           x + Math.cos(lineAngle) * cFar,
-          y + Math.sin(lineAngle) * cFar
+          y + Math.sin(lineAngle) * cFar,
         );
         graphics.strokePath();
       }
@@ -172,20 +203,45 @@ export function renderForceFieldEffect(
 /** Draw the faint annular (or pie-slice) fill */
 function drawAnnularFill(
   graphics: Phaser.GameObjects.Graphics,
-  x: number, y: number,
-  rotation: number, halfAngle: number,
-  maxRange: number, innerRange: number,
-  color: number, opacity: number
+  x: number,
+  y: number,
+  rotation: number,
+  halfAngle: number,
+  maxRange: number,
+  innerRange: number,
+  color: number,
+  opacity: number,
 ): void {
   graphics.fillStyle(color, opacity);
   graphics.beginPath();
   if (innerRange > 0) {
-    graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
-    graphics.arc(x, y, innerRange, rotation + halfAngle, rotation - halfAngle, true);
+    graphics.arc(
+      x,
+      y,
+      maxRange,
+      rotation - halfAngle,
+      rotation + halfAngle,
+      false,
+    );
+    graphics.arc(
+      x,
+      y,
+      innerRange,
+      rotation + halfAngle,
+      rotation - halfAngle,
+      true,
+    );
     graphics.closePath();
   } else {
     graphics.moveTo(x, y);
-    graphics.arc(x, y, maxRange, rotation - halfAngle, rotation + halfAngle, false);
+    graphics.arc(
+      x,
+      y,
+      maxRange,
+      rotation - halfAngle,
+      rotation + halfAngle,
+      false,
+    );
     graphics.closePath();
   }
   graphics.fill();
@@ -194,13 +250,15 @@ function drawAnnularFill(
 /** Draw jagged electric arcs that crackle within the field (enhanced only) */
 function drawElectricArcs(
   graphics: Phaser.GameObjects.Graphics,
-  x: number, y: number,
+  x: number,
+  y: number,
   rotation: number,
   sliceAngle: number,
-  innerRange: number, rangeBand: number,
+  innerRange: number,
+  rangeBand: number,
   color: number,
   v: typeof FORCE_FIELD_VISUAL,
-  hash: (n: number) => number
+  hash: (n: number) => number,
 ): void {
   // Time-based seed that changes every arcFlickerMs — gives the crackle effect
   const flickerSeed = Math.floor(Date.now() / v.arcFlickerMs);
@@ -237,9 +295,10 @@ function drawElectricArcs(
 
       // Perpendicular jitter (0 at endpoints, max in middle)
       const jitterScale = Math.sin(frac * Math.PI); // bell curve: 0 at edges, 1 at center
-      const jitter = s === 0 || s === v.arcSegments
-        ? 0
-        : (hash(seed + s * 137) - 0.5) * 2 * v.arcJitter * jitterScale;
+      const jitter =
+        s === 0 || s === v.arcSegments
+          ? 0
+          : (hash(seed + s * 137) - 0.5) * 2 * v.arcJitter * jitterScale;
 
       // Convert jitter from perpendicular px to angular offset at this radius
       const angularJitter = r > 0 ? jitter / r : 0;

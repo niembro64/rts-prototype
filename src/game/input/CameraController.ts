@@ -1,6 +1,12 @@
 import Phaser from 'phaser';
-import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER, EDGE_SCROLL } from '../../config';
-import { getEdgeScrollEnabled, getBottomBarsHeight } from '@/clientConfig';
+import {
+  ZOOM_MIN,
+  ZOOM_MAX,
+  ZOOM_FACTOR,
+  CAMERA_PAN_MULTIPLIER,
+  EDGE_SCROLL,
+} from '../../config';
+import { getEdgeScrollEnabled, getBottomBarsHeight } from '@/clientBarConfig';
 import type { InputState } from './InputState';
 
 /**
@@ -10,7 +16,12 @@ import type { InputState } from './InputState';
 export class CameraController {
   private scene: Phaser.Scene;
   private state: InputState;
-  private wheelHandler: (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => void;
+  private wheelHandler: (
+    pointer: Phaser.Input.Pointer,
+    _gos: unknown,
+    _dx: number,
+    dy: number,
+  ) => void;
   private edgeOverlay: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, state: InputState) {
@@ -22,13 +33,16 @@ export class CameraController {
     this.edgeOverlay.setScrollFactor(0);
     this.edgeOverlay.setDepth(EDGE_SCROLL.depth);
 
-    this.wheelHandler = (pointer: Phaser.Input.Pointer, _gos: unknown, _dx: number, dy: number) => {
+    this.wheelHandler = (
+      pointer: Phaser.Input.Pointer,
+      _gos: unknown,
+      _dx: number,
+      dy: number,
+    ) => {
       const camera = this.scene.cameras.main;
       const oldZoom = camera.zoom;
 
-      const newZoom = dy > 0
-        ? oldZoom / ZOOM_FACTOR
-        : oldZoom * ZOOM_FACTOR;
+      const newZoom = dy > 0 ? oldZoom / ZOOM_FACTOR : oldZoom * ZOOM_FACTOR;
       const clampedZoom = Phaser.Math.Clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
 
       if (clampedZoom === oldZoom) return;
@@ -97,7 +111,8 @@ export class CameraController {
     const topInset = EDGE_SCROLL.topBarHeight;
     const bottomInset = getBottomBarsHeight();
     const screenCenterX = camera.width * 0.5;
-    const screenCenterY = topInset + (camera.height - topInset - bottomInset) * 0.5;
+    const screenCenterY =
+      topInset + (camera.height - topInset - bottomInset) * 0.5;
 
     let arrowDirX = 0;
     let arrowDirY = 0;
@@ -138,7 +153,10 @@ export class CameraController {
             const dy = relY / mouseDist;
             const innerDist = 1 / Math.sqrt((dx / irx) ** 2 + (dy / iry) ** 2);
             const outerDist = 1 / Math.sqrt((dx / orx) ** 2 + (dy / ory) ** 2);
-            const rawIntensity = Math.min((mouseDist - innerDist) / (outerDist - innerDist), 1);
+            const rawIntensity = Math.min(
+              (mouseDist - innerDist) / (outerDist - innerDist),
+              1,
+            );
             intensity = Math.pow(rawIntensity, EDGE_SCROLL.intensityCurve);
           }
         }
@@ -149,7 +167,10 @@ export class CameraController {
 
           // Inner oval fill
           if (EDGE_SCROLL.innerOvalFillAlpha > 0) {
-            this.edgeOverlay.fillStyle(EDGE_SCROLL.innerOvalFillColor, EDGE_SCROLL.innerOvalFillAlpha);
+            this.edgeOverlay.fillStyle(
+              EDGE_SCROLL.innerOvalFillColor,
+              EDGE_SCROLL.innerOvalFillAlpha,
+            );
             this.edgeOverlay.beginPath();
             for (let i = 0; i <= seg; i++) {
               const angle = (i / seg) * Math.PI * 2;
@@ -164,13 +185,18 @@ export class CameraController {
 
           // Ring fill (quad strip between inner and outer ovals)
           if (EDGE_SCROLL.ringFillAlpha > 0) {
-            this.edgeOverlay.fillStyle(EDGE_SCROLL.ringFillColor, EDGE_SCROLL.ringFillAlpha);
+            this.edgeOverlay.fillStyle(
+              EDGE_SCROLL.ringFillColor,
+              EDGE_SCROLL.ringFillAlpha,
+            );
             this.edgeOverlay.beginPath();
             for (let i = 0; i < seg; i++) {
               const a0 = (i / seg) * Math.PI * 2;
               const a1 = ((i + 1) / seg) * Math.PI * 2;
-              const c0 = Math.cos(a0), s0 = Math.sin(a0);
-              const c1 = Math.cos(a1), s1 = Math.sin(a1);
+              const c0 = Math.cos(a0),
+                s0 = Math.sin(a0);
+              const c1 = Math.cos(a1),
+                s1 = Math.sin(a1);
               // Quad: inner0 → outer0 → outer1 → inner1
               this.edgeOverlay.moveTo(gx(cx + irx * c0), gy(cy + iry * s0));
               this.edgeOverlay.lineTo(gx(cx + orx * c0), gy(cy + ory * s0));
@@ -183,7 +209,11 @@ export class CameraController {
 
           // Inner oval stroke
           if (EDGE_SCROLL.innerOvalStrokeAlpha > 0) {
-            this.edgeOverlay.lineStyle(EDGE_SCROLL.innerOvalStrokeWidth / zoom, EDGE_SCROLL.innerOvalStrokeColor, EDGE_SCROLL.innerOvalStrokeAlpha);
+            this.edgeOverlay.lineStyle(
+              EDGE_SCROLL.innerOvalStrokeWidth / zoom,
+              EDGE_SCROLL.innerOvalStrokeColor,
+              EDGE_SCROLL.innerOvalStrokeAlpha,
+            );
             this.edgeOverlay.beginPath();
             for (let i = 0; i <= seg; i++) {
               const angle = (i / seg) * Math.PI * 2;
@@ -197,7 +227,11 @@ export class CameraController {
 
           // Outer oval stroke
           if (EDGE_SCROLL.outerOvalStrokeAlpha > 0) {
-            this.edgeOverlay.lineStyle(EDGE_SCROLL.outerOvalStrokeWidth / zoom, EDGE_SCROLL.outerOvalStrokeColor, EDGE_SCROLL.outerOvalStrokeAlpha);
+            this.edgeOverlay.lineStyle(
+              EDGE_SCROLL.outerOvalStrokeWidth / zoom,
+              EDGE_SCROLL.outerOvalStrokeColor,
+              EDGE_SCROLL.outerOvalStrokeAlpha,
+            );
             this.edgeOverlay.beginPath();
             for (let i = 0; i <= seg; i++) {
               const angle = (i / seg) * Math.PI * 2;
@@ -211,13 +245,19 @@ export class CameraController {
         }
 
         // Apply scrolling (skip if in another drag/click state)
-        if (intensity > 0 && !this.state.isPanningCamera && !this.state.isDraggingSelection && !this.state.isDrawingLinePath && !pointer.rightButtonDown()) {
+        if (
+          intensity > 0 &&
+          !this.state.isPanningCamera &&
+          !this.state.isDraggingSelection &&
+          !this.state.isDrawingLinePath &&
+          !pointer.rightButtonDown()
+        ) {
           const dirLen = Math.sqrt(relX * relX + relY * relY);
           if (dirLen > 0) {
             const dirX = relX / dirLen;
             const dirY = relY / dirLen;
             const dtSec = delta / 1000;
-            const speed = EDGE_SCROLL.speed * intensity * dtSec / camera.zoom;
+            const speed = (EDGE_SCROLL.speed * intensity * dtSec) / camera.zoom;
             camera.scrollX += dirX * speed;
             camera.scrollY += dirY * speed;
 
@@ -248,7 +288,10 @@ export class CameraController {
       const visibleLength = arrowIntensity * EDGE_SCROLL.arrowMaxLength;
 
       // Scale head to fit when arrow is short
-      const headScale = visibleLength >= EDGE_SCROLL.headLength ? 1 : visibleLength / EDGE_SCROLL.headLength;
+      const headScale =
+        visibleLength >= EDGE_SCROLL.headLength
+          ? 1
+          : visibleLength / EDGE_SCROLL.headLength;
       const headLen = EDGE_SCROLL.headLength * headScale;
       const headW = EDGE_SCROLL.headWidth * headScale;
 
@@ -268,13 +311,21 @@ export class CameraController {
 
       // Outline pass (thicker, behind)
       if (EDGE_SCROLL.outlineAlpha > 0) {
-        this.edgeOverlay.lineStyle((EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) / zoom, EDGE_SCROLL.outlineColor, EDGE_SCROLL.outlineAlpha);
+        this.edgeOverlay.lineStyle(
+          (EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) / zoom,
+          EDGE_SCROLL.outlineColor,
+          EDGE_SCROLL.outlineAlpha,
+        );
         this.edgeOverlay.beginPath();
         this.edgeOverlay.moveTo(gx(startSX), gy(startSY));
         this.edgeOverlay.lineTo(gx(baseSX), gy(baseSY));
         this.edgeOverlay.strokePath();
 
-        this.edgeOverlay.lineStyle((EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) / zoom, EDGE_SCROLL.outlineColor, EDGE_SCROLL.outlineAlpha);
+        this.edgeOverlay.lineStyle(
+          (EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) / zoom,
+          EDGE_SCROLL.outlineColor,
+          EDGE_SCROLL.outlineAlpha,
+        );
         this.edgeOverlay.beginPath();
         this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
         this.edgeOverlay.lineTo(gx(headLX), gy(headLY));
@@ -284,14 +335,21 @@ export class CameraController {
       }
 
       // Shaft line
-      this.edgeOverlay.lineStyle(EDGE_SCROLL.shaftWidth / zoom, EDGE_SCROLL.shaftColor, EDGE_SCROLL.shaftAlpha);
+      this.edgeOverlay.lineStyle(
+        EDGE_SCROLL.shaftWidth / zoom,
+        EDGE_SCROLL.shaftColor,
+        EDGE_SCROLL.shaftAlpha,
+      );
       this.edgeOverlay.beginPath();
       this.edgeOverlay.moveTo(gx(startSX), gy(startSY));
       this.edgeOverlay.lineTo(gx(baseSX), gy(baseSY));
       this.edgeOverlay.strokePath();
 
       // Arrowhead fill
-      this.edgeOverlay.fillStyle(EDGE_SCROLL.headFillColor, EDGE_SCROLL.headFillAlpha);
+      this.edgeOverlay.fillStyle(
+        EDGE_SCROLL.headFillColor,
+        EDGE_SCROLL.headFillAlpha,
+      );
       this.edgeOverlay.beginPath();
       this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
       this.edgeOverlay.lineTo(gx(headLX), gy(headLY));
@@ -301,7 +359,11 @@ export class CameraController {
 
       // Arrowhead stroke
       if (EDGE_SCROLL.headStrokeAlpha > 0) {
-        this.edgeOverlay.lineStyle(EDGE_SCROLL.headStrokeWidth / zoom, EDGE_SCROLL.headStrokeColor, EDGE_SCROLL.headStrokeAlpha);
+        this.edgeOverlay.lineStyle(
+          EDGE_SCROLL.headStrokeWidth / zoom,
+          EDGE_SCROLL.headStrokeColor,
+          EDGE_SCROLL.headStrokeAlpha,
+        );
         this.edgeOverlay.beginPath();
         this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
         this.edgeOverlay.lineTo(gx(headLX), gy(headLY));

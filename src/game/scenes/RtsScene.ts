@@ -2,11 +2,20 @@ import Phaser from 'phaser';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { EntityRenderer } from '../render/renderEntities';
 import { InputManager, type InputContext } from '../input/inputBindings';
-import { PLAYER_COLORS, type Entity, type PlayerId, type EntityId, type WaypointType } from '../sim/types';
+import {
+  PLAYER_COLORS,
+  type Entity,
+  type PlayerId,
+  type EntityId,
+  type WaypointType,
+} from '../sim/types';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
-import type { NetworkCombatStats, NetworkServerMeta } from '../network/NetworkTypes';
+import type {
+  NetworkCombatStats,
+  NetworkServerMeta,
+} from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
 import { musicPlayer } from '../audio/MusicPlayer';
@@ -23,7 +32,11 @@ import {
   EMA_CONFIG,
 } from '../../config';
 
-import { getAudioSmoothing, getAudioScope, getSoundToggle } from '@/clientConfig';
+import {
+  getAudioSmoothing,
+  getAudioScope,
+  getSoundToggle,
+} from '@/clientBarConfig';
 import { AUDIO } from '../../audioConfig';
 
 // Import helpers
@@ -145,7 +158,13 @@ export class RtsScene extends Phaser.Scene {
   public onMinimapUpdate?: (data: {
     mapWidth: number;
     mapHeight: number;
-    entities: { x: number; y: number; type: 'unit' | 'building'; color: string; isSelected?: boolean }[];
+    entities: {
+      x: number;
+      y: number;
+      type: 'unit' | 'building';
+      color: string;
+      isSelected?: boolean;
+    }[];
     cameraX: number;
     cameraY: number;
     cameraWidth: number;
@@ -198,7 +217,8 @@ export class RtsScene extends Phaser.Scene {
         if (pid !== this._cachedPlayerIdForBuildings) {
           this._cachedPlayerBuildings.length = 0;
           for (const b of this.clientViewState.getBuildings()) {
-            if (b.ownership?.playerId === pid) this._cachedPlayerBuildings.push(b);
+            if (b.ownership?.playerId === pid)
+              this._cachedPlayerBuildings.push(b);
           }
           this._cachedPlayerIdForBuildings = pid;
         }
@@ -260,16 +280,26 @@ export class RtsScene extends Phaser.Scene {
     // Setup input context
     const inputContext: InputContext = {
       getTick: () => this.clientViewState.getTick(),
-      activePlayerId: this.backgroundMode ? 0 as PlayerId : this.localPlayerId,
+      activePlayerId: this.backgroundMode
+        ? (0 as PlayerId)
+        : this.localPlayerId,
     };
 
-    this.inputManager = new InputManager(this, inputContext, this.clientViewState, this.localCommandQueue);
+    this.inputManager = new InputManager(
+      this,
+      inputContext,
+      this.clientViewState,
+      this.localCommandQueue,
+    );
 
     // Initialize audio on first user interaction
     this.input.once('pointerdown', () => {
       if (!this.audioInitialized) {
         audioManager.init();
-        musicPlayer.init(audioManager.getContext()!, audioManager.getMasterGain()!);
+        musicPlayer.init(
+          audioManager.getContext()!,
+          audioManager.getMasterGain()!,
+        );
         if (getSoundToggle('music')) {
           musicPlayer.start();
         }
@@ -285,7 +315,9 @@ export class RtsScene extends Phaser.Scene {
   private centerCameraOnCommander(): void {
     const units = this.clientViewState.getUnits();
     const commander = units.find(
-      e => e.commander !== undefined && e.ownership?.playerId === this.localPlayerId
+      (e) =>
+        e.commander !== undefined &&
+        e.ownership?.playerId === this.localPlayerId,
     );
     if (commander) {
       this.cameras.main.centerOn(commander.transform.x, commander.transform.y);
@@ -322,7 +354,12 @@ export class RtsScene extends Phaser.Scene {
       getTick: () => this.clientViewState.getTick(),
       activePlayerId: playerId,
     };
-    this.inputManager = new InputManager(this, inputContext, this.clientViewState, this.localCommandQueue);
+    this.inputManager = new InputManager(
+      this,
+      inputContext,
+      this.clientViewState,
+      this.localCommandQueue,
+    );
     this.markSelectionDirty();
     this.onPlayerChange?.(playerId);
   }
@@ -407,7 +444,7 @@ export class RtsScene extends Phaser.Scene {
     const economyInfo = buildEconomyInfo(
       entitySource,
       this.localPlayerId,
-      Math.floor(maxTotal / this.playerIds.length)
+      Math.floor(maxTotal / this.playerIds.length),
     );
 
     if (economyInfo) {
@@ -422,15 +459,17 @@ export class RtsScene extends Phaser.Scene {
     const camera = this.cameras.main;
     const entitySource = this.getCurrentEntitySource();
 
-    this.onMinimapUpdate(buildMinimapData(
-      entitySource,
-      this.mapWidth,
-      this.mapHeight,
-      camera.scrollX,
-      camera.scrollY,
-      camera.width / camera.zoom,
-      camera.height / camera.zoom
-    ));
+    this.onMinimapUpdate(
+      buildMinimapData(
+        entitySource,
+        this.mapWidth,
+        this.mapHeight,
+        camera.scrollX,
+        camera.scrollY,
+        camera.width / camera.zoom,
+        camera.height / camera.zoom,
+      ),
+    );
   }
 
   // Render spatial grid debug overlay (search cells + occupancy cells)
@@ -485,7 +524,7 @@ export class RtsScene extends Phaser.Scene {
       -paddingX,
       -paddingY,
       this.mapWidth + paddingX * 2,
-      this.mapHeight + paddingY * 2
+      this.mapHeight + paddingY * 2,
     );
 
     this.gridGraphics.fillStyle(MAP_BG_COLOR, 1);
@@ -515,7 +554,13 @@ export class RtsScene extends Phaser.Scene {
     const now = performance.now();
     const cam = this.cameras.main;
     this.audioScheduler.drain(now, (event) => {
-      handleSimEvent(event as SimEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
+      handleSimEvent(
+        event as SimEvent,
+        this.entityRenderer,
+        this.audioInitialized,
+        cam.worldView,
+        cam.zoom,
+      );
     });
 
     // Process buffered snapshot (at most one per frame)
@@ -538,9 +583,20 @@ export class RtsScene extends Phaser.Scene {
       // Process audio events
       const audioEvents = this.clientViewState.getPendingAudioEvents();
       if (audioEvents) {
-        this.audioScheduler.schedule(audioEvents, now, getAudioSmoothing(), (event) => {
-          handleSimEvent(event as SimEvent, this.entityRenderer, this.audioInitialized, cam.worldView, cam.zoom);
-        });
+        this.audioScheduler.schedule(
+          audioEvents,
+          now,
+          getAudioSmoothing(),
+          (event) => {
+            handleSimEvent(
+              event as SimEvent,
+              this.entityRenderer,
+              this.audioInitialized,
+              cam.worldView,
+              cam.zoom,
+            );
+          },
+        );
       }
 
       // Check for game over
@@ -579,8 +635,11 @@ export class RtsScene extends Phaser.Scene {
         } else if (audioScope === 'padded') {
           const padX = vp.width * 0.5;
           const padY = vp.height * 0.5;
-          inScope = ex >= vp.x - padX && ex <= vp.right + padX &&
-                    ey >= vp.y - padY && ey <= vp.bottom + padY;
+          inScope =
+            ex >= vp.x - padX &&
+            ex <= vp.right + padX &&
+            ey >= vp.y - padY &&
+            ey <= vp.bottom + padY;
         }
         // 'all' scope: always audible (inScope stays true)
         audioManager.setContinuousSoundAudible(soundId, inScope);
@@ -644,7 +703,7 @@ export class RtsScene extends Phaser.Scene {
         const entitySource = this.getCurrentEntitySource();
         const selectedBuildings = entitySource.getSelectedBuildings();
         const hasProducingFactory = selectedBuildings.some(
-          b => b.factory?.isProducing
+          (b) => b.factory?.isProducing,
         );
         if (hasProducingFactory) {
           this.selectionDirty = true;
@@ -663,12 +722,16 @@ export class RtsScene extends Phaser.Scene {
       }
 
       const camera = this.cameras.main;
-      const cameraMoved = camera.scrollX !== this.lastCameraX ||
-                          camera.scrollY !== this.lastCameraY ||
-                          camera.zoom !== this.lastCameraZoom;
+      const cameraMoved =
+        camera.scrollX !== this.lastCameraX ||
+        camera.scrollY !== this.lastCameraY ||
+        camera.zoom !== this.lastCameraZoom;
 
       this.minimapUpdateTimer += delta;
-      if (this.minimapUpdateTimer >= this.MINIMAP_UPDATE_INTERVAL || cameraMoved) {
+      if (
+        this.minimapUpdateTimer >= this.MINIMAP_UPDATE_INTERVAL ||
+        cameraMoved
+      ) {
         this.minimapUpdateTimer = 0;
         this.lastCameraX = camera.scrollX;
         this.lastCameraY = camera.scrollY;
@@ -722,14 +785,20 @@ export class RtsScene extends Phaser.Scene {
    * Get FPS statistics (EMA-based avg and low)
    */
   public getFrameStats(): { avgFps: number; worstFps: number } {
-    return { avgFps: this.fpsTracker.getAvg(), worstFps: this.fpsTracker.getLow() };
+    return {
+      avgFps: this.fpsTracker.getAvg(),
+      worstFps: this.fpsTracker.getLow(),
+    };
   }
 
   /**
    * Get snapshot rate statistics (EMA-based avg and low, in Hz)
    */
   public getSnapshotStats(): { avgRate: number; worstRate: number } {
-    return { avgRate: this.snapTracker.getAvg(), worstRate: this.snapTracker.getLow() };
+    return {
+      avgRate: this.snapTracker.getAvg(),
+      worstRate: this.snapTracker.getLow(),
+    };
   }
 
   // Clean shutdown

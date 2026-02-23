@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
-import {
-  type PlayerId,
-  type WaypointType,
-} from '../game/sim/types';
+import { type PlayerId, type WaypointType } from '../game/sim/types';
 import BarDivider from './BarDivider.vue';
 import SelectionPanel, {
   type SelectionInfo,
@@ -31,7 +28,8 @@ import {
 } from '../config';
 import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../game/sim/blueprints';
 import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
-import { BATTLE_CONFIG,
+import {
+  BATTLE_CONFIG,
   loadStoredDemoUnits,
   saveDemoUnits,
   loadStoredMaxTotalUnits,
@@ -42,8 +40,9 @@ import { BATTLE_CONFIG,
   saveFfAccelUnits,
   loadStoredFfAccelShots,
   saveFfAccelShots,
-} from '../battleConfig';
-import { SERVER_CONFIG,
+} from '../battleBarConfig';
+import {
+  SERVER_CONFIG,
   loadStoredSnapshotRate,
   saveSnapshotRate,
   loadStoredKeyframeRatio,
@@ -52,8 +51,8 @@ import { SERVER_CONFIG,
   saveTickRate,
   loadStoredGridInfo,
   saveGridInfo,
-} from '../serverConfig';
-import { CLIENT_CONFIG } from '../clientConfig';
+} from '../serverBarConfig';
+import { CLIENT_CONFIG } from '../clientBarConfig';
 import { BAR_THEMES } from '../barThemes';
 import {
   formatDuration,
@@ -94,11 +93,8 @@ import {
   getSoundToggle,
   setSoundToggle,
   SOUND_CATEGORIES,
-} from '../clientConfig';
-import type {
-  GraphicsQuality,
-  RenderMode,
-} from '../types/graphics';
+} from '../clientBarConfig';
+import type { GraphicsQuality, RenderMode } from '../types/graphics';
 import type {
   AudioScope,
   DriftMode,
@@ -110,7 +106,10 @@ import type {
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
 
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+const isMobile =
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent,
+  );
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
@@ -396,8 +395,7 @@ const showServerControls = computed(
 const serverBarReadonly = computed(() => !hasServer.value);
 
 // Bar color theming via CSS custom properties
-type BarColorTheme =
-  (typeof BAR_THEMES)[keyof typeof BAR_THEMES];
+type BarColorTheme = (typeof BAR_THEMES)[keyof typeof BAR_THEMES];
 function barVars(theme: BarColorTheme): Record<string, string> {
   return {
     '--bar-bg': theme.barBg,
@@ -411,18 +409,10 @@ function barVars(theme: BarColorTheme): Record<string, string> {
   };
 }
 const battleBarVars = computed(() =>
-  barVars(
-    serverBarReadonly.value
-      ? BAR_THEMES.disabled
-      : BAR_THEMES.battle,
-  ),
+  barVars(serverBarReadonly.value ? BAR_THEMES.disabled : BAR_THEMES.battle),
 );
 const serverBarVars = computed(() =>
-  barVars(
-    serverBarReadonly.value
-      ? BAR_THEMES.disabled
-      : BAR_THEMES.server,
-  ),
+  barVars(serverBarReadonly.value ? BAR_THEMES.disabled : BAR_THEMES.server),
 );
 const clientBarVars = computed(() => barVars(BAR_THEMES.client));
 
@@ -437,8 +427,7 @@ const displayServerTpsWorst = computed(
 );
 const displayTickRate = computed(
   () =>
-    serverMetaFromSnapshot.value?.tickRate ??
-    SERVER_CONFIG.tickRate.default,
+    serverMetaFromSnapshot.value?.tickRate ?? SERVER_CONFIG.tickRate.default,
 );
 const displaySnapshotRate = computed(
   () =>
@@ -531,8 +520,12 @@ function setFfAccelShots(enabled: boolean): void {
 }
 
 function toggleFfAccelAll(): void {
-  const units = serverMetaFromSnapshot.value?.ffAccelUnits ?? BATTLE_CONFIG.ffAccelUnits.default;
-  const shots = serverMetaFromSnapshot.value?.ffAccelShots ?? BATTLE_CONFIG.ffAccelShots.default;
+  const units =
+    serverMetaFromSnapshot.value?.ffAccelUnits ??
+    BATTLE_CONFIG.ffAccelUnits.default;
+  const shots =
+    serverMetaFromSnapshot.value?.ffAccelShots ??
+    BATTLE_CONFIG.ffAccelShots.default;
   const allOn = units && shots;
   setFfAccelUnits(!allOn);
   setFfAccelShots(!allOn);
@@ -585,10 +578,12 @@ function resetClientDefaults(): void {
     if (rangeToggles[rt] !== cd.rangeToggles.default) toggleRange(rt);
   }
   for (const prt of PROJ_RANGE_TYPES) {
-    if (projRangeToggles[prt] !== cd.projRangeToggles.default) toggleProjRange(prt);
+    if (projRangeToggles[prt] !== cd.projRangeToggles.default)
+      toggleProjRange(prt);
   }
   for (const urt of UNIT_RADIUS_TYPES) {
-    if (unitRadiusToggles[urt] !== cd.unitRadiusToggles.default) toggleUnitRadius(urt);
+    if (unitRadiusToggles[urt] !== cd.unitRadiusToggles.default)
+      toggleUnitRadius(urt);
   }
   for (const cat of SOUND_CATEGORIES) {
     if (soundToggles[cat] !== cd.sounds.default[cat]) toggleSoundCategory(cat);
@@ -806,7 +801,9 @@ function toggleDragPan(): void {
   dragPanEnabled.value = newValue;
 }
 
-const allPanActive = computed(() => edgeScrollEnabled.value && dragPanEnabled.value);
+const allPanActive = computed(
+  () => edgeScrollEnabled.value && dragPanEnabled.value,
+);
 
 function toggleAllPan(): void {
   const enable = !allPanActive.value;
@@ -1081,11 +1078,12 @@ function setTickRateValue(rate: TickRate): void {
 }
 
 function secPerFullsnap(ratio: number): string {
-  const sps = displaySnapshotRate.value === 'none'
-    ? displayTickRate.value
-    : displaySnapshotRate.value;
+  const sps =
+    displaySnapshotRate.value === 'none'
+      ? displayTickRate.value
+      : displaySnapshotRate.value;
   const sec = 1 / (sps * ratio);
-  return `~1 fullsnap every ${+(sec).toPrecision(2)}s`;
+  return `~1 fullsnap every ${+sec.toPrecision(2)}s`;
 }
 
 function setKeyframeRatioValue(ratio: KeyframeRatio): void {
@@ -1195,7 +1193,11 @@ onUnmounted(() => {
       ></div>
 
       <!-- Main game container -->
-      <div ref="containerRef" class="phaser-container" v-show="!showLobby"></div>
+      <div
+        ref="containerRef"
+        class="phaser-container"
+        v-show="!showLobby"
+      ></div>
 
       <!-- Game UI (only when game is running) -->
       <template v-if="gameStarted && !showLobby">
@@ -1223,7 +1225,10 @@ onUnmounted(() => {
         </div>
 
         <!-- Selection panel (bottom-left) -->
-        <SelectionPanel :selection="selectionInfo" :actions="selectionActions" />
+        <SelectionPanel
+          :selection="selectionInfo"
+          :actions="selectionActions"
+        />
 
         <!-- Minimap (bottom-right) -->
         <Minimap :data="minimapData" @click="handleMinimapClick" />
@@ -1251,97 +1256,113 @@ onUnmounted(() => {
         </div>
         <BarDivider />
         <div class="bar-controls">
-        <span class="time-display" title="Battle elapsed time">{{
-          battleElapsed
-        }}</span>
-        <BarDivider />
-        <div class="control-group">
-          <span class="control-label">UNITS:</span>
-          <button
-            class="control-btn"
-            :class="{ active: allDemoUnitsActive }"
-            title="Toggle all unit types on/off"
-            @click="toggleAllDemoUnits"
-          >
-            ALL
-          </button>
-          <div class="button-group">
+          <span class="time-display" title="Battle elapsed time">{{
+            battleElapsed
+          }}</span>
+          <BarDivider />
+          <div class="control-group">
+            <span class="control-label">UNITS:</span>
             <button
-              v-for="ut in demoUnitTypes"
-              :key="ut"
+              class="control-btn"
+              :class="{ active: allDemoUnitsActive }"
+              title="Toggle all unit types on/off"
+              @click="toggleAllDemoUnits"
+            >
+              ALL
+            </button>
+            <div class="button-group">
+              <button
+                v-for="ut in demoUnitTypes"
+                :key="ut"
+                class="control-btn"
+                :class="{
+                  active:
+                    serverMetaFromSnapshot?.allowedUnitTypes?.includes(ut) ??
+                    true,
+                }"
+                :title="`Toggle ${ut} units in demo battle`"
+                @click="toggleDemoUnitType(ut)"
+              >
+                {{ getUnitBlueprint(ut).shortName }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">CAP:</span>
+            <div class="button-group">
+              <button
+                v-for="opt in BATTLE_CONFIG.cap.options"
+                :key="opt"
+                class="control-btn"
+                :class="{
+                  active: serverMetaFromSnapshot?.maxTotalUnits === opt,
+                }"
+                :title="`Max ${opt} total units`"
+                @click="changeMaxTotalUnits(opt)"
+              >
+                {{ opt.toExponential(0).toUpperCase() }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">SHOT VEL:</span>
+            <button
+              class="control-btn"
+              :class="{ active: serverMetaFromSnapshot?.projVelInherit }"
+              title="Add firing unit's velocity to projectile velocity"
+              @click="toggleProjVelInherit"
+            >
+              ADD
+            </button>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">FF ACC:</span>
+            <button
               class="control-btn"
               :class="{
                 active:
-                  serverMetaFromSnapshot?.allowedUnitTypes?.includes(ut) ??
-                  true,
+                  (serverMetaFromSnapshot?.ffAccelUnits ?? false) &&
+                  (serverMetaFromSnapshot?.ffAccelShots ?? true),
               }"
-              :title="`Toggle ${ut} units in demo battle`"
-              @click="toggleDemoUnitType(ut)"
+              title="Toggle all force field acceleration on/off"
+              @click="toggleFfAccelAll"
             >
-              {{ getUnitBlueprint(ut).shortName }}
+              ALL
             </button>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{
+                  active: serverMetaFromSnapshot?.ffAccelUnits ?? false,
+                }"
+                title="Force field accelerates enemy units"
+                @click="
+                  setFfAccelUnits(
+                    !(serverMetaFromSnapshot?.ffAccelUnits ?? false),
+                  )
+                "
+              >
+                UNIT
+              </button>
+              <button
+                class="control-btn"
+                :class="{
+                  active: serverMetaFromSnapshot?.ffAccelShots ?? true,
+                }"
+                title="Force field accelerates enemy projectiles"
+                @click="
+                  setFfAccelShots(
+                    !(serverMetaFromSnapshot?.ffAccelShots ?? true),
+                  )
+                "
+              >
+                SHOT
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">CAP:</span>
-          <div class="button-group">
-            <button
-              v-for="opt in BATTLE_CONFIG.cap.options"
-              :key="opt"
-              class="control-btn"
-              :class="{
-                active: serverMetaFromSnapshot?.maxTotalUnits === opt,
-              }"
-              :title="`Max ${opt} total units`"
-              @click="changeMaxTotalUnits(opt)"
-            >
-              {{ opt.toExponential(0).toUpperCase() }}
-            </button>
-          </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">SHOT VEL:</span>
-          <button
-            class="control-btn"
-            :class="{ active: serverMetaFromSnapshot?.projVelInherit }"
-            title="Add firing unit's velocity to projectile velocity"
-            @click="toggleProjVelInherit"
-          >
-            ADD
-          </button>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">FF ACC:</span>
-          <button
-            class="control-btn"
-            :class="{ active: (serverMetaFromSnapshot?.ffAccelUnits ?? false) && (serverMetaFromSnapshot?.ffAccelShots ?? true) }"
-            title="Toggle all force field acceleration on/off"
-            @click="toggleFfAccelAll"
-          >
-            ALL
-          </button>
-          <div class="button-group">
-            <button
-              class="control-btn"
-              :class="{ active: serverMetaFromSnapshot?.ffAccelUnits ?? false }"
-              title="Force field accelerates enemy units"
-              @click="setFfAccelUnits(!(serverMetaFromSnapshot?.ffAccelUnits ?? false))"
-            >
-              UNIT
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: serverMetaFromSnapshot?.ffAccelShots ?? true }"
-              title="Force field accelerates enemy projectiles"
-              @click="setFfAccelShots(!(serverMetaFromSnapshot?.ffAccelShots ?? true))"
-            >
-              SHOT
-            </button>
-          </div>
-        </div>
         </div>
       </div>
 
@@ -1364,125 +1385,129 @@ onUnmounted(() => {
         </div>
         <BarDivider />
         <div class="bar-controls">
-        <span
-          v-if="displayServerTime"
-          class="time-display"
-          title="Server wall-clock time"
-          >{{ displayServerTime }}</span
-        >
-        <span
-          v-if="displayServerIp"
-          class="ip-display"
-          title="Server IP address"
-          >{{ displayServerIp }}</span
-        >
-        <BarDivider />
-        <div class="control-group">
-          <span class="control-label">MAX TPS:</span>
-          <div class="button-group">
-            <button
-              v-for="rate in SERVER_CONFIG.tickRate.options"
-              :key="rate"
-              class="control-btn"
-              :class="{ active: displayTickRate === rate }"
-              :title="`Target ${rate} simulation ticks per second`"
-              @click="setTickRateValue(rate)"
-            >
-              {{ rate }}
-            </button>
-          </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label" title="Server simulation ticks per second"
-            >TPS:</span
+          <span
+            v-if="displayServerTime"
+            class="time-display"
+            title="Server wall-clock time"
+            >{{ displayServerTime }}</span
           >
-          <div class="stat-bar-group">
-            <div class="stat-bar">
-              <div class="stat-bar-top">
-                <span class="fps-value">{{ fmt4(displayServerTpsAvg) }}</span>
-                <span class="fps-label">avg</span>
-              </div>
-              <div class="stat-bar-track">
-                <div
-                  class="stat-bar-fill"
-                  :style="
-                    statBarStyle(displayServerTpsAvg, 60, serverBarReadonly)
-                  "
-                ></div>
-              </div>
-            </div>
-            <div class="stat-bar">
-              <div class="stat-bar-top">
-                <span class="fps-value">{{ fmt4(displayServerTpsWorst) }}</span>
-                <span class="fps-label">low</span>
-              </div>
-              <div class="stat-bar-track">
-                <div
-                  class="stat-bar-fill"
-                  :style="
-                    statBarStyle(displayServerTpsWorst, 60, serverBarReadonly)
-                  "
-                ></div>
-              </div>
+          <span
+            v-if="displayServerIp"
+            class="ip-display"
+            title="Server IP address"
+            >{{ displayServerIp }}</span
+          >
+          <BarDivider />
+          <div class="control-group">
+            <span class="control-label">MAX TPS:</span>
+            <div class="button-group">
+              <button
+                v-for="rate in SERVER_CONFIG.tickRate.options"
+                :key="rate"
+                class="control-btn"
+                :class="{ active: displayTickRate === rate }"
+                :title="`Target ${rate} simulation ticks per second`"
+                @click="setTickRateValue(rate)"
+              >
+                {{ rate }}
+              </button>
             </div>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">MAX SPS:</span>
-          <div class="button-group">
-            <button
-              v-for="rate in SERVER_CONFIG.snapshot.options"
-              :key="String(rate)"
-              class="control-btn"
-              :class="{ active: displaySnapshotRate === rate }"
-              :title="`Cap snapshots at ${rate === 'none' ? 'no limit (every tick)' : rate + '/sec'}`"
-              @click="setNetworkUpdateRate(rate)"
+          <div class="control-group">
+            <BarDivider />
+            <span
+              class="control-label"
+              title="Server simulation ticks per second"
+              >TPS:</span
             >
-              {{ rate === 'none' ? 'NONE' : (rate as number) }}
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(displayServerTpsAvg) }}</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="
+                      statBarStyle(displayServerTpsAvg, 60, serverBarReadonly)
+                    "
+                  ></div>
+                </div>
+              </div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{
+                    fmt4(displayServerTpsWorst)
+                  }}</span>
+                  <span class="fps-label">low</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="
+                      statBarStyle(displayServerTpsWorst, 60, serverBarReadonly)
+                    "
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">MAX SPS:</span>
+            <div class="button-group">
+              <button
+                v-for="rate in SERVER_CONFIG.snapshot.options"
+                :key="String(rate)"
+                class="control-btn"
+                :class="{ active: displaySnapshotRate === rate }"
+                :title="`Cap snapshots at ${rate === 'none' ? 'no limit (every tick)' : rate + '/sec'}`"
+                @click="setNetworkUpdateRate(rate)"
+              >
+                {{ rate === 'none' ? 'NONE' : (rate as number) }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">FULLSNAP:</span>
+            <div class="button-group">
+              <button
+                v-for="opt in SERVER_CONFIG.keyframe.options"
+                :key="String(opt)"
+                class="control-btn"
+                :class="{ active: displayKeyframeRatio === opt }"
+                :title="
+                  opt === 'ALL'
+                    ? 'Every snapshot is a full keyframe'
+                    : opt === 'NONE'
+                      ? 'Never send full keyframes (delta only)'
+                      : secPerFullsnap(opt as number)
+                "
+                @click="setKeyframeRatioValue(opt)"
+              >
+                {{
+                  opt === 'ALL'
+                    ? 'ALL'
+                    : opt === 'NONE'
+                      ? 'NONE'
+                      : `1e-${Math.round(-Math.log10(opt as number))}`
+                }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <button
+              class="control-btn"
+              :class="{ active: displayGridInfo }"
+              title="Include spatial grid debug info in snapshots"
+              @click="toggleSendGridInfo"
+            >
+              GRID
             </button>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">FULLSNAP:</span>
-          <div class="button-group">
-            <button
-              v-for="opt in SERVER_CONFIG.keyframe.options"
-              :key="String(opt)"
-              class="control-btn"
-              :class="{ active: displayKeyframeRatio === opt }"
-              :title="
-                opt === 'ALL'
-                  ? 'Every snapshot is a full keyframe'
-                  : opt === 'NONE'
-                    ? 'Never send full keyframes (delta only)'
-                    : secPerFullsnap(opt as number)
-              "
-              @click="setKeyframeRatioValue(opt)"
-            >
-              {{
-                opt === 'ALL'
-                  ? 'ALL'
-                  : opt === 'NONE'
-                    ? 'NONE'
-                    : `1e-${Math.round(-Math.log10(opt as number))}`
-              }}
-            </button>
-          </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <button
-            class="control-btn"
-            :class="{ active: displayGridInfo }"
-            title="Include spatial grid debug info in snapshots"
-            @click="toggleSendGridInfo"
-          >
-            GRID
-          </button>
-        </div>
         </div>
       </div>
 
@@ -1500,390 +1525,396 @@ onUnmounted(() => {
         </div>
         <BarDivider />
         <div class="bar-controls">
-        <span
-          v-if="clientTime"
-          class="time-display"
-          title="Client wall-clock time"
-          >{{ clientTime }}</span
-        >
-        <span
-          v-if="localIpAddress !== 'N/A'"
-          class="ip-display"
-          title="Public IP address"
-          >{{ localIpAddress }}</span
-        >
-        <BarDivider />
-        <div class="control-group">
-          <span class="control-label" title="Client rendering frames per second"
-            >FPS:</span
-          >
-          <div class="stat-bar-group">
-            <div class="stat-bar">
-              <div class="stat-bar-top">
-                <span class="fps-value">{{ fmt4(actualAvgFPS) }}</span>
-                <span class="fps-label">avg</span>
-              </div>
-              <div class="stat-bar-track">
-                <div
-                  class="stat-bar-fill"
-                  :style="statBarStyle(actualAvgFPS)"
-                ></div>
-              </div>
-            </div>
-            <div class="stat-bar">
-              <div class="stat-bar-top">
-                <span class="fps-value">{{ fmt4(actualWorstFPS) }}</span>
-                <span class="fps-label">low</span>
-              </div>
-              <div class="stat-bar-track">
-                <div
-                  class="stat-bar-fill"
-                  :style="statBarStyle(actualWorstFPS)"
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <div class="fps-stats">
-            <span class="control-label" title="Current camera zoom level"
-              >ZOOM:</span
-            >
-            <span class="fps-value">{{ fmt4(currentZoom) }}</span>
-          </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
           <span
-            class="control-label"
-            title="Snapshots received per second from server"
-            >SPS:</span
+            v-if="clientTime"
+            class="time-display"
+            title="Client wall-clock time"
+            >{{ clientTime }}</span
           >
-          <div class="stat-bar-group">
-            <div class="stat-bar">
-              <div class="stat-bar-top">
-                <span class="fps-value">{{ fmt4(snapAvgRate) }}</span>
-                <span class="fps-label">avg</span>
+          <span
+            v-if="localIpAddress !== 'N/A'"
+            class="ip-display"
+            title="Public IP address"
+            >{{ localIpAddress }}</span
+          >
+          <BarDivider />
+          <div class="control-group">
+            <span
+              class="control-label"
+              title="Client rendering frames per second"
+              >FPS:</span
+            >
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(actualAvgFPS) }}</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="statBarStyle(actualAvgFPS)"
+                  ></div>
+                </div>
               </div>
-              <div class="stat-bar-track">
-                <div
-                  class="stat-bar-fill"
-                  :style="
-                    statBarStyle(
-                      snapAvgRate,
-                      displaySnapshotRate === 'none' ? 60 : displaySnapshotRate,
-                    )
-                  "
-                ></div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(actualWorstFPS) }}</span>
+                  <span class="fps-label">low</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="statBarStyle(actualWorstFPS)"
+                  ></div>
+                </div>
               </div>
             </div>
-            <div class="stat-bar">
-              <div class="stat-bar-top">
-                <span class="fps-value">{{ fmt4(snapWorstRate) }}</span>
-                <span class="fps-label">low</span>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <div class="fps-stats">
+              <span class="control-label" title="Current camera zoom level"
+                >ZOOM:</span
+              >
+              <span class="fps-value">{{ fmt4(currentZoom) }}</span>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span
+              class="control-label"
+              title="Snapshots received per second from server"
+              >SPS:</span
+            >
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(snapAvgRate) }}</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="
+                      statBarStyle(
+                        snapAvgRate,
+                        displaySnapshotRate === 'none'
+                          ? 60
+                          : displaySnapshotRate,
+                      )
+                    "
+                  ></div>
+                </div>
               </div>
-              <div class="stat-bar-track">
-                <div
-                  class="stat-bar-fill"
-                  :style="
-                    statBarStyle(
-                      snapWorstRate,
-                      displaySnapshotRate === 'none' ? 60 : displaySnapshotRate,
-                    )
-                  "
-                ></div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(snapWorstRate) }}</span>
+                  <span class="fps-label">low</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="
+                      statBarStyle(
+                        snapWorstRate,
+                        displaySnapshotRate === 'none'
+                          ? 60
+                          : displaySnapshotRate,
+                      )
+                    "
+                  ></div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">EVENTS:</span>
-          <button
-            class="control-btn"
-            :class="{ active: audioSmoothing }"
-            title="Smooth audio events across snapshot intervals"
-            @click="toggleAudioSmoothing"
-          >
-            SMOOTH
-          </button>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">DRIFT:</span>
-          <div class="button-group">
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">EVENTS:</span>
             <button
               class="control-btn"
-              :class="{ active: driftMode === 'snap' }"
-              title="Snap instantly to new server state"
-              @click="changeDriftMode('snap')"
+              :class="{ active: audioSmoothing }"
+              title="Smooth audio events across snapshot intervals"
+              @click="toggleAudioSmoothing"
             >
-              SNAP
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: driftMode === 'fast' }"
-              title="Fast interpolation to server state"
-              @click="changeDriftMode('fast')"
-            >
-              FAST
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: driftMode === 'slow' }"
-              title="Slow interpolation to server state"
-              @click="changeDriftMode('slow')"
-            >
-              SLOW
+              SMOOTH
             </button>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">PAN:</span>
-          <button
-            class="control-btn"
-            :class="{ active: allPanActive }"
-            title="Toggle all camera pan methods on/off"
-            @click="toggleAllPan"
-          >
-            ALL
-          </button>
-          <div class="button-group">
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">DRIFT:</span>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{ active: driftMode === 'snap' }"
+                title="Snap instantly to new server state"
+                @click="changeDriftMode('snap')"
+              >
+                SNAP
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: driftMode === 'fast' }"
+                title="Fast interpolation to server state"
+                @click="changeDriftMode('fast')"
+              >
+                FAST
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: driftMode === 'slow' }"
+                title="Slow interpolation to server state"
+                @click="changeDriftMode('slow')"
+              >
+                SLOW
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">PAN:</span>
             <button
               class="control-btn"
-              :class="{ active: dragPanEnabled }"
-              title="Middle-click drag to pan camera"
-              @click="toggleDragPan"
+              :class="{ active: allPanActive }"
+              title="Toggle all camera pan methods on/off"
+              @click="toggleAllPan"
             >
-              DRAG
+              ALL
             </button>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{ active: dragPanEnabled }"
+                title="Middle-click drag to pan camera"
+                @click="toggleDragPan"
+              >
+                DRAG
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: edgeScrollEnabled }"
+                title="Edge scroll — move camera when mouse near viewport border"
+                @click="toggleEdgeScroll"
+              >
+                EDGE
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">LOD:</span>
             <button
               class="control-btn"
-              :class="{ active: edgeScrollEnabled }"
-              title="Edge scroll — move camera when mouse near viewport border"
-              @click="toggleEdgeScroll"
+              :class="{ active: graphicsQuality === 'auto' }"
+              title="Automatically adjust graphics quality based on FPS"
+              @click="changeGraphicsQuality('auto')"
             >
-              EDGE
+              AUTO
+            </button>
+            <div class="button-group">
+              <button
+                v-for="opt in CLIENT_CONFIG.graphics.options"
+                :key="opt.value"
+                class="control-btn"
+                :class="{
+                  active: graphicsQuality === opt.value,
+                  'active-level':
+                    effectiveQuality === opt.value &&
+                    graphicsQuality !== opt.value,
+                }"
+                :title="`${opt.value} graphics quality`"
+                @click="changeGraphicsQuality(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">RENDER:</span>
+            <div class="button-group">
+              <button
+                v-for="opt in CLIENT_CONFIG.render.options"
+                :key="opt.value"
+                class="control-btn"
+                :class="{ active: renderMode === opt.value }"
+                :title="
+                  opt.value === 'window'
+                    ? 'Render only visible window'
+                    : opt.value === 'padded'
+                      ? 'Render window plus padding'
+                      : 'Render entire map'
+                "
+                @click="changeRenderMode(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">AUDIO:</span>
+            <div class="button-group">
+              <button
+                v-for="opt in CLIENT_CONFIG.audio.options"
+                :key="opt.value"
+                class="control-btn"
+                :class="{ active: audioScope === opt.value }"
+                :title="
+                  opt.value === 'window'
+                    ? 'Play audio from visible area'
+                    : opt.value === 'padded'
+                      ? 'Play audio from visible area plus padding'
+                      : 'Play audio from entire map'
+                "
+                @click="changeAudioScope(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">SOUNDS:</span>
+            <button
+              class="control-btn"
+              :class="{ active: allSoundsActive }"
+              title="Toggle all sound categories on/off"
+              @click="toggleAllSounds"
+            >
+              ALL
+            </button>
+            <div class="button-group">
+              <button
+                v-for="cat in SFX_CATEGORIES"
+                :key="cat"
+                class="control-btn"
+                :class="{ active: soundToggles[cat] }"
+                :title="SOUND_TOOLTIPS[cat]"
+                @click="toggleSoundCategory(cat)"
+              >
+                {{ SOUND_LABELS[cat] }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">MUSIC:</span>
+            <button
+              class="control-btn"
+              :class="{ active: soundToggles.music }"
+              :title="SOUND_TOOLTIPS.music"
+              @click="toggleSoundCategory('music')"
+            >
+              {{ soundToggles.music ? 'ON' : 'OFF' }}
             </button>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">LOD:</span>
-          <button
-            class="control-btn"
-            :class="{ active: graphicsQuality === 'auto' }"
-            title="Automatically adjust graphics quality based on FPS"
-            @click="changeGraphicsQuality('auto')"
-          >
-            AUTO
-          </button>
-          <div class="button-group">
-            <button
-              v-for="opt in CLIENT_CONFIG.graphics.options"
-              :key="opt.value"
-              class="control-btn"
-              :class="{
-                active: graphicsQuality === opt.value,
-                'active-level':
-                  effectiveQuality === opt.value &&
-                  graphicsQuality !== opt.value,
-              }"
-              :title="`${opt.value} graphics quality`"
-              @click="changeGraphicsQuality(opt.value)"
-            >
-              {{ opt.label }}
-            </button>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">TURR RAD:</span>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{ active: rangeToggles.trackAcquire }"
+                title="Show tracking acquire range (start tracking target)"
+                @click="toggleRange('trackAcquire')"
+              >
+                T.A
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: rangeToggles.trackRelease }"
+                title="Show tracking release range (lose target)"
+                @click="toggleRange('trackRelease')"
+              >
+                T.R
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: rangeToggles.engageAcquire }"
+                title="Show engage acquire range (start firing)"
+                @click="toggleRange('engageAcquire')"
+              >
+                E.A
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: rangeToggles.engageRelease }"
+                title="Show engage release range (stop firing)"
+                @click="toggleRange('engageRelease')"
+              >
+                E.R
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: rangeToggles.build }"
+                title="Show build range"
+                @click="toggleRange('build')"
+              >
+                BLD
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">RENDER:</span>
-          <div class="button-group">
-            <button
-              v-for="opt in CLIENT_CONFIG.render.options"
-              :key="opt.value"
-              class="control-btn"
-              :class="{ active: renderMode === opt.value }"
-              :title="
-                opt.value === 'window'
-                  ? 'Render only visible window'
-                  : opt.value === 'padded'
-                    ? 'Render window plus padding'
-                    : 'Render entire map'
-              "
-              @click="changeRenderMode(opt.value)"
-            >
-              {{ opt.label }}
-            </button>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">SHOT RAD:</span>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{ active: projRangeToggles.collision }"
+                title="Show projectile collision radius"
+                @click="toggleProjRange('collision')"
+              >
+                COL
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: projRangeToggles.primary }"
+                title="Show projectile primary damage radius"
+                @click="toggleProjRange('primary')"
+              >
+                PRM
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: projRangeToggles.secondary }"
+                title="Show projectile secondary damage radius"
+                @click="toggleProjRange('secondary')"
+              >
+                SEC
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">AUDIO:</span>
-          <div class="button-group">
-            <button
-              v-for="opt in CLIENT_CONFIG.audio.options"
-              :key="opt.value"
-              class="control-btn"
-              :class="{ active: audioScope === opt.value }"
-              :title="
-                opt.value === 'window'
-                  ? 'Play audio from visible area'
-                  : opt.value === 'padded'
-                    ? 'Play audio from visible area plus padding'
-                    : 'Play audio from entire map'
-              "
-              @click="changeAudioScope(opt.value)"
-            >
-              {{ opt.label }}
-            </button>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">UNIT RAD:</span>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{ active: unitRadiusToggles.visual }"
+                title="Show unit visual radius (drawScale — rendering &amp; click detection)"
+                @click="toggleUnitRadius('visual')"
+              >
+                SCAL
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: unitRadiusToggles.shot }"
+                title="Show unit shot collider radius (radiusColliderUnitShot — projectile/beam hit detection)"
+                @click="toggleUnitRadius('shot')"
+              >
+                SHOT
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: unitRadiusToggles.push }"
+                title="Show unit push collider radius (radiusColliderUnitUnit — unit-unit push physics)"
+                @click="toggleUnitRadius('push')"
+              >
+                PUSH
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">SOUNDS:</span>
-          <button
-            class="control-btn"
-            :class="{ active: allSoundsActive }"
-            title="Toggle all sound categories on/off"
-            @click="toggleAllSounds"
-          >
-            ALL
-          </button>
-          <div class="button-group">
-            <button
-              v-for="cat in SFX_CATEGORIES"
-              :key="cat"
-              class="control-btn"
-              :class="{ active: soundToggles[cat] }"
-              :title="SOUND_TOOLTIPS[cat]"
-              @click="toggleSoundCategory(cat)"
-            >
-              {{ SOUND_LABELS[cat] }}
-            </button>
-          </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">MUSIC:</span>
-          <button
-            class="control-btn"
-            :class="{ active: soundToggles.music }"
-            :title="SOUND_TOOLTIPS.music"
-            @click="toggleSoundCategory('music')"
-          >
-            {{ soundToggles.music ? 'ON' : 'OFF' }}
-          </button>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">TURR RAD:</span>
-          <div class="button-group">
-            <button
-              class="control-btn"
-              :class="{ active: rangeToggles.trackAcquire }"
-              title="Show tracking acquire range (start tracking target)"
-              @click="toggleRange('trackAcquire')"
-            >
-              T.A
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: rangeToggles.trackRelease }"
-              title="Show tracking release range (lose target)"
-              @click="toggleRange('trackRelease')"
-            >
-              T.R
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: rangeToggles.engageAcquire }"
-              title="Show engage acquire range (start firing)"
-              @click="toggleRange('engageAcquire')"
-            >
-              E.A
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: rangeToggles.engageRelease }"
-              title="Show engage release range (stop firing)"
-              @click="toggleRange('engageRelease')"
-            >
-              E.R
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: rangeToggles.build }"
-              title="Show build range"
-              @click="toggleRange('build')"
-            >
-              BLD
-            </button>
-          </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">SHOT RAD:</span>
-          <div class="button-group">
-            <button
-              class="control-btn"
-              :class="{ active: projRangeToggles.collision }"
-              title="Show projectile collision radius"
-              @click="toggleProjRange('collision')"
-            >
-              COL
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: projRangeToggles.primary }"
-              title="Show projectile primary damage radius"
-              @click="toggleProjRange('primary')"
-            >
-              PRM
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: projRangeToggles.secondary }"
-              title="Show projectile secondary damage radius"
-              @click="toggleProjRange('secondary')"
-            >
-              SEC
-            </button>
-          </div>
-        </div>
-        <div class="control-group">
-          <BarDivider />
-          <span class="control-label">UNIT RAD:</span>
-          <div class="button-group">
-            <button
-              class="control-btn"
-              :class="{ active: unitRadiusToggles.visual }"
-              title="Show unit visual radius (drawScale — rendering &amp; click detection)"
-              @click="toggleUnitRadius('visual')"
-            >
-              SCAL
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: unitRadiusToggles.shot }"
-              title="Show unit shot collider radius (radiusColliderUnitShot — projectile/beam hit detection)"
-              @click="toggleUnitRadius('shot')"
-            >
-              SHOT
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: unitRadiusToggles.push }"
-              title="Show unit push collider radius (radiusColliderUnitUnit — unit-unit push physics)"
-              @click="toggleUnitRadius('push')"
-            >
-              PUSH
-            </button>
-          </div>
-        </div>
         </div>
       </div>
     </div>
@@ -2230,8 +2261,6 @@ onUnmounted(() => {
   gap: 6px;
   white-space: nowrap;
 }
-
-
 
 .control-label {
   color: #888;

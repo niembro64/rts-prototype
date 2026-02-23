@@ -1,12 +1,18 @@
 import Phaser from 'phaser';
 import { CommandQueue } from '../sim/commands';
-import type { Entity, EntityId, PlayerId, WaypointType, BuildingType } from '../sim/types';
+import type {
+  Entity,
+  EntityId,
+  PlayerId,
+  WaypointType,
+  BuildingType,
+} from '../sim/types';
 import { SelectionController } from './SelectionController';
 import { BuildingPlacementController } from './BuildingPlacementController';
 import { CameraController } from './CameraController';
 import { CommandController } from './CommandController';
 import { type InputState, createInitialInputState } from './InputState';
-import { getDragPanEnabled } from '@/clientConfig';
+import { getDragPanEnabled } from '@/clientBarConfig';
 
 /**
  * InputEntitySource - Interface for entity queries used by InputManager
@@ -39,25 +45,37 @@ export class InputManager {
   private commandController: CommandController;
 
   // Stored for cleanup
-  private keys: { M: Phaser.Input.Keyboard.Key; F: Phaser.Input.Keyboard.Key; H: Phaser.Input.Keyboard.Key };
+  private keys: {
+    M: Phaser.Input.Keyboard.Key;
+    F: Phaser.Input.Keyboard.Key;
+    H: Phaser.Input.Keyboard.Key;
+  };
   private pointerDownHandler!: (p: Phaser.Input.Pointer) => void;
   private pointerMoveHandler!: (p: Phaser.Input.Pointer) => void;
   private pointerUpHandler!: (p: Phaser.Input.Pointer) => void;
   private contextMenuHandler!: (e: Event) => void;
 
   // Callback for UI to show waypoint mode changes
-  public get onWaypointModeChange(): ((mode: WaypointType) => void) | undefined {
+  public get onWaypointModeChange():
+    | ((mode: WaypointType) => void)
+    | undefined {
     return this.selectionController.onWaypointModeChange;
   }
-  public set onWaypointModeChange(cb: ((mode: WaypointType) => void) | undefined) {
+  public set onWaypointModeChange(
+    cb: ((mode: WaypointType) => void) | undefined,
+  ) {
     this.selectionController.onWaypointModeChange = cb;
   }
 
   // Callback for UI to show build mode changes
-  public get onBuildModeChange(): ((buildingType: BuildingType | null) => void) | undefined {
+  public get onBuildModeChange():
+    | ((buildingType: BuildingType | null) => void)
+    | undefined {
     return this.buildingController.onBuildModeChange;
   }
-  public set onBuildModeChange(cb: ((buildingType: BuildingType | null) => void) | undefined) {
+  public set onBuildModeChange(
+    cb: ((buildingType: BuildingType | null) => void) | undefined,
+  ) {
     this.buildingController.onBuildModeChange = cb;
   }
 
@@ -69,7 +87,12 @@ export class InputManager {
     this.buildingController.onDGunModeChange = cb;
   }
 
-  constructor(scene: Phaser.Scene, context: InputContext, entitySource: InputEntitySource, commandQueue: CommandQueue) {
+  constructor(
+    scene: Phaser.Scene,
+    context: InputContext,
+    entitySource: InputEntitySource,
+    commandQueue: CommandQueue,
+  ) {
     this.scene = scene;
     this.state = createInitialInputState();
 
@@ -103,19 +126,43 @@ export class InputManager {
 
     // Create sub-controllers
     this.selectionController = new SelectionController(
-      scene, context, entitySource, commandQueue, this.state, selectionGraphics,
+      scene,
+      context,
+      entitySource,
+      commandQueue,
+      this.state,
+      selectionGraphics,
     );
 
     this.buildingController = new BuildingPlacementController(
-      scene, context, entitySource, commandQueue, this.state, buildGhostGraphics,
-      { B: keys.B, D: keys.D, ONE: keys.ONE, TWO: keys.TWO, ESC: keys.ESC, SHIFT: keys.SHIFT },
+      scene,
+      context,
+      entitySource,
+      commandQueue,
+      this.state,
+      buildGhostGraphics,
+      {
+        B: keys.B,
+        D: keys.D,
+        ONE: keys.ONE,
+        TWO: keys.TWO,
+        ESC: keys.ESC,
+        SHIFT: keys.SHIFT,
+      },
     );
 
     this.cameraController = new CameraController(scene, this.state);
 
     this.commandController = new CommandController(
-      scene, context, entitySource, commandQueue, this.state, linePathGraphics,
-      this.selectionController, this.buildingController, keys.SHIFT,
+      scene,
+      context,
+      entitySource,
+      commandQueue,
+      this.state,
+      linePathGraphics,
+      this.selectionController,
+      this.buildingController,
+      keys.SHIFT,
     );
 
     // Store keys for cleanup
@@ -129,7 +176,11 @@ export class InputManager {
   }
 
   // Setup waypoint mode hotkeys
-  private setupModeHotkeys(keys: { M: Phaser.Input.Keyboard.Key; F: Phaser.Input.Keyboard.Key; H: Phaser.Input.Keyboard.Key }): void {
+  private setupModeHotkeys(keys: {
+    M: Phaser.Input.Keyboard.Key;
+    F: Phaser.Input.Keyboard.Key;
+    H: Phaser.Input.Keyboard.Key;
+  }): void {
     keys.M.on('down', () => {
       this.selectionController.setWaypointMode('move');
     });
@@ -267,7 +318,10 @@ export class InputManager {
     this.contextMenuHandler = (e: Event) => {
       e.preventDefault();
     };
-    this.scene.game.canvas.addEventListener('contextmenu', this.contextMenuHandler);
+    this.scene.game.canvas.addEventListener(
+      'contextmenu',
+      this.contextMenuHandler,
+    );
   }
 
   // Update input
@@ -292,7 +346,10 @@ export class InputManager {
   }
 
   // Get current build mode state
-  public getBuildMode(): { active: boolean; buildingType: BuildingType | null } {
+  public getBuildMode(): {
+    active: boolean;
+    buildingType: BuildingType | null;
+  } {
     return this.buildingController.getBuildMode();
   }
 
@@ -314,7 +371,10 @@ export class InputManager {
     this.scene.input.off('pointerup', this.pointerUpHandler);
 
     // Remove canvas contextmenu listener
-    this.scene.game.canvas.removeEventListener('contextmenu', this.contextMenuHandler);
+    this.scene.game.canvas.removeEventListener(
+      'contextmenu',
+      this.contextMenuHandler,
+    );
 
     // Destroy sub-controllers
     this.cameraController.destroy();

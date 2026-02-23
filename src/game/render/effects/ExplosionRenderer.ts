@@ -2,7 +2,7 @@
 
 import Phaser from 'phaser';
 import type { ExplosionEffect } from '../types';
-import { getEffectiveQuality } from '@/clientConfig';
+import { getEffectiveQuality } from '@/clientBarConfig';
 import { clamp01, angleDiff as computeAngleDiff } from '../../math';
 import { FIRE_EXPLOSION, DEATH_EXPLOSION } from '../../../explosionConfig';
 
@@ -51,7 +51,16 @@ function renderImpact(
   const C = FIRE_EXPLOSION;
   const CC = C.colors;
   const quality = getEffectiveQuality();
-  const qIdx = quality === 'min' ? 0 : quality === 'low' ? 1 : quality === 'medium' ? 2 : quality === 'high' ? 3 : 4;
+  const qIdx =
+    quality === 'min'
+      ? 0
+      : quality === 'low'
+        ? 1
+        : quality === 'medium'
+          ? 2
+          : quality === 'high'
+            ? 3
+            : 4;
 
   const alpha = 1 - progress * progress;
   const seed = (exp.x * 1000 + exp.y) % 10000;
@@ -84,7 +93,11 @@ function renderImpact(
   let cx = exp.x;
   let cy = exp.y;
   if (combinedMag > 0.01) {
-    const drift = primR * C.driftScale[qIdx] * progress * Math.min(combinedMag / C.driftNormalize, 1);
+    const drift =
+      primR *
+      C.driftScale[qIdx] *
+      progress *
+      Math.min(combinedMag / C.driftNormalize, 1);
     cx += ((exp.combinedX ?? 0) / combinedMag) * drift;
     cy += ((exp.combinedY ?? 0) / combinedMag) * drift;
   }
@@ -115,24 +128,37 @@ function renderImpact(
   // ======================================================================
   // ELEMENT 2: PRIMARY-RADIUS ZONE — expanding glow ring at primR
   // ======================================================================
-  const primGlowR = primR * (C.primaryGlowStart + progress * C.primaryGlowExpand);
+  const primGlowR =
+    primR * (C.primaryGlowStart + progress * C.primaryGlowExpand);
   const primFade = Math.max(0, 1 - progress * C.primaryFadeRate);
   if (primFade > 0) {
     graphics.fillStyle(CC.primaryGlow, alpha * C.primaryGlowAlpha * primFade);
     graphics.fillCircle(cx, cy, primGlowR);
-    graphics.lineStyle(1.5 + qIdx * 0.3, CC.primaryRing, alpha * 0.25 * primFade);
+    graphics.lineStyle(
+      1.5 + qIdx * 0.3,
+      CC.primaryRing,
+      alpha * 0.25 * primFade,
+    );
     graphics.strokeCircle(cx, cy, primGlowR);
   }
 
   // ======================================================================
   // ELEMENT 3: SECONDARY-RADIUS ZONE — expanding glow + ring + particles at secR
   // ======================================================================
-  const secGlowR = secR * (C.secondaryGlowStart + progress * C.secondaryGlowExpand);
+  const secGlowR =
+    secR * (C.secondaryGlowStart + progress * C.secondaryGlowExpand);
   const secFade = Math.max(0, 1 - progress * C.secondaryFadeRate);
   if (secFade > 0) {
-    graphics.fillStyle(CC.secondaryGlow, alpha * C.secondaryGlowAlpha * secFade);
+    graphics.fillStyle(
+      CC.secondaryGlow,
+      alpha * C.secondaryGlowAlpha * secFade,
+    );
     graphics.fillCircle(cx, cy, secGlowR);
-    graphics.lineStyle(1 + qIdx * 0.2, CC.secondaryRing, alpha * 0.18 * secFade);
+    graphics.lineStyle(
+      1 + qIdx * 0.2,
+      CC.secondaryRing,
+      alpha * 0.18 * secFade,
+    );
     graphics.strokeCircle(cx, cy, secGlowR);
   }
 
@@ -152,13 +178,26 @@ function renderImpact(
       const py = cy + Math.sin(angle) * dist;
 
       const pFade = 1 - p;
-      const pSize = (C.secParticleSizeBase + seededRandom(i + 503) * C.secParticleSizeRange) * pFade;
+      const pSize =
+        (C.secParticleSizeBase +
+          seededRandom(i + 503) * C.secParticleSizeRange) *
+        pFade;
       if (pSize > 0.8 && pFade > 0.05) {
         if (hasTrails) {
-          const tLen = Math.min(dist * 0.3, C.secParticleTrailMax) * pFade * tMult;
+          const tLen =
+            Math.min(dist * 0.3, C.secParticleTrailMax) * pFade * tMult;
           if (tLen > 1.5) {
-            graphics.lineStyle(pSize * 0.4, CC.secondaryRing, alpha * 0.2 * pFade);
-            graphics.lineBetween(px - Math.cos(angle) * tLen, py - Math.sin(angle) * tLen, px, py);
+            graphics.lineStyle(
+              pSize * 0.4,
+              CC.secondaryRing,
+              alpha * 0.2 * pFade,
+            );
+            graphics.lineBetween(
+              px - Math.cos(angle) * tLen,
+              py - Math.sin(angle) * tLen,
+              px,
+              py,
+            );
           }
         }
         graphics.fillStyle(CC.secParticle, alpha * 0.4 * pFade);
@@ -180,18 +219,26 @@ function renderImpact(
       const spread = (seededRandom(i + 301) - 0.5) * C.sparkSpread;
       const angle = Math.atan2(attackDirY, attackDirX) + spread;
       const speed = 0.8 + seededRandom(i + 302) * 0.8;
-      const dist = collR * 0.8 + primR * p * C.sparkDistMult * speed * Math.max(attackStr, sFloor);
+      const dist =
+        collR * 0.8 +
+        primR * p * C.sparkDistMult * speed * Math.max(attackStr, sFloor);
       const px = cx + Math.cos(angle) * dist;
       const py = cy + Math.sin(angle) * dist;
 
       const pFade = 1 - p;
-      const pSize = (C.sparkSizeBase + seededRandom(i + 303) * C.sparkSizeRange) * pFade;
+      const pSize =
+        (C.sparkSizeBase + seededRandom(i + 303) * C.sparkSizeRange) * pFade;
       if (pSize > 0.8 && pFade > 0.05) {
         if (hasTrails) {
           const tLen = Math.min(dist * 0.3, C.sparkTrailMax) * pFade * tMult;
           if (tLen > 1.5) {
             graphics.lineStyle(pSize * 0.5, CC.sparkTrail, alpha * 0.3 * pFade);
-            graphics.lineBetween(px - Math.cos(angle) * tLen, py - Math.sin(angle) * tLen, px, py);
+            graphics.lineBetween(
+              px - Math.cos(angle) * tLen,
+              py - Math.sin(angle) * tLen,
+              px,
+              py,
+            );
           }
         }
         graphics.fillStyle(CC.sparkFill, alpha * 0.7 * pFade);
@@ -217,18 +264,30 @@ function renderImpact(
       const spread = (seededRandom(i + 401) - 0.5) * C.smokeSpread;
       const angle = Math.atan2(velDirY, velDirX) + spread;
       const speed = 0.5 + seededRandom(i + 402) * 0.5;
-      const dist = primR * 0.5 + primR * p * C.smokeDistMult * speed * Math.max(velStr, sFloor);
+      const dist =
+        primR * 0.5 +
+        primR * p * C.smokeDistMult * speed * Math.max(velStr, sFloor);
       const px = cx + Math.cos(angle) * dist;
       const py = cy + Math.sin(angle) * dist - p * (C.smokeFloatBase + qIdx);
 
       const pFade = 1 - p;
-      const pSize = (C.smokeSizeBase + seededRandom(i + 403) * C.smokeSizeRange) * pFade;
+      const pSize =
+        (C.smokeSizeBase + seededRandom(i + 403) * C.smokeSizeRange) * pFade;
       if (pSize > 0.8 && pFade > 0.05) {
         if (hasTrails) {
           const tLen = Math.min(dist * 0.2, C.smokeTrailMax) * pFade * tMult;
           if (tLen > 1.5) {
-            graphics.lineStyle(pSize * 0.5, CC.smokeTrail, alpha * 0.15 * pFade);
-            graphics.lineBetween(px - Math.cos(angle) * tLen, py - Math.sin(angle) * tLen, px, py);
+            graphics.lineStyle(
+              pSize * 0.5,
+              CC.smokeTrail,
+              alpha * 0.15 * pFade,
+            );
+            graphics.lineBetween(
+              px - Math.cos(angle) * tLen,
+              py - Math.sin(angle) * tLen,
+              px,
+              py,
+            );
           }
         }
         graphics.fillStyle(CC.smokeFill, alpha * 0.3 * pFade);
@@ -250,18 +309,26 @@ function renderImpact(
       const spread = (seededRandom(i + 201) - 0.5) * C.penSpread;
       const angle = Math.atan2(penDirY, penDirX) + spread;
       const speed = 0.7 + seededRandom(i + 202) * 0.7;
-      const dist = primR * 0.4 + primR * p * C.penDistMult * speed * Math.max(penStr, sFloor);
+      const dist =
+        primR * 0.4 +
+        primR * p * C.penDistMult * speed * Math.max(penStr, sFloor);
       const px = cx + Math.cos(angle) * dist;
       const py = cy + Math.sin(angle) * dist;
 
       const pFade = 1 - p;
-      const pSize = (C.penSizeBase + seededRandom(i + 203) * C.penSizeRange) * pFade;
+      const pSize =
+        (C.penSizeBase + seededRandom(i + 203) * C.penSizeRange) * pFade;
       if (pSize > 0.8 && pFade > 0.05) {
         if (hasTrails) {
           const tLen = Math.min(dist * 0.3, C.penTrailMax) * pFade * tMult;
           if (tLen > 1.5) {
             graphics.lineStyle(pSize * 0.5, CC.penTrail, alpha * 0.25 * pFade);
-            graphics.lineBetween(px - Math.cos(angle) * tLen, py - Math.sin(angle) * tLen, px, py);
+            graphics.lineBetween(
+              px - Math.cos(angle) * tLen,
+              py - Math.sin(angle) * tLen,
+              px,
+              py,
+            );
           }
         }
         graphics.fillStyle(CC.penFill, alpha * 0.5 * pFade);
@@ -278,18 +345,25 @@ function renderImpact(
   // MAX-ONLY BONUS: embers rising from primary zone
   // ======================================================================
   if (qIdx >= 4 && progress > 0.1) {
-    const count = C.emberCountBase + Math.floor((velStr + penStr) * C.emberCountPerStrength);
+    const count =
+      C.emberCountBase +
+      Math.floor((velStr + penStr) * C.emberCountPerStrength);
     for (let i = 0; i < count; i++) {
-      const ep = Math.max(0, (progress - 0.1 - seededRandom(i + 600) * 0.15) * 2.0);
+      const ep = Math.max(
+        0,
+        (progress - 0.1 - seededRandom(i + 600) * 0.15) * 2.0,
+      );
       if (ep <= 0 || ep > 1) continue;
 
       const baseAngle = seededRandom(i + 601) * Math.PI * 2;
-      const eDist = primR * (0.3 + ep * 0.5) * (0.5 + seededRandom(i + 602) * 0.5);
+      const eDist =
+        primR * (0.3 + ep * 0.5) * (0.5 + seededRandom(i + 602) * 0.5);
       const ex = cx + Math.cos(baseAngle) * eDist;
       const ey = cy + Math.sin(baseAngle) * eDist - ep * C.emberFloat;
 
       const eFade = 1 - ep;
-      const eSize = (C.emberSizeBase + seededRandom(i + 603) * C.emberSizeRange) * eFade;
+      const eSize =
+        (C.emberSizeBase + seededRandom(i + 603) * C.emberSizeRange) * eFade;
       if (eSize > 0.5 && eFade > 0.05) {
         graphics.fillStyle(CC.emberOuter, alpha * 0.7 * eFade);
         graphics.fillCircle(ex, ey, eSize);
@@ -324,7 +398,16 @@ function renderDeath(
   const C = DEATH_EXPLOSION;
   const CC = C.colors;
   const quality = getEffectiveQuality();
-  const qIdx = quality === 'min' ? 0 : quality === 'low' ? 1 : quality === 'medium' ? 2 : quality === 'high' ? 3 : 4;
+  const qIdx =
+    quality === 'min'
+      ? 0
+      : quality === 'low'
+        ? 1
+        : quality === 'medium'
+          ? 2
+          : quality === 'high'
+            ? 3
+            : 4;
 
   const alpha = 1 - progress;
   const seed = (exp.x * 1000 + exp.y) % 10000;
@@ -352,7 +435,11 @@ function renderDeath(
   let cx = exp.x;
   let cy = exp.y;
   if (combinedMag > 0.01) {
-    const drift = exp.radius * C.driftScale[qIdx] * progress * Math.min(combinedMag / C.driftNormalize, 1);
+    const drift =
+      exp.radius *
+      C.driftScale[qIdx] *
+      progress *
+      Math.min(combinedMag / C.driftNormalize, 1);
     cx += ((exp.combinedX ?? 0) / combinedMag) * drift;
     cy += ((exp.combinedY ?? 0) / combinedMag) * drift;
   }
@@ -398,19 +485,32 @@ function renderDeath(
 
       const spread = (seededRandom(i + 101) - 0.5) * C.smokeSpread;
       const angle = velAngle + spread;
-      const speed = C.smokeSpeedBase + seededRandom(i + 102) * C.smokeSpeedRange;
-      const dist = exp.radius * p * C.smokeDistMult * speed * Math.max(velStr, sFloor);
+      const speed =
+        C.smokeSpeedBase + seededRandom(i + 102) * C.smokeSpeedRange;
+      const dist =
+        exp.radius * p * C.smokeDistMult * speed * Math.max(velStr, sFloor);
       const px = cx + Math.cos(angle) * dist;
       const py = cy + Math.sin(angle) * dist - p * C.smokeFloat[qIdx];
 
       const pFade = 1 - p;
-      const pSize = (C.smokeSizeBase + seededRandom(i + 103) * C.smokeSizeRange) * pFade;
+      const pSize =
+        (C.smokeSizeBase + seededRandom(i + 103) * C.smokeSizeRange) * pFade;
       if (pSize > 0.8 && pFade > 0.05) {
         if (smokeTMult > 0) {
-          const tLen = Math.min(dist * 0.2, C.smokeTrailMax) * pFade * smokeTMult;
+          const tLen =
+            Math.min(dist * 0.2, C.smokeTrailMax) * pFade * smokeTMult;
           if (tLen > 1.5) {
-            graphics.lineStyle(pSize * 0.5, CC.smokeTrail, alpha * 0.15 * pFade);
-            graphics.lineBetween(px - Math.cos(angle) * tLen, py - Math.sin(angle) * tLen, px, py);
+            graphics.lineStyle(
+              pSize * 0.5,
+              CC.smokeTrail,
+              alpha * 0.15 * pFade,
+            );
+            graphics.lineBetween(
+              px - Math.cos(angle) * tLen,
+              py - Math.sin(angle) * tLen,
+              px,
+              py,
+            );
           }
         }
         graphics.fillStyle(CC.smokeFill, alpha * 0.3 * pFade);
@@ -434,19 +534,32 @@ function renderDeath(
 
       const spread = (seededRandom(i + 201) - 0.5) * C.debrisSpread;
       const angle = penAngle + spread;
-      const speed = C.debrisSpeedBase + seededRandom(i + 202) * C.debrisSpeedRange;
-      const dist = exp.radius * p * C.debrisDistMult * speed * Math.max(penStr, sFloor);
+      const speed =
+        C.debrisSpeedBase + seededRandom(i + 202) * C.debrisSpeedRange;
+      const dist =
+        exp.radius * p * C.debrisDistMult * speed * Math.max(penStr, sFloor);
       const px = cx + Math.cos(angle) * dist;
       const py = cy + Math.sin(angle) * dist;
 
       const pFade = 1 - p;
-      const pSize = (C.debrisSizeBase + seededRandom(i + 203) * C.debrisSizeRange) * pFade;
+      const pSize =
+        (C.debrisSizeBase + seededRandom(i + 203) * C.debrisSizeRange) * pFade;
       if (pSize > 0.8 && pFade > 0.05) {
         if (debrisTMult > 0) {
-          const tLen = Math.min(dist * 0.3, C.debrisTrailMax) * pFade * debrisTMult;
+          const tLen =
+            Math.min(dist * 0.3, C.debrisTrailMax) * pFade * debrisTMult;
           if (tLen > 1.5) {
-            graphics.lineStyle(pSize * 0.5, CC.debrisTrail, alpha * 0.25 * pFade);
-            graphics.lineBetween(px - Math.cos(angle) * tLen, py - Math.sin(angle) * tLen, px, py);
+            graphics.lineStyle(
+              pSize * 0.5,
+              CC.debrisTrail,
+              alpha * 0.25 * pFade,
+            );
+            graphics.lineBetween(
+              px - Math.cos(angle) * tLen,
+              py - Math.sin(angle) * tLen,
+              px,
+              py,
+            );
           }
         }
         graphics.fillStyle(CC.debrisFill, alpha * 0.5 * pFade);
@@ -484,7 +597,8 @@ function renderDeath(
       let distMult = 1;
       if (fullCircle) {
         // Full circle with directional bias
-        const baseAngle = (i / sparkN) * Math.PI * 2 + seededRandom(i + 301) * 0.3;
+        const baseAngle =
+          (i / sparkN) * Math.PI * 2 + seededRandom(i + 301) * 0.3;
         const angDiff = computeAngleDiff(attackAngle, baseAngle);
         const alignment = Math.cos(angDiff);
         if (alignment > 0) {
@@ -501,23 +615,35 @@ function renderDeath(
         distMult = Math.max(attackStr, sFloor);
       }
 
-      const speed = C.sparkSpeedBase + seededRandom(i + 302) * C.sparkSpeedRange;
+      const speed =
+        C.sparkSpeedBase + seededRandom(i + 302) * C.sparkSpeedRange;
       const dist = exp.radius * (0.3 + p * C.sparkDistMult) * speed * distMult;
       const px = cx + Math.cos(angle) * dist;
       const py = cy + Math.sin(angle) * dist;
 
       const pFade = 1 - p;
-      const pSize = (C.sparkSizeBase + seededRandom(i + 303) * C.sparkSizeRange) * pFade;
+      const pSize =
+        (C.sparkSizeBase + seededRandom(i + 303) * C.sparkSizeRange) * pFade;
       if (pSize > 0.5 && pFade > 0.05) {
         if (sparkTMult > 0) {
-          const tLen = Math.min(dist * 0.4, C.sparkTrailMax) * pFade * sparkTMult;
+          const tLen =
+            Math.min(dist * 0.4, C.sparkTrailMax) * pFade * sparkTMult;
           if (tLen > 1.5) {
             graphics.lineStyle(pSize * 0.6, CC.sparkTrail, alpha * 0.3 * pFade);
-            graphics.lineBetween(px - Math.cos(angle) * tLen, py - Math.sin(angle) * tLen, px, py);
+            graphics.lineBetween(
+              px - Math.cos(angle) * tLen,
+              py - Math.sin(angle) * tLen,
+              px,
+              py,
+            );
             if (dualTrail) {
               const midX = px - Math.cos(angle) * tLen * 0.5;
               const midY = py - Math.sin(angle) * tLen * 0.5;
-              graphics.lineStyle(pSize * 0.3, CC.sparkTrailInner, alpha * 0.5 * pFade);
+              graphics.lineStyle(
+                pSize * 0.3,
+                CC.sparkTrailInner,
+                alpha * 0.5 * pFade,
+              );
               graphics.lineBetween(midX, midY, px, py);
             }
           }
@@ -551,22 +677,34 @@ function renderDeath(
 
       const spread = (seededRandom(i + 351) - 0.5) * C.fragmentSpread;
       const angle = attackAngle + spread;
-      const speed = C.fragmentSpeedBase + seededRandom(i + 352) * C.fragmentSpeedRange;
+      const speed =
+        C.fragmentSpeedBase + seededRandom(i + 352) * C.fragmentSpeedRange;
       const dist = exp.radius * (0.5 + p * C.fragmentDistMult) * speed;
       const px = cx + Math.cos(angle) * dist;
       const py = cy + Math.sin(angle) * dist;
 
       const pFade = 1 - p;
-      const pSize = (C.fragmentSizeBase + seededRandom(i + 353) * C.fragmentSizeRange) * pFade;
+      const pSize =
+        (C.fragmentSizeBase + seededRandom(i + 353) * C.fragmentSizeRange) *
+        pFade;
       if (pSize > 1 && pFade > 0.05) {
         if (fragTMult > 0) {
-          const tLen = Math.min(dist * 0.4, C.fragmentTrailMax) * pFade * fragTMult;
+          const tLen =
+            Math.min(dist * 0.4, C.fragmentTrailMax) * pFade * fragTMult;
           if (tLen > 2) {
             const tx = px - Math.cos(angle) * tLen;
             const ty = py - Math.sin(angle) * tLen;
-            graphics.lineStyle(pSize * 0.6, CC.fragmentTrail, alpha * 0.4 * pFade);
+            graphics.lineStyle(
+              pSize * 0.6,
+              CC.fragmentTrail,
+              alpha * 0.4 * pFade,
+            );
             graphics.lineBetween(tx, ty, px, py);
-            graphics.lineStyle(pSize * 0.3, CC.fragmentTrailInner, alpha * 0.6 * pFade);
+            graphics.lineStyle(
+              pSize * 0.3,
+              CC.fragmentTrailInner,
+              alpha * 0.6 * pFade,
+            );
             graphics.lineBetween(tx, ty, px, py);
           }
         }
@@ -602,14 +740,20 @@ function renderDeath(
 
       const spread = (seededRandom(i + 401) - 0.5) * C.chunkSpread;
       const angle = penAngle + spread;
-      const speed = C.chunkSpeedBase + seededRandom(i + 402) * C.chunkSpeedRange;
-      const dist = exp.radius * (0.3 + p * C.chunkDistMult) * speed * Math.max(penStr, sFloor);
+      const speed =
+        C.chunkSpeedBase + seededRandom(i + 402) * C.chunkSpeedRange;
+      const dist =
+        exp.radius *
+        (0.3 + p * C.chunkDistMult) *
+        speed *
+        Math.max(penStr, sFloor);
       const gravityDrop = p * p * C.chunkGravity;
       const px = cx + Math.cos(angle) * dist;
       const py = cy + Math.sin(angle) * dist + gravityDrop;
 
       const pFade = 1 - p;
-      const pSize = (C.chunkSizeBase + seededRandom(i + 403) * C.chunkSizeRange) * pFade;
+      const pSize =
+        (C.chunkSizeBase + seededRandom(i + 403) * C.chunkSizeRange) * pFade;
       if (pSize > 1 && pFade > 0.05) {
         graphics.fillStyle(CC.chunkFill, alpha * 0.8 * pFade);
         graphics.fillCircle(px, py, pSize);
@@ -627,16 +771,21 @@ function renderDeath(
   const emberN = C.emberCount[qIdx];
   if (emberN > 0 && progress > 0.15) {
     for (let i = 0; i < emberN; i++) {
-      const ep = Math.max(0, (progress - 0.15 - seededRandom(i + 500) * 0.2) * 2.0);
+      const ep = Math.max(
+        0,
+        (progress - 0.15 - seededRandom(i + 500) * 0.2) * 2.0,
+      );
       if (ep <= 0 || ep > 1) continue;
 
       const baseAngle = seededRandom(i + 501) * Math.PI * 2;
-      const eDist = exp.radius * (0.4 + ep * 0.6) * (0.5 + seededRandom(i + 502) * 0.5);
+      const eDist =
+        exp.radius * (0.4 + ep * 0.6) * (0.5 + seededRandom(i + 502) * 0.5);
       const ex = cx + Math.cos(baseAngle) * eDist;
       const ey = cy + Math.sin(baseAngle) * eDist - ep * C.emberFloat;
 
       const eFade = 1 - ep;
-      const eSize = (C.emberSizeBase + seededRandom(i + 503) * C.emberSizeRange) * eFade;
+      const eSize =
+        (C.emberSizeBase + seededRandom(i + 503) * C.emberSizeRange) * eFade;
       if (eSize > 0.5 && eFade > 0.05) {
         graphics.fillStyle(CC.emberOuter, alpha * 0.8 * eFade);
         graphics.fillCircle(ex, ey, eSize);
@@ -659,14 +808,21 @@ function renderDeath(
         const tp = clamp01((progress - trailT * 0.2) * 1.6);
         if (tp <= 0) continue;
 
-        const spreadAngle = (seededRandom(i + 600) - 0.5) * 0.6 * (1 - combinedStr * 0.5);
+        const spreadAngle =
+          (seededRandom(i + 600) - 0.5) * 0.6 * (1 - combinedStr * 0.5);
         const angle = combinedAngle + spreadAngle;
-        const dist = exp.radius * (0.5 + tp * 2.0 + trailT * 0.8) * (0.8 + combinedStr * 0.4);
+        const dist =
+          exp.radius *
+          (0.5 + tp * 2.0 + trailT * 0.8) *
+          (0.8 + combinedStr * 0.4);
         const tx = exp.x + Math.cos(angle) * dist;
         const ty = exp.y + Math.sin(angle) * dist;
 
         const tFade = 1 - tp;
-        const tSize = (C.momentumSizeBase + seededRandom(i + 601) * C.momentumSizeRange) * (1 - trailT * 0.5) * tFade;
+        const tSize =
+          (C.momentumSizeBase + seededRandom(i + 601) * C.momentumSizeRange) *
+          (1 - trailT * 0.5) *
+          tFade;
         const tAlpha = alpha * 0.7 * (1 - trailT * 0.3) * tFade;
 
         if (tSize > 0.5 && tFade > 0.05) {

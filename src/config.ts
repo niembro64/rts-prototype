@@ -30,11 +30,11 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
 };
 
 // Re-export bar config values used by sim/server code
-export { BATTLE_CONFIG } from './battleConfig';
-export { SERVER_CONFIG } from './serverConfig';
+export { BATTLE_CONFIG } from './battleBarConfig';
+export { SERVER_CONFIG } from './serverBarConfig';
 export type { SnapshotRate, KeyframeRatio, TickRate } from './types/server';
-import { SERVER_CONFIG } from './serverConfig';
-import { BATTLE_CONFIG } from './battleConfig';
+import { SERVER_CONFIG } from './serverBarConfig';
+import { BATTLE_CONFIG } from './battleBarConfig';
 import { BAR_THEMES } from './barThemes';
 
 export const DEFAULT_KEYFRAME_RATIO = SERVER_CONFIG.keyframe.default;
@@ -477,9 +477,6 @@ const ARROW_ALPHA = 0.1;
 const ARROW_SIZE_MULT = 20;
 
 const OVAL_ALPHA = 0.0;
-
-
-
 
 /** Edge scroll configuration */
 export const EDGE_SCROLL = {

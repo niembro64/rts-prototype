@@ -1,7 +1,7 @@
 // Geometry helper functions for rendering shapes
 
 import Phaser from 'phaser';
-import { getGraphicsConfig } from '@/clientConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
 import type { ForceFieldTurretConfig } from '../../../config';
 import type { ArachnidLeg } from '../ArachnidLeg';
@@ -345,9 +345,18 @@ export function drawGear(
 }
 
 // Pre-allocated position buffers for batched leg rendering (max 8 legs per unit)
-const _legAttach: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
-const _legKnee: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
-const _legFoot: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+const _legAttach: { x: number; y: number }[] = Array.from(
+  { length: 8 },
+  () => ({ x: 0, y: 0 }),
+);
+const _legKnee: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({
+  x: 0,
+  y: 0,
+}));
+const _legFoot: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({
+  x: 0,
+  y: 0,
+}));
 
 /**
  * Draw arachnid-style legs using a named style from LEG_STYLE_CONFIG.
@@ -380,15 +389,22 @@ export function drawLegs(
     for (let i = 0; i < count; i++) {
       const leg = legs[i];
       const attach = leg.getAttachmentPoint(x, y, cos, sin);
-      _legAttach[i].x = attach.x; _legAttach[i].y = attach.y;
+      _legAttach[i].x = attach.x;
+      _legAttach[i].y = attach.y;
       const foot = leg.getFootPosition();
-      _legFoot[i].x = foot.x; _legFoot[i].y = foot.y;
+      _legFoot[i].x = foot.x;
+      _legFoot[i].y = foot.y;
     }
     // Phase 2: single style, draw all lines
     const thickness = Math.max(lc.upperThickness, lc.lowerThickness);
     graphics.lineStyle(thickness, dark, 1);
     for (let i = 0; i < count; i++) {
-      graphics.lineBetween(_legAttach[i].x, _legAttach[i].y, _legFoot[i].x, _legFoot[i].y);
+      graphics.lineBetween(
+        _legAttach[i].x,
+        _legAttach[i].y,
+        _legFoot[i].x,
+        _legFoot[i].y,
+      );
     }
     return;
   }
@@ -401,24 +417,37 @@ export function drawLegs(
   for (let i = 0; i < count; i++) {
     const leg = legs[i];
     const attach = leg.getAttachmentPoint(x, y, cos, sin);
-    _legAttach[i].x = attach.x; _legAttach[i].y = attach.y;
+    _legAttach[i].x = attach.x;
+    _legAttach[i].y = attach.y;
     const foot = leg.getFootPosition();
-    _legFoot[i].x = foot.x; _legFoot[i].y = foot.y;
+    _legFoot[i].x = foot.x;
+    _legFoot[i].y = foot.y;
     const side = i < halfLegs ? -1 : 1;
     const knee = leg.getKneePosition(attach.x, attach.y, side);
-    _legKnee[i].x = knee.x; _legKnee[i].y = knee.y;
+    _legKnee[i].x = knee.x;
+    _legKnee[i].y = knee.y;
   }
 
   // Phase 2: draw all upper segments (1 lineStyle call)
   graphics.lineStyle(lc.upperThickness, dark, 1);
   for (let i = 0; i < count; i++) {
-    graphics.lineBetween(_legAttach[i].x, _legAttach[i].y, _legKnee[i].x, _legKnee[i].y);
+    graphics.lineBetween(
+      _legAttach[i].x,
+      _legAttach[i].y,
+      _legKnee[i].x,
+      _legKnee[i].y,
+    );
   }
 
   // Phase 3: draw all lower segments (1 lineStyle call)
   graphics.lineStyle(lc.lowerThickness, dark, 1);
   for (let i = 0; i < count; i++) {
-    graphics.lineBetween(_legKnee[i].x, _legKnee[i].y, _legFoot[i].x, _legFoot[i].y);
+    graphics.lineBetween(
+      _legKnee[i].x,
+      _legKnee[i].y,
+      _legFoot[i].x,
+      _legFoot[i].y,
+    );
   }
 
   // Phase 4: draw all joint circles (1 fillStyle call)

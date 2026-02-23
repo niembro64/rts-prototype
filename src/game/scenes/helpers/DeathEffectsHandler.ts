@@ -14,7 +14,7 @@ import {
 } from '../../../explosionConfig';
 import { TURRET_CONFIGS } from '../../sim/weapons';
 import { magnitude } from '../../math';
-import { getAudioScope, getSoundToggle } from '@/clientConfig';
+import { getAudioScope, getSoundToggle } from '@/clientBarConfig';
 
 // Get explosion radius based on weapon type (uses explosion.primary.radius from config)
 export function getExplosionRadius(weaponId: string): number {
@@ -59,11 +59,20 @@ export function handleSimEvent(
       const penetrationY = ic.penetrationDirY * FIRE_EXPLOSION.penetrationMult;
 
       entityRenderer.addExplosion(
-        event.x, event.y, explosionRadius, 0xff8844, 'impact',
-        velocityX, velocityY,
-        penetrationX, penetrationY,
-        attackerX, attackerY,
-        ic.collisionRadius, ic.primaryRadius, ic.secondaryRadius,
+        event.x,
+        event.y,
+        explosionRadius,
+        0xff8844,
+        'impact',
+        velocityX,
+        velocityY,
+        penetrationX,
+        penetrationY,
+        attackerX,
+        attackerY,
+        ic.collisionRadius,
+        ic.primaryRadius,
+        ic.secondaryRadius,
         ic.entityCollisionRadius,
       );
     } else {
@@ -71,9 +80,20 @@ export function handleSimEvent(
       const explosionRadius = getExplosionRadius(event.weaponId);
       const secondaryRadius = getSecondaryExplosionRadius(event.weaponId);
       entityRenderer.addExplosion(
-        event.x, event.y, explosionRadius, 0xff8844, 'impact',
-        undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, explosionRadius, secondaryRadius,
+        event.x,
+        event.y,
+        explosionRadius,
+        0xff8844,
+        'impact',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        explosionRadius,
+        secondaryRadius,
       );
     }
   }
@@ -91,8 +111,14 @@ export function handleSimEvent(
     const penetrationY = ctx.hitDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
 
     const attackScale = Math.min(ctx.attackMagnitude / 50, 2);
-    const attackerX = ctx.projectileVelX * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
-    const attackerY = ctx.projectileVelY * EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER * attackScale;
+    const attackerX =
+      ctx.projectileVelX *
+      EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER *
+      attackScale;
+    const attackerY =
+      ctx.projectileVelY *
+      EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER *
+      attackScale;
 
     // Add base momentum
     let baseVelX = velocityX;
@@ -122,10 +148,14 @@ export function handleSimEvent(
     // Generate debris fragments from unit visual pieces
     if (ctx.unitType) {
       entityRenderer.addDebris(
-        event.x, event.y,
-        ctx.unitType, ctx.rotation ?? 0,
-        ctx.radius, ctx.color,
-        ctx.hitDirX, ctx.hitDirY
+        event.x,
+        event.y,
+        ctx.unitType,
+        ctx.rotation ?? 0,
+        ctx.radius,
+        ctx.color,
+        ctx.hitDirX,
+        ctx.hitDirY,
       );
     }
   }
@@ -157,9 +187,12 @@ export function handleSimEvent(
     const padX = viewport.width * 0.5;
     const padY = viewport.height * 0.5;
     if (
-      event.x < viewport.x - padX || event.x > viewport.right + padX ||
-      event.y < viewport.y - padY || event.y > viewport.bottom + padY
-    ) return;
+      event.x < viewport.x - padX ||
+      event.x > viewport.right + padX ||
+      event.y < viewport.y - padY ||
+      event.y > viewport.bottom + padY
+    )
+      return;
   }
 
   // Volume scales with zoom^exponent (configurable). Locked at play time per-sound.
@@ -178,30 +211,53 @@ export function handleSimEvent(
       break;
     case 'death':
       if (getSoundToggle('dead')) {
-        audioManager.playUnitDeath(event.deathContext?.unitType ?? '', zoomVolume);
+        audioManager.playUnitDeath(
+          event.deathContext?.unitType ?? '',
+          zoomVolume,
+        );
       }
       break;
-    case 'laserStart': {
-      if (!getSoundToggle('beam')) break;
-      if (!AUDIO.beamGain) break;
-      let laserEntry;
-      try { laserEntry = getTurretBlueprint(event.weaponId).audio?.laserSound; } catch { break; }
-      if (!laserEntry || !laserEntry.volume) break;
-      if (event.entityId !== undefined) {
-        audioManager.startLaserSound(event.entityId, laserEntry.freq, laserEntry.volume * AUDIO.beamGain, zoomVolume);
+    case 'laserStart':
+      {
+        if (!getSoundToggle('beam')) break;
+        if (!AUDIO.beamGain) break;
+        let laserEntry;
+        try {
+          laserEntry = getTurretBlueprint(event.weaponId).audio?.laserSound;
+        } catch {
+          break;
+        }
+        if (!laserEntry || !laserEntry.volume) break;
+        if (event.entityId !== undefined) {
+          audioManager.startLaserSound(
+            event.entityId,
+            laserEntry.freq,
+            laserEntry.volume * AUDIO.beamGain,
+            zoomVolume,
+          );
+        }
       }
-    }
       break;
-    case 'forceFieldStart': {
-      if (!getSoundToggle('field')) break;
-      if (!AUDIO.fieldGain) break;
-      let ffEntry;
-      try { ffEntry = getTurretBlueprint(event.weaponId).audio?.fireSound; } catch { break; }
-      if (!ffEntry || !ffEntry.volume) break;
-      if (event.entityId !== undefined) {
-        audioManager.startForceFieldSound(event.entityId, ffEntry.playSpeed, ffEntry.volume * AUDIO.fieldGain, zoomVolume);
+    case 'forceFieldStart':
+      {
+        if (!getSoundToggle('field')) break;
+        if (!AUDIO.fieldGain) break;
+        let ffEntry;
+        try {
+          ffEntry = getTurretBlueprint(event.weaponId).audio?.fireSound;
+        } catch {
+          break;
+        }
+        if (!ffEntry || !ffEntry.volume) break;
+        if (event.entityId !== undefined) {
+          audioManager.startForceFieldSound(
+            event.entityId,
+            ffEntry.playSpeed,
+            ffEntry.volume * AUDIO.fieldGain,
+            zoomVolume,
+          );
+        }
       }
-    }
       break;
     case 'projectileExpire':
       // No sound for projectile expiration (visual only)

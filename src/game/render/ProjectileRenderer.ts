@@ -5,12 +5,21 @@ import type { Entity, EntityId } from '../sim/types';
 import type { BeamRandomOffsets, ProjectileTrail } from './types';
 import { COLORS } from './types';
 import { getPlayerColor, getProjectileColor } from './helpers';
-import { getGraphicsConfig } from '@/clientConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ProjectileStyle } from '@/types/graphics';
 
 /** Rank ordering for projectile style (used for >= comparisons) */
-const PROJ_STYLE_RANK: Record<ProjectileStyle, number> = { dot: 0, core: 1, trail: 2, glow: 3, full: 4 };
-function projStyleAtLeast(style: ProjectileStyle, threshold: ProjectileStyle): boolean {
+const PROJ_STYLE_RANK: Record<ProjectileStyle, number> = {
+  dot: 0,
+  core: 1,
+  trail: 2,
+  glow: 3,
+  full: 4,
+};
+function projStyleAtLeast(
+  style: ProjectileStyle,
+  threshold: ProjectileStyle,
+): boolean {
   return PROJ_STYLE_RANK[style] >= PROJ_STYLE_RANK[threshold];
 }
 
@@ -18,7 +27,11 @@ function projStyleAtLeast(style: ProjectileStyle, threshold: ProjectileStyle): b
  * Read position i from a ProjectileTrail ring buffer.
  * i=0 is the most recent sample, i=1 is one step older, etc.
  */
-function trailPos(trail: ProjectileTrail, i: number, out: { x: number; y: number }): boolean {
+function trailPos(
+  trail: ProjectileTrail,
+  i: number,
+  out: { x: number; y: number },
+): boolean {
   if (i >= trail.count) return false;
   const idx = ((trail.head - 1 - i + trail.capacity) % trail.capacity) * 2;
   out.x = trail.positions[idx];
@@ -45,7 +58,15 @@ export function renderProjectile(
   const color = getProjectileColor(baseColor);
 
   if (projectile.projectileType === 'beam') {
-    renderBeam(graphics, entity, beamRandomOffsets, sprayParticleTime, x, y, color);
+    renderBeam(
+      graphics,
+      entity,
+      beamRandomOffsets,
+      sprayParticleTime,
+      x,
+      y,
+      color,
+    );
   } else if (entity.dgunProjectile) {
     renderDgun(graphics, x, y, color, projectile, config, trail);
   } else {
@@ -60,7 +81,8 @@ function renderBeam(
   entity: Entity,
   beamRandomOffsets: Map<EntityId, BeamRandomOffsets>,
   sprayParticleTime: number,
-  x: number, y: number,
+  x: number,
+  y: number,
   color: number,
 ): void {
   const projectile = entity.projectile!;
@@ -101,7 +123,8 @@ function renderBeam(
 
   // Collision-triggered damage radii highlights
   if (hasCollision) {
-    const primaryRadius = config.explosion?.primary.radius ?? (collisionRadius * 2 + 6);
+    const primaryRadius =
+      config.explosion?.primary.radius ?? collisionRadius * 2 + 6;
     const secondaryRadius = config.explosion?.secondary.radius ?? primaryRadius;
 
     if (beamStyle === 'simple') {
@@ -123,7 +146,10 @@ function renderBeam(
       for (let i = 0; i < sparkCount; i++) {
         const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
         const angle = baseAngle + randomOffsets.rotationOffset;
-        const sparkDist = primaryRadius * (0.8 + Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
+        const sparkDist =
+          primaryRadius *
+          (0.8 +
+            Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
         const sx = endX + Math.cos(angle) * sparkDist;
         const sy = endY + Math.sin(angle) * sparkDist;
         graphics.fillStyle(color, 0.7);
@@ -137,9 +163,14 @@ function renderBeam(
 
 function renderRegular(
   graphics: Phaser.GameObjects.Graphics,
-  x: number, y: number,
+  x: number,
+  y: number,
   color: number,
-  config: Entity['projectile'] extends infer P ? P extends { config: infer C } ? C : never : never,
+  config: Entity['projectile'] extends infer P
+    ? P extends { config: infer C }
+      ? C
+      : never
+    : never,
   trail: ProjectileTrail | undefined,
 ): void {
   const radius = config.collision?.radius ?? 5;
@@ -173,12 +204,17 @@ function renderRegular(
     if (pStyle === 'full' && pts >= 2) {
       graphics.lineStyle(1, color, 0.25);
       let prevOk = trailPos(trail, 1, _tp);
-      let prevX = _tp.x, prevY = _tp.y;
+      let prevX = _tp.x,
+        prevY = _tp.y;
       for (let i = 2; i <= pts; i++) {
         if (trailPos(trail, i, _tp)) {
           if (prevOk) graphics.lineBetween(prevX, prevY, _tp.x, _tp.y);
-          prevX = _tp.x; prevY = _tp.y; prevOk = true;
-        } else { prevOk = false; }
+          prevX = _tp.x;
+          prevY = _tp.y;
+          prevOk = true;
+        } else {
+          prevOk = false;
+        }
       }
       // Connect most recent trail point to current position
       if (prevOk || trailPos(trail, 1, _tp)) {
@@ -230,7 +266,8 @@ function renderRegular(
 
 function renderDgun(
   graphics: Phaser.GameObjects.Graphics,
-  x: number, y: number,
+  x: number,
+  y: number,
   color: number,
   projectile: NonNullable<Entity['projectile']>,
   config: NonNullable<Entity['projectile']>['config'],
@@ -264,12 +301,17 @@ function renderDgun(
     if (pStyle === 'full' && pts >= 2) {
       graphics.lineStyle(2, 0xff4400, 0.2);
       let prevOk = trailPos(trail, 1, _tp);
-      let prevX = _tp.x, prevY = _tp.y;
+      let prevX = _tp.x,
+        prevY = _tp.y;
       for (let i = 2; i <= pts; i++) {
         if (trailPos(trail, i, _tp)) {
           if (prevOk) graphics.lineBetween(prevX, prevY, _tp.x, _tp.y);
-          prevX = _tp.x; prevY = _tp.y; prevOk = true;
-        } else { prevOk = false; }
+          prevX = _tp.x;
+          prevY = _tp.y;
+          prevOk = true;
+        } else {
+          prevOk = false;
+        }
       }
       if (prevOk || trailPos(trail, 1, _tp)) {
         const connX = prevOk ? prevX : _tp.x;
@@ -300,14 +342,16 @@ function renderDgun(
 
   // Glow+Full: pulsing outer radius
   if (projStyleAtLeast(pStyle, 'glow')) {
-    const pulseRadius = radius * (1.3 + 0.2 * Math.sin(pulsePhase * Math.PI * 2));
+    const pulseRadius =
+      radius * (1.3 + 0.2 * Math.sin(pulsePhase * Math.PI * 2));
     graphics.fillStyle(0xff4400, 0.3);
     graphics.fillCircle(x, y, pulseRadius);
   }
 
   // Full: secondary shimmer ring (out-of-phase)
   if (pStyle === 'full') {
-    const shimmerRadius = radius * (1.5 + 0.15 * Math.sin(pulsePhase * Math.PI * 2 + Math.PI));
+    const shimmerRadius =
+      radius * (1.5 + 0.15 * Math.sin(pulsePhase * Math.PI * 2 + Math.PI));
     graphics.fillStyle(0xff6600, 0.15);
     graphics.fillCircle(x, y, shimmerRadius);
   }
@@ -347,7 +391,8 @@ export function renderProjRangeCircles(
     const endX = proj.endX ?? entity.transform.x;
     const endY = proj.endY ?? entity.transform.y;
     const collisionRadius = config.collision?.radius ?? 2;
-    const primaryRadius = config.explosion?.primary.radius ?? (collisionRadius * 2 + 6);
+    const primaryRadius =
+      config.explosion?.primary.radius ?? collisionRadius * 2 + 6;
 
     if (visibility.collision) {
       graphics.lineStyle(1, COLORS.PROJ_COLLISION_RANGE, 0.5);
@@ -372,12 +417,20 @@ export function renderProjRangeCircles(
     graphics.strokeCircle(x, y, radius);
   }
 
-  if (visibility.primary && config.explosion?.primary.radius && !proj.hasExploded) {
+  if (
+    visibility.primary &&
+    config.explosion?.primary.radius &&
+    !proj.hasExploded
+  ) {
     graphics.lineStyle(1, COLORS.PROJ_PRIMARY_RANGE, 0.3);
     graphics.strokeCircle(x, y, config.explosion.primary.radius);
   }
 
-  if (visibility.secondary && config.explosion?.secondary.radius && !proj.hasExploded) {
+  if (
+    visibility.secondary &&
+    config.explosion?.secondary.radius &&
+    !proj.hasExploded
+  ) {
     graphics.lineStyle(1, COLORS.PROJ_SECONDARY_RANGE, 0.3);
     graphics.strokeCircle(x, y, config.explosion.secondary.radius);
   }

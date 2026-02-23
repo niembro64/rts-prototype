@@ -7,7 +7,17 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { BurnMarkSystem } from './BurnMarkSystem';
 import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
-import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, getUnitRadiusToggle, anyUnitRadiusToggleActive, setCurrentZoom } from '@/clientConfig';
+import {
+  getGraphicsConfig,
+  getRenderMode,
+  getRangeToggle,
+  anyRangeToggleActive,
+  getProjRangeToggle,
+  anyProjRangeToggleActive,
+  getUnitRadiusToggle,
+  anyUnitRadiusToggleActive,
+  setCurrentZoom,
+} from '@/clientBarConfig';
 import { magnitude } from '../math';
 import { FIRE_EXPLOSION } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';
@@ -15,13 +25,38 @@ import type { TurretConfig, SpinConfig } from '../../config';
 import { PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL as LOD } from '../../lodConfig';
 
 // Import from helper modules
-import type { EntitySource, ExplosionEffect, UnitRenderContext, BeamRandomOffsets, ProjectileTrail } from './types';
+import type {
+  EntitySource,
+  ExplosionEffect,
+  UnitRenderContext,
+  BeamRandomOffsets,
+  ProjectileTrail,
+} from './types';
 import { COLORS } from './types';
 import { createColorPalette } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
 import { drawTurret } from './TurretRenderer';
-import { drawScoutUnit, drawBurstUnit, drawBeamUnit, drawBrawlUnit, drawMortarUnit, drawSnipeUnit, drawTankUnit, drawHippoUnit, drawArachnidUnit, drawForceFieldUnit, drawCommanderUnit } from './units';
-import { renderSelectedLabels, renderCommanderCrown, renderRangeCircles, renderUnitRadiusCircles, renderWaypoints, renderFactoryWaypoints } from './selection';
+import {
+  drawScoutUnit,
+  drawBurstUnit,
+  drawBeamUnit,
+  drawBrawlUnit,
+  drawMortarUnit,
+  drawSnipeUnit,
+  drawTankUnit,
+  drawHippoUnit,
+  drawArachnidUnit,
+  drawForceFieldUnit,
+  drawCommanderUnit,
+} from './units';
+import {
+  renderSelectedLabels,
+  renderCommanderCrown,
+  renderRangeCircles,
+  renderUnitRadiusCircles,
+  renderWaypoints,
+  renderFactoryWaypoints,
+} from './selection';
 import { renderBuilding } from './BuildingRenderer';
 import { renderProjectile, renderProjRangeCircles } from './ProjectileRenderer';
 import { renderBuildBar, renderHealthBar } from './UIBars';
@@ -59,17 +94,26 @@ export class EntityRenderer {
   private debrisSystem = new DebrisSystem();
 
   // Barrel spin state per entity: { angle (rad), speed (rad/sec) }
-  private barrelSpins: Map<EntityId, { angle: number; speed: number }> = new Map();
+  private barrelSpins: Map<EntityId, { angle: number; speed: number }> =
+    new Map();
 
   // Reusable Set for per-frame entity ID lookups (avoids allocating new Set + Array each frame)
   private _reusableIdSet: Set<EntityId> = new Set();
 
   // Cached range visibility objects (avoids per-frame allocation)
-  private _rangeVisToggle = { trackAcquire: false, trackRelease: false, engageAcquire: false, engageRelease: false, build: false };
-  private _projRangeVis = { collision: false, primary: false, secondary: false };
+  private _rangeVisToggle = {
+    trackAcquire: false,
+    trackRelease: false,
+    engageAcquire: false,
+    engageRelease: false,
+    build: false,
+  };
+  private _projRangeVis = {
+    collision: false,
+    primary: false,
+    secondary: false,
+  };
   private _unitRadiusVis = { visual: false, shot: false, push: false };
-
-
 
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
@@ -88,7 +132,8 @@ export class EntityRenderer {
     const camera = this.scene.cameras.main;
     const view = camera.worldView;
     // 'padded' mode: add 30% of viewport dimensions as extra margin
-    const extra = mode === 'padded' ? Math.max(view.width, view.height) * 0.3 : 0;
+    const extra =
+      mode === 'padded' ? Math.max(view.width, view.height) * 0.3 : 0;
     const p = padding + extra;
     return (
       x >= view.x - p &&
@@ -124,7 +169,10 @@ export class EntityRenderer {
       let spinConfig: SpinConfig | undefined;
       for (const w of entity.weapons) {
         const tc = w.config.turretShape as TurretConfig | undefined;
-        if (tc && (tc.type === 'simpleMultiBarrel' || tc.type === 'coneMultiBarrel')) {
+        if (
+          tc &&
+          (tc.type === 'simpleMultiBarrel' || tc.type === 'coneMultiBarrel')
+        ) {
           spinConfig = tc.spin;
           break;
         }
@@ -138,12 +186,18 @@ export class EntityRenderer {
       }
 
       // Check if any weapon is firing
-      const firing = entity.weapons.some(w => w.isEngaged);
+      const firing = entity.weapons.some((w) => w.isEngaged);
 
       if (firing) {
-        state.speed = Math.min(state.speed + spinConfig.accel * dtSec, spinConfig.max);
+        state.speed = Math.min(
+          state.speed + spinConfig.accel * dtSec,
+          spinConfig.max,
+        );
       } else {
-        state.speed = Math.max(state.speed - spinConfig.decel * dtSec, spinConfig.idle);
+        state.speed = Math.max(
+          state.speed - spinConfig.decel * dtSec,
+          spinConfig.idle,
+        );
       }
 
       state.angle += state.speed * dtSec;
@@ -157,11 +211,20 @@ export class EntityRenderer {
   // ==================== EXPLOSION MANAGEMENT ====================
 
   addExplosion(
-    x: number, y: number, radius: number, color: number, type: 'impact' | 'death',
-    velocityX?: number, velocityY?: number,
-    penetrationX?: number, penetrationY?: number,
-    attackerX?: number, attackerY?: number,
-    collisionRadius?: number, primaryRadius?: number, secondaryRadius?: number,
+    x: number,
+    y: number,
+    radius: number,
+    color: number,
+    type: 'impact' | 'death',
+    velocityX?: number,
+    velocityY?: number,
+    penetrationX?: number,
+    penetrationY?: number,
+    attackerX?: number,
+    attackerY?: number,
+    collisionRadius?: number,
+    primaryRadius?: number,
+    secondaryRadius?: number,
     entityCollisionRadius?: number,
   ): void {
     const baseRadius = 8;
@@ -169,21 +232,46 @@ export class EntityRenderer {
     const radiusScale = Math.sqrt(radius / baseRadius);
     const lifetime = baseLifetime * radiusScale;
 
-    const velocityMag = (velocityX !== undefined && velocityY !== undefined) ? magnitude(velocityX, velocityY) : 0;
-    const penetrationMag = (penetrationX !== undefined && penetrationY !== undefined) ? magnitude(penetrationX, penetrationY) : 0;
-    const attackerMag = (attackerX !== undefined && attackerY !== undefined) ? magnitude(attackerX, attackerY) : 0;
+    const velocityMag =
+      velocityX !== undefined && velocityY !== undefined
+        ? magnitude(velocityX, velocityY)
+        : 0;
+    const penetrationMag =
+      penetrationX !== undefined && penetrationY !== undefined
+        ? magnitude(penetrationX, penetrationY)
+        : 0;
+    const attackerMag =
+      attackerX !== undefined && attackerY !== undefined
+        ? magnitude(attackerX, attackerY)
+        : 0;
 
     const combinedX = (velocityX ?? 0) + (penetrationX ?? 0) + (attackerX ?? 0);
     const combinedY = (velocityY ?? 0) + (penetrationY ?? 0) + (attackerY ?? 0);
     const combinedMag = magnitude(combinedX, combinedY);
 
     this.explosions.push({
-      x, y, radius, color, lifetime, elapsed: 0, type,
-      velocityX, velocityY, velocityMag,
-      penetrationX, penetrationY, penetrationMag,
-      attackerX, attackerY, attackerMag,
-      combinedX, combinedY, combinedMag,
-      collisionRadius, primaryRadius, secondaryRadius,
+      x,
+      y,
+      radius,
+      color,
+      lifetime,
+      elapsed: 0,
+      type,
+      velocityX,
+      velocityY,
+      velocityMag,
+      penetrationX,
+      penetrationY,
+      penetrationMag,
+      attackerX,
+      attackerY,
+      attackerMag,
+      combinedX,
+      combinedY,
+      combinedMag,
+      collisionRadius,
+      primaryRadius,
+      secondaryRadius,
       entityCollisionRadius,
     });
   }
@@ -193,12 +281,25 @@ export class EntityRenderer {
    * Generates pieces from a per-unit-type template, applies random velocities with hit-direction bias.
    */
   addDebris(
-    x: number, y: number,
-    unitType: string, rotation: number,
-    radius: number, color: number,
-    hitDirX: number, hitDirY: number
+    x: number,
+    y: number,
+    unitType: string,
+    rotation: number,
+    radius: number,
+    color: number,
+    hitDirX: number,
+    hitDirY: number,
   ): void {
-    this.debrisSystem.addDebris(x, y, unitType, rotation, radius, color, hitDirX, hitDirY);
+    this.debrisSystem.addDebris(
+      x,
+      y,
+      unitType,
+      rotation,
+      radius,
+      color,
+      hitDirX,
+      hitDirY,
+    );
   }
 
   updateExplosions(dtMs: number): void {
@@ -280,20 +381,24 @@ export class EntityRenderer {
 
     for (const entity of this.entitySource.getUnits()) {
       if (!entity.unit || entity.unit.hp <= 0) continue;
-      if (!this.isInViewport(entity.transform.x, entity.transform.y, 100)) continue;
+      if (!this.isInViewport(entity.transform.x, entity.transform.y, 100))
+        continue;
       this.visibleUnits.push(entity);
       if (entity.selectable?.selected) this.selectedUnits.push(entity);
     }
 
     for (const entity of this.entitySource.getBuildings()) {
       if (!entity.building || entity.building.hp <= 0) continue;
-      if (!this.isInViewport(entity.transform.x, entity.transform.y, 150)) continue;
+      if (!this.isInViewport(entity.transform.x, entity.transform.y, 150))
+        continue;
       this.visibleBuildings.push(entity);
-      if (entity.selectable?.selected && entity.factory) this.selectedFactories.push(entity);
+      if (entity.selectable?.selected && entity.factory)
+        this.selectedFactories.push(entity);
     }
 
     for (const entity of this.entitySource.getProjectiles()) {
-      if (!this.isInViewport(entity.transform.x, entity.transform.y, 50)) continue;
+      if (!this.isInViewport(entity.transform.x, entity.transform.y, 50))
+        continue;
       this.visibleProjectiles.push(entity);
     }
   }
@@ -311,19 +416,44 @@ export class EntityRenderer {
     this.collectVisibleEntities();
 
     // 0. Sample beam endpoints for scorched earth burn marks
-    this.burnMarkSystem.sampleBeamEndpoints(this.entitySource.getProjectiles(), gfxConfig.burnMarkFramesSkip);
+    this.burnMarkSystem.sampleBeamEndpoints(
+      this.entitySource.getProjectiles(),
+      gfxConfig.burnMarkFramesSkip,
+    );
 
     // 0b. Render scorched earth burn marks (below everything, fully opaque)
-    this.burnMarkSystem.render(this.graphics, (x, y, padding) => this.isInViewport(x, y, padding));
+    this.burnMarkSystem.render(this.graphics, (x, y, padding) =>
+      this.isInViewport(x, y, padding),
+    );
 
     // 0c. Death debris fragments
-    this.debrisSystem.render(this.graphics, (x, y, p) => this.isInViewport(x, y, p));
+    this.debrisSystem.render(this.graphics, (x, y, p) =>
+      this.isInViewport(x, y, p),
+    );
 
     // 1. Buildings (bottom layer)
-    const buildBarFn = (x: number, y: number, w: number, h: number, p: number) => renderBuildBar(this.graphics, x, y, w, h, p);
-    const healthBarFn = (x: number, y: number, w: number, h: number, p: number) => renderHealthBar(this.graphics, x, y, w, h, p);
+    const buildBarFn = (
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      p: number,
+    ) => renderBuildBar(this.graphics, x, y, w, h, p);
+    const healthBarFn = (
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      p: number,
+    ) => renderHealthBar(this.graphics, x, y, w, h, p);
     for (const entity of this.visibleBuildings) {
-      renderBuilding(this.graphics, entity, this.sprayParticleTime, buildBarFn, healthBarFn);
+      renderBuilding(
+        this.graphics,
+        entity,
+        this.sprayParticleTime,
+        buildBarFn,
+        healthBarFn,
+      );
     }
 
     // 2. Waypoints for selected units
@@ -366,9 +496,16 @@ export class EntityRenderer {
       if (entity.projectile && entity.projectile.projectileType !== 'beam') {
         trail = this.projectileTrails.get(entity.id);
         const isDgun = !!entity.dgunProjectile;
-        const trailCap = isDgun ? 10 : (entity.projectile.config.trailLength ?? 3) + 4;
+        const trailCap = isDgun
+          ? 10
+          : (entity.projectile.config.trailLength ?? 3) + 4;
         if (!trail || trail.capacity !== trailCap) {
-          trail = { positions: new Float32Array(trailCap * 2), head: 0, count: 0, capacity: trailCap };
+          trail = {
+            positions: new Float32Array(trailCap * 2),
+            head: 0,
+            count: 0,
+            capacity: trailCap,
+          };
           this.projectileTrails.set(entity.id, trail);
         }
         const idx = trail.head * 2;
@@ -378,7 +515,13 @@ export class EntityRenderer {
         if (trail.count < trail.capacity) trail.count++;
       }
 
-      renderProjectile(this.graphics, entity, this.beamRandomOffsets, this.sprayParticleTime, trail);
+      renderProjectile(
+        this.graphics,
+        entity,
+        this.beamRandomOffsets,
+        this.sprayParticleTime,
+        trail,
+      );
     }
     for (const id of this.beamRandomOffsets.keys()) {
       if (!this._reusableIdSet.has(id)) this.beamRandomOffsets.delete(id);
@@ -415,12 +558,15 @@ export class EntityRenderer {
 
     // 8. Explosions (quality determined by zoom-based graphics config)
     for (const explosion of this.explosions) {
-      if (!this.isInViewport(explosion.x, explosion.y, explosion.radius + 50)) continue;
+      if (!this.isInViewport(explosion.x, explosion.y, explosion.radius + 50))
+        continue;
       renderExplosion(this.graphics, explosion);
     }
 
     // 9. Labels (topmost)
-    renderSelectedLabels(this.graphics, this.entitySource, () => this.getLabel());
+    renderSelectedLabels(this.graphics, this.entitySource, () =>
+      this.getLabel(),
+    );
   }
 
   // ==================== UNIT BODY RENDERING ====================
@@ -440,7 +586,11 @@ export class EntityRenderer {
     // When palette shading is off: use only the base player color, no light/dark variants
     const palette = gfx.paletteShading
       ? fullPalette
-      : { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base };
+      : {
+          base: fullPalette.base,
+          light: fullPalette.base,
+          dark: fullPalette.base,
+        };
 
     // 'circles': concentric filled circles — push radius (dark) behind shot radius (light)
     if (gfx.unitShape === 'circles') {
@@ -466,7 +616,14 @@ export class EntityRenderer {
       }
       const healthPercent = hp / maxHp;
       if (healthPercent < 1) {
-        renderHealthBar(this.graphics, x, y - outerRadius - 10, outerRadius * 2, 4, healthPercent);
+        renderHealthBar(
+          this.graphics,
+          x,
+          y - outerRadius - 10,
+          outerRadius * 2,
+          4,
+          healthPercent,
+        );
       }
       return;
     }
@@ -479,28 +636,70 @@ export class EntityRenderer {
 
     const ctx: UnitRenderContext = {
       graphics: this.graphics,
-      x, y, radius, bodyRot: rotation, palette, isSelected, entity,
+      x,
+      y,
+      radius,
+      bodyRot: rotation,
+      palette,
+      isSelected,
+      entity,
       chassisDetail: gfx.chassisDetail,
     };
 
     // Blueprint-driven renderer dispatch
     let bp;
-    try { bp = getUnitBlueprint(unitType); } catch { bp = null; }
+    try {
+      bp = getUnitBlueprint(unitType);
+    } catch {
+      bp = null;
+    }
     const renderer = bp?.renderer ?? 'scout';
 
     switch (renderer) {
-      case 'commander': drawCommanderUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
-      case 'scout': drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
-      case 'burst': drawBurstUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
-      case 'forceField': drawForceFieldUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
-      case 'brawl': drawBrawlUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
-      case 'mortar': drawMortarUnit(ctx, this.locomotion.getVehicleWheels(entity.id)); break;
-      case 'snipe': drawSnipeUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
-      case 'tank': drawTankUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
-      case 'hippo': drawHippoUnit(ctx, this.locomotion.getTankTreads(entity.id)); break;
-      case 'arachnid': drawArachnidUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
-      case 'beam': drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType)); break;
-      default: drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
+      case 'commander':
+        drawCommanderUnit(
+          ctx,
+          this.locomotion.getOrCreateLegs(entity, unitType),
+        );
+        break;
+      case 'scout':
+        drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
+        break;
+      case 'burst':
+        drawBurstUnit(ctx, this.locomotion.getTankTreads(entity.id));
+        break;
+      case 'forceField':
+        drawForceFieldUnit(
+          ctx,
+          this.locomotion.getOrCreateLegs(entity, unitType),
+        );
+        break;
+      case 'brawl':
+        drawBrawlUnit(ctx, this.locomotion.getTankTreads(entity.id));
+        break;
+      case 'mortar':
+        drawMortarUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
+        break;
+      case 'snipe':
+        drawSnipeUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType));
+        break;
+      case 'tank':
+        drawTankUnit(ctx, this.locomotion.getTankTreads(entity.id));
+        break;
+      case 'hippo':
+        drawHippoUnit(ctx, this.locomotion.getTankTreads(entity.id));
+        break;
+      case 'arachnid':
+        drawArachnidUnit(
+          ctx,
+          this.locomotion.getOrCreateLegs(entity, unitType),
+        );
+        break;
+      case 'beam':
+        drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType));
+        break;
+      default:
+        drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
     }
 
     // Post-body overlays
@@ -510,7 +709,14 @@ export class EntityRenderer {
 
     const healthPercent = hp / maxHp;
     if (healthPercent < 1) {
-      renderHealthBar(this.graphics, x, y - radius - 10, radius * 2, 4, healthPercent);
+      renderHealthBar(
+        this.graphics,
+        x,
+        y - radius - 10,
+        radius * 2,
+        4,
+        healthPercent,
+      );
     }
 
     if (entity.weapons && isSelected) {
@@ -519,7 +725,12 @@ export class EntityRenderer {
           const target = this.entitySource.getEntity(weapon.targetEntityId);
           if (target) {
             this.graphics.lineStyle(1, 0xff0000, 0.3);
-            this.graphics.lineBetween(x, y, target.transform.x, target.transform.y);
+            this.graphics.lineBetween(
+              x,
+              y,
+              target.transform.x,
+              target.transform.y,
+            );
           }
         }
       }
@@ -535,15 +746,25 @@ export class EntityRenderer {
     const { x, y, rotation: bodyRot } = transform;
     const r = unit.drawScale;
 
-    const unitType = entity.commander ? 'commander' : (unit.unitType ?? 'jackal');
+    const unitType = entity.commander
+      ? 'commander'
+      : (unit.unitType ?? 'jackal');
     let mounts: { x: number; y: number }[];
-    try { mounts = getUnitBlueprint(unitType).chassisMounts; } catch { mounts = [{ x: 0, y: 0 }]; }
+    try {
+      mounts = getUnitBlueprint(unitType).chassisMounts;
+    } catch {
+      mounts = [{ x: 0, y: 0 }];
+    }
 
     const gfx = getGraphicsConfig();
     const fullPalette = createColorPalette(ownership?.playerId);
     const palette = gfx.paletteShading
       ? fullPalette
-      : { base: fullPalette.base, light: fullPalette.base, dark: fullPalette.base };
+      : {
+          base: fullPalette.base,
+          light: fullPalette.base,
+          dark: fullPalette.base,
+        };
 
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
@@ -553,14 +774,27 @@ export class EntityRenderer {
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < entity.weapons.length; i++) {
         const weapon = entity.weapons[i];
-        const isForceField = (weapon.config.turretShape as { type?: string } | undefined)?.type === 'complexSingleEmitter';
+        const isForceField =
+          (weapon.config.turretShape as { type?: string } | undefined)?.type ===
+          'complexSingleEmitter';
         if (pass === 0 ? !isForceField : isForceField) continue;
 
         const mount = mounts[Math.min(i, mounts.length - 1)];
         const mountX = x + cos * mount.x * r - sin * mount.y * r;
         const mountY = y + sin * mount.x * r + cos * mount.y * r;
 
-        drawTurret(this.graphics, mountX, mountY, r, weapon, palette, spinAngle, entity.id, gfx.turretStyle, gfx.forceTurretStyle);
+        drawTurret(
+          this.graphics,
+          mountX,
+          mountY,
+          r,
+          weapon,
+          palette,
+          spinAngle,
+          entity.id,
+          gfx.turretStyle,
+          gfx.forceTurretStyle,
+        );
       }
     }
   }
