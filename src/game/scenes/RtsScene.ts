@@ -23,7 +23,7 @@ import {
   EMA_CONFIG,
 } from '../../config';
 
-import { getAudioSmoothing, getAudioScope, getSoundToggle } from '../render/graphicsSettings';
+import { getAudioSmoothing, getAudioScope, getSoundToggle } from '@/clientConfig';
 import { AUDIO } from '../../audioConfig';
 
 // Import helpers

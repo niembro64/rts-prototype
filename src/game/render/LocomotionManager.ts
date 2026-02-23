@@ -10,7 +10,7 @@ import {
   createVehicleWheelSetup,
 } from './Tread';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getGraphicsConfig } from './graphicsSettings';
+import { getGraphicsConfig } from '@/clientConfig';
 import { LEG_STYLE_CONFIG } from './types';
 import type { EntitySource } from './types';
 

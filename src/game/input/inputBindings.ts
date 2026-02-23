@@ -6,7 +6,7 @@ import { BuildingPlacementController } from './BuildingPlacementController';
 import { CameraController } from './CameraController';
 import { CommandController } from './CommandController';
 import { type InputState, createInitialInputState } from './InputState';
-import { getDragPanEnabled } from '../render/graphicsSettings';
+import { getDragPanEnabled } from '@/clientConfig';
 
 /**
  * InputEntitySource - Interface for entity queries used by InputManager

@@ -30,19 +30,8 @@ import {
   COMBAT_STATS_VISIBLE_ON_LOAD,
 } from '../config';
 import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../game/sim/blueprints';
-import {
-  CONTROL_BARS,
-  type SnapshotRate,
-  type KeyframeRatio,
-  type TickRate,
-} from '../controlBarConfig';
-import {
-  loadStoredSnapshotRate,
-  saveSnapshotRate,
-  loadStoredKeyframeRatio,
-  saveKeyframeRatio,
-  loadStoredTickRate,
-  saveTickRate,
+import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
+import { BATTLE_CONFIG,
   loadStoredDemoUnits,
   saveDemoUnits,
   loadStoredMaxTotalUnits,
@@ -53,9 +42,19 @@ import {
   saveFfAccelUnits,
   loadStoredFfAccelShots,
   saveFfAccelShots,
+} from '../battleConfig';
+import { SERVER_CONFIG,
+  loadStoredSnapshotRate,
+  saveSnapshotRate,
+  loadStoredKeyframeRatio,
+  saveKeyframeRatio,
+  loadStoredTickRate,
+  saveTickRate,
   loadStoredGridInfo,
   saveGridInfo,
-} from './controlBarStorage';
+} from '../serverConfig';
+import { CLIENT_CONFIG } from '../clientConfig';
+import { BAR_THEMES } from '../barThemes';
 import {
   formatDuration,
   fmt4,
@@ -95,15 +94,19 @@ import {
   getSoundToggle,
   setSoundToggle,
   SOUND_CATEGORIES,
-  type GraphicsQuality,
-  type RenderMode,
-  type RangeType,
-  type ProjRangeType,
-  type UnitRadiusType,
-  type AudioScope,
-  type DriftMode,
-  type SoundCategory,
-} from '../game/render/graphicsSettings';
+} from '../clientConfig';
+import type {
+  GraphicsQuality,
+  RenderMode,
+} from '../types/graphics';
+import type {
+  AudioScope,
+  DriftMode,
+  SoundCategory,
+  RangeType,
+  ProjRangeType,
+  UnitRadiusType,
+} from '../types/client';
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
 
@@ -394,7 +397,7 @@ const serverBarReadonly = computed(() => !hasServer.value);
 
 // Bar color theming via CSS custom properties
 type BarColorTheme =
-  (typeof CONTROL_BARS.themes)[keyof typeof CONTROL_BARS.themes];
+  (typeof BAR_THEMES)[keyof typeof BAR_THEMES];
 function barVars(theme: BarColorTheme): Record<string, string> {
   return {
     '--bar-bg': theme.barBg,
@@ -410,18 +413,18 @@ function barVars(theme: BarColorTheme): Record<string, string> {
 const battleBarVars = computed(() =>
   barVars(
     serverBarReadonly.value
-      ? CONTROL_BARS.themes.disabled
-      : CONTROL_BARS.themes.battle,
+      ? BAR_THEMES.disabled
+      : BAR_THEMES.battle,
   ),
 );
 const serverBarVars = computed(() =>
   barVars(
     serverBarReadonly.value
-      ? CONTROL_BARS.themes.disabled
-      : CONTROL_BARS.themes.server,
+      ? BAR_THEMES.disabled
+      : BAR_THEMES.server,
   ),
 );
-const clientBarVars = computed(() => barVars(CONTROL_BARS.themes.client));
+const clientBarVars = computed(() => barVars(BAR_THEMES.client));
 
 const battleLabel = 'BATTLE';
 
@@ -435,17 +438,17 @@ const displayServerTpsWorst = computed(
 const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.tickRate ??
-    CONTROL_BARS.server.tickRate.default,
+    SERVER_CONFIG.tickRate.default,
 );
 const displaySnapshotRate = computed(
   () =>
     serverMetaFromSnapshot.value?.snapshotRate ??
-    CONTROL_BARS.server.snapshot.default,
+    SERVER_CONFIG.snapshot.default,
 );
 const displayKeyframeRatio = computed(
   () =>
     serverMetaFromSnapshot.value?.keyframeRatio ??
-    CONTROL_BARS.server.keyframe.default,
+    SERVER_CONFIG.keyframe.default,
 );
 const displayGridInfo = computed(
   () => serverMetaFromSnapshot.value?.sendGridInfo ?? false,
@@ -508,7 +511,7 @@ function changeMaxTotalUnits(value: number): void {
 function toggleProjVelInherit(): void {
   const current =
     serverMetaFromSnapshot.value?.projVelInherit ??
-    CONTROL_BARS.battle.projVelInherit.default;
+    BATTLE_CONFIG.projVelInherit.default;
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
     tick: 0,
@@ -528,8 +531,8 @@ function setFfAccelShots(enabled: boolean): void {
 }
 
 function toggleFfAccelAll(): void {
-  const units = serverMetaFromSnapshot.value?.ffAccelUnits ?? CONTROL_BARS.battle.ffAccelUnits.default;
-  const shots = serverMetaFromSnapshot.value?.ffAccelShots ?? CONTROL_BARS.battle.ffAccelShots.default;
+  const units = serverMetaFromSnapshot.value?.ffAccelUnits ?? BATTLE_CONFIG.ffAccelUnits.default;
+  const shots = serverMetaFromSnapshot.value?.ffAccelShots ?? BATTLE_CONFIG.ffAccelShots.default;
   const allOn = units && shots;
   setFfAccelUnits(!allOn);
   setFfAccelShots(!allOn);
@@ -546,57 +549,49 @@ function resetDemoDefaults(): void {
     });
   }
   saveDemoUnits([...demoUnitTypes]);
-  changeMaxTotalUnits(CONTROL_BARS.battle.cap.default);
+  changeMaxTotalUnits(BATTLE_CONFIG.cap.default);
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
     tick: 0,
-    enabled: false,
+    enabled: BATTLE_CONFIG.projVelInherit.default,
   });
-  saveProjVelInherit(false);
-  setFfAccelUnits(CONTROL_BARS.battle.ffAccelUnits.default);
-  setFfAccelShots(CONTROL_BARS.battle.ffAccelShots.default);
+  saveProjVelInherit(BATTLE_CONFIG.projVelInherit.default);
+  setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
+  setFfAccelShots(BATTLE_CONFIG.ffAccelShots.default);
 }
 
 function resetServerDefaults(): void {
-  setTickRateValue(CONTROL_BARS.server.tickRate.default);
-  setNetworkUpdateRate(CONTROL_BARS.server.snapshot.default);
-  setKeyframeRatioValue(CONTROL_BARS.server.keyframe.default);
-  if (displayGridInfo.value) {
+  setTickRateValue(SERVER_CONFIG.tickRate.default);
+  setNetworkUpdateRate(SERVER_CONFIG.snapshot.default);
+  setKeyframeRatioValue(SERVER_CONFIG.keyframe.default);
+  if (displayGridInfo.value !== SERVER_CONFIG.gridInfo.default) {
     toggleSendGridInfo();
   }
-  saveGridInfo(false);
+  saveGridInfo(SERVER_CONFIG.gridInfo.default);
 }
 
 function resetClientDefaults(): void {
-  changeGraphicsQuality('auto');
-  changeRenderMode('padded');
-  changeAudioScope('padded');
-  setAudioSmoothing(true);
-  audioSmoothing.value = true;
-  setDriftMode('slow');
-  driftMode.value = 'slow';
-  if (edgeScrollEnabled.value) toggleEdgeScroll();
-  if (!dragPanEnabled.value) toggleDragPan();
+  const cd = CLIENT_CONFIG;
+  changeGraphicsQuality(cd.graphics.default);
+  changeRenderMode(cd.render.default);
+  changeAudioScope(cd.audio.default);
+  setAudioSmoothing(cd.audioSmoothing.default);
+  audioSmoothing.value = cd.audioSmoothing.default;
+  setDriftMode(cd.driftMode.default);
+  driftMode.value = cd.driftMode.default;
+  if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
+  if (dragPanEnabled.value !== cd.dragPan.default) toggleDragPan();
   for (const rt of RANGE_TYPES) {
-    if (rangeToggles[rt]) toggleRange(rt);
+    if (rangeToggles[rt] !== cd.rangeToggles.default) toggleRange(rt);
   }
   for (const prt of PROJ_RANGE_TYPES) {
-    if (projRangeToggles[prt]) toggleProjRange(prt);
+    if (projRangeToggles[prt] !== cd.projRangeToggles.default) toggleProjRange(prt);
   }
   for (const urt of UNIT_RADIUS_TYPES) {
-    if (unitRadiusToggles[urt]) toggleUnitRadius(urt);
+    if (unitRadiusToggles[urt] !== cd.unitRadiusToggles.default) toggleUnitRadius(urt);
   }
-  // Reset sound toggles: all on except music
-  const SOUND_DEFAULTS: Record<SoundCategory, boolean> = {
-    fire: true,
-    hit: false,
-    dead: false,
-    beam: false,
-    field: true,
-    music: false,
-  };
   for (const cat of SOUND_CATEGORIES) {
-    if (soundToggles[cat] !== SOUND_DEFAULTS[cat]) toggleSoundCategory(cat);
+    if (soundToggles[cat] !== cd.sounds.default[cat]) toggleSoundCategory(cat);
   }
 }
 
@@ -1292,7 +1287,7 @@ onUnmounted(() => {
           <span class="control-label">CAP:</span>
           <div class="button-group">
             <button
-              v-for="opt in CONTROL_BARS.battle.cap.options"
+              v-for="opt in BATTLE_CONFIG.cap.options"
               :key="opt"
               class="control-btn"
               :class="{
@@ -1386,7 +1381,7 @@ onUnmounted(() => {
           <span class="control-label">MAX TPS:</span>
           <div class="button-group">
             <button
-              v-for="rate in CONTROL_BARS.server.tickRate.options"
+              v-for="rate in SERVER_CONFIG.tickRate.options"
               :key="rate"
               class="control-btn"
               :class="{ active: displayTickRate === rate }"
@@ -1438,7 +1433,7 @@ onUnmounted(() => {
           <span class="control-label">MAX SPS:</span>
           <div class="button-group">
             <button
-              v-for="rate in CONTROL_BARS.server.snapshot.options"
+              v-for="rate in SERVER_CONFIG.snapshot.options"
               :key="String(rate)"
               class="control-btn"
               :class="{ active: displaySnapshotRate === rate }"
@@ -1454,7 +1449,7 @@ onUnmounted(() => {
           <span class="control-label">FULLSNAP:</span>
           <div class="button-group">
             <button
-              v-for="opt in CONTROL_BARS.server.keyframe.options"
+              v-for="opt in SERVER_CONFIG.keyframe.options"
               :key="String(opt)"
               class="control-btn"
               :class="{ active: displayKeyframeRatio === opt }"
@@ -1687,7 +1682,7 @@ onUnmounted(() => {
           </button>
           <div class="button-group">
             <button
-              v-for="opt in CONTROL_BARS.client.graphics.options"
+              v-for="opt in CLIENT_CONFIG.graphics.options"
               :key="opt.value"
               class="control-btn"
               :class="{
@@ -1708,7 +1703,7 @@ onUnmounted(() => {
           <span class="control-label">RENDER:</span>
           <div class="button-group">
             <button
-              v-for="opt in CONTROL_BARS.client.render.options"
+              v-for="opt in CLIENT_CONFIG.render.options"
               :key="opt.value"
               class="control-btn"
               :class="{ active: renderMode === opt.value }"
@@ -1730,7 +1725,7 @@ onUnmounted(() => {
           <span class="control-label">AUDIO:</span>
           <div class="button-group">
             <button
-              v-for="opt in CONTROL_BARS.client.audio.options"
+              v-for="opt in CLIENT_CONFIG.audio.options"
               :key="opt.value"
               class="control-btn"
               :class="{ active: audioScope === opt.value }"

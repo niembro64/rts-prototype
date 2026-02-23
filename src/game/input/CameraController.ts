@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_FACTOR, CAMERA_PAN_MULTIPLIER, EDGE_SCROLL } from '../../config';
-import { getEdgeScrollEnabled, getBottomBarsHeight } from '../render/graphicsSettings';
+import { getEdgeScrollEnabled, getBottomBarsHeight } from '@/clientConfig';
 import type { InputState } from './InputState';
 
 /**

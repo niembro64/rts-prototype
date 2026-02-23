@@ -2,7 +2,7 @@
 
 import Phaser from 'phaser';
 import type { ExplosionEffect } from '../types';
-import { getEffectiveQuality } from '../graphicsSettings';
+import { getEffectiveQuality } from '@/clientConfig';
 import { clamp01, angleDiff as computeAngleDiff } from '../../math';
 import { FIRE_EXPLOSION, DEATH_EXPLOSION } from '../../../explosionConfig';
 

@@ -8,7 +8,7 @@ import { COLORS } from './types';
 import { drawForceFieldGrate } from './helpers';
 import { renderForceFieldEffect } from './effects';
 import type { TurretConfig, ForceFieldTurretConfig } from '../../config';
-import type { TurretStyle, ForceTurretStyle } from './graphicsSettings';
+import type { TurretStyle, ForceTurretStyle } from '@/types/graphics';
 
 /**
  * Draw a weapon's turret at the given mount point.

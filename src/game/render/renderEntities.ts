@@ -7,7 +7,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { BurnMarkSystem } from './BurnMarkSystem';
 import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
-import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, getUnitRadiusToggle, anyUnitRadiusToggleActive, setCurrentZoom } from './graphicsSettings';
+import { getGraphicsConfig, getRenderMode, getRangeToggle, anyRangeToggleActive, getProjRangeToggle, anyProjRangeToggleActive, getUnitRadiusToggle, anyUnitRadiusToggleActive, setCurrentZoom } from '@/clientConfig';
 import { magnitude } from '../math';
 import { FIRE_EXPLOSION } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';

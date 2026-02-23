@@ -1,7 +1,7 @@
 // Geometry helper functions for rendering shapes
 
 import Phaser from 'phaser';
-import { getGraphicsConfig } from '../graphicsSettings';
+import { getGraphicsConfig } from '@/clientConfig';
 import { COLORS, LEG_STYLE_CONFIG } from '../types';
 import type { ForceFieldTurretConfig } from '../../../config';
 import type { ArachnidLeg } from '../ArachnidLeg';

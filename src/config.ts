@@ -30,21 +30,22 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
 };
 
 // Re-export bar config values used by sim/server code
-export { CONTROL_BARS } from './controlBarConfig';
-export type { SnapshotRate, KeyframeRatio, TickRate } from './controlBarConfig';
-import { CONTROL_BARS } from './controlBarConfig';
+export { BATTLE_CONFIG } from './battleConfig';
+export { SERVER_CONFIG } from './serverConfig';
+export type { SnapshotRate, KeyframeRatio, TickRate } from './types/server';
+import { SERVER_CONFIG } from './serverConfig';
+import { BATTLE_CONFIG } from './battleConfig';
+import { BAR_THEMES } from './barThemes';
 
-export const DEFAULT_KEYFRAME_RATIO = CONTROL_BARS.server.keyframe.default;
-export const KEYFRAME_RATIO_OPTIONS = CONTROL_BARS.server.keyframe.options;
-export const DEFAULT_SNAPSHOT_RATE = CONTROL_BARS.server.snapshot.default;
-export const SNAPSHOT_RATE_OPTIONS = CONTROL_BARS.server.snapshot.options;
-export const MAX_TOTAL_UNITS = CONTROL_BARS.battle.cap.default;
-export const DEFAULT_PROJ_VEL_INHERIT =
-  CONTROL_BARS.battle.projVelInherit.default;
-export const DEFAULT_FF_ACCEL_UNITS = CONTROL_BARS.battle.ffAccelUnits.default;
-export const DEFAULT_FF_ACCEL_SHOTS = CONTROL_BARS.battle.ffAccelShots.default;
-export const BAR_COLORS = CONTROL_BARS.themes;
-// UNIT_SHORT_NAMES removed — now in UnitBlueprint.shortName
+export const DEFAULT_KEYFRAME_RATIO = SERVER_CONFIG.keyframe.default;
+export const KEYFRAME_RATIO_OPTIONS = SERVER_CONFIG.keyframe.options;
+export const DEFAULT_SNAPSHOT_RATE = SERVER_CONFIG.snapshot.default;
+export const SNAPSHOT_RATE_OPTIONS = SERVER_CONFIG.snapshot.options;
+export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
+export const DEFAULT_PROJ_VEL_INHERIT = BATTLE_CONFIG.projVelInherit.default;
+export const DEFAULT_FF_ACCEL_UNITS = BATTLE_CONFIG.ffAccelUnits.default;
+export const DEFAULT_FF_ACCEL_SHOTS = BATTLE_CONFIG.ffAccelShots.default;
+export const BAR_COLORS = BAR_THEMES;
 
 // =============================================================================
 // EMA (Exponential Moving Average) STATS TRACKING

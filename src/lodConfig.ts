@@ -7,7 +7,7 @@
  * Each key defines what happens at each detail level: min, low, medium, high, max.
  *
  * Auto-quality zoom thresholds are computed from ZOOM_MIN/ZOOM_MAX using
- * logarithmic spacing (see graphicsSettings.ts getEffectiveQuality).
+ * logarithmic spacing (see clientConfig.ts getEffectiveQuality).
  */
 export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // Unit body shape rendering

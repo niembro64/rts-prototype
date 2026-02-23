@@ -5,8 +5,8 @@ import type { Entity, EntityId } from '../sim/types';
 import type { BeamRandomOffsets, ProjectileTrail } from './types';
 import { COLORS } from './types';
 import { getPlayerColor, getProjectileColor } from './helpers';
-import { getGraphicsConfig } from './graphicsSettings';
-import type { ProjectileStyle } from './graphicsSettings';
+import { getGraphicsConfig } from '@/clientConfig';
+import type { ProjectileStyle } from '@/types/graphics';
 
 /** Rank ordering for projectile style (used for >= comparisons) */
 const PROJ_STYLE_RANK: Record<ProjectileStyle, number> = { dot: 0, core: 1, trail: 2, glow: 3, full: 4 };

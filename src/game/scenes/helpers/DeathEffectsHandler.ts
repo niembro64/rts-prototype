@@ -14,7 +14,7 @@ import {
 } from '../../../explosionConfig';
 import { TURRET_CONFIGS } from '../../sim/weapons';
 import { magnitude } from '../../math';
-import { getAudioScope, getSoundToggle } from '../../render/graphicsSettings';
+import { getAudioScope, getSoundToggle } from '@/clientConfig';
 
 // Get explosion radius based on weapon type (uses explosion.primary.radius from config)
 export function getExplosionRadius(weaponId: string): number {

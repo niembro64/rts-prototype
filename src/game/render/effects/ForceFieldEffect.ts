@@ -1,7 +1,7 @@
 // Force field effect renderer (pie-slice effect)
 
 import Phaser from 'phaser';
-import { getGraphicsConfig } from '../graphicsSettings';
+import { getGraphicsConfig } from '@/clientConfig';
 import { FORCE_FIELD_VISUAL } from '../../../config';
 
 /**

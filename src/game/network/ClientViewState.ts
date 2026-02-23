@@ -22,7 +22,8 @@ const EMPTY_AUDIO: NetworkGameState['audioEvents'] = [];
 
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
 // Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
-import { getDriftMode, type DriftMode } from '../render/graphicsSettings';
+import { getDriftMode } from '@/clientConfig';
+import type { DriftMode } from '@/types/client';
 
 const DRIFT_PRESETS: Record<DriftMode, { position: number; velocity: number; rotation: number }> = {
   snap: { position: 1.0, velocity: 1.0, rotation: 1.0 },
