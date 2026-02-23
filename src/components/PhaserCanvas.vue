@@ -86,7 +86,6 @@ import {
   setEdgeScrollEnabled,
   getDragPanEnabled,
   setDragPanEnabled,
-  setBottomBarsHeight,
   getAudioScope,
   setAudioScope,
   getAudioSmoothing,
@@ -110,7 +109,6 @@ import { musicPlayer } from '../game/audio/MusicPlayer';
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
-const bottomControlsRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 
@@ -247,7 +245,6 @@ let gameInstance: GameInstance | null = null;
 let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
 let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
-let bottomBarsObserver: ResizeObserver | null = null;
 
 // Start the background battle (runs behind lobby)
 function startBackgroundBattle(): void {
@@ -1166,16 +1163,6 @@ onMounted(() => {
 
   // Listen for backtick to toggle combat stats
   window.addEventListener('keydown', handleCombatStatsKeydown);
-
-  // Track bottom bars height for edge scroll viewport inset
-  if (bottomControlsRef.value) {
-    bottomBarsObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setBottomBarsHeight(entry.contentRect.height);
-      }
-    });
-    bottomBarsObserver.observe(bottomControlsRef.value);
-  }
 });
 
 onUnmounted(() => {
@@ -1191,10 +1178,6 @@ onUnmounted(() => {
     clientTimeInterval = null;
   }
   window.removeEventListener('keydown', handleCombatStatsKeydown);
-  if (bottomBarsObserver) {
-    bottomBarsObserver.disconnect();
-    bottomBarsObserver = null;
-  }
   // Stop servers
   if (currentServer) {
     currentServer.stop();
@@ -1211,45 +1194,52 @@ onUnmounted(() => {
 
 <template>
   <div class="game-wrapper">
-    <!-- Background battle container (runs behind lobby) -->
-    <div
-      ref="backgroundContainerRef"
-      class="background-battle-container"
-      v-show="showLobby"
-    ></div>
+    <div class="game-area">
+      <!-- Background battle container (runs behind lobby) -->
+      <div
+        ref="backgroundContainerRef"
+        class="background-battle-container"
+        v-show="showLobby"
+      ></div>
 
-    <!-- Main game container -->
-    <div ref="containerRef" class="phaser-container" v-show="!showLobby"></div>
+      <!-- Main game container -->
+      <div ref="containerRef" class="phaser-container" v-show="!showLobby"></div>
 
-    <!-- Lobby Modal -->
-    <LobbyModal
-      :visible="showLobby && !spectateMode"
-      :is-host="isHost"
-      :room-code="roomCode"
-      :players="lobbyPlayers"
-      :local-player-id="localPlayerId"
-      :error="lobbyError"
-      :is-connecting="isConnecting"
-      @host="handleHost"
-      @join="handleJoin"
-      @start="handleLobbyStart"
-      @cancel="handleLobbyCancel"
-      @offline="handleOffline"
-      @spectate="toggleSpectateMode"
-    />
+      <!-- Game UI (only when game is running) -->
+      <template v-if="gameStarted && !showLobby">
+        <!-- Top bar with economy info -->
+        <TopBar
+          :economy="economyInfo"
+          :player-name="getPlayerName(activePlayer)"
+          :player-color="getPlayerColor(activePlayer)"
+        />
 
-    <!-- Spectate mode toggle (show menu button when spectating) -->
-    <button
-      v-if="showLobby && spectateMode"
-      class="spectate-toggle-btn"
-      @click="toggleSpectateMode"
-      title="Show Menu"
-    >
-      ☰
-    </button>
+        <!-- Player toggle (single-player only) -->
+        <div v-if="showPlayerToggle" class="ui-overlay top-right">
+          <button
+            class="player-toggle-btn"
+            :style="{ borderColor: getPlayerColor(activePlayer) }"
+            @click="togglePlayer"
+          >
+            <span
+              class="player-indicator"
+              :style="{ backgroundColor: getPlayerColor(activePlayer) }"
+            ></span>
+            <span class="player-label">{{ getPlayerName(activePlayer) }}</span>
+            <span class="toggle-hint">(Click to switch)</span>
+          </button>
+        </div>
+
+        <!-- Selection panel (bottom-left) -->
+        <SelectionPanel :selection="selectionInfo" :actions="selectionActions" />
+
+        <!-- Minimap (bottom-right) -->
+        <Minimap :data="minimapData" @click="handleMinimapClick" />
+      </template>
+    </div>
 
     <!-- Bottom control bars (always visible) -->
-    <div ref="bottomControlsRef" class="bottom-controls">
+    <div class="bottom-controls">
       <!-- BATTLE CONTROLS -->
       <div
         v-if="showServerControls"
@@ -1266,12 +1256,13 @@ onUnmounted(() => {
             <span class="bar-label-text">{{ battleLabel }}</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
-          <span class="time-display" title="Battle elapsed time">{{
-            battleElapsed
-          }}</span>
         </div>
         <BarDivider />
         <div class="bar-controls">
+        <span class="time-display" title="Battle elapsed time">{{
+          battleElapsed
+        }}</span>
+        <BarDivider />
         <div class="control-group">
           <span class="control-label">UNITS:</span>
           <button
@@ -1375,24 +1366,25 @@ onUnmounted(() => {
             title="Click to reset server settings to defaults"
             @click="resetServerDefaults"
           >
-            <span class="bar-label-text">HOST SERVER</span
+            <span class="bar-label-text">SERVER</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
-          <span
-            v-if="displayServerIp"
-            class="ip-display"
-            title="Server IP address"
-            >{{ displayServerIp }}</span
-          >
-          <span
-            v-if="displayServerTime"
-            class="time-display"
-            title="Server wall-clock time"
-            >{{ displayServerTime }}</span
-          >
         </div>
         <BarDivider />
         <div class="bar-controls">
+        <span
+          v-if="displayServerTime"
+          class="time-display"
+          title="Server wall-clock time"
+          >{{ displayServerTime }}</span
+        >
+        <span
+          v-if="displayServerIp"
+          class="ip-display"
+          title="Server IP address"
+          >{{ displayServerIp }}</span
+        >
+        <BarDivider />
         <div class="control-group">
           <span class="control-label">MAX TPS:</span>
           <div class="button-group">
@@ -1510,24 +1502,25 @@ onUnmounted(() => {
             title="Click to reset client settings to defaults"
             @click="resetClientDefaults"
           >
-            <span class="bar-label-text">PLAYER CLIENT</span
+            <span class="bar-label-text">CLIENT</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
-          <span
-            v-if="localIpAddress !== 'N/A'"
-            class="ip-display"
-            title="Public IP address"
-            >{{ localIpAddress }}</span
-          >
-          <span
-            v-if="clientTime"
-            class="time-display"
-            title="Client wall-clock time"
-            >{{ clientTime }}</span
-          >
         </div>
         <BarDivider />
         <div class="bar-controls">
+        <span
+          v-if="clientTime"
+          class="time-display"
+          title="Client wall-clock time"
+          >{{ clientTime }}</span
+        >
+        <span
+          v-if="localIpAddress !== 'N/A'"
+          class="ip-display"
+          title="Public IP address"
+          >{{ localIpAddress }}</span
+        >
+        <BarDivider />
         <div class="control-group">
           <span class="control-label" title="Client rendering frames per second"
             >FPS:</span
@@ -1903,37 +1896,32 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Game UI (only when game is running) -->
-    <template v-if="gameStarted && !showLobby">
-      <!-- Top bar with economy info -->
-      <TopBar
-        :economy="economyInfo"
-        :player-name="getPlayerName(activePlayer)"
-        :player-color="getPlayerColor(activePlayer)"
-      />
+    <!-- Lobby Modal (full-screen overlay, covers bars too) -->
+    <LobbyModal
+      :visible="showLobby && !spectateMode"
+      :is-host="isHost"
+      :room-code="roomCode"
+      :players="lobbyPlayers"
+      :local-player-id="localPlayerId"
+      :error="lobbyError"
+      :is-connecting="isConnecting"
+      @host="handleHost"
+      @join="handleJoin"
+      @start="handleLobbyStart"
+      @cancel="handleLobbyCancel"
+      @offline="handleOffline"
+      @spectate="toggleSpectateMode"
+    />
 
-      <!-- Player toggle (single-player only) -->
-      <div v-if="showPlayerToggle" class="ui-overlay top-right">
-        <button
-          class="player-toggle-btn"
-          :style="{ borderColor: getPlayerColor(activePlayer) }"
-          @click="togglePlayer"
-        >
-          <span
-            class="player-indicator"
-            :style="{ backgroundColor: getPlayerColor(activePlayer) }"
-          ></span>
-          <span class="player-label">{{ getPlayerName(activePlayer) }}</span>
-          <span class="toggle-hint">(Click to switch)</span>
-        </button>
-      </div>
-
-      <!-- Selection panel (bottom-left) -->
-      <SelectionPanel :selection="selectionInfo" :actions="selectionActions" />
-
-      <!-- Minimap (bottom-right) -->
-      <Minimap :data="minimapData" @click="handleMinimapClick" />
-    </template>
+    <!-- Spectate mode toggle (show menu button when spectating) -->
+    <button
+      v-if="showLobby && spectateMode"
+      class="spectate-toggle-btn"
+      @click="toggleSpectateMode"
+      title="Show Menu"
+    >
+      ☰
+    </button>
 
     <!-- Combat Stats Modal -->
     <CombatStatsModal
@@ -1977,6 +1965,15 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.game-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .phaser-container {
@@ -2167,10 +2164,7 @@ onUnmounted(() => {
 
 /* Bottom control bars */
 .bottom-controls {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;
   z-index: 3001;
   display: flex;
   flex-direction: column;

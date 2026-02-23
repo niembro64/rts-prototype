@@ -450,7 +450,7 @@ export const COMBAT_STATS_VISIBLE_ON_LOAD = false;
 // =============================================================================
 
 /** Minimum zoom level (zoomed out) */
-export const ZOOM_MIN = 0.4;
+export const ZOOM_MIN = 0.2;
 
 /** Maximum zoom level (zoomed in) */
 export const ZOOM_MAX = 5.0;
