@@ -457,11 +457,6 @@ const displayServerIp = computed(
   () => serverMetaFromSnapshot.value?.ipAddress ?? '',
 );
 
-// Show demo battle bar only during background demo (uses reactive refs only)
-const isBackgroundBattle = computed(
-  () => showLobby.value && !gameStarted.value && hasServer.value,
-);
-
 const allDemoUnitsActive = computed(() => {
   const allowed = serverMetaFromSnapshot.value?.allowedUnitTypes;
   if (!allowed) return true; // default is all enabled

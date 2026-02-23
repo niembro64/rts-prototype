@@ -15,6 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:viewMode', mode: 'global' | 'player'): void;
+  (e: 'close'): void;
 }>();
 
 const selectedPlayer = ref(1);

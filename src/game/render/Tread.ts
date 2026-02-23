@@ -1,7 +1,7 @@
 // Tread class - handles animated treads and wheels for tanks and vehicles (client-side only)
 // Tracks attachment point position over time to calculate precise velocity at that point
 
-export interface TreadConfig {
+export interface TreadAttachConfig {
   // Attachment point offset relative to unit center (in unit's local space)
   attachOffsetX: number; // Forward/back offset (positive = forward)
   attachOffsetY: number; // Left/right offset (positive = right side)
@@ -14,7 +14,7 @@ export interface TreadConfig {
 }
 
 export class Tread {
-  private config: TreadConfig;
+  private config: TreadAttachConfig;
 
   // Current wheel/tread rotation angle (radians)
   private currentRotation: number = 0;
@@ -29,7 +29,7 @@ export class Tread {
   // Cached output object to avoid per-frame allocation
   private _attach = { x: 0, y: 0 };
 
-  constructor(config: TreadConfig) {
+  constructor(config: TreadAttachConfig) {
     this.config = config;
   }
 
