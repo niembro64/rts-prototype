@@ -552,7 +552,7 @@ export class EntityRenderer {
 
     // 7. Spray effects
     for (const target of this.sprayTargets) {
-      if (!this.isInViewport(target.targetX, target.targetY, 50)) continue;
+      if (!this.isInViewport(target.target.x, target.target.y, 50)) continue;
       renderSprayEffect(this.graphics, target, this.sprayParticleTime);
     }
 

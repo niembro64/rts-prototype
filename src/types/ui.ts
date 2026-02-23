@@ -2,6 +2,7 @@
 
 import type { PlayerId, EntityId, WaypointType, Entity } from './sim';
 import type { NetworkCombatStats } from './network';
+import type { Vec2 } from './vec2';
 
 // Selection panel types
 export type QueueItem = {
@@ -130,10 +131,8 @@ export type SprayTarget = {
   sourceId: EntityId;
   targetId: EntityId;
   type: 'build' | 'heal';
-  sourceX: number;
-  sourceY: number;
-  targetX: number;
-  targetY: number;
+  source: Vec2;
+  target: Vec2;
   targetWidth?: number;
   targetHeight?: number;
   targetRadius?: number;

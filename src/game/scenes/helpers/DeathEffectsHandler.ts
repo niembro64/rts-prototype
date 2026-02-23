@@ -47,16 +47,16 @@ export function handleSimEvent(
       const explosionRadius = ic.primaryRadius;
 
       // Projectile velocity → "attacker" direction (how the projectile was traveling)
-      const attackerX = ic.projectileVelX * FIRE_EXPLOSION.projectileVelMult;
-      const attackerY = ic.projectileVelY * FIRE_EXPLOSION.projectileVelMult;
+      const attackerX = ic.projectile.vel.x * FIRE_EXPLOSION.projectileVelMult;
+      const attackerY = ic.projectile.vel.y * FIRE_EXPLOSION.projectileVelMult;
 
       // Entity velocity → "velocity" direction (how the hit unit was moving)
-      const velocityX = ic.entityVelX * FIRE_EXPLOSION.entityVelMult;
-      const velocityY = ic.entityVelY * FIRE_EXPLOSION.entityVelMult;
+      const velocityX = ic.entity.vel.x * FIRE_EXPLOSION.entityVelMult;
+      const velocityY = ic.entity.vel.y * FIRE_EXPLOSION.entityVelMult;
 
       // Penetration direction (projectile center → entity center, normalized)
-      const penetrationX = ic.penetrationDirX * FIRE_EXPLOSION.penetrationMult;
-      const penetrationY = ic.penetrationDirY * FIRE_EXPLOSION.penetrationMult;
+      const penetrationX = ic.penetrationDir.x * FIRE_EXPLOSION.penetrationMult;
+      const penetrationY = ic.penetrationDir.y * FIRE_EXPLOSION.penetrationMult;
 
       entityRenderer.addExplosion(
         event.x,
@@ -73,7 +73,7 @@ export function handleSimEvent(
         ic.collisionRadius,
         ic.primaryRadius,
         ic.secondaryRadius,
-        ic.entityCollisionRadius,
+        ic.entity.collisionRadius,
       );
     } else {
       // Fallback: no impactContext (shouldn't happen but safe)
@@ -104,19 +104,19 @@ export function handleSimEvent(
     const radius = ctx.radius * 2.5; // Death explosions are 2.5x collision radius
 
     // Apply same multipliers as host-side death handling
-    const velocityX = ctx.unitVelX * EXPLOSION_VELOCITY_MULTIPLIER;
-    const velocityY = ctx.unitVelY * EXPLOSION_VELOCITY_MULTIPLIER;
+    const velocityX = ctx.unitVel.x * EXPLOSION_VELOCITY_MULTIPLIER;
+    const velocityY = ctx.unitVel.y * EXPLOSION_VELOCITY_MULTIPLIER;
 
-    const penetrationX = ctx.hitDirX * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
-    const penetrationY = ctx.hitDirY * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+    const penetrationX = ctx.hitDir.x * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
+    const penetrationY = ctx.hitDir.y * EXPLOSION_IMPACT_FORCE_MULTIPLIER;
 
     const attackScale = Math.min(ctx.attackMagnitude / 50, 2);
     const attackerX =
-      ctx.projectileVelX *
+      ctx.projectileVel.x *
       EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER *
       attackScale;
     const attackerY =
-      ctx.projectileVelY *
+      ctx.projectileVel.y *
       EXPLOSION_ATTACKER_DIRECTION_MULTIPLIER *
       attackScale;
 
@@ -154,8 +154,8 @@ export function handleSimEvent(
         ctx.rotation ?? 0,
         ctx.radius,
         ctx.color,
-        ctx.hitDirX,
-        ctx.hitDirY,
+        ctx.hitDir.x,
+        ctx.hitDir.y,
       );
     }
   }

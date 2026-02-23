@@ -1,6 +1,7 @@
 // Damage system types extracted from game/sim/damage/types.ts
 
 import type { EntityId, PlayerId } from './sim';
+import type { Vec2 } from './vec2';
 
 export type DamageSourceBase = {
   sourceEntityId: EntityId;
@@ -11,10 +12,8 @@ export type DamageSourceBase = {
 
 export type LineDamageSource = DamageSourceBase & {
   type: 'line';
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
+  start: Vec2;
+  end: Vec2;
   width: number;
   piercing: boolean;
   maxHits: number;
@@ -24,21 +23,17 @@ export type LineDamageSource = DamageSourceBase & {
 
 export type SweptDamageSource = DamageSourceBase & {
   type: 'swept';
-  prevX: number;
-  prevY: number;
-  currentX: number;
-  currentY: number;
+  prev: Vec2;
+  current: Vec2;
   radius: number;
   maxHits: number;
-  velocityX?: number;
-  velocityY?: number;
+  velocity?: Vec2;
   projectileMass?: number;
 };
 
 export type AreaDamageSource = DamageSourceBase & {
   type: 'area';
-  centerX: number;
-  centerY: number;
+  center: Vec2;
   radius: number;
   falloff: number;
   sliceAngle?: number;
@@ -50,22 +45,18 @@ export type AnyDamageSource = LineDamageSource | SweptDamageSource | AreaDamageS
 
 export type KnockbackInfo = {
   entityId: EntityId;
-  forceX: number;
-  forceY: number;
+  force: Vec2;
 };
 
 export type DeathContext = {
-  penetrationDirX: number;
-  penetrationDirY: number;
-  attackerVelX: number;
-  attackerVelY: number;
+  penetrationDir: Vec2;
+  attackerVel: Vec2;
   attackMagnitude: number;
 };
 
 export type RecoilInfo = {
   sourceEntityId: EntityId;
-  forceX: number;
-  forceY: number;
+  force: Vec2;
 };
 
 export type DamageResult = {

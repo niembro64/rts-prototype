@@ -133,8 +133,8 @@ export class ClientViewState {
       target.x = netEntity.x;
       target.y = netEntity.y;
       target.rotation = netEntity.rotation;
-      target.velocityX = netEntity.velocityX ?? 0;
-      target.velocityY = netEntity.velocityY ?? 0;
+      target.velocityX = netEntity.velocity?.x ?? 0;
+      target.velocityY = netEntity.velocity?.y ?? 0;
       const nw = netEntity.weapons;
       if (nw) {
         while (target.weapons.length < nw.length) {
@@ -225,9 +225,9 @@ export class ClientViewState {
         if (entity?.projectile) {
           entity.transform.x = vu.x;
           entity.transform.y = vu.y;
-          entity.projectile.velocityX = vu.velocityX;
-          entity.projectile.velocityY = vu.velocityY;
-          entity.transform.rotation = Math.atan2(vu.velocityY, vu.velocityX);
+          entity.projectile.velocityX = vu.velocity.x;
+          entity.projectile.velocityY = vu.velocity.y;
+          entity.transform.rotation = Math.atan2(vu.velocity.y, vu.velocity.x);
         }
       }
     }
@@ -250,10 +250,8 @@ export class ClientViewState {
           sourceId: st.sourceId,
           targetId: st.targetId,
           type: st.type,
-          sourceX: st.sourceX,
-          sourceY: st.sourceY,
-          targetX: st.targetX,
-          targetY: st.targetY,
+          source: st.source,
+          target: st.target,
           targetWidth: st.targetWidth,
           targetHeight: st.targetHeight,
           targetRadius: st.targetRadius,
@@ -361,8 +359,10 @@ export class ClientViewState {
         server.factoryProgress ?? entity.factory.currentBuildProgress;
       entity.factory.isProducing =
         server.isProducing ?? entity.factory.isProducing;
-      if (server.rallyX !== undefined) entity.factory.rallyX = server.rallyX;
-      if (server.rallyY !== undefined) entity.factory.rallyY = server.rallyY;
+      if (server.rally) {
+        entity.factory.rallyX = server.rally.x;
+        entity.factory.rallyY = server.rally.y;
+      }
       if (server.factoryWaypoints) {
         const wps = server.factoryWaypoints;
         entity.factory.waypoints.length = wps.length;
@@ -642,8 +642,8 @@ export class ClientViewState {
           | 'instant'
           | 'traveling'
           | 'beam',
-        velocityX: spawn.velocityX,
-        velocityY: spawn.velocityY,
+        velocityX: spawn.velocity.x,
+        velocityY: spawn.velocity.y,
         timeAlive: 0,
         maxLifespan:
           config.projectileLifespan ??
@@ -651,10 +651,10 @@ export class ClientViewState {
           (config.beam !== undefined ? Infinity : 2000),
         hitEntities: new Set(),
         maxHits: 1,
-        startX: spawn.beamStartX,
-        startY: spawn.beamStartY,
-        endX: spawn.beamEndX,
-        endY: spawn.beamEndY,
+        startX: spawn.beamStart?.x,
+        startY: spawn.beamStart?.y,
+        endX: spawn.beamEnd?.x,
+        endY: spawn.beamEnd?.y,
       },
     };
     if (spawn.isDGun) {

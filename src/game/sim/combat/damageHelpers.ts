@@ -7,7 +7,7 @@ import { PLAYER_COLORS } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
-import type { DeathContext, DamageResult } from '../damage/types';
+import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
 import type { WeaponConfig, Projectile } from '../types';
 
 // Build an ImpactContext for hit/projectileExpire audio events
@@ -50,31 +50,25 @@ export function buildImpactContext(
     collisionRadius,
     primaryRadius,
     secondaryRadius,
-    projectileVelX,
-    projectileVelY,
-    projectileX,
-    projectileY,
-    entityVelX,
-    entityVelY,
-    entityCollisionRadius,
-    penetrationDirX: penDirX,
-    penetrationDirY: penDirY,
+    projectile: { pos: { x: projectileX, y: projectileY }, vel: { x: projectileVelX, y: projectileVelY } },
+    entity: { vel: { x: entityVelX, y: entityVelY }, collisionRadius: entityCollisionRadius },
+    penetrationDir: { x: penDirX, y: penDirY },
   };
 }
 
 // Apply knockback forces from a DamageResult's knockback array
 export function applyKnockbackForces(
-  knockbacks: { entityId: EntityId; forceX: number; forceY: number }[],
+  knockbacks: KnockbackInfo[],
   forceAccumulator?: ForceAccumulator
 ): void {
   if (!forceAccumulator) return;
   for (const knockback of knockbacks) {
-    // forceX/forceY already contain the full force (direction * damage * multiplier)
+    // force already contains the full force (direction * damage * multiplier)
     // Use addForce directly - don't use addDirectionalForce which normalizes!
     forceAccumulator.addForce(
       knockback.entityId,
-      knockback.forceX,
-      knockback.forceY,
+      knockback.force.x,
+      knockback.force.y,
       'knockback'
     );
   }
@@ -103,12 +97,9 @@ export function collectKillsWithDeathAudio(
         x: target?.transform.x ?? 0,
         y: target?.transform.y ?? 0,
         deathContext: ctx ? {
-          unitVelX: target?.body?.physicsBody.vx ?? 0,
-          unitVelY: target?.body?.physicsBody.vy ?? 0,
-          hitDirX: ctx.penetrationDirX,
-          hitDirY: ctx.penetrationDirY,
-          projectileVelX: ctx.attackerVelX,
-          projectileVelY: ctx.attackerVelY,
+          unitVel: { x: target?.body?.physicsBody.vx ?? 0, y: target?.body?.physicsBody.vy ?? 0 },
+          hitDir: ctx.penetrationDir,
+          projectileVel: ctx.attackerVel,
           attackMagnitude: ctx.attackMagnitude,
           radius: target?.unit?.drawScale ?? 15,
           color: playerColor,
@@ -130,12 +121,9 @@ export function collectKillsWithDeathAudio(
         x: building?.transform.x ?? 0,
         y: building?.transform.y ?? 0,
         deathContext: {
-          unitVelX: 0,
-          unitVelY: 0,
-          hitDirX: 0,
-          hitDirY: -1,
-          projectileVelX: 0,
-          projectileVelY: 0,
+          unitVel: { x: 0, y: 0 },
+          hitDir: { x: 0, y: -1 },
+          projectileVel: { x: 0, y: 0 },
           attackMagnitude: 50,
           radius: (building?.building?.width ?? 100) / 2,
           color: playerColor,

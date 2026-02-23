@@ -7,6 +7,7 @@ export type { WeaponAudioId } from '@/types/combat';
 // Re-export all combat types
 export type {
   ImpactContext,
+  SimDeathContext,
   SimEvent,
   ProjectileSpawnEvent,
   ProjectileDespawnEvent,

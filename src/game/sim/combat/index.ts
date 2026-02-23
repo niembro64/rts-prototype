@@ -2,7 +2,7 @@
 // Re-exports all combat functionality from helper modules
 
 // Types
-export type { SimEvent, ImpactContext, FireWeaponsResult, CollisionResult, DeathContext, WeaponAudioId } from './types';
+export type { SimEvent, SimDeathContext, ImpactContext, FireWeaponsResult, CollisionResult, DeathContext, WeaponAudioId } from './types';
 export type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from './types';
 
 // Utility functions

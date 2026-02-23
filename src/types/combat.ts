@@ -2,6 +2,7 @@
 
 import type { EntityId, PlayerId, Entity } from './sim';
 import type { DeathContext } from './damage';
+import type { Vec2 } from './vec2';
 
 export type WeaponAudioId = string;
 
@@ -9,15 +10,20 @@ export type ImpactContext = {
   collisionRadius: number;
   primaryRadius: number;
   secondaryRadius: number;
-  projectileVelX: number;
-  projectileVelY: number;
-  projectileX: number;
-  projectileY: number;
-  entityVelX: number;
-  entityVelY: number;
-  entityCollisionRadius: number;
-  penetrationDirX: number;
-  penetrationDirY: number;
+  projectile: { pos: Vec2; vel: Vec2 };
+  entity: { vel: Vec2; collisionRadius: number };
+  penetrationDir: Vec2;
+};
+
+export type SimDeathContext = {
+  unitVel: Vec2;
+  hitDir: Vec2;
+  projectileVel: Vec2;
+  attackMagnitude: number;
+  radius: number;
+  color: number;
+  unitType?: string;
+  rotation?: number;
 };
 
 export type SimEvent = {
@@ -34,19 +40,7 @@ export type SimEvent = {
   x: number;
   y: number;
   entityId?: EntityId;
-  deathContext?: {
-    unitVelX: number;
-    unitVelY: number;
-    hitDirX: number;
-    hitDirY: number;
-    projectileVelX: number;
-    projectileVelY: number;
-    attackMagnitude: number;
-    radius: number;
-    color: number;
-    unitType?: string;
-    rotation?: number;
-  };
+  deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
 };
 
@@ -55,18 +49,15 @@ export type ProjectileSpawnEvent = {
   x: number;
   y: number;
   rotation: number;
-  velocityX: number;
-  velocityY: number;
+  velocity: Vec2;
   projectileType: string;
   weaponId: string;
   playerId: PlayerId;
   sourceEntityId: EntityId;
   weaponIndex: number;
   isDGun?: boolean;
-  beamStartX?: number;
-  beamStartY?: number;
-  beamEndX?: number;
-  beamEndY?: number;
+  beamStart?: Vec2;
+  beamEnd?: Vec2;
   targetEntityId?: EntityId;
   homingTurnRate?: number;
 };
@@ -79,8 +70,7 @@ export type ProjectileVelocityUpdateEvent = {
   id: EntityId;
   x: number;
   y: number;
-  velocityX: number;
-  velocityY: number;
+  velocity: Vec2;
 };
 
 export type FireWeaponsResult = {

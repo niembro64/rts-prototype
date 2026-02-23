@@ -68,8 +68,8 @@ function createUnitFromNetwork(
       mass: netEntity.mass ?? 25,
       actions,
       patrolStartIndex: null,
-      velocityX: netEntity.velocityX ?? 0,
-      velocityY: netEntity.velocityY ?? 0,
+      velocityX: netEntity.velocity?.x ?? 0,
+      velocityY: netEntity.velocity?.y ?? 0,
     },
   };
 
@@ -91,8 +91,8 @@ function createUnitFromNetwork(
         turretAngularVelocity: nw.turretAngularVelocity,
         turretTurnAccel: nw.turretTurnAccel,
         turretDrag: nw.turretDrag,
-        offsetX: nw.offsetX,
-        offsetY: nw.offsetY,
+        offsetX: nw.offset.x,
+        offsetY: nw.offset.y,
         currentForceFieldRange: nw.currentForceFieldRange,
       });
     }
@@ -155,8 +155,8 @@ function createBuildingFromNetwork(
       buildQueue: netEntity.buildQueue,
       currentBuildProgress: netEntity.factoryProgress ?? 0,
       currentBuildCost: 0,
-      rallyX: netEntity.rallyX ?? x,
-      rallyY: netEntity.rallyY ?? y + 100,
+      rallyX: netEntity.rally?.x ?? x,
+      rallyY: netEntity.rally?.y ?? y + 100,
       isProducing: netEntity.isProducing ?? false,
       waypoints,
     };
@@ -189,16 +189,16 @@ function createProjectileFromNetwork(
           cooldown: 1000,
         },
       projectileType: (netEntity.projectileType as 'instant' | 'traveling' | 'beam') ?? 'traveling',
-      velocityX: netEntity.velocityX ?? 0,
-      velocityY: netEntity.velocityY ?? 0,
+      velocityX: netEntity.velocity?.x ?? 0,
+      velocityY: netEntity.velocity?.y ?? 0,
       timeAlive: 0,
       maxLifespan: 2000,
       hitEntities: new Set(),
       maxHits: 1,
-      startX: netEntity.beamStartX,
-      startY: netEntity.beamStartY,
-      endX: netEntity.beamEndX,
-      endY: netEntity.beamEndY,
+      startX: netEntity.beamStart?.x,
+      startY: netEntity.beamStart?.y,
+      endX: netEntity.beamEnd?.x,
+      endY: netEntity.beamEnd?.y,
     },
   };
 }

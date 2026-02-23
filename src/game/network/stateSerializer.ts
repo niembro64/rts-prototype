@@ -21,7 +21,7 @@ function createPooledWeapon(): NetworkWeapon {
     configId: '', targetId: undefined,
     ranges: { tracking: { acquire: 0, release: 0 }, engage: { acquire: 0, release: 0 } },
     turretRotation: 0, turretAngularVelocity: 0, turretTurnAccel: 0, turretDrag: 0,
-    offsetX: 0, offsetY: 0,
+    offset: { x: 0, y: 0 },
     isTracking: false, isEngaged: false,
     currentForceFieldRange: undefined,
   };
@@ -377,10 +377,8 @@ export function serializeGameState(
         sourceId: st.sourceId,
         targetId: st.targetId,
         type: st.type,
-        sourceX: st.sourceX,
-        sourceY: st.sourceY,
-        targetX: st.targetX,
-        targetY: st.targetY,
+        source: st.source,
+        target: st.target,
         targetWidth: st.targetWidth,
         targetHeight: st.targetHeight,
         targetRadius: st.targetRadius,
@@ -418,15 +416,15 @@ export function serializeGameState(
       _spawnBuf.push({
         id: ps.id,
         x: ps.x, y: ps.y, rotation: ps.rotation,
-        velocityX: ps.velocityX, velocityY: ps.velocityY,
+        velocity: ps.velocity,
         projectileType: ps.projectileType,
         weaponId: ps.weaponId,
         playerId: ps.playerId,
         sourceEntityId: ps.sourceEntityId,
         weaponIndex: ps.weaponIndex,
         isDGun: ps.isDGun,
-        beamStartX: ps.beamStartX, beamStartY: ps.beamStartY,
-        beamEndX: ps.beamEndX, beamEndY: ps.beamEndY,
+        beamStart: ps.beamStart,
+        beamEnd: ps.beamEnd,
         targetEntityId: ps.targetEntityId,
         homingTurnRate: ps.homingTurnRate,
       });
@@ -450,7 +448,7 @@ export function serializeGameState(
     _velUpdateBuf.length = 0;
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
-      _velUpdateBuf.push({ id: vu.id, x: vu.x, y: vu.y, velocityX: vu.velocityX, velocityY: vu.velocityY });
+      _velUpdateBuf.push({ id: vu.id, x: vu.x, y: vu.y, velocity: vu.velocity });
     }
     netVelocityUpdates = _velUpdateBuf;
   }
@@ -496,8 +494,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   ne.radiusColliderUnitUnit = undefined;
   ne.moveSpeed = undefined;
   ne.mass = undefined;
-  ne.velocityX = undefined;
-  ne.velocityY = undefined;
+  ne.velocity = undefined;
   ne.turretRotation = undefined;
   ne.isCommander = undefined;
   ne.actions = undefined;
@@ -512,14 +509,11 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   ne.buildQueue = undefined;
   ne.factoryProgress = undefined;
   ne.isProducing = undefined;
-  ne.rallyX = undefined;
-  ne.rallyY = undefined;
+  ne.rally = undefined;
   ne.factoryWaypoints = undefined;
   ne.projectileType = undefined;
-  ne.beamStartX = undefined;
-  ne.beamStartY = undefined;
-  ne.beamEndX = undefined;
-  ne.beamEndY = undefined;
+  ne.beamStart = undefined;
+  ne.beamEnd = undefined;
   ne.sourceEntityId = undefined;
   ne.weaponIndex = undefined;
 
@@ -532,8 +526,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     ne.radiusColliderUnitUnit = entity.unit.radiusColliderUnitUnit;
     ne.moveSpeed = entity.unit.moveSpeed;
     ne.mass = entity.unit.mass;
-    ne.velocityX = entity.unit.velocityX ?? 0;
-    ne.velocityY = entity.unit.velocityY ?? 0;
+    ne.velocity = { x: entity.unit.velocityX ?? 0, y: entity.unit.velocityY ?? 0 };
 
     // Turret rotation for network display - use last weapon's rotation
     let turretRot = entity.transform.rotation;
@@ -583,8 +576,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         dst.turretAngularVelocity = src.turretAngularVelocity;
         dst.turretTurnAccel = src.turretTurnAccel;
         dst.turretDrag = src.turretDrag;
-        dst.offsetX = src.offsetX;
-        dst.offsetY = src.offsetY;
+        dst.offset = { x: src.offsetX, y: src.offsetY };
         dst.isTracking = src.isTracking;
         dst.isEngaged = src.isEngaged;
         dst.currentForceFieldRange = src.currentForceFieldRange;
@@ -620,8 +612,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
 
       ne.factoryProgress = entity.factory.currentBuildProgress;
       ne.isProducing = entity.factory.isProducing;
-      ne.rallyX = entity.factory.rallyX;
-      ne.rallyY = entity.factory.rallyY;
+      ne.rally = { x: entity.factory.rallyX, y: entity.factory.rallyY };
 
       const wps = entity.factory.waypoints;
       const wpCount = wps.length;

@@ -292,8 +292,7 @@ export function applyForceFieldDamage(
           id: projEntity.id,
           x: projEntity.transform.x,
           y: projEntity.transform.y,
-          velocityX: proj.velocityX,
-          velocityY: proj.velocityY,
+          velocity: { x: proj.velocityX, y: proj.velocityY },
         });
       }
     }

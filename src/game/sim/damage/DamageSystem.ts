@@ -139,8 +139,8 @@ export class DamageSystem {
     const result = resetResult();
 
     // Calculate knockback direction (along the beam)
-    const beamDx = source.endX - source.startX;
-    const beamDy = source.endY - source.startY;
+    const beamDx = source.end.x - source.start.x;
+    const beamDy = source.end.y - source.start.y;
     const beamLen = magnitude(beamDx, beamDy);
     const knockbackDirX = beamLen > 0 ? beamDx / beamLen : 0;
     const knockbackDirY = beamLen > 0 ? beamDy / beamLen : 0;
@@ -151,10 +151,10 @@ export class DamageSystem {
 
     // PERFORMANCE: Query only entities near the line using spatial grid
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(
-      source.startX, source.startY, source.endX, source.endY, source.width + 50
+      source.start.x, source.start.y, source.end.x, source.end.y, source.width + 50
     );
     const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
-      source.startX, source.startY, source.endX, source.endY, source.width + 100
+      source.start.x, source.start.y, source.end.x, source.end.y, source.width + 100
     );
 
     // Check units
@@ -163,7 +163,7 @@ export class DamageSystem {
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
       const t = lineCircleIntersectionT(
-        source.startX, source.startY, source.endX, source.endY,
+        source.start.x, source.start.y, source.end.x, source.end.y,
         unit.transform.x, unit.transform.y,
         unit.unit.radiusColliderUnitShot + source.width / 2
       );
@@ -184,7 +184,7 @@ export class DamageSystem {
       const rectY = building.transform.y - bHeight / 2;
 
       const t = lineRectIntersectionT(
-        source.startX, source.startY, source.endX, source.endY,
+        source.start.x, source.start.y, source.end.x, source.end.y,
         rectX, rectY, bWidth, bHeight
       );
 
@@ -210,8 +210,8 @@ export class DamageSystem {
       const forceY = knockbackDirY * lineMomentum;
 
       // Calculate hit point using T value
-      const hitX = source.startX + hit.t * (source.endX - source.startX);
-      const hitY = source.startY + hit.t * (source.endY - source.startY);
+      const hitX = source.start.x + hit.t * (source.end.x - source.start.x);
+      const hitY = source.start.y + hit.t * (source.end.y - source.start.y);
 
       // Calculate penetration direction: from hit point through unit center
       const penDirX = entity.transform.x - hitX;
@@ -222,10 +222,8 @@ export class DamageSystem {
 
       // Apply damage with death context (attacker velocity = beam direction * magnitude)
       this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
-        penetrationDirX: penNormX,
-        penetrationDirY: penNormY,
-        attackerVelX: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE,
-        attackerVelY: knockbackDirY * BEAM_EXPLOSION_MAGNITUDE,
+        penetrationDir: { x: penNormX, y: penNormY },
+        attackerVel: { x: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE, y: knockbackDirY * BEAM_EXPLOSION_MAGNITUDE },
         attackMagnitude: source.damage,
       });
       result.hitEntityIds.push(hit.entityId);
@@ -235,8 +233,7 @@ export class DamageSystem {
       if (hit.isUnit && lineMomentum > 0) {
         result.knockbacks.push({
           entityId: hit.entityId,
-          forceX,
-          forceY,
+          force: { x: forceX, y: forceY },
         });
       }
 
@@ -258,8 +255,8 @@ export class DamageSystem {
     const result = resetResult();
 
     // Calculate knockback direction (along projectile travel)
-    const projDx = source.currentX - source.prevX;
-    const projDy = source.currentY - source.prevY;
+    const projDx = source.current.x - source.prev.x;
+    const projDy = source.current.y - source.prev.y;
     const projLen = magnitude(projDx, projDy);
     const knockbackDirX = projLen > 0 ? projDx / projLen : 0;
     const knockbackDirY = projLen > 0 ? projDy / projLen : 0;
@@ -270,10 +267,10 @@ export class DamageSystem {
 
     // PERFORMANCE: Query only entities near the projectile path using spatial grid
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(
-      source.prevX, source.prevY, source.currentX, source.currentY, source.radius + 50
+      source.prev.x, source.prev.y, source.current.x, source.current.y, source.radius + 50
     );
     const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
-      source.prevX, source.prevY, source.currentX, source.currentY, source.radius + 100
+      source.prev.x, source.prev.y, source.current.x, source.current.y, source.radius + 100
     );
 
     // Check units using swept collision (line-circle with combined radii)
@@ -284,8 +281,8 @@ export class DamageSystem {
       // Treat projectile path as line, combine radii for collision
       const combinedRadius = source.radius + unit.unit.radiusColliderUnitShot;
       const t = lineCircleIntersectionT(
-        source.prevX, source.prevY,
-        source.currentX, source.currentY,
+        source.prev.x, source.prev.y,
+        source.current.x, source.current.y,
         unit.transform.x, unit.transform.y,
         combinedRadius
       );
@@ -307,8 +304,8 @@ export class DamageSystem {
       const rectY = building.transform.y - bHeight / 2 - source.radius;
 
       const t = lineRectIntersectionT(
-        source.prevX, source.prevY,
-        source.currentX, source.currentY,
+        source.prev.x, source.prev.y,
+        source.current.x, source.current.y,
         rectX, rectY,
         bWidth + source.radius * 2,
         bHeight + source.radius * 2
@@ -331,14 +328,14 @@ export class DamageSystem {
 
       // Calculate momentum-based knockback (p = mv)
       const projMass = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER;
-      const projSpeed = magnitude(source.velocityX ?? 0, source.velocityY ?? 0);
+      const projSpeed = magnitude(source.velocity?.x ?? 0, source.velocity?.y ?? 0);
       const force = projMass * projSpeed;
       const forceX = knockbackDirX * force;
       const forceY = knockbackDirY * force;
 
       // Calculate hit point using T value along projectile path
-      const hitX = source.prevX + hit.t * (source.currentX - source.prevX);
-      const hitY = source.prevY + hit.t * (source.currentY - source.prevY);
+      const hitX = source.prev.x + hit.t * (source.current.x - source.prev.x);
+      const hitY = source.prev.y + hit.t * (source.current.y - source.prev.y);
 
       // Calculate penetration direction: from hit point through unit center
       const penDirX = entity.transform.x - hitX;
@@ -349,13 +346,11 @@ export class DamageSystem {
 
       // Apply damage with death context (attacker velocity = actual projectile velocity)
       // Use actual projectile velocity if available, otherwise fallback to direction * damage
-      const attackerVelX = source.velocityX ?? knockbackDirX * source.damage;
-      const attackerVelY = source.velocityY ?? knockbackDirY * source.damage;
+      const attackerVelX = source.velocity?.x ?? knockbackDirX * source.damage;
+      const attackerVelY = source.velocity?.y ?? knockbackDirY * source.damage;
       this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
-        penetrationDirX: penNormX,
-        penetrationDirY: penNormY,
-        attackerVelX,
-        attackerVelY,
+        penetrationDir: { x: penNormX, y: penNormY },
+        attackerVel: { x: attackerVelX, y: attackerVelY },
         attackMagnitude: source.damage,
       });
       result.hitEntityIds.push(hit.entityId);
@@ -365,8 +360,7 @@ export class DamageSystem {
       if (hit.isUnit && projMass > 0) {
         result.knockbacks.push({
           entityId: hit.entityId,
-          forceX,
-          forceY,
+          force: { x: forceX, y: forceY },
         });
       }
     }
@@ -384,16 +378,16 @@ export class DamageSystem {
     const sliceDirection = source.sliceDirection ?? 0;
 
     // PERFORMANCE: Query only entities within the damage radius using spatial grid
-    const nearbyUnits = spatialGrid.queryUnitsInRadius(source.centerX, source.centerY, source.radius + 50);
-    const nearbyBuildings = spatialGrid.queryBuildingsInRadius(source.centerX, source.centerY, source.radius + 100);
+    const nearbyUnits = spatialGrid.queryUnitsInRadius(source.center.x, source.center.y, source.radius + 50);
+    const nearbyBuildings = spatialGrid.queryBuildingsInRadius(source.center.x, source.center.y, source.radius + 100);
 
     // Check units
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
-      const dx = unit.transform.x - source.centerX;
-      const dy = unit.transform.y - source.centerY;
+      const dx = unit.transform.x - source.center.x;
+      const dy = unit.transform.y - source.center.y;
       const targetRadius = unit.unit.radiusColliderUnitShot;
 
       // Cheap squared-distance rejection before sqrt
@@ -428,10 +422,8 @@ export class DamageSystem {
       // (same as knockback direction - outward from center)
       // Attacker velocity uses direction * force for area damage
       this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
-        penetrationDirX: dirX,
-        penetrationDirY: dirY,
-        attackerVelX: dirX * force,
-        attackerVelY: dirY * force,
+        penetrationDir: { x: dirX, y: dirY },
+        attackerVel: { x: dirX * force, y: dirY * force },
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(unit.id);
@@ -440,8 +432,7 @@ export class DamageSystem {
       if (force > 0 && dist > 0) {
         result.knockbacks.push({
           entityId: unit.id,
-          forceX,
-          forceY,
+          force: { x: forceX, y: forceY },
         });
       }
     }
@@ -451,8 +442,8 @@ export class DamageSystem {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      const dx = building.transform.x - source.centerX;
-      const dy = building.transform.y - source.centerY;
+      const dx = building.transform.x - source.center.x;
+      const dy = building.transform.y - source.center.y;
       const buildingRadius = getTargetRadius(building);
 
       // Cheap squared-distance rejection before sqrt
@@ -483,10 +474,8 @@ export class DamageSystem {
       // Apply damage with death context
       const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       this.applyDamageToEntity(building, damage, result, source.sourceEntityId, {
-        penetrationDirX: dirX,
-        penetrationDirY: dirY,
-        attackerVelX: dirX * bForce,
-        attackerVelY: dirY * bForce,
+        penetrationDir: { x: dirX, y: dirY },
+        attackerVel: { x: dirX * bForce, y: dirY * bForce },
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(building.id);

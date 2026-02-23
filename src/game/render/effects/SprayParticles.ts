@@ -15,7 +15,9 @@ export function renderSprayEffect(
 ): void {
   const color =
     target.type === 'build' ? COLORS.SPRAY_BUILD : COLORS.SPRAY_HEAL;
-  const { sourceX, sourceY, targetX, targetY, intensity } = target;
+  const sourceX = target.source.x, sourceY = target.source.y;
+  const targetX = target.target.x, targetY = target.target.y;
+  const intensity = target.intensity;
 
   // Calculate direction vector
   const dx = targetX - sourceX;

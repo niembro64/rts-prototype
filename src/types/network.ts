@@ -2,7 +2,8 @@
 
 import type { PlayerId, TurretRanges } from './sim';
 import type { Command } from './commands';
-import type { WeaponAudioId } from './combat';
+import type { WeaponAudioId, ImpactContext, SimDeathContext } from './combat';
+import type { Vec2 } from './vec2';
 
 export type NetworkMessage =
   | { type: 'state'; data: NetworkGameState | string }
@@ -26,33 +27,8 @@ export type NetworkSimEvent = {
   x: number;
   y: number;
   entityId?: number;
-  deathContext?: {
-    unitVelX: number;
-    unitVelY: number;
-    hitDirX: number;
-    hitDirY: number;
-    projectileVelX: number;
-    projectileVelY: number;
-    attackMagnitude: number;
-    radius: number;
-    color: number;
-    unitType?: string;
-    rotation?: number;
-  };
-  impactContext?: {
-    collisionRadius: number;
-    primaryRadius: number;
-    secondaryRadius: number;
-    projectileVelX: number;
-    projectileVelY: number;
-    projectileX: number;
-    projectileY: number;
-    entityVelX: number;
-    entityVelY: number;
-    entityCollisionRadius: number;
-    penetrationDirX: number;
-    penetrationDirY: number;
-  };
+  deathContext?: SimDeathContext;
+  impactContext?: ImpactContext;
 };
 
 export type NetworkProjectileSpawn = {
@@ -60,18 +36,15 @@ export type NetworkProjectileSpawn = {
   x: number;
   y: number;
   rotation: number;
-  velocityX: number;
-  velocityY: number;
+  velocity: Vec2;
   projectileType: string;
   weaponId: string;
   playerId: number;
   sourceEntityId: number;
   weaponIndex: number;
   isDGun?: boolean;
-  beamStartX?: number;
-  beamStartY?: number;
-  beamEndX?: number;
-  beamEndY?: number;
+  beamStart?: Vec2;
+  beamEnd?: Vec2;
   targetEntityId?: number;
   homingTurnRate?: number;
 };
@@ -84,8 +57,7 @@ export type NetworkProjectileVelocityUpdate = {
   id: number;
   x: number;
   y: number;
-  velocityX: number;
-  velocityY: number;
+  velocity: Vec2;
 };
 
 export type NetworkGridCell = {
@@ -149,10 +121,8 @@ export type NetworkSprayTarget = {
   sourceId: number;
   targetId: number;
   type: 'build' | 'heal';
-  sourceX: number;
-  sourceY: number;
-  targetX: number;
-  targetY: number;
+  source: Vec2;
+  target: Vec2;
   targetWidth?: number;
   targetHeight?: number;
   targetRadius?: number;
@@ -178,8 +148,7 @@ export type NetworkWeapon = {
   turretAngularVelocity: number;
   turretTurnAccel: number;
   turretDrag: number;
-  offsetX: number;
-  offsetY: number;
+  offset: Vec2;
   isTracking: boolean;
   isEngaged: boolean;
   currentForceFieldRange?: number;
@@ -200,8 +169,7 @@ export type NetworkEntity = {
   radiusColliderUnitUnit?: number;
   moveSpeed?: number;
   mass?: number;
-  velocityX?: number;
-  velocityY?: number;
+  velocity?: Vec2;
   turretRotation?: number;
   isCommander?: boolean;
   actions?: NetworkAction[];
@@ -214,17 +182,14 @@ export type NetworkEntity = {
   isComplete?: boolean;
   buildingType?: string;
   projectileType?: string;
-  beamStartX?: number;
-  beamStartY?: number;
-  beamEndX?: number;
-  beamEndY?: number;
+  beamStart?: Vec2;
+  beamEnd?: Vec2;
   sourceEntityId?: number;
   weaponIndex?: number;
   buildQueue?: string[];
   factoryProgress?: number;
   isProducing?: boolean;
-  rallyX?: number;
-  rallyY?: number;
+  rally?: Vec2;
   factoryWaypoints?: { x: number; y: number; type: string }[];
 };
 
