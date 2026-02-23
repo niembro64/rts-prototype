@@ -38,7 +38,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 8 * 1.2,
     mass: 10,
     baseCost: 65,
-    weapons: [{ weaponId: 'lightTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'lightTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'wheels',
@@ -65,7 +65,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 10 * 1.3,
     mass: 15,
     baseCost: 100,
-    weapons: [{ weaponId: 'pulseTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'pulseTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'treads',
@@ -91,7 +91,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 13 * 2.5,
     mass: 25,
     baseCost: 500,
-    weapons: [{ weaponId: 'forceTurretLarge', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'forceTurretLarge', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'legs',
@@ -112,7 +112,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 16 * 1.4,
     mass: 300,
     baseCost: 500,
-    weapons: [{ weaponId: 'shotgunTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'shotgunTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'treads',
@@ -138,7 +138,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 14 * 1.2,
     mass: 35,
     baseCost: 85,
-    weapons: [{ weaponId: 'mortarTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'mortarTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'wheels',
@@ -165,7 +165,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 11 * 1.1,
     mass: 9,
     baseCost: 35,
-    weapons: [{ weaponId: 'laserTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'laserTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: -0.45, y: 0 }],
     locomotion: {
       type: 'legs',
@@ -186,7 +186,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 24 * 1.5,
     mass: 1000,
     baseCost: 2500,
-    weapons: [{ weaponId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'treads',
@@ -212,14 +212,14 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 40 * 1.3,
     mass: 200,
     baseCost: 3000,
-    weapons: [
-      { weaponId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
-      { weaponId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
-      { weaponId: 'beamTurret4', offsetX: 0, offsetY: 0 }, // back
-      { weaponId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-right
-      { weaponId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-right
-      { weaponId: 'beamTurret7', offsetX: 0, offsetY: 0 }, // front
-      { weaponId: 'forceTurretMedium', offsetX: 0, offsetY: 0 }, // center
+    turrets: [
+      { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
+      { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
+      { turretId: 'beamTurret4', offsetX: 0, offsetY: 0 }, // back
+      { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-right
+      { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-right
+      { turretId: 'beamTurret7', offsetX: 0, offsetY: 0 }, // front
+      { turretId: 'forceTurretMedium', offsetX: 0, offsetY: 0 }, // center
     ],
     chassisMounts: computeWidowMounts(),
     locomotion: {
@@ -228,7 +228,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       config: { thickness: 6, footSize: 0.1, lerpDuration: 600 },
     },
     renderer: 'arachnid',
-    weaponSeeRange: 400,
+    seeRange: 400,
     deathSound: AUDIO.event.death.widow,
   },
   hippo: {
@@ -242,9 +242,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 45 * 1.2,
     mass: 1500,
     baseCost: 50000,
-    weapons: [
-      { weaponId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
-      { weaponId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
+    turrets: [
+      { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
+      { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [
       { x: 0.2, y: -0.7 },
@@ -274,7 +274,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 11 * 1.8,
     mass: 18,
     baseCost: 460,
-    weapons: [{ weaponId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
       type: 'legs',
@@ -295,9 +295,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 20,
     mass: 60,
     baseCost: 0,
-    weapons: [
-      { weaponId: 'beamTurret3', offsetX: 0, offsetY: 0 },
-      { weaponId: 'dgunTurret', offsetX: 0, offsetY: 0 },
+    turrets: [
+      { turretId: 'beamTurret3', offsetX: 0, offsetY: 0 },
+      { turretId: 'dgunTurret', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [
       { x: 0.3, y: 0 },
@@ -310,7 +310,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'commander',
     builder: { buildRange: 150, maxEnergyUseRate: 50 },
-    dgun: { weaponId: 'dgunTurret', energyCost: 200 },
+    dgun: { turretId: 'dgunTurret', energyCost: 200 },
     deathSound: AUDIO.event.death.commander,
   },
 };

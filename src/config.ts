@@ -17,7 +17,7 @@ export type {
   ForceFieldTurretShape,
   ForceFieldTurretConfig,
   SpinConfig,
-  TurretConfig,
+  BarrelShape,
   MountPoint,
   BuildingStatEntry,
   MapSize,

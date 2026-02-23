@@ -565,15 +565,15 @@ export class GameServer {
     const cellMap = new Map<number, Set<number>>();
 
     for (const unit of this.world.getUnits()) {
-      if (!unit.unit || unit.unit.hp <= 0 || !unit.weapons || unit.weapons.length === 0) continue;
+      if (!unit.unit || unit.unit.hp <= 0 || !unit.turrets || unit.turrets.length === 0) continue;
       const playerId = unit.ownership?.playerId;
       if (playerId === undefined) continue;
 
       // Find max seeRange across all weapons
       let maxSeeRange = 0;
-      for (let i = 0; i < unit.weapons.length; i++) {
-        if (unit.weapons[i].ranges.tracking.release > maxSeeRange) {
-          maxSeeRange = unit.weapons[i].ranges.tracking.release;
+      for (let i = 0; i < unit.turrets.length; i++) {
+        if (unit.turrets[i].ranges.tracking.release > maxSeeRange) {
+          maxSeeRange = unit.turrets[i].ranges.tracking.release;
         }
       }
       if (maxSeeRange <= 0) continue;

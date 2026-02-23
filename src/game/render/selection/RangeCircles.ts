@@ -19,12 +19,12 @@ export function renderRangeCircles(
 ): void {
   if (!entity.unit) return;
 
-  const { transform, weapons, builder } = entity;
+  const { transform, turrets, builder } = entity;
   const { x, y } = transform;
 
-  if (weapons && weapons.length > 0) {
-    for (const w of weapons) {
-      const wp = getWeaponWorldPosition(x, y, transform.rotCos ?? 1, transform.rotSin ?? 0, w.offsetX, w.offsetY);
+  if (turrets && turrets.length > 0) {
+    for (const w of turrets) {
+      const wp = getWeaponWorldPosition(x, y, transform.rotCos ?? 1, transform.rotSin ?? 0, w.offset.x, w.offset.y);
       const wx = wp.x;
       const wy = wp.y;
 

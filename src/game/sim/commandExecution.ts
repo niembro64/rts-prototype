@@ -146,7 +146,7 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
   const factory = ctx.world.getEntity(command.factoryId);
   if (!factory?.factory) return;
 
-  factoryProductionSystem.queueUnit(factory, command.weaponId);
+  factoryProductionSystem.queueUnit(factory, command.unitId);
 }
 
 function executeCancelQueueItemCommand(ctx: CommandContext, command: CancelQueueItemCommand): void {
@@ -191,7 +191,7 @@ function executeSetFactoryWaypointsCommand(ctx: CommandContext, command: SetFact
 
 function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
-  if (!commander?.commander || !commander.ownership || !commander.weapons) return;
+  if (!commander?.commander || !commander.ownership || !commander.turrets) return;
 
   const playerId = commander.ownership.playerId;
 
@@ -201,10 +201,10 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     return;
   }
 
-  // Find the dgun weapon by config id
-  const dgunIdx = commander.weapons.findIndex(w => w.config.id === 'dgunTurret');
+  // Find the dgun turret by config id
+  const dgunIdx = commander.turrets.findIndex(w => w.config.id === 'dgunTurret');
   if (dgunIdx < 0) return;
-  const dgunWeapon = commander.weapons[dgunIdx];
+  const dgunTurret = commander.turrets[dgunIdx];
 
   // Spend energy
   economyManager.spendInstant(playerId, dgunCost);
@@ -219,27 +219,27 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const fireAngle = Math.atan2(dy, dx);
 
   // Snap dgun turret to target direction
-  dgunWeapon.turretRotation = fireAngle;
-  dgunWeapon.turretAngularVelocity = 0;
+  dgunTurret.rotation = fireAngle;
+  dgunTurret.angularVelocity = 0;
 
-  // Compute weapon world position from unit transform + weapon offset
+  // Compute turret world position from unit transform + turret offset
   const { cos, sin } = getTransformCosSin(commander.transform);
   const weaponPos = getWeaponWorldPosition(
     commander.transform.x, commander.transform.y,
     cos, sin,
-    dgunWeapon.offsetX, dgunWeapon.offsetY
+    dgunTurret.offset.x, dgunTurret.offset.y
   );
 
   const fireCos = Math.cos(fireAngle);
   const fireSin = Math.sin(fireAngle);
 
   // Spawn position at barrel tip
-  const bt = getBarrelTipWorldPos(weaponPos.x, weaponPos.y, fireAngle, dgunWeapon.config, commander.unit!.drawScale);
+  const bt = getBarrelTipWorldPos(weaponPos.x, weaponPos.y, fireAngle, dgunTurret.config, commander.unit!.drawScale);
   const spawnX = bt.x;
   const spawnY = bt.y;
 
   // Calculate velocity with turret-tip inheritance
-  const speed = dgunWeapon.config.projectileSpeed ?? 350;
+  const speed = dgunTurret.config.shot?.speed ?? 350;
   let velocityX = fireCos * speed;
   let velocityY = fireSin * speed;
   if (ctx.world.projVelInherit && commander.unit) {
@@ -249,7 +249,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     // Turret rotational velocity at fire point (tangential = omega * r)
     const barrelDx = bt.x - weaponPos.x;
     const barrelDy = bt.y - weaponPos.y;
-    const omega = dgunWeapon.turretAngularVelocity;
+    const omega = dgunTurret.angularVelocity;
     velocityX += -barrelDy * omega;
     velocityY += barrelDx * omega;
   }
@@ -262,7 +262,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     velocityY,
     playerId,
     commander.id,
-    dgunWeapon.config
+    dgunTurret.config
   );
 
   ctx.world.addEntity(projectile);
@@ -274,10 +274,10 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     rotation: fireAngle,
     velocity: { x: velocityX, y: velocityY },
     projectileType: 'traveling',
-    weaponId: 'dgunTurret',
+    turretId: 'dgunTurret',
     playerId,
     sourceEntityId: commander.id,
-    weaponIndex: dgunIdx,
+    turretIndex: dgunIdx,
     isDGun: true,
   });
 
@@ -285,7 +285,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const dgunSimEvent: SimEvent = {
     type: 'fire',
     pos: { x: spawnX, y: spawnY },
-    weaponId: 'dgunTurret',
+    turretId: 'dgunTurret',
   };
   ctx.onSimEvent?.(dgunSimEvent);
   ctx.pendingSimEvents.push(dgunSimEvent);

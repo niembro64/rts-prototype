@@ -2,7 +2,7 @@
 
 import type { EntityType, PlayerId, TurretRanges } from './sim';
 import type { Command } from './commands';
-import type { WeaponAudioId, ImpactContext, SimDeathContext } from './combat';
+import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2 } from './vec2';
 
 export type NetworkMessage =
@@ -23,7 +23,7 @@ export type NetworkSimEvent = {
     | 'forceFieldStart'
     | 'forceFieldStop'
     | 'projectileExpire';
-  weaponId: WeaponAudioId;
+  turretId: TurretAudioId;
   pos: Vec2;
   entityId?: number;
   deathContext?: SimDeathContext;
@@ -36,10 +36,10 @@ export type NetworkProjectileSpawn = {
   rotation: number;
   velocity: Vec2;
   projectileType: string;
-  weaponId: string;
+  turretId: string;
   playerId: number;
   sourceEntityId: number;
-  weaponIndex: number;
+  turretIndex: number;
   isDGun?: boolean;
   beam?: { start: Vec2; end: Vec2 };
   targetEntityId?: number;
@@ -123,7 +123,7 @@ export type NetworkAction = {
   buildingId?: number;
 };
 
-export type NetworkWeapon = {
+export type NetworkTurret = {
   turret: {
     id: string;
     ranges: TurretRanges;
@@ -162,7 +162,7 @@ export type NetworkEntity = {
     isCommander?: boolean;
     buildTargetId?: number;
     actions?: NetworkAction[];
-    weapons?: NetworkWeapon[];
+    turrets?: NetworkTurret[];
   };
   building?: {
     type: string;
@@ -179,8 +179,8 @@ export type NetworkEntity = {
   shot?: {
     type: string;
     source: number;
-    weaponId?: string;
-    weaponIndex?: number;
+    turretId?: string;
+    turretIndex?: number;
     velocity?: Vec2;
   };
 };

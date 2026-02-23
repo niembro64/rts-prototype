@@ -4,7 +4,7 @@ import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { SimEvent, FireWeaponsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
+import type { SimEvent, FireTurretsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER } from '../../../config';
@@ -26,7 +26,7 @@ const _emptyExcludeSet = new Set<EntityId>();
 // Reusable set for secondary damage exclusion (avoids per-tick allocation)
 const _beamSecondaryExcludeSet = new Set<EntityId>();
 
-// Reusable arrays for fireWeapons (avoids per-frame allocation)
+// Reusable arrays for fireTurrets (avoids per-frame allocation)
 const _fireNewProjectiles: Entity[] = [];
 const _fireSimEvents: SimEvent[] = [];
 const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
@@ -49,13 +49,13 @@ export function resetProjectileBuffers(): void {
 
 // Check if a specific weapon has an active beam (by weapon index)
 // Uses O(1) beam index lookup instead of O(n) projectile scan
-function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, weaponIndex: number): boolean {
-  return beamIndex.hasActiveBeam(unitId, weaponIndex);
+function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, turretIndex: number): boolean {
+  return beamIndex.hasActiveBeam(unitId, turretIndex);
 }
 
 // Fire weapons at targets - unified for all units
 // Each weapon fires independently based on its own state
-export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: ForceAccumulator): FireWeaponsResult {
+export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: ForceAccumulator): FireTurretsResult {
   _fireNewProjectiles.length = 0;
   _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
@@ -64,37 +64,37 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
   const spawnEvents = _fireSpawnEvents;
 
   for (const unit of world.getUnits()) {
-    if (!unit.ownership || !unit.unit || !unit.weapons) continue;
+    if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
 
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
 
     // Fire each weapon independently
-    for (let weaponIndex = 0; weaponIndex < unit.weapons.length; weaponIndex++) {
-      const weapon = unit.weapons[weaponIndex];
+    for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
+      const weapon = unit.turrets[weaponIndex];
       const config = weapon.config;
-      const isBeamWeapon = config.beam !== undefined;
+      const isBeamWeapon = config.shot?.beam !== undefined;
       const isContinuousBeam = isBeamWeapon && config.cooldown === 0;
       const isCooldownBeam = isBeamWeapon && config.cooldown > 0;
 
       // Skip if weapon is not engaged (target not in range or no target)
-      if (!weapon.isEngaged) continue;
+      if (!weapon.engaged) continue;
 
       // Apply beam/railgun recoil any time the weapon is firing (momentum-based: mass × velocity)
-      if (isBeamWeapon && forceAccumulator && config.projectileMass && config.projectileSpeed) {
+      if (isBeamWeapon && forceAccumulator && config.shot?.mass && config.shot?.speed) {
         const dtSec = dtMs / 1000;
-        const knockBackPerTick = config.projectileMass * PROJECTILE_MASS_MULTIPLIER * config.projectileSpeed * dtSec;
-        const turretAngle = weapon.turretRotation;
+        const knockBackPerTick = config.shot.mass * PROJECTILE_MASS_MULTIPLIER * config.shot.speed * dtSec;
+        const turretAngle = weapon.rotation;
         const dirX = Math.cos(turretAngle);
         const dirY = Math.sin(turretAngle);
         forceAccumulator.addForce(unit.id, -dirX * knockBackPerTick, -dirY * knockBackPerTick, 'recoil');
       }
 
-      const target = world.getEntity(weapon.targetEntityId!);
+      const target = world.getEntity(weapon.target!);
       if (!target) {
-        weapon.targetEntityId = null;
-        weapon.isEngaged = false;
+        weapon.target = null;
+        weapon.engaged = false;
         continue;
       }
 
@@ -106,10 +106,10 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       if (isContinuousBeam) {
         if (hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       } else {
-        const canFire = weapon.currentCooldown <= 0;
-        const canBurstFire = weapon.burstShotsRemaining !== undefined &&
-          weapon.burstShotsRemaining > 0 &&
-          (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
+        const canFire = weapon.cooldown <= 0;
+        const canBurstFire = weapon.burst?.remaining !== undefined &&
+          weapon.burst.remaining > 0 &&
+          (weapon.burst.cooldown === undefined || weapon.burst.cooldown <= 0);
 
         if (!canFire && !canBurstFire) continue;
 
@@ -120,23 +120,21 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       // For cooldown beams, cooldown is set when the beam expires (not at fire time),
       // so the gap between shots = beamDuration + cooldown.
       if (!isContinuousBeam) {
-        const canFire = weapon.currentCooldown <= 0;
-        const canBurstFire = weapon.burstShotsRemaining !== undefined &&
-          weapon.burstShotsRemaining > 0 &&
-          (weapon.burstCooldown === undefined || weapon.burstCooldown <= 0);
+        const canFire = weapon.cooldown <= 0;
+        const canBurstFire = weapon.burst?.remaining !== undefined &&
+          weapon.burst.remaining > 0 &&
+          (weapon.burst.cooldown === undefined || weapon.burst.cooldown <= 0);
 
-        if (canBurstFire && weapon.burstShotsRemaining !== undefined) {
-          weapon.burstShotsRemaining--;
-          weapon.burstCooldown = config.burst?.delay ?? 80;
-          if (weapon.burstShotsRemaining <= 0) {
-            weapon.burstShotsRemaining = undefined;
-            weapon.burstCooldown = undefined;
+        if (canBurstFire && weapon.burst?.remaining !== undefined) {
+          weapon.burst!.remaining--;
+          weapon.burst!.cooldown = config.burst?.delay ?? 80;
+          if (weapon.burst!.remaining <= 0) {
+            weapon.burst = undefined;
           }
         } else if (canFire && !isCooldownBeam) {
-          weapon.currentCooldown = config.cooldown;
+          weapon.cooldown = config.cooldown;
           if (config.burst?.count && config.burst.count > 1) {
-            weapon.burstShotsRemaining = config.burst.count - 1;
-            weapon.burstCooldown = config.burst?.delay ?? 80;
+            weapon.burst = { remaining: config.burst.count - 1, cooldown: config.burst?.delay ?? 80 };
           }
         }
       }
@@ -145,13 +143,13 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
       if ((!isBeamWeapon || isCooldownBeam) && !config.forceField) {
         audioEvents.push({
           type: 'fire',
-          weaponId: config.id,
+          turretId: config.id,
           pos: { x: weaponX, y: weaponY },
         });
       }
 
       // Fire the weapon in turret direction
-      const turretAngle = weapon.turretRotation;
+      const turretAngle = weapon.rotation;
 
       // Create projectile(s)
       const pellets = config.spread?.pelletCount ?? 1;
@@ -178,8 +176,8 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
           const endX = spawnX + fireCos * beamLength;
           const endY = spawnY + fireSin * beamLength;
 
-          // Tag config with weaponIndex for beam tracking (mutate in place — each weapon has its own config copy)
-          config.weaponIndex = weaponIndex;
+          // Tag config with turretIndex for beam tracking (mutate in place — each weapon has its own config copy)
+          config.turretIndex = weaponIndex;
           const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config);
           if (beam.projectile) {
             beam.projectile.sourceEntityId = unit.id;
@@ -192,16 +190,16 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
             pos: { x: spawnX, y: spawnY }, rotation: angle,
             velocity: { x: 0, y: 0 },
             projectileType: 'beam',
-            weaponId: config.id,
+            turretId: config.id,
             playerId,
             sourceEntityId: unit.id,
-            weaponIndex,
+            turretIndex: weaponIndex,
             beam: { start: { x: spawnX, y: spawnY }, end: { x: endX, y: endY } },
           });
           // Note: Beam recoil is applied continuously in applyLineDamage while dealing damage
-        } else if (config.projectileSpeed !== undefined) {
+        } else if (config.shot?.speed !== undefined) {
           // Create traveling projectile
-          const speed = config.projectileSpeed;
+          const speed = config.shot.speed;
           let projVx = fireCos * speed;
           let projVy = fireSin * speed;
           if (world.projVelInherit && unit.unit) {
@@ -211,7 +209,7 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
             // Turret rotational velocity at fire point (tangential = omega * r)
             const barrelDx = fireCos * barrelOffset;
             const barrelDy = fireSin * barrelOffset;
-            const omega = weapon.turretAngularVelocity;
+            const omega = weapon.angularVelocity;
             projVx += -barrelDy * omega;
             projVy += barrelDx * omega;
           }
@@ -226,9 +224,9 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
             'traveling'
           );
           // Set homing properties if weapon has homingTurnRate and weapon has a locked target
-          if (config.homingTurnRate && weapon.targetEntityId !== null) {
-            projectile.projectile!.homingTargetId = weapon.targetEntityId;
-            projectile.projectile!.homingTurnRate = config.homingTurnRate;
+          if (config.shot?.homingTurnRate && weapon.target !== null) {
+            projectile.projectile!.homingTargetId = weapon.target;
+            projectile.projectile!.homingTurnRate = config.shot.homingTurnRate;
           }
 
           newProjectiles.push(projectile);
@@ -237,17 +235,17 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
             pos: { x: spawnX, y: spawnY }, rotation: angle,
             velocity: { x: projVx, y: projVy },
             projectileType: 'traveling',
-            weaponId: config.id,
+            turretId: config.id,
             playerId,
             sourceEntityId: unit.id,
-            weaponIndex,
-            targetEntityId: (config.homingTurnRate && weapon.targetEntityId !== null) ? weapon.targetEntityId : undefined,
-            homingTurnRate: config.homingTurnRate,
+            turretIndex: weaponIndex,
+            targetEntityId: (config.shot?.homingTurnRate && weapon.target !== null) ? weapon.target : undefined,
+            homingTurnRate: config.shot?.homingTurnRate,
           });
 
           // Apply recoil to firing unit (momentum-based: p = mv)
-          if (forceAccumulator && config.projectileMass && config.projectileMass > 0) {
-            const recoilForce = config.projectileMass * PROJECTILE_MASS_MULTIPLIER * (config.projectileSpeed ?? 0);
+          if (forceAccumulator && config.shot?.mass && config.shot.mass > 0) {
+            const recoilForce = config.shot.mass * PROJECTILE_MASS_MULTIPLIER * (config.shot?.speed ?? 0);
             forceAccumulator.addForce(unit.id, -fireCos * recoilForce, -fireSin * recoilForce, 'recoil');
           }
         }
@@ -302,7 +300,7 @@ export function updateProjectiles(
           const dx = proj.prevX - source.transform.x;
           const dy = proj.prevY - source.transform.y;
           const distSq = dx * dx + dy * dy;
-          const clearance = source.unit.radiusColliderUnitShot + (proj.config.collision?.radius ?? 5) + 2;
+          const clearance = source.unit.radiusColliderUnitShot + (proj.config.shot?.collision?.radius ?? 5) + 2;
           if (distSq > clearance * clearance) {
             proj.hasLeftSource = true;
           }
@@ -341,18 +339,18 @@ export function updateProjectiles(
       const source = world.getEntity(proj.sourceEntityId);
 
       // Get weapon index from config
-      const weaponIndex = proj.config.weaponIndex ?? 0;
+      const weaponIndex = proj.config.turretIndex ?? 0;
 
       // Remove beam if source unit is dead or gone
-      if (!source || !source.unit || source.unit.hp <= 0 || !source.weapons) {
+      if (!source || !source.unit || source.unit.hp <= 0 || !source.turrets) {
         beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
         projectilesToRemove.push(entity.id);
         despawnEvents.push({ id: entity.id });
         continue;
       }
 
-      if (source && source.unit && source.weapons) {
-        const weapon = source.weapons[weaponIndex];
+      if (source && source.unit && source.turrets) {
+        const weapon = source.turrets[weaponIndex];
 
         if (!weapon) {
           beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
@@ -364,7 +362,7 @@ export function updateProjectiles(
         // Continuous beams: stay alive while firing, remove immediately when not
         const isContinuous = (proj.config.cooldown === 0);
         if (isContinuous) {
-          if (weapon.isEngaged) {
+          if (weapon.engaged) {
             proj.timeAlive = 0;
           } else {
             // Remove immediately — no linger time
@@ -376,7 +374,7 @@ export function updateProjectiles(
         }
 
         // Get turret direction from specific weapon
-        const turretAngle = weapon.turretRotation;
+        const turretAngle = weapon.rotation;
         const dirX = Math.cos(turretAngle);
         const dirY = Math.sin(turretAngle);
 
@@ -398,7 +396,7 @@ export function updateProjectiles(
         // Find closest obstruction using unified DamageSystem
         // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness)
         const currentTick = world.getTick();
-        const collisionRadius = proj.config.collision?.radius ?? 2;
+        const collisionRadius = proj.config.shot?.collision?.radius ?? 2;
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= 3) {
           const obstruction = damageSystem.findLineObstruction(
             proj.startX, proj.startY,
@@ -465,18 +463,18 @@ export function checkProjectileCollisions(
 
       // Handle splash damage on expiration — only for projectiles with splashOnExpiry enabled
       // Small projectiles (lightShot, mediumShot) only splash on direct hit, not on expiration
-      if (config.explosion?.primary.radius && config.splashOnExpiry && !proj.hasExploded) {
+      if (config.shot?.explosion?.primary.radius && config.shot?.splashOnExpiry && !proj.hasExploded) {
         // Primary zone: explicit primary radius damage
         const primaryResult = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
-          damage: config.explosion!.primary.damage,
+          damage: config.shot!.explosion!.primary.damage,
           excludeEntities: proj.hitEntities,
           center: { x: projEntity.transform.x, y: projEntity.transform.y },
-          radius: config.explosion!.primary.radius,
+          radius: config.shot!.explosion!.primary.radius,
           falloff: 1,
-          knockbackForce: config.explosion!.primary.force,
+          knockbackForce: config.shot!.explosion!.primary.force,
         });
         proj.hasExploded = true;
 
@@ -487,7 +485,7 @@ export function checkProjectileCollisions(
         collectKillsAndDeathContexts(primaryResult, unitsToRemove, buildingsToRemove, deathContexts);
 
         // Secondary zone: explicit secondary damage, exclude primary hits
-        if (config.explosion!.secondary.radius > config.explosion!.primary.radius) {
+        if (config.shot!.explosion!.secondary.radius > config.shot!.explosion!.primary.radius) {
           // Build exclude set: original hitEntities + primary hits
           _beamSecondaryExcludeSet.clear();
           for (const id of proj.hitEntities) _beamSecondaryExcludeSet.add(id);
@@ -497,12 +495,12 @@ export function checkProjectileCollisions(
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: config.explosion!.secondary.damage,
+            damage: config.shot!.explosion!.secondary.damage,
             excludeEntities: _beamSecondaryExcludeSet,
             center: { x: projEntity.transform.x, y: projEntity.transform.y },
-            radius: config.explosion!.secondary.radius,
+            radius: config.shot!.explosion!.secondary.radius,
             falloff: 1,
-            knockbackForce: config.explosion!.secondary.force,
+            knockbackForce: config.shot!.explosion!.secondary.force,
           });
 
           applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
@@ -514,10 +512,10 @@ export function checkProjectileCollisions(
           // Use first hit entity for directional context (area splash, pick nearest)
           const firstHitEntity = primaryResult.hitEntityIds.length > 0
             ? world.getEntity(primaryResult.hitEntityIds[0]) : undefined;
-          const projCollisionRadius = config.collision?.radius ?? 2;
+          const projCollisionRadius = config.shot?.collision?.radius ?? 2;
           audioEvents.push({
             type: 'hit',
-            weaponId: config.projectileType ?? config.id,
+            turretId: config.shot?.type ?? config.id,
             pos: { x: projEntity.transform.x, y: projEntity.transform.y },
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
@@ -531,10 +529,10 @@ export function checkProjectileCollisions(
       // Add projectile expire event for traveling projectiles (not beams)
       // This creates an explosion effect at projectile termination point
       if (proj.projectileType === 'traveling' && !proj.hasExploded) {
-        const projRadius = config.collision?.radius ?? 5;
+        const projRadius = config.shot?.collision?.radius ?? 5;
         audioEvents.push({
           type: 'projectileExpire',
-          weaponId: config.projectileType ?? config.id,
+          turretId: config.shot?.type ?? config.id,
           pos: { x: projEntity.transform.x, y: projEntity.transform.y },
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,
@@ -554,34 +552,34 @@ export function checkProjectileCollisions(
       // Beam damage uses the impact circle at the truncated beam endpoint.
       const impactX = proj.endX ?? projEntity.transform.x;
       const impactY = proj.endY ?? projEntity.transform.y;
-      const collisionRadius = config.collision?.radius ?? 2;
-      const primaryRadius = config.explosion?.primary.radius ?? (collisionRadius * 2 + 6);
-      const collisionDamage = config.collision?.damage ?? 0;
-      const primaryDamage = config.explosion?.primary.damage ?? collisionDamage;
-      const secondaryDamage = config.explosion?.secondary.damage ?? collisionDamage * 0.2;
+      const collisionRadius = config.shot?.collision?.radius ?? 2;
+      const primaryRadius = config.shot?.explosion?.primary.radius ?? (collisionRadius * 2 + 6);
+      const collisionDamage = config.shot?.collision?.damage ?? 0;
+      const primaryDamage = config.shot?.explosion?.primary.damage ?? collisionDamage;
+      const secondaryDamage = config.shot?.explosion?.secondary.damage ?? collisionDamage * 0.2;
 
       // Calculate per-tick damages (collision, primary, secondary):
       // Cooldown beams (railgun): total damage spread over beamDuration
       // Continuous beams: damage is DPS, scale by tick length
       const dtSec = dtMs / 1000;
-      const tickCollisionDamage = config.beam?.duration
-        ? (collisionDamage / config.beam?.duration) * dtMs
+      const tickCollisionDamage = config.shot?.beam?.duration
+        ? (collisionDamage / config.shot.beam.duration) * dtMs
         : collisionDamage * dtSec;
-      const tickPrimaryDamage = config.beam?.duration
-        ? (primaryDamage / config.beam?.duration) * dtMs
+      const tickPrimaryDamage = config.shot?.beam?.duration
+        ? (primaryDamage / config.shot.beam.duration) * dtMs
         : primaryDamage * dtSec;
-      const tickSecondaryDamage = config.beam?.duration
-        ? (secondaryDamage / config.beam?.duration) * dtMs
+      const tickSecondaryDamage = config.shot?.beam?.duration
+        ? (secondaryDamage / config.shot.beam.duration) * dtMs
         : secondaryDamage * dtSec;
 
       // Per-tick explosion forces (scaled same as damage for framerate independence)
-      const primaryForce = config.explosion?.primary.force ?? 0;
-      const secondaryForce = config.explosion?.secondary.force ?? 0;
-      const tickPrimaryForce = config.beam?.duration
-        ? (primaryForce / config.beam.duration) * dtMs
+      const primaryForce = config.shot?.explosion?.primary.force ?? 0;
+      const secondaryForce = config.shot?.explosion?.secondary.force ?? 0;
+      const tickPrimaryForce = config.shot?.beam?.duration
+        ? (primaryForce / config.shot.beam.duration) * dtMs
         : primaryForce * dtSec;
-      const tickSecondaryForce = config.beam?.duration
-        ? (secondaryForce / config.beam.duration) * dtMs
+      const tickSecondaryForce = config.shot?.beam?.duration
+        ? (secondaryForce / config.shot.beam.duration) * dtMs
         : secondaryForce * dtSec;
 
       // Beam direction for hit knockback
@@ -590,10 +588,10 @@ export function checkProjectileCollisions(
       const beamDirY = Math.sin(beamAngle);
 
       // Momentum-based per-tick hit force (mass × velocity), scaled by dt for framerate independence
-      const hitForcePerTick = (config.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER * (config.projectileSpeed ?? 0) * dtSec;
+      const hitForcePerTick = (config.shot?.mass ?? 0) * PROJECTILE_MASS_MULTIPLIER * (config.shot?.speed ?? 0) * dtSec;
 
       // Collision gate: when splashOnExpiry is false, only splash if collisionRadius circle hits something
-      const useCollisionGate = !config.splashOnExpiry;
+      const useCollisionGate = !config.shot?.splashOnExpiry;
       let collisionHadHits = false;
 
       if (useCollisionGate) {
@@ -637,7 +635,7 @@ export function checkProjectileCollisions(
           collectKillsWithDeathAudio(primaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
           // Step 3: Secondary zone (excluding collision + primary hits)
-          const secondaryRadius = config.explosion?.secondary.radius ?? 0;
+          const secondaryRadius = config.shot?.explosion?.secondary.radius ?? 0;
           if (secondaryRadius > primaryRadius) {
             for (const id of primaryResult.hitEntityIds) _beamSecondaryExcludeSet.add(id);
 
@@ -676,7 +674,7 @@ export function checkProjectileCollisions(
         collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
         // Secondary zone: explicit secondary damage, exclude primary hits
-        const noGateSecondaryRadius = config.explosion?.secondary.radius ?? 0;
+        const noGateSecondaryRadius = config.shot?.explosion?.secondary.radius ?? 0;
         if (noGateSecondaryRadius > primaryRadius) {
           _beamSecondaryExcludeSet.clear();
           for (const id of result.hitEntityIds) _beamSecondaryExcludeSet.add(id);
@@ -698,10 +696,10 @@ export function checkProjectileCollisions(
         }
       }
 
-      // Note: beam recoil (momentum-based) is applied in fireWeapons() based on weapon.isEngaged state
+      // Note: beam recoil (momentum-based) is applied in fireTurrets() based on weapon.engaged state
     } else {
       // Traveling projectiles use swept volume collision (prevents tunneling)
-      const projRadius = config.collision?.radius ?? 5;
+      const projRadius = config.shot?.collision?.radius ?? 5;
       const prevX = proj.prevX ?? projEntity.transform.x;
       const prevY = proj.prevY ?? projEntity.transform.y;
       const currentX = projEntity.transform.x;
@@ -716,7 +714,7 @@ export function checkProjectileCollisions(
         type: 'swept',
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
-        damage: config.collision!.damage,
+        damage: config.shot!.collision!.damage,
         excludeEntities: proj.hitEntities,
         prev: { x: prevX, y: prevY },
         current: { x: currentX, y: currentY },
@@ -724,12 +722,12 @@ export function checkProjectileCollisions(
         maxHits: proj.maxHits - proj.hitEntities.size + (sourceGuard ? 1 : 0), // Compensate for phantom guard entry
         // Pass actual projectile velocity for explosion effects
         velocity: { x: proj.velocityX, y: proj.velocityY },
-        projectileMass: proj.config.projectileMass,
+        projectileMass: proj.config.shot?.mass,
       });
 
       // Apply knockback from projectile hit
       applyKnockbackForces(result.knockbacks, forceAccumulator);
-      // Note: Recoil for traveling projectiles is applied at fire time in fireWeapons()
+      // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets()
 
       // Track hits
       for (const hitId of result.hitEntityIds) {
@@ -741,7 +739,7 @@ export function checkProjectileCollisions(
         if (entity) {
           audioEvents.push({
             type: 'hit',
-            weaponId: config.projectileType ?? config.id,
+            turretId: config.shot?.type ?? config.id,
             pos: { x: projEntity.transform.x, y: projEntity.transform.y },
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
@@ -757,18 +755,18 @@ export function checkProjectileCollisions(
       collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
       // Handle splash damage on first hit (safe: result fully consumed above)
-      if (hadHits && config.explosion?.primary.radius && !proj.hasExploded) {
+      if (hadHits && config.shot?.explosion?.primary.radius && !proj.hasExploded) {
         // Primary zone: explicit primary radius damage
         const primarySplash = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
-          damage: config.explosion.primary.damage,
+          damage: config.shot!.explosion!.primary.damage,
           excludeEntities: proj.hitEntities,
           center: { x: projEntity.transform.x, y: projEntity.transform.y },
-          radius: config.explosion.primary.radius,
+          radius: config.shot!.explosion!.primary.radius,
           falloff: 1,
-          knockbackForce: config.explosion.primary.force,
+          knockbackForce: config.shot!.explosion!.primary.force,
         });
         proj.hasExploded = true;
 
@@ -779,7 +777,7 @@ export function checkProjectileCollisions(
         collectKillsAndDeathContexts(primarySplash, unitsToRemove, buildingsToRemove, deathContexts);
 
         // Secondary zone: explicit secondary radius damage, exclude direct hits + primary hits
-        if (config.explosion.secondary.radius > config.explosion.primary.radius) {
+        if (config.shot!.explosion!.secondary.radius > config.shot!.explosion!.primary.radius) {
           _beamSecondaryExcludeSet.clear();
           for (const id of proj.hitEntities) _beamSecondaryExcludeSet.add(id);
           for (const id of primarySplash.hitEntityIds) _beamSecondaryExcludeSet.add(id);
@@ -788,12 +786,12 @@ export function checkProjectileCollisions(
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: config.explosion.secondary.damage,
+            damage: config.shot!.explosion!.secondary.damage,
             excludeEntities: _beamSecondaryExcludeSet,
             center: { x: projEntity.transform.x, y: projEntity.transform.y },
-            radius: config.explosion.secondary.radius,
+            radius: config.shot!.explosion!.secondary.radius,
             falloff: 1,
-            knockbackForce: config.explosion.secondary.force,
+            knockbackForce: config.shot!.explosion!.secondary.force,
           });
 
           applyKnockbackForces(secondarySplash.knockbacks, forceAccumulator);
@@ -809,7 +807,7 @@ export function checkProjectileCollisions(
         // Always emit projectileExpire at the projectile's position so it produces a termination explosion
         audioEvents.push({
           type: 'projectileExpire',
-          weaponId: config.projectileType ?? config.id,
+          turretId: config.shot?.type ?? config.id,
           pos: { x: projEntity.transform.x, y: projEntity.transform.y },
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,
@@ -841,17 +839,17 @@ export function checkProjectileCollisions(
     const entity = world.getEntity(id);
     if (entity?.projectile?.projectileType === 'beam') {
       const proj = entity.projectile;
-      const weaponIdx = proj.config.weaponIndex ?? 0;
+      const weaponIdx = proj.config.turretIndex ?? 0;
       beamIndex.removeBeam(proj.sourceEntityId, weaponIdx);
 
       // For cooldown beams, start the cooldown now (after beam expires)
       const cooldown = proj.config.cooldown;
       if (cooldown > 0) {
         const source = world.getEntity(proj.sourceEntityId);
-        if (source?.weapons) {
-          const weapon = source.weapons[weaponIdx];
+        if (source?.turrets) {
+          const weapon = source.turrets[weaponIdx];
           if (weapon) {
-            weapon.currentCooldown = cooldown;
+            weapon.cooldown = cooldown;
           }
         }
       }

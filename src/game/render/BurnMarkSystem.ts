@@ -35,12 +35,12 @@ export class BurnMarkSystem {
     for (const entity of projectiles) {
       const proj = entity.projectile;
       if (!proj || proj.projectileType !== 'beam') continue;
-      const weaponIndex = proj.config.weaponIndex ?? 0;
-      const beamKey = `${proj.sourceEntityId}:${weaponIndex}`;
+      const turretIndex = proj.config.turretIndex ?? 0;
+      const beamKey = `${proj.sourceEntityId}:${turretIndex}`;
       this._activeBeamKeys.add(beamKey);
       const ex = proj.endX ?? entity.transform.x;
       const ey = proj.endY ?? entity.transform.y;
-      const beamWidth = proj.config.beam?.width ?? 2;
+      const beamWidth = proj.config.shot?.beam?.width ?? 2;
       if (sampleBurn) {
         const prev = this.prevBeamEndpoints.get(beamKey);
         if (prev) {

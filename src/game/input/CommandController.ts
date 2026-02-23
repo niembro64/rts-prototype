@@ -287,7 +287,7 @@ export class CommandController {
   }
 
   /** Public method to queue unit at factory from UI */
-  queueUnitAtFactory(factoryId: number, weaponId: string): void {
+  queueUnitAtFactory(factoryId: number, unitId: string): void {
     const factory = this.entitySource.getEntity(factoryId);
     if (!factory?.factory) return;
 
@@ -295,7 +295,7 @@ export class CommandController {
       type: 'queueUnit' as const,
       tick: this.context.getTick(),
       factoryId: factoryId,
-      weaponId: weaponId,
+      unitId: unitId,
     };
     this.commandQueue.enqueue(command);
   }

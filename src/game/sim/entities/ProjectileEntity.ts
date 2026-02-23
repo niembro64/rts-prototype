@@ -6,7 +6,7 @@ import type {
   Ownership,
   EntityId,
   PlayerId,
-  WeaponConfig,
+  TurretConfig,
   ProjectileType,
   DGunProjectile,
 } from '../types';
@@ -19,7 +19,7 @@ export class ProjectileEntity {
   // Owner/source information
   public ownerId: PlayerId;
   public sourceEntityId: EntityId;
-  public config: WeaponConfig;
+  public config: TurretConfig;
 
   // Projectile type (instant, traveling, beam)
   public projectileType: ProjectileType;
@@ -64,7 +64,7 @@ export class ProjectileEntity {
     velocityY: number,
     ownerId: PlayerId,
     sourceEntityId: EntityId,
-    config: WeaponConfig,
+    config: TurretConfig,
     projectileType: ProjectileType,
     maxLifespan: number,
     maxHits: number = 1
@@ -90,7 +90,7 @@ export class ProjectileEntity {
   get projectile(): {
     ownerId: PlayerId;
     sourceEntityId: EntityId;
-    config: WeaponConfig;
+    config: TurretConfig;
     projectileType: ProjectileType;
     velocityX: number;
     velocityY: number;

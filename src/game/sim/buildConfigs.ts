@@ -39,7 +39,7 @@ export function getUnitBuildConfig(unitId: string) {
   const bp = getUnitBlueprint(unitId);
   if (!bp) return undefined;
   return {
-    weaponId: bp.weapons[0]?.weaponId ?? 'lightTurret',
+    unitId: bp.turrets[0]?.turretId ?? 'lightTurret',
     name: bp.name,
     energyCost: bp.baseCost * COST_MULTIPLIER,
     drawScale: bp.unitDrawScale,
@@ -48,7 +48,7 @@ export function getUnitBuildConfig(unitId: string) {
     moveSpeed: bp.moveSpeed,
     mass: bp.mass,
     hp: bp.hp,
-    weaponSeeRange: bp.weaponSeeRange,
+    seeRange: bp.seeRange,
   };
 }
 

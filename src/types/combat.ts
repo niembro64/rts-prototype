@@ -4,7 +4,7 @@ import type { EntityId, PlayerId, Entity } from './sim';
 import type { DeathContext } from './damage';
 import type { Vec2 } from './vec2';
 
-export type WeaponAudioId = string;
+export type TurretAudioId = string;
 
 export type ImpactContext = {
   collisionRadius: number;
@@ -36,7 +36,7 @@ export type SimEvent = {
     | 'forceFieldStart'
     | 'forceFieldStop'
     | 'projectileExpire';
-  weaponId: WeaponAudioId;
+  turretId: TurretAudioId;
   pos: Vec2;
   entityId?: EntityId;
   deathContext?: SimDeathContext;
@@ -49,10 +49,10 @@ export type ProjectileSpawnEvent = {
   rotation: number;
   velocity: Vec2;
   projectileType: string;
-  weaponId: string;
+  turretId: string;
   playerId: PlayerId;
   sourceEntityId: EntityId;
-  weaponIndex: number;
+  turretIndex: number;
   isDGun?: boolean;
   beam?: { start: Vec2; end: Vec2 };
   targetEntityId?: EntityId;
@@ -69,7 +69,7 @@ export type ProjectileVelocityUpdateEvent = {
   velocity: Vec2;
 };
 
-export type FireWeaponsResult = {
+export type FireTurretsResult = {
   projectiles: Entity[];
   events: SimEvent[];
   spawnEvents: ProjectileSpawnEvent[];

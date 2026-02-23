@@ -9,7 +9,7 @@ export type {
   NetworkGameState,
   NetworkSprayTarget,
   NetworkAction,
-  NetworkWeapon,
+  NetworkTurret,
   NetworkEntity,
   NetworkEconomy,
   NetworkProjectileSpawn,

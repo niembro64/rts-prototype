@@ -65,7 +65,7 @@ export type StartBuildCommand = BaseCommand & {
 export type QueueUnitCommand = BaseCommand & {
   type: 'queueUnit';
   factoryId: EntityId;
-  weaponId: string;
+  unitId: string;
 };
 
 export type CancelQueueItemCommand = BaseCommand & {

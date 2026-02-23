@@ -2,12 +2,12 @@
 // Turret visual is owned by the weapon, not the unit chassis
 
 import Phaser from 'phaser';
-import type { UnitWeapon, EntityId } from '../sim/types';
+import type { Turret, EntityId } from '../sim/types';
 import type { ColorPalette } from './types';
 import { COLORS } from './types';
 import { drawForceFieldGrate } from './helpers';
 import { renderForceFieldEffect } from './effects';
-import type { TurretConfig, ForceFieldTurretConfig } from '../../config';
+import type { BarrelShape, ForceFieldTurretConfig } from '../../config';
 import type { TurretStyle, ForceTurretStyle } from '@/types/graphics';
 
 /**
@@ -19,14 +19,14 @@ export function drawTurret(
   mountX: number,
   mountY: number,
   unitRadius: number,
-  weapon: UnitWeapon,
+  weapon: Turret,
   _palette: ColorPalette,
   spinAngle: number,
   entityId: EntityId,
   turretStyle: TurretStyle = 'full',
   forceTurretStyle: ForceTurretStyle = 'full',
 ): void {
-  const turretConfig = weapon.config.turretShape as TurretConfig | undefined;
+  const turretConfig = weapon.config.barrel as BarrelShape | undefined;
   if (!turretConfig) return;
 
   // Force field turrets use their own separate LOD config
@@ -46,13 +46,13 @@ export function drawTurret(
 
   switch (turretConfig.type) {
     case 'simpleMultiBarrel':
-      drawMultibarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, turretStyle, spinAngle);
+      drawMultibarrelTurret(graphics, mountX, mountY, unitRadius, weapon.rotation, turretConfig, turretStyle, spinAngle);
       break;
     case 'coneMultiBarrel':
       drawConeSpreadTurret(graphics, mountX, mountY, unitRadius, weapon, turretConfig, turretStyle, spinAngle);
       break;
     case 'simpleSingleBarrel':
-      drawSingleBarrelTurret(graphics, mountX, mountY, unitRadius, weapon.turretRotation, turretConfig, turretStyle);
+      drawSingleBarrelTurret(graphics, mountX, mountY, unitRadius, weapon.rotation, turretConfig, turretStyle);
       break;
   }
 }
@@ -64,7 +64,7 @@ function drawMultibarrelTurret(
   mountX: number, mountY: number,
   r: number,
   turretRot: number,
-  config: Extract<TurretConfig, { type: 'simpleMultiBarrel' }>,
+  config: Extract<BarrelShape, { type: 'simpleMultiBarrel' }>,
   turretStyle: TurretStyle,
   spinAngle: number,
 ): void {
@@ -108,12 +108,12 @@ function drawConeSpreadTurret(
   graphics: Phaser.GameObjects.Graphics,
   mountX: number, mountY: number,
   r: number,
-  weapon: UnitWeapon,
-  config: Extract<TurretConfig, { type: 'coneMultiBarrel' }>,
+  weapon: Turret,
+  config: Extract<BarrelShape, { type: 'coneMultiBarrel' }>,
   turretStyle: TurretStyle,
   spinAngle: number,
 ): void {
-  const turretRot = weapon.turretRotation;
+  const turretRot = weapon.rotation;
 
   if (turretStyle === 'simple') {
     const endX = mountX + Math.cos(turretRot) * r * config.barrelLength;
@@ -163,7 +163,7 @@ function drawSingleBarrelTurret(
   mountX: number, mountY: number,
   r: number,
   turretRot: number,
-  config: Extract<TurretConfig, { type: 'simpleSingleBarrel' }>,
+  config: Extract<BarrelShape, { type: 'simpleSingleBarrel' }>,
   turretStyle: TurretStyle,
 ): void {
   const turretLen = r * config.barrelLength;
@@ -186,11 +186,11 @@ function drawForceFieldTurretSimple(
   graphics: Phaser.GameObjects.Graphics,
   mountX: number, mountY: number,
   r: number,
-  weapon: UnitWeapon,
+  weapon: Turret,
   grateConfig: ForceFieldTurretConfig,
   entityId: EntityId,
 ): void {
-  const progress = weapon.currentForceFieldRange ?? 0;
+  const progress = weapon.forceField?.range ?? 0;
   const transitionTimeMs = weapon.config.forceField?.transitionTime ?? 1000;
 
   // Single pulsing circle at mount point — lerps white → blue with progress
@@ -217,12 +217,12 @@ function drawForceFieldTurretFull(
   graphics: Phaser.GameObjects.Graphics,
   mountX: number, mountY: number,
   r: number,
-  weapon: UnitWeapon,
+  weapon: Turret,
   grateConfig: ForceFieldTurretConfig,
   entityId: EntityId,
 ): void {
-  const turretRot = weapon.turretRotation;
-  const progress = weapon.currentForceFieldRange ?? 0;
+  const turretRot = weapon.rotation;
+  const progress = weapon.forceField?.range ?? 0;
   const transitionTimeMs = weapon.config.forceField?.transitionTime ?? 1000;
 
   // Draw grate
@@ -239,11 +239,11 @@ function drawForceFieldTurretFull(
 function drawForceFieldZones(
   graphics: Phaser.GameObjects.Graphics,
   cx: number, cy: number,
-  weapon: UnitWeapon,
+  weapon: Turret,
   entityId: EntityId,
 ): void {
-  const turretRot = weapon.turretRotation;
-  const progress = weapon.currentForceFieldRange ?? 0;
+  const turretRot = weapon.rotation;
+  const progress = weapon.forceField?.range ?? 0;
   const sliceAngle = weapon.config.forceField?.angle ?? Math.PI / 4;
   const push = weapon.config.forceField?.push;
   const pull = weapon.config.forceField?.pull;
@@ -275,10 +275,10 @@ function drawForceFieldZones(
 function drawForceFieldZonesOnly(
   graphics: Phaser.GameObjects.Graphics,
   cx: number, cy: number,
-  weapon: UnitWeapon,
+  weapon: Turret,
   entityId: EntityId,
 ): void {
-  const progress = weapon.currentForceFieldRange ?? 0;
+  const progress = weapon.forceField?.range ?? 0;
   if (progress <= 0) return;
   drawForceFieldZones(graphics, cx, cy, weapon, entityId);
 }

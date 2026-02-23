@@ -3,7 +3,7 @@
 
 import { GameEntity } from './GameEntity';
 import type {
-  UnitWeapon,
+  Turret,
   UnitAction,
   Body,
   EntityId,
@@ -26,8 +26,8 @@ export class UnitEntity extends GameEntity {
   public actions: UnitAction[] = [];
   public patrolStartIndex: number | null = null;
 
-  // Weapons array - each weapon is independent
-  public weapons: UnitWeapon[] = [];
+  // Turrets array - each turret is independent
+  public turrets: Turret[] = [];
 
   // Physics body (optional - set externally by physics system)
   public body?: Body;

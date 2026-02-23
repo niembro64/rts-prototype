@@ -21,18 +21,18 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
   _dragFactorCache.clear();
 
   for (const unit of world.getUnits()) {
-    if (!unit.unit || !unit.ownership || !unit.weapons) continue;
+    if (!unit.unit || !unit.ownership || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
 
     const { cos, sin } = getTransformCosSin(unit.transform);
 
     // Update each weapon's turret rotation using acceleration physics
-    for (const weapon of unit.weapons) {
+    for (const weapon of unit.turrets) {
       let targetAngle: number | null = null;
       let hasActiveTarget = false;
 
-      if (weapon.targetEntityId !== null) {
-        const target = world.getEntity(weapon.targetEntityId);
+      if (weapon.target !== null) {
+        const target = world.getEntity(weapon.target);
         if (target) {
           // Use cached weapon world position from targeting phase
           const wp = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, cos, sin);
@@ -45,11 +45,11 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
       }
 
       // dt-independent drag: at 60fps apply (1-drag) per frame, variable dt: pow(1-drag, dt*60)
-      // Cached per unique turretDrag value (~4 unique values → ~4 pow calls instead of 400+)
-      let dragFactor = _dragFactorCache.get(weapon.turretDrag);
+      // Cached per unique drag value (~4 unique values → ~4 pow calls instead of 400+)
+      let dragFactor = _dragFactorCache.get(weapon.drag);
       if (dragFactor === undefined) {
-        dragFactor = Math.pow(1 - weapon.turretDrag, dtFrames);
-        _dragFactorCache.set(weapon.turretDrag, dragFactor);
+        dragFactor = Math.pow(1 - weapon.drag, dtFrames);
+        _dragFactorCache.set(weapon.drag, dragFactor);
       }
 
       // If no active target, optionally return turret to forward-facing
@@ -58,29 +58,29 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
           targetAngle = getMovementAngle(unit);
         } else {
           // Hold current rotation — just apply drag to slow down
-          weapon.turretAngularVelocity *= dragFactor;
-          weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
-          weapon.turretRotation = normalizeAngle(weapon.turretRotation);
+          weapon.angularVelocity *= dragFactor;
+          weapon.rotation += weapon.angularVelocity * dtSec;
+          weapon.rotation = normalizeAngle(weapon.rotation);
           continue;
         }
       }
 
       // Calculate angle difference to target
-      const angleDiff = normalizeAngle(targetAngle! - weapon.turretRotation);
+      const angleDiff = normalizeAngle(targetAngle! - weapon.rotation);
 
       // Apply acceleration toward target
       // Acceleration is proportional to direction (sign of angle difference)
       const accelDirection = Math.sign(angleDiff);
-      weapon.turretAngularVelocity += accelDirection * weapon.turretTurnAccel * dtSec;
+      weapon.angularVelocity += accelDirection * weapon.turnAccel * dtSec;
 
       // Apply drag (reduces velocity each frame)
       // dt-independent: naturally limits terminal velocity
-      weapon.turretAngularVelocity *= dragFactor;
+      weapon.angularVelocity *= dragFactor;
 
       // Update rotation based on velocity
-      weapon.turretRotation += weapon.turretAngularVelocity * dtSec;
+      weapon.rotation += weapon.angularVelocity * dtSec;
       // Keep rotation normalized
-      weapon.turretRotation = normalizeAngle(weapon.turretRotation);
+      weapon.rotation = normalizeAngle(weapon.rotation);
     }
   }
 }

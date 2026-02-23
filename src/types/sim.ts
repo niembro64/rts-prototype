@@ -1,6 +1,7 @@
 // Simulation entity types extracted from game/sim/types.ts
 
-import type { TurretConfig } from './config';
+import type { BarrelShape } from './config';
+import type { Vec2 } from './vec2';
 
 // Entity ID type for deterministic identification
 export type EntityId = number;
@@ -122,74 +123,62 @@ export type ForceFieldZoneConfig = {
   damage: number;
 };
 
-// Weapon configuration
-export type WeaponConfig = {
-  id: string;
-  projectileType?: string;
-  turretShape?: TurretConfig;
-  range: number;
-  cooldown: number;
-  collision?: {
-    radius: number;
-    damage: number;
-  };
+// Shot configuration (projectile/beam properties)
+export type ShotConfig = {
+  type?: string;
+  speed?: number;
+  mass?: number;
+  lifespan?: number;
+  collision?: { radius: number; damage: number };
   explosion?: {
     primary: { radius: number; damage: number; force: number };
     secondary: { radius: number; damage: number; force: number };
   };
-  projectileSpeed?: number;
-  projectileMass?: number;
-  projectileLifespan?: number;
-  beam?: {
-    duration?: number;
-    width?: number;
-  };
-  spread?: {
-    pelletCount?: number;
-    angle?: number;
-  };
-  burst?: {
-    count?: number;
-    delay?: number;
-  };
+  beam?: { duration?: number; width?: number };
+  splashOnExpiry?: boolean;
+  piercing?: boolean;
+  homingTurnRate?: number;
+  trailLength?: number;
+};
+
+// Turret configuration (compiled turret definition)
+export type TurretConfig = {
+  id: string;
+  range: number;
+  cooldown: number;
+  color?: number;
+  barrel?: BarrelShape;
+  angular: { turnAccel: number; drag: number };
+  rangeOverrides?: TurretRangeOverrides;
+  spread?: { pelletCount?: number; angle?: number };
+  burst?: { count?: number; delay?: number };
+  isManualFire?: boolean;
+  shot?: ShotConfig;
   forceField?: {
     angle?: number;
     transitionTime?: number;
     push?: ForceFieldZoneConfig | null;
     pull?: ForceFieldZoneConfig | null;
   };
-  splashOnExpiry?: boolean;
-  color?: number;
-  trailLength?: number;
-  turretTurnAccel?: number;
-  turretDrag?: number;
-  piercing?: boolean;
-  homingTurnRate?: number;
-  isManualFire?: boolean;
-  rangeMultiplierOverrides?: TurretRangeOverrides;
-  weaponIndex?: number;
+  turretIndex?: number;
 };
 
-// Unified weapon component
-export type UnitWeapon = {
-  config: WeaponConfig;
-  currentCooldown: number;
-  targetEntityId: EntityId | null;
+// Runtime turret instance (per-weapon state on a unit)
+export type Turret = {
+  config: TurretConfig;
+  cooldown: number;
+  target: EntityId | null;
   ranges: TurretRanges;
-  isTracking: boolean;
-  isEngaged: boolean;
-  turretRotation: number;
-  turretAngularVelocity: number;
-  turretTurnAccel: number;
-  turretDrag: number;
-  offsetX: number;
-  offsetY: number;
-  worldX?: number;
-  worldY?: number;
-  burstShotsRemaining?: number;
-  burstCooldown?: number;
-  forceFieldTransitionProgress?: number;
-  currentForceFieldRange?: number;
+  tracking: boolean;
+  engaged: boolean;
+  rotation: number;
+  angularVelocity: number;
+  turnAccel: number;
+  drag: number;
+  offset: Vec2;
+  worldPos?: Vec2;
+  burst?: { remaining: number; cooldown: number };
+  forceField?: { transition: number; range: number };
 };
 
 // Projectile travel types
@@ -199,7 +188,7 @@ export type ProjectileType = 'instant' | 'traveling' | 'beam';
 export type Projectile = {
   ownerId: PlayerId;
   sourceEntityId: EntityId;
-  config: WeaponConfig;
+  config: TurretConfig;
   projectileType: ProjectileType;
   velocityX: number;
   velocityY: number;
@@ -258,7 +247,7 @@ export type BuildingConfig = {
 
 // Unit build configuration
 export type UnitBuildConfig = {
-  weaponId: string;
+  unitId: string;
   name: string;
   energyCost: number;
   drawScale: number;
@@ -267,8 +256,8 @@ export type UnitBuildConfig = {
   moveSpeed: number;
   mass: number;
   hp: number;
-  weaponSeeRange?: number;
-  weaponFireRange?: number;
+  seeRange?: number;
+  fireRange?: number;
 };
 
 // Factory component
@@ -306,7 +295,7 @@ export type Entity = {
   ownership?: Ownership;
   unit?: Unit;
   building?: Building;
-  weapons?: UnitWeapon[];
+  turrets?: Turret[];
   projectile?: Projectile;
   buildable?: Buildable;
   builder?: Builder;

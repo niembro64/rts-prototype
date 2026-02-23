@@ -1,7 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkSimEvent, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkProjectileVelocityUpdate, NetworkGridCell, NetworkWeapon, NetworkAction } from './NetworkManager';
+import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkSimEvent, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkProjectileVelocityUpdate, NetworkGridCell, NetworkTurret, NetworkAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -18,7 +18,7 @@ const MAX_ACTIONS_PER_ENTITY = 16;
 const MAX_WAYPOINTS_PER_ENTITY = 16;
 
 // Pre-allocated weapon objects per entity slot
-function createPooledWeapon(): NetworkWeapon {
+function createPooledTurret(): NetworkTurret {
   return {
     turret: {
       id: '',
@@ -53,15 +53,15 @@ type PooledEntry = {
   buildingSub: BuildingSub;
   factorySub: FactorySub;
   shotSub: ShotSub;
-  weapons: NetworkWeapon[];
+  turrets: NetworkTurret[];
   actions: NetworkAction[];
   waypoints: { pos: Vec2; type: string }[];
   buildQueue: string[];
 };
 
 function createPooledEntry(): PooledEntry {
-  const weapons: NetworkWeapon[] = [];
-  for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) weapons.push(createPooledWeapon());
+  const turrets: NetworkTurret[] = [];
+  for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) turrets.push(createPooledTurret());
   const actions: NetworkAction[] = [];
   for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createPooledAction());
   const waypoints: { pos: Vec2; type: string }[] = [];
@@ -85,7 +85,7 @@ function createPooledEntry(): PooledEntry {
     shotSub: {
       type: '', source: 0,
     },
-    weapons,
+    turrets,
     actions,
     waypoints,
     buildQueue: [],
@@ -191,18 +191,18 @@ function hasEntityChanged(entity: Entity, prev: PrevEntityState): boolean {
     if ((entity.unit.actions?.length ?? 0) !== prev.actionCount) return true;
 
     // Check weapon state changes
-    if (entity.weapons) {
-      if (entity.weapons.length !== prev.weaponCount) return true;
+    if (entity.turrets) {
+      if (entity.turrets.length !== prev.weaponCount) return true;
 
       let isEngagedBits = 0;
       let targetBits = 0;
-      for (let i = 0; i < entity.weapons.length; i++) {
-        const w = entity.weapons[i];
-        if (w.isEngaged) isEngagedBits |= (1 << i);
-        if (w.targetEntityId) targetBits |= (1 << i);
-        if (Math.abs(w.turretRotation - prev.turretRots[i]) > rotTh) return true;
-        if (Math.abs(w.turretAngularVelocity - prev.turretAngVels[i]) > velTh) return true;
-        if (Math.abs((w.currentForceFieldRange ?? 0) - prev.forceFieldRanges[i]) > 0.001) return true;
+      for (let i = 0; i < entity.turrets.length; i++) {
+        const w = entity.turrets[i];
+        if (w.engaged) isEngagedBits |= (1 << i);
+        if (w.target) targetBits |= (1 << i);
+        if (Math.abs(w.rotation - prev.turretRots[i]) > rotTh) return true;
+        if (Math.abs(w.angularVelocity - prev.turretAngVels[i]) > velTh) return true;
+        if (Math.abs((w.forceField?.range ?? 0) - prev.forceFieldRanges[i]) > 0.001) return true;
       }
       if (isEngagedBits !== prev.isEngagedBits) return true;
       if (targetBits !== prev.targetBits) return true;
@@ -233,21 +233,21 @@ function updatePrevState(entity: Entity, prev: PrevEntityState): void {
 
   prev.isEngagedBits = 0;
   prev.targetBits = 0;
-  prev.weaponCount = entity.weapons?.length ?? 0;
-  if (entity.weapons) {
+  prev.weaponCount = entity.turrets?.length ?? 0;
+  if (entity.turrets) {
     // Grow turret arrays if needed
-    while (prev.turretRots.length < entity.weapons.length) {
+    while (prev.turretRots.length < entity.turrets.length) {
       prev.turretRots.push(0);
       prev.turretAngVels.push(0);
       prev.forceFieldRanges.push(0);
     }
-    for (let i = 0; i < entity.weapons.length; i++) {
-      const w = entity.weapons[i];
-      if (w.isEngaged) prev.isEngagedBits |= (1 << i);
-      if (w.targetEntityId) prev.targetBits |= (1 << i);
-      prev.turretRots[i] = w.turretRotation;
-      prev.turretAngVels[i] = w.turretAngularVelocity;
-      prev.forceFieldRanges[i] = w.currentForceFieldRange ?? 0;
+    for (let i = 0; i < entity.turrets.length; i++) {
+      const w = entity.turrets[i];
+      if (w.engaged) prev.isEngagedBits |= (1 << i);
+      if (w.target) prev.targetBits |= (1 << i);
+      prev.turretRots[i] = w.rotation;
+      prev.turretAngVels[i] = w.angularVelocity;
+      prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
     }
   }
 
@@ -434,7 +434,7 @@ export function serializeGameState(
       const ae = audioEvents[i];
       _audioBuf.push({
         type: ae.type,
-        weaponId: ae.weaponId,
+        turretId: ae.turretId,
         pos: ae.pos,
         entityId: ae.entityId,
         deathContext: ae.deathContext,
@@ -455,10 +455,10 @@ export function serializeGameState(
         pos: ps.pos, rotation: ps.rotation,
         velocity: ps.velocity,
         projectileType: ps.projectileType,
-        weaponId: ps.weaponId,
+        turretId: ps.turretId,
         playerId: ps.playerId,
         sourceEntityId: ps.sourceEntityId,
-        weaponIndex: ps.weaponIndex,
+        turretIndex: ps.turretIndex,
         isDGun: ps.isDGun,
         beam: ps.beam,
         targetEntityId: ps.targetEntityId,
@@ -558,9 +558,9 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
 
     // Turret rotation for network display - use last weapon's rotation
     let turretRot = entity.transform.rotation;
-    const weapons = entity.weapons ?? [];
+    const weapons = entity.turrets ?? [];
     for (const weapon of weapons) {
-      turretRot = weapon.turretRotation;
+      turretRot = weapon.rotation;
     }
     u.turretRotation = turretRot;
     u.isCommander = entity.commander !== undefined ? true : undefined;
@@ -586,32 +586,32 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     }
 
     // Serialize weapons into pooled weapon objects
-    u.weapons = undefined;
-    if (entity.weapons && entity.weapons.length > 0) {
-      const weapons = entity.weapons;
+    u.turrets = undefined;
+    if (entity.turrets && entity.turrets.length > 0) {
+      const weapons = entity.turrets;
       const count = weapons.length;
-      while (pool.weapons.length < count) pool.weapons.push(createPooledWeapon());
-      pool.weapons.length = count;
+      while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
+      pool.turrets.length = count;
       for (let i = 0; i < count; i++) {
         const src = weapons[i];
-        const dst = pool.weapons[i];
+        const dst = pool.turrets[i];
         const t = dst.turret;
         t.id = src.config.id;
         const sr = src.ranges; const dr = t.ranges;
         dr.tracking.acquire = sr.tracking.acquire; dr.tracking.release = sr.tracking.release;
         dr.engage.acquire = sr.engage.acquire; dr.engage.release = sr.engage.release;
-        t.angular.rot = src.turretRotation;
-        t.angular.vel = src.turretAngularVelocity;
-        t.angular.acc = src.turretTurnAccel;
-        t.angular.drag = src.turretDrag;
-        t.pos.offset.x = src.offsetX;
-        t.pos.offset.y = src.offsetY;
-        dst.targetId = src.targetEntityId ?? undefined;
-        dst.isTracking = src.isTracking;
-        dst.isEngaged = src.isEngaged;
-        dst.currentForceFieldRange = src.currentForceFieldRange;
+        t.angular.rot = src.rotation;
+        t.angular.vel = src.angularVelocity;
+        t.angular.acc = src.turnAccel;
+        t.angular.drag = src.drag;
+        t.pos.offset.x = src.offset.x;
+        t.pos.offset.y = src.offset.y;
+        dst.targetId = src.target ?? undefined;
+        dst.isTracking = src.tracking;
+        dst.isEngaged = src.engaged;
+        dst.currentForceFieldRange = src.forceField?.range;
       }
-      u.weapons = pool.weapons;
+      u.turrets = pool.turrets;
     }
 
     // Serialize builder state (commander)

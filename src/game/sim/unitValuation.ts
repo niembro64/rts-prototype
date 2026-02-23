@@ -1,16 +1,16 @@
-import type { WeaponConfig } from './types';
+import type { TurretConfig } from './types';
 import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
-import { createWeaponsFromDefinition } from './unitDefinitions';
+import { createTurretsFromDefinition } from './unitDefinitions';
 
 /**
  * Compute the offensive value of a single weapon instance.
  *
  * weaponValue = baseDPS * rangeFactor * deliveryFactor * turretFactor * aoeFactor + pullBonus
  */
-export function getWeaponValue(config: WeaponConfig): number {
+export function getWeaponValue(config: TurretConfig): number {
   // --- baseDPS ---
   let baseDPS: number;
-  const isBeam = config.beam !== undefined && !config.projectileSpeed;
+  const isBeam = config.shot?.beam !== undefined && !config.shot?.speed;
   const isForceField = !!config.forceField;
   const isShotgun = (config.spread?.pelletCount ?? 0) > 1;
   const isBurst = (config.burst?.count ?? 0) > 1;
@@ -18,26 +18,26 @@ export function getWeaponValue(config: WeaponConfig): number {
   if (isForceField) {
     // Force field: damage field is base DPS, but scales with 1/distance.
     // Effective DPS at ~60% of fire range: baseDamage * (0.5 / 0.6)
-    baseDPS = config.collision!.damage * (0.5 / 0.6);
+    baseDPS = config.shot!.collision!.damage * (0.5 / 0.6);
   } else if (isBeam && config.cooldown === 0) {
     // Continuous beam: damage IS DPS
-    baseDPS = config.collision!.damage;
+    baseDPS = config.shot!.collision!.damage;
   } else if (isShotgun) {
     // Shotgun: damage * pelletCount / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (config.collision!.damage * config.spread!.pelletCount!) / cooldownSec;
+    baseDPS = (config.shot!.collision!.damage * config.spread!.pelletCount!) / cooldownSec;
   } else if (isBurst) {
     // Burst: damage * burstCount / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (config.collision!.damage * config.burst!.count!) / cooldownSec;
+    baseDPS = (config.shot!.collision!.damage * config.burst!.count!) / cooldownSec;
   } else if (isBeam) {
     // Hitscan flash (railgun): damage / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = config.collision!.damage / cooldownSec;
+    baseDPS = config.shot!.collision!.damage / cooldownSec;
   } else {
     // Standard projectile: damage / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = config.collision!.damage / cooldownSec;
+    baseDPS = config.shot!.collision!.damage / cooldownSec;
   }
 
   // --- rangeFactor --- normalized to reference range 150, sqrt scaling
@@ -51,10 +51,10 @@ export function getWeaponValue(config: WeaponConfig): number {
   } else if (isBeam) {
     // Hitscan (beam/railgun)
     deliveryFactor = 1.0;
-  } else if (config.projectileSpeed !== undefined) {
-    if (config.projectileSpeed > 500) {
+  } else if (config.shot?.speed !== undefined) {
+    if (config.shot.speed > 500) {
       deliveryFactor = 0.85; // Fast projectile
-    } else if (config.projectileSpeed >= 250) {
+    } else if (config.shot.speed >= 250) {
       deliveryFactor = 0.75; // Medium projectile
     } else {
       deliveryFactor = 0.65; // Slow projectile
@@ -69,9 +69,9 @@ export function getWeaponValue(config: WeaponConfig): number {
 
   // --- turretFactor --- how well the weapon tracks targets
   let turretFactor = 1.0;
-  if (config.turretTurnAccel !== undefined && config.turretDrag !== undefined) {
-    const accel = config.turretTurnAccel;
-    const drag = config.turretDrag;
+  if (config.angular.turnAccel !== undefined && config.angular.drag !== undefined) {
+    const accel = config.angular.turnAccel;
+    const drag = config.angular.drag;
     const terminalVelocity = accel / (60 * drag);
     const referenceTerminal = 40 / (60 * 0.15); // reference: accel=40, drag=0.15
     turretFactor = Math.max(0.5, Math.min(1.2, terminalVelocity / referenceTerminal));
@@ -82,9 +82,9 @@ export function getWeaponValue(config: WeaponConfig): number {
   let aoeFactor = 1.0;
   if (isForceField) {
     aoeFactor = 2.0; // Hits all enemies in cone continuously
-  } else if (config.explosion?.primary.radius !== undefined && config.explosion.primary.radius > 0) {
-    aoeFactor = 1 + (config.explosion.primary.radius / 100) * 0.8;
-  } else if (config.piercing) {
+  } else if (config.shot?.explosion?.primary.radius !== undefined && config.shot.explosion.primary.radius > 0) {
+    aoeFactor = 1 + (config.shot.explosion.primary.radius / 100) * 0.8;
+  } else if (config.shot?.piercing) {
     aoeFactor = 1.3;
   }
 
@@ -108,7 +108,7 @@ export function getUnitValue(unitId: string): UnitValuation {
   const bp = getUnitBlueprint(unitId);
 
   // Sum weapon values from the actual weapon array the unit spawns with
-  const weapons = createWeaponsFromDefinition(unitId, bp.unitDrawScale);
+  const weapons = createTurretsFromDefinition(unitId, bp.unitDrawScale);
   const weaponValue = weapons.reduce((sum, w) => sum + getWeaponValue(w.config), 0);
 
   // defensiveValue: sqrt(hp / 40) * 10  — normalized so jackal (40hp) = 10

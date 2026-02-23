@@ -26,30 +26,29 @@ const _batchedEnemies: Entity[] = [];
 // PERFORMANCE: Multi-weapon units batch a single spatial query instead of per-weapon queries
 export function updateTargetingAndFiringState(world: WorldState): void {
   for (const unit of world.getUnits()) {
-    if (!unit.ownership || !unit.unit || !unit.weapons) continue;
+    if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
 
     const playerId = unit.ownership.playerId;
     const { cos, sin } = getTransformCosSin(unit.transform);
-    const weapons = unit.weapons;
+    const weapons = unit.turrets;
 
     // Pass 1: Validate existing targets, compute world positions
     for (const weapon of weapons) {
       // Skip manual-fire weapons (e.g., dgun) — they only fire on explicit command
       if (weapon.config.isManualFire) {
-        weapon.isTracking = false;
-        weapon.isEngaged = false;
+        weapon.tracking = false;
+        weapon.engaged = false;
         continue;
       }
 
       // Compute and cache weapon world position (reused by turret, firing, beam systems)
-      const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offsetX, weapon.offsetY);
-      weapon.worldX = wp.x;
-      weapon.worldY = wp.y;
+      const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offset.x, weapon.offset.y);
+      weapon.worldPos = wp;
 
       // Step 1: Validate current target with hysteresis
-      if (weapon.targetEntityId !== null) {
-        const target = world.getEntity(weapon.targetEntityId);
+      if (weapon.target !== null) {
+        const target = world.getEntity(weapon.target);
         let targetIsValid = false;
         let targetRadius = 0;
         if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.radiusColliderUnitShot; }
@@ -57,30 +56,30 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
         if (!targetIsValid || !target) {
           // Target dead or gone — drop everything
-          weapon.targetEntityId = null;
-          weapon.isTracking = false;
-          weapon.isEngaged = false;
+          weapon.target = null;
+          weapon.tracking = false;
+          weapon.engaged = false;
         } else {
           const r = weapon.ranges;
-          const dist = distance(weapon.worldX, weapon.worldY, target.transform.x, target.transform.y);
+          const dist = distance(weapon.worldPos!.x, weapon.worldPos!.y, target.transform.x, target.transform.y);
 
           // Tracking hysteresis: drop when target exits tracking.release
           if (dist > r.tracking.release + targetRadius) {
-            weapon.targetEntityId = null;
-            weapon.isTracking = false;
-            weapon.isEngaged = false;
+            weapon.target = null;
+            weapon.tracking = false;
+            weapon.engaged = false;
           } else {
             // Target still within tracking release — maintain tracking
-            weapon.isTracking = true;
+            weapon.tracking = true;
 
             // Engage hysteresis
-            if (weapon.isEngaged) {
+            if (weapon.engaged) {
               if (dist > r.engage.release + targetRadius) {
-                weapon.isEngaged = false;
+                weapon.engaged = false;
               }
             } else {
               if (dist <= r.engage.acquire + targetRadius) {
-                weapon.isEngaged = true;
+                weapon.engaged = true;
               }
             }
           }
@@ -94,12 +93,12 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     let maxWeaponOffset = 0;
     for (const weapon of weapons) {
       if (weapon.config.isManualFire) continue;
-      if (weapon.targetEntityId !== null) continue;
+      if (weapon.target !== null) continue;
       needsAcquireCount++;
       const acquireRange = weapon.ranges.tracking.acquire;
       if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
       // Upper bound on weapon distance from unit center (avoids sqrt)
-      const offset = Math.abs(weapon.offsetX) + Math.abs(weapon.offsetY);
+      const offset = Math.abs(weapon.offset.x) + Math.abs(weapon.offset.y);
       if (offset > maxWeaponOffset) maxWeaponOffset = offset;
     }
 
@@ -118,10 +117,10 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     // Pass 2: Acquire targets for weapons that need them
     for (const weapon of weapons) {
       if (weapon.config.isManualFire) continue;
-      if (weapon.targetEntityId !== null) continue; // already has target from pass 1
+      if (weapon.target !== null) continue; // already has target from pass 1
 
-      const weaponX = weapon.worldX!;
-      const weaponY = weapon.worldY!;
+      const weaponX = weapon.worldPos!.x;
+      const weaponY = weapon.worldPos!.y;
       const r = weapon.ranges;
 
       // Use batched results for multi-weapon units, per-weapon query for single-weapon
@@ -144,15 +143,15 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       // Step 3: Assign new target
       if (closestEnemy) {
-        weapon.targetEntityId = closestEnemy.id;
-        weapon.isTracking = true;
+        weapon.target = closestEnemy.id;
+        weapon.tracking = true;
         const targetRadius = closestEnemy.unit ? closestEnemy.unit.radiusColliderUnitShot
           : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
-        weapon.isEngaged = closestDist <= r.engage.acquire + targetRadius;
+        weapon.engaged = closestDist <= r.engage.acquire + targetRadius;
       } else {
-        weapon.targetEntityId = null;
-        weapon.isTracking = false;
-        weapon.isEngaged = false;
+        weapon.target = null;
+        weapon.tracking = false;
+        weapon.engaged = false;
       }
     }
   }
@@ -165,21 +164,21 @@ export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
     unit.transform.rotCos = Math.cos(unit.transform.rotation);
     unit.transform.rotSin = Math.sin(unit.transform.rotation);
 
-    if (!unit.weapons) continue;
+    if (!unit.turrets) continue;
 
-    for (const weapon of unit.weapons) {
-      if (weapon.currentCooldown > 0) {
-        weapon.currentCooldown -= dtMs;
-        if (weapon.currentCooldown < 0) {
-          weapon.currentCooldown = 0;
+    for (const weapon of unit.turrets) {
+      if (weapon.cooldown > 0) {
+        weapon.cooldown -= dtMs;
+        if (weapon.cooldown < 0) {
+          weapon.cooldown = 0;
         }
       }
 
       // Update burst cooldown
-      if (weapon.burstCooldown !== undefined && weapon.burstCooldown > 0) {
-        weapon.burstCooldown -= dtMs;
-        if (weapon.burstCooldown < 0) {
-          weapon.burstCooldown = 0;
+      if (weapon.burst?.cooldown !== undefined && weapon.burst.cooldown > 0) {
+        weapon.burst.cooldown -= dtMs;
+        if (weapon.burst.cooldown < 0) {
+          weapon.burst.cooldown = 0;
         }
       }
     }

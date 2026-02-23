@@ -250,7 +250,7 @@ export class DamageSystem {
   // Swept volume damage (traveling projectiles)
   // Uses line from prevPos to currentPos with projectile radius
   // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
-  // Note: Recoil for traveling projectiles is applied at fire time in fireWeapons(), not here
+  // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets(), not here
   private applySweptDamage(source: SweptDamageSource): DamageResult {
     const result = resetResult();
 

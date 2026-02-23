@@ -7,7 +7,7 @@
 
 // Re-export types that consumers need (previously re-exported from config/audio/sim modules)
 export type {
-  TurretConfig,
+  BarrelShape,
   MountPoint,
   ForceFieldTurretConfig,
   SpinConfig,

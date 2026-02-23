@@ -64,7 +64,7 @@ export type SpinConfig = {
   decel: number;
 };
 
-export type TurretConfig =
+export type BarrelShape =
   | {
       type: 'simpleMultiBarrel';
       barrelCount: number;

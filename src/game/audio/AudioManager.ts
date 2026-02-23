@@ -17,7 +17,7 @@ import {
   getForceFieldConfig,
 } from './continuousSounds';
 
-export type WeaponAudioId = string;
+export type TurretAudioId = string;
 
 // Unified synth dispatch table
 const SYNTH_DISPATCH: Record<string, (tk: AudioToolkit, speed: number, vol: number) => void> = {
@@ -87,10 +87,10 @@ export class AudioManager {
   // ==================== ONE-SHOT SOUNDS ====================
 
   // Generic weapon fire by blueprint ID
-  playWeaponFire(weaponId: WeaponAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
+  playWeaponFire(turretId: TurretAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
     if (!AUDIO.fireGain) return;
     let entry;
-    try { entry = getTurretBlueprint(weaponId).audio?.fireSound; } catch { return; }
+    try { entry = getTurretBlueprint(turretId).audio?.fireSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];

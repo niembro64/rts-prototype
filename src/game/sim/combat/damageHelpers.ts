@@ -8,18 +8,18 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
-import type { WeaponConfig, Projectile } from '../types';
+import type { TurretConfig, Projectile } from '../types';
 
 // Build an ImpactContext for hit/projectileExpire audio events
 export function buildImpactContext(
-  config: WeaponConfig,
+  config: TurretConfig,
   projectileX: number, projectileY: number,
   projectileVelX: number, projectileVelY: number,
   collisionRadius: number,
   entity?: Entity,
 ): ImpactContext {
-  const primaryRadius = config.explosion?.primary.radius ?? collisionRadius;
-  const secondaryRadius = config.explosion?.secondary.radius ?? primaryRadius;
+  const primaryRadius = config.shot?.explosion?.primary.radius ?? collisionRadius;
+  const secondaryRadius = config.shot?.explosion?.secondary.radius ?? primaryRadius;
 
   let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
   let penDirX = 0, penDirY = 0;
@@ -79,7 +79,7 @@ export function applyKnockbackForces(
 export function collectKillsWithDeathAudio(
   result: DamageResult,
   world: WorldState,
-  config: WeaponConfig,
+  config: TurretConfig,
   unitsToRemove: Set<EntityId>,
   buildingsToRemove: Set<EntityId>,
   audioEvents: SimEvent[],
@@ -93,7 +93,7 @@ export function collectKillsWithDeathAudio(
       const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
       audioEvents.push({
         type: 'death',
-        weaponId: config.id,
+        turretId: config.id,
         pos: { x: target?.transform.x ?? 0, y: target?.transform.y ?? 0 },
         deathContext: ctx ? {
           unitVel: { x: target?.body?.physicsBody.vx ?? 0, y: target?.body?.physicsBody.vy ?? 0 },
@@ -116,7 +116,7 @@ export function collectKillsWithDeathAudio(
       const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
       audioEvents.push({
         type: 'death',
-        weaponId: config.id,
+        turretId: config.id,
         pos: { x: building?.transform.x ?? 0, y: building?.transform.y ?? 0 },
         deathContext: {
           unitVel: { x: 0, y: 0 },
@@ -166,7 +166,7 @@ export function emitBeamHitAudio(
   hitEntityIds: EntityId[],
   world: WorldState,
   proj: Projectile,
-  config: WeaponConfig,
+  config: TurretConfig,
   impactX: number,
   impactY: number,
   beamDirX: number,
@@ -180,7 +180,7 @@ export function emitBeamHitAudio(
       const entity = world.getEntity(hitId);
       if (entity) {
         audioEvents.push({
-          type: 'hit', weaponId: config.projectileType ?? config.id,
+          type: 'hit', turretId: config.shot?.type ?? config.id,
           pos: { x: entity.transform.x, y: entity.transform.y },
           impactContext: buildImpactContext(
             config, impactX, impactY,

@@ -646,9 +646,9 @@ const selectionActions: SelectionActions = {
     const scene = gameInstance?.getScene();
     scene?.toggleDGunMode();
   },
-  queueUnit: (factoryId: number, weaponId: string) => {
+  queueUnit: (factoryId: number, unitId: string) => {
     const scene = gameInstance?.getScene();
-    scene?.queueFactoryUnit(factoryId, weaponId);
+    scene?.queueFactoryUnit(factoryId, unitId);
   },
   cancelQueueItem: (factoryId: number, index: number) => {
     const scene = gameInstance?.getScene();

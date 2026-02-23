@@ -19,7 +19,7 @@ import type {
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
-import { getWeaponConfig } from '../sim/weapons';
+import { getTurretConfig } from '../sim/turretConfigs';
 import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
 import {
   lerp,
@@ -55,15 +55,15 @@ type ServerTarget = {
   rotation: number;
   velocityX: number;
   velocityY: number;
-  weapons: {
-    turretRotation: number;
-    turretAngularVelocity: number;
-    currentForceFieldRange: number | undefined;
+  turrets: {
+    rotation: number;
+    angularVelocity: number;
+    forceFieldRange: number | undefined;
   }[];
 };
 
 function createServerTarget(): ServerTarget {
-  return { x: 0, y: 0, rotation: 0, velocityX: 0, velocityY: 0, weapons: [] };
+  return { x: 0, y: 0, rotation: 0, velocityX: 0, velocityY: 0, turrets: [] };
 }
 
 export class ClientViewState {
@@ -135,24 +135,24 @@ export class ClientViewState {
       target.rotation = netEntity.rotation;
       target.velocityX = netEntity.unit?.velocity.x ?? 0;
       target.velocityY = netEntity.unit?.velocity.y ?? 0;
-      const nw = netEntity.unit?.weapons;
+      const nw = netEntity.unit?.turrets;
       if (nw) {
-        while (target.weapons.length < nw.length) {
-          target.weapons.push({
-            turretRotation: 0,
-            turretAngularVelocity: 0,
-            currentForceFieldRange: undefined,
+        while (target.turrets.length < nw.length) {
+          target.turrets.push({
+            rotation: 0,
+            angularVelocity: 0,
+            forceFieldRange: undefined,
           });
         }
-        target.weapons.length = nw.length;
+        target.turrets.length = nw.length;
         for (let i = 0; i < nw.length; i++) {
-          target.weapons[i].turretRotation = nw[i].turret.angular.rot;
-          target.weapons[i].turretAngularVelocity = nw[i].turret.angular.vel;
-          target.weapons[i].currentForceFieldRange =
+          target.turrets[i].rotation = nw[i].turret.angular.rot;
+          target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
+          target.turrets[i].forceFieldRange =
             nw[i].currentForceFieldRange;
         }
       } else {
-        target.weapons.length = 0;
+        target.turrets.length = 0;
       }
 
       const existing = this.entities.get(netEntity.id);
@@ -315,17 +315,17 @@ export class ClientViewState {
         }
       }
 
-      // Snap weapon targeting state (turret rotation/velocity blended in applyPrediction)
-      if (su.weapons && su.weapons.length > 0 && entity.weapons) {
+      // Snap turret targeting state (turret rotation/velocity blended in applyPrediction)
+      if (su.turrets && su.turrets.length > 0 && entity.turrets) {
         for (
           let i = 0;
-          i < su.weapons.length && i < entity.weapons.length;
+          i < su.turrets.length && i < entity.turrets.length;
           i++
         ) {
-          entity.weapons[i].targetEntityId = su.weapons[i].targetId ?? null;
-          entity.weapons[i].isTracking = su.weapons[i].isTracking;
-          entity.weapons[i].isEngaged = su.weapons[i].isEngaged;
-          // currentForceFieldRange is NOT snapped — dead-reckoned + drifted in applyPrediction()
+          entity.turrets[i].target = su.turrets[i].targetId ?? null;
+          entity.turrets[i].tracking = su.turrets[i].isTracking;
+          entity.turrets[i].engaged = su.turrets[i].isEngaged;
+          // forceField.range is NOT snapped — dead-reckoned + drifted in applyPrediction()
         }
       }
 
@@ -413,22 +413,22 @@ export class ClientViewState {
         }
 
         // Advance turret rotations using angular velocity + drift toward server
-        if (entity.weapons) {
-          for (let i = 0; i < entity.weapons.length; i++) {
-            const weapon = entity.weapons[i];
-            weapon.turretRotation += weapon.turretAngularVelocity * dt;
+        if (entity.turrets) {
+          for (let i = 0; i < entity.turrets.length; i++) {
+            const weapon = entity.turrets[i];
+            weapon.rotation += weapon.angularVelocity * dt;
 
             // Drift turret toward server target
-            const tw = target?.weapons?.[i];
+            const tw = target?.turrets?.[i];
             if (tw) {
-              weapon.turretRotation = lerpAngle(
-                weapon.turretRotation,
-                tw.turretRotation,
+              weapon.rotation = lerpAngle(
+                weapon.rotation,
+                tw.rotation,
                 rotDrift,
               );
-              weapon.turretAngularVelocity = lerp(
-                weapon.turretAngularVelocity,
-                tw.turretAngularVelocity,
+              weapon.angularVelocity = lerp(
+                weapon.angularVelocity,
+                tw.angularVelocity,
                 velDrift,
               );
             }
@@ -438,8 +438,8 @@ export class ClientViewState {
               weapon.config.forceField &&
               weapon.config.forceField.transitionTime
             ) {
-              const cur = weapon.currentForceFieldRange ?? 0;
-              const targetProgress = weapon.isEngaged ? 1 : 0;
+              const cur = weapon.forceField?.range ?? 0;
+              const targetProgress = weapon.engaged ? 1 : 0;
               const progressDelta =
                 dt / (weapon.config.forceField.transitionTime / 1000);
               let next = cur;
@@ -449,11 +449,15 @@ export class ClientViewState {
                 next = Math.max(cur - progressDelta, 0);
               }
               // Drift toward server's authoritative value
-              const serverRange = tw?.currentForceFieldRange;
+              const serverRange = tw?.forceFieldRange;
               if (serverRange !== undefined) {
                 next = lerp(next, serverRange, rotDrift);
               }
-              weapon.currentForceFieldRange = next;
+              if (!weapon.forceField) {
+                weapon.forceField = { range: next, transition: 0 };
+              } else {
+                weapon.forceField.range = next;
+              }
             }
           }
         }
@@ -464,12 +468,12 @@ export class ClientViewState {
           // Beams: reconstruct from source unit's current position + turret rotation
           // Beam existence is driven by the weapon's isEngaged state (updated every snapshot),
           // so lost despawn events self-correct on the next snapshot.
-          const weaponIndex = entity.projectile.config.weaponIndex ?? 0;
+          const weaponIndex = entity.projectile.config.turretIndex ?? 0;
           const source = this.entities.get(entity.projectile.sourceEntityId);
-          const weapon = source?.weapons?.[weaponIndex];
+          const weapon = source?.turrets?.[weaponIndex];
 
-          if (source && weapon && weapon.isEngaged) {
-            const turretAngle = weapon.turretRotation;
+          if (source && weapon && weapon.engaged) {
+            const turretAngle = weapon.rotation;
             const dirX = Math.cos(turretAngle);
             const dirY = Math.sin(turretAngle);
 
@@ -481,8 +485,8 @@ export class ClientViewState {
               source.transform.y,
               unitCos,
               unitSin,
-              weapon.offsetX,
-              weapon.offsetY,
+              weapon.offset.x,
+              weapon.offset.y,
             );
 
             // Beam starts at barrel tip
@@ -582,8 +586,8 @@ export class ClientViewState {
    */
   private createProjectileFromSpawn(spawn: NetworkProjectileSpawn): Entity {
     const config = {
-      ...getWeaponConfig(spawn.weaponId),
-      weaponIndex: spawn.weaponIndex,
+      ...getTurretConfig(spawn.turretId),
+      turretIndex: spawn.turretIndex,
     };
 
     // Default to server position; override with client-side muzzle if source is available
@@ -592,7 +596,7 @@ export class ClientViewState {
 
     if (spawn.projectileType !== 'beam') {
       const source = this.entities.get(spawn.sourceEntityId);
-      const weapon = source?.weapons?.[spawn.weaponIndex];
+      const weapon = source?.turrets?.[spawn.turretIndex];
       if (source && source.unit && weapon) {
         const unitCos = Math.cos(source.transform.rotation);
         const unitSin = Math.sin(source.transform.rotation);
@@ -601,12 +605,12 @@ export class ClientViewState {
           source.transform.y,
           unitCos,
           unitSin,
-          weapon.offsetX,
-          weapon.offsetY,
+          weapon.offset.x,
+          weapon.offset.y,
         );
 
         // Forward from weapon in firing direction (same as server)
-        const turretAngle = weapon.turretRotation;
+        const turretAngle = weapon.rotation;
         const projBt = getBarrelTipWorldPos(
           wp.x,
           wp.y,
@@ -636,9 +640,9 @@ export class ClientViewState {
         velocityY: spawn.velocity.y,
         timeAlive: 0,
         maxLifespan:
-          config.projectileLifespan ??
-          config.beam?.duration ??
-          (config.beam !== undefined ? Infinity : 2000),
+          config.shot?.lifespan ??
+          config.shot?.beam?.duration ??
+          (config.shot?.beam !== undefined ? Infinity : 2000),
         hitEntities: new Set(),
         maxHits: 1,
         startX: spawn.beam?.start.x,

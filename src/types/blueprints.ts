@@ -1,7 +1,7 @@
 // Blueprint types extracted from game/sim/blueprints/types.ts
 
 import type {
-  TurretConfig,
+  BarrelShape,
   MountPoint,
   ForceFieldTurretConfig,
   SpinConfig,
@@ -11,7 +11,7 @@ import type { TurretRangeOverrides } from './sim';
 
 // Re-export for consumers
 export type {
-  TurretConfig,
+  BarrelShape,
   MountPoint,
   ForceFieldTurretConfig,
   SpinConfig,
@@ -64,7 +64,7 @@ export type TurretBlueprint = {
   color: number;
   turretTurnAccel: number;
   turretDrag: number;
-  turretShape: TurretConfig;
+  barrel: BarrelShape;
   rangeMultiplierOverrides: TurretRangeOverrides;
   homingTurnRate?: number;
   launchForce?: number;
@@ -81,7 +81,7 @@ export type TurretBlueprint = {
 };
 
 export type TurretMount = {
-  weaponId: string;
+  turretId: string;
   offsetX: number;
   offsetY: number;
 };
@@ -127,12 +127,12 @@ export type UnitBlueprint = {
   unitRadiusColliderPush: number;
   mass: number;
   baseCost: number;
-  weapons: TurretMount[];
+  turrets: TurretMount[];
   chassisMounts: MountPoint[];
   locomotion: LocomotionBlueprint;
   renderer: string;
   builder?: { buildRange: number; maxEnergyUseRate: number };
-  dgun?: { weaponId: string; energyCost: number };
+  dgun?: { turretId: string; energyCost: number };
   deathSound?: SoundEntry;
-  weaponSeeRange?: number;
+  seeRange?: number;
 };

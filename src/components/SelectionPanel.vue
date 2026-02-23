@@ -31,25 +31,25 @@ const buildingOptions: { type: 'solar' | 'factory'; label: string; key: string; 
 ];
 
 // Vehicles (treads/wheels)
-const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
-  { weaponId: 'jackal', label: 'Jackal', cost: 40 },
-  { weaponId: 'lynx', label: 'Lynx', cost: 55 },
-  { weaponId: 'badger', label: 'Badger', cost: 80 },
-  { weaponId: 'mongoose', label: 'Mongoose', cost: 100 },
-  { weaponId: 'mammoth', label: 'Mammoth', cost: 180 },
-  { weaponId: 'hippo', label: 'Hippo', cost: 5000 },
+const vehicleOptions: { unitId: string; label: string; cost: number }[] = [
+  { unitId: 'jackal', label: 'Jackal', cost: 40 },
+  { unitId: 'lynx', label: 'Lynx', cost: 55 },
+  { unitId: 'badger', label: 'Badger', cost: 80 },
+  { unitId: 'mongoose', label: 'Mongoose', cost: 100 },
+  { unitId: 'mammoth', label: 'Mammoth', cost: 180 },
+  { unitId: 'hippo', label: 'Hippo', cost: 5000 },
 ];
 
 // Bots (legs)
-const botOptions: { weaponId: string; label: string; cost: number }[] = [
-  { weaponId: 'tick', label: 'Tick', cost: 75 },
-  { weaponId: 'tarantula', label: 'Tarantula', cost: 70 },
-  { weaponId: 'daddy', label: 'Daddy', cost: 90 },
-  { weaponId: 'widow', label: 'Widow', cost: 800 },
+const botOptions: { unitId: string; label: string; cost: number }[] = [
+  { unitId: 'tick', label: 'Tick', cost: 75 },
+  { unitId: 'tarantula', label: 'Tarantula', cost: 70 },
+  { unitId: 'daddy', label: 'Daddy', cost: 90 },
+  { unitId: 'widow', label: 'Widow', cost: 800 },
 ];
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)
-function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: string) {
+function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: string) {
   let count = 1;
   if (event.ctrlKey) {
     count = 100;
@@ -58,7 +58,7 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: 
   }
 
   for (let i = 0; i < count; i++) {
-    props.actions.queueUnit(factoryId, weaponId);
+    props.actions.queueUnit(factoryId, unitId);
   }
 }
 </script>
@@ -131,9 +131,9 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: 
       <div class="buttons">
         <button
           v-for="uo in vehicleOptions"
-          :key="uo.weaponId"
+          :key="uo.unitId"
           class="action-btn produce-btn vehicle-btn"
-          @click="queueUnitsWithModifier($event, selection.factoryId!, uo.weaponId)"
+          @click="queueUnitsWithModifier($event, selection.factoryId!, uo.unitId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
           <span class="btn-cost">{{ uo.cost }}E</span>
@@ -147,9 +147,9 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, weaponId: 
       <div class="buttons">
         <button
           v-for="uo in botOptions"
-          :key="uo.weaponId"
+          :key="uo.unitId"
           class="action-btn produce-btn bot-btn"
-          @click="queueUnitsWithModifier($event, selection.factoryId!, uo.weaponId)"
+          @click="queueUnitsWithModifier($event, selection.factoryId!, uo.unitId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
           <span class="btn-cost">{{ uo.cost }}E</span>

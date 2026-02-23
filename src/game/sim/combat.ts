@@ -3,10 +3,10 @@
 
 export type {
   SimEvent,
-  FireWeaponsResult,
+  FireTurretsResult,
   CollisionResult,
   DeathContext,
-  WeaponAudioId,
+  TurretAudioId,
   ProjectileSpawnEvent,
   ProjectileDespawnEvent,
   ProjectileVelocityUpdateEvent,
@@ -36,10 +36,10 @@ export {
   updateForceFieldState,
   applyForceFieldDamage,
   resetForceFieldBuffers,
-} from './combat/forceFieldWeapon';
+} from './combat/forceFieldTurret';
 
 export {
-  fireWeapons,
+  fireTurrets,
   updateProjectiles,
   checkProjectileCollisions,
 } from './combat/projectileSystem';

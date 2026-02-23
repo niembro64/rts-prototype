@@ -2,11 +2,11 @@
 
 import type { Entity } from './types';
 
-/** Set all weapon turret rotations on an entity to face toward (targetX, targetY) */
+/** Set all turret rotations on an entity to face toward (targetX, targetY) */
 export function aimTurretsToward(entity: Entity, targetX: number, targetY: number): void {
-  if (!entity.weapons) return;
+  if (!entity.turrets) return;
   const angle = Math.atan2(targetY - entity.transform.y, targetX - entity.transform.x);
-  for (const weapon of entity.weapons) {
-    weapon.turretRotation = angle;
+  for (const turret of entity.turrets) {
+    turret.rotation = angle;
   }
 }

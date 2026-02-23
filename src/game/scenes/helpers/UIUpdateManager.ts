@@ -45,14 +45,14 @@ export function buildSelectionInfo(
   const factory = selectedBuildings.find(b => b.factory !== undefined);
 
   // Get factory queue info if factory is selected
-  let factoryQueue: { weaponId: string; label: string }[] | undefined;
+  let factoryQueue: { unitId: string; label: string }[] | undefined;
   let factoryProgress: number | undefined;
   let factoryIsProducing: boolean | undefined;
 
   if (factory?.factory) {
     const f = factory.factory;
     factoryQueue = f.buildQueue.map(unitType => ({
-      weaponId: unitType, // Field name kept for compatibility
+      unitId: unitType,
       label: UNIT_LABELS[unitType] ?? unitType,
     }));
     factoryProgress = f.currentBuildProgress;

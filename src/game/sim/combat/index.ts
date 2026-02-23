@@ -2,7 +2,7 @@
 // Re-exports all combat functionality from helper modules
 
 // Types
-export type { SimEvent, SimDeathContext, ImpactContext, FireWeaponsResult, CollisionResult, DeathContext, WeaponAudioId } from './types';
+export type { SimEvent, SimDeathContext, ImpactContext, FireTurretsResult, CollisionResult, DeathContext, TurretAudioId } from './types';
 export type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from './types';
 
 // Utility functions
@@ -21,7 +21,7 @@ export { updateLaserSounds, emitLaserStopsForEntity, emitLaserStopsForTarget } f
 export { updateForceFieldSounds, emitForceFieldStopsForEntity } from './forceFieldSoundSystem';
 
 // Force field weapons
-export { updateForceFieldState, applyForceFieldDamage, resetForceFieldBuffers } from './forceFieldWeapon';
+export { updateForceFieldState, applyForceFieldDamage, resetForceFieldBuffers } from './forceFieldTurret';
 
 // Projectiles
-export { fireWeapons, updateProjectiles, checkProjectileCollisions } from './projectileSystem';
+export { fireTurrets, updateProjectiles, checkProjectileCollisions } from './projectileSystem';

@@ -160,11 +160,11 @@ export class FactoryProductionSystem {
   }
 
   // Get build queue for display
-  getBuildQueue(factory: Entity): { weaponId: string; progress: number }[] {
+  getBuildQueue(factory: Entity): { unitId: string; progress: number }[] {
     if (!factory.factory) return [];
 
-    return factory.factory.buildQueue.map((weaponId, index) => ({
-      weaponId,
+    return factory.factory.buildQueue.map((unitId, index) => ({
+      unitId,
       progress: index === 0 && factory.factory!.isProducing
         ? factory.factory!.currentBuildProgress
         : 0,

@@ -2,7 +2,7 @@
 
 import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkEntity } from '../NetworkManager';
-import { getWeaponConfig } from '../../sim/weapons';
+import { getTurretConfig } from '../../sim/turretConfigs';
 
 /**
  * Create an Entity from NetworkEntity data
@@ -76,31 +76,32 @@ function createUnitFromNetwork(
     },
   };
 
-  if (u?.weapons && u.weapons.length > 0) {
-    const weapons = [];
-    for (let i = 0; i < u.weapons.length; i++) {
-      const nw = u.weapons[i];
+  if (u?.turrets && u.turrets.length > 0) {
+    const turrets = [];
+    for (let i = 0; i < u.turrets.length; i++) {
+      const nw = u.turrets[i];
       const t = nw.turret;
-      weapons.push({
-        config: getWeaponConfig(t.id),
-        currentCooldown: 0,
-        targetEntityId: nw.targetId ?? null,
+      turrets.push({
+        config: getTurretConfig(t.id),
+        cooldown: 0,
+        target: nw.targetId ?? null,
         ranges: {
           tracking: { ...t.ranges.tracking },
           engage: { ...t.ranges.engage },
         },
-        isTracking: nw.isTracking,
-        isEngaged: nw.isEngaged,
-        turretRotation: t.angular.rot,
-        turretAngularVelocity: t.angular.vel,
-        turretTurnAccel: t.angular.acc,
-        turretDrag: t.angular.drag,
-        offsetX: t.pos.offset.x,
-        offsetY: t.pos.offset.y,
-        currentForceFieldRange: nw.currentForceFieldRange,
+        tracking: nw.isTracking,
+        engaged: nw.isEngaged,
+        rotation: t.angular.rot,
+        angularVelocity: t.angular.vel,
+        turnAccel: t.angular.acc,
+        drag: t.angular.drag,
+        offset: { x: t.pos.offset.x, y: t.pos.offset.y },
+        forceField: nw.currentForceFieldRange !== undefined
+          ? { range: nw.currentForceFieldRange, transition: 0 }
+          : undefined,
       });
     }
-    entity.weapons = weapons;
+    entity.turrets = turrets;
   }
 
   if (u?.isCommander) {
@@ -190,11 +191,12 @@ function createProjectileFromNetwork(
     projectile: {
       ownerId: playerId,
       sourceEntityId: s?.source ?? 0,
-      config: s?.weaponId
-        ? { ...getWeaponConfig(s.weaponId), weaponIndex: s.weaponIndex }
+      config: s?.turretId
+        ? { ...getTurretConfig(s.turretId), turretIndex: s.turretIndex }
         : {
           id: 'unknown',
-          collision: { radius: 5, damage: 10 },
+          angular: { turnAccel: 0, drag: 0 },
+          shot: { collision: { radius: 5, damage: 10 } },
           range: 100,
           cooldown: 1000,
         },

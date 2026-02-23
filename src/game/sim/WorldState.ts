@@ -1,8 +1,8 @@
-import type { Entity, EntityId, EntityType, PlayerId, WeaponConfig, Projectile, ProjectileType } from './types';
+import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileType } from './types';
 import { EntityCacheManager } from './EntityCacheManager';
-import { getWeaponConfig, computeWeaponRanges } from './weapons';
+import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint } from './blueprints';
-import { createWeaponsFromDefinition } from './unitDefinitions';
+import { createTurretsFromDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS } from '../../config';
 
 // Seeded random number generator for determinism
@@ -294,8 +294,8 @@ export class WorldState {
     this.activePlayerId = playerId;
   }
 
-  // Create a base unit entity without weapons (weapons set separately)
-  // Use this when you need to set up custom weapons arrays
+  // Create a base unit entity without turrets (turrets set separately)
+  // Use this when you need to set up custom turrets arrays
   createUnitBase(
     x: number,
     y: number,
@@ -328,7 +328,7 @@ export class WorldState {
         actions: [],
         patrolStartIndex: null,
       },
-      weapons: [], // Weapons set by caller
+      turrets: [], // Turrets set by caller
     };
     return entity;
   }
@@ -352,8 +352,8 @@ export class WorldState {
       bp.unitRadiusColliderPush
     );
 
-    // Create weapons from blueprint definition
-    entity.weapons = createWeaponsFromDefinition(unitId, bp.unitDrawScale);
+    // Create turrets from blueprint definition
+    entity.turrets = createTurretsFromDefinition(unitId, bp.unitDrawScale);
 
     // Attach builder component if blueprint specifies it
     if (bp.builder) {
@@ -389,29 +389,28 @@ export class WorldState {
     turretDrag?: number,
   ): Entity {
     const bp = getUnitBlueprint(unitType);
-    const weaponType = bp?.weapons[0]?.weaponId ?? 'lightTurret';
-    const weaponConfig = getWeaponConfig(weaponType);
+    const turretType = bp?.turrets[0]?.turretId ?? 'lightTurret';
+    const turretConfig = getTurretConfig(turretType);
 
-    const ranges = computeWeaponRanges(weaponConfig);
+    const ranges = computeTurretRanges(turretConfig);
 
-    const accel = turretTurnAccel ?? weaponConfig.turretTurnAccel!;
-    const drag = turretDrag ?? weaponConfig.turretDrag!;
+    const accel = turretTurnAccel ?? turretConfig.angular.turnAccel;
+    const drag = turretDrag ?? turretConfig.angular.drag;
 
     const entity = this.createUnitBase(x, y, playerId, unitType, drawScale, moveSpeed, mass, 100);
 
-    entity.weapons = [{
-      config: weaponConfig,
-      currentCooldown: 0,
-      targetEntityId: null,
+    entity.turrets = [{
+      config: turretConfig,
+      cooldown: 0,
+      target: null,
       ranges,
-      isTracking: false,
-      isEngaged: false,
-      turretRotation: 0,
-      turretAngularVelocity: 0,
-      turretTurnAccel: accel,
-      turretDrag: drag,
-      offsetX: 0,
-      offsetY: 0,
+      tracking: false,
+      engaged: false,
+      rotation: 0,
+      angularVelocity: 0,
+      turnAccel: accel,
+      drag: drag,
+      offset: { x: 0, y: 0 },
     }];
 
     return entity;
@@ -436,7 +435,7 @@ export class WorldState {
     velocityY: number,
     ownerId: PlayerId,
     sourceEntityId: EntityId,
-    config: WeaponConfig
+    config: TurretConfig
   ): Entity {
     const entity = this.createProjectile(x, y, velocityX, velocityY, ownerId, sourceEntityId, config, 'traveling');
 
@@ -482,7 +481,7 @@ export class WorldState {
     velocityY: number,
     ownerId: PlayerId,
     sourceEntityId: EntityId,
-    config: WeaponConfig,
+    config: TurretConfig,
     projectileType: ProjectileType = 'traveling'
   ): Entity {
     const id = this.generateEntityId();
@@ -491,17 +490,17 @@ export class WorldState {
     const rotation = Math.atan2(velocityY, velocityX);
 
     // Determine max lifespan
-    let maxLifespan = config.projectileLifespan ?? 2000;
+    let maxLifespan = config.shot?.lifespan ?? 2000;
     if (projectileType === 'beam') {
       // Cooldown beams: beamDuration is the shot lifespan
-      // Continuous beams: removed explicitly by projectileSystem when isEngaged goes false
-      maxLifespan = config.beam?.duration ?? Infinity;
+      // Continuous beams: removed explicitly by projectileSystem when turret.engaged goes false
+      maxLifespan = config.shot?.beam?.duration ?? Infinity;
     } else if (projectileType === 'instant') {
       maxLifespan = 16; // One frame essentially
     }
 
     // Determine max hits (piercing or single hit)
-    const maxHits = config.piercing ? Infinity : 1;
+    const maxHits = config.shot?.piercing ? Infinity : 1;
 
     const projectile: Projectile = {
       ownerId,
@@ -536,7 +535,7 @@ export class WorldState {
     endY: number,
     ownerId: PlayerId,
     sourceEntityId: EntityId,
-    config: WeaponConfig
+    config: TurretConfig
   ): Entity {
     const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, 'beam');
 

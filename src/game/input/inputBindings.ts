@@ -213,8 +213,8 @@ export class InputManager {
   }
 
   // Public method to queue unit at factory from UI
-  public queueUnitAtFactory(factoryId: number, weaponId: string): void {
-    this.commandController.queueUnitAtFactory(factoryId, weaponId);
+  public queueUnitAtFactory(factoryId: number, unitId: string): void {
+    this.commandController.queueUnitAtFactory(factoryId, unitId);
   }
 
   // Public method to cancel queue item at factory from UI

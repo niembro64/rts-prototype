@@ -21,7 +21,7 @@ import {
 import { magnitude } from '../math';
 import { FIRE_EXPLOSION } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';
-import type { TurretConfig, SpinConfig } from '../../config';
+import type { BarrelShape, SpinConfig } from '../../config';
 import { PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL as LOD } from '../../lodConfig';
 
 // Import from helper modules
@@ -163,12 +163,12 @@ export class EntityRenderer {
     }
 
     for (const entity of units) {
-      if (!entity.weapons) continue;
+      if (!entity.turrets) continue;
 
       // Find spin config from any weapon that has one (simpleMultiBarrel or coneMultiBarrel)
       let spinConfig: SpinConfig | undefined;
-      for (const w of entity.weapons) {
-        const tc = w.config.turretShape as TurretConfig | undefined;
+      for (const w of entity.turrets) {
+        const tc = w.config.barrel as BarrelShape | undefined;
         if (
           tc &&
           (tc.type === 'simpleMultiBarrel' || tc.type === 'coneMultiBarrel')
@@ -186,7 +186,7 @@ export class EntityRenderer {
       }
 
       // Check if any weapon is firing
-      const firing = entity.weapons.some((w) => w.isEngaged);
+      const firing = entity.turrets.some((w) => w.engaged);
 
       if (firing) {
         state.speed = Math.min(
@@ -498,7 +498,7 @@ export class EntityRenderer {
         const isDgun = !!entity.dgunProjectile;
         const trailCap = isDgun
           ? 10
-          : (entity.projectile.config.trailLength ?? 3) + 4;
+          : (entity.projectile.config.shot?.trailLength ?? 3) + 4;
         if (!trail || trail.capacity !== trailCap) {
           trail = {
             positions: new Float32Array(trailCap * 2),
@@ -719,10 +719,10 @@ export class EntityRenderer {
       );
     }
 
-    if (entity.weapons && isSelected) {
-      for (const weapon of entity.weapons) {
-        if (weapon.targetEntityId != null) {
-          const target = this.entitySource.getEntity(weapon.targetEntityId);
+    if (entity.turrets && isSelected) {
+      for (const weapon of entity.turrets) {
+        if (weapon.target != null) {
+          const target = this.entitySource.getEntity(weapon.target);
           if (target) {
             this.graphics.lineStyle(1, 0xff0000, 0.3);
             this.graphics.lineBetween(
@@ -740,7 +740,7 @@ export class EntityRenderer {
   // ==================== TURRET RENDERING (WEAPON-DRIVEN) ====================
 
   private renderUnitTurrets(entity: Entity): void {
-    if (!entity.unit || !entity.weapons || entity.weapons.length === 0) return;
+    if (!entity.unit || !entity.turrets || entity.turrets.length === 0) return;
 
     const { transform, unit, ownership } = entity;
     const { x, y, rotation: bodyRot } = transform;
@@ -772,10 +772,10 @@ export class EntityRenderer {
 
     // Two passes: force field turrets first (underneath), then regular turrets on top
     for (let pass = 0; pass < 2; pass++) {
-      for (let i = 0; i < entity.weapons.length; i++) {
-        const weapon = entity.weapons[i];
+      for (let i = 0; i < entity.turrets.length; i++) {
+        const weapon = entity.turrets[i];
         const isForceField =
-          (weapon.config.turretShape as { type?: string } | undefined)?.type ===
+          (weapon.config.barrel as { type?: string } | undefined)?.type ===
           'complexSingleEmitter';
         if (pass === 0 ? !isForceField : isForceField) continue;
 

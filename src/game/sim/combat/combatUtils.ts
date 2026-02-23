@@ -1,6 +1,6 @@
 // Combat utility functions
 
-import type { Entity, WeaponConfig } from '../types';
+import type { Entity, TurretConfig } from '../types';
 import { distance, normalizeAngle, magnitude, getWeaponWorldPosition } from '../../math';
 
 // Re-export common math functions for backward compatibility
@@ -20,31 +20,31 @@ export function getTargetRadius(target: Entity): number {
 
 // Get barrel tip offset in pixels from weapon mount point.
 // Uses the weapon's turret barrel length scaled by the unit's visual radius.
-export function getBarrelTipOffset(config: WeaponConfig, unitRadius: number): number {
-  const turret = config.turretShape;
+export function getBarrelTipOffset(config: TurretConfig, unitRadius: number): number {
+  const turret = config.barrel;
   if (!turret || turret.type === 'complexSingleEmitter') return unitRadius;
   return unitRadius * turret.barrelLength;
 }
 
-// Resolve weapon world position, using cached values if available
+// Resolve turret world position, using cached values if available
 const _rwpOut = { x: 0, y: 0 };
 export function resolveWeaponWorldPos(
-  weapon: { worldX?: number; worldY?: number; offsetX: number; offsetY: number },
+  turret: { worldPos?: { x: number; y: number }; offset: { x: number; y: number } },
   entityX: number, entityY: number, cos: number, sin: number,
 ): { x: number; y: number } {
-  if (weapon.worldX !== undefined) {
-    _rwpOut.x = weapon.worldX;
-    _rwpOut.y = weapon.worldY!;
+  if (turret.worldPos) {
+    _rwpOut.x = turret.worldPos.x;
+    _rwpOut.y = turret.worldPos.y;
     return _rwpOut;
   }
-  return getWeaponWorldPosition(entityX, entityY, cos, sin, weapon.offsetX, weapon.offsetY);
+  return getWeaponWorldPosition(entityX, entityY, cos, sin, turret.offset.x, turret.offset.y);
 }
 
 // Get barrel tip world position from weapon mount point, firing angle, and config
 const _btOut = { x: 0, y: 0 };
 export function getBarrelTipWorldPos(
   weaponX: number, weaponY: number,
-  firingAngle: number, config: WeaponConfig, unitDrawScale: number,
+  firingAngle: number, config: TurretConfig, unitDrawScale: number,
 ): { x: number; y: number } {
   const offset = getBarrelTipOffset(config, unitDrawScale);
   _btOut.x = weaponX + Math.cos(firingAngle) * offset;

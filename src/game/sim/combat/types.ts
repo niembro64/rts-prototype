@@ -2,7 +2,7 @@
 
 // Re-export types that were previously re-exported from other modules
 export type { DeathContext } from '@/types/damage';
-export type { WeaponAudioId } from '@/types/combat';
+export type { TurretAudioId } from '@/types/combat';
 
 // Re-export all combat types
 export type {
@@ -12,6 +12,6 @@ export type {
   ProjectileSpawnEvent,
   ProjectileDespawnEvent,
   ProjectileVelocityUpdateEvent,
-  FireWeaponsResult,
+  FireTurretsResult,
   CollisionResult,
 } from '@/types/combat';

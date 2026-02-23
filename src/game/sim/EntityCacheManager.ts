@@ -29,9 +29,9 @@ export class EntityCacheManager {
       switch (entity.type) {
         case 'unit':
           this.cachedUnits.push(entity);
-          if (entity.weapons) {
-            for (let i = 0; i < entity.weapons.length; i++) {
-              if (entity.weapons[i].config.forceField) {
+          if (entity.turrets) {
+            for (let i = 0; i < entity.turrets.length; i++) {
+              if (entity.turrets[i].config.forceField) {
                 this.cachedForceFieldUnits.push(entity);
                 break;
               }

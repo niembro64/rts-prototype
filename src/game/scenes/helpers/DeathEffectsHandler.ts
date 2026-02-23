@@ -12,23 +12,23 @@ import {
   EXPLOSION_BASE_MOMENTUM,
   FIRE_EXPLOSION,
 } from '../../../explosionConfig';
-import { TURRET_CONFIGS } from '../../sim/weapons';
+import { TURRET_CONFIGS } from '../../sim/turretConfigs';
 import { magnitude } from '../../math';
 import { getAudioScope, getSoundToggle } from '@/clientBarConfig';
 
-// Get explosion radius based on weapon type (uses explosion.primary.radius from config)
-export function getExplosionRadius(weaponId: string): number {
-  const config = TURRET_CONFIGS[weaponId as keyof typeof TURRET_CONFIGS];
-  if (config?.explosion?.primary.radius) {
-    return config.explosion.primary.radius;
+// Get explosion radius based on turret type (uses explosion.primary.radius from config)
+export function getExplosionRadius(turretId: string): number {
+  const config = TURRET_CONFIGS[turretId as keyof typeof TURRET_CONFIGS];
+  if (config?.shot?.explosion?.primary.radius) {
+    return config.shot.explosion.primary.radius;
   }
   return 8; // fallback
 }
 
-// Get secondary explosion radius based on weapon type
-function getSecondaryExplosionRadius(weaponId: string): number | undefined {
-  const config = TURRET_CONFIGS[weaponId as keyof typeof TURRET_CONFIGS];
-  return config?.explosion?.secondary.radius;
+// Get secondary explosion radius based on turret type
+function getSecondaryExplosionRadius(turretId: string): number | undefined {
+  const config = TURRET_CONFIGS[turretId as keyof typeof TURRET_CONFIGS];
+  return config?.shot?.explosion?.secondary.radius;
 }
 
 // Handle audio events from simulation (or network)
@@ -77,8 +77,8 @@ export function handleSimEvent(
       );
     } else {
       // Fallback: no impactContext (shouldn't happen but safe)
-      const explosionRadius = getExplosionRadius(event.weaponId);
-      const secondaryRadius = getSecondaryExplosionRadius(event.weaponId);
+      const explosionRadius = getExplosionRadius(event.turretId);
+      const secondaryRadius = getSecondaryExplosionRadius(event.turretId);
       entityRenderer.addExplosion(
         event.pos.x,
         event.pos.y,
@@ -201,12 +201,12 @@ export function handleSimEvent(
   switch (event.type) {
     case 'fire':
       if (getSoundToggle('fire')) {
-        audioManager.playWeaponFire(event.weaponId, 1, zoomVolume);
+        audioManager.playWeaponFire(event.turretId, 1, zoomVolume);
       }
       break;
     case 'hit':
       if (getSoundToggle('hit')) {
-        audioManager.playWeaponHit(event.weaponId, zoomVolume);
+        audioManager.playWeaponHit(event.turretId, zoomVolume);
       }
       break;
     case 'death':
@@ -223,7 +223,7 @@ export function handleSimEvent(
         if (!AUDIO.beamGain) break;
         let laserEntry;
         try {
-          laserEntry = getTurretBlueprint(event.weaponId).audio?.laserSound;
+          laserEntry = getTurretBlueprint(event.turretId).audio?.laserSound;
         } catch {
           break;
         }
@@ -244,7 +244,7 @@ export function handleSimEvent(
         if (!AUDIO.fieldGain) break;
         let ffEntry;
         try {
-          ffEntry = getTurretBlueprint(event.weaponId).audio?.fireSound;
+          ffEntry = getTurretBlueprint(event.turretId).audio?.fireSound;
         } catch {
           break;
         }

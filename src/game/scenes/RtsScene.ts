@@ -135,7 +135,7 @@ export class RtsScene extends Phaser.Scene {
     isBuildMode: boolean;
     selectedBuildingType: string | null;
     isDGunMode: boolean;
-    factoryQueue?: { weaponId: string; label: string }[];
+    factoryQueue?: { unitId: string; label: string }[];
     factoryProgress?: number;
     factoryIsProducing?: boolean;
   }) => void;
@@ -380,8 +380,8 @@ export class RtsScene extends Phaser.Scene {
   }
 
   // Queue unit production via UI
-  public queueFactoryUnit(factoryId: number, weaponId: string): void {
-    this.inputManager?.queueUnitAtFactory(factoryId, weaponId);
+  public queueFactoryUnit(factoryId: number, unitId: string): void {
+    this.inputManager?.queueUnitAtFactory(factoryId, unitId);
   }
 
   // Cancel a queue item at a factory

@@ -13,7 +13,7 @@ import {
   emitLaserStopsForTarget,
   updateForceFieldSounds,
   emitForceFieldStopsForEntity,
-  fireWeapons,
+  fireTurrets,
   updateForceFieldState,
   applyForceFieldDamage,
   resetForceFieldBuffers,
@@ -236,7 +236,7 @@ export class Simulation {
     }
 
     // Beam index is maintained incrementally:
-    // - addBeam() called on beam creation in fireWeapons()
+    // - addBeam() called on beam creation in fireTurrets()
     // - removeBeam() called on beam expiry/orphan in updateProjectiles/checkProjectileCollisions
 
     // Clear force accumulator for this frame
@@ -336,7 +336,7 @@ export class Simulation {
     updateTurretRotation(this.world, dtMs);
 
     // Fire weapons and create projectiles (with recoil force for projectiles)
-    const fireResult = fireWeapons(this.world, dtMs, this.forceAccumulator);
+    const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator);
     for (const proj of fireResult.projectiles) {
       this.world.addEntity(proj);
     }
@@ -538,16 +538,16 @@ export class Simulation {
         continue;
       }
 
-      // Check if unit should stop for combat (fight or patrol mode with majority of weapons engaged)
+      // Check if unit should stop for combat (fight or patrol mode with majority of turrets engaged)
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
-        const weapons = entity.weapons;
-        if (weapons && weapons.length > 0) {
+        const turrets = entity.turrets;
+        if (turrets && turrets.length > 0) {
           let engagedCount = 0;
-          for (let i = 0; i < weapons.length; i++) {
-            if (weapons[i].isEngaged) engagedCount++;
+          for (let i = 0; i < turrets.length; i++) {
+            if (turrets[i].engaged) engagedCount++;
           }
-          if (engagedCount > weapons.length / 2) {
-            // Majority of weapons are engaged — stop and fight
+          if (engagedCount > turrets.length / 2) {
+            // Majority of turrets are engaged — stop and fight
             continue;
           }
         }

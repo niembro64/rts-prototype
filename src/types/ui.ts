@@ -6,7 +6,7 @@ import type { Vec2 } from './vec2';
 
 // Selection panel types
 export type QueueItem = {
-  weaponId: string;
+  unitId: string;
   label: string;
 };
 
@@ -32,7 +32,7 @@ export type SelectionActions = {
   startBuild: (buildingType: 'solar' | 'factory') => void;
   cancelBuild: () => void;
   toggleDGun: () => void;
-  queueUnit: (factoryId: number, weaponId: string) => void;
+  queueUnit: (factoryId: number, unitId: string) => void;
   cancelQueueItem: (factoryId: number, index: number) => void;
 };
 

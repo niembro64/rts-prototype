@@ -31,32 +31,31 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
   _activeForceFieldCount = 0;
 
   for (const unit of world.getForceFieldUnits()) {
-    for (const weapon of unit.weapons!) {
+    for (const weapon of unit.turrets!) {
       const config = weapon.config;
       if (!config.forceField) continue;
 
       const transitionTime = config.forceField?.transitionTime ?? 1000;
 
       // Initialize
-      if (weapon.forceFieldTransitionProgress === undefined) {
-        weapon.forceFieldTransitionProgress = 0;
-        weapon.currentForceFieldRange = 0;
+      if (weapon.forceField === undefined) {
+        weapon.forceField = { transition: 0, range: 0 };
       }
 
       // Move progress toward target based on engaged state
-      const targetProgress = weapon.isEngaged ? 1 : 0;
+      const targetProgress = weapon.engaged ? 1 : 0;
       const progressDelta = dtMs / transitionTime;
 
-      if (weapon.forceFieldTransitionProgress < targetProgress) {
-        weapon.forceFieldTransitionProgress = Math.min(weapon.forceFieldTransitionProgress + progressDelta, 1);
-      } else if (weapon.forceFieldTransitionProgress > targetProgress) {
-        weapon.forceFieldTransitionProgress = Math.max(weapon.forceFieldTransitionProgress - progressDelta, 0);
+      if (weapon.forceField.transition < targetProgress) {
+        weapon.forceField.transition = Math.min(weapon.forceField.transition + progressDelta, 1);
+      } else if (weapon.forceField.transition > targetProgress) {
+        weapon.forceField.transition = Math.max(weapon.forceField.transition - progressDelta, 0);
       }
 
-      // Serialize progress as currentForceFieldRange (0→1)
-      weapon.currentForceFieldRange = weapon.forceFieldTransitionProgress;
+      // Serialize progress as forceField.range (0→1)
+      weapon.forceField.range = weapon.forceField.transition;
 
-      if (weapon.forceFieldTransitionProgress > 0) {
+      if (weapon.forceField.transition > 0) {
         _activeForceFieldCount++;
       }
     }
@@ -105,11 +104,11 @@ export function applyForceFieldDamage(
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
     const sourcePlayerId = unit.ownership.playerId;
 
-    for (const weapon of unit.weapons!) {
+    for (const weapon of unit.turrets!) {
       const config = weapon.config;
       if (!config.forceField) continue;
 
-      const progress = weapon.forceFieldTransitionProgress ?? (weapon.currentForceFieldRange ?? 0);
+      const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
       if (progress <= 0) continue;
 
       const push = config.forceField?.push;
@@ -140,10 +139,10 @@ export function applyForceFieldDamage(
       const sliceHalfAngle = sliceAngle / 2;
       const isFullCircle = sliceHalfAngle >= Math.PI;
 
-      const weaponX = unit.transform.x + unitCos * weapon.offsetX - unitSin * weapon.offsetY;
-      const weaponY = unit.transform.y + unitSin * weapon.offsetX + unitCos * weapon.offsetY;
+      const weaponX = unit.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y;
+      const weaponY = unit.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y;
 
-      const turretAngle = weapon.turretRotation;
+      const turretAngle = weapon.rotation;
 
       // --- Enemy units (skipped when ffAccelUnits is disabled) ---
       const nearbyUnits = world.ffAccelUnits
@@ -253,7 +252,7 @@ export function applyForceFieldDamage(
 
       for (const projEntity of nearbyProjectiles) {
         const proj = projEntity.projectile!;
-        const projRadius = proj.config.collision?.radius ?? 5;
+        const projRadius = proj.config.shot?.collision?.radius ?? 5;
 
         const dx = projEntity.transform.x - weaponX;
         const dy = projEntity.transform.y - weaponY;
@@ -277,7 +276,7 @@ export function applyForceFieldDamage(
         const pullDir = pInPush ? 1 : -1;
         const pZoneStrength = pInPush ? pushStrength : pullStrength;
 
-        const projMass = (proj.config.projectileMass ?? 1) * PROJECTILE_MASS_MULTIPLIER;
+        const projMass = (proj.config.shot?.mass ?? 1) * PROJECTILE_MASS_MULTIPLIER;
         const pullAccel = pZoneStrength / projMass;
 
         const dirX = dist > 0 ? dx / dist : 0;
