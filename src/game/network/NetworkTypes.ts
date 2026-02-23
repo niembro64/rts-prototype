@@ -15,7 +15,15 @@ export type NetworkMessage =
 
 // Sim event for network sync (drives audio + visual effects on client)
 export interface NetworkSimEvent {
-  type: 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop' | 'forceFieldStart' | 'forceFieldStop' | 'projectileExpire';
+  type:
+    | 'fire'
+    | 'hit'
+    | 'death'
+    | 'laserStart'
+    | 'laserStop'
+    | 'forceFieldStart'
+    | 'forceFieldStop'
+    | 'projectileExpire';
   weaponId: WeaponAudioId;
   x: number;
   y: number;
@@ -34,25 +42,25 @@ export interface NetworkSimEvent {
     projectileVelY: number;
     // Magnitude of the attack damage
     attackMagnitude: number;
-    radius: number;       // Unit's collision radius for explosion size
-    color: number;        // Player color for explosion
-    unitType?: string;    // Unit type (e.g. 'widow', 'mammoth') for debris generation
-    rotation?: number;    // Unit's body rotation at death
+    radius: number; // Unit's collision radius for explosion size
+    color: number; // Player color for explosion
+    unitType?: string; // Unit type (e.g. 'widow', 'mammoth') for debris generation
+    rotation?: number; // Unit's body rotation at death
   };
 
   // Impact context (only for 'hit' and 'projectileExpire' events) - for directional flame explosions
   impactContext?: {
-    collisionRadius: number;     // Projectile collision radius
-    primaryRadius: number;       // Primary damage/visual radius
-    secondaryRadius: number;     // Secondary damage/visual radius
-    projectileVelX: number;      // Projectile velocity (or beam direction * magnitude)
+    collisionRadius: number; // Projectile collision radius
+    primaryRadius: number; // Primary damage/visual radius
+    secondaryRadius: number; // Secondary damage/visual radius
+    projectileVelX: number; // Projectile velocity (or beam direction * magnitude)
     projectileVelY: number;
-    projectileX: number;         // Projectile center at impact
+    projectileX: number; // Projectile center at impact
     projectileY: number;
-    entityVelX: number;          // Hit entity velocity (0 if no entity hit)
+    entityVelX: number; // Hit entity velocity (0 if no entity hit)
     entityVelY: number;
     entityCollisionRadius: number; // Hit entity's collision radius (0 if no entity hit)
-    penetrationDirX: number;     // Normalized: projectile center → entity center
+    penetrationDirX: number; // Normalized: projectile center → entity center
     penetrationDirY: number;
   };
 }
@@ -60,18 +68,23 @@ export interface NetworkSimEvent {
 // Projectile spawn event - sent once when projectile is created
 export interface NetworkProjectileSpawn {
   id: number;
-  x: number; y: number; rotation: number;
-  velocityX: number; velocityY: number;
+  x: number;
+  y: number;
+  rotation: number;
+  velocityX: number;
+  velocityY: number;
   projectileType: string;
   weaponId: string;
   playerId: number;
   sourceEntityId: number;
   weaponIndex: number;
   isDGun?: boolean;
-  beamStartX?: number; beamStartY?: number;
-  beamEndX?: number; beamEndY?: number;
-  targetEntityId?: number;   // Homing target entity ID
-  homingTurnRate?: number;   // Max turn rate for homing (rad/sec)
+  beamStartX?: number;
+  beamStartY?: number;
+  beamEndX?: number;
+  beamEndY?: number;
+  targetEntityId?: number; // Homing target entity ID
+  homingTurnRate?: number; // Max turn rate for homing (rad/sec)
 }
 
 // Projectile despawn event - sent once when projectile is removed
@@ -91,8 +104,8 @@ export interface NetworkProjectileVelocityUpdate {
 
 // Spatial grid cell occupancy (debug visualization)
 export interface NetworkGridCell {
-  cx: number;      // Cell grid x coordinate
-  cy: number;      // Cell grid y coordinate
+  cx: number; // Cell grid x coordinate
+  cy: number; // Cell grid y coordinate
   players: number[]; // Player IDs with units in this cell
 }
 
@@ -122,13 +135,13 @@ export interface NetworkServerMeta {
   snapshotRate: number | 'none';
   keyframeRatio: number | 'ALL' | 'NONE';
   sendGridInfo: boolean;
-  serverTime: string;    // "14:34:05 MST"
-  ipAddress: string;     // Public IP or "N/A"
-  allowedUnitTypes?: string[];  // Demo mode only
-  maxTotalUnits?: number;       // Current unit cap
-  projVelInherit?: boolean;     // Projectiles inherit unit velocity
-  ffAccelUnits?: boolean;        // Force field accelerates enemy units
-  ffAccelShots?: boolean;        // Force field accelerates enemy projectiles
+  serverTime: string; // "14:34:05 MST"
+  ipAddress: string; // Public IP or "N/A"
+  allowedUnitTypes?: string[]; // Demo mode only
+  maxTotalUnits?: number; // Current unit cap
+  projVelInherit?: boolean; // Projectiles inherit unit velocity
+  ffAccelUnits?: boolean; // Force field accelerates enemy units
+  ffAccelShots?: boolean; // Force field accelerates enemy projectiles
 }
 
 // Serialized game state sent over network
@@ -180,7 +193,7 @@ export interface NetworkAction {
   buildingType?: string;
   gridX?: number;
   gridY?: number;
-  buildingId?: number;  // Entity ID of the building being constructed
+  buildingId?: number; // Entity ID of the building being constructed
 }
 
 // Weapon data for network sync (supports multi-weapon units)
@@ -190,14 +203,14 @@ export interface NetworkWeapon {
   targetId?: number;
   ranges: import('../sim/types').TurretRanges;
   turretRotation: number;
-  turretAngularVelocity: number;  // Current angular velocity (rad/sec)
-  turretTurnAccel: number;        // Turret acceleration (rad/sec²)
-  turretDrag: number;             // Turret drag coefficient (0-1)
+  turretAngularVelocity: number; // Current angular velocity (rad/sec)
+  turretTurnAccel: number; // Turret acceleration (rad/sec²)
+  turretDrag: number; // Turret drag coefficient (0-1)
   offsetX: number;
   offsetY: number;
   isTracking: boolean;
   isEngaged: boolean;
-  currentForceFieldRange?: number;  // Dynamic outer radius for force field weapons
+  currentForceFieldRange?: number; // Dynamic outer radius for force field weapons
 }
 
 export interface NetworkEntity {
@@ -209,14 +222,14 @@ export interface NetworkEntity {
   playerId?: PlayerId;
 
   // Unit fields
-  unitType?: string;         // Unit type identifier (jackal, lynx, daddy, etc.)
+  unitType?: string; // Unit type identifier (jackal, lynx, daddy, etc.)
   hp?: number;
   maxHp?: number;
-  drawScale?: number;        // Visual radius
-  radiusColliderUnitShot?: number;  // Hitbox radius for projectile/beam hit detection
-  radiusColliderUnitUnit?: number;  // Hitbox radius for unit-unit push physics
+  drawScale?: number; // Visual radius
+  radiusColliderUnitShot?: number; // Hitbox radius for projectile/beam hit detection
+  radiusColliderUnitUnit?: number; // Hitbox radius for unit-unit push physics
   moveSpeed?: number;
-  mass?: number;             // Physics mass for force-based movement
+  mass?: number; // Physics mass for force-based movement
   velocityX?: number;
   velocityY?: number;
   turretRotation?: number;
@@ -246,8 +259,8 @@ export interface NetworkEntity {
   beamStartY?: number;
   beamEndX?: number;
   beamEndY?: number;
-  sourceEntityId?: number;  // Which unit fired this (for beam reconstruction)
-  weaponIndex?: number;     // Which weapon on the source unit
+  sourceEntityId?: number; // Which unit fired this (for beam reconstruction)
+  weaponIndex?: number; // Which weapon on the source unit
 
   // Factory fields
   buildQueue?: string[];

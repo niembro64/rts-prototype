@@ -38,3 +38,10 @@ export interface LabeledOptionsConfig<V, D = V> {
   readonly default: D;
   readonly options: readonly LabeledOption<V>[];
 }
+
+export interface PlatformDefaults<T> {
+  readonly mobile: T;
+  readonly desktop: T;
+}
+
+export type PlatformBooleanDefaults = PlatformDefaults<boolean>;

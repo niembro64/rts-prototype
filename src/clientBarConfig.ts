@@ -68,6 +68,7 @@ export const CLIENT_CONFIG = {
   rangeToggles: { default: false },
   projRangeToggles: { default: false },
   unitRadiusToggles: { default: false },
+  lobbyVisible: { default: { mobile: false, desktop: false } },
 } as const satisfies ClientBarConfig;
 
 // ── Constant arrays ──
@@ -218,6 +219,7 @@ const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'rts-proj-range-toggles';
 const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
 const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
 const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
+const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
@@ -248,6 +250,11 @@ const currentSoundToggles: Record<SoundCategory, boolean> = {
 };
 let currentEdgeScrollEnabled: boolean = _cd.edgeScroll.default;
 let currentDragPanEnabled: boolean = _cd.dragPan.default;
+const _isMobile = typeof navigator !== 'undefined' &&
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+let currentLobbyVisible: boolean = _isMobile
+  ? _cd.lobbyVisible.default.mobile
+  : _cd.lobbyVisible.default.desktop;
 let currentBottomBarsHeight: number = 0;
 let currentZoom: number = 1.0;
 
@@ -347,6 +354,10 @@ function loadFromStorage(): void {
     const storedDragPan = localStorage.getItem(DRAG_PAN_STORAGE_KEY);
     if (storedDragPan !== null) {
       currentDragPanEnabled = storedDragPan === 'true';
+    }
+    const storedLobbyVisible = localStorage.getItem(LOBBY_VISIBLE_STORAGE_KEY);
+    if (storedLobbyVisible !== null) {
+      currentLobbyVisible = storedLobbyVisible === 'true';
     }
   } catch {
     // localStorage not available, use default
@@ -558,4 +569,15 @@ export function getBottomBarsHeight(): number {
 
 export function setBottomBarsHeight(height: number): void {
   currentBottomBarsHeight = height;
+}
+
+export function getLobbyVisible(): boolean {
+  return currentLobbyVisible;
+}
+
+export function setLobbyVisible(visible: boolean): void {
+  currentLobbyVisible = visible;
+  try {
+    localStorage.setItem(LOBBY_VISIBLE_STORAGE_KEY, String(visible));
+  } catch { /* */ }
 }

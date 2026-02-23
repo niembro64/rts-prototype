@@ -24,7 +24,7 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
   /** Position change threshold (px). Entity is "unchanged" if position moved less than this. */
   positionThreshold: 0.01,
   /** Rotation change threshold (radians). */
-  rotationThreshold: Math.PI / 64,
+  rotationThreshold: Math.PI / 256,
   /** Velocity change threshold (px/sec). */
   velocityThreshold: 0.01,
 };
@@ -425,9 +425,6 @@ export const MAP_SETTINGS: Record<string, MapSize> = {
  * - false: Flat distribution (all units equally likely)
  */
 export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING = true;
-
-/** Whether to show the lobby modal on startup. If false, starts in spectate mode. */
-export const SHOW_LOBBY_ON_STARTUP = false;
 
 // Re-export audio config
 export { AUDIO } from './audioConfig';

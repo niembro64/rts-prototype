@@ -2,6 +2,7 @@ import type {
   DefaultSetting,
   BooleanSetting,
   LabeledOptionsConfig,
+  PlatformBooleanDefaults,
 } from './bars';
 import type { GraphicsQuality, RenderMode } from './graphics';
 
@@ -41,4 +42,5 @@ export interface ClientBarConfig {
   readonly rangeToggles: BooleanSetting;
   readonly projRangeToggles: BooleanSetting;
   readonly unitRadiusToggles: BooleanSetting;
+  readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
 }

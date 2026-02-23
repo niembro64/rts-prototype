@@ -22,7 +22,6 @@ import {
 } from '../game/network/NetworkManager';
 import {
   MAP_SETTINGS,
-  SHOW_LOBBY_ON_STARTUP,
   COMBAT_STATS_HISTORY_MAX,
   COMBAT_STATS_VISIBLE_ON_LOAD,
 } from '../config';
@@ -93,6 +92,8 @@ import {
   getSoundToggle,
   setSoundToggle,
   SOUND_CATEGORIES,
+  getLobbyVisible,
+  setLobbyVisible,
 } from '../clientBarConfig';
 import type { GraphicsQuality, RenderMode } from '../types/graphics';
 import type {
@@ -125,7 +126,7 @@ let backgroundServer: GameServer | null = null;
 
 // Lobby state
 const showLobby = ref(true);
-const spectateMode = ref(!SHOW_LOBBY_ON_STARTUP); // When true, hide lobby to spectate background battle
+const spectateMode = ref(!getLobbyVisible()); // When true, hide lobby to spectate background battle
 const isHost = ref(false);
 const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
@@ -742,6 +743,7 @@ function handleOffline(): void {
 
 function toggleSpectateMode(): void {
   spectateMode.value = !spectateMode.value;
+  setLobbyVisible(!spectateMode.value);
 }
 
 function changeGraphicsQuality(quality: GraphicsQuality): void {
