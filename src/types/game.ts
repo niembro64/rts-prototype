@@ -2,7 +2,7 @@
 
 import type { PlayerId } from './sim';
 import type { Command } from './commands';
-import type { NetworkGameState } from './network';
+import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
 
 export type GameConfig = {
@@ -22,7 +22,7 @@ export type GameInstance = {
   getScene: () => import('../game/scenes/RtsScene').RtsScene | null;
 };
 
-export type SnapshotCallback = (state: NetworkGameState) => void;
+export type SnapshotCallback = (state: NetworkServerSnapshot) => void;
 export type SimEventCallback = (event: SimEvent) => void;
 export type GameOverCallback = (winnerId: PlayerId) => void;
 

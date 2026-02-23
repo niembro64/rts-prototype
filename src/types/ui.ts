@@ -1,7 +1,7 @@
 // UI component types extracted from Vue components and helpers
 
 import type { PlayerId, EntityId, WaypointType, Entity } from './sim';
-import type { NetworkCombatStats } from './network';
+import type { NetworkServerSnapshotCombatStats } from './network';
 import type { Vec2 } from './vec2';
 
 // Selection panel types
@@ -76,7 +76,7 @@ export type FriendlyFireMode = 'include' | 'ignore' | 'subHalf' | 'subtract';
 
 export type StatsSnapshot = {
   timestamp: number;
-  stats: NetworkCombatStats;
+  stats: NetworkServerSnapshotCombatStats;
 };
 
 // UI entity source

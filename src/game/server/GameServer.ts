@@ -6,7 +6,7 @@ import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities } from '../sim/spawn';
 import { serializeGameState, resetDeltaTracking } from '../network/stateSerializer';
-import type { NetworkGridCell } from '../network/NetworkTypes';
+import type { NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
@@ -557,7 +557,7 @@ export class GameServer {
   }
 
   // Compute per-team search cells: the bounding box of cells each unit's seeRange covers
-  private computeSearchCells(): NetworkGridCell[] {
+  private computeSearchCells(): NetworkServerSnapshotGridCell[] {
     const cellSize = spatialGrid.getCellSize();
     if (cellSize <= 0) return [];
 
@@ -599,8 +599,8 @@ export class GameServer {
       }
     }
 
-    // Convert to NetworkGridCell array
-    const result: NetworkGridCell[] = [];
+    // Convert to NetworkServerSnapshotGridCell array
+    const result: NetworkServerSnapshotGridCell[] = [];
     for (const [key, players] of cellMap) {
       const cx = Math.floor(key / 20000) - 10000;
       const cy = (key % 20000) - 10000;

@@ -5,15 +5,21 @@ import type { Command } from './commands';
 import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2 } from './vec2';
 
-export type NetworkMessage =
-  | { type: 'state'; data: NetworkGameState | string }
-  | { type: 'command'; data: Command }
+// Client → Server
+export type NetworkPlayerActionMessage = { type: 'command'; data: Command };
+
+// Server → Client
+export type NetworkServerSnapshotMessage =
+  | { type: 'state'; data: NetworkServerSnapshot | string }
   | { type: 'playerAssignment'; playerId: PlayerId }
   | { type: 'gameStart'; playerIds: PlayerId[] }
   | { type: 'playerJoined'; playerId: PlayerId; playerName: string }
   | { type: 'playerLeft'; playerId: PlayerId };
 
-export type NetworkSimEvent = {
+// Combined (transport envelope)
+export type NetworkMessage = NetworkPlayerActionMessage | NetworkServerSnapshotMessage;
+
+export type NetworkServerSnapshotSimEvent = {
   type:
     | 'fire'
     | 'hit'
@@ -30,7 +36,7 @@ export type NetworkSimEvent = {
   impactContext?: ImpactContext;
 };
 
-export type NetworkProjectileSpawn = {
+export type NetworkServerSnapshotProjectileSpawn = {
   id: number;
   pos: Vec2;
   rotation: number;
@@ -46,33 +52,33 @@ export type NetworkProjectileSpawn = {
   homingTurnRate?: number;
 };
 
-export type NetworkProjectileDespawn = {
+export type NetworkServerSnapshotProjectileDespawn = {
   id: number;
 };
 
-export type NetworkProjectileVelocityUpdate = {
+export type NetworkServerSnapshotVelocityUpdate = {
   id: number;
   pos: Vec2;
   velocity: Vec2;
 };
 
-export type NetworkGridCell = {
+export type NetworkServerSnapshotGridCell = {
   cell: Vec2;
   players: number[];
 };
 
-export type NetworkUnitTypeStats = {
+export type NetworkServerSnapshotUnitTypeStats = {
   damage: { dealt: { enemy: number; friendly: number }; received: number };
   kills: { enemy: number; friendly: number };
   units: { produced: number; lost: number; cost: number };
 };
 
-export type NetworkCombatStats = {
-  players: Record<number, Record<string, NetworkUnitTypeStats>>;
-  global: Record<string, NetworkUnitTypeStats>;
+export type NetworkServerSnapshotCombatStats = {
+  players: Record<number, Record<string, NetworkServerSnapshotUnitTypeStats>>;
+  global: Record<string, NetworkServerSnapshotUnitTypeStats>;
 };
 
-export type NetworkServerMeta = {
+export type NetworkServerSnapshotMeta = {
   ticks: { avg: number; low: number; rate: number };
   snaps: { rate: number | 'none'; keyframes: number | 'ALL' | 'NONE' };
   server: { time: string; ip: string };
@@ -84,37 +90,37 @@ export type NetworkServerMeta = {
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
 
-export type NetworkGameState = {
+export type NetworkServerSnapshot = {
   tick: number;
-  entities: NetworkEntity[];
-  economy: Record<PlayerId, NetworkEconomy>;
-  sprayTargets?: NetworkSprayTarget[];
-  audioEvents?: NetworkSimEvent[];
+  entities: NetworkServerSnapshotEntity[];
+  economy: Record<PlayerId, NetworkServerSnapshotEconomy>;
+  sprayTargets?: NetworkServerSnapshotSprayTarget[];
+  audioEvents?: NetworkServerSnapshotSimEvent[];
   projectiles?: {
-    spawns?: NetworkProjectileSpawn[];
-    despawns?: NetworkProjectileDespawn[];
-    velocityUpdates?: NetworkProjectileVelocityUpdate[];
+    spawns?: NetworkServerSnapshotProjectileSpawn[];
+    despawns?: NetworkServerSnapshotProjectileDespawn[];
+    velocityUpdates?: NetworkServerSnapshotVelocityUpdate[];
   };
   gameState?: { phase: GamePhase; winnerId?: PlayerId };
-  combatStats?: NetworkCombatStats;
-  serverMeta?: NetworkServerMeta;
+  combatStats?: NetworkServerSnapshotCombatStats;
+  serverMeta?: NetworkServerSnapshotMeta;
   grid?: {
-    cells: NetworkGridCell[];
-    searchCells: NetworkGridCell[];
+    cells: NetworkServerSnapshotGridCell[];
+    searchCells: NetworkServerSnapshotGridCell[];
     cellSize: number;
   };
   isDelta: boolean;
   removedEntityIds?: number[];
 };
 
-export type NetworkSprayTarget = {
+export type NetworkServerSnapshotSprayTarget = {
   source: { id: number; pos: Vec2; playerId: PlayerId };
   target: { id: number; pos: Vec2; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
   intensity: number;
 };
 
-export type NetworkAction = {
+export type NetworkServerSnapshotAction = {
   type: string;
   pos?: Vec2;
   targetId?: number;
@@ -123,7 +129,7 @@ export type NetworkAction = {
   buildingId?: number;
 };
 
-export type NetworkTurret = {
+export type NetworkServerSnapshotTurret = {
   turret: {
     id: string;
     ranges: TurretRanges;
@@ -143,7 +149,7 @@ export type NetworkTurret = {
   currentForceFieldRange?: number;
 };
 
-export type NetworkEntity = {
+export type NetworkServerSnapshotEntity = {
   id: number;
   type: EntityType;
   pos: Vec2;
@@ -161,8 +167,8 @@ export type NetworkEntity = {
     turretRotation: number;
     isCommander?: boolean;
     buildTargetId?: number;
-    actions?: NetworkAction[];
-    turrets?: NetworkTurret[];
+    actions?: NetworkServerSnapshotAction[];
+    turrets?: NetworkServerSnapshotTurret[];
   };
   building?: {
     type: string;
@@ -185,7 +191,7 @@ export type NetworkEntity = {
   };
 };
 
-export type NetworkEconomy = {
+export type NetworkServerSnapshotEconomy = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };
   expenditure: number;

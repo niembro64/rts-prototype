@@ -9,12 +9,12 @@
 
 import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
 import type {
-  NetworkGameState,
-  NetworkEntity,
-  NetworkProjectileSpawn,
-  NetworkGridCell,
-  NetworkCombatStats,
-  NetworkServerMeta,
+  NetworkServerSnapshot,
+  NetworkServerSnapshotEntity,
+  NetworkServerSnapshotProjectileSpawn,
+  NetworkServerSnapshotGridCell,
+  NetworkServerSnapshotCombatStats,
+  NetworkServerSnapshotMeta,
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
@@ -31,7 +31,7 @@ import {
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
-const EMPTY_AUDIO: NetworkGameState['audioEvents'] = [];
+const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
 // Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
@@ -77,7 +77,7 @@ export class ClientViewState {
   private sprayTargets: SprayTarget[] = [];
 
   // Audio events from last state update
-  private pendingAudioEvents: NetworkGameState['audioEvents'] = [];
+  private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
 
   // Game over state
   private gameOverWinnerId: PlayerId | null = null;
@@ -92,15 +92,15 @@ export class ClientViewState {
   private _serverIds: Set<EntityId> = new Set();
 
   // Spatial grid debug visualization data
-  private gridCells: NetworkGridCell[] = [];
-  private gridSearchCells: NetworkGridCell[] = [];
+  private gridCells: NetworkServerSnapshotGridCell[] = [];
+  private gridSearchCells: NetworkServerSnapshotGridCell[] = [];
   private gridCellSize: number = 0;
 
   // Combat stats from latest snapshot
-  private combatStats: NetworkCombatStats | null = null;
+  private combatStats: NetworkServerSnapshotCombatStats | null = null;
 
   // Server metadata from latest snapshot
-  private serverMeta: NetworkServerMeta | null = null;
+  private serverMeta: NetworkServerSnapshotMeta | null = null;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
@@ -119,7 +119,7 @@ export class ClientViewState {
    * Apply received network state — store server targets, snap non-visual state.
    * Visual blending toward these targets happens in applyPrediction() each frame.
    */
-  applyNetworkState(state: NetworkGameState): void {
+  applyNetworkState(state: NetworkServerSnapshot): void {
     this.currentTick = state.tick;
 
     // Process entity updates (present in both delta and keyframe snapshots)
@@ -285,7 +285,7 @@ export class ClientViewState {
    * Snap non-visual state (hp, actions, targeting, building/factory fields).
    * These don't need smooth blending — they should reflect server truth immediately.
    */
-  private snapNonVisualState(entity: Entity, server: NetworkEntity): void {
+  private snapNonVisualState(entity: Entity, server: NetworkServerSnapshotEntity): void {
     const su = server.unit;
     if (entity.unit && su) {
       entity.unit.hp = su.hp.curr;
@@ -582,7 +582,7 @@ export class ClientViewState {
    * For traveling/dgun projectiles, adjusts spawn position to the client-side muzzle
    * so bullets visually originate from the gun (same approach as beams).
    */
-  private createProjectileFromSpawn(spawn: NetworkProjectileSpawn): Entity {
+  private createProjectileFromSpawn(spawn: NetworkServerSnapshotProjectileSpawn): Entity {
     const config = {
       ...getTurretConfig(spawn.turretId),
       turretIndex: spawn.turretIndex,
@@ -772,7 +772,7 @@ export class ClientViewState {
     return this.sprayTargets;
   }
 
-  getPendingAudioEvents(): NetworkGameState['audioEvents'] {
+  getPendingAudioEvents(): NetworkServerSnapshot['audioEvents'] {
     const events = this.pendingAudioEvents;
     this.pendingAudioEvents = EMPTY_AUDIO;
     return events;
@@ -895,11 +895,11 @@ export class ClientViewState {
 
   // === Spatial grid debug data ===
 
-  getGridCells(): NetworkGridCell[] {
+  getGridCells(): NetworkServerSnapshotGridCell[] {
     return this.gridCells;
   }
 
-  getGridSearchCells(): NetworkGridCell[] {
+  getGridSearchCells(): NetworkServerSnapshotGridCell[] {
     return this.gridSearchCells;
   }
 
@@ -907,11 +907,11 @@ export class ClientViewState {
     return this.gridCellSize;
   }
 
-  getCombatStats(): NetworkCombatStats | null {
+  getCombatStats(): NetworkServerSnapshotCombatStats | null {
     return this.combatStats;
   }
 
-  getServerMeta(): NetworkServerMeta | null {
+  getServerMeta(): NetworkServerSnapshotMeta | null {
     return this.serverMeta;
   }
 

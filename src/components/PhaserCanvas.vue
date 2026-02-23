@@ -12,8 +12,8 @@ import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import CombatStatsModal from './CombatStatsModal.vue';
 import type {
-  NetworkCombatStats,
-  NetworkServerMeta,
+  NetworkServerSnapshotCombatStats,
+  NetworkServerSnapshotMeta,
 } from '../game/network/NetworkTypes';
 import type { StatsSnapshot } from './combatStatsUtils';
 import {
@@ -138,7 +138,7 @@ const networkRole = ref<NetworkRole | null>(null);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 
 // Server metadata received from snapshots (for remote clients to display server bar)
-const serverMetaFromSnapshot = ref<NetworkServerMeta | null>(null);
+const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
 const localIpAddress = ref<string>('N/A');
 const clientTime = ref<string>('');
 
@@ -232,7 +232,7 @@ const minimapData = reactive<MinimapData>({
 });
 
 // Combat stats state
-const combatStats = ref<NetworkCombatStats | null>(null);
+const combatStats = ref<NetworkServerSnapshotCombatStats | null>(null);
 const showCombatStats = ref(COMBAT_STATS_VISIBLE_ON_LOAD);
 const combatStatsViewMode = ref<'global' | 'player'>('global');
 const combatStatsHistory = ref<StatsSnapshot[]>([]);
@@ -329,7 +329,7 @@ function startBackgroundBattle(): void {
     }
     const bgScene = backgroundGameInstance?.getScene();
     if (bgScene) {
-      bgScene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
+      bgScene.onCombatStatsUpdate = (stats: NetworkServerSnapshotCombatStats) => {
         const cloned = structuredClone(stats);
         combatStats.value = cloned;
         if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
@@ -341,7 +341,7 @@ function startBackgroundBattle(): void {
           combatStatsHistory.value.shift();
         }
       };
-      bgScene.onServerMetaUpdate = (meta: NetworkServerMeta) => {
+      bgScene.onServerMetaUpdate = (meta: NetworkServerSnapshotMeta) => {
         serverMetaFromSnapshot.value = meta;
       };
       if (checkBgSceneInterval) clearInterval(checkBgSceneInterval);
@@ -1037,7 +1037,7 @@ function setupSceneCallbacks(): void {
       };
 
       // Combat stats callback
-      scene.onCombatStatsUpdate = (stats: NetworkCombatStats) => {
+      scene.onCombatStatsUpdate = (stats: NetworkServerSnapshotCombatStats) => {
         const cloned = structuredClone(stats);
         combatStats.value = cloned;
         if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
@@ -1051,7 +1051,7 @@ function setupSceneCallbacks(): void {
       };
 
       // Server metadata callback (for remote clients to see server bar)
-      scene.onServerMetaUpdate = (meta: NetworkServerMeta) => {
+      scene.onServerMetaUpdate = (meta: NetworkServerSnapshotMeta) => {
         serverMetaFromSnapshot.value = meta;
       };
 

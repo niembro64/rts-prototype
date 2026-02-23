@@ -1,7 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarget, NetworkSimEvent, NetworkProjectileSpawn, NetworkProjectileDespawn, NetworkProjectileVelocityUpdate, NetworkGridCell, NetworkTurret, NetworkAction } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -9,7 +9,7 @@ import type { Vec2 } from '../../types/vec2';
 import type { GamePhase } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 
-// === Object pool for NetworkEntity (eliminates per-frame allocations) ===
+// === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
 // Each frame we reset the pool index and overwrite existing objects.
 
 const INITIAL_ENTITY_POOL = 200; // MAX_TOTAL_UNITS (120) + buildings + headroom
@@ -18,7 +18,7 @@ const MAX_ACTIONS_PER_ENTITY = 16;
 const MAX_WAYPOINTS_PER_ENTITY = 16;
 
 // Pre-allocated weapon objects per entity slot
-function createPooledTurret(): NetworkTurret {
+function createPooledTurret(): NetworkServerSnapshotTurret {
   return {
     turret: {
       id: '',
@@ -32,7 +32,7 @@ function createPooledTurret(): NetworkTurret {
   };
 }
 
-function createPooledAction(): NetworkAction {
+function createPooledAction(): NetworkServerSnapshotAction {
   return { type: '', pos: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
 }
 
@@ -40,29 +40,29 @@ function createPooledWaypoint(): { pos: Vec2; type: string } {
   return { pos: { x: 0, y: 0 }, type: '' };
 }
 
-// Pre-allocated sub-objects for the nested NetworkEntity shape
-type UnitSub = NonNullable<NetworkEntity['unit']>;
-type BuildingSub = NonNullable<NetworkEntity['building']>;
+// Pre-allocated sub-objects for the nested NetworkServerSnapshotEntity shape
+type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
+type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
 type FactorySub = NonNullable<BuildingSub['factory']>;
-type ShotSub = NonNullable<NetworkEntity['shot']>;
+type ShotSub = NonNullable<NetworkServerSnapshotEntity['shot']>;
 
 // Extended pool entry with pre-allocated sub-arrays and sub-objects
 type PooledEntry = {
-  entity: NetworkEntity;
+  entity: NetworkServerSnapshotEntity;
   unitSub: UnitSub;
   buildingSub: BuildingSub;
   factorySub: FactorySub;
   shotSub: ShotSub;
-  turrets: NetworkTurret[];
-  actions: NetworkAction[];
+  turrets: NetworkServerSnapshotTurret[];
+  actions: NetworkServerSnapshotAction[];
   waypoints: { pos: Vec2; type: string }[];
   buildQueue: string[];
 };
 
 function createPooledEntry(): PooledEntry {
-  const turrets: NetworkTurret[] = [];
+  const turrets: NetworkServerSnapshotTurret[] = [];
   for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) turrets.push(createPooledTurret());
-  const actions: NetworkAction[] = [];
+  const actions: NetworkServerSnapshotAction[] = [];
   for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createPooledAction());
   const waypoints: { pos: Vec2; type: string }[] = [];
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createPooledWaypoint());
@@ -266,33 +266,33 @@ export function resetDeltaTracking(): void {
 }
 
 // Reusable arrays to avoid per-snapshot allocations
-const _entityBuf: NetworkEntity[] = [];
-const _sprayBuf: NetworkSprayTarget[] = [];
-const _audioBuf: NetworkSimEvent[] = [];
-const _spawnBuf: NetworkProjectileSpawn[] = [];
-const _despawnBuf: NetworkProjectileDespawn[] = [];
-const _velUpdateBuf: NetworkProjectileVelocityUpdate[] = [];
-const _economyBuf: Record<PlayerId, NetworkEconomy> = {} as Record<PlayerId, NetworkEconomy>;
+const _entityBuf: NetworkServerSnapshotEntity[] = [];
+const _sprayBuf: NetworkServerSnapshotSprayTarget[] = [];
+const _audioBuf: NetworkServerSnapshotSimEvent[] = [];
+const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
+const _despawnBuf: NetworkServerSnapshotProjectileDespawn[] = [];
+const _velUpdateBuf: NetworkServerSnapshotVelocityUpdate[] = [];
+const _economyBuf: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as Record<PlayerId, NetworkServerSnapshotEconomy>;
 const _economyKeys: PlayerId[] = [];
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
-const _projectilesBuf: NonNullable<NetworkGameState['projectiles']> = {
+const _projectilesBuf: NonNullable<NetworkServerSnapshot['projectiles']> = {
   spawns: undefined,
   despawns: undefined,
   velocityUpdates: undefined,
 };
-const _gridBuf: NonNullable<NetworkGameState['grid']> = {
+const _gridBuf: NonNullable<NetworkServerSnapshot['grid']> = {
   cells: [],
   searchCells: [],
   cellSize: 0,
 };
-const _gameStateBuf: NonNullable<NetworkGameState['gameState']> = {
+const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
   winnerId: undefined,
 };
 
 // Reusable snapshot object (avoids creating a new object literal every frame)
-const _snapshotBuf: NetworkGameState = {
+const _snapshotBuf: NetworkServerSnapshot = {
   tick: 0,
   entities: _entityBuf,
   economy: _economyBuf,
@@ -318,10 +318,10 @@ export function serializeGameState(
   projectileSpawns?: ProjectileSpawnEvent[],
   projectileDespawns?: ProjectileDespawnEvent[],
   projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[],
-  gridCells?: NetworkGridCell[],
-  gridSearchCells?: NetworkGridCell[],
+  gridCells?: NetworkServerSnapshotGridCell[],
+  gridSearchCells?: NetworkServerSnapshotGridCell[],
   gridCellSize?: number
-): NetworkGameState {
+): NetworkServerSnapshot {
   // Reset entity pool for this frame
   _poolIndex = 0;
   _entityBuf.length = 0;
@@ -411,7 +411,7 @@ export function serializeGameState(
   }
 
   // Serialize spray targets (reuse buffer)
-  let netSprayTargets: NetworkSprayTarget[] | undefined;
+  let netSprayTargets: NetworkServerSnapshotSprayTarget[] | undefined;
   if (sprayTargets && sprayTargets.length > 0) {
     _sprayBuf.length = 0;
     for (let i = 0; i < sprayTargets.length; i++) {
@@ -427,7 +427,7 @@ export function serializeGameState(
   }
 
   // Serialize audio events (reuse buffer)
-  let netAudioEvents: NetworkSimEvent[] | undefined;
+  let netAudioEvents: NetworkServerSnapshotSimEvent[] | undefined;
   if (audioEvents && audioEvents.length > 0) {
     _audioBuf.length = 0;
     for (let i = 0; i < audioEvents.length; i++) {
@@ -445,7 +445,7 @@ export function serializeGameState(
   }
 
   // Serialize projectile spawns (reuse buffer)
-  let netProjectileSpawns: NetworkProjectileSpawn[] | undefined;
+  let netProjectileSpawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
   if (projectileSpawns && projectileSpawns.length > 0) {
     _spawnBuf.length = 0;
     for (let i = 0; i < projectileSpawns.length; i++) {
@@ -469,7 +469,7 @@ export function serializeGameState(
   }
 
   // Serialize projectile despawns (reuse buffer)
-  let netProjectileDespawns: NetworkProjectileDespawn[] | undefined;
+  let netProjectileDespawns: NetworkServerSnapshotProjectileDespawn[] | undefined;
   if (projectileDespawns && projectileDespawns.length > 0) {
     _despawnBuf.length = 0;
     for (let i = 0; i < projectileDespawns.length; i++) {
@@ -479,7 +479,7 @@ export function serializeGameState(
   }
 
   // Serialize projectile velocity updates (reuse buffer)
-  let netVelocityUpdates: NetworkProjectileVelocityUpdate[] | undefined;
+  let netVelocityUpdates: NetworkServerSnapshotVelocityUpdate[] | undefined;
   if (projectileVelocityUpdates && projectileVelocityUpdates.length > 0) {
     _velUpdateBuf.length = 0;
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
@@ -524,7 +524,7 @@ export function serializeGameState(
 }
 
 // Serialize a single entity using pooled objects (zero allocation)
-function serializeEntity(entity: Entity): NetworkEntity | null {
+function serializeEntity(entity: Entity): NetworkServerSnapshotEntity | null {
   const pool = getPooledEntry();
   const ne = pool.entity;
 

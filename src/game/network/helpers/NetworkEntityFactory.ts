@@ -1,13 +1,13 @@
 // Network entity creation helpers
 
 import type { Entity, BuildingType, UnitAction } from '../../sim/types';
-import type { NetworkEntity } from '../NetworkManager';
+import type { NetworkServerSnapshotEntity } from '../NetworkManager';
 import { getTurretConfig } from '../../sim/turretConfigs';
 
 /**
- * Create an Entity from NetworkEntity data
+ * Create an Entity from NetworkServerSnapshotEntity data
  */
-export function createEntityFromNetwork(netEntity: NetworkEntity): Entity | null {
+export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity): Entity | null {
   const { id, type, pos, rotation, playerId } = netEntity;
 
   if (type === 'unit') {
@@ -26,7 +26,7 @@ export function createEntityFromNetwork(netEntity: NetworkEntity): Entity | null
 }
 
 function createUnitFromNetwork(
-  netEntity: NetworkEntity,
+  netEntity: NetworkServerSnapshotEntity,
   id: number,
   x: number,
   y: number,
@@ -120,7 +120,7 @@ function createUnitFromNetwork(
 }
 
 function createBuildingFromNetwork(
-  netEntity: NetworkEntity,
+  netEntity: NetworkServerSnapshotEntity,
   id: number,
   x: number,
   y: number,
@@ -175,7 +175,7 @@ function createBuildingFromNetwork(
 }
 
 function createProjectileFromNetwork(
-  netEntity: NetworkEntity,
+  netEntity: NetworkServerSnapshotEntity,
   id: number,
   x: number,
   y: number,

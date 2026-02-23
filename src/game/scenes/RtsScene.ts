@@ -13,8 +13,8 @@ import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
 import type {
-  NetworkCombatStats,
-  NetworkServerMeta,
+  NetworkServerSnapshotCombatStats,
+  NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
 
 import { audioManager } from '../audio/AudioManager';
@@ -153,10 +153,10 @@ export class RtsScene extends Phaser.Scene {
   public onGameRestart?: () => void;
 
   // Callback for combat stats updates
-  public onCombatStatsUpdate?: (stats: NetworkCombatStats) => void;
+  public onCombatStatsUpdate?: (stats: NetworkServerSnapshotCombatStats) => void;
 
   // Callback for server metadata updates (TPS, snapshot rate, IP, time)
-  public onServerMetaUpdate?: (meta: NetworkServerMeta) => void;
+  public onServerMetaUpdate?: (meta: NetworkServerSnapshotMeta) => void;
 
   constructor() {
     super({ key: 'RtsScene' });

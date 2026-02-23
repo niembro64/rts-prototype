@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { NetworkCombatStats, NetworkUnitTypeStats } from '../game/network/NetworkTypes';
+import type { NetworkServerSnapshotCombatStats, NetworkServerSnapshotUnitTypeStats } from '../game/network/NetworkTypes';
 import { UNIT_BLUEPRINTS, BUILDABLE_UNIT_IDS } from '../game/sim/blueprints';
 import { getUnitValue, type UnitValuation } from '../game/sim/unitValuation';
 import { type FriendlyFireMode, type StatsSnapshot, applyFriendlyFire } from './combatStatsUtils';
@@ -8,7 +8,7 @@ import CombatStatsGraph from './CombatStatsGraph.vue';
 
 const props = defineProps<{
   visible: boolean;
-  stats: NetworkCombatStats | null;
+  stats: NetworkServerSnapshotCombatStats | null;
   viewMode: 'global' | 'player';
   statsHistory: StatsSnapshot[];
 }>();
@@ -57,7 +57,7 @@ type RowData = {
   costDeltaPct: number;
 };
 
-function buildRow(unitType: string, s: NetworkUnitTypeStats | undefined, val: UnitValuation, cost: number, alpha: number, dmgMode: FriendlyFireMode, killMode: FriendlyFireMode): RowData {
+function buildRow(unitType: string, s: NetworkServerSnapshotUnitTypeStats | undefined, val: UnitValuation, cost: number, alpha: number, dmgMode: FriendlyFireMode, killMode: FriendlyFireMode): RowData {
   const produced = s?.units.produced ?? 0;
   const lost = s?.units.lost ?? 0;
   const costSpent = s?.units.cost ?? 0;

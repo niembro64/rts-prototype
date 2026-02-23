@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { NetworkUnitTypeStats } from '../game/network/NetworkTypes';
+import type { NetworkServerSnapshotUnitTypeStats } from '../game/network/NetworkTypes';
 import { UNIT_BLUEPRINTS, BUILDABLE_UNIT_IDS } from '../game/sim/blueprints';
 import { type FriendlyFireMode, type StatsSnapshot, applyFriendlyFire } from './combatStatsUtils';
 
@@ -52,7 +52,7 @@ const plotW = W - PAD.left - PAD.right;
 const plotH = H - PAD.top - PAD.bottom;
 
 // Compute a simple (non-normalized) metric for a single unit type
-function computeMetric(s: NetworkUnitTypeStats | undefined, unitType: string, metric: MetricKey): number {
+function computeMetric(s: NetworkServerSnapshotUnitTypeStats | undefined, unitType: string, metric: MetricKey): number {
   if (!s) return 0;
   const bp = UNIT_BLUEPRINTS[unitType];
   if (!bp) return 0;

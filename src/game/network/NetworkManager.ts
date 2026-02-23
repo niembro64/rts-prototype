@@ -5,25 +5,27 @@ import type { Command } from '../sim/commands';
 // Re-export types from NetworkTypes for backward compatibility
 export type {
   NetworkMessage,
-  NetworkSimEvent,
-  NetworkGameState,
-  NetworkSprayTarget,
-  NetworkAction,
-  NetworkTurret,
-  NetworkEntity,
-  NetworkEconomy,
-  NetworkProjectileSpawn,
-  NetworkProjectileDespawn,
-  NetworkProjectileVelocityUpdate,
-  NetworkGridCell,
-  NetworkUnitTypeStats,
-  NetworkCombatStats,
-  NetworkServerMeta,
+  NetworkPlayerActionMessage,
+  NetworkServerSnapshotMessage,
+  NetworkServerSnapshotSimEvent,
+  NetworkServerSnapshot,
+  NetworkServerSnapshotSprayTarget,
+  NetworkServerSnapshotAction,
+  NetworkServerSnapshotTurret,
+  NetworkServerSnapshotEntity,
+  NetworkServerSnapshotEconomy,
+  NetworkServerSnapshotProjectileSpawn,
+  NetworkServerSnapshotProjectileDespawn,
+  NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotGridCell,
+  NetworkServerSnapshotUnitTypeStats,
+  NetworkServerSnapshotCombatStats,
+  NetworkServerSnapshotMeta,
   LobbyPlayer,
   NetworkRole,
 } from './NetworkTypes';
 
-import type { NetworkGameState, LobbyPlayer, NetworkMessage, NetworkRole } from './NetworkTypes';
+import type { NetworkServerSnapshot, LobbyPlayer, NetworkMessage, NetworkRole } from './NetworkTypes';
 
 // Generate a short room code (4 characters)
 function generateRoomCode(): string {
@@ -50,7 +52,7 @@ export class NetworkManager {
   // Callbacks
   public onPlayerJoined?: (player: LobbyPlayer) => void;
   public onPlayerLeft?: (playerId: PlayerId) => void;
-  public onStateReceived?: (state: NetworkGameState) => void;
+  public onStateReceived?: (state: NetworkServerSnapshot) => void;
   public onCommandReceived?: (command: Command, fromPlayerId: PlayerId) => void;
   public onGameStart?: (playerIds: PlayerId[]) => void;
   public onPlayerAssignment?: (playerId: PlayerId) => void;
@@ -345,7 +347,7 @@ export class NetworkManager {
             const dc = hostConn?.dataChannel;
             console.log(`[NET] Client received snapshot #${this.snapshotsReceived} (dc=${dc?.readyState ?? 'none'})`);
           }
-          const state: NetworkGameState = typeof message.data === 'string'
+          const state: NetworkServerSnapshot = typeof message.data === 'string'
             ? JSON.parse(message.data)
             : message.data;
           this.onStateReceived?.(state);
@@ -412,7 +414,7 @@ export class NetworkManager {
   // Send game state to all clients (host only)
   // Pre-serializes to JSON string so PeerJS's BinaryPack only handles a flat
   // string (trivial) instead of a deep object tree (expensive to pack/unpack).
-  broadcastState(state: NetworkGameState): void {
+  broadcastState(state: NetworkServerSnapshot): void {
     if (this.role !== 'host') return;
     this.snapshotsSent++;
 

@@ -3,10 +3,10 @@
 // bursts of simultaneous sounds. Continuous sound events (laser/forceField
 // start/stop) are always played immediately.
 
-import type { NetworkSimEvent } from '../../network/NetworkTypes';
+import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 
 export class AudioEventScheduler {
-  private queue: { event: NetworkSimEvent; playAt: number }[] = [];
+  private queue: { event: NetworkServerSnapshotSimEvent; playAt: number }[] = [];
   private lastSnapshotTime = 0;
   private snapshotInterval = 100; // EMA of snapshot interval (ms)
 
@@ -14,7 +14,7 @@ export class AudioEventScheduler {
    * Drain queued events whose scheduled time has arrived.
    * Returns nothing — calls `play` for each ready event.
    */
-  drain(now: number, play: (event: NetworkSimEvent) => void): void {
+  drain(now: number, play: (event: NetworkServerSnapshotSimEvent) => void): void {
     const q = this.queue;
     for (let i = q.length - 1; i >= 0; i--) {
       if (now >= q[i].playAt) {
@@ -32,10 +32,10 @@ export class AudioEventScheduler {
    * Returns nothing — calls `play` for immediate events, queues the rest.
    */
   schedule(
-    events: NetworkSimEvent[],
+    events: NetworkServerSnapshotSimEvent[],
     now: number,
     smoothingEnabled: boolean,
-    play: (event: NetworkSimEvent) => void,
+    play: (event: NetworkServerSnapshotSimEvent) => void,
   ): void {
     for (const event of events) {
       const isContinuous =

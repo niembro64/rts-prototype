@@ -4,38 +4,38 @@
 // intermediate snapshots so none are lost even when frames are skipped.
 
 import type {
-  NetworkGameState,
-  NetworkProjectileSpawn,
-  NetworkProjectileDespawn,
-  NetworkSimEvent,
-  NetworkProjectileVelocityUpdate,
+  NetworkServerSnapshot,
+  NetworkServerSnapshotProjectileSpawn,
+  NetworkServerSnapshotProjectileDespawn,
+  NetworkServerSnapshotSimEvent,
+  NetworkServerSnapshotVelocityUpdate,
 } from '../../network/NetworkTypes';
 import type { GameConnection } from '../../server/GameConnection';
 
 export class SnapshotBuffer {
-  private pendingSnapshot: NetworkGameState | null = null;
+  private pendingSnapshot: NetworkServerSnapshot | null = null;
 
   // Double-buffered event arrays (swap instead of allocating new arrays each frame)
-  private _spawnsA: NetworkProjectileSpawn[] = [];
-  private _spawnsB: NetworkProjectileSpawn[] = [];
-  private bufferedSpawns: NetworkProjectileSpawn[] = this._spawnsA;
+  private _spawnsA: NetworkServerSnapshotProjectileSpawn[] = [];
+  private _spawnsB: NetworkServerSnapshotProjectileSpawn[] = [];
+  private bufferedSpawns: NetworkServerSnapshotProjectileSpawn[] = this._spawnsA;
 
-  private _despawnsA: NetworkProjectileDespawn[] = [];
-  private _despawnsB: NetworkProjectileDespawn[] = [];
-  private bufferedDespawns: NetworkProjectileDespawn[] = this._despawnsA;
+  private _despawnsA: NetworkServerSnapshotProjectileDespawn[] = [];
+  private _despawnsB: NetworkServerSnapshotProjectileDespawn[] = [];
+  private bufferedDespawns: NetworkServerSnapshotProjectileDespawn[] = this._despawnsA;
 
-  private _audioA: NetworkSimEvent[] = [];
-  private _audioB: NetworkSimEvent[] = [];
-  private bufferedAudio: NetworkSimEvent[] = this._audioA;
+  private _audioA: NetworkServerSnapshotSimEvent[] = [];
+  private _audioB: NetworkServerSnapshotSimEvent[] = [];
+  private bufferedAudio: NetworkServerSnapshotSimEvent[] = this._audioA;
 
-  private bufferedVelocityUpdates = new Map<number, NetworkProjectileVelocityUpdate>();
-  private _velBufA: NetworkProjectileVelocityUpdate[] = [];
-  private _velBufB: NetworkProjectileVelocityUpdate[] = [];
+  private bufferedVelocityUpdates = new Map<number, NetworkServerSnapshotVelocityUpdate>();
+  private _velBufA: NetworkServerSnapshotVelocityUpdate[] = [];
+  private _velBufB: NetworkServerSnapshotVelocityUpdate[] = [];
   private _velBufToggle = false;
 
   /** Wire the gameConnection snapshot callback to accumulate events. */
   attach(gameConnection: GameConnection): void {
-    gameConnection.onSnapshot((state: NetworkGameState) => {
+    gameConnection.onSnapshot((state: NetworkServerSnapshot) => {
       const proj = state.projectiles;
       if (proj?.spawns) {
         for (let i = 0; i < proj.spawns.length; i++) {
@@ -66,7 +66,7 @@ export class SnapshotBuffer {
    * Consume the latest buffered snapshot with all accumulated events attached.
    * Returns null if no snapshot is pending. Swaps double buffers (zero allocation).
    */
-  consume(): NetworkGameState | null {
+  consume(): NetworkServerSnapshot | null {
     if (!this.pendingSnapshot) return null;
 
     const state = this.pendingSnapshot;
@@ -91,7 +91,7 @@ export class SnapshotBuffer {
     state.audioEvents = audio.length > 0 ? audio : undefined;
 
     // Swap velocity updates
-    let netVelUpdates: NetworkProjectileVelocityUpdate[] | undefined;
+    let netVelUpdates: NetworkServerSnapshotVelocityUpdate[] | undefined;
     if (this.bufferedVelocityUpdates.size > 0) {
       const buf = this._velBufToggle ? this._velBufB : this._velBufA;
       this._velBufToggle = !this._velBufToggle;

@@ -2,7 +2,7 @@
 
 import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallback } from './GameConnection';
 import type { Command } from '../sim/commands';
-import type { NetworkGameState } from '../network/NetworkTypes';
+import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { networkManager } from '../network/NetworkManager';
 
 export class RemoteGameConnection implements GameConnection {
@@ -11,7 +11,7 @@ export class RemoteGameConnection implements GameConnection {
 
   constructor() {
     // Wire NetworkManager's state received callback
-    networkManager.onStateReceived = (state: NetworkGameState) => {
+    networkManager.onStateReceived = (state: NetworkServerSnapshot) => {
       this.snapshotCallback?.(state);
 
       // Check for game over in received state
