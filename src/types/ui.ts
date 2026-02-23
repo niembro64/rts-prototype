@@ -121,14 +121,9 @@ export type ForceContribution = {
 
 // Spray target
 export type SprayTarget = {
-  sourceId: EntityId;
-  targetId: EntityId;
+  source: { id: EntityId; pos: Vec2 };
+  target: { id: EntityId; pos: Vec2; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
-  source: Vec2;
-  target: Vec2;
-  targetWidth?: number;
-  targetHeight?: number;
-  targetRadius?: number;
   intensity: number;
 };
 
@@ -170,14 +165,9 @@ export type EnergyConsumer = {
 
 // Combat stats tracker types
 export type UnitTypeStats = {
-  enemyDamageDealt: number;
-  enemyDamageReceived: number;
-  enemyKills: number;
-  friendlyDamageDealt: number;
-  friendlyKills: number;
-  unitsProduced: number;
-  unitsLost: number;
-  totalCostSpent: number;
+  damage: { dealt: { enemy: number; friendly: number }; received: number };
+  kills: { enemy: number; friendly: number };
+  units: { produced: number; lost: number; cost: number };
 };
 
 export type CombatStatsSnapshot = {

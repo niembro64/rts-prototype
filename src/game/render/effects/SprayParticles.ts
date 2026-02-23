@@ -15,8 +15,8 @@ export function renderSprayEffect(
 ): void {
   const color =
     target.type === 'build' ? COLORS.SPRAY_BUILD : COLORS.SPRAY_HEAL;
-  const sourceX = target.source.x, sourceY = target.source.y;
-  const targetX = target.target.x, targetY = target.target.y;
+  const sourceX = target.source.pos.x, sourceY = target.source.pos.y;
+  const targetX = target.target.pos.x, targetY = target.target.pos.y;
   const intensity = target.intensity;
 
   // Calculate direction vector
@@ -34,10 +34,10 @@ export function renderSprayEffect(
 
   // Calculate target size for spread
   let targetSize = 30; // default
-  if (target.targetWidth && target.targetHeight) {
-    targetSize = Math.max(target.targetWidth, target.targetHeight);
-  } else if (target.targetRadius) {
-    targetSize = target.targetRadius * 2;
+  if (target.target.dim) {
+    targetSize = Math.max(target.target.dim.x, target.target.dim.y);
+  } else if (target.target.radius) {
+    targetSize = target.target.radius * 2;
   }
 
   // Scale particle count based on intensity (energy rate)

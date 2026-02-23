@@ -133,9 +133,9 @@ export class ClientViewState {
       target.x = netEntity.pos.x;
       target.y = netEntity.pos.y;
       target.rotation = netEntity.rotation;
-      target.velocityX = netEntity.velocity?.x ?? 0;
-      target.velocityY = netEntity.velocity?.y ?? 0;
-      const nw = netEntity.weapons;
+      target.velocityX = netEntity.unit?.velocity.x ?? 0;
+      target.velocityY = netEntity.unit?.velocity.y ?? 0;
+      const nw = netEntity.unit?.weapons;
       if (nw) {
         while (target.weapons.length < nw.length) {
           target.weapons.push({
@@ -247,14 +247,9 @@ export class ClientViewState {
       for (let i = 0; i < src.length; i++) {
         const st = src[i];
         this.sprayTargets[i] = {
-          sourceId: st.sourceId,
-          targetId: st.targetId,
+          source: { id: st.source.id, pos: st.source.pos },
+          target: { id: st.target.id, pos: st.target.pos, dim: st.target.dim, radius: st.target.radius },
           type: st.type,
-          source: st.source,
-          target: st.target,
-          targetWidth: st.targetWidth,
-          targetHeight: st.targetHeight,
-          targetRadius: st.targetRadius,
           intensity: st.intensity,
         };
       }
@@ -291,18 +286,17 @@ export class ClientViewState {
    * These don't need smooth blending — they should reflect server truth immediately.
    */
   private snapNonVisualState(entity: Entity, server: NetworkEntity): void {
-    if (entity.unit) {
-      entity.unit.hp = server.hp ?? entity.unit.hp;
-      entity.unit.maxHp = server.maxHp ?? entity.unit.maxHp;
-      entity.unit.drawScale = server.drawScale ?? entity.unit.drawScale;
-      entity.unit.radiusColliderUnitShot =
-        server.radiusColliderUnitShot ?? entity.unit.radiusColliderUnitShot;
-      entity.unit.radiusColliderUnitUnit =
-        server.radiusColliderUnitUnit ?? entity.unit.radiusColliderUnitUnit;
-      entity.unit.moveSpeed = server.moveSpeed ?? entity.unit.moveSpeed;
+    const su = server.unit;
+    if (entity.unit && su) {
+      entity.unit.hp = su.hp;
+      entity.unit.maxHp = su.maxHp;
+      entity.unit.drawScale = su.drawScale;
+      entity.unit.radiusColliderUnitShot = su.collider.unitShot;
+      entity.unit.radiusColliderUnitUnit = su.collider.unitUnit;
+      entity.unit.moveSpeed = su.moveSpeed;
 
-      if (server.actions) {
-        const src = server.actions;
+      if (su.actions) {
+        const src = su.actions;
         const actions = entity.unit.actions;
         actions.length = 0;
         for (let i = 0; i < src.length; i++) {
@@ -322,49 +316,46 @@ export class ClientViewState {
       }
 
       // Snap weapon targeting state (turret rotation/velocity blended in applyPrediction)
-      if (server.weapons && server.weapons.length > 0 && entity.weapons) {
+      if (su.weapons && su.weapons.length > 0 && entity.weapons) {
         for (
           let i = 0;
-          i < server.weapons.length && i < entity.weapons.length;
+          i < su.weapons.length && i < entity.weapons.length;
           i++
         ) {
-          entity.weapons[i].targetEntityId = server.weapons[i].targetId ?? null;
-          entity.weapons[i].isTracking = server.weapons[i].isTracking;
-          entity.weapons[i].isEngaged = server.weapons[i].isEngaged;
+          entity.weapons[i].targetEntityId = su.weapons[i].targetId ?? null;
+          entity.weapons[i].isTracking = su.weapons[i].isTracking;
+          entity.weapons[i].isEngaged = su.weapons[i].isEngaged;
           // currentForceFieldRange is NOT snapped — dead-reckoned + drifted in applyPrediction()
         }
       }
 
-      if (entity.builder && server.buildTargetId !== undefined) {
-        entity.builder.currentBuildTarget = server.buildTargetId;
+      if (entity.builder && su.buildTargetId !== undefined) {
+        entity.builder.currentBuildTarget = su.buildTargetId;
       }
     }
 
-    if (entity.building) {
-      entity.building.hp = server.hp ?? entity.building.hp;
-      entity.building.maxHp = server.maxHp ?? entity.building.maxHp;
+    const sb = server.building;
+    if (entity.building && sb) {
+      entity.building.hp = sb.hp;
+      entity.building.maxHp = sb.maxHp;
     }
 
-    if (entity.buildable) {
-      entity.buildable.buildProgress =
-        server.buildProgress ?? entity.buildable.buildProgress;
-      entity.buildable.isComplete =
-        server.isComplete ?? entity.buildable.isComplete;
+    if (entity.buildable && sb) {
+      entity.buildable.buildProgress = sb.build.progress;
+      entity.buildable.isComplete = sb.build.complete;
     }
 
-    if (entity.factory) {
-      entity.factory.buildQueue =
-        server.buildQueue ?? entity.factory.buildQueue;
-      entity.factory.currentBuildProgress =
-        server.factoryProgress ?? entity.factory.currentBuildProgress;
-      entity.factory.isProducing =
-        server.isProducing ?? entity.factory.isProducing;
-      if (server.rally) {
-        entity.factory.rallyX = server.rally.x;
-        entity.factory.rallyY = server.rally.y;
+    const sf = sb?.factory;
+    if (entity.factory && sf) {
+      entity.factory.buildQueue = sf.queue;
+      entity.factory.currentBuildProgress = sf.progress;
+      entity.factory.isProducing = sf.producing;
+      if (sf.rally) {
+        entity.factory.rallyX = sf.rally.x;
+        entity.factory.rallyY = sf.rally.y;
       }
-      if (server.factoryWaypoints) {
-        const wps = server.factoryWaypoints;
+      if (sf.waypoints) {
+        const wps = sf.waypoints;
         entity.factory.waypoints.length = wps.length;
         for (let i = 0; i < wps.length; i++) {
           entity.factory.waypoints[i] = {

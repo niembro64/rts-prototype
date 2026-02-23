@@ -33,10 +33,12 @@ function createUnitFromNetwork(
   rotation: number,
   playerId?: number
 ): Entity {
+  const u = netEntity.unit;
+
   const actions: UnitAction[] = [];
-  if (netEntity.actions) {
-    for (let i = 0; i < netEntity.actions.length; i++) {
-      const na = netEntity.actions[i];
+  if (u?.actions) {
+    for (let i = 0; i < u.actions.length; i++) {
+      const na = u.actions[i];
       if (!na.pos) continue;
       actions.push({
         type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
@@ -51,6 +53,7 @@ function createUnitFromNetwork(
     }
   }
 
+  const drawScale = u?.drawScale ?? 15;
   const entity: Entity = {
     id,
     type: 'unit',
@@ -58,25 +61,25 @@ function createUnitFromNetwork(
     ownership: playerId !== undefined ? { playerId } : undefined,
     selectable: { selected: false },
     unit: {
-      unitType: netEntity.unitType ?? 'jackal',
-      hp: netEntity.hp ?? 100,
-      maxHp: netEntity.maxHp ?? 100,
-      drawScale: netEntity.drawScale ?? 15,
-      radiusColliderUnitShot: netEntity.radiusColliderUnitShot ?? netEntity.drawScale ?? 15,
-      radiusColliderUnitUnit: netEntity.radiusColliderUnitUnit ?? netEntity.drawScale ?? 15,
-      moveSpeed: netEntity.moveSpeed ?? 100,
-      mass: netEntity.mass ?? 25,
+      unitType: u?.unitType ?? 'jackal',
+      hp: u?.hp ?? 100,
+      maxHp: u?.maxHp ?? 100,
+      drawScale,
+      radiusColliderUnitShot: u?.collider.unitShot ?? drawScale,
+      radiusColliderUnitUnit: u?.collider.unitUnit ?? drawScale,
+      moveSpeed: u?.moveSpeed ?? 100,
+      mass: u?.mass ?? 25,
       actions,
       patrolStartIndex: null,
-      velocityX: netEntity.velocity?.x ?? 0,
-      velocityY: netEntity.velocity?.y ?? 0,
+      velocityX: u?.velocity.x ?? 0,
+      velocityY: u?.velocity.y ?? 0,
     },
   };
 
-  if (netEntity.weapons && netEntity.weapons.length > 0) {
+  if (u?.weapons && u.weapons.length > 0) {
     const weapons = [];
-    for (let i = 0; i < netEntity.weapons.length; i++) {
-      const nw = netEntity.weapons[i];
+    for (let i = 0; i < u.weapons.length; i++) {
+      const nw = u.weapons[i];
       const t = nw.turret;
       weapons.push({
         config: getWeaponConfig(t.id),
@@ -100,7 +103,7 @@ function createUnitFromNetwork(
     entity.weapons = weapons;
   }
 
-  if (netEntity.isCommander) {
+  if (u?.isCommander) {
     entity.commander = {
       isDGunActive: false,
       dgunEnergyCost: 100,
@@ -108,7 +111,7 @@ function createUnitFromNetwork(
     entity.builder = {
       buildRange: 200,
       maxEnergyUseRate: 50,
-      currentBuildTarget: netEntity.buildTargetId ?? null,
+      currentBuildTarget: u.buildTargetId ?? null,
     };
   }
 
@@ -123,6 +126,8 @@ function createBuildingFromNetwork(
   rotation: number,
   playerId?: number
 ): Entity {
+  const b = netEntity.building;
+
   const entity: Entity = {
     id,
     type: 'building',
@@ -130,35 +135,36 @@ function createBuildingFromNetwork(
     ownership: playerId !== undefined ? { playerId } : undefined,
     selectable: { selected: false },
     building: {
-      width: netEntity.width ?? 100,
-      height: netEntity.height ?? 100,
-      hp: netEntity.hp ?? 500,
-      maxHp: netEntity.maxHp ?? 500,
+      width: b?.dim.x ?? 100,
+      height: b?.dim.y ?? 100,
+      hp: b?.hp ?? 500,
+      maxHp: b?.maxHp ?? 500,
     },
     buildable: {
-      buildProgress: netEntity.buildProgress ?? 1,
-      isComplete: netEntity.isComplete ?? true,
+      buildProgress: b?.build.progress ?? 1,
+      isComplete: b?.build.complete ?? true,
       energyCost: 100,
       isGhost: false,
     },
-    buildingType: netEntity.buildingType as BuildingType | undefined,
+    buildingType: b?.type as BuildingType | undefined,
   };
 
-  if (netEntity.buildQueue !== undefined) {
+  const f = b?.factory;
+  if (f) {
     const waypoints: { x: number; y: number; type: 'move' | 'fight' | 'patrol' }[] = [];
-    if (netEntity.factoryWaypoints) {
-      for (let i = 0; i < netEntity.factoryWaypoints.length; i++) {
-        const wp = netEntity.factoryWaypoints[i];
+    if (f.waypoints) {
+      for (let i = 0; i < f.waypoints.length; i++) {
+        const wp = f.waypoints[i];
         waypoints.push({ x: wp.pos.x, y: wp.pos.y, type: wp.type as 'move' | 'fight' | 'patrol' });
       }
     }
     entity.factory = {
-      buildQueue: netEntity.buildQueue,
-      currentBuildProgress: netEntity.factoryProgress ?? 0,
+      buildQueue: f.queue,
+      currentBuildProgress: f.progress ?? 0,
       currentBuildCost: 0,
-      rallyX: netEntity.rally?.x ?? x,
-      rallyY: netEntity.rally?.y ?? y + 100,
-      isProducing: netEntity.isProducing ?? false,
+      rallyX: f.rally?.x ?? x,
+      rallyY: f.rally?.y ?? y + 100,
+      isProducing: f.producing ?? false,
       waypoints,
     };
   }
@@ -174,32 +180,34 @@ function createProjectileFromNetwork(
   rotation: number,
   playerId?: number
 ): Entity {
+  const s = netEntity.shot;
+
   return {
     id,
     type: 'shot',
     transform: { x, y, rotation },
     projectile: {
       ownerId: playerId ?? 1,
-      sourceEntityId: netEntity.sourceEntityId ?? 0,
-      config: netEntity.weaponId
-        ? { ...getWeaponConfig(netEntity.weaponId), weaponIndex: netEntity.weaponIndex }
+      sourceEntityId: s?.source ?? 0,
+      config: s?.weaponId
+        ? { ...getWeaponConfig(s.weaponId), weaponIndex: s.weaponIndex }
         : {
           id: 'unknown',
           collision: { radius: 5, damage: 10 },
           range: 100,
           cooldown: 1000,
         },
-      projectileType: (netEntity.projectileType as 'instant' | 'traveling' | 'beam') ?? 'traveling',
-      velocityX: netEntity.velocity?.x ?? 0,
-      velocityY: netEntity.velocity?.y ?? 0,
+      projectileType: (s?.type as 'instant' | 'traveling' | 'beam') ?? 'traveling',
+      velocityX: s?.velocity?.x ?? 0,
+      velocityY: s?.velocity?.y ?? 0,
       timeAlive: 0,
       maxLifespan: 2000,
       hitEntities: new Set(),
       maxHits: 1,
-      startX: netEntity.beam?.start.x,
-      startY: netEntity.beam?.start.y,
-      endX: netEntity.beam?.end.x,
-      endY: netEntity.beam?.end.y,
+      startX: x,
+      startY: y,
+      endX: netEntity.posEnd?.x,
+      endY: netEntity.posEnd?.y,
     },
   };
 }

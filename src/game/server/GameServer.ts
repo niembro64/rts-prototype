@@ -431,21 +431,16 @@ export class GameServer {
     if (!isDelta || timeChanged) {
       const tickStats = this.getTickStats();
       state.serverMeta = {
-        tpsAvg: tickStats.avgFps,
-        tpsWorst: tickStats.worstFps,
-        tickRate: this.tickRateHz,
-        snapshotRate: this.maxSnapshotsDisplay,
-        keyframeRatio: this.keyframeRatioDisplay,
-        sendGridInfo: this.sendGridInfo,
-        serverTime: currentTime,
-        ipAddress: this.ipAddress,
-        allowedUnitTypes: this.backgroundMode
-          ? [...this.backgroundAllowedTypes]
-          : undefined,
-        maxTotalUnits: this.world.maxTotalUnits,
+        ticks: { avg: tickStats.avgFps, low: tickStats.worstFps, rate: this.tickRateHz },
+        snaps: { rate: this.maxSnapshotsDisplay, keyframes: this.keyframeRatioDisplay },
+        server: { time: currentTime, ip: this.ipAddress },
+        grid: this.sendGridInfo,
+        units: {
+          allowed: this.backgroundMode ? [...this.backgroundAllowedTypes] : undefined,
+          max: this.world.maxTotalUnits,
+        },
         projVelInherit: this.world.projVelInherit,
-        ffAccelUnits: this.world.ffAccelUnits,
-        ffAccelShots: this.world.ffAccelShots,
+        ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots },
       };
       this.lastSentServerTime = currentTime;
     }

@@ -9,9 +9,9 @@ import type { UnitTypeStats, CombatStatsSnapshot } from '@/types/ui';
 
 function createEmptyStats(): UnitTypeStats {
   return {
-    enemyDamageDealt: 0, enemyDamageReceived: 0, enemyKills: 0,
-    friendlyDamageDealt: 0, friendlyKills: 0,
-    unitsProduced: 0, unitsLost: 0, totalCostSpent: 0,
+    damage: { dealt: { enemy: 0, friendly: 0 }, received: 0 },
+    kills: { enemy: 0, friendly: 0 },
+    units: { produced: 0, lost: 0, cost: 0 },
   };
 }
 
@@ -90,14 +90,14 @@ export class CombatStatsTracker {
     if (!source) return;
     const stats = this.getOrCreate(source.playerId, source.unitType);
     if (this.isFriendly(source.playerId, targetEntityId)) {
-      stats.friendlyDamageDealt += damageAmount;
+      stats.damage.dealt.friendly += damageAmount;
     } else {
-      stats.enemyDamageDealt += damageAmount;
+      stats.damage.dealt.enemy += damageAmount;
       // Also record damage received on the target side
       const target = this.resolveTarget(targetEntityId);
       if (target) {
         const targetStats = this.getOrCreate(target.playerId, target.unitType);
-        targetStats.enemyDamageReceived += damageAmount;
+        targetStats.damage.received += damageAmount;
       }
     }
   }
@@ -107,9 +107,9 @@ export class CombatStatsTracker {
     if (!source) return;
     const stats = this.getOrCreate(source.playerId, source.unitType);
     if (this.isFriendly(source.playerId, targetEntityId)) {
-      stats.friendlyKills += 1;
+      stats.kills.friendly += 1;
     } else {
-      stats.enemyKills += 1;
+      stats.kills.enemy += 1;
     }
   }
 
@@ -117,13 +117,13 @@ export class CombatStatsTracker {
     let bp;
     try { bp = getUnitBlueprint(unitType); } catch { return; }
     const stats = this.getOrCreate(playerId, unitType);
-    stats.unitsProduced += 1;
-    stats.totalCostSpent += bp.baseCost;
+    stats.units.produced += 1;
+    stats.units.cost += bp.baseCost;
   }
 
   recordUnitLost(playerId: PlayerId, unitType: string): void {
     const stats = this.getOrCreate(playerId, unitType);
-    stats.unitsLost += 1;
+    stats.units.lost += 1;
   }
 
   getSnapshot(): CombatStatsSnapshot {
@@ -148,14 +148,14 @@ export class CombatStatsTracker {
           copy = createEmptyStats();
           playerRecord[unitType] = copy;
         }
-        copy.enemyDamageDealt = stats.enemyDamageDealt;
-        copy.enemyDamageReceived = stats.enemyDamageReceived;
-        copy.enemyKills = stats.enemyKills;
-        copy.friendlyDamageDealt = stats.friendlyDamageDealt;
-        copy.friendlyKills = stats.friendlyKills;
-        copy.unitsProduced = stats.unitsProduced;
-        copy.unitsLost = stats.unitsLost;
-        copy.totalCostSpent = stats.totalCostSpent;
+        copy.damage.dealt.enemy = stats.damage.dealt.enemy;
+        copy.damage.dealt.friendly = stats.damage.dealt.friendly;
+        copy.damage.received = stats.damage.received;
+        copy.kills.enemy = stats.kills.enemy;
+        copy.kills.friendly = stats.kills.friendly;
+        copy.units.produced = stats.units.produced;
+        copy.units.lost = stats.units.lost;
+        copy.units.cost = stats.units.cost;
 
         // Aggregate into global
         let g = globalMap.get(unitType);
@@ -163,14 +163,14 @@ export class CombatStatsTracker {
           g = createEmptyStats();
           globalMap.set(unitType, g);
         }
-        g.enemyDamageDealt += stats.enemyDamageDealt;
-        g.enemyDamageReceived += stats.enemyDamageReceived;
-        g.enemyKills += stats.enemyKills;
-        g.friendlyDamageDealt += stats.friendlyDamageDealt;
-        g.friendlyKills += stats.friendlyKills;
-        g.unitsProduced += stats.unitsProduced;
-        g.unitsLost += stats.unitsLost;
-        g.totalCostSpent += stats.totalCostSpent;
+        g.damage.dealt.enemy += stats.damage.dealt.enemy;
+        g.damage.dealt.friendly += stats.damage.dealt.friendly;
+        g.damage.received += stats.damage.received;
+        g.kills.enemy += stats.kills.enemy;
+        g.kills.friendly += stats.kills.friendly;
+        g.units.produced += stats.units.produced;
+        g.units.lost += stats.units.lost;
+        g.units.cost += stats.units.cost;
       }
     }
 

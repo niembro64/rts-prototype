@@ -38,7 +38,7 @@ function generateRoomCode(): string {
 export class NetworkManager {
   private peer: Peer | null = null;
   private connections: Map<PlayerId, DataConnection> = new Map();
-  private role: NetworkRole = 'offline';
+  private role: NetworkRole | null = null;
   private roomCode: string = '';
   private localPlayerId: PlayerId = 1;
   private nextPlayerId: PlayerId = 2;
@@ -458,7 +458,7 @@ export class NetworkManager {
   }
 
   // Getters
-  getRole(): NetworkRole {
+  getRole(): NetworkRole | null {
     return this.role;
   }
 
@@ -494,7 +494,7 @@ export class NetworkManager {
     this.connections.clear();
     this.peer?.destroy();
     this.peer = null;
-    this.role = 'offline';
+    this.role = null;
     this.gameStarted = false;
     this.players.clear();
 

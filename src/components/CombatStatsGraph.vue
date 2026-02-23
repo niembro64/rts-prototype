@@ -57,23 +57,23 @@ function computeMetric(s: NetworkUnitTypeStats | undefined, unitType: string, me
   const bp = UNIT_BLUEPRINTS[unitType];
   if (!bp) return 0;
   const cost = bp.baseCost;
-  const produced = s.unitsProduced ?? 0;
-  const lost = s.unitsLost ?? 0;
-  const dmg = applyFriendlyFire(s.enemyDamageDealt ?? 0, s.friendlyDamageDealt ?? 0, props.teamDamageMode);
-  const kills = applyFriendlyFire(s.enemyKills ?? 0, s.friendlyKills ?? 0, props.teamKillsMode);
+  const produced = s.units.produced ?? 0;
+  const lost = s.units.lost ?? 0;
+  const dmg = applyFriendlyFire(s.damage.dealt.enemy ?? 0, s.damage.dealt.friendly ?? 0, props.teamDamageMode);
+  const kills = applyFriendlyFire(s.kills.enemy ?? 0, s.kills.friendly ?? 0, props.teamKillsMode);
 
   switch (metric) {
     case 'damageDealt': return dmg;
     case 'kills': return kills;
     case 'produced': return produced;
     case 'lost': return lost;
-    case 'costSpent': return s.totalCostSpent ?? 0;
+    case 'costSpent': return s.units.cost ?? 0;
     case 'survivalPct': return produced > 0 ? ((produced - lost) / produced) * 100 : 0;
     case 'normDmg':
     case 'normKills':
     case 'normAvg': {
       // Ratio-based: dmgRatio = dealt/(dealt+received), killRatio = kills/(kills+lost)
-      const damageReceived = s.enemyDamageReceived ?? 0;
+      const damageReceived = s.damage.received ?? 0;
       const dmgRatio = (dmg + damageReceived) > 0 ? dmg / (dmg + damageReceived) : 0;
       const killRatio = (kills + lost) > 0 ? kills / (kills + lost) : 0;
       const alpha = props.costExponent;

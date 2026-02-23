@@ -58,12 +58,12 @@ type RowData = {
 };
 
 function buildRow(unitType: string, s: NetworkUnitTypeStats | undefined, val: UnitValuation, cost: number, alpha: number, dmgMode: FriendlyFireMode, killMode: FriendlyFireMode): RowData {
-  const produced = s?.unitsProduced ?? 0;
-  const lost = s?.unitsLost ?? 0;
-  const costSpent = s?.totalCostSpent ?? 0;
-  const damageDealt = applyFriendlyFire(s?.enemyDamageDealt ?? 0, s?.friendlyDamageDealt ?? 0, dmgMode);
-  const damageReceived = s?.enemyDamageReceived ?? 0;
-  const kills = applyFriendlyFire(s?.enemyKills ?? 0, s?.friendlyKills ?? 0, killMode);
+  const produced = s?.units.produced ?? 0;
+  const lost = s?.units.lost ?? 0;
+  const costSpent = s?.units.cost ?? 0;
+  const damageDealt = applyFriendlyFire(s?.damage.dealt.enemy ?? 0, s?.damage.dealt.friendly ?? 0, dmgMode);
+  const damageReceived = s?.damage.received ?? 0;
+  const kills = applyFriendlyFire(s?.kills.enemy ?? 0, s?.kills.friendly ?? 0, killMode);
 
   // Ratio-based normalization:
   //   dmgRatio  = dealt / (dealt + received)   [0,1], 0.5 = break-even

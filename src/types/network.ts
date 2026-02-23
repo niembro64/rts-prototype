@@ -62,14 +62,9 @@ export type NetworkGridCell = {
 };
 
 export type NetworkUnitTypeStats = {
-  enemyDamageDealt: number;
-  enemyDamageReceived: number;
-  enemyKills: number;
-  friendlyDamageDealt: number;
-  friendlyKills: number;
-  unitsProduced: number;
-  unitsLost: number;
-  totalCostSpent: number;
+  damage: { dealt: { enemy: number; friendly: number }; received: number };
+  kills: { enemy: number; friendly: number };
+  units: { produced: number; lost: number; cost: number };
 };
 
 export type NetworkCombatStats = {
@@ -78,19 +73,13 @@ export type NetworkCombatStats = {
 };
 
 export type NetworkServerMeta = {
-  tpsAvg: number;
-  tpsWorst: number;
-  tickRate: number;
-  snapshotRate: number | 'none';
-  keyframeRatio: number | 'ALL' | 'NONE';
-  sendGridInfo: boolean;
-  serverTime: string;
-  ipAddress: string;
-  allowedUnitTypes?: string[];
-  maxTotalUnits?: number;
+  ticks: { avg: number; low: number; rate: number };
+  snaps: { rate: number | 'none'; keyframes: number | 'ALL' | 'NONE' };
+  server: { time: string; ip: string };
+  grid: boolean;
+  units: { allowed?: string[]; max?: number };
   projVelInherit?: boolean;
-  ffAccelUnits?: boolean;
-  ffAccelShots?: boolean;
+  ffAccel: { units?: boolean; shots?: boolean };
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
@@ -119,14 +108,9 @@ export type NetworkGameState = {
 };
 
 export type NetworkSprayTarget = {
-  sourceId: number;
-  targetId: number;
+  source: { id: number; pos: Vec2 };
+  target: { id: number; pos: Vec2; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
-  source: Vec2;
-  target: Vec2;
-  targetWidth?: number;
-  targetHeight?: number;
-  targetRadius?: number;
   intensity: number;
 };
 
@@ -164,36 +148,44 @@ export type NetworkEntity = {
   type: EntityType;
   pos: Vec2;
   rotation: number;
+  posEnd?: Vec2;
   playerId?: PlayerId;
-  unitType?: string;
-  hp?: number;
-  maxHp?: number;
-  drawScale?: number;
-  radiusColliderUnitShot?: number;
-  radiusColliderUnitUnit?: number;
-  moveSpeed?: number;
-  mass?: number;
-  velocity?: Vec2;
-  turretRotation?: number;
-  isCommander?: boolean;
-  actions?: NetworkAction[];
-  weaponId?: string;
-  weapons?: NetworkWeapon[];
-  buildTargetId?: number;
-  width?: number;
-  height?: number;
-  buildProgress?: number;
-  isComplete?: boolean;
-  buildingType?: string;
-  projectileType?: string;
-  beam?: { start: Vec2; end: Vec2 };
-  sourceEntityId?: number;
-  weaponIndex?: number;
-  buildQueue?: string[];
-  factoryProgress?: number;
-  isProducing?: boolean;
-  rally?: Vec2;
-  factoryWaypoints?: { pos: Vec2; type: string }[];
+  unit?: {
+    unitType: string;
+    hp: number;
+    maxHp: number;
+    drawScale: number;
+    collider: { unitShot: number; unitUnit: number };
+    moveSpeed: number;
+    mass: number;
+    velocity: Vec2;
+    turretRotation: number;
+    isCommander?: boolean;
+    buildTargetId?: number;
+    actions?: NetworkAction[];
+    weapons?: NetworkWeapon[];
+  };
+  building?: {
+    type: string;
+    dim: Vec2;
+    hp: number;
+    maxHp: number;
+    build: { progress: number; complete: boolean };
+    factory?: {
+      queue: string[];
+      progress: number;
+      producing: boolean;
+      rally: Vec2;
+      waypoints?: { pos: Vec2; type: string }[];
+    };
+  };
+  shot?: {
+    type: string;
+    source: number;
+    weaponId?: string;
+    weaponIndex?: number;
+    velocity?: Vec2;
+  };
 };
 
 export type NetworkEconomy = {
@@ -208,4 +200,4 @@ export type LobbyPlayer = {
   isHost: boolean;
 };
 
-export type NetworkRole = 'host' | 'client' | 'offline';
+export type NetworkRole = 'host' | 'client';

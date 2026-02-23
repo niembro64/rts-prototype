@@ -415,7 +415,7 @@ export class RtsScene extends Phaser.Scene {
 
     const entitySource = this.getCurrentEntitySource();
     const serverMeta = this.clientViewState.getServerMeta();
-    const maxTotal = serverMeta?.maxTotalUnits ?? 120;
+    const maxTotal = serverMeta?.units.max ?? 120;
     const economyInfo = buildEconomyInfo(
       entitySource,
       this.localPlayerId,

@@ -134,7 +134,7 @@ const localPlayerId = ref<PlayerId>(1);
 const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
-const networkRole = ref<NetworkRole>('offline');
+const networkRole = ref<NetworkRole | null>(null);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 
 // Server metadata received from snapshots (for remote clients to display server bar)
@@ -377,7 +377,7 @@ function stopBackgroundBattle(): void {
 const showPlayerToggle = computed(() => {
   const isSinglePlayer = lobbyPlayers.value.length === 1;
   const canToggle =
-    networkRole.value === 'offline' ||
+    networkRole.value === null ||
     (networkRole.value === 'host' && isSinglePlayer);
   return gameStarted.value && canToggle;
 });
@@ -416,44 +416,44 @@ const battleLabel = 'BATTLE';
 
 // Display values: always read from snapshot meta (server→snapshot→display)
 const displayServerTpsAvg = computed(
-  () => serverMetaFromSnapshot.value?.tpsAvg ?? 0,
+  () => serverMetaFromSnapshot.value?.ticks.avg ?? 0,
 );
 const displayServerTpsWorst = computed(
-  () => serverMetaFromSnapshot.value?.tpsWorst ?? 0,
+  () => serverMetaFromSnapshot.value?.ticks.low ?? 0,
 );
 const displayTickRate = computed(
   () =>
-    serverMetaFromSnapshot.value?.tickRate ?? SERVER_CONFIG.tickRate.default,
+    serverMetaFromSnapshot.value?.ticks.rate ?? SERVER_CONFIG.tickRate.default,
 );
 const displaySnapshotRate = computed(
   () =>
-    serverMetaFromSnapshot.value?.snapshotRate ??
+    serverMetaFromSnapshot.value?.snaps.rate ??
     SERVER_CONFIG.snapshot.default,
 );
 const displayKeyframeRatio = computed(
   () =>
-    serverMetaFromSnapshot.value?.keyframeRatio ??
+    serverMetaFromSnapshot.value?.snaps.keyframes ??
     SERVER_CONFIG.keyframe.default,
 );
 const displayGridInfo = computed(
-  () => serverMetaFromSnapshot.value?.sendGridInfo ?? false,
+  () => serverMetaFromSnapshot.value?.grid ?? false,
 );
 const displayServerTime = computed(
-  () => serverMetaFromSnapshot.value?.serverTime ?? '',
+  () => serverMetaFromSnapshot.value?.server.time ?? '',
 );
 const displayServerIp = computed(
-  () => serverMetaFromSnapshot.value?.ipAddress ?? '',
+  () => serverMetaFromSnapshot.value?.server.ip ?? '',
 );
 
 const allDemoUnitsActive = computed(() => {
-  const allowed = serverMetaFromSnapshot.value?.allowedUnitTypes;
+  const allowed = serverMetaFromSnapshot.value?.units.allowed;
   if (!allowed) return true; // default is all enabled
   return demoUnitTypes.every((ut) => allowed.includes(ut));
 });
 
 function toggleDemoUnitType(unitType: string): void {
   const current =
-    serverMetaFromSnapshot.value?.allowedUnitTypes?.includes(unitType) ?? true;
+    serverMetaFromSnapshot.value?.units.allowed?.includes(unitType) ?? true;
   activeConnection?.sendCommand({
     type: 'setBackgroundUnitType',
     tick: 0,
@@ -462,7 +462,7 @@ function toggleDemoUnitType(unitType: string): void {
   });
 
   // Persist updated unit list to localStorage
-  const currentList = serverMetaFromSnapshot.value?.allowedUnitTypes ?? [
+  const currentList = serverMetaFromSnapshot.value?.units.allowed ?? [
     ...demoUnitTypes,
   ];
   const newList = current
@@ -495,8 +495,7 @@ function changeMaxTotalUnits(value: number): void {
 
 function toggleProjVelInherit(): void {
   const current =
-    serverMetaFromSnapshot.value?.projVelInherit ??
-    BATTLE_CONFIG.projVelInherit.default;
+    serverMetaFromSnapshot.value?.projVelInherit ?? BATTLE_CONFIG.projVelInherit.default;
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
     tick: 0,
@@ -517,11 +516,9 @@ function setFfAccelShots(enabled: boolean): void {
 
 function toggleFfAccelAll(): void {
   const units =
-    serverMetaFromSnapshot.value?.ffAccelUnits ??
-    BATTLE_CONFIG.ffAccelUnits.default;
+    serverMetaFromSnapshot.value?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default;
   const shots =
-    serverMetaFromSnapshot.value?.ffAccelShots ??
-    BATTLE_CONFIG.ffAccelShots.default;
+    serverMetaFromSnapshot.value?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default;
   const allOn = units && shots;
   setFfAccelUnits(!allOn);
   setFfAccelShots(!allOn);
@@ -607,7 +604,7 @@ function restartGame(): void {
   gameStarted.value = false;
   showLobby.value = true;
   networkManager.disconnect();
-  networkRole.value = 'offline';
+  networkRole.value = null;
   lobbyPlayers.value = [];
   roomCode.value = '';
 
@@ -717,7 +714,7 @@ function handleLobbyStart(): void {
 
 function handleLobbyCancel(): void {
   networkManager.disconnect();
-  networkRole.value = 'offline';
+  networkRole.value = null;
   roomCode.value = '';
   isHost.value = false;
   lobbyPlayers.value = [];
@@ -727,7 +724,7 @@ function handleLobbyCancel(): void {
 
 function handleOffline(): void {
   // Start game in offline mode without network
-  networkRole.value = 'offline';
+  networkRole.value = null;
   localPlayerId.value = 1;
 
   // Create game immediately with single player
@@ -914,7 +911,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
     let gameConnection: GameConnection;
 
-    if (networkRole.value === 'host' || networkRole.value === 'offline') {
+    if (networkRole.value !== 'client') {
       // Create GameServer for host/offline
       currentServer = new GameServer({ playerIds });
 
@@ -1089,7 +1086,7 @@ function setKeyframeRatioValue(ratio: KeyframeRatio): void {
 }
 
 function toggleSendGridInfo(): void {
-  const current = serverMetaFromSnapshot.value?.sendGridInfo ?? false;
+  const current = serverMetaFromSnapshot.value?.grid ?? false;
   activeConnection?.sendCommand({
     type: 'setSendGridInfo',
     tick: 0,
@@ -1274,7 +1271,7 @@ onUnmounted(() => {
                 class="control-btn"
                 :class="{
                   active:
-                    serverMetaFromSnapshot?.allowedUnitTypes?.includes(ut) ??
+                    serverMetaFromSnapshot?.units.allowed?.includes(ut) ??
                     true,
                 }"
                 :title="`Toggle ${ut} units in demo battle`"
@@ -1293,7 +1290,7 @@ onUnmounted(() => {
                 :key="opt"
                 class="control-btn"
                 :class="{
-                  active: serverMetaFromSnapshot?.maxTotalUnits === opt,
+                  active: serverMetaFromSnapshot?.units.max === opt,
                 }"
                 :title="`Max ${opt} total units`"
                 @click="changeMaxTotalUnits(opt)"
@@ -1321,8 +1318,8 @@ onUnmounted(() => {
               class="control-btn"
               :class="{
                 active:
-                  (serverMetaFromSnapshot?.ffAccelUnits ?? false) &&
-                  (serverMetaFromSnapshot?.ffAccelShots ?? true),
+                  (serverMetaFromSnapshot?.ffAccel.units ?? false) &&
+                  (serverMetaFromSnapshot?.ffAccel.shots ?? true),
               }"
               title="Toggle all force field acceleration on/off"
               @click="toggleFfAccelAll"
@@ -1333,12 +1330,12 @@ onUnmounted(() => {
               <button
                 class="control-btn"
                 :class="{
-                  active: serverMetaFromSnapshot?.ffAccelUnits ?? false,
+                  active: serverMetaFromSnapshot?.ffAccel.units ?? false,
                 }"
                 title="Force field accelerates enemy units"
                 @click="
                   setFfAccelUnits(
-                    !(serverMetaFromSnapshot?.ffAccelUnits ?? false),
+                    !(serverMetaFromSnapshot?.ffAccel.units ?? false),
                   )
                 "
               >
@@ -1347,12 +1344,12 @@ onUnmounted(() => {
               <button
                 class="control-btn"
                 :class="{
-                  active: serverMetaFromSnapshot?.ffAccelShots ?? true,
+                  active: serverMetaFromSnapshot?.ffAccel.shots ?? true,
                 }"
                 title="Force field accelerates enemy projectiles"
                 @click="
                   setFfAccelShots(
-                    !(serverMetaFromSnapshot?.ffAccelShots ?? true),
+                    !(serverMetaFromSnapshot?.ffAccel.shots ?? true),
                   )
                 "
               >

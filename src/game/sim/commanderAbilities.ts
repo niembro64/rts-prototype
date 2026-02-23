@@ -44,13 +44,13 @@ export class CommanderAbilitiesSystem {
         // Spray effect - intensity based on whether we're actively building
         const intensity = currentTarget.buildable.buildProgress < 1 ? 1 : 0;
         sprayTargets.push({
-          sourceId: commander.id,
-          targetId: currentTarget.id,
+          source: { id: commander.id, pos: { x: commanderX, y: commanderY } },
+          target: {
+            id: currentTarget.id,
+            pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
+            dim: currentTarget.building ? { x: currentTarget.building.width, y: currentTarget.building.height } : undefined,
+          },
           type: 'build',
-          source: { x: commanderX, y: commanderY },
-          target: { x: currentTarget.transform.x, y: currentTarget.transform.y },
-          targetWidth: currentTarget.building?.width,
-          targetHeight: currentTarget.building?.height,
           intensity: Math.max(0.1, intensity),
         });
       } else if (currentTarget.unit && currentTarget.unit.hp < currentTarget.unit.maxHp) {
@@ -63,12 +63,13 @@ export class CommanderAbilitiesSystem {
         // Spray effect
         const intensity = currentTarget.unit.hp < currentTarget.unit.maxHp ? 1 : 0;
         sprayTargets.push({
-          sourceId: commander.id,
-          targetId: currentTarget.id,
+          source: { id: commander.id, pos: { x: commanderX, y: commanderY } },
+          target: {
+            id: currentTarget.id,
+            pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
+            radius: currentTarget.unit.drawScale,
+          },
           type: 'heal',
-          source: { x: commanderX, y: commanderY },
-          target: { x: currentTarget.transform.x, y: currentTarget.transform.y },
-          targetRadius: currentTarget.unit.drawScale,
           intensity: Math.max(0.1, intensity),
         });
       }

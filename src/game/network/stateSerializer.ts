@@ -40,9 +40,19 @@ function createPooledWaypoint(): { pos: Vec2; type: string } {
   return { pos: { x: 0, y: 0 }, type: '' };
 }
 
-// Extended pool entry with pre-allocated sub-arrays
+// Pre-allocated sub-objects for the nested NetworkEntity shape
+type UnitSub = NonNullable<NetworkEntity['unit']>;
+type BuildingSub = NonNullable<NetworkEntity['building']>;
+type FactorySub = NonNullable<BuildingSub['factory']>;
+type ShotSub = NonNullable<NetworkEntity['shot']>;
+
+// Extended pool entry with pre-allocated sub-arrays and sub-objects
 type PooledEntry = {
   entity: NetworkEntity;
+  unitSub: UnitSub;
+  buildingSub: BuildingSub;
+  factorySub: FactorySub;
+  shotSub: ShotSub;
   weapons: NetworkWeapon[];
   actions: NetworkAction[];
   waypoints: { pos: Vec2; type: string }[];
@@ -58,6 +68,23 @@ function createPooledEntry(): PooledEntry {
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createPooledWaypoint());
   return {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0 }, rotation: 0 },
+    unitSub: {
+      unitType: '', hp: 0, maxHp: 0, drawScale: 0,
+      collider: { unitShot: 0, unitUnit: 0 },
+      moveSpeed: 0, mass: 0, velocity: { x: 0, y: 0 },
+      turretRotation: 0,
+    },
+    buildingSub: {
+      type: '', dim: { x: 0, y: 0 }, hp: 0, maxHp: 0,
+      build: { progress: 0, complete: false },
+    },
+    factorySub: {
+      queue: [], progress: 0, producing: false,
+      rally: { x: 0, y: 0 },
+    },
+    shotSub: {
+      type: '', source: 0,
+    },
     weapons,
     actions,
     waypoints,
@@ -390,14 +417,9 @@ export function serializeGameState(
     for (let i = 0; i < sprayTargets.length; i++) {
       const st = sprayTargets[i];
       _sprayBuf.push({
-        sourceId: st.sourceId,
-        targetId: st.targetId,
+        source: { id: st.source.id, pos: st.source.pos },
+        target: { id: st.target.id, pos: st.target.pos, dim: st.target.dim, radius: st.target.radius },
         type: st.type,
-        source: st.source,
-        target: st.target,
-        targetWidth: st.targetWidth,
-        targetHeight: st.targetHeight,
-        targetRadius: st.targetRadius,
         intensity: st.intensity,
       });
     }
@@ -514,47 +536,25 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   ne.rotation = entity.transform.rotation;
   ne.playerId = entity.ownership?.playerId;
 
-  // Clear all optional fields (prevents stale data from previous frame leaking)
-  ne.unitType = undefined;
-  ne.hp = undefined;
-  ne.maxHp = undefined;
-  ne.drawScale = undefined;
-  ne.radiusColliderUnitShot = undefined;
-  ne.radiusColliderUnitUnit = undefined;
-  ne.moveSpeed = undefined;
-  ne.mass = undefined;
-  ne.velocity = undefined;
-  ne.turretRotation = undefined;
-  ne.isCommander = undefined;
-  ne.actions = undefined;
-  ne.weaponId = undefined;
-  ne.weapons = undefined;
-  ne.buildTargetId = undefined;
-  ne.width = undefined;
-  ne.height = undefined;
-  ne.buildProgress = undefined;
-  ne.isComplete = undefined;
-  ne.buildingType = undefined;
-  ne.buildQueue = undefined;
-  ne.factoryProgress = undefined;
-  ne.isProducing = undefined;
-  ne.rally = undefined;
-  ne.factoryWaypoints = undefined;
-  ne.projectileType = undefined;
-  ne.beam = undefined;
-  ne.sourceEntityId = undefined;
-  ne.weaponIndex = undefined;
+  // Clear nested sub-objects (prevents stale data from previous frame leaking)
+  ne.unit = undefined;
+  ne.building = undefined;
+  ne.shot = undefined;
 
   if (entity.type === 'unit' && entity.unit) {
-    ne.unitType = entity.unit.unitType;
-    ne.hp = entity.unit.hp;
-    ne.maxHp = entity.unit.maxHp;
-    ne.drawScale = entity.unit.drawScale;
-    ne.radiusColliderUnitShot = entity.unit.radiusColliderUnitShot;
-    ne.radiusColliderUnitUnit = entity.unit.radiusColliderUnitUnit;
-    ne.moveSpeed = entity.unit.moveSpeed;
-    ne.mass = entity.unit.mass;
-    ne.velocity = { x: entity.unit.velocityX ?? 0, y: entity.unit.velocityY ?? 0 };
+    const u = pool.unitSub;
+    ne.unit = u;
+
+    u.unitType = entity.unit.unitType;
+    u.hp = entity.unit.hp;
+    u.maxHp = entity.unit.maxHp;
+    u.drawScale = entity.unit.drawScale;
+    u.collider.unitShot = entity.unit.radiusColliderUnitShot;
+    u.collider.unitUnit = entity.unit.radiusColliderUnitUnit;
+    u.moveSpeed = entity.unit.moveSpeed;
+    u.mass = entity.unit.mass;
+    u.velocity.x = entity.unit.velocityX ?? 0;
+    u.velocity.y = entity.unit.velocityY ?? 0;
 
     // Turret rotation for network display - use last weapon's rotation
     let turretRot = entity.transform.rotation;
@@ -562,10 +562,11 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
     for (const weapon of weapons) {
       turretRot = weapon.turretRotation;
     }
-    ne.turretRotation = turretRot;
-    ne.isCommander = entity.commander !== undefined;
+    u.turretRotation = turretRot;
+    u.isCommander = entity.commander !== undefined ? true : undefined;
 
     // Serialize action queue into pooled action objects
+    u.actions = undefined;
     if (entity.unit.actions && entity.unit.actions.length > 0) {
       const actions = entity.unit.actions;
       const count = actions.length;
@@ -581,10 +582,11 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         dst.grid = src.gridX !== undefined ? { x: src.gridX, y: src.gridY! } : undefined;
         dst.buildingId = src.buildingId;
       }
-      ne.actions = pool.actions;
+      u.actions = pool.actions;
     }
 
     // Serialize weapons into pooled weapon objects
+    u.weapons = undefined;
     if (entity.weapons && entity.weapons.length > 0) {
       const weapons = entity.weapons;
       const count = weapons.length;
@@ -609,38 +611,50 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         dst.isEngaged = src.isEngaged;
         dst.currentForceFieldRange = src.currentForceFieldRange;
       }
-      ne.weapons = pool.weapons;
+      u.weapons = pool.weapons;
     }
 
     // Serialize builder state (commander)
+    u.buildTargetId = undefined;
     if (entity.builder) {
-      ne.buildTargetId = entity.builder.currentBuildTarget ?? undefined;
+      u.buildTargetId = entity.builder.currentBuildTarget ?? undefined;
     }
   }
 
   if (entity.type === 'building' && entity.building) {
-    ne.width = entity.building.width;
-    ne.height = entity.building.height;
-    ne.hp = entity.building.hp;
-    ne.maxHp = entity.building.maxHp;
-    ne.buildingType = entity.buildingType;
+    const b = pool.buildingSub;
+    ne.building = b;
+
+    b.dim.x = entity.building.width;
+    b.dim.y = entity.building.height;
+    b.hp = entity.building.hp;
+    b.maxHp = entity.building.maxHp;
+    b.type = entity.buildingType ?? '';
 
     if (entity.buildable) {
-      ne.buildProgress = entity.buildable.buildProgress;
-      ne.isComplete = entity.buildable.isComplete;
+      b.build.progress = entity.buildable.buildProgress;
+      b.build.complete = entity.buildable.isComplete;
+    } else {
+      b.build.progress = 1;
+      b.build.complete = true;
     }
 
+    b.factory = undefined;
     if (entity.factory) {
+      const f = pool.factorySub;
+      b.factory = f;
+
       const srcQueue = entity.factory.buildQueue;
       pool.buildQueue.length = srcQueue.length;
       for (let i = 0; i < srcQueue.length; i++) {
         pool.buildQueue[i] = srcQueue[i];
       }
-      ne.buildQueue = pool.buildQueue;
+      f.queue = pool.buildQueue;
 
-      ne.factoryProgress = entity.factory.currentBuildProgress;
-      ne.isProducing = entity.factory.isProducing;
-      ne.rally = { x: entity.factory.rallyX, y: entity.factory.rallyY };
+      f.progress = entity.factory.currentBuildProgress;
+      f.producing = entity.factory.isProducing;
+      f.rally.x = entity.factory.rallyX;
+      f.rally.y = entity.factory.rallyY;
 
       const wps = entity.factory.waypoints;
       const wpCount = wps.length;
@@ -651,7 +665,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         pool.waypoints[i].pos.y = wps[i].y;
         pool.waypoints[i].type = wps[i].type;
       }
-      ne.factoryWaypoints = pool.waypoints;
+      f.waypoints = pool.waypoints;
     }
   }
 
