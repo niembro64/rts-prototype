@@ -94,21 +94,16 @@ export function buildEconomyInfo(
   // Count units for this player
   const unitCount = entitySource.getUnitsByPlayer(playerId).length;
 
-  const income = economy.baseIncome + economy.production;
-  const netFlow = income - economy.expenditure;
+  const total = economy.income.base + economy.income.production;
+  const netFlow = total - economy.expenditure;
 
   return {
-    stockpile: economy.stockpile,
-    maxStockpile: economy.maxStockpile,
-    income,
-    baseIncome: economy.baseIncome,
-    production: economy.production,
+    stockpile: { curr: economy.stockpile.curr, max: economy.stockpile.max },
+    income: { base: economy.income.base, production: economy.income.production, total },
     expenditure: economy.expenditure,
     netFlow,
-    solarCount,
-    factoryCount,
-    unitCount,
-    unitCap,
+    units: { count: unitCount, cap: unitCap },
+    buildings: { solar: solarCount, factory: factoryCount },
   };
 }
 

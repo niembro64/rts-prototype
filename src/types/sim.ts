@@ -224,10 +224,8 @@ export type Projectile = {
 
 // Economy state per player
 export type EconomyState = {
-  stockpile: number;
-  maxStockpile: number;
-  baseIncome: number;
-  production: number;
+  stockpile: { curr: number; max: number };
+  income: { base: number; production: number };
   expenditure: number;
 };
 

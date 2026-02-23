@@ -145,7 +145,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const economy = economyManager.getEconomy(playerId);
     if (!economy || indices.length === 0) continue;
 
-    const equalShare = economy.stockpile / indices.length;
+    const equalShare = economy.stockpile.curr / indices.length;
     let totalSpent = 0;
 
     for (const idx of indices) {
@@ -165,7 +165,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       }
     }
 
-    economy.stockpile -= totalSpent;
+    economy.stockpile.curr -= totalSpent;
     economyManager.recordExpenditure(playerId, totalSpent / dtSec);
   }
 }

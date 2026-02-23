@@ -38,17 +38,12 @@ export type SelectionActions = {
 
 // Economy info
 export type EconomyInfo = {
-  stockpile: number;
-  maxStockpile: number;
-  income: number;
-  baseIncome: number;
-  production: number;
+  stockpile: { curr: number; max: number };
+  income: { base: number; production: number; total: number };
   expenditure: number;
   netFlow: number;
-  solarCount: number;
-  factoryCount: number;
-  unitCount: number;
-  unitCap: number;
+  units: { count: number; cap: number };
+  buildings: { solar: number; factory: number };
 };
 
 // Minimap types

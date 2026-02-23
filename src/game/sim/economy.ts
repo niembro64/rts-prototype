@@ -17,11 +17,9 @@ export const ECONOMY_CONSTANTS = {
 // Create initial economy state for a player
 export function createEconomyState(): EconomyState {
   return {
-    stockpile: ECONOMY_CONSTANTS.startingStockpile,
-    maxStockpile: ECONOMY_CONSTANTS.maxStockpile,
-    baseIncome: ECONOMY_CONSTANTS.baseIncome,
-    production: 0,         // Will be updated based on solar panels
-    expenditure: 0,        // Will be updated based on construction
+    stockpile: { curr: ECONOMY_CONSTANTS.startingStockpile, max: ECONOMY_CONSTANTS.maxStockpile },
+    income: { base: ECONOMY_CONSTANTS.baseIncome, production: 0 },
+    expenditure: 0,
   };
 }
 
@@ -57,52 +55,52 @@ export class EconomyManager {
   // Set production (called when solar panels change)
   setProduction(playerId: PlayerId, production: number): void {
     const economy = this.getOrCreateEconomy(playerId);
-    economy.production = production;
+    economy.income.production = production;
   }
 
   // Add to production (when a solar panel completes)
   addProduction(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
-    economy.production += amount;
+    economy.income.production += amount;
   }
 
   // Remove from production (when a solar panel is destroyed)
   removeProduction(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
-    economy.production = Math.max(0, economy.production - amount);
+    economy.income.production = Math.max(0, economy.income.production - amount);
   }
 
   // Get total income (base + production)
   getTotalIncome(playerId: PlayerId): number {
     const economy = this.getOrCreateEconomy(playerId);
-    return economy.baseIncome + economy.production;
+    return economy.income.base + economy.income.production;
   }
 
   // Get net flow (income - expenditure)
   getNetFlow(playerId: PlayerId): number {
     const economy = this.getOrCreateEconomy(playerId);
-    return economy.baseIncome + economy.production - economy.expenditure;
+    return economy.income.base + economy.income.production - economy.expenditure;
   }
 
   // Try to spend energy (returns amount actually spent)
   trySpendEnergy(playerId: PlayerId, amount: number): number {
     const economy = this.getOrCreateEconomy(playerId);
-    const actualSpend = Math.min(amount, economy.stockpile);
-    economy.stockpile -= actualSpend;
+    const actualSpend = Math.min(amount, economy.stockpile.curr);
+    economy.stockpile.curr -= actualSpend;
     return actualSpend;
   }
 
   // Check if player can afford something
   canAfford(playerId: PlayerId, amount: number): boolean {
     const economy = this.getOrCreateEconomy(playerId);
-    return economy.stockpile >= amount;
+    return economy.stockpile.curr >= amount;
   }
 
   // Spend energy instantly (for things like D-gun)
   spendInstant(playerId: PlayerId, amount: number): boolean {
     const economy = this.getOrCreateEconomy(playerId);
-    if (economy.stockpile >= amount) {
-      economy.stockpile -= amount;
+    if (economy.stockpile.curr >= amount) {
+      economy.stockpile.curr -= amount;
       return true;
     }
     return false;
@@ -114,14 +112,14 @@ export class EconomyManager {
 
     for (const [, economy] of this.economies) {
       // Calculate income
-      const income = economy.baseIncome + economy.production;
+      const total = economy.income.base + economy.income.production;
 
       // Add income to stockpile
-      economy.stockpile += income * dtSec;
+      economy.stockpile.curr += total * dtSec;
 
       // Cap at max stockpile
-      if (economy.stockpile > economy.maxStockpile) {
-        economy.stockpile = economy.maxStockpile;
+      if (economy.stockpile.curr > economy.stockpile.max) {
+        economy.stockpile.curr = economy.stockpile.max;
       }
 
       // Reset expenditure each frame (will be recalculated by construction system)

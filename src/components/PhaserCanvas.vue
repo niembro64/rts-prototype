@@ -212,17 +212,12 @@ const selectionInfo = reactive<SelectionInfo>({
 
 // Economy state for the top bar
 const economyInfo = reactive<EconomyInfo>({
-  stockpile: 250,
-  maxStockpile: 1000,
-  income: 5,
-  baseIncome: 5,
-  production: 0,
+  stockpile: { curr: 250, max: 1000 },
+  income: { base: 5, production: 0, total: 5 },
   expenditure: 0,
   netFlow: 5,
-  solarCount: 0,
-  factoryCount: 0,
-  unitCount: 1,
-  unitCap: 60,
+  units: { count: 1, cap: 120 },
+  buildings: { solar: 0, factory: 0 },
 });
 
 // Minimap state

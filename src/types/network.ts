@@ -197,10 +197,8 @@ export type NetworkEntity = {
 };
 
 export type NetworkEconomy = {
-  stockpile: number;
-  maxStockpile: number;
-  baseIncome: number;
-  production: number;
+  stockpile: { curr: number; max: number };
+  income: { base: number; production: number };
   expenditure: number;
 };
 

@@ -12,7 +12,7 @@ const props = defineProps<{
 }>();
 
 const stockpilePercent = computed(() =>
-  Math.round((props.economy.stockpile / props.economy.maxStockpile) * 100)
+  Math.round((props.economy.stockpile.curr / props.economy.stockpile.max) * 100)
 );
 
 const stockpileColor = computed(() => {
@@ -29,13 +29,13 @@ const netFlowColor = computed(() => {
 });
 
 const unitCapColor = computed(() => {
-  const pct = (props.economy.unitCount / props.economy.unitCap) * 100;
+  const pct = (props.economy.units.count / props.economy.units.cap) * 100;
   if (pct >= 100) return '#ff4444';
   if (pct >= 80) return '#ffcc00';
   return '#00ff88';
 });
 
-const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unitCap);
+const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.units.cap);
 </script>
 
 <template>
@@ -51,8 +51,8 @@ const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unit
       <div class="stat-label">Energy</div>
       <div class="stat-value">
         <span class="energy-icon">⚡</span>
-        <span :style="{ color: stockpileColor }">{{ fmt4(Math.floor(economy.stockpile)) }}</span>
-        <span class="max-value">/ {{ economy.maxStockpile }}</span>
+        <span :style="{ color: stockpileColor }">{{ fmt4(Math.floor(economy.stockpile.curr)) }}</span>
+        <span class="max-value">/ {{ economy.stockpile.max }}</span>
       </div>
       <div class="stockpile-bar">
         <div
@@ -66,10 +66,10 @@ const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unit
     <div class="economy-section">
       <div class="stat-label">Income</div>
       <div class="stat-value income">
-        <span class="positive">{{ fmtSigned(economy.income) }}/s</span>
+        <span class="positive">{{ fmtSigned(economy.income.total) }}/s</span>
       </div>
       <div class="stat-detail">
-        Base: {{ fmtSigned(economy.baseIncome) }} | Solar: {{ fmtSigned(economy.production) }}
+        Base: {{ fmtSigned(economy.income.base) }} | Solar: {{ fmtSigned(economy.income.production) }}
       </div>
     </div>
 
@@ -95,7 +95,7 @@ const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unit
     <div class="economy-section units">
       <div class="stat-label">Units</div>
       <div class="stat-value" :style="{ color: unitCapColor }">
-        {{ economy.unitCount }} / {{ economy.unitCap }}
+        {{ economy.units.count }} / {{ economy.units.cap }}
         <span v-if="isAtUnitCap" class="cap-warning" title="At unit cap!">(MAX)</span>
       </div>
     </div>
@@ -105,10 +105,10 @@ const isAtUnitCap = computed(() => props.economy.unitCount >= props.economy.unit
       <div class="stat-label">Buildings</div>
       <div class="building-counts">
         <span class="building-count solar" title="Solar Panels">
-          ☀️ {{ economy.solarCount }}
+          ☀️ {{ economy.buildings.solar }}
         </span>
         <span class="building-count factory" title="Factories">
-          🏭 {{ economy.factoryCount }}
+          🏭 {{ economy.buildings.factory }}
         </span>
       </div>
     </div>

@@ -376,10 +376,8 @@ export function serializeGameState(
       const pid = playerId as PlayerId;
       _economyKeys.push(pid);
       _economyBuf[pid] = {
-        stockpile: eco.stockpile,
-        maxStockpile: eco.maxStockpile,
-        baseIncome: eco.baseIncome,
-        production: eco.production,
+        stockpile: { curr: eco.stockpile.curr, max: eco.stockpile.max },
+        income: { base: eco.income.base, production: eco.income.production },
         expenditure: eco.expenditure,
       };
     }

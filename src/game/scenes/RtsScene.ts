@@ -46,7 +46,7 @@ import {
   buildEconomyInfo,
   buildMinimapData,
 } from './helpers';
-import type { MinimapData } from './helpers';
+import type { EconomyInfo, MinimapData } from './helpers';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import { EmaTracker } from './helpers/EmaTracker';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
@@ -141,19 +141,7 @@ export class RtsScene extends Phaser.Scene {
   }) => void;
 
   // Callback for UI to know when economy changes
-  public onEconomyChange?: (info: {
-    stockpile: number;
-    maxStockpile: number;
-    income: number;
-    baseIncome: number;
-    production: number;
-    expenditure: number;
-    netFlow: number;
-    solarCount: number;
-    factoryCount: number;
-    unitCount: number;
-    unitCap: number;
-  }) => void;
+  public onEconomyChange?: (info: EconomyInfo) => void;
 
   // Callback for minimap updates
   public onMinimapUpdate?: (data: MinimapData) => void;
