@@ -107,6 +107,8 @@ import {
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
 
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
@@ -1238,8 +1240,8 @@ onUnmounted(() => {
       </template>
     </div>
 
-    <!-- Bottom control bars (always visible) -->
-    <div class="bottom-controls">
+    <!-- Bottom control bars (hidden on mobile) -->
+    <div v-if="!isMobile" class="bottom-controls">
       <!-- BATTLE CONTROLS -->
       <div
         v-if="showServerControls"
@@ -1898,7 +1900,7 @@ onUnmounted(() => {
 
     <!-- Lobby Modal (full-screen overlay, covers bars too) -->
     <LobbyModal
-      :visible="showLobby && !spectateMode"
+      :visible="!isMobile && showLobby && !spectateMode"
       :is-host="isHost"
       :room-code="roomCode"
       :players="lobbyPlayers"

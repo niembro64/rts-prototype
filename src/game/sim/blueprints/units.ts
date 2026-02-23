@@ -241,7 +241,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderShot: 45 * 0.6,
     unitRadiusColliderPush: 45 * 1.2,
     mass: 1500,
-    baseCost: 5000,
+    baseCost: 50000,
     weapons: [
       { weaponId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
       { weaponId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
