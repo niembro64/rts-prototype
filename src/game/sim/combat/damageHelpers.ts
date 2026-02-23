@@ -2,7 +2,7 @@
 // Extracted from projectileSystem.ts to reduce duplication
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId } from '../types';
+import type { Entity, EntityId, BeamShot } from '../types';
 import { PLAYER_COLORS } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext } from './types';
@@ -18,8 +18,15 @@ export function buildImpactContext(
   collisionRadius: number,
   entity?: Entity,
 ): ImpactContext {
-  const primaryRadius = config.shot?.explosion?.primary.radius ?? collisionRadius;
-  const secondaryRadius = config.shot?.explosion?.secondary.radius ?? primaryRadius;
+  let primaryRadius = collisionRadius;
+  let secondaryRadius = collisionRadius;
+  if (config.shot.type === 'projectile') {
+    primaryRadius = config.shot.explosion?.primary.radius ?? collisionRadius;
+    secondaryRadius = config.shot.explosion?.secondary.radius ?? primaryRadius;
+  } else if (config.shot.type === 'beam') {
+    primaryRadius = config.shot.radius;
+    secondaryRadius = primaryRadius;
+  }
 
   let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
   let penDirX = 0, penDirY = 0;
@@ -180,7 +187,7 @@ export function emitBeamHitAudio(
       const entity = world.getEntity(hitId);
       if (entity) {
         audioEvents.push({
-          type: 'hit', turretId: config.shot?.type ?? config.id,
+          type: 'hit', turretId: (config.shot as BeamShot).id,
           pos: { x: entity.transform.x, y: entity.transform.y },
           impactContext: buildImpactContext(
             config, impactX, impactY,

@@ -1,7 +1,7 @@
 // Projectile system - firing, movement, collision detection, and damage application
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId } from '../types';
+import type { Entity, EntityId, ProjectileShot, BeamShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, FireTurretsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -9,7 +9,7 @@ import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import type { DeathContext } from '../damage/types';
-import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, applyDirectionalKnockback, emitBeamHitAudio } from './damageHelpers';
+import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos } from './combatUtils';
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
@@ -20,11 +20,8 @@ const _collisionProjectilesToRemove: EntityId[] = [];
 const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionSimEvents: SimEvent[] = [];
 
-// Reusable empty set for beam area damage (avoids allocating new Set per beam per frame)
+// Reusable empty set for additive area damage (avoids allocating new Set per frame)
 const _emptyExcludeSet = new Set<EntityId>();
-
-// Reusable set for secondary damage exclusion (avoids per-tick allocation)
-const _beamSecondaryExcludeSet = new Set<EntityId>();
 
 // Reusable arrays for fireTurrets (avoids per-frame allocation)
 const _fireNewProjectiles: Entity[] = [];
@@ -40,7 +37,6 @@ export function resetProjectileBuffers(): void {
   _collisionProjectilesToRemove.length = 0;
   _collisionDespawnEvents.length = 0;
   _collisionSimEvents.length = 0;
-  _beamSecondaryExcludeSet.clear();
   _fireNewProjectiles.length = 0;
   _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
@@ -74,17 +70,19 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
     for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
       const weapon = unit.turrets[weaponIndex];
       const config = weapon.config;
-      const isBeamWeapon = config.shot?.beam !== undefined;
+      const shot = config.shot;
+      if (shot.type === 'field') continue; // Force fields don't create projectiles
+      const isBeamWeapon = shot.type === 'beam';
       const isContinuousBeam = isBeamWeapon && config.cooldown === 0;
       const isCooldownBeam = isBeamWeapon && config.cooldown > 0;
 
       // Skip if weapon is not engaged (target not in range or no target)
       if (!weapon.engaged) continue;
 
-      // Apply beam/railgun recoil any time the weapon is firing (momentum-based: mass × velocity)
-      if (isBeamWeapon && forceAccumulator && config.shot?.mass && config.shot?.speed) {
+      // Apply beam recoil any time the weapon is firing
+      if (isBeamWeapon && forceAccumulator && (shot as BeamShot).recoil) {
         const dtSec = dtMs / 1000;
-        const knockBackPerTick = config.shot.mass * PROJECTILE_MASS_MULTIPLIER * config.shot.speed * dtSec;
+        const knockBackPerTick = (shot as BeamShot).recoil! * PROJECTILE_MASS_MULTIPLIER * dtSec;
         const turretAngle = weapon.rotation;
         const dirX = Math.cos(turretAngle);
         const dirY = Math.sin(turretAngle);
@@ -139,8 +137,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
       }
 
-      // Add fire event (skip continuous beams and force fields — they use start/stop lifecycle)
-      if ((!isBeamWeapon || isCooldownBeam) && !config.forceField) {
+      // Add fire event (skip continuous beams — they use start/stop lifecycle)
+      if (!isBeamWeapon || isCooldownBeam) {
         audioEvents.push({
           type: 'fire',
           turretId: config.id,
@@ -196,10 +194,11 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             turretIndex: weaponIndex,
             beam: { start: { x: spawnX, y: spawnY }, end: { x: endX, y: endY } },
           });
-          // Note: Beam recoil is applied continuously in applyLineDamage while dealing damage
-        } else if (config.shot?.speed !== undefined) {
+          // Note: Beam recoil is applied continuously above while weapon is engaged
+        } else {
           // Create traveling projectile
-          const speed = config.shot.speed;
+          const projShot = shot as ProjectileShot;
+          const speed = projShot.launchForce / projShot.mass;
           let projVx = fireCos * speed;
           let projVy = fireSin * speed;
           if (world.projVelInherit && unit.unit) {
@@ -221,12 +220,12 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             playerId,
             unit.id,
             config,
-            'traveling'
+            'projectile'
           );
           // Set homing properties if weapon has homingTurnRate and weapon has a locked target
-          if (config.shot?.homingTurnRate && weapon.target !== null) {
+          if (projShot.homingTurnRate && weapon.target !== null) {
             projectile.projectile!.homingTargetId = weapon.target;
-            projectile.projectile!.homingTurnRate = config.shot.homingTurnRate;
+            projectile.projectile!.homingTurnRate = projShot.homingTurnRate;
           }
 
           newProjectiles.push(projectile);
@@ -234,18 +233,18 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             id: projectile.id,
             pos: { x: spawnX, y: spawnY }, rotation: angle,
             velocity: { x: projVx, y: projVy },
-            projectileType: 'traveling',
+            projectileType: 'projectile',
             turretId: config.id,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
-            targetEntityId: (config.shot?.homingTurnRate && weapon.target !== null) ? weapon.target : undefined,
-            homingTurnRate: config.shot?.homingTurnRate,
+            targetEntityId: (projShot.homingTurnRate && weapon.target !== null) ? weapon.target : undefined,
+            homingTurnRate: projShot.homingTurnRate,
           });
 
           // Apply recoil to firing unit (momentum-based: p = mv)
-          if (forceAccumulator && config.shot?.mass && config.shot.mass > 0) {
-            const recoilForce = config.shot.mass * PROJECTILE_MASS_MULTIPLIER * (config.shot?.speed ?? 0);
+          if (forceAccumulator && projShot.mass > 0) {
+            const recoilForce = projShot.launchForce * PROJECTILE_MASS_MULTIPLIER;
             forceAccumulator.addForce(unit.id, -fireCos * recoilForce, -fireSin * recoilForce, 'recoil');
           }
         }
@@ -280,7 +279,7 @@ export function updateProjectiles(
     proj.timeAlive += dtMs;
 
     // Move traveling projectiles - track previous position for swept collision detection
-    if (proj.projectileType === 'traveling') {
+    if (proj.projectileType === 'projectile') {
       // Store previous position before moving (prevents tunneling through targets)
       proj.prevX = entity.transform.x;
       proj.prevY = entity.transform.y;
@@ -300,7 +299,7 @@ export function updateProjectiles(
           const dx = proj.prevX - source.transform.x;
           const dy = proj.prevY - source.transform.y;
           const distSq = dx * dx + dy * dy;
-          const clearance = source.unit.radiusColliderUnitShot + (proj.config.shot?.collision?.radius ?? 5) + 2;
+          const clearance = source.unit.radiusColliderUnitShot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
           if (distSq > clearance * clearance) {
             proj.hasLeftSource = true;
           }
@@ -396,7 +395,7 @@ export function updateProjectiles(
         // Find closest obstruction using unified DamageSystem
         // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness)
         const currentTick = world.getTick();
-        const collisionRadius = proj.config.shot?.collision?.radius ?? 2;
+        const collisionRadius = proj.config.shot.type === 'beam' ? proj.config.shot.radius : 2;
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= 3) {
           const obstruction = damageSystem.findLineObstruction(
             proj.startX, proj.startY,
@@ -456,25 +455,27 @@ export function checkProjectileCollisions(
 
     const proj = projEntity.projectile;
     const config = proj.config;
+    // Projectile entities always use projectile/beam shot types (never field)
+    const shotId = (config.shot as ProjectileShot | BeamShot).id;
 
     // Check if projectile expired
     if (proj.timeAlive >= proj.maxLifespan) {
       // Beam audio is handled by updateLaserSounds based on targeting state
 
-      // Handle splash damage on expiration — only for projectiles with splashOnExpiry enabled
-      // Small projectiles (lightShot, mediumShot) only splash on direct hit, not on expiration
-      if (config.shot?.explosion?.primary.radius && config.shot?.splashOnExpiry && !proj.hasExploded) {
-        // Primary zone: explicit primary radius damage
+      // Handle splash damage on expiration — only for projectile shots with splashOnExpiry enabled
+      if (config.shot.type === 'projectile' && config.shot.explosion?.primary.radius && config.shot.splashOnExpiry && !proj.hasExploded) {
+        const projShot = config.shot;
+        // Primary zone: explicit primary radius damage (additive — no exclusions)
         const primaryResult = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
-          damage: config.shot!.explosion!.primary.damage,
-          excludeEntities: proj.hitEntities,
+          damage: projShot.explosion!.primary.damage,
+          excludeEntities: _emptyExcludeSet,
           center: { x: projEntity.transform.x, y: projEntity.transform.y },
-          radius: config.shot!.explosion!.primary.radius,
+          radius: projShot.explosion!.primary.radius,
           falloff: 1,
-          knockbackForce: config.shot!.explosion!.primary.force,
+          knockbackForce: projShot.explosion!.primary.force,
         });
         proj.hasExploded = true;
 
@@ -484,23 +485,18 @@ export function checkProjectileCollisions(
         // Track killed entities and merge death contexts from primary
         collectKillsAndDeathContexts(primaryResult, unitsToRemove, buildingsToRemove, deathContexts);
 
-        // Secondary zone: explicit secondary damage, exclude primary hits
-        if (config.shot!.explosion!.secondary.radius > config.shot!.explosion!.primary.radius) {
-          // Build exclude set: original hitEntities + primary hits
-          _beamSecondaryExcludeSet.clear();
-          for (const id of proj.hitEntities) _beamSecondaryExcludeSet.add(id);
-          for (const id of primaryResult.hitEntityIds) _beamSecondaryExcludeSet.add(id);
-
+        // Secondary zone: additive (no exclusions)
+        if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
           const secondaryResult = damageSystem.applyDamage({
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: config.shot!.explosion!.secondary.damage,
-            excludeEntities: _beamSecondaryExcludeSet,
+            damage: projShot.explosion!.secondary.damage,
+            excludeEntities: _emptyExcludeSet,
             center: { x: projEntity.transform.x, y: projEntity.transform.y },
-            radius: config.shot!.explosion!.secondary.radius,
+            radius: projShot.explosion!.secondary.radius,
             falloff: 1,
-            knockbackForce: config.shot!.explosion!.secondary.force,
+            knockbackForce: projShot.explosion!.secondary.force,
           });
 
           applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
@@ -509,18 +505,16 @@ export function checkProjectileCollisions(
 
         // Add explosion audio event if there were hits or it's a mortar
         if (primaryResult.hitEntityIds.length > 0 || config.id === 'mortarTurret') {
-          // Use first hit entity for directional context (area splash, pick nearest)
           const firstHitEntity = primaryResult.hitEntityIds.length > 0
             ? world.getEntity(primaryResult.hitEntityIds[0]) : undefined;
-          const projCollisionRadius = config.shot?.collision?.radius ?? 2;
           audioEvents.push({
             type: 'hit',
-            turretId: config.shot?.type ?? config.id,
+            turretId: shotId,
             pos: { x: projEntity.transform.x, y: projEntity.transform.y },
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
-              projCollisionRadius, firstHitEntity ?? undefined,
+              projShot.collision.radius, firstHitEntity ?? undefined,
             ),
           });
         }
@@ -528,11 +522,11 @@ export function checkProjectileCollisions(
 
       // Add projectile expire event for traveling projectiles (not beams)
       // This creates an explosion effect at projectile termination point
-      if (proj.projectileType === 'traveling' && !proj.hasExploded) {
-        const projRadius = config.shot?.collision?.radius ?? 5;
+      if (proj.projectileType === 'projectile' && !proj.hasExploded) {
+        const projRadius = config.shot.type === 'projectile' ? config.shot.collision.radius : 5;
         audioEvents.push({
           type: 'projectileExpire',
-          turretId: config.shot?.type ?? config.id,
+          turretId: shotId,
           pos: { x: projEntity.transform.x, y: projEntity.transform.y },
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,
@@ -549,157 +543,42 @@ export function checkProjectileCollisions(
 
     // Handle different projectile types with unified damage system
     if (proj.projectileType === 'beam') {
-      // Beam damage uses the impact circle at the truncated beam endpoint.
+      // Beam damage: single area zone at truncated endpoint
+      const beamShot = config.shot as BeamShot;
       const impactX = proj.endX ?? projEntity.transform.x;
       const impactY = proj.endY ?? projEntity.transform.y;
-      const collisionRadius = config.shot?.collision?.radius ?? 2;
-      const primaryRadius = config.shot?.explosion?.primary.radius ?? (collisionRadius * 2 + 6);
-      const collisionDamage = config.shot?.collision?.damage ?? 0;
-      const primaryDamage = config.shot?.explosion?.primary.damage ?? collisionDamage;
-      const secondaryDamage = config.shot?.explosion?.secondary.damage ?? collisionDamage * 0.2;
-
-      // Calculate per-tick damages (collision, primary, secondary):
-      // Cooldown beams (railgun): total damage spread over beamDuration
-      // Continuous beams: damage is DPS, scale by tick length
       const dtSec = dtMs / 1000;
-      const tickCollisionDamage = config.shot?.beam?.duration
-        ? (collisionDamage / config.shot.beam.duration) * dtMs
-        : collisionDamage * dtSec;
-      const tickPrimaryDamage = config.shot?.beam?.duration
-        ? (primaryDamage / config.shot.beam.duration) * dtMs
-        : primaryDamage * dtSec;
-      const tickSecondaryDamage = config.shot?.beam?.duration
-        ? (secondaryDamage / config.shot.beam.duration) * dtMs
-        : secondaryDamage * dtSec;
 
-      // Per-tick explosion forces (scaled same as damage for framerate independence)
-      const primaryForce = config.shot?.explosion?.primary.force ?? 0;
-      const secondaryForce = config.shot?.explosion?.secondary.force ?? 0;
-      const tickPrimaryForce = config.shot?.beam?.duration
-        ? (primaryForce / config.shot.beam.duration) * dtMs
-        : primaryForce * dtSec;
-      const tickSecondaryForce = config.shot?.beam?.duration
-        ? (secondaryForce / config.shot.beam.duration) * dtMs
-        : secondaryForce * dtSec;
+      // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
+      const tickDamage = beamShot.dps * dtSec;
+      const tickForce = beamShot.force * dtSec;
 
       // Beam direction for hit knockback
       const beamAngle = projEntity.transform.rotation;
       const beamDirX = Math.cos(beamAngle);
       const beamDirY = Math.sin(beamAngle);
 
-      // Momentum-based per-tick hit force (mass × velocity), scaled by dt for framerate independence
-      const hitForcePerTick = (config.shot?.mass ?? 0) * PROJECTILE_MASS_MULTIPLIER * (config.shot?.speed ?? 0) * dtSec;
+      const result = damageSystem.applyDamage({
+        type: 'area',
+        sourceEntityId: proj.sourceEntityId,
+        ownerId: projEntity.ownership.playerId,
+        damage: tickDamage,
+        excludeEntities: _emptyExcludeSet,
+        center: { x: impactX, y: impactY },
+        radius: beamShot.radius,
+        falloff: 1,
+        knockbackForce: tickForce,
+      });
 
-      // Collision gate: when splashOnExpiry is false, only splash if collisionRadius circle hits something
-      const useCollisionGate = !config.shot?.splashOnExpiry;
-      let collisionHadHits = false;
+      applyKnockbackForces(result.knockbacks, forceAccumulator);
+      emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, beamShot.radius, audioEvents);
+      collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
-      if (useCollisionGate) {
-        // Step 1: Apply damage at collisionRadius (collision zone only)
-        const collisionResult = damageSystem.applyDamage({
-          type: 'area',
-          sourceEntityId: proj.sourceEntityId,
-          ownerId: projEntity.ownership.playerId,
-          damage: tickCollisionDamage,
-          excludeEntities: _emptyExcludeSet,
-          center: { x: impactX, y: impactY },
-          radius: collisionRadius,
-          falloff: 1,
-        });
-
-        collisionHadHits = collisionResult.hitEntityIds.length > 0;
-
-        // Always process collision zone kills/knockbacks (these entities are inside collisionRadius)
-        applyDirectionalKnockback(collisionResult.hitEntityIds, hitForcePerTick, beamDirX, beamDirY, forceAccumulator);
-        emitBeamHitAudio(collisionResult.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, collisionRadius, audioEvents);
-        collectKillsWithDeathAudio(collisionResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
-
-        if (collisionHadHits) {
-          // Step 2: Primary zone (excluding collision hits)
-          _beamSecondaryExcludeSet.clear();
-          for (const id of collisionResult.hitEntityIds) _beamSecondaryExcludeSet.add(id);
-
-          const primaryResult = damageSystem.applyDamage({
-            type: 'area',
-            sourceEntityId: proj.sourceEntityId,
-            ownerId: projEntity.ownership.playerId,
-            damage: tickPrimaryDamage,
-            excludeEntities: _beamSecondaryExcludeSet,
-            center: { x: impactX, y: impactY },
-            radius: primaryRadius,
-            falloff: 1,
-            knockbackForce: tickPrimaryForce,
-          });
-
-          applyKnockbackForces(primaryResult.knockbacks, forceAccumulator);
-          collectKillsWithDeathAudio(primaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
-
-          // Step 3: Secondary zone (excluding collision + primary hits)
-          const secondaryRadius = config.shot?.explosion?.secondary.radius ?? 0;
-          if (secondaryRadius > primaryRadius) {
-            for (const id of primaryResult.hitEntityIds) _beamSecondaryExcludeSet.add(id);
-
-            const secondaryResult = damageSystem.applyDamage({
-              type: 'area',
-              sourceEntityId: proj.sourceEntityId,
-              ownerId: projEntity.ownership.playerId,
-              damage: tickSecondaryDamage,
-              excludeEntities: _beamSecondaryExcludeSet,
-              center: { x: impactX, y: impactY },
-              radius: secondaryRadius,
-              falloff: 1,
-              knockbackForce: tickSecondaryForce,
-            });
-
-            applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
-            collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
-          }
-        }
-      } else {
-        // No collision gate: apply primary damage to full radius every tick
-        const result = damageSystem.applyDamage({
-          type: 'area',
-          sourceEntityId: proj.sourceEntityId,
-          ownerId: projEntity.ownership.playerId,
-          damage: tickPrimaryDamage,
-          excludeEntities: _emptyExcludeSet,
-          center: { x: impactX, y: impactY },
-          radius: primaryRadius,
-          falloff: 1,
-          knockbackForce: tickPrimaryForce,
-        });
-
-        applyKnockbackForces(result.knockbacks, forceAccumulator);
-        emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, collisionRadius, audioEvents);
-        collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
-
-        // Secondary zone: explicit secondary damage, exclude primary hits
-        const noGateSecondaryRadius = config.shot?.explosion?.secondary.radius ?? 0;
-        if (noGateSecondaryRadius > primaryRadius) {
-          _beamSecondaryExcludeSet.clear();
-          for (const id of result.hitEntityIds) _beamSecondaryExcludeSet.add(id);
-
-          const secondaryResult = damageSystem.applyDamage({
-            type: 'area',
-            sourceEntityId: proj.sourceEntityId,
-            ownerId: projEntity.ownership.playerId,
-            damage: tickSecondaryDamage,
-            excludeEntities: _beamSecondaryExcludeSet,
-            center: { x: impactX, y: impactY },
-            radius: noGateSecondaryRadius,
-            falloff: 1,
-            knockbackForce: tickSecondaryForce,
-          });
-
-          applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
-          collectKillsWithDeathAudio(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
-        }
-      }
-
-      // Note: beam recoil (momentum-based) is applied in fireTurrets() based on weapon.engaged state
+      // Note: beam recoil is applied in fireTurrets() based on weapon.engaged state
     } else {
       // Traveling projectiles use swept volume collision (prevents tunneling)
-      const projRadius = config.shot?.collision?.radius ?? 5;
+      const projShot = config.shot as ProjectileShot;
+      const projRadius = projShot.collision.radius;
       const prevX = proj.prevX ?? projEntity.transform.x;
       const prevY = proj.prevY ?? projEntity.transform.y;
       const currentX = projEntity.transform.x;
@@ -714,15 +593,14 @@ export function checkProjectileCollisions(
         type: 'swept',
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
-        damage: config.shot!.collision!.damage,
+        damage: projShot.collision.damage,
         excludeEntities: proj.hitEntities,
         prev: { x: prevX, y: prevY },
         current: { x: currentX, y: currentY },
         radius: projRadius,
         maxHits: proj.maxHits - proj.hitEntities.size + (sourceGuard ? 1 : 0), // Compensate for phantom guard entry
-        // Pass actual projectile velocity for explosion effects
         velocity: { x: proj.velocityX, y: proj.velocityY },
-        projectileMass: proj.config.shot?.mass,
+        projectileMass: projShot.mass,
       });
 
       // Apply knockback from projectile hit
@@ -739,7 +617,7 @@ export function checkProjectileCollisions(
         if (entity) {
           audioEvents.push({
             type: 'hit',
-            turretId: config.shot?.type ?? config.id,
+            turretId: shotId,
             pos: { x: projEntity.transform.x, y: projEntity.transform.y },
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
@@ -754,44 +632,37 @@ export function checkProjectileCollisions(
       const hadHits = result.hitEntityIds.length > 0;
       collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
-      // Handle splash damage on first hit (safe: result fully consumed above)
-      if (hadHits && config.shot?.explosion?.primary.radius && !proj.hasExploded) {
-        // Primary zone: explicit primary radius damage
+      // Handle splash damage on first hit — additive zones (no exclusions)
+      if (hadHits && projShot.explosion?.primary.radius && !proj.hasExploded) {
+        // Primary zone: additive (direct-hit unit also takes primary damage)
         const primarySplash = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
-          damage: config.shot!.explosion!.primary.damage,
-          excludeEntities: proj.hitEntities,
+          damage: projShot.explosion!.primary.damage,
+          excludeEntities: _emptyExcludeSet,
           center: { x: projEntity.transform.x, y: projEntity.transform.y },
-          radius: config.shot!.explosion!.primary.radius,
+          radius: projShot.explosion!.primary.radius,
           falloff: 1,
-          knockbackForce: config.shot!.explosion!.primary.force,
+          knockbackForce: projShot.explosion!.primary.force,
         });
         proj.hasExploded = true;
 
-        // Apply knockback from primary splash
         applyKnockbackForces(primarySplash.knockbacks, forceAccumulator);
-
-        // Track primary splash kills and merge death contexts
         collectKillsAndDeathContexts(primarySplash, unitsToRemove, buildingsToRemove, deathContexts);
 
-        // Secondary zone: explicit secondary radius damage, exclude direct hits + primary hits
-        if (config.shot!.explosion!.secondary.radius > config.shot!.explosion!.primary.radius) {
-          _beamSecondaryExcludeSet.clear();
-          for (const id of proj.hitEntities) _beamSecondaryExcludeSet.add(id);
-          for (const id of primarySplash.hitEntityIds) _beamSecondaryExcludeSet.add(id);
-
+        // Secondary zone: additive (all units in range take secondary regardless of primary)
+        if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
           const secondarySplash = damageSystem.applyDamage({
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: config.shot!.explosion!.secondary.damage,
-            excludeEntities: _beamSecondaryExcludeSet,
+            damage: projShot.explosion!.secondary.damage,
+            excludeEntities: _emptyExcludeSet,
             center: { x: projEntity.transform.x, y: projEntity.transform.y },
-            radius: config.shot!.explosion!.secondary.radius,
+            radius: projShot.explosion!.secondary.radius,
             falloff: 1,
-            knockbackForce: config.shot!.explosion!.secondary.force,
+            knockbackForce: projShot.explosion!.secondary.force,
           });
 
           applyKnockbackForces(secondarySplash.knockbacks, forceAccumulator);
@@ -807,7 +678,7 @@ export function checkProjectileCollisions(
         // Always emit projectileExpire at the projectile's position so it produces a termination explosion
         audioEvents.push({
           type: 'projectileExpire',
-          turretId: config.shot?.type ?? config.id,
+          turretId: shotId,
           pos: { x: projEntity.transform.x, y: projEntity.transform.y },
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,

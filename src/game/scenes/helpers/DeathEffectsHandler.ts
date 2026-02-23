@@ -19,8 +19,11 @@ import { getAudioScope, getSoundToggle } from '@/clientBarConfig';
 // Get explosion radius based on turret type (uses explosion.primary.radius from config)
 export function getExplosionRadius(turretId: string): number {
   const config = TURRET_CONFIGS[turretId as keyof typeof TURRET_CONFIGS];
-  if (config?.shot?.explosion?.primary.radius) {
+  if (config?.shot.type === 'projectile' && config.shot.explosion?.primary.radius) {
     return config.shot.explosion.primary.radius;
+  }
+  if (config?.shot.type === 'beam') {
+    return config.shot.radius;
   }
   return 8; // fallback
 }
@@ -28,7 +31,10 @@ export function getExplosionRadius(turretId: string): number {
 // Get secondary explosion radius based on turret type
 function getSecondaryExplosionRadius(turretId: string): number | undefined {
   const config = TURRET_CONFIGS[turretId as keyof typeof TURRET_CONFIGS];
-  return config?.shot?.explosion?.secondary.radius;
+  if (config?.shot.type === 'projectile') {
+    return config.shot.explosion?.secondary.radius;
+  }
+  return undefined;
 }
 
 // Handle audio events from simulation (or network)

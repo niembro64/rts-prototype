@@ -437,7 +437,7 @@ export class WorldState {
     sourceEntityId: EntityId,
     config: TurretConfig
   ): Entity {
-    const entity = this.createProjectile(x, y, velocityX, velocityY, ownerId, sourceEntityId, config, 'traveling');
+    const entity = this.createProjectile(x, y, velocityX, velocityY, ownerId, sourceEntityId, config, 'projectile');
 
     // Mark as D-gun projectile
     entity.dgunProjectile = { isDGun: true };
@@ -482,25 +482,23 @@ export class WorldState {
     ownerId: PlayerId,
     sourceEntityId: EntityId,
     config: TurretConfig,
-    projectileType: ProjectileType = 'traveling'
+    projectileType: ProjectileType = 'projectile'
   ): Entity {
     const id = this.generateEntityId();
 
     // Calculate rotation from velocity
     const rotation = Math.atan2(velocityY, velocityX);
 
-    // Determine max lifespan
-    let maxLifespan = config.shot?.lifespan ?? 2000;
+    // Determine max lifespan based on shot type
+    let maxLifespan: number;
     if (projectileType === 'beam') {
-      // Cooldown beams: beamDuration is the shot lifespan
-      // Continuous beams: removed explicitly by projectileSystem when turret.engaged goes false
-      maxLifespan = config.shot?.beam?.duration ?? Infinity;
-    } else if (projectileType === 'instant') {
-      maxLifespan = 16; // One frame essentially
+      maxLifespan = config.shot.type === 'beam' ? (config.shot.duration ?? Infinity) : Infinity;
+    } else {
+      maxLifespan = config.shot.type === 'projectile' ? (config.shot.lifespan ?? 2000) : 2000;
     }
 
-    // Determine max hits (piercing or single hit)
-    const maxHits = config.shot?.piercing ? Infinity : 1;
+    // Always single hit (DGun overrides maxHits to Infinity after creation)
+    const maxHits = 1;
 
     const projectile: Projectile = {
       ownerId,

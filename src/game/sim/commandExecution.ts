@@ -239,7 +239,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const spawnY = bt.y;
 
   // Calculate velocity with turret-tip inheritance
-  const speed = dgunTurret.config.shot?.speed ?? 350;
+  const dgunShot = dgunTurret.config.shot;
+  const speed = dgunShot.type === 'projectile' ? dgunShot.launchForce / dgunShot.mass : 350;
   let velocityX = fireCos * speed;
   let velocityY = fireSin * speed;
   if (ctx.world.projVelInherit && commander.unit) {
@@ -273,7 +274,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     pos: { x: spawnX, y: spawnY },
     rotation: fireAngle,
     velocity: { x: velocityX, y: velocityY },
-    projectileType: 'traveling',
+    projectileType: 'projectile',
     turretId: 'dgunTurret',
     playerId,
     sourceEntityId: commander.id,

@@ -6,43 +6,31 @@
  */
 
 import { AUDIO, harmonicSeries } from '../../../audioConfig';
-import type { ShotBlueprint } from './types';
+import type { ShotBlueprint, BeamShotBlueprint } from './types';
 
 // Generate beam shot blueprints for all harmonic series indices
 // Index 0 = most powerful (lowest pitch, biggest beam), index 13 = weakest (highest pitch, smallest)
-function generateBeamShots(): Record<string, ShotBlueprint> {
-  const result: Record<string, ShotBlueprint> = {};
+function generateBeamShots(): Record<string, BeamShotBlueprint> {
+  const result: Record<string, BeamShotBlueprint> = {};
   const maxI = harmonicSeries.length - 1;
   for (let i = 0; i < harmonicSeries.length; i++) {
-
-
     const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
-    const baseDamage =(2 + 28 * p);
-    const secondaryDamage = (baseDamage * 0.2);
-    const collisionRadius = (2 + 18 * p);
-    const primaryRadius = (4 + 26 * p);
-    const secondaryRadius = (15 + 105 * p);
-
+    const baseDps = 2 + 28 * p;
+    const beamRadius = 2 + 18 * p;
+    const beamForce = baseDps * 25000;
+    const mass = 0.01 + 0.09 * p;
+    const launchForce = 1000; // from turret blueprint
+    const recoil = mass * launchForce;
 
     result[`beamShot${i}`] = {
+      type: 'beam',
       id: `beamShot${i}`,
-      mass: 0.01 + 0.09 * p,
-      collision: { radius: collisionRadius, damage: baseDamage },
-      explosion: {
-        primary: {
-          radius: primaryRadius,
-          damage: baseDamage,
-          force: baseDamage * 25000,
-        },
-        secondary: {
-          radius: secondaryRadius,
-          damage: secondaryDamage,
-          force: secondaryDamage * 25000,
-        },
-      },
-      splashOnExpiry: false,
-      beamWidth: Math.max(1, Math.round(1 + 9 * p)),
-      hitSound: AUDIO.event.hit[`beamShot${i}`]
+      dps: baseDps,
+      force: beamForce,
+      recoil,
+      radius: beamRadius,
+      width: Math.max(1, Math.round(1 + 9 * p)),
+      hitSound: AUDIO.event.hit[`beamShot${i}`],
     };
   }
   return result;
@@ -50,6 +38,7 @@ function generateBeamShots(): Record<string, ShotBlueprint> {
 
 export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
+    type: 'projectile',
     id: 'lightShot',
     mass: 0.5,
     collision: { radius: 1.2, damage: 2 },
@@ -62,6 +51,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.lightShot,
   },
   mediumShot: {
+    type: 'projectile',
     id: 'mediumShot',
     mass: 5,
     collision: { radius: 2.2, damage: 4 },
@@ -74,6 +64,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.mediumShot,
   },
   heavyShot: {
+    type: 'projectile',
     id: 'heavyShot',
     mass: 50.0,
     collision: { radius: 5, damage: 260 },
@@ -86,6 +77,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.heavyShot,
   },
   mortarShot: {
+    type: 'projectile',
     id: 'mortarShot',
     mass: 2,
     collision: { radius: 3.4, damage: 30 },
@@ -98,21 +90,19 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.mortarShot,
   },
   laserShot: {
+    type: 'beam',
     id: 'laserShot',
-    mass: 0.05,
-    collision: { radius: 3, damage: 10 },
-    explosion: {
-      primary: { radius: 8, damage: 10, force: 2500 },
-      secondary: { radius: 15, damage: 2, force: 500 },
-    },
-    splashOnExpiry: false,
-    piercing: false,
-    beamDuration: 300,
-    beamWidth: 2,
+    dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
+    force: 2500,
+    recoil: 0.05 * 1000, // mass * launchForce
+    radius: 3,
+    width: 2,
+    duration: 300,
     hitSound: AUDIO.event.hit.laserShot,
   },
   ...generateBeamShots(),
   disruptorShot: {
+    type: 'projectile',
     id: 'disruptorShot',
     mass: 20.0,
     collision: { radius: 25, damage: 9999 },
@@ -121,7 +111,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       secondary: { radius: 50, damage: 1000, force: 499950 },
     },
     splashOnExpiry: true,
-    piercing: true,
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,
   },

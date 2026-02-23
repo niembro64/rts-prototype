@@ -91,7 +91,7 @@ function renderBeam(
   const startY = projectile.startY ?? y;
   const endX = projectile.endX ?? x;
   const endY = projectile.endY ?? y;
-  const beamWidth = config.shot?.beam?.width ?? 2;
+  const beamWidth = config.shot.type === 'beam' ? config.shot.width : 2;
   const beamStyle = getGraphicsConfig().beamStyle;
   const hasCollision = projectile.obstructionT !== undefined;
 
@@ -116,16 +116,15 @@ function renderBeam(
   graphics.lineStyle(beamWidth, 0xffffff, 1);
   graphics.lineBetween(startX, startY, endX, endY);
 
-  // Endpoint ball — always drawn at collision radius, always white
-  const collisionRadius = config.shot?.collision?.radius ?? beamWidth;
+  // Endpoint ball — always drawn at beam radius, always white
+  const beamRadius = config.shot.type === 'beam' ? config.shot.radius : beamWidth;
   graphics.fillStyle(0xffffff, 1);
-  graphics.fillCircle(endX, endY, collisionRadius);
+  graphics.fillCircle(endX, endY, beamRadius);
 
-  // Collision-triggered damage radii highlights
+  // Collision-triggered damage radius highlight
   if (hasCollision) {
-    const primaryRadius =
-      config.shot?.explosion?.primary.radius ?? collisionRadius * 2 + 6;
-    const secondaryRadius = config.shot?.explosion?.secondary.radius ?? primaryRadius;
+    const primaryRadius = beamRadius;
+    const secondaryRadius = primaryRadius;
 
     if (beamStyle === 'simple') {
       graphics.fillStyle(color, 0.08);
@@ -173,8 +172,8 @@ function renderRegular(
     : never,
   trail: ProjectileTrail | undefined,
 ): void {
-  const radius = config.shot?.collision?.radius ?? 5;
-  const trailLength = config.shot?.trailLength ?? 3;
+  const radius = config.shot.type === 'projectile' ? config.shot.collision.radius : 5;
+  const trailLength = config.shot.type === 'projectile' ? (config.shot.trailLength ?? 3) : 3;
   const pStyle = getGraphicsConfig().projectileStyle;
 
   if (pStyle === 'dot') {
@@ -273,7 +272,7 @@ function renderDgun(
   config: NonNullable<Entity['projectile']>['config'],
   trail: ProjectileTrail | undefined,
 ): void {
-  const radius = config.shot?.collision?.radius ?? 25;
+  const radius = config.shot.type === 'projectile' ? config.shot.collision.radius : 25;
   const pStyle = getGraphicsConfig().projectileStyle;
 
   if (pStyle === 'dot') {
@@ -387,39 +386,29 @@ export function renderProjRangeCircles(
   const proj = entity.projectile;
   const config = proj.config;
 
-  if (proj.projectileType === 'beam') {
+  if (proj.projectileType === 'beam' && config.shot.type === 'beam') {
     const endX = proj.endX ?? entity.transform.x;
     const endY = proj.endY ?? entity.transform.y;
-    const collisionRadius = config.shot?.collision?.radius ?? 2;
-    const primaryRadius =
-      config.shot?.explosion?.primary.radius ?? collisionRadius * 2 + 6;
+    const beamRadius = config.shot.radius;
 
-    if (visibility.collision) {
-      graphics.lineStyle(1, COLORS.PROJ_COLLISION_RANGE, 0.5);
-      graphics.strokeCircle(endX, endY, collisionRadius);
-    }
-    if (visibility.primary) {
+    if (visibility.collision || visibility.primary) {
       graphics.lineStyle(1, COLORS.PROJ_PRIMARY_RANGE, 0.3);
-      graphics.strokeCircle(endX, endY, primaryRadius);
-    }
-    if (visibility.secondary && config.shot?.explosion?.secondary.radius) {
-      graphics.lineStyle(1, COLORS.PROJ_SECONDARY_RANGE, 0.3);
-      graphics.strokeCircle(endX, endY, config.shot.explosion.secondary.radius);
+      graphics.strokeCircle(endX, endY, beamRadius);
     }
     return;
   }
 
   const { x, y } = entity.transform;
 
-  if (visibility.collision) {
-    const radius = config.shot?.collision?.radius ?? 5;
+  if (visibility.collision && config.shot.type === 'projectile') {
     graphics.lineStyle(1, COLORS.PROJ_COLLISION_RANGE, 0.5);
-    graphics.strokeCircle(x, y, radius);
+    graphics.strokeCircle(x, y, config.shot.collision.radius);
   }
 
   if (
     visibility.primary &&
-    config.shot?.explosion?.primary.radius &&
+    config.shot.type === 'projectile' &&
+    config.shot.explosion?.primary.radius &&
     !proj.hasExploded
   ) {
     graphics.lineStyle(1, COLORS.PROJ_PRIMARY_RANGE, 0.3);
@@ -428,7 +417,8 @@ export function renderProjRangeCircles(
 
   if (
     visibility.secondary &&
-    config.shot?.explosion?.secondary.radius &&
+    config.shot.type === 'projectile' &&
+    config.shot.explosion?.secondary.radius &&
     !proj.hasExploded
   ) {
     graphics.lineStyle(1, COLORS.PROJ_SECONDARY_RANGE, 0.3);

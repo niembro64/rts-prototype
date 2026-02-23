@@ -40,7 +40,7 @@ export class BurnMarkSystem {
       this._activeBeamKeys.add(beamKey);
       const ex = proj.endX ?? entity.transform.x;
       const ey = proj.endY ?? entity.transform.y;
-      const beamWidth = proj.config.shot?.beam?.width ?? 2;
+      const beamWidth = proj.config.shot.type === 'beam' ? proj.config.shot.width : 2;
       if (sampleBurn) {
         const prev = this.prevBeamEndpoints.get(beamKey);
         if (prev) {

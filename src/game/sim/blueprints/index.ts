@@ -7,7 +7,7 @@ export * from './shots';
 export * from './turrets';
 export * from './units';
 
-import type { TurretConfig, ShotConfig, ForceFieldZoneConfig } from '../types';
+import type { TurretConfig, ShotConfig, ForceFieldZoneConfig, ProjectileShot, BeamShot, FieldShot } from '../types';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
 import type { ShotBlueprint, ForceFieldZoneRatioConfig } from './types';
@@ -30,26 +30,34 @@ function computeZoneConfig(
   };
 }
 
-/** Build a ShotConfig from a ShotBlueprint */
-function buildShotConfig(bp: ShotBlueprint, launchForce?: number): ShotConfig {
-  const shot: ShotConfig = {
-    type: bp.id,
+/** Build a ShotConfig from a ShotBlueprint + turret blueprint data */
+function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate?: number): ShotConfig {
+  if (bp.type === 'beam') {
+    const shot: BeamShot = {
+      type: 'beam',
+      id: bp.id,
+      dps: bp.dps,
+      force: bp.force,
+      recoil: bp.recoil,
+      radius: bp.radius,
+      width: bp.width,
+      duration: bp.duration,
+    };
+    return shot;
+  }
+
+  // Projectile shot
+  const shot: ProjectileShot = {
+    type: 'projectile',
+    id: bp.id,
+    mass: bp.mass,
+    launchForce: launchForce ?? 0,
     collision: bp.collision,
     explosion: bp.explosion,
-    mass: bp.mass,
-    splashOnExpiry: bp.splashOnExpiry,
+    splashOnExpiry: bp.splashOnExpiry || undefined,
+    lifespan: bp.lifespan,
+    homingTurnRate: homingTurnRate,
   };
-  if (bp.lifespan != null) shot.lifespan = bp.lifespan;
-  if (bp.piercing != null) shot.piercing = bp.piercing;
-  if (bp.beamDuration != null || bp.beamWidth != null) {
-    shot.beam = {
-      ...(bp.beamDuration != null && { duration: bp.beamDuration }),
-      ...(bp.beamWidth != null && { width: bp.beamWidth }),
-    };
-  }
-  if (launchForce != null && bp.mass) {
-    shot.speed = launchForce / bp.mass;
-  }
   return shot;
 }
 
@@ -60,6 +68,31 @@ export function buildTurretConfig(turretId: string): TurretConfig {
   const wb = TURRET_BLUEPRINTS[turretId];
   if (!wb) throw new Error(`Unknown turret blueprint: ${turretId}`);
 
+  // Determine shot config
+  let shot: ShotConfig;
+
+  if (wb.forceField) {
+    // Force field turret: build FieldShot
+    const fieldShot: FieldShot = {
+      type: 'field',
+      angle: wb.forceField.angle ?? Math.PI * 2,
+      transitionTime: wb.forceField.transitionTime ?? 1000,
+      push: computeZoneConfig(wb.forceField.push, wb.range) ?? undefined,
+      pull: computeZoneConfig(wb.forceField.pull, wb.range) ?? undefined,
+    };
+    shot = fieldShot;
+  } else if (wb.projectileId) {
+    // Projectile or beam turret
+    const pb = SHOT_BLUEPRINTS[wb.projectileId];
+    if (!pb)
+      throw new Error(
+        `Unknown projectile in turret ${turretId}: ${wb.projectileId}`,
+      );
+    shot = buildShotConfig(pb, wb.launchForce, wb.homingTurnRate);
+  } else {
+    throw new Error(`Turret ${turretId} has neither projectileId nor forceField`);
+  }
+
   const base: TurretConfig = {
     id: wb.id,
     range: wb.range,
@@ -68,38 +101,16 @@ export function buildTurretConfig(turretId: string): TurretConfig {
     barrel: wb.barrel,
     angular: { turnAccel: wb.turretTurnAccel, drag: wb.turretDrag },
     rangeOverrides: wb.rangeMultiplierOverrides,
+    shot,
   };
 
-  // Build shot config if turret has a projectile
-  if (wb.projectileId) {
+  // Derive barrelThickness from shot size, scaled by global multiplier
+  if (wb.projectileId && base.barrel && base.barrel.type !== 'complexSingleEmitter') {
     const pb = SHOT_BLUEPRINTS[wb.projectileId];
-    if (!pb)
-      throw new Error(
-        `Unknown projectile in turret ${turretId}: ${wb.projectileId}`,
-      );
-    base.shot = buildShotConfig(pb, wb.launchForce);
-
-    // Derive barrelThickness from shot size, scaled by global multiplier
-    if (base.barrel && base.barrel.type !== 'complexSingleEmitter') {
-      const rawThickness = pb.beamWidth ?? (pb.collision.radius > 0 ? pb.collision.radius * 2 : 2);
-      base.barrel = { ...base.barrel, barrelThickness: rawThickness * BARREL_THICKNESS_MULTIPLIER };
-    }
-
-    if (wb.homingTurnRate != null) base.shot.homingTurnRate = wb.homingTurnRate;
-  }
-
-  // Force field: compute zone configs from ratios
-  if (wb.forceField) {
-    base.forceField = {
-      angle: wb.forceField.angle,
-      transitionTime: wb.forceField.transitionTime,
-      push: computeZoneConfig(wb.forceField.push, wb.range),
-      pull: computeZoneConfig(wb.forceField.pull, wb.range),
-    };
-    // Force field collision damage stored in shot config
-    base.shot = {
-      collision: { radius: 0, damage: Math.max(wb.forceField.push?.damage ?? 0, wb.forceField.pull?.damage ?? 0) },
-    };
+    const rawThickness = pb.type === 'beam'
+      ? pb.width
+      : (pb.collision.radius > 0 ? pb.collision.radius * 2 : 2);
+    base.barrel = { ...base.barrel, barrelThickness: rawThickness * BARREL_THICKNESS_MULTIPLIER };
   }
 
   // Optional firing modifiers

@@ -196,11 +196,11 @@ function createProjectileFromNetwork(
         : {
           id: 'unknown',
           angular: { turnAccel: 0, drag: 0 },
-          shot: { collision: { radius: 5, damage: 10 } },
+          shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5, damage: 10 } },
           range: 100,
           cooldown: 1000,
         },
-      projectileType: (s?.type as 'instant' | 'traveling' | 'beam') ?? 'traveling',
+      projectileType: (s?.type as 'projectile' | 'beam') ?? 'projectile',
       velocityX: s?.velocity?.x ?? 0,
       velocityY: s?.velocity?.y ?? 0,
       timeAlive: 0,

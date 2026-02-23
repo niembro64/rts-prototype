@@ -434,14 +434,12 @@ export class ClientViewState {
             }
 
             // Dead-reckon force field expansion/contraction + drift toward server
-            if (
-              weapon.config.forceField &&
-              weapon.config.forceField.transitionTime
-            ) {
+            if (weapon.config.shot.type === 'field') {
+              const fieldShot = weapon.config.shot;
               const cur = weapon.forceField?.range ?? 0;
               const targetProgress = weapon.engaged ? 1 : 0;
               const progressDelta =
-                dt / (weapon.config.forceField.transitionTime / 1000);
+                dt / (fieldShot.transitionTime / 1000);
               let next = cur;
               if (cur < targetProgress) {
                 next = Math.min(cur + progressDelta, 1);
@@ -632,17 +630,13 @@ export class ClientViewState {
         ownerId: spawn.playerId,
         sourceEntityId: spawn.sourceEntityId,
         config,
-        projectileType: spawn.projectileType as
-          | 'instant'
-          | 'traveling'
-          | 'beam',
+        projectileType: spawn.projectileType as 'projectile' | 'beam',
         velocityX: spawn.velocity.x,
         velocityY: spawn.velocity.y,
         timeAlive: 0,
-        maxLifespan:
-          config.shot?.lifespan ??
-          config.shot?.beam?.duration ??
-          (config.shot?.beam !== undefined ? Infinity : 2000),
+        maxLifespan: config.shot.type === 'beam'
+          ? (config.shot.duration ?? Infinity)
+          : (config.shot.type === 'projectile' ? (config.shot.lifespan ?? 2000) : 2000),
         hitEntities: new Set(),
         maxHits: 1,
         startX: spawn.beam?.start.x,

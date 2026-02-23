@@ -393,7 +393,7 @@ export class SpatialGrid {
 
   /**
    * Query enemy projectiles within a radius (filtered by owner player)
-   * Only returns 'traveling' projectiles. Returns a reused array - DO NOT STORE THE REFERENCE
+   * Only returns 'projectile' type projectiles. Returns a reused array - DO NOT STORE THE REFERENCE
    */
   queryEnemyProjectilesInRadius(x: number, y: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     this.queryResultProjectiles.length = 0;
@@ -406,7 +406,7 @@ export class SpatialGrid {
       if (!cell) continue;
 
       for (const proj of cell.projectiles) {
-        if (!proj.projectile || proj.projectile.projectileType !== 'traveling') continue;
+        if (!proj.projectile || proj.projectile.projectileType !== 'projectile') continue;
         if (proj.projectile.ownerId === excludePlayerId) continue;
 
         const dx = proj.transform.x - x;

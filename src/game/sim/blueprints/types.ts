@@ -20,6 +20,8 @@ export type {
   ForceFieldZoneRatioConfig,
   ShotCollision,
   ShotExplosionZone,
+  ProjectileShotBlueprint,
+  BeamShotBlueprint,
   ShotBlueprint,
   TurretBlueprint,
   TurretMount,

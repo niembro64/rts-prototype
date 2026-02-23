@@ -132,7 +132,7 @@ export class DamageSystem {
     return closestT !== null ? { t: closestT, entityId: closestEntityId! } : null;
   }
 
-  // Line damage (beams) - sorted by distance, stops at first hit for non-piercing
+  // Line damage (beams) - sorted by distance, stops at first hit
   // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
   // Note: Beam recoil is applied continuously in updateProjectiles(), not here
   private applyLineDamage(source: LineDamageSource): DamageResult {
@@ -196,7 +196,7 @@ export class DamageSystem {
     // Sort by T (distance along line)
     hits.sort((a, b) => a.t - b.t);
 
-    // Apply damage in order, respecting maxHits and piercing
+    // Apply damage in order, respecting maxHits
     let hitCount = 0;
     for (const hit of hits) {
       if (hitCount >= source.maxHits) break;
@@ -237,11 +237,9 @@ export class DamageSystem {
         });
       }
 
-      // For non-piercing, record truncation point and stop
-      if (!source.piercing) {
-        result.truncationT = hit.t;
-        break;
-      }
+      // Always truncate at first hit
+      result.truncationT = hit.t;
+      break;
     }
 
     return result;

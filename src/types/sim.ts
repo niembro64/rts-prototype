@@ -123,23 +123,46 @@ export type ForceFieldZoneConfig = {
   damage: number;
 };
 
-// Shot configuration (projectile/beam properties)
-export type ShotConfig = {
-  type?: string;
-  speed?: number;
-  mass?: number;
-  lifespan?: number;
-  collision?: { radius: number; damage: number };
+// Projectile shot — fire-and-forget, has mass, single-tick impact
+export type ProjectileShot = {
+  type: 'projectile';
+  id: string;
+  mass: number;
+  launchForce: number;
+  collision: { radius: number; damage: number };
   explosion?: {
     primary: { radius: number; damage: number; force: number };
     secondary: { radius: number; damage: number; force: number };
   };
-  beam?: { duration?: number; width?: number };
   splashOnExpiry?: boolean;
-  piercing?: boolean;
+  lifespan?: number;
   homingTurnRate?: number;
   trailLength?: number;
 };
+
+// Beam shot — continuous line from turret, per-tick damage
+export type BeamShot = {
+  type: 'beam';
+  id: string;
+  dps: number;
+  force: number;
+  recoil?: number;
+  radius: number;
+  width: number;
+  duration?: number;
+};
+
+// Field shot — continuous area effect around turret
+export type FieldShot = {
+  type: 'field';
+  angle: number;
+  transitionTime: number;
+  push?: ForceFieldZoneConfig;
+  pull?: ForceFieldZoneConfig;
+};
+
+// Discriminated union of all shot types
+export type ShotConfig = ProjectileShot | BeamShot | FieldShot;
 
 // Turret configuration (compiled turret definition)
 export type TurretConfig = {
@@ -153,13 +176,7 @@ export type TurretConfig = {
   spread?: { pelletCount?: number; angle?: number };
   burst?: { count?: number; delay?: number };
   isManualFire?: boolean;
-  shot?: ShotConfig;
-  forceField?: {
-    angle?: number;
-    transitionTime?: number;
-    push?: ForceFieldZoneConfig | null;
-    pull?: ForceFieldZoneConfig | null;
-  };
+  shot: ShotConfig;
   turretIndex?: number;
 };
 
@@ -182,7 +199,7 @@ export type Turret = {
 };
 
 // Projectile travel types
-export type ProjectileType = 'instant' | 'traveling' | 'beam';
+export type ProjectileType = 'projectile' | 'beam';
 
 // Projectile component
 export type Projectile = {

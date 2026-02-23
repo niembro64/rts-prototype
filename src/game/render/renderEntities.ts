@@ -498,7 +498,7 @@ export class EntityRenderer {
         const isDgun = !!entity.dgunProjectile;
         const trailCap = isDgun
           ? 10
-          : (entity.projectile.config.shot?.trailLength ?? 3) + 4;
+          : ((entity.projectile.config.shot.type === 'projectile' ? entity.projectile.config.shot.trailLength : undefined) ?? 3) + 4;
         if (!trail || trail.capacity !== trailCap) {
           trail = {
             positions: new Float32Array(trailCap * 2),

@@ -191,7 +191,7 @@ function drawForceFieldTurretSimple(
   entityId: EntityId,
 ): void {
   const progress = weapon.forceField?.range ?? 0;
-  const transitionTimeMs = weapon.config.forceField?.transitionTime ?? 1000;
+  const transitionTimeMs = weapon.config.shot.type === 'field' ? weapon.config.shot.transitionTime : 1000;
 
   // Single pulsing circle at mount point — lerps white → blue with progress
   // Use the same width as the full grate's outermost circle (wFactor(0) = 1)
@@ -223,7 +223,7 @@ function drawForceFieldTurretFull(
 ): void {
   const turretRot = weapon.rotation;
   const progress = weapon.forceField?.range ?? 0;
-  const transitionTimeMs = weapon.config.forceField?.transitionTime ?? 1000;
+  const transitionTimeMs = weapon.config.shot.type === 'field' ? weapon.config.shot.transitionTime : 1000;
 
   // Draw grate
   const grateOriginX = mountX + Math.cos(turretRot) * r * grateConfig.originOffset;
@@ -244,9 +244,10 @@ function drawForceFieldZones(
 ): void {
   const turretRot = weapon.rotation;
   const progress = weapon.forceField?.range ?? 0;
-  const sliceAngle = weapon.config.forceField?.angle ?? Math.PI / 4;
-  const push = weapon.config.forceField?.push;
-  const pull = weapon.config.forceField?.pull;
+  const fieldShot = weapon.config.shot.type === 'field' ? weapon.config.shot : null;
+  const sliceAngle = fieldShot?.angle ?? Math.PI / 4;
+  const push = fieldShot?.push;
+  const pull = fieldShot?.pull;
 
   if (push) {
     const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;

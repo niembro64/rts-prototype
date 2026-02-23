@@ -1,6 +1,7 @@
 // Force field weapon system - dual-zone pie-slice AoE with push (inner) and pull (outer)
 
 import type { WorldState } from '../WorldState';
+import type { FieldShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { CombatStatsTracker } from '../CombatStatsTracker';
@@ -33,9 +34,10 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
   for (const unit of world.getForceFieldUnits()) {
     for (const weapon of unit.turrets!) {
       const config = weapon.config;
-      if (!config.forceField) continue;
+      if (config.shot.type !== 'field') continue;
+      const fieldShot = config.shot as FieldShot;
 
-      const transitionTime = config.forceField?.transitionTime ?? 1000;
+      const transitionTime = fieldShot.transitionTime;
 
       // Initialize
       if (weapon.forceField === undefined) {
@@ -106,13 +108,14 @@ export function applyForceFieldDamage(
 
     for (const weapon of unit.turrets!) {
       const config = weapon.config;
-      if (!config.forceField) continue;
+      if (config.shot.type !== 'field') continue;
+      const fieldShot = config.shot as FieldShot;
 
       const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
       if (progress <= 0) continue;
 
-      const push = config.forceField?.push;
-      const pull = config.forceField?.pull;
+      const push = fieldShot.push;
+      const pull = fieldShot.pull;
       // Zones with power: null are visual-only — skip sim entirely for that zone
       const pushSim = push != null && push.power != null;
       const pullSim = pull != null && pull.power != null;
@@ -135,7 +138,7 @@ export function applyForceFieldDamage(
       const pushStrength = pushSim ? push!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
       const pullStrength = pullSim ? pull!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
 
-      const sliceAngle = config.forceField?.angle ?? Math.PI / 4;
+      const sliceAngle = fieldShot.angle;
       const sliceHalfAngle = sliceAngle / 2;
       const isFullCircle = sliceHalfAngle >= Math.PI;
 
@@ -252,7 +255,7 @@ export function applyForceFieldDamage(
 
       for (const projEntity of nearbyProjectiles) {
         const proj = projEntity.projectile!;
-        const projRadius = proj.config.shot?.collision?.radius ?? 5;
+        const projRadius = proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5;
 
         const dx = projEntity.transform.x - weaponX;
         const dy = projEntity.transform.y - weaponY;
@@ -276,7 +279,7 @@ export function applyForceFieldDamage(
         const pullDir = pInPush ? 1 : -1;
         const pZoneStrength = pInPush ? pushStrength : pullStrength;
 
-        const projMass = (proj.config.shot?.mass ?? 1) * PROJECTILE_MASS_MULTIPLIER;
+        const projMass = (proj.config.shot.type === 'projectile' ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
         const pullAccel = pZoneStrength / projMass;
 
         const dirX = dist > 0 ? dx / dist : 0;

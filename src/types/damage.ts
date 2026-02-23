@@ -15,7 +15,6 @@ export type LineDamageSource = DamageSourceBase & {
   start: Vec2;
   end: Vec2;
   width: number;
-  piercing: boolean;
   maxHits: number;
   projectileMass?: number;
   velocity?: number;

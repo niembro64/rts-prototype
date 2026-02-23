@@ -10,34 +10,35 @@ import { createTurretsFromDefinition } from './unitDefinitions';
 export function getWeaponValue(config: TurretConfig): number {
   // --- baseDPS ---
   let baseDPS: number;
-  const isBeam = config.shot?.beam !== undefined && !config.shot?.speed;
-  const isForceField = !!config.forceField;
+  const shot = config.shot;
+  const isBeam = shot.type === 'beam';
+  const isForceField = shot.type === 'field';
   const isShotgun = (config.spread?.pelletCount ?? 0) > 1;
   const isBurst = (config.burst?.count ?? 0) > 1;
 
   if (isForceField) {
-    // Force field: damage field is base DPS, but scales with 1/distance.
-    // Effective DPS at ~60% of fire range: baseDamage * (0.5 / 0.6)
-    baseDPS = config.shot!.collision!.damage * (0.5 / 0.6);
+    // Force field: estimate DPS from push/pull zone damage
+    const push = shot.push;
+    const pull = shot.pull;
+    const maxDamage = Math.max(push?.damage ?? 0, pull?.damage ?? 0);
+    baseDPS = maxDamage * (0.5 / 0.6);
   } else if (isBeam && config.cooldown === 0) {
-    // Continuous beam: damage IS DPS
-    baseDPS = config.shot!.collision!.damage;
+    // Continuous beam: dps IS dps
+    baseDPS = shot.dps;
   } else if (isShotgun) {
-    // Shotgun: damage * pelletCount / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (config.shot!.collision!.damage * config.spread!.pelletCount!) / cooldownSec;
+    baseDPS = ((shot as import('./types').ProjectileShot).collision.damage * config.spread!.pelletCount!) / cooldownSec;
   } else if (isBurst) {
-    // Burst: damage * burstCount / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (config.shot!.collision!.damage * config.burst!.count!) / cooldownSec;
+    baseDPS = ((shot as import('./types').ProjectileShot).collision.damage * config.burst!.count!) / cooldownSec;
   } else if (isBeam) {
-    // Hitscan flash (railgun): damage / cooldownSec
+    // Cooldown beam (railgun): dps / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = config.shot!.collision!.damage / cooldownSec;
+    baseDPS = shot.dps / cooldownSec;
   } else {
     // Standard projectile: damage / cooldownSec
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = config.shot!.collision!.damage / cooldownSec;
+    baseDPS = (shot as import('./types').ProjectileShot).collision.damage / cooldownSec;
   }
 
   // --- rangeFactor --- normalized to reference range 150, sqrt scaling
@@ -49,15 +50,15 @@ export function getWeaponValue(config: TurretConfig): number {
   if (isForceField) {
     deliveryFactor = 0.6;
   } else if (isBeam) {
-    // Hitscan (beam/railgun)
     deliveryFactor = 1.0;
-  } else if (config.shot?.speed !== undefined) {
-    if (config.shot.speed > 500) {
-      deliveryFactor = 0.85; // Fast projectile
-    } else if (config.shot.speed >= 250) {
-      deliveryFactor = 0.75; // Medium projectile
+  } else if (shot.type === 'projectile') {
+    const speed = shot.launchForce / shot.mass;
+    if (speed > 500) {
+      deliveryFactor = 0.85;
+    } else if (speed >= 250) {
+      deliveryFactor = 0.75;
     } else {
-      deliveryFactor = 0.65; // Slow projectile
+      deliveryFactor = 0.65;
     }
   } else {
     deliveryFactor = 1.0;
@@ -82,14 +83,15 @@ export function getWeaponValue(config: TurretConfig): number {
   let aoeFactor = 1.0;
   if (isForceField) {
     aoeFactor = 2.0; // Hits all enemies in cone continuously
-  } else if (config.shot?.explosion?.primary.radius !== undefined && config.shot.explosion.primary.radius > 0) {
-    aoeFactor = 1 + (config.shot.explosion.primary.radius / 100) * 0.8;
-  } else if (config.shot?.piercing) {
-    aoeFactor = 1.3;
+  } else if (shot.type === 'projectile' && shot.explosion?.primary.radius !== undefined && shot.explosion.primary.radius > 0) {
+    aoeFactor = 1 + (shot.explosion.primary.radius / 100) * 0.8;
   }
 
   // --- pullBonus --- flat bonus for force field pull/push utility
-  const totalPower = (config.forceField?.push?.power ?? 0) as number + (config.forceField?.pull?.power ?? 0) as number;
+  let totalPower = 0;
+  if (shot.type === 'field') {
+    totalPower = ((shot.push?.power ?? 0) as number) + ((shot.pull?.power ?? 0) as number);
+  }
   const pullBonus = totalPower > 0 ? totalPower * 0.05 : 0;
 
   return baseDPS * rangeFactor * deliveryFactor * turretFactor * aoeFactor + pullBonus;

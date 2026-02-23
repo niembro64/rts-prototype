@@ -40,7 +40,8 @@ export type ShotExplosionZone = {
   force: number;
 };
 
-export type ShotBlueprint = {
+export type ProjectileShotBlueprint = {
+  type: 'projectile';
   id: string;
   mass: number;
   collision: ShotCollision;
@@ -49,12 +50,23 @@ export type ShotBlueprint = {
     secondary: ShotExplosionZone;
   };
   splashOnExpiry: boolean;
-  piercing?: boolean;
   lifespan?: number;
-  beamDuration?: number;
-  beamWidth?: number;
   hitSound?: SoundEntry;
 };
+
+export type BeamShotBlueprint = {
+  type: 'beam';
+  id: string;
+  dps: number;
+  force: number;
+  recoil?: number;
+  radius: number;
+  width: number;
+  duration?: number;
+  hitSound?: SoundEntry;
+};
+
+export type ShotBlueprint = ProjectileShotBlueprint | BeamShotBlueprint;
 
 export type TurretBlueprint = {
   id: string;
