@@ -69,6 +69,7 @@ const vehicleOptions: { weaponId: string; label: string; cost: number }[] = [
   { weaponId: 'badger', label: 'Badger', cost: 80 },
   { weaponId: 'mongoose', label: 'Mongoose', cost: 100 },
   { weaponId: 'mammoth', label: 'Mammoth', cost: 180 },
+  { weaponId: 'hippo', label: 'Hippo', cost: 5000 },
 ];
 
 // Bots (legs)

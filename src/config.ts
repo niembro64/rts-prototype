@@ -472,7 +472,7 @@ export const ZOOM_INITIAL_GAME = 0.5;
 export const CAMERA_PAN_MULTIPLIER = 6.0;
 
 const ARROW_COLOR = 0xffffff;
-const ARROW_ALPHA = 0.2;
+const ARROW_ALPHA = 0.1;
 const ARROW_SIZE_MULT = 20;
 
 const OVAL_ALPHA = 0.0;
@@ -483,8 +483,8 @@ const OVAL_ALPHA = 0.0;
 /** Edge scroll configuration */
 export const EDGE_SCROLL = {
   // --- Behavior ---
-  borderRatioInner: 0.4, // inset from viewport edge for inner oval (larger = smaller oval)
-  borderRatioOuter: 0.001, // inset from viewport edge for outer oval (smaller = larger oval)
+  borderRatioInner: 0.3, // inset from viewport edge for inner oval (larger = smaller oval)
+  borderRatioOuter: 0.1, // inset from viewport edge for outer oval (smaller = larger oval)
   speed: 3000, // world units/sec at zoom 1.0 (scales inversely with zoom)
   intensityCurve: 1, // exponent on intensity (1 = linear, 2 = quadratic, 0.5 = sqrt)
   topBarHeight: 50, // fixed top bar exclusion (px)

@@ -66,7 +66,6 @@ export class EntityRenderer {
 
   // Cached range visibility objects (avoids per-frame allocation)
   private _rangeVisToggle = { trackAcquire: false, trackRelease: false, engageAcquire: false, engageRelease: false, build: false };
-  private _rangeVisSelected = { trackAcquire: true, trackRelease: true, engageAcquire: true, engageRelease: true, build: true };
   private _projRangeVis = { collision: false, primary: false, secondary: false };
   private _unitRadiusVis = { visual: false, shot: false, push: false };
 
@@ -336,18 +335,15 @@ export class EntityRenderer {
     }
 
     // 3. Range circles (reuse cached visibility objects to avoid per-frame allocation)
-    const showAllRanges = anyRangeToggleActive();
-    if (showAllRanges) {
+    if (anyRangeToggleActive()) {
       this._rangeVisToggle.trackAcquire = getRangeToggle('trackAcquire');
       this._rangeVisToggle.trackRelease = getRangeToggle('trackRelease');
       this._rangeVisToggle.engageAcquire = getRangeToggle('engageAcquire');
       this._rangeVisToggle.engageRelease = getRangeToggle('engageRelease');
       this._rangeVisToggle.build = getRangeToggle('build');
-    }
-    const rangeVis = showAllRanges ? this._rangeVisToggle : this._rangeVisSelected;
-    const rangeUnits = showAllRanges ? this.visibleUnits : this.selectedUnits;
-    for (const entity of rangeUnits) {
-      renderRangeCircles(this.graphics, entity, rangeVis);
+      for (const entity of this.visibleUnits) {
+        renderRangeCircles(this.graphics, entity, this._rangeVisToggle);
+      }
     }
 
     // 4. Unit bodies (chassis only — no turrets)
