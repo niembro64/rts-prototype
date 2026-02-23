@@ -33,6 +33,8 @@ import { factoryProductionSystem } from './factoryProduction';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
+import { transitionPhase } from '@/gamePhase';
+import type { GamePhase } from '@/types/network';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
@@ -54,6 +56,9 @@ export class Simulation {
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
+
+  // Game phase FSM
+  private gamePhase: GamePhase = 'init';
 
   // Pending audio events for network broadcast (double-buffered to avoid per-snapshot allocation)
   private _audioA: SimEvent[] = [];
@@ -116,6 +121,11 @@ export class Simulation {
     return this.gameOverWinnerId;
   }
 
+  // Get current game phase
+  getGamePhase(): GamePhase {
+    return this.gamePhase;
+  }
+
   // Get construction system (for placement validation)
   getConstructionSystem(): ConstructionSystem {
     return this.constructionSystem;
@@ -174,6 +184,8 @@ export class Simulation {
 
   // Run one simulation step with the given timestep
   update(dtMs: number): void {
+    if (this.gamePhase === 'init') this.gamePhase = transitionPhase('init', 'battle');
+
     const tick = this.world.getTick();
 
     // Process commands for this tick
@@ -286,12 +298,14 @@ export class Simulation {
     // If only one player remains, they win
     if (aliveCount === 1) {
       this.gameOverWinnerId = lastAliveId;
+      this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
       this.onGameOver?.(this.gameOverWinnerId);
     }
     // If no players remain (somehow), no winner
     else if (aliveCount === 0 && this.playerIds.length > 0) {
       // Draw or error state - just pick first player
       this.gameOverWinnerId = this.playerIds[0];
+      this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
       this.onGameOver?.(this.gameOverWinnerId);
     }
   }

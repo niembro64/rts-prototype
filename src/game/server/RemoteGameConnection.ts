@@ -15,8 +15,8 @@ export class RemoteGameConnection implements GameConnection {
       this.snapshotCallback?.(state);
 
       // Check for game over in received state
-      if (state.gameOver) {
-        this.gameOverCallback?.(state.gameOver.winnerId);
+      if (state.gameState?.phase === 'gameOver' && state.gameState.winnerId !== undefined) {
+        this.gameOverCallback?.(state.gameState.winnerId);
       }
     };
   }

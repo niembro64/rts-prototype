@@ -36,14 +36,15 @@ export class SnapshotBuffer {
   /** Wire the gameConnection snapshot callback to accumulate events. */
   attach(gameConnection: GameConnection): void {
     gameConnection.onSnapshot((state: NetworkGameState) => {
-      if (state.projectileSpawns) {
-        for (let i = 0; i < state.projectileSpawns.length; i++) {
-          this.bufferedSpawns.push(state.projectileSpawns[i]);
+      const proj = state.projectiles;
+      if (proj?.spawns) {
+        for (let i = 0; i < proj.spawns.length; i++) {
+          this.bufferedSpawns.push(proj.spawns[i]);
         }
       }
-      if (state.projectileDespawns) {
-        for (let i = 0; i < state.projectileDespawns.length; i++) {
-          this.bufferedDespawns.push(state.projectileDespawns[i]);
+      if (proj?.despawns) {
+        for (let i = 0; i < proj.despawns.length; i++) {
+          this.bufferedDespawns.push(proj.despawns[i]);
         }
       }
       if (state.audioEvents) {
@@ -51,9 +52,9 @@ export class SnapshotBuffer {
           this.bufferedAudio.push(state.audioEvents[i]);
         }
       }
-      if (state.projectileVelocityUpdates) {
-        for (let i = 0; i < state.projectileVelocityUpdates.length; i++) {
-          const vu = state.projectileVelocityUpdates[i];
+      if (proj?.velocityUpdates) {
+        for (let i = 0; i < proj.velocityUpdates.length; i++) {
+          const vu = proj.velocityUpdates[i];
           this.bufferedVelocityUpdates.set(vu.id, vu);
         }
       }
@@ -75,13 +76,13 @@ export class SnapshotBuffer {
     const spawns = this.bufferedSpawns;
     this.bufferedSpawns = (spawns === this._spawnsA) ? this._spawnsB : this._spawnsA;
     this.bufferedSpawns.length = 0;
-    state.projectileSpawns = spawns.length > 0 ? spawns : undefined;
+    const netSpawns = spawns.length > 0 ? spawns : undefined;
 
     // Swap despawns
     const despawns = this.bufferedDespawns;
     this.bufferedDespawns = (despawns === this._despawnsA) ? this._despawnsB : this._despawnsA;
     this.bufferedDespawns.length = 0;
-    state.projectileDespawns = despawns.length > 0 ? despawns : undefined;
+    const netDespawns = despawns.length > 0 ? despawns : undefined;
 
     // Swap audio
     const audio = this.bufferedAudio;
@@ -90,15 +91,25 @@ export class SnapshotBuffer {
     state.audioEvents = audio.length > 0 ? audio : undefined;
 
     // Swap velocity updates
+    let netVelUpdates: NetworkProjectileVelocityUpdate[] | undefined;
     if (this.bufferedVelocityUpdates.size > 0) {
       const buf = this._velBufToggle ? this._velBufB : this._velBufA;
       this._velBufToggle = !this._velBufToggle;
       buf.length = 0;
       for (const v of this.bufferedVelocityUpdates.values()) buf.push(v);
       this.bufferedVelocityUpdates.clear();
-      state.projectileVelocityUpdates = buf;
+      netVelUpdates = buf;
+    }
+
+    // Write back nested projectiles
+    const hasProjectiles = netSpawns || netDespawns || netVelUpdates;
+    if (hasProjectiles) {
+      if (!state.projectiles) state.projectiles = {};
+      state.projectiles.spawns = netSpawns;
+      state.projectiles.despawns = netDespawns;
+      state.projectiles.velocityUpdates = netVelUpdates;
     } else {
-      state.projectileVelocityUpdates = undefined;
+      state.projectiles = undefined;
     }
 
     return state;

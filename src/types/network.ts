@@ -93,21 +93,27 @@ export type NetworkServerMeta = {
   ffAccelShots?: boolean;
 };
 
+export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
+
 export type NetworkGameState = {
   tick: number;
   entities: NetworkEntity[];
   economy: Record<PlayerId, NetworkEconomy>;
   sprayTargets?: NetworkSprayTarget[];
   audioEvents?: NetworkSimEvent[];
-  projectileSpawns?: NetworkProjectileSpawn[];
-  projectileDespawns?: NetworkProjectileDespawn[];
-  projectileVelocityUpdates?: NetworkProjectileVelocityUpdate[];
-  gameOver?: { winnerId: PlayerId };
+  projectiles?: {
+    spawns?: NetworkProjectileSpawn[];
+    despawns?: NetworkProjectileDespawn[];
+    velocityUpdates?: NetworkProjectileVelocityUpdate[];
+  };
+  gameState?: { phase: GamePhase; winnerId?: PlayerId };
   combatStats?: NetworkCombatStats;
   serverMeta?: NetworkServerMeta;
-  gridCells?: NetworkGridCell[];
-  gridSearchCells?: NetworkGridCell[];
-  gridCellSize?: number;
+  grid?: {
+    cells: NetworkGridCell[];
+    searchCells: NetworkGridCell[];
+    cellSize: number;
+  };
   isDelta?: boolean;
   removedEntityIds?: number[];
 };

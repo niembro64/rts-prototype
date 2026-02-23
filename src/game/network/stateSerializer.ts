@@ -6,6 +6,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 import type { Vec2 } from '../../types/vec2';
+import type { GamePhase } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 
 // === Object pool for NetworkEntity (eliminates per-frame allocations) ===
@@ -247,6 +248,22 @@ const _velUpdateBuf: NetworkProjectileVelocityUpdate[] = [];
 const _economyBuf: Record<PlayerId, NetworkEconomy> = {} as Record<PlayerId, NetworkEconomy>;
 const _economyKeys: PlayerId[] = [];
 
+// Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
+const _projectilesBuf: NonNullable<NetworkGameState['projectiles']> = {
+  spawns: undefined,
+  despawns: undefined,
+  velocityUpdates: undefined,
+};
+const _gridBuf: NonNullable<NetworkGameState['grid']> = {
+  cells: [],
+  searchCells: [],
+  cellSize: 0,
+};
+const _gameStateBuf: NonNullable<NetworkGameState['gameState']> = {
+  phase: 'battle',
+  winnerId: undefined,
+};
+
 // Reusable snapshot object (avoids creating a new object literal every frame)
 const _snapshotBuf: NetworkGameState = {
   tick: 0,
@@ -254,13 +271,9 @@ const _snapshotBuf: NetworkGameState = {
   economy: _economyBuf,
   sprayTargets: undefined,
   audioEvents: undefined,
-  projectileSpawns: undefined,
-  projectileDespawns: undefined,
-  projectileVelocityUpdates: undefined,
-  gameOver: undefined,
-  gridCells: undefined,
-  gridSearchCells: undefined,
-  gridCellSize: undefined,
+  projectiles: undefined,
+  gameState: undefined,
+  grid: undefined,
   isDelta: undefined,
   removedEntityIds: undefined,
 };
@@ -271,7 +284,8 @@ const _snapshotBuf: NetworkGameState = {
 export function serializeGameState(
   world: WorldState,
   isDelta: boolean,
-  gameOverWinnerId?: PlayerId,
+  gamePhase: GamePhase,
+  winnerId?: PlayerId,
   sprayTargets?: SprayTarget[],
   audioEvents?: SimEvent[],
   projectileSpawns?: ProjectileSpawnEvent[],
@@ -455,19 +469,34 @@ export function serializeGameState(
     netVelocityUpdates = _velUpdateBuf;
   }
 
+  // Nest projectile events (undefined when all empty)
+  const hasProjectiles = netProjectileSpawns || netProjectileDespawns || netVelocityUpdates;
+  if (hasProjectiles) {
+    _projectilesBuf.spawns = netProjectileSpawns;
+    _projectilesBuf.despawns = netProjectileDespawns;
+    _projectilesBuf.velocityUpdates = netVelocityUpdates;
+  }
+
+  // Nest grid info (undefined when grid off)
+  if (gridCells) {
+    _gridBuf.cells = gridCells;
+    _gridBuf.searchCells = gridSearchCells ?? [];
+    _gridBuf.cellSize = gridCellSize ?? 0;
+  }
+
+  // Nest game state
+  _gameStateBuf.phase = gamePhase;
+  _gameStateBuf.winnerId = winnerId;
+
   // Reuse snapshot object
   _snapshotBuf.tick = world.getTick();
   _snapshotBuf.entities = _entityBuf;
   _snapshotBuf.economy = _economyBuf;
   _snapshotBuf.sprayTargets = netSprayTargets;
   _snapshotBuf.audioEvents = netAudioEvents;
-  _snapshotBuf.projectileSpawns = netProjectileSpawns;
-  _snapshotBuf.projectileDespawns = netProjectileDespawns;
-  _snapshotBuf.projectileVelocityUpdates = netVelocityUpdates;
-  _snapshotBuf.gameOver = gameOverWinnerId ? { winnerId: gameOverWinnerId } : undefined;
-  _snapshotBuf.gridCells = gridCells;
-  _snapshotBuf.gridSearchCells = gridSearchCells;
-  _snapshotBuf.gridCellSize = gridCellSize;
+  _snapshotBuf.projectiles = hasProjectiles ? _projectilesBuf : undefined;
+  _snapshotBuf.gameState = _gameStateBuf;
+  _snapshotBuf.grid = gridCells ? _gridBuf : undefined;
   _snapshotBuf.isDelta = deltaEnabled ? true : undefined;
   _snapshotBuf.removedEntityIds = deltaEnabled && _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;
 

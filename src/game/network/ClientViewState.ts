@@ -198,8 +198,8 @@ export class ClientViewState {
     }
 
     // Process projectile spawn events
-    if (state.projectileSpawns) {
-      for (const spawn of state.projectileSpawns) {
+    if (state.projectiles?.spawns) {
+      for (const spawn of state.projectiles.spawns) {
         try {
           const entity = this.createProjectileFromSpawn(spawn);
           this.entities.set(spawn.id, entity);
@@ -210,8 +210,8 @@ export class ClientViewState {
     }
 
     // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
-    if (state.projectileDespawns) {
-      for (const despawn of state.projectileDespawns) {
+    if (state.projectiles?.despawns) {
+      for (const despawn of state.projectiles.despawns) {
         this.entities.delete(despawn.id);
         this.serverTargets.delete(despawn.id);
       }
@@ -219,8 +219,8 @@ export class ClientViewState {
 
     // Process projectile velocity updates (force field pull deflection)
     // Snap position to server's authoritative value to correct dead-reckoning drift
-    if (state.projectileVelocityUpdates) {
-      for (const vu of state.projectileVelocityUpdates) {
+    if (state.projectiles?.velocityUpdates) {
+      for (const vu of state.projectiles.velocityUpdates) {
         const entity = this.entities.get(vu.id);
         if (entity?.projectile) {
           entity.transform.x = vu.pos.x;
@@ -266,14 +266,14 @@ export class ClientViewState {
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
     // Check game over
-    if (state.gameOver) {
-      this.gameOverWinnerId = state.gameOver.winnerId;
+    if (state.gameState?.phase === 'gameOver' && state.gameState.winnerId !== undefined) {
+      this.gameOverWinnerId = state.gameState.winnerId;
     }
 
     // Store spatial grid debug data
-    this.gridCells = state.gridCells ?? [];
-    this.gridSearchCells = state.gridSearchCells ?? [];
-    this.gridCellSize = state.gridCellSize ?? 0;
+    this.gridCells = state.grid?.cells ?? [];
+    this.gridSearchCells = state.grid?.searchCells ?? [];
+    this.gridCellSize = state.grid?.cellSize ?? 0;
 
     // Store combat stats
     if (state.combatStats) {

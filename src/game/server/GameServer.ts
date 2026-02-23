@@ -381,7 +381,8 @@ export class GameServer {
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
   private emitSnapshot(): void {
-    const winnerId = this.simulation.getWinnerId() ?? undefined;
+    const gamePhase = this.simulation.getGamePhase();
+    const winnerId = gamePhase === 'gameOver' ? this.simulation.getWinnerId() ?? undefined : undefined;
     const sprayTargets = this.simulation.getSprayTargets();
     const audioEvents = this.simulation.getAndClearEvents();
     const projectileSpawns = this.simulation.getAndClearProjectileSpawns();
@@ -418,7 +419,7 @@ export class GameServer {
       }
     }
 
-    const state = serializeGameState(this.world, isDelta, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
+    const state = serializeGameState(this.world, isDelta, gamePhase, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
 
     // Add combat stats to snapshot
     state.combatStats = this.simulation.getCombatStatsSnapshot();
