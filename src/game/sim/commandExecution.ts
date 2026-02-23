@@ -1,23 +1,16 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { WorldState } from './WorldState';
 import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, RepairCommand } from './commands';
 import type { Entity, UnitAction } from './types';
-import type { ConstructionSystem } from './construction';
-import type { SimEvent, ProjectileSpawnEvent } from './combat';
+import type { SimEvent } from './combat';
 import { magnitude, getWeaponWorldPosition, getTransformCosSin } from '../math';
 import { getBarrelTipWorldPos } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 
-export interface CommandContext {
-  world: WorldState;
-  constructionSystem: ConstructionSystem;
-  pendingProjectileSpawns: ProjectileSpawnEvent[];
-  pendingSimEvents: SimEvent[];
-  onSimEvent?: (event: SimEvent) => void;
-}
+export type { CommandContext } from '@/types/ui';
+import type { CommandContext } from '@/types/ui';
 
 export function executeCommand(ctx: CommandContext, command: Command): void {
   switch (command.type) {

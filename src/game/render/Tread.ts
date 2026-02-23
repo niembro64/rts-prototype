@@ -1,17 +1,8 @@
 // Tread class - handles animated treads and wheels for tanks and vehicles (client-side only)
 // Tracks attachment point position over time to calculate precise velocity at that point
 
-export interface TreadAttachConfig {
-  // Attachment point offset relative to unit center (in unit's local space)
-  attachOffsetX: number; // Forward/back offset (positive = forward)
-  attachOffsetY: number; // Left/right offset (positive = right side)
-
-  // Wheel visual parameters
-  wheelRadius: number; // Radius of wheels for rotation calculation
-
-  // Animation parameters
-  rotationSpeedMultiplier: number; // Multiplier on velocity (default 2x for visual effect)
-}
+export type { TreadAttachConfig } from '@/types/render';
+import type { TreadAttachConfig } from '@/types/render';
 
 export class Tread {
   private config: TreadAttachConfig;
@@ -137,15 +128,8 @@ export class Tread {
 
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { TreadConfig, WheelConfig } from '../sim/blueprints/types';
-
-export interface TankTreadSetup {
-  leftTread: Tread;
-  rightTread: Tread;
-}
-
-export interface VehicleWheelSetup {
-  wheels: Tread[]; // Array of 2-4 wheels
-}
+import type { TankTreadSetup, VehicleWheelSetup } from '@/types/render';
+export type { TankTreadSetup, VehicleWheelSetup } from '@/types/render';
 
 // Create a pair of tank treads (left and right) from blueprint locomotion config
 export function createTreadPair(

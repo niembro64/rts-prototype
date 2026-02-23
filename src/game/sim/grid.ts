@@ -4,12 +4,8 @@ import { magnitude } from '../math';
 // Grid constants
 export const GRID_CELL_SIZE = 20; // 20x20 world units per cell
 
-// Grid cell state
-export interface GridCell {
-  occupied: boolean;
-  entityId: EntityId | null;
-  playerId: PlayerId | null;
-}
+export type { GridCell } from '@/types/ui';
+import type { GridCell } from '@/types/ui';
 
 // Building grid manager
 export class BuildingGrid {

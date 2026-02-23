@@ -29,11 +29,8 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 
-export interface GameServerConfig {
-  playerIds: PlayerId[];
-  backgroundMode?: boolean;
-  maxSnapshotsPerSec?: number; // Max snapshots/sec cap (0 = no cap)
-}
+export type { GameServerConfig } from '@/types/game';
+import type { GameServerConfig } from '@/types/game';
 
 export class GameServer {
   private physics: PhysicsEngine;

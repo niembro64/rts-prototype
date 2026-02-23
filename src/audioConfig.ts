@@ -24,35 +24,8 @@ export const harmonicSeries = [
 
 export const harmonicSeriesBaseMultipler = 32;
 
-// All available synth sounds — any synth can be used for any sound slot
-export type SynthId =
-  // One-shot percussive / tonal
-  | 'laser-zap' // short bright laser fire zap
-  | 'minigun' // rapid metallic rattle
-  | 'cannon' // deep booming shot
-  | 'shotgun' // wide blast burst
-  | 'grenade' // thump launch
-  | 'laserGun' // electric crack
-  | 'burst-rifle' // quick multi-tap
-  | 'force-field' // soft energy pulse
-  | 'insect' // chittering burst
-  | 'sizzle' // bright crackling impact
-  | 'bullet' // small metallic ping
-  | 'heavy' // deep thud impact
-  | 'explosion' // fiery blast
-  | 'small-explosion' // quick punchy pop
-  | 'medium-explosion' // medium rumble burst
-  | 'large-explosion' // massive rolling boom
-  // Continuous (used for laser slot)
-  | 'beam-hum'; // sustained beam drone
-
-// Sound entry: which synth to use + volume (0 = silent/skip) + playSpeed (1.0 = normal, 2.0 = twice as fast/high)
-export interface SoundEntry {
-  synth: SynthId;
-  volume: number;
-  playSpeed: number;
-  freq?: number; // optional direct frequency override (Hz) for continuous sounds
-}
+export type { SynthId, SoundEntry } from './types/audio';
+import type { SynthId, SoundEntry } from './types/audio';
 
 // Generate beam sound entries for all harmonic series indices (0 = lowest pitch/biggest, 13 = highest pitch/smallest)
 const _beamFire: Record<string, SoundEntry> = {};

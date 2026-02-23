@@ -4,22 +4,8 @@ import type { PlayerId } from './sim/types';
 import type { GameConnection } from './server/GameConnection';
 import { MAP_BG_COLOR, hexToStr } from '../config';
 
-export interface GameConfig {
-  parent: HTMLElement;
-  width: number;
-  height: number;
-  playerIds?: PlayerId[];
-  localPlayerId?: PlayerId;
-  gameConnection: GameConnection;
-  mapWidth: number;
-  mapHeight: number;
-  backgroundMode?: boolean;
-}
-
-export interface GameInstance {
-  game: Phaser.Game;
-  getScene: () => RtsScene | null;
-}
+export type { GameConfig, GameInstance } from '@/types/game';
+import type { GameConfig, GameInstance } from '@/types/game';
 
 // Store config globally so scene can access it
 let pendingGameConfig: {

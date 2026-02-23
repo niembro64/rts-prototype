@@ -3,11 +3,8 @@
 import type { Entity, EntityId } from '../../sim/types';
 import { magnitude } from '../../math';
 
-// Point in world space
-export interface WorldPoint {
-  x: number;
-  y: number;
-}
+export type { WorldPoint } from '@/types/input';
+import type { WorldPoint } from '@/types/input';
 
 // Calculate total length of a path
 export function getPathLength(points: WorldPoint[]): number {

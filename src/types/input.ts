@@ -1,0 +1,74 @@
+// Input system types extracted from game/input/ files
+
+import type { Entity, EntityId, PlayerId, WaypointType, BuildingType } from './sim';
+
+// Point in world space
+export type WorldPoint = {
+  x: number;
+  y: number;
+};
+
+// Entity source for input detection
+export type InputEntitySource = {
+  getUnits(): Entity[];
+  getBuildings(): Entity[];
+  getEntity(id: EntityId): Entity | undefined;
+  getAllEntities(): Entity[];
+};
+
+// Provides tick and player info
+export type InputContext = {
+  getTick(): number;
+  activePlayerId: PlayerId;
+};
+
+// Shared mutable state for all input controllers
+export type InputState = {
+  isDraggingSelection: boolean;
+  selectionStartWorldX: number;
+  selectionStartWorldY: number;
+  selectionEndWorldX: number;
+  selectionEndWorldY: number;
+  isPanningCamera: boolean;
+  panStartX: number;
+  panStartY: number;
+  cameraStartX: number;
+  cameraStartY: number;
+  isDrawingLinePath: boolean;
+  linePathPoints: WorldPoint[];
+  linePathTargets: WorldPoint[];
+  waypointMode: WaypointType;
+  previousSelectedIds: Set<EntityId>;
+  isBuildMode: boolean;
+  selectedBuildingType: BuildingType | null;
+  buildGhostX: number;
+  buildGhostY: number;
+  canPlaceBuilding: boolean;
+  isDGunMode: boolean;
+};
+
+// Entity source for selection queries
+export type SelectionEntitySource = {
+  getUnits(): Entity[];
+  getBuildings(): Entity[];
+};
+
+// Selection rectangle in world coordinates
+export type SelectionRect = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
+
+// Result of selection query
+export type SelectionResult = {
+  entityIds: EntityId[];
+  wasClick: boolean;
+};
+
+// Entity source for repair target queries
+export type RepairEntitySource = {
+  getUnits(): Entity[];
+  getBuildings(): Entity[];
+};

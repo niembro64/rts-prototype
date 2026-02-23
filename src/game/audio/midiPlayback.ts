@@ -4,23 +4,8 @@ import { Midi } from '@tonejs/midi';
 import { AUDIO } from '../../audioConfig';
 import { LOOK_AHEAD } from './proceduralMusic';
 
-export interface MidiNote {
-  midi: number;
-  time: number;
-  duration: number;
-  velocity: number;
-}
-
-/** Mutable state for the MIDI player. */
-export interface MidiState {
-  notes: MidiNote[] | null;
-  duration: number;       // total length of MIDI in seconds
-  loaded: boolean;
-  loadPromise: Promise<void> | null;
-  startOffset: number;    // audioContext time when playback began
-  position: number;       // next note index to schedule
-  mode: boolean;          // true when currently playing in MIDI mode
-}
+export type { MidiNote, MidiState, MidiEffectsChain } from '@/types/audio';
+import type { MidiNote, MidiState, MidiEffectsChain } from '@/types/audio';
 
 export function createMidiState(): MidiState {
   return {
@@ -32,15 +17,6 @@ export function createMidiState(): MidiState {
     position: 0,
     mode: false,
   };
-}
-
-/** Effects chain nodes created for MIDI playback. */
-export interface MidiEffectsChain {
-  noteTarget: GainNode;          // oscillators connect here
-  compressor: DynamicsCompressorNode | null;
-  reverbConvolver: ConvolverNode | null;
-  reverbDryGain: GainNode | null;
-  reverbWetGain: GainNode | null;
 }
 
 /** Build the MIDI effects chain: noteTarget → [compressor] → [reverb dry/wet] → musicGain. */

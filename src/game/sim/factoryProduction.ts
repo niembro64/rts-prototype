@@ -4,10 +4,8 @@ import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
 
-// Factory production result
-export interface FactoryProductionResult {
-  completedUnits: Entity[];
-}
+export type { FactoryProductionResult } from '@/types/ui';
+import type { FactoryProductionResult } from '@/types/ui';
 
 // Factory production system
 export class FactoryProductionSystem {

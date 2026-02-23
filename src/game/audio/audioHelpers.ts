@@ -1,10 +1,7 @@
 // Shared audio primitives for synth functions
 
-export interface AudioToolkit {
-  ctx: AudioContext;
-  createGain(volume?: number, autoDisconnectMs?: number): GainNode | null;
-  createNoiseBuffer(duration: number): AudioBuffer | null;
-}
+export type { AudioToolkit } from '@/types/audio';
+import type { AudioToolkit } from '@/types/audio';
 
 // Play an oscillator tone with frequency sweep and gain decay
 export function playTone(

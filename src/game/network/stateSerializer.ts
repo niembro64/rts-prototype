@@ -36,13 +36,13 @@ function createPooledWaypoint(): { x: number; y: number; type: string } {
 }
 
 // Extended pool entry with pre-allocated sub-arrays
-interface PooledEntry {
+type PooledEntry = {
   entity: NetworkEntity;
   weapons: NetworkWeapon[];
   actions: NetworkAction[];
   waypoints: { x: number; y: number; type: string }[];
   buildQueue: string[];
-}
+};
 
 function createPooledEntry(): PooledEntry {
   const weapons: NetworkWeapon[] = [];
@@ -79,7 +79,7 @@ function getPooledEntry(): PooledEntry {
 // Stores lightweight fingerprint of each entity from the previous snapshot.
 // Compared against current state to detect changes.
 
-interface PrevEntityState {
+type PrevEntityState = {
   x: number;
   y: number;
   rotation: number;
@@ -98,7 +98,7 @@ interface PrevEntityState {
   factoryProgress: number;
   isProducing: number;      // 0 or 1
   buildQueueLen: number;
-}
+};
 
 function createPrevEntityState(): PrevEntityState {
   const turretRots: number[] = [];

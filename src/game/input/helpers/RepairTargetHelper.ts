@@ -3,11 +3,8 @@
 import type { Entity, PlayerId } from '../../sim/types';
 import { magnitude } from '../../math';
 
-// Entity source interface for queries
-export interface RepairEntitySource {
-  getUnits(): Entity[];
-  getBuildings(): Entity[];
-}
+export type { RepairEntitySource } from '@/types/input';
+import type { RepairEntitySource } from '@/types/input';
 
 // Find an incomplete building at a world position
 export function findIncompleteBuildingAt(

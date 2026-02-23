@@ -49,7 +49,7 @@ const DRIFT_PRESETS: Record<
 
 // Lightweight copy of server state used for per-frame drift in applyPrediction().
 // Owns its data (not a reference to pooled serializer objects).
-interface ServerTarget {
+type ServerTarget = {
   x: number;
   y: number;
   rotation: number;
@@ -60,7 +60,7 @@ interface ServerTarget {
     turretAngularVelocity: number;
     currentForceFieldRange: number | undefined;
   }[];
-}
+};
 
 function createServerTarget(): ServerTarget {
   return { x: 0, y: 0, rotation: 0, velocityX: 0, velocityY: 0, weapons: [] };

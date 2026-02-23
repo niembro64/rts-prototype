@@ -4,12 +4,12 @@ import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
 
 // Unit composition for each player (legacy - now only used for testing)
-interface UnitSpawnConfig {
+type UnitSpawnConfig = {
   unitType: string;
   count: number;
   drawScale?: number;
   moveSpeed?: number;
-}
+};
 
 const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
   { unitType: 'jackal', count: 3, drawScale: 8, moveSpeed: 160 },

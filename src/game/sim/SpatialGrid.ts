@@ -16,11 +16,11 @@ const MAX_UNIT_SHOT_RADIUS = 45;
  * Uses numeric cell keys (bit-packed) to avoid string allocation overhead.
  */
 
-interface GridCell {
+type GridCell = {
   units: Entity[];
   buildings: Entity[];
   projectiles: Entity[];
-}
+};
 
 export class SpatialGrid {
   private cellSize: number;

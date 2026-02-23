@@ -1,9 +1,6 @@
 import Phaser from 'phaser';
 import { CommandQueue } from '../sim/commands';
 import type {
-  Entity,
-  EntityId,
-  PlayerId,
   WaypointType,
   BuildingType,
 } from '../sim/types';
@@ -14,25 +11,8 @@ import { CommandController } from './CommandController';
 import { type InputState, createInitialInputState } from './InputState';
 import { getDragPanEnabled } from '@/clientBarConfig';
 
-/**
- * InputEntitySource - Interface for entity queries used by InputManager
- * Both WorldState and ClientViewState implement this interface
- */
-export interface InputEntitySource {
-  getUnits(): Entity[];
-  getBuildings(): Entity[];
-  getEntity(id: EntityId): Entity | undefined;
-  getAllEntities(): Entity[];
-}
-
-/**
- * InputContext - Provides tick and player info without requiring WorldState
- * Decouples InputManager from the simulation layer
- */
-export interface InputContext {
-  getTick(): number;
-  activePlayerId: PlayerId;
-}
+export type { InputEntitySource, InputContext } from '@/types/input';
+import type { InputEntitySource, InputContext } from '@/types/input';
 
 export class InputManager {
   private scene: Phaser.Scene;

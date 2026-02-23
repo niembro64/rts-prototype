@@ -1,10 +1,8 @@
 // Generic EMA (Exponential Moving Average) tracker for real-time metrics.
 // Used for FPS and snapshot rate tracking with asymmetric drop/recovery.
 
-export interface EmaConfig {
-  avg: number;
-  low: { drop: number; recovery: number };
-}
+export type { EmaConfig } from '@/types/game';
+import type { EmaConfig } from '@/types/game';
 
 export class EmaTracker {
   private avg = 0;

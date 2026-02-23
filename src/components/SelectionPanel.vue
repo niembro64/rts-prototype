@@ -2,40 +2,8 @@
 import { computed } from 'vue';
 import type { WaypointType } from '../game/sim/types';
 
-// Factory queue item
-export interface QueueItem {
-  weaponId: string;
-  label: string;
-}
-
-// Selection info passed from game
-export interface SelectionInfo {
-  unitCount: number;
-  hasCommander: boolean;
-  hasBuilder: boolean;
-  hasDGun: boolean;
-  hasFactory: boolean;
-  factoryId?: number;
-  commanderId?: number;
-  waypointMode: WaypointType;
-  isBuildMode: boolean;
-  selectedBuildingType: string | null;
-  isDGunMode: boolean;
-  // Factory production info
-  factoryQueue?: QueueItem[];
-  factoryProgress?: number;
-  factoryIsProducing?: boolean;
-}
-
-// Action callbacks
-export interface SelectionActions {
-  setWaypointMode: (mode: WaypointType) => void;
-  startBuild: (buildingType: 'solar' | 'factory') => void;
-  cancelBuild: () => void;
-  toggleDGun: () => void;
-  queueUnit: (factoryId: number, weaponId: string) => void;
-  cancelQueueItem: (factoryId: number, index: number) => void;
-}
+export type { QueueItem, SelectionInfo, SelectionActions } from '@/types/ui';
+import type { SelectionInfo, SelectionActions } from '@/types/ui';
 
 const props = defineProps<{
   selection: SelectionInfo;

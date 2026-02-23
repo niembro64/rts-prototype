@@ -27,7 +27,7 @@ export type UnitRadiusType = 'visual' | 'shot' | 'push';
 
 export type SoundDefaults = Record<SoundCategory, boolean>;
 
-export interface ClientBarConfig {
+export type ClientBarConfig = {
   readonly graphics: LabeledOptionsConfig<
     Exclude<GraphicsQuality, 'auto'>,
     GraphicsQuality
@@ -43,4 +43,4 @@ export interface ClientBarConfig {
   readonly projRangeToggles: BooleanSetting;
   readonly unitRadiusToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
-}
+};

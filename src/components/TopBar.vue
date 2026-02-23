@@ -2,19 +2,8 @@
 import { computed } from 'vue';
 import { fmt4, fmtSigned } from './uiUtils';
 
-export interface EconomyInfo {
-  stockpile: number;
-  maxStockpile: number;
-  income: number;       // Total income (base + production)
-  baseIncome: number;
-  production: number;   // From solar panels
-  expenditure: number;
-  netFlow: number;      // income - expenditure
-  solarCount: number;
-  factoryCount: number;
-  unitCount: number;    // Current units for this player
-  unitCap: number;      // Max units allowed for this player
-}
+export type { EconomyInfo } from '@/types/ui';
+import type { EconomyInfo } from '@/types/ui';
 
 const props = defineProps<{
   economy: EconomyInfo;

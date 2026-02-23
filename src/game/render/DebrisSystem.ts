@@ -9,32 +9,8 @@ import type { TreadConfig, WheelConfig } from '../sim/blueprints/types';
 
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 
-// Death debris fragment — line segment with physics, color decay like burn marks
-export interface DebrisFragment {
-  x: number;
-  y: number; // current center position
-  vx: number;
-  vy: number; // velocity (pixels/sec)
-  rotation: number; // current angle of the segment
-  angularVel: number; // rotation speed (rad/sec)
-  length: number; // segment length
-  width: number; // line width
-  color: number; // cached RGB (updated during aging)
-  baseColor: number; // original color at creation
-  age: number; // ms since creation
-  shape: 'line' | 'rect'; // line = segment + caps, rect = filled rectangle
-}
-
-// Per-unit-type debris piece template (local coordinates relative to unit center)
-export interface DebrisPieceTemplate {
-  localX: number;
-  localY: number;
-  length: number;
-  width: number;
-  angle: number; // local angle offset
-  colorType: 'base' | 'dark' | 'light' | 'gray' | 'white';
-  shape: 'line' | 'rect';
-}
+export type { DebrisFragment, DebrisPieceTemplate } from '@/types/render';
+import type { DebrisFragment, DebrisPieceTemplate } from '@/types/render';
 
 const MAX_DEBRIS = DEBRIS_CONFIG.maxFragments;
 const DEBRIS_DRAG = DEBRIS_CONFIG.drag;

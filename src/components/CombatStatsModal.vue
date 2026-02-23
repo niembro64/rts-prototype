@@ -36,7 +36,7 @@ const teamKillsMode = ref<FriendlyFireMode>('subHalf');
 // Build unit type list from definitions (excluding commander)
 const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
 
-interface RowData {
+type RowData = {
   unitType: string;
   name: string;
   cost: number;
@@ -55,7 +55,7 @@ interface RowData {
   mobVal: number;
   suggestedCost: number;
   costDeltaPct: number;
-}
+};
 
 function buildRow(unitType: string, s: NetworkUnitTypeStats | undefined, val: UnitValuation, cost: number, alpha: number, dmgMode: FriendlyFireMode, killMode: FriendlyFireMode): RowData {
   const produced = s?.unitsProduced ?? 0;

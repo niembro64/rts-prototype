@@ -27,7 +27,7 @@ export type ForceTurretStyle = 'none' | 'simple' | 'full';
 export type UnitShape = 'circles' | 'full';
 export type LegStyle = 'none' | 'simple' | 'animated' | 'full';
 
-export interface GraphicsConfig {
+export type GraphicsConfig = {
   unitShape: UnitShape;
   legs: LegStyle;
   treadsAnimated: boolean;
@@ -45,4 +45,4 @@ export interface GraphicsConfig {
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;
   deathExplosionStyle: DeathExplosionStyle;
-}
+};

@@ -3,21 +3,8 @@
 
 import { UNIT_MASS_MULTIPLIER } from '../../config';
 
-export interface PhysicsBody {
-  x: number;
-  y: number;
-  vx: number;           // px/sec
-  vy: number;           // px/sec
-  radius: number;       // collision radius
-  mass: number;
-  invMass: number;      // 1/mass (0 for static)
-  frictionAir: number;  // per-frame at 60fps (e.g. 0.15)
-  restitution: number;  // bounce coefficient
-  isStatic: boolean;
-  label: string;
-  halfW?: number;       // for rectangles (buildings)
-  halfH?: number;
-}
+export type { PhysicsBody } from '@/types/game';
+import type { PhysicsBody } from '@/types/game';
 
 export class PhysicsEngine {
   private bodies: PhysicsBody[] = [];

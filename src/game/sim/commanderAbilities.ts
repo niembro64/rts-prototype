@@ -4,26 +4,8 @@ import { distance } from '../math';
 import { economyManager } from './economy';
 // Note: economyManager still used for onConstructionComplete (addProduction)
 
-// Spray effect target info for rendering
-export interface SprayTarget {
-  sourceId: EntityId;       // Commander doing the building/healing
-  targetId: EntityId;       // Entity being built/healed
-  type: 'build' | 'heal';   // Type of spray effect
-  sourceX: number;
-  sourceY: number;
-  targetX: number;
-  targetY: number;
-  targetWidth?: number;     // For buildings
-  targetHeight?: number;
-  targetRadius?: number;    // For units
-  intensity: number;        // 0-1 based on energy rate (affects particle count)
-}
-
-// Result of commander abilities update
-export interface CommanderAbilitiesResult {
-  sprayTargets: SprayTarget[];
-  completedBuildings: { commanderId: EntityId; buildingId: EntityId }[];
-}
+export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
+import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
 // Commander abilities system - handles build queue (ONE target at a time)
 export class CommanderAbilitiesSystem {

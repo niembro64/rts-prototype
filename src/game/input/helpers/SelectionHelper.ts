@@ -1,27 +1,10 @@
 // Selection helper functions for entity selection logic
 
-import type { Entity, EntityId, PlayerId } from '../../sim/types';
+import type { EntityId, PlayerId } from '../../sim/types';
 import { magnitude } from '../../math';
 
-// Entity source interface for queries
-export interface SelectionEntitySource {
-  getUnits(): Entity[];
-  getBuildings(): Entity[];
-}
-
-// Selection rectangle in world coordinates
-export interface SelectionRect {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-}
-
-// Result of selection query
-export interface SelectionResult {
-  entityIds: EntityId[];
-  wasClick: boolean;  // true if single click (not drag)
-}
+export type { SelectionEntitySource, SelectionRect, SelectionResult } from '@/types/input';
+import type { SelectionEntitySource, SelectionRect, SelectionResult } from '@/types/input';
 
 // Find all owned units within a selection rectangle
 export function findUnitsInRect(

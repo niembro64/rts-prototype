@@ -4,37 +4,8 @@
 import { AUDIO } from '../../audioConfig';
 import type { AudioToolkit } from './audioHelpers';
 
-export interface ContinuousSound {
-  oscillator: OscillatorNode;
-  gainNode: GainNode;
-  noiseSource?: AudioBufferSourceNode;
-  noiseGain?: GainNode;
-  targetVolume: number;
-  noiseTargetVolume: number;
-  baseOscVolume: number;
-  baseNoiseVolume: number;
-  audible: boolean;
-  sourceEntityId: number;
-}
-
-export interface ContinuousSoundConfig {
-  wave: OscillatorType;
-  freq: number;
-  randomFrequencyRange?: number;
-  filterFreq: number;
-  filterQ: number;
-  highpassFreq?: number;
-  highpassQ?: number;
-  fadeIn: number;
-  pitchSlideStart?: number; // start frequency multiplier (e.g. 1.1 = 10% higher)
-  pitchSlideTime?: number;  // time to exponentially slide to target freq (seconds)
-  oscVolume: number;
-  noiseVolume: number;
-  noiseBandFreq: number;
-  noiseBandQ: number;
-  lfoRate?: number;
-  lfoDepth?: number;
-}
+export type { ContinuousSound, ContinuousSoundConfig } from '@/types/audio';
+import type { ContinuousSound, ContinuousSoundConfig } from '@/types/audio';
 
 // Start a continuous sound with oscillator + optional LFO + filter + noise layer
 export function startContinuousSound(

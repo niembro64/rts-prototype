@@ -1,114 +1,19 @@
 // Shared types and constants for the render system
 
-import Phaser from 'phaser';
-import type { Entity, WaypointType, ActionType } from '../sim/types';
+import type { WaypointType, ActionType } from '../sim/types';
 
-// ==================== INTERFACES ====================
-
-/**
- * EntitySource - Interface that both WorldState and ClientViewState implement
- * Allows the renderer to work with either source transparently
- */
-export interface EntitySource {
-  getUnits(): Entity[];
-  getBuildings(): Entity[];
-  getProjectiles(): Entity[];
-  getEntity(id: number): Entity | undefined;
-}
-
-// Explosion effect data
-export interface ExplosionEffect {
-  x: number;
-  y: number;
-  radius: number; // Maximum radius of explosion
-  color: number; // Base color
-  lifetime: number; // Total lifetime in ms
-  elapsed: number; // Time elapsed in ms
-  type: 'impact' | 'death'; // Type affects visual style
-
-  // Three separate momentum vectors for different explosion layers:
-
-  // 1. Unit velocity - where the unit was moving when it died
-  // Used by: Smoke clouds, fire embers (trailing effect)
-  velocityX?: number;
-  velocityY?: number;
-  velocityMag?: number;
-
-  // 2. Penetration direction - from hit point through unit center
-  // Used by: Debris chunks, shockwave rings (where the attack entered)
-  penetrationX?: number;
-  penetrationY?: number;
-  penetrationMag?: number;
-
-  // 3. Attacker direction - direction the projectile/beam was traveling
-  // Used by: Spark trails, exit fragments (penetration effect)
-  attackerX?: number;
-  attackerY?: number;
-  attackerMag?: number;
-
-  // Combined momentum for layers that blend all forces
-  combinedX?: number;
-  combinedY?: number;
-  combinedMag?: number;
-
-  // Projectile/damage radii for impact explosion animation
-  collisionRadius?: number;   // Projectile collision radius (innermost zone)
-  primaryRadius?: number;     // Primary damage radius (middle zone)
-  secondaryRadius?: number;   // Secondary damage radius (outer zone)
-
-  // Collided entity's collision radius (for impact explosions)
-  entityCollisionRadius?: number;
-}
-
-// Color palette for unit rendering
-export interface ColorPalette {
-  base: number;
-  light: number;
-  dark: number;
-}
-
-
-/** Ring-buffer of historical positions for projectile trail rendering */
-export interface ProjectileTrail {
-  positions: Float32Array;  // [x0,y0, x1,y1, ...] interleaved ring buffer
-  head: number;             // next write index (in pairs, so byte index = head*2)
-  count: number;            // valid entries (grows to capacity)
-  capacity: number;         // max number of (x,y) pairs
-}
-
-// Context passed to unit renderers
-export interface UnitRenderContext {
-  graphics: Phaser.GameObjects.Graphics;
-  x: number;
-  y: number;
-  radius: number;
-  bodyRot: number;
-  palette: ColorPalette;
-  isSelected: boolean;
-  entity: Entity;
-  /** Whether to render inner chassis detail (armor plates, accents, center hubs) */
-  chassisDetail: boolean;
-}
-
-// Context passed to building renderers
-export interface BuildingRenderContext {
-  graphics: Phaser.GameObjects.Graphics;
-  entity: Entity;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  playerColor: number;
-  sprayParticleTime: number;
-}
-
-// Per-projectile random offsets for visual variety
-export interface BeamRandomOffsets {
-  phaseOffset: number;      // Random offset for pulse timing
-  rotationOffset: number;   // Random rotation for sparks
-  sizeScale: number;        // Random size multiplier (0.8-1.2)
-  pulseSpeed: number;       // Random pulse speed multiplier
-}
+// Re-export all render types from centralized type files
+export type {
+  EntitySource,
+  ExplosionEffect,
+  ColorPalette,
+  ProjectileTrail,
+  UnitRenderContext,
+  BuildingRenderContext,
+  BeamRandomOffsets,
+  LegStyleConfig,
+} from '@/types/render';
+import type { LegStyleConfig } from '@/types/render';
 
 // ==================== CONSTANTS ====================
 
@@ -153,16 +58,6 @@ export const COLORS = {
   UNIT_SHOT_RADIUS: 0xff44ff, // Magenta for shot collider radius
   UNIT_PUSH_RADIUS: 0x44ff44, // Green for push collider radius
 } as const;
-
-// Leg style rendering configuration — explicit per-style visual properties
-export interface LegStyleConfig {
-  upperThickness: number;  // line width for upper segment (hip to knee), px
-  lowerThickness: number;  // line width for lower segment (knee to foot), px
-  hipRadius: number;       // circle radius at hip/attachment joint, px
-  kneeRadius: number;      // circle radius at knee joint, px
-  footRadius: number;      // circle radius at foot, px
-  lerpSpeed: number;       // foot animation lerp duration, ms
-}
 
 export const LEG_STYLE_CONFIG: Record<string, LegStyleConfig> = {
   widow: {

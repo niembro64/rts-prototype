@@ -104,8 +104,8 @@ function minMaxNormalize(values: number[]): number[] {
   return values;
 }
 
-interface SeriesPoint { t: number; v: number }
-interface Series { unitType: string; name: string; color: string; points: SeriesPoint[] }
+type SeriesPoint = { t: number; v: number };
+type Series = { unitType: string; name: string; color: string; points: SeriesPoint[] };
 
 const series = computed<Series[]>(() => {
   if (props.history.length === 0) return [];

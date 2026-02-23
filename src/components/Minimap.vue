@@ -1,23 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 
-export interface MinimapEntity {
-  x: number;
-  y: number;
-  type: 'unit' | 'building';
-  color: string;
-  isSelected?: boolean;
-}
-
-export interface MinimapData {
-  mapWidth: number;
-  mapHeight: number;
-  entities: MinimapEntity[];
-  cameraX: number;
-  cameraY: number;
-  cameraWidth: number;
-  cameraHeight: number;
-}
+export type { MinimapEntity, MinimapData } from '@/types/ui';
+import type { MinimapData } from '@/types/ui';
 
 const props = defineProps<{
   data: MinimapData;

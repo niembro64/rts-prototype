@@ -2,25 +2,13 @@
 // Distributes energy equally among all active consumers for each player.
 
 import type { WorldState } from './WorldState';
-import type { Entity, EntityId, PlayerId } from './types';
+import type { Entity, PlayerId } from './types';
 import { distance } from '../math';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 
-interface EnergyConsumer {
-  entity: Entity;
-  type: 'factory' | 'building' | 'heal';
-  remainingCost: number;
-  playerId: PlayerId;
-  maxEnergyPerTick: number;
-}
-
-export interface EnergyBuffers {
-  consumers: EnergyConsumer[];
-  consumersByPlayer: Map<PlayerId, number[]>;
-  buildTargetSet: Set<EntityId>;
-  maxEnergyUseRateByTarget: Map<EntityId, number>;
-}
+export type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
+import type { EnergyBuffers } from '@/types/ui';
 
 export function createEnergyBuffers(): EnergyBuffers {
   return {

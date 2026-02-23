@@ -2,37 +2,8 @@
 
 import { normalizeAngle, magnitude } from '../math';
 
-export interface LegConfig {
-  // Attachment point offset relative to unit center (in unit's local space)
-  attachOffsetX: number;  // Forward/back offset
-  attachOffsetY: number;  // Left/right offset (positive = right side)
-
-  // Leg segment lengths
-  upperLegLength: number;
-  lowerLegLength: number;
-
-  // Snap trigger angle: how far behind (from forward) the foot must be to trigger snap
-  // Smaller = triggers earlier (front legs), larger = triggers later (back legs)
-  // Value is in radians from forward direction (e.g., PI/2 = 90° behind)
-  snapTriggerAngle: number;
-
-  // Snap target angle: direction to snap TO when leg needs to move (radians from forward)
-  // Smaller = snaps more forward (front legs), larger = snaps more sideways (back legs)
-  // Positive = right side, negative = left side
-  snapTargetAngle: number;
-
-  // Snap distance: how far from attachment point the foot snaps to (as multiplier of total leg length)
-  // Larger = snaps farther out (front legs reach farther), smaller = snaps closer (back legs)
-  snapDistanceMultiplier: number;
-
-  // Extension threshold: how extended the leg must be before considering a snap (0-1)
-  // Front legs can snap earlier (~0.85), back legs must be fully extended (~0.95)
-  extensionThreshold: number;
-
-  // Lerp duration in milliseconds - how long the foot takes to move to new position
-  // Lower = faster/snappier, higher = slower/smoother
-  lerpSpeed?: number;
-}
+export type { ArachnidLegConfig as LegConfig } from '@/types/render';
+import type { ArachnidLegConfig as LegConfig } from '@/types/render';
 
 // Ease-out cubic for smooth deceleration
 function easeOutCubic(t: number): number {

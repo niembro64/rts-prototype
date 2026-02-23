@@ -35,16 +35,8 @@ function getChordRoot(bar: number): number {
   return PROGRESSION[bar % PROGRESSION.length];
 }
 
-/** Mutable state for the procedural generator. */
-export interface ProceduralState {
-  nextBeatTime: number;
-  currentBeat: number;   // 0-3 within bar
-  currentBar: number;    // 0-7 within progression
-  sectionCount: number;  // full 8-bar cycle counter
-  arpPatternIndex: number;
-  melodyNote: number;    // current melody MIDI offset from root
-  keyOffset: number;     // semitone transposition
-}
+export type { ProceduralState } from '@/types/audio';
+import type { ProceduralState } from '@/types/audio';
 
 export function createProceduralState(startTime: number): ProceduralState {
   return {

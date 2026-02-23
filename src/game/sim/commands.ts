@@ -1,159 +1,31 @@
-import type { EntityId, WaypointType, BuildingType } from './types';
+export type {
+  CommandType,
+  BaseCommand,
+  SelectCommand,
+  WaypointTarget,
+  MoveCommand,
+  ClearSelectionCommand,
+  StartBuildCommand,
+  QueueUnitCommand,
+  CancelQueueItemCommand,
+  SetRallyPointCommand,
+  FactoryWaypoint,
+  SetFactoryWaypointsCommand,
+  FireDGunCommand,
+  RepairCommand,
+  SetSnapshotRateCommand,
+  SetKeyframeRatioCommand,
+  SetTickRateCommand,
+  SetSendGridInfoCommand,
+  SetBackgroundUnitTypeCommand,
+  SetMaxTotalUnitsCommand,
+  SetProjVelInheritCommand,
+  SetFfAccelUnitsCommand,
+  SetFfAccelShotsCommand,
+  Command,
+} from '@/types/commands';
 
-// Command types
-export type CommandType = 'select' | 'move' | 'clearSelection' | 'startBuild' | 'queueUnit' | 'cancelQueueItem' | 'setRallyPoint' | 'setFactoryWaypoints' | 'fireDGun' | 'repair' | 'setSnapshotRate' | 'setKeyframeRatio' | 'setTickRate' | 'setSendGridInfo' | 'setBackgroundUnitType' | 'setMaxTotalUnits' | 'setProjVelInherit' | 'setFfAccelUnits' | 'setFfAccelShots';
-
-// Base command interface
-interface BaseCommand {
-  type: CommandType;
-  tick: number; // Tick when command should be executed
-}
-
-// Select command - select entities within a rectangle
-export interface SelectCommand extends BaseCommand {
-  type: 'select';
-  entityIds: EntityId[];
-  additive: boolean; // Shift-click adds to selection
-}
-
-// Waypoint target for move commands
-export interface WaypointTarget {
-  x: number;
-  y: number;
-}
-
-// Move command - move selected units to target(s)
-export interface MoveCommand extends BaseCommand {
-  type: 'move';
-  entityIds: EntityId[];
-  // Single target for group move
-  targetX?: number;
-  targetY?: number;
-  // Individual targets for line move (one per entity, same order as entityIds)
-  individualTargets?: WaypointTarget[];
-  // Waypoint type (move, fight, patrol)
-  waypointType: WaypointType;
-  // Whether to add to existing waypoints (shift-queue) or replace
-  queue: boolean;
-}
-
-// Clear selection command
-export interface ClearSelectionCommand extends BaseCommand {
-  type: 'clearSelection';
-}
-
-// Start build command - commander builds a structure
-export interface StartBuildCommand extends BaseCommand {
-  type: 'startBuild';
-  builderId: EntityId;
-  buildingType: BuildingType;
-  gridX: number;
-  gridY: number;
-  queue: boolean; // Whether to add to build queue (shift) or replace
-}
-
-// Queue unit command - add unit to factory production queue
-export interface QueueUnitCommand extends BaseCommand {
-  type: 'queueUnit';
-  factoryId: EntityId;
-  weaponId: string;
-}
-
-// Cancel queue item command - remove unit from factory production queue
-export interface CancelQueueItemCommand extends BaseCommand {
-  type: 'cancelQueueItem';
-  factoryId: EntityId;
-  index: number;
-}
-
-// Set rally point command - set factory rally point
-export interface SetRallyPointCommand extends BaseCommand {
-  type: 'setRallyPoint';
-  factoryId: EntityId;
-  rallyX: number;
-  rallyY: number;
-}
-
-// Factory waypoint for waypoint commands
-export interface FactoryWaypoint {
-  x: number;
-  y: number;
-  type: WaypointType;
-}
-
-// Set factory waypoints command - set factory waypoints (replaces or adds to existing)
-export interface SetFactoryWaypointsCommand extends BaseCommand {
-  type: 'setFactoryWaypoints';
-  factoryId: EntityId;
-  waypoints: FactoryWaypoint[];
-  queue: boolean; // Whether to add to existing waypoints or replace
-}
-
-// Fire D-gun command - commander fires D-gun at target
-export interface FireDGunCommand extends BaseCommand {
-  type: 'fireDGun';
-  commanderId: EntityId;
-  targetX: number;
-  targetY: number;
-}
-
-// Repair command - commander repairs/builds a specific entity
-export interface RepairCommand extends BaseCommand {
-  type: 'repair';
-  commanderId: EntityId;
-  targetId: EntityId;
-  queue: boolean; // Whether to add to build queue (shift) or replace
-}
-
-// Server config commands (intercepted by GameServer before CommandQueue)
-export interface SetSnapshotRateCommand extends BaseCommand {
-  type: 'setSnapshotRate';
-  rate: number | 'none';
-}
-
-export interface SetKeyframeRatioCommand extends BaseCommand {
-  type: 'setKeyframeRatio';
-  ratio: number | 'ALL' | 'NONE';
-}
-
-export interface SetTickRateCommand extends BaseCommand {
-  type: 'setTickRate';
-  rate: number;
-}
-
-export interface SetSendGridInfoCommand extends BaseCommand {
-  type: 'setSendGridInfo';
-  enabled: boolean;
-}
-
-export interface SetBackgroundUnitTypeCommand extends BaseCommand {
-  type: 'setBackgroundUnitType';
-  unitType: string;
-  enabled: boolean;
-}
-
-export interface SetMaxTotalUnitsCommand extends BaseCommand {
-  type: 'setMaxTotalUnits';
-  maxTotalUnits: number;
-}
-
-export interface SetProjVelInheritCommand extends BaseCommand {
-  type: 'setProjVelInherit';
-  enabled: boolean;
-}
-
-export interface SetFfAccelUnitsCommand extends BaseCommand {
-  type: 'setFfAccelUnits';
-  enabled: boolean;
-}
-
-export interface SetFfAccelShotsCommand extends BaseCommand {
-  type: 'setFfAccelShots';
-  enabled: boolean;
-}
-
-// Union of all command types
-export type Command = SelectCommand | MoveCommand | ClearSelectionCommand | StartBuildCommand | QueueUnitCommand | CancelQueueItemCommand | SetRallyPointCommand | SetFactoryWaypointsCommand | FireDGunCommand | RepairCommand | SetSnapshotRateCommand | SetKeyframeRatioCommand | SetTickRateCommand | SetSendGridInfoCommand | SetBackgroundUnitTypeCommand | SetMaxTotalUnitsCommand | SetProjVelInheritCommand | SetFfAccelUnitsCommand | SetFfAccelShotsCommand;
+import type { Command } from '@/types/commands';
 
 // Command queue for processing commands in order
 export class CommandQueue {

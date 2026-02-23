@@ -1,6 +1,6 @@
 // UI Update Manager - handles selection, economy, and minimap data updates
 
-import type { Entity, PlayerId, EntityId, WaypointType } from '../../sim/types';
+import type { PlayerId, WaypointType } from '../../sim/types';
 import { PLAYER_COLORS } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 
@@ -18,76 +18,15 @@ const UNIT_LABELS: Record<string, string> = {
   commander: 'Commander',
 };
 
-// Entity source interface for UI updates
-export interface UIEntitySource {
-  getUnits(): Entity[];
-  getBuildings(): Entity[];
-  getSelectedUnits(): Entity[];
-  getSelectedBuildings(): Entity[];
-  getBuildingsByPlayer(playerId: PlayerId): Entity[];
-  getUnitsByPlayer(playerId: PlayerId): Entity[];
-}
-
-// Selection info passed to UI callback
-export interface SelectionInfo {
-  unitCount: number;
-  hasCommander: boolean;
-  hasBuilder: boolean;
-  hasDGun: boolean;
-  hasFactory: boolean;
-  factoryId?: EntityId;
-  commanderId?: EntityId;
-  waypointMode: WaypointType;
-  isBuildMode: boolean;
-  selectedBuildingType: string | null;
-  isDGunMode: boolean;
-  factoryQueue?: { weaponId: string; label: string }[];
-  factoryProgress?: number;
-  factoryIsProducing?: boolean;
-}
-
-// Economy info passed to UI callback
-export interface EconomyInfo {
-  stockpile: number;
-  maxStockpile: number;
-  income: number;
-  baseIncome: number;
-  production: number;
-  expenditure: number;
-  netFlow: number;
-  solarCount: number;
-  factoryCount: number;
-  unitCount: number;
-  unitCap: number;
-}
-
-// Minimap entity data
-export interface MinimapEntity {
-  x: number;
-  y: number;
-  type: 'unit' | 'building';
-  color: string;
-  isSelected?: boolean;
-}
-
-// Minimap data passed to UI callback
-export interface MinimapData {
-  mapWidth: number;
-  mapHeight: number;
-  entities: MinimapEntity[];
-  cameraX: number;
-  cameraY: number;
-  cameraWidth: number;
-  cameraHeight: number;
-}
-
-// Input state interface for selection info
-export interface InputState {
-  waypointMode: WaypointType;
-  isBuildMode: boolean;
-  selectedBuildingType: string | null;
-  isDGunMode: boolean;
-}
+export type {
+  UIEntitySource,
+  SelectionInfo,
+  EconomyInfo,
+  MinimapEntity,
+  MinimapData,
+  UIInputState as InputState,
+} from '@/types/ui';
+import type { UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, UIInputState as InputState } from '@/types/ui';
 
 // Build selection info from entity source and input state
 export function buildSelectionInfo(

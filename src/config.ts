@@ -4,19 +4,41 @@
  * Adjust these values to tune gameplay, networking, and audio.
  */
 
+// =============================================================================
+// TYPE RE-EXPORTS (definitions live in ./types/config.ts)
+// =============================================================================
+
+export type {
+  SnapshotConfig,
+  EmaLowConfig,
+  EmaTierConfig,
+  KnockbackConfig,
+  ForceFieldVisualConfig,
+  ForceFieldTurretShape,
+  ForceFieldTurretConfig,
+  SpinConfig,
+  TurretConfig,
+  MountPoint,
+  BuildingStatEntry,
+  MapSize,
+} from './types/config';
+
+import type {
+  SnapshotConfig,
+  EmaTierConfig,
+  KnockbackConfig,
+  ForceFieldVisualConfig,
+  ForceFieldTurretConfig,
+  BuildingStatEntry,
+  MapSize,
+} from './types/config';
+
 // Spatial grid cell size in pixels. Should be roughly 1/2 to 1/3 of typical weapon range.
 export const SPATIAL_GRID_CELL_SIZE = 150;
 
 // =============================================================================
 // SNAPSHOT / NETWORKING
 // =============================================================================
-
-export interface SnapshotConfig {
-  deltaEnabled: boolean;
-  positionThreshold: number;
-  rotationThreshold: number;
-  velocityThreshold: number;
-}
 
 export const SNAPSHOT_CONFIG: SnapshotConfig = {
   /** Enable delta snapshots (only send changed entities). When false, every snapshot is a full keyframe. */
@@ -50,15 +72,6 @@ export const BAR_COLORS = BAR_THEMES;
 // =============================================================================
 // EMA (Exponential Moving Average) STATS TRACKING
 // =============================================================================
-
-export interface EmaLowConfig {
-  drop: number;
-  recovery: number;
-}
-export interface EmaTierConfig {
-  avg: number;
-  low: EmaLowConfig;
-}
 
 export const EMA_CONFIG: Record<string, EmaTierConfig> = {
   tps: {
@@ -115,11 +128,6 @@ export const COST_MULTIPLIER = 1.0;
  *
  * Beam/railgun knockback uses momentum-based force (mass × velocity × PROJECTILE_MASS_MULTIPLIER).
  */
-export interface KnockbackConfig {
-  FORCE_FIELD_PULL_MULTIPLIER: number;
-  SPLASH: number;
-}
-
 export const KNOCKBACK: KnockbackConfig = {
   FORCE_FIELD_PULL_MULTIPLIER: 2.0, // Multiplier applied to each weapon's pullPower
   SPLASH: 250, // Knockback multiplier for area/splash explosions (mortar/disruptor)
@@ -199,22 +207,6 @@ export const FORCE_PULL: import('./game/sim/blueprints/types').ForceFieldZoneRat
  * Force field weapon visual configuration.
  * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.
  */
-export interface ForceFieldVisualConfig {
-  particleCount: number;
-  particleSpeed: number;
-  particleLength: number;
-  particleThickness: number;
-  arcCount: number;
-  arcSegments: number;
-  arcJitter: number;
-  arcThickness: number;
-  arcOpacity: number;
-  arcFlickerMs: number;
-  trailSegments: number;
-  trailSpacing: number;
-  trailFalloff: number;
-}
-
 export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig = {
   // --- Particle lines (radial dashes moving inward) ---
   particleCount: 20, // Number of radial particle lines around full circle
@@ -240,25 +232,6 @@ export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig = {
  * Force field turret (grate) configuration per unit type.
  * All length/width values are multipliers of the unit's collision radius.
  */
-export type ForceFieldTurretShape =
-  | 'triangle'
-  | 'line'
-  | 'square'
-  | 'hexagon'
-  | 'circle';
-
-export interface ForceFieldTurretConfig {
-  shape: ForceFieldTurretShape; // piece geometry
-  count: number; // number of pieces
-  length: number; // how far turret extends (× radius)
-  width: number; // max half-width of base piece (× radius)
-  taper: number; // 0→1: tip shrinks to (1−taper) of base; also compresses spacing
-  baseOffset: number; // where first piece sits (fraction of length)
-  originOffset: number; // mount point offset along turret axis (× radius)
-  thickness: number; // line width (px), used for 'line' shape
-  reversePhase: boolean; // true: phase offsets run tip→base instead of base→tip
-}
-
 export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
   forceField: {
     shape: 'circle',
@@ -285,43 +258,6 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
 };
 
 // =============================================================================
-// TURRET RENDERING CONFIG
-// =============================================================================
-
-export interface SpinConfig {
-  idle: number; // Slow idle spin (rad/sec)
-  max: number; // Maximum spin speed when firing (rad/sec)
-  accel: number; // Spin-up acceleration (rad/sec²)
-  decel: number; // Spin-down deceleration (rad/sec²)
-}
-
-export type TurretConfig =
-  | {
-      type: 'simpleMultiBarrel';
-      barrelCount: number;
-      barrelLength: number;
-      barrelThickness?: number;
-      orbitRadius: number;
-      depthScale: number;
-      spin: SpinConfig;
-    }
-  | {
-      type: 'coneMultiBarrel';
-      barrelCount: number;
-      barrelLength: number;
-      barrelThickness?: number;
-      baseOrbit: number;
-      depthScale: number;
-      spin: SpinConfig;
-    }
-  | {
-      type: 'simpleSingleBarrel';
-      barrelLength: number;
-      barrelThickness?: number;
-    }
-  | { type: 'complexSingleEmitter'; grate: ForceFieldTurretConfig };
-
-// =============================================================================
 // CHASSIS MOUNT POINTS
 // =============================================================================
 
@@ -330,21 +266,11 @@ export type TurretConfig =
  * x = forward offset, y = lateral offset (both as multipliers of unit collision radius).
  * Position is computed as: mountWorldX = unitX + cos(bodyRot)*x*r - sin(bodyRot)*y*r
  */
-export interface MountPoint {
-  x: number;
-  y: number;
-}
-
 // CHASSIS_MOUNTS removed — now in blueprints
 
 // LEG_CONFIG removed — now in blueprints
 // TREAD_CONFIG removed — now in blueprints
 // WHEEL_CONFIG removed — now in blueprints
-
-export interface BuildingStatEntry {
-  baseCost: number;
-  hp: number;
-}
 
 export const BUILDING_STATS: Record<string, BuildingStatEntry> = {
   solar: {
@@ -404,11 +330,6 @@ export const UNIT_THRUST_MULTIPLIER_DEMO = 6.0;
 // =============================================================================
 // MAP SIZE SETTINGS
 // =============================================================================
-
-export interface MapSize {
-  width: number;
-  height: number;
-}
 
 export const MAP_SETTINGS: Record<string, MapSize> = {
   game: { width: 3_000, height: 3_000 },

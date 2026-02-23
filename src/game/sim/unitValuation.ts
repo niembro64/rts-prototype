@@ -95,13 +95,8 @@ export function getWeaponValue(config: WeaponConfig): number {
   return baseDPS * rangeFactor * deliveryFactor * turretFactor * aoeFactor + pullBonus;
 }
 
-export interface UnitValuation {
-  weaponValue: number;
-  defensiveValue: number;
-  mobilityValue: number;
-  rawValue: number;
-  suggestedCost: number;
-}
+export type { UnitValuation } from '@/types/ui';
+import type { UnitValuation } from '@/types/ui';
 
 /**
  * Compute total unit value and derive a suggested cost.

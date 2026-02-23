@@ -1,25 +1,18 @@
 import type { EntityId } from './types';
 import { magnitude } from '../math';
 
-/**
- * Force contribution from a single source.
- * Forces are applied through the physics engine, so mass naturally affects acceleration.
- */
-export interface ForceContribution {
-  fx: number;  // Force in X direction (Newtons-ish, units depend on mass scale)
-  fy: number;  // Force in Y direction
-  source: string;  // For debugging: 'steering', 'force_field_pull', 'knockback', 'collision_avoidance'
-}
+export type { ForceContribution } from '@/types/ui';
+import type { ForceContribution } from '@/types/ui';
 
 /**
  * Accumulated forces for a single entity this frame.
  */
-interface EntityForces {
+type EntityForces = {
   contributions: ForceContribution[];
   contributionCount: number;  // How many contributions are active (avoids .length = 0 + push overhead)
   finalFx: number;
   finalFy: number;
-}
+};
 
 /**
  * ForceAccumulator - Unified force management for physics-based movement.

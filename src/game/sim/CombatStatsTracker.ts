@@ -4,21 +4,8 @@ import type { EntityId, PlayerId } from './types';
 import type { WorldState } from './WorldState';
 import { getUnitBlueprint } from './blueprints';
 
-export interface UnitTypeStats {
-  enemyDamageDealt: number;
-  enemyDamageReceived: number;
-  enemyKills: number;
-  friendlyDamageDealt: number;
-  friendlyKills: number;
-  unitsProduced: number;
-  unitsLost: number;
-  totalCostSpent: number;
-}
-
-export interface CombatStatsSnapshot {
-  players: Record<number, Record<string, UnitTypeStats>>;
-  global: Record<string, UnitTypeStats>;
-}
+export type { UnitTypeStats, CombatStatsSnapshot } from '@/types/ui';
+import type { UnitTypeStats, CombatStatsSnapshot } from '@/types/ui';
 
 function createEmptyStats(): UnitTypeStats {
   return {

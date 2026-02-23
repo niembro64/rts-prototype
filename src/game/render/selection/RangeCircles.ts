@@ -5,19 +5,8 @@ import type { Entity } from '../../sim/types';
 import { getWeaponWorldPosition } from '../../math';
 import { COLORS } from '../types';
 
-export interface UnitRadiusVisibility {
-  visual: boolean;
-  shot: boolean;
-  push: boolean;
-}
-
-export interface RangeVisibility {
-  trackAcquire: boolean;
-  trackRelease: boolean;
-  engageAcquire: boolean;
-  engageRelease: boolean;
-  build: boolean;
-}
+export type { UnitRadiusVisibility, RangeVisibility } from '@/types/render';
+import type { UnitRadiusVisibility, RangeVisibility } from '@/types/render';
 
 /**
  * Render range circles for a unit based on which range types are enabled.

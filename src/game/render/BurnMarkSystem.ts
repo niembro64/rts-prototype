@@ -5,14 +5,8 @@ import type Phaser from 'phaser';
 import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
 import type { Entity } from '../sim/types';
 
-// Scorched earth burn mark left by beam weapons -- line segments matching beam width
-export interface BurnMark {
-  x1: number; y1: number; // segment start
-  x2: number; y2: number; // segment end
-  width: number;           // beam width
-  age: number;             // ms since creation
-  color: number;           // cached RGB color (updated during aging)
-}
+export type { BurnMark } from '@/types/render';
+import type { BurnMark } from '@/types/render';
 
 const BURN_HOT_RGB = hexToRgb(BURN_COLOR_HOT);
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);

@@ -2,11 +2,8 @@
 import { ref, computed } from 'vue';
 import { PLAYER_COLORS, type PlayerId } from '../game/sim/types';
 
-export interface LobbyPlayer {
-  playerId: PlayerId;
-  name: string;
-  isHost: boolean;
-}
+export type { LobbyPlayer } from '@/types/ui';
+import type { LobbyPlayer } from '@/types/ui';
 
 const props = defineProps<{
   visible: boolean;
