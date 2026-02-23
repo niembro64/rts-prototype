@@ -290,8 +290,7 @@ export function applyForceFieldDamage(
         // Dedup: if same projectile affected by multiple force fields, keep latest
         _velocityUpdateMap.set(projEntity.id, {
           id: projEntity.id,
-          x: projEntity.transform.x,
-          y: projEntity.transform.y,
+          pos: { x: projEntity.transform.x, y: projEntity.transform.y },
           velocity: { x: proj.velocityX, y: proj.velocityY },
         });
       }

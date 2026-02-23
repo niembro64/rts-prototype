@@ -130,8 +130,8 @@ export class ClientViewState {
         target = createServerTarget();
         this.serverTargets.set(netEntity.id, target);
       }
-      target.x = netEntity.x;
-      target.y = netEntity.y;
+      target.x = netEntity.pos.x;
+      target.y = netEntity.pos.y;
       target.rotation = netEntity.rotation;
       target.velocityX = netEntity.velocity?.x ?? 0;
       target.velocityY = netEntity.velocity?.y ?? 0;
@@ -223,8 +223,8 @@ export class ClientViewState {
       for (const vu of state.projectileVelocityUpdates) {
         const entity = this.entities.get(vu.id);
         if (entity?.projectile) {
-          entity.transform.x = vu.x;
-          entity.transform.y = vu.y;
+          entity.transform.x = vu.pos.x;
+          entity.transform.y = vu.pos.y;
           entity.projectile.velocityX = vu.velocity.x;
           entity.projectile.velocityY = vu.velocity.y;
           entity.transform.rotation = Math.atan2(vu.velocity.y, vu.velocity.x);
@@ -307,15 +307,15 @@ export class ClientViewState {
         actions.length = 0;
         for (let i = 0; i < src.length; i++) {
           const na = src[i];
-          if (na.x === undefined || na.y === undefined) continue;
+          if (!na.pos) continue;
           actions.push({
             type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
-            x: na.x,
-            y: na.y,
+            x: na.pos.x,
+            y: na.pos.y,
             targetId: na.targetId,
             buildingType: na.buildingType as BuildingType | undefined,
-            gridX: na.gridX,
-            gridY: na.gridY,
+            gridX: na.grid?.x,
+            gridY: na.grid?.y,
             buildingId: na.buildingId,
           });
         }
@@ -368,8 +368,8 @@ export class ClientViewState {
         entity.factory.waypoints.length = wps.length;
         for (let i = 0; i < wps.length; i++) {
           entity.factory.waypoints[i] = {
-            x: wps[i].x,
-            y: wps[i].y,
+            x: wps[i].pos.x,
+            y: wps[i].pos.y,
             type: wps[i].type as 'move' | 'fight' | 'patrol',
           };
         }
@@ -597,8 +597,8 @@ export class ClientViewState {
     };
 
     // Default to server position; override with client-side muzzle if source is available
-    let spawnX = spawn.x;
-    let spawnY = spawn.y;
+    let spawnX = spawn.pos.x;
+    let spawnY = spawn.pos.y;
 
     if (spawn.projectileType !== 'beam') {
       const source = this.entities.get(spawn.sourceEntityId);
@@ -651,10 +651,10 @@ export class ClientViewState {
           (config.beam !== undefined ? Infinity : 2000),
         hitEntities: new Set(),
         maxHits: 1,
-        startX: spawn.beamStart?.x,
-        startY: spawn.beamStart?.y,
-        endX: spawn.beamEnd?.x,
-        endY: spawn.beamEnd?.y,
+        startX: spawn.beam?.start.x,
+        startY: spawn.beam?.start.y,
+        endX: spawn.beam?.end.x,
+        endY: spawn.beam?.end.y,
       },
     };
     if (spawn.isDGun) {

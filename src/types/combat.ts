@@ -37,8 +37,7 @@ export type SimEvent = {
     | 'forceFieldStop'
     | 'projectileExpire';
   weaponId: WeaponAudioId;
-  x: number;
-  y: number;
+  pos: Vec2;
   entityId?: EntityId;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
@@ -46,8 +45,7 @@ export type SimEvent = {
 
 export type ProjectileSpawnEvent = {
   id: EntityId;
-  x: number;
-  y: number;
+  pos: Vec2;
   rotation: number;
   velocity: Vec2;
   projectileType: string;
@@ -56,8 +54,7 @@ export type ProjectileSpawnEvent = {
   sourceEntityId: EntityId;
   weaponIndex: number;
   isDGun?: boolean;
-  beamStart?: Vec2;
-  beamEnd?: Vec2;
+  beam?: { start: Vec2; end: Vec2 };
   targetEntityId?: EntityId;
   homingTurnRate?: number;
 };
@@ -68,8 +65,7 @@ export type ProjectileDespawnEvent = {
 
 export type ProjectileVelocityUpdateEvent = {
   id: EntityId;
-  x: number;
-  y: number;
+  pos: Vec2;
   velocity: Vec2;
 };
 

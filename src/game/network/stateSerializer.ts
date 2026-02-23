@@ -5,6 +5,7 @@ import type { NetworkGameState, NetworkEntity, NetworkEconomy, NetworkSprayTarge
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
+import type { Vec2 } from '../../types/vec2';
 import { SNAPSHOT_CONFIG } from '../../config';
 
 // === Object pool for NetworkEntity (eliminates per-frame allocations) ===
@@ -28,11 +29,11 @@ function createPooledWeapon(): NetworkWeapon {
 }
 
 function createPooledAction(): NetworkAction {
-  return { type: '', x: undefined, y: undefined, targetId: undefined, buildingType: undefined, gridX: undefined, gridY: undefined, buildingId: undefined };
+  return { type: '', pos: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
 }
 
-function createPooledWaypoint(): { x: number; y: number; type: string } {
-  return { x: 0, y: 0, type: '' };
+function createPooledWaypoint(): { pos: Vec2; type: string } {
+  return { pos: { x: 0, y: 0 }, type: '' };
 }
 
 // Extended pool entry with pre-allocated sub-arrays
@@ -40,7 +41,7 @@ type PooledEntry = {
   entity: NetworkEntity;
   weapons: NetworkWeapon[];
   actions: NetworkAction[];
-  waypoints: { x: number; y: number; type: string }[];
+  waypoints: { pos: Vec2; type: string }[];
   buildQueue: string[];
 };
 
@@ -49,10 +50,10 @@ function createPooledEntry(): PooledEntry {
   for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) weapons.push(createPooledWeapon());
   const actions: NetworkAction[] = [];
   for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createPooledAction());
-  const waypoints: { x: number; y: number; type: string }[] = [];
+  const waypoints: { pos: Vec2; type: string }[] = [];
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createPooledWaypoint());
   return {
-    entity: { id: 0, type: 'unit', x: 0, y: 0, rotation: 0 },
+    entity: { id: 0, type: 'unit', pos: { x: 0, y: 0 }, rotation: 0 },
     weapons,
     actions,
     waypoints,
@@ -397,8 +398,7 @@ export function serializeGameState(
       _audioBuf.push({
         type: ae.type,
         weaponId: ae.weaponId,
-        x: ae.x,
-        y: ae.y,
+        pos: ae.pos,
         entityId: ae.entityId,
         deathContext: ae.deathContext,
         impactContext: ae.impactContext,
@@ -415,7 +415,7 @@ export function serializeGameState(
       const ps = projectileSpawns[i];
       _spawnBuf.push({
         id: ps.id,
-        x: ps.x, y: ps.y, rotation: ps.rotation,
+        pos: ps.pos, rotation: ps.rotation,
         velocity: ps.velocity,
         projectileType: ps.projectileType,
         weaponId: ps.weaponId,
@@ -423,8 +423,7 @@ export function serializeGameState(
         sourceEntityId: ps.sourceEntityId,
         weaponIndex: ps.weaponIndex,
         isDGun: ps.isDGun,
-        beamStart: ps.beamStart,
-        beamEnd: ps.beamEnd,
+        beam: ps.beam,
         targetEntityId: ps.targetEntityId,
         homingTurnRate: ps.homingTurnRate,
       });
@@ -448,7 +447,7 @@ export function serializeGameState(
     _velUpdateBuf.length = 0;
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
-      _velUpdateBuf.push({ id: vu.id, x: vu.x, y: vu.y, velocity: vu.velocity });
+      _velUpdateBuf.push({ id: vu.id, pos: vu.pos, velocity: vu.velocity });
     }
     netVelocityUpdates = _velUpdateBuf;
   }
@@ -480,8 +479,8 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   // Base fields (always set)
   ne.id = entity.id;
   ne.type = entity.type;
-  ne.x = entity.transform.x;
-  ne.y = entity.transform.y;
+  ne.pos.x = entity.transform.x;
+  ne.pos.y = entity.transform.y;
   ne.rotation = entity.transform.rotation;
   ne.playerId = entity.ownership?.playerId;
 
@@ -512,8 +511,7 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
   ne.rally = undefined;
   ne.factoryWaypoints = undefined;
   ne.projectileType = undefined;
-  ne.beamStart = undefined;
-  ne.beamEnd = undefined;
+  ne.beam = undefined;
   ne.sourceEntityId = undefined;
   ne.weaponIndex = undefined;
 
@@ -547,12 +545,10 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
         const src = actions[i];
         const dst = pool.actions[i];
         dst.type = src.type;
-        dst.x = src.x;
-        dst.y = src.y;
+        dst.pos = src.x !== undefined ? { x: src.x, y: src.y } : undefined;
         dst.targetId = src.targetId;
         dst.buildingType = src.buildingType;
-        dst.gridX = src.gridX;
-        dst.gridY = src.gridY;
+        dst.grid = src.gridX !== undefined ? { x: src.gridX, y: src.gridY! } : undefined;
         dst.buildingId = src.buildingId;
       }
       ne.actions = pool.actions;
@@ -619,8 +615,8 @@ function serializeEntity(entity: Entity): NetworkEntity | null {
       while (pool.waypoints.length < wpCount) pool.waypoints.push(createPooledWaypoint());
       pool.waypoints.length = wpCount;
       for (let i = 0; i < wpCount; i++) {
-        pool.waypoints[i].x = wps[i].x;
-        pool.waypoints[i].y = wps[i].y;
+        pool.waypoints[i].pos.x = wps[i].x;
+        pool.waypoints[i].pos.y = wps[i].y;
         pool.waypoints[i].type = wps[i].type;
       }
       ne.factoryWaypoints = pool.waypoints;

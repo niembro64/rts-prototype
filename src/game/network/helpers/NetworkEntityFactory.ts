@@ -8,18 +8,18 @@ import { getWeaponConfig } from '../../sim/weapons';
  * Create an Entity from NetworkEntity data
  */
 export function createEntityFromNetwork(netEntity: NetworkEntity): Entity | null {
-  const { id, type, x, y, rotation, playerId } = netEntity;
+  const { id, type, pos, rotation, playerId } = netEntity;
 
   if (type === 'unit') {
-    return createUnitFromNetwork(netEntity, id, x, y, rotation, playerId);
+    return createUnitFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
   }
 
   if (type === 'building') {
-    return createBuildingFromNetwork(netEntity, id, x, y, rotation, playerId);
+    return createBuildingFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
   }
 
   if (type === 'projectile') {
-    return createProjectileFromNetwork(netEntity, id, x, y, rotation, playerId);
+    return createProjectileFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
   }
 
   return null;
@@ -37,15 +37,15 @@ function createUnitFromNetwork(
   if (netEntity.actions) {
     for (let i = 0; i < netEntity.actions.length; i++) {
       const na = netEntity.actions[i];
-      if (na.x === undefined || na.y === undefined) continue;
+      if (!na.pos) continue;
       actions.push({
         type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
-        x: na.x,
-        y: na.y,
+        x: na.pos.x,
+        y: na.pos.y,
         targetId: na.targetId,
         buildingType: na.buildingType as BuildingType | undefined,
-        gridX: na.gridX,
-        gridY: na.gridY,
+        gridX: na.grid?.x,
+        gridY: na.grid?.y,
         buildingId: na.buildingId,
       });
     }
@@ -148,7 +148,7 @@ function createBuildingFromNetwork(
     if (netEntity.factoryWaypoints) {
       for (let i = 0; i < netEntity.factoryWaypoints.length; i++) {
         const wp = netEntity.factoryWaypoints[i];
-        waypoints.push({ x: wp.x, y: wp.y, type: wp.type as 'move' | 'fight' | 'patrol' });
+        waypoints.push({ x: wp.pos.x, y: wp.pos.y, type: wp.type as 'move' | 'fight' | 'patrol' });
       }
     }
     entity.factory = {
@@ -195,10 +195,10 @@ function createProjectileFromNetwork(
       maxLifespan: 2000,
       hitEntities: new Set(),
       maxHits: 1,
-      startX: netEntity.beamStart?.x,
-      startY: netEntity.beamStart?.y,
-      endX: netEntity.beamEnd?.x,
-      endY: netEntity.beamEnd?.y,
+      startX: netEntity.beam?.start.x,
+      startY: netEntity.beam?.start.y,
+      endX: netEntity.beam?.end.x,
+      endY: netEntity.beam?.end.y,
     },
   };
 }

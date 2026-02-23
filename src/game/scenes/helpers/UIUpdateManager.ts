@@ -131,8 +131,7 @@ export function buildMinimapData(
     const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
 
     entities.push({
-      x: unit.transform.x,
-      y: unit.transform.y,
+      pos: { x: unit.transform.x, y: unit.transform.y },
       type: 'unit',
       color: colorHex,
       isSelected: unit.selectable?.selected,
@@ -146,8 +145,7 @@ export function buildMinimapData(
     const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
 
     entities.push({
-      x: building.transform.x,
-      y: building.transform.y,
+      pos: { x: building.transform.x, y: building.transform.y },
       type: 'building',
       color: colorHex,
       isSelected: building.selectable?.selected,

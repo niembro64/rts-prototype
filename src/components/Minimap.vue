@@ -57,8 +57,8 @@ function draw() {
 
   // Draw entities
   for (const entity of entities) {
-    const x = entity.x * scaleX;
-    const y = entity.y * scaleY;
+    const x = entity.pos.x * scaleX;
+    const y = entity.pos.y * scaleY;
 
     if (entity.type === 'building') {
       // Buildings as squares

@@ -548,10 +548,10 @@ export class SpatialGrid {
 
   /**
    * Get all occupied cells with player occupancy info (for debug visualization).
-   * Returns array of { cx, cy, players[] } for cells containing at least one unit.
+   * Returns array of { cell: { x, y }, players[] } for cells containing at least one unit.
    */
-  getOccupiedCells(): { cx: number; cy: number; players: number[] }[] {
-    const result: { cx: number; cy: number; players: number[] }[] = [];
+  getOccupiedCells(): { cell: { x: number; y: number }; players: number[] }[] {
+    const result: { cell: { x: number; y: number }; players: number[] }[] = [];
     const playerSet = new Set<number>();
 
     for (const [key, cell] of this.cells) {
@@ -570,7 +570,7 @@ export class SpatialGrid {
       }
 
       if (playerSet.size > 0) {
-        result.push({ cx, cy, players: Array.from(playerSet) });
+        result.push({ cell: { x: cx, y: cy }, players: Array.from(playerSet) });
       }
     }
 

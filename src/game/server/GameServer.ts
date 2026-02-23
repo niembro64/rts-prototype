@@ -608,7 +608,7 @@ export class GameServer {
     for (const [key, players] of cellMap) {
       const cx = Math.floor(key / 20000) - 10000;
       const cy = (key % 20000) - 10000;
-      result.push({ cx, cy, players: Array.from(players) });
+      result.push({ cell: { x: cx, y: cy }, players: Array.from(players) });
     }
     return result;
   }

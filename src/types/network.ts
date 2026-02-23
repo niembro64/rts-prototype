@@ -24,8 +24,7 @@ export type NetworkSimEvent = {
     | 'forceFieldStop'
     | 'projectileExpire';
   weaponId: WeaponAudioId;
-  x: number;
-  y: number;
+  pos: Vec2;
   entityId?: number;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
@@ -33,8 +32,7 @@ export type NetworkSimEvent = {
 
 export type NetworkProjectileSpawn = {
   id: number;
-  x: number;
-  y: number;
+  pos: Vec2;
   rotation: number;
   velocity: Vec2;
   projectileType: string;
@@ -43,8 +41,7 @@ export type NetworkProjectileSpawn = {
   sourceEntityId: number;
   weaponIndex: number;
   isDGun?: boolean;
-  beamStart?: Vec2;
-  beamEnd?: Vec2;
+  beam?: { start: Vec2; end: Vec2 };
   targetEntityId?: number;
   homingTurnRate?: number;
 };
@@ -55,14 +52,12 @@ export type NetworkProjectileDespawn = {
 
 export type NetworkProjectileVelocityUpdate = {
   id: number;
-  x: number;
-  y: number;
+  pos: Vec2;
   velocity: Vec2;
 };
 
 export type NetworkGridCell = {
-  cx: number;
-  cy: number;
+  cell: Vec2;
   players: number[];
 };
 
@@ -131,12 +126,10 @@ export type NetworkSprayTarget = {
 
 export type NetworkAction = {
   type: string;
-  x?: number;
-  y?: number;
+  pos?: Vec2;
   targetId?: number;
   buildingType?: string;
-  gridX?: number;
-  gridY?: number;
+  grid?: Vec2;
   buildingId?: number;
 };
 
@@ -157,8 +150,7 @@ export type NetworkWeapon = {
 export type NetworkEntity = {
   id: number;
   type: 'unit' | 'building' | 'projectile';
-  x: number;
-  y: number;
+  pos: Vec2;
   rotation: number;
   playerId?: PlayerId;
   unitType?: string;
@@ -182,15 +174,14 @@ export type NetworkEntity = {
   isComplete?: boolean;
   buildingType?: string;
   projectileType?: string;
-  beamStart?: Vec2;
-  beamEnd?: Vec2;
+  beam?: { start: Vec2; end: Vec2 };
   sourceEntityId?: number;
   weaponIndex?: number;
   buildQueue?: string[];
   factoryProgress?: number;
   isProducing?: boolean;
   rally?: Vec2;
-  factoryWaypoints?: { x: number; y: number; type: string }[];
+  factoryWaypoints?: { pos: Vec2; type: string }[];
 };
 
 export type NetworkEconomy = {

@@ -270,8 +270,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // Emit projectile spawn event for D-gun
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
-    x: spawnX,
-    y: spawnY,
+    pos: { x: spawnX, y: spawnY },
     rotation: fireAngle,
     velocity: { x: velocityX, y: velocityY },
     projectileType: 'traveling',
@@ -285,8 +284,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // Emit audio event
   const dgunSimEvent: SimEvent = {
     type: 'fire',
-    x: spawnX,
-    y: spawnY,
+    pos: { x: spawnX, y: spawnY },
     weaponId: 'dgunTurret',
   };
   ctx.onSimEvent?.(dgunSimEvent);

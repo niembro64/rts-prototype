@@ -59,8 +59,8 @@ export function handleSimEvent(
       const penetrationY = ic.penetrationDir.y * FIRE_EXPLOSION.penetrationMult;
 
       entityRenderer.addExplosion(
-        event.x,
-        event.y,
+        event.pos.x,
+        event.pos.y,
         explosionRadius,
         0xff8844,
         'impact',
@@ -80,8 +80,8 @@ export function handleSimEvent(
       const explosionRadius = getExplosionRadius(event.weaponId);
       const secondaryRadius = getSecondaryExplosionRadius(event.weaponId);
       entityRenderer.addExplosion(
-        event.x,
-        event.y,
+        event.pos.x,
+        event.pos.y,
         explosionRadius,
         0xff8844,
         'impact',
@@ -132,8 +132,8 @@ export function handleSimEvent(
     }
 
     entityRenderer.addExplosion(
-      event.x,
-      event.y,
+      event.pos.x,
+      event.pos.y,
       radius,
       ctx.color,
       'death',
@@ -148,8 +148,8 @@ export function handleSimEvent(
     // Generate debris fragments from unit visual pieces
     if (ctx.unitType) {
       entityRenderer.addDebris(
-        event.x,
-        event.y,
+        event.pos.x,
+        event.pos.y,
         ctx.unitType,
         ctx.rotation ?? 0,
         ctx.radius,
@@ -182,15 +182,15 @@ export function handleSimEvent(
   const audioScope = getAudioScope();
   if (audioScope === 'off') return;
   if (audioScope === 'window' && viewport) {
-    if (!viewport.contains(event.x, event.y)) return;
+    if (!viewport.contains(event.pos.x, event.pos.y)) return;
   } else if (audioScope === 'padded' && viewport) {
     const padX = viewport.width * 0.5;
     const padY = viewport.height * 0.5;
     if (
-      event.x < viewport.x - padX ||
-      event.x > viewport.right + padX ||
-      event.y < viewport.y - padY ||
-      event.y > viewport.bottom + padY
+      event.pos.x < viewport.x - padX ||
+      event.pos.x > viewport.right + padX ||
+      event.pos.y < viewport.y - padY ||
+      event.pos.y > viewport.bottom + padY
     )
       return;
   }

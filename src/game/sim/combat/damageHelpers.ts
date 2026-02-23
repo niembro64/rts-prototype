@@ -94,8 +94,7 @@ export function collectKillsWithDeathAudio(
       audioEvents.push({
         type: 'death',
         weaponId: config.id,
-        x: target?.transform.x ?? 0,
-        y: target?.transform.y ?? 0,
+        pos: { x: target?.transform.x ?? 0, y: target?.transform.y ?? 0 },
         deathContext: ctx ? {
           unitVel: { x: target?.body?.physicsBody.vx ?? 0, y: target?.body?.physicsBody.vy ?? 0 },
           hitDir: ctx.penetrationDir,
@@ -118,8 +117,7 @@ export function collectKillsWithDeathAudio(
       audioEvents.push({
         type: 'death',
         weaponId: config.id,
-        x: building?.transform.x ?? 0,
-        y: building?.transform.y ?? 0,
+        pos: { x: building?.transform.x ?? 0, y: building?.transform.y ?? 0 },
         deathContext: {
           unitVel: { x: 0, y: 0 },
           hitDir: { x: 0, y: -1 },
@@ -183,7 +181,7 @@ export function emitBeamHitAudio(
       if (entity) {
         audioEvents.push({
           type: 'hit', weaponId: config.projectileType ?? config.id,
-          x: entity.transform.x, y: entity.transform.y,
+          pos: { x: entity.transform.x, y: entity.transform.y },
           impactContext: buildImpactContext(
             config, impactX, impactY,
             beamDirX * BEAM_EXPLOSION_MAGNITUDE, beamDirY * BEAM_EXPLOSION_MAGNITUDE,

@@ -46,6 +46,7 @@ import {
   buildEconomyInfo,
   buildMinimapData,
 } from './helpers';
+import type { MinimapData } from './helpers';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import { EmaTracker } from './helpers/EmaTracker';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
@@ -155,21 +156,7 @@ export class RtsScene extends Phaser.Scene {
   }) => void;
 
   // Callback for minimap updates
-  public onMinimapUpdate?: (data: {
-    mapWidth: number;
-    mapHeight: number;
-    entities: {
-      x: number;
-      y: number;
-      type: 'unit' | 'building';
-      color: string;
-      isSelected?: boolean;
-    }[];
-    cameraX: number;
-    cameraY: number;
-    cameraWidth: number;
-    cameraHeight: number;
-  }) => void;
+  public onMinimapUpdate?: (data: MinimapData) => void;
 
   // Callback for game over (passes winner ID)
   public onGameOverUI?: (winnerId: PlayerId) => void;
@@ -482,8 +469,8 @@ export class RtsScene extends Phaser.Scene {
     // Draw search cells first (bottom layer): subtle fill, no borders
     const searchCells = this.clientViewState.getGridSearchCells();
     for (const cell of searchCells) {
-      const worldX = cell.cx * cellSize;
-      const worldY = cell.cy * cellSize;
+      const worldX = cell.cell.x * cellSize;
+      const worldY = cell.cell.y * cellSize;
 
       for (const playerId of cell.players) {
         const playerConfig = PLAYER_COLORS[playerId as PlayerId];
@@ -496,8 +483,8 @@ export class RtsScene extends Phaser.Scene {
     // Draw occupancy cells second (top layer): more pronounced fill + borders
     const gridCells = this.clientViewState.getGridCells();
     for (const cell of gridCells) {
-      const worldX = cell.cx * cellSize;
-      const worldY = cell.cy * cellSize;
+      const worldX = cell.cell.x * cellSize;
+      const worldY = cell.cell.y * cellSize;
 
       for (const playerId of cell.players) {
         const playerConfig = PLAYER_COLORS[playerId as PlayerId];

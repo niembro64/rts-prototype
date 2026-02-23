@@ -146,8 +146,7 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
         audioEvents.push({
           type: 'fire',
           weaponId: config.id,
-          x: weaponX,
-          y: weaponY,
+          pos: { x: weaponX, y: weaponY },
         });
       }
 
@@ -190,15 +189,14 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
           newProjectiles.push(beam);
           spawnEvents.push({
             id: beam.id,
-            x: spawnX, y: spawnY, rotation: angle,
+            pos: { x: spawnX, y: spawnY }, rotation: angle,
             velocity: { x: 0, y: 0 },
             projectileType: 'beam',
             weaponId: config.id,
             playerId,
             sourceEntityId: unit.id,
             weaponIndex,
-            beamStart: { x: spawnX, y: spawnY },
-            beamEnd: { x: endX, y: endY },
+            beam: { start: { x: spawnX, y: spawnY }, end: { x: endX, y: endY } },
           });
           // Note: Beam recoil is applied continuously in applyLineDamage while dealing damage
         } else if (config.projectileSpeed !== undefined) {
@@ -236,7 +234,7 @@ export function fireWeapons(world: WorldState, dtMs: number, forceAccumulator?: 
           newProjectiles.push(projectile);
           spawnEvents.push({
             id: projectile.id,
-            x: spawnX, y: spawnY, rotation: angle,
+            pos: { x: spawnX, y: spawnY }, rotation: angle,
             velocity: { x: projVx, y: projVy },
             projectileType: 'traveling',
             weaponId: config.id,
@@ -328,8 +326,7 @@ export function updateProjectiles(
           // Emit velocity update so clients can correct dead-reckoning drift
           _homingVelocityUpdates.push({
             id: entity.id,
-            x: entity.transform.x,
-            y: entity.transform.y,
+            pos: { x: entity.transform.x, y: entity.transform.y },
             velocity: { x: proj.velocityX, y: proj.velocityY },
           });
         } else {
@@ -521,8 +518,7 @@ export function checkProjectileCollisions(
           audioEvents.push({
             type: 'hit',
             weaponId: config.projectileType ?? config.id,
-            x: projEntity.transform.x,
-            y: projEntity.transform.y,
+            pos: { x: projEntity.transform.x, y: projEntity.transform.y },
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -539,8 +535,7 @@ export function checkProjectileCollisions(
         audioEvents.push({
           type: 'projectileExpire',
           weaponId: config.projectileType ?? config.id,
-          x: projEntity.transform.x,
-          y: projEntity.transform.y,
+          pos: { x: projEntity.transform.x, y: projEntity.transform.y },
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,
             proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -747,8 +742,7 @@ export function checkProjectileCollisions(
           audioEvents.push({
             type: 'hit',
             weaponId: config.projectileType ?? config.id,
-            x: projEntity.transform.x,
-            y: projEntity.transform.y,
+            pos: { x: projEntity.transform.x, y: projEntity.transform.y },
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -816,8 +810,7 @@ export function checkProjectileCollisions(
         audioEvents.push({
           type: 'projectileExpire',
           weaponId: config.projectileType ?? config.id,
-          x: projEntity.transform.x,
-          y: projEntity.transform.y,
+          pos: { x: projEntity.transform.x, y: projEntity.transform.y },
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,
             proj.velocityX ?? 0, proj.velocityY ?? 0,

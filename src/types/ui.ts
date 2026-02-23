@@ -53,8 +53,7 @@ export type EconomyInfo = {
 
 // Minimap types
 export type MinimapEntity = {
-  x: number;
-  y: number;
+  pos: Vec2;
   type: 'unit' | 'building';
   color: string;
   isSelected?: boolean;
@@ -121,8 +120,7 @@ export type GridCell = {
 
 // Force contribution
 export type ForceContribution = {
-  fx: number;
-  fy: number;
+  force: Vec2;
   source: string;
 };
 

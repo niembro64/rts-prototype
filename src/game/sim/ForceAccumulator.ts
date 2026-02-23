@@ -64,12 +64,12 @@ export class ForceAccumulator {
     if (idx < entry.contributions.length) {
       // Reuse existing contribution object
       const c = entry.contributions[idx];
-      c.fx = fx;
-      c.fy = fy;
+      c.force.x = fx;
+      c.force.y = fy;
       c.source = source;
     } else {
       // Grow the array (rare after warmup)
-      entry.contributions.push({ fx, fy, source });
+      entry.contributions.push({ force: { x: fx, y: fy }, source });
     }
   }
 
@@ -156,8 +156,8 @@ export class ForceAccumulator {
       entry.finalFy = 0;
       const count = entry.contributionCount;
       for (let i = 0; i < count; i++) {
-        entry.finalFx += entry.contributions[i].fx;
-        entry.finalFy += entry.contributions[i].fy;
+        entry.finalFx += entry.contributions[i].force.x;
+        entry.finalFy += entry.contributions[i].force.y;
       }
     }
   }
