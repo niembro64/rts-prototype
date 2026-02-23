@@ -247,7 +247,7 @@ export class ClientViewState {
       for (let i = 0; i < src.length; i++) {
         const st = src[i];
         this.sprayTargets[i] = {
-          source: { id: st.source.id, pos: st.source.pos },
+          source: { id: st.source.id, pos: st.source.pos, playerId: st.source.playerId },
           target: { id: st.target.id, pos: st.target.pos, dim: st.target.dim, radius: st.target.radius },
           type: st.type,
           intensity: st.intensity,

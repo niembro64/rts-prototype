@@ -2,8 +2,8 @@
 
 import Phaser from 'phaser';
 import type { SprayTarget } from '../../sim/commanderAbilities';
-import { COLORS } from '../types';
 import { magnitude } from '../../math';
+import { getPlayerColor, getPlayerColorLight } from '../helpers/ColorPalette';
 
 /**
  * Render spray effect from commander to target (build/heal)
@@ -13,8 +13,7 @@ export function renderSprayEffect(
   target: SprayTarget,
   sprayParticleTime: number
 ): void {
-  const color =
-    target.type === 'build' ? COLORS.SPRAY_BUILD : COLORS.SPRAY_HEAL;
+  const color = getPlayerColorLight(getPlayerColor(target.source.playerId));
   const sourceX = target.source.pos.x, sourceY = target.source.pos.y;
   const targetX = target.target.pos.x, targetY = target.target.pos.y;
   const intensity = target.intensity;

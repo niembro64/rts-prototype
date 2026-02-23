@@ -44,7 +44,7 @@ export class CommanderAbilitiesSystem {
         // Spray effect - intensity based on whether we're actively building
         const intensity = currentTarget.buildable.buildProgress < 1 ? 1 : 0;
         sprayTargets.push({
-          source: { id: commander.id, pos: { x: commanderX, y: commanderY } },
+          source: { id: commander.id, pos: { x: commanderX, y: commanderY }, playerId },
           target: {
             id: currentTarget.id,
             pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
@@ -63,7 +63,7 @@ export class CommanderAbilitiesSystem {
         // Spray effect
         const intensity = currentTarget.unit.hp < currentTarget.unit.maxHp ? 1 : 0;
         sprayTargets.push({
-          source: { id: commander.id, pos: { x: commanderX, y: commanderY } },
+          source: { id: commander.id, pos: { x: commanderX, y: commanderY }, playerId },
           target: {
             id: currentTarget.id,
             pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },

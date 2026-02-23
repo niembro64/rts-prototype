@@ -301,7 +301,7 @@ const _snapshotBuf: NetworkGameState = {
   projectiles: undefined,
   gameState: undefined,
   grid: undefined,
-  isDelta: undefined,
+  isDelta: false,
   removedEntityIds: undefined,
 };
 
@@ -417,7 +417,7 @@ export function serializeGameState(
     for (let i = 0; i < sprayTargets.length; i++) {
       const st = sprayTargets[i];
       _sprayBuf.push({
-        source: { id: st.source.id, pos: st.source.pos },
+        source: { id: st.source.id, pos: st.source.pos, playerId: st.source.playerId },
         target: { id: st.target.id, pos: st.target.pos, dim: st.target.dim, radius: st.target.radius },
         type: st.type,
         intensity: st.intensity,
@@ -517,7 +517,7 @@ export function serializeGameState(
   _snapshotBuf.projectiles = hasProjectiles ? _projectilesBuf : undefined;
   _snapshotBuf.gameState = _gameStateBuf;
   _snapshotBuf.grid = gridCells ? _gridBuf : undefined;
-  _snapshotBuf.isDelta = deltaEnabled ? true : undefined;
+  _snapshotBuf.isDelta = deltaEnabled;
   _snapshotBuf.removedEntityIds = deltaEnabled && _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;
 
   return _snapshotBuf;

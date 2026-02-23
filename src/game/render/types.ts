@@ -36,10 +36,6 @@ export const COLORS = {
   GHOST: 0x88ff88, // Green tint for placement ghost
   COMMANDER: 0xffd700, // Gold for commander indicator
 
-  // Spray effects
-  SPRAY_BUILD: 0x44ff44, // Green for building
-  SPRAY_HEAL: 0x4488ff, // Blue for healing
-
   // Range circles (outer to inner: see > fire > release > lock > fightstop)
   VISION_RANGE: 0xffff88, // Yellow for see range (turret pre-aim)
   WEAPON_RANGE: 0xff4444, // Red for fire range

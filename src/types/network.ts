@@ -103,12 +103,12 @@ export type NetworkGameState = {
     searchCells: NetworkGridCell[];
     cellSize: number;
   };
-  isDelta?: boolean;
+  isDelta: boolean;
   removedEntityIds?: number[];
 };
 
 export type NetworkSprayTarget = {
-  source: { id: number; pos: Vec2 };
+  source: { id: number; pos: Vec2; playerId: PlayerId };
   target: { id: number; pos: Vec2; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
   intensity: number;
