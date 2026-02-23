@@ -99,6 +99,7 @@ export interface NetworkGridCell {
 // Per-unit-type combat stats
 export interface NetworkUnitTypeStats {
   enemyDamageDealt: number;
+  enemyDamageReceived: number;
   enemyKills: number;
   friendlyDamageDealt: number;
   friendlyKills: number;

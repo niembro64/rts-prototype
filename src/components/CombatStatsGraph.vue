@@ -16,9 +16,9 @@ const props = defineProps<{
 type MetricKey = 'normDmg' | 'normKills' | 'normAvg' | 'damageDealt' | 'kills' | 'survivalPct' | 'produced' | 'lost' | 'costSpent';
 
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
-  { key: 'normAvg', label: 'Norm Avg', tip: 'Average of Norm Dmg and Norm Kills' },
-  { key: 'normDmg', label: 'Norm Dmg', tip: 'Damage normalized to [0,1] across unit types (0 = worst, 1 = best)' },
-  { key: 'normKills', label: 'Norm Kills', tip: 'Kills normalized to [0,1] across unit types (0 = worst, 1 = best)' },
+  { key: 'normAvg', label: 'Norm Avg', tip: 'Average of Norm Dmg and Norm Kills (ratio-based)' },
+  { key: 'normDmg', label: 'Norm Dmg', tip: 'Damage ratio (dealt / (dealt+received)) normalized across unit types' },
+  { key: 'normKills', label: 'Norm Kills', tip: 'Kill ratio (kills / (kills+deaths)) normalized across unit types' },
   { key: 'damageDealt', label: 'Total Dmg', tip: 'Total HP damage dealt (adjusted by Team Dmg mode)' },
   { key: 'kills', label: 'Total Kills', tip: 'Total enemy units killed (adjusted by Team Kills mode)' },
   { key: 'survivalPct', label: 'Survival %', tip: 'Percentage of produced units still alive: (produced - lost) / produced' },
@@ -72,15 +72,18 @@ function computeMetric(s: NetworkUnitTypeStats | undefined, unitType: string, me
     case 'normDmg':
     case 'normKills':
     case 'normAvg': {
-      // Raw (pre-min-max) norm value — normalization happens in series computation
+      // Ratio-based: dmgRatio = dealt/(dealt+received), killRatio = kills/(kills+lost)
+      const damageReceived = s.enemyDamageReceived ?? 0;
+      const dmgRatio = (dmg + damageReceived) > 0 ? dmg / (dmg + damageReceived) : 0;
+      const killRatio = (kills + lost) > 0 ? kills / (kills + lost) : 0;
       const alpha = props.costExponent;
       const rawExp = Math.max(1, alpha);
       const costExp = Math.min(alpha, 1);
       const costPow = Math.pow(cost, costExp);
       const divisor = produced * costPow;
       const scale = Math.pow(100, costExp);
-      const raw = (metric === 'normKills') ? kills : dmg;
-      return divisor > 0 ? (Math.pow(raw, rawExp) / divisor) * scale : 0;
+      const ratio = (metric === 'normKills') ? killRatio : dmgRatio;
+      return divisor > 0 ? (Math.pow(ratio, rawExp) / divisor) * scale : 0;
     }
   }
 }

@@ -44,6 +44,7 @@ interface RowData {
   survivalPct: number;
   costSpent: number;
   damageDealt: number;
+  damageReceived: number;
   kills: number;
   normDmg: number;
   normKills: number;
@@ -60,18 +61,22 @@ function buildRow(unitType: string, s: NetworkUnitTypeStats | undefined, val: Un
   const lost = s?.unitsLost ?? 0;
   const costSpent = s?.totalCostSpent ?? 0;
   const damageDealt = applyFriendlyFire(s?.enemyDamageDealt ?? 0, s?.friendlyDamageDealt ?? 0, dmgMode);
+  const damageReceived = s?.enemyDamageReceived ?? 0;
   const kills = applyFriendlyFire(s?.enemyKills ?? 0, s?.friendlyKills ?? 0, killMode);
 
-  // Normalize: metric^rawExp / (produced × cost^costExp)
-  //   α ∈ [0,1]: ramp cost exponent 0→1, raw exponent stays 1
-  //   α ∈ [1,2]: ramp raw exponent 1→2, cost exponent stays 1
+  // Ratio-based normalization:
+  //   dmgRatio  = dealt / (dealt + received)   [0,1], 0.5 = break-even
+  //   killRatio = kills / (kills + lost)        [0,1], 0.5 = break-even
+  const dmgRatio = (damageDealt + damageReceived) > 0 ? damageDealt / (damageDealt + damageReceived) : 0;
+  const killRatio = (kills + lost) > 0 ? kills / (kills + lost) : 0;
+
   const rawExp = Math.max(1, alpha);
   const costExp = Math.min(alpha, 1);
   const costPow = Math.pow(cost, costExp);
   const divisor = produced * costPow;
   const scale = Math.pow(100, costExp);
-  const normDmg = divisor > 0 ? (Math.pow(damageDealt, rawExp) / divisor) * scale : 0;
-  const normKills = divisor > 0 ? (Math.pow(kills, rawExp) / divisor) * scale : 0;
+  const normDmg = divisor > 0 ? (Math.pow(dmgRatio, rawExp) / divisor) * scale : 0;
+  const normKills = divisor > 0 ? (Math.pow(killRatio, rawExp) / divisor) * scale : 0;
 
   return {
     unitType,
@@ -82,6 +87,7 @@ function buildRow(unitType: string, s: NetworkUnitTypeStats | undefined, val: Un
     survivalPct: produced > 0 ? ((produced - lost) / produced) * 100 : 0,
     costSpent,
     damageDealt: Math.round(damageDealt),
+    damageReceived: Math.round(damageReceived),
     kills,
     normDmg,
     normKills,

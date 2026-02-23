@@ -6,6 +6,7 @@ import { getUnitBlueprint } from './blueprints';
 
 export interface UnitTypeStats {
   enemyDamageDealt: number;
+  enemyDamageReceived: number;
   enemyKills: number;
   friendlyDamageDealt: number;
   friendlyKills: number;
@@ -21,7 +22,7 @@ export interface CombatStatsSnapshot {
 
 function createEmptyStats(): UnitTypeStats {
   return {
-    enemyDamageDealt: 0, enemyKills: 0,
+    enemyDamageDealt: 0, enemyDamageReceived: 0, enemyKills: 0,
     friendlyDamageDealt: 0, friendlyKills: 0,
     unitsProduced: 0, unitsLost: 0, totalCostSpent: 0,
   };
@@ -66,6 +67,15 @@ export class CombatStatsTracker {
     return this.entityRegistry.get(sourceEntityId) ?? null;
   }
 
+  /** Look up target entity's player and unit type, falling back to registry for dead units. */
+  private resolveTarget(targetEntityId: EntityId): { playerId: PlayerId; unitType: string } | null {
+    const entity = this.world.getEntity(targetEntityId);
+    if (entity?.unit?.unitType && entity.ownership) {
+      return { playerId: entity.ownership.playerId, unitType: entity.unit.unitType };
+    }
+    return this.entityRegistry.get(targetEntityId) ?? null;
+  }
+
   private isFriendly(sourcePlayerId: PlayerId, targetEntityId: EntityId): boolean {
     const target = this.world.getEntity(targetEntityId);
     return target?.ownership?.playerId === sourcePlayerId;
@@ -96,6 +106,12 @@ export class CombatStatsTracker {
       stats.friendlyDamageDealt += damageAmount;
     } else {
       stats.enemyDamageDealt += damageAmount;
+      // Also record damage received on the target side
+      const target = this.resolveTarget(targetEntityId);
+      if (target) {
+        const targetStats = this.getOrCreate(target.playerId, target.unitType);
+        targetStats.enemyDamageReceived += damageAmount;
+      }
     }
   }
 
@@ -146,6 +162,7 @@ export class CombatStatsTracker {
           playerRecord[unitType] = copy;
         }
         copy.enemyDamageDealt = stats.enemyDamageDealt;
+        copy.enemyDamageReceived = stats.enemyDamageReceived;
         copy.enemyKills = stats.enemyKills;
         copy.friendlyDamageDealt = stats.friendlyDamageDealt;
         copy.friendlyKills = stats.friendlyKills;
@@ -160,6 +177,7 @@ export class CombatStatsTracker {
           globalMap.set(unitType, g);
         }
         g.enemyDamageDealt += stats.enemyDamageDealt;
+        g.enemyDamageReceived += stats.enemyDamageReceived;
         g.enemyKills += stats.enemyKills;
         g.friendlyDamageDealt += stats.friendlyDamageDealt;
         g.friendlyKills += stats.friendlyKills;
