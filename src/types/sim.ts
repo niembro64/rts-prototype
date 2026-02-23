@@ -296,7 +296,7 @@ export type DGunProjectile = {
 };
 
 // Entity type discriminator
-export type EntityType = 'unit' | 'building' | 'projectile';
+export type EntityType = 'unit' | 'building' | 'shot';
 
 // Full entity data
 export type Entity = {

@@ -188,7 +188,7 @@ export class ClientViewState {
         this._serverIds.add(netEntity.id);
       }
       for (const [id, entity] of this.entities) {
-        if (entity.type === 'projectile') continue;
+        if (entity.type === 'shot') continue;
         if (!this._serverIds.has(id)) {
           this.entities.delete(id);
           this.serverTargets.delete(id);
@@ -469,7 +469,7 @@ export class ClientViewState {
         }
       }
 
-      if (entity.type === 'projectile' && entity.projectile) {
+      if (entity.type === 'shot' && entity.projectile) {
         if (entity.projectile.projectileType === 'beam') {
           // Beams: reconstruct from source unit's current position + turret rotation
           // Beam existence is driven by the weapon's isEngaged state (updated every snapshot),
@@ -631,7 +631,7 @@ export class ClientViewState {
 
     const entity: Entity = {
       id: spawn.id,
-      type: 'projectile',
+      type: 'shot',
       transform: { x: spawnX, y: spawnY, rotation: spawn.rotation },
       ownership: { playerId: spawn.playerId },
       projectile: {

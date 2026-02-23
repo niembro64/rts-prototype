@@ -41,7 +41,7 @@ export class EntityCacheManager {
         case 'building':
           this.cachedBuildings.push(entity);
           break;
-        case 'projectile':
+        case 'shot':
           this.cachedProjectiles.push(entity);
           break;
       }

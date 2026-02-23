@@ -147,7 +147,7 @@ export class WorldState {
         return this.getUnits();
       case 'building':
         return this.getBuildings();
-      case 'projectile':
+      case 'shot':
         return this.getProjectiles();
       default:
         return this.getAllEntities().filter((e) => e.type === type);
@@ -519,7 +519,7 @@ export class WorldState {
 
     const entity: Entity = {
       id,
-      type: 'projectile',
+      type: 'shot',
       transform: { x, y, rotation },
       ownership: { playerId: ownerId },
       projectile,

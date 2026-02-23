@@ -1,6 +1,6 @@
 // Network types extracted from game/network/NetworkTypes.ts
 
-import type { PlayerId, TurretRanges } from './sim';
+import type { EntityType, PlayerId, TurretRanges } from './sim';
 import type { Command } from './commands';
 import type { WeaponAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2 } from './vec2';
@@ -161,7 +161,7 @@ export type NetworkWeapon = {
 
 export type NetworkEntity = {
   id: number;
-  type: 'unit' | 'building' | 'projectile';
+  type: EntityType;
   pos: Vec2;
   rotation: number;
   playerId?: PlayerId;

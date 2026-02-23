@@ -18,7 +18,7 @@ export function createEntityFromNetwork(netEntity: NetworkEntity): Entity | null
     return createBuildingFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
   }
 
-  if (type === 'projectile') {
+  if (type === 'shot') {
     return createProjectileFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
   }
 
@@ -176,7 +176,7 @@ function createProjectileFromNetwork(
 ): Entity {
   return {
     id,
-    type: 'projectile',
+    type: 'shot',
     transform: { x, y, rotation },
     projectile: {
       ownerId: playerId ?? 1,

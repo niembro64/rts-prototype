@@ -82,8 +82,8 @@ export class ProjectileEntity {
     this.maxHits = maxHits;
   }
 
-  get entityType(): 'projectile' {
-    return 'projectile';
+  get entityType(): 'shot' {
+    return 'shot';
   }
 
   // Compatibility layer - return a Projectile-like object for legacy code
