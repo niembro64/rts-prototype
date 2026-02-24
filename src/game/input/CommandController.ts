@@ -73,13 +73,6 @@ export class CommandController {
     const commander = this.buildingController.getSelectedCommander();
     if (commander?.ownership) {
       const repairTarget = this.findRepairTarget(worldX, worldY, commander.ownership.playerId);
-      console.log('[Input] Repair target check:', {
-        hasCommander: !!commander,
-        playerId: commander.ownership.playerId,
-        clickPos: { x: worldX, y: worldY },
-        repairTargetFound: !!repairTarget,
-        repairTargetId: repairTarget?.id,
-      });
       if (repairTarget) {
         // Issue repair command
         const command: RepairCommand = {
@@ -89,7 +82,6 @@ export class CommandController {
           targetId: repairTarget.id,
           queue: this.shiftKey.isDown,
         };
-        console.log('[Input] Creating RepairCommand:', command);
         this.commandQueue.enqueue(command);
         return;
       }
@@ -100,7 +92,6 @@ export class CommandController {
     if (selectedUnits.length > 0) {
       const attackTarget = this.findAttackTarget(worldX, worldY, this.context.activePlayerId);
       if (attackTarget) {
-        console.log(`[Input] Attack target found: id=${attackTarget.id} units=${selectedUnits.map(u => u.id).join(',')}`);
         const command: AttackCommand = {
           type: 'attack',
           tick: this.context.getTick(),

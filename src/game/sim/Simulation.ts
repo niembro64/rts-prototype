@@ -557,7 +557,6 @@ export class Simulation {
 
         // Set priority target for turret system
         unit.priorityTargetId = currentAction.targetId;
-        console.log(`[Attack] Unit ${entity.id} priorityTargetId=${currentAction.targetId}`);
 
         // Update action position to target's current location (follow moving target)
         currentAction.x = attackTarget!.transform.x;

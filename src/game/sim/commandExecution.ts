@@ -321,7 +321,6 @@ function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void
 
 function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void {
   const target = ctx.world.getEntity(command.targetId);
-  console.log(`[Cmd] executeAttackCommand: targetId=${command.targetId} found=${!!target} entityIds=${command.entityIds.join(',')}`);
   if (!target) return;
 
   // Target must be alive (unit or building)
