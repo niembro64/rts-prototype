@@ -229,22 +229,6 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     audio: { fireSound: AUDIO.event.fire.forceTurretMedium },
   },
-  disruptorTurret: {
-    id: 'disruptorTurret',
-    projectileId: 'disruptorShot',
-    range: 150,
-    cooldown: 0,
-    launchForce: 7000,
-    turretTurnAccel: 40,
-    turretDrag: 0.15,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.7 },
-    rangeMultiplierOverrides: {
-      tracking: { acquire: null, release: null },
-      engage: { acquire: null, release: null },
-    },
-    color: 0xff8800,
-    audio: { fireSound: AUDIO.event.fire.disruptorTurret },
-  },
   dgunTurret: {
     id: 'dgunTurret',
     projectileId: 'disruptorShot',
