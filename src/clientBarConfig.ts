@@ -22,8 +22,12 @@ import type {
   ProjRangeType,
   UnitRadiusType,
 } from './types/client';
-import { PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL } from '@/lodConfig';
-import { ZOOM_MIN, ZOOM_MAX } from './config';
+import {
+  PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
+  LOD_RATIO_THRESHOLDS,
+  LOD_HYSTERESIS,
+  LOD_ZOOM_THRESHOLDS,
+} from '@/lodConfig';
 
 export const CLIENT_CONFIG = {
   graphics: {
@@ -198,13 +202,6 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   },
 };
 
-// ── Auto-zoom thresholds ──
-const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
-const _autoZoomLow = ZOOM_MIN * Math.pow(_zoomRatio, 1 / 5);
-const _autoZoomMedium = ZOOM_MIN * Math.pow(_zoomRatio, 2 / 5);
-const _autoZoomHigh = ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5);
-const _autoZoomMax = ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5);
-
 // ── localStorage keys (module-private) ──
 const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
@@ -257,6 +254,9 @@ let currentBottomBarsHeight: number = 0;
 let currentZoom: number = 1.0;
 let currentTpsRatio: number = 1.0;
 let currentFpsRatio: number = 1.0;
+let prevZoomRank: number = 4;
+let prevTpsRank: number = 4;
+let prevFpsRank: number = 4;
 
 // ── Load from localStorage on module init ──
 function loadFromStorage(): void {
@@ -396,45 +396,61 @@ export function setCurrentFpsRatio(ratio: number): void {
   currentFpsRatio = ratio;
 }
 
-const QUALITY_RANK: Record<ConcreteGraphicsQuality, number> = {
-  min: 0, low: 1, medium: 2, high: 3, max: 4,
-};
 const RANK_TO_QUALITY: ConcreteGraphicsQuality[] = [
   'min', 'low', 'medium', 'high', 'max',
 ];
 
-function ratioToQuality(ratio: number): ConcreteGraphicsQuality {
-  if (ratio >= 0.8) return 'max';
-  if (ratio >= 0.6) return 'high';
-  if (ratio >= 0.4) return 'medium';
-  if (ratio >= 0.2) return 'low';
-  return 'min';
+const T = LOD_RATIO_THRESHOLDS;
+const RATIO_THRESHOLDS = [T.low, T.medium, T.high, T.max];
+
+const Z = LOD_ZOOM_THRESHOLDS;
+const ZOOM_THRESHOLDS = [Z.low, Z.medium, Z.high, Z.max];
+
+function ratioToRank(
+  ratio: number,
+  prevRank: number,
+  hysteresis: number,
+): number {
+  let rank = 0;
+  for (let i = 0; i < RATIO_THRESHOLDS.length; i++) {
+    const threshold = RATIO_THRESHOLDS[i];
+    const effectiveThreshold = i + 1 > prevRank
+      ? threshold + hysteresis
+      : threshold - hysteresis;
+    if (ratio >= effectiveThreshold) rank = i + 1;
+  }
+  return rank;
 }
 
-function zoomToQuality(): ConcreteGraphicsQuality {
-  if (currentZoom >= _autoZoomMax) return 'max';
-  if (currentZoom >= _autoZoomHigh) return 'high';
-  if (currentZoom >= _autoZoomMedium) return 'medium';
-  if (currentZoom >= _autoZoomLow) return 'low';
-  return 'min';
+function zoomToRank(prevRank: number): number {
+  const h = LOD_HYSTERESIS.zoom;
+  let rank = 0;
+  for (let i = 0; i < ZOOM_THRESHOLDS.length; i++) {
+    const threshold = ZOOM_THRESHOLDS[i];
+    const ratio = currentZoom / threshold;
+    const effectiveRatio = i + 1 > prevRank ? 1 + h : 1 - h;
+    if (ratio >= effectiveRatio) rank = i + 1;
+  }
+  return rank;
 }
 
 export function getEffectiveQuality(): ConcreteGraphicsQuality {
   switch (currentQuality) {
     case 'auto': {
-      const rank = Math.min(
-        QUALITY_RANK[zoomToQuality()],
-        QUALITY_RANK[ratioToQuality(currentTpsRatio)],
-        QUALITY_RANK[ratioToQuality(currentFpsRatio)],
-      );
-      return RANK_TO_QUALITY[rank];
+      prevZoomRank = zoomToRank(prevZoomRank);
+      prevTpsRank = ratioToRank(currentTpsRatio, prevTpsRank, LOD_HYSTERESIS.tps);
+      prevFpsRank = ratioToRank(currentFpsRatio, prevFpsRank, LOD_HYSTERESIS.fps);
+      return RANK_TO_QUALITY[Math.min(prevZoomRank, prevTpsRank, prevFpsRank)];
     }
     case 'auto-zoom':
-      return zoomToQuality();
+      prevZoomRank = zoomToRank(prevZoomRank);
+      return RANK_TO_QUALITY[prevZoomRank];
     case 'auto-tps':
-      return ratioToQuality(currentTpsRatio);
+      prevTpsRank = ratioToRank(currentTpsRatio, prevTpsRank, LOD_HYSTERESIS.tps);
+      return RANK_TO_QUALITY[prevTpsRank];
     case 'auto-fps':
-      return ratioToQuality(currentFpsRatio);
+      prevFpsRank = ratioToRank(currentFpsRatio, prevFpsRank, LOD_HYSTERESIS.fps);
+      return RANK_TO_QUALITY[prevFpsRank];
     case 'min':
     case 'low':
     case 'medium':

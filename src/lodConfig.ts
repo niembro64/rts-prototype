@@ -1,3 +1,37 @@
+import { ZOOM_MIN, ZOOM_MAX } from './config';
+
+// =============================================================================
+// LOD AUTO-MODE CONFIG
+// =============================================================================
+
+// Ratio thresholds dividing 0–1 into 5 quality zones.
+// ratio >= max → 'max', >= high → 'high', … < low → 'min'
+export const LOD_RATIO_THRESHOLDS = {
+  low: 0.2,
+  medium: 0.4,
+  high: 0.6,
+  max: 0.8,
+} as const;
+
+// Hysteresis band applied to each threshold.
+// When upgrading quality, ratio must exceed threshold + hysteresis.
+// When downgrading, ratio must drop below threshold − hysteresis.
+export const LOD_HYSTERESIS = {
+  zoom: 0.04,
+  tps: 0.05,
+  fps: 0.05,
+} as const;
+
+// Auto-zoom thresholds — logarithmic spacing between ZOOM_MIN and ZOOM_MAX.
+// Produces 4 breakpoints dividing the zoom range into 5 quality zones.
+const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
+export const LOD_ZOOM_THRESHOLDS = {
+  low: ZOOM_MIN * Math.pow(_zoomRatio, 1 / 5),
+  medium: ZOOM_MIN * Math.pow(_zoomRatio, 2 / 5),
+  high: ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5),
+  max: ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5),
+} as const;
+
 // =============================================================================
 // GRAPHICS DETAIL DEFINITIONS
 // =============================================================================
@@ -5,9 +39,6 @@
 /**
  * Centralized graphics detail level configuration.
  * Each key defines what happens at each detail level: min, low, medium, high, max.
- *
- * Auto-quality zoom thresholds are computed from ZOOM_MIN/ZOOM_MAX using
- * logarithmic spacing (see clientConfig.ts getEffectiveQuality).
  */
 export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // Unit body shape rendering
