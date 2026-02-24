@@ -17,17 +17,15 @@ function generateBeamShots(): Record<string, BeamShotBlueprint> {
     const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
     const baseDps = 2 + 28 * p;
     const beamRadius = 2 + 18 * p;
-    const beamForce = baseDps * 25000;
-    const mass = 0.01 + 0.09 * p;
-    const launchForce = 1000; // from turret blueprint
-    const recoil = mass * launchForce;
+    const beamForce = baseDps * 2000;
+    const recoil = p * 10000;
 
     result[`beamShot${i}`] = {
       type: 'beam',
       id: `beamShot${i}`,
       dps: baseDps,
       force: beamForce,
-      recoil,
+      recoil: recoil,
       radius: beamRadius,
       width: Math.max(1, Math.round(1 + 9 * p)),
       hitSound: AUDIO.event.hit[`beamShot${i}`],
