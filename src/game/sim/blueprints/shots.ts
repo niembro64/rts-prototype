@@ -89,18 +89,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     lifespan: 2300,
     hitSound: AUDIO.event.hit.mortarShot,
   },
-  laserShot: {
-    type: 'laser',
-    id: 'laserShot',
-    dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
-    force: 2500,
-    recoil: 2000, // mass * launchForce
-    radius: 3,
-    width: 2,
-    duration: 300,
-    hitSound: AUDIO.event.hit.laserShot,
-  },
-  ...generateBeamShots(),
   disruptorShot: {
     type: 'projectile',
     id: 'disruptorShot',
@@ -114,6 +102,18 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,
   },
+  laserShot: {
+    type: 'laser',
+    id: 'laserShot',
+    dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
+    force: 2500,
+    recoil: 2000, // mass * launchForce
+    radius: 3,
+    width: 2,
+    duration: 300,
+    hitSound: AUDIO.event.hit.laserShot,
+  },
+  ...generateBeamShots(),
 };
 
 export function getShotBlueprint(id: string): ShotBlueprint {
