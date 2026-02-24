@@ -197,9 +197,9 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // 'normal': fill + particles, 'enhanced': fill + dense particles + wavy arcs
   FORCE_FIELD_STYLE: {
     min: 'minimal',
-    low: 'simple',
+    low: 'minimal',
     medium: 'simple',
     high: 'normal',
-    max: 'normal',
+    max: 'enhanced',
   },
 } as const;
