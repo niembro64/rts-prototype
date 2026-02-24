@@ -1373,7 +1373,7 @@ onUnmounted(() => {
             title="Click to reset server settings to defaults"
             @click="resetServerDefaults"
           >
-            <span class="bar-label-text">SERVER</span
+            <span class="bar-label-text">HOST SERVER</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
         </div>
@@ -1424,7 +1424,7 @@ onUnmounted(() => {
                   <div
                     class="stat-bar-fill"
                     :style="
-                      statBarStyle(displayServerTpsAvg, 60, serverBarReadonly)
+                      statBarStyle(displayServerTpsAvg, displayTickRate, serverBarReadonly)
                     "
                   ></div>
                 </div>
@@ -1440,7 +1440,7 @@ onUnmounted(() => {
                   <div
                     class="stat-bar-fill"
                     :style="
-                      statBarStyle(displayServerTpsWorst, 60, serverBarReadonly)
+                      statBarStyle(displayServerTpsWorst, displayTickRate, serverBarReadonly)
                     "
                   ></div>
                 </div>
@@ -1513,7 +1513,7 @@ onUnmounted(() => {
             title="Click to reset client settings to defaults"
             @click="resetClientDefaults"
           >
-            <span class="bar-label-text">CLIENT</span
+            <span class="bar-label-text">PLAYER CLIENT</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
         </div>
