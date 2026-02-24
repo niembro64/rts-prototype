@@ -12,19 +12,18 @@ import type { ShotBlueprint, BeamShotBlueprint } from './types';
 // Index 0 = most powerful (lowest pitch, biggest beam), index 13 = weakest (highest pitch, smallest)
 function generateBeamShots(): Record<string, BeamShotBlueprint> {
   const result: Record<string, BeamShotBlueprint> = {};
+  const maxI = harmonicSeries.length - 1;
   for (let i = 0; i < harmonicSeries.length; i++) {
-    const baseDps = 25;
-    const beamRadius = 8;
-    const beamForce = 2000;
-    const recoil = 10000;
+    const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
+    const dps = Math.round(20 + 60 * p);
 
     result[`beamShot${i}`] = {
       type: 'beam',
       id: `beamShot${i}`,
-      dps: baseDps,
-      force: beamForce,
-      recoil: recoil,
-      radius: beamRadius,
+      dps,
+      force: 2000,
+      recoil: 10000,
+      radius: 8,
       width: 5,
       hitSound: AUDIO.event.hit[`beamShot${i}`],
     };
@@ -50,10 +49,10 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     type: 'projectile',
     id: 'mediumShot',
     mass: 8,
-    collision: { radius: 2.2, damage: 4 },
+    collision: { radius: 2.2, damage: 6 },
     explosion: {
-      primary: { radius: 8, damage: 4, force: 1000 },
-      secondary: { radius: 15, damage: 0.8, force: 200 },
+      primary: { radius: 8, damage: 6, force: 1500 },
+      secondary: { radius: 15, damage: 1.2, force: 300 },
     },
     splashOnExpiry: false,
     lifespan: 1000,
@@ -63,10 +62,10 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     type: 'projectile',
     id: 'heavyShot',
     mass: 30.0,
-    collision: { radius: 4, damage: 60 },
+    collision: { radius: 4, damage: 80 },
     explosion: {
-      primary: { radius: 25, damage: 260, force: 65000 },
-      secondary: { radius: 45, damage: 52, force: 13000 },
+      primary: { radius: 25, damage: 350, force: 87500 },
+      secondary: { radius: 45, damage: 70, force: 17500 },
     },
     splashOnExpiry: true,
     lifespan: 1400,
@@ -97,6 +96,19 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     splashOnExpiry: true,
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,
+  },
+  hippoShot: {
+    type: 'projectile',
+    id: 'hippoShot',
+    mass: 6,
+    collision: { radius: 2.5, damage: 20 },
+    explosion: {
+      primary: { radius: 8, damage: 20, force: 1200 },
+      secondary: { radius: 12, damage: 5, force: 250 },
+    },
+    splashOnExpiry: false,
+    lifespan: 1000,
+    hitSound: AUDIO.event.hit.hippoShot,
   },
   laserShot: {
     type: 'laser',
