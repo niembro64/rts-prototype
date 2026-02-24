@@ -544,7 +544,7 @@ export class Simulation {
         if (turrets && turrets.length > 0) {
           let engagedCount = 0;
           for (let i = 0; i < turrets.length; i++) {
-            if (turrets[i].engaged) engagedCount++;
+            if (turrets[i].state === 'engaged') engagedCount++;
           }
           if (engagedCount > turrets.length / 2) {
             // Majority of turrets are engaged — stop and fight

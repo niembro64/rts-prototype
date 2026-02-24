@@ -12,13 +12,15 @@ const _batchedEnemies: Entity[] = [];
 // Update auto-targeting and firing state for all units in a single pass.
 // Each weapon independently finds its own target using its own ranges.
 //
-// Two-state hysteresis system:
-//   isTracking: turret has a target and is aimed at it
+// Three-state FSM with hysteresis:
+//   idle: no target
+//   tracking: turret has a target and is aimed at it
 //     - acquire: nearest enemy enters tracking.acquire range
-//     - release: tracked target exits tracking.release range (or dies)
-//   isEngaged: weapon is actively firing
-//     - acquire: tracked target enters engage.acquire range
-//     - release: tracked target exits engage.release range
+//     - release: tracked target exits tracking.release range (or dies) → idle
+//     - promote: tracked target enters engage.acquire → engaged
+//   engaged: weapon is actively firing
+//     - release: target exits engage.release → tracking
+//     - escape: target exits tracking.release → idle
 //
 // Hysteresis (acquire < release) prevents state flickering at boundaries.
 //
@@ -37,8 +39,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     for (const weapon of weapons) {
       // Skip manual-fire weapons (e.g., dgun) — they only fire on explicit command
       if (weapon.config.isManualFire) {
-        weapon.tracking = false;
-        weapon.engaged = false;
+        weapon.state = 'idle';
         continue;
       }
 
@@ -49,7 +50,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       weapon.worldPos.x = wp.x;
       weapon.worldPos.y = wp.y;
 
-      // Step 1: Validate current target with hysteresis
+      // Step 1: Validate current target with hysteresis FSM
       if (weapon.target !== null) {
         const target = world.getEntity(weapon.target);
         let targetIsValid = false;
@@ -60,31 +61,33 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         if (!targetIsValid || !target) {
           // Target dead or gone — drop everything
           weapon.target = null;
-          weapon.tracking = false;
-          weapon.engaged = false;
+          weapon.state = 'idle';
         } else {
           const r = weapon.ranges;
           const dist = distance(weapon.worldPos!.x, weapon.worldPos!.y, target.transform.x, target.transform.y);
 
-          // Tracking hysteresis: drop when target exits tracking.release
-          if (dist > r.tracking.release + targetRadius) {
-            weapon.target = null;
-            weapon.tracking = false;
-            weapon.engaged = false;
-          } else {
-            // Target still within tracking release — maintain tracking
-            weapon.tracking = true;
-
-            // Engage hysteresis
-            if (weapon.engaged) {
-              if (dist > r.engage.release + targetRadius) {
-                weapon.engaged = false;
+          switch (weapon.state) {
+            case 'idle':
+              // Shouldn't have a target while idle — treat as new acquisition
+              break;
+            case 'tracking':
+              if (dist > r.tracking.release + targetRadius) {
+                weapon.target = null;
+                weapon.state = 'idle';
+              } else if (dist <= r.engage.acquire + targetRadius) {
+                weapon.state = 'engaged';
               }
-            } else {
-              if (dist <= r.engage.acquire + targetRadius) {
-                weapon.engaged = true;
+              break;
+            case 'engaged':
+              if (dist > r.tracking.release + targetRadius) {
+                weapon.target = null;
+                weapon.state = 'idle';
+              } else if (dist > r.engage.release + targetRadius) {
+                weapon.state = 'tracking';
               }
-            }
+              break;
+            default:
+              throw new Error(`Unknown turret state: ${weapon.state}`);
           }
         }
       }
@@ -147,14 +150,12 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       // Step 3: Assign new target
       if (closestEnemy) {
         weapon.target = closestEnemy.id;
-        weapon.tracking = true;
         const targetRadius = closestEnemy.unit ? closestEnemy.unit.radiusColliderUnitShot
           : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
-        weapon.engaged = closestDist <= r.engage.acquire + targetRadius;
+        weapon.state = closestDist <= r.engage.acquire + targetRadius ? 'engaged' : 'tracking';
       } else {
         weapon.target = null;
-        weapon.tracking = false;
-        weapon.engaged = false;
+        weapon.state = 'idle';
       }
     }
   }

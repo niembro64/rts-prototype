@@ -27,7 +27,7 @@ function createPooledTurret(): NetworkServerSnapshotTurret {
       pos: { offset: { x: 0, y: 0 } },
     },
     targetId: undefined,
-    isTracking: false, isEngaged: false,
+    state: 'idle',
     currentForceFieldRange: undefined,
   };
 }
@@ -198,7 +198,7 @@ function hasEntityChanged(entity: Entity, prev: PrevEntityState): boolean {
       let targetBits = 0;
       for (let i = 0; i < entity.turrets.length; i++) {
         const w = entity.turrets[i];
-        if (w.engaged) isEngagedBits |= (1 << i);
+        if (w.state === 'engaged') isEngagedBits |= (1 << i);
         if (w.target) targetBits |= (1 << i);
         if (Math.abs(w.rotation - prev.turretRots[i]) > rotTh) return true;
         if (Math.abs(w.angularVelocity - prev.turretAngVels[i]) > velTh) return true;
@@ -243,7 +243,7 @@ function updatePrevState(entity: Entity, prev: PrevEntityState): void {
     }
     for (let i = 0; i < entity.turrets.length; i++) {
       const w = entity.turrets[i];
-      if (w.engaged) prev.isEngagedBits |= (1 << i);
+      if (w.state === 'engaged') prev.isEngagedBits |= (1 << i);
       if (w.target) prev.targetBits |= (1 << i);
       prev.turretRots[i] = w.rotation;
       prev.turretAngVels[i] = w.angularVelocity;
@@ -607,8 +607,7 @@ function serializeEntity(entity: Entity): NetworkServerSnapshotEntity | null {
         t.pos.offset.x = src.offset.x;
         t.pos.offset.y = src.offset.y;
         dst.targetId = src.target ?? undefined;
-        dst.isTracking = src.tracking;
-        dst.isEngaged = src.engaged;
+        dst.state = src.state;
         dst.currentForceFieldRange = src.forceField?.range;
       }
       u.turrets = pool.turrets;

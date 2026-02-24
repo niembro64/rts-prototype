@@ -323,8 +323,7 @@ export class ClientViewState {
           i++
         ) {
           entity.turrets[i].target = su.turrets[i].targetId ?? null;
-          entity.turrets[i].tracking = su.turrets[i].isTracking;
-          entity.turrets[i].engaged = su.turrets[i].isEngaged;
+          entity.turrets[i].state = su.turrets[i].state;
           // forceField.range is NOT snapped — dead-reckoned + drifted in applyPrediction()
         }
       }
@@ -437,7 +436,7 @@ export class ClientViewState {
             if (weapon.config.shot.type === 'force') {
               const fieldShot = weapon.config.shot;
               const cur = weapon.forceField?.range ?? 0;
-              const targetProgress = weapon.engaged ? 1 : 0;
+              const targetProgress = weapon.state === 'engaged' ? 1 : 0;
               const progressDelta =
                 dt / (fieldShot.transitionTime / 1000);
               let next = cur;
@@ -464,13 +463,13 @@ export class ClientViewState {
       if (entity.type === 'shot' && entity.projectile) {
         if (entity.projectile.projectileType === 'beam' || entity.projectile.projectileType === 'laser') {
           // Beams: reconstruct from source unit's current position + turret rotation
-          // Beam existence is driven by the weapon's isEngaged state (updated every snapshot),
+          // Beam existence is driven by the weapon's state (updated every snapshot),
           // so lost despawn events self-correct on the next snapshot.
           const weaponIndex = entity.projectile.config.turretIndex ?? 0;
           const source = this.entities.get(entity.projectile.sourceEntityId);
           const weapon = source?.turrets?.[weaponIndex];
 
-          if (source && weapon && weapon.engaged) {
+          if (source && weapon && weapon.state === 'engaged') {
             const turretAngle = weapon.rotation;
             const dirX = Math.cos(turretAngle);
             const dirY = Math.sin(turretAngle);

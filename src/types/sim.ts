@@ -198,14 +198,16 @@ export type TurretConfig = {
   turretIndex?: number;
 };
 
+// Turret FSM state: idle → tracking → engaged
+export type TurretState = 'idle' | 'tracking' | 'engaged';
+
 // Runtime turret instance (per-weapon state on a unit)
 export type Turret = {
   config: TurretConfig;
   cooldown: number;
   target: EntityId | null;
   ranges: TurretRanges;
-  tracking: boolean;
-  engaged: boolean;
+  state: TurretState;
   rotation: number;
   angularVelocity: number;
   turnAccel: number;

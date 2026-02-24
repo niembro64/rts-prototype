@@ -76,7 +76,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const isBeamWeapon = isLineShot(shot);
 
       // Skip if weapon is not engaged (target not in range or no target)
-      if (!weapon.engaged) continue;
+      if (weapon.state !== 'engaged') continue;
 
       // Apply beam recoil any time the weapon is firing
       if (isBeamWeapon && forceAccumulator && (shot as BeamShot | LaserShot).recoil) {
@@ -91,7 +91,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const target = world.getEntity(weapon.target!);
       if (!target) {
         weapon.target = null;
-        weapon.engaged = false;
+        weapon.state = 'idle';
         continue;
       }
 
@@ -361,7 +361,7 @@ export function updateProjectiles(
         // Continuous beams: stay alive while firing, remove immediately when not
         const isContinuous = proj.config.shot.type === 'beam';
         if (isContinuous) {
-          if (weapon.engaged) {
+          if (weapon.state === 'engaged') {
             proj.timeAlive = 0;
           } else {
             // Remove immediately — no linger time
@@ -574,7 +574,7 @@ export function checkProjectileCollisions(
       emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, beamShot.radius, audioEvents);
       collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
-      // Note: beam recoil is applied in fireTurrets() based on weapon.engaged state
+      // Note: beam recoil is applied in fireTurrets() based on weapon.state
     } else {
       // Traveling projectiles use swept volume collision (prevents tunneling)
       const projShot = config.shot as ProjectileShot;

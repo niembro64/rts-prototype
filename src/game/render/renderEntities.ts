@@ -186,7 +186,7 @@ export class EntityRenderer {
       }
 
       // Check if any weapon is firing
-      const firing = entity.turrets.some((w) => w.engaged);
+      const firing = entity.turrets.some((w) => w.state === 'engaged');
 
       if (firing) {
         state.speed = Math.min(

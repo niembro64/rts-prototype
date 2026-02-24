@@ -33,6 +33,7 @@ export type {
   ForceShot,
   ShotConfig,
   TurretConfig,
+  TurretState,
   Turret,
   ProjectileType,
   Projectile,

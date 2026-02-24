@@ -1,6 +1,6 @@
 // Network types extracted from game/network/NetworkTypes.ts
 
-import type { EntityType, PlayerId, TurretRanges } from './sim';
+import type { EntityType, PlayerId, TurretRanges, TurretState } from './sim';
 import type { Command } from './commands';
 import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2 } from './vec2';
@@ -144,8 +144,7 @@ export type NetworkServerSnapshotTurret = {
     };
   };
   targetId?: number;
-  isTracking: boolean;
-  isEngaged: boolean;
+  state: TurretState;
   currentForceFieldRange?: number;
 };
 
