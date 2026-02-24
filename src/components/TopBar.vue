@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { fmt4, fmtSigned } from './uiUtils';
+import { fmtSigned, signedColor } from './uiUtils';
 
 export type { EconomyInfo } from '@/types/ui';
 import type { EconomyInfo } from '@/types/ui';
@@ -22,12 +22,6 @@ const stockpileColor = computed(() => {
   return '#ff4444';
 });
 
-const netFlowColor = computed(() => {
-  if (props.economy.netFlow > 0) return '#00ff88';
-  if (props.economy.netFlow < 0) return '#ff4444';
-  return '#888888';
-});
-
 const unitCapColor = computed(() => {
   const pct = (props.economy.units.count / props.economy.units.cap) * 100;
   if (pct >= 100) return '#ff4444';
@@ -39,7 +33,7 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
 </script>
 
 <template>
-  <div class="top-bar">
+  <div class="top-bar" :style="{ '--player-color': playerColor }">
     <!-- Player indicator -->
     <div class="player-section">
       <span class="player-dot" :style="{ backgroundColor: playerColor }"></span>
@@ -51,7 +45,7 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
       <div class="stat-label">Energy</div>
       <div class="stat-value">
         <span class="energy-icon">⚡</span>
-        <span :style="{ color: stockpileColor }">{{ fmt4(Math.floor(economy.stockpile.curr)) }}</span>
+        <span :style="{ color: stockpileColor }">{{ fmtSigned(economy.stockpile.curr) }}</span>
         <span class="max-value">/ {{ economy.stockpile.max }}</span>
       </div>
       <div class="stockpile-bar">
@@ -66,10 +60,12 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
     <div class="economy-section">
       <div class="stat-label">Income</div>
       <div class="stat-value income">
-        <span class="positive">{{ fmtSigned(economy.income.total) }}/s</span>
+        <span :style="{ color: signedColor(economy.income.total) }">{{ fmtSigned(economy.income.total) }}/s</span>
       </div>
       <div class="stat-detail">
-        Base: {{ fmtSigned(economy.income.base) }} | Solar: {{ fmtSigned(economy.income.production) }}
+        <span :style="{ color: signedColor(economy.income.base) }">Base: {{ fmtSigned(economy.income.base) }}</span>
+        |
+        <span :style="{ color: signedColor(economy.income.production) }">Solar: {{ fmtSigned(economy.income.production) }}</span>
       </div>
     </div>
 
@@ -77,7 +73,7 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
     <div class="economy-section">
       <div class="stat-label">Spending</div>
       <div class="stat-value expenditure">
-        <span :class="economy.expenditure > 0 ? 'negative' : 'neutral'">
+        <span :style="{ color: signedColor(-economy.expenditure) }">
           {{ fmtSigned(-economy.expenditure) }}/s
         </span>
       </div>
@@ -86,7 +82,7 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
     <!-- Net flow -->
     <div class="economy-section">
       <div class="stat-label">Net</div>
-      <div class="stat-value net-flow" :style="{ color: netFlowColor }">
+      <div class="stat-value net-flow" :style="{ color: signedColor(economy.netFlow) }">
         {{ fmtSigned(economy.netFlow) }}/s
       </div>
     </div>
@@ -122,8 +118,10 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
   left: 0;
   right: 0;
   height: 50px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.7) 100%);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--player-color) 15%, transparent) 0%, transparent 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.7) 100%);
+  border-bottom: 2px solid var(--player-color);
   display: flex;
   align-items: center;
   padding: 0 16px;
@@ -139,7 +137,7 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
   align-items: center;
   gap: 8px;
   padding-right: 16px;
-  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  border-right: 1px solid color-mix(in srgb, var(--player-color) 40%, transparent);
 }
 
 .player-dot {
@@ -163,7 +161,7 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
 
 .stat-label {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--player-color) 50%, rgba(255, 255, 255, 0.5));
   text-transform: uppercase;
 }
 
@@ -206,18 +204,6 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
 .stockpile-fill {
   height: 100%;
   transition: width 0.2s ease, background-color 0.3s ease;
-}
-
-.positive {
-  color: #00ff88;
-}
-
-.negative {
-  color: #ff4444;
-}
-
-.neutral {
-  color: #888888;
 }
 
 .buildings {

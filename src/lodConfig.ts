@@ -1,6 +1,6 @@
 import { ZOOM_MIN, ZOOM_MAX } from './config';
 import type {
-  LodThresholds,
+  LodAutoModeConfig,
   LodHysteresis,
   LodEmaSource,
   GraphicsDetailConfig,
@@ -10,13 +10,30 @@ import type {
 // LOD AUTO-MODE CONFIG
 // =============================================================================
 
-// Ratio thresholds dividing 0–1 into 5 quality zones.
+// Per-mode thresholds dividing the 0–1 ratio into 5 quality zones.
 // ratio >= max → 'max', >= high → 'high', … < low → 'min'
-export const LOD_RATIO_THRESHOLDS: LodThresholds = {
-  low: 0.2,
-  medium: 0.4,
-  high: 0.6,
-  max: 0.8,
+// Zoom thresholds are absolute zoom values (logarithmic spacing between ZOOM_MIN/ZOOM_MAX).
+// TPS/FPS thresholds are performance ratios (actual / target).
+const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
+export const LOD_THRESHOLDS: LodAutoModeConfig = {
+  zoom: {
+    low: ZOOM_MIN * Math.pow(_zoomRatio, 1 / 5),
+    medium: ZOOM_MIN * Math.pow(_zoomRatio, 2 / 5),
+    high: ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5),
+    max: ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5),
+  },
+  tps: {
+    low: 0.05,
+    medium: 0.1,
+    high: 0.6,
+    max: 0.8,
+  },
+  fps: {
+    low: 0.2,
+    medium: 0.4,
+    high: 0.6,
+    max: 0.8,
+  },
 };
 
 // Hysteresis band applied to each threshold.
@@ -32,16 +49,6 @@ export const LOD_HYSTERESIS: LodHysteresis = {
 export const LOD_EMA_SOURCE: LodEmaSource = {
   tps: 'low',
   fps: 'low',
-};
-
-// Auto-zoom thresholds — logarithmic spacing between ZOOM_MIN and ZOOM_MAX.
-// Produces 4 breakpoints dividing the zoom range into 5 quality zones.
-const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
-export const LOD_ZOOM_THRESHOLDS: LodThresholds = {
-  low: ZOOM_MIN * Math.pow(_zoomRatio, 1 / 5),
-  medium: ZOOM_MIN * Math.pow(_zoomRatio, 2 / 5),
-  high: ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5),
-  max: ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5),
 };
 
 // =============================================================================

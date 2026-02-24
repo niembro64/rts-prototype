@@ -17,6 +17,12 @@ export type LodTierMap<T> = Record<ConcreteGraphicsQuality, T>;
 
 export type LodThresholds = Record<Exclude<ConcreteGraphicsQuality, 'min'>, number>;
 
+export type LodAutoModeConfig = {
+  zoom: LodThresholds;
+  tps: LodThresholds;
+  fps: LodThresholds;
+};
+
 export type LodHysteresis = {
   zoom: number;
   tps: number;

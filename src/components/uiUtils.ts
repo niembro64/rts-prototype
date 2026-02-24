@@ -24,6 +24,13 @@ export function fmtSigned(n: number): string {
   return sign + fmt4(Math.abs(n));
 }
 
+/** Color for a signed value: gray when near-zero (|n| < 1), green when positive, red when negative. */
+export function signedColor(n: number): string {
+  if (Math.abs(n) < 1) return '#888888';
+  if (n > 0) return '#00ff88';
+  return '#ff4444';
+}
+
 /**
  * Generate a width + background-color style for a stat bar.
  * Green at target, yellow at half, red at zero, blue above target.

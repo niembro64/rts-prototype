@@ -24,9 +24,8 @@ import type {
 } from './types/client';
 import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
-  LOD_RATIO_THRESHOLDS,
+  LOD_THRESHOLDS,
   LOD_HYSTERESIS,
-  LOD_ZOOM_THRESHOLDS,
 } from '@/lodConfig';
 
 export const CLIENT_CONFIG = {
@@ -409,20 +408,23 @@ const RANK_TO_QUALITY: ConcreteGraphicsQuality[] = [
   'min', 'low', 'medium', 'high', 'max',
 ];
 
-const T = LOD_RATIO_THRESHOLDS;
-const RATIO_THRESHOLDS = [T.low, T.medium, T.high, T.max];
+function toArray(t: { low: number; medium: number; high: number; max: number }): number[] {
+  return [t.low, t.medium, t.high, t.max];
+}
 
-const Z = LOD_ZOOM_THRESHOLDS;
-const ZOOM_THRESHOLDS = [Z.low, Z.medium, Z.high, Z.max];
+const ZOOM_THRESHOLDS = toArray(LOD_THRESHOLDS.zoom);
+const TPS_THRESHOLDS = toArray(LOD_THRESHOLDS.tps);
+const FPS_THRESHOLDS = toArray(LOD_THRESHOLDS.fps);
 
 function ratioToRank(
   ratio: number,
+  thresholds: number[],
   prevRank: number,
   hysteresis: number,
 ): number {
   let rank = 0;
-  for (let i = 0; i < RATIO_THRESHOLDS.length; i++) {
-    const threshold = RATIO_THRESHOLDS[i];
+  for (let i = 0; i < thresholds.length; i++) {
+    const threshold = thresholds[i];
     const effectiveThreshold = i + 1 > prevRank
       ? threshold + hysteresis
       : threshold - hysteresis;
@@ -447,9 +449,9 @@ export function getEffectiveQuality(): ConcreteGraphicsQuality {
   switch (currentQuality) {
     case 'auto': {
       prevZoomRank = zoomToRank(prevZoomRank);
-      prevFpsRank = ratioToRank(currentFpsRatio, prevFpsRank, LOD_HYSTERESIS.fps);
+      prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
       if (localServerRunning) {
-        prevTpsRank = ratioToRank(currentTpsRatio, prevTpsRank, LOD_HYSTERESIS.tps);
+        prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
         return RANK_TO_QUALITY[Math.min(prevZoomRank, prevTpsRank, prevFpsRank)];
       }
       return RANK_TO_QUALITY[Math.min(prevZoomRank, prevFpsRank)];
@@ -458,10 +460,10 @@ export function getEffectiveQuality(): ConcreteGraphicsQuality {
       prevZoomRank = zoomToRank(prevZoomRank);
       return RANK_TO_QUALITY[prevZoomRank];
     case 'auto-tps':
-      prevTpsRank = ratioToRank(currentTpsRatio, prevTpsRank, LOD_HYSTERESIS.tps);
+      prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
       return RANK_TO_QUALITY[prevTpsRank];
     case 'auto-fps':
-      prevFpsRank = ratioToRank(currentFpsRatio, prevFpsRank, LOD_HYSTERESIS.fps);
+      prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
       return RANK_TO_QUALITY[prevFpsRank];
     case 'min':
     case 'low':
