@@ -4,7 +4,7 @@ import type {
   LabeledOptionsConfig,
   PlatformBooleanDefaults,
 } from './bars';
-import type { GraphicsQuality, RenderMode } from './graphics';
+import type { ConcreteGraphicsQuality, GraphicsQuality, RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'slow';
@@ -29,7 +29,7 @@ export type SoundDefaults = Record<SoundCategory, boolean>;
 
 export type ClientBarConfig = {
   readonly graphics: LabeledOptionsConfig<
-    Exclude<GraphicsQuality, 'auto'>,
+    ConcreteGraphicsQuality,
     GraphicsQuality
   >;
   readonly render: LabeledOptionsConfig<RenderMode>;

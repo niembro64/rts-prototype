@@ -1,5 +1,6 @@
 import type {
   GraphicsQuality,
+  ConcreteGraphicsQuality,
   GraphicsConfig,
   RenderMode,
   LegStyle,
@@ -99,10 +100,7 @@ export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['visual', 'shot', 'push'];
 
 // ── Graphics quality configs (built from lodConfig) ──
 const D = PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL;
-const GRAPHICS_CONFIGS: Record<
-  Exclude<GraphicsQuality, 'auto'>,
-  GraphicsConfig
-> = {
+const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   min: {
     unitShape: D.UNIT_SHAPE.min as UnitShape,
     legs: D.LEGS.min as LegStyle,
@@ -257,6 +255,8 @@ let currentLobbyVisible: boolean = _isMobile
   : _cd.lobbyVisible.default.desktop;
 let currentBottomBarsHeight: number = 0;
 let currentZoom: number = 1.0;
+let currentTpsRatio: number = 1.0;
+let currentFpsRatio: number = 1.0;
 
 // ── Load from localStorage on module init ──
 function loadFromStorage(): void {
@@ -265,6 +265,9 @@ function loadFromStorage(): void {
     if (
       storedQuality &&
       (storedQuality === 'auto' ||
+        storedQuality === 'auto-zoom' ||
+        storedQuality === 'auto-tps' ||
+        storedQuality === 'auto-fps' ||
         storedQuality === 'min' ||
         storedQuality === 'low' ||
         storedQuality === 'medium' ||
@@ -385,10 +388,30 @@ export function setCurrentZoom(zoom: number): void {
   currentZoom = zoom;
 }
 
-export function getEffectiveQuality(): Exclude<GraphicsQuality, 'auto'> {
-  if (currentQuality !== 'auto') {
-    return currentQuality;
-  }
+export function setCurrentTpsRatio(ratio: number): void {
+  currentTpsRatio = ratio;
+}
+
+export function setCurrentFpsRatio(ratio: number): void {
+  currentFpsRatio = ratio;
+}
+
+const QUALITY_RANK: Record<ConcreteGraphicsQuality, number> = {
+  min: 0, low: 1, medium: 2, high: 3, max: 4,
+};
+const RANK_TO_QUALITY: ConcreteGraphicsQuality[] = [
+  'min', 'low', 'medium', 'high', 'max',
+];
+
+function ratioToQuality(ratio: number): ConcreteGraphicsQuality {
+  if (ratio >= 0.8) return 'max';
+  if (ratio >= 0.6) return 'high';
+  if (ratio >= 0.4) return 'medium';
+  if (ratio >= 0.2) return 'low';
+  return 'min';
+}
+
+function zoomToQuality(): ConcreteGraphicsQuality {
   if (currentZoom >= _autoZoomMax) return 'max';
   if (currentZoom >= _autoZoomHigh) return 'high';
   if (currentZoom >= _autoZoomMedium) return 'medium';
@@ -396,12 +419,37 @@ export function getEffectiveQuality(): Exclude<GraphicsQuality, 'auto'> {
   return 'min';
 }
 
+export function getEffectiveQuality(): ConcreteGraphicsQuality {
+  switch (currentQuality) {
+    case 'auto': {
+      const rank = Math.min(
+        QUALITY_RANK[zoomToQuality()],
+        QUALITY_RANK[ratioToQuality(currentTpsRatio)],
+        QUALITY_RANK[ratioToQuality(currentFpsRatio)],
+      );
+      return RANK_TO_QUALITY[rank];
+    }
+    case 'auto-zoom':
+      return zoomToQuality();
+    case 'auto-tps':
+      return ratioToQuality(currentTpsRatio);
+    case 'auto-fps':
+      return ratioToQuality(currentFpsRatio);
+    case 'min':
+    case 'low':
+    case 'medium':
+    case 'high':
+    case 'max':
+      return currentQuality;
+  }
+}
+
 export function getGraphicsConfig(): GraphicsConfig {
   return GRAPHICS_CONFIGS[getEffectiveQuality()];
 }
 
 export function getGraphicsConfigFor(
-  quality: Exclude<GraphicsQuality, 'auto'>,
+  quality: ConcreteGraphicsQuality,
 ): GraphicsConfig {
   return GRAPHICS_CONFIGS[quality];
 }

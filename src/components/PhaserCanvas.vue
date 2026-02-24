@@ -94,8 +94,10 @@ import {
   SOUND_CATEGORIES,
   getLobbyVisible,
   setLobbyVisible,
+  setCurrentTpsRatio,
+  setCurrentFpsRatio,
 } from '../clientBarConfig';
-import type { GraphicsQuality, RenderMode } from '../types/graphics';
+import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../types/graphics';
 import type {
   AudioScope,
   DriftMode,
@@ -148,7 +150,7 @@ let activeConnection: GameConnection | null = null;
 // Demo battle unit type list (state read from snapshots)
 const demoUnitTypes = BUILDABLE_UNIT_IDS;
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
-const effectiveQuality = ref<Exclude<GraphicsQuality, 'auto'>>(
+const effectiveQuality = ref<ConcreteGraphicsQuality>(
   getEffectiveQuality(),
 );
 const renderMode = ref<RenderMode>(getRenderMode());
@@ -862,6 +864,8 @@ function updateFPSStats(): void {
     snapAvgRate.value = snapStats.avgRate;
     snapWorstRate.value = snapStats.worstRate;
   }
+  setCurrentFpsRatio(actualAvgFPS.value / 60);
+  setCurrentTpsRatio(displayServerTpsAvg.value / displayTickRate.value);
   effectiveQuality.value = getEffectiveQuality();
 }
 
@@ -1700,11 +1704,37 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: graphicsQuality === 'auto' }"
-              title="Automatically adjust graphics quality based on FPS"
+              title="Auto-adjust graphics quality (lowest of zoom, TPS, FPS)"
               @click="changeGraphicsQuality('auto')"
             >
               AUTO
             </button>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{ active: graphicsQuality === 'auto-zoom' }"
+                title="Auto-adjust graphics quality based on zoom level"
+                @click="changeGraphicsQuality('auto-zoom')"
+              >
+                ZOOM
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: graphicsQuality === 'auto-tps' }"
+                title="Auto-adjust graphics quality based on server TPS"
+                @click="changeGraphicsQuality('auto-tps')"
+              >
+                TPS
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: graphicsQuality === 'auto-fps' }"
+                title="Auto-adjust graphics quality based on client FPS"
+                @click="changeGraphicsQuality('auto-fps')"
+              >
+                FPS
+              </button>
+            </div>
             <div class="button-group">
               <button
                 v-for="opt in CLIENT_CONFIG.graphics.options"
@@ -1775,7 +1805,7 @@ onUnmounted(() => {
               :class="{ active: allSoundsActive }"
               title="Toggle all sound categories on/off"
               @click="toggleAllSounds"
-            >
+            >F
               ALL
             </button>
             <div class="button-group">

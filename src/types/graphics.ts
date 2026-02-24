@@ -1,10 +1,6 @@
-export type GraphicsQuality =
-  | 'auto'
-  | 'min'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'max';
+export type AutoGraphicsQuality = 'auto' | 'auto-zoom' | 'auto-tps' | 'auto-fps';
+export type ConcreteGraphicsQuality = 'min' | 'low' | 'medium' | 'high' | 'max';
+export type GraphicsQuality = AutoGraphicsQuality | ConcreteGraphicsQuality;
 export type RenderMode = 'window' | 'padded' | 'all';
 
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
