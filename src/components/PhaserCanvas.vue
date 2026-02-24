@@ -26,6 +26,7 @@ import {
   COMBAT_STATS_VISIBLE_ON_LOAD,
 } from '../config';
 import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../game/sim/blueprints';
+import { LOD_EMA_SOURCE } from '../lodConfig';
 import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
   BATTLE_CONFIG,
@@ -864,8 +865,10 @@ function updateFPSStats(): void {
     snapAvgRate.value = snapStats.avgRate;
     snapWorstRate.value = snapStats.worstRate;
   }
-  setCurrentFpsRatio(actualAvgFPS.value / 60);
-  setCurrentTpsRatio(displayServerTpsAvg.value / displayTickRate.value);
+  const fpsVal = LOD_EMA_SOURCE.fps === 'avg' ? actualAvgFPS.value : actualWorstFPS.value;
+  const tpsVal = LOD_EMA_SOURCE.tps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
+  setCurrentFpsRatio(fpsVal / 60);
+  setCurrentTpsRatio(tpsVal / displayTickRate.value);
   effectiveQuality.value = getEffectiveQuality();
 }
 

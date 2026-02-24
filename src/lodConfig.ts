@@ -1,4 +1,10 @@
 import { ZOOM_MIN, ZOOM_MAX } from './config';
+import type {
+  LodThresholds,
+  LodHysteresis,
+  LodEmaSource,
+  GraphicsDetailConfig,
+} from './types/lod';
 
 // =============================================================================
 // LOD AUTO-MODE CONFIG
@@ -6,31 +12,37 @@ import { ZOOM_MIN, ZOOM_MAX } from './config';
 
 // Ratio thresholds dividing 0–1 into 5 quality zones.
 // ratio >= max → 'max', >= high → 'high', … < low → 'min'
-export const LOD_RATIO_THRESHOLDS = {
+export const LOD_RATIO_THRESHOLDS: LodThresholds = {
   low: 0.2,
   medium: 0.4,
   high: 0.6,
   max: 0.8,
-} as const;
+};
 
 // Hysteresis band applied to each threshold.
 // When upgrading quality, ratio must exceed threshold + hysteresis.
 // When downgrading, ratio must drop below threshold − hysteresis.
-export const LOD_HYSTERESIS = {
-  zoom: 0.04,
+export const LOD_HYSTERESIS: LodHysteresis = {
+  zoom: 0,
   tps: 0.05,
   fps: 0.05,
-} as const;
+};
+
+// Which EMA stat to use for each LOD ratio: 'avg' or 'low' (worst-case).
+export const LOD_EMA_SOURCE: LodEmaSource = {
+  tps: 'low',
+  fps: 'low',
+};
 
 // Auto-zoom thresholds — logarithmic spacing between ZOOM_MIN and ZOOM_MAX.
 // Produces 4 breakpoints dividing the zoom range into 5 quality zones.
 const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
-export const LOD_ZOOM_THRESHOLDS = {
+export const LOD_ZOOM_THRESHOLDS: LodThresholds = {
   low: ZOOM_MIN * Math.pow(_zoomRatio, 1 / 5),
   medium: ZOOM_MIN * Math.pow(_zoomRatio, 2 / 5),
   high: ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5),
   max: ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5),
-} as const;
+};
 
 // =============================================================================
 // GRAPHICS DETAIL DEFINITIONS
@@ -233,4 +245,4 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: 'normal',
     max: 'enhanced',
   },
-} as const;
+} as const satisfies GraphicsDetailConfig;
