@@ -51,7 +51,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'lightShot',
     range: 100,
     cooldown: 400,
-    launchForce: 60,
+    launchForce: 300,
     turretTurnAccel: 200,
     turretDrag: 0.5,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 1.2 },
@@ -91,9 +91,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   shotgunTurret: {
     id: 'shotgunTurret',
     projectileId: 'mediumShot',
-    range: 135,
+    range: 145,
     cooldown: 2_000,
-    launchForce: 500,
+    launchForce: 1500,
     homingTurnRate: 2,
     turretTurnAccel: 20,
     turretDrag: 0.15,
@@ -141,9 +141,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   cannonTurret: {
     id: 'cannonTurret',
     projectileId: 'heavyShot',
-    range: 360,
+    range: 420,
     cooldown: 3000,
-    launchForce: 20_000,
+    launchForce: 10_000,
     turretTurnAccel: 200,
     turretDrag: 0.5,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 1.4 },
@@ -158,10 +158,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   mortarTurret: {
     id: 'mortarTurret',
     projectileId: 'mortarShot',
-    range: 400,
+    range: 320,
     cooldown: 6000,
-    launchForce: 400,
-    turretTurnAccel: 40,
+    launchForce: 40000,
+    turretTurnAccel: 90,
     turretDrag: 0.4,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
     rangeMultiplierOverrides: {
@@ -196,7 +196,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     range: SPATIAL_GRID_CELL_SIZE * 3 * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
-    barrel: { type: 'complexSingleEmitter', grate: FORCE_FIELD_TURRET.forceField },
+    barrel: {
+      type: 'complexSingleEmitter',
+      grate: FORCE_FIELD_TURRET.forceField,
+    },
     rangeMultiplierOverrides: FORCE_TURRET_RANGE_MULTIPLIERS,
     color: 0xffffff,
     forceField: {

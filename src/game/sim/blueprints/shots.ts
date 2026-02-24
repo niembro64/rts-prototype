@@ -40,34 +40,34 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
     type: 'projectile',
     id: 'lightShot',
-    mass: 0.5,
-    collision: { radius: 1.2, damage: 2 },
+    mass: 2,
+    collision: { radius: 1.6, damage: 2 },
     explosion: {
       primary: { radius: 5, damage: 2, force: 500 },
       secondary: { radius: 7, damage: 0.4, force: 100 },
     },
     splashOnExpiry: false,
-    lifespan: 1000,
+    lifespan: 800,
     hitSound: AUDIO.event.hit.lightShot,
   },
   mediumShot: {
     type: 'projectile',
     id: 'mediumShot',
-    mass: 5,
+    mass: 8,
     collision: { radius: 2.2, damage: 4 },
     explosion: {
       primary: { radius: 8, damage: 4, force: 1000 },
       secondary: { radius: 15, damage: 0.8, force: 200 },
     },
     splashOnExpiry: false,
-    lifespan: 1200,
+    lifespan: 1000,
     hitSound: AUDIO.event.hit.mediumShot,
   },
   heavyShot: {
     type: 'projectile',
     id: 'heavyShot',
-    mass: 50.0,
-    collision: { radius: 5, damage: 260 },
+    mass: 30.0,
+    collision: { radius: 4, damage: 60 },
     explosion: {
       primary: { radius: 25, damage: 260, force: 65000 },
       secondary: { radius: 45, damage: 52, force: 13000 },
@@ -79,14 +79,14 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   mortarShot: {
     type: 'projectile',
     id: 'mortarShot',
-    mass: 2,
-    collision: { radius: 3.4, damage: 30 },
+    mass: 400,
+    collision: { radius: 5, damage: 30 },
     explosion: {
       primary: { radius: 70, damage: 30, force: 7500 },
       secondary: { radius: 110, damage: 6, force: 1500 },
     },
     splashOnExpiry: true,
-    lifespan: 2000,
+    lifespan: 2300,
     hitSound: AUDIO.event.hit.mortarShot,
   },
   laserShot: {
@@ -94,7 +94,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'laserShot',
     dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
     force: 2500,
-    recoil: 0.05 * 1000, // mass * launchForce
+    recoil: 2000, // mass * launchForce
     radius: 3,
     width: 2,
     duration: 300,
