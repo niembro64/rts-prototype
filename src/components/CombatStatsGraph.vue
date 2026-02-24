@@ -29,25 +29,26 @@ const METRICS: { key: MetricKey; label: string; tip: string }[] = [
 
 const selectedMetric = ref<MetricKey>('normAvg');
 
-// 9 distinct colors for unit types
-const UNIT_COLORS: Record<string, string> = {
-  jackal: '#e6194b',
-  lynx: '#3cb44b',
-  daddy: '#4363d8',
-  badger: '#f58231',
-  mongoose: '#911eb4',
-  tick: '#42d4f4',
-  mammoth: '#f032e6',
-  widow: '#bfef45',
-  tarantula: '#fabed4',
-};
-
 const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
+
+// Cost-based color scale: evenly spaced along blue (240) → red (0) by cost rank
+const unitCostColors = computed<Record<string, string>>(() => {
+  const sorted = [...unitTypes.value].sort(
+    (a, b) => (UNIT_BLUEPRINTS[a]?.baseCost ?? 0) - (UNIT_BLUEPRINTS[b]?.baseCost ?? 0),
+  );
+  const n = sorted.length;
+  const colors: Record<string, string> = {};
+  for (let i = 0; i < n; i++) {
+    const hue = 240 * (1 - i / Math.max(n - 1, 1));
+    colors[sorted[i]] = `hsl(${hue}, 85%, 55%)`;
+  }
+  return colors;
+});
 
 // Chart dimensions
 const W = 800;
 const H = 400;
-const PAD = { top: 20, right: 120, bottom: 40, left: 60 };
+const PAD = { top: 20, right: 160, bottom: 40, left: 60 };
 const plotW = W - PAD.left - PAD.right;
 const plotH = H - PAD.top - PAD.bottom;
 
@@ -105,7 +106,7 @@ function minMaxNormalize(values: number[]): number[] {
 }
 
 type SeriesPoint = { t: number; v: number };
-type Series = { unitType: string; name: string; color: string; points: SeriesPoint[] };
+type Series = { unitType: string; name: string; cost: number; color: string; points: SeriesPoint[] };
 
 const series = computed<Series[]>(() => {
   if (props.history.length === 0) return [];
@@ -123,8 +124,8 @@ const series = computed<Series[]>(() => {
           : snap.stats.players[props.selectedPlayer] ?? {};
         return { t: snap.timestamp, v: computeMetric(data[ut], ut, metric) };
       });
-      return { unitType: ut, name: bp?.name ?? ut, color: UNIT_COLORS[ut] ?? '#888', points };
-    });
+      return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
+    }).sort((a, b) => b.cost - a.cost);
   }
 
   // Normalized metrics: compute raw values for all unit types at each snapshot,
@@ -170,8 +171,8 @@ const series = computed<Series[]>(() => {
       else v = (rawDmg[ui][si] + rawKills[ui][si]) / 2; // normAvg
       return { t: snap.timestamp, v };
     });
-    return { unitType: ut, name: bp?.name ?? ut, color: UNIT_COLORS[ut] ?? '#888', points };
-  });
+    return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
+  }).sort((a, b) => b.cost - a.cost);
 });
 
 // Axis ranges
@@ -426,7 +427,7 @@ const hoverTime = computed(() => {
         class="crosshair"
       />
 
-      <!-- Legend (right side) -->
+      <!-- Legend (right side, table layout) -->
       <g v-for="(s, i) in series" :key="'lg' + s.unitType">
         <line
           :x1="PAD.left + plotW + 10"
@@ -442,6 +443,13 @@ const hoverTime = computed(() => {
           class="legend-label"
           :fill="s.color"
         >{{ s.name }}</text>
+        <text
+          :x="PAD.left + plotW + PAD.right - 6"
+          :y="PAD.top + 14 + i * 18"
+          class="legend-cost"
+          text-anchor="end"
+          :fill="s.color"
+        >{{ s.cost }}</text>
       </g>
     </svg>
 
@@ -550,6 +558,12 @@ const hoverTime = computed(() => {
   font-family: 'Courier New', monospace;
 }
 
+.legend-cost {
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 .crosshair {
   stroke: rgba(200, 210, 230, 0.4);
   stroke-width: 1;
@@ -560,7 +574,7 @@ const hoverTime = computed(() => {
   position: absolute;
   bottom: 0;
   left: 60px;
-  right: 120px;
+  right: 160px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
