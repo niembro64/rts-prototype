@@ -151,7 +151,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     id: 'hippoGatlingTurret',
     projectileId: 'hippoShot',
     range: 350,
-    cooldown: 100,
+    cooldown: 130,
     launchForce: 2_000,
     turretTurnAccel: 100,
     turretDrag: 0.4,
