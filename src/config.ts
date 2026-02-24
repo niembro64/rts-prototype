@@ -76,15 +76,15 @@ export const BAR_COLORS = BAR_THEMES;
 export const EMA_CONFIG: Record<string, EmaTierConfig> = {
   tps: {
     avg: 0.01,
-    low: { drop: 0.5, recovery: 0.001 },
+    low: { drop: 0.1, recovery: 0.0001 },
   },
   fps: {
     avg: 0.01,
-    low: { drop: 0.5, recovery: 0.001 },
+    low: { drop: 0.1, recovery: 0.0001 },
   },
   snaps: {
-    avg: 0.02,
-    low: { drop: 0.5, recovery: 0.002 },
+    avg: 0.01,
+    low: { drop: 0.1, recovery: 0.0001 },
   },
 };
 

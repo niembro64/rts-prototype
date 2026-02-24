@@ -97,6 +97,7 @@ import {
   setLobbyVisible,
   setCurrentTpsRatio,
   setCurrentFpsRatio,
+  setLocalServerRunning,
 } from '../clientBarConfig';
 import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../types/graphics';
 import type {
@@ -869,6 +870,7 @@ function updateFPSStats(): void {
   const tpsVal = LOD_EMA_SOURCE.tps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
   setCurrentFpsRatio(fpsVal / 60);
   setCurrentTpsRatio(tpsVal / displayTickRate.value);
+  setLocalServerRunning(hasServer.value);
   effectiveQuality.value = getEffectiveQuality();
 }
 
@@ -1715,7 +1717,10 @@ onUnmounted(() => {
             <div class="button-group">
               <button
                 class="control-btn"
-                :class="{ active: graphicsQuality === 'auto-zoom' }"
+                :class="{
+                  active: graphicsQuality === 'auto-zoom',
+                  'active-level': graphicsQuality === 'auto',
+                }"
                 title="Auto-adjust graphics quality based on zoom level"
                 @click="changeGraphicsQuality('auto-zoom')"
               >
@@ -1723,7 +1728,10 @@ onUnmounted(() => {
               </button>
               <button
                 class="control-btn"
-                :class="{ active: graphicsQuality === 'auto-tps' }"
+                :class="{
+                  active: graphicsQuality === 'auto-tps',
+                  'active-level': graphicsQuality === 'auto' && hasServer,
+                }"
                 title="Auto-adjust graphics quality based on server TPS"
                 @click="changeGraphicsQuality('auto-tps')"
               >
@@ -1731,7 +1739,10 @@ onUnmounted(() => {
               </button>
               <button
                 class="control-btn"
-                :class="{ active: graphicsQuality === 'auto-fps' }"
+                :class="{
+                  active: graphicsQuality === 'auto-fps',
+                  'active-level': graphicsQuality === 'auto',
+                }"
                 title="Auto-adjust graphics quality based on client FPS"
                 @click="changeGraphicsQuality('auto-fps')"
               >

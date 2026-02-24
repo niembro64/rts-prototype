@@ -257,6 +257,7 @@ let currentFpsRatio: number = 1.0;
 let prevZoomRank: number = 4;
 let prevTpsRank: number = 4;
 let prevFpsRank: number = 4;
+let localServerRunning: boolean = false;
 
 // ── Load from localStorage on module init ──
 function loadFromStorage(): void {
@@ -396,6 +397,14 @@ export function setCurrentFpsRatio(ratio: number): void {
   currentFpsRatio = ratio;
 }
 
+export function setLocalServerRunning(running: boolean): void {
+  localServerRunning = running;
+}
+
+export function getLocalServerRunning(): boolean {
+  return localServerRunning;
+}
+
 const RANK_TO_QUALITY: ConcreteGraphicsQuality[] = [
   'min', 'low', 'medium', 'high', 'max',
 ];
@@ -438,9 +447,12 @@ export function getEffectiveQuality(): ConcreteGraphicsQuality {
   switch (currentQuality) {
     case 'auto': {
       prevZoomRank = zoomToRank(prevZoomRank);
-      prevTpsRank = ratioToRank(currentTpsRatio, prevTpsRank, LOD_HYSTERESIS.tps);
       prevFpsRank = ratioToRank(currentFpsRatio, prevFpsRank, LOD_HYSTERESIS.fps);
-      return RANK_TO_QUALITY[Math.min(prevZoomRank, prevTpsRank, prevFpsRank)];
+      if (localServerRunning) {
+        prevTpsRank = ratioToRank(currentTpsRatio, prevTpsRank, LOD_HYSTERESIS.tps);
+        return RANK_TO_QUALITY[Math.min(prevZoomRank, prevTpsRank, prevFpsRank)];
+      }
+      return RANK_TO_QUALITY[Math.min(prevZoomRank, prevFpsRank)];
     }
     case 'auto-zoom':
       prevZoomRank = zoomToRank(prevZoomRank);
