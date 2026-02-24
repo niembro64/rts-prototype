@@ -12,13 +12,11 @@ import type { ShotBlueprint, BeamShotBlueprint } from './types';
 // Index 0 = most powerful (lowest pitch, biggest beam), index 13 = weakest (highest pitch, smallest)
 function generateBeamShots(): Record<string, BeamShotBlueprint> {
   const result: Record<string, BeamShotBlueprint> = {};
-  const maxI = harmonicSeries.length - 1;
   for (let i = 0; i < harmonicSeries.length; i++) {
-    const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
-    const baseDps = 2 + 28 * p;
-    const beamRadius = 2 + 18 * p;
-    const beamForce = baseDps * 2000;
-    const recoil = p * 10000;
+    const baseDps = 25;
+    const beamRadius = 8;
+    const beamForce = 2000;
+    const recoil = 10000;
 
     result[`beamShot${i}`] = {
       type: 'beam',
@@ -27,7 +25,7 @@ function generateBeamShots(): Record<string, BeamShotBlueprint> {
       force: beamForce,
       recoil: recoil,
       radius: beamRadius,
-      width: Math.max(1, Math.round(1 + 9 * p)),
+      width: 5,
       hitSound: AUDIO.event.hit[`beamShot${i}`],
     };
   }
