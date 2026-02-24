@@ -515,6 +515,18 @@ export class Simulation {
       // Clear priority target — re-set below if current action is attack
       unit.priorityTargetId = undefined;
 
+      // Sweep queued attack actions whose targets are dead/gone
+      for (let i = unit.actions.length - 1; i >= 0; i--) {
+        const a = unit.actions[i];
+        if (a.type !== 'attack' || a.targetId === undefined) continue;
+        const t = this.world.getEntity(a.targetId);
+        const alive = t &&
+          ((t.unit && t.unit.hp > 0) || (t.building && t.building.hp > 0));
+        if (!alive) {
+          unit.actions.splice(i, 1);
+        }
+      }
+
       // No actions - no thrust needed
       if (unit.actions.length === 0) {
         continue;
@@ -542,25 +554,16 @@ export class Simulation {
       }
 
       // Attack action: chase a specific enemy target
+      // (dead-target attack actions are already swept from the queue above)
       if (currentAction.type === 'attack' && currentAction.targetId !== undefined) {
-        const attackTarget = this.world.getEntity(currentAction.targetId);
-
-        // Target dead or gone → clear and advance
-        const alive = attackTarget &&
-          ((attackTarget.unit && attackTarget.unit.hp > 0) ||
-           (attackTarget.building && attackTarget.building.hp > 0));
-
-        if (!alive) {
-          this.advanceAction(entity);
-          continue;
-        }
+        const attackTarget = this.world.getEntity(currentAction.targetId)!;
 
         // Set priority target for turret system
         unit.priorityTargetId = currentAction.targetId;
 
         // Update action position to target's current location (follow moving target)
-        currentAction.x = attackTarget!.transform.x;
-        currentAction.y = attackTarget!.transform.y;
+        currentAction.x = attackTarget.transform.x;
+        currentAction.y = attackTarget.transform.y;
 
         // Stop if majority of turrets are engaged
         const turrets = entity.turrets;
