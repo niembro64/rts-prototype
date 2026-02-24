@@ -200,7 +200,7 @@ function createProjectileFromNetwork(
           range: 100,
           cooldown: 1000,
         },
-      projectileType: (s?.type as 'projectile' | 'beam') ?? 'projectile',
+      projectileType: (s?.type as 'projectile' | 'beam' | 'laser') ?? 'projectile',
       velocityX: s?.velocity?.x ?? 0,
       velocityY: s?.velocity?.y ?? 0,
       timeAlive: 0,

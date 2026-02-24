@@ -28,7 +28,9 @@ export type {
   ForceFieldZoneConfig,
   ProjectileShot,
   BeamShot,
-  FieldShot,
+  LaserShot,
+  LineShot,
+  ForceShot,
   ShotConfig,
   TurretConfig,
   Turret,
@@ -45,6 +47,8 @@ export type {
   EntityType,
   Entity,
 } from '@/types/sim';
+
+export { isLineShot } from '@/types/sim';
 
 import type { PlayerId } from '@/types/sim';
 

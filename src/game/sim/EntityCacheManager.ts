@@ -31,7 +31,7 @@ export class EntityCacheManager {
           this.cachedUnits.push(entity);
           if (entity.turrets) {
             for (let i = 0; i < entity.turrets.length; i++) {
-              if (entity.turrets[i].config.shot.type === 'field') {
+              if (entity.turrets[i].config.shot.type === 'force') {
                 this.cachedForceFieldUnits.push(entity);
                 break;
               }

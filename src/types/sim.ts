@@ -140,21 +140,39 @@ export type ProjectileShot = {
   trailLength?: number;
 };
 
-// Beam shot — continuous line from turret, per-tick damage
+// Beam shot — continuous line from turret, per-tick damage (no cooldown)
 export type BeamShot = {
   type: 'beam';
   id: string;
   dps: number;
   force: number;
-  recoil?: number;
+  recoil: number;
   radius: number;
   width: number;
-  duration?: number;
 };
 
-// Field shot — continuous area effect around turret
-export type FieldShot = {
-  type: 'field';
+// Laser shot — pulsed line weapon with duration + cooldown
+export type LaserShot = {
+  type: 'laser';
+  id: string;
+  dps: number;
+  force: number;
+  recoil: number;
+  radius: number;
+  width: number;
+  duration: number;
+};
+
+// Shared type for beam and laser (line weapons)
+export type LineShot = BeamShot | LaserShot;
+
+export function isLineShot(shot: ShotConfig): shot is LineShot {
+  return shot.type === 'beam' || shot.type === 'laser';
+}
+
+// Force shot — continuous area effect around turret (pie-slice push/pull zones)
+export type ForceShot = {
+  type: 'force';
   angle: number;
   transitionTime: number;
   push?: ForceFieldZoneConfig;
@@ -162,7 +180,7 @@ export type FieldShot = {
 };
 
 // Discriminated union of all shot types
-export type ShotConfig = ProjectileShot | BeamShot | FieldShot;
+export type ShotConfig = ProjectileShot | BeamShot | LaserShot | ForceShot;
 
 // Turret configuration (compiled turret definition)
 export type TurretConfig = {
@@ -199,7 +217,7 @@ export type Turret = {
 };
 
 // Projectile travel types
-export type ProjectileType = 'projectile' | 'beam';
+export type ProjectileType = 'projectile' | 'beam' | 'laser';
 
 // Projectile component
 export type Projectile = {

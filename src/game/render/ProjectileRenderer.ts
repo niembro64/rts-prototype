@@ -2,6 +2,7 @@
 
 import Phaser from 'phaser';
 import type { Entity, EntityId } from '../sim/types';
+import { isLineShot } from '../sim/types';
 import type { BeamRandomOffsets, ProjectileTrail } from './types';
 import { COLORS } from './types';
 import { getPlayerColor, getProjectileColor } from './helpers';
@@ -57,7 +58,7 @@ export function renderProjectile(
   const baseColor = getPlayerColor(ownership?.playerId);
   const color = getProjectileColor(baseColor);
 
-  if (projectile.projectileType === 'beam') {
+  if (projectile.projectileType === 'beam' || projectile.projectileType === 'laser') {
     renderBeam(
       graphics,
       entity,
@@ -91,7 +92,7 @@ function renderBeam(
   const startY = projectile.startY ?? y;
   const endX = projectile.endX ?? x;
   const endY = projectile.endY ?? y;
-  const beamWidth = config.shot.type === 'beam' ? config.shot.width : 2;
+  const beamWidth = isLineShot(config.shot) ? config.shot.width : 2;
   const beamStyle = getGraphicsConfig().beamStyle;
   const hasCollision = projectile.obstructionT !== undefined;
 
@@ -117,7 +118,7 @@ function renderBeam(
   graphics.lineBetween(startX, startY, endX, endY);
 
   // Endpoint ball — always drawn at beam radius, always white
-  const beamRadius = config.shot.type === 'beam' ? config.shot.radius : beamWidth;
+  const beamRadius = isLineShot(config.shot) ? config.shot.radius : beamWidth;
   graphics.fillStyle(0xffffff, 1);
   graphics.fillCircle(endX, endY, beamRadius);
 
@@ -386,7 +387,7 @@ export function renderProjRangeCircles(
   const proj = entity.projectile;
   const config = proj.config;
 
-  if (proj.projectileType === 'beam' && config.shot.type === 'beam') {
+  if ((proj.projectileType === 'beam' || proj.projectileType === 'laser') && isLineShot(config.shot)) {
     const endX = proj.endX ?? entity.transform.x;
     const endY = proj.endY ?? entity.transform.y;
     const beamRadius = config.shot.radius;

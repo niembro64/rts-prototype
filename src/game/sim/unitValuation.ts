@@ -11,8 +11,8 @@ export function getWeaponValue(config: TurretConfig): number {
   // --- baseDPS ---
   let baseDPS: number;
   const shot = config.shot;
-  const isBeam = shot.type === 'beam';
-  const isForceField = shot.type === 'field';
+  const isBeam = shot.type === 'beam' || shot.type === 'laser';
+  const isForceField = shot.type === 'force';
   const isShotgun = (config.spread?.pelletCount ?? 0) > 1;
   const isBurst = (config.burst?.count ?? 0) > 1;
 
@@ -22,7 +22,7 @@ export function getWeaponValue(config: TurretConfig): number {
     const pull = shot.pull;
     const maxDamage = Math.max(push?.damage ?? 0, pull?.damage ?? 0);
     baseDPS = maxDamage * (0.5 / 0.6);
-  } else if (isBeam && config.cooldown === 0) {
+  } else if (shot.type === 'beam') {
     // Continuous beam: dps IS dps
     baseDPS = shot.dps;
   } else if (isShotgun) {
@@ -31,8 +31,8 @@ export function getWeaponValue(config: TurretConfig): number {
   } else if (isBurst) {
     const cooldownSec = config.cooldown / 1000;
     baseDPS = ((shot as import('./types').ProjectileShot).collision.damage * config.burst!.count!) / cooldownSec;
-  } else if (isBeam) {
-    // Cooldown beam (railgun): dps / cooldownSec
+  } else if (shot.type === 'laser') {
+    // Pulsed laser: dps / cooldownSec
     const cooldownSec = config.cooldown / 1000;
     baseDPS = shot.dps / cooldownSec;
   } else {
@@ -89,7 +89,7 @@ export function getWeaponValue(config: TurretConfig): number {
 
   // --- pullBonus --- flat bonus for force field pull/push utility
   let totalPower = 0;
-  if (shot.type === 'field') {
+  if (shot.type === 'force') {
     totalPower = ((shot.push?.power ?? 0) as number) + ((shot.pull?.power ?? 0) as number);
   }
   const pullBonus = totalPower > 0 ? totalPower * 0.05 : 0;

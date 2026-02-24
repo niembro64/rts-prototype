@@ -22,7 +22,7 @@ export function getExplosionRadius(turretId: string): number {
   if (config?.shot.type === 'projectile' && config.shot.explosion?.primary.radius) {
     return config.shot.explosion.primary.radius;
   }
-  if (config?.shot.type === 'beam') {
+  if (config?.shot.type === 'beam' || config?.shot.type === 'laser') {
     return config.shot.radius;
   }
   return 8; // fallback

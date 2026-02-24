@@ -1,7 +1,7 @@
 // Force field weapon system - dual-zone pie-slice AoE with push (inner) and pull (outer)
 
 import type { WorldState } from '../WorldState';
-import type { FieldShot } from '../types';
+import type { ForceShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { CombatStatsTracker } from '../CombatStatsTracker';
@@ -34,8 +34,8 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
   for (const unit of world.getForceFieldUnits()) {
     for (const weapon of unit.turrets!) {
       const config = weapon.config;
-      if (config.shot.type !== 'field') continue;
-      const fieldShot = config.shot as FieldShot;
+      if (config.shot.type !== 'force') continue;
+      const fieldShot = config.shot as ForceShot;
 
       const transitionTime = fieldShot.transitionTime;
 
@@ -108,8 +108,8 @@ export function applyForceFieldDamage(
 
     for (const weapon of unit.turrets!) {
       const config = weapon.config;
-      if (config.shot.type !== 'field') continue;
-      const fieldShot = config.shot as FieldShot;
+      if (config.shot.type !== 'force') continue;
+      const fieldShot = config.shot as ForceShot;
 
       const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
       if (progress <= 0) continue;

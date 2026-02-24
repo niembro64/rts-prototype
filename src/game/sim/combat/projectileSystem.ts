@@ -1,7 +1,8 @@
 // Projectile system - firing, movement, collision detection, and damage application
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, ProjectileShot, BeamShot } from '../types';
+import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
+import { isLineShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, FireTurretsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -71,18 +72,16 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const weapon = unit.turrets[weaponIndex];
       const config = weapon.config;
       const shot = config.shot;
-      if (shot.type === 'field') continue; // Force fields don't create projectiles
-      const isBeamWeapon = shot.type === 'beam';
-      const isContinuousBeam = isBeamWeapon && config.cooldown === 0;
-      const isCooldownBeam = isBeamWeapon && config.cooldown > 0;
+      if (shot.type === 'force') continue; // Force fields don't create projectiles
+      const isBeamWeapon = isLineShot(shot);
 
       // Skip if weapon is not engaged (target not in range or no target)
       if (!weapon.engaged) continue;
 
       // Apply beam recoil any time the weapon is firing
-      if (isBeamWeapon && forceAccumulator && (shot as BeamShot).recoil) {
+      if (isBeamWeapon && forceAccumulator && (shot as BeamShot | LaserShot).recoil) {
         const dtSec = dtMs / 1000;
-        const knockBackPerTick = (shot as BeamShot).recoil! * PROJECTILE_MASS_MULTIPLIER * dtSec;
+        const knockBackPerTick = (shot as BeamShot | LaserShot).recoil * PROJECTILE_MASS_MULTIPLIER * dtSec;
         const turretAngle = weapon.rotation;
         const dirX = Math.cos(turretAngle);
         const dirY = Math.sin(turretAngle);
@@ -101,7 +100,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const weaponX = weaponWP.x, weaponY = weaponWP.y;
 
       // Check cooldown / active beam
-      if (isContinuousBeam) {
+      if (shot.type === 'beam') {
         if (hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       } else {
         const canFire = weapon.cooldown <= 0;
@@ -111,13 +110,13 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 
         if (!canFire && !canBurstFire) continue;
 
-        if (isCooldownBeam && hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
+        if (shot.type === 'laser' && hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       }
 
       // Handle cooldowns
-      // For cooldown beams, cooldown is set when the beam expires (not at fire time),
+      // For laser shots, cooldown is set when the beam expires (not at fire time),
       // so the gap between shots = beamDuration + cooldown.
-      if (!isContinuousBeam) {
+      if (shot.type !== 'beam') {
         const canFire = weapon.cooldown <= 0;
         const canBurstFire = weapon.burst?.remaining !== undefined &&
           weapon.burst.remaining > 0 &&
@@ -129,7 +128,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           if (weapon.burst!.remaining <= 0) {
             weapon.burst = undefined;
           }
-        } else if (canFire && !isCooldownBeam) {
+        } else if (canFire && shot.type !== 'laser') {
           weapon.cooldown = config.cooldown;
           if (config.burst?.count && config.burst.count > 1) {
             weapon.burst = { remaining: config.burst.count - 1, cooldown: config.burst?.delay ?? 80 };
@@ -138,7 +137,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       }
 
       // Add fire event (skip continuous beams — they use start/stop lifecycle)
-      if (!isBeamWeapon || isCooldownBeam) {
+      if (shot.type !== 'beam') {
         audioEvents.push({
           type: 'fire',
           turretId: config.id,
@@ -176,7 +175,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 
           // Tag config with turretIndex for beam tracking (mutate in place — each weapon has its own config copy)
           config.turretIndex = weaponIndex;
-          const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config);
+          const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
+          const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config, beamProjectileType);
           if (beam.projectile) {
             beam.projectile.sourceEntityId = unit.id;
           }
@@ -187,7 +187,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             id: beam.id,
             pos: { x: spawnX, y: spawnY }, rotation: angle,
             velocity: { x: 0, y: 0 },
-            projectileType: 'beam',
+            projectileType: beamProjectileType,
             turretId: config.id,
             playerId,
             sourceEntityId: unit.id,
@@ -334,7 +334,7 @@ export function updateProjectiles(
     }
 
     // Update beam positions to follow turret direction
-    if (proj.projectileType === 'beam') {
+    if (proj.projectileType === 'beam' || proj.projectileType === 'laser') {
       const source = world.getEntity(proj.sourceEntityId);
 
       // Get weapon index from config
@@ -359,7 +359,7 @@ export function updateProjectiles(
         }
 
         // Continuous beams: stay alive while firing, remove immediately when not
-        const isContinuous = (proj.config.cooldown === 0);
+        const isContinuous = proj.config.shot.type === 'beam';
         if (isContinuous) {
           if (weapon.engaged) {
             proj.timeAlive = 0;
@@ -395,7 +395,7 @@ export function updateProjectiles(
         // Find closest obstruction using unified DamageSystem
         // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness)
         const currentTick = world.getTick();
-        const collisionRadius = proj.config.shot.type === 'beam' ? proj.config.shot.radius : 2;
+        const collisionRadius = isLineShot(proj.config.shot) ? proj.config.shot.radius : 2;
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= 3) {
           const obstruction = damageSystem.findLineObstruction(
             proj.startX, proj.startY,
@@ -455,8 +455,8 @@ export function checkProjectileCollisions(
 
     const proj = projEntity.projectile;
     const config = proj.config;
-    // Projectile entities always use projectile/beam shot types (never field)
-    const shotId = (config.shot as ProjectileShot | BeamShot).id;
+    // Projectile entities always use projectile/beam/laser shot types (never force)
+    const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
 
     // Check if projectile expired
     if (proj.timeAlive >= proj.maxLifespan) {
@@ -542,9 +542,9 @@ export function checkProjectileCollisions(
     }
 
     // Handle different projectile types with unified damage system
-    if (proj.projectileType === 'beam') {
-      // Beam damage: single area zone at truncated endpoint
-      const beamShot = config.shot as BeamShot;
+    if (proj.projectileType === 'beam' || proj.projectileType === 'laser') {
+      // Beam/laser damage: single area zone at truncated endpoint
+      const beamShot = config.shot as BeamShot | LaserShot;
       const impactX = proj.endX ?? projEntity.transform.x;
       const impactY = proj.endY ?? projEntity.transform.y;
       const dtSec = dtMs / 1000;
@@ -708,7 +708,7 @@ export function checkProjectileCollisions(
   // Remove expired projectiles (and clean up beam index for any beams)
   for (const id of projectilesToRemove) {
     const entity = world.getEntity(id);
-    if (entity?.projectile?.projectileType === 'beam') {
+    if (entity?.projectile?.projectileType === 'beam' || entity?.projectile?.projectileType === 'laser') {
       const proj = entity.projectile;
       const weaponIdx = proj.config.turretIndex ?? 0;
       beamIndex.removeBeam(proj.sourceEntityId, weaponIdx);

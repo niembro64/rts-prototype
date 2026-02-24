@@ -90,7 +90,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.mortarShot,
   },
   laserShot: {
-    type: 'beam',
+    type: 'laser',
     id: 'laserShot',
     dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
     force: 2500,

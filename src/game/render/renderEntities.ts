@@ -493,7 +493,7 @@ export class EntityRenderer {
 
       // Sample position into trail ring buffer for non-beam projectiles
       let trail: ProjectileTrail | undefined;
-      if (entity.projectile && entity.projectile.projectileType !== 'beam') {
+      if (entity.projectile && entity.projectile.projectileType !== 'beam' && entity.projectile.projectileType !== 'laser') {
         trail = this.projectileTrails.get(entity.id);
         const isDgun = !!entity.dgunProjectile;
         const trailCap = isDgun

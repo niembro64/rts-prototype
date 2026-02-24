@@ -59,14 +59,25 @@ export type BeamShotBlueprint = {
   id: string;
   dps: number;
   force: number;
-  recoil?: number;
+  recoil: number;
   radius: number;
   width: number;
-  duration?: number;
   hitSound?: SoundEntry;
 };
 
-export type ShotBlueprint = ProjectileShotBlueprint | BeamShotBlueprint;
+export type LaserShotBlueprint = {
+  type: 'laser';
+  id: string;
+  dps: number;
+  force: number;
+  recoil: number;
+  radius: number;
+  width: number;
+  duration: number;
+  hitSound?: SoundEntry;
+};
+
+export type ShotBlueprint = ProjectileShotBlueprint | BeamShotBlueprint | LaserShotBlueprint;
 
 export type TurretBlueprint = {
   id: string;

@@ -491,10 +491,14 @@ export class WorldState {
 
     // Determine max lifespan based on shot type
     let maxLifespan: number;
-    if (projectileType === 'beam') {
-      maxLifespan = config.shot.type === 'beam' ? (config.shot.duration ?? Infinity) : Infinity;
+    if (config.shot.type === 'beam') {
+      maxLifespan = Infinity;
+    } else if (config.shot.type === 'laser') {
+      maxLifespan = config.shot.duration;
+    } else if (config.shot.type === 'projectile') {
+      maxLifespan = config.shot.lifespan ?? 2000;
     } else {
-      maxLifespan = config.shot.type === 'projectile' ? (config.shot.lifespan ?? 2000) : 2000;
+      maxLifespan = 2000;
     }
 
     // Always single hit (DGun overrides maxHits to Infinity after creation)
@@ -533,9 +537,10 @@ export class WorldState {
     endY: number,
     ownerId: PlayerId,
     sourceEntityId: EntityId,
-    config: TurretConfig
+    config: TurretConfig,
+    projectileType: 'beam' | 'laser' = 'beam'
   ): Entity {
-    const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, 'beam');
+    const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, projectileType);
 
     if (entity.projectile) {
       entity.projectile.startX = startX;

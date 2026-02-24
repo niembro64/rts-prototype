@@ -22,6 +22,7 @@ export type {
   ShotExplosionZone,
   ProjectileShotBlueprint,
   BeamShotBlueprint,
+  LaserShotBlueprint,
   ShotBlueprint,
   TurretBlueprint,
   TurretMount,

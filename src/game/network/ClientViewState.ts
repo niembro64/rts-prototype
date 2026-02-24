@@ -434,7 +434,7 @@ export class ClientViewState {
             }
 
             // Dead-reckon force field expansion/contraction + drift toward server
-            if (weapon.config.shot.type === 'field') {
+            if (weapon.config.shot.type === 'force') {
               const fieldShot = weapon.config.shot;
               const cur = weapon.forceField?.range ?? 0;
               const targetProgress = weapon.engaged ? 1 : 0;
@@ -462,7 +462,7 @@ export class ClientViewState {
       }
 
       if (entity.type === 'shot' && entity.projectile) {
-        if (entity.projectile.projectileType === 'beam') {
+        if (entity.projectile.projectileType === 'beam' || entity.projectile.projectileType === 'laser') {
           // Beams: reconstruct from source unit's current position + turret rotation
           // Beam existence is driven by the weapon's isEngaged state (updated every snapshot),
           // so lost despawn events self-correct on the next snapshot.
@@ -630,13 +630,15 @@ export class ClientViewState {
         ownerId: spawn.playerId,
         sourceEntityId: spawn.sourceEntityId,
         config,
-        projectileType: spawn.projectileType as 'projectile' | 'beam',
+        projectileType: spawn.projectileType as 'projectile' | 'beam' | 'laser',
         velocityX: spawn.velocity.x,
         velocityY: spawn.velocity.y,
         timeAlive: 0,
         maxLifespan: config.shot.type === 'beam'
-          ? (config.shot.duration ?? Infinity)
-          : (config.shot.type === 'projectile' ? (config.shot.lifespan ?? 2000) : 2000),
+          ? Infinity
+          : config.shot.type === 'laser'
+            ? config.shot.duration
+            : (config.shot.type === 'projectile' ? (config.shot.lifespan ?? 2000) : 2000),
         hitEntities: new Set(),
         maxHits: 1,
         startX: spawn.beam?.start.x,

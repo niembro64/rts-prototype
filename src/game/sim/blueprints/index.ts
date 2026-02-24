@@ -7,7 +7,7 @@ export * from './shots';
 export * from './turrets';
 export * from './units';
 
-import type { TurretConfig, ShotConfig, ForceFieldZoneConfig, ProjectileShot, BeamShot, FieldShot } from '../types';
+import type { TurretConfig, ShotConfig, ForceFieldZoneConfig, ProjectileShot, BeamShot, LaserShot, ForceShot } from '../types';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
 import type { ShotBlueprint, ForceFieldZoneRatioConfig } from './types';
@@ -35,6 +35,19 @@ function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate
   if (bp.type === 'beam') {
     const shot: BeamShot = {
       type: 'beam',
+      id: bp.id,
+      dps: bp.dps,
+      force: bp.force,
+      recoil: bp.recoil,
+      radius: bp.radius,
+      width: bp.width,
+    };
+    return shot;
+  }
+
+  if (bp.type === 'laser') {
+    const shot: LaserShot = {
+      type: 'laser',
       id: bp.id,
       dps: bp.dps,
       force: bp.force,
@@ -72,9 +85,9 @@ export function buildTurretConfig(turretId: string): TurretConfig {
   let shot: ShotConfig;
 
   if (wb.forceField) {
-    // Force field turret: build FieldShot
-    const fieldShot: FieldShot = {
-      type: 'field',
+    // Force field turret: build ForceShot
+    const fieldShot: ForceShot = {
+      type: 'force',
       angle: wb.forceField.angle ?? Math.PI * 2,
       transitionTime: wb.forceField.transitionTime ?? 1000,
       push: computeZoneConfig(wb.forceField.push, wb.range) ?? undefined,
@@ -107,7 +120,7 @@ export function buildTurretConfig(turretId: string): TurretConfig {
   // Derive barrelThickness from shot size, scaled by global multiplier
   if (wb.projectileId && base.barrel && base.barrel.type !== 'complexSingleEmitter') {
     const pb = SHOT_BLUEPRINTS[wb.projectileId];
-    const rawThickness = pb.type === 'beam'
+    const rawThickness = pb.type === 'beam' || pb.type === 'laser'
       ? pb.width
       : (pb.collision.radius > 0 ? pb.collision.radius * 2 : 2);
     base.barrel = { ...base.barrel, barrelThickness: rawThickness * BARREL_THICKNESS_MULTIPLIER };

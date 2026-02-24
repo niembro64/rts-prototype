@@ -2,8 +2,8 @@
 // Extracted from projectileSystem.ts to reduce duplication
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, BeamShot } from '../types';
-import { PLAYER_COLORS } from '../types';
+import type { Entity, EntityId, BeamShot, LaserShot } from '../types';
+import { PLAYER_COLORS, isLineShot } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
@@ -23,7 +23,7 @@ export function buildImpactContext(
   if (config.shot.type === 'projectile') {
     primaryRadius = config.shot.explosion?.primary.radius ?? collisionRadius;
     secondaryRadius = config.shot.explosion?.secondary.radius ?? primaryRadius;
-  } else if (config.shot.type === 'beam') {
+  } else if (isLineShot(config.shot)) {
     primaryRadius = config.shot.radius;
     secondaryRadius = primaryRadius;
   }
@@ -181,13 +181,13 @@ export function emitBeamHitAudio(
   collisionRadius: number,
   audioEvents: SimEvent[],
 ): void {
-  if (config.cooldown === 0) return; // Skip continuous beams
+  if (config.shot.type === 'beam') return; // Skip continuous beams
   for (const hitId of hitEntityIds) {
     if (!proj.hitEntities.has(hitId)) {
       const entity = world.getEntity(hitId);
       if (entity) {
         audioEvents.push({
-          type: 'hit', turretId: (config.shot as BeamShot).id,
+          type: 'hit', turretId: (config.shot as BeamShot | LaserShot).id,
           pos: { x: entity.transform.x, y: entity.transform.y },
           impactContext: buildImpactContext(
             config, impactX, impactY,

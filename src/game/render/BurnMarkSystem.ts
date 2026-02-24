@@ -4,6 +4,7 @@
 import type Phaser from 'phaser';
 import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
 import type { Entity } from '../sim/types';
+import { isLineShot } from '../sim/types';
 
 export type { BurnMark } from '@/types/render';
 import type { BurnMark } from '@/types/render';
@@ -34,13 +35,13 @@ export class BurnMarkSystem {
 
     for (const entity of projectiles) {
       const proj = entity.projectile;
-      if (!proj || proj.projectileType !== 'beam') continue;
+      if (!proj || (proj.projectileType !== 'beam' && proj.projectileType !== 'laser')) continue;
       const turretIndex = proj.config.turretIndex ?? 0;
       const beamKey = `${proj.sourceEntityId}:${turretIndex}`;
       this._activeBeamKeys.add(beamKey);
       const ex = proj.endX ?? entity.transform.x;
       const ey = proj.endY ?? entity.transform.y;
-      const beamWidth = proj.config.shot.type === 'beam' ? proj.config.shot.width : 2;
+      const beamWidth = isLineShot(proj.config.shot) ? proj.config.shot.width : 2;
       if (sampleBurn) {
         const prev = this.prevBeamEndpoints.get(beamKey);
         if (prev) {
