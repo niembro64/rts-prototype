@@ -512,6 +512,9 @@ export class Simulation {
       unit.velocityX = 0;
       unit.velocityY = 0;
 
+      // Clear priority target — re-set below if current action is attack
+      unit.priorityTargetId = undefined;
+
       // No actions - no thrust needed
       if (unit.actions.length === 0) {
         continue;
@@ -535,6 +538,51 @@ export class Simulation {
         // Thrust toward target
         unit.velocityX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
         unit.velocityY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+        continue;
+      }
+
+      // Attack action: chase a specific enemy target
+      if (currentAction.type === 'attack' && currentAction.targetId !== undefined) {
+        const attackTarget = this.world.getEntity(currentAction.targetId);
+
+        // Target dead or gone → clear and advance
+        const alive = attackTarget &&
+          ((attackTarget.unit && attackTarget.unit.hp > 0) ||
+           (attackTarget.building && attackTarget.building.hp > 0));
+
+        if (!alive) {
+          this.advanceAction(entity);
+          continue;
+        }
+
+        // Set priority target for turret system
+        unit.priorityTargetId = currentAction.targetId;
+        console.log(`[Attack] Unit ${entity.id} priorityTargetId=${currentAction.targetId}`);
+
+        // Update action position to target's current location (follow moving target)
+        currentAction.x = attackTarget!.transform.x;
+        currentAction.y = attackTarget!.transform.y;
+
+        // Stop if majority of turrets are engaged
+        const turrets = entity.turrets;
+        if (turrets && turrets.length > 0) {
+          let engagedCount = 0;
+          for (let i = 0; i < turrets.length; i++) {
+            if (turrets[i].state === 'engaged') engagedCount++;
+          }
+          if (engagedCount > turrets.length / 2) {
+            continue;
+          }
+        }
+
+        // Thrust toward target
+        const dx = attackTarget!.transform.x - transform.x;
+        const dy = attackTarget!.transform.y - transform.y;
+        const distance = magnitude(dx, dy);
+        if (distance > 5) {
+          unit.velocityX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+          unit.velocityY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+        }
         continue;
       }
 

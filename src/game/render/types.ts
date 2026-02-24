@@ -112,6 +112,7 @@ export const ACTION_COLORS: Record<ActionType, number> = {
   fight: 0xff4444, // Red
   build: 0xffcc00, // Yellow for building
   repair: 0x44ff44, // Light green for repair
+  attack: 0xff0000, // Red for attack
 };
 
 // Unit display names by unit type ID

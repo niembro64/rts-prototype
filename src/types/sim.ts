@@ -71,7 +71,7 @@ export type Waypoint = {
 };
 
 // Action types for unified action queue
-export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair';
+export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'attack';
 
 // Building type identifiers
 export type BuildingType = 'solar' | 'factory';
@@ -102,6 +102,7 @@ export type Unit = {
   patrolStartIndex: number | null;
   velocityX?: number;
   velocityY?: number;
+  priorityTargetId?: EntityId;
 };
 
 // Building component - static structures

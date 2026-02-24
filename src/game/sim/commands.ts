@@ -13,6 +13,7 @@ export type {
   SetFactoryWaypointsCommand,
   FireDGunCommand,
   RepairCommand,
+  AttackCommand,
   SetSnapshotRateCommand,
   SetKeyframeRatioCommand,
   SetTickRateCommand,

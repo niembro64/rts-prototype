@@ -1,7 +1,7 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, RepairCommand } from './commands';
+import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, RepairCommand, AttackCommand } from './commands';
 import type { Entity, UnitAction } from './types';
 import type { SimEvent } from './combat';
 import { magnitude, getWeaponWorldPosition, getTransformCosSin } from '../math';
@@ -43,6 +43,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'repair':
       executeRepairCommand(ctx, command);
+      break;
+    case 'attack':
+      executeAttackCommand(ctx, command);
       break;
   }
 }
@@ -314,6 +317,30 @@ function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void
   };
 
   addActionToUnit(commander, action, command.queue);
+}
+
+function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void {
+  const target = ctx.world.getEntity(command.targetId);
+  console.log(`[Cmd] executeAttackCommand: targetId=${command.targetId} found=${!!target} entityIds=${command.entityIds.join(',')}`);
+  if (!target) return;
+
+  // Target must be alive (unit or building)
+  const isAliveUnit = target.unit && target.unit.hp > 0;
+  const isAliveBuilding = target.building && target.building.hp > 0;
+  if (!isAliveUnit && !isAliveBuilding) return;
+
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (!entity || entity.type !== 'unit' || !entity.unit) continue;
+
+    const action: UnitAction = {
+      type: 'attack',
+      x: target.transform.x,
+      y: target.transform.y,
+      targetId: command.targetId,
+    };
+    addActionToUnit(entity, action, command.queue);
+  }
 }
 
 // Add an action to a unit (respecting queue flag)

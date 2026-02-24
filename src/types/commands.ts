@@ -13,6 +13,7 @@ export type CommandType =
   | 'setFactoryWaypoints'
   | 'fireDGun'
   | 'repair'
+  | 'attack'
   | 'setSnapshotRate'
   | 'setKeyframeRatio'
   | 'setTickRate'
@@ -108,6 +109,13 @@ export type RepairCommand = BaseCommand & {
   queue: boolean;
 };
 
+export type AttackCommand = BaseCommand & {
+  type: 'attack';
+  entityIds: EntityId[];
+  targetId: EntityId;
+  queue: boolean;
+};
+
 export type SetSnapshotRateCommand = BaseCommand & {
   type: 'setSnapshotRate';
   rate: number | 'none';
@@ -165,6 +173,7 @@ export type Command =
   | SetFactoryWaypointsCommand
   | FireDGunCommand
   | RepairCommand
+  | AttackCommand
   | SetSnapshotRateCommand
   | SetKeyframeRatioCommand
   | SetTickRateCommand

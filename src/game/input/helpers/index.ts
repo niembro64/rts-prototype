@@ -31,3 +31,8 @@ export {
   findIncompleteBuildingAt,
   findDamagedUnitAt,
 } from './RepairTargetHelper';
+
+export {
+  type AttackEntitySource,
+  findAttackTargetAt,
+} from './AttackTargetHelper';

@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import type { CommandQueue, MoveCommand, RepairCommand, SetFactoryWaypointsCommand, WaypointTarget } from '../sim/commands';
+import type { CommandQueue, MoveCommand, RepairCommand, AttackCommand, SetFactoryWaypointsCommand, WaypointTarget } from '../sim/commands';
 import type { Entity, EntityId } from '../sim/types';
 import {
 
@@ -8,6 +8,7 @@ import {
   assignUnitsToTargets,
   WAYPOINT_COLORS,
   findRepairTargetAt,
+  findAttackTargetAt,
 } from './helpers';
 import { magnitude } from '../math';
 import type { InputEntitySource, InputContext } from './inputBindings';
@@ -94,8 +95,25 @@ export class CommandController {
       }
     }
 
-    // Start line path drawing if units are selected
+    // Check if right-clicking on an enemy target (attack command)
     const selectedUnits = this.selectionController.getSelectedUnits();
+    if (selectedUnits.length > 0) {
+      const attackTarget = this.findAttackTarget(worldX, worldY, this.context.activePlayerId);
+      if (attackTarget) {
+        console.log(`[Input] Attack target found: id=${attackTarget.id} units=${selectedUnits.map(u => u.id).join(',')}`);
+        const command: AttackCommand = {
+          type: 'attack',
+          tick: this.context.getTick(),
+          entityIds: selectedUnits.map((e) => e.id),
+          targetId: attackTarget.id,
+          queue: this.shiftKey.isDown,
+        };
+        this.commandQueue.enqueue(command);
+        return;
+      }
+    }
+
+    // Start line path drawing if units are selected
     if (selectedUnits.length > 0) {
       this.state.isDrawingLinePath = true;
       this.state.linePathPoints = [{ x: worldX, y: worldY }];
@@ -145,6 +163,11 @@ export class CommandController {
   /** Find a repairable target at a world position (incomplete building or damaged friendly unit) */
   private findRepairTarget(worldX: number, worldY: number, playerId: number): Entity | null {
     return findRepairTargetAt(this.entitySource, worldX, worldY, playerId);
+  }
+
+  /** Find an enemy target at a world position (enemy unit or building) */
+  private findAttackTarget(worldX: number, worldY: number, playerId: number): Entity | null {
+    return findAttackTargetAt(this.entitySource, worldX, worldY, playerId);
   }
 
   /** Finish line path and issue move commands (for units or factory waypoints) */

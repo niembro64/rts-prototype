@@ -303,7 +303,7 @@ export class ClientViewState {
           const na = src[i];
           if (!na.pos) continue;
           actions.push({
-            type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair',
+            type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair' | 'attack',
             x: na.pos.x,
             y: na.pos.y,
             targetId: na.targetId,

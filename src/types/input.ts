@@ -72,3 +72,9 @@ export type RepairEntitySource = {
   getUnits(): Entity[];
   getBuildings(): Entity[];
 };
+
+// Entity source for attack target queries
+export type AttackEntitySource = {
+  getUnits(): Entity[];
+  getBuildings(): Entity[];
+};

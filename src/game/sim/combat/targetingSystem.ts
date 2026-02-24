@@ -93,6 +93,43 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       }
     }
 
+    // Pre-validate priority target once (shared across all weapons on this unit)
+    const priorityId = unit.unit!.priorityTargetId;
+    let priorityTarget: Entity | null = null;
+    let priorityRadius = 0;
+    if (priorityId !== undefined) {
+      const pt = world.getEntity(priorityId);
+      if (pt?.unit && pt.unit.hp > 0) {
+        priorityTarget = pt;
+        priorityRadius = pt.unit.radiusColliderUnitShot;
+      } else if (pt?.building && pt.building.hp > 0) {
+        priorityTarget = pt;
+        priorityRadius = getTargetRadius(pt);
+      }
+      console.log(`[Targeting] Unit ${unit.id} priorityId=${priorityId} found=${!!priorityTarget} weapons=${weapons.length} currentTargets=[${weapons.map(w => w.target).join(',')}]`);
+    }
+
+    // Pass 1.5: Drop non-priority targets so weapons can re-acquire the priority target
+    // Without this, hysteresis keeps existing targets alive and Pass 2 never runs.
+    if (priorityTarget) {
+      for (const weapon of weapons) {
+        if (weapon.config.isManualFire) continue;
+        if (weapon.target === priorityId) continue; // already targeting priority
+        if (weapon.target === null) continue; // will be handled in Pass 2
+
+        // Check if priority target is in this weapon's tracking range
+        const pDist = distance(weapon.worldPos!.x, weapon.worldPos!.y, priorityTarget.transform.x, priorityTarget.transform.y);
+        if (pDist <= weapon.ranges.tracking.acquire + priorityRadius) {
+          // Drop current target — Pass 2 will pick up the priority target
+          console.log(`[Targeting] Pass1.5: Unit ${unit.id} dropping target ${weapon.target} for priority ${priorityId} (dist=${pDist.toFixed(0)} range=${weapon.ranges.tracking.acquire.toFixed(0)})`);
+          weapon.target = null;
+          weapon.state = 'idle';
+        } else {
+          console.log(`[Targeting] Pass1.5: Unit ${unit.id} keeping target ${weapon.target}, priority ${priorityId} out of range (dist=${pDist.toFixed(0)} range=${weapon.ranges.tracking.acquire.toFixed(0)})`);
+        }
+      }
+    }
+
     // Pre-scan: count weapons needing acquisition, find max range + offset for batching
     let needsAcquireCount = 0;
     let maxAcquireRange = 0;
@@ -128,6 +165,19 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       const weaponX = weapon.worldPos!.x;
       const weaponY = weapon.worldPos!.y;
       const r = weapon.ranges;
+
+      // Priority target: prefer player-designated target if alive and in range
+      if (priorityTarget) {
+        const pDist = distance(weaponX, weaponY, priorityTarget.transform.x, priorityTarget.transform.y);
+        if (pDist <= r.tracking.acquire + priorityRadius) {
+          console.log(`[Targeting] Pass2: Unit ${unit.id} acquiring priority target ${priorityId} (dist=${pDist.toFixed(0)})`);
+          weapon.target = priorityId!;
+          weapon.state = pDist <= r.engage.acquire + priorityRadius ? 'engaged' : 'tracking';
+          continue;
+        } else {
+          console.log(`[Targeting] Pass2: Unit ${unit.id} priority target ${priorityId} out of range (dist=${pDist.toFixed(0)} range=${r.tracking.acquire.toFixed(0)})`);
+        }
+      }
 
       // Use batched results for multi-weapon units, per-weapon query for single-weapon
       const candidates = useBatch
