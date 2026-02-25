@@ -76,7 +76,7 @@ function raySegmentIntersection(
 }
 
 // Reusable result for findBeamSegmentHit
-const _segHit = { t: 0, x: 0, y: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0 };
+const _segHit = { t: 0, x: 0, y: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, panelIndex: -1 };
 
 // Compute distance-based falloff damage for area effects
 function computeFalloffDamage(dist: number, radius: number, baseDamage: number, falloff: number): number {
@@ -177,12 +177,13 @@ export class DamageSystem {
     let curEndX = endX;
     let curEndY = endY;
     let excludeEntityId = sourceEntityId;
+    let excludePanelIndex = -1; // -1 = exclude entire entity (source), >= 0 = exclude only that panel
 
     for (let bounce = 0; bounce <= maxBounces; bounce++) {
       // Find closest hit: either a mirror line segment or a regular entity circle/rect
       const hit = this.findBeamSegmentHit(
         curStartX, curStartY, curEndX, curEndY,
-        excludeEntityId, lineWidth
+        excludeEntityId, excludePanelIndex, lineWidth
       );
 
       if (!hit) {
@@ -218,6 +219,7 @@ export class DamageSystem {
       curEndX = hit.x + reflDirX * remaining;
       curEndY = hit.y + reflDirY * remaining;
       excludeEntityId = hit.entityId;
+      excludePanelIndex = hit.panelIndex; // only exclude the panel we just bounced off
     }
 
     return { endX: curEndX, endY: curEndY, reflections };
@@ -225,10 +227,12 @@ export class DamageSystem {
 
   // Find closest beam hit — checks mirror line segments AND regular entity colliders
   // excludeEntityId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit
+  // excludePanelIndex: -1 = exclude entire entity, >= 0 = exclude only that panel on that entity
   private findBeamSegmentHit(
     startX: number, startY: number,
     endX: number, endY: number,
     excludeEntityId: EntityId,
+    excludePanelIndex: number,
     lineWidth: number
   ): typeof _segHit | null {
     let bestT = Infinity;
@@ -241,14 +245,18 @@ export class DamageSystem {
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, endX, endY, lineWidth + 60);
 
     for (const unit of nearbyUnits) {
-      if (unit.id === excludeEntityId) continue;
+      // Panel-level exclude: if excludePanelIndex >= 0, only skip the specific panel (not the whole entity)
+      const isExcludedEntity = unit.id === excludeEntityId;
+      if (isExcludedEntity && excludePanelIndex < 0) continue; // full entity exclude (source unit)
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
       // Early-out: point-to-line distance check (avoids expensive trig+intersection for distant units)
       const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
       const crossSq = (ux * dy - uy * dx);
       const panels = unit.unit.mirrorPanels;
-      const boundR = panels.length > 0 ? unit.unit.mirrorBoundRadius + lineWidth : unit.unit.radiusColliderUnitShot + lineWidth / 2;
+      const boundR = panels.length > 0
+        ? Math.max(unit.unit.mirrorBoundRadius, unit.unit.radiusColliderUnitShot) + lineWidth
+        : unit.unit.radiusColliderUnitShot + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
       if (panels.length > 0) {
@@ -262,7 +270,11 @@ export class DamageSystem {
         const perpX = -fwdY;
         const perpY = fwdX;
 
-        for (const panel of panels) {
+        for (let pi = 0; pi < panels.length; pi++) {
+          // Skip only the specific panel we just bounced off
+          if (isExcludedEntity && pi === excludePanelIndex) continue;
+
+          const panel = panels[pi];
           // Panel center in world space
           const pcx = unit.transform.x + fwdX * panel.offsetX + perpX * panel.offsetY;
           const pcy = unit.transform.y + fwdY * panel.offsetX + perpY * panel.offsetY;
@@ -287,12 +299,13 @@ export class DamageSystem {
             bestT = faceHit.t; found = true;
             _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
             _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = pnx; _segHit.normalY = pny;
+            _segHit.panelIndex = pi;
           }
         }
       }
 
-      // Circle collision — only for non-mirror units
-      if (panels.length === 0) {
+      // Circle collision — all units (mirror units can be hit on their body too)
+      {
         const t = lineCircleIntersectionT(
           startX, startY, endX, endY,
           unit.transform.x, unit.transform.y,
@@ -302,6 +315,7 @@ export class DamageSystem {
           bestT = t; found = true;
           _segHit.t = t; _segHit.x = startX + t * dx; _segHit.y = startY + t * dy;
           _segHit.entityId = unit.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
+          _segHit.panelIndex = -1;
         }
       }
     }

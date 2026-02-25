@@ -209,7 +209,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   mirrorTurret: {
     id: 'mirrorTurret',
     projectileId: 'beamShot0',
-    range: 150,
+    range: 220,
     turretTurnAccel: 100,
     turretDrag: 0.5,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
@@ -217,8 +217,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     passive: true,
     spread: { angle: Math.PI / 2 },
     rangeMultiplierOverrides: {
-      tracking: { acquire: 1.0, release: 1.1 },
-      engage: { acquire: 0.9, release: 0.95 },
+      tracking: { acquire: 0.95, release: 1.0 },
+      engage: { acquire: 0.45, release: 0.5 },
     },
     color: 0xffffff,
     mirrorPanels: [

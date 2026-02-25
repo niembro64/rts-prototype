@@ -10,11 +10,11 @@ import { spatialGrid } from '../SpatialGrid';
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
 
-// Check if an entity has at least one active (engaged) beam or laser turret
-function hasActiveBeam(entity: Entity): boolean {
+// Check if an entity is a beam unit (has at least one non-passive beam or laser turret)
+function isBeamUnit(entity: Entity): boolean {
   if (!entity.turrets) return false;
   for (const turret of entity.turrets) {
-    if (turret.state === 'engaged' && isLineShot(turret.config.shot)) return true;
+    if (!turret.config.passive && isLineShot(turret.config.shot)) return true;
   }
   return false;
 }
@@ -82,7 +82,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         priorityRadius = getTargetRadius(pt);
       }
 
-      if (priorityTarget && !(isMirrorUnit && !hasActiveBeam(priorityTarget))) {
+      if (priorityTarget && !(isMirrorUnit && !isBeamUnit(priorityTarget))) {
         // ATTACK MODE: force all weapons to the priority target, engage ranges only
         for (const weapon of weapons) {
           if (weapon.config.isManualFire) continue;
@@ -117,7 +117,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.radiusColliderUnitShot; }
       else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
-      if (!targetIsValid || !target || (isMirrorUnit && !hasActiveBeam(target))) {
+      if (!targetIsValid || !target || (isMirrorUnit && !isBeamUnit(target))) {
         weapon.target = null;
         weapon.state = 'idle';
       } else {
@@ -194,7 +194,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       for (const enemy of candidates) {
         // Mirror units only target enemies actively firing beams
-        if (isMirrorUnit && !hasActiveBeam(enemy)) continue;
+        if (isMirrorUnit && !isBeamUnit(enemy)) continue;
 
         const enemyRadius = enemy.unit ? enemy.unit.radiusColliderUnitShot : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
