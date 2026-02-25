@@ -30,7 +30,7 @@ const selectedMetric = ref<MetricKey>('avgNorm');
 const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
 
 // Cost-based color scale using OKLab lightness for perceptual uniformity.
-// Hues spread evenly across the wheel; odd indices are dark, even are light.
+// Hues spread from red (0°) to blue (240°); odd indices are dark, even are light.
 const unitCostColors = computed<Record<string, string>>(() => {
   const sorted = [...unitTypes.value].sort(
     (a, b) => (UNIT_BLUEPRINTS[a]?.baseCost ?? 0) - (UNIT_BLUEPRINTS[b]?.baseCost ?? 0),
@@ -38,7 +38,7 @@ const unitCostColors = computed<Record<string, string>>(() => {
   const n = sorted.length;
   const colors: Record<string, string> = {};
   for (let i = 0; i < n; i++) {
-    const hue = 360 * (i / Math.max(n, 1));
+    const hue = 240 * (i / Math.max(n - 1, 1));
     const lightness = i % 2 === 0 ? 40 : 70;
     colors[sorted[i]] = oklch(lightness, hue);
   }

@@ -10,9 +10,7 @@ export function drawLorisUnit(
   treads: TankTreadSetup | undefined
 ): void {
   const { graphics, x, y, radius: r, bodyRot, palette, isSelected } = ctx;
-  const { base, light, dark } = palette;
-  const cos = Math.cos(bodyRot);
-  const sin = Math.sin(bodyRot);
+  const { base, dark } = palette;
 
   // Treads
   drawUnitTreads(graphics, 'loris', x, y, r, bodyRot, treads);
@@ -22,24 +20,6 @@ export function drawLorisUnit(
   graphics.fillStyle(bodyColor, 1);
   graphics.fillCircle(x, y, r * 0.55);
 
-  if (ctx.chassisDetail) {
-    // Inner body accent
-    graphics.fillStyle(dark, 1);
-    graphics.fillCircle(x, y, r * 0.38);
-
-    // Two large circular "eyes" — mystical look
-    const eyeOffsetX = r * 0.2;
-    const eyeOffsetY = r * 0.2;
-    const eyeRadius = r * 0.13;
-    for (let side = -1; side <= 1; side += 2) {
-      const eyeX = x + cos * eyeOffsetX - sin * eyeOffsetY * side;
-      const eyeY = y + sin * eyeOffsetX + cos * eyeOffsetY * side;
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(eyeX, eyeY, eyeRadius);
-      graphics.fillStyle(COLORS.WHITE, 1);
-      graphics.fillCircle(eyeX, eyeY, eyeRadius * 0.5);
-    }
-  }
 
   // Mirror triangle — oriented by turret rotation (tracks enemies), not body rotation
   const { entity } = ctx;
@@ -48,6 +28,26 @@ export function drawLorisUnit(
   const mCos = Math.cos(mirrorRot);
   const mSin = Math.sin(mirrorRot);
 
+  // Shared turret geometry
+  const perpX = -mSin;
+  const perpY = mCos;
+
+  // Inverted turret base triangle — apex forward, flat face back
+  const baseS = r * 0.9;
+  const baseHalfS = baseS / 2;
+  const baseH = baseS * 0.8660254037844386; // sqrt(3)/2
+  const baseFront = 2 * baseH / 3; // centroid to apex
+  const baseBack = baseH / 3;      // centroid to flat face
+  const bApexX = x + mCos * baseFront, bApexY = y + mSin * baseFront;
+  const brcx = x - mCos * baseBack, brcy = y - mSin * baseBack;
+  const brlx = brcx + perpX * baseHalfS, brly = brcy + perpY * baseHalfS;
+  const brrx = brcx - perpX * baseHalfS, brry = brcy - perpY * baseHalfS;
+
+  graphics.fillStyle(dark, 1);
+  graphics.fillTriangle(bApexX, bApexY, brlx, brly, brrx, brry);
+  graphics.fillStyle(base, 0.6);
+  graphics.fillTriangle(bApexX, bApexY, brlx, brly, brrx, brry);
+
   // Equilateral triangle mirror — matches sim collision surface
   const mirrorWidth = 100; // must match blueprint mirror.width (= side length)
   const mirrorThickness = 5;
@@ -55,8 +55,6 @@ export function drawLorisUnit(
   const triH = mirrorWidth * 0.8660254037844386; // sqrt(3)/2
   const frontDist = triH / 3;  // centroid to front face
   const apexDist = 2 * triH / 3; // centroid to rear apex
-  const perpX = -mSin;
-  const perpY = mCos;
 
   // Triangle centered on unit position (centroid = unit center)
   const fcx = x + mCos * frontDist;
