@@ -50,7 +50,6 @@ export function drawLorisUnit(
 
   // Equilateral triangle mirror — matches sim collision surface
   const mirrorWidth = 100; // must match blueprint mirror.width (= side length)
-  const mirrorThickness = 5;
   const halfS = mirrorWidth / 2;
   const triH = mirrorWidth * 0.8660254037844386; // sqrt(3)/2
   const frontDist = triH / 3;  // centroid to front face
@@ -65,29 +64,19 @@ export function drawLorisUnit(
   const frx = fcx - perpX * halfS, fry = fcy - perpY * halfS;
   const rax = x - mCos * apexDist, ray = y - mSin * apexDist;
 
-  // Glow layer
-  graphics.lineStyle(mirrorThickness + 1, 0xaaaacc, 0.6);
+  // Reflective surface — white fill matching force field transparency
+  graphics.fillStyle(0xffffff, 0.05);
+  graphics.fillTriangle(flx, fly, frx, fry, rax, ray);
+
+  // Perimeter glow (outer)
+  graphics.lineStyle(2, 0xffffff, 0.06);
   graphics.lineBetween(flx, fly, frx, fry);
   graphics.lineBetween(rax, ray, flx, fly);
   graphics.lineBetween(frx, fry, rax, ray);
 
-  // Bright layer
-  graphics.lineStyle(mirrorThickness, 0xffffff, 0.9);
+  // Perimeter edge (inner)
+  graphics.lineStyle(1, 0xffffff, 0.12);
   graphics.lineBetween(flx, fly, frx, fry);
   graphics.lineBetween(rax, ray, flx, fly);
   graphics.lineBetween(frx, fry, rax, ray);
-
-  // Vertex circles at triangle corners — round caps matching edge width (hi/max detail)
-  if (ctx.chassisDetail) {
-    const glowR = (mirrorThickness + 1) / 2;
-    const brightR = mirrorThickness / 2;
-    graphics.fillStyle(0xaaaacc, 0.6);
-    graphics.fillCircle(flx, fly, glowR);
-    graphics.fillCircle(frx, fry, glowR);
-    graphics.fillCircle(rax, ray, glowR);
-    graphics.fillStyle(0xffffff, 0.9);
-    graphics.fillCircle(flx, fly, brightR);
-    graphics.fillCircle(frx, fry, brightR);
-    graphics.fillCircle(rax, ray, brightR);
-  }
 }
