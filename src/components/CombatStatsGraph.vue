@@ -12,14 +12,20 @@ const props = defineProps<{
   teamKillsMode: FriendlyFireMode;
 }>();
 
-type MetricKey = 'totalDamage' | 'totalKills';
+type MetricKey = 'damage' | 'kills' | 'damageCost' | 'killsCost' | 'normDamageCost' | 'normKillsCost' | 'avg' | 'avgNorm';
 
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
-  { key: 'totalDamage', label: 'Total Damage', tip: 'Cumulative damage dealt (adjusted for friendly fire mode)' },
-  { key: 'totalKills', label: 'Total Kills', tip: 'Cumulative kills (adjusted for friendly fire mode)' },
+  { key: 'damage', label: 'Damage', tip: 'Cumulative damage dealt (adjusted for friendly fire mode)' },
+  { key: 'kills', label: 'Kills', tip: 'Cumulative kills (adjusted for friendly fire mode)' },
+  { key: 'damageCost', label: 'Damage / Cost', tip: 'Damage dealt per unit of cost spent producing that unit type' },
+  { key: 'killsCost', label: 'Kills / Cost', tip: 'Kills per unit of cost spent producing that unit type' },
+  { key: 'normDamageCost', label: 'Norm (D/C)', tip: 'Damage/Cost normalized so top unit = 1 per snapshot' },
+  { key: 'normKillsCost', label: 'Norm (K/C)', tip: 'Kills/Cost normalized so top unit = 1 per snapshot' },
+  { key: 'avg', label: 'Avg', tip: 'Average of Norm(D/C) and Norm(K/C)' },
+  { key: 'avgNorm', label: 'Avg Norm', tip: 'Avg normalized so top unit = 1 per snapshot' },
 ];
 
-const selectedMetric = ref<MetricKey>('totalDamage');
+const selectedMetric = ref<MetricKey>('avgNorm');
 
 const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
 
@@ -44,19 +50,60 @@ const PAD = { top: 20, right: 160, bottom: 40, left: 60 };
 const plotW = W - PAD.left - PAD.right;
 const plotH = H - PAD.top - PAD.bottom;
 
+// The raw (non-normalized) metric that a norm metric is derived from
+function rawMetricOf(m: MetricKey): MetricKey {
+  switch (m) {
+    case 'normDamageCost': return 'damageCost';
+    case 'normKillsCost': return 'killsCost';
+    default: return m;
+  }
+}
+
 function computeMetric(s: NetworkServerSnapshotUnitTypeStats | undefined, metric: MetricKey): number {
   if (!s) return 0;
+  const cost = s.units.cost ?? 0;
   switch (metric) {
-    case 'totalDamage': return applyFriendlyFire(s.damage.dealt.enemy ?? 0, s.damage.dealt.friendly ?? 0, props.teamDamageMode);
-    case 'totalKills': return applyFriendlyFire(s.kills.enemy ?? 0, s.kills.friendly ?? 0, props.teamKillsMode);
+    case 'damage': return applyFriendlyFire(s.damage.dealt.enemy ?? 0, s.damage.dealt.friendly ?? 0, props.teamDamageMode);
+    case 'kills': return applyFriendlyFire(s.kills.enemy ?? 0, s.kills.friendly ?? 0, props.teamKillsMode);
+    case 'damageCost': {
+      const dmg = applyFriendlyFire(s.damage.dealt.enemy ?? 0, s.damage.dealt.friendly ?? 0, props.teamDamageMode);
+      return cost > 0 ? dmg / cost : 0;
+    }
+    case 'killsCost': {
+      const kills = applyFriendlyFire(s.kills.enemy ?? 0, s.kills.friendly ?? 0, props.teamKillsMode);
+      return cost > 0 ? kills / cost : 0;
+    }
     default: throw new Error(`Unknown metric: ${metric}`);
   }
 }
 
+/** Divide all values by the max so the top value becomes 1 */
+function normalize(values: number[]): number[] {
+  let max = 0;
+  for (const v of values) {
+    if (v > max) max = v;
+  }
+  if (max > 0) {
+    for (let i = 0; i < values.length; i++) {
+      values[i] = values[i] / max;
+    }
+  }
+  return values;
+}
+
+const isSimpleMetric = (m: MetricKey): boolean =>
+  m === 'damage' || m === 'kills' || m === 'damageCost' || m === 'killsCost';
+
 const formulaDisplay = computed(() => {
   switch (selectedMetric.value) {
-    case 'totalDamage': return 'cumulative damage dealt (adjusted for FF mode)';
-    case 'totalKills': return 'cumulative kills (adjusted for FF mode)';
+    case 'damage': return 'cumulative damage dealt (adjusted for FF mode)';
+    case 'kills': return 'cumulative kills (adjusted for FF mode)';
+    case 'damageCost': return 'damage dealt / cumulative cost spent producing unit type';
+    case 'killsCost': return 'kills / cumulative cost spent producing unit type';
+    case 'normDamageCost': return '(damage/cost) / max — top unit = 1';
+    case 'normKillsCost': return '(kills/cost) / max — top unit = 1';
+    case 'avg': return 'avg(norm(damage/cost), norm(kills/cost))';
+    case 'avgNorm': return 'avg / max — top unit = 1';
     default: throw new Error(`Unknown metric: ${selectedMetric.value}`);
   }
 });
@@ -64,20 +111,87 @@ const formulaDisplay = computed(() => {
 type SeriesPoint = { t: number; v: number };
 type Series = { unitType: string; name: string; cost: number; color: string; points: SeriesPoint[] };
 
+// Compute per-snapshot normalized slices for a raw metric
+function computeNormSlices(uts: string[], raw: MetricKey): number[][] {
+  const numSnaps = props.history.length;
+  const numUnits = uts.length;
+  const out: number[][] = Array.from({ length: numUnits }, () => new Array(numSnaps));
+  for (let si = 0; si < numSnaps; si++) {
+    const data = props.viewMode === 'global'
+      ? props.history[si].stats.global
+      : props.history[si].stats.players[props.selectedPlayer] ?? {};
+    const slice: number[] = new Array(numUnits);
+    for (let ui = 0; ui < numUnits; ui++) {
+      slice[ui] = computeMetric(data[uts[ui]], raw);
+    }
+    normalize(slice);
+    for (let ui = 0; ui < numUnits; ui++) {
+      out[ui][si] = slice[ui];
+    }
+  }
+  return out;
+}
+
+function buildSeries(uts: string[], values: number[][]): Series[] {
+  return uts.map((ut, ui) => {
+    const bp = UNIT_BLUEPRINTS[ut];
+    const points: SeriesPoint[] = props.history.map((snap, si) => ({
+      t: snap.timestamp,
+      v: values[ui][si],
+    }));
+    return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
+  }).sort((a, b) => b.cost - a.cost);
+}
+
 const series = computed<Series[]>(() => {
   if (props.history.length === 0) return [];
 
   const metric = selectedMetric.value;
-  return unitTypes.value.map(ut => {
-    const bp = UNIT_BLUEPRINTS[ut];
-    const points: SeriesPoint[] = props.history.map(snap => {
-      const data = props.viewMode === 'global'
-        ? snap.stats.global
-        : snap.stats.players[props.selectedPlayer] ?? {};
-      return { t: snap.timestamp, v: computeMetric(data[ut], metric) };
-    });
-    return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
-  }).sort((a, b) => b.cost - a.cost);
+  const uts = unitTypes.value;
+
+  // Simple metrics: no cross-unit normalization
+  if (isSimpleMetric(metric)) {
+    return uts.map(ut => {
+      const bp = UNIT_BLUEPRINTS[ut];
+      const points: SeriesPoint[] = props.history.map(snap => {
+        const data = props.viewMode === 'global'
+          ? snap.stats.global
+          : snap.stats.players[props.selectedPlayer] ?? {};
+        return { t: snap.timestamp, v: computeMetric(data[ut], metric) };
+      });
+      return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
+    }).sort((a, b) => b.cost - a.cost);
+  }
+
+  // Single norm metrics
+  if (metric === 'normDamageCost' || metric === 'normKillsCost') {
+    return buildSeries(uts, computeNormSlices(uts, rawMetricOf(metric)));
+  }
+
+  // Avg and AvgNorm both need the two norm slices averaged
+  const normDmg = computeNormSlices(uts, 'damageCost');
+  const normKills = computeNormSlices(uts, 'killsCost');
+  const numSnaps = props.history.length;
+  const numUnits = uts.length;
+  const avgValues: number[][] = Array.from({ length: numUnits }, () => new Array(numSnaps));
+  for (let ui = 0; ui < numUnits; ui++) {
+    for (let si = 0; si < numSnaps; si++) {
+      avgValues[ui][si] = (normDmg[ui][si] + normKills[ui][si]) / 2;
+    }
+  }
+
+  if (metric === 'avg') {
+    return buildSeries(uts, avgValues);
+  }
+
+  // avgNorm: normalize the averaged values per snapshot
+  for (let si = 0; si < numSnaps; si++) {
+    const slice: number[] = new Array(numUnits);
+    for (let ui = 0; ui < numUnits; ui++) slice[ui] = avgValues[ui][si];
+    normalize(slice);
+    for (let ui = 0; ui < numUnits; ui++) avgValues[ui][si] = slice[ui];
+  }
+  return buildSeries(uts, avgValues);
 });
 
 // Axis ranges

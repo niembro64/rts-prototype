@@ -19,10 +19,9 @@ import type { TurretBlueprint } from './types';
 // Index 0 = most powerful (lowest pitch, thickest barrel), index 13 = weakest (highest pitch, thinnest)
 function generateBeamTurrets(): Record<string, TurretBlueprint> {
   const result: Record<string, TurretBlueprint> = {};
-  const maxI = harmonicSeries.length - 1;
+
   for (let i = 0; i < harmonicSeries.length; i++) {
-    const p = (maxI - i) / maxI; // 1.0 at i=0, 0.0 at i=13
-    const range = Math.round(100 + 200 * p);
+    const range = 150;
     result[`beamTurret${i}`] = {
       id: `beamTurret${i}`,
       projectileId: `beamShot${i}`,
