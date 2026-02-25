@@ -67,6 +67,7 @@ export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_PROJ_VEL_INHERIT = BATTLE_CONFIG.projVelInherit.default;
 export const DEFAULT_FF_ACCEL_UNITS = BATTLE_CONFIG.ffAccelUnits.default;
 export const DEFAULT_FF_ACCEL_SHOTS = BATTLE_CONFIG.ffAccelShots.default;
+export const DEFAULT_FF_DMG_UNITS = BATTLE_CONFIG.ffDmgUnits.default;
 export const BAR_COLORS = BAR_THEMES;
 
 // =============================================================================
@@ -189,7 +190,7 @@ export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRat
     alpha: 0.05,
     particleAlpha: 0.2,
     power: 2000,
-    damage: 0,
+    damage: 10,
   };
 
 export const FORCE_PULL: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig =
@@ -200,7 +201,7 @@ export const FORCE_PULL: import('./game/sim/blueprints/types').ForceFieldZoneRat
     alpha: 0.2,
     particleAlpha: 0.2,
     power: null,
-    damage: 0,
+    damage: 10,
   };
 
 /**

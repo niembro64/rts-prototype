@@ -147,8 +147,8 @@ export function applyForceFieldDamage(
 
       const turretAngle = weapon.rotation;
 
-      // --- Enemy units (skipped when ffAccelUnits is disabled) ---
-      const nearbyUnits = world.ffAccelUnits
+      // --- Enemy units (skipped when both ffAccelUnits and ffDmgUnits are disabled) ---
+      const nearbyUnits = (world.ffAccelUnits || world.ffDmgUnits)
         ? spatialGrid.queryEnemyUnitsInRadius(weaponX, weaponY, effectiveOuter, sourcePlayerId)
         : [];
 
@@ -179,19 +179,21 @@ export function applyForceFieldDamage(
 
         if (!inPush && !inPull) continue;
 
-        const damagePerFrame = inPush ? pushDamagePerFrame : pullDamagePerFrame;
-        const wasAlive = target.unit.hp > 0;
-        if (wasAlive) {
-          // Cap recorded damage at remaining HP to avoid overkill inflation
-          const actualDamage = Math.min(damagePerFrame, target.unit.hp);
-          statsTracker?.recordDamage(unit.id, target.id, actualDamage);
-        }
-        target.unit.hp -= damagePerFrame;
-        if (wasAlive && target.unit.hp <= 0) {
-          statsTracker?.recordKill(unit.id, target.id);
+        if (world.ffDmgUnits) {
+          const damagePerFrame = inPush ? pushDamagePerFrame : pullDamagePerFrame;
+          const wasAlive = target.unit.hp > 0;
+          if (wasAlive) {
+            // Cap recorded damage at remaining HP to avoid overkill inflation
+            const actualDamage = Math.min(damagePerFrame, target.unit.hp);
+            statsTracker?.recordDamage(unit.id, target.id, actualDamage);
+          }
+          target.unit.hp -= damagePerFrame;
+          if (wasAlive && target.unit.hp <= 0) {
+            statsTracker?.recordKill(unit.id, target.id);
+          }
         }
 
-        if (dist > 0 && forceAccumulator) {
+        if (world.ffAccelUnits && dist > 0 && forceAccumulator) {
           const targetMass = target.body?.physicsBody.mass ?? 1;
           const pullDir = inPush ? 1 : -1; // push outward in inner zone, pull inward in outer zone
           const zoneStrength = inPush ? pushStrength : pullStrength;

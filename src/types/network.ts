@@ -85,7 +85,7 @@ export type NetworkServerSnapshotMeta = {
   grid: boolean;
   units: { allowed?: string[]; max?: number };
   projVelInherit?: boolean;
-  ffAccel: { units?: boolean; shots?: boolean };
+  ffAccel: { units?: boolean; shots?: boolean; dmgUnits?: boolean };
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';

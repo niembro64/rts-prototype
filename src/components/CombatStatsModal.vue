@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { NetworkServerSnapshotCombatStats, NetworkServerSnapshotUnitTypeStats } from '../game/network/NetworkTypes';
-import { UNIT_BLUEPRINTS, BUILDABLE_UNIT_IDS } from '../game/sim/blueprints';
-import { getUnitValue, type UnitValuation } from '../game/sim/unitValuation';
-import { type FriendlyFireMode, type StatsSnapshot, applyFriendlyFire } from './combatStatsUtils';
+import type { NetworkServerSnapshotCombatStats } from '../game/network/NetworkTypes';
+import type { FriendlyFireMode, StatsSnapshot } from './combatStatsUtils';
 import CombatStatsGraph from './CombatStatsGraph.vue';
 
 const props = defineProps<{
@@ -19,165 +17,15 @@ const emit = defineEmits<{
 }>();
 
 const selectedPlayer = ref(1);
-const displayMode = ref<'table' | 'graph'>('graph');
-
-// Continuous exponent for normalization.
-// Formula: metric^rawExp / (produced × cost^costExp)
-//   where rawExp = max(1, α),  costExp = min(α, 1)
-//   α = 0  → Per Unit:      metric   / produced                (raw per-capita)
-//   α = 1  → Per Cost:      metric   / (produced × cost)       (linear efficiency, 1v1 duels)
-//   α = 2  → Lanchester:    metric²  / (produced × cost)       (square law, rewards cheap mass)
-const costExponent = ref(2);
 
 // Friendly fire handling: include, ignore, or subtract team damage/kills
 const teamDamageMode = ref<FriendlyFireMode>('subHalf');
 const teamKillsMode = ref<FriendlyFireMode>('subHalf');
 
-// Build unit type list from definitions (excluding commander)
-const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
-
-type RowData = {
-  unitType: string;
-  name: string;
-  cost: number;
-  produced: number;
-  lost: number;
-  survivalPct: number;
-  costSpent: number;
-  damageDealt: number;
-  damageReceived: number;
-  kills: number;
-  normDmg: number;
-  normKills: number;
-  normAvg: number;
-  weaponVal: number;
-  defVal: number;
-  mobVal: number;
-  suggestedCost: number;
-  costDeltaPct: number;
-};
-
-function buildRow(unitType: string, s: NetworkServerSnapshotUnitTypeStats | undefined, val: UnitValuation, cost: number, alpha: number, dmgMode: FriendlyFireMode, killMode: FriendlyFireMode): RowData {
-  const produced = s?.units.produced ?? 0;
-  const lost = s?.units.lost ?? 0;
-  const costSpent = s?.units.cost ?? 0;
-  const damageDealt = applyFriendlyFire(s?.damage.dealt.enemy ?? 0, s?.damage.dealt.friendly ?? 0, dmgMode);
-  const damageReceived = s?.damage.received ?? 0;
-  const kills = applyFriendlyFire(s?.kills.enemy ?? 0, s?.kills.friendly ?? 0, killMode);
-
-  // Ratio-based normalization:
-  //   dmgRatio  = dealt / (dealt + received)   [0,1], 0.5 = break-even
-  //   killRatio = kills / (kills + lost)        [0,1], 0.5 = break-even
-  const dmgRatio = (damageDealt + damageReceived) > 0 ? damageDealt / (damageDealt + damageReceived) : 0;
-  const killRatio = (kills + lost) > 0 ? kills / (kills + lost) : 0;
-
-  const rawExp = Math.max(1, alpha);
-  const costExp = Math.min(alpha, 1);
-  const costPow = Math.pow(cost, costExp);
-  const divisor = produced * costPow;
-  const scale = Math.pow(100, costExp);
-  const normDmg = divisor > 0 ? (Math.pow(dmgRatio, rawExp) / divisor) * scale : 0;
-  const normKills = divisor > 0 ? (Math.pow(killRatio, rawExp) / divisor) * scale : 0;
-
-  return {
-    unitType,
-    name: UNIT_BLUEPRINTS[unitType]?.name ?? unitType,
-    cost,
-    produced,
-    lost,
-    survivalPct: produced > 0 ? ((produced - lost) / produced) * 100 : 0,
-    costSpent,
-    damageDealt: Math.round(damageDealt),
-    damageReceived: Math.round(damageReceived),
-    kills,
-    normDmg,
-    normKills,
-    normAvg: 0,
-    weaponVal: Math.round(val.weaponValue * 10) / 10,
-    defVal: Math.round(val.defensiveValue * 10) / 10,
-    mobVal: Math.round(val.mobilityValue * 100) / 100,
-    suggestedCost: val.suggestedCost,
-    costDeltaPct: cost > 0 ? ((val.suggestedCost - cost) / cost) * 100 : 0,
-  };
-}
-
-const rows = computed<RowData[]>(() => {
-  if (!props.stats) return [];
-
-  const data = props.viewMode === 'global'
-    ? props.stats.global
-    : props.stats.players[selectedPlayer.value] ?? {};
-
-  const rawRows = unitTypes.value.map(ut => {
-    const bp = UNIT_BLUEPRINTS[ut];
-    if (!bp) return null;
-    const cost = bp.baseCost;
-    let val: UnitValuation;
-    try { val = getUnitValue(ut); } catch { return null; }
-    return buildRow(ut, data[ut], val, cost, costExponent.value, teamDamageMode.value, teamKillsMode.value);
-  }).filter((r): r is RowData => r !== null)
-    .sort((a, b) => a.cost - b.cost);
-
-  // Min-max normalize normDmg and normKills across all unit types → [0, 1]
-  if (rawRows.length > 1) {
-    let dmgMin = Infinity, dmgMax = -Infinity;
-    let killsMin = Infinity, killsMax = -Infinity;
-    for (const r of rawRows) {
-      if (r.normDmg < dmgMin) dmgMin = r.normDmg;
-      if (r.normDmg > dmgMax) dmgMax = r.normDmg;
-      if (r.normKills < killsMin) killsMin = r.normKills;
-      if (r.normKills > killsMax) killsMax = r.normKills;
-    }
-    const dmgRange = dmgMax - dmgMin;
-    const killsRange = killsMax - killsMin;
-    for (const r of rawRows) {
-      r.normDmg = dmgRange > 0 ? (r.normDmg - dmgMin) / dmgRange : 0;
-      r.normKills = killsRange > 0 ? (r.normKills - killsMin) / killsRange : 0;
-      r.normAvg = (r.normDmg + r.normKills) / 2;
-    }
-  }
-
-  return rawRows;
-});
-
-// Compute column min/max for color scaling
-function getColumnRange(key: keyof RowData): { min: number; max: number } {
-  const vals = rows.value.map(r => r[key] as number).filter(v => v > 0);
-  if (vals.length === 0) return { min: 0, max: 1 };
-  return { min: Math.min(...vals), max: Math.max(...vals) };
-}
-
-// Continuous gradient: red (0) -> yellow (0.5) -> green (1)
-function gradientColor(t: number): string {
-  const clamped = Math.max(0, Math.min(1, t));
-  const r = clamped < 0.5 ? 255 : Math.round(255 * (1 - (clamped - 0.5) * 2));
-  const g = clamped < 0.5 ? Math.round(255 * clamped * 2) : 255;
-  return `rgb(${r}, ${g}, 60)`;
-}
-
-function cellColor(value: number, key: keyof RowData, invert = false): string {
-  if (value === 0) return 'transparent';
-  const range = getColumnRange(key);
-  if (range.max === range.min) return gradientColor(0.5);
-  let t = (value - range.min) / (range.max - range.min);
-  if (invert) t = 1 - t;
-  return gradientColor(t);
-}
-
-function costDeltaColor(pct: number): string {
-  const t = Math.max(0, Math.min(1, (pct + 50) / 100));
-  return gradientColor(t);
-}
-
 const playerIds = computed(() => {
   if (!props.stats) return [];
   return Object.keys(props.stats.players).map(Number).sort();
 });
-
-function fmt(n: number, decimals = 0): string {
-  if (n === 0) return '-';
-  return decimals > 0 ? n.toFixed(decimals) : Math.round(n).toString();
-}
 </script>
 
 <template>
@@ -186,18 +34,6 @@ function fmt(n: number, decimals = 0): string {
       <div class="modal-header">
         <h2>Combat Statistics</h2>
         <div class="header-controls">
-          <div class="btn-group">
-            <button
-              :class="{ active: displayMode === 'table' }"
-              @click="displayMode = 'table'"
-              data-tip="Sortable table"
-            >Tbl</button>
-            <button
-              :class="{ active: displayMode === 'graph' }"
-              @click="displayMode = 'graph'"
-              data-tip="Time-series graph"
-            >Graph</button>
-          </div>
           <div class="btn-group">
             <button
               :class="{ active: viewMode === 'global' }"
@@ -217,34 +53,6 @@ function fmt(n: number, decimals = 0): string {
           >
             <option v-for="pid in playerIds" :key="pid" :value="pid">P{{ pid }}</option>
           </select>
-
-          <div class="norm-control">
-            <span class="control-label">Norm:</span>
-            <div class="btn-group">
-              <button
-                :class="{ active: costExponent === 1 }"
-                @click="costExponent = 1"
-                data-tip="α=1: metric / cost (linear efficiency)"
-              >Lin</button>
-              <button
-                :class="{ active: costExponent === 2 }"
-                @click="costExponent = 2"
-                data-tip="α=2: metric² / cost (rewards expensive units)"
-              >Sq</button>
-            </div>
-            <div class="slider-row">
-              <input
-                type="range"
-                min="1"
-                max="2"
-                step="0.025"
-                :value="costExponent"
-                @input="costExponent = parseFloat(($event.target as HTMLInputElement).value)"
-                class="exponent-slider"
-              />
-              <span class="slider-label">α={{ costExponent.toFixed(2) }}</span>
-            </div>
-          </div>
 
           <div class="norm-control">
             <span class="control-label" data-tip="Friendly fire damage handling">FF Dmg:</span>
@@ -300,75 +108,13 @@ function fmt(n: number, decimals = 0): string {
         </div>
       </div>
 
-      <!-- Graph view -->
       <CombatStatsGraph
-        v-if="displayMode === 'graph'"
         :history="statsHistory"
         :view-mode="viewMode"
         :selected-player="selectedPlayer"
-        :cost-exponent="costExponent"
         :team-damage-mode="teamDamageMode"
         :team-kills-mode="teamKillsMode"
       />
-
-      <div v-else class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th data-tip="Unit type name">Unit</th>
-              <th data-tip="Energy cost to build one unit">Cost</th>
-              <th data-tip="Total units of this type built">Produced</th>
-              <th data-tip="Total units of this type destroyed">Lost</th>
-              <th data-tip="Percentage of produced units still alive: (produced - lost) / produced">Survival %</th>
-              <th data-tip="Total energy spent building this unit type: produced x cost">Total $ Spent</th>
-              <th data-tip="Total HP damage dealt to enemies (adjusted by Team Dmg mode)">Total Dmg</th>
-              <th data-tip="Total enemy units killed (adjusted by Team Kills mode)">Total Kills</th>
-              <th data-tip="Damage normalized to [0,1] across unit types (0 = worst, 1 = best)">Norm Dmg</th>
-              <th data-tip="Kills normalized to [0,1] across unit types (0 = worst, 1 = best)">Norm Kills</th>
-              <th data-tip="Average of Norm Dmg and Norm Kills">Norm Avg</th>
-              <th data-tip="Weapon valuation score based on DPS, range, and projectile stats">Wpn Val</th>
-              <th data-tip="Defensive valuation score based on HP, armor, and evasion">Def Val</th>
-              <th data-tip="Mobility valuation score based on speed and turn rate">Mob Val</th>
-              <th data-tip="Cost suggested by the valuation model (wpn x def x mob)">Suggested $</th>
-              <th data-tip="Difference between suggested cost and actual cost, as a percentage">Cost Delta %</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in rows" :key="row.unitType">
-              <td class="unit-name">{{ row.name }}</td>
-              <td>{{ row.cost }}</td>
-              <td>{{ fmt(row.produced) }}</td>
-              <td>{{ fmt(row.lost) }}</td>
-              <td :style="{ backgroundColor: cellColor(row.survivalPct, 'survivalPct') }">
-                {{ fmt(row.survivalPct, 0) }}{{ row.produced > 0 ? '%' : '' }}
-              </td>
-              <td>{{ fmt(row.costSpent) }}</td>
-              <td :style="{ backgroundColor: cellColor(row.damageDealt, 'damageDealt') }">
-                {{ fmt(row.damageDealt) }}
-              </td>
-              <td :style="{ backgroundColor: cellColor(row.kills, 'kills') }">
-                {{ fmt(row.kills) }}
-              </td>
-              <td :style="{ backgroundColor: cellColor(row.normDmg, 'normDmg') }">
-                {{ fmt(row.normDmg, 2) }}
-              </td>
-              <td :style="{ backgroundColor: cellColor(row.normKills, 'normKills') }">
-                {{ fmt(row.normKills, 2) }}
-              </td>
-              <td :style="{ backgroundColor: cellColor(row.normAvg, 'normAvg') }">
-                {{ fmt(row.normAvg, 2) }}
-              </td>
-              <td>{{ row.weaponVal }}</td>
-              <td>{{ row.defVal }}</td>
-              <td>{{ row.mobVal }}</td>
-              <td>{{ row.suggestedCost }}</td>
-              <td :style="{ backgroundColor: costDeltaColor(row.costDeltaPct) }">
-                {{ row.costDeltaPct >= 0 ? '+' : '' }}{{ fmt(row.costDeltaPct, 0) }}%
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
 
       <div class="modal-footer">
         Press <kbd>`</kbd> to toggle
@@ -442,9 +188,8 @@ function fmt(n: number, decimals = 0): string {
   font-size: 14px;
   font-family: 'Courier New', monospace;
   transition: background 0.1s, color 0.1s;
-  /* Remove rounding between siblings */
   border-radius: 0;
-  margin-left: -1px; /* collapse shared borders */
+  margin-left: -1px;
 }
 
 .btn-group button:first-child {
@@ -465,11 +210,10 @@ function fmt(n: number, decimals = 0): string {
   background: rgba(70, 95, 150, 0.65);
   color: #e0e8f0;
   border-color: rgba(100, 140, 210, 0.6);
-  z-index: 1; /* active border on top of neighbors */
+  z-index: 1;
   position: relative;
 }
 
-/* ---- Normalization control row ---- */
 .norm-control {
   display: flex;
   align-items: center;
@@ -482,52 +226,6 @@ function fmt(n: number, decimals = 0): string {
   white-space: nowrap;
 }
 
-.slider-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 4px;
-}
-
-.slider-label {
-  color: #90a0b8;
-  font-size: 13px;
-  min-width: 68px;
-  text-align: left;
-  font-variant-numeric: tabular-nums;
-}
-
-.exponent-slider {
-  width: 100px;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: rgba(80, 100, 140, 0.35);
-  border-radius: 2px;
-  outline: none;
-  cursor: pointer;
-}
-
-.exponent-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #90b0e0;
-  border: 2px solid rgba(140, 170, 220, 0.6);
-  cursor: pointer;
-}
-
-.exponent-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #90b0e0;
-  border: 2px solid rgba(140, 170, 220, 0.6);
-  cursor: pointer;
-}
-
 .player-select {
   padding: 5px 10px;
   background: rgba(40, 50, 70, 0.8);
@@ -536,45 +234,6 @@ function fmt(n: number, decimals = 0): string {
   color: #c8d0e0;
   font-size: 14px;
   font-family: 'Courier New', monospace;
-}
-
-.table-scroll {
-  overflow: auto;
-  flex: 1;
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-th, td {
-  padding: 10px 14px;
-  text-align: right;
-  border-bottom: 1px solid rgba(60, 70, 90, 0.4);
-}
-
-th {
-  position: sticky;
-  top: 0;
-  background: rgba(20, 25, 35, 0.98);
-  color: #8090a8;
-  font-weight: normal;
-  font-size: 14px;
-  border-bottom: 2px solid rgba(80, 100, 140, 0.4);
-}
-
-td.unit-name {
-  text-align: left;
-  color: #e0e8f0;
-  font-weight: bold;
-  font-size: 17px;
-}
-
-tr:hover td {
-  background-color: rgba(60, 80, 120, 0.2) !important;
 }
 
 .modal-footer {

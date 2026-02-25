@@ -40,6 +40,8 @@ import {
   saveFfAccelUnits,
   loadStoredFfAccelShots,
   saveFfAccelShots,
+  loadStoredFfDmgUnits,
+  saveFfDmgUnits,
 } from '../battleBarConfig';
 import {
   SERVER_CONFIG,
@@ -302,6 +304,11 @@ function startBackgroundBattle(): void {
     enabled: loadStoredFfAccelShots(),
   });
   backgroundServer.receiveCommand({
+    type: 'setFfDmgUnits',
+    tick: 0,
+    enabled: loadStoredFfDmgUnits(),
+  });
+  backgroundServer.receiveCommand({
     type: 'setSendGridInfo',
     tick: 0,
     enabled: loadStoredGridInfo(),
@@ -518,14 +525,9 @@ function setFfAccelShots(enabled: boolean): void {
   saveFfAccelShots(enabled);
 }
 
-function toggleFfAccelAll(): void {
-  const units =
-    serverMetaFromSnapshot.value?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default;
-  const shots =
-    serverMetaFromSnapshot.value?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default;
-  const allOn = units && shots;
-  setFfAccelUnits(!allOn);
-  setFfAccelShots(!allOn);
+function setFfDmgUnits(enabled: boolean): void {
+  activeConnection?.sendCommand({ type: 'setFfDmgUnits', tick: 0, enabled });
+  saveFfDmgUnits(enabled);
 }
 
 function resetDemoDefaults(): void {
@@ -548,6 +550,7 @@ function resetDemoDefaults(): void {
   saveProjVelInherit(BATTLE_CONFIG.projVelInherit.default);
   setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
   setFfAccelShots(BATTLE_CONFIG.ffAccelShots.default);
+  setFfDmgUnits(BATTLE_CONFIG.ffDmgUnits.default);
 }
 
 function resetServerDefaults(): void {
@@ -967,6 +970,11 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
         enabled: loadStoredFfAccelShots(),
       });
       currentServer.receiveCommand({
+        type: 'setFfDmgUnits',
+        tick: 0,
+        enabled: loadStoredFfDmgUnits(),
+      });
+      currentServer.receiveCommand({
         type: 'setSendGridInfo',
         tick: 0,
         enabled: loadStoredGridInfo(),
@@ -1322,20 +1330,22 @@ onUnmounted(() => {
           </div>
           <div class="control-group">
             <BarDivider />
-            <span class="control-label">FF ACC:</span>
-            <button
-              class="control-btn"
-              :class="{
-                active:
-                  (serverMetaFromSnapshot?.ffAccel.units ?? false) &&
-                  (serverMetaFromSnapshot?.ffAccel.shots ?? true),
-              }"
-              title="Toggle all force field acceleration on/off"
-              @click="toggleFfAccelAll"
-            >
-              ALL
-            </button>
+            <span class="control-label">FF:</span>
             <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{
+                  active: serverMetaFromSnapshot?.ffAccel.dmgUnits ?? true,
+                }"
+                title="Force field damages enemy units"
+                @click="
+                  setFfDmgUnits(
+                    !(serverMetaFromSnapshot?.ffAccel.dmgUnits ?? true),
+                  )
+                "
+              >
+                UNIT-DMG
+              </button>
               <button
                 class="control-btn"
                 :class="{
@@ -1348,7 +1358,7 @@ onUnmounted(() => {
                   )
                 "
               >
-                UNIT
+                UNIT-ACC
               </button>
               <button
                 class="control-btn"
@@ -1362,7 +1372,7 @@ onUnmounted(() => {
                   )
                 "
               >
-                SHOT
+                SHOT-ACC
               </button>
             </div>
           </div>

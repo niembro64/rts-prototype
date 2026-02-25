@@ -8,23 +8,19 @@ const props = defineProps<{
   history: StatsSnapshot[];
   viewMode: 'global' | 'player';
   selectedPlayer: number;
-  costExponent: number;
   teamDamageMode: FriendlyFireMode;
   teamKillsMode: FriendlyFireMode;
 }>();
 
-type MetricKey = 'normDmg' | 'normKills' | 'normAvg' | 'damageDealt' | 'kills' | 'survivalPct' | 'produced' | 'lost' | 'costSpent';
+type MetricKey = 'normAvg' | 'normKills' | 'normDmg' | 'costSpent' | 'killRatio' | 'dmgRatio';
 
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
-  { key: 'normAvg', label: 'Norm Avg', tip: 'Average of Norm Dmg and Norm Kills (ratio-based)' },
-  { key: 'normDmg', label: 'Norm Dmg', tip: 'Damage ratio (dealt / (dealt+received)) normalized across unit types' },
-  { key: 'normKills', label: 'Norm Kills', tip: 'Kill ratio (kills / (kills+deaths)) normalized across unit types' },
-  { key: 'damageDealt', label: 'Total Dmg', tip: 'Total HP damage dealt (adjusted by Team Dmg mode)' },
-  { key: 'kills', label: 'Total Kills', tip: 'Total enemy units killed (adjusted by Team Kills mode)' },
-  { key: 'survivalPct', label: 'Survival %', tip: 'Percentage of produced units still alive: (produced - lost) / produced' },
-  { key: 'produced', label: 'Produced', tip: 'Total units of this type built' },
-  { key: 'lost', label: 'Lost', tip: 'Total units of this type destroyed' },
-  { key: 'costSpent', label: 'Cost Spent', tip: 'Total energy spent building this unit type' },
+  { key: 'normAvg', label: 'Avg Ratio Norm', tip: 'Average of Dmg Ratio Norm and Kill Ratio Norm, min-max normalized to [0,1]' },
+  { key: 'normKills', label: 'Kill Ratio Norm', tip: 'killRatio / costSpent, min-max normalized to [0,1]' },
+  { key: 'normDmg', label: 'Dmg Ratio Norm', tip: 'dmgRatio / costSpent, min-max normalized to [0,1]' },
+  { key: 'costSpent', label: 'Total Cost', tip: 'Total energy spent building this unit type (produced × unitCost)' },
+  { key: 'killRatio', label: 'Kill Ratio', tip: 'kills / (kills + lost) — 0.5 = break-even' },
+  { key: 'dmgRatio', label: 'Dmg Ratio', tip: 'dealt / (dealt + received) — 0.5 = break-even' },
 ];
 
 const selectedMetric = ref<MetricKey>('normAvg');
@@ -55,41 +51,42 @@ const plotH = H - PAD.top - PAD.bottom;
 // Compute a simple (non-normalized) metric for a single unit type
 function computeMetric(s: NetworkServerSnapshotUnitTypeStats | undefined, unitType: string, metric: MetricKey): number {
   if (!s) return 0;
-  const bp = UNIT_BLUEPRINTS[unitType];
-  if (!bp) return 0;
-  const cost = bp.baseCost;
-  const produced = s.units.produced ?? 0;
+  if (!UNIT_BLUEPRINTS[unitType]) return 0;
   const lost = s.units.lost ?? 0;
   const dmg = applyFriendlyFire(s.damage.dealt.enemy ?? 0, s.damage.dealt.friendly ?? 0, props.teamDamageMode);
   const kills = applyFriendlyFire(s.kills.enemy ?? 0, s.kills.friendly ?? 0, props.teamKillsMode);
 
+  const damageReceived = s.damage.received ?? 0;
+  const dmgRatio = (dmg + damageReceived) > 0 ? dmg / (dmg + damageReceived) : 0;
+  const killRatio = (kills + lost) > 0 ? kills / (kills + lost) : 0;
+  const costSpent = s.units.cost ?? 0;
+
   switch (metric) {
-    case 'damageDealt': return dmg;
-    case 'kills': return kills;
-    case 'produced': return produced;
-    case 'lost': return lost;
-    case 'costSpent': return s.units.cost ?? 0;
-    case 'survivalPct': return produced > 0 ? ((produced - lost) / produced) * 100 : 0;
+    case 'dmgRatio': return dmgRatio;
+    case 'killRatio': return killRatio;
+    case 'costSpent': return costSpent;
     case 'normDmg':
     case 'normKills':
     case 'normAvg': {
-      // Ratio-based: dmgRatio = dealt/(dealt+received), killRatio = kills/(kills+lost)
-      const damageReceived = s.damage.received ?? 0;
-      const dmgRatio = (dmg + damageReceived) > 0 ? dmg / (dmg + damageReceived) : 0;
-      const killRatio = (kills + lost) > 0 ? kills / (kills + lost) : 0;
-      const alpha = props.costExponent;
-      const rawExp = Math.max(1, alpha);
-      const costExp = Math.min(alpha, 1);
-      const costPow = Math.pow(cost, costExp);
-      const divisor = produced * costPow;
-      const scale = Math.pow(100, costExp);
       const ratio = (metric === 'normKills') ? killRatio : dmgRatio;
-      return divisor > 0 ? (Math.pow(ratio, rawExp) / divisor) * scale : 0;
+      return costSpent > 0 ? ratio / costSpent : 0;
     }
   }
 }
 
 const isNormMetric = (m: MetricKey) => m === 'normDmg' || m === 'normKills' || m === 'normAvg';
+
+const formulaDisplay = computed(() => {
+  const m = selectedMetric.value;
+  switch (m) {
+    case 'dmgRatio': return 'dealt / (dealt + received)   0.5 = break-even';
+    case 'killRatio': return 'kills / (kills + lost)   0.5 = break-even';
+    case 'costSpent': return 'produced × unitCost (total energy spent)';
+    case 'normDmg': return 'dmgRatio / costSpent   min-max normalized to [0,1]';
+    case 'normKills': return 'killRatio / costSpent   min-max normalized to [0,1]';
+    case 'normAvg': return 'avg(normDmg, normKills)   min-max normalized to [0,1]';
+  }
+});
 
 // Min-max normalize an array in-place, returns the array
 function minMaxNormalize(values: number[]): number[] {
@@ -354,6 +351,9 @@ const hoverTime = computed(() => {
       </div>
     </div>
 
+    <!-- Formula display -->
+    <div class="formula-display">{{ formulaDisplay }}</div>
+
     <!-- SVG chart -->
     <svg
       :viewBox="`0 0 ${W} ${H}`"
@@ -485,6 +485,17 @@ const hoverTime = computed(() => {
   color: #7888a0;
   font-size: 14px;
   white-space: nowrap;
+}
+
+.formula-display {
+  color: #7888a0;
+  font-size: 13px;
+  font-family: 'Courier New', monospace;
+  margin-bottom: 8px;
+  padding: 3px 8px;
+  background: rgba(40, 48, 68, 0.4);
+  border-radius: 4px;
+  width: fit-content;
 }
 
 .btn-group {

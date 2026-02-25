@@ -28,6 +28,7 @@ export const BATTLE_CONFIG = {
   projVelInherit: { default: false },
   ffAccelUnits: { default: false },
   ffAccelShots: { default: true },
+  ffDmgUnits: { default: true },
 } as const satisfies BattleBarConfig;
 
 // ── localStorage keys (module-private) ──
@@ -36,6 +37,7 @@ const STORAGE_MAX_TOTAL_UNITS = 'rts-max-total-units';
 const STORAGE_PROJ_VEL_INHERIT = 'rts-proj-vel-inherit';
 const STORAGE_FF_ACCEL_UNITS = 'rts-ff-accel-units';
 const STORAGE_FF_ACCEL_SHOTS = 'rts-ff-accel-shots';
+const STORAGE_FF_DMG_UNITS = 'rts-ff-dmg-units';
 
 export function loadStoredDemoUnits(): string[] | null {
   try {
@@ -105,4 +107,17 @@ export function loadStoredFfAccelShots(): boolean {
 
 export function saveFfAccelShots(enabled: boolean): void {
   try { localStorage.setItem(STORAGE_FF_ACCEL_SHOTS, String(enabled)); } catch { /* */ }
+}
+
+export function loadStoredFfDmgUnits(): boolean {
+  try {
+    const stored = localStorage.getItem(STORAGE_FF_DMG_UNITS);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+  } catch { /* localStorage unavailable */ }
+  return BATTLE_CONFIG.ffDmgUnits.default;
+}
+
+export function saveFfDmgUnits(enabled: boolean): void {
+  try { localStorage.setItem(STORAGE_FF_DMG_UNITS, String(enabled)); } catch { /* */ }
 }
