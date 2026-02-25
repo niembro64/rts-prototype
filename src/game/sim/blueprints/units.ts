@@ -290,13 +290,19 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'LRS',
     hp: 200,
     moveSpeed: 160,
-    unitDrawScale: 16,
+    unitDrawScale: 10,
     unitRadiusColliderShot: 16 * 0.8,
     unitRadiusColliderPush: 16 * 1.3,
     mass: 20,
-    baseCost: 190,
-    turrets: [{ turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 }],
-    chassisMounts: [{ x: 0, y: 0 }],
+    baseCost: 110,
+    turrets: [
+      { turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 },
+      { turretId: 'lightTurret', offsetX: 0, offsetY: 0 },
+    ],
+    chassisMounts: [
+      { x: 0, y: 0 },
+      { x: 0, y: 0 },
+    ],
     locomotion: {
       type: 'treads',
       config: {

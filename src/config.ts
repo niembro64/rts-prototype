@@ -36,6 +36,10 @@ import type {
 // Spatial grid cell size in pixels. Should be roughly 1/2 to 1/3 of typical weapon range.
 export const SPATIAL_GRID_CELL_SIZE = 150;
 
+// Fraction of turrets that must be engaged for a unit to stop moving during fight/patrol/attack.
+// 0.5 = stop when half or more turrets are engaged.
+export const FIGHT_STOP_ENGAGED_RATIO = 0.4;
+
 // =============================================================================
 // SNAPSHOT / NETWORKING
 // =============================================================================

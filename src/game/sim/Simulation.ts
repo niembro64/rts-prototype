@@ -34,6 +34,7 @@ import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
+import { FIGHT_STOP_ENGAGED_RATIO } from '@/config';
 import type { GamePhase } from '@/types/network';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
@@ -565,14 +566,14 @@ export class Simulation {
         currentAction.x = attackTarget.transform.x;
         currentAction.y = attackTarget.transform.y;
 
-        // Stop if majority of turrets are engaged
+        // Stop if enough turrets are engaged
         const turrets = entity.turrets;
         if (turrets && turrets.length > 0) {
           let engagedCount = 0;
           for (let i = 0; i < turrets.length; i++) {
             if (turrets[i].state === 'engaged') engagedCount++;
           }
-          if (engagedCount > turrets.length / 2) {
+          if (engagedCount >= turrets.length * FIGHT_STOP_ENGAGED_RATIO) {
             continue;
           }
         }
@@ -588,7 +589,7 @@ export class Simulation {
         continue;
       }
 
-      // Check if unit should stop for combat (fight or patrol mode with majority of turrets engaged)
+      // Check if unit should stop for combat (fight or patrol mode with enough turrets engaged)
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
         const turrets = entity.turrets;
         if (turrets && turrets.length > 0) {
@@ -596,8 +597,7 @@ export class Simulation {
           for (let i = 0; i < turrets.length; i++) {
             if (turrets[i].state === 'engaged') engagedCount++;
           }
-          if (engagedCount > turrets.length / 2) {
-            // Majority of turrets are engaged — stop and fight
+          if (engagedCount >= turrets.length * FIGHT_STOP_ENGAGED_RATIO) {
             continue;
           }
         }

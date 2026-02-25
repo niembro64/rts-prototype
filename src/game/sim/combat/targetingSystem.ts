@@ -52,7 +52,6 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     const playerId = unit.ownership.playerId;
     const { cos, sin } = getTransformCosSin(unit.transform);
     const weapons = unit.turrets;
-    const isMirrorUnit = unit.unit.mirrorPanels.length > 0;
 
     // Pass 0: Compute weapon world positions (needed for both modes)
     for (const weapon of weapons) {
@@ -82,10 +81,16 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         priorityRadius = getTargetRadius(pt);
       }
 
-      if (priorityTarget && !(isMirrorUnit && !isBeamUnit(priorityTarget))) {
+      if (priorityTarget) {
         // ATTACK MODE: force all weapons to the priority target, engage ranges only
         for (const weapon of weapons) {
           if (weapon.config.isManualFire) continue;
+          // Passive turrets (mirrors) only target beam units
+          if (weapon.config.passive && !isBeamUnit(priorityTarget)) {
+            weapon.target = null;
+            weapon.state = 'idle';
+            continue;
+          }
 
           weapon.target = priorityId;
           const dist = distance(weapon.worldPos!.x, weapon.worldPos!.y, priorityTarget.transform.x, priorityTarget.transform.y);
@@ -117,7 +122,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.radiusColliderUnitShot; }
       else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
-      if (!targetIsValid || !target || (isMirrorUnit && !isBeamUnit(target))) {
+      if (!targetIsValid || !target || (weapon.config.passive && !isBeamUnit(target))) {
         weapon.target = null;
         weapon.state = 'idle';
       } else {
@@ -193,8 +198,8 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       let closestDist = Infinity;
 
       for (const enemy of candidates) {
-        // Mirror units only target enemies actively firing beams
-        if (isMirrorUnit && !isBeamUnit(enemy)) continue;
+        // Passive turrets (mirrors) only target beam units
+        if (weapon.config.passive && !isBeamUnit(enemy)) continue;
 
         const enemyRadius = enemy.unit ? enemy.unit.radiusColliderUnitShot : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
