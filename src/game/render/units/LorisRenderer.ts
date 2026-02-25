@@ -44,7 +44,7 @@ export function drawLorisUnit(
   // Mirror triangle — oriented by turret rotation (tracks enemies), not body rotation
   const { entity } = ctx;
   const turret = entity.turrets?.[0];
-  const mirrorRot = turret && turret.target !== null ? turret.rotation : bodyRot;
+  const mirrorRot = turret ? turret.rotation : bodyRot;
   const mCos = Math.cos(mirrorRot);
   const mSin = Math.sin(mirrorRot);
 

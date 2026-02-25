@@ -246,7 +246,7 @@ export class DamageSystem {
       if (mirrorWidth > 0) {
         // Mirror unit: test ray vs 3 faces of equilateral triangle centered on unit
         let mirrorRot = unit.transform.rotation;
-        if (unit.turrets && unit.turrets.length > 0 && unit.turrets[0].target !== null) {
+        if (unit.turrets && unit.turrets.length > 0) {
           mirrorRot = unit.turrets[0].rotation;
         }
         const fwdX = Math.cos(mirrorRot);

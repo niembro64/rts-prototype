@@ -559,9 +559,14 @@ export function checkProjectileCollisions(
       const beamDirX = Math.cos(beamAngle);
       const beamDirY = Math.sin(beamAngle);
 
+      // Reflected beams: attribute damage/kills to the last mirror unit that redirected it
+      const damageSourceId = proj.reflections && proj.reflections.length > 0
+        ? proj.reflections[proj.reflections.length - 1].mirrorEntityId
+        : proj.sourceEntityId;
+
       const result = damageSystem.applyDamage({
         type: 'area',
-        sourceEntityId: proj.sourceEntityId,
+        sourceEntityId: damageSourceId,
         ownerId: projEntity.ownership.playerId,
         damage: tickDamage,
         excludeEntities: _emptyExcludeSet,
