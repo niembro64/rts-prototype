@@ -56,63 +56,58 @@ export function drawLorisUnit(
   const shimmer = Math.sin(time * 2.5) * 0.5 + 0.5;
   const edgePulse = Math.sin(time * 1.8 + 1) * 0.5 + 0.5;
 
-  // Total perimeter for glint animation (sum of all panel front edges)
+  // Pre-compute all panel geometry for unified rendering
+  const panelGeo: { f1x: number; f1y: number; f2x: number; f2y: number;
+    b1x: number; b1y: number; b2x: number; b2y: number; hw: number }[] = [];
+
+  for (const panel of panels) {
+    const pcx = x + mCos * panel.offsetX + perpX * panel.offsetY;
+    const pcy = y + mSin * panel.offsetX + perpY * panel.offsetY;
+    const panelAngle = mirrorRot + panel.angle;
+    const pnx = Math.cos(panelAngle);
+    const pny = Math.sin(panelAngle);
+    const edx = -pny;
+    const edy = pnx;
+    const hw = panel.halfWidth;
+    const hh = panel.halfHeight;
+    panelGeo.push({
+      f1x: pcx + pnx * hh + edx * hw, f1y: pcy + pny * hh + edy * hw,
+      f2x: pcx + pnx * hh - edx * hw, f2y: pcy + pny * hh - edy * hw,
+      b1x: pcx - pnx * hh + edx * hw, b1y: pcy - pny * hh + edy * hw,
+      b2x: pcx - pnx * hh - edx * hw, b2y: pcy - pny * hh - edy * hw,
+      hw,
+    });
+  }
+
+  // Pass 1: Fill all panels as solid (no transparency — appears as one piece)
+  graphics.fillStyle(dark, 1);
+  for (const g of panelGeo) {
+    graphics.fillTriangle(g.f1x, g.f1y, g.f2x, g.f2y, g.b2x, g.b2y);
+    graphics.fillTriangle(g.f1x, g.f1y, g.b2x, g.b2y, g.b1x, g.b1y);
+  }
+
+  // Pass 2: Subtle shimmer overlay on all panels
+  graphics.fillStyle(0xffffff, 0.03 + shimmer * 0.04);
+  for (const g of panelGeo) {
+    graphics.fillTriangle(g.f1x, g.f1y, g.f2x, g.f2y, g.b2x, g.b2y);
+    graphics.fillTriangle(g.f1x, g.f1y, g.b2x, g.b2y, g.b1x, g.b1y);
+  }
+
+  // Pass 3: Front edge highlights only (no box outlines — keeps panels seamless)
+  graphics.lineStyle(1.5, 0xffffff, 0.08 + edgePulse * 0.08);
+  for (const g of panelGeo) {
+    graphics.lineBetween(g.f1x, g.f1y, g.f2x, g.f2y);
+  }
+
+  // Pass 4: Traveling glint across all front edges as one continuous path
   let totalPerimeter = 0;
-  for (const panel of panels) totalPerimeter += panel.halfWidth * 2;
+  for (const g of panelGeo) totalPerimeter += g.hw * 2;
 
   const glintT = (time * 0.4) % 1;
   let perimeterOffset = 0;
 
-  for (const panel of panels) {
-    // Panel center in world space
-    const pcx = x + mCos * panel.offsetX + perpX * panel.offsetY;
-    const pcy = y + mSin * panel.offsetX + perpY * panel.offsetY;
-
-    // Panel's outward-facing direction (rotated by panel.angle relative to turret forward)
-    const panelAngle = mirrorRot + panel.angle;
-    const pnx = Math.cos(panelAngle); // outward normal
-    const pny = Math.sin(panelAngle);
-
-    // Edge direction (along reflective edge, perpendicular to normal)
-    const edx = -pny;
-    const edy = pnx;
-
-    const hw = panel.halfWidth;
-    const hh = panel.halfHeight;
-
-    // 4 corners of the rectangle (front = outward normal side, back = inward)
-    const f1x = pcx + pnx * hh + edx * hw; // front-left
-    const f1y = pcy + pny * hh + edy * hw;
-    const f2x = pcx + pnx * hh - edx * hw; // front-right
-    const f2y = pcy + pny * hh - edy * hw;
-    const b1x = pcx - pnx * hh + edx * hw; // back-left
-    const b1y = pcy - pny * hh + edy * hw;
-    const b2x = pcx - pnx * hh - edx * hw; // back-right
-    const b2y = pcy - pny * hh - edy * hw;
-
-    // Fill panel (2 triangles)
-    graphics.fillStyle(dark, 0.8);
-    graphics.fillTriangle(f1x, f1y, f2x, f2y, b2x, b2y);
-    graphics.fillTriangle(f1x, f1y, b2x, b2y, b1x, b1y);
-
-    // Reflective surface shimmer
-    graphics.fillStyle(0xffffff, 0.03 + shimmer * 0.04);
-    graphics.fillTriangle(f1x, f1y, f2x, f2y, b2x, b2y);
-    graphics.fillTriangle(f1x, f1y, b2x, b2y, b1x, b1y);
-
-    // Pulsing edge outline
-    graphics.lineStyle(1.5, 0xffffff, 0.04 + edgePulse * 0.06);
-    graphics.lineBetween(f1x, f1y, f2x, f2y); // front (reflective) edge
-    graphics.lineBetween(f2x, f2y, b2x, b2y);
-    graphics.lineBetween(b2x, b2y, b1x, b1y);
-    graphics.lineBetween(b1x, b1y, f1x, f1y);
-
-    // Brighter front edge highlight (the reflective surface)
-    graphics.lineStyle(1.5, 0xffffff, 0.08 + edgePulse * 0.08);
-    graphics.lineBetween(f1x, f1y, f2x, f2y);
-
-    // Traveling glint — bright point along the front edge with trailing fade
-    const panelWidth = hw * 2;
+  for (const g of panelGeo) {
+    const panelWidth = g.hw * 2;
     const startFrac = perimeterOffset / totalPerimeter;
     const endFrac = (perimeterOffset + panelWidth) / totalPerimeter;
 
@@ -120,8 +115,8 @@ export function drawLorisUnit(
       const t = ((glintT - i * 0.012) % 1 + 1) % 1;
       if (t >= startFrac && t <= endFrac) {
         const localT = (t - startFrac) / (endFrac - startFrac);
-        const gx = f1x + (f2x - f1x) * localT;
-        const gy = f1y + (f2y - f1y) * localT;
+        const gx = g.f1x + (g.f2x - g.f1x) * localT;
+        const gy = g.f1y + (g.f2y - g.f1y) * localT;
         graphics.fillStyle(0xffffff, 0.6 * Math.pow(0.4, i));
         graphics.fillCircle(gx, gy, 2.5 - i * 0.4);
       }
