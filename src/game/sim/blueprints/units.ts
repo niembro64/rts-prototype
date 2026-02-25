@@ -185,7 +185,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderShot: 24 * 0.85,
     unitRadiusColliderPush: 24 * 1.5,
     mass: 1000,
-    baseCost: 1200,
+    baseCost: 2000,
     turrets: [{ turretId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -205,7 +205,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     id: 'widow',
     name: 'Widow',
     shortName: 'WDW',
-    hp: 2100,
+    hp: 2400,
     moveSpeed: 70,
     unitDrawScale: 30,
     unitRadiusColliderShot: 40 * 0.9,
