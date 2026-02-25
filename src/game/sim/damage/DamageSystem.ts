@@ -19,7 +19,7 @@ import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineRectIntersectionT, isPointInSlice } from '../../math';
 import { getTargetRadius } from '../combat/combatUtils';
-import { getUnitBlueprint } from '../blueprints';
+
 
 // Reusable DamageResult to avoid per-call allocations
 const _reusableResult: DamageResult = {
@@ -236,13 +236,7 @@ export class DamageSystem {
       if (unit.id === excludeEntityId) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
-      // Check if this unit has a mirror
-      let mirrorWidth = 0;
-      try {
-        const bp = getUnitBlueprint(unit.unit.unitType);
-        if (bp.mirror) { mirrorWidth = bp.mirror.width; }
-      } catch { /* */ }
-
+      const mirrorWidth = unit.unit.mirrorWidth;
       if (mirrorWidth > 0) {
         // Mirror unit: test ray vs 3 faces of equilateral triangle centered on unit
         let mirrorRot = unit.transform.rotation;

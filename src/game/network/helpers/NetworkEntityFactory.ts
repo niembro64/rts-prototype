@@ -3,6 +3,7 @@
 import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity } from '../NetworkManager';
 import { getTurretConfig } from '../../sim/turretConfigs';
+import { getUnitBlueprint } from '../../sim/blueprints';
 
 /**
  * Create an Entity from NetworkServerSnapshotEntity data
@@ -73,6 +74,7 @@ function createUnitFromNetwork(
       patrolStartIndex: null,
       velocityX: u?.velocity.x ?? 0,
       velocityY: u?.velocity.y ?? 0,
+      mirrorWidth: 0,
     },
   };
 
@@ -102,6 +104,9 @@ function createUnitFromNetwork(
     }
     entity.turrets = turrets;
   }
+
+  // Cache mirror width for fast beam collision checks
+  try { const bp = getUnitBlueprint(u?.unitType ?? 'jackal'); entity.unit!.mirrorWidth = bp.mirror?.width ?? 0; } catch { /* */ }
 
   if (u?.isCommander) {
     entity.commander = {

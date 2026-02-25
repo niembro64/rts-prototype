@@ -21,7 +21,7 @@ import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig } from '../sim/turretConfigs';
 import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
-import { getUnitBlueprint } from '../sim/blueprints';
+
 
 // Ray-vs-line-segment intersection (shared with DamageSystem)
 function raySegmentIntersection(
@@ -742,9 +742,7 @@ export class ClientViewState {
       if (unit.id === excludeId) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
-      let mirrorWidth = 0;
-      try { const bp = getUnitBlueprint(unit.unit.unitType); if (bp.mirror) { mirrorWidth = bp.mirror.width; } } catch { /* */ }
-
+      const mirrorWidth = unit.unit.mirrorWidth;
       if (mirrorWidth > 0) {
         // Mirror unit: test ray vs 3 faces of equilateral triangle centered on unit
         let mirrorRot = unit.transform.rotation;

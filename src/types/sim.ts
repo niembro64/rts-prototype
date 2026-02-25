@@ -103,6 +103,7 @@ export type Unit = {
   velocityX?: number;
   velocityY?: number;
   priorityTargetId?: EntityId;
+  mirrorWidth: number;
 };
 
 // Building component - static structures

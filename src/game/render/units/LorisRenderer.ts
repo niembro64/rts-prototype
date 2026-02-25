@@ -64,19 +64,37 @@ export function drawLorisUnit(
   const frx = fcx - perpX * halfS, fry = fcy - perpY * halfS;
   const rax = x - mCos * apexDist, ray = y - mSin * apexDist;
 
-  // Reflective surface — white fill matching force field transparency
-  graphics.fillStyle(0xffffff, 0.05);
+  // --- Animated mirror surface ---
+  const time = Date.now() / 1000;
+
+  // Reflective surface — pulsing shimmer fill
+  const shimmer = Math.sin(time * 2.5) * 0.5 + 0.5;
+  graphics.fillStyle(0xffffff, 0.03 + shimmer * 0.04);
   graphics.fillTriangle(flx, fly, frx, fry, rax, ray);
 
-  // Perimeter glow (outer)
-  graphics.lineStyle(2, 0xffffff, 0.06);
+  // Perimeter — subtle pulsing edges
+  const edgePulse = Math.sin(time * 1.8 + 1) * 0.5 + 0.5;
+  graphics.lineStyle(1.5, 0xffffff, 0.04 + edgePulse * 0.06);
   graphics.lineBetween(flx, fly, frx, fry);
   graphics.lineBetween(rax, ray, flx, fly);
   graphics.lineBetween(frx, fry, rax, ray);
 
-  // Perimeter edge (inner)
-  graphics.lineStyle(1, 0xffffff, 0.12);
-  graphics.lineBetween(flx, fly, frx, fry);
-  graphics.lineBetween(rax, ray, flx, fly);
-  graphics.lineBetween(frx, fry, rax, ray);
+  // Traveling glint — bright point circling the perimeter with trailing fade
+  const glintT = (time * 0.4) % 1;
+  for (let i = 3; i >= 0; i--) {
+    const t = ((glintT - i * 0.012) % 1 + 1) % 1;
+    let gx: number, gy: number;
+    if (t < 1 / 3) {
+      const f = t * 3;
+      gx = flx + (frx - flx) * f; gy = fly + (fry - fly) * f;
+    } else if (t < 2 / 3) {
+      const f = (t - 1 / 3) * 3;
+      gx = frx + (rax - frx) * f; gy = fry + (ray - fry) * f;
+    } else {
+      const f = (t - 2 / 3) * 3;
+      gx = rax + (flx - rax) * f; gy = ray + (fly - ray) * f;
+    }
+    graphics.fillStyle(0xffffff, 0.6 * Math.pow(0.4, i));
+    graphics.fillCircle(gx, gy, 2.5 - i * 0.4);
+  }
 }

@@ -329,6 +329,7 @@ export class WorldState {
         maxHp: hp,
         actions: [],
         patrolStartIndex: null,
+        mirrorWidth: 0,
       },
       turrets: [], // Turrets set by caller
     };
@@ -353,6 +354,9 @@ export class WorldState {
       bp.unitRadiusColliderShot,
       bp.unitRadiusColliderPush
     );
+
+    // Cache mirror width for fast beam collision checks (avoids blueprint lookup per tick)
+    entity.unit!.mirrorWidth = bp.mirror?.width ?? 0;
 
     // Create turrets from blueprint definition
     entity.turrets = createTurretsFromDefinition(unitId, bp.unitDrawScale);
