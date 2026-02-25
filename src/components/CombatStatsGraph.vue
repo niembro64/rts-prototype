@@ -15,12 +15,12 @@ const props = defineProps<{
 type MetricKey = 'normAvg' | 'normKills' | 'normDmg' | 'costSpent' | 'killRatio' | 'dmgRatio';
 
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
-  { key: 'normAvg', label: 'Avg Ratio Norm', tip: 'Average of Dmg Ratio Norm and Kill Ratio Norm, min-max normalized to [0,1]' },
+  { key: 'normAvg', label: 'Average Ratio Norm', tip: 'Average of Damage Ratio Norm and Kill Ratio Norm, min-max normalized to [0,1]' },
   { key: 'normKills', label: 'Kill Ratio Norm', tip: 'killRatio / costSpent, min-max normalized to [0,1]' },
-  { key: 'normDmg', label: 'Dmg Ratio Norm', tip: 'dmgRatio / costSpent, min-max normalized to [0,1]' },
+  { key: 'normDmg', label: 'Damage Ratio Norm', tip: 'dmgRatio / costSpent, min-max normalized to [0,1]' },
   { key: 'costSpent', label: 'Total Cost', tip: 'Total energy spent building this unit type (produced × unitCost)' },
   { key: 'killRatio', label: 'Kill Ratio', tip: 'kills / (kills + lost) — 0.5 = break-even' },
-  { key: 'dmgRatio', label: 'Dmg Ratio', tip: 'dealt / (dealt + received) — 0.5 = break-even' },
+  { key: 'dmgRatio', label: 'Damage Ratio', tip: 'dealt / (dealt + received) — 0.5 = break-even' },
 ];
 
 const selectedMetric = ref<MetricKey>('normAvg');
