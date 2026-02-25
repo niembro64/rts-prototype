@@ -12,15 +12,14 @@ const props = defineProps<{
   teamKillsMode: FriendlyFireMode;
 }>();
 
-type MetricKey = 'normAvg' | 'killRatio' | 'dmgRatio';
+type MetricKey = 'totalDamage' | 'totalKills';
 
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
-  { key: 'normAvg', label: 'Average Ratio Norm', tip: 'Average of dmgRatio and killRatio, min-max normalized to [0,1]' },
-  { key: 'killRatio', label: 'Kill Ratio', tip: 'kills / (kills + lost) — 0.5 = break-even' },
-  { key: 'dmgRatio', label: 'Damage Ratio', tip: 'dealt / (dealt + received) — 0.5 = break-even' },
+  { key: 'totalDamage', label: 'Total Damage', tip: 'Cumulative damage dealt (adjusted for friendly fire mode)' },
+  { key: 'totalKills', label: 'Total Kills', tip: 'Cumulative kills (adjusted for friendly fire mode)' },
 ];
 
-const selectedMetric = ref<MetricKey>('normAvg');
+const selectedMetric = ref<MetricKey>('totalDamage');
 
 const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
 
@@ -45,49 +44,22 @@ const PAD = { top: 20, right: 160, bottom: 40, left: 60 };
 const plotW = W - PAD.left - PAD.right;
 const plotH = H - PAD.top - PAD.bottom;
 
-// Compute a simple (non-normalized) metric for a single unit type
-function computeMetric(s: NetworkServerSnapshotUnitTypeStats | undefined, unitType: string, metric: MetricKey): number {
+function computeMetric(s: NetworkServerSnapshotUnitTypeStats | undefined, metric: MetricKey): number {
   if (!s) return 0;
-  if (!UNIT_BLUEPRINTS[unitType]) return 0;
-  const lost = s.units.lost ?? 0;
-  const dmg = applyFriendlyFire(s.damage.dealt.enemy ?? 0, s.damage.dealt.friendly ?? 0, props.teamDamageMode);
-  const kills = applyFriendlyFire(s.kills.enemy ?? 0, s.kills.friendly ?? 0, props.teamKillsMode);
-
-  const damageReceived = s.damage.received ?? 0;
-  const dmgRatio = (dmg + damageReceived) > 0 ? dmg / (dmg + damageReceived) : 0;
-  const killRatio = (kills + lost) > 0 ? kills / (kills + lost) : 0;
-
   switch (metric) {
-    case 'dmgRatio': return dmgRatio;
-    case 'killRatio': return killRatio;
-    case 'normAvg': return dmgRatio; // placeholder, normAvg uses both after min-max
+    case 'totalDamage': return applyFriendlyFire(s.damage.dealt.enemy ?? 0, s.damage.dealt.friendly ?? 0, props.teamDamageMode);
+    case 'totalKills': return applyFriendlyFire(s.kills.enemy ?? 0, s.kills.friendly ?? 0, props.teamKillsMode);
+    default: throw new Error(`Unknown metric: ${metric}`);
   }
 }
-
-const isNormMetric = (m: MetricKey) => m === 'normAvg';
 
 const formulaDisplay = computed(() => {
-  const m = selectedMetric.value;
-  switch (m) {
-    case 'dmgRatio': return 'dealt / (dealt + received)   0.5 = break-even';
-    case 'killRatio': return 'kills / (kills + lost)   0.5 = break-even';
-    case 'normAvg': return 'avg(dmgRatio, killRatio)   min-max normalized to [0,1]';
+  switch (selectedMetric.value) {
+    case 'totalDamage': return 'cumulative damage dealt (adjusted for FF mode)';
+    case 'totalKills': return 'cumulative kills (adjusted for FF mode)';
+    default: throw new Error(`Unknown metric: ${selectedMetric.value}`);
   }
 });
-
-// Min-max normalize an array in-place, returns the array
-function minMaxNormalize(values: number[]): number[] {
-  let min = Infinity, max = -Infinity;
-  for (const v of values) {
-    if (v < min) min = v;
-    if (v > max) max = v;
-  }
-  const range = max - min;
-  for (let i = 0; i < values.length; i++) {
-    values[i] = range > 0 ? (values[i] - min) / range : 0;
-  }
-  return values;
-}
 
 type SeriesPoint = { t: number; v: number };
 type Series = { unitType: string; name: string; cost: number; color: string; points: SeriesPoint[] };
@@ -96,60 +68,13 @@ const series = computed<Series[]>(() => {
   if (props.history.length === 0) return [];
 
   const metric = selectedMetric.value;
-  const uts = unitTypes.value;
-
-  if (!isNormMetric(metric)) {
-    // Simple per-unit-type computation (no cross-unit normalization needed)
-    return uts.map(ut => {
-      const bp = UNIT_BLUEPRINTS[ut];
-      const points: SeriesPoint[] = props.history.map(snap => {
-        const data = props.viewMode === 'global'
-          ? snap.stats.global
-          : snap.stats.players[props.selectedPlayer] ?? {};
-        return { t: snap.timestamp, v: computeMetric(data[ut], ut, metric) };
-      });
-      return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
-    }).sort((a, b) => b.cost - a.cost);
-  }
-
-  // Normalized metrics: compute raw values for all unit types at each snapshot,
-  // then min-max normalize across unit types per snapshot → [0, 1]
-  const numSnaps = props.history.length;
-  const numUnits = uts.length;
-
-  // [unitIdx][snapIdx] — raw values
-  const rawDmg: number[][] = Array.from({ length: numUnits }, () => new Array(numSnaps));
-  const rawKills: number[][] = Array.from({ length: numUnits }, () => new Array(numSnaps));
-
-  for (let si = 0; si < numSnaps; si++) {
-    const snap = props.history[si];
-    const data = props.viewMode === 'global'
-      ? snap.stats.global
-      : snap.stats.players[props.selectedPlayer] ?? {};
-
-    // Compute raw norm values for all unit types at this snapshot
-    const dmgSlice: number[] = new Array(numUnits);
-    const killsSlice: number[] = new Array(numUnits);
-    for (let ui = 0; ui < numUnits; ui++) {
-      dmgSlice[ui] = computeMetric(data[uts[ui]], uts[ui], 'dmgRatio');
-      killsSlice[ui] = computeMetric(data[uts[ui]], uts[ui], 'killRatio');
-    }
-
-    // Min-max normalize each slice across unit types
-    minMaxNormalize(dmgSlice);
-    minMaxNormalize(killsSlice);
-
-    for (let ui = 0; ui < numUnits; ui++) {
-      rawDmg[ui][si] = dmgSlice[ui];
-      rawKills[ui][si] = killsSlice[ui];
-    }
-  }
-
-  // Build series from normalized values
-  return uts.map((ut, ui) => {
+  return unitTypes.value.map(ut => {
     const bp = UNIT_BLUEPRINTS[ut];
-    const points: SeriesPoint[] = props.history.map((snap, si) => {
-      return { t: snap.timestamp, v: (rawDmg[ui][si] + rawKills[ui][si]) / 2 };
+    const points: SeriesPoint[] = props.history.map(snap => {
+      const data = props.viewMode === 'global'
+        ? snap.stats.global
+        : snap.stats.players[props.selectedPlayer] ?? {};
+      return { t: snap.timestamp, v: computeMetric(data[ut], metric) };
     });
     return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
   }).sort((a, b) => b.cost - a.cost);
