@@ -1,7 +1,7 @@
 import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileType } from './types';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
-import { getUnitBlueprint } from './blueprints';
+import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, DEFAULT_FF_DMG_UNITS } from '../../config';
 
@@ -329,7 +329,8 @@ export class WorldState {
         maxHp: hp,
         actions: [],
         patrolStartIndex: null,
-        mirrorWidth: 0,
+        mirrorPanels: [],
+        mirrorBoundRadius: 0,
       },
       turrets: [], // Turrets set by caller
     };
@@ -355,11 +356,30 @@ export class WorldState {
       bp.unitRadiusColliderPush
     );
 
-    // Cache mirror width for fast beam collision checks (avoids blueprint lookup per tick)
-    entity.unit!.mirrorWidth = bp.mirror?.width ?? 0;
-
     // Create turrets from blueprint definition
     entity.turrets = createTurretsFromDefinition(unitId, bp.unitDrawScale);
+
+    // Cache mirror panels for fast beam collision checks (avoids blueprint lookup per tick)
+    for (const mount of bp.turrets) {
+      const tb = getTurretBlueprint(mount.turretId);
+      if (tb.mirrorPanels) {
+        const panels = entity.unit!.mirrorPanels;
+        let maxR = 0;
+        for (const p of tb.mirrorPanels) {
+          panels.push({
+            halfWidth: p.width / 2,
+            halfHeight: p.height / 2,
+            offsetX: p.offsetX,
+            offsetY: p.offsetY,
+            angle: p.angle,
+          });
+          // Bound radius: distance from center to farthest panel edge endpoint
+          const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + p.width / 2;
+          if (dist > maxR) maxR = dist;
+        }
+        entity.unit!.mirrorBoundRadius = maxR;
+      }
+    }
 
     // Attach builder component if blueprint specifies it
     if (bp.builder) {

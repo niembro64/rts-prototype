@@ -88,6 +88,15 @@ export type UnitAction = {
   targetId?: EntityId;
 };
 
+// Cached mirror panel geometry (pre-computed from blueprint at entity creation)
+export type CachedMirrorPanel = {
+  halfWidth: number;
+  halfHeight: number;
+  offsetX: number;
+  offsetY: number;
+  angle: number;
+};
+
 // Unit component - movable entities
 export type Unit = {
   unitType: string;
@@ -103,7 +112,8 @@ export type Unit = {
   velocityX?: number;
   velocityY?: number;
   priorityTargetId?: EntityId;
-  mirrorWidth: number;
+  mirrorPanels: CachedMirrorPanel[];
+  mirrorBoundRadius: number;
 };
 
 // Building component - static structures

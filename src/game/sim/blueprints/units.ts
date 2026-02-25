@@ -308,7 +308,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     renderer: 'loris',
-    mirror: { width: 100, offset: 15 },
     deathSound: AUDIO.event.death.loris,
   },
   commander: {

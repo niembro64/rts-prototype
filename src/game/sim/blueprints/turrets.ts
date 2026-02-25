@@ -221,6 +221,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: 0.9, release: 0.95 },
     },
     color: 0xffffff,
+    mirrorPanels: [
+      { width: 60, height: 6, offsetX: 20, offsetY: 25, angle: Math.PI / 6 },
+      { width: 60, height: 6, offsetX: 20, offsetY: -25, angle: -Math.PI / 6 },
+    ],
   },
   ...generateBeamTurrets(),
   forceTurretLarge: {

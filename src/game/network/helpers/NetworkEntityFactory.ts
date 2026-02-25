@@ -3,7 +3,7 @@
 import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity } from '../NetworkManager';
 import { getTurretConfig } from '../../sim/turretConfigs';
-import { getUnitBlueprint } from '../../sim/blueprints';
+import { getUnitBlueprint, getTurretBlueprint } from '../../sim/blueprints';
 
 /**
  * Create an Entity from NetworkServerSnapshotEntity data
@@ -74,7 +74,8 @@ function createUnitFromNetwork(
       patrolStartIndex: null,
       velocityX: u?.velocity.x ?? 0,
       velocityY: u?.velocity.y ?? 0,
-      mirrorWidth: 0,
+      mirrorPanels: [],
+      mirrorBoundRadius: 0,
     },
   };
 
@@ -105,8 +106,29 @@ function createUnitFromNetwork(
     entity.turrets = turrets;
   }
 
-  // Cache mirror width for fast beam collision checks
-  try { const bp = getUnitBlueprint(u?.unitType ?? 'jackal'); entity.unit!.mirrorWidth = bp.mirror?.width ?? 0; } catch { /* */ }
+  // Cache mirror panels for fast beam collision checks
+  try {
+    const bp = getUnitBlueprint(u?.unitType ?? 'jackal');
+    for (const mount of bp.turrets) {
+      const tb = getTurretBlueprint(mount.turretId);
+      if (tb.mirrorPanels) {
+        const panels = entity.unit!.mirrorPanels;
+        let maxR = 0;
+        for (const p of tb.mirrorPanels) {
+          panels.push({
+            halfWidth: p.width / 2,
+            halfHeight: p.height / 2,
+            offsetX: p.offsetX,
+            offsetY: p.offsetY,
+            angle: p.angle,
+          });
+          const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + p.width / 2;
+          if (dist > maxR) maxR = dist;
+        }
+        entity.unit!.mirrorBoundRadius = maxR;
+      }
+    }
+  } catch { /* */ }
 
   if (u?.isCommander) {
     entity.commander = {

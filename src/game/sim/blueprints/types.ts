@@ -24,6 +24,7 @@ export type {
   BeamShotBlueprint,
   LaserShotBlueprint,
   ShotBlueprint,
+  MirrorPanel,
   TurretBlueprint,
   TurretMount,
   WheelConfig,

@@ -247,12 +247,12 @@ export class DamageSystem {
       // Early-out: point-to-line distance check (avoids expensive trig+intersection for distant units)
       const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
       const crossSq = (ux * dy - uy * dx);
-      const mirrorWidth = unit.unit.mirrorWidth;
-      const boundR = mirrorWidth > 0 ? mirrorWidth * 0.58 + lineWidth : unit.unit.radiusColliderUnitShot + lineWidth / 2;
+      const panels = unit.unit.mirrorPanels;
+      const boundR = panels.length > 0 ? unit.unit.mirrorBoundRadius + lineWidth : unit.unit.radiusColliderUnitShot + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
-      if (mirrorWidth > 0) {
-        // Mirror unit: test ray vs 3 faces of equilateral triangle centered on unit
+      if (panels.length > 0) {
+        // Mirror unit: test ray vs outer edge of each rectangular panel
         let mirrorRot = unit.transform.rotation;
         if (unit.turrets && unit.turrets.length > 0) {
           mirrorRot = unit.turrets[0].rotation;
@@ -261,47 +261,38 @@ export class DamageSystem {
         const fwdY = Math.sin(mirrorRot);
         const perpX = -fwdY;
         const perpY = fwdX;
-        const halfS = mirrorWidth / 2;
-        const triH = mirrorWidth * 0.8660254037844386;
-        const frontDist = triH / 3;
-        const apexDist = 2 * triH / 3;
 
-        const fcx = unit.transform.x + fwdX * frontDist;
-        const fcy = unit.transform.y + fwdY * frontDist;
-        const flx = fcx + perpX * halfS, fly = fcy + perpY * halfS;
-        const frx = fcx - perpX * halfS, fry = fcy - perpY * halfS;
-        const rax = unit.transform.x - fwdX * apexDist, ray = unit.transform.y - fwdY * apexDist;
+        for (const panel of panels) {
+          // Panel center in world space
+          const pcx = unit.transform.x + fwdX * panel.offsetX + perpX * panel.offsetY;
+          const pcy = unit.transform.y + fwdY * panel.offsetX + perpY * panel.offsetY;
 
-        const nlrx = -0.5 * fwdX - 0.8660254037844386 * fwdY;
-        const nlry = -0.5 * fwdY + 0.8660254037844386 * fwdX;
-        const nrrx = -0.5 * fwdX + 0.8660254037844386 * fwdY;
-        const nrry = -0.5 * fwdY - 0.8660254037844386 * fwdX;
+          // Panel's outward-facing direction (rotated by panel.angle relative to turret forward)
+          const panelAngle = mirrorRot + panel.angle;
+          const pnx = Math.cos(panelAngle); // outward normal
+          const pny = Math.sin(panelAngle);
 
-        // Front face — read _rsHit values immediately before next call overwrites
-        let faceHit = raySegmentIntersection(startX, startY, endX, endY, flx, fly, frx, fry);
-        if (faceHit !== null && faceHit.t < bestT) {
-          bestT = faceHit.t; found = true;
-          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
-          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = fwdX; _segHit.normalY = fwdY;
-        }
-        // Left-rear face
-        faceHit = raySegmentIntersection(startX, startY, endX, endY, rax, ray, flx, fly);
-        if (faceHit !== null && faceHit.t < bestT) {
-          bestT = faceHit.t; found = true;
-          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
-          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = nlrx; _segHit.normalY = nlry;
-        }
-        // Right-rear face
-        faceHit = raySegmentIntersection(startX, startY, endX, endY, frx, fry, rax, ray);
-        if (faceHit !== null && faceHit.t < bestT) {
-          bestT = faceHit.t; found = true;
-          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
-          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = nrrx; _segHit.normalY = nrry;
+          // Edge direction (perpendicular to normal, along reflective edge)
+          const edx = -pny;
+          const edy = pnx;
+
+          // Edge endpoints
+          const e1x = pcx + edx * panel.halfWidth;
+          const e1y = pcy + edy * panel.halfWidth;
+          const e2x = pcx - edx * panel.halfWidth;
+          const e2y = pcy - edy * panel.halfWidth;
+
+          const faceHit = raySegmentIntersection(startX, startY, endX, endY, e1x, e1y, e2x, e2y);
+          if (faceHit !== null && faceHit.t < bestT) {
+            bestT = faceHit.t; found = true;
+            _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
+            _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = pnx; _segHit.normalY = pny;
+          }
         }
       }
 
       // Circle collision — only for non-mirror units
-      if (mirrorWidth === 0) {
+      if (panels.length === 0) {
         const t = lineCircleIntersectionT(
           startX, startY, endX, endY,
           unit.transform.x, unit.transform.y,

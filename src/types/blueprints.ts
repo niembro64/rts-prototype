@@ -79,6 +79,14 @@ export type LaserShotBlueprint = {
 
 export type ShotBlueprint = ProjectileShotBlueprint | BeamShotBlueprint | LaserShotBlueprint;
 
+export type MirrorPanel = {
+  width: number;    // length of reflective edge
+  height: number;   // panel thickness (rendering only)
+  offsetX: number;  // forward offset from unit center (turret-local)
+  offsetY: number;  // lateral offset (positive = left, turret-local)
+  angle: number;    // rotation relative to turret forward (radians)
+};
+
 export type TurretBlueprint = {
   id: string;
   projectileId?: string;
@@ -101,6 +109,7 @@ export type TurretBlueprint = {
     push?: ForceFieldZoneRatioConfig;
     pull?: ForceFieldZoneRatioConfig;
   };
+  mirrorPanels?: MirrorPanel[];
   audio?: { fireSound?: SoundEntry; laserSound?: SoundEntry };
 };
 
@@ -157,7 +166,6 @@ export type UnitBlueprint = {
   renderer: string;
   builder?: { buildRange: number; maxEnergyUseRate: number };
   dgun?: { turretId: string; energyCost: number };
-  mirror?: { width: number; offset: number };
   deathSound?: SoundEntry;
   seeRange?: number;
 };
