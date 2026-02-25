@@ -700,7 +700,7 @@ export class EntityRenderer {
         drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType));
         break;
       case 'loris':
-        drawLorisUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
+        drawLorisUnit(ctx, this.locomotion.getTankTreads(entity.id));
         break;
       default:
         drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));

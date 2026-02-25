@@ -92,6 +92,7 @@ export type TurretBlueprint = {
   homingTurnRate?: number;
   launchForce?: number;
   isManualFire?: boolean;
+  passive?: boolean;
   spread?: { angle?: number; pelletCount?: number };
   burst?: { count?: number; delay?: number };
   forceField?: {
@@ -156,7 +157,7 @@ export type UnitBlueprint = {
   renderer: string;
   builder?: { buildRange: number; maxEnergyUseRate: number };
   dgun?: { turretId: string; energyCost: number };
-  mirror?: { width: number };
+  mirror?: { width: number; offset: number };
   deathSound?: SoundEntry;
   seeRange?: number;
 };

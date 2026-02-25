@@ -195,6 +195,7 @@ export type TurretConfig = {
   spread?: { pelletCount?: number; angle?: number };
   burst?: { count?: number; delay?: number };
   isManualFire?: boolean;
+  passive?: boolean;
   shot: ShotConfig;
   turretIndex?: number;
 };

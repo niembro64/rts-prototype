@@ -22,6 +22,21 @@ import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig } from '../sim/turretConfigs';
 import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
 import { getUnitBlueprint } from '../sim/blueprints';
+
+// Ray-vs-line-segment intersection (shared with DamageSystem)
+function raySegmentIntersection(
+  sx: number, sy: number, ex: number, ey: number,
+  ax: number, ay: number, bx: number, by: number,
+): { t: number; x: number; y: number } | null {
+  const rdx = ex - sx, rdy = ey - sy;
+  const sdx = bx - ax, sdy = by - ay;
+  const denom = rdx * sdy - rdy * sdx;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((ax - sx) * sdy - (ay - sy) * sdx) / denom;
+  const u = ((ax - sx) * rdy - (ay - sy) * rdx) / denom;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { t, x: sx + t * rdx, y: sy + t * rdy };
+}
 import {
   lerp,
   lerpAngle,
@@ -662,6 +677,7 @@ export class ClientViewState {
 
   /**
    * Trace a beam path with reflections off mirror units.
+   * Mirror collision uses ray-vs-line-segment (flat mirror surface), not circle colliders.
    * Client-side equivalent of DamageSystem.findBeamPath().
    */
   private findBeamPath(
@@ -680,107 +696,133 @@ export class ClientViewState {
     let excludeId = sourceId;
 
     for (let bounce = 0; bounce <= maxBounces; bounce++) {
-      // Find closest obstruction on this segment (excluding source + last mirror)
-      let closest = 1.0;
-      let closestId: number | null = null;
+      const hit = this.findBeamSegmentHit(curSX, curSY, curEX, curEY, excludeId);
 
-      for (const unit of this.cache.getUnits()) {
-        if (unit.id === sourceId || unit.id === excludeId) continue;
-        const r = unit.unit?.radiusColliderUnitShot ?? 15;
-        const t = lineCircleIntersectionT(curSX, curSY, curEX, curEY, unit.transform.x, unit.transform.y, r);
-        if (t !== null && t > 0 && t < closest) {
-          closest = t;
-          closestId = unit.id;
-        }
-      }
-
-      for (const bldg of this.cache.getBuildings()) {
-        if (bldg.id === sourceId) continue;
-        if (!bldg.building) continue;
-        const hw = bldg.building.width / 2;
-        const hh = bldg.building.height / 2;
-        const bx = bldg.transform.x, by = bldg.transform.y;
-        const dx = curEX - curSX, dy = curEY - curSY;
-        let tmin = 0, tmax = 1;
-        if (Math.abs(dx) > 0.0001) {
-          let t1 = (bx - hw - curSX) / dx, t2 = (bx + hw - curSX) / dx;
-          if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-          tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
-        } else if (curSX < bx - hw || curSX > bx + hw) continue;
-        if (Math.abs(dy) > 0.0001) {
-          let t1 = (by - hh - curSY) / dy, t2 = (by + hh - curSY) / dy;
-          if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-          tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
-        } else if (curSY < by - hh || curSY > by + hh) continue;
-        if (tmin <= tmax && tmax > 0 && tmin < closest) {
-          closest = Math.max(tmin, 0);
-          closestId = bldg.id;
-        }
-      }
-
-      if (closest >= 1.0 || closestId === null) {
-        // No obstruction — beam reaches full extent
-        if (bounce === 0) return { endX: curEX, endY: curEY, reflections };
+      if (!hit) {
         return { endX: curEX, endY: curEY, reflections };
       }
 
-      // Check if hit entity has a mirror
-      const hitEntity = this.entities.get(closestId);
-      if (!hitEntity?.unit) {
-        const hitX = curSX + closest * (curEX - curSX);
-        const hitY = curSY + closest * (curEY - curSY);
-        if (bounce === 0) return { endX: hitX, endY: hitY, obstructionT: closest, reflections };
-        return { endX: hitX, endY: hitY, reflections };
+      if (!hit.isMirror) {
+        if (bounce === 0) return { endX: hit.x, endY: hit.y, obstructionT: hit.t, reflections };
+        return { endX: hit.x, endY: hit.y, reflections };
       }
 
-      let hasMirror = false;
-      try { hasMirror = !!getUnitBlueprint(hitEntity.unit.unitType).mirror; } catch { /* */ }
+      // Mirror reflection
+      reflections.push({ x: hit.x, y: hit.y, mirrorEntityId: hit.entityId });
 
-      if (!hasMirror) {
-        const hitX = curSX + closest * (curEX - curSX);
-        const hitY = curSY + closest * (curEY - curSY);
-        if (bounce === 0) return { endX: hitX, endY: hitY, obstructionT: closest, reflections };
-        return { endX: hitX, endY: hitY, reflections };
-      }
-
-      // Check front-facing (beam dir · mirror forward < 0)
       const segDx = curEX - curSX, segDy = curEY - curSY;
       const segLen = magnitude(segDx, segDy);
       if (segLen === 0) break;
       const beamDirX = segDx / segLen, beamDirY = segDy / segLen;
 
-      // Use turret rotation for mirror facing when available
-      let mirrorRot = hitEntity.transform.rotation;
-      if (hitEntity.turrets && hitEntity.turrets.length > 0 && hitEntity.turrets[0].target !== null) {
-        mirrorRot = hitEntity.turrets[0].rotation;
-      }
-      const fwdX = Math.cos(mirrorRot), fwdY = Math.sin(mirrorRot);
+      const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY;
+      const reflDirX = beamDirX - 2 * dotDN * hit.normalX;
+      const reflDirY = beamDirY - 2 * dotDN * hit.normalY;
+      const remaining = segLen * (1 - hit.t);
 
-      if (beamDirX * fwdX + beamDirY * fwdY >= 0) {
-        // Hit from behind — no reflection
-        const hitX = curSX + closest * (curEX - curSX);
-        const hitY = curSY + closest * (curEY - curSY);
-        if (bounce === 0) return { endX: hitX, endY: hitY, obstructionT: closest, reflections };
-        return { endX: hitX, endY: hitY, reflections };
-      }
-
-      // Reflect
-      const hitX = curSX + closest * (curEX - curSX);
-      const hitY = curSY + closest * (curEY - curSY);
-      const normalX = -fwdX, normalY = -fwdY;
-      const dotDN = beamDirX * normalX + beamDirY * normalY;
-      const reflDirX = beamDirX - 2 * dotDN * normalX;
-      const reflDirY = beamDirY - 2 * dotDN * normalY;
-      const remaining = segLen - closest * segLen;
-
-      reflections.push({ x: hitX, y: hitY, mirrorEntityId: closestId });
-      curSX = hitX; curSY = hitY;
-      curEX = hitX + reflDirX * remaining;
-      curEY = hitY + reflDirY * remaining;
-      excludeId = closestId;
+      curSX = hit.x; curSY = hit.y;
+      curEX = hit.x + reflDirX * remaining;
+      curEY = hit.y + reflDirY * remaining;
+      excludeId = hit.entityId;
     }
 
     return { endX: curEX, endY: curEY, reflections };
+  }
+
+  /** Find closest beam hit — checks mirror line segments AND regular entity colliders
+   *  excludeId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit */
+  private findBeamSegmentHit(
+    sx: number, sy: number, ex: number, ey: number,
+    excludeId: number,
+  ): { t: number; x: number; y: number; entityId: number; isMirror: boolean; normalX: number; normalY: number } | null {
+    let best: { t: number; x: number; y: number; entityId: number; isMirror: boolean; normalX: number; normalY: number } | null = null;
+    const dx = ex - sx, dy = ey - sy;
+
+    for (const unit of this.cache.getUnits()) {
+      if (unit.id === excludeId) continue;
+      if (!unit.unit || unit.unit.hp <= 0) continue;
+
+      let mirrorWidth = 0;
+      try { const bp = getUnitBlueprint(unit.unit.unitType); if (bp.mirror) { mirrorWidth = bp.mirror.width; } } catch { /* */ }
+
+      if (mirrorWidth > 0) {
+        // Mirror unit: test ray vs 3 faces of equilateral triangle centered on unit
+        let mirrorRot = unit.transform.rotation;
+        if (unit.turrets && unit.turrets.length > 0 && unit.turrets[0].target !== null) {
+          mirrorRot = unit.turrets[0].rotation;
+        }
+        const fwdX = Math.cos(mirrorRot), fwdY = Math.sin(mirrorRot);
+        const perpX = -fwdY, perpY = fwdX;
+        const halfS = mirrorWidth / 2;
+        const triH = mirrorWidth * 0.8660254037844386; // sqrt(3)/2
+        const frontDist = triH / 3;
+        const apexDist = 2 * triH / 3;
+
+        const fcx = unit.transform.x + fwdX * frontDist;
+        const fcy = unit.transform.y + fwdY * frontDist;
+        const flx = fcx + perpX * halfS, fly = fcy + perpY * halfS;
+        const frx = fcx - perpX * halfS, fry = fcy - perpY * halfS;
+        const rax = unit.transform.x - fwdX * apexDist, ray = unit.transform.y - fwdY * apexDist;
+
+        // Precomputed outward normals (analytically unit vectors, no sqrt needed)
+        const nlrx = -0.5 * fwdX - 0.8660254037844386 * fwdY;
+        const nlry = -0.5 * fwdY + 0.8660254037844386 * fwdX;
+        const nrrx = -0.5 * fwdX + 0.8660254037844386 * fwdY;
+        const nrry = -0.5 * fwdY - 0.8660254037844386 * fwdX;
+
+        // Front face (FL → FR)
+        let faceHit = raySegmentIntersection(sx, sy, ex, ey, flx, fly, frx, fry);
+        if (faceHit && (!best || faceHit.t < best.t)) {
+          best = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: fwdX, normalY: fwdY };
+        }
+        // Left-rear face (RA → FL)
+        faceHit = raySegmentIntersection(sx, sy, ex, ey, rax, ray, flx, fly);
+        if (faceHit && (!best || faceHit.t < best.t)) {
+          best = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: nlrx, normalY: nlry };
+        }
+        // Right-rear face (FR → RA)
+        faceHit = raySegmentIntersection(sx, sy, ex, ey, frx, fry, rax, ray);
+        if (faceHit && (!best || faceHit.t < best.t)) {
+          best = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: nrrx, normalY: nrry };
+        }
+      }
+
+      // Circle collision — only for non-mirror units (mirror units use line-segment above)
+      if (mirrorWidth === 0) {
+        const r = unit.unit.radiusColliderUnitShot;
+        const t = lineCircleIntersectionT(sx, sy, ex, ey, unit.transform.x, unit.transform.y, r);
+        if (t !== null && (!best || t < best.t)) {
+          best = { t, x: sx + t * dx, y: sy + t * dy, entityId: unit.id, isMirror: false, normalX: 0, normalY: 0 };
+        }
+      }
+    }
+
+    // Buildings: AABB slab method
+    for (const bldg of this.cache.getBuildings()) {
+      if (bldg.id === excludeId) continue;
+      if (!bldg.building) continue;
+      const hw = bldg.building.width / 2, hh = bldg.building.height / 2;
+      const bx = bldg.transform.x, by = bldg.transform.y;
+      let tmin = 0, tmax = 1;
+      if (Math.abs(dx) > 0.0001) {
+        let t1 = (bx - hw - sx) / dx, t2 = (bx + hw - sx) / dx;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+      } else if (sx < bx - hw || sx > bx + hw) continue;
+      if (Math.abs(dy) > 0.0001) {
+        let t1 = (by - hh - sy) / dy, t2 = (by + hh - sy) / dy;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+      } else if (sy < by - hh || sy > by + hh) continue;
+      if (tmin <= tmax && tmax > 0) {
+        const t = Math.max(tmin, 0);
+        if (!best || t < best.t) {
+          best = { t, x: sx + t * dx, y: sy + t * dy, entityId: bldg.id, isMirror: false, normalX: 0, normalY: 0 };
+        }
+      }
+    }
+
+    return best;
   }
 
   // === Accessors for rendering and input ===

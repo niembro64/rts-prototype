@@ -130,6 +130,7 @@ export function buildTurretConfig(turretId: string): TurretConfig {
   if (wb.spread) base.spread = { ...wb.spread };
   if (wb.burst) base.burst = { ...wb.burst };
   if (wb.isManualFire != null) base.isManualFire = wb.isManualFire;
+  if (wb.passive != null) base.passive = wb.passive;
 
   return base;
 }
