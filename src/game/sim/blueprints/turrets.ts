@@ -215,15 +215,15 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
     launchForce: 0,
     passive: true,
-    spread: { angle: Math.PI / 8 },
+    spread: { angle: Math.PI / 2 },
     rangeMultiplierOverrides: {
       tracking: { acquire: 1.0, release: 1.1 },
       engage: { acquire: 0.9, release: 0.95 },
     },
     color: 0xffffff,
     mirrorPanels: [
-      { width: 60, height: 6, offsetX: 20, offsetY: 25, angle: Math.PI / 6 },
-      { width: 60, height: 6, offsetX: 20, offsetY: -25, angle: -Math.PI / 6 },
+      { width: 60, height: 6, offsetX: 40, offsetY: 20, angle: -Math.PI / 4 },
+      { width: 60, height: 6, offsetX: 40, offsetY: -20, angle: Math.PI / 4 },
     ],
   },
   ...generateBeamTurrets(),
