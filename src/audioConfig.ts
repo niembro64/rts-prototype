@@ -125,7 +125,7 @@ export const AUDIO = {
       mediumShot: { synth: 'heavy' as SynthId, volume: 0.5, playSpeed: 0.2 },
       mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
       heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },
-      hippoShot: { synth: 'heavy' as SynthId, volume: 0.7, playSpeed: 0.15 },
+      // hippoShot: { synth: 'heavy' as SynthId, volume: 0.7, playSpeed: 0.15 },
       laserShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
       ..._beamHit,
       disruptorShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 1.0 },

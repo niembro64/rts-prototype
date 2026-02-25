@@ -189,7 +189,7 @@ export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRat
     color: 0x3366ff,
     alpha: 0.05,
     particleAlpha: 0.2,
-    power: 2000,
+    power: 1400,
     damage: 10,
   };
 

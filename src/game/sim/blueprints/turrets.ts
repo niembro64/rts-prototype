@@ -90,8 +90,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   cannonTurret: {
     id: 'cannonTurret',
     projectileId: 'heavyShot',
-    range: 420,
-    cooldown: 2000,
+    range: 410,
+    cooldown: 2300,
     launchForce: 10_000,
     turretTurnAccel: 200,
     turretDrag: 0.5,
@@ -148,10 +148,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   },
   hippoGatlingTurret: {
     id: 'hippoGatlingTurret',
-    projectileId: 'hippoShot',
+    projectileId: 'mediumShot',
     range: 300,
     cooldown: 130,
-    launchForce: 1_700,
+    launchForce: 1_900,
     turretTurnAccel: 100,
     turretDrag: 0.4,
     barrel: {
@@ -167,7 +167,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 10 },
+    spread: { angle: Math.PI / 8 },
     burst: { count: 1, delay: 80 },
     audio: { fireSound: AUDIO.event.fire.hippoGatlingTurret },
   },
@@ -239,7 +239,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     color: 0xffffff,
     forceField: {
       angle: Math.PI * 2,
-      transitionTime: 500,
+      transitionTime: 1000,
       push: { ...FORCE_PUSH },
       pull: { ...FORCE_PULL },
     },

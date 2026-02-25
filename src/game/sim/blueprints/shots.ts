@@ -96,19 +96,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,
   },
-  hippoShot: {
-    type: 'projectile',
-    id: 'hippoShot',
-    mass: 6,
-    collision: { radius: 2.5, damage: 20 },
-    explosion: {
-      primary: { radius: 8, damage: 20, force: 1200 },
-      secondary: { radius: 12, damage: 5, force: 250 },
-    },
-    splashOnExpiry: false,
-    lifespan: 1000,
-    hitSound: AUDIO.event.hit.hippoShot,
-  },
   laserShot: {
     type: 'laser',
     id: 'laserShot',
