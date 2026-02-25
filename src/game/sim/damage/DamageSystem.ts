@@ -19,6 +19,7 @@ import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineRectIntersectionT, isPointInSlice } from '../../math';
 import { getTargetRadius } from '../combat/combatUtils';
+import { getUnitBlueprint } from '../blueprints';
 
 // Reusable DamageResult to avoid per-call allocations
 const _reusableResult: DamageResult = {
@@ -110,6 +111,181 @@ export class DamageSystem {
     }
 
     // Check buildings
+    for (const building of nearbyBuildings) {
+      if (!building.building || building.building.hp <= 0) continue;
+
+      const bWidth = building.building.width;
+      const bHeight = building.building.height;
+      const rectX = building.transform.x - bWidth / 2;
+      const rectY = building.transform.y - bHeight / 2;
+
+      const t = lineRectIntersectionT(
+        startX, startY, endX, endY,
+        rectX, rectY, bWidth, bHeight
+      );
+
+      if (t !== null && (closestT === null || t < closestT)) {
+        closestT = t;
+        closestEntityId = building.id;
+      }
+    }
+
+    return closestT !== null ? { t: closestT, entityId: closestEntityId! } : null;
+  }
+
+  // Find beam path with reflections off mirror units
+  // Returns final endpoint and all reflection bounce points
+  findBeamPath(
+    startX: number, startY: number,
+    endX: number, endY: number,
+    sourceEntityId: EntityId,
+    lineWidth: number,
+    maxBounces: number = 3
+  ): {
+    endX: number; endY: number;
+    obstructionT?: number;
+    reflections: { x: number; y: number; mirrorEntityId: EntityId }[];
+  } {
+    const reflections: { x: number; y: number; mirrorEntityId: EntityId }[] = [];
+    let curStartX = startX;
+    let curStartY = startY;
+    let curEndX = endX;
+    let curEndY = endY;
+    let excludeEntityId = sourceEntityId;
+
+    for (let bounce = 0; bounce <= maxBounces; bounce++) {
+      const obstruction = this.findLineObstructionExcluding(
+        curStartX, curStartY, curEndX, curEndY,
+        sourceEntityId, excludeEntityId, lineWidth
+      );
+
+      if (!obstruction) {
+        // No obstruction — beam reaches full extent
+        if (bounce === 0) {
+          return { endX: curEndX, endY: curEndY, reflections };
+        }
+        return { endX: curEndX, endY: curEndY, reflections };
+      }
+
+      // Check if hit entity has a mirror and beam hits from front
+      const hitEntity = this.world.getEntity(obstruction.entityId);
+      if (!hitEntity?.unit) {
+        // Hit a non-unit or dead entity — truncate here
+        const hitX = curStartX + obstruction.t * (curEndX - curStartX);
+        const hitY = curStartY + obstruction.t * (curEndY - curStartY);
+        if (bounce === 0) {
+          return { endX: hitX, endY: hitY, obstructionT: obstruction.t, reflections };
+        }
+        return { endX: hitX, endY: hitY, reflections };
+      }
+
+      let hasMirror = false;
+      try {
+        const bp = getUnitBlueprint(hitEntity.unit.unitType);
+        hasMirror = !!bp.mirror;
+      } catch { /* unknown unit type */ }
+
+      if (!hasMirror) {
+        // No mirror — truncate at this entity
+        const hitX = curStartX + obstruction.t * (curEndX - curStartX);
+        const hitY = curStartY + obstruction.t * (curEndY - curStartY);
+        if (bounce === 0) {
+          return { endX: hitX, endY: hitY, obstructionT: obstruction.t, reflections };
+        }
+        return { endX: hitX, endY: hitY, reflections };
+      }
+
+      // Check if beam hits from the front (dot product of beam dir · unit forward < 0)
+      const segDx = curEndX - curStartX;
+      const segDy = curEndY - curStartY;
+      const segLen = magnitude(segDx, segDy);
+      if (segLen === 0) break;
+      const beamDirX = segDx / segLen;
+      const beamDirY = segDy / segLen;
+
+      // Use turret rotation for mirror facing when the unit has a tracking turret
+      let mirrorRot = hitEntity.transform.rotation;
+      if (hitEntity.turrets && hitEntity.turrets.length > 0) {
+        const turret = hitEntity.turrets[0];
+        if (turret.target !== null) {
+          mirrorRot = turret.rotation;
+        }
+      }
+      const unitFwdX = Math.cos(mirrorRot);
+      const unitFwdY = Math.sin(mirrorRot);
+
+      const dot = beamDirX * unitFwdX + beamDirY * unitFwdY;
+      if (dot >= 0) {
+        // Beam hits from behind — no reflection, normal truncation
+        const hitX = curStartX + obstruction.t * (curEndX - curStartX);
+        const hitY = curStartY + obstruction.t * (curEndY - curStartY);
+        if (bounce === 0) {
+          return { endX: hitX, endY: hitY, obstructionT: obstruction.t, reflections };
+        }
+        return { endX: hitX, endY: hitY, reflections };
+      }
+
+      // Reflect! Compute reflection point
+      const hitX = curStartX + obstruction.t * (curEndX - curStartX);
+      const hitY = curStartY + obstruction.t * (curEndY - curStartY);
+
+      // Use unit forward as mirror normal (facing the beam)
+      const normalX = -unitFwdX;
+      const normalY = -unitFwdY;
+
+      // Reflected direction: d - 2(d·n)n
+      const dotDN = beamDirX * normalX + beamDirY * normalY;
+      const reflDirX = beamDirX - 2 * dotDN * normalX;
+      const reflDirY = beamDirY - 2 * dotDN * normalY;
+
+      // Remaining beam distance
+      const usedDist = obstruction.t * segLen;
+      const remainingDist = segLen - usedDist;
+
+      reflections.push({ x: hitX, y: hitY, mirrorEntityId: obstruction.entityId });
+
+      // Set up next segment
+      curStartX = hitX;
+      curStartY = hitY;
+      curEndX = hitX + reflDirX * remainingDist;
+      curEndY = hitY + reflDirY * remainingDist;
+      excludeEntityId = obstruction.entityId;
+    }
+
+    // Max bounces reached — return current endpoint
+    return { endX: curEndX, endY: curEndY, reflections };
+  }
+
+  // findLineObstruction variant that also excludes an additional entity (the mirror just bounced off)
+  private findLineObstructionExcluding(
+    startX: number, startY: number,
+    endX: number, endY: number,
+    sourceEntityId: EntityId,
+    excludeEntityId: EntityId,
+    lineWidth: number
+  ): { t: number; entityId: EntityId } | null {
+    let closestT: number | null = null;
+    let closestEntityId: EntityId | null = null;
+
+    const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, endX, endY, lineWidth + 50);
+    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, endX, endY, lineWidth + 100);
+
+    for (const unit of nearbyUnits) {
+      if (unit.id === sourceEntityId || unit.id === excludeEntityId) continue;
+      if (!unit.unit || unit.unit.hp <= 0) continue;
+
+      const t = lineCircleIntersectionT(
+        startX, startY, endX, endY,
+        unit.transform.x, unit.transform.y,
+        unit.unit.radiusColliderUnitShot + lineWidth / 2
+      );
+
+      if (t !== null && (closestT === null || t < closestT)) {
+        closestT = t;
+        closestEntityId = unit.id;
+      }
+    }
+
     for (const building of nearbyBuildings) {
       if (!building.building || building.building.hp <= 0) continue;
 

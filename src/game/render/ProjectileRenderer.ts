@@ -94,7 +94,8 @@ function renderBeam(
   const endY = projectile.endY ?? y;
   const beamWidth = isLineShot(config.shot) ? config.shot.width : 2;
   const beamStyle = getGraphicsConfig().beamStyle;
-  const hasCollision = projectile.obstructionT !== undefined;
+  const hasCollision = projectile.obstructionT !== undefined ||
+    (projectile.reflections !== undefined && projectile.reflections.length > 0);
 
   let randomOffsets = beamRandomOffsets.get(entity.id);
   if (!randomOffsets) {
@@ -107,15 +108,49 @@ function renderBeam(
     beamRandomOffsets.set(entity.id, randomOffsets);
   }
 
-  // Outer glow layer (detailed/complex only)
-  if (beamStyle === 'detailed' || beamStyle === 'complex') {
-    graphics.lineStyle(beamWidth + 4, color, 0.3);
+  const reflections = projectile.reflections;
+  const hasReflections = reflections && reflections.length > 0;
+
+  // Build segment list: start → bounce1 → bounce2 → ... → end
+  if (hasReflections) {
+    // Multi-segment beam through reflection points
+    let prevSegX = startX;
+    let prevSegY = startY;
+
+    for (const refl of reflections) {
+      if (beamStyle === 'detailed' || beamStyle === 'complex') {
+        graphics.lineStyle(beamWidth + 4, color, 0.3);
+        graphics.lineBetween(prevSegX, prevSegY, refl.x, refl.y);
+      }
+      graphics.lineStyle(beamWidth, 0xffffff, 1);
+      graphics.lineBetween(prevSegX, prevSegY, refl.x, refl.y);
+      prevSegX = refl.x;
+      prevSegY = refl.y;
+    }
+    // Final segment: last bounce → end
+    if (beamStyle === 'detailed' || beamStyle === 'complex') {
+      graphics.lineStyle(beamWidth + 4, color, 0.3);
+      graphics.lineBetween(prevSegX, prevSegY, endX, endY);
+    }
+    graphics.lineStyle(beamWidth, 0xffffff, 1);
+    graphics.lineBetween(prevSegX, prevSegY, endX, endY);
+
+    // Draw reflection circles at each bounce point
+    for (const refl of reflections) {
+      graphics.fillStyle(0xffffff, 0.9);
+      graphics.fillCircle(refl.x, refl.y, beamWidth + 2);
+      graphics.fillStyle(color, 0.4);
+      graphics.fillCircle(refl.x, refl.y, beamWidth + 5);
+    }
+  } else {
+    // Single-segment beam (existing code path)
+    if (beamStyle === 'detailed' || beamStyle === 'complex') {
+      graphics.lineStyle(beamWidth + 4, color, 0.3);
+      graphics.lineBetween(startX, startY, endX, endY);
+    }
+    graphics.lineStyle(beamWidth, 0xffffff, 1);
     graphics.lineBetween(startX, startY, endX, endY);
   }
-
-  // Main beam line — always white
-  graphics.lineStyle(beamWidth, 0xffffff, 1);
-  graphics.lineBetween(startX, startY, endX, endY);
 
   // Endpoint ball — always drawn at beam radius, always white
   const beamRadius = isLineShot(config.shot) ? config.shot.radius : beamWidth;

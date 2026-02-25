@@ -206,6 +206,20 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spread: { angle: 0 },
     audio: { fireSound: AUDIO.event.fire.laserTurret },
   },
+  mirrorTurret: {
+    id: 'mirrorTurret',
+    projectileId: 'beamShot0',
+    range: 250,
+    turretTurnAccel: 150,
+    turretDrag: 0.5,
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
+    launchForce: 0,
+    rangeMultiplierOverrides: {
+      tracking: { acquire: null, release: null },
+      engage: { acquire: 0, release: 0 },
+    },
+    color: 0xffffff,
+  },
   ...generateBeamTurrets(),
   forceTurretLarge: {
     id: 'forceTurretLarge',

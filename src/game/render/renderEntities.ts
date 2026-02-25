@@ -47,6 +47,7 @@ import {
   drawHippoUnit,
   drawArachnidUnit,
   drawForceFieldUnit,
+  drawLorisUnit,
   drawCommanderUnit,
 } from './units';
 import {
@@ -697,6 +698,9 @@ export class EntityRenderer {
         break;
       case 'beam':
         drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType));
+        break;
+      case 'loris':
+        drawLorisUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
         break;
       default:
         drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));

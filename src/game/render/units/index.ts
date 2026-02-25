@@ -10,6 +10,7 @@ export { drawTankUnit } from './TankRenderer';
 export { drawHippoUnit } from './HippoRenderer';
 export { drawArachnidUnit } from './ArachnidRenderer';
 export { drawForceFieldUnit } from './ForceFieldRenderer';
+export { drawLorisUnit } from './LorisRenderer';
 export { drawCommanderUnit } from './CommanderRenderer';
 
 export type { UnitRenderer, LegAccessor, TreadAccessor } from './UnitRendererBase';

@@ -392,28 +392,28 @@ export function updateProjectiles(
         const fullEndX = proj.startX + dirX * beamLength;
         const fullEndY = proj.startY + dirY * beamLength;
 
-        // Find closest obstruction using unified DamageSystem
+        // Find beam path (with possible reflections off mirror units)
         // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness)
         const currentTick = world.getTick();
         const collisionRadius = isLineShot(proj.config.shot) ? proj.config.shot.radius : 2;
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= 3) {
-          const obstruction = damageSystem.findLineObstruction(
+          const beamPath = damageSystem.findBeamPath(
             proj.startX, proj.startY,
             fullEndX, fullEndY,
             proj.sourceEntityId,
             collisionRadius
           );
-          proj.obstructionT = obstruction ? obstruction.t : undefined;
+          proj.endX = beamPath.endX;
+          proj.endY = beamPath.endY;
+          proj.obstructionT = beamPath.obstructionT;
+          proj.reflections = beamPath.reflections.length > 0 ? beamPath.reflections : undefined;
           proj.obstructionTick = currentTick;
-        }
-
-        // Truncate beam exactly at obstruction point (no extension needed)
-        if (proj.obstructionT !== undefined) {
-          proj.endX = proj.startX + (fullEndX - proj.startX) * proj.obstructionT;
-          proj.endY = proj.startY + (fullEndY - proj.startY) * proj.obstructionT;
         } else {
-          proj.endX = fullEndX;
-          proj.endY = fullEndY;
+          // Use cached values — endX/endY already set from last computation
+          if (proj.endX === undefined) {
+            proj.endX = fullEndX;
+            proj.endY = fullEndY;
+          }
         }
 
         // Update entity transform to match beam start (for visual reference)
@@ -571,6 +571,28 @@ export function checkProjectileCollisions(
       });
 
       applyKnockbackForces(result.knockbacks, forceAccumulator);
+
+      // Apply beam force (knockback only, no damage) to each mirror entity
+      if (proj.reflections && proj.reflections.length > 0 && forceAccumulator) {
+        const startX = proj.startX ?? projEntity.transform.x;
+        const startY = proj.startY ?? projEntity.transform.y;
+        let prevX = startX;
+        let prevY = startY;
+        for (const refl of proj.reflections) {
+          // Beam direction at this mirror is from previous point toward reflection point
+          const segDx = refl.x - prevX;
+          const segDy = refl.y - prevY;
+          const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+          if (segLen > 0) {
+            const dirX = segDx / segLen;
+            const dirY = segDy / segLen;
+            forceAccumulator.addForce(refl.mirrorEntityId, dirX * tickForce, dirY * tickForce, 'beam');
+          }
+          prevX = refl.x;
+          prevY = refl.y;
+        }
+      }
+
       emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, beamShot.radius, audioEvents);
       collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 

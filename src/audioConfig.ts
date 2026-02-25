@@ -144,6 +144,7 @@ export const AUDIO = {
       tarantula: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       commander: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       hippo: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      loris: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
     } as Record<string, SoundEntry>,
   },
 

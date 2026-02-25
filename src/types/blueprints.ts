@@ -156,6 +156,7 @@ export type UnitBlueprint = {
   renderer: string;
   builder?: { buildRange: number; maxEnergyUseRate: number };
   dgun?: { turretId: string; energyCost: number };
+  mirror?: { width: number };
   deathSound?: SoundEntry;
   seeRange?: number;
 };
