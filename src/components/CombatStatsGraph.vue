@@ -12,12 +12,10 @@ const props = defineProps<{
   teamKillsMode: FriendlyFireMode;
 }>();
 
-type MetricKey = 'normAvg' | 'normKills' | 'normDmg' | 'killRatio' | 'dmgRatio';
+type MetricKey = 'normAvg' | 'killRatio' | 'dmgRatio';
 
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
-  { key: 'normAvg', label: 'Average Ratio Norm', tip: 'Average of Damage Ratio Norm and Kill Ratio Norm, min-max normalized to [0,1]' },
-  { key: 'normKills', label: 'Kill Ratio Norm', tip: 'killRatio min-max normalized to [0,1]' },
-  { key: 'normDmg', label: 'Damage Ratio Norm', tip: 'dmgRatio min-max normalized to [0,1]' },
+  { key: 'normAvg', label: 'Average Ratio Norm', tip: 'Average of dmgRatio and killRatio, min-max normalized to [0,1]' },
   { key: 'killRatio', label: 'Kill Ratio', tip: 'kills / (kills + lost) — 0.5 = break-even' },
   { key: 'dmgRatio', label: 'Damage Ratio', tip: 'dealt / (dealt + received) — 0.5 = break-even' },
 ];
@@ -62,22 +60,18 @@ function computeMetric(s: NetworkServerSnapshotUnitTypeStats | undefined, unitTy
   switch (metric) {
     case 'dmgRatio': return dmgRatio;
     case 'killRatio': return killRatio;
-    case 'normDmg': return dmgRatio;
-    case 'normKills': return killRatio;
     case 'normAvg': return dmgRatio; // placeholder, normAvg uses both after min-max
   }
 }
 
-const isNormMetric = (m: MetricKey) => m === 'normDmg' || m === 'normKills' || m === 'normAvg';
+const isNormMetric = (m: MetricKey) => m === 'normAvg';
 
 const formulaDisplay = computed(() => {
   const m = selectedMetric.value;
   switch (m) {
     case 'dmgRatio': return 'dealt / (dealt + received)   0.5 = break-even';
     case 'killRatio': return 'kills / (kills + lost)   0.5 = break-even';
-    case 'normDmg': return 'dmgRatio   min-max normalized to [0,1]';
-    case 'normKills': return 'killRatio   min-max normalized to [0,1]';
-    case 'normAvg': return 'avg(normDmg, normKills)   min-max normalized to [0,1]';
+    case 'normAvg': return 'avg(dmgRatio, killRatio)   min-max normalized to [0,1]';
   }
 });
 
@@ -137,8 +131,8 @@ const series = computed<Series[]>(() => {
     const dmgSlice: number[] = new Array(numUnits);
     const killsSlice: number[] = new Array(numUnits);
     for (let ui = 0; ui < numUnits; ui++) {
-      dmgSlice[ui] = computeMetric(data[uts[ui]], uts[ui], 'normDmg');
-      killsSlice[ui] = computeMetric(data[uts[ui]], uts[ui], 'normKills');
+      dmgSlice[ui] = computeMetric(data[uts[ui]], uts[ui], 'dmgRatio');
+      killsSlice[ui] = computeMetric(data[uts[ui]], uts[ui], 'killRatio');
     }
 
     // Min-max normalize each slice across unit types
@@ -155,11 +149,7 @@ const series = computed<Series[]>(() => {
   return uts.map((ut, ui) => {
     const bp = UNIT_BLUEPRINTS[ut];
     const points: SeriesPoint[] = props.history.map((snap, si) => {
-      let v: number;
-      if (metric === 'normDmg') v = rawDmg[ui][si];
-      else if (metric === 'normKills') v = rawKills[ui][si];
-      else v = (rawDmg[ui][si] + rawKills[ui][si]) / 2; // normAvg
-      return { t: snap.timestamp, v };
+      return { t: snap.timestamp, v: (rawDmg[ui][si] + rawKills[ui][si]) / 2 };
     });
     return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
   }).sort((a, b) => b.cost - a.cost);
