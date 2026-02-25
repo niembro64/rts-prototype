@@ -12,13 +12,12 @@ const props = defineProps<{
   teamKillsMode: FriendlyFireMode;
 }>();
 
-type MetricKey = 'normAvg' | 'normKills' | 'normDmg' | 'costSpent' | 'killRatio' | 'dmgRatio';
+type MetricKey = 'normAvg' | 'normKills' | 'normDmg' | 'killRatio' | 'dmgRatio';
 
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
   { key: 'normAvg', label: 'Average Ratio Norm', tip: 'Average of Damage Ratio Norm and Kill Ratio Norm, min-max normalized to [0,1]' },
-  { key: 'normKills', label: 'Kill Ratio Norm', tip: 'killRatio / costSpent, min-max normalized to [0,1]' },
-  { key: 'normDmg', label: 'Damage Ratio Norm', tip: 'dmgRatio / costSpent, min-max normalized to [0,1]' },
-  { key: 'costSpent', label: 'Total Cost', tip: 'Total energy spent building this unit type (produced × unitCost)' },
+  { key: 'normKills', label: 'Kill Ratio Norm', tip: 'killRatio min-max normalized to [0,1]' },
+  { key: 'normDmg', label: 'Damage Ratio Norm', tip: 'dmgRatio min-max normalized to [0,1]' },
   { key: 'killRatio', label: 'Kill Ratio', tip: 'kills / (kills + lost) — 0.5 = break-even' },
   { key: 'dmgRatio', label: 'Damage Ratio', tip: 'dealt / (dealt + received) — 0.5 = break-even' },
 ];
@@ -59,18 +58,13 @@ function computeMetric(s: NetworkServerSnapshotUnitTypeStats | undefined, unitTy
   const damageReceived = s.damage.received ?? 0;
   const dmgRatio = (dmg + damageReceived) > 0 ? dmg / (dmg + damageReceived) : 0;
   const killRatio = (kills + lost) > 0 ? kills / (kills + lost) : 0;
-  const costSpent = s.units.cost ?? 0;
 
   switch (metric) {
     case 'dmgRatio': return dmgRatio;
     case 'killRatio': return killRatio;
-    case 'costSpent': return costSpent;
-    case 'normDmg':
-    case 'normKills':
-    case 'normAvg': {
-      const ratio = (metric === 'normKills') ? killRatio : dmgRatio;
-      return costSpent > 0 ? ratio / costSpent : 0;
-    }
+    case 'normDmg': return dmgRatio;
+    case 'normKills': return killRatio;
+    case 'normAvg': return dmgRatio; // placeholder, normAvg uses both after min-max
   }
 }
 
@@ -81,9 +75,8 @@ const formulaDisplay = computed(() => {
   switch (m) {
     case 'dmgRatio': return 'dealt / (dealt + received)   0.5 = break-even';
     case 'killRatio': return 'kills / (kills + lost)   0.5 = break-even';
-    case 'costSpent': return 'produced × unitCost (total energy spent)';
-    case 'normDmg': return 'dmgRatio / costSpent   min-max normalized to [0,1]';
-    case 'normKills': return 'killRatio / costSpent   min-max normalized to [0,1]';
+    case 'normDmg': return 'dmgRatio   min-max normalized to [0,1]';
+    case 'normKills': return 'killRatio   min-max normalized to [0,1]';
     case 'normAvg': return 'avg(normDmg, normKills)   min-max normalized to [0,1]';
   }
 });
