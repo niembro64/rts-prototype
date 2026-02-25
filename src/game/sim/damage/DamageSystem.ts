@@ -54,13 +54,16 @@ export function resetDamageBuffers(): void {
   _reusableHits.length = 0;
 }
 
+// Reusable result for raySegmentIntersection (avoids per-hit allocations in hot loop)
+const _rsHit = { t: 0, x: 0, y: 0 };
+
 // Ray-vs-line-segment intersection.
 // Ray from (sx,sy) to (ex,ey), segment from (ax,ay) to (bx,by).
-// Returns { t, x, y } where t is parametric along the ray [0,1], or null.
+// Returns reusable _rsHit on hit — caller must read values before next call.
 function raySegmentIntersection(
   sx: number, sy: number, ex: number, ey: number,
   ax: number, ay: number, bx: number, by: number,
-): { t: number; x: number; y: number } | null {
+): typeof _rsHit | null {
   const rdx = ex - sx, rdy = ey - sy;
   const sdx = bx - ax, sdy = by - ay;
   const denom = rdx * sdy - rdy * sdx;
@@ -68,8 +71,12 @@ function raySegmentIntersection(
   const t = ((ax - sx) * sdy - (ay - sy) * sdx) / denom;
   const u = ((ax - sx) * rdy - (ay - sy) * rdx) / denom;
   if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-  return { t, x: sx + t * rdx, y: sy + t * rdy };
+  _rsHit.t = t; _rsHit.x = sx + t * rdx; _rsHit.y = sy + t * rdy;
+  return _rsHit;
 }
+
+// Reusable result for findBeamSegmentHit
+const _segHit = { t: 0, x: 0, y: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0 };
 
 // Compute distance-based falloff damage for area effects
 function computeFalloffDamage(dist: number, radius: number, baseDamage: number, falloff: number): number {
@@ -223,12 +230,13 @@ export class DamageSystem {
     endX: number, endY: number,
     excludeEntityId: EntityId,
     lineWidth: number
-  ): { t: number; x: number; y: number; entityId: EntityId; isMirror: boolean; normalX: number; normalY: number } | null {
-    let bestT: number | null = null;
-    let bestResult: { t: number; x: number; y: number; entityId: EntityId; isMirror: boolean; normalX: number; normalY: number } | null = null;
+  ): typeof _segHit | null {
+    let bestT = Infinity;
+    let found = false;
 
     const dx = endX - startX;
     const dy = endY - startY;
+    const segLenSq = dx * dx + dy * dy;
 
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, endX, endY, lineWidth + 60);
 
@@ -236,7 +244,13 @@ export class DamageSystem {
       if (unit.id === excludeEntityId) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
+      // Early-out: point-to-line distance check (avoids expensive trig+intersection for distant units)
+      const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
+      const crossSq = (ux * dy - uy * dx);
       const mirrorWidth = unit.unit.mirrorWidth;
+      const boundR = mirrorWidth > 0 ? mirrorWidth * 0.58 + lineWidth : unit.unit.radiusColliderUnitShot + lineWidth / 2;
+      if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
+
       if (mirrorWidth > 0) {
         // Mirror unit: test ray vs 3 faces of equilateral triangle centered on unit
         let mirrorRot = unit.transform.rotation;
@@ -248,56 +262,55 @@ export class DamageSystem {
         const perpX = -fwdY;
         const perpY = fwdX;
         const halfS = mirrorWidth / 2;
-        const triH = mirrorWidth * 0.8660254037844386; // sqrt(3)/2
+        const triH = mirrorWidth * 0.8660254037844386;
         const frontDist = triH / 3;
         const apexDist = 2 * triH / 3;
 
-        // Triangle centered on unit (centroid = unit position)
         const fcx = unit.transform.x + fwdX * frontDist;
         const fcy = unit.transform.y + fwdY * frontDist;
         const flx = fcx + perpX * halfS, fly = fcy + perpY * halfS;
         const frx = fcx - perpX * halfS, fry = fcy - perpY * halfS;
         const rax = unit.transform.x - fwdX * apexDist, ray = unit.transform.y - fwdY * apexDist;
 
-        // Precomputed outward normals (analytically unit vectors, no sqrt needed)
-        // Front = fwd, Left-rear = fwd rotated +120°, Right-rear = fwd rotated -120°
         const nlrx = -0.5 * fwdX - 0.8660254037844386 * fwdY;
         const nlry = -0.5 * fwdY + 0.8660254037844386 * fwdX;
         const nrrx = -0.5 * fwdX + 0.8660254037844386 * fwdY;
         const nrry = -0.5 * fwdY - 0.8660254037844386 * fwdX;
 
-        // Front face (FL → FR)
+        // Front face — read _rsHit values immediately before next call overwrites
         let faceHit = raySegmentIntersection(startX, startY, endX, endY, flx, fly, frx, fry);
-        if (faceHit !== null && (bestT === null || faceHit.t < bestT)) {
-          bestT = faceHit.t;
-          bestResult = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: fwdX, normalY: fwdY };
+        if (faceHit !== null && faceHit.t < bestT) {
+          bestT = faceHit.t; found = true;
+          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
+          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = fwdX; _segHit.normalY = fwdY;
         }
-        // Left-rear face (RA → FL)
+        // Left-rear face
         faceHit = raySegmentIntersection(startX, startY, endX, endY, rax, ray, flx, fly);
-        if (faceHit !== null && (bestT === null || faceHit.t < bestT)) {
-          bestT = faceHit.t;
-          bestResult = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: nlrx, normalY: nlry };
+        if (faceHit !== null && faceHit.t < bestT) {
+          bestT = faceHit.t; found = true;
+          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
+          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = nlrx; _segHit.normalY = nlry;
         }
-        // Right-rear face (FR → RA)
+        // Right-rear face
         faceHit = raySegmentIntersection(startX, startY, endX, endY, frx, fry, rax, ray);
-        if (faceHit !== null && (bestT === null || faceHit.t < bestT)) {
-          bestT = faceHit.t;
-          bestResult = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: nrrx, normalY: nrry };
+        if (faceHit !== null && faceHit.t < bestT) {
+          bestT = faceHit.t; found = true;
+          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
+          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = nrrx; _segHit.normalY = nrry;
         }
       }
 
-      // Circle collision — only for non-mirror units (mirror units use line-segment above)
+      // Circle collision — only for non-mirror units
       if (mirrorWidth === 0) {
         const t = lineCircleIntersectionT(
           startX, startY, endX, endY,
           unit.transform.x, unit.transform.y,
           unit.unit.radiusColliderUnitShot + lineWidth / 2
         );
-        if (t !== null && (bestT === null || t < bestT)) {
-          const hx = startX + t * dx;
-          const hy = startY + t * dy;
-          bestT = t;
-          bestResult = { t, x: hx, y: hy, entityId: unit.id, isMirror: false, normalX: 0, normalY: 0 };
+        if (t !== null && t < bestT) {
+          bestT = t; found = true;
+          _segHit.t = t; _segHit.x = startX + t * dx; _segHit.y = startY + t * dy;
+          _segHit.entityId = unit.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
         }
       }
     }
@@ -311,15 +324,14 @@ export class DamageSystem {
       const rectX = building.transform.x - bWidth / 2;
       const rectY = building.transform.y - bHeight / 2;
       const t = lineRectIntersectionT(startX, startY, endX, endY, rectX, rectY, bWidth, bHeight);
-      if (t !== null && (bestT === null || t < bestT)) {
-        const hx = startX + t * dx;
-        const hy = startY + t * dy;
-        bestT = t;
-        bestResult = { t, x: hx, y: hy, entityId: building.id, isMirror: false, normalX: 0, normalY: 0 };
+      if (t !== null && t < bestT) {
+        bestT = t; found = true;
+        _segHit.t = t; _segHit.x = startX + t * dx; _segHit.y = startY + t * dy;
+        _segHit.entityId = building.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
       }
     }
 
-    return bestResult;
+    return found ? _segHit : null;
   }
 
   // Line damage (beams) - sorted by distance, stops at first hit

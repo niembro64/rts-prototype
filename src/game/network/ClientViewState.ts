@@ -23,11 +23,15 @@ import { getTurretConfig } from '../sim/turretConfigs';
 import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
 
 
+// Reusable result for raySegmentIntersection (avoids per-hit allocations in hot loop)
+const _rsHit = { t: 0, x: 0, y: 0 };
+
 // Ray-vs-line-segment intersection (shared with DamageSystem)
+// Returns reusable _rsHit on hit — caller must read values before next call
 function raySegmentIntersection(
   sx: number, sy: number, ex: number, ey: number,
   ax: number, ay: number, bx: number, by: number,
-): { t: number; x: number; y: number } | null {
+): typeof _rsHit | null {
   const rdx = ex - sx, rdy = ey - sy;
   const sdx = bx - ax, sdy = by - ay;
   const denom = rdx * sdy - rdy * sdx;
@@ -35,8 +39,12 @@ function raySegmentIntersection(
   const t = ((ax - sx) * sdy - (ay - sy) * sdx) / denom;
   const u = ((ax - sx) * rdy - (ay - sy) * rdx) / denom;
   if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-  return { t, x: sx + t * rdx, y: sy + t * rdy };
+  _rsHit.t = t; _rsHit.x = sx + t * rdx; _rsHit.y = sy + t * rdy;
+  return _rsHit;
 }
+
+// Reusable result for findBeamSegmentHit (avoids per-call allocations)
+const _segHit = { t: 0, x: 0, y: 0, entityId: 0, isMirror: false, normalX: 0, normalY: 0 };
 import {
   lerp,
   lerpAngle,
@@ -52,7 +60,7 @@ const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
 // Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
-import { getDriftMode } from '@/clientBarConfig';
+import { getDriftMode, getGraphicsConfig } from '@/clientBarConfig';
 import type { DriftMode } from '@/types/client';
 
 const DRIFT_PRESETS: Record<
@@ -121,6 +129,9 @@ export class ClientViewState {
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
+
+  // Frame counter for beam path throttling (recompute every N frames instead of every frame)
+  private frameCounter: number = 0;
 
   constructor() {}
 
@@ -392,6 +403,7 @@ export class ClientViewState {
    */
   applyPrediction(deltaMs: number): void {
     const dt = deltaMs / 1000;
+    this.frameCounter++;
 
     // Ensure caches are fresh for beam obstruction checks
     this.rebuildCachesIfNeeded();
@@ -518,23 +530,25 @@ export class ClientViewState {
             const fullEndX = startX + dirX * weapon.ranges.engage.acquire;
             const fullEndY = startY + dirY * weapon.ranges.engage.acquire;
 
-            // Trace beam path with reflections off mirror units
-            const beamPath = this.findBeamPath(
-              startX, startY,
-              fullEndX, fullEndY,
-              entity.projectile.sourceEntityId,
-            );
-
             entity.projectile.startX = startX;
             entity.projectile.startY = startY;
-            entity.projectile.endX = beamPath.endX;
-            entity.projectile.endY = beamPath.endY;
-            entity.projectile.obstructionT = beamPath.obstructionT;
-            entity.projectile.reflections = beamPath.reflections.length > 0 ? beamPath.reflections : undefined;
-
             entity.transform.x = startX;
             entity.transform.y = startY;
             entity.transform.rotation = turretAngle;
+
+            // Throttle beam path recomputation (client has no spatial grid — full O(N) scan)
+            const beamSkip = getGraphicsConfig().beamPathFramesSkip;
+            if (entity.projectile.endX === undefined || beamSkip === 0 || this.frameCounter % (beamSkip + 1) === 0) {
+              const beamPath = this.findBeamPath(
+                startX, startY,
+                fullEndX, fullEndY,
+                entity.projectile.sourceEntityId,
+              );
+              entity.projectile.endX = beamPath.endX;
+              entity.projectile.endY = beamPath.endY;
+              entity.projectile.obstructionT = beamPath.obstructionT;
+              entity.projectile.reflections = beamPath.reflections.length > 0 ? beamPath.reflections : undefined;
+            }
           } else {
             // Source unit gone or weapon stopped firing — remove beam
             this.entities.delete(entity.id);
@@ -734,15 +748,23 @@ export class ClientViewState {
   private findBeamSegmentHit(
     sx: number, sy: number, ex: number, ey: number,
     excludeId: number,
-  ): { t: number; x: number; y: number; entityId: number; isMirror: boolean; normalX: number; normalY: number } | null {
-    let best: { t: number; x: number; y: number; entityId: number; isMirror: boolean; normalX: number; normalY: number } | null = null;
+  ): typeof _segHit | null {
+    let bestT = Infinity;
+    let found = false;
     const dx = ex - sx, dy = ey - sy;
+    const segLenSq = dx * dx + dy * dy;
 
     for (const unit of this.cache.getUnits()) {
       if (unit.id === excludeId) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
+      // Early-out: point-to-line distance check (avoids expensive per-unit math for distant units)
+      const ux = unit.transform.x - sx, uy = unit.transform.y - sy;
+      const crossSq = (ux * dy - uy * dx);
       const mirrorWidth = unit.unit.mirrorWidth;
+      const boundR = mirrorWidth > 0 ? mirrorWidth * 0.58 : unit.unit.radiusColliderUnitShot;
+      if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
+
       if (mirrorWidth > 0) {
         // Mirror unit: test ray vs 3 faces of equilateral triangle centered on unit
         let mirrorRot = unit.transform.rotation;
@@ -752,7 +774,7 @@ export class ClientViewState {
         const fwdX = Math.cos(mirrorRot), fwdY = Math.sin(mirrorRot);
         const perpX = -fwdY, perpY = fwdX;
         const halfS = mirrorWidth / 2;
-        const triH = mirrorWidth * 0.8660254037844386; // sqrt(3)/2
+        const triH = mirrorWidth * 0.8660254037844386;
         const frontDist = triH / 3;
         const apexDist = 2 * triH / 3;
 
@@ -762,35 +784,42 @@ export class ClientViewState {
         const frx = fcx - perpX * halfS, fry = fcy - perpY * halfS;
         const rax = unit.transform.x - fwdX * apexDist, ray = unit.transform.y - fwdY * apexDist;
 
-        // Precomputed outward normals (analytically unit vectors, no sqrt needed)
         const nlrx = -0.5 * fwdX - 0.8660254037844386 * fwdY;
         const nlry = -0.5 * fwdY + 0.8660254037844386 * fwdX;
         const nrrx = -0.5 * fwdX + 0.8660254037844386 * fwdY;
         const nrry = -0.5 * fwdY - 0.8660254037844386 * fwdX;
 
-        // Front face (FL → FR)
+        // Front face (FL → FR) — read _rsHit values immediately before next call overwrites
         let faceHit = raySegmentIntersection(sx, sy, ex, ey, flx, fly, frx, fry);
-        if (faceHit && (!best || faceHit.t < best.t)) {
-          best = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: fwdX, normalY: fwdY };
+        if (faceHit && faceHit.t < bestT) {
+          bestT = faceHit.t; found = true;
+          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
+          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = fwdX; _segHit.normalY = fwdY;
         }
         // Left-rear face (RA → FL)
         faceHit = raySegmentIntersection(sx, sy, ex, ey, rax, ray, flx, fly);
-        if (faceHit && (!best || faceHit.t < best.t)) {
-          best = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: nlrx, normalY: nlry };
+        if (faceHit && faceHit.t < bestT) {
+          bestT = faceHit.t; found = true;
+          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
+          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = nlrx; _segHit.normalY = nlry;
         }
         // Right-rear face (FR → RA)
         faceHit = raySegmentIntersection(sx, sy, ex, ey, frx, fry, rax, ray);
-        if (faceHit && (!best || faceHit.t < best.t)) {
-          best = { t: faceHit.t, x: faceHit.x, y: faceHit.y, entityId: unit.id, isMirror: true, normalX: nrrx, normalY: nrry };
+        if (faceHit && faceHit.t < bestT) {
+          bestT = faceHit.t; found = true;
+          _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
+          _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = nrrx; _segHit.normalY = nrry;
         }
       }
 
-      // Circle collision — only for non-mirror units (mirror units use line-segment above)
+      // Circle collision — only for non-mirror units
       if (mirrorWidth === 0) {
         const r = unit.unit.radiusColliderUnitShot;
         const t = lineCircleIntersectionT(sx, sy, ex, ey, unit.transform.x, unit.transform.y, r);
-        if (t !== null && (!best || t < best.t)) {
-          best = { t, x: sx + t * dx, y: sy + t * dy, entityId: unit.id, isMirror: false, normalX: 0, normalY: 0 };
+        if (t !== null && t < bestT) {
+          bestT = t; found = true;
+          _segHit.t = t; _segHit.x = sx + t * dx; _segHit.y = sy + t * dy;
+          _segHit.entityId = unit.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
         }
       }
     }
@@ -814,13 +843,15 @@ export class ClientViewState {
       } else if (sy < by - hh || sy > by + hh) continue;
       if (tmin <= tmax && tmax > 0) {
         const t = Math.max(tmin, 0);
-        if (!best || t < best.t) {
-          best = { t, x: sx + t * dx, y: sy + t * dy, entityId: bldg.id, isMirror: false, normalX: 0, normalY: 0 };
+        if (t < bestT) {
+          bestT = t; found = true;
+          _segHit.t = t; _segHit.x = sx + t * dx; _segHit.y = sy + t * dy;
+          _segHit.entityId = bldg.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
         }
       }
     }
 
-    return best;
+    return found ? _segHit : null;
   }
 
   // === Accessors for rendering and input ===
@@ -1007,6 +1038,7 @@ export class ClientViewState {
     this.gridSearchCells = [];
     this.gridCellSize = 0;
     this.serverMeta = null;
+    this.frameCounter = 0;
     this.invalidateCaches();
   }
 }

@@ -37,6 +37,7 @@ export type GraphicsConfig = {
   antialias: boolean;
   burnMarkAlphaCutoff: number;
   burnMarkFramesSkip: number;
+  beamPathFramesSkip: number;
   forceFieldStyle: ForceFieldStyle;
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;

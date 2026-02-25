@@ -199,6 +199,16 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 0,
   },
 
+  // Beam path collision recomputation — frames to skip between beam path traces
+  // 0 = every frame, 2 = every 3rd frame, etc. Higher = less CPU but staler beam visuals.
+  BEAM_PATH_FRAMES_SKIP: {
+    min: 0,
+    low: 0,
+    medium: 0,
+    high: 0,
+    max: 0,
+  },
+
   // Projectile (shot) rendering style
   // 'dot': colored circle only, 'core': circle + white inner dot,
   // 'trail': core + position-history trail, 'glow': trail + outer glow ring + trail dots,

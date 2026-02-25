@@ -50,6 +50,7 @@ export type GraphicsDetailConfig = {
   BARREL_SPIN: LodTierMap<boolean>;
   BURN_MARK_ALPHA_CUTOFF: LodTierMap<number>;
   BURN_MARK_FRAMES_SKIP: LodTierMap<number>;
+  BEAM_PATH_FRAMES_SKIP: LodTierMap<number>;
   PROJECTILE_STYLE: LodTierMap<ProjectileStyle>;
   FIRE_EXPLOSION_STYLE: LodTierMap<FireExplosionStyle>;
   DEATH_EXPLOSION_STYLE: LodTierMap<DeathExplosionStyle>;
