@@ -2,12 +2,22 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
+import { isLineShot } from '../types';
 import { distance, getTargetRadius } from './combatUtils';
 import { getWeaponWorldPosition, getTransformCosSin } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
+
+// Check if an entity has at least one active (engaged) beam or laser turret
+function hasActiveBeam(entity: Entity): boolean {
+  if (!entity.turrets) return false;
+  for (const turret of entity.turrets) {
+    if (turret.state === 'engaged' && isLineShot(turret.config.shot)) return true;
+  }
+  return false;
+}
 
 // Update auto-targeting and firing state for all units in a single pass.
 // Each weapon independently finds its own target using its own ranges.
@@ -42,6 +52,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     const playerId = unit.ownership.playerId;
     const { cos, sin } = getTransformCosSin(unit.transform);
     const weapons = unit.turrets;
+    const isMirrorUnit = unit.unit.mirrorPanels.length > 0;
 
     // Pass 0: Compute weapon world positions (needed for both modes)
     for (const weapon of weapons) {
@@ -71,7 +82,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         priorityRadius = getTargetRadius(pt);
       }
 
-      if (priorityTarget) {
+      if (priorityTarget && !(isMirrorUnit && !hasActiveBeam(priorityTarget))) {
         // ATTACK MODE: force all weapons to the priority target, engage ranges only
         for (const weapon of weapons) {
           if (weapon.config.isManualFire) continue;
@@ -106,7 +117,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.radiusColliderUnitShot; }
       else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
-      if (!targetIsValid || !target) {
+      if (!targetIsValid || !target || (isMirrorUnit && !hasActiveBeam(target))) {
         weapon.target = null;
         weapon.state = 'idle';
       } else {
@@ -182,6 +193,9 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       let closestDist = Infinity;
 
       for (const enemy of candidates) {
+        // Mirror units only target enemies actively firing beams
+        if (isMirrorUnit && !hasActiveBeam(enemy)) continue;
+
         const enemyRadius = enemy.unit ? enemy.unit.radiusColliderUnitShot : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
 
