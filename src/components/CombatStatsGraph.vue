@@ -29,7 +29,8 @@ const selectedMetric = ref<MetricKey>('avgNorm');
 
 const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
 
-// Cost-based color scale: evenly spaced along blue (240) → red (0) by cost rank
+// Cost-based color scale using OKLab lightness for perceptual uniformity.
+// Hues spread evenly across the wheel; odd indices are dark, even are light.
 const unitCostColors = computed<Record<string, string>>(() => {
   const sorted = [...unitTypes.value].sort(
     (a, b) => (UNIT_BLUEPRINTS[a]?.baseCost ?? 0) - (UNIT_BLUEPRINTS[b]?.baseCost ?? 0),
@@ -37,11 +38,35 @@ const unitCostColors = computed<Record<string, string>>(() => {
   const n = sorted.length;
   const colors: Record<string, string> = {};
   for (let i = 0; i < n; i++) {
-    const hue = 240 * (1 - i / Math.max(n - 1, 1));
-    colors[sorted[i]] = `hsl(${hue}, 85%, 55%)`;
+    const hue = 360 * (i / Math.max(n, 1));
+    const lightness = i % 2 === 0 ? 40 : 70;
+    colors[sorted[i]] = oklch(lightness, hue);
   }
   return colors;
 });
+
+// Convert perceptual lightness (0-100) + hue (0-360) to an sRGB hex string via OKLab
+function oklch(lightness: number, hueDeg: number): string {
+  const L = lightness / 100;
+  const C = 0.15;
+  const hRad = (hueDeg * Math.PI) / 180;
+  const a = C * Math.cos(hRad);
+  const b = C * Math.sin(hRad);
+  // OKLab → linear sRGB
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const l3 = l_ * l_ * l_;
+  const m3 = m_ * m_ * m_;
+  const s3 = s_ * s_ * s_;
+  const rLin = +4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3;
+  const gLin = -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3;
+  const bLin = -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3;
+  const toSrgb = (c: number) => Math.round(255 * Math.max(0, Math.min(1,
+    c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055,
+  )));
+  return `#${[rLin, gLin, bLin].map(c => toSrgb(c).toString(16).padStart(2, '0')).join('')}`;
+}
 
 // Chart dimensions
 const W = 800;

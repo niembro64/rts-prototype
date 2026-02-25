@@ -48,9 +48,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   lightTurret: {
     id: 'lightTurret',
     projectileId: 'lightShot',
-    range: 100,
+    range: 120,
     cooldown: 450,
-    launchForce: 300,
+    launchForce: 380,
     turretTurnAccel: 200,
     turretDrag: 0.5,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 1.2 },
@@ -149,9 +149,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   hippoGatlingTurret: {
     id: 'hippoGatlingTurret',
     projectileId: 'hippoShot',
-    range: 350,
+    range: 300,
     cooldown: 130,
-    launchForce: 2_000,
+    launchForce: 1_700,
     turretTurnAccel: 100,
     turretDrag: 0.4,
     barrel: {
