@@ -1402,7 +1402,7 @@ onUnmounted(() => {
           >
           <BarDivider />
           <div class="control-group">
-            <span class="control-label">MAX TPS:</span>
+            <span class="control-label">TARGET TPS:</span>
             <div class="button-group">
               <button
                 v-for="rate in SERVER_CONFIG.tickRate.options"
@@ -1458,7 +1458,7 @@ onUnmounted(() => {
           </div>
           <div class="control-group">
             <BarDivider />
-            <span class="control-label">MAX SPS:</span>
+            <span class="control-label">TARGET SPS:</span>
             <div class="button-group">
               <button
                 v-for="rate in SERVER_CONFIG.snapshot.options"

@@ -2,7 +2,7 @@ import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './t
 
 export const SERVER_CONFIG = {
   tickRate: {
-    default: 128 as TickRate,
+    default: 64 as TickRate,
     options: [1, 4, 8, 16, 32, 64, 128, 256] as readonly TickRate[],
   },
   snapshot: {
