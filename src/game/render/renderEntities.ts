@@ -783,6 +783,9 @@ export class EntityRenderer {
           'complexSingleEmitter';
         if (pass === 0 ? !isForceField : isForceField) continue;
 
+        // Skip manual-fire turrets (e.g. d-gun) when idle — only render while aiming/firing
+        if (weapon.config.isManualFire && weapon.state === 'idle') continue;
+
         const mount = mounts[Math.min(i, mounts.length - 1)];
         const mountX = x + cos * mount.x * r - sin * mount.y * r;
         const mountY = y + sin * mount.x * r + cos * mount.y * r;

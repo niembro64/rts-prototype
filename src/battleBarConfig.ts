@@ -14,7 +14,7 @@ export const BATTLE_CONFIG = {
     commander: 'CMD',
   } as Record<string, string>,
   cap: {
-    default: Math.pow(2, 10),
+    default: Math.pow(2, 6),
     options: [
       Math.pow(2, 2),
       Math.pow(2, 4),
