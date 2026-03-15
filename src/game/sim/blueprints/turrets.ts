@@ -151,7 +151,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'mediumShot',
     range: 300,
     cooldown: 130,
-    launchForce: 1_900,
+    launchForce: 2_200,
     turretTurnAccel: 100,
     turretDrag: 0.4,
     barrel: {
