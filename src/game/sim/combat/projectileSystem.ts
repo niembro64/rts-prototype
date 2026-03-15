@@ -8,7 +8,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, FireTurretsResult, CollisionResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER } from '../../../config';
+import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos } from './combatUtils';
@@ -321,12 +321,20 @@ export function updateProjectiles(
           proj.velocityY = steered.velocityY;
           entity.transform.rotation = steered.rotation;
 
-          // Emit velocity update so clients can correct dead-reckoning drift
-          _homingVelocityUpdates.push({
-            id: entity.id,
-            pos: { x: entity.transform.x, y: entity.transform.y },
-            velocity: { x: proj.velocityX, y: proj.velocityY },
-          });
+          // Emit velocity update only when velocity changed beyond threshold
+          const velTh = SNAPSHOT_CONFIG.velocityThreshold;
+          const lastVx = proj.lastSentVelX ?? proj.velocityX;
+          const lastVy = proj.lastSentVelY ?? proj.velocityY;
+          if (Math.abs(proj.velocityX - lastVx) > velTh ||
+              Math.abs(proj.velocityY - lastVy) > velTh) {
+            proj.lastSentVelX = proj.velocityX;
+            proj.lastSentVelY = proj.velocityY;
+            _homingVelocityUpdates.push({
+              id: entity.id,
+              pos: { x: entity.transform.x, y: entity.transform.y },
+              velocity: { x: proj.velocityX, y: proj.velocityY },
+            });
+          }
         } else {
           // Target gone/dead — fly straight (no retargeting)
           proj.homingTargetId = undefined;

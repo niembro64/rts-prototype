@@ -8,7 +8,7 @@ import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type { ProjectileVelocityUpdateEvent } from './types';
 import { isPointInSlice, getTransformCosSin } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
 
 // Module-level dedup map: keyed by projectile entity ID, keeps only the last velocity state
 // when a projectile is affected by multiple force fields in the same tick.
@@ -291,12 +291,21 @@ export function applyForceFieldDamage(
 
         projEntity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
 
-        // Dedup: if same projectile affected by multiple force fields, keep latest
-        _velocityUpdateMap.set(projEntity.id, {
-          id: projEntity.id,
-          pos: { x: projEntity.transform.x, y: projEntity.transform.y },
-          velocity: { x: proj.velocityX, y: proj.velocityY },
-        });
+        // Only emit when velocity changed beyond threshold since last sent
+        const velTh = SNAPSHOT_CONFIG.velocityThreshold;
+        const lastVx = proj.lastSentVelX ?? proj.velocityX;
+        const lastVy = proj.lastSentVelY ?? proj.velocityY;
+        if (Math.abs(proj.velocityX - lastVx) > velTh ||
+            Math.abs(proj.velocityY - lastVy) > velTh) {
+          proj.lastSentVelX = proj.velocityX;
+          proj.lastSentVelY = proj.velocityY;
+          // Dedup: if same projectile affected by multiple force fields, keep latest
+          _velocityUpdateMap.set(projEntity.id, {
+            id: projEntity.id,
+            pos: { x: projEntity.transform.x, y: projEntity.transform.y },
+            velocity: { x: proj.velocityX, y: proj.velocityY },
+          });
+        }
       }
     }
   }

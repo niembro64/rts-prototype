@@ -68,13 +68,13 @@ const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 import { getDriftMode, getGraphicsConfig } from '@/clientBarConfig';
 import type { DriftMode } from '@/types/client';
 
-const DRIFT_PRESETS: Record<
-  DriftMode,
-  { position: number; velocity: number; rotation: number }
-> = {
-  snap: { position: 1.0, velocity: 1.0, rotation: 1.0 },
-  fast: { position: 0.15, velocity: 0.25, rotation: 0.15 },
-  slow: { position: 0.04, velocity: 0.08, rotation: 0.04 },
+type DriftAxis = { pos: number; vel: number };
+type DriftPreset = { movement: DriftAxis; rotation: DriftAxis };
+
+const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
+  snap: { movement: { pos: 1.0, vel: 1.0 }, rotation: { pos: 1.0, vel: 1.0 } },
+  fast: { movement: { pos: 0.15, vel: 0.25 }, rotation: { pos: 0.15, vel: 0.25 } },
+  slow: { movement: { pos: 0.04, vel: 0.08 }, rotation: { pos: 0.04, vel: 0.08 } },
 };
 
 // Lightweight copy of server state used for per-frame drift in applyPrediction().
@@ -432,9 +432,10 @@ export class ClientViewState {
 
     // Frame-rate independent blend factors (driven by drift mode setting)
     const preset = DRIFT_PRESETS[getDriftMode()];
-    const posDrift = 1 - Math.pow(1 - preset.position, dt * 60);
-    const velDrift = 1 - Math.pow(1 - preset.velocity, dt * 60);
-    const rotDrift = 1 - Math.pow(1 - preset.rotation, dt * 60);
+    const movPosDrift = 1 - Math.pow(1 - preset.movement.pos, dt * 60);
+    const movVelDrift = 1 - Math.pow(1 - preset.movement.vel, dt * 60);
+    const rotPosDrift = 1 - Math.pow(1 - preset.rotation.pos, dt * 60);
+    const rotVelDrift = 1 - Math.pow(1 - preset.rotation.vel, dt * 60);
 
     for (const entity of this.entities.values()) {
       const target = this.serverTargets.get(entity.id);
@@ -448,18 +449,18 @@ export class ClientViewState {
 
         // Step 2: Drift toward server targets
         if (target) {
-          entity.transform.x = lerp(entity.transform.x, target.x, posDrift);
-          entity.transform.y = lerp(entity.transform.y, target.y, posDrift);
+          entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
+          entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
           entity.transform.rotation = lerpAngle(
             entity.transform.rotation,
             target.rotation,
-            rotDrift,
+            rotPosDrift,
           );
 
           const serverVelX = target.velocityX ?? 0;
           const serverVelY = target.velocityY ?? 0;
-          entity.unit.velocityX = lerp(vx, serverVelX, velDrift);
-          entity.unit.velocityY = lerp(vy, serverVelY, velDrift);
+          entity.unit.velocityX = lerp(vx, serverVelX, movVelDrift);
+          entity.unit.velocityY = lerp(vy, serverVelY, movVelDrift);
         }
 
         // Advance turret rotations using angular velocity + drift toward server
@@ -474,12 +475,12 @@ export class ClientViewState {
               weapon.rotation = lerpAngle(
                 weapon.rotation,
                 tw.rotation,
-                rotDrift,
+                rotPosDrift,
               );
               weapon.angularVelocity = lerp(
                 weapon.angularVelocity,
                 tw.angularVelocity,
-                velDrift,
+                rotVelDrift,
               );
             }
 
@@ -499,7 +500,7 @@ export class ClientViewState {
               // Drift toward server's authoritative value
               const serverRange = tw?.forceFieldRange;
               if (serverRange !== undefined) {
-                next = lerp(next, serverRange, rotDrift);
+                next = lerp(next, serverRange, rotPosDrift);
               }
               if (!weapon.forceField) {
                 weapon.forceField = { range: next, transition: 0 };

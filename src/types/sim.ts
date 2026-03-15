@@ -260,6 +260,8 @@ export type Projectile = {
   homingTargetId?: EntityId;
   homingTurnRate?: number;
   reflections?: { x: number; y: number; mirrorEntityId: EntityId }[];
+  lastSentVelX?: number;
+  lastSentVelY?: number;
 };
 
 // Economy state per player
