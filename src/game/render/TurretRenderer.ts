@@ -187,7 +187,7 @@ function drawSingleBarrelTurret(
 
   if (turretStyle === 'full') {
     graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(mountX, mountY, Math.max(r * 0.06, halfW));
+    graphics.fillCircle(mountX, mountY, halfW);
   }
 
   // Draw barrel as a filled quad for pixel-perfect centering
