@@ -4,6 +4,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
+import { getUnitBlueprint } from '../../sim/blueprints';
 
 // Pre-allocated reusable point arrays to avoid per-frame allocations
 const _bodyPoints: { x: number; y: number }[] = Array.from({ length: 10 }, () => ({ x: 0, y: 0 }));
@@ -15,19 +16,24 @@ export function drawSnipeUnit(
   ctx: UnitRenderContext,
   legs: ArachnidLeg[]
 ): void {
-  const { graphics, x, y, radius: r, bodyRot, palette, isSelected } = ctx;
+  const { graphics, x, y, radius: r, bodyRot, palette, isSelected, entity } = ctx;
   const { base, light, dark } = palette;
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
 
+  // Turret mount position from blueprint (single source of truth)
+  const unitType = entity.unit?.unitType ?? 'tick';
+  const mount = getUnitBlueprint(unitType).chassisMounts[0];
+  const mountOff = mount.x; // fraction of radius; -0.45 = behind center (at abdomen)
+
   // Legs (always drawn at low+high)
   drawLegs(graphics, legs, 'tick', x, y, bodyRot, dark, light);
 
-  // Abdomen (idiosoma) — huge engorged body behind the tiny leg piece
+  // Abdomen (idiosoma) — huge engorged body behind the tiny leg piece, centered on turret mount
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
   {
-    const abdCx = x - cos * r * 0.45;
-    const abdCy = y - sin * r * 0.45;
+    const abdCx = x + cos * r * mountOff;
+    const abdCy = y + sin * r * mountOff;
     const abdRx = r * 0.35;  // half-width (lateral)
     const abdRy = r * 0.5;   // half-length (along body axis) — longer than wide
     for (let i = 0; i < 12; i++) {
@@ -59,8 +65,8 @@ export function drawSnipeUnit(
   {
     const bodyLen = r * 0.13;
     const bodyWide = r * 0.1;
-    const bodyCx = x + cos * r * 0.25;
-    const bodyCy = y + sin * r * 0.25;
+    const bodyCx = x + cos * r * (mountOff + 0.7);
+    const bodyCy = y + sin * r * (mountOff + 0.7);
 
     graphics.fillStyle(bodyColor, 1);
     drawOval(graphics, _bodyPoints, bodyCx, bodyCy, bodyWide, bodyLen, cos, sin, 10);
@@ -69,8 +75,8 @@ export function drawSnipeUnit(
   }
 
   // Capitulum (head/mouthparts) — small pointed shape at front
-  const headBase = r * 0.35;
-  const headTip = r * 0.6;
+  const headBase = r * (mountOff + 0.8);
+  const headTip = r * (mountOff + 1.05);
   const headWidth = r * 0.07;
   _headPoints[0].x = x + cos * headBase - sin * headWidth;
   _headPoints[0].y = y + sin * headBase + cos * headWidth;

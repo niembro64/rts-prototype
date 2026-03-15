@@ -275,7 +275,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 18,
     baseCost: 200,
     turrets: [{ turretId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
-    chassisMounts: [{ x: 0, y: 0 }],
+    chassisMounts: [{ x: 0.1, y: 0 }],
     locomotion: {
       type: 'legs',
       style: 'tarantula',

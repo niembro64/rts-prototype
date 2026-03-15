@@ -2,7 +2,7 @@
 // Turret visual is owned by the weapon, not the unit chassis
 
 import Phaser from 'phaser';
-import type { Turret, EntityId } from '../sim/types';
+import { type Turret, type EntityId, isLineShot } from '../sim/types';
 import type { ColorPalette } from './types';
 import { COLORS } from './types';
 import { drawForceFieldGrate } from './helpers';
@@ -51,9 +51,11 @@ export function drawTurret(
     case 'coneMultiBarrel':
       drawConeSpreadTurret(graphics, mountX, mountY, unitRadius, weapon, turretConfig, turretStyle, spinAngle);
       break;
-    case 'simpleSingleBarrel':
-      drawSingleBarrelTurret(graphics, mountX, mountY, unitRadius, weapon.rotation, turretConfig, turretStyle);
+    case 'simpleSingleBarrel': {
+      const shotWidth = isLineShot(weapon.config.shot) ? weapon.config.shot.width : undefined;
+      drawSingleBarrelTurret(graphics, mountX, mountY, unitRadius, weapon.rotation, turretConfig, turretStyle, shotWidth);
       break;
+    }
   }
 }
 
@@ -158,6 +160,9 @@ function drawConeSpreadTurret(
 
 // ==================== SINGLE BARREL (mortar, cannon, railgun) ====================
 
+// Pre-allocated quad points for barrel rectangle drawing
+const _barrelQuad = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+
 function drawSingleBarrelTurret(
   graphics: Phaser.GameObjects.Graphics,
   mountX: number, mountY: number,
@@ -165,18 +170,37 @@ function drawSingleBarrelTurret(
   turretRot: number,
   config: Extract<BarrelShape, { type: 'simpleSingleBarrel' }>,
   turretStyle: TurretStyle,
+  shotWidth?: number,
 ): void {
   const turretLen = r * config.barrelLength;
-  const endX = mountX + Math.cos(turretRot) * turretLen;
-  const endY = mountY + Math.sin(turretRot) * turretLen;
+  const thickness = shotWidth ?? config.barrelThickness ?? 2;
+  const halfW = thickness * 0.5;
 
-  const thickness = config.barrelThickness ?? 2;
+  // Direction along barrel and perpendicular
+  const fwdX = Math.cos(turretRot);
+  const fwdY = Math.sin(turretRot);
+  const perpX = -fwdY;
+  const perpY = fwdX;
+
+  const endX = mountX + fwdX * turretLen;
+  const endY = mountY + fwdY * turretLen;
+
   if (turretStyle === 'full') {
     graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(mountX, mountY, Math.max(r * 0.06, thickness * 0.5));
+    graphics.fillCircle(mountX, mountY, Math.max(r * 0.06, halfW));
   }
-  graphics.lineStyle(thickness, COLORS.WHITE, 1);
-  graphics.lineBetween(mountX, mountY, endX, endY);
+
+  // Draw barrel as a filled quad for pixel-perfect centering
+  graphics.fillStyle(COLORS.WHITE, 1);
+  _barrelQuad[0].x = mountX - perpX * halfW;
+  _barrelQuad[0].y = mountY - perpY * halfW;
+  _barrelQuad[1].x = mountX + perpX * halfW;
+  _barrelQuad[1].y = mountY + perpY * halfW;
+  _barrelQuad[2].x = endX + perpX * halfW;
+  _barrelQuad[2].y = endY + perpY * halfW;
+  _barrelQuad[3].x = endX - perpX * halfW;
+  _barrelQuad[3].y = endY - perpY * halfW;
+  graphics.fillPoints(_barrelQuad, true);
 }
 
 // ==================== FORCE FIELD (forceField, megaForceField) ====================

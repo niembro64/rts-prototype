@@ -5,6 +5,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawPolygon, drawLegs } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
+import { getUnitBlueprint } from '../../sim/blueprints';
 
 // Pre-allocated reusable point array for abdomen shape (avoids 12 object allocations per frame per unit)
 const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 12 }, () => ({ x: 0, y: 0 }));
@@ -13,16 +14,22 @@ export function drawArachnidUnit(
   ctx: UnitRenderContext,
   legs: ArachnidLeg[]
 ): void {
-  const { graphics, x, y, radius: r, bodyRot, palette, isSelected } = ctx;
+  const { graphics, x, y, radius: r, bodyRot, palette, isSelected, entity } = ctx;
   const { base, light, dark } = palette;
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
+
+  // Body center from the force field mount (last chassisMount, center of hex ring)
+  const unitType = entity.unit?.unitType ?? 'widow';
+  const mounts = getUnitBlueprint(unitType).chassisMounts;
+  const centerMount = mounts[mounts.length - 1]; // force field at hex center
+  const bodyFwd = centerMount.x; // forward offset fraction of radius
 
   // Legs (always drawn at low+high)
   drawLegs(graphics, legs, 'widow', x, y, bodyRot, dark, light);
 
   // Abdomen / "butt" region - large chonky rear section
-  const abdomenOffset = -r * 0.9; // Behind the main body
+  const abdomenOffset = r * (bodyFwd - 1.4); // Behind the main body
   const abdomenCenterX = x + cos * abdomenOffset;
   const abdomenCenterY = y + sin * abdomenOffset;
   const abdomenLength = r * 1.1; // Long
@@ -118,7 +125,7 @@ export function drawArachnidUnit(
   graphics.fillStyle(bodyColor, 1);
 
   const bodyHexRadius = r * 0.95;
-  const bodyHexForwardOffset = r * 0.35;
+  const bodyHexForwardOffset = r * (bodyFwd - 0.15);
   const bodyHexRotationOffset = Math.PI / 3;
   const bodyHexCenterX = x + cos * bodyHexForwardOffset;
   const bodyHexCenterY = y + sin * bodyHexForwardOffset;
@@ -126,7 +133,7 @@ export function drawArachnidUnit(
 
   // Inner carapace pattern (base color)
   const hexRadius = r * 0.65;
-  const hexForwardOffset = r * 0.5;
+  const hexForwardOffset = r * bodyFwd;
   const hexRotationOffset = Math.PI / 3;
   const hexCenterX = x + cos * hexForwardOffset;
   const hexCenterY = y + sin * hexForwardOffset;

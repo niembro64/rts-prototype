@@ -4,6 +4,7 @@ import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawOrientedRect, drawUnitTreads } from '../helpers';
 import type { TankTreadSetup } from '../Tread';
+import { getUnitBlueprint } from '../../sim/blueprints';
 
 export function drawHippoUnit(
   ctx: UnitRenderContext,
@@ -28,8 +29,9 @@ export function drawHippoUnit(
     // Turret mount rectangles on left and right flanks
     const cos = Math.cos(bodyRot);
     const sin = Math.sin(bodyRot);
-    const mountOffsetX = 0.15 * r;
-    const mountOffsetY = 0.7 * r;
+    const mount = getUnitBlueprint(ctx.entity.unit?.unitType ?? 'hippo').chassisMounts[0];
+    const mountOffsetX = mount.x * r;
+    const mountOffsetY = Math.abs(mount.y) * r;
     const mountW = r * 0.3;
     const mountH = r * 0.22;
 

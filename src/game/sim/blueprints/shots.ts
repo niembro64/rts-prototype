@@ -22,8 +22,8 @@ function generateBeamShots(): Record<string, BeamShotBlueprint> {
       dps,
       force: 2000,
       recoil: 10000,
-      radius: 8,
-      width: 5,
+      radius: 1,
+      width: 2,
       hitSound: AUDIO.event.hit[`beamShot${i}`],
     };
   }
@@ -102,7 +102,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
     force: 2500,
     recoil: 2000, // mass * launchForce
-    radius: 3,
+    radius: 1,
     width: 2,
     duration: 300,
     hitSound: AUDIO.event.hit.laserShot,
