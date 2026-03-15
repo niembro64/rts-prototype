@@ -7,7 +7,7 @@
  * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
-import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
+import type { Entity, PlayerId, EntityId, BuildingType, ForceShot } from '../sim/types';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
@@ -22,11 +22,15 @@ import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig } from '../sim/turretConfigs';
 import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
 import {
-  ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
-  ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
-  ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_VEL,
+  ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_ACTIONS,
+  ENTITY_CHANGED_TURRETS,
+  ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_FACTORY,
 } from '../../types/network';
-
 
 // Reusable result for raySegmentIntersection (avoids per-hit allocations in hot loop)
 const _rsHit = { t: 0, x: 0, y: 0 };
@@ -34,22 +38,41 @@ const _rsHit = { t: 0, x: 0, y: 0 };
 // Ray-vs-line-segment intersection (shared with DamageSystem)
 // Returns reusable _rsHit on hit — caller must read values before next call
 function raySegmentIntersection(
-  sx: number, sy: number, ex: number, ey: number,
-  ax: number, ay: number, bx: number, by: number,
+  sx: number,
+  sy: number,
+  ex: number,
+  ey: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
 ): typeof _rsHit | null {
-  const rdx = ex - sx, rdy = ey - sy;
-  const sdx = bx - ax, sdy = by - ay;
+  const rdx = ex - sx,
+    rdy = ey - sy;
+  const sdx = bx - ax,
+    sdy = by - ay;
   const denom = rdx * sdy - rdy * sdx;
   if (Math.abs(denom) < 1e-10) return null;
   const t = ((ax - sx) * sdy - (ay - sy) * sdx) / denom;
   const u = ((ax - sx) * rdy - (ay - sy) * rdx) / denom;
   if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-  _rsHit.t = t; _rsHit.x = sx + t * rdx; _rsHit.y = sy + t * rdy;
+  _rsHit.t = t;
+  _rsHit.x = sx + t * rdx;
+  _rsHit.y = sy + t * rdy;
   return _rsHit;
 }
 
 // Reusable result for findBeamSegmentHit (avoids per-call allocations)
-const _segHit = { t: 0, x: 0, y: 0, entityId: 0, isMirror: false, normalX: 0, normalY: 0, panelIndex: -1 };
+const _segHit = {
+  t: 0,
+  x: 0,
+  y: 0,
+  entityId: 0,
+  isMirror: false,
+  normalX: 0,
+  normalY: 0,
+  panelIndex: -1,
+};
 import {
   lerp,
   lerpAngle,
@@ -57,11 +80,45 @@ import {
   getWeaponWorldPosition,
   lineCircleIntersectionT,
   applyHomingSteering,
+  isPointInSlice,
 } from '../math';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
+
+// Reusable buffer for client-side force field prediction (avoids allocations per frame)
+type ActiveForceField = {
+  weaponX: number;
+  weaponY: number;
+  turretAngle: number;
+  playerId: PlayerId;
+  shot: ForceShot;
+  progress: number;
+};
+const _forceFields: ActiveForceField[] = [];
+const _ffZones = { pushInner: 0, pushOuter: 0, pullInner: 0, pullOuter: 0 };
+
+function getClientForceFieldZones(shot: ForceShot, progress: number) {
+  const push = shot.push;
+  const pull = shot.pull;
+  if (push && push.power != null) {
+    _ffZones.pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
+    _ffZones.pushOuter = push.outerRange;
+  } else {
+    _ffZones.pushInner = 0;
+    _ffZones.pushOuter = 0;
+  }
+  if (pull && pull.power != null) {
+    _ffZones.pullInner = pull.innerRange;
+    _ffZones.pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
+  } else {
+    _ffZones.pullInner = 0;
+    _ffZones.pullOuter = 0;
+  }
+  return _ffZones;
+}
 
 // EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
 // Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
@@ -73,8 +130,14 @@ type DriftPreset = { movement: DriftAxis; rotation: DriftAxis };
 
 const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
   snap: { movement: { pos: 1.0, vel: 1.0 }, rotation: { pos: 1.0, vel: 1.0 } },
-  fast: { movement: { pos: 0.15, vel: 0.25 }, rotation: { pos: 0.15, vel: 0.25 } },
-  slow: { movement: { pos: 0.04, vel: 0.08 }, rotation: { pos: 0.04, vel: 0.08 } },
+  fast: {
+    movement: { pos: 0.15, vel: 0.25 },
+    rotation: { pos: 0.15, vel: 0.25 },
+  },
+  slow: {
+    movement: { pos: 0.04, vel: 0.08 },
+    rotation: { pos: 0.04, vel: 0.08 },
+  },
 };
 
 // Lightweight copy of server state used for per-frame drift in applyPrediction().
@@ -165,18 +228,18 @@ export class ClientViewState {
       }
       const cf = netEntity.changedFields;
       const isFull = cf === undefined;
-      if (isFull || (cf! & ENTITY_CHANGED_POS)) {
+      if (isFull || cf! & ENTITY_CHANGED_POS) {
         target.x = netEntity.pos.x;
         target.y = netEntity.pos.y;
       }
-      if (isFull || (cf! & ENTITY_CHANGED_ROT)) {
+      if (isFull || cf! & ENTITY_CHANGED_ROT) {
         target.rotation = netEntity.rotation;
       }
-      if (isFull || (cf! & ENTITY_CHANGED_VEL)) {
+      if (isFull || cf! & ENTITY_CHANGED_VEL) {
         target.velocityX = netEntity.unit?.velocity.x ?? 0;
         target.velocityY = netEntity.unit?.velocity.y ?? 0;
       }
-      if (isFull || (cf! & ENTITY_CHANGED_TURRETS)) {
+      if (isFull || cf! & ENTITY_CHANGED_TURRETS) {
         const nw = netEntity.unit?.turrets;
         if (nw) {
           while (target.turrets.length < nw.length) {
@@ -190,8 +253,7 @@ export class ClientViewState {
           for (let i = 0; i < nw.length; i++) {
             target.turrets[i].rotation = nw[i].turret.angular.rot;
             target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
-            target.turrets[i].forceFieldRange =
-              nw[i].currentForceFieldRange;
+            target.turrets[i].forceFieldRange = nw[i].currentForceFieldRange;
           }
         } else if (isFull) {
           target.turrets.length = 0;
@@ -260,17 +322,21 @@ export class ClientViewState {
       }
     }
 
-    // Process projectile velocity updates (force field pull deflection)
-    // Snap position to server's authoritative value to correct dead-reckoning drift
+    // Process projectile velocity updates (force field deflection / homing correction)
+    // Store as drift targets — client-side prediction should already be close
     if (state.projectiles?.velocityUpdates) {
       for (const vu of state.projectiles.velocityUpdates) {
         const entity = this.entities.get(vu.id);
         if (entity?.projectile) {
-          entity.transform.x = vu.pos.x;
-          entity.transform.y = vu.pos.y;
-          entity.projectile.velocityX = vu.velocity.x;
-          entity.projectile.velocityY = vu.velocity.y;
-          entity.transform.rotation = Math.atan2(vu.velocity.y, vu.velocity.x);
+          let target = this.serverTargets.get(vu.id);
+          if (!target) {
+            target = createServerTarget();
+            this.serverTargets.set(vu.id, target);
+          }
+          target.x = vu.pos.x;
+          target.y = vu.pos.y;
+          target.velocityX = vu.velocity.x;
+          target.velocityY = vu.velocity.y;
         }
       }
     }
@@ -290,8 +356,17 @@ export class ClientViewState {
       for (let i = 0; i < src.length; i++) {
         const st = src[i];
         this.sprayTargets[i] = {
-          source: { id: st.source.id, pos: st.source.pos, playerId: st.source.playerId },
-          target: { id: st.target.id, pos: st.target.pos, dim: st.target.dim, radius: st.target.radius },
+          source: {
+            id: st.source.id,
+            pos: st.source.pos,
+            playerId: st.source.playerId,
+          },
+          target: {
+            id: st.target.id,
+            pos: st.target.pos,
+            dim: st.target.dim,
+            radius: st.target.radius,
+          },
           type: st.type,
           intensity: st.intensity,
         };
@@ -304,7 +379,10 @@ export class ClientViewState {
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
     // Check game over
-    if (state.gameState?.phase === 'gameOver' && state.gameState.winnerId !== undefined) {
+    if (
+      state.gameState?.phase === 'gameOver' &&
+      state.gameState.winnerId !== undefined
+    ) {
       this.gameOverWinnerId = state.gameState.winnerId;
     }
 
@@ -328,12 +406,15 @@ export class ClientViewState {
    * Snap non-visual state (hp, actions, targeting, building/factory fields).
    * These don't need smooth blending — they should reflect server truth immediately.
    */
-  private snapNonVisualState(entity: Entity, server: NetworkServerSnapshotEntity): void {
+  private snapNonVisualState(
+    entity: Entity,
+    server: NetworkServerSnapshotEntity,
+  ): void {
     const cf = server.changedFields;
     const isFull = cf === undefined;
     const su = server.unit;
     if (entity.unit && su) {
-      if (isFull || (cf! & ENTITY_CHANGED_HP)) {
+      if (isFull || cf! & ENTITY_CHANGED_HP) {
         entity.unit.hp = su.hp.curr;
         entity.unit.maxHp = su.hp.max;
       }
@@ -345,7 +426,7 @@ export class ClientViewState {
         entity.unit.moveSpeed = su.moveSpeed;
       }
 
-      if ((isFull || (cf! & ENTITY_CHANGED_ACTIONS)) && su.actions) {
+      if ((isFull || cf! & ENTITY_CHANGED_ACTIONS) && su.actions) {
         const src = su.actions;
         const actions = entity.unit.actions;
         actions.length = 0;
@@ -353,7 +434,13 @@ export class ClientViewState {
           const na = src[i];
           if (!na.pos) continue;
           actions.push({
-            type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair' | 'attack',
+            type: na.type as
+              | 'move'
+              | 'patrol'
+              | 'fight'
+              | 'build'
+              | 'repair'
+              | 'attack',
             x: na.pos.x,
             y: na.pos.y,
             targetId: na.targetId,
@@ -366,7 +453,12 @@ export class ClientViewState {
       }
 
       // Snap turret targeting state (turret rotation/velocity blended in applyPrediction)
-      if ((isFull || (cf! & ENTITY_CHANGED_TURRETS)) && su.turrets && su.turrets.length > 0 && entity.turrets) {
+      if (
+        (isFull || cf! & ENTITY_CHANGED_TURRETS) &&
+        su.turrets &&
+        su.turrets.length > 0 &&
+        entity.turrets
+      ) {
         for (
           let i = 0;
           i < su.turrets.length && i < entity.turrets.length;
@@ -384,18 +476,18 @@ export class ClientViewState {
     }
 
     const sb = server.building;
-    if (entity.building && sb && (isFull || (cf! & ENTITY_CHANGED_HP))) {
+    if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_HP)) {
       entity.building.hp = sb.hp.curr;
       entity.building.maxHp = sb.hp.max;
     }
 
-    if (entity.buildable && sb && (isFull || (cf! & ENTITY_CHANGED_BUILDING))) {
+    if (entity.buildable && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
       entity.buildable.buildProgress = sb.build.progress;
       entity.buildable.isComplete = sb.build.complete;
     }
 
     const sf = sb?.factory;
-    if (entity.factory && sf && (isFull || (cf! & ENTITY_CHANGED_FACTORY))) {
+    if (entity.factory && sf && (isFull || cf! & ENTITY_CHANGED_FACTORY)) {
       entity.factory.buildQueue = sf.queue;
       entity.factory.currentBuildProgress = sf.progress;
       entity.factory.isProducing = sf.producing;
@@ -437,6 +529,9 @@ export class ClientViewState {
     const rotPosDrift = 1 - Math.pow(1 - preset.rotation.pos, dt * 60);
     const rotVelDrift = 1 - Math.pow(1 - preset.rotation.vel, dt * 60);
 
+    // Collect active force fields for client-side projectile prediction (Gap 3)
+    _forceFields.length = 0;
+
     for (const entity of this.entities.values()) {
       const target = this.serverTargets.get(entity.id);
 
@@ -448,6 +543,8 @@ export class ClientViewState {
         entity.transform.y += vy * dt;
 
         // Step 2: Drift toward server targets
+        // Body rotation is set authoritatively by the server (facing command direction),
+        // so the client only drifts toward the server target — no local dead-reckoning.
         if (target) {
           entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
           entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
@@ -489,8 +586,7 @@ export class ClientViewState {
               const fieldShot = weapon.config.shot;
               const cur = weapon.forceField?.range ?? 0;
               const targetProgress = weapon.state === 'engaged' ? 1 : 0;
-              const progressDelta =
-                dt / (fieldShot.transitionTime / 1000);
+              const progressDelta = dt / (fieldShot.transitionTime / 1000);
               let next = cur;
               if (cur < targetProgress) {
                 next = Math.min(cur + progressDelta, 1);
@@ -507,13 +603,30 @@ export class ClientViewState {
               } else {
                 weapon.forceField.range = next;
               }
+
+              // Collect active force fields for projectile prediction
+              if (next > 0 && entity.ownership) {
+                const unitCos = Math.cos(entity.transform.rotation);
+                const unitSin = Math.sin(entity.transform.rotation);
+                _forceFields.push({
+                  weaponX: entity.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y,
+                  weaponY: entity.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y,
+                  turretAngle: weapon.rotation,
+                  playerId: entity.ownership.playerId,
+                  shot: fieldShot,
+                  progress: next,
+                });
+              }
             }
           }
         }
       }
 
       if (entity.type === 'shot' && entity.projectile) {
-        if (entity.projectile.projectileType === 'beam' || entity.projectile.projectileType === 'laser') {
+        if (
+          entity.projectile.projectileType === 'beam' ||
+          entity.projectile.projectileType === 'laser'
+        ) {
           // Beams: reconstruct from source unit's current position + turret rotation
           // Beam existence is driven by the weapon's state (updated every snapshot),
           // so lost despawn events self-correct on the next snapshot.
@@ -561,16 +674,25 @@ export class ClientViewState {
 
             // Throttle beam path recomputation (client has no spatial grid — full O(N) scan)
             const beamSkip = getGraphicsConfig().beamPathFramesSkip;
-            if (entity.projectile.endX === undefined || beamSkip === 0 || this.frameCounter % (beamSkip + 1) === 0) {
+            if (
+              entity.projectile.endX === undefined ||
+              beamSkip === 0 ||
+              this.frameCounter % (beamSkip + 1) === 0
+            ) {
               const beamPath = this.findBeamPath(
-                startX, startY,
-                fullEndX, fullEndY,
+                startX,
+                startY,
+                fullEndX,
+                fullEndY,
                 entity.projectile.sourceEntityId,
               );
               entity.projectile.endX = beamPath.endX;
               entity.projectile.endY = beamPath.endY;
               entity.projectile.obstructionT = beamPath.obstructionT;
-              entity.projectile.reflections = beamPath.reflections.length > 0 ? beamPath.reflections : undefined;
+              entity.projectile.reflections =
+                beamPath.reflections.length > 0
+                  ? beamPath.reflections
+                  : undefined;
             }
           } else {
             // Source unit gone or weapon stopped firing — remove beam
@@ -605,7 +727,71 @@ export class ClientViewState {
             }
           }
 
-          // Traveling projectiles: dead-reckon using (possibly steered) velocity
+          // Client-side force field prediction: apply same deflection physics as server
+          if (_forceFields.length > 0 && entity.ownership) {
+            const projOwnerId = entity.ownership.playerId;
+            const projRadius = proj.config.shot.type === 'projectile'
+              ? proj.config.shot.collision.radius : 5;
+            const projMass = (proj.config.shot.type === 'projectile'
+              ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
+
+            for (let fi = 0; fi < _forceFields.length; fi++) {
+              const ff = _forceFields[fi];
+              if (ff.playerId === projOwnerId) continue; // Only deflect enemy projectiles
+
+              const zones = getClientForceFieldZones(ff.shot, ff.progress);
+              const effectiveOuter = Math.max(zones.pushOuter, zones.pullOuter);
+              if (effectiveOuter <= 0) continue;
+
+              const dx = entity.transform.x - ff.weaponX;
+              const dy = entity.transform.y - ff.weaponY;
+              const distSq = dx * dx + dy * dy;
+              const maxDist = effectiveOuter + projRadius;
+              if (distSq > maxDist * maxDist) continue;
+
+              const dist = Math.sqrt(distSq);
+              const effectiveInner = Math.min(
+                zones.pushOuter > zones.pushInner ? zones.pushInner : Infinity,
+                zones.pullOuter > zones.pullInner ? zones.pullInner : Infinity,
+              );
+              const sliceHalfAngle = ff.shot.angle / 2;
+              const isFullCircle = sliceHalfAngle >= Math.PI;
+
+              if (!isPointInSlice(
+                dx, dy, dist, ff.turretAngle, sliceHalfAngle,
+                effectiveOuter, projRadius, effectiveInner, isFullCircle,
+              )) continue;
+
+              const inPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
+              const inPull = !inPush && zones.pullOuter > zones.pullInner && dist >= zones.pullInner;
+              if (!inPush && !inPull) continue;
+
+              const pullDir = inPush ? 1 : -1;
+              const push = ff.shot.push;
+              const pull = ff.shot.pull;
+              const zoneStrength = inPush
+                ? (push?.power ?? 0) * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER
+                : (pull?.power ?? 0) * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER;
+              const pullAccel = zoneStrength / projMass;
+
+              const dirX = dist > 0 ? dx / dist : 0;
+              const dirY = dist > 0 ? dy / dist : 0;
+              proj.velocityX += pullDir * dirX * pullAccel * dt;
+              proj.velocityY += pullDir * dirY * pullAccel * dt;
+              entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+            }
+          }
+
+          // Drift projectile position + velocity toward server target (smooth correction)
+          if (target) {
+            entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
+            entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
+            proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelDrift);
+            proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelDrift);
+            entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+          }
+
+          // Traveling projectiles: dead-reckon using (possibly steered/deflected) velocity
           entity.transform.x += entity.projectile.velocityX * dt;
           entity.transform.y += entity.projectile.velocityY * dt;
 
@@ -634,7 +820,9 @@ export class ClientViewState {
    * For traveling/dgun projectiles, adjusts spawn position to the client-side muzzle
    * so bullets visually originate from the gun (same approach as beams).
    */
-  private createProjectileFromSpawn(spawn: NetworkServerSnapshotProjectileSpawn): Entity {
+  private createProjectileFromSpawn(
+    spawn: NetworkServerSnapshotProjectileSpawn,
+  ): Entity {
     const config = {
       ...getTurretConfig(spawn.turretId),
       turretIndex: spawn.turretIndex,
@@ -686,11 +874,14 @@ export class ClientViewState {
         velocityX: spawn.velocity.x,
         velocityY: spawn.velocity.y,
         timeAlive: 0,
-        maxLifespan: config.shot.type === 'beam'
-          ? Infinity
-          : config.shot.type === 'laser'
-            ? config.shot.duration
-            : (config.shot.type === 'projectile' ? (config.shot.lifespan ?? 2000) : 2000),
+        maxLifespan:
+          config.shot.type === 'beam'
+            ? Infinity
+            : config.shot.type === 'laser'
+              ? config.shot.duration
+              : config.shot.type === 'projectile'
+                ? (config.shot.lifespan ?? 2000)
+                : 2000,
         hitEntities: new Set(),
         maxHits: 1,
         startX: spawn.beam?.start.x,
@@ -718,47 +909,63 @@ export class ClientViewState {
    * Client-side equivalent of DamageSystem.findBeamPath().
    */
   private findBeamPath(
-    startX: number, startY: number,
-    endX: number, endY: number,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
     sourceId: number,
     maxBounces: number = 3,
   ): {
-    endX: number; endY: number;
+    endX: number;
+    endY: number;
     obstructionT?: number;
     reflections: { x: number; y: number; mirrorEntityId: number }[];
   } {
     const reflections: { x: number; y: number; mirrorEntityId: number }[] = [];
-    let curSX = startX, curSY = startY;
-    let curEX = endX, curEY = endY;
+    let curSX = startX,
+      curSY = startY;
+    let curEX = endX,
+      curEY = endY;
     let excludeId = sourceId;
     let excludePanelIndex = -1; // -1 = exclude entire entity (source), >= 0 = exclude only that panel
 
     for (let bounce = 0; bounce <= maxBounces; bounce++) {
-      const hit = this.findBeamSegmentHit(curSX, curSY, curEX, curEY, excludeId, excludePanelIndex);
+      const hit = this.findBeamSegmentHit(
+        curSX,
+        curSY,
+        curEX,
+        curEY,
+        excludeId,
+        excludePanelIndex,
+      );
 
       if (!hit) {
         return { endX: curEX, endY: curEY, reflections };
       }
 
       if (!hit.isMirror) {
-        if (bounce === 0) return { endX: hit.x, endY: hit.y, obstructionT: hit.t, reflections };
+        if (bounce === 0)
+          return { endX: hit.x, endY: hit.y, obstructionT: hit.t, reflections };
         return { endX: hit.x, endY: hit.y, reflections };
       }
 
       // Mirror reflection
       reflections.push({ x: hit.x, y: hit.y, mirrorEntityId: hit.entityId });
 
-      const segDx = curEX - curSX, segDy = curEY - curSY;
+      const segDx = curEX - curSX,
+        segDy = curEY - curSY;
       const segLen = magnitude(segDx, segDy);
       if (segLen === 0) break;
-      const beamDirX = segDx / segLen, beamDirY = segDy / segLen;
+      const beamDirX = segDx / segLen,
+        beamDirY = segDy / segLen;
 
       const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY;
       const reflDirX = beamDirX - 2 * dotDN * hit.normalX;
       const reflDirY = beamDirY - 2 * dotDN * hit.normalY;
       const remaining = segLen * (1 - hit.t);
 
-      curSX = hit.x; curSY = hit.y;
+      curSX = hit.x;
+      curSY = hit.y;
       curEX = hit.x + reflDirX * remaining;
       curEY = hit.y + reflDirY * remaining;
       excludeId = hit.entityId;
@@ -772,12 +979,17 @@ export class ClientViewState {
    *  excludeId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit
    *  excludePanelIndex: -1 = exclude entire entity, >= 0 = exclude only that panel */
   private findBeamSegmentHit(
-    sx: number, sy: number, ex: number, ey: number,
-    excludeId: number, excludePanelIndex: number,
+    sx: number,
+    sy: number,
+    ex: number,
+    ey: number,
+    excludeId: number,
+    excludePanelIndex: number,
   ): typeof _segHit | null {
     let bestT = Infinity;
     let found = false;
-    const dx = ex - sx, dy = ey - sy;
+    const dx = ex - sx,
+      dy = ey - sy;
     const segLenSq = dx * dx + dy * dy;
 
     for (const unit of this.cache.getUnits()) {
@@ -787,12 +999,17 @@ export class ClientViewState {
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
       // Early-out: point-to-line distance check (avoids expensive per-unit math for distant units)
-      const ux = unit.transform.x - sx, uy = unit.transform.y - sy;
-      const crossSq = (ux * dy - uy * dx);
+      const ux = unit.transform.x - sx,
+        uy = unit.transform.y - sy;
+      const crossSq = ux * dy - uy * dx;
       const panels = unit.unit.mirrorPanels;
-      const boundR = panels.length > 0
-        ? Math.max(unit.unit.mirrorBoundRadius, unit.unit.radiusColliderUnitShot)
-        : unit.unit.radiusColliderUnitShot;
+      const boundR =
+        panels.length > 0
+          ? Math.max(
+              unit.unit.mirrorBoundRadius,
+              unit.unit.radiusColliderUnitShot,
+            )
+          : unit.unit.radiusColliderUnitShot;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
       if (panels.length > 0) {
@@ -801,16 +1018,20 @@ export class ClientViewState {
         if (unit.turrets && unit.turrets.length > 0) {
           mirrorRot = unit.turrets[0].rotation;
         }
-        const fwdX = Math.cos(mirrorRot), fwdY = Math.sin(mirrorRot);
-        const perpX = -fwdY, perpY = fwdX;
+        const fwdX = Math.cos(mirrorRot),
+          fwdY = Math.sin(mirrorRot);
+        const perpX = -fwdY,
+          perpY = fwdX;
 
         for (let pi = 0; pi < panels.length; pi++) {
           // Skip only the specific panel we just bounced off
           if (isExcludedEntity && pi === excludePanelIndex) continue;
 
           const panel = panels[pi];
-          const pcx = unit.transform.x + fwdX * panel.offsetX + perpX * panel.offsetY;
-          const pcy = unit.transform.y + fwdY * panel.offsetX + perpY * panel.offsetY;
+          const pcx =
+            unit.transform.x + fwdX * panel.offsetX + perpX * panel.offsetY;
+          const pcy =
+            unit.transform.y + fwdY * panel.offsetX + perpY * panel.offsetY;
 
           const panelAngle = mirrorRot + panel.angle;
           const pnx = Math.cos(panelAngle);
@@ -824,11 +1045,26 @@ export class ClientViewState {
           const e2x = pcx - edx * panel.halfWidth;
           const e2y = pcy - edy * panel.halfWidth;
 
-          const faceHit = raySegmentIntersection(sx, sy, ex, ey, e1x, e1y, e2x, e2y);
+          const faceHit = raySegmentIntersection(
+            sx,
+            sy,
+            ex,
+            ey,
+            e1x,
+            e1y,
+            e2x,
+            e2y,
+          );
           if (faceHit && faceHit.t < bestT) {
-            bestT = faceHit.t; found = true;
-            _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
-            _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = pnx; _segHit.normalY = pny;
+            bestT = faceHit.t;
+            found = true;
+            _segHit.t = faceHit.t;
+            _segHit.x = faceHit.x;
+            _segHit.y = faceHit.y;
+            _segHit.entityId = unit.id;
+            _segHit.isMirror = true;
+            _segHit.normalX = pnx;
+            _segHit.normalY = pny;
             _segHit.panelIndex = pi;
           }
         }
@@ -837,11 +1073,25 @@ export class ClientViewState {
       // Circle collision — all units (mirror units can be hit on their body too)
       {
         const r = unit.unit.radiusColliderUnitShot;
-        const t = lineCircleIntersectionT(sx, sy, ex, ey, unit.transform.x, unit.transform.y, r);
+        const t = lineCircleIntersectionT(
+          sx,
+          sy,
+          ex,
+          ey,
+          unit.transform.x,
+          unit.transform.y,
+          r,
+        );
         if (t !== null && t < bestT) {
-          bestT = t; found = true;
-          _segHit.t = t; _segHit.x = sx + t * dx; _segHit.y = sy + t * dy;
-          _segHit.entityId = unit.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
+          bestT = t;
+          found = true;
+          _segHit.t = t;
+          _segHit.x = sx + t * dx;
+          _segHit.y = sy + t * dy;
+          _segHit.entityId = unit.id;
+          _segHit.isMirror = false;
+          _segHit.normalX = 0;
+          _segHit.normalY = 0;
           _segHit.panelIndex = -1;
         }
       }
@@ -851,25 +1101,46 @@ export class ClientViewState {
     for (const bldg of this.cache.getBuildings()) {
       if (bldg.id === excludeId) continue;
       if (!bldg.building) continue;
-      const hw = bldg.building.width / 2, hh = bldg.building.height / 2;
-      const bx = bldg.transform.x, by = bldg.transform.y;
-      let tmin = 0, tmax = 1;
+      const hw = bldg.building.width / 2,
+        hh = bldg.building.height / 2;
+      const bx = bldg.transform.x,
+        by = bldg.transform.y;
+      let tmin = 0,
+        tmax = 1;
       if (Math.abs(dx) > 0.0001) {
-        let t1 = (bx - hw - sx) / dx, t2 = (bx + hw - sx) / dx;
-        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-        tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+        let t1 = (bx - hw - sx) / dx,
+          t2 = (bx + hw - sx) / dx;
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
       } else if (sx < bx - hw || sx > bx + hw) continue;
       if (Math.abs(dy) > 0.0001) {
-        let t1 = (by - hh - sy) / dy, t2 = (by + hh - sy) / dy;
-        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-        tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+        let t1 = (by - hh - sy) / dy,
+          t2 = (by + hh - sy) / dy;
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
       } else if (sy < by - hh || sy > by + hh) continue;
       if (tmin <= tmax && tmax > 0) {
         const t = Math.max(tmin, 0);
         if (t < bestT) {
-          bestT = t; found = true;
-          _segHit.t = t; _segHit.x = sx + t * dx; _segHit.y = sy + t * dy;
-          _segHit.entityId = bldg.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
+          bestT = t;
+          found = true;
+          _segHit.t = t;
+          _segHit.x = sx + t * dx;
+          _segHit.y = sy + t * dy;
+          _segHit.entityId = bldg.id;
+          _segHit.isMirror = false;
+          _segHit.normalX = 0;
+          _segHit.normalY = 0;
         }
       }
     }
