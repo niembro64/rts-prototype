@@ -386,8 +386,8 @@ export const ZOOM_MAX = 5.0;
  */
 export const ZOOM_FACTOR = 1 + 1 / 8;
 
-/** Initial zoom level for the background demo game */
-export const ZOOM_INITIAL_DEMO = 1.8;
+/** Initial zoom level for the background demo game (3000x3000 map overview) */
+export const ZOOM_INITIAL_DEMO = 0.35;
 
 /** Initial zoom level when a real game starts */
 export const ZOOM_INITIAL_GAME = 0.5;

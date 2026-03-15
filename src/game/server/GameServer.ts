@@ -4,7 +4,7 @@
 import { WorldState } from '../sim/WorldState';
 import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
-import { spawnInitialEntities } from '../sim/spawn';
+import { spawnInitialEntities, spawnInitialBases } from '../sim/spawn';
 import { serializeGameState, resetDeltaTracking } from '../network/stateSerializer';
 import type { NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
@@ -13,12 +13,11 @@ import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import { PhysicsEngine } from './PhysicsEngine';
-import { spawnBackgroundUnitsStandalone, BACKGROUND_UNIT_TYPES } from './BackgroundBattleStandalone';
+import { BACKGROUND_UNIT_TYPES } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
 import {
   MAP_SETTINGS,
   UNIT_THRUST_MULTIPLIER_GAME,
-  UNIT_THRUST_MULTIPLIER_DEMO,
   SNAPSHOT_CONFIG,
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
@@ -49,9 +48,7 @@ export class GameServer {
   private lastSnapshotTime: number = 0;
   private keyframeRatioDisplay: number | 'ALL' | 'NONE';
 
-  // Background mode
-  private backgroundSpawnTimer: number = 0;
-  private readonly BACKGROUND_SPAWN_INTERVAL: number = 500;
+  // Background mode — allowed unit types for AI production & UI toggles
   private backgroundAllowedTypes: Set<string> = new Set(BACKGROUND_UNIT_TYPES);
 
   // Snapshot listeners
@@ -86,15 +83,15 @@ export class GameServer {
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
-    // Initialize world state with appropriate map size
-    const mapConfig = this.backgroundMode ? MAP_SETTINGS.demo : MAP_SETTINGS.game;
+    // Both modes use the game map (square, 3000x3000)
+    const mapConfig = MAP_SETTINGS.game;
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
 
     // Create custom physics engine with map bounds
     this.physics = new PhysicsEngine(mapWidth, mapHeight);
     this.world = new WorldState(42, mapWidth, mapHeight);
-    this.world.thrustMultiplier = this.backgroundMode ? UNIT_THRUST_MULTIPLIER_DEMO : UNIT_THRUST_MULTIPLIER_GAME;
+    this.world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player
 
     this.commandQueue = new CommandQueue();
@@ -104,21 +101,16 @@ export class GameServer {
     // Setup simulation callbacks
     this.setupSimulationCallbacks();
 
+    // AI player configuration
+    const aiPlayerIds = config.aiPlayerIds ?? (this.backgroundMode ? [...this.playerIds] : []);
+
     // Spawn initial entities
-    if (this.backgroundMode) {
-      this.world.playerCount = 4;
-      economyManager.initPlayer(1);
-      economyManager.initPlayer(2);
-      economyManager.initPlayer(3);
-      economyManager.initPlayer(4);
-      const initialUnits = spawnBackgroundUnitsStandalone(this.world, this.physics, true, this.backgroundAllowedTypes);
-      const tracker = this.simulation.getCombatStatsTracker();
-      for (const unit of initialUnits) {
-        if (unit.unit?.unitType && unit.ownership) {
-          tracker.registerEntity(unit.id, unit.ownership.playerId, unit.unit.unitType);
-          tracker.recordUnitProduced(unit.ownership.playerId, unit.unit.unitType);
-        }
-      }
+    if (aiPlayerIds.length > 0) {
+      // AI game: full base with factories, solars, and commander per player
+      const constructionSystem = this.simulation.getConstructionSystem();
+      const entities = spawnInitialBases(this.world, constructionSystem, this.playerIds);
+      this.createPhysicsBodies(entities);
+      this.simulation.setAiPlayerIds(aiPlayerIds);
     } else {
       const entities = spawnInitialEntities(this.world, this.playerIds);
       this.createPhysicsBodies(entities);
@@ -273,21 +265,8 @@ export class GameServer {
     // Sync positions/velocities from physics to entities
     this.syncFromPhysics();
 
-    // Background mode: continuously spawn units
-    if (this.backgroundMode) {
-      this.backgroundSpawnTimer += delta;
-      if (this.backgroundSpawnTimer >= this.BACKGROUND_SPAWN_INTERVAL) {
-        this.backgroundSpawnTimer = 0;
-        const spawnedUnits = spawnBackgroundUnitsStandalone(this.world, this.physics, false, this.backgroundAllowedTypes);
-        const tracker = this.simulation.getCombatStatsTracker();
-        for (const unit of spawnedUnits) {
-          if (unit.unit?.unitType && unit.ownership) {
-            tracker.registerEntity(unit.id, unit.ownership.playerId, unit.unit.unitType);
-            tracker.recordUnitProduced(unit.ownership.playerId, unit.unit.unitType);
-          }
-        }
-      }
-    }
+    // Background mode: units are produced by factories via AI auto-production
+    // (no manual spawning needed)
   }
 
   // Apply thrust and external forces to physics bodies
@@ -616,7 +595,7 @@ export class GameServer {
     return { avgFps: this.tpsAvg, worstFps: this.tpsLow };
   }
 
-  // Background demo: toggle unit type spawning
+  // Background demo: toggle unit type for AI production
   setBackgroundUnitTypeEnabled(unitType: string, enabled: boolean): void {
     if (enabled) {
       this.backgroundAllowedTypes.add(unitType);
@@ -632,6 +611,8 @@ export class GameServer {
         }
       }
     }
+    // Update AI production filter
+    this.simulation.setAiAllowedUnitTypes(this.backgroundAllowedTypes);
   }
 
   getBackgroundAllowedTypes(): ReadonlySet<string> {

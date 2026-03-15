@@ -36,6 +36,7 @@ import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
 import { FIGHT_STOP_ENGAGED_RATIO } from '@/config';
 import type { GamePhase } from '@/types/network';
+import { updateAiProduction } from './aiProduction';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
@@ -112,9 +113,23 @@ export class Simulation {
     this.damageSystem.statsTracker = this.combatStatsTracker;
   }
 
+  // AI player IDs (for auto-production)
+  private aiPlayerIds: Set<PlayerId> = new Set();
+  private aiAllowedUnitTypes?: ReadonlySet<string>;
+
   // Set the player IDs for this game
   setPlayerIds(playerIds: PlayerId[]): void {
     this.playerIds = playerIds;
+  }
+
+  // Set which players are AI-controlled (factories auto-queue units)
+  setAiPlayerIds(ids: PlayerId[]): void {
+    this.aiPlayerIds = new Set(ids);
+  }
+
+  // Set allowed unit types for AI production (undefined = all allowed)
+  setAiAllowedUnitTypes(types?: ReadonlySet<string>): void {
+    this.aiAllowedUnitTypes = types;
   }
 
   // Get the winner ID (null if game not over)
@@ -210,6 +225,9 @@ export class Simulation {
 
     // Check construction completion
     this.constructionSystem.update(this.world, dtMs);
+
+    // AI auto-queues units at idle factories
+    updateAiProduction(this.world, this.aiPlayerIds, this.aiAllowedUnitTypes);
 
     // Update factory production
     const productionResult = factoryProductionSystem.update(this.world, dtMs);

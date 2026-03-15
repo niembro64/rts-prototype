@@ -325,8 +325,8 @@ function startBackgroundBattle(): void {
     playerIds: [1, 2, 3, 4] as PlayerId[],
     localPlayerId: 1,
     gameConnection: bgConnection,
-    mapWidth: MAP_SETTINGS.demo.width,
-    mapHeight: MAP_SETTINGS.demo.height,
+    mapWidth: MAP_SETTINGS.game.width,
+    mapHeight: MAP_SETTINGS.game.height,
     backgroundMode: true,
   });
 
@@ -731,13 +731,15 @@ function handleLobbyCancel(): void {
 }
 
 function handleOffline(): void {
-  // Start game in offline mode without network
+  // Start game in offline mode — 4-player AI game, user controls player 1
   networkRole.value = null;
   localPlayerId.value = 1;
 
-  // Create game immediately with single player
   nextTick(() => {
-    startGameWithPlayers([1]);
+    startGameWithPlayers(
+      [1, 2, 3, 4] as PlayerId[],
+      [2, 3, 4] as PlayerId[],
+    );
   });
 }
 
@@ -909,7 +911,7 @@ function setupNetworkCallbacks(): void {
   };
 }
 
-function startGameWithPlayers(playerIds: PlayerId[]): void {
+function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): void {
   showLobby.value = false;
   gameStarted.value = true;
 
@@ -926,7 +928,7 @@ function startGameWithPlayers(playerIds: PlayerId[]): void {
 
     if (networkRole.value !== 'client') {
       // Create GameServer for host/offline
-      currentServer = new GameServer({ playerIds });
+      currentServer = new GameServer({ playerIds, aiPlayerIds });
 
       // Create LocalGameConnection for the host client
       const localConnection = new LocalGameConnection(currentServer);

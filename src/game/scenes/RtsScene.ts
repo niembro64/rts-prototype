@@ -255,9 +255,7 @@ export class RtsScene extends Phaser.Scene {
     // Setup input context
     const inputContext: InputContext = {
       getTick: () => this.clientViewState.getTick(),
-      activePlayerId: this.backgroundMode
-        ? (0 as PlayerId)
-        : this.localPlayerId,
+      activePlayerId: this.localPlayerId,
     };
 
     this.inputManager = new InputManager(
@@ -339,10 +337,11 @@ export class RtsScene extends Phaser.Scene {
     this.onPlayerChange?.(playerId);
   }
 
-  // Toggle between players
+  // Cycle through all players
   public togglePlayer(): void {
-    const newPlayer = this.localPlayerId === 1 ? 2 : 1;
-    this.switchPlayer(newPlayer);
+    const currentIndex = this.playerIds.indexOf(this.localPlayerId);
+    const nextIndex = (currentIndex + 1) % this.playerIds.length;
+    this.switchPlayer(this.playerIds[nextIndex]);
   }
 
   // Get current active player
@@ -581,7 +580,7 @@ export class RtsScene extends Phaser.Scene {
       }
 
       // Center camera on first snapshot
-      if (!this.hasCenteredCamera && !this.backgroundMode) {
+      if (!this.hasCenteredCamera) {
         this.centerCameraOnCommander();
       }
     }
@@ -671,8 +670,8 @@ export class RtsScene extends Phaser.Scene {
     // Render entities
     this.entityRenderer.render();
 
-    // Update UI with throttling (skip in background mode)
-    if (!this.backgroundMode) {
+    // Update UI with throttling
+    {
       // Check if a producing factory is selected
       if (!this.selectionDirty) {
         const entitySource = this.getCurrentEntitySource();

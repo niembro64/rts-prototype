@@ -37,6 +37,7 @@ export type GameConnection = {
 export type GameServerConfig = {
   playerIds: PlayerId[];
   backgroundMode?: boolean;
+  aiPlayerIds?: PlayerId[];
   maxSnapshotsPerSec?: number;
 };
 

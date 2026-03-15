@@ -1,22 +1,10 @@
 import type { WorldState } from './WorldState';
-import type { Entity, PlayerId } from './types';
+import type { Entity, PlayerId, BuildingType } from './types';
+import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
-
-// Unit composition for each player (legacy - now only used for testing)
-type UnitSpawnConfig = {
-  unitType: string;
-  count: number;
-  drawScale?: number;
-  moveSpeed?: number;
-};
-
-const PLAYER_UNIT_COMPOSITION: UnitSpawnConfig[] = [
-  { unitType: 'jackal', count: 3, drawScale: 8, moveSpeed: 160 },
-  { unitType: 'daddy', count: 2, drawScale: 13, moveSpeed: 100 },
-  { unitType: 'mammoth', count: 1, drawScale: 22, moveSpeed: 45 },
-  { unitType: 'badger', count: 2, drawScale: 15, moveSpeed: 85 },
-];
+import { getBuildingConfig } from './buildConfigs';
+import { GRID_CELL_SIZE } from './grid';
 
 // Spawn a commander for a player
 function spawnCommander(
@@ -31,59 +19,6 @@ function spawnCommander(
   aimTurretsToward(commander, world.mapWidth / 2, world.mapHeight / 2);
   world.addEntity(commander);
   return commander;
-}
-
-// Spawn units for a player in a formation (legacy - for testing)
-function spawnPlayerUnits(
-  world: WorldState,
-  playerId: PlayerId,
-  centerX: number,
-  centerY: number,
-  facingAngle: number
-): Entity[] {
-  const entities: Entity[] = [];
-  const spacing = 50;
-  let unitIndex = 0;
-
-  for (const config of PLAYER_UNIT_COMPOSITION) {
-    for (let i = 0; i < config.count; i++) {
-      // Arrange in a grid formation
-      const row = Math.floor(unitIndex / 4);
-      const col = unitIndex % 4;
-
-      // Offset from center
-      const localX = (col - 1.5) * spacing;
-      const localY = row * spacing;
-
-      // Rotate based on facing angle
-      const cos = Math.cos(facingAngle);
-      const sin = Math.sin(facingAngle);
-      const rotatedX = localX * cos - localY * sin;
-      const rotatedY = localX * sin + localY * cos;
-
-      const x = centerX + rotatedX;
-      const y = centerY + rotatedY;
-
-      const unit = world.createUnit(
-        x,
-        y,
-        playerId,
-        config.unitType,
-        config.drawScale ?? 15,
-        config.moveSpeed ?? 100
-      );
-
-      // Set initial rotation to face the enemy
-      unit.transform.rotation = facingAngle;
-      aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
-
-      world.addEntity(unit);
-      entities.push(unit);
-      unitIndex++;
-    }
-  }
-
-  return entities;
 }
 
 // Calculate spawn positions on a circle for N players
@@ -112,26 +47,126 @@ function getSpawnPositions(
   return positions;
 }
 
-// Spawn initial entities for the game with N players
+// Place a pre-built (complete) building at a world position
+function placeCompleteBuilding(
+  world: WorldState,
+  construction: ConstructionSystem,
+  buildingType: BuildingType,
+  worldX: number,
+  worldY: number,
+  playerId: PlayerId,
+): Entity | null {
+  const config = getBuildingConfig(buildingType);
+  const grid = construction.getGrid();
+
+  // Snap to grid
+  const snapped = grid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
+  const gx = Math.floor(snapped.x / GRID_CELL_SIZE);
+  const gy = Math.floor(snapped.y / GRID_CELL_SIZE);
+
+  if (!grid.canPlace(gx, gy, config.gridWidth, config.gridHeight)) {
+    return null;
+  }
+
+  const center = grid.getBuildingCenter(gx, gy, config.gridWidth, config.gridHeight);
+
+  // Create building entity directly
+  const entity = world.createBuilding(
+    center.x, center.y,
+    config.gridWidth * GRID_CELL_SIZE,
+    config.gridHeight * GRID_CELL_SIZE,
+    playerId,
+  );
+
+  entity.buildable = {
+    buildProgress: 1,
+    energyCost: config.energyCost,
+    isComplete: true,
+    isGhost: false,
+  };
+  entity.buildingType = buildingType;
+
+  if (entity.building) {
+    entity.building.hp = config.hp;
+    entity.building.maxHp = config.hp;
+  }
+
+  if (buildingType === 'factory') {
+    const mapCenterX = world.mapWidth / 2;
+    const mapCenterY = world.mapHeight / 2;
+    const rallyX = center.x + (mapCenterX - center.x) * 0.5;
+    const rallyY = center.y + (mapCenterY - center.y) * 0.5;
+    entity.factory = {
+      buildQueue: [],
+      currentBuildProgress: 0,
+      currentBuildCost: 0,
+      rallyX,
+      rallyY,
+      isProducing: false,
+      waypoints: [{ x: mapCenterX, y: mapCenterY, type: 'fight' }],
+    };
+  }
+
+  if (buildingType === 'solar' && config.energyProduction) {
+    economyManager.addProduction(playerId, config.energyProduction);
+  }
+
+  grid.place(gx, gy, config.gridWidth, config.gridHeight, entity.id, playerId);
+  world.addEntity(entity);
+
+  return entity;
+}
+
+// Place a row of buildings perpendicular to the facing direction at a given forward offset
+function placeBuildingRow(
+  world: WorldState,
+  construction: ConstructionSystem,
+  buildingType: BuildingType,
+  count: number,
+  baseX: number,
+  baseY: number,
+  facingAngle: number,
+  forwardOffset: number,
+  lateralSpacing: number,
+  playerId: PlayerId,
+): Entity[] {
+  const entities: Entity[] = [];
+  const cos = Math.cos(facingAngle);
+  const sin = Math.sin(facingAngle);
+  // Perpendicular direction (right of facing)
+  const perpCos = -sin;
+  const perpSin = cos;
+
+  // Center the row
+  const halfWidth = ((count - 1) * lateralSpacing) / 2;
+
+  for (let i = 0; i < count; i++) {
+    const lateral = i * lateralSpacing - halfWidth;
+    const wx = baseX + cos * forwardOffset + perpCos * lateral;
+    const wy = baseY + sin * forwardOffset + perpSin * lateral;
+
+    const entity = placeCompleteBuilding(world, construction, buildingType, wx, wy, playerId);
+    if (entity) entities.push(entity);
+  }
+
+  return entities;
+}
+
+// Spawn initial entities for the game with N players (commander only)
 export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = [1, 2]): Entity[] {
   const entities: Entity[] = [];
 
-  // Set player count for unit cap calculation
   world.playerCount = playerIds.length;
 
-  // Initialize economy for all players
   for (const playerId of playerIds) {
     economyManager.initPlayer(playerId);
   }
 
-  // Get spawn positions on circle
   const spawnPositions = getSpawnPositions(world, playerIds.length);
 
-  // Spawn commander for each player
   for (let i = 0; i < playerIds.length; i++) {
     const playerId = playerIds[i];
     const pos = spawnPositions[i];
-
     const commander = spawnCommander(world, playerId, pos.x, pos.y, pos.facingAngle);
     entities.push(commander);
   }
@@ -139,53 +174,77 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
   return entities;
 }
 
-// Spawn initial entities with test units (for debugging/testing)
-export function spawnInitialEntitiesWithUnits(world: WorldState): Entity[] {
+/**
+ * Spawn a full base for each player: commander + factories + solar panels.
+ * Layout (relative to facing direction toward center):
+ *   - 5 factories in front (closest to center)
+ *   - 10 solar panels behind factories (2 rows of 5)
+ *   - Commander behind everything (furthest from center)
+ */
+export function spawnInitialBases(
+  world: WorldState,
+  construction: ConstructionSystem,
+  playerIds: PlayerId[],
+): Entity[] {
   const entities: Entity[] = [];
 
-  // Initialize economy for both players
-  economyManager.initPlayer(1);
-  economyManager.initPlayer(2);
+  world.playerCount = playerIds.length;
 
-  // Player 1 Commander (Blue) - left side
-  const commander1 = spawnCommander(
-    world,
-    1,
-    200,
-    world.mapHeight / 2,
-    0
-  );
-  entities.push(commander1);
+  for (const playerId of playerIds) {
+    economyManager.initPlayer(playerId);
+  }
 
-  // Player 1 units - behind commander
-  const player1Units = spawnPlayerUnits(
-    world,
-    1,
-    350, // centerX
-    world.mapHeight / 2, // centerY
-    0 // facing right
-  );
-  entities.push(...player1Units);
+  const spawnPositions = getSpawnPositions(world, playerIds.length);
 
-  // Player 2 Commander (Red) - right side
-  const commander2 = spawnCommander(
-    world,
-    2,
-    world.mapWidth - 200,
-    world.mapHeight / 2,
-    Math.PI
-  );
-  entities.push(commander2);
+  const factoryConfig = getBuildingConfig('factory');
+  const solarConfig = getBuildingConfig('solar');
 
-  // Player 2 units - behind commander
-  const player2Units = spawnPlayerUnits(
-    world,
-    2,
-    world.mapWidth - 350, // centerX
-    world.mapHeight / 2, // centerY
-    Math.PI // facing left
-  );
-  entities.push(...player2Units);
+  // All spacings must be grid-cell-aligned to prevent overlap after snapping
+  // Factory: 5w x 4h grid cells. Add 1 cell gap between buildings.
+  const factoryLateral = (factoryConfig.gridWidth + 1) * GRID_CELL_SIZE;   // 120px
+  const factoryDepth = (factoryConfig.gridHeight + 1) * GRID_CELL_SIZE;    // 100px
+  // Solar: 3w x 3h grid cells. Add 1 cell gap.
+  const solarLateral = (solarConfig.gridWidth + 1) * GRID_CELL_SIZE;       // 80px
+  const solarDepth = (solarConfig.gridHeight + 1) * GRID_CELL_SIZE;        // 80px
+
+  for (let i = 0; i < playerIds.length; i++) {
+    const playerId = playerIds[i];
+    const pos = spawnPositions[i];
+
+    // Layout from back to front (positive offset = toward map center):
+    //   spawn point → commander → solars (2 rows) → factories
+
+    // Commander: at spawn point (furthest from center)
+    const commander = spawnCommander(world, playerId, pos.x, pos.y, pos.facingAngle);
+    entities.push(commander);
+
+    // Solar row 1: first row toward center
+    let offset = solarDepth;
+    const solars1 = placeBuildingRow(
+      world, construction, 'solar', 5,
+      pos.x, pos.y, pos.facingAngle,
+      offset, solarLateral, playerId,
+    );
+    entities.push(...solars1);
+
+    // Solar row 2: second row toward center
+    offset += solarDepth;
+    const solars2 = placeBuildingRow(
+      world, construction, 'solar', 5,
+      pos.x, pos.y, pos.facingAngle,
+      offset, solarLateral, playerId,
+    );
+    entities.push(...solars2);
+
+    // Factories: 5 in a row, closest to center (in front of solars)
+    offset += solarDepth / 2 + factoryDepth / 2;
+    const factories = placeBuildingRow(
+      world, construction, 'factory', 5,
+      pos.x, pos.y, pos.facingAngle,
+      offset, factoryLateral, playerId,
+    );
+    entities.push(...factories);
+  }
 
   return entities;
 }
