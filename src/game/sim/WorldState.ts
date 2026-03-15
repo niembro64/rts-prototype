@@ -541,6 +541,8 @@ export class WorldState {
       hitEntities: new Set(),
       maxHits,
       hasLeftSource: false,
+      lastSentVelX: velocityX,
+      lastSentVelY: velocityY,
     };
 
     const entity: Entity = {
