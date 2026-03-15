@@ -48,10 +48,13 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
   /** Enable delta snapshots (only send changed entities). When false, every snapshot is a full keyframe. */
   deltaEnabled: true,
   /** Position change threshold (px). Entity is "unchanged" if position moved less than this. */
+  // positionThreshold: 100.0,
   positionThreshold: 0.01,
   /** Rotation change threshold (radians). */
+  // rotationThreshold: Math.PI / 2,
   rotationThreshold: Math.PI / 256,
   /** Velocity change threshold (px/sec). */
+  // velocityThreshold: 1.0,
   velocityThreshold: 0.01,
 };
 

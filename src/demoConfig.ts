@@ -5,10 +5,10 @@ export const DEMO_CONFIG = {
   playerCount: 4,
 
   /** Number of factories per player */
-  factoryCount: 5,
+  factoryCount: 10,
 
   /** Number of solar panels per player */
-  solarCount: 10,
+  solarCount: 16,
 
   /**
    * Lateral spread ratio (0–1). Fraction of the back edge used for spacing buildings.
@@ -20,7 +20,7 @@ export const DEMO_CONFIG = {
    * Gap between building rows in grid cells (forward/depth direction).
    * 1 cell = 20px. Controls spacing between solar row, factory row, etc.
    */
-  rowGapCells: 1,
+  rowGapCells: 3,
 
   /**
    * Gap between buildings within a row in grid cells (lateral direction).
@@ -32,7 +32,7 @@ export const DEMO_CONFIG = {
    * Forward offset from spawn point to the first building row, in grid cells.
    * Larger = more space between commander and first row of buildings.
    */
-  commanderGapCells: 3,
+  commanderGapCells: 2,
 
   /**
    * Spawn radius margin in px. Distance from map edge to spawn point.
