@@ -200,7 +200,7 @@ export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRat
 export const FORCE_PULL: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig =
   {
     innerRatio: 0.5,
-    rimWidth: 8,
+    rimWidth: 2,
     color: 0x3366ff,
     alpha: 0.2,
     particleAlpha: 0.2,
