@@ -7,6 +7,11 @@ import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 import type { Vec2 } from '../../types/vec2';
 import type { GamePhase } from '../../types/network';
+import {
+  ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
+  ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
+  ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
+} from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 
 // === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
@@ -175,51 +180,74 @@ function getPrevState(entityId: number): PrevEntityState {
   return prev;
 }
 
-function hasEntityChanged(entity: Entity, prev: PrevEntityState): boolean {
+function getChangedFields(entity: Entity, prev: PrevEntityState): number {
   const posTh = SNAPSHOT_CONFIG.positionThreshold;
-  const rotTh = SNAPSHOT_CONFIG.rotationThreshold;
   const velTh = SNAPSHOT_CONFIG.velocityThreshold;
+  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold;
+  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold;
 
-  if (Math.abs(entity.transform.x - prev.x) > posTh) return true;
-  if (Math.abs(entity.transform.y - prev.y) > posTh) return true;
-  if (Math.abs(entity.transform.rotation - prev.rotation) > rotTh) return true;
+  let mask = 0;
+
+  if (Math.abs(entity.transform.x - prev.x) > posTh ||
+      Math.abs(entity.transform.y - prev.y) > posTh) {
+    mask |= ENTITY_CHANGED_POS;
+  }
+  if (Math.abs(entity.transform.rotation - prev.rotation) > rotPosTh) {
+    mask |= ENTITY_CHANGED_ROT;
+  }
 
   if (entity.unit) {
-    if (Math.abs((entity.unit.velocityX ?? 0) - prev.velocityX) > velTh) return true;
-    if (Math.abs((entity.unit.velocityY ?? 0) - prev.velocityY) > velTh) return true;
-    if (entity.unit.hp !== prev.hp) return true;
-    if ((entity.unit.actions?.length ?? 0) !== prev.actionCount) return true;
+    if (Math.abs((entity.unit.velocityX ?? 0) - prev.velocityX) > velTh ||
+        Math.abs((entity.unit.velocityY ?? 0) - prev.velocityY) > velTh) {
+      mask |= ENTITY_CHANGED_VEL;
+    }
+    if (entity.unit.hp !== prev.hp) {
+      mask |= ENTITY_CHANGED_HP;
+    }
+    if ((entity.unit.actions?.length ?? 0) !== prev.actionCount) {
+      mask |= ENTITY_CHANGED_ACTIONS;
+    }
 
-    // Check weapon state changes
     if (entity.turrets) {
-      if (entity.turrets.length !== prev.weaponCount) return true;
-
-      let isEngagedBits = 0;
-      let targetBits = 0;
-      for (let i = 0; i < entity.turrets.length; i++) {
-        const w = entity.turrets[i];
-        if (w.state === 'engaged') isEngagedBits |= (1 << i);
-        if (w.target) targetBits |= (1 << i);
-        if (Math.abs(w.rotation - prev.turretRots[i]) > rotTh) return true;
-        if (Math.abs(w.angularVelocity - prev.turretAngVels[i]) > velTh) return true;
-        if (Math.abs((w.forceField?.range ?? 0) - prev.forceFieldRanges[i]) > 0.001) return true;
+      if (entity.turrets.length !== prev.weaponCount) {
+        mask |= ENTITY_CHANGED_TURRETS;
+      } else {
+        let isEngagedBits = 0;
+        let targetBits = 0;
+        for (let i = 0; i < entity.turrets.length; i++) {
+          const w = entity.turrets[i];
+          if (w.state === 'engaged') isEngagedBits |= (1 << i);
+          if (w.target) targetBits |= (1 << i);
+          if (Math.abs(w.rotation - prev.turretRots[i]) > rotPosTh ||
+              Math.abs(w.angularVelocity - prev.turretAngVels[i]) > rotVelTh ||
+              Math.abs((w.forceField?.range ?? 0) - prev.forceFieldRanges[i]) > 0.001) {
+            mask |= ENTITY_CHANGED_TURRETS;
+          }
+        }
+        if (isEngagedBits !== prev.isEngagedBits || targetBits !== prev.targetBits) {
+          mask |= ENTITY_CHANGED_TURRETS;
+        }
       }
-      if (isEngagedBits !== prev.isEngagedBits) return true;
-      if (targetBits !== prev.targetBits) return true;
     }
   }
 
   if (entity.building) {
-    if (entity.building.hp !== prev.hp) return true;
-    if ((entity.buildable?.buildProgress ?? 0) !== prev.buildProgress) return true;
+    if (entity.building.hp !== prev.hp) {
+      mask |= ENTITY_CHANGED_HP;
+    }
+    if ((entity.buildable?.buildProgress ?? 0) !== prev.buildProgress) {
+      mask |= ENTITY_CHANGED_BUILDING;
+    }
     if (entity.factory) {
-      if ((entity.factory.currentBuildProgress ?? 0) !== prev.factoryProgress) return true;
-      if ((entity.factory.isProducing ? 1 : 0) !== prev.isProducing) return true;
-      if (entity.factory.buildQueue.length !== prev.buildQueueLen) return true;
+      if ((entity.factory.currentBuildProgress ?? 0) !== prev.factoryProgress ||
+          (entity.factory.isProducing ? 1 : 0) !== prev.isProducing ||
+          entity.factory.buildQueue.length !== prev.buildQueueLen) {
+        mask |= ENTITY_CHANGED_FACTORY;
+      }
     }
   }
 
-  return false;
+  return mask;
 }
 
 function updatePrevState(entity: Entity, prev: PrevEntityState): void {
@@ -336,13 +364,14 @@ export function serializeGameState(
     if (deltaEnabled) {
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
-      if (isNew || hasEntityChanged(entity, prev)) {
-        const netEntity = serializeEntity(entity);
+      const changedFields = isNew ? undefined : getChangedFields(entity, prev);
+      if (isNew || changedFields! > 0) {
+        const netEntity = serializeEntity(entity, changedFields);
         if (netEntity) _entityBuf.push(netEntity);
         updatePrevState(entity, prev);
       }
     } else {
-      const netEntity = serializeEntity(entity);
+      const netEntity = serializeEntity(entity, undefined);
       if (netEntity) _entityBuf.push(netEntity);
       const prev = getPrevState(entity.id);
       updatePrevState(entity, prev);
@@ -353,13 +382,14 @@ export function serializeGameState(
     if (deltaEnabled) {
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
-      if (isNew || hasEntityChanged(entity, prev)) {
-        const netEntity = serializeEntity(entity);
+      const changedFields = isNew ? undefined : getChangedFields(entity, prev);
+      if (isNew || changedFields! > 0) {
+        const netEntity = serializeEntity(entity, changedFields);
         if (netEntity) _entityBuf.push(netEntity);
         updatePrevState(entity, prev);
       }
     } else {
-      const netEntity = serializeEntity(entity);
+      const netEntity = serializeEntity(entity, undefined);
       if (netEntity) _entityBuf.push(netEntity);
       const prev = getPrevState(entity.id);
       updatePrevState(entity, prev);
@@ -523,18 +553,28 @@ export function serializeGameState(
   return _snapshotBuf;
 }
 
-// Serialize a single entity using pooled objects (zero allocation)
-function serializeEntity(entity: Entity): NetworkServerSnapshotEntity | null {
+// Serialize a single entity using pooled objects (zero allocation).
+// changedFields: undefined = full (keyframe/new entity), bitmask = only changed groups.
+function serializeEntity(entity: Entity, changedFields: number | undefined): NetworkServerSnapshotEntity | null {
   const pool = getPooledEntry();
   const ne = pool.entity;
+  const isFull = changedFields === undefined;
 
   // Base fields (always set)
   ne.id = entity.id;
   ne.type = entity.type;
-  ne.pos.x = entity.transform.x;
-  ne.pos.y = entity.transform.y;
-  ne.rotation = entity.transform.rotation;
   ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
+  ne.changedFields = changedFields;
+
+  // Position — always set for full, only when changed for delta
+  if (isFull || (changedFields & ENTITY_CHANGED_POS)) {
+    ne.pos.x = entity.transform.x;
+    ne.pos.y = entity.transform.y;
+  }
+  // Rotation — always set for full, only when changed for delta
+  if (isFull || (changedFields & ENTITY_CHANGED_ROT)) {
+    ne.rotation = entity.transform.rotation;
+  }
 
   // Clear nested sub-objects (prevents stale data from previous frame leaking)
   ne.unit = undefined;
@@ -542,131 +582,176 @@ function serializeEntity(entity: Entity): NetworkServerSnapshotEntity | null {
   ne.shot = undefined;
 
   if (entity.type === 'unit' && entity.unit) {
-    const u = pool.unitSub;
-    ne.unit = u;
+    // Determine which unit-specific field groups changed
+    const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
+      ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS;
+    const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
-    u.unitType = entity.unit.unitType;
-    u.hp.curr = entity.unit.hp;
-    u.hp.max = entity.unit.maxHp;
-    u.drawScale = entity.unit.drawScale;
-    u.collider.unitShot = entity.unit.radiusColliderUnitShot;
-    u.collider.unitUnit = entity.unit.radiusColliderUnitUnit;
-    u.moveSpeed = entity.unit.moveSpeed;
-    u.mass = entity.unit.mass;
-    u.velocity.x = entity.unit.velocityX ?? 0;
-    u.velocity.y = entity.unit.velocityY ?? 0;
+    // Only attach unit sub-object when at least one unit field changed
+    if (hasUnitFields) {
+      const u = pool.unitSub;
+      ne.unit = u;
 
-    // Turret rotation for network display - use last weapon's rotation
-    let turretRot = entity.transform.rotation;
-    const weapons = entity.turrets ?? [];
-    for (const weapon of weapons) {
-      turretRot = weapon.rotation;
-    }
-    u.turretRotation = turretRot;
-    u.isCommander = entity.commander !== undefined ? true : undefined;
-
-    // Serialize action queue into pooled action objects
-    u.actions = undefined;
-    if (entity.unit.actions && entity.unit.actions.length > 0) {
-      const actions = entity.unit.actions;
-      const count = actions.length;
-      while (pool.actions.length < count) pool.actions.push(createPooledAction());
-      pool.actions.length = count;
-      for (let i = 0; i < count; i++) {
-        const src = actions[i];
-        const dst = pool.actions[i];
-        dst.type = src.type;
-        dst.pos = src.x !== undefined ? { x: src.x, y: src.y } : undefined;
-        dst.targetId = src.targetId;
-        dst.buildingType = src.buildingType;
-        dst.grid = src.gridX !== undefined ? { x: src.gridX, y: src.gridY! } : undefined;
-        dst.buildingId = src.buildingId;
+      // Static fields (only on keyframes / new entities)
+      if (isFull) {
+        u.unitType = entity.unit.unitType;
+        u.drawScale = entity.unit.drawScale;
+        u.collider.unitShot = entity.unit.radiusColliderUnitShot;
+        u.collider.unitUnit = entity.unit.radiusColliderUnitUnit;
+        u.moveSpeed = entity.unit.moveSpeed;
+        u.mass = entity.unit.mass;
+        u.isCommander = entity.commander !== undefined ? true : undefined;
       }
-      u.actions = pool.actions;
-    }
 
-    // Serialize weapons into pooled weapon objects
-    u.turrets = undefined;
-    if (entity.turrets && entity.turrets.length > 0) {
-      const weapons = entity.turrets;
-      const count = weapons.length;
-      while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
-      pool.turrets.length = count;
-      for (let i = 0; i < count; i++) {
-        const src = weapons[i];
-        const dst = pool.turrets[i];
-        const t = dst.turret;
-        t.id = src.config.id;
-        const sr = src.ranges; const dr = t.ranges;
-        dr.tracking.acquire = sr.tracking.acquire; dr.tracking.release = sr.tracking.release;
-        dr.engage.acquire = sr.engage.acquire; dr.engage.release = sr.engage.release;
-        t.angular.rot = src.rotation;
-        t.angular.vel = src.angularVelocity;
-        t.angular.acc = src.turnAccel;
-        t.angular.drag = src.drag;
-        t.pos.offset.x = src.offset.x;
-        t.pos.offset.y = src.offset.y;
-        dst.targetId = src.target ?? undefined;
-        dst.state = src.state;
-        dst.currentForceFieldRange = src.forceField?.range;
+      // Velocity
+      if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
+        u.velocity.x = entity.unit.velocityX ?? 0;
+        u.velocity.y = entity.unit.velocityY ?? 0;
       }
-      u.turrets = pool.turrets;
-    }
 
-    // Serialize builder state (commander)
-    u.buildTargetId = undefined;
-    if (entity.builder) {
-      u.buildTargetId = entity.builder.currentBuildTarget ?? undefined;
+      // HP
+      if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
+        u.hp.curr = entity.unit.hp;
+        u.hp.max = entity.unit.maxHp;
+      }
+
+      // Turret rotation for network display (only when turrets changed)
+      if (isFull || (changedFields! & ENTITY_CHANGED_TURRETS)) {
+        let turretRot = entity.transform.rotation;
+        const weapons = entity.turrets ?? [];
+        for (const weapon of weapons) {
+          turretRot = weapon.rotation;
+        }
+        u.turretRotation = turretRot;
+      }
+
+      // Actions
+      u.actions = undefined;
+      if (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS)) {
+        if (entity.unit.actions && entity.unit.actions.length > 0) {
+          const actions = entity.unit.actions;
+          const count = actions.length;
+          while (pool.actions.length < count) pool.actions.push(createPooledAction());
+          pool.actions.length = count;
+          for (let i = 0; i < count; i++) {
+            const src = actions[i];
+            const dst = pool.actions[i];
+            dst.type = src.type;
+            dst.pos = src.x !== undefined ? { x: src.x, y: src.y } : undefined;
+            dst.targetId = src.targetId;
+            dst.buildingType = src.buildingType;
+            dst.grid = src.gridX !== undefined ? { x: src.gridX, y: src.gridY! } : undefined;
+            dst.buildingId = src.buildingId;
+          }
+          u.actions = pool.actions;
+        }
+      }
+
+      // Turrets
+      u.turrets = undefined;
+      if (isFull || (changedFields! & ENTITY_CHANGED_TURRETS)) {
+        if (entity.turrets && entity.turrets.length > 0) {
+          const weapons = entity.turrets;
+          const count = weapons.length;
+          while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
+          pool.turrets.length = count;
+          for (let i = 0; i < count; i++) {
+            const src = weapons[i];
+            const dst = pool.turrets[i];
+            const t = dst.turret;
+            t.id = src.config.id;
+            const sr = src.ranges; const dr = t.ranges;
+            dr.tracking.acquire = sr.tracking.acquire; dr.tracking.release = sr.tracking.release;
+            dr.engage.acquire = sr.engage.acquire; dr.engage.release = sr.engage.release;
+            t.angular.rot = src.rotation;
+            t.angular.vel = src.angularVelocity;
+            t.angular.acc = src.turnAccel;
+            t.angular.drag = src.drag;
+            t.pos.offset.x = src.offset.x;
+            t.pos.offset.y = src.offset.y;
+            dst.targetId = src.target ?? undefined;
+            dst.state = src.state;
+            dst.currentForceFieldRange = src.forceField?.range;
+          }
+          u.turrets = pool.turrets;
+        }
+      }
+
+      // Serialize builder state (commander)
+      u.buildTargetId = undefined;
+      if (entity.builder) {
+        u.buildTargetId = entity.builder.currentBuildTarget ?? undefined;
+      }
     }
   }
 
   if (entity.type === 'building' && entity.building) {
-    const b = pool.buildingSub;
-    ne.building = b;
+    // Determine which building-specific field groups changed
+    const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING | ENTITY_CHANGED_FACTORY;
+    const hasBuildingFields = isFull || (changedFields! & buildingFieldMask);
 
-    b.dim.x = entity.building.width;
-    b.dim.y = entity.building.height;
-    b.hp.curr = entity.building.hp;
-    b.hp.max = entity.building.maxHp;
-    b.type = entity.buildingType ?? '';
+    // Only attach building sub-object when at least one building field changed
+    if (hasBuildingFields) {
+      const b = pool.buildingSub;
+      ne.building = b;
 
-    if (entity.buildable) {
-      b.build.progress = entity.buildable.buildProgress;
-      b.build.complete = entity.buildable.isComplete;
-    } else {
-      b.build.progress = 1;
-      b.build.complete = true;
+      // Static building fields (only on keyframes / new entities)
+      if (isFull) {
+        b.dim.x = entity.building.width;
+        b.dim.y = entity.building.height;
+        b.type = entity.buildingType ?? '';
+      }
+
+      // HP
+      if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
+        b.hp.curr = entity.building.hp;
+        b.hp.max = entity.building.maxHp;
+      }
+
+      // Build progress
+      if (isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) {
+        if (entity.buildable) {
+          b.build.progress = entity.buildable.buildProgress;
+          b.build.complete = entity.buildable.isComplete;
+        } else {
+          b.build.progress = 1;
+          b.build.complete = true;
+        }
+      }
+
+      // Factory
+      b.factory = undefined;
+      if (isFull || (changedFields! & ENTITY_CHANGED_FACTORY)) {
+      if (entity.factory) {
+        const f = pool.factorySub;
+        b.factory = f;
+
+        const srcQueue = entity.factory.buildQueue;
+        pool.buildQueue.length = srcQueue.length;
+        for (let i = 0; i < srcQueue.length; i++) {
+          pool.buildQueue[i] = srcQueue[i];
+        }
+        f.queue = pool.buildQueue;
+
+        f.progress = entity.factory.currentBuildProgress;
+        f.producing = entity.factory.isProducing;
+
+        // waypoints[0] = rally point, rest = user-set waypoints
+        const wps = entity.factory.waypoints;
+        const wpCount = 1 + wps.length;
+        while (pool.waypoints.length < wpCount) pool.waypoints.push(createPooledWaypoint());
+        pool.waypoints.length = wpCount;
+        pool.waypoints[0].pos.x = entity.factory.rallyX;
+        pool.waypoints[0].pos.y = entity.factory.rallyY;
+        pool.waypoints[0].type = 'move';
+        for (let i = 0; i < wps.length; i++) {
+          pool.waypoints[i + 1].pos.x = wps[i].x;
+          pool.waypoints[i + 1].pos.y = wps[i].y;
+          pool.waypoints[i + 1].type = wps[i].type;
+        }
+        f.waypoints = pool.waypoints;
+      }
     }
-
-    b.factory = undefined;
-    if (entity.factory) {
-      const f = pool.factorySub;
-      b.factory = f;
-
-      const srcQueue = entity.factory.buildQueue;
-      pool.buildQueue.length = srcQueue.length;
-      for (let i = 0; i < srcQueue.length; i++) {
-        pool.buildQueue[i] = srcQueue[i];
-      }
-      f.queue = pool.buildQueue;
-
-      f.progress = entity.factory.currentBuildProgress;
-      f.producing = entity.factory.isProducing;
-
-      // waypoints[0] = rally point, rest = user-set waypoints
-      const wps = entity.factory.waypoints;
-      const wpCount = 1 + wps.length;
-      while (pool.waypoints.length < wpCount) pool.waypoints.push(createPooledWaypoint());
-      pool.waypoints.length = wpCount;
-      pool.waypoints[0].pos.x = entity.factory.rallyX;
-      pool.waypoints[0].pos.y = entity.factory.rallyY;
-      pool.waypoints[0].type = 'move';
-      for (let i = 0; i < wps.length; i++) {
-        pool.waypoints[i + 1].pos.x = wps[i].x;
-        pool.waypoints[i + 1].pos.y = wps[i].y;
-        pool.waypoints[i + 1].type = wps[i].type;
-      }
-      f.waypoints = pool.waypoints;
     }
   }
 

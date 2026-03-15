@@ -3,8 +3,9 @@
 export type SnapshotConfig = {
   deltaEnabled: boolean;
   positionThreshold: number;
-  rotationThreshold: number;
   velocityThreshold: number;
+  rotationPositionThreshold: number;
+  rotationVelocityThreshold: number;
 };
 
 export type EmaLowConfig = {

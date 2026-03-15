@@ -148,6 +148,18 @@ export type NetworkServerSnapshotTurret = {
   currentForceFieldRange?: number;
 };
 
+// Bitmask for per-field delta updates within an entity.
+// When undefined (keyframe or new entity), all fields are present.
+// When set (delta update), only flagged field groups are populated.
+export const ENTITY_CHANGED_POS       = 1 << 0;
+export const ENTITY_CHANGED_ROT       = 1 << 1;
+export const ENTITY_CHANGED_VEL       = 1 << 2;
+export const ENTITY_CHANGED_HP        = 1 << 3;
+export const ENTITY_CHANGED_ACTIONS   = 1 << 4;
+export const ENTITY_CHANGED_TURRETS   = 1 << 5;
+export const ENTITY_CHANGED_BUILDING  = 1 << 6;
+export const ENTITY_CHANGED_FACTORY   = 1 << 7;
+
 export type NetworkServerSnapshotEntity = {
   id: number;
   type: EntityType;
@@ -155,6 +167,7 @@ export type NetworkServerSnapshotEntity = {
   rotation: number;
   posEnd?: Vec2;
   playerId: PlayerId;
+  changedFields?: number;
   unit?: {
     unitType: string;
     hp: { curr: number; max: number };

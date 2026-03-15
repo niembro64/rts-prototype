@@ -47,15 +47,14 @@ export const FIGHT_STOP_ENGAGED_RATIO = 0.9;
 export const SNAPSHOT_CONFIG: SnapshotConfig = {
   /** Enable delta snapshots (only send changed entities). When false, every snapshot is a full keyframe. */
   deltaEnabled: true,
-  /** Position change threshold (px). Entity is "unchanged" if position moved less than this. */
-  // positionThreshold: 100.0,
-  positionThreshold: 0.01,
-  /** Rotation change threshold (radians). */
-  // rotationThreshold: Math.PI / 2,
-  rotationThreshold: Math.PI / 256,
-  /** Velocity change threshold (px/sec). */
-  // velocityThreshold: 1.0,
-  velocityThreshold: 0.01,
+  /** Position change threshold (px). Entity x/y must change by more than this to be sent. */
+  positionThreshold: 0.1,
+  /** Linear velocity change threshold (px/tick). Entity velocityX/Y must change by more than this. */
+  velocityThreshold: 0.1,
+  /** Rotation position threshold (radians). Body rotation and turret rotations must change by more than this. */
+  rotationPositionThreshold: Math.PI / 64,
+  /** Rotation velocity threshold (rad/tick). Turret angular velocities must change by more than this. */
+  rotationVelocityThreshold: 0.1,
 };
 
 // Re-export bar config values used by sim/server code

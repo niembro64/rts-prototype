@@ -21,6 +21,11 @@ import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig } from '../sim/turretConfigs';
 import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
+import {
+  ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
+  ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
+  ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
+} from '../../types/network';
 
 
 // Reusable result for raySegmentIntersection (avoids per-hit allocations in hot loop)
@@ -158,29 +163,39 @@ export class ClientViewState {
         target = createServerTarget();
         this.serverTargets.set(netEntity.id, target);
       }
-      target.x = netEntity.pos.x;
-      target.y = netEntity.pos.y;
-      target.rotation = netEntity.rotation;
-      target.velocityX = netEntity.unit?.velocity.x ?? 0;
-      target.velocityY = netEntity.unit?.velocity.y ?? 0;
-      const nw = netEntity.unit?.turrets;
-      if (nw) {
-        while (target.turrets.length < nw.length) {
-          target.turrets.push({
-            rotation: 0,
-            angularVelocity: 0,
-            forceFieldRange: undefined,
-          });
+      const cf = netEntity.changedFields;
+      const isFull = cf === undefined;
+      if (isFull || (cf! & ENTITY_CHANGED_POS)) {
+        target.x = netEntity.pos.x;
+        target.y = netEntity.pos.y;
+      }
+      if (isFull || (cf! & ENTITY_CHANGED_ROT)) {
+        target.rotation = netEntity.rotation;
+      }
+      if (isFull || (cf! & ENTITY_CHANGED_VEL)) {
+        target.velocityX = netEntity.unit?.velocity.x ?? 0;
+        target.velocityY = netEntity.unit?.velocity.y ?? 0;
+      }
+      if (isFull || (cf! & ENTITY_CHANGED_TURRETS)) {
+        const nw = netEntity.unit?.turrets;
+        if (nw) {
+          while (target.turrets.length < nw.length) {
+            target.turrets.push({
+              rotation: 0,
+              angularVelocity: 0,
+              forceFieldRange: undefined,
+            });
+          }
+          target.turrets.length = nw.length;
+          for (let i = 0; i < nw.length; i++) {
+            target.turrets[i].rotation = nw[i].turret.angular.rot;
+            target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
+            target.turrets[i].forceFieldRange =
+              nw[i].currentForceFieldRange;
+          }
+        } else if (isFull) {
+          target.turrets.length = 0;
         }
-        target.turrets.length = nw.length;
-        for (let i = 0; i < nw.length; i++) {
-          target.turrets[i].rotation = nw[i].turret.angular.rot;
-          target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
-          target.turrets[i].forceFieldRange =
-            nw[i].currentForceFieldRange;
-        }
-      } else {
-        target.turrets.length = 0;
       }
 
       const existing = this.entities.get(netEntity.id);
@@ -314,16 +329,23 @@ export class ClientViewState {
    * These don't need smooth blending — they should reflect server truth immediately.
    */
   private snapNonVisualState(entity: Entity, server: NetworkServerSnapshotEntity): void {
+    const cf = server.changedFields;
+    const isFull = cf === undefined;
     const su = server.unit;
     if (entity.unit && su) {
-      entity.unit.hp = su.hp.curr;
-      entity.unit.maxHp = su.hp.max;
-      entity.unit.drawScale = su.drawScale;
-      entity.unit.radiusColliderUnitShot = su.collider.unitShot;
-      entity.unit.radiusColliderUnitUnit = su.collider.unitUnit;
-      entity.unit.moveSpeed = su.moveSpeed;
+      if (isFull || (cf! & ENTITY_CHANGED_HP)) {
+        entity.unit.hp = su.hp.curr;
+        entity.unit.maxHp = su.hp.max;
+      }
+      // Static fields only present on keyframes
+      if (isFull) {
+        entity.unit.drawScale = su.drawScale;
+        entity.unit.radiusColliderUnitShot = su.collider.unitShot;
+        entity.unit.radiusColliderUnitUnit = su.collider.unitUnit;
+        entity.unit.moveSpeed = su.moveSpeed;
+      }
 
-      if (su.actions) {
+      if ((isFull || (cf! & ENTITY_CHANGED_ACTIONS)) && su.actions) {
         const src = su.actions;
         const actions = entity.unit.actions;
         actions.length = 0;
@@ -344,7 +366,7 @@ export class ClientViewState {
       }
 
       // Snap turret targeting state (turret rotation/velocity blended in applyPrediction)
-      if (su.turrets && su.turrets.length > 0 && entity.turrets) {
+      if ((isFull || (cf! & ENTITY_CHANGED_TURRETS)) && su.turrets && su.turrets.length > 0 && entity.turrets) {
         for (
           let i = 0;
           i < su.turrets.length && i < entity.turrets.length;
@@ -362,18 +384,18 @@ export class ClientViewState {
     }
 
     const sb = server.building;
-    if (entity.building && sb) {
+    if (entity.building && sb && (isFull || (cf! & ENTITY_CHANGED_HP))) {
       entity.building.hp = sb.hp.curr;
       entity.building.maxHp = sb.hp.max;
     }
 
-    if (entity.buildable && sb) {
+    if (entity.buildable && sb && (isFull || (cf! & ENTITY_CHANGED_BUILDING))) {
       entity.buildable.buildProgress = sb.build.progress;
       entity.buildable.isComplete = sb.build.complete;
     }
 
     const sf = sb?.factory;
-    if (entity.factory && sf) {
+    if (entity.factory && sf && (isFull || (cf! & ENTITY_CHANGED_FACTORY))) {
       entity.factory.buildQueue = sf.queue;
       entity.factory.currentBuildProgress = sf.progress;
       entity.factory.isProducing = sf.producing;
