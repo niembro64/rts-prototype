@@ -2,7 +2,7 @@
 // Turret rendering is handled by the generic TurretRenderer
 
 import type { UnitRenderContext } from '../types';
-import { COLORS, LEG_STYLE_CONFIG } from '../types';
+import { COLORS, getLegConfig } from '../types';
 import { drawPolygon } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
@@ -17,7 +17,7 @@ export function drawCommanderUnit(
 
   // Legs (always drawn at low+high)
   {
-    const lc = LEG_STYLE_CONFIG.commander;
+    const lc = getLegConfig('commander');
 
     for (let i = 0; i < legs.length; i++) {
       const leg = legs[i];

@@ -138,8 +138,11 @@ export type TreadConfig = {
 };
 
 export type LegConfig = {
-  thickness: number;
-  footSize: number;
+  upperThickness: number;
+  lowerThickness: number;
+  hipRadius: number;
+  kneeRadius: number;
+  footRadius: number;
   lerpDuration: number;
 };
 

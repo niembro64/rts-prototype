@@ -4,6 +4,7 @@ import type { WorldState } from './WorldState';
 import type { PlayerId } from './types';
 import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from './blueprints';
 import { factoryProductionSystem } from './factoryProduction';
+import { DEMO_CONFIG } from '../../demoConfig';
 
 // Precomputed inverse-cost weights (cheaper units queued more often)
 let weights: { id: string; weight: number }[] = [];
@@ -12,7 +13,9 @@ let totalWeight = 0;
 function initWeights(): void {
   if (weights.length > 0) return;
   for (const id of BUILDABLE_UNIT_IDS) {
-    const w = 1 / getUnitBlueprint(id).baseCost;
+    const w = DEMO_CONFIG.aiInverseCostWeighting
+      ? 1 / getUnitBlueprint(id).baseCost
+      : 1;
     weights.push({ id, weight: w });
     totalWeight += w;
   }

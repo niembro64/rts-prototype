@@ -5,6 +5,7 @@ import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
 import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
+import { DEMO_CONFIG } from '../../demoConfig';
 
 // Spawn a commander for a player
 function spawnCommander(
@@ -28,8 +29,7 @@ function getSpawnPositions(
 ): { x: number; y: number; facingAngle: number }[] {
   const centerX = world.mapWidth / 2;
   const centerY = world.mapHeight / 2;
-  // Radius that nearly touches the edges (leave 100px margin)
-  const radius = Math.min(world.mapWidth, world.mapHeight) / 2 - 100;
+  const radius = Math.min(world.mapWidth, world.mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
 
   const positions: { x: number; y: number; facingAngle: number }[] = [];
 
@@ -38,9 +38,7 @@ function getSpawnPositions(
     const angle = (i / playerCount) * Math.PI * 2 - Math.PI / 2;
     const x = centerX + Math.cos(angle) * radius;
     const y = centerY + Math.sin(angle) * radius;
-    // Face toward center
     const facingAngle = Math.atan2(centerY - y, centerX - x);
-
     positions.push({ x, y, facingAngle });
   }
 
@@ -59,7 +57,6 @@ function placeCompleteBuilding(
   const config = getBuildingConfig(buildingType);
   const grid = construction.getGrid();
 
-  // Snap to grid
   const snapped = grid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
   const gx = Math.floor(snapped.x / GRID_CELL_SIZE);
   const gy = Math.floor(snapped.y / GRID_CELL_SIZE);
@@ -70,7 +67,6 @@ function placeCompleteBuilding(
 
   const center = grid.getBuildingCenter(gx, gy, config.gridWidth, config.gridHeight);
 
-  // Create building entity directly
   const entity = world.createBuilding(
     center.x, center.y,
     config.gridWidth * GRID_CELL_SIZE,
@@ -103,7 +99,7 @@ function placeCompleteBuilding(
       rallyX,
       rallyY,
       isProducing: false,
-      waypoints: [{ x: mapCenterX, y: mapCenterY, type: 'fight' }],
+      waypoints: [{ x: mapCenterX, y: mapCenterY, type: DEMO_CONFIG.factoryWaypointType }],
     };
   }
 
@@ -117,7 +113,11 @@ function placeCompleteBuilding(
   return entity;
 }
 
-// Place a row of buildings perpendicular to the facing direction at a given forward offset
+/**
+ * Place a row of buildings evenly spaced along a lateral line.
+ * The total spread is determined by `lateralSpreadRatio` — the fraction
+ * of the map edge the row occupies. Buildings are centered within that span.
+ */
 function placeBuildingRow(
   world: WorldState,
   construction: ConstructionSystem,
@@ -127,21 +127,26 @@ function placeBuildingRow(
   baseY: number,
   facingAngle: number,
   forwardOffset: number,
-  lateralSpacing: number,
   playerId: PlayerId,
 ): Entity[] {
+  if (count <= 0) return [];
+
   const entities: Entity[] = [];
   const cos = Math.cos(facingAngle);
   const sin = Math.sin(facingAngle);
-  // Perpendicular direction (right of facing)
   const perpCos = -sin;
   const perpSin = cos;
 
-  // Center the row
-  const halfWidth = ((count - 1) * lateralSpacing) / 2;
+  // Total lateral span available = map edge * spread ratio
+  const mapEdge = Math.min(world.mapWidth, world.mapHeight);
+  const totalSpan = mapEdge * DEMO_CONFIG.lateralSpreadRatio;
+
+  // Spacing between building centers (even distribution across the span)
+  const spacing = count > 1 ? totalSpan / (count - 1) : 0;
+  const halfSpan = totalSpan / 2;
 
   for (let i = 0; i < count; i++) {
-    const lateral = i * lateralSpacing - halfWidth;
+    const lateral = count > 1 ? i * spacing - halfSpan : 0;
     const wx = baseX + cos * forwardOffset + perpCos * lateral;
     const wy = baseY + sin * forwardOffset + perpSin * lateral;
 
@@ -175,11 +180,10 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
 }
 
 /**
- * Spawn a full base for each player: commander + factories + solar panels.
- * Layout (relative to facing direction toward center):
- *   - 5 factories in front (closest to center)
- *   - 10 solar panels behind factories (2 rows of 5)
- *   - Commander behind everything (furthest from center)
+ * Spawn a full base for each player: commander + solar panels + factories.
+ * Layout (all positive offsets = toward map center):
+ *   spawn point → commander → solar panels → factories (closest to center)
+ * Building counts and spacing controlled by DEMO_CONFIG.
  */
 export function spawnInitialBases(
   world: WorldState,
@@ -196,52 +200,37 @@ export function spawnInitialBases(
 
   const spawnPositions = getSpawnPositions(world, playerIds.length);
 
-  const factoryConfig = getBuildingConfig('factory');
   const solarConfig = getBuildingConfig('solar');
+  const factoryConfig = getBuildingConfig('factory');
 
-  // All spacings must be grid-cell-aligned to prevent overlap after snapping
-  // Factory: 5w x 4h grid cells. Add 1 cell gap between buildings.
-  const factoryLateral = (factoryConfig.gridWidth + 1) * GRID_CELL_SIZE;   // 120px
-  const factoryDepth = (factoryConfig.gridHeight + 1) * GRID_CELL_SIZE;    // 100px
-  // Solar: 3w x 3h grid cells. Add 1 cell gap.
-  const solarLateral = (solarConfig.gridWidth + 1) * GRID_CELL_SIZE;       // 80px
-  const solarDepth = (solarConfig.gridHeight + 1) * GRID_CELL_SIZE;        // 80px
+  const cellGap = DEMO_CONFIG.rowGapCells * GRID_CELL_SIZE;
+  const commanderGap = DEMO_CONFIG.commanderGapCells * GRID_CELL_SIZE;
+  const solarDepth = solarConfig.gridHeight * GRID_CELL_SIZE;
+  const factoryDepth = factoryConfig.gridHeight * GRID_CELL_SIZE;
 
   for (let i = 0; i < playerIds.length; i++) {
     const playerId = playerIds[i];
     const pos = spawnPositions[i];
 
-    // Layout from back to front (positive offset = toward map center):
-    //   spawn point → commander → solars (2 rows) → factories
-
     // Commander: at spawn point (furthest from center)
     const commander = spawnCommander(world, playerId, pos.x, pos.y, pos.facingAngle);
     entities.push(commander);
 
-    // Solar row 1: first row toward center
-    let offset = solarDepth;
-    const solars1 = placeBuildingRow(
-      world, construction, 'solar', 5,
+    // Solar panels: single row, behind factories
+    let offset = commanderGap + solarDepth / 2;
+    const solars = placeBuildingRow(
+      world, construction, 'solar', DEMO_CONFIG.solarCount,
       pos.x, pos.y, pos.facingAngle,
-      offset, solarLateral, playerId,
+      offset, playerId,
     );
-    entities.push(...solars1);
+    entities.push(...solars);
 
-    // Solar row 2: second row toward center
-    offset += solarDepth;
-    const solars2 = placeBuildingRow(
-      world, construction, 'solar', 5,
-      pos.x, pos.y, pos.facingAngle,
-      offset, solarLateral, playerId,
-    );
-    entities.push(...solars2);
-
-    // Factories: 5 in a row, closest to center (in front of solars)
-    offset += solarDepth / 2 + factoryDepth / 2;
+    // Factories: single row, closest to center
+    offset += solarDepth / 2 + cellGap + factoryDepth / 2;
     const factories = placeBuildingRow(
-      world, construction, 'factory', 5,
+      world, construction, 'factory', DEMO_CONFIG.factoryCount,
       pos.x, pos.y, pos.facingAngle,
-      offset, factoryLateral, playerId,
+      offset, playerId,
     );
     entities.push(...factories);
   }

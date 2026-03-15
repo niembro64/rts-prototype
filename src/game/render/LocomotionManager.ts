@@ -11,7 +11,7 @@ import {
 } from './Tread';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { LEG_STYLE_CONFIG } from './types';
+import { getLegConfig } from './types';
 import type { EntitySource } from './types';
 
 export class LocomotionManager {
@@ -256,9 +256,9 @@ export class LocomotionManager {
       ];
     }
 
-    const styleConfig = LEG_STYLE_CONFIG[legStyle];
-    const lerpSpeed = styleConfig.lerpSpeed;
-    const leftWithLerp = leftSideConfigs.map((leg) => ({ ...leg, lerpSpeed }));
+    const legConfig = getLegConfig(legStyle);
+    const lerpDuration = legConfig.lerpDuration;
+    const leftWithLerp = leftSideConfigs.map((leg) => ({ ...leg, lerpDuration }));
     const rightSideConfigs: LegConfig[] = leftWithLerp.map((leg) => ({
       ...leg,
       attachOffsetY: -leg.attachOffsetY,

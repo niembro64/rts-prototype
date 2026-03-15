@@ -44,8 +44,7 @@ export class ArachnidLeg {
 
   constructor(config: LegConfig) {
     this.config = config;
-    // lerpSpeed is now used as duration in ms (default 150ms for snappy but smooth)
-    this.lerpDuration = config.lerpSpeed ?? 150;
+    this.lerpDuration = config.lerpDuration ?? 150;
   }
 
   // Get total leg length (fully extended)
@@ -97,43 +96,44 @@ export class ArachnidLeg {
       return;
     }
 
-    // If sliding, animate toward target using time-based lerp with easing
+    // Advance lerp if sliding
     if (this.isSliding) {
       this.updateLerp(dtMs);
-      // Let the lerp finish - don't check for new snaps while sliding
-      return;
     }
 
-    // Check if leg needs to snap - use current foot position
+    // Check if leg needs to snap — always, even mid-lerp
     const dx = this.groundX - attachX;
     const dy = this.groundY - attachY;
     const distSq = dx * dx + dy * dy;
 
-    // ABSOLUTE MAXIMUM: Force snap if leg is stretched beyond physical limits (any direction)
-    // This prevents infinite stretching when unit gets pushed sideways by another unit
-    // Uses 105% of totalLength to allow some buffer before forcing a snap
-    const maxDist = this.totalLength * 1.05;
-    if (distSq > maxDist * maxDist) {
-      this.startLerp(attachX, attachY, unitRotation, velocityX, velocityY);
-      return;
-    }
-
-    // Check angle - how far behind is the foot?
     const groundAngle = Math.atan2(dy, dx);
     const angleDiff = normalizeAngle(groundAngle - unitRotation);
 
-    // Angle triggers if foot is too far behind
     const angleTriggered = Math.abs(angleDiff) > this.config.snapTriggerAngle;
 
-    // Distance only triggers if foot is also behind perpendicular (not in forward zone)
-    // This prevents jittering when leg snaps forward but is still fully extended
     const isBehindPerpendicular = Math.abs(angleDiff) > Math.PI * 0.5;
     const extThresh = this.totalLength * this.config.extensionThreshold;
     const distanceTriggered = isBehindPerpendicular && distSq >= extThresh * extThresh;
 
-    // Snap if EITHER condition is met
     if (distanceTriggered || angleTriggered) {
       this.startLerp(attachX, attachY, unitRotation, velocityX, velocityY);
+    }
+
+    // Clamp foot to max leg reach — legs can never stretch beyond physical limits
+    this.clampToReach(attachX, attachY);
+  }
+
+  // Clamp foot position so it never exceeds total leg length from the hip
+  private clampToReach(attachX: number, attachY: number): void {
+    const dx = this.groundX - attachX;
+    const dy = this.groundY - attachY;
+    const distSq = dx * dx + dy * dy;
+    const maxDist = this.totalLength;
+    if (distSq > maxDist * maxDist) {
+      const dist = Math.sqrt(distSq);
+      const scale = maxDist / dist;
+      this.groundX = attachX + dx * scale;
+      this.groundY = attachY + dy * scale;
     }
   }
 
@@ -187,6 +187,14 @@ export class ArachnidLeg {
 
   // Update lerp animation with easing
   private updateLerp(dtMs: number): void {
+    if (this.lerpDuration <= 0) {
+      // Instant — jump to target
+      this.groundX = this.targetGroundX;
+      this.groundY = this.targetGroundY;
+      this.isSliding = false;
+      return;
+    }
+
     // Advance progress based on time
     this.lerpProgress += dtMs / this.lerpDuration;
 

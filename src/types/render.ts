@@ -85,16 +85,6 @@ export type BeamRandomOffsets = {
   pulseSpeed: number;
 };
 
-// Leg style rendering configuration
-export type LegStyleConfig = {
-  upperThickness: number;
-  lowerThickness: number;
-  hipRadius: number;
-  kneeRadius: number;
-  footRadius: number;
-  lerpSpeed: number;
-};
-
 // Scorched earth burn mark
 export type BurnMark = {
   x1: number;
@@ -162,7 +152,7 @@ export type ArachnidLegConfig = {
   snapTargetAngle: number;
   snapDistanceMultiplier: number;
   extensionThreshold: number;
-  lerpSpeed?: number;
+  lerpDuration?: number;
 };
 
 // Unit renderer function type

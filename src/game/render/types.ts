@@ -11,9 +11,7 @@ export type {
   UnitRenderContext,
   BuildingRenderContext,
   BeamRandomOffsets,
-  LegStyleConfig,
 } from '@/types/render';
-import type { LegStyleConfig } from '@/types/render';
 
 // ==================== CONSTANTS ====================
 
@@ -55,48 +53,24 @@ export const COLORS = {
   UNIT_PUSH_RADIUS: 0x44ff44, // Green for push collider radius
 } as const;
 
-export const LEG_STYLE_CONFIG: Record<string, LegStyleConfig> = {
-  widow: {
-    upperThickness: 7,
-    lowerThickness: 6,
-    hipRadius: 4,
-    kneeRadius: 6,
-    footRadius: 3.5,
-    lerpSpeed: 600,
-  },
-  daddy: {
-    upperThickness: 2.5,
-    lowerThickness: 2,
-    hipRadius: 1.5,
-    kneeRadius: 0.8,
-    footRadius: 1.8,
-    lerpSpeed: 300,
-  },
-  tarantula: {
-    upperThickness: 6.5,
-    lowerThickness: 6,
-    hipRadius: 3.5,
-    kneeRadius: 6,
-    footRadius: 1.5,
-    lerpSpeed: 200,
-  },
-  tick: {
-    upperThickness: 2,
-    lowerThickness: 1.5,
-    hipRadius: 1,
-    kneeRadius: 1.5,
-    footRadius: 1,
-    lerpSpeed: 160,
-  },
-  commander: {
-    upperThickness: 8,
-    lowerThickness: 7,
-    hipRadius: 5,
-    kneeRadius: 7,
-    footRadius: 5,
-    lerpSpeed: 400,
-  },
-};
+import { UNIT_BLUEPRINTS } from '../sim/blueprints';
+import type { LegConfig } from '../sim/blueprints/types';
+export type { LegConfig } from '../sim/blueprints/types';
+
+// Cache leg configs by style to avoid repeated lookups
+const _legConfigCache = new Map<string, LegConfig>();
+
+export function getLegConfig(style: string): LegConfig {
+  const cached = _legConfigCache.get(style);
+  if (cached) return cached;
+  for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+    if (bp.locomotion.type === 'legs' && bp.locomotion.style === style) {
+      _legConfigCache.set(style, bp.locomotion.config);
+      return bp.locomotion.config;
+    }
+  }
+  throw new Error(`No leg config found for style: ${style}`);
+}
 
 // Waypoint colors by type (legacy - for factories)
 export const WAYPOINT_COLORS: Record<WaypointType, number> = {

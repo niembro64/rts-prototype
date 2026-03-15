@@ -2,7 +2,7 @@
 
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { COLORS, LEG_STYLE_CONFIG } from '../types';
+import { COLORS, getLegConfig } from '../types';
 import type { ForceFieldTurretConfig } from '../../../config';
 import type { ArachnidLeg } from '../ArachnidLeg';
 import type { TankTreadSetup, VehicleWheelSetup } from '../Tread';
@@ -358,13 +358,6 @@ const _legFoot: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({
   y: 0,
 }));
 
-/**
- * Draw arachnid-style legs using a named style from LEG_STYLE_CONFIG.
- * Shared by BeamRenderer, ArachnidRenderer, ForceFieldRenderer, SnipeRenderer.
- *
- * Optimized: pre-computes cos/sin once per unit, batches draw calls by type
- * to minimize style changes (3 instead of 24 per unit).
- */
 export function drawLegs(
   graphics: Phaser.GameObjects.Graphics,
   legs: ArachnidLeg[],
@@ -375,7 +368,7 @@ export function drawLegs(
   dark: number,
   light: number,
 ): void {
-  const lc = LEG_STYLE_CONFIG[style];
+  const lc = getLegConfig(style);
   const legMode = getGraphicsConfig().legs;
   const count = legs.length;
 
