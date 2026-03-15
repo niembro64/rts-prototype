@@ -25,7 +25,8 @@ import {
   COMBAT_STATS_HISTORY_MAX,
   COMBAT_STATS_VISIBLE_ON_LOAD,
 } from '../config';
-import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../game/sim/blueprints';
+import { getUnitBlueprint } from '../game/sim/blueprints';
+import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
 import { LOD_EMA_SOURCE } from '../lodConfig';
 import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
@@ -152,7 +153,7 @@ const clientTime = ref<string>('');
 let activeConnection: GameConnection | null = null;
 
 // Demo battle unit type list (state read from snapshots)
-const demoUnitTypes = BUILDABLE_UNIT_IDS;
+const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<ConcreteGraphicsQuality>(
   getEffectiveQuality(),

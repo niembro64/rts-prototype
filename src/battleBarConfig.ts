@@ -11,6 +11,7 @@ export const BATTLE_CONFIG = {
     mammoth: 'MMT',
     widow: 'WDW',
     tarantula: 'TRN',
+    commander: 'CMD',
   } as Record<string, string>,
   cap: {
     default: Math.pow(2, 10),

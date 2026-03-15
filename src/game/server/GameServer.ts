@@ -13,8 +13,7 @@ import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import { PhysicsEngine } from './PhysicsEngine';
-import { spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
-import { BUILDABLE_UNIT_IDS } from '../sim/blueprints';
+import { spawnBackgroundUnitsStandalone, BACKGROUND_UNIT_TYPES } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
 import {
   MAP_SETTINGS,
@@ -53,7 +52,7 @@ export class GameServer {
   // Background mode
   private backgroundSpawnTimer: number = 0;
   private readonly BACKGROUND_SPAWN_INTERVAL: number = 500;
-  private backgroundAllowedTypes: Set<string> = new Set(BUILDABLE_UNIT_IDS);
+  private backgroundAllowedTypes: Set<string> = new Set(BACKGROUND_UNIT_TYPES);
 
   // Snapshot listeners
   private snapshotListeners: SnapshotCallback[] = [];

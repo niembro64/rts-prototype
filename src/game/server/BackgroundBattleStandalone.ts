@@ -9,8 +9,8 @@ import {
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
 
-// Available unit types for background spawning
-const BACKGROUND_UNIT_TYPES = BUILDABLE_UNIT_IDS;
+// Available unit types for background spawning (includes commander)
+export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS, 'commander'];
 
 // Precomputed inverse cost weights for weighted random selection
 let backgroundUnitWeights: { type: string; weight: number }[] = [];
