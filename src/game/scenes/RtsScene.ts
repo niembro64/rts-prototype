@@ -579,8 +579,8 @@ export class RtsScene extends Phaser.Scene {
         this.handleGameOver(winnerId);
       }
 
-      // Center camera on first snapshot
-      if (!this.hasCenteredCamera) {
+      // Center camera on first snapshot (skip for demo — stays at map center)
+      if (!this.hasCenteredCamera && !this.backgroundMode) {
         this.centerCameraOnCommander();
       }
     }

@@ -1,18 +1,20 @@
 import type { BattleBarConfig } from './types/battle';
 
 export const BATTLE_CONFIG = {
-  unitShortNames: {
-    jackal: 'JKL',
-    lynx: 'LNX',
-    daddy: 'DDY',
-    badger: 'BDG',
-    mongoose: 'MGS',
-    tick: 'TCK',
-    mammoth: 'MMT',
-    widow: 'WDW',
-    tarantula: 'TRN',
-    commander: 'CMD',
-  } as Record<string, string>,
+  units: {
+    jackal: { shortName: 'JKL', default: true },
+    lynx: { shortName: 'LNX', default: true },
+    daddy: { shortName: 'DDY', default: false },
+    badger: { shortName: 'BDG', default: true },
+    mongoose: { shortName: 'MGS', default: true },
+    tick: { shortName: 'TCK', default: true },
+    mammoth: { shortName: 'MMT', default: false },
+    widow: { shortName: 'WDW', default: true },
+    hippo: { shortName: 'HPO', default: true },
+    tarantula: { shortName: 'TRN', default: false },
+    loris: { shortName: 'LRS', default: false },
+    commander: { shortName: 'CMD', default: true },
+  } as Record<string, { shortName: string; default: boolean }>,
   cap: {
     default: Math.pow(2, 6),
     options: [
@@ -52,8 +54,13 @@ export function loadStoredDemoUnits(): string[] | null {
 }
 
 export function saveDemoUnits(units: string[]): void {
-  if (units.length === 0) return;
   try { localStorage.setItem(STORAGE_DEMO_UNITS, JSON.stringify(units)); } catch { /* */ }
+}
+
+export function getDefaultDemoUnits(): string[] {
+  return Object.entries(BATTLE_CONFIG.units)
+    .filter(([, cfg]) => cfg.default)
+    .map(([id]) => id);
 }
 
 export function loadStoredMaxTotalUnits(): number {

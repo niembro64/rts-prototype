@@ -43,6 +43,7 @@ import {
   saveFfAccelShots,
   loadStoredFfDmgUnits,
   saveFfDmgUnits,
+  getDefaultDemoUnits,
 } from '../battleBarConfig';
 import {
   SERVER_CONFIG,
@@ -272,15 +273,13 @@ function startBackgroundBattle(): void {
   backgroundServer.setKeyframeRatio(loadStoredKeyframeRatio());
   backgroundServer.setIpAddress(localIpAddress.value);
 
-  // Restore stored demo unit selection
-  const storedDemoUnits = loadStoredDemoUnits();
-  if (storedDemoUnits) {
-    for (const ut of demoUnitTypes) {
-      backgroundServer.setBackgroundUnitTypeEnabled(
-        ut,
-        storedDemoUnits.includes(ut),
-      );
-    }
+  // Restore stored demo unit selection (fall back to config defaults)
+  const storedDemoUnits = loadStoredDemoUnits() ?? getDefaultDemoUnits();
+  for (const ut of demoUnitTypes) {
+    backgroundServer.setBackgroundUnitTypeEnabled(
+      ut,
+      storedDemoUnits.includes(ut),
+    );
   }
 
   // Restore stored max total units
@@ -532,16 +531,17 @@ function setFfDmgUnits(enabled: boolean): void {
 }
 
 function resetDemoDefaults(): void {
-  // All units enabled
+  const defaultUnits = getDefaultDemoUnits();
+  const defaultSet = new Set(defaultUnits);
   for (const ut of demoUnitTypes) {
     activeConnection?.sendCommand({
       type: 'setBackgroundUnitType',
       tick: 0,
       unitType: ut,
-      enabled: true,
+      enabled: defaultSet.has(ut),
     });
   }
-  saveDemoUnits([...demoUnitTypes]);
+  saveDemoUnits(defaultUnits);
   changeMaxTotalUnits(BATTLE_CONFIG.cap.default);
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
