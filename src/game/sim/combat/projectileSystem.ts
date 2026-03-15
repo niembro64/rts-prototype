@@ -79,8 +79,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // Skip if weapon is not engaged (target not in range or no target)
       if (weapon.state !== 'engaged') continue;
 
-      // Apply beam recoil any time the weapon is firing
-      if (isBeamWeapon && forceAccumulator && (shot as BeamShot | LaserShot).recoil) {
+      // Apply beam recoil only while the beam is actually active
+      if (isBeamWeapon && forceAccumulator && (shot as BeamShot | LaserShot).recoil && hasActiveWeaponBeam(world, unit.id, weaponIndex)) {
         const dtSec = dtMs / 1000;
         const knockBackPerTick = (shot as BeamShot | LaserShot).recoil * PROJECTILE_MASS_MULTIPLIER * dtSec;
         const turretAngle = weapon.rotation;

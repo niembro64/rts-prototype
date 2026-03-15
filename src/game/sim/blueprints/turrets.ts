@@ -15,6 +15,8 @@ import {
 import { AUDIO, harmonicSeries } from '../../../audioConfig';
 import type { TurretBlueprint } from './types';
 
+const beamTurretBarrelLength: number = 1.0;
+
 // Generate beam turret blueprints for all harmonic series indices
 // Index 0 = most powerful (lowest pitch, thickest barrel), index 13 = weakest (highest pitch, thinnest)
 function generateBeamTurrets(): Record<string, TurretBlueprint> {
@@ -28,7 +30,7 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
       range,
       turretTurnAccel: 100,
       turretDrag: 0.4,
-      barrel: { type: 'simpleSingleBarrel', barrelLength: 0.2 },
+      barrel: { type: 'simpleSingleBarrel', barrelLength: beamTurretBarrelLength },
       launchForce: 1000,
       rangeMultiplierOverrides: {
         tracking: { acquire: null, release: null },
@@ -196,7 +198,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // cooldown: 3000,
     turretTurnAccel: 100,
     turretDrag: 0.6,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.2 },
+    barrel: { type: 'simpleSingleBarrel', barrelLength: beamTurretBarrelLength },
     launchForce: 1000,
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },

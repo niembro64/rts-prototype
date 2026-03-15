@@ -5,7 +5,9 @@
  * Moved from PROJECTILE_STATS in config.ts.
  */
 
-const beam_width: number = 0.8;
+const beam_width: number = 1.6;
+
+const beam_recoil: number = 2000;
 
 import { AUDIO, harmonicSeries } from '../../../audioConfig';
 import type { ShotBlueprint, BeamShotBlueprint } from './types';
@@ -23,7 +25,7 @@ function generateBeamShots(): Record<string, BeamShotBlueprint> {
       id: `beamShot${i}`,
       dps,
       force: 2000,
-      recoil: 10000,
+      recoil: beam_recoil,
       radius: beam_width / 2,
       width: beam_width,
       hitSound: AUDIO.event.hit[`beamShot${i}`],
@@ -103,7 +105,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'laserShot',
     dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
     force: 2500,
-    recoil: 2000, // mass * launchForce
+    recoil: beam_recoil, // mass * launchForce
     radius: beam_width / 2,
     width: beam_width,
     duration: 300,
