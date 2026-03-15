@@ -21,7 +21,8 @@ export type {
 
 export type ForceFieldZoneRatioConfig = {
   innerRatio: number;
-  outerRatio: number;
+  outerRatio?: number;       // percentage of range (ignored if rimWidth set)
+  rimWidth?: number;         // fixed pixel width for the zone band
   color: number;
   alpha: number;
   particleAlpha: number;

@@ -19,9 +19,13 @@ function computeZoneConfig(
   range: number,
 ): ForceFieldZoneConfig | null {
   if (!zone) return null;
+  const innerRange = range * zone.innerRatio;
+  const outerRange = zone.rimWidth != null
+    ? innerRange + zone.rimWidth
+    : range * (zone.outerRatio ?? zone.innerRatio);
   return {
-    innerRange: range * zone.innerRatio,
-    outerRange: range * zone.outerRatio,
+    innerRange,
+    outerRange,
     color: zone.color,
     alpha: zone.alpha,
     particleAlpha: zone.particleAlpha,
