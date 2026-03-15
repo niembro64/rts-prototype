@@ -91,8 +91,11 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 13 * 2.5,
     mass: 25,
     baseCost: 350,
-    turrets: [{ turretId: 'forceTurretLarge', offsetX: 0, offsetY: 0 }],
-    chassisMounts: [{ x: 0, y: 0 }],
+    turrets: [
+      { turretId: 'forceTurretLarge', offsetX: 0, offsetY: 0 },
+      { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
+    ],
+    chassisMounts: [{ x: 0, y: 0 }, { x: 0.6, y: 0 }],
     locomotion: {
       type: 'legs',
       style: 'daddy',
