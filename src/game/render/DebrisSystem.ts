@@ -6,20 +6,21 @@ import { BURN_COLOR_COOL, hexToRgb } from '../../config';
 import { DEBRIS_CONFIG } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { TreadConfig, WheelConfig } from '../sim/blueprints/types';
-import { getEffectiveQuality, getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
+import type { DeathExplosionStyle } from '@/types/graphics';
 
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 
 export type { DebrisFragment, DebrisPieceTemplate } from '@/types/render';
 import type { DebrisFragment, DebrisPieceTemplate } from '@/types/render';
 
-// LOD-scaled debris caps
-const DEBRIS_CAPS: Record<string, number> = {
-  min: 50,
-  low: 100,
-  medium: 150,
-  high: 200,
-  max: DEBRIS_CONFIG.maxFragments,
+// LOD-scaled debris caps (keyed by death explosion style from GraphicsConfig)
+const DEBRIS_CAPS: Record<DeathExplosionStyle, number> = {
+  puff: 50,
+  scatter: 100,
+  shatter: 150,
+  detonate: 200,
+  obliterate: DEBRIS_CONFIG.maxFragments,
 };
 const DEBRIS_DRAG = DEBRIS_CONFIG.drag;
 const _debrisRectPts = [
@@ -631,7 +632,7 @@ export class DebrisSystem {
     }
 
     // Cap debris (LOD-scaled)
-    const maxDebris = DEBRIS_CAPS[getEffectiveQuality()] ?? DEBRIS_CONFIG.maxFragments;
+    const maxDebris = DEBRIS_CAPS[getGraphicsConfig().deathExplosionStyle];
     if (this.fragments.length > maxDebris) {
       const excess = this.fragments.length - maxDebris;
       for (let i = 0; i < maxDebris; i++) {

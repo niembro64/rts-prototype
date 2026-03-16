@@ -2,9 +2,18 @@
 
 import Phaser from 'phaser';
 import type { ExplosionEffect } from '../types';
-import { getEffectiveQuality } from '@/clientBarConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
+import type { FireExplosionStyle, DeathExplosionStyle } from '@/types/graphics';
 import { clamp01, angleDiff as computeAngleDiff } from '../../math';
 import { FIRE_EXPLOSION, DEATH_EXPLOSION } from '../../../explosionConfig';
+
+// Map explosion style strings to quality index (0-4) used by explosion config arrays
+const FIRE_STYLE_IDX: Record<FireExplosionStyle, number> = {
+  flash: 0, spark: 1, burst: 2, blaze: 3, inferno: 4,
+};
+const DEATH_STYLE_IDX: Record<DeathExplosionStyle, number> = {
+  puff: 0, scatter: 1, shatter: 2, detonate: 3, obliterate: 4,
+};
 
 /**
  * Render an explosion effect based on current graphics settings.
@@ -50,17 +59,7 @@ function renderImpact(
 ): void {
   const C = FIRE_EXPLOSION;
   const CC = C.colors;
-  const quality = getEffectiveQuality();
-  const qIdx =
-    quality === 'min'
-      ? 0
-      : quality === 'low'
-        ? 1
-        : quality === 'medium'
-          ? 2
-          : quality === 'high'
-            ? 3
-            : 4;
+  const qIdx = FIRE_STYLE_IDX[getGraphicsConfig().fireExplosionStyle];
 
   const alpha = 1 - progress * progress;
   const seed = (exp.x * 1000 + exp.y) % 10000;
@@ -404,17 +403,7 @@ function renderDeath(
 ): void {
   const C = DEATH_EXPLOSION;
   const CC = C.colors;
-  const quality = getEffectiveQuality();
-  const qIdx =
-    quality === 'min'
-      ? 0
-      : quality === 'low'
-        ? 1
-        : quality === 'medium'
-          ? 2
-          : quality === 'high'
-            ? 3
-            : 4;
+  const qIdx = DEATH_STYLE_IDX[getGraphicsConfig().deathExplosionStyle];
 
   const alpha = 1 - progress;
   const seed = (exp.x * 1000 + exp.y) % 10000;

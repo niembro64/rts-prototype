@@ -61,8 +61,12 @@ export const LOD_EMA_SOURCE: LodEmaSource = {
  */
 export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // -------------------------------------------------------------------------
-  // Budget targets per visible unit (approximate draw calls):
-  //   MIN ~2  |  LOW ~5-8  |  MED ~8-12  |  HIGH ~20-30  |  MAX ~40-60
+  // Each tier should feel visibly different from the one below it.
+  //   MIN  — circles only, no turrets, no legs, no detail (~2 draws/unit)
+  //   LOW  — full shapes, simple legs/turrets, palette shading (~6 draws/unit)
+  //   MED  — animated legs, core projectiles, scatter deaths (~12 draws/unit)
+  //   HIGH — chassis detail, tread animation, standard beams (~25 draws/unit)
+  //   MAX  — full joints, barrel spin, trails, inferno explosions (~50 draws/unit)
   // -------------------------------------------------------------------------
 
   // Unit body shape rendering
@@ -82,7 +86,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   LEGS: {
     min: 'none',
     low: 'simple',
-    medium: 'simple',
+    medium: 'animated',
     high: 'animated',
     max: 'full',
   },
@@ -136,7 +140,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   },
 
   // Unit palette shading — 3-color palette (base/light/dark) vs monochrome
-  // No draw-call cost, just richer color. Safe to enable at medium.
+  // No draw-call cost, just richer color.
   PALETTE_SHADING: {
     min: false,
     low: true,
@@ -171,7 +175,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     min: false,
     low: false,
     medium: false,
-    high: true,
+    high: false,
     max: true,
   },
 
@@ -227,7 +231,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // 'puff' ~3 draws, 'scatter' ~12, 'shatter' ~25, 'detonate' ~55, 'obliterate' ~120
   DEATH_EXPLOSION_STYLE: {
     min: 'puff',
-    low: 'puff',
+    low: 'scatter',
     medium: 'scatter',
     high: 'shatter',
     max: 'obliterate',

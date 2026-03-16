@@ -4,15 +4,16 @@ import Phaser from 'phaser';
 import type { SprayTarget } from '../../sim/commanderAbilities';
 import { magnitude } from '../../math';
 import { getPlayerColor, getPlayerColorLight } from '../helpers/ColorPalette';
-import { getEffectiveQuality } from '@/clientBarConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
+import type { FireExplosionStyle } from '@/types/graphics';
 
-// LOD-based particle count multipliers
-const SPRAY_LOD_MULT: Record<string, number> = {
-  min: 0.15,
-  low: 0.3,
-  medium: 0.5,
-  high: 0.8,
-  max: 1.0,
+// LOD-based particle count multipliers (keyed by fire explosion style from GraphicsConfig)
+const SPRAY_LOD_MULT: Record<FireExplosionStyle, number> = {
+  flash: 0.15,
+  spark: 0.3,
+  burst: 0.5,
+  blaze: 0.8,
+  inferno: 1.0,
 };
 
 /**
@@ -51,7 +52,7 @@ export function renderSprayEffect(
 
   // Scale particle count based on intensity and LOD
   const effectiveIntensity = intensity ?? 1;
-  const lodMult = SPRAY_LOD_MULT[getEffectiveQuality()] ?? 1;
+  const lodMult = SPRAY_LOD_MULT[getGraphicsConfig().fireExplosionStyle];
   const scaledIntensity = effectiveIntensity * lodMult;
   const streamCount = Math.max(2, Math.floor(12 * scaledIntensity));
   const particlesPerStream = Math.max(4, Math.floor(20 * scaledIntensity));

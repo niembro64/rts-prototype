@@ -5,21 +5,22 @@ import type Phaser from 'phaser';
 import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';
-import { getEffectiveQuality, getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
 
 export type { BurnMark } from '@/types/render';
 import type { BurnMark } from '@/types/render';
 
 const BURN_HOT_RGB = hexToRgb(BURN_COLOR_HOT);
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
-// LOD-scaled burn mark caps
-const BURN_MARK_CAPS: Record<string, number> = {
-  min: 300,
-  low: 800,
-  medium: 2000,
-  high: 3500,
-  max: 5000,
-};
+// Burn mark cap derived from burnMarkAlphaCutoff (lower cutoff → more marks persist → higher cap)
+function getBurnMarkCap(): number {
+  const cutoff = getGraphicsConfig().burnMarkAlphaCutoff;
+  if (cutoff >= 1) return 300;       // min: marks die instantly
+  if (cutoff >= 0.5) return 800;     // low
+  if (cutoff >= 0.3) return 2000;    // medium
+  if (cutoff >= 0.1) return 3500;    // high
+  return 5000;                        // max
+}
 
 export class BurnMarkSystem {
   marks: BurnMark[] = [];
@@ -127,7 +128,7 @@ export class BurnMarkSystem {
    * Copies newest marks to front, O(MAX) not O(n) like splice.
    */
   capMarks(): void {
-    const maxMarks = BURN_MARK_CAPS[getEffectiveQuality()] ?? 5000;
+    const maxMarks = getBurnMarkCap();
     if (this.marks.length > maxMarks) {
       const excess = this.marks.length - maxMarks;
       for (let i = 0; i < maxMarks; i++) {
