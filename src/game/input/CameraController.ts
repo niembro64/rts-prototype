@@ -78,6 +78,15 @@ export class CameraController {
     camera.scrollY = this.state.cameraStartY + dy / camera.zoom;
   }
 
+  /** Update camera pan for touch — map follows finger (1:1, inverted direction) */
+  updateTouchPan(screenX: number, screenY: number): void {
+    const dx = screenX - this.state.panStartX;
+    const dy = screenY - this.state.panStartY;
+    const camera = this.scene.cameras.main;
+    camera.scrollX = this.state.cameraStartX - dx / camera.zoom;
+    camera.scrollY = this.state.cameraStartY - dy / camera.zoom;
+  }
+
   /** Stop camera pan */
   endPan(): void {
     this.state.isPanningCamera = false;
@@ -372,6 +381,25 @@ export class CameraController {
         this.edgeOverlay.strokePath();
       }
     }
+  }
+
+  /** Apply pinch zoom given previous and current distance between two touch points */
+  applyPinchZoom(prevDist: number, currDist: number, centerX: number, centerY: number): void {
+    if (prevDist <= 0) return;
+    const camera = this.scene.cameras.main;
+    const oldZoom = camera.zoom;
+    const scale = currDist / prevDist;
+    const newZoom = Phaser.Math.Clamp(oldZoom * scale, ZOOM_MIN, ZOOM_MAX);
+    if (newZoom === oldZoom) return;
+
+    // Zoom toward the midpoint between the two fingers
+    const cursorOffsetX = centerX - camera.width / 2;
+    const cursorOffsetY = centerY - camera.height / 2;
+    const worldX = camera.scrollX + cursorOffsetX / oldZoom;
+    const worldY = camera.scrollY + cursorOffsetY / oldZoom;
+    camera.scrollX = worldX - cursorOffsetX / newZoom;
+    camera.scrollY = worldY - cursorOffsetY / newZoom;
+    camera.zoom = newZoom;
   }
 
   // Get current zoom level

@@ -14,6 +14,9 @@ import { getDragPanEnabled } from '@/clientBarConfig';
 export type { InputEntitySource, InputContext } from '@/types/input';
 import type { InputEntitySource, InputContext } from '@/types/input';
 
+const isMobile = typeof navigator !== 'undefined' &&
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 export class InputManager {
   private scene: Phaser.Scene;
   private state: InputState;
@@ -34,6 +37,14 @@ export class InputManager {
   private pointerMoveHandler!: (p: Phaser.Input.Pointer) => void;
   private pointerUpHandler!: (p: Phaser.Input.Pointer) => void;
   private contextMenuHandler!: (e: Event) => void;
+
+  // Mobile touch handlers
+  private touchStartHandler?: (e: TouchEvent) => void;
+  private touchMoveHandler?: (e: TouchEvent) => void;
+  private touchEndHandler?: (e: TouchEvent) => void;
+  private lastTouchDist: number = 0;
+  private lastTouchCenterX: number = 0;
+  private lastTouchCenterY: number = 0;
 
   // Callback for UI to show waypoint mode changes
   public get onWaypointModeChange():
@@ -223,6 +234,11 @@ export class InputManager {
   }
 
   private setupPointerEvents(): void {
+    if (isMobile) {
+      this.setupMobileTouchEvents();
+      return;
+    }
+
     const pointer = this.scene.input;
 
     // Pointer down
@@ -304,6 +320,77 @@ export class InputManager {
     );
   }
 
+  /** Mobile: single-finger drag = pan, two-finger pinch = zoom */
+  private setupMobileTouchEvents(): void {
+    const canvas = this.scene.game.canvas;
+
+    this.touchStartHandler = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        // Single finger — start pan
+        const t = e.touches[0];
+        this.cameraController.startPan(t.clientX, t.clientY);
+      } else if (e.touches.length === 2) {
+        // Two fingers — stop pan, start tracking pinch
+        if (this.state.isPanningCamera) this.cameraController.endPan();
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        this.lastTouchDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        this.lastTouchCenterX = (t0.clientX + t1.clientX) / 2;
+        this.lastTouchCenterY = (t0.clientY + t1.clientY) / 2;
+        // Start pan from pinch center so two-finger drag also pans
+        this.cameraController.startPan(this.lastTouchCenterX, this.lastTouchCenterY);
+      }
+    };
+
+    this.touchMoveHandler = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && this.state.isPanningCamera) {
+        const t = e.touches[0];
+        this.cameraController.updateTouchPan(t.clientX, t.clientY);
+      } else if (e.touches.length === 2) {
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const currDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const centerX = (t0.clientX + t1.clientX) / 2;
+        const centerY = (t0.clientY + t1.clientY) / 2;
+
+        // Pinch zoom
+        if (this.lastTouchDist > 0) {
+          this.cameraController.applyPinchZoom(this.lastTouchDist, currDist, centerX, centerY);
+        }
+
+        // Two-finger pan
+        if (this.state.isPanningCamera) {
+          this.cameraController.updateTouchPan(centerX, centerY);
+        }
+
+        this.lastTouchDist = currDist;
+        this.lastTouchCenterX = centerX;
+        this.lastTouchCenterY = centerY;
+      }
+    };
+
+    this.touchEndHandler = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 0) {
+        // All fingers lifted
+        if (this.state.isPanningCamera) this.cameraController.endPan();
+        this.lastTouchDist = 0;
+      } else if (e.touches.length === 1) {
+        // Went from 2 fingers to 1 — restart single-finger pan
+        this.lastTouchDist = 0;
+        const t = e.touches[0];
+        this.cameraController.endPan();
+        this.cameraController.startPan(t.clientX, t.clientY);
+      }
+    };
+
+    canvas.addEventListener('touchstart', this.touchStartHandler, { passive: false });
+    canvas.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
+    canvas.addEventListener('touchend', this.touchEndHandler, { passive: false });
+  }
+
   // Update input
   update(_delta: number): void {
     this.cameraController.updateEdgeScroll(_delta);
@@ -355,6 +442,12 @@ export class InputManager {
       'contextmenu',
       this.contextMenuHandler,
     );
+
+    // Remove mobile touch listeners
+    const canvas = this.scene.game.canvas;
+    if (this.touchStartHandler) canvas.removeEventListener('touchstart', this.touchStartHandler);
+    if (this.touchMoveHandler) canvas.removeEventListener('touchmove', this.touchMoveHandler);
+    if (this.touchEndHandler) canvas.removeEventListener('touchend', this.touchEndHandler);
 
     // Destroy sub-controllers
     this.cameraController.destroy();
