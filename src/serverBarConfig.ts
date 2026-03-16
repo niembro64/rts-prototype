@@ -6,7 +6,7 @@ export const SERVER_CONFIG = {
     options: [1, 4, 8, 16, 32, 64, 128, 256] as readonly TickRate[],
   },
   snapshot: {
-    default: 8 as SnapshotRate,
+    default: 32 as SnapshotRate,
     options: [1, 4, 8, 16, 32, 64, 128, 'none'] as readonly SnapshotRate[],
   },
   gridInfo: { default: false },
