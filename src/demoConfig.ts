@@ -62,5 +62,5 @@ export const DEMO_CONFIG = {
   centerSpawnPerPlayer: 8,
 
   /** Radius (px) around map center in which center-spawn units are placed. */
-  centerSpawnRadius: 400,
+  centerSpawnRadius: 100,
 };
