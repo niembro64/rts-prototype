@@ -139,6 +139,28 @@ export function spawnBackgroundUnitsStandalone(
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;
 
+  // Center cluster first — spawn units near map center so combat is immediate
+  if (initialSpawn) {
+    const cx = mapWidth / 2;
+    const cy = mapHeight / 2;
+    const centerRadius = 400;
+    const centerUnitsPerPlayer = 8;
+    for (let p = 1; p <= numPlayers; p++) {
+      const pUnits = world.getUnitsByPlayer(p as PlayerId).length;
+      for (let i = 0; i < centerUnitsPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
+        const unit = spawnBackgroundUnitStandalone(world, physics, p as PlayerId,
+          cx - centerRadius, cx + centerRadius,
+          cy - centerRadius, cy + centerRadius,
+          cx - centerRadius, cx + centerRadius,
+          cy - centerRadius, cy + centerRadius,
+          Math.random() * Math.PI * 2, allowedTypes
+        );
+        if (unit) spawned.push(unit);
+      }
+    }
+  }
+
+  // Edge spawns — fill remaining cap with units marching from perimeter
   const unitsToSpawnPerPlayer = initialSpawn ? Math.min(15, unitCapPerPlayer) : 1;
 
   // Player 1 (Red) - top of map, moving down
@@ -183,27 +205,6 @@ export function spawnBackgroundUnitsStandalone(
       Math.PI, allowedTypes
     );
     if (unit) spawned.push(unit);
-  }
-
-  // Center cluster — spawn units near the map center so combat starts immediately
-  if (initialSpawn) {
-    const cx = mapWidth / 2;
-    const cy = mapHeight / 2;
-    const centerRadius = 400;
-    const centerUnitsPerPlayer = 8;
-    for (let p = 1; p <= numPlayers; p++) {
-      const pUnits = world.getUnitsByPlayer(p as PlayerId).length;
-      for (let i = 0; i < centerUnitsPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
-        const unit = spawnBackgroundUnitStandalone(world, physics, p as PlayerId,
-          cx - centerRadius, cx + centerRadius,
-          cy - centerRadius, cy + centerRadius,
-          cx - centerRadius, cx + centerRadius,
-          cy - centerRadius, cy + centerRadius,
-          Math.random() * Math.PI * 2, allowedTypes
-        );
-        if (unit) spawned.push(unit);
-      }
-    }
   }
 
   return spawned;
