@@ -5,7 +5,7 @@
  * Moved from PROJECTILE_STATS in config.ts.
  */
 
-const beam_width: number = 1.6;
+const beam_width: number = 4.8;
 
 const beam_recoil: number = 2000;
 

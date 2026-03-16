@@ -111,7 +111,7 @@ export class FactoryProductionSystem {
     return unit;
   }
 
-  // Add a unit to factory's build queue
+  // Add a unit to factory's build queue (cap-checked externally via canPlayerQueueUnit)
   queueUnit(factory: Entity, unitTypeId: string): boolean {
     if (!factory.factory || !factory.buildable?.isComplete) {
       return false;

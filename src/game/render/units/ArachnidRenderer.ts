@@ -3,7 +3,7 @@
 
 import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
-import { drawPolygon, drawLegs, drawOval } from '../helpers';
+import { drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 import { getUnitBlueprint } from '../../sim/blueprints';
 
@@ -107,31 +107,24 @@ export function drawArachnidUnit(
   }
   }
 
-  // Main body (hexagon)
+  // Main body (cephalothorax) — large circle
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : dark;
   graphics.fillStyle(bodyColor, 1);
+  const bodyCx = x + cos * r * (bodyFwd - 0.15);
+  const bodyCy = y + sin * r * (bodyFwd - 0.15);
+  graphics.fillCircle(bodyCx, bodyCy, r * 0.7);
 
-  const bodyHexRadius = r * 0.95;
-  const bodyHexForwardOffset = r * (bodyFwd - 0.15);
-  const bodyHexRotationOffset = Math.PI / 3;
-  const bodyHexCenterX = x + cos * bodyHexForwardOffset;
-  const bodyHexCenterY = y + sin * bodyHexForwardOffset;
-  drawPolygon(graphics, bodyHexCenterX, bodyHexCenterY, bodyHexRadius, 6, bodyRot + bodyHexRotationOffset);
-
-  // Inner carapace pattern (base color)
-  const hexRadius = r * 0.65;
-  const hexForwardOffset = r * bodyFwd;
-  const hexRotationOffset = Math.PI / 3;
-  const hexCenterX = x + cos * hexForwardOffset;
-  const hexCenterY = y + sin * hexForwardOffset;
+  // Inner carapace (base color circle)
+  const innerCx = x + cos * r * bodyFwd;
+  const innerCy = y + sin * r * bodyFwd;
   graphics.fillStyle(base, 1);
-  drawPolygon(graphics, hexCenterX, hexCenterY, hexRadius, 6, bodyRot + hexRotationOffset);
+  graphics.fillCircle(innerCx, innerCy, r * 0.48);
 
   // Central force field emitter orb (high only)
   if (ctx.chassisDetail) {
     graphics.fillStyle(light, 1);
-    graphics.fillCircle(hexCenterX, hexCenterY, r * 0.3);
+    graphics.fillCircle(innerCx, innerCy, r * 0.3);
     graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(hexCenterX, hexCenterY, r * 0.15);
+    graphics.fillCircle(innerCx, innerCy, r * 0.15);
   }
 }

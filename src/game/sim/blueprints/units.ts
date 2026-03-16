@@ -11,7 +11,7 @@ import type { UnitBlueprint, MountPoint } from './types';
 
 // Compute widow's hexagonal mount points
 function computeWidowMounts(): MountPoint[] {
-  const hexR = 0.65;
+  const hexR = 0.48;
   const hexFwd = 0.5;
   const hexRotOff = Math.PI / 3;
   const mounts: MountPoint[] = [];

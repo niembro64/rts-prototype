@@ -147,7 +147,10 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
 
 function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
-  if (!factory?.factory) return;
+  if (!factory?.factory || !factory.ownership) return;
+
+  // Don't allow queueing if player is at unit cap (including already-queued units)
+  if (!ctx.world.canPlayerQueueUnit(factory.ownership.playerId)) return;
 
   factoryProductionSystem.queueUnit(factory, command.unitId);
 }

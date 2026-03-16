@@ -66,8 +66,8 @@ export function updateAiProduction(
     if (!entity.ownership) continue;
     if (!aiPlayerIds.has(entity.ownership.playerId)) continue;
 
-    // Queue a unit if the factory is idle
-    if (entity.factory.buildQueue.length === 0) {
+    // Queue a unit if the factory is idle and player is under cap
+    if (entity.factory.buildQueue.length === 0 && world.canPlayerQueueUnit(entity.ownership.playerId)) {
       factoryProductionSystem.queueUnit(entity, pickRandomUnit(allowedTypes));
     }
   }

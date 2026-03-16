@@ -119,20 +119,20 @@ function renderBeam(
 
     for (const refl of reflections) {
       if (beamStyle === 'detailed' || beamStyle === 'complex') {
-        graphics.lineStyle(beamWidth + 4, color, 0.3);
+        graphics.lineStyle(beamWidth + 4, color, 0.1);
         graphics.lineBetween(prevSegX, prevSegY, refl.x, refl.y);
       }
-      graphics.lineStyle(beamWidth, 0xffffff, 1);
+      graphics.lineStyle(beamWidth, 0xffffff, 0.33);
       graphics.lineBetween(prevSegX, prevSegY, refl.x, refl.y);
       prevSegX = refl.x;
       prevSegY = refl.y;
     }
     // Final segment: last bounce → end
     if (beamStyle === 'detailed' || beamStyle === 'complex') {
-      graphics.lineStyle(beamWidth + 4, color, 0.3);
+      graphics.lineStyle(beamWidth + 4, color, 0.1);
       graphics.lineBetween(prevSegX, prevSegY, endX, endY);
     }
-    graphics.lineStyle(beamWidth, 0xffffff, 1);
+    graphics.lineStyle(beamWidth, 0xffffff, 0.33);
     graphics.lineBetween(prevSegX, prevSegY, endX, endY);
 
     // Draw reflection circles at each bounce point
@@ -145,16 +145,16 @@ function renderBeam(
   } else {
     // Single-segment beam (existing code path)
     if (beamStyle === 'detailed' || beamStyle === 'complex') {
-      graphics.lineStyle(beamWidth + 4, color, 0.3);
+      graphics.lineStyle(beamWidth + 4, color, 0.1);
       graphics.lineBetween(startX, startY, endX, endY);
     }
-    graphics.lineStyle(beamWidth, 0xffffff, 1);
+    graphics.lineStyle(beamWidth, 0xffffff, 0.33);
     graphics.lineBetween(startX, startY, endX, endY);
   }
 
-  // Endpoint ball — always drawn at beam radius, always white
+  // Endpoint ball — always drawn at beam radius, semi-transparent white
   const beamRadius = isLineShot(config.shot) ? config.shot.radius : beamWidth;
-  graphics.fillStyle(0xffffff, 1);
+  graphics.fillStyle(0xffffff, 0.33);
   graphics.fillCircle(endX, endY, beamRadius);
 
   // Collision-triggered damage radius highlight

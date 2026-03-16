@@ -92,10 +92,29 @@ export class WorldState {
     return Math.floor(this.maxTotalUnits / this.playerCount);
   }
 
-  // Check if player can build more units
+  // Check if player can build more units (existing units only, no queue accounting)
   canPlayerBuildUnit(playerId: PlayerId): boolean {
     const currentUnitCount = this.getUnitsByPlayer(playerId).length;
     return currentUnitCount < this.getUnitCapPerPlayer();
+  }
+
+  // Check if player can queue another unit (accounts for existing units + all queued units)
+  canPlayerQueueUnit(playerId: PlayerId): boolean {
+    const currentUnits = this.getUnitsByPlayer(playerId).length;
+    const queuedUnits = this.getQueuedUnitCount(playerId);
+    return (currentUnits + queuedUnits) < this.getUnitCapPerPlayer();
+  }
+
+  // Count units in factory build queues for a player
+  getQueuedUnitCount(playerId: PlayerId): number {
+    this.rebuildCachesIfNeeded();
+    let count = 0;
+    for (const entity of this.cache.getBuildings()) {
+      if (!entity.factory || !entity.ownership) continue;
+      if (entity.ownership.playerId !== playerId) continue;
+      count += entity.factory.buildQueue.length;
+    }
+    return count;
   }
 
   // Get remaining unit capacity for a player
