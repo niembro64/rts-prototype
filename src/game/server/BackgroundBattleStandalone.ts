@@ -141,6 +141,7 @@ export function spawnBackgroundUnitsStandalone(
   const mapHeight = world.mapHeight;
 
   // Center cluster first — spawn units near map center so combat is immediate
+  // Each unit's fight waypoint mirrors its spawn position through the center
   if (initialSpawn) {
     const cx = mapWidth / 2;
     const cy = mapHeight / 2;
@@ -149,12 +150,16 @@ export function spawnBackgroundUnitsStandalone(
     for (let p = 1; p <= numPlayers; p++) {
       const pUnits = world.getUnitsByPlayer(p as PlayerId).length;
       for (let i = 0; i < centerUnitsPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
+        // Spawn position: random within center radius
+        const spawnX = cx - centerRadius + Math.random() * centerRadius * 2;
+        const spawnY = cy - centerRadius + Math.random() * centerRadius * 2;
+        // Target: mirror through center (equal distance on opposite side)
+        const targetX = 2 * cx - spawnX;
+        const targetY = 2 * cy - spawnY;
         const unit = spawnBackgroundUnitStandalone(world, physics, p as PlayerId,
-          cx - centerRadius, cx + centerRadius,
-          cy - centerRadius, cy + centerRadius,
-          cx - centerRadius, cx + centerRadius,
-          cy - centerRadius, cy + centerRadius,
-          Math.random() * Math.PI * 2, allowedTypes
+          spawnX, spawnX, spawnY, spawnY,
+          targetX, targetX, targetY, targetY,
+          Math.atan2(targetY - spawnY, targetX - spawnX), allowedTypes
         );
         if (unit) spawned.push(unit);
       }
