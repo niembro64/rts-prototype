@@ -209,8 +209,8 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     min: 'dot',
     low: 'dot',
     medium: 'core',
-    high: 'trail',
-    max: 'glow',
+    high: 'core',
+    max: 'trail',
   },
 
   // Fire (impact) explosion style
