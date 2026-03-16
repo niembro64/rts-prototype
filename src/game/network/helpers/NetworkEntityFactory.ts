@@ -54,7 +54,7 @@ function createUnitFromNetwork(
     }
   }
 
-  const drawScale = u?.drawScale ?? 15;
+  const radiusColliderUnitShot = u?.collider.unitShot ?? 15;
   const entity: Entity = {
     id,
     type: 'unit',
@@ -65,9 +65,8 @@ function createUnitFromNetwork(
       unitType: u?.unitType ?? 'jackal',
       hp: u?.hp.curr ?? 100,
       maxHp: u?.hp.max ?? 100,
-      drawScale,
-      radiusColliderUnitShot: u?.collider.unitShot ?? drawScale,
-      radiusColliderUnitUnit: u?.collider.unitUnit ?? drawScale,
+      radiusColliderUnitShot,
+      radiusColliderUnitUnit: u?.collider.unitUnit ?? radiusColliderUnitShot,
       moveSpeed: u?.moveSpeed ?? 100,
       mass: u?.mass ?? 25,
       actions,

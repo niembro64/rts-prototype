@@ -159,7 +159,6 @@ export type UnitBlueprint = {
   shortName: string;
   hp: number;
   moveSpeed: number;
-  unitDrawScale: number;
   unitRadiusColliderShot: number;
   unitRadiusColliderPush: number;
   mass: number;

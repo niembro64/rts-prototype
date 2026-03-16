@@ -593,7 +593,7 @@ export class EntityRenderer {
 
     const { transform, unit, selectable, ownership } = entity;
     const { x, y, rotation } = transform;
-    const { drawScale: radius, hp, maxHp } = unit;
+    const { radiusColliderUnitShot: radius, hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
 
     const gfx = getGraphicsConfig();
@@ -760,7 +760,7 @@ export class EntityRenderer {
 
     const { transform, unit, ownership } = entity;
     const { x, y, rotation: bodyRot } = transform;
-    const r = unit.drawScale;
+    const r = unit.radiusColliderUnitShot;
 
     const unitType = entity.commander
       ? 'commander'

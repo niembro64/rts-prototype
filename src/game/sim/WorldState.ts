@@ -322,11 +322,10 @@ export class WorldState {
     y: number,
     playerId: PlayerId,
     unitType: string,
-    drawScale: number = 15,
+    radiusColliderUnitShot: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
     hp: number = 100,
-    radiusColliderUnitShot?: number,
     radiusColliderUnitUnit?: number
   ): Entity {
     const id = this.generateEntityId();
@@ -340,9 +339,8 @@ export class WorldState {
       unit: {
         unitType,
         moveSpeed,
-        drawScale,
-        radiusColliderUnitShot: radiusColliderUnitShot ?? drawScale,
-        radiusColliderUnitUnit: radiusColliderUnitUnit ?? drawScale,
+        radiusColliderUnitShot,
+        radiusColliderUnitUnit: radiusColliderUnitUnit ?? radiusColliderUnitShot,
         mass,
         hp,
         maxHp: hp,
@@ -367,16 +365,15 @@ export class WorldState {
 
     const entity = this.createUnitBase(
       x, y, playerId, unitId,
-      bp.unitDrawScale,
+      bp.unitRadiusColliderShot,
       bp.moveSpeed,
       bp.mass,
       bp.hp,
-      bp.unitRadiusColliderShot,
       bp.unitRadiusColliderPush
     );
 
     // Create turrets from blueprint definition
-    entity.turrets = createTurretsFromDefinition(unitId, bp.unitDrawScale);
+    entity.turrets = createTurretsFromDefinition(unitId, bp.unitRadiusColliderShot);
 
     // Cache mirror panels for fast beam collision checks (avoids blueprint lookup per tick)
     for (const mount of bp.turrets) {
@@ -427,7 +424,7 @@ export class WorldState {
     y: number,
     playerId: PlayerId,
     unitType: string = 'jackal',
-    drawScale: number = 15,
+    radiusColliderUnitShot: number = 15,
     moveSpeed: number = 100,
     mass: number = 25,
     turretTurnAccel?: number,
@@ -442,7 +439,7 @@ export class WorldState {
     const accel = turretTurnAccel ?? turretConfig.angular.turnAccel;
     const drag = turretDrag ?? turretConfig.angular.drag;
 
-    const entity = this.createUnitBase(x, y, playerId, unitType, drawScale, moveSpeed, mass, 100);
+    const entity = this.createUnitBase(x, y, playerId, unitType, radiusColliderUnitShot, moveSpeed, mass, 100);
 
     entity.turrets = [{
       config: turretConfig,

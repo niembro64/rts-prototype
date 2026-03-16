@@ -171,7 +171,6 @@ export type NetworkServerSnapshotEntity = {
   unit?: {
     unitType: string;
     hp: { curr: number; max: number };
-    drawScale: number;
     collider: { unitShot: number; unitUnit: number };
     moveSpeed: number;
     mass: number;

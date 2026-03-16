@@ -1948,7 +1948,7 @@ onUnmounted(() => {
               <button
                 class="control-btn"
                 :class="{ active: unitRadiusToggles.visual }"
-                title="Show unit visual radius (drawScale — rendering &amp; click detection)"
+                title="Show unit shot collider radius (radiusColliderUnitShot — rendering &amp; click detection)"
                 @click="toggleUnitRadius('visual')"
               >
                 SCAL
@@ -2418,7 +2418,7 @@ onUnmounted(() => {
   background: rgba(60, 60, 60, 0.8);
   border: 1px solid #555;
   border-radius: 3px;
-  color: #aaa;
+  color: #556;
   font-family: monospace;
   font-size: 10px;
   text-transform: uppercase;
@@ -2429,20 +2429,20 @@ onUnmounted(() => {
 .control-btn:hover {
   background: rgba(85, 85, 85, 0.9);
   border-color: #888;
-  color: #ddd;
+  color: #99a;
 }
 
 .control-btn:active {
   background: rgba(50, 50, 50, 0.95);
   border-color: #666;
-  color: #ccc;
+  color: #778;
   transition: all 0.05s ease;
 }
 
 .control-btn.active {
   background: var(--bar-active-bg);
   border-color: var(--bar-active-border);
-  color: white;
+  color: #fff;
 }
 
 .control-btn.active:hover {

@@ -44,9 +44,9 @@ export function resolveWeaponWorldPos(
 const _btOut = { x: 0, y: 0 };
 export function getBarrelTipWorldPos(
   weaponX: number, weaponY: number,
-  firingAngle: number, config: TurretConfig, unitDrawScale: number,
+  firingAngle: number, config: TurretConfig, unitRadiusColliderShot: number,
 ): { x: number; y: number } {
-  const offset = getBarrelTipOffset(config, unitDrawScale);
+  const offset = getBarrelTipOffset(config, unitRadiusColliderShot);
   _btOut.x = weaponX + Math.cos(firingAngle) * offset;
   _btOut.y = weaponY + Math.sin(firingAngle) * offset;
   return _btOut;

@@ -101,7 +101,6 @@ export type CachedMirrorPanel = {
 export type Unit = {
   unitType: string;
   moveSpeed: number;
-  drawScale: number;
   radiusColliderUnitShot: number;
   radiusColliderUnitUnit: number;
   mass: number;
@@ -303,7 +302,6 @@ export type UnitBuildConfig = {
   unitId: string;
   name: string;
   energyCost: number;
-  drawScale: number;
   radiusColliderUnitShot: number;
   radiusColliderUnitUnit: number;
   moveSpeed: number;

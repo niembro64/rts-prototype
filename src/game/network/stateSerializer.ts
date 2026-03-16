@@ -74,7 +74,7 @@ function createPooledEntry(): PooledEntry {
   return {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0 }, rotation: 0, playerId: 1 as PlayerId },
     unitSub: {
-      unitType: '', hp: { curr: 0, max: 0 }, drawScale: 0,
+      unitType: '', hp: { curr: 0, max: 0 },
       collider: { unitShot: 0, unitUnit: 0 },
       moveSpeed: 0, mass: 0, velocity: { x: 0, y: 0 },
       turretRotation: 0,
@@ -595,7 +595,6 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
       // Static fields (only on keyframes / new entities)
       if (isFull) {
         u.unitType = entity.unit.unitType;
-        u.drawScale = entity.unit.drawScale;
         u.collider.unitShot = entity.unit.radiusColliderUnitShot;
         u.collider.unitUnit = entity.unit.radiusColliderUnitUnit;
         u.moveSpeed = entity.unit.moveSpeed;

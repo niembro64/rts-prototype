@@ -322,12 +322,12 @@ function drawForceFieldZonesOnly(
  */
 export function renderForceFieldZonesEarly(
   graphics: Phaser.GameObjects.Graphics,
-  entity: { turrets?: Turret[]; transform: { x: number; y: number; rotation: number }; unit?: { drawScale: number; unitType?: string }; id: EntityId },
+  entity: { turrets?: Turret[]; transform: { x: number; y: number; rotation: number }; unit?: { radiusColliderUnitShot: number; unitType?: string }; id: EntityId },
   mounts: { x: number; y: number }[],
 ): void {
   if (!entity.turrets) return;
   const { x, y, rotation: bodyRot } = entity.transform;
-  const r = entity.unit?.drawScale ?? 10;
+  const r = entity.unit?.radiusColliderUnitShot ?? 10;
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
 

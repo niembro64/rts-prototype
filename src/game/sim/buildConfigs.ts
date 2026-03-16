@@ -42,7 +42,6 @@ export function getUnitBuildConfig(unitId: string) {
     unitId: bp.turrets[0]?.turretId ?? 'lightTurret',
     name: bp.name,
     energyCost: bp.baseCost * COST_MULTIPLIER,
-    drawScale: bp.unitDrawScale,
     radiusColliderUnitShot: bp.unitRadiusColliderShot,
     radiusColliderUnitUnit: bp.unitRadiusColliderPush,
     moveSpeed: bp.moveSpeed,

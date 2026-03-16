@@ -152,7 +152,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // Create projectile(s)
       const pellets = config.spread?.pelletCount ?? 1;
       const spreadAngle = config.spread?.angle ?? 0;
-      const barrelOffset = getBarrelTipOffset(config, unit.unit.drawScale);
+      const barrelOffset = getBarrelTipOffset(config, unit.unit.radiusColliderUnitShot);
 
       for (let i = 0; i < pellets; i++) {
         // Calculate spread — each pellet gets a random angle within the cone
@@ -392,7 +392,7 @@ export function updateProjectiles(
         const weaponX = beamWP.x, weaponY = beamWP.y;
 
         // Beam starts at barrel tip
-        const bt = getBarrelTipWorldPos(weaponX, weaponY, turretAngle, proj.config, source.unit.drawScale);
+        const bt = getBarrelTipWorldPos(weaponX, weaponY, turretAngle, proj.config, source.unit.radiusColliderUnitShot);
         proj.startX = bt.x;
         proj.startY = bt.y;
 

@@ -60,6 +60,11 @@ export const LOD_EMA_SOURCE: LodEmaSource = {
  * Each key defines what happens at each detail level: min, low, medium, high, max.
  */
 export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
+  // -------------------------------------------------------------------------
+  // Budget targets per visible unit (approximate draw calls):
+  //   MIN ~2  |  LOW ~5-8  |  MED ~8-12  |  HIGH ~20-30  |  MAX ~40-60
+  // -------------------------------------------------------------------------
+
   // Unit body shape rendering
   // 'circles': two concentric circles (push+shot radii), 'full': complete body shape
   UNIT_SHAPE: {
@@ -69,25 +74,20 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: 'full',
     max: 'full',
   },
-  // Whether to draw the push-radius circle in 'circles' mode
   CIRCLES_DRAW_PUSH: true,
-  // Whether to draw the shot-radius circle in 'circles' mode
   CIRCLES_DRAW_SHOT: true,
 
   // Leg rendering for widow/daddy/tarantula/tick units
-  // 'none': no legs drawn or updated,
-  // 'simple': straight line per leg (no IK),
-  // 'animated': 2-segment IK legs (no joint circles),
-  // 'full': 2-segment IK legs + joint circles (hip/knee/foot)
+  // 'none': no legs, 'simple': 1 line/leg, 'animated': 2-segment IK, 'full': IK + joint circles
   LEGS: {
     min: 'none',
     low: 'simple',
-    medium: 'animated',
-    high: 'full',
+    medium: 'simple',
+    high: 'animated',
     max: 'full',
   },
 
-  // Tread/wheel animations
+  // Tread/wheel animations (adds ~6-8 lineBetween per tread — expensive with many treaded units)
   TREADS_ANIMATED: {
     min: false,
     low: false,
@@ -97,20 +97,21 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   },
 
   // Beam rendering style
-  // Controls beam line complexity (1-3 layers) and endpoint effects (circles, pulsing, sparks)
+  // 'simple': 1 beam line + 1 endpoint circle, 'standard': 2 lines + 2 circles,
+  // 'detailed': 3 lines + circles + 4 sparks, 'complex': 3 lines + 6 sparks
   BEAM_STYLE: {
-    min: 'simple', // 1 beam line, 1 static endpoint circle
-    low: 'simple', // 1 beam line, 1 static endpoint circle
-    medium: 'standard', // 2 beam lines, 2 pulsing endpoint circles
-    high: 'detailed', // 3 beam lines, 3 pulsing circles + 4 sparks
-    max: 'complex', // 3 beam lines, 3 pulsing circles + 6 sparks
+    min: 'simple',
+    low: 'simple',
+    medium: 'simple',
+    high: 'standard',
+    max: 'detailed',
   },
 
   // Beam glow effects (bloom/glow around beams)
   BEAM_GLOW: {
     min: false,
     low: false,
-    medium: true,
+    medium: false,
     high: true,
     max: true,
   },
@@ -124,44 +125,29 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: false,
   },
 
-  // Unit chassis inner detail (armor plates, inner accents, center hubs, commander reactor/pylons/armored legs)
+  // Unit chassis inner detail (armor plates, inner accents, center hubs — adds 3-5 draws/unit)
   // false = basic shape only, true = full inner detail polygons and overlays
   CHASSIS_DETAIL: {
     min: false,
     low: false,
-    medium: true,
+    medium: false,
     high: true,
     max: true,
   },
 
-  // Unit palette shading — whether units use full 3-color palette (base/light/dark) or monochrome (base only)
-  // false = monochrome (base color for all), true = full light/dark shading
+  // Unit palette shading — 3-color palette (base/light/dark) vs monochrome
+  // No draw-call cost, just richer color. Safe to enable at medium.
   PALETTE_SHADING: {
     min: false,
-    low: false,
+    low: true,
     medium: true,
     high: true,
     max: true,
   },
 
   // Turret barrel rendering complexity
-  // 'none': no barrel geometry (force field zones only at min),
-  // 'simple': single line per weapon,
-  // 'full': orbital multi-barrel, cone spread, barrel base circles
+  // 'none': no barrels, 'simple': single line/weapon, 'full': orbital multi-barrel + base circles
   TURRET_STYLE: {
-    min: 'none',
-    low: 'simple',
-    medium: 'full',
-    high: 'full',
-    max: 'full',
-  },
-
-  // Force field turret rendering (complexSingleEmitter grate + zones)
-  // Separate from TURRET_STYLE so force turrets can be independently tuned.
-  // 'none': force field zones only (no grate geometry),
-  // 'simple': single pulsing circle + zones,
-  // 'full': animated multi-ring grate + zones
-  FORCE_TURRET_STYLE: {
     min: 'none',
     low: 'simple',
     medium: 'simple',
@@ -169,38 +155,45 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 'full',
   },
 
-  // Multi-barrel turret spin animation (gatling/cone barrels orbit their mount point)
-  // false = barrels frozen at angle 0, true = animated spin (idle + firing acceleration)
+  // Force field turret rendering (complexSingleEmitter grate)
+  // 'none': zones only, 'simple': pulsing circle + zones, 'full': animated multi-ring grate
+  FORCE_TURRET_STYLE: {
+    min: 'none',
+    low: 'none',
+    medium: 'simple',
+    high: 'simple',
+    max: 'full',
+  },
+
+  // Multi-barrel turret spin animation
+  // false = barrels frozen at angle 0, true = animated spin
   BARREL_SPIN: {
     min: false,
     low: false,
-    medium: true,
+    medium: false,
     high: true,
     max: true,
   },
 
-  // Burn mark cutoff — how close to background color before marks stop drawing
-  // Lower values = marks linger longer, higher = fewer draw calls
+  // Burn mark cutoff — higher = marks disappear sooner = fewer active marks
   BURN_MARK_ALPHA_CUTOFF: {
     min: 1,
-    low: 0.5,
-    medium: 0.3,
-    high: 0.15,
+    low: 0.6,
+    medium: 0.4,
+    high: 0.2,
     max: 0.01,
   },
 
   // Burn mark sample interval — frames to skip between placing new burn marks
-  // 0 = every frame, 1 = every other frame, 3 = every 4th frame, etc.
   BURN_MARK_FRAMES_SKIP: {
-    min: 4,
-    low: 3,
-    medium: 2,
+    min: 5,
+    low: 4,
+    medium: 3,
     high: 1,
     max: 0,
   },
 
   // Beam path collision recomputation — frames to skip between beam path traces
-  // 0 = every frame, 2 = every 3rd frame, etc. Higher = less CPU but staler beam visuals.
   BEAM_PATH_FRAMES_SKIP: {
     min: 0,
     low: 0,
@@ -210,48 +203,38 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   },
 
   // Projectile (shot) rendering style
-  // 'dot': colored circle only, 'core': circle + white inner dot,
-  // 'trail': core + position-history trail, 'glow': trail + outer glow ring + trail dots,
-  // 'full': glow + pulsing halo + contrail lines + extra trail points
+  // 'dot': 1 circle, 'core': 2 circles, 'trail': core + history trail,
+  // 'glow': trail + glow ring + dots, 'full': glow + pulsing halo + contrails
   PROJECTILE_STYLE: {
     min: 'dot',
-    low: 'core',
-    medium: 'trail',
-    high: 'glow',
-    max: 'full',
+    low: 'dot',
+    medium: 'core',
+    high: 'trail',
+    max: 'glow',
   },
 
   // Fire (impact) explosion style
-  // 'flash': core fireball + zone glows + 1 particle each (~12 draws),
-  // 'spark': +hot core center + spark/pen inners, ×1.5 particles (~18 draws),
-  // 'burst': ×2.5 particles + moderate drift, no trails (~30 draws),
-  // 'blaze': ×4 particles + short trails + strong drift (~45 draws),
-  // 'inferno': ×6 particles + full trails + rising embers (~65 draws)
+  // 'flash' ~12 draws, 'spark' ~18, 'burst' ~30, 'blaze' ~45, 'inferno' ~65
   FIRE_EXPLOSION_STYLE: {
     min: 'flash',
-    low: 'spark',
-    medium: 'burst',
-    high: 'blaze',
+    low: 'flash',
+    medium: 'spark',
+    high: 'burst',
     max: 'inferno',
   },
 
-  // Death (unit wreckage) explosion style — team-colored debris from unit shape (legs, treads, panels)
-  // 'puff': core fireball only (~3 draws),
-  // 'scatter': +smoke, debris chunks, sparks in cone (~12 draws),
-  // 'shatter': more debris + inner highlights on chunks (~25 draws),
-  // 'detonate': +fragment trails, gravity chunks, full-circle sparks (~55 draws),
-  // 'obliterate': +rising embers, momentum trail, dual spark trails (~120 draws)
+  // Death (unit wreckage) explosion style
+  // 'puff' ~3 draws, 'scatter' ~12, 'shatter' ~25, 'detonate' ~55, 'obliterate' ~120
   DEATH_EXPLOSION_STYLE: {
     min: 'puff',
-    low: 'scatter',
-    medium: 'shatter',
-    high: 'detonate',
+    low: 'puff',
+    medium: 'scatter',
+    high: 'shatter',
     max: 'obliterate',
   },
 
   // Force field visual style
-  // 'minimal': faint fill only, 'simple': fill + particles,
-  // 'normal': fill + particles, 'enhanced': fill + dense particles + wavy arcs
+  // 'minimal': faint fill only, 'simple': fill + particles, 'enhanced': fill + particles + arcs
   FORCE_FIELD_STYLE: {
     min: 'minimal',
     low: 'minimal',
