@@ -7,13 +7,22 @@ import type {
 } from './types/lod';
 
 // =============================================================================
+// TPS BASELINE
+// =============================================================================
+
+// The TPS value considered "good" for bar display and LOD decisions.
+// This is independent of TARGET TPS (the rate the server tries to run at).
+// Bar fill and LOD ratio = actual TPS / GOOD_TPS.
+export const GOOD_TPS = 60;
+
+// =============================================================================
 // LOD AUTO-MODE CONFIG
 // =============================================================================
 
 // Per-mode thresholds dividing the 0–1 ratio into 5 quality zones.
 // ratio >= max → 'max', >= high → 'high', … < low → 'min'
 // Zoom thresholds are absolute zoom values (logarithmic spacing between ZOOM_MIN/ZOOM_MAX).
-// TPS/FPS thresholds are performance ratios (actual / target).
+// TPS/FPS thresholds are performance ratios (actual / GOOD_TPS for TPS, actual / 60 for FPS).
 const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
 export const LOD_THRESHOLDS: LodAutoModeConfig = {
   zoom: {
@@ -153,7 +162,8 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // 'none': no barrels, 'simple': single line/weapon, 'full': orbital multi-barrel + base circles
   TURRET_STYLE: {
     min: 'none',
-    low: 'simple',
+    low: 'full',
+    // low: 'simple',
     medium: 'full',
     high: 'full',
     max: 'full',
@@ -174,8 +184,8 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   BARREL_SPIN: {
     min: false,
     low: false,
-    medium: false,
-    high: false,
+    medium: true,
+    high: true,
     max: true,
   },
 

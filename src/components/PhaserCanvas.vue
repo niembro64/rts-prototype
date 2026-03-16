@@ -28,7 +28,7 @@ import {
 } from '../config';
 import { getUnitBlueprint } from '../game/sim/blueprints';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
-import { LOD_EMA_SOURCE } from '../lodConfig';
+import { LOD_EMA_SOURCE, GOOD_TPS } from '../lodConfig';
 import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
   BATTLE_CONFIG,
@@ -877,7 +877,7 @@ function updateFPSStats(): void {
   const fpsVal = LOD_EMA_SOURCE.fps === 'avg' ? actualAvgFPS.value : actualWorstFPS.value;
   const tpsVal = LOD_EMA_SOURCE.tps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
   setCurrentFpsRatio(fpsVal / 60);
-  setCurrentTpsRatio(tpsVal / displayTickRate.value);
+  setCurrentTpsRatio(tpsVal / GOOD_TPS);
   setLocalServerRunning(hasServer.value);
   effectiveQuality.value = getEffectiveQuality();
 }
@@ -1451,7 +1451,7 @@ onUnmounted(() => {
                   <div
                     class="stat-bar-fill"
                     :style="
-                      statBarStyle(displayServerTpsAvg, displayTickRate, serverBarReadonly)
+                      statBarStyle(displayServerTpsAvg, GOOD_TPS, serverBarReadonly)
                     "
                   ></div>
                 </div>
@@ -1467,7 +1467,7 @@ onUnmounted(() => {
                   <div
                     class="stat-bar-fill"
                     :style="
-                      statBarStyle(displayServerTpsWorst, displayTickRate, serverBarReadonly)
+                      statBarStyle(displayServerTpsWorst, GOOD_TPS, serverBarReadonly)
                     "
                   ></div>
                 </div>
