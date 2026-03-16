@@ -536,7 +536,13 @@ export class ClientViewState {
       const target = this.serverTargets.get(entity.id);
 
       if (entity.type === 'unit' && entity.unit) {
-        // Step 1: Dead-reckon using current velocity
+        if (target) {
+          // Advance server target using its velocity (so drift target isn't stale)
+          target.x += target.velocityX * dt;
+          target.y += target.velocityY * dt;
+        }
+
+        // Step 1: Dead-reckon entity using current velocity
         const vx = entity.unit.velocityX ?? 0;
         const vy = entity.unit.velocityY ?? 0;
         entity.transform.x += vx * dt;
@@ -569,6 +575,9 @@ export class ClientViewState {
             // Drift turret toward server target
             const tw = target?.turrets?.[i];
             if (tw) {
+              // Advance turret target rotation using its angular velocity
+              tw.rotation += tw.angularVelocity * dt;
+
               weapon.rotation = lerpAngle(
                 weapon.rotation,
                 tw.rotation,
@@ -784,6 +793,10 @@ export class ClientViewState {
 
           // Drift projectile position + velocity toward server target (smooth correction)
           if (target) {
+            // Advance server target using its velocity (so drift target isn't stale)
+            target.x += target.velocityX * dt;
+            target.y += target.velocityY * dt;
+
             entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
             entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
             proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelDrift);
