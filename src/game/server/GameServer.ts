@@ -13,7 +13,7 @@ import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import { PhysicsEngine } from './PhysicsEngine';
-import { BACKGROUND_UNIT_TYPES } from './BackgroundBattleStandalone';
+import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
 import {
   MAP_SETTINGS,
@@ -111,6 +111,11 @@ export class GameServer {
       const entities = spawnInitialBases(this.world, constructionSystem, this.playerIds);
       this.createPhysicsBodies(entities);
       this.simulation.setAiPlayerIds(aiPlayerIds);
+
+      // Background mode: spawn a cluster of units near center for immediate combat
+      if (this.backgroundMode) {
+        spawnBackgroundUnitsStandalone(this.world, this.physics, true, this.backgroundAllowedTypes);
+      }
     } else {
       const entities = spawnInitialEntities(this.world, this.playerIds);
       this.createPhysicsBodies(entities);
