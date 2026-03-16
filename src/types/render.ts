@@ -75,6 +75,7 @@ export type BuildingRenderContext = {
   height: number;
   playerColor: number;
   sprayParticleTime: number;
+  detail: boolean;
 };
 
 // Per-projectile random offsets for visual variety

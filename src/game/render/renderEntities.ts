@@ -419,23 +419,34 @@ export class EntityRenderer {
     this.sprayParticleTime += 16;
     this.collectVisibleEntities();
 
-    // 0. Sample beam endpoints for scorched earth burn marks
+    // 0. Force field zones (opaque, pre-blended against background — under everything)
+    for (const entity of this.visibleUnits) {
+      if (!entity.turrets) continue;
+      const unitType = entity.unit?.unitType ?? 'jackal';
+      let mounts: { x: number; y: number }[];
+      try { mounts = getUnitBlueprint(unitType).chassisMounts; }
+      catch { mounts = [{ x: 0, y: 0 }]; }
+      renderForceFieldZonesEarly(this.graphics, entity, mounts);
+    }
+    setSkipForceFieldZones(true);
+
+    // 0b. Sample beam endpoints for scorched earth burn marks
     this.burnMarkSystem.sampleBeamEndpoints(
       this.entitySource.getProjectiles(),
       gfxConfig.burnMarkFramesSkip,
     );
 
-    // 0b. Render scorched earth burn marks (below everything, fully opaque)
+    // 0c. Render scorched earth burn marks
     this.burnMarkSystem.render(this.graphics, (x, y, padding) =>
       this.isInViewport(x, y, padding),
     );
 
-    // 0c. Death debris fragments
+    // 0d. Death debris fragments
     this.debrisSystem.render(this.graphics, (x, y, p) =>
       this.isInViewport(x, y, p),
     );
 
-    // 1. Buildings (bottom layer)
+    // 1. Buildings
     const buildBarFn = (
       x: number,
       y: number,
@@ -459,17 +470,6 @@ export class EntityRenderer {
         healthBarFn,
       );
     }
-
-    // 1b. Force field zones (opaque, pre-blended against background — must be under units)
-    for (const entity of this.visibleUnits) {
-      if (!entity.turrets) continue;
-      const unitType = entity.unit?.unitType ?? 'jackal';
-      let mounts: { x: number; y: number }[];
-      try { mounts = getUnitBlueprint(unitType).chassisMounts; }
-      catch { mounts = [{ x: 0, y: 0 }]; }
-      renderForceFieldZonesEarly(this.graphics, entity, mounts);
-    }
-    setSkipForceFieldZones(true);
 
     // 2. Waypoints for selected units
     for (const entity of this.selectedUnits) {

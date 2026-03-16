@@ -6,7 +6,7 @@ import type { BuildingRenderContext } from '../types';
  * Render solar panel visual details
  */
 export function renderSolarPanel(ctx: BuildingRenderContext): void {
-  const { graphics, left, top, width, height, playerColor, sprayParticleTime } = ctx;
+  const { graphics, left, top, width, height, playerColor, sprayParticleTime, detail } = ctx;
 
   // Panel grid - dark blue photovoltaic cells
   const cellMargin = 4;
@@ -39,81 +39,48 @@ export function renderSolarPanel(ctx: BuildingRenderContext): void {
       graphics.fillStyle(0x2a4060, 0.6);
       graphics.fillRect(cellX, cellY, cellWidth, cellHeight * 0.4);
 
-      // Grid lines on each cell
-      graphics.lineStyle(1, 0x102030, 0.8);
-      // Horizontal line
-      graphics.lineBetween(
-        cellX,
-        cellY + cellHeight / 2,
-        cellX + cellWidth,
-        cellY + cellHeight / 2
-      );
-      // Vertical line
-      graphics.lineBetween(
-        cellX + cellWidth / 2,
-        cellY,
-        cellX + cellWidth / 2,
-        cellY + cellHeight
-      );
-    }
-  }
-
-  // Shimmer effect (subtle moving highlight)
-  const shimmerPhase = (sprayParticleTime / 2000) % 1;
-  const shimmerX =
-    innerLeft + shimmerPhase * innerWidth * 1.5 - innerWidth * 0.25;
-  const shimmerWidth = innerWidth * 0.3;
-
-  if (
-    shimmerX > innerLeft - shimmerWidth &&
-    shimmerX < innerLeft + innerWidth
-  ) {
-    // Gradient shimmer (brighter in center)
-    for (let i = 0; i < 5; i++) {
-      const segX = shimmerX + i * (shimmerWidth / 5);
-      const segW = shimmerWidth / 5;
-      const alpha = i < 2.5 ? i * 0.04 : (4 - i) * 0.04;
-
-      if (segX >= innerLeft && segX + segW <= innerLeft + innerWidth) {
-        graphics.fillStyle(0xffffff, alpha);
-        graphics.fillRect(segX, innerTop, segW, innerHeight);
+      if (detail) {
+        // Grid lines on each cell
+        graphics.lineStyle(1, 0x102030, 0.8);
+        graphics.lineBetween(cellX, cellY + cellHeight / 2, cellX + cellWidth, cellY + cellHeight / 2);
+        graphics.lineBetween(cellX + cellWidth / 2, cellY, cellX + cellWidth / 2, cellY + cellHeight);
       }
     }
   }
 
-  // Frame corners (player color accents)
-  const cornerSize = 6;
-  graphics.fillStyle(playerColor, 0.9);
+  if (detail) {
+    // Shimmer effect (subtle moving highlight)
+    const shimmerPhase = (sprayParticleTime / 2000) % 1;
+    const shimmerX = innerLeft + shimmerPhase * innerWidth * 1.5 - innerWidth * 0.25;
+    const shimmerWidth = innerWidth * 0.3;
 
-  // Top-left corner
-  graphics.fillRect(left, top, cornerSize, 2);
-  graphics.fillRect(left, top, 2, cornerSize);
+    if (shimmerX > innerLeft - shimmerWidth && shimmerX < innerLeft + innerWidth) {
+      for (let i = 0; i < 5; i++) {
+        const segX = shimmerX + i * (shimmerWidth / 5);
+        const segW = shimmerWidth / 5;
+        const alpha = i < 2.5 ? i * 0.04 : (4 - i) * 0.04;
 
-  // Top-right corner
-  graphics.fillRect(left + width - cornerSize, top, cornerSize, 2);
-  graphics.fillRect(left + width - 2, top, 2, cornerSize);
+        if (segX >= innerLeft && segX + segW <= innerLeft + innerWidth) {
+          graphics.fillStyle(0xffffff, alpha);
+          graphics.fillRect(segX, innerTop, segW, innerHeight);
+        }
+      }
+    }
 
-  // Bottom-left corner
-  graphics.fillRect(left, top + height - 2, cornerSize, 2);
-  graphics.fillRect(left, top + height - cornerSize, 2, cornerSize);
+    // Frame corners (player color accents)
+    const cornerSize = 6;
+    graphics.fillStyle(playerColor, 0.9);
+    graphics.fillRect(left, top, cornerSize, 2);
+    graphics.fillRect(left, top, 2, cornerSize);
+    graphics.fillRect(left + width - cornerSize, top, cornerSize, 2);
+    graphics.fillRect(left + width - 2, top, 2, cornerSize);
+    graphics.fillRect(left, top + height - 2, cornerSize, 2);
+    graphics.fillRect(left, top + height - cornerSize, 2, cornerSize);
+    graphics.fillRect(left + width - cornerSize, top + height - 2, cornerSize, 2);
+    graphics.fillRect(left + width - 2, top + height - cornerSize, 2, cornerSize);
 
-  // Bottom-right corner
-  graphics.fillRect(
-    left + width - cornerSize,
-    top + height - 2,
-    cornerSize,
-    2
-  );
-  graphics.fillRect(
-    left + width - 2,
-    top + height - cornerSize,
-    2,
-    cornerSize
-  );
-
-  // Small power indicator LED
-  const ledX = left + width - 8;
-  const ledY = top + 8;
-  graphics.fillStyle(0x44ff44, 0.9);
-  graphics.fillCircle(ledX, ledY, 2);
+    // Small power indicator LED
+    graphics.fillStyle(0x44ff44, 0.9);
+    graphics.fillCircle(left + width - 8, top + 8, 2);
+  }
 }

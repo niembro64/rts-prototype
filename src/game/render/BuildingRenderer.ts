@@ -6,6 +6,7 @@ import { COLORS } from './types';
 import type { BuildingRenderContext } from './types';
 import { getPlayerColor } from './helpers';
 import { renderFactory, renderSolarPanel } from './buildings';
+import { getGraphicsConfig } from '@/clientBarConfig';
 
 export function renderBuilding(
   graphics: Phaser.GameObjects.Graphics,
@@ -44,6 +45,8 @@ export function renderBuilding(
 
   const fillColor = ownership?.playerId ? getPlayerColor(ownership.playerId) : COLORS.BUILDING;
 
+  const detail = getGraphicsConfig().chassisDetail;
+
   if (!isComplete) {
     graphics.fillStyle(0x222222, 0.7);
     graphics.fillRect(left, top, width, height);
@@ -51,19 +54,23 @@ export function renderBuilding(
     const builtTop = top + height - builtHeight;
     graphics.fillStyle(fillColor, 0.7);
     graphics.fillRect(left, builtTop, width, builtHeight);
-    graphics.lineStyle(1, 0xaaaaaa, 0.5);
-    const gridSize = 10;
-    for (let gx = left; gx <= left + width; gx += gridSize) {
-      graphics.lineBetween(gx, top, gx, top + height);
-    }
-    for (let gy = top; gy <= top + height; gy += gridSize) {
-      graphics.lineBetween(left, gy, left + width, gy);
+    if (detail) {
+      graphics.lineStyle(1, 0xaaaaaa, 0.5);
+      const gridSize = 10;
+      for (let gx = left; gx <= left + width; gx += gridSize) {
+        graphics.lineBetween(gx, top, gx, top + height);
+      }
+      for (let gy = top; gy <= top + height; gy += gridSize) {
+        graphics.lineBetween(left, gy, left + width, gy);
+      }
     }
   } else {
     graphics.fillStyle(fillColor, 0.9);
     graphics.fillRect(left, top, width, height);
-    graphics.lineStyle(1, 0x665533, 0.5);
-    graphics.strokeRect(left + 4, top + 4, width - 8, height - 8);
+    if (detail) {
+      graphics.lineStyle(1, 0x665533, 0.5);
+      graphics.strokeRect(left + 4, top + 4, width - 8, height - 8);
+    }
   }
 
   graphics.lineStyle(3, COLORS.BUILDING_OUTLINE, 1);
@@ -81,7 +88,7 @@ export function renderBuilding(
   const playerColor = getPlayerColor(ownership?.playerId);
   const buildingCtx: BuildingRenderContext = {
     graphics, entity, left, top, width, height, playerColor,
-    sprayParticleTime,
+    sprayParticleTime, detail,
   };
 
   if (entity.factory && isComplete) {
