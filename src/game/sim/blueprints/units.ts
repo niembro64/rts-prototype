@@ -52,6 +52,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'scout',
     deathSound: AUDIO.event.death.jackal,
+    fightStopEngagedRatio: 0.9,
   },
   lynx: {
     id: 'lynx',
@@ -77,6 +78,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'burst',
     deathSound: AUDIO.event.death.lynx,
+    fightStopEngagedRatio: 0.9,
   },
   daddy: {
     id: 'daddy',
@@ -100,6 +102,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'forceField',
     deathSound: AUDIO.event.death.daddy,
+    fightStopEngagedRatio: 0.9,
   },
   badger: {
     id: 'badger',
@@ -125,6 +128,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'brawl',
     deathSound: AUDIO.event.death.badger,
+    fightStopEngagedRatio: 0.9,
   },
   mongoose: {
     id: 'mongoose',
@@ -151,6 +155,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'mortar',
     deathSound: AUDIO.event.death.mongoose,
+    fightStopEngagedRatio: 0.9,
   },
   tick: {
     id: 'tick',
@@ -171,6 +176,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'snipe',
     deathSound: AUDIO.event.death.tick,
+    fightStopEngagedRatio: 0.9,
   },
   mammoth: {
     id: 'mammoth',
@@ -196,6 +202,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'tank',
     deathSound: AUDIO.event.death.mammoth,
+    fightStopEngagedRatio: 0.9,
   },
   widow: {
     id: 'widow',
@@ -225,6 +232,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     renderer: 'arachnid',
     seeRange: 400,
     deathSound: AUDIO.event.death.widow,
+    fightStopEngagedRatio: 0.9,
   },
   hippo: {
     id: 'hippo',
@@ -256,6 +264,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'hippo',
     deathSound: AUDIO.event.death.hippo,
+    fightStopEngagedRatio: 0.9,
   },
   tarantula: {
     id: 'tarantula',
@@ -276,6 +285,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'beam',
     deathSound: AUDIO.event.death.tarantula,
+    fightStopEngagedRatio: 0.9,
   },
   loris: {
     id: 'loris',
@@ -307,6 +317,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'loris',
     deathSound: AUDIO.event.death.loris,
+    fightStopEngagedRatio: 0.9,
   },
   commander: {
     id: 'commander',
@@ -335,6 +346,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     builder: { buildRange: 150, maxEnergyUseRate: 50 },
     dgun: { turretId: 'dgunTurret', energyCost: 200 },
     deathSound: AUDIO.event.death.commander,
+    fightStopEngagedRatio: 0.9,
   },
 };
 

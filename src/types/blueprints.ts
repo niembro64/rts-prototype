@@ -171,4 +171,5 @@ export type UnitBlueprint = {
   dgun?: { turretId: string; energyCost: number };
   deathSound?: SoundEntry;
   seeRange?: number;
+  fightStopEngagedRatio: number;
 };

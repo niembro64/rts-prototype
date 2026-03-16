@@ -34,7 +34,7 @@ import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
-import { FIGHT_STOP_ENGAGED_RATIO } from '@/config';
+import { getUnitBlueprint } from './blueprints/units';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 
@@ -591,7 +591,8 @@ export class Simulation {
           for (let i = 0; i < turrets.length; i++) {
             if (turrets[i].state === 'engaged') engagedCount++;
           }
-          if (engagedCount >= turrets.length * FIGHT_STOP_ENGAGED_RATIO) {
+          const stopRatio = getUnitBlueprint(unit.unitType).fightStopEngagedRatio;
+          if (engagedCount >= turrets.length * stopRatio) {
             continue;
           }
         }
@@ -615,7 +616,8 @@ export class Simulation {
           for (let i = 0; i < turrets.length; i++) {
             if (turrets[i].state === 'engaged') engagedCount++;
           }
-          if (engagedCount >= turrets.length * FIGHT_STOP_ENGAGED_RATIO) {
+          const stopRatio = getUnitBlueprint(unit.unitType).fightStopEngagedRatio;
+          if (engagedCount >= turrets.length * stopRatio) {
             continue;
           }
         }
