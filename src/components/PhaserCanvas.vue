@@ -1994,7 +1994,7 @@ onUnmounted(() => {
 
     <!-- Spectate mode toggle (show menu button when spectating) -->
     <button
-      v-if="showLobby && spectateMode"
+      v-if="!isMobile && showLobby && spectateMode"
       class="spectate-toggle-btn"
       @click="toggleSpectateMode"
       title="Show Menu"
