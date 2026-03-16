@@ -2,7 +2,7 @@ import type { BattleBarConfig } from './types/battle';
 
 export const BATTLE_CONFIG = {
   units: {
-    jackal: { shortName: 'JKL', default: true },
+    jackal: { shortName: 'JKL', default: false },
     lynx: { shortName: 'LNX', default: true },
     daddy: { shortName: 'DDY', default: false },
     badger: { shortName: 'BDG', default: true },
