@@ -96,7 +96,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     min: 'none',
     low: 'simple',
     medium: 'animated',
-    high: 'animated',
+    high: 'full',
     max: 'full',
   },
 
