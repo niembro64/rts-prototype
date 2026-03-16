@@ -107,6 +107,11 @@ function renderImpact(
   const tMult = C.trailMult[qIdx];
   const hasTrails = tMult > 0;
 
+  // Pre-compute direction angles (hoisted out of particle loops)
+  const penAngle = Math.atan2(penDirY, penDirX);
+  const attackAngle = Math.atan2(attackDirY, attackDirX);
+  const velAngle = Math.atan2(velDirY, velDirX);
+
   // ======================================================================
   // ELEMENT 1: COLLISION-RADIUS ZONE — core fireball expanding from collR
   // ======================================================================
@@ -171,7 +176,7 @@ function renderImpact(
       if (p <= 0 || p > 1) continue;
 
       const spread = (seededRandom(i + 501) - 0.5) * C.secParticleSpread;
-      const angle = Math.atan2(penDirY, penDirX) + spread;
+      const angle = penAngle + spread;
       const speed = 0.4 + seededRandom(i + 502) * 0.5;
       const dist = secR * 0.6 + secR * p * C.secParticleDistMult * speed;
       const px = cx + Math.cos(angle) * dist;
@@ -217,7 +222,7 @@ function renderImpact(
       if (p <= 0 || p > 1) continue;
 
       const spread = (seededRandom(i + 301) - 0.5) * C.sparkSpread;
-      const angle = Math.atan2(attackDirY, attackDirX) + spread;
+      const angle = attackAngle + spread;
       const speed = 0.8 + seededRandom(i + 302) * 0.8;
       const dist =
         collR * 0.8 +
@@ -262,7 +267,7 @@ function renderImpact(
       if (p <= 0 || p > 1) continue;
 
       const spread = (seededRandom(i + 401) - 0.5) * C.smokeSpread;
-      const angle = Math.atan2(velDirY, velDirX) + spread;
+      const angle = velAngle + spread;
       const speed = 0.5 + seededRandom(i + 402) * 0.5;
       const dist =
         primR * 0.5 +
@@ -307,7 +312,7 @@ function renderImpact(
       if (p <= 0 || p > 1) continue;
 
       const spread = (seededRandom(i + 201) - 0.5) * C.penSpread;
-      const angle = Math.atan2(penDirY, penDirX) + spread;
+      const angle = penAngle + spread;
       const speed = 0.7 + seededRandom(i + 202) * 0.7;
       const dist =
         primR * 0.4 +
@@ -374,11 +379,13 @@ function renderImpact(
   }
 }
 
-// Seeded random for consistent particles
+// Seeded random for consistent particles — integer hash (no trig)
 function createSeededRandom(seed: number): (i: number) => number {
   return (i: number) => {
-    const x = Math.sin(seed + i * 127.1) * 43758.5453;
-    return x - Math.floor(x);
+    let h = ((seed + i * 127) | 0) * 2654435761;
+    h = ((h >>> 16) ^ h) * 45679;
+    h = ((h >>> 16) ^ h);
+    return (h >>> 0) / 4294967296;
   };
 }
 
@@ -431,6 +438,11 @@ function renderDeath(
   const attackStr = Math.min(attackMag / C.strengthNormalize, C.strengthMax);
   const sFloor = C.strengthFloor;
 
+  // Pre-compute direction angles (hoisted out of particle loops)
+  const velAngle = Math.atan2(velDirY, velDirX);
+  const penAngle = Math.atan2(penDirY, penDirX);
+  const attackAngle = Math.atan2(attackDirY, attackDirX);
+
   // Center drift
   let cx = exp.x;
   let cy = exp.y;
@@ -477,7 +489,6 @@ function renderDeath(
   const smokeN = C.smokeCount[qIdx];
   if (smokeN > 0) {
     const smokeTMult = C.smokeTrailMult[qIdx];
-    const velAngle = Math.atan2(velDirY, velDirX);
     for (let i = 0; i < smokeN; i++) {
       const delay = seededRandom(i + 100) * 0.1;
       const p = Math.max(0, (progress - delay) * 1.5);
@@ -526,7 +537,6 @@ function renderDeath(
   if (debrisN > 0) {
     const debrisTMult = C.debrisTrailMult[qIdx];
     const debrisInners = C.debrisInners[qIdx];
-    const penAngle = Math.atan2(penDirY, penDirX);
     for (let i = 0; i < debrisN; i++) {
       const delay = seededRandom(i + 200) * 0.06;
       const p = Math.max(0, (progress - delay) * 1.4);
@@ -586,7 +596,6 @@ function renderDeath(
     const fullCircle = C.sparkFullCircle[qIdx];
     const dirBias = C.sparkDirBias[qIdx];
     const dualTrail = C.sparkDualTrail[qIdx];
-    const attackAngle = Math.atan2(attackDirY, attackDirX);
 
     for (let i = 0; i < sparkN; i++) {
       const delay = seededRandom(i + 300) * 0.12;
@@ -669,7 +678,6 @@ function renderDeath(
   if (fragmentN > 0) {
     const fragTMult = C.fragmentTrailMult[qIdx];
     const fragInners = C.fragmentInners[qIdx];
-    const attackAngle = Math.atan2(attackDirY, attackDirX);
     for (let i = 0; i < fragmentN; i++) {
       const delay = seededRandom(i + 350) * 0.08;
       const p = clamp01((progress - delay) * 1.8);
@@ -732,7 +740,6 @@ function renderDeath(
   const chunkN = C.chunkCount[qIdx];
   if (chunkN > 0) {
     const chunkInners = C.chunkInners[qIdx];
-    const penAngle = Math.atan2(penDirY, penDirX);
     for (let i = 0; i < chunkN; i++) {
       const delay = seededRandom(i + 400) * 0.08;
       const p = clamp01((progress - delay) * 1.3);

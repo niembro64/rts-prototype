@@ -20,4 +20,5 @@ export {
   drawUnitTreads,
   drawUnitWheels,
   drawOval,
+  setGrateFrameTime,
 } from './GeometryHelpers';

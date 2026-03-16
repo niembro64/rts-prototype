@@ -3,12 +3,12 @@
 
 import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
-import { drawPolygon, drawLegs } from '../helpers';
+import { drawPolygon, drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 import { getUnitBlueprint } from '../../sim/blueprints';
 
-// Pre-allocated reusable point array for abdomen shape (avoids 12 object allocations per frame per unit)
-const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 12 }, () => ({ x: 0, y: 0 }));
+// Pre-allocated reusable point array for abdomen oval
+const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 24 }, () => ({ x: 0, y: 0 }));
 
 export function drawArachnidUnit(
   ctx: UnitRenderContext,
@@ -35,23 +35,10 @@ export function drawArachnidUnit(
   const abdomenLength = r * 1.1; // Long
   const abdomenWidth = r * 0.85; // Wide and chonky
 
-  // Main abdomen shape (dark color)
+  // Main abdomen shape (dark color) — smooth oval
   const abdomenColor = isSelected ? COLORS.UNIT_SELECTED : dark;
   graphics.fillStyle(abdomenColor, 1);
-
-  // Draw abdomen as an elongated oval/egg shape pointing backward — reuse pooled array
-  for (let i = 0; i < 12; i++) {
-    const angle = (i / 12) * Math.PI * 2;
-    const localAngle = angle + Math.PI;
-    const bulge = 1 + 0.3 * Math.pow(Math.cos(localAngle), 2);
-    const rx = abdomenLength * (0.5 + 0.5 * Math.abs(Math.cos(angle))) * bulge;
-    const ry = abdomenWidth * (0.7 + 0.3 * Math.abs(Math.sin(angle)));
-    const localX = Math.cos(angle) * rx * 0.7;
-    const localY = Math.sin(angle) * ry;
-    _abdomenPoints[i].x = abdomenCenterX + cos * localX - sin * localY;
-    _abdomenPoints[i].y = abdomenCenterY + sin * localX + cos * localY;
-  }
-  graphics.fillPoints(_abdomenPoints, true);
+  drawOval(graphics, _abdomenPoints, abdomenCenterX, abdomenCenterY, abdomenWidth, abdomenLength, cos, sin, 24);
 
   // Red hourglass marking (like a black widow spider) — shown at low + high
   {

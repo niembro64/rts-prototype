@@ -33,9 +33,9 @@ import type {
   ProjectileTrail,
 } from './types';
 import { COLORS } from './types';
-import { createColorPalette } from './helpers';
+import { createColorPalette, setGrateFrameTime } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
-import { drawTurret } from './TurretRenderer';
+import { drawTurret, setTurretFrameTime } from './TurretRenderer';
 import {
   drawScoutUnit,
   drawBurstUnit,
@@ -412,6 +412,9 @@ export class EntityRenderer {
 
     const camera = this.scene.cameras.main;
     setCurrentZoom(camera.zoom);
+    const nowSec = Date.now() / 1000;
+    setTurretFrameTime(nowSec);
+    setGrateFrameTime(nowSec);
     const gfxConfig = getGraphicsConfig();
     this.sprayParticleTime += 16;
     this.collectVisibleEntities();

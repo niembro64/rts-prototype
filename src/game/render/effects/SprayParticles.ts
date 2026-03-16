@@ -4,6 +4,16 @@ import Phaser from 'phaser';
 import type { SprayTarget } from '../../sim/commanderAbilities';
 import { magnitude } from '../../math';
 import { getPlayerColor, getPlayerColorLight } from '../helpers/ColorPalette';
+import { getEffectiveQuality } from '@/clientBarConfig';
+
+// LOD-based particle count multipliers
+const SPRAY_LOD_MULT: Record<string, number> = {
+  min: 0.15,
+  low: 0.3,
+  medium: 0.5,
+  high: 0.8,
+  max: 1.0,
+};
 
 /**
  * Render spray effect from commander to target (build/heal)
@@ -39,12 +49,12 @@ export function renderSprayEffect(
     targetSize = target.target.radius * 2;
   }
 
-  // Scale particle count based on intensity (energy rate)
-  // At full intensity: 12 streams x 20 particles = 240 particles
-  // At minimum (10%): 4 streams x 6 particles = 24 particles
+  // Scale particle count based on intensity and LOD
   const effectiveIntensity = intensity ?? 1;
-  const streamCount = Math.max(4, Math.floor(12 * effectiveIntensity));
-  const particlesPerStream = Math.max(6, Math.floor(20 * effectiveIntensity));
+  const lodMult = SPRAY_LOD_MULT[getEffectiveQuality()] ?? 1;
+  const scaledIntensity = effectiveIntensity * lodMult;
+  const streamCount = Math.max(2, Math.floor(12 * scaledIntensity));
+  const particlesPerStream = Math.max(4, Math.floor(20 * scaledIntensity));
   const baseTime = sprayParticleTime;
 
   for (let stream = 0; stream < streamCount; stream++) {
@@ -102,8 +112,8 @@ export function renderSprayEffect(
     }
   }
 
-  // Draw additional splatter particles at the target (scaled by intensity)
-  const splatterCount = Math.max(8, Math.floor(20 * effectiveIntensity));
+  // Draw additional splatter particles at the target (scaled by intensity and LOD)
+  const splatterCount = Math.max(4, Math.floor(20 * scaledIntensity));
   for (let i = 0; i < splatterCount; i++) {
     const angle = (baseTime / 200 + i / splatterCount) * Math.PI * 2;
     const splatterDist =

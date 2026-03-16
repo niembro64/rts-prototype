@@ -640,7 +640,8 @@ export class DebrisSystem {
     for (let i = 0; i < this.fragments.length; i++) {
       const frag = this.fragments[i];
       frag.age += dtMs;
-      const fadeBlend = 1 - Math.exp(-frag.age / debrisFadeTau);
+      const xFade = frag.age / debrisFadeTau;
+      const fadeBlend = 1 - 1 / (1 + xFade + 0.48 * xFade * xFade + 0.235 * xFade * xFade * xFade);
       if (fadeBlend < 1 - burnCutoff) {
         // Update physics
         const dtSec = dtMs / 1000;

@@ -9,6 +9,10 @@ import type { TankTreadSetup, VehicleWheelSetup } from '../Tread';
 import { getUnitBlueprint } from '../../sim/blueprints';
 import type { TreadConfig, WheelConfig } from '../../sim/blueprints/types';
 
+// Frame-batched time — set once per render frame to avoid per-grate Date.now() calls
+let _grateNowSec = 0;
+export function setGrateFrameTime(nowSec: number): void { _grateNowSec = nowSec; }
+
 // Reusable point buffers to avoid per-call allocations
 const _rectPoints = [
   { x: 0, y: 0 },
@@ -220,7 +224,7 @@ export function drawForceFieldGrate(
 
   const TWO_PI = Math.PI * 2;
   const SQRT3 = Math.sqrt(3);
-  const time = Date.now() / 1000;
+  const time = _grateNowSec;
   const freq = TWO_PI / (transitionTimeMs / 1000);
   const BLUE = 0x3366ff;
   const LIGHT_BLUE = lerpColor(BLUE, COLORS.WHITE, 0.5);

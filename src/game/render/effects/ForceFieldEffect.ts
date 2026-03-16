@@ -93,6 +93,9 @@ export function renderForceFieldEffect(
   const rangeBand = maxRange - innerRange;
   if (rangeBand <= 0) return;
 
+  // Single Date.now() for entire effect (avoid per-particle calls)
+  const nowMs = Date.now();
+
   // 2. Electric arcs (enhanced only)
   if (isEnhanced) {
     drawElectricArcs(
@@ -106,6 +109,7 @@ export function renderForceFieldEffect(
       color,
       v,
       hash,
+      nowMs,
     );
   }
 
@@ -116,7 +120,7 @@ export function renderForceFieldEffect(
 
   const dashLen = Math.max(rangeBand * v.particleLength, 6);
 
-  const realTime = Date.now() / 1000;
+  const realTime = nowMs / 1000;
   const pxPerSec = v.particleSpeed * 20 * speedMult;
   const REF_RANGE = 1200;
 
@@ -150,25 +154,20 @@ export function renderForceFieldEffect(
     const edgeFade = Math.min(distFromInner / 20, distFromOuter / 20, 1);
     const alpha = particleAlpha * edgeFade;
 
+    // Cache cos/sin for this dash (reused across main + trail segments)
+    const cosAngle = Math.cos(lineAngle);
+    const sinAngle = Math.sin(lineAngle);
+
     // Draw the main particle dash
     graphics.lineStyle(lineThickness, color, alpha);
     graphics.beginPath();
-    graphics.moveTo(
-      x + Math.cos(lineAngle) * rNear,
-      y + Math.sin(lineAngle) * rNear,
-    );
-    graphics.lineTo(
-      x + Math.cos(lineAngle) * rFar,
-      y + Math.sin(lineAngle) * rFar,
-    );
+    graphics.moveTo(x + cosAngle * rNear, y + sinAngle * rNear);
+    graphics.lineTo(x + cosAngle * rFar, y + sinAngle * rFar);
     graphics.strokePath();
 
     // Draw trailing ghost segments (enhanced only)
     if (isEnhanced) {
       const trailSpacing = dashLen * v.trailSpacing;
-      // Trail goes opposite to travel direction
-      // Push outward: particle moves outward, trail is behind (inward)
-      // Pull inward: particle moves inward, trail is behind (outward)
       const trailDir = pushOutward ? -1 : 1;
 
       for (let t = 1; t <= v.trailSegments; t++) {
@@ -179,21 +178,14 @@ export function renderForceFieldEffect(
         const tNear = rNear + trailOffset;
         const tFar = rFar + trailOffset;
 
-        // Clamp to visible band
         const cNear = Math.max(tNear, innerRange);
         const cFar = Math.min(tFar, maxRange);
         if (cFar <= cNear) continue;
 
         graphics.lineStyle(lineThickness, color, trailAlpha);
         graphics.beginPath();
-        graphics.moveTo(
-          x + Math.cos(lineAngle) * cNear,
-          y + Math.sin(lineAngle) * cNear,
-        );
-        graphics.lineTo(
-          x + Math.cos(lineAngle) * cFar,
-          y + Math.sin(lineAngle) * cFar,
-        );
+        graphics.moveTo(x + cosAngle * cNear, y + sinAngle * cNear);
+        graphics.lineTo(x + cosAngle * cFar, y + sinAngle * cFar);
         graphics.strokePath();
       }
     }
@@ -259,9 +251,10 @@ function drawElectricArcs(
   color: number,
   v: typeof FORCE_FIELD_VISUAL,
   hash: (n: number) => number,
+  nowMs: number,
 ): void {
   // Time-based seed that changes every arcFlickerMs — gives the crackle effect
-  const flickerSeed = Math.floor(Date.now() / v.arcFlickerMs);
+  const flickerSeed = Math.floor(nowMs / v.arcFlickerMs);
 
   for (let i = 0; i < v.arcCount; i++) {
     // Deterministic but rapidly changing arc placement

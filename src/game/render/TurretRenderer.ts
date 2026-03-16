@@ -10,6 +10,10 @@ import { renderForceFieldEffect } from './effects';
 import type { BarrelShape, ForceFieldTurretConfig } from '../../config';
 import type { TurretStyle, ForceTurretStyle } from '@/types/graphics';
 
+// Frame-batched time — set once per render frame to avoid per-turret Date.now() calls
+let _nowSec = 0;
+export function setTurretFrameTime(nowSec: number): void { _nowSec = nowSec; }
+
 /**
  * Draw a weapon's turret at the given mount point.
  * Dispatches to the appropriate turret renderer based on turretConfig.type.
@@ -218,10 +222,9 @@ function drawForceFieldTurretSimple(
   const transitionTimeMs = weapon.config.shot.type === 'force' ? weapon.config.shot.transitionTime : 1000;
 
   // Single pulsing circle at mount point — lerps white → blue with progress
-  // Use the same width as the full grate's outermost circle (wFactor(0) = 1)
   let color: number = COLORS.WHITE;
   if (progress > 0) {
-    const time = Date.now() / 1000;
+    const time = _nowSec;
     const freq = (Math.PI * 2) / (transitionTimeMs / 1000);
     const t = (Math.sin(time * freq) * 0.5 + 0.5) * progress;
     // Lerp from white (0xf0f0f0) toward blue (0x3366ff)

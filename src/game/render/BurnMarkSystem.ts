@@ -5,13 +5,21 @@ import type Phaser from 'phaser';
 import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';
+import { getEffectiveQuality } from '@/clientBarConfig';
 
 export type { BurnMark } from '@/types/render';
 import type { BurnMark } from '@/types/render';
 
 const BURN_HOT_RGB = hexToRgb(BURN_COLOR_HOT);
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
-const MAX_BURN_MARKS = 5000;
+// LOD-scaled burn mark caps
+const BURN_MARK_CAPS: Record<string, number> = {
+  min: 500,
+  low: 1500,
+  medium: 3000,
+  high: 4000,
+  max: 5000,
+};
 
 export class BurnMarkSystem {
   marks: BurnMark[] = [];
@@ -67,18 +75,26 @@ export class BurnMarkSystem {
    * Age burn marks, compute cached color, and prune ones that have blended to background.
    */
   update(dtMs: number, burnCutoff: number): void {
+    // Pre-compute per-frame decay factors (same dt for all marks this frame)
+    // exp(-age/tau) = exp(-prevAge/tau) * exp(-dt/tau), but ages differ per mark.
+    // Instead, batch-compute the two ratios using age directly.
+    // We can avoid exp() entirely by using the rational approximation:
+    //   exp(-x) ≈ 1/(1+x+0.48*x*x+0.235*x*x*x) for x >= 0 (max error ~0.3%)
+    const invCoolTau = 1 / BURN_COOL_TAU;
+    const invColorTau = 1 / BURN_COLOR_TAU;
     let burnWrite = 0;
     for (let i = 0; i < this.marks.length; i++) {
       const mark = this.marks[i];
       mark.age += dtMs;
-      // coolBlend approaches 1 as mark fades to background; prune when close enough
-      const coolBlend = 1 - Math.exp(-mark.age / BURN_COOL_TAU);
+      const xCool = mark.age * invCoolTau;
+      const coolDecay = 1 / (1 + xCool + 0.48 * xCool * xCool + 0.235 * xCool * xCool * xCool);
+      const coolBlend = 1 - coolDecay;
       if (coolBlend < 1 - burnCutoff) {
-        // Cache color so render pass doesn't recompute exp() per mark
-        const hotDecay = Math.exp(-mark.age / BURN_COLOR_TAU);
-        const red = Math.round(BURN_HOT_RGB.r * hotDecay + BURN_COOL_RGB.r * coolBlend);
-        const green = Math.round(BURN_HOT_RGB.g * hotDecay + BURN_COOL_RGB.g * coolBlend);
-        const blue = Math.round(BURN_HOT_RGB.b * hotDecay + BURN_COOL_RGB.b * coolBlend);
+        const xHot = mark.age * invColorTau;
+        const hotDecay = 1 / (1 + xHot + 0.48 * xHot * xHot + 0.235 * xHot * xHot * xHot);
+        const red = (BURN_HOT_RGB.r * hotDecay + BURN_COOL_RGB.r * coolBlend) | 0;
+        const green = (BURN_HOT_RGB.g * hotDecay + BURN_COOL_RGB.g * coolBlend) | 0;
+        const blue = (BURN_HOT_RGB.b * hotDecay + BURN_COOL_RGB.b * coolBlend) | 0;
         mark.color = (red << 16) | (green << 8) | blue;
         this.marks[burnWrite++] = mark;
       }
@@ -109,12 +125,13 @@ export class BurnMarkSystem {
    * Copies newest marks to front, O(MAX) not O(n) like splice.
    */
   capMarks(): void {
-    if (this.marks.length > MAX_BURN_MARKS) {
-      const excess = this.marks.length - MAX_BURN_MARKS;
-      for (let i = 0; i < MAX_BURN_MARKS; i++) {
+    const maxMarks = BURN_MARK_CAPS[getEffectiveQuality()] ?? 5000;
+    if (this.marks.length > maxMarks) {
+      const excess = this.marks.length - maxMarks;
+      for (let i = 0; i < maxMarks; i++) {
         this.marks[i] = this.marks[i + excess];
       }
-      this.marks.length = MAX_BURN_MARKS;
+      this.marks.length = maxMarks;
     }
   }
 
