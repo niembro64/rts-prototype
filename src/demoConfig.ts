@@ -57,4 +57,7 @@ export const DEMO_CONFIG = {
    * true = cheaper units queued more often. false = all units equally likely.
    */
   aiInverseCostWeighting: true,
+
+  /** Number of units per player to spawn near map center on startup. */
+  centerSpawnPerPlayer: 8,
 };

@@ -8,6 +8,7 @@ import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../sim/blueprints';
 import {
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
+import { DEMO_CONFIG } from '../../demoConfig';
 
 // Available unit types for background spawning (excludes commander)
 export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];
@@ -144,7 +145,7 @@ export function spawnBackgroundUnitsStandalone(
     const cx = mapWidth / 2;
     const cy = mapHeight / 2;
     const centerRadius = 400;
-    const centerUnitsPerPlayer = 8;
+    const centerUnitsPerPlayer = DEMO_CONFIG.centerSpawnPerPlayer;
     for (let p = 1; p <= numPlayers; p++) {
       const pUnits = world.getUnitsByPlayer(p as PlayerId).length;
       for (let i = 0; i < centerUnitsPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
