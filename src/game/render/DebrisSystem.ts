@@ -6,7 +6,7 @@ import { BURN_COLOR_COOL, hexToRgb } from '../../config';
 import { DEBRIS_CONFIG } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { TreadConfig, WheelConfig } from '../sim/blueprints/types';
-import { getEffectiveQuality } from '@/clientBarConfig';
+import { getEffectiveQuality, getGraphicsConfig } from '@/clientBarConfig';
 
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 
@@ -713,17 +713,19 @@ export class DebrisSystem {
         graphics.fillStyle(frag.color, 1);
         graphics.fillPoints(_debrisRectPts, true);
       } else {
-        // Line segment with rounded caps
+        // Line segment (with rounded caps at medium+ detail)
         const x1 = frag.x - fragCos * halfLen;
         const y1 = frag.y - fragSin * halfLen;
         const x2 = frag.x + fragCos * halfLen;
         const y2 = frag.y + fragSin * halfLen;
         graphics.lineStyle(frag.width, frag.color, 1);
         graphics.lineBetween(x1, y1, x2, y2);
-        const capR = frag.width / 2;
-        graphics.fillStyle(frag.color, 1);
-        graphics.fillCircle(x1, y1, capR);
-        graphics.fillCircle(x2, y2, capR);
+        if (getGraphicsConfig().chassisDetail) {
+          const capR = frag.width / 2;
+          graphics.fillStyle(frag.color, 1);
+          graphics.fillCircle(x1, y1, capR);
+          graphics.fillCircle(x2, y2, capR);
+        }
       }
     }
   }

@@ -185,5 +185,19 @@ export function spawnBackgroundUnitsStandalone(
     if (unit) spawned.push(unit);
   }
 
+  // Center units — one random unit per player at the map center
+  if (initialSpawn) {
+    const cx = mapWidth / 2;
+    const cy = mapHeight / 2;
+    for (let p = 1; p <= numPlayers; p++) {
+      const unit = spawnBackgroundUnitStandalone(world, physics, p as PlayerId,
+        cx, cx, cy, cy,
+        spawnMargin, mapWidth - spawnMargin, spawnMargin, mapHeight - spawnMargin,
+        Math.random() * Math.PI * 2, allowedTypes
+      );
+      if (unit) spawned.push(unit);
+    }
+  }
+
   return spawned;
 }

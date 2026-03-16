@@ -5,7 +5,7 @@ import type Phaser from 'phaser';
 import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';
-import { getEffectiveQuality } from '@/clientBarConfig';
+import { getEffectiveQuality, getGraphicsConfig } from '@/clientBarConfig';
 
 export type { BurnMark } from '@/types/render';
 import type { BurnMark } from '@/types/render';
@@ -113,10 +113,12 @@ export class BurnMarkSystem {
       if (!isInViewport(midX, midY, 50)) continue;
       graphics.lineStyle(mark.width, mark.color, 1);
       graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);
-      const r = mark.width / 2;
-      graphics.fillStyle(mark.color, 1);
-      graphics.fillCircle(mark.x1, mark.y1, r);
-      graphics.fillCircle(mark.x2, mark.y2, r);
+      if (getGraphicsConfig().chassisDetail) {
+        const r = mark.width / 2;
+        graphics.fillStyle(mark.color, 1);
+        graphics.fillCircle(mark.x1, mark.y1, r);
+        graphics.fillCircle(mark.x2, mark.y2, r);
+      }
     }
   }
 

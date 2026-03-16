@@ -4,6 +4,7 @@ import Phaser from 'phaser';
 import type { EntitySource } from '../types';
 import { COLORS, UNIT_NAMES } from '../types';
 import { drawStar } from '../helpers';
+import { getGraphicsConfig } from '@/clientBarConfig';
 
 /**
  * Render labels above selected units and buildings
@@ -66,18 +67,17 @@ export function renderCommanderCrown(
   graphics.lineStyle(2, COLORS.COMMANDER, 0.9);
   graphics.strokeCircle(x, y, radius + 8);
 
-  // Crown points (5 points)
-  const dotCount = 5;
-  for (let i = 0; i < dotCount; i++) {
-    const angle = (i / dotCount) * Math.PI * 2 - Math.PI / 2;
-    const dotX = x + Math.cos(angle) * (radius + 8);
-    const dotY = y + Math.sin(angle) * (radius + 8);
-    // Star shape at each point
-    graphics.fillStyle(COLORS.COMMANDER, 1);
-    drawStar(graphics, dotX, dotY, 4, 5);
+  // Crown detail (stars + inner ring) — medium+ only
+  if (getGraphicsConfig().chassisDetail) {
+    const dotCount = 5;
+    for (let i = 0; i < dotCount; i++) {
+      const angle = (i / dotCount) * Math.PI * 2 - Math.PI / 2;
+      const dotX = x + Math.cos(angle) * (radius + 8);
+      const dotY = y + Math.sin(angle) * (radius + 8);
+      graphics.fillStyle(COLORS.COMMANDER, 1);
+      drawStar(graphics, dotX, dotY, 4, 5);
+    }
+    graphics.lineStyle(1, COLORS.COMMANDER, 0.5);
+    graphics.strokeCircle(x, y, radius + 3);
   }
-
-  // Inner gold ring
-  graphics.lineStyle(1, COLORS.COMMANDER, 0.5);
-  graphics.strokeCircle(x, y, radius + 3);
 }

@@ -508,9 +508,10 @@ export class EntityRenderer {
     for (const entity of this.visibleProjectiles) {
       this._reusableIdSet.add(entity.id);
 
-      // Sample position into trail ring buffer for non-beam projectiles
+      // Sample position into trail ring buffer for non-beam projectiles (skip for dot/core — no trails)
       let trail: ProjectileTrail | undefined;
-      if (entity.projectile && entity.projectile.projectileType !== 'beam' && entity.projectile.projectileType !== 'laser') {
+      const pStyle = gfxConfig.projectileStyle;
+      if (pStyle !== 'dot' && pStyle !== 'core' && entity.projectile && entity.projectile.projectileType !== 'beam' && entity.projectile.projectileType !== 'laser') {
         trail = this.projectileTrails.get(entity.id);
         const isDgun = !!entity.dgunProjectile;
         const trailCap = isDgun
