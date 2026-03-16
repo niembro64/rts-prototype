@@ -368,8 +368,10 @@ export function drawLegs(
   dark: number,
   light: number,
 ): void {
-  const lc = getLegConfig(style);
   const legMode = getGraphicsConfig().legs;
+  if (legMode === 'none') return;
+
+  const lc = getLegConfig(style);
   const count = legs.length;
 
   // Pre-compute cos/sin once for all legs on this unit
@@ -378,26 +380,13 @@ export function drawLegs(
 
   if (legMode === 'simple') {
     // Simple mode: single straight line per leg (no IK solve)
-    // Phase 1: compute all positions
-    for (let i = 0; i < count; i++) {
-      const leg = legs[i];
-      const attach = leg.getAttachmentPoint(x, y, cos, sin);
-      _legAttach[i].x = attach.x;
-      _legAttach[i].y = attach.y;
-      const foot = leg.getFootPosition();
-      _legFoot[i].x = foot.x;
-      _legFoot[i].y = foot.y;
-    }
-    // Phase 2: single style, draw all lines
     const thickness = Math.max(lc.upperThickness, lc.lowerThickness);
     graphics.lineStyle(thickness, dark, 1);
     for (let i = 0; i < count; i++) {
-      graphics.lineBetween(
-        _legAttach[i].x,
-        _legAttach[i].y,
-        _legFoot[i].x,
-        _legFoot[i].y,
-      );
+      const leg = legs[i];
+      const attach = leg.getAttachmentPoint(x, y, cos, sin);
+      const foot = leg.getFootPosition();
+      graphics.lineBetween(attach.x, attach.y, foot.x, foot.y);
     }
     return;
   }

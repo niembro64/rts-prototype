@@ -6,9 +6,8 @@ import { drawPolygon, drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 import { getUnitBlueprint } from '../../sim/blueprints';
 
-// Pre-allocated reusable point arrays (avoids allocations per frame per unit)
-const _bodyPoints: { x: number; y: number }[] = Array.from({ length: 12 }, () => ({ x: 0, y: 0 }));
-const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 10 }, () => ({ x: 0, y: 0 }));
+// Pre-allocated reusable point array for smooth abdomen oval
+const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 24 }, () => ({ x: 0, y: 0 }));
 
 export function drawBeamUnit(
   ctx: UnitRenderContext,
@@ -53,15 +52,15 @@ export function drawBeamUnit(
     }
   }
 
-  // Abdomen (butt segment) — ~1.5x the main body, large oval behind
+  // Abdomen (butt segment) — large oval behind
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
   {
     const abdCx = x + cos * r * (bodyOff - 0.95);
     const abdCy = y + sin * r * (bodyOff - 0.95);
     const abdRx = r * 0.65;  // half-width (lateral)
-    const abdRy = r * 0.9;   // half-length (along body axis) — longer than wide
+    const abdRy = r * 0.9;   // half-length (along body axis)
     graphics.fillStyle(bodyColor, 1);
-    drawOval(graphics, _abdomenPoints, abdCx, abdCy, abdRx, abdRy, cos, sin, 10);
+    drawOval(graphics, _abdomenPoints, abdCx, abdCy, abdRx, abdRy, cos, sin, 24);
 
     if (ctx.chassisDetail) {
       // Dark stripe on abdomen
@@ -70,19 +69,13 @@ export function drawBeamUnit(
     }
   }
 
-  // Main body (round cephalothorax) — centered on turret mount
+  // Main body (round cephalothorax) — circle centered on turret mount
+  const bodyCx = x + cos * r * bodyOff;
+  const bodyCy = y + sin * r * bodyOff;
   graphics.fillStyle(bodyColor, 1);
-  {
-    const bodyR = r * 0.6;
-    const bodyCx = x + cos * r * bodyOff;
-    const bodyCy = y + sin * r * bodyOff;
-    drawOval(graphics, _bodyPoints, bodyCx, bodyCy, bodyR, bodyR, cos, sin, 12);
-  }
+  graphics.fillCircle(bodyCx, bodyCy, r * 0.6);
 
   if (ctx.chassisDetail) {
-    const bodyCx = x + cos * r * bodyOff;
-    const bodyCy = y + sin * r * bodyOff;
-
     // Inner carapace pattern (dark)
     graphics.fillStyle(dark, 1);
     drawPolygon(graphics, bodyCx, bodyCy, r * 0.35, 6, bodyRot);

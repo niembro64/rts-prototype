@@ -6,10 +6,8 @@ import { drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 import { getUnitBlueprint } from '../../sim/blueprints';
 
-// Pre-allocated reusable point arrays to avoid per-frame allocations
-const _bodyPoints: { x: number; y: number }[] = Array.from({ length: 10 }, () => ({ x: 0, y: 0 }));
-const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 12 }, () => ({ x: 0, y: 0 }));
-const _scutumPoints: { x: number; y: number }[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+// Pre-allocated reusable point arrays for smooth ovals
+const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 24 }, () => ({ x: 0, y: 0 }));
 const _headPoints: { x: number; y: number }[] = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
 
 export function drawSnipeUnit(
@@ -29,49 +27,33 @@ export function drawSnipeUnit(
   // Legs (always drawn at low+high)
   drawLegs(graphics, legs, 'tick', x, y, bodyRot, dark, light);
 
-  // Abdomen (idiosoma) — huge engorged body behind the tiny leg piece, centered on turret mount
+  // Abdomen (idiosoma) — large engorged body behind the legs, centered on turret mount
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
+  const abdCx = x + cos * r * mountOff;
+  const abdCy = y + sin * r * mountOff;
   {
-    const abdCx = x + cos * r * mountOff;
-    const abdCy = y + sin * r * mountOff;
     const abdRx = r * 0.35;  // half-width (lateral)
-    const abdRy = r * 0.5;   // half-length (along body axis) — longer than wide
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      // Bulge wider at the rear
-      const along = Math.cos(angle);
-      const bulge = 1 + 0.15 * Math.max(0, -along);
-      const lx = Math.cos(angle) * abdRy * bulge;
-      const ly = Math.sin(angle) * abdRx * bulge;
-      _abdomenPoints[i].x = abdCx + cos * lx - sin * ly;
-      _abdomenPoints[i].y = abdCy + sin * lx + cos * ly;
-    }
+    const abdRy = r * 0.5;   // half-length (along body axis)
     graphics.fillStyle(bodyColor, 1);
-    graphics.fillPoints(_abdomenPoints, true);
-
-    // Dark outline
+    drawOval(graphics, _abdomenPoints, abdCx, abdCy, abdRx, abdRy, cos, sin, 24);
     graphics.lineStyle(1, dark, 1);
     graphics.strokePoints(_abdomenPoints, true);
 
     if (ctx.chassisDetail) {
-      // Scutum (dorsal shield) on abdomen
-      const scutumR = r * 0.25;
+      // Scutum (dorsal shield) on abdomen — small circle
       graphics.fillStyle(dark, 0.4);
-      drawOval(graphics, _scutumPoints, abdCx, abdCy, scutumR, scutumR * 0.8, cos, sin, 8);
+      graphics.fillCircle(abdCx, abdCy, r * 0.22);
     }
   }
 
-  // Tiny cephalothorax (leg attachment piece) — super small
+  // Tiny cephalothorax (leg attachment piece) — small circle
   {
-    const bodyLen = r * 0.13;
-    const bodyWide = r * 0.1;
     const bodyCx = x + cos * r * (mountOff + 0.7);
     const bodyCy = y + sin * r * (mountOff + 0.7);
-
     graphics.fillStyle(bodyColor, 1);
-    drawOval(graphics, _bodyPoints, bodyCx, bodyCy, bodyWide, bodyLen, cos, sin, 10);
+    graphics.fillCircle(bodyCx, bodyCy, r * 0.11);
     graphics.lineStyle(1, dark, 1);
-    graphics.strokePoints(_bodyPoints, true);
+    graphics.strokeCircle(bodyCx, bodyCy, r * 0.11);
   }
 
   // Capitulum (head/mouthparts) — small pointed shape at front

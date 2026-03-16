@@ -77,12 +77,12 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // Leg rendering for widow/daddy/tarantula/tick units
   // 'none': no legs drawn or updated,
   // 'simple': straight line per leg (no IK),
-  // 'animated': full 2-segment IK legs, 'full': IK legs + joint circles (hip/knee/foot)
+  // 'full': 2-segment IK legs + joint circles (hip/knee/foot)
   LEGS: {
     min: 'none',
     low: 'simple',
-    medium: 'animated',
-    high: 'animated',
+    medium: 'full',
+    high: 'full',
     max: 'full',
   },
 

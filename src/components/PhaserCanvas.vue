@@ -11,6 +11,7 @@ import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap, { type MinimapData } from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import CombatStatsModal from './CombatStatsModal.vue';
+import SoundTestModal from './SoundTestModal.vue';
 import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
@@ -242,6 +243,7 @@ const minimapData = reactive<MinimapData>({
 // Combat stats state
 const combatStats = ref<NetworkServerSnapshotCombatStats | null>(null);
 const showCombatStats = ref(COMBAT_STATS_VISIBLE_ON_LOAD);
+const showSoundTest = ref(false);
 const combatStatsViewMode = ref<'global' | 'player'>('global');
 const combatStatsHistory = ref<StatsSnapshot[]>([]);
 let statsHistoryStartTime = 0;
@@ -1122,6 +1124,9 @@ function dismissGameOver(): void {
 function handleCombatStatsKeydown(e: KeyboardEvent): void {
   if (e.key === '`') {
     showCombatStats.value = !showCombatStats.value;
+  }
+  if (e.key === '~') {
+    showSoundTest.value = !showSoundTest.value;
   }
 }
 
@@ -2005,6 +2010,12 @@ onUnmounted(() => {
       :stats-history="combatStatsHistory"
       @update:view-mode="combatStatsViewMode = $event"
       @close="showCombatStats = false"
+    />
+
+    <!-- Sound Test Modal -->
+    <SoundTestModal
+      :visible="showSoundTest"
+      @close="showSoundTest = false"
     />
 
     <!-- Game Over Banner (dismissible, game keeps running) -->

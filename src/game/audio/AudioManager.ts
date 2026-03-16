@@ -206,6 +206,22 @@ export class AudioManager {
     updateContinuousZoom(this.ctx, sound, zoomVolume);
   }
 
+  // ==================== DIRECT SYNTH ACCESS ====================
+
+  // Play a raw synth by name (for sound test UI)
+  playSynth(synthName: string, speed: number = 1, volume: number = 1): void {
+    const fn = SYNTH_DISPATCH[synthName];
+    if (!fn) return;
+    const tk = this.getToolkit();
+    if (!tk) return;
+    fn(tk, speed, volume * this.sfxVolume);
+  }
+
+  // Get all available synth names
+  getSynthNames(): string[] {
+    return Object.keys(SYNTH_DISPATCH);
+  }
+
   // ==================== VOLUME CONTROLS ====================
 
   getContext(): AudioContext | null { return this.ctx; }

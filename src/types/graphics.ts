@@ -21,7 +21,7 @@ export type DeathExplosionStyle =
 export type TurretStyle = 'none' | 'simple' | 'full';
 export type ForceTurretStyle = 'none' | 'simple' | 'full';
 export type UnitShape = 'circles' | 'full';
-export type LegStyle = 'none' | 'simple' | 'animated' | 'full';
+export type LegStyle = 'none' | 'simple' | 'full';
 
 export type GraphicsConfig = {
   unitShape: UnitShape;

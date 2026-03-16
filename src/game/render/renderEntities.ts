@@ -656,12 +656,14 @@ export class EntityRenderer {
     }
     const renderer = bp?.renderer ?? 'scout';
 
+    // Skip leg object creation when legs are disabled (LOD 'none')
+    const legsEnabled = gfx.legs !== 'none';
+    const emptyLegs: import('../render/ArachnidLeg').ArachnidLeg[] = [];
+    const getLegs = () => legsEnabled ? this.locomotion.getOrCreateLegs(entity, unitType) : emptyLegs;
+
     switch (renderer) {
       case 'commander':
-        drawCommanderUnit(
-          ctx,
-          this.locomotion.getOrCreateLegs(entity, unitType),
-        );
+        drawCommanderUnit(ctx, getLegs());
         break;
       case 'scout':
         drawScoutUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
@@ -670,10 +672,7 @@ export class EntityRenderer {
         drawBurstUnit(ctx, this.locomotion.getTankTreads(entity.id));
         break;
       case 'forceField':
-        drawForceFieldUnit(
-          ctx,
-          this.locomotion.getOrCreateLegs(entity, unitType),
-        );
+        drawForceFieldUnit(ctx, getLegs());
         break;
       case 'brawl':
         drawBrawlUnit(ctx, this.locomotion.getTankTreads(entity.id));
@@ -682,7 +681,7 @@ export class EntityRenderer {
         drawMortarUnit(ctx, this.locomotion.getVehicleWheels(entity.id));
         break;
       case 'snipe':
-        drawSnipeUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType));
+        drawSnipeUnit(ctx, getLegs());
         break;
       case 'tank':
         drawTankUnit(ctx, this.locomotion.getTankTreads(entity.id));
@@ -691,13 +690,10 @@ export class EntityRenderer {
         drawHippoUnit(ctx, this.locomotion.getTankTreads(entity.id));
         break;
       case 'arachnid':
-        drawArachnidUnit(
-          ctx,
-          this.locomotion.getOrCreateLegs(entity, unitType),
-        );
+        drawArachnidUnit(ctx, getLegs());
         break;
       case 'beam':
-        drawBeamUnit(ctx, this.locomotion.getOrCreateLegs(entity, unitType));
+        drawBeamUnit(ctx, getLegs());
         break;
       case 'loris':
         drawLorisUnit(ctx, this.locomotion.getTankTreads(entity.id));
