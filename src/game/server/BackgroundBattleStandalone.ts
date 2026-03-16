@@ -185,17 +185,24 @@ export function spawnBackgroundUnitsStandalone(
     if (unit) spawned.push(unit);
   }
 
-  // Center units — one random unit per player at the map center
+  // Center cluster — spawn units near the map center so combat starts immediately
   if (initialSpawn) {
     const cx = mapWidth / 2;
     const cy = mapHeight / 2;
+    const centerRadius = 400;
+    const centerUnitsPerPlayer = 8;
     for (let p = 1; p <= numPlayers; p++) {
-      const unit = spawnBackgroundUnitStandalone(world, physics, p as PlayerId,
-        cx, cx, cy, cy,
-        spawnMargin, mapWidth - spawnMargin, spawnMargin, mapHeight - spawnMargin,
-        Math.random() * Math.PI * 2, allowedTypes
-      );
-      if (unit) spawned.push(unit);
+      const pUnits = world.getUnitsByPlayer(p as PlayerId).length;
+      for (let i = 0; i < centerUnitsPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
+        const unit = spawnBackgroundUnitStandalone(world, physics, p as PlayerId,
+          cx - centerRadius, cx + centerRadius,
+          cy - centerRadius, cy + centerRadius,
+          cx - centerRadius, cx + centerRadius,
+          cy - centerRadius, cy + centerRadius,
+          Math.random() * Math.PI * 2, allowedTypes
+        );
+        if (unit) spawned.push(unit);
+      }
     }
   }
 
