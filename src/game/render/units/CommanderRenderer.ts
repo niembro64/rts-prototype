@@ -85,39 +85,54 @@ export function drawCommanderUnit(
     }
   }
 
-  // Main body — oval chassis
-  graphics.fillStyle(dark, 1);
-  drawOval(graphics, _bodyPoints, x, y, r * 0.7, r * 0.85, cos, sin, 24);
-
-  // Inner armor plating — smaller oval
   const bodyColor = isSelected ? COLORS.UNIT_SELECTED : base;
+
+  // ======================================================================
+  // REAR SEGMENT — large armored abdomen
+  // ======================================================================
+  const rearOffset = r * -0.45;
+  const rearCx = x + cos * rearOffset;
+  const rearCy = y + sin * rearOffset;
+  graphics.fillStyle(dark, 1);
+  drawOval(graphics, _bodyPoints, rearCx, rearCy, r * 0.65, r * 0.7, cos, sin, 24);
   graphics.fillStyle(bodyColor, 1);
-  drawOval(graphics, _bodyPoints, x, y, r * 0.5, r * 0.6, cos, sin, 24);
+  drawOval(graphics, _bodyPoints, rearCx, rearCy, r * 0.5, r * 0.55, cos, sin, 24);
+
+  // ======================================================================
+  // FRONT SEGMENT — smaller prosoma / turret platform
+  // ======================================================================
+  const frontOffset = r * 0.4;
+  const frontCx = x + cos * frontOffset;
+  const frontCy = y + sin * frontOffset;
+  graphics.fillStyle(dark, 1);
+  graphics.fillCircle(frontCx, frontCy, r * 0.5);
+  graphics.fillStyle(bodyColor, 1);
+  graphics.fillCircle(frontCx, frontCy, r * 0.38);
 
   if (ctx.chassisDetail) {
     // Central reactor/core (concentric circles)
     graphics.fillStyle(dark, 1);
-    graphics.fillCircle(x, y, r * 0.35);
+    graphics.fillCircle(frontCx, frontCy, r * 0.28);
     graphics.fillStyle(light, 1);
-    graphics.fillCircle(x, y, r * 0.25);
+    graphics.fillCircle(frontCx, frontCy, r * 0.2);
 
     // Power core glow
     graphics.fillStyle(COLORS.WHITE, 0.8);
-    graphics.fillCircle(x, y, r * 0.12);
+    graphics.fillCircle(frontCx, frontCy, r * 0.1);
 
-    // Shoulder pylons (circles instead of diamonds)
+    // Shoulder pylons on rear segment
     const pylonOffset = r * 0.55;
     const pylonSize = r * 0.2;
 
-    const leftPylonX = x - sin * pylonOffset;
-    const leftPylonY = y + cos * pylonOffset;
+    const leftPylonX = rearCx - sin * pylonOffset;
+    const leftPylonY = rearCy + cos * pylonOffset;
     graphics.fillStyle(dark, 1);
     graphics.fillCircle(leftPylonX, leftPylonY, pylonSize + 2);
     graphics.fillStyle(light, 1);
     graphics.fillCircle(leftPylonX, leftPylonY, pylonSize);
 
-    const rightPylonX = x + sin * pylonOffset;
-    const rightPylonY = y - cos * pylonOffset;
+    const rightPylonX = rearCx + sin * pylonOffset;
+    const rightPylonY = rearCy - cos * pylonOffset;
     graphics.fillStyle(dark, 1);
     graphics.fillCircle(rightPylonX, rightPylonY, pylonSize + 2);
     graphics.fillStyle(light, 1);

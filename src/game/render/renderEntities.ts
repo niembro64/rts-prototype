@@ -35,7 +35,7 @@ import type {
 import { COLORS } from './types';
 import { createColorPalette, setGrateFrameTime } from './helpers';
 import { renderExplosion, renderSprayEffect } from './effects';
-import { drawTurret, setTurretFrameTime } from './TurretRenderer';
+import { drawTurret, setTurretFrameTime, setSkipForceFieldZones, renderForceFieldZonesEarly } from './TurretRenderer';
 import {
   drawScoutUnit,
   drawBurstUnit,
@@ -460,6 +460,17 @@ export class EntityRenderer {
       );
     }
 
+    // 1b. Force field zones (opaque, pre-blended against background — must be under units)
+    for (const entity of this.visibleUnits) {
+      if (!entity.turrets) continue;
+      const unitType = entity.unit?.unitType ?? 'jackal';
+      let mounts: { x: number; y: number }[];
+      try { mounts = getUnitBlueprint(unitType).chassisMounts; }
+      catch { mounts = [{ x: 0, y: 0 }]; }
+      renderForceFieldZonesEarly(this.graphics, entity, mounts);
+    }
+    setSkipForceFieldZones(true);
+
     // 2. Waypoints for selected units
     for (const entity of this.selectedUnits) {
       renderWaypoints(this.graphics, entity, camera);
@@ -486,9 +497,11 @@ export class EntityRenderer {
     }
 
     // 5. Turrets (weapon-driven, rendered at mount points)
+    //    Force field zones were already drawn in step 1b (opaque early pass).
     for (const entity of this.visibleUnits) {
       this.renderUnitTurrets(entity);
     }
+    setSkipForceFieldZones(false);
 
     // 6. Projectiles (clean up stale beam offsets + trail entries inline)
     this._reusableIdSet.clear();

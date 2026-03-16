@@ -4,11 +4,10 @@
 
 import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
-import { drawLegs, drawOval } from '../helpers';
+import { drawLegs } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
 
-// Pre-allocated reusable point array for prosoma oval
-const _prosomaPoints: { x: number; y: number }[] = Array.from({ length: 24 }, () => ({ x: 0, y: 0 }));
+// (prosoma is now a circle — no pre-allocated points needed)
 
 export function drawArachnidUnit(
   ctx: UnitRenderContext,
@@ -103,13 +102,14 @@ export function drawArachnidUnit(
   const prosomaCx = x + cos * r * prosomaFwd;
   const prosomaCy = y + sin * r * prosomaFwd;
 
+  const prosomaR = r * 0.55;
   const prosomaColor = isSelected ? COLORS.UNIT_SELECTED : dark;
   graphics.fillStyle(prosomaColor, 1);
-  drawOval(graphics, _prosomaPoints, prosomaCx, prosomaCy, r * 0.5, r * 0.6, cos, sin, 24);
+  graphics.fillCircle(prosomaCx, prosomaCy, prosomaR);
 
   // Inner carapace (base color) — turret ring sits on this
   graphics.fillStyle(base, 1);
-  graphics.fillCircle(prosomaCx, prosomaCy, r * 0.4);
+  graphics.fillCircle(prosomaCx, prosomaCy, prosomaR * 0.75);
 
   // Central force field emitter orb (high detail only)
   if (ctx.chassisDetail) {

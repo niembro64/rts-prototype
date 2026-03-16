@@ -14,6 +14,11 @@ import type { TurretStyle, ForceTurretStyle } from '@/types/graphics';
 let _nowSec = 0;
 export function setTurretFrameTime(nowSec: number): void { _nowSec = nowSec; }
 
+// When true, force field zone rendering is skipped during the normal turret pass
+// (because zones were already drawn in an early opaque pass).
+let _skipForceFieldZones = false;
+export function setSkipForceFieldZones(skip: boolean): void { _skipForceFieldZones = skip; }
+
 /**
  * Draw a weapon's turret at the given mount point.
  * Dispatches to the appropriate turret renderer based on turretConfig.type.
@@ -236,7 +241,7 @@ function drawForceFieldTurretSimple(
   graphics.fillStyle(color, 1);
   graphics.fillCircle(mountX, mountY, r * grateConfig.width);
 
-  if (progress <= 0) return;
+  if (progress <= 0 || _skipForceFieldZones) return;
   drawForceFieldZones(graphics, mountX, mountY, weapon, entityId);
 }
 
@@ -257,7 +262,7 @@ function drawForceFieldTurretFull(
   const grateOriginY = mountY + Math.sin(turretRot) * r * grateConfig.originOffset;
   drawForceFieldGrate(graphics, grateOriginX, grateOriginY, turretRot, r, grateConfig, progress, transitionTimeMs);
 
-  if (progress <= 0) return;
+  if (progress <= 0 || _skipForceFieldZones) return;
 
   drawForceFieldZones(graphics, mountX, mountY, weapon, entityId);
 }
@@ -307,6 +312,37 @@ function drawForceFieldZonesOnly(
   entityId: EntityId,
 ): void {
   const progress = weapon.forceField?.range ?? 0;
-  if (progress <= 0) return;
+  if (progress <= 0 || _skipForceFieldZones) return;
   drawForceFieldZones(graphics, cx, cy, weapon, entityId);
+}
+
+/**
+ * Render force field zones for a single entity (early opaque pass).
+ * Called before unit bodies so that opaque pre-blended zones sit behind everything.
+ */
+export function renderForceFieldZonesEarly(
+  graphics: Phaser.GameObjects.Graphics,
+  entity: { turrets?: Turret[]; transform: { x: number; y: number; rotation: number }; unit?: { drawScale: number; unitType?: string }; id: EntityId },
+  mounts: { x: number; y: number }[],
+): void {
+  if (!entity.turrets) return;
+  const { x, y, rotation: bodyRot } = entity.transform;
+  const r = entity.unit?.drawScale ?? 10;
+  const cos = Math.cos(bodyRot);
+  const sin = Math.sin(bodyRot);
+
+  for (let i = 0; i < entity.turrets.length; i++) {
+    const weapon = entity.turrets[i];
+    const isForceField = (weapon.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
+    if (!isForceField) continue;
+
+    const progress = weapon.forceField?.range ?? 0;
+    if (progress <= 0) continue;
+
+    const mount = mounts[Math.min(i, mounts.length - 1)];
+    const mountX = x + cos * mount.x * r - sin * mount.y * r;
+    const mountY = y + sin * mount.x * r + cos * mount.y * r;
+
+    drawForceFieldZones(graphics, mountX, mountY, weapon, entity.id);
+  }
 }
