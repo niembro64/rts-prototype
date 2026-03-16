@@ -144,7 +144,7 @@ export function spawnBackgroundUnitsStandalone(
   if (initialSpawn) {
     const cx = mapWidth / 2;
     const cy = mapHeight / 2;
-    const centerRadius = 400;
+    const centerRadius = DEMO_CONFIG.centerSpawnRadius;
     const centerUnitsPerPlayer = DEMO_CONFIG.centerSpawnPerPlayer;
     for (let p = 1; p <= numPlayers; p++) {
       const pUnits = world.getUnitsByPlayer(p as PlayerId).length;
