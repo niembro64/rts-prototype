@@ -36,4 +36,5 @@ export function drawForceFieldUnit(
     graphics.fillStyle(COLORS.WHITE, 1);
     graphics.fillCircle(x, y, r * 0.15);
   }
+
 }

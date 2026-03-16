@@ -21,7 +21,9 @@ export function drawLorisUnit(
   graphics.fillCircle(x, y, r * 0.55);
 
 
-  // Mirror panels — oriented by turret rotation (tracks enemies), not body rotation
+  // Mirror panels + turret base triangle — medium+ detail only
+  if (!ctx.chassisDetail) return;
+
   const { entity } = ctx;
   const turret = entity.turrets?.[0];
   const mirrorRot = turret ? turret.rotation : bodyRot;

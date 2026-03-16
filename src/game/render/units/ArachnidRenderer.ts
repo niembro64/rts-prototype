@@ -1,130 +1,121 @@
 // Arachnid (Widow) unit renderer - Titan spider unit with 8 animated legs (body only)
 // Turret rendering (6 beam emitters + force field) is handled by the generic TurretRenderer
+// 2-segment arachnid body: massive spherical opisthosoma (rear) + smaller prosoma (front, turrets)
 
 import type { UnitRenderContext } from '../types';
 import { COLORS } from '../types';
 import { drawLegs, drawOval } from '../helpers';
 import type { ArachnidLeg } from '../ArachnidLeg';
-import { getUnitBlueprint } from '../../sim/blueprints';
 
-// Pre-allocated reusable point array for abdomen oval
-const _abdomenPoints: { x: number; y: number }[] = Array.from({ length: 24 }, () => ({ x: 0, y: 0 }));
+// Pre-allocated reusable point array for prosoma oval
+const _prosomaPoints: { x: number; y: number }[] = Array.from({ length: 24 }, () => ({ x: 0, y: 0 }));
 
 export function drawArachnidUnit(
   ctx: UnitRenderContext,
   legs: ArachnidLeg[]
 ): void {
-  const { graphics, x, y, radius: r, bodyRot, palette, isSelected, entity } = ctx;
+  const { graphics, x, y, radius: r, bodyRot, palette, isSelected } = ctx;
   const { base, light, dark } = palette;
   const cos = Math.cos(bodyRot);
   const sin = Math.sin(bodyRot);
 
-  // Body center from the force field mount (last chassisMount, center of hex ring)
-  const unitType = entity.unit?.unitType ?? 'widow';
-  const mounts = getUnitBlueprint(unitType).chassisMounts;
-  const centerMount = mounts[mounts.length - 1]; // force field at hex center
-  const bodyFwd = centerMount.x; // forward offset fraction of radius
-
   // Legs (always drawn at low+high)
   drawLegs(graphics, legs, 'widow', x, y, bodyRot, dark, light);
 
-  // Abdomen / "butt" region - large chonky rear section
-  const abdomenOffset = r * (bodyFwd - 1.4); // Behind the main body
-  const abdomenCenterX = x + cos * abdomenOffset;
-  const abdomenCenterY = y + sin * abdomenOffset;
-  const abdomenLength = r * 1.1; // Long
-  const abdomenWidth = r * 0.85; // Wide and chonky
+  // ======================================================================
+  // OPISTHOSOMA (abdomen) — massive spherical rear (like a real black widow)
+  // ======================================================================
+  const abdomenR = r * 1.15;
+  const abdomenOffset = r * -1.1;
+  const abdomenCx = x + cos * abdomenOffset;
+  const abdomenCy = y + sin * abdomenOffset;
 
-  // Main abdomen shape (dark color) — smooth oval
   const abdomenColor = isSelected ? COLORS.UNIT_SELECTED : dark;
   graphics.fillStyle(abdomenColor, 1);
-  drawOval(graphics, _abdomenPoints, abdomenCenterX, abdomenCenterY, abdomenWidth, abdomenLength, cos, sin, 24);
+  graphics.fillCircle(abdomenCx, abdomenCy, abdomenR);
 
-  // Red hourglass marking (like a black widow spider) — shown at low + high
+  // Red hourglass marking on underside of abdomen
   {
-  const hourglassCenterOffset = abdomenOffset - abdomenLength * 0.35;
-  const hourglassCenterX = x + cos * hourglassCenterOffset;
-  const hourglassCenterY = y + sin * hourglassCenterOffset;
+    const hcx = abdomenCx - cos * abdomenR * 0.15;
+    const hcy = abdomenCy - sin * abdomenR * 0.15;
 
-  const hourglassHeight = abdomenLength * 0.5;
-  const hourglassWidth = abdomenWidth * 0.35;
-  const waistWidth = hourglassWidth * 0.2;
+    const hourglassHeight = abdomenR * 0.7;
+    const hourglassWidth = abdomenR * 0.35;
+    const waistWidth = hourglassWidth * 0.18;
 
-  const hcx = hourglassCenterX;
-  const hcy = hourglassCenterY;
-  const topY = hourglassHeight * 0.5;
-  const bottomY = -hourglassHeight * 0.5;
+    const topY = hourglassHeight * 0.5;
+    const bottomY = -hourglassHeight * 0.5;
 
-  // Outer hourglass (red)
-  graphics.fillStyle(0xff0000, 1);
-  graphics.beginPath();
-  graphics.moveTo(hcx + cos * topY - sin * (-hourglassWidth), hcy + sin * topY + cos * (-hourglassWidth));
-  graphics.lineTo(hcx + cos * topY - sin * hourglassWidth, hcy + sin * topY + cos * hourglassWidth);
-  graphics.lineTo(hcx - sin * waistWidth, hcy + cos * waistWidth);
-  graphics.lineTo(hcx + cos * bottomY - sin * hourglassWidth, hcy + sin * bottomY + cos * hourglassWidth);
-  graphics.lineTo(hcx + cos * bottomY - sin * (-hourglassWidth), hcy + sin * bottomY + cos * (-hourglassWidth));
-  graphics.lineTo(hcx - sin * (-waistWidth), hcy + cos * (-waistWidth));
-  graphics.closePath();
-  graphics.fillPath();
-
-  if (ctx.chassisDetail) {
-    // Inner hourglass (darker red)
-    const innerScale = 0.6;
-    const innerWaistScale = 0.5;
-    const iTopY = topY * innerScale;
-    const iBotY = bottomY * innerScale;
-    const iHW = hourglassWidth * innerScale;
-    const iWW = waistWidth * innerWaistScale;
-
-    graphics.fillStyle(0xaa0000, 1);
+    // Outer hourglass (red)
+    graphics.fillStyle(0xff0000, 1);
     graphics.beginPath();
-    graphics.moveTo(hcx + cos * iTopY - sin * (-iHW), hcy + sin * iTopY + cos * (-iHW));
-    graphics.lineTo(hcx + cos * iTopY - sin * iHW, hcy + sin * iTopY + cos * iHW);
-    graphics.lineTo(hcx - sin * iWW, hcy + cos * iWW);
-    graphics.lineTo(hcx + cos * iBotY - sin * iHW, hcy + sin * iBotY + cos * iHW);
-    graphics.lineTo(hcx + cos * iBotY - sin * (-iHW), hcy + sin * iBotY + cos * (-iHW));
-    graphics.lineTo(hcx - sin * (-iWW), hcy + cos * (-iWW));
+    graphics.moveTo(hcx + cos * topY - sin * (-hourglassWidth), hcy + sin * topY + cos * (-hourglassWidth));
+    graphics.lineTo(hcx + cos * topY - sin * hourglassWidth, hcy + sin * topY + cos * hourglassWidth);
+    graphics.lineTo(hcx - sin * waistWidth, hcy + cos * waistWidth);
+    graphics.lineTo(hcx + cos * bottomY - sin * hourglassWidth, hcy + sin * bottomY + cos * hourglassWidth);
+    graphics.lineTo(hcx + cos * bottomY - sin * (-hourglassWidth), hcy + sin * bottomY + cos * (-hourglassWidth));
+    graphics.lineTo(hcx - sin * (-waistWidth), hcy + cos * (-waistWidth));
     graphics.closePath();
     graphics.fillPath();
 
-    // Spinnerets at the tip
-    const spinneretOffset = abdomenOffset - abdomenLength * 0.85;
-    const spinneretX = x + cos * spinneretOffset;
-    const spinneretY = y + sin * spinneretOffset;
-    graphics.fillStyle(light, 1);
-    graphics.fillCircle(spinneretX, spinneretY, r * 0.12);
-    const sideSpinneretDist = r * 0.15;
-    graphics.fillCircle(
-      spinneretX - sin * sideSpinneretDist,
-      spinneretY + cos * sideSpinneretDist,
-      r * 0.07
-    );
-    graphics.fillCircle(
-      spinneretX + sin * sideSpinneretDist,
-      spinneretY - cos * sideSpinneretDist,
-      r * 0.07
-    );
-  }
+    if (ctx.chassisDetail) {
+      // Inner hourglass (darker red)
+      const innerScale = 0.6;
+      const iTopY = topY * innerScale;
+      const iBotY = bottomY * innerScale;
+      const iHW = hourglassWidth * innerScale;
+      const iWW = waistWidth * 0.5;
+
+      graphics.fillStyle(0xaa0000, 1);
+      graphics.beginPath();
+      graphics.moveTo(hcx + cos * iTopY - sin * (-iHW), hcy + sin * iTopY + cos * (-iHW));
+      graphics.lineTo(hcx + cos * iTopY - sin * iHW, hcy + sin * iTopY + cos * iHW);
+      graphics.lineTo(hcx - sin * iWW, hcy + cos * iWW);
+      graphics.lineTo(hcx + cos * iBotY - sin * iHW, hcy + sin * iBotY + cos * iHW);
+      graphics.lineTo(hcx + cos * iBotY - sin * (-iHW), hcy + sin * iBotY + cos * (-iHW));
+      graphics.lineTo(hcx - sin * (-iWW), hcy + cos * (-iWW));
+      graphics.closePath();
+      graphics.fillPath();
+
+      // Spinnerets at the rear tip
+      const spinneretX = abdomenCx - cos * abdomenR * 0.9;
+      const spinneretY = abdomenCy - sin * abdomenR * 0.9;
+      graphics.fillStyle(light, 1);
+      graphics.fillCircle(spinneretX, spinneretY, r * 0.14);
+      const sideDist = r * 0.18;
+      graphics.fillCircle(
+        spinneretX - sin * sideDist,
+        spinneretY + cos * sideDist,
+        r * 0.08
+      );
+      graphics.fillCircle(
+        spinneretX + sin * sideDist,
+        spinneretY - cos * sideDist,
+        r * 0.08
+      );
+    }
   }
 
-  // Main body (cephalothorax) — large circle
-  const bodyColor = isSelected ? COLORS.UNIT_SELECTED : dark;
-  graphics.fillStyle(bodyColor, 1);
-  const bodyCx = x + cos * r * (bodyFwd - 0.15);
-  const bodyCy = y + sin * r * (bodyFwd - 0.15);
-  graphics.fillCircle(bodyCx, bodyCy, r * 0.7);
+  // ======================================================================
+  // PROSOMA (cephalothorax) — smaller front section where turrets mount
+  // ======================================================================
+  const prosomaFwd = 0.3;
+  const prosomaCx = x + cos * r * prosomaFwd;
+  const prosomaCy = y + sin * r * prosomaFwd;
 
-  // Inner carapace (base color circle)
-  const innerCx = x + cos * r * bodyFwd;
-  const innerCy = y + sin * r * bodyFwd;
+  const prosomaColor = isSelected ? COLORS.UNIT_SELECTED : dark;
+  graphics.fillStyle(prosomaColor, 1);
+  drawOval(graphics, _prosomaPoints, prosomaCx, prosomaCy, r * 0.5, r * 0.6, cos, sin, 24);
+
+  // Inner carapace (base color) — turret ring sits on this
   graphics.fillStyle(base, 1);
-  graphics.fillCircle(innerCx, innerCy, r * 0.48);
+  graphics.fillCircle(prosomaCx, prosomaCy, r * 0.4);
 
-  // Central force field emitter orb (high only)
+  // Central force field emitter orb (high detail only)
   if (ctx.chassisDetail) {
     graphics.fillStyle(light, 1);
-    graphics.fillCircle(innerCx, innerCy, r * 0.3);
+    graphics.fillCircle(prosomaCx, prosomaCy, r * 0.25);
     graphics.fillStyle(COLORS.WHITE, 1);
-    graphics.fillCircle(innerCx, innerCy, r * 0.15);
+    graphics.fillCircle(prosomaCx, prosomaCy, r * 0.12);
   }
 }

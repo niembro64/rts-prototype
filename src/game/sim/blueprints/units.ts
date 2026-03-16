@@ -9,10 +9,10 @@
 import { AUDIO } from '../../../audioConfig';
 import type { UnitBlueprint, MountPoint } from './types';
 
-// Compute widow's hexagonal mount points
+// Compute widow's hexagonal mount points (on the thorax)
 function computeWidowMounts(): MountPoint[] {
-  const hexR = 0.48;
-  const hexFwd = 0.5;
+  const hexR = 0.4;    // matches thorax inner carapace radius
+  const hexFwd = 0.3;  // matches thorax forward offset
   const hexRotOff = Math.PI / 3;
   const mounts: MountPoint[] = [];
   for (let i = 0; i < 6; i++) {
@@ -22,7 +22,7 @@ function computeWidowMounts(): MountPoint[] {
       y: Math.sin(angle) * hexR,
     });
   }
-  mounts.push({ x: hexFwd, y: 0 }); // Force field at hex center
+  mounts.push({ x: hexFwd, y: 0 }); // Force field at thorax center
   return mounts;
 }
 

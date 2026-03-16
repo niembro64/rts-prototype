@@ -25,7 +25,7 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
   tps: {
     low: 0.05,
     medium: 0.1,
-    high: 0.6,
+    high: 0.3,
     max: 0.8,
   },
   fps: {
@@ -101,7 +101,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   BEAM_STYLE: {
     min: 'simple', // 1 beam line, 1 static endpoint circle
     low: 'simple', // 1 beam line, 1 static endpoint circle
-    medium: 'simple', // 2 beam lines, 2 pulsing endpoint circles
+    medium: 'standard', // 2 beam lines, 2 pulsing endpoint circles
     high: 'detailed', // 3 beam lines, 3 pulsing circles + 4 sparks
     max: 'complex', // 3 beam lines, 3 pulsing circles + 6 sparks
   },
@@ -183,9 +183,9 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // Lower values = marks linger longer, higher = fewer draw calls
   BURN_MARK_ALPHA_CUTOFF: {
     min: 1,
-    low: 0.3,
+    low: 0.5,
     medium: 0.3,
-    high: 0.05,
+    high: 0.15,
     max: 0.01,
   },
 
@@ -194,8 +194,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   BURN_MARK_FRAMES_SKIP: {
     min: 4,
     low: 3,
-    medium: 3,
-    // medium: 2,
+    medium: 2,
     high: 1,
     max: 0,
   },
@@ -217,8 +216,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   PROJECTILE_STYLE: {
     min: 'dot',
     low: 'core',
-    medium: 'core',
-    // medium: 'trail',
+    medium: 'trail',
     high: 'glow',
     max: 'full',
   },
@@ -232,8 +230,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   FIRE_EXPLOSION_STYLE: {
     min: 'flash',
     low: 'spark',
-    medium: 'spark',
-    // medium: 'burst',
+    medium: 'burst',
     high: 'blaze',
     max: 'inferno',
   },
@@ -247,8 +244,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   DEATH_EXPLOSION_STYLE: {
     min: 'puff',
     low: 'scatter',
-    medium: 'scatter',
-    // medium: 'shatter',
+    medium: 'shatter',
     high: 'detonate',
     max: 'obliterate',
   },
