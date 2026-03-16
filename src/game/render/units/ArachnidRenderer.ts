@@ -33,8 +33,8 @@ export function drawArachnidUnit(
   graphics.fillStyle(abdomenColor, 1);
   graphics.fillCircle(abdomenCx, abdomenCy, abdomenR);
 
-  // Red hourglass marking on underside of abdomen
-  {
+  // Red hourglass marking + spinnerets (detail only)
+  if (ctx.chassisDetail) {
     const hcx = abdomenCx - cos * abdomenR * 0.15;
     const hcy = abdomenCy - sin * abdomenR * 0.15;
 
@@ -57,42 +57,40 @@ export function drawArachnidUnit(
     graphics.closePath();
     graphics.fillPath();
 
-    if (ctx.chassisDetail) {
-      // Inner hourglass (darker red)
-      const innerScale = 0.6;
-      const iTopY = topY * innerScale;
-      const iBotY = bottomY * innerScale;
-      const iHW = hourglassWidth * innerScale;
-      const iWW = waistWidth * 0.5;
+    // Inner hourglass (darker red)
+    const innerScale = 0.6;
+    const iTopY = topY * innerScale;
+    const iBotY = bottomY * innerScale;
+    const iHW = hourglassWidth * innerScale;
+    const iWW = waistWidth * 0.5;
 
-      graphics.fillStyle(0xaa0000, 1);
-      graphics.beginPath();
-      graphics.moveTo(hcx + cos * iTopY - sin * (-iHW), hcy + sin * iTopY + cos * (-iHW));
-      graphics.lineTo(hcx + cos * iTopY - sin * iHW, hcy + sin * iTopY + cos * iHW);
-      graphics.lineTo(hcx - sin * iWW, hcy + cos * iWW);
-      graphics.lineTo(hcx + cos * iBotY - sin * iHW, hcy + sin * iBotY + cos * iHW);
-      graphics.lineTo(hcx + cos * iBotY - sin * (-iHW), hcy + sin * iBotY + cos * (-iHW));
-      graphics.lineTo(hcx - sin * (-iWW), hcy + cos * (-iWW));
-      graphics.closePath();
-      graphics.fillPath();
+    graphics.fillStyle(0xaa0000, 1);
+    graphics.beginPath();
+    graphics.moveTo(hcx + cos * iTopY - sin * (-iHW), hcy + sin * iTopY + cos * (-iHW));
+    graphics.lineTo(hcx + cos * iTopY - sin * iHW, hcy + sin * iTopY + cos * iHW);
+    graphics.lineTo(hcx - sin * iWW, hcy + cos * iWW);
+    graphics.lineTo(hcx + cos * iBotY - sin * iHW, hcy + sin * iBotY + cos * iHW);
+    graphics.lineTo(hcx + cos * iBotY - sin * (-iHW), hcy + sin * iBotY + cos * (-iHW));
+    graphics.lineTo(hcx - sin * (-iWW), hcy + cos * (-iWW));
+    graphics.closePath();
+    graphics.fillPath();
 
-      // Spinnerets at the rear tip
-      const spinneretX = abdomenCx - cos * abdomenR * 0.9;
-      const spinneretY = abdomenCy - sin * abdomenR * 0.9;
-      graphics.fillStyle(light, 1);
-      graphics.fillCircle(spinneretX, spinneretY, r * 0.14);
-      const sideDist = r * 0.18;
-      graphics.fillCircle(
-        spinneretX - sin * sideDist,
-        spinneretY + cos * sideDist,
-        r * 0.08
-      );
-      graphics.fillCircle(
-        spinneretX + sin * sideDist,
-        spinneretY - cos * sideDist,
-        r * 0.08
-      );
-    }
+    // Spinnerets at the rear tip
+    const spinneretX = abdomenCx - cos * abdomenR * 0.9;
+    const spinneretY = abdomenCy - sin * abdomenR * 0.9;
+    graphics.fillStyle(light, 1);
+    graphics.fillCircle(spinneretX, spinneretY, r * 0.14);
+    const sideDist = r * 0.18;
+    graphics.fillCircle(
+      spinneretX - sin * sideDist,
+      spinneretY + cos * sideDist,
+      r * 0.08
+    );
+    graphics.fillCircle(
+      spinneretX + sin * sideDist,
+      spinneretY - cos * sideDist,
+      r * 0.08
+    );
   }
 
   // ======================================================================
@@ -107,12 +105,10 @@ export function drawArachnidUnit(
   graphics.fillStyle(prosomaColor, 1);
   graphics.fillCircle(prosomaCx, prosomaCy, prosomaR);
 
-  // Inner carapace (base color) — turret ring sits on this
-  graphics.fillStyle(base, 1);
-  graphics.fillCircle(prosomaCx, prosomaCy, prosomaR * 0.75);
-
-  // Central force field emitter orb (high detail only)
+  // Inner carapace + emitter orb (detail only)
   if (ctx.chassisDetail) {
+    graphics.fillStyle(base, 1);
+    graphics.fillCircle(prosomaCx, prosomaCy, prosomaR * 0.75);
     graphics.fillStyle(light, 1);
     graphics.fillCircle(prosomaCx, prosomaCy, r * 0.25);
     graphics.fillStyle(COLORS.WHITE, 1);

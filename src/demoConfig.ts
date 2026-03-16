@@ -47,6 +47,12 @@ export const DEMO_CONFIG = {
   factoryWaypointType: 'fight' as const,
 
   /**
+   * How far (as a fraction of factory→map-center distance) the default fight
+   * waypoint is placed.  0.5 = halfway to center, 1.0 = center, 1.5 = past center.
+   */
+  factoryFightDistance: 1.5,
+
+  /**
    * Whether AI uses inverse-cost weighting when picking units to queue.
    * true = cheaper units queued more often. false = all units equally likely.
    */

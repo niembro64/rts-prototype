@@ -135,12 +135,14 @@ function renderBeam(
     graphics.lineStyle(beamWidth, 0xffffff, 0.33);
     graphics.lineBetween(prevSegX, prevSegY, endX, endY);
 
-    // Draw reflection circles at each bounce point
-    for (const refl of reflections) {
-      graphics.fillStyle(0xffffff, 0.9);
-      graphics.fillCircle(refl.x, refl.y, beamWidth + 2);
-      graphics.fillStyle(color, 0.4);
-      graphics.fillCircle(refl.x, refl.y, beamWidth + 5);
+    // Draw reflection circles at each bounce point (detailed+ only)
+    if (beamStyle === 'detailed' || beamStyle === 'complex') {
+      for (const refl of reflections) {
+        graphics.fillStyle(0xffffff, 0.9);
+        graphics.fillCircle(refl.x, refl.y, beamWidth + 2);
+        graphics.fillStyle(color, 0.4);
+        graphics.fillCircle(refl.x, refl.y, beamWidth + 5);
+      }
     }
   } else {
     // Single-segment beam (existing code path)

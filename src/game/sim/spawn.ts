@@ -7,6 +7,23 @@ import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
 import { DEMO_CONFIG } from '../../demoConfig';
 
+/**
+ * Compute a factory's default fight waypoint along the factory → map-center axis.
+ * `distance` controls how far: 0.5 = halfway to center, 1.0 = center, 1.5 = past center.
+ */
+export function computeFactoryWaypoint(
+  factoryX: number, factoryY: number,
+  mapWidth: number, mapHeight: number,
+  distance: number,
+): { x: number; y: number } {
+  const cx = mapWidth / 2;
+  const cy = mapHeight / 2;
+  return {
+    x: factoryX + (cx - factoryX) * distance,
+    y: factoryY + (cy - factoryY) * distance,
+  };
+}
+
 // Spawn a commander for a player
 function spawnCommander(
   world: WorldState,
@@ -88,18 +105,16 @@ function placeCompleteBuilding(
   }
 
   if (buildingType === 'factory') {
-    const mapCenterX = world.mapWidth / 2;
-    const mapCenterY = world.mapHeight / 2;
-    const rallyX = center.x + (mapCenterX - center.x) * 0.5;
-    const rallyY = center.y + (mapCenterY - center.y) * 0.5;
+    const wp = computeFactoryWaypoint(center.x, center.y, world.mapWidth, world.mapHeight, DEMO_CONFIG.factoryFightDistance);
+    const rally = computeFactoryWaypoint(center.x, center.y, world.mapWidth, world.mapHeight, 0.5);
     entity.factory = {
       buildQueue: [],
       currentBuildProgress: 0,
       currentBuildCost: 0,
-      rallyX,
-      rallyY,
+      rallyX: rally.x,
+      rallyY: rally.y,
       isProducing: false,
-      waypoints: [{ x: mapCenterX, y: mapCenterY, type: DEMO_CONFIG.factoryWaypointType }],
+      waypoints: [{ x: wp.x, y: wp.y, type: DEMO_CONFIG.factoryWaypointType }],
     };
   }
 

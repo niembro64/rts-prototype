@@ -4,6 +4,7 @@ import { magnitude } from '../math';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
+import { computeFactoryWaypoint } from './spawn';
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -136,20 +137,15 @@ export class ConstructionSystem {
 
     // Add factory component if it's a factory
     if (buildingType === 'factory') {
-      // Calculate rally point (50% toward map center)
-      const mapCenterX = world.mapWidth / 2;
-      const mapCenterY = world.mapHeight / 2;
-      const rallyX = worldPos.x + (mapCenterX - worldPos.x) * 0.5;
-      const rallyY = worldPos.y + (mapCenterY - worldPos.y) * 0.5;
-
+      const wp = computeFactoryWaypoint(worldPos.x, worldPos.y, world.mapWidth, world.mapHeight, 0.5);
       entity.factory = {
         buildQueue: [],
         currentBuildProgress: 0,
         currentBuildCost: 0,
-        rallyX,
-        rallyY,
+        rallyX: wp.x,
+        rallyY: wp.y,
         isProducing: false,
-        waypoints: [{ x: rallyX, y: rallyY, type: 'move' }],
+        waypoints: [{ x: wp.x, y: wp.y, type: 'fight' }],
       };
     }
 

@@ -26,8 +26,8 @@ export function drawBeamUnit(
   // Legs (always drawn at low+high)
   drawLegs(graphics, legs, 'tarantula', x, y, bodyRot, dark, light);
 
-  // Pedipalps — two small front-facing feeler legs
-  {
+  // Pedipalps — two small front-facing feeler legs (detail only)
+  if (ctx.chassisDetail) {
     const palpLen = r * 0.55;
     const palpThickness = 3;
     const palpSpread = r * 0.25;
@@ -44,11 +44,8 @@ export function drawBeamUnit(
 
       graphics.lineStyle(palpThickness + 0.5, dark, 1);
       graphics.lineBetween(baseX, baseY, tipX, tipY);
-
-      if (ctx.chassisDetail) {
-        graphics.fillStyle(light, 1);
-        graphics.fillCircle(tipX, tipY, palpThickness * 0.7);
-      }
+      graphics.fillStyle(light, 1);
+      graphics.fillCircle(tipX, tipY, palpThickness * 0.7);
     }
   }
 

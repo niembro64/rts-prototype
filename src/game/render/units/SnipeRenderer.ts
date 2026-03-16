@@ -36,39 +36,39 @@ export function drawSnipeUnit(
     const abdRy = r * 0.5;   // half-length (along body axis)
     graphics.fillStyle(bodyColor, 1);
     drawOval(graphics, _abdomenPoints, abdCx, abdCy, abdRx, abdRy, cos, sin, 24);
-    graphics.lineStyle(1, dark, 1);
-    graphics.strokePoints(_abdomenPoints, true);
 
     if (ctx.chassisDetail) {
-      // Scutum (dorsal shield) on abdomen — small circle
+      // Outline stroke + scutum (dorsal shield) — detail only
+      graphics.lineStyle(1, dark, 1);
+      graphics.strokePoints(_abdomenPoints, true);
       graphics.fillStyle(dark, 0.4);
       graphics.fillCircle(abdCx, abdCy, r * 0.22);
     }
   }
 
-  // Tiny cephalothorax (leg attachment piece) — small circle
-  {
+  if (ctx.chassisDetail) {
+    // Tiny cephalothorax (leg attachment piece) — small circle
     const bodyCx = x + cos * r * (mountOff + 0.7);
     const bodyCy = y + sin * r * (mountOff + 0.7);
     graphics.fillStyle(bodyColor, 1);
     graphics.fillCircle(bodyCx, bodyCy, r * 0.11);
     graphics.lineStyle(1, dark, 1);
     graphics.strokeCircle(bodyCx, bodyCy, r * 0.11);
+
+    // Capitulum (head/mouthparts) — small pointed shape at front
+    const headBase = r * (mountOff + 0.8);
+    const headTip = r * (mountOff + 1.05);
+    const headWidth = r * 0.07;
+    _headPoints[0].x = x + cos * headBase - sin * headWidth;
+    _headPoints[0].y = y + sin * headBase + cos * headWidth;
+    _headPoints[1].x = x + cos * headTip;
+    _headPoints[1].y = y + sin * headTip;
+    _headPoints[2].x = x + cos * headBase + sin * headWidth;
+    _headPoints[2].y = y + sin * headBase - cos * headWidth;
+    _headPoints[3].x = x + cos * (headBase - r * 0.03);
+    _headPoints[3].y = y + sin * (headBase - r * 0.03);
+
+    graphics.fillStyle(dark, 1);
+    graphics.fillPoints(_headPoints, true);
   }
-
-  // Capitulum (head/mouthparts) — small pointed shape at front
-  const headBase = r * (mountOff + 0.8);
-  const headTip = r * (mountOff + 1.05);
-  const headWidth = r * 0.07;
-  _headPoints[0].x = x + cos * headBase - sin * headWidth;
-  _headPoints[0].y = y + sin * headBase + cos * headWidth;
-  _headPoints[1].x = x + cos * headTip;
-  _headPoints[1].y = y + sin * headTip;
-  _headPoints[2].x = x + cos * headBase + sin * headWidth;
-  _headPoints[2].y = y + sin * headBase - cos * headWidth;
-  _headPoints[3].x = x + cos * (headBase - r * 0.03);
-  _headPoints[3].y = y + sin * (headBase - r * 0.03);
-
-  graphics.fillStyle(dark, 1);
-  graphics.fillPoints(_headPoints, true);
 }
