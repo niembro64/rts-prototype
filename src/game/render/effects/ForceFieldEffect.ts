@@ -239,6 +239,19 @@ function drawAnnularFill(
   graphics.fill();
 }
 
+// Pre-computed bell curve values for arc jitter (sin(frac * PI) for arcSegments fractions)
+// Avoids per-segment Math.sin() calls. Supports up to 20 segments.
+const ARC_BELL_CACHE: number[] = [];
+function getArcBell(segments: number): number[] {
+  if (ARC_BELL_CACHE.length !== segments + 1) {
+    ARC_BELL_CACHE.length = segments + 1;
+    for (let s = 0; s <= segments; s++) {
+      ARC_BELL_CACHE[s] = Math.sin((s / segments) * Math.PI);
+    }
+  }
+  return ARC_BELL_CACHE;
+}
+
 /** Draw jagged electric arcs that crackle within the field (enhanced only) */
 function drawElectricArcs(
   graphics: Phaser.GameObjects.Graphics,
@@ -255,6 +268,8 @@ function drawElectricArcs(
 ): void {
   // Time-based seed that changes every arcFlickerMs — gives the crackle effect
   const flickerSeed = Math.floor(nowMs / v.arcFlickerMs);
+
+  const bell = getArcBell(v.arcSegments);
 
   for (let i = 0; i < v.arcCount; i++) {
     // Deterministic but rapidly changing arc placement
@@ -287,7 +302,7 @@ function drawElectricArcs(
       const baseAngle = arcAngle + angleDrift * frac;
 
       // Perpendicular jitter (0 at endpoints, max in middle)
-      const jitterScale = Math.sin(frac * Math.PI); // bell curve: 0 at edges, 1 at center
+      const jitterScale = bell[s]; // pre-computed bell curve: 0 at edges, 1 at center
       const jitter =
         s === 0 || s === v.arcSegments
           ? 0

@@ -14,10 +14,10 @@ const BURN_HOT_RGB = hexToRgb(BURN_COLOR_HOT);
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 // LOD-scaled burn mark caps
 const BURN_MARK_CAPS: Record<string, number> = {
-  min: 500,
-  low: 1500,
-  medium: 3000,
-  high: 4000,
+  min: 300,
+  low: 800,
+  medium: 2000,
+  high: 3500,
   max: 5000,
 };
 

@@ -110,6 +110,8 @@ export type DebrisFragment = {
   baseColor: number;
   age: number;
   shape: 'line' | 'rect';
+  cosR: number;
+  sinR: number;
 };
 
 // Per-unit-type debris piece template

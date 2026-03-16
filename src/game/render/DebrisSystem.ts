@@ -6,13 +6,21 @@ import { BURN_COLOR_COOL, hexToRgb } from '../../config';
 import { DEBRIS_CONFIG } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { TreadConfig, WheelConfig } from '../sim/blueprints/types';
+import { getEffectiveQuality } from '@/clientBarConfig';
 
 const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
 
 export type { DebrisFragment, DebrisPieceTemplate } from '@/types/render';
 import type { DebrisFragment, DebrisPieceTemplate } from '@/types/render';
 
-const MAX_DEBRIS = DEBRIS_CONFIG.maxFragments;
+// LOD-scaled debris caps
+const DEBRIS_CAPS: Record<string, number> = {
+  min: 50,
+  low: 100,
+  medium: 150,
+  high: 200,
+  max: DEBRIS_CONFIG.maxFragments,
+};
 const DEBRIS_DRAG = DEBRIS_CONFIG.drag;
 const _debrisRectPts = [
   { x: 0, y: 0 },
@@ -603,12 +611,13 @@ export class DebrisSystem {
 
       const fragColor = colorMap[t.colorType] ?? color;
 
+      const fragRot = rotation + t.angle;
       this.fragments.push({
         x: wx,
         y: wy,
         vx,
         vy,
-        rotation: rotation + t.angle,
+        rotation: fragRot,
         angularVel,
         length: t.length,
         width: t.width,
@@ -616,16 +625,19 @@ export class DebrisSystem {
         baseColor: fragColor,
         age: 0,
         shape: t.shape,
+        cosR: Math.cos(fragRot),
+        sinR: Math.sin(fragRot),
       });
     }
 
-    // Cap debris
-    if (this.fragments.length > MAX_DEBRIS) {
-      const excess = this.fragments.length - MAX_DEBRIS;
-      for (let i = 0; i < MAX_DEBRIS; i++) {
+    // Cap debris (LOD-scaled)
+    const maxDebris = DEBRIS_CAPS[getEffectiveQuality()] ?? DEBRIS_CONFIG.maxFragments;
+    if (this.fragments.length > maxDebris) {
+      const excess = this.fragments.length - maxDebris;
+      for (let i = 0; i < maxDebris; i++) {
         this.fragments[i] = this.fragments[i + excess];
       }
-      this.fragments.length = MAX_DEBRIS;
+      this.fragments.length = maxDebris;
     }
   }
 
@@ -651,6 +663,8 @@ export class DebrisSystem {
         frag.vy *= DEBRIS_DRAG;
         frag.rotation += frag.angularVel * dtSec;
         frag.angularVel *= DEBRIS_DRAG;
+        frag.cosR = Math.cos(frag.rotation);
+        frag.sinR = Math.sin(frag.rotation);
         // Direct blend: baseColor -> background
         const keep = 1 - fadeBlend;
         const fragR = (frag.baseColor >> 16) & 0xff;
@@ -678,8 +692,8 @@ export class DebrisSystem {
     for (let i = 0; i < this.fragments.length; i++) {
       const frag = this.fragments[i];
       if (!isInViewport(frag.x, frag.y, frag.length)) continue;
-      const fragCos = Math.cos(frag.rotation);
-      const fragSin = Math.sin(frag.rotation);
+      const fragCos = frag.cosR;
+      const fragSin = frag.sinR;
       const halfLen = frag.length / 2;
       if (frag.shape === 'rect') {
         // Filled oriented rectangle — 4 rotated corners
