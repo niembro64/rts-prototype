@@ -29,10 +29,10 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
     max: 0.8,
   },
   fps: {
-    low: 0.2,
-    medium: 0.4,
-    high: 0.6,
-    max: 0.8,
+    low: 0.1,
+    medium: 0.2,
+    high: 0.3,
+    max: 0.4,
   },
 };
 
@@ -154,7 +154,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   TURRET_STYLE: {
     min: 'none',
     low: 'simple',
-    medium: 'simple',
+    medium: 'full',
     high: 'full',
     max: 'full',
   },

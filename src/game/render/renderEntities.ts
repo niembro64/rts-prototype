@@ -419,15 +419,7 @@ export class EntityRenderer {
     this.sprayParticleTime += 16;
     this.collectVisibleEntities();
 
-    // 0. Force field zones (opaque, pre-blended against background — under everything)
-    for (const entity of this.visibleUnits) {
-      if (!entity.turrets) continue;
-      const unitType = entity.unit?.unitType ?? 'jackal';
-      let mounts: { x: number; y: number }[];
-      try { mounts = getUnitBlueprint(unitType).chassisMounts; }
-      catch { mounts = [{ x: 0, y: 0 }]; }
-      renderForceFieldZonesEarly(this.graphics, entity, mounts);
-    }
+    // 0. Force field zones are drawn late (after explosions) with real transparency.
     setSkipForceFieldZones(true);
 
     // 0b. Sample beam endpoints for scorched earth burn marks
@@ -574,14 +566,26 @@ export class EntityRenderer {
       renderSprayEffect(this.graphics, target, this.sprayParticleTime);
     }
 
-    // 8. Explosions (quality determined by zoom-based graphics config)
+    // 8. Explosions
     for (const explosion of this.explosions) {
       if (!this.isInViewport(explosion.x, explosion.y, explosion.radius + 50))
         continue;
       renderExplosion(this.graphics, explosion);
     }
 
-    // 9. Labels (topmost)
+    // 9. Force field zones (transparent, drawn over everything)
+    setSkipForceFieldZones(false);
+    for (const entity of this.visibleUnits) {
+      if (!entity.turrets) continue;
+      const unitType = entity.unit?.unitType ?? 'jackal';
+      let mounts: { x: number; y: number }[];
+      try { mounts = getUnitBlueprint(unitType).chassisMounts; }
+      catch { mounts = [{ x: 0, y: 0 }]; }
+      renderForceFieldZonesEarly(this.graphics, entity, mounts);
+    }
+    setSkipForceFieldZones(true);
+
+    // 10. Labels (topmost)
     renderSelectedLabels(this.graphics, this.entitySource, () =>
       this.getLabel(),
     );

@@ -1,27 +1,9 @@
 // Force field effect renderer (pie-slice effect)
-// All colors are pre-blended against the map background and drawn fully opaque.
-// This avoids alpha compositing entirely, which is a win for the large annular fills.
-// Force field zones must be drawn before units/projectiles to avoid occluding them.
+// Drawn over everything with real alpha transparency.
 
 import Phaser from 'phaser';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { FORCE_FIELD_VISUAL, MAP_BG_COLOR } from '../../../config';
-
-// Background RGB components (extracted once)
-const BG_R = (MAP_BG_COLOR >> 16) & 0xff;
-const BG_G = (MAP_BG_COLOR >> 8) & 0xff;
-const BG_B = MAP_BG_COLOR & 0xff;
-
-/** Pre-blend a color at a given alpha against the map background, returning an opaque color. */
-function blendWithBg(color: number, alpha: number): number {
-  const r = (color >> 16) & 0xff;
-  const g = (color >> 8) & 0xff;
-  const b = color & 0xff;
-  const outR = (BG_R + (r - BG_R) * alpha) | 0;
-  const outG = (BG_G + (g - BG_G) * alpha) | 0;
-  const outB = (BG_B + (b - BG_B) * alpha) | 0;
-  return (outR << 16) | (outG << 8) | outB;
-}
+import { FORCE_FIELD_VISUAL } from '../../../config';
 
 /**
  * Render force field pie-slice effect.
@@ -177,8 +159,8 @@ export function renderForceFieldEffect(
     const cosAngle = Math.cos(lineAngle);
     const sinAngle = Math.sin(lineAngle);
 
-    // Draw the main particle dash (opaque, pre-blended against background)
-    graphics.lineStyle(lineThickness, blendWithBg(color, alpha), 1);
+    // Draw the main particle dash
+    graphics.lineStyle(lineThickness, color, alpha);
     graphics.beginPath();
     graphics.moveTo(x + cosAngle * rNear, y + sinAngle * rNear);
     graphics.lineTo(x + cosAngle * rFar, y + sinAngle * rFar);
@@ -201,7 +183,7 @@ export function renderForceFieldEffect(
         const cFar = Math.min(tFar, maxRange);
         if (cFar <= cNear) continue;
 
-        graphics.lineStyle(lineThickness, blendWithBg(color, trailAlpha), 1);
+        graphics.lineStyle(lineThickness, color, trailAlpha);
         graphics.beginPath();
         graphics.moveTo(x + cosAngle * cNear, y + sinAngle * cNear);
         graphics.lineTo(x + cosAngle * cFar, y + sinAngle * cFar);
@@ -223,7 +205,7 @@ function drawAnnularFill(
   color: number,
   opacity: number,
 ): void {
-  graphics.fillStyle(blendWithBg(color, opacity), 1);
+  graphics.fillStyle(color, opacity);
   graphics.beginPath();
   if (innerRange > 0) {
     graphics.arc(
@@ -312,7 +294,7 @@ function drawElectricArcs(
     // Opacity varies per arc for visual variety
     const arcAlpha = v.arcOpacity * (0.5 + hash(seed + 4000) * 0.5);
 
-    graphics.lineStyle(v.arcThickness, blendWithBg(color, arcAlpha), 1);
+    graphics.lineStyle(v.arcThickness, color, arcAlpha);
     graphics.beginPath();
 
     for (let s = 0; s <= v.arcSegments; s++) {
