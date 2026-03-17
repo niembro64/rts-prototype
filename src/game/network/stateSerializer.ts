@@ -124,6 +124,7 @@ type PrevEntityState = {
   velocityY: number;
   hp: number;
   actionCount: number;
+  actionHash: number;       // cheap hash of action content (types + positions)
   isEngagedBits: number;    // bit-packed isEngaged for all weapons
   targetBits: number;       // bit-packed hasTarget for all weapons
   weaponCount: number;
@@ -149,7 +150,7 @@ function createPrevEntityState(): PrevEntityState {
   return {
     x: 0, y: 0, rotation: 0,
     velocityX: 0, velocityY: 0,
-    hp: 0, actionCount: 0,
+    hp: 0, actionCount: 0, actionHash: 0,
     isEngagedBits: 0, targetBits: 0,
     weaponCount: 0, turretRots, turretAngVels, forceFieldRanges,
     buildProgress: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
@@ -204,8 +205,21 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
     if (entity.unit.hp !== prev.hp) {
       mask |= ENTITY_CHANGED_HP;
     }
-    if ((entity.unit.actions?.length ?? 0) !== prev.actionCount) {
-      mask |= ENTITY_CHANGED_ACTIONS;
+    {
+      const actions = entity.unit.actions;
+      const count = actions?.length ?? 0;
+      let hash = count;
+      if (actions) {
+        for (let i = 0; i < count; i++) {
+          const a = actions[i];
+          hash = (hash * 31 + a.x * 1000) | 0;
+          hash = (hash * 31 + a.y * 1000) | 0;
+          hash = (hash * 31 + a.type.charCodeAt(0)) | 0;
+        }
+      }
+      if (count !== prev.actionCount || hash !== prev.actionHash) {
+        mask |= ENTITY_CHANGED_ACTIONS;
+      }
     }
 
     if (entity.turrets) {
@@ -257,7 +271,21 @@ function updatePrevState(entity: Entity, prev: PrevEntityState): void {
   prev.velocityX = entity.unit?.velocityX ?? 0;
   prev.velocityY = entity.unit?.velocityY ?? 0;
   prev.hp = entity.unit?.hp ?? entity.building?.hp ?? 0;
-  prev.actionCount = entity.unit?.actions?.length ?? 0;
+  {
+    const actions = entity.unit?.actions;
+    const count = actions?.length ?? 0;
+    prev.actionCount = count;
+    let hash = count;
+    if (actions) {
+      for (let i = 0; i < count; i++) {
+        const a = actions[i];
+        hash = (hash * 31 + a.x * 1000) | 0;
+        hash = (hash * 31 + a.y * 1000) | 0;
+        hash = (hash * 31 + a.type.charCodeAt(0)) | 0;
+      }
+    }
+    prev.actionHash = hash;
+  }
 
   prev.isEngagedBits = 0;
   prev.targetBits = 0;
