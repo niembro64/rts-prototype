@@ -135,13 +135,15 @@ function renderBeam(
     graphics.lineStyle(beamWidth, 0xffffff, 0.33);
     graphics.lineBetween(prevSegX, prevSegY, endX, endY);
 
-    // Draw reflection circles at each bounce point (detailed+ only)
-    if (beamStyle === 'detailed' || beamStyle === 'complex') {
+    // Draw reflection circles at each bounce point (standard+)
+    if (beamStyle === 'standard' || beamStyle === 'detailed' || beamStyle === 'complex') {
       for (const refl of reflections) {
         graphics.fillStyle(0xffffff, 0.9);
         graphics.fillCircle(refl.x, refl.y, beamWidth + 2);
-        graphics.fillStyle(color, 0.4);
-        graphics.fillCircle(refl.x, refl.y, beamWidth + 5);
+        if (beamStyle !== 'standard') {
+          graphics.fillStyle(color, 0.4);
+          graphics.fillCircle(refl.x, refl.y, beamWidth + 5);
+        }
       }
     }
   } else {
@@ -154,37 +156,34 @@ function renderBeam(
     graphics.lineBetween(startX, startY, endX, endY);
   }
 
-  // Endpoint ball — always drawn at beam radius, semi-transparent white
+  // Endpoint indicator — hit glow when colliding, plain dot otherwise
   const beamRadius = isLineShot(config.shot) ? config.shot.radius : beamWidth;
-  graphics.fillStyle(0xffffff, 0.33);
-  graphics.fillCircle(endX, endY, beamRadius);
 
-  // Collision-triggered damage radius highlight
   if (hasCollision) {
-    const primaryRadius = beamRadius;
-    const secondaryRadius = primaryRadius;
+    // Hit indicator — LOD-scaled
+    const hitR = Math.max(beamRadius, beamWidth * 2);
 
-    if (beamStyle === 'simple') {
-      graphics.fillStyle(color, 0.08);
-      graphics.fillCircle(endX, endY, secondaryRadius);
-      graphics.fillStyle(color, 0.15);
-      graphics.fillCircle(endX, endY, primaryRadius);
-    } else if (beamStyle === 'standard') {
-      graphics.fillStyle(color, 0.15);
-      graphics.fillCircle(endX, endY, primaryRadius);
-    } else if (beamStyle === 'detailed' || beamStyle === 'complex') {
-      graphics.fillStyle(color, 0.08);
-      graphics.fillCircle(endX, endY, secondaryRadius);
-      graphics.fillStyle(color, 0.15);
-      graphics.fillCircle(endX, endY, primaryRadius);
+    // All styles: white core + colored glow
+    graphics.fillStyle(color, 0.2);
+    graphics.fillCircle(endX, endY, hitR * 2);
+    graphics.fillStyle(0xffffff, 0.5);
+    graphics.fillCircle(endX, endY, hitR);
 
+    if (beamStyle === 'standard' || beamStyle === 'detailed' || beamStyle === 'complex') {
+      // Outer colored ring
+      graphics.fillStyle(color, 0.1);
+      graphics.fillCircle(endX, endY, hitR * 3);
+    }
+
+    if (beamStyle === 'detailed' || beamStyle === 'complex') {
+      // Animated sparks orbiting the hit point
       const pulseTime = sprayParticleTime * randomOffsets.pulseSpeed;
       const sparkCount = beamStyle === 'complex' ? 6 : 4;
       for (let i = 0; i < sparkCount; i++) {
         const baseAngle = (pulseTime / 150 + i / sparkCount) * Math.PI * 2;
         const angle = baseAngle + randomOffsets.rotationOffset;
         const sparkDist =
-          primaryRadius *
+          hitR * 2 *
           (0.8 +
             Math.sin(pulseTime / 50 + i * 2 + randomOffsets.phaseOffset) * 0.4);
         const sx = endX + Math.cos(angle) * sparkDist;
@@ -193,6 +192,10 @@ function renderBeam(
         graphics.fillCircle(sx, sy, 2);
       }
     }
+  } else {
+    // No collision — small endpoint dot
+    graphics.fillStyle(0xffffff, 0.33);
+    graphics.fillCircle(endX, endY, beamRadius);
   }
 }
 
