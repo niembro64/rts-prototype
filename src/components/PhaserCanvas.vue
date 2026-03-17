@@ -123,6 +123,7 @@ const isMobile =
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
+const mobileBarsVisible = ref(false);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 
@@ -1254,8 +1255,8 @@ onUnmounted(() => {
       </template>
     </div>
 
-    <!-- Bottom control bars (hidden on mobile) -->
-    <div v-if="!isMobile" class="bottom-controls">
+    <!-- Bottom control bars (desktop: always, mobile: toggled) -->
+    <div v-if="!isMobile || mobileBarsVisible" class="bottom-controls">
       <!-- BATTLE CONTROLS -->
       <div
         v-if="showServerControls"
@@ -2002,6 +2003,17 @@ onUnmounted(() => {
       ☰
     </button>
 
+    <!-- Mobile: toggle bottom bars -->
+    <button
+      v-if="isMobile"
+      class="mobile-bars-toggle"
+      :class="{ active: mobileBarsVisible }"
+      @click="mobileBarsVisible = !mobileBarsVisible"
+      :title="mobileBarsVisible ? 'Hide Controls' : 'Show Controls'"
+    >
+      ☰
+    </button>
+
     <!-- Combat Stats Modal -->
     <CombatStatsModal
       :visible="showCombatStats"
@@ -2247,6 +2259,32 @@ onUnmounted(() => {
   color: white;
 }
 
+/* Mobile bars toggle button */
+.mobile-bars-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3001;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: rgba(20, 20, 35, 0.8);
+  border: 2px solid #555;
+  border-radius: 8px;
+  color: #667;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-bars-toggle.active {
+  background: rgba(40, 60, 40, 0.9);
+  border-color: #6a6;
+  color: #fff;
+}
+
 /* Bottom control bars */
 .bottom-controls {
   flex-shrink: 0;
@@ -2269,6 +2307,23 @@ onUnmounted(() => {
   pointer-events: auto;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* Mobile: stack title above options */
+@media (pointer: coarse) {
+  .control-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 4px 8px;
+  }
+  .control-bar > .bar-info {
+    flex-direction: row;
+    justify-content: center;
+  }
+  .control-bar > .bar-controls {
+    justify-content: center;
+  }
 }
 
 .control-bar:not(:last-child) {

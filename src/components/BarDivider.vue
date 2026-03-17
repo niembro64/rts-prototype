@@ -8,19 +8,22 @@ let ro: ResizeObserver | null = null;
 function check() {
   const el = divider.value;
   if (!el) return;
+
   const group = el.closest('.control-group') as HTMLElement | null;
-  const container = el.closest('.bar-controls') as HTMLElement | null;
-  if (!group || !container) {
-    hidden.value = false;
-    return;
+  const flexItem = group ?? el;
+  const prev = flexItem.previousElementSibling as HTMLElement | null;
+
+  if (prev) {
+    const prevRect = prev.getBoundingClientRect();
+    const flexRect = flexItem.getBoundingClientRect();
+    hidden.value = flexRect.top > prevRect.top + prevRect.height * 0.5;
+  } else {
+    hidden.value = true;
   }
-  const groupLeft = group.getBoundingClientRect().left;
-  const containerLeft = container.getBoundingClientRect().left;
-  hidden.value = groupLeft - containerLeft < 2;
 }
 
 onMounted(() => {
-  const container = divider.value?.closest('.bar-controls');
+  const container = divider.value?.closest('.bar-controls') ?? divider.value?.closest('.control-bar');
   if (container) {
     ro = new ResizeObserver(check);
     ro.observe(container);
@@ -47,6 +50,8 @@ onUnmounted(() => {
 }
 
 .bar-divider.hidden {
-  display: none;
+  visibility: hidden;
+  width: 0;
+  margin: 0;
 }
 </style>
