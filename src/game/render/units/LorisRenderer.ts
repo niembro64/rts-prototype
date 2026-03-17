@@ -86,7 +86,6 @@ export function drawLorisUnit(
       // HIGH+: tiny specular glint that travels along the panel edge
       const phase = nowSec * 2.5 + pi * 2.1;
       const t = (Math.sin(phase) * 0.5 + 0.5); // 0→1
-      // Glint slides along the front edge (f1 → f2)
       const gx = f1x + (f2x - f1x) * t;
       const gy = f1y + (f2y - f1y) * t;
       const glintAlpha = 0.5 + Math.sin(phase * 1.7) * 0.3;
@@ -101,6 +100,21 @@ export function drawLorisUnit(
         graphics.fillStyle(0xffffff, glintAlpha * 0.5);
         graphics.fillCircle(gx2, gy2, 0.8);
       }
+    }
+
+    // Mounting strut drawn last (on top of panel) — MED+ only
+    if (gfx.barrelSpin) {
+      const d1sq = (b1x - x) * (b1x - x) + (b1y - y) * (b1y - y);
+      const d2sq = (b2x - x) * (b2x - x) + (b2y - y) * (b2y - y);
+      // Extend past the corner into the panel
+      const cornerX = d1sq < d2sq ? b1x : b2x;
+      const cornerY = d1sq < d2sq ? b1y : b2y;
+      const dx = cornerX - x;
+      const dy = cornerY - y;
+      const endX = cornerX + dx * 0.15;
+      const endY = cornerY + dy * 0.15;
+      graphics.lineStyle(4, dark, 1);
+      graphics.lineBetween(x, y, endX, endY);
     }
   }
 }
