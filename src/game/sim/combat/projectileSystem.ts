@@ -24,6 +24,15 @@ const _collisionSimEvents: SimEvent[] = [];
 // Reusable empty set for additive area damage (avoids allocating new Set per frame)
 const _emptyExcludeSet = new Set<EntityId>();
 
+// Reusable set for excluding the source entity from splash while projectile is still inside source
+const _sourceExcludeSet = new Set<EntityId>();
+function getSplashExcludes(proj: { hasLeftSource?: boolean; sourceEntityId: EntityId }): Set<EntityId> {
+  if (proj.hasLeftSource) return _emptyExcludeSet;
+  _sourceExcludeSet.clear();
+  _sourceExcludeSet.add(proj.sourceEntityId);
+  return _sourceExcludeSet;
+}
+
 // Reusable arrays for fireTurrets (avoids per-frame allocation)
 const _fireNewProjectiles: Entity[] = [];
 const _fireSimEvents: SimEvent[] = [];
@@ -474,13 +483,14 @@ export function checkProjectileCollisions(
       // Handle splash damage on expiration — only for projectile shots with splashOnExpiry enabled
       if (config.shot.type === 'projectile' && config.shot.explosion?.primary.radius && config.shot.splashOnExpiry && !proj.hasExploded) {
         const projShot = config.shot;
-        // Primary zone: explicit primary radius damage (additive — no exclusions)
+        const splashExcludes = getSplashExcludes(proj);
+        // Primary zone: explicit primary radius damage (excludes source if still inside)
         const primaryResult = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
           damage: projShot.explosion!.primary.damage,
-          excludeEntities: _emptyExcludeSet,
+          excludeEntities: splashExcludes,
           center: { x: projEntity.transform.x, y: projEntity.transform.y },
           radius: projShot.explosion!.primary.radius,
           falloff: 1,
@@ -494,14 +504,14 @@ export function checkProjectileCollisions(
         // Track killed entities and merge death contexts from primary
         collectKillsAndDeathContexts(primaryResult, unitsToRemove, buildingsToRemove, deathContexts);
 
-        // Secondary zone: additive (no exclusions)
+        // Secondary zone
         if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
           const secondaryResult = damageSystem.applyDamage({
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
             damage: projShot.explosion!.secondary.damage,
-            excludeEntities: _emptyExcludeSet,
+            excludeEntities: splashExcludes,
             center: { x: projEntity.transform.x, y: projEntity.transform.y },
             radius: projShot.explosion!.secondary.radius,
             falloff: 1,
@@ -668,15 +678,16 @@ export function checkProjectileCollisions(
       const hadHits = result.hitEntityIds.length > 0;
       collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
-      // Handle splash damage on first hit — additive zones (no exclusions)
+      // Handle splash damage on first hit (excludes source if still inside)
       if (hadHits && projShot.explosion?.primary.radius && !proj.hasExploded) {
+        const splashExcludes = getSplashExcludes(proj);
         // Primary zone: additive (direct-hit unit also takes primary damage)
         const primarySplash = damageSystem.applyDamage({
           type: 'area',
           sourceEntityId: proj.sourceEntityId,
           ownerId: projEntity.ownership.playerId,
           damage: projShot.explosion!.primary.damage,
-          excludeEntities: _emptyExcludeSet,
+          excludeEntities: splashExcludes,
           center: { x: projEntity.transform.x, y: projEntity.transform.y },
           radius: projShot.explosion!.primary.radius,
           falloff: 1,
@@ -687,14 +698,14 @@ export function checkProjectileCollisions(
         applyKnockbackForces(primarySplash.knockbacks, forceAccumulator);
         collectKillsAndDeathContexts(primarySplash, unitsToRemove, buildingsToRemove, deathContexts);
 
-        // Secondary zone: additive (all units in range take secondary regardless of primary)
+        // Secondary zone
         if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
           const secondarySplash = damageSystem.applyDamage({
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
             damage: projShot.explosion!.secondary.damage,
-            excludeEntities: _emptyExcludeSet,
+            excludeEntities: splashExcludes,
             center: { x: projEntity.transform.x, y: projEntity.transform.y },
             radius: projShot.explosion!.secondary.radius,
             falloff: 1,
