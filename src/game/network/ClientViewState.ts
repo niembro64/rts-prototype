@@ -85,6 +85,12 @@ import {
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
+/** Frame-rate independent EMA blend factor from a half-life (seconds).
+ *  halfLife=0 → instant snap (returns 1). */
+function halfLifeBlend(dt: number, halfLife: number): number {
+  return halfLife <= 0 ? 1 : 1 - Math.pow(0.5, dt / halfLife);
+}
+
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
@@ -120,8 +126,9 @@ function getClientForceFieldZones(shot: ForceShot, progress: number) {
   return _ffZones;
 }
 
-// EMA drift rates (per frame at 60fps). Higher = faster correction toward server.
-// Frame-rate independent: actual blend = 1 - (1 - RATE)^(dt * 60)
+// Drift half-lives (seconds). How long to close 50% of the gap to the server value.
+// Smaller = snappier correction, larger = smoother/lazier.
+// Blend factor per frame: 1 - Math.pow(0.5, dt / halfLife)
 import { getDriftMode, getGraphicsConfig } from '@/clientBarConfig';
 import type { DriftMode } from '@/types/client';
 
@@ -129,14 +136,14 @@ type DriftAxis = { pos: number; vel: number };
 type DriftPreset = { movement: DriftAxis; rotation: DriftAxis };
 
 const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
-  snap: { movement: { pos: 1.0, vel: 1.0 }, rotation: { pos: 1.0, vel: 1.0 } },
+  snap: { movement: { pos: 0, vel: 0 }, rotation: { pos: 0, vel: 0 } },
   fast: {
-    movement: { pos: 0.15, vel: 0.25 },
-    rotation: { pos: 0.15, vel: 0.25 },
+    movement: { pos: 0.071, vel: 0.040 },
+    rotation: { pos: 0.071, vel: 0.040 },
   },
   slow: {
-    movement: { pos: 0.04, vel: 0.08 },
-    rotation: { pos: 0.04, vel: 0.08 },
+    movement: { pos: 0.283, vel: 0.139 },
+    rotation: { pos: 0.283, vel: 0.139 },
   },
 };
 
@@ -521,12 +528,12 @@ export class ClientViewState {
     // Ensure caches are fresh for beam obstruction checks
     this.rebuildCachesIfNeeded();
 
-    // Frame-rate independent blend factors (driven by drift mode setting)
+    // Frame-rate independent blend factors (driven by drift mode half-lives)
     const preset = DRIFT_PRESETS[getDriftMode()];
-    const movPosDrift = 1 - Math.pow(1 - preset.movement.pos, dt * 60);
-    const movVelDrift = 1 - Math.pow(1 - preset.movement.vel, dt * 60);
-    const rotPosDrift = 1 - Math.pow(1 - preset.rotation.pos, dt * 60);
-    const rotVelDrift = 1 - Math.pow(1 - preset.rotation.vel, dt * 60);
+    const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
+    const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
+    const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
+    const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
 
     // Collect active force fields for client-side projectile prediction (Gap 3)
     _forceFields.length = 0;

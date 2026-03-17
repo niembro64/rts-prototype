@@ -92,6 +92,14 @@ export const EMA_CONFIG: Record<string, EmaTierConfig> = {
 };
 
 // =============================================================================
+// SERVER TICK
+// =============================================================================
+
+/** Maximum dt (ms) the server will simulate in a single tick.
+ *  Prevents spiral-of-death when a tick takes longer than the interval. */
+export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
+
+// =============================================================================
 // ECONOMY & RESOURCES
 // =============================================================================
 

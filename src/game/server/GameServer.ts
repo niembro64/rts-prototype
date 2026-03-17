@@ -21,6 +21,7 @@ import {
   SNAPSHOT_CONFIG,
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
+  MAX_TICK_DT_MS,
   type KeyframeRatio,
 } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
@@ -254,8 +255,8 @@ export class GameServer {
       }
     }
 
-    // Clamp dt to prevent spiral of death (max ~4 frames at 60Hz)
-    const dtMs = Math.min(delta, 4 * 1000 / 60);
+    // Clamp dt to prevent spiral of death
+    const dtMs = Math.min(delta, MAX_TICK_DT_MS);
     const dtSec = dtMs / 1000;
 
     // Update simulation (calculates thrust velocities, runs combat, etc.)
