@@ -140,6 +140,8 @@ export function updateTargetingAndFiringState(world: WorldState): void {
             } else if (dist <= r.engage.acquire + targetRadius) {
               weapon.state = 'engaged';
             }
+            // else: still tracking but can't fire — Pass 2.5 will check
+            // if there's a closer engageable target to switch to.
             break;
           case 'engaged':
             if (dist > r.tracking.release + targetRadius) {
@@ -155,23 +157,27 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       }
     }
 
-    // Pre-scan: count weapons needing acquisition, find max range + offset for batching
-    let needsAcquireCount = 0;
+    // Pre-scan: count weapons needing acquisition or re-evaluation,
+    // find max range + offset for batching
+    let needsQueryCount = 0;
     let maxAcquireRange = 0;
     let maxWeaponOffset = 0;
     for (const weapon of weapons) {
       if (weapon.config.isManualFire) continue;
-      if (weapon.target !== null) continue;
-      needsAcquireCount++;
-      const acquireRange = weapon.ranges.tracking.acquire;
-      if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
-      const offset = Math.abs(weapon.offset.x) + Math.abs(weapon.offset.y);
-      if (offset > maxWeaponOffset) maxWeaponOffset = offset;
+      // Needs query if: no target (idle), or tracking but not engaged
+      // (tracking weapons should re-evaluate for a closer engageable target)
+      if (weapon.target === null || weapon.state === 'tracking') {
+        needsQueryCount++;
+        const acquireRange = weapon.ranges.tracking.acquire;
+        if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
+        const offset = Math.abs(weapon.offset.x) + Math.abs(weapon.offset.y);
+        if (offset > maxWeaponOffset) maxWeaponOffset = offset;
+      }
     }
 
     // Batch query: one grid traversal for multi-weapon units, copy into reusable buffer
-    const useBatch = needsAcquireCount >= 2;
-    if (useBatch) {
+    const useBatch = needsQueryCount >= 2;
+    if (useBatch && needsQueryCount > 0) {
       const batchRadius = maxAcquireRange + maxWeaponOffset;
       const enemies = spatialGrid.queryEnemyEntitiesInRadius(
         unit.transform.x, unit.transform.y, batchRadius, playerId
@@ -180,7 +186,43 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       for (let i = 0; i < enemies.length; i++) _batchedEnemies[i] = enemies[i];
     }
 
-    // Pass 2: Acquire targets for weapons that need them
+    // Pass 2: Re-evaluate tracking weapons — if a closer engageable target
+    // exists, switch to it instead of uselessly tracking an out-of-range enemy.
+    // This uses per-turret ranges so each weapon evaluates independently.
+    for (const weapon of weapons) {
+      if (weapon.config.isManualFire) continue;
+      if (weapon.state !== 'tracking' || weapon.target === null) continue;
+
+      const weaponX = weapon.worldPos!.x;
+      const weaponY = weapon.worldPos!.y;
+      const r = weapon.ranges;
+
+      const candidates = useBatch
+        ? _batchedEnemies
+        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, r.tracking.acquire, playerId);
+
+      let closestEngageable: Entity | null = null;
+      let closestDist = Infinity;
+
+      for (const enemy of candidates) {
+        if (weapon.config.passive && !isBeamUnit(enemy)) continue;
+        const enemyRadius = enemy.unit ? enemy.unit.radiusColliderUnitShot : (enemy.building ? getTargetRadius(enemy) : 0);
+        const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
+        // Only consider enemies within engage range
+        if (dist <= r.engage.acquire + enemyRadius && dist < closestDist) {
+          closestDist = dist;
+          closestEngageable = enemy;
+        }
+      }
+
+      if (closestEngageable) {
+        // Found a closer target we can actually fire at — switch to it
+        weapon.target = closestEngageable.id;
+        weapon.state = 'engaged';
+      }
+    }
+
+    // Pass 3: Acquire targets for weapons with no target (idle)
     for (const weapon of weapons) {
       if (weapon.config.isManualFire) continue;
       if (weapon.target !== null) continue;
