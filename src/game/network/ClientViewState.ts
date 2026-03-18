@@ -103,24 +103,16 @@ type ActiveForceField = {
   progress: number;
 };
 const _forceFields: ActiveForceField[] = [];
-const _ffZones = { pushInner: 0, pushOuter: 0, pullInner: 0, pullOuter: 0 };
+const _ffZones = { pushInner: 0, pushOuter: 0 };
 
 function getClientForceFieldZones(shot: ForceShot, progress: number) {
   const push = shot.push;
-  const pull = shot.pull;
   if (push && push.power != null) {
     _ffZones.pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
     _ffZones.pushOuter = push.outerRange;
   } else {
     _ffZones.pushInner = 0;
     _ffZones.pushOuter = 0;
-  }
-  if (pull && pull.power != null) {
-    _ffZones.pullInner = pull.innerRange;
-    _ffZones.pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
-  } else {
-    _ffZones.pullInner = 0;
-    _ffZones.pullOuter = 0;
   }
   return _ffZones;
 }
@@ -754,39 +746,24 @@ export class ClientViewState {
               if (ff.playerId === projOwnerId) continue; // Only deflect enemy projectiles
 
               const zones = getClientForceFieldZones(ff.shot, ff.progress);
-              const effectiveOuter = Math.max(zones.pushOuter, zones.pullOuter);
-              if (effectiveOuter <= 0) continue;
+              if (zones.pushOuter <= 0) continue;
 
               const dx = entity.transform.x - ff.weaponX;
               const dy = entity.transform.y - ff.weaponY;
               const distSq = dx * dx + dy * dy;
-              const maxDist = effectiveOuter + projRadius;
+              const maxDist = zones.pushOuter + projRadius;
               if (distSq > maxDist * maxDist) continue;
 
               const dist = Math.sqrt(distSq);
-              const effectiveInner = Math.min(
-                zones.pushOuter > zones.pushInner ? zones.pushInner : Infinity,
-                zones.pullOuter > zones.pullInner ? zones.pullInner : Infinity,
-              );
-              // Always 360° — only distance check needed
-              if (effectiveInner > 0 && dist + projRadius < effectiveInner) continue;
+              if (zones.pushInner > 0 && dist + projRadius < zones.pushInner) continue;
 
-              const inPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
-              const inPull = !inPush && zones.pullOuter > zones.pullInner && dist >= zones.pullInner;
-              if (!inPush && !inPull) continue;
-
-              const pullDir = inPush ? 1 : -1;
-              const push = ff.shot.push;
-              const pull = ff.shot.pull;
-              const zoneStrength = inPush
-                ? (push?.power ?? 0) * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER
-                : (pull?.power ?? 0) * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER;
-              const pullAccel = zoneStrength / projMass;
+              const pushPower = ff.shot.push?.power ?? 0;
+              const pushAccel = (pushPower * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER) / projMass;
 
               const dirX = dist > 0 ? dx / dist : 0;
               const dirY = dist > 0 ? dy / dist : 0;
-              proj.velocityX += pullDir * dirX * pullAccel * dt;
-              proj.velocityY += pullDir * dirY * pullAccel * dt;
+              proj.velocityX += dirX * pushAccel * dt;  // push outward
+              proj.velocityY += dirY * pushAccel * dt;
               entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
             }
           }

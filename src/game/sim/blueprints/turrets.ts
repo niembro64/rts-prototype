@@ -10,7 +10,6 @@ import {
   FORCE_FIELD_TURRET,
   FORCE_TURRET_RANGE_MULTIPLIERS,
   FORCE_PUSH,
-  FORCE_PULL,
 } from '../../../config';
 import { AUDIO, harmonicSeries } from '../../../audioConfig';
 import type { TurretBlueprint } from './types';
@@ -212,7 +211,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     id: 'mirrorTurret',
     projectileId: 'beamShot0',
     range: 220,
-    turretTurnAccel: 100,
+    turretTurnAccel: 30,
     turretDrag: 0.5,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
     launchForce: 0,
@@ -244,7 +243,6 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       angle: Math.PI * 2,
       transitionTime: 500,
       push: { ...FORCE_PUSH },
-      pull: { ...FORCE_PULL },
     },
     audio: { fireSound: AUDIO.event.fire.forceTurretLarge },
   },
@@ -263,7 +261,6 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       angle: Math.PI * 2,
       transitionTime: 1000,
       push: { ...FORCE_PUSH },
-      pull: { ...FORCE_PULL },
     },
     audio: { fireSound: AUDIO.event.fire.forceTurretMedium },
   },

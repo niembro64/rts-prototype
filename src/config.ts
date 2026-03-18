@@ -217,17 +217,6 @@ export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRat
     damage: 10,
   };
 
-export const FORCE_PULL: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig =
-  {
-    innerRatio: 0.5,
-    rimWidth: 2,
-    color: 0x3366ff,
-    alpha: 0.2,
-    particleAlpha: 0.2,
-    power: null,
-    damage: 10,
-  };
-
 /**
  * Force field weapon visual configuration.
  * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.

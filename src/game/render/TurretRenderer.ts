@@ -277,29 +277,15 @@ function drawForceFieldZones(
   const progress = weapon.forceField?.range ?? 0;
   const fieldShot = weapon.config.shot.type === 'force' ? weapon.config.shot : null;
   const push = fieldShot?.push;
-  const pull = fieldShot?.pull;
-  const fullCircle = Math.PI * 2;
+  if (!push) return;
 
-  if (push) {
-    const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
-    if (push.outerRange > pushInner) {
-      renderForceFieldEffect(
-        graphics, cx, cy, 0, fullCircle, push.outerRange,
-        push.color, push.alpha, push.particleAlpha,
-        pushInner, true, entityId
-      );
-    }
-  }
-
-  if (pull) {
-    const pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
-    if (pullOuter > pull.innerRange) {
-      renderForceFieldEffect(
-        graphics, cx, cy, 0, fullCircle, pullOuter,
-        pull.color, pull.alpha, pull.particleAlpha,
-        pull.innerRange, false, entityId
-      );
-    }
+  const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
+  if (push.outerRange > pushInner) {
+    renderForceFieldEffect(
+      graphics, cx, cy, 0, Math.PI * 2, push.outerRange,
+      push.color, push.alpha, push.particleAlpha,
+      pushInner, true, entityId
+    );
   }
 }
 

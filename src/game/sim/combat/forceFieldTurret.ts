@@ -64,24 +64,16 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
   }
 }
 
-// Compute the effective push and pull zone boundaries from transition progress + config
-// Reusable object to avoid allocation per call
-const _zones = { pushInner: 0, pushOuter: 0, pullInner: 0, pullOuter: 0 };
+// Compute the effective push zone boundaries from transition progress + config
+const _zones = { pushInner: 0, pushOuter: 0 };
 
-function getForceFieldZones(push: import('../types').ForceFieldZoneConfig | null | undefined, pull: import('../types').ForceFieldZoneConfig | null | undefined, progress: number) {
+function getForceFieldZones(push: import('../types').ForceFieldZoneConfig | null | undefined, progress: number) {
   if (push) {
     _zones.pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
     _zones.pushOuter = push.outerRange;
   } else {
     _zones.pushInner = 0;
     _zones.pushOuter = 0;
-  }
-  if (pull) {
-    _zones.pullInner = pull.innerRange;
-    _zones.pullOuter = pull.innerRange + (pull.outerRange - pull.innerRange) * progress;
-  } else {
-    _zones.pullInner = 0;
-    _zones.pullOuter = 0;
   }
   return _zones;
 }
@@ -115,28 +107,13 @@ export function applyForceFieldDamage(
       if (progress <= 0) continue;
 
       const push = fieldShot.push;
-      const pull = fieldShot.pull;
-      // Zones with power: null are visual-only — skip sim entirely for that zone
-      const pushSim = push != null && push.power != null;
-      const pullSim = pull != null && pull.power != null;
-      if (!pushSim && !pullSim) continue;
+      if (!push || push.power == null) continue;
 
-      const zones = getForceFieldZones(pushSim ? push : null, pullSim ? pull : null, progress);
+      const zones = getForceFieldZones(push, progress);
+      if (zones.pushOuter <= zones.pushInner) continue;
 
-      // Overall effective range (union of sim-active zones)
-      const effectiveOuter = Math.max(zones.pushOuter, zones.pullOuter);
-      const effectiveInner = Math.min(
-        zones.pushOuter > zones.pushInner ? zones.pushInner : Infinity,
-        zones.pullOuter > zones.pullInner ? zones.pullInner : Infinity
-      );
-
-      if (effectiveOuter <= effectiveInner) continue;
-
-      // Per-zone damage and force
-      const pushDamagePerFrame = pushSim ? push!.damage * dtSec : 0;
-      const pullDamagePerFrame = pullSim ? pull!.damage * dtSec : 0;
-      const pushStrength = pushSim ? push!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
-      const pullStrength = pullSim ? pull!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
+      const damagePerFrame = push.damage * dtSec;
+      const pushStrength = push.power * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER;
 
       // Force fields are always 360° — no angle checks needed
       const weaponX = unit.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y;
@@ -144,7 +121,7 @@ export function applyForceFieldDamage(
 
       // --- Enemy units (skipped when both ffAccelUnits and ffDmgUnits are disabled) ---
       const nearbyUnits = (world.ffAccelUnits || world.ffDmgUnits)
-        ? spatialGrid.queryEnemyUnitsInRadius(weaponX, weaponY, effectiveOuter, sourcePlayerId)
+        ? spatialGrid.queryEnemyUnitsInRadius(weaponX, weaponY, zones.pushOuter, sourcePlayerId)
         : [];
 
       for (const target of nearbyUnits) {
@@ -155,27 +132,16 @@ export function applyForceFieldDamage(
         const dx = target.transform.x - weaponX;
         const dy = target.transform.y - weaponY;
 
-        // Cheap squared-distance rejection before sqrt
         const distSq = dx * dx + dy * dy;
-        const maxDist = effectiveOuter + targetRadius;
+        const maxDist = zones.pushOuter + targetRadius;
         if (distSq > maxDist * maxDist) continue;
 
         const dist = Math.sqrt(distSq);
-
-        // Distance check (always 360° — no angle check needed)
-        if (effectiveInner > 0 && dist + targetRadius < effectiveInner) continue;
-
-        // Determine which zone: push (inner) or pull (outer)
-        const inPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
-        const inPull = !inPush && zones.pullOuter > zones.pullInner && dist >= zones.pullInner;
-
-        if (!inPush && !inPull) continue;
+        if (zones.pushInner > 0 && dist + targetRadius < zones.pushInner) continue;
 
         if (world.ffDmgUnits) {
-          const damagePerFrame = inPush ? pushDamagePerFrame : pullDamagePerFrame;
           const wasAlive = target.unit.hp > 0;
           if (wasAlive) {
-            // Cap recorded damage at remaining HP to avoid overkill inflation
             const actualDamage = Math.min(damagePerFrame, target.unit.hp);
             statsTracker?.recordDamage(unit.id, target.id, actualDamage);
           }
@@ -187,23 +153,21 @@ export function applyForceFieldDamage(
 
         if (world.ffAccelUnits && dist > 0 && forceAccumulator) {
           const targetMass = target.body?.physicsBody.mass ?? 1;
-          const pullDir = inPush ? 1 : -1; // push outward in inner zone, pull inward in outer zone
-          const zoneStrength = inPush ? pushStrength : pullStrength;
-          const nx = (pullDir * dx) / dist;
-          const ny = (pullDir * dy) / dist;
+          const nx = dx / dist;  // push outward
+          const ny = dy / dist;
 
           forceAccumulator.addNormalizedDirectionalForce(
             target.id,
             nx, ny,
-            zoneStrength, targetMass,
-            true, 'force_field_pull'
+            pushStrength, targetMass,
+            true, 'force_field_push'
           );
         }
       }
 
       // --- Buildings ---
       const nearbyBuildings = spatialGrid.queryBuildingsInRadius(
-        weaponX, weaponY, effectiveOuter
+        weaponX, weaponY, zones.pushOuter
       );
 
       for (const building of nearbyBuildings) {
@@ -213,27 +177,19 @@ export function applyForceFieldDamage(
         const buildingRadius = Math.max(building.building.width, building.building.height) / 2;
         const bdx = building.transform.x - weaponX;
         const bdy = building.transform.y - weaponY;
-
-        // Cheap squared-distance rejection before sqrt
         const bdistSq = bdx * bdx + bdy * bdy;
-        const bmaxDist = effectiveOuter + buildingRadius;
+        const bmaxDist = zones.pushOuter + buildingRadius;
         if (bdistSq > bmaxDist * bmaxDist) continue;
 
         const bdist = Math.sqrt(bdistSq);
+        if (zones.pushInner > 0 && bdist + buildingRadius < zones.pushInner) continue;
 
-        if (effectiveInner > 0 && bdist + buildingRadius < effectiveInner) continue;
-
-        const bInPush = zones.pushOuter > zones.pushInner && bdist < zones.pushOuter;
-        const bInPull = !bInPush && zones.pullOuter > zones.pullInner && bdist >= zones.pullInner;
-        if (!bInPush && !bInPull) continue;
-
-        const bDamagePerFrame = bInPush ? pushDamagePerFrame : pullDamagePerFrame;
         const bWasAlive = building.building.hp > 0;
         if (bWasAlive) {
-          const actualDamage = Math.min(bDamagePerFrame, building.building.hp);
+          const actualDamage = Math.min(damagePerFrame, building.building.hp);
           statsTracker?.recordDamage(unit.id, building.id, actualDamage);
         }
-        building.building.hp -= bDamagePerFrame;
+        building.building.hp -= damagePerFrame;
         if (bWasAlive && building.building.hp <= 0) {
           statsTracker?.recordKill(unit.id, building.id);
         }
@@ -241,7 +197,7 @@ export function applyForceFieldDamage(
 
       // --- Projectiles (skipped when ffAccelShots is disabled) ---
       const nearbyProjectiles = world.ffAccelShots
-        ? spatialGrid.queryEnemyProjectilesInRadius(weaponX, weaponY, effectiveOuter, sourcePlayerId)
+        ? spatialGrid.queryEnemyProjectilesInRadius(weaponX, weaponY, zones.pushOuter, sourcePlayerId)
         : [];
 
       for (const projEntity of nearbyProjectiles) {
@@ -251,29 +207,19 @@ export function applyForceFieldDamage(
         const dx = projEntity.transform.x - weaponX;
         const dy = projEntity.transform.y - weaponY;
         const distSq = dx * dx + dy * dy;
-
-        // Cheap squared-distance rejection before sqrt
-        const pmaxDist = effectiveOuter + projRadius;
+        const pmaxDist = zones.pushOuter + projRadius;
         if (distSq > pmaxDist * pmaxDist) continue;
 
         const dist = Math.sqrt(distSq);
-
-        if (effectiveInner > 0 && dist + projRadius < effectiveInner) continue;
-
-        const pInPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
-        const pInPull = !pInPush && zones.pullOuter > zones.pullInner && dist >= zones.pullInner;
-        if (!pInPush && !pInPull) continue;
-
-        const pullDir = pInPush ? 1 : -1;
-        const pZoneStrength = pInPush ? pushStrength : pullStrength;
+        if (zones.pushInner > 0 && dist + projRadius < zones.pushInner) continue;
 
         const projMass = (proj.config.shot.type === 'projectile' ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
-        const pullAccel = pZoneStrength / projMass;
+        const pushAccel = pushStrength / projMass;
 
         const dirX = dist > 0 ? dx / dist : 0;
         const dirY = dist > 0 ? dy / dist : 0;
-        proj.velocityX += pullDir * dirX * pullAccel * dtSec;
-        proj.velocityY += pullDir * dirY * pullAccel * dtSec;
+        proj.velocityX += dirX * pushAccel * dtSec;  // push outward
+        proj.velocityY += dirY * pushAccel * dtSec;
 
         projEntity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
 
