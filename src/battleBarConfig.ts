@@ -33,9 +33,9 @@ export const BATTLE_CONFIG = {
   ffDmgUnits: { default: false },
 } as const satisfies BattleBarConfig;
 
-// Default caps per mode
-export const DEMO_CAP_DEFAULT = 300;  // 3e+2
-export const REAL_CAP_DEFAULT = 4000; // 4e+3
+// Default caps per mode (must be values from BATTLE_CONFIG.cap.options)
+export const DEMO_CAP_DEFAULT = Math.pow(2, 8);   // 256 ≈ 3e+2
+export const REAL_CAP_DEFAULT = Math.pow(2, 12);   // 4096 ≈ 4e+3
 
 // ── localStorage keys (module-private) ──
 const STORAGE_DEMO_UNITS = 'rts-demo-units';
