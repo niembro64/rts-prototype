@@ -13,112 +13,76 @@ import { DEMO_CONFIG } from '../../demoConfig';
 // Available unit types for background spawning (excludes commander)
 export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];
 
-// Precomputed inverse cost weights for weighted random selection
-let backgroundUnitWeights: { type: string; weight: number }[] = [];
-let backgroundTotalWeight: number = 0;
+// Pre-computed inverse-cost weights for background unit selection
+let backgroundUnitWeights: { type: string; cumWeight: number }[] = [];
 
-function initBackgroundUnitWeights(): void {
-  if (backgroundUnitWeights.length > 0) return;
-
-  for (const unitType of BACKGROUND_UNIT_TYPES) {
-    const bp = getUnitBlueprint(unitType);
-    const weight = 1 / bp.baseCost;
-    backgroundUnitWeights.push({ type: unitType, weight });
-    backgroundTotalWeight += weight;
+function buildWeightTable(allowedTypes?: ReadonlySet<string>): void {
+  const types = allowedTypes ? BACKGROUND_UNIT_TYPES.filter(t => allowedTypes.has(t)) : BACKGROUND_UNIT_TYPES;
+  let totalWeight = 0;
+  backgroundUnitWeights = [];
+  for (const t of types) {
+    const bp = getUnitBlueprint(t);
+    const cost = bp?.baseCost ?? 100;
+    const weight = 1 / Math.max(cost, 1);
+    totalWeight += weight;
+    backgroundUnitWeights.push({ type: t, cumWeight: totalWeight });
+  }
+  // Normalize
+  for (const entry of backgroundUnitWeights) {
+    entry.cumWeight /= totalWeight;
   }
 }
 
 function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): string {
-  initBackgroundUnitWeights();
-
-  // If filtering, sum only allowed weights
-  if (allowedTypes) {
-    let filteredTotal = 0;
-    for (const entry of backgroundUnitWeights) {
-      if (allowedTypes.has(entry.type)) filteredTotal += entry.weight;
-    }
-    if (filteredTotal <= 0) return backgroundUnitWeights[0].type;
-
-    const random = Math.random() * filteredTotal;
-    let cumulative = 0;
-    for (const entry of backgroundUnitWeights) {
-      if (!allowedTypes.has(entry.type)) continue;
-      cumulative += entry.weight;
-      if (random <= cumulative) return entry.type;
-    }
-  }
-
-  const random = Math.random() * backgroundTotalWeight;
-  let cumulative = 0;
-
+  if (backgroundUnitWeights.length === 0) buildWeightTable(allowedTypes);
+  const r = Math.random();
   for (const entry of backgroundUnitWeights) {
-    cumulative += entry.weight;
-    if (random <= cumulative) {
-      return entry.type;
-    }
+    if (r <= entry.cumWeight) return entry.type;
   }
-
   return backgroundUnitWeights[backgroundUnitWeights.length - 1].type;
 }
 
-// Spawn a single background unit with standalone physics
-function spawnBackgroundUnitStandalone(
+function selectUnitType(allowedTypes?: ReadonlySet<string>): string {
+  if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
+    return selectWeightedUnitType(allowedTypes);
+  } else if (allowedTypes && allowedTypes.size > 0) {
+    const allowed = Array.from(allowedTypes);
+    return allowed[Math.floor(Math.random() * allowed.length)];
+  }
+  return BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
+}
+
+// Spawn a single unit at a specific position with a fight waypoint
+function spawnUnit(
   world: WorldState,
   physics: PhysicsEngine,
   playerId: PlayerId,
-  minX: number,
-  maxX: number,
-  minY: number,
-  maxY: number,
-  targetMinX: number,
-  targetMaxX: number,
-  targetMinY: number,
-  targetMaxY: number,
-  initialRotation: number,
-  allowedTypes?: ReadonlySet<string>
+  x: number,
+  y: number,
+  targetX: number,
+  targetY: number,
+  allowedTypes?: ReadonlySet<string>,
 ): Entity | null {
-  const x = minX + Math.random() * (maxX - minX);
-  const y = minY + Math.random() * (maxY - minY);
-
-  // Nothing allowed — skip spawn entirely
   if (allowedTypes && allowedTypes.size === 0) return null;
 
-  let unitType: string;
-  if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
-    unitType = selectWeightedUnitType(allowedTypes);
-  } else if (allowedTypes && allowedTypes.size > 0) {
-    const allowed = Array.from(allowedTypes);
-    unitType = allowed[Math.floor(Math.random() * allowed.length)];
-  } else {
-    unitType = BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
-  }
-
-  // Create unit from blueprint
+  const unitType = selectUnitType(allowedTypes);
   const unit = world.createUnitFromBlueprint(x, y, playerId, unitType);
 
-  unit.transform.rotation = initialRotation;
-  aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
-
-  const targetX = targetMinX + Math.random() * (targetMaxX - targetMinX);
-  const targetY = targetMinY + Math.random() * (targetMaxY - targetMinY);
+  unit.transform.rotation = Math.atan2(targetY - y, targetX - x);
+  aimTurretsToward(unit, targetX, targetY);
 
   if (unit.unit) {
-    unit.unit.actions = [{
-      type: 'fight',
-      x: targetX,
-      y: targetY,
-    }];
+    unit.unit.actions = [{ type: 'fight', x: targetX, y: targetY }];
   }
 
   world.addEntity(unit);
 
   if (unit.unit) {
     const body = physics.createUnitBody(
-      x,
-      y,
+      x, y,
       unit.unit.radiusColliderUnitUnit,
       unit.unit.mass,
-      `unit_${unit.id}`
+      `unit_${unit.id}`,
     );
     unit.body = { physicsBody: body };
   }
@@ -131,86 +95,74 @@ export function spawnBackgroundUnitsStandalone(
   world: WorldState,
   physics: PhysicsEngine,
   initialSpawn: boolean,
-  allowedTypes?: ReadonlySet<string>
+  allowedTypes?: ReadonlySet<string>,
 ): Entity[] {
   const spawned: Entity[] = [];
   const numPlayers = 4;
   const unitCapPerPlayer = Math.floor(world.maxTotalUnits / numPlayers);
-  const spawnMargin = 100;
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;
+  const cx = mapWidth / 2;
+  const cy = mapHeight / 2;
 
-  // Center cluster first — spawn units near map center so combat is immediate
-  // Each unit's fight waypoint mirrors its spawn position through the center
   if (initialSpawn) {
-    const cx = mapWidth / 2;
-    const cy = mapHeight / 2;
+    // Spawn all initial units near the center for immediate combat.
+    // Each player's units cluster in their quadrant of the center area.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius;
-    const centerUnitsPerPlayer = DEMO_CONFIG.centerSpawnPerPlayer;
-    for (let p = 1; p <= numPlayers; p++) {
-      const pUnits = world.getUnitsByPlayer(p as PlayerId).length;
-      for (let i = 0; i < centerUnitsPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
-        // Spawn position: random within center radius
-        const spawnX = cx - centerRadius + Math.random() * centerRadius * 2;
-        const spawnY = cy - centerRadius + Math.random() * centerRadius * 2;
-        // Target: mirror through center (equal distance on opposite side)
-        const targetX = 2 * cx - spawnX;
-        const targetY = 2 * cy - spawnY;
-        const unit = spawnBackgroundUnitStandalone(world, physics, p as PlayerId,
-          spawnX, spawnX, spawnY, spawnY,
-          targetX, targetX, targetY, targetY,
-          Math.atan2(targetY - spawnY, targetX - spawnX), allowedTypes
-        );
+    const totalPerPlayer = DEMO_CONFIG.centerSpawnPerPlayer;
+
+    // Player spawn angles (same as base positions: evenly around circle)
+    const playerAngles: number[] = [];
+    for (let i = 0; i < numPlayers; i++) {
+      playerAngles.push((i / numPlayers) * Math.PI * 2 - Math.PI / 2);
+    }
+
+    for (let p = 0; p < numPlayers; p++) {
+      const playerId = (p + 1) as PlayerId;
+      const pUnits = world.getUnitsByPlayer(playerId).length;
+      const angle = playerAngles[p];
+      // Each player's cluster is offset slightly from center toward their base
+      const clusterCx = cx + Math.cos(angle) * centerRadius * 0.3;
+      const clusterCy = cy + Math.sin(angle) * centerRadius * 0.3;
+
+      for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
+        // Random position within the cluster
+        const spawnAngle = Math.random() * Math.PI * 2;
+        const spawnDist = Math.random() * centerRadius;
+        const spawnX = clusterCx + Math.cos(spawnAngle) * spawnDist;
+        const spawnY = clusterCy + Math.sin(spawnAngle) * spawnDist;
+
+        // Fight waypoint: toward map center
+        const unit = spawnUnit(world, physics, playerId, spawnX, spawnY, cx, cy, allowedTypes);
         if (unit) spawned.push(unit);
       }
     }
-  }
+  } else {
+    // Reinforcement spawns: one unit per player from their base side, heading to center
+    const spawnMargin = 100;
+    const playerEdges = [
+      // Player 1: top edge
+      { minX: spawnMargin, maxX: mapWidth - spawnMargin, minY: spawnMargin, maxY: spawnMargin + 50 },
+      // Player 2: bottom edge
+      { minX: spawnMargin, maxX: mapWidth - spawnMargin, minY: mapHeight - spawnMargin - 50, maxY: mapHeight - spawnMargin },
+      // Player 3: left edge
+      { minX: spawnMargin, maxX: spawnMargin + 50, minY: spawnMargin, maxY: mapHeight - spawnMargin },
+      // Player 4: right edge
+      { minX: mapWidth - spawnMargin - 50, maxX: mapWidth - spawnMargin, minY: spawnMargin, maxY: mapHeight - spawnMargin },
+    ];
 
-  // Edge spawns — fill remaining cap with units marching from perimeter
-  const unitsToSpawnPerPlayer = initialSpawn ? Math.min(15, unitCapPerPlayer) : 1;
+    for (let p = 0; p < numPlayers; p++) {
+      const playerId = (p + 1) as PlayerId;
+      const pUnits = world.getUnitsByPlayer(playerId).length;
+      if (pUnits >= unitCapPerPlayer) continue;
 
-  // Player 1 (Red) - top of map, moving down
-  const player1Units = world.getUnitsByPlayer(1).length;
-  for (let i = 0; i < unitsToSpawnPerPlayer && player1Units + i < unitCapPerPlayer; i++) {
-    const unit = spawnBackgroundUnitStandalone(world, physics, 1,
-      spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin,
-      spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight,
-      Math.PI / 2, allowedTypes
-    );
-    if (unit) spawned.push(unit);
-  }
+      const edge = playerEdges[p];
+      const x = edge.minX + Math.random() * (edge.maxX - edge.minX);
+      const y = edge.minY + Math.random() * (edge.maxY - edge.minY);
 
-  // Player 2 (Blue) - bottom of map, moving up
-  const player2Units = world.getUnitsByPlayer(2).length;
-  for (let i = 0; i < unitsToSpawnPerPlayer && player2Units + i < unitCapPerPlayer; i++) {
-    const unit = spawnBackgroundUnitStandalone(world, physics, 2,
-      spawnMargin, mapWidth - spawnMargin, mapHeight - spawnMargin, mapHeight,
-      spawnMargin, mapWidth - spawnMargin, spawnMargin, spawnMargin,
-      -Math.PI / 2, allowedTypes
-    );
-    if (unit) spawned.push(unit);
-  }
-
-  // Player 3 (Yellow) - left of map, moving right
-  const player3Units = world.getUnitsByPlayer(3).length;
-  for (let i = 0; i < unitsToSpawnPerPlayer && player3Units + i < unitCapPerPlayer; i++) {
-    const unit = spawnBackgroundUnitStandalone(world, physics, 3,
-      spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin,
-      mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin,
-      0, allowedTypes
-    );
-    if (unit) spawned.push(unit);
-  }
-
-  // Player 4 (Green) - right of map, moving left
-  const player4Units = world.getUnitsByPlayer(4).length;
-  for (let i = 0; i < unitsToSpawnPerPlayer && player4Units + i < unitCapPerPlayer; i++) {
-    const unit = spawnBackgroundUnitStandalone(world, physics, 4,
-      mapWidth - spawnMargin, mapWidth, spawnMargin, mapHeight - spawnMargin,
-      spawnMargin, spawnMargin, spawnMargin, mapHeight - spawnMargin,
-      Math.PI, allowedTypes
-    );
-    if (unit) spawned.push(unit);
+      const unit = spawnUnit(world, physics, playerId, x, y, cx, cy, allowedTypes);
+      if (unit) spawned.push(unit);
+    }
   }
 
   return spawned;
