@@ -320,44 +320,51 @@ export class InputManager {
     );
   }
 
-  /** Mobile: single-finger drag = pan, two-finger pinch = zoom */
+  /** Mobile touch: 1-finger pan, 2-finger zoom+pan (unified gesture).
+   *
+   * Transitions:
+   *   0→1  Start single-finger pan from finger position.
+   *   1→2  End single-finger pan. Begin two-finger mode (track distance + midpoint).
+   *   2→1  End two-finger mode. Seamlessly restart single-finger pan from remaining finger.
+   *   2→0  Stop everything.
+   *   1→0  Stop panning.
+   *
+   * Two-finger mode uses a single unified operation per frame:
+   *   1. Record the world point under the current midpoint.
+   *   2. Apply zoom from the change in finger distance.
+   *   3. Re-anchor scroll so that world point stays under the midpoint.
+   * This handles both zoom and pan with no fighting between separate systems.
+   */
   private setupMobileTouchEvents(): void {
     const canvas = this.scene.game.canvas;
 
     // Convert viewport clientX/clientY to canvas-relative coordinates.
-    // Panning only uses deltas so the offset cancels out, but pinch zoom
-    // needs the absolute position to anchor the zoom correctly.
-    const toCanvasX = (clientX: number) => {
+    const toCanvas = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect();
-      return clientX - rect.left;
-    };
-    const toCanvasY = (clientY: number) => {
-      const rect = canvas.getBoundingClientRect();
-      return clientY - rect.top;
+      return { x: clientX - rect.left, y: clientY - rect.top };
     };
 
     this.touchStartHandler = (e: TouchEvent) => {
       e.preventDefault();
       if (e.touches.length === 1) {
-        // Single finger — start pan
+        // 0→1: Start single-finger pan
         const t = e.touches[0];
         this.cameraController.startPan(t.clientX, t.clientY);
       } else if (e.touches.length === 2) {
-        // Two fingers — stop pan, start tracking pinch
+        // 1→2: End single-finger pan, begin two-finger tracking
         if (this.state.isPanningCamera) this.cameraController.endPan();
         const t0 = e.touches[0];
         const t1 = e.touches[1];
         this.lastTouchDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
         this.lastTouchCenterX = (t0.clientX + t1.clientX) / 2;
         this.lastTouchCenterY = (t0.clientY + t1.clientY) / 2;
-        // Start pan from pinch center so two-finger drag also pans
-        this.cameraController.startPan(this.lastTouchCenterX, this.lastTouchCenterY);
       }
     };
 
     this.touchMoveHandler = (e: TouchEvent) => {
       e.preventDefault();
       if (e.touches.length === 1 && this.state.isPanningCamera) {
+        // Single-finger pan: map follows finger 1:1
         const t = e.touches[0];
         this.cameraController.updateTouchPan(t.clientX, t.clientY);
       } else if (e.touches.length === 2) {
@@ -367,20 +374,13 @@ export class InputManager {
         const centerX = (t0.clientX + t1.clientX) / 2;
         const centerY = (t0.clientY + t1.clientY) / 2;
 
-        // Pinch zoom — use canvas-relative coords for correct anchor point
-        if (this.lastTouchDist > 0) {
-          this.cameraController.applyPinchZoom(this.lastTouchDist, currDist, toCanvasX(centerX), toCanvasY(centerY));
-          // Reset pan origin after zoom so the pan doesn't undo the zoom's scroll correction
-          if (this.state.isPanningCamera) {
-            this.cameraController.endPan();
-            this.cameraController.startPan(centerX, centerY);
-          }
-        }
-
-        // Two-finger pan
-        if (this.state.isPanningCamera) {
-          this.cameraController.updateTouchPan(centerX, centerY);
-        }
+        // Unified two-finger gesture: zoom + pan as one operation
+        const prev = toCanvas(this.lastTouchCenterX, this.lastTouchCenterY);
+        const curr = toCanvas(centerX, centerY);
+        this.cameraController.applyTwoFingerGesture(
+          this.lastTouchDist, currDist,
+          prev.x, prev.y, curr.x, curr.y,
+        );
 
         this.lastTouchDist = currDist;
         this.lastTouchCenterX = centerX;
@@ -391,14 +391,14 @@ export class InputManager {
     this.touchEndHandler = (e: TouchEvent) => {
       e.preventDefault();
       if (e.touches.length === 0) {
-        // All fingers lifted
+        // →0: All fingers lifted
         if (this.state.isPanningCamera) this.cameraController.endPan();
         this.lastTouchDist = 0;
       } else if (e.touches.length === 1) {
-        // Went from 2 fingers to 1 — restart single-finger pan
+        // 2→1: Seamlessly restart single-finger pan from remaining finger
         this.lastTouchDist = 0;
+        if (this.state.isPanningCamera) this.cameraController.endPan();
         const t = e.touches[0];
-        this.cameraController.endPan();
         this.cameraController.startPan(t.clientX, t.clientY);
       }
     };

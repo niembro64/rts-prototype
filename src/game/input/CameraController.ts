@@ -380,22 +380,30 @@ export class CameraController {
     }
   }
 
-  /** Apply pinch zoom given previous and current distance between two touch points.
-   *  centerX/centerY are canvas-relative pixel coordinates. */
-  applyPinchZoom(prevDist: number, currDist: number, centerX: number, centerY: number): void {
-    if (prevDist <= 0) return;
+  /** Unified two-finger gesture: zoom + pan in a single operation.
+   *  All coordinates are canvas-relative pixels.
+   *  The world point that was under the previous midpoint ends up
+   *  under the current midpoint — this handles both pan and zoom. */
+  applyTwoFingerGesture(
+    prevDist: number, currDist: number,
+    prevMidX: number, prevMidY: number,
+    currMidX: number, currMidY: number,
+  ): void {
     const camera = this.scene.cameras.main;
-    const oldZoom = camera.zoom;
-    const scale = currDist / prevDist;
-    const newZoom = Phaser.Math.Clamp(oldZoom * scale, ZOOM_MIN, ZOOM_MAX);
-    if (newZoom === oldZoom) return;
 
-    // Keep the world point under the pinch midpoint fixed (same math as wheel zoom)
-    const worldX = camera.scrollX + centerX / oldZoom;
-    const worldY = camera.scrollY + centerY / oldZoom;
-    camera.scrollX = worldX - centerX / newZoom;
-    camera.scrollY = worldY - centerY / newZoom;
-    camera.zoom = newZoom;
+    // 1. World point under the previous midpoint
+    const worldX = camera.scrollX + prevMidX / camera.zoom;
+    const worldY = camera.scrollY + prevMidY / camera.zoom;
+
+    // 2. Apply zoom from pinch distance change
+    if (prevDist > 0) {
+      const scale = currDist / prevDist;
+      camera.zoom = Phaser.Math.Clamp(camera.zoom * scale, ZOOM_MIN, ZOOM_MAX);
+    }
+
+    // 3. Re-anchor: place that world point under the current midpoint
+    camera.scrollX = worldX - currMidX / camera.zoom;
+    camera.scrollY = worldY - currMidY / camera.zoom;
   }
 
   // Get current zoom level
