@@ -66,6 +66,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
 
     if (entity.factory?.isProducing && entity.factory.buildQueue.length > 0 &&
         entity.ownership && entity.buildable?.isComplete) {
+      // Don't spend energy if player is already at or over the unit cap
+      if (!world.canPlayerBuildUnit(entity.ownership.playerId)) continue;
+
       const f = entity.factory;
       const remaining = f.currentBuildCost * (1 - f.currentBuildProgress);
       if (remaining > 0) {
