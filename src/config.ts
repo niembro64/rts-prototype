@@ -40,7 +40,7 @@ import type {
 export const SPATIAL_GRID_CELL_SIZE = 150;
 
 /** Brightness multiplier for the spatial grid debug overlay (0.0 = invisible, 1.0 = full). */
-export const GRID_OVERLAY_BRIGHTNESS = 0.5;
+export const GRID_OVERLAY_BRIGHTNESS = 0.3;
 
 // F=============================================================================
 // SNAPSHOT / NETWORKING
