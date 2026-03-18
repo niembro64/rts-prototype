@@ -42,6 +42,8 @@ const STORAGE_DEMO_UNITS = 'rts-demo-units';
 const STORAGE_MAX_TOTAL_UNITS = 'rts-max-total-units';
 const STORAGE_DEMO_CAP = 'rts-demo-cap';
 const STORAGE_REAL_CAP = 'rts-real-cap';
+const STORAGE_DEMO_GRID = 'rts-demo-grid';
+const STORAGE_REAL_GRID = 'rts-real-grid';
 const STORAGE_PROJ_VEL_INHERIT = 'rts-proj-vel-inherit';
 const STORAGE_FF_ACCEL_UNITS = 'rts-ff-accel-units';
 const STORAGE_FF_ACCEL_SHOTS = 'rts-ff-accel-shots';
@@ -111,6 +113,32 @@ export function loadStoredRealCap(): number {
 
 export function saveRealCap(value: number): void {
   try { localStorage.setItem(STORAGE_REAL_CAP, String(value)); } catch { /* */ }
+}
+
+export function loadStoredDemoGrid(): boolean {
+  try {
+    const stored = localStorage.getItem(STORAGE_DEMO_GRID);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+  } catch { /* localStorage unavailable */ }
+  return true; // default ON for demo
+}
+
+export function saveDemoGrid(enabled: boolean): void {
+  try { localStorage.setItem(STORAGE_DEMO_GRID, String(enabled)); } catch { /* */ }
+}
+
+export function loadStoredRealGrid(): boolean {
+  try {
+    const stored = localStorage.getItem(STORAGE_REAL_GRID);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+  } catch { /* localStorage unavailable */ }
+  return false; // default OFF for real
+}
+
+export function saveRealGrid(enabled: boolean): void {
+  try { localStorage.setItem(STORAGE_REAL_GRID, String(enabled)); } catch { /* */ }
 }
 
 export function loadStoredProjVelInherit(): boolean {

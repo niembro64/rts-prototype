@@ -39,6 +39,9 @@ import type {
 // Spatial grid cell size in pixels. Should be roughly 1/2 to 1/3 of typical weapon range.
 export const SPATIAL_GRID_CELL_SIZE = 150;
 
+/** Brightness multiplier for the spatial grid debug overlay (0.0 = invisible, 1.0 = full). */
+export const GRID_OVERLAY_BRIGHTNESS = 0.5;
+
 // F=============================================================================
 // SNAPSHOT / NETWORKING
 // =============================================================================

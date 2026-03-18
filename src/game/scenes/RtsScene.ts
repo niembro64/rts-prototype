@@ -32,6 +32,7 @@ import {
   COMBAT_STATS_SAMPLE_INTERVAL,
   EMA_CONFIG,
   FRAME_TIMING_EMA,
+  GRID_OVERLAY_BRIGHTNESS,
 } from '../../config';
 
 import {
@@ -459,6 +460,8 @@ export class RtsScene extends SceneShim {
     const cellSize = this.clientViewState.getGridCellSize();
     if (cellSize <= 0) return;
 
+    const b = GRID_OVERLAY_BRIGHTNESS;
+
     // Draw search cells first (bottom layer): subtle fill, no borders
     const searchCells = this.clientViewState.getGridSearchCells();
     for (const cell of searchCells) {
@@ -468,7 +471,7 @@ export class RtsScene extends SceneShim {
       for (const playerId of cell.players) {
         const playerConfig = PLAYER_COLORS[playerId as PlayerId];
         const color = playerConfig?.primary ?? 0x888888;
-        this.spatialGridGraphics.fillStyle(color, 0.04);
+        this.spatialGridGraphics.fillStyle(color, 0.04 * b);
         this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
       }
     }
@@ -482,12 +485,12 @@ export class RtsScene extends SceneShim {
       for (const playerId of cell.players) {
         const playerConfig = PLAYER_COLORS[playerId as PlayerId];
         const color = playerConfig?.primary ?? 0x888888;
-        this.spatialGridGraphics.fillStyle(color, 0.25);
+        this.spatialGridGraphics.fillStyle(color, 0.25 * b);
         this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
       }
 
       // Draw cell border
-      this.spatialGridGraphics.lineStyle(1, 0x666688, 0.3);
+      this.spatialGridGraphics.lineStyle(1, 0x666688, 0.3 * b);
       this.spatialGridGraphics.strokeRect(worldX, worldY, cellSize, cellSize);
     }
   }

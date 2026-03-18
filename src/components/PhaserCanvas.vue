@@ -42,6 +42,10 @@ import {
   saveRealCap,
   DEMO_CAP_DEFAULT,
   REAL_CAP_DEFAULT,
+  loadStoredDemoGrid,
+  saveDemoGrid,
+  loadStoredRealGrid,
+  saveRealGrid,
   loadStoredProjVelInherit,
   saveProjVelInherit,
   loadStoredFfAccelUnits,
@@ -329,7 +333,7 @@ async function startBackgroundBattle(): Promise<void> {
   backgroundServer.receiveCommand({
     type: 'setSendGridInfo',
     tick: 0,
-    enabled: loadStoredGridInfo(),
+    enabled: loadStoredDemoGrid(),
   });
 
   backgroundServer.start();
@@ -584,16 +588,17 @@ function resetDemoDefaults(): void {
   setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
   setFfAccelShots(BATTLE_CONFIG.ffAccelShots.default);
   setFfDmgUnits(BATTLE_CONFIG.ffDmgUnits.default);
+  // Reset grid to mode default
+  const gridDefault = gameStarted.value ? false : true;
+  if (displayGridInfo.value !== gridDefault) {
+    toggleSendGridInfo();
+  }
 }
 
 function resetServerDefaults(): void {
   setTickRateValue(SERVER_CONFIG.tickRate.default);
   setNetworkUpdateRate(SERVER_CONFIG.snapshot.default);
   setKeyframeRatioValue(SERVER_CONFIG.keyframe.default);
-  if (displayGridInfo.value !== SERVER_CONFIG.gridInfo.default) {
-    toggleSendGridInfo();
-  }
-  saveGridInfo(SERVER_CONFIG.gridInfo.default);
 }
 
 function resetClientDefaults(): void {
@@ -1020,7 +1025,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       currentServer.receiveCommand({
         type: 'setSendGridInfo',
         tick: 0,
-        enabled: loadStoredGridInfo(),
+        enabled: loadStoredRealGrid(),
       });
       currentServer.start();
       hasServer.value = true;
@@ -1153,6 +1158,11 @@ function toggleSendGridInfo(): void {
     enabled: !current,
   });
   saveGridInfo(!current);
+  if (gameStarted.value) {
+    saveRealGrid(!current);
+  } else {
+    saveDemoGrid(!current);
+  }
 }
 
 function dismissGameOver(): void {
@@ -1382,6 +1392,17 @@ onUnmounted(() => {
           </div>
           <div class="control-group">
             <BarDivider />
+            <button
+              class="control-btn"
+              :class="{ active: displayGridInfo }"
+              title="Show spatial grid debug overlay"
+              @click="toggleSendGridInfo"
+            >
+              GRID
+            </button>
+          </div>
+          <div class="control-group">
+            <BarDivider />
             <span class="control-label">SHOT VEL:</span>
             <button
               class="control-btn"
@@ -1573,17 +1594,6 @@ onUnmounted(() => {
                 }}
               </button>
             </div>
-          </div>
-          <div class="control-group">
-            <BarDivider />
-            <button
-              class="control-btn"
-              :class="{ active: displayGridInfo }"
-              title="Include spatial grid debug info in snapshots"
-              @click="toggleSendGridInfo"
-            >
-              GRID
-            </button>
           </div>
         </div>
       </div>
