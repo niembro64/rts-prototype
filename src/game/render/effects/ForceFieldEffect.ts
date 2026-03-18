@@ -140,7 +140,7 @@ export function renderForceFieldEffect(
   }
 }
 
-/** Draw the faint annular fill (full 360° circle) */
+/** Draw the faint annular fill (full 360° circle with optional hole) */
 function drawAnnularFill(
   graphics: Phaser.GameObjects.Graphics,
   x: number,
@@ -151,18 +151,11 @@ function drawAnnularFill(
   opacity: number,
 ): void {
   graphics.fillStyle(color, opacity);
-  graphics.beginPath();
   if (innerRange > 0) {
-    // Outer circle clockwise, inner circle counter-clockwise → annular ring
-    graphics.arc(x, y, maxRange, 0, Math.PI * 2, false);
-    graphics.arc(x, y, innerRange, Math.PI * 2, 0, true);
-    graphics.closePath();
+    graphics.fillAnnulus(x, y, maxRange, innerRange);
   } else {
-    // Full filled circle
-    graphics.arc(x, y, maxRange, 0, Math.PI * 2, false);
-    graphics.closePath();
+    graphics.fillCircle(x, y, maxRange);
   }
-  graphics.fill();
 }
 
 // Pre-computed bell curve values for arc jitter

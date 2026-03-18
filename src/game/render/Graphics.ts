@@ -27,6 +27,9 @@ export interface IGraphics {
   fill(): void;
   fillPath(): void;
   strokePath(): void;
+  beginHole(): void;
+  endHole(): void;
+  fillAnnulus(x: number, y: number, outerRadius: number, innerRadius: number): void;
   setDepth(depth: number): void;
   setBlendMode(mode: number): void;
   setScrollFactor(x: number, y?: number): void;
@@ -207,6 +210,28 @@ export class GraphicsAdapter implements IGraphics {
       this.pixi.endFill();
       this._inFillContext = false;
     }
+  }
+
+  /** Start a hole in the current fill (PixiJS-specific). Must be between beginFill and endFill. */
+  beginHole(): void {
+    this.pixi.beginHole();
+  }
+
+  /** End a hole in the current fill. */
+  endHole(): void {
+    this.pixi.endHole();
+  }
+
+  /** Draw a filled annular ring (circle with hole). Uses PixiJS hole API for correct rendering. */
+  fillAnnulus(x: number, y: number, outerRadius: number, innerRadius: number): void {
+    this.pixi.beginFill(this._fillColor, this._fillAlpha);
+    this.pixi.drawCircle(x, y, outerRadius);
+    if (innerRadius > 0) {
+      this.pixi.beginHole();
+      this.pixi.drawCircle(x, y, innerRadius);
+      this.pixi.endHole();
+    }
+    this.pixi.endFill();
   }
 
   strokePath(): void {
