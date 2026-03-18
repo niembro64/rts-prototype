@@ -75,6 +75,7 @@ export class GraphicsAdapter implements IGraphics {
     this._fillColor = color;
     this._fillAlpha = alpha;
     this._hasFill = true;
+    this._pathIsFill = true; // next beginPath will apply fill
   }
 
   lineStyle(width: number, color: number, alpha = 1): void {
@@ -82,6 +83,7 @@ export class GraphicsAdapter implements IGraphics {
     this._lineColor = color;
     this._lineAlpha = alpha;
     this._hasLine = width > 0;
+    this._pathIsFill = false; // next beginPath will apply stroke only
   }
 
   private applyLine(): void {
@@ -158,18 +160,23 @@ export class GraphicsAdapter implements IGraphics {
     this.pixi.lineTo(x2, y2);
   }
 
-  // Path building (Phaser pattern: fillStyle → beginPath → moveTo/lineTo/arc → closePath → fillPath)
-  // In PixiJS, beginFill must come BEFORE path geometry. We defer it to beginPath()
-  // and commit with endFill() in fillPath().
+  // Path building
+  // Phaser pattern: fillStyle/lineStyle → beginPath → moveTo/lineTo/arc → closePath → fillPath/strokePath
+  // PixiJS requires beginFill BEFORE geometry. We apply state in beginPath() and
+  // track whether this path is for fill or stroke based on which *Style was called last.
+  private _pathIsFill = false;
+
   beginPath(): void {
-    // Apply current fill/line state at path start (PixiJS requires it before geometry)
-    if (this._hasFill) {
+    // Determine intent: if fillStyle was called more recently, this is a fill path.
+    // If lineStyle was called more recently, this is a stroke path.
+    if (this._pathIsFill) {
       this.pixi.beginFill(this._fillColor, this._fillAlpha);
-    }
-    if (this._hasLine) {
-      this.pixi.lineStyle(this._lineWidth, this._lineColor, this._lineAlpha);
+      this.pixi.lineStyle(0, 0, 0); // no stroke on fill paths
     } else {
-      this.pixi.lineStyle(0, 0, 0);
+      this.pixi.beginFill(0, 0); // transparent fill on stroke paths
+      if (this._hasLine) {
+        this.pixi.lineStyle(this._lineWidth, this._lineColor, this._lineAlpha);
+      }
     }
   }
 
@@ -197,7 +204,6 @@ export class GraphicsAdapter implements IGraphics {
   }
 
   strokePath(): void {
-    // Stroke is already applied via lineStyle in beginPath; just end the fill context
     this.pixi.endFill();
   }
 
