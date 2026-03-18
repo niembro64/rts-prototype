@@ -374,18 +374,11 @@ export class GameServer {
   }
 
   // Create physics bodies for a list of entities
+  // Buildings are created first so that units can set ignore-static for overlapping buildings.
   private createPhysicsBodies(entities: Entity[]): void {
+    // Pass 1: create building bodies
     for (const entity of entities) {
-      if (entity.type === 'unit' && entity.unit) {
-        const body = this.physics.createUnitBody(
-          entity.transform.x,
-          entity.transform.y,
-          entity.unit.radiusColliderUnitUnit,
-          entity.unit.mass,
-          `unit_${entity.id}`
-        );
-        entity.body = { physicsBody: body };
-      } else if (entity.type === 'building' && entity.building) {
+      if (entity.type === 'building' && entity.building) {
         const body = this.physics.createBuildingBody(
           entity.transform.x,
           entity.transform.y,
@@ -396,6 +389,35 @@ export class GameServer {
         entity.body = { physicsBody: body };
       }
     }
+
+    // Pass 2: create unit bodies + set ignore-static for overlapping buildings
+    for (const entity of entities) {
+      if (entity.type === 'unit' && entity.unit) {
+        const body = this.physics.createUnitBody(
+          entity.transform.x,
+          entity.transform.y,
+          entity.unit.radiusColliderUnitUnit,
+          entity.unit.mass,
+          `unit_${entity.id}`
+        );
+        entity.body = { physicsBody: body };
+
+        // Skip collision with any building the unit overlaps at spawn
+        const spawnX = entity.transform.x;
+        const spawnY = entity.transform.y;
+        for (const building of this.world.getBuildings()) {
+          if (!building.body?.physicsBody || !building.building) continue;
+          const bw = building.building.width / 2;
+          const bh = building.building.height / 2;
+          if (Math.abs(spawnX - building.transform.x) < bw + entity.unit.radiusColliderUnitUnit &&
+              Math.abs(spawnY - building.transform.y) < bh + entity.unit.radiusColliderUnitUnit) {
+            this.physics.setIgnoreStatic(body, building.body.physicsBody);
+            break;
+          }
+        }
+      }
+    }
+
   }
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
