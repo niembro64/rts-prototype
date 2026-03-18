@@ -132,9 +132,12 @@ export class InputShim {
       this._fire('pointerup', this.activePointer, e);
     });
 
-    // Wheel
+    // Wheel — update pointer position from wheel event coordinates
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      this.activePointer.x = e.clientX - rect.left;
+      this.activePointer.y = e.clientY - rect.top;
       this._fire('wheel', this.activePointer, null, e.deltaX, e.deltaY, e.deltaZ);
     }, { passive: false });
 
