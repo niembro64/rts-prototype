@@ -281,9 +281,12 @@ function drawForceFieldZones(
 
   const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
   if (push.outerRange > pushInner) {
+    // Fade alpha with progress so the field smoothly appears instead of
+    // showing a hard-edged thin ring that looks like a bright outline.
+    const fadeIn = Math.min(progress * 3, 1); // reaches full alpha at ~33% progress
     renderForceFieldEffect(
       graphics, cx, cy, 0, Math.PI * 2, push.outerRange,
-      push.color, push.alpha, push.particleAlpha,
+      push.color, push.alpha * fadeIn, push.particleAlpha * fadeIn,
       pushInner, true, entityId
     );
   }
