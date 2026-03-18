@@ -5,8 +5,9 @@ import { UNIT_MASS_MULTIPLIER } from '../../config';
 
 export type { PhysicsBody } from '@/types/game';
 import type { PhysicsBody } from '@/types/game';
+import type { IPhysicsEngine } from './IPhysicsEngine';
 
-export class PhysicsEngine {
+export class PhysicsEngine implements IPhysicsEngine {
   private bodies: PhysicsBody[] = [];
   private staticBodies: PhysicsBody[] = [];
   private dynamicBodies: PhysicsBody[] = [];

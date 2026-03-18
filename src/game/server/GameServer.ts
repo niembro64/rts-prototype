@@ -13,6 +13,8 @@ import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import { PhysicsEngine } from './PhysicsEngine';
+import { PhysicsEngineWasm, initPhysicsWasm } from './PhysicsEngineWasm';
+import type { IPhysicsEngine } from './IPhysicsEngine';
 import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
 import {
@@ -32,7 +34,7 @@ export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
 
 export class GameServer {
-  private physics: PhysicsEngine;
+  private physics: IPhysicsEngine;
   private world: WorldState;
   private simulation: Simulation;
   private commandQueue: CommandQueue;
@@ -75,7 +77,15 @@ export class GameServer {
   // Public IP address (set by host component)
   private ipAddress: string = 'N/A';
 
-  constructor(config: GameServerConfig) {
+  /** Async factory — initializes WASM physics, then constructs the server. */
+  static async create(config: GameServerConfig): Promise<GameServer> {
+    await initPhysicsWasm();
+    const mapConfig = MAP_SETTINGS.game;
+    const physics = new PhysicsEngineWasm(mapConfig.width, mapConfig.height);
+    return new GameServer(config, physics);
+  }
+
+  constructor(config: GameServerConfig, physics?: IPhysicsEngine) {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
     this.tickRateHz = 60;
@@ -89,8 +99,8 @@ export class GameServer {
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
 
-    // Create custom physics engine with map bounds
-    this.physics = new PhysicsEngine(mapWidth, mapHeight);
+    // Use provided physics engine (WASM) or fall back to JS
+    this.physics = physics ?? new PhysicsEngine(mapWidth, mapHeight);
     this.world = new WorldState(42, mapWidth, mapHeight);
     this.world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player

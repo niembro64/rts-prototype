@@ -4,9 +4,10 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "build:wasm": "cd rts-physics-wasm && wasm-pack build --target web --out-dir ../src/game/server/physics-wasm/pkg",
     "start": "vite --host",
     "dev": "vite --host",
-    "build": "vue-tsc && vite build",
+    "build": "npm run build:wasm && vue-tsc && vite build",
     "preview": "vite preview --host"
   },
   "dependencies": {
@@ -19,6 +20,8 @@
     "@vitejs/plugin-vue": "^5.0.4",
     "typescript": "^5.4.3",
     "vite": "^5.2.6",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.6.0",
     "vue-tsc": "^2.0.7"
   }
 }

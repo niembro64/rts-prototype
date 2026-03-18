@@ -258,13 +258,13 @@ let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
 let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
 
 // Start the background battle (runs behind lobby)
-function startBackgroundBattle(): void {
+async function startBackgroundBattle(): Promise<void> {
   if (backgroundGameInstance || !backgroundContainerRef.value) return;
 
   const rect = backgroundContainerRef.value.getBoundingClientRect();
 
-  // Create a GameServer for background mode
-  backgroundServer = new GameServer({
+  // Create a GameServer for background mode (WASM physics)
+  backgroundServer = await GameServer.create({
     playerIds: [1, 2, 3, 4] as PlayerId[],
     backgroundMode: true,
   });
@@ -914,7 +914,7 @@ function setupNetworkCallbacks(): void {
   };
 }
 
-function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): void {
+async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
   showLobby.value = false;
   gameStarted.value = true;
 
@@ -922,7 +922,7 @@ function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): 
   stopBackgroundBattle();
 
   // Small delay to ensure WebGL cleanup before creating new game
-  setTimeout(() => {
+  setTimeout(async () => {
     if (!containerRef.value) return;
 
     const rect = containerRef.value.getBoundingClientRect();
@@ -930,8 +930,8 @@ function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): 
     let gameConnection: GameConnection;
 
     if (networkRole.value !== 'client') {
-      // Create GameServer for host/offline
-      currentServer = new GameServer({ playerIds, aiPlayerIds });
+      // Create GameServer for host/offline (WASM physics)
+      currentServer = await GameServer.create({ playerIds, aiPlayerIds });
 
       // Create LocalGameConnection for the host client
       const localConnection = new LocalGameConnection(currentServer);
