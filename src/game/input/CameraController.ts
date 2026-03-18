@@ -47,15 +47,15 @@ export class CameraController {
 
       if (clampedZoom === oldZoom) return;
 
-      const cursorOffsetX = pointer.x - camera.width / 2;
-      const cursorOffsetY = pointer.y - camera.height / 2;
+      // World point under cursor (top-left based scrollX)
+      const worldX = camera.scrollX + pointer.x / oldZoom;
+      const worldY = camera.scrollY + pointer.y / oldZoom;
 
-      const worldX = camera.scrollX + cursorOffsetX / oldZoom;
-      const worldY = camera.scrollY + cursorOffsetY / oldZoom;
-
-      camera.scrollX = worldX - cursorOffsetX / clampedZoom;
-      camera.scrollY = worldY - cursorOffsetY / clampedZoom;
+      // Adjust scroll so the same world point stays under the cursor after zoom
+      camera.scrollX = worldX - pointer.x / clampedZoom;
+      camera.scrollY = worldY - pointer.y / clampedZoom;
       camera.zoom = clampedZoom;
+      camera.clamp();
     };
   }
 

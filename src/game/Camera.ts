@@ -1,5 +1,8 @@
 // Custom camera replacing Phaser.Cameras.Scene2D.Camera.
-// Provides pan, zoom, bounds clamping, and screen↔world coordinate transforms.
+// scrollX/scrollY represent the TOP-LEFT of the visible viewport (same as Phaser).
+// In Phaser, camera.scrollX is actually the center of the viewport internally,
+// but worldView.x = scrollX - width/(2*zoom). We match Phaser's external behavior:
+// scrollX/scrollY = top-left corner of what's visible in world space.
 
 export interface Viewport {
   x: number;
@@ -12,7 +15,9 @@ export interface Viewport {
 }
 
 export class Camera {
+  /** Top-left world X of the viewport. Matches Phaser's camera.scrollX. */
   scrollX = 0;
+  /** Top-left world Y of the viewport. Matches Phaser's camera.scrollY. */
   scrollY = 0;
   zoom = 1;
   width: number;
@@ -26,7 +31,6 @@ export class Camera {
 
   private _bgColor = '#000000';
 
-  // Reusable viewport object (avoids allocation per frame)
   private _vp: Viewport = {
     x: 0, y: 0, width: 0, height: 0, right: 0, bottom: 0,
     contains(px: number, py: number): boolean {
@@ -60,6 +64,7 @@ export class Camera {
     this.zoom = z;
   }
 
+  /** Center the camera on a world point. */
   centerOn(x: number, y: number): void {
     this.scrollX = x - this.width / (2 * this.zoom);
     this.scrollY = y - this.height / (2 * this.zoom);
@@ -98,7 +103,11 @@ export class Camera {
     const vh = this.height / this.zoom;
     const maxX = this.boundsX + this.boundsW - vw;
     const maxY = this.boundsY + this.boundsH - vh;
-    this.scrollX = Math.max(this.boundsX, Math.min(this.scrollX, maxX));
-    this.scrollY = Math.max(this.boundsY, Math.min(this.scrollY, maxY));
+    if (maxX > this.boundsX) {
+      this.scrollX = Math.max(this.boundsX, Math.min(this.scrollX, maxX));
+    }
+    if (maxY > this.boundsY) {
+      this.scrollY = Math.max(this.boundsY, Math.min(this.scrollY, maxY));
+    }
   }
 }
