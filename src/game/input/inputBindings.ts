@@ -370,6 +370,11 @@ export class InputManager {
         // Pinch zoom — use canvas-relative coords for correct anchor point
         if (this.lastTouchDist > 0) {
           this.cameraController.applyPinchZoom(this.lastTouchDist, currDist, toCanvasX(centerX), toCanvasY(centerY));
+          // Reset pan origin after zoom so the pan doesn't undo the zoom's scroll correction
+          if (this.state.isPanningCamera) {
+            this.cameraController.endPan();
+            this.cameraController.startPan(centerX, centerY);
+          }
         }
 
         // Two-finger pan
@@ -405,7 +410,8 @@ export class InputManager {
 
   // Update input
   update(_delta: number): void {
-    this.cameraController.updateEdgeScroll(_delta);
+    // Edge scroll + pan arrow is desktop-only (no mouse cursor on mobile)
+    if (!isMobile) this.cameraController.updateEdgeScroll(_delta);
 
     // Camera bounds are handled by Phaser's camera.setBounds() in RtsScene
     // No manual constraint logic needed
