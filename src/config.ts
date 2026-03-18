@@ -396,7 +396,7 @@ export const ZOOM_MAX = 5.0;
 export const ZOOM_FACTOR = 1 + 1 / 8;
 
 /** Initial zoom level for the demo game (zoomed out overview) */
-export const ZOOM_INITIAL_DEMO = 3.0;
+export const ZOOM_INITIAL_DEMO = 1.5;
 
 /** Initial zoom level when a real game starts */
 export const ZOOM_INITIAL_GAME = 0.5;
