@@ -16,7 +16,7 @@ export const BATTLE_CONFIG = {
     commander: { shortName: 'CMD', default: true },
   } as Record<string, { shortName: string; default: boolean }>,
   cap: {
-    default: Math.pow(2, 6),
+    default: Math.pow(2, 12),
     options: [
       Math.pow(2, 2),
       Math.pow(2, 4),
@@ -24,6 +24,7 @@ export const BATTLE_CONFIG = {
       Math.pow(2, 8),
       Math.pow(2, 10),
       Math.pow(2, 12),
+      Math.pow(2, 14),
     ] as readonly number[],
   },
   projVelInherit: { default: false },

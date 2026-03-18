@@ -461,6 +461,12 @@ const displayKeyframeRatio = computed(
 const displayGridInfo = computed(
   () => serverMetaFromSnapshot.value?.grid ?? false,
 );
+const displayUnitCount = computed(
+  () => serverMetaFromSnapshot.value?.units.count ?? 0,
+);
+const displayUnitCap = computed(
+  () => serverMetaFromSnapshot.value?.units.max ?? 100,
+);
 const displayServerTime = computed(
   () => serverMetaFromSnapshot.value?.server.time ?? '',
 );
@@ -1340,6 +1346,24 @@ onUnmounted(() => {
               >
                 {{ opt.toExponential(0).toUpperCase() }}
               </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label" title="Total units alive / unit cap">UNITS:</span>
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ displayUnitCount }}</span>
+                  <span class="fps-label">/ {{ displayUnitCap }}</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="statBarStyle(displayUnitCount, displayUnitCap)"
+                  ></div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="control-group">

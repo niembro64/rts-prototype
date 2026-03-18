@@ -83,7 +83,7 @@ export type NetworkServerSnapshotMeta = {
   snaps: { rate: number | 'none'; keyframes: number | 'ALL' | 'NONE' };
   server: { time: string; ip: string };
   grid: boolean;
-  units: { allowed?: string[]; max?: number };
+  units: { allowed?: string[]; max?: number; count?: number };
   projVelInherit?: boolean;
   ffAccel: { units?: boolean; shots?: boolean; dmgUnits?: boolean };
 };

@@ -479,6 +479,7 @@ export class GameServer {
         units: {
           allowed: this.backgroundMode ? [...this.backgroundAllowedTypes] : undefined,
           max: this.world.maxTotalUnits,
+          count: this.world.getUnits().length,
         },
         projVelInherit: this.world.projVelInherit,
         ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots, dmgUnits: this.world.ffDmgUnits },
