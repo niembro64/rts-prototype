@@ -1,6 +1,6 @@
 // Standalone building rendering function extracted from EntityRenderer
 
-import Phaser from 'phaser';
+import Phaser from '../PhaserCompat';
 import type { Entity } from '../sim/types';
 import { COLORS } from './types';
 import type { BuildingRenderContext } from './types';

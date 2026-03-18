@@ -1,6 +1,6 @@
 // Standalone projectile rendering function extracted from EntityRenderer
 
-import Phaser from 'phaser';
+import Phaser from '../PhaserCompat';
 import type { Entity, EntityId } from '../sim/types';
 import { isLineShot } from '../sim/types';
 import type { BeamRandomOffsets, ProjectileTrail } from './types';

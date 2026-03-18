@@ -1,6 +1,6 @@
 // Standalone UI bar rendering functions used by building, unit, and other renderers
 
-import Phaser from 'phaser';
+import Phaser from '../PhaserCompat';
 import { COLORS } from './types';
 
 export function renderBuildBar(

@@ -18,7 +18,7 @@ export type GameConfig = {
 };
 
 export type GameInstance = {
-  game: import('phaser').Game;
+  app: import('../game/PixiApp').PixiApp;
   getScene: () => import('../game/scenes/RtsScene').RtsScene | null;
 };
 

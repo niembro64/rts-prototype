@@ -1,6 +1,6 @@
 // Smoke particle effects for factory chimneys
 
-import Phaser from 'phaser';
+import Phaser from '../../PhaserCompat';
 
 /**
  * Render smoke particles rising from a point

@@ -1,5 +1,6 @@
 // Death effects and audio event handling
 
+import type { Viewport } from '../../Camera';
 import type { EntityRenderer } from '../../render/renderEntities';
 import type { SimEvent } from '../../sim/combat';
 import { audioManager } from '../../audio/AudioManager';
@@ -42,7 +43,7 @@ export function handleSimEvent(
   event: SimEvent,
   entityRenderer: EntityRenderer,
   audioInitialized: boolean,
-  viewport?: Phaser.Geom.Rectangle,
+  viewport?: Viewport,
   zoom: number = 1,
 ): void {
   // Always handle visual effects even if audio not initialized

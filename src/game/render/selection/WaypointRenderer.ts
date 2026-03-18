@@ -1,6 +1,6 @@
 // Waypoint and action queue rendering
 
-import Phaser from 'phaser';
+import Phaser from '../../PhaserCompat';
 import type { Entity } from '../../sim/types';
 import { ACTION_COLORS, WAYPOINT_COLORS } from '../types';
 

@@ -1,6 +1,6 @@
 // Selection UI rendering - labels, commander crown
 
-import Phaser from 'phaser';
+import Phaser from '../../PhaserCompat';
 import type { EntitySource } from '../types';
 import { COLORS, UNIT_NAMES } from '../types';
 import { drawStar } from '../helpers';

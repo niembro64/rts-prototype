@@ -1,7 +1,7 @@
 // Force field effect renderer (pie-slice effect)
 // Drawn over everything with real alpha transparency.
 
-import Phaser from 'phaser';
+import Phaser from '../../PhaserCompat';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../../config';
 

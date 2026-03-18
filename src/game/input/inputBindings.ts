@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import Phaser from '../PhaserCompat';
 import { CommandQueue } from '../sim/commands';
 import type {
   WaypointType,

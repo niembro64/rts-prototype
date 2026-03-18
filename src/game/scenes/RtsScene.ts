@@ -1,4 +1,5 @@
-import Phaser from 'phaser';
+import { SceneShim, BlendModes } from '../SceneShim';
+import { GraphicsAdapter } from '../render/Graphics';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { EntityRenderer } from '../render/renderEntities';
 import { InputManager, type InputContext } from '../input/inputBindings';
@@ -56,14 +57,14 @@ import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 // Grid settings
 const GRID_SIZE = 50;
 
-export class RtsScene extends Phaser.Scene {
+export class RtsScene extends SceneShim {
   private clientViewState!: ClientViewState;
   private entityRenderer!: EntityRenderer;
   private inputManager: InputManager | null = null;
   private gameConnection!: GameConnection;
   private localCommandQueue!: CommandQueue;
-  private gridGraphics!: Phaser.GameObjects.Graphics;
-  private spatialGridGraphics!: Phaser.GameObjects.Graphics;
+  private gridGraphics!: GraphicsAdapter;
+  private spatialGridGraphics!: GraphicsAdapter;
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
 
@@ -164,7 +165,7 @@ export class RtsScene extends Phaser.Scene {
   public onServerMetaUpdate?: (meta: NetworkServerSnapshotMeta) => void;
 
   constructor() {
-    super({ key: 'RtsScene' });
+    super();
   }
 
   create(): void {
@@ -251,7 +252,7 @@ export class RtsScene extends Phaser.Scene {
     // Create spatial grid overlay graphics (redrawn each frame when grid info is active)
     // Additive blend so overlapping team colors combine naturally
     this.spatialGridGraphics = this.add.graphics();
-    this.spatialGridGraphics.setBlendMode(Phaser.BlendModes.ADD);
+    this.spatialGridGraphics.setBlendMode(BlendModes.ADD);
 
     // Setup renderer with ClientViewState as source
     this.entityRenderer = new EntityRenderer(this, this.clientViewState);

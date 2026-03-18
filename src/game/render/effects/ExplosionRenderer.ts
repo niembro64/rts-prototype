@@ -1,6 +1,6 @@
 // Explosion effect renderer - handles all explosion visual styles
 
-import Phaser from 'phaser';
+import Phaser from '../../PhaserCompat';
 import type { ExplosionEffect } from '../types';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { FireExplosionStyle, DeathExplosionStyle } from '@/types/graphics';

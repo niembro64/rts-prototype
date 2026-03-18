@@ -1,7 +1,7 @@
 // DebrisSystem - Manages death debris fragments (physics, aging, rendering)
 // Extracted from renderEntities.ts
 
-import Phaser from 'phaser';
+import Phaser from '../PhaserCompat';
 import { BURN_COLOR_COOL, hexToRgb } from '../../config';
 import { DEBRIS_CONFIG } from '../../explosionConfig';
 import { getUnitBlueprint } from '../sim/blueprints';

@@ -1,4 +1,4 @@
-import type Phaser from 'phaser';
+import type Phaser from '../PhaserCompat';
 import type { CommandQueue, SelectCommand } from '../sim/commands';
 import type { Entity, WaypointType } from '../sim/types';
 import { performSelection } from './helpers';

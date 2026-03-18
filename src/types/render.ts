@@ -54,7 +54,7 @@ export type ProjectileTrail = {
 
 // Context passed to unit renderers
 export type UnitRenderContext = {
-  graphics: import('phaser').GameObjects.Graphics;
+  graphics: import('../game/render/Graphics').IGraphics;
   x: number;
   y: number;
   radius: number;
@@ -67,7 +67,7 @@ export type UnitRenderContext = {
 
 // Context passed to building renderers
 export type BuildingRenderContext = {
-  graphics: import('phaser').GameObjects.Graphics;
+  graphics: import('../game/render/Graphics').IGraphics;
   entity: Entity;
   left: number;
   top: number;

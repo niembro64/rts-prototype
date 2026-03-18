@@ -1,4 +1,4 @@
-import type Phaser from 'phaser';
+import type Phaser from '../PhaserCompat';
 import type { CommandQueue, StartBuildCommand, FireDGunCommand } from '../sim/commands';
 import type { Entity, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';

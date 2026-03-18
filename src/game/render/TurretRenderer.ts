@@ -1,7 +1,7 @@
 // Generic turret renderer - draws weapon turrets driven by TurretConfig
 // Turret visual is owned by the weapon, not the unit chassis
 
-import Phaser from 'phaser';
+import Phaser from '../PhaserCompat';
 import { type Turret, type EntityId, isLineShot } from '../sim/types';
 import type { ColorPalette } from './types';
 import { COLORS } from './types';

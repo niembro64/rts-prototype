@@ -1,7 +1,7 @@
 // Entity Renderer - Main orchestrator for rendering all game entities
 // Delegates to specialized helper modules for specific rendering tasks
 
-import Phaser from 'phaser';
+import Phaser from '../PhaserCompat';
 import type { Entity, EntityId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { BurnMarkSystem } from './BurnMarkSystem';

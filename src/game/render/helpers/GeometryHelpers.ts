@@ -1,6 +1,6 @@
 // Geometry helper functions for rendering shapes
 
-import Phaser from 'phaser';
+import Phaser from '../../PhaserCompat';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { COLORS, getLegConfig } from '../types';
 import type { ForceFieldTurretConfig } from '../../../config';

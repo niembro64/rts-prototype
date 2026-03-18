@@ -1,7 +1,7 @@
 // BurnMarkSystem - Manages scorched earth burn marks left by beam weapons
 // Extracted from renderEntities.ts
 
-import type Phaser from 'phaser';
+import type Phaser from '../PhaserCompat';
 import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';

@@ -1,6 +1,6 @@
 // Range circle rendering for units
 
-import Phaser from 'phaser';
+import Phaser from '../../PhaserCompat';
 import type { Entity } from '../../sim/types';
 import { getWeaponWorldPosition } from '../../math';
 import { COLORS } from '../types';

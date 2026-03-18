@@ -1,6 +1,6 @@
 // Input rendering helpers for selection, line paths, and build ghosts
 
-import type Phaser from 'phaser';
+import type Phaser from '../../PhaserCompat';
 import type { Entity, WaypointType, BuildingType } from '../../sim/types';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';

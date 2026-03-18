@@ -1,6 +1,6 @@
 // Spray particle effects for commander build/heal abilities
 
-import Phaser from 'phaser';
+import Phaser from '../../PhaserCompat';
 import type { SprayTarget } from '../../sim/commanderAbilities';
 import { magnitude } from '../../math';
 import { getPlayerColor, getPlayerColorLight } from '../helpers/ColorPalette';
