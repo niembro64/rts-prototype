@@ -380,7 +380,8 @@ export class CameraController {
     }
   }
 
-  /** Apply pinch zoom given previous and current distance between two touch points */
+  /** Apply pinch zoom given previous and current distance between two touch points.
+   *  centerX/centerY are canvas-relative pixel coordinates. */
   applyPinchZoom(prevDist: number, currDist: number, centerX: number, centerY: number): void {
     if (prevDist <= 0) return;
     const camera = this.scene.cameras.main;
@@ -389,13 +390,11 @@ export class CameraController {
     const newZoom = Phaser.Math.Clamp(oldZoom * scale, ZOOM_MIN, ZOOM_MAX);
     if (newZoom === oldZoom) return;
 
-    // Zoom toward the midpoint between the two fingers
-    const cursorOffsetX = centerX - camera.width / 2;
-    const cursorOffsetY = centerY - camera.height / 2;
-    const worldX = camera.scrollX + cursorOffsetX / oldZoom;
-    const worldY = camera.scrollY + cursorOffsetY / oldZoom;
-    camera.scrollX = worldX - cursorOffsetX / newZoom;
-    camera.scrollY = worldY - cursorOffsetY / newZoom;
+    // Keep the world point under the pinch midpoint fixed (same math as wheel zoom)
+    const worldX = camera.scrollX + centerX / oldZoom;
+    const worldY = camera.scrollY + centerY / oldZoom;
+    camera.scrollX = worldX - centerX / newZoom;
+    camera.scrollY = worldY - centerY / newZoom;
     camera.zoom = newZoom;
   }
 

@@ -324,6 +324,18 @@ export class InputManager {
   private setupMobileTouchEvents(): void {
     const canvas = this.scene.game.canvas;
 
+    // Convert viewport clientX/clientY to canvas-relative coordinates.
+    // Panning only uses deltas so the offset cancels out, but pinch zoom
+    // needs the absolute position to anchor the zoom correctly.
+    const toCanvasX = (clientX: number) => {
+      const rect = canvas.getBoundingClientRect();
+      return clientX - rect.left;
+    };
+    const toCanvasY = (clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      return clientY - rect.top;
+    };
+
     this.touchStartHandler = (e: TouchEvent) => {
       e.preventDefault();
       if (e.touches.length === 1) {
@@ -355,9 +367,9 @@ export class InputManager {
         const centerX = (t0.clientX + t1.clientX) / 2;
         const centerY = (t0.clientY + t1.clientY) / 2;
 
-        // Pinch zoom
+        // Pinch zoom — use canvas-relative coords for correct anchor point
         if (this.lastTouchDist > 0) {
-          this.cameraController.applyPinchZoom(this.lastTouchDist, currDist, centerX, centerY);
+          this.cameraController.applyPinchZoom(this.lastTouchDist, currDist, toCanvasX(centerX), toCanvasY(centerY));
         }
 
         // Two-finger pan
