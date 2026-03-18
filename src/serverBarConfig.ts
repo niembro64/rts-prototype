@@ -7,7 +7,8 @@ export const SERVER_CONFIG = {
   },
   snapshot: {
     default: 32 as SnapshotRate,
-    options: [1, 4, 8, 16, 32, 64, 128, 'none'] as readonly SnapshotRate[],
+    options: [1, 4, 8, 16, 32, 64, 128] as readonly SnapshotRate[],
+    // 'none' removed — uncapped SPS at high TPS causes delta snapshot issues
   },
   gridInfo: { default: false },
   keyframe: {

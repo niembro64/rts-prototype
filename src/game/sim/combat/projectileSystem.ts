@@ -278,9 +278,9 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     if (!entity.projectile) continue;
     const proj = entity.projectile;
 
-    proj.timeAlive += dtMs;
-
     if (proj.projectileType !== 'projectile') continue;
+
+    proj.timeAlive += dtMs;
 
     proj.prevX = entity.transform.x;
     proj.prevY = entity.transform.y;
@@ -347,8 +347,8 @@ function _updateTravelingProjectilesWasm(
   _projEntities.length = 0;
   for (const entity of world.getProjectiles()) {
     if (!entity.projectile) continue;
-    entity.projectile.timeAlive += dtMs;
     if (entity.projectile.projectileType === 'projectile') {
+      entity.projectile.timeAlive += dtMs;
       _projEntities.push(entity);
     }
   }
