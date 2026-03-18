@@ -36,6 +36,12 @@ import {
   saveDemoUnits,
   loadStoredMaxTotalUnits,
   saveMaxTotalUnits,
+  loadStoredDemoCap,
+  saveDemoCap,
+  loadStoredRealCap,
+  saveRealCap,
+  DEMO_CAP_DEFAULT,
+  REAL_CAP_DEFAULT,
   loadStoredProjVelInherit,
   saveProjVelInherit,
   loadStoredFfAccelUnits,
@@ -294,11 +300,11 @@ async function startBackgroundBattle(): Promise<void> {
     );
   }
 
-  // Restore stored max total units
+  // Restore stored demo cap
   backgroundServer.receiveCommand({
     type: 'setMaxTotalUnits',
     tick: 0,
-    maxTotalUnits: loadStoredMaxTotalUnits(),
+    maxTotalUnits: loadStoredDemoCap(),
   });
   backgroundServer.receiveCommand({
     type: 'setProjVelInherit',
@@ -428,14 +434,16 @@ function barVars(theme: BarColorTheme): Record<string, string> {
   };
 }
 const battleBarVars = computed(() =>
-  barVars(serverBarReadonly.value ? BAR_THEMES.disabled : BAR_THEMES.battle),
+  barVars(serverBarReadonly.value
+    ? BAR_THEMES.disabled
+    : gameStarted.value ? BAR_THEMES.realBattle : BAR_THEMES.battle),
 );
 const serverBarVars = computed(() =>
   barVars(serverBarReadonly.value ? BAR_THEMES.disabled : BAR_THEMES.server),
 );
 const clientBarVars = computed(() => barVars(BAR_THEMES.client));
 
-const battleLabel = 'BATTLE';
+const battleLabel = computed(() => gameStarted.value ? 'REAL BATTLE' : 'DEMO BATTLE');
 
 // Display values: always read from snapshot meta (server→snapshot→display)
 const displayServerTpsAvg = computed(
@@ -520,6 +528,12 @@ function changeMaxTotalUnits(value: number): void {
     maxTotalUnits: value,
   });
   saveMaxTotalUnits(value);
+  // Save to mode-specific storage
+  if (gameStarted.value) {
+    saveRealCap(value);
+  } else {
+    saveDemoCap(value);
+  }
 }
 
 function toggleProjVelInherit(): void {
@@ -560,7 +574,7 @@ function resetDemoDefaults(): void {
     });
   }
   saveDemoUnits(defaultUnits);
-  changeMaxTotalUnits(BATTLE_CONFIG.cap.default);
+  changeMaxTotalUnits(gameStarted.value ? REAL_CAP_DEFAULT : DEMO_CAP_DEFAULT);
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
     tick: 0,
@@ -981,7 +995,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       currentServer.receiveCommand({
         type: 'setMaxTotalUnits',
         tick: 0,
-        maxTotalUnits: loadStoredMaxTotalUnits(),
+        maxTotalUnits: loadStoredRealCap(),
       });
       currentServer.receiveCommand({
         type: 'setProjVelInherit',

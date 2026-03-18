@@ -31,6 +31,16 @@ export const BAR_THEMES = {
     activePressedBg: 'rgba(55, 115, 55, 0.95)',
     activePressedBorder: '#595',
   },
+  realBattle: {
+    barBg: 'rgba(18, 8, 25, 0.7)',
+    time: '#aa66cc',
+    activeBg: 'rgba(120, 50, 170, 0.9)',
+    activeBorder: '#9944cc',
+    activeHoverBg: 'rgba(140, 65, 195, 0.95)',
+    activeHoverBorder: '#aa55dd',
+    activePressedBg: 'rgba(100, 40, 145, 0.95)',
+    activePressedBorder: '#8833aa',
+  },
   disabled: {
     barBg: 'rgba(15, 15, 15, 0.7)',
     time: '#888',

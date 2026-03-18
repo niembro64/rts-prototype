@@ -33,9 +33,15 @@ export const BATTLE_CONFIG = {
   ffDmgUnits: { default: false },
 } as const satisfies BattleBarConfig;
 
+// Default caps per mode
+export const DEMO_CAP_DEFAULT = 300;  // 3e+2
+export const REAL_CAP_DEFAULT = 4000; // 4e+3
+
 // ── localStorage keys (module-private) ──
 const STORAGE_DEMO_UNITS = 'rts-demo-units';
 const STORAGE_MAX_TOTAL_UNITS = 'rts-max-total-units';
+const STORAGE_DEMO_CAP = 'rts-demo-cap';
+const STORAGE_REAL_CAP = 'rts-real-cap';
 const STORAGE_PROJ_VEL_INHERIT = 'rts-proj-vel-inherit';
 const STORAGE_FF_ACCEL_UNITS = 'rts-ff-accel-units';
 const STORAGE_FF_ACCEL_SHOTS = 'rts-ff-accel-shots';
@@ -75,6 +81,36 @@ export function loadStoredMaxTotalUnits(): number {
 
 export function saveMaxTotalUnits(value: number): void {
   try { localStorage.setItem(STORAGE_MAX_TOTAL_UNITS, String(value)); } catch { /* */ }
+}
+
+export function loadStoredDemoCap(): number {
+  try {
+    const stored = localStorage.getItem(STORAGE_DEMO_CAP);
+    if (stored) {
+      const num = Number(stored);
+      if (!isNaN(num) && num > 0) return num;
+    }
+  } catch { /* localStorage unavailable */ }
+  return DEMO_CAP_DEFAULT;
+}
+
+export function saveDemoCap(value: number): void {
+  try { localStorage.setItem(STORAGE_DEMO_CAP, String(value)); } catch { /* */ }
+}
+
+export function loadStoredRealCap(): number {
+  try {
+    const stored = localStorage.getItem(STORAGE_REAL_CAP);
+    if (stored) {
+      const num = Number(stored);
+      if (!isNaN(num) && num > 0) return num;
+    }
+  } catch { /* localStorage unavailable */ }
+  return REAL_CAP_DEFAULT;
+}
+
+export function saveRealCap(value: number): void {
+  try { localStorage.setItem(STORAGE_REAL_CAP, String(value)); } catch { /* */ }
 }
 
 export function loadStoredProjVelInherit(): boolean {

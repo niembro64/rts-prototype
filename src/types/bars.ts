@@ -13,6 +13,7 @@ export type BarColorTheme = {
 
 export type BarThemes = {
   readonly battle: BarColorTheme;
+  readonly realBattle: BarColorTheme;
   readonly server: BarColorTheme;
   readonly client: BarColorTheme;
   readonly disabled: BarColorTheme;
