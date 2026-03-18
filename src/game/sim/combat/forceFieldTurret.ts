@@ -6,7 +6,7 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type { ProjectileVelocityUpdateEvent } from './types';
-import { isPointInSlice, getTransformCosSin } from '../../math';
+import { getTransformCosSin } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
 
@@ -138,14 +138,9 @@ export function applyForceFieldDamage(
       const pushStrength = pushSim ? push!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
       const pullStrength = pullSim ? pull!.power! * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER : 0;
 
-      const sliceAngle = fieldShot.angle;
-      const sliceHalfAngle = sliceAngle / 2;
-      const isFullCircle = sliceHalfAngle >= Math.PI;
-
+      // Force fields are always 360° — no angle checks needed
       const weaponX = unit.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y;
       const weaponY = unit.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y;
-
-      const turretAngle = weapon.rotation;
 
       // --- Enemy units (skipped when both ffAccelUnits and ffDmgUnits are disabled) ---
       const nearbyUnits = (world.ffAccelUnits || world.ffDmgUnits)
@@ -167,11 +162,8 @@ export function applyForceFieldDamage(
 
         const dist = Math.sqrt(distSq);
 
-        // Check if in overall slice (precomputed avoids redundant sqrt)
-        if (!isPointInSlice(
-          dx, dy, dist, turretAngle, sliceHalfAngle,
-          effectiveOuter, targetRadius, effectiveInner, isFullCircle
-        )) continue;
+        // Distance check (always 360° — no angle check needed)
+        if (effectiveInner > 0 && dist + targetRadius < effectiveInner) continue;
 
         // Determine which zone: push (inner) or pull (outer)
         const inPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
@@ -229,10 +221,7 @@ export function applyForceFieldDamage(
 
         const bdist = Math.sqrt(bdistSq);
 
-        if (!isPointInSlice(
-          bdx, bdy, bdist, turretAngle, sliceHalfAngle,
-          effectiveOuter, buildingRadius, effectiveInner, isFullCircle
-        )) continue;
+        if (effectiveInner > 0 && bdist + buildingRadius < effectiveInner) continue;
 
         const bInPush = zones.pushOuter > zones.pushInner && bdist < zones.pushOuter;
         const bInPull = !bInPush && zones.pullOuter > zones.pullInner && bdist >= zones.pullInner;
@@ -269,10 +258,7 @@ export function applyForceFieldDamage(
 
         const dist = Math.sqrt(distSq);
 
-        if (!isPointInSlice(
-          dx, dy, dist, turretAngle, sliceHalfAngle,
-          effectiveOuter, projRadius, effectiveInner, isFullCircle
-        )) continue;
+        if (effectiveInner > 0 && dist + projRadius < effectiveInner) continue;
 
         const pInPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
         const pInPull = !pInPush && zones.pullOuter > zones.pullInner && dist >= zones.pullInner;

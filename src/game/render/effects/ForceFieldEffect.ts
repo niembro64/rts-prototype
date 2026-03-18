@@ -1,4 +1,4 @@
-// Force field effect renderer (pie-slice effect)
+// Force field effect renderer (always 360° full circle)
 // Drawn over everything with real alpha transparency.
 
 import Phaser from '../../PhaserCompat';
@@ -6,7 +6,7 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../../config';
 
 /**
- * Render force field pie-slice effect.
+ * Render force field effect (full 360° circle).
  * Renders an annular ring between innerRange and maxRange.
  *
  * Detail tiers (driven by forceFieldStyle config):
@@ -19,8 +19,8 @@ export function renderForceFieldEffect(
   graphics: Phaser.GameObjects.Graphics,
   x: number,
   y: number,
-  rotation: number,
-  sliceAngle: number, // Total angle of the pie slice
+  _rotation: number,
+  _sliceAngle: number, // Kept for API compat — always treated as 2*PI
   maxRange: number,
   color: number,
   sliceAlpha: number,
@@ -29,60 +29,21 @@ export function renderForceFieldEffect(
   pushOutward: boolean = false,
   instanceSeed: number = 0,
 ): void {
-  const halfAngle = sliceAngle / 2;
   const gfxConfig = getGraphicsConfig();
   const v = FORCE_FIELD_VISUAL;
   const style = gfxConfig.forceFieldStyle;
 
   // --- Minimal: faint annular fill only ---
   if (style === 'minimal') {
-    drawAnnularFill(
-      graphics,
-      x,
-      y,
-      rotation,
-      halfAngle,
-      maxRange,
-      innerRange,
-      color,
-      sliceAlpha,
-    );
+    drawAnnularFill(graphics, x, y, maxRange, innerRange, color, sliceAlpha);
     return;
   }
 
   // --- Simple / Normal / Enhanced: fill + particles ---
   const isEnhanced = style === 'enhanced';
 
-  // 1. Annular fill
-  drawAnnularFill(
-    graphics,
-    x,
-    y,
-    rotation,
-    halfAngle,
-    maxRange,
-    innerRange,
-    color,
-    sliceAlpha,
-  );
-
-  // Helper to check if an angle is within the visible pie slice
-  const normalizeAngle = (a: number) =>
-    ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-  const isAngleInSlice = (angle: number): boolean => {
-    if (sliceAngle >= Math.PI * 2 - 0.01) return true;
-
-    const normAngle = normalizeAngle(angle);
-    const normRotation = normalizeAngle(rotation);
-    const startAngle = normalizeAngle(normRotation - halfAngle);
-    const endAngle = normalizeAngle(normRotation + halfAngle);
-
-    if (startAngle <= endAngle) {
-      return normAngle >= startAngle && normAngle <= endAngle;
-    } else {
-      return normAngle >= startAngle || normAngle <= endAngle;
-    }
-  };
+  // 1. Annular fill (full circle)
+  drawAnnularFill(graphics, x, y, maxRange, innerRange, color, sliceAlpha);
 
   // Deterministic pseudo-random hash (instanceSeed makes each force field unique)
   const hash = (n: number) => {
@@ -94,24 +55,11 @@ export function renderForceFieldEffect(
   const rangeBand = maxRange - innerRange;
   if (rangeBand <= 0) return;
 
-  // Single Date.now() for entire effect (avoid per-particle calls)
   const nowMs = Date.now();
 
   // 2. Electric arcs (enhanced only)
   if (isEnhanced) {
-    drawElectricArcs(
-      graphics,
-      x,
-      y,
-      rotation,
-      sliceAngle,
-      innerRange,
-      rangeBand,
-      color,
-      v,
-      hash,
-      nowMs,
-    );
+    drawElectricArcs(graphics, x, y, innerRange, rangeBand, color, v, hash, nowMs);
   }
 
   // 3. Radial particle dashes (with trails in enhanced mode)
@@ -144,7 +92,7 @@ export function renderForceFieldEffect(
 
     const cycle = Math.floor(totalDist / REF_RANGE);
     const lineAngle = hash(i * 7919 + cycle * 104729) * Math.PI * 2;
-    if (!isAngleInSlice(lineAngle)) continue;
+    // No angle-in-slice check needed — always 360°
 
     const rNear = Math.max(radius - dashLen / 2, innerRange);
     const rFar = Math.min(radius + dashLen / 2, maxRange);
@@ -155,7 +103,6 @@ export function renderForceFieldEffect(
     const edgeFade = Math.min(distFromInner / 20, distFromOuter / 20, 1);
     const alpha = particleAlpha * edgeFade;
 
-    // Cache cos/sin for this dash (reused across main + trail segments)
     const cosAngle = Math.cos(lineAngle);
     const sinAngle = Math.sin(lineAngle);
 
@@ -193,13 +140,11 @@ export function renderForceFieldEffect(
   }
 }
 
-/** Draw the faint annular (or pie-slice) fill */
+/** Draw the faint annular fill (full 360° circle) */
 function drawAnnularFill(
   graphics: Phaser.GameObjects.Graphics,
   x: number,
   y: number,
-  rotation: number,
-  halfAngle: number,
   maxRange: number,
   innerRange: number,
   color: number,
@@ -208,40 +153,19 @@ function drawAnnularFill(
   graphics.fillStyle(color, opacity);
   graphics.beginPath();
   if (innerRange > 0) {
-    graphics.arc(
-      x,
-      y,
-      maxRange,
-      rotation - halfAngle,
-      rotation + halfAngle,
-      false,
-    );
-    graphics.arc(
-      x,
-      y,
-      innerRange,
-      rotation + halfAngle,
-      rotation - halfAngle,
-      true,
-    );
+    // Outer circle clockwise, inner circle counter-clockwise → annular ring
+    graphics.arc(x, y, maxRange, 0, Math.PI * 2, false);
+    graphics.arc(x, y, innerRange, Math.PI * 2, 0, true);
     graphics.closePath();
   } else {
-    graphics.moveTo(x, y);
-    graphics.arc(
-      x,
-      y,
-      maxRange,
-      rotation - halfAngle,
-      rotation + halfAngle,
-      false,
-    );
+    // Full filled circle
+    graphics.arc(x, y, maxRange, 0, Math.PI * 2, false);
     graphics.closePath();
   }
   graphics.fill();
 }
 
-// Pre-computed bell curve values for arc jitter (sin(frac * PI) for arcSegments fractions)
-// Avoids per-segment Math.sin() calls. Supports up to 20 segments.
+// Pre-computed bell curve values for arc jitter
 const ARC_BELL_CACHE: number[] = [];
 function getArcBell(segments: number): number[] {
   if (ARC_BELL_CACHE.length !== segments + 1) {
@@ -258,8 +182,6 @@ function drawElectricArcs(
   graphics: Phaser.GameObjects.Graphics,
   x: number,
   y: number,
-  rotation: number,
-  sliceAngle: number,
   innerRange: number,
   rangeBand: number,
   color: number,
@@ -267,20 +189,15 @@ function drawElectricArcs(
   hash: (n: number) => number,
   nowMs: number,
 ): void {
-  // Time-based seed that changes every arcFlickerMs — gives the crackle effect
   const flickerSeed = Math.floor(nowMs / v.arcFlickerMs);
-
   const bell = getArcBell(v.arcSegments);
 
   for (let i = 0; i < v.arcCount; i++) {
-    // Deterministic but rapidly changing arc placement
     const seed = flickerSeed * 31 + i * 7;
 
-    // Pick a random angle within the slice for this arc
-    const angleOffset = hash(seed) * sliceAngle - sliceAngle / 2;
-    const arcAngle = rotation + angleOffset;
+    // Random angle (full 360°)
+    const arcAngle = hash(seed) * Math.PI * 2;
 
-    // Pick random radial start/end within the band
     const t0 = hash(seed + 1000);
     const t1 = hash(seed + 2000);
     const rStart = innerRange + rangeBand * Math.min(t0, t1);
@@ -288,10 +205,7 @@ function drawElectricArcs(
     const arcLen = rEnd - rStart;
     if (arcLen < 8) continue;
 
-    // Random slight angular drift for the arc (so it's not perfectly radial)
     const angleDrift = (hash(seed + 3000) - 0.5) * 0.3;
-
-    // Opacity varies per arc for visual variety
     const arcAlpha = v.arcOpacity * (0.5 + hash(seed + 4000) * 0.5);
 
     graphics.lineStyle(v.arcThickness, color, arcAlpha);
@@ -302,14 +216,12 @@ function drawElectricArcs(
       const r = rStart + arcLen * frac;
       const baseAngle = arcAngle + angleDrift * frac;
 
-      // Perpendicular jitter (0 at endpoints, max in middle)
-      const jitterScale = bell[s]; // pre-computed bell curve: 0 at edges, 1 at center
+      const jitterScale = bell[s];
       const jitter =
         s === 0 || s === v.arcSegments
           ? 0
           : (hash(seed + s * 137) - 0.5) * 2 * v.arcJitter * jitterScale;
 
-      // Convert jitter from perpendicular px to angular offset at this radius
       const angularJitter = r > 0 ? jitter / r : 0;
       const finalAngle = baseAngle + angularJitter;
 

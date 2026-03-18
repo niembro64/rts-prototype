@@ -80,7 +80,6 @@ import {
   getWeaponWorldPosition,
   lineCircleIntersectionT,
   applyHomingSteering,
-  isPointInSlice,
 } from '../math';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
@@ -769,13 +768,8 @@ export class ClientViewState {
                 zones.pushOuter > zones.pushInner ? zones.pushInner : Infinity,
                 zones.pullOuter > zones.pullInner ? zones.pullInner : Infinity,
               );
-              const sliceHalfAngle = ff.shot.angle / 2;
-              const isFullCircle = sliceHalfAngle >= Math.PI;
-
-              if (!isPointInSlice(
-                dx, dy, dist, ff.turretAngle, sliceHalfAngle,
-                effectiveOuter, projRadius, effectiveInner, isFullCircle,
-              )) continue;
+              // Always 360° — only distance check needed
+              if (effectiveInner > 0 && dist + projRadius < effectiveInner) continue;
 
               const inPush = zones.pushOuter > zones.pushInner && dist < zones.pushOuter;
               const inPull = !inPush && zones.pullOuter > zones.pullInner && dist >= zones.pullInner;

@@ -158,9 +158,19 @@ export class GraphicsAdapter implements IGraphics {
     this.pixi.lineTo(x2, y2);
   }
 
-  // Path building (Phaser pattern: beginPath → moveTo/lineTo → closePath → fillPath/strokePath)
+  // Path building (Phaser pattern: fillStyle → beginPath → moveTo/lineTo/arc → closePath → fillPath)
+  // In PixiJS, beginFill must come BEFORE path geometry. We defer it to beginPath()
+  // and commit with endFill() in fillPath().
   beginPath(): void {
-    // path started
+    // Apply current fill/line state at path start (PixiJS requires it before geometry)
+    if (this._hasFill) {
+      this.pixi.beginFill(this._fillColor, this._fillAlpha);
+    }
+    if (this._hasLine) {
+      this.pixi.lineStyle(this._lineWidth, this._lineColor, this._lineAlpha);
+    } else {
+      this.pixi.lineStyle(0, 0, 0);
+    }
   }
 
   moveTo(x: number, y: number): void {
@@ -183,17 +193,12 @@ export class GraphicsAdapter implements IGraphics {
   fill(): void { this.fillPath(); }
 
   fillPath(): void {
-    // In PixiJS, we need to have started with beginFill before the path
-    // Since Phaser does fillStyle → beginPath → draw → fillPath,
-    // we re-draw by flushing current geometry with fill
-    this.pixi.beginFill(this._fillColor, this._fillAlpha);
     this.pixi.endFill();
-    // path ended
   }
 
   strokePath(): void {
-    this.applyLine();
-    // path ended
+    // Stroke is already applied via lineStyle in beginPath; just end the fill context
+    this.pixi.endFill();
   }
 
   setDepth(_depth: number): void {
