@@ -106,34 +106,28 @@ export function spawnBackgroundUnitsStandalone(
   const cy = mapHeight / 2;
 
   if (initialSpawn) {
-    // Spawn all initial units near the center for immediate combat.
-    // Each player's units cluster in their quadrant of the center area.
-    const centerRadius = DEMO_CONFIG.centerSpawnRadius;
+    // Spawn all initial units randomly within a circle around map center.
+    // Each unit's fight waypoint is the point directly opposite through center,
+    // so all units converge through the middle.
+    const centerRadius = DEMO_CONFIG.centerSpawnRadius * mapHeight;
     const totalPerPlayer = DEMO_CONFIG.centerSpawnPerPlayer;
-
-    // Player spawn angles (same as base positions: evenly around circle)
-    const playerAngles: number[] = [];
-    for (let i = 0; i < numPlayers; i++) {
-      playerAngles.push((i / numPlayers) * Math.PI * 2 - Math.PI / 2);
-    }
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = (p + 1) as PlayerId;
       const pUnits = world.getUnitsByPlayer(playerId).length;
-      const angle = playerAngles[p];
-      // Each player's cluster is offset slightly from center toward their base
-      const clusterCx = cx + Math.cos(angle) * centerRadius * 0.3;
-      const clusterCy = cy + Math.sin(angle) * centerRadius * 0.3;
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
-        // Random position within the cluster
+        // Random position within the spawn circle (sqrt for uniform area distribution)
         const spawnAngle = Math.random() * Math.PI * 2;
-        const spawnDist = Math.random() * centerRadius;
-        const spawnX = clusterCx + Math.cos(spawnAngle) * spawnDist;
-        const spawnY = clusterCy + Math.sin(spawnAngle) * spawnDist;
+        const spawnDist = Math.sqrt(Math.random()) * centerRadius;
+        const spawnX = cx + Math.cos(spawnAngle) * spawnDist;
+        const spawnY = cy + Math.sin(spawnAngle) * spawnDist;
 
-        // Fight waypoint: toward map center
-        const unit = spawnUnit(world, physics, playerId, spawnX, spawnY, cx, cy, allowedTypes);
+        // Fight waypoint: exact opposite side of the circle through center
+        const targetX = cx - (spawnX - cx);
+        const targetY = cy - (spawnY - cy);
+
+        const unit = spawnUnit(world, physics, playerId, spawnX, spawnY, targetX, targetY, allowedTypes);
         if (unit) spawned.push(unit);
       }
     }
