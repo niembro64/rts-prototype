@@ -79,15 +79,15 @@ export const BAR_COLORS = BAR_THEMES;
 export const EMA_CONFIG: Record<string, EmaTierConfig> = {
   tps: {
     avg: 0.01,
-    low: { drop: 0.01, recovery: 0.0001 },
+    low: { drop: 0.5, recovery: 0.0001 },
   },
   fps: {
     avg: 0.01,
-    low: { drop: 0.01, recovery: 0.0001 },
+    low: { drop: 0.5, recovery: 0.0001 },
   },
   snaps: {
     avg: 0.01,
-    low: { drop: 0.01, recovery: 0.0001 },
+    low: { drop: 0.5, recovery: 0.0001 },
   },
 };
 
@@ -98,6 +98,9 @@ export const EMA_CONFIG: Record<string, EmaTierConfig> = {
 /** Maximum dt (ms) the server will simulate in a single tick.
  *  Prevents spiral-of-death when a tick takes longer than the interval. */
 export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
+
+/** Use WASM physics engine. true = WASM (breaks if unavailable), false = JS fallback. */
+export const USE_WASM_PHYSICS = true;
 
 // =============================================================================
 // ECONOMY & RESOURCES
