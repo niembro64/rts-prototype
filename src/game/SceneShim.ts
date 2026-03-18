@@ -317,7 +317,7 @@ export class SceneShim {
     const self = this;
     return {
       graphics(): GraphicsAdapter {
-        const g = new GraphicsAdapter();
+        const g = new GraphicsAdapter(self.pixiApp.world, self.pixiApp.hud);
         self.pixiApp.world.addChild(g.pixi);
         self._graphicsObjects.push(g);
         return g;

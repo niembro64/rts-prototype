@@ -65,8 +65,14 @@ export class GraphicsAdapter implements IGraphics {
   // Fixed to screen (for HUD elements like edge scroll overlay)
   public fixedToCamera = false;
 
-  constructor() {
+  // Reference to world and HUD containers for reparenting on setScrollFactor
+  private _worldContainer: import('pixi.js').Container | null = null;
+  private _hudContainer: import('pixi.js').Container | null = null;
+
+  constructor(worldContainer?: import('pixi.js').Container, hudContainer?: import('pixi.js').Container) {
     this.pixi = new PIXIGraphics();
+    this._worldContainer = worldContainer ?? null;
+    this._hudContainer = hudContainer ?? null;
   }
 
   clear(): void {
@@ -260,8 +266,15 @@ export class GraphicsAdapter implements IGraphics {
   }
 
   setScrollFactor(_x: number, _y?: number): void {
-    // Mark as fixed to camera (handled by the scene's render loop)
     this.fixedToCamera = _x === 0;
+    // Move to HUD container (screen-fixed, no camera transform)
+    if (this.fixedToCamera && this._hudContainer) {
+      this.pixi.parent?.removeChild(this.pixi);
+      this._hudContainer.addChild(this.pixi);
+    } else if (!this.fixedToCamera && this._worldContainer) {
+      this.pixi.parent?.removeChild(this.pixi);
+      this._worldContainer.addChild(this.pixi);
+    }
   }
 
   destroy(): void {

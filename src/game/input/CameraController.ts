@@ -107,14 +107,11 @@ export class CameraController {
     this.edgeOverlay.clear();
 
     const camera = this.scene.cameras.main;
-    const zoom = camera.zoom;
 
-    // scrollFactor(0) prevents scroll but Phaser still applies zoom.
-    // Invert the zoom transform so the overlay stays pixel-perfect on screen.
-    const halfW = camera.width * 0.5;
-    const halfH = camera.height * 0.5;
-    const gx = (sx: number) => (sx - halfW * (1 - zoom)) / zoom;
-    const gy = (sy: number) => (sy - halfH * (1 - zoom)) / zoom;
+    // Edge overlay is in the HUD container (screen-fixed, no camera transform).
+    // Screen coordinates map directly — no zoom correction needed.
+    const gx = (sx: number) => sx;
+    const gy = (sy: number) => sy;
 
     // Effective viewport center (accounts for top bar and bottom bars)
     const topInset = EDGE_SCROLL.topBarHeight;
@@ -219,7 +216,7 @@ export class CameraController {
           // Inner oval stroke
           if (EDGE_SCROLL.innerOvalStrokeAlpha > 0) {
             this.edgeOverlay.lineStyle(
-              EDGE_SCROLL.innerOvalStrokeWidth / zoom,
+              EDGE_SCROLL.innerOvalStrokeWidth ,
               EDGE_SCROLL.innerOvalStrokeColor,
               EDGE_SCROLL.innerOvalStrokeAlpha,
             );
@@ -237,7 +234,7 @@ export class CameraController {
           // Outer oval stroke
           if (EDGE_SCROLL.outerOvalStrokeAlpha > 0) {
             this.edgeOverlay.lineStyle(
-              EDGE_SCROLL.outerOvalStrokeWidth / zoom,
+              EDGE_SCROLL.outerOvalStrokeWidth ,
               EDGE_SCROLL.outerOvalStrokeColor,
               EDGE_SCROLL.outerOvalStrokeAlpha,
             );
@@ -321,7 +318,7 @@ export class CameraController {
       // Outline pass (thicker, behind)
       if (EDGE_SCROLL.outlineAlpha > 0) {
         this.edgeOverlay.lineStyle(
-          (EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) / zoom,
+          (EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) ,
           EDGE_SCROLL.outlineColor,
           EDGE_SCROLL.outlineAlpha,
         );
@@ -331,7 +328,7 @@ export class CameraController {
         this.edgeOverlay.strokePath();
 
         this.edgeOverlay.lineStyle(
-          (EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) / zoom,
+          (EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) ,
           EDGE_SCROLL.outlineColor,
           EDGE_SCROLL.outlineAlpha,
         );
@@ -345,7 +342,7 @@ export class CameraController {
 
       // Shaft line
       this.edgeOverlay.lineStyle(
-        EDGE_SCROLL.shaftWidth / zoom,
+        EDGE_SCROLL.shaftWidth ,
         EDGE_SCROLL.shaftColor,
         EDGE_SCROLL.shaftAlpha,
       );
@@ -369,7 +366,7 @@ export class CameraController {
       // Arrowhead stroke
       if (EDGE_SCROLL.headStrokeAlpha > 0) {
         this.edgeOverlay.lineStyle(
-          EDGE_SCROLL.headStrokeWidth / zoom,
+          EDGE_SCROLL.headStrokeWidth ,
           EDGE_SCROLL.headStrokeColor,
           EDGE_SCROLL.headStrokeAlpha,
         );
