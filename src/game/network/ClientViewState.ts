@@ -261,7 +261,11 @@ export class ClientViewState {
       const existing = this.entities.get(netEntity.id);
 
       if (!existing) {
-        // New entity — create at server position
+        // Only create entities from full data (keyframes or new-entity entries).
+        // Delta snapshots with changedFields set may be missing unit type, HP, etc.
+        // The entity will be created on the next keyframe.
+        if (netEntity.changedFields !== undefined) continue;
+
         const newEntity = createEntityFromNetwork(netEntity);
         if (newEntity) {
           if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
