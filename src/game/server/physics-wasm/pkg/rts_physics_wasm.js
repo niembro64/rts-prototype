@@ -45,38 +45,18 @@ export class PhysicsEngine {
         wasm.physicsengine_apply_force(this.__wbg_ptr, slot, fx, fy);
     }
     /**
+     * Prepare bulk sync buffer and return pointer. JS reads via Float64Array view.
+     * @returns {number}
+     */
+    bulk_sync() {
+        const ret = wasm.physicsengine_bulk_sync(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {number}
      */
     dynamic_count() {
         const ret = wasm.physicsengine_dynamic_count(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * @returns {number}
-     */
-    dynamic_vx_ptr() {
-        const ret = wasm.physicsengine_dynamic_vx_ptr(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * @returns {number}
-     */
-    dynamic_vy_ptr() {
-        const ret = wasm.physicsengine_dynamic_vy_ptr(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * @returns {number}
-     */
-    dynamic_x_ptr() {
-        const ret = wasm.physicsengine_dynamic_x_ptr(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
-     * @returns {number}
-     */
-    dynamic_y_ptr() {
-        const ret = wasm.physicsengine_dynamic_y_ptr(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
@@ -120,6 +100,14 @@ export class PhysicsEngine {
         return ret;
     }
     /**
+     * Number of slots (alive + dead) for sizing the JS typed array view.
+     * @returns {number}
+     */
+    max_slot_count() {
+        const ret = wasm.physicsengine_max_slot_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @param {number} map_width
      * @param {number} map_height
      */
@@ -128,6 +116,25 @@ export class PhysicsEngine {
         this.__wbg_ptr = ret >>> 0;
         PhysicsEngineFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * Resize projectile input buffer and return pointer for JS to write into.
+     * @param {number} count
+     * @returns {number}
+     */
+    proj_in_alloc(count) {
+        const ret = wasm.physicsengine_proj_in_alloc(this.__wbg_ptr, count);
+        return ret >>> 0;
+    }
+    /**
+     * Run projectile integration and return pointer to output buffer.
+     * @param {number} count
+     * @param {number} dt_sec
+     * @returns {number}
+     */
+    proj_update(count, dt_sec) {
+        const ret = wasm.physicsengine_proj_update(this.__wbg_ptr, count, dt_sec);
+        return ret >>> 0;
     }
     /**
      * @param {number} slot
@@ -146,6 +153,25 @@ export class PhysicsEngine {
      */
     step(dt_sec) {
         wasm.physicsengine_step(this.__wbg_ptr, dt_sec);
+    }
+    /**
+     * Resize turret input buffer and return pointer for JS to write into.
+     * @param {number} count
+     * @returns {number}
+     */
+    turret_in_alloc(count) {
+        const ret = wasm.physicsengine_turret_in_alloc(this.__wbg_ptr, count);
+        return ret >>> 0;
+    }
+    /**
+     * Run turret rotation update and return pointer to output buffer.
+     * @param {number} count
+     * @param {number} dt_sec
+     * @returns {number}
+     */
+    turret_update(count, dt_sec) {
+        const ret = wasm.physicsengine_turret_update(this.__wbg_ptr, count, dt_sec);
+        return ret >>> 0;
     }
 }
 if (Symbol.dispose) PhysicsEngine.prototype[Symbol.dispose] = PhysicsEngine.prototype.free;
