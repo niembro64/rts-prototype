@@ -422,16 +422,16 @@ export class EntityRenderer {
     // 0. Force field zones are drawn late (after explosions) with real transparency.
     setSkipForceFieldZones(true);
 
-    // 0b. Sample beam endpoints for scorched earth burn marks
-    this.burnMarkSystem.sampleBeamEndpoints(
-      this.entitySource.getProjectiles(),
-      gfxConfig.burnMarkFramesSkip,
-    );
-
-    // 0c. Render scorched earth burn marks
-    this.burnMarkSystem.render(this.graphics, (x, y, padding) =>
-      this.isInViewport(x, y, padding),
-    );
+    // 0b. Sample and render scorched earth burn marks (skip at min LOD)
+    if (gfxConfig.burnMarkAlphaCutoff < 1) {
+      this.burnMarkSystem.sampleBeamEndpoints(
+        this.entitySource.getProjectiles(),
+        gfxConfig.burnMarkFramesSkip,
+      );
+      this.burnMarkSystem.render(this.graphics, (x, y, padding) =>
+        this.isInViewport(x, y, padding),
+      );
+    }
 
     // 0d. Death debris fragments
     this.debrisSystem.render(this.graphics, (x, y, p) =>
