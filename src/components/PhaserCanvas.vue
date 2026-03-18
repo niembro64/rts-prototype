@@ -34,7 +34,6 @@ import {
   BATTLE_CONFIG,
   loadStoredDemoUnits,
   saveDemoUnits,
-  loadStoredMaxTotalUnits,
   saveMaxTotalUnits,
   loadStoredDemoCap,
   saveDemoCap,
@@ -64,7 +63,6 @@ import {
   saveKeyframeRatio,
   loadStoredTickRate,
   saveTickRate,
-  loadStoredGridInfo,
   saveGridInfo,
 } from '../serverBarConfig';
 import { CLIENT_CONFIG } from '../clientBarConfig';

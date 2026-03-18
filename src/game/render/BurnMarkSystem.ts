@@ -2,7 +2,7 @@
 // Extracted from renderEntities.ts
 
 import type Phaser from '../PhaserCompat';
-import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, BURN_COLOR_COOL, hexToRgb } from '../../config';
+import { BURN_COLOR_TAU, BURN_COOL_TAU, BURN_COLOR_HOT, hexToRgb } from '../../config';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -11,7 +11,7 @@ export type { BurnMark } from '@/types/render';
 import type { BurnMark } from '@/types/render';
 
 const BURN_HOT_RGB = hexToRgb(BURN_COLOR_HOT);
-const BURN_COOL_RGB = hexToRgb(BURN_COLOR_COOL);
+const BURN_COOL_COLOR = 0x221100; // dark brown residue
 // Burn mark cap derived from burnMarkAlphaCutoff (lower cutoff → more marks persist → higher cap)
 function getBurnMarkCap(): number {
   const cutoff = getGraphicsConfig().burnMarkAlphaCutoff;
@@ -57,7 +57,7 @@ export class BurnMarkSystem {
           const dx = ex - prev.x;
           const dy = ey - prev.y;
           if (dx * dx + dy * dy > 1) {
-            this.marks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth * 2, age: 0, color: BURN_COLOR_HOT });
+            this.marks.push({ x1: prev.x, y1: prev.y, x2: ex, y2: ey, width: beamWidth * 2, age: 0, color: BURN_COLOR_HOT, alpha: 1 });
           }
         }
         this.prevBeamEndpoints.set(beamKey, { x: ex, y: ey });
@@ -76,29 +76,31 @@ export class BurnMarkSystem {
    * Age burn marks, compute cached color, and prune ones that have blended to background.
    */
   update(dtMs: number, burnCutoff: number): void {
-    // Pre-compute per-frame decay factors (same dt for all marks this frame)
-    // exp(-age/tau) = exp(-prevAge/tau) * exp(-dt/tau), but ages differ per mark.
-    // Instead, batch-compute the two ratios using age directly.
-    // We can avoid exp() entirely by using the rational approximation:
-    //   exp(-x) ≈ 1/(1+x+0.48*x*x+0.235*x*x*x) for x >= 0 (max error ~0.3%)
+    // Rational approximation of exp(-x) avoiding Math.exp:
+    //   exp(-x) ≈ 1/(1+x+0.48*x²+0.235*x³) for x >= 0 (max error ~0.3%)
     const invCoolTau = 1 / BURN_COOL_TAU;
     const invColorTau = 1 / BURN_COLOR_TAU;
+    const coolRgb = hexToRgb(BURN_COOL_COLOR);
     let burnWrite = 0;
     for (let i = 0; i < this.marks.length; i++) {
       const mark = this.marks[i];
       mark.age += dtMs;
+
+      // Alpha fades to transparent over BURN_COOL_TAU
       const xCool = mark.age * invCoolTau;
-      const coolDecay = 1 / (1 + xCool + 0.48 * xCool * xCool + 0.235 * xCool * xCool * xCool);
-      const coolBlend = 1 - coolDecay;
-      if (coolBlend < 1 - burnCutoff) {
-        const xHot = mark.age * invColorTau;
-        const hotDecay = 1 / (1 + xHot + 0.48 * xHot * xHot + 0.235 * xHot * xHot * xHot);
-        const red = (BURN_HOT_RGB.r * hotDecay + BURN_COOL_RGB.r * coolBlend) | 0;
-        const green = (BURN_HOT_RGB.g * hotDecay + BURN_COOL_RGB.g * coolBlend) | 0;
-        const blue = (BURN_HOT_RGB.b * hotDecay + BURN_COOL_RGB.b * coolBlend) | 0;
-        mark.color = (red << 16) | (green << 8) | blue;
-        this.marks[burnWrite++] = mark;
-      }
+      const alpha = 1 / (1 + xCool + 0.48 * xCool * xCool + 0.235 * xCool * xCool * xCool);
+      if (alpha < burnCutoff) continue; // pruned
+
+      // Color transitions from hot (red/orange) toward a dark residue
+      const xHot = mark.age * invColorTau;
+      const hotDecay = 1 / (1 + xHot + 0.48 * xHot * xHot + 0.235 * xHot * xHot * xHot);
+      const coolBlend = 1 - hotDecay;
+      const red = (BURN_HOT_RGB.r * hotDecay + coolRgb.r * coolBlend) | 0;
+      const green = (BURN_HOT_RGB.g * hotDecay + coolRgb.g * coolBlend) | 0;
+      const blue = (BURN_HOT_RGB.b * hotDecay + coolRgb.b * coolBlend) | 0;
+      mark.color = (red << 16) | (green << 8) | blue;
+      mark.alpha = alpha;
+      this.marks[burnWrite++] = mark;
     }
     this.marks.length = burnWrite;
   }
@@ -112,11 +114,11 @@ export class BurnMarkSystem {
       const midX = (mark.x1 + mark.x2) * 0.5;
       const midY = (mark.y1 + mark.y2) * 0.5;
       if (!isInViewport(midX, midY, 50)) continue;
-      graphics.lineStyle(mark.width, mark.color, 1);
+      graphics.lineStyle(mark.width, mark.color, mark.alpha);
       graphics.lineBetween(mark.x1, mark.y1, mark.x2, mark.y2);
       if (getGraphicsConfig().chassisDetail) {
         const r = mark.width / 2;
-        graphics.fillStyle(mark.color, 1);
+        graphics.fillStyle(mark.color, mark.alpha);
         graphics.fillCircle(mark.x1, mark.y1, r);
         graphics.fillCircle(mark.x2, mark.y2, r);
       }

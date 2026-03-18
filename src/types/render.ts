@@ -95,6 +95,7 @@ export type BurnMark = {
   width: number;
   age: number;
   color: number;
+  alpha: number;
 };
 
 // Death debris fragment
