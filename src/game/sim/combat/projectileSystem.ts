@@ -9,6 +9,7 @@ import type { SimEvent, FireTurretsResult, CollisionResult, ProjectileSpawnEvent
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
+import { getWasmEngine, getWasmMemory } from '../../server/WasmBatch';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos } from './combatUtils';
@@ -268,6 +269,187 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 // Reusable array for homing velocity updates (avoid per-frame allocation)
 const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
 
+// Reusable arrays for WASM batch projectile processing
+let _projEntities: Entity[] = [];
+
+// JS fallback: update traveling projectile positions + homing (original code)
+function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
+  for (const entity of world.getProjectiles()) {
+    if (!entity.projectile) continue;
+    const proj = entity.projectile;
+
+    proj.timeAlive += dtMs;
+
+    if (proj.projectileType !== 'projectile') continue;
+
+    proj.prevX = entity.transform.x;
+    proj.prevY = entity.transform.y;
+    entity.transform.x += proj.velocityX * dtSec;
+    entity.transform.y += proj.velocityY * dtSec;
+
+    if (!proj.hasLeftSource) {
+      const source = world.getEntity(proj.sourceEntityId);
+      if (!source?.unit) {
+        proj.hasLeftSource = true;
+      } else {
+        const dx = proj.prevX - source.transform.x;
+        const dy = proj.prevY - source.transform.y;
+        const distSq = dx * dx + dy * dy;
+        const clearance = source.unit.radiusColliderUnitShot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
+        if (distSq > clearance * clearance) {
+          proj.hasLeftSource = true;
+        }
+      }
+    }
+
+    if (proj.homingTargetId !== undefined) {
+      const homingTarget = world.getEntity(proj.homingTargetId);
+      if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
+        const steered = applyHomingSteering(
+          proj.velocityX, proj.velocityY,
+          homingTarget.transform.x, homingTarget.transform.y,
+          entity.transform.x, entity.transform.y,
+          proj.homingTurnRate ?? 0, dtSec
+        );
+        proj.velocityX = steered.velocityX;
+        proj.velocityY = steered.velocityY;
+        entity.transform.rotation = steered.rotation;
+
+        const velTh = SNAPSHOT_CONFIG.velocityThreshold;
+        const lastVx = proj.lastSentVelX ?? proj.velocityX;
+        const lastVy = proj.lastSentVelY ?? proj.velocityY;
+        if (Math.abs(proj.velocityX - lastVx) > velTh ||
+            Math.abs(proj.velocityY - lastVy) > velTh) {
+          proj.lastSentVelX = proj.velocityX;
+          proj.lastSentVelY = proj.velocityY;
+          _homingVelocityUpdates.push({
+            id: entity.id,
+            pos: { x: entity.transform.x, y: entity.transform.y },
+            velocity: { x: proj.velocityX, y: proj.velocityY },
+          });
+        }
+      } else {
+        proj.homingTargetId = undefined;
+      }
+    }
+  }
+}
+
+// WASM batch: position integration + homing steering in WASM, game logic in JS
+function _updateTravelingProjectilesWasm(
+  world: WorldState,
+  dtMs: number,
+  dtSec: number,
+  wasmEngine: NonNullable<ReturnType<typeof getWasmEngine>>,
+  wasmMemory: WebAssembly.Memory,
+): void {
+  // Collect traveling projectiles and resolve homing targets (requires entity lookups)
+  _projEntities.length = 0;
+  for (const entity of world.getProjectiles()) {
+    if (!entity.projectile) continue;
+    entity.projectile.timeAlive += dtMs;
+    if (entity.projectile.projectileType === 'projectile') {
+      _projEntities.push(entity);
+    }
+  }
+
+  const count = _projEntities.length;
+  if (count === 0) return;
+
+  // Pack data into WASM input buffer
+  // Stride 8: [x, y, vx, vy, targetX, targetY, turnRate, hasHoming]
+  const inPtr = wasmEngine.proj_in_alloc(count);
+  const inBuf = new Float64Array(wasmMemory.buffer, inPtr, count * 8);
+
+  for (let i = 0; i < count; i++) {
+    const entity = _projEntities[i];
+    const proj = entity.projectile!;
+    const base = i * 8;
+
+    // Store prev position before WASM moves it
+    proj.prevX = entity.transform.x;
+    proj.prevY = entity.transform.y;
+
+    inBuf[base] = entity.transform.x;
+    inBuf[base + 1] = entity.transform.y;
+    inBuf[base + 2] = proj.velocityX;
+    inBuf[base + 3] = proj.velocityY;
+
+    // Resolve homing target (needs entity lookup)
+    let hasHoming = 0;
+    let targetX = 0;
+    let targetY = 0;
+    let turnRate = 0;
+
+    if (proj.homingTargetId !== undefined) {
+      const homingTarget = world.getEntity(proj.homingTargetId);
+      if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
+        hasHoming = 1;
+        targetX = homingTarget.transform.x;
+        targetY = homingTarget.transform.y;
+        turnRate = proj.homingTurnRate ?? 0;
+      } else {
+        proj.homingTargetId = undefined;
+      }
+    }
+
+    inBuf[base + 4] = targetX;
+    inBuf[base + 5] = targetY;
+    inBuf[base + 6] = turnRate;
+    inBuf[base + 7] = hasHoming;
+  }
+
+  // One WASM call for all projectiles
+  const outPtr = wasmEngine.proj_update(count, dtSec);
+  const outBuf = new Float64Array(wasmMemory.buffer, outPtr, count * 5);
+
+  // Unpack results + JS game logic (source check, velocity events)
+  for (let i = 0; i < count; i++) {
+    const entity = _projEntities[i];
+    const proj = entity.projectile!;
+    const base = i * 5;
+
+    entity.transform.x = outBuf[base];
+    entity.transform.y = outBuf[base + 1];
+    proj.velocityX = outBuf[base + 2];
+    proj.velocityY = outBuf[base + 3];
+    entity.transform.rotation = outBuf[base + 4];
+
+    // Source clearance check (needs entity lookup — stays in JS)
+    if (!proj.hasLeftSource) {
+      const source = world.getEntity(proj.sourceEntityId);
+      if (!source?.unit) {
+        proj.hasLeftSource = true;
+      } else {
+        const dx = (proj.prevX ?? entity.transform.x) - source.transform.x;
+        const dy = (proj.prevY ?? entity.transform.y) - source.transform.y;
+        const distSq = dx * dx + dy * dy;
+        const clearance = source.unit.radiusColliderUnitShot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
+        if (distSq > clearance * clearance) {
+          proj.hasLeftSource = true;
+        }
+      }
+    }
+
+    // Homing velocity update events (needs threshold check — stays in JS)
+    if (proj.homingTargetId !== undefined) {
+      const velTh = SNAPSHOT_CONFIG.velocityThreshold;
+      const lastVx = proj.lastSentVelX ?? proj.velocityX;
+      const lastVy = proj.lastSentVelY ?? proj.velocityY;
+      if (Math.abs(proj.velocityX - lastVx) > velTh ||
+          Math.abs(proj.velocityY - lastVy) > velTh) {
+        proj.lastSentVelX = proj.velocityX;
+        proj.lastSentVelY = proj.velocityY;
+        _homingVelocityUpdates.push({
+          id: entity.id,
+          pos: { x: entity.transform.x, y: entity.transform.y },
+          velocity: { x: proj.velocityX, y: proj.velocityY },
+        });
+      }
+    }
+  }
+}
+
 // Update projectile positions - returns IDs of projectiles to remove (e.g., orphaned beams)
 // Also returns despawn events for removed projectiles and velocity updates for homing projectiles
 export function updateProjectiles(
@@ -280,79 +462,26 @@ export function updateProjectiles(
   const despawnEvents: ProjectileDespawnEvent[] = [];
   _homingVelocityUpdates.length = 0;
 
+  // Phase 4: batch position integration + homing for traveling projectiles via WASM
+  const wasmEngine = getWasmEngine();
+  const wasmMemory = getWasmMemory();
+  if (wasmEngine && wasmMemory) {
+    _updateTravelingProjectilesWasm(world, dtMs, dtSec, wasmEngine, wasmMemory);
+  } else {
+    _updateTravelingProjectilesJS(world, dtMs, dtSec);
+  }
+
   for (const entity of world.getProjectiles()) {
     if (!entity.projectile) continue;
 
     const proj = entity.projectile;
 
-    // Update time alive
-    proj.timeAlive += dtMs;
+    // Traveling projectiles already handled in pre-pass (WASM or JS)
+    if (proj.projectileType === 'projectile') continue;
 
-    // Move traveling projectiles - track previous position for swept collision detection
-    if (proj.projectileType === 'projectile') {
-      // Store previous position before moving (prevents tunneling through targets)
-      proj.prevX = entity.transform.x;
-      proj.prevY = entity.transform.y;
-
-      // Move projectile
-      entity.transform.x += proj.velocityX * dtSec;
-      entity.transform.y += proj.velocityY * dtSec;
-
-      // Check if projectile has cleared the source unit's hitbox.
-      // Use prevX/prevY (pre-move position) so the ENTIRE swept line (prev→current)
-      // is outside the combined collision radius when the guard drops.
-      if (!proj.hasLeftSource) {
-        const source = world.getEntity(proj.sourceEntityId);
-        if (!source?.unit) {
-          proj.hasLeftSource = true; // Source dead/gone, allow collisions
-        } else {
-          const dx = proj.prevX - source.transform.x;
-          const dy = proj.prevY - source.transform.y;
-          const distSq = dx * dx + dy * dy;
-          const clearance = source.unit.radiusColliderUnitShot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
-          if (distSq > clearance * clearance) {
-            proj.hasLeftSource = true;
-          }
-        }
-      }
-
-      // Homing steering: turn velocity toward target
-      if (proj.homingTargetId !== undefined) {
-        const homingTarget = world.getEntity(proj.homingTargetId);
-        if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
-          const steered = applyHomingSteering(
-            proj.velocityX, proj.velocityY,
-            homingTarget.transform.x, homingTarget.transform.y,
-            entity.transform.x, entity.transform.y,
-            proj.homingTurnRate ?? 0, dtSec
-          );
-          proj.velocityX = steered.velocityX;
-          proj.velocityY = steered.velocityY;
-          entity.transform.rotation = steered.rotation;
-
-          // Emit velocity update only when velocity changed beyond threshold
-          const velTh = SNAPSHOT_CONFIG.velocityThreshold;
-          const lastVx = proj.lastSentVelX ?? proj.velocityX;
-          const lastVy = proj.lastSentVelY ?? proj.velocityY;
-          if (Math.abs(proj.velocityX - lastVx) > velTh ||
-              Math.abs(proj.velocityY - lastVy) > velTh) {
-            proj.lastSentVelX = proj.velocityX;
-            proj.lastSentVelY = proj.velocityY;
-            _homingVelocityUpdates.push({
-              id: entity.id,
-              pos: { x: entity.transform.x, y: entity.transform.y },
-              velocity: { x: proj.velocityX, y: proj.velocityY },
-            });
-          }
-        } else {
-          // Target gone/dead — fly straight (no retargeting)
-          proj.homingTargetId = undefined;
-        }
-      }
-    }
-
-    // Update beam positions to follow turret direction
+    // Update beam/laser positions to follow turret direction
     if (proj.projectileType === 'beam' || proj.projectileType === 'laser') {
+      proj.timeAlive += dtMs;
       const source = world.getEntity(proj.sourceEntityId);
 
       // Get weapon index from config

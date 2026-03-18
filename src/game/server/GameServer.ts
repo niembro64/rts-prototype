@@ -15,6 +15,7 @@ import { beamIndex } from '../sim/BeamIndex';
 import { PhysicsEngine } from './PhysicsEngine';
 import { PhysicsEngineWasm, initPhysicsWasm } from './PhysicsEngineWasm';
 import type { IPhysicsEngine } from './IPhysicsEngine';
+import { setWasmBatchEngine, clearWasmBatchEngine } from './WasmBatch';
 import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
 import {
@@ -82,6 +83,8 @@ export class GameServer {
     await initPhysicsWasm();
     const mapConfig = MAP_SETTINGS.game;
     const physics = new PhysicsEngineWasm(mapConfig.width, mapConfig.height);
+    // Register WASM engine for batch turret/projectile processing
+    setWasmBatchEngine(physics.getWasmEngine(), PhysicsEngineWasm.getWasmMemory());
     return new GameServer(config, physics);
   }
 
@@ -229,6 +232,9 @@ export class GameServer {
     }
     this.snapshotListeners.length = 0;
     this.gameOverListeners.length = 0;
+
+    // Clear WASM batch engine reference
+    clearWasmBatchEngine();
 
     // Clear simulation singletons so entity refs don't survive across sessions
     spatialGrid.clear();
