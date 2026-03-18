@@ -29,7 +29,7 @@ export const BATTLE_CONFIG = {
   projVelInherit: { default: false },
   ffAccelUnits: { default: false },
   ffAccelShots: { default: true },
-  ffDmgUnits: { default: true },
+  ffDmgUnits: { default: false },
 } as const satisfies BattleBarConfig;
 
 // ── localStorage keys (module-private) ──
