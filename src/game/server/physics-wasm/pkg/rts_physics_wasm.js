@@ -149,6 +149,13 @@ export class PhysicsEngine {
         wasm.physicsengine_remove_static_body(this.__wbg_ptr, slot);
     }
     /**
+     * @param {number} dynamic_slot
+     * @param {number} static_slot
+     */
+    set_ignore_static(dynamic_slot, static_slot) {
+        wasm.physicsengine_set_ignore_static(this.__wbg_ptr, dynamic_slot, static_slot);
+    }
+    /**
      * @param {number} dt_sec
      */
     step(dt_sec) {

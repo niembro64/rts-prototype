@@ -117,6 +117,13 @@ export class PhysicsEngineWasm {
     this.engine.apply_force(slot, fx, fy);
   }
 
+  setIgnoreStatic(dynamicBody: PhysicsBody, staticBody: PhysicsBody): void {
+    const dynSlot = this.slotMap.get(dynamicBody);
+    const statSlot = this.staticSlotMap.get(staticBody);
+    if (dynSlot === undefined || statSlot === undefined) return;
+    this.engine.set_ignore_static(dynSlot, statSlot);
+  }
+
   step(dtSec: number): void {
     this.engine.step(dtSec);
     this.bulkSync();

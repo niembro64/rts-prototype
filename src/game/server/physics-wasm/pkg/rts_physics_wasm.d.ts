@@ -32,6 +32,7 @@ export class PhysicsEngine {
     proj_update(count: number, dt_sec: number): number;
     remove_dynamic_body(slot: number): void;
     remove_static_body(slot: number): void;
+    set_ignore_static(dynamic_slot: number, static_slot: number): void;
     step(dt_sec: number): void;
     /**
      * Resize turret input buffer and return pointer for JS to write into.
@@ -64,6 +65,7 @@ export interface InitOutput {
     readonly physicsengine_proj_update: (a: number, b: number, c: number) => number;
     readonly physicsengine_remove_dynamic_body: (a: number, b: number) => void;
     readonly physicsengine_remove_static_body: (a: number, b: number) => void;
+    readonly physicsengine_set_ignore_static: (a: number, b: number, c: number) => void;
     readonly physicsengine_step: (a: number, b: number) => void;
     readonly physicsengine_turret_in_alloc: (a: number, b: number) => number;
     readonly physicsengine_turret_update: (a: number, b: number, c: number) => number;

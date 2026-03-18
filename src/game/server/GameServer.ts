@@ -179,6 +179,21 @@ export class GameServer {
             `unit_${entity.id}`
           );
           entity.body = { physicsBody: body };
+
+          // Skip collision with the factory this unit spawned from
+          // (unit starts at factory center — would be pushed in random direction)
+          const spawnX = entity.transform.x;
+          const spawnY = entity.transform.y;
+          for (const building of this.world.getBuildings()) {
+            if (!building.body?.physicsBody || !building.building) continue;
+            const bw = building.building.width / 2;
+            const bh = building.building.height / 2;
+            if (Math.abs(spawnX - building.transform.x) < bw &&
+                Math.abs(spawnY - building.transform.y) < bh) {
+              this.physics.setIgnoreStatic(body, building.body.physicsBody);
+              break;
+            }
+          }
         }
       }
     };

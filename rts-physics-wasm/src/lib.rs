@@ -24,6 +24,8 @@ struct DynamicBodies {
     restitution: Vec<f64>,
     accel_x: Vec<f64>,
     accel_y: Vec<f64>,
+    /// Per-packed-index: static slot to ignore for collision (u32::MAX = none)
+    ignore_static: Vec<u32>,
     alive: Vec<bool>,
     /// Maps external slot index → packed index (or usize::MAX if dead)
     slot_to_packed: Vec<usize>,
@@ -48,6 +50,7 @@ impl DynamicBodies {
             restitution: Vec::with_capacity(INITIAL_CAPACITY),
             accel_x: Vec::with_capacity(INITIAL_CAPACITY),
             accel_y: Vec::with_capacity(INITIAL_CAPACITY),
+            ignore_static: Vec::with_capacity(INITIAL_CAPACITY),
             alive: Vec::with_capacity(INITIAL_CAPACITY),
             slot_to_packed: Vec::with_capacity(INITIAL_CAPACITY),
             packed_to_slot: Vec::with_capacity(INITIAL_CAPACITY),
@@ -79,6 +82,7 @@ impl DynamicBodies {
         self.restitution.push(restitution);
         self.accel_x.push(0.0);
         self.accel_y.push(0.0);
+        self.ignore_static.push(u32::MAX);
 
         let slot = if let Some(s) = self.free_slots.pop() {
             self.alive[s] = true;
@@ -116,6 +120,7 @@ impl DynamicBodies {
             self.restitution[packed] = self.restitution[last];
             self.accel_x[packed] = self.accel_x[last];
             self.accel_y[packed] = self.accel_y[last];
+            self.ignore_static[packed] = self.ignore_static[last];
 
             let moved_slot = self.packed_to_slot[last];
             self.slot_to_packed[moved_slot] = packed;
@@ -134,6 +139,7 @@ impl DynamicBodies {
         self.restitution.truncate(self.count);
         self.accel_x.truncate(self.count);
         self.accel_y.truncate(self.count);
+        self.ignore_static.truncate(self.count);
         self.packed_to_slot.truncate(self.count);
 
         self.slot_to_packed[slot] = usize::MAX;
@@ -384,6 +390,17 @@ impl PhysicsEngine {
         self.statics.remove(slot);
     }
 
+    // -- Ignore static (unit spawning inside factory) --
+
+    pub fn set_ignore_static(&mut self, dynamic_slot: u32, static_slot: u32) {
+        let s = dynamic_slot as usize;
+        if s >= self.dynamic.alive.len() || !self.dynamic.alive[s] {
+            return;
+        }
+        let p = self.dynamic.slot_to_packed[s];
+        self.dynamic.ignore_static[p] = static_slot;
+    }
+
     // -- Force accumulation --
 
     pub fn apply_force(&mut self, slot: u32, fx: f64, fy: f64) {
@@ -507,7 +524,30 @@ impl PhysicsEngine {
 
         // Circle-rect (dynamic vs static) — statics are few, brute force is fine
         for i in 0..n {
+            let mut ignored = self.dynamic.ignore_static[i];
             for s in 0..ns {
+                // Skip collision with the source building (unit spawning inside factory)
+                if ignored != u32::MAX {
+                    let static_slot = self.statics.packed_to_slot[s];
+                    if static_slot == ignored as usize {
+                        // Check if unit has fully left the building — clear ignore
+                        let ax = self.dynamic.x[i];
+                        let ay = self.dynamic.y[i];
+                        let ar = self.dynamic.radius[i];
+                        let rx = self.statics.x[s];
+                        let ry = self.statics.y[s];
+                        let hw = self.statics.half_w[s];
+                        let hh = self.statics.half_h[s];
+                        let c = ar + 2.0;
+                        if ax > rx + hw + c || ax < rx - hw - c ||
+                           ay > ry + hh + c || ay < ry - hh - c {
+                            self.dynamic.ignore_static[i] = u32::MAX;
+                            ignored = u32::MAX;
+                        } else {
+                            continue;
+                        }
+                    }
+                }
                 self.resolve_circle_rect(i, s);
             }
         }

@@ -23,6 +23,9 @@ export class PhysicsEngine implements IPhysicsEngine {
   private accelX: Map<PhysicsBody, number> = new Map();
   private accelY: Map<PhysicsBody, number> = new Map();
 
+  // Ignore static body for specific dynamic bodies (unit spawning inside factory)
+  private ignoreStatic: Map<PhysicsBody, PhysicsBody> = new Map();
+
   createUnitBody(
     x: number,
     y: number,
@@ -104,6 +107,11 @@ export class PhysicsEngine implements IPhysicsEngine {
     }
     this.accelX.delete(body);
     this.accelY.delete(body);
+    this.ignoreStatic.delete(body);
+  }
+
+  setIgnoreStatic(dynamicBody: PhysicsBody, staticBody: PhysicsBody): void {
+    this.ignoreStatic.set(dynamicBody, staticBody);
   }
 
   // Apply force (Newtons). acceleration = force / mass
@@ -208,9 +216,19 @@ export class PhysicsEngine implements IPhysicsEngine {
       }
 
       // Circle-rect (dynamic vs static buildings)
+      const ignoredRect = this.ignoreStatic.get(a);
       for (let s = 0; s < numStatic; s++) {
         const rect = statics[s];
         if (rect.halfW === undefined || rect.halfH === undefined) continue;
+        if (rect === ignoredRect) {
+          // Check if unit has fully left the building — clear ignore when outside
+          const clearance = a.radius + 2;
+          if (a.x > rect.x + rect.halfW + clearance || a.x < rect.x - rect.halfW - clearance ||
+              a.y > rect.y + rect.halfH + clearance || a.y < rect.y - rect.halfH - clearance) {
+            this.ignoreStatic.delete(a);
+          }
+          continue;
+        }
 
         // Find nearest point on AABB to circle center
         const clampedX = Math.max(rect.x - rect.halfW, Math.min(a.x, rect.x + rect.halfW));

@@ -23,5 +23,9 @@ export interface IPhysicsEngine {
 
   applyForce(body: PhysicsBody, fx: number, fy: number): void;
 
+  /** Skip circle-rect collision between a dynamic body and a specific static body.
+   *  Used for units spawning inside their factory. */
+  setIgnoreStatic(dynamicBody: PhysicsBody, staticBody: PhysicsBody): void;
+
   step(dtSec: number): void;
 }

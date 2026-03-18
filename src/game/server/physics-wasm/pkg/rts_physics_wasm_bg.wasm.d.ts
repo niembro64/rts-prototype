@@ -18,6 +18,7 @@ export const physicsengine_proj_in_alloc: (a: number, b: number) => number;
 export const physicsengine_proj_update: (a: number, b: number, c: number) => number;
 export const physicsengine_remove_dynamic_body: (a: number, b: number) => void;
 export const physicsengine_remove_static_body: (a: number, b: number) => void;
+export const physicsengine_set_ignore_static: (a: number, b: number, c: number) => void;
 export const physicsengine_step: (a: number, b: number) => void;
 export const physicsengine_turret_in_alloc: (a: number, b: number) => number;
 export const physicsengine_turret_update: (a: number, b: number, c: number) => number;
