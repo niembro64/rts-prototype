@@ -25,7 +25,7 @@ import {
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
   MAX_TICK_DT_MS,
-  USE_WASM_PHYSICS,
+  FORCE_WASM_PHYSICS,
   type KeyframeRatio,
 } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
@@ -81,7 +81,7 @@ export class GameServer {
 
   /** Async factory — uses WASM or JS physics based on USE_WASM_PHYSICS config. */
   static async create(config: GameServerConfig): Promise<GameServer> {
-    if (USE_WASM_PHYSICS) {
+    if (FORCE_WASM_PHYSICS) {
       await initPhysicsWasm();
       const mapConfig = MAP_SETTINGS.game;
       const physics = new PhysicsEngineWasm(mapConfig.width, mapConfig.height);
