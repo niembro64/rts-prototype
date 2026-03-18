@@ -12,6 +12,8 @@ export type {
   SnapshotConfig,
   EmaLowConfig,
   EmaTierConfig,
+  EmaHighConfig,
+  EmaMsConfig,
   KnockbackConfig,
   ForceFieldVisualConfig,
   ForceFieldTurretShape,
@@ -26,6 +28,7 @@ export type {
 import type {
   SnapshotConfig,
   EmaTierConfig,
+  EmaMsConfig,
   KnockbackConfig,
   ForceFieldVisualConfig,
   ForceFieldTurretConfig,
@@ -89,6 +92,14 @@ export const EMA_CONFIG: Record<string, EmaTierConfig> = {
     avg: 0.01,
     low: { drop: 0.5, recovery: 0.0001 },
   },
+};
+
+// Frame timing EMA config (tracks durations in ms — uses "hi" instead of "low")
+const FRAME_MS_EMA: EmaMsConfig = { avg: 0.01, hi: { spike: 0.5, recovery: 0.0001 } };
+export const FRAME_TIMING_EMA = {
+  frameMs: FRAME_MS_EMA,
+  renderMs: FRAME_MS_EMA,
+  logicMs: FRAME_MS_EMA,
 };
 
 // =============================================================================

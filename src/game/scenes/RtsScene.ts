@@ -30,6 +30,7 @@ import {
   MAP_GRID_COLOR,
   COMBAT_STATS_SAMPLE_INTERVAL,
   EMA_CONFIG,
+  FRAME_TIMING_EMA,
 } from '../../config';
 
 import {
@@ -49,6 +50,7 @@ import {
 import type { EconomyInfo, MinimapData } from './helpers';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import { EmaTracker } from './helpers/EmaTracker';
+import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 
 // Grid settings
@@ -91,6 +93,9 @@ export class RtsScene extends Phaser.Scene {
   // Performance tracking (EMA-based)
   private fpsTracker = new EmaTracker(EMA_CONFIG.fps);
   private snapTracker = new EmaTracker(EMA_CONFIG.snaps);
+  private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
+  private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs);
+  private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs);
 
   // Snapshot buffering and audio scheduling
   private snapshotBuffer = new SnapshotBuffer();
@@ -519,6 +524,8 @@ export class RtsScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    const frameStart = performance.now();
+
     // Track FPS via EMA
     if (delta > 0) {
       this.fpsTracker.update(1000 / delta);
@@ -664,11 +671,16 @@ export class RtsScene extends Phaser.Scene {
     // Set spray targets from ClientViewState
     this.entityRenderer.setSprayTargets(this.clientViewState.getSprayTargets());
 
+    // --- Render phase (timed separately from logic) ---
+    const renderStart = performance.now();
+
     // Render spatial grid debug overlay (below entities)
     this.renderSpatialGridOverlay();
 
     // Render entities
     this.entityRenderer.render();
+
+    const renderEnd = performance.now();
 
     // Update UI with throttling
     {
@@ -723,6 +735,15 @@ export class RtsScene extends Phaser.Scene {
         this.onCombatStatsUpdate(stats);
       }
     }
+
+    // Track frame timing (ms)
+    const frameEnd = performance.now();
+    const frameMs = frameEnd - frameStart;
+    const renderMs = renderEnd - renderStart;
+    const logicMs = frameMs - renderMs;
+    this.frameMsTracker.update(frameMs);
+    this.renderMsTracker.update(renderMs);
+    this.logicMsTracker.update(logicMs);
   }
 
   // Process commands from local command queue
@@ -753,6 +774,24 @@ export class RtsScene extends Phaser.Scene {
       this.clientViewState.selectEntity(id);
     }
     this.markSelectionDirty();
+  }
+
+  /**
+   * Get frame timing statistics (EMA-based avg and hi, in ms)
+   */
+  public getFrameTiming(): {
+    frameMsAvg: number; frameMsHi: number;
+    renderMsAvg: number; renderMsHi: number;
+    logicMsAvg: number; logicMsHi: number;
+  } {
+    return {
+      frameMsAvg: this.frameMsTracker.getAvg(),
+      frameMsHi: this.frameMsTracker.getHi(),
+      renderMsAvg: this.renderMsTracker.getAvg(),
+      renderMsHi: this.renderMsTracker.getHi(),
+      logicMsAvg: this.logicMsTracker.getAvg(),
+      logicMsHi: this.logicMsTracker.getHi(),
+    };
   }
 
   /**

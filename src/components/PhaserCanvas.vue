@@ -63,6 +63,7 @@ import {
   formatDuration,
   fmt4,
   statBarStyle,
+  msBarStyle,
   getPlayerColor,
   getPlayerName,
 } from './uiUtils';
@@ -193,6 +194,14 @@ const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
   shot: getUnitRadiusToggle('shot'),
   push: getUnitRadiusToggle('push'),
 });
+
+// Frame timing tracking (EMA-based, polled from scene)
+const frameMsAvg = ref(0);
+const frameMsHi = ref(0);
+const renderMsAvg = ref(0);
+const renderMsHi = ref(0);
+const logicMsAvg = ref(0);
+const logicMsHi = ref(0);
 
 // FPS, snapshot rate, and zoom tracking (EMA-based, polled from scene)
 const actualAvgFPS = ref(0);
@@ -866,6 +875,14 @@ function updateFPSStats(): void {
   const scene = backgroundGameInstance?.getScene() ?? gameInstance?.getScene();
   if (scene) {
     currentZoom.value = scene.cameras.main.zoom;
+
+    const timing = scene.getFrameTiming();
+    frameMsAvg.value = timing.frameMsAvg;
+    frameMsHi.value = timing.frameMsHi;
+    renderMsAvg.value = timing.renderMsAvg;
+    renderMsHi.value = timing.renderMsHi;
+    logicMsAvg.value = timing.logicMsAvg;
+    logicMsHi.value = timing.logicMsHi;
 
     const frameStats = scene.getFrameStats();
     actualAvgFPS.value = frameStats.avgFps;
@@ -1559,6 +1576,76 @@ onUnmounted(() => {
             title="Public IP address"
             >{{ localIpAddress }}</span
           >
+          <BarDivider />
+          <div class="control-group">
+            <span class="control-label" title="Total frame time (ms)">FRAME:</span>
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(frameMsAvg) }}</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill" :style="msBarStyle(frameMsAvg)"></div>
+                </div>
+              </div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(frameMsHi) }}</span>
+                  <span class="fps-label">hi</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill" :style="msBarStyle(frameMsHi)"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="control-group">
+            <span class="control-label" title="Render time (ms) — draw calls only">RENDER:</span>
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(renderMsAvg) }}</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill" :style="msBarStyle(renderMsAvg)"></div>
+                </div>
+              </div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(renderMsHi) }}</span>
+                  <span class="fps-label">hi</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill" :style="msBarStyle(renderMsHi)"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="control-group">
+            <span class="control-label" title="Logic time (ms) — prediction, input, snapshots">LOGIC:</span>
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(logicMsAvg) }}</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill" :style="msBarStyle(logicMsAvg)"></div>
+                </div>
+              </div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(logicMsHi) }}</span>
+                  <span class="fps-label">hi</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill" :style="msBarStyle(logicMsHi)"></div>
+                </div>
+              </div>
+            </div>
+          </div>
           <BarDivider />
           <div class="control-group">
             <span

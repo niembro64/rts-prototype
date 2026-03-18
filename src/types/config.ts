@@ -18,6 +18,16 @@ export type EmaTierConfig = {
   low: EmaLowConfig;
 };
 
+export type EmaHighConfig = {
+  spike: number;
+  recovery: number;
+};
+
+export type EmaMsConfig = {
+  avg: number;
+  hi: EmaHighConfig;
+};
+
 export type KnockbackConfig = {
   FORCE_FIELD_PULL_MULTIPLIER: number;
   SPLASH: number;
