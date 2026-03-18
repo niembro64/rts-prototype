@@ -167,18 +167,21 @@ export class GraphicsAdapter implements IGraphics {
   private _pathIsFill = false;
 
   beginPath(): void {
-    // Determine intent: if fillStyle was called more recently, this is a fill path.
-    // If lineStyle was called more recently, this is a stroke path.
     if (this._pathIsFill) {
+      // Fill path: set fill color, no stroke
       this.pixi.beginFill(this._fillColor, this._fillAlpha);
-      this.pixi.lineStyle(0, 0, 0); // no stroke on fill paths
+      this.pixi.lineStyle(0, 0, 0);
+      this._inFillContext = true;
     } else {
-      this.pixi.beginFill(0, 0); // transparent fill on stroke paths
+      // Stroke path: set line style only, NO beginFill (avoids PixiJS triangulation artifacts)
       if (this._hasLine) {
         this.pixi.lineStyle(this._lineWidth, this._lineColor, this._lineAlpha);
       }
+      this._inFillContext = false;
     }
   }
+
+  private _inFillContext = false;
 
   moveTo(x: number, y: number): void {
     this.pixi.moveTo(x, y);
@@ -200,11 +203,19 @@ export class GraphicsAdapter implements IGraphics {
   fill(): void { this.fillPath(); }
 
   fillPath(): void {
-    this.pixi.endFill();
+    if (this._inFillContext) {
+      this.pixi.endFill();
+      this._inFillContext = false;
+    }
   }
 
   strokePath(): void {
-    this.pixi.endFill();
+    if (this._inFillContext) {
+      this.pixi.endFill();
+      this._inFillContext = false;
+    }
+    // For stroke-only paths, PixiJS renders the lines from lineStyle
+    // without needing endFill — the geometry was drawn inline.
   }
 
   setDepth(_depth: number): void {
