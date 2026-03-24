@@ -24,6 +24,7 @@ import {
   SNAPSHOT_CONFIG,
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
+  EMA_INITIAL_VALUES,
   MAX_TICK_DT_MS,
   FORCE_WASM_PHYSICS,
   type KeyframeRatio,
@@ -63,10 +64,10 @@ export class GameServer {
   // Game over tracking
   private isGameOver: boolean = false;
 
-  // Tick rate tracking (EMA-based)
-  private tpsAvg: number = 0;
-  private tpsLow: number = 0;
-  private tpsInitialized: boolean = false;
+  // Tick rate tracking (EMA-based, start optimistic)
+  private tpsAvg: number = EMA_INITIAL_VALUES.tps;
+  private tpsLow: number = EMA_INITIAL_VALUES.tps;
+  private tpsInitialized: boolean = true;
 
   // Delta snapshot keyframe ratio tracking
   private isFirstSnapshot: boolean = true;

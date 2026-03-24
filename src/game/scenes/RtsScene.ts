@@ -32,6 +32,7 @@ import {
   COMBAT_STATS_SAMPLE_INTERVAL,
   EMA_CONFIG,
   FRAME_TIMING_EMA,
+  EMA_INITIAL_VALUES,
   GRID_OVERLAY_BRIGHTNESS,
 } from '../../config';
 
@@ -92,12 +93,12 @@ export class RtsScene extends SceneShim {
   // Background mode (no input, no UI, endless battle)
   private backgroundMode: boolean = false;
 
-  // Performance tracking (EMA-based)
-  private fpsTracker = new EmaTracker(EMA_CONFIG.fps);
-  private snapTracker = new EmaTracker(EMA_CONFIG.snaps);
-  private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
-  private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs);
-  private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs);
+  // Performance tracking (EMA-based, start optimistic so LOD begins at MAX)
+  private fpsTracker = new EmaTracker(EMA_CONFIG.fps, EMA_INITIAL_VALUES.fps);
+  private snapTracker = new EmaTracker(EMA_CONFIG.snaps, EMA_INITIAL_VALUES.snaps);
+  private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
+  private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
+  private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
 
   // Snapshot buffering and audio scheduling
   private snapshotBuffer = new SnapshotBuffer();

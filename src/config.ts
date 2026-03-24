@@ -105,6 +105,28 @@ export const FRAME_TIMING_EMA = {
   logicMs: FRAME_MS_EMA,
 };
 
+/**
+ * Initial values for EMA trackers — controls whether each metric starts
+ * "high" (optimistic) or "low" (pessimistic) before real samples arrive.
+ *
+ * Starting HIGH means LOD begins at max quality and degrades if needed.
+ * Starting LOW means LOD begins at min quality and climbs if performance allows.
+ *
+ * Rate trackers (FPS/TPS/SPS): high number = good performance.
+ * Ms trackers (frame/render/logic): low number = good performance.
+ */
+export const EMA_INITIAL_VALUES = {
+  // Rate trackers — start optimistic (high = good)
+  tps:      60,     // assume 60 ticks/sec until measured
+  fps:      60,     // assume 60 frames/sec until measured
+  snaps:    32,     // assume 32 snapshots/sec until measured
+
+  // Ms trackers — start optimistic (low = good)
+  frameMs:  1,      // assume 1ms frame time until measured
+  renderMs: 0.5,    // assume 0.5ms render time until measured
+  logicMs:  0.5,    // assume 0.5ms logic time until measured
+};
+
 // =============================================================================
 // SERVER TICK
 // =============================================================================
