@@ -93,10 +93,15 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     baseCost: 350,
     manaCost: 80,
     turrets: [
-      { turretId: 'forceTurretLarge', offsetX: 0, offsetY: 0 },
       { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
+      { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
+      { turretId: 'forceTurretLarge', offsetX: 0, offsetY: 0 },
     ],
-    chassisMounts: [{ x: 0, y: 0 }, { x: 0.6, y: 0 }],
+    chassisMounts: [
+      { x: 0.5, y: -0.4 },  // front-left laser
+      { x: 0.5, y: 0.4 },   // front-right laser
+      { x: 0, y: 0 },       // center force field
+    ],
     locomotion: {
       type: 'legs',
       style: 'daddy',
@@ -104,7 +109,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     },
     renderer: 'forceField',
     deathSound: AUDIO.event.death.daddy,
-    fightStopEngagedRatio: 0.9,
+    fightStopEngagedRatio: 0.1,
   },
   badger: {
     id: 'badger',
