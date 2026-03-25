@@ -463,7 +463,7 @@ export class RtsScene extends SceneShim {
     const cellSize = this.clientViewState.getCaptureCellSize();
     if (cellSize <= 0 || tiles.length === 0) return;
 
-    const { maxTileOpacity, minTileOpacity } = CAPTURE_CONFIG;
+    const { tileColorIntensity } = CAPTURE_CONFIG;
 
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i];
@@ -503,7 +503,7 @@ export class RtsScene extends SceneShim {
         const h = tile.heights[Number(pidStr)];
         if (h > maxHeight) maxHeight = h;
       }
-      const alpha = minTileOpacity + (maxTileOpacity - minTileOpacity) * maxHeight;
+      const alpha = tileColorIntensity * maxHeight;
 
       this.spatialGridGraphics.fillStyle(blendedColor, alpha);
       this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
