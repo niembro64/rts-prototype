@@ -145,8 +145,10 @@ export class ClientViewState {
   private gridSearchCells: NetworkServerSnapshotGridCell[] = [];
   private gridCellSize: number = 0;
 
-  // Capture tile data from latest snapshot
-  private captureTiles: import('@/types/capture').NetworkCaptureTile[] = [];
+  // Capture tile data — Map for delta merge, array cache for rendering
+  private captureTileMap: Map<number, import('@/types/capture').NetworkCaptureTile> = new Map();
+  private captureTilesCache: import('@/types/capture').NetworkCaptureTile[] = [];
+  private captureTilesDirty: boolean = true;
   private captureCellSize: number = 0;
 
   // Combat stats from latest snapshot
@@ -355,9 +357,28 @@ export class ClientViewState {
     this.gridSearchCells = state.grid?.searchCells ?? [];
     this.gridCellSize = state.grid?.cellSize ?? 0;
 
-    // Store capture tile data
-    this.captureTiles = state.capture?.tiles ?? [];
-    this.captureCellSize = state.capture?.cellSize ?? 0;
+    // Merge capture tile data (delta-aware)
+    if (state.capture) {
+      this.captureCellSize = state.capture.cellSize;
+      if (!state.isDelta) {
+        // Keyframe: replace all
+        this.captureTileMap.clear();
+      }
+      for (const tile of state.capture.tiles) {
+        const key = ((tile.cx + 32768) & 0xFFFF) << 16 | ((tile.cy + 32768) & 0xFFFF);
+        if (Object.keys(tile.heights).length === 0) {
+          this.captureTileMap.delete(key);
+        } else {
+          // Copy heights — tile objects may be pooled/reused by the server
+          this.captureTileMap.set(key, { cx: tile.cx, cy: tile.cy, heights: { ...tile.heights } });
+        }
+      }
+      this.captureTilesDirty = true;
+    } else if (!state.isDelta) {
+      // Keyframe with no capture data: clear
+      this.captureTileMap.clear();
+      this.captureTilesDirty = true;
+    }
 
     // Store combat stats
     if (state.combatStats) {
@@ -1030,7 +1051,11 @@ export class ClientViewState {
   // === Capture tile data ===
 
   getCaptureTiles(): import('@/types/capture').NetworkCaptureTile[] {
-    return this.captureTiles;
+    if (this.captureTilesDirty) {
+      this.captureTilesCache = Array.from(this.captureTileMap.values());
+      this.captureTilesDirty = false;
+    }
+    return this.captureTilesCache;
   }
 
   getCaptureCellSize(): number {
@@ -1055,7 +1080,9 @@ export class ClientViewState {
     this.gridCells = [];
     this.gridSearchCells = [];
     this.gridCellSize = 0;
-    this.captureTiles = [];
+    this.captureTileMap.clear();
+    this.captureTilesCache = [];
+    this.captureTilesDirty = true;
     this.captureCellSize = 0;
     this.serverMeta = null;
     this.frameCounter = 0;

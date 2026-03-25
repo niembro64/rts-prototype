@@ -1,13 +1,11 @@
 import type { PlayerId } from './sim';
 
-export type TileState = {
-  teamId: PlayerId | null;
-  flagHeight: number;
-};
+// Per-tile state: one flag height per team (sparse — only non-zero entries)
+export type TileState = Map<PlayerId, number>;
 
+// Network format: tile with per-team heights
 export type NetworkCaptureTile = {
   cx: number;
   cy: number;
-  teamId: number;
-  flagHeight: number;
+  heights: Record<number, number>;
 };

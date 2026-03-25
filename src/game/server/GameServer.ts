@@ -315,11 +315,11 @@ export class GameServer {
     // Update territory capture (uses spatial grid occupancy)
     this.captureSystem.update(spatialGrid.getOccupiedCellsForCapture(), dtSec);
 
-    // Update mana income from owned tiles
-    const tileCounts = this.captureSystem.getTileCountsByPlayer();
+    // Update mana income from territory (proportional to flag heights)
+    const flagSums = this.captureSystem.getFlagSumsByPlayer();
     for (const playerId of this.playerIds) {
-      const tileCount = tileCounts.get(playerId) ?? 0;
-      economyManager.setManaTerritory(playerId, tileCount * MANA_PER_TILE_PER_SECOND);
+      const flagSum = flagSums.get(playerId) ?? 0;
+      economyManager.setManaTerritory(playerId, flagSum * MANA_PER_TILE_PER_SECOND);
     }
   }
 
@@ -475,8 +475,8 @@ export class GameServer {
 
     const state = serializeGameState(this.world, isDelta, gamePhase, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
 
-    // Add capture tile data
-    const captureTiles = this.captureSystem.getOwnedTiles();
+    // Add capture tile data (delta-aware: only changed tiles on delta snapshots)
+    const captureTiles = this.captureSystem.consumeSnapshot(isDelta);
     if (captureTiles.length > 0) {
       state.capture = { tiles: captureTiles, cellSize: spatialGrid.getCellSize() };
     }

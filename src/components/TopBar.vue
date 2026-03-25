@@ -65,6 +65,24 @@ function flowColor(n: number): string {
       <span class="player-name">{{ playerName }}</span>
     </button>
 
+    <!-- Units + Buildings -->
+    <div class="counts-section">
+      <div class="count-row">
+        <span class="count-label">UNITS</span>
+        <span class="count-value" :style="{ color: unitCapColor }">
+          {{ economy.units.count }}/{{ economy.units.cap }}
+          <span v-if="isAtUnitCap" class="cap-warning">MAX</span>
+        </span>
+      </div>
+      <div class="count-row">
+        <span class="count-label">BLDG</span>
+        <span class="count-value">
+          <span class="building-solar" title="Solar Panels">☀{{ economy.buildings.solar }}</span>
+          <span class="building-factory" title="Factories">🏭{{ economy.buildings.factory }}</span>
+        </span>
+      </div>
+    </div>
+
     <!-- Energy block -->
     <div class="resource-block energy-block">
       <div class="resource-header">
@@ -100,24 +118,6 @@ function flowColor(n: number): string {
       </div>
       <div class="resource-flows">
         <span class="flow-item" :style="{ color: flowColor(economy.mana.netFlow) }">{{ fmtFixed(economy.mana.netFlow) }}/s</span>
-      </div>
-    </div>
-
-    <!-- Units + Buildings (right-aligned) -->
-    <div class="counts-section">
-      <div class="count-row">
-        <span class="count-label">UNITS</span>
-        <span class="count-value" :style="{ color: unitCapColor }">
-          {{ economy.units.count }}/{{ economy.units.cap }}
-          <span v-if="isAtUnitCap" class="cap-warning">MAX</span>
-        </span>
-      </div>
-      <div class="count-row">
-        <span class="count-label">BLDG</span>
-        <span class="count-value">
-          <span class="building-solar" title="Solar Panels">☀{{ economy.buildings.solar }}</span>
-          <span class="building-factory" title="Factories">🏭{{ economy.buildings.factory }}</span>
-        </span>
       </div>
     </div>
   </div>
@@ -258,9 +258,8 @@ function flowColor(n: number): string {
   font-weight: bold;
 }
 
-/* ── Counts (right side) ── */
+/* ── Counts ── */
 .counts-section {
-  margin-left: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;

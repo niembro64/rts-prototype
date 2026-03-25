@@ -99,60 +99,83 @@ export class InputShim {
   _camera: Camera;
   private _keys: Map<string, KeyShim> = new Map();
 
+  // Stored handlers for cleanup
+  private _contextMenuHandler: (e: Event) => void;
+  private _pointerDownHandler: (e: PointerEvent) => void;
+  private _pointerMoveHandler: (e: PointerEvent) => void;
+  private _pointerUpHandler: (e: PointerEvent) => void;
+  private _wheelHandler: (e: WheelEvent) => void;
+  private _keyDownHandler: (e: KeyboardEvent) => void;
+  private _keyUpHandler: (e: KeyboardEvent) => void;
+
   constructor(canvas: HTMLCanvasElement, camera: Camera) {
     this._canvas = canvas;
     this._camera = camera;
     this.keyboard = new KeyboardShim(this._keys);
 
-    // Prevent context menu
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    this._contextMenuHandler = (e) => e.preventDefault();
+    canvas.addEventListener('contextmenu', this._contextMenuHandler);
 
-    // Pointer events — use e.buttons bitmask for multi-button tracking
-    canvas.addEventListener('pointerdown', (e) => {
+    this._pointerDownHandler = (e) => {
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       this.activePointer._down(sx, sy, e.button, e.buttons, e);
       this._fire('pointerdown', this.activePointer, e);
-    });
+    };
+    canvas.addEventListener('pointerdown', this._pointerDownHandler);
 
-    canvas.addEventListener('pointermove', (e) => {
+    this._pointerMoveHandler = (e) => {
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       this.activePointer._move(sx, sy, e.buttons, e);
       this._fire('pointermove', this.activePointer, e);
-    });
+    };
+    canvas.addEventListener('pointermove', this._pointerMoveHandler);
 
-    canvas.addEventListener('pointerup', (e) => {
+    this._pointerUpHandler = (e) => {
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       this.activePointer._up(sx, sy, e.button, e.buttons, e);
       this._fire('pointerup', this.activePointer, e);
-    });
+    };
+    canvas.addEventListener('pointerup', this._pointerUpHandler);
 
-    // Wheel — update pointer position from wheel event coordinates
-    canvas.addEventListener('wheel', (e) => {
+    this._wheelHandler = (e) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       this.activePointer.x = e.clientX - rect.left;
       this.activePointer.y = e.clientY - rect.top;
       this._fire('wheel', this.activePointer, null, e.deltaX, e.deltaY, e.deltaZ);
-    }, { passive: false });
+    };
+    canvas.addEventListener('wheel', this._wheelHandler, { passive: false });
 
-    // Keyboard
-    window.addEventListener('keydown', (e) => {
+    this._keyDownHandler = (e) => {
       const key = this._keys.get(e.code);
       if (key) key._fireDown();
-      // Fire keydown-{KEY} events (e.g., keydown-R)
       this._fire(`keydown-${e.key.toUpperCase()}`, e);
-    });
+    };
+    window.addEventListener('keydown', this._keyDownHandler);
 
-    window.addEventListener('keyup', (e) => {
+    this._keyUpHandler = (e) => {
       const key = this._keys.get(e.code);
       if (key) key._fireUp();
-    });
+    };
+    window.addEventListener('keyup', this._keyUpHandler);
+  }
+
+  destroy(): void {
+    this._canvas.removeEventListener('contextmenu', this._contextMenuHandler);
+    this._canvas.removeEventListener('pointerdown', this._pointerDownHandler);
+    this._canvas.removeEventListener('pointermove', this._pointerMoveHandler);
+    this._canvas.removeEventListener('pointerup', this._pointerUpHandler);
+    this._canvas.removeEventListener('wheel', this._wheelHandler);
+    window.removeEventListener('keydown', this._keyDownHandler);
+    window.removeEventListener('keyup', this._keyUpHandler);
+    this._listeners.clear();
+    this._onceListeners.clear();
   }
 
   on(event: string, callback: Function): void {
@@ -349,6 +372,7 @@ export class SceneShim {
   create(): void {}
   shutdown(): void {
     this.events.emit('shutdown');
+    this.input.destroy();
     for (const g of this._graphicsObjects) {
       g.destroy();
     }

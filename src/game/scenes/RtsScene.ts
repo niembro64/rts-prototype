@@ -255,7 +255,7 @@ export class RtsScene extends SceneShim {
     // Create spatial grid overlay graphics (redrawn each frame when grid info is active)
     // Additive blend so overlapping team colors combine naturally
     this.spatialGridGraphics = this.add.graphics();
-    this.spatialGridGraphics.setBlendMode(BlendModes.ADD);
+    this.spatialGridGraphics.setBlendMode(BlendModes.NORMAL);
 
     // Setup renderer with ClientViewState as source
     this.entityRenderer = new EntityRenderer(this, this.clientViewState);
@@ -455,7 +455,7 @@ export class RtsScene extends SceneShim {
     );
   }
 
-  // Render capture-the-tile territory overlay
+  // Render capture-the-tile territory overlay — blends team colors per tile
   private renderCaptureOverlay(): void {
     this.spatialGridGraphics.clear();
 
@@ -467,14 +467,45 @@ export class RtsScene extends SceneShim {
 
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i];
-      const playerConfig = PLAYER_COLORS[tile.teamId as PlayerId];
-      if (!playerConfig) continue;
-
-      const alpha = minTileOpacity + (maxTileOpacity - minTileOpacity) * tile.flagHeight;
       const worldX = tile.cx * cellSize;
       const worldY = tile.cy * cellSize;
 
-      this.spatialGridGraphics.fillStyle(playerConfig.primary, alpha);
+      // Blend all team colors into a single weighted RGB + alpha
+      let totalWeight = 0;
+      let r = 0, g = 0, b = 0;
+
+      for (const pidStr in tile.heights) {
+        const pid = Number(pidStr) as PlayerId;
+        const height = tile.heights[pid];
+        if (height <= 0) continue;
+
+        const pc = PLAYER_COLORS[pid];
+        if (!pc) continue;
+
+        const color = pc.primary;
+        const weight = height;
+        totalWeight += weight;
+        r += ((color >> 16) & 0xFF) * weight;
+        g += ((color >> 8) & 0xFF) * weight;
+        b += (color & 0xFF) * weight;
+      }
+
+      if (totalWeight <= 0) continue;
+
+      // Normalize color by total weight
+      const blendedColor = (((r / totalWeight) | 0) << 16)
+                         | (((g / totalWeight) | 0) << 8)
+                         | ((b / totalWeight) | 0);
+
+      // Alpha scales with the strongest flag on this tile
+      let maxHeight = 0;
+      for (const pidStr in tile.heights) {
+        const h = tile.heights[Number(pidStr)];
+        if (h > maxHeight) maxHeight = h;
+      }
+      const alpha = minTileOpacity + (maxTileOpacity - minTileOpacity) * maxHeight;
+
+      this.spatialGridGraphics.fillStyle(blendedColor, alpha);
       this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
     }
   }

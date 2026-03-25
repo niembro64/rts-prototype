@@ -321,6 +321,24 @@ async function startBackgroundBattle(): Promise<void> {
       bgScene.onServerMetaUpdate = (meta: NetworkServerSnapshotMeta) => {
         serverMetaFromSnapshot.value = meta;
       };
+      bgScene.onEconomyChange = (info: EconomyInfo) => {
+        Object.assign(economyInfo, info);
+      };
+      bgScene.onSelectionChange = (info: SelectionInfo) => {
+        Object.assign(selectionInfo, info);
+      };
+      bgScene.onPlayerChange = (playerId: PlayerId) => {
+        activePlayer.value = playerId;
+      };
+      bgScene.onMinimapUpdate = (data: MinimapData) => {
+        minimapData.entities = data.entities;
+        minimapData.cameraX = data.cameraX;
+        minimapData.cameraY = data.cameraY;
+        minimapData.cameraWidth = data.cameraWidth;
+        minimapData.cameraHeight = data.cameraHeight;
+        minimapData.mapWidth = data.mapWidth;
+        minimapData.mapHeight = data.mapHeight;
+      };
       if (checkBgSceneInterval) clearInterval(checkBgSceneInterval);
       checkBgSceneInterval = null;
     }
@@ -348,12 +366,18 @@ function stopBackgroundBattle(): void {
 
 // Show player toggle only in single-player mode (offline or hosting alone)
 const showPlayerToggle = computed(() => {
+  // Demo game: always allow toggling
+  if (!gameStarted.value) return true;
+  // Real game: only host in single-player
   const isSinglePlayer = lobbyPlayers.value.length === 1;
-  const canToggle =
-    networkRole.value === null ||
+  return networkRole.value === null ||
     (networkRole.value === 'host' && isSinglePlayer);
-  return gameStarted.value && canToggle;
 });
+
+// Is the lobby modal actually visible on screen? (desktop only)
+const lobbyModalVisible = computed(
+  () => !isMobile && showLobby.value && !spectateMode.value,
+);
 
 // Show server controls when we own a server OR when we receive server meta from snapshots (remote client)
 const showServerControls = computed(
@@ -571,7 +595,7 @@ function resetClientDefaults(): void {
 }
 
 function togglePlayer(): void {
-  const scene = gameInstance?.getScene();
+  const scene = gameInstance?.getScene() ?? backgroundBattle?.gameInstance?.getScene();
   if (scene) {
     scene.togglePlayer();
     activePlayer.value = scene.getActivePlayer();
@@ -1182,6 +1206,10 @@ onUnmounted(() => {
     clearInterval(clientTimeInterval);
     clientTimeInterval = null;
   }
+  if (checkBgSceneInterval) {
+    clearInterval(checkBgSceneInterval);
+    checkBgSceneInterval = null;
+  }
   window.removeEventListener('keydown', handleCombatStatsKeydown);
   // Stop servers
   if (currentServer) {
@@ -1200,22 +1228,22 @@ onUnmounted(() => {
 <template>
   <div class="game-wrapper">
     <div class="game-area">
-      <!-- Background battle container (runs behind lobby) -->
+      <!-- Background battle container (demo game — always visible when no real game) -->
       <div
         ref="backgroundContainerRef"
         class="background-battle-container"
-        v-show="showLobby"
+        v-show="!gameStarted"
       ></div>
 
-      <!-- Main game container -->
+      <!-- Main game container (real game) -->
       <div
         ref="containerRef"
         class="phaser-container"
-        v-show="!showLobby"
+        v-show="gameStarted"
       ></div>
 
-      <!-- Game UI (only when game is running) -->
-      <template v-if="gameStarted && !showLobby">
+      <!-- Game UI (desktop: hidden when lobby modal visible; mobile: follows hamburger toggle) -->
+      <template v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible">
         <!-- Top bar with economy info -->
         <TopBar
           :economy="economyInfo"
@@ -1236,8 +1264,8 @@ onUnmounted(() => {
       </template>
     </div>
 
-    <!-- Bottom control bars (desktop: always, mobile: toggled) -->
-    <div v-if="!isMobile || mobileBarsVisible" class="bottom-controls">
+    <!-- Bottom control bars (desktop: hidden when lobby modal visible; mobile: toggled) -->
+    <div v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible" class="bottom-controls">
       <!-- BATTLE CONTROLS -->
       <div
         v-if="showServerControls"
