@@ -308,7 +308,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 200,
     moveSpeed: 160,
     unitRadiusColliderShot: 10,
-    unitRadiusColliderPush: 70,
+    unitRadiusColliderPush: 34,
     mass: 20,
     baseCost: 110,
     manaCost: 25,

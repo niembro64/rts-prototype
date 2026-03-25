@@ -223,8 +223,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     color: 0xffffff,
     mirrorPanels: [
-      { width: 60, height: 4, offsetX: 40, offsetY: 20, angle: -Math.PI / 4 },
-      { width: 60, height: 4, offsetX: 40, offsetY: -20, angle: Math.PI / 4 },
+      { width: 30, height: 4, offsetX: 20, offsetY: 10, angle: -Math.PI / 4 },
+      { width: 30, height: 4, offsetX: 20, offsetY: -10, angle: Math.PI / 4 },
     ],
   },
   ...generateBeamTurrets(),
