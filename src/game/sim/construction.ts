@@ -122,6 +122,7 @@ export class ConstructionSystem {
     entity.buildable = {
       buildProgress: 0,
       energyCost: config.energyCost,
+      manaCost: config.manaCost,
       isComplete: false,
       isGhost: false,
     };
@@ -142,6 +143,7 @@ export class ConstructionSystem {
         buildQueue: [],
         currentBuildProgress: 0,
         currentBuildCost: 0,
+        currentBuildManaCost: 0,
         rallyX: wp.x,
         rallyY: wp.y,
         isProducing: false,
@@ -191,6 +193,7 @@ export class ConstructionSystem {
     entity.buildable = {
       buildProgress: 0,
       energyCost: config.energyCost,
+      manaCost: config.manaCost,
       isComplete: false,
       isGhost: true,
     };

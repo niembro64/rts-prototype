@@ -268,12 +268,18 @@ export type EconomyState = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };
   expenditure: number;
+  mana: {
+    stockpile: { curr: number; max: number };
+    income: { base: number; territory: number };
+    expenditure: number;
+  };
 };
 
 // Buildable component
 export type Buildable = {
   buildProgress: number;
   energyCost: number;
+  manaCost: number;
   isComplete: boolean;
   isGhost: boolean;
 };
@@ -293,6 +299,7 @@ export type BuildingConfig = {
   gridHeight: number;
   hp: number;
   energyCost: number;
+  manaCost: number;
   energyProduction?: number;
   maxEnergyUseRate?: number;
 };
@@ -316,6 +323,7 @@ export type Factory = {
   buildQueue: string[];
   currentBuildProgress: number;
   currentBuildCost: number;
+  currentBuildManaCost: number;
   rallyX: number;
   rallyY: number;
   isProducing: boolean;

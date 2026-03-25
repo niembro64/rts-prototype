@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { WaypointType } from '../game/sim/types';
+import { getUnitBlueprint } from '../game/sim/blueprints';
+import { BUILDING_CONFIGS } from '../game/sim/buildConfigs';
+import { COST_MULTIPLIER } from '../config';
 
 export type { QueueItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type { SelectionInfo, SelectionActions } from '@/types/ui';
@@ -25,27 +28,37 @@ const waypointModes: { mode: WaypointType; label: string; key: string; color: st
   { mode: 'patrol', label: 'Patrol', key: 'H', color: '#0088ff' },
 ];
 
-const buildingOptions: { type: 'solar' | 'factory'; label: string; key: string; cost: number }[] = [
-  { type: 'solar', label: 'Solar', key: '1', cost: 150 },
-  { type: 'factory', label: 'Factory', key: '2', cost: 400 },
+function bldCost(type: 'solar' | 'factory') {
+  const c = BUILDING_CONFIGS[type];
+  return { energy: c.energyCost, mana: c.manaCost };
+}
+
+const buildingOptions = [
+  { type: 'solar' as const, label: 'Solar', key: '1', ...bldCost('solar') },
+  { type: 'factory' as const, label: 'Factory', key: '2', ...bldCost('factory') },
 ];
 
+function unitCost(id: string) {
+  const bp = getUnitBlueprint(id);
+  return { energy: bp.baseCost * COST_MULTIPLIER, mana: bp.manaCost * COST_MULTIPLIER };
+}
+
 // Vehicles (treads/wheels)
-const vehicleOptions: { unitId: string; label: string; cost: number }[] = [
-  { unitId: 'jackal', label: 'Jackal', cost: 40 },
-  { unitId: 'lynx', label: 'Lynx', cost: 55 },
-  { unitId: 'badger', label: 'Badger', cost: 80 },
-  { unitId: 'mongoose', label: 'Mongoose', cost: 100 },
-  { unitId: 'mammoth', label: 'Mammoth', cost: 180 },
-  { unitId: 'hippo', label: 'Hippo', cost: 5000 },
+const vehicleOptions = [
+  { unitId: 'jackal', label: 'Jackal', ...unitCost('jackal') },
+  { unitId: 'lynx', label: 'Lynx', ...unitCost('lynx') },
+  { unitId: 'badger', label: 'Badger', ...unitCost('badger') },
+  { unitId: 'mongoose', label: 'Mongoose', ...unitCost('mongoose') },
+  { unitId: 'mammoth', label: 'Mammoth', ...unitCost('mammoth') },
+  { unitId: 'hippo', label: 'Hippo', ...unitCost('hippo') },
 ];
 
 // Bots (legs)
-const botOptions: { unitId: string; label: string; cost: number }[] = [
-  { unitId: 'tick', label: 'Tick', cost: 75 },
-  { unitId: 'tarantula', label: 'Tarantula', cost: 70 },
-  { unitId: 'daddy', label: 'Daddy', cost: 90 },
-  { unitId: 'widow', label: 'Widow', cost: 800 },
+const botOptions = [
+  { unitId: 'tick', label: 'Tick', ...unitCost('tick') },
+  { unitId: 'tarantula', label: 'Tarantula', ...unitCost('tarantula') },
+  { unitId: 'daddy', label: 'Daddy', ...unitCost('daddy') },
+  { unitId: 'widow', label: 'Widow', ...unitCost('widow') },
 ];
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)
@@ -103,7 +116,7 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
           @click="selection.isBuildMode && selection.selectedBuildingType === bo.type ? actions.cancelBuild() : actions.startBuild(bo.type)"
         >
           <span class="btn-label">{{ bo.label }}</span>
-          <span class="btn-cost">{{ bo.cost }}E</span>
+          <span class="btn-cost"><span class="cost-energy">{{ bo.energy }}E</span> <span class="cost-mana">{{ bo.mana }}M</span></span>
           <span class="btn-key">{{ bo.key }}</span>
         </button>
       </div>
@@ -119,7 +132,7 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
           @click="actions.toggleDGun()"
         >
           <span class="btn-label">D-Gun</span>
-          <span class="btn-cost">200E</span>
+          <span class="btn-cost"><span class="cost-energy">200E</span></span>
           <span class="btn-key">D</span>
         </button>
       </div>
@@ -136,7 +149,7 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
           @click="queueUnitsWithModifier($event, selection.factoryId!, uo.unitId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
-          <span class="btn-cost">{{ uo.cost }}E</span>
+          <span class="btn-cost"><span class="cost-energy">{{ uo.energy }}E</span> <span class="cost-mana">{{ uo.mana }}M</span></span>
         </button>
       </div>
     </div>
@@ -152,7 +165,7 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
           @click="queueUnitsWithModifier($event, selection.factoryId!, uo.unitId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
-          <span class="btn-cost">{{ uo.cost }}E</span>
+          <span class="btn-cost"><span class="cost-energy">{{ uo.energy }}E</span> <span class="cost-mana">{{ uo.mana }}M</span></span>
         </button>
       </div>
     </div>
@@ -336,8 +349,15 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
 
 .btn-cost {
   font-size: 10px;
-  color: #ffcc00;
   margin-top: 2px;
+}
+
+.cost-energy {
+  color: #ffcc00;
+}
+
+.cost-mana {
+  color: #44aaff;
 }
 
 .btn-key {

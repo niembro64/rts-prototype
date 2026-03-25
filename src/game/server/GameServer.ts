@@ -33,6 +33,7 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
+import { MANA_PER_TILE_PER_SECOND } from '../../config';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -313,6 +314,13 @@ export class GameServer {
 
     // Update territory capture (uses spatial grid occupancy)
     this.captureSystem.update(spatialGrid.getOccupiedCellsForCapture(), dtSec);
+
+    // Update mana income from owned tiles
+    const tileCounts = this.captureSystem.getTileCountsByPlayer();
+    for (const playerId of this.playerIds) {
+      const tileCount = tileCounts.get(playerId) ?? 0;
+      economyManager.setManaTerritory(playerId, tileCount * MANA_PER_TILE_PER_SECOND);
+    }
   }
 
   // Apply thrust and external forces to physics bodies

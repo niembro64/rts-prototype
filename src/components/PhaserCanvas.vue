@@ -111,6 +111,8 @@ import {
   SOUND_CATEGORIES,
   getLobbyVisible,
   setLobbyVisible,
+  getShowGrid,
+  setShowGrid,
   setCurrentTpsRatio,
   setCurrentFpsRatio,
   setLocalServerRunning,
@@ -177,6 +179,7 @@ const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const driftMode = ref<DriftMode>(getDriftMode());
 const edgeScrollEnabled = ref(getEdgeScrollEnabled());
 const dragPanEnabled = ref(getDragPanEnabled());
+const showGridOverlay = ref(getShowGrid());
 const soundToggles = reactive<Record<SoundCategory, boolean>>({
   fire: getSoundToggle('fire'),
   hit: getSoundToggle('hit'),
@@ -244,6 +247,12 @@ const economyInfo = reactive<EconomyInfo>({
   income: { base: 5, production: 0, total: 5 },
   expenditure: 0,
   netFlow: 5,
+  mana: {
+    stockpile: { curr: 200, max: 1000 },
+    income: { base: 5, territory: 0, total: 5 },
+    expenditure: 0,
+    netFlow: 5,
+  },
   units: { count: 1, cap: 120 },
   buildings: { solar: 0, factory: 0 },
 });
@@ -557,6 +566,8 @@ function resetClientDefaults(): void {
   for (const cat of SOUND_CATEGORIES) {
     if (soundToggles[cat] !== cd.sounds.default[cat]) toggleSoundCategory(cat);
   }
+  showGridOverlay.value = cd.showGrid.default;
+  setShowGrid(cd.showGrid.default);
 }
 
 function togglePlayer(): void {
@@ -1096,6 +1107,12 @@ function toggleSendGridInfo(): void {
   }
 }
 
+function toggleShowGrid(): void {
+  const next = !showGridOverlay.value;
+  showGridOverlay.value = next;
+  setShowGrid(next);
+}
+
 function dismissGameOver(): void {
   gameOverWinner.value = null;
 }
@@ -1204,23 +1221,9 @@ onUnmounted(() => {
           :economy="economyInfo"
           :player-name="getPlayerName(activePlayer)"
           :player-color="getPlayerColor(activePlayer)"
+          :can-toggle-player="showPlayerToggle"
+          @toggle-player="togglePlayer"
         />
-
-        <!-- Player toggle (single-player only) -->
-        <div v-if="showPlayerToggle" class="ui-overlay top-right">
-          <button
-            class="player-toggle-btn"
-            :style="{ borderColor: getPlayerColor(activePlayer) }"
-            @click="togglePlayer"
-          >
-            <span
-              class="player-indicator"
-              :style="{ backgroundColor: getPlayerColor(activePlayer) }"
-            ></span>
-            <span class="player-label">{{ getPlayerName(activePlayer) }}</span>
-            <span class="toggle-hint">(Click to switch)</span>
-          </button>
-        </div>
 
         <!-- Selection panel (bottom-left) -->
         <SelectionPanel
@@ -1320,17 +1323,6 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="control-group">
-            <BarDivider />
-            <button
-              class="control-btn"
-              :class="{ active: displayGridInfo }"
-              title="Show spatial grid debug overlay"
-              @click="toggleSendGridInfo"
-            >
-              GRID
-            </button>
           </div>
           <div class="control-group">
             <BarDivider />
@@ -1555,6 +1547,17 @@ onUnmounted(() => {
             title="Public IP address"
             >{{ localIpAddress }}</span
           >
+          <BarDivider />
+          <div class="control-group">
+            <button
+              class="control-btn"
+              :class="{ active: showGridOverlay }"
+              title="Show territory capture overlay"
+              @click="toggleShowGrid"
+            >
+              GRID
+            </button>
+          </div>
           <BarDivider />
           <div class="control-group">
             <span class="control-label" title="Total frame time (ms)">FRAME:</span>
@@ -2159,55 +2162,7 @@ onUnmounted(() => {
   display: block;
 }
 
-.ui-overlay.top-right {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 1000;
-  pointer-events: none;
-}
 
-.player-toggle-btn {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: rgba(0, 0, 0, 0.8);
-  border: 2px solid;
-  border-radius: 8px;
-  color: white;
-  font-family: monospace;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.player-toggle-btn:hover {
-  background: rgba(0, 0, 0, 0.9);
-  transform: scale(1.02);
-}
-
-.player-toggle-btn:active {
-  transform: scale(0.98);
-}
-
-.player-indicator {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.5);
-}
-
-.player-label {
-  font-weight: bold;
-  font-size: 16px;
-}
-
-.toggle-hint {
-  font-size: 11px;
-  opacity: 0.6;
-}
 
 /* Game Over Banner */
 .game-over-banner {

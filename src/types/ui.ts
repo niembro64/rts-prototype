@@ -42,6 +42,12 @@ export type EconomyInfo = {
   income: { base: number; production: number; total: number };
   expenditure: number;
   netFlow: number;
+  mana: {
+    stockpile: { curr: number; max: number };
+    income: { base: number; territory: number; total: number };
+    expenditure: number;
+    netFlow: number;
+  };
   units: { count: number; cap: number };
   buildings: { solar: number; factory: number };
 };

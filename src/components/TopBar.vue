@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { fmtSigned, signedColor } from './uiUtils';
 
 export type { EconomyInfo } from '@/types/ui';
 import type { EconomyInfo } from '@/types/ui';
@@ -9,102 +8,115 @@ const props = defineProps<{
   economy: EconomyInfo;
   playerName: string;
   playerColor: string;
+  canTogglePlayer: boolean;
 }>();
 
-const stockpilePercent = computed(() =>
-  Math.round((props.economy.stockpile.curr / props.economy.stockpile.max) * 100)
-);
+const emit = defineEmits<{
+  togglePlayer: [];
+}>();
 
-const stockpileColor = computed(() => {
-  const pct = stockpilePercent.value;
-  if (pct > 60) return '#00ff88';
-  if (pct > 30) return '#ffcc00';
-  return '#ff4444';
-});
+// Fixed-width number formatting: always 5 chars wide (sign + 4 digits)
+function fmtFixed(n: number): string {
+  const sign = n < 0 ? '-' : '+';
+  const abs = Math.abs(n);
+  let digits: string;
+  if (abs < 10) digits = abs.toFixed(1).padStart(4, ' ');
+  else if (abs < 1000) digits = abs.toFixed(0).padStart(4, ' ');
+  else digits = abs.toFixed(0).padStart(4, ' ');
+  return sign + digits;
+}
+
+function fmtStock(n: number): string {
+  return Math.floor(n).toString().padStart(4, ' ');
+}
+
+const energyPct = computed(() =>
+  Math.min(100, Math.round((props.economy.stockpile.curr / props.economy.stockpile.max) * 100))
+);
+const manaPct = computed(() =>
+  Math.min(100, Math.round((props.economy.mana.stockpile.curr / props.economy.mana.stockpile.max) * 100))
+);
 
 const unitCapColor = computed(() => {
   const pct = (props.economy.units.count / props.economy.units.cap) * 100;
   if (pct >= 100) return '#ff4444';
   if (pct >= 80) return '#ffcc00';
-  return '#00ff88';
+  return 'rgba(255,255,255,0.7)';
 });
 
 const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.units.cap);
+
+function flowColor(n: number): string {
+  if (Math.abs(n) < 1) return 'rgba(255,255,255,0.4)';
+  return n > 0 ? '#88ffaa' : '#ff6666';
+}
 </script>
 
 <template>
   <div class="top-bar" :style="{ '--player-color': playerColor }">
-    <!-- Player indicator -->
-    <div class="player-section">
+    <!-- Player -->
+    <button
+      class="player-section"
+      :class="{ clickable: canTogglePlayer }"
+      :title="canTogglePlayer ? 'Click to switch player' : ''"
+      @click="canTogglePlayer && emit('togglePlayer')"
+    >
       <span class="player-dot" :style="{ backgroundColor: playerColor }"></span>
       <span class="player-name">{{ playerName }}</span>
-    </div>
+    </button>
 
-    <!-- Energy stockpile -->
-    <div class="economy-section stockpile-section">
-      <div class="stat-label">Energy</div>
-      <div class="stat-value">
-        <span class="energy-icon">⚡</span>
-        <span :style="{ color: stockpileColor }">{{ fmtSigned(economy.stockpile.curr) }}</span>
-        <span class="max-value">/ {{ economy.stockpile.max }}</span>
+    <!-- Energy block -->
+    <div class="resource-block energy-block">
+      <div class="resource-header">
+        <span class="resource-icon">⚡</span>
+        <span class="resource-label">ENERGY</span>
       </div>
-      <div class="stockpile-bar">
-        <div
-          class="stockpile-fill"
-          :style="{ width: stockpilePercent + '%', backgroundColor: stockpileColor }"
-        ></div>
+      <div class="resource-row">
+        <span class="resource-stock">{{ fmtStock(economy.stockpile.curr) }}</span>
+        <span class="resource-sep">/</span>
+        <span class="resource-max">{{ economy.stockpile.max }}</span>
       </div>
-    </div>
-
-    <!-- Income breakdown -->
-    <div class="economy-section">
-      <div class="stat-label">Income</div>
-      <div class="stat-value income">
-        <span :style="{ color: signedColor(economy.income.total) }">{{ fmtSigned(economy.income.total) }}/s</span>
+      <div class="resource-bar">
+        <div class="resource-bar-fill energy-fill" :style="{ width: energyPct + '%' }"></div>
       </div>
-      <div class="stat-detail">
-        <span :style="{ color: signedColor(economy.income.base) }">Base: {{ fmtSigned(economy.income.base) }}</span>
-        |
-        <span :style="{ color: signedColor(economy.income.production) }">Solar: {{ fmtSigned(economy.income.production) }}</span>
+      <div class="resource-flows">
+        <span class="flow-item" :style="{ color: flowColor(economy.netFlow) }">{{ fmtFixed(economy.netFlow) }}/s</span>
       </div>
     </div>
 
-    <!-- Expenditure -->
-    <div class="economy-section">
-      <div class="stat-label">Spending</div>
-      <div class="stat-value expenditure">
-        <span :style="{ color: signedColor(-economy.expenditure) }">
-          {{ fmtSigned(-economy.expenditure) }}/s
+    <!-- Mana block -->
+    <div class="resource-block mana-block">
+      <div class="resource-header">
+        <span class="resource-icon">💎</span>
+        <span class="resource-label">MANA</span>
+      </div>
+      <div class="resource-row">
+        <span class="resource-stock">{{ fmtStock(economy.mana.stockpile.curr) }}</span>
+        <span class="resource-sep">/</span>
+        <span class="resource-max">{{ economy.mana.stockpile.max }}</span>
+      </div>
+      <div class="resource-bar">
+        <div class="resource-bar-fill mana-fill" :style="{ width: manaPct + '%' }"></div>
+      </div>
+      <div class="resource-flows">
+        <span class="flow-item" :style="{ color: flowColor(economy.mana.netFlow) }">{{ fmtFixed(economy.mana.netFlow) }}/s</span>
+      </div>
+    </div>
+
+    <!-- Units + Buildings (right-aligned) -->
+    <div class="counts-section">
+      <div class="count-row">
+        <span class="count-label">UNITS</span>
+        <span class="count-value" :style="{ color: unitCapColor }">
+          {{ economy.units.count }}/{{ economy.units.cap }}
+          <span v-if="isAtUnitCap" class="cap-warning">MAX</span>
         </span>
       </div>
-    </div>
-
-    <!-- Net flow -->
-    <div class="economy-section">
-      <div class="stat-label">Net</div>
-      <div class="stat-value net-flow" :style="{ color: signedColor(economy.netFlow) }">
-        {{ fmtSigned(economy.netFlow) }}/s
-      </div>
-    </div>
-
-    <!-- Unit count -->
-    <div class="economy-section units">
-      <div class="stat-label">Units</div>
-      <div class="stat-value" :style="{ color: unitCapColor }">
-        {{ economy.units.count }} / {{ economy.units.cap }}
-        <span v-if="isAtUnitCap" class="cap-warning" title="At unit cap!">(MAX)</span>
-      </div>
-    </div>
-
-    <!-- Building counts -->
-    <div class="economy-section buildings">
-      <div class="stat-label">Buildings</div>
-      <div class="building-counts">
-        <span class="building-count solar" title="Solar Panels">
-          ☀️ {{ economy.buildings.solar }}
-        </span>
-        <span class="building-count factory" title="Factories">
-          🏭 {{ economy.buildings.factory }}
+      <div class="count-row">
+        <span class="count-label">BLDG</span>
+        <span class="count-value">
+          <span class="building-solar" title="Solar Panels">☀{{ economy.buildings.solar }}</span>
+          <span class="building-factory" title="Factories">🏭{{ economy.buildings.factory }}</span>
         </span>
       </div>
     </div>
@@ -124,8 +136,8 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
   border-bottom: 2px solid var(--player-color);
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  gap: 24px;
+  padding: 0 12px;
+  gap: 16px;
   font-family: monospace;
   color: white;
   z-index: 1000;
@@ -135,112 +147,158 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
 .player-section {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-right: 16px;
+  gap: 6px;
+  padding: 4px 12px 4px 8px;
+  border: none;
   border-right: 1px solid color-mix(in srgb, var(--player-color) 40%, transparent);
+  background: none;
+  color: white;
+  font-family: monospace;
+  min-width: 80px;
+  cursor: default;
+}
+
+.player-section.clickable {
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.player-section.clickable:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .player-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
 }
 
 .player-name {
   font-weight: bold;
-  font-size: 14px;
+  font-size: 13px;
+  text-transform: uppercase;
+  width: 50px;
+  text-align: left;
 }
 
-.economy-section {
+/* ── Resource blocks (Energy / Mana) ── */
+.resource-block {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  min-width: 145px;
+  gap: 1px;
 }
 
-.stat-label {
-  font-size: 10px;
-  color: color-mix(in srgb, var(--player-color) 50%, rgba(255, 255, 255, 0.5));
-  text-transform: uppercase;
-}
-
-.stat-value {
-  font-size: 16px;
-  font-weight: bold;
+.resource-header {
   display: flex;
   align-items: center;
   gap: 4px;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.energy-icon {
-  font-size: 14px;
+.energy-block .resource-header { color: #ffcc00; }
+.mana-block .resource-header { color: #44aaff; }
+
+.resource-icon {
+  font-size: 11px;
 }
 
-.max-value {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
+.resource-row {
+  display: flex;
+  align-items: baseline;
+  font-size: 15px;
+  font-weight: bold;
+  white-space: pre;
+}
+
+.energy-block .resource-stock { color: #ffcc00; }
+.mana-block .resource-stock { color: #44aaff; }
+
+.resource-sep {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+  margin: 0 2px;
+}
+
+.resource-max {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
   font-weight: normal;
 }
 
-.stat-detail {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.stockpile-section {
-  min-width: 140px;
-}
-
-.stockpile-bar {
+.resource-bar {
   width: 100%;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 1px;
   overflow: hidden;
-  margin-top: 2px;
 }
 
-.stockpile-fill {
+.resource-bar-fill {
   height: 100%;
-  transition: width 0.2s ease, background-color 0.3s ease;
+  transition: width 0.2s ease;
 }
 
-.buildings {
-  margin-left: auto;
-}
+.energy-fill { background: #ffcc00; }
+.mana-fill { background: #44aaff; }
 
-.building-counts {
+.resource-flows {
   display: flex;
-  gap: 12px;
+  gap: 8px;
+  font-size: 11px;
+  white-space: pre;
 }
 
-.building-count {
-  font-size: 14px;
+.flow-item {
+  font-weight: bold;
+}
+
+/* ── Counts (right side) ── */
+.counts-section {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 110px;
+}
+
+.count-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
-.building-count.solar {
-  color: #ffcc00;
+.count-label {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  width: 32px;
 }
 
-.building-count.factory {
-  color: #88ccff;
+.count-value {
+  font-size: 13px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.units {
-  min-width: 80px;
-}
+.building-solar { color: #ffcc00; }
+.building-factory { color: #88ccff; }
 
 .cap-warning {
-  font-size: 10px;
+  font-size: 9px;
+  color: #ff4444;
   animation: blink 1s infinite;
 }
 
 @keyframes blink {
   0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0.5; }
+  51%, 100% { opacity: 0.3; }
 }
 </style>

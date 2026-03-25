@@ -3,6 +3,9 @@ import {
   STARTING_STOCKPILE,
   MAX_STOCKPILE,
   BASE_INCOME_PER_SECOND,
+  STARTING_MANA,
+  MAX_MANA,
+  BASE_MANA_PER_SECOND,
 } from '../../config';
 import { getUnitBlueprint } from './blueprints';
 
@@ -11,6 +14,9 @@ export const ECONOMY_CONSTANTS = {
   maxStockpile: MAX_STOCKPILE,
   baseIncome: BASE_INCOME_PER_SECOND,
   startingStockpile: STARTING_STOCKPILE,
+  maxMana: MAX_MANA,
+  baseManaIncome: BASE_MANA_PER_SECOND,
+  startingMana: STARTING_MANA,
   dgunCost: getUnitBlueprint('commander').dgun!.energyCost,
 };
 
@@ -20,6 +26,11 @@ export function createEconomyState(): EconomyState {
     stockpile: { curr: ECONOMY_CONSTANTS.startingStockpile, max: ECONOMY_CONSTANTS.maxStockpile },
     income: { base: ECONOMY_CONSTANTS.baseIncome, production: 0 },
     expenditure: 0,
+    mana: {
+      stockpile: { curr: ECONOMY_CONSTANTS.startingMana, max: ECONOMY_CONSTANTS.maxMana },
+      income: { base: ECONOMY_CONSTANTS.baseManaIncome, territory: 0 },
+      expenditure: 0,
+    },
   };
 }
 
@@ -52,31 +63,37 @@ export class EconomyManager {
     this.economies.set(playerId, { ...state });
   }
 
-  // Set production (called when solar panels change)
+  // Set energy production (called when solar panels change)
   setProduction(playerId: PlayerId, production: number): void {
     const economy = this.getOrCreateEconomy(playerId);
     economy.income.production = production;
   }
 
-  // Add to production (when a solar panel completes)
+  // Add to energy production (when a solar panel completes)
   addProduction(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
     economy.income.production += amount;
   }
 
-  // Remove from production (when a solar panel is destroyed)
+  // Remove from energy production (when a solar panel is destroyed)
   removeProduction(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
     economy.income.production = Math.max(0, economy.income.production - amount);
   }
 
-  // Get total income (base + production)
+  // Set mana territory income (called each tick from capture system)
+  setManaTerritory(playerId: PlayerId, amount: number): void {
+    const economy = this.getOrCreateEconomy(playerId);
+    economy.mana.income.territory = amount;
+  }
+
+  // Get total energy income (base + production)
   getTotalIncome(playerId: PlayerId): number {
     const economy = this.getOrCreateEconomy(playerId);
     return economy.income.base + economy.income.production;
   }
 
-  // Get net flow (income - expenditure)
+  // Get net energy flow (income - expenditure)
   getNetFlow(playerId: PlayerId): number {
     const economy = this.getOrCreateEconomy(playerId);
     return economy.income.base + economy.income.production - economy.expenditure;
@@ -90,10 +107,10 @@ export class EconomyManager {
     return actualSpend;
   }
 
-  // Check if player can afford something
-  canAfford(playerId: PlayerId, amount: number): boolean {
+  // Check if player can afford energy + mana
+  canAfford(playerId: PlayerId, energyCost: number, manaCost: number = 0): boolean {
     const economy = this.getOrCreateEconomy(playerId);
-    return economy.stockpile.curr >= amount;
+    return economy.stockpile.curr >= energyCost && economy.mana.stockpile.curr >= manaCost;
   }
 
   // Spend energy instantly (for things like D-gun)
@@ -106,28 +123,44 @@ export class EconomyManager {
     return false;
   }
 
-  // Update economy each tick
+  // Try to spend mana (returns amount actually spent)
+  trySpendMana(playerId: PlayerId, amount: number): number {
+    const economy = this.getOrCreateEconomy(playerId);
+    const actualSpend = Math.min(amount, economy.mana.stockpile.curr);
+    economy.mana.stockpile.curr -= actualSpend;
+    return actualSpend;
+  }
+
+  // Record mana expenditure (called by distribution system)
+  recordManaExpenditure(playerId: PlayerId, amount: number): void {
+    const economy = this.getOrCreateEconomy(playerId);
+    economy.mana.expenditure += amount;
+  }
+
+  // Update economy each tick (energy + mana income)
   update(dtMs: number): void {
     const dtSec = dtMs / 1000;
 
     for (const [, economy] of this.economies) {
-      // Calculate income
-      const total = economy.income.base + economy.income.production;
-
-      // Add income to stockpile
-      economy.stockpile.curr += total * dtSec;
-
-      // Cap at max stockpile
-      if (economy.stockpile.curr > economy.stockpile.max) {
-        economy.stockpile.curr = economy.stockpile.max;
-      }
-
-      // Reset expenditure each frame (will be recalculated by construction system)
+      // Energy income
+      const totalEnergy = economy.income.base + economy.income.production;
+      economy.stockpile.curr = Math.min(
+        economy.stockpile.curr + totalEnergy * dtSec,
+        economy.stockpile.max,
+      );
       economy.expenditure = 0;
+
+      // Mana income
+      const totalMana = economy.mana.income.base + economy.mana.income.territory;
+      economy.mana.stockpile.curr = Math.min(
+        economy.mana.stockpile.curr + totalMana * dtSec,
+        economy.mana.stockpile.max,
+      );
+      economy.mana.expenditure = 0;
     }
   }
 
-  // Record expenditure (called by construction system)
+  // Record energy expenditure (called by construction system)
   recordExpenditure(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
     economy.expenditure += amount;

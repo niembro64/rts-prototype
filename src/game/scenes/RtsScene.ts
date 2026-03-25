@@ -33,7 +33,6 @@ import {
   EMA_CONFIG,
   FRAME_TIMING_EMA,
   EMA_INITIAL_VALUES,
-  GRID_OVERLAY_BRIGHTNESS,
 } from '../../config';
 import { CAPTURE_CONFIG } from '../../captureConfig';
 
@@ -41,6 +40,7 @@ import {
   getAudioSmoothing,
   getAudioScope,
   getSoundToggle,
+  getShowGrid,
 } from '@/clientBarConfig';
 import { AUDIO } from '../../audioConfig';
 
@@ -455,48 +455,6 @@ export class RtsScene extends SceneShim {
     );
   }
 
-  // Render spatial grid debug overlay (search cells + occupancy cells)
-  private renderSpatialGridOverlay(): void {
-    this.spatialGridGraphics.clear();
-
-    const cellSize = this.clientViewState.getGridCellSize();
-    if (cellSize <= 0) return;
-
-    const b = GRID_OVERLAY_BRIGHTNESS;
-
-    // Draw search cells first (bottom layer): subtle fill, no borders
-    const searchCells = this.clientViewState.getGridSearchCells();
-    for (const cell of searchCells) {
-      const worldX = cell.cell.x * cellSize;
-      const worldY = cell.cell.y * cellSize;
-
-      for (const playerId of cell.players) {
-        const playerConfig = PLAYER_COLORS[playerId as PlayerId];
-        const color = playerConfig?.primary ?? 0x888888;
-        this.spatialGridGraphics.fillStyle(color, 0.04 * b);
-        this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
-      }
-    }
-
-    // Draw occupancy cells second (top layer): more pronounced fill + borders
-    const gridCells = this.clientViewState.getGridCells();
-    for (const cell of gridCells) {
-      const worldX = cell.cell.x * cellSize;
-      const worldY = cell.cell.y * cellSize;
-
-      for (const playerId of cell.players) {
-        const playerConfig = PLAYER_COLORS[playerId as PlayerId];
-        const color = playerConfig?.primary ?? 0x888888;
-        this.spatialGridGraphics.fillStyle(color, 0.25 * b);
-        this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
-      }
-
-      // Draw cell border
-      this.spatialGridGraphics.lineStyle(1, 0x666688, 0.3 * b);
-      this.spatialGridGraphics.strokeRect(worldX, worldY, cellSize, cellSize);
-    }
-  }
-
   // Render capture-the-tile territory overlay
   private renderCaptureOverlay(): void {
     this.spatialGridGraphics.clear();
@@ -704,12 +662,11 @@ export class RtsScene extends SceneShim {
     // --- Render phase (timed separately from logic) ---
     const renderStart = performance.now();
 
-    // Render territory capture overlay (or spatial grid debug when capture has no data)
-    const captureTiles = this.clientViewState.getCaptureTiles();
-    if (captureTiles.length > 0) {
+    // Render territory capture overlay (client-side toggle)
+    if (getShowGrid()) {
       this.renderCaptureOverlay();
     } else {
-      this.renderSpatialGridOverlay();
+      this.spatialGridGraphics.clear();
     }
 
     // Render entities

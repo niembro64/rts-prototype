@@ -73,6 +73,7 @@ export const CLIENT_CONFIG = {
   projRangeToggles: { default: false },
   unitRadiusToggles: { default: false },
   lobbyVisible: { default: { mobile: false, desktop: false } },
+  showGrid: { default: true },
 } as const satisfies ClientBarConfig;
 
 // ── Constant arrays ──
@@ -219,6 +220,7 @@ const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
 const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
 const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
 const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
+const SHOW_GRID_STORAGE_KEY = 'rts-show-grid';
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
@@ -662,5 +664,27 @@ export function setLobbyVisible(visible: boolean): void {
   currentLobbyVisible = visible;
   try {
     localStorage.setItem(LOBBY_VISIBLE_STORAGE_KEY, String(visible));
+  } catch { /* */ }
+}
+
+// ── Show Grid ──
+
+let currentShowGrid: boolean = (() => {
+  try {
+    const stored = localStorage.getItem(SHOW_GRID_STORAGE_KEY);
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+  } catch { /* */ }
+  return CLIENT_CONFIG.showGrid.default;
+})();
+
+export function getShowGrid(): boolean {
+  return currentShowGrid;
+}
+
+export function setShowGrid(show: boolean): void {
+  currentShowGrid = show;
+  try {
+    localStorage.setItem(SHOW_GRID_STORAGE_KEY, String(show));
   } catch { /* */ }
 }

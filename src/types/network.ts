@@ -210,6 +210,11 @@ export type NetworkServerSnapshotEconomy = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };
   expenditure: number;
+  mana: {
+    stockpile: { curr: number; max: number };
+    income: { base: number; territory: number };
+    expenditure: number;
+  };
 };
 
 export type LobbyPlayer = {

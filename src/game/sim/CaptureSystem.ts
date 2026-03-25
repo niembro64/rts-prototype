@@ -102,10 +102,22 @@ export class CaptureSystem {
     return _ownedTiles;
   }
 
+  /** Count owned tiles per player. Returns a reusable map — do NOT store. */
+  getTileCountsByPlayer(): Map<PlayerId, number> {
+    _tileCounts.clear();
+    for (const [, tile] of this.tiles) {
+      if (tile.teamId === null) continue;
+      _tileCounts.set(tile.teamId, (_tileCounts.get(tile.teamId) ?? 0) + 1);
+    }
+    return _tileCounts;
+  }
+
   clear(): void {
     this.tiles.clear();
   }
 }
+
+const _tileCounts: Map<PlayerId, number> = new Map();
 
 // Reusable result buffer
 const _ownedTiles: NetworkCaptureTile[] = [];

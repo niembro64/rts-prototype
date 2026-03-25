@@ -151,6 +151,18 @@ export const MAX_STOCKPILE = 1000;
 /** Base energy income per second (before solar panels) */
 export const BASE_INCOME_PER_SECOND = 10;
 
+/** Starting mana stockpile for each player */
+export const STARTING_MANA = 200;
+
+/** Maximum mana stockpile capacity */
+export const MAX_MANA = 1000;
+
+/** Base mana income per second (before territory) */
+export const BASE_MANA_PER_SECOND = 5;
+
+/** Mana income per owned tile per second (regardless of flag height) */
+export const MANA_PER_TILE_PER_SECOND = 0.5;
+
 // =============================================================================
 // UNIT CAP
 // =============================================================================

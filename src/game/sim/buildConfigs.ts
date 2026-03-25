@@ -15,6 +15,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     gridHeight: 3,
     hp: BUILDING_STATS.solar.hp,
     energyCost: BUILDING_STATS.solar.baseCost * COST_MULTIPLIER,
+    manaCost: 20 * COST_MULTIPLIER,
     energyProduction: SOLAR_ENERGY_PER_SECOND,
   },
   factory: {
@@ -24,6 +25,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     gridHeight: 4,
     hp: BUILDING_STATS.factory.hp,
     energyCost: BUILDING_STATS.factory.baseCost * COST_MULTIPLIER,
+    manaCost: 50 * COST_MULTIPLIER,
     maxEnergyUseRate: 100,
   },
 };
@@ -42,6 +44,7 @@ export function getUnitBuildConfig(unitId: string) {
     unitId: bp.turrets[0]?.turretId ?? 'lightTurret',
     name: bp.name,
     energyCost: bp.baseCost * COST_MULTIPLIER,
+    manaCost: bp.manaCost * COST_MULTIPLIER,
     radiusColliderUnitShot: bp.unitRadiusColliderShot,
     radiusColliderUnitUnit: bp.unitRadiusColliderPush,
     moveSpeed: bp.moveSpeed,

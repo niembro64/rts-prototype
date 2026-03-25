@@ -43,4 +43,5 @@ export type ClientBarConfig = {
   readonly projRangeToggles: BooleanSetting;
   readonly unitRadiusToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
+  readonly showGrid: BooleanSetting;
 };

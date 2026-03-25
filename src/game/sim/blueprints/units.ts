@@ -36,6 +36,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 8 * 1.2,
     mass: 30,
     baseCost: 50,
+    manaCost: 10,
     turrets: [{ turretId: 'lightTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -63,6 +64,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 10 * 1.3,
     mass: 40,
     baseCost: 90,
+    manaCost: 20,
     turrets: [{ turretId: 'pulseTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -89,6 +91,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 13 * 2.5,
     mass: 30,
     baseCost: 350,
+    manaCost: 80,
     turrets: [
       { turretId: 'forceTurretLarge', offsetX: 0, offsetY: 0 },
       { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
@@ -113,6 +116,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 16 * 1.4,
     mass: 300,
     baseCost: 300,
+    manaCost: 60,
     turrets: [{ turretId: 'shotgunTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -139,6 +143,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 20 * 1.2,
     mass: 200,
     baseCost: 220,
+    manaCost: 45,
     turrets: [{ turretId: 'mortarTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -166,6 +171,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 11 * 1.1,
     mass: 30,
     baseCost: 35,
+    manaCost: 8,
     turrets: [{ turretId: 'laserTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: -0.45, y: 0 }],
     locomotion: {
@@ -187,6 +193,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 24 * 1.5,
     mass: 1000,
     baseCost: 1200,
+    manaCost: 250,
     turrets: [{ turretId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -213,6 +220,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 40 * 1.3,
     mass: 200,
     baseCost: 1500,
+    manaCost: 300,
     turrets: [
       { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
       { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
@@ -243,6 +251,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 45 * 1.2,
     mass: 1500,
     baseCost: 2500,
+    manaCost: 500,
     turrets: [
       { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
       { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
@@ -275,6 +284,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 11 * 1.8,
     mass: 18,
     baseCost: 200,
+    manaCost: 40,
     turrets: [{ turretId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0.1, y: 0 }],
     locomotion: {
@@ -296,6 +306,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 16 * 1.3,
     mass: 20,
     baseCost: 110,
+    manaCost: 25,
     turrets: [
       { turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 },
       { turretId: 'lightTurret', offsetX: 0, offsetY: 0 },
@@ -328,6 +339,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderPush: 20,
     mass: 60,
     baseCost: 400,
+    manaCost: 0,
     turrets: [
       { turretId: 'beamTurret3', offsetX: 0, offsetY: 0 },
       { turretId: 'dgunTurret', offsetX: 0, offsetY: 0 },

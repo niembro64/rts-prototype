@@ -42,6 +42,7 @@ export class FactoryProductionSystem {
         factoryComp.isProducing = true;
         factoryComp.currentBuildProgress = 0;
         factoryComp.currentBuildCost = bp.baseCost * COST_MULTIPLIER;
+        factoryComp.currentBuildManaCost = bp.manaCost * COST_MULTIPLIER;
       }
 
       // Energy spending is handled by the shared energy distribution system.

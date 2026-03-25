@@ -97,11 +97,20 @@ export function buildEconomyInfo(
   const total = economy.income.base + economy.income.production;
   const netFlow = total - economy.expenditure;
 
+  const manaTotal = economy.mana.income.base + economy.mana.income.territory;
+  const manaNetFlow = manaTotal - economy.mana.expenditure;
+
   return {
     stockpile: { curr: economy.stockpile.curr, max: economy.stockpile.max },
     income: { base: economy.income.base, production: economy.income.production, total },
     expenditure: economy.expenditure,
     netFlow,
+    mana: {
+      stockpile: { curr: economy.mana.stockpile.curr, max: economy.mana.stockpile.max },
+      income: { base: economy.mana.income.base, territory: economy.mana.income.territory, total: manaTotal },
+      expenditure: economy.mana.expenditure,
+      netFlow: manaNetFlow,
+    },
     units: { count: unitCount, cap: unitCap },
     buildings: { solar: solarCount, factory: factoryCount },
   };
