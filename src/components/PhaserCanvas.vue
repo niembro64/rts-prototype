@@ -2,6 +2,11 @@
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
 import { type PlayerId, type WaypointType } from '../game/sim/types';
+import {
+  createBackgroundBattle,
+  destroyBackgroundBattle,
+  type BackgroundBattleState,
+} from '../game/lobby/LobbyManager';
 import BarDivider from './BarDivider.vue';
 import SelectionPanel, {
   type SelectionInfo,
@@ -32,16 +37,13 @@ import { LOD_EMA_SOURCE, GOOD_TPS } from '../lodConfig';
 import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
   BATTLE_CONFIG,
-  loadStoredDemoUnits,
   saveDemoUnits,
   saveMaxTotalUnits,
-  loadStoredDemoCap,
   saveDemoCap,
   loadStoredRealCap,
   saveRealCap,
   DEMO_CAP_DEFAULT,
   REAL_CAP_DEFAULT,
-  loadStoredDemoGrid,
   saveDemoGrid,
   loadStoredRealGrid,
   saveRealGrid,
@@ -136,12 +138,11 @@ const mobileBarsVisible = ref(false);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 
-// Background battle game instance (runs behind lobby)
-let backgroundGameInstance: GameInstance | null = null;
+// Background battle state (managed by LobbyManager)
+let backgroundBattle: BackgroundBattleState | null = null;
 
 // Current game server (owned by this component)
 let currentServer: GameServer | null = null;
-let backgroundServer: GameServer | null = null;
 
 // Lobby state
 const showLobby = ref(true);
@@ -276,78 +277,14 @@ let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
 
 // Start the background battle (runs behind lobby)
 async function startBackgroundBattle(): Promise<void> {
-  if (backgroundGameInstance || !backgroundContainerRef.value) return;
+  if (backgroundBattle || !backgroundContainerRef.value) return;
 
-  const rect = backgroundContainerRef.value.getBoundingClientRect();
-
-  // Create a GameServer for background mode (WASM physics)
-  backgroundServer = await GameServer.create({
-    playerIds: [1, 2, 3, 4] as PlayerId[],
-    backgroundMode: true,
-  });
-
-  const bgConnection = new LocalGameConnection(backgroundServer);
-  activeConnection = bgConnection;
-  backgroundServer.setTickRate(loadStoredTickRate());
-  backgroundServer.setSnapshotRate(loadStoredSnapshotRate());
-  backgroundServer.setKeyframeRatio(loadStoredKeyframeRatio());
-  backgroundServer.setIpAddress(localIpAddress.value);
-
-  // Restore stored demo unit selection (fall back to config defaults)
-  const storedDemoUnits = loadStoredDemoUnits() ?? getDefaultDemoUnits();
-  for (const ut of demoUnitTypes) {
-    backgroundServer.setBackgroundUnitTypeEnabled(
-      ut,
-      storedDemoUnits.includes(ut),
-    );
-  }
-
-  // Restore stored demo cap
-  backgroundServer.receiveCommand({
-    type: 'setMaxTotalUnits',
-    tick: 0,
-    maxTotalUnits: loadStoredDemoCap(),
-  });
-  backgroundServer.receiveCommand({
-    type: 'setProjVelInherit',
-    tick: 0,
-    enabled: loadStoredProjVelInherit(),
-  });
-  backgroundServer.receiveCommand({
-    type: 'setFfAccelUnits',
-    tick: 0,
-    enabled: loadStoredFfAccelUnits(),
-  });
-  backgroundServer.receiveCommand({
-    type: 'setFfAccelShots',
-    tick: 0,
-    enabled: loadStoredFfAccelShots(),
-  });
-  backgroundServer.receiveCommand({
-    type: 'setFfDmgUnits',
-    tick: 0,
-    enabled: loadStoredFfDmgUnits(),
-  });
-  backgroundServer.receiveCommand({
-    type: 'setSendGridInfo',
-    tick: 0,
-    enabled: loadStoredDemoGrid(),
-  });
-
-  backgroundServer.start();
+  backgroundBattle = await createBackgroundBattle(
+    backgroundContainerRef.value,
+    localIpAddress.value,
+  );
+  activeConnection = backgroundBattle.connection;
   hasServer.value = true;
-
-  backgroundGameInstance = createGame({
-    parent: backgroundContainerRef.value,
-    width: rect.width || window.innerWidth,
-    height: rect.height || window.innerHeight,
-    playerIds: [1, 2, 3, 4] as PlayerId[],
-    localPlayerId: 1,
-    gameConnection: bgConnection,
-    mapWidth: MAP_SETTINGS.game.width,
-    mapHeight: MAP_SETTINGS.game.height,
-    backgroundMode: true,
-  });
 
   // Wire combat stats callback for background scene
   let bgAttempts = 0;
@@ -358,7 +295,7 @@ async function startBackgroundBattle(): Promise<void> {
       checkBgSceneInterval = null;
       return;
     }
-    const bgScene = backgroundGameInstance?.getScene();
+    const bgScene = backgroundBattle?.gameInstance?.getScene();
     if (bgScene) {
       bgScene.onCombatStatsUpdate = (stats: NetworkServerSnapshotCombatStats) => {
         const cloned = structuredClone(stats);
@@ -387,13 +324,9 @@ function stopBackgroundBattle(): void {
     clearInterval(checkBgSceneInterval);
     checkBgSceneInterval = null;
   }
-  if (backgroundServer) {
-    backgroundServer.stop();
-    backgroundServer = null;
-  }
-  if (backgroundGameInstance) {
-    destroyGame(backgroundGameInstance);
-    backgroundGameInstance = null;
+  if (backgroundBattle) {
+    destroyBackgroundBattle(backgroundBattle);
+    backgroundBattle = null;
   }
   // Only clear hasServer/activeConnection if there's no game server either
   if (!currentServer) {
@@ -895,7 +828,7 @@ const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
 };
 
 function updateFPSStats(): void {
-  const scene = backgroundGameInstance?.getScene() ?? gameInstance?.getScene();
+  const scene = backgroundBattle?.gameInstance?.getScene() ?? gameInstance?.getScene();
   if (scene) {
     currentZoom.value = scene.cameras.main.zoom;
 
@@ -1191,7 +1124,7 @@ onMounted(() => {
     .then((ip) => {
       localIpAddress.value = ip.trim();
       // Push to whichever server is already running (fetch is async)
-      backgroundServer?.setIpAddress(localIpAddress.value);
+      backgroundBattle?.server.setIpAddress(localIpAddress.value);
       currentServer?.setIpAddress(localIpAddress.value);
     })
     .catch(() => {
