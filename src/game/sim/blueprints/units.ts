@@ -9,20 +9,19 @@
 import { AUDIO } from '../../../audioConfig';
 import type { UnitBlueprint, MountPoint } from './types';
 
-// Compute widow's hexagonal mount points (on the thorax)
+// Compute widow's mount points: 6 beam turrets on abdomen edge, force field on prosoma
 function computeWidowMounts(): MountPoint[] {
-  const hexR = 0.4;    // matches thorax inner carapace radius
-  const hexFwd = 0.3;  // matches thorax forward offset
-  const hexRotOff = Math.PI / 3;
+  const abdomenR = 1.15;     // matches abdomen radius in renderer
+  const abdomenFwd = -1.1;   // matches abdomen offset in renderer
   const mounts: MountPoint[] = [];
   for (let i = 0; i < 6; i++) {
-    const angle = (i * Math.PI) / 3 + hexRotOff;
+    const angle = (i * Math.PI) / 3 + Math.PI / 6;
     mounts.push({
-      x: Math.cos(angle) * hexR + hexFwd,
-      y: Math.sin(angle) * hexR,
+      x: Math.cos(angle) * abdomenR + abdomenFwd,
+      y: Math.sin(angle) * abdomenR,
     });
   }
-  mounts.push({ x: hexFwd, y: 0 }); // Force field at thorax center
+  mounts.push({ x: 0.3, y: 0 }); // Force field at prosoma center
   return mounts;
 }
 
