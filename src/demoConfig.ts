@@ -14,7 +14,7 @@ export const DEMO_CONFIG = {
    * Lateral spread ratio (0–1). Fraction of the back edge used for spacing buildings.
    * 1.0 = buildings span the full edge, 0.3 = packed tightly in the center third.
    */
-  lateralSpreadRatio: 0.5,
+  lateralSpreadRatio: 0.8,
 
   /**
    * Gap between building rows in grid cells (forward/depth direction).

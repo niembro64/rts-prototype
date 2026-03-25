@@ -22,6 +22,8 @@ type GridCell = {
   projectiles: Entity[];
 };
 
+export type CaptureCell = { key: number; players: PlayerId[] };
+
 export class SpatialGrid {
   private cellSize: number;
   private cells: Map<number, GridCell> = new Map();
@@ -576,7 +578,32 @@ export class SpatialGrid {
 
     return result;
   }
+
+  /**
+   * Get all occupied cells with one player entry per unit (for capture system).
+   * Unlike getOccupiedCells(), players are NOT deduplicated — 3 red units
+   * on a tile yield [1,1,1] so the capture system can count them.
+   * Returns a reusable array — do NOT store the reference.
+   */
+  getOccupiedCellsForCapture(): CaptureCell[] {
+    _captureCells.length = 0;
+    for (const [key, cell] of this.cells) {
+      if (cell.units.length === 0) continue;
+      const players: PlayerId[] = [];
+      for (const unit of cell.units) {
+        if (unit.ownership?.playerId && unit.unit && unit.unit.hp > 0) {
+          players.push(unit.ownership.playerId);
+        }
+      }
+      if (players.length > 0) {
+        _captureCells.push({ key, players });
+      }
+    }
+    return _captureCells;
+  }
 }
+
+const _captureCells: { key: number; players: PlayerId[] }[] = [];
 
 // Singleton instance for the game
 export const spatialGrid = new SpatialGrid();

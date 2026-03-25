@@ -145,6 +145,10 @@ export class ClientViewState {
   private gridSearchCells: NetworkServerSnapshotGridCell[] = [];
   private gridCellSize: number = 0;
 
+  // Capture tile data from latest snapshot
+  private captureTiles: import('@/types/capture').NetworkCaptureTile[] = [];
+  private captureCellSize: number = 0;
+
   // Combat stats from latest snapshot
   private combatStats: NetworkServerSnapshotCombatStats | null = null;
 
@@ -350,6 +354,10 @@ export class ClientViewState {
     this.gridCells = state.grid?.cells ?? [];
     this.gridSearchCells = state.grid?.searchCells ?? [];
     this.gridCellSize = state.grid?.cellSize ?? 0;
+
+    // Store capture tile data
+    this.captureTiles = state.capture?.tiles ?? [];
+    this.captureCellSize = state.capture?.cellSize ?? 0;
 
     // Store combat stats
     if (state.combatStats) {
@@ -1019,6 +1027,16 @@ export class ClientViewState {
     return this.gridCellSize;
   }
 
+  // === Capture tile data ===
+
+  getCaptureTiles(): import('@/types/capture').NetworkCaptureTile[] {
+    return this.captureTiles;
+  }
+
+  getCaptureCellSize(): number {
+    return this.captureCellSize;
+  }
+
   getCombatStats(): NetworkServerSnapshotCombatStats | null {
     return this.combatStats;
   }
@@ -1037,6 +1055,8 @@ export class ClientViewState {
     this.gridCells = [];
     this.gridSearchCells = [];
     this.gridCellSize = 0;
+    this.captureTiles = [];
+    this.captureCellSize = 0;
     this.serverMeta = null;
     this.frameCounter = 0;
     this.invalidateCaches();

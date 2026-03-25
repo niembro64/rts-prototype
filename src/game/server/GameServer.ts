@@ -32,6 +32,7 @@ import {
 import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
+import { CaptureSystem } from '../sim/CaptureSystem';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -76,6 +77,9 @@ export class GameServer {
 
   // Debug: send spatial grid occupancy info in snapshots
   private sendGridInfo: boolean = false;
+
+  // Territory capture system
+  private captureSystem = new CaptureSystem();
 
   // Public IP address (set by host component)
   private ipAddress: string = 'N/A';
@@ -307,8 +311,8 @@ export class GameServer {
     // Sync positions/velocities from physics to entities
     this.syncFromPhysics();
 
-    // Background mode: units are produced by factories via AI auto-production
-    // (no manual spawning needed)
+    // Update territory capture (uses spatial grid occupancy)
+    this.captureSystem.update(spatialGrid.getOccupiedCellsForCapture(), dtSec);
   }
 
   // Apply thrust and external forces to physics bodies
@@ -462,6 +466,12 @@ export class GameServer {
     }
 
     const state = serializeGameState(this.world, isDelta, gamePhase, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
+
+    // Add capture tile data
+    const captureTiles = this.captureSystem.getOwnedTiles();
+    if (captureTiles.length > 0) {
+      state.capture = { tiles: captureTiles, cellSize: spatialGrid.getCellSize() };
+    }
 
     // Add combat stats to snapshot
     state.combatStats = this.simulation.getCombatStatsSnapshot();

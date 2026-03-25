@@ -109,6 +109,10 @@ export type NetworkServerSnapshot = {
     searchCells: NetworkServerSnapshotGridCell[];
     cellSize: number;
   };
+  capture?: {
+    tiles: import('./capture').NetworkCaptureTile[];
+    cellSize: number;
+  };
   isDelta: boolean;
   removedEntityIds?: number[];
 };

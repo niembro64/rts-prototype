@@ -35,6 +35,7 @@ import {
   EMA_INITIAL_VALUES,
   GRID_OVERLAY_BRIGHTNESS,
 } from '../../config';
+import { CAPTURE_CONFIG } from '../../captureConfig';
 
 import {
   getAudioSmoothing,
@@ -496,6 +497,30 @@ export class RtsScene extends SceneShim {
     }
   }
 
+  // Render capture-the-tile territory overlay
+  private renderCaptureOverlay(): void {
+    this.spatialGridGraphics.clear();
+
+    const tiles = this.clientViewState.getCaptureTiles();
+    const cellSize = this.clientViewState.getCaptureCellSize();
+    if (cellSize <= 0 || tiles.length === 0) return;
+
+    const { maxTileOpacity, minTileOpacity } = CAPTURE_CONFIG;
+
+    for (let i = 0; i < tiles.length; i++) {
+      const tile = tiles[i];
+      const playerConfig = PLAYER_COLORS[tile.teamId as PlayerId];
+      if (!playerConfig) continue;
+
+      const alpha = minTileOpacity + (maxTileOpacity - minTileOpacity) * tile.flagHeight;
+      const worldX = tile.cx * cellSize;
+      const worldY = tile.cy * cellSize;
+
+      this.spatialGridGraphics.fillStyle(playerConfig.primary, alpha);
+      this.spatialGridGraphics.fillRect(worldX, worldY, cellSize, cellSize);
+    }
+  }
+
   // Draw the grid background
   private drawGrid(): void {
     this.gridGraphics = this.add.graphics();
@@ -679,8 +704,13 @@ export class RtsScene extends SceneShim {
     // --- Render phase (timed separately from logic) ---
     const renderStart = performance.now();
 
-    // Render spatial grid debug overlay (below entities)
-    this.renderSpatialGridOverlay();
+    // Render territory capture overlay (or spatial grid debug when capture has no data)
+    const captureTiles = this.clientViewState.getCaptureTiles();
+    if (captureTiles.length > 0) {
+      this.renderCaptureOverlay();
+    } else {
+      this.renderSpatialGridOverlay();
+    }
 
     // Render entities
     this.entityRenderer.render();
