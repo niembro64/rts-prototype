@@ -111,8 +111,8 @@ import {
   SOUND_CATEGORIES,
   getLobbyVisible,
   setLobbyVisible,
-  getShowGrid,
-  setShowGrid,
+  getGridOverlay,
+  setGridOverlay,
   setCurrentTpsRatio,
   setCurrentFpsRatio,
   setLocalServerRunning,
@@ -121,6 +121,7 @@ import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../ty
 import type {
   AudioScope,
   DriftMode,
+  GridOverlay,
   SoundCategory,
   RangeType,
   ProjRangeType,
@@ -179,7 +180,7 @@ const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const driftMode = ref<DriftMode>(getDriftMode());
 const edgeScrollEnabled = ref(getEdgeScrollEnabled());
 const dragPanEnabled = ref(getDragPanEnabled());
-const showGridOverlay = ref(getShowGrid());
+const gridOverlay = ref<GridOverlay>(getGridOverlay());
 const soundToggles = reactive<Record<SoundCategory, boolean>>({
   fire: getSoundToggle('fire'),
   hit: getSoundToggle('hit'),
@@ -590,8 +591,8 @@ function resetClientDefaults(): void {
   for (const cat of SOUND_CATEGORIES) {
     if (soundToggles[cat] !== cd.sounds.default[cat]) toggleSoundCategory(cat);
   }
-  showGridOverlay.value = cd.showGrid.default;
-  setShowGrid(cd.showGrid.default);
+  gridOverlay.value = cd.gridOverlay.default;
+  setGridOverlay(cd.gridOverlay.default);
 }
 
 function togglePlayer(): void {
@@ -1131,10 +1132,9 @@ function toggleSendGridInfo(): void {
   }
 }
 
-function toggleShowGrid(): void {
-  const next = !showGridOverlay.value;
-  showGridOverlay.value = next;
-  setShowGrid(next);
+function changeGridOverlay(mode: GridOverlay): void {
+  setGridOverlay(mode);
+  gridOverlay.value = mode;
 }
 
 function dismissGameOver(): void {
@@ -1577,14 +1577,19 @@ onUnmounted(() => {
           >
           <BarDivider />
           <div class="control-group">
-            <button
-              class="control-btn"
-              :class="{ active: showGridOverlay }"
-              title="Show territory capture overlay"
-              @click="toggleShowGrid"
-            >
-              GRID
-            </button>
+            <span class="control-label">GRID:</span>
+            <div class="button-group">
+              <button
+                v-for="opt in CLIENT_CONFIG.gridOverlay.options"
+                :key="opt.value"
+                class="control-btn"
+                :class="{ active: gridOverlay === opt.value }"
+                title="Territory capture overlay intensity"
+                @click="changeGridOverlay(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
           </div>
           <BarDivider />
           <div class="control-group">

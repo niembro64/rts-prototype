@@ -16,13 +16,6 @@ export const CAPTURE_CONFIG = {
   lowerRatePerUnit: 0.5,
 
   /**
-   * Intensity of tile colors in the territory overlay (0–1).
-   * Controls the max opacity of a fully-raised flag (flagHeight = 1.0).
-   * Lower values make the territory more subtle.
-   */
-  tileColorIntensity: 0.1,
-
-  /**
    * When a tile is contested (net rate = 0, equal teams), should the
    * flag height decay toward 0? If true, stalemates slowly neutralize.
    * decayRate is per second.

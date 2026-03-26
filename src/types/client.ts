@@ -8,6 +8,7 @@ import type { ConcreteGraphicsQuality, GraphicsQuality, RenderMode } from './gra
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'slow';
+export type GridOverlay = 'off' | 'low' | 'high';
 export type SoundCategory =
   | 'fire'
   | 'hit'
@@ -43,5 +44,5 @@ export type ClientBarConfig = {
   readonly projRangeToggles: BooleanSetting;
   readonly unitRadiusToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
-  readonly showGrid: BooleanSetting;
+  readonly gridOverlay: LabeledOptionsConfig<GridOverlay>;
 };

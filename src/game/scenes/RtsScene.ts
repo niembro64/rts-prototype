@@ -34,13 +34,14 @@ import {
   FRAME_TIMING_EMA,
   EMA_INITIAL_VALUES,
 } from '../../config';
-import { CAPTURE_CONFIG } from '../../captureConfig';
+
 
 import {
   getAudioSmoothing,
   getAudioScope,
   getSoundToggle,
-  getShowGrid,
+  getGridOverlay,
+  getGridOverlayIntensity,
 } from '@/clientBarConfig';
 import { AUDIO } from '../../audioConfig';
 
@@ -463,7 +464,7 @@ export class RtsScene extends SceneShim {
     const cellSize = this.clientViewState.getCaptureCellSize();
     if (cellSize <= 0 || tiles.length === 0) return;
 
-    const { tileColorIntensity } = CAPTURE_CONFIG;
+    const tileColorIntensity = getGridOverlayIntensity();
 
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i];
@@ -694,7 +695,7 @@ export class RtsScene extends SceneShim {
     const renderStart = performance.now();
 
     // Render territory capture overlay (client-side toggle)
-    if (getShowGrid()) {
+    if (getGridOverlay() !== 'off') {
       this.renderCaptureOverlay();
     } else {
       this.spatialGridGraphics.clear();

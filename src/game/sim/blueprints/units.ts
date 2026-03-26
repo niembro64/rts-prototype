@@ -224,7 +224,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusColliderShot: 30,
     unitRadiusColliderPush: 40 * 1.3,
     mass: 200,
-    baseCost: 1500,
+    baseCost: 5000,
     manaCost: 300,
     turrets: [
       { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left

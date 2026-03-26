@@ -17,6 +17,7 @@ import type { ClientBarConfig } from './types/client';
 import type {
   AudioScope,
   DriftMode,
+  GridOverlay,
   SoundCategory,
   RangeType,
   ProjRangeType,
@@ -73,7 +74,14 @@ export const CLIENT_CONFIG = {
   projRangeToggles: { default: false },
   unitRadiusToggles: { default: false },
   lobbyVisible: { default: { mobile: false, desktop: false } },
-  showGrid: { default: true },
+  gridOverlay: {
+    default: 'low' as const,
+    options: [
+      { value: 'off' as const, label: 'OFF' },
+      { value: 'low' as const, label: 'LOW' },
+      { value: 'high' as const, label: 'HI' },
+    ],
+  },
 } as const satisfies ClientBarConfig;
 
 // ── Constant arrays ──
@@ -220,7 +228,7 @@ const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
 const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
 const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
 const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
-const SHOW_GRID_STORAGE_KEY = 'rts-show-grid';
+const GRID_OVERLAY_STORAGE_KEY = 'rts-grid-overlay';
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
@@ -368,6 +376,15 @@ function loadFromStorage(): void {
     const storedLobbyVisible = localStorage.getItem(LOBBY_VISIBLE_STORAGE_KEY);
     if (storedLobbyVisible !== null) {
       currentLobbyVisible = storedLobbyVisible === 'true';
+    }
+    const storedGridOverlay = localStorage.getItem(GRID_OVERLAY_STORAGE_KEY);
+    if (
+      storedGridOverlay &&
+      (storedGridOverlay === 'off' ||
+        storedGridOverlay === 'low' ||
+        storedGridOverlay === 'high')
+    ) {
+      currentGridOverlay = storedGridOverlay;
     }
   } catch {
     // localStorage not available, use default
@@ -667,24 +684,27 @@ export function setLobbyVisible(visible: boolean): void {
   } catch { /* */ }
 }
 
-// ── Show Grid ──
+// ── Grid Overlay ──
 
-let currentShowGrid: boolean = (() => {
-  try {
-    const stored = localStorage.getItem(SHOW_GRID_STORAGE_KEY);
-    if (stored === 'true') return true;
-    if (stored === 'false') return false;
-  } catch { /* */ }
-  return CLIENT_CONFIG.showGrid.default;
-})();
+const GRID_OVERLAY_INTENSITIES: Record<GridOverlay, number> = {
+  off: 0.0,
+  low: 0.1,
+  high: 0.8,
+};
 
-export function getShowGrid(): boolean {
-  return currentShowGrid;
+let currentGridOverlay: GridOverlay = _cd.gridOverlay.default;
+
+export function getGridOverlay(): GridOverlay {
+  return currentGridOverlay;
 }
 
-export function setShowGrid(show: boolean): void {
-  currentShowGrid = show;
+export function getGridOverlayIntensity(): number {
+  return GRID_OVERLAY_INTENSITIES[currentGridOverlay];
+}
+
+export function setGridOverlay(mode: GridOverlay): void {
+  currentGridOverlay = mode;
   try {
-    localStorage.setItem(SHOW_GRID_STORAGE_KEY, String(show));
+    localStorage.setItem(GRID_OVERLAY_STORAGE_KEY, mode);
   } catch { /* */ }
 }
