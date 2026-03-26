@@ -68,14 +68,14 @@ export function renderUnitRadiusCircles(
 
   if (visibility.visual) {
     graphics.lineStyle(1, COLORS.UNIT_SCALE_RADIUS, 0.5);
-    graphics.strokeCircle(x, y, entity.unit.radiusColliderUnitShot);
+    graphics.strokeCircle(x, y, entity.unit.unitRadiusCollider.scale);
   }
   if (visibility.shot) {
     graphics.lineStyle(1, COLORS.UNIT_SHOT_RADIUS, 0.5);
-    graphics.strokeCircle(x, y, entity.unit.radiusColliderUnitShot);
+    graphics.strokeCircle(x, y, entity.unit.unitRadiusCollider.shot);
   }
   if (visibility.push) {
     graphics.lineStyle(1, COLORS.UNIT_PUSH_RADIUS, 0.5);
-    graphics.strokeCircle(x, y, entity.unit.radiusColliderUnitUnit);
+    graphics.strokeCircle(x, y, entity.unit.unitRadiusCollider.push);
   }
 }

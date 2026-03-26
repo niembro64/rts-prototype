@@ -40,7 +40,7 @@ const buildingOptions = [
 
 function unitCost(id: string) {
   const bp = getUnitBlueprint(id);
-  return { energy: bp.baseCost * COST_MULTIPLIER, mana: bp.manaCost * COST_MULTIPLIER };
+  return { energy: bp.energyCost * COST_MULTIPLIER, mana: bp.manaCost * COST_MULTIPLIER };
 }
 
 // Vehicles (treads/wheels)

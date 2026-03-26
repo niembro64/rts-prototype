@@ -75,7 +75,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       let priorityRadius = 0;
       if (pt?.unit && pt.unit.hp > 0) {
         priorityTarget = pt;
-        priorityRadius = pt.unit.radiusColliderUnitShot;
+        priorityRadius = pt.unit.unitRadiusCollider.shot;
       } else if (pt?.building && pt.building.hp > 0) {
         priorityTarget = pt;
         priorityRadius = getTargetRadius(pt);
@@ -119,7 +119,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       const target = world.getEntity(weapon.target);
       let targetIsValid = false;
       let targetRadius = 0;
-      if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.radiusColliderUnitShot; }
+      if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.unitRadiusCollider.shot; }
       else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
       if (!targetIsValid || !target || (weapon.config.passive && !isBeamUnit(target))) {
@@ -206,7 +206,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       for (const enemy of candidates) {
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
-        const enemyRadius = enemy.unit ? enemy.unit.radiusColliderUnitShot : (enemy.building ? getTargetRadius(enemy) : 0);
+        const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
         // Only consider enemies within engage range
         if (dist <= r.engage.acquire + enemyRadius && dist < closestDist) {
@@ -243,7 +243,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         // Passive turrets (mirrors) only target beam units
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
 
-        const enemyRadius = enemy.unit ? enemy.unit.radiusColliderUnitShot : (enemy.building ? getTargetRadius(enemy) : 0);
+        const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
 
         if (dist <= r.tracking.acquire + enemyRadius && dist < closestDist) {
@@ -254,7 +254,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       if (closestEnemy) {
         weapon.target = closestEnemy.id;
-        const targetRadius = closestEnemy.unit ? closestEnemy.unit.radiusColliderUnitShot
+        const targetRadius = closestEnemy.unit ? closestEnemy.unit.unitRadiusCollider.shot
           : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
         weapon.state = closestDist <= r.engage.acquire + targetRadius ? 'engaged' : 'tracking';
       } else {

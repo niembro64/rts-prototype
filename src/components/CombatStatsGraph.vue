@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { NetworkServerSnapshotUnitTypeStats } from '../game/network/NetworkTypes';
-import { UNIT_BLUEPRINTS, BUILDABLE_UNIT_IDS } from '../game/sim/blueprints';
+import { UNIT_BLUEPRINTS, BUILDABLE_UNIT_IDS, getNormalizedUnitCost } from '../game/sim/blueprints';
 import { type FriendlyFireMode, type StatsSnapshot, applyFriendlyFire } from './combatStatsUtils';
 
 const props = defineProps<{
@@ -17,23 +17,27 @@ type MetricKey = 'damage' | 'kills' | 'damageCost' | 'killsCost' | 'normDamageCo
 const METRICS: { key: MetricKey; label: string; tip: string }[] = [
   { key: 'damage', label: 'Damage', tip: 'Cumulative damage dealt (adjusted for friendly fire mode)' },
   { key: 'kills', label: 'Kills', tip: 'Cumulative kills (adjusted for friendly fire mode)' },
-  { key: 'damageCost', label: 'Damage / Cost', tip: 'Damage dealt per unit of cost spent producing that unit type' },
-  { key: 'killsCost', label: 'Kills / Cost', tip: 'Kills per unit of cost spent producing that unit type' },
-  { key: 'normDamageCost', label: 'Norm (D/C)', tip: 'Damage/Cost normalized so top unit = 1 per snapshot' },
-  { key: 'normKillsCost', label: 'Norm (K/C)', tip: 'Kills/Cost normalized so top unit = 1 per snapshot' },
+  { key: 'damageCost', label: 'D / Cost', tip: 'Damage dealt per selected cost basis (E/M/E+M)' },
+  { key: 'killsCost', label: 'K / Cost', tip: 'Kills per selected cost basis (E/M/E+M)' },
+  { key: 'normDamageCost', label: 'Norm D/C', tip: 'Damage/Cost normalized — top unit = 1 per snapshot' },
+  { key: 'normKillsCost', label: 'Norm K/C', tip: 'Kills/Cost normalized — top unit = 1 per snapshot' },
   { key: 'avg', label: 'Avg', tip: 'Average of Norm(D/C) and Norm(K/C)' },
-  { key: 'avgNorm', label: 'Avg Norm', tip: 'Avg normalized so top unit = 1 per snapshot' },
+  { key: 'avgNorm', label: 'Avg Norm', tip: 'Avg normalized — top unit = 1 per snapshot' },
 ];
 
 const selectedMetric = ref<MetricKey>('avgNorm');
 
 const unitTypes = computed(() => BUILDABLE_UNIT_IDS);
 
+function getCost(s: NetworkServerSnapshotUnitTypeStats): number {
+  return getNormalizedUnitCost(s.units);
+}
+
 // Cost-based color scale using OKLab lightness for perceptual uniformity.
 // Hues spread from red (0°) to blue (240°); odd indices are dark, even are light.
 const unitCostColors = computed<Record<string, string>>(() => {
   const sorted = [...unitTypes.value].sort(
-    (a, b) => (UNIT_BLUEPRINTS[a]?.baseCost ?? 0) - (UNIT_BLUEPRINTS[b]?.baseCost ?? 0),
+    (a, b) => (UNIT_BLUEPRINTS[a] ? getNormalizedUnitCost(UNIT_BLUEPRINTS[a]) : 0) - (UNIT_BLUEPRINTS[b] ? getNormalizedUnitCost(UNIT_BLUEPRINTS[b]) : 0),
   );
   const n = sorted.length;
   const colors: Record<string, string> = {};
@@ -86,7 +90,7 @@ function rawMetricOf(m: MetricKey): MetricKey {
 
 function computeMetric(s: NetworkServerSnapshotUnitTypeStats | undefined, metric: MetricKey): number {
   if (!s) return 0;
-  const cost = s.units.cost ?? 0;
+  const cost = getCost(s);
   switch (metric) {
     case 'damage': return applyFriendlyFire(s.damage.dealt.enemy ?? 0, s.damage.dealt.friendly ?? 0, props.teamDamageMode);
     case 'kills': return applyFriendlyFire(s.kills.enemy ?? 0, s.kills.friendly ?? 0, props.teamKillsMode);
@@ -123,10 +127,10 @@ const formulaDisplay = computed(() => {
   switch (selectedMetric.value) {
     case 'damage': return 'cumulative damage dealt (adjusted for FF mode)';
     case 'kills': return 'cumulative kills (adjusted for FF mode)';
-    case 'damageCost': return 'damage dealt / cumulative cost spent producing unit type';
-    case 'killsCost': return 'kills / cumulative cost spent producing unit type';
-    case 'normDamageCost': return '(damage/cost) / max — top unit = 1';
-    case 'normKillsCost': return '(kills/cost) / max — top unit = 1';
+    case 'damageCost': return 'damage / normalized cost — cost = avg(E/maxE, M/maxM)';
+    case 'killsCost': return 'kills / normalized cost — cost = avg(E/maxE, M/maxM)';
+    case 'normDamageCost': return '(damage / cost) / max — top unit = 1';
+    case 'normKillsCost': return '(kills / cost) / max — top unit = 1';
     case 'avg': return 'avg(norm(damage/cost), norm(kills/cost))';
     case 'avgNorm': return 'avg / max — top unit = 1';
     default: throw new Error(`Unknown metric: ${selectedMetric.value}`);
@@ -164,7 +168,7 @@ function buildSeries(uts: string[], values: number[][]): Series[] {
       t: snap.timestamp,
       v: values[ui][si],
     }));
-    return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
+    return { unitType: ut, name: bp?.name ?? ut, cost: bp ? getNormalizedUnitCost(bp) : 0, color: unitCostColors.value[ut] ?? '#888', points };
   }).sort((a, b) => b.cost - a.cost);
 }
 
@@ -184,7 +188,7 @@ const series = computed<Series[]>(() => {
           : snap.stats.players[props.selectedPlayer] ?? {};
         return { t: snap.timestamp, v: computeMetric(data[ut], metric) };
       });
-      return { unitType: ut, name: bp?.name ?? ut, cost: bp?.baseCost ?? 0, color: unitCostColors.value[ut] ?? '#888', points };
+      return { unitType: ut, name: bp?.name ?? ut, cost: bp ? getNormalizedUnitCost(bp) : 0, color: unitCostColors.value[ut] ?? '#888', points };
     }).sort((a, b) => b.cost - a.cost);
   }
 
@@ -496,7 +500,7 @@ const hoverTime = computed(() => {
           class="legend-cost"
           text-anchor="end"
           :fill="s.color"
-        >{{ s.cost }}</text>
+        >{{ Math.round(s.cost * 100) }}%</text>
       </g>
     </svg>
 

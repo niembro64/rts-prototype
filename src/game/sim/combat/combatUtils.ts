@@ -9,7 +9,7 @@ export { distance, normalizeAngle };
 // Get target radius for range calculations
 export function getTargetRadius(target: Entity): number {
   if (target.unit) {
-    return target.unit.radiusColliderUnitShot;
+    return target.unit.unitRadiusCollider.shot;
   } else if (target.building) {
     const bWidth = target.building.width;
     const bHeight = target.building.height;
@@ -44,9 +44,9 @@ export function resolveWeaponWorldPos(
 const _btOut = { x: 0, y: 0 };
 export function getBarrelTipWorldPos(
   weaponX: number, weaponY: number,
-  firingAngle: number, config: TurretConfig, unitRadiusColliderShot: number,
+  firingAngle: number, config: TurretConfig, unitScaleRadius: number,
 ): { x: number; y: number } {
-  const offset = getBarrelTipOffset(config, unitRadiusColliderShot);
+  const offset = getBarrelTipOffset(config, unitScaleRadius);
   _btOut.x = weaponX + Math.cos(firingAngle) * offset;
   _btOut.y = weaponY + Math.sin(firingAngle) * offset;
   return _btOut;

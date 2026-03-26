@@ -125,7 +125,7 @@ export class DamageSystem {
       const t = lineCircleIntersectionT(
         startX, startY, endX, endY,
         unit.transform.x, unit.transform.y,
-        unit.unit.radiusColliderUnitShot + lineWidth / 2
+        unit.unit.unitRadiusCollider.shot + lineWidth / 2
       );
 
       if (t !== null && (closestT === null || t < closestT)) {
@@ -255,8 +255,8 @@ export class DamageSystem {
       const crossSq = (ux * dy - uy * dx);
       const panels = unit.unit.mirrorPanels;
       const boundR = panels.length > 0
-        ? Math.max(unit.unit.mirrorBoundRadius, unit.unit.radiusColliderUnitShot) + lineWidth
-        : unit.unit.radiusColliderUnitShot + lineWidth / 2;
+        ? Math.max(unit.unit.mirrorBoundRadius, unit.unit.unitRadiusCollider.shot) + lineWidth
+        : unit.unit.unitRadiusCollider.shot + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
       if (panels.length > 0) {
@@ -309,7 +309,7 @@ export class DamageSystem {
         const t = lineCircleIntersectionT(
           startX, startY, endX, endY,
           unit.transform.x, unit.transform.y,
-          unit.unit.radiusColliderUnitShot + lineWidth / 2
+          unit.unit.unitRadiusCollider.shot + lineWidth / 2
         );
         if (t !== null && t < bestT) {
           bestT = t; found = true;
@@ -372,7 +372,7 @@ export class DamageSystem {
       const t = lineCircleIntersectionT(
         source.start.x, source.start.y, source.end.x, source.end.y,
         unit.transform.x, unit.transform.y,
-        unit.unit.radiusColliderUnitShot + source.width / 2
+        unit.unit.unitRadiusCollider.shot + source.width / 2
       );
 
       if (t !== null) {
@@ -484,7 +484,7 @@ export class DamageSystem {
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
       // Treat projectile path as line, combine radii for collision
-      const combinedRadius = source.radius + unit.unit.radiusColliderUnitShot;
+      const combinedRadius = source.radius + unit.unit.unitRadiusCollider.shot;
       const t = lineCircleIntersectionT(
         source.prev.x, source.prev.y,
         source.current.x, source.current.y,
@@ -593,7 +593,7 @@ export class DamageSystem {
 
       const dx = unit.transform.x - source.center.x;
       const dy = unit.transform.y - source.center.y;
-      const targetRadius = unit.unit.radiusColliderUnitShot;
+      const targetRadius = unit.unit.unitRadiusCollider.shot;
 
       // Cheap squared-distance rejection before sqrt
       const distSq = dx * dx + dy * dy;

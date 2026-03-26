@@ -70,7 +70,7 @@ export type NetworkServerSnapshotGridCell = {
 export type NetworkServerSnapshotUnitTypeStats = {
   damage: { dealt: { enemy: number; friendly: number }; received: number };
   kills: { enemy: number; friendly: number };
-  units: { produced: number; lost: number; cost: number };
+  units: { produced: number; lost: number; energyCost: number; manaCost: number };
 };
 
 export type NetworkServerSnapshotCombatStats = {
@@ -175,7 +175,7 @@ export type NetworkServerSnapshotEntity = {
   unit?: {
     unitType: string;
     hp: { curr: number; max: number };
-    collider: { unitShot: number; unitUnit: number };
+    collider: { scale: number; shot: number; push: number };
     moveSpeed: number;
     mass: number;
     velocity: Vec2;

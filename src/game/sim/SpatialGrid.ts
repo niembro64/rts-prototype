@@ -445,7 +445,7 @@ export class SpatialGrid {
         const dy = unit.transform.y - y;
         // Add unit shot collider radius to distance check (matches building behavior)
         // so units at edge of seeRange + radius are not incorrectly excluded
-        const unitCheckRadius = radius + unit.unit.radiusColliderUnitShot;
+        const unitCheckRadius = radius + unit.unit.unitRadiusCollider.shot;
         if (dx * dx + dy * dy <= unitCheckRadius * unitCheckRadius) {
           this.queryResultAll.push(unit);
         }

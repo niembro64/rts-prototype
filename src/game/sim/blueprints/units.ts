@@ -11,8 +11,8 @@ import type { UnitBlueprint, MountPoint } from './types';
 
 // Compute widow's mount points: 6 beam turrets on abdomen edge, force field on prosoma
 function computeWidowMounts(): MountPoint[] {
-  const abdomenR = 1.15;     // matches abdomen radius in renderer
-  const abdomenFwd = -1.1;   // matches abdomen offset in renderer
+  const abdomenR = 1.15; // matches abdomen radius in renderer
+  const abdomenFwd = -1.1; // matches abdomen offset in renderer
   const mounts: MountPoint[] = [];
   for (let i = 0; i < 6; i++) {
     const angle = (i * Math.PI) / 3 + Math.PI / 6;
@@ -32,10 +32,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'JKL',
     hp: 55,
     moveSpeed: 300,
-    unitRadiusColliderShot: 8,
-    unitRadiusColliderPush: 8 * 1.2,
+    unitRadiusCollider: { scale: 8, shot: 6, push: 8 * 1.2 },
     mass: 30,
-    baseCost: 50,
+    energyCost: 50,
     manaCost: 10,
     turrets: [{ turretId: 'lightTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
@@ -60,11 +59,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'LNX',
     hp: 60,
     moveSpeed: 170,
-    unitRadiusColliderShot: 10,
-    unitRadiusColliderPush: 10 * 1.3,
+    unitRadiusCollider: { scale: 10, shot: 7, push: 10 * 1.3 },
     mass: 40,
-    baseCost: 90,
-    manaCost: 20,
+    energyCost: 90,
+    manaCost: 10,
     turrets: [{ turretId: 'pulseTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -87,25 +85,31 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'DDY',
     hp: 200,
     moveSpeed: 200,
-    unitRadiusColliderShot: 13,
-    unitRadiusColliderPush: 13 * 2.5,
+    unitRadiusCollider: { scale: 13, shot: 9, push: 13 * 2.5 },
     mass: 30,
-    baseCost: 350,
-    manaCost: 80,
+    energyCost: 10,
+    manaCost: 350,
     turrets: [
       { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
       { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
       { turretId: 'forceTurretLarge', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [
-      { x: 0.5, y: -0.4 },  // front-left laser
-      { x: 0.5, y: 0.4 },   // front-right laser
-      { x: 0, y: 0 },       // center force field
+      { x: 0.5, y: -0.4 }, // front-left laser
+      { x: 0.5, y: 0.4 }, // front-right laser
+      { x: 0, y: 0 }, // center force field
     ],
     locomotion: {
       type: 'legs',
       style: 'daddy',
-      config: { upperThickness: 2.5, lowerThickness: 2, hipRadius: 1.5, kneeRadius: 0.8, footRadius: 1.8, lerpDuration: 300 },
+      config: {
+        upperThickness: 2.5,
+        lowerThickness: 2,
+        hipRadius: 1.5,
+        kneeRadius: 0.8,
+        footRadius: 1.8,
+        lerpDuration: 300,
+      },
     },
     renderer: 'forceField',
     deathSound: AUDIO.event.death.daddy,
@@ -117,11 +121,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'BDG',
     hp: 300,
     moveSpeed: 200,
-    unitRadiusColliderShot: 16,
-    unitRadiusColliderPush: 16 * 1.4,
+    unitRadiusCollider: { scale: 16, shot: 13, push: 16 * 1.4 },
     mass: 300,
-    baseCost: 300,
-    manaCost: 60,
+    energyCost: 300,
+    manaCost: 10,
     turrets: [{ turretId: 'shotgunTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -144,11 +147,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'MGS',
     hp: 200,
     moveSpeed: 220,
-    unitRadiusColliderShot: 20,
-    unitRadiusColliderPush: 20 * 1.2,
+    unitRadiusCollider: { scale: 20, shot: 12, push: 20 * 1.2 },
     mass: 200,
-    baseCost: 220,
-    manaCost: 45,
+    energyCost: 220,
+    manaCost: 10,
     turrets: [{ turretId: 'mortarTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -172,17 +174,23 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'TCK',
     hp: 55,
     moveSpeed: 120,
-    unitRadiusColliderShot: 11,
-    unitRadiusColliderPush: 11 * 1.1,
+    unitRadiusCollider: { scale: 10, shot: 8, push: 11 * 1.1 },
     mass: 30,
-    baseCost: 35,
-    manaCost: 8,
+    energyCost: 10,
+    manaCost: 35,
     turrets: [{ turretId: 'laserTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: -0.45, y: 0 }],
     locomotion: {
       type: 'legs',
       style: 'tick',
-      config: { upperThickness: 2, lowerThickness: 1.5, hipRadius: 1, kneeRadius: 1.5, footRadius: 1, lerpDuration: 100 },
+      config: {
+        upperThickness: 2,
+        lowerThickness: 1.5,
+        hipRadius: 1,
+        kneeRadius: 1.5,
+        footRadius: 1,
+        lerpDuration: 100,
+      },
     },
     renderer: 'snipe',
     deathSound: AUDIO.event.death.tick,
@@ -194,11 +202,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'MMT',
     hp: 900,
     moveSpeed: 60,
-    unitRadiusColliderShot: 24,
-    unitRadiusColliderPush: 24 * 1.5,
+    unitRadiusCollider: { scale: 24, shot: 24, push: 24 * 1.5 },
     mass: 1000,
-    baseCost: 1200,
-    manaCost: 250,
+    energyCost: 1200,
+    manaCost: 10,
     turrets: [{ turretId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     locomotion: {
@@ -221,11 +228,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'WDW',
     hp: 2400,
     moveSpeed: 70,
-    unitRadiusColliderShot: 30,
-    unitRadiusColliderPush: 40 * 1.3,
+    unitRadiusCollider: { scale: 30, shot: 40, push: 40 * 1.3 },
     mass: 200,
-    baseCost: 5000,
-    manaCost: 300,
+    energyCost: 10,
+    manaCost: 3000,
     turrets: [
       { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
       { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
@@ -239,7 +245,14 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'widow',
-      config: { upperThickness: 7, lowerThickness: 6, hipRadius: 4, kneeRadius: 6, footRadius: 3.5, lerpDuration: 600 },
+      config: {
+        upperThickness: 7,
+        lowerThickness: 6,
+        hipRadius: 4,
+        kneeRadius: 6,
+        footRadius: 3.5,
+        lerpDuration: 600,
+      },
     },
     renderer: 'arachnid',
     seeRange: 400,
@@ -252,11 +265,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'HPO',
     hp: 1500,
     moveSpeed: 55,
-    unitRadiusColliderShot: 30,
-    unitRadiusColliderPush: 45 * 1.2,
+    unitRadiusCollider: { scale: 30, shot: 27, push: 45 * 1.2 },
     mass: 1500,
-    baseCost: 2500,
-    manaCost: 500,
+    energyCost: 2500,
+    manaCost: 10,
     turrets: [
       { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
       { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
@@ -285,17 +297,23 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'TRN',
     hp: 100,
     moveSpeed: 200,
-    unitRadiusColliderShot: 11,
-    unitRadiusColliderPush: 11 * 1.8,
+    unitRadiusCollider: { scale: 11, shot: 13, push: 11 * 1.8 },
     mass: 18,
-    baseCost: 200,
-    manaCost: 40,
+    energyCost: 10,
+    manaCost: 300,
     turrets: [{ turretId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0.1, y: 0 }],
     locomotion: {
       type: 'legs',
       style: 'tarantula',
-      config: { upperThickness: 6.5, lowerThickness: 6, hipRadius: 3.5, kneeRadius: 6, footRadius: 1.5, lerpDuration: 200 },
+      config: {
+        upperThickness: 6.5,
+        lowerThickness: 6,
+        hipRadius: 3.5,
+        kneeRadius: 6,
+        footRadius: 1.5,
+        lerpDuration: 200,
+      },
     },
     renderer: 'beam',
     deathSound: AUDIO.event.death.tarantula,
@@ -307,11 +325,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'LRS',
     hp: 200,
     moveSpeed: 160,
-    unitRadiusColliderShot: 10,
-    unitRadiusColliderPush: 34,
+    unitRadiusCollider: { scale: 10, shot: 8, push: 34 },
     mass: 20,
-    baseCost: 110,
-    manaCost: 25,
+    energyCost: 190,
+    manaCost: 10,
     turrets: [
       { turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 },
       { turretId: 'lightTurret', offsetX: 0, offsetY: 0 },
@@ -340,11 +357,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'CMD',
     hp: 500,
     moveSpeed: 200,
-    unitRadiusColliderShot: 20,
-    unitRadiusColliderPush: 20,
+    unitRadiusCollider: { scale: 20, shot: 20, push: 20 },
     mass: 60,
-    baseCost: 400,
-    manaCost: 0,
+    energyCost: 10,
+    manaCost: 400,
     turrets: [
       { turretId: 'beamTurret3', offsetX: 0, offsetY: 0 },
       { turretId: 'dgunTurret', offsetX: 0, offsetY: 0 },
@@ -356,7 +372,14 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'commander',
-      config: { upperThickness: 8, lowerThickness: 7, hipRadius: 5, kneeRadius: 7, footRadius: 5, lerpDuration: 400 },
+      config: {
+        upperThickness: 8,
+        lowerThickness: 7,
+        hipRadius: 5,
+        kneeRadius: 7,
+        footRadius: 5,
+        lerpDuration: 400,
+      },
     },
     renderer: 'commander',
     builder: { buildRange: 150, maxEnergyUseRate: 50 },
@@ -389,4 +412,29 @@ export function getUnitBlueprint(id: string): UnitBlueprint {
 
 export function getAllUnitBlueprints(): UnitBlueprint[] {
   return Object.values(UNIT_BLUEPRINTS);
+}
+
+// Normalized composite cost: avg(energy/maxEnergy, mana/maxMana).
+// Both resources contribute equally on a 0–1 scale.
+let _costNormsCache: { maxEnergy: number; maxMana: number } | null = null;
+
+function getCostNorms(): { maxEnergy: number; maxMana: number } {
+  if (_costNormsCache) return _costNormsCache;
+  let maxEnergy = 0;
+  let maxMana = 0;
+  for (const id of BUILDABLE_UNIT_IDS) {
+    const bp = UNIT_BLUEPRINTS[id];
+    if (!bp) continue;
+    if (bp.energyCost > maxEnergy) maxEnergy = bp.energyCost;
+    if (bp.manaCost > maxMana) maxMana = bp.manaCost;
+  }
+  _costNormsCache = { maxEnergy, maxMana };
+  return _costNormsCache;
+}
+
+export function getNormalizedUnitCost(bp: { energyCost: number; manaCost: number }): number {
+  const { maxEnergy, maxMana } = getCostNorms();
+  const eNorm = maxEnergy > 0 ? bp.energyCost / maxEnergy : 0;
+  const mNorm = maxMana > 0 ? bp.manaCost / maxMana : 0;
+  return (eNorm + mNorm) / 2;
 }

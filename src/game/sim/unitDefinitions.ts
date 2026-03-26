@@ -65,8 +65,8 @@ export function getUnitDefinition(unitId: string) {
     weaponType: bp.turrets[0]?.turretId ?? 'lightTurret',
     hp: bp.hp,
     moveSpeed: bp.moveSpeed,
-    radiusColliderUnitShot: bp.unitRadiusColliderShot,
-    energyCost: bp.baseCost,
+    unitRadiusCollider: { ...bp.unitRadiusCollider },
+    energyCost: bp.energyCost,
     locomotion: bp.locomotion.type as LocomotionType,
     legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
   };
@@ -79,8 +79,8 @@ export function getAllUnitDefinitions() {
     weaponType: bp.turrets[0]?.turretId ?? 'lightTurret',
     hp: bp.hp,
     moveSpeed: bp.moveSpeed,
-    radiusColliderUnitShot: bp.unitRadiusColliderShot,
-    energyCost: bp.baseCost,
+    unitRadiusCollider: { ...bp.unitRadiusCollider },
+    energyCost: bp.energyCost,
     locomotion: bp.locomotion.type as LocomotionType,
     legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
   }));

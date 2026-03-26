@@ -110,7 +110,7 @@ export function getUnitValue(unitId: string): UnitValuation {
   const bp = getUnitBlueprint(unitId);
 
   // Sum weapon values from the actual weapon array the unit spawns with
-  const weapons = createTurretsFromDefinition(unitId, bp.unitRadiusColliderShot);
+  const weapons = createTurretsFromDefinition(unitId, bp.unitRadiusCollider.scale);
   const weaponValue = weapons.reduce((sum, w) => sum + getWeaponValue(w.config), 0);
 
   // defensiveValue: sqrt(hp / 40) * 10  — normalized so jackal (40hp) = 10
@@ -137,7 +137,7 @@ export function printUnitValuationTable(): void {
   for (const unitId of Object.keys(UNIT_BLUEPRINTS)) {
     const val = getUnitValue(unitId);
     const bp = getUnitBlueprint(unitId);
-    const currentCost = bp.baseCost;
+    const currentCost = bp.energyCost;
 
     const delta = ((val.suggestedCost - currentCost) / currentCost) * 100;
 

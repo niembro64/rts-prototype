@@ -67,7 +67,7 @@ export class CommanderAbilitiesSystem {
           target: {
             id: currentTarget.id,
             pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
-            radius: currentTarget.unit.radiusColliderUnitShot,
+            radius: currentTarget.unit.unitRadiusCollider.shot,
           },
           type: 'heal',
           intensity: Math.max(0.1, intensity),

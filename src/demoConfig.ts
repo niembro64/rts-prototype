@@ -8,7 +8,7 @@ export const DEMO_CONFIG = {
   factoryCount: 10,
 
   /** Number of solar panels per player */
-  solarCount: 16,
+  solarCount: 8,
 
   /**
    * Lateral spread ratio (0–1). Fraction of the back edge used for spacing buildings.

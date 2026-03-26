@@ -29,11 +29,4 @@ export const CAPTURE_CONFIG = {
    * friendly unit constantly raising the flag.
    */
   buildingsCapturesTiles: false,
-
-  /**
-   * Mana generation per fully-raised tile per second (future use).
-   * Partially raised tiles generate proportionally less.
-   * 0 = mana system not yet active.
-   */
-  manaPerTilePerSecond: 0,
 };

@@ -21,7 +21,6 @@ const selectedPlayer = ref(1);
 // Friendly fire handling: include, ignore, or subtract team damage/kills
 const teamDamageMode = ref<FriendlyFireMode>('subHalf');
 const teamKillsMode = ref<FriendlyFireMode>('subHalf');
-
 const playerIds = computed(() => {
   if (!props.stats) return [];
   return Object.keys(props.stats.players).map(Number).sort();
@@ -105,6 +104,7 @@ const playerIds = computed(() => {
               >−1</button>
             </div>
           </div>
+
         </div>
       </div>
 

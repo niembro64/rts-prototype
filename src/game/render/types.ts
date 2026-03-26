@@ -48,7 +48,7 @@ export const COLORS = {
   PROJ_SECONDARY_RANGE: 0xffdd44, // Yellow for secondary damage radius
 
   // Unit radius circles
-  UNIT_SCALE_RADIUS: 0x44ffff, // Cyan for radiusColliderUnitShot (visual/click) radius
+  UNIT_SCALE_RADIUS: 0x44ffff, // Cyan for unitRadiusCollider.scale (visual/click) radius
   UNIT_SHOT_RADIUS: 0xff44ff, // Magenta for shot collider radius
   UNIT_PUSH_RADIUS: 0x44ff44, // Green for push collider radius
 } as const;

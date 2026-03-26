@@ -159,7 +159,7 @@ export const MAX_MANA = 1000;
 export const BASE_MANA_PER_SECOND = 5;
 
 /** Mana income per owned tile per second (regardless of flag height) */
-export const MANA_PER_TILE_PER_SECOND = 0.5;
+export const MANA_PER_TILE_PER_SECOND = 10.0;
 
 // =============================================================================
 // UNIT CAP
@@ -323,11 +323,11 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
 
 export const BUILDING_STATS: Record<string, BuildingStatEntry> = {
   solar: {
-    baseCost: 100, // Base energy cost (before multiplier)
+    energyCost: 100, // Base energy cost (before multiplier)
     hp: 200,
   },
   factory: {
-    baseCost: 300, // Base energy cost (before multiplier)
+    energyCost: 300, // Base energy cost (before multiplier)
     hp: 800,
   },
 };

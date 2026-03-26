@@ -159,10 +159,9 @@ export type UnitBlueprint = {
   shortName: string;
   hp: number;
   moveSpeed: number;
-  unitRadiusColliderShot: number;
-  unitRadiusColliderPush: number;
+  unitRadiusCollider: { scale: number; shot: number; push: number };
   mass: number;
-  baseCost: number;
+  energyCost: number;
   manaCost: number;
   turrets: TurretMount[];
   chassisMounts: MountPoint[];

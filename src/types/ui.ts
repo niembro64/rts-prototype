@@ -173,7 +173,7 @@ export type EnergyConsumer = {
 export type UnitTypeStats = {
   damage: { dealt: { enemy: number; friendly: number }; received: number };
   kills: { enemy: number; friendly: number };
-  units: { produced: number; lost: number; cost: number };
+  units: { produced: number; lost: number; energyCost: number; manaCost: number };
 };
 
 export type CombatStatsSnapshot = {

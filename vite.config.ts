@@ -4,8 +4,10 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { resolve } from 'path';
 
+const isTauri = !!process.env.TAURI_ENV_PLATFORM;
+
 export default defineConfig({
-  base: '/budget-annihilation/',
+  base: isTauri ? '/' : '/budget-annihilation/',
   plugins: [vue(), wasm(), topLevelAwait()],
   resolve: {
     alias: {

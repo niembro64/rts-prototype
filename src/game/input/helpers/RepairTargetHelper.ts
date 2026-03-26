@@ -46,7 +46,7 @@ export function findDamagedUnitAt(
     const dy = unit.transform.y - worldY;
     const dist = magnitude(dx, dy);
 
-    if (dist <= unit.unit.radiusColliderUnitShot) {
+    if (dist <= unit.unit.unitRadiusCollider.scale) {
       return unit;
     }
   }

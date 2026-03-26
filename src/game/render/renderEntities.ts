@@ -598,7 +598,8 @@ export class EntityRenderer {
 
     const { transform, unit, selectable, ownership } = entity;
     const { x, y, rotation } = transform;
-    const { radiusColliderUnitShot: radius, hp, maxHp } = unit;
+    const radius = unit.unitRadiusCollider.scale;
+    const { hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
 
     const gfx = getGraphicsConfig();
@@ -618,8 +619,8 @@ export class EntityRenderer {
     if (gfx.unitShape === 'circles') {
       const drawPush = LOD.CIRCLES_DRAW_PUSH;
       const drawShot = LOD.CIRCLES_DRAW_SHOT;
-      const pushRadius = unit.radiusColliderUnitUnit;
-      const shotRadius = unit.radiusColliderUnitShot;
+      const pushRadius = unit.unitRadiusCollider.push;
+      const shotRadius = unit.unitRadiusCollider.shot;
       const outerRadius = drawPush ? pushRadius : shotRadius;
       if (drawPush) {
         this.graphics.fillStyle(fullPalette.dark, 1);
@@ -765,7 +766,7 @@ export class EntityRenderer {
 
     const { transform, unit, ownership } = entity;
     const { x, y, rotation: bodyRot } = transform;
-    const r = unit.radiusColliderUnitShot;
+    const r = unit.unitRadiusCollider.scale;
 
     const unitType = entity.commander
       ? 'commander'

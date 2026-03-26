@@ -409,8 +409,9 @@ export class ClientViewState {
       }
       // Static fields only present on keyframes
       if (isFull) {
-        entity.unit.radiusColliderUnitShot = su.collider.unitShot;
-        entity.unit.radiusColliderUnitUnit = su.collider.unitUnit;
+        entity.unit.unitRadiusCollider.scale = su.collider.scale;
+        entity.unit.unitRadiusCollider.shot = su.collider.shot;
+        entity.unit.unitRadiusCollider.push = su.collider.push;
         entity.unit.moveSpeed = su.moveSpeed;
       }
 
@@ -654,7 +655,7 @@ export class ClientViewState {
               wp.y,
               turretAngle,
               entity.projectile.config,
-              source.unit!.radiusColliderUnitShot,
+              source.unit!.unitRadiusCollider.scale,
             );
             const startX = bt.x;
             const startY = bt.y;
@@ -836,7 +837,7 @@ export class ClientViewState {
           wp.y,
           turretAngle,
           config,
-          source.unit.radiusColliderUnitShot,
+          source.unit.unitRadiusCollider.scale,
         );
         spawnX = projBt.x;
         spawnY = projBt.y;
@@ -975,7 +976,7 @@ export class ClientViewState {
       if (playerId !== undefined && entity.ownership?.playerId !== playerId)
         continue;
 
-      const radius = entity.unit?.radiusColliderUnitShot ?? 15;
+      const radius = entity.unit?.unitRadiusCollider.scale ?? 15;
       const dx = entity.transform.x - x;
       const dy = entity.transform.y - y;
       if (dx * dx + dy * dy <= radius * radius) {

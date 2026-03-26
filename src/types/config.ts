@@ -107,7 +107,7 @@ export type MountPoint = {
 };
 
 export type BuildingStatEntry = {
-  baseCost: number;
+  energyCost: number;
   hp: number;
 };
 

@@ -31,7 +31,7 @@ export class LocomotionManager {
     const existing = this.arachnidLegs.get(entity.id);
     if (existing) return existing;
 
-    const radius = entity.unit?.radiusColliderUnitShot ?? 40;
+    const radius = entity.unit?.unitRadiusCollider.scale ?? 40;
     let leftSideConfigs: LegConfig[];
 
     if (legStyle === 'daddy') {
@@ -283,7 +283,7 @@ export class LocomotionManager {
     const existing = this.tankTreads.get(entity.id);
     if (existing) return existing;
 
-    const radius = entity.unit?.radiusColliderUnitShot ?? 24;
+    const radius = entity.unit?.unitRadiusCollider.scale ?? 24;
     const treads = createTreadPair(unitType, radius);
 
     treads.leftTread.initializeAt(
@@ -309,7 +309,7 @@ export class LocomotionManager {
     const existing = this.vehicleWheels.get(entity.id);
     if (existing) return existing;
 
-    const radius = entity.unit?.radiusColliderUnitShot ?? 10;
+    const radius = entity.unit?.unitRadiusCollider.scale ?? 10;
     const unitType = entity.unit?.unitType;
 
     if (!unitType) return null;

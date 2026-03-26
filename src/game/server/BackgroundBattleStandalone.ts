@@ -4,7 +4,7 @@ import type { Entity, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import { aimTurretsToward } from '../sim/turretInit';
 import type { IPhysicsEngine as PhysicsEngine } from './IPhysicsEngine';
-import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../sim/blueprints';
+import { BUILDABLE_UNIT_IDS, getUnitBlueprint, getNormalizedUnitCost } from '../sim/blueprints';
 import {
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
@@ -22,8 +22,8 @@ function buildWeightTable(allowedTypes?: ReadonlySet<string>): void {
   backgroundUnitWeights = [];
   for (const t of types) {
     const bp = getUnitBlueprint(t);
-    const cost = bp?.baseCost ?? 100;
-    const weight = 1 / Math.max(cost, 1);
+    const cost = getNormalizedUnitCost(bp);
+    const weight = 1 / Math.max(cost, 0.01);
     totalWeight += weight;
     backgroundUnitWeights.push({ type: t, cumWeight: totalWeight });
   }
@@ -80,7 +80,7 @@ function spawnUnit(
   if (unit.unit) {
     const body = physics.createUnitBody(
       x, y,
-      unit.unit.radiusColliderUnitUnit,
+      unit.unit.unitRadiusCollider.push,
       unit.unit.mass,
       `unit_${unit.id}`,
     );

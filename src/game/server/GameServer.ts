@@ -180,7 +180,7 @@ export class GameServer {
           const body = this.physics.createUnitBody(
             entity.transform.x,
             entity.transform.y,
-            entity.unit.radiusColliderUnitUnit,
+            entity.unit.unitRadiusCollider.push,
             entity.unit.mass,
             `unit_${entity.id}`
           );
@@ -409,7 +409,7 @@ export class GameServer {
         const body = this.physics.createUnitBody(
           entity.transform.x,
           entity.transform.y,
-          entity.unit.radiusColliderUnitUnit,
+          entity.unit.unitRadiusCollider.push,
           entity.unit.mass,
           `unit_${entity.id}`
         );
@@ -422,8 +422,8 @@ export class GameServer {
           if (!building.body?.physicsBody || !building.building) continue;
           const bw = building.building.width / 2;
           const bh = building.building.height / 2;
-          if (Math.abs(spawnX - building.transform.x) < bw + entity.unit.radiusColliderUnitUnit &&
-              Math.abs(spawnY - building.transform.y) < bh + entity.unit.radiusColliderUnitUnit) {
+          if (Math.abs(spawnX - building.transform.x) < bw + entity.unit.unitRadiusCollider.push &&
+              Math.abs(spawnY - building.transform.y) < bh + entity.unit.unitRadiusCollider.push) {
             this.physics.setIgnoreStatic(body, building.body.physicsBody);
             break;
           }

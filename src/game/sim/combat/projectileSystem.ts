@@ -138,7 +138,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // Create projectile(s)
       const pellets = config.spread?.pelletCount ?? 1;
       const spreadAngle = config.spread?.angle ?? 0;
-      const barrelOffset = getBarrelTipOffset(config, unit.unit.radiusColliderUnitShot);
+      const barrelOffset = getBarrelTipOffset(config, unit.unit.unitRadiusCollider.shot);
 
       for (let i = 0; i < pellets; i++) {
         // Calculate spread — each pellet gets a random angle within the cone
@@ -271,7 +271,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         const dx = proj.prevX - source.transform.x;
         const dy = proj.prevY - source.transform.y;
         const distSq = dx * dx + dy * dy;
-        const clearance = source.unit.radiusColliderUnitShot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
+        const clearance = source.unit.unitRadiusCollider.shot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
         if (distSq > clearance * clearance) {
           proj.hasLeftSource = true;
         }
@@ -400,7 +400,7 @@ function _updateTravelingProjectilesWasm(
         const dx = (proj.prevX ?? entity.transform.x) - source.transform.x;
         const dy = (proj.prevY ?? entity.transform.y) - source.transform.y;
         const distSq = dx * dx + dy * dy;
-        const clearance = source.unit.radiusColliderUnitShot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
+        const clearance = source.unit.unitRadiusCollider.shot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
         if (distSq > clearance * clearance) {
           proj.hasLeftSource = true;
         }
@@ -506,7 +506,7 @@ export function updateProjectiles(
         const weaponX = beamWP.x, weaponY = beamWP.y;
 
         // Beam starts at barrel tip
-        const bt = getBarrelTipWorldPos(weaponX, weaponY, turretAngle, proj.config, source.unit.radiusColliderUnitShot);
+        const bt = getBarrelTipWorldPos(weaponX, weaponY, turretAngle, proj.config, source.unit.unitRadiusCollider.shot);
         proj.startX = bt.x;
         proj.startY = bt.y;
 

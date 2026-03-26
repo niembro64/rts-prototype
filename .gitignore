@@ -113,3 +113,7 @@ bundle-stats.json
 Dockerfile.local
 docker-compose.override.yml
 rts-physics-wasm/target/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/schemas/

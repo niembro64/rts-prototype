@@ -2051,7 +2051,7 @@ onUnmounted(() => {
               <button
                 class="control-btn"
                 :class="{ active: unitRadiusToggles.visual }"
-                title="Show unit shot collider radius (radiusColliderUnitShot — rendering &amp; click detection)"
+                title="Show unit scale radius (unitRadiusCollider.scale — rendering &amp; click detection)"
                 @click="toggleUnitRadius('visual')"
               >
                 SCAL
@@ -2059,7 +2059,7 @@ onUnmounted(() => {
               <button
                 class="control-btn"
                 :class="{ active: unitRadiusToggles.shot }"
-                title="Show unit shot collider radius (radiusColliderUnitShot — projectile/beam hit detection)"
+                title="Show unit shot radius (unitRadiusCollider.shot — projectile/beam hit detection)"
                 @click="toggleUnitRadius('shot')"
               >
                 SHOT
@@ -2067,7 +2067,7 @@ onUnmounted(() => {
               <button
                 class="control-btn"
                 :class="{ active: unitRadiusToggles.push }"
-                title="Show unit push collider radius (radiusColliderUnitUnit — unit-unit push physics)"
+                title="Show unit push radius (unitRadiusCollider.push — unit-unit push physics)"
                 @click="toggleUnitRadius('push')"
               >
                 PUSH

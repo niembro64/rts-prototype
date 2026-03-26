@@ -240,7 +240,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const fireSin = Math.sin(fireAngle);
 
   // Spawn position at barrel tip
-  const bt = getBarrelTipWorldPos(weaponPos.x, weaponPos.y, fireAngle, dgunTurret.config, commander.unit!.radiusColliderUnitShot);
+  const bt = getBarrelTipWorldPos(weaponPos.x, weaponPos.y, fireAngle, dgunTurret.config, commander.unit!.unitRadiusCollider.scale);
   const spawnX = bt.x;
   const spawnY = bt.y;
 

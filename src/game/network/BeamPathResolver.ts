@@ -158,9 +158,9 @@ function findBeamSegmentHit(
       panels.length > 0
         ? Math.max(
             unit.unit.mirrorBoundRadius,
-            unit.unit.radiusColliderUnitShot,
+            unit.unit.unitRadiusCollider.shot,
           )
-        : unit.unit.radiusColliderUnitShot;
+        : unit.unit.unitRadiusCollider.shot;
     if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
     if (panels.length > 0) {
@@ -223,7 +223,7 @@ function findBeamSegmentHit(
 
     // Circle collision — all units (mirror units can be hit on their body too)
     {
-      const r = unit.unit.radiusColliderUnitShot;
+      const r = unit.unit.unitRadiusCollider.shot;
       const t = lineCircleIntersectionT(
         sx,
         sy,

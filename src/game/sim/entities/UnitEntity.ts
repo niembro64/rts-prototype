@@ -16,8 +16,7 @@ import type {
 export class UnitEntity extends GameEntity {
   // Movement properties
   public moveSpeed: number;
-  public radiusColliderUnitShot: number;
-  public radiusColliderUnitUnit: number;
+  public unitRadiusCollider: { scale: number; shot: number; push: number };
   public velocityX: number = 0;
   public velocityY: number = 0;
 
@@ -49,13 +48,12 @@ export class UnitEntity extends GameEntity {
     y: number,
     hp: number,
     moveSpeed: number,
-    radiusColliderUnitShot: number,
+    unitRadiusCollider: { scale: number; shot: number; push: number },
     playerId: number
   ) {
     super(id, x, y, hp, hp);
     this.moveSpeed = moveSpeed;
-    this.radiusColliderUnitShot = radiusColliderUnitShot;
-    this.radiusColliderUnitUnit = radiusColliderUnitShot; // Default; overridden after construction
+    this.unitRadiusCollider = { ...unitRadiusCollider };
     this.ownership = { playerId };
     this.selectable = { selected: false };
   }
@@ -79,8 +77,7 @@ export class UnitEntity extends GameEntity {
     hp: number;
     maxHp: number;
     moveSpeed: number;
-    radiusColliderUnitShot: number;
-    radiusColliderUnitUnit: number;
+    unitRadiusCollider: { scale: number; shot: number; push: number };
     actions: UnitAction[];
     patrolStartIndex: number | null;
     velocityX: number;
@@ -90,8 +87,7 @@ export class UnitEntity extends GameEntity {
       hp: this.hp,
       maxHp: this.maxHp,
       moveSpeed: this.moveSpeed,
-      radiusColliderUnitShot: this.radiusColliderUnitShot,
-      radiusColliderUnitUnit: this.radiusColliderUnitUnit,
+      unitRadiusCollider: this.unitRadiusCollider,
       actions: this.actions,
       patrolStartIndex: this.patrolStartIndex,
       velocityX: this.velocityX,
@@ -100,12 +96,11 @@ export class UnitEntity extends GameEntity {
   }
 
   // Allow setting HP through the unit property for compatibility
-  set unit(value: { hp: number; maxHp: number; moveSpeed: number; radiusColliderUnitShot: number; radiusColliderUnitUnit: number; actions: UnitAction[]; patrolStartIndex: number | null; velocityX?: number; velocityY?: number }) {
+  set unit(value: { hp: number; maxHp: number; moveSpeed: number; unitRadiusCollider: { scale: number; shot: number; push: number }; actions: UnitAction[]; patrolStartIndex: number | null; velocityX?: number; velocityY?: number }) {
     this.hp = value.hp;
     this.maxHp = value.maxHp;
     this.moveSpeed = value.moveSpeed;
-    this.radiusColliderUnitShot = value.radiusColliderUnitShot;
-    this.radiusColliderUnitUnit = value.radiusColliderUnitUnit;
+    this.unitRadiusCollider = value.unitRadiusCollider;
     this.actions = value.actions;
     this.patrolStartIndex = value.patrolStartIndex;
     this.velocityX = value.velocityX ?? 0;

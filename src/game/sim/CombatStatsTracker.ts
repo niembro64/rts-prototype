@@ -11,7 +11,7 @@ function createEmptyStats(): UnitTypeStats {
   return {
     damage: { dealt: { enemy: 0, friendly: 0 }, received: 0 },
     kills: { enemy: 0, friendly: 0 },
-    units: { produced: 0, lost: 0, cost: 0 },
+    units: { produced: 0, lost: 0, energyCost: 0, manaCost: 0 },
   };
 }
 
@@ -118,7 +118,8 @@ export class CombatStatsTracker {
     try { bp = getUnitBlueprint(unitType); } catch { return; }
     const stats = this.getOrCreate(playerId, unitType);
     stats.units.produced += 1;
-    stats.units.cost += bp.baseCost;
+    stats.units.energyCost += bp.energyCost;
+    stats.units.manaCost += bp.manaCost;
   }
 
   recordUnitLost(playerId: PlayerId, unitType: string): void {
@@ -155,7 +156,8 @@ export class CombatStatsTracker {
         copy.kills.friendly = stats.kills.friendly;
         copy.units.produced = stats.units.produced;
         copy.units.lost = stats.units.lost;
-        copy.units.cost = stats.units.cost;
+        copy.units.energyCost = stats.units.energyCost;
+        copy.units.manaCost = stats.units.manaCost;
 
         // Aggregate into global
         let g = globalMap.get(unitType);
@@ -170,7 +172,8 @@ export class CombatStatsTracker {
         g.kills.friendly += stats.kills.friendly;
         g.units.produced += stats.units.produced;
         g.units.lost += stats.units.lost;
-        g.units.cost += stats.units.cost;
+        g.units.energyCost += stats.units.energyCost;
+        g.units.manaCost += stats.units.manaCost;
       }
     }
 

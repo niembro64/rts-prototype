@@ -41,7 +41,7 @@ export class FactoryProductionSystem {
       if (!factoryComp.isProducing) {
         factoryComp.isProducing = true;
         factoryComp.currentBuildProgress = 0;
-        factoryComp.currentBuildCost = bp.baseCost * COST_MULTIPLIER;
+        factoryComp.currentBuildCost = bp.energyCost * COST_MULTIPLIER;
         factoryComp.currentBuildManaCost = bp.manaCost * COST_MULTIPLIER;
       }
 
