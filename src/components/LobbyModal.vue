@@ -102,19 +102,15 @@ const canJoin = computed(() => {
         ●
       </button>
 
-      <!-- Initial screen: Host and Join side by side -->
+      <!-- Initial screen -->
       <template v-if="!isInLobby && !isConnecting">
         <h1 class="title">BUDGET ANNIHILATION</h1>
         <p class="subtitle">Multiplayer RTS</p>
 
-        <div class="options-container">
-          <button class="lobby-btn host-btn" @click="handleHost">
-            Host
-          </button>
+        <div class="main-actions">
+          <button class="lobby-btn host-btn" @click="handleHost">Host</button>
 
-          <div class="divider-vertical"></div>
-
-          <div class="join-section">
+          <div class="join-row">
             <input
               v-model="joinCode"
               class="code-input"
@@ -127,46 +123,37 @@ const canJoin = computed(() => {
               class="lobby-btn join-btn"
               :disabled="!canJoin"
               @click="handleJoinSubmit"
-            >
-              Join
-            </button>
+            >Join</button>
           </div>
         </div>
 
-        <!-- Error display -->
         <div v-if="error" class="error-message">{{ error }}</div>
 
-        <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">
-          Exit
-        </button>
+        <div v-if="isTauri" class="footer-row">
+          <button class="lobby-btn exit-btn" @click="exitApp">Exit</button>
+        </div>
       </template>
 
       <!-- Connecting screen -->
       <template v-else-if="isConnecting">
         <h1 class="title">CONNECTING...</h1>
         <div class="connecting-spinner"></div>
-        <div class="button-row">
-          <button class="lobby-btn cancel-btn" @click="handleCancel">
-            Cancel
-          </button>
-          <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">
-            Exit
-          </button>
+        <div class="footer-row">
+          <button class="lobby-btn cancel-btn" @click="handleCancel">Cancel</button>
+          <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">Exit</button>
         </div>
       </template>
 
-      <!-- Lobby screen (hosting or joined) -->
+      <!-- Lobby screen -->
       <template v-else-if="isInLobby">
         <h1 class="title">GAME LOBBY</h1>
 
         <div class="room-code-display" @click="copyCode">
-          <span class="room-label">Share this code with friends:</span>
-          <div class="room-code-row">
-            <span class="room-code">{{ roomCode }}</span>
-            <button class="copy-btn" :class="{ copied: codeCopied }" :title="codeCopied ? 'Copied!' : 'Copy to clipboard'">
-              {{ codeCopied ? '✓' : '⧉' }}
-            </button>
-          </div>
+          <span class="room-label">Share code:</span>
+          <span class="room-code">{{ roomCode }}</span>
+          <button class="copy-btn" :class="{ copied: codeCopied }" :title="codeCopied ? 'Copied!' : 'Copy'">
+            {{ codeCopied ? '✓' : '⧉' }}
+          </button>
         </div>
 
         <div class="players-section">
@@ -191,22 +178,17 @@ const canJoin = computed(() => {
 
         <div v-if="error" class="error-message">{{ error }}</div>
 
-        <div class="button-row">
-          <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">
-            Exit
-          </button>
-          <button class="lobby-btn cancel-btn" @click="handleCancel">
-            Leave
-          </button>
+        <div class="footer-row">
+          <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">Exit</button>
+          <button class="lobby-btn cancel-btn" @click="handleCancel">Leave</button>
+          <div class="footer-spacer"></div>
           <button
             v-if="isHost"
             class="lobby-btn start-btn"
             :disabled="!canStart"
             @click="handleStart"
-          >
-            Start
-          </button>
-          <span v-else class="waiting-text">Waiting for host to start...</span>
+          >Start</button>
+          <span v-else class="waiting-text">Waiting for host...</span>
         </div>
       </template>
     </div>
@@ -277,35 +259,38 @@ const canJoin = computed(() => {
   margin: 8px 0 20px 0;
 }
 
-.options-container {
-  display: flex;
-  gap: 30px;
-  align-items: center;
-  justify-content: center;
-}
-
-.join-section {
+.main-actions {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 10px;
+  align-items: stretch;
+  width: 220px;
+  margin: 0 auto 8px;
 }
 
-.divider-vertical {
-  width: 1px;
-  height: 40px;
-  background: linear-gradient(to bottom, transparent, #4444aa, transparent);
+.join-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.join-row .join-btn {
+  flex-shrink: 0;
+}
+
+.join-row .code-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .lobby-btn {
   font-family: monospace;
   font-size: 16px;
-  padding: 12px 30px;
+  padding: 10px 28px;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 140px;
 }
 
 .lobby-btn:disabled {
@@ -316,11 +301,11 @@ const canJoin = computed(() => {
 .host-btn {
   background: #44aa44;
   color: white;
+  width: 100%;
 }
 
 .host-btn:hover:not(:disabled) {
   background: #55cc55;
-  transform: scale(1.02);
 }
 
 .join-btn {
@@ -330,7 +315,6 @@ const canJoin = computed(() => {
 
 .join-btn:hover:not(:disabled) {
   background: #5aafff;
-  transform: scale(1.02);
 }
 
 .start-btn {
@@ -340,7 +324,6 @@ const canJoin = computed(() => {
 
 .start-btn:hover:not(:disabled) {
   background: #55cc55;
-  transform: scale(1.02);
 }
 
 .cancel-btn {
@@ -353,28 +336,23 @@ const canJoin = computed(() => {
 }
 
 .exit-btn {
-  background: rgba(255, 40, 40, 0.2);
+  background: rgba(255, 40, 40, 0.15);
   color: #ff6666;
-  border: 1px solid rgba(255, 80, 80, 0.4);
-  margin-top: 16px;
+  border: 1px solid rgba(255, 80, 80, 0.3);
 }
 
 .exit-btn:hover:not(:disabled) {
-  background: rgba(255, 40, 40, 0.4);
+  background: rgba(255, 40, 40, 0.35);
   color: #ff9999;
-  border-color: rgba(255, 80, 80, 0.7);
-}
-
-.button-row .exit-btn {
-  margin-top: 0;
+  border-color: rgba(255, 80, 80, 0.6);
 }
 
 .code-input {
   font-family: monospace;
-  font-size: 24px;
+  font-size: 20px;
   text-align: center;
-  width: 120px;
-  padding: 8px;
+  width: 110px;
+  padding: 8px 10px;
   background: rgba(0, 0, 0, 0.3);
   border: 2px solid #4444aa;
   border-radius: 8px;
@@ -393,21 +371,30 @@ const canJoin = computed(() => {
   border-color: #6666cc;
 }
 
-.button-row {
+.footer-row {
   display: flex;
-  gap: 15px;
+  gap: 12px;
+  align-items: center;
   justify-content: center;
   margin-top: 20px;
 }
 
+.footer-spacer {
+  flex: 1;
+}
+
 .room-code-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: rgba(0, 0, 0, 0.3);
-  padding: 20px 30px;
-  border-radius: 12px;
-  margin-bottom: 25px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
   cursor: pointer;
-  border: 2px solid rgba(74, 158, 255, 0.3);
+  border: 1px solid rgba(74, 158, 255, 0.3);
   transition: all 0.2s ease;
+  justify-content: center;
 }
 
 .room-code-display:hover {
@@ -417,33 +404,24 @@ const canJoin = computed(() => {
 
 .room-label {
   font-family: monospace;
-  font-size: 14px;
-  color: #aaa;
-  display: block;
-  margin-bottom: 12px;
-}
-
-.room-code-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 15px;
+  font-size: 13px;
+  color: #888;
 }
 
 .room-code {
   font-family: monospace;
-  font-size: 36px;
+  font-size: 28px;
   color: #4a9eff;
-  letter-spacing: 8px;
+  letter-spacing: 6px;
   font-weight: bold;
   user-select: all;
   text-shadow: 0 0 10px rgba(74, 158, 255, 0.4);
 }
 
 .copy-btn {
-  font-size: 20px;
-  width: 40px;
-  height: 40px;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   background: rgba(74, 158, 255, 0.2);
   border: 1px solid #4a9eff;
