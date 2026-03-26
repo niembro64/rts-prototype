@@ -23,6 +23,13 @@ const emit = defineEmits<{
   (e: 'spectate'): void;
 }>();
 
+const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+
+async function exitApp(): Promise<void> {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  getCurrentWindow().close();
+}
+
 const joinCode = ref('');
 const codeCopied = ref(false);
 
@@ -128,15 +135,24 @@ const canJoin = computed(() => {
 
         <!-- Error display -->
         <div v-if="error" class="error-message">{{ error }}</div>
+
+        <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">
+          Exit Game
+        </button>
       </template>
 
       <!-- Connecting screen -->
       <template v-else-if="isConnecting">
         <h1 class="title">CONNECTING...</h1>
         <div class="connecting-spinner"></div>
-        <button class="lobby-btn cancel-btn" @click="handleCancel">
-          Cancel
-        </button>
+        <div class="button-row">
+          <button class="lobby-btn cancel-btn" @click="handleCancel">
+            Cancel
+          </button>
+          <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">
+            Exit Game
+          </button>
+        </div>
       </template>
 
       <!-- Lobby screen (hosting or joined) -->
@@ -176,6 +192,9 @@ const canJoin = computed(() => {
         <div v-if="error" class="error-message">{{ error }}</div>
 
         <div class="button-row">
+          <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">
+            Exit
+          </button>
           <button class="lobby-btn cancel-btn" @click="handleCancel">
             Leave
           </button>
@@ -331,6 +350,23 @@ const canJoin = computed(() => {
 
 .cancel-btn:hover {
   background: #777;
+}
+
+.exit-btn {
+  background: rgba(255, 40, 40, 0.2);
+  color: #ff6666;
+  border: 1px solid rgba(255, 80, 80, 0.4);
+  margin-top: 16px;
+}
+
+.exit-btn:hover:not(:disabled) {
+  background: rgba(255, 40, 40, 0.4);
+  color: #ff9999;
+  border-color: rgba(255, 80, 80, 0.7);
+}
+
+.button-row .exit-btn {
+  margin-top: 0;
 }
 
 .code-input {

@@ -4,6 +4,13 @@ import { computed } from 'vue';
 export type { EconomyInfo } from '@/types/ui';
 import type { EconomyInfo } from '@/types/ui';
 
+const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+
+async function exitApp(): Promise<void> {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  getCurrentWindow().close();
+}
+
 const props = defineProps<{
   economy: EconomyInfo;
   playerName: string;
@@ -54,6 +61,14 @@ function flowColor(n: number): string {
 
 <template>
   <div class="top-bar" :style="{ '--player-color': playerColor }">
+    <!-- Exit (desktop app only) -->
+    <button
+      v-if="isTauri"
+      class="exit-btn"
+      title="Exit game"
+      @click="exitApp"
+    >EXIT</button>
+
     <!-- Player -->
     <button
       class="player-section"
@@ -142,6 +157,33 @@ function flowColor(n: number): string {
   color: white;
   z-index: 1000;
   pointer-events: auto;
+}
+
+.exit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  height: 32px;
+  border: 1px solid rgba(255, 80, 80, 0.4);
+  border-radius: 4px;
+  background: rgba(255, 40, 40, 0.15);
+  color: #ff6666;
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.exit-btn:hover {
+  background: rgba(255, 40, 40, 0.4);
+  color: #ff9999;
+  border-color: rgba(255, 80, 80, 0.7);
+}
+
+.exit-btn:active {
+  background: rgba(255, 40, 40, 0.6);
 }
 
 .player-section {
