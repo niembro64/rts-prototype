@@ -2,12 +2,12 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Budget Annihilation",
   "version": "0.0.1",
-  "identifier": "com.budgetannihilation.app",
+  "identifier": "com.budgetannihilation.game",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm start",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build:web"
   },
   "app": {
     "windows": [
