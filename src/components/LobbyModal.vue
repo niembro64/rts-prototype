@@ -109,7 +109,7 @@ const canJoin = computed(() => {
 
         <div class="options-container">
           <button class="lobby-btn host-btn" @click="handleHost">
-            Host Game
+            Host
           </button>
 
           <div class="divider-vertical"></div>
@@ -137,7 +137,7 @@ const canJoin = computed(() => {
         <div v-if="error" class="error-message">{{ error }}</div>
 
         <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">
-          Exit Game
+          Exit
         </button>
       </template>
 
@@ -150,7 +150,7 @@ const canJoin = computed(() => {
             Cancel
           </button>
           <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">
-            Exit Game
+            Exit
           </button>
         </div>
       </template>
@@ -204,7 +204,7 @@ const canJoin = computed(() => {
             :disabled="!canStart"
             @click="handleStart"
           >
-            Start Game
+            Start
           </button>
           <span v-else class="waiting-text">Waiting for host to start...</span>
         </div>
