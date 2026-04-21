@@ -11,10 +11,11 @@ import type { PlayerId } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 
-const UNIT_HEIGHT_MULT = 1.6;       // height = radius * this
-const BUILDING_HEIGHT = 80;         // flat box depth for buildings
+const UNIT_HEIGHT_MULT = 2.5;       // height = radius * this
+const BUILDING_HEIGHT = 120;        // flat box depth for buildings
 const PROJECTILE_Y_OFFSET = 40;     // projectiles float above ground
-const TURRET_BOX_SCALE = 0.5;       // turret cube as fraction of chassis radius
+const PROJECTILE_SCALE = 2.5;       // exaggerate projectile visuals (tiny otherwise)
+const TURRET_BOX_SCALE = 0.7;       // turret cube as fraction of chassis radius
 
 type EntityMesh = {
   group: THREE.Group;
@@ -194,7 +195,7 @@ export class Render3DEntities {
       }
 
       mesh.position.set(e.transform.x, PROJECTILE_Y_OFFSET, e.transform.y);
-      mesh.scale.setScalar(Math.max(radius, 2));
+      mesh.scale.setScalar(Math.max(radius, 2) * PROJECTILE_SCALE);
     }
 
     for (const [id, mesh] of this.projectileMeshes) {

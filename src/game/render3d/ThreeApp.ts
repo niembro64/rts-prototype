@@ -40,12 +40,13 @@ export class ThreeApp {
     this.camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000);
 
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
-      minDistance: 200,
+      minDistance: 100,
       maxDistance: 12000,
     });
-    // Center on map, pull back to a comfortable default
+    // Center on map, pulled in for a useful RTS default view
     this.orbit.setTarget(mapWidth / 2, 0, mapHeight / 2);
-    this.orbit.distance = Math.max(mapWidth, mapHeight) * 0.6;
+    this.orbit.distance = Math.max(mapWidth, mapHeight) * 0.35;
+    this.orbit.pitch = Math.PI * 0.28;
     this.orbit.apply();
 
     // Lighting

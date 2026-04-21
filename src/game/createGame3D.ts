@@ -46,11 +46,14 @@ export function createGame3D(config: Game3DConfig): Game3DInstance {
 
   const entityRenderer = new Render3DEntities(app.world, clientViewState);
 
-  app.onUpdate(() => {
+  app.onUpdate((_time, delta) => {
     const state = snapshotBuffer.consume();
     if (state) {
       clientViewState.applyNetworkState(state);
     }
+    // Dead-reckon + drift between snapshots so units move smoothly each frame,
+    // not just when a snapshot arrives.
+    clientViewState.applyPrediction(delta);
     entityRenderer.update();
   });
 
