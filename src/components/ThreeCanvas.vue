@@ -11,6 +11,16 @@ import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { MAP_SETTINGS } from '../config';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
+import {
+  loadStoredTickRate,
+  loadStoredSnapshotRate,
+  loadStoredKeyframeRatio,
+} from '../serverBarConfig';
+import {
+  loadStoredDemoUnits,
+  loadStoredDemoCap,
+  getDefaultDemoUnits,
+} from '../battleBarConfig';
 import type { PlayerId } from '../game/sim/types';
 
 const container = ref<HTMLDivElement | null>(null);
@@ -30,17 +40,23 @@ onMounted(async () => {
   });
   connection = new LocalGameConnection(server);
 
-  server.setTickRate(60);
-  server.setSnapshotRate(20);
-  server.setKeyframeRatio(10);
+  server.setTickRate(loadStoredTickRate());
+  server.setSnapshotRate(loadStoredSnapshotRate());
+  server.setKeyframeRatio(loadStoredKeyframeRatio());
 
-  // Enable all background unit types
+  const storedDemoUnits = loadStoredDemoUnits() ?? getDefaultDemoUnits();
   for (const ut of BACKGROUND_UNIT_TYPES) {
-    server.setBackgroundUnitTypeEnabled(ut, true);
+    server.setBackgroundUnitTypeEnabled(ut, storedDemoUnits.includes(ut));
   }
-  server.receiveCommand({ type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: 120 });
+  server.receiveCommand({
+    type: 'setMaxTotalUnits',
+    tick: 0,
+    maxTotalUnits: loadStoredDemoCap(),
+  });
 
-  const mapSize = MAP_SETTINGS.demo;
+  server.start();
+
+  const mapSize = MAP_SETTINGS.game;
   gameInstance = createGame3D({
     parent: container.value,
     width: rect.width,
