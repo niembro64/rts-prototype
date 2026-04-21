@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
+    "@types/three": "^0.184.0",
     "peerjs": "^1.5.5",
     "pixi.js": "^7.4.3",
+    "three": "^0.184.0",
     "vue": "^3.4.21"
   },
   "devDependencies": {
