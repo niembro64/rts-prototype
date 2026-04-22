@@ -14,6 +14,12 @@ import type { EntityId, PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SpinConfig } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
+import {
+  buildLocomotion,
+  updateLocomotion,
+  destroyLocomotion,
+  type Locomotion3DMesh,
+} from './Locomotion3D';
 
 // All units share the same chassis and turret *heights*; only the horizontal
 // footprint (radius) varies with the unit's collider scale. That lets projectile
@@ -58,6 +64,7 @@ type EntityMesh = {
   chassis: THREE.Mesh;
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
+  locomotion?: Locomotion3DMesh;
   ringMat?: THREE.MeshBasicMaterial;
   ring?: THREE.Mesh;
 };
@@ -323,17 +330,21 @@ export class Render3DEntities {
   }
 
   update(): void {
-    // Time step for continuous-rotation effects (barrel spin). Clamp in case
-    // the tab was backgrounded.
+    // Time step for continuous-rotation effects (barrel spin, wheel roll).
+    // Clamp in case the tab was backgrounded.
     const now = performance.now();
     const spinDt = Math.min((now - this._lastSpinMs) / 1000, 0.1);
     this._lastSpinMs = now;
+    // Also expose it in ms for locomotion's rolling-wheel math.
+    this._currentDtMs = spinDt * 1000;
 
     this.updateBarrelSpins(spinDt);
     this.updateUnits();
     this.updateBuildings();
     this.updateProjectiles();
   }
+
+  private _currentDtMs = 0;
 
   /**
    * Advance each unit's barrel-spin state (angle, speed). Mirrors the 2D
@@ -431,6 +442,11 @@ export class Render3DEntities {
         this.world.add(group);
         m = { group, chassis, turrets: turretMeshes };
 
+        // Locomotion (tank treads / vehicle wheels / arachnid legs). Built
+        // once per unit; treads/wheels spin per-frame based on the unit's
+        // linear velocity.
+        m.locomotion = buildLocomotion(group, e, radius, pid);
+
         // Mirror panels (e.g. Loris): standing slabs that track the turret.
         const mirrorPanels = e.unit?.mirrorPanels;
         if (mirrorPanels && mirrorPanels.length > 0) {
@@ -516,12 +532,18 @@ export class Render3DEntities {
         m.mirrors.root.rotation.y = -(mirrorRot - e.transform.rotation);
       }
 
+      // Locomotion: spin tread wheels per velocity; wheels/legs are static.
+      if (m.locomotion) {
+        updateLocomotion(m.locomotion, e, this._currentDtMs);
+      }
+
       // Health bar handled by the shared HealthBarOverlay (SVG layer).
     }
 
     // Remove meshes for units no longer present
     for (const [id, m] of this.unitMeshes) {
       if (!seen.has(id)) {
+        destroyLocomotion(m.locomotion);
         this.world.remove(m.group);
         this.unitMeshes.delete(id);
       }
@@ -613,7 +635,10 @@ export class Render3DEntities {
   }
 
   destroy(): void {
-    for (const m of this.unitMeshes.values()) this.world.remove(m.group);
+    for (const m of this.unitMeshes.values()) {
+      destroyLocomotion(m.locomotion);
+      this.world.remove(m.group);
+    }
     for (const m of this.buildingMeshes.values()) this.world.remove(m.group);
     for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
     this.unitMeshes.clear();
