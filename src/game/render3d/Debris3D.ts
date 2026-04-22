@@ -1,18 +1,19 @@
 // Debris3D — part-based "material explosion" renderer for unit deaths.
 //
-// When a unit dies, we look up the unit blueprint, figure out which pieces
-// its body was made of (tread slabs, wheels, leg segments, turret heads,
-// barrels, chassis edges) and spawn one debris mesh per piece that
-// approximates the source's shape, size, and color. Each piece gets a strong
-// random spin plus outward launch velocity biased by the hit direction, and
-// both spin and velocity decay via the same drag multiplier — so spins start
-// fast and slow to a stop while the color fades toward the map background.
+// Every atomic part of the unit (each tread slab, each wheel, each leg
+// segment, each turret head, each barrel, each chassis edge) emits exactly
+// one debris piece whose shape, size, and spawn origin match the real part
+// as rendered by Render3DEntities / Locomotion3D / BodyShape3D. Pieces are
+// strong-spin at spawn and decay via separate angular and linear drag so
+// the tumble visibly slows to a stop while the color fades toward the map
+// background.
 //
-// The LOD axis (`deathExplosionStyle`) scales the piece count: lower tiers
-// emit a fraction of the full template list, higher tiers emit all pieces
-// plus extra body-chunk fragments.
-//
-// Triggered via `spawn()` from the scene's SimEvent dispatcher (type='death').
+// The `deathExplosionStyle` LOD only narrows the final list lightly — at
+// 'puff' we take every other piece, at 'scatter' three quarters, at
+// 'shatter'/'detonate'/'obliterate' we emit all pieces. Every LOD still
+// sees pieces from each kind of source (treads, legs, turret, body, etc.)
+// because the selection strides through the template list rather than
+// truncating the tail.
 
 import * as THREE from 'three';
 import type { SimDeathContext } from '@/types/combat';
@@ -21,37 +22,42 @@ import { MAP_BG_COLOR } from '../../config';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { leftSideConfigsForStyle } from './Locomotion3D';
+import { getBodyEdgeTemplates } from './BodyShape3D';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
-/** Fraction of the blueprint's full piece list that each LOD emits. Lower
- *  tiers skip most non-body pieces (fewer leg segments, fewer body edges)
- *  while higher tiers emit everything plus extra "generic chunk" fragments
- *  so bigger explosions still feel proportional on high LODs. */
-const STYLE_FRACTION: Record<DebrisStyle, number> = {
-  puff: 0.25,
-  scatter: 0.5,
-  shatter: 0.75,
-  detonate: 1.0,
-  obliterate: 1.0,
+/** Stride through the template list — every Nth piece is emitted. '1' means
+ *  emit every piece, '2' every other, etc. All pieces are visually
+ *  equivalent so a stride still yields a representative mix. */
+const STYLE_STRIDE: Record<DebrisStyle, number> = {
+  puff: 2,
+  scatter: 1,
+  shatter: 1,
+  detonate: 1,
+  obliterate: 1,
 };
 
-/** Extra generic chunks added on top of the blueprint pieces, per LOD. */
-const STYLE_EXTRA_CHUNKS: Record<DebrisStyle, number> = {
-  puff: 0,
-  scatter: 4,
-  shatter: 10,
-  detonate: 20,
-  obliterate: 35,
-};
+// Must match the values in Render3DEntities for sizes to line up with the
+// source parts.
+const CHASSIS_HEIGHT = 28;
+const TURRET_HEIGHT = 16;
+const SHOT_HEIGHT = CHASSIS_HEIGHT + TURRET_HEIGHT / 2;
+const TURRET_HEAD_FOOTPRINT = 0.55;
+const BARREL_MIN_THICKNESS = 2;
 
-// Global cap on simultaneous pieces across the whole scene. Higher than
-// before since each death now emits many more shaped fragments.
-const GLOBAL_MAX_PIECES = 600;
+// Must match Locomotion3D.
+const TREAD_HEIGHT = 10;
+const TREAD_Y = TREAD_HEIGHT / 2;
+const HIP_Y = 14;
+const FOOT_Y = 1;
 
-// Physics. Linear drag mirrors the 2D DebrisSystem (0.99/frame at 60Hz).
-// Angular drag is lower so spin decays noticeably faster than travel —
-// this produces the "start fast, slow to a stop as they fade" behavior.
+// Global cap on simultaneous pieces across the scene — generous since most
+// units only produce ~30-60 pieces now. Old pieces are evicted oldest-first.
+const GLOBAL_MAX_PIECES = 800;
+
+// Physics. Linear drag mirrors the 2D DebrisSystem (~0.99/frame at 60Hz).
+// Angular drag is lower so spin decays noticeably faster than travel — the
+// "start fast, slow to a stop" behavior the user asked for.
 const GRAVITY = 900;
 const LINEAR_DRAG = 0.985;
 const ANGULAR_DRAG = 0.955;
@@ -59,49 +65,53 @@ const ANGULAR_DRAG = 0.955;
 const BASE_LIFETIME_MS = 1700;
 const LIFETIME_JITTER_MS = 800;
 
-// Launch speeds.
+// Launch speeds (world units / s).
 const RANDOM_SPEED_MIN = 70;
-const RANDOM_SPEED_RANGE = 180;
-const HIT_BIAS_MIN = 50;
-const HIT_BIAS_RANGE = 160;
+const RANDOM_SPEED_RANGE = 160;
+const HIT_BIAS_MIN = 40;
+const HIT_BIAS_RANGE = 140;
 const UP_VELOCITY_MIN = 80;
 const UP_VELOCITY_RANGE = 200;
-// Initial angular velocity — strong, so pieces whip on emit. Three axes so
-// the tumble reads from any camera angle.
-const ANGULAR_INIT = 25;
+// Initial angular velocity magnitude on each axis — chosen so big slabs
+// whip visibly without spinning absurdly fast.
+const ANGULAR_INIT = 22;
 
-// Shared fade target so pieces read as "burning out" into the world instead
-// of disappearing into black.
+// Shared fade target — pieces lerp toward this color so they read as
+// "burning out into the terrain" rather than disappearing into black.
 const BG_R = ((MAP_BG_COLOR >> 16) & 0xff) / 255;
 const BG_G = ((MAP_BG_COLOR >> 8) & 0xff) / 255;
 const BG_B = (MAP_BG_COLOR & 0xff) / 255;
 
-// Non-team colors for generic parts (match the 2D colorType palette).
-const TREAD_COLOR = 0x3a3e45;
-const WHEEL_COLOR = 0x404952;
-const LEG_COLOR = 0x3f464f;
-const BARREL_COLOR = 0xdcdce0;
+// Non-team colors for generic parts (tread gray, wheel gray, barrel white,
+// leg gray). Close to the values used by Locomotion3D's shared materials.
+const TREAD_COLOR = 0x1a1d22;
+const WHEEL_COLOR = 0x2a2f36;
+const LEG_COLOR = 0x2a2f36;
+const BARREL_COLOR = 0xffffff;
 
-type DebrisShape = 'box' | 'cylinder';
-
-/** One piece's launch specification. Geometry is always a unit cube or unit
- *  cylinder; `sx/sy/sz` give final world dimensions. Position is unit-local
- *  (rotated into world space by the unit's heading at spawn). */
-type DebrisTemplate = {
-  shape: DebrisShape;
-  /** Unit-local launch position. For a piece that was at (ox, oz) on the
-   *  chassis at spawn, the world position is derived from the unit's pose. */
-  ox: number;
-  oy: number;  // world Y offset above ground (for HIP/barrel elevation)
-  oz: number;
-  /** Local-space initial yaw of the piece, added to the unit's heading. */
-  yaw: number;
-  /** Final world dimensions of the piece (scale applied to unit geom). */
-  sx: number;
-  sy: number;
-  sz: number;
-  color: number;
-};
+/** A piece template. Boxes describe (position + yaw + size); cylinders
+ *  describe (endpoint A, endpoint B, thickness) — the cylinder spans A→B
+ *  with its axis aligned to the delta, matching how Locomotion3D places
+ *  leg + barrel cylinders. All positions are in unit-local coords at spawn;
+ *  the unit's rotation is baked in at emit time. */
+type DebrisTemplate =
+  | {
+      shape: 'box';
+      x: number; y: number; z: number;
+      yaw: number;
+      sx: number; sy: number; sz: number;
+      color: number;
+    }
+  | {
+      shape: 'cyl';
+      /** Endpoint A in unit-local coords. */
+      ax: number; ay: number; az: number;
+      /** Endpoint B in unit-local coords. */
+      bx: number; by: number; bz: number;
+      /** Radius scale — the cylinder diameter = 2·thickness after scale. */
+      thickness: number;
+      color: number;
+    };
 
 type Piece = {
   mesh: THREE.Mesh;
@@ -121,51 +131,43 @@ type Piece = {
 
 export class Debris3D {
   private root: THREE.Group;
+  // Shared geometries — box is unit cube, cylinder is unit radius/height.
   private boxGeom = new THREE.BoxGeometry(1, 1, 1);
-  private cylGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
+  private cylGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
 
   private pieces: Piece[] = [];
-  // One pool per geometry kind so we don't accidentally re-use a cylinder
-  // mesh for a box piece (the geometry reference would be wrong).
   private boxPool: { mesh: THREE.Mesh; material: THREE.MeshBasicMaterial }[] = [];
   private cylPool: { mesh: THREE.Mesh; material: THREE.MeshBasicMaterial }[] = [];
+
+  // Scratch vectors reused per emit — avoids per-piece allocation.
+  private _up = new THREE.Vector3(0, 1, 0);
+  private _dir = new THREE.Vector3();
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
   }
 
-  /**
-   * Spawn a unit-specific debris cluster at (x, z). Reads `ctx.unitType` to
-   * pull the blueprint, then generates a template list covering every visible
-   * source (tread slabs, wheels, leg segments, turrets, barrels, body edges)
-   * and emits one piece per template.
-   */
+  /** Spawn a full debris cluster for a dying unit. */
   spawn(x: number, z: number, ctx: SimDeathContext): void {
     const style = (getGraphicsConfig().deathExplosionStyle ?? 'scatter') as DebrisStyle;
-    const fraction = STYLE_FRACTION[style];
-    const extraChunks = STYLE_EXTRA_CHUNKS[style];
-    if (fraction <= 0 && extraChunks <= 0) return;
+    const stride = STYLE_STRIDE[style];
 
     const r = Math.max(ctx.radius ?? 10, 6);
-    const color = ctx.color ?? 0xcccccc;
+    const primary = ctx.color ?? 0xcccccc;
     const rotation = ctx.rotation ?? 0;
 
-    const templates = this.buildTemplates(ctx, r, color);
-    // Keep an even stride through the templates so low LODs still hit each
-    // "kind" of piece (treads + head + barrel + body) rather than only the
-    // front half of the list.
-    const stride = fraction >= 1 ? 1 : Math.max(1, Math.round(1 / fraction));
+    const templates = this.buildTemplates(ctx, r, primary);
 
-    // Hit-direction bias (sim XY maps to world XZ).
+    // Hit bias (sim XY → world XZ) — biases all pieces away from the
+    // attacker. Small magnitude so it reads as a nudge rather than a shove.
     const hx = ctx.hitDir?.x ?? 0;
     const hz = ctx.hitDir?.y ?? 0;
     const hLen = Math.hypot(hx, hz);
     const biasX = hLen > 1e-5 ? hx / hLen : 0;
     const biasZ = hLen > 1e-5 ? hz / hLen : 0;
 
-    // Unit velocity at death — pieces inherit a fraction so an exploding
-    // charging tank still reads as moving when it comes apart.
+    // Pieces inherit a fraction of the unit's velocity at death.
     const uvx = ctx.unitVel?.x ?? 0;
     const uvz = ctx.unitVel?.y ?? 0;
 
@@ -173,27 +175,7 @@ export class Debris3D {
     const sinR = Math.sin(rotation);
 
     for (let i = 0; i < templates.length; i += stride) {
-      this.emitPiece(templates[i], x, z, cosR, sinR, rotation, biasX, biasZ, uvx, uvz, r);
-    }
-
-    // Extra generic chunks: small team-colored boxes scattered around the
-    // unit, so higher LODs feel "meatier" without needing more blueprint
-    // data. Colored with the primary team color.
-    for (let i = 0; i < extraChunks; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = Math.random() * r * 0.7;
-      const chunk: DebrisTemplate = {
-        shape: 'box',
-        ox: Math.cos(angle) * dist,
-        oy: 4 + Math.random() * r * 0.4,
-        oz: Math.sin(angle) * dist,
-        yaw: Math.random() * Math.PI * 2,
-        sx: 1.5 + Math.random() * 2.5,
-        sy: 1.5 + Math.random() * 2.5,
-        sz: 1.5 + Math.random() * 2.5,
-        color,
-      };
-      this.emitPiece(chunk, x, z, cosR, sinR, rotation, biasX, biasZ, uvx, uvz, r);
+      this.emitPiece(templates[i], x, z, cosR, sinR, rotation, biasX, biasZ, uvx, uvz);
     }
 
     // Evict oldest pieces if we blew past the global cap.
@@ -204,12 +186,10 @@ export class Debris3D {
   }
 
   /**
-   * Build the blueprint-derived piece list. Sources in order:
-   *   - treads / wheels / legs (locomotion)
-   *   - turret heads + barrels (one per TurretMount)
-   *   - chassis body edges (hexagon ring around the center)
-   * Returned in a deterministic order so stride-based LOD thinning still
-   * covers every source category.
+   * Build the full list of one-piece-per-atomic-part templates from the unit
+   * blueprint + death context. Each source category (treads / wheels / legs /
+   * turrets / body edges) contributes pieces in turn so the template order
+   * interleaves sources evenly — helpful for stride-based LOD thinning.
    */
   private buildTemplates(
     ctx: SimDeathContext,
@@ -217,18 +197,19 @@ export class Debris3D {
     primary: number,
   ): DebrisTemplate[] {
     const out: DebrisTemplate[] = [];
-    if (!ctx.unitType) return this.genericChunkTemplates(r, primary, 8);
+    if (!ctx.unitType) return this.fallbackTemplates(r, primary);
 
     let bp;
     try {
       bp = getUnitBlueprint(ctx.unitType);
     } catch {
-      return this.genericChunkTemplates(r, primary, 8);
+      return this.fallbackTemplates(r, primary);
     }
 
-    // --- Locomotion pieces ---
+    // --- Locomotion parts ---
     const loc = bp.locomotion;
     if (loc?.type === 'treads') {
+      // Each side's full tread slab — same size the 3D locomotion draws.
       const cfg = loc.config;
       const length = r * cfg.treadLength;
       const width = r * cfg.treadWidth;
@@ -236,43 +217,34 @@ export class Debris3D {
       for (const side of [-1, 1]) {
         out.push({
           shape: 'box',
-          ox: 0, oy: 5, oz: side * offset,
+          x: 0, y: TREAD_Y, z: side * offset,
           yaw: 0,
-          sx: length, sy: 8, sz: width,
-          color: TREAD_COLOR,
-        });
-        // Break tread into two halves so the debris feels more shattered.
-        out.push({
-          shape: 'box',
-          ox: length * 0.25, oy: 5, oz: side * offset,
-          yaw: 0,
-          sx: length * 0.5, sy: 6, sz: width * 0.9,
+          sx: length, sy: TREAD_HEIGHT, sz: width,
           color: TREAD_COLOR,
         });
       }
     } else if (loc?.type === 'wheels') {
+      // Four corner wheels — each a slab at its actual mount position.
       const cfg = loc.config;
+      const slabLength = r * cfg.treadLength;
+      const slabWidth = r * cfg.treadWidth;
       const fx = r * cfg.wheelDistX;
       const fz = r * cfg.wheelDistY;
-      const wheelR = Math.max(2, r * cfg.wheelRadius);
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
           out.push({
-            shape: 'cylinder',
-            ox: sx * fx, oy: wheelR, oz: sz * fz,
-            yaw: Math.PI / 2,
-            // Unit cylinder axis is Y; rotate π/2 around Z-ish to lay flat-ish.
-            // We approximate wheel as a short thick disc: diameter = wheelR*2
-            // and axial thickness = width*0.6.
-            sx: wheelR * 2, sy: wheelR * 0.6, sz: wheelR * 2,
+            shape: 'box',
+            x: sx * fx, y: TREAD_Y, z: sz * fz,
+            yaw: 0,
+            sx: slabLength, sy: TREAD_HEIGHT, sz: slabWidth,
             color: WHEEL_COLOR,
           });
         }
       }
     } else if (loc?.type === 'legs') {
-      // Full per-style leg list mirrored for both sides. Each leg emits its
-      // upper + lower segment as separate cylinders so the debris has the
-      // limb-falling-apart feel of the 2D version.
+      // One cylinder per upper segment + one per lower segment, placed at
+      // their rest-pose hip/knee/foot positions — same math Locomotion3D
+      // uses to initialize legs.
       const left = leftSideConfigsForStyle(loc.style, r);
       const right = left.map((c) => ({
         ...c,
@@ -282,7 +254,6 @@ export class Debris3D {
       const all = [...left, ...right];
       const upperThick = Math.max(1, loc.config.upperThickness) * 0.6;
       const lowerThick = Math.max(1, loc.config.lowerThickness) * 0.6;
-      const HIP_Y_LOCAL = 14;
       for (const lc of all) {
         const hipX = lc.attachOffsetX;
         const hipZ = lc.attachOffsetY;
@@ -291,67 +262,95 @@ export class Debris3D {
         const footA = lc.snapTargetAngle;
         const footX = hipX + Math.cos(footA) * restDist;
         const footZ = hipZ + Math.sin(footA) * restDist;
-        // Approximate knee at midpoint of hip-foot, lifted up by a third of
-        // the upper leg length (matches the 2D vertical-bend visual roughly).
+        // Approximate knee at the midpoint of hip↔foot, lifted up — matches
+        // the visible "knee bends upward" pose from Locomotion3D.
         const kneeX = (hipX + footX) / 2;
         const kneeZ = (hipZ + footZ) / 2;
-        const kneeY = HIP_Y_LOCAL + lc.upperLegLength * 0.1;
-        // Upper segment — cylinder between hip and knee
-        pushCylinderSegment(out, hipX, HIP_Y_LOCAL, hipZ, kneeX, kneeY, kneeZ, upperThick, LEG_COLOR);
-        // Lower segment — cylinder between knee and foot
-        pushCylinderSegment(out, kneeX, kneeY, kneeZ, footX, 1, footZ, lowerThick, LEG_COLOR);
+        const kneeY = HIP_Y + lc.upperLegLength * 0.15;
+        out.push({
+          shape: 'cyl',
+          ax: hipX, ay: HIP_Y, az: hipZ,
+          bx: kneeX, by: kneeY, bz: kneeZ,
+          thickness: upperThick,
+          color: LEG_COLOR,
+        });
+        out.push({
+          shape: 'cyl',
+          ax: kneeX, ay: kneeY, az: kneeZ,
+          bx: footX, by: FOOT_Y, bz: footZ,
+          thickness: lowerThick,
+          color: LEG_COLOR,
+        });
       }
     }
 
     // --- Turret heads + barrels ---
+    // One piece per mounted turret head, plus one piece per barrel in each
+    // turret's barrel config. All placed in unit-local coords at SHOT_HEIGHT.
+    const dark = darkenColor(primary);
     for (const mount of bp.turrets) {
       let tb;
       try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
       const tox = mount.offsetX;
       const toz = mount.offsetY;
-      // Turret head — small stubby cylinder in team's secondary color. We
-      // use a darkened version of the primary so client-side color resolution
-      // is deterministic (no need for the PlayerId here).
-      const dark = darkenColor(primary);
-      const headR = r * 0.35;
+
+      // Turret head — standing cylinder of radius r·0.55 and height 16,
+      // centered at (tox, CHASSIS_TOP + TURRET_HEIGHT/2, toz). Same
+      // dimensions the live turret renders at.
+      const headR = r * TURRET_HEAD_FOOTPRINT;
+      const headCenterY = CHASSIS_HEIGHT + TURRET_HEIGHT / 2;
       out.push({
-        shape: 'cylinder',
-        ox: tox, oy: 26, oz: toz,
-        yaw: 0,
-        sx: headR * 2, sy: 10, sz: headR * 2,
+        shape: 'cyl',
+        ax: tox, ay: CHASSIS_HEIGHT, az: toz,
+        bx: tox, by: CHASSIS_HEIGHT + TURRET_HEIGHT, bz: toz,
+        thickness: headR,
         color: dark,
       });
-      // Barrels
+      void headCenterY;
+
+      // Barrels — one cylinder per physical barrel. Length + thickness come
+      // from the turret blueprint so a commander d-gun produces a thicker
+      // barrel than a scout mini-gatling.
       const bs = tb.barrel;
       if (!bs) continue;
       if (bs.type === 'simpleSingleBarrel') {
         const len = r * bs.barrelLength;
-        const thick = Math.max(1.5, bs.barrelThickness ?? 2);
+        if (len < 1) continue;
+        const diameter = Math.max(BARREL_MIN_THICKNESS, bs.barrelThickness ?? BARREL_MIN_THICKNESS);
+        const thick = diameter / 2;
+        // Barrel lies along unit-forward (+X in unit-local), starting at
+        // the turret mount, extending forward. Middle of the barrel sits
+        // at SHOT_HEIGHT so it lines up with the head's mid-line.
         out.push({
-          shape: 'cylinder',
-          ox: tox + len / 2, oy: 30, oz: toz,
-          yaw: Math.PI / 2,   // rotate cylinder axis (+Y) toward +X
-          sx: thick, sy: len, sz: thick,
+          shape: 'cyl',
+          ax: tox, ay: SHOT_HEIGHT, az: toz,
+          bx: tox + len, by: SHOT_HEIGHT, bz: toz,
+          thickness: thick,
           color: BARREL_COLOR,
         });
       } else if (bs.type === 'simpleMultiBarrel' || bs.type === 'coneMultiBarrel') {
         const len = r * bs.barrelLength;
-        const thick = Math.max(1.2, bs.barrelThickness ?? 1.5);
+        if (len < 1) continue;
+        const diameter = Math.max(BARREL_MIN_THICKNESS, bs.barrelThickness ?? BARREL_MIN_THICKNESS);
+        const thick = diameter / 2;
         const n = bs.barrelCount;
-        const orbit = bs.type === 'simpleMultiBarrel'
-          ? bs.orbitRadius * r
-          : bs.baseOrbit * r;
+        // Turret-local orbit matches Render3DEntities: barrels arranged in
+        // a YZ circle around the firing axis (+X). For the cone type we
+        // widen slightly at the tip; for the simple type barrels are
+        // parallel.
+        const baseOrbit =
+          bs.type === 'simpleMultiBarrel'
+            ? Math.min(bs.orbitRadius * r, TURRET_HEIGHT * 0.45)
+            : Math.min(bs.baseOrbit * r,   TURRET_HEIGHT * 0.35);
         for (let i = 0; i < n; i++) {
-          const a = (i + 0.5) / n * Math.PI * 2;
-          const oy = Math.cos(a) * Math.min(orbit, 8);
-          const oz = Math.sin(a) * Math.min(orbit, 8);
+          const a = ((i + 0.5) / n) * Math.PI * 2;
+          const oy = Math.cos(a) * baseOrbit;
+          const oz = Math.sin(a) * baseOrbit;
           out.push({
-            shape: 'cylinder',
-            ox: tox + len / 2,
-            oy: 30 + oy,
-            oz: toz + oz,
-            yaw: Math.PI / 2,
-            sx: thick, sy: len, sz: thick,
+            shape: 'cyl',
+            ax: tox,       ay: SHOT_HEIGHT + oy, az: toz + oz,
+            bx: tox + len, by: SHOT_HEIGHT + oy, bz: toz + oz,
+            thickness: thick,
             color: BARREL_COLOR,
           });
         }
@@ -359,22 +358,17 @@ export class Debris3D {
     }
 
     // --- Chassis body edges ---
-    // 8-sided ring of small box pieces around the unit, colored with the
-    // primary team color. Stands in for the 2D `addPolygonEdges` helper.
-    const sides = 8;
-    const polyR = r * 0.7;
-    const edgeLen = polyR * 2 * Math.sin(Math.PI / sides);
-    for (let i = 0; i < sides; i++) {
-      const a = (i + 0.5) / sides * Math.PI * 2;
+    // Read the per-renderer body shape (scout=diamond, tank=pentagon, etc.)
+    // and emit one tall slab per polygon edge at the true edge position.
+    // This makes a tank shatter into pentagon-walls, not generic cubes.
+    const rendererId = bp.renderer ?? 'arachnid';
+    const edges = getBodyEdgeTemplates(rendererId, r);
+    for (const e of edges) {
       out.push({
         shape: 'box',
-        ox: Math.cos(a) * polyR,
-        oy: 10,
-        oz: Math.sin(a) * polyR,
-        yaw: a + Math.PI / 2,   // tangent to ring
-        sx: edgeLen,
-        sy: 4,
-        sz: 2.5,
+        x: e.x, y: CHASSIS_HEIGHT / 2, z: e.z,
+        yaw: e.yaw,
+        sx: e.length, sy: CHASSIS_HEIGHT, sz: e.thickness,
         color: primary,
       });
     }
@@ -382,23 +376,21 @@ export class Debris3D {
     return out;
   }
 
-  /** Fallback when the unit blueprint can't be resolved — emit a small
-   *  cluster of generic team-colored chunks so something still reads. */
-  private genericChunkTemplates(r: number, color: number, count: number): DebrisTemplate[] {
+  /** Fallback when the unit blueprint can't be resolved — a small handful
+   *  of primary-colored slabs approximating a generic chassis. */
+  private fallbackTemplates(r: number, primary: number): DebrisTemplate[] {
     const out: DebrisTemplate[] = [];
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = Math.random() * r * 0.6;
+    const sides = 8;
+    const poly = r * 0.7;
+    const edgeLen = 2 * poly * Math.sin(Math.PI / sides);
+    for (let i = 0; i < sides; i++) {
+      const a = ((i + 0.5) / sides) * Math.PI * 2;
       out.push({
         shape: 'box',
-        ox: Math.cos(angle) * dist,
-        oy: 4 + Math.random() * r * 0.4,
-        oz: Math.sin(angle) * dist,
-        yaw: Math.random() * Math.PI * 2,
-        sx: 2 + Math.random() * 3,
-        sy: 2 + Math.random() * 3,
-        sz: 2 + Math.random() * 3,
-        color,
+        x: Math.cos(a) * poly, y: CHASSIS_HEIGHT / 2, z: Math.sin(a) * poly,
+        yaw: a + Math.PI / 2,
+        sx: edgeLen, sy: CHASSIS_HEIGHT, sz: Math.max(2, r * 0.08),
+        color: primary,
       });
     }
     return out;
@@ -415,13 +407,13 @@ export class Debris3D {
     biasZ: number,
     uvx: number,
     uvz: number,
-    r: number,
   ): void {
-    // Acquire mesh from the right pool (or build a new one).
+    // --- Acquire the right mesh from the right pool ---
+    const isBox = t.shape === 'box';
+    const pool = isBox ? this.boxPool : this.cylPool;
+    const geom = isBox ? this.boxGeom : this.cylGeom;
     let mesh: THREE.Mesh;
     let material: THREE.MeshBasicMaterial;
-    const pool = t.shape === 'box' ? this.boxPool : this.cylPool;
-    const geom = t.shape === 'box' ? this.boxGeom : this.cylGeom;
     const pooled = pool.pop();
     if (pooled) {
       mesh = pooled.mesh;
@@ -440,32 +432,68 @@ export class Debris3D {
       mesh.renderOrder = 13;
       this.root.add(mesh);
     }
-    mesh.scale.set(t.sx, t.sy, t.sz);
 
-    // Unit-local → world position: rotate (ox, oz) by unit heading, add unit
-    // center (x, z). Y is already world-absolute.
-    const wx = unitX + cosR * t.ox - sinR * t.oz;
-    const wz = unitZ + sinR * t.ox + cosR * t.oz;
-    mesh.position.set(wx, t.oy, wz);
+    // --- Position + orientation in world space ---
+    // Unit-local (lx, ly, lz) → world = (unitX + rot(lx,lz), ly, unitZ + rot(lx,lz))
+    let wcx: number, wcy: number, wcz: number;
+    // Also compute the outward direction from the unit center (in world XZ)
+    // so launch velocity points away from the center, not outward from the
+    // piece's own origin.
+    let localX: number, localZ: number;
 
-    // Start rotation: unit heading + template yaw around Y, plus a bit of
-    // random roll/pitch so the piece doesn't look perfectly upright at t=0.
-    mesh.rotation.set(
-      (Math.random() - 0.5) * 0.4,
-      unitRot + t.yaw,
-      (Math.random() - 0.5) * 0.4,
-    );
+    if (t.shape === 'box') {
+      wcx = unitX + cosR * t.x - sinR * t.z;
+      wcy = t.y;
+      wcz = unitZ + sinR * t.x + cosR * t.z;
+      localX = t.x;
+      localZ = t.z;
+      // Scale first, then apply base rotations.
+      mesh.scale.set(t.sx, t.sy, t.sz);
+      mesh.position.set(wcx, wcy, wcz);
+      mesh.quaternion.identity();
+      // Random mild roll/pitch for visual variance + our yaw in world = unitRot + template yaw.
+      mesh.rotation.set(
+        (Math.random() - 0.5) * 0.4,
+        unitRot + t.yaw,
+        (Math.random() - 0.5) * 0.4,
+      );
+    } else {
+      // Cylinder: transform both endpoints into world space, then place at
+      // midpoint with length = |b-a| and axis aligned to (b-a). Same math as
+      // Locomotion3D's setCylinderBetween.
+      const awx = unitX + cosR * t.ax - sinR * t.az;
+      const awy = t.ay;
+      const awz = unitZ + sinR * t.ax + cosR * t.az;
+      const bwx = unitX + cosR * t.bx - sinR * t.bz;
+      const bwy = t.by;
+      const bwz = unitZ + sinR * t.bx + cosR * t.bz;
+      const dx = bwx - awx;
+      const dy = bwy - awy;
+      const dz = bwz - awz;
+      const length = Math.max(1e-3, Math.hypot(dx, dy, dz));
+      wcx = (awx + bwx) / 2;
+      wcy = (awy + bwy) / 2;
+      wcz = (awz + bwz) / 2;
+      // Local outward direction from center of unit for velocity — use
+      // midpoint of (ax,az)/(bx,bz).
+      localX = (t.ax + t.bx) / 2;
+      localZ = (t.az + t.bz) / 2;
+      // Scale X/Z by thickness (radius), Y by length — the unit cylinder's
+      // default axis is +Y so we then rotate it to the segment direction.
+      mesh.scale.set(t.thickness, length, t.thickness);
+      mesh.position.set(wcx, wcy, wcz);
+      this._dir.set(dx / length, dy / length, dz / length);
+      mesh.quaternion.setFromUnitVectors(this._up, this._dir);
+    }
 
-    // Outward radial velocity from the unit center. For pieces close to the
-    // center (body edges), use the template's local offset direction. For
-    // off-center pieces (treads, wheels), the radial direction naturally
-    // points away from the unit.
-    const offLen = Math.hypot(t.ox, t.oz);
-    let outX = 1, outZ = 0;
-    if (offLen > 1e-3) {
-      // Rotate the unit-local outward vector into world space.
-      const lx = t.ox / offLen;
-      const lz = t.oz / offLen;
+    // --- Launch velocity ---
+    // Outward from the unit center in world XZ. For pieces at the center
+    // (offset ≈ 0), pick a random direction so we don't get NaN.
+    const localLen = Math.hypot(localX, localZ);
+    let outX: number, outZ: number;
+    if (localLen > 1e-3) {
+      const lx = localX / localLen;
+      const lz = localZ / localLen;
       outX = cosR * lx - sinR * lz;
       outZ = sinR * lx + cosR * lz;
     } else {
@@ -477,15 +505,18 @@ export class Debris3D {
     const outSpeed = RANDOM_SPEED_MIN + Math.random() * RANDOM_SPEED_RANGE;
     const hitSpeed = HIT_BIAS_MIN + Math.random() * HIT_BIAS_RANGE;
     const up = UP_VELOCITY_MIN + Math.random() * UP_VELOCITY_RANGE;
-
     const vx = outX * outSpeed + biasX * hitSpeed + uvx * 0.3;
     const vz = outZ * outSpeed + biasZ * hitSpeed + uvz * 0.3;
     const vy = up;
 
-    // Strong initial spin on all three axes so the piece reads as tumbling
-    // from the moment it spawns. Magnitude scales mildly with piece size so
-    // tiny body-edge chunks don't whip visibly faster than big tread slabs.
-    const spinScale = Math.max(0.4, Math.min(1.2, 12 / Math.max(t.sx, t.sy, t.sz, 1)));
+    // --- Initial spin ---
+    // Scale angular velocity down for very big pieces (full tread slabs)
+    // so they don't whip too fast. Clamped so tiny chunks still spin fast.
+    const maxDim =
+      t.shape === 'box'
+        ? Math.max(t.sx, t.sy, t.sz)
+        : Math.max(t.thickness * 2, Math.hypot(t.bx - t.ax, t.by - t.ay, t.bz - t.az));
+    const spinScale = Math.max(0.3, Math.min(1.2, 14 / Math.max(maxDim, 1)));
 
     const baseR = ((t.color >> 16) & 0xff) / 255;
     const baseG = ((t.color >> 8) & 0xff) / 255;
@@ -501,15 +532,11 @@ export class Debris3D {
       lifetime: BASE_LIFETIME_MS + Math.random() * LIFETIME_JITTER_MS,
       baseR, baseG, baseB,
     });
-    // Piece size is arbitrary but avoid compiler complaining about `r`.
-    void r;
   }
 
   update(dtMs: number): void {
     const dtSec = dtMs / 1000;
-    // Convert per-60Hz drag factors into time-aware multipliers. Linear +
-    // angular use different exponents so spin decays visibly faster than
-    // travel — the "slow to a stop as they fade" behavior.
+    // Time-aware drag factors derived from the per-60Hz multipliers.
     const linDrag = Math.pow(LINEAR_DRAG, dtSec * 60);
     const angDrag = Math.pow(ANGULAR_DRAG, dtSec * 60);
 
@@ -525,14 +552,13 @@ export class Debris3D {
       p.mesh.position.y += p.vy * dtSec;
       p.mesh.position.z += p.vz * dtSec;
 
-      // Ground bounce — once, heavy damping, then settle.
+      // Ground bounce with heavy damping.
       if (p.mesh.position.y < 0.5) {
         p.mesh.position.y = 0.5;
         if (p.vy < 0) {
           p.vy = -p.vy * 0.25;
           p.vx *= 0.55;
           p.vz *= 0.55;
-          // Extra angular bleed on ground contact so pieces don't skate.
           p.avx *= 0.5;
           p.avy *= 0.5;
           p.avz *= 0.5;
@@ -553,8 +579,7 @@ export class Debris3D {
         continue;
       }
 
-      // Color + opacity fade. Lerp toward map background, then start fading
-      // alpha in the final 40% so pieces burn out smoothly.
+      // Color fade toward map background; opacity taper in the last 40%.
       const cLerp = Math.min(1, t * 1.4);
       p.material.color.setRGB(
         p.baseR + (BG_R - p.baseR) * cLerp,
@@ -567,8 +592,7 @@ export class Debris3D {
 
   private releaseToPool(p: Piece): void {
     p.mesh.visible = false;
-    // Heuristic: meshes with the box geometry go to the box pool, others go
-    // to cyl pool. Geometry is shared so we can compare by reference.
+    // Geometry is shared by reference so we can identify pool by geom ptr.
     if (p.mesh.geometry === this.boxGeom) {
       this.boxPool.push({ mesh: p.mesh, material: p.material });
     } else {
@@ -598,42 +622,10 @@ export class Debris3D {
   }
 }
 
-// --- Local helpers ---
+// --- Helpers ---
 
-/** Push one cylinder template that spans (ax..bx) in unit-local space. The
- *  cylinder is placed at the midpoint and oriented along the (a→b) vector. */
-function pushCylinderSegment(
-  out: DebrisTemplate[],
-  ax: number, ay: number, az: number,
-  bx: number, by: number, bz: number,
-  thickness: number,
-  color: number,
-): void {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const dz = bz - az;
-  const length = Math.hypot(dx, dy, dz);
-  if (length < 1e-3) return;
-  // Yaw so the cylinder's +Y axis rotates toward the segment in the XZ
-  // plane. We don't attempt pitch — legs lie nearly flat, so flat yaw
-  // approximation reads fine and avoids extra per-template data. Then scale
-  // sy = length, sx/sz = thickness.
-  const yaw = Math.atan2(dz, dx) - Math.PI / 2;
-  out.push({
-    shape: 'cylinder',
-    ox: (ax + bx) / 2,
-    oy: (ay + by) / 2,
-    oz: (az + bz) / 2,
-    yaw,
-    sx: thickness,
-    sy: length,
-    sz: thickness,
-    color,
-  });
-}
-
-/** Darken a 0xRRGGBB color by roughly 50% for turret-head secondary shading,
- *  matching the 2D DebrisSystem `colorType: 'dark'` path. */
+/** Darken a 0xRRGGBB color by ~50% per channel, same as the 2D
+ *  DebrisSystem's `colorType: 'dark'` path. Used for turret heads. */
 function darkenColor(c: number): number {
   const r = ((c >> 16) & 0xff) >> 1;
   const g = ((c >> 8) & 0xff) >> 1;

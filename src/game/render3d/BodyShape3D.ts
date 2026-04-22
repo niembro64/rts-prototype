@@ -152,6 +152,80 @@ function buildRectShape(width: number, length: number): THREE.Shape {
   ]);
 }
 
+/** One 3D edge slab that represents a side of the unit's extruded body.
+ *  Centered at (x, z) in unit-local coords, `length` along the edge
+ *  direction, `thickness` along the normal, standing full chassis height.
+ *  `yaw` is the rotation around Y that lays the edge tangent to the shape. */
+export type BodyEdgeTemplate = {
+  x: number;
+  z: number;
+  yaw: number;
+  length: number;
+  /** Depth (perpendicular to the edge, in world units). */
+  thickness: number;
+};
+
+/** Approximate the 3D chassis as a set of edge slabs, one per polygon side
+ *  (or four sides for rectangles, or N tangent chunks for circles). Each
+ *  edge sits at the polygon perimeter at the unit's visual radius and has
+ *  a length matching the true edge length of the shape — so a tank pentagon
+ *  emits five pentagon edges, a scout diamond emits four, a circle-bodied
+ *  unit emits a ring of tangent chunks.
+ *
+ *  Used by Debris3D to produce "body chunk" pieces the same size and
+ *  position as the panels of the source chassis, not generic small boxes. */
+export function getBodyEdgeTemplates(
+  renderer: string,
+  unitRadius: number,
+): BodyEdgeTemplate[] {
+  const spec = SHAPES[renderer as BodyRendererId] ?? SHAPES.arachnid;
+  const out: BodyEdgeTemplate[] = [];
+
+  if (spec.kind === 'polygon') {
+    const r = unitRadius * spec.radiusFrac;
+    const sides = spec.sides;
+    const edgeLen = 2 * r * Math.sin(Math.PI / sides);
+    const midR = r * Math.cos(Math.PI / sides);
+    for (let i = 0; i < sides; i++) {
+      const a = spec.rotation + ((i + 0.5) / sides) * Math.PI * 2;
+      out.push({
+        x: Math.cos(a) * midR,
+        z: Math.sin(a) * midR,
+        yaw: a + Math.PI / 2,
+        length: edgeLen,
+        thickness: Math.max(2, unitRadius * 0.08),
+      });
+    }
+  } else if (spec.kind === 'rect') {
+    const length = unitRadius * spec.lengthFrac;   // along X (forward)
+    const width = unitRadius * spec.widthFrac;     // along Z (side)
+    const thickness = Math.max(2, unitRadius * 0.08);
+    // Four sides of the rectangle — two long (front/back) and two short
+    // (left/right). Each slab sits along the edge it represents.
+    out.push({ x:  length / 2, z: 0, yaw: Math.PI / 2, length: width,  thickness });
+    out.push({ x: -length / 2, z: 0, yaw: Math.PI / 2, length: width,  thickness });
+    out.push({ x: 0, z:  width / 2, yaw: 0,            length: length, thickness });
+    out.push({ x: 0, z: -width / 2, yaw: 0,            length: length, thickness });
+  } else {
+    // Circle body — 10 tangent chunks around the perimeter.
+    const sides = 10;
+    const r = unitRadius * spec.radiusFrac;
+    const edgeLen = 2 * r * Math.sin(Math.PI / sides);
+    for (let i = 0; i < sides; i++) {
+      const a = ((i + 0.5) / sides) * Math.PI * 2;
+      out.push({
+        x: Math.cos(a) * r,
+        z: Math.sin(a) * r,
+        yaw: a + Math.PI / 2,
+        length: edgeLen,
+        thickness: Math.max(2, unitRadius * 0.08),
+      });
+    }
+  }
+
+  return out;
+}
+
 export function disposeBodyGeoms(): void {
   for (const entry of CACHE.values()) entry.geometry.dispose();
   CACHE.clear();
