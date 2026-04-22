@@ -22,6 +22,8 @@ import {
 } from './Locomotion3D';
 import { snapshotLod, type Lod3DState } from './Lod3D';
 import type { GraphicsConfig } from '@/types/graphics';
+import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
+import { getUnitBlueprint } from '../sim/blueprints';
 
 // All units share the same chassis and turret *heights*; only the horizontal
 // footprint (radius) varies with the unit's collider scale. That lets projectile
@@ -95,10 +97,8 @@ export class Render3DEntities {
   // When `lod.key` changes, any pre-built unit mesh is rebuilt.
   private lod: Lod3DState = snapshotLod();
 
-  // Shared geometries & per-team materials (avoid per-entity allocation)
-  private unitGeom = new THREE.CylinderGeometry(1, 1, 1, 20);
-  // Turret head: a cylinder (not a box) — matches the unit's circular chassis
-  // profile from above so the 3D silhouette looks like a turret, not a brick.
+  // Shared geometries & per-team materials (avoid per-entity allocation).
+  // Unit chassis geometries are per-renderer extrusions handled by BodyShape3D.
   private turretHeadGeom = new THREE.CylinderGeometry(1, 1, 1, 18);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
@@ -473,8 +473,14 @@ export class Render3DEntities {
       let m = this.unitMeshes.get(e.id);
       if (!m) {
         const group = new THREE.Group();
-        const chassis = new THREE.Mesh(this.unitGeom, this.getPrimaryMat(pid));
-        // Tag for raycast picking — maps mesh back to entity id
+        // Pull the 2D renderer id from the unit blueprint and use the
+        // matching extruded body shape (scout=diamond, tank=pentagon, etc.).
+        // Falls back to a circle body for unknown renderers.
+        let rendererId = 'arachnid';
+        try { rendererId = getUnitBlueprint(e.unit!.unitType).renderer ?? 'arachnid'; }
+        catch { /* leave default */ }
+        const bodyEntry = getBodyGeom(rendererId, CHASSIS_HEIGHT);
+        const chassis = new THREE.Mesh(bodyEntry.geometry, this.getPrimaryMat(pid));
         chassis.userData.entityId = e.id;
         group.add(chassis);
 
@@ -538,11 +544,24 @@ export class Render3DEntities {
       m.group.position.set(e.transform.x, 0, e.transform.y);
       m.group.rotation.y = -e.transform.rotation;
 
-      // Chassis sits on the ground: center at CHASSIS_HEIGHT/2, scaled to
-      // (radius, CHASSIS_HEIGHT, radius) so footprint varies but height is
-      // fixed across all units.
-      m.chassis.position.set(0, CHASSIS_HEIGHT / 2, 0);
-      m.chassis.scale.set(radius, CHASSIS_HEIGHT, radius);
+      // Chassis shape is an extruded 2D body (BodyShape3D). The geometry
+      // already sits from y=0 to y=CHASSIS_HEIGHT and is built at unit
+      // horizontal scale — scale X/Z by radius·radiusFrac to reach the
+      // correct visual size, leaving Y at 1 so chassis height stays fixed.
+      const bodyEntry = getBodyGeom(
+        (() => {
+          try { return getUnitBlueprint(e.unit!.unitType).renderer ?? 'arachnid'; }
+          catch { return 'arachnid'; }
+        })(),
+        CHASSIS_HEIGHT,
+      );
+      m.chassis.position.set(0, 0, 0);
+      if (bodyEntry.scaleX !== undefined && bodyEntry.scaleZ !== undefined) {
+        // Rectangle: explicit per-axis fractions (length vs width).
+        m.chassis.scale.set(radius * bodyEntry.scaleX, 1, radius * bodyEntry.scaleZ);
+      } else {
+        m.chassis.scale.set(radius * bodyEntry.radiusFrac, 1, radius * bodyEntry.radiusFrac);
+      }
 
       // Selection ring (flat ring on ground under the unit)
       const selected = e.selectable?.selected === true;
@@ -714,7 +733,7 @@ export class Render3DEntities {
     this.unitMeshes.clear();
     this.buildingMeshes.clear();
     this.projectileMeshes.clear();
-    this.unitGeom.dispose();
+    disposeBodyGeoms();
     this.turretHeadGeom.dispose();
     this.barrelGeom.dispose();
     this.projectileGeom.dispose();
