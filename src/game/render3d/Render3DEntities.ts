@@ -1,13 +1,16 @@
 // Render3DEntities — extrudes the 2D sim primitives into 3D shapes.
 //
-// - Units:        cylinder (radius from unitRadiusCollider.shot, height ∝ radius)
+// - Units:        cylinder (radius from unitRadiusCollider.scale, height ∝ radius)
+// - Turrets:      one per entry in entity.turrets, positioned at chassis-local
+//                 offset, rotated to the turret's firing angle, with white
+//                 barrel cylinders whose length comes from config.barrel.
 // - Buildings:    box (width/height from building component, y-depth ∝ scale)
 // - Projectiles:  small sphere (radius from projectile collision)
 //
 // Coordinate mapping: sim (x, y) → three (x, z). Y is up. Ground at y=0.
 
 import * as THREE from 'three';
-import type { PlayerId } from '../sim/types';
+import type { PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 
@@ -15,7 +18,9 @@ const UNIT_HEIGHT_MULT = 2.5;       // height = radius * this
 const BUILDING_HEIGHT = 120;        // flat box depth for buildings
 const PROJECTILE_Y_OFFSET = 40;     // projectiles float above ground
 const PROJECTILE_SCALE = 2.5;       // exaggerate projectile visuals (tiny otherwise)
-const TURRET_BOX_SCALE = 0.7;       // turret cube as fraction of chassis radius
+const TURRET_HEAD_SCALE = 0.55;     // turret head cube as fraction of chassis radius
+const BARREL_THICKNESS_MULT = 0.18; // barrel radius as fraction of unit radius
+const BARREL_COLOR = 0xffffff;
 
 // Health bar sizing (world units)
 const HP_BAR_WIDTH_MULT = 2.4;      // bar width ≈ radius · this
@@ -28,10 +33,16 @@ type HpBar = {
   fg: THREE.Mesh;
 };
 
+type TurretMesh = {
+  root: THREE.Group;       // positioned at turret.offset, rotated to turret rotation
+  head: THREE.Mesh;
+  barrels: THREE.Mesh[];
+};
+
 type EntityMesh = {
   group: THREE.Group;
   chassis: THREE.Mesh;
-  turret?: THREE.Mesh;
+  turrets: TurretMesh[];
   ringMat?: THREE.MeshBasicMaterial;
   ring?: THREE.Mesh;
   hp?: HpBar;
@@ -48,9 +59,11 @@ export class Render3DEntities {
 
   // Shared geometries & per-team materials (avoid per-entity allocation)
   private unitGeom = new THREE.CylinderGeometry(1, 1, 1, 20);
-  private turretGeom = new THREE.BoxGeometry(1, 1, 1);
+  private turretHeadGeom = new THREE.BoxGeometry(1, 1, 1);
+  private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
+  private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   // Thin ring for the selection indicator (flat, sits just above the ground plane)
   private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
   // Health bar quads (shared geometry, per-instance materials colored by HP%)
@@ -87,6 +100,67 @@ export class Render3DEntities {
   /** Set the camera used for billboarding HP bars. */
   setCamera(camera: THREE.Camera): void {
     this.camera = camera;
+  }
+
+  /**
+   * Build a turret mesh matching a single Turret's barrel configuration.
+   * The turret's local +X is its firing direction; barrels point along +X.
+   */
+  private buildTurretMesh(
+    parent: THREE.Group,
+    turret: Turret,
+    unitRadius: number,
+    pid: PlayerId | undefined,
+  ): TurretMesh {
+    const root = new THREE.Group();
+    const head = new THREE.Mesh(this.turretHeadGeom, this.getSecondaryMat(pid));
+    head.userData.entityId = undefined; // will be set by caller
+    const headSize = unitRadius * TURRET_HEAD_SCALE;
+    head.scale.set(headSize * 2, headSize, headSize * 2);
+    root.add(head);
+
+    const barrels: THREE.Mesh[] = [];
+    const barrel = turret.config.barrel;
+    const thickness = unitRadius * BARREL_THICKNESS_MULT;
+
+    const pushBarrel = (length: number, offsetY: number, offsetZ: number, radius = thickness): void => {
+      const m = new THREE.Mesh(this.barrelGeom, this.barrelMat);
+      // Cylinder default axis is +Y; rotate to align with +X (firing direction)
+      m.rotation.z = -Math.PI / 2;
+      m.scale.set(radius, length, radius);
+      // Place so the barrel's base sits at local x=0 and tip at x=length
+      m.position.set(length / 2, offsetY, offsetZ);
+      root.add(m);
+      barrels.push(m);
+    };
+
+    if (barrel) {
+      if (barrel.type === 'simpleSingleBarrel') {
+        const length = unitRadius * barrel.barrelLength;
+        pushBarrel(length, 0, 0);
+      } else if (
+        barrel.type === 'simpleMultiBarrel' ||
+        barrel.type === 'coneMultiBarrel'
+      ) {
+        const length = unitRadius * barrel.barrelLength;
+        const orbitR =
+          ('orbitRadius' in barrel ? barrel.orbitRadius : barrel.baseOrbit) *
+          unitRadius;
+        const n = barrel.barrelCount;
+        // Offset by half-step so even counts are symmetric (no barrel stacked directly above another).
+        const phase = Math.PI / 2;
+        for (let i = 0; i < n; i++) {
+          const a = phase + (i / n) * Math.PI * 2;
+          const oy = Math.cos(a) * orbitR;
+          const oz = Math.sin(a) * orbitR;
+          pushBarrel(length, oy, oz);
+        }
+      }
+      // complexSingleEmitter (force fields) has no physical barrel — skip
+    }
+
+    parent.add(root);
+    return { root, head, barrels };
   }
 
   private buildHpBar(parent: THREE.Group): HpBar {
@@ -164,9 +238,14 @@ export class Render3DEntities {
 
     for (const e of units) {
       seen.add(e.id);
-      const radius = e.unit?.unitRadiusCollider.shot ?? 15;
+      // Use `scale` (visual) rather than `shot` (collider) for sizing, matching
+      // what the 2D renderer uses. Fall back to `shot` if scale is missing.
+      const radius = e.unit?.unitRadiusCollider.scale
+        ?? e.unit?.unitRadiusCollider.shot
+        ?? 15;
       const height = radius * UNIT_HEIGHT_MULT;
       const pid = e.ownership?.playerId;
+      const turrets = e.turrets ?? [];
 
       let m = this.unitMeshes.get(e.id);
       if (!m) {
@@ -176,17 +255,22 @@ export class Render3DEntities {
         chassis.userData.entityId = e.id;
         group.add(chassis);
 
-        // Turret cube on top (visually distinct, rotates with turret angle if present)
-        const turret = new THREE.Mesh(this.turretGeom, this.getSecondaryMat(pid));
-        turret.userData.entityId = e.id;
-        group.add(turret);
+        // Build one TurretMesh per actual turret on the entity. Each turret
+        // has a head box + barrel cylinders matching its barrel config.
+        const turretMeshes: TurretMesh[] = [];
+        for (const t of turrets) {
+          const tm = this.buildTurretMesh(group, t, radius, pid);
+          tm.head.userData.entityId = e.id;
+          for (const b of tm.barrels) b.userData.entityId = e.id;
+          turretMeshes.push(tm);
+        }
 
         this.world.add(group);
-        m = { group, chassis, turret };
+        m = { group, chassis, turrets: turretMeshes };
         this.unitMeshes.set(e.id, m);
       } else {
         m.chassis.material = this.getPrimaryMat(pid);
-        if (m.turret) m.turret.material = this.getSecondaryMat(pid);
+        for (const tm of m.turrets) tm.head.material = this.getSecondaryMat(pid);
       }
 
       // Position (sim Y → three Z)
@@ -225,19 +309,18 @@ export class Render3DEntities {
         m.ring.scale.set(ringR, ringR, 1);
       }
 
-      // Turret: smaller box on top, rotated to first turret angle if available
-      if (m.turret) {
-        const turretSize = radius * TURRET_BOX_SCALE;
-        m.turret.scale.set(turretSize * 2, turretSize, turretSize * 2.5);
-        m.turret.position.set(0, height / 2 + turretSize / 2, 0);
-        const turretRot = e.turrets?.[0]?.rotation;
-        if (turretRot !== undefined) {
-          // Turret rotation is world-space; subtract chassis rotation so the
-          // box orients correctly relative to its parent group.
-          m.turret.rotation.y = -(turretRot - e.transform.rotation);
-        } else {
-          m.turret.rotation.y = 0;
-        }
+      // Per-turret placement. Turret offset is chassis-local in sim coords
+      // (x, y) which map to (x, z) in three; positioned on top of the chassis.
+      const turretBaseY = height / 2;
+      for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
+        const tm = m.turrets[i];
+        const t = turrets[i];
+        tm.root.position.set(t.offset.x, turretBaseY, t.offset.y);
+        // Turret rotation in world = t.rotation. Expressed in the parent group
+        // (which is rotated by -chassis.rotation around Y), the local Y rotation
+        // needs to be negated(diff) so the local +X points in the world firing
+        // direction. See derivation in comment above buildTurretMesh.
+        tm.root.rotation.y = -(t.rotation - e.transform.rotation);
       }
 
       // Health bar billboarded above the unit
@@ -279,7 +362,7 @@ export class Render3DEntities {
         box.userData.entityId = e.id;
         group.add(box);
         this.world.add(group);
-        m = { group, chassis: box };
+        m = { group, chassis: box, turrets: [] };
         this.buildingMeshes.set(e.id, m);
       } else {
         m.chassis.material = this.getPrimaryMat(pid);
@@ -358,12 +441,14 @@ export class Render3DEntities {
     this.buildingMeshes.clear();
     this.projectileMeshes.clear();
     this.unitGeom.dispose();
-    this.turretGeom.dispose();
+    this.turretHeadGeom.dispose();
+    this.barrelGeom.dispose();
     this.projectileGeom.dispose();
     this.buildingGeom.dispose();
     this.ringGeom.dispose();
     this.hpBarGeom.dispose();
     this.hpBgMat.dispose();
+    this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     for (const m of this.secondaryMats.values()) m.dispose();
     this.neutralMat.dispose();
