@@ -126,7 +126,10 @@ export class OrbitCamera {
 
       if (this.dragMode === 'orbit') {
         this.yaw -= dx * this.rotateSpeed;
-        this.pitch -= dy * this.rotateSpeed;
+        // Drag up → camera tilts up (sees more horizon); drag down → camera
+        // tilts down (more top-down). Matches the "grab-and-drag the view"
+        // convention common to 3D DCC tools (Blender/Unity/Maya).
+        this.pitch += dy * this.rotateSpeed;
         this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
       } else if (this.dragMode === 'pan') {
         // Pan in screen-space X/Y of the camera's ground-plane projection.
