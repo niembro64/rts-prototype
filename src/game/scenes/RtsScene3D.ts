@@ -18,11 +18,11 @@ import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
-import { WaypointRenderer3D } from '../render3d/WaypointRenderer3D';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBarOverlay } from '../hud/HealthBarOverlay';
+import { WaypointOverlay } from '../hud/WaypointOverlay';
 import { ThreeWorldProjector } from '../render3d/ThreeWorldProjector';
 import { getBottomBarsHeight } from '@/clientBarConfig';
 
@@ -81,7 +81,6 @@ export class RtsScene3D {
 
   private clientViewState!: ClientViewState;
   private entityRenderer!: Render3DEntities;
-  private waypointRenderer!: WaypointRenderer3D;
   private beamRenderer!: BeamRenderer3D;
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
@@ -90,6 +89,7 @@ export class RtsScene3D {
   private currentWaypointMode: WaypointType = 'move';
   private panArrowOverlay: PanArrowOverlay | null = null;
   private healthBarOverlay: HealthBarOverlay | null = null;
+  private waypointOverlay: WaypointOverlay | null = null;
 
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
@@ -272,7 +272,6 @@ export class RtsScene3D {
       this.threeApp.world,
       this.clientViewState,
     );
-    this.waypointRenderer = new WaypointRenderer3D(this.threeApp.world);
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
@@ -287,12 +286,13 @@ export class RtsScene3D {
         (dirX, dirY, intensity) => overlay.set(dirX, dirY, intensity),
       );
 
-      // Shared health-bar overlay (same SVG layer the 2D path uses).
+      // Shared health-bar + waypoint overlays (same SVG layers the 2D path uses).
       const projector = new ThreeWorldProjector(
         this.threeApp.camera,
         this.threeApp.canvas,
       );
       this.healthBarOverlay = new HealthBarOverlay(canvasParent, projector);
+      this.waypointOverlay = new WaypointOverlay(canvasParent, projector);
     }
 
     // Wire raycast-based selection + move commands
@@ -386,13 +386,13 @@ export class RtsScene3D {
     const renderStart = performance.now();
     this.entityRenderer.update();
     this.beamRenderer.update(this.clientViewState.getProjectiles());
-    this.waypointRenderer.update(
-      this._cachedSelectedUnits,
-      this._cachedSelectedBuildings,
-    );
     this.healthBarOverlay?.update(
       this.clientViewState.getUnits(),
       this.clientViewState.getBuildings(),
+    );
+    this.waypointOverlay?.update(
+      this._cachedSelectedUnits,
+      this._cachedSelectedBuildings,
     );
     const renderEnd = performance.now();
 
@@ -595,8 +595,9 @@ export class RtsScene3D {
     this.panArrowOverlay = null;
     this.healthBarOverlay?.destroy();
     this.healthBarOverlay = null;
+    this.waypointOverlay?.destroy();
+    this.waypointOverlay = null;
     this.entityRenderer?.destroy();
-    this.waypointRenderer?.destroy();
     this.beamRenderer?.destroy();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();

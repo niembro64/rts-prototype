@@ -55,8 +55,6 @@ import {
   renderCommanderCrown,
   renderRangeCircles,
   renderUnitRadiusCircles,
-  renderWaypoints,
-  renderFactoryWaypoints,
 } from './selection';
 import { renderBuilding } from './BuildingRenderer';
 import { renderProjectile, renderProjRangeCircles } from './ProjectileRenderer';
@@ -459,13 +457,7 @@ export class EntityRenderer {
       );
     }
 
-    // 2. Waypoints for selected units
-    for (const entity of this.selectedUnits) {
-      renderWaypoints(this.graphics, entity, camera);
-    }
-    for (const entity of this.selectedFactories) {
-      renderFactoryWaypoints(this.graphics, entity, camera);
-    }
+    // 2. Waypoints drawn by the shared WaypointOverlay (SVG), so 2D/3D match.
 
     // 3. Range circles (reuse cached visibility objects to avoid per-frame allocation)
     if (anyRangeToggleActive()) {
