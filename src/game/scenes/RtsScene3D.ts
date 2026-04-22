@@ -265,6 +265,7 @@ export class RtsScene3D {
       this.threeApp.world,
       this.clientViewState,
     );
+    this.entityRenderer.setCamera(this.threeApp.camera);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;

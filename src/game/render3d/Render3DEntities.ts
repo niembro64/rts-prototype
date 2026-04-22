@@ -17,17 +17,30 @@ const PROJECTILE_Y_OFFSET = 40;     // projectiles float above ground
 const PROJECTILE_SCALE = 2.5;       // exaggerate projectile visuals (tiny otherwise)
 const TURRET_BOX_SCALE = 0.7;       // turret cube as fraction of chassis radius
 
+// Health bar sizing (world units)
+const HP_BAR_WIDTH_MULT = 2.4;      // bar width ≈ radius · this
+const HP_BAR_HEIGHT = 6;            // bar height in world units
+const HP_BAR_Y_OFFSET = 12;         // gap above unit top
+
+type HpBar = {
+  root: THREE.Group;
+  bg: THREE.Mesh;
+  fg: THREE.Mesh;
+};
+
 type EntityMesh = {
   group: THREE.Group;
   chassis: THREE.Mesh;
   turret?: THREE.Mesh;
   ringMat?: THREE.MeshBasicMaterial;
   ring?: THREE.Mesh;
+  hp?: HpBar;
 };
 
 export class Render3DEntities {
   private world: THREE.Group;
   private clientViewState: ClientViewState;
+  private camera: THREE.Camera | null = null;
 
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
@@ -40,6 +53,15 @@ export class Render3DEntities {
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   // Thin ring for the selection indicator (flat, sits just above the ground plane)
   private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
+  // Health bar quads (shared geometry, per-instance materials colored by HP%)
+  private hpBarGeom = new THREE.PlaneGeometry(1, 1);
+  private hpBgMat = new THREE.MeshBasicMaterial({
+    color: 0x1a1a1a,
+    transparent: true,
+    opacity: 0.85,
+    depthTest: false,
+    depthWrite: false,
+  });
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private secondaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
@@ -60,6 +82,64 @@ export class Render3DEntities {
         new THREE.MeshLambertMaterial({ color: colors.secondary }),
       );
     }
+  }
+
+  /** Set the camera used for billboarding HP bars. */
+  setCamera(camera: THREE.Camera): void {
+    this.camera = camera;
+  }
+
+  private buildHpBar(parent: THREE.Group): HpBar {
+    const root = new THREE.Group();
+    const bg = new THREE.Mesh(this.hpBarGeom, this.hpBgMat);
+    bg.renderOrder = 10;
+    root.add(bg);
+    // Foreground uses a per-instance material so we can recolor (green→red) as
+    // HP drops. Anchored to geometry center; scale.x drives bar fill, with
+    // position.x offset to keep the left edge pinned to the bar's left side.
+    const fgMat = new THREE.MeshBasicMaterial({
+      color: 0x4cd964,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const fg = new THREE.Mesh(this.hpBarGeom, fgMat);
+    fg.renderOrder = 11;
+    root.add(fg);
+    parent.add(root);
+    return { root, bg, fg };
+  }
+
+  private updateHpBar(
+    m: EntityMesh,
+    yTop: number,
+    width: number,
+    pct: number,
+    parent: THREE.Group,
+  ): void {
+    if (pct >= 0.999 || pct <= 0) {
+      // Full health or dead → hide bar
+      if (m.hp) m.hp.root.visible = false;
+      return;
+    }
+    if (!m.hp) m.hp = this.buildHpBar(parent);
+    m.hp.root.visible = true;
+    m.hp.root.position.set(0, yTop + HP_BAR_Y_OFFSET, 0);
+    // Billboard to face the camera
+    if (this.camera) m.hp.root.quaternion.copy(this.camera.quaternion);
+
+    const h = HP_BAR_HEIGHT;
+    m.hp.bg.scale.set(width, h, 1);
+    m.hp.bg.position.set(0, 0, 0);
+
+    // Foreground: scale x by percent; shift left so the left edge stays fixed
+    const fgWidth = width * pct;
+    m.hp.fg.scale.set(fgWidth, h * 0.85, 1);
+    m.hp.fg.position.set(-(width - fgWidth) / 2, 0, 0.1);
+
+    // Color fade: green → yellow → red as HP drops
+    const mat = m.hp.fg.material as THREE.MeshBasicMaterial;
+    if (pct > 0.5) mat.color.setRGB(0.3 + (1 - pct) * 1.4, 0.85, 0.25);
+    else mat.color.setRGB(0.92, 0.25 + pct * 1.2, 0.2);
   }
 
   private getPrimaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
@@ -159,6 +239,17 @@ export class Render3DEntities {
           m.turret.rotation.y = 0;
         }
       }
+
+      // Health bar billboarded above the unit
+      const hp = e.unit?.hp ?? 0;
+      const maxHp = e.unit?.maxHp ?? 1;
+      this.updateHpBar(
+        m,
+        height / 2,
+        radius * HP_BAR_WIDTH_MULT,
+        maxHp > 0 ? hp / maxHp : 0,
+        m.group,
+      );
     }
 
     // Remove meshes for units no longer present
@@ -197,6 +288,16 @@ export class Render3DEntities {
       m.group.position.set(e.transform.x, h / 2, e.transform.y);
       m.group.rotation.y = -e.transform.rotation;
       m.chassis.scale.set(w, h, d);
+
+      const bhp = e.building?.hp ?? 0;
+      const bmaxHp = e.building?.maxHp ?? 1;
+      this.updateHpBar(
+        m,
+        h / 2,
+        Math.max(w, d) * 1.2,
+        bmaxHp > 0 ? bhp / bmaxHp : 0,
+        m.group,
+      );
     }
 
     for (const [id, m] of this.buildingMeshes) {
@@ -244,8 +345,14 @@ export class Render3DEntities {
   }
 
   destroy(): void {
-    for (const m of this.unitMeshes.values()) this.world.remove(m.group);
-    for (const m of this.buildingMeshes.values()) this.world.remove(m.group);
+    for (const m of this.unitMeshes.values()) {
+      if (m.hp) (m.hp.fg.material as THREE.MeshBasicMaterial).dispose();
+      this.world.remove(m.group);
+    }
+    for (const m of this.buildingMeshes.values()) {
+      if (m.hp) (m.hp.fg.material as THREE.MeshBasicMaterial).dispose();
+      this.world.remove(m.group);
+    }
     for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
     this.unitMeshes.clear();
     this.buildingMeshes.clear();
@@ -254,6 +361,9 @@ export class Render3DEntities {
     this.turretGeom.dispose();
     this.projectileGeom.dispose();
     this.buildingGeom.dispose();
+    this.ringGeom.dispose();
+    this.hpBarGeom.dispose();
+    this.hpBgMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     for (const m of this.secondaryMats.values()) m.dispose();
     this.neutralMat.dispose();
