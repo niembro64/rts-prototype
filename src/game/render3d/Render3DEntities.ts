@@ -14,12 +14,18 @@ import type { PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 
-const UNIT_HEIGHT_MULT = 2.5;       // height = radius * this
-const BUILDING_HEIGHT = 120;        // flat box depth for buildings
-const PROJECTILE_Y_OFFSET = 40;     // projectiles float above ground
-const PROJECTILE_SCALE = 2.5;       // exaggerate projectile visuals (tiny otherwise)
-const TURRET_HEAD_SCALE = 0.55;     // turret head cube as fraction of chassis radius
-const BARREL_THICKNESS_MULT = 0.18; // barrel radius as fraction of unit radius
+// All units share the same chassis and turret *heights*; only the horizontal
+// footprint (radius) varies with the unit's collider scale. That lets projectile
+// Y be a single constant aligned with the barrel tips — so shots visibly
+// originate from the ends of the turret barrels instead of the chassis center.
+const CHASSIS_HEIGHT = 28;           // Y extent of every unit chassis
+const TURRET_HEIGHT = 16;            // Y extent of every turret head
+const SHOT_HEIGHT = CHASSIS_HEIGHT + TURRET_HEIGHT / 2; // world Y of projectiles/barrel tips
+
+const BUILDING_HEIGHT = 120;
+const PROJECTILE_SCALE = 2.5;
+const TURRET_HEAD_FOOTPRINT = 0.55;  // head X/Z footprint as fraction of chassis radius
+const BARREL_THICKNESS_MULT = 0.18;  // barrel radius as fraction of unit radius
 const BARREL_COLOR = 0xffffff;
 
 // Health bar sizing (world units)
@@ -113,23 +119,30 @@ export class Render3DEntities {
     pid: PlayerId | undefined,
   ): TurretMesh {
     const root = new THREE.Group();
+    // Turret root is placed at the top of the chassis. The head sits ON the
+    // root (extends upward by TURRET_HEIGHT), and barrels emerge from the
+    // head's vertical center — so barrel tips line up with SHOT_HEIGHT.
     const head = new THREE.Mesh(this.turretHeadGeom, this.getSecondaryMat(pid));
-    head.userData.entityId = undefined; // will be set by caller
-    const headSize = unitRadius * TURRET_HEAD_SCALE;
-    head.scale.set(headSize * 2, headSize, headSize * 2);
+    const headFootprint = unitRadius * TURRET_HEAD_FOOTPRINT;
+    head.scale.set(headFootprint * 2, TURRET_HEIGHT, headFootprint * 2.5);
+    head.position.set(0, TURRET_HEIGHT / 2, 0);
     root.add(head);
 
     const barrels: THREE.Mesh[] = [];
     const barrel = turret.config.barrel;
     const thickness = unitRadius * BARREL_THICKNESS_MULT;
+    // Vertical center of the head — barrels orbit around the firing axis
+    // (local +X), so their Y position is offset from TURRET_HEIGHT/2.
+    const barrelCenterY = TURRET_HEIGHT / 2;
 
     const pushBarrel = (length: number, offsetY: number, offsetZ: number, radius = thickness): void => {
       const m = new THREE.Mesh(this.barrelGeom, this.barrelMat);
       // Cylinder default axis is +Y; rotate to align with +X (firing direction)
       m.rotation.z = -Math.PI / 2;
       m.scale.set(radius, length, radius);
-      // Place so the barrel's base sits at local x=0 and tip at x=length
-      m.position.set(length / 2, offsetY, offsetZ);
+      // Barrel base at local x=0, tip at x=length. Y pins to the head center
+      // so all shots (from any unit) originate at SHOT_HEIGHT in world Y.
+      m.position.set(length / 2, barrelCenterY + offsetY, offsetZ);
       root.add(m);
       barrels.push(m);
     };
@@ -143,9 +156,12 @@ export class Render3DEntities {
         barrel.type === 'coneMultiBarrel'
       ) {
         const length = unitRadius * barrel.barrelLength;
-        const orbitR =
+        // Clamp orbit so barrels stay inside the head (head half-height ≈ TURRET_HEIGHT/2).
+        // Barrels that slightly exceed the head look fine, but egregious overflow looks broken.
+        const rawOrbit =
           ('orbitRadius' in barrel ? barrel.orbitRadius : barrel.baseOrbit) *
           unitRadius;
+        const orbitR = Math.min(rawOrbit, TURRET_HEIGHT * 0.45);
         const n = barrel.barrelCount;
         // Offset by half-step so even counts are symmetric (no barrel stacked directly above another).
         const phase = Math.PI / 2;
@@ -238,12 +254,14 @@ export class Render3DEntities {
 
     for (const e of units) {
       seen.add(e.id);
-      // Use `scale` (visual) rather than `shot` (collider) for sizing, matching
-      // what the 2D renderer uses. Fall back to `shot` if scale is missing.
+      // Use `scale` (visual) rather than `shot` (collider) for horizontal
+      // footprint, matching the 2D renderer. Vertical sizing is fixed —
+      // every unit chassis uses CHASSIS_HEIGHT, every turret TURRET_HEIGHT —
+      // so all barrel tips (and therefore projectile spawns) align at
+      // SHOT_HEIGHT in world Y.
       const radius = e.unit?.unitRadiusCollider.scale
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
-      const height = radius * UNIT_HEIGHT_MULT;
       const pid = e.ownership?.playerId;
       const turrets = e.turrets ?? [];
 
@@ -273,12 +291,17 @@ export class Render3DEntities {
         for (const tm of m.turrets) tm.head.material = this.getSecondaryMat(pid);
       }
 
-      // Position (sim Y → three Z)
-      m.group.position.set(e.transform.x, height / 2, e.transform.y);
+      // Position group at the ground; children position themselves relative
+      // to it. (Previously the group was offset to the chassis center; moving
+      // it to the ground simplifies ring/HP-bar/turret Y calcs.)
+      m.group.position.set(e.transform.x, 0, e.transform.y);
       m.group.rotation.y = -e.transform.rotation;
 
-      // Chassis scale
-      m.chassis.scale.set(radius, height, radius);
+      // Chassis sits on the ground: center at CHASSIS_HEIGHT/2, scaled to
+      // (radius, CHASSIS_HEIGHT, radius) so footprint varies but height is
+      // fixed across all units.
+      m.chassis.position.set(0, CHASSIS_HEIGHT / 2, 0);
+      m.chassis.scale.set(radius, CHASSIS_HEIGHT, radius);
 
       // Selection ring (flat ring on ground under the unit)
       const selected = e.selectable?.selected === true;
@@ -291,10 +314,9 @@ export class Render3DEntities {
           depthWrite: false,
         });
         const ring = new THREE.Mesh(this.ringGeom, ringMat);
-        // RingGeometry lies in XY plane by default → rotate flat onto the ground
         ring.rotation.x = -Math.PI / 2;
-        // Relative to the unit group, ground is at -height/2
-        ring.position.y = -height / 2 + 1;
+        // Group is at ground; ring sits just above ground to avoid z-fighting.
+        ring.position.y = 1;
         m.group.add(ring);
         m.ring = ring;
         m.ringMat = ringMat;
@@ -310,25 +332,25 @@ export class Render3DEntities {
       }
 
       // Per-turret placement. Turret offset is chassis-local in sim coords
-      // (x, y) which map to (x, z) in three; positioned on top of the chassis.
-      const turretBaseY = height / 2;
+      // (x, y) which map to (x, z) in three. Root Y sits at the top of the
+      // chassis; the head + barrels extend upward from there inside the root.
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
-        tm.root.position.set(t.offset.x, turretBaseY, t.offset.y);
-        // Turret rotation in world = t.rotation. Expressed in the parent group
-        // (which is rotated by -chassis.rotation around Y), the local Y rotation
-        // needs to be negated(diff) so the local +X points in the world firing
-        // direction. See derivation in comment above buildTurretMesh.
+        tm.root.position.set(t.offset.x, CHASSIS_HEIGHT, t.offset.y);
+        // Turret's world firing direction = t.rotation. Parent group is already
+        // rotated by -chassis.rotation, so we compensate: child local Y rot =
+        // -(t.rotation - chassis.rotation), which makes local +X point in the
+        // correct world firing direction after both rotations compose.
         tm.root.rotation.y = -(t.rotation - e.transform.rotation);
       }
 
-      // Health bar billboarded above the unit
+      // Health bar billboarded above the turret top
       const hp = e.unit?.hp ?? 0;
       const maxHp = e.unit?.maxHp ?? 1;
       this.updateHpBar(
         m,
-        height / 2,
+        CHASSIS_HEIGHT + TURRET_HEIGHT,
         radius * HP_BAR_WIDTH_MULT,
         maxHp > 0 ? hp / maxHp : 0,
         m.group,
@@ -368,15 +390,17 @@ export class Render3DEntities {
         m.chassis.material = this.getPrimaryMat(pid);
       }
 
-      m.group.position.set(e.transform.x, h / 2, e.transform.y);
+      // Group at ground; box elevated inside so it sits on the ground plane.
+      m.group.position.set(e.transform.x, 0, e.transform.y);
       m.group.rotation.y = -e.transform.rotation;
+      m.chassis.position.set(0, h / 2, 0);
       m.chassis.scale.set(w, h, d);
 
       const bhp = e.building?.hp ?? 0;
       const bmaxHp = e.building?.maxHp ?? 1;
       this.updateHpBar(
         m,
-        h / 2,
+        h,
         Math.max(w, d) * 1.2,
         bmaxHp > 0 ? bhp / bmaxHp : 0,
         m.group,
@@ -415,7 +439,7 @@ export class Render3DEntities {
         mesh.material = this.getSecondaryMat(pid);
       }
 
-      mesh.position.set(e.transform.x, PROJECTILE_Y_OFFSET, e.transform.y);
+      mesh.position.set(e.transform.x, SHOT_HEIGHT, e.transform.y);
       mesh.scale.setScalar(Math.max(radius, 2) * PROJECTILE_SCALE);
     }
 
