@@ -68,6 +68,10 @@ export class Input3DManager {
   // Right-drag line-path state (world coords, same shape the 2D path uses).
   private rightDown = false;
   private linePathPoints: LinePoint[] = [];
+  // Per-unit assigned targets along the drawn path. Recomputed each mousemove
+  // so the preview overlay can draw current distribution dots while dragging
+  // (mirrors the 2D renderer reading state.linePathTargets every frame).
+  private linePathTargets: LinePoint[] = [];
 
   // Visual selection rectangle overlay (CSS div over the canvas)
   private marquee: HTMLDivElement;
@@ -230,6 +234,18 @@ export class Input3DManager {
       const last = this.linePathPoints[this.linePathPoints.length - 1];
       if (!last || Math.hypot(world.x - last.x, world.y - last.y) >= LINE_PATH_SEGMENT_MIN) {
         this.linePathPoints.push({ x: world.x, y: world.y });
+      }
+      // Recompute per-unit target distribution so the preview overlay can
+      // draw dots at the current assignment each frame, even if the cursor
+      // is between recorded points.
+      const selectedUnits = this.entitySource.getSelectedUnits();
+      if (selectedUnits.length > 0 && this.linePathPoints.length > 0) {
+        this.linePathTargets = calculateLinePathTargets(
+          this.linePathPoints,
+          selectedUnits.length,
+        );
+      } else {
+        this.linePathTargets = [];
       }
     }
   }
@@ -395,6 +411,25 @@ export class Input3DManager {
     // Start drawing a line path of waypoints.
     this.rightDown = true;
     this.linePathPoints = [{ x: world.x, y: world.y }];
+    this.linePathTargets = [];
+  }
+
+  /**
+   * State shape consumed by the 3D line-drag overlay. Populated while the
+   * user is actively right-dragging; reset when the drag ends.
+   */
+  getLineDragState(): {
+    active: boolean;
+    points: ReadonlyArray<{ x: number; y: number }>;
+    targets: ReadonlyArray<{ x: number; y: number }>;
+    mode: WaypointType;
+  } {
+    return {
+      active: this.rightDown,
+      points: this.linePathPoints,
+      targets: this.linePathTargets,
+      mode: this.waypointMode,
+    };
   }
 
   private handleRightMouseUp(e: MouseEvent): void {
@@ -402,6 +437,7 @@ export class Input3DManager {
     const selectedUnits = this.entitySource.getSelectedUnits();
     if (selectedUnits.length === 0 || this.linePathPoints.length === 0) {
       this.linePathPoints.length = 0;
+    this.linePathTargets.length = 0;
       return;
     }
 
@@ -423,6 +459,7 @@ export class Input3DManager {
         queue: shiftHeld,
       });
       this.linePathPoints.length = 0;
+    this.linePathTargets.length = 0;
       return;
     }
 
@@ -450,6 +487,7 @@ export class Input3DManager {
       queue: shiftHeld,
     });
     this.linePathPoints.length = 0;
+    this.linePathTargets.length = 0;
   }
 
   private showMarquee(): void {

@@ -24,6 +24,7 @@ import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
+import { LineDrag3D } from '../render3d/LineDrag3D';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import { getAudioSmoothing, getBottomBarsHeight } from '@/clientBarConfig';
@@ -95,6 +96,7 @@ export class RtsScene3D {
   private explosionRenderer!: Explosion3D;
   private debrisRenderer!: Debris3D;
   private burnMarkRenderer!: BurnMark3D;
+  private lineDragRenderer!: LineDrag3D;
   private audioScheduler = new AudioEventScheduler();
   private lastEffectsTickMs = 0;
   private inputManager: Input3DManager | null = null;
@@ -299,6 +301,7 @@ export class RtsScene3D {
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(this.threeApp.world);
     this.burnMarkRenderer = new BurnMark3D(this.threeApp.world);
+    this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;
@@ -454,6 +457,10 @@ export class RtsScene3D {
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
     this.burnMarkRenderer.update(projectiles, effectDt);
+    // Line-drag preview reads directly from the input manager's live state.
+    if (this.inputManager) {
+      this.lineDragRenderer.update(this.inputManager.getLineDragState());
+    }
     this.healthBarOverlay?.update(
       this.clientViewState.getUnits(),
       this.clientViewState.getBuildings(),
@@ -721,6 +728,7 @@ export class RtsScene3D {
     this.explosionRenderer?.destroy();
     this.debrisRenderer?.destroy();
     this.burnMarkRenderer?.destroy();
+    this.lineDragRenderer?.destroy();
     this.audioScheduler.clear();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();
