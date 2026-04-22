@@ -283,6 +283,8 @@ export class RtsScene3D {
     this.captureTileRenderer = new CaptureTileRenderer3D(
       this.threeApp.world,
       this.clientViewState,
+      this.mapWidth,
+      this.mapHeight,
     );
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).

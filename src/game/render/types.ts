@@ -100,4 +100,6 @@ export const UNIT_NAMES: Record<string, string> = {
   mammoth: 'Mammoth',
   widow: 'Widow',
   tarantula: 'Tarantula',
+  loris: 'Loris',
+  hippo: 'Hippo',
 };
