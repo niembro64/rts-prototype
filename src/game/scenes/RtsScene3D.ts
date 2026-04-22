@@ -21,13 +21,18 @@ import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
+import { Explosion3D } from '../render3d/Explosion3D';
+import { Debris3D } from '../render3d/Debris3D';
+import { BurnMark3D } from '../render3d/BurnMark3D';
+import { AudioEventScheduler } from './helpers/AudioEventScheduler';
+import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
+import { getAudioSmoothing, getBottomBarsHeight } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBarOverlay } from '../hud/HealthBarOverlay';
 import { WaypointOverlay } from '../hud/WaypointOverlay';
 import { SelectionLabelOverlay } from '../hud/SelectionLabelOverlay';
 import { ThreeWorldProjector } from '../render3d/ThreeWorldProjector';
-import { getBottomBarsHeight } from '@/clientBarConfig';
 
 import type { GameConnection } from '../server/GameConnection';
 import type {
@@ -87,6 +92,11 @@ export class RtsScene3D {
   private beamRenderer!: BeamRenderer3D;
   private forceFieldRenderer!: ForceFieldRenderer3D;
   private captureTileRenderer!: CaptureTileRenderer3D;
+  private explosionRenderer!: Explosion3D;
+  private debrisRenderer!: Debris3D;
+  private burnMarkRenderer!: BurnMark3D;
+  private audioScheduler = new AudioEventScheduler();
+  private lastEffectsTickMs = 0;
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
   private snapshotBuffer = new SnapshotBuffer();
@@ -286,6 +296,9 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
     );
+    this.explosionRenderer = new Explosion3D(this.threeApp.world);
+    this.debrisRenderer = new Debris3D(this.threeApp.world);
+    this.burnMarkRenderer = new BurnMark3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;
@@ -348,6 +361,12 @@ export class RtsScene3D {
     // Per-frame FPS tracker
     if (delta > 0) this.fpsTracker.update(1000 / delta);
 
+    // Drain any audio events whose scheduled playback time has arrived. This
+    // runs every frame (not just on snapshot arrival) because scheduled events
+    // are staggered across the snapshot interval.
+    const nowDrain = performance.now();
+    this.audioScheduler.drain(nowDrain, (event) => this.handleSimEvent3D(event));
+
     // Consume newest snapshot (if any)
     const state = this.snapshotBuffer.consume();
     if (state) {
@@ -359,6 +378,20 @@ export class RtsScene3D {
         if (dt > 0) this.snapTracker.update(1000 / dt);
       }
       this.lastSnapArrivalMs = now;
+
+      // Schedule any new SimEvents that came in with this snapshot. Smoothing
+      // staggers one-shot events across the snapshot interval; continuous
+      // start/stop events fire immediately (handled inside AudioEventScheduler).
+      this.audioScheduler.recordSnapshot(now);
+      const events = this.clientViewState.getPendingAudioEvents();
+      if (events && events.length > 0) {
+        this.audioScheduler.schedule(
+          events,
+          now,
+          getAudioSmoothing(),
+          (event) => this.handleSimEvent3D(event),
+        );
+      }
 
       // Forward server meta to UI
       const serverMeta = this.clientViewState.getServerMeta();
@@ -406,8 +439,21 @@ export class RtsScene3D {
     const renderStart = performance.now();
     this.entityRenderer.update();
     this.captureTileRenderer.update();
-    this.beamRenderer.update(this.clientViewState.getProjectiles());
+    const projectiles = this.clientViewState.getProjectiles();
+    this.beamRenderer.update(projectiles);
     this.forceFieldRenderer.update(this.clientViewState.getUnits());
+
+    // Effects: explosions / debris integrate their own physics each frame;
+    // burn marks sample live beams to trace scorches on the ground. We feed
+    // the scheduler's clamped dt so backgrounded tabs don't jump-forward.
+    const effectNow = performance.now();
+    const effectDt = this.lastEffectsTickMs === 0
+      ? 0
+      : Math.min(effectNow - this.lastEffectsTickMs, 100);
+    this.lastEffectsTickMs = effectNow;
+    this.explosionRenderer.update(effectDt);
+    this.debrisRenderer.update(effectDt);
+    this.burnMarkRenderer.update(projectiles, effectDt);
     this.healthBarOverlay?.update(
       this.clientViewState.getUnits(),
       this.clientViewState.getBuildings(),
@@ -486,6 +532,49 @@ export class RtsScene3D {
         this.selectionDirty = true;
       } else {
         this.gameConnection.sendCommand(command);
+      }
+    }
+  }
+
+  /**
+   * Dispatch a SimEvent to the 3D effect renderers. Mirrors the subset of
+   * DeathEffectsHandler that is visual (audio is handled separately, or not
+   * yet — the 3D view currently leaves audio to the 2D path via shared state).
+   *
+   * Event types handled:
+   *   - 'hit'              → fire explosion at event.pos
+   *   - 'projectileExpire' → smaller fire explosion (projectile reached max
+   *                          range or hit the ground)
+   *   - 'death'            → fire explosion + material debris cluster
+   *
+   * laserStart/Stop and forceFieldStart/Stop need no visual reaction here —
+   * beams are drawn continuously while live projectiles exist, and force-field
+   * visuals come from FLAG toggles on their turret state.
+   */
+  private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
+    if (event.type === 'hit') {
+      const ctx = event.impactContext;
+      // Use the larger of the three radii so big AoE shots pop correctly;
+      // fall back to a small constant for beams where the impact context is
+      // minimal.
+      const r = ctx
+        ? Math.max(ctx.collisionRadius, ctx.primaryRadius, ctx.secondaryRadius, 8)
+        : 8;
+      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, r);
+    } else if (event.type === 'projectileExpire') {
+      // Ground / expired-projectile fire — always a small pop.
+      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 8);
+    } else if (event.type === 'death') {
+      const ctx = event.deathContext;
+      if (ctx) {
+        this.explosionRenderer.spawnDeath(
+          event.pos.x, event.pos.y,
+          Math.max(ctx.radius, 12),
+          ctx.color,
+        );
+        this.debrisRenderer.spawn(event.pos.x, event.pos.y, ctx);
+      } else {
+        this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 16);
       }
     }
   }
@@ -629,6 +718,10 @@ export class RtsScene3D {
     this.beamRenderer?.destroy();
     this.forceFieldRenderer?.destroy();
     this.captureTileRenderer?.destroy();
+    this.explosionRenderer?.destroy();
+    this.debrisRenderer?.destroy();
+    this.burnMarkRenderer?.destroy();
+    this.audioScheduler.clear();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();
     this.localCommandQueue.clear();
