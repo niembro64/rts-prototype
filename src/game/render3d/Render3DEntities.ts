@@ -128,7 +128,7 @@ export class Render3DEntities {
     turret: Turret,
     unitRadius: number,
     pid: PlayerId | undefined,
-    unitHasMirrors: boolean,
+    isMirrorHost: boolean,
   ): TurretMesh {
     const root = new THREE.Group();
     const barrel = turret.config.barrel;
@@ -137,9 +137,10 @@ export class Render3DEntities {
     // Skip the head cylinder entirely for:
     //  - force-field turrets: the ForceFieldRenderer3D's glowing sphere is
     //    the whole visual; a cylinder just sits inside it and clips through.
-    //  - mirror units (Loris): the mirror panels already represent the
-    //    rotating body, so a redundant cylinder reads as extra clutter.
-    const hideHead = isForceField || unitHasMirrors;
+    //  - the mirror-host turret on mirror units (Loris index 0): the mirror
+    //    panels already represent that turret's body. Other turrets on the
+    //    same unit (e.g. Loris's lightTurret) still get their cylinder.
+    const hideHead = isForceField || isMirrorHost;
 
     let head: THREE.Mesh | undefined;
     if (!hideHead) {
@@ -410,10 +411,18 @@ export class Render3DEntities {
 
         // Build one TurretMesh per actual turret on the entity. Each turret
         // has an optional head + barrel cylinders matching its barrel config.
+        //
+        // On mirror units (e.g. Loris) the blueprint lists the mirror turret
+        // at index 0 and the shooting turret after it. The mirror panels are
+        // aggregated to entity.unit.mirrorPanels with no per-turret tag, so
+        // we mirror the 2D convention: the mirror host is turret[0], and any
+        // additional turrets render normally with their own cylinder body.
         const unitHasMirrors = (e.unit?.mirrorPanels?.length ?? 0) > 0;
         const turretMeshes: TurretMesh[] = [];
-        for (const t of turrets) {
-          const tm = this.buildTurretMesh(group, t, radius, pid, unitHasMirrors);
+        for (let ti = 0; ti < turrets.length; ti++) {
+          const t = turrets[ti];
+          const isMirrorHost = unitHasMirrors && ti === 0;
+          const tm = this.buildTurretMesh(group, t, radius, pid, isMirrorHost);
           if (tm.head) tm.head.userData.entityId = e.id;
           for (const b of tm.barrels) b.userData.entityId = e.id;
           turretMeshes.push(tm);
