@@ -18,12 +18,6 @@ import { PLAYER_COLORS } from '../sim/types';
 // circular import; if the value ever changes, update both.
 const SHOT_HEIGHT = 28 + 16 / 2; // CHASSIS_HEIGHT + TURRET_HEIGHT / 2
 
-// Where beams terminate on the ground. Matches BurnMark3D's GLOW_Y so the
-// beam tip visually sinks into the hit-glow sphere and the scorch it leaves
-// behind reads as the beam actually hitting the floor. Reflections in the
-// middle of the beam path still stay at SHOT_HEIGHT (mirrors are elevated).
-const BEAM_END_Y = 3;
-
 // Cylinder radius is the sim's `shot.radius` (= shot.width / 2), floored so a
 // very-thin beam isn't invisible. Matches TurretRenderer.ts which draws beams
 // at `shot.width` pixels thick.
@@ -91,12 +85,11 @@ export class BeamRenderer3D {
 
   private placeSegment(
     mesh: THREE.Mesh,
-    ax: number, ay: number, az: number,
-    bx: number, by: number, bz: number,
+    ax: number, az: number, bx: number, bz: number,
     cylRadius: number,
   ): void {
-    this._a.set(ax, ay, az);
-    this._b.set(bx, by, bz);
+    this._a.set(ax, SHOT_HEIGHT, az);
+    this._b.set(bx, SHOT_HEIGHT, bz);
     this._mid.copy(this._a).lerp(this._b, 0.5);
     const length = this._a.distanceTo(this._b);
     this._dir.copy(this._b).sub(this._a);
@@ -138,10 +131,7 @@ export class BeamRenderer3D {
       const material = this.getMaterial(proj.ownerId, pt);
 
       // Build the path: start → reflections[0..n-1] → end. Each consecutive
-      // pair is one cylinder segment. Reflections stay at SHOT_HEIGHT (they
-      // happen at mirror turrets which sit on elevated chassis). The *final*
-      // segment slopes down from SHOT_HEIGHT to BEAM_END_Y so the beam
-      // visually touches the ground at the burn-mark spot.
+      // pair is one cylinder segment.
       let prevX = startX;
       let prevY = startY;
       const reflections = proj.reflections;
@@ -150,24 +140,14 @@ export class BeamRenderer3D {
           const r = reflections[i];
           const mesh = this.acquireSegment(segIdx++);
           mesh.material = material;
-          this.placeSegment(
-            mesh,
-            prevX, SHOT_HEIGHT, prevY,
-            r.x,   SHOT_HEIGHT, r.y,
-            cylRadius,
-          );
+          this.placeSegment(mesh, prevX, prevY, r.x, r.y, cylRadius);
           prevX = r.x;
           prevY = r.y;
         }
       }
       const mesh = this.acquireSegment(segIdx++);
       mesh.material = material;
-      this.placeSegment(
-        mesh,
-        prevX, SHOT_HEIGHT, prevY,
-        endX,  BEAM_END_Y,   endY,
-        cylRadius,
-      );
+      this.placeSegment(mesh, prevX, prevY, endX, endY, cylRadius);
     }
 
     // Hide leftover pool entries (beams that disappeared this frame).
