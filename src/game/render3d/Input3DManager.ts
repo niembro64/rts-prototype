@@ -18,7 +18,7 @@ import type { CommandQueue } from '../sim/commands';
 import type { GameConnection } from '../server/GameConnection';
 import type { InputContext } from '@/types/input';
 import type { PlayerId, Entity, EntityId, WaypointType } from '../sim/types';
-import { performSelection } from '../input/helpers';
+import { findClosestUnitToPoint, findClosestBuildingToPoint } from '../input/helpers';
 
 type EntitySource = {
   getUnits: () => Entity[];
@@ -45,11 +45,10 @@ export class Input3DManager {
   // Current waypoint mode (move/fight/patrol) — driven by UI hotkey
   private waypointMode: WaypointType = 'move';
 
-  // Drag state
+  // Drag state (screen coords only — box select is screen-space)
   private leftDown = false;
   private dragStartScreen = { x: 0, y: 0 };
   private dragEndScreen = { x: 0, y: 0 };
-  private dragStartWorld: { x: number; y: number } | null = null;
 
   // Visual selection rectangle overlay (CSS div over the canvas)
   private marquee: HTMLDivElement;
@@ -164,8 +163,6 @@ export class Input3DManager {
       this.leftDown = true;
       this.dragStartScreen = { x: e.clientX, y: e.clientY };
       this.dragEndScreen = { x: e.clientX, y: e.clientY };
-      const w = this.raycastGround(e.clientX, e.clientY);
-      this.dragStartWorld = w;
     } else if (e.button === 2) {
       e.preventDefault();
       this.handleRightClick(e);
@@ -189,9 +186,6 @@ export class Input3DManager {
     this.leftDown = false;
     this.hideMarquee();
 
-    const endWorld = this.raycastGround(e.clientX, e.clientY);
-    if (!this.dragStartWorld || !endWorld) return;
-
     const dx = e.clientX - this.dragStartScreen.x;
     const dy = e.clientY - this.dragStartScreen.y;
     const isClick = Math.hypot(dx, dy) < DRAG_PIXEL_THRESHOLD;
@@ -199,7 +193,7 @@ export class Input3DManager {
 
     if (isClick) {
       // Try exact mesh pick first (cleaner for overlapping units than the
-      // distance-based closest-entity fallback in performSelection).
+      // distance-based closest-entity fallback).
       const hit = this.raycastEntity(e.clientX, e.clientY);
       if (hit !== null) {
         const ent = this.entitySource.getEntity(hit);
@@ -213,7 +207,41 @@ export class Input3DManager {
           return;
         }
       }
-      // Click on empty ground → clear selection (unless additive)
+      // Fallback: closest-entity-to-ground-click (e.g., user clicked near
+      // a unit but missed the mesh). Matches 2D behavior.
+      const world = this.raycastGround(e.clientX, e.clientY);
+      if (world) {
+        const closestUnit = findClosestUnitToPoint(
+          this.entitySource,
+          world.x,
+          world.y,
+          this.context.activePlayerId,
+        );
+        if (closestUnit) {
+          this.localCommandQueue.enqueue({
+            type: 'select',
+            tick: this.context.getTick(),
+            entityIds: [closestUnit.id],
+            additive,
+          });
+          return;
+        }
+        const closestBuilding = findClosestBuildingToPoint(
+          this.entitySource,
+          world.x,
+          world.y,
+          this.context.activePlayerId,
+        );
+        if (closestBuilding) {
+          this.localCommandQueue.enqueue({
+            type: 'select',
+            tick: this.context.getTick(),
+            entityIds: [closestBuilding.id],
+            additive,
+          });
+          return;
+        }
+      }
       if (!additive) {
         this.localCommandQueue.enqueue({
           type: 'clearSelection',
@@ -223,24 +251,59 @@ export class Input3DManager {
       return;
     }
 
-    // Drag: world-space box select using the shared helper (projects through
-    // the ground plane — the screen-rect becomes a world-space quad, but on
-    // a flat ground with a moderate pitch this is visually close enough for
-    // a PoC. True screen-space box select is a later refinement.)
-    const result = performSelection(
-      this.entitySource,
-      this.dragStartWorld.x,
-      this.dragStartWorld.y,
-      endWorld.x,
-      endWorld.y,
-      this.context.activePlayerId,
+    // Drag: screen-space rectangle. Project each candidate entity's world
+    // position to screen space and test against the rect. This matches what
+    // the user *sees* (even though the corresponding ground-plane region
+    // is a trapezoid under a tilted camera).
+    const ids = this.selectEntitiesInScreenRect(
+      this.dragStartScreen,
+      this.dragEndScreen,
     );
     this.localCommandQueue.enqueue({
       type: 'select',
       tick: this.context.getTick(),
-      entityIds: result.entityIds,
+      entityIds: ids,
       additive,
     });
+  }
+
+  private selectEntitiesInScreenRect(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): EntityId[] {
+    const rect = this.canvasRect();
+    const minX = Math.min(a.x, b.x);
+    const maxX = Math.max(a.x, b.x);
+    const minY = Math.min(a.y, b.y);
+    const maxY = Math.max(a.y, b.y);
+    const pid = this.context.activePlayerId;
+    const ids: EntityId[] = [];
+    const cam = this.threeApp.camera;
+    const v = new THREE.Vector3();
+
+    const pushIfInRect = (x: number, y: number, z: number, id: EntityId) => {
+      v.set(x, y, z).project(cam);
+      // NDC → screen px (relative to viewport)
+      const sx = (v.x * 0.5 + 0.5) * rect.width + rect.left;
+      const sy = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
+      // Reject points behind the camera (z > 1 after project means behind)
+      if (v.z >= 1) return;
+      if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) ids.push(id);
+    };
+
+    // Prefer units; only fall through to buildings if no units hit (matches
+    // performSelection's precedence rule).
+    for (const u of this.entitySource.getUnits()) {
+      if (u.ownership?.playerId !== pid) continue;
+      pushIfInRect(u.transform.x, 10, u.transform.y, u.id);
+    }
+    if (ids.length > 0) return ids;
+
+    for (const b2 of this.entitySource.getBuildings()) {
+      if (b2.ownership?.playerId !== pid) continue;
+      pushIfInRect(b2.transform.x, 10, b2.transform.y, b2.id);
+    }
+    return ids;
   }
 
   private handleRightClick(e: MouseEvent): void {
