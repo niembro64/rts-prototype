@@ -181,6 +181,12 @@ export function getBodyEdgeTemplates(
   const spec = SHAPES[renderer as BodyRendererId] ?? SHAPES.arachnid;
   const out: BodyEdgeTemplate[] = [];
 
+  // The extruded chassis geometry in getBodyGeom() builds its shape in the
+  // XY plane then applies geom.rotateX(-π/2), which maps shape (x, y, 0) to
+  // world (x, 0, -y). So a shape-space vertex at angle `a` (i.e. cos(a),
+  // sin(a)) lands at world position (cos(a), 0, -sin(a)). Edge midpoints
+  // and tangent directions must use the same Z negation — otherwise the
+  // debris edges end up mirrored across the unit's forward axis.
   if (spec.kind === 'polygon') {
     const r = unitRadius * spec.radiusFrac;
     const sides = spec.sides;
@@ -190,8 +196,13 @@ export function getBodyEdgeTemplates(
       const a = spec.rotation + ((i + 0.5) / sides) * Math.PI * 2;
       out.push({
         x: Math.cos(a) * midR,
-        z: Math.sin(a) * midR,
-        yaw: a + Math.PI / 2,
+        // Z is negated because ExtrudeGeometry + rotateX(-π/2) maps shape-Y
+        // onto world-−Z.
+        z: -Math.sin(a) * midR,
+        // Edge tangent in world (after the same Z negation) is
+        // (sin(a), 0, cos(a)); the yaw that rotates the slab's +X axis to
+        // match is π/2 − a.
+        yaw: Math.PI / 2 - a,
         length: edgeLen,
         thickness: Math.max(2, unitRadius * 0.08),
       });
@@ -207,16 +218,19 @@ export function getBodyEdgeTemplates(
     out.push({ x: 0, z:  width / 2, yaw: 0,            length: length, thickness });
     out.push({ x: 0, z: -width / 2, yaw: 0,            length: length, thickness });
   } else {
-    // Circle body — 10 tangent chunks around the perimeter.
+    // Circle body — 10 tangent chunks around the perimeter. Same Z-negation
+    // + yaw convention as the polygon case so tangents line up with the
+    // extruded geometry.
     const sides = 10;
     const r = unitRadius * spec.radiusFrac;
     const edgeLen = 2 * r * Math.sin(Math.PI / sides);
+    const midR = r * Math.cos(Math.PI / sides);
     for (let i = 0; i < sides; i++) {
       const a = ((i + 0.5) / sides) * Math.PI * 2;
       out.push({
-        x: Math.cos(a) * r,
-        z: Math.sin(a) * r,
-        yaw: a + Math.PI / 2,
+        x: Math.cos(a) * midR,
+        z: -Math.sin(a) * midR,
+        yaw: Math.PI / 2 - a,
         length: edgeLen,
         thickness: Math.max(2, unitRadius * 0.08),
       });

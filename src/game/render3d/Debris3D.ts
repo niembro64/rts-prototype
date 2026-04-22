@@ -23,6 +23,7 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
+import { PLAYER_COLORS } from '../sim/types';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -115,7 +116,7 @@ type DebrisTemplate =
 
 type Piece = {
   mesh: THREE.Mesh;
-  material: THREE.MeshBasicMaterial;
+  material: THREE.MeshLambertMaterial;
   vx: number;
   vy: number;
   vz: number;
@@ -136,8 +137,8 @@ export class Debris3D {
   private cylGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
 
   private pieces: Piece[] = [];
-  private boxPool: { mesh: THREE.Mesh; material: THREE.MeshBasicMaterial }[] = [];
-  private cylPool: { mesh: THREE.Mesh; material: THREE.MeshBasicMaterial }[] = [];
+  private boxPool: { mesh: THREE.Mesh; material: THREE.MeshLambertMaterial }[] = [];
+  private cylPool: { mesh: THREE.Mesh; material: THREE.MeshLambertMaterial }[] = [];
 
   // Scratch vectors reused per emit — avoids per-piece allocation.
   private _up = new THREE.Vector3(0, 1, 0);
@@ -287,7 +288,10 @@ export class Debris3D {
     // --- Turret heads + barrels ---
     // One piece per mounted turret head, plus one piece per barrel in each
     // turret's barrel config. All placed in unit-local coords at SHOT_HEIGHT.
-    const dark = darkenColor(primary);
+    // The turret head uses the team's true secondary color (looked up from
+    // PLAYER_COLORS by matching primary) so it matches the live chassis —
+    // a darkened-primary approximation visibly drifts from the real color.
+    const secondary = lookupSecondaryColor(primary);
     for (const mount of bp.turrets) {
       let tb;
       try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
@@ -304,7 +308,7 @@ export class Debris3D {
         ax: tox, ay: CHASSIS_HEIGHT, az: toz,
         bx: tox, by: CHASSIS_HEIGHT + TURRET_HEIGHT, bz: toz,
         thickness: headR,
-        color: dark,
+        color: secondary,
       });
       void headCenterY;
 
@@ -413,7 +417,7 @@ export class Debris3D {
     const pool = isBox ? this.boxPool : this.cylPool;
     const geom = isBox ? this.boxGeom : this.cylGeom;
     let mesh: THREE.Mesh;
-    let material: THREE.MeshBasicMaterial;
+    let material: THREE.MeshLambertMaterial;
     const pooled = pool.pop();
     if (pooled) {
       mesh = pooled.mesh;
@@ -422,7 +426,10 @@ export class Debris3D {
       material.opacity = 1;
       mesh.visible = true;
     } else {
-      material = new THREE.MeshBasicMaterial({
+      // Lambert (not Basic) so debris shades under the scene's ambient +
+      // sun lighting the same way the live chassis/turret/tread meshes
+      // do — matches the colors of the parts they were generated from.
+      material = new THREE.MeshLambertMaterial({
         color: t.color,
         transparent: true,
         opacity: 1,
@@ -442,19 +449,22 @@ export class Debris3D {
     let localX: number, localZ: number;
 
     if (t.shape === 'box') {
+      // Position: rotate local (x, z) by Ry(−unitRot) — same transform the
+      // chassis group applies (its rotation.y is −transform.rotation).
       wcx = unitX + cosR * t.x - sinR * t.z;
       wcy = t.y;
       wcz = unitZ + sinR * t.x + cosR * t.z;
       localX = t.x;
       localZ = t.z;
-      // Scale first, then apply base rotations.
       mesh.scale.set(t.sx, t.sy, t.sz);
       mesh.position.set(wcx, wcy, wcz);
       mesh.quaternion.identity();
-      // Random mild roll/pitch for visual variance + our yaw in world = unitRot + template yaw.
+      // Yaw: group rotates by −unitRot around Y, children add their local
+      // yaw on top, so world yaw = t.yaw − unitRot. A bit of random roll +
+      // pitch gives each piece a unique tumble seed.
       mesh.rotation.set(
         (Math.random() - 0.5) * 0.4,
-        unitRot + t.yaw,
+        t.yaw - unitRot,
         (Math.random() - 0.5) * 0.4,
       );
     } else {
@@ -624,11 +634,14 @@ export class Debris3D {
 
 // --- Helpers ---
 
-/** Darken a 0xRRGGBB color by ~50% per channel, same as the 2D
- *  DebrisSystem's `colorType: 'dark'` path. Used for turret heads. */
-function darkenColor(c: number): number {
-  const r = ((c >> 16) & 0xff) >> 1;
-  const g = ((c >> 8) & 0xff) >> 1;
-  const b = (c & 0xff) >> 1;
-  return (r << 16) | (g << 8) | b;
+/** Reverse-lookup a player's secondary color by matching their primary.
+ *  SimDeathContext.color is always the primary, so for turret-head debris
+ *  we scan PLAYER_COLORS to find the matching entry and pull its secondary.
+ *  Falls back to a mid-gray if the color doesn't belong to any known
+ *  player (e.g. neutral / demo units). */
+function lookupSecondaryColor(primary: number): number {
+  for (const pc of Object.values(PLAYER_COLORS)) {
+    if (pc.primary === primary) return pc.secondary;
+  }
+  return 0x888888;
 }
