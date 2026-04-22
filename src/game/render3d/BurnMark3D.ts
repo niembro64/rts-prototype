@@ -24,9 +24,15 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 // Burn marks sit a hair above the tile floor (y=0) so they render over the
 // capture-tile grid without z-fighting. Must be below SHOT_HEIGHT so beam
 // cylinders still draw above them.
-const MARK_Y = 0.6;
-// Hit-glow disk sits between marks and beam cylinders.
-const GLOW_Y = 0.8;
+// Burn marks sit comfortably above the tile layer. The capture-tile floor
+// (y=0) uses a negative polygonOffset to bias its fragments toward the
+// camera, so a small lift isn't enough — lift high enough that depth
+// precision at far zoom can't matter, and additionally apply a polygonOffset
+// on the mark material so marks always win the depth test against tiles.
+const MARK_Y = 2.5;
+// Hit-glow sphere sits on the ground plane; we lift slightly so the lower
+// hemisphere doesn't clip through the tile layer at grazing camera angles.
+const GLOW_Y = 3.0;
 
 // Color curve for a mark's lifetime.
 const MARK_HOT = new THREE.Color(0xffaa33);   // fresh burn
@@ -61,10 +67,11 @@ export class BurnMark3D {
   // A unit plane on the ground; scaled to (segmentLength × beamWidth) per mark.
   private planeGeom = new THREE.PlaneGeometry(1, 1);
 
-  // Hit-glow disks use a circle so the bright spot reads as round at any
-  // camera angle.
-  private glowGeom = new THREE.CircleGeometry(1, 24);
-  // Shared material for all glow disks — each glow just tweaks position/scale.
+  // Hit-glow spheres — a small volumetric ball at the beam's endpoint reads
+  // as a 3D impact from any camera angle (unlike a flat disk, which
+  // disappears when viewed edge-on).
+  private glowGeom = new THREE.SphereGeometry(1, 16, 12);
+  // Shared material for all glow spheres — each glow just tweaks position/scale.
   private glowMat: THREE.MeshBasicMaterial;
 
   private marks: Mark[] = [];
@@ -147,7 +154,6 @@ export class BurnMark3D {
         let glow = this.glowPool.pop();
         if (!glow) {
           glow = new THREE.Mesh(this.glowGeom, this.glowMat);
-          glow.rotation.x = -Math.PI / 2;
           glow.renderOrder = 11;
           this.root.add(glow);
         } else {
@@ -158,7 +164,7 @@ export class BurnMark3D {
       const pulse = 1 + Math.sin(this._time * 0.025) * 0.15;
       const r = Math.max(beamWidth * 3, 6) * pulse;
       state.glow.position.set(ex, GLOW_Y, ez);
-      state.glow.scale.set(r, r, 1);
+      state.glow.scale.setScalar(r);
     }
 
     // Drop state + release glow for beams that no longer exist.
@@ -226,6 +232,11 @@ export class BurnMark3D {
         opacity: 0.85,
         depthWrite: false,
         side: THREE.DoubleSide,
+        // Bias marks toward the camera in depth space so they always win
+        // against the capture-tile floor (which also uses polygonOffset).
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4,
       });
       mesh = new THREE.Mesh(this.planeGeom, material);
       mesh.renderOrder = 10;
