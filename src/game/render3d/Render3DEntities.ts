@@ -20,6 +20,8 @@ import {
   destroyLocomotion,
   type Locomotion3DMesh,
 } from './Locomotion3D';
+import { snapshotLod, type Lod3DState } from './Lod3D';
+import type { GraphicsConfig } from '@/types/graphics';
 
 // All units share the same chassis and turret *heights*; only the horizontal
 // footprint (radius) varies with the unit's collider scale. That lets projectile
@@ -62,11 +64,15 @@ type MirrorMesh = {
 type EntityMesh = {
   group: THREE.Group;
   chassis: THREE.Mesh;
+  chassisDetailRing?: THREE.Mesh;
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
   ringMat?: THREE.MeshBasicMaterial;
   ring?: THREE.Mesh;
+  /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
+   *  the mesh when the current frame's LOD key differs. */
+  lodKey: string;
 };
 
 export class Render3DEntities {
@@ -83,6 +89,11 @@ export class Render3DEntities {
   // spinConfig.idle otherwise. Mirrors the 2D barrel-spin system exactly.
   private barrelSpins = new Map<EntityId, { angle: number; speed: number }>();
   private _lastSpinMs = performance.now();
+
+  // LOD state — read once per frame in update(), then every builder/drawer
+  // consults these values instead of calling getGraphicsConfig() ad-hoc.
+  // When `lod.key` changes, any pre-built unit mesh is rebuilt.
+  private lod: Lod3DState = snapshotLod();
 
   // Shared geometries & per-team materials (avoid per-entity allocation)
   private unitGeom = new THREE.CylinderGeometry(1, 1, 1, 20);
@@ -136,18 +147,25 @@ export class Render3DEntities {
     unitRadius: number,
     pid: PlayerId | undefined,
     isMirrorHost: boolean,
+    gfx: GraphicsConfig,
   ): TurretMesh {
     const root = new THREE.Group();
     const barrel = turret.config.barrel;
     const isForceField = barrel?.type === 'complexSingleEmitter';
 
     // Skip the head cylinder entirely for:
-    //  - force-field turrets: the ForceFieldRenderer3D's glowing sphere is
-    //    the whole visual; a cylinder just sits inside it and clips through.
+    //  - turretStyle='none' (min LOD): no body, no barrels — chassis only.
+    //  - force-field turrets with forceTurretStyle='none' or 'simple' and
+    //    any LOD: the ForceFieldRenderer3D's glowing sphere is the whole
+    //    visual. Only 'full' gets a head.
     //  - the mirror-host turret on mirror units (Loris index 0): the mirror
-    //    panels already represent that turret's body. Other turrets on the
-    //    same unit (e.g. Loris's lightTurret) still get their cylinder.
-    const hideHead = isForceField || isMirrorHost;
+    //    panels already represent that turret's body.
+    const turretOff = gfx.turretStyle === 'none';
+    const forceTurretHasBody = gfx.forceTurretStyle === 'full';
+    const hideHead =
+      turretOff
+      || (isForceField && !forceTurretHasBody)
+      || isMirrorHost;
 
     let head: THREE.Mesh | undefined;
     if (!hideHead) {
@@ -161,8 +179,8 @@ export class Render3DEntities {
     }
 
     const barrels: THREE.Mesh[] = [];
-    if (!barrel || isForceField) {
-      // Force-field turrets don't have a physical barrel.
+    if (!barrel || isForceField || turretOff) {
+      // No physical barrel for: force-field turrets, min LOD (turretOff).
       parent.add(root);
       return { root, head, barrels, barrelGroup: undefined };
     }
@@ -330,12 +348,22 @@ export class Render3DEntities {
   }
 
   update(): void {
+    // Refresh LOD snapshot once per frame. If the global LOD changed since
+    // the last frame, tear down all unit meshes so updateUnits() rebuilds
+    // them at the new level — the simplest way to keep every sub-mesh
+    // (body, turrets, legs, locomotion, mirrors) consistent with the
+    // current GraphicsConfig.
+    const newLod = snapshotLod();
+    if (newLod.key !== this.lod.key) {
+      this.rebuildAllUnitsOnLodChange();
+    }
+    this.lod = newLod;
+
     // Time step for continuous-rotation effects (barrel spin, wheel roll).
     // Clamp in case the tab was backgrounded.
     const now = performance.now();
     const spinDt = Math.min((now - this._lastSpinMs) / 1000, 0.1);
     this._lastSpinMs = now;
-    // Also expose it in ms for locomotion's rolling-wheel math.
     this._currentDtMs = spinDt * 1000;
 
     this.updateBarrelSpins(spinDt);
@@ -345,6 +373,36 @@ export class Render3DEntities {
   }
 
   private _currentDtMs = 0;
+
+  /** Wipe every cached unit mesh so the next updateUnits() rebuilds them at
+   *  the current LOD. Explosions / projectiles / tile grid don't need a rebuild
+   *  — their per-frame loops already read the LOD snapshot directly. */
+  private rebuildAllUnitsOnLodChange(): void {
+    for (const m of this.unitMeshes.values()) {
+      destroyLocomotion(m.locomotion);
+      this.world.remove(m.group);
+    }
+    this.unitMeshes.clear();
+    this.barrelSpins.clear();
+  }
+
+  /** Small circular detail band around the chassis, only built at high+
+   *  LOD (GraphicsConfig.chassisDetail = true). Matches 2D's "chassisDetail"
+   *  axis in spirit. */
+  private buildChassisDetailRing(
+    group: THREE.Group,
+    radius: number,
+    pid: PlayerId | undefined,
+  ): THREE.Mesh {
+    const ringGeom = new THREE.CylinderGeometry(1, 1, 1, 24);
+    const mat = this.getSecondaryMat(pid);
+    const ring = new THREE.Mesh(ringGeom, mat);
+    // Sits halfway up the chassis as a thin accent band.
+    ring.scale.set(radius * 1.03, 4, radius * 1.03);
+    ring.position.set(0, 4, 0);
+    group.add(ring);
+    return ring;
+  }
 
   /**
    * Advance each unit's barrel-spin state (angle, speed). Mirrors the 2D
@@ -433,19 +491,25 @@ export class Render3DEntities {
         for (let ti = 0; ti < turrets.length; ti++) {
           const t = turrets[ti];
           const isMirrorHost = unitHasMirrors && ti === 0;
-          const tm = this.buildTurretMesh(group, t, radius, pid, isMirrorHost);
+          const tm = this.buildTurretMesh(group, t, radius, pid, isMirrorHost, this.lod.gfx);
           if (tm.head) tm.head.userData.entityId = e.id;
           for (const b of tm.barrels) b.userData.entityId = e.id;
           turretMeshes.push(tm);
         }
 
         this.world.add(group);
-        m = { group, chassis, turrets: turretMeshes };
+        m = { group, chassis, turrets: turretMeshes, lodKey: this.lod.key };
 
         // Locomotion (tank treads / vehicle wheels / arachnid legs). Built
-        // once per unit; treads/wheels spin per-frame based on the unit's
-        // linear velocity.
-        m.locomotion = buildLocomotion(group, e, radius, pid);
+        // once per unit at the current LOD; treads/wheels spin per-frame based
+        // on the unit's linear velocity.
+        m.locomotion = buildLocomotion(group, e, radius, pid, this.lod.gfx);
+
+        // Chassis detail accent — a thin emissive band around the chassis,
+        // only at high+ LOD, matching 2D's CHASSIS_DETAIL axis.
+        if (this.lod.gfx.chassisDetail) {
+          m.chassisDetailRing = this.buildChassisDetailRing(group, radius, pid);
+        }
 
         // Mirror panels (e.g. Loris): standing slabs that track the turret.
         const mirrorPanels = e.unit?.mirrorPanels;
@@ -518,10 +582,12 @@ export class Render3DEntities {
         // correct world firing direction after both rotations compose.
         tm.root.rotation.y = -(t.rotation - e.transform.rotation);
         // Gatling-style barrel spin: rotate the whole barrel cluster around
-        // its local +X axis (the firing direction). Barrel positions orbit
-        // around the axis; their orientations stay pointing forward.
+        // its local +X axis (the firing direction). Gated on LOD — at min/low
+        // barrels stay frozen to match the 2D BARREL_SPIN axis.
         if (tm.barrelGroup) {
-          tm.barrelGroup.rotation.x = spinState?.angle ?? 0;
+          tm.barrelGroup.rotation.x = this.lod.gfx.barrelSpin
+            ? spinState?.angle ?? 0
+            : 0;
         }
       }
 
@@ -568,7 +634,7 @@ export class Render3DEntities {
         box.userData.entityId = e.id;
         group.add(box);
         this.world.add(group);
-        m = { group, chassis: box, turrets: [] };
+        m = { group, chassis: box, turrets: [], lodKey: this.lod.key };
         this.buildingMeshes.set(e.id, m);
       } else {
         m.chassis.material = this.getPrimaryMat(pid);
