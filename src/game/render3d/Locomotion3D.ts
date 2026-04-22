@@ -1,13 +1,11 @@
-// Locomotion3D — 3D geometry for each unit's "legs": tank treads, vehicle
-// wheels, or arachnid legs. LOD-aware: the geometry we build depends on the
-// `GraphicsConfig` supplied at build time, and the caller rebuilds the unit
-// mesh wholesale when the global LOD changes so the scene stays consistent.
+// Locomotion3D — 3D geometry + per-frame animation for each unit's legs,
+// treads, or wheels.
 //
-// LOD axes this module responds to (from GraphicsConfig):
-//   - legs           : 'none' | 'simple' | 'animated' | 'full'
-//   - treadsAnimated : when true, tread slabs get rolling wheel cylinders
-//                      inside them; otherwise they're flat slabs.
-// Stylistic knobs like chassisDetail are handled by the caller.
+// Legs port the 2D ArachnidLeg system (world-space foot planting, snap-lerp
+// gait, IK knee bend) with the only simplification being that we keep feet
+// on the ground plane (2-axis movement: XZ). Per-style attach offsets and
+// snap parameters are cloned from 2D LocomotionManager so the 3D walk cycle
+// matches the 2D look.
 
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
@@ -15,10 +13,12 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import type {
   TreadConfig,
   WheelConfig,
-  LegConfig,
+  LegConfig as BlueprintLegConfig,
   LegStyle,
 } from '@/types/blueprints';
 import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
+import type { ArachnidLegConfig } from '@/types/render';
+import { normalizeAngle, magnitude } from '../math';
 
 const TREAD_COLOR = 0x1a1d22;
 const TREAD_HEIGHT = 10;
@@ -26,59 +26,61 @@ const TREAD_Y = TREAD_HEIGHT / 2;
 const WHEEL_COLOR = 0x2a2f36;
 const LEG_COLOR = 0x2a2f36;
 
-const LEG_COUNT_BY_STYLE: Record<LegStyle, number> = {
-  daddy: 8,
-  widow: 6,
-  tarantula: 8,
-  tick: 6,
-  commander: 2,
-};
+// Vertical layout for legs. Feet stay on the ground, hips sit at HIP_Y, and
+// the knee floats at KNEE_Y — the animation is purely on the XZ plane (the
+// user's "2 dimensions for now" requirement).
+const HIP_Y = 14;
+const FOOT_Y = 1;
+const KNEE_Y = 7;
 
-/** Per-unit locomotion state. `type` reflects the blueprint's locomotion type;
- *  `lodKey` records the LOD it was built at so the caller knows when to
- *  rebuild if the global LOD flips. `legLod` is cached so the animator knows
- *  which articulation to use when updating per-frame. */
 export type Locomotion3DMesh =
   | ({ type: 'treads'; group: THREE.Group; wheels: THREE.Mesh[] } & LocomotionBase)
   | ({ type: 'wheels'; group: THREE.Group; wheels: THREE.Mesh[] } & LocomotionBase)
   | ({ type: 'legs';
+       /** Container for all leg meshes — parented to the WORLD group (not
+        *  the unit group) so world-space foot planting isn't disturbed by
+        *  the unit's rotation. */
        group: THREE.Group;
-       legs: LegSegment[];
+       legs: LegInstance[];
        style: LegStyle;
-       config: LegConfig;
+       config: BlueprintLegConfig;
        legLod: LegLod;
-       /** Walk-cycle phase in radians. Advances with the unit's velocity
-        *  each frame, so legs oscillate faster as the unit moves faster. */
-       walkPhase: number;
     } & LocomotionBase)
   | undefined;
 
 type LocomotionBase = {
-  /** Snapshot of the GraphicsConfig values this geometry was built for. */
   lodKey: string;
 };
 
-/** One simplified or articulated leg. Present only at `'simple'`+ LOD. */
-type LegSegment = {
+/** State for a single leg, matching the 2D ArachnidLeg fields. Foot position
+ *  is tracked in world XZ coords; when the hip moves too far or the leg
+ *  rotates past the snap angle, the foot lerps to a new snap position. */
+type LegInstance = {
+  config: ArachnidLegConfig;
+  /** Knee bends outward: +1 for right side, -1 for left. */
+  side: number;
+
+  // World XZ foot position (2D "x, y" maps to 3D "x, z").
+  groundX: number;
+  groundZ: number;
+  startGroundX: number;
+  startGroundZ: number;
+  targetGroundX: number;
+  targetGroundZ: number;
+  isSliding: boolean;
+  lerpProgress: number;
+  lerpDuration: number;
+  initialized: boolean;
+
+  // Meshes — all parented to the world-space group. Geometry is rebuilt
+  // between hip/knee/foot each frame from the current state.
   upper: THREE.Mesh;
-  /** Knee + lower segment only built at 'full' LOD. */
   lower?: THREE.Mesh;
-  /** Hip / knee / foot joint spheres — 'full' LOD only. */
   hipJoint?: THREE.Mesh;
   kneeJoint?: THREE.Mesh;
   footJoint?: THREE.Mesh;
-  /** Chassis-local rest-pose points. Animation offsets the foot from these. */
-  hipX: number;
-  hipY: number;
-  hipZ: number;
-  footX: number;
-  footY: number;
-  footZ: number;
-  /** Unit thickness for rebuilding cylinder scale each frame. */
   upperThick: number;
   lowerThick: number;
-  /** Per-leg phase offset — staggers legs so they don't all lift in unison. */
-  phaseOffset: number;
 };
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -90,14 +92,74 @@ const treadMat = new THREE.MeshLambertMaterial({ color: TREAD_COLOR });
 const wheelMat = new THREE.MeshLambertMaterial({ color: WHEEL_COLOR });
 const legMat = new THREE.MeshLambertMaterial({ color: LEG_COLOR });
 
-/** Encodes exactly the GraphicsConfig bits that affect our geometry. Unit
- *  meshes compare this key to decide whether their locomotion is stale. */
 export function lodKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
 }
 
+/**
+ * Per-style leg-config builder, cloned from LocomotionManager.getOrCreateLegs
+ * in the 2D renderer. Returns left-side configs only; the caller mirrors
+ * them for the right side with the same `attachOffsetY`/`snapTargetAngle`
+ * sign flip that 2D uses.
+ */
+function leftSideConfigsForStyle(style: LegStyle, radius: number): ArachnidLegConfig[] {
+  if (style === 'daddy') {
+    const legLength = radius * 10;
+    const upperLen = legLength * 0.45;
+    const lowerLen = upperLen * 1.2;
+    return [
+      { attachOffsetX:  radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen,        lowerLegLength: lowerLen,        snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+      { attachOffsetX:  radius * 0.1,  attachOffsetY: -radius * 0.25, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.97 },
+      { attachOffsetX: -radius * 0.1,  attachOffsetY: -radius * 0.4,  upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.4,  snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
+      { attachOffsetX: -radius * 0.3,  attachOffsetY: -radius * 0.3,  upperLegLength: upperLen,        lowerLegLength: lowerLen,        snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
+    ];
+  }
+  if (style === 'tarantula') {
+    const legLength = radius * 1.9;
+    const upperLen = legLength * 0.55;
+    const lowerLen = upperLen * 1.2;
+    return [
+      { attachOffsetX:  radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+      { attachOffsetX:  radius * 0.1,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.97 },
+      { attachOffsetX: -radius * 0.1,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.4,  snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
+      { attachOffsetX: -radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
+    ];
+  }
+  if (style === 'tick') {
+    const legLength = radius * 1.0;
+    const upperLen = legLength * 0.5;
+    const lowerLen = upperLen * 1.1;
+    return [
+      { attachOffsetX:  radius * 0.25, attachOffsetY: -radius * 0.15, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+      { attachOffsetX:  radius * 0.08, attachOffsetY: -radius * 0.18, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.97 },
+      { attachOffsetX: -radius * 0.08, attachOffsetY: -radius * 0.18, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.4,  snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
+      { attachOffsetX: -radius * 0.25, attachOffsetY: -radius * 0.15, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
+    ];
+  }
+  if (style === 'commander') {
+    const legLength = radius * 2.2;
+    const upperLen = legLength * 0.5;
+    const lowerLen = upperLen * 1.2;
+    return [
+      { attachOffsetX:  radius * 0.4,  attachOffsetY: -radius * 0.5,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+      { attachOffsetX: -radius * 0.4,  attachOffsetY: -radius * 0.5,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
+    ];
+  }
+  // Default: widow (4 legs per side)
+  const legLength = radius * 1.9;
+  const upperLen = legLength * 0.55;
+  const lowerLen = upperLen * 1.2;
+  return [
+    { attachOffsetX:  radius * 0.4,  attachOffsetY: -radius * 0.4,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
+    { attachOffsetX:  radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.97 },
+    { attachOffsetX: -radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.4,  snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
+    { attachOffsetX: -radius * 0.4,  attachOffsetY: -radius * 0.4,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
+  ];
+}
+
 export function buildLocomotion(
   unitGroup: THREE.Group,
+  worldGroup: THREE.Group,
   entity: Entity,
   unitRadius: number,
   _pid: PlayerId | undefined,
@@ -127,7 +189,7 @@ export function buildLocomotion(
       return mesh;
     }
     case 'legs': {
-      const mesh = buildLegs(unitGroup, unitRadius, loc.style, loc.config, gfx.legs);
+      const mesh = buildLegs(worldGroup, entity, unitRadius, loc.style, loc.config, gfx.legs);
       if (mesh) mesh.lodKey = lodKey;
       return mesh;
     }
@@ -152,9 +214,6 @@ function buildTreads(
   }
   const wheels: THREE.Mesh[] = [];
   if (animatedWheels) {
-    // Rolling wheel cylinders inside each tread slab. Only built at LOD where
-    // GraphicsConfig.treadsAnimated is true; at lower LOD treads are flat
-    // slabs with nothing moving.
     const wheelCount = Math.max(2, Math.round(cfg.treadLength * 2));
     const wheelR = Math.max(1, r * cfg.wheelRadius);
     for (const side of [-1, 1]) {
@@ -179,8 +238,6 @@ function buildWheels(
   r: number,
   cfg: WheelConfig,
 ): Locomotion3DMesh {
-  // "Wheels" = two pairs of short tread slabs (front-left, front-right,
-  // back-left, back-right). Treated identically at all LODs today.
   const group = new THREE.Group();
   const slabLength = r * cfg.treadLength;
   const slabWidth = r * cfg.treadWidth;
@@ -201,95 +258,90 @@ function buildWheels(
 }
 
 function buildLegs(
-  unitGroup: THREE.Group,
+  worldGroup: THREE.Group,
+  entity: Entity,
   r: number,
   style: LegStyle,
-  cfg: LegConfig,
+  cfg: BlueprintLegConfig,
   legLod: LegLod,
 ): Locomotion3DMesh {
-  // LOD 'none' → no geometry at all. The rest vary in articulation.
   if (legLod === 'none') return undefined;
 
+  const leftConfigs = leftSideConfigsForStyle(style, r);
+  const lerpDuration = cfg.lerpDuration ?? 150;
+  // Mirror left → right by flipping attachOffsetY and snapTargetAngle, same
+  // way the 2D LocomotionManager builds the full leg set.
+  const leftWithLerp: ArachnidLegConfig[] = leftConfigs.map((c) => ({ ...c, lerpDuration }));
+  const rightWithLerp: ArachnidLegConfig[] = leftWithLerp.map((c) => ({
+    ...c,
+    attachOffsetY: -c.attachOffsetY,
+    snapTargetAngle: -c.snapTargetAngle,
+  }));
+  const allConfigs = [...leftWithLerp, ...rightWithLerp];
+  const sides = [
+    ...leftWithLerp.map(() => -1),
+    ...rightWithLerp.map(() => 1),
+  ];
+
   const group = new THREE.Group();
-  const n = LEG_COUNT_BY_STYLE[style] ?? 6;
-  const legReach = r * 2.4;
+  worldGroup.add(group);
+
+  const legs: LegInstance[] = [];
   const upperThick = Math.max(cfg.upperThickness, 1) * 0.6;
   const lowerThick = Math.max(cfg.lowerThickness, 1) * 0.6;
-  const hipY = r * 0.6;
-  const footY = 1;
-  const legs: LegSegment[] = [];
 
-  for (let i = 0; i < n; i++) {
-    // Distribute legs evenly around the FULL circle of the body (not half).
-    // Half-step offset so no leg lies exactly on the forward axis.
-    const a = ((i + 0.5) / n) * Math.PI * 2;
-    const dirX = Math.cos(a);
-    const dirZ = Math.sin(a);
+  for (let i = 0; i < allConfigs.length; i++) {
+    const legCfg = allConfigs[i];
+    const side = sides[i];
 
-    const hipX = dirX * r * 0.9;
-    const hipZ = dirZ * r * 0.9;
-    const footX = hipX + dirX * legReach;
-    const footZ = hipZ + dirZ * legReach;
+    const upper = new THREE.Mesh(legGeom, legMat);
+    group.add(upper);
+    let lower: THREE.Mesh | undefined;
+    let hipJoint: THREE.Mesh | undefined;
+    let kneeJoint: THREE.Mesh | undefined;
+    let footJoint: THREE.Mesh | undefined;
 
-    // Alternating gait: legs 0,2,4,… are in-phase, legs 1,3,5,… are π out of
-    // phase. Two groups alternating produces a spider-like tetrapod look.
-    const phaseOffset = (i % 2) * Math.PI;
-
-    if (legLod === 'simple' || legLod === 'animated') {
-      // Single cylinder from hip to foot. 'animated' LOD drives the foot
-      // up/down per frame (see updateLocomotion); 'simple' leaves it static.
-      const upper = buildStraightCylinder(
-        legGeom, legMat,
-        hipX, hipY, hipZ,
-        footX, footY, footZ,
-        upperThick,
-      );
-      group.add(upper);
-      legs.push({
-        upper,
-        hipX, hipY, hipZ,
-        footX, footY, footZ,
-        upperThick,
-        lowerThick,
-        phaseOffset,
-      });
-    } else {
-      // 'full': two-segment leg with a knee joint. Joint spheres at each
-      // articulation.
-      const kneeX = (hipX + footX) / 2;
-      const kneeZ = (hipZ + footZ) / 2;
-      const kneeY = hipY * 0.55; // bent down for walker silhouette
-      const upper = buildStraightCylinder(
-        legGeom, legMat,
-        hipX, hipY, hipZ,
-        kneeX, kneeY, kneeZ,
-        upperThick,
-      );
-      const lower = buildStraightCylinder(
-        legGeom, legMat,
-        kneeX, kneeY, kneeZ,
-        footX, footY, footZ,
-        lowerThick,
-      );
-      const hipJoint = buildJoint(jointGeom, legMat, hipX, hipY, hipZ, cfg.hipRadius);
-      const kneeJoint = buildJoint(jointGeom, legMat, kneeX, kneeY, kneeZ, cfg.kneeRadius);
-      const footJoint = buildJoint(jointGeom, legMat, footX, footY, footZ, cfg.footRadius);
-      group.add(upper, lower, hipJoint, kneeJoint, footJoint);
-      legs.push({
-        upper,
-        lower,
-        hipJoint,
-        kneeJoint,
-        footJoint,
-        hipX, hipY, hipZ,
-        footX, footY, footZ,
-        upperThick,
-        lowerThick,
-        phaseOffset,
-      });
+    if (legLod === 'full') {
+      lower = new THREE.Mesh(legGeom, legMat);
+      hipJoint = new THREE.Mesh(jointGeom, legMat);
+      hipJoint.scale.setScalar(Math.max(1, cfg.hipRadius));
+      kneeJoint = new THREE.Mesh(jointGeom, legMat);
+      kneeJoint.scale.setScalar(Math.max(1, cfg.kneeRadius));
+      footJoint = new THREE.Mesh(jointGeom, legMat);
+      footJoint.scale.setScalar(Math.max(1, cfg.footRadius));
+      group.add(lower, hipJoint, kneeJoint, footJoint);
     }
+
+    legs.push({
+      config: legCfg,
+      side,
+      groundX: 0,
+      groundZ: 0,
+      startGroundX: 0,
+      startGroundZ: 0,
+      targetGroundX: 0,
+      targetGroundZ: 0,
+      isSliding: false,
+      lerpProgress: 0,
+      lerpDuration,
+      initialized: false,
+      upper,
+      lower,
+      hipJoint,
+      kneeJoint,
+      footJoint,
+      upperThick,
+      lowerThick,
+    });
   }
-  unitGroup.add(group);
+
+  // Seat each foot at its snap-target rest pose so legs don't flicker from
+  // (0,0) on the first frame.
+  const unitX = entity.transform.x;
+  const unitY = entity.transform.y;
+  const unitR = entity.transform.rotation;
+  for (const leg of legs) initializeLegAt(leg, unitX, unitY, unitR);
+
   return {
     type: 'legs',
     group,
@@ -297,57 +349,151 @@ function buildLegs(
     style,
     config: cfg,
     legLod,
-    walkPhase: 0,
     lodKey: '',
   };
 }
 
-function buildStraightCylinder(
-  geom: THREE.CylinderGeometry,
-  mat: THREE.Material,
-  ax: number, ay: number, az: number,
-  bx: number, by: number, bz: number,
-  thickness: number,
-): THREE.Mesh {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const dz = bz - az;
-  const len = Math.max(1e-3, Math.hypot(dx, dy, dz));
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.scale.set(thickness, len, thickness);
-  mesh.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
-  mesh.quaternion.setFromUnitVectors(
-    new THREE.Vector3(0, 1, 0),
-    new THREE.Vector3(dx / len, dy / len, dz / len),
-  );
-  return mesh;
+// --- Leg physics (ported from 2D ArachnidLeg) ---
+
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
 }
 
-function buildJoint(
-  geom: THREE.SphereGeometry,
-  mat: THREE.Material,
-  x: number, y: number, z: number,
-  radius: number,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.scale.setScalar(Math.max(1, radius));
-  mesh.position.set(x, y, z);
-  return mesh;
+function totalLegLength(c: ArachnidLegConfig): number {
+  return c.upperLegLength + c.lowerLegLength;
 }
 
-const LEG_WALK_CYCLE_UNITS = 120;  // world units of travel per full gait cycle
-const LEG_IDLE_RATE = 1.5;         // rad/s of phase advance even when standing still
-const LEG_LIFT = 6;                // world-unit foot bounce at peak lift
-const LEG_SWING_WORLD = 5;         // small tangential swing added to foot position
+function initializeLegAt(leg: LegInstance, unitX: number, unitZ: number, unitR: number): void {
+  const cos = Math.cos(unitR);
+  const sin = Math.sin(unitR);
+  const c = leg.config;
+  const attachX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
+  const attachZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
+  const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
+  const angle = unitR + c.snapTargetAngle;
+  const gx = attachX + Math.cos(angle) * restDistance;
+  const gz = attachZ + Math.sin(angle) * restDistance;
+  leg.groundX = gx;
+  leg.groundZ = gz;
+  leg.startGroundX = gx;
+  leg.startGroundZ = gz;
+  leg.targetGroundX = gx;
+  leg.targetGroundZ = gz;
+  leg.initialized = true;
+}
 
-const _up = new THREE.Vector3(0, 1, 0);
-const _dir = new THREE.Vector3();
+function updateLegPhysics(
+  leg: LegInstance,
+  unitX: number,
+  unitZ: number,
+  unitR: number,
+  cos: number,
+  sin: number,
+  vx: number,
+  vz: number,
+  dtMs: number,
+): void {
+  const c = leg.config;
+  const attachX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
+  const attachZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
+
+  if (!leg.initialized) {
+    initializeLegAt(leg, unitX, unitZ, unitR);
+    return;
+  }
+
+  if (leg.isSliding) {
+    if (leg.lerpDuration <= 0) {
+      leg.groundX = leg.targetGroundX;
+      leg.groundZ = leg.targetGroundZ;
+      leg.isSliding = false;
+    } else {
+      leg.lerpProgress += dtMs / leg.lerpDuration;
+      if (leg.lerpProgress >= 1) {
+        leg.lerpProgress = 1;
+        leg.groundX = leg.targetGroundX;
+        leg.groundZ = leg.targetGroundZ;
+        leg.isSliding = false;
+      } else {
+        const t = easeOutCubic(leg.lerpProgress);
+        leg.groundX = leg.startGroundX + (leg.targetGroundX - leg.startGroundX) * t;
+        leg.groundZ = leg.startGroundZ + (leg.targetGroundZ - leg.startGroundZ) * t;
+      }
+    }
+  }
+
+  const dx = leg.groundX - attachX;
+  const dz = leg.groundZ - attachZ;
+  const distSq = dx * dx + dz * dz;
+  const groundAngle = Math.atan2(dz, dx);
+  const angleDiff = normalizeAngle(groundAngle - unitR);
+  const angleTriggered = Math.abs(angleDiff) > c.snapTriggerAngle;
+  const isBehindPerpendicular = Math.abs(angleDiff) > Math.PI * 0.5;
+  const tl = totalLegLength(c);
+  const extThresh = tl * c.extensionThreshold;
+  const distanceTriggered = isBehindPerpendicular && distSq >= extThresh * extThresh;
+
+  if (distanceTriggered || angleTriggered) {
+    leg.startGroundX = leg.groundX;
+    leg.startGroundZ = leg.groundZ;
+    const snapDistance = tl * c.snapDistanceMultiplier;
+    const snapAngle = unitR + c.snapTargetAngle;
+    const speed = magnitude(vx, vz);
+    const velocityOffset = Math.min(speed * 0.15, snapDistance * 0.3);
+    let targetAngle = snapAngle;
+    if (speed > 1) {
+      const moveAngle = Math.atan2(vz, vx);
+      targetAngle = snapAngle * 0.7 + moveAngle * 0.3;
+    }
+    leg.targetGroundX = attachX + Math.cos(targetAngle) * (snapDistance + velocityOffset);
+    leg.targetGroundZ = attachZ + Math.sin(targetAngle) * (snapDistance + velocityOffset);
+    leg.isSliding = true;
+    leg.lerpProgress = 0;
+  }
+
+  // Clamp to reach so the foot never over-extends past physical leg length.
+  const finalDx = leg.groundX - attachX;
+  const finalDz = leg.groundZ - attachZ;
+  const finalDistSq = finalDx * finalDx + finalDz * finalDz;
+  if (finalDistSq > tl * tl) {
+    const finalDist = Math.sqrt(finalDistSq);
+    const scale = tl / finalDist;
+    leg.groundX = attachX + finalDx * scale;
+    leg.groundZ = attachZ + finalDz * scale;
+  }
+}
+
+/** 2D IK (law of cosines) — returns the knee world XZ for a leg with the
+ *  given hip + foot and upper/lower segment lengths. `side` (+1/-1) picks
+ *  which way the knee bends. */
+function kneeFromIK(
+  attachX: number, attachZ: number,
+  footX: number, footZ: number,
+  upperLen: number, lowerLen: number,
+  side: number,
+): { x: number; z: number } {
+  const dx = footX - attachX;
+  const dz = footZ - attachZ;
+  const dist = Math.max(1e-3, Math.hypot(dx, dz));
+  const clampedDist = Math.min(dist, upperLen + lowerLen * 0.98);
+  const angleToFoot = Math.atan2(dz, dx);
+  const a = upperLen;
+  const b = lowerLen;
+  const c = clampedDist;
+  let cosB = (a * a + c * c - b * b) / (2 * a * c);
+  cosB = Math.max(-1, Math.min(1, cosB));
+  const angleB = Math.acos(cosB);
+  const bendDirection = side > 0 ? 1 : -1;
+  const kneeAngle = angleToFoot + bendDirection * angleB;
+  return {
+    x: attachX + Math.cos(kneeAngle) * upperLen,
+    z: attachZ + Math.sin(kneeAngle) * upperLen,
+  };
+}
 
 /**
- * Per-frame update — treads spin their wheel cylinders at ω = v / r to match
- * the unit's linear speed; legs (at LOD 'animated' and 'full') advance a
- * walk-cycle phase that bobs each foot up-and-down with a tangential swing.
- * LOD 'simple' keeps legs rigid (geometry built, never animated).
+ * Per-frame update — drives the tread wheels, and advances each leg's
+ * snap-lerp physics + IK.
  */
 export function updateLocomotion(
   mesh: Locomotion3DMesh,
@@ -363,77 +509,89 @@ export function updateLocomotion(
   if (mesh.type === 'treads' && mesh.wheels.length > 0) {
     if (speed <= 0.1) return;
     const wheelR = Math.max(1, mesh.wheels[0].scale.x);
-    const omega = speed / wheelR;
-    const rotDelta = omega * dt;
+    const rotDelta = (speed / wheelR) * dt;
     for (const w of mesh.wheels) w.rotation.y += rotDelta;
     return;
   }
 
   if (mesh.type === 'legs' && mesh.legLod !== 'simple') {
-    // Advance the walk-cycle phase. Faster movement → faster gait. A small
-    // idle rate keeps legs ticking gently even when standing still so units
-    // don't look completely rigid.
-    const cycleRate = (speed / LEG_WALK_CYCLE_UNITS) * Math.PI * 2 + LEG_IDLE_RATE;
-    mesh.walkPhase = (mesh.walkPhase + cycleRate * dt) % (Math.PI * 2);
-
-    // `swingStrength` scales the forward-back swing with movement speed so
-    // stationary units bob subtly but moving units visibly step.
-    const swingStrength = Math.min(1, speed / 60);
+    const unitX = entity.transform.x;
+    const unitZ = entity.transform.y;  // 2D's y = 3D's z
+    const unitR = entity.transform.rotation;
+    const cos = Math.cos(unitR);
+    const sin = Math.sin(unitR);
 
     for (const leg of mesh.legs) {
-      const phase = mesh.walkPhase + leg.phaseOffset;
-      const liftT = Math.max(0, Math.sin(phase));                  // 0..1
-      const swingT = Math.cos(phase) * swingStrength;              // -1..1
+      updateLegPhysics(leg, unitX, unitZ, unitR, cos, sin, vx, vy, dtMs);
 
-      // Animate foot: lift up by `liftT · LEG_LIFT`, swing along the
-      // outward direction by `swingT · LEG_SWING_WORLD` so legs look like
-      // they step forward/back during the gait.
-      const dirX = leg.footX - leg.hipX;
-      const dirZ = leg.footZ - leg.hipZ;
-      const legLen = Math.max(1e-3, Math.hypot(dirX, dirZ));
-      const nx = dirX / legLen;
-      const nz = dirZ / legLen;
-
-      const footX = leg.footX + swingT * LEG_SWING_WORLD * nx;
-      const footY = leg.footY + liftT * LEG_LIFT;
-      const footZ = leg.footZ + swingT * LEG_SWING_WORLD * nz;
+      // Hip world position (same formula as updateLegPhysics above — keep in
+      // sync when tweaking).
+      const c = leg.config;
+      const hipX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
+      const hipZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
+      const footX = leg.groundX;
+      const footZ = leg.groundZ;
 
       if (mesh.legLod === 'animated') {
-        // Single cylinder — rebuild its transform between hip and animated foot.
+        // Single straight cylinder from hip → foot.
         setCylinderBetween(
           leg.upper,
-          leg.hipX, leg.hipY, leg.hipZ,
-          footX, footY, footZ,
+          hipX, HIP_Y, hipZ,
+          footX, FOOT_Y, footZ,
           leg.upperThick,
         );
       } else {
-        // 'full' — update both segments and the three joint spheres.
-        const kneeX = (leg.hipX + footX) / 2;
-        const kneeZ = (leg.hipZ + footZ) / 2;
-        // Bend the knee a bit higher during the lift phase so the leg
-        // visibly flexes as the foot lifts.
-        const kneeY = leg.hipY * 0.55 + liftT * LEG_LIFT * 0.6;
+        // 'full' — compute knee via IK in the XZ plane, then two cylinders.
+        const knee = kneeFromIK(
+          hipX, hipZ,
+          footX, footZ,
+          c.upperLegLength, c.lowerLegLength,
+          leg.side,
+        );
         setCylinderBetween(
           leg.upper,
-          leg.hipX, leg.hipY, leg.hipZ,
-          kneeX, kneeY, kneeZ,
+          hipX, HIP_Y, hipZ,
+          knee.x, KNEE_Y, knee.z,
           leg.upperThick,
         );
         if (leg.lower) {
           setCylinderBetween(
             leg.lower,
-            kneeX, kneeY, kneeZ,
-            footX, footY, footZ,
+            knee.x, KNEE_Y, knee.z,
+            footX, FOOT_Y, footZ,
             leg.lowerThick,
           );
         }
-        if (leg.kneeJoint) leg.kneeJoint.position.set(kneeX, kneeY, kneeZ);
-        if (leg.footJoint) leg.footJoint.position.set(footX, footY, footZ);
-        // hipJoint is fixed; no update needed.
+        if (leg.hipJoint)  leg.hipJoint.position.set(hipX, HIP_Y, hipZ);
+        if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, KNEE_Y, knee.z);
+        if (leg.footJoint) leg.footJoint.position.set(footX, FOOT_Y, footZ);
       }
+    }
+  } else if (mesh.type === 'legs' && mesh.legLod === 'simple') {
+    // 'simple' LOD: static hip-to-foot cylinder, no walk cycle. Rebuild once
+    // per frame anyway since the hip moves with the unit.
+    const unitX = entity.transform.x;
+    const unitZ = entity.transform.y;
+    const unitR = entity.transform.rotation;
+    const cos = Math.cos(unitR);
+    const sin = Math.sin(unitR);
+    for (const leg of mesh.legs) {
+      if (!leg.initialized) initializeLegAt(leg, unitX, unitZ, unitR);
+      const c = leg.config;
+      const hipX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
+      const hipZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
+      setCylinderBetween(
+        leg.upper,
+        hipX, HIP_Y, hipZ,
+        leg.groundX, FOOT_Y, leg.groundZ,
+        leg.upperThick,
+      );
     }
   }
 }
+
+const _up = new THREE.Vector3(0, 1, 0);
+const _dir = new THREE.Vector3();
 
 function setCylinderBetween(
   mesh: THREE.Mesh,

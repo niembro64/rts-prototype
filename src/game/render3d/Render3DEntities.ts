@@ -501,9 +501,13 @@ export class Render3DEntities {
         m = { group, chassis, turrets: turretMeshes, lodKey: this.lod.key };
 
         // Locomotion (tank treads / vehicle wheels / arachnid legs). Built
-        // once per unit at the current LOD; treads/wheels spin per-frame based
-        // on the unit's linear velocity.
-        m.locomotion = buildLocomotion(group, e, radius, pid, this.lod.gfx);
+        // once per unit at the current LOD.
+        //  - Treads / wheels are parented to the unit's group (they rotate
+        //    with the chassis).
+        //  - Legs are parented to the WORLD group directly so that feet can
+        //    plant in world space during the snap-lerp gait while the unit
+        //    rotates above them.
+        m.locomotion = buildLocomotion(group, this.world, e, radius, pid, this.lod.gfx);
 
         // Chassis detail accent — a thin emissive band around the chassis,
         // only at high+ LOD, matching 2D's CHASSIS_DETAIL axis.
