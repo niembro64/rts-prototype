@@ -161,11 +161,16 @@ export class Explosion3D {
   }
 
   /**
-   * Unit-death blast: bigger, team-tinted shell on top of the standard core.
-   * Matches the 2D renderer's "addExplosion(..., 'death', ...)" call path.
+   * Unit-death blast: a large orange fireball at 2.5× the unit's collision
+   * radius, matching the 2D DeathEffectsHandler which calls
+   * `addExplosion(..., 'death', ...)` with `radius = ctx.radius * 2.5`.
+   *
+   * We don't pass a team color as the shell here — fire should read as fire.
+   * The team's identity comes through in the Debris3D pieces that spawn
+   * alongside this explosion (chassis, turret head, etc., all team-colored).
    */
-  spawnDeath(x: number, z: number, radius: number, teamColor: number): void {
-    this.spawnImpact(x, z, radius * 1.2, teamColor);
+  spawnDeath(x: number, z: number, radius: number): void {
+    this.spawnImpact(x, z, radius * 2.5);
   }
 
   private addPuff(

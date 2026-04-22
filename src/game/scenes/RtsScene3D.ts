@@ -574,14 +574,18 @@ export class RtsScene3D {
     } else if (event.type === 'death') {
       const ctx = event.deathContext;
       if (ctx) {
+        // Fire explosion — sized from the unit's collision radius (the
+        // spawner applies the 2D's 2.5× multiplier internally) so a tank
+        // produces a much larger fireball than a scout.
         this.explosionRenderer.spawnDeath(
           event.pos.x, event.pos.y,
-          Math.max(ctx.radius, 12),
-          ctx.color,
+          Math.max(ctx.radius, 6),
         );
+        // Material debris — chassis edges, turret head, barrels, treads,
+        // legs, etc., scattered per the unit's blueprint.
         this.debrisRenderer.spawn(event.pos.x, event.pos.y, ctx);
       } else {
-        this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 16);
+        this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 20);
       }
     }
   }
