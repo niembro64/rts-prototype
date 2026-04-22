@@ -57,6 +57,8 @@ import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
+import { PanArrowOverlay } from '../hud/PanArrowOverlay';
+import { getBottomBarsHeight } from '@/clientBarConfig';
 
 // Grid settings
 const GRID_SIZE = 50;
@@ -69,6 +71,7 @@ export class RtsScene extends SceneShim {
   private localCommandQueue!: CommandQueue;
   private gridGraphics!: GraphicsAdapter;
   private spatialGridGraphics!: GraphicsAdapter;
+  private panArrowOverlay: PanArrowOverlay | null = null;
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
 
@@ -275,6 +278,17 @@ export class RtsScene extends SceneShim {
       this.localCommandQueue,
     );
 
+    // Shared pan-direction arrow (SVG/DOM overlay). Both 2D and 3D scenes
+    // create one; the CameraController updates it during drag pan / edge scroll.
+    const canvasParent = this.game.canvas.parentElement;
+    if (canvasParent) {
+      this.panArrowOverlay = new PanArrowOverlay(canvasParent, () => ({
+        top: 50,
+        bottom: getBottomBarsHeight(),
+      }));
+      this.inputManager.setPanArrowOverlay(this.panArrowOverlay);
+    }
+
     // Initialize audio on first user interaction
     this.input.once('pointerdown', () => {
       if (!this.audioInitialized) {
@@ -343,6 +357,7 @@ export class RtsScene extends SceneShim {
       this.clientViewState,
       this.localCommandQueue,
     );
+    this.inputManager.setPanArrowOverlay(this.panArrowOverlay);
     this.markSelectionDirty();
     this.onPlayerChange?.(playerId);
   }
@@ -848,6 +863,8 @@ export class RtsScene extends SceneShim {
     this.inputManager = null;
     this.gridGraphics?.destroy();
     this.spatialGridGraphics?.destroy();
+    this.panArrowOverlay?.destroy();
+    this.panArrowOverlay = null;
     this.gameConnection?.disconnect();
 
     // Clear snapshot buffer and audio scheduler

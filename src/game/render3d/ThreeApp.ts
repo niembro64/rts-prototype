@@ -10,6 +10,7 @@ import {
   ZOOM_FACTOR,
   ZOOM_MIN,
   ZOOM_MAX,
+  EDGE_SCROLL,
 } from '../../config';
 
 export class ThreeApp {
@@ -55,6 +56,7 @@ export class ThreeApp {
       maxDistance: baseDistance / ZOOM_MIN,
       zoomStepFactor: ZOOM_FACTOR,
       panMultiplier: CAMERA_PAN_MULTIPLIER,
+      arrowDragMaxDist: EDGE_SCROLL.arrowDragMaxDist,
     });
     // Center on map, pulled in for a useful RTS default view
     this.orbit.setTarget(mapWidth / 2, 0, mapHeight / 2);

@@ -20,6 +20,11 @@ export type OrbitCameraOptions = {
   /** Multiplier applied on top of world-per-pixel when panning. Matches the
    *  2D CAMERA_PAN_MULTIPLIER so pan feel is consistent across renderers. */
   panMultiplier?: number;
+  /** Maximum drag distance (screen pixels) for full pan-arrow intensity. */
+  arrowDragMaxDist?: number;
+  /** Fired during drag-pan so a shared HUD overlay (pan arrow) can render.
+   *  direction is a unit vector (screen space); intensity ∈ [0, 1]. */
+  onPanState?: (dirX: number, dirY: number, intensity: number) => void;
 };
 
 export class OrbitCamera {
@@ -40,6 +45,11 @@ export class OrbitCamera {
   private zoomStepFactor: number;
   private rotateSpeed: number;
   private panMultiplier: number;
+  private arrowDragMaxDist: number;
+  private onPanState?: (dirX: number, dirY: number, intensity: number) => void;
+
+  // Tracks drag origin in screen pixels so we can emit pan-arrow state.
+  private dragOriginScreen = { x: 0, y: 0 };
 
   private dragMode: 'none' | 'orbit' | 'pan' = 'none';
   private lastMouseX = 0;
@@ -66,6 +76,8 @@ export class OrbitCamera {
     this.zoomStepFactor = opts.zoomStepFactor ?? 1 + 1 / 8;
     this.rotateSpeed = opts.rotateSpeed ?? 0.005;
     this.panMultiplier = opts.panMultiplier ?? 1.0;
+    this.arrowDragMaxDist = opts.arrowDragMaxDist ?? 100;
+    this.onPanState = opts.onPanState;
 
     this.onWheel = (e) => {
       e.preventDefault();
@@ -88,6 +100,7 @@ export class OrbitCamera {
       this.dragMode = e.altKey ? 'orbit' : 'pan';
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
+      this.dragOriginScreen = { x: e.clientX, y: e.clientY };
     };
 
     this.onMouseMove = (e) => {
@@ -96,6 +109,20 @@ export class OrbitCamera {
       const dy = e.clientY - this.lastMouseY;
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
+
+      // Emit pan-state to the shared HUD overlay (drag-pan arrow).
+      if (this.dragMode === 'pan' && this.onPanState) {
+        const totalDx = e.clientX - this.dragOriginScreen.x;
+        const totalDy = e.clientY - this.dragOriginScreen.y;
+        const dist = Math.hypot(totalDx, totalDy);
+        if (dist > 0) {
+          this.onPanState(
+            totalDx / dist,
+            totalDy / dist,
+            Math.min(dist / this.arrowDragMaxDist, 1),
+          );
+        }
+      }
 
       if (this.dragMode === 'orbit') {
         this.yaw -= dx * this.rotateSpeed;
@@ -128,6 +155,7 @@ export class OrbitCamera {
     this.onMouseUp = (e) => {
       if (e.button !== 1) return;
       this.dragMode = 'none';
+      this.onPanState?.(0, 0, 0);
     };
 
     this.onContextMenu = (e) => {
@@ -158,6 +186,13 @@ export class OrbitCamera {
   setTarget(x: number, y: number, z: number): void {
     this.target.set(x, y, z);
     this.apply();
+  }
+
+  /** Register a callback for drag-pan state (used by the shared HUD overlay). */
+  setOnPanState(
+    cb: ((dirX: number, dirY: number, intensity: number) => void) | undefined,
+  ): void {
+    this.onPanState = cb;
   }
 
   destroy(): void {

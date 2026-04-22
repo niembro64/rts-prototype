@@ -7,6 +7,7 @@ import type {
 import { SelectionController } from './SelectionController';
 import { BuildingPlacementController } from './BuildingPlacementController';
 import { CameraController } from './CameraController';
+import type { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { CommandController } from './CommandController';
 import { type InputState, createInitialInputState } from './InputState';
 import { getDragPanEnabled } from '@/clientBarConfig';
@@ -202,6 +203,10 @@ export class InputManager {
    * Set the entity source for input detection
    * Allows switching between WorldState (simulation) and ClientViewState (client view)
    */
+  public setPanArrowOverlay(overlay: PanArrowOverlay | null): void {
+    this.cameraController.setPanArrowOverlay(overlay);
+  }
+
   public setEntitySource(source: InputEntitySource): void {
     this.selectionController.setEntitySource(source);
     this.buildingController.setEntitySource(source);

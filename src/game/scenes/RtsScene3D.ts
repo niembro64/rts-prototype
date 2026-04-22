@@ -19,6 +19,8 @@ import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
+import { PanArrowOverlay } from '../hud/PanArrowOverlay';
+import { getBottomBarsHeight } from '@/clientBarConfig';
 
 import type { GameConnection } from '../server/GameConnection';
 import type {
@@ -80,6 +82,7 @@ export class RtsScene3D {
   private snapshotBuffer = new SnapshotBuffer();
   private localCommandQueue = new CommandQueue();
   private currentWaypointMode: WaypointType = 'move';
+  private panArrowOverlay: PanArrowOverlay | null = null;
 
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
@@ -262,6 +265,19 @@ export class RtsScene3D {
       this.threeApp.world,
       this.clientViewState,
     );
+
+    // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
+    const canvasParent = this.threeApp.canvas.parentElement;
+    if (canvasParent) {
+      this.panArrowOverlay = new PanArrowOverlay(canvasParent, () => ({
+        top: 50,
+        bottom: getBottomBarsHeight(),
+      }));
+      const overlay = this.panArrowOverlay;
+      this.threeApp.orbit.setOnPanState(
+        (dirX, dirY, intensity) => overlay.set(dirX, dirY, intensity),
+      );
+    }
 
     // Wire raycast-based selection + move commands
     this.inputManager = new Input3DManager(
@@ -549,6 +565,9 @@ export class RtsScene3D {
   public shutdown(): void {
     this.inputManager?.destroy();
     this.inputManager = null;
+    this.threeApp.orbit.setOnPanState(undefined);
+    this.panArrowOverlay?.destroy();
+    this.panArrowOverlay = null;
     this.entityRenderer?.destroy();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();

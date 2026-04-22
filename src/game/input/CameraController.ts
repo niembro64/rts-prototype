@@ -8,6 +8,7 @@ import {
 } from '../../config';
 import { getEdgeScrollEnabled, getBottomBarsHeight } from '@/clientBarConfig';
 import type { InputState } from './InputState';
+import type { PanArrowOverlay } from '../hud/PanArrowOverlay';
 
 /**
  * CameraController - Handles camera panning (middle-mouse drag), zoom (scroll wheel),
@@ -23,12 +24,16 @@ export class CameraController {
     dy: number,
   ) => void;
   private edgeOverlay: Phaser.GameObjects.Graphics;
+  private panArrow: PanArrowOverlay | null = null;
 
   constructor(scene: Phaser.Scene, state: InputState) {
     this.scene = scene;
     this.state = state;
 
-    // Screen-fixed overlay for edge scroll border zone
+    // Screen-fixed overlay for edge scroll border zone (the ellipses are
+    // currently invisible via EDGE_SCROLL alphas, but we keep the geometry
+    // drawing here in case they're re-enabled). The pan arrow is drawn by
+    // the shared PanArrowOverlay, not this layer.
     this.edgeOverlay = scene.add.graphics();
     this.edgeOverlay.setScrollFactor(0);
     this.edgeOverlay.setDepth(EDGE_SCROLL.depth);
@@ -97,9 +102,14 @@ export class CameraController {
     this.scene.input.on('wheel', this.wheelHandler);
   }
 
+  setPanArrowOverlay(overlay: PanArrowOverlay | null): void {
+    this.panArrow = overlay;
+  }
+
   destroy(): void {
     this.scene.input.off('wheel', this.wheelHandler);
     this.edgeOverlay.destroy();
+    this.panArrow?.clear();
   }
 
   /** Edge scroll, border overlay (only when mouse is in zone), and pan direction arrow */
@@ -288,94 +298,13 @@ export class CameraController {
       }
     }
 
-    // --- Draw pan direction arrow at screen center ---
-    if (arrowIntensity > 0) {
-      const gap = EDGE_SCROLL.arrowGap;
-      const visibleLength = arrowIntensity * EDGE_SCROLL.arrowMaxLength;
-
-      // Scale head to fit when arrow is short
-      const headScale =
-        visibleLength >= EDGE_SCROLL.headLength
-          ? 1
-          : visibleLength / EDGE_SCROLL.headLength;
-      const headLen = EDGE_SCROLL.headLength * headScale;
-      const headW = EDGE_SCROLL.headWidth * headScale;
-
-      const perpX = -arrowDirY;
-      const perpY = arrowDirX;
-
-      const startSX = screenCenterX + arrowDirX * gap;
-      const startSY = screenCenterY + arrowDirY * gap;
-      const tipSX = screenCenterX + arrowDirX * (gap + visibleLength);
-      const tipSY = screenCenterY + arrowDirY * (gap + visibleLength);
-      const baseSX = tipSX - arrowDirX * headLen;
-      const baseSY = tipSY - arrowDirY * headLen;
-      const headLX = baseSX + perpX * headW;
-      const headLY = baseSY + perpY * headW;
-      const headRX = baseSX - perpX * headW;
-      const headRY = baseSY - perpY * headW;
-
-      // Outline pass (thicker, behind)
-      if (EDGE_SCROLL.outlineAlpha > 0) {
-        this.edgeOverlay.lineStyle(
-          (EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) ,
-          EDGE_SCROLL.outlineColor,
-          EDGE_SCROLL.outlineAlpha,
-        );
-        this.edgeOverlay.beginPath();
-        this.edgeOverlay.moveTo(gx(startSX), gy(startSY));
-        this.edgeOverlay.lineTo(gx(baseSX), gy(baseSY));
-        this.edgeOverlay.strokePath();
-
-        this.edgeOverlay.lineStyle(
-          (EDGE_SCROLL.shaftWidth + EDGE_SCROLL.outlineWidth * 2) ,
-          EDGE_SCROLL.outlineColor,
-          EDGE_SCROLL.outlineAlpha,
-        );
-        this.edgeOverlay.beginPath();
-        this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
-        this.edgeOverlay.lineTo(gx(headLX), gy(headLY));
-        this.edgeOverlay.lineTo(gx(headRX), gy(headRY));
-        this.edgeOverlay.closePath();
-        this.edgeOverlay.strokePath();
-      }
-
-      // Shaft line
-      this.edgeOverlay.lineStyle(
-        EDGE_SCROLL.shaftWidth ,
-        EDGE_SCROLL.shaftColor,
-        EDGE_SCROLL.shaftAlpha,
-      );
-      this.edgeOverlay.beginPath();
-      this.edgeOverlay.moveTo(gx(startSX), gy(startSY));
-      this.edgeOverlay.lineTo(gx(baseSX), gy(baseSY));
-      this.edgeOverlay.strokePath();
-
-      // Arrowhead fill
-      this.edgeOverlay.fillStyle(
-        EDGE_SCROLL.headFillColor,
-        EDGE_SCROLL.headFillAlpha,
-      );
-      this.edgeOverlay.beginPath();
-      this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
-      this.edgeOverlay.lineTo(gx(headLX), gy(headLY));
-      this.edgeOverlay.lineTo(gx(headRX), gy(headRY));
-      this.edgeOverlay.closePath();
-      this.edgeOverlay.fillPath();
-
-      // Arrowhead stroke
-      if (EDGE_SCROLL.headStrokeAlpha > 0) {
-        this.edgeOverlay.lineStyle(
-          EDGE_SCROLL.headStrokeWidth ,
-          EDGE_SCROLL.headStrokeColor,
-          EDGE_SCROLL.headStrokeAlpha,
-        );
-        this.edgeOverlay.beginPath();
-        this.edgeOverlay.moveTo(gx(tipSX), gy(tipSY));
-        this.edgeOverlay.lineTo(gx(headLX), gy(headLY));
-        this.edgeOverlay.lineTo(gx(headRX), gy(headRY));
-        this.edgeOverlay.closePath();
-        this.edgeOverlay.strokePath();
+    // Arrow rendering is delegated to the shared PanArrowOverlay (DOM/SVG),
+    // so both 2D and 3D use identical rendering + styling from EDGE_SCROLL.
+    if (this.panArrow) {
+      if (arrowIntensity > 0) {
+        this.panArrow.set(arrowDirX, arrowDirY, arrowIntensity);
+      } else {
+        this.panArrow.clear();
       }
     }
   }
