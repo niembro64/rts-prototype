@@ -10,8 +10,9 @@
 // Coordinate mapping: sim (x, y) → three (x, z). Y is up. Ground at y=0.
 
 import * as THREE from 'three';
-import type { PlayerId, Turret } from '../sim/types';
+import type { EntityId, PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
+import type { SpinConfig } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 
 // All units share the same chassis and turret *heights*; only the horizontal
@@ -40,6 +41,10 @@ type TurretMesh = {
    *  is the whole visual) and mirror units (the mirror panels are). */
   head?: THREE.Mesh;
   barrels: THREE.Mesh[];
+  /** Present for multi-barrel turrets: a sub-group containing the barrel
+   *  cylinders. Rotating this around local +X spins the whole barrel cluster
+   *  around the firing axis (the gatling effect). */
+  barrelGroup?: THREE.Group;
 };
 
 type MirrorMesh = {
@@ -64,6 +69,13 @@ export class Render3DEntities {
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
   private projectileMeshes = new Map<number, THREE.Mesh>();
+
+  // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
+  // Angle advances by `speed` radians/sec; speed accelerates toward
+  // spinConfig.max while any turret on the unit is engaged, decelerates toward
+  // spinConfig.idle otherwise. Mirrors the 2D barrel-spin system exactly.
+  private barrelSpins = new Map<EntityId, { angle: number; speed: number }>();
+  private _lastSpinMs = performance.now();
 
   // Shared geometries & per-team materials (avoid per-entity allocation)
   private unitGeom = new THREE.CylinderGeometry(1, 1, 1, 20);
@@ -144,7 +156,7 @@ export class Render3DEntities {
     if (!barrel || isForceField) {
       // Force-field turrets don't have a physical barrel.
       parent.add(root);
-      return { root, head, barrels };
+      return { root, head, barrels, barrelGroup: undefined };
     }
 
     const barrelCenterY = TURRET_HEIGHT / 2;
@@ -162,6 +174,18 @@ export class Render3DEntities {
       ?? BARREL_MIN_THICKNESS;
     // CylinderGeometry is unit radius = 1, so physical radius = scale.x = diameter/2.
     const cylRadius = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+
+    // Multi-barrel types get a dedicated sub-group so the whole cluster can
+    // rotate around the firing axis (+X) to produce the gatling spin effect.
+    // Single barrels don't spin, so they're parented to the turret root directly.
+    const isMultiBarrel =
+      barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel';
+    let barrelGroup: THREE.Group | undefined;
+    if (isMultiBarrel) {
+      barrelGroup = new THREE.Group();
+      root.add(barrelGroup);
+    }
+    const barrelParent: THREE.Object3D = barrelGroup ?? root;
 
     // Place one cylinder segment spanning (base) → (tip) in local coords. Used
     // for straight (gatling) and cone (shotgun) barrels alike.
@@ -185,7 +209,7 @@ export class Render3DEntities {
       this._barrelUp.set(0, 1, 0);
       this._barrelDir.set(dx / length, dy / length, dz / length);
       m.quaternion.setFromUnitVectors(this._barrelUp, this._barrelDir);
-      root.add(m);
+      barrelParent.add(m);
       barrels.push(m);
     };
 
@@ -193,7 +217,7 @@ export class Render3DEntities {
     // barrelLength=0 (e.g. commander's d-gun "emitter") → no visible barrel.
     if (length < 1e-4) {
       parent.add(root);
-      return { root, head, barrels };
+      return { root, head, barrels, barrelGroup };
     }
 
     if (barrel.type === 'simpleSingleBarrel') {
@@ -236,7 +260,7 @@ export class Render3DEntities {
     }
 
     parent.add(root);
-    return { root, head, barrels };
+    return { root, head, barrels, barrelGroup };
   }
 
   // Scratch vectors reused across buildTurretMesh calls (no per-barrel allocations).
@@ -283,9 +307,65 @@ export class Render3DEntities {
   }
 
   update(): void {
+    // Time step for continuous-rotation effects (barrel spin). Clamp in case
+    // the tab was backgrounded.
+    const now = performance.now();
+    const spinDt = Math.min((now - this._lastSpinMs) / 1000, 0.1);
+    this._lastSpinMs = now;
+
+    this.updateBarrelSpins(spinDt);
     this.updateUnits();
     this.updateBuildings();
     this.updateProjectiles();
+  }
+
+  /**
+   * Advance each unit's barrel-spin state (angle, speed). Mirrors the 2D
+   * updateBarrelSpins loop exactly: pick the first multi-barrel turret on
+   * each unit for its spin config, accelerate toward max while any turret
+   * is engaged, decelerate toward idle otherwise.
+   */
+  private updateBarrelSpins(dt: number): void {
+    const units = this.clientViewState.getUnits();
+    const seen = new Set<EntityId>();
+
+    for (const entity of units) {
+      if (!entity.turrets) continue;
+      seen.add(entity.id);
+
+      let spinConfig: SpinConfig | undefined;
+      for (const w of entity.turrets) {
+        const bc = w.config.barrel;
+        if (
+          bc
+          && (bc.type === 'simpleMultiBarrel' || bc.type === 'coneMultiBarrel')
+        ) {
+          spinConfig = bc.spin;
+          break;
+        }
+      }
+      if (!spinConfig) continue;
+
+      let state = this.barrelSpins.get(entity.id);
+      if (!state) {
+        state = { angle: 0, speed: spinConfig.idle };
+        this.barrelSpins.set(entity.id, state);
+      }
+
+      const firing = entity.turrets.some((w) => w.state === 'engaged');
+      if (firing) {
+        state.speed = Math.min(state.speed + spinConfig.accel * dt, spinConfig.max);
+      } else {
+        state.speed = Math.max(state.speed - spinConfig.decel * dt, spinConfig.idle);
+      }
+      // Keep angle bounded to [0, 2π) so Float32 precision doesn't drift over long games.
+      state.angle = (state.angle + state.speed * dt) % (Math.PI * 2);
+    }
+
+    // Drop state for units that no longer exist.
+    for (const id of this.barrelSpins.keys()) {
+      if (!seen.has(id)) this.barrelSpins.delete(id);
+    }
   }
 
   private updateUnits(): void {
@@ -387,6 +467,7 @@ export class Render3DEntities {
       // Per-turret placement. Turret offset is chassis-local in sim coords
       // (x, y) which map to (x, z) in three. Root Y sits at the top of the
       // chassis; the head + barrels extend upward from there inside the root.
+      const spinState = this.barrelSpins.get(e.id);
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
@@ -396,6 +477,12 @@ export class Render3DEntities {
         // -(t.rotation - chassis.rotation), which makes local +X point in the
         // correct world firing direction after both rotations compose.
         tm.root.rotation.y = -(t.rotation - e.transform.rotation);
+        // Gatling-style barrel spin: rotate the whole barrel cluster around
+        // its local +X axis (the firing direction). Barrel positions orbit
+        // around the axis; their orientations stay pointing forward.
+        if (tm.barrelGroup) {
+          tm.barrelGroup.rotation.x = spinState?.angle ?? 0;
+        }
       }
 
       // Mirror panels: track the first turret's rotation (same rule the 2D
