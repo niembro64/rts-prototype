@@ -23,7 +23,7 @@ const TURRET_HEIGHT = 16;            // Y extent of every turret head
 const SHOT_HEIGHT = CHASSIS_HEIGHT + TURRET_HEIGHT / 2; // world Y of projectiles/barrel tips
 
 const BUILDING_HEIGHT = 120;
-const PROJECTILE_SCALE = 2.5;
+const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const TURRET_HEAD_FOOTPRINT = 0.55;  // head X/Z footprint as fraction of chassis radius
 const BARREL_COLOR = 0xffffff;
 const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
@@ -65,7 +65,9 @@ export class Render3DEntities {
 
   // Shared geometries & per-team materials (avoid per-entity allocation)
   private unitGeom = new THREE.CylinderGeometry(1, 1, 1, 20);
-  private turretHeadGeom = new THREE.BoxGeometry(1, 1, 1);
+  // Turret head: a cylinder (not a box) — matches the unit's circular chassis
+  // profile from above so the 3D silhouette looks like a turret, not a brick.
+  private turretHeadGeom = new THREE.CylinderGeometry(1, 1, 1, 18);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -118,8 +120,10 @@ export class Render3DEntities {
     // root (extends upward by TURRET_HEIGHT), and barrels emerge from the
     // head's vertical center — so barrel tips line up with SHOT_HEIGHT.
     const head = new THREE.Mesh(this.turretHeadGeom, this.getSecondaryMat(pid));
-    const headFootprint = unitRadius * TURRET_HEAD_FOOTPRINT;
-    head.scale.set(headFootprint * 2, TURRET_HEIGHT, headFootprint * 2.5);
+    const headRadius = unitRadius * TURRET_HEAD_FOOTPRINT;
+    // CylinderGeometry has radius 1 → scale x/z become the actual radius.
+    // Keep x and z equal so the head is a round turret top, not an ellipse.
+    head.scale.set(headRadius, TURRET_HEIGHT, headRadius);
     head.position.set(0, TURRET_HEIGHT / 2, 0);
     root.add(head);
 
@@ -466,7 +470,12 @@ export class Render3DEntities {
       }
 
       mesh.position.set(e.transform.x, SHOT_HEIGHT, e.transform.y);
-      mesh.scale.setScalar(Math.max(radius, 2) * PROJECTILE_SCALE);
+      // Match 2D: `fillCircle(x, y, radius)` — the sphere's world-space radius
+      // equals the sim's shot.collision.radius. SphereGeometry has radius 1,
+      // so setScalar(radius) is the correct scale. Barrel diameter (= 2·cylRadius
+      // = shotRadius · 2 · BARREL_THICKNESS_MULTIPLIER) then sits naturally
+      // inside the projectile, matching the 2D relationship.
+      mesh.scale.setScalar(Math.max(radius, PROJECTILE_MIN_RADIUS));
     }
 
     for (const [id, mesh] of this.projectileMeshes) {

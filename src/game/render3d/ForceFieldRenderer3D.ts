@@ -4,44 +4,42 @@
 // a `ForceShot` (shot.type === 'force') configured with push/pull zone ranges.
 // It animates per-tick via `turret.forceField.range` (0 → 1 progress).
 //
-// Rendering mirrors the 2D TurretRenderer behavior:
+// Rendering:
 //   - A small pulsing sphere at the turret mount, color-lerping white → blue
 //     with progress, sine-pulsing at the turret's transitionTime period.
-//   - A translucent flat "ring" on the ground for the push zone, with the
-//     inner radius shrinking from outerRange to innerRange as progress → 1.
+//   - A translucent outer sphere the size of the push-zone's outerRange, so
+//     the force field looks like a spherical bubble enveloping the unit (a 3D
+//     analogue of the 2D annular zone).
 
 import * as THREE from 'three';
 import type { Entity, Turret } from '../sim/types';
 import { getWeaponWorldPosition } from '../math';
 
 // Must match Render3DEntities to keep emitter spheres roughly at the turret's
-// vertical center; the push ring always lies on the ground (y=0).
+// vertical center.
 const SHOT_HEIGHT = 28 + 16 / 2;   // CHASSIS_HEIGHT + TURRET_HEIGHT/2
-const RING_Y = 1;                  // just above ground to avoid z-fight
 
 const EMITTER_COLOR_A = 0xf0f0f0;  // idle: white
 const EMITTER_COLOR_B = 0x3366ff;  // active: blue
 const EMITTER_BASE_RADIUS = 4;
 const EMITTER_MAX_RADIUS = 10;
-const RING_SEGMENTS = 48;
 
 function isForceFieldTurret(t: Turret): boolean {
   return (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
 }
 
 type FieldMesh = {
-  sphere: THREE.Mesh;
-  sphereMat: THREE.MeshBasicMaterial;
-  ring: THREE.Mesh;
-  ringMat: THREE.MeshBasicMaterial;
-  /** Cached inner/outer so we don't rebuild RingGeometry unnecessarily. */
-  cachedInner: number;
-  cachedOuter: number;
+  emitter: THREE.Mesh;
+  emitterMat: THREE.MeshBasicMaterial;
+  zone: THREE.Mesh;
+  zoneMat: THREE.MeshBasicMaterial;
 };
 
 export class ForceFieldRenderer3D {
   private root: THREE.Group;
-  private sphereGeom = new THREE.SphereGeometry(1, 12, 10);
+  // Unit sphere reused for both the small pulsing emitter and the large
+  // translucent force-field bubble (scaled per-instance).
+  private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
   private fields = new Map<string, FieldMesh>();
 
   constructor(parentWorld: THREE.Group) {
@@ -52,37 +50,35 @@ export class ForceFieldRenderer3D {
   private acquire(key: string): FieldMesh {
     const existing = this.fields.get(key);
     if (existing) {
-      existing.sphere.visible = true;
-      existing.ring.visible = true;
+      existing.emitter.visible = true;
+      existing.zone.visible = true;
       return existing;
     }
-    const sphereMat = new THREE.MeshBasicMaterial({
+    const emitterMat = new THREE.MeshBasicMaterial({
       color: EMITTER_COLOR_A,
       transparent: true,
       opacity: 0.9,
       depthWrite: false,
     });
-    const sphere = new THREE.Mesh(this.sphereGeom, sphereMat);
-    sphere.renderOrder = 7;
-    this.root.add(sphere);
+    const emitter = new THREE.Mesh(this.sphereGeom, emitterMat);
+    emitter.renderOrder = 8; // draw on top of the bubble
+    this.root.add(emitter);
 
-    const ringMat = new THREE.MeshBasicMaterial({
+    // Spherical force-field bubble. The 2D annular push zone becomes a single
+    // translucent sphere at outerRange in 3D; the inner-radius shrinkage is
+    // conveyed via alpha (fades in with progress).
+    const zoneMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.0,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
-    // Placeholder ring; geometry is (re)built on demand when inner/outer change.
-    const ring = new THREE.Mesh(new THREE.RingGeometry(1, 1.01, RING_SEGMENTS), ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.renderOrder = 6;
-    this.root.add(ring);
+    const zone = new THREE.Mesh(this.sphereGeom, zoneMat);
+    zone.renderOrder = 7;
+    this.root.add(zone);
 
-    const field: FieldMesh = {
-      sphere, sphereMat, ring, ringMat,
-      cachedInner: -1, cachedOuter: -1,
-    };
+    const field: FieldMesh = { emitter, emitterMat, zone, zoneMat };
     this.fields.set(key, field);
     return field;
   }
@@ -114,7 +110,7 @@ export class ForceFieldRenderer3D {
         seen.add(key);
         const field = this.acquire(key);
 
-        // Central pulsing sphere: lerp white → blue, radius scales with progress.
+        // Central pulsing emitter sphere: lerp white → blue, radius scales with progress.
         const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
         const pulse = (Math.sin(nowSec * freq) * 0.5 + 0.5) * progress;
         const r =
@@ -126,33 +122,25 @@ export class ForceFieldRenderer3D {
         const b =
           (EMITTER_COLOR_A & 0xff)
           + ((EMITTER_COLOR_B & 0xff) - (EMITTER_COLOR_A & 0xff)) * pulse;
-        field.sphereMat.color.setRGB(r / 255, g / 255, b / 255);
-        const sphereRadius = EMITTER_BASE_RADIUS
+        field.emitterMat.color.setRGB(r / 255, g / 255, b / 255);
+        const emitterRadius = EMITTER_BASE_RADIUS
           + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * progress;
-        field.sphere.scale.setScalar(sphereRadius);
-        field.sphere.position.set(wp.x, SHOT_HEIGHT, wp.y);
+        field.emitter.scale.setScalar(emitterRadius);
+        field.emitter.position.set(wp.x, SHOT_HEIGHT, wp.y);
 
-        // Push zone ring — inner radius shrinks from outer → innerRange with progress.
+        // Spherical force-field zone — scale = outerRange (= push-zone radius
+        // in sim units). Alpha fades in over the first third of progress.
         const push = shot.push;
         const outer = push.outerRange;
-        const inner = push.outerRange - (push.outerRange - push.innerRange) * progress;
-        if (outer > inner && outer > 0) {
-          if (
-            Math.abs(inner - field.cachedInner) > 0.5
-            || Math.abs(outer - field.cachedOuter) > 0.5
-          ) {
-            field.ring.geometry.dispose();
-            field.ring.geometry = new THREE.RingGeometry(inner, outer, RING_SEGMENTS);
-            field.cachedInner = inner;
-            field.cachedOuter = outer;
-          }
-          field.ring.position.set(wp.x, RING_Y, wp.y);
+        if (outer > 0) {
           const fadeIn = Math.min(progress * 3, 1);
-          field.ringMat.color.set(push.color);
-          field.ringMat.opacity = push.alpha * fadeIn;
-          field.ring.visible = true;
+          field.zoneMat.color.set(push.color);
+          field.zoneMat.opacity = push.alpha * fadeIn;
+          field.zone.scale.setScalar(outer);
+          field.zone.position.set(wp.x, SHOT_HEIGHT, wp.y);
+          field.zone.visible = true;
         } else {
-          field.ring.visible = false;
+          field.zone.visible = false;
         }
       }
     }
@@ -160,19 +148,18 @@ export class ForceFieldRenderer3D {
     // Hide (but don't destroy) meshes for fields that turned off or units gone.
     for (const [key, field] of this.fields) {
       if (!seen.has(key)) {
-        field.sphere.visible = false;
-        field.ring.visible = false;
+        field.emitter.visible = false;
+        field.zone.visible = false;
       }
     }
   }
 
   destroy(): void {
     for (const field of this.fields.values()) {
-      this.root.remove(field.sphere);
-      this.root.remove(field.ring);
-      field.sphereMat.dispose();
-      field.ringMat.dispose();
-      field.ring.geometry.dispose();
+      this.root.remove(field.emitter);
+      this.root.remove(field.zone);
+      field.emitterMat.dispose();
+      field.zoneMat.dispose();
     }
     this.fields.clear();
     this.sphereGeom.dispose();
