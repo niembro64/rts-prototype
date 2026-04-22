@@ -73,13 +73,12 @@ export class ThreeApp {
     this.scene.add(sun);
     this.scene.add(sun.target);
 
-    // Ground slab — a thin box (not a zero-thickness plane) so the world looks
-    // like a solid piece of terrain when viewed from an oblique camera.
-    // Top surface sits at y=0. Color matches the 2D MAP_BG_COLOR (via the
-    // backgroundColor arg) so the floor is a single flat tone identical to
-    // the scene background — the only colored overlay on top is the
-    // capture-tile / ownership grid.
-    const GROUND_DEPTH = 80;
+    // Ground slab — a thick box so the world clearly reads as a solid piece
+    // of terrain when viewed from an oblique camera. Top surface sits at y=0.
+    // Color matches the 2D MAP_BG_COLOR (via the backgroundColor arg) so the
+    // floor is a single flat tone identical to the scene background — the
+    // only colored overlay on top is the capture-tile / ownership grid.
+    const GROUND_DEPTH = 320;
     const groundGeom = new THREE.BoxGeometry(mapWidth, GROUND_DEPTH, mapHeight);
     const groundMat = new THREE.MeshLambertMaterial({
       color: new THREE.Color(backgroundColor),
