@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
+import type { RendererMode } from '../types/game';
 import { type PlayerId, type WaypointType } from '../game/sim/types';
+
+const props = withDefaults(defineProps<{
+  rendererMode?: RendererMode;
+}>(), {
+  rendererMode: '2d',
+});
 import {
   createBackgroundBattle,
   destroyBackgroundBattle,
@@ -292,6 +299,7 @@ async function startBackgroundBattle(): Promise<void> {
   backgroundBattle = await createBackgroundBattle(
     backgroundContainerRef.value,
     localIpAddress.value,
+    props.rendererMode,
   );
   activeConnection = backgroundBattle.connection;
   hasServer.value = true;
@@ -1014,6 +1022,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       mapWidth: MAP_SETTINGS.game.width,
       mapHeight: MAP_SETTINGS.game.height,
       backgroundMode: false,
+      rendererMode: props.rendererMode,
     });
 
     // Setup scene callbacks

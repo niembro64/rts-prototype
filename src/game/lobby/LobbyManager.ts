@@ -2,6 +2,7 @@
 // Extracted from PhaserCanvas.vue to keep the component lean.
 
 import { createGame, destroyGame } from '../createGame';
+import type { RendererMode } from '../../types/game';
 import { GameServer } from '../server/GameServer';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { MAP_SETTINGS } from '../../config';
@@ -35,6 +36,7 @@ export type BackgroundBattleState = {
 export async function createBackgroundBattle(
   container: HTMLDivElement,
   ipAddress: string,
+  rendererMode: RendererMode = '2d',
 ): Promise<BackgroundBattleState> {
   const rect = container.getBoundingClientRect();
 
@@ -103,6 +105,7 @@ export async function createBackgroundBattle(
     mapWidth: MAP_SETTINGS.game.width,
     mapHeight: MAP_SETTINGS.game.height,
     backgroundMode: true,
+    rendererMode,
   });
 
   return { gameInstance, server, connection };

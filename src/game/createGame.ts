@@ -6,7 +6,7 @@ import type { PlayerId } from './sim/types';
 import type { GameConnection } from './server/GameConnection';
 import { MAP_BG_COLOR, hexToStr } from '../config';
 
-export type { GameConfig, GameInstance, GameScene, GameApp, RenderMode } from '@/types/game';
+export type { GameConfig, GameInstance, GameScene, GameApp, RendererMode } from '@/types/game';
 import type { GameConfig, GameInstance, GameScene } from '@/types/game';
 
 // Store config globally so the 2D scene can access it during create() (matches
@@ -32,7 +32,7 @@ export function createGame(config: GameConfig): GameInstance {
   const playerIds = config.playerIds ?? [1, 2];
   const localPlayerId = config.localPlayerId ?? 1;
   const backgroundMode = config.backgroundMode ?? false;
-  const renderMode = config.renderMode ?? '2d';
+  const rendererMode = config.rendererMode ?? '2d';
 
   pendingGameConfig = {
     playerIds,
@@ -45,7 +45,7 @@ export function createGame(config: GameConfig): GameInstance {
 
   const bgColor = hexToStr(MAP_BG_COLOR);
 
-  if (renderMode === '3d') {
+  if (rendererMode === '3d') {
     return createGame3D(config, {
       playerIds,
       localPlayerId,
