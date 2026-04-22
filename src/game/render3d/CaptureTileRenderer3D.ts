@@ -19,13 +19,11 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 
-// Hover above the ground slab's top (at y=0). With a perspective camera the
-// depth buffer loses precision at distance; at map-wide zoom-out, y=0 and
-// y=1 become indistinguishable and z-fight shows up as the ground's color
-// bleeding through tile pixels ("black speckling through team colors").
-// Combined with polygonOffset on the material this eliminates z-fighting at
-// any zoom without having to make the tiles obviously float.
-const TILE_Y = 4;
+// Tile layer sits at the natural "ground" level (y=0) that units and
+// buildings are placed on. The ground slab below is offset downward so its
+// top is ~4 units below the tiles, preserving the vertical separation used
+// previously (depth-buffer margin + polygonOffset keep z-fighting away).
+const TILE_Y = 0;
 
 // Color for unowned cells. Chosen slightly lighter than MAP_BG_COLOR so the
 // grid is visible as "floor" rather than merging into the scene background.

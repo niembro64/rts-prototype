@@ -74,30 +74,38 @@ export class ThreeApp {
     this.scene.add(sun.target);
 
     // Ground slab — a thick box so the world clearly reads as a solid piece
-    // of terrain when viewed from an oblique camera. Top surface sits at y=0.
+    // of terrain when viewed from an oblique camera. Top surface sits at
+    // y=-GROUND_GAP, i.e. just below the tile layer which is at y=0. Units
+    // and buildings play ON the tiles (y=0), not under them.
     // Color matches the 2D MAP_BG_COLOR (via the backgroundColor arg) so the
-    // floor is a single flat tone identical to the scene background — the
-    // only colored overlay on top is the capture-tile / ownership grid.
+    // exposed sides of the slab read as earth around the playable surface.
     const GROUND_DEPTH = 320;
+    const GROUND_GAP = 4; // vertical separation between slab top and tiles
     const groundGeom = new THREE.BoxGeometry(mapWidth, GROUND_DEPTH, mapHeight);
     const groundMat = new THREE.MeshLambertMaterial({
       color: new THREE.Color(backgroundColor),
     });
     const ground = new THREE.Mesh(groundGeom, groundMat);
-    ground.position.set(mapWidth / 2, -GROUND_DEPTH / 2, mapHeight / 2);
+    ground.position.set(
+      mapWidth / 2,
+      -GROUND_GAP - GROUND_DEPTH / 2,
+      mapHeight / 2,
+    );
     this.scene.add(ground);
 
     // No grid lines on the floor — matches 2D, where MAP_GRID_COLOR equals
     // MAP_BG_COLOR at low alpha (effectively invisible). The only color that
     // paints the floor is the capture-tile / flag-ownership overlay.
 
-    // Map boundary outline
+    // Map boundary outline — sits just above the tile layer (which is at y=0)
+    // so it traces the playable edge without z-fighting the tiles.
+    const BOUNDS_Y = 0.5;
     const boundsGeom = new THREE.BufferGeometry();
     const boundsVerts = new Float32Array([
-      0, 1, 0,  mapWidth, 1, 0,
-      mapWidth, 1, 0,  mapWidth, 1, mapHeight,
-      mapWidth, 1, mapHeight,  0, 1, mapHeight,
-      0, 1, mapHeight,  0, 1, 0,
+      0, BOUNDS_Y, 0,  mapWidth, BOUNDS_Y, 0,
+      mapWidth, BOUNDS_Y, 0,  mapWidth, BOUNDS_Y, mapHeight,
+      mapWidth, BOUNDS_Y, mapHeight,  0, BOUNDS_Y, mapHeight,
+      0, BOUNDS_Y, mapHeight,  0, BOUNDS_Y, 0,
     ]);
     boundsGeom.setAttribute('position', new THREE.BufferAttribute(boundsVerts, 3));
     // Match the 2D drawGrid boundary stroke color (0x4444aa).
