@@ -18,8 +18,10 @@ import { PLAYER_COLORS } from '../sim/types';
 // circular import; if the value ever changes, update both.
 const SHOT_HEIGHT = 28 + 16 / 2; // CHASSIS_HEIGHT + TURRET_HEIGHT / 2
 
-const BEAM_MIN_THICKNESS = 1.5;
-const BEAM_THICKNESS_MULT = 2.0;  // render ~2x the sim's `radius` for visibility
+// Cylinder radius is the sim's `shot.radius` (= shot.width / 2), floored so a
+// very-thin beam isn't invisible. Matches TurretRenderer.ts which draws beams
+// at `shot.width` pixels thick.
+const BEAM_MIN_RADIUS = 0.75;
 const LASER_OPACITY_MAX = 0.95;
 const BEAM_OPACITY = 0.85;
 
@@ -84,7 +86,7 @@ export class BeamRenderer3D {
   private placeSegment(
     mesh: THREE.Mesh,
     ax: number, az: number, bx: number, bz: number,
-    thickness: number,
+    cylRadius: number,
   ): void {
     this._a.set(ax, SHOT_HEIGHT, az);
     this._b.set(bx, SHOT_HEIGHT, bz);
@@ -97,7 +99,9 @@ export class BeamRenderer3D {
     this._quat.setFromUnitVectors(this._up, this._dir);
     mesh.position.copy(this._mid);
     mesh.quaternion.copy(this._quat);
-    mesh.scale.set(thickness, Math.max(length, 1e-3), thickness);
+    // CylinderGeometry has radius 1; scale.x/.z become the actual radius, so
+    // beam diameter = 2 · cylRadius = shot.width, matching the 2D renderer.
+    mesh.scale.set(cylRadius, Math.max(length, 1e-3), cylRadius);
   }
 
   update(projectiles: readonly Entity[]): void {
@@ -118,11 +122,12 @@ export class BeamRenderer3D {
       ) continue;
 
       const shot = proj.config.shot;
-      let radius = 2;
+      // shot.radius already equals shot.width / 2 for line shots, so using it
+      // directly as the cylinder scale makes the diameter = shot.width.
+      let cylRadius = BEAM_MIN_RADIUS;
       if (shot && (shot.type === 'beam' || shot.type === 'laser')) {
-        radius = shot.radius;
+        cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius);
       }
-      const thickness = Math.max(BEAM_MIN_THICKNESS, radius * BEAM_THICKNESS_MULT);
       const material = this.getMaterial(proj.ownerId, pt);
 
       // Build the path: start → reflections[0..n-1] → end. Each consecutive
@@ -135,14 +140,14 @@ export class BeamRenderer3D {
           const r = reflections[i];
           const mesh = this.acquireSegment(segIdx++);
           mesh.material = material;
-          this.placeSegment(mesh, prevX, prevY, r.x, r.y, thickness);
+          this.placeSegment(mesh, prevX, prevY, r.x, r.y, cylRadius);
           prevX = r.x;
           prevY = r.y;
         }
       }
       const mesh = this.acquireSegment(segIdx++);
       mesh.material = material;
-      this.placeSegment(mesh, prevX, prevY, endX, endY, thickness);
+      this.placeSegment(mesh, prevX, prevY, endX, endY, cylRadius);
     }
 
     // Hide leftover pool entries (beams that disappeared this frame).

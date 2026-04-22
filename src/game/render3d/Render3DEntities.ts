@@ -25,8 +25,8 @@ const SHOT_HEIGHT = CHASSIS_HEIGHT + TURRET_HEIGHT / 2; // world Y of projectile
 const BUILDING_HEIGHT = 120;
 const PROJECTILE_SCALE = 2.5;
 const TURRET_HEAD_FOOTPRINT = 0.55;  // head X/Z footprint as fraction of chassis radius
-const BARREL_THICKNESS_MULT = 0.18;  // barrel radius as fraction of unit radius
 const BARREL_COLOR = 0xffffff;
+const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
 
 // Health bar sizing (world units)
 const HP_BAR_WIDTH_MULT = 2.4;      // bar width ≈ radius · this
@@ -110,7 +110,15 @@ export class Render3DEntities {
 
   /**
    * Build a turret mesh matching a single Turret's barrel configuration.
-   * The turret's local +X is its firing direction; barrels point along +X.
+   * The turret's local +X is its firing direction; barrels point along +X
+   * (or at a slight outward tilt for cone barrels).
+   *
+   * Barrel dimensions mirror TurretRenderer.ts (the 2D renderer):
+   *   - length    = unitRadius · barrel.barrelLength
+   *   - thickness = shotWidth (line shots) ?? barrel.barrelThickness ?? 2
+   *     (barrelThickness is already derived from the shot size in blueprints)
+   *   - orbit     = (orbitRadius | baseOrbit) · unitRadius, clamped so barrels
+   *                 stay inside the head vertically
    */
   private buildTurretMesh(
     parent: THREE.Group,
@@ -130,54 +138,107 @@ export class Render3DEntities {
 
     const barrels: THREE.Mesh[] = [];
     const barrel = turret.config.barrel;
-    const thickness = unitRadius * BARREL_THICKNESS_MULT;
-    // Vertical center of the head — barrels orbit around the firing axis
-    // (local +X), so their Y position is offset from TURRET_HEIGHT/2.
+    if (!barrel || barrel.type === 'complexSingleEmitter') {
+      // Force-field turrets don't have a physical barrel.
+      parent.add(root);
+      return { root, head, barrels };
+    }
+
     const barrelCenterY = TURRET_HEIGHT / 2;
 
-    const pushBarrel = (length: number, offsetY: number, offsetZ: number, radius = thickness): void => {
+    // Barrel thickness is the shot width (for line shots) falling back to the
+    // blueprint-derived barrelThickness. Matches the 2D single-barrel path.
+    const shot = turret.config.shot;
+    const shotWidth =
+      shot && (shot.type === 'beam' || shot.type === 'laser')
+        ? shot.width
+        : undefined;
+    const diameter =
+      (barrel.type === 'simpleSingleBarrel' ? shotWidth : undefined)
+      ?? barrel.barrelThickness
+      ?? BARREL_MIN_THICKNESS;
+    // CylinderGeometry is unit radius = 1, so physical radius = scale.x = diameter/2.
+    const cylRadius = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+
+    // Place one cylinder segment spanning (base) → (tip) in local coords. Used
+    // for straight (gatling) and cone (shotgun) barrels alike.
+    const pushSegment = (
+      baseX: number, baseY: number, baseZ: number,
+      tipX: number, tipY: number, tipZ: number,
+    ): void => {
+      const dx = tipX - baseX;
+      const dy = tipY - baseY;
+      const dz = tipZ - baseZ;
+      const length = Math.hypot(dx, dy, dz);
+      if (length < 1e-4) return;
       const m = new THREE.Mesh(this.barrelGeom, this.barrelMat);
-      // Cylinder default axis is +Y; rotate to align with +X (firing direction)
-      m.rotation.z = -Math.PI / 2;
-      m.scale.set(radius, length, radius);
-      // Barrel base at local x=0, tip at x=length. Y pins to the head center
-      // so all shots (from any unit) originate at SHOT_HEIGHT in world Y.
-      m.position.set(length / 2, barrelCenterY + offsetY, offsetZ);
+      m.scale.set(cylRadius, length, cylRadius);
+      m.position.set(
+        (baseX + tipX) / 2,
+        (baseY + tipY) / 2,
+        (baseZ + tipZ) / 2,
+      );
+      // Align cylinder's default +Y axis with the (base→tip) direction.
+      this._barrelUp.set(0, 1, 0);
+      this._barrelDir.set(dx / length, dy / length, dz / length);
+      m.quaternion.setFromUnitVectors(this._barrelUp, this._barrelDir);
       root.add(m);
       barrels.push(m);
     };
 
-    if (barrel) {
-      if (barrel.type === 'simpleSingleBarrel') {
-        const length = unitRadius * barrel.barrelLength;
-        pushBarrel(length, 0, 0);
-      } else if (
-        barrel.type === 'simpleMultiBarrel' ||
-        barrel.type === 'coneMultiBarrel'
-      ) {
-        const length = unitRadius * barrel.barrelLength;
-        // Clamp orbit so barrels stay inside the head (head half-height ≈ TURRET_HEIGHT/2).
-        // Barrels that slightly exceed the head look fine, but egregious overflow looks broken.
-        const rawOrbit =
-          ('orbitRadius' in barrel ? barrel.orbitRadius : barrel.baseOrbit) *
-          unitRadius;
-        const orbitR = Math.min(rawOrbit, TURRET_HEIGHT * 0.45);
-        const n = barrel.barrelCount;
-        // Offset by half-step so even counts are symmetric (no barrel stacked directly above another).
-        const phase = Math.PI / 2;
-        for (let i = 0; i < n; i++) {
-          const a = phase + (i / n) * Math.PI * 2;
-          const oy = Math.cos(a) * orbitR;
-          const oz = Math.sin(a) * orbitR;
-          pushBarrel(length, oy, oz);
-        }
+    const length = unitRadius * barrel.barrelLength;
+    // barrelLength=0 (e.g. commander's d-gun "emitter") → no visible barrel.
+    if (length < 1e-4) {
+      parent.add(root);
+      return { root, head, barrels };
+    }
+
+    if (barrel.type === 'simpleSingleBarrel') {
+      pushSegment(0, barrelCenterY, 0, length, barrelCenterY, 0);
+    } else if (barrel.type === 'simpleMultiBarrel') {
+      // Parallel barrels arranged in a YZ circle around the firing axis.
+      const orbitR = Math.min(
+        barrel.orbitRadius * unitRadius,
+        TURRET_HEIGHT * 0.45,
+      );
+      const n = barrel.barrelCount;
+      for (let i = 0; i < n; i++) {
+        const a = (i + 0.5) / n * Math.PI * 2;
+        const oy = Math.cos(a) * orbitR;
+        const oz = Math.sin(a) * orbitR;
+        pushSegment(0, barrelCenterY + oy, oz, length, barrelCenterY + oy, oz);
       }
-      // complexSingleEmitter (force fields) has no physical barrel — skip
+    } else if (barrel.type === 'coneMultiBarrel') {
+      // Barrels diverge from base orbit to a wider tip orbit — a 3D cone
+      // analogue of the 2D shotgun's perpendicular spread.
+      const baseOrbitR = Math.min(
+        barrel.baseOrbit * unitRadius,
+        TURRET_HEIGHT * 0.35,
+      );
+      const spreadHalf = (turret.config.spread?.angle ?? Math.PI / 5) / 2;
+      const tipOrbitR = Math.min(
+        baseOrbitR + length * Math.tan(spreadHalf),
+        TURRET_HEIGHT * 0.9,
+      );
+      const n = barrel.barrelCount;
+      for (let i = 0; i < n; i++) {
+        const a = (i + 0.5) / n * Math.PI * 2;
+        const cosA = Math.cos(a);
+        const sinA = Math.sin(a);
+        pushSegment(
+          0, barrelCenterY + cosA * baseOrbitR, sinA * baseOrbitR,
+          length, barrelCenterY + cosA * tipOrbitR, sinA * tipOrbitR,
+        );
+      }
     }
 
     parent.add(root);
     return { root, head, barrels };
   }
+
+  // Scratch vectors reused across buildTurretMesh calls (no per-barrel allocations).
+  private _barrelUp = new THREE.Vector3();
+  private _barrelDir = new THREE.Vector3();
 
   private buildHpBar(parent: THREE.Group): HpBar {
     const root = new THREE.Group();
