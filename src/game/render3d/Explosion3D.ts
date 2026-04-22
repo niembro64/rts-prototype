@@ -39,6 +39,21 @@ const CORE_LIFETIME_MS = 180;
 const FIRE_LIFETIME_MS = 280;
 const SPARK_LIFETIME_MS = 450;
 
+// Baseline radius for the duration-scaling curve. A radius at or below this
+// value gets the raw lifetimes above; anything larger extends logarithmically
+// so big primary/secondary blast radii visibly linger without the curve
+// running away (large bombs last a few seconds, not minutes).
+const DURATION_BASE_RADIUS = 10;
+
+/** Scale all explosion lifetimes as a log of the impact radius so larger
+ *  fires burn longer. Formula: `1 + log2(max(1, r / baseR))` — clamped to
+ *  1 at small radii, grows ~one full doubling of lifetime per doubling of
+ *  radius. Rough values: r=10 → 1.0, r=20 → 2.0, r=40 → 3.0, r=80 → 4.0,
+ *  r=200 → 5.3. */
+function durationMultiplier(radius: number): number {
+  return 1 + Math.log2(Math.max(1, radius / DURATION_BASE_RADIUS));
+}
+
 // Sparks are affected by gravity so they arc. Chosen so a 100 u/s launch
 // peaks around ~0.25 s and lands before fading out.
 const SPARK_GRAVITY = 900; // world units / s² (downward)
@@ -118,23 +133,31 @@ export class Explosion3D {
   spawnImpact(x: number, z: number, radius: number, shellColor?: number): void {
     const style = this.getStyle();
     const r = Math.max(radius, 6);
+    // Stretch all three lifetimes by a log factor of the radius so a tank's
+    // cannon blast lingers visibly longer than a scout bullet hit.
+    const durMult = durationMultiplier(r);
 
     // Always render a core even at the cheapest LOD — a plain yellow ball is
     // the simplest "something happened here" signal.
     this.addPuff(
-      x, z, CORE_COLOR, CORE_LIFETIME_MS,
+      x, z, CORE_COLOR, CORE_LIFETIME_MS * durMult,
       r * CORE_EXPAND_START, r * CORE_EXPAND_END, false,
     );
     if (style === 'flash') return;
 
     this.addPuff(
-      x, z, shellColor ?? FIRE_COLOR, FIRE_LIFETIME_MS,
+      x, z, shellColor ?? FIRE_COLOR, FIRE_LIFETIME_MS * durMult,
       r * FIRE_EXPAND_START, r * FIRE_EXPAND_END, true,
     );
     if (style === 'spark') return;
 
     const lod = LOD_TABLE[style];
-    if (lod.sparks > 0) this.addSparks(x, z, r * lod.sparkReach, lod.sparks);
+    if (lod.sparks > 0) {
+      this.addSparks(
+        x, z, r * lod.sparkReach, lod.sparks,
+        SPARK_LIFETIME_MS * durMult,
+      );
+    }
   }
 
   /**
@@ -178,7 +201,9 @@ export class Explosion3D {
     });
   }
 
-  private addSparks(x: number, z: number, reach: number, count: number): void {
+  private addSparks(
+    x: number, z: number, reach: number, count: number, lifetime: number,
+  ): void {
     // Sparks spray over the full sphere so the explosion reads in 3D from any
     // camera angle — an XY-plane spray would look flat when viewed from above.
     for (let i = 0; i < count; i++) {
@@ -207,7 +232,11 @@ export class Explosion3D {
       // ground get culled, so biasing up yields fewer wasted particles.
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.random() * Math.PI - Math.PI * 0.3; // -54° to +126°
-      const speed = (0.6 + Math.random() * 0.5) * reach * (1000 / SPARK_LIFETIME_MS);
+      // Speed is derived from (reach / lifetime) so sparks cover roughly
+      // `reach` world units over the extended lifetime — longer-lasting
+      // explosions have slower drifting sparks rather than faster-traveling
+      // ones, which keeps the explosion's visible footprint reasonable.
+      const speed = (0.6 + Math.random() * 0.5) * reach * (1000 / lifetime);
       const vx = Math.cos(theta) * Math.cos(phi) * speed;
       const vz = Math.sin(theta) * Math.cos(phi) * speed;
       const vy = Math.sin(phi) * speed;
@@ -218,7 +247,7 @@ export class Explosion3D {
 
       this.sparks.push({
         mesh, material, vx, vy, vz, size,
-        lifetime: SPARK_LIFETIME_MS, age: 0,
+        lifetime, age: 0,
       });
     }
   }
