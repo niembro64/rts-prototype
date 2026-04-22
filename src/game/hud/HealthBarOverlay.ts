@@ -1,14 +1,9 @@
 // HealthBarOverlay — shared HP bar layer used by both the 2D and 3D scenes.
 //
-// Rendered with HTML divs positioned via CSS `transform: translate3d(X, Y, 0)`
-// rather than SVG rects. Why:
-//   - CSS translate3d puts each bar on the browser's GPU compositor, matching
-//     the WebGL canvas's own sub-pixel smoothness.
-//   - SVG rect x/y attributes are typically rasterised snapped to the pixel
-//     grid, which produces visible jitter against a canvas panning smoothly
-//     underneath.
-// The visual spec still matches the 2D original (green/red threshold, thin
-// bar above the entity, hidden at full HP).
+// Rendered as SVG rectangles (matching the clean 2D look). With the
+// stale-matrix fix in ThreeWorldProjector, positions now stay in lock-step
+// with the canvas during camera pan, so jitter is gone without needing to
+// convert bars to HTML divs.
 
 import type { Entity } from '../sim/types';
 import type { WorldProjector, Vec2 } from './WorldProjector';
@@ -29,15 +24,16 @@ export const HEALTH_BAR_STYLE = {
   hideAtFull: true,
 };
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 type Bar = {
-  bg: HTMLDivElement;  // container (positioned), draws the background
-  fg: HTMLDivElement;  // child (left-aligned), draws the foreground fill
-  /** Tracks the last color applied so we can avoid redundant style writes. */
+  bg: SVGRectElement;
+  fg: SVGRectElement;
   lastLow: boolean | null;
 };
 
 export class HealthBarOverlay {
-  private root: HTMLDivElement;
+  private svg: SVGSVGElement;
   private projector: WorldProjector;
   private pool: Bar[] = [];
   private _scratch: Vec2 = { x: 0, y: 0 };
@@ -49,55 +45,44 @@ export class HealthBarOverlay {
       parent.style.position = 'relative';
     }
 
-    this.root = document.createElement('div');
-    Object.assign(this.root.style, {
+    this.svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+    Object.assign(this.svg.style, {
       position: 'absolute',
       inset: '0',
       width: '100%',
       height: '100%',
       pointerEvents: 'none',
-      overflow: 'hidden',
       zIndex: '4',
+      // Promote the SVG to its own compositor layer so it composites in sync
+      // with the canvas (same trick used on the other SVG overlays).
+      willChange: 'transform',
+      transform: 'translateZ(0)',
     });
-    parent.appendChild(this.root);
+    this.svg.setAttribute('preserveAspectRatio', 'none');
+    this.svg.setAttribute('shape-rendering', 'geometricPrecision');
+    parent.appendChild(this.svg);
   }
 
   private acquire(i: number): Bar {
     let bar = this.pool[i];
     if (!bar) {
-      const bg = document.createElement('div');
-      Object.assign(bg.style, {
-        position: 'absolute',
-        left: '0',
-        top: '0',
-        backgroundColor: HEALTH_BAR_STYLE.bgColor,
-        opacity: String(HEALTH_BAR_STYLE.bgAlpha),
-        // GPU compositor hint — the browser will keep each bar on its own
-        // transform layer so movement is sub-pixel-accurate.
-        willChange: 'transform',
-      });
-      const fg = document.createElement('div');
-      Object.assign(fg.style, {
-        position: 'absolute',
-        left: '0',
-        top: '0',
-        height: '100%',
-        backgroundColor: HEALTH_BAR_STYLE.fgColorHigh,
-        opacity: String(HEALTH_BAR_STYLE.fgAlpha),
-      });
-      bg.appendChild(fg);
-      this.root.appendChild(bg);
+      const bg = document.createElementNS(SVG_NS, 'rect') as SVGRectElement;
+      bg.setAttribute('fill', HEALTH_BAR_STYLE.bgColor);
+      bg.setAttribute('fill-opacity', String(HEALTH_BAR_STYLE.bgAlpha));
+      const fg = document.createElementNS(SVG_NS, 'rect') as SVGRectElement;
+      fg.setAttribute('fill-opacity', String(HEALTH_BAR_STYLE.fgAlpha));
+      this.svg.appendChild(bg);
+      this.svg.appendChild(fg);
       bar = { bg, fg, lastLow: null };
       this.pool.push(bar);
     }
     bar.bg.style.display = '';
+    bar.fg.style.display = '';
     return bar;
   }
 
   update(units: readonly Entity[], buildings: readonly Entity[]): void {
-    // Cache any per-frame viewport data (e.g., canvas rect) exactly once for
-    // all projector calls in this frame. Without this, each project() call
-    // would trigger a getBoundingClientRect → layout thrash.
+    // Cache projector per-frame state once for all queries this frame.
     this.projector.refreshViewport();
 
     let used = 0;
@@ -132,9 +117,9 @@ export class HealthBarOverlay {
       );
     }
 
-    // Hide any leftover pool entries from previous frames.
     for (let i = used; i < this.pool.length; i++) {
       this.pool[i].bg.style.display = 'none';
+      this.pool[i].fg.style.display = 'none';
     }
   }
 
@@ -149,7 +134,7 @@ export class HealthBarOverlay {
     if (scale <= 0) return used;
 
     const widthPx = worldWidth * scale;
-    if (widthPx < 2) return used; // too small to be meaningful at this zoom
+    if (widthPx < 2) return used;
 
     const heightPx = HEALTH_BAR_STYLE.heightPx;
     const leftPx = this._scratch.x - widthPx / 2;
@@ -160,19 +145,22 @@ export class HealthBarOverlay {
       - heightPx;
 
     const bar = this.acquire(used);
-    // translate3d() puts the bar on the GPU compositor layer and gives full
-    // sub-pixel precision (unlike left/top pixel attributes, which snap).
-    bar.bg.style.transform = `translate3d(${leftPx}px, ${topPx}px, 0)`;
-    bar.bg.style.width = `${widthPx}px`;
-    bar.bg.style.height = `${heightPx}px`;
-    const fgWidth = Math.max(0, widthPx * percent);
-    bar.fg.style.width = `${fgWidth}px`;
+    bar.bg.setAttribute('x', String(leftPx));
+    bar.bg.setAttribute('y', String(topPx));
+    bar.bg.setAttribute('width', String(widthPx));
+    bar.bg.setAttribute('height', String(heightPx));
+
+    bar.fg.setAttribute('x', String(leftPx));
+    bar.fg.setAttribute('y', String(topPx));
+    bar.fg.setAttribute('width', String(Math.max(0, widthPx * percent)));
+    bar.fg.setAttribute('height', String(heightPx));
 
     const isLow = percent < HEALTH_BAR_STYLE.lowThreshold;
     if (bar.lastLow !== isLow) {
-      bar.fg.style.backgroundColor = isLow
-        ? HEALTH_BAR_STYLE.fgColorLow
-        : HEALTH_BAR_STYLE.fgColorHigh;
+      bar.fg.setAttribute(
+        'fill',
+        isLow ? HEALTH_BAR_STYLE.fgColorLow : HEALTH_BAR_STYLE.fgColorHigh,
+      );
       bar.lastLow = isLow;
     }
 
@@ -180,7 +168,7 @@ export class HealthBarOverlay {
   }
 
   destroy(): void {
-    this.root.remove();
+    this.svg.remove();
     this.pool.length = 0;
   }
 }

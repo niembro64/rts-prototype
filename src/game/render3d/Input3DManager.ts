@@ -18,7 +18,19 @@ import type { CommandQueue } from '../sim/commands';
 import type { GameConnection } from '../server/GameConnection';
 import type { InputContext } from '@/types/input';
 import type { PlayerId, Entity, EntityId, WaypointType } from '../sim/types';
-import { findClosestUnitToPoint, findClosestBuildingToPoint } from '../input/helpers';
+import {
+  findClosestUnitToPoint,
+  findClosestBuildingToPoint,
+  findAttackTargetAt,
+  getPathLength,
+  calculateLinePathTargets,
+  assignUnitsToTargets,
+} from '../input/helpers';
+import type { WaypointTarget } from '../sim/commands';
+
+type LinePoint = { x: number; y: number };
+const LINE_PATH_SEGMENT_MIN = 10;     // min world distance to record a new path point
+const LINE_PATH_MIN_LENGTH = 20;      // path shorter than this = treated as a click
 
 type EntitySource = {
   getUnits: () => Entity[];
@@ -49,6 +61,10 @@ export class Input3DManager {
   private leftDown = false;
   private dragStartScreen = { x: 0, y: 0 };
   private dragEndScreen = { x: 0, y: 0 };
+
+  // Right-drag line-path state (world coords, same shape the 2D path uses).
+  private rightDown = false;
+  private linePathPoints: LinePoint[] = [];
 
   // Visual selection rectangle overlay (CSS div over the canvas)
   private marquee: HTMLDivElement;
@@ -165,23 +181,38 @@ export class Input3DManager {
       this.dragEndScreen = { x: e.clientX, y: e.clientY };
     } else if (e.button === 2) {
       e.preventDefault();
-      this.handleRightClick(e);
+      this.handleRightMouseDown(e);
     }
   }
 
   private handleMouseMove(e: MouseEvent): void {
-    if (!this.leftDown) return;
-    this.dragEndScreen = { x: e.clientX, y: e.clientY };
+    if (this.leftDown) {
+      this.dragEndScreen = { x: e.clientX, y: e.clientY };
+      const dx = e.clientX - this.dragStartScreen.x;
+      const dy = e.clientY - this.dragStartScreen.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist >= DRAG_PIXEL_THRESHOLD) {
+        this.showMarquee();
+      }
+      return;
+    }
 
-    const dx = e.clientX - this.dragStartScreen.x;
-    const dy = e.clientY - this.dragStartScreen.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist >= DRAG_PIXEL_THRESHOLD) {
-      this.showMarquee();
+    if (this.rightDown) {
+      // Record points along the right-drag path so units can spread along a line.
+      const world = this.raycastGround(e.clientX, e.clientY);
+      if (!world) return;
+      const last = this.linePathPoints[this.linePathPoints.length - 1];
+      if (!last || Math.hypot(world.x - last.x, world.y - last.y) >= LINE_PATH_SEGMENT_MIN) {
+        this.linePathPoints.push({ x: world.x, y: world.y });
+      }
     }
   }
 
   private handleMouseUp(e: MouseEvent): void {
+    if (e.button === 2 && this.rightDown) {
+      this.handleRightMouseUp(e);
+      return;
+    }
     if (e.button !== 0 || !this.leftDown) return;
     this.leftDown = false;
     this.hideMarquee();
@@ -306,25 +337,93 @@ export class Input3DManager {
     return ids;
   }
 
-  private handleRightClick(e: MouseEvent): void {
-    const ground = this.raycastGround(e.clientX, e.clientY);
-    if (!ground) return;
-
+  private handleRightMouseDown(e: MouseEvent): void {
+    // Right-click only triggers commands if any selection is present. Mirrors
+    // CommandController.handleRightClickDown from the 2D path — attack target
+    // takes priority; otherwise we start drawing a line path that becomes a
+    // per-unit move on release.
     const selectedUnits = this.entitySource.getSelectedUnits();
     if (selectedUnits.length === 0) return;
 
-    const entityIds = selectedUnits.map((u) => u.id);
-    const mode = e.shiftKey ? this.waypointMode : this.waypointMode;
+    // Attack target under cursor → attack command (skips line-path drawing).
+    const world = this.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+
+    const attackTarget = findAttackTargetAt(
+      this.entitySource,
+      world.x,
+      world.y,
+      this.context.activePlayerId,
+    );
+    if (attackTarget) {
+      this.gameConnection.sendCommand({
+        type: 'attack',
+        tick: this.context.getTick(),
+        entityIds: selectedUnits.map((u) => u.id),
+        targetId: attackTarget.id,
+        queue: e.shiftKey,
+      });
+      return;
+    }
+
+    // Start drawing a line path of waypoints.
+    this.rightDown = true;
+    this.linePathPoints = [{ x: world.x, y: world.y }];
+  }
+
+  private handleRightMouseUp(e: MouseEvent): void {
+    this.rightDown = false;
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length === 0 || this.linePathPoints.length === 0) {
+      this.linePathPoints.length = 0;
+      return;
+    }
+
+    const shiftHeld = e.shiftKey;
+    const mode = this.waypointMode;
+    const pathLen = getPathLength(this.linePathPoints);
+    const finalPoint = this.linePathPoints[this.linePathPoints.length - 1];
+
+    if (pathLen < LINE_PATH_MIN_LENGTH) {
+      // Short path = single-point group move. Matches the 2D fallback
+      // (pathLength < 20 → group move to the final point).
+      this.gameConnection.sendCommand({
+        type: 'move',
+        tick: this.context.getTick(),
+        entityIds: selectedUnits.map((u) => u.id),
+        targetX: finalPoint.x,
+        targetY: finalPoint.y,
+        waypointType: mode,
+        queue: shiftHeld,
+      });
+      this.linePathPoints.length = 0;
+      return;
+    }
+
+    // Spread units along the drawn line using the shared 2D helpers so the
+    // per-unit assignment matches the 2D path exactly.
+    const targets = calculateLinePathTargets(this.linePathPoints, selectedUnits.length);
+    const assignments = assignUnitsToTargets(selectedUnits, targets);
+
+    const entityIds: EntityId[] = [];
+    const individualTargets: WaypointTarget[] = [];
+    for (const unit of selectedUnits) {
+      const target = assignments.get(unit.id);
+      if (target) {
+        entityIds.push(unit.id);
+        individualTargets.push({ x: target.x, y: target.y });
+      }
+    }
 
     this.gameConnection.sendCommand({
       type: 'move',
       tick: this.context.getTick(),
       entityIds,
-      targetX: ground.x,
-      targetY: ground.y,
+      individualTargets,
       waypointType: mode,
-      queue: e.shiftKey,
+      queue: shiftHeld,
     });
+    this.linePathPoints.length = 0;
   }
 
   private showMarquee(): void {

@@ -31,6 +31,15 @@ export class ThreeWorldProjector implements WorldProjector {
     const rect = this.canvas.getBoundingClientRect();
     this._cachedWidth = rect.width;
     this._cachedHeight = rect.height;
+    // Three.js's Vector3.project() reads camera.matrixWorldInverse. That
+    // matrix is normally only recomputed inside renderer.render(), so any
+    // project() call in the overlay update — which runs BEFORE the render
+    // this frame — sees LAST frame's camera transform. During a pan that
+    // causes the overlay to lag the canvas by one frame (= visible jitter).
+    // Refreshing both matrices here keeps the overlay in sync with the
+    // canvas rendered right after.
+    this.camera.updateMatrixWorld();
+    this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
   }
 
   project(worldX: number, worldY: number, out: Vec2): boolean {
