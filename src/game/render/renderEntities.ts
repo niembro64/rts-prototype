@@ -51,7 +51,6 @@ import {
   drawCommanderUnit,
 } from './units';
 import {
-  renderSelectedLabels,
   renderCommanderCrown,
   renderRangeCircles,
   renderUnitRadiusCircles,
@@ -71,8 +70,9 @@ export class EntityRenderer {
   private sprayParticleTime: number = 0;
 
   // Text labels for selected entities
-  private labelPool: Phaser.GameObjects.Text[] = [];
-  private activeLabelCount: number = 0;
+  // Labels are now drawn by the shared SelectionLabelOverlay (HTML DOM);
+  // the 2D-specific label pool was removed when the in-canvas path was
+  // retired.
 
   // Explosion effects
   private explosions: ExplosionEffect[] = [];
@@ -321,38 +321,6 @@ export class EntityRenderer {
     this.debrisSystem.update(dtMs, burnCutoff);
   }
 
-  // ==================== LABEL MANAGEMENT ====================
-
-  private getLabel(): Phaser.GameObjects.Text {
-    if (this.activeLabelCount < this.labelPool.length) {
-      const label = this.labelPool[this.activeLabelCount];
-      label.setVisible(true);
-      this.activeLabelCount++;
-      return label;
-    }
-
-    const label = this.scene.add.text(0, 0, '', {
-      fontSize: '12px',
-      fontFamily: 'monospace',
-      color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 3,
-      align: 'center',
-    });
-    label.setOrigin(0.5, 1);
-    label.setDepth(1000);
-    this.labelPool.push(label);
-    this.activeLabelCount++;
-    return label;
-  }
-
-  private resetLabels(): void {
-    for (let i = 0; i < this.activeLabelCount; i++) {
-      this.labelPool[i].setVisible(false);
-    }
-    this.activeLabelCount = 0;
-  }
-
   // ==================== ENTITY SOURCE ====================
 
   setEntitySource(source: EntitySource): void {
@@ -406,7 +374,7 @@ export class EntityRenderer {
 
   render(): void {
     this.graphics.clear();
-    this.resetLabels();
+    // (Labels handled by SelectionLabelOverlay — no per-frame reset needed.)
 
     const camera = this.scene.cameras.main;
     setCurrentZoom(camera.zoom);
@@ -573,10 +541,7 @@ export class EntityRenderer {
     }
     setSkipForceFieldZones(true);
 
-    // 10. Labels (topmost)
-    renderSelectedLabels(this.graphics, this.entitySource, () =>
-      this.getLabel(),
-    );
+    // Labels drawn by the shared SelectionLabelOverlay (HTML divs, DOM-layer).
   }
 
   // ==================== UNIT BODY RENDERING ====================
@@ -799,11 +764,6 @@ export class EntityRenderer {
   }
 
   destroy(): void {
-    for (const label of this.labelPool) {
-      label.destroy();
-    }
-    this.labelPool.length = 0;
-    this.activeLabelCount = 0;
     this.beamRandomOffsets.clear();
     this.projectileTrails.clear();
     this.barrelSpins.clear();

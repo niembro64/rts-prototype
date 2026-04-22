@@ -73,12 +73,15 @@ export class ThreeApp {
     this.scene.add(sun);
     this.scene.add(sun.target);
 
-    // Ground plane
-    const groundGeom = new THREE.PlaneGeometry(mapWidth, mapHeight);
+    // Ground slab — a thin box (not a zero-thickness plane) so the world looks
+    // like a solid piece of terrain when viewed from an oblique camera.
+    // Top surface sits at y=0, so units/buildings (which are positioned at
+    // ground level) still sit on top of it.
+    const GROUND_DEPTH = 80;
+    const groundGeom = new THREE.BoxGeometry(mapWidth, GROUND_DEPTH, mapHeight);
     const groundMat = new THREE.MeshLambertMaterial({ color: 0x2a3140 });
     const ground = new THREE.Mesh(groundGeom, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(mapWidth / 2, 0, mapHeight / 2);
+    ground.position.set(mapWidth / 2, -GROUND_DEPTH / 2, mapHeight / 2);
     this.scene.add(ground);
 
     // Grid helper for orientation

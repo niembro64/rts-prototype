@@ -20,10 +20,12 @@ import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
+import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBarOverlay } from '../hud/HealthBarOverlay';
 import { WaypointOverlay } from '../hud/WaypointOverlay';
+import { SelectionLabelOverlay } from '../hud/SelectionLabelOverlay';
 import { ThreeWorldProjector } from '../render3d/ThreeWorldProjector';
 import { getBottomBarsHeight } from '@/clientBarConfig';
 
@@ -84,6 +86,7 @@ export class RtsScene3D {
   private entityRenderer!: Render3DEntities;
   private beamRenderer!: BeamRenderer3D;
   private forceFieldRenderer!: ForceFieldRenderer3D;
+  private captureTileRenderer!: CaptureTileRenderer3D;
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
   private snapshotBuffer = new SnapshotBuffer();
@@ -92,6 +95,7 @@ export class RtsScene3D {
   private panArrowOverlay: PanArrowOverlay | null = null;
   private healthBarOverlay: HealthBarOverlay | null = null;
   private waypointOverlay: WaypointOverlay | null = null;
+  private selectionLabelOverlay: SelectionLabelOverlay | null = null;
 
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
@@ -276,6 +280,10 @@ export class RtsScene3D {
     );
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world);
     this.forceFieldRenderer = new ForceFieldRenderer3D(this.threeApp.world);
+    this.captureTileRenderer = new CaptureTileRenderer3D(
+      this.threeApp.world,
+      this.clientViewState,
+    );
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;
@@ -296,6 +304,7 @@ export class RtsScene3D {
       );
       this.healthBarOverlay = new HealthBarOverlay(canvasParent, projector);
       this.waypointOverlay = new WaypointOverlay(canvasParent, projector);
+      this.selectionLabelOverlay = new SelectionLabelOverlay(canvasParent, projector);
     }
 
     // Wire raycast-based selection + move commands
@@ -394,6 +403,7 @@ export class RtsScene3D {
     // Render phase
     const renderStart = performance.now();
     this.entityRenderer.update();
+    this.captureTileRenderer.update();
     this.beamRenderer.update(this.clientViewState.getProjectiles());
     this.forceFieldRenderer.update(this.clientViewState.getUnits());
     this.healthBarOverlay?.update(
@@ -401,6 +411,10 @@ export class RtsScene3D {
       this.clientViewState.getBuildings(),
     );
     this.waypointOverlay?.update(
+      this._cachedSelectedUnits,
+      this._cachedSelectedBuildings,
+    );
+    this.selectionLabelOverlay?.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
     );
@@ -607,9 +621,12 @@ export class RtsScene3D {
     this.healthBarOverlay = null;
     this.waypointOverlay?.destroy();
     this.waypointOverlay = null;
+    this.selectionLabelOverlay?.destroy();
+    this.selectionLabelOverlay = null;
     this.entityRenderer?.destroy();
     this.beamRenderer?.destroy();
     this.forceFieldRenderer?.destroy();
+    this.captureTileRenderer?.destroy();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();
     this.localCommandQueue.clear();

@@ -60,6 +60,7 @@ import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBarOverlay } from '../hud/HealthBarOverlay';
 import { WaypointOverlay } from '../hud/WaypointOverlay';
+import { SelectionLabelOverlay } from '../hud/SelectionLabelOverlay';
 import { PixiWorldProjector } from '../render/PixiWorldProjector';
 import { getBottomBarsHeight } from '@/clientBarConfig';
 
@@ -77,6 +78,7 @@ export class RtsScene extends SceneShim {
   private panArrowOverlay: PanArrowOverlay | null = null;
   private healthBarOverlay: HealthBarOverlay | null = null;
   private waypointOverlay: WaypointOverlay | null = null;
+  private selectionLabelOverlay: SelectionLabelOverlay | null = null;
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
 
@@ -298,6 +300,7 @@ export class RtsScene extends SceneShim {
       const projector = new PixiWorldProjector(this.cameras.main);
       this.healthBarOverlay = new HealthBarOverlay(canvasParent, projector);
       this.waypointOverlay = new WaypointOverlay(canvasParent, projector);
+      this.selectionLabelOverlay = new SelectionLabelOverlay(canvasParent, projector);
     }
 
     // Initialize audio on first user interaction
@@ -739,6 +742,10 @@ export class RtsScene extends SceneShim {
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
     );
+    this.selectionLabelOverlay?.update(
+      this._cachedSelectedUnits,
+      this._cachedSelectedBuildings,
+    );
 
     const renderEnd = performance.now();
 
@@ -890,6 +897,8 @@ export class RtsScene extends SceneShim {
     this.healthBarOverlay = null;
     this.waypointOverlay?.destroy();
     this.waypointOverlay = null;
+    this.selectionLabelOverlay?.destroy();
+    this.selectionLabelOverlay = null;
     this.gameConnection?.disconnect();
 
     // Clear snapshot buffer and audio scheduler
