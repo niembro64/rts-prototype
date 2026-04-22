@@ -309,6 +309,12 @@ export class RtsScene3D {
       this.localCommandQueue,
       this.gameConnection,
     );
+    // Keep scene's waypointMode in lockstep with the InputManager so the
+    // SelectionPanel reflects the active mode when M/F/H hotkeys fire.
+    this.inputManager.onWaypointModeChange = (mode) => {
+      this.currentWaypointMode = mode;
+      this.selectionDirty = true;
+    };
 
     // Camera clamping: keep the orbit target inside a padded map region.
     const paddingX = this.mapWidth * WORLD_PADDING_PERCENT;

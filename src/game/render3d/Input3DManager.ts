@@ -54,8 +54,11 @@ export class Input3DManager {
   private localCommandQueue: CommandQueue;
   private gameConnection: GameConnection;
 
-  // Current waypoint mode (move/fight/patrol) — driven by UI hotkey
+  // Current waypoint mode (move/fight/patrol) — driven by UI or M/F/H hotkeys.
   private waypointMode: WaypointType = 'move';
+  // Fires when the mode changes (from hotkey or setter). RtsScene3D hooks this
+  // to refresh the selection panel so the active mode chip stays in sync.
+  public onWaypointModeChange?: (mode: WaypointType) => void;
 
   // Drag state (screen coords only — box select is screen-space)
   private leftDown = false;
@@ -76,6 +79,7 @@ export class Input3DManager {
   private onMouseDown: (e: MouseEvent) => void;
   private onMouseMove: (e: MouseEvent) => void;
   private onMouseUp: (e: MouseEvent) => void;
+  private onKeyDown: (e: KeyboardEvent) => void;
 
   constructor(
     threeApp: ThreeApp,
@@ -112,14 +116,36 @@ export class Input3DManager {
     this.onMouseDown = (e) => this.handleMouseDown(e);
     this.onMouseMove = (e) => this.handleMouseMove(e);
     this.onMouseUp = (e) => this.handleMouseUp(e);
+    this.onKeyDown = (e) => this.handleKeyDown(e);
 
     this.canvas.addEventListener('mousedown', this.onMouseDown);
     window.addEventListener('mousemove', this.onMouseMove);
     window.addEventListener('mouseup', this.onMouseUp);
+    window.addEventListener('keydown', this.onKeyDown);
   }
 
   setWaypointMode(mode: WaypointType): void {
+    if (this.waypointMode === mode) return;
     this.waypointMode = mode;
+    this.onWaypointModeChange?.(mode);
+  }
+
+  private handleKeyDown(e: KeyboardEvent): void {
+    if (e.repeat) return;
+    // Don't hijack keys when the user is typing in a text input (lobby code, etc.).
+    const target = e.target as HTMLElement | null;
+    const tag = target?.tagName;
+    if (
+      tag === 'INPUT' || tag === 'TEXTAREA' ||
+      (target && target.isContentEditable)
+    ) return;
+
+    // Mirror InputManager.setupModeHotkeys (2D path): M/F/H switch waypoint mode.
+    switch (e.key.toLowerCase()) {
+      case 'm': this.setWaypointMode('move'); break;
+      case 'f': this.setWaypointMode('fight'); break;
+      case 'h': this.setWaypointMode('patrol'); break;
+    }
   }
 
   setEntitySource(source: EntitySource): void {
@@ -447,6 +473,8 @@ export class Input3DManager {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('mouseup', this.onMouseUp);
+    window.removeEventListener('keydown', this.onKeyDown);
+    this.onWaypointModeChange = undefined;
     this.marquee.remove();
   }
 }
