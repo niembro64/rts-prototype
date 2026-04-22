@@ -192,7 +192,13 @@ export class CaptureTileRenderer3D {
       const tr = (r / totalWeight) / 255;
       const tg = (g / totalWeight) / 255;
       const tb = (b / totalWeight) / 255;
-      const mix = Math.min(1, intensity * maxHeight);
+      // Blend factor from neutral → team color. The 2D overlay uses this as
+      // an ALPHA (intensity · maxHeight) over a dark background, which renders
+      // subtly even at low=0.1. Our 3D tiles are opaque (no alpha blend), so
+      // the raw formula produces almost-invisible differences at default
+      // intensity. Boost the effective mix so default 'low' yields ~30% team
+      // color at full height, 'high' yields full team color.
+      const mix = Math.min(1, intensity * 3 * maxHeight);
 
       const lerpR = NEUTRAL_R * (1 - mix) + tr * mix;
       const lerpG = NEUTRAL_G * (1 - mix) + tg * mix;
