@@ -19,8 +19,13 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 
-// Slight hover above the ground to avoid z-fighting with the ground slab.
-const TILE_Y = 1;
+// Hover above the ground slab's top (at y=0). With a perspective camera the
+// depth buffer loses precision at distance; at map-wide zoom-out, y=0 and
+// y=1 become indistinguishable and z-fight shows up as the ground's color
+// bleeding through tile pixels ("black speckling through team colors").
+// Combined with polygonOffset on the material this eliminates z-fighting at
+// any zoom without having to make the tiles obviously float.
+const TILE_Y = 4;
 
 // Color for unowned cells. Chosen slightly lighter than MAP_BG_COLOR so the
 // grid is visible as "floor" rather than merging into the scene background.
@@ -57,12 +62,16 @@ export class CaptureTileRenderer3D {
     this.mapHeight = mapHeight;
 
     this.geometry = new THREE.BufferGeometry();
-    // Opaque floor — no transparency → no z-fight with the ground slab below.
-    // DoubleSide so the quads render correctly no matter which way the winding
-    // happens to face; ground tiles are only ever looked at from above anyway.
+    // Opaque floor overlay. `polygonOffset` biases the tile fragments slightly
+    // toward the camera in the depth buffer, so even at low precision (far
+    // zoom) the tiles always win the depth test against the ground slab
+    // below. DoubleSide renders regardless of winding orientation.
     this.material = new THREE.MeshBasicMaterial({
       vertexColors: true,
       side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.renderOrder = 2;
