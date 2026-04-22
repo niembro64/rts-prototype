@@ -21,6 +21,8 @@ type EntityMesh = {
   group: THREE.Group;
   chassis: THREE.Mesh;
   turret?: THREE.Mesh;
+  ringMat?: THREE.MeshBasicMaterial;
+  ring?: THREE.Mesh;
 };
 
 export class Render3DEntities {
@@ -36,6 +38,8 @@ export class Render3DEntities {
   private turretGeom = new THREE.BoxGeometry(1, 1, 1);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
+  // Thin ring for the selection indicator (flat, sits just above the ground plane)
+  private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private secondaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
@@ -88,10 +92,13 @@ export class Render3DEntities {
       if (!m) {
         const group = new THREE.Group();
         const chassis = new THREE.Mesh(this.unitGeom, this.getPrimaryMat(pid));
+        // Tag for raycast picking — maps mesh back to entity id
+        chassis.userData.entityId = e.id;
         group.add(chassis);
 
         // Turret cube on top (visually distinct, rotates with turret angle if present)
         const turret = new THREE.Mesh(this.turretGeom, this.getSecondaryMat(pid));
+        turret.userData.entityId = e.id;
         group.add(turret);
 
         this.world.add(group);
@@ -149,6 +156,7 @@ export class Render3DEntities {
       if (!m) {
         const group = new THREE.Group();
         const box = new THREE.Mesh(this.buildingGeom, this.getPrimaryMat(pid));
+        box.userData.entityId = e.id;
         group.add(box);
         this.world.add(group);
         m = { group, chassis: box };

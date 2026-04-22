@@ -96,6 +96,10 @@ export class OrbitCamera {
       } else if (this.dragMode === 'pan') {
         // Pan in screen-space X/Y of the camera's ground-plane projection.
         // Pan distance scales with current view distance so feel is consistent.
+        //
+        // Y (forward) is inverted vs X so vertical drag matches the 2D camera's
+        // direction (drag down → camera moves south in world). X keeps the
+        // existing direction, which already felt correct.
         const scale = (this.distance / this.canvas.clientHeight) * this.panSpeed;
         // Right vector (world-space) at current yaw
         const rx = Math.cos(this.yaw);
@@ -103,8 +107,8 @@ export class OrbitCamera {
         // Forward vector projected onto ground plane
         const fx = Math.sin(this.yaw);
         const fz = -Math.cos(this.yaw);
-        this.target.x -= dx * scale * rx + dy * scale * fx;
-        this.target.z -= dx * scale * rz + dy * scale * fz;
+        this.target.x -= dx * scale * rx - dy * scale * fx;
+        this.target.z -= dx * scale * rz - dy * scale * fz;
       }
       this.apply();
     };
