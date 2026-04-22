@@ -11,6 +11,10 @@ export class PixiWorldProjector implements WorldProjector {
     this.camera = camera;
   }
 
+  refreshViewport(): void {
+    // Pixi camera state is already the single source of truth — nothing to cache.
+  }
+
   project(worldX: number, worldY: number, out: Vec2): boolean {
     const cam = this.camera;
     out.x = (worldX - cam.scrollX) * cam.zoom;

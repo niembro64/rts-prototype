@@ -6,6 +6,14 @@ export type Vec2 = { x: number; y: number };
 
 export interface WorldProjector {
   /**
+   * Refresh any per-frame caches (viewport rect, etc.). Scenes call this once
+   * per frame before overlays use the projector, so every project() /
+   * worldToScreenScale() call in the same frame reads consistent data without
+   * triggering a browser layout thrash.
+   */
+  refreshViewport(): void;
+
+  /**
    * Project a sim (x, y) point to overlay pixel coordinates. Writes result
    * into `out` and returns true if the point is visible (in-frustum, in front
    * of the camera). If it returns false, the overlay should skip drawing.

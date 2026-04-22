@@ -54,12 +54,18 @@ export class WaypointOverlay {
       height: '100%',
       pointerEvents: 'none',
       zIndex: '3',
+      // Promote the SVG to its own compositor layer so it composites in sync
+      // with the canvas during camera pan (avoids a one-frame desync).
+      willChange: 'transform',
+      transform: 'translateZ(0)',
     });
     this.svg.setAttribute('preserveAspectRatio', 'none');
+    this.svg.setAttribute('shape-rendering', 'geometricPrecision');
     parent.appendChild(this.svg);
   }
 
   update(selectedUnits: readonly Entity[], selectedBuildings: readonly Entity[]): void {
+    this.projector.refreshViewport();
     const counts = { L: 0, C: 0, R: 0, P: 0 };
 
     for (const u of selectedUnits) {

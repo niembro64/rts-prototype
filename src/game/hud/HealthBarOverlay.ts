@@ -1,9 +1,14 @@
 // HealthBarOverlay — shared HP bar layer used by both the 2D and 3D scenes.
 //
-// Renders SVG rects positioned over each damaged entity, using a WorldProjector
-// supplied by the renderer. Styling is shared (HEALTH_BAR_STYLE) so both modes
-// look identical. Bars stay proportional to the entity's world size — they
-// shrink/grow with camera zoom the way the 2D in-canvas bars used to.
+// Rendered with HTML divs positioned via CSS `transform: translate3d(X, Y, 0)`
+// rather than SVG rects. Why:
+//   - CSS translate3d puts each bar on the browser's GPU compositor, matching
+//     the WebGL canvas's own sub-pixel smoothness.
+//   - SVG rect x/y attributes are typically rasterised snapped to the pixel
+//     grid, which produces visible jitter against a canvas panning smoothly
+//     underneath.
+// The visual spec still matches the 2D original (green/red threshold, thin
+// bar above the entity, hidden at full HP).
 
 import type { Entity } from '../sim/types';
 import type { WorldProjector, Vec2 } from './WorldProjector';
@@ -24,15 +29,15 @@ export const HEALTH_BAR_STYLE = {
   hideAtFull: true,
 };
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
 type Bar = {
-  bg: SVGRectElement;
-  fg: SVGRectElement;
+  bg: HTMLDivElement;  // container (positioned), draws the background
+  fg: HTMLDivElement;  // child (left-aligned), draws the foreground fill
+  /** Tracks the last color applied so we can avoid redundant style writes. */
+  lastLow: boolean | null;
 };
 
 export class HealthBarOverlay {
-  private svg: SVGSVGElement;
+  private root: HTMLDivElement;
   private projector: WorldProjector;
   private pool: Bar[] = [];
   private _scratch: Vec2 = { x: 0, y: 0 };
@@ -44,38 +49,57 @@ export class HealthBarOverlay {
       parent.style.position = 'relative';
     }
 
-    this.svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
-    Object.assign(this.svg.style, {
+    this.root = document.createElement('div');
+    Object.assign(this.root.style, {
       position: 'absolute',
       inset: '0',
       width: '100%',
       height: '100%',
       pointerEvents: 'none',
+      overflow: 'hidden',
       zIndex: '4',
     });
-    this.svg.setAttribute('preserveAspectRatio', 'none');
-    parent.appendChild(this.svg);
+    parent.appendChild(this.root);
   }
 
   private acquire(i: number): Bar {
     let bar = this.pool[i];
     if (!bar) {
-      const bg = document.createElementNS(SVG_NS, 'rect') as SVGRectElement;
-      bg.setAttribute('fill', HEALTH_BAR_STYLE.bgColor);
-      bg.setAttribute('fill-opacity', String(HEALTH_BAR_STYLE.bgAlpha));
-      const fg = document.createElementNS(SVG_NS, 'rect') as SVGRectElement;
-      fg.setAttribute('fill-opacity', String(HEALTH_BAR_STYLE.fgAlpha));
-      this.svg.appendChild(bg);
-      this.svg.appendChild(fg);
-      bar = { bg, fg };
+      const bg = document.createElement('div');
+      Object.assign(bg.style, {
+        position: 'absolute',
+        left: '0',
+        top: '0',
+        backgroundColor: HEALTH_BAR_STYLE.bgColor,
+        opacity: String(HEALTH_BAR_STYLE.bgAlpha),
+        // GPU compositor hint — the browser will keep each bar on its own
+        // transform layer so movement is sub-pixel-accurate.
+        willChange: 'transform',
+      });
+      const fg = document.createElement('div');
+      Object.assign(fg.style, {
+        position: 'absolute',
+        left: '0',
+        top: '0',
+        height: '100%',
+        backgroundColor: HEALTH_BAR_STYLE.fgColorHigh,
+        opacity: String(HEALTH_BAR_STYLE.fgAlpha),
+      });
+      bg.appendChild(fg);
+      this.root.appendChild(bg);
+      bar = { bg, fg, lastLow: null };
       this.pool.push(bar);
     }
     bar.bg.style.display = '';
-    bar.fg.style.display = '';
     return bar;
   }
 
   update(units: readonly Entity[], buildings: readonly Entity[]): void {
+    // Cache any per-frame viewport data (e.g., canvas rect) exactly once for
+    // all projector calls in this frame. Without this, each project() call
+    // would trigger a getBoundingClientRect → layout thrash.
+    this.projector.refreshViewport();
+
     let used = 0;
 
     for (const u of units) {
@@ -99,8 +123,6 @@ export class HealthBarOverlay {
       const maxHp = b.building.maxHp;
       if (hp <= 0 || (HEALTH_BAR_STYLE.hideAtFull && hp >= maxHp)) continue;
 
-      // Approximate the building's "top" using half of its largest dimension,
-      // mirroring the 2D getTargetRadius-ish heuristic.
       const halfExtent = Math.max(b.building.width, b.building.height) / 2;
       used = this.renderBar(
         used,
@@ -113,7 +135,6 @@ export class HealthBarOverlay {
     // Hide any leftover pool entries from previous frames.
     for (let i = used; i < this.pool.length; i++) {
       this.pool[i].bg.style.display = 'none';
-      this.pool[i].fg.style.display = 'none';
     }
   }
 
@@ -139,27 +160,27 @@ export class HealthBarOverlay {
       - heightPx;
 
     const bar = this.acquire(used);
-    bar.bg.setAttribute('x', String(leftPx));
-    bar.bg.setAttribute('y', String(topPx));
-    bar.bg.setAttribute('width', String(widthPx));
-    bar.bg.setAttribute('height', String(heightPx));
+    // translate3d() puts the bar on the GPU compositor layer and gives full
+    // sub-pixel precision (unlike left/top pixel attributes, which snap).
+    bar.bg.style.transform = `translate3d(${leftPx}px, ${topPx}px, 0)`;
+    bar.bg.style.width = `${widthPx}px`;
+    bar.bg.style.height = `${heightPx}px`;
+    const fgWidth = Math.max(0, widthPx * percent);
+    bar.fg.style.width = `${fgWidth}px`;
 
-    bar.fg.setAttribute('x', String(leftPx));
-    bar.fg.setAttribute('y', String(topPx));
-    bar.fg.setAttribute('width', String(Math.max(0, widthPx * percent)));
-    bar.fg.setAttribute('height', String(heightPx));
-    bar.fg.setAttribute(
-      'fill',
-      percent < HEALTH_BAR_STYLE.lowThreshold
+    const isLow = percent < HEALTH_BAR_STYLE.lowThreshold;
+    if (bar.lastLow !== isLow) {
+      bar.fg.style.backgroundColor = isLow
         ? HEALTH_BAR_STYLE.fgColorLow
-        : HEALTH_BAR_STYLE.fgColorHigh,
-    );
+        : HEALTH_BAR_STYLE.fgColorHigh;
+      bar.lastLow = isLow;
+    }
 
     return used + 1;
   }
 
   destroy(): void {
-    this.svg.remove();
+    this.root.remove();
     this.pool.length = 0;
   }
 }

@@ -17,9 +17,20 @@ export class ThreeWorldProjector implements WorldProjector {
   private canvas: HTMLCanvasElement;
   private _v = new THREE.Vector3();
 
+  // Cached once per frame by refreshViewport() to avoid O(N) getBoundingClientRect
+  // calls from the overlays (which would force a browser layout each time).
+  private _cachedWidth = 0;
+  private _cachedHeight = 0;
+
   constructor(camera: THREE.PerspectiveCamera, canvas: HTMLCanvasElement) {
     this.camera = camera;
     this.canvas = canvas;
+  }
+
+  refreshViewport(): void {
+    const rect = this.canvas.getBoundingClientRect();
+    this._cachedWidth = rect.width;
+    this._cachedHeight = rect.height;
   }
 
   project(worldX: number, worldY: number, out: Vec2): boolean {
@@ -27,9 +38,8 @@ export class ThreeWorldProjector implements WorldProjector {
     this._v.project(this.camera);
     // After project(), z > 1 means behind the near plane or camera.
     if (this._v.z > 1) return false;
-    const rect = this.canvas.getBoundingClientRect();
-    out.x = (this._v.x * 0.5 + 0.5) * rect.width;
-    out.y = (-this._v.y * 0.5 + 0.5) * rect.height;
+    out.x = (this._v.x * 0.5 + 0.5) * this._cachedWidth;
+    out.y = (-this._v.y * 0.5 + 0.5) * this._cachedHeight;
     return true;
   }
 
@@ -40,9 +50,8 @@ export class ThreeWorldProjector implements WorldProjector {
     const dz = worldY - cam.position.z;
     const distance = Math.hypot(dx, dy, dz);
     if (distance <= 0) return 1;
-    const rect = this.canvas.getBoundingClientRect();
     const vFovRad = (cam.fov * Math.PI) / 180;
-    const focalPx = rect.height / (2 * Math.tan(vFovRad / 2));
+    const focalPx = this._cachedHeight / (2 * Math.tan(vFovRad / 2));
     return focalPx / distance;
   }
 }

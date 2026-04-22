@@ -50,8 +50,11 @@ export class PanArrowOverlay {
       pointerEvents: 'none',
       display: 'none',
       zIndex: '6',
+      willChange: 'transform',
+      transform: 'translateZ(0)',
     });
     this.svg.setAttribute('preserveAspectRatio', 'none');
+    this.svg.setAttribute('shape-rendering', 'geometricPrecision');
 
     // Outline (thicker, drawn behind main stroke for contrast)
     this.outlineShaft = document.createElementNS(SVG_NS, 'line') as SVGLineElement;
