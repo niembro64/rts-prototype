@@ -177,15 +177,26 @@ export class Render3DEntities {
 
     // Multi-barrel types get a dedicated sub-group so the whole cluster can
     // rotate around the firing axis (+X) to produce the gatling spin effect.
-    // Single barrels don't spin, so they're parented to the turret root directly.
+    // The group is positioned at (0, barrelCenterY, 0) so its local X axis
+    // passes through the center of the barrel cluster — i.e. exactly where a
+    // single barrel would sit. Barrels added to the group use zero Y/Z offset
+    // from that center, so `rotation.x` orbits each barrel around the firing
+    // axis at the correct radius.
+    // Single barrels don't spin, so they're parented to the turret root
+    // directly and positioned with the raw barrelCenterY offset.
     const isMultiBarrel =
       barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel';
     let barrelGroup: THREE.Group | undefined;
     if (isMultiBarrel) {
       barrelGroup = new THREE.Group();
+      barrelGroup.position.set(0, barrelCenterY, 0);
       root.add(barrelGroup);
     }
     const barrelParent: THREE.Object3D = barrelGroup ?? root;
+    // When inside barrelGroup the parent is already elevated to barrelCenterY,
+    // so barrel coords should omit that offset. Single-barrel cylinders (no
+    // group) still need to include it.
+    const parentBaseY = barrelGroup ? 0 : barrelCenterY;
 
     // Place one cylinder segment spanning (base) → (tip) in local coords. Used
     // for straight (gatling) and cone (shotgun) barrels alike.
@@ -221,9 +232,12 @@ export class Render3DEntities {
     }
 
     if (barrel.type === 'simpleSingleBarrel') {
-      pushSegment(0, barrelCenterY, 0, length, barrelCenterY, 0);
+      pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
     } else if (barrel.type === 'simpleMultiBarrel') {
-      // Parallel barrels arranged in a YZ circle around the firing axis.
+      // Parallel barrels arranged in a YZ circle around the firing axis. The
+      // barrelGroup's origin IS the firing axis (passes through the cluster
+      // center), so rotating the group spins each barrel around that axis at
+      // its own orbit radius — like a real gatling.
       const orbitR = Math.min(
         barrel.orbitRadius * unitRadius,
         TURRET_HEIGHT * 0.45,
@@ -233,11 +247,12 @@ export class Render3DEntities {
         const a = (i + 0.5) / n * Math.PI * 2;
         const oy = Math.cos(a) * orbitR;
         const oz = Math.sin(a) * orbitR;
-        pushSegment(0, barrelCenterY + oy, oz, length, barrelCenterY + oy, oz);
+        pushSegment(0, parentBaseY + oy, oz, length, parentBaseY + oy, oz);
       }
     } else if (barrel.type === 'coneMultiBarrel') {
       // Barrels diverge from base orbit to a wider tip orbit — a 3D cone
-      // analogue of the 2D shotgun's perpendicular spread.
+      // analogue of the 2D shotgun's perpendicular spread. Same firing-axis
+      // rotation center as the parallel case.
       const baseOrbitR = Math.min(
         barrel.baseOrbit * unitRadius,
         TURRET_HEIGHT * 0.35,
@@ -253,8 +268,8 @@ export class Render3DEntities {
         const cosA = Math.cos(a);
         const sinA = Math.sin(a);
         pushSegment(
-          0, barrelCenterY + cosA * baseOrbitR, sinA * baseOrbitR,
-          length, barrelCenterY + cosA * tipOrbitR, sinA * tipOrbitR,
+          0, parentBaseY + cosA * baseOrbitR, sinA * baseOrbitR,
+          length, parentBaseY + cosA * tipOrbitR, sinA * tipOrbitR,
         );
       }
     }
