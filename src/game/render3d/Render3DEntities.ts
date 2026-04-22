@@ -28,16 +28,29 @@ const TURRET_HEAD_FOOTPRINT = 0.55;  // head X/Z footprint as fraction of chassi
 const BARREL_COLOR = 0xffffff;
 const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
 
+// Mirror panels (reflective mirror-unit armor plates): standing rectangular
+// slabs positioned in the unit's TURRET frame (not chassis frame), since the
+// turret/mirror rotates independently of the hull.
+const MIRROR_HEIGHT = 24;            // Y extent of a mirror panel (standing slab)
+const MIRROR_BASE_Y = 2;             // bottom of the mirror panel above ground
+
 type TurretMesh = {
   root: THREE.Group;       // positioned at turret.offset, rotated to turret rotation
   head: THREE.Mesh;
   barrels: THREE.Mesh[];
 };
 
+type MirrorMesh = {
+  /** Rotates with the turret (children of this rotate in turret frame). */
+  root: THREE.Group;
+  panels: THREE.Mesh[];
+};
+
 type EntityMesh = {
   group: THREE.Group;
   chassis: THREE.Mesh;
   turrets: TurretMesh[];
+  mirrors?: MirrorMesh;
   ringMat?: THREE.MeshBasicMaterial;
   ring?: THREE.Mesh;
 };
@@ -57,6 +70,7 @@ export class Render3DEntities {
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
+  private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
   // Thin ring for the selection indicator (flat, sits just above the ground plane)
   private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
 
@@ -213,6 +227,35 @@ export class Render3DEntities {
   private _barrelUp = new THREE.Vector3();
   private _barrelDir = new THREE.Vector3();
 
+  /**
+   * Build the mirror-panel slab set for a unit (e.g. Loris). Panels live in a
+   * sub-group that rotates with the TURRET, not the chassis — mirror units'
+   * armor plates follow the mirror emitter's aim, not the hull's heading.
+   */
+  private buildMirrorMesh(
+    parent: THREE.Group,
+    panels: readonly { halfWidth: number; halfHeight: number; offsetX: number; offsetY: number; angle: number }[],
+    pid: PlayerId | undefined,
+  ): MirrorMesh {
+    const root = new THREE.Group();
+    parent.add(root);
+    const meshes: THREE.Mesh[] = [];
+    const mat = this.getSecondaryMat(pid);
+    for (const p of panels) {
+      const m = new THREE.Mesh(this.mirrorGeom, mat);
+      // Default box +X runs along the "edge" (length); +Z runs along the
+      // panel normal (thickness). Set local rotation.y = -(panel.angle + π/2)
+      // so the combined chassis → mirrorRoot → panel transforms put the
+      // edge in world direction (turret.rotation + panel.angle + π/2).
+      m.rotation.y = -(p.angle + Math.PI / 2);
+      m.scale.set(p.halfWidth * 2, MIRROR_HEIGHT, p.halfHeight * 2);
+      m.position.set(p.offsetX, MIRROR_BASE_Y + MIRROR_HEIGHT / 2, p.offsetY);
+      root.add(m);
+      meshes.push(m);
+    }
+    return { root, panels: meshes };
+  }
+
   private getPrimaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
     if (pid === undefined) return this.neutralMat;
     return this.primaryMats.get(pid) ?? this.neutralMat;
@@ -266,6 +309,16 @@ export class Render3DEntities {
 
         this.world.add(group);
         m = { group, chassis, turrets: turretMeshes };
+
+        // Mirror panels (e.g. Loris): standing slabs that track the turret.
+        const mirrorPanels = e.unit?.mirrorPanels;
+        if (mirrorPanels && mirrorPanels.length > 0) {
+          m.mirrors = this.buildMirrorMesh(group, mirrorPanels, pid);
+          for (const panel of m.mirrors.panels) {
+            panel.userData.entityId = e.id;
+          }
+        }
+
         this.unitMeshes.set(e.id, m);
       } else {
         m.chassis.material = this.getPrimaryMat(pid);
@@ -324,6 +377,13 @@ export class Render3DEntities {
         // -(t.rotation - chassis.rotation), which makes local +X point in the
         // correct world firing direction after both rotations compose.
         tm.root.rotation.y = -(t.rotation - e.transform.rotation);
+      }
+
+      // Mirror panels: track the first turret's rotation (same rule the 2D
+      // LorisRenderer uses — `mirrorRot = turret?.rotation ?? bodyRot`).
+      if (m.mirrors) {
+        const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
+        m.mirrors.root.rotation.y = -(mirrorRot - e.transform.rotation);
       }
 
       // Health bar handled by the shared HealthBarOverlay (SVG layer).
@@ -430,6 +490,7 @@ export class Render3DEntities {
     this.projectileGeom.dispose();
     this.buildingGeom.dispose();
     this.ringGeom.dispose();
+    this.mirrorGeom.dispose();
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     for (const m of this.secondaryMats.values()) m.dispose();

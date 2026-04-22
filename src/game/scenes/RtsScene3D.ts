@@ -19,6 +19,7 @@ import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
+import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBarOverlay } from '../hud/HealthBarOverlay';
@@ -82,6 +83,7 @@ export class RtsScene3D {
   private clientViewState!: ClientViewState;
   private entityRenderer!: Render3DEntities;
   private beamRenderer!: BeamRenderer3D;
+  private forceFieldRenderer!: ForceFieldRenderer3D;
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
   private snapshotBuffer = new SnapshotBuffer();
@@ -273,6 +275,7 @@ export class RtsScene3D {
       this.clientViewState,
     );
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world);
+    this.forceFieldRenderer = new ForceFieldRenderer3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;
@@ -386,6 +389,7 @@ export class RtsScene3D {
     const renderStart = performance.now();
     this.entityRenderer.update();
     this.beamRenderer.update(this.clientViewState.getProjectiles());
+    this.forceFieldRenderer.update(this.clientViewState.getUnits());
     this.healthBarOverlay?.update(
       this.clientViewState.getUnits(),
       this.clientViewState.getBuildings(),
@@ -599,6 +603,7 @@ export class RtsScene3D {
     this.waypointOverlay = null;
     this.entityRenderer?.destroy();
     this.beamRenderer?.destroy();
+    this.forceFieldRenderer?.destroy();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();
     this.localCommandQueue.clear();
