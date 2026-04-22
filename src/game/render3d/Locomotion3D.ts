@@ -120,7 +120,7 @@ export function lodKeyFor(gfx: GraphicsConfig): string {
  * them for the right side with the same `attachOffsetY`/`snapTargetAngle`
  * sign flip that 2D uses.
  */
-function leftSideConfigsForStyle(style: LegStyle, radius: number): ArachnidLegConfig[] {
+export function leftSideConfigsForStyle(style: LegStyle, radius: number): ArachnidLegConfig[] {
   if (style === 'daddy') {
     const legLength = radius * 10;
     const upperLen = legLength * 0.45;
