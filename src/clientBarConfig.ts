@@ -57,6 +57,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   audioSmoothing: { default: true },
+  burnMarks: { default: true },
   driftMode: { default: 'slow' as const },
   edgeScroll: { default: false },
   dragPan: { default: true },
@@ -220,6 +221,7 @@ const STORAGE_KEY = 'rts-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'rts-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'rts-audio-smoothing';
+const BURN_MARKS_STORAGE_KEY = 'rts-burn-marks';
 const DRIFT_MODE_STORAGE_KEY = 'rts-drift-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'rts-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'rts-range-toggles';
@@ -253,6 +255,7 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
 };
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
+let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentDriftMode: DriftMode = _cd.driftMode.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
@@ -315,6 +318,10 @@ function loadFromStorage(): void {
     );
     if (storedAudioSmoothing !== null) {
       currentAudioSmoothing = storedAudioSmoothing === 'true';
+    }
+    const storedBurnMarks = localStorage.getItem(BURN_MARKS_STORAGE_KEY);
+    if (storedBurnMarks !== null) {
+      currentBurnMarks = storedBurnMarks === 'true';
     }
     const storedDriftMode = localStorage.getItem(DRIFT_MODE_STORAGE_KEY);
     if (
@@ -602,6 +609,19 @@ export function setAudioSmoothing(enabled: boolean): void {
   currentAudioSmoothing = enabled;
   try {
     localStorage.setItem(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
+  } catch {
+    /* */
+  }
+}
+
+export function getBurnMarks(): boolean {
+  return currentBurnMarks;
+}
+
+export function setBurnMarks(enabled: boolean): void {
+  currentBurnMarks = enabled;
+  try {
+    localStorage.setItem(BURN_MARKS_STORAGE_KEY, String(enabled));
   } catch {
     /* */
   }

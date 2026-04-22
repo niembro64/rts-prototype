@@ -111,6 +111,8 @@ import {
   setAudioScope,
   getAudioSmoothing,
   setAudioSmoothing,
+  getBurnMarks,
+  setBurnMarks,
   getDriftMode,
   setDriftMode,
   getSoundToggle,
@@ -184,6 +186,7 @@ const effectiveQuality = ref<ConcreteGraphicsQuality>(
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
+const burnMarks = ref<boolean>(getBurnMarks());
 const driftMode = ref<DriftMode>(getDriftMode());
 const edgeScrollEnabled = ref(getEdgeScrollEnabled());
 const dragPanEnabled = ref(getDragPanEnabled());
@@ -581,6 +584,8 @@ function resetClientDefaults(): void {
   changeAudioScope(cd.audio.default);
   setAudioSmoothing(cd.audioSmoothing.default);
   audioSmoothing.value = cd.audioSmoothing.default;
+  setBurnMarks(cd.burnMarks.default);
+  burnMarks.value = cd.burnMarks.default;
   setDriftMode(cd.driftMode.default);
   driftMode.value = cd.driftMode.default;
   if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
@@ -798,6 +803,12 @@ function toggleAudioSmoothing(): void {
   const newValue = !audioSmoothing.value;
   setAudioSmoothing(newValue);
   audioSmoothing.value = newValue;
+}
+
+function toggleBurnMarks(): void {
+  const newValue = !burnMarks.value;
+  setBurnMarks(newValue);
+  burnMarks.value = newValue;
 }
 
 function changeDriftMode(mode: DriftMode): void {
@@ -1771,6 +1782,18 @@ onUnmounted(() => {
               @click="toggleAudioSmoothing"
             >
               SMOOTH
+            </button>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">MARKS:</span>
+            <button
+              class="control-btn"
+              :class="{ active: burnMarks }"
+              title="Draw scorch marks on the ground where beams and lasers hit"
+              @click="toggleBurnMarks"
+            >
+              BURN
             </button>
           </div>
           <div class="control-group">

@@ -36,6 +36,7 @@ export type ClientBarConfig = {
   readonly render: LabeledOptionsConfig<RenderMode>;
   readonly audio: LabeledOptionsConfig<Exclude<AudioScope, 'off'>>;
   readonly audioSmoothing: BooleanSetting;
+  readonly burnMarks: BooleanSetting;
   readonly driftMode: DefaultSetting<DriftMode>;
   readonly edgeScroll: BooleanSetting;
   readonly dragPan: BooleanSetting;

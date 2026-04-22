@@ -17,6 +17,7 @@ import {
   getUnitRadiusToggle,
   anyUnitRadiusToggleActive,
   setCurrentZoom,
+  getBurnMarks,
 } from '@/clientBarConfig';
 import { magnitude } from '../math';
 import { FIRE_EXPLOSION } from '../../explosionConfig';
@@ -388,8 +389,10 @@ export class EntityRenderer {
     // 0. Force field zones are drawn late (after explosions) with real transparency.
     setSkipForceFieldZones(true);
 
-    // 0b. Sample and render scorched earth burn marks (skip at min LOD)
-    if (gfxConfig.burnMarkAlphaCutoff < 1) {
+    // 0b. Sample and render scorched earth burn marks (skip at min LOD). The
+    // PLAYER CLIENT `MARKS: BURN` toggle additionally gates both sampling and
+    // rendering so the user can turn the whole system off.
+    if (gfxConfig.burnMarkAlphaCutoff < 1 && getBurnMarks()) {
       this.burnMarkSystem.sampleBeamEndpoints(
         this.entitySource.getProjectiles(),
         gfxConfig.burnMarkFramesSkip,
@@ -397,6 +400,10 @@ export class EntityRenderer {
       this.burnMarkSystem.render(this.graphics, (x, y, padding) =>
         this.isInViewport(x, y, padding),
       );
+    } else {
+      // Toggle just went off — flush any accumulated marks so they don't
+      // spring back when it's re-enabled.
+      this.burnMarkSystem.clear();
     }
 
     // 0d. Death debris fragments

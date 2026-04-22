@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
 
 // Burn marks sit a hair above the tile floor (y=0) so they render over the
 // capture-tile grid without z-fighting. Must be below SHOT_HEIGHT so beam
@@ -109,6 +109,13 @@ export class BurnMark3D {
    * beam/laser types.
    */
   update(projectiles: readonly Entity[], dtMs: number): void {
+    // PLAYER CLIENT toggle — when off, wipe any accumulated state (marks +
+    // per-beam endpoints + hit glows) so nothing lingers, and early-out.
+    if (!getBurnMarks()) {
+      if (this.marks.length > 0 || this.beams.size > 0) this.clearAll();
+      return;
+    }
+
     this._time += dtMs;
 
     const framesSkip = getGraphicsConfig().burnMarkFramesSkip ?? 0;
@@ -263,6 +270,27 @@ export class BurnMark3D {
         this.markPool.push({ mesh: dropped.mesh, material: dropped.material });
       }
     }
+  }
+
+  /**
+   * Drop every live mark and release hit-glow meshes back to their pools. Run
+   * when the toggle flips off so the scene is visually empty on the next
+   * frame; re-enabling starts a fresh trace.
+   */
+  private clearAll(): void {
+    for (const m of this.marks) {
+      m.mesh.visible = false;
+      this.markPool.push({ mesh: m.mesh, material: m.material });
+    }
+    this.marks.length = 0;
+    for (const state of this.beams.values()) {
+      if (state.glow) {
+        state.glow.visible = false;
+        this.glowPool.push(state.glow);
+      }
+    }
+    this.beams.clear();
+    this._seenBeamKeys.clear();
   }
 
   destroy(): void {
