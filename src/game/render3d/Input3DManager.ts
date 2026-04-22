@@ -149,6 +149,17 @@ export class Input3DManager {
       case 'm': this.setWaypointMode('move'); break;
       case 'f': this.setWaypointMode('fight'); break;
       case 'h': this.setWaypointMode('patrol'); break;
+      case 'escape': {
+        // Clear the current selection. Mirrors the 2D BuildingPlacement-
+        // Controller's ESC handler (which clears selection when not in a
+        // build/D-gun mode). 3D doesn't have those modes yet, so ESC
+        // always clears.
+        this.localCommandQueue.enqueue({
+          type: 'clearSelection',
+          tick: this.context.getTick(),
+        });
+        break;
+      }
     }
   }
 

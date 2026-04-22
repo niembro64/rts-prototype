@@ -89,14 +89,23 @@ export class BuildingPlacementController {
       }
     });
 
-    // ESC cancels build mode
+    // ESC cancels the active mode first (build or D-gun). If neither is
+    // active, ESC clears any current unit/building selection — same
+    // behavior as the 3D scene. Mode cancellation takes priority so users
+    // don't accidentally lose their selection while exiting a mode.
     this.keys.ESC.on('down', () => {
       if (this.state.isBuildMode) {
         this.exitBuildMode();
+        return;
       }
       if (this.state.isDGunMode) {
         this.exitDGunMode();
+        return;
       }
+      this.commandQueue.enqueue({
+        type: 'clearSelection',
+        tick: this.context.getTick(),
+      });
     });
 
     // D key activates D-gun mode
