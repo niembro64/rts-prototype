@@ -5,6 +5,12 @@
 
 import * as THREE from 'three';
 import { OrbitCamera } from './OrbitCamera';
+import {
+  CAMERA_PAN_MULTIPLIER,
+  ZOOM_FACTOR,
+  ZOOM_MIN,
+  ZOOM_MAX,
+} from '../../config';
 
 export class ThreeApp {
   public renderer: THREE.WebGLRenderer;
@@ -39,13 +45,20 @@ export class ThreeApp {
 
     this.camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000);
 
+    // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
+    // region of the map as the 2D camera at its default zoom. Min/max distance
+    // are derived from ZOOM_MIN/ZOOM_MAX so "zoomed in" / "zoomed out" bounds
+    // match the 2D limits.
+    const baseDistance = Math.max(mapWidth, mapHeight) * 0.35;
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
-      minDistance: 100,
-      maxDistance: 12000,
+      minDistance: baseDistance / ZOOM_MAX,
+      maxDistance: baseDistance / ZOOM_MIN,
+      zoomStepFactor: ZOOM_FACTOR,
+      panMultiplier: CAMERA_PAN_MULTIPLIER,
     });
     // Center on map, pulled in for a useful RTS default view
     this.orbit.setTarget(mapWidth / 2, 0, mapHeight / 2);
-    this.orbit.distance = Math.max(mapWidth, mapHeight) * 0.35;
+    this.orbit.distance = baseDistance;
     this.orbit.pitch = Math.PI * 0.28;
     this.orbit.apply();
 

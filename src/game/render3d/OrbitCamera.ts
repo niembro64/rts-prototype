@@ -13,9 +13,13 @@ export type OrbitCameraOptions = {
   maxDistance?: number;
   minPitch?: number;
   maxPitch?: number;
-  zoomSpeed?: number;
+  /** Per-wheel-tick multiplier (distance is divided on zoom-in, multiplied on
+   *  zoom-out). Matches the 2D camera's ZOOM_FACTOR behavior. */
+  zoomStepFactor?: number;
   rotateSpeed?: number;
-  panSpeed?: number;
+  /** Multiplier applied on top of world-per-pixel when panning. Matches the
+   *  2D CAMERA_PAN_MULTIPLIER so pan feel is consistent across renderers. */
+  panMultiplier?: number;
 };
 
 export class OrbitCamera {
@@ -33,9 +37,9 @@ export class OrbitCamera {
   private maxDistance: number;
   private minPitch: number;
   private maxPitch: number;
-  private zoomSpeed: number;
+  private zoomStepFactor: number;
   private rotateSpeed: number;
-  private panSpeed: number;
+  private panMultiplier: number;
 
   private dragMode: 'none' | 'orbit' | 'pan' = 'none';
   private lastMouseX = 0;
@@ -59,13 +63,17 @@ export class OrbitCamera {
     this.maxDistance = opts.maxDistance ?? 8000;
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
-    this.zoomSpeed = opts.zoomSpeed ?? 0.0015;
+    this.zoomStepFactor = opts.zoomStepFactor ?? 1 + 1 / 8;
     this.rotateSpeed = opts.rotateSpeed ?? 0.005;
-    this.panSpeed = opts.panSpeed ?? 1.0;
+    this.panMultiplier = opts.panMultiplier ?? 1.0;
 
     this.onWheel = (e) => {
       e.preventDefault();
-      const factor = Math.exp(e.deltaY * this.zoomSpeed);
+      // Match the 2D camera: per-wheel-tick discrete step, sign-only.
+      //   scroll up   (deltaY < 0)  → zoom in  → distance divided by factor
+      //   scroll down (deltaY > 0)  → zoom out → distance multiplied by factor
+      if (e.deltaY === 0) return;
+      const factor = e.deltaY > 0 ? this.zoomStepFactor : 1 / this.zoomStepFactor;
       this.distance = Math.min(
         this.maxDistance,
         Math.max(this.minDistance, this.distance * factor),
@@ -95,12 +103,16 @@ export class OrbitCamera {
         this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
       } else if (this.dragMode === 'pan') {
         // Pan in screen-space X/Y of the camera's ground-plane projection.
-        // Pan distance scales with current view distance so feel is consistent.
+        // World-per-pixel at the ground plane = (2 · tan(fov/2) · distance) /
+        // canvasHeight. The result is then scaled by panMultiplier — the same
+        // CAMERA_PAN_MULTIPLIER the 2D camera uses, so drag feel is consistent.
         //
         // Y (forward) is inverted vs X so vertical drag matches the 2D camera's
-        // direction (drag down → camera moves south in world). X keeps the
-        // existing direction, which already felt correct.
-        const scale = (this.distance / this.canvas.clientHeight) * this.panSpeed;
+        // direction (drag down → camera moves south in world).
+        const vFovRad = (this.camera.fov * Math.PI) / 180;
+        const worldPerPixel =
+          (2 * Math.tan(vFovRad / 2) * this.distance) / this.canvas.clientHeight;
+        const scale = worldPerPixel * this.panMultiplier;
         // Right vector (world-space) at current yaw
         const rx = Math.cos(this.yaw);
         const rz = Math.sin(this.yaw);
