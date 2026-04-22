@@ -420,14 +420,17 @@ export class Render3DEntities {
     const seen = new Set<number>();
 
     for (const e of projectiles) {
+      // Skip beams/lasers — handled by BeamRenderer3D as line segments rather
+      // than spheres. Without this, long-range beams would render as a single
+      // sphere at the wrong position.
+      const pt = e.projectile?.projectileType;
+      if (pt === 'beam' || pt === 'laser') continue;
+
       seen.add(e.id);
       const shot = e.projectile?.config.shot;
-      // Projectile shots have collision.radius; beam/laser shots have radius directly
+      // Projectile shots have collision.radius
       let radius = 4;
-      if (shot) {
-        if (shot.type === 'projectile') radius = shot.collision.radius;
-        else if (shot.type === 'beam' || shot.type === 'laser') radius = shot.radius;
-      }
+      if (shot && shot.type === 'projectile') radius = shot.collision.radius;
       const pid = e.projectile?.ownerId;
 
       let mesh = this.projectileMeshes.get(e.id);

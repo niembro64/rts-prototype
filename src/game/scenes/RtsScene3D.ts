@@ -19,6 +19,7 @@ import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
 import { WaypointRenderer3D } from '../render3d/WaypointRenderer3D';
+import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { getBottomBarsHeight } from '@/clientBarConfig';
@@ -79,6 +80,7 @@ export class RtsScene3D {
   private clientViewState!: ClientViewState;
   private entityRenderer!: Render3DEntities;
   private waypointRenderer!: WaypointRenderer3D;
+  private beamRenderer!: BeamRenderer3D;
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
   private snapshotBuffer = new SnapshotBuffer();
@@ -269,6 +271,7 @@ export class RtsScene3D {
     );
     this.entityRenderer.setCamera(this.threeApp.camera);
     this.waypointRenderer = new WaypointRenderer3D(this.threeApp.world);
+    this.beamRenderer = new BeamRenderer3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;
@@ -373,6 +376,7 @@ export class RtsScene3D {
     // Render phase
     const renderStart = performance.now();
     this.entityRenderer.update();
+    this.beamRenderer.update(this.clientViewState.getProjectiles());
     this.waypointRenderer.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
@@ -578,6 +582,7 @@ export class RtsScene3D {
     this.panArrowOverlay = null;
     this.entityRenderer?.destroy();
     this.waypointRenderer?.destroy();
+    this.beamRenderer?.destroy();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();
     this.localCommandQueue.clear();
