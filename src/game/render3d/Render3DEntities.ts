@@ -36,7 +36,9 @@ const MIRROR_BASE_Y = 2;             // bottom of the mirror panel above ground
 
 type TurretMesh = {
   root: THREE.Group;       // positioned at turret.offset, rotated to turret rotation
-  head: THREE.Mesh;
+  /** Absent for turrets without a "body" — force fields (the glowing sphere
+   *  is the whole visual) and mirror units (the mirror panels are). */
+  head?: THREE.Mesh;
   barrels: THREE.Mesh[];
 };
 
@@ -114,22 +116,32 @@ export class Render3DEntities {
     turret: Turret,
     unitRadius: number,
     pid: PlayerId | undefined,
+    unitHasMirrors: boolean,
   ): TurretMesh {
     const root = new THREE.Group();
-    // Turret root is placed at the top of the chassis. The head sits ON the
-    // root (extends upward by TURRET_HEIGHT), and barrels emerge from the
-    // head's vertical center — so barrel tips line up with SHOT_HEIGHT.
-    const head = new THREE.Mesh(this.turretHeadGeom, this.getSecondaryMat(pid));
-    const headRadius = unitRadius * TURRET_HEAD_FOOTPRINT;
-    // CylinderGeometry has radius 1 → scale x/z become the actual radius.
-    // Keep x and z equal so the head is a round turret top, not an ellipse.
-    head.scale.set(headRadius, TURRET_HEIGHT, headRadius);
-    head.position.set(0, TURRET_HEIGHT / 2, 0);
-    root.add(head);
+    const barrel = turret.config.barrel;
+    const isForceField = barrel?.type === 'complexSingleEmitter';
+
+    // Skip the head cylinder entirely for:
+    //  - force-field turrets: the ForceFieldRenderer3D's glowing sphere is
+    //    the whole visual; a cylinder just sits inside it and clips through.
+    //  - mirror units (Loris): the mirror panels already represent the
+    //    rotating body, so a redundant cylinder reads as extra clutter.
+    const hideHead = isForceField || unitHasMirrors;
+
+    let head: THREE.Mesh | undefined;
+    if (!hideHead) {
+      head = new THREE.Mesh(this.turretHeadGeom, this.getSecondaryMat(pid));
+      const headRadius = unitRadius * TURRET_HEAD_FOOTPRINT;
+      // CylinderGeometry has radius 1 → scale x/z become the actual radius.
+      // Keep x and z equal so the head is a round turret top, not an ellipse.
+      head.scale.set(headRadius, TURRET_HEIGHT, headRadius);
+      head.position.set(0, TURRET_HEIGHT / 2, 0);
+      root.add(head);
+    }
 
     const barrels: THREE.Mesh[] = [];
-    const barrel = turret.config.barrel;
-    if (!barrel || barrel.type === 'complexSingleEmitter') {
+    if (!barrel || isForceField) {
       // Force-field turrets don't have a physical barrel.
       parent.add(root);
       return { root, head, barrels };
@@ -302,11 +314,12 @@ export class Render3DEntities {
         group.add(chassis);
 
         // Build one TurretMesh per actual turret on the entity. Each turret
-        // has a head box + barrel cylinders matching its barrel config.
+        // has an optional head + barrel cylinders matching its barrel config.
+        const unitHasMirrors = (e.unit?.mirrorPanels?.length ?? 0) > 0;
         const turretMeshes: TurretMesh[] = [];
         for (const t of turrets) {
-          const tm = this.buildTurretMesh(group, t, radius, pid);
-          tm.head.userData.entityId = e.id;
+          const tm = this.buildTurretMesh(group, t, radius, pid, unitHasMirrors);
+          if (tm.head) tm.head.userData.entityId = e.id;
           for (const b of tm.barrels) b.userData.entityId = e.id;
           turretMeshes.push(tm);
         }
@@ -326,7 +339,9 @@ export class Render3DEntities {
         this.unitMeshes.set(e.id, m);
       } else {
         m.chassis.material = this.getPrimaryMat(pid);
-        for (const tm of m.turrets) tm.head.material = this.getSecondaryMat(pid);
+        for (const tm of m.turrets) {
+          if (tm.head) tm.head.material = this.getSecondaryMat(pid);
+        }
       }
 
       // Position group at the ground; children position themselves relative
