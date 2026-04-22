@@ -116,6 +116,35 @@ export class Render3DEntities {
       // Chassis scale
       m.chassis.scale.set(radius, height, radius);
 
+      // Selection ring (flat ring on ground under the unit)
+      const selected = e.selectable?.selected === true;
+      if (selected && !m.ring) {
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const ring = new THREE.Mesh(this.ringGeom, ringMat);
+        // RingGeometry lies in XY plane by default → rotate flat onto the ground
+        ring.rotation.x = -Math.PI / 2;
+        // Relative to the unit group, ground is at -height/2
+        ring.position.y = -height / 2 + 1;
+        m.group.add(ring);
+        m.ring = ring;
+        m.ringMat = ringMat;
+      } else if (!selected && m.ring) {
+        m.group.remove(m.ring);
+        m.ringMat?.dispose();
+        m.ring = undefined;
+        m.ringMat = undefined;
+      }
+      if (m.ring) {
+        const ringR = radius * 1.35;
+        m.ring.scale.set(ringR, ringR, 1);
+      }
+
       // Turret: smaller box on top, rotated to first turret angle if available
       if (m.turret) {
         const turretSize = radius * TURRET_BOX_SCALE;

@@ -17,6 +17,8 @@ import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
+import { Input3DManager } from '../render3d/Input3DManager';
+import { CommandQueue, type SelectCommand } from '../sim/commands';
 
 import type { GameConnection } from '../server/GameConnection';
 import type {
@@ -73,8 +75,11 @@ export class RtsScene3D {
 
   private clientViewState!: ClientViewState;
   private entityRenderer!: Render3DEntities;
+  private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
   private snapshotBuffer = new SnapshotBuffer();
+  private localCommandQueue = new CommandQueue();
+  private currentWaypointMode: WaypointType = 'move';
 
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
@@ -116,7 +121,8 @@ export class RtsScene3D {
     getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
     getUnitsByPlayer: (playerId: PlayerId) => Entity[];
   };
-  private _emptySelection: Entity[] = [];
+  private _cachedSelectedUnits: Entity[] = [];
+  private _cachedSelectedBuildings: Entity[] = [];
   private _cachedPlayerUnits: Entity[] = [];
   private _cachedPlayerBuildings: Entity[] = [];
   private _cachedPlayerIdForUnits: PlayerId = -1 as PlayerId;
@@ -222,8 +228,8 @@ export class RtsScene3D {
       getProjectiles: () => this.clientViewState.getProjectiles(),
       getAllEntities: () => this.clientViewState.getAllEntities(),
       getEntity: (id) => this.clientViewState.getEntity(id),
-      getSelectedUnits: () => this._emptySelection,
-      getSelectedBuildings: () => this._emptySelection,
+      getSelectedUnits: () => this._cachedSelectedUnits,
+      getSelectedBuildings: () => this._cachedSelectedBuildings,
       getBuildingsByPlayer: (pid) => {
         if (pid !== this._cachedPlayerIdForBuildings) {
           this._cachedPlayerBuildings.length = 0;
@@ -255,6 +261,18 @@ export class RtsScene3D {
     this.entityRenderer = new Render3DEntities(
       this.threeApp.world,
       this.clientViewState,
+    );
+
+    // Wire raycast-based selection + move commands
+    this.inputManager = new Input3DManager(
+      this.threeApp,
+      {
+        getTick: () => this.clientViewState.getTick(),
+        activePlayerId: this.localPlayerId,
+      },
+      this.entitySourceAdapter,
+      this.localCommandQueue,
+      this.gameConnection,
     );
 
     // Camera clamping: keep the orbit target inside a padded map region.
@@ -304,6 +322,25 @@ export class RtsScene3D {
       }
 
       this.selectionDirty = true;
+    }
+
+    // Process local commands — select/clearSelection apply to ClientViewState,
+    // everything else gets forwarded to the server via GameConnection
+    this.processLocalCommands();
+
+    // Rebuild selected-entity caches after selection commands have been applied
+    this._cachedSelectedUnits.length = 0;
+    this._cachedSelectedBuildings.length = 0;
+    const pid = this.localPlayerId;
+    for (const e of this.clientViewState.getUnits()) {
+      if (e.selectable?.selected && e.ownership?.playerId === pid) {
+        this._cachedSelectedUnits.push(e);
+      }
+    }
+    for (const b of this.clientViewState.getBuildings()) {
+      if (b.selectable?.selected && b.ownership?.playerId === pid) {
+        this._cachedSelectedBuildings.push(b);
+      }
     }
 
     // Dead-reckon + drift every frame so units animate between snapshots
@@ -368,6 +405,24 @@ export class RtsScene3D {
     }
   }
 
+  private processLocalCommands(): void {
+    const commands = this.localCommandQueue.getAll();
+    this.localCommandQueue.clear();
+    for (const command of commands) {
+      if (command.type === 'select') {
+        const sc = command as SelectCommand;
+        if (!sc.additive) this.clientViewState.clearSelection();
+        for (const id of sc.entityIds) this.clientViewState.selectEntity(id);
+        this.selectionDirty = true;
+      } else if (command.type === 'clearSelection') {
+        this.clientViewState.clearSelection();
+        this.selectionDirty = true;
+      } else {
+        this.gameConnection.sendCommand(command);
+      }
+    }
+  }
+
   private handleGameOver(winnerId: PlayerId): void {
     if (this.isGameOver) return;
     this.isGameOver = true;
@@ -376,8 +431,17 @@ export class RtsScene3D {
 
   public updateSelectionInfo(): void {
     if (!this.onSelectionChange) return;
-    // View-only: no input state, no selection. Helper handles empty case.
-    this.onSelectionChange(buildSelectionInfo(this.entitySourceAdapter, undefined));
+    // Minimal input-state shape so the waypoint-mode indicator reflects the
+    // current mode; build/D-gun aren't supported in 3D yet.
+    const inputState = {
+      waypointMode: this.currentWaypointMode,
+      isBuildMode: false,
+      selectedBuildingType: null,
+      isDGunMode: false,
+    } as const;
+    this.onSelectionChange(
+      buildSelectionInfo(this.entitySourceAdapter, inputState as any),
+    );
   }
 
   public updateEconomyInfo(): void {
@@ -436,9 +500,13 @@ export class RtsScene3D {
     this.selectionDirty = true;
   }
 
-  // Input-related commands are no-ops in 3D view-only mode. They keep the
-  // public surface compatible with RtsScene so the UI can call them safely.
-  public setWaypointMode(_mode: WaypointType): void {}
+  public setWaypointMode(mode: WaypointType): void {
+    this.currentWaypointMode = mode;
+    this.inputManager?.setWaypointMode(mode);
+    this.selectionDirty = true;
+  }
+  // Build / D-gun / factory queueing are not yet implemented in 3D.
+  // They're kept as no-ops so the 2D UI surface stays source-compatible.
   public startBuildMode(_buildingType: BuildingType): void {}
   public cancelBuildMode(): void {}
   public toggleDGunMode(): void {}
@@ -479,9 +547,12 @@ export class RtsScene3D {
   }
 
   public shutdown(): void {
+    this.inputManager?.destroy();
+    this.inputManager = null;
     this.entityRenderer?.destroy();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();
+    this.localCommandQueue.clear();
     this.onPlayerChange = undefined;
     this.onSelectionChange = undefined;
     this.onEconomyChange = undefined;
