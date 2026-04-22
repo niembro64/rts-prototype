@@ -10,7 +10,7 @@
 // Coordinate mapping: sim (x, y) → three (x, z). Y is up. Ground at y=0.
 
 import * as THREE from 'three';
-import type { EntityId, PlayerId, Turret } from '../sim/types';
+import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SpinConfig } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -24,6 +24,7 @@ import { snapshotLod, type Lod3DState } from './Lod3D';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getUnitRadiusToggle } from '@/clientBarConfig';
 
 // All units share the same chassis and turret *heights*; only the horizontal
 // footprint (radius) varies with the unit's collider scale. That lets projectile
@@ -66,12 +67,15 @@ type MirrorMesh = {
 type EntityMesh = {
   group: THREE.Group;
   chassis: THREE.Mesh;
-  chassisDetailRing?: THREE.Mesh;
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
   ringMat?: THREE.MeshBasicMaterial;
   ring?: THREE.Mesh;
+  /** SCAL/SHOT/PUSH unit-radius indicator rings — toggleable per type,
+   *  mirroring the 2D renderUnitRadiusCircles overlay. Meshes are created
+   *  lazily on first show and hidden (not destroyed) when toggled off. */
+  radiusRings?: { scale?: THREE.Mesh; shot?: THREE.Mesh; push?: THREE.Mesh };
   /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
    *  the mesh when the current frame's LOD key differs. */
   lodKey: string;
@@ -107,6 +111,19 @@ export class Render3DEntities {
   private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
   // Thin ring for the selection indicator (flat, sits just above the ground plane)
   private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
+  // Unit-radius indicator rings (SCAL/SHOT/PUSH). Unit radius = 1; scaled per
+  // mesh to the actual radius. Slightly thicker than the selection ring so
+  // the three colors layer over each other without visually merging.
+  private radiusRingGeom = new THREE.RingGeometry(0.97, 1.0, 40);
+  private radiusMatScale = new THREE.MeshBasicMaterial({
+    color: 0x44ffff, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false,
+  });
+  private radiusMatShot = new THREE.MeshBasicMaterial({
+    color: 0xff44ff, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false,
+  });
+  private radiusMatPush = new THREE.MeshBasicMaterial({
+    color: 0x44ff44, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false,
+  });
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private secondaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
@@ -347,6 +364,56 @@ export class Render3DEntities {
     return this.secondaryMats.get(pid) ?? this.neutralMat;
   }
 
+  /**
+   * Show/hide the per-unit SCAL / SHOT / PUSH radius rings, matching the 2D
+   * renderUnitRadiusCircles toggles. Rings are lazily created on first show
+   * and simply hidden (not destroyed) when toggled off, so flipping toggles
+   * repeatedly doesn't churn geometry.
+   *
+   * The ring is a flat torus-alike sitting just above the ground plane
+   * (y = 0.5, X-rotated −π/2) scaled to the actual collider radius. Scale/Shot/
+   * Push rings sit at slightly different Y values (0.4 / 0.5 / 0.6) so when
+   * two or more are enabled at the same time they don't z-fight each other.
+   */
+  private updateRadiusRings(m: EntityMesh, entity: Entity): void {
+    const collider = entity.unit?.unitRadiusCollider;
+    if (!collider) return;
+
+    const show = {
+      scale: getUnitRadiusToggle('visual'),
+      shot: getUnitRadiusToggle('shot'),
+      push: getUnitRadiusToggle('push'),
+    };
+    const radii = { scale: collider.scale, shot: collider.shot, push: collider.push };
+    const mats = {
+      scale: this.radiusMatScale,
+      shot: this.radiusMatShot,
+      push: this.radiusMatPush,
+    };
+    // Separate Y offsets per ring so overlapping rings don't z-fight.
+    const yOffsets = { scale: 0.4, shot: 0.5, push: 0.6 };
+
+    for (const key of ['scale', 'shot', 'push'] as const) {
+      const want = show[key];
+      const rings = m.radiusRings ?? (m.radiusRings = {});
+      let ring = rings[key];
+      if (want) {
+        if (!ring) {
+          ring = new THREE.Mesh(this.radiusRingGeom, mats[key]);
+          ring.rotation.x = -Math.PI / 2;
+          m.group.add(ring);
+          rings[key] = ring;
+        }
+        ring.visible = true;
+        ring.position.y = yOffsets[key];
+        const r = radii[key];
+        ring.scale.set(r, r, 1);
+      } else if (ring) {
+        ring.visible = false;
+      }
+    }
+  }
+
   update(): void {
     // Refresh LOD snapshot once per frame. If the global LOD changed since
     // the last frame, tear down all unit meshes so updateUnits() rebuilds
@@ -386,23 +453,6 @@ export class Render3DEntities {
     this.barrelSpins.clear();
   }
 
-  /** Small circular detail band around the chassis, only built at high+
-   *  LOD (GraphicsConfig.chassisDetail = true). Matches 2D's "chassisDetail"
-   *  axis in spirit. */
-  private buildChassisDetailRing(
-    group: THREE.Group,
-    radius: number,
-    pid: PlayerId | undefined,
-  ): THREE.Mesh {
-    const ringGeom = new THREE.CylinderGeometry(1, 1, 1, 24);
-    const mat = this.getSecondaryMat(pid);
-    const ring = new THREE.Mesh(ringGeom, mat);
-    // Sits halfway up the chassis as a thin accent band.
-    ring.scale.set(radius * 1.03, 4, radius * 1.03);
-    ring.position.set(0, 4, 0);
-    group.add(ring);
-    return ring;
-  }
 
   /**
    * Advance each unit's barrel-spin state (angle, speed). Mirrors the 2D
@@ -515,11 +565,6 @@ export class Render3DEntities {
         //    rotates above them.
         m.locomotion = buildLocomotion(group, this.world, e, radius, pid, this.lod.gfx);
 
-        // Chassis detail accent — a thin emissive band around the chassis,
-        // only at high+ LOD, matching 2D's CHASSIS_DETAIL axis.
-        if (this.lod.gfx.chassisDetail) {
-          m.chassisDetailRing = this.buildChassisDetailRing(group, radius, pid);
-        }
 
         // Mirror panels (e.g. Loris): standing slabs that track the turret.
         const mirrorPanels = e.unit?.mirrorPanels;
@@ -590,6 +635,11 @@ export class Render3DEntities {
         const ringR = radius * 1.35;
         m.ring.scale.set(ringR, ringR, 1);
       }
+
+      // SCAL / SHOT / PUSH unit-radius indicator rings. The 2D renderer
+      // draws these as stroked circles at the respective collider radii;
+      // here we mirror the same toggle → ring visibility behaviour.
+      this.updateRadiusRings(m, e);
 
       // Per-turret placement. Turret offset is chassis-local in sim coords
       // (x, y) which map to (x, z) in three. Root Y sits at the top of the
@@ -739,6 +789,10 @@ export class Render3DEntities {
     this.projectileGeom.dispose();
     this.buildingGeom.dispose();
     this.ringGeom.dispose();
+    this.radiusRingGeom.dispose();
+    this.radiusMatScale.dispose();
+    this.radiusMatShot.dispose();
+    this.radiusMatPush.dispose();
     this.mirrorGeom.dispose();
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
