@@ -1,13 +1,16 @@
 import { RtsScene } from './scenes/RtsScene';
+import { RtsScene3D } from './scenes/RtsScene3D';
 import { PixiApp } from './PixiApp';
+import { ThreeApp } from './render3d/ThreeApp';
 import type { PlayerId } from './sim/types';
 import type { GameConnection } from './server/GameConnection';
 import { MAP_BG_COLOR, hexToStr } from '../config';
 
-export type { GameConfig, GameInstance } from '@/types/game';
-import type { GameConfig, GameInstance } from '@/types/game';
+export type { GameConfig, GameInstance, GameScene, GameApp, RenderMode } from '@/types/game';
+import type { GameConfig, GameInstance, GameScene } from '@/types/game';
 
-// Store config globally so scene can access it
+// Store config globally so the 2D scene can access it during create() (matches
+// Phaser's initialization order — the 3D scene takes config via its constructor).
 let pendingGameConfig: {
   playerIds: PlayerId[];
   localPlayerId: PlayerId;
@@ -26,54 +29,61 @@ export function clearPendingGameConfig() {
 }
 
 export function createGame(config: GameConfig): GameInstance {
-  // Store config for scene to pick up
+  const playerIds = config.playerIds ?? [1, 2];
+  const localPlayerId = config.localPlayerId ?? 1;
+  const backgroundMode = config.backgroundMode ?? false;
+  const renderMode = config.renderMode ?? '2d';
+
   pendingGameConfig = {
-    playerIds: config.playerIds ?? [1, 2],
-    localPlayerId: config.localPlayerId ?? 1,
+    playerIds,
+    localPlayerId,
     gameConnection: config.gameConnection,
     mapWidth: config.mapWidth,
     mapHeight: config.mapHeight,
-    backgroundMode: config.backgroundMode ?? false,
+    backgroundMode,
   };
 
   const bgColor = hexToStr(MAP_BG_COLOR);
 
-  // Create PixiJS application
+  if (renderMode === '3d') {
+    return createGame3D(config, {
+      playerIds,
+      localPlayerId,
+      backgroundMode,
+      bgColor,
+    });
+  }
+
+  return createGame2D(config, bgColor);
+}
+
+function createGame2D(config: GameConfig, bgColor: string): GameInstance {
   const app = new PixiApp(config.parent, config.width, config.height, bgColor);
 
-  // Create and initialize the scene
   const scene = new RtsScene();
   scene._init(app);
   scene.create();
 
-  // Wire up the update loop
   app.onUpdate((time, delta) => {
     scene.update(time, delta);
   });
 
   app.start();
 
-  // Prevent default wheel behavior on the canvas
+  // Match existing 2D behavior: block native wheel scrolling + context menu
   app.canvas.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
-  // Prevent context menu
   app.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // Store scene reference for external access
-  let _scene: RtsScene | null = scene;
+  let _scene: GameScene | null = scene;
 
-  // Wire up scene restart
   scene.scene.onRestart(() => {
     scene.shutdown();
-    // Re-create scene
     const newScene = new RtsScene();
     newScene._init(app);
     newScene.create();
-    app.onUpdate((time, delta) => {
-      newScene.update(time, delta);
-    });
+    app.onUpdate((time, delta) => newScene.update(time, delta));
     _scene = newScene;
     newScene.scene.onRestart(() => {
-      // Recursive restart support
       _scene?.shutdown();
       _scene = null;
     });
@@ -82,6 +92,61 @@ export function createGame(config: GameConfig): GameInstance {
   return {
     app,
     getScene: () => _scene,
+  };
+}
+
+function createGame3D(
+  config: GameConfig,
+  params: {
+    playerIds: PlayerId[];
+    localPlayerId: PlayerId;
+    backgroundMode: boolean;
+    bgColor: string;
+  },
+): GameInstance {
+  const app = new ThreeApp(
+    config.parent,
+    config.width,
+    config.height,
+    config.mapWidth,
+    config.mapHeight,
+    params.bgColor,
+  );
+
+  const buildScene = () =>
+    new RtsScene3D(app, {
+      playerIds: params.playerIds,
+      localPlayerId: params.localPlayerId,
+      gameConnection: config.gameConnection,
+      mapWidth: config.mapWidth,
+      mapHeight: config.mapHeight,
+      backgroundMode: params.backgroundMode,
+    });
+
+  let scene = buildScene();
+  scene.create();
+
+  let currentScene: GameScene | null = scene;
+  app.onUpdate((time, delta) => {
+    currentScene?.update(time, delta);
+  });
+  app.start();
+
+  const wireRestart = (s: RtsScene3D) => {
+    s.scene.onRestart(() => {
+      s.shutdown();
+      const newScene = buildScene();
+      newScene.create();
+      scene = newScene;
+      currentScene = newScene;
+      wireRestart(newScene);
+    });
+  };
+  wireRestart(scene);
+
+  return {
+    app,
+    getScene: () => currentScene,
   };
 }
 

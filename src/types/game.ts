@@ -5,6 +5,8 @@ import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
 
+export type RenderMode = '2d' | '3d';
+
 export type GameConfig = {
   parent: HTMLElement;
   width: number;
@@ -15,11 +17,21 @@ export type GameConfig = {
   mapWidth: number;
   mapHeight: number;
   backgroundMode?: boolean;
+  /** Which renderer to use. Defaults to '2d'. */
+  renderMode?: RenderMode;
 };
 
+export type GameScene =
+  | import('../game/scenes/RtsScene').RtsScene
+  | import('../game/scenes/RtsScene3D').RtsScene3D;
+
+export type GameApp =
+  | import('../game/PixiApp').PixiApp
+  | import('../game/render3d/ThreeApp').ThreeApp;
+
 export type GameInstance = {
-  app: import('../game/PixiApp').PixiApp;
-  getScene: () => import('../game/scenes/RtsScene').RtsScene | null;
+  app: GameApp;
+  getScene: () => GameScene | null;
 };
 
 export type SnapshotCallback = (state: NetworkServerSnapshot) => void;
