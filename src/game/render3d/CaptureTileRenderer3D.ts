@@ -17,7 +17,7 @@ import type { PlayerId } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
-import { MAP_BG_COLOR } from '../../config';
+import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 
 // Slight hover above the ground to avoid z-fighting with the ground slab.
 const TILE_Y = 1;
@@ -131,11 +131,13 @@ export class CaptureTileRenderer3D {
       return;
     }
 
-    const cellSize = this.clientViewState.getCaptureCellSize();
-    if (cellSize <= 0) {
-      this.mesh.visible = false;
-      return;
-    }
+    // The server only sends `capture.cellSize` once a tile actually becomes
+    // captured, so for a fresh game (no ownership yet) the client's value is
+    // 0. We still want to draw a neutral full-map grid in that case — fall
+    // back to the same SPATIAL_GRID_CELL_SIZE the server uses for capture so
+    // cell placement matches once ownership arrives.
+    let cellSize = this.clientViewState.getCaptureCellSize();
+    if (cellSize <= 0) cellSize = SPATIAL_GRID_CELL_SIZE;
 
     this.rebuildGridIfNeeded(cellSize);
 
