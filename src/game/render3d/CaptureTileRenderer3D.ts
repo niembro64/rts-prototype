@@ -58,7 +58,12 @@ export class CaptureTileRenderer3D {
 
     this.geometry = new THREE.BufferGeometry();
     // Opaque floor — no transparency → no z-fight with the ground slab below.
-    this.material = new THREE.MeshBasicMaterial({ vertexColors: true });
+    // DoubleSide so the quads render correctly no matter which way the winding
+    // happens to face; ground tiles are only ever looked at from above anyway.
+    this.material = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+    });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.renderOrder = 2;
     this.mesh.visible = false;
