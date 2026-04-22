@@ -60,7 +60,7 @@ import {
 } from './selection';
 import { renderBuilding } from './BuildingRenderer';
 import { renderProjectile, renderProjRangeCircles } from './ProjectileRenderer';
-import { renderBuildBar, renderHealthBar } from './UIBars';
+import { renderBuildBar } from './UIBars';
 
 // Re-export EntitySource for external use
 export type { EntitySource, ExplosionEffect };
@@ -439,6 +439,8 @@ export class EntityRenderer {
     );
 
     // 1. Buildings
+    // Health bars are drawn by the shared HealthBarOverlay (SVG), so we pass
+    // a no-op to the building renderer. Build bars remain in-canvas.
     const buildBarFn = (
       x: number,
       y: number,
@@ -446,20 +448,14 @@ export class EntityRenderer {
       h: number,
       p: number,
     ) => renderBuildBar(this.graphics, x, y, w, h, p);
-    const healthBarFn = (
-      x: number,
-      y: number,
-      w: number,
-      h: number,
-      p: number,
-    ) => renderHealthBar(this.graphics, x, y, w, h, p);
+    const noopHealthBar = () => { /* rendered by HealthBarOverlay */ };
     for (const entity of this.visibleBuildings) {
       renderBuilding(
         this.graphics,
         entity,
         this.sprayParticleTime,
         buildBarFn,
-        healthBarFn,
+        noopHealthBar,
       );
     }
 
@@ -599,7 +595,6 @@ export class EntityRenderer {
     const { transform, unit, selectable, ownership } = entity;
     const { x, y, rotation } = transform;
     const radius = unit.unitRadiusCollider.scale;
-    const { hp, maxHp } = unit;
     const isSelected = selectable?.selected ?? false;
 
     const gfx = getGraphicsConfig();
@@ -637,17 +632,7 @@ export class EntityRenderer {
       if (entity.commander) {
         renderCommanderCrown(this.graphics, x, y, outerRadius);
       }
-      const healthPercent = hp / maxHp;
-      if (healthPercent < 1) {
-        renderHealthBar(
-          this.graphics,
-          x,
-          y - outerRadius - 10,
-          outerRadius * 2,
-          4,
-          healthPercent,
-        );
-      }
+      // Health bar drawn by the shared HealthBarOverlay.
       return;
     }
 
@@ -729,17 +714,7 @@ export class EntityRenderer {
       renderCommanderCrown(this.graphics, x, y, radius);
     }
 
-    const healthPercent = hp / maxHp;
-    if (healthPercent < 1) {
-      renderHealthBar(
-        this.graphics,
-        x,
-        y - radius - 10,
-        radius * 2,
-        4,
-        healthPercent,
-      );
-    }
+    // Health bar drawn by the shared HealthBarOverlay.
 
     if (entity.turrets && isSelected) {
       for (const weapon of entity.turrets) {

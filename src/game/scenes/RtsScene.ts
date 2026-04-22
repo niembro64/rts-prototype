@@ -58,6 +58,8 @@ import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
+import { HealthBarOverlay } from '../hud/HealthBarOverlay';
+import { PixiWorldProjector } from '../render/PixiWorldProjector';
 import { getBottomBarsHeight } from '@/clientBarConfig';
 
 // Grid settings
@@ -72,6 +74,7 @@ export class RtsScene extends SceneShim {
   private gridGraphics!: GraphicsAdapter;
   private spatialGridGraphics!: GraphicsAdapter;
   private panArrowOverlay: PanArrowOverlay | null = null;
+  private healthBarOverlay: HealthBarOverlay | null = null;
   private audioInitialized: boolean = false;
   private isGameOver: boolean = false;
 
@@ -287,6 +290,11 @@ export class RtsScene extends SceneShim {
         bottom: getBottomBarsHeight(),
       }));
       this.inputManager.setPanArrowOverlay(this.panArrowOverlay);
+
+      // Shared health-bar overlay (replaces the 2D in-canvas Pixi bars so
+      // both renderers share a single visual style).
+      const projector = new PixiWorldProjector(this.cameras.main);
+      this.healthBarOverlay = new HealthBarOverlay(canvasParent, projector);
     }
 
     // Initialize audio on first user interaction
@@ -719,6 +727,12 @@ export class RtsScene extends SceneShim {
     // Render entities
     this.entityRenderer.render();
 
+    // Shared HP bar overlay (SVG layer above the canvas)
+    this.healthBarOverlay?.update(
+      this.clientViewState.getUnits(),
+      this.clientViewState.getBuildings(),
+    );
+
     const renderEnd = performance.now();
 
     // Update UI with throttling
@@ -865,6 +879,8 @@ export class RtsScene extends SceneShim {
     this.spatialGridGraphics?.destroy();
     this.panArrowOverlay?.destroy();
     this.panArrowOverlay = null;
+    this.healthBarOverlay?.destroy();
+    this.healthBarOverlay = null;
     this.gameConnection?.disconnect();
 
     // Clear snapshot buffer and audio scheduler

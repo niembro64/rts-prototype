@@ -22,6 +22,8 @@ import { WaypointRenderer3D } from '../render3d/WaypointRenderer3D';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
+import { HealthBarOverlay } from '../hud/HealthBarOverlay';
+import { ThreeWorldProjector } from '../render3d/ThreeWorldProjector';
 import { getBottomBarsHeight } from '@/clientBarConfig';
 
 import type { GameConnection } from '../server/GameConnection';
@@ -87,6 +89,7 @@ export class RtsScene3D {
   private localCommandQueue = new CommandQueue();
   private currentWaypointMode: WaypointType = 'move';
   private panArrowOverlay: PanArrowOverlay | null = null;
+  private healthBarOverlay: HealthBarOverlay | null = null;
 
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
@@ -269,7 +272,6 @@ export class RtsScene3D {
       this.threeApp.world,
       this.clientViewState,
     );
-    this.entityRenderer.setCamera(this.threeApp.camera);
     this.waypointRenderer = new WaypointRenderer3D(this.threeApp.world);
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world);
 
@@ -284,6 +286,13 @@ export class RtsScene3D {
       this.threeApp.orbit.setOnPanState(
         (dirX, dirY, intensity) => overlay.set(dirX, dirY, intensity),
       );
+
+      // Shared health-bar overlay (same SVG layer the 2D path uses).
+      const projector = new ThreeWorldProjector(
+        this.threeApp.camera,
+        this.threeApp.canvas,
+      );
+      this.healthBarOverlay = new HealthBarOverlay(canvasParent, projector);
     }
 
     // Wire raycast-based selection + move commands
@@ -380,6 +389,10 @@ export class RtsScene3D {
     this.waypointRenderer.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
+    );
+    this.healthBarOverlay?.update(
+      this.clientViewState.getUnits(),
+      this.clientViewState.getBuildings(),
     );
     const renderEnd = performance.now();
 
@@ -580,6 +593,8 @@ export class RtsScene3D {
     this.threeApp.orbit.setOnPanState(undefined);
     this.panArrowOverlay?.destroy();
     this.panArrowOverlay = null;
+    this.healthBarOverlay?.destroy();
+    this.healthBarOverlay = null;
     this.entityRenderer?.destroy();
     this.waypointRenderer?.destroy();
     this.beamRenderer?.destroy();
