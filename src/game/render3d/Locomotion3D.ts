@@ -34,7 +34,21 @@ const HIP_Y = 14;
 const FOOT_Y = 1;
 
 export type Locomotion3DMesh =
-  | ({ type: 'treads'; group: THREE.Group; wheels: THREE.Mesh[] } & LocomotionBase)
+  | ({ type: 'treads';
+       group: THREE.Group;
+       wheels: THREE.Mesh[];
+       /** Animated cleat strips on top of the tread slab (empty when
+        *  treadsAnimated is off). Scroll along the slab length every frame
+        *  at a rate proportional to the unit's speed — 3D analog of the
+        *  2D drawAnimatedTread() moving track-mark lines. */
+       cleats: THREE.Mesh[];
+       cleatSpacing: number;
+       slabLength: number;
+       /** Cumulative linear distance the tread has "rolled" (world units).
+        *  Only the mod with cleatSpacing is used, but we keep the full
+        *  accumulator so animation keeps smooth across long runs. */
+       treadPhase: number;
+    } & LocomotionBase)
   | ({ type: 'wheels'; group: THREE.Group; wheels: THREE.Mesh[] } & LocomotionBase)
   | ({ type: 'legs';
        /** Container for all leg meshes — parented to the WORLD group (not
@@ -91,6 +105,10 @@ const jointGeom = new THREE.SphereGeometry(1, 8, 6);
 const treadMat = new THREE.MeshLambertMaterial({ color: TREAD_COLOR });
 const wheelMat = new THREE.MeshLambertMaterial({ color: WHEEL_COLOR });
 const legMat = new THREE.MeshLambertMaterial({ color: LEG_COLOR });
+// Lighter gray for the animated cleats, mirroring the 2D drawAnimatedTread
+// track-line color (`GRAY_LIGHT`) so the moving highlights read over the
+// dark tread slab.
+const cleatMat = new THREE.MeshLambertMaterial({ color: 0x5a636d });
 
 export function lodKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
@@ -212,8 +230,15 @@ function buildTreads(
     slab.position.set(0, TREAD_Y, side * offset);
     group.add(slab);
   }
+
   const wheels: THREE.Mesh[] = [];
+  const cleats: THREE.Mesh[] = [];
+  let cleatSpacing = 0;
+
   if (animatedWheels) {
+    // Internal wheels — mostly hidden inside the slab but ensure the
+    // chassis-speed → wheel-rotation rate stays consistent with what the
+    // visible cleats display.
     const wheelCount = Math.max(2, Math.round(cfg.treadLength * 2));
     const wheelR = Math.max(1, r * cfg.wheelRadius);
     for (const side of [-1, 1]) {
@@ -228,9 +253,40 @@ function buildTreads(
         wheels.push(w);
       }
     }
+
+    // Animated cleats on top of the slab — lighter-gray strips that scroll
+    // along the tread length, matching the 2D drawAnimatedTread track-mark
+    // animation. One extra cleat per side so the wrap-around transition is
+    // seamless as strips exit the near end and re-enter at the far end.
+    const cleatCount = Math.max(6, Math.round(cfg.treadLength * 4));
+    cleatSpacing = length / cleatCount;
+    const cleatLen = cleatSpacing * 0.4;
+    const cleatHeight = 2;
+    const cleatWidth = width * 0.85;
+    const cleatsPerSide = cleatCount + 1;
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < cleatsPerSide; i++) {
+        const cleat = new THREE.Mesh(treadBoxGeom, cleatMat);
+        cleat.scale.set(cleatLen, cleatHeight, cleatWidth);
+        // Rest Y on top of the slab; X is set each frame by the scroll loop.
+        cleat.position.set(0, TREAD_HEIGHT + cleatHeight / 2, side * offset);
+        group.add(cleat);
+        cleats.push(cleat);
+      }
+    }
   }
+
   unitGroup.add(group);
-  return { type: 'treads', group, wheels, lodKey: '' };
+  return {
+    type: 'treads',
+    group,
+    wheels,
+    cleats,
+    cleatSpacing,
+    slabLength: length,
+    treadPhase: 0,
+    lodKey: '',
+  };
 }
 
 function buildWheels(
@@ -301,15 +357,25 @@ function buildLegs(
     let kneeJoint: THREE.Mesh | undefined;
     let footJoint: THREE.Mesh | undefined;
 
-    if (legLod === 'full') {
+    // Two-segment legs whenever we're animating: 'animated' and 'full' both
+    // get an upper + lower cylinder with the knee bending upward via IK.
+    // This mirrors 2D, where medium LOD ('animated') already splits the leg
+    // into hip→knee and knee→foot lines (just without joint circles).
+    //
+    // Joint spheres are reserved for 'full' LOD only, matching 2D where
+    // hip/knee/foot dots only show at the highest tier.
+    if (legLod === 'animated' || legLod === 'full') {
       lower = new THREE.Mesh(legGeom, legMat);
+      group.add(lower);
+    }
+    if (legLod === 'full') {
       hipJoint = new THREE.Mesh(jointGeom, legMat);
       hipJoint.scale.setScalar(Math.max(1, cfg.hipRadius));
       kneeJoint = new THREE.Mesh(jointGeom, legMat);
       kneeJoint.scale.setScalar(Math.max(1, cfg.kneeRadius));
       footJoint = new THREE.Mesh(jointGeom, legMat);
       footJoint.scale.setScalar(Math.max(1, cfg.footRadius));
-      group.add(lower, hipJoint, kneeJoint, footJoint);
+      group.add(hipJoint, kneeJoint, footJoint);
     }
 
     legs.push({
@@ -534,11 +600,36 @@ export function updateLocomotion(
   const speed = Math.hypot(vx, vy);
   const dt = dtMs / 1000;
 
-  if (mesh.type === 'treads' && mesh.wheels.length > 0) {
+  if (mesh.type === 'treads') {
     if (speed <= 0.1) return;
-    const wheelR = Math.max(1, mesh.wheels[0].scale.x);
-    const rotDelta = (speed / wheelR) * dt;
-    for (const w of mesh.wheels) w.rotation.y += rotDelta;
+    // Wheels spin at ω = v / r so their surface speed matches the unit's
+    // linear speed.
+    if (mesh.wheels.length > 0) {
+      const wheelR = Math.max(1, mesh.wheels[0].scale.x);
+      const rotDelta = (speed / wheelR) * dt;
+      for (const w of mesh.wheels) w.rotation.y += rotDelta;
+    }
+    // Cleats scroll along the slab length at the same linear speed. We
+    // advance a phase counter in world units and lay out cleats modulo
+    // spacing so they look continuous regardless of cumulative distance.
+    if (mesh.cleats.length > 0 && mesh.cleatSpacing > 0) {
+      mesh.treadPhase += speed * dt;
+      const spacing = mesh.cleatSpacing;
+      const phaseOff = ((mesh.treadPhase % spacing) + spacing) % spacing;
+      const L = mesh.slabLength;
+      const cleatsPerSide = mesh.cleats.length / 2;
+      for (let s = 0; s < 2; s++) {
+        const baseIdx = s * cleatsPerSide;
+        for (let i = 0; i < cleatsPerSide; i++) {
+          let posX = -L / 2 + phaseOff + i * spacing;
+          // Wrap into [-L/2, L/2]. At most one wrap either way is needed
+          // since phaseOff ∈ [0, spacing) and i ∈ [0, cleatsPerSide-1].
+          if (posX > L / 2) posX -= L;
+          else if (posX < -L / 2) posX += L;
+          mesh.cleats[baseIdx + i].position.x = posX;
+        }
+      }
+    }
     return;
   }
 
@@ -560,40 +651,31 @@ export function updateLocomotion(
       const footX = leg.groundX;
       const footZ = leg.groundZ;
 
-      if (mesh.legLod === 'animated') {
-        // Single straight cylinder from hip → foot.
+      // Both 'animated' and 'full' LODs render a 2-segment leg with knee
+      // bent upward in the vertical hip-foot plane. The difference is only
+      // whether joint spheres are shown ('full' only).
+      const knee = kneeFromIK(
+        hipX, HIP_Y, hipZ,
+        footX, FOOT_Y, footZ,
+        c.upperLegLength, c.lowerLegLength,
+      );
+      setCylinderBetween(
+        leg.upper,
+        hipX, HIP_Y, hipZ,
+        knee.x, knee.y, knee.z,
+        leg.upperThick,
+      );
+      if (leg.lower) {
         setCylinderBetween(
-          leg.upper,
-          hipX, HIP_Y, hipZ,
-          footX, FOOT_Y, footZ,
-          leg.upperThick,
-        );
-      } else {
-        // 'full' — knee lifts up in the vertical plane between hip and foot,
-        // keeping both segment lengths exactly per the IK constraint.
-        const knee = kneeFromIK(
-          hipX, HIP_Y, hipZ,
-          footX, FOOT_Y, footZ,
-          c.upperLegLength, c.lowerLegLength,
-        );
-        setCylinderBetween(
-          leg.upper,
-          hipX, HIP_Y, hipZ,
+          leg.lower,
           knee.x, knee.y, knee.z,
-          leg.upperThick,
+          footX, FOOT_Y, footZ,
+          leg.lowerThick,
         );
-        if (leg.lower) {
-          setCylinderBetween(
-            leg.lower,
-            knee.x, knee.y, knee.z,
-            footX, FOOT_Y, footZ,
-            leg.lowerThick,
-          );
-        }
-        if (leg.hipJoint)  leg.hipJoint.position.set(hipX, HIP_Y, hipZ);
-        if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
-        if (leg.footJoint) leg.footJoint.position.set(footX, FOOT_Y, footZ);
       }
+      if (leg.hipJoint)  leg.hipJoint.position.set(hipX, HIP_Y, hipZ);
+      if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
+      if (leg.footJoint) leg.footJoint.position.set(footX, FOOT_Y, footZ);
     }
   } else if (mesh.type === 'legs' && mesh.legLod === 'simple') {
     // 'simple' LOD: static hip-to-foot cylinder, no walk cycle. Rebuild once
