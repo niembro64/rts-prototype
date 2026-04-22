@@ -26,12 +26,12 @@ const TREAD_Y = TREAD_HEIGHT / 2;
 const WHEEL_COLOR = 0x2a2f36;
 const LEG_COLOR = 0x2a2f36;
 
-// Vertical layout for legs. Feet stay on the ground, hips sit at HIP_Y, and
-// the knee floats at KNEE_Y — the animation is purely on the XZ plane (the
-// user's "2 dimensions for now" requirement).
+// Vertical layout for legs. Feet stay on the ground, hips sit at HIP_Y. The
+// knee's Y is solved by the IK routine — it lifts upward in the vertical
+// plane containing the hip-foot line (not a fixed height). Walk-cycle
+// animation is still 2-axis (foot planting in XZ), per the user's request.
 const HIP_Y = 14;
 const FOOT_Y = 1;
-const KNEE_Y = 7;
 
 export type Locomotion3DMesh =
   | ({ type: 'treads'; group: THREE.Group; wheels: THREE.Mesh[] } & LocomotionBase)
@@ -463,31 +463,59 @@ function updateLegPhysics(
   }
 }
 
-/** 2D IK (law of cosines) — returns the knee world XZ for a leg with the
- *  given hip + foot and upper/lower segment lengths. `side` (+1/-1) picks
- *  which way the knee bends. */
+/** 3D IK (law of cosines, lifted into 3D) — returns the knee world position
+ *  for a leg given hip + foot and upper/lower segment lengths. The knee is
+ *  placed in the VERTICAL plane that contains the hip→foot line, bending
+ *  upward (toward +Y) instead of sideways in the ground plane. All the
+ *  trigonometry (cos/sin of the law-of-cosines angle B) is unchanged — we
+ *  just take the step perpendicular to the hip-foot direction along the
+ *  in-plane "up" vector rather than a horizontal perpendicular. */
 function kneeFromIK(
-  attachX: number, attachZ: number,
-  footX: number, footZ: number,
+  hipX: number, hipY: number, hipZ: number,
+  footX: number, footY: number, footZ: number,
   upperLen: number, lowerLen: number,
-  side: number,
-): { x: number; z: number } {
-  const dx = footX - attachX;
-  const dz = footZ - attachZ;
-  const dist = Math.max(1e-3, Math.hypot(dx, dz));
+): { x: number; y: number; z: number } {
+  const dx = footX - hipX;
+  const dy = footY - hipY;
+  const dz = footZ - hipZ;
+  const dist = Math.max(1e-3, Math.hypot(dx, dy, dz));
   const clampedDist = Math.min(dist, upperLen + lowerLen * 0.98);
-  const angleToFoot = Math.atan2(dz, dx);
+
   const a = upperLen;
   const b = lowerLen;
   const c = clampedDist;
   let cosB = (a * a + c * c - b * b) / (2 * a * c);
   cosB = Math.max(-1, Math.min(1, cosB));
-  const angleB = Math.acos(cosB);
-  const bendDirection = side > 0 ? 1 : -1;
-  const kneeAngle = angleToFoot + bendDirection * angleB;
+  // sin(B) positive → knee bends upward. (Same angle B as the 2D version;
+  // only the axis it's swept around changes.)
+  const sinB = Math.sqrt(Math.max(0, 1 - cosB * cosB));
+
+  // Unit vector hip → foot
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const nz = dz / dist;
+
+  // In-plane "up" = world up (0,1,0) with its component along `n` removed,
+  // then normalized. This keeps the knee in the vertical plane containing
+  // the leg, bending toward +Y. If the leg happens to be exactly vertical
+  // (rare — hips sit above feet), fall back to world up.
+  const dotUpN = ny;
+  let ux = -dotUpN * nx;
+  let uy = 1 - dotUpN * ny;
+  let uz = -dotUpN * nz;
+  const uLen = Math.hypot(ux, uy, uz);
+  if (uLen > 1e-6) {
+    ux /= uLen;
+    uy /= uLen;
+    uz /= uLen;
+  } else {
+    ux = 0; uy = 1; uz = 0;
+  }
+
   return {
-    x: attachX + Math.cos(kneeAngle) * upperLen,
-    z: attachZ + Math.sin(kneeAngle) * upperLen,
+    x: hipX + upperLen * (cosB * nx + sinB * ux),
+    y: hipY + upperLen * (cosB * ny + sinB * uy),
+    z: hipZ + upperLen * (cosB * nz + sinB * uz),
   };
 }
 
@@ -541,29 +569,29 @@ export function updateLocomotion(
           leg.upperThick,
         );
       } else {
-        // 'full' — compute knee via IK in the XZ plane, then two cylinders.
+        // 'full' — knee lifts up in the vertical plane between hip and foot,
+        // keeping both segment lengths exactly per the IK constraint.
         const knee = kneeFromIK(
-          hipX, hipZ,
-          footX, footZ,
+          hipX, HIP_Y, hipZ,
+          footX, FOOT_Y, footZ,
           c.upperLegLength, c.lowerLegLength,
-          leg.side,
         );
         setCylinderBetween(
           leg.upper,
           hipX, HIP_Y, hipZ,
-          knee.x, KNEE_Y, knee.z,
+          knee.x, knee.y, knee.z,
           leg.upperThick,
         );
         if (leg.lower) {
           setCylinderBetween(
             leg.lower,
-            knee.x, KNEE_Y, knee.z,
+            knee.x, knee.y, knee.z,
             footX, FOOT_Y, footZ,
             leg.lowerThick,
           );
         }
         if (leg.hipJoint)  leg.hipJoint.position.set(hipX, HIP_Y, hipZ);
-        if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, KNEE_Y, knee.z);
+        if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
         if (leg.footJoint) leg.footJoint.position.set(footX, FOOT_Y, footZ);
       }
     }
