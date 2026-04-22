@@ -75,24 +75,22 @@ export class ThreeApp {
 
     // Ground slab — a thin box (not a zero-thickness plane) so the world looks
     // like a solid piece of terrain when viewed from an oblique camera.
-    // Top surface sits at y=0, so units/buildings (which are positioned at
-    // ground level) still sit on top of it.
+    // Top surface sits at y=0. Color matches the 2D MAP_BG_COLOR (via the
+    // backgroundColor arg) so the floor is a single flat tone identical to
+    // the scene background — the only colored overlay on top is the
+    // capture-tile / ownership grid.
     const GROUND_DEPTH = 80;
     const groundGeom = new THREE.BoxGeometry(mapWidth, GROUND_DEPTH, mapHeight);
-    const groundMat = new THREE.MeshLambertMaterial({ color: 0x2a3140 });
+    const groundMat = new THREE.MeshLambertMaterial({
+      color: new THREE.Color(backgroundColor),
+    });
     const ground = new THREE.Mesh(groundGeom, groundMat);
     ground.position.set(mapWidth / 2, -GROUND_DEPTH / 2, mapHeight / 2);
     this.scene.add(ground);
 
-    // Grid helper for orientation
-    const grid = new THREE.GridHelper(
-      Math.max(mapWidth, mapHeight),
-      Math.round(Math.max(mapWidth, mapHeight) / 500),
-      0x444a55,
-      0x363b45,
-    );
-    grid.position.set(mapWidth / 2, 0.5, mapHeight / 2);
-    this.scene.add(grid);
+    // No grid lines on the floor — matches 2D, where MAP_GRID_COLOR equals
+    // MAP_BG_COLOR at low alpha (effectively invisible). The only color that
+    // paints the floor is the capture-tile / flag-ownership overlay.
 
     // Map boundary outline
     const boundsGeom = new THREE.BufferGeometry();
@@ -103,7 +101,8 @@ export class ThreeApp {
       0, 1, mapHeight,  0, 1, 0,
     ]);
     boundsGeom.setAttribute('position', new THREE.BufferAttribute(boundsVerts, 3));
-    const boundsMat = new THREE.LineBasicMaterial({ color: 0x5a6270 });
+    // Match the 2D drawGrid boundary stroke color (0x4444aa).
+    const boundsMat = new THREE.LineBasicMaterial({ color: 0x4444aa });
     const bounds = new THREE.LineSegments(boundsGeom, boundsMat);
     this.scene.add(bounds);
 
