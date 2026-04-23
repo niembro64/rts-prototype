@@ -23,25 +23,38 @@ const scale = computed(() => ({
   y: MINIMAP_HEIGHT / props.data.mapHeight,
 }));
 
-function draw() {
-  const canvas = canvasRef.value;
-  if (!canvas) return;
+// Offscreen canvas holding the "slow layer" — map background, grid
+// lines, and entity markers. Regenerated only when props.data changes
+// (entity refresh cadence is 20 Hz, throttled by the scene). The
+// main visible canvas composites this + strokes the camera quad
+// every frame; that hot path is ~1 drawImage + 1 polygon stroke,
+// so the camera box stays pinned to the view with no lag.
+let offscreen: HTMLCanvasElement | null = null;
+let offCtx: CanvasRenderingContext2D | null = null;
 
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+function ensureOffscreen(): void {
+  if (offscreen) return;
+  offscreen = document.createElement('canvas');
+  offscreen.width = MINIMAP_WIDTH;
+  offscreen.height = MINIMAP_HEIGHT;
+  offCtx = offscreen.getContext('2d');
+}
 
-  const { mapWidth, mapHeight, entities, cameraQuad } = props.data;
+function drawEntityLayer(): void {
+  ensureOffscreen();
+  if (!offCtx || !offscreen) return;
+  const ctx = offCtx;
+  const { mapWidth, mapHeight, entities } = props.data;
   const scaleX = scale.value.x;
   const scaleY = scale.value.y;
 
-  // Clear canvas
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
 
-  // Draw grid lines (subtle)
+  // Subtle world grid
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
   ctx.lineWidth = 0.5;
-  const gridSize = 200; // World units
+  const gridSize = 200;
   for (let x = 0; x <= mapWidth; x += gridSize) {
     ctx.beginPath();
     ctx.moveTo(x * scaleX, 0);
@@ -55,30 +68,24 @@ function draw() {
     ctx.stroke();
   }
 
-  // Draw entities
   for (const entity of entities) {
     const x = entity.pos.x * scaleX;
     const y = entity.pos.y * scaleY;
-
     if (entity.type === 'building') {
-      // Buildings as squares
       const size = entity.isSelected ? 5 : 4;
       ctx.fillStyle = entity.color;
       ctx.fillRect(x - size / 2, y - size / 2, size, size);
-
       if (entity.isSelected) {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1;
         ctx.strokeRect(x - size / 2 - 1, y - size / 2 - 1, size + 2, size + 2);
       }
     } else {
-      // Units as circles
       const radius = entity.isSelected ? 3 : 2;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = entity.color;
       ctx.fill();
-
       if (entity.isSelected) {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1;
@@ -86,13 +93,26 @@ function draw() {
       }
     }
   }
+}
 
-  // Draw camera viewport footprint as a polygon of the 4 ground-plane
-  // corners. This renders an axis-aligned rect for an unrotated 2D
-  // camera, a rotated rect for 2D with camera rotation, and a
-  // trapezoid for the 3D perspective camera — always matching what
-  // the player actually sees on screen. Clipped to the minimap area
-  // so corners behind/above the horizon don't scribble outside.
+/** Composite the cached entity layer + stroke the camera quad + the
+ *  frame border. Called on every cameraQuad change — cheap. */
+function compose(): void {
+  const canvas = canvasRef.value;
+  if (!canvas || !offscreen) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const { cameraQuad } = props.data;
+  const scaleX = scale.value.x;
+  const scaleY = scale.value.y;
+
+  ctx.clearRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+  ctx.drawImage(offscreen, 0, 0);
+
+  // Camera footprint polygon — axis-aligned rect for an unrotated
+  // 2D camera, rotated rect for 2D with rotation, trapezoid for the
+  // 3D perspective camera. Clipped to the minimap bounds so rays
+  // above the horizon don't scribble outside.
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
@@ -108,7 +128,6 @@ function draw() {
   ctx.stroke();
   ctx.restore();
 
-  // Draw border
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
@@ -122,18 +141,32 @@ function handleClick(event: MouseEvent) {
   const clickX = event.clientX - rect.left;
   const clickY = event.clientY - rect.top;
 
-  // Convert to world coordinates
   const worldX = clickX / scale.value.x;
   const worldY = clickY / scale.value.y;
 
   emit('click', worldX, worldY);
 }
 
-// Redraw when data changes
-watch(() => props.data, draw, { deep: true });
+// Regenerate the entity layer only when entities / map size change.
+// GameCanvas mutates these slower (20 Hz) and keeps `cameraQuad` as
+// a live reference that changes every frame — so watching specific
+// sub-fields instead of `props.data` lets the cheap camera-only
+// path skip the expensive full rebuild.
+watch(
+  () => [props.data.entities, props.data.mapWidth, props.data.mapHeight],
+  () => { drawEntityLayer(); compose(); },
+  { deep: false },
+);
+
+// Redraw camera box on every quad change (expected 60 Hz).
+watch(
+  () => props.data.cameraQuad,
+  compose,
+);
 
 onMounted(() => {
-  draw();
+  drawEntityLayer();
+  compose();
 });
 </script>
 

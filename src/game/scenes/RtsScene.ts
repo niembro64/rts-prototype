@@ -168,6 +168,12 @@ export class RtsScene extends SceneShim {
 
   // Callback for minimap updates
   public onMinimapUpdate?: (data: MinimapData) => void;
+  /** Per-frame callback for just the camera footprint quad. Fires
+   *  every render pass so the minimap box stays pinned to the view
+   *  even while the entity list is only refreshed at 20 Hz. */
+  public onCameraQuadUpdate?: (
+    quad: import('../ViewportFootprint').FootprintQuad,
+  ) => void;
 
   // Callback for game over (passes winner ID)
   public onGameOverUI?: (winnerId: PlayerId) => void;
@@ -799,6 +805,9 @@ export class RtsScene extends SceneShim {
     // through a stale axis-aligned worldView.
     this._cameraQuad = this.computeCameraQuad();
     this.entityRenderer.setCameraQuad(this._cameraQuad);
+    // Emit to the minimap box every frame (cheap) — entity list
+    // rebuilding is still throttled by minimapUpdateTimer below.
+    this.onCameraQuadUpdate?.(this._cameraQuad);
 
     // Render entities
     this.entityRenderer.render();
@@ -1007,6 +1016,7 @@ export class RtsScene extends SceneShim {
     this.onSelectionChange = undefined;
     this.onEconomyChange = undefined;
     this.onMinimapUpdate = undefined;
+    this.onCameraQuadUpdate = undefined;
     this.onGameOverUI = undefined;
     this.onGameRestart = undefined;
     this.onCombatStatsUpdate = undefined;

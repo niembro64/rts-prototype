@@ -216,6 +216,12 @@ export class RtsScene3D {
   }) => void;
   public onEconomyChange?: (info: EconomyInfo) => void;
   public onMinimapUpdate?: (data: MinimapData) => void;
+  /** Separate per-frame callback for just the camera footprint quad.
+   *  Decoupling this from `onMinimapUpdate` keeps the box animation
+   *  smooth even when entity rebuilding is throttled to 20 Hz. */
+  public onCameraQuadUpdate?: (
+    quad: import('../ViewportFootprint').FootprintQuad,
+  ) => void;
   public onGameOverUI?: (winnerId: PlayerId) => void;
   public onGameRestart?: () => void;
   public onCombatStatsUpdate?: (stats: NetworkServerSnapshotCombatStats) => void;
@@ -521,6 +527,10 @@ export class RtsScene3D {
     // quad feeds the minimap (see updateMinimapData).
     this._cameraQuad = this.computeCameraQuad();
     this.renderScope.setQuad(this._cameraQuad);
+    // Emit the quad every frame — the minimap's camera box reads
+    // this directly so it stays pinned to the view regardless of
+    // the (throttled) entity-list refresh.
+    this.onCameraQuadUpdate?.(this._cameraQuad);
     this.entityRenderer.update();
     this.captureTileRenderer.update();
     const projectiles = this.clientViewState.getProjectiles();
@@ -1026,6 +1036,7 @@ export class RtsScene3D {
     this.onSelectionChange = undefined;
     this.onEconomyChange = undefined;
     this.onMinimapUpdate = undefined;
+    this.onCameraQuadUpdate = undefined;
     this.onGameOverUI = undefined;
     this.onGameRestart = undefined;
     this.onCombatStatsUpdate = undefined;

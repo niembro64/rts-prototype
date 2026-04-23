@@ -375,10 +375,14 @@ async function startBackgroundBattle(): Promise<void> {
         activePlayer.value = playerId;
       };
       bgScene.onMinimapUpdate = (data: MinimapData) => {
+        // Entity refresh (throttled by the scene, ~20 Hz). The
+        // cameraQuad is live-updated separately below at full fps.
         minimapData.entities = data.entities;
-        minimapData.cameraQuad = data.cameraQuad;
         minimapData.mapWidth = data.mapWidth;
         minimapData.mapHeight = data.mapHeight;
+      };
+      bgScene.onCameraQuadUpdate = (quad) => {
+        minimapData.cameraQuad = quad;
       };
       if (checkBgSceneInterval) clearInterval(checkBgSceneInterval);
       checkBgSceneInterval = null;
@@ -426,10 +430,14 @@ function wireBackgroundSceneCallbacks(): void {
         activePlayer.value = playerId;
       };
       bgScene.onMinimapUpdate = (data: MinimapData) => {
+        // Entity refresh (throttled by the scene, ~20 Hz). The
+        // cameraQuad is live-updated separately below at full fps.
         minimapData.entities = data.entities;
-        minimapData.cameraQuad = data.cameraQuad;
         minimapData.mapWidth = data.mapWidth;
         minimapData.mapHeight = data.mapHeight;
+      };
+      bgScene.onCameraQuadUpdate = (quad) => {
+        minimapData.cameraQuad = quad;
       };
       clearInterval(poll);
     }
@@ -1319,12 +1327,16 @@ function setupSceneCallbacks(): void {
         Object.assign(economyInfo, info);
       };
 
-      // Minimap data callback
+      // Minimap data callback — entities + map size only, throttled
+      // by the scene. The camera quad flows through the dedicated
+      // per-frame channel below so the box tracks the view at 60 fps.
       scene.onMinimapUpdate = (data: MinimapData) => {
         minimapData.entities = data.entities;
-        minimapData.cameraQuad = data.cameraQuad;
         minimapData.mapWidth = data.mapWidth;
         minimapData.mapHeight = data.mapHeight;
+      };
+      scene.onCameraQuadUpdate = (quad) => {
+        minimapData.cameraQuad = quad;
       };
 
       // Game over callback
