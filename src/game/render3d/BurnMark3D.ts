@@ -16,8 +16,8 @@
 // config so this stays in lockstep with the 2D BurnMarkSystem.
 
 import * as THREE from 'three';
-import type { Entity } from '../sim/types';
-import { isLineShot } from '../sim/types';
+import type { Entity, PlayerId } from '../sim/types';
+import { isLineShot, PLAYER_COLORS } from '../sim/types';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
 import {
   BURN_COLOR_HOT,
@@ -79,7 +79,15 @@ type BeamState = {
    *  next sample can miter-join onto it. Null if the beam has no marks
    *  yet (first sample) or if the prev mark was culled by aging. */
   prevMark: Mark | null;
+  /** Static white hit-core sphere at the beam terminus. */
   glow?: THREE.Mesh;
+  /** MAX-only team-colored orbital sparks around the hit point. Active
+   *  only when gfx.beamGlow is true; recycled to the pool otherwise. */
+  flareSparks?: THREE.Mesh[];
+  /** The PlayerId we last allocated flareSparks for. If the beam's owner
+   *  changes (shouldn't happen but be defensive), re-spawn with the
+   *  correct material. */
+  flareSparksPid?: PlayerId;
 };
 
 type Mark = {
@@ -114,6 +122,20 @@ export class BurnMark3D {
   private glowGeom = new THREE.SphereGeometry(1, 16, 12);
   private glowMat: THREE.MeshBasicMaterial;
   private glowPool: THREE.Mesh[] = [];
+
+  // ── MAX-LOD orbital flare sparks (team-colored, rotate around hit) ──
+  // Small sphere; cheaper tessellation than the core glow since each
+  // spark is much smaller on screen.
+  private sparkGeom = new THREE.SphereGeometry(1, 8, 6);
+  // Per-team spark material cache — color is looked up once and held
+  // shared across all of that player's beams.
+  private sparkMats = new Map<number, THREE.MeshBasicMaterial>();
+  // Flat pool of spark meshes. Pulled from on allocate, pushed back on
+  // beam retire / MAX disable.
+  private sparkPool: THREE.Mesh[] = [];
+  /** Number of orbiting sparks per MAX-LOD hit (matches 2D's
+   *  'detailed' tier count; 'complex' uses 6 but that feels busy in 3D). */
+  private readonly FLARE_SPARK_COUNT = 4;
 
   // Per-beam state, keyed by `${sourceEntityId}:${turretIndex}`.
   private beams = new Map<string, BeamState>();
@@ -195,8 +217,13 @@ export class BurnMark3D {
 
     this._time += dtMs;
 
+    // Snapshot the graphics config once per frame — the hot path below
+    // reads burnMarkFramesSkip / burnMarkAlphaCutoff / beamGlow so
+    // re-querying it per beam would multiply the config lookup cost.
+    const gfx = getGraphicsConfig();
+
     // Sample at every (framesSkip + 1)th frame.
-    const framesSkip = getGraphicsConfig().burnMarkFramesSkip ?? 0;
+    const framesSkip = gfx.burnMarkFramesSkip ?? 0;
     const sampleNow = this._frameCounter === 0;
     this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
 
@@ -236,8 +263,8 @@ export class BurnMark3D {
         }
       }
 
-      // Live hit-glow sphere at the current endpoint — pulses while the
-      // beam is active and disappears the frame the beam stops.
+      // Live hit-core sphere at the current endpoint. Static size — the
+      // 2D hit indicator doesn't pulse, so neither does this one.
       if (!state.glow) {
         let glow = this.glowPool.pop();
         if (!glow) {
@@ -249,25 +276,51 @@ export class BurnMark3D {
         }
         state.glow = glow;
       }
-      const pulse = 1 + Math.sin(this._time * 0.025) * 0.15;
-      const r = Math.max(beamWidth * 3, 6) * pulse;
+      const coreR = Math.max(beamWidth * 3, 6);
       state.glow.position.set(ex, GLOW_Y, ez);
-      state.glow.scale.setScalar(r);
+      state.glow.scale.setScalar(coreR);
+
+      // MAX-only flare — 4 team-colored sparks orbiting the hit point,
+      // same idea as the 2D ProjectileRenderer's 'detailed' orbital
+      // sparks. Rotates slowly so the hit reads as "active" without any
+      // pulse on the core itself.
+      if (gfx.beamGlow) {
+        const pid = proj.ownerId;
+        this.ensureFlareSparks(state, pid);
+        const baseAngle = this._time * 0.003;
+        const orbit = coreR * 1.8;
+        const sparkR = Math.max(beamWidth * 0.8, 1.5);
+        const sparks = state.flareSparks!;
+        const step = (Math.PI * 2) / sparks.length;
+        for (let i = 0; i < sparks.length; i++) {
+          const angle = baseAngle + i * step;
+          const sx = ex + Math.cos(angle) * orbit;
+          const sz = ez + Math.sin(angle) * orbit;
+          const spark = sparks[i];
+          spark.position.set(sx, GLOW_Y, sz);
+          spark.scale.setScalar(sparkR);
+        }
+      } else if (state.flareSparks) {
+        // LOD dropped below MAX — recycle the sparks.
+        this.releaseFlareSparks(state);
+      }
     }
 
-    // Retire beams that went away this frame — return their glow to the pool.
+    // Retire beams that went away this frame — return their glow +
+    // orbital sparks to the pools.
     for (const [key, state] of this.beams) {
       if (!this._seenBeamKeys.has(key)) {
         if (state.glow) {
           state.glow.visible = false;
           this.glowPool.push(state.glow);
         }
+        if (state.flareSparks) this.releaseFlareSparks(state);
         this.beams.delete(key);
       }
     }
 
     // ── Age + prune marks ──
-    const cutoff = getGraphicsConfig().burnMarkAlphaCutoff;
+    const cutoff = gfx.burnMarkAlphaCutoff;
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const mark = this.marks[i];
       mark.age += dtMs;
@@ -464,7 +517,66 @@ export class BurnMark3D {
     this.geometry.setDrawRange(0, this.marks.length * 6);
   }
 
-  /** Drop every mark + glow — used by the MARKS: BURN toggle. */
+  /** Lazily create the FLARE_SPARK_COUNT orbital sparks for a beam, pulling
+   *  from the flat pool when available. Spark material is keyed on the
+   *  beam's owner so all of a team's beams share one material instance. */
+  private ensureFlareSparks(state: BeamState, pid: PlayerId | undefined): void {
+    if (state.flareSparks && state.flareSparksPid === pid) return;
+    // Owner changed (shouldn't normally happen) — recycle and start over.
+    if (state.flareSparks) this.releaseFlareSparks(state);
+    const mat = this.getSparkMat(pid);
+    const sparks: THREE.Mesh[] = [];
+    for (let i = 0; i < this.FLARE_SPARK_COUNT; i++) {
+      let mesh = this.sparkPool.pop();
+      if (!mesh) {
+        mesh = new THREE.Mesh(this.sparkGeom, mat);
+        mesh.renderOrder = 11;
+        this.root.add(mesh);
+      } else {
+        // Pooled mesh might have been used by a different team last
+        // round — swap to the current team's material.
+        mesh.material = mat;
+        mesh.visible = true;
+      }
+      sparks.push(mesh);
+    }
+    state.flareSparks = sparks;
+    state.flareSparksPid = pid;
+  }
+
+  /** Release this beam's sparks back to the shared pool. */
+  private releaseFlareSparks(state: BeamState): void {
+    if (!state.flareSparks) return;
+    for (const s of state.flareSparks) {
+      s.visible = false;
+      this.sparkPool.push(s);
+    }
+    state.flareSparks = undefined;
+    state.flareSparksPid = undefined;
+  }
+
+  /** Shared per-team spark material (MeshBasicMaterial, team primary,
+   *  low opacity). Created lazily on first use. */
+  private getSparkMat(pid: PlayerId | undefined): THREE.MeshBasicMaterial {
+    const k = pid ?? -1;
+    let mat = this.sparkMats.get(k);
+    if (!mat) {
+      const color =
+        pid !== undefined
+          ? PLAYER_COLORS[pid]?.primary ?? 0xffffff
+          : 0xffffff;
+      mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+      });
+      this.sparkMats.set(k, mat);
+    }
+    return mat;
+  }
+
+  /** Drop every mark + glow + spark — used by the MARKS: BURN toggle. */
   private clearAll(): void {
     for (const m of this.marks) m.removed = true;
     this.marks.length = 0;
@@ -474,6 +586,7 @@ export class BurnMark3D {
         state.glow.visible = false;
         this.glowPool.push(state.glow);
       }
+      if (state.flareSparks) this.releaseFlareSparks(state);
     }
     this.beams.clear();
     this._seenBeamKeys.clear();
@@ -481,16 +594,22 @@ export class BurnMark3D {
 
   destroy(): void {
     for (const glow of this.glowPool) this.root.remove(glow);
+    for (const spark of this.sparkPool) this.root.remove(spark);
     for (const state of this.beams.values()) {
       if (state.glow) this.root.remove(state.glow);
+      if (state.flareSparks) for (const s of state.flareSparks) this.root.remove(s);
     }
     this.marks.length = 0;
     this.glowPool.length = 0;
+    this.sparkPool.length = 0;
     this.beams.clear();
     this.geometry.dispose();
     this.glowGeom.dispose();
+    this.sparkGeom.dispose();
     this.mat.dispose();
     this.glowMat.dispose();
+    for (const m of this.sparkMats.values()) m.dispose();
+    this.sparkMats.clear();
     this.root.parent?.remove(this.root);
   }
 }
