@@ -3,7 +3,7 @@ import type { CommandQueue, StartBuildCommand, FireDGunCommand } from '../sim/co
 import type { Entity, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
-import { getSnappedBuildPosition } from './helpers';
+import { getSnappedBuildPosition, handleEscape } from './helpers';
 import { magnitude } from '../math';
 import type { InputEntitySource, InputContext } from './inputBindings';
 import type { InputState } from './InputState';
@@ -89,23 +89,18 @@ export class BuildingPlacementController {
       }
     });
 
-    // ESC cancels the active mode first (build or D-gun). If neither is
-    // active, ESC clears any current unit/building selection — same
-    // behavior as the 3D scene. Mode cancellation takes priority so users
-    // don't accidentally lose their selection while exiting a mode.
+    // ESC cancels the active mode first (build, then D-gun); if
+    // neither is active, clears any current selection. Shared with
+    // the 3D path via handleEscape so the ordering stays identical.
     this.keys.ESC.on('down', () => {
-      if (this.state.isBuildMode) {
-        this.exitBuildMode();
-        return;
-      }
-      if (this.state.isDGunMode) {
-        this.exitDGunMode();
-        return;
-      }
-      this.commandQueue.enqueue({
-        type: 'clearSelection',
-        tick: this.context.getTick(),
-      });
+      handleEscape(
+        [
+          { isActive: () => this.state.isBuildMode, cancel: () => this.exitBuildMode() },
+          { isActive: () => this.state.isDGunMode, cancel: () => this.exitDGunMode() },
+        ],
+        this.commandQueue,
+        this.context.getTick(),
+      );
     });
 
     // D key activates D-gun mode

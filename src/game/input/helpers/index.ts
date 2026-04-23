@@ -34,6 +34,8 @@ export {
   buildLinePathMoveCommand,
 } from './RightClickCommands';
 
+export { type ModeCancel, handleEscape } from './EscapeHandler';
+
 export {
   type RepairEntitySource,
   findRepairTargetAt,

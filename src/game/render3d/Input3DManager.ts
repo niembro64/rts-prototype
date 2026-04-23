@@ -27,6 +27,7 @@ import {
   LinePathAccumulator,
   buildAttackCommandAt,
   buildLinePathMoveCommand,
+  handleEscape,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import type { StartBuildCommand } from '../sim/commands';
@@ -195,20 +196,13 @@ export class Input3DManager {
       case 'm': this.setWaypointMode('move'); break;
       case 'f': this.setWaypointMode('fight'); break;
       case 'h': this.setWaypointMode('patrol'); break;
-      case 'escape': {
-        // Priority: cancel an active mode first (build); fall through to
-        // clearing selection only if no mode was active. Mirrors the 2D
-        // BuildingPlacementController's ESC handler.
-        if (this.buildType !== null) {
-          this.cancelBuildMode();
-          break;
-        }
-        this.localCommandQueue.enqueue({
-          type: 'clearSelection',
-          tick: this.context.getTick(),
-        });
+      case 'escape':
+        handleEscape(
+          [{ isActive: () => this.buildType !== null, cancel: () => this.cancelBuildMode() }],
+          this.localCommandQueue,
+          this.context.getTick(),
+        );
         break;
-      }
     }
   }
 
