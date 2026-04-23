@@ -12,14 +12,12 @@ export function renderBuilding(
   graphics: Phaser.GameObjects.Graphics,
   entity: Entity,
   sprayParticleTime: number,
-  renderBuildBar: (x: number, y: number, width: number, height: number, percent: number) => void,
-  renderHealthBar: (x: number, y: number, width: number, height: number, percent: number) => void,
 ): void {
   if (!entity.building) return;
 
   const { transform, building, ownership, buildable } = entity;
   const { x, y } = transform;
-  const { width, height, hp, maxHp } = building;
+  const { width, height } = building;
 
   const left = x - width / 2;
   const top = y - height / 2;
@@ -76,14 +74,9 @@ export function renderBuilding(
   graphics.lineStyle(3, COLORS.BUILDING_OUTLINE, 1);
   graphics.strokeRect(left, top, width, height);
 
-  let barY = top - 8;
-  if (!isComplete) {
-    renderBuildBar(x, barY, width, 4, buildProgress);
-    barY -= 6;
-  }
-  if (hp < maxHp) {
-    renderHealthBar(x, barY, width, 4, hp / maxHp);
-  }
+  // Health + build-progress bars are rendered by the shared
+  // HealthBarOverlay (SVG layer, same one the 3D scene uses), so
+  // BuildingRenderer no longer draws its own inline bars.
 
   const playerColor = getPlayerColor(ownership?.playerId);
   const buildingCtx: BuildingRenderContext = {

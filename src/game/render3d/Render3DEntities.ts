@@ -111,14 +111,6 @@ type EntityMesh = {
   buildingDetails?: THREE.Mesh[];
   /** Per-building render height (solar is shorter than the default). */
   buildingHeight?: number;
-  /** Build-progress bar sub-group (lazily created on first incomplete
-   *  frame). Holds a dark background + green fill mesh; hidden once the
-   *  building is complete. */
-  buildBar?: {
-    group: THREE.Group;
-    bg: THREE.Mesh;
-    fill: THREE.Mesh;
-  };
   /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
    *  the mesh when the current frame's LOD key differs. */
   lodKey: string;
@@ -182,18 +174,6 @@ export class Render3DEntities {
   // Unit-radius indicator rings (SCAL/SHOT/PUSH). Unit radius = 1; scaled per
   // mesh to the actual radius. Slightly thicker than the selection ring so
   // the three colors layer over each other without visually merging.
-  // Build-progress bar: unit box scaled per-instance. Background is
-  // dark so the green fill reads against it at any camera angle;
-  // depthWrite:false + higher renderOrder keeps it visible over the
-  // building it labels.
-  private buildBarGeom = new THREE.BoxGeometry(1, 1, 1);
-  private buildBarBgMat = new THREE.MeshBasicMaterial({
-    color: 0x222222, transparent: true, opacity: 0.85, depthWrite: false,
-  });
-  private buildBarFillMat = new THREE.MeshBasicMaterial({
-    color: 0x44ff44, transparent: true, opacity: 0.95, depthWrite: false,
-  });
-
   private radiusRingGeom = new THREE.RingGeometry(0.97, 1.0, 40);
   private radiusMatScale = new THREE.MeshBasicMaterial({
     color: 0x44ffff, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false,
@@ -536,58 +516,6 @@ export class Render3DEntities {
    * Push rings sit at slightly different Y values (0.4 / 0.5 / 0.6) so when
    * two or more are enabled at the same time they don't z-fight each other.
    */
-  /**
-   * Show / update a world-space build-progress bar above the building
-   * while `progress < 1`; hide it once complete. The bar lives in the
-   * building's local group so it moves, rotates, and scales with the
-   * building naturally. Orientation: Y-axis is vertical, fill grows
-   * along the group's +X axis (the same axis the building's `width`
-   * maps to), so the bar always reads left-to-right in the building's
-   * frame.
-   */
-  private updateBuildProgressBar(
-    m: EntityMesh,
-    progress: number,
-    fullHeight: number,
-    footprint: number,
-  ): void {
-    if (progress >= 1) {
-      if (m.buildBar) {
-        m.buildBar.group.visible = false;
-      }
-      return;
-    }
-    // Lazy-create on first incomplete frame.
-    let bar = m.buildBar;
-    if (!bar) {
-      const group = new THREE.Group();
-      const bg = new THREE.Mesh(this.buildBarGeom, this.buildBarBgMat);
-      const fill = new THREE.Mesh(this.buildBarGeom, this.buildBarFillMat);
-      bg.renderOrder = 18;
-      fill.renderOrder = 19;
-      group.add(bg);
-      group.add(fill);
-      m.group.add(group);
-      bar = { group, bg, fill };
-      m.buildBar = bar;
-    }
-    bar.group.visible = true;
-    // Bar dimensions — width is the max of the building's footprint so
-    // a small solar array doesn't get a tiny unreadable bar; height is
-    // a fixed chunk (sits just above the roof).
-    const barW = Math.max(footprint * 0.9, 40);
-    const barH = 6;
-    const barD = 2;
-    const barY = fullHeight + 8;
-    bar.bg.scale.set(barW, barH, barD);
-    bar.bg.position.set(0, barY, 0);
-    // Fill box is proportional to progress, left-anchored (so it grows
-    // from -barW/2 → -barW/2 + barW*progress).
-    const fillW = Math.max(barW * progress, 1);
-    bar.fill.scale.set(fillW, barH, barD * 1.1); // tiny z bump to avoid z-fight
-    bar.fill.position.set(-barW / 2 + fillW / 2, barY, 0);
-  }
-
   private updateRadiusRings(m: EntityMesh, entity: Entity): void {
     const collider = entity.unit?.unitRadiusCollider;
     if (!collider) return;
@@ -994,13 +922,7 @@ export class Render3DEntities {
         for (const dMesh of m.buildingDetails) dMesh.visible = detailsVisible;
       }
 
-      // World-space progress bar above the building during construction.
-      // Same info the 2D renderer shows; kept here so the bar rotates
-      // and zooms with the camera naturally rather than needing a HUD
-      // projection. Hidden once the building completes.
-      this.updateBuildProgressBar(m, progress, h, Math.max(w, d));
-
-      // Health bar handled by the shared HealthBarOverlay.
+      // Health + build-progress bars handled by the shared HealthBarOverlay.
     }
 
     for (const [id, m] of this.buildingMeshes) {
@@ -1073,9 +995,6 @@ export class Render3DEntities {
     this.barrelGeom.dispose();
     this.projectileGeom.dispose();
     this.buildingGeom.dispose();
-    this.buildBarGeom.dispose();
-    this.buildBarBgMat.dispose();
-    this.buildBarFillMat.dispose();
     this.ringGeom.dispose();
     this.radiusRingGeom.dispose();
     this.radiusMatScale.dispose();

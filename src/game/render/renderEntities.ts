@@ -58,7 +58,6 @@ import {
 } from './selection';
 import { renderBuilding } from './BuildingRenderer';
 import { renderProjectile, renderProjRangeCircles } from './ProjectileRenderer';
-import { renderBuildBar } from './UIBars';
 
 // Re-export EntitySource for external use
 export type { EntitySource, ExplosionEffect };
@@ -411,25 +410,10 @@ export class EntityRenderer {
       this.isInViewport(x, y, p),
     );
 
-    // 1. Buildings
-    // Health bars are drawn by the shared HealthBarOverlay (SVG), so we pass
-    // a no-op to the building renderer. Build bars remain in-canvas.
-    const buildBarFn = (
-      x: number,
-      y: number,
-      w: number,
-      h: number,
-      p: number,
-    ) => renderBuildBar(this.graphics, x, y, w, h, p);
-    const noopHealthBar = () => { /* rendered by HealthBarOverlay */ };
+    // 1. Buildings. Health and build-progress bars are rendered by the
+    //    shared HealthBarOverlay (SVG), so BuildingRenderer draws no bars.
     for (const entity of this.visibleBuildings) {
-      renderBuilding(
-        this.graphics,
-        entity,
-        this.sprayParticleTime,
-        buildBarFn,
-        noopHealthBar,
-      );
+      renderBuilding(this.graphics, entity, this.sprayParticleTime);
     }
 
     // 2. Waypoints drawn by the shared WaypointOverlay (SVG), so 2D/3D match.
