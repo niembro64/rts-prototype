@@ -453,8 +453,12 @@ export class RtsScene3D {
       const winnerId = this.clientViewState.getGameOverWinnerId();
       if (winnerId !== null && !this.isGameOver) this.handleGameOver(winnerId);
 
-      // First-snapshot camera centering for the player's commander
-      if (!this.hasCenteredCamera && !this.backgroundMode) {
+      // First-snapshot camera centering for the player's commander —
+      // applied in both the real game and the demo so the initial
+      // view always frames the seat the user is in. Zoom / distance
+      // stays at the ZOOM_INITIAL_DEMO value set in the constructor;
+      // centerCameraOnCommander only adjusts target + yaw.
+      if (!this.hasCenteredCamera) {
         this.centerCameraOnCommander();
       }
 

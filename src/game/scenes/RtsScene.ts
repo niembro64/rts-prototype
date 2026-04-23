@@ -688,8 +688,12 @@ export class RtsScene extends SceneShim {
         this.handleGameOver(winnerId);
       }
 
-      // Center camera on first snapshot (skip for demo — stays at map center)
-      if (!this.hasCenteredCamera && !this.backgroundMode) {
+      // Center camera on the controlled player's commander on the
+      // first snapshot — same treatment for the real game and the
+      // demo, so the lobby view frames the player's seat naturally.
+      // (Initial zoom still differs via ZOOM_INITIAL_DEMO; centerOn
+      // doesn't touch zoom.)
+      if (!this.hasCenteredCamera) {
         this.centerCameraOnCommander();
       }
     }
