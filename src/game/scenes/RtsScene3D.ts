@@ -30,6 +30,7 @@ import { Explosion3D } from '../render3d/Explosion3D';
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
+import { BuildGhost3D } from '../render3d/BuildGhost3D';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
@@ -117,6 +118,7 @@ export class RtsScene3D {
   private renderScope = new RenderScope3D();
   private burnMarkRenderer!: BurnMark3D;
   private lineDragRenderer!: LineDrag3D;
+  private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
   private audioScheduler = new AudioEventScheduler();
   private lastEffectsTickMs = 0;
@@ -346,6 +348,7 @@ export class RtsScene3D {
     this.debrisRenderer = new Debris3D(this.threeApp.world);
     this.burnMarkRenderer = new BurnMark3D(this.threeApp.world, this.renderScope);
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
+    this.buildGhostRenderer = new BuildGhost3D(this.threeApp.world);
     this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
@@ -381,6 +384,10 @@ export class RtsScene3D {
       this.localCommandQueue,
       this.gameConnection,
     );
+    // Hand the build-ghost renderer to the input manager so it can
+    // drive preview updates on mouse-move-in-build-mode (hidden on
+    // mode exit via the onBuildModeChange callback below).
+    this.inputManager.setBuildGhost(this.buildGhostRenderer);
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.
     this.inputManager.onWaypointModeChange = (mode) => {
@@ -987,6 +994,7 @@ export class RtsScene3D {
     this.debrisRenderer?.destroy();
     this.burnMarkRenderer?.destroy();
     this.lineDragRenderer?.destroy();
+    this.buildGhostRenderer?.destroy();
     this.sprayRenderer?.destroy();
     this.longtaskTracker.destroy();
     this.audioScheduler.clear();

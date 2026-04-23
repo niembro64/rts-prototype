@@ -14,6 +14,7 @@
 
 import * as THREE from 'three';
 import type { ThreeApp } from './ThreeApp';
+import type { BuildGhost3D } from './BuildGhost3D';
 import type { CommandQueue } from '../sim/commands';
 import type { GameConnection } from '../server/GameConnection';
 import type { InputContext } from '@/types/input';
@@ -67,6 +68,11 @@ export class Input3DManager {
   private mode = new CommanderModeController();
   public onBuildModeChange?: (type: BuildingType | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
+
+  // Optional preview renderer driven on mouse-move-in-build-mode;
+  // scene injects one via setBuildGhost. Stays null in the demo /
+  // headless case, where no in-world preview is shown.
+  private buildGhost: BuildGhost3D | null = null;
 
   // Drag state (screen coords only — box select is screen-space)
   private leftDown = false;
@@ -140,9 +146,25 @@ export class Input3DManager {
     window.addEventListener('mouseup', this.onMouseUp);
     window.addEventListener('keydown', this.onKeyDown);
 
-    // Forward shared mode events to the scene's UI callbacks.
-    this.mode.onBuildModeChange = (type) => this.onBuildModeChange?.(type);
+    // Forward shared mode events to the scene's UI callbacks; also
+    // hide the build ghost whenever build mode exits.
+    this.mode.onBuildModeChange = (type) => {
+      if (type === null) this.buildGhost?.hide();
+      this.onBuildModeChange?.(type);
+    };
     this.mode.onDGunModeChange = (active) => this.onDGunModeChange?.(active);
+  }
+
+  /** Inject the scene's build-ghost preview renderer. Input3DManager
+   *  calls setTarget on it each mouse-move while build mode is
+   *  active and hide() when the mode exits. */
+  setBuildGhost(ghost: BuildGhost3D | null): void {
+    this.buildGhost = ghost;
+    if (!ghost) return;
+    // If the user is already in build mode (e.g. after a scene
+    // restart), nothing will show until they move the cursor. That's
+    // acceptable — mirrors the 2D ghost's "drawn from state, updated
+    // each move" lifecycle.
   }
 
   setWaypointMode(mode: WaypointType): void {
@@ -374,6 +396,19 @@ export class Input3DManager {
   }
 
   private handleMouseMove(e: MouseEvent): void {
+    // Live build-ghost preview — only while in build mode and the
+    // scene provided a ghost renderer.
+    const buildType = this.mode.buildingType;
+    if (buildType !== null && this.buildGhost) {
+      const world = this.raycastGround(e.clientX, e.clientY);
+      if (world) {
+        this.buildGhost.setTarget(
+          buildType, world.x, world.y,
+          this.getSelectedCommander(),
+        );
+      }
+    }
+
     if (this.leftDown) {
       this.dragEndScreen = { x: e.clientX, y: e.clientY };
       const dx = e.clientX - this.dragStartScreen.x;
