@@ -161,6 +161,12 @@ export class BurnMark3D {
     });
     this.mesh = new THREE.Mesh(this.geometry, this.mat);
     this.mesh.renderOrder = 10;
+    // The geometry starts with all-zero positions, so its auto-computed
+    // bounding sphere is (origin, radius=0) — Three.js frustum-culls it
+    // the moment the camera looks anywhere other than world origin.
+    // We never auto-recompute on position updates, so just disable the
+    // per-mesh culling: burn marks cover the whole map anyway.
+    this.mesh.frustumCulled = false;
     this.root.add(this.mesh);
 
     this.glowMat = new THREE.MeshBasicMaterial({
