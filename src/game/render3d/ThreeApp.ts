@@ -4,6 +4,7 @@
 // render loop and delegates per-frame work to a callback.
 
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import {
@@ -49,6 +50,23 @@ export class ThreeApp {
     this.renderer.setSize(width, height);
     this.renderer.shadowMap.enabled = false;
     parent.appendChild(this.renderer.domElement);
+
+    // Prebuilt environment map for any PBR (MeshStandardMaterial) meshes in
+    // the scene — mirror panels at MED+ LOD become metalness=1 chrome, and
+    // `scene.environment` is the cube they reflect. RoomEnvironment ships
+    // with three.js and gives a varied lights-and-walls IBL cube; PMREM
+    // preprocesses it for the renderer. One-shot cost at scene init; zero
+    // per-frame overhead.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const roomEnv = new RoomEnvironment();
+    this.scene.environment = pmrem.fromScene(roomEnv, 0.04).texture;
+    roomEnv.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const m = obj as THREE.Mesh;
+        if ('dispose' in (m.geometry ?? {})) m.geometry.dispose();
+      }
+    });
+    pmrem.dispose();
 
     this.camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000);
 

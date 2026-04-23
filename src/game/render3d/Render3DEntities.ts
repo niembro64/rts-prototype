@@ -170,6 +170,14 @@ export class Render3DEntities {
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private secondaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
+  // Shiny PBR materials for mirror panels at MED+ LOD. metalness=1 +
+  // roughness=0.12 turns the panel into team-tinted chrome that reflects
+  // the scene's PMREM-processed RoomEnvironment cube set on the scene in
+  // ThreeApp. One material per team color (plus a neutral).
+  private mirrorShinyMats = new Map<PlayerId, THREE.MeshStandardMaterial>();
+  private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
+    color: 0x888888, metalness: 1.0, roughness: 0.12,
+  });
 
   constructor(world: THREE.Group, clientViewState: ClientViewState) {
     this.world = world;
@@ -185,7 +193,20 @@ export class Render3DEntities {
         pid,
         new THREE.MeshLambertMaterial({ color: colors.secondary }),
       );
+      this.mirrorShinyMats.set(
+        pid,
+        new THREE.MeshStandardMaterial({
+          color: colors.secondary,
+          metalness: 1.0,
+          roughness: 0.12,
+        }),
+      );
     }
+  }
+
+  private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
+    if (pid === undefined) return this.mirrorShinyNeutralMat;
+    return this.mirrorShinyMats.get(pid) ?? this.mirrorShinyNeutralMat;
   }
 
   /**
@@ -382,11 +403,16 @@ export class Render3DEntities {
     parent.add(root);
     const meshes: THREE.Mesh[] = [];
     const glints: MirrorGlint[] = [];
-    const mat = this.getSecondaryMat(pid);
 
-    // Sparkle gating:
-    //   barrelSpin = true  → MED+ tier: primary glint on the front face
-    //   beamGlow   = true  → MAX tier:  also a dimmer glint on the back
+    // Panel material tier:
+    //   barrelSpin = false → Lambert secondary (flat team color).
+    //   barrelSpin = true  → PBR team-chrome (metalness=1, roughness≈0.12)
+    //                        that reflects scene.environment (PMREM cube).
+    // Sparkle gating reuses the same LOD flags:
+    //   barrelSpin = true  → primary glint on the front face.
+    //   beamGlow   = true  → dimmer secondary glint on the back face.
+    const shiny = gfx.barrelSpin;
+    const mat = shiny ? this.getMirrorShinyMat(pid) : this.getSecondaryMat(pid);
     const wantPrimary = gfx.barrelSpin;
     const wantSecondary = gfx.beamGlow;
 
@@ -908,6 +934,9 @@ export class Render3DEntities {
     this.glintGeom.dispose();
     this.glintMatPrimary.dispose();
     this.glintMatSecondary.dispose();
+    for (const m of this.mirrorShinyMats.values()) m.dispose();
+    this.mirrorShinyMats.clear();
+    this.mirrorShinyNeutralMat.dispose();
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     for (const m of this.secondaryMats.values()) m.dispose();
