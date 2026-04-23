@@ -1,100 +1,168 @@
-// BurnMark3D — ground scorches along laser / beam paths, plus a pulsing glow
-// at each live beam's termination point.
+// BurnMark3D — ground scorches along laser / beam paths, plus a pulsing
+// glow sphere at each live beam's termination point.
 //
-// Every frame we sample all live beam/laser projectiles' `endX/Y` and compare
-// to the previous endpoint recorded for the same beam (keyed by source +
-// turret). If the endpoint has moved, we drop a stretched quad on the ground
-// spanning the segment from the previous to the current endpoint — that's the
-// burn mark. Marks fade from hot orange to dark residue over a few seconds
-// and are evicted oldest-first once a global cap is hit.
+// Every mark is a 4-vertex quad on the ground plane. When a beam's
+// endpoint moves, we append a new quad AND update the previous quad's
+// end vertices to the bisector of the two segments — so consecutive
+// marks share an edge with no overlap or gap. The first/last quads of a
+// trail keep a square cap perpendicular to their segment direction.
 //
-// Separately, we keep one "hit glow" mesh per live beam: a small flat disk
-// on the ground at the current endpoint that pulses while the beam is active
-// and disappears the frame the beam stops firing. This matches the 2D
-// renderer's laser-end flash.
+// All marks live in a single merged BufferGeometry with a vertex-colors
+// material, so the entire trail — hundreds of segments — renders in one
+// draw call. Slots are managed with swap-and-pop on expiry (O(1)) so
+// removing an aged mark doesn't leave gaps.
 //
-// Triggered passively from update() — no SimEvents required. The scene passes
-// in the current projectile list each frame.
+// Colors + LOD (tau, cutoff, sample rate) are pulled from the shared
+// config so this stays in lockstep with the 2D BurnMarkSystem.
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
+import {
+  BURN_COLOR_HOT,
+  BURN_COLOR_TAU,
+  BURN_COOL_TAU,
+  hexToRgb,
+} from '../../config';
 
-// Burn marks sit a hair above the tile floor (y=0) so they render over the
-// capture-tile grid without z-fighting. Must be below SHOT_HEIGHT so beam
-// cylinders still draw above them.
-// Burn marks sit comfortably above the tile layer. The capture-tile floor
-// (y=0) uses a negative polygonOffset to bias its fragments toward the
-// camera, so a small lift isn't enough — lift high enough that depth
-// precision at far zoom can't matter, and additionally apply a polygonOffset
-// on the mark material so marks always win the depth test against tiles.
+// ── World Y layout ──
+// Burn marks sit a couple units above the tile layer (y=0). The tile floor
+// uses a negative polygonOffset to bias its fragments toward the camera,
+// so we apply an even stronger offset to the burn-mark material so marks
+// always draw over tiles regardless of depth precision at far zoom.
 const MARK_Y = 2.5;
-// Hit-glow sphere sits on the ground plane; we lift slightly so the lower
-// hemisphere doesn't clip through the tile layer at grazing camera angles.
 const GLOW_Y = 3.0;
 
-// Color curve for a mark's lifetime.
-const MARK_HOT = new THREE.Color(0xffaa33);   // fresh burn
-const MARK_COOL = new THREE.Color(0x1a0e06);  // cooled residue
-const MARK_HOT_MS = 250;                       // hold hot color briefly
-const MARK_COOL_MS = 3500;                     // finish cooling by this time
-const MARK_FADE_START_MS = 2500;               // alpha fade starts here
-const MARK_LIFETIME_MS = 5500;                 // fully transparent by this age
+// ── Color curve — matches 2D BurnMarkSystem exactly ──
+const HOT_RGB = hexToRgb(BURN_COLOR_HOT);         // 0x882200
+const COOL_COLOR = 0x221100;                      // dark brown residue
+const COOL_RGB = hexToRgb(COOL_COLOR);
+const INV_COLOR_TAU = 1 / BURN_COLOR_TAU;         // hot → cool fade
+const INV_COOL_TAU = 1 / BURN_COOL_TAU;           // alpha fade
 
-// Max live scorch marks across the whole scene. When exceeded we evict the
-// oldest entries. Chosen high enough to trace a 10-second beam sweep at
-// reasonable cell density without running the GPU out of quads.
-const GLOBAL_MAX_MARKS = 400;
+// Hard buffer size — sized for the maximum `burnMarkAlphaCutoff` tier
+// (0.01 → 5000 marks) so we never need to reallocate. Memory: ~280 KB
+// for positions + colors, trivial.
+const MAX_MARKS = 5000;
 
-// Minimum squared distance between previous and current endpoint required to
-// drop a new segment. Prevents a stationary laser from stacking thousands of
-// zero-length quads on the same spot.
+// Miter limit: at sharp turns, the miter joint extends far from the
+// actual corner. Clamp to 3× halfWidth (PostScript default) so a tight
+// zig-zag doesn't produce a spike to infinity.
+const MITER_LIMIT = 3;
+
+// Minimum squared distance between prev and current endpoint for a new
+// mark — avoids stacking zero-length quads for stationary beams.
 const MIN_SEGMENT_DIST_SQ = 4;
 
-// Sample every frame by default, but lower LODs (burnMarkFramesSkip > 0) drop
-// every N+1th sample so the trail is sparser on slow systems.
-type BeamState = { prevX: number; prevY: number; glow?: THREE.Mesh };
+/** LOD-driven cap on active marks — same tiers as 2D `getBurnMarkCap`. */
+function getBurnMarkCap(): number {
+  const cutoff = getGraphicsConfig().burnMarkAlphaCutoff;
+  if (cutoff >= 1) return 300;
+  if (cutoff >= 0.5) return 800;
+  if (cutoff >= 0.3) return 2000;
+  if (cutoff >= 0.1) return 3500;
+  return 5000;
+}
+
+type BeamState = {
+  lastEndX: number;
+  lastEndY: number;
+  lastDirX: number;
+  lastDirY: number;
+  /** Reference to the most recently appended mark for this beam, so the
+   *  next sample can miter-join onto it. Null if the beam has no marks
+   *  yet (first sample) or if the prev mark was culled by aging. */
+  prevMark: Mark | null;
+  glow?: THREE.Mesh;
+};
 
 type Mark = {
-  mesh: THREE.Mesh;
-  material: THREE.MeshBasicMaterial;
+  /** Index into the big buffer (`marks[slot] === this`). Kept explicit so
+   *  appending a miter-joined mark can rewrite this mark's end vertices
+   *  even after swap-and-pop has moved it. */
+  slot: number;
   age: number;
+  dirX: number;
+  dirY: number;
+  /** Cleared when the mark is culled so BeamState.prevMark can tell. */
+  removed: boolean;
 };
 
 export class BurnMark3D {
   private root: THREE.Group;
-  // A unit plane on the ground; scaled to (segmentLength × beamWidth) per mark.
-  private planeGeom = new THREE.PlaneGeometry(1, 1);
 
-  // Hit-glow spheres — a small volumetric ball at the beam's endpoint reads
-  // as a 3D impact from any camera angle (unlike a flat disk, which
-  // disappears when viewed edge-on).
-  private glowGeom = new THREE.SphereGeometry(1, 16, 12);
-  // Shared material for all glow spheres — each glow just tweaks position/scale.
-  private glowMat: THREE.MeshBasicMaterial;
+  // ── Merged trail geometry ──
+  private geometry: THREE.BufferGeometry;
+  private positions: Float32Array;  // MAX_MARKS × 4 × 3
+  private colors: Float32Array;     // MAX_MARKS × 4 × 4 (RGBA)
+  private indices: Uint32Array;     // MAX_MARKS × 6 (prebuilt)
+  private mesh: THREE.Mesh;
+  private mat: THREE.MeshBasicMaterial;
+  private posAttr: THREE.BufferAttribute;
+  private colAttr: THREE.BufferAttribute;
 
+  // Active marks, packed — `marks[mark.slot] === mark` invariant.
   private marks: Mark[] = [];
-  private markPool: { mesh: THREE.Mesh; material: THREE.MeshBasicMaterial }[] = [];
 
-  // Keyed by `${sourceEntityId}:${turretIndex}`. Entries are dropped the frame
-  // their beam goes away (no projectile with that key this frame).
+  // ── Hit glow sphere (lives separate from the trail mesh) ──
+  private glowGeom = new THREE.SphereGeometry(1, 16, 12);
+  private glowMat: THREE.MeshBasicMaterial;
+  private glowPool: THREE.Mesh[] = [];
+
+  // Per-beam state, keyed by `${sourceEntityId}:${turretIndex}`.
   private beams = new Map<string, BeamState>();
   private _seenBeamKeys = new Set<string>();
 
-  // Frame skip counter — when `burnMarkFramesSkip` is 1 we only sample every
-  // other frame, 2 = every third, etc. Zero = every frame.
   private _frameCounter = 0;
-
-  // Glow mesh pool (one disk per live beam; reused as beams come and go).
-  private glowPool: THREE.Mesh[] = [];
-
-  // Time-of-day counter for pulsing glow (shared across all live glows).
   private _time = 0;
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
+
+    this.positions = new Float32Array(MAX_MARKS * 4 * 3);
+    this.colors = new Float32Array(MAX_MARKS * 4 * 4);
+    this.indices = new Uint32Array(MAX_MARKS * 6);
+    // Pre-build the index buffer — two triangles per quad (0-1-2, 0-2-3)
+    // gives a CCW-wound quad given the (startL, startR, endR, endL) vertex
+    // order used throughout.
+    for (let i = 0; i < MAX_MARKS; i++) {
+      const vBase = i * 4;
+      const iBase = i * 6;
+      this.indices[iBase] = vBase;
+      this.indices[iBase + 1] = vBase + 1;
+      this.indices[iBase + 2] = vBase + 2;
+      this.indices[iBase + 3] = vBase;
+      this.indices[iBase + 4] = vBase + 2;
+      this.indices[iBase + 5] = vBase + 3;
+    }
+
+    this.geometry = new THREE.BufferGeometry();
+    this.posAttr = new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage);
+    this.colAttr = new THREE.BufferAttribute(this.colors, 4).setUsage(THREE.DynamicDrawUsage);
+    this.geometry.setAttribute('position', this.posAttr);
+    this.geometry.setAttribute('color', this.colAttr);
+    this.geometry.setIndex(new THREE.BufferAttribute(this.indices, 1));
+    this.geometry.setDrawRange(0, 0);
+
+    // Single material for the whole trail — per-vertex colors encode each
+    // mark's age-based shade and alpha. DoubleSide so marks read from a
+    // camera under the ground, polygonOffset so they always win the
+    // depth test against the capture-tile grid below.
+    this.mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    });
+    this.mesh = new THREE.Mesh(this.geometry, this.mat);
+    this.mesh.renderOrder = 10;
+    this.root.add(this.mesh);
+
     this.glowMat = new THREE.MeshBasicMaterial({
       color: 0xffcc66,
       transparent: true,
@@ -103,14 +171,8 @@ export class BurnMark3D {
     });
   }
 
-  /**
-   * Sample live beam projectiles and age existing marks. Called from the
-   * scene's per-frame update. `projectiles` is the full list; we filter to
-   * beam/laser types.
-   */
   update(projectiles: readonly Entity[], dtMs: number): void {
-    // PLAYER CLIENT toggle — when off, wipe any accumulated state (marks +
-    // per-beam endpoints + hit glows) so nothing lingers, and early-out.
+    // Master toggle — wipe state if the user turned burn marks off.
     if (!getBurnMarks()) {
       if (this.marks.length > 0 || this.beams.size > 0) this.clearAll();
       return;
@@ -118,12 +180,12 @@ export class BurnMark3D {
 
     this._time += dtMs;
 
+    // Sample at every (framesSkip + 1)th frame.
     const framesSkip = getGraphicsConfig().burnMarkFramesSkip ?? 0;
-    const sampleBurn = this._frameCounter === 0;
+    const sampleNow = this._frameCounter === 0;
     this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
 
     this._seenBeamKeys.clear();
-
     for (const e of projectiles) {
       const proj = e.projectile;
       if (!proj) continue;
@@ -135,28 +197,32 @@ export class BurnMark3D {
 
       const ex = proj.endX ?? e.transform.x;
       const ez = proj.endY ?? e.transform.y;
-      const shotCfg = proj.config.shot;
-      const beamWidth = isLineShot(shotCfg) ? shotCfg.width : 2;
+      const shot = proj.config.shot;
+      const beamWidth = isLineShot(shot) ? shot.width * 2 : 4;
 
-      // Drop a burn segment between prev endpoint and current, IF we've
-      // already seen this beam at least once and the endpoint actually moved.
       let state = this.beams.get(key);
-      if (state && sampleBurn) {
-        const dx = ex - state.prevX;
-        const dy = ez - state.prevY;
-        if (dx * dx + dy * dy > MIN_SEGMENT_DIST_SQ) {
-          this.addMark(state.prevX, state.prevY, ex, ez, beamWidth);
+      if (!state) {
+        state = {
+          lastEndX: ex,
+          lastEndY: ez,
+          lastDirX: 0,
+          lastDirY: 0,
+          prevMark: null,
+        };
+        this.beams.set(key, state);
+      } else if (sampleNow) {
+        const dx = ex - state.lastEndX;
+        const dz = ez - state.lastEndY;
+        if (dx * dx + dz * dz > MIN_SEGMENT_DIST_SQ) {
+          const invLen = 1 / Math.sqrt(dx * dx + dz * dz);
+          const dirX = dx * invLen;
+          const dirZ = dz * invLen;
+          this.appendMark(state, ex, ez, dirX, dirZ, beamWidth);
         }
       }
-      if (!state) {
-        state = { prevX: ex, prevY: ez };
-        this.beams.set(key, state);
-      } else if (sampleBurn) {
-        state.prevX = ex;
-        state.prevY = ez;
-      }
 
-      // Live hit glow at the endpoint — pulses while the beam is active.
+      // Live hit-glow sphere at the current endpoint — pulses while the
+      // beam is active and disappears the frame the beam stops.
       if (!state.glow) {
         let glow = this.glowPool.pop();
         if (!glow) {
@@ -174,7 +240,7 @@ export class BurnMark3D {
       state.glow.scale.setScalar(r);
     }
 
-    // Drop state + release glow for beams that no longer exist.
+    // Retire beams that went away this frame — return their glow to the pool.
     for (const [key, state] of this.beams) {
       if (!this._seenBeamKeys.has(key)) {
         if (state.glow) {
@@ -185,104 +251,209 @@ export class BurnMark3D {
       }
     }
 
-    // Age + fade existing marks.
+    // ── Age + prune marks ──
+    const cutoff = getGraphicsConfig().burnMarkAlphaCutoff;
     for (let i = this.marks.length - 1; i >= 0; i--) {
-      const m = this.marks[i];
-      m.age += dtMs;
-      if (m.age >= MARK_LIFETIME_MS) {
-        m.mesh.visible = false;
-        this.markPool.push({ mesh: m.mesh, material: m.material });
-        this.marks.splice(i, 1);
+      const mark = this.marks[i];
+      mark.age += dtMs;
+      const xCool = mark.age * INV_COOL_TAU;
+      const alpha =
+        1 / (1 + xCool + 0.48 * xCool * xCool + 0.235 * xCool * xCool * xCool);
+      if (alpha < cutoff) {
+        this.removeMarkAt(i);
         continue;
       }
-      // Color: hot for MARK_HOT_MS, then interpolate toward cool over
-      // (MARK_COOL_MS - MARK_HOT_MS).
-      if (m.age < MARK_HOT_MS) {
-        m.material.color.copy(MARK_HOT);
-      } else if (m.age < MARK_COOL_MS) {
-        const t = (m.age - MARK_HOT_MS) / (MARK_COOL_MS - MARK_HOT_MS);
-        m.material.color.copy(MARK_HOT).lerp(MARK_COOL, t);
-      } else {
-        m.material.color.copy(MARK_COOL);
-      }
-      // Alpha: full until MARK_FADE_START_MS, then linearly to zero.
-      if (m.age < MARK_FADE_START_MS) {
-        m.material.opacity = 0.85;
-      } else {
-        const t = (m.age - MARK_FADE_START_MS) / (MARK_LIFETIME_MS - MARK_FADE_START_MS);
-        m.material.opacity = Math.max(0, 0.85 * (1 - t));
-      }
+      // Color: hot → cool over BURN_COLOR_TAU (same rational-exp curve 2D uses).
+      const xHot = mark.age * INV_COLOR_TAU;
+      const hotDecay =
+        1 / (1 + xHot + 0.48 * xHot * xHot + 0.235 * xHot * xHot * xHot);
+      const coolBlend = 1 - hotDecay;
+      const r = (HOT_RGB.r * hotDecay + COOL_RGB.r * coolBlend) / 255;
+      const g = (HOT_RGB.g * hotDecay + COOL_RGB.g * coolBlend) / 255;
+      const b = (HOT_RGB.b * hotDecay + COOL_RGB.b * coolBlend) / 255;
+      this.writeQuadColor(i, r, g, b, alpha);
     }
+
+    if (this.marks.length > 0) this.colAttr.needsUpdate = true;
   }
 
-  private addMark(
-    ax: number, az: number, bx: number, bz: number, beamWidth: number,
+  /** Append one mitered quad to the trail. `appendX/Y` is the NEW endpoint;
+   *  the quad spans state.lastEndX/Y → appendX/Y with width beamWidth.
+   *  Updates the previous mark's end vertices (if live) so the two quads
+   *  share an edge with no overlap. */
+  private appendMark(
+    state: BeamState,
+    endX: number, endY: number,
+    dirX: number, dirZ: number,
+    width: number,
   ): void {
-    const dx = bx - ax;
-    const dz = bz - az;
-    const length = Math.hypot(dx, dz);
-    if (length < 1e-3) return;
-
-    const pooled = this.markPool.pop();
-    let mesh: THREE.Mesh;
-    let material: THREE.MeshBasicMaterial;
-    if (pooled) {
-      mesh = pooled.mesh;
-      material = pooled.material;
-      material.color.copy(MARK_HOT);
-      material.opacity = 0.85;
-      mesh.visible = true;
-    } else {
-      material = new THREE.MeshBasicMaterial({
-        color: MARK_HOT,
-        transparent: true,
-        opacity: 0.85,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        // Bias marks toward the camera in depth space so they always win
-        // against the capture-tile floor (which also uses polygonOffset).
-        polygonOffset: true,
-        polygonOffsetFactor: -4,
-        polygonOffsetUnits: -4,
-      });
-      mesh = new THREE.Mesh(this.planeGeom, material);
-      mesh.renderOrder = 10;
-      this.root.add(mesh);
+    // LOD-driven cap — if full, just drop this sample. Aging will free
+    // slots soon enough.
+    if (this.marks.length >= getBurnMarkCap() || this.marks.length >= MAX_MARKS) {
+      state.lastEndX = endX;
+      state.lastEndY = endY;
+      state.lastDirX = dirX;
+      state.lastDirY = dirZ;
+      return;
     }
 
-    // PlaneGeometry default faces +Z; rotate -π/2 around X so it lies on the
-    // XZ ground plane facing +Y. Then rotate around Y to align the plane's
-    // X axis (length) with the segment direction.
-    mesh.rotation.set(-Math.PI / 2, 0, 0);
-    const angle = Math.atan2(dz, dx);
-    mesh.rotation.z = -angle;
-    mesh.position.set((ax + bx) / 2, MARK_Y, (az + bz) / 2);
-    // scale.x = segment length, scale.y = beam width · 2 (so the mark reads
-    // a little wider than the beam, matching the 2D BurnMarkSystem's `width * 2`).
-    mesh.scale.set(length, Math.max(beamWidth * 2, 2), 1);
+    const halfW = width * 0.5;
+    // Right-hand perpendicular of the NEW segment direction (XZ plane).
+    const perpRX = -dirZ;
+    const perpRZ = dirX;
 
-    this.marks.push({ mesh, material, age: 0 });
+    const startCx = state.lastEndX;
+    const startCz = state.lastEndY;
 
-    while (this.marks.length > GLOBAL_MAX_MARKS) {
-      const dropped = this.marks.shift();
-      if (dropped) {
-        dropped.mesh.visible = false;
-        this.markPool.push({ mesh: dropped.mesh, material: dropped.material });
+    // ── Start vertices: miter onto previous mark if there is one alive ──
+    const prev = state.prevMark;
+    const haveLivePrev = prev !== null && !prev.removed;
+    let sLx: number, sLz: number, sRx: number, sRz: number;
+
+    if (haveLivePrev) {
+      // Bisector of (prevDir + newDir). Its length = 2·cos(θ/2) where θ is
+      // the turn angle. The miter offset along the bisector's
+      // perpendicular is halfW * 2 / |sum|.
+      const sumX = state.lastDirX + dirX;
+      const sumZ = state.lastDirY + dirZ;
+      const sumLen = Math.sqrt(sumX * sumX + sumZ * sumZ);
+      if (sumLen > 1e-4) {
+        let miter = (halfW * 2) / sumLen;
+        if (miter > halfW * MITER_LIMIT) miter = halfW * MITER_LIMIT;
+        const bX = sumX / sumLen;
+        const bZ = sumZ / sumLen;
+        const perpBX = -bZ;
+        const perpBZ = bX;
+        sLx = startCx - perpBX * miter;
+        sLz = startCz - perpBZ * miter;
+        sRx = startCx + perpBX * miter;
+        sRz = startCz + perpBZ * miter;
+      } else {
+        // Degenerate (180° turn) — fall back to square cap.
+        sLx = startCx - perpRX * halfW;
+        sLz = startCz - perpRZ * halfW;
+        sRx = startCx + perpRX * halfW;
+        sRz = startCz + perpRZ * halfW;
       }
+    } else {
+      // Square start cap — no live predecessor.
+      sLx = startCx - perpRX * halfW;
+      sLz = startCz - perpRZ * halfW;
+      sRx = startCx + perpRX * halfW;
+      sRz = startCz + perpRZ * halfW;
+    }
+
+    // ── End vertices: square cap. Rewritten later when a successor joins. ──
+    const eLx = endX - perpRX * halfW;
+    const eLz = endY - perpRZ * halfW;
+    const eRx = endX + perpRX * halfW;
+    const eRz = endY + perpRZ * halfW;
+
+    // Rewrite predecessor's end vertices to match the shared miter edge.
+    if (haveLivePrev) {
+      this.writeQuadEnd(prev!.slot, sRx, sRz, sLx, sLz);
+    }
+
+    // Allocate the new slot and write its vertex data.
+    const slot = this.marks.length;
+    const mark: Mark = {
+      slot,
+      age: 0,
+      dirX,
+      dirY: dirZ,
+      removed: false,
+    };
+    this.marks.push(mark);
+    this.writeQuad(slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
+    // Fresh marks render at hot color + full alpha — age sweep will take
+    // over from the next frame. Writing once here avoids a 1-frame flicker.
+    this.writeQuadColor(slot, HOT_RGB.r / 255, HOT_RGB.g / 255, HOT_RGB.b / 255, 1);
+
+    this.posAttr.needsUpdate = true;
+    this.colAttr.needsUpdate = true;
+    this.geometry.setDrawRange(0, this.marks.length * 6);
+
+    state.lastEndX = endX;
+    state.lastEndY = endY;
+    state.lastDirX = dirX;
+    state.lastDirY = dirZ;
+    state.prevMark = mark;
+  }
+
+  // ── Buffer writers ──
+  // Quad vertex order: 0=startL, 1=startR, 2=endR, 3=endL (matches the
+  // index buffer: tris [0,1,2] and [0,2,3] form a CCW quad).
+
+  private writeQuad(
+    slot: number,
+    sLx: number, sLz: number,
+    sRx: number, sRz: number,
+    eRx: number, eRz: number,
+    eLx: number, eLz: number,
+  ): void {
+    const p = this.positions;
+    const b = slot * 12;
+    p[b     ] = sLx; p[b +  1] = MARK_Y; p[b +  2] = sLz;
+    p[b +  3] = sRx; p[b +  4] = MARK_Y; p[b +  5] = sRz;
+    p[b +  6] = eRx; p[b +  7] = MARK_Y; p[b +  8] = eRz;
+    p[b +  9] = eLx; p[b + 10] = MARK_Y; p[b + 11] = eLz;
+  }
+
+  /** Rewrite just the end-side two vertices of a quad. Used when a new
+   *  mark joins this one — the shared edge becomes the bisector. */
+  private writeQuadEnd(
+    slot: number,
+    eRx: number, eRz: number,
+    eLx: number, eLz: number,
+  ): void {
+    const p = this.positions;
+    const b = slot * 12;
+    p[b +  6] = eRx; p[b +  7] = MARK_Y; p[b +  8] = eRz;
+    p[b +  9] = eLx; p[b + 10] = MARK_Y; p[b + 11] = eLz;
+    this.posAttr.needsUpdate = true;
+  }
+
+  private writeQuadColor(
+    slot: number, r: number, g: number, b: number, a: number,
+  ): void {
+    const c = this.colors;
+    const base = slot * 16;
+    for (let i = 0; i < 4; i++) {
+      const o = base + i * 4;
+      c[o] = r; c[o + 1] = g; c[o + 2] = b; c[o + 3] = a;
     }
   }
 
-  /**
-   * Drop every live mark and release hit-glow meshes back to their pools. Run
-   * when the toggle flips off so the scene is visually empty on the next
-   * frame; re-enabling starts a fresh trace.
-   */
-  private clearAll(): void {
-    for (const m of this.marks) {
-      m.mesh.visible = false;
-      this.markPool.push({ mesh: m.mesh, material: m.material });
+  /** Remove the mark at slot index `i`. Swap the last active mark into
+   *  slot `i` (copying its buffer data) and pop — O(1). */
+  private removeMarkAt(i: number): void {
+    const last = this.marks.length - 1;
+    this.marks[i].removed = true;
+    if (i !== last) {
+      const moved = this.marks[last];
+      // Copy position + color data from `last` into `i`.
+      const posBase = this.positions;
+      const colBase = this.colors;
+      const pSrc = last * 12;
+      const pDst = i * 12;
+      for (let k = 0; k < 12; k++) posBase[pDst + k] = posBase[pSrc + k];
+      const cSrc = last * 16;
+      const cDst = i * 16;
+      for (let k = 0; k < 16; k++) colBase[cDst + k] = colBase[cSrc + k];
+      moved.slot = i;
+      this.marks[i] = moved;
+      this.posAttr.needsUpdate = true;
+      this.colAttr.needsUpdate = true;
     }
+    this.marks.pop();
+    this.geometry.setDrawRange(0, this.marks.length * 6);
+  }
+
+  /** Drop every mark + glow — used by the MARKS: BURN toggle. */
+  private clearAll(): void {
+    for (const m of this.marks) m.removed = true;
     this.marks.length = 0;
+    this.geometry.setDrawRange(0, 0);
     for (const state of this.beams.values()) {
       if (state.glow) {
         state.glow.visible = false;
@@ -294,24 +465,16 @@ export class BurnMark3D {
   }
 
   destroy(): void {
-    for (const m of this.marks) {
-      m.material.dispose();
-      this.root.remove(m.mesh);
-    }
-    for (const { mesh, material } of this.markPool) {
-      material.dispose();
-      this.root.remove(mesh);
-    }
     for (const glow of this.glowPool) this.root.remove(glow);
     for (const state of this.beams.values()) {
       if (state.glow) this.root.remove(state.glow);
     }
     this.marks.length = 0;
-    this.markPool.length = 0;
     this.glowPool.length = 0;
     this.beams.clear();
-    this.planeGeom.dispose();
+    this.geometry.dispose();
     this.glowGeom.dispose();
+    this.mat.dispose();
     this.glowMat.dispose();
     this.root.parent?.remove(this.root);
   }

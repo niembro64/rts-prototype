@@ -86,16 +86,38 @@ export type BeamRandomOffsets = {
   pulseSpeed: number;
 };
 
-// Scorched earth burn mark
+/**
+ * Scorched-earth burn mark — stored as a quad (4 vertices in CCW order).
+ *
+ *   x0,y0 ── x3,y3    (end side: x2,y2 — x3,y3)
+ *     │        │
+ *   x1,y1 ── x2,y2    (start side: x0,y0 — x1,y1; left—right)
+ *
+ * A free (non-joined) endpoint uses a square cap (perpendicular to segment
+ * direction). When a subsequent mark appends to the same beam, both the
+ * previous mark's end vertices AND the new mark's start vertices are set
+ * to the bisector of the two segments, so adjacent quads share an edge
+ * and produce no overlap or gap along the trail.
+ */
 export type BurnMark = {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
+  // Start-side vertices (left + right of segment start).
+  x0: number; y0: number;
+  x1: number; y1: number;
+  // End-side vertices (right + left of segment end).
+  x2: number; y2: number;
+  x3: number; y3: number;
+  // Segment direction (unit vector) — stored so a subsequent mark can
+  // compute the bisector without re-deriving from vertex positions.
+  dirX: number;
+  dirY: number;
+  // Beam width used at creation (for reference; vertices already encode it).
   width: number;
   age: number;
   color: number;
   alpha: number;
+  /** Set to true when the mark is culled so any per-beam state still
+   *  holding a reference knows not to reach back into a dead quad. */
+  removed: boolean;
 };
 
 // Death debris fragment
