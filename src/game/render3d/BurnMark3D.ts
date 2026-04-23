@@ -16,8 +16,8 @@
 // config so this stays in lockstep with the 2D BurnMarkSystem.
 
 import * as THREE from 'three';
-import type { Entity, PlayerId } from '../sim/types';
-import { isLineShot, PLAYER_COLORS } from '../sim/types';
+import type { Entity } from '../sim/types';
+import { isLineShot } from '../sim/types';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
 import {
   BURN_COLOR_HOT,
@@ -81,13 +81,9 @@ type BeamState = {
   prevMark: Mark | null;
   /** Static white hit-core sphere at the beam terminus. */
   glow?: THREE.Mesh;
-  /** MAX-only team-colored orbital sparks around the hit point. Active
-   *  only when gfx.beamGlow is true; recycled to the pool otherwise. */
+  /** MAX-only white orbital sparks around the hit point. Active only
+   *  when gfx.beamGlow is true; recycled to the pool otherwise. */
   flareSparks?: THREE.Mesh[];
-  /** The PlayerId we last allocated flareSparks for. If the beam's owner
-   *  changes (shouldn't happen but be defensive), re-spawn with the
-   *  correct material. */
-  flareSparksPid?: PlayerId;
 };
 
 type Mark = {
@@ -123,13 +119,13 @@ export class BurnMark3D {
   private glowMat: THREE.MeshBasicMaterial;
   private glowPool: THREE.Mesh[] = [];
 
-  // ── MAX-LOD orbital flare sparks (team-colored, rotate around hit) ──
+  // ── MAX-LOD orbital flare sparks (rotate around the hit point) ──
+  // All-white to match the "hit indicator is entirely white" rule —
+  // team identity comes from the shooter, not from the hit visual.
   // Small sphere; cheaper tessellation than the core glow since each
   // spark is much smaller on screen.
   private sparkGeom = new THREE.SphereGeometry(1, 8, 6);
-  // Per-team spark material cache — color is looked up once and held
-  // shared across all of that player's beams.
-  private sparkMats = new Map<number, THREE.MeshBasicMaterial>();
+  private sparkMat: THREE.MeshBasicMaterial;
   // Flat pool of spark meshes. Pulled from on allocate, pushed back on
   // beam retire / MAX disable.
   private sparkPool: THREE.Mesh[] = [];
@@ -206,15 +202,17 @@ export class BurnMark3D {
       opacity: 0.75,
       depthWrite: false,
     });
+    // Orbital sparks are the same pure white as the core — the whole
+    // hit indicator stays team-agnostic.
+    this.sparkMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false,
+    });
   }
 
   update(projectiles: readonly Entity[], dtMs: number): void {
-    // Master toggle — wipe state if the user turned burn marks off.
-    if (!getBurnMarks()) {
-      if (this.marks.length > 0 || this.beams.size > 0) this.clearAll();
-      return;
-    }
-
     this._time += dtMs;
 
     // Snapshot the graphics config once per frame — the hot path below
@@ -222,10 +220,25 @@ export class BurnMark3D {
     // re-querying it per beam would multiply the config lookup cost.
     const gfx = getGraphicsConfig();
 
+    // The MARKS: BURN toggle gates *only* the scorched-earth trail, not
+    // the live beam hit indicators or the MAX-flare sparks — those are a
+    // separate "this is where the beam is hitting" visual that should
+    // always show for active beams. When the toggle is off we wipe any
+    // existing trail geometry and skip sampling, but keep the per-beam
+    // update below (glow + sparks) running.
+    const marksEnabled = getBurnMarks();
+    if (!marksEnabled && this.marks.length > 0) {
+      this.clearMarksOnly();
+    }
+
     // Sample at every (framesSkip + 1)th frame.
     const framesSkip = gfx.burnMarkFramesSkip ?? 0;
-    const sampleNow = this._frameCounter === 0;
-    this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
+    const sampleNow = marksEnabled && this._frameCounter === 0;
+    if (marksEnabled) {
+      this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
+    } else {
+      this._frameCounter = 0;
+    }
 
     this._seenBeamKeys.clear();
     for (const e of projectiles) {
@@ -285,8 +298,7 @@ export class BurnMark3D {
       // sparks. Rotates slowly so the hit reads as "active" without any
       // pulse on the core itself.
       if (gfx.beamGlow) {
-        const pid = proj.ownerId;
-        this.ensureFlareSparks(state, pid);
+        this.ensureFlareSparks(state);
         const baseAngle = this._time * 0.003;
         const orbit = coreR * 1.8;
         const sparkR = Math.max(beamWidth * 0.8, 1.5);
@@ -319,7 +331,8 @@ export class BurnMark3D {
       }
     }
 
-    // ── Age + prune marks ──
+    // ── Age + prune marks — skipped entirely when the trail is disabled. ──
+    if (!marksEnabled) return;
     const cutoff = gfx.burnMarkAlphaCutoff;
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const mark = this.marks[i];
@@ -517,31 +530,25 @@ export class BurnMark3D {
     this.geometry.setDrawRange(0, this.marks.length * 6);
   }
 
-  /** Lazily create the FLARE_SPARK_COUNT orbital sparks for a beam, pulling
-   *  from the flat pool when available. Spark material is keyed on the
-   *  beam's owner so all of a team's beams share one material instance. */
-  private ensureFlareSparks(state: BeamState, pid: PlayerId | undefined): void {
-    if (state.flareSparks && state.flareSparksPid === pid) return;
-    // Owner changed (shouldn't normally happen) — recycle and start over.
-    if (state.flareSparks) this.releaseFlareSparks(state);
-    const mat = this.getSparkMat(pid);
+  /** Lazily create the FLARE_SPARK_COUNT orbital sparks for a beam,
+   *  pulling from the flat pool when available. All sparks share the
+   *  single white `sparkMat` — the hit indicator is intentionally team-
+   *  agnostic (like the 2D ProjectileRenderer's white hit-core). */
+  private ensureFlareSparks(state: BeamState): void {
+    if (state.flareSparks) return;
     const sparks: THREE.Mesh[] = [];
     for (let i = 0; i < this.FLARE_SPARK_COUNT; i++) {
       let mesh = this.sparkPool.pop();
       if (!mesh) {
-        mesh = new THREE.Mesh(this.sparkGeom, mat);
+        mesh = new THREE.Mesh(this.sparkGeom, this.sparkMat);
         mesh.renderOrder = 11;
         this.root.add(mesh);
       } else {
-        // Pooled mesh might have been used by a different team last
-        // round — swap to the current team's material.
-        mesh.material = mat;
         mesh.visible = true;
       }
       sparks.push(mesh);
     }
     state.flareSparks = sparks;
-    state.flareSparksPid = pid;
   }
 
   /** Release this beam's sparks back to the shared pool. */
@@ -552,44 +559,18 @@ export class BurnMark3D {
       this.sparkPool.push(s);
     }
     state.flareSparks = undefined;
-    state.flareSparksPid = undefined;
   }
 
-  /** Shared per-team spark material (MeshBasicMaterial, team primary,
-   *  low opacity). Created lazily on first use. */
-  private getSparkMat(pid: PlayerId | undefined): THREE.MeshBasicMaterial {
-    const k = pid ?? -1;
-    let mat = this.sparkMats.get(k);
-    if (!mat) {
-      const color =
-        pid !== undefined
-          ? PLAYER_COLORS[pid]?.primary ?? 0xffffff
-          : 0xffffff;
-      mat = new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.7,
-        depthWrite: false,
-      });
-      this.sparkMats.set(k, mat);
-    }
-    return mat;
-  }
-
-  /** Drop every mark + glow + spark — used by the MARKS: BURN toggle. */
-  private clearAll(): void {
+  /** Wipe only the scorched-trail geometry — leaves beam state, glows,
+   *  and orbital sparks alive so the user can keep seeing the hit
+   *  indicator while the toggle is off. */
+  private clearMarksOnly(): void {
     for (const m of this.marks) m.removed = true;
     this.marks.length = 0;
     this.geometry.setDrawRange(0, 0);
-    for (const state of this.beams.values()) {
-      if (state.glow) {
-        state.glow.visible = false;
-        this.glowPool.push(state.glow);
-      }
-      if (state.flareSparks) this.releaseFlareSparks(state);
-    }
-    this.beams.clear();
-    this._seenBeamKeys.clear();
+    // Per-beam mark chain pointer is no longer valid; null it so the
+    // next sample starts a fresh square cap if the toggle flips back on.
+    for (const state of this.beams.values()) state.prevMark = null;
   }
 
   destroy(): void {
@@ -608,8 +589,7 @@ export class BurnMark3D {
     this.sparkGeom.dispose();
     this.mat.dispose();
     this.glowMat.dispose();
-    for (const m of this.sparkMats.values()) m.dispose();
-    this.sparkMats.clear();
+    this.sparkMat.dispose();
     this.root.parent?.remove(this.root);
   }
 }

@@ -41,6 +41,7 @@ import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
+import { PLAYER_COLORS } from '../sim/types';
 import type {
   Entity,
   EntityId,
@@ -594,32 +595,68 @@ export class RtsScene3D {
       // momentum (the projectile stopped).
       this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 8);
     } else if (event.type === 'death') {
-      const ctx = event.deathContext;
-      if (ctx) {
-        // Scale the hit-direction push by the damaging attack's magnitude so
-        // a glancing railgun hit kicks debris further than a DoT tick. Clamp
-        // to prevent absurd throws at very-high-damage edge cases.
-        const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
-        const mx =
-          ctx.hitDir.x * attackPush +
-          ctx.projectileVel.x * 0.3 +
-          ctx.unitVel.x * 0.5;
-        const mz =
-          ctx.hitDir.y * attackPush +
-          ctx.projectileVel.y * 0.3 +
-          ctx.unitVel.y * 0.5;
-        this.explosionRenderer.spawnDeath(
-          event.pos.x, event.pos.y,
-          Math.max(ctx.radius, 6),
-          mx, mz,
-        );
-        // Material debris — chassis edges, turret head, barrels, treads,
-        // legs, etc., scattered per the unit's blueprint. Debris3D uses its
-        // own internal hit-bias from ctx.hitDir, so no extra momentum arg.
-        this.debrisRenderer.spawn(event.pos.x, event.pos.y, ctx);
-      } else {
-        this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 20);
+      // Some kill paths (splash, bleed-out, force-field zone damage) emit
+      // a death event with no deathContext. Rather than skipping the
+      // material explosion entirely, try to reconstruct a minimal context
+      // from the entity if it's still in view state; otherwise synthesize
+      // a generic fallback so debris still fires.
+      let ctx = event.deathContext;
+      if (!ctx && event.entityId !== undefined) {
+        const ent = this.clientViewState.getEntity(event.entityId);
+        if (ent) {
+          const pid = ent.ownership?.playerId;
+          const tcol =
+            pid !== undefined
+              ? PLAYER_COLORS[pid]?.primary ?? 0xcccccc
+              : 0xcccccc;
+          ctx = {
+            unitVel: {
+              x: ent.unit?.velocityX ?? 0,
+              y: ent.unit?.velocityY ?? 0,
+            },
+            hitDir: { x: 0, y: 0 },
+            projectileVel: { x: 0, y: 0 },
+            attackMagnitude: 25,
+            radius: ent.unit?.unitRadiusCollider.shot ?? 15,
+            color: tcol,
+            unitType: ent.unit?.unitType,
+            rotation: ent.transform.rotation,
+          };
+        }
       }
+      if (!ctx) {
+        // Entity already gone and no server-supplied context — synthesize a
+        // bare-minimum neutral context so Debris3D's generic-chunks fallback
+        // still produces *something* visible. Worse than a real debris
+        // burst but better than silence.
+        ctx = {
+          unitVel: { x: 0, y: 0 },
+          hitDir: { x: 0, y: 0 },
+          projectileVel: { x: 0, y: 0 },
+          attackMagnitude: 25,
+          radius: 15,
+          color: 0xcccccc,
+        };
+      }
+
+      // Scale the hit-direction push by the damaging attack's magnitude so
+      // a glancing railgun hit kicks debris further than a DoT tick. Clamp
+      // to prevent absurd throws at very-high-damage edge cases.
+      const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
+      const mx =
+        ctx.hitDir.x * attackPush +
+        ctx.projectileVel.x * 0.3 +
+        ctx.unitVel.x * 0.5;
+      const mz =
+        ctx.hitDir.y * attackPush +
+        ctx.projectileVel.y * 0.3 +
+        ctx.unitVel.y * 0.5;
+      this.explosionRenderer.spawnDeath(
+        event.pos.x, event.pos.y,
+        Math.max(ctx.radius, 6),
+        mx, mz,
+      );
+      this.debrisRenderer.spawn(event.pos.x, event.pos.y, ctx);
     }
   }
 
