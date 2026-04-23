@@ -15,6 +15,7 @@ import {
 import type { EconomyInfo, MinimapData } from './helpers';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
+import { LongtaskTracker } from './helpers/LongtaskTracker';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
@@ -124,6 +125,7 @@ export class RtsScene3D {
   private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
   private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
   private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
+  private longtaskTracker = new LongtaskTracker();
 
   // UI update throttling (mirror RtsScene)
   private selectionDirty = true;
@@ -508,6 +510,7 @@ export class RtsScene3D {
     this.frameMsTracker.update(frameMs);
     this.renderMsTracker.update(renderMs);
     this.logicMsTracker.update(logicMs);
+    this.longtaskTracker.tick();
   }
 
   private centerCameraOnCommander(): void {
@@ -688,19 +691,16 @@ export class RtsScene3D {
     frameMsAvg: number; frameMsHi: number;
     renderMsAvg: number; renderMsHi: number;
     logicMsAvg: number; logicMsHi: number;
-    cpuPctAvg: number; cpuPctHi: number;
-    gpuPctAvg: number; gpuPctHi: number;
-    budgetMs: number;
+    /** Actual GPU execution time (ms) from EXT_disjoint_timer_query_webgl2,
+     *  or 0 when the extension isn't available (Safari). Callers should
+     *  check `gpuTimerSupported` and fall back to renderMs if false. */
+    gpuTimerMs: number;
+    gpuTimerSupported: boolean;
+    /** Longtask signal — blocked ms per second of wall-clock time. */
+    longtaskMsPerSec: number;
+    longtaskCountPerSec: number;
+    longtaskSupported: boolean;
   } {
-    // Self-calibrating budget: use the best frame time we've ever actually
-    // hit (via frameMsTracker.getLo()) as "100% of available headroom."
-    // Since requestAnimationFrame is vsync-locked, this converges to the
-    // monitor's effective refresh rate — ~16.67 ms on 60 Hz, ~6.94 ms on
-    // 144 Hz — without hardcoding. Clamp to ≥4 ms so a single early-fire
-    // rAF outlier can't set an unreachable baseline. CPU = logicMs
-    // (sim/update/HUD); GPU = renderMs (renderer.render() time, mostly
-    // draw-call submission but correlates with actual GPU cost).
-    const budget = Math.max(4, this.frameMsTracker.getLo());
     return {
       frameMsAvg: this.frameMsTracker.getAvg(),
       frameMsHi: this.frameMsTracker.getHi(),
@@ -708,11 +708,11 @@ export class RtsScene3D {
       renderMsHi: this.renderMsTracker.getHi(),
       logicMsAvg: this.logicMsTracker.getAvg(),
       logicMsHi: this.logicMsTracker.getHi(),
-      cpuPctAvg: (this.logicMsTracker.getAvg() / budget) * 100,
-      cpuPctHi:  (this.logicMsTracker.getHi()  / budget) * 100,
-      gpuPctAvg: (this.renderMsTracker.getAvg() / budget) * 100,
-      gpuPctHi:  (this.renderMsTracker.getHi()  / budget) * 100,
-      budgetMs: budget,
+      gpuTimerMs: this.threeApp.gpuTimer.getGpuMs(),
+      gpuTimerSupported: this.threeApp.gpuTimer.isSupported(),
+      longtaskMsPerSec: this.longtaskTracker.getBlockedMsPerSec(),
+      longtaskCountPerSec: this.longtaskTracker.getCountPerSec(),
+      longtaskSupported: this.longtaskTracker.isSupported(),
     };
   }
 
@@ -750,6 +750,7 @@ export class RtsScene3D {
     this.debrisRenderer?.destroy();
     this.burnMarkRenderer?.destroy();
     this.lineDragRenderer?.destroy();
+    this.longtaskTracker.destroy();
     this.audioScheduler.clear();
     this.gameConnection?.disconnect();
     this.snapshotBuffer.clear();

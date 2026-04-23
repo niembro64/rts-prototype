@@ -225,16 +225,15 @@ const renderMsAvg = ref(0);
 const renderMsHi = ref(0);
 const logicMsAvg = ref(0);
 const logicMsHi = ref(0);
-// Client CPU% / GPU% derived from logicMs / renderMs against a
-// self-calibrating frame budget = best frame time the client has ever
-// actually hit (auto-adapts to 60 Hz vs 144 Hz etc via
-// frameMsTracker.getLo()). Shown alongside the raw ms so the bar
-// communicates "we're at 80% of the headroom this machine can deliver."
-const clientCpuPctAvg = ref(0);
-const clientCpuPctHi = ref(0);
-const clientGpuPctAvg = ref(0);
-const clientGpuPctHi = ref(0);
-const clientBudgetMs = ref(1000 / 60);
+// Real-GPU-time from EXT_disjoint_timer_query_webgl2 (nanoseconds → ms).
+// Supported on Chrome/Edge/recent Firefox; not Safari. When unsupported,
+// `gpuTimerSupported` is false and the UI falls back to renderMs.
+const gpuTimerMs = ref(0);
+const gpuTimerSupported = ref(false);
+// Longtask API signal — blocked ms / sec of wall-clock time. 100+ = the
+// main thread lost ≥10% of real time to single ≥50 ms tasks.
+const longtaskMsPerSec = ref(0);
+const longtaskSupported = ref(false);
 
 // FPS, snapshot rate, and zoom tracking (EMA-based, polled from scene)
 const actualAvgFPS = ref(0);
@@ -447,6 +446,16 @@ const displayServerCpuAvg = computed(
 );
 const displayServerCpuHi = computed(
   () => serverMetaFromSnapshot.value?.cpu?.hi ?? 0,
+);
+// GPU displayed time: prefer the real EXT_disjoint_timer_query_webgl2
+// result (true GPU-side execution time); fall back to renderMs, which is
+// the CPU wall-clock of renderer.render() — mostly draw-call submission,
+// but correlates with GPU cost.
+const displayGpuMs = computed(() =>
+  gpuTimerSupported.value ? gpuTimerMs.value : renderMsAvg.value,
+);
+const gpuSourceLabel = computed(() =>
+  gpuTimerSupported.value ? 'GPU time query' : 'renderer.render() wall-clock',
 );
 const displayTickRate = computed(
   () =>
@@ -910,11 +919,10 @@ function updateFPSStats(): void {
     renderMsHi.value = timing.renderMsHi;
     logicMsAvg.value = timing.logicMsAvg;
     logicMsHi.value = timing.logicMsHi;
-    clientCpuPctAvg.value = timing.cpuPctAvg;
-    clientCpuPctHi.value = timing.cpuPctHi;
-    clientGpuPctAvg.value = timing.gpuPctAvg;
-    clientGpuPctHi.value = timing.gpuPctHi;
-    clientBudgetMs.value = timing.budgetMs;
+    gpuTimerMs.value = timing.gpuTimerMs;
+    gpuTimerSupported.value = timing.gpuTimerSupported;
+    longtaskMsPerSec.value = timing.longtaskMsPerSec;
+    longtaskSupported.value = timing.longtaskSupported;
 
     const frameStats = scene.getFrameStats();
     actualAvgFPS.value = frameStats.avgFps;
@@ -1674,41 +1682,35 @@ onUnmounted(() => {
           </div>
           <BarDivider />
           <!--
-            Bottleneck-first layout: CPU and GPU percentages are the at-a-
-            glance readouts. Each is logicMs / renderMs expressed as a
-            fraction of the 16.67 ms 60 FPS budget. FRAME ms follows as the
-            total-budget sanity check. Tooltips carry the raw ms values so
-            the absolute numbers are still discoverable.
+            Bottleneck-first ordering: CPU (sim/update work) then GPU (real
+            execution time if the EXT_disjoint_timer_query_webgl2 extension
+            is available, otherwise renderer.render() wall-clock), then
+            FRAME (total), then LONG (main-thread blocks ≥50 ms from the
+            Longtask API). Raw ms throughout — no arbitrary 100%.
           -->
           <div class="control-group">
             <span
               class="control-label"
-              :title="`Client CPU load — simulation prediction, input, HUD updates. 100% = ${fmt4(clientBudgetMs)} ms (best observed frame, self-calibrated to your monitor's effective refresh rate). Raw logicMs: ${fmt4(logicMsAvg)} avg / ${fmt4(logicMsHi)} hi.`"
+              title="Client CPU — simulation prediction, input, HUD updates. Raw logicMs avg/hi in milliseconds per frame."
               >CPU:</span
             >
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(clientCpuPctAvg) }}%</span>
+                  <span class="fps-value">{{ fmt4(logicMsAvg) }}</span>
                   <span class="fps-label">avg</span>
                 </div>
                 <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="msBarStyle(clientCpuPctAvg, 100)"
-                  ></div>
+                  <div class="stat-bar-fill" :style="msBarStyle(logicMsAvg)"></div>
                 </div>
               </div>
               <div class="stat-bar">
                 <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(clientCpuPctHi) }}%</span>
+                  <span class="fps-value">{{ fmt4(logicMsHi) }}</span>
                   <span class="fps-label">hi</span>
                 </div>
                 <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="msBarStyle(clientCpuPctHi, 100)"
-                  ></div>
+                  <div class="stat-bar-fill" :style="msBarStyle(logicMsHi)"></div>
                 </div>
               </div>
             </div>
@@ -1716,32 +1718,28 @@ onUnmounted(() => {
           <div class="control-group">
             <span
               class="control-label"
-              :title="`Client GPU load — time inside renderer.render(), mostly draw-call submission (correlates with actual GPU cost). 100% = ${fmt4(clientBudgetMs)} ms (best observed frame). Raw renderMs: ${fmt4(renderMsAvg)} avg / ${fmt4(renderMsHi)} hi.`"
+              :title="`Client GPU — source: ${gpuSourceLabel}. Raw renderMs avg/hi ${fmt4(renderMsAvg)} / ${fmt4(renderMsHi)} ms. Timer-query (when supported) shows the actual GPU-side execution time in milliseconds; otherwise shows renderer.render() wall-clock which is mostly CPU draw-call submission.`"
               >GPU:</span
             >
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(clientGpuPctAvg) }}%</span>
-                  <span class="fps-label">avg</span>
+                  <span class="fps-value">{{ fmt4(displayGpuMs) }}</span>
+                  <span class="fps-label">
+                    {{ gpuTimerSupported ? 'hw' : 'cpu' }}
+                  </span>
                 </div>
                 <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="msBarStyle(clientGpuPctAvg, 100)"
-                  ></div>
+                  <div class="stat-bar-fill" :style="msBarStyle(displayGpuMs)"></div>
                 </div>
               </div>
               <div class="stat-bar">
                 <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(clientGpuPctHi) }}%</span>
+                  <span class="fps-value">{{ fmt4(renderMsHi) }}</span>
                   <span class="fps-label">hi</span>
                 </div>
                 <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="msBarStyle(clientGpuPctHi, 100)"
-                  ></div>
+                  <div class="stat-bar-fill" :style="msBarStyle(renderMsHi)"></div>
                 </div>
               </div>
             </div>
@@ -1749,7 +1747,7 @@ onUnmounted(() => {
           <div class="control-group">
             <span
               class="control-label"
-              title="Total frame time (ms) — CPU + GPU wall-clock per frame"
+              title="Total frame time — CPU + GPU wall-clock per frame (ms)"
               >FRAME:</span
             >
             <div class="stat-bar-group">
@@ -1769,6 +1767,35 @@ onUnmounted(() => {
                 </div>
                 <div class="stat-bar-track">
                   <div class="stat-bar-fill" :style="msBarStyle(frameMsHi)"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-if="longtaskSupported" class="control-group">
+            <!--
+              Longtask API: any single main-thread task ≥50 ms counts. This
+              shows how many ms per second of wall-clock time were "lost"
+              to those long tasks — a direct CPU-saturation indicator that
+              complements CPU ms (which can't distinguish sustained heavy
+              work from a single giant stall). Scaled to 200 ms/sec = red
+              (20% of wall-clock blocked).
+            -->
+            <span
+              class="control-label"
+              title="Long-task blocked time from PerformanceObserver — ms per second of wall-clock time lost to main-thread tasks ≥50 ms. 0 = smooth; 200+ = heavy main-thread contention. Not available in Safari."
+              >LONG:</span
+            >
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(longtaskMsPerSec) }}</span>
+                  <span class="fps-label">ms/s</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="msBarStyle(longtaskMsPerSec, 200)"
+                  ></div>
                 </div>
               </div>
             </div>

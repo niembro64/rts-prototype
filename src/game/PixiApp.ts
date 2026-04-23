@@ -3,6 +3,7 @@
 
 import { Application, Container } from 'pixi.js';
 import { Camera } from './Camera';
+import { GpuTimerQuery } from './scenes/helpers/GpuTimerQuery';
 
 export class PixiApp {
   public app: Application;
@@ -11,6 +12,9 @@ export class PixiApp {
   public world: Container;
   /** HUD container — fixed to screen (not affected by camera). */
   public hud: Container;
+  /** Real GPU execution time per frame. No-ops on browsers without the
+   *  EXT_disjoint_timer_query_webgl2 extension (Safari). */
+  public gpuTimer: GpuTimerQuery;
 
   private _updateCallback: ((time: number, delta: number) => void) | null = null;
   private _lastTime = 0;
@@ -28,6 +32,12 @@ export class PixiApp {
     });
 
     parent.appendChild(this.app.view as HTMLCanvasElement);
+
+    // Pull the WebGL2 context from Pixi's renderer. `.gl` is defined on the
+    // WebGL renderer variant; if Pixi ever falls back to Canvas2D or WebGPU
+    // it'll be undefined and GpuTimerQuery will correctly no-op.
+    const gl = (this.app.renderer as unknown as { gl?: WebGL2RenderingContext }).gl;
+    this.gpuTimer = new GpuTimerQuery(gl);
 
     this.camera = new Camera(width, height);
     this.camera.setBackgroundColor(backgroundColor);
@@ -97,13 +107,18 @@ export class PixiApp {
       this._updateCallback(now, delta);
     }
 
-    // Render
+    // Render — wrap with GPU timer so renderer-only work is measured
+    // separately from the update callback's CPU-side cost.
+    this.gpuTimer.begin();
     this.app.renderer.render(this.app.stage);
+    this.gpuTimer.end();
+    this.gpuTimer.poll();
   };
 
   /** Destroy the application and clean up. */
   destroy(): void {
     this.stop();
+    this.gpuTimer.destroy();
     this.app.destroy(true, { children: true });
   }
 }

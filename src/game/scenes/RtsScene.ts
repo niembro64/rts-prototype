@@ -56,6 +56,7 @@ import type { EconomyInfo, MinimapData } from './helpers';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
+import { LongtaskTracker } from './helpers/LongtaskTracker';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBarOverlay } from '../hud/HealthBarOverlay';
@@ -111,6 +112,7 @@ export class RtsScene extends SceneShim {
   private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
   private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
   private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
+  private longtaskTracker = new LongtaskTracker();
 
   // Snapshot buffering and audio scheduling
   private snapshotBuffer = new SnapshotBuffer();
@@ -811,6 +813,7 @@ export class RtsScene extends SceneShim {
     this.frameMsTracker.update(frameMs);
     this.renderMsTracker.update(renderMs);
     this.logicMsTracker.update(logicMs);
+    this.longtaskTracker.tick();
   }
 
   // Process commands from local command queue
@@ -850,16 +853,12 @@ export class RtsScene extends SceneShim {
     frameMsAvg: number; frameMsHi: number;
     renderMsAvg: number; renderMsHi: number;
     logicMsAvg: number; logicMsHi: number;
-    cpuPctAvg: number; cpuPctHi: number;
-    gpuPctAvg: number; gpuPctHi: number;
-    budgetMs: number;
+    gpuTimerMs: number;
+    gpuTimerSupported: boolean;
+    longtaskMsPerSec: number;
+    longtaskCountPerSec: number;
+    longtaskSupported: boolean;
   } {
-    // Self-calibrating budget: use the best frame time we've ever actually
-    // hit (frameMsTracker.getLo()) as "100%." Because requestAnimationFrame
-    // is vsync-locked, this converges to the monitor's effective refresh
-    // rate on any display — no hardcoded 60 Hz assumption. The ≥4 ms floor
-    // prevents a lone outlier rAF from setting an unreachable baseline.
-    const budget = Math.max(4, this.frameMsTracker.getLo());
     return {
       frameMsAvg: this.frameMsTracker.getAvg(),
       frameMsHi: this.frameMsTracker.getHi(),
@@ -867,11 +866,11 @@ export class RtsScene extends SceneShim {
       renderMsHi: this.renderMsTracker.getHi(),
       logicMsAvg: this.logicMsTracker.getAvg(),
       logicMsHi: this.logicMsTracker.getHi(),
-      cpuPctAvg: (this.logicMsTracker.getAvg() / budget) * 100,
-      cpuPctHi:  (this.logicMsTracker.getHi()  / budget) * 100,
-      gpuPctAvg: (this.renderMsTracker.getAvg() / budget) * 100,
-      gpuPctHi:  (this.renderMsTracker.getHi()  / budget) * 100,
-      budgetMs: budget,
+      gpuTimerMs: this.pixiApp.gpuTimer.getGpuMs(),
+      gpuTimerSupported: this.pixiApp.gpuTimer.isSupported(),
+      longtaskMsPerSec: this.longtaskTracker.getBlockedMsPerSec(),
+      longtaskCountPerSec: this.longtaskTracker.getCountPerSec(),
+      longtaskSupported: this.longtaskTracker.isSupported(),
     };
   }
 
@@ -913,6 +912,7 @@ export class RtsScene extends SceneShim {
     this.waypointOverlay = null;
     this.selectionLabelOverlay?.destroy();
     this.selectionLabelOverlay = null;
+    this.longtaskTracker.destroy();
     this.gameConnection?.disconnect();
 
     // Clear snapshot buffer and audio scheduler

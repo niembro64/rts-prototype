@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { OrbitCamera } from './OrbitCamera';
+import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import {
   CAMERA_PAN_MULTIPLIER,
   ZOOM_FACTOR,
@@ -20,6 +21,11 @@ export class ThreeApp {
   public orbit: OrbitCamera;
   /** Container holding all game entities (units, buildings, projectiles). */
   public world: THREE.Group;
+  /** Real GPU execution time per frame via EXT_disjoint_timer_query_webgl2.
+   *  Results are async (available 2-3 frames after the render call). On
+   *  browsers without the extension (Safari), isSupported() returns false
+   *  and callers should fall back to CPU-side renderMs. */
+  public gpuTimer: GpuTimerQuery;
 
   private _updateCallback: ((time: number, delta: number) => void) | null = null;
   private _lastTime = 0;
@@ -117,6 +123,10 @@ export class ThreeApp {
     this.world = new THREE.Group();
     this.scene.add(this.world);
 
+    // Real-GPU-time telemetry. No-op on browsers without the extension
+    // (the GpuTimerQuery constructor probes and records isSupported()).
+    this.gpuTimer = new GpuTimerQuery(this.renderer.getContext());
+
     this._resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width: w, height: h } = entry.contentRect;
@@ -147,7 +157,15 @@ export class ThreeApp {
       const delta = now - this._lastTime;
       this._lastTime = now;
       if (this._updateCallback) this._updateCallback(now, delta);
+      // Wrap the render call so the GPU timer captures true draw-time
+      // (only the render; update-callback work is CPU-side).
+      this.gpuTimer.begin();
       this.renderer.render(this.scene, this.camera);
+      this.gpuTimer.end();
+      // Poll results from any queries that resolved during this frame —
+      // results arrive 2-3 frames after the begin/end pair, so `getGpuMs()`
+      // always reflects slightly stale data (acceptable for a UI readout).
+      this.gpuTimer.poll();
       this._rafId = requestAnimationFrame(tick);
     };
     this._rafId = requestAnimationFrame(tick);
@@ -162,6 +180,7 @@ export class ThreeApp {
     this.stop();
     this.orbit.destroy();
     this._resizeObserver.disconnect();
+    this.gpuTimer.destroy();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
