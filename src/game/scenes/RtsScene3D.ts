@@ -24,6 +24,7 @@ import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
 import { RenderScope3D } from '../render3d/RenderScope3D';
+import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
@@ -111,6 +112,7 @@ export class RtsScene3D {
   private renderScope = new RenderScope3D();
   private burnMarkRenderer!: BurnMark3D;
   private lineDragRenderer!: LineDrag3D;
+  private sprayRenderer!: SprayRenderer3D;
   private audioScheduler = new AudioEventScheduler();
   private lastEffectsTickMs = 0;
   private inputManager: Input3DManager | null = null;
@@ -329,6 +331,7 @@ export class RtsScene3D {
     this.debrisRenderer = new Debris3D(this.threeApp.world);
     this.burnMarkRenderer = new BurnMark3D(this.threeApp.world, this.renderScope);
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
+    this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;
@@ -499,6 +502,9 @@ export class RtsScene3D {
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
     this.burnMarkRenderer.update(projectiles, effectDt);
+    // Commander build / heal spray trails — read straight from sim state
+    // via ClientViewState, same list the 2D renderer consumes.
+    this.sprayRenderer.update(this.clientViewState.getSprayTargets(), effectDt);
     // Line-drag preview reads directly from the input manager's live state.
     if (this.inputManager) {
       this.lineDragRenderer.update(this.inputManager.getLineDragState());
@@ -892,6 +898,7 @@ export class RtsScene3D {
     this.debrisRenderer?.destroy();
     this.burnMarkRenderer?.destroy();
     this.lineDragRenderer?.destroy();
+    this.sprayRenderer?.destroy();
     this.longtaskTracker.destroy();
     this.audioScheduler.clear();
     if (!opts.keepConnection) {
