@@ -854,6 +854,21 @@ function toggleBurnMarks(): void {
   burnMarks.value = newValue;
 }
 
+/**
+ * Handler for the PLAYER CLIENT `VIEW: 2D / 3D` button group. Persists
+ * the chosen mode so a page refresh remembers it, then delegates to
+ * `switchRenderer()` which does the actual scene+renderer swap. No-op
+ * if the mode is unchanged (switchRenderer also guards this, but the
+ * early return here avoids the localStorage write churn).
+ */
+function changeRendererMode(mode: RendererMode): void {
+  if (mode === currentRendererMode.value) return;
+  try {
+    localStorage.setItem('rts-renderer-mode', mode);
+  } catch { /* */ }
+  switchRenderer(mode);
+}
+
 function changeDriftMode(mode: DriftMode): void {
   setDriftMode(mode);
   driftMode.value = mode;
@@ -1773,6 +1788,41 @@ onUnmounted(() => {
             title="Public IP address"
             >{{ localIpAddress }}</span
           >
+          <BarDivider />
+          <!--
+            Live 2D↔3D renderer toggle. Flipping this tears down the
+            current scene + renderer (Pixi for 2D, Three.js for 3D) and
+            rebuilds the other kind, reusing the existing GameConnection
+            + ClientViewState so entity state, selection, and prediction
+            don't skip a beat. Camera framing is captured and re-applied
+            across the swap. Choice persists to localStorage
+            (`rts-renderer-mode`) so a page refresh remembers it.
+          -->
+          <div class="control-group">
+            <span
+              class="control-label"
+              title="Live 2D / 3D view toggle — swaps the renderer without restarting the match."
+              >VIEW:</span
+            >
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{ active: currentRendererMode === '2d' }"
+                title="Switch to the Pixi 2D renderer"
+                @click="changeRendererMode('2d')"
+              >
+                2D
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: currentRendererMode === '3d' }"
+                title="Switch to the Three.js 3D renderer"
+                @click="changeRendererMode('3d')"
+              >
+                3D
+              </button>
+            </div>
+          </div>
           <BarDivider />
           <div class="control-group">
             <span class="control-label">GRID:</span>
