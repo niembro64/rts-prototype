@@ -20,6 +20,12 @@ export {
 } from './SelectionHelper';
 
 export {
+  type ScreenRect,
+  type ProjectToScreen,
+  selectEntitiesInScreenRect,
+} from './BoxSelection';
+
+export {
   type RepairEntitySource,
   findRepairTargetAt,
   findIncompleteBuildingAt,

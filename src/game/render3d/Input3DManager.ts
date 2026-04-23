@@ -26,6 +26,7 @@ import {
   calculateLinePathTargets,
   assignUnitsToTargets,
   getSnappedBuildPosition,
+  selectEntitiesInScreenRect,
 } from '../input/helpers';
 import {
   CLICK_DRAG_THRESHOLD_PX,
@@ -90,6 +91,9 @@ export class Input3DManager {
 
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  // Reusable scratch vector for projecting entities in selectEntitiesInScreenRect.
+  // One allocation for the lifetime of the manager keeps the hot loop alloc-free.
+  private _selectV = new THREE.Vector3();
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -435,43 +439,32 @@ export class Input3DManager {
     });
   }
 
+  /** Delegates to the shared box-select helper. The renderer-specific
+   *  bit is just the projector: take a world (x, y=10, z) point,
+   *  run it through THREE's Vector3.project to get NDC, then convert
+   *  NDC → viewport pixels. `behind` is set when NDC z ≥ 1 so the
+   *  shared helper skips entities behind the camera. */
   private selectEntitiesInScreenRect(
     a: { x: number; y: number },
     b: { x: number; y: number },
   ): EntityId[] {
     const rect = this.canvasRect();
-    const minX = Math.min(a.x, b.x);
-    const maxX = Math.max(a.x, b.x);
-    const minY = Math.min(a.y, b.y);
-    const maxY = Math.max(a.y, b.y);
-    const pid = this.context.activePlayerId;
-    const ids: EntityId[] = [];
     const cam = this.threeApp.camera;
-    const v = new THREE.Vector3();
-
-    const pushIfInRect = (x: number, y: number, z: number, id: EntityId) => {
-      v.set(x, y, z).project(cam);
-      // NDC → screen px (relative to viewport)
-      const sx = (v.x * 0.5 + 0.5) * rect.width + rect.left;
-      const sy = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
-      // Reject points behind the camera (z > 1 after project means behind)
-      if (v.z >= 1) return;
-      if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) ids.push(id);
-    };
-
-    // Prefer units; only fall through to buildings if no units hit (matches
-    // performSelection's precedence rule).
-    for (const u of this.entitySource.getUnits()) {
-      if (u.ownership?.playerId !== pid) continue;
-      pushIfInRect(u.transform.x, 10, u.transform.y, u.id);
-    }
-    if (ids.length > 0) return ids;
-
-    for (const b2 of this.entitySource.getBuildings()) {
-      if (b2.ownership?.playerId !== pid) continue;
-      pushIfInRect(b2.transform.x, 10, b2.transform.y, b2.id);
-    }
-    return ids;
+    const v = this._selectV; // reused scratch Vec3 (see field init)
+    return selectEntitiesInScreenRect(
+      this.entitySource,
+      {
+        minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x),
+        minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y),
+      },
+      this.context.activePlayerId,
+      (worldX, worldY, out) => {
+        v.set(worldX, 10, worldY).project(cam);
+        out.x = (v.x * 0.5 + 0.5) * rect.width + rect.left;
+        out.y = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
+        out.behind = v.z >= 1;
+      },
+    );
   }
 
   private handleRightMouseDown(e: MouseEvent): void {

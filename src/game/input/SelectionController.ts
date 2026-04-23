@@ -4,6 +4,7 @@ import type { Entity, EntityId, PlayerId, WaypointType } from '../sim/types';
 import {
   findClosestUnitToPoint,
   findClosestBuildingToPoint,
+  selectEntitiesInScreenRect,
 } from './helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from './constants';
 import type { InputEntitySource, InputContext } from './inputBindings';
@@ -121,33 +122,27 @@ export class SelectionController {
     this.commandQueue.enqueue(command);
   }
 
-  /** Screen-rect hit test. Units take precedence over buildings —
-   *  only if no units are hit do we fall through to buildings. */
+  /** Screen-rect hit test — delegates to the shared helper so the
+   *  2D and 3D paths apply identical precedence/iteration rules.
+   *  The only renderer-specific piece is the projector, which here
+   *  is the 2D camera's world→screen transform. */
   private pickEntitiesInScreenRect(
     minX: number, minY: number,
     maxX: number, maxY: number,
     pid: PlayerId,
   ): EntityId[] {
     const camera = this.scene.cameras.main;
-    const ids: EntityId[] = [];
-
-    for (const u of this.entitySource.getUnits()) {
-      if (u.ownership?.playerId !== pid) continue;
-      const s = camera.getScreenPoint(u.transform.x, u.transform.y);
-      if (s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY) {
-        ids.push(u.id);
-      }
-    }
-    if (ids.length > 0) return ids;
-
-    for (const b of this.entitySource.getBuildings()) {
-      if (b.ownership?.playerId !== pid) continue;
-      const s = camera.getScreenPoint(b.transform.x, b.transform.y);
-      if (s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY) {
-        ids.push(b.id);
-      }
-    }
-    return ids;
+    return selectEntitiesInScreenRect(
+      this.entitySource,
+      { minX, minY, maxX, maxY },
+      pid,
+      (worldX, worldY, out) => {
+        const s = camera.getScreenPoint(worldX, worldY);
+        out.x = s.x;
+        out.y = s.y;
+        // 2D has no perspective — every world point is in front.
+      },
+    );
   }
 
   private pickSingleEntityAt(
