@@ -849,7 +849,12 @@ export class RtsScene3D {
     };
   }
 
-  public shutdown(): void {
+  /**
+   * Tear down the scene. By default disconnects the GameConnection;
+   * passing `{ keepConnection: true }` skips the disconnect so a live
+   * renderer swap can reuse the same connection across the new scene.
+   */
+  public shutdown(opts: { keepConnection?: boolean } = {}): void {
     this.inputManager?.destroy();
     this.inputManager = null;
     this.threeApp.orbit.setOnPanState(undefined);
@@ -871,7 +876,9 @@ export class RtsScene3D {
     this.lineDragRenderer?.destroy();
     this.longtaskTracker.destroy();
     this.audioScheduler.clear();
-    this.gameConnection?.disconnect();
+    if (!opts.keepConnection) {
+      this.gameConnection?.disconnect();
+    }
     this.snapshotBuffer.clear();
     this.localCommandQueue.clear();
     this.onPlayerChange = undefined;

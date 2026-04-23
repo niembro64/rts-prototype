@@ -154,10 +154,20 @@ function createGame3D(
   };
 }
 
-export function destroyGame(instance: GameInstance): void {
+/**
+ * Destroy a game instance. `keepConnection` (default false) controls
+ * whether the scene's GameConnection.disconnect() is called; set it to
+ * true for a live renderer swap where the connection is shared with a
+ * replacement scene. The caller is responsible for ultimately
+ * disconnecting when the game actually ends.
+ */
+export function destroyGame(
+  instance: GameInstance,
+  opts: { keepConnection?: boolean } = {},
+): void {
   const scene = instance.getScene();
   if (scene) {
-    scene.shutdown();
+    scene.shutdown(opts);
   }
   instance.app.destroy();
 }

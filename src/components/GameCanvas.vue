@@ -1196,7 +1196,9 @@ function switchRenderer(newMode: RendererMode): void {
   if (!gameInstance && backgroundBattle && backgroundContainerRef.value) {
     const savedCam = backgroundBattle.gameInstance.getScene()?.captureCameraState();
     const rect = backgroundContainerRef.value.getBoundingClientRect();
-    destroyGame(backgroundBattle.gameInstance);
+    // keepConnection: the demo's LocalGameConnection outlives this swap
+    // and is reused by the replacement scene.
+    destroyGame(backgroundBattle.gameInstance, { keepConnection: true });
     backgroundBattle.gameInstance = createGame({
       parent: backgroundContainerRef.value,
       width: rect.width || window.innerWidth,
@@ -1247,8 +1249,12 @@ function switchRenderer(newMode: RendererMode): void {
   }
 
   // Tear down old scene + app; the connection and CVS are *not* owned
-  // by gameInstance so they survive.
-  destroyGame(gameInstance);
+  // by gameInstance so they survive. keepConnection is critical here:
+  // without it the scene's shutdown calls gameConnection.disconnect(),
+  // which clears networkManager.onStateReceived — remote clients then
+  // stop receiving snapshots permanently because we never build a new
+  // connection (we reuse the existing one for the new scene).
+  destroyGame(gameInstance, { keepConnection: true });
   gameInstance = null;
 
   currentRendererMode.value = newMode;

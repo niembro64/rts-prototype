@@ -917,7 +917,14 @@ export class RtsScene extends SceneShim {
   }
 
   // Clean shutdown
-  shutdown(): void {
+  /**
+   * Tear down the scene. By default disconnects the GameConnection;
+   * passing `{ keepConnection: true }` skips the disconnect so a live
+   * renderer swap can reuse the same connection across the new scene.
+   * The caller is then responsible for disconnecting when the game
+   * actually ends.
+   */
+  shutdown(opts: { keepConnection?: boolean } = {}): void {
     musicPlayer.stop();
     audioManager.stopAllLaserSounds();
     audioManager.stopAllForceFieldSounds();
@@ -935,7 +942,9 @@ export class RtsScene extends SceneShim {
     this.selectionLabelOverlay?.destroy();
     this.selectionLabelOverlay = null;
     this.longtaskTracker.destroy();
-    this.gameConnection?.disconnect();
+    if (!opts.keepConnection) {
+      this.gameConnection?.disconnect();
+    }
 
     // Clear snapshot buffer and audio scheduler
     this.snapshotBuffer.clear();
