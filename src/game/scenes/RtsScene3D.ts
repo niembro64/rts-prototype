@@ -6,6 +6,7 @@
 // (view-only). Selection/commands will be added in a later pass.
 
 import type { ClientViewState } from '../network/ClientViewState';
+import type { SceneCameraState } from '@/types/game';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import {
   buildSelectionInfo,
@@ -760,6 +761,28 @@ export class RtsScene3D {
 
   public centerCameraOn(x: number, y: number): void {
     this.threeApp.orbit.setTarget(x, 0, y);
+  }
+
+  /** Capture the orbit camera's current framing in the portable
+   *  `SceneCameraState` shape — 2D-equivalent zoom + the (x, y)
+   *  world-space target point. */
+  public captureCameraState(): SceneCameraState {
+    const orbit = this.threeApp.orbit;
+    return {
+      x: orbit.target.x,
+      y: orbit.target.z,
+      zoom: this._baseDistance / orbit.distance,
+    };
+  }
+
+  /** Apply a captured camera state. Works with states captured from
+   *  either renderer — the zoom scalar is in 2D-equivalent units and
+   *  maps back to an orbit distance via the scene's base distance. */
+  public applyCameraState(state: SceneCameraState): void {
+    const orbit = this.threeApp.orbit;
+    orbit.setTarget(state.x, 0, state.y);
+    orbit.distance = this._baseDistance / Math.max(state.zoom, 0.001);
+    orbit.apply();
   }
 
   public getFrameTiming(): {

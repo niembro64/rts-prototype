@@ -12,6 +12,7 @@ import {
 } from '../sim/types';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
 import type { ClientViewState } from '../network/ClientViewState';
+import type { SceneCameraState } from '@/types/game';
 import type { GameConnection } from '../server/GameConnection';
 import type {
   NetworkServerSnapshotCombatStats,
@@ -433,6 +434,26 @@ export class RtsScene extends SceneShim {
   // Center camera on a world position (used by minimap click)
   public centerCameraOn(x: number, y: number): void {
     this.cameras.main.centerOn(x, y);
+  }
+
+  /** Capture the current camera's world-space framing so a live
+   *  renderer swap can restore it on the new scene. See
+   *  `SceneCameraState` for the coordinate convention. */
+  public captureCameraState(): SceneCameraState {
+    const cam = this.cameras.main;
+    return {
+      x: cam.scrollX + cam.width / 2 / cam.zoom,
+      y: cam.scrollY + cam.height / 2 / cam.zoom,
+      zoom: cam.zoom,
+    };
+  }
+
+  /** Apply a previously captured camera state. Safe to call even if
+   *  the saved state came from the other renderer — both use the same
+   *  simulation-coord framing and a 2D-equivalent zoom scalar. */
+  public applyCameraState(state: SceneCameraState): void {
+    this.cameras.main.zoom = state.zoom;
+    this.cameras.main.centerOn(state.x, state.y);
   }
 
   // Get current entity source — returns cached adapter (zero allocations per call)

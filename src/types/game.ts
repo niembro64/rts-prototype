@@ -40,6 +40,27 @@ export type GameInstance = {
   getScene: () => GameScene | null;
 };
 
+/**
+ * Portable camera state for the live 2D↔3D renderer swap. Expressed in
+ * the game's simulation coords + a single scalar zoom level so both
+ * renderers can translate it into their own camera model:
+ *
+ *   2D (Pixi Camera)      — camera.zoom = zoom;
+ *                           camera.centerOn(x, y).
+ *   3D (OrbitCamera)      — orbit.setTarget(x, 0, y);
+ *                           orbit.distance = baseDistance / zoom.
+ *
+ * Since zoom is expressed in 2D-equivalent units (1.0 = default
+ * framing, 2.0 = twice as zoomed in), the 3D scene's cameraShim
+ * `zoom` getter already does this conversion, so swapping between
+ * renderers keeps the camera at the same apparent framing.
+ */
+export type SceneCameraState = {
+  x: number;
+  y: number;
+  zoom: number;
+};
+
 export type SnapshotCallback = (state: NetworkServerSnapshot) => void;
 export type SimEventCallback = (event: SimEvent) => void;
 export type GameOverCallback = (winnerId: PlayerId) => void;
