@@ -570,22 +570,52 @@ export class RtsScene3D {
       const r = ctx
         ? Math.max(ctx.collisionRadius, ctx.primaryRadius, ctx.secondaryRadius, 8)
         : 8;
-      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, r);
+      // Combined impulse vector (sim X/Y → world X/Z): penetration direction
+      // dominates because that's the intended "away from attacker" push, with
+      // smaller contributions from the projectile's ballistic momentum and
+      // the target's own velocity (so a moving target's debris trails).
+      // Same three components the 2D DeathEffectsHandler feeds into
+      // addExplosion(..., penetrationX, penetrationY, attackerX, attackerY,
+      // velocityX, velocityY, ...).
+      let mx = 0, mz = 0;
+      if (ctx) {
+        mx =
+          ctx.penetrationDir.x * 120 +
+          ctx.projectile.vel.x * 0.3 +
+          ctx.entity.vel.x * 0.3;
+        mz =
+          ctx.penetrationDir.y * 120 +
+          ctx.projectile.vel.y * 0.3 +
+          ctx.entity.vel.y * 0.3;
+      }
+      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, r, mx, mz);
     } else if (event.type === 'projectileExpire') {
-      // Ground / expired-projectile fire — always a small pop.
+      // Ground / expired-projectile fire — always a small pop, no meaningful
+      // momentum (the projectile stopped).
       this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 8);
     } else if (event.type === 'death') {
       const ctx = event.deathContext;
       if (ctx) {
-        // Fire explosion — sized from the unit's collision radius (the
-        // spawner applies the 2D's 2.5× multiplier internally) so a tank
-        // produces a much larger fireball than a scout.
+        // Scale the hit-direction push by the damaging attack's magnitude so
+        // a glancing railgun hit kicks debris further than a DoT tick. Clamp
+        // to prevent absurd throws at very-high-damage edge cases.
+        const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
+        const mx =
+          ctx.hitDir.x * attackPush +
+          ctx.projectileVel.x * 0.3 +
+          ctx.unitVel.x * 0.5;
+        const mz =
+          ctx.hitDir.y * attackPush +
+          ctx.projectileVel.y * 0.3 +
+          ctx.unitVel.y * 0.5;
         this.explosionRenderer.spawnDeath(
           event.pos.x, event.pos.y,
           Math.max(ctx.radius, 6),
+          mx, mz,
         );
         // Material debris — chassis edges, turret head, barrels, treads,
-        // legs, etc., scattered per the unit's blueprint.
+        // legs, etc., scattered per the unit's blueprint. Debris3D uses its
+        // own internal hit-bias from ctx.hitDir, so no extra momentum arg.
         this.debrisRenderer.spawn(event.pos.x, event.pos.y, ctx);
       } else {
         this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 20);

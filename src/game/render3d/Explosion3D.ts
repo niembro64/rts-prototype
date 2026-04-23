@@ -29,11 +29,15 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 // vertically with the beam's cylinder.
 const SHOT_HEIGHT = 28 + 16 / 2;
 
-// Per-spawn defaults. Tuned so a single hit reads as a small pop and a cluster
-// of hits still stays below the visual noise floor.
-const CORE_COLOR = 0xffffee;  // bright near-white core
-const FIRE_COLOR = 0xff8844;  // warm orange shell
-const SPARK_COLOR = 0xffaa33; // yellow-orange ember
+// Per-spawn defaults. All three layers use a white palette — the low-LOD
+// flash-only look was just the core ball, which users liked, so higher
+// tiers now layer a cool-tinted white shell and white sparks on top of
+// the same bright core instead of warming up to orange. Tier differ-
+// entiation comes from spark count + reach (LOD_TABLE below), not from
+// adding heat.
+const CORE_COLOR = 0xffffff;  // bright white core
+const FIRE_COLOR = 0xe8edff;  // faint cool-tinted white shell (subtle vs core)
+const SPARK_COLOR = 0xffffff; // white ember
 
 const CORE_LIFETIME_MS = 180;
 const FIRE_LIFETIME_MS = 280;
@@ -125,19 +129,34 @@ export class Explosion3D {
   }
 
   /**
-   * Spawn a fire explosion at (x, z) with a given base radius. Called by the
-   * scene's SimEvent dispatcher for 'hit' and 'projectileExpire'. The shell
-   * color lets callers tint death blasts with team / unit colors while impact
-   * hits stay orange.
+   * Spawn a fire explosion at (x, z) with a given base radius. Called by
+   * the scene's SimEvent dispatcher for 'hit' and 'projectileExpire'.
+   *
+   * `momentumX/Z` is an optional bias (sim X/Y → world X/Z units per
+   * second) that gets added to every spark's random launch velocity, so
+   * the spark cloud drifts in the direction of the combined impact
+   * momentum rather than radiating uniformly. Callers pre-compute it
+   * from a weighted combination of the projectile velocity, penetration
+   * direction, and target velocity — matching the 2D
+   * `DeathEffectsHandler` which breaks the impulse into the same three
+   * components.
+   *
+   * `shellColor` overrides the default cool-white shell (used by the
+   * 2D code for team-tinted death blasts; unused here now that all
+   * explosions are white).
    */
-  spawnImpact(x: number, z: number, radius: number, shellColor?: number): void {
+  spawnImpact(
+    x: number, z: number, radius: number,
+    momentumX: number = 0, momentumZ: number = 0,
+    shellColor?: number,
+  ): void {
     const style = this.getStyle();
     const r = Math.max(radius, 6);
     // Stretch all three lifetimes by a log factor of the radius so a tank's
     // cannon blast lingers visibly longer than a scout bullet hit.
     const durMult = durationMultiplier(r);
 
-    // Always render a core even at the cheapest LOD — a plain yellow ball is
+    // Always render a core even at the cheapest LOD — a plain white ball is
     // the simplest "something happened here" signal.
     this.addPuff(
       x, z, CORE_COLOR, CORE_LIFETIME_MS * durMult,
@@ -156,21 +175,26 @@ export class Explosion3D {
       this.addSparks(
         x, z, r * lod.sparkReach, lod.sparks,
         SPARK_LIFETIME_MS * durMult,
+        momentumX, momentumZ,
       );
     }
   }
 
   /**
-   * Unit-death blast: a large orange fireball at 2.5× the unit's collision
+   * Unit-death blast: a large white fireball at 2.5× the unit's collision
    * radius, matching the 2D DeathEffectsHandler which calls
    * `addExplosion(..., 'death', ...)` with `radius = ctx.radius * 2.5`.
+   * Team identity comes through in the Debris3D pieces that spawn alongside.
    *
-   * We don't pass a team color as the shell here — fire should read as fire.
-   * The team's identity comes through in the Debris3D pieces that spawn
-   * alongside this explosion (chassis, turret head, etc., all team-colored).
+   * `momentumX/Z` is the combined impact/unit/projectile impulse (same
+   * meaning as spawnImpact) so debris sparks trail in the direction the
+   * unit was pushed when it died.
    */
-  spawnDeath(x: number, z: number, radius: number): void {
-    this.spawnImpact(x, z, radius * 2.5);
+  spawnDeath(
+    x: number, z: number, radius: number,
+    momentumX: number = 0, momentumZ: number = 0,
+  ): void {
+    this.spawnImpact(x, z, radius * 2.5, momentumX, momentumZ);
   }
 
   private addPuff(
@@ -208,9 +232,17 @@ export class Explosion3D {
 
   private addSparks(
     x: number, z: number, reach: number, count: number, lifetime: number,
+    momentumX: number = 0, momentumZ: number = 0,
   ): void {
     // Sparks spray over the full sphere so the explosion reads in 3D from any
     // camera angle — an XY-plane spray would look flat when viewed from above.
+    // Momentum is added as a constant velocity offset on top of the random
+    // spray, which makes the cloud drift in the direction of the combined
+    // impact force rather than radiating symmetrically. `BIAS_FACTOR` tempers
+    // it so sparks still have visible random spread at 0 momentum.
+    const BIAS_FACTOR = 0.35;
+    const biasX = momentumX * BIAS_FACTOR;
+    const biasZ = momentumZ * BIAS_FACTOR;
     for (let i = 0; i < count; i++) {
       const pooled = this.sparkPool.pop();
       let mesh: THREE.Mesh;
@@ -242,8 +274,8 @@ export class Explosion3D {
       // explosions have slower drifting sparks rather than faster-traveling
       // ones, which keeps the explosion's visible footprint reasonable.
       const speed = (0.6 + Math.random() * 0.5) * reach * (1000 / lifetime);
-      const vx = Math.cos(theta) * Math.cos(phi) * speed;
-      const vz = Math.sin(theta) * Math.cos(phi) * speed;
+      const vx = Math.cos(theta) * Math.cos(phi) * speed + biasX;
+      const vz = Math.sin(theta) * Math.cos(phi) * speed + biasZ;
       const vy = Math.sin(phi) * speed;
 
       const size = 0.9 + Math.random() * 1.2;
