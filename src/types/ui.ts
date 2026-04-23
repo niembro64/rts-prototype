@@ -71,7 +71,7 @@ export type MinimapData = {
    *  perspective camera looking down at an angle. Drawn on the minimap
    *  as a polygon so the shape always matches the actual viewport,
    *  including the trapezoidal ground-plane projection in 3D. */
-  cameraQuad: [Vec2, Vec2, Vec2, Vec2];
+  cameraQuad: readonly [Vec2, Vec2, Vec2, Vec2];
 };
 
 // Lobby player (used in both component and network)

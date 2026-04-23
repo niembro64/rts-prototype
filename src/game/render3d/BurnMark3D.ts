@@ -19,7 +19,7 @@ import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
-import type { RenderScope3D } from './RenderScope3D';
+import type { ViewportFootprint } from '../ViewportFootprint';
 import {
   BURN_COLOR_HOT,
   BURN_COLOR_TAU,
@@ -143,9 +143,9 @@ export class BurnMark3D {
 
   /** RENDER: WIN/PAD/ALL visibility scope — beams with their endpoint
    *  outside the scope rect skip sampling + glow updates. */
-  private scope: RenderScope3D | null = null;
+  private scope: ViewportFootprint | null = null;
 
-  constructor(parentWorld: THREE.Group, scope?: RenderScope3D) {
+  constructor(parentWorld: THREE.Group, scope?: ViewportFootprint) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope ?? null;

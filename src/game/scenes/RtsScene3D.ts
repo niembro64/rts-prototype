@@ -24,7 +24,7 @@ import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
-import { RenderScope3D } from '../render3d/RenderScope3D';
+import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { Debris3D } from '../render3d/Debris3D';
@@ -112,10 +112,13 @@ export class RtsScene3D {
   private captureTileRenderer!: CaptureTileRenderer3D;
   private explosionRenderer!: Explosion3D;
   private debrisRenderer!: Debris3D;
-  /** Per-frame world-XZ visibility rect driven by the PLAYER CLIENT
-   *  `RENDER: WIN/PAD/ALL` toggle. Shared across all per-entity hot
-   *  loops so off-scope entities can skip transform/animation updates. */
-  private renderScope = new RenderScope3D();
+  /** Per-frame world-XY visibility footprint driven by the PLAYER
+   *  CLIENT `RENDER: WIN/PAD/ALL` toggle. Populated each frame from
+   *  the same 4 corner raycasts the minimap already uses, so the
+   *  cull bounds exactly match what the camera can see on the
+   *  ground plane. Shared across all per-entity hot loops + the
+   *  minimap. */
+  private renderScope = new ViewportFootprint();
   private burnMarkRenderer!: BurnMark3D;
   private lineDragRenderer!: LineDrag3D;
   private buildGhostRenderer!: BuildGhost3D;
@@ -512,15 +515,12 @@ export class RtsScene3D {
     // camera shim's `zoom` accessor already derives a 2D-equivalent
     // zoom from baseDistance / orbit.distance.
     setCurrentZoom(this.cameras.main.zoom);
-    // Refresh the shared visibility scope once per frame so every per-
-    // entity hot loop below can early-out on off-screen entities without
-    // re-querying camera state or getRenderMode().
-    this.renderScope.refresh(
-      this.threeApp.orbit.target.x,
-      this.threeApp.orbit.target.z,
-      this._visibleHalfWidth(),
-      this._visibleHalfHeight(),
-    );
+    // Refresh the shared visibility footprint once per frame so every
+    // per-entity hot loop below can early-out on off-screen entities
+    // without re-querying camera state or getRenderMode(). The same
+    // quad feeds the minimap (see updateMinimapData).
+    this._cameraQuad = this.computeCameraQuad();
+    this.renderScope.setQuad(this._cameraQuad);
     this.entityRenderer.update();
     this.captureTileRenderer.update();
     const projectiles = this.clientViewState.getProjectiles();
@@ -802,27 +802,46 @@ export class RtsScene3D {
 
   public updateMinimapData(): void {
     if (!this.onMinimapUpdate) return;
-    // Raycast each of the four viewport corners through the perspective
-    // camera and intersect y=0 to find where the view touches the
-    // ground. The result is a trapezoid that matches the 3D viewport
-    // exactly — much more accurate than the old rect built from a
-    // single "visible half-width" estimate. Corners are in screen
-    // order (TL, TR, BR, BL) so the minimap draws them as a convex
-    // quad. World (x, z) → sim (x, y).
-    const tl = this.cornerOnGround(-1,  1);
-    const tr = this.cornerOnGround( 1,  1);
-    const br = this.cornerOnGround( 1, -1);
-    const bl = this.cornerOnGround(-1, -1);
-
+    // The camera quad is already computed once per frame for the
+    // shared ViewportFootprint (scope culling); the minimap just
+    // reads it so we don't pay 4× raycasts twice per frame.
     this.onMinimapUpdate(
       buildMinimapData(
         this.entitySourceAdapter,
         this.mapWidth,
         this.mapHeight,
-        [tl, tr, br, bl],
+        this._cameraQuad,
       ),
     );
   }
+
+  /** Raycast each of the four NDC viewport corners (±1, ±1) through
+   *  the perspective camera onto the y=0 ground plane, returning a
+   *  ground-plane quad (TL, TR, BR, BL in screen order). Reused by
+   *  the scope footprint and the minimap — called once per frame
+   *  in update(). */
+  private computeCameraQuad(): [
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+  ] {
+    return [
+      this.cornerOnGround(-1,  1),
+      this.cornerOnGround( 1,  1),
+      this.cornerOnGround( 1, -1),
+      this.cornerOnGround(-1, -1),
+    ];
+  }
+
+  private _cameraQuad: [
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+  ] = [
+    { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
+  ];
 
   /** Project a viewport corner (in NDC: x,y ∈ [-1,1]) onto the y=0
    *  ground plane. When the corner ray points above the horizon (no

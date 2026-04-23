@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import type { Entity, Turret } from '../sim/types';
 import { getWeaponWorldPosition } from '../math';
-import type { RenderScope3D } from './RenderScope3D';
+import type { ViewportFootprint } from '../ViewportFootprint';
 
 // Must match Render3DEntities to keep emitter spheres roughly at the turret's
 // vertical center.
@@ -44,9 +44,9 @@ export class ForceFieldRenderer3D {
   private fields = new Map<string, FieldMesh>();
   /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
    *  skip their per-frame animation work. */
-  private scope: RenderScope3D;
+  private scope: ViewportFootprint;
 
-  constructor(parentWorld: THREE.Group, scope: RenderScope3D) {
+  constructor(parentWorld: THREE.Group, scope: ViewportFootprint) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;

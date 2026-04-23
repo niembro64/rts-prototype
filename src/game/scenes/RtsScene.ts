@@ -512,28 +512,34 @@ export class RtsScene extends SceneShim {
     }
   }
 
+  /** Cached per-frame camera footprint on the ground plane — 4
+   *  corners in screen order (TL, TR, BR, BL), sim coords. Updated
+   *  at the top of the render pass; consumed by the scope
+   *  footprint and the minimap so we never pay the 4 getWorldPoint
+   *  calls twice per frame. */
+  private _cameraQuad: import('../ViewportFootprint').FootprintQuad = [
+    { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
+  ];
+
+  private computeCameraQuad(): import('../ViewportFootprint').FootprintQuad {
+    const cam = this.cameras.main;
+    return [
+      cam.getWorldPoint(0, 0),
+      cam.getWorldPoint(cam.width, 0),
+      cam.getWorldPoint(cam.width, cam.height),
+      cam.getWorldPoint(0, cam.height),
+    ];
+  }
+
   // Update minimap data and notify UI
   public updateMinimapData(): void {
     if (!this.onMinimapUpdate) return;
-
-    const camera = this.cameras.main;
-    const entitySource = this.getCurrentEntitySource();
-
-    // Project the 4 viewport corners to world space. With camera
-    // rotation the quad is no longer axis-aligned, so sending raw
-    // world corners (instead of a rect) lets the minimap draw the
-    // true rotated footprint.
-    const tl = camera.getWorldPoint(0, 0);
-    const tr = camera.getWorldPoint(camera.width, 0);
-    const br = camera.getWorldPoint(camera.width, camera.height);
-    const bl = camera.getWorldPoint(0, camera.height);
-
     this.onMinimapUpdate(
       buildMinimapData(
-        entitySource,
+        this.getCurrentEntitySource(),
         this.mapWidth,
         this.mapHeight,
-        [tl, tr, br, bl],
+        this._cameraQuad,
       ),
     );
   }
@@ -786,6 +792,13 @@ export class RtsScene extends SceneShim {
     } else {
       this.spatialGridGraphics.clear();
     }
+
+    // Refresh the shared visibility footprint once per frame from
+    // the same 4-corner quad the minimap uses. Driving scope culling
+    // off the quad means camera rotation doesn't leak entities
+    // through a stale axis-aligned worldView.
+    this._cameraQuad = this.computeCameraQuad();
+    this.entityRenderer.setCameraQuad(this._cameraQuad);
 
     // Render entities
     this.entityRenderer.render();

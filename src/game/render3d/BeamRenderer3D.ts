@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
-import type { RenderScope3D } from './RenderScope3D';
+import type { ViewportFootprint } from '../ViewportFootprint';
 
 // Must match the value in Render3DEntities so beams and barrel tips share a
 // Y level. Kept as a constant (not exported from Render3DEntities) to avoid a
@@ -50,7 +50,7 @@ export class BeamRenderer3D {
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
-  private scope: RenderScope3D;
+  private scope: ViewportFootprint;
 
   // Scratch vectors reused per frame (no per-segment allocations).
   private _a = new THREE.Vector3();
@@ -60,7 +60,7 @@ export class BeamRenderer3D {
   private _up = new THREE.Vector3(0, 1, 0);
   private _quat = new THREE.Quaternion();
 
-  constructor(parentWorld: THREE.Group, scope: RenderScope3D) {
+  constructor(parentWorld: THREE.Group, scope: ViewportFootprint) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;

@@ -7,9 +7,9 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { BurnMarkSystem } from './BurnMarkSystem';
 import { DebrisSystem } from './DebrisSystem';
 import { LocomotionManager } from './LocomotionManager';
+import { ViewportFootprint } from '../ViewportFootprint';
 import {
   getGraphicsConfig,
-  getRenderMode,
   getRangeToggle,
   anyRangeToggleActive,
   getProjRangeToggle,
@@ -114,32 +114,28 @@ export class EntityRenderer {
   };
   private _unitRadiusVis = { visual: false, shot: false, push: false };
 
+  /** Shared visibility footprint — populated by the scene each frame
+   *  from the camera's 4-corner ground-plane quad, same data the
+   *  minimap uses. Driving scope culling off the quad means camera
+   *  rotation no longer leaks entities through the old
+   *  axis-aligned worldView. */
+  private footprint = new ViewportFootprint();
+
   constructor(scene: Phaser.Scene, entitySource: EntitySource) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
     this.entitySource = entitySource;
   }
 
-  /**
-   * Check if a point is visible within the camera viewport (with padding)
-   */
+  /** Scene calls this each frame before render() with the current
+   *  camera footprint (4 ground-plane corners). Also picks up the
+   *  current RENDER mode from clientBarConfig. */
+  setCameraQuad(quad: import('../ViewportFootprint').FootprintQuad): void {
+    this.footprint.setQuad(quad);
+  }
+
   private isInViewport(x: number, y: number, padding: number = 100): boolean {
-    const mode = getRenderMode();
-    if (mode === 'all') {
-      return true; // Skip culling, render everything
-    }
-    const camera = this.scene.cameras.main;
-    const view = camera.worldView;
-    // 'padded' mode: add 30% of viewport dimensions as extra margin
-    const extra =
-      mode === 'padded' ? Math.max(view.width, view.height) * 0.3 : 0;
-    const p = padding + extra;
-    return (
-      x >= view.x - p &&
-      x <= view.right + p &&
-      y >= view.y - p &&
-      y <= view.bottom + p
-    );
+    return this.footprint.inScope(x, y, padding);
   }
 
   // ==================== LOCOMOTION DELEGATION ====================

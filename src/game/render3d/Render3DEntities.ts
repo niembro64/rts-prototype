@@ -28,7 +28,7 @@ import {
   disposeBuildingGeoms,
   type BuildingShapeType,
 } from './BuildingShape3D';
-import type { RenderScope3D } from './RenderScope3D';
+import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitRadiusToggle } from '@/clientBarConfig';
 
@@ -124,7 +124,7 @@ export class Render3DEntities {
    *  transform writes, locomotion IK, turret placement, mirror glint
    *  animation, etc. Three.js still handles GPU-side culling for the
    *  meshes themselves; this guards the CPU-side setup. */
-  private scope: RenderScope3D;
+  private scope: ViewportFootprint;
 
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
@@ -200,7 +200,7 @@ export class Render3DEntities {
   constructor(
     world: THREE.Group,
     clientViewState: ClientViewState,
-    scope: RenderScope3D,
+    scope: ViewportFootprint,
   ) {
     this.world = world;
     this.clientViewState = clientViewState;
