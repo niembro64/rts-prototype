@@ -86,6 +86,11 @@ export type NetworkServerSnapshotMeta = {
   units: { allowed?: string[]; max?: number; count?: number };
   projVelInherit?: boolean;
   ffAccel: { units?: boolean; shots?: boolean; dmgUnits?: boolean };
+  /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).
+   *  `avg` = EMA-smoothed steady-state load; `hi` = EMA spike, climbs fast
+   *  on jumps and decays slowly. Both can exceed 100 when the server is
+   *  falling behind (tick work > tick budget). */
+  cpu?: { avg: number; hi: number };
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';

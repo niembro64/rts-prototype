@@ -71,6 +71,15 @@ export class GameServer {
   private tpsLow: number = EMA_INITIAL_VALUES.tps;
   private tpsInitialized: boolean = true;
 
+  // Per-tick CPU cost tracking (ms). EMA-smoothed average and "hi" spike
+  // value, same tier semantics as FRAME_TIMING_EMA. Computed from
+  // performance.now() wrapping the tick() body. Exposed as a load-percent
+  // via NetworkServerSnapshotMeta.cpu so both host and remote clients can
+  // see how saturated the simulation is relative to the tick budget.
+  private tickMsAvg: number = 0;
+  private tickMsHi: number = 0;
+  private tickMsInitialized: boolean = false;
+
   // Delta snapshot keyframe ratio tracking
   private isFirstSnapshot: boolean = true;
   private snapshotCounter: number = 0;
@@ -238,13 +247,32 @@ export class GameServer {
       const tickNow = performance.now();
       const delta = tickNow - this.lastTickTime;
       this.lastTickTime = tickNow;
+
+      // Measure how much CPU the tick body actually consumed, separately
+      // from its *period* (which the TPS EMA tracks). Snapshot emission is
+      // part of the same setInterval callback, so we include it — remote
+      // clients care about the total load each tick imposes on the host.
+      const workStart = performance.now();
       this.tick(delta);
 
-      // Emit snapshot if enough time has elapsed since last one (or no cap)
       const elapsed = tickNow - this.lastSnapshotTime;
       if (this.maxSnapshotIntervalMs === 0 || elapsed >= this.maxSnapshotIntervalMs) {
         this.lastSnapshotTime = tickNow;
         this.emitSnapshot();
+      }
+
+      const workMs = performance.now() - workStart;
+      if (!this.tickMsInitialized) {
+        this.tickMsAvg = workMs;
+        this.tickMsHi = workMs;
+        this.tickMsInitialized = true;
+      } else {
+        // Same tier semantics as FRAME_TIMING_EMA: slow drift on avg, fast
+        // climb on hi, slow decay on hi.
+        this.tickMsAvg = 0.99 * this.tickMsAvg + 0.01 * workMs;
+        this.tickMsHi = workMs > this.tickMsHi
+          ? 0.5 * this.tickMsHi + 0.5 * workMs
+          : 0.9999 * this.tickMsHi + 0.0001 * workMs;
       }
     }, 1000 / this.tickRateHz);
   }
@@ -490,6 +518,15 @@ export class GameServer {
     const timeChanged = currentTime !== this.lastSentServerTime;
     if (!isDelta || timeChanged) {
       const tickStats = this.getTickStats();
+      // CPU load = tick work / tick budget, expressed as a percent. We
+      // clamp nothing here — the UI can show >100 to mean "falling behind".
+      const tickBudgetMs = 1000 / this.tickRateHz;
+      const cpuAvg = this.tickMsInitialized
+        ? (this.tickMsAvg / tickBudgetMs) * 100
+        : 0;
+      const cpuHi = this.tickMsInitialized
+        ? (this.tickMsHi / tickBudgetMs) * 100
+        : 0;
       state.serverMeta = {
         ticks: { avg: tickStats.avgFps, low: tickStats.worstFps, rate: this.tickRateHz },
         snaps: { rate: this.maxSnapshotsDisplay, keyframes: this.keyframeRatioDisplay },
@@ -502,6 +539,7 @@ export class GameServer {
         },
         projVelInherit: this.world.projVelInherit,
         ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots, dmgUnits: this.world.ffDmgUnits },
+        cpu: { avg: cpuAvg, hi: cpuHi },
       };
       this.lastSentServerTime = currentTime;
     }

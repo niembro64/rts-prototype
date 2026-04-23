@@ -850,7 +850,14 @@ export class RtsScene extends SceneShim {
     frameMsAvg: number; frameMsHi: number;
     renderMsAvg: number; renderMsHi: number;
     logicMsAvg: number; logicMsHi: number;
+    cpuPctAvg: number; cpuPctHi: number;
+    gpuPctAvg: number; gpuPctHi: number;
   } {
+    // Load percentages against the 60 FPS frame budget. CPU = logicMs
+    // (simulation + HUD + per-frame update work); GPU = renderMs (time
+    // spent inside renderer.render(), which is mostly draw-call
+    // submission but correlates strongly with actual GPU cost).
+    const budget = 1000 / 60;
     return {
       frameMsAvg: this.frameMsTracker.getAvg(),
       frameMsHi: this.frameMsTracker.getHi(),
@@ -858,6 +865,10 @@ export class RtsScene extends SceneShim {
       renderMsHi: this.renderMsTracker.getHi(),
       logicMsAvg: this.logicMsTracker.getAvg(),
       logicMsHi: this.logicMsTracker.getHi(),
+      cpuPctAvg: (this.logicMsTracker.getAvg() / budget) * 100,
+      cpuPctHi:  (this.logicMsTracker.getHi()  / budget) * 100,
+      gpuPctAvg: (this.renderMsTracker.getAvg() / budget) * 100,
+      gpuPctHi:  (this.renderMsTracker.getHi()  / budget) * 100,
     };
   }
 

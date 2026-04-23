@@ -225,6 +225,13 @@ const renderMsAvg = ref(0);
 const renderMsHi = ref(0);
 const logicMsAvg = ref(0);
 const logicMsHi = ref(0);
+// Client CPU% / GPU% derived from logicMs / renderMs against the 60 FPS
+// budget. Shown alongside the raw ms so the bar communicates "we're at
+// 80% of frame budget" at a glance.
+const clientCpuPctAvg = ref(0);
+const clientCpuPctHi = ref(0);
+const clientGpuPctAvg = ref(0);
+const clientGpuPctHi = ref(0);
 
 // FPS, snapshot rate, and zoom tracking (EMA-based, polled from scene)
 const actualAvgFPS = ref(0);
@@ -431,6 +438,12 @@ const displayServerTpsAvg = computed(
 );
 const displayServerTpsWorst = computed(
   () => serverMetaFromSnapshot.value?.ticks.low ?? 0,
+);
+const displayServerCpuAvg = computed(
+  () => serverMetaFromSnapshot.value?.cpu?.avg ?? 0,
+);
+const displayServerCpuHi = computed(
+  () => serverMetaFromSnapshot.value?.cpu?.hi ?? 0,
 );
 const displayTickRate = computed(
   () =>
@@ -894,6 +907,10 @@ function updateFPSStats(): void {
     renderMsHi.value = timing.renderMsHi;
     logicMsAvg.value = timing.logicMsAvg;
     logicMsHi.value = timing.logicMsHi;
+    clientCpuPctAvg.value = timing.cpuPctAvg;
+    clientCpuPctHi.value = timing.cpuPctHi;
+    clientGpuPctAvg.value = timing.gpuPctAvg;
+    clientGpuPctHi.value = timing.gpuPctHi;
 
     const frameStats = scene.getFrameStats();
     actualAvgFPS.value = frameStats.avgFps;
@@ -1522,6 +1539,46 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+          <!--
+            Host CPU load: how much of each tick's budget (1000 / tickRate
+            ms) the sim actually spent working. Ticked here as avg + hi,
+            same semantics as the client CPU/GPU bars. >100 means the host
+            is falling behind the target TPS.
+          -->
+          <div class="control-group">
+            <BarDivider />
+            <span
+              class="control-label"
+              title="Host CPU load — simulation tick time as a percent of the target tick budget. >100% means the host is falling behind."
+              >CPU:</span
+            >
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(displayServerCpuAvg) }}%</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="msBarStyle(displayServerCpuAvg, 100)"
+                  ></div>
+                </div>
+              </div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(displayServerCpuHi) }}%</span>
+                  <span class="fps-label">hi</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="msBarStyle(displayServerCpuHi, 100)"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="control-group">
             <BarDivider />
             <span class="control-label">TARGET SPS:</span>
@@ -1612,8 +1669,85 @@ onUnmounted(() => {
             </div>
           </div>
           <BarDivider />
+          <!--
+            Bottleneck-first layout: CPU and GPU percentages are the at-a-
+            glance readouts. Each is logicMs / renderMs expressed as a
+            fraction of the 16.67 ms 60 FPS budget. FRAME ms follows as the
+            total-budget sanity check. Tooltips carry the raw ms values so
+            the absolute numbers are still discoverable.
+          -->
           <div class="control-group">
-            <span class="control-label" title="Total frame time (ms)">FRAME:</span>
+            <span
+              class="control-label"
+              :title="`Client CPU load — simulation prediction, input, HUD updates. Raw logicMs: ${fmt4(logicMsAvg)} avg / ${fmt4(logicMsHi)} hi.`"
+              >CPU:</span
+            >
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(clientCpuPctAvg) }}%</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="msBarStyle(clientCpuPctAvg, 100)"
+                  ></div>
+                </div>
+              </div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(clientCpuPctHi) }}%</span>
+                  <span class="fps-label">hi</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="msBarStyle(clientCpuPctHi, 100)"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="control-group">
+            <span
+              class="control-label"
+              :title="`Client GPU load — time inside renderer.render(), mostly draw-call submission (correlates with actual GPU cost). Raw renderMs: ${fmt4(renderMsAvg)} avg / ${fmt4(renderMsHi)} hi.`"
+              >GPU:</span
+            >
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(clientGpuPctAvg) }}%</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="msBarStyle(clientGpuPctAvg, 100)"
+                  ></div>
+                </div>
+              </div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(clientGpuPctHi) }}%</span>
+                  <span class="fps-label">hi</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="msBarStyle(clientGpuPctHi, 100)"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="control-group">
+            <span
+              class="control-label"
+              title="Total frame time (ms) — CPU + GPU wall-clock per frame"
+              >FRAME:</span
+            >
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -1631,52 +1765,6 @@ onUnmounted(() => {
                 </div>
                 <div class="stat-bar-track">
                   <div class="stat-bar-fill" :style="msBarStyle(frameMsHi)"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="control-group">
-            <span class="control-label" title="Render time (ms) — draw calls only">RENDER:</span>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(renderMsAvg) }}</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(renderMsAvg)"></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(renderMsHi) }}</span>
-                  <span class="fps-label">hi</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(renderMsHi)"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="control-group">
-            <span class="control-label" title="Logic time (ms) — prediction, input, snapshots">LOGIC:</span>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(logicMsAvg) }}</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(logicMsAvg)"></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(logicMsHi) }}</span>
-                  <span class="fps-label">hi</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(logicMsHi)"></div>
                 </div>
               </div>
             </div>
