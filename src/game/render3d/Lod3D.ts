@@ -26,6 +26,11 @@ export function lodKey(gfx: GraphicsConfig): string {
     gfx.turretStyle,
     gfx.forceTurretStyle,
     gfx.paletteShading ? 'ps' : '-',
+    // MED+ flag controlling animated accents that cost setup (e.g. mirror
+    // sparkles). In key so toggling the LOD tier rebuilds affected meshes.
+    gfx.barrelSpin ? 'bs' : '-',
+    // MAX-only intensifier (e.g. secondary mirror glint). Same reason.
+    gfx.beamGlow ? 'bg' : '-',
   ].join('|');
 }
 

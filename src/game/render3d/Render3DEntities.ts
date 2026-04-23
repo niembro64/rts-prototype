@@ -64,10 +64,27 @@ type TurretMesh = {
   barrelGroup?: THREE.Group;
 };
 
+/** One animated sparkle (glint) riding the face of a mirror panel. Travels
+ *  along the panel's length axis sinusoidally; the `phase` offset is
+ *  per-panel so adjacent panels sparkle out-of-sync. */
+type MirrorGlint = {
+  mesh: THREE.Mesh;
+  material: THREE.MeshBasicMaterial;
+  halfWidth: number;
+  halfHeight: number;
+  phase: number;
+  /** 'primary' = bright, rides the front face (MED+).
+   *  'secondary' = dimmer, rides the back face (MAX only). */
+  variant: 'primary' | 'secondary';
+};
+
 type MirrorMesh = {
   /** Rotates with the turret (children of this rotate in turret frame). */
   root: THREE.Group;
   panels: THREE.Mesh[];
+  /** Sparkle meshes that pulse+travel along the panel edges. Empty below
+   *  MID LOD; one entry per panel at MID+; two per panel at MAX. */
+  glints: MirrorGlint[];
 };
 
 type EntityMesh = {
@@ -115,6 +132,25 @@ export class Render3DEntities {
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
+  // Shared geometry + additive-blended white materials for mirror sparkles.
+  // Primary glint is brighter and larger than the secondary (MAX-only) one.
+  // AdditiveBlending + depthWrite:false sells the "bright point of light"
+  // read over the darker mirror panel behind it.
+  private glintGeom = new THREE.SphereGeometry(1, 10, 8);
+  private glintMatPrimary = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  private glintMatSecondary = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.35,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
   // Thin ring for the selection indicator (flat, sits just above the ground plane)
   private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
   // Unit-radius indicator rings (SCAL/SHOT/PUSH). Unit radius = 1; scaled per
@@ -340,12 +376,22 @@ export class Render3DEntities {
     parent: THREE.Group,
     panels: readonly { halfWidth: number; halfHeight: number; offsetX: number; offsetY: number; angle: number }[],
     pid: PlayerId | undefined,
+    gfx: GraphicsConfig,
   ): MirrorMesh {
     const root = new THREE.Group();
     parent.add(root);
     const meshes: THREE.Mesh[] = [];
+    const glints: MirrorGlint[] = [];
     const mat = this.getSecondaryMat(pid);
-    for (const p of panels) {
+
+    // Sparkle gating:
+    //   barrelSpin = true  → MED+ tier: primary glint on the front face
+    //   beamGlow   = true  → MAX tier:  also a dimmer glint on the back
+    const wantPrimary = gfx.barrelSpin;
+    const wantSecondary = gfx.beamGlow;
+
+    for (let i = 0; i < panels.length; i++) {
+      const p = panels[i];
       const m = new THREE.Mesh(this.mirrorGeom, mat);
       // Default box +X runs along the "edge" (length); +Z runs along the
       // panel normal (thickness). Set local rotation.y = -(panel.angle + π/2)
@@ -356,8 +402,52 @@ export class Render3DEntities {
       m.position.set(p.offsetX, MIRROR_BASE_Y + MIRROR_HEIGHT / 2, p.offsetY);
       root.add(m);
       meshes.push(m);
+
+      if (!wantPrimary) continue;
+
+      // A glint mesh sits in its own UNSCALED group that matches the
+      // panel's position + yaw. That way its sphere stays round (no
+      // stretch from the panel's anisotropic scale) while still using
+      // panel-local coordinates for the traveling animation.
+      const glintGroup = new THREE.Group();
+      glintGroup.position.copy(m.position);
+      glintGroup.rotation.y = m.rotation.y;
+      root.add(glintGroup);
+
+      // Sphere radius in world units — scaled off mirror height so it
+      // stays proportional to unit silhouette.
+      const glintR = MIRROR_HEIGHT * 0.05;
+
+      const primary = new THREE.Mesh(this.glintGeom, this.glintMatPrimary);
+      primary.scale.setScalar(glintR);
+      glintGroup.add(primary);
+      glints.push({
+        mesh: primary,
+        material: this.glintMatPrimary,
+        halfWidth: p.halfWidth,
+        halfHeight: p.halfHeight,
+        // 2.1 rad per panel is the same offset 2D LorisRenderer uses —
+        // adjacent panels sparkle out of sync.
+        phase: i * 2.1,
+        variant: 'primary',
+      });
+
+      if (wantSecondary) {
+        const secondary = new THREE.Mesh(this.glintGeom, this.glintMatSecondary);
+        secondary.scale.setScalar(glintR * 0.85);
+        glintGroup.add(secondary);
+        glints.push({
+          mesh: secondary,
+          material: this.glintMatSecondary,
+          halfWidth: p.halfWidth,
+          halfHeight: p.halfHeight,
+          // Offset +1.8 rad behind the primary (same as 2D).
+          phase: i * 2.1 + 1.8,
+          variant: 'secondary',
+        });
+      }
     }
-    return { root, panels: meshes };
+    return { root, panels: meshes, glints };
   }
 
   private getPrimaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
@@ -575,7 +665,7 @@ export class Render3DEntities {
         // Mirror panels (e.g. Loris): standing slabs that track the turret.
         const mirrorPanels = e.unit?.mirrorPanels;
         if (mirrorPanels && mirrorPanels.length > 0) {
-          m.mirrors = this.buildMirrorMesh(group, mirrorPanels, pid);
+          m.mirrors = this.buildMirrorMesh(group, mirrorPanels, pid, this.lod.gfx);
           for (const panel of m.mirrors.panels) {
             panel.userData.entityId = e.id;
           }
@@ -675,6 +765,21 @@ export class Render3DEntities {
       if (m.mirrors) {
         const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
         m.mirrors.root.rotation.y = -(mirrorRot - e.transform.rotation);
+        // Sparkle animation — travel each glint along its panel's edge axis
+        // and pulse its opacity. Travel rate + pulse rate + phase offsets
+        // mirror the 2D LorisRenderer's sparkle math.
+        if (m.mirrors.glints.length > 0) {
+          const tSec = this._lastSpinMs / 1000;
+          for (const g of m.mirrors.glints) {
+            const travel = Math.sin(tSec * 2.5 + g.phase) * 0.5 + 0.5;
+            const localX = -g.halfWidth + travel * g.halfWidth * 2;
+            // Primary rides the front face (+Z), secondary rides the back.
+            const faceZ = g.variant === 'primary'
+              ? g.halfHeight * 1.05
+              : -g.halfHeight * 1.05;
+            g.mesh.position.set(localX, 0, faceZ);
+          }
+        }
       }
 
       // Locomotion: spin tread wheels per velocity; wheels/legs are static.
@@ -800,6 +905,9 @@ export class Render3DEntities {
     this.radiusMatShot.dispose();
     this.radiusMatPush.dispose();
     this.mirrorGeom.dispose();
+    this.glintGeom.dispose();
+    this.glintMatPrimary.dispose();
+    this.glintMatSecondary.dispose();
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     for (const m of this.secondaryMats.values()) m.dispose();
