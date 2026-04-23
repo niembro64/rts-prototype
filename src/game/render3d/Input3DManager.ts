@@ -27,6 +27,7 @@ import {
   assignUnitsToTargets,
   getSnappedBuildPosition,
   selectEntitiesInScreenRect,
+  SelectionChangeTracker,
 } from '../input/helpers';
 import {
   CLICK_DRAG_THRESHOLD_PX,
@@ -94,6 +95,10 @@ export class Input3DManager {
   // Reusable scratch vector for projecting entities in selectEntitiesInScreenRect.
   // One allocation for the lifetime of the manager keeps the hot loop alloc-free.
   private _selectV = new THREE.Vector3();
+  // Resets waypoint mode back to 'move' when the owned-selected set
+  // changes — matches the 2D SelectionController's rule so squads
+  // don't accidentally inherit 'fight'/'patrol' from a prior group.
+  private selectionChangeTracker = new SelectionChangeTracker();
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -170,6 +175,18 @@ export class Input3DManager {
   /** True if build mode is currently active. */
   isInBuildMode(): boolean {
     return this.buildType !== null;
+  }
+
+  /** Per-frame poll. Right now it only runs the selection-change
+   *  tracker (which resets waypoint mode on change), but any other
+   *  "once-per-frame" input bookkeeping should live here so the
+   *  scene has one call site. Mirrors InputManager.update() on 2D. */
+  tick(): void {
+    const changed = this.selectionChangeTracker.poll(
+      this.entitySource,
+      this.context.activePlayerId,
+    );
+    if (changed) this.setWaypointMode('move');
   }
 
   private handleKeyDown(e: KeyboardEvent): void {

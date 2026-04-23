@@ -5,6 +5,7 @@ import {
   findClosestUnitToPoint,
   findClosestBuildingToPoint,
   selectEntitiesInScreenRect,
+  SelectionChangeTracker,
 } from './helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from './constants';
 import type { InputEntitySource, InputContext } from './inputBindings';
@@ -21,6 +22,7 @@ export class SelectionController {
   private commandQueue: CommandQueue;
   private state: InputState;
   private selectionGraphics: Phaser.GameObjects.Graphics;
+  private selectionChangeTracker = new SelectionChangeTracker();
 
   // Callback for UI to show waypoint mode changes
   public onWaypointModeChange?: (mode: WaypointType) => void;
@@ -177,38 +179,15 @@ export class SelectionController {
     return this.state.waypointMode;
   }
 
-  /**
-   * Check if selection changed and reset waypoint mode to 'move'.
-   * Zero-allocation: iterates cached units array directly instead of .filter() + .map() + new Set().
-   */
+  /** Reset waypoint mode back to 'move' whenever the owned-selected
+   *  set changes. Delegates to the shared tracker so the 3D path
+   *  applies the same rule. */
   checkSelectionChange(): void {
-    const units = this.entitySource.getUnits();
-    const playerId = this.context.activePlayerId;
-    const prev = this.state.previousSelectedIds;
-
-    // Count currently selected units and check if any are new
-    let currentCount = 0;
-    let changed = false;
-    for (const u of units) {
-      if (u.selectable?.selected && u.ownership?.playerId === playerId) {
-        currentCount++;
-        if (!prev.has(u.id)) changed = true;
-      }
-    }
-
-    // Size mismatch means something was deselected
-    if (!changed && currentCount !== prev.size) changed = true;
-
-    if (changed) {
-      this.setWaypointMode('move');
-      // Rebuild previousSelectedIds in place (reuse Set, avoid new allocation)
-      prev.clear();
-      for (const u of units) {
-        if (u.selectable?.selected && u.ownership?.playerId === playerId) {
-          prev.add(u.id);
-        }
-      }
-    }
+    const changed = this.selectionChangeTracker.poll(
+      this.entitySource,
+      this.context.activePlayerId,
+    );
+    if (changed) this.setWaypointMode('move');
   }
 
   /** Draw the selection rectangle in screen space (the graphics layer

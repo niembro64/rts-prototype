@@ -21,7 +21,6 @@ export function createInitialInputState(): InputState {
     linePathPoints: [],
     linePathTargets: [],
     waypointMode: 'move',
-    previousSelectedIds: new Set(),
     isBuildMode: false,
     selectedBuildingType: null,
     buildGhostX: 0,

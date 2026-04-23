@@ -25,6 +25,8 @@ export {
   selectEntitiesInScreenRect,
 } from './BoxSelection';
 
+export { SelectionChangeTracker } from './SelectionChangeTracker';
+
 export {
   type RepairEntitySource,
   findRepairTargetAt,

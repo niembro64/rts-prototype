@@ -524,6 +524,10 @@ export class RtsScene3D {
     // Commander build / heal spray trails — read straight from sim state
     // via ClientViewState, same list the 2D renderer consumes.
     this.sprayRenderer.update(this.clientViewState.getSprayTargets(), effectDt);
+    // Per-frame input bookkeeping — currently just the shared
+    // SelectionChangeTracker, which resets waypoint mode when the
+    // selection changes (matches the 2D path's InputManager.update).
+    this.inputManager?.tick();
     // Line-drag preview reads directly from the input manager's live state.
     if (this.inputManager) {
       this.lineDragRenderer.update(this.inputManager.getLineDragState());

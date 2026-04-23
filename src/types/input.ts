@@ -50,7 +50,6 @@ export type InputState = {
   linePathPoints: WorldPoint[];
   linePathTargets: WorldPoint[];
   waypointMode: WaypointType;
-  previousSelectedIds: Set<EntityId>;
   isBuildMode: boolean;
   selectedBuildingType: BuildingType | null;
   buildGhostX: number;
