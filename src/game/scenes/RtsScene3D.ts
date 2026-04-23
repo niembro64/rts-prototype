@@ -31,7 +31,11 @@ import { BurnMark3D } from '../render3d/BurnMark3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
-import { getAudioSmoothing, getBottomBarsHeight } from '@/clientBarConfig';
+import {
+  getAudioSmoothing,
+  getBottomBarsHeight,
+  setCurrentZoom,
+} from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBarOverlay } from '../hud/HealthBarOverlay';
@@ -476,6 +480,12 @@ export class RtsScene3D {
 
     // Render phase
     const renderStart = performance.now();
+    // Publish the current zoom to the LOD system so the 'auto' and
+    // 'auto-zoom' quality modes can react to the camera's distance.
+    // The 2D path does this via setCurrentZoom(camera.zoom); the 3D
+    // camera shim's `zoom` accessor already derives a 2D-equivalent
+    // zoom from baseDistance / orbit.distance.
+    setCurrentZoom(this.cameras.main.zoom);
     // Refresh the shared visibility scope once per frame so every per-
     // entity hot loop below can early-out on off-screen entities without
     // re-querying camera state or getRenderMode().

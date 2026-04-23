@@ -97,18 +97,24 @@ export class ThreeApp {
     this.scene.add(sun);
     this.scene.add(sun.target);
 
-    // Ground slab — a thick box so the world clearly reads as a solid piece
-    // of terrain when viewed from an oblique camera. Top surface sits at
-    // y=-GROUND_GAP, i.e. just below the tile layer which is at y=0. Units
-    // and buildings play ON the tiles (y=0), not under them.
-    // Color matches the 2D MAP_BG_COLOR (via the backgroundColor arg) so the
-    // exposed sides of the slab read as earth around the playable surface.
+    // Ground slab — a thick box so the world clearly reads as a solid
+    // piece of terrain when viewed from an oblique camera. Top surface
+    // sits at y=-GROUND_GAP, i.e. just below the tile layer which is
+    // at y=0. Units and buildings play ON the tiles (y=0), not under
+    // them.
+    //
+    // Color is a warm dark charcoal that's distinct from the scene
+    // background — previously the slab was painted MAP_BG_COLOR (same
+    // as the scene clear color), so the exposed side walls blended
+    // invisibly into the background and the world read as a flat
+    // disc. This tone still feels neutral-dark enough to pass for
+    // "earth / substrate" but contrasts cleanly against the
+    // 0x0a0e0f scene bg.
     const GROUND_DEPTH = 320;
     const GROUND_GAP = 4; // vertical separation between slab top and tiles
     const groundGeom = new THREE.BoxGeometry(mapWidth, GROUND_DEPTH, mapHeight);
-    const groundMat = new THREE.MeshLambertMaterial({
-      color: new THREE.Color(backgroundColor),
-    });
+    const groundMat = new THREE.MeshLambertMaterial({ color: 0x2a241c });
+    void backgroundColor; // still used for the scene clear color above
     const ground = new THREE.Mesh(groundGeom, groundMat);
     ground.position.set(
       mapWidth / 2,
