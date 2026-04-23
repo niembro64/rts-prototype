@@ -18,8 +18,6 @@ export function createInitialInputState(): InputState {
     rotStartY: 0,
     rotStartAngle: 0,
     isDrawingLinePath: false,
-    linePathPoints: [],
-    linePathTargets: [],
     waypointMode: 'move',
     isBuildMode: false,
     selectedBuildingType: null,

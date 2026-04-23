@@ -27,6 +27,8 @@ export {
 
 export { SelectionChangeTracker } from './SelectionChangeTracker';
 
+export { LinePathAccumulator } from './LinePathAccumulator';
+
 export {
   type RepairEntitySource,
   findRepairTargetAt,

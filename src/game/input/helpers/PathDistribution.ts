@@ -7,7 +7,7 @@ export type { WorldPoint } from '@/types/input';
 import type { WorldPoint } from '@/types/input';
 
 // Calculate total length of a path
-export function getPathLength(points: WorldPoint[]): number {
+export function getPathLength(points: readonly WorldPoint[]): number {
   let length = 0;
   for (let i = 1; i < points.length; i++) {
     const dx = points[i].x - points[i - 1].x;
@@ -18,7 +18,7 @@ export function getPathLength(points: WorldPoint[]): number {
 }
 
 // Get a point at a specific distance along the path
-export function getPointAtDistance(points: WorldPoint[], targetDist: number): WorldPoint {
+export function getPointAtDistance(points: readonly WorldPoint[], targetDist: number): WorldPoint {
   if (points.length === 0) return { x: 0, y: 0 };
   if (points.length === 1) return { x: points[0].x, y: points[0].y };
 
@@ -46,7 +46,7 @@ export function getPointAtDistance(points: WorldPoint[], targetDist: number): Wo
 
 // Calculate target positions distributed evenly along the path
 export function calculateLinePathTargets(
-  linePathPoints: WorldPoint[],
+  linePathPoints: readonly WorldPoint[],
   unitCount: number
 ): WorldPoint[] {
   if (unitCount === 0 || linePathPoints.length === 0) {
@@ -74,8 +74,8 @@ export function calculateLinePathTargets(
 
 // Assign units to target positions using closest distance (greedy algorithm)
 export function assignUnitsToTargets(
-  units: Entity[],
-  targets: WorldPoint[]
+  units: readonly Entity[],
+  targets: readonly WorldPoint[],
 ): Map<EntityId, WorldPoint> {
   const assignments = new Map<EntityId, WorldPoint>();
   const remainingUnits = [...units];

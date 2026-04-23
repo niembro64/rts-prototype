@@ -2,15 +2,13 @@ import type Phaser from '../PhaserCompat';
 import type { CommandQueue, MoveCommand, RepairCommand, AttackCommand, SetFactoryWaypointsCommand, WaypointTarget } from '../sim/commands';
 import type { Entity, EntityId } from '../sim/types';
 import {
-
   getPathLength,
-  calculateLinePathTargets,
   assignUnitsToTargets,
   WAYPOINT_COLORS,
   findRepairTargetAt,
   findAttackTargetAt,
+  LinePathAccumulator,
 } from './helpers';
-import { magnitude } from '../math';
 import type { InputEntitySource, InputContext } from './inputBindings';
 import type { InputState } from './InputState';
 import type { SelectionController } from './SelectionController';
@@ -30,6 +28,7 @@ export class CommandController {
   private selectionController: SelectionController;
   private buildingController: BuildingPlacementController;
   private shiftKey: Phaser.Input.Keyboard.Key;
+  private linePath = new LinePathAccumulator();
 
   constructor(
     scene: Phaser.Scene,
@@ -107,16 +106,16 @@ export class CommandController {
     // Start line path drawing if units are selected
     if (selectedUnits.length > 0) {
       this.state.isDrawingLinePath = true;
-      this.state.linePathPoints = [{ x: worldX, y: worldY }];
-      this.state.linePathTargets = [];
-      this.updateLinePathTargets(selectedUnits.length);
+      this.linePath.start(worldX, worldY, selectedUnits.length);
     } else {
-      // Check if factories are selected - start factory waypoint mode
+      // Check if factories are selected - start factory waypoint mode.
+      // Factory waypoints treat the single placed point *as* the
+      // target (no spreading), so we seed the accumulator with a
+      // fixed target instead of distributing unitCount along a path.
       const selectedFactories = this.selectionController.getSelectedFactories();
       if (selectedFactories.length > 0) {
         this.state.isDrawingLinePath = true;
-        this.state.linePathPoints = [{ x: worldX, y: worldY }];
-        this.state.linePathTargets = [{ x: worldX, y: worldY }];
+        this.linePath.startWithFixedTarget(worldX, worldY);
       }
     }
   }
@@ -124,31 +123,16 @@ export class CommandController {
   /** Handle pointer move while drawing line path */
   handleLinePathMove(worldX: number, worldY: number): void {
     if (!this.state.isDrawingLinePath) return;
-
-    // Add point if it's far enough from the last point (to avoid too many points)
-    const lastPoint = this.state.linePathPoints[this.state.linePathPoints.length - 1];
-    const dx = worldX - lastPoint.x;
-    const dy = worldY - lastPoint.y;
-    const dist = magnitude(dx, dy);
-    if (dist > 10) {
-      this.state.linePathPoints.push({ x: worldX, y: worldY });
-      const selectedUnits = this.selectionController.getSelectedUnits();
-      this.updateLinePathTargets(selectedUnits.length);
-    }
+    const unitCount = this.selectionController.getSelectedUnits().length;
+    this.linePath.append(worldX, worldY, unitCount);
   }
 
   /** End line path and issue commands */
   endLinePath(shiftHeld: boolean): void {
     this.finishLinePath(shiftHeld);
     this.state.isDrawingLinePath = false;
-    this.state.linePathPoints = [];
-    this.state.linePathTargets = [];
+    this.linePath.reset();
     this.linePathGraphics.clear();
-  }
-
-  /** Update the calculated target positions along the path */
-  private updateLinePathTargets(unitCount: number): void {
-    this.state.linePathTargets = calculateLinePathTargets(this.state.linePathPoints, unitCount);
   }
 
   /** Find a repairable target at a world position (incomplete building or damaged friendly unit) */
@@ -174,10 +158,12 @@ export class CommandController {
       return;
     }
 
+    const points = this.linePath.points;
+    const finalPoint = points[points.length - 1];
+
     // Check if commander is ending waypoint on a repair target (incomplete building)
     const commander = this.buildingController.getSelectedCommander();
     if (commander?.ownership) {
-      const finalPoint = this.state.linePathPoints[this.state.linePathPoints.length - 1];
       const repairTarget = this.findRepairTarget(finalPoint.x, finalPoint.y, commander.ownership.playerId);
       if (repairTarget) {
         // Issue repair command instead of move command
@@ -193,17 +179,16 @@ export class CommandController {
       }
     }
 
-    const pathLength = getPathLength(this.state.linePathPoints);
+    const pathLength = getPathLength(points);
 
     // If path is very short (just a click), do a regular group move
     if (pathLength < 20) {
-      const target = this.state.linePathPoints[this.state.linePathPoints.length - 1];
       const command: MoveCommand = {
         type: 'move',
         tick: this.context.getTick(),
         entityIds: selectedUnits.map((e) => e.id),
-        targetX: target.x,
-        targetY: target.y,
+        targetX: finalPoint.x,
+        targetY: finalPoint.y,
         waypointType: this.state.waypointMode,
         queue: shiftHeld,
       };
@@ -212,7 +197,7 @@ export class CommandController {
     }
 
     // Assign units to positions using closest distance
-    const assignments = assignUnitsToTargets(selectedUnits, this.state.linePathTargets);
+    const assignments = assignUnitsToTargets(selectedUnits, this.linePath.targets);
 
     // Build individual targets array in entity order
     const entityIds: EntityId[] = [];
@@ -243,7 +228,8 @@ export class CommandController {
     if (selectedFactories.length === 0) return;
 
     // Get the target point(s) from the line path
-    const target = this.state.linePathPoints[this.state.linePathPoints.length - 1];
+    const points = this.linePath.points;
+    const target = points[points.length - 1];
 
     // Create the new waypoint
     const newWaypoint = {
@@ -271,7 +257,8 @@ export class CommandController {
   drawLinePath(): void {
     this.linePathGraphics.clear();
 
-    if (!this.state.isDrawingLinePath || this.state.linePathPoints.length === 0) return;
+    const points = this.linePath.points;
+    if (!this.state.isDrawingLinePath || points.length === 0) return;
 
     const camera = this.scene.cameras.main;
     const lineWidth = 2 / camera.zoom;
@@ -281,21 +268,22 @@ export class CommandController {
     // Draw the path line
     this.linePathGraphics.lineStyle(lineWidth, pathColor, 0.6);
     this.linePathGraphics.beginPath();
-    this.linePathGraphics.moveTo(this.state.linePathPoints[0].x, this.state.linePathPoints[0].y);
-    for (let i = 1; i < this.state.linePathPoints.length; i++) {
-      this.linePathGraphics.lineTo(this.state.linePathPoints[i].x, this.state.linePathPoints[i].y);
+    this.linePathGraphics.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      this.linePathGraphics.lineTo(points[i].x, points[i].y);
     }
     this.linePathGraphics.strokePath();
 
     // Draw dots at target positions
+    const targets = this.linePath.targets;
     this.linePathGraphics.fillStyle(pathColor, 0.9);
-    for (const target of this.state.linePathTargets) {
+    for (const target of targets) {
       this.linePathGraphics.fillCircle(target.x, target.y, dotRadius);
     }
 
     // Draw outline around dots
     this.linePathGraphics.lineStyle(lineWidth, 0xffffff, 0.8);
-    for (const target of this.state.linePathTargets) {
+    for (const target of targets) {
       this.linePathGraphics.strokeCircle(target.x, target.y, dotRadius);
     }
   }

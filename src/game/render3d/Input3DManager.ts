@@ -23,19 +23,15 @@ import {
   findClosestBuildingToPoint,
   findAttackTargetAt,
   getPathLength,
-  calculateLinePathTargets,
   assignUnitsToTargets,
   getSnappedBuildPosition,
   selectEntitiesInScreenRect,
   SelectionChangeTracker,
+  LinePathAccumulator,
 } from '../input/helpers';
-import {
-  CLICK_DRAG_THRESHOLD_PX,
-  LINE_PATH_SEGMENT_MIN,
-} from '../input/constants';
+import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import type { StartBuildCommand, WaypointTarget } from '../sim/commands';
 
-type LinePoint = { x: number; y: number };
 const LINE_PATH_MIN_LENGTH = 20;      // path shorter than this = treated as a click
 
 type EntitySource = {
@@ -79,13 +75,11 @@ export class Input3DManager {
   private dragStartScreen = { x: 0, y: 0 };
   private dragEndScreen = { x: 0, y: 0 };
 
-  // Right-drag line-path state (world coords, same shape the 2D path uses).
+  // Right-drag line-path state. The accumulator owns the points +
+  // per-unit target list; both 2D and 3D share the same append /
+  // recompute logic via LinePathAccumulator.
   private rightDown = false;
-  private linePathPoints: LinePoint[] = [];
-  // Per-unit assigned targets along the drawn path. Recomputed each mousemove
-  // so the preview overlay can draw current distribution dots while dragging
-  // (mirrors the 2D renderer reading state.linePathTargets every frame).
-  private linePathTargets: LinePoint[] = [];
+  private linePath = new LinePathAccumulator();
 
   // Visual selection rectangle overlay (CSS div over the canvas)
   private marquee: HTMLDivElement;
@@ -344,25 +338,15 @@ export class Input3DManager {
     }
 
     if (this.rightDown) {
-      // Record points along the right-drag path so units can spread along a line.
+      // Record points along the right-drag path so units can spread
+      // along a line. The accumulator drops near-duplicate samples
+      // and recomputes per-unit targets on append; we also force a
+      // recompute here so the preview stays live between appends.
       const world = this.raycastGround(e.clientX, e.clientY);
       if (!world) return;
-      const last = this.linePathPoints[this.linePathPoints.length - 1];
-      if (!last || Math.hypot(world.x - last.x, world.y - last.y) >= LINE_PATH_SEGMENT_MIN) {
-        this.linePathPoints.push({ x: world.x, y: world.y });
-      }
-      // Recompute per-unit target distribution so the preview overlay can
-      // draw dots at the current assignment each frame, even if the cursor
-      // is between recorded points.
-      const selectedUnits = this.entitySource.getSelectedUnits();
-      if (selectedUnits.length > 0 && this.linePathPoints.length > 0) {
-        this.linePathTargets = calculateLinePathTargets(
-          this.linePathPoints,
-          selectedUnits.length,
-        );
-      } else {
-        this.linePathTargets = [];
-      }
+      const unitCount = this.entitySource.getSelectedUnits().length;
+      this.linePath.append(world.x, world.y, unitCount);
+      this.linePath.recomputeTargets(unitCount);
     }
   }
 
@@ -515,14 +499,12 @@ export class Input3DManager {
 
     // Start drawing a line path of waypoints.
     this.rightDown = true;
-    this.linePathPoints = [{ x: world.x, y: world.y }];
-    this.linePathTargets = [];
+    this.linePath.start(world.x, world.y, selectedUnits.length);
   }
 
-  /**
-   * State shape consumed by the 3D line-drag overlay. Populated while the
-   * user is actively right-dragging; reset when the drag ends.
-   */
+  /** State shape consumed by the 3D line-drag overlay. Populated
+   *  while the user is actively right-dragging; reset when the drag
+   *  ends. Points/targets come from the shared accumulator. */
   getLineDragState(): {
     active: boolean;
     points: ReadonlyArray<{ x: number; y: number }>;
@@ -531,8 +513,8 @@ export class Input3DManager {
   } {
     return {
       active: this.rightDown,
-      points: this.linePathPoints,
-      targets: this.linePathTargets,
+      points: this.linePath.points,
+      targets: this.linePath.targets,
       mode: this.waypointMode,
     };
   }
@@ -540,16 +522,16 @@ export class Input3DManager {
   private handleRightMouseUp(e: MouseEvent): void {
     this.rightDown = false;
     const selectedUnits = this.entitySource.getSelectedUnits();
-    if (selectedUnits.length === 0 || this.linePathPoints.length === 0) {
-      this.linePathPoints.length = 0;
-    this.linePathTargets.length = 0;
+    const points = this.linePath.points;
+    if (selectedUnits.length === 0 || points.length === 0) {
+      this.linePath.reset();
       return;
     }
 
     const shiftHeld = e.shiftKey;
     const mode = this.waypointMode;
-    const pathLen = getPathLength(this.linePathPoints);
-    const finalPoint = this.linePathPoints[this.linePathPoints.length - 1];
+    const pathLen = getPathLength(points);
+    const finalPoint = points[points.length - 1];
 
     if (pathLen < LINE_PATH_MIN_LENGTH) {
       // Short path = single-point group move. Matches the 2D fallback
@@ -563,15 +545,16 @@ export class Input3DManager {
         waypointType: mode,
         queue: shiftHeld,
       });
-      this.linePathPoints.length = 0;
-    this.linePathTargets.length = 0;
+      this.linePath.reset();
       return;
     }
 
-    // Spread units along the drawn line using the shared 2D helpers so the
-    // per-unit assignment matches the 2D path exactly.
-    const targets = calculateLinePathTargets(this.linePathPoints, selectedUnits.length);
-    const assignments = assignUnitsToTargets(selectedUnits, targets);
+    // Spread units along the drawn line — the accumulator already
+    // ran calculateLinePathTargets each mouse-move, so just re-
+    // compute once more at the final selected-unit count before the
+    // assignment pass.
+    this.linePath.recomputeTargets(selectedUnits.length);
+    const assignments = assignUnitsToTargets(selectedUnits, this.linePath.targets);
 
     const entityIds: EntityId[] = [];
     const individualTargets: WaypointTarget[] = [];
@@ -591,8 +574,7 @@ export class Input3DManager {
       waypointType: mode,
       queue: shiftHeld,
     });
-    this.linePathPoints.length = 0;
-    this.linePathTargets.length = 0;
+    this.linePath.reset();
   }
 
   private showMarquee(): void {

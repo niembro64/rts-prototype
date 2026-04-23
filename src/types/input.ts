@@ -46,9 +46,12 @@ export type InputState = {
   rotStartX: number;
   rotStartY: number;
   rotStartAngle: number;
+  /** True while the right mouse button is drawing a line-path /
+   *  factory-waypoint. The points and target list themselves live in
+   *  the shared LinePathAccumulator owned by the command handler;
+   *  this flag is only a lightweight signal for peer controllers
+   *  (edge-scroll / pan-arrow) to suppress their own input. */
   isDrawingLinePath: boolean;
-  linePathPoints: WorldPoint[];
-  linePathTargets: WorldPoint[];
   waypointMode: WaypointType;
   isBuildMode: boolean;
   selectedBuildingType: BuildingType | null;
