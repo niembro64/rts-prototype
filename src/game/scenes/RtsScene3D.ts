@@ -690,13 +690,17 @@ export class RtsScene3D {
     logicMsAvg: number; logicMsHi: number;
     cpuPctAvg: number; cpuPctHi: number;
     gpuPctAvg: number; gpuPctHi: number;
+    budgetMs: number;
   } {
-    // Load percentages are expressed against the 60 FPS frame budget
-    // (1000/60 ≈ 16.67 ms). CPU = simulation / update / HUD work
-    // (logicMs); GPU = time inside renderer.render(), which is mostly
-    // draw-call submission on the CPU side but correlates strongly with
-    // actual GPU cost (renderMs).
-    const budget = 1000 / 60;
+    // Self-calibrating budget: use the best frame time we've ever actually
+    // hit (via frameMsTracker.getLo()) as "100% of available headroom."
+    // Since requestAnimationFrame is vsync-locked, this converges to the
+    // monitor's effective refresh rate — ~16.67 ms on 60 Hz, ~6.94 ms on
+    // 144 Hz — without hardcoding. Clamp to ≥4 ms so a single early-fire
+    // rAF outlier can't set an unreachable baseline. CPU = logicMs
+    // (sim/update/HUD); GPU = renderMs (renderer.render() time, mostly
+    // draw-call submission but correlates with actual GPU cost).
+    const budget = Math.max(4, this.frameMsTracker.getLo());
     return {
       frameMsAvg: this.frameMsTracker.getAvg(),
       frameMsHi: this.frameMsTracker.getHi(),
@@ -708,6 +712,7 @@ export class RtsScene3D {
       cpuPctHi:  (this.logicMsTracker.getHi()  / budget) * 100,
       gpuPctAvg: (this.renderMsTracker.getAvg() / budget) * 100,
       gpuPctHi:  (this.renderMsTracker.getHi()  / budget) * 100,
+      budgetMs: budget,
     };
   }
 

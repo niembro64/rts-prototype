@@ -852,12 +852,14 @@ export class RtsScene extends SceneShim {
     logicMsAvg: number; logicMsHi: number;
     cpuPctAvg: number; cpuPctHi: number;
     gpuPctAvg: number; gpuPctHi: number;
+    budgetMs: number;
   } {
-    // Load percentages against the 60 FPS frame budget. CPU = logicMs
-    // (simulation + HUD + per-frame update work); GPU = renderMs (time
-    // spent inside renderer.render(), which is mostly draw-call
-    // submission but correlates strongly with actual GPU cost).
-    const budget = 1000 / 60;
+    // Self-calibrating budget: use the best frame time we've ever actually
+    // hit (frameMsTracker.getLo()) as "100%." Because requestAnimationFrame
+    // is vsync-locked, this converges to the monitor's effective refresh
+    // rate on any display — no hardcoded 60 Hz assumption. The ≥4 ms floor
+    // prevents a lone outlier rAF from setting an unreachable baseline.
+    const budget = Math.max(4, this.frameMsTracker.getLo());
     return {
       frameMsAvg: this.frameMsTracker.getAvg(),
       frameMsHi: this.frameMsTracker.getHi(),
@@ -869,6 +871,7 @@ export class RtsScene extends SceneShim {
       cpuPctHi:  (this.logicMsTracker.getHi()  / budget) * 100,
       gpuPctAvg: (this.renderMsTracker.getAvg() / budget) * 100,
       gpuPctHi:  (this.renderMsTracker.getHi()  / budget) * 100,
+      budgetMs: budget,
     };
   }
 

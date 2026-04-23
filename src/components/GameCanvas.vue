@@ -225,13 +225,16 @@ const renderMsAvg = ref(0);
 const renderMsHi = ref(0);
 const logicMsAvg = ref(0);
 const logicMsHi = ref(0);
-// Client CPU% / GPU% derived from logicMs / renderMs against the 60 FPS
-// budget. Shown alongside the raw ms so the bar communicates "we're at
-// 80% of frame budget" at a glance.
+// Client CPU% / GPU% derived from logicMs / renderMs against a
+// self-calibrating frame budget = best frame time the client has ever
+// actually hit (auto-adapts to 60 Hz vs 144 Hz etc via
+// frameMsTracker.getLo()). Shown alongside the raw ms so the bar
+// communicates "we're at 80% of the headroom this machine can deliver."
 const clientCpuPctAvg = ref(0);
 const clientCpuPctHi = ref(0);
 const clientGpuPctAvg = ref(0);
 const clientGpuPctHi = ref(0);
+const clientBudgetMs = ref(1000 / 60);
 
 // FPS, snapshot rate, and zoom tracking (EMA-based, polled from scene)
 const actualAvgFPS = ref(0);
@@ -911,6 +914,7 @@ function updateFPSStats(): void {
     clientCpuPctHi.value = timing.cpuPctHi;
     clientGpuPctAvg.value = timing.gpuPctAvg;
     clientGpuPctHi.value = timing.gpuPctHi;
+    clientBudgetMs.value = timing.budgetMs;
 
     const frameStats = scene.getFrameStats();
     actualAvgFPS.value = frameStats.avgFps;
@@ -1679,7 +1683,7 @@ onUnmounted(() => {
           <div class="control-group">
             <span
               class="control-label"
-              :title="`Client CPU load — simulation prediction, input, HUD updates. Raw logicMs: ${fmt4(logicMsAvg)} avg / ${fmt4(logicMsHi)} hi.`"
+              :title="`Client CPU load — simulation prediction, input, HUD updates. 100% = ${fmt4(clientBudgetMs)} ms (best observed frame, self-calibrated to your monitor's effective refresh rate). Raw logicMs: ${fmt4(logicMsAvg)} avg / ${fmt4(logicMsHi)} hi.`"
               >CPU:</span
             >
             <div class="stat-bar-group">
@@ -1712,7 +1716,7 @@ onUnmounted(() => {
           <div class="control-group">
             <span
               class="control-label"
-              :title="`Client GPU load — time inside renderer.render(), mostly draw-call submission (correlates with actual GPU cost). Raw renderMs: ${fmt4(renderMsAvg)} avg / ${fmt4(renderMsHi)} hi.`"
+              :title="`Client GPU load — time inside renderer.render(), mostly draw-call submission (correlates with actual GPU cost). 100% = ${fmt4(clientBudgetMs)} ms (best observed frame). Raw renderMs: ${fmt4(renderMsAvg)} avg / ${fmt4(renderMsHi)} hi.`"
               >GPU:</span
             >
             <div class="stat-bar-group">
