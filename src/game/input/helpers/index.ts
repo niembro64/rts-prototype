@@ -39,6 +39,11 @@ export { type ModeCancel, handleEscape } from './EscapeHandler';
 export { CommanderModeController } from './CommanderModeController';
 
 export {
+  buildRepairCommandAt,
+  buildFactoryWaypointCommands,
+} from './CommanderCommands';
+
+export {
   type RepairEntitySource,
   findRepairTargetAt,
   findIncompleteBuildingAt,

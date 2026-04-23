@@ -1,12 +1,12 @@
 import type Phaser from '../PhaserCompat';
-import type { CommandQueue, RepairCommand, SetFactoryWaypointsCommand } from '../sim/commands';
-import type { Entity } from '../sim/types';
+import type { CommandQueue } from '../sim/commands';
 import {
   WAYPOINT_COLORS,
-  findRepairTargetAt,
   LinePathAccumulator,
   buildAttackCommandAt,
   buildLinePathMoveCommand,
+  buildRepairCommandAt,
+  buildFactoryWaypointCommands,
 } from './helpers';
 import type { InputEntitySource, InputContext } from './inputBindings';
 import type { InputState } from './InputState';
@@ -68,21 +68,16 @@ export class CommandController {
     }
 
     // Check if commander is selected and right-clicking on a repair target
-    const commander = this.buildingController.getSelectedCommander();
-    if (commander?.ownership) {
-      const repairTarget = this.findRepairTarget(worldX, worldY, commander.ownership.playerId);
-      if (repairTarget) {
-        // Issue repair command
-        const command: RepairCommand = {
-          type: 'repair',
-          tick: this.context.getTick(),
-          commanderId: commander.id,
-          targetId: repairTarget.id,
-          queue: this.shiftKey.isDown,
-        };
-        this.commandQueue.enqueue(command);
-        return;
-      }
+    const repairCmd = buildRepairCommandAt(
+      this.entitySource,
+      worldX, worldY,
+      this.buildingController.getSelectedCommander(),
+      this.context.getTick(),
+      this.shiftKey.isDown,
+    );
+    if (repairCmd) {
+      this.commandQueue.enqueue(repairCmd);
+      return;
     }
 
     // Check if right-clicking on an enemy target (attack command)
@@ -132,11 +127,6 @@ export class CommandController {
     this.linePathGraphics.clear();
   }
 
-  /** Find a repairable target at a world position (incomplete building or damaged friendly unit) */
-  private findRepairTarget(worldX: number, worldY: number, playerId: number): Entity | null {
-    return findRepairTargetAt(this.entitySource, worldX, worldY, playerId);
-  }
-
   /** Finish line path and issue move commands (for units or factory waypoints) */
   private finishLinePath(shiftHeld: boolean): void {
     const selectedUnits = this.selectionController.getSelectedUnits();
@@ -155,22 +145,18 @@ export class CommandController {
     const finalPoint = points[points.length - 1];
 
     // Commander-specific: if the path ends on a repair target
-    // (incomplete building or damaged friendly), issue repair instead
-    // of move. This is 2D-only — 3D has no commander-repair flow.
-    const commander = this.buildingController.getSelectedCommander();
-    if (commander?.ownership) {
-      const repairTarget = this.findRepairTarget(finalPoint.x, finalPoint.y, commander.ownership.playerId);
-      if (repairTarget) {
-        const command: RepairCommand = {
-          type: 'repair',
-          tick: this.context.getTick(),
-          commanderId: commander.id,
-          targetId: repairTarget.id,
-          queue: shiftHeld,
-        };
-        this.commandQueue.enqueue(command);
-        return;
-      }
+    // (incomplete building or damaged friendly), issue repair
+    // instead of move. Shared with the 3D path via buildRepairCommandAt.
+    const repairCmd = buildRepairCommandAt(
+      this.entitySource,
+      finalPoint.x, finalPoint.y,
+      this.buildingController.getSelectedCommander(),
+      this.context.getTick(),
+      shiftHeld,
+    );
+    if (repairCmd) {
+      this.commandQueue.enqueue(repairCmd);
+      return;
     }
 
     const moveCmd = buildLinePathMoveCommand(
@@ -187,31 +173,15 @@ export class CommandController {
   private finishFactoryWaypoints(shiftHeld: boolean): void {
     const selectedFactories = this.selectionController.getSelectedFactories();
     if (selectedFactories.length === 0) return;
-
-    // Get the target point(s) from the line path
     const points = this.linePath.points;
+    if (points.length === 0) return;
     const target = points[points.length - 1];
-
-    // Create the new waypoint
-    const newWaypoint = {
-      x: target.x,
-      y: target.y,
-      type: this.state.waypointMode,
-    };
-
-    // Issue command for each selected factory
-    for (const factory of selectedFactories) {
-      if (!factory.factory) continue;
-
-      const command: SetFactoryWaypointsCommand = {
-        type: 'setFactoryWaypoints',
-        tick: this.context.getTick(),
-        factoryId: factory.id,
-        waypoints: [newWaypoint],
-        queue: shiftHeld,
-      };
-      this.commandQueue.enqueue(command);
-    }
+    const cmds = buildFactoryWaypointCommands(
+      selectedFactories, target.x, target.y,
+      this.state.waypointMode,
+      this.context.getTick(), shiftHeld,
+    );
+    for (const cmd of cmds) this.commandQueue.enqueue(cmd);
   }
 
   /** Draw line path preview */

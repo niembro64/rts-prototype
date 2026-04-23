@@ -26,6 +26,8 @@ import {
   LinePathAccumulator,
   buildAttackCommandAt,
   buildLinePathMoveCommand,
+  buildRepairCommandAt,
+  buildFactoryWaypointCommands,
   handleEscape,
   CommanderModeController,
 } from '../input/helpers';
@@ -515,33 +517,63 @@ export class Input3DManager {
   }
 
   private handleRightMouseDown(e: MouseEvent): void {
-    // Right-click only triggers commands if any selection is present. Mirrors
-    // CommandController.handleRightClickDown from the 2D path — attack target
-    // takes priority; otherwise we start drawing a line path that becomes a
-    // per-unit move on release.
+    // Right-click dispatcher, matching the 2D CommandController:
+    //   1. selected commander + repair target under cursor → repair
+    //   2. selected units + attack target under cursor → attack
+    //   3. units selected → start line-path for group move
+    //   4. no units, factories selected → start factory-waypoint drag
     const selectedUnits = this.entitySource.getSelectedUnits();
-    if (selectedUnits.length === 0) return;
-
-    // Attack target under cursor → attack command (skips line-path drawing).
     const world = this.raycastGround(e.clientX, e.clientY);
     if (!world) return;
 
-    const attackCmd = buildAttackCommandAt(
+    const repairCmd = buildRepairCommandAt(
       this.entitySource,
       world.x, world.y,
-      selectedUnits,
-      this.context.activePlayerId,
+      this.getSelectedCommander(),
       this.context.getTick(),
       e.shiftKey,
     );
-    if (attackCmd) {
-      this.gameConnection.sendCommand(attackCmd);
+    if (repairCmd) {
+      this.gameConnection.sendCommand(repairCmd);
       return;
     }
 
-    // Start drawing a line path of waypoints.
-    this.rightDown = true;
-    this.linePath.start(world.x, world.y, selectedUnits.length);
+    if (selectedUnits.length > 0) {
+      // Attack target under cursor → attack command (skips line-path drawing).
+      const attackCmd = buildAttackCommandAt(
+        this.entitySource,
+        world.x, world.y,
+        selectedUnits,
+        this.context.activePlayerId,
+        this.context.getTick(),
+        e.shiftKey,
+      );
+      if (attackCmd) {
+        this.gameConnection.sendCommand(attackCmd);
+        return;
+      }
+      // Start drawing a line path of waypoints.
+      this.rightDown = true;
+      this.linePath.start(world.x, world.y, selectedUnits.length);
+      return;
+    }
+
+    // No units — fall through to factory waypoint mode if the user
+    // has a factory selected. The single placed point IS the target
+    // (no distribution), so seed the accumulator with a fixed target.
+    const factories = this.getSelectedFactories();
+    if (factories.length > 0) {
+      this.rightDown = true;
+      this.linePath.startWithFixedTarget(world.x, world.y);
+    }
+  }
+
+  private getSelectedFactories(): Entity[] {
+    return this.entitySource.getSelectedBuildings().filter(
+      (b) =>
+        b.factory !== undefined &&
+        b.ownership?.playerId === this.context.activePlayerId,
+    );
   }
 
   /** State shape consumed by the 3D line-drag overlay. Populated
@@ -564,14 +596,42 @@ export class Input3DManager {
   private handleRightMouseUp(e: MouseEvent): void {
     this.rightDown = false;
     const selectedUnits = this.entitySource.getSelectedUnits();
-    const moveCmd = buildLinePathMoveCommand(
-      this.linePath,
-      selectedUnits,
-      this.waypointMode,
-      this.context.getTick(),
-      e.shiftKey,
-    );
-    if (moveCmd) this.gameConnection.sendCommand(moveCmd);
+    const points = this.linePath.points;
+    const shiftHeld = e.shiftKey;
+    const tick = this.context.getTick();
+
+    if (selectedUnits.length > 0 && points.length > 0) {
+      const finalPoint = points[points.length - 1];
+      // Commander ending the path on a repairable target → repair.
+      const repairCmd = buildRepairCommandAt(
+        this.entitySource,
+        finalPoint.x, finalPoint.y,
+        this.getSelectedCommander(),
+        tick, shiftHeld,
+      );
+      if (repairCmd) {
+        this.gameConnection.sendCommand(repairCmd);
+        this.linePath.reset();
+        return;
+      }
+      const moveCmd = buildLinePathMoveCommand(
+        this.linePath, selectedUnits, this.waypointMode, tick, shiftHeld,
+      );
+      if (moveCmd) this.gameConnection.sendCommand(moveCmd);
+      this.linePath.reset();
+      return;
+    }
+
+    // No units: finalize factory waypoints if factories are selected.
+    const factories = this.getSelectedFactories();
+    if (factories.length > 0 && points.length > 0) {
+      const finalPoint = points[points.length - 1];
+      const cmds = buildFactoryWaypointCommands(
+        factories, finalPoint.x, finalPoint.y,
+        this.waypointMode, tick, shiftHeld,
+      );
+      for (const cmd of cmds) this.gameConnection.sendCommand(cmd);
+    }
     this.linePath.reset();
   }
 
