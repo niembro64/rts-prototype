@@ -121,10 +121,7 @@ export function buildMinimapData(
   entitySource: UIEntitySource,
   mapWidth: number,
   mapHeight: number,
-  cameraX: number,
-  cameraY: number,
-  cameraWidth: number,
-  cameraHeight: number
+  cameraQuad: MinimapData['cameraQuad'],
 ): MinimapData {
   const entities: MinimapEntity[] = [];
 
@@ -160,9 +157,6 @@ export function buildMinimapData(
     mapWidth,
     mapHeight,
     entities,
-    cameraX,
-    cameraY,
-    cameraWidth,
-    cameraHeight,
+    cameraQuad,
   };
 }

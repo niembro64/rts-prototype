@@ -12,7 +12,7 @@ export const SERVER_CONFIG = {
   },
   gridInfo: { default: false },
   keyframe: {
-    default: (1 / Math.pow(2, 3)) as KeyframeRatio,
+    default: (1 / Math.pow(2, 6)) as KeyframeRatio,
     options: [
       'ALL',
       1 / Math.pow(2, 3),

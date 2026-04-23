@@ -519,15 +519,21 @@ export class RtsScene extends SceneShim {
     const camera = this.cameras.main;
     const entitySource = this.getCurrentEntitySource();
 
+    // Project the 4 viewport corners to world space. With camera
+    // rotation the quad is no longer axis-aligned, so sending raw
+    // world corners (instead of a rect) lets the minimap draw the
+    // true rotated footprint.
+    const tl = camera.getWorldPoint(0, 0);
+    const tr = camera.getWorldPoint(camera.width, 0);
+    const br = camera.getWorldPoint(camera.width, camera.height);
+    const bl = camera.getWorldPoint(0, camera.height);
+
     this.onMinimapUpdate(
       buildMinimapData(
         entitySource,
         this.mapWidth,
         this.mapHeight,
-        camera.scrollX,
-        camera.scrollY,
-        camera.width / camera.zoom,
-        camera.height / camera.zoom,
+        [tl, tr, br, bl],
       ),
     );
   }

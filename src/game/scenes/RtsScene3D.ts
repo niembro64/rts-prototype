@@ -5,6 +5,7 @@
 // Render3DEntities instead of Pixi graphics, and currently has no selection/input
 // (view-only). Selection/commands will be added in a later pass.
 
+import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
@@ -148,6 +149,14 @@ export class RtsScene3D {
   private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
   private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
   private longtaskTracker = new LongtaskTracker();
+
+  // Reusable raycaster + ground plane for projecting viewport corners
+  // onto the world when building the minimap footprint. Allocated once;
+  // every updateMinimapData() reuses them.
+  private _minimapRay = new THREE.Raycaster();
+  private _minimapGround = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private _minimapNdc = new THREE.Vector2();
+  private _minimapHit = new THREE.Vector3();
 
   // UI update throttling (mirror RtsScene)
   private selectionDirty = true;
@@ -772,18 +781,52 @@ export class RtsScene3D {
 
   public updateMinimapData(): void {
     if (!this.onMinimapUpdate) return;
-    const cam = this.cameras.main;
+    // Raycast each of the four viewport corners through the perspective
+    // camera and intersect y=0 to find where the view touches the
+    // ground. The result is a trapezoid that matches the 3D viewport
+    // exactly — much more accurate than the old rect built from a
+    // single "visible half-width" estimate. Corners are in screen
+    // order (TL, TR, BR, BL) so the minimap draws them as a convex
+    // quad. World (x, z) → sim (x, y).
+    const tl = this.cornerOnGround(-1,  1);
+    const tr = this.cornerOnGround( 1,  1);
+    const br = this.cornerOnGround( 1, -1);
+    const bl = this.cornerOnGround(-1, -1);
+
     this.onMinimapUpdate(
       buildMinimapData(
         this.entitySourceAdapter,
         this.mapWidth,
         this.mapHeight,
-        cam.scrollX,
-        cam.scrollY,
-        cam.width / cam.zoom,
-        cam.height / cam.zoom,
+        [tl, tr, br, bl],
       ),
     );
+  }
+
+  /** Project a viewport corner (in NDC: x,y ∈ [-1,1]) onto the y=0
+   *  ground plane. When the corner ray points above the horizon (no
+   *  intersection with positive t), fall back to a point far along
+   *  the ray's ground-plane projection so the minimap still draws a
+   *  non-degenerate quad. */
+  private cornerOnGround(ndcX: number, ndcY: number): { x: number; y: number } {
+    this._minimapNdc.set(ndcX, ndcY);
+    this._minimapRay.setFromCamera(this._minimapNdc, this.threeApp.camera);
+    const ray = this._minimapRay.ray;
+    // Prefer true ground intersection when the ray actually crosses y=0
+    // ahead of the camera (t > 0). For near-horizontal camera pitch the
+    // upper corners can point above the horizon — in that case, project
+    // the ray's direction onto the XZ plane and step out a big-but-
+    // finite distance so the minimap still gets a quad.
+    if (ray.intersectPlane(this._minimapGround, this._minimapHit)) {
+      return { x: this._minimapHit.x, y: this._minimapHit.z };
+    }
+    const origin = ray.origin;
+    const dir = ray.direction;
+    const farT = Math.max(this.mapWidth, this.mapHeight) * 4;
+    return {
+      x: origin.x + dir.x * farT,
+      y: origin.z + dir.z * farT,
+    };
   }
 
   // ── Public methods matching RtsScene's surface ──

@@ -64,10 +64,14 @@ export type MinimapData = {
   mapWidth: number;
   mapHeight: number;
   entities: MinimapEntity[];
-  cameraX: number;
-  cameraY: number;
-  cameraWidth: number;
-  cameraHeight: number;
+  /** World-space footprint of the camera view on the ground plane, as
+   *  four corners in screen order: top-left, top-right, bottom-right,
+   *  bottom-left. An axis-aligned rect for an unrotated 2D camera; a
+   *  rotated rect for 2D with camera rotation; a trapezoid for a 3D
+   *  perspective camera looking down at an angle. Drawn on the minimap
+   *  as a polygon so the shape always matches the actual viewport,
+   *  including the trapezoidal ground-plane projection in 3D. */
+  cameraQuad: [Vec2, Vec2, Vec2, Vec2];
 };
 
 // Lobby player (used in both component and network)

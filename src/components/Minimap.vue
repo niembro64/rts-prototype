@@ -30,7 +30,7 @@ function draw() {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const { mapWidth, mapHeight, entities, cameraX, cameraY, cameraWidth, cameraHeight } = props.data;
+  const { mapWidth, mapHeight, entities, cameraQuad } = props.data;
   const scaleX = scale.value.x;
   const scaleY = scale.value.y;
 
@@ -87,15 +87,26 @@ function draw() {
     }
   }
 
-  // Draw camera viewport rectangle
-  const camX = cameraX * scaleX;
-  const camY = cameraY * scaleY;
-  const camW = cameraWidth * scaleX;
-  const camH = cameraHeight * scaleY;
-
+  // Draw camera viewport footprint as a polygon of the 4 ground-plane
+  // corners. This renders an axis-aligned rect for an unrotated 2D
+  // camera, a rotated rect for 2D with camera rotation, and a
+  // trapezoid for the 3D perspective camera — always matching what
+  // the player actually sees on screen. Clipped to the minimap area
+  // so corners behind/above the horizon don't scribble outside.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+  ctx.clip();
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
   ctx.lineWidth = 1.5;
-  ctx.strokeRect(camX, camY, camW, camH);
+  ctx.beginPath();
+  ctx.moveTo(cameraQuad[0].x * scaleX, cameraQuad[0].y * scaleY);
+  for (let i = 1; i < cameraQuad.length; i++) {
+    ctx.lineTo(cameraQuad[i].x * scaleX, cameraQuad[i].y * scaleY);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
 
   // Draw border
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';

@@ -287,10 +287,12 @@ const minimapData = reactive<MinimapData>({
   mapWidth: 2000,
   mapHeight: 2000,
   entities: [],
-  cameraX: 0,
-  cameraY: 0,
-  cameraWidth: 800,
-  cameraHeight: 600,
+  cameraQuad: [
+    { x: 0, y: 0 },
+    { x: 800, y: 0 },
+    { x: 800, y: 600 },
+    { x: 0, y: 600 },
+  ],
 });
 
 // Combat stats state
@@ -374,10 +376,7 @@ async function startBackgroundBattle(): Promise<void> {
       };
       bgScene.onMinimapUpdate = (data: MinimapData) => {
         minimapData.entities = data.entities;
-        minimapData.cameraX = data.cameraX;
-        minimapData.cameraY = data.cameraY;
-        minimapData.cameraWidth = data.cameraWidth;
-        minimapData.cameraHeight = data.cameraHeight;
+        minimapData.cameraQuad = data.cameraQuad;
         minimapData.mapWidth = data.mapWidth;
         minimapData.mapHeight = data.mapHeight;
       };
@@ -428,10 +427,7 @@ function wireBackgroundSceneCallbacks(): void {
       };
       bgScene.onMinimapUpdate = (data: MinimapData) => {
         minimapData.entities = data.entities;
-        minimapData.cameraX = data.cameraX;
-        minimapData.cameraY = data.cameraY;
-        minimapData.cameraWidth = data.cameraWidth;
-        minimapData.cameraHeight = data.cameraHeight;
+        minimapData.cameraQuad = data.cameraQuad;
         minimapData.mapWidth = data.mapWidth;
         minimapData.mapHeight = data.mapHeight;
       };
@@ -1326,10 +1322,7 @@ function setupSceneCallbacks(): void {
       // Minimap data callback
       scene.onMinimapUpdate = (data: MinimapData) => {
         minimapData.entities = data.entities;
-        minimapData.cameraX = data.cameraX;
-        minimapData.cameraY = data.cameraY;
-        minimapData.cameraWidth = data.cameraWidth;
-        minimapData.cameraHeight = data.cameraHeight;
+        minimapData.cameraQuad = data.cameraQuad;
         minimapData.mapWidth = data.mapWidth;
         minimapData.mapHeight = data.mapHeight;
       };
