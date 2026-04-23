@@ -223,10 +223,16 @@ export class RtsScene3D {
     this._baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
 
     // Seed orbit camera on map center (ThreeApp did this too, but we honor the
-    // game vs demo initial-zoom distinction like RtsScene)
+    // game vs demo initial-zoom distinction like RtsScene).
+    //
+    // Default yaw = π so the camera sits on the +Z side of the map looking
+    // toward −Z. That puts sim-Y = 0 (the "top" of the map in the 2D view,
+    // where red team spawns) at the top of the 3D screen — matching the
+    // 2D orientation instead of flipping the board upside-down.
     const initialZoom = this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.threeApp.orbit.distance = this._baseDistance / initialZoom;
+    this.threeApp.orbit.yaw = Math.PI;
     this.threeApp.orbit.apply();
 
     // Redefine cameras.main as live getters bound to orbit + renderer
