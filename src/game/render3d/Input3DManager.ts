@@ -27,10 +27,13 @@ import {
   assignUnitsToTargets,
   getSnappedBuildPosition,
 } from '../input/helpers';
+import {
+  CLICK_DRAG_THRESHOLD_PX,
+  LINE_PATH_SEGMENT_MIN,
+} from '../input/constants';
 import type { StartBuildCommand, WaypointTarget } from '../sim/commands';
 
 type LinePoint = { x: number; y: number };
-const LINE_PATH_SEGMENT_MIN = 10;     // min world distance to record a new path point
 const LINE_PATH_MIN_LENGTH = 20;      // path shorter than this = treated as a click
 
 type EntitySource = {
@@ -44,8 +47,6 @@ type EntitySource = {
   getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
   getUnitsByPlayer: (playerId: PlayerId) => Entity[];
 };
-
-const DRAG_PIXEL_THRESHOLD = 5;
 
 export class Input3DManager {
   private threeApp: ThreeApp;
@@ -315,7 +316,7 @@ export class Input3DManager {
       const dx = e.clientX - this.dragStartScreen.x;
       const dy = e.clientY - this.dragStartScreen.y;
       const dist = Math.hypot(dx, dy);
-      if (dist >= DRAG_PIXEL_THRESHOLD) {
+      if (dist >= CLICK_DRAG_THRESHOLD_PX) {
         this.showMarquee();
       }
       return;
@@ -355,7 +356,7 @@ export class Input3DManager {
 
     const dx = e.clientX - this.dragStartScreen.x;
     const dy = e.clientY - this.dragStartScreen.y;
-    const isClick = Math.hypot(dx, dy) < DRAG_PIXEL_THRESHOLD;
+    const isClick = Math.hypot(dx, dy) < CLICK_DRAG_THRESHOLD_PX;
     const additive = e.shiftKey;
 
     if (isClick) {

@@ -5,13 +5,9 @@ import {
   findClosestUnitToPoint,
   findClosestBuildingToPoint,
 } from './helpers';
+import { CLICK_DRAG_THRESHOLD_PX } from './constants';
 import type { InputEntitySource, InputContext } from './inputBindings';
 import type { InputState } from './InputState';
-
-/** Drag less than this many screen pixels counts as a click rather
- *  than a box-select. Matches the old world-space threshold at
- *  zoom=1 and is camera-invariant now that drag is tracked in pixels. */
-const CLICK_DRAG_THRESHOLD_PX = 10;
 
 /**
  * SelectionController - Handles box selection, click selection, and double-click selection.
