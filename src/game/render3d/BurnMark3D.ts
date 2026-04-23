@@ -23,7 +23,6 @@ import {
   BURN_COLOR_HOT,
   BURN_COLOR_TAU,
   BURN_COOL_TAU,
-  hexToRgb,
 } from '../../config';
 
 // ── World Y layout ──
@@ -35,9 +34,15 @@ const MARK_Y = 2.5;
 const GLOW_Y = 3.0;
 
 // ── Color curve — matches 2D BurnMarkSystem exactly ──
-const HOT_RGB = hexToRgb(BURN_COLOR_HOT);         // 0x882200
+// Source the color components via THREE.Color so the hex (sRGB) is
+// converted to the renderer's working linear space. Writing raw
+// `hex/255` bytes as vertex-color floats is WRONG when
+// ColorManagement.enabled = true (Three r152+): the renderer re-encodes
+// linear → sRGB on output, and raw-sRGB-as-linear comes out visibly
+// darker than the 2D counterpart that fillStyle()'s the same hex.
 const COOL_COLOR = 0x221100;                      // dark brown residue
-const COOL_RGB = hexToRgb(COOL_COLOR);
+const HOT_LIN = new THREE.Color(BURN_COLOR_HOT);  // linear-RGB of 0x882200
+const COOL_LIN = new THREE.Color(COOL_COLOR);     // linear-RGB of 0x221100
 const INV_COLOR_TAU = 1 / BURN_COLOR_TAU;         // hot → cool fade
 const INV_COOL_TAU = 1 / BURN_COOL_TAU;           // alpha fade
 
@@ -169,10 +174,14 @@ export class BurnMark3D {
     this.mesh.frustumCulled = false;
     this.root.add(this.mesh);
 
+    // Hit-glow sphere is pure white — matches the 2D ProjectileRenderer's
+    // white hit core (`0xffffff` @ alpha 0.5). Slightly higher alpha here
+    // since the 3D sphere is volumetric and benefits from a brighter read
+    // against the ground plane.
     this.glowMat = new THREE.MeshBasicMaterial({
-      color: 0xffcc66,
+      color: 0xffffff,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.75,
       depthWrite: false,
     });
   }
@@ -274,9 +283,9 @@ export class BurnMark3D {
       const hotDecay =
         1 / (1 + xHot + 0.48 * xHot * xHot + 0.235 * xHot * xHot * xHot);
       const coolBlend = 1 - hotDecay;
-      const r = (HOT_RGB.r * hotDecay + COOL_RGB.r * coolBlend) / 255;
-      const g = (HOT_RGB.g * hotDecay + COOL_RGB.g * coolBlend) / 255;
-      const b = (HOT_RGB.b * hotDecay + COOL_RGB.b * coolBlend) / 255;
+      const r = HOT_LIN.r * hotDecay + COOL_LIN.r * coolBlend;
+      const g = HOT_LIN.g * hotDecay + COOL_LIN.g * coolBlend;
+      const b = HOT_LIN.b * hotDecay + COOL_LIN.b * coolBlend;
       this.writeQuadColor(i, r, g, b, alpha);
     }
 
@@ -373,7 +382,7 @@ export class BurnMark3D {
     this.writeQuad(slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
     // Fresh marks render at hot color + full alpha — age sweep will take
     // over from the next frame. Writing once here avoids a 1-frame flicker.
-    this.writeQuadColor(slot, HOT_RGB.r / 255, HOT_RGB.g / 255, HOT_RGB.b / 255, 1);
+    this.writeQuadColor(slot, HOT_LIN.r, HOT_LIN.g, HOT_LIN.b, 1);
 
     this.posAttr.needsUpdate = true;
     this.colAttr.needsUpdate = true;

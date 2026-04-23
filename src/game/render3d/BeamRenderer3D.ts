@@ -11,7 +11,6 @@
 
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
-import { PLAYER_COLORS } from '../sim/types';
 
 // Must match the value in Render3DEntities so beams and barrel tips share a
 // Y level. Kept as a constant (not exported from Render3DEntities) to avoid a
@@ -22,8 +21,15 @@ const SHOT_HEIGHT = 28 + 16 / 2; // CHASSIS_HEIGHT + TURRET_HEIGHT / 2
 // very-thin beam isn't invisible. Matches TurretRenderer.ts which draws beams
 // at `shot.width` pixels thick.
 const BEAM_MIN_RADIUS = 0.75;
-const LASER_OPACITY_MAX = 0.95;
-const BEAM_OPACITY = 0.85;
+// Matches the 2D ProjectileRenderer aesthetic: beams are white lines at
+// low alpha — the team's identity shows through the turret / hit halo,
+// not through the beam color itself. 2D uses white @ alpha=0.33; 3D is
+// a volumetric cylinder so we need higher per-pixel alpha to read as a
+// glowing bar rather than a ghost. Tuned by eye: lasers slightly
+// brighter than plain beams to keep the existing "laser = hotter" feel.
+const BEAM_OPACITY = 0.55;
+const LASER_OPACITY_MAX = 0.7;
+const BEAM_COLOR = 0xffffff;
 
 type BeamMat = {
   material: THREE.MeshBasicMaterial;
@@ -55,14 +61,15 @@ export class BeamRenderer3D {
   }
 
   private getMaterial(pid: PlayerId | undefined, projectileType: string): THREE.MeshBasicMaterial {
+    // Beam color is WHITE regardless of player — matches 2D where the
+    // beam core is always `0xffffff` and team identity comes from the
+    // shooter / hit flare. The `pid` field is still kept in the cache
+    // key so we can swap out later if we add a team-colored outer halo.
     const key = `${pid ?? -1}|${projectileType}`;
     const cached = this.matCache.get(key);
     if (cached) return cached.material;
-    const color = pid !== undefined
-      ? PLAYER_COLORS[pid]?.primary ?? 0xffffff
-      : 0xffffff;
     const mat = new THREE.MeshBasicMaterial({
-      color,
+      color: BEAM_COLOR,
       transparent: true,
       opacity: projectileType === 'laser' ? LASER_OPACITY_MAX : BEAM_OPACITY,
       depthWrite: false,
