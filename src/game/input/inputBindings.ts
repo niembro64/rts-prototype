@@ -264,8 +264,11 @@ export class InputManager {
           return;
         }
 
-        // Start selection drag
-        this.selectionController.startDrag(worldPoint.x, worldPoint.y);
+        // Start selection drag — tracked in screen pixels so camera
+        // rotation doesn't warp the drag rect. The rect is drawn on
+        // the HUD layer and hit-tested by projecting each unit's
+        // world pos back to screen, matching the 3D selection path.
+        this.selectionController.startDrag(p.x, p.y);
       } else if (p.middleButtonDown() && getDragPanEnabled()) {
         // Alt + middle-drag rotates the camera; plain middle-drag pans.
         // Matches the 3D OrbitCamera's modifier convention exactly.
@@ -291,7 +294,7 @@ export class InputManager {
       this.buildingController.updateGhostPosition(worldPoint.x, worldPoint.y);
 
       if (this.state.isDraggingSelection) {
-        this.selectionController.updateDrag(worldPoint.x, worldPoint.y);
+        this.selectionController.updateDrag(p.x, p.y);
       }
 
       if (this.state.isPanningCamera) {

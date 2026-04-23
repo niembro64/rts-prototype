@@ -94,6 +94,28 @@ export class Camera {
     return this._vp;
   }
 
+  /** Convert world coordinates to screen coordinates — the inverse
+   *  of getWorldPoint. Used by the selection system when checking
+   *  which units fall inside a screen-space drag rect (matches the
+   *  3D renderer's approach, which projects world positions to NDC
+   *  and tests against the screen rect). */
+  getScreenPoint(worldX: number, worldY: number): { x: number; y: number } {
+    const targetX = this.scrollX + this.width / (2 * this.zoom);
+    const targetY = this.scrollY + this.height / (2 * this.zoom);
+    const rx = (worldX - targetX) * this.zoom;
+    const ry = (worldY - targetY) * this.zoom;
+    // Inverse rotation: getWorldPoint rotates the screen vector by
+    // +rotation, so going the other way rotates by -rotation.
+    const cos = Math.cos(this.rotation);
+    const sin = Math.sin(this.rotation);
+    const dx = rx * cos + ry * sin;
+    const dy = -rx * sin + ry * cos;
+    return {
+      x: dx + this.width / 2,
+      y: dy + this.height / 2,
+    };
+  }
+
   /** Convert screen coordinates to world coordinates. Inverts the
    *  world container's transform chain: translate (viewport center) →
    *  rotate (-camera.rotation) → scale (zoom) → translate (pivot). */

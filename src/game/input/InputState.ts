@@ -4,10 +4,10 @@ import type { InputState } from '@/types/input';
 export function createInitialInputState(): InputState {
   return {
     isDraggingSelection: false,
-    selectionStartWorldX: 0,
-    selectionStartWorldY: 0,
-    selectionEndWorldX: 0,
-    selectionEndWorldY: 0,
+    selectionStartScreenX: 0,
+    selectionStartScreenY: 0,
+    selectionEndScreenX: 0,
+    selectionEndScreenY: 0,
     isPanningCamera: false,
     panStartX: 0,
     panStartY: 0,

@@ -15,14 +15,8 @@ export {
 
 export {
   type SelectionEntitySource,
-  type SelectionRect,
-  type SelectionResult,
-  performSelection,
-  findUnitsInRect,
-  findBuildingsInRect,
   findClosestUnitToPoint,
   findClosestBuildingToPoint,
-  getDragDistance,
 } from './SelectionHelper';
 
 export {

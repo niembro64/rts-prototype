@@ -25,10 +25,13 @@ export type InputContext = {
 // Shared mutable state for all input controllers
 export type InputState = {
   isDraggingSelection: boolean;
-  selectionStartWorldX: number;
-  selectionStartWorldY: number;
-  selectionEndWorldX: number;
-  selectionEndWorldY: number;
+  /** Selection drag is tracked in **screen** pixels (not world), so
+   *  rotation + zoom don't warp the drag rect and projecting each
+   *  entity to screen space makes the containment test trivial. */
+  selectionStartScreenX: number;
+  selectionStartScreenY: number;
+  selectionEndScreenX: number;
+  selectionEndScreenY: number;
   isPanningCamera: boolean;
   panStartX: number;
   panStartY: number;
@@ -60,20 +63,6 @@ export type InputState = {
 export type SelectionEntitySource = {
   getUnits(): Entity[];
   getBuildings(): Entity[];
-};
-
-// Selection rectangle in world coordinates
-export type SelectionRect = {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-};
-
-// Result of selection query
-export type SelectionResult = {
-  entityIds: EntityId[];
-  wasClick: boolean;
 };
 
 // Entity source for repair target queries

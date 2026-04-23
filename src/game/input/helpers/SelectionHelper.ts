@@ -1,50 +1,17 @@
-// Selection helper functions for entity selection logic
+// Selection helper functions for entity selection logic.
+//
+// Box-select hit testing is screen-space now (in SelectionController
+// for 2D, Input3DManager for 3D), so this file only owns the
+// click-to-select collider queries. No more world-axis-aligned rect
+// tests here — camera rotation broke them, and projecting entities
+// to screen pixels before the rect check is both simpler and
+// matches the 3D renderer.
 
 import type { EntityId, PlayerId } from '../../sim/types';
 import { magnitude } from '../../math';
 
-export type { SelectionEntitySource, SelectionRect, SelectionResult } from '@/types/input';
-import type { SelectionEntitySource, SelectionRect, SelectionResult } from '@/types/input';
-
-// Find all owned units within a selection rectangle
-export function findUnitsInRect(
-  entitySource: SelectionEntitySource,
-  rect: SelectionRect,
-  playerId: PlayerId
-): EntityId[] {
-  const ids: EntityId[] = [];
-
-  for (const entity of entitySource.getUnits()) {
-    const { x, y } = entity.transform;
-    if (entity.ownership?.playerId !== playerId) continue;
-
-    if (x >= rect.minX && x <= rect.maxX && y >= rect.minY && y <= rect.maxY) {
-      ids.push(entity.id);
-    }
-  }
-
-  return ids;
-}
-
-// Find all owned buildings within a selection rectangle
-export function findBuildingsInRect(
-  entitySource: SelectionEntitySource,
-  rect: SelectionRect,
-  playerId: PlayerId
-): EntityId[] {
-  const ids: EntityId[] = [];
-
-  for (const entity of entitySource.getBuildings()) {
-    const { x, y } = entity.transform;
-    if (entity.ownership?.playerId !== playerId) continue;
-
-    if (x >= rect.minX && x <= rect.maxX && y >= rect.minY && y <= rect.maxY) {
-      ids.push(entity.id);
-    }
-  }
-
-  return ids;
-}
+export type { SelectionEntitySource } from '@/types/input';
+import type { SelectionEntitySource } from '@/types/input';
 
 // Find closest owned unit to a point (for single-click selection)
 export function findClosestUnitToPoint(
@@ -107,61 +74,5 @@ export function findClosestBuildingToPoint(
   return closest;
 }
 
-// Calculate drag distance between two points
-export function getDragDistance(
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number
-): number {
-  const dx = endX - startX;
-  const dy = endY - startY;
-  return magnitude(dx, dy);
-}
-
-// Perform complete selection query (rect or click)
-// Returns entity IDs found in selection area
-export function performSelection(
-  entitySource: SelectionEntitySource,
-  startWorldX: number,
-  startWorldY: number,
-  endWorldX: number,
-  endWorldY: number,
-  playerId: PlayerId,
-  dragThreshold: number = 10
-): SelectionResult {
-  const rect: SelectionRect = {
-    minX: Math.min(startWorldX, endWorldX),
-    maxX: Math.max(startWorldX, endWorldX),
-    minY: Math.min(startWorldY, endWorldY),
-    maxY: Math.max(startWorldY, endWorldY),
-  };
-
-  const dragDist = getDragDistance(startWorldX, startWorldY, endWorldX, endWorldY);
-  const wasClick = dragDist < dragThreshold;
-
-  if (wasClick) {
-    // Single click - find closest entity
-    const closestUnit = findClosestUnitToPoint(entitySource, startWorldX, startWorldY, playerId);
-    if (closestUnit) {
-      return { entityIds: [closestUnit.id], wasClick: true };
-    }
-
-    const closestBuilding = findClosestBuildingToPoint(entitySource, startWorldX, startWorldY, playerId);
-    if (closestBuilding) {
-      return { entityIds: [closestBuilding.id], wasClick: true };
-    }
-
-    return { entityIds: [], wasClick: true };
-  }
-
-  // Drag selection - find entities in rectangle
-  // Units take priority over buildings
-  const unitIds = findUnitsInRect(entitySource, rect, playerId);
-  if (unitIds.length > 0) {
-    return { entityIds: unitIds, wasClick: false };
-  }
-
-  const buildingIds = findBuildingsInRect(entitySource, rect, playerId);
-  return { entityIds: buildingIds, wasClick: false };
-}
+// (Drag-distance + world-rect helpers removed: box-select now runs in
+// screen space inside SelectionController / Input3DManager.)

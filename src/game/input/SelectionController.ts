@@ -1,9 +1,17 @@
 import type Phaser from '../PhaserCompat';
 import type { CommandQueue, SelectCommand } from '../sim/commands';
-import type { Entity, WaypointType } from '../sim/types';
-import { performSelection } from './helpers';
+import type { Entity, EntityId, PlayerId, WaypointType } from '../sim/types';
+import {
+  findClosestUnitToPoint,
+  findClosestBuildingToPoint,
+} from './helpers';
 import type { InputEntitySource, InputContext } from './inputBindings';
 import type { InputState } from './InputState';
+
+/** Drag less than this many screen pixels counts as a click rather
+ *  than a box-select. Matches the old world-space threshold at
+ *  zoom=1 and is camera-invariant now that drag is tracked in pixels. */
+const CLICK_DRAG_THRESHOLD_PX = 10;
 
 /**
  * SelectionController - Handles box selection, click selection, and double-click selection.
@@ -34,6 +42,11 @@ export class SelectionController {
     this.commandQueue = commandQueue;
     this.state = state;
     this.selectionGraphics = selectionGraphics;
+    // Draw the selection rect in screen space. With camera rotation
+    // the rect must stay axis-aligned on-screen (the user is dragging
+    // pixels, not world units), so we parent the graphics to the HUD
+    // layer and use screen-space coords everywhere.
+    this.selectionGraphics.setScrollFactor(0);
   }
 
   setEntitySource(source: InputEntitySource): void {
@@ -54,41 +67,103 @@ export class SelectionController {
     );
   }
 
-  /** Start selection drag from a world-space point */
-  startDrag(worldX: number, worldY: number): void {
+  /** Start selection drag from a screen-space point */
+  startDrag(screenX: number, screenY: number): void {
     this.state.isDraggingSelection = true;
-    this.state.selectionStartWorldX = worldX;
-    this.state.selectionStartWorldY = worldY;
-    this.state.selectionEndWorldX = worldX;
-    this.state.selectionEndWorldY = worldY;
+    this.state.selectionStartScreenX = screenX;
+    this.state.selectionStartScreenY = screenY;
+    this.state.selectionEndScreenX = screenX;
+    this.state.selectionEndScreenY = screenY;
   }
 
-  /** Update selection drag end point */
-  updateDrag(worldX: number, worldY: number): void {
-    this.state.selectionEndWorldX = worldX;
-    this.state.selectionEndWorldY = worldY;
+  /** Update selection drag end point (screen coords) */
+  updateDrag(screenX: number, screenY: number): void {
+    this.state.selectionEndScreenX = screenX;
+    this.state.selectionEndScreenY = screenY;
   }
 
-  /** Finish selection and issue select command */
+  /** Finish selection and issue select command. Drag is in screen
+   *  space; we project each owned unit's world position to screen
+   *  and test containment there — this matches Input3DManager's
+   *  approach and works with camera rotation + zoom. */
   finishSelection(additive: boolean): void {
-    const result = performSelection(
-      this.entitySource,
-      this.state.selectionStartWorldX,
-      this.state.selectionStartWorldY,
-      this.state.selectionEndWorldX,
-      this.state.selectionEndWorldY,
-      this.context.activePlayerId
-    );
+    const camera = this.scene.cameras.main;
+    const sx1 = this.state.selectionStartScreenX;
+    const sy1 = this.state.selectionStartScreenY;
+    const sx2 = this.state.selectionEndScreenX;
+    const sy2 = this.state.selectionEndScreenY;
 
-    // Issue select command
+    const dx = sx2 - sx1;
+    const dy = sy2 - sy1;
+    const wasClick = Math.hypot(dx, dy) < CLICK_DRAG_THRESHOLD_PX;
+
+    const pid = this.context.activePlayerId;
+    let entityIds: EntityId[];
+
+    if (wasClick) {
+      // Convert the click point to world coords and reuse the
+      // existing collider-based closest-unit / closest-building
+      // lookups. (These still live in world space because the
+      // collider radii are in world units.)
+      const world = camera.getWorldPoint(sx1, sy1);
+      entityIds = this.pickSingleEntityAt(world.x, world.y, pid);
+    } else {
+      entityIds = this.pickEntitiesInScreenRect(
+        Math.min(sx1, sx2), Math.min(sy1, sy2),
+        Math.max(sx1, sx2), Math.max(sy1, sy2),
+        pid,
+      );
+    }
+
     const command: SelectCommand = {
       type: 'select',
       tick: this.context.getTick(),
-      entityIds: result.entityIds,
+      entityIds,
       additive,
     };
 
     this.commandQueue.enqueue(command);
+  }
+
+  /** Screen-rect hit test. Units take precedence over buildings —
+   *  only if no units are hit do we fall through to buildings. */
+  private pickEntitiesInScreenRect(
+    minX: number, minY: number,
+    maxX: number, maxY: number,
+    pid: PlayerId,
+  ): EntityId[] {
+    const camera = this.scene.cameras.main;
+    const ids: EntityId[] = [];
+
+    for (const u of this.entitySource.getUnits()) {
+      if (u.ownership?.playerId !== pid) continue;
+      const s = camera.getScreenPoint(u.transform.x, u.transform.y);
+      if (s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY) {
+        ids.push(u.id);
+      }
+    }
+    if (ids.length > 0) return ids;
+
+    for (const b of this.entitySource.getBuildings()) {
+      if (b.ownership?.playerId !== pid) continue;
+      const s = camera.getScreenPoint(b.transform.x, b.transform.y);
+      if (s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY) {
+        ids.push(b.id);
+      }
+    }
+    return ids;
+  }
+
+  private pickSingleEntityAt(
+    worldX: number, worldY: number, pid: PlayerId,
+  ): EntityId[] {
+    const unit = findClosestUnitToPoint(this.entitySource, worldX, worldY, pid);
+    if (unit) return [unit.id];
+    const building = findClosestBuildingToPoint(
+      this.entitySource, worldX, worldY, pid,
+    );
+    if (building) return [building.id];
+    return [];
   }
 
   /** End the drag state and clear graphics */
@@ -145,27 +220,24 @@ export class SelectionController {
     }
   }
 
-  /** Draw selection rectangle (world space) */
+  /** Draw the selection rectangle in screen space (the graphics layer
+   *  was reparented to the HUD in the constructor, so x/y/w/h are
+   *  pixel coords, not world). The rect stays axis-aligned on screen
+   *  regardless of camera rotation or zoom, which is what the user
+   *  expects when dragging a box. */
   drawSelectionRect(): void {
     this.selectionGraphics.clear();
 
     if (!this.state.isDraggingSelection) return;
 
-    const camera = this.scene.cameras.main;
+    const x = Math.min(this.state.selectionStartScreenX, this.state.selectionEndScreenX);
+    const y = Math.min(this.state.selectionStartScreenY, this.state.selectionEndScreenY);
+    const w = Math.abs(this.state.selectionEndScreenX - this.state.selectionStartScreenX);
+    const h = Math.abs(this.state.selectionEndScreenY - this.state.selectionStartScreenY);
 
-    // Already in world coordinates - use directly
-    const x = Math.min(this.state.selectionStartWorldX, this.state.selectionEndWorldX);
-    const y = Math.min(this.state.selectionStartWorldY, this.state.selectionEndWorldY);
-    const w = Math.abs(this.state.selectionEndWorldX - this.state.selectionStartWorldX);
-    const h = Math.abs(this.state.selectionEndWorldY - this.state.selectionStartWorldY);
-
-    // Fill
     this.selectionGraphics.fillStyle(0x00ff88, 0.15);
     this.selectionGraphics.fillRect(x, y, w, h);
-
-    // Border (scale line width inversely with zoom so it looks consistent)
-    const lineWidth = 2 / camera.zoom;
-    this.selectionGraphics.lineStyle(lineWidth, 0x00ff88, 0.8);
+    this.selectionGraphics.lineStyle(2, 0x00ff88, 0.8);
     this.selectionGraphics.strokeRect(x, y, w, h);
   }
 

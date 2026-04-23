@@ -14,36 +14,6 @@ export const WAYPOINT_COLORS: Record<WaypointType, number> = {
   fight: 0xff4444,  // Red
 };
 
-// Draw selection rectangle (world space)
-export function drawSelectionRect(
-  graphics: Phaser.GameObjects.Graphics,
-  camera: Phaser.Cameras.Scene2D.Camera,
-  isDragging: boolean,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number
-): void {
-  graphics.clear();
-
-  if (!isDragging) return;
-
-  // Already in world coordinates - use directly
-  const x = Math.min(startX, endX);
-  const y = Math.min(startY, endY);
-  const w = Math.abs(endX - startX);
-  const h = Math.abs(endY - startY);
-
-  // Fill
-  graphics.fillStyle(0x00ff88, 0.15);
-  graphics.fillRect(x, y, w, h);
-
-  // Border (scale line width inversely with zoom so it looks consistent)
-  const lineWidth = 2 / camera.zoom;
-  graphics.lineStyle(lineWidth, 0x00ff88, 0.8);
-  graphics.strokeRect(x, y, w, h);
-}
-
 // Draw line path preview
 export function drawLinePath(
   graphics: Phaser.GameObjects.Graphics,
