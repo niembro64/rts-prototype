@@ -17,7 +17,7 @@ import type { ThreeApp } from './ThreeApp';
 import type { CommandQueue } from '../sim/commands';
 import type { GameConnection } from '../server/GameConnection';
 import type { InputContext } from '@/types/input';
-import type { PlayerId, Entity, EntityId, WaypointType } from '../sim/types';
+import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import {
   findClosestUnitToPoint,
   findClosestBuildingToPoint,
@@ -25,8 +25,9 @@ import {
   getPathLength,
   calculateLinePathTargets,
   assignUnitsToTargets,
+  getSnappedBuildPosition,
 } from '../input/helpers';
-import type { WaypointTarget } from '../sim/commands';
+import type { StartBuildCommand, WaypointTarget } from '../sim/commands';
 
 type LinePoint = { x: number; y: number };
 const LINE_PATH_SEGMENT_MIN = 10;     // min world distance to record a new path point
@@ -59,6 +60,16 @@ export class Input3DManager {
   // Fires when the mode changes (from hotkey or setter). RtsScene3D hooks this
   // to refresh the selection panel so the active mode chip stays in sync.
   public onWaypointModeChange?: (mode: WaypointType) => void;
+
+  // Build-mode state. `buildType` is null when not in build mode.
+  //   - left-click a ground point while in build mode → emit startBuild
+  //     with the snapped grid position of the selected commander.
+  //   - right-click or Escape → cancel build mode.
+  //   - shift-click → keep build mode active after placing (ghost stays).
+  // Fires through onBuildModeChange so RtsScene3D can sync the
+  // SelectionPanel's `isBuildMode` + `selectedBuildingType` chips.
+  private buildType: BuildingType | null = null;
+  public onBuildModeChange?: (type: BuildingType | null) => void;
 
   // Drag state (screen coords only — box select is screen-space)
   private leftDown = false;
@@ -134,6 +145,28 @@ export class Input3DManager {
     this.onWaypointModeChange?.(mode);
   }
 
+  /** Enter build mode with a building type. Called from the UI
+   *  (scene.startBuildMode forwards to here). Next left-click on the
+   *  ground will issue a startBuild command for the selected
+   *  commander. */
+  setBuildMode(type: BuildingType): void {
+    if (this.buildType === type) return;
+    this.buildType = type;
+    this.onBuildModeChange?.(type);
+  }
+
+  /** Exit build mode (from UI or internal flow). No-op if not in build mode. */
+  cancelBuildMode(): void {
+    if (this.buildType === null) return;
+    this.buildType = null;
+    this.onBuildModeChange?.(null);
+  }
+
+  /** True if build mode is currently active. */
+  isInBuildMode(): boolean {
+    return this.buildType !== null;
+  }
+
   private handleKeyDown(e: KeyboardEvent): void {
     if (e.repeat) return;
     // Don't hijack keys when the user is typing in a text input (lobby code, etc.).
@@ -150,10 +183,13 @@ export class Input3DManager {
       case 'f': this.setWaypointMode('fight'); break;
       case 'h': this.setWaypointMode('patrol'); break;
       case 'escape': {
-        // Clear the current selection. Mirrors the 2D BuildingPlacement-
-        // Controller's ESC handler (which clears selection when not in a
-        // build/D-gun mode). 3D doesn't have those modes yet, so ESC
-        // always clears.
+        // Priority: cancel an active mode first (build); fall through to
+        // clearing selection only if no mode was active. Mirrors the 2D
+        // BuildingPlacementController's ESC handler.
+        if (this.buildType !== null) {
+          this.cancelBuildMode();
+          break;
+        }
         this.localCommandQueue.enqueue({
           type: 'clearSelection',
           tick: this.context.getTick(),
@@ -215,6 +251,21 @@ export class Input3DManager {
   private handleMouseDown(e: MouseEvent): void {
     // Button 0 = left (select), Button 2 = right (command). Middle (1) is
     // handled by OrbitCamera for pan/orbit.
+    //
+    // In build mode the left button DOESN'T start a selection drag; it
+    // commits the building at the clicked ground point. Right button
+    // cancels build mode entirely (matches 2D's BuildingPlacementController
+    // where right-click is a universal "cancel current mode").
+    if (this.buildType !== null) {
+      e.preventDefault();
+      if (e.button === 0) {
+        this.handleBuildClick(e);
+      } else if (e.button === 2) {
+        this.cancelBuildMode();
+      }
+      return;
+    }
+
     if (e.button === 0) {
       e.preventDefault();
       this.leftDown = true;
@@ -224,6 +275,38 @@ export class Input3DManager {
       e.preventDefault();
       this.handleRightMouseDown(e);
     }
+  }
+
+  /** Fire a startBuild command for the selected commander at the
+   *  snapped grid position under the cursor. Stays in build mode if
+   *  shift is held (lets the user place multiple of the same type). */
+  private handleBuildClick(e: MouseEvent): void {
+    if (this.buildType === null) return;
+    const commander = this.entitySource
+      .getSelectedUnits()
+      .find((u) => u.commander !== undefined);
+    if (!commander) {
+      // Commander got deselected mid-placement — drop build mode.
+      this.cancelBuildMode();
+      return;
+    }
+    const world = this.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+
+    const snapped = getSnappedBuildPosition(world.x, world.y, this.buildType);
+    const command: StartBuildCommand = {
+      type: 'startBuild',
+      tick: this.context.getTick(),
+      builderId: commander.id,
+      buildingType: this.buildType,
+      gridX: snapped.gridX,
+      gridY: snapped.gridY,
+      queue: e.shiftKey,
+    };
+    this.localCommandQueue.enqueue(command);
+
+    // Shift = keep placing same building type; no-shift = exit build mode.
+    if (!e.shiftKey) this.cancelBuildMode();
   }
 
   private handleMouseMove(e: MouseEvent): void {

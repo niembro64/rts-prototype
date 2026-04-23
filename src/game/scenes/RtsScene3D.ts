@@ -118,6 +118,9 @@ export class RtsScene3D {
   private snapshotBuffer = new SnapshotBuffer();
   private localCommandQueue = new CommandQueue();
   private currentWaypointMode: WaypointType = 'move';
+  // Mirrors Input3DManager.buildType so the SelectionPanel's "SOLAR /
+  // FACTORY" chip stays accurate (scene.updateSelectionInfo reads it).
+  private currentBuildType: BuildingType | null = null;
   private panArrowOverlay: PanArrowOverlay | null = null;
   private healthBarOverlay: HealthBarOverlay | null = null;
   private waypointOverlay: WaypointOverlay | null = null;
@@ -364,6 +367,12 @@ export class RtsScene3D {
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.
     this.inputManager.onWaypointModeChange = (mode) => {
       this.currentWaypointMode = mode;
+      this.selectionDirty = true;
+    };
+    // Keep isBuildMode + selectedBuildingType in lockstep so the
+    // SelectionPanel shows the active build / cancel chip correctly.
+    this.inputManager.onBuildModeChange = (type) => {
+      this.currentBuildType = type;
       this.selectionDirty = true;
     };
 
@@ -698,12 +707,14 @@ export class RtsScene3D {
 
   public updateSelectionInfo(): void {
     if (!this.onSelectionChange) return;
-    // Minimal input-state shape so the waypoint-mode indicator reflects the
-    // current mode; build/D-gun aren't supported in 3D yet.
+    // Input-state mirror for the SelectionPanel UI — reads the live
+    // build/waypoint flags so the panel's mode chips stay in sync.
+    // (D-gun isn't implemented yet in 3D; left false so the chip
+    // disappears rather than showing an always-off state.)
     const inputState = {
       waypointMode: this.currentWaypointMode,
-      isBuildMode: false,
-      selectedBuildingType: null,
+      isBuildMode: this.currentBuildType !== null,
+      selectedBuildingType: this.currentBuildType,
       isDGunMode: false,
     } as const;
     this.onSelectionChange(
@@ -774,8 +785,15 @@ export class RtsScene3D {
   }
   // Build / D-gun / factory queueing are not yet implemented in 3D.
   // They're kept as no-ops so the 2D UI surface stays source-compatible.
-  public startBuildMode(_buildingType: BuildingType): void {}
-  public cancelBuildMode(): void {}
+  /** Enter build mode — forwards to Input3DManager which handles the
+   *  left-click-places-building / right-click-cancels flow. */
+  public startBuildMode(buildingType: BuildingType): void {
+    this.inputManager?.setBuildMode(buildingType);
+  }
+
+  public cancelBuildMode(): void {
+    this.inputManager?.cancelBuildMode();
+  }
   public toggleDGunMode(): void {}
   public queueFactoryUnit(_factoryId: number, _unitId: string): void {}
   public cancelFactoryQueueItem(_factoryId: number, _index: number): void {}
