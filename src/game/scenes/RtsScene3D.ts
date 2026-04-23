@@ -565,11 +565,31 @@ export class RtsScene3D {
       (e) => e.commander !== undefined && e.ownership?.playerId === this.localPlayerId,
     );
     if (commander) {
-      this.threeApp.orbit.setTarget(
-        commander.transform.x,
-        0,
-        commander.transform.y,
-      );
+      const cx = commander.transform.x;
+      const cz = commander.transform.y;
+      this.threeApp.orbit.setTarget(cx, 0, cz);
+
+      // Place the camera "behind" the commander looking toward the map
+      // center — natural RTS framing on spawn where the battlefield
+      // opens up in front of the unit. Yaw math:
+      //
+      //   forward vector (commander → center) = normalize(center − pos)
+      //   OrbitCamera's yaw=0 convention puts the camera on the -Z side
+      //   of the target looking toward +Z. yaw=π flips that. In general
+      //   the camera sits at target + distance · (sin(yaw), 0,
+      //   -cos(yaw)) and looks back at the target, so for a forward
+      //   vector (fx, fz) we want the camera OPPOSITE that vector —
+      //   i.e. yaw = atan2(-fx, fz).
+      //
+      // Commanders spawn in an even circle around the map center
+      // (sim/spawn.ts), so this makes every player's first view look
+      // the same relative to their own commander regardless of seat.
+      const forwardX = this.mapWidth / 2 - cx;
+      const forwardZ = this.mapHeight / 2 - cz;
+      if (forwardX * forwardX + forwardZ * forwardZ > 1) {
+        this.threeApp.orbit.yaw = Math.atan2(-forwardX, forwardZ);
+        this.threeApp.orbit.apply();
+      }
       this.hasCenteredCamera = true;
     }
   }
