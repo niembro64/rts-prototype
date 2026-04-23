@@ -125,9 +125,11 @@ export class RtsScene3D {
   private snapshotBuffer = new SnapshotBuffer();
   private localCommandQueue = new CommandQueue();
   private currentWaypointMode: WaypointType = 'move';
-  // Mirrors Input3DManager.buildType so the SelectionPanel's "SOLAR /
-  // FACTORY" chip stays accurate (scene.updateSelectionInfo reads it).
+  // Mirrors Input3DManager's shared CommanderModeController so the
+  // SelectionPanel's "SOLAR / FACTORY / D-GUN" chips stay accurate
+  // (scene.updateSelectionInfo reads these each frame).
   private currentBuildType: BuildingType | null = null;
+  private currentDGunActive = false;
   private panArrowOverlay: PanArrowOverlay | null = null;
   private healthBarOverlay: HealthBarOverlay | null = null;
   private waypointOverlay: WaypointOverlay | null = null;
@@ -385,10 +387,14 @@ export class RtsScene3D {
       this.currentWaypointMode = mode;
       this.selectionDirty = true;
     };
-    // Keep isBuildMode + selectedBuildingType in lockstep so the
-    // SelectionPanel shows the active build / cancel chip correctly.
+    // Keep the SelectionPanel's mode chips (build / D-gun) in sync
+    // with the shared CommanderModeController inside Input3DManager.
     this.inputManager.onBuildModeChange = (type) => {
       this.currentBuildType = type;
+      this.selectionDirty = true;
+    };
+    this.inputManager.onDGunModeChange = (active) => {
+      this.currentDGunActive = active;
       this.selectionDirty = true;
     };
 
@@ -768,7 +774,7 @@ export class RtsScene3D {
       waypointMode: this.currentWaypointMode,
       isBuildMode: this.currentBuildType !== null,
       selectedBuildingType: this.currentBuildType,
-      isDGunMode: false,
+      isDGunMode: this.currentDGunActive,
     } as const;
     this.onSelectionChange(
       buildSelectionInfo(this.entitySourceAdapter, inputState as any),
@@ -881,7 +887,9 @@ export class RtsScene3D {
   public cancelBuildMode(): void {
     this.inputManager?.cancelBuildMode();
   }
-  public toggleDGunMode(): void {}
+  public toggleDGunMode(): void {
+    this.inputManager?.toggleDGunMode();
+  }
   public queueFactoryUnit(_factoryId: number, _unitId: string): void {}
   public cancelFactoryQueueItem(_factoryId: number, _index: number): void {}
 

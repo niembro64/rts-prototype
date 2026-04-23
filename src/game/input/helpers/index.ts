@@ -36,6 +36,8 @@ export {
 
 export { type ModeCancel, handleEscape } from './EscapeHandler';
 
+export { CommanderModeController } from './CommanderModeController';
+
 export {
   type RepairEntitySource,
   findRepairTargetAt,

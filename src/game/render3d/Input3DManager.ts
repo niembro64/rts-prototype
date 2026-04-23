@@ -21,16 +21,15 @@ import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../
 import {
   findClosestUnitToPoint,
   findClosestBuildingToPoint,
-  getSnappedBuildPosition,
   selectEntitiesInScreenRect,
   SelectionChangeTracker,
   LinePathAccumulator,
   buildAttackCommandAt,
   buildLinePathMoveCommand,
   handleEscape,
+  CommanderModeController,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
-import type { StartBuildCommand } from '../sim/commands';
 
 type EntitySource = {
   getUnits: () => Entity[];
@@ -58,15 +57,14 @@ export class Input3DManager {
   // to refresh the selection panel so the active mode chip stays in sync.
   public onWaypointModeChange?: (mode: WaypointType) => void;
 
-  // Build-mode state. `buildType` is null when not in build mode.
-  //   - left-click a ground point while in build mode → emit startBuild
-  //     with the snapped grid position of the selected commander.
-  //   - right-click or Escape → cancel build mode.
-  //   - shift-click → keep build mode active after placing (ghost stays).
-  // Fires through onBuildModeChange so RtsScene3D can sync the
-  // SelectionPanel's `isBuildMode` + `selectedBuildingType` chips.
-  private buildType: BuildingType | null = null;
+  // Shared commander-mode state machine (build + D-gun). The 2D
+  // BuildingPlacementController owns one of these too so the two
+  // renderers can't drift on mode entry/exit semantics. Click
+  // dispatch while a mode is active is handled below in
+  // handleLeftMouseDown.
+  private mode = new CommanderModeController();
   public onBuildModeChange?: (type: BuildingType | null) => void;
+  public onDGunModeChange?: (active: boolean) => void;
 
   // Drag state (screen coords only — box select is screen-space)
   private leftDown = false;
@@ -139,6 +137,10 @@ export class Input3DManager {
     window.addEventListener('mousemove', this.onMouseMove);
     window.addEventListener('mouseup', this.onMouseUp);
     window.addEventListener('keydown', this.onKeyDown);
+
+    // Forward shared mode events to the scene's UI callbacks.
+    this.mode.onBuildModeChange = (type) => this.onBuildModeChange?.(type);
+    this.mode.onDGunModeChange = (active) => this.onDGunModeChange?.(active);
   }
 
   setWaypointMode(mode: WaypointType): void {
@@ -152,21 +154,42 @@ export class Input3DManager {
    *  ground will issue a startBuild command for the selected
    *  commander. */
   setBuildMode(type: BuildingType): void {
-    if (this.buildType === type) return;
-    this.buildType = type;
-    this.onBuildModeChange?.(type);
+    this.mode.enterBuildMode(type);
   }
 
   /** Exit build mode (from UI or internal flow). No-op if not in build mode. */
   cancelBuildMode(): void {
-    if (this.buildType === null) return;
-    this.buildType = null;
-    this.onBuildModeChange?.(null);
+    this.mode.exitBuildMode();
   }
 
   /** True if build mode is currently active. */
   isInBuildMode(): boolean {
-    return this.buildType !== null;
+    return this.mode.isInBuildMode;
+  }
+
+  /** Toggle D-gun mode from UI. Only enters if a commander is
+   *  selected — mirrors the 2D BuildingPlacementController's gate. */
+  toggleDGunMode(): void {
+    if (this.hasSelectedCommander()) this.mode.toggleDGunMode();
+  }
+
+  /** True if D-gun mode is currently active. */
+  isInDGunMode(): boolean {
+    return this.mode.isInDGunMode;
+  }
+
+  private hasSelectedCommander(): boolean {
+    return this.entitySource.getSelectedUnits().some(
+      (e) => e.commander !== undefined,
+    );
+  }
+
+  private getSelectedCommander(): Entity | null {
+    return (
+      this.entitySource.getSelectedUnits().find(
+        (e) => e.commander !== undefined,
+      ) ?? null
+    );
   }
 
   /** Per-frame poll. Right now it only runs the selection-change
@@ -191,14 +214,37 @@ export class Input3DManager {
       (target && target.isContentEditable)
     ) return;
 
-    // Mirror InputManager.setupModeHotkeys (2D path): M/F/H switch waypoint mode.
+    // Mirror the 2D hotkeys one-for-one. M/F/H switch waypoint mode;
+    // B/1/2/D drive the commander mode state machine; Escape runs
+    // the shared cancel-mode-or-clear-selection convention.
     switch (e.key.toLowerCase()) {
       case 'm': this.setWaypointMode('move'); break;
       case 'f': this.setWaypointMode('fight'); break;
       case 'h': this.setWaypointMode('patrol'); break;
+      case 'b':
+        if (!this.hasSelectedCommander()) break;
+        if (!this.mode.isInBuildMode) this.mode.enterBuildMode('solar');
+        else this.mode.cycleBuildingType();
+        break;
+      case '1':
+        if (this.mode.isInBuildMode || this.hasSelectedCommander()) {
+          this.mode.enterBuildMode('solar');
+        }
+        break;
+      case '2':
+        if (this.mode.isInBuildMode || this.hasSelectedCommander()) {
+          this.mode.enterBuildMode('factory');
+        }
+        break;
+      case 'd':
+        if (this.hasSelectedCommander()) this.mode.toggleDGunMode();
+        break;
       case 'escape':
         handleEscape(
-          [{ isActive: () => this.buildType !== null, cancel: () => this.cancelBuildMode() }],
+          [
+            { isActive: () => this.mode.isInBuildMode, cancel: () => this.mode.exitBuildMode() },
+            { isActive: () => this.mode.isInDGunMode, cancel: () => this.mode.exitDGunMode() },
+          ],
           this.localCommandQueue,
           this.context.getTick(),
         );
@@ -256,19 +302,20 @@ export class Input3DManager {
   }
 
   private handleMouseDown(e: MouseEvent): void {
-    // Button 0 = left (select), Button 2 = right (command). Middle (1) is
-    // handled by OrbitCamera for pan/orbit.
+    // Button 0 = left (select / mode-click), Button 2 = right
+    // (command / cancel), Button 1 (middle) is handled by OrbitCamera.
     //
-    // In build mode the left button DOESN'T start a selection drag; it
-    // commits the building at the clicked ground point. Right button
-    // cancels build mode entirely (matches 2D's BuildingPlacementController
-    // where right-click is a universal "cancel current mode").
-    if (this.buildType !== null) {
+    // While a commander mode is active, left-click commits that
+    // mode's action (place building / fire D-gun) and right-click
+    // cancels the mode — mirrors the 2D BuildingPlacementController.
+    if (this.mode.isInBuildMode || this.mode.isInDGunMode) {
       e.preventDefault();
       if (e.button === 0) {
-        this.handleBuildClick(e);
+        if (this.mode.isInBuildMode) this.handleBuildClick(e);
+        else this.handleDGunClick(e);
       } else if (e.button === 2) {
-        this.cancelBuildMode();
+        if (this.mode.isInBuildMode) this.mode.exitBuildMode();
+        else this.mode.exitDGunMode();
       }
       return;
     }
@@ -288,32 +335,40 @@ export class Input3DManager {
    *  snapped grid position under the cursor. Stays in build mode if
    *  shift is held (lets the user place multiple of the same type). */
   private handleBuildClick(e: MouseEvent): void {
-    if (this.buildType === null) return;
-    const commander = this.entitySource
-      .getSelectedUnits()
-      .find((u) => u.commander !== undefined);
+    const commander = this.getSelectedCommander();
     if (!commander) {
       // Commander got deselected mid-placement — drop build mode.
-      this.cancelBuildMode();
+      this.mode.exitBuildMode();
       return;
     }
     const world = this.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-
-    const snapped = getSnappedBuildPosition(world.x, world.y, this.buildType);
-    const command: StartBuildCommand = {
-      type: 'startBuild',
-      tick: this.context.getTick(),
-      builderId: commander.id,
-      buildingType: this.buildType,
-      gridX: snapped.gridX,
-      gridY: snapped.gridY,
-      queue: e.shiftKey,
-    };
-    this.localCommandQueue.enqueue(command);
+    const cmd = this.mode.buildStartBuildCommand(
+      commander, world.x, world.y,
+      this.context.getTick(), e.shiftKey,
+    );
+    if (!cmd) return;
+    this.localCommandQueue.enqueue(cmd);
 
     // Shift = keep placing same building type; no-shift = exit build mode.
-    if (!e.shiftKey) this.cancelBuildMode();
+    if (!e.shiftKey) this.mode.exitBuildMode();
+  }
+
+  /** Fire the D-gun at the clicked ground point. Stays in D-gun
+   *  mode for rapid firing — the user exits with the D key, ESC,
+   *  right-click, or the UI button. */
+  private handleDGunClick(e: MouseEvent): void {
+    const commander = this.getSelectedCommander();
+    if (!commander) {
+      this.mode.exitDGunMode();
+      return;
+    }
+    const world = this.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+    const cmd = this.mode.buildFireDGunCommand(
+      commander, world.x, world.y, this.context.getTick(),
+    );
+    this.localCommandQueue.enqueue(cmd);
   }
 
   private handleMouseMove(e: MouseEvent): void {

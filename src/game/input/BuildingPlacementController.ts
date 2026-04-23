@@ -1,9 +1,13 @@
 import type Phaser from '../PhaserCompat';
-import type { CommandQueue, StartBuildCommand, FireDGunCommand } from '../sim/commands';
+import type { CommandQueue } from '../sim/commands';
 import type { Entity, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
-import { getSnappedBuildPosition, handleEscape } from './helpers';
+import {
+  getSnappedBuildPosition,
+  handleEscape,
+  CommanderModeController,
+} from './helpers';
 import { magnitude } from '../math';
 import type { InputEntitySource, InputContext } from './inputBindings';
 import type { InputState } from './InputState';
@@ -26,6 +30,10 @@ export class BuildingPlacementController {
     ESC: Phaser.Input.Keyboard.Key;
     SHIFT: Phaser.Input.Keyboard.Key;
   };
+
+  // Shared mode state machine — also owned by Input3DManager so the
+  // two renderers can't drift on enter/exit semantics.
+  private mode = new CommanderModeController();
 
   // Callback for UI to show build mode changes
   public onBuildModeChange?: (buildingType: BuildingType | null) => void;
@@ -54,6 +62,21 @@ export class BuildingPlacementController {
     this.state = state;
     this.buildGhostGraphics = buildGhostGraphics;
     this.keys = keys;
+
+    // Sync mode state into InputState + forward UI callbacks. The
+    // controller owns the truth; these handlers keep the legacy
+    // flags (still read by UIUpdateManager / CameraController) in
+    // lock-step so no consumer has to change.
+    this.mode.onBuildModeChange = (type) => {
+      this.state.isBuildMode = type !== null;
+      this.state.selectedBuildingType = type;
+      if (type === null) this.buildGhostGraphics.clear();
+      this.onBuildModeChange?.(type);
+    };
+    this.mode.onDGunModeChange = (active) => {
+      this.state.isDGunMode = active;
+      this.onDGunModeChange?.(active);
+    };
   }
 
   setEntitySource(source: InputEntitySource): void {
@@ -62,56 +85,41 @@ export class BuildingPlacementController {
 
   /** Setup building and D-gun hotkeys */
   setupBuildHotkeys(): void {
-    // B key enters build mode (shows menu or cycles)
+    // B: enter build mode (or cycle if already in one).
     this.keys.B.on('down', () => {
-      if (this.hasSelectedCommander()) {
-        if (!this.state.isBuildMode) {
-          // Enter build mode with solar as default
-          this.enterBuildMode('solar');
-        } else {
-          // Already in build mode, cycle building type
-          this.cycleBuildingType();
-        }
-      }
+      if (!this.hasSelectedCommander()) return;
+      if (!this.mode.isInBuildMode) this.mode.enterBuildMode('solar');
+      else this.mode.cycleBuildingType();
     });
 
-    // 1 key selects solar panel
+    // 1 / 2: directly pick a building type.
     this.keys.ONE.on('down', () => {
-      if (this.state.isBuildMode || this.hasSelectedCommander()) {
-        this.enterBuildMode('solar');
+      if (this.mode.isInBuildMode || this.hasSelectedCommander()) {
+        this.mode.enterBuildMode('solar');
       }
     });
-
-    // 2 key selects factory
     this.keys.TWO.on('down', () => {
-      if (this.state.isBuildMode || this.hasSelectedCommander()) {
-        this.enterBuildMode('factory');
+      if (this.mode.isInBuildMode || this.hasSelectedCommander()) {
+        this.mode.enterBuildMode('factory');
       }
     });
 
-    // ESC cancels the active mode first (build, then D-gun); if
-    // neither is active, clears any current selection. Shared with
-    // the 3D path via handleEscape so the ordering stays identical.
+    // ESC: cancel active mode first (build → d-gun), else clear
+    // selection. Shared via handleEscape so 2D and 3D ordering match.
     this.keys.ESC.on('down', () => {
       handleEscape(
         [
-          { isActive: () => this.state.isBuildMode, cancel: () => this.exitBuildMode() },
-          { isActive: () => this.state.isDGunMode, cancel: () => this.exitDGunMode() },
+          { isActive: () => this.mode.isInBuildMode, cancel: () => this.mode.exitBuildMode() },
+          { isActive: () => this.mode.isInDGunMode, cancel: () => this.mode.exitDGunMode() },
         ],
         this.commandQueue,
         this.context.getTick(),
       );
     });
 
-    // D key activates D-gun mode
+    // D: toggle D-gun mode.
     this.keys.D.on('down', () => {
-      if (this.hasSelectedCommander()) {
-        if (!this.state.isDGunMode) {
-          this.enterDGunMode();
-        } else {
-          this.exitDGunMode();
-        }
-      }
+      if (this.hasSelectedCommander()) this.mode.toggleDGunMode();
     });
   }
 
@@ -127,71 +135,25 @@ export class BuildingPlacementController {
     return selected.find(e => e.commander !== undefined) ?? null;
   }
 
-  // Public method to start build mode from UI
+  // UI-facing wrappers — all delegate to the shared controller.
   startBuildMode(buildingType: BuildingType): void {
-    if (this.hasSelectedCommander()) {
-      this.enterBuildMode(buildingType);
-    }
+    if (this.hasSelectedCommander()) this.mode.enterBuildMode(buildingType);
   }
-
-  // Public method to cancel build mode from UI
-  cancelBuildMode(): void {
-    this.exitBuildMode();
-  }
-
-  // Public method to toggle D-gun mode from UI
+  cancelBuildMode(): void { this.mode.exitBuildMode(); }
   toggleDGunMode(): void {
-    if (this.hasSelectedCommander()) {
-      if (this.state.isDGunMode) {
-        this.exitDGunMode();
-      } else {
-        this.enterDGunMode();
-      }
-    }
+    if (this.hasSelectedCommander()) this.mode.toggleDGunMode();
   }
-
-  // Enter build mode with a specific building type
-  enterBuildMode(buildingType: BuildingType): void {
-    this.state.isBuildMode = true;
-    this.state.selectedBuildingType = buildingType;
-    this.exitDGunMode();
-    this.onBuildModeChange?.(buildingType);
-  }
-
-  // Exit build mode
-  exitBuildMode(): void {
-    this.state.isBuildMode = false;
-    this.state.selectedBuildingType = null;
-    this.buildGhostGraphics.clear();
-    this.onBuildModeChange?.(null);
-  }
-
-  // Cycle between building types
-  cycleBuildingType(): void {
-    const types: BuildingType[] = ['solar', 'factory'];
-    const currentIndex = types.indexOf(this.state.selectedBuildingType!);
-    const nextIndex = (currentIndex + 1) % types.length;
-    this.state.selectedBuildingType = types[nextIndex];
-    this.onBuildModeChange?.(this.state.selectedBuildingType);
-  }
-
-  // Enter D-gun mode
-  enterDGunMode(): void {
-    this.state.isDGunMode = true;
-    this.exitBuildMode();
-    this.onDGunModeChange?.(true);
-  }
-
-  // Exit D-gun mode
-  exitDGunMode(): void {
-    this.state.isDGunMode = false;
-    this.onDGunModeChange?.(false);
-  }
+  enterBuildMode(type: BuildingType): void { this.mode.enterBuildMode(type); }
+  exitBuildMode(): void { this.mode.exitBuildMode(); }
+  enterDGunMode(): void { this.mode.enterDGunMode(); }
+  exitDGunMode(): void { this.mode.exitDGunMode(); }
+  cycleBuildingType(): void { this.mode.cycleBuildingType(); }
 
   /** Update ghost position when pointer moves in build mode */
   updateGhostPosition(worldX: number, worldY: number): void {
-    if (this.state.isBuildMode && this.state.selectedBuildingType) {
-      const snapped = getSnappedBuildPosition(worldX, worldY, this.state.selectedBuildingType);
+    const type = this.mode.buildingType;
+    if (type !== null) {
+      const snapped = getSnappedBuildPosition(worldX, worldY, type);
       this.state.buildGhostX = snapped.x;
       this.state.buildGhostY = snapped.y;
     }
@@ -200,55 +162,36 @@ export class BuildingPlacementController {
   /** Handle build click - place building */
   handleBuildClick(worldX: number, worldY: number): void {
     const commander = this.getSelectedCommander();
-    if (!commander || !this.state.selectedBuildingType) return;
-
-    const snapped = getSnappedBuildPosition(worldX, worldY, this.state.selectedBuildingType);
-
-    // Issue start build command (shift = queue, no shift = replace)
-    const command: StartBuildCommand = {
-      type: 'startBuild',
-      tick: this.context.getTick(),
-      builderId: commander.id,
-      buildingType: this.state.selectedBuildingType,
-      gridX: snapped.gridX,
-      gridY: snapped.gridY,
-      queue: this.keys.SHIFT.isDown,
-    };
-
-    this.commandQueue.enqueue(command);
-
-    // Only exit build mode if shift is NOT held (shift = continue placing same building)
-    if (!this.keys.SHIFT.isDown) {
-      this.exitBuildMode();
-    }
+    if (!commander) return;
+    const shiftHeld = this.keys.SHIFT.isDown;
+    const cmd = this.mode.buildStartBuildCommand(
+      commander, worldX, worldY,
+      this.context.getTick(), shiftHeld,
+    );
+    if (!cmd) return;
+    this.commandQueue.enqueue(cmd);
+    // Shift = keep placing; otherwise exit build mode.
+    if (!shiftHeld) this.mode.exitBuildMode();
   }
 
-  /** Handle D-gun click - fire D-gun */
+  /** Handle D-gun click - fire D-gun. Stays in D-gun mode for rapid
+   *  firing (exit with ESC or the D key or UI button). */
   handleDGunClick(worldX: number, worldY: number): void {
     const commander = this.getSelectedCommander();
     if (!commander) return;
-
-    // Issue fire D-gun command
-    const command: FireDGunCommand = {
-      type: 'fireDGun',
-      tick: this.context.getTick(),
-      commanderId: commander.id,
-      targetX: worldX,
-      targetY: worldY,
-    };
-
-    this.commandQueue.enqueue(command);
-
-    // Stay in D-gun mode for rapid firing (exit with ESC or right-click)
+    this.commandQueue.enqueue(
+      this.mode.buildFireDGunCommand(commander, worldX, worldY, this.context.getTick()),
+    );
   }
 
   /** Draw build ghost preview */
   drawBuildGhost(): void {
     this.buildGhostGraphics.clear();
 
-    if (!this.state.isBuildMode || !this.state.selectedBuildingType) return;
+    const type = this.mode.buildingType;
+    if (type === null) return;
 
-    const config = getBuildingConfig(this.state.selectedBuildingType);
+    const config = getBuildingConfig(type);
     const width = config.gridWidth * GRID_CELL_SIZE;
     const height = config.gridHeight * GRID_CELL_SIZE;
     const x = this.state.buildGhostX;
@@ -305,14 +248,14 @@ export class BuildingPlacementController {
   // Get current build mode state
   getBuildMode(): { active: boolean; buildingType: BuildingType | null } {
     return {
-      active: this.state.isBuildMode,
-      buildingType: this.state.selectedBuildingType,
+      active: this.mode.isInBuildMode,
+      buildingType: this.mode.buildingType,
     };
   }
 
   // Get D-gun mode state
   isDGunModeActive(): boolean {
-    return this.state.isDGunMode;
+    return this.mode.isInDGunMode;
   }
 
   destroy(): void {
