@@ -34,6 +34,15 @@ export type InputState = {
   panStartY: number;
   cameraStartX: number;
   cameraStartY: number;
+  /** Alt + middle-drag rotates the 2D camera around the viewport center
+   *  (mirrors the 3D orbit's yaw drag). rotStartX/Y are screen-space
+   *  pixel coords at drag start; rotStartAngle is the camera's
+   *  rotation at drag start — delta (screen x) * rotateSpeed yields
+   *  the new rotation, so the view feels "grabbed and spun". */
+  isRotatingCamera: boolean;
+  rotStartX: number;
+  rotStartY: number;
+  rotStartAngle: number;
   isDrawingLinePath: boolean;
   linePathPoints: WorldPoint[];
   linePathTargets: WorldPoint[];

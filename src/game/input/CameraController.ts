@@ -111,6 +111,33 @@ export class CameraController {
     this.state.isPanningCamera = false;
   }
 
+  /** Start rotating the camera around the viewport center. Matches the
+   *  3D orbit's alt+middle-drag yaw: horizontal screen drag → rotation
+   *  delta. The camera's rotation field rotates the world container
+   *  around the viewport center, so the user's current center stays
+   *  put while the scene spins around it. */
+  startRotate(screenX: number, screenY: number): void {
+    this.state.isRotatingCamera = true;
+    this.state.rotStartX = screenX;
+    this.state.rotStartY = screenY;
+    this.state.rotStartAngle = this.scene.cameras.main.rotation;
+  }
+
+  /** Update camera rotation based on current screen-space pointer
+   *  position. Speed matches OrbitCamera.rotateSpeed so 2D and 3D feel
+   *  consistent. Horizontal drag spins the view; vertical is ignored
+   *  (the 2D camera has no pitch). */
+  updateRotate(screenX: number, _screenY: number): void {
+    const ROTATE_SPEED = 0.005;
+    const dx = screenX - this.state.rotStartX;
+    this.scene.cameras.main.rotation =
+      this.state.rotStartAngle - dx * ROTATE_SPEED;
+  }
+
+  endRotate(): void {
+    this.state.isRotatingCamera = false;
+  }
+
   /** Setup wheel zoom event */
   setupWheelEvent(): void {
     this.scene.input.on('wheel', this.wheelHandler);
@@ -278,6 +305,7 @@ export class CameraController {
         if (
           intensity > 0 &&
           !this.state.isPanningCamera &&
+          !this.state.isRotatingCamera &&
           !this.state.isDraggingSelection &&
           !this.state.isDrawingLinePath &&
           !pointer.rightButtonDown()

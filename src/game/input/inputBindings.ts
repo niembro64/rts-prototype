@@ -267,8 +267,13 @@ export class InputManager {
         // Start selection drag
         this.selectionController.startDrag(worldPoint.x, worldPoint.y);
       } else if (p.middleButtonDown() && getDragPanEnabled()) {
-        // Start camera pan
-        this.cameraController.startPan(p.x, p.y);
+        // Alt + middle-drag rotates the camera; plain middle-drag pans.
+        // Matches the 3D OrbitCamera's modifier convention exactly.
+        if (p.event.altKey) {
+          this.cameraController.startRotate(p.x, p.y);
+        } else {
+          this.cameraController.startPan(p.x, p.y);
+        }
       } else if (p.rightButtonDown()) {
         const camera = this.scene.cameras.main;
         const worldPoint = camera.getWorldPoint(p.x, p.y);
@@ -293,6 +298,10 @@ export class InputManager {
         this.cameraController.updatePan(p.x, p.y);
       }
 
+      if (this.state.isRotatingCamera) {
+        this.cameraController.updateRotate(p.x, p.y);
+      }
+
       if (this.state.isDrawingLinePath) {
         this.commandController.handleLinePathMove(worldPoint.x, worldPoint.y);
       }
@@ -307,6 +316,10 @@ export class InputManager {
 
       if (this.state.isPanningCamera && !p.middleButtonDown()) {
         this.cameraController.endPan();
+      }
+
+      if (this.state.isRotatingCamera && !p.middleButtonDown()) {
+        this.cameraController.endRotate();
       }
 
       if (this.state.isDrawingLinePath && !p.rightButtonDown()) {
