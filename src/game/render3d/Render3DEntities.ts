@@ -235,17 +235,13 @@ export class Render3DEntities {
 
     // Skip the head cylinder entirely for:
     //  - turretStyle='none' (min LOD): no body, no barrels — chassis only.
-    //  - force-field turrets with forceTurretStyle='none' or 'simple' and
-    //    any LOD: the ForceFieldRenderer3D's glowing sphere is the whole
-    //    visual. Only 'full' gets a head.
+    //  - force-field turrets at ANY LOD: the ForceFieldRenderer3D's glowing
+    //    sphere is the whole visual — a stubby cylinder underneath just
+    //    clips through the orb and reads as a separate piece.
     //  - the mirror-host turret on mirror units (Loris index 0): the mirror
     //    panels already represent that turret's body.
     const turretOff = gfx.turretStyle === 'none';
-    const forceTurretHasBody = gfx.forceTurretStyle === 'full';
-    const hideHead =
-      turretOff
-      || (isForceField && !forceTurretHasBody)
-      || isMirrorHost;
+    const hideHead = turretOff || isForceField || isMirrorHost;
 
     let head: THREE.Mesh | undefined;
     if (!hideHead) {
