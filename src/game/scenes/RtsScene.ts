@@ -326,7 +326,11 @@ export class RtsScene extends SceneShim {
     this.events.once('shutdown', this.shutdown, this);
   }
 
-  // Center camera on local player's commander from ClientViewState
+  // Center camera on local player's commander from ClientViewState,
+  // and rotate the view so the commander's forward (toward map center)
+  // points up on screen. Commanders spawn in an even circle around the
+  // map center (sim/spawn.ts), so this gives every player the same
+  // relative first view regardless of seat.
   private centerCameraOnCommander(): void {
     const units = this.clientViewState.getUnits();
     const commander = units.find(
@@ -335,7 +339,26 @@ export class RtsScene extends SceneShim {
         e.ownership?.playerId === this.localPlayerId,
     );
     if (commander) {
-      this.cameras.main.centerOn(commander.transform.x, commander.transform.y);
+      const cx = commander.transform.x;
+      const cy = commander.transform.y;
+      // Forward-toward-center vector in world coords.
+      const forwardX = this.mapWidth / 2 - cx;
+      const forwardY = this.mapHeight / 2 - cy;
+      // Desired camera rotation: make the forward vector project to
+      // screen-up (0, -1). Our world→screen maps +Y world → +Y screen
+      // (down), so "up on screen" is world -Y. We need rotation θ such
+      // that rotating (forward_x, forward_y) by -θ lands on (0, -|f|):
+      //
+      //   atan2(-|f|, 0) - atan2(forward_y, forward_x) = -θ
+      //   θ = atan2(forward_y, forward_x) + π/2
+      //
+      // The π/2 offset converts "forward points to world -Y" to "forward
+      // points to world +X" which is the rotation=0 reference.
+      if (forwardX * forwardX + forwardY * forwardY > 1) {
+        this.cameras.main.rotation =
+          Math.atan2(forwardY, forwardX) + Math.PI / 2;
+      }
+      this.cameras.main.centerOn(cx, cy);
       this.hasCenteredCamera = true;
     }
   }
