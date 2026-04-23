@@ -43,8 +43,14 @@ const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
 // Mirror panels (reflective mirror-unit armor plates): standing rectangular
 // slabs positioned in the unit's TURRET frame (not chassis frame), since the
 // turret/mirror rotates independently of the hull.
-const MIRROR_HEIGHT = 24;            // Y extent of a mirror panel (standing slab)
+// Mirror panels span at least the full unit silhouette so they actually
+// read as deflector armor. Start just above the ground to avoid clipping
+// into the tile layer, end at CHASSIS_HEIGHT + TURRET_HEIGHT so the top
+// of the panel is flush with the top of the turret head (which is the
+// tallest part of the unit).
 const MIRROR_BASE_Y = 2;             // bottom of the mirror panel above ground
+const MIRROR_HEIGHT =                // top at y = CHASSIS_HEIGHT + TURRET_HEIGHT
+  CHASSIS_HEIGHT + TURRET_HEIGHT - MIRROR_BASE_Y;
 
 type TurretMesh = {
   root: THREE.Group;       // positioned at turret.offset, rotated to turret rotation
