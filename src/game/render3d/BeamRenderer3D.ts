@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
+import type { RenderScope3D } from './RenderScope3D';
 
 // Must match the value in Render3DEntities so beams and barrel tips share a
 // Y level. Kept as a constant (not exported from Render3DEntities) to avoid a
@@ -47,6 +48,10 @@ export class BeamRenderer3D {
   // shape but at different opacities.
   private matCache = new Map<string, BeamMat>();
 
+  // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
+  // outside the scope rect skip segment placement entirely.
+  private scope: RenderScope3D;
+
   // Scratch vectors reused per frame (no per-segment allocations).
   private _a = new THREE.Vector3();
   private _b = new THREE.Vector3();
@@ -55,9 +60,10 @@ export class BeamRenderer3D {
   private _up = new THREE.Vector3(0, 1, 0);
   private _quat = new THREE.Quaternion();
 
-  constructor(parentWorld: THREE.Group) {
+  constructor(parentWorld: THREE.Group, scope: RenderScope3D) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
+    this.scope = scope;
   }
 
   private getMaterial(pid: PlayerId | undefined, projectileType: string): THREE.MeshBasicMaterial {
@@ -127,6 +133,16 @@ export class BeamRenderer3D {
         startX === undefined || startY === undefined ||
         endX === undefined || endY === undefined
       ) continue;
+
+      // Scope gate — skip the beam entirely when BOTH endpoints are
+      // outside the render rect. A beam that crosses the rect (one
+      // endpoint inside) still draws so long/grazing shots aren't
+      // clipped to the visible area. Padding is generous (200) because
+      // laser endpoints can be far from the beam's visible midline
+      // when hitting terrain edges.
+      const startIn = this.scope.inScope(startX, startY, 200);
+      const endIn = this.scope.inScope(endX, endY, 200);
+      if (!startIn && !endIn) continue;
 
       const shot = proj.config.shot;
       // shot.radius already equals shot.width / 2 for line shots, so using it

@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { isLineShot } from '../sim/types';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
+import type { RenderScope3D } from './RenderScope3D';
 import {
   BURN_COLOR_HOT,
   BURN_COLOR_TAU,
@@ -140,9 +141,14 @@ export class BurnMark3D {
   private _frameCounter = 0;
   private _time = 0;
 
-  constructor(parentWorld: THREE.Group) {
+  /** RENDER: WIN/PAD/ALL visibility scope — beams with their endpoint
+   *  outside the scope rect skip sampling + glow updates. */
+  private scope: RenderScope3D | null = null;
+
+  constructor(parentWorld: THREE.Group, scope?: RenderScope3D) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
+    this.scope = scope ?? null;
 
     this.positions = new Float32Array(MAX_MARKS * 4 * 3);
     this.colors = new Float32Array(MAX_MARKS * 4 * 4);
@@ -252,6 +258,10 @@ export class BurnMark3D {
 
       const ex = proj.endX ?? e.transform.x;
       const ez = proj.endY ?? e.transform.y;
+      // Scope gate — skip the beam entirely when the endpoint is off-
+      // scope. We use generous padding (200) since the endpoint can
+      // drift quickly and a strict rect would drop marks mid-sweep.
+      if (this.scope && !this.scope.inScope(ex, ez, 200)) continue;
       const shot = proj.config.shot;
       const beamWidth = isLineShot(shot) ? shot.width * 2 : 4;
 

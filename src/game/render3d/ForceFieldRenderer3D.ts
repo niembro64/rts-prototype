@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import type { Entity, Turret } from '../sim/types';
 import { getWeaponWorldPosition } from '../math';
+import type { RenderScope3D } from './RenderScope3D';
 
 // Must match Render3DEntities to keep emitter spheres roughly at the turret's
 // vertical center.
@@ -41,10 +42,14 @@ export class ForceFieldRenderer3D {
   // translucent force-field bubble (scaled per-instance).
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
   private fields = new Map<string, FieldMesh>();
+  /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
+   *  skip their per-frame animation work. */
+  private scope: RenderScope3D;
 
-  constructor(parentWorld: THREE.Group) {
+  constructor(parentWorld: THREE.Group, scope: RenderScope3D) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
+    this.scope = scope;
   }
 
   private acquire(key: string): FieldMesh {
@@ -89,6 +94,10 @@ export class ForceFieldRenderer3D {
 
     for (const unit of units) {
       if (!unit.turrets || !unit.unit) continue;
+      // Scope gate — force-field bubbles can be large (up to ~push.outerRange
+      // units across), so pad generously so a turret just off-screen with
+      // its bubble reaching in still updates.
+      if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) continue;
       const cos = Math.cos(unit.transform.rotation);
       const sin = Math.sin(unit.transform.rotation);
 

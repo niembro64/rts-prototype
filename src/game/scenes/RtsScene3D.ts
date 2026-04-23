@@ -23,6 +23,7 @@ import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
+import { RenderScope3D } from '../render3d/RenderScope3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
@@ -104,6 +105,10 @@ export class RtsScene3D {
   private captureTileRenderer!: CaptureTileRenderer3D;
   private explosionRenderer!: Explosion3D;
   private debrisRenderer!: Debris3D;
+  /** Per-frame world-XZ visibility rect driven by the PLAYER CLIENT
+   *  `RENDER: WIN/PAD/ALL` toggle. Shared across all per-entity hot
+   *  loops so off-scope entities can skip transform/animation updates. */
+  private renderScope = new RenderScope3D();
   private burnMarkRenderer!: BurnMark3D;
   private lineDragRenderer!: LineDrag3D;
   private audioScheduler = new AudioEventScheduler();
@@ -307,9 +312,10 @@ export class RtsScene3D {
     this.entityRenderer = new Render3DEntities(
       this.threeApp.world,
       this.clientViewState,
+      this.renderScope,
     );
-    this.beamRenderer = new BeamRenderer3D(this.threeApp.world);
-    this.forceFieldRenderer = new ForceFieldRenderer3D(this.threeApp.world);
+    this.beamRenderer = new BeamRenderer3D(this.threeApp.world, this.renderScope);
+    this.forceFieldRenderer = new ForceFieldRenderer3D(this.threeApp.world, this.renderScope);
     this.captureTileRenderer = new CaptureTileRenderer3D(
       this.threeApp.world,
       this.clientViewState,
@@ -318,7 +324,7 @@ export class RtsScene3D {
     );
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(this.threeApp.world);
-    this.burnMarkRenderer = new BurnMark3D(this.threeApp.world);
+    this.burnMarkRenderer = new BurnMark3D(this.threeApp.world, this.renderScope);
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
@@ -458,6 +464,15 @@ export class RtsScene3D {
 
     // Render phase
     const renderStart = performance.now();
+    // Refresh the shared visibility scope once per frame so every per-
+    // entity hot loop below can early-out on off-screen entities without
+    // re-querying camera state or getRenderMode().
+    this.renderScope.refresh(
+      this.threeApp.orbit.target.x,
+      this.threeApp.orbit.target.z,
+      this._visibleHalfWidth(),
+      this._visibleHalfHeight(),
+    );
     this.entityRenderer.update();
     this.captureTileRenderer.update();
     const projectiles = this.clientViewState.getProjectiles();

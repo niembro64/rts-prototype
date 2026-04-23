@@ -23,6 +23,7 @@ import {
 import { snapshotLod, type Lod3DState } from './Lod3D';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
+import type { RenderScope3D } from './RenderScope3D';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitRadiusToggle } from '@/clientBarConfig';
 
@@ -107,6 +108,12 @@ type EntityMesh = {
 export class Render3DEntities {
   private world: THREE.Group;
   private clientViewState: ClientViewState;
+  /** Visibility scope (RENDER: WIN/PAD/ALL). Each per-entity update
+   *  loop early-outs when the entity is outside this rect — skipping
+   *  transform writes, locomotion IK, turret placement, mirror glint
+   *  animation, etc. Three.js still handles GPU-side culling for the
+   *  meshes themselves; this guards the CPU-side setup. */
+  private scope: RenderScope3D;
 
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
@@ -179,9 +186,14 @@ export class Render3DEntities {
     color: 0x888888, metalness: 1.0, roughness: 0.12,
   });
 
-  constructor(world: THREE.Group, clientViewState: ClientViewState) {
+  constructor(
+    world: THREE.Group,
+    clientViewState: ClientViewState,
+    scope: RenderScope3D,
+  ) {
     this.world = world;
     this.clientViewState = clientViewState;
+    this.scope = scope;
 
     for (const [pidStr, colors] of Object.entries(PLAYER_COLORS)) {
       const pid = Number(pidStr) as PlayerId;
@@ -627,6 +639,13 @@ export class Render3DEntities {
 
     for (const e of units) {
       seen.add(e.id);
+      // RENDER scope gate — skip all per-frame work for units outside
+      // the camera rect. `seen` is still populated above so an off-
+      // scope unit isn't mistakenly removed from the mesh map. The
+      // mesh, if it exists, stays at its last-known pose; Three.js
+      // frustum-culls it so there's nothing visible anyway. When the
+      // unit re-enters scope the next frame's update repositions it.
+      if (!this.scope.inScope(e.transform.x, e.transform.y, 100)) continue;
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
       // footprint, matching the 2D renderer. Vertical sizing is fixed —
       // every unit chassis uses CHASSIS_HEIGHT, every turret TURRET_HEIGHT —
@@ -828,6 +847,8 @@ export class Render3DEntities {
 
     for (const e of buildings) {
       seen.add(e.id);
+      // Scope gate — larger padding for buildings (bigger footprint).
+      if (!this.scope.inScope(e.transform.x, e.transform.y, 200)) continue;
       const w = e.building?.width ?? 100;
       const d = e.building?.height ?? 100;
       const h = BUILDING_HEIGHT;
@@ -874,6 +895,8 @@ export class Render3DEntities {
       if (pt === 'beam' || pt === 'laser') continue;
 
       seen.add(e.id);
+      // Scope gate — tighter padding (projectiles are small and moving fast).
+      if (!this.scope.inScope(e.transform.x, e.transform.y, 50)) continue;
       const shot = e.projectile?.config.shot;
       // Projectile shots have collision.radius
       let radius = 4;
