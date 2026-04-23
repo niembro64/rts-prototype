@@ -329,7 +329,10 @@ async function startBackgroundBattle(): Promise<void> {
   backgroundBattle = await createBackgroundBattle(
     backgroundContainerRef.value,
     localIpAddress.value,
-    props.rendererMode,
+    // Use the live toggle's current value, not the URL-derived prop —
+    // so if the user switched to 3D in a previous session (persisted
+    // via localStorage) the demo comes up in 3D.
+    currentRendererMode.value,
   );
   activeConnection = backgroundBattle.connection;
   hasServer.value = true;
@@ -382,6 +385,59 @@ async function startBackgroundBattle(): Promise<void> {
       checkBgSceneInterval = null;
     }
   }, 100);
+}
+
+/**
+ * Wire the HUD callbacks on the background-demo scene. Same logic as
+ * the setInterval poll in startBackgroundBattle, but callable directly
+ * once a scene is known to exist — used after a live renderer swap.
+ */
+function wireBackgroundSceneCallbacks(): void {
+  let bgAttempts = 0;
+  const poll = setInterval(() => {
+    bgAttempts++;
+    if (bgAttempts > 50) {
+      clearInterval(poll);
+      return;
+    }
+    const bgScene = backgroundBattle?.gameInstance?.getScene();
+    if (bgScene) {
+      bgScene.onCombatStatsUpdate = (stats: NetworkServerSnapshotCombatStats) => {
+        const cloned = structuredClone(stats);
+        combatStats.value = cloned;
+        if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
+        combatStatsHistory.value.push({
+          timestamp: Date.now() - statsHistoryStartTime,
+          stats: cloned,
+        });
+        if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
+          combatStatsHistory.value.shift();
+        }
+      };
+      bgScene.onServerMetaUpdate = (meta: NetworkServerSnapshotMeta) => {
+        serverMetaFromSnapshot.value = meta;
+      };
+      bgScene.onEconomyChange = (info: EconomyInfo) => {
+        Object.assign(economyInfo, info);
+      };
+      bgScene.onSelectionChange = (info: SelectionInfo) => {
+        Object.assign(selectionInfo, info);
+      };
+      bgScene.onPlayerChange = (playerId: PlayerId) => {
+        activePlayer.value = playerId;
+      };
+      bgScene.onMinimapUpdate = (data: MinimapData) => {
+        minimapData.entities = data.entities;
+        minimapData.cameraX = data.cameraX;
+        minimapData.cameraY = data.cameraY;
+        minimapData.cameraWidth = data.cameraWidth;
+        minimapData.cameraHeight = data.cameraHeight;
+        minimapData.mapWidth = data.mapWidth;
+        minimapData.mapHeight = data.mapHeight;
+      };
+      clearInterval(poll);
+    }
+  }, 50);
 }
 
 // Stop the background battle
@@ -1133,6 +1189,47 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
  */
 function switchRenderer(newMode: RendererMode): void {
   if (newMode === currentRendererMode.value) return;
+
+  // Demo / lobby case — main game hasn't started yet, but a background
+  // battle is running. Swap just its gameInstance in place, reusing the
+  // persistent server + connection + CVS so the demo doesn't restart.
+  if (!gameInstance && backgroundBattle && backgroundContainerRef.value) {
+    const savedCam = backgroundBattle.gameInstance.getScene()?.captureCameraState();
+    const rect = backgroundContainerRef.value.getBoundingClientRect();
+    destroyGame(backgroundBattle.gameInstance);
+    backgroundBattle.gameInstance = createGame({
+      parent: backgroundContainerRef.value,
+      width: rect.width || window.innerWidth,
+      height: rect.height || window.innerHeight,
+      playerIds: [1, 2, 3, 4] as PlayerId[],
+      localPlayerId: 1,
+      gameConnection: backgroundBattle.connection,
+      clientViewState: backgroundBattle.clientViewState,
+      mapWidth: MAP_SETTINGS.game.width,
+      mapHeight: MAP_SETTINGS.game.height,
+      backgroundMode: true,
+      rendererMode: newMode,
+    });
+    currentRendererMode.value = newMode;
+    wireBackgroundSceneCallbacks();
+    if (savedCam) {
+      let attempts = 0;
+      const camTimer = setInterval(() => {
+        attempts++;
+        const scene = backgroundBattle?.gameInstance.getScene();
+        if (scene) {
+          scene.applyCameraState(savedCam);
+          clearInterval(camTimer);
+        } else if (attempts > 25) {
+          clearInterval(camTimer);
+        }
+      }, 20);
+    }
+    return;
+  }
+
+  // Main-game case — must have a live match, connection, CVS, and
+  // remembered player roster to rebuild with.
   if (!gameInstance || !clientViewState || !activeConnection) return;
   if (!containerRef.value) return;
   if (!currentPlayerIds) return;

@@ -30,6 +30,10 @@ export type BackgroundBattleState = {
   gameInstance: GameInstance;
   server: GameServer;
   connection: LocalGameConnection;
+  /** Persistent ClientViewState — survives a live renderer swap of the
+   *  background demo so the new scene resumes from the current entity
+   *  state without waiting for a keyframe. */
+  clientViewState: ClientViewState;
 };
 
 /** Create and start a background battle server + game instance.
@@ -114,7 +118,7 @@ export async function createBackgroundBattle(
     rendererMode,
   });
 
-  return { gameInstance, server, connection };
+  return { gameInstance, server, connection, clientViewState };
 }
 
 /** Tear down a background battle: stop the server and destroy the game instance. */
