@@ -678,15 +678,22 @@ export function updateLocomotion(
       if (leg.footJoint) leg.footJoint.position.set(footX, FOOT_Y, footZ);
     }
   } else if (mesh.type === 'legs' && mesh.legLod === 'simple') {
-    // 'simple' LOD: static hip-to-foot cylinder, no walk cycle. Rebuild once
-    // per frame anyway since the hip moves with the unit.
+    // 'simple' LOD: hip-to-foot cylinder with no walk cycle. The foot is
+    // always pinned to the unit's rest-pose offset, so it translates and
+    // rotates with the unit every frame. (Previously we only ran the
+    // foot-placement math on first frame via `initialized`, which left
+    // the foot planted at its spawn position — legs stretched out as the
+    // unit drove away.)
     const unitX = entity.transform.x;
     const unitZ = entity.transform.y;
     const unitR = entity.transform.rotation;
     const cos = Math.cos(unitR);
     const sin = Math.sin(unitR);
     for (const leg of mesh.legs) {
-      if (!leg.initialized) initializeLegAt(leg, unitX, unitZ, unitR);
+      // Re-anchor groundX/Z to the rest pose every frame so the foot
+      // follows the unit. No walk cycle needed — the leg is just a rigid
+      // offset from the hip.
+      initializeLegAt(leg, unitX, unitZ, unitR);
       const c = leg.config;
       const hipX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
       const hipZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
