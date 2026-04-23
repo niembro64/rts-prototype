@@ -30,6 +30,11 @@ export { SelectionChangeTracker } from './SelectionChangeTracker';
 export { LinePathAccumulator } from './LinePathAccumulator';
 
 export {
+  buildAttackCommandAt,
+  buildLinePathMoveCommand,
+} from './RightClickCommands';
+
+export {
   type RepairEntitySource,
   findRepairTargetAt,
   findIncompleteBuildingAt,

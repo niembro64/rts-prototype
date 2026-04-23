@@ -21,18 +21,15 @@ import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../
 import {
   findClosestUnitToPoint,
   findClosestBuildingToPoint,
-  findAttackTargetAt,
-  getPathLength,
-  assignUnitsToTargets,
   getSnappedBuildPosition,
   selectEntitiesInScreenRect,
   SelectionChangeTracker,
   LinePathAccumulator,
+  buildAttackCommandAt,
+  buildLinePathMoveCommand,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
-import type { StartBuildCommand, WaypointTarget } from '../sim/commands';
-
-const LINE_PATH_MIN_LENGTH = 20;      // path shorter than this = treated as a click
+import type { StartBuildCommand } from '../sim/commands';
 
 type EntitySource = {
   getUnits: () => Entity[];
@@ -480,20 +477,16 @@ export class Input3DManager {
     const world = this.raycastGround(e.clientX, e.clientY);
     if (!world) return;
 
-    const attackTarget = findAttackTargetAt(
+    const attackCmd = buildAttackCommandAt(
       this.entitySource,
-      world.x,
-      world.y,
+      world.x, world.y,
+      selectedUnits,
       this.context.activePlayerId,
+      this.context.getTick(),
+      e.shiftKey,
     );
-    if (attackTarget) {
-      this.gameConnection.sendCommand({
-        type: 'attack',
-        tick: this.context.getTick(),
-        entityIds: selectedUnits.map((u) => u.id),
-        targetId: attackTarget.id,
-        queue: e.shiftKey,
-      });
+    if (attackCmd) {
+      this.gameConnection.sendCommand(attackCmd);
       return;
     }
 
@@ -522,58 +515,14 @@ export class Input3DManager {
   private handleRightMouseUp(e: MouseEvent): void {
     this.rightDown = false;
     const selectedUnits = this.entitySource.getSelectedUnits();
-    const points = this.linePath.points;
-    if (selectedUnits.length === 0 || points.length === 0) {
-      this.linePath.reset();
-      return;
-    }
-
-    const shiftHeld = e.shiftKey;
-    const mode = this.waypointMode;
-    const pathLen = getPathLength(points);
-    const finalPoint = points[points.length - 1];
-
-    if (pathLen < LINE_PATH_MIN_LENGTH) {
-      // Short path = single-point group move. Matches the 2D fallback
-      // (pathLength < 20 → group move to the final point).
-      this.gameConnection.sendCommand({
-        type: 'move',
-        tick: this.context.getTick(),
-        entityIds: selectedUnits.map((u) => u.id),
-        targetX: finalPoint.x,
-        targetY: finalPoint.y,
-        waypointType: mode,
-        queue: shiftHeld,
-      });
-      this.linePath.reset();
-      return;
-    }
-
-    // Spread units along the drawn line — the accumulator already
-    // ran calculateLinePathTargets each mouse-move, so just re-
-    // compute once more at the final selected-unit count before the
-    // assignment pass.
-    this.linePath.recomputeTargets(selectedUnits.length);
-    const assignments = assignUnitsToTargets(selectedUnits, this.linePath.targets);
-
-    const entityIds: EntityId[] = [];
-    const individualTargets: WaypointTarget[] = [];
-    for (const unit of selectedUnits) {
-      const target = assignments.get(unit.id);
-      if (target) {
-        entityIds.push(unit.id);
-        individualTargets.push({ x: target.x, y: target.y });
-      }
-    }
-
-    this.gameConnection.sendCommand({
-      type: 'move',
-      tick: this.context.getTick(),
-      entityIds,
-      individualTargets,
-      waypointType: mode,
-      queue: shiftHeld,
-    });
+    const moveCmd = buildLinePathMoveCommand(
+      this.linePath,
+      selectedUnits,
+      this.waypointMode,
+      this.context.getTick(),
+      e.shiftKey,
+    );
+    if (moveCmd) this.gameConnection.sendCommand(moveCmd);
     this.linePath.reset();
   }
 
