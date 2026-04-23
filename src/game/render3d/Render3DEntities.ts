@@ -23,6 +23,11 @@ import {
 import { snapshotLod, type Lod3DState } from './Lod3D';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
+import {
+  buildBuildingShape,
+  disposeBuildingGeoms,
+  type BuildingShapeType,
+} from './BuildingShape3D';
 import type { RenderScope3D } from './RenderScope3D';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitRadiusToggle } from '@/clientBarConfig';
@@ -100,6 +105,12 @@ type EntityMesh = {
    *  mirroring the 2D renderUnitRadiusCircles overlay. Meshes are created
    *  lazily on first show and hidden (not destroyed) when toggled off. */
   radiusRings?: { scale?: THREE.Mesh; shot?: THREE.Mesh; push?: THREE.Mesh };
+  /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
+   *  so rebuilds / destroy() know what to clean up alongside the primary
+   *  slab. Empty / undefined for units. */
+  buildingDetails?: THREE.Mesh[];
+  /** Per-building render height (solar is shorter than the default). */
+  buildingHeight?: number;
   /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
    *  the mesh when the current frame's LOD key differs. */
   lodKey: string;
@@ -851,17 +862,37 @@ export class Render3DEntities {
       if (!this.scope.inScope(e.transform.x, e.transform.y, 200)) continue;
       const w = e.building?.width ?? 100;
       const d = e.building?.height ?? 100;
-      const h = BUILDING_HEIGHT;
       const pid = e.ownership?.playerId;
+      // Building type drives the per-type shape (factory, solar, …) —
+      // fallback to 'unknown' for anything the art doesn't cover yet.
+      const shapeType: BuildingShapeType =
+        e.buildingType === 'factory' || e.buildingType === 'solar'
+          ? e.buildingType
+          : 'unknown';
 
       let m = this.buildingMeshes.get(e.id);
       if (!m) {
         const group = new THREE.Group();
-        const box = new THREE.Mesh(this.buildingGeom, this.getPrimaryMat(pid));
-        box.userData.entityId = e.id;
-        group.add(box);
+        // Build the type-specific mesh set (primary slab + decorative
+        // accents like chimney, solar cells). Primary material is the
+        // team primary color; details carry their own shared materials
+        // so they don't re-color across teams.
+        const shape = buildBuildingShape(shapeType, w, d, this.getPrimaryMat(pid));
+        shape.primary.userData.entityId = e.id;
+        group.add(shape.primary);
+        for (const detail of shape.details) group.add(detail);
         this.world.add(group);
-        m = { group, chassis: box, turrets: [], lodKey: this.lod.key };
+        m = {
+          group,
+          chassis: shape.primary,
+          turrets: [],
+          lodKey: this.lod.key,
+          // Store the accent meshes separately so the LOD-key rebuild
+          // path (if we ever add one for buildings) knows what to
+          // discard along with the primary.
+          buildingDetails: shape.details,
+          buildingHeight: shape.height,
+        };
         this.buildingMeshes.set(e.id, m);
       } else {
         m.chassis.material = this.getPrimaryMat(pid);
@@ -870,6 +901,7 @@ export class Render3DEntities {
       // Group at ground; box elevated inside so it sits on the ground plane.
       m.group.position.set(e.transform.x, 0, e.transform.y);
       m.group.rotation.y = -e.transform.rotation;
+      const h = m.buildingHeight ?? BUILDING_HEIGHT;
       m.chassis.position.set(0, h / 2, 0);
       m.chassis.scale.set(w, h, d);
       // Health bar handled by the shared HealthBarOverlay.
@@ -940,6 +972,7 @@ export class Render3DEntities {
     this.buildingMeshes.clear();
     this.projectileMeshes.clear();
     disposeBodyGeoms();
+    disposeBuildingGeoms();
     this.turretHeadGeom.dispose();
     this.barrelGeom.dispose();
     this.projectileGeom.dispose();
