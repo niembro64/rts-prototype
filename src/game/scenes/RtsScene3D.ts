@@ -573,7 +573,16 @@ export class RtsScene3D {
     );
     const renderEnd = performance.now();
 
-    // UI updates — throttled like RtsScene
+    // UI updates — throttled like RtsScene. A producing factory's
+    // queue/progress changes continuously, so force a selection-info
+    // push whenever one is selected — mirrors RtsScene so the
+    // SelectionPanel's build progress bar ticks live.
+    if (!this.selectionDirty) {
+      const hasProducingFactory = this._cachedSelectedBuildings.some(
+        (b) => b.factory?.isProducing,
+      );
+      if (hasProducingFactory) this.selectionDirty = true;
+    }
     if (this.selectionDirty) {
       this.updateSelectionInfo();
       this.selectionDirty = false;
@@ -926,8 +935,26 @@ export class RtsScene3D {
   public toggleDGunMode(): void {
     this.inputManager?.toggleDGunMode();
   }
-  public queueFactoryUnit(_factoryId: number, _unitId: string): void {}
-  public cancelFactoryQueueItem(_factoryId: number, _index: number): void {}
+  public queueFactoryUnit(factoryId: number, unitId: string): void {
+    // Factory build queue is server-authoritative, so this command
+    // goes straight through gameConnection (same path the 2D scene's
+    // processLocalCommands forwards it to).
+    this.gameConnection.sendCommand({
+      type: 'queueUnit',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      unitId,
+    });
+  }
+
+  public cancelFactoryQueueItem(factoryId: number, index: number): void {
+    this.gameConnection.sendCommand({
+      type: 'cancelQueueItem',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      index,
+    });
+  }
 
   public centerCameraOn(x: number, y: number): void {
     this.threeApp.orbit.setTarget(x, 0, y);
