@@ -177,6 +177,10 @@ const clientTime = ref<string>('');
 
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
+/** Player IDs of the current match — stashed at game-start time so a
+ *  live renderer swap can rebuild the game instance without re-running
+ *  startGameWithPlayers(). Null until a match is running. */
+let currentPlayerIds: PlayerId[] | null = null;
 
 // Demo battle unit type list (state read from snapshots)
 const demoUnitTypes = BACKGROUND_UNIT_TYPES;
@@ -303,6 +307,15 @@ let gameInstance: GameInstance | null = null;
 // One instance per game session — created alongside gameConnection when
 // the match starts, cleared when the match ends.
 let clientViewState: ClientViewState | null = null;
+
+/**
+ * Active renderer for the current game. Starts from the `rendererMode`
+ * prop (URL-driven) but becomes mutable once the match is running so
+ * the PLAYER CLIENT `VIEW: 2D / 3D` toggle can flip it live via
+ * `switchRenderer()`. Kept as a ref so the template can bind
+ * `:class="{ active: currentRendererMode === '2d' }"` on the buttons.
+ */
+const currentRendererMode = ref<RendererMode>(props.rendererMode);
 
 // Polling interval IDs for cleanup
 let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
@@ -1060,6 +1073,9 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
     // scene instance so a live renderer swap can reuse the same entity /
     // prediction / selection state without waiting for a keyframe).
     clientViewState = new ClientViewState();
+    // Remember the player roster so switchRenderer() can rebuild the
+    // game instance later without re-entering this bootstrap path.
+    currentPlayerIds = playerIds;
 
     // Create game with player configuration
     gameInstance = createGame({
@@ -1073,12 +1089,94 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       mapWidth: MAP_SETTINGS.game.width,
       mapHeight: MAP_SETTINGS.game.height,
       backgroundMode: false,
-      rendererMode: props.rendererMode,
+      rendererMode: currentRendererMode.value,
     });
 
     // Setup scene callbacks
     setupSceneCallbacks();
   }, 100);
+}
+
+/**
+ * Flip between 2D and 3D renderers in the middle of a live game.
+ *
+ * Architecture:
+ *  - GameConnection stays alive (owned above this function).
+ *  - ClientViewState stays alive (entities/prediction/selection preserved).
+ *  - The current scene's camera framing is captured first, then the
+ *    scene + app (PixiApp or ThreeApp) are torn down and a fresh one of
+ *    the other kind is built with the same connection + CVS. The saved
+ *    camera state is re-applied to the new scene so the swap looks
+ *    like a visual style change rather than a scene reset.
+ *  - setupSceneCallbacks polls for the new scene ready and re-wires all
+ *    the UI callbacks, so the HUD picks up where it left off.
+ *
+ * State that IS lost on swap: transient per-scene effects (in-flight
+ * debris, burn-mark trails, audio queue, locomotion animation phase,
+ * barrel spin angles). All of these are cosmetic/short-lived; the next
+ * few frames of simulation events rebuild them.
+ */
+function switchRenderer(newMode: RendererMode): void {
+  if (newMode === currentRendererMode.value) return;
+  if (!gameInstance || !clientViewState || !activeConnection) return;
+  if (!containerRef.value) return;
+  if (!currentPlayerIds) return;
+
+  // Capture current framing before tearing down — both scenes expose
+  // the same `SceneCameraState` shape so this works across the swap.
+  const savedCam = gameInstance.getScene()?.captureCameraState();
+
+  // Cancel the polling setup interval from the previous build (if it's
+  // still running) — the new setupSceneCallbacks() call below restarts
+  // it for the fresh scene.
+  if (checkSceneInterval) {
+    clearInterval(checkSceneInterval);
+    checkSceneInterval = null;
+  }
+
+  // Tear down old scene + app; the connection and CVS are *not* owned
+  // by gameInstance so they survive.
+  destroyGame(gameInstance);
+  gameInstance = null;
+
+  currentRendererMode.value = newMode;
+
+  const rect = containerRef.value.getBoundingClientRect();
+  gameInstance = createGame({
+    parent: containerRef.value,
+    width: rect.width || window.innerWidth,
+    height: rect.height || window.innerHeight,
+    playerIds: currentPlayerIds,
+    localPlayerId: localPlayerId.value,
+    gameConnection: activeConnection,
+    clientViewState,
+    mapWidth: MAP_SETTINGS.game.width,
+    mapHeight: MAP_SETTINGS.game.height,
+    backgroundMode: false,
+    rendererMode: newMode,
+  });
+
+  // Re-wire HUD callbacks on the new scene and restore camera once it
+  // reports ready. setupSceneCallbacks polls via setInterval, so we
+  // schedule the camera restore inside the same poll loop by letting
+  // it run first (one tick) and then applying when we see the scene.
+  setupSceneCallbacks();
+  if (savedCam) {
+    // Poll briefly for the fresh scene to exist before applying — the
+    // scene instance isn't available until createGame finishes its
+    // initial ticks. Up to ~500ms of retry before giving up.
+    let attempts = 0;
+    const camTimer = setInterval(() => {
+      attempts++;
+      const scene = gameInstance?.getScene();
+      if (scene) {
+        scene.applyCameraState(savedCam);
+        clearInterval(camTimer);
+      } else if (attempts > 25) {
+        clearInterval(camTimer);
+      }
+    }, 20);
+  }
 }
 
 function setupSceneCallbacks(): void {
