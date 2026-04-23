@@ -97,10 +97,18 @@ export class PixiApp {
     const delta = now - this._lastTime;
     this._lastTime = now;
 
-    // Apply camera transform to world container
+    // Apply camera transform to world container. Rotation-capable
+    // formulation: pivot at the camera's world-space target, scale by
+    // zoom, rotate by -camera.rotation, translate to screen center.
+    // At rotation=0 this is algebraically identical to the previous
+    // `position(-scrollX*z, -scrollY*z)` pattern.
     const cam = this.camera;
+    const targetX = cam.scrollX + cam.width / (2 * cam.zoom);
+    const targetY = cam.scrollY + cam.height / (2 * cam.zoom);
+    this.world.pivot.set(targetX, targetY);
+    this.world.rotation = -cam.rotation;
     this.world.scale.set(cam.zoom, cam.zoom);
-    this.world.position.set(-cam.scrollX * cam.zoom, -cam.scrollY * cam.zoom);
+    this.world.position.set(cam.width / 2, cam.height / 2);
 
     // Run game update
     if (this._updateCallback) {

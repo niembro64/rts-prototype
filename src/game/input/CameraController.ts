@@ -52,14 +52,17 @@ export class CameraController {
 
       if (clampedZoom === oldZoom) return;
 
-      // World point under cursor (top-left based scrollX)
-      const worldX = camera.scrollX + pointer.x / oldZoom;
-      const worldY = camera.scrollY + pointer.y / oldZoom;
-
-      // Adjust scroll so the same world point stays under the cursor after zoom
-      camera.scrollX = worldX - pointer.x / clampedZoom;
-      camera.scrollY = worldY - pointer.y / clampedZoom;
+      // Zoom around the cursor: compute the world point under the
+      // pointer BEFORE the zoom change, apply the new zoom, then
+      // translate so the same world point re-projects to the same
+      // screen position. Using camera.getWorldPoint on both sides
+      // handles camera rotation correctly — the old direct formula
+      // (scrollX + pointer.x / zoom) assumed zero rotation.
+      const before = camera.getWorldPoint(pointer.x, pointer.y);
       camera.zoom = clampedZoom;
+      const after = camera.getWorldPoint(pointer.x, pointer.y);
+      camera.scrollX += before.x - after.x;
+      camera.scrollY += before.y - after.y;
       camera.clamp();
     };
   }
@@ -75,21 +78,32 @@ export class CameraController {
 
   /** Update camera pan based on current screen-space pointer position */
   updatePan(screenX: number, screenY: number): void {
-    // Camera moves in the direction of mouse movement (like Beyond All Reason)
-    const dx = (screenX - this.state.panStartX) * CAMERA_PAN_MULTIPLIER;
-    const dy = (screenY - this.state.panStartY) * CAMERA_PAN_MULTIPLIER;
+    // Camera moves in the direction of mouse movement (like Beyond All
+    // Reason). Screen-space delta needs to be rotated back into world
+    // space before we apply it to scrollX/Y, otherwise a rotated camera
+    // drifts along the wrong axis when the user drags.
+    const dxs = (screenX - this.state.panStartX) * CAMERA_PAN_MULTIPLIER;
+    const dys = (screenY - this.state.panStartY) * CAMERA_PAN_MULTIPLIER;
     const camera = this.scene.cameras.main;
-    camera.scrollX = this.state.cameraStartX + dx / camera.zoom;
-    camera.scrollY = this.state.cameraStartY + dy / camera.zoom;
+    const cos = Math.cos(camera.rotation);
+    const sin = Math.sin(camera.rotation);
+    const dxw = (dxs * cos - dys * sin) / camera.zoom;
+    const dyw = (dxs * sin + dys * cos) / camera.zoom;
+    camera.scrollX = this.state.cameraStartX + dxw;
+    camera.scrollY = this.state.cameraStartY + dyw;
   }
 
   /** Update camera pan for touch — map follows finger (1:1, inverted direction) */
   updateTouchPan(screenX: number, screenY: number): void {
-    const dx = screenX - this.state.panStartX;
-    const dy = screenY - this.state.panStartY;
+    const dxs = screenX - this.state.panStartX;
+    const dys = screenY - this.state.panStartY;
     const camera = this.scene.cameras.main;
-    camera.scrollX = this.state.cameraStartX - dx / camera.zoom;
-    camera.scrollY = this.state.cameraStartY - dy / camera.zoom;
+    const cos = Math.cos(camera.rotation);
+    const sin = Math.sin(camera.rotation);
+    const dxw = (dxs * cos - dys * sin) / camera.zoom;
+    const dyw = (dxs * sin + dys * cos) / camera.zoom;
+    camera.scrollX = this.state.cameraStartX - dxw;
+    camera.scrollY = this.state.cameraStartY - dyw;
   }
 
   /** Stop camera pan */

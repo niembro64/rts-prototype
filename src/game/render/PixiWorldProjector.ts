@@ -17,8 +17,19 @@ export class PixiWorldProjector implements WorldProjector {
 
   project(worldX: number, worldY: number, out: Vec2): boolean {
     const cam = this.camera;
-    out.x = (worldX - cam.scrollX) * cam.zoom;
-    out.y = (worldY - cam.scrollY) * cam.zoom;
+    // Delta from the camera's world-space target (which projects to the
+    // screen center).
+    const tx = cam.scrollX + cam.width / (2 * cam.zoom);
+    const ty = cam.scrollY + cam.height / (2 * cam.zoom);
+    const dx = (worldX - tx) * cam.zoom;
+    const dy = (worldY - ty) * cam.zoom;
+    // Apply the world container's rotation (-camera.rotation) to the
+    // zoomed delta, then translate to the screen center. At rotation=0
+    // this reduces to the original (worldX-scrollX)*zoom form.
+    const cos = Math.cos(-cam.rotation);
+    const sin = Math.sin(-cam.rotation);
+    out.x = cam.width / 2 + dx * cos - dy * sin;
+    out.y = cam.height / 2 + dx * sin + dy * cos;
     return true;
   }
 

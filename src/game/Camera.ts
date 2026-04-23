@@ -20,6 +20,11 @@ export class Camera {
   /** Top-left world Y of the viewport. Matches Phaser's camera.scrollY. */
   scrollY = 0;
   zoom = 1;
+  /** Camera rotation in radians. The world container rotates by
+   *  -rotation around the viewport center so that a positive rotation
+   *  here rotates the scene clockwise on screen — matching the
+   *  intuition of "turn the camera clockwise". */
+  rotation = 0;
   width: number;
   height: number;
 
@@ -89,11 +94,25 @@ export class Camera {
     return this._vp;
   }
 
-  /** Convert screen coordinates to world coordinates. */
+  /** Convert screen coordinates to world coordinates. Inverts the
+   *  world container's transform chain: translate (viewport center) →
+   *  rotate (-camera.rotation) → scale (zoom) → translate (pivot). */
   getWorldPoint(screenX: number, screenY: number): { x: number; y: number } {
+    // Viewport-center-relative screen coords.
+    const dx = screenX - this.width / 2;
+    const dy = screenY - this.height / 2;
+    // Inverse rotation: since the world is rotated by -camera.rotation,
+    // we rotate the screen vector by +camera.rotation to undo it.
+    const cos = Math.cos(this.rotation);
+    const sin = Math.sin(this.rotation);
+    const rx = dx * cos - dy * sin;
+    const ry = dx * sin + dy * cos;
+    // Descale then add world-space viewport center (the "target").
+    const targetX = this.scrollX + this.width / (2 * this.zoom);
+    const targetY = this.scrollY + this.height / (2 * this.zoom);
     return {
-      x: screenX / this.zoom + this.scrollX,
-      y: screenY / this.zoom + this.scrollY,
+      x: rx / this.zoom + targetX,
+      y: ry / this.zoom + targetY,
     };
   }
 
