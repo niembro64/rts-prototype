@@ -5,6 +5,7 @@ import { createGame, destroyGame } from '../createGame';
 import type { RendererMode } from '../../types/game';
 import { GameServer } from '../server/GameServer';
 import { LocalGameConnection } from '../server/LocalGameConnection';
+import { ClientViewState } from '../network/ClientViewState';
 import { MAP_SETTINGS } from '../../config';
 import { BACKGROUND_UNIT_TYPES } from '../server/BackgroundBattleStandalone';
 import {
@@ -95,6 +96,10 @@ export async function createBackgroundBattle(
 
   server.start();
 
+  // Background-battle CVS — owned by the returned gameInstance; destroyed
+  // when the lobby tears it down. Background demos don't support the live
+  // renderer swap, so no hoist beyond this function is needed.
+  const clientViewState = new ClientViewState();
   const gameInstance = createGame({
     parent: container,
     width: rect.width || window.innerWidth,
@@ -102,6 +107,7 @@ export async function createBackgroundBattle(
     playerIds: [1, 2, 3, 4] as PlayerId[],
     localPlayerId: 1,
     gameConnection: connection,
+    clientViewState,
     mapWidth: MAP_SETTINGS.game.width,
     mapHeight: MAP_SETTINGS.game.height,
     backgroundMode: true,

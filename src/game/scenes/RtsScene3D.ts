@@ -5,7 +5,7 @@
 // Render3DEntities instead of Pixi graphics, and currently has no selection/input
 // (view-only). Selection/commands will be added in a later pass.
 
-import { ClientViewState } from '../network/ClientViewState';
+import type { ClientViewState } from '../network/ClientViewState';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import {
   buildSelectionInfo,
@@ -64,6 +64,12 @@ export type RtsScene3DConfig = {
   playerIds: PlayerId[];
   localPlayerId: PlayerId;
   gameConnection: GameConnection;
+  /** Hoisted up to GameCanvas so state survives a live 2D↔3D renderer
+   *  swap without waiting for the next keyframe. If the old scene's
+   *  CVS is already populated, the new scene inherits all units,
+   *  buildings, projectiles, selection, prediction, etc. with zero
+   *  delay. On first boot GameCanvas creates a fresh one. */
+  clientViewState: ClientViewState;
   mapWidth: number;
   mapHeight: number;
   backgroundMode: boolean;
@@ -210,6 +216,9 @@ export class RtsScene3D {
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;
     this.gameConnection = config.gameConnection;
+    // ClientViewState is owned by GameCanvas so its state (units, buildings,
+    // prediction, selection) survives a live 2D↔3D renderer swap.
+    this.clientViewState = config.clientViewState;
     this._baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
 
     // Seed orbit camera on map center (ThreeApp did this too, but we honor the
@@ -251,8 +260,7 @@ export class RtsScene3D {
   }
 
   create(): void {
-    this.clientViewState = new ClientViewState();
-
+    // this.clientViewState is already set from config (constructor).
     this.entitySourceAdapter = {
       getUnits: () => this.clientViewState.getUnits(),
       getBuildings: () => this.clientViewState.getBuildings(),

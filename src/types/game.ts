@@ -16,6 +16,10 @@ export type GameConfig = {
   playerIds?: PlayerId[];
   localPlayerId?: PlayerId;
   gameConnection: GameConnection;
+  /** ClientViewState owned by GameCanvas so its contents (units, buildings,
+   *  prediction, selection, etc.) survive a live renderer swap without
+   *  waiting on a keyframe. On first boot the caller creates a fresh one. */
+  clientViewState: import('../game/network/ClientViewState').ClientViewState;
   mapWidth: number;
   mapHeight: number;
   backgroundMode?: boolean;

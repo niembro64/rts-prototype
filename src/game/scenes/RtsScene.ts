@@ -11,7 +11,7 @@ import {
   type WaypointType,
 } from '../sim/types';
 import { getPendingGameConfig, clearPendingGameConfig } from '../createGame';
-import { ClientViewState } from '../network/ClientViewState';
+import type { ClientViewState } from '../network/ClientViewState';
 import type { GameConnection } from '../server/GameConnection';
 import type {
   NetworkServerSnapshotCombatStats,
@@ -192,13 +192,14 @@ export class RtsScene extends SceneShim {
       this.playerIds = config.playerIds;
       this.backgroundMode = config.backgroundMode;
       this.gameConnection = config.gameConnection;
+      // ClientViewState is hoisted up to GameCanvas so its state (entities,
+      // prediction, selection) survives a live renderer swap. On initial
+      // boot GameCanvas constructs a fresh one.
+      this.clientViewState = config.clientViewState;
       this.mapWidth = config.mapWidth;
       this.mapHeight = config.mapHeight;
       clearPendingGameConfig();
     }
-
-    // Create ClientViewState (always the entity source)
-    this.clientViewState = new ClientViewState();
 
     // Build entity source adapter once — closures capture `this` so they always
     // read the current localPlayerId and clientViewState

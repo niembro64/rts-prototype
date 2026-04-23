@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
+import { ClientViewState } from '../game/network/ClientViewState';
 import type { RendererMode } from '../types/game';
 import { type PlayerId, type WaypointType } from '../game/sim/types';
 
@@ -298,6 +299,10 @@ let statsHistoryStartTime = 0;
 const battleElapsed = ref('00:00:00');
 
 let gameInstance: GameInstance | null = null;
+// Hoisted from the scene so state survives a live 2D↔3D renderer swap.
+// One instance per game session — created alongside gameConnection when
+// the match starts, cleared when the match ends.
+let clientViewState: ClientViewState | null = null;
 
 // Polling interval IDs for cleanup
 let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
@@ -1051,6 +1056,11 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       gameConnection = remoteConnection;
     }
 
+    // Create ClientViewState once per game session (outlives any single
+    // scene instance so a live renderer swap can reuse the same entity /
+    // prediction / selection state without waiting for a keyframe).
+    clientViewState = new ClientViewState();
+
     // Create game with player configuration
     gameInstance = createGame({
       parent: containerRef.value!,
@@ -1059,6 +1069,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       playerIds,
       localPlayerId: localPlayerId.value,
       gameConnection,
+      clientViewState,
       mapWidth: MAP_SETTINGS.game.width,
       mapHeight: MAP_SETTINGS.game.height,
       backgroundMode: false,

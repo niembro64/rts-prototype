@@ -4,6 +4,7 @@ import { PixiApp } from './PixiApp';
 import { ThreeApp } from './render3d/ThreeApp';
 import type { PlayerId } from './sim/types';
 import type { GameConnection } from './server/GameConnection';
+import type { ClientViewState } from './network/ClientViewState';
 import { MAP_BG_COLOR, hexToStr } from '../config';
 
 export type { GameConfig, GameInstance, GameScene, GameApp, RendererMode } from '@/types/game';
@@ -15,6 +16,7 @@ let pendingGameConfig: {
   playerIds: PlayerId[];
   localPlayerId: PlayerId;
   gameConnection: GameConnection;
+  clientViewState: ClientViewState;
   mapWidth: number;
   mapHeight: number;
   backgroundMode: boolean;
@@ -38,6 +40,7 @@ export function createGame(config: GameConfig): GameInstance {
     playerIds,
     localPlayerId,
     gameConnection: config.gameConnection,
+    clientViewState: config.clientViewState,
     mapWidth: config.mapWidth,
     mapHeight: config.mapHeight,
     backgroundMode,
@@ -118,6 +121,7 @@ function createGame3D(
       playerIds: params.playerIds,
       localPlayerId: params.localPlayerId,
       gameConnection: config.gameConnection,
+      clientViewState: config.clientViewState,
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
       backgroundMode: params.backgroundMode,
