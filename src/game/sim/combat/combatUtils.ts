@@ -35,13 +35,14 @@ export function resolveWeaponWorldPos(
 }
 
 // Muzzle altitude above the unit's ground footprint at pitch=0, derived
-// from the unit blueprint's render body. Replaces the old shared
-// MUZZLE_HEIGHT_ABOVE_GROUND constant so tall units (arachnid) fire
-// higher than squat ones (scout). Falls back to the arachnid body for
-// any unit whose blueprint lookup throws.
+// from the unit blueprint's render body. Must use the SAME radius the
+// 3D renderer uses to size the body mesh (`unitRadiusCollider.scale`)
+// — any divergence puts the sim's spawn altitude above or below the
+// visible barrel. Falls back to the arachnid body for any unit whose
+// blueprint lookup throws.
 export function getUnitMuzzleHeight(unit: Entity): number {
   if (!unit.unit) return 0;
-  const unitRadius = unit.unit.unitRadiusCollider.push;
+  const unitRadius = unit.unit.unitRadiusCollider.scale;
   let renderer = 'arachnid';
   try { renderer = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
   catch { /* keep fallback */ }

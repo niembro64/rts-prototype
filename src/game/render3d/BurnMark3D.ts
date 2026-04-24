@@ -258,6 +258,13 @@ export class BurnMark3D {
 
       const ex = proj.endX ?? e.transform.x;
       const ez = proj.endY ?? e.transform.y;
+      // Beam's real 3D endpoint altitude. This is set by findBeamPath
+      // (server + client both populate it after any reflections or
+      // obstruction truncation) — a pitched beam hitting an airborne
+      // unit ends at that unit's altitude, not on the ground. Falls
+      // back to GLOW_Y so a beam that hasn't been traced yet still
+      // renders something sensible.
+      const endY3 = proj.endZ ?? GLOW_Y;
       // Scope gate — skip the beam entirely when the endpoint is off-
       // scope. We use generous padding (200) since the endpoint can
       // drift quickly and a strict rect would drop marks mid-sweep.
@@ -300,7 +307,7 @@ export class BurnMark3D {
         state.glow = glow;
       }
       const coreR = Math.max(beamWidth * 3, 6);
-      state.glow.position.set(ex, GLOW_Y, ez);
+      state.glow.position.set(ex, endY3, ez);
       state.glow.scale.setScalar(coreR);
 
       // MAX-only flare — 4 team-colored sparks orbiting the hit point,
@@ -319,7 +326,7 @@ export class BurnMark3D {
           const sx = ex + Math.cos(angle) * orbit;
           const sz = ez + Math.sin(angle) * orbit;
           const spark = sparks[i];
-          spark.position.set(sx, GLOW_Y, sz);
+          spark.position.set(sx, endY3, sz);
           spark.scale.setScalar(sparkR);
         }
       } else if (state.flareSparks) {
