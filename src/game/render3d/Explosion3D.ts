@@ -157,7 +157,12 @@ export class Explosion3D {
     shellColor?: number,
   ): void {
     const style = this.getStyle();
-    const r = Math.max(radius, 6);
+    // Tiny safety floor so a zero-radius call still renders one
+    // visible pixel; callers are expected to pass the correct size
+    // (projectile explosion zones size themselves; beam/laser hits
+    // size to the beam half-width). Previously a 6-unit floor was
+    // lifting beam sparks to read like projectile pops.
+    const r = Math.max(radius, 1.5);
     // Stretch all three lifetimes by a log factor of the radius so a tank's
     // cannon blast lingers visibly longer than a scout bullet hit.
     const durMult = durationMultiplier(r);

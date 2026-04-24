@@ -708,12 +708,15 @@ export class RtsScene3D {
   private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
     if (event.type === 'hit') {
       const ctx = event.impactContext;
-      // Use the larger of the three radii so big AoE shots pop correctly;
-      // fall back to a small constant for beams where the impact context is
-      // minimal.
+      // Size the explosion by the biggest radius the shot genuinely
+      // has — primary/secondary explosion zones for projectiles,
+      // just the line's half-width (≈beam_width/2) for beams/lasers.
+      // No artificial floor here: line-weapon hits should read as
+      // localized sparks the size of the beam, not as a 8-unit
+      // pop that looks like a bullet impact.
       const r = ctx
-        ? Math.max(ctx.collisionRadius, ctx.primaryRadius, ctx.secondaryRadius, 8)
-        : 8;
+        ? Math.max(ctx.collisionRadius, ctx.primaryRadius, ctx.secondaryRadius)
+        : 2;
       // Combined impulse vector (sim X/Y → world X/Z): penetration direction
       // dominates because that's the intended "away from attacker" push, with
       // smaller contributions from the projectile's ballistic momentum and
