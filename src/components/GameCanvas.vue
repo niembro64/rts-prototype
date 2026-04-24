@@ -2196,6 +2196,14 @@ onUnmounted(() => {
               </button>
               <button
                 class="control-btn"
+                :class="{ active: driftMode === 'mid' }"
+                title="Medium interpolation to server state"
+                @click="changeDriftMode('mid')"
+              >
+                MID
+              </button>
+              <button
+                class="control-btn"
                 :class="{ active: driftMode === 'slow' }"
                 title="Slow interpolation to server state"
                 @click="changeDriftMode('slow')"

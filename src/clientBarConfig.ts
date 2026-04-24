@@ -328,6 +328,7 @@ function loadFromStorage(): void {
       storedDriftMode &&
       (storedDriftMode === 'snap' ||
         storedDriftMode === 'fast' ||
+        storedDriftMode === 'mid' ||
         storedDriftMode === 'slow')
     ) {
       currentDriftMode = storedDriftMode;

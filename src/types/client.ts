@@ -7,7 +7,7 @@ import type {
 import type { ConcreteGraphicsQuality, GraphicsQuality, RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
-export type DriftMode = 'snap' | 'fast' | 'slow';
+export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type GridOverlay = 'off' | 'low' | 'high';
 export type SoundCategory =
   | 'fire'

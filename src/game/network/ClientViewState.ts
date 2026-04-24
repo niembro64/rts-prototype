@@ -90,9 +90,13 @@ const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
     movement: { pos: 0.071, vel: 0.040 },
     rotation: { pos: 0.071, vel: 0.040 },
   },
-  slow: {
+  mid: {
     movement: { pos: 0.283, vel: 0.139 },
     rotation: { pos: 0.283, vel: 0.139 },
+  },
+  slow: {
+    movement: { pos: 0.849, vel: 0.417 },
+    rotation: { pos: 0.849, vel: 0.417 },
   },
 };
 
