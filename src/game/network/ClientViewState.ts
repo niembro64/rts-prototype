@@ -51,6 +51,11 @@ function halfLifeBlend(dt: number, halfLife: number): number {
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
+// Projectile gravity (world units / s²) — must match the server's
+// PROJECTILE_GRAVITY in projectileSystem.ts so client dead-reckoning
+// between snapshots falls at the same rate as authoritative sim.
+const PROJECTILE_GRAVITY = 900;
+
 // Reusable buffer for client-side force field prediction (avoids allocations per frame)
 type ActiveForceField = {
   weaponX: number;
@@ -769,9 +774,12 @@ export class ClientViewState {
             }
           }
 
-          // Drift projectile position + velocity toward server target (smooth correction)
+          // Drift projectile position + velocity toward server target
+          // (smooth correction). Projectile targets don't carry z yet —
+          // updating ServerTarget to Vec3 is a later pass; for now the
+          // horizontal lerp smooths out network jitter, and z is
+          // purely client-side (gravity-integrated from its fired vz).
           if (target) {
-            // Advance server target using its velocity (so drift target isn't stale)
             target.x += target.velocityX * dt;
             target.y += target.velocityY * dt;
 
@@ -782,9 +790,13 @@ export class ClientViewState {
             entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
           }
 
-          // Traveling projectiles: dead-reckon using (possibly steered/deflected) velocity
+          // Traveling projectiles: dead-reckon using (possibly steered)
+          // velocity in full 3D. Gravity on vz mirrors the server so
+          // mortar arcs and cannon shells fall between snapshots.
+          entity.projectile.velocityZ -= PROJECTILE_GRAVITY * dt;
           entity.transform.x += entity.projectile.velocityX * dt;
           entity.transform.y += entity.projectile.velocityY * dt;
+          entity.transform.z += entity.projectile.velocityZ * dt;
 
           // Auto-remove if projectile has left the map bounds
           entity.projectile.timeAlive += deltaMs;
@@ -822,6 +834,10 @@ export class ClientViewState {
     // Default to server position; override with client-side muzzle if source is available
     let spawnX = spawn.pos.x;
     let spawnY = spawn.pos.y;
+    // z always comes from the server — M9's wire carries it. Beam
+    // endpoints (beam.start.z / end.z) also come across the wire, so
+    // lasers/beams render at their real altitude too.
+    const spawnZ = spawn.pos.z;
 
     if (spawn.projectileType !== 'beam') {
       const source = this.entities.get(spawn.sourceEntityId);
@@ -852,12 +868,10 @@ export class ClientViewState {
       }
     }
 
-    // z/vz will come across the wire in M9 — for now the client
-    // seeds them at 0 and lets M6/M9 populate them properly.
     const entity: Entity = {
       id: spawn.id,
       type: 'shot',
-      transform: { x: spawnX, y: spawnY, z: 0, rotation: spawn.rotation },
+      transform: { x: spawnX, y: spawnY, z: spawnZ, rotation: spawn.rotation },
       ownership: { playerId: spawn.playerId },
       projectile: {
         ownerId: spawn.playerId,
@@ -866,7 +880,7 @@ export class ClientViewState {
         projectileType: spawn.projectileType as 'projectile' | 'beam' | 'laser',
         velocityX: spawn.velocity.x,
         velocityY: spawn.velocity.y,
-        velocityZ: 0,
+        velocityZ: spawn.velocity.z,
         timeAlive: 0,
         maxLifespan:
           config.shot.type === 'beam'
@@ -880,10 +894,10 @@ export class ClientViewState {
         maxHits: 1,
         startX: spawn.beam?.start.x,
         startY: spawn.beam?.start.y,
-        startZ: 0,
+        startZ: spawn.beam?.start.z,
         endX: spawn.beam?.end.x,
         endY: spawn.beam?.end.y,
-        endZ: 0,
+        endZ: spawn.beam?.end.z,
       },
     };
     if (spawn.isDGun) {
