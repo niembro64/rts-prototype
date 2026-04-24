@@ -693,6 +693,8 @@ export class Input3DManager {
     window.removeEventListener('mouseup', this.onMouseUp);
     window.removeEventListener('keydown', this.onKeyDown);
     this.onWaypointModeChange = undefined;
+    this.onBuildModeChange = undefined;
+    this.onDGunModeChange = undefined;
     this.marquee.remove();
   }
 }
