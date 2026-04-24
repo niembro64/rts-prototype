@@ -15,6 +15,7 @@ import {
   buildMinimapData,
 } from './helpers';
 import type { EconomyInfo, MinimapData } from './helpers';
+import type { UIInputState } from '@/types/ui';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
@@ -793,17 +794,15 @@ export class RtsScene3D {
   public updateSelectionInfo(): void {
     if (!this.onSelectionChange) return;
     // Input-state mirror for the SelectionPanel UI — reads the live
-    // build/waypoint flags so the panel's mode chips stay in sync.
-    // (D-gun isn't implemented yet in 3D; left false so the chip
-    // disappears rather than showing an always-off state.)
-    const inputState = {
+    // build/waypoint/d-gun flags so the panel's mode chips stay in sync.
+    const inputState: UIInputState = {
       waypointMode: this.currentWaypointMode,
       isBuildMode: this.currentBuildType !== null,
       selectedBuildingType: this.currentBuildType,
       isDGunMode: this.currentDGunActive,
-    } as const;
+    };
     this.onSelectionChange(
-      buildSelectionInfo(this.entitySourceAdapter, inputState as any),
+      buildSelectionInfo(this.entitySourceAdapter, inputState),
     );
   }
 
