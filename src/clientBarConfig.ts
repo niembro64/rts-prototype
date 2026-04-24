@@ -24,7 +24,7 @@ import type {
   UnitRadiusType,
 } from './types/client';
 import type { RendererMode } from './types/game';
-import { persist, persistJson } from './persistence';
+import { persist, persistJson, readPersisted } from './persistence';
 import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
   LOD_THRESHOLDS,
@@ -285,129 +285,134 @@ let prevFpsRank: number = 4;
 let localServerRunning: boolean = false;
 
 // ── Load from localStorage on module init ──
+// Each read is independent — a bad JSON value or throw from ONE key
+// must not prevent every later key from loading. (Previous revision
+// wrapped every read in one try/catch and the renderer-mode load was
+// dead last, so corrupted sound-toggles JSON silently disabled the
+// 2D/3D persistence.) readPersisted swallows getItem exceptions; the
+// JSON.parse blocks get their own per-key try so a malformed entry is
+// just ignored instead of poisoning the loader.
 function loadFromStorage(): void {
-  try {
-    const storedQuality = localStorage.getItem(STORAGE_KEY);
-    if (
-      storedQuality &&
-      (storedQuality === 'auto' ||
-        storedQuality === 'auto-zoom' ||
-        storedQuality === 'auto-tps' ||
-        storedQuality === 'auto-fps' ||
-        storedQuality === 'min' ||
-        storedQuality === 'low' ||
-        storedQuality === 'medium' ||
-        storedQuality === 'high' ||
-        storedQuality === 'max')
-    ) {
-      currentQuality = storedQuality;
-    }
-    const storedRenderMode = localStorage.getItem(RENDER_MODE_STORAGE_KEY);
-    if (
-      storedRenderMode &&
-      (storedRenderMode === 'window' ||
-        storedRenderMode === 'padded' ||
-        storedRenderMode === 'all')
-    ) {
-      currentRenderMode = storedRenderMode;
-    }
-    const storedAudioScope = localStorage.getItem(AUDIO_SCOPE_STORAGE_KEY);
-    if (
-      storedAudioScope &&
-      (storedAudioScope === 'off' ||
-        storedAudioScope === 'window' ||
-        storedAudioScope === 'padded' ||
-        storedAudioScope === 'all')
-    ) {
-      currentAudioScope = storedAudioScope;
-    }
-    const storedAudioSmoothing = localStorage.getItem(
-      AUDIO_SMOOTHING_STORAGE_KEY,
-    );
-    if (storedAudioSmoothing !== null) {
-      currentAudioSmoothing = storedAudioSmoothing === 'true';
-    }
-    const storedBurnMarks = localStorage.getItem(BURN_MARKS_STORAGE_KEY);
-    if (storedBurnMarks !== null) {
-      currentBurnMarks = storedBurnMarks === 'true';
-    }
-    const storedDriftMode = localStorage.getItem(DRIFT_MODE_STORAGE_KEY);
-    if (
-      storedDriftMode &&
-      (storedDriftMode === 'snap' ||
-        storedDriftMode === 'fast' ||
-        storedDriftMode === 'mid' ||
-        storedDriftMode === 'slow')
-    ) {
-      currentDriftMode = storedDriftMode;
-    }
-    const storedSoundToggles = localStorage.getItem(SOUND_TOGGLES_STORAGE_KEY);
-    if (storedSoundToggles) {
+  const storedQuality = readPersisted(STORAGE_KEY);
+  if (
+    storedQuality &&
+    (storedQuality === 'auto' ||
+      storedQuality === 'auto-zoom' ||
+      storedQuality === 'auto-tps' ||
+      storedQuality === 'auto-fps' ||
+      storedQuality === 'min' ||
+      storedQuality === 'low' ||
+      storedQuality === 'medium' ||
+      storedQuality === 'high' ||
+      storedQuality === 'max')
+  ) {
+    currentQuality = storedQuality;
+  }
+  const storedRenderMode = readPersisted(RENDER_MODE_STORAGE_KEY);
+  if (
+    storedRenderMode &&
+    (storedRenderMode === 'window' ||
+      storedRenderMode === 'padded' ||
+      storedRenderMode === 'all')
+  ) {
+    currentRenderMode = storedRenderMode;
+  }
+  const storedAudioScope = readPersisted(AUDIO_SCOPE_STORAGE_KEY);
+  if (
+    storedAudioScope &&
+    (storedAudioScope === 'off' ||
+      storedAudioScope === 'window' ||
+      storedAudioScope === 'padded' ||
+      storedAudioScope === 'all')
+  ) {
+    currentAudioScope = storedAudioScope;
+  }
+  const storedAudioSmoothing = readPersisted(AUDIO_SMOOTHING_STORAGE_KEY);
+  if (storedAudioSmoothing !== null) {
+    currentAudioSmoothing = storedAudioSmoothing === 'true';
+  }
+  const storedBurnMarks = readPersisted(BURN_MARKS_STORAGE_KEY);
+  if (storedBurnMarks !== null) {
+    currentBurnMarks = storedBurnMarks === 'true';
+  }
+  const storedDriftMode = readPersisted(DRIFT_MODE_STORAGE_KEY);
+  if (
+    storedDriftMode &&
+    (storedDriftMode === 'snap' ||
+      storedDriftMode === 'fast' ||
+      storedDriftMode === 'mid' ||
+      storedDriftMode === 'slow')
+  ) {
+    currentDriftMode = storedDriftMode;
+  }
+  const storedSoundToggles = readPersisted(SOUND_TOGGLES_STORAGE_KEY);
+  if (storedSoundToggles) {
+    try {
       const parsed = JSON.parse(storedSoundToggles);
       for (const cat of SOUND_CATEGORIES) {
         if (typeof parsed[cat] === 'boolean') {
           currentSoundToggles[cat] = parsed[cat];
         }
       }
-    }
-    const storedRangeToggles = localStorage.getItem(RANGE_TOGGLES_STORAGE_KEY);
-    if (storedRangeToggles) {
+    } catch { /* malformed JSON — keep defaults */ }
+  }
+  const storedRangeToggles = readPersisted(RANGE_TOGGLES_STORAGE_KEY);
+  if (storedRangeToggles) {
+    try {
       const parsed = JSON.parse(storedRangeToggles);
       for (const rt of RANGE_TYPES) {
         if (typeof parsed[rt] === 'boolean') {
           currentRangeToggles[rt] = parsed[rt];
         }
       }
-    }
-    const storedProjRangeToggles = localStorage.getItem(
-      PROJ_RANGE_TOGGLES_STORAGE_KEY,
-    );
-    if (storedProjRangeToggles) {
+    } catch { /* malformed JSON — keep defaults */ }
+  }
+  const storedProjRangeToggles = readPersisted(PROJ_RANGE_TOGGLES_STORAGE_KEY);
+  if (storedProjRangeToggles) {
+    try {
       const parsed = JSON.parse(storedProjRangeToggles);
       for (const prt of PROJ_RANGE_TYPES) {
         if (typeof parsed[prt] === 'boolean') {
           currentProjRangeToggles[prt] = parsed[prt];
         }
       }
-    }
-    const storedUnitRadiusToggles = localStorage.getItem(
-      UNIT_RADIUS_TOGGLES_STORAGE_KEY,
-    );
-    if (storedUnitRadiusToggles) {
+    } catch { /* malformed JSON — keep defaults */ }
+  }
+  const storedUnitRadiusToggles = readPersisted(UNIT_RADIUS_TOGGLES_STORAGE_KEY);
+  if (storedUnitRadiusToggles) {
+    try {
       const parsed = JSON.parse(storedUnitRadiusToggles);
       for (const urt of UNIT_RADIUS_TYPES) {
         if (typeof parsed[urt] === 'boolean') {
           currentUnitRadiusToggles[urt] = parsed[urt];
         }
       }
-    }
-    const storedEdgeScroll = localStorage.getItem(EDGE_SCROLL_STORAGE_KEY);
-    if (storedEdgeScroll !== null) {
-      currentEdgeScrollEnabled = storedEdgeScroll === 'true';
-    }
-    const storedDragPan = localStorage.getItem(DRAG_PAN_STORAGE_KEY);
-    if (storedDragPan !== null) {
-      currentDragPanEnabled = storedDragPan === 'true';
-    }
-    const storedLobbyVisible = localStorage.getItem(LOBBY_VISIBLE_STORAGE_KEY);
-    if (storedLobbyVisible !== null) {
-      currentLobbyVisible = storedLobbyVisible === 'true';
-    }
-    const storedGridOverlay = localStorage.getItem(GRID_OVERLAY_STORAGE_KEY);
-    if (
-      storedGridOverlay &&
-      (storedGridOverlay === 'off' ||
-        storedGridOverlay === 'low' ||
-        storedGridOverlay === 'high')
-    ) {
-      currentGridOverlay = storedGridOverlay;
-    }
-    const storedRendererMode = localStorage.getItem(RENDERER_MODE_STORAGE_KEY);
-    if (storedRendererMode === '2d' || storedRendererMode === '3d') {
-      currentRendererMode = storedRendererMode;
-    }
-  } catch {
-    // localStorage not available, use default
+    } catch { /* malformed JSON — keep defaults */ }
+  }
+  const storedEdgeScroll = readPersisted(EDGE_SCROLL_STORAGE_KEY);
+  if (storedEdgeScroll !== null) {
+    currentEdgeScrollEnabled = storedEdgeScroll === 'true';
+  }
+  const storedDragPan = readPersisted(DRAG_PAN_STORAGE_KEY);
+  if (storedDragPan !== null) {
+    currentDragPanEnabled = storedDragPan === 'true';
+  }
+  const storedLobbyVisible = readPersisted(LOBBY_VISIBLE_STORAGE_KEY);
+  if (storedLobbyVisible !== null) {
+    currentLobbyVisible = storedLobbyVisible === 'true';
+  }
+  const storedGridOverlay = readPersisted(GRID_OVERLAY_STORAGE_KEY);
+  if (
+    storedGridOverlay &&
+    (storedGridOverlay === 'off' ||
+      storedGridOverlay === 'low' ||
+      storedGridOverlay === 'high')
+  ) {
+    currentGridOverlay = storedGridOverlay;
+  }
+  const storedRendererMode = readPersisted(RENDERER_MODE_STORAGE_KEY);
+  if (storedRendererMode === '2d' || storedRendererMode === '3d') {
+    currentRendererMode = storedRendererMode;
   }
 }
 
