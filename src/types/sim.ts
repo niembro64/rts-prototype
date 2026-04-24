@@ -36,18 +36,24 @@ export type TurretRangeOverrides = {
   engage: HysteresisRangeOverride;
 };
 
-// Transform component - position and rotation in world space
+// Transform component - position and rotation in world space.
+// The sim is fully 3D: (x, y) = ground-plane footprint, z = altitude
+// (positive = up). `rotation` is yaw about the world z-axis (hull
+// heading on the ground plane). Turret pitch is stored per-turret
+// below, not here, because only turrets tilt up/down — hulls stay
+// upright even under physics push-out.
 export type Transform = {
   x: number;
   y: number;
+  z: number;
   rotation: number;
   rotCos?: number;
   rotSin?: number;
 };
 
-// Body component - reference to physics body
+// Body component - reference to the 3D physics body.
 export type Body = {
-  physicsBody: import('../game/server/PhysicsEngine').PhysicsBody;
+  physicsBody: import('../game/server/PhysicsEngine3D').Body3D;
 };
 
 // Selectable tag component
@@ -97,7 +103,9 @@ export type CachedMirrorPanel = {
   angle: number;
 };
 
-// Unit component - movable entities
+// Unit component - movable entities. Velocities are 3D: X/Y are
+// horizontal (ground-plane) motion, Z is vertical (for units that
+// take off, get knocked up by explosions, or fall from overhangs).
 export type Unit = {
   unitType: string;
   moveSpeed: number;
@@ -109,15 +117,20 @@ export type Unit = {
   patrolStartIndex: number | null;
   velocityX?: number;
   velocityY?: number;
+  velocityZ?: number;
   priorityTargetId?: EntityId;
   mirrorPanels: CachedMirrorPanel[];
   mirrorBoundRadius: number;
 };
 
-// Building component - static structures
+// Building component - static structures with a real 3D extent.
+// width (x-footprint) × height (y-footprint) × depth (z, vertical).
+// The physics engine stores the building as a cuboid centered at
+// (transform.x, transform.y, depth/2) so the base sits on the ground.
 export type Building = {
   width: number;
   height: number;
+  depth: number;
   hp: number;
   maxHp: number;
 };
@@ -215,7 +228,14 @@ export type TurretConfig = {
 // Turret FSM state: idle → tracking → engaged
 export type TurretState = 'idle' | 'tracking' | 'engaged';
 
-// Runtime turret instance (per-weapon state on a unit)
+// Runtime turret instance (per-weapon state on a unit).
+// Full 3D aiming: `rotation` is yaw (horizontal heading, around z),
+// `pitch` is elevation (vertical aim angle). Together they give a
+// turret the two degrees of freedom needed to track targets above
+// or below — aircraft, units on different elevations, targets
+// behind a high-walled building. Pitch=0 is horizontal; positive
+// pitches the barrel upward. `angularVelocity` is the yaw rate only;
+// pitch is set directly each frame from the aim solution.
 export type Turret = {
   config: TurretConfig;
   cooldown: number;
@@ -223,6 +243,7 @@ export type Turret = {
   ranges: TurretRanges;
   state: TurretState;
   rotation: number;
+  pitch: number;
   angularVelocity: number;
   turnAccel: number;
   drag: number;
@@ -235,7 +256,12 @@ export type Turret = {
 // Projectile travel types
 export type ProjectileType = 'projectile' | 'beam' | 'laser';
 
-// Projectile component
+// Projectile component. Fully 3D: velocity + prev/start/end points
+// all carry altitude. Projectile gravity is applied in the sim's
+// projectile system each tick (ballistic arc); beams and lasers
+// ignore vz and gravity (they're instantaneous line weapons).
+// Reflection points (mirror beams) also preserve z for 3D laser
+// tracing.
 export type Projectile = {
   ownerId: PlayerId;
   sourceEntityId: EntityId;
@@ -243,14 +269,18 @@ export type Projectile = {
   projectileType: ProjectileType;
   velocityX: number;
   velocityY: number;
+  velocityZ: number;
   prevX?: number;
   prevY?: number;
+  prevZ?: number;
   timeAlive: number;
   maxLifespan: number;
   startX?: number;
   startY?: number;
+  startZ?: number;
   endX?: number;
   endY?: number;
+  endZ?: number;
   targetEntityId?: EntityId;
   obstructionT?: number;
   obstructionTick?: number;
@@ -260,9 +290,10 @@ export type Projectile = {
   hasLeftSource?: boolean;
   homingTargetId?: EntityId;
   homingTurnRate?: number;
-  reflections?: { x: number; y: number; mirrorEntityId: EntityId }[];
+  reflections?: { x: number; y: number; z: number; mirrorEntityId: EntityId }[];
   lastSentVelX?: number;
   lastSentVelY?: number;
+  lastSentVelZ?: number;
 };
 
 // Economy state per player
