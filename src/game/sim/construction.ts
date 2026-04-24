@@ -1,6 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
-import { magnitude } from '../math';
+import { magnitude3 } from '../math';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
@@ -239,10 +239,13 @@ export class ConstructionSystem {
       return false;
     }
 
-    // Check range
+    // Check range — 3D, respects altitude so a builder on a ledge
+    // reaching for a grounded build site (or vice versa) gets the
+    // same behavior the weapon-range checks use.
     const dx = target.transform.x - builder.transform.x;
     const dy = target.transform.y - builder.transform.y;
-    const dist = magnitude(dx, dy);
+    const dz = target.transform.z - builder.transform.z;
+    const dist = magnitude3(dx, dy, dz);
 
     if (dist > builder.builder.buildRange) {
       return false;

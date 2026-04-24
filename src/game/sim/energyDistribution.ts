@@ -3,7 +3,7 @@
 
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId } from './types';
-import { distance } from '../math';
+import { distance3 } from '../math';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 
@@ -105,8 +105,11 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const target = world.getEntity(targetId);
     if (!target) continue;
 
-    // Check range
-    const dist = distance(commander.transform.x, commander.transform.y, target.transform.x, target.transform.y);
+    // Check range (3D — same altitude-aware check construction uses).
+    const dist = distance3(
+      commander.transform.x, commander.transform.y, commander.transform.z,
+      target.transform.x, target.transform.y, target.transform.z,
+    );
     if (dist > commander.builder.buildRange) continue;
 
     const commanderRateCap = commander.builder.maxEnergyUseRate * dtSec;

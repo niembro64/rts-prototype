@@ -3,8 +3,11 @@
 export {
   distanceSquared,
   distance,
+  distanceSquared3,
+  distance3,
   magnitudeSquared,
   magnitude,
+  magnitude3,
   normalizeAngle,
   clamp,
   clamp01,

@@ -3,8 +3,8 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { isLineShot } from '../types';
-import { distance, getTargetRadius } from './combatUtils';
-import { getWeaponWorldPosition, getTransformCosSin } from '../../math';
+import { getTargetRadius, getUnitMuzzleHeight } from './combatUtils';
+import { getWeaponWorldPosition, getTransformCosSin, distance3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
@@ -53,7 +53,13 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     const { cos, sin } = getTransformCosSin(unit.transform);
     const weapons = unit.turrets;
 
-    // Pass 0: Compute weapon world positions (needed for both modes)
+    // Pass 0: Compute weapon world positions (needed for both modes).
+    // All three axes are cached — altitude is the turret mount Z (unit
+    // ground footprint + per-unit muzzle height), the same point the
+    // ballistic solver aims from. Every downstream range check uses
+    // 3D distance, so the xy + z triple has to be kept in sync.
+    const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+    const mountZ = unitGroundZ + getUnitMuzzleHeight(unit);
     for (const weapon of weapons) {
       if (weapon.config.isManualFire) {
         weapon.state = 'idle';
@@ -61,9 +67,10 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       }
 
       const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offset.x, weapon.offset.y);
-      if (!weapon.worldPos) weapon.worldPos = { x: 0, y: 0 };
+      if (!weapon.worldPos) weapon.worldPos = { x: 0, y: 0, z: 0 };
       weapon.worldPos.x = wp.x;
       weapon.worldPos.y = wp.y;
+      weapon.worldPos.z = mountZ;
     }
 
     // Check for attack command priority target
@@ -93,7 +100,10 @@ export function updateTargetingAndFiringState(world: WorldState): void {
           }
 
           weapon.target = priorityId;
-          const dist = distance(weapon.worldPos!.x, weapon.worldPos!.y, priorityTarget.transform.x, priorityTarget.transform.y);
+          const dist = distance3(
+            weapon.worldPos!.x, weapon.worldPos!.y, weapon.worldPos!.z,
+            priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
+          );
 
           if (dist <= weapon.ranges.engage.acquire + priorityRadius) {
             weapon.state = 'engaged';
@@ -127,7 +137,10 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         weapon.state = 'idle';
       } else {
         const r = weapon.ranges;
-        const dist = distance(weapon.worldPos!.x, weapon.worldPos!.y, target.transform.x, target.transform.y);
+        const dist = distance3(
+          weapon.worldPos!.x, weapon.worldPos!.y, weapon.worldPos!.z,
+          target.transform.x, target.transform.y, target.transform.z,
+        );
 
         switch (weapon.state) {
           case 'idle':
@@ -195,6 +208,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       const weaponX = weapon.worldPos!.x;
       const weaponY = weapon.worldPos!.y;
+      const weaponZ = weapon.worldPos!.z;
       const r = weapon.ranges;
 
       const candidates = useBatch
@@ -207,7 +221,10 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       for (const enemy of candidates) {
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
+        const dist = distance3(
+          weaponX, weaponY, weaponZ,
+          enemy.transform.x, enemy.transform.y, enemy.transform.z,
+        );
         // Only consider enemies within engage range
         if (dist <= r.engage.acquire + enemyRadius && dist < closestDist) {
           closestDist = dist;
@@ -229,6 +246,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       const weaponX = weapon.worldPos!.x;
       const weaponY = weapon.worldPos!.y;
+      const weaponZ = weapon.worldPos!.z;
       const r = weapon.ranges;
 
       // Use batched results for multi-weapon units, per-weapon query for single-weapon
@@ -244,7 +262,10 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
 
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const dist = distance(weaponX, weaponY, enemy.transform.x, enemy.transform.y);
+        const dist = distance3(
+          weaponX, weaponY, weaponZ,
+          enemy.transform.x, enemy.transform.y, enemy.transform.z,
+        );
 
         if (dist <= r.tracking.acquire + enemyRadius && dist < closestDist) {
           closestDist = dist;

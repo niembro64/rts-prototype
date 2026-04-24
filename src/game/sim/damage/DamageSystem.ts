@@ -676,26 +676,50 @@ export class DamageSystem {
       }
     }
 
-    // Check buildings
+    // Check buildings — full 3D. Buildings are axis-aligned boxes
+    // (width × height × depth) sitting on the ground; the real
+    // sphere-vs-building test is "sphere intersects AABB," computed
+    // as distance from the sphere center to the nearest point of the
+    // box. This lets a high-arc shell's blast wash over the top of a
+    // short building without damaging it, and catches tall buildings
+    // with explosions from above.
     for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      const dx = building.transform.x - source.center.x;
-      const dy = building.transform.y - source.center.y;
-      const buildingRadius = getTargetRadius(building);
+      const hw = building.building.width / 2;
+      const hh = building.building.height / 2;
+      const bd = building.building.depth;
+      const bMinX = building.transform.x - hw;
+      const bMaxX = building.transform.x + hw;
+      const bMinY = building.transform.y - hh;
+      const bMaxY = building.transform.y + hh;
+      const bMinZ = 0;
+      const bMaxZ = bd;
 
-      // Cheap squared-distance rejection before sqrt
-      const distSq = dx * dx + dy * dy;
-      const maxDist = source.radius + buildingRadius;
-      if (distSq > maxDist * maxDist) continue;
+      // Closest point on the AABB to the sphere center.
+      const cx = source.center.x < bMinX ? bMinX : source.center.x > bMaxX ? bMaxX : source.center.x;
+      const cy = source.center.y < bMinY ? bMinY : source.center.y > bMaxY ? bMaxY : source.center.y;
+      const cz = source.center.z < bMinZ ? bMinZ : source.center.z > bMaxZ ? bMaxZ : source.center.z;
+
+      const dx = source.center.x - cx;
+      const dy = source.center.y - cy;
+      const dz = source.center.z - cz;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq > source.radius * source.radius) continue;
 
       const dist = Math.sqrt(distSq);
 
-      // Check slice for wave weapons
+      // Slice (wave-weapon cone) stays a horizontal test — the wave
+      // direction is a yaw, not a 3D vector — using the horizontal
+      // delta from explosion center to building center.
       if (hasSlice) {
+        const hDx = building.transform.x - source.center.x;
+        const hDy = building.transform.y - source.center.y;
+        const hDist = Math.hypot(hDx, hDy);
+        const buildingRadius = getTargetRadius(building);
         if (!isPointInSlice(
-          dx, dy, dist,
+          hDx, hDy, hDist,
           sliceDirection,
           sliceHalfAngle,
           source.radius,
@@ -703,14 +727,17 @@ export class DamageSystem {
         )) continue;
       }
 
-      // Calculate damage with falloff
       const damage = computeFalloffDamage(dist, source.radius, source.damage, source.falloff);
 
-      // Calculate direction (from center outward)
-      const dirX = dist > 0 ? dx / dist : 0;
-      const dirY = dist > 0 ? dy / dist : 0;
+      // Knockback direction: from the AABB's closest point back toward
+      // the sphere center, flattened to horizontal because buildings
+      // are static — the vertical component of force would be wasted.
+      const hKx = building.transform.x - source.center.x;
+      const hKy = building.transform.y - source.center.y;
+      const hKmag = Math.hypot(hKx, hKy);
+      const dirX = hKmag > 0 ? hKx / hKmag : 0;
+      const dirY = hKmag > 0 ? hKy / hKmag : 0;
 
-      // Apply damage with death context
       const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       this.applyDamageToEntity(building, damage, result, source.sourceEntityId, {
         penetrationDir: { x: dirX, y: dirY },

@@ -75,16 +75,17 @@ type TurretMesh = {
    *  barrels "cone" around the horizontal instead of spinning around
    *  their own pitched axis. */
   spinGroup?: THREE.Group;
-  /** Per-turret ground-ring meshes for the TURR RAD overlay. Drawn on
-   *  the world ground plane because the matching sim checks are
-   *  horizontal-only (Math.hypot(dx,dy) in targetingSystem). Parented
-   *  to the WORLD group so the ring stays flat regardless of unit
-   *  rotation. */
+  /** Per-turret TURR RAD overlay spheres. The underlying sim checks
+   *  (tracking + engage distance) are now full 3D distance3(...) calls
+   *  that include altitude, so the viz is a 3D wireframe sphere —
+   *  centered at the weapon's mount point (world XY + mount Z) and
+   *  scaled to the range. Parented to the WORLD group so it stays
+   *  put in absolute world coords as the unit rotates/moves. */
   rangeRings?: {
-    trackAcquire?: THREE.LineLoop;
-    trackRelease?: THREE.LineLoop;
-    engageAcquire?: THREE.LineLoop;
-    engageRelease?: THREE.LineLoop;
+    trackAcquire?: THREE.LineSegments;
+    trackRelease?: THREE.LineSegments;
+    engageAcquire?: THREE.LineSegments;
+    engageRelease?: THREE.LineSegments;
   };
 };
 
@@ -126,29 +127,27 @@ type EntityMesh = {
   locomotion?: Locomotion3DMesh;
   ringMat?: THREE.MeshBasicMaterial;
   ring?: THREE.Mesh;
-  /** UNIT RAD indicator meshes. Shape follows the sim's own
-   *  dimensionality for each channel:
-   *    - scale → flat ground ring (no sim collision — pure visual
-   *      horizontal footprint).
-   *    - shot  → wireframe sphere (beam + projectile collision are
-   *      lineSphereIntersectionT in DamageSystem; area damage vs
-   *      units uses full 3D distance).
-   *    - push  → flat ground ring (PhysicsEngine3D's unit-vs-unit
-   *      push is horizontal-plane only — "z is ignored by unit push").
+  /** UNIT RAD wireframe spheres. All three channels are now 3D in
+   *  the sim:
+   *    - scale → pure visual horizontal footprint (no sim collision);
+   *      rendered as a sphere for visual consistency with the others.
+   *    - shot  → 3D swept + area-damage check (lineSphereIntersectionT
+   *      + sqrt(dx²+dy²+dz²) in DamageSystem).
+   *    - push  → full 3D sphere-vs-sphere push in PhysicsEngine3D.
    *
    *  Meshes are created lazily on first show and hidden (not destroyed)
-   *  when toggled off. The sphere stays parented to the unit group
-   *  (it should follow the unit's altitude); the two rings live in
-   *  the world group so they always sit on the ground, independent
-   *  of the unit's altitude/rotation. */
+   *  when toggled off. All three parent to the unit group at local
+   *  y = push radius so the sphere center sits on the unit's sim
+   *  sphere center and rides along with altitude changes. */
   radiusRings?: {
-    scale?: THREE.LineLoop;
+    scale?: THREE.LineSegments;
     shot?: THREE.LineSegments;
-    push?: THREE.LineLoop;
+    push?: THREE.LineSegments;
   };
-  /** Builder-unit BLD ground ring. Build-range is a 2D horizontal
-   *  check, so this is a flat ring on the ground under the unit. */
-  buildRing?: THREE.LineLoop;
+  /** Builder-unit BLD wireframe sphere — 3D now that the build-range
+   *  check includes altitude. Parented to the WORLD group and
+   *  positioned at the unit's sim sphere center each frame. */
+  buildRing?: THREE.LineSegments;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  slab. Empty / undefined for units. */
@@ -249,30 +248,15 @@ export class Render3DEntities {
     color: 0x44ff44, transparent: true, opacity: 0.7, depthWrite: false,
   });
 
-  // Ground-ring viz (TURR RAD: T.A/T.R/E.A/E.R/BLD). These sim checks
-  // are horizontal-only (`Math.hypot(dx, dy)` in targetingSystem) so
-  // showing them as flat rings on the ground plane — instead of 3D
-  // spheres — honestly reflects what the sim actually tests. A 64-gon
-  // LineLoop in the three.js X-Z plane; Y=0 + scale(r,1,r) plants the
-  // ring at the right size on the map.
-  private rangeRingGeom = (() => {
-    const SEGMENTS = 64;
-    const pts: number[] = [];
-    for (let i = 0; i < SEGMENTS; i++) {
-      const a = (i / SEGMENTS) * Math.PI * 2;
-      pts.push(Math.cos(a), 0, Math.sin(a));
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    return g;
-  })();
-  // Per-sub-toggle colors mirror the 2D renderer's RangeCircles palette
-  // so the same viz toggled in either mode looks consistent.
-  private ringMatTrackAcquire = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.35, depthWrite: false });
-  private ringMatTrackRelease = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.18, depthWrite: false });
-  private ringMatEngageAcquire = new THREE.LineBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.45, depthWrite: false });
-  private ringMatEngageRelease = new THREE.LineBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.40, depthWrite: false });
-  private ringMatBuild = new THREE.LineBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.45, depthWrite: false });
+  // TURR RAD sphere materials. Colors mirror the 2D RangeCircles
+  // palette so the same toggle reads the same regardless of renderer.
+  // The sphere geometry is the shared radiusSphereGeom (wireframe
+  // unit sphere) built above.
+  private ringMatTrackAcquire = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.25, depthWrite: false });
+  private ringMatTrackRelease = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.12, depthWrite: false });
+  private ringMatEngageAcquire = new THREE.LineBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.30, depthWrite: false });
+  private ringMatEngageRelease = new THREE.LineBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.25, depthWrite: false });
+  private ringMatBuild = new THREE.LineBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.30, depthWrite: false });
 
   // SHOT RAD wireframe spheres. These sim checks ARE 3D
   // (lineSphereIntersectionT for collision, 3D sqrt(dx²+dy²+dz²) for
@@ -629,66 +613,65 @@ export class Render3DEntities {
 
     const rings = m.radiusRings ?? (m.radiusRings = {});
 
-    // SCAL — pure visual footprint. No sim check involves it. Draw as
-    // a flat ring on the ground under the unit.
-    const showScale = getUnitRadiusToggle('visual');
-    if (showScale) {
-      if (!rings.scale) {
-        rings.scale = new THREE.LineLoop(this.rangeRingGeom, this.radiusMatScale);
-        this.world.add(rings.scale);
-      }
-      rings.scale.visible = true;
-      rings.scale.position.set(entity.transform.x, 0.1, entity.transform.y);
-      rings.scale.scale.set(collider.scale, 1, collider.scale);
-    } else if (rings.scale) {
-      rings.scale.visible = false;
-    }
+    // All three UNIT RAD spheres sit at the unit's sim sphere center.
+    // Because the unit group is positioned at (x, groundZ, y) in
+    // three-space and the sim sphere center is `push radius` above
+    // that ground, a local-Y of `collider.push` puts the sphere
+    // exactly where the collision code measures from. The sphere
+    // follows altitude changes for free.
+    const centerY = collider.push;
 
-    // SHOT — 3D collision volume (beam/projectile-vs-unit uses line-
-    // sphere; area damage vs units uses full 3D distance). Wireframe
-    // sphere that follows the unit in 3D, centered at the sim's own
-    // sphere center (= push radius above the group's ground origin,
-    // so the sphere stays on the unit when airborne).
-    const showShot = getUnitRadiusToggle('shot');
-    if (showShot) {
-      if (!rings.shot) {
-        rings.shot = new THREE.LineSegments(this.radiusSphereGeom, this.radiusMatShot);
-        m.group.add(rings.shot);
-      }
-      rings.shot.visible = true;
-      rings.shot.position.y = collider.push;
-      rings.shot.scale.setScalar(collider.shot);
-    } else if (rings.shot) {
-      rings.shot.visible = false;
-    }
+    this.setUnitRadiusSphere(
+      rings, 'scale', getUnitRadiusToggle('visual'), m.group,
+      centerY, collider.scale, this.radiusMatScale,
+    );
+    this.setUnitRadiusSphere(
+      rings, 'shot', getUnitRadiusToggle('shot'), m.group,
+      centerY, collider.shot, this.radiusMatShot,
+    );
+    this.setUnitRadiusSphere(
+      rings, 'push', getUnitRadiusToggle('push'), m.group,
+      centerY, collider.push, this.radiusMatPush,
+    );
+  }
 
-    // PUSH — unit-vs-unit physics push is explicitly horizontal-only
-    // ("z is ignored by unit push" in PhysicsEngine3D). Flat ground
-    // ring, not a sphere.
-    const showPush = getUnitRadiusToggle('push');
-    if (showPush) {
-      if (!rings.push) {
-        rings.push = new THREE.LineLoop(this.rangeRingGeom, this.radiusMatPush);
-        this.world.add(rings.push);
+  /** Internal helper for the three UNIT RAD sphere toggles. All three
+   *  share the same placement (unit sphere center, parented to the
+   *  unit group) and differ only by color + radius. */
+  private setUnitRadiusSphere(
+    rings: { scale?: THREE.LineSegments; shot?: THREE.LineSegments; push?: THREE.LineSegments },
+    key: 'scale' | 'shot' | 'push',
+    want: boolean,
+    parent: THREE.Group,
+    centerY: number,
+    radius: number,
+    mat: THREE.LineBasicMaterial,
+  ): void {
+    let mesh = rings[key];
+    if (want) {
+      if (!mesh) {
+        mesh = new THREE.LineSegments(this.radiusSphereGeom, mat);
+        parent.add(mesh);
+        rings[key] = mesh;
       }
-      rings.push.visible = true;
-      rings.push.position.set(entity.transform.x, 0.1, entity.transform.y);
-      rings.push.scale.set(collider.push, 1, collider.push);
-    } else if (rings.push) {
-      rings.push.visible = false;
+      mesh.visible = true;
+      mesh.position.y = centerY;
+      mesh.scale.setScalar(radius);
+    } else if (mesh) {
+      mesh.visible = false;
     }
   }
 
-  /** Show/hide the per-unit TURR RAD ground rings: tracking acquire/
-   *  release and engage acquire/release are per-turret; build is per-
-   *  unit (centered on the builder). All five are flat rings on the
-   *  world ground plane because each matching sim check is horizontal
-   *  only (Math.hypot(dx, dy), never z) — drawing them as 3D spheres
-   *  would suggest the sim tests something it doesn't.
+  /** Show/hide the per-unit TURR RAD wireframe spheres: tracking
+   *  acquire/release and engage acquire/release are per-turret,
+   *  centered at each weapon's 3D mount point (matches the sim's
+   *  distance3 check in targetingSystem). Build range is per-unit,
+   *  centered at the unit's sim sphere center (matches construction's
+   *  distance3 check).
    *
-   *  Rings are parented to the WORLD group (not the unit group) so
-   *  they stay at Y=0 even when the unit is airborne from a knockback
-   *  or falling off a cliff, and they don't spin with the unit. */
+   *  Spheres are parented to the WORLD group rather than the unit/
+   *  turret group — they represent absolute world volumes and don't
+   *  rotate with the hull. */
   private updateRangeRings(m: EntityMesh, entity: Entity): void {
     const unit = entity.unit;
     if (!unit) return;
@@ -701,60 +684,67 @@ export class Render3DEntities {
 
     const ux = entity.transform.x;
     const uy = entity.transform.y;
+    const uz = entity.transform.z;
     const cos = Math.cos(entity.transform.rotation);
     const sin = Math.sin(entity.transform.rotation);
 
-    // Per-turret rings — same center (weapon world pos) the 2D path
-    // uses, so toggling 2D↔3D shows the same circle at the same spot.
+    // Per-turret spheres — same center the sim's targeting code uses,
+    // so what you see is exactly the volume the sim tests against.
     if (entity.turrets) {
       for (let i = 0; i < entity.turrets.length; i++) {
         const weapon = entity.turrets[i];
         const tm = m.turrets[i];
         if (!tm) continue;
         const wp = getWeaponWorldPosition(ux, uy, cos, sin, weapon.offset.x, weapon.offset.y);
+        // Mount Z was cached on weapon.worldPos by targetingSystem;
+        // fall back to unit-sphere-center when targeting hasn't run
+        // yet this tick (new units).
+        const mountZ = weapon.worldPos?.z ?? uz;
 
-        this.setRangeRing(
-          tm, 'trackAcquire', showTrackAcquire, wp.x, wp.y,
+        this.setRangeSphere(
+          tm, 'trackAcquire', showTrackAcquire, wp.x, wp.y, mountZ,
           weapon.ranges.tracking.acquire, this.ringMatTrackAcquire,
         );
-        this.setRangeRing(
-          tm, 'trackRelease', showTrackRelease, wp.x, wp.y,
+        this.setRangeSphere(
+          tm, 'trackRelease', showTrackRelease, wp.x, wp.y, mountZ,
           weapon.ranges.tracking.release, this.ringMatTrackRelease,
         );
-        this.setRangeRing(
-          tm, 'engageAcquire', showEngageAcquire, wp.x, wp.y,
+        this.setRangeSphere(
+          tm, 'engageAcquire', showEngageAcquire, wp.x, wp.y, mountZ,
           weapon.ranges.engage.acquire, this.ringMatEngageAcquire,
         );
-        this.setRangeRing(
-          tm, 'engageRelease', showEngageRelease, wp.x, wp.y,
+        this.setRangeSphere(
+          tm, 'engageRelease', showEngageRelease, wp.x, wp.y, mountZ,
           weapon.ranges.engage.release, this.ringMatEngageRelease,
         );
       }
     }
 
-    // Build range (builder-only, centered on the unit).
+    // Build range (builder-only, centered on the unit's sim sphere).
     const builder = entity.builder;
     if (showBuild && builder) {
       if (!m.buildRing) {
-        m.buildRing = new THREE.LineLoop(this.rangeRingGeom, this.ringMatBuild);
+        m.buildRing = new THREE.LineSegments(this.radiusSphereGeom, this.ringMatBuild);
         this.world.add(m.buildRing);
       }
       m.buildRing.visible = true;
-      m.buildRing.position.set(ux, 0.1, uy);
-      m.buildRing.scale.set(builder.buildRange, 1, builder.buildRange);
+      // sim(x,y,z) → three(x,z,y).
+      m.buildRing.position.set(ux, uz, uy);
+      m.buildRing.scale.setScalar(builder.buildRange);
     } else if (m.buildRing) {
       m.buildRing.visible = false;
     }
   }
 
   /** Internal helper: create-if-missing / update-if-visible / hide for
-   *  a single per-turret range ring. Keeps the four toggle branches in
-   *  updateRangeRings from duplicating the lazy-create dance. */
-  private setRangeRing(
+   *  a single per-turret TURR RAD sphere. Keeps the four toggle
+   *  branches in updateRangeRings from duplicating the lazy-create
+   *  dance. */
+  private setRangeSphere(
     tm: TurretMesh,
     key: 'trackAcquire' | 'trackRelease' | 'engageAcquire' | 'engageRelease',
     want: boolean,
-    cx: number, cy: number,
+    cx: number, cy: number, cz: number,
     radius: number,
     mat: THREE.LineBasicMaterial,
   ): void {
@@ -762,15 +752,14 @@ export class Render3DEntities {
     let ring = rings[key];
     if (want) {
       if (!ring) {
-        ring = new THREE.LineLoop(this.rangeRingGeom, mat);
+        ring = new THREE.LineSegments(this.radiusSphereGeom, mat);
         this.world.add(ring);
         rings[key] = ring;
       }
       ring.visible = true;
-      // Lift a hair off the ground to avoid z-fighting with the tile
-      // layer. sim(x,y) → three(x,z); three.y stays at 0.1.
-      ring.position.set(cx, 0.1, cy);
-      ring.scale.set(radius, 1, radius);
+      // sim(x,y,z) → three(x,z,y).
+      ring.position.set(cx, cz, cy);
+      ring.scale.setScalar(radius);
     } else if (ring) {
       ring.visible = false;
     }
@@ -818,14 +807,13 @@ export class Render3DEntities {
 
   /** Remove every overlay mesh that lives in the world group (not the
    *  unit group) so a teardown/rebuild cycle doesn't leak them into
-   *  the scene. TURR RAD rings (per-turret + build), SCAL ring, and
-   *  PUSH ring all fall into this category because they must stay flat
-   *  on the ground regardless of unit rotation/altitude. The SHOT
-   *  wireframe sphere is parented to m.group and rides along with it. */
+   *  the scene. TURR RAD spheres (per-turret) and BLD build sphere
+   *  are the only ones in this category — they represent absolute
+   *  world volumes keyed to the turret mount / unit center. UNIT RAD
+   *  spheres (SCAL/SHOT/PUSH) ride the unit group and leave alongside
+   *  m.group. */
   private disposeWorldParentedOverlays(m: EntityMesh): void {
     if (m.buildRing) this.world.remove(m.buildRing);
-    if (m.radiusRings?.scale) this.world.remove(m.radiusRings.scale);
-    if (m.radiusRings?.push) this.world.remove(m.radiusRings.push);
     for (const tm of m.turrets) {
       if (tm.rangeRings) {
         if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
@@ -1400,7 +1388,6 @@ export class Render3DEntities {
     this.buildingGeom.dispose();
     this.ringGeom.dispose();
     this.radiusSphereGeom.dispose();
-    this.rangeRingGeom.dispose();
     this.radiusMatScale.dispose();
     this.radiusMatShot.dispose();
     this.radiusMatPush.dispose();

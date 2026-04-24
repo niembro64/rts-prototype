@@ -1,6 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
-import { distance } from '../math';
+import { distance3 } from '../math';
 import { economyManager } from './economy';
 // Note: economyManager still used for onConstructionComplete (addProduction)
 
@@ -112,12 +112,15 @@ export class CommanderAbilitiesSystem {
       return null;
     }
 
-    // Check if in range
-    const dist = distance(
+    // Check if in range — 3D, so a commander at the foot of a cliff
+    // and a half-built turret at the top are correctly rejected.
+    const dist = distance3(
       commander.transform.x,
       commander.transform.y,
+      commander.transform.z,
       target.transform.x,
-      target.transform.y
+      target.transform.y,
+      target.transform.z,
     );
 
     if (dist <= buildRange) {

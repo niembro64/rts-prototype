@@ -1,7 +1,7 @@
 // Simulation entity types extracted from game/sim/types.ts
 
 import type { BarrelShape } from './config';
-import type { Vec2 } from './vec2';
+import type { Vec2, Vec3 } from './vec2';
 
 // Entity ID type for deterministic identification
 export type EntityId = number;
@@ -262,7 +262,7 @@ export type Turret = {
   turnAccel: number;
   drag: number;
   offset: Vec2;
-  worldPos?: Vec2;
+  worldPos?: Vec3;
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
   /** Round-robin pointer across the physical barrels on this turret.
