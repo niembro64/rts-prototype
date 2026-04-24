@@ -132,8 +132,11 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         });
       }
 
-      // Fire the weapon in turret direction
+      // Fire the weapon along the turret's full 3D aim (yaw + pitch).
       const turretAngle = weapon.rotation;
+      const turretPitch = weapon.pitch;
+      const pitchCos = Math.cos(turretPitch);
+      const pitchSin = Math.sin(turretPitch);
 
       // Create projectile(s)
       const pellets = config.spread?.pelletCount ?? 1;
@@ -150,9 +153,14 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         const fireCos = Math.cos(angle);
         const fireSin = Math.sin(angle);
 
-        // Spawn position at barrel tip
-        const spawnX = weaponX + fireCos * barrelOffset;
-        const spawnY = weaponY + fireSin * barrelOffset;
+        // Muzzle world-position. Horizontal component = barrel tip on
+        // the yaw ray (pitched barrels shorten their ground-plane
+        // projection by pitchCos). Vertical component = hull altitude
+        // plus the pitched barrel tip.
+        const horizBarrel = barrelOffset * pitchCos;
+        const spawnX = weaponX + fireCos * horizBarrel;
+        const spawnY = weaponY + fireSin * horizBarrel;
+        const spawnZ = unit.transform.z + barrelOffset * pitchSin;
 
         if (isBeamWeapon) {
           // Create beam using weapon's fireRange
@@ -183,18 +191,26 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           });
           // Note: Beam recoil is applied continuously above while weapon is engaged
         } else {
-          // Create traveling projectile
+          // Create traveling projectile with 3D launch velocity from
+          // yaw + pitch. Total speed is the same as before; pitch
+          // rotates the velocity vector out of the ground plane.
           const projShot = shot as ProjectileShot;
           const speed = projShot.launchForce / projShot.mass;
-          let projVx = fireCos * speed;
-          let projVy = fireSin * speed;
+          const horizSpeed = speed * pitchCos;
+          let projVx = fireCos * horizSpeed;
+          let projVy = fireSin * horizSpeed;
+          let projVz = speed * pitchSin;
           if (world.projVelInherit && unit.unit) {
-            // Unit linear velocity
+            // Unit linear velocity (3D — vertical inheritance handles
+            // falling/jumping units firing while airborne).
             projVx += unit.unit.velocityX ?? 0;
             projVy += unit.unit.velocityY ?? 0;
-            // Turret rotational velocity at fire point (tangential = omega * r)
-            const barrelDx = fireCos * barrelOffset;
-            const barrelDy = fireSin * barrelOffset;
+            projVz += unit.unit.velocityZ ?? 0;
+            // Turret rotational velocity at fire point (tangential = omega * r).
+            // Rotational velocity is planar; vertical component is 0 because
+            // pitch is set directly (no pitch-angular-velocity).
+            const barrelDx = fireCos * horizBarrel;
+            const barrelDy = fireSin * horizBarrel;
             const omega = weapon.angularVelocity;
             projVx += -barrelDy * omega;
             projVy += barrelDx * omega;
@@ -209,6 +225,14 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             config,
             'projectile'
           );
+          // Seed the projectile's initial z and vz — createProjectile
+          // defaults both to zero; M7 overrides with the muzzle altitude
+          // and pitched launch velocity.
+          projectile.transform.z = spawnZ;
+          if (projectile.projectile) {
+            projectile.projectile.velocityZ = projVz;
+            projectile.projectile.lastSentVelZ = projVz;
+          }
           // Set homing properties if weapon has homingTurnRate and weapon has a locked target
           if (projShot.homingTurnRate && weapon.target !== null) {
             projectile.projectile!.homingTargetId = weapon.target;

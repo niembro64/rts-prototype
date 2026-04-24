@@ -17,14 +17,9 @@ let _targetAngles: number[] = [];
 let _hasTargets: number[] = [];
 
 export function updateTurretRotation(world: WorldState, dtMs: number): void {
-  const wasmEngine = getWasmEngine();
-  const wasmMemory = getWasmMemory();
-
-  if (wasmEngine && wasmMemory) {
-    updateTurretRotationWasm(world, dtMs, wasmEngine, wasmMemory);
-  } else {
-    updateTurretRotationJS(world, dtMs);
-  }
+  // WASM-batched turret integration was 2D-only (yaw without pitch).
+  // Disabled here; M12 deletes the Rust crate + bindings outright.
+  updateTurretRotationJS(world, dtMs);
 }
 
 // WASM batch path: JS computes target angles, WASM does integration
@@ -106,7 +101,12 @@ function updateTurretRotationWasm(
   }
 }
 
-// JS fallback path (original implementation)
+// JS fallback path (original implementation). Yaw is velocity-damped
+// (slews via angularVelocity); pitch tracks the elevation to the
+// current target every frame without its own angular-velocity path —
+// simpler and matches the game feel of RTS turrets that "tilt" freely
+// while their heavy horizontal swing has inertia. Pitch is zeroed
+// when there's no target.
 function updateTurretRotationJS(world: WorldState, dtMs: number): void {
   const dtSec = dtMs / 1000;
   const dtFrames = dtSec * 60;
@@ -130,6 +130,15 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);
+          // Pitch: elevation angle from the weapon to the target in 3D.
+          // Weapon height is approximated as the hull-top for now (M7
+          // keeps the math simple — a later pass can thread an explicit
+          // per-turret mount height through). atan2(dz, horizontalDist)
+          // gives +pitch when the target is above the weapon.
+          const weaponZ = unit.transform.z;
+          const dz = target.transform.z - weaponZ;
+          const horizDist = Math.hypot(dx, dy);
+          weapon.pitch = Math.atan2(dz, horizDist);
           hasActiveTarget = true;
         }
       }
@@ -141,6 +150,8 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
       }
 
       if (!hasActiveTarget) {
+        // No target → pitch settles to 0 (barrel horizontal).
+        weapon.pitch = 0;
         if (TURRET_RETURN_TO_FORWARD) {
           targetAngle = getMovementAngle(unit);
         } else {
