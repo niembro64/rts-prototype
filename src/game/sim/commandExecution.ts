@@ -4,8 +4,8 @@
 import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, RepairCommand, AttackCommand } from './commands';
 import type { Entity, UnitAction } from './types';
 import type { SimEvent } from './combat';
-import { magnitude, getWeaponWorldPosition, getTransformCosSin } from '../math';
-import { getBarrelTipWorldPos, getUnitMuzzleHeight } from './combat/combatUtils';
+import { magnitude, getWeaponWorldPosition, getTransformCosSin, getBarrelTip } from '../math';
+import { getUnitMuzzleHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 
@@ -236,26 +236,36 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     dgunTurret.offset.x, dgunTurret.offset.y
   );
 
-  const fireCos = Math.cos(fireAngle);
-  const fireSin = Math.sin(fireAngle);
-
-  // Spawn position at barrel tip
-  const bt = getBarrelTipWorldPos(weaponPos.x, weaponPos.y, fireAngle, dgunTurret.config, commander.unit!.unitRadiusCollider.scale);
-  const spawnX = bt.x;
-  const spawnY = bt.y;
+  // Resolve the d-gun's barrel tip + direction through the shared
+  // primitive — exactly the same call AI turrets use — so the
+  // commander-fired shot emerges from the same point and axis the
+  // renderer draws.
+  const commanderGroundZ = commander.transform.z -
+    (commander.unit?.unitRadiusCollider.push ?? 0);
+  const mountZ = commanderGroundZ + getUnitMuzzleHeight(commander);
+  const tip = getBarrelTip(
+    weaponPos.x, weaponPos.y, mountZ,
+    fireAngle, dgunTurret.pitch,
+    dgunTurret.config,
+    commander.unit!.unitRadiusCollider.scale,
+    0,
+  );
+  const spawnX = tip.x;
+  const spawnY = tip.y;
+  const dgunFireZ = tip.z;
 
   // Calculate velocity with turret-tip inheritance
   const dgunShot = dgunTurret.config.shot;
   const speed = dgunShot.type === 'projectile' ? dgunShot.launchForce / dgunShot.mass : 350;
-  let velocityX = fireCos * speed;
-  let velocityY = fireSin * speed;
+  let velocityX = tip.dirX * speed;
+  let velocityY = tip.dirY * speed;
   if (ctx.world.projVelInherit && commander.unit) {
     // Unit linear velocity
     velocityX += commander.unit.velocityX ?? 0;
     velocityY += commander.unit.velocityY ?? 0;
-    // Turret rotational velocity at fire point (tangential = omega * r)
-    const barrelDx = bt.x - weaponPos.x;
-    const barrelDy = bt.y - weaponPos.y;
+    // Turret rotational velocity at fire point (tangential = omega × lever arm).
+    const barrelDx = tip.x - weaponPos.x;
+    const barrelDy = tip.y - weaponPos.y;
     const omega = dgunTurret.angularVelocity;
     velocityX += -barrelDy * omega;
     velocityY += barrelDx * omega;
@@ -274,14 +284,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   ctx.world.addEntity(projectile);
 
-  // Emit projectile spawn event for D-gun. D-gun fires horizontally
-  // from the commander's barrel tip (not sphere center) so the
-  // projectile emerges from the visible turret instead of the
-  // commander's belly. Same muzzle-height formula the AI turrets
-  // use in projectileSystem.ts.
-  const commanderGroundZ = commander.transform.z -
-    (commander.unit?.unitRadiusCollider.push ?? 0);
-  const dgunFireZ = commanderGroundZ + getUnitMuzzleHeight(commander);
+  // Emit projectile spawn event for D-gun. Spawn pos + altitude came
+  // from the shared BarrelGeometry primitive (see getBarrelTip call
+  // above) so the event lines up with the visible barrel tip.
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },
@@ -292,6 +297,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     playerId,
     sourceEntityId: commander.id,
     turretIndex: dgunIdx,
+    barrelIndex: 0,
     isDGun: true,
   });
 

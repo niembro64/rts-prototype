@@ -60,6 +60,12 @@ export type ProjectileSpawnEvent = {
   playerId: PlayerId;
   sourceEntityId: EntityId;
   turretIndex: number;
+  /** Which physical barrel in the turret's cluster this shot came out
+   *  of (0..barrelCount−1). Sent so the client can call getBarrelTip
+   *  with the same barrelIndex the server used — spawn visuals emerge
+   *  from the exact barrel the server picked, even on multi-barrel
+   *  gatlings cycling through their cluster. */
+  barrelIndex: number;
   isDGun?: boolean;
   /** True for cluster-flak submunitions and any other projectile that
    *  did NOT emerge from the shooter's barrel — the client should

@@ -6,7 +6,7 @@ export type { SimEvent, SimDeathContext, ImpactContext, FireTurretsResult, Colli
 export type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from './types';
 
 // Utility functions
-export { distance, getTargetRadius, normalizeAngle, getMovementAngle, getBarrelTipOffset } from './combatUtils';
+export { distance, getTargetRadius, normalizeAngle, getMovementAngle } from './combatUtils';
 
 // Turret rotation
 export { updateTurretRotation } from './turretSystem';

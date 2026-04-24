@@ -3,8 +3,8 @@
 // WASM-batched integrator was 2D-only (no pitch) and is gone.
 
 import type { WorldState } from '../WorldState';
-import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos, getBarrelTipOffset, getUnitMuzzleHeight } from './combatUtils';
-import { getTransformCosSin, solveBallisticPitch } from '../../math';
+import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos, getUnitMuzzleHeight } from './combatUtils';
+import { getTransformCosSin, solveBallisticPitch, getBarrelTip } from '../../math';
 import {
   TURRET_RETURN_TO_FORWARD,
   GRAVITY,
@@ -46,26 +46,32 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);
-          // Solve the ballistic arc from where the projectile actually
-          // leaves the weapon — the barrel TIP, not the turret MOUNT.
-          // The tip is one barrelOffset forward along the yaw axis and
-          // one per-unit muzzle-height above the unit's footprint (tall
-          // bodies like arachnid fire higher than squat scouts).
-          // Previous revision aimed from the mount and was
-          // systematically short by a whole barrel length: shots passed
-          // above the target sphere and registered no hit.
-          const barrelOffset = getBarrelTipOffset(weapon.config, unit.unit.unitRadiusCollider.shot);
-          const yawCos = Math.cos(targetAngle);
-          const yawSin = Math.sin(targetAngle);
-          const barrelTipX = weaponX + yawCos * barrelOffset;
-          const barrelTipY = weaponY + yawSin * barrelOffset;
+          // Ballistic arcs are solved from the actual barrel tip (not
+          // the turret mount) — otherwise shots would fire from a point
+          // one barrel-length farther back than the pitch was solved
+          // for, and every projectile would overshoot the target.
+          //
+          // The primitive returns a tip in world coords that already
+          // accounts for the barrel's orbit offset, pitch contribution,
+          // and yaw direction. Use barrelIndex = 0 here since this is
+          // the "aim point" reference — the next fired shot may come
+          // from a different barrel in the cluster, but the cluster is
+          // tight enough that solving from barrel 0 is indistinguishable
+          // at gameplay range.
           const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-          const muzzleZ = unitGroundZ + getUnitMuzzleHeight(unit);
-          const horizDist = Math.hypot(
-            target.transform.x - barrelTipX,
-            target.transform.y - barrelTipY,
+          const mountZ = unitGroundZ + getUnitMuzzleHeight(unit);
+          const tipRef = getBarrelTip(
+            weaponX, weaponY, mountZ,
+            targetAngle, weapon.pitch,
+            weapon.config,
+            unit.unit.unitRadiusCollider.shot,
+            0,
           );
-          const heightDiff = target.transform.z - muzzleZ;
+          const horizDist = Math.hypot(
+            target.transform.x - tipRef.x,
+            target.transform.y - tipRef.y,
+          );
+          const heightDiff = target.transform.z - tipRef.z;
           const shot = weapon.config.shot;
           if (shot.type === 'projectile') {
             const launchSpeed = shot.launchForce / shot.mass;

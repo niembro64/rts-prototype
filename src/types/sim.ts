@@ -265,6 +265,12 @@ export type Turret = {
   worldPos?: Vec2;
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
+  /** Round-robin pointer across the physical barrels on this turret.
+   *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet) %
+   *  barrelCount, then the pointer advances by the pellet count. Gives
+   *  gatlings a visible per-shot barrel cycle without any floating
+   *  spin-angle sync. Single-barrel turrets always see barrelIndex = 0. */
+  barrelFireIndex?: number;
 };
 
 // Projectile travel types

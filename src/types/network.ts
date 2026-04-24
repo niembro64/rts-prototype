@@ -47,6 +47,10 @@ export type NetworkServerSnapshotProjectileSpawn = {
   playerId: number;
   sourceEntityId: number;
   turretIndex: number;
+  /** Physical barrel within the source turret's cluster. Client passes
+   *  it to getBarrelTip so the spawn visual lines up with the exact
+   *  barrel the server picked. */
+  barrelIndex: number;
   isDGun?: boolean;
   /** True when this projectile came from a parent detonation (e.g.
    *  cluster-flak submunitions). Client skips the barrel-tip spawn-

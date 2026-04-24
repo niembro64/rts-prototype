@@ -20,7 +20,8 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig } from '../sim/turretConfigs';
-import { getBarrelTipOffset, getBarrelTipWorldPos, getUnitMuzzleHeight } from '../sim/combat/combatUtils';
+import { getUnitMuzzleHeight } from '../sim/combat/combatUtils';
+import { getBarrelTip } from '../math';
 import {
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -656,18 +657,12 @@ export class ClientViewState {
           const weapon = source?.turrets?.[weaponIndex];
 
           if (source && weapon && weapon.state === 'engaged') {
-            // Full 3D beam: yaw + pitch → direction; start at barrel
-            // tip (shortened by cos(pitch), raised by sin(pitch));
-            // end at direction × beamLength. Same construction the
-            // server uses in projectileSystem so predicted and
-            // authoritative geometry agree.
+            // Delegate the full turret-rotation chain to the shared
+            // BarrelGeometry primitive — identical call the server uses
+            // in projectileSystem's beam update — so predicted and
+            // authoritative beam geometry agree by construction.
             const turretAngle = weapon.rotation;
             const turretPitch = weapon.pitch;
-            const pitchCos = Math.cos(turretPitch);
-            const pitchSin = Math.sin(turretPitch);
-            const yawCos = Math.cos(turretAngle);
-            const yawSin = Math.sin(turretAngle);
-
             const unitCos = Math.cos(source.transform.rotation);
             const unitSin = Math.sin(source.transform.rotation);
             const wp = getWeaponWorldPosition(
@@ -678,24 +673,23 @@ export class ClientViewState {
               weapon.offset.x,
               weapon.offset.y,
             );
-
-            const barrelOffset = getBarrelTipOffset(
+            const unitGroundZ = source.transform.z - source.unit!.unitRadiusCollider.push;
+            const mountZ = unitGroundZ + getUnitMuzzleHeight(source);
+            const tip = getBarrelTip(
+              wp.x, wp.y, mountZ,
+              turretAngle, turretPitch,
               entity.projectile.config,
               source.unit!.unitRadiusCollider.scale,
+              0,
             );
-            const horizBarrel = barrelOffset * pitchCos;
-            const startX = wp.x + yawCos * horizBarrel;
-            const startY = wp.y + yawSin * horizBarrel;
-            const unitGroundZ = source.transform.z - source.unit!.unitRadiusCollider.push;
-            const startZ = unitGroundZ + getUnitMuzzleHeight(source) + barrelOffset * pitchSin;
+            const startX = tip.x;
+            const startY = tip.y;
+            const startZ = tip.z;
 
-            const dir3X = yawCos * pitchCos;
-            const dir3Y = yawSin * pitchCos;
-            const dir3Z = pitchSin;
             const beamLength = weapon.ranges.engage.acquire;
-            const fullEndX = startX + dir3X * beamLength;
-            const fullEndY = startY + dir3Y * beamLength;
-            const fullEndZ = startZ + dir3Z * beamLength;
+            const fullEndX = tip.x + tip.dirX * beamLength;
+            const fullEndY = tip.y + tip.dirY * beamLength;
+            const fullEndZ = tip.z + tip.dirZ * beamLength;
 
             entity.projectile.startX = startX;
             entity.projectile.startY = startY;
@@ -864,17 +858,22 @@ export class ClientViewState {
     // Default to server position; override with client-side muzzle if source is available
     let spawnX = spawn.pos.x;
     let spawnY = spawn.pos.y;
-    // z always comes from the server — M9's wire carries it. Beam
+    // z always comes from the server — the wire carries it. Beam
     // endpoints (beam.start.z / end.z) also come across the wire, so
     // lasers/beams render at their real altitude too.
-    const spawnZ = spawn.pos.z;
+    let spawnZ = spawn.pos.z;
 
-    // Submunitions / any projectile that came from a parent detonation
-    // must spawn at the explosion point (carried on the wire in
-    // `spawn.pos`), NOT at the original shooter's barrel. Without this
-    // guard the cluster-flak children would snap to the shooter's
-    // turret muzzle even though the server spawned them at the parent
-    // shell's detonation.
+    // Projectiles that came from the shooter's own turret (i.e. NOT
+    // parent-detonation submunitions) get their spawn position nudged
+    // onto the client's local barrel tip. This hides any small latency
+    // drift between the server snapshot and the client's render of the
+    // source unit — without it, a shot would pop at the server's
+    // slightly-stale position and then the projectile would race to
+    // catch up with the visibly-moved barrel. We delegate the whole
+    // turret-rotation chain (unit yaw → turret yaw+pitch → barrel
+    // orbit) to the shared primitive with the exact barrelIndex the
+    // server used, so the spawn visually emerges from the same physical
+    // barrel on both sides.
     if (spawn.projectileType !== 'beam' && !spawn.fromParentDetonation) {
       const source = this.entities.get(spawn.sourceEntityId);
       const weapon = source?.turrets?.[spawn.turretIndex];
@@ -889,18 +888,18 @@ export class ClientViewState {
           weapon.offset.x,
           weapon.offset.y,
         );
-
-        // Forward from weapon in firing direction (same as server)
-        const turretAngle = weapon.rotation;
-        const projBt = getBarrelTipWorldPos(
-          wp.x,
-          wp.y,
-          turretAngle,
+        const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
+        const mountZ = unitGroundZ + getUnitMuzzleHeight(source);
+        const tip = getBarrelTip(
+          wp.x, wp.y, mountZ,
+          weapon.rotation, weapon.pitch,
           config,
           source.unit.unitRadiusCollider.scale,
+          spawn.barrelIndex,
         );
-        spawnX = projBt.x;
-        spawnY = projBt.y;
+        spawnX = tip.x;
+        spawnY = tip.y;
+        spawnZ = tip.z;
       }
     }
 

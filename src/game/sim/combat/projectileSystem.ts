@@ -7,9 +7,9 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
-import { getTransformCosSin, applyHomingSteering } from '../../math';
+import { getTransformCosSin, applyHomingSteering, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY } from '../../../config';
-import { getBarrelTipOffset, resolveWeaponWorldPos, getUnitMuzzleHeight } from './combatUtils';
+import { resolveWeaponWorldPos, getUnitMuzzleHeight } from './combatUtils';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
@@ -122,57 +122,79 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
       }
 
-      // Add fire event (skip continuous beams — they use start/stop lifecycle).
-      // The event fires AT the turret (hull altitude + turret head height)
-      // so the muzzle-flash visual lines up with the barrel tip the
-      // projectile is about to leave. Muzzle altitude above the unit's
-      // ground footprint is derived per-unit from the render body — tall
-      // bodies (arachnid) fire higher than squat ones (scout).
+      // Fire-event position will be set to the first-fired barrel tip
+      // below so the muzzle-flash visual and audio come out of the
+      // exact barrel the projectile did. `muzzleAboveGround` here is
+      // still the shared barrel-pivot altitude everything derives from.
       const muzzleAboveGround = getUnitMuzzleHeight(unit);
-      if (shot.type !== 'beam') {
-        const fireGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-        audioEvents.push({
-          type: 'fire',
-          turretId: config.id,
-          pos: { x: weaponX, y: weaponY, z: fireGroundZ + muzzleAboveGround },
-        });
-      }
 
       // Fire the weapon along the turret's full 3D aim (yaw + pitch).
       const turretAngle = weapon.rotation;
       const turretPitch = weapon.pitch;
-      const pitchCos = Math.cos(turretPitch);
-      const pitchSin = Math.sin(turretPitch);
 
-      // Create projectile(s)
+      // Turret mount point in world (XY from cached weaponWP, Z derived
+      // from unit altitude + per-unit muzzle height). Every barrel's
+      // transform chain starts here — getBarrelTip just picks the
+      // barrel-index-specific offset off this shared mount.
+      const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+      const mountZ = unitGroundZ + muzzleAboveGround;
+
       const pellets = config.spread?.pelletCount ?? 1;
       const spreadAngle = config.spread?.angle ?? 0;
-      const barrelOffset = getBarrelTipOffset(config, unit.unit.unitRadiusCollider.shot);
+      const barrelCount = countBarrels(config);
+      const fireBaseIndex = weapon.barrelFireIndex ?? 0;
 
       for (let i = 0; i < pellets; i++) {
-        // Calculate spread — each pellet gets a random angle within the cone
-        let angle = turretAngle;
+        // Each pellet comes out of its own barrel, cycling from the
+        // current fire-index so a 4-barrel gatling actually rolls
+        // through its cluster (index 0, 1, 2, 3, 0, …) and a 4-barrel
+        // shotgun with 4 pellets fires all four at once.
+        const barrelIndex = (fireBaseIndex + i) % barrelCount;
+
+        // Optional random yaw jitter for cone-shotgun spread. Applied
+        // AFTER the primitive resolves the barrel tip — the tip comes
+        // from the barrel's actual world axis; yaw jitter only tweaks
+        // the outbound direction per pellet.
+        let yaw = turretAngle;
         if (spreadAngle > 0) {
-          angle += (world.rng.next() - 0.5) * spreadAngle;
+          yaw += (world.rng.next() - 0.5) * spreadAngle;
         }
 
-        const fireCos = Math.cos(angle);
-        const fireSin = Math.sin(angle);
+        const tip = getBarrelTip(
+          weaponX, weaponY, mountZ,
+          turretAngle, turretPitch,
+          config,
+          unit.unit.unitRadiusCollider.shot,
+          barrelIndex,
+        );
+        const spawnX = tip.x;
+        const spawnY = tip.y;
+        const spawnZ = tip.z;
 
-        // Muzzle world-position.
-        //   Horizontal: barrel tip projected on the yaw ray (pitched
-        //   barrels shorten their ground-plane projection by cos(pitch)).
-        //   Vertical: unit's ground-footprint altitude (transform.z -
-        //   sphere radius) + per-unit muzzle height (how high the
-        //   visible barrel sits above the ground for this body) + the
-        //   barrel-tip's vertical projection from the pitch angle.
-        //   Airborne units fire from correspondingly higher because
-        //   transform.z carries their altitude.
-        const horizBarrel = barrelOffset * pitchCos;
-        const spawnX = weaponX + fireCos * horizBarrel;
-        const spawnY = weaponY + fireSin * horizBarrel;
-        const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-        const spawnZ = unitGroundZ + muzzleAboveGround + barrelOffset * pitchSin;
+        // Fire audio event from the FIRST pellet's barrel tip so the
+        // muzzle-flash visual originates at the actual barrel. Non-
+        // beam weapons only — continuous beams use start/stop lifecycle.
+        if (i === 0 && shot.type !== 'beam') {
+          audioEvents.push({
+            type: 'fire',
+            turretId: config.id,
+            pos: { x: spawnX, y: spawnY, z: spawnZ },
+          });
+        }
+
+        // Firing direction: for barrels whose config wants spread (cone
+        // shotgun or pellet jitter), use the jittered yaw combined with
+        // the barrel's own pitch contribution. For plain barrels the
+        // primitive's own direction is already correct, and we still
+        // honor the per-pellet yaw randomization by re-basing the
+        // horizontal component onto the jittered yaw.
+        const dirPitchSin = tip.dirZ;
+        const dirPitchCos = Math.hypot(tip.dirX, tip.dirY);
+        const fireCos = Math.cos(yaw);
+        const fireSin = Math.sin(yaw);
+        const dirX = fireCos * dirPitchCos;
+        const dirY = fireSin * dirPitchCos;
+        const dirZ = dirPitchSin;
 
         if (isBeamWeapon) {
           // Create beam using weapon's fireRange. End point is the
@@ -180,10 +202,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           // already shows the real pitched beam before the per-tick
           // findBeamPath call refines it with reflections/obstructions.
           const beamLength = weapon.ranges.engage.acquire;
-          const beamHoriz = beamLength * pitchCos;
-          const endX = spawnX + fireCos * beamHoriz;
-          const endY = spawnY + fireSin * beamHoriz;
-          const endZ = spawnZ + beamLength * pitchSin;
+          const endX = spawnX + dirX * beamLength;
+          const endY = spawnY + dirY * beamLength;
+          const endZ = spawnZ + dirZ * beamLength;
 
           // Tag config with turretIndex for beam tracking (mutate in place — each weapon has its own config copy)
           config.turretIndex = weaponIndex;
@@ -198,13 +219,14 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           newProjectiles.push(beam);
           spawnEvents.push({
             id: beam.id,
-            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: angle,
+            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: yaw,
             velocity: { x: 0, y: 0, z: 0 },
             projectileType: beamProjectileType,
             turretId: config.id,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
+            barrelIndex,
             beam: {
               start: { x: spawnX, y: spawnY, z: spawnZ },
               end: { x: endX, y: endY, z: endZ },
@@ -212,29 +234,31 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           });
           // Note: Beam recoil is applied continuously above while weapon is engaged
         } else {
-          // Create traveling projectile with 3D launch velocity from
-          // yaw + pitch. Total speed is the same as before; pitch
-          // rotates the velocity vector out of the ground plane.
+          // Create traveling projectile with 3D launch velocity using
+          // the per-barrel firing direction. Total speed is the same
+          // as before; the direction comes entirely from the primitive
+          // + per-pellet yaw jitter.
           const projShot = shot as ProjectileShot;
           const speed = projShot.launchForce / projShot.mass;
-          const horizSpeed = speed * pitchCos;
-          let projVx = fireCos * horizSpeed;
-          let projVy = fireSin * horizSpeed;
-          let projVz = speed * pitchSin;
+          let projVx = dirX * speed;
+          let projVy = dirY * speed;
+          let projVz = dirZ * speed;
           if (world.projVelInherit && unit.unit) {
             // Unit linear velocity (3D — vertical inheritance handles
             // falling/jumping units firing while airborne).
             projVx += unit.unit.velocityX ?? 0;
             projVy += unit.unit.velocityY ?? 0;
             projVz += unit.unit.velocityZ ?? 0;
-            // Turret rotational velocity at fire point (tangential = omega * r).
-            // Rotational velocity is planar; vertical component is 0 because
-            // pitch is set directly (no pitch-angular-velocity).
-            const barrelDx = fireCos * horizBarrel;
-            const barrelDy = fireSin * horizBarrel;
+            // Turret rotational velocity at fire point (tangential =
+            // omega × horizontal-lever-arm). Use the actual horizontal
+            // distance from the turret pivot to the barrel tip so
+            // orbit-offset barrels on a rotating turret inherit the
+            // correct tangential velocity.
+            const dxMount = spawnX - weaponX;
+            const dyMount = spawnY - weaponY;
             const omega = weapon.angularVelocity;
-            projVx += -barrelDy * omega;
-            projVy += barrelDx * omega;
+            projVx += -dyMount * omega;
+            projVy += dxMount * omega;
           }
           const projectile = world.createProjectile(
             spawnX,
@@ -246,9 +270,6 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             config,
             'projectile'
           );
-          // Seed the projectile's initial z and vz — createProjectile
-          // defaults both to zero; M7 overrides with the muzzle altitude
-          // and pitched launch velocity.
           projectile.transform.z = spawnZ;
           if (projectile.projectile) {
             projectile.projectile.velocityZ = projVz;
@@ -263,24 +284,31 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           newProjectiles.push(projectile);
           spawnEvents.push({
             id: projectile.id,
-            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: angle,
+            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: yaw,
             velocity: { x: projVx, y: projVy, z: projVz },
             projectileType: 'projectile',
             turretId: config.id,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
+            barrelIndex,
             targetEntityId: (projShot.homingTurnRate && weapon.target !== null) ? weapon.target : undefined,
             homingTurnRate: projShot.homingTurnRate,
           });
 
-          // Apply recoil to firing unit (momentum-based: p = mv)
+          // Apply recoil to firing unit (momentum-based: p = mv). Use
+          // the pellet's actual outbound horizontal direction so cone
+          // shotguns / jittered pellets push back along their real
+          // firing axis, not a shared central one.
           if (forceAccumulator && projShot.mass > 0) {
             const recoilForce = projShot.launchForce * PROJECTILE_MASS_MULTIPLIER;
-            forceAccumulator.addForce(unit.id, -fireCos * recoilForce, -fireSin * recoilForce, 'recoil');
+            forceAccumulator.addForce(unit.id, -dirX * recoilForce, -dirY * recoilForce, 'recoil');
           }
         }
       }
+      // Advance the round-robin so the next volley emerges from the
+      // next set of barrels (index % N, wraps automatically).
+      weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
     }
   }
 
@@ -442,39 +470,34 @@ export function updateProjectiles(
           }
         }
 
-        // Turret yaw + pitch build a full 3D firing direction. Beams
-        // are now traced in true 3D: an upward-pitched beam clears
-        // buildings and misses ground units correctly, and reflections
-        // off mirror panels preserve the beam's vertical slope.
+        // Delegate the whole turret-rotation stack (unit yaw → turret
+        // yaw → turret pitch → per-barrel orbit) to the single primitive
+        // so beam origin and direction are computed from the exact same
+        // numbers the projectile-spawn path uses. Continuous beams pin
+        // to barrelFireIndex 0 — visually a beam streams from one
+        // consistent barrel rather than flickering across a gatling
+        // cluster.
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
-        const pitchCos = Math.cos(turretPitch);
-        const pitchSin = Math.sin(turretPitch);
-        const yawCos = Math.cos(turretAngle);
-        const yawSin = Math.sin(turretAngle);
-
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
         const beamWP = resolveWeaponWorldPos(weapon, source.transform.x, source.transform.y, srcCos, srcSin);
-        const weaponX = beamWP.x, weaponY = beamWP.y;
-
-        // Barrel tip (3D) — same formula the projectile-spawn path uses
-        // so beam start and bullet spawn emerge from the same point.
-        const barrelOffset = getBarrelTipOffset(proj.config, source.unit.unitRadiusCollider.shot);
-        const horizBarrel = barrelOffset * pitchCos;
-        proj.startX = weaponX + yawCos * horizBarrel;
-        proj.startY = weaponY + yawSin * horizBarrel;
         const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
-        const muzzleAboveGround = getUnitMuzzleHeight(source);
-        proj.startZ = unitGroundZ + muzzleAboveGround + barrelOffset * pitchSin;
+        const mountZ = unitGroundZ + getUnitMuzzleHeight(source);
+        const tip = getBarrelTip(
+          beamWP.x, beamWP.y, mountZ,
+          turretAngle, turretPitch,
+          proj.config,
+          source.unit.unitRadiusCollider.shot,
+          0,
+        );
+        proj.startX = tip.x;
+        proj.startY = tip.y;
+        proj.startZ = tip.z;
 
-        // 3D beam direction (unit vector) × beamLength → full-length end.
-        const dir3X = yawCos * pitchCos;
-        const dir3Y = yawSin * pitchCos;
-        const dir3Z = pitchSin;
         const beamLength = weapon.ranges.engage.acquire;
-        const fullEndX = proj.startX + dir3X * beamLength;
-        const fullEndY = proj.startY + dir3Y * beamLength;
-        const fullEndZ = proj.startZ + dir3Z * beamLength;
+        const fullEndX = tip.x + tip.dirX * beamLength;
+        const fullEndY = tip.y + tip.dirY * beamLength;
+        const fullEndZ = tip.z + tip.dirZ * beamLength;
 
         // Find beam path (with possible reflections off mirror units).
         // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness).

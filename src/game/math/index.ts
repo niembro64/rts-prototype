@@ -30,6 +30,12 @@ export {
 export { applyHomingSteering } from './HomingSteering';
 
 export {
+  type BarrelEndpoint,
+  getBarrelTip,
+  countBarrels,
+} from './BarrelGeometry';
+
+export {
   type BallisticSolution,
   ballisticSolutions,
   solveBallisticPitch,

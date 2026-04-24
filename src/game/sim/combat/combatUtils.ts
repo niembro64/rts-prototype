@@ -1,6 +1,6 @@
 // Combat utility functions
 
-import type { Entity, TurretConfig } from '../types';
+import type { Entity } from '../types';
 import { distance, normalizeAngle, magnitude, getWeaponWorldPosition } from '../../math';
 import { getMuzzleHeightAboveGround } from '../../math/BodyDimensions';
 import { getUnitBlueprint } from '../blueprints';
@@ -20,14 +20,6 @@ export function getTargetRadius(target: Entity): number {
   return 0;
 }
 
-// Get barrel tip offset in pixels from weapon mount point.
-// Uses the weapon's turret barrel length scaled by the unit's visual radius.
-export function getBarrelTipOffset(config: TurretConfig, unitRadius: number): number {
-  const turret = config.barrel;
-  if (!turret || turret.type === 'complexSingleEmitter') return unitRadius;
-  return unitRadius * turret.barrelLength;
-}
-
 // Resolve turret world position, using cached values if available
 const _rwpOut = { x: 0, y: 0 };
 export function resolveWeaponWorldPos(
@@ -40,18 +32,6 @@ export function resolveWeaponWorldPos(
     return _rwpOut;
   }
   return getWeaponWorldPosition(entityX, entityY, cos, sin, turret.offset.x, turret.offset.y);
-}
-
-// Get barrel tip world position from weapon mount point, firing angle, and config
-const _btOut = { x: 0, y: 0 };
-export function getBarrelTipWorldPos(
-  weaponX: number, weaponY: number,
-  firingAngle: number, config: TurretConfig, unitScaleRadius: number,
-): { x: number; y: number } {
-  const offset = getBarrelTipOffset(config, unitScaleRadius);
-  _btOut.x = weaponX + Math.cos(firingAngle) * offset;
-  _btOut.y = weaponY + Math.sin(firingAngle) * offset;
-  return _btOut;
 }
 
 // Muzzle altitude above the unit's ground footprint at pitch=0, derived
