@@ -109,9 +109,17 @@ const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
 type ServerTarget = {
   x: number;
   y: number;
+  /** Server's authoritative altitude. Updated every snapshot that
+   *  carries ENTITY_CHANGED_POS or a full keyframe so airborne /
+   *  knocked-up / falling units render at their true height instead
+   *  of freezing at creation altitude. */
+  z: number;
   rotation: number;
   velocityX: number;
   velocityY: number;
+  /** Server vz for dead-reckoning and gravity-aware drift on airborne
+   *  units between snapshots. */
+  velocityZ: number;
   turrets: {
     rotation: number;
     angularVelocity: number;
@@ -121,7 +129,7 @@ type ServerTarget = {
 };
 
 function createServerTarget(): ServerTarget {
-  return { x: 0, y: 0, rotation: 0, velocityX: 0, velocityY: 0, turrets: [] };
+  return { x: 0, y: 0, z: 0, rotation: 0, velocityX: 0, velocityY: 0, velocityZ: 0, turrets: [] };
 }
 
 export class ClientViewState {
@@ -210,6 +218,9 @@ export class ClientViewState {
       if (isFull || cf! & ENTITY_CHANGED_POS) {
         target.x = netEntity.pos.x;
         target.y = netEntity.pos.y;
+        // netEntity.pos is a Vec3 — altitude must ride along or
+        // airborne units render at stale ground-plane z on the client.
+        target.z = netEntity.pos.z;
       }
       if (isFull || cf! & ENTITY_CHANGED_ROT) {
         target.rotation = netEntity.rotation;
@@ -217,6 +228,7 @@ export class ClientViewState {
       if (isFull || cf! & ENTITY_CHANGED_VEL) {
         target.velocityX = netEntity.unit?.velocity.x ?? 0;
         target.velocityY = netEntity.unit?.velocity.y ?? 0;
+        target.velocityZ = netEntity.unit?.velocity.z ?? 0;
       }
       if (isFull || cf! & ENTITY_CHANGED_TURRETS) {
         const nw = netEntity.unit?.turrets;
@@ -320,7 +332,9 @@ export class ClientViewState {
           }
           target.x = vu.pos.x;
           target.y = vu.pos.y;
+          target.z = vu.pos.z;
           target.velocityX = vu.velocity.x;
+          target.velocityZ = vu.velocity.z;
           target.velocityY = vu.velocity.y;
         }
       }
@@ -545,16 +559,21 @@ export class ClientViewState {
 
       if (entity.type === 'unit' && entity.unit) {
         if (target) {
-          // Advance server target using its velocity (so drift target isn't stale)
+          // Advance server target using its velocity (so drift target
+          // isn't stale). All three axes — z updates matter for
+          // airborne units (explosion knockback, falling off ledges).
           target.x += target.velocityX * dt;
           target.y += target.velocityY * dt;
+          target.z += target.velocityZ * dt;
         }
 
-        // Step 1: Dead-reckon entity using current velocity
+        // Step 1: Dead-reckon entity using current velocity (full 3D).
         const vx = entity.unit.velocityX ?? 0;
         const vy = entity.unit.velocityY ?? 0;
+        const vz = entity.unit.velocityZ ?? 0;
         entity.transform.x += vx * dt;
         entity.transform.y += vy * dt;
+        entity.transform.z += vz * dt;
 
         // Step 2: Drift toward server targets
         // Body rotation is set authoritatively by the server (facing command direction),
@@ -562,6 +581,7 @@ export class ClientViewState {
         if (target) {
           entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
           entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
+          entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
           entity.transform.rotation = lerpAngle(
             entity.transform.rotation,
             target.rotation,
@@ -570,8 +590,10 @@ export class ClientViewState {
 
           const serverVelX = target.velocityX ?? 0;
           const serverVelY = target.velocityY ?? 0;
+          const serverVelZ = target.velocityZ ?? 0;
           entity.unit.velocityX = lerp(vx, serverVelX, movVelDrift);
           entity.unit.velocityY = lerp(vy, serverVelY, movVelDrift);
+          entity.unit.velocityZ = lerp(vz, serverVelZ, movVelDrift);
         }
 
         // Advance turret rotations using angular velocity + drift toward server
@@ -812,18 +834,21 @@ export class ClientViewState {
           }
 
           // Drift projectile position + velocity toward server target
-          // (smooth correction). Projectile targets don't carry z yet —
-          // updating ServerTarget to Vec3 is a later pass; for now the
-          // horizontal lerp smooths out network jitter, and z is
-          // purely client-side (gravity-integrated from its fired vz).
+          // (smooth correction). Z is drifted too now that server
+          // velocity updates carry a vz — force-field deflections and
+          // homing corrections in the vertical axis propagate instead
+          // of being lost.
           if (target) {
             target.x += target.velocityX * dt;
             target.y += target.velocityY * dt;
+            target.z += target.velocityZ * dt;
 
             entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
             entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
+            entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
             proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelDrift);
             proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelDrift);
+            proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelDrift);
             entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
           }
 
