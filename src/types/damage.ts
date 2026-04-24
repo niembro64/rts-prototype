@@ -1,7 +1,16 @@
-// Damage system types extracted from game/sim/damage/types.ts
+// Damage system types. All collision queries are 3D on this branch —
+// projectile hits, laser hits, and splash AOE each carry altitude
+// (z on every position, vz on velocity) so a shot flying over a unit's
+// head actually misses, a mortar explosion punishes targets inside its
+// 3D sphere (not a 2D disc), and a laser pointed upward ignores the
+// guy at sea level.
+//
+// Sphere center-z for units: unit.transform.z (set by physics engine
+// to unit.radius when resting on ground). The damage system compares
+// hit-shape vs unit-sphere in full 3D.
 
 import type { EntityId, PlayerId } from './sim';
-import type { Vec2 } from './vec2';
+import type { Vec2, Vec3 } from './vec2';
 
 export type DamageSourceBase = {
   sourceEntityId: EntityId;
@@ -10,29 +19,39 @@ export type DamageSourceBase = {
   excludeEntities: Set<EntityId>;
 };
 
+/** Beam / laser damage: a 3D line segment from `start` → `end`. `width`
+ *  is the cylinder radius around that segment — a unit's sphere must
+ *  overlap it to take damage. */
 export type LineDamageSource = DamageSourceBase & {
   type: 'line';
-  start: Vec2;
-  end: Vec2;
+  start: Vec3;
+  end: Vec3;
   width: number;
   maxHits: number;
   projectileMass?: number;
   velocity?: number;
 };
 
+/** Projectile swept damage: capsule swept from prev → current with
+ *  `radius`. Travels through 3D; `velocity` is the full 3D launch
+ *  velocity for momentum-based knockback. */
 export type SweptDamageSource = DamageSourceBase & {
   type: 'swept';
-  prev: Vec2;
-  current: Vec2;
+  prev: Vec3;
+  current: Vec3;
   radius: number;
   maxHits: number;
-  velocity?: Vec2;
+  velocity?: Vec3;
   projectileMass?: number;
 };
 
+/** Splash / AOE damage: 3D sphere of `radius` around `center`. Unit
+ *  must have its collision sphere intersect this sphere to take the
+ *  splash. `sliceAngle`/`sliceDirection` are still planar — force-field
+ *  cones stay on the ground plane. */
 export type AreaDamageSource = DamageSourceBase & {
   type: 'area';
-  center: Vec2;
+  center: Vec3;
   radius: number;
   falloff: number;
   sliceAngle?: number;

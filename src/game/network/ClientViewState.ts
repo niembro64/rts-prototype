@@ -691,10 +691,14 @@ export class ClientViewState {
               );
               entity.projectile.endX = beamPath.endX;
               entity.projectile.endY = beamPath.endY;
+              entity.projectile.endZ = entity.transform.z;
               entity.projectile.obstructionT = beamPath.obstructionT;
+              // Beam reflection points promoted to 3D at the source
+              // altitude — matches the server-side shim in
+              // projectileSystem.ts until we have a 3D beam tracer.
               entity.projectile.reflections =
                 beamPath.reflections.length > 0
-                  ? beamPath.reflections
+                  ? beamPath.reflections.map((r) => ({ ...r, z: entity.transform.z }))
                   : undefined;
             }
           } else {

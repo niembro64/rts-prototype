@@ -17,7 +17,7 @@ import type {
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
-import { magnitude, lineCircleIntersectionT, lineRectIntersectionT, isPointInSlice } from '../../math';
+import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, isPointInSlice } from '../../math';
 import { getTargetRadius } from '../combat/combatUtils';
 
 
@@ -364,14 +364,18 @@ export class DamageSystem {
       source.start.x, source.start.y, source.end.x, source.end.y, source.width + 100
     );
 
-    // Check units
+    // Check units — 3D segment-vs-sphere: the beam is a line in 3D
+    // space; a unit takes a hit when its sphere intersects that line
+    // (inflated by beam half-width). A beam pitched upward into the
+    // sky can't catch ground units; a beam aimed down does.
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
-      const t = lineCircleIntersectionT(
-        source.start.x, source.start.y, source.end.x, source.end.y,
-        unit.transform.x, unit.transform.y,
+      const t = lineSphereIntersectionT(
+        source.start.x, source.start.y, source.start.z,
+        source.end.x, source.end.y, source.end.z,
+        unit.transform.x, unit.transform.y, unit.transform.z,
         unit.unit.unitRadiusCollider.shot + source.width / 2
       );
 
@@ -478,17 +482,21 @@ export class DamageSystem {
       source.prev.x, source.prev.y, source.current.x, source.current.y, source.radius + 100
     );
 
-    // Check units using swept collision (line-circle with combined radii)
+    // Check units using swept 3D collision — segment prev→current vs a
+    // sphere with the combined radius at unit.transform (full 3D: x, y,
+    // AND z). A projectile sweeping above a ground unit's head misses;
+    // one arcing into the top of the unit's sphere hits earlier in the
+    // arc than a horizontal shot because the sphere is closer to the
+    // flight path.
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
-      // Treat projectile path as line, combine radii for collision
       const combinedRadius = source.radius + unit.unit.unitRadiusCollider.shot;
-      const t = lineCircleIntersectionT(
-        source.prev.x, source.prev.y,
-        source.current.x, source.current.y,
-        unit.transform.x, unit.transform.y,
+      const t = lineSphereIntersectionT(
+        source.prev.x, source.prev.y, source.prev.z,
+        source.current.x, source.current.y, source.current.z,
+        unit.transform.x, unit.transform.y, unit.transform.z,
         combinedRadius
       );
 
@@ -586,17 +594,21 @@ export class DamageSystem {
     const nearbyUnits = spatialGrid.queryUnitsInRadius(source.center.x, source.center.y, source.radius + 50);
     const nearbyBuildings = spatialGrid.queryBuildingsInRadius(source.center.x, source.center.y, source.radius + 100);
 
-    // Check units
+    // Check units — full 3D sphere-vs-sphere: the AOE sphere around
+    // source.center must overlap the unit's collision sphere. A mortar
+    // airburst above a unit hits; a blast in a pit below a unit at
+    // altitude doesn't (once air units exist).
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
       const dx = unit.transform.x - source.center.x;
       const dy = unit.transform.y - source.center.y;
+      const dz = unit.transform.z - source.center.z;
       const targetRadius = unit.unit.unitRadiusCollider.shot;
 
       // Cheap squared-distance rejection before sqrt
-      const distSq = dx * dx + dy * dy;
+      const distSq = dx * dx + dy * dy + dz * dz;
       const maxDist = source.radius + targetRadius;
       if (distSq > maxDist * maxDist) continue;
 

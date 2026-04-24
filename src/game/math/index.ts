@@ -19,6 +19,7 @@ export {
 
 export {
   lineCircleIntersectionT,
+  lineSphereIntersectionT,
   lineLineIntersectionT,
   lineRectIntersectionT,
   isPointInSlice,

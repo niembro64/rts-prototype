@@ -157,7 +157,7 @@ export function checkProjectileCollisions(
           ownerId: projEntity.ownership.playerId,
           damage: projShot.explosion!.primary.damage,
           excludeEntities: splashExcludes,
-          center: { x: projEntity.transform.x, y: projEntity.transform.y },
+          center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
           radius: projShot.explosion!.primary.radius,
           falloff: 1,
           knockbackForce: projShot.explosion!.primary.force,
@@ -178,7 +178,7 @@ export function checkProjectileCollisions(
             ownerId: projEntity.ownership.playerId,
             damage: projShot.explosion!.secondary.damage,
             excludeEntities: splashExcludes,
-            center: { x: projEntity.transform.x, y: projEntity.transform.y },
+            center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
             radius: projShot.explosion!.secondary.radius,
             falloff: 1,
             knockbackForce: projShot.explosion!.secondary.force,
@@ -240,6 +240,7 @@ export function checkProjectileCollisions(
       const beamShot = config.shot as BeamShot | LaserShot;
       const impactX = proj.endX ?? projEntity.transform.x;
       const impactY = proj.endY ?? projEntity.transform.y;
+      const impactZ = proj.endZ ?? projEntity.transform.z;
       const dtSec = dtMs / 1000;
 
       // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
@@ -262,7 +263,7 @@ export function checkProjectileCollisions(
         ownerId: projEntity.ownership.playerId,
         damage: tickDamage,
         excludeEntities: _emptyExcludeSet,
-        center: { x: impactX, y: impactY },
+        center: { x: impactX, y: impactY, z: impactZ },
         radius: beamShot.radius,
         falloff: 1,
         knockbackForce: tickForce,
@@ -296,30 +297,33 @@ export function checkProjectileCollisions(
 
       // Note: beam recoil is applied in fireTurrets() based on weapon.state
     } else {
-      // Traveling projectiles use swept volume collision (prevents tunneling)
+      // Traveling projectiles use swept 3D volume collision (prevents tunneling)
       const projShot = config.shot as ProjectileShot;
       const projRadius = projShot.collision.radius;
       const prevX = proj.prevX ?? projEntity.transform.x;
       const prevY = proj.prevY ?? projEntity.transform.y;
+      const prevZ = proj.prevZ ?? projEntity.transform.z;
       const currentX = projEntity.transform.x;
       const currentY = projEntity.transform.y;
+      const currentZ = projEntity.transform.z;
 
       // Source-entity exit guard: temporarily exclude source from collision while still inside hitbox
       const sourceGuard = !proj.hasLeftSource;
       if (sourceGuard) proj.hitEntities.add(proj.sourceEntityId);
 
-      // Apply swept damage (line from prev to current with projectile radius)
+      // 3D swept: capsule from prev→current (the projectile's flight
+      // path this tick) vs each unit sphere.
       const result = damageSystem.applyDamage({
         type: 'swept',
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
         damage: projShot.collision.damage,
         excludeEntities: proj.hitEntities,
-        prev: { x: prevX, y: prevY },
-        current: { x: currentX, y: currentY },
+        prev: { x: prevX, y: prevY, z: prevZ },
+        current: { x: currentX, y: currentY, z: currentZ },
         radius: projRadius,
         maxHits: proj.maxHits - proj.hitEntities.size + (sourceGuard ? 1 : 0), // Compensate for phantom guard entry
-        velocity: { x: proj.velocityX, y: proj.velocityY },
+        velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
         projectileMass: projShot.mass,
       });
 
@@ -362,7 +366,7 @@ export function checkProjectileCollisions(
           ownerId: projEntity.ownership.playerId,
           damage: projShot.explosion!.primary.damage,
           excludeEntities: splashExcludes,
-          center: { x: projEntity.transform.x, y: projEntity.transform.y },
+          center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
           radius: projShot.explosion!.primary.radius,
           falloff: 1,
           knockbackForce: projShot.explosion!.primary.force,
@@ -380,7 +384,7 @@ export function checkProjectileCollisions(
             ownerId: projEntity.ownership.playerId,
             damage: projShot.explosion!.secondary.damage,
             excludeEntities: splashExcludes,
-            center: { x: projEntity.transform.x, y: projEntity.transform.y },
+            center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
             radius: projShot.explosion!.secondary.radius,
             falloff: 1,
             knockbackForce: projShot.explosion!.secondary.force,

@@ -570,8 +570,14 @@ export function updateProjectiles(
           );
           proj.endX = beamPath.endX;
           proj.endY = beamPath.endY;
+          proj.endZ = entity.transform.z; // Beam reflections stay planar for now — z tracks source.
           proj.obstructionT = beamPath.obstructionT;
-          proj.reflections = beamPath.reflections.length > 0 ? beamPath.reflections : undefined;
+          // Promote 2D reflections → 3D by seeding z = source altitude.
+          // A future full-3D beam tracer can replace this once beams
+          // actually travel through varying altitude.
+          proj.reflections = beamPath.reflections.length > 0
+            ? beamPath.reflections.map((r) => ({ ...r, z: entity.transform.z }))
+            : undefined;
           proj.obstructionTick = currentTick;
         } else {
           // Use cached values — endX/endY already set from last computation
