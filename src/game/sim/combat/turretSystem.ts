@@ -4,8 +4,12 @@
 
 import type { WorldState } from '../WorldState';
 import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos } from './combatUtils';
-import { getTransformCosSin } from '../../math';
-import { TURRET_RETURN_TO_FORWARD } from '../../../config';
+import { getTransformCosSin, solveBallisticPitch } from '../../math';
+import {
+  TURRET_RETURN_TO_FORWARD,
+  GRAVITY,
+  MUZZLE_HEIGHT_ABOVE_GROUND,
+} from '../../../config';
 
 // Cache for drag factors
 const _dragFactorCache = new Map<number, number>();
@@ -43,15 +47,33 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);
-          // Pitch: elevation angle from the weapon to the target in 3D.
-          // Weapon height is approximated as the hull-top for now (M7
-          // keeps the math simple — a later pass can thread an explicit
-          // per-turret mount height through). atan2(dz, horizontalDist)
-          // gives +pitch when the target is above the weapon.
-          const weaponZ = unit.transform.z;
-          const dz = target.transform.z - weaponZ;
+          // Pitch resolution: projectile turrets solve the full
+          // ballistic arc (quadratic in tan(pitch), two real roots
+          // under gravity — `highArc` picks the lofted solution for
+          // mortars, everyone else gets the flat low arc). Beams &
+          // lasers travel in a straight line, so they stay at direct
+          // elevation-to-target.
           const horizDist = Math.hypot(dx, dy);
-          weapon.pitch = Math.atan2(dz, horizDist);
+          // Muzzle altitude = target's ground footprint + the visual
+          // barrel height. Matches where projectileSystem actually
+          // spawns the round, so aim and fire trajectory agree.
+          const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+          const muzzleZ = unitGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND;
+          const heightDiff = target.transform.z - muzzleZ;
+          const shot = weapon.config.shot;
+          if (shot.type === 'projectile') {
+            const launchSpeed = shot.launchForce / shot.mass;
+            weapon.pitch = solveBallisticPitch(
+              horizDist,
+              heightDiff,
+              launchSpeed,
+              GRAVITY,
+              weapon.config.highArc ?? false,
+            );
+          } else {
+            // Beam / laser / force — direct aim, no ballistic drop.
+            weapon.pitch = Math.atan2(heightDiff, horizDist);
+          }
           hasActiveTarget = true;
         }
       }

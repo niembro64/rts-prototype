@@ -151,6 +151,13 @@ export type TurretBlueprint = {
   };
   mirrorPanels?: MirrorPanel[];
   audio?: { fireSound?: SoundEntry; laserSound?: SoundEntry };
+  /** Ballistic arc preference for the aim solver. Two solutions exist
+   *  for any in-range target under gravity — a low flat arc and a
+   *  high lofted arc. Default (omitted / false) picks the low arc
+   *  for fast line-of-sight shots. `true` picks the high arc so
+   *  mortars lob their rounds over terrain / walls. Irrelevant for
+   *  beams and lasers (instantaneous, direct-aim). */
+  highArc?: boolean;
 };
 
 export type TurretMount = {

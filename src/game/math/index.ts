@@ -26,3 +26,9 @@ export {
 } from './CollisionHelpers';
 
 export { applyHomingSteering } from './HomingSteering';
+
+export {
+  type BallisticSolution,
+  ballisticSolutions,
+  solveBallisticPitch,
+} from './Ballistics';

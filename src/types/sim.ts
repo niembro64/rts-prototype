@@ -223,6 +223,10 @@ export type TurretConfig = {
   passive?: boolean;
   shot: ShotConfig;
   turretIndex?: number;
+  /** Ballistic arc choice for the aim solver — `true` = lofted (high
+   *  arc, mortar-style); `false`/omitted = flat (low arc, direct-fire
+   *  style). See TurretBlueprint.highArc. */
+  highArc?: boolean;
 };
 
 // Turret FSM state: idle → tracking → engaged

@@ -167,6 +167,7 @@ export function buildTurretConfig(turretId: string): TurretConfig {
     angular: { turnAccel: wb.turretTurnAccel, drag: wb.turretDrag },
     rangeOverrides: wb.rangeMultiplierOverrides,
     shot,
+    highArc: wb.highArc ?? false,
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier

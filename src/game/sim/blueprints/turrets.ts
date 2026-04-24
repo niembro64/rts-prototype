@@ -121,6 +121,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     color: 0xffffff,
     spread: { angle: Math.PI / 24 },
     audio: { fireSound: AUDIO.event.fire.mortarTurret },
+    // Mortars lob — high-arc solution from the ballistic solver so
+    // shells sail up and over whatever's in front of them.
+    highArc: true,
   },
   pulseTurret: {
     id: 'pulseTurret',
