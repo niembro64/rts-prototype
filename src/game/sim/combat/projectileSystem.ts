@@ -183,7 +183,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           // Tag config with turretIndex for beam tracking (mutate in place — each weapon has its own config copy)
           config.turretIndex = weaponIndex;
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
-          const beam = world.createBeam(spawnX, spawnY, endX, endY, playerId, unit.id, config, beamProjectileType);
+          const beam = world.createBeam(spawnX, spawnY, spawnZ, endX, endY, playerId, unit.id, config, beamProjectileType);
           if (beam.projectile) {
             beam.projectile.sourceEntityId = unit.id;
           }

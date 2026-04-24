@@ -3,7 +3,7 @@
 // WASM-batched integrator was 2D-only (no pitch) and is gone.
 
 import type { WorldState } from '../WorldState';
-import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos } from './combatUtils';
+import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos, getBarrelTipOffset } from './combatUtils';
 import { getTransformCosSin, solveBallisticPitch } from '../../math';
 import {
   TURRET_RETURN_TO_FORWARD,
@@ -47,18 +47,24 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);
-          // Pitch resolution: projectile turrets solve the full
-          // ballistic arc (quadratic in tan(pitch), two real roots
-          // under gravity — `highArc` picks the lofted solution for
-          // mortars, everyone else gets the flat low arc). Beams &
-          // lasers travel in a straight line, so they stay at direct
-          // elevation-to-target.
-          const horizDist = Math.hypot(dx, dy);
-          // Muzzle altitude = target's ground footprint + the visual
-          // barrel height. Matches where projectileSystem actually
-          // spawns the round, so aim and fire trajectory agree.
+          // Solve the ballistic arc from where the projectile actually
+          // leaves the weapon — the barrel TIP, not the turret MOUNT.
+          // The tip is one barrelOffset forward along the yaw axis and
+          // one MUZZLE_HEIGHT_ABOVE_GROUND above the unit's footprint.
+          // Previous revision aimed from the mount and was
+          // systematically short by a whole barrel length: shots passed
+          // above the target sphere and registered no hit.
+          const barrelOffset = getBarrelTipOffset(weapon.config, unit.unit.unitRadiusCollider.shot);
+          const yawCos = Math.cos(targetAngle);
+          const yawSin = Math.sin(targetAngle);
+          const barrelTipX = weaponX + yawCos * barrelOffset;
+          const barrelTipY = weaponY + yawSin * barrelOffset;
           const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
           const muzzleZ = unitGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND;
+          const horizDist = Math.hypot(
+            target.transform.x - barrelTipX,
+            target.transform.y - barrelTipY,
+          );
           const heightDiff = target.transform.z - muzzleZ;
           const shot = weapon.config.shot;
           if (shot.type === 'projectile') {

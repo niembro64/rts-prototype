@@ -45,7 +45,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       secondary: { radius: 7, damage: 0.4, force: 500 },
     },
     splashOnExpiry: false,
-    lifespan: 800,
+    lifespan: 1200,
     hitSound: AUDIO.event.hit.lightShot,
   },
   mediumShot: {
@@ -58,7 +58,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       secondary: { radius: 15, damage: 1.2, force: 1000 },
     },
     splashOnExpiry: false,
-    lifespan: 1000,
+    lifespan: 2000,
     hitSound: AUDIO.event.hit.mediumShot,
   },
   heavyShot: {
@@ -71,20 +71,20 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       secondary: { radius: 45, damage: 70, force: 7_000 },
     },
     splashOnExpiry: true,
-    lifespan: 1400,
+    lifespan: 3000,
     hitSound: AUDIO.event.hit.heavyShot,
   },
   mortarShot: {
     type: 'projectile',
     id: 'mortarShot',
-    mass: 400,
+    mass: 80,
     collision: { radius: 7, damage: 10 },
     explosion: {
       primary: { radius: 20, damage: 80, force: 20_000 },
       secondary: { radius: 25, damage: 6, force: 20_000 },
     },
     splashOnExpiry: true,
-    lifespan: 2300,
+    lifespan: 5000,
     hitSound: AUDIO.event.hit.mortarShot,
     // Cluster flak: at the instant the mortar explodes, spray 5 mediumShot
     // fragments in a full circle. Each child has a short 300 ms lifespan

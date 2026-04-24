@@ -588,10 +588,16 @@ export class WorldState {
     return entity;
   }
 
-  // Create a beam projectile (special case)
+  // Create a beam / laser projectile. Beams are instantaneous line
+  // weapons — the z coord is the muzzle altitude at the moment of
+  // firing (same altitude for start and end; beams don't droop under
+  // gravity). Passing z lets the renderer draw the beam at the right
+  // height and lets the damage system's line-sphere test find
+  // targets at that altitude instead of assuming z=0.
   createBeam(
     startX: number,
     startY: number,
+    beamZ: number,
     endX: number,
     endY: number,
     ownerId: PlayerId,
@@ -600,12 +606,15 @@ export class WorldState {
     projectileType: 'beam' | 'laser' = 'beam'
   ): Entity {
     const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, projectileType);
+    entity.transform.z = beamZ;
 
     if (entity.projectile) {
       entity.projectile.startX = startX;
       entity.projectile.startY = startY;
+      entity.projectile.startZ = beamZ;
       entity.projectile.endX = endX;
       entity.projectile.endY = endY;
+      entity.projectile.endZ = beamZ;
     }
 
     return entity;
