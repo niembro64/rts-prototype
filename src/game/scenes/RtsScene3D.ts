@@ -392,7 +392,6 @@ export class RtsScene3D {
       },
       this.entitySourceAdapter,
       this.localCommandQueue,
-      this.gameConnection,
     );
     // Hand the build-ghost renderer to the input manager so it can
     // drive preview updates on mouse-move-in-build-mode (hidden on

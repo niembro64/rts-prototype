@@ -16,7 +16,6 @@ import * as THREE from 'three';
 import type { ThreeApp } from './ThreeApp';
 import type { BuildGhost3D } from './BuildGhost3D';
 import type { CommandQueue } from '../sim/commands';
-import type { GameConnection } from '../server/GameConnection';
 import type { InputContext } from '@/types/input';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import {
@@ -64,7 +63,6 @@ export class Input3DManager {
   private context: InputContext;
   private entitySource: EntitySource;
   private localCommandQueue: CommandQueue;
-  private gameConnection: GameConnection;
 
   // Current waypoint mode (move/fight/patrol) — driven by UI or M/F/H hotkeys.
   private waypointMode: WaypointType = 'move';
@@ -121,14 +119,12 @@ export class Input3DManager {
     context: InputContext,
     entitySource: EntitySource,
     localCommandQueue: CommandQueue,
-    gameConnection: GameConnection,
   ) {
     this.threeApp = threeApp;
     this.canvas = threeApp.renderer.domElement;
     this.context = context;
     this.entitySource = entitySource;
     this.localCommandQueue = localCommandQueue;
-    this.gameConnection = gameConnection;
 
     // Selection marquee overlay
     this.marquee = document.createElement('div');
@@ -585,7 +581,7 @@ export class Input3DManager {
       e.shiftKey,
     );
     if (repairCmd) {
-      this.gameConnection.sendCommand(repairCmd);
+      this.localCommandQueue.enqueue(repairCmd);
       return;
     }
 
@@ -600,7 +596,7 @@ export class Input3DManager {
         e.shiftKey,
       );
       if (attackCmd) {
-        this.gameConnection.sendCommand(attackCmd);
+        this.localCommandQueue.enqueue(attackCmd);
         return;
       }
       // Start drawing a line path of waypoints.
@@ -661,14 +657,14 @@ export class Input3DManager {
         tick, shiftHeld,
       );
       if (repairCmd) {
-        this.gameConnection.sendCommand(repairCmd);
+        this.localCommandQueue.enqueue(repairCmd);
         this.linePath.reset();
         return;
       }
       const moveCmd = buildLinePathMoveCommand(
         this.linePath, selectedUnits, this.waypointMode, tick, shiftHeld,
       );
-      if (moveCmd) this.gameConnection.sendCommand(moveCmd);
+      if (moveCmd) this.localCommandQueue.enqueue(moveCmd);
       this.linePath.reset();
       return;
     }
@@ -681,7 +677,7 @@ export class Input3DManager {
         factories, finalPoint.x, finalPoint.y,
         this.waypointMode, tick, shiftHeld,
       );
-      for (const cmd of cmds) this.gameConnection.sendCommand(cmd);
+      for (const cmd of cmds) this.localCommandQueue.enqueue(cmd);
     }
     this.linePath.reset();
   }
