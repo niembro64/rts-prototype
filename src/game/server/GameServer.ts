@@ -352,11 +352,18 @@ export class GameServer {
 
       const body = entity.body.physicsBody;
 
-      // Sync position from physics body (before force application, for rotation calc)
+      // Sync position from physics body (before force application, for
+      // rotation calc). z tracks gravity + ground contact — units sit on
+      // the ground at body.radius altitude; explosions or falls push them
+      // up and gravity pulls them back.
       entity.transform.x = body.x;
       entity.transform.y = body.y;
+      entity.transform.z = body.z;
 
-      // Get the direction unit wants to move
+      // Horizontal thrust target from the action system. velocityZ is
+      // purely a physics readback — thrust is always horizontal,
+      // vertical motion is gravity-driven (or knockback-driven via the
+      // force accumulator, when that channel lands).
       const dirX = entity.unit.velocityX ?? 0;
       const dirY = entity.unit.velocityY ?? 0;
       const dirMag = magnitude(dirX, dirY);
