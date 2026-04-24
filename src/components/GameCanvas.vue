@@ -903,6 +903,44 @@ function toggleUnitRadius(type: UnitRadiusType): void {
   unitRadiusToggles[type] = newValue;
 }
 
+// "ALL" helpers for each radius/range section — same behavior as
+// the UNITS: ALL button in the battle bar: flip every sub-toggle to
+// match the resulting "all-on" or "all-off" state. Computed flags
+// drive the ALL button's active state.
+const allRangesActive = computed(() =>
+  RANGE_TYPES.every((rt) => rangeToggles[rt]),
+);
+const allProjRangesActive = computed(() =>
+  PROJ_RANGE_TYPES.every((prt) => projRangeToggles[prt]),
+);
+const allUnitRadiiActive = computed(() =>
+  UNIT_RADIUS_TYPES.every((urt) => unitRadiusToggles[urt]),
+);
+
+function toggleAllRanges(): void {
+  const enable = !allRangesActive.value;
+  for (const rt of RANGE_TYPES) {
+    setRangeToggle(rt, enable);
+    rangeToggles[rt] = enable;
+  }
+}
+
+function toggleAllProjRanges(): void {
+  const enable = !allProjRangesActive.value;
+  for (const prt of PROJ_RANGE_TYPES) {
+    setProjRangeToggle(prt, enable);
+    projRangeToggles[prt] = enable;
+  }
+}
+
+function toggleAllUnitRadii(): void {
+  const enable = !allUnitRadiiActive.value;
+  for (const urt of UNIT_RADIUS_TYPES) {
+    setUnitRadiusToggle(urt, enable);
+    unitRadiusToggles[urt] = enable;
+  }
+}
+
 function toggleAudioSmoothing(): void {
   const newValue = !audioSmoothing.value;
   setAudioSmoothing(newValue);
@@ -2388,6 +2426,14 @@ onUnmounted(() => {
           <div class="control-group">
             <BarDivider />
             <span class="control-label">TURR RAD:</span>
+            <button
+              class="control-btn"
+              :class="{ active: allRangesActive }"
+              title="Toggle every turret-range viz on/off"
+              @click="toggleAllRanges"
+            >
+              ALL
+            </button>
             <div class="button-group">
               <button
                 class="control-btn"
@@ -2434,6 +2480,14 @@ onUnmounted(() => {
           <div class="control-group">
             <BarDivider />
             <span class="control-label">SHOT RAD:</span>
+            <button
+              class="control-btn"
+              :class="{ active: allProjRangesActive }"
+              title="Toggle every projectile-radius viz on/off"
+              @click="toggleAllProjRanges"
+            >
+              ALL
+            </button>
             <div class="button-group">
               <button
                 class="control-btn"
@@ -2464,6 +2518,14 @@ onUnmounted(() => {
           <div class="control-group">
             <BarDivider />
             <span class="control-label">UNIT RAD:</span>
+            <button
+              class="control-btn"
+              :class="{ active: allUnitRadiiActive }"
+              title="Toggle every unit-radius viz on/off"
+              @click="toggleAllUnitRadii"
+            >
+              ALL
+            </button>
             <div class="button-group">
               <button
                 class="control-btn"

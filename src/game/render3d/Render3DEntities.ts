@@ -102,7 +102,11 @@ type EntityMesh = {
   /** SCAL/SHOT/PUSH unit-radius indicator rings — toggleable per type,
    *  mirroring the 2D renderUnitRadiusCircles overlay. Meshes are created
    *  lazily on first show and hidden (not destroyed) when toggled off. */
-  radiusRings?: { scale?: THREE.Mesh; shot?: THREE.Mesh; push?: THREE.Mesh };
+  radiusRings?: {
+    scale?: THREE.LineSegments;
+    shot?: THREE.LineSegments;
+    push?: THREE.LineSegments;
+  };
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  slab. Empty / undefined for units. */
@@ -173,18 +177,23 @@ export class Render3DEntities {
   });
   // Thin ring for the selection indicator (flat, sits just above the ground plane)
   private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
-  // Unit-radius indicator rings (SCAL/SHOT/PUSH). Unit radius = 1; scaled per
-  // mesh to the actual radius. Slightly thicker than the selection ring so
-  // the three colors layer over each other without visually merging.
-  private radiusRingGeom = new THREE.RingGeometry(0.97, 1.0, 40);
-  private radiusMatScale = new THREE.MeshBasicMaterial({
-    color: 0x44ffff, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false,
+  // Unit-radius indicator wireframe spheres (SCAL/SHOT/PUSH). Unit
+  // radius = 1 → scale per mesh to the actual collider radius. The
+  // sim's hit-detection uses 3D spheres centered on transform.z, so
+  // the debug viz is a matching 3D wireframe sphere (not a flat
+  // ground ring) that shows exactly what volume the collision code
+  // tests against.
+  private radiusSphereGeom = new THREE.WireframeGeometry(
+    new THREE.SphereGeometry(1, 16, 10),
+  );
+  private radiusMatScale = new THREE.LineBasicMaterial({
+    color: 0x44ffff, transparent: true, opacity: 0.7, depthWrite: false,
   });
-  private radiusMatShot = new THREE.MeshBasicMaterial({
-    color: 0xff44ff, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false,
+  private radiusMatShot = new THREE.LineBasicMaterial({
+    color: 0xff44ff, transparent: true, opacity: 0.7, depthWrite: false,
   });
-  private radiusMatPush = new THREE.MeshBasicMaterial({
-    color: 0x44ff44, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false,
+  private radiusMatPush = new THREE.LineBasicMaterial({
+    color: 0x44ff44, transparent: true, opacity: 0.7, depthWrite: false,
   });
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
@@ -512,10 +521,11 @@ export class Render3DEntities {
    * and simply hidden (not destroyed) when toggled off, so flipping toggles
    * repeatedly doesn't churn geometry.
    *
-   * The ring is a flat torus-alike sitting just above the ground plane
-   * (y = 0.5, X-rotated −π/2) scaled to the actual collider radius. Scale/Shot/
-   * Push rings sit at slightly different Y values (0.4 / 0.5 / 0.6) so when
-   * two or more are enabled at the same time they don't z-fight each other.
+   * Wireframe SPHERE centered at the unit's hit-sphere center (= push
+   * radius above the group's ground origin). Scale is the collider
+   * value for the selected channel. Shows the actual 3D volume the
+   * sim tests against, so overlapping spheres of different colors
+   * immediately communicate which check is hitting or missing.
    */
   private updateRadiusRings(m: EntityMesh, entity: Entity): void {
     const collider = entity.unit?.unitRadiusCollider;
@@ -532,8 +542,9 @@ export class Render3DEntities {
       shot: this.radiusMatShot,
       push: this.radiusMatPush,
     };
-    // Separate Y offsets per ring so overlapping rings don't z-fight.
-    const yOffsets = { scale: 0.4, shot: 0.5, push: 0.6 };
+    // Sphere center in group-local coords = push radius above the
+    // ground (matches sim: unit.transform.z = push radius when resting).
+    const centerY = collider.push;
 
     for (const key of ['scale', 'shot', 'push'] as const) {
       const want = show[key];
@@ -541,15 +552,14 @@ export class Render3DEntities {
       let ring = rings[key];
       if (want) {
         if (!ring) {
-          ring = new THREE.Mesh(this.radiusRingGeom, mats[key]);
-          ring.rotation.x = -Math.PI / 2;
+          ring = new THREE.LineSegments(this.radiusSphereGeom, mats[key]);
           m.group.add(ring);
           rings[key] = ring;
         }
         ring.visible = true;
-        ring.position.y = yOffsets[key];
+        ring.position.y = centerY;
         const r = radii[key];
-        ring.scale.set(r, r, 1);
+        ring.scale.setScalar(r);
       } else if (ring) {
         ring.visible = false;
       }
@@ -1008,7 +1018,7 @@ export class Render3DEntities {
     this.projectileGeom.dispose();
     this.buildingGeom.dispose();
     this.ringGeom.dispose();
-    this.radiusRingGeom.dispose();
+    this.radiusSphereGeom.dispose();
     this.radiusMatScale.dispose();
     this.radiusMatShot.dispose();
     this.radiusMatPush.dispose();
