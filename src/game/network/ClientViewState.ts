@@ -114,6 +114,7 @@ type ServerTarget = {
   turrets: {
     rotation: number;
     angularVelocity: number;
+    pitch: number;
     forceFieldRange: number | undefined;
   }[];
 };
@@ -215,6 +216,7 @@ export class ClientViewState {
             target.turrets.push({
               rotation: 0,
               angularVelocity: 0,
+              pitch: 0,
               forceFieldRange: undefined,
             });
           }
@@ -222,6 +224,7 @@ export class ClientViewState {
           for (let i = 0; i < nw.length; i++) {
             target.turrets[i].rotation = nw[i].turret.angular.rot;
             target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
+            target.turrets[i].pitch = nw[i].turret.angular.pitch;
             target.turrets[i].forceFieldRange = nw[i].currentForceFieldRange;
           }
         } else if (isFull) {
@@ -583,6 +586,19 @@ export class ClientViewState {
                 weapon.angularVelocity,
                 tw.angularVelocity,
                 rotVelDrift,
+              );
+              // Pitch: the sim sets it each tick from the ballistic
+              // solver, no angular velocity to dead-reckon — just drift
+              // the current value toward the latest server target using
+              // the same rotation-position blend. Without this the
+              // visible barrel pitch stays frozen at whatever the turret
+              // was at when the entity was first received, so shots
+              // launch at their real arc while the barrel visibly
+              // points horizontally (or wherever it was last snapped).
+              weapon.pitch = lerpAngle(
+                weapon.pitch,
+                tw.pitch,
+                rotPosDrift,
               );
             }
 
