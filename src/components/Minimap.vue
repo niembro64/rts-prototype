@@ -152,6 +152,14 @@ function handleClick(event: MouseEvent) {
 // a live reference that changes every frame — so watching specific
 // sub-fields instead of `props.data` lets the cheap camera-only
 // path skip the expensive full rebuild.
+//
+// REACTIVITY CONTRACT: `deep: false` means the watch fires on reference
+// change, NOT in-place mutation. Callers (RtsScene*.updateMinimapInfo
+// via buildMinimapData) MUST emit a fresh `entities` array on every
+// update — buildMinimapData already does this by constructing a new
+// array per call. If anything ever starts pushing into the same array
+// in-place, flip this to `deep: true` or this watch will silently stop
+// firing.
 watch(
   () => [props.data.entities, props.data.mapWidth, props.data.mapHeight],
   () => { drawEntityLayer(); compose(); },
