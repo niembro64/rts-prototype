@@ -54,7 +54,7 @@ const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 // Projectile gravity (world units / s²) — must match the server's
 // PROJECTILE_GRAVITY in projectileSystem.ts so client dead-reckoning
 // between snapshots falls at the same rate as authoritative sim.
-const PROJECTILE_GRAVITY = 900;
+const PROJECTILE_GRAVITY = 250;
 
 // Reusable buffer for client-side force field prediction (avoids allocations per frame)
 type ActiveForceField = {
@@ -797,6 +797,15 @@ export class ClientViewState {
           entity.transform.x += entity.projectile.velocityX * dt;
           entity.transform.y += entity.projectile.velocityY * dt;
           entity.transform.z += entity.projectile.velocityZ * dt;
+          // Don't let the visual sink through the ground — the server
+          // will despawn-and-explode the projectile on its next tick,
+          // but the client may run a few prediction frames ahead.
+          // Clamping vz to 0 at the ground keeps the sphere pinned on
+          // the surface for those frames instead of burrowing.
+          if (entity.transform.z < 0) {
+            entity.transform.z = 0;
+            if (entity.projectile.velocityZ < 0) entity.projectile.velocityZ = 0;
+          }
 
           // Auto-remove if projectile has left the map bounds
           entity.projectile.timeAlive += deltaMs;

@@ -280,10 +280,12 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
 
 // 3D projectile integration: explicit-Euler advance on (x, y, z) with
-// gravity pulling -z. Matches the main physics engine's GRAVITY for
-// visually consistent fall rates between projectiles, debris, and
-// knocked-up units.
-const PROJECTILE_GRAVITY = 900;
+// gravity pulling -z. Tuned well below the main physics engine's
+// GRAVITY (900) — "realistic" gravity makes shells plummet too fast
+// for RTS-scale ballistics. 250 gives visible arcs at cannon speeds
+// without the ground hurrying up to meet every shot. Client
+// dead-reckoning (ClientViewState) has an identical constant.
+const PROJECTILE_GRAVITY = 250;
 
 function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
   for (const entity of world.getProjectiles()) {

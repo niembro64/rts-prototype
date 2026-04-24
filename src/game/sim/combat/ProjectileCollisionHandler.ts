@@ -149,8 +149,22 @@ export function checkProjectileCollisions(
     // Projectile entities always use projectile/beam/laser shot types (never force)
     const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
 
-    // Check if projectile expired
-    if (proj.timeAlive >= proj.maxLifespan) {
+    // Ground impact — a traveling projectile whose center drops below
+    // the ground plane is treated exactly like lifespan expiry: if the
+    // shot has splashOnExpiry the splash goes off at the impact point,
+    // otherwise just a projectileExpire visual. Snap z to 0 so splash
+    // AOE is centered ON the ground, not below it. Beams and lasers
+    // can't hit the ground (they're instantaneous lines, not falling
+    // shots) so they skip this check.
+    const hitGround =
+      proj.projectileType === 'projectile' &&
+      projEntity.transform.z <= 0;
+    if (hitGround) {
+      projEntity.transform.z = 0;
+    }
+
+    // Check if projectile expired (lifespan OR ground impact)
+    if (proj.timeAlive >= proj.maxLifespan || hitGround) {
       // Beam audio is handled by updateLaserSounds based on targeting state
 
       // Handle splash damage on expiration — only for projectile shots with splashOnExpiry enabled
