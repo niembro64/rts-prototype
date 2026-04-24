@@ -8,8 +8,8 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, MUZZLE_HEIGHT_ABOVE_GROUND, GRAVITY } from '../../../config';
-import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos } from './combatUtils';
+import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY } from '../../../config';
+import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos, getUnitMuzzleHeight } from './combatUtils';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
@@ -125,16 +125,16 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // Add fire event (skip continuous beams — they use start/stop lifecycle).
       // The event fires AT the turret (hull altitude + turret head height)
       // so the muzzle-flash visual lines up with the barrel tip the
-      // projectile is about to leave. Muzzle exact z is
-      // unit.transform.z + CHASSIS_HEIGHT/2 + TURRET_HEIGHT/2 roughly;
-      // using the muzzle-height-above-ground formula keeps this in lock
-      // step with the projectile spawn z.
+      // projectile is about to leave. Muzzle altitude above the unit's
+      // ground footprint is derived per-unit from the render body — tall
+      // bodies (arachnid) fire higher than squat ones (scout).
+      const muzzleAboveGround = getUnitMuzzleHeight(unit);
       if (shot.type !== 'beam') {
         const fireGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
         audioEvents.push({
           type: 'fire',
           turretId: config.id,
-          pos: { x: weaponX, y: weaponY, z: fireGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND },
+          pos: { x: weaponX, y: weaponY, z: fireGroundZ + muzzleAboveGround },
         });
       }
 
@@ -163,16 +163,16 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         //   Horizontal: barrel tip projected on the yaw ray (pitched
         //   barrels shorten their ground-plane projection by cos(pitch)).
         //   Vertical: unit's ground-footprint altitude (transform.z -
-        //   sphere radius) + MUZZLE_HEIGHT_ABOVE_GROUND (how high the
-        //   visible barrel sits above the ground) + the barrel-tip's
-        //   vertical projection from the pitch angle. Airborne units
-        //   fire from correspondingly higher because transform.z
-        //   carries their altitude.
+        //   sphere radius) + per-unit muzzle height (how high the
+        //   visible barrel sits above the ground for this body) + the
+        //   barrel-tip's vertical projection from the pitch angle.
+        //   Airborne units fire from correspondingly higher because
+        //   transform.z carries their altitude.
         const horizBarrel = barrelOffset * pitchCos;
         const spawnX = weaponX + fireCos * horizBarrel;
         const spawnY = weaponY + fireSin * horizBarrel;
         const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-        const spawnZ = unitGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND + barrelOffset * pitchSin;
+        const spawnZ = unitGroundZ + muzzleAboveGround + barrelOffset * pitchSin;
 
         if (isBeamWeapon) {
           // Create beam using weapon's fireRange

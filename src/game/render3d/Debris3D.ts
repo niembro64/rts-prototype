@@ -23,6 +23,7 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
+import { getBodyTopY } from '../math/BodyDimensions';
 import { PLAYER_COLORS } from '../sim/types';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
@@ -39,10 +40,10 @@ const STYLE_STRIDE: Record<DebrisStyle, number> = {
 };
 
 // Must match the values in Render3DEntities for sizes to line up with the
-// source parts.
-const CHASSIS_HEIGHT = 28;
+// source parts. CHASSIS_HEIGHT is now per-unit (derived from the unit's
+// render body shape via getBodyTopY) so tall-bodied units shed tall
+// debris and squat ones shed short debris.
 const TURRET_HEIGHT = 16;
-const SHOT_HEIGHT = CHASSIS_HEIGHT + TURRET_HEIGHT / 2;
 const TURRET_HEAD_FOOTPRINT = 0.55;
 const BARREL_MIN_THICKNESS = 2;
 
@@ -297,30 +298,31 @@ export class Debris3D {
 
     // --- Turret heads + barrels ---
     // One piece per mounted turret head, plus one piece per barrel in each
-    // turret's barrel config. All placed in unit-local coords at SHOT_HEIGHT.
+    // turret's barrel config. Turret-local Y sits on top of the unit's
+    // per-renderer body (tall-bodied units => turret debris spawns higher).
     // The turret head uses the team's true secondary color (looked up from
     // PLAYER_COLORS by matching primary) so it matches the live chassis —
     // a darkened-primary approximation visibly drifts from the real color.
     const secondary = lookupSecondaryColor(primary);
+    const rendererId = bp.renderer ?? 'arachnid';
+    const bodyTopY = getBodyTopY(rendererId, r);
+    const shotHeight = bodyTopY + TURRET_HEIGHT / 2;
     for (const mount of bp.turrets) {
       let tb;
       try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
       const tox = mount.offsetX;
       const toz = mount.offsetY;
 
-      // Turret head — standing cylinder of radius r·0.55 and height 16,
-      // centered at (tox, CHASSIS_TOP + TURRET_HEIGHT/2, toz). Same
-      // dimensions the live turret renders at.
+      // Turret head — standing cylinder of radius r·0.55 and height
+      // TURRET_HEIGHT, mounted on top of the unit body.
       const headR = r * TURRET_HEAD_FOOTPRINT;
-      const headCenterY = CHASSIS_HEIGHT + TURRET_HEIGHT / 2;
       out.push({
         shape: 'cyl',
-        ax: tox, ay: CHASSIS_HEIGHT, az: toz,
-        bx: tox, by: CHASSIS_HEIGHT + TURRET_HEIGHT, bz: toz,
+        ax: tox, ay: bodyTopY, az: toz,
+        bx: tox, by: bodyTopY + TURRET_HEIGHT, bz: toz,
         thickness: headR,
         color: secondary,
       });
-      void headCenterY;
 
       // Barrels — one cylinder per physical barrel. Length + thickness come
       // from the turret blueprint so a commander d-gun produces a thicker
@@ -337,8 +339,8 @@ export class Debris3D {
         // at SHOT_HEIGHT so it lines up with the head's mid-line.
         out.push({
           shape: 'cyl',
-          ax: tox, ay: SHOT_HEIGHT, az: toz,
-          bx: tox + len, by: SHOT_HEIGHT, bz: toz,
+          ax: tox, ay: shotHeight, az: toz,
+          bx: tox + len, by: shotHeight, bz: toz,
           thickness: thick,
           color: BARREL_COLOR,
         });
@@ -362,8 +364,8 @@ export class Debris3D {
           const oz = Math.sin(a) * baseOrbit;
           out.push({
             shape: 'cyl',
-            ax: tox,       ay: SHOT_HEIGHT + oy, az: toz + oz,
-            bx: tox + len, by: SHOT_HEIGHT + oy, bz: toz + oz,
+            ax: tox,       ay: shotHeight + oy, az: toz + oz,
+            bx: tox + len, by: shotHeight + oy, bz: toz + oz,
             thickness: thick,
             color: BARREL_COLOR,
           });
@@ -372,17 +374,19 @@ export class Debris3D {
     }
 
     // --- Chassis body edges ---
-    // Read the per-renderer body shape (scout=diamond, tank=pentagon, etc.)
-    // and emit one tall slab per polygon edge at the true edge position.
-    // This makes a tank shatter into pentagon-walls, not generic cubes.
-    const rendererId = bp.renderer ?? 'arachnid';
+    // Read the per-renderer body shape (scout=diamond, tank=pentagon,
+    // arachnid=two spheroids, etc.) and emit one tall slab per polygon
+    // edge at the true edge position. Each template's `height` mirrors
+    // the body segment it came from, so debris slab heights match the
+    // live unit silhouette (composite bodies shed tall abdomen debris
+    // and short head debris).
     const edges = getBodyEdgeTemplates(rendererId, r);
     for (const e of edges) {
       out.push({
         shape: 'box',
-        x: e.x, y: CHASSIS_HEIGHT / 2, z: e.z,
+        x: e.x, y: e.height / 2, z: e.z,
         yaw: e.yaw,
-        sx: e.length, sy: CHASSIS_HEIGHT, sz: e.thickness,
+        sx: e.length, sy: e.height, sz: e.thickness,
         color: primary,
       });
     }
@@ -397,13 +401,15 @@ export class Debris3D {
     const sides = 8;
     const poly = r * 0.7;
     const edgeLen = 2 * poly * Math.sin(Math.PI / sides);
+    // Fallback chassis height: arachnid-ish big sphere top.
+    const fallbackH = getBodyTopY('arachnid', r);
     for (let i = 0; i < sides; i++) {
       const a = ((i + 0.5) / sides) * Math.PI * 2;
       out.push({
         shape: 'box',
-        x: Math.cos(a) * poly, y: CHASSIS_HEIGHT / 2, z: Math.sin(a) * poly,
+        x: Math.cos(a) * poly, y: fallbackH / 2, z: Math.sin(a) * poly,
         yaw: a + Math.PI / 2,
-        sx: edgeLen, sy: CHASSIS_HEIGHT, sz: Math.max(2, r * 0.08),
+        sx: edgeLen, sy: fallbackH, sz: Math.max(2, r * 0.08),
         color: primary,
       });
     }

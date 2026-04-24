@@ -33,10 +33,11 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitRadiusToggle } from '@/clientBarConfig';
 
-// All units share the same chassis and turret heights — imported above
-// from src/config.ts and shared with the sim's projectile-spawn code
-// (see MUZZLE_HEIGHT_ABOVE_GROUND) so visual barrel tip and sim muzzle
-// stay locked together.
+// Turret head height is the one remaining shared vertical constant —
+// chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
+// The sim's projectile-spawn code (getUnitMuzzleHeight in
+// combat/combatUtils.ts) derives muzzle altitude from the same body-top
+// value so visual barrel tip and sim muzzle stay locked together.
 
 const BUILDING_HEIGHT = 120;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
@@ -679,10 +680,9 @@ export class Render3DEntities {
       // unit re-enters scope the next frame's update repositions it.
       if (!this.scope.inScope(e.transform.x, e.transform.y, 100)) continue;
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
-      // footprint, matching the 2D renderer. Vertical sizing is fixed —
-      // every unit chassis uses CHASSIS_HEIGHT, every turret TURRET_HEIGHT —
-      // so all barrel tips (and therefore projectile spawns) align at
-      // SHOT_HEIGHT in world Y.
+      // footprint, matching the 2D renderer. Body height is per-unit
+      // (see BodyShape3D / BodyDimensions); turrets mount on top of
+      // whatever height the body resolves to.
       const radius = e.unit?.unitRadiusCollider.scale
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;

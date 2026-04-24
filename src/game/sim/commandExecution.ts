@@ -5,10 +5,9 @@ import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitC
 import type { Entity, UnitAction } from './types';
 import type { SimEvent } from './combat';
 import { magnitude, getWeaponWorldPosition, getTransformCosSin } from '../math';
-import { getBarrelTipWorldPos } from './combat/combatUtils';
+import { getBarrelTipWorldPos, getUnitMuzzleHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
-import { MUZZLE_HEIGHT_ABOVE_GROUND } from '../../config';
 
 export type { CommandContext } from '@/types/ui';
 import type { CommandContext } from '@/types/ui';
@@ -282,7 +281,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // use in projectileSystem.ts.
   const commanderGroundZ = commander.transform.z -
     (commander.unit?.unitRadiusCollider.push ?? 0);
-  const dgunFireZ = commanderGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND;
+  const dgunFireZ = commanderGroundZ + getUnitMuzzleHeight(commander);
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },

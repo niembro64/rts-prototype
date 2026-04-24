@@ -2,6 +2,8 @@
 
 import type { Entity, TurretConfig } from '../types';
 import { distance, normalizeAngle, magnitude, getWeaponWorldPosition } from '../../math';
+import { getMuzzleHeightAboveGround } from '../../math/BodyDimensions';
+import { getUnitBlueprint } from '../blueprints';
 
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
@@ -50,6 +52,20 @@ export function getBarrelTipWorldPos(
   _btOut.x = weaponX + Math.cos(firingAngle) * offset;
   _btOut.y = weaponY + Math.sin(firingAngle) * offset;
   return _btOut;
+}
+
+// Muzzle altitude above the unit's ground footprint at pitch=0, derived
+// from the unit blueprint's render body. Replaces the old shared
+// MUZZLE_HEIGHT_ABOVE_GROUND constant so tall units (arachnid) fire
+// higher than squat ones (scout). Falls back to the arachnid body for
+// any unit whose blueprint lookup throws.
+export function getUnitMuzzleHeight(unit: Entity): number {
+  if (!unit.unit) return 0;
+  const unitRadius = unit.unit.unitRadiusCollider.push;
+  let renderer = 'arachnid';
+  try { renderer = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
+  catch { /* keep fallback */ }
+  return getMuzzleHeightAboveGround(renderer, unitRadius);
 }
 
 // Get angle to face based on movement (or body direction if stationary)

@@ -3,12 +3,11 @@
 // WASM-batched integrator was 2D-only (no pitch) and is gone.
 
 import type { WorldState } from '../WorldState';
-import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos, getBarrelTipOffset } from './combatUtils';
+import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos, getBarrelTipOffset, getUnitMuzzleHeight } from './combatUtils';
 import { getTransformCosSin, solveBallisticPitch } from '../../math';
 import {
   TURRET_RETURN_TO_FORWARD,
   GRAVITY,
-  MUZZLE_HEIGHT_ABOVE_GROUND,
 } from '../../../config';
 
 // Cache for drag factors
@@ -50,7 +49,8 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           // Solve the ballistic arc from where the projectile actually
           // leaves the weapon — the barrel TIP, not the turret MOUNT.
           // The tip is one barrelOffset forward along the yaw axis and
-          // one MUZZLE_HEIGHT_ABOVE_GROUND above the unit's footprint.
+          // one per-unit muzzle-height above the unit's footprint (tall
+          // bodies like arachnid fire higher than squat scouts).
           // Previous revision aimed from the mount and was
           // systematically short by a whole barrel length: shots passed
           // above the target sphere and registered no hit.
@@ -60,7 +60,7 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           const barrelTipX = weaponX + yawCos * barrelOffset;
           const barrelTipY = weaponY + yawSin * barrelOffset;
           const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-          const muzzleZ = unitGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND;
+          const muzzleZ = unitGroundZ + getUnitMuzzleHeight(unit);
           const horizDist = Math.hypot(
             target.transform.x - barrelTipX,
             target.transform.y - barrelTipY,
