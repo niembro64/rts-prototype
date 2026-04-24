@@ -186,19 +186,39 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           });
         }
 
-        // Firing direction: for barrels whose config wants spread (cone
-        // shotgun or pellet jitter), use the jittered yaw combined with
-        // the barrel's own pitch contribution. For plain barrels the
-        // primitive's own direction is already correct, and we still
-        // honor the per-pellet yaw randomization by re-basing the
-        // horizontal component onto the jittered yaw.
-        const dirPitchSin = tip.dirZ;
-        const dirPitchCos = Math.hypot(tip.dirX, tip.dirY);
-        const fireCos = Math.cos(yaw);
-        const fireSin = Math.sin(yaw);
-        const dirX = fireCos * dirPitchCos;
-        const dirY = fireSin * dirPitchCos;
-        const dirZ = dirPitchSin;
+        // Firing direction. Two modes:
+        //
+        //  Vertical launcher: each rocket launches into a random cone
+        //  around world +Z. α is the deviation from vertical (sampled
+        //  uniformly in [0, spreadAngle]) and φ is a fully-random
+        //  horizontal direction. The resulting velocity vector is
+        //  (sinα·cosφ, sinα·sinφ, cosα) — always has positive Z, so
+        //  every rocket really does launch upward. Homing bends it
+        //  back toward the target from there.
+        //
+        //  Standard turret: use the jittered yaw combined with the
+        //  barrel's own pitch contribution (ballistic arc aim). The
+        //  primitive's own direction is already correct for pitch;
+        //  we re-base the horizontal component onto the jittered yaw.
+        let dirX: number;
+        let dirY: number;
+        let dirZ: number;
+        if (config.verticalLauncher) {
+          const alpha = world.rng.next() * spreadAngle;
+          const phi = world.rng.next() * Math.PI * 2;
+          const sinA = Math.sin(alpha);
+          dirX = sinA * Math.cos(phi);
+          dirY = sinA * Math.sin(phi);
+          dirZ = Math.cos(alpha);
+        } else {
+          const dirPitchSin = tip.dirZ;
+          const dirPitchCos = Math.hypot(tip.dirX, tip.dirY);
+          const fireCos = Math.cos(yaw);
+          const fireSin = Math.sin(yaw);
+          dirX = fireCos * dirPitchCos;
+          dirY = fireSin * dirPitchCos;
+          dirZ = dirPitchSin;
+        }
 
         if (isBeamWeapon) {
           // Create beam using weapon's fireRange. End point is the

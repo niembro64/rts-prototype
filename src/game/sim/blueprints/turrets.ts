@@ -63,12 +63,14 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spread: { angle: Math.PI / 12 },
     audio: { fireSound: AUDIO.event.fire.lightTurret },
   },
-  // Salvo rocket pod — fires one rocket per barrel in a single volley
-  // (pelletCount = barrelCount), each spawning from its own tube and
-  // fanning out in a modest cone. `lightRocket` ignores gravity and
-  // homes toward the acquired target at `homingTurnRate` rad/s, so
-  // the rockets visibly splay out of the pod then curve onto the
-  // target — classic RTS rocket-pod behavior.
+  // Salvo rocket pod — vertical-launch system. The turret is pinned
+  // pointing straight up (verticalLauncher=true → turretSystem locks
+  // pitch to π/2) so the original cone-cluster of barrels stays
+  // visibly aimed at the sky, with the cluster spin still driven by
+  // engagement state. Each volley fires 10 rockets straight up into
+  // a random cone (`spread.angle` is the half-angle from vertical);
+  // `lightRocket` ignores gravity so each rocket climbs on thrust,
+  // then `homingTurnRate` bends them onto the acquired target.
   salvoRocketTurret: {
     id: 'salvoRocketTurret',
     projectileId: 'lightRocket',
@@ -91,8 +93,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 8, pelletCount: 5 },
+    spread: { angle: Math.PI / 4, pelletCount: 10 },
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
+    verticalLauncher: true,
   },
   cannonTurret: {
     id: 'cannonTurret',

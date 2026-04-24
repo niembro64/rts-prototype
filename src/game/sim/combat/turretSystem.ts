@@ -35,6 +35,21 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
     const { cos, sin } = getTransformCosSin(unit.transform);
 
     for (const weapon of unit.turrets) {
+      // Vertical launchers skip the normal yaw/pitch aim math — the
+      // turret always points straight up and each fired rocket picks
+      // a random cone-from-vertical direction at launch (projectile-
+      // System handles that). Targeting state still runs in
+      // targetingSystem so the weapon acquires a homing target, but
+      // here we just pin the pose so the rendered barrels stay
+      // skyward and the gatling spin (driven by engagement state)
+      // keeps working.
+      if (weapon.config.verticalLauncher) {
+        weapon.rotation = 0;
+        weapon.angularVelocity = 0;
+        weapon.pitch = Math.PI / 2;
+        continue;
+      }
+
       let targetAngle: number | null = null;
       let hasActiveTarget = false;
 

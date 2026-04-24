@@ -241,6 +241,10 @@ export type TurretConfig = {
    *  arc, mortar-style); `false`/omitted = flat (low arc, direct-fire
    *  style). See TurretBlueprint.highArc. */
   highArc?: boolean;
+  /** VLS: turret stays pitched straight up and fires every pellet
+   *  into a random cone around vertical. See TurretBlueprint
+   *  .verticalLauncher. */
+  verticalLauncher?: boolean;
 };
 
 // Turret FSM state: idle → tracking → engaged

@@ -164,6 +164,13 @@ export type TurretBlueprint = {
    *  mortars lob their rounds over terrain / walls. Irrelevant for
    *  beams and lasers (instantaneous, direct-aim). */
   highArc?: boolean;
+  /** Vertical launch system. When true, the turret ignores the normal
+   *  yaw+pitch aim math and stays pointed straight up (pitch = π/2).
+   *  Each fired projectile launches upward with a random cone
+   *  deviation (`spread.angle` governs how far off vertical) — a
+   *  homing-guided rocket is expected to take over from there. Pairs
+   *  with the rocket-class shot flag `ignoresGravity`. */
+  verticalLauncher?: boolean;
 };
 
 export type TurretMount = {
