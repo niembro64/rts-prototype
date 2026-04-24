@@ -17,14 +17,17 @@
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
 
-const EMIT_INTERVAL_MS = 40;      // ~25 puffs/sec per rocket
-const PARTICLE_LIFESPAN_MS = 700;
+const EMIT_INTERVAL_MS = 60;      // ~17 puffs/sec per rocket
+const PARTICLE_LIFESPAN_MS = 900;
 const PARTICLE_START_RADIUS = 1.4;
 const PARTICLE_END_RADIUS = 4.5;
 const PARTICLE_START_ALPHA = 0.55;
 const SMOKE_COLOR = 0xcccccc;
-// Pool ceiling — bounded even if a dozen rockets stream at once.
-const MAX_PARTICLES = 384;
+// Pool ceiling — bounded so heavy salvo spam can't unbounded-allocate.
+// Steady state per rocket ≈ lifespan/emitInterval = 15 particles, so
+// 1500 comfortably covers ~20 simultaneous 10-rocket salvos before we
+// start dropping emissions.
+const MAX_PARTICLES = 1500;
 
 type Puff = {
   mesh: THREE.Mesh;
@@ -83,8 +86,13 @@ export class SmokeTrail3D {
     this.active.length = write;
 
     // 2) For each projectile that leaves a trail, accumulate emission
-    //    budget and spawn puffs at its current 3D position.
+    //    budget. Then spawn puffs in a ROUND-ROBIN pass so every
+    //    eligible rocket gets a fair share of the pool — otherwise
+    //    projectiles early in the iteration could burn the entire
+    //    cap on their own backlog and later rockets would silently
+    //    produce no trail at all.
     const seen = new Set<EntityId>();
+    const eligible: Entity[] = [];
     for (const e of projectiles) {
       const shot = e.projectile?.config.shot;
       if (!shot || shot.type !== 'projectile') continue;
@@ -97,9 +105,26 @@ export class SmokeTrail3D {
         this.emitters.set(e.id, em);
       }
       em.sinceLastEmit = Math.min(em.sinceLastEmit + dtMs, EMIT_INTERVAL_MS * 3);
-      while (em.sinceLastEmit >= EMIT_INTERVAL_MS && this.active.length < MAX_PARTICLES) {
-        em.sinceLastEmit -= EMIT_INTERVAL_MS;
-        this.spawnPuff(e.transform.x, e.transform.y, e.transform.z);
+      if (em.sinceLastEmit >= EMIT_INTERVAL_MS) eligible.push(e);
+    }
+
+    // Round-robin: repeatedly walk the eligible list, taking one
+    // emission budget slice off each rocket that still has one, until
+    // either all emitters drain below threshold or the pool fills.
+    // That way 10 rockets with backlog each get 1 puff before any
+    // rocket gets 2 — the trail density is uniform across the salvo.
+    if (eligible.length > 0) {
+      let progress = true;
+      while (progress && this.active.length < MAX_PARTICLES) {
+        progress = false;
+        for (const e of eligible) {
+          if (this.active.length >= MAX_PARTICLES) break;
+          const em = this.emitters.get(e.id)!;
+          if (em.sinceLastEmit < EMIT_INTERVAL_MS) continue;
+          em.sinceLastEmit -= EMIT_INTERVAL_MS;
+          this.spawnPuff(e.transform.x, e.transform.y, e.transform.z);
+          progress = true;
+        }
       }
     }
 
