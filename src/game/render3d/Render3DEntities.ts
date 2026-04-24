@@ -731,10 +731,15 @@ export class Render3DEntities {
         }
       }
 
-      // Position group at the ground; children position themselves relative
-      // to it. (Previously the group was offset to the chassis center; moving
-      // it to the ground simplifies ring/HP-bar/turret Y calcs.)
-      m.group.position.set(e.transform.x, 0, e.transform.y);
+      // Position group at the unit's footprint. sim.x → Three.x, sim.y
+      // → Three.z (the existing horizontal convention). Vertical =
+      // sim.z - radius: for a ground-resting unit sim.z == radius, so
+      // the group sits at y=0 and the chassis/turret meshes inside it
+      // still stack from the ground up. If the unit is pushed airborne
+      // by an explosion or falling from an overhang, the entire group
+      // lifts with it — no per-child Y touchups needed.
+      const unitRadius = e.unit?.unitRadiusCollider.push ?? 0;
+      m.group.position.set(e.transform.x, e.transform.z - unitRadius, e.transform.y);
       m.group.rotation.y = -e.transform.rotation;
 
       // Chassis shape is an extruded 2D body (BodyShape3D). The geometry
@@ -802,10 +807,12 @@ export class Render3DEntities {
         // -(t.rotation - chassis.rotation), which makes local +X point in the
         // correct world firing direction after both rotations compose.
         tm.root.rotation.y = -(t.rotation - e.transform.rotation);
-        // Gatling-style barrel spin: rotate the whole barrel cluster around
-        // its local +X axis (the firing direction). Gated on LOD — at min/low
-        // barrels stay frozen to match the 2D BARREL_SPIN axis.
+        // Pitch (vertical aim) tilts the barrel group around local Z —
+        // positive pitch from the sim rotates +X (the firing direction)
+        // toward +Y (up), i.e. the barrel elevates like an AA turret.
         if (tm.barrelGroup) {
+          tm.barrelGroup.rotation.z = t.pitch;
+          // Gatling-style barrel spin: rotate around local +X (firing axis).
           tm.barrelGroup.rotation.x = this.lod.gfx.barrelSpin
             ? spinState?.angle ?? 0
             : 0;
@@ -962,7 +969,11 @@ export class Render3DEntities {
         mesh.material = this.getSecondaryMat(pid);
       }
 
-      mesh.position.set(e.transform.x, SHOT_HEIGHT, e.transform.y);
+      // Projectile altitude is authoritative sim state (arcs through
+      // real z from turret muzzle to ground / target). SHOT_HEIGHT is
+      // no longer the truth — the sphere renders exactly where the
+      // sim says it is.
+      mesh.position.set(e.transform.x, e.transform.z, e.transform.y);
       // Match 2D: `fillCircle(x, y, radius)` — the sphere's world-space radius
       // equals the sim's shot.collision.radius. SphereGeometry has radius 1,
       // so setScalar(radius) is the correct scale. Barrel diameter (= 2·cylRadius
