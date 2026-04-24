@@ -81,4 +81,11 @@ export type CollisionResult = {
   events: SimEvent[];
   despawnEvents: ProjectileDespawnEvent[];
   deathContexts: Map<EntityId, DeathContext>;
+  /** New projectile entities created by collisions (submunitions /
+   *  cluster spawns). Simulation adds these to the world after the
+   *  handler returns — the handler can't safely mutate the projectile
+   *  cache mid-iteration. */
+  newProjectiles: Entity[];
+  /** Network spawn events matching `newProjectiles`, 1-to-1. */
+  spawnEvents: ProjectileSpawnEvent[];
 };

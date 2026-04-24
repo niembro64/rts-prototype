@@ -1,13 +1,15 @@
 // Projectile collision detection and damage application
 
 import type { WorldState } from '../WorldState';
-import type { EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
+import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { SimEvent, CollisionResult, ProjectileDespawnEvent } from './types';
+import type { SimEvent, CollisionResult, ProjectileDespawnEvent, ProjectileSpawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
+import { getSubmunitionTurretConfig } from '../blueprints';
+import { encodeSubmunitionTurretId } from '../turretConfigs';
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
@@ -16,6 +18,8 @@ const _collisionDeathContexts = new Map<EntityId, DeathContext>();
 const _collisionProjectilesToRemove: EntityId[] = [];
 const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionSimEvents: SimEvent[] = [];
+const _collisionNewProjectiles: Entity[] = [];
+const _collisionSpawnEvents: ProjectileSpawnEvent[] = [];
 
 // Reusable empty set for additive area damage (avoids allocating new Set per frame)
 const _emptyExcludeSet = new Set<EntityId>();
@@ -38,6 +42,63 @@ export function resetCollisionBuffers(): void {
   _collisionProjectilesToRemove.length = 0;
   _collisionDespawnEvents.length = 0;
   _collisionSimEvents.length = 0;
+  _collisionNewProjectiles.length = 0;
+  _collisionSpawnEvents.length = 0;
+}
+
+/**
+ * Spawn cluster submunitions when a projectile with `submunitions`
+ * detonates. Each child inherits the parent's owner + sourceEntityId
+ * so any further kills still credit the original shooter, and fans
+ * out from the explosion center in evenly-stepped random angles.
+ */
+function spawnSubmunitions(
+  world: WorldState,
+  parentShot: ProjectileShot,
+  x: number,
+  y: number,
+  ownerId: number,
+  sourceEntityId: EntityId,
+  outProjectiles: Entity[],
+  outSpawnEvents: ProjectileSpawnEvent[],
+): void {
+  const spec = parentShot.submunitions;
+  if (!spec || spec.count <= 0) return;
+
+  const childCfg = getSubmunitionTurretConfig(spec.shotId, spec.lifespanMs);
+  const spread = spec.angleSpread ?? Math.PI * 2;
+  // Uniform-ish fan with a randomized offset, so multiple volleys in the
+  // same tick don't visibly grid-align. Sim RNG isn't exposed here so
+  // Math.random() is fine — submunition direction is purely cosmetic
+  // and doesn't feed back into deterministic sim state (damage/knockback
+  // still come from the parent explosion, not the fragments' flight).
+  const startAngle = Math.random() * Math.PI * 2;
+  const stepAngle = spread / spec.count;
+  for (let i = 0; i < spec.count; i++) {
+    const jitter = (Math.random() - 0.5) * stepAngle * 0.6;
+    const angle = startAngle + i * stepAngle + jitter;
+    const vx = Math.cos(angle) * spec.speed;
+    const vy = Math.sin(angle) * spec.speed;
+    const proj = world.createProjectile(
+      x, y, vx, vy, ownerId, sourceEntityId, childCfg, 'projectile',
+    );
+    // Children start outside any source hitbox (parent already exploded).
+    if (proj.projectile) proj.projectile.hasLeftSource = true;
+    outProjectiles.push(proj);
+    outSpawnEvents.push({
+      id: proj.id,
+      pos: { x, y },
+      rotation: angle,
+      velocity: { x: vx, y: vy },
+      projectileType: 'projectile',
+      // Synthetic ID so the client can resolve the same TurretConfig
+      // (with the lifespan override baked in) that the server used.
+      turretId: encodeSubmunitionTurretId(spec.shotId, spec.lifespanMs),
+      playerId: ownerId,
+      sourceEntityId,
+      turretIndex: 0,
+    });
+  }
 }
 
 // Check projectile collisions and apply damage
@@ -56,12 +117,16 @@ export function checkProjectileCollisions(
   _collisionBuildingsToRemove.clear();
   _collisionSimEvents.length = 0;
   _collisionDeathContexts.clear();
+  _collisionNewProjectiles.length = 0;
+  _collisionSpawnEvents.length = 0;
   const projectilesToRemove = _collisionProjectilesToRemove;
   const despawnEvents = _collisionDespawnEvents;
   const unitsToRemove = _collisionUnitsToRemove;
   const buildingsToRemove = _collisionBuildingsToRemove;
   const audioEvents = _collisionSimEvents;
   const deathContexts = _collisionDeathContexts;
+  const newProjectiles = _collisionNewProjectiles;
+  const spawnEvents = _collisionSpawnEvents;
 
   for (const projEntity of world.getProjectiles()) {
     if (!projEntity.projectile || !projEntity.ownership) continue;
@@ -132,6 +197,14 @@ export function checkProjectileCollisions(
             ),
           });
         }
+
+        // Cluster flak: spawn submunitions after expiry splash explodes.
+        spawnSubmunitions(
+          world, projShot,
+          projEntity.transform.x, projEntity.transform.y,
+          projEntity.ownership.playerId, proj.sourceEntityId,
+          newProjectiles, spawnEvents,
+        );
       }
 
       // Add projectile expire event for traveling projectiles (not beams)
@@ -310,6 +383,14 @@ export function checkProjectileCollisions(
           applyKnockbackForces(secondarySplash.knockbacks, forceAccumulator);
           collectKillsAndDeathContexts(secondarySplash, unitsToRemove, buildingsToRemove, deathContexts);
         }
+
+        // Cluster flak: spawn submunitions after direct-hit splash.
+        spawnSubmunitions(
+          world, projShot,
+          projEntity.transform.x, projEntity.transform.y,
+          projEntity.ownership.playerId, proj.sourceEntityId,
+          newProjectiles, spawnEvents,
+        );
       }
 
       // Clean up source guard (must happen after all damage processing for this projectile)
@@ -370,5 +451,13 @@ export function checkProjectileCollisions(
     world.removeEntity(id);
   }
 
-  return { deadUnitIds: unitsToRemove, deadBuildingIds: buildingsToRemove, events: audioEvents, despawnEvents, deathContexts };
+  return {
+    deadUnitIds: unitsToRemove,
+    deadBuildingIds: buildingsToRemove,
+    events: audioEvents,
+    despawnEvents,
+    deathContexts,
+    newProjectiles,
+    spawnEvents,
+  };
 }

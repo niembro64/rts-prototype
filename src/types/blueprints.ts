@@ -41,6 +41,37 @@ export type ShotExplosionZone = {
   force: number;
 };
 
+/**
+ * Cluster / submunition specification. When attached to a projectile
+ * shot, the sim spawns `count` copies of `shotId` at the explosion
+ * origin whenever the parent shot explodes (either via direct-hit
+ * splash or `splashOnExpiry` timeout). Submunitions fly outward in
+ * random directions within `angleSpread` radians (defaults to a full
+ * 2π circle) at `speed` world-units/second.
+ *
+ * `lifespanMs` overrides the child shot's own blueprint lifespan for
+ * just these spawned instances — lets you keep e.g. a standard lightShot
+ * long enough to reach its targets normally, but give cluster-flak a
+ * short, dramatic burst without a new blueprint entry.
+ *
+ * Recursive submunitions (a child shot whose own blueprint has its
+ * own `submunitions`) fire normally — the only requirement is that
+ * no cycle forms, which is purely a blueprint-authoring concern.
+ */
+export type SubmunitionSpec = {
+  /** Shot blueprint ID for each spawned child. Must be a 'projectile' shot. */
+  shotId: string;
+  /** Number of children spawned per parent explosion. */
+  count: number;
+  /** Launch speed for each child, world units / second. */
+  speed: number;
+  /** Optional per-spawn lifespan override (ms). Falls back to the child
+   *  shot blueprint's own `lifespan` when omitted. */
+  lifespanMs?: number;
+  /** Total cone angle (radians). Omit for a full-circle fan. */
+  angleSpread?: number;
+};
+
 export type ProjectileShotBlueprint = {
   type: 'projectile';
   id: string;
@@ -53,6 +84,8 @@ export type ProjectileShotBlueprint = {
   splashOnExpiry: boolean;
   lifespan?: number;
   hitSound?: SoundEntry;
+  /** Cluster behavior — see {@link SubmunitionSpec}. */
+  submunitions?: SubmunitionSpec;
 };
 
 export type BeamShotBlueprint = {

@@ -148,6 +148,9 @@ export type ProjectileShot = {
   lifespan?: number;
   homingTurnRate?: number;
   trailLength?: number;
+  /** Cluster / flak-burst behavior — see SubmunitionSpec in types/blueprints.ts.
+   *  Evaluated by the collision handler at the moment of explosion. */
+  submunitions?: import('./blueprints').SubmunitionSpec;
 };
 
 // Beam shot — continuous line from turret, per-tick damage (no cooldown)

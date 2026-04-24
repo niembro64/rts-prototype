@@ -399,6 +399,16 @@ export class Simulation {
     // Check projectile collisions and get dead units
     const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);
 
+    // Add submunition / cluster projectiles spawned at explosion points,
+    // and mirror their spawn events to the network queue so clients see
+    // them the same way they see any freshly-fired round.
+    for (const proj of collisionResult.newProjectiles) {
+      this.world.addEntity(proj);
+    }
+    for (const event of collisionResult.spawnEvents) {
+      this.pendingProjectileSpawns.push(event);
+    }
+
     // Collect projectile despawn events from collisions
     for (const event of collisionResult.despawnEvents) {
       spatialGrid.removeProjectile(event.id);

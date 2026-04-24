@@ -74,8 +74,50 @@ function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate
     splashOnExpiry: bp.splashOnExpiry || undefined,
     lifespan: bp.lifespan,
     homingTurnRate: homingTurnRate,
+    submunitions: bp.submunitions,
   };
   return shot;
+}
+
+/**
+ * Build a synthetic TurretConfig for spawning a child projectile as
+ * a submunition. Used by the collision handler when a parent shot
+ * with `submunitions` explodes. This is NOT a turret anyone owns or
+ * fires — it's only a vehicle for carrying the child shot config
+ * into world.createProjectile, so fields like range/cooldown are
+ * irrelevant and left at 0.
+ *
+ * Cached per (childShotId, lifespanMs) key so repeated explosions
+ * reuse the same config object and readers-of-projectile-config
+ * (renderers, audio) see a stable identity.
+ */
+const _submunitionConfigCache = new Map<string, TurretConfig>();
+export function getSubmunitionTurretConfig(
+  childShotId: string,
+  lifespanMs: number | undefined,
+): TurretConfig {
+  const cacheKey = `${childShotId}|${lifespanMs ?? ''}`;
+  const cached = _submunitionConfigCache.get(cacheKey);
+  if (cached) return cached;
+
+  const bp = SHOT_BLUEPRINTS[childShotId];
+  if (!bp) throw new Error(`Unknown submunition shot: ${childShotId}`);
+  if (bp.type !== 'projectile') {
+    throw new Error(`Submunition must be a projectile shot: ${childShotId}`);
+  }
+
+  const shot = buildShotConfig(bp) as ProjectileShot;
+  if (lifespanMs !== undefined) shot.lifespan = lifespanMs;
+
+  const config: TurretConfig = {
+    id: `__sub:${childShotId}`,
+    range: 0,
+    cooldown: 0,
+    angular: { turnAccel: 0, drag: 0 },
+    shot,
+  };
+  _submunitionConfigCache.set(cacheKey, config);
+  return config;
 }
 
 /**
