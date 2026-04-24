@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SpinConfig } from '../../config';
+import { CHASSIS_HEIGHT, TURRET_HEIGHT } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   buildLocomotion,
@@ -32,13 +33,10 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitRadiusToggle } from '@/clientBarConfig';
 
-// All units share the same chassis and turret *heights*; only the horizontal
-// footprint (radius) varies with the unit's collider scale. That lets projectile
-// Y be a single constant aligned with the barrel tips — so shots visibly
-// originate from the ends of the turret barrels instead of the chassis center.
-const CHASSIS_HEIGHT = 28;           // Y extent of every unit chassis
-const TURRET_HEIGHT = 16;            // Y extent of every turret head
-// (SHOT_HEIGHT is gone — projectile altitude is authoritative sim state.)
+// All units share the same chassis and turret heights — imported above
+// from src/config.ts and shared with the sim's projectile-spawn code
+// (see MUZZLE_HEIGHT_ABOVE_GROUND) so visual barrel tip and sim muzzle
+// stay locked together.
 
 const BUILDING_HEIGHT = 120;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible

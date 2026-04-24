@@ -134,6 +134,33 @@ export const EMA_INITIAL_VALUES = {
 export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
 
 // =============================================================================
+// VISUAL DIMENSIONS (shared sim + render)
+// =============================================================================
+// The sim knows the unit's physics sphere (radius around transform.z),
+// but the visible chassis + turret mesh sits *above* that sphere center.
+// Projectile muzzle / spawn altitude has to match the visible barrel
+// tip, not the sphere center — otherwise shots come out of the unit's
+// belly instead of the turret. These constants are the authoritative
+// values: Render3DEntities.ts and Debris3D.ts import them from here
+// so visual and sim stay locked together.
+
+/** Vertical extent of every unit's chassis box, measured above the
+ *  ground. Matches the "chassis drawn from y=0 to y=CHASSIS_HEIGHT"
+ *  convention in Render3DEntities.ts. */
+export const CHASSIS_HEIGHT = 28;
+
+/** Vertical extent of a turret's head (barrel cluster sits at
+ *  mid-height of the turret head). */
+export const TURRET_HEIGHT = 16;
+
+/** World-space altitude of the barrel tip above the unit's ground
+ *  footprint, in the neutral (pitch=0) orientation. Projectile fire
+ *  code adds `unit.transform.z - radius` to this to get the absolute
+ *  muzzle z — non-grounded units (airborne, mid-explosion-knockback)
+ *  then fire from the right height without a special case. */
+export const MUZZLE_HEIGHT_ABOVE_GROUND = CHASSIS_HEIGHT + TURRET_HEIGHT / 2;
+
+// =============================================================================
 // ECONOMY & RESOURCES
 // =============================================================================
 

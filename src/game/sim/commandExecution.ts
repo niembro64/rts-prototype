@@ -8,6 +8,7 @@ import { magnitude, getWeaponWorldPosition, getTransformCosSin } from '../math';
 import { getBarrelTipWorldPos } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
+import { MUZZLE_HEIGHT_ABOVE_GROUND } from '../../config';
 
 export type { CommandContext } from '@/types/ui';
 import type { CommandContext } from '@/types/ui';
@@ -275,10 +276,13 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   ctx.world.addEntity(projectile);
 
   // Emit projectile spawn event for D-gun. D-gun fires horizontally
-  // from the commander's hull height; vz=0 gives the classic TA-style
-  // flat beam-like projectile (M7's ballistic pitch applies to AI
-  // turrets; manual D-gun is fixed-angle).
-  const dgunFireZ = commander.transform.z;
+  // from the commander's barrel tip (not sphere center) so the
+  // projectile emerges from the visible turret instead of the
+  // commander's belly. Same muzzle-height formula the AI turrets
+  // use in projectileSystem.ts.
+  const commanderGroundZ = commander.transform.z -
+    (commander.unit?.unitRadiusCollider.push ?? 0);
+  const dgunFireZ = commanderGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND;
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },

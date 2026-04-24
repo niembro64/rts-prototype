@@ -8,7 +8,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
+import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, MUZZLE_HEIGHT_ABOVE_GROUND } from '../../../config';
 import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos } from './combatUtils';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 
@@ -152,14 +152,20 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         const fireCos = Math.cos(angle);
         const fireSin = Math.sin(angle);
 
-        // Muzzle world-position. Horizontal component = barrel tip on
-        // the yaw ray (pitched barrels shorten their ground-plane
-        // projection by pitchCos). Vertical component = hull altitude
-        // plus the pitched barrel tip.
+        // Muzzle world-position.
+        //   Horizontal: barrel tip projected on the yaw ray (pitched
+        //   barrels shorten their ground-plane projection by cos(pitch)).
+        //   Vertical: unit's ground-footprint altitude (transform.z -
+        //   sphere radius) + MUZZLE_HEIGHT_ABOVE_GROUND (how high the
+        //   visible barrel sits above the ground) + the barrel-tip's
+        //   vertical projection from the pitch angle. Airborne units
+        //   fire from correspondingly higher because transform.z
+        //   carries their altitude.
         const horizBarrel = barrelOffset * pitchCos;
         const spawnX = weaponX + fireCos * horizBarrel;
         const spawnY = weaponY + fireSin * horizBarrel;
-        const spawnZ = unit.transform.z + barrelOffset * pitchSin;
+        const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+        const spawnZ = unitGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND + barrelOffset * pitchSin;
 
         if (isBeamWeapon) {
           // Create beam using weapon's fireRange
