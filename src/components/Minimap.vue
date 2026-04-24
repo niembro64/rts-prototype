@@ -14,13 +14,26 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 
-// Minimap display size
-const MINIMAP_WIDTH = 180;
-const MINIMAP_HEIGHT = 135;
+// Minimap display size. The longest side is pinned at MINIMAP_MAX;
+// the other side follows the map's aspect ratio — so a 3000×3000
+// square map renders as a 180×180 square, a 4000×2000 map as
+// 180×90, and so on. Previously both dimensions were hardcoded 4:3
+// regardless of the map, which squashed square maps into rectangles
+// and miscomputed the camera-quad overlay.
+const MINIMAP_MAX = 180;
+
+const size = computed(() => {
+  const mw = Math.max(1, props.data.mapWidth);
+  const mh = Math.max(1, props.data.mapHeight);
+  if (mw >= mh) {
+    return { w: MINIMAP_MAX, h: Math.round(MINIMAP_MAX * mh / mw) };
+  }
+  return { w: Math.round(MINIMAP_MAX * mw / mh), h: MINIMAP_MAX };
+});
 
 const scale = computed(() => ({
-  x: MINIMAP_WIDTH / props.data.mapWidth,
-  y: MINIMAP_HEIGHT / props.data.mapHeight,
+  x: size.value.w / props.data.mapWidth,
+  y: size.value.h / props.data.mapHeight,
 }));
 
 // Offscreen canvas holding the "slow layer" — map background, grid
@@ -33,11 +46,15 @@ let offscreen: HTMLCanvasElement | null = null;
 let offCtx: CanvasRenderingContext2D | null = null;
 
 function ensureOffscreen(): void {
-  if (offscreen) return;
-  offscreen = document.createElement('canvas');
-  offscreen.width = MINIMAP_WIDTH;
-  offscreen.height = MINIMAP_HEIGHT;
-  offCtx = offscreen.getContext('2d');
+  // Rebuild offscreen if the minimap's target dimensions changed
+  // (e.g. map swap between sessions, or load-time data arriving).
+  if (offscreen && offscreen.width === size.value.w && offscreen.height === size.value.h) return;
+  if (!offscreen) {
+    offscreen = document.createElement('canvas');
+    offCtx = offscreen.getContext('2d');
+  }
+  offscreen.width = size.value.w;
+  offscreen.height = size.value.h;
 }
 
 function drawEntityLayer(): void {
@@ -47,9 +64,11 @@ function drawEntityLayer(): void {
   const { mapWidth, mapHeight, entities } = props.data;
   const scaleX = scale.value.x;
   const scaleY = scale.value.y;
+  const w = size.value.w;
+  const h = size.value.h;
 
   ctx.fillStyle = '#1a1a2e';
-  ctx.fillRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+  ctx.fillRect(0, 0, w, h);
 
   // Subtle world grid
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
@@ -58,13 +77,13 @@ function drawEntityLayer(): void {
   for (let x = 0; x <= mapWidth; x += gridSize) {
     ctx.beginPath();
     ctx.moveTo(x * scaleX, 0);
-    ctx.lineTo(x * scaleX, MINIMAP_HEIGHT);
+    ctx.lineTo(x * scaleX, h);
     ctx.stroke();
   }
   for (let y = 0; y <= mapHeight; y += gridSize) {
     ctx.beginPath();
     ctx.moveTo(0, y * scaleY);
-    ctx.lineTo(MINIMAP_WIDTH, y * scaleY);
+    ctx.lineTo(w, y * scaleY);
     ctx.stroke();
   }
 
@@ -105,8 +124,10 @@ function compose(): void {
   const { cameraQuad } = props.data;
   const scaleX = scale.value.x;
   const scaleY = scale.value.y;
+  const w = size.value.w;
+  const h = size.value.h;
 
-  ctx.clearRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+  ctx.clearRect(0, 0, w, h);
   ctx.drawImage(offscreen, 0, 0);
 
   // Camera footprint polygon — axis-aligned rect for an unrotated
@@ -115,7 +136,7 @@ function compose(): void {
   // above the horizon don't scribble outside.
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+  ctx.rect(0, 0, w, h);
   ctx.clip();
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
   ctx.lineWidth = 1.5;
@@ -130,7 +151,7 @@ function compose(): void {
 
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   ctx.lineWidth = 2;
-  ctx.strokeRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+  ctx.strokeRect(0, 0, w, h);
 }
 
 function handleClick(event: MouseEvent) {
@@ -183,8 +204,8 @@ onMounted(() => {
     <div class="minimap-label">Map</div>
     <canvas
       ref="canvasRef"
-      :width="180"
-      :height="135"
+      :width="size.w"
+      :height="size.h"
       class="minimap-canvas"
       @click="handleClick"
     ></canvas>
