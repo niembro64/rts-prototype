@@ -94,13 +94,23 @@ export type UnitAction = {
   targetId?: EntityId;
 };
 
-// Cached mirror panel geometry (pre-computed from blueprint at entity creation)
+// Cached mirror panel geometry (pre-computed from blueprint at entity creation).
+// halfWidth  — half the panel's edge length (along the horizontal edge direction).
+// halfHeight — legacy 2D thickness value from the blueprint; unused in 3D
+//              collision (panels are vertical infinitely-thin rectangles) but
+//              kept so 2D art paths still read meaningful numbers.
+// baseY/topY — world-y above the unit's ground footprint defining the
+//              panel's vertical span. Shared across all of a unit's panels
+//              because they all sit flush with the unit body (baseY=MIRROR_BASE_Y)
+//              and run up to body-top + TURRET_HEIGHT (topY, per-unit).
 export type CachedMirrorPanel = {
   halfWidth: number;
   halfHeight: number;
   offsetX: number;
   offsetY: number;
   angle: number;
+  baseY: number;
+  topY: number;
 };
 
 // Unit component - movable entities. Velocities are 3D: X/Y are

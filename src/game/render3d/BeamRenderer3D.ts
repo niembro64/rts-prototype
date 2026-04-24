@@ -1,22 +1,25 @@
 // BeamRenderer3D — renders beam and laser projectiles as thin 3D cylinders.
 //
-// ClientViewState already reconstructs start/end/reflections from the source
-// unit's turret state each frame (server sends only spawn/despawn — see
-// ClientViewState.applyPrediction). This renderer reads those fields and draws
-// one cylinder per path segment at SHOT_HEIGHT so the beam line up with the
-// barrel tips of all turrets.
+// ClientViewState reconstructs start/end/reflections (including z) from the
+// source unit's turret yaw + pitch each frame via the 3D beam tracer in
+// BeamPathResolver. This renderer reads those fields and draws one cylinder
+// per path segment using each segment's real altitude — a pitched beam
+// leaves the barrel tip at the unit's muzzle height and its reflections
+// each carry their own hit-point z, so the rendered polyline matches the
+// collision math exactly.
 //
-// Cylinders come from a shared pool: each frame we rebuild by pulling from the
-// pool and hiding any leftover meshes. Per-team materials are cached.
+// Cylinders come from a shared pool: each frame we rebuild by pulling from
+// the pool and hiding any leftover meshes. Per-team materials are cached.
 
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 
-// Must match the value in Render3DEntities so beams and barrel tips share a
-// Y level. Kept as a constant (not exported from Render3DEntities) to avoid a
-// circular import; if the value ever changes, update both.
-const SHOT_HEIGHT = 28 + 16 / 2; // CHASSIS_HEIGHT + TURRET_HEIGHT / 2
+// Fallback altitude for beams whose proj.startZ / endZ haven't been
+// populated yet (a single frame gap before the tracer runs). Matches the
+// old flat-beam height so a first-frame beam renders at the same Y it
+// did pre-3D, rather than snapping to 0.
+const SHOT_HEIGHT = 28 + 16 / 2;
 
 // Cylinder radius is the sim's `shot.radius` (= shot.width / 2), floored so a
 // very-thin beam isn't invisible. Matches TurretRenderer.ts which draws beams
@@ -99,10 +102,14 @@ export class BeamRenderer3D {
   private placeSegment(
     mesh: THREE.Mesh,
     ax: number, az: number, bx: number, bz: number,
+    ay: number, by: number,
     cylRadius: number,
   ): void {
-    this._a.set(ax, SHOT_HEIGHT, az);
-    this._b.set(bx, SHOT_HEIGHT, bz);
+    // sim-(x, y, z) maps to three-(x, z, y) — height is sim.z, which
+    // the beam tracer now reports per segment (barrel-tip start,
+    // reflection points, and final end all carry their real altitude).
+    this._a.set(ax, ay, az);
+    this._b.set(bx, by, bz);
     this._mid.copy(this._a).lerp(this._b, 0.5);
     const length = this._a.distanceTo(this._b);
     this._dir.copy(this._b).sub(this._a);
@@ -133,6 +140,11 @@ export class BeamRenderer3D {
         startX === undefined || startY === undefined ||
         endX === undefined || endY === undefined
       ) continue;
+      // Vertical endpoints come from the 3D beam tracer; fall back to
+      // SHOT_HEIGHT for beams that predate the z-aware path (e.g. a
+      // keyframe where start/endZ wasn't populated yet).
+      const startZ = proj.startZ ?? SHOT_HEIGHT;
+      const endZ = proj.endZ ?? SHOT_HEIGHT;
 
       // Scope gate — skip the beam entirely when BOTH endpoints are
       // outside the render rect. A beam that crosses the rect (one
@@ -153,24 +165,28 @@ export class BeamRenderer3D {
       }
       const material = this.getMaterial(proj.ownerId, pt);
 
-      // Build the path: start → reflections[0..n-1] → end. Each consecutive
-      // pair is one cylinder segment.
+      // Build the path: start → reflections[0..n-1] → end. Each
+      // consecutive pair is one cylinder segment. Each reflection
+      // carries its own z so pitched beams bouncing off vertical
+      // mirrors trace the correct 3D polyline.
       let prevX = startX;
       let prevY = startY;
+      let prevZ = startZ;
       const reflections = proj.reflections;
       if (reflections) {
         for (let i = 0; i < reflections.length; i++) {
           const r = reflections[i];
           const mesh = this.acquireSegment(segIdx++);
           mesh.material = material;
-          this.placeSegment(mesh, prevX, prevY, r.x, r.y, cylRadius);
+          this.placeSegment(mesh, prevX, prevY, r.x, r.y, prevZ, r.z, cylRadius);
           prevX = r.x;
           prevY = r.y;
+          prevZ = r.z;
         }
       }
       const mesh = this.acquireSegment(segIdx++);
       mesh.material = material;
-      this.placeSegment(mesh, prevX, prevY, endX, endY, cylRadius);
+      this.placeSegment(mesh, prevX, prevY, endX, endY, prevZ, endZ, cylRadius);
     }
 
     // Hide leftover pool entries (beams that disappeared this frame).

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SpinConfig } from '../../config';
-import { TURRET_HEIGHT } from '../../config';
+import { TURRET_HEIGHT, MIRROR_BASE_Y } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   buildLocomotion,
@@ -54,7 +54,8 @@ const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
 // top of the panel is flush with the top of the turret head (which is the
 // tallest part of the unit). The top is computed per-unit now that body
 // heights vary.
-const MIRROR_BASE_Y = 2;             // bottom of the mirror panel above ground
+// MIRROR_BASE_Y comes from src/config.ts — same value the sim uses so
+// the beam-reflection tracer and the rendered panel mesh line up.
 
 type TurretMesh = {
   root: THREE.Group;       // positioned at turret.offset, rotated to turret rotation

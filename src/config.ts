@@ -148,6 +148,13 @@ export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
  *  in getUnitMuzzleHeight (sim/combat/combatUtils.ts). */
 export const TURRET_HEIGHT = 16;
 
+/** World-y of the bottom edge of a mirror-unit's reflective panels,
+ *  measured above the unit's ground footprint. Shared sim + render
+ *  constant so beam reflection (which needs the panel's vertical span)
+ *  and the 3D renderer draw the exact same rectangle. A small positive
+ *  value keeps the panel off the ground tile to avoid z-fighting. */
+export const MIRROR_BASE_Y = 2;
+
 /** Universal gravity acceleration (world units / s², pulling −z).
  *  Single source of truth for every falling thing — physics engine's
  *  unit bodies, projectile ballistic integration, debris chunks,

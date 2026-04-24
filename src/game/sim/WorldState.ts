@@ -3,7 +3,8 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, DEFAULT_FF_DMG_UNITS } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, DEFAULT_FF_DMG_UNITS, MIRROR_BASE_Y, TURRET_HEIGHT } from '../../config';
+import { getBodyTopY } from '../math/BodyDimensions';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -376,7 +377,14 @@ export class WorldState {
     // Create turrets from blueprint definition
     entity.turrets = createTurretsFromDefinition(unitId, bp.unitRadiusCollider.scale);
 
-    // Cache mirror panels for fast beam collision checks (avoids blueprint lookup per tick)
+    // Cache mirror panels for fast beam collision checks (avoids blueprint lookup per tick).
+    // Vertical span = MIRROR_BASE_Y → bodyTop + TURRET_HEIGHT above the
+    // unit's ground footprint; shared with the 3D renderer's panel mesh
+    // so collision geometry matches the visible rectangle.
+    const rendererId = bp.renderer ?? 'arachnid';
+    const panelBaseY = MIRROR_BASE_Y;
+    const panelTopY = getBodyTopY(rendererId, bp.unitRadiusCollider.scale)
+      + TURRET_HEIGHT;
     for (const mount of bp.turrets) {
       const tb = getTurretBlueprint(mount.turretId);
       if (tb.mirrorPanels) {
@@ -389,6 +397,8 @@ export class WorldState {
             offsetX: p.offsetX,
             offsetY: p.offsetY,
             angle: p.angle,
+            baseY: panelBaseY,
+            topY: panelTopY,
           });
           // Bound radius: distance from center to farthest panel edge endpoint
           const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + p.width / 2;

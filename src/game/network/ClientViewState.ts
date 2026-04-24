@@ -20,7 +20,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig } from '../sim/turretConfigs';
-import { getBarrelTipWorldPos } from '../sim/combat/combatUtils';
+import { getBarrelTipOffset, getBarrelTipWorldPos, getUnitMuzzleHeight } from '../sim/combat/combatUtils';
 import {
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -656,11 +656,18 @@ export class ClientViewState {
           const weapon = source?.turrets?.[weaponIndex];
 
           if (source && weapon && weapon.state === 'engaged') {
+            // Full 3D beam: yaw + pitch → direction; start at barrel
+            // tip (shortened by cos(pitch), raised by sin(pitch));
+            // end at direction × beamLength. Same construction the
+            // server uses in projectileSystem so predicted and
+            // authoritative geometry agree.
             const turretAngle = weapon.rotation;
-            const dirX = Math.cos(turretAngle);
-            const dirY = Math.sin(turretAngle);
+            const turretPitch = weapon.pitch;
+            const pitchCos = Math.cos(turretPitch);
+            const pitchSin = Math.sin(turretPitch);
+            const yawCos = Math.cos(turretAngle);
+            const yawSin = Math.sin(turretAngle);
 
-            // Calculate weapon position in world coordinates (same math as sim)
             const unitCos = Math.cos(source.transform.rotation);
             const unitSin = Math.sin(source.transform.rotation);
             const wp = getWeaponWorldPosition(
@@ -672,25 +679,30 @@ export class ClientViewState {
               weapon.offset.y,
             );
 
-            // Beam starts at barrel tip
-            const bt = getBarrelTipWorldPos(
-              wp.x,
-              wp.y,
-              turretAngle,
+            const barrelOffset = getBarrelTipOffset(
               entity.projectile.config,
               source.unit!.unitRadiusCollider.scale,
             );
-            const startX = bt.x;
-            const startY = bt.y;
+            const horizBarrel = barrelOffset * pitchCos;
+            const startX = wp.x + yawCos * horizBarrel;
+            const startY = wp.y + yawSin * horizBarrel;
+            const unitGroundZ = source.transform.z - source.unit!.unitRadiusCollider.push;
+            const startZ = unitGroundZ + getUnitMuzzleHeight(source) + barrelOffset * pitchSin;
 
-            // Full-range beam end
-            const fullEndX = startX + dirX * weapon.ranges.engage.acquire;
-            const fullEndY = startY + dirY * weapon.ranges.engage.acquire;
+            const dir3X = yawCos * pitchCos;
+            const dir3Y = yawSin * pitchCos;
+            const dir3Z = pitchSin;
+            const beamLength = weapon.ranges.engage.acquire;
+            const fullEndX = startX + dir3X * beamLength;
+            const fullEndY = startY + dir3Y * beamLength;
+            const fullEndZ = startZ + dir3Z * beamLength;
 
             entity.projectile.startX = startX;
             entity.projectile.startY = startY;
+            entity.projectile.startZ = startZ;
             entity.transform.x = startX;
             entity.transform.y = startY;
+            entity.transform.z = startZ;
             entity.transform.rotation = turretAngle;
 
             // Throttle beam path recomputation (client has no spatial grid — full O(N) scan)
@@ -702,22 +714,17 @@ export class ClientViewState {
             ) {
               const beamPath = findBeamPath(
                 this.cache,
-                startX,
-                startY,
-                fullEndX,
-                fullEndY,
+                startX, startY, startZ,
+                fullEndX, fullEndY, fullEndZ,
                 entity.projectile.sourceEntityId,
               );
               entity.projectile.endX = beamPath.endX;
               entity.projectile.endY = beamPath.endY;
-              entity.projectile.endZ = entity.transform.z;
+              entity.projectile.endZ = beamPath.endZ;
               entity.projectile.obstructionT = beamPath.obstructionT;
-              // Beam reflection points promoted to 3D at the source
-              // altitude — matches the server-side shim in
-              // projectileSystem.ts until we have a 3D beam tracer.
               entity.projectile.reflections =
                 beamPath.reflections.length > 0
-                  ? beamPath.reflections.map((r) => ({ ...r, z: entity.transform.z }))
+                  ? beamPath.reflections
                   : undefined;
             }
           } else {

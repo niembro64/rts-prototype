@@ -22,6 +22,8 @@ export {
   lineSphereIntersectionT,
   lineLineIntersectionT,
   lineRectIntersectionT,
+  rayVerticalRectIntersectionT,
+  rayBoxIntersectionT,
   isPointInSlice,
 } from './CollisionHelpers';
 

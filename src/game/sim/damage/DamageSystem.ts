@@ -17,7 +17,7 @@ import type {
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
-import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, isPointInSlice } from '../../math';
+import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, rayVerticalRectIntersectionT, isPointInSlice } from '../../math';
 import { getTargetRadius } from '../combat/combatUtils';
 
 
@@ -54,29 +54,12 @@ export function resetDamageBuffers(): void {
   _reusableHits.length = 0;
 }
 
-// Reusable result for raySegmentIntersection (avoids per-hit allocations in hot loop)
-const _rsHit = { t: 0, x: 0, y: 0 };
-
-// Ray-vs-line-segment intersection.
-// Ray from (sx,sy) to (ex,ey), segment from (ax,ay) to (bx,by).
-// Returns reusable _rsHit on hit — caller must read values before next call.
-function raySegmentIntersection(
-  sx: number, sy: number, ex: number, ey: number,
-  ax: number, ay: number, bx: number, by: number,
-): typeof _rsHit | null {
-  const rdx = ex - sx, rdy = ey - sy;
-  const sdx = bx - ax, sdy = by - ay;
-  const denom = rdx * sdy - rdy * sdx;
-  if (Math.abs(denom) < 1e-10) return null; // Parallel
-  const t = ((ax - sx) * sdy - (ay - sy) * sdx) / denom;
-  const u = ((ax - sx) * rdy - (ay - sy) * rdx) / denom;
-  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-  _rsHit.t = t; _rsHit.x = sx + t * rdx; _rsHit.y = sy + t * rdy;
-  return _rsHit;
-}
-
-// Reusable result for findBeamSegmentHit
-const _segHit = { t: 0, x: 0, y: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, panelIndex: -1 };
+// Reusable result for findBeamSegmentHit.
+// `z` is the world altitude of the hit point; `normalX/Y` is the
+// panel's outward-facing horizontal normal (mirror panels are upright,
+// so normalZ is always 0 — see the reflection formula in findBeamPath
+// where d.z is preserved through the bounce).
+const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, panelIndex: -1 };
 
 // Compute distance-based falloff damage for area effects
 function computeFalloffDamage(dist: number, radius: number, baseDamage: number, falloff: number): number {
@@ -157,80 +140,92 @@ export class DamageSystem {
     return closestT !== null ? { t: closestT, entityId: closestEntityId! } : null;
   }
 
-  // Find beam path with reflections off mirror units
-  // Returns final endpoint and all reflection bounce points
-  // Mirror collision uses ray-vs-line-segment (flat mirror surface), not the circle collider
+  // Find beam path with reflections off mirror units — full 3D.
+  //
+  // Mirror panels are upright rectangles (vertical slab, horizontal
+  // yaw-only normal). A beam tilted up into the sky genuinely misses a
+  // low panel even if its horizontal projection would cross the panel's
+  // edge line, and a bounce off a panel preserves the beam's pitch
+  // because the reflection formula r = d − 2·(d·n)·n with n.z=0 leaves
+  // d.z untouched. Buildings are 3D AABBs (x/y footprint × z depth), so
+  // a high-arc beam can pass over a short building and hit the mirror
+  // behind it.
   findBeamPath(
-    startX: number, startY: number,
-    endX: number, endY: number,
+    startX: number, startY: number, startZ: number,
+    endX: number, endY: number, endZ: number,
     sourceEntityId: EntityId,
     lineWidth: number,
     maxBounces: number = 3
   ): {
-    endX: number; endY: number;
+    endX: number; endY: number; endZ: number;
     obstructionT?: number;
-    reflections: { x: number; y: number; mirrorEntityId: EntityId }[];
+    reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[];
   } {
-    const reflections: { x: number; y: number; mirrorEntityId: EntityId }[] = [];
-    let curStartX = startX;
-    let curStartY = startY;
-    let curEndX = endX;
-    let curEndY = endY;
+    const reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[] = [];
+    let curSX = startX, curSY = startY, curSZ = startZ;
+    let curEX = endX, curEY = endY, curEZ = endZ;
     let excludeEntityId = sourceEntityId;
     let excludePanelIndex = -1; // -1 = exclude entire entity (source), >= 0 = exclude only that panel
 
     for (let bounce = 0; bounce <= maxBounces; bounce++) {
-      // Find closest hit: either a mirror line segment or a regular entity circle/rect
       const hit = this.findBeamSegmentHit(
-        curStartX, curStartY, curEndX, curEndY,
+        curSX, curSY, curSZ, curEX, curEY, curEZ,
         excludeEntityId, excludePanelIndex, lineWidth
       );
 
       if (!hit) {
-        return { endX: curEndX, endY: curEndY, reflections };
+        return { endX: curEX, endY: curEY, endZ: curEZ, reflections };
       }
 
       if (!hit.isMirror) {
-        // Regular obstruction — truncate
         if (bounce === 0) {
-          return { endX: hit.x, endY: hit.y, obstructionT: hit.t, reflections };
+          return { endX: hit.x, endY: hit.y, endZ: hit.z, obstructionT: hit.t, reflections };
         }
-        return { endX: hit.x, endY: hit.y, reflections };
+        return { endX: hit.x, endY: hit.y, endZ: hit.z, reflections };
       }
 
-      // Mirror reflection — use the mirror surface normal for natural angles
-      reflections.push({ x: hit.x, y: hit.y, mirrorEntityId: hit.entityId });
+      reflections.push({ x: hit.x, y: hit.y, z: hit.z, mirrorEntityId: hit.entityId });
 
-      const segDx = curEndX - curStartX;
-      const segDy = curEndY - curStartY;
-      const segLen = magnitude(segDx, segDy);
+      const segDx = curEX - curSX;
+      const segDy = curEY - curSY;
+      const segDz = curEZ - curSZ;
+      const segLen = Math.hypot(segDx, segDy, segDz);
       if (segLen === 0) break;
       const beamDirX = segDx / segLen;
       const beamDirY = segDy / segLen;
+      const beamDirZ = segDz / segLen;
 
-      // Reflect: d - 2(d·n)n using the mirror's facing normal
+      // Reflect around the panel's horizontal normal. normalZ is 0 for
+      // yaw-only panels, so d.z comes out unchanged — a pitched beam
+      // exits the mirror with the same vertical slope it arrived at,
+      // just mirrored horizontally (the natural result for a vertical
+      // mirror).
       const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY;
       const reflDirX = beamDirX - 2 * dotDN * hit.normalX;
       const reflDirY = beamDirY - 2 * dotDN * hit.normalY;
+      const reflDirZ = beamDirZ;
       const remaining = segLen * (1 - hit.t);
 
-      curStartX = hit.x;
-      curStartY = hit.y;
-      curEndX = hit.x + reflDirX * remaining;
-      curEndY = hit.y + reflDirY * remaining;
+      curSX = hit.x;
+      curSY = hit.y;
+      curSZ = hit.z;
+      curEX = hit.x + reflDirX * remaining;
+      curEY = hit.y + reflDirY * remaining;
+      curEZ = hit.z + reflDirZ * remaining;
       excludeEntityId = hit.entityId;
-      excludePanelIndex = hit.panelIndex; // only exclude the panel we just bounced off
+      excludePanelIndex = hit.panelIndex;
     }
 
-    return { endX: curEndX, endY: curEndY, reflections };
+    return { endX: curEX, endY: curEY, endZ: curEZ, reflections };
   }
 
-  // Find closest beam hit — checks mirror line segments AND regular entity colliders
-  // excludeEntityId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit
-  // excludePanelIndex: -1 = exclude entire entity, >= 0 = exclude only that panel on that entity
+  // Find closest beam hit — checks mirror panel rectangles AND regular
+  // entity colliders, all in 3D.
+  //   excludeEntityId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit
+  //   excludePanelIndex: -1 = exclude entire entity, >= 0 = exclude only that panel
   private findBeamSegmentHit(
-    startX: number, startY: number,
-    endX: number, endY: number,
+    startX: number, startY: number, startZ: number,
+    endX: number, endY: number, endZ: number,
     excludeEntityId: EntityId,
     excludePanelIndex: number,
     lineWidth: number
@@ -240,17 +235,19 @@ export class DamageSystem {
 
     const dx = endX - startX;
     const dy = endY - startY;
+    const dz = endZ - startZ;
     const segLenSq = dx * dx + dy * dy;
 
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, endX, endY, lineWidth + 60);
 
     for (const unit of nearbyUnits) {
-      // Panel-level exclude: if excludePanelIndex >= 0, only skip the specific panel (not the whole entity)
       const isExcludedEntity = unit.id === excludeEntityId;
-      if (isExcludedEntity && excludePanelIndex < 0) continue; // full entity exclude (source unit)
+      if (isExcludedEntity && excludePanelIndex < 0) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
-      // Early-out: point-to-line distance check (avoids expensive trig+intersection for distant units)
+      // Horizontal-only early-out — the beam may arc vertically past
+      // the unit, but we still require its XY projection to come near
+      // the unit's bounding radius.
       const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
       const crossSq = (ux * dy - uy * dx);
       const panels = unit.unit.mirrorPanels;
@@ -260,7 +257,7 @@ export class DamageSystem {
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
       if (panels.length > 0) {
-        // Mirror unit: test ray vs outer edge of each rectangular panel
+        // Mirror unit: 3D ray-vs-upright-rectangle for each panel.
         let mirrorRot = unit.transform.rotation;
         if (unit.turrets && unit.turrets.length > 0) {
           mirrorRot = unit.turrets[0].rotation;
@@ -270,69 +267,94 @@ export class DamageSystem {
         const perpX = -fwdY;
         const perpY = fwdX;
 
+        // Panel vertical range in world-z = unit's ground footprint
+        // altitude (transform.z − push radius when the unit is resting)
+        // plus the panel's per-unit base/top offsets above ground.
+        const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+
         for (let pi = 0; pi < panels.length; pi++) {
-          // Skip only the specific panel we just bounced off
           if (isExcludedEntity && pi === excludePanelIndex) continue;
 
           const panel = panels[pi];
-          // Panel center in world space
           const pcx = unit.transform.x + fwdX * panel.offsetX + perpX * panel.offsetY;
           const pcy = unit.transform.y + fwdY * panel.offsetX + perpY * panel.offsetY;
-
-          // Panel's outward-facing direction (rotated by panel.angle relative to turret forward)
           const panelAngle = mirrorRot + panel.angle;
-          const pnx = Math.cos(panelAngle); // outward normal
+          const pnx = Math.cos(panelAngle);
           const pny = Math.sin(panelAngle);
 
-          // Edge direction (perpendicular to normal, along reflective edge)
-          const edx = -pny;
-          const edy = pnx;
-
-          // Edge endpoints
-          const e1x = pcx + edx * panel.halfWidth;
-          const e1y = pcy + edy * panel.halfWidth;
-          const e2x = pcx - edx * panel.halfWidth;
-          const e2y = pcy - edy * panel.halfWidth;
-
-          const faceHit = raySegmentIntersection(startX, startY, endX, endY, e1x, e1y, e2x, e2y);
-          if (faceHit !== null && faceHit.t < bestT) {
-            bestT = faceHit.t; found = true;
-            _segHit.t = faceHit.t; _segHit.x = faceHit.x; _segHit.y = faceHit.y;
-            _segHit.entityId = unit.id; _segHit.isMirror = true; _segHit.normalX = pnx; _segHit.normalY = pny;
+          const t = rayVerticalRectIntersectionT(
+            startX, startY, startZ,
+            endX, endY, endZ,
+            pcx, pcy,
+            pnx, pny,
+            panel.halfWidth,
+            unitGroundZ + panel.baseY,
+            unitGroundZ + panel.topY,
+          );
+          if (t !== null && t < bestT) {
+            bestT = t; found = true;
+            _segHit.t = t;
+            _segHit.x = startX + t * dx;
+            _segHit.y = startY + t * dy;
+            _segHit.z = startZ + t * dz;
+            _segHit.entityId = unit.id;
+            _segHit.isMirror = true;
+            _segHit.normalX = pnx; _segHit.normalY = pny;
             _segHit.panelIndex = pi;
           }
         }
       }
 
-      // Circle collision — all units (mirror units can be hit on their body too)
+      // Unit body: 3D segment-vs-sphere.
       {
-        const t = lineCircleIntersectionT(
-          startX, startY, endX, endY,
-          unit.transform.x, unit.transform.y,
+        const t = lineSphereIntersectionT(
+          startX, startY, startZ,
+          endX, endY, endZ,
+          unit.transform.x, unit.transform.y, unit.transform.z,
           unit.unit.unitRadiusCollider.shot + lineWidth / 2
         );
         if (t !== null && t < bestT) {
           bestT = t; found = true;
-          _segHit.t = t; _segHit.x = startX + t * dx; _segHit.y = startY + t * dy;
-          _segHit.entityId = unit.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
+          _segHit.t = t;
+          _segHit.x = startX + t * dx;
+          _segHit.y = startY + t * dy;
+          _segHit.z = startZ + t * dz;
+          _segHit.entityId = unit.id;
+          _segHit.isMirror = false;
+          _segHit.normalX = 0; _segHit.normalY = 0;
           _segHit.panelIndex = -1;
         }
       }
     }
 
-    // Check buildings (always regular collision)
+    // Buildings: 3D ray-vs-AABB (x/y footprint × z depth). A beam arcing
+    // over a short building correctly misses; clipping the wall stops.
     const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, endX, endY, lineWidth + 100);
     for (const building of nearbyBuildings) {
       if (!building.building || building.building.hp <= 0) continue;
       const bWidth = building.building.width;
       const bHeight = building.building.height;
-      const rectX = building.transform.x - bWidth / 2;
-      const rectY = building.transform.y - bHeight / 2;
-      const t = lineRectIntersectionT(startX, startY, endX, endY, rectX, rectY, bWidth, bHeight);
+      const bDepth = building.building.depth;
+      const minX = building.transform.x - bWidth / 2;
+      const minY = building.transform.y - bHeight / 2;
+      const maxX = building.transform.x + bWidth / 2;
+      const maxY = building.transform.y + bHeight / 2;
+      const t = rayBoxIntersectionT(
+        startX, startY, startZ,
+        endX, endY, endZ,
+        minX, minY, 0,
+        maxX, maxY, bDepth,
+      );
       if (t !== null && t < bestT) {
         bestT = t; found = true;
-        _segHit.t = t; _segHit.x = startX + t * dx; _segHit.y = startY + t * dy;
-        _segHit.entityId = building.id; _segHit.isMirror = false; _segHit.normalX = 0; _segHit.normalY = 0;
+        _segHit.t = t;
+        _segHit.x = startX + t * dx;
+        _segHit.y = startY + t * dy;
+        _segHit.z = startZ + t * dz;
+        _segHit.entityId = building.id;
+        _segHit.isMirror = false;
+        _segHit.normalX = 0; _segHit.normalY = 0;
+        _segHit.panelIndex = -1;
       }
     }
 

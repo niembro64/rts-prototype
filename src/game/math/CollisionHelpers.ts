@@ -75,6 +75,114 @@ export function lineSphereIntersectionT(
   return null;
 }
 
+/** 3D ray vs axis-aligned box intersection (slab method), parametric T
+ *  in [0, 1] of the first entry, or null if the ray misses. Buildings
+ *  are world-axis boxes (x/y horizontal footprint, z vertical extent);
+ *  this lets the beam tracer skip over high buildings when the beam
+ *  arcs above them and stop when it clips the side. */
+export function rayBoxIntersectionT(
+  sx: number, sy: number, sz: number,
+  ex: number, ey: number, ez: number,
+  minX: number, minY: number, minZ: number,
+  maxX: number, maxY: number, maxZ: number,
+): number | null {
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const dz = ez - sz;
+
+  let tmin = 0;
+  let tmax = 1;
+
+  // X slab
+  if (Math.abs(dx) > 1e-9) {
+    let t1 = (minX - sx) / dx;
+    let t2 = (maxX - sx) / dx;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
+  } else if (sx < minX || sx > maxX) {
+    return null;
+  }
+  if (tmin > tmax) return null;
+
+  // Y slab
+  if (Math.abs(dy) > 1e-9) {
+    let t1 = (minY - sy) / dy;
+    let t2 = (maxY - sy) / dy;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
+  } else if (sy < minY || sy > maxY) {
+    return null;
+  }
+  if (tmin > tmax) return null;
+
+  // Z slab
+  if (Math.abs(dz) > 1e-9) {
+    let t1 = (minZ - sz) / dz;
+    let t2 = (maxZ - sz) / dz;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
+  } else if (sz < minZ || sz > maxZ) {
+    return null;
+  }
+  if (tmin > tmax) return null;
+
+  if (tmax < 0) return null;
+  return Math.max(tmin, 0);
+}
+
+/** 3D ray vs upright rectangle intersection, parametric T in [0, 1] of
+ *  the first hit, or null.
+ *
+ *  The rectangle is "upright" — its plane contains world +Y (up), its
+ *  normal is horizontal. Used by the beam tracer for mirror panels,
+ *  which are vertical slabs attached to unit turrets: normal comes from
+ *  the panel's yaw, the edge direction is perpendicular to the normal
+ *  in the horizontal plane, and the vertical extent runs from `baseZ`
+ *  to `topZ` in world-z.
+ *
+ *  Algebra:
+ *    - Plane:  n · (P − C) = 0  where n = (nx, ny, 0), C = (cx, cy, *)
+ *    - Ray:    P(t) = S + t·(E − S)
+ *    - Solve:  t = (nx·(cx−sx) + ny·(cy−sy)) / (nx·dx + ny·dy)
+ *    - Reject if t ∉ [0, 1], if |edge-projection| > halfWidth, or if
+ *      the hit's z lies outside [baseZ, topZ].
+ *
+ *  Because the plane's normal is horizontal, the plane-intersection
+ *  test ignores the beam's vertical component entirely — altitude only
+ *  matters for the final in-rectangle bounds check. */
+export function rayVerticalRectIntersectionT(
+  sx: number, sy: number, sz: number,
+  ex: number, ey: number, ez: number,
+  cx: number, cy: number,
+  normalX: number, normalY: number,
+  halfWidth: number,
+  baseZ: number, topZ: number,
+): number | null {
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const denom = dx * normalX + dy * normalY;
+  // Beam parallel to the panel's plane (or grazing it) — no valid hit.
+  if (Math.abs(denom) < 1e-9) return null;
+
+  const t = ((cx - sx) * normalX + (cy - sy) * normalY) / denom;
+  if (t < 0 || t > 1) return null;
+
+  const hx = sx + t * dx;
+  const hy = sy + t * dy;
+  const hz = sz + t * (ez - sz);
+
+  // Horizontal edge direction = normal rotated 90° CCW.
+  const edgeX = -normalY;
+  const edgeY = normalX;
+  const along = (hx - cx) * edgeX + (hy - cy) * edgeY;
+  if (along < -halfWidth || along > halfWidth) return null;
+  if (hz < baseZ || hz > topZ) return null;
+  return t;
+}
+
 // Line-line intersection - returns T value for first line, or null
 export function lineLineIntersectionT(
   x1: number, y1: number, x2: number, y2: number,

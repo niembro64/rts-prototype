@@ -6,6 +6,8 @@ import { getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
+import { MIRROR_BASE_Y, TURRET_HEIGHT } from '../../../config';
+import { getBodyTopY } from '../../math/BodyDimensions';
 
 /**
  * Create an Entity from NetworkServerSnapshotEntity data
@@ -115,6 +117,14 @@ function createUnitFromNetwork(
   // Cache mirror panels for fast beam collision checks
   try {
     const bp = getUnitBlueprint(u?.unitType ?? 'jackal');
+    // Panel vertical span = (MIRROR_BASE_Y, bodyTop + TURRET_HEIGHT) above
+    // the unit's ground. Same per-unit value the 3D renderer uses for
+    // the panel mesh, so the beam tracer hits the exact rectangle the
+    // player sees.
+    const rendererId = bp.renderer ?? 'arachnid';
+    const baseY = MIRROR_BASE_Y;
+    const topY = getBodyTopY(rendererId, entity.unit!.unitRadiusCollider.scale)
+      + TURRET_HEIGHT;
     for (const mount of bp.turrets) {
       const tb = getTurretBlueprint(mount.turretId);
       if (tb.mirrorPanels) {
@@ -127,6 +137,8 @@ function createUnitFromNetwork(
             offsetX: p.offsetX,
             offsetY: p.offsetY,
             angle: p.angle,
+            baseY,
+            topY,
           });
           const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + p.width / 2;
           if (dist > maxR) maxR = dist;

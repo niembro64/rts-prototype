@@ -9,7 +9,7 @@ import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } 
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY } from '../../../config';
-import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos, getUnitMuzzleHeight } from './combatUtils';
+import { getBarrelTipOffset, resolveWeaponWorldPos, getUnitMuzzleHeight } from './combatUtils';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
@@ -175,10 +175,15 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         const spawnZ = unitGroundZ + muzzleAboveGround + barrelOffset * pitchSin;
 
         if (isBeamWeapon) {
-          // Create beam using weapon's fireRange
+          // Create beam using weapon's fireRange. End point is the
+          // full 3D direction × beamLength so the initial fire visual
+          // already shows the real pitched beam before the per-tick
+          // findBeamPath call refines it with reflections/obstructions.
           const beamLength = weapon.ranges.engage.acquire;
-          const endX = spawnX + fireCos * beamLength;
-          const endY = spawnY + fireSin * beamLength;
+          const beamHoriz = beamLength * pitchCos;
+          const endX = spawnX + fireCos * beamHoriz;
+          const endY = spawnY + fireSin * beamHoriz;
+          const endZ = spawnZ + beamLength * pitchSin;
 
           // Tag config with turretIndex for beam tracking (mutate in place — each weapon has its own config copy)
           config.turretIndex = weaponIndex;
@@ -186,6 +191,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           const beam = world.createBeam(spawnX, spawnY, spawnZ, endX, endY, playerId, unit.id, config, beamProjectileType);
           if (beam.projectile) {
             beam.projectile.sourceEntityId = unit.id;
+            beam.projectile.endZ = endZ;
           }
           // Register beam in index immediately (no need for full rebuild)
           beamIndex.addBeam(unit.id, weaponIndex, beam.id);
@@ -199,11 +205,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
-            // Beam endpoints stay at the source altitude in this pass;
-            // turret pitch affects projectiles, not beams (yet).
             beam: {
               start: { x: spawnX, y: spawnY, z: spawnZ },
-              end: { x: endX, y: endY, z: spawnZ },
+              end: { x: endX, y: endY, z: endZ },
             },
           });
           // Note: Beam recoil is applied continuously above while weapon is engaged
@@ -438,59 +442,71 @@ export function updateProjectiles(
           }
         }
 
-        // Get turret direction from specific weapon
+        // Turret yaw + pitch build a full 3D firing direction. Beams
+        // are now traced in true 3D: an upward-pitched beam clears
+        // buildings and misses ground units correctly, and reflections
+        // off mirror panels preserve the beam's vertical slope.
         const turretAngle = weapon.rotation;
-        const dirX = Math.cos(turretAngle);
-        const dirY = Math.sin(turretAngle);
+        const turretPitch = weapon.pitch;
+        const pitchCos = Math.cos(turretPitch);
+        const pitchSin = Math.sin(turretPitch);
+        const yawCos = Math.cos(turretAngle);
+        const yawSin = Math.sin(turretAngle);
 
-        // Use cached weapon world position from targeting phase
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
         const beamWP = resolveWeaponWorldPos(weapon, source.transform.x, source.transform.y, srcCos, srcSin);
         const weaponX = beamWP.x, weaponY = beamWP.y;
 
-        // Beam starts at barrel tip
-        const bt = getBarrelTipWorldPos(weaponX, weaponY, turretAngle, proj.config, source.unit.unitRadiusCollider.shot);
-        proj.startX = bt.x;
-        proj.startY = bt.y;
+        // Barrel tip (3D) — same formula the projectile-spawn path uses
+        // so beam start and bullet spawn emerge from the same point.
+        const barrelOffset = getBarrelTipOffset(proj.config, source.unit.unitRadiusCollider.shot);
+        const horizBarrel = barrelOffset * pitchCos;
+        proj.startX = weaponX + yawCos * horizBarrel;
+        proj.startY = weaponY + yawSin * horizBarrel;
+        const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
+        const muzzleAboveGround = getUnitMuzzleHeight(source);
+        proj.startZ = unitGroundZ + muzzleAboveGround + barrelOffset * pitchSin;
 
-        // Use weapon's fireRange for consistent beam length (not proj.config.range)
+        // 3D beam direction (unit vector) × beamLength → full-length end.
+        const dir3X = yawCos * pitchCos;
+        const dir3Y = yawSin * pitchCos;
+        const dir3Z = pitchSin;
         const beamLength = weapon.ranges.engage.acquire;
-        const fullEndX = proj.startX + dirX * beamLength;
-        const fullEndY = proj.startY + dirY * beamLength;
+        const fullEndX = proj.startX + dir3X * beamLength;
+        const fullEndY = proj.startY + dir3Y * beamLength;
+        const fullEndZ = proj.startZ + dir3Z * beamLength;
 
-        // Find beam path (with possible reflections off mirror units)
-        // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness)
+        // Find beam path (with possible reflections off mirror units).
+        // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness).
         const currentTick = world.getTick();
         const collisionRadius = isLineShot(proj.config.shot) ? proj.config.shot.radius : 2;
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= 3) {
           const beamPath = damageSystem.findBeamPath(
-            proj.startX, proj.startY,
-            fullEndX, fullEndY,
+            proj.startX, proj.startY, proj.startZ,
+            fullEndX, fullEndY, fullEndZ,
             proj.sourceEntityId,
             collisionRadius
           );
           proj.endX = beamPath.endX;
           proj.endY = beamPath.endY;
-          proj.endZ = entity.transform.z; // Beam reflections stay planar for now — z tracks source.
+          proj.endZ = beamPath.endZ;
           proj.obstructionT = beamPath.obstructionT;
-          // Promote 2D reflections → 3D by seeding z = source altitude.
-          // A future full-3D beam tracer can replace this once beams
-          // actually travel through varying altitude.
           proj.reflections = beamPath.reflections.length > 0
-            ? beamPath.reflections.map((r) => ({ ...r, z: entity.transform.z }))
+            ? beamPath.reflections
             : undefined;
           proj.obstructionTick = currentTick;
         } else {
-          // Use cached values — endX/endY already set from last computation
           if (proj.endX === undefined) {
             proj.endX = fullEndX;
             proj.endY = fullEndY;
+            proj.endZ = fullEndZ;
           }
         }
 
-        // Update entity transform to match beam start (for visual reference)
+        // Update entity transform to match beam start (for visual reference).
         entity.transform.x = proj.startX;
         entity.transform.y = proj.startY;
+        entity.transform.z = proj.startZ;
         entity.transform.rotation = turretAngle;
       }
     }
