@@ -28,7 +28,7 @@ function createPooledTurret(): NetworkServerSnapshotTurret {
     turret: {
       id: '',
       ranges: { tracking: { acquire: 0, release: 0 }, engage: { acquire: 0, release: 0 } },
-      angular: { rot: 0, vel: 0, acc: 0, drag: 0 },
+      angular: { rot: 0, vel: 0, acc: 0, drag: 0, pitch: 0 },
       pos: { offset: { x: 0, y: 0 } },
     },
     targetId: undefined,
@@ -72,11 +72,11 @@ function createPooledEntry(): PooledEntry {
   const waypoints: { pos: Vec2; type: string }[] = [];
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createPooledWaypoint());
   return {
-    entity: { id: 0, type: 'unit', pos: { x: 0, y: 0 }, rotation: 0, playerId: 1 as PlayerId },
+    entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
     unitSub: {
       unitType: '', hp: { curr: 0, max: 0 },
       collider: { scale: 0, shot: 0, push: 0 },
-      moveSpeed: 0, mass: 0, velocity: { x: 0, y: 0 },
+      moveSpeed: 0, mass: 0, velocity: { x: 0, y: 0, z: 0 },
       turretRotation: 0,
     },
     buildingSub: {
@@ -599,10 +599,12 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
   ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
   ne.changedFields = changedFields;
 
-  // Position — always set for full, only when changed for delta
+  // Position — always set for full, only when changed for delta.
+  // z is on the wire so 3D clients see altitude; 2D clients ignore it.
   if (isFull || (changedFields & ENTITY_CHANGED_POS)) {
     ne.pos.x = entity.transform.x;
     ne.pos.y = entity.transform.y;
+    ne.pos.z = entity.transform.z;
   }
   // Rotation — always set for full, only when changed for delta
   if (isFull || (changedFields & ENTITY_CHANGED_ROT)) {
@@ -640,6 +642,7 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
       if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
         u.velocity.x = entity.unit.velocityX ?? 0;
         u.velocity.y = entity.unit.velocityY ?? 0;
+        u.velocity.z = entity.unit.velocityZ ?? 0;
       }
 
       // HP
@@ -700,6 +703,7 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
             t.angular.vel = src.angularVelocity;
             t.angular.acc = src.turnAccel;
             t.angular.drag = src.drag;
+            t.angular.pitch = src.pitch;
             t.pos.offset.x = src.offset.x;
             t.pos.offset.y = src.offset.y;
             dst.targetId = src.target ?? undefined;

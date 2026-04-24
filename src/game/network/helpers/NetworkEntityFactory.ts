@@ -4,6 +4,8 @@ import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity } from '../NetworkManager';
 import { getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from '../../sim/blueprints';
+import { getBuildingConfig } from '../../sim/buildConfigs';
+import { GRID_CELL_SIZE } from '../../sim/grid';
 
 /**
  * Create an Entity from NetworkServerSnapshotEntity data
@@ -58,7 +60,7 @@ function createUnitFromNetwork(
   const entity: Entity = {
     id,
     type: 'unit',
-    transform: { x, y, rotation },
+    transform: { x, y, z: netEntity.pos.z, rotation },
     ownership: { playerId },
     selectable: { selected: false },
     unit: {
@@ -76,6 +78,7 @@ function createUnitFromNetwork(
       patrolStartIndex: null,
       velocityX: u?.velocity.x ?? 0,
       velocityY: u?.velocity.y ?? 0,
+      velocityZ: u?.velocity.z ?? 0,
       mirrorPanels: [],
       mirrorBoundRadius: 0,
     },
@@ -96,6 +99,7 @@ function createUnitFromNetwork(
         },
         state: nw.state,
         rotation: t.angular.rot,
+        pitch: t.angular.pitch,
         angularVelocity: t.angular.vel,
         turnAccel: t.angular.acc,
         drag: t.angular.drag,
@@ -157,15 +161,25 @@ function createBuildingFromNetwork(
 ): Entity {
   const b = netEntity.building;
 
+  // Buildings derive depth client-side from their blueprint. The wire
+  // sends only the footprint (dim.x × dim.y) since all instances of a
+  // given building type share the same vertical extent — saving a
+  // field per entity per snapshot. Client looks up gridDepth by type.
+  let depth = 100;
+  try {
+    const bc = getBuildingConfig(b?.type as BuildingType);
+    depth = bc.gridDepth * GRID_CELL_SIZE;
+  } catch { /* unknown type — keep default depth */ }
   const entity: Entity = {
     id,
     type: 'building',
-    transform: { x, y, rotation },
+    transform: { x, y, z: netEntity.pos.z, rotation },
     ownership: { playerId },
     selectable: { selected: false },
     building: {
       width: b?.dim.x ?? 100,
       height: b?.dim.y ?? 100,
+      depth,
       hp: b?.hp.curr ?? 500,
       maxHp: b?.hp.max ?? 500,
     },
@@ -217,7 +231,7 @@ function createProjectileFromNetwork(
   return {
     id,
     type: 'shot',
-    transform: { x, y, rotation },
+    transform: { x, y, z: netEntity.pos.z, rotation },
     projectile: {
       ownerId: playerId,
       sourceEntityId: s?.source ?? 0,
@@ -233,14 +247,17 @@ function createProjectileFromNetwork(
       projectileType: (s?.type as 'projectile' | 'beam' | 'laser') ?? 'projectile',
       velocityX: s?.velocity?.x ?? 0,
       velocityY: s?.velocity?.y ?? 0,
+      velocityZ: s?.velocity?.z ?? 0,
       timeAlive: 0,
       maxLifespan: 2000,
       hitEntities: new Set(),
       maxHits: 1,
       startX: x,
       startY: y,
+      startZ: netEntity.pos.z,
       endX: netEntity.posEnd?.x,
       endY: netEntity.posEnd?.y,
+      endZ: netEntity.posEnd?.z,
     },
   };
 }

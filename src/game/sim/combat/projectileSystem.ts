@@ -180,14 +180,19 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           newProjectiles.push(beam);
           spawnEvents.push({
             id: beam.id,
-            pos: { x: spawnX, y: spawnY }, rotation: angle,
-            velocity: { x: 0, y: 0 },
+            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: angle,
+            velocity: { x: 0, y: 0, z: 0 },
             projectileType: beamProjectileType,
             turretId: config.id,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
-            beam: { start: { x: spawnX, y: spawnY }, end: { x: endX, y: endY } },
+            // Beam endpoints stay at the source altitude in this pass;
+            // turret pitch affects projectiles, not beams (yet).
+            beam: {
+              start: { x: spawnX, y: spawnY, z: spawnZ },
+              end: { x: endX, y: endY, z: spawnZ },
+            },
           });
           // Note: Beam recoil is applied continuously above while weapon is engaged
         } else {
@@ -242,8 +247,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           newProjectiles.push(projectile);
           spawnEvents.push({
             id: projectile.id,
-            pos: { x: spawnX, y: spawnY }, rotation: angle,
-            velocity: { x: projVx, y: projVy },
+            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: angle,
+            velocity: { x: projVx, y: projVy, z: projVz },
             projectileType: 'projectile',
             turretId: config.id,
             playerId,
@@ -346,8 +351,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           proj.lastSentVelZ = proj.velocityZ;
           _homingVelocityUpdates.push({
             id: entity.id,
-            pos: { x: entity.transform.x, y: entity.transform.y },
-            velocity: { x: proj.velocityX, y: proj.velocityY },
+            pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
+            velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
           });
         }
       } else {
@@ -464,8 +469,8 @@ function _updateTravelingProjectilesWasm(
         proj.lastSentVelY = proj.velocityY;
         _homingVelocityUpdates.push({
           id: entity.id,
-          pos: { x: entity.transform.x, y: entity.transform.y },
-          velocity: { x: proj.velocityX, y: proj.velocityY },
+          pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
+          velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
         });
       }
     }

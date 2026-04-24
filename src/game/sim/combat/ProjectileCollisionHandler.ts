@@ -57,6 +57,7 @@ function spawnSubmunitions(
   parentShot: ProjectileShot,
   x: number,
   y: number,
+  z: number,
   ownerId: number,
   sourceEntityId: EntityId,
   outProjectiles: Entity[],
@@ -76,6 +77,8 @@ function spawnSubmunitions(
   // Math.random() is fine — submunition direction is purely cosmetic
   // and doesn't feed back into deterministic sim state (damage/knockback
   // still come from the parent explosion, not the fragments' flight).
+  // Children spawn at the explosion altitude (z) and spray HORIZONTALLY
+  // in a random ring; gravity then shapes the arc.
   const startAngle = Math.random() * Math.PI * 2;
   const stepAngle = spread / spec.count;
   for (let i = 0; i < spec.count; i++) {
@@ -86,14 +89,18 @@ function spawnSubmunitions(
     const proj = world.createProjectile(
       x, y, vx, vy, ownerId, sourceEntityId, childCfg, 'projectile',
     );
-    // Children start outside any source hitbox (parent already exploded).
-    if (proj.projectile) proj.projectile.hasLeftSource = true;
+    if (proj.projectile) {
+      // Children start outside any source hitbox (parent already exploded).
+      proj.projectile.hasLeftSource = true;
+      // Inherit the parent's altitude at detonation; no initial vz.
+      proj.transform.z = z;
+    }
     outProjectiles.push(proj);
     outSpawnEvents.push({
       id: proj.id,
-      pos: { x, y },
+      pos: { x, y, z },
       rotation: angle,
-      velocity: { x: vx, y: vy },
+      velocity: { x: vx, y: vy, z: 0 },
       projectileType: 'projectile',
       // Synthetic ID so the client can resolve the same TurretConfig
       // (with the lifespan / radius overrides baked in) that the server used.
@@ -207,7 +214,7 @@ export function checkProjectileCollisions(
         // Cluster flak: spawn submunitions after expiry splash explodes.
         spawnSubmunitions(
           world, projShot,
-          projEntity.transform.x, projEntity.transform.y,
+          projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
           projEntity.ownership.playerId, proj.sourceEntityId,
           newProjectiles, spawnEvents,
         );
@@ -397,7 +404,7 @@ export function checkProjectileCollisions(
         // Cluster flak: spawn submunitions after direct-hit splash.
         spawnSubmunitions(
           world, projShot,
-          projEntity.transform.x, projEntity.transform.y,
+          projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
           projEntity.ownership.playerId, proj.sourceEntityId,
           newProjectiles, spawnEvents,
         );

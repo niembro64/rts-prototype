@@ -3,7 +3,7 @@
 import type { EntityType, PlayerId, TurretRanges, TurretState } from './sim';
 import type { Command } from './commands';
 import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
-import type { Vec2 } from './vec2';
+import type { Vec2, Vec3 } from './vec2';
 
 // Client → Server
 export type NetworkPlayerActionMessage = { type: 'command'; data: Command };
@@ -38,16 +38,16 @@ export type NetworkServerSnapshotSimEvent = {
 
 export type NetworkServerSnapshotProjectileSpawn = {
   id: number;
-  pos: Vec2;
+  pos: Vec3;
   rotation: number;
-  velocity: Vec2;
+  velocity: Vec3;
   projectileType: string;
   turretId: string;
   playerId: number;
   sourceEntityId: number;
   turretIndex: number;
   isDGun?: boolean;
-  beam?: { start: Vec2; end: Vec2 };
+  beam?: { start: Vec3; end: Vec3 };
   targetEntityId?: number;
   homingTurnRate?: number;
 };
@@ -58,8 +58,8 @@ export type NetworkServerSnapshotProjectileDespawn = {
 
 export type NetworkServerSnapshotVelocityUpdate = {
   id: number;
-  pos: Vec2;
-  velocity: Vec2;
+  pos: Vec3;
+  velocity: Vec3;
 };
 
 export type NetworkServerSnapshotGridCell = {
@@ -143,10 +143,14 @@ export type NetworkServerSnapshotTurret = {
     id: string;
     ranges: TurretRanges;
     angular: {
+      /** Yaw (horizontal heading, rot around z-axis). */
       rot: number;
+      /** Yaw angular velocity. */
       vel: number;
       acc: number;
       drag: number;
+      /** Pitch (vertical aim, elevation angle). */
+      pitch: number;
     };
     pos: {
       offset: Vec2;
@@ -172,9 +176,11 @@ export const ENTITY_CHANGED_FACTORY   = 1 << 7;
 export type NetworkServerSnapshotEntity = {
   id: number;
   type: EntityType;
-  pos: Vec2;
+  /** 3D position (x,y = plane, z = altitude). The 2D client reads only
+   *  x/y; the 3D client reads all three. */
+  pos: Vec3;
   rotation: number;
-  posEnd?: Vec2;
+  posEnd?: Vec3;
   playerId: PlayerId;
   changedFields?: number;
   unit?: {
@@ -183,7 +189,7 @@ export type NetworkServerSnapshotEntity = {
     collider: { scale: number; shot: number; push: number };
     moveSpeed: number;
     mass: number;
-    velocity: Vec2;
+    velocity: Vec3;
     turretRotation: number;
     isCommander?: boolean;
     buildTargetId?: number;
@@ -192,6 +198,9 @@ export type NetworkServerSnapshotEntity = {
   };
   building?: {
     type: string;
+    /** Footprint in world units — planar xy is dim.x/dim.y. Full
+     *  depth (vertical extent) lives on the building entity, not
+     *  here — clients re-derive it from the blueprint. */
     dim: Vec2;
     hp: { curr: number; max: number };
     build: { progress: number; complete: boolean };
@@ -207,7 +216,7 @@ export type NetworkServerSnapshotEntity = {
     source: number;
     turretId?: string;
     turretIndex?: number;
-    velocity?: Vec2;
+    velocity?: Vec3;
   };
 };
 

@@ -3,7 +3,7 @@
 import type { Entity, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import { aimTurretsToward } from '../sim/turretInit';
-import type { IPhysicsEngine as PhysicsEngine } from './IPhysicsEngine';
+import type { PhysicsEngine3D as PhysicsEngine } from './PhysicsEngine3D';
 import { BUILDABLE_UNIT_IDS, getUnitBlueprint, getNormalizedUnitCost } from '../sim/blueprints';
 import {
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,

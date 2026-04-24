@@ -278,8 +278,8 @@ export class GameServer {
     this.snapshotListeners.length = 0;
     this.gameOverListeners.length = 0;
 
-    // Clear WASM batch engine reference
-    clearWasmBatchEngine();
+    // The 2D WASM batch engine is gone on this branch — nothing to
+    // clear here. M12 removes the remaining WasmBatch shim file.
 
     // Clear simulation singletons so entity refs don't survive across sessions
     spatialGrid.clear();

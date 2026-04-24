@@ -274,12 +274,16 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   ctx.world.addEntity(projectile);
 
-  // Emit projectile spawn event for D-gun
+  // Emit projectile spawn event for D-gun. D-gun fires horizontally
+  // from the commander's hull height; vz=0 gives the classic TA-style
+  // flat beam-like projectile (M7's ballistic pitch applies to AI
+  // turrets; manual D-gun is fixed-angle).
+  const dgunFireZ = commander.transform.z;
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
-    pos: { x: spawnX, y: spawnY },
+    pos: { x: spawnX, y: spawnY, z: dgunFireZ },
     rotation: fireAngle,
-    velocity: { x: velocityX, y: velocityY },
+    velocity: { x: velocityX, y: velocityY, z: 0 },
     projectileType: 'projectile',
     turretId: 'dgunTurret',
     playerId,

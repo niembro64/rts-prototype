@@ -13,9 +13,9 @@ export abstract class GameEntity {
   protected _hp: number;
   protected _maxHp: number;
 
-  constructor(id: EntityId, x: number, y: number, hp: number, maxHp: number) {
+  constructor(id: EntityId, x: number, y: number, hp: number, maxHp: number, z: number = 0) {
     this.id = id;
-    this.transform = { x, y, rotation: 0 };
+    this.transform = { x, y, z, rotation: 0 };
     this._hp = hp;
     this._maxHp = maxHp;
   }

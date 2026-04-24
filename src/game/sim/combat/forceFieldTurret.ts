@@ -231,11 +231,12 @@ export function applyForceFieldDamage(
             Math.abs(proj.velocityY - lastVy) > velTh) {
           proj.lastSentVelX = proj.velocityX;
           proj.lastSentVelY = proj.velocityY;
+          proj.lastSentVelZ = proj.velocityZ;
           // Dedup: if same projectile affected by multiple force fields, keep latest
           _velocityUpdateMap.set(projEntity.id, {
             id: projEntity.id,
-            pos: { x: projEntity.transform.x, y: projEntity.transform.y },
-            velocity: { x: proj.velocityX, y: proj.velocityY },
+            pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+            velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
           });
         }
       }

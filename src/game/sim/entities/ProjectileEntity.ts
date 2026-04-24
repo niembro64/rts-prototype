@@ -70,7 +70,7 @@ export class ProjectileEntity {
     maxHits: number = 1
   ) {
     this.id = id;
-    this.transform = { x, y, rotation: Math.atan2(velocityY, velocityX) };
+    this.transform = { x, y, z: 0, rotation: Math.atan2(velocityY, velocityX) };
     this.ownership = { playerId: ownerId };
     this.ownerId = ownerId;
     this.sourceEntityId = sourceEntityId;
