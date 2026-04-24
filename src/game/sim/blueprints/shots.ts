@@ -86,16 +86,20 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     splashOnExpiry: true,
     lifespan: 2300,
     hitSound: AUDIO.event.hit.mortarShot,
-    // Cluster flak: at the instant the mortar explodes, spray 10 lightShots
-    // outward in a full circle. Each child has a short 300 ms lifespan
-    // (vs. lightShot's normal 800) so it reads as a burst of fragments,
-    // not a secondary volley. The sim handles this declaratively — see
-    // SubmunitionSpec and ProjectileCollisionHandler.
+    // Cluster flak: at the instant the mortar explodes, spray 5 mediumShot
+    // fragments in a full circle. Each child has a short 300 ms lifespan
+    // so it reads as a burst of fragments, not a secondary volley, and a
+    // bumped-up 4-unit collision radius so the 3D sphere representation
+    // is clearly visible in flight (at a typical camera distance a stock
+    // lightShot's 1.6-unit radius reads as a barely-perceptible dot).
+    // The sim handles this declaratively — see SubmunitionSpec and
+    // ProjectileCollisionHandler.
     submunitions: {
       shotId: 'mediumShot',
       count: 5,
       speed: 200,
       lifespanMs: 300,
+      collisionRadius: 4,
     },
   },
   disruptorShot: {

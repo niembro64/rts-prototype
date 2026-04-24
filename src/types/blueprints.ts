@@ -70,6 +70,12 @@ export type SubmunitionSpec = {
   lifespanMs?: number;
   /** Total cone angle (radians). Omit for a full-circle fan. */
   angleSpread?: number;
+  /** Optional collision-radius override. Affects both the 3D render
+   *  sphere size and the swept-collision footprint — handy when the
+   *  child shot's native radius is too small to read as a visible
+   *  fragment (e.g. lightShot at 1.6 nearly disappears at default
+   *  camera distance). Omit to use the child blueprint's own radius. */
+  collisionRadius?: number;
 };
 
 export type ProjectileShotBlueprint = {

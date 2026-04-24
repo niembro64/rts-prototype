@@ -95,8 +95,9 @@ const _submunitionConfigCache = new Map<string, TurretConfig>();
 export function getSubmunitionTurretConfig(
   childShotId: string,
   lifespanMs: number | undefined,
+  collisionRadius?: number,
 ): TurretConfig {
-  const cacheKey = `${childShotId}|${lifespanMs ?? ''}`;
+  const cacheKey = `${childShotId}|${lifespanMs ?? ''}|${collisionRadius ?? ''}`;
   const cached = _submunitionConfigCache.get(cacheKey);
   if (cached) return cached;
 
@@ -108,6 +109,11 @@ export function getSubmunitionTurretConfig(
 
   const shot = buildShotConfig(bp) as ProjectileShot;
   if (lifespanMs !== undefined) shot.lifespan = lifespanMs;
+  if (collisionRadius !== undefined) {
+    // Clone collision so overriding one submunition variant's radius
+    // doesn't leak into the shared blueprint for normal lightShots etc.
+    shot.collision = { ...shot.collision, radius: collisionRadius };
+  }
 
   const config: TurretConfig = {
     id: `__sub:${childShotId}`,

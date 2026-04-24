@@ -3,20 +3,27 @@ import { TURRET_RANGE_MULTIPLIERS } from '../../config';
 import { buildAllTurretConfigs, getSubmunitionTurretConfig, TURRET_BLUEPRINTS } from './blueprints';
 
 /** Prefix for synthetic turret IDs emitted by the submunition/cluster
- *  system. Encoded as `__sub:<childShotId>` or
- *  `__sub:<childShotId>:<lifespanMs>`. Both the server (to build the
- *  sim-side projectile config) and the client (to render the spawned
- *  projectiles) resolve these through getTurretConfig, which
- *  delegates to getSubmunitionTurretConfig. */
+ *  system. Encoded as `__sub:<childShotId>|<lifespanMs?>|<radius?>`.
+ *  Both the server (to build the sim-side projectile config) and the
+ *  client (to render the spawned projectiles) resolve these through
+ *  getTurretConfig, which delegates to getSubmunitionTurretConfig.
+ *  The '|' separator is safe — real shot IDs are alphanumeric
+ *  identifiers with no pipes. */
 export const SUBMUNITION_TURRET_ID_PREFIX = '__sub:';
 
 export function encodeSubmunitionTurretId(
   childShotId: string,
   lifespanMs: number | undefined,
+  collisionRadius: number | undefined,
 ): string {
-  return lifespanMs === undefined
-    ? `${SUBMUNITION_TURRET_ID_PREFIX}${childShotId}`
-    : `${SUBMUNITION_TURRET_ID_PREFIX}${childShotId}:${lifespanMs}`;
+  const parts: string[] = [childShotId];
+  if (lifespanMs !== undefined || collisionRadius !== undefined) {
+    parts.push(lifespanMs === undefined ? '' : String(lifespanMs));
+  }
+  if (collisionRadius !== undefined) {
+    parts.push(String(collisionRadius));
+  }
+  return SUBMUNITION_TURRET_ID_PREFIX + parts.join('|');
 }
 
 // Union type of all registered turret config keys (derived from blueprints)
@@ -46,15 +53,16 @@ export function computeTurretRanges(config: TurretConfig): TurretRanges {
 // Helper to get a turret config by ID. Synthetic submunition IDs
 // (encoded via encodeSubmunitionTurretId) bypass TURRET_CONFIGS and
 // resolve through the blueprint-level helper, which caches by
-// (childShotId, lifespanMs) so both sides of the network get the
-// same object identity for matching parameter sets.
+// (childShotId, lifespanMs, radius) so both sides of the network get
+// the same object identity for matching parameter sets.
 export function getTurretConfig(id: string): TurretConfig {
   if (id.startsWith(SUBMUNITION_TURRET_ID_PREFIX)) {
     const rest = id.slice(SUBMUNITION_TURRET_ID_PREFIX.length);
-    const sepIdx = rest.lastIndexOf(':');
-    const childShotId = sepIdx >= 0 ? rest.slice(0, sepIdx) : rest;
-    const lifespanMs = sepIdx >= 0 ? Number(rest.slice(sepIdx + 1)) : undefined;
-    return { ...getSubmunitionTurretConfig(childShotId, lifespanMs) };
+    const parts = rest.split('|');
+    const childShotId = parts[0];
+    const lifespanMs = parts[1] ? Number(parts[1]) : undefined;
+    const radius = parts[2] ? Number(parts[2]) : undefined;
+    return { ...getSubmunitionTurretConfig(childShotId, lifespanMs, radius) };
   }
   const config = TURRET_CONFIGS[id];
   if (!config) {
