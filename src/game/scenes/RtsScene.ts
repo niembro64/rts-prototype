@@ -21,7 +21,6 @@ import type {
 
 import { audioManager } from '../audio/AudioManager';
 import { musicPlayer } from '../audio/MusicPlayer';
-import type { SimEvent } from '../sim/combat';
 import {
   ZOOM_INITIAL_DEMO,
   ZOOM_INITIAL_GAME,
@@ -38,21 +37,23 @@ import {
 
 
 import {
-  getAudioSmoothing,
-  getAudioScope,
   getSoundToggle,
   getGridOverlay,
   getGridOverlayIntensity,
 } from '@/clientBarConfig';
-import { AUDIO } from '../../audioConfig';
 
 // Import helpers
 import {
-  handleSimEvent,
   buildSelectionInfo,
   buildEconomyInfo,
   buildMinimapData,
 } from './helpers';
+import {
+  drainScheduledAudio,
+  scheduleSnapshotAudio,
+  muteOffscreenContinuousSounds,
+  type SceneAudioContext,
+} from './helpers/Scene2DAudio';
 import type { EconomyInfo, MinimapData } from './helpers';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import { EmaTracker } from './helpers/EmaTracker';
@@ -647,19 +648,20 @@ export class RtsScene extends SceneShim {
       this.fpsTracker.update(1000 / delta);
     }
 
-    // Drain audio smoothing queue: play any events whose scheduled time has arrived
+    // Audio pumping — extracted so the scene's update() doesn't have
+    // to thread the viewport / renderer / view-state into three
+    // different audio-manager call paths inline.
     const now = performance.now();
     const cam = this.cameras.main;
-    this.audioScheduler.drain(now, (event) => {
-      handleSimEvent(
-        event as SimEvent,
-        this.entityRenderer,
-        this.audioInitialized,
-        cam.worldView,
-        cam.zoom,
-        this.clientViewState,
-      );
-    });
+    const audioCtx: SceneAudioContext = {
+      scheduler: this.audioScheduler,
+      entityRenderer: this.entityRenderer,
+      audioInitialized: this.audioInitialized,
+      viewport: cam.worldView,
+      zoom: cam.zoom,
+      clientViewState: this.clientViewState,
+    };
+    drainScheduledAudio(audioCtx, now);
 
     // Process buffered snapshot (at most one per frame)
     const state = this.snapshotBuffer.consume();
@@ -680,23 +682,7 @@ export class RtsScene extends SceneShim {
 
       // Process audio events
       const audioEvents = this.clientViewState.getPendingAudioEvents();
-      if (audioEvents) {
-        this.audioScheduler.schedule(
-          audioEvents,
-          now,
-          getAudioSmoothing(),
-          (event) => {
-            handleSimEvent(
-              event as SimEvent,
-              this.entityRenderer,
-              this.audioInitialized,
-              cam.worldView,
-              cam.zoom,
-              this.clientViewState,
-            );
-          },
-        );
-      }
+      if (audioEvents) scheduleSnapshotAudio(audioCtx, audioEvents, now);
 
       // Check for game over
       const winnerId = this.clientViewState.getGameOverWinnerId();
@@ -714,42 +700,7 @@ export class RtsScene extends SceneShim {
       }
     }
 
-    // Per-frame viewport check for continuous sounds (beams, force fields)
-    // Mute offscreen sounds and dynamically scale volume with zoom
-    const continuousSounds = audioManager.getActiveContinuousSounds();
-    if (continuousSounds.length > 0) {
-      const audioScope = getAudioScope();
-      const vp = cam.worldView;
-      const zoomVolume = Math.pow(cam.zoom, AUDIO.zoomVolumeExponent);
-      for (const [soundId, sourceEntityId] of continuousSounds) {
-        const entity = this.clientViewState.getEntity(sourceEntityId);
-        if (!entity) {
-          // Entity not found (died, out of view) — mute
-          audioManager.setContinuousSoundAudible(soundId, false);
-          continue;
-        }
-        const ex = entity.transform.x;
-        const ey = entity.transform.y;
-        let inScope = true;
-        if (audioScope === 'off') {
-          inScope = false;
-        } else if (audioScope === 'window') {
-          inScope = vp.contains(ex, ey);
-        } else if (audioScope === 'padded') {
-          const padX = vp.width * 0.5;
-          const padY = vp.height * 0.5;
-          inScope =
-            ex >= vp.x - padX &&
-            ex <= vp.right + padX &&
-            ey >= vp.y - padY &&
-            ey <= vp.bottom + padY;
-        }
-        // 'all' scope: always audible (inScope stays true)
-        audioManager.setContinuousSoundAudible(soundId, inScope);
-        // Dynamically update volume based on current zoom
-        audioManager.updateContinuousSoundZoom(soundId, zoomVolume);
-      }
-    }
+    muteOffscreenContinuousSounds(audioCtx);
 
     // Update explosion effects
     this.entityRenderer.updateExplosions(delta);
