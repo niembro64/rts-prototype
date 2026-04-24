@@ -63,6 +63,91 @@ export function buildImpactContext(
   };
 }
 
+/**
+ * Build a 'death' SimEvent for a unit entity. Unifies the four places
+ * that used to construct this shape by hand (direct-hit kill, splash
+ * kill, safety-net cleanup, and the no-ctx fallback) so the
+ * deathContext fields can't drift between paths.
+ *
+ * `turretOrUnitId` is the turret id that caused the kill (for audio
+ * routing) when available, or the unit's own type id when we're
+ * emitting a synthetic event from the cleanup pass.
+ */
+export function buildUnitDeathEvent(
+  target: Entity | undefined,
+  id: EntityId,
+  turretOrUnitId: string,
+  ctx: DeathContext | undefined,
+): SimEvent {
+  const playerColor = getPlayerPrimaryColor(target?.ownership?.playerId);
+  const unitVel = {
+    x: target?.body?.physicsBody.vx ?? 0,
+    y: target?.body?.physicsBody.vy ?? 0,
+  };
+  const radius = target?.unit?.unitRadiusCollider.shot ?? 15;
+  const unitType = target?.unit?.unitType;
+  const rotation = target?.transform.rotation ?? 0;
+  // ctx present → rich directional context from the killing blow.
+  // ctx absent → synthesize a neutral one so the renderer still fires
+  //   material debris (splash kills, DoT, cleanup-pass kills).
+  const deathContext = ctx
+    ? {
+        unitVel,
+        hitDir: ctx.penetrationDir,
+        projectileVel: ctx.attackerVel,
+        attackMagnitude: ctx.attackMagnitude,
+        radius,
+        color: playerColor,
+        unitType,
+        rotation,
+      }
+    : {
+        unitVel,
+        hitDir: { x: 0, y: 0 },
+        projectileVel: { x: 0, y: 0 },
+        attackMagnitude: 25,
+        radius,
+        color: playerColor,
+        unitType,
+        rotation,
+      };
+  return {
+    type: 'death',
+    turretId: turretOrUnitId,
+    pos: { x: target?.transform.x ?? 0, y: target?.transform.y ?? 0 },
+    entityId: id,
+    deathContext,
+  };
+}
+
+/**
+ * Build a 'death' SimEvent for a building. Simpler than the unit
+ * variant — buildings don't have velocity, rotation, or penetration
+ * context worth preserving, so the deathContext is a fixed upward-
+ * nudge fallback used by the debris system.
+ */
+export function buildBuildingDeathEvent(
+  building: Entity | undefined,
+  id: EntityId,
+  turretOrBuildingId: string,
+): SimEvent {
+  const playerColor = getPlayerPrimaryColor(building?.ownership?.playerId);
+  return {
+    type: 'death',
+    turretId: turretOrBuildingId,
+    pos: { x: building?.transform.x ?? 0, y: building?.transform.y ?? 0 },
+    entityId: id,
+    deathContext: {
+      unitVel: { x: 0, y: 0 },
+      hitDir: { x: 0, y: -1 },
+      projectileVel: { x: 0, y: 0 },
+      attackMagnitude: 50,
+      radius: (building?.building?.width ?? 100) / 2,
+      color: playerColor,
+    },
+  };
+}
+
 // Apply knockback forces from a DamageResult's knockback array
 export function applyKnockbackForces(
   knockbacks: KnockbackInfo[],
@@ -81,90 +166,17 @@ export function applyKnockbackForces(
   }
 }
 
-// Collect kills with death audio events (beam and traveling projectile deaths)
-// Adds killed IDs to output sets, merges death contexts, emits death audio
-export function collectKillsWithDeathAudio(
-  result: DamageResult,
-  world: WorldState,
-  config: TurretConfig,
-  unitsToRemove: Set<EntityId>,
-  buildingsToRemove: Set<EntityId>,
-  audioEvents: SimEvent[],
-  deathContexts: Map<EntityId, DeathContext>,
-): void {
-  for (const id of result.killedUnitIds) {
-    if (!unitsToRemove.has(id)) {
-      const target = world.getEntity(id);
-      const ctx = result.deathContexts.get(id);
-      const playerId = target?.ownership?.playerId ?? 1;
-      const playerColor = getPlayerPrimaryColor(playerId);
-      audioEvents.push({
-        type: 'death',
-        turretId: config.id,
-        pos: { x: target?.transform.x ?? 0, y: target?.transform.y ?? 0 },
-        entityId: id,
-        deathContext: ctx ? {
-          unitVel: { x: target?.body?.physicsBody.vx ?? 0, y: target?.body?.physicsBody.vy ?? 0 },
-          hitDir: ctx.penetrationDir,
-          projectileVel: ctx.attackerVel,
-          attackMagnitude: ctx.attackMagnitude,
-          radius: target?.unit?.unitRadiusCollider.shot ?? 15,
-          color: playerColor,
-          unitType: target?.unit?.unitType,
-          rotation: target?.transform.rotation ?? 0,
-        } : {
-          // No per-entity deathContext from the damage pass (splash without
-          // per-unit penetration data). Synthesize one so the renderer still
-          // fires material debris — the unit-type + position are all we
-          // actually need for the visual; force vectors zero out.
-          unitVel: { x: target?.body?.physicsBody.vx ?? 0, y: target?.body?.physicsBody.vy ?? 0 },
-          hitDir: { x: 0, y: 0 },
-          projectileVel: { x: 0, y: 0 },
-          attackMagnitude: 25,
-          radius: target?.unit?.unitRadiusCollider.shot ?? 15,
-          color: playerColor,
-          unitType: target?.unit?.unitType,
-          rotation: target?.transform.rotation ?? 0,
-        },
-      });
-      unitsToRemove.add(id);
-    }
-  }
-  for (const id of result.killedBuildingIds) {
-    if (!buildingsToRemove.has(id)) {
-      const building = world.getEntity(id);
-      const playerId = building?.ownership?.playerId ?? 1;
-      const playerColor = getPlayerPrimaryColor(playerId);
-      audioEvents.push({
-        type: 'death',
-        turretId: config.id,
-        pos: { x: building?.transform.x ?? 0, y: building?.transform.y ?? 0 },
-        entityId: id,
-        deathContext: {
-          unitVel: { x: 0, y: 0 },
-          hitDir: { x: 0, y: -1 },
-          projectileVel: { x: 0, y: 0 },
-          attackMagnitude: 50,
-          radius: (building?.building?.width ?? 100) / 2,
-          color: playerColor,
-        },
-      });
-      buildingsToRemove.add(id);
-    }
-  }
-  for (const [id, ctx] of result.deathContexts) {
-    deathContexts.set(id, ctx);
-  }
-}
-
-// Collect kills from splash/area damage: add killed IDs, merge death
-// contexts, AND emit a 'death' SimEvent for each newly-killed unit or
-// building. Named "silent" historically because it had no audio, but
-// the renderer's material-explosion pipeline keys off the SimEvent and
-// was silently skipping splash-kills → some units died without any
-// visual debris. Now identical in event-emission to
-// collectKillsWithDeathAudio for units; buildings still emit the
-// upward-nudge fallback context.
+/**
+ * Collect kills from a DamageResult and emit 'death' SimEvents for each
+ * newly-killed entity. Both direct-hit and splash paths share this
+ * function — the only difference used to be that splash emitted a
+ * `deathContext: undefined` for the no-ctx case, which silently
+ * skipped the renderer's material-explosion pipeline. Now every kill
+ * gets a full event via buildUnitDeathEvent / buildBuildingDeathEvent,
+ * with a synthesized neutral context when no directional data is
+ * available. Kept as one function to avoid the old
+ * collectKillsWithDeathAudio / collectKillsAndDeathContexts split.
+ */
 export function collectKillsAndDeathContexts(
   result: DamageResult,
   world: WorldState,
@@ -178,46 +190,14 @@ export function collectKillsAndDeathContexts(
     if (!unitsToRemove.has(id)) {
       const target = world.getEntity(id);
       const ctx = result.deathContexts.get(id);
-      const playerId = target?.ownership?.playerId ?? 1;
-      const playerColor = getPlayerPrimaryColor(playerId);
-      audioEvents.push({
-        type: 'death',
-        turretId: config.id,
-        pos: { x: target?.transform.x ?? 0, y: target?.transform.y ?? 0 },
-        entityId: id,
-        deathContext: ctx ? {
-          unitVel: { x: target?.body?.physicsBody.vx ?? 0, y: target?.body?.physicsBody.vy ?? 0 },
-          hitDir: ctx.penetrationDir,
-          projectileVel: ctx.attackerVel,
-          attackMagnitude: ctx.attackMagnitude,
-          radius: target?.unit?.unitRadiusCollider.shot ?? 15,
-          color: playerColor,
-          unitType: target?.unit?.unitType,
-          rotation: target?.transform.rotation ?? 0,
-        } : undefined,
-      });
+      audioEvents.push(buildUnitDeathEvent(target, id, config.id, ctx));
       unitsToRemove.add(id);
     }
   }
   for (const id of result.killedBuildingIds) {
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
-      const playerId = building?.ownership?.playerId ?? 1;
-      const playerColor = getPlayerPrimaryColor(playerId);
-      audioEvents.push({
-        type: 'death',
-        turretId: config.id,
-        pos: { x: building?.transform.x ?? 0, y: building?.transform.y ?? 0 },
-        entityId: id,
-        deathContext: {
-          unitVel: { x: 0, y: 0 },
-          hitDir: { x: 0, y: -1 },
-          projectileVel: { x: 0, y: 0 },
-          attackMagnitude: 50,
-          radius: (building?.building?.width ?? 100) / 2,
-          color: playerColor,
-        },
-      });
+      audioEvents.push(buildBuildingDeathEvent(building, id, config.id));
       buildingsToRemove.add(id);
     }
   }
@@ -225,6 +205,10 @@ export function collectKillsAndDeathContexts(
     deathContexts.set(id, ctx);
   }
 }
+
+/** @deprecated Alias preserved for now-merged direct-hit callers.
+ *  Behavior is identical to collectKillsAndDeathContexts. */
+export const collectKillsWithDeathAudio = collectKillsAndDeathContexts;
 
 // Apply directional knockback to all hit entities (flat force in given direction, already dt-scaled)
 export function applyDirectionalKnockback(

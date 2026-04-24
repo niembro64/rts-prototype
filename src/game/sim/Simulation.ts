@@ -1,7 +1,7 @@
 import { WorldState } from './WorldState';
 import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId } from './types';
-import { getPlayerPrimaryColor } from './types';
+import { buildUnitDeathEvent, buildBuildingDeathEvent } from './combat/damageHelpers';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
@@ -538,48 +538,21 @@ export class Simulation {
     }
   }
 
-  // Build a minimal death SimEvent for the renderer so units / buildings
-  // that die outside the normal collision-handler path still produce a
-  // material explosion. Mirrors the deathContext shape collectKills*
-  // emits so the 2D/3D debris systems can treat it identically.
-  private emitSyntheticDeathEvent(entity: import('./types').Entity): void {
-    const playerId = entity.ownership?.playerId ?? 1;
-    const playerColor = getPlayerPrimaryColor(playerId);
+  // Build a death SimEvent for entities dying outside the normal
+  // collision-handler path (force-field DoT, anything that mutates hp
+  // directly). Delegates to the shared buildUnitDeathEvent /
+  // buildBuildingDeathEvent so the shape can't drift from the damage-
+  // path kills. Uses the entity's own type id as the turretId since
+  // there's no attacker config to credit.
+  private emitSyntheticDeathEvent(entity: Entity): void {
     if (entity.unit) {
-      this.pendingSimEvents.push({
-        type: 'death',
-        turretId: entity.unit.unitType ?? '',
-        pos: { x: entity.transform.x, y: entity.transform.y },
-        entityId: entity.id,
-        deathContext: {
-          unitVel: {
-            x: entity.body?.physicsBody.vx ?? 0,
-            y: entity.body?.physicsBody.vy ?? 0,
-          },
-          hitDir: { x: 0, y: 0 },
-          projectileVel: { x: 0, y: 0 },
-          attackMagnitude: 25,
-          radius: entity.unit.unitRadiusCollider.shot ?? 15,
-          color: playerColor,
-          unitType: entity.unit.unitType,
-          rotation: entity.transform.rotation,
-        },
-      });
+      this.pendingSimEvents.push(
+        buildUnitDeathEvent(entity, entity.id, entity.unit.unitType ?? '', undefined),
+      );
     } else if (entity.building) {
-      this.pendingSimEvents.push({
-        type: 'death',
-        turretId: entity.buildingType ?? '',
-        pos: { x: entity.transform.x, y: entity.transform.y },
-        entityId: entity.id,
-        deathContext: {
-          unitVel: { x: 0, y: 0 },
-          hitDir: { x: 0, y: -1 },
-          projectileVel: { x: 0, y: 0 },
-          attackMagnitude: 50,
-          radius: entity.building.width / 2,
-          color: playerColor,
-        },
-      });
+      this.pendingSimEvents.push(
+        buildBuildingDeathEvent(entity, entity.id, entity.buildingType ?? ''),
+      );
     }
   }
 
