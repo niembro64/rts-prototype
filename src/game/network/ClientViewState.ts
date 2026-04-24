@@ -730,14 +730,31 @@ export class ClientViewState {
           // Homing steering — 3D velocity rotation toward the target,
           // identical math to the server's projectileSystem call so
           // predicted and authoritative paths agree frame-for-frame.
+          // Rocket-class shots (ignoresGravity=true) also re-acquire
+          // the nearest enemy when their original target dies —
+          // mirrors the server's seeker behavior so the predicted
+          // trajectory matches until the server's next velocity-
+          // update snapshot.
           const proj = entity.projectile;
           if (proj.homingTargetId !== undefined) {
-            const homingTarget = this.entities.get(proj.homingTargetId);
-            if (
-              homingTarget &&
-              ((homingTarget.unit && homingTarget.unit.hp > 0) ||
-                (homingTarget.building && homingTarget.building.hp > 0))
-            ) {
+            let homingTarget = this.entities.get(proj.homingTargetId);
+            let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
+            if (!targetValid) {
+              const shotCfg = proj.config.shot;
+              const isRocket = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
+              if (isRocket && entity.ownership) {
+                homingTarget = this.findNearestEnemyForRocketClient(entity, entity.ownership.playerId) ?? undefined;
+                if (homingTarget) {
+                  proj.homingTargetId = homingTarget.id;
+                  targetValid = true;
+                } else {
+                  proj.homingTargetId = undefined;
+                }
+              } else {
+                proj.homingTargetId = undefined;
+              }
+            }
+            if (targetValid && homingTarget) {
               const steered = applyHomingSteering(
                 proj.velocityX, proj.velocityY, proj.velocityZ,
                 homingTarget.transform.x, homingTarget.transform.y, homingTarget.transform.z,
@@ -748,8 +765,6 @@ export class ClientViewState {
               proj.velocityY = steered.velocityY;
               proj.velocityZ = steered.velocityZ;
               entity.transform.rotation = steered.rotation;
-            } else {
-              proj.homingTargetId = undefined;
             }
           }
 
@@ -845,6 +860,40 @@ export class ClientViewState {
     }
 
     this.invalidateCaches();
+  }
+
+  /** Find the closest live enemy (unit or building) within rocket
+   *  seeker range. Mirrors the server's findNearestEnemyForRocket so
+   *  a rocket whose target dies mid-flight re-locks onto the same
+   *  fallback target on both sides — keeps predicted + authoritative
+   *  trajectories from diverging until the server's next velocity
+   *  update. */
+  private findNearestEnemyForRocketClient(
+    proj: Entity,
+    ownerId: PlayerId,
+  ): Entity | null {
+    const ROCKET_REACQUIRE_RANGE_SQ = 800 * 800;
+    let nearest: Entity | null = null;
+    let nearestDistSq = ROCKET_REACQUIRE_RANGE_SQ;
+    for (const e of this.entities.values()) {
+      if (e.ownership?.playerId === undefined || e.ownership.playerId === ownerId) continue;
+      if (e.unit) {
+        if (e.unit.hp <= 0) continue;
+      } else if (e.building) {
+        if (e.building.hp <= 0) continue;
+      } else {
+        continue;
+      }
+      const dx = e.transform.x - proj.transform.x;
+      const dy = e.transform.y - proj.transform.y;
+      const dz = e.transform.z - proj.transform.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq;
+        nearest = e;
+      }
+    }
+    return nearest;
   }
 
   /**
