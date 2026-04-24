@@ -13,21 +13,50 @@
 // Each puff owns its own material so opacity can interpolate
 // per-particle. Meshes + materials are pooled together so long
 // rocket streams don't allocate mid-flight.
+//
+// LOD: density scales with `fireExplosionStyle` (the same LOD axis
+// SprayRenderer3D + the 2D explosion effects use). At `flash` we emit
+// a whisper of smoke a couple times a second; at `inferno` rockets
+// trail dense streaks. Higher LOD also stretches each puff's
+// lifespan so the trail is both denser AND longer, giving a clear
+// visual upgrade at MAX without unbounded cost at MIN.
 
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
+import type { FireExplosionStyle } from '@/types/graphics';
+import { getGraphicsConfig } from '@/clientBarConfig';
 
-const EMIT_INTERVAL_MS = 60;      // ~17 puffs/sec per rocket
-const PARTICLE_LIFESPAN_MS = 900;
+// Base values are the "inferno" (max LOD) target. LOD_INTENSITY
+// scales them down for lower tiers.
+const BASE_EMIT_INTERVAL_MS = 60;  // ~17 puffs/sec per rocket at max LOD
+const BASE_LIFESPAN_MS = 900;
 const PARTICLE_START_RADIUS = 1.4;
 const PARTICLE_END_RADIUS = 4.5;
 const PARTICLE_START_ALPHA = 0.55;
 const SMOKE_COLOR = 0xcccccc;
 // Pool ceiling — bounded so heavy salvo spam can't unbounded-allocate.
-// Steady state per rocket ≈ lifespan/emitInterval = 15 particles, so
-// 1500 comfortably covers ~20 simultaneous 10-rocket salvos before we
-// start dropping emissions.
+// At max LOD, steady state per rocket ≈ lifespan/emitInterval = 15
+// particles, so 1500 covers ~20 simultaneous 10-rocket salvos before
+// we start dropping emissions. Lower LODs use far fewer.
 const MAX_PARTICLES = 1500;
+
+/** LOD multiplier on emission rate. Mirrors the LOD_INTENSITY table
+ *  SprayRenderer3D uses so every particle system on screen scales in
+ *  lockstep — flipping one LOD lever visibly affects every effect. */
+const LOD_EMIT_MULT: Record<FireExplosionStyle, number> = {
+  flash:   0.15,
+  spark:   0.3,
+  burst:   0.55,
+  blaze:   0.8,
+  inferno: 1.0,
+};
+
+/** LOD multiplier on particle lifespan. Blended gently so low LODs
+ *  don't produce invisibly-short puffs — min tier stays at 50% of
+ *  max tier's lifespan. */
+function lodLifespanMult(m: number): number {
+  return 0.5 + 0.5 * m;
+}
 
 type Puff = {
   mesh: THREE.Mesh;
@@ -63,6 +92,17 @@ export class SmokeTrail3D {
    *  uses for other particle systems. */
   update(projectiles: readonly Entity[], dtMs: number): void {
     const dtSec = dtMs / 1000;
+
+    // Sample LOD once per frame. Emission rate (how often puffs spawn)
+    // and lifespan (how long each one lingers) both scale with the
+    // current fireExplosionStyle tier — so higher LOD yields a denser
+    // AND longer trail, while min LOD produces a sparse short wisp.
+    // Existing in-flight puffs finish their old lifespans; only new
+    // ones pick up the new values.
+    const style = (getGraphicsConfig().fireExplosionStyle as FireExplosionStyle) ?? 'burst';
+    const lodMult = LOD_EMIT_MULT[style] ?? 0.55;
+    const emitIntervalMs = BASE_EMIT_INTERVAL_MS / lodMult;
+    const puffLifespanSec = (BASE_LIFESPAN_MS * lodLifespanMult(lodMult)) / 1000;
 
     // 1) Advance + fade existing puffs; recycle expired ones.
     let write = 0;
@@ -104,8 +144,8 @@ export class SmokeTrail3D {
         em = { sinceLastEmit: 0 };
         this.emitters.set(e.id, em);
       }
-      em.sinceLastEmit = Math.min(em.sinceLastEmit + dtMs, EMIT_INTERVAL_MS * 3);
-      if (em.sinceLastEmit >= EMIT_INTERVAL_MS) eligible.push(e);
+      em.sinceLastEmit = Math.min(em.sinceLastEmit + dtMs, emitIntervalMs * 3);
+      if (em.sinceLastEmit >= emitIntervalMs) eligible.push(e);
     }
 
     // Round-robin: repeatedly walk the eligible list, taking one
@@ -120,9 +160,9 @@ export class SmokeTrail3D {
         for (const e of eligible) {
           if (this.active.length >= MAX_PARTICLES) break;
           const em = this.emitters.get(e.id)!;
-          if (em.sinceLastEmit < EMIT_INTERVAL_MS) continue;
-          em.sinceLastEmit -= EMIT_INTERVAL_MS;
-          this.spawnPuff(e.transform.x, e.transform.y, e.transform.z);
+          if (em.sinceLastEmit < emitIntervalMs) continue;
+          em.sinceLastEmit -= emitIntervalMs;
+          this.spawnPuff(e.transform.x, e.transform.y, e.transform.z, puffLifespanSec);
           progress = true;
         }
       }
@@ -137,7 +177,10 @@ export class SmokeTrail3D {
     }
   }
 
-  private spawnPuff(simX: number, simY: number, simZ: number): void {
+  private spawnPuff(
+    simX: number, simY: number, simZ: number,
+    lifespanSec: number,
+  ): void {
     let puff = this.pool.pop();
     if (!puff) {
       const mat = new THREE.MeshBasicMaterial({
@@ -157,8 +200,11 @@ export class SmokeTrail3D {
     puff.mesh.position.set(simX, simZ, simY);
     puff.mesh.scale.setScalar(PARTICLE_START_RADIUS);
     puff.mat.opacity = PARTICLE_START_ALPHA;
-    puff.timeLeft = PARTICLE_LIFESPAN_MS / 1000;
-    puff.lifespan = PARTICLE_LIFESPAN_MS / 1000;
+    // Lifespan is per-puff (set at spawn time) so LOD changes while
+    // the game is running don't cut off or extend already-live puffs
+    // mid-fade.
+    puff.timeLeft = lifespanSec;
+    puff.lifespan = lifespanSec;
     this.active.push(puff);
   }
 
