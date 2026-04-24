@@ -160,11 +160,15 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           yaw += (world.rng.next() - 0.5) * spreadAngle;
         }
 
+        // Scale barrel length by the same radius the 3D renderer uses
+        // to draw the barrel (`.scale`). `.shot` and `.scale` differ
+        // on most units, so using `.shot` here would place the muzzle
+        // a unit-radius-fraction away from the visible barrel tip.
         const tip = getBarrelTip(
           weaponX, weaponY, mountZ,
           turretAngle, turretPitch,
           config,
-          unit.unit.unitRadiusCollider.shot,
+          unit.unit.unitRadiusCollider.scale,
           barrelIndex,
         );
         const spawnX = tip.x;
@@ -487,7 +491,7 @@ export function updateProjectiles(
           beamWP.x, beamWP.y, mountZ,
           turretAngle, turretPitch,
           proj.config,
-          source.unit.unitRadiusCollider.shot,
+          source.unit.unitRadiusCollider.scale,
           0,
         );
         proj.startX = tip.x;

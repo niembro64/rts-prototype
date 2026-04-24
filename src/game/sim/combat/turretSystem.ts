@@ -60,11 +60,18 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           // at gameplay range.
           const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
           const mountZ = unitGroundZ + getUnitMuzzleHeight(unit);
+          // Scale the barrel length by the SAME radius the 3D renderer
+          // uses (`.scale`, not `.shot`). The renderer draws the barrel
+          // at unitRadius.scale · barrelLength; spawning shots from a
+          // different fraction would put the sim's muzzle at a point
+          // behind or in front of the visible tip. `.scale` and `.shot`
+          // diverge on most units (e.g. scout 8 vs 6), so using the
+          // wrong one is visible as beams floating off the barrel.
           const tipRef = getBarrelTip(
             weaponX, weaponY, mountZ,
             targetAngle, weapon.pitch,
             weapon.config,
-            unit.unit.unitRadiusCollider.shot,
+            unit.unit.unitRadiusCollider.scale,
             0,
           );
           const horizDist = Math.hypot(
