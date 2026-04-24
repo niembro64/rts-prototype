@@ -124,3 +124,45 @@ export function getBodyTopY(renderer: string, unitRadius: number): number {
 export function getMuzzleHeightAboveGround(renderer: string, unitRadius: number): number {
   return getBodyTopY(renderer, unitRadius) + TURRET_HEIGHT / 2;
 }
+
+/** World-space Y for the mid-height of whichever body segment sits
+ *  closest to the given forward offset (forwardX is in WORLD units,
+ *  same space as `unit.transform.x`). Used to place leg hips at the
+ *  vertical midpoint of the segment they attach to: a leg in front of
+ *  a composite spider body hooks into the small prosoma, a leg far
+ *  behind hooks into the tall abdomen, and simple-bodied units just
+ *  hook into their single segment. */
+export function getSegmentMidYAt(
+  renderer: string,
+  unitRadius: number,
+  forwardX: number,
+): number {
+  const spec = SHAPES[renderer as BodyRendererId] ?? SHAPES.arachnid;
+  if (spec.kind === 'polygon') {
+    return polygonHeight(spec.radiusFrac, spec.sides) * unitRadius / 2;
+  }
+  if (spec.kind === 'rect') {
+    return rectHeight(spec.lengthFrac, spec.widthFrac) * unitRadius / 2;
+  }
+  if (spec.kind === 'circle') {
+    return spec.radiusFrac * unitRadius;
+  }
+  if (spec.kind === 'oval') {
+    return spheroidRy(spec.xFrac, spec.zFrac) * unitRadius;
+  }
+  // Composite: find the segment whose center is nearest the leg's
+  // forward-X (in unit-local coords, so divide by unitRadius to get
+  // back into the same unit-radius-1 space the spec parts live in).
+  const targetUL = forwardX / unitRadius;
+  let best = spec.parts[0];
+  let bestDist = Math.abs(targetUL - best.offsetForward);
+  for (const p of spec.parts) {
+    const d = Math.abs(targetUL - p.offsetForward);
+    if (d < bestDist) {
+      best = p;
+      bestDist = d;
+    }
+  }
+  if (best.kind === 'circle') return best.radiusFrac * unitRadius;
+  return spheroidRy(best.xFrac, best.zFrac) * unitRadius;
+}

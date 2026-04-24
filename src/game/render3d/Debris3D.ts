@@ -23,7 +23,7 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
-import { getBodyTopY } from '../math/BodyDimensions';
+import { getBodyTopY, getSegmentMidYAt } from '../math/BodyDimensions';
 import { PLAYER_COLORS } from '../sim/types';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
@@ -47,10 +47,10 @@ const TURRET_HEIGHT = 16;
 const TURRET_HEAD_FOOTPRINT = 0.55;
 const BARREL_MIN_THICKNESS = 2;
 
-// Must match Locomotion3D.
+// Must match Locomotion3D. Hip Y is per-leg now (mid-height of the
+// body segment the leg attaches to), resolved via getSegmentMidYAt.
 const TREAD_HEIGHT = 10;
 const TREAD_Y = TREAD_HEIGHT / 2;
-const HIP_Y = 14;
 const FOOT_Y = 1;
 
 // Global cap on simultaneous pieces across the scene — generous since most
@@ -266,9 +266,13 @@ export class Debris3D {
       const all = [...left, ...right];
       const upperThick = Math.max(1, loc.config.upperThickness) * 0.6;
       const lowerThick = Math.max(1, loc.config.lowerThickness) * 0.6;
+      const legRendererId = bp.renderer ?? 'arachnid';
       for (const lc of all) {
         const hipX = lc.attachOffsetX;
         const hipZ = lc.attachOffsetY;
+        // Hip Y matches Locomotion3D: mid-height of whichever body
+        // segment this leg attaches to.
+        const hipY = getSegmentMidYAt(legRendererId, r, hipX);
         const restDist =
           (lc.upperLegLength + lc.lowerLegLength) * lc.snapDistanceMultiplier;
         const footA = lc.snapTargetAngle;
@@ -278,10 +282,10 @@ export class Debris3D {
         // the visible "knee bends upward" pose from Locomotion3D.
         const kneeX = (hipX + footX) / 2;
         const kneeZ = (hipZ + footZ) / 2;
-        const kneeY = HIP_Y + lc.upperLegLength * 0.15;
+        const kneeY = hipY + lc.upperLegLength * 0.15;
         out.push({
           shape: 'cyl',
-          ax: hipX, ay: HIP_Y, az: hipZ,
+          ax: hipX, ay: hipY, az: hipZ,
           bx: kneeX, by: kneeY, bz: kneeZ,
           thickness: upperThick,
           color: LEG_COLOR,

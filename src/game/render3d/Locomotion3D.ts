@@ -19,6 +19,7 @@ import type {
 import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
 import { normalizeAngle, magnitude } from '../math';
+import { getSegmentMidYAt } from '../math/BodyDimensions';
 
 const TREAD_COLOR = 0x1a1d22;
 const TREAD_HEIGHT = 10;
@@ -26,11 +27,12 @@ const TREAD_Y = TREAD_HEIGHT / 2;
 const WHEEL_COLOR = 0x2a2f36;
 const LEG_COLOR = 0x2a2f36;
 
-// Vertical layout for legs. Feet stay on the ground, hips sit at HIP_Y. The
-// knee's Y is solved by the IK routine — it lifts upward in the vertical
-// plane containing the hip-foot line (not a fixed height). Walk-cycle
-// animation is still 2-axis (foot planting in XZ), per the user's request.
-const HIP_Y = 14;
+// Vertical layout for legs. Feet stay on the ground, hips attach at
+// each leg's per-body-segment midpoint — computed once when the leg
+// set is built (getSegmentMidYAt resolves the nearest body segment to
+// the leg's forward offset). The knee's Y is solved by the IK routine:
+// it lifts upward in the vertical plane containing the hip-foot line.
+// Walk-cycle animation remains 2-axis (foot planting in XZ).
 const FOOT_Y = 1;
 
 export type Locomotion3DMesh =
@@ -73,6 +75,10 @@ type LegInstance = {
   config: ArachnidLegConfig;
   /** Knee bends outward: +1 for right side, -1 for left. */
   side: number;
+  /** Hip Y in world coords (= mid-height of the body segment this leg
+   *  attaches to). Baked per-leg when the leg set is built so composite
+   *  units like the arachnid get tall rear legs + shorter front legs. */
+  hipY: number;
 
   // World XZ foot position (2D "x, y" maps to 3D "x, z").
   groundX: number;
@@ -207,7 +213,8 @@ export function buildLocomotion(
       return mesh;
     }
     case 'legs': {
-      const mesh = buildLegs(worldGroup, entity, unitRadius, loc.style, loc.config, gfx.legs);
+      const renderer = bp.renderer ?? 'arachnid';
+      const mesh = buildLegs(worldGroup, entity, unitRadius, loc.style, loc.config, gfx.legs, renderer);
       if (mesh) mesh.lodKey = lodKey;
       return mesh;
     }
@@ -320,6 +327,7 @@ function buildLegs(
   style: LegStyle,
   cfg: BlueprintLegConfig,
   legLod: LegLod,
+  renderer: string,
 ): Locomotion3DMesh {
   if (legLod === 'none') return undefined;
 
@@ -378,9 +386,17 @@ function buildLegs(
       group.add(hipJoint, kneeJoint, footJoint);
     }
 
+    // Hip Y is the vertical mid-point of whichever body segment the
+    // leg sits under. For composite bodies this picks the closest
+    // segment by forward offset — so an arachnid's rear legs hook
+    // into the tall abdomen while front legs hook into the shorter
+    // prosoma.
+    const hipY = getSegmentMidYAt(renderer, r, legCfg.attachOffsetX);
+
     legs.push({
       config: legCfg,
       side,
+      hipY,
       groundX: 0,
       groundZ: 0,
       startGroundX: 0,
@@ -654,14 +670,15 @@ export function updateLocomotion(
       // Both 'animated' and 'full' LODs render a 2-segment leg with knee
       // bent upward in the vertical hip-foot plane. The difference is only
       // whether joint spheres are shown ('full' only).
+      const hipY = leg.hipY;
       const knee = kneeFromIK(
-        hipX, HIP_Y, hipZ,
+        hipX, hipY, hipZ,
         footX, FOOT_Y, footZ,
         c.upperLegLength, c.lowerLegLength,
       );
       setCylinderBetween(
         leg.upper,
-        hipX, HIP_Y, hipZ,
+        hipX, hipY, hipZ,
         knee.x, knee.y, knee.z,
         leg.upperThick,
       );
@@ -673,7 +690,7 @@ export function updateLocomotion(
           leg.lowerThick,
         );
       }
-      if (leg.hipJoint)  leg.hipJoint.position.set(hipX, HIP_Y, hipZ);
+      if (leg.hipJoint)  leg.hipJoint.position.set(hipX, hipY, hipZ);
       if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
       if (leg.footJoint) leg.footJoint.position.set(footX, FOOT_Y, footZ);
     }
@@ -699,7 +716,7 @@ export function updateLocomotion(
       const hipZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
       setCylinderBetween(
         leg.upper,
-        hipX, HIP_Y, hipZ,
+        hipX, leg.hipY, hipZ,
         leg.groundX, FOOT_Y, leg.groundZ,
         leg.upperThick,
       );
