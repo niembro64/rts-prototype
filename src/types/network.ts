@@ -48,6 +48,10 @@ export type NetworkServerSnapshotProjectileSpawn = {
   sourceEntityId: number;
   turretIndex: number;
   isDGun?: boolean;
+  /** True when this projectile came from a parent detonation (e.g.
+   *  cluster-flak submunitions). Client skips the barrel-tip spawn-
+   *  position override and uses `pos` as-is. */
+  fromParentDetonation?: boolean;
   beam?: { start: Vec3; end: Vec3 };
   targetEntityId?: number;
   homingTurnRate?: number;

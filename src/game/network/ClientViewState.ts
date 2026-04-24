@@ -862,7 +862,13 @@ export class ClientViewState {
     // lasers/beams render at their real altitude too.
     const spawnZ = spawn.pos.z;
 
-    if (spawn.projectileType !== 'beam') {
+    // Submunitions / any projectile that came from a parent detonation
+    // must spawn at the explosion point (carried on the wire in
+    // `spawn.pos`), NOT at the original shooter's barrel. Without this
+    // guard the cluster-flak children would snap to the shooter's
+    // turret muzzle even though the server spawned them at the parent
+    // shell's detonation.
+    if (spawn.projectileType !== 'beam' && !spawn.fromParentDetonation) {
       const source = this.entities.get(spawn.sourceEntityId);
       const weapon = source?.turrets?.[spawn.turretIndex];
       if (source && source.unit && weapon) {

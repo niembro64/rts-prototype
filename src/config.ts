@@ -155,7 +155,7 @@ export const TURRET_HEIGHT = 16;
  *  RTS-scale ballistics rather than real-world 9.8 m/s²; the map is
  *  ~3000 wu wide and shots travel hundreds of units per second, so
  *  heavier gravity would flatten every arc into a short lob. */
-export const GRAVITY = 800;
+export const GRAVITY = 400;
 
 // =============================================================================
 // ECONOMY & RESOURCES

@@ -62,10 +62,17 @@ type TurretMesh = {
    *  is the whole visual) and mirror units (the mirror panels are). */
   head?: THREE.Mesh;
   barrels: THREE.Mesh[];
-  /** Present for multi-barrel turrets: a sub-group containing the barrel
-   *  cylinders. Rotating this around local +X spins the whole barrel cluster
-   *  around the firing axis (the gatling effect). */
-  barrelGroup?: THREE.Group;
+  /** Pitch pivot (rotation.z = pitch) — tilts the firing direction up/
+   *  down. Parent of spinGroup. Present on every turret with a barrel. */
+  pitchGroup?: THREE.Group;
+  /** Spin pivot, nested INSIDE pitchGroup. rotation.x = gatling angle.
+   *  Because it lives under pitchGroup, its local +X is the already-
+   *  pitched firing axis — so spin rotates the barrel cluster around
+   *  the real barrel direction (not around world-X). Without this
+   *  nesting, pitch+spin compose extrinsically and high-pitch gatling
+   *  barrels "cone" around the horizontal instead of spinning around
+   *  their own pitched axis. */
+  spinGroup?: THREE.Group;
 };
 
 /** One animated sparkle (glint) riding the face of a mirror panel. Travels
@@ -302,7 +309,7 @@ export class Render3DEntities {
     if (!barrel || isForceField || turretOff) {
       // No physical barrel for: force-field turrets, min LOD (turretOff).
       parent.add(root);
-      return { root, head, barrels, barrelGroup: undefined };
+      return { root, head, barrels, pitchGroup: undefined, spinGroup: undefined };
     }
 
     const barrelCenterY = TURRET_HEIGHT / 2;
@@ -321,24 +328,29 @@ export class Render3DEntities {
     // CylinderGeometry is unit radius = 1, so physical radius = scale.x = diameter/2.
     const cylRadius = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
 
-    // Every turret gets a barrelGroup now — it's the pivot that
-    // carries BOTH pitch (rotation.z, tilts firing direction up/down)
-    // and gatling spin (rotation.x, rotates around firing axis). The
-    // group sits at (0, barrelCenterY, 0) so its local axes line up
-    // with the firing direction: +X = forward, +Y = up, +Z = side.
-    // Previous revision only created this group for multi-barrel
-    // turrets, so single-barrel cannons couldn't pitch — their
-    // barrels stayed flat regardless of the weapon's elevation.
-    const isMultiBarrel =
-      barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel';
-    const barrelGroup = new THREE.Group();
-    barrelGroup.position.set(0, barrelCenterY, 0);
-    root.add(barrelGroup);
-    const barrelParent: THREE.Object3D = barrelGroup;
-    // Barrels now always attach to the pitched group with Y=0 local
-    // coords (group's origin is already at barrelCenterY).
+    // Two nested pivots so pitch and spin don't fight each other:
+    //
+    //   root
+    //   └── pitchGroup   — rotation.z = pitch (tilts firing direction)
+    //       └── spinGroup — rotation.x = gatling spin
+    //           └── barrel meshes
+    //
+    // Because spinGroup is a child of pitchGroup, spinGroup's local +X
+    // is ALREADY the pitched firing direction. Rotating around its
+    // local +X therefore spins the barrel cluster around its real 3D
+    // firing axis at any pitch. A single group carrying both rotations
+    // would compose them extrinsically — spin around world-X after
+    // pitch — and high-elevation gatling barrels would cone around the
+    // horizontal instead of rolling around their own axis.
+    const pitchGroup = new THREE.Group();
+    pitchGroup.position.set(0, barrelCenterY, 0);
+    root.add(pitchGroup);
+    const spinGroup = new THREE.Group();
+    pitchGroup.add(spinGroup);
+    const barrelParent: THREE.Object3D = spinGroup;
+    // Barrels attach to spinGroup at Y=0 — pitchGroup's position already
+    // lifts everything to barrelCenterY.
     const parentBaseY = 0;
-    void isMultiBarrel;
 
     // Place one cylinder segment spanning (base) → (tip) in local coords. Used
     // for straight (gatling) and cone (shotgun) barrels alike.
@@ -370,7 +382,7 @@ export class Render3DEntities {
     // barrelLength=0 (e.g. commander's d-gun "emitter") → no visible barrel.
     if (length < 1e-4) {
       parent.add(root);
-      return { root, head, barrels, barrelGroup };
+      return { root, head, barrels, pitchGroup, spinGroup };
     }
 
     if (barrel.type === 'simpleSingleBarrel') {
@@ -417,7 +429,7 @@ export class Render3DEntities {
     }
 
     parent.add(root);
-    return { root, head, barrels, barrelGroup };
+    return { root, head, barrels, pitchGroup, spinGroup };
   }
 
   // Scratch vectors reused across buildTurretMesh calls (no per-barrel allocations).
@@ -849,13 +861,16 @@ export class Render3DEntities {
         // -(t.rotation - chassis.rotation), which makes local +X point in the
         // correct world firing direction after both rotations compose.
         tm.root.rotation.y = -(t.rotation - e.transform.rotation);
-        // Pitch (vertical aim) tilts the barrel group around local Z —
-        // positive pitch from the sim rotates +X (the firing direction)
-        // toward +Y (up), i.e. the barrel elevates like an AA turret.
-        if (tm.barrelGroup) {
-          tm.barrelGroup.rotation.z = t.pitch;
-          // Gatling-style barrel spin: rotate around local +X (firing axis).
-          tm.barrelGroup.rotation.x = this.lod.gfx.barrelSpin
+        // Pitch (vertical aim) tilts the pitch group around local Z so
+        // positive pitch rotates +X (the barrel's firing direction)
+        // toward +Y (up). Spin then rotates the nested spin group
+        // around its OWN local +X — which, because spinGroup lives
+        // under pitchGroup, is the pitched firing axis. So gatling
+        // barrels roll around the real barrel direction at any
+        // elevation, not around world-X.
+        if (tm.pitchGroup) tm.pitchGroup.rotation.z = t.pitch;
+        if (tm.spinGroup) {
+          tm.spinGroup.rotation.x = this.lod.gfx.barrelSpin
             ? spinState?.angle ?? 0
             : 0;
         }

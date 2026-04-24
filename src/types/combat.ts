@@ -61,6 +61,13 @@ export type ProjectileSpawnEvent = {
   sourceEntityId: EntityId;
   turretIndex: number;
   isDGun?: boolean;
+  /** True for cluster-flak submunitions and any other projectile that
+   *  did NOT emerge from the shooter's barrel — the client should
+   *  spawn the visual at `pos` as-is and skip the barrel-tip override
+   *  it normally applies so the shot flies from the turret. Without
+   *  this flag submunitions would snap back to the original shooter's
+   *  gun muzzle every frame they're created. */
+  fromParentDetonation?: boolean;
   beam?: { start: Vec3; end: Vec3 };
   targetEntityId?: EntityId;
   homingTurnRate?: number;

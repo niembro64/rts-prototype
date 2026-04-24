@@ -523,6 +523,7 @@ export function serializeGameState(
         sourceEntityId: ps.sourceEntityId,
         turretIndex: ps.turretIndex,
         isDGun: ps.isDGun,
+        fromParentDetonation: ps.fromParentDetonation,
         beam: ps.beam,
         targetEntityId: ps.targetEntityId,
         homingTurnRate: ps.homingTurnRate,
