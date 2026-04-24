@@ -921,8 +921,6 @@ export class RtsScene3D {
     this.inputManager?.setWaypointMode(mode);
     this.selectionDirty = true;
   }
-  // Build / D-gun / factory queueing are not yet implemented in 3D.
-  // They're kept as no-ops so the 2D UI surface stays source-compatible.
   /** Enter build mode — forwards to Input3DManager which handles the
    *  left-click-places-building / right-click-cancels flow. */
   public startBuildMode(buildingType: BuildingType): void {
