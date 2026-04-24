@@ -397,6 +397,7 @@ export class RtsScene3D {
     // drive preview updates on mouse-move-in-build-mode (hidden on
     // mode exit via the onBuildModeChange callback below).
     this.inputManager.setBuildGhost(this.buildGhostRenderer);
+    this.inputManager.setMapBounds(this.mapWidth, this.mapHeight);
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.
     this.inputManager.onWaypointModeChange = (mode) => {

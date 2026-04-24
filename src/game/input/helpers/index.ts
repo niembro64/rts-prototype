@@ -54,3 +54,5 @@ export {
   type AttackEntitySource,
   findAttackTargetAt,
 } from './AttackTargetHelper';
+
+export { canPlaceBuildingAt } from './BuildPlacementValidator';

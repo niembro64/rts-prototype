@@ -7,6 +7,7 @@ import {
   getSnappedBuildPosition,
   handleEscape,
   CommanderModeController,
+  canPlaceBuildingAt,
 } from './helpers';
 import { magnitude } from '../math';
 import type { InputEntitySource, InputContext } from './inputBindings';
@@ -34,6 +35,13 @@ export class BuildingPlacementController {
   // Shared mode state machine — also owned by Input3DManager so the
   // two renderers can't drift on enter/exit semantics.
   private mode = new CommanderModeController();
+
+  // Map bounds for client-side build placement validation. Set via
+  // setMapBounds; until then the validator treats the world as
+  // unbounded, which means off-map ghosts still render green. That's
+  // only visible before the scene calls setMapBounds in startup.
+  private mapWidth = Infinity;
+  private mapHeight = Infinity;
 
   // Callback for UI to show build mode changes
   public onBuildModeChange?: (buildingType: BuildingType | null) => void;
@@ -81,6 +89,13 @@ export class BuildingPlacementController {
 
   setEntitySource(source: InputEntitySource): void {
     this.entitySource = source;
+  }
+
+  /** Scene hook — feeds the client-side placement validator so the
+   *  build ghost turns red at the map edge. */
+  setMapBounds(width: number, height: number): void {
+    this.mapWidth = width;
+    this.mapHeight = height;
   }
 
   /** Setup building and D-gun hotkeys */
@@ -199,8 +214,10 @@ export class BuildingPlacementController {
     const left = x - width / 2;
     const top = y - height / 2;
 
-    // TODO: Check if placement is valid via construction system
-    const canPlace = true; // Placeholder
+    const canPlace = canPlaceBuildingAt(
+      type, x, y, this.mapWidth, this.mapHeight,
+      this.entitySource.getBuildings(),
+    );
 
     // Ghost fill
     const ghostColor = canPlace ? 0x88ff88 : 0xff4444;

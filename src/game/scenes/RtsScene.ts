@@ -294,6 +294,7 @@ export class RtsScene extends SceneShim {
       this.clientViewState,
       this.localCommandQueue,
     );
+    this.inputManager.setMapBounds(this.mapWidth, this.mapHeight);
 
     // Shared pan-direction arrow (SVG/DOM overlay). Both 2D and 3D scenes
     // create one; the CameraController updates it during drag pan / edge scroll.
@@ -404,6 +405,7 @@ export class RtsScene extends SceneShim {
       this.clientViewState,
       this.localCommandQueue,
     );
+    this.inputManager.setMapBounds(this.mapWidth, this.mapHeight);
     this.inputManager.setPanArrowOverlay(this.panArrowOverlay);
     this.markSelectionDirty();
     this.onPlayerChange?.(playerId);

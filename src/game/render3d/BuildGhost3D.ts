@@ -99,12 +99,16 @@ export class BuildGhost3D {
 
   /** Update the ghost position + styling. Sim y maps to world z on
    *  the ground plane. Pass a freshly selected commander so the
-   *  range circle + in-range check reflect the current selection. */
+   *  range circle + in-range check reflect the current selection.
+   *  `canPlace` comes from the client-side placement validator
+   *  (overlap + map bounds) — the footprint turns red if the ghost
+   *  is out of range OR the placement would fail server-side. */
   setTarget(
     buildingType: BuildingType,
     worldX: number,
     worldY: number,
     commander: Entity | null,
+    canPlace: boolean,
   ): void {
     const snapped = getSnappedBuildPosition(worldX, worldY, buildingType);
     const config = getBuildingConfig(buildingType);
@@ -118,9 +122,10 @@ export class BuildGhost3D {
       inRange = Math.hypot(dx, dy) <= commander.builder.buildRange;
     }
 
+    const okVisually = inRange && canPlace;
     this.footprint.scale.set(width, depth, 1);
     this.footprint.position.set(snapped.x, GHOST_Y, snapped.y);
-    this.footprint.material = inRange ? this.footMatOk : this.footMatBad;
+    this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
 
     if (commander?.builder) {
       this.rangeRing.visible = true;

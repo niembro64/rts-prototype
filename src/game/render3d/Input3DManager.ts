@@ -30,6 +30,8 @@ import {
   buildFactoryWaypointCommands,
   handleEscape,
   CommanderModeController,
+  canPlaceBuildingAt,
+  getSnappedBuildPosition,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 
@@ -83,6 +85,12 @@ export class Input3DManager {
   // scene injects one via setBuildGhost. Stays null in the demo /
   // headless case, where no in-world preview is shown.
   private buildGhost: BuildGhost3D | null = null;
+
+  // Map bounds feed the client-side placement validator (same pattern
+  // as 2D BuildingPlacementController). Infinity until setMapBounds
+  // is called, so an un-wired scene shows green ghosts everywhere.
+  private mapWidth = Infinity;
+  private mapHeight = Infinity;
 
   // Drag state (screen coords only — box select is screen-space)
   private leftDown = false;
@@ -173,6 +181,14 @@ export class Input3DManager {
     // restart), nothing will show until they move the cursor. That's
     // acceptable — mirrors the 2D ghost's "drawn from state, updated
     // each move" lifecycle.
+  }
+
+  /** Scene hook — feeds the client-side placement validator so the
+   *  build ghost turns red at the map edge or when overlapping an
+   *  existing building. */
+  setMapBounds(width: number, height: number): void {
+    this.mapWidth = width;
+    this.mapHeight = height;
   }
 
   setWaypointMode(mode: WaypointType): void {
@@ -410,9 +426,16 @@ export class Input3DManager {
     if (buildType !== null && this.buildGhost) {
       const world = this.raycastGround(e.clientX, e.clientY);
       if (world) {
+        const snapped = getSnappedBuildPosition(world.x, world.y, buildType);
+        const canPlace = canPlaceBuildingAt(
+          buildType, snapped.x, snapped.y,
+          this.mapWidth, this.mapHeight,
+          this.entitySource.getBuildings(),
+        );
         this.buildGhost.setTarget(
           buildType, world.x, world.y,
           this.getSelectedCommander(),
+          canPlace,
         );
       }
     }

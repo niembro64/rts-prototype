@@ -213,6 +213,12 @@ export class InputManager {
     this.commandController.setEntitySource(source);
   }
 
+  /** Feed map bounds to the placement validator so the build ghost
+   *  turns red at the map edge. Call once after scene init. */
+  public setMapBounds(width: number, height: number): void {
+    this.buildingController.setMapBounds(width, height);
+  }
+
   // Public method to start build mode from UI
   public startBuildMode(buildingType: BuildingType): void {
     this.buildingController.startBuildMode(buildingType);
