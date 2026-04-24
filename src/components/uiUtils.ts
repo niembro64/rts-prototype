@@ -1,6 +1,6 @@
 // Shared UI utility functions for control bars and display components.
 
-import { PLAYER_COLORS, type PlayerId } from '../game/sim/types';
+import { PLAYER_COLORS, getPlayerPrimaryColor, type PlayerId } from '../game/sim/types';
 
 /** Format milliseconds as HH:MM:SS */
 export function formatDuration(ms: number): string {
@@ -91,8 +91,7 @@ export function msBarStyle(
 }
 
 export function getPlayerColor(playerId: PlayerId): string {
-  const color = PLAYER_COLORS[playerId]?.primary ?? 0x888888;
-  return '#' + color.toString(16).padStart(6, '0');
+  return '#' + getPlayerPrimaryColor(playerId).toString(16).padStart(6, '0');
 }
 
 export function getPlayerName(playerId: PlayerId): string {

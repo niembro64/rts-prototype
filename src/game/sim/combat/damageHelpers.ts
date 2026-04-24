@@ -3,7 +3,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, BeamShot, LaserShot } from '../types';
-import { PLAYER_COLORS, isLineShot } from '../types';
+import { getPlayerPrimaryColor, isLineShot } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
@@ -97,7 +97,7 @@ export function collectKillsWithDeathAudio(
       const target = world.getEntity(id);
       const ctx = result.deathContexts.get(id);
       const playerId = target?.ownership?.playerId ?? 1;
-      const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
+      const playerColor = getPlayerPrimaryColor(playerId);
       audioEvents.push({
         type: 'death',
         turretId: config.id,
@@ -134,7 +134,7 @@ export function collectKillsWithDeathAudio(
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
       const playerId = building?.ownership?.playerId ?? 1;
-      const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
+      const playerColor = getPlayerPrimaryColor(playerId);
       audioEvents.push({
         type: 'death',
         turretId: config.id,
@@ -179,7 +179,7 @@ export function collectKillsAndDeathContexts(
       const target = world.getEntity(id);
       const ctx = result.deathContexts.get(id);
       const playerId = target?.ownership?.playerId ?? 1;
-      const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
+      const playerColor = getPlayerPrimaryColor(playerId);
       audioEvents.push({
         type: 'death',
         turretId: config.id,
@@ -203,7 +203,7 @@ export function collectKillsAndDeathContexts(
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
       const playerId = building?.ownership?.playerId ?? 1;
-      const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
+      const playerColor = getPlayerPrimaryColor(playerId);
       audioEvents.push({
         type: 'death',
         turretId: config.id,

@@ -65,3 +65,23 @@ export const PLAYER_COLORS: Record<PlayerId, { primary: number; secondary: numbe
 };
 
 export const MAX_PLAYERS = 6;
+
+/** Neutral fallback color for "no player" / unknown-playerId display.
+ *  Soft gray so it reads as "ownerless" regardless of background. */
+export const NEUTRAL_PLAYER_COLOR = 0x888888;
+
+/** Resolve a player's primary display color. Returns NEUTRAL_PLAYER_COLOR
+ *  for undefined / unregistered player IDs — the single canonical source
+ *  of truth for this lookup, used by the sim, 2D renderer, 3D renderer,
+ *  and UI. Don't write `PLAYER_COLORS[pid]?.primary ?? <fallback>` at
+ *  call sites; the fallbacks drift. */
+export function getPlayerPrimaryColor(playerId: PlayerId | undefined): number {
+  if (playerId === undefined) return NEUTRAL_PLAYER_COLOR;
+  return PLAYER_COLORS[playerId]?.primary ?? NEUTRAL_PLAYER_COLOR;
+}
+
+/** Resolve a player's secondary (darker) display color. */
+export function getPlayerSecondaryColor(playerId: PlayerId | undefined): number {
+  if (playerId === undefined) return NEUTRAL_PLAYER_COLOR;
+  return PLAYER_COLORS[playerId]?.secondary ?? NEUTRAL_PLAYER_COLOR;
+}

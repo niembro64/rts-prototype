@@ -21,7 +21,7 @@
 
 import * as THREE from 'three';
 import type { SprayTarget } from '../sim/commanderAbilities';
-import { PLAYER_COLORS } from '../sim/types';
+import { getPlayerPrimaryColor } from '../sim/types';
 import type { PlayerId } from '../sim/types';
 import { getGraphicsConfig } from '@/clientBarConfig';
 
@@ -170,7 +170,7 @@ export class SprayRenderer3D {
     if (pid === undefined) return this.fallbackMat;
     let mat = this.particleMats.get(pid);
     if (!mat) {
-      const color = PLAYER_COLORS[pid]?.primary ?? 0xffffff;
+      const color = getPlayerPrimaryColor(pid);
       mat = new THREE.MeshBasicMaterial({
         color,
         transparent: true,

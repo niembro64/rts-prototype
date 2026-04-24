@@ -1,7 +1,7 @@
 import { WorldState } from './WorldState';
 import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId } from './types';
-import { PLAYER_COLORS } from './types';
+import { getPlayerPrimaryColor } from './types';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
@@ -544,7 +544,7 @@ export class Simulation {
   // emits so the 2D/3D debris systems can treat it identically.
   private emitSyntheticDeathEvent(entity: import('./types').Entity): void {
     const playerId = entity.ownership?.playerId ?? 1;
-    const playerColor = PLAYER_COLORS[playerId]?.primary ?? 0xe05858;
+    const playerColor = getPlayerPrimaryColor(playerId);
     if (entity.unit) {
       this.pendingSimEvents.push({
         type: 'death',

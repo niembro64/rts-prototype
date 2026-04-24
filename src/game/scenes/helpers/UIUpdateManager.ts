@@ -1,7 +1,7 @@
 // UI Update Manager - handles selection, economy, and minimap data updates
 
 import type { PlayerId, WaypointType } from '../../sim/types';
-import { PLAYER_COLORS } from '../../sim/types';
+import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 
 // Unit type to display label
@@ -127,28 +127,22 @@ export function buildMinimapData(
 
   // Add units to minimap
   for (const unit of entitySource.getUnits()) {
-    const playerId = unit.ownership?.playerId;
-    const color = playerId ? PLAYER_COLORS[playerId]?.primary : 0x888888;
-    const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
-
+    const color = getPlayerPrimaryColor(unit.ownership?.playerId);
     entities.push({
       pos: { x: unit.transform.x, y: unit.transform.y },
       type: 'unit',
-      color: colorHex,
+      color: '#' + color.toString(16).padStart(6, '0'),
       isSelected: unit.selectable?.selected,
     });
   }
 
   // Add buildings to minimap
   for (const building of entitySource.getBuildings()) {
-    const playerId = building.ownership?.playerId;
-    const color = playerId ? PLAYER_COLORS[playerId]?.primary : 0x888888;
-    const colorHex = '#' + (color ?? 0x888888).toString(16).padStart(6, '0');
-
+    const color = getPlayerPrimaryColor(building.ownership?.playerId);
     entities.push({
       pos: { x: building.transform.x, y: building.transform.y },
       type: 'building',
-      color: colorHex,
+      color: '#' + color.toString(16).padStart(6, '0'),
       isSelected: building.selectable?.selected,
     });
   }

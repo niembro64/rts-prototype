@@ -1,14 +1,15 @@
 // Color palette utilities for unit and building rendering
 
-import { PLAYER_COLORS } from '../../sim/types';
+import { getPlayerPrimaryColor } from '../../sim/types';
 import type { ColorPalette } from '../types';
 
 /**
- * Get player color from player ID
+ * Get player color from player ID. Thin renderer-side re-export of the
+ * sim-side helper so render code can import a lookup without reaching
+ * into sim/types directly.
  */
 export function getPlayerColor(playerId: number | undefined): number {
-  if (playerId === undefined) return 0x888888;
-  return PLAYER_COLORS[playerId]?.primary ?? 0x888888;
+  return getPlayerPrimaryColor(playerId as import('../../sim/types').PlayerId | undefined);
 }
 
 /**

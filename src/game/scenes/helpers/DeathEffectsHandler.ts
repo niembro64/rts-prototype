@@ -15,7 +15,7 @@ import {
   FIRE_EXPLOSION,
 } from '../../../explosionConfig';
 import { TURRET_CONFIGS } from '../../sim/turretConfigs';
-import { PLAYER_COLORS } from '../../sim/types';
+import { getPlayerPrimaryColor } from '../../sim/types';
 import { magnitude } from '../../math';
 import { getAudioScope, getSoundToggle } from '@/clientBarConfig';
 
@@ -118,10 +118,7 @@ export function handleSimEvent(
       const ent = clientViewState.getEntity(event.entityId);
       if (ent) {
         const pid = ent.ownership?.playerId;
-        const tcol =
-          pid !== undefined
-            ? PLAYER_COLORS[pid]?.primary ?? 0xcccccc
-            : 0xcccccc;
+        const tcol = getPlayerPrimaryColor(pid);
         ctx = {
           unitVel: {
             x: ent.unit?.velocityX ?? 0,

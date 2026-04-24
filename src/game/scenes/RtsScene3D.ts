@@ -51,7 +51,7 @@ import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
-import { PLAYER_COLORS } from '../sim/types';
+import { getPlayerPrimaryColor } from '../sim/types';
 import type {
   Entity,
   EntityId,
@@ -730,10 +730,7 @@ export class RtsScene3D {
         const ent = this.clientViewState.getEntity(event.entityId);
         if (ent) {
           const pid = ent.ownership?.playerId;
-          const tcol =
-            pid !== undefined
-              ? PLAYER_COLORS[pid]?.primary ?? 0xcccccc
-              : 0xcccccc;
+          const tcol = getPlayerPrimaryColor(pid);
           ctx = {
             unitVel: {
               x: ent.unit?.velocityX ?? 0,
