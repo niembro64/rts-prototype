@@ -98,6 +98,12 @@ export type ProjectileShotBlueprint = {
    *  homing — a gravity-less projectile without homing flies in a
    *  perfectly straight line until it hits something. */
   ignoresGravity?: boolean;
+  /** Cosmetic — when true the 3D client renders a smoke trail of
+   *  fading puff particles behind this projectile while it flies.
+   *  Has no sim effect; declared on the shot blueprint so different
+   *  shot types can opt in independently of damage / homing / gravity
+   *  behavior. Rockets naturally want this; ballistic shells don't. */
+  leavesSmokeTrail?: boolean;
 };
 
 export type BeamShotBlueprint = {

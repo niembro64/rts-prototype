@@ -70,15 +70,16 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightRocket: {
     type: 'projectile',
     id: 'lightRocket',
-    mass: 4,
+    mass: 8,
     collision: { radius: 2.5, damage: 3 },
     explosion: {
       primary: { radius: 10, damage: 4, force: 800 },
       secondary: { radius: 18, damage: 1, force: 800 },
     },
     splashOnExpiry: true,
-    lifespan: 2500,
+    lifespan: 5500,
     ignoresGravity: true,
+    leavesSmokeTrail: true,
     hitSound: AUDIO.event.hit.lightRocket,
   },
   heavyShot: {

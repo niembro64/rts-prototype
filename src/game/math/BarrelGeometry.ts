@@ -139,15 +139,18 @@ export function getBarrelTip(
   // and a shot from barrel i comes out pointing along that tilted axis.
   //
   // Tip orbit can be specified two ways:
-  //   - Explicit `b.tipOrbit` (fraction of unit scale) — used when the
-  //     visible barrel splay should be decoupled from the firing cone,
-  //     e.g. a VLS pod with wide visible barrels but a narrow random
-  //     launch cone around vertical.
-  //   - Derived from `spread.angle` — the legacy behavior, for shotguns
-  //     where the visible cone and the firing cone match.
+  //   - Explicit `b.tipOrbit` (fraction of unit scale) — the
+  //     author-authoritative value, used when the visible barrel splay
+  //     is decoupled from the firing cone (e.g. VLS rocket pods with
+  //     wide horizontal tubes but a narrow random launch cone).
+  //     Trusted as-is; no clamp.
+  //   - Derived from `spread.angle` — legacy shotgun behavior. The
+  //     TURRET_HEIGHT·0.9 clamp exists here as a safety against
+  //     accidentally huge auto-values; an explicit author value is
+  //     expected to be deliberate.
   const baseOrbitR = b.baseOrbit * unitScale;
   const tipOrbitR = b.tipOrbit !== undefined
-    ? Math.min(b.tipOrbit * unitScale, TURRET_HEIGHT * 0.9)
+    ? b.tipOrbit * unitScale
     : Math.min(
         baseOrbitR + barrelLen * Math.tan((config.spread?.angle ?? Math.PI / 5) / 2),
         TURRET_HEIGHT * 0.9,

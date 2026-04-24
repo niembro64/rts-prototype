@@ -178,6 +178,9 @@ export type ProjectileShot = {
    *  shot is in flight. Shared sim + client state so predicted arcs
    *  match authoritative arcs. Orthogonal to homingTurnRate. */
   ignoresGravity?: boolean;
+  /** Cosmetic 3D-client flag — emit a smoke-puff trail behind this
+   *  projectile. See ProjectileShotBlueprint.leavesSmokeTrail. */
+  leavesSmokeTrail?: boolean;
 };
 
 // Beam shot — continuous line from turret, per-tick damage (no cooldown)

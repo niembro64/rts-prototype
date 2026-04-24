@@ -470,8 +470,11 @@ export class Render3DEntities {
         barrel.baseOrbit * unitRadius,
         TURRET_HEIGHT * 0.35,
       );
+      // Explicit `tipOrbit` is trusted as-authored (no clamp) so VLS
+      // rocket pods can splay their tubes wider than the legacy
+      // shotgun safety. The auto-derived path keeps its clamp.
       const tipOrbitR = barrel.tipOrbit !== undefined
-        ? Math.min(barrel.tipOrbit * unitRadius, TURRET_HEIGHT * 0.9)
+        ? barrel.tipOrbit * unitRadius
         : Math.min(
             baseOrbitR + length * Math.tan((turret.config.spread?.angle ?? Math.PI / 5) / 2),
             TURRET_HEIGHT * 0.9,

@@ -27,6 +27,7 @@ import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
+import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
@@ -124,6 +125,7 @@ export class RtsScene3D {
   private lineDragRenderer!: LineDrag3D;
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
+  private smokeTrailRenderer!: SmokeTrail3D;
   private audioScheduler = new AudioEventScheduler();
   private lastEffectsTickMs = 0;
   private inputManager: Input3DManager | null = null;
@@ -360,6 +362,7 @@ export class RtsScene3D {
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
     this.buildGhostRenderer = new BuildGhost3D(this.threeApp.world);
     this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
+    this.smokeTrailRenderer = new SmokeTrail3D(this.threeApp.world);
 
     // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;
@@ -553,6 +556,10 @@ export class RtsScene3D {
     // Commander build / heal spray trails — read straight from sim state
     // via ClientViewState, same list the 2D renderer consumes.
     this.sprayRenderer.update(this.clientViewState.getSprayTargets(), effectDt);
+    // Rocket smoke trails: reads the same projectile list the beam
+    // renderer consumes; puffs fall back to pooled meshes once their
+    // fade completes.
+    this.smokeTrailRenderer.update(projectiles, effectDt);
     // Per-frame input bookkeeping — currently just the shared
     // SelectionChangeTracker, which resets waypoint mode when the
     // selection changes (matches the 2D path's InputManager.update).
@@ -1059,6 +1066,7 @@ export class RtsScene3D {
     this.lineDragRenderer?.destroy();
     this.buildGhostRenderer?.destroy();
     this.sprayRenderer?.destroy();
+    this.smokeTrailRenderer?.destroy();
     this.longtaskTracker.destroy();
     this.audioScheduler.clear();
     if (!opts.keepConnection) {
