@@ -126,13 +126,25 @@ type EntityMesh = {
   locomotion?: Locomotion3DMesh;
   ringMat?: THREE.MeshBasicMaterial;
   ring?: THREE.Mesh;
-  /** SCAL/SHOT/PUSH unit-radius indicator rings — toggleable per type,
-   *  mirroring the 2D renderUnitRadiusCircles overlay. Meshes are created
-   *  lazily on first show and hidden (not destroyed) when toggled off. */
+  /** UNIT RAD indicator meshes. Shape follows the sim's own
+   *  dimensionality for each channel:
+   *    - scale → flat ground ring (no sim collision — pure visual
+   *      horizontal footprint).
+   *    - shot  → wireframe sphere (beam + projectile collision are
+   *      lineSphereIntersectionT in DamageSystem; area damage vs
+   *      units uses full 3D distance).
+   *    - push  → flat ground ring (PhysicsEngine3D's unit-vs-unit
+   *      push is horizontal-plane only — "z is ignored by unit push").
+   *
+   *  Meshes are created lazily on first show and hidden (not destroyed)
+   *  when toggled off. The sphere stays parented to the unit group
+   *  (it should follow the unit's altitude); the two rings live in
+   *  the world group so they always sit on the ground, independent
+   *  of the unit's altitude/rotation. */
   radiusRings?: {
-    scale?: THREE.LineSegments;
+    scale?: THREE.LineLoop;
     shot?: THREE.LineSegments;
-    push?: THREE.LineSegments;
+    push?: THREE.LineLoop;
   };
   /** Builder-unit BLD ground ring. Build-range is a 2D horizontal
    *  check, so this is a flat ring on the ground under the unit. */
@@ -615,38 +627,55 @@ export class Render3DEntities {
     const collider = entity.unit?.unitRadiusCollider;
     if (!collider) return;
 
-    const show = {
-      scale: getUnitRadiusToggle('visual'),
-      shot: getUnitRadiusToggle('shot'),
-      push: getUnitRadiusToggle('push'),
-    };
-    const radii = { scale: collider.scale, shot: collider.shot, push: collider.push };
-    const mats = {
-      scale: this.radiusMatScale,
-      shot: this.radiusMatShot,
-      push: this.radiusMatPush,
-    };
-    // Sphere center in group-local coords = push radius above the
-    // ground (matches sim: unit.transform.z = push radius when resting).
-    const centerY = collider.push;
+    const rings = m.radiusRings ?? (m.radiusRings = {});
 
-    for (const key of ['scale', 'shot', 'push'] as const) {
-      const want = show[key];
-      const rings = m.radiusRings ?? (m.radiusRings = {});
-      let ring = rings[key];
-      if (want) {
-        if (!ring) {
-          ring = new THREE.LineSegments(this.radiusSphereGeom, mats[key]);
-          m.group.add(ring);
-          rings[key] = ring;
-        }
-        ring.visible = true;
-        ring.position.y = centerY;
-        const r = radii[key];
-        ring.scale.setScalar(r);
-      } else if (ring) {
-        ring.visible = false;
+    // SCAL — pure visual footprint. No sim check involves it. Draw as
+    // a flat ring on the ground under the unit.
+    const showScale = getUnitRadiusToggle('visual');
+    if (showScale) {
+      if (!rings.scale) {
+        rings.scale = new THREE.LineLoop(this.rangeRingGeom, this.radiusMatScale);
+        this.world.add(rings.scale);
       }
+      rings.scale.visible = true;
+      rings.scale.position.set(entity.transform.x, 0.1, entity.transform.y);
+      rings.scale.scale.set(collider.scale, 1, collider.scale);
+    } else if (rings.scale) {
+      rings.scale.visible = false;
+    }
+
+    // SHOT — 3D collision volume (beam/projectile-vs-unit uses line-
+    // sphere; area damage vs units uses full 3D distance). Wireframe
+    // sphere that follows the unit in 3D, centered at the sim's own
+    // sphere center (= push radius above the group's ground origin,
+    // so the sphere stays on the unit when airborne).
+    const showShot = getUnitRadiusToggle('shot');
+    if (showShot) {
+      if (!rings.shot) {
+        rings.shot = new THREE.LineSegments(this.radiusSphereGeom, this.radiusMatShot);
+        m.group.add(rings.shot);
+      }
+      rings.shot.visible = true;
+      rings.shot.position.y = collider.push;
+      rings.shot.scale.setScalar(collider.shot);
+    } else if (rings.shot) {
+      rings.shot.visible = false;
+    }
+
+    // PUSH — unit-vs-unit physics push is explicitly horizontal-only
+    // ("z is ignored by unit push" in PhysicsEngine3D). Flat ground
+    // ring, not a sphere.
+    const showPush = getUnitRadiusToggle('push');
+    if (showPush) {
+      if (!rings.push) {
+        rings.push = new THREE.LineLoop(this.rangeRingGeom, this.radiusMatPush);
+        this.world.add(rings.push);
+      }
+      rings.push.visible = true;
+      rings.push.position.set(entity.transform.x, 0.1, entity.transform.y);
+      rings.push.scale.set(collider.push, 1, collider.push);
+    } else if (rings.push) {
+      rings.push.visible = false;
     }
   }
 
@@ -781,22 +810,30 @@ export class Render3DEntities {
     for (const m of this.unitMeshes.values()) {
       destroyLocomotion(m.locomotion);
       this.world.remove(m.group);
-      // Range rings are parented to the world group, not m.group, so
-      // removing the unit group alone would leave orphaned rings
-      // hanging in world space. The next updateRangeRings() call
-      // won't find them on the rebuilt unit either.
-      if (m.buildRing) this.world.remove(m.buildRing);
-      for (const tm of m.turrets) {
-        if (tm.rangeRings) {
-          if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
-          if (tm.rangeRings.trackRelease)  this.world.remove(tm.rangeRings.trackRelease);
-          if (tm.rangeRings.engageAcquire) this.world.remove(tm.rangeRings.engageAcquire);
-          if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
-        }
-      }
+      this.disposeWorldParentedOverlays(m);
     }
     this.unitMeshes.clear();
     this.barrelSpins.clear();
+  }
+
+  /** Remove every overlay mesh that lives in the world group (not the
+   *  unit group) so a teardown/rebuild cycle doesn't leak them into
+   *  the scene. TURR RAD rings (per-turret + build), SCAL ring, and
+   *  PUSH ring all fall into this category because they must stay flat
+   *  on the ground regardless of unit rotation/altitude. The SHOT
+   *  wireframe sphere is parented to m.group and rides along with it. */
+  private disposeWorldParentedOverlays(m: EntityMesh): void {
+    if (m.buildRing) this.world.remove(m.buildRing);
+    if (m.radiusRings?.scale) this.world.remove(m.radiusRings.scale);
+    if (m.radiusRings?.push) this.world.remove(m.radiusRings.push);
+    for (const tm of m.turrets) {
+      if (tm.rangeRings) {
+        if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
+        if (tm.rangeRings.trackRelease)  this.world.remove(tm.rangeRings.trackRelease);
+        if (tm.rangeRings.engageAcquire) this.world.remove(tm.rangeRings.engageAcquire);
+        if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
+      }
+    }
   }
 
 
@@ -1078,23 +1115,12 @@ export class Render3DEntities {
       // Health bar handled by the shared HealthBarOverlay (SVG layer).
     }
 
-    // Remove meshes for units no longer present
+    // Remove meshes for units no longer present.
     for (const [id, m] of this.unitMeshes) {
       if (!seen.has(id)) {
         destroyLocomotion(m.locomotion);
         this.world.remove(m.group);
-        // Range rings live in the WORLD group (so they stay flat on
-        // the ground independent of unit rotation/altitude), so they
-        // need explicit removal when the unit is gone.
-        if (m.buildRing) this.world.remove(m.buildRing);
-        for (const tm of m.turrets) {
-          if (tm.rangeRings) {
-            if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
-            if (tm.rangeRings.trackRelease)  this.world.remove(tm.rangeRings.trackRelease);
-            if (tm.rangeRings.engageAcquire) this.world.remove(tm.rangeRings.engageAcquire);
-            if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
-          }
-        }
+        this.disposeWorldParentedOverlays(m);
         this.unitMeshes.delete(id);
       }
     }
@@ -1346,23 +1372,14 @@ export class Render3DEntities {
   }
 
   destroy(): void {
-    // Range rings and SHOT RAD wireframes live in the world group, so
-    // they're already in the unit/projectile mesh graphs we tear down
-    // below — but the per-unit TURR RAD rings and per-projectile SHOT
-    // RAD spheres are separately parented to `world`, not to the unit/
-    // projectile group. Remove those before clearing the maps.
+    // Per-unit overlays (TURR RAD rings, BLD ring, SCAL + PUSH rings)
+    // are parented to the world group rather than the unit group so
+    // they stay flat on the ground regardless of unit rotation /
+    // altitude — destroy() has to release them explicitly.
     for (const m of this.unitMeshes.values()) {
       destroyLocomotion(m.locomotion);
       this.world.remove(m.group);
-      if (m.buildRing) this.world.remove(m.buildRing);
-      for (const tm of m.turrets) {
-        if (tm.rangeRings) {
-          if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
-          if (tm.rangeRings.trackRelease)  this.world.remove(tm.rangeRings.trackRelease);
-          if (tm.rangeRings.engageAcquire) this.world.remove(tm.rangeRings.engageAcquire);
-          if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
-        }
-      }
+      this.disposeWorldParentedOverlays(m);
     }
     for (const m of this.buildingMeshes.values()) this.world.remove(m.group);
     for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
