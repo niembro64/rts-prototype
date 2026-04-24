@@ -18,6 +18,17 @@
 //            (rotating buildings aren't a thing in this game). Units
 //            push off the cuboid's surface instead of clipping through.
 //
+// Collision dimension by pair type:
+//   unit ↔ ground    — z axis only (sphere vs z=0 plane).
+//   unit ↔ building  — full 3D (sphere vs cuboid) so tall buildings
+//                      are blockers and short ones can be jumped over
+//                      by airborne units.
+//   unit ↔ unit      — 2D horizontal push only. Units with the same
+//                      z just jostle, units at different altitudes
+//                      pass over/under each other without disturbing.
+//   projectile hits  — full 3D; handled OUTSIDE this engine by
+//                      DamageSystem / ProjectileCollisionHandler.
+//
 // The engine runs a standard explicit-Euler integrator at the
 // simulation's fixed tick rate. Integration order per step:
 //
@@ -325,10 +336,16 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Sphere-sphere contact: push two spheres apart along their center
-   *  line, inverse-mass weighted, with elastic reflection along the
-   *  contact normal. Iterated SPHERE_ITERATIONS times per step so
-   *  crowded pile-ups settle reasonably. */
+  /** Sphere-sphere push: horizontal-plane only. Units jostle each
+   *  other in (x, y); z is untouched. Gameplay-wise this means a
+   *  tall unit flying over a short unit doesn't shove it sideways —
+   *  only units on similar altitudes interact. For the common case
+   *  of ground units that's identical to 3D push, because z ≈ z.
+   *  Iterated SPHERE_ITERATIONS times per step so crowded pile-ups
+   *  settle reasonably.
+   *
+   *  Full 3D projectile/laser vs unit collisions live in the damage
+   *  system, not here — see ProjectileCollisionHandler + DamageSystem. */
   private resolveSphereSphereContacts(): void {
     const n = this.dynamicBodies.length;
     for (let i = 0; i < n; i++) {
@@ -337,42 +354,35 @@ export class PhysicsEngine3D {
       for (let j = i + 1; j < n; j++) {
         const b = this.dynamicBodies[j];
         if (b.shape !== 'sphere') continue;
+        // Horizontal-only separation — z is ignored by unit push.
         const dx = b.x - a.x;
         const dy = b.y - a.y;
-        const dz = b.z - a.z;
         const rSum = a.radius + b.radius;
-        const distSq = dx * dx + dy * dy + dz * dz;
+        const distSq = dx * dx + dy * dy;
         if (distSq >= rSum * rSum) continue;
         const dist = Math.sqrt(distSq) || 1e-6;
         const nx = dx / dist;
         const ny = dy / dist;
-        const nz = dz / dist;
         const penetration = rSum - dist;
         const wA = a.invMass / (a.invMass + b.invMass);
         const wB = b.invMass / (a.invMass + b.invMass);
         a.x -= nx * penetration * wA;
         a.y -= ny * penetration * wA;
-        a.z -= nz * penetration * wA;
         b.x += nx * penetration * wB;
         b.y += ny * penetration * wB;
-        b.z += nz * penetration * wB;
-        // Relative velocity along normal.
+        // Relative horizontal velocity along the contact normal.
         const rvx = b.vx - a.vx;
         const rvy = b.vy - a.vy;
-        const rvz = b.vz - a.vz;
-        const vDotN = rvx * nx + rvy * ny + rvz * nz;
+        const vDotN = rvx * nx + rvy * ny;
         if (vDotN >= 0) continue;
         const e = Math.min(a.restitution, b.restitution);
         const jMag = -(1 + e) * vDotN / (a.invMass + b.invMass);
         const ix = jMag * nx;
         const iy = jMag * ny;
-        const iz = jMag * nz;
         a.vx -= ix * a.invMass;
         a.vy -= iy * a.invMass;
-        a.vz -= iz * a.invMass;
         b.vx += ix * b.invMass;
         b.vy += iy * b.invMass;
-        b.vz += iz * b.invMass;
       }
     }
   }
