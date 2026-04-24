@@ -31,7 +31,8 @@ import {
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getUnitRadiusToggle } from '@/clientBarConfig';
+import { getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
+import { getWeaponWorldPosition } from '../math';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -74,6 +75,17 @@ type TurretMesh = {
    *  barrels "cone" around the horizontal instead of spinning around
    *  their own pitched axis. */
   spinGroup?: THREE.Group;
+  /** Per-turret ground-ring meshes for the TURR RAD overlay. Drawn on
+   *  the world ground plane because the matching sim checks are
+   *  horizontal-only (Math.hypot(dx,dy) in targetingSystem). Parented
+   *  to the WORLD group so the ring stays flat regardless of unit
+   *  rotation. */
+  rangeRings?: {
+    trackAcquire?: THREE.LineLoop;
+    trackRelease?: THREE.LineLoop;
+    engageAcquire?: THREE.LineLoop;
+    engageRelease?: THREE.LineLoop;
+  };
 };
 
 /** One animated sparkle (glint) riding the face of a mirror panel. Travels
@@ -122,6 +134,9 @@ type EntityMesh = {
     shot?: THREE.LineSegments;
     push?: THREE.LineSegments;
   };
+  /** Builder-unit BLD ground ring. Build-range is a 2D horizontal
+   *  check, so this is a flat ring on the ground under the unit. */
+  buildRing?: THREE.LineLoop;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  slab. Empty / undefined for units. */
@@ -146,6 +161,17 @@ export class Render3DEntities {
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
   private projectileMeshes = new Map<number, THREE.Mesh>();
+  /** SHOT RAD overlay meshes per projectile. Wireframe spheres —
+   *  not ground rings — because the matching sim checks ARE 3D
+   *  (lineSphereIntersectionT for collision, sqrt(dx²+dy²+dz²) for
+   *  area damage against units). Lazily created on first visible
+   *  toggle and hidden (not destroyed) when toggled off, so churning
+   *  the buttons doesn't churn GPU allocations. */
+  private projectileRadiusMeshes = new Map<number, {
+    collision?: THREE.LineSegments;
+    primary?: THREE.LineSegments;
+    secondary?: THREE.LineSegments;
+  }>();
 
   // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
   // Angle advances by `speed` radians/sec; speed accelerates toward
@@ -210,6 +236,40 @@ export class Render3DEntities {
   private radiusMatPush = new THREE.LineBasicMaterial({
     color: 0x44ff44, transparent: true, opacity: 0.7, depthWrite: false,
   });
+
+  // Ground-ring viz (TURR RAD: T.A/T.R/E.A/E.R/BLD). These sim checks
+  // are horizontal-only (`Math.hypot(dx, dy)` in targetingSystem) so
+  // showing them as flat rings on the ground plane — instead of 3D
+  // spheres — honestly reflects what the sim actually tests. A 64-gon
+  // LineLoop in the three.js X-Z plane; Y=0 + scale(r,1,r) plants the
+  // ring at the right size on the map.
+  private rangeRingGeom = (() => {
+    const SEGMENTS = 64;
+    const pts: number[] = [];
+    for (let i = 0; i < SEGMENTS; i++) {
+      const a = (i / SEGMENTS) * Math.PI * 2;
+      pts.push(Math.cos(a), 0, Math.sin(a));
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    return g;
+  })();
+  // Per-sub-toggle colors mirror the 2D renderer's RangeCircles palette
+  // so the same viz toggled in either mode looks consistent.
+  private ringMatTrackAcquire = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.35, depthWrite: false });
+  private ringMatTrackRelease = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.18, depthWrite: false });
+  private ringMatEngageAcquire = new THREE.LineBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.45, depthWrite: false });
+  private ringMatEngageRelease = new THREE.LineBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.40, depthWrite: false });
+  private ringMatBuild = new THREE.LineBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.45, depthWrite: false });
+
+  // SHOT RAD wireframe spheres. These sim checks ARE 3D
+  // (lineSphereIntersectionT for collision, 3D sqrt(dx²+dy²+dz²) for
+  // area damage), so the viz is a 3D sphere — not a ring — to match
+  // the real volume the sim tests. Separate materials per toggle so
+  // overlapping spheres stay visually distinct.
+  private projMatCollision = new THREE.LineBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.55, depthWrite: false });
+  private projMatPrimary = new THREE.LineBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.35, depthWrite: false });
+  private projMatSecondary = new THREE.LineBasicMaterial({ color: 0xffdd44, transparent: true, opacity: 0.30, depthWrite: false });
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private secondaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
@@ -590,6 +650,103 @@ export class Render3DEntities {
     }
   }
 
+  /** Show/hide the per-unit TURR RAD ground rings: tracking acquire/
+   *  release and engage acquire/release are per-turret; build is per-
+   *  unit (centered on the builder). All five are flat rings on the
+   *  world ground plane because each matching sim check is horizontal
+   *  only (Math.hypot(dx, dy), never z) — drawing them as 3D spheres
+   *  would suggest the sim tests something it doesn't.
+   *
+   *  Rings are parented to the WORLD group (not the unit group) so
+   *  they stay at Y=0 even when the unit is airborne from a knockback
+   *  or falling off a cliff, and they don't spin with the unit. */
+  private updateRangeRings(m: EntityMesh, entity: Entity): void {
+    const unit = entity.unit;
+    if (!unit) return;
+
+    const showTrackAcquire = getRangeToggle('trackAcquire');
+    const showTrackRelease = getRangeToggle('trackRelease');
+    const showEngageAcquire = getRangeToggle('engageAcquire');
+    const showEngageRelease = getRangeToggle('engageRelease');
+    const showBuild = getRangeToggle('build');
+
+    const ux = entity.transform.x;
+    const uy = entity.transform.y;
+    const cos = Math.cos(entity.transform.rotation);
+    const sin = Math.sin(entity.transform.rotation);
+
+    // Per-turret rings — same center (weapon world pos) the 2D path
+    // uses, so toggling 2D↔3D shows the same circle at the same spot.
+    if (entity.turrets) {
+      for (let i = 0; i < entity.turrets.length; i++) {
+        const weapon = entity.turrets[i];
+        const tm = m.turrets[i];
+        if (!tm) continue;
+        const wp = getWeaponWorldPosition(ux, uy, cos, sin, weapon.offset.x, weapon.offset.y);
+
+        this.setRangeRing(
+          tm, 'trackAcquire', showTrackAcquire, wp.x, wp.y,
+          weapon.ranges.tracking.acquire, this.ringMatTrackAcquire,
+        );
+        this.setRangeRing(
+          tm, 'trackRelease', showTrackRelease, wp.x, wp.y,
+          weapon.ranges.tracking.release, this.ringMatTrackRelease,
+        );
+        this.setRangeRing(
+          tm, 'engageAcquire', showEngageAcquire, wp.x, wp.y,
+          weapon.ranges.engage.acquire, this.ringMatEngageAcquire,
+        );
+        this.setRangeRing(
+          tm, 'engageRelease', showEngageRelease, wp.x, wp.y,
+          weapon.ranges.engage.release, this.ringMatEngageRelease,
+        );
+      }
+    }
+
+    // Build range (builder-only, centered on the unit).
+    const builder = entity.builder;
+    if (showBuild && builder) {
+      if (!m.buildRing) {
+        m.buildRing = new THREE.LineLoop(this.rangeRingGeom, this.ringMatBuild);
+        this.world.add(m.buildRing);
+      }
+      m.buildRing.visible = true;
+      m.buildRing.position.set(ux, 0.1, uy);
+      m.buildRing.scale.set(builder.buildRange, 1, builder.buildRange);
+    } else if (m.buildRing) {
+      m.buildRing.visible = false;
+    }
+  }
+
+  /** Internal helper: create-if-missing / update-if-visible / hide for
+   *  a single per-turret range ring. Keeps the four toggle branches in
+   *  updateRangeRings from duplicating the lazy-create dance. */
+  private setRangeRing(
+    tm: TurretMesh,
+    key: 'trackAcquire' | 'trackRelease' | 'engageAcquire' | 'engageRelease',
+    want: boolean,
+    cx: number, cy: number,
+    radius: number,
+    mat: THREE.LineBasicMaterial,
+  ): void {
+    const rings = tm.rangeRings ?? (tm.rangeRings = {});
+    let ring = rings[key];
+    if (want) {
+      if (!ring) {
+        ring = new THREE.LineLoop(this.rangeRingGeom, mat);
+        this.world.add(ring);
+        rings[key] = ring;
+      }
+      ring.visible = true;
+      // Lift a hair off the ground to avoid z-fighting with the tile
+      // layer. sim(x,y) → three(x,z); three.y stays at 0.1.
+      ring.position.set(cx, 0.1, cy);
+      ring.scale.set(radius, 1, radius);
+    } else if (ring) {
+      ring.visible = false;
+    }
+  }
+
   update(): void {
     // Refresh LOD snapshot once per frame. If the global LOD changed since
     // the last frame, tear down all unit meshes so updateUnits() rebuilds
@@ -624,6 +781,19 @@ export class Render3DEntities {
     for (const m of this.unitMeshes.values()) {
       destroyLocomotion(m.locomotion);
       this.world.remove(m.group);
+      // Range rings are parented to the world group, not m.group, so
+      // removing the unit group alone would leave orphaned rings
+      // hanging in world space. The next updateRangeRings() call
+      // won't find them on the rebuilt unit either.
+      if (m.buildRing) this.world.remove(m.buildRing);
+      for (const tm of m.turrets) {
+        if (tm.rangeRings) {
+          if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
+          if (tm.rangeRings.trackRelease)  this.world.remove(tm.rangeRings.trackRelease);
+          if (tm.rangeRings.engageAcquire) this.world.remove(tm.rangeRings.engageAcquire);
+          if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
+        }
+      }
     }
     this.unitMeshes.clear();
     this.barrelSpins.clear();
@@ -848,6 +1018,7 @@ export class Render3DEntities {
       // draws these as stroked circles at the respective collider radii;
       // here we mirror the same toggle → ring visibility behaviour.
       this.updateRadiusRings(m, e);
+      this.updateRangeRings(m, e);
 
       // Per-turret placement. Turret offset is chassis-local in sim coords
       // (x, y) which map to (x, z) in three. Root Y sits at the top of the
@@ -912,6 +1083,18 @@ export class Render3DEntities {
       if (!seen.has(id)) {
         destroyLocomotion(m.locomotion);
         this.world.remove(m.group);
+        // Range rings live in the WORLD group (so they stay flat on
+        // the ground independent of unit rotation/altitude), so they
+        // need explicit removal when the unit is gone.
+        if (m.buildRing) this.world.remove(m.buildRing);
+        for (const tm of m.turrets) {
+          if (tm.rangeRings) {
+            if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
+            if (tm.rangeRings.trackRelease)  this.world.remove(tm.rangeRings.trackRelease);
+            if (tm.rangeRings.engageAcquire) this.world.remove(tm.rangeRings.engageAcquire);
+            if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
+          }
+        }
         this.unitMeshes.delete(id);
       }
     }
@@ -1051,6 +1234,8 @@ export class Render3DEntities {
       // = shotRadius · 2 · BARREL_THICKNESS_MULTIPLIER) then sits naturally
       // inside the projectile, matching the 2D relationship.
       mesh.scale.setScalar(Math.max(radius, PROJECTILE_MIN_RADIUS));
+
+      this.updateProjRadiusMeshes(e);
     }
 
     for (const [id, mesh] of this.projectileMeshes) {
@@ -1059,18 +1244,137 @@ export class Render3DEntities {
         this.projectileMeshes.delete(id);
       }
     }
+    // Drop SHOT RAD wireframes that went with despawned projectiles.
+    for (const [id, radii] of this.projectileRadiusMeshes) {
+      if (!seen.has(id)) {
+        if (radii.collision) this.world.remove(radii.collision);
+        if (radii.primary) this.world.remove(radii.primary);
+        if (radii.secondary) this.world.remove(radii.secondary);
+        this.projectileRadiusMeshes.delete(id);
+      }
+    }
+  }
+
+  /** Show/hide the per-projectile SHOT RAD wireframe spheres. COL is
+   *  the actual collision capsule the swept-line 3D test uses; PRM/SEC
+   *  are the splash-damage spheres for area damage on detonation.
+   *
+   *  Spheres (not rings) because every one of these sim checks is 3D:
+   *  `lineSphereIntersectionT` for COL, `sqrt(dx²+dy²+dz²)` for PRM/SEC
+   *  against units. Drawing flat rings would under-sell what the sim
+   *  tests — a high-arc shell's primary blast genuinely catches airborne
+   *  targets above it. */
+  private updateProjRadiusMeshes(entity: Entity): void {
+    const proj = entity.projectile;
+    if (!proj) return;
+    const shot = proj.config.shot;
+    if (shot.type !== 'projectile') return;
+
+    const wantCol = getProjRangeToggle('collision');
+    const wantPrm = getProjRangeToggle('primary');
+    const wantSec = getProjRangeToggle('secondary');
+    if (!wantCol && !wantPrm && !wantSec) {
+      // Fast path — nothing to show. Hide anything that was visible
+      // last frame so flipping the toggle off doesn't leave a stale
+      // sphere floating around.
+      const existing = this.projectileRadiusMeshes.get(entity.id);
+      if (existing) {
+        if (existing.collision) existing.collision.visible = false;
+        if (existing.primary) existing.primary.visible = false;
+        if (existing.secondary) existing.secondary.visible = false;
+      }
+      return;
+    }
+
+    let radii = this.projectileRadiusMeshes.get(entity.id);
+    if (!radii) {
+      radii = {};
+      this.projectileRadiusMeshes.set(entity.id, radii);
+    }
+
+    const projX = entity.transform.x;
+    const projY = entity.transform.y;
+    const projZ = entity.transform.z;
+
+    this.setProjRadiusMesh(
+      radii, 'collision', wantCol,
+      projX, projY, projZ,
+      shot.collision.radius,
+      this.projMatCollision,
+    );
+    this.setProjRadiusMesh(
+      radii, 'primary', wantPrm && !proj.hasExploded,
+      projX, projY, projZ,
+      shot.explosion?.primary.radius ?? 0,
+      this.projMatPrimary,
+    );
+    this.setProjRadiusMesh(
+      radii, 'secondary', wantSec && !proj.hasExploded,
+      projX, projY, projZ,
+      shot.explosion?.secondary.radius ?? 0,
+      this.projMatSecondary,
+    );
+  }
+
+  /** Internal helper — create/show/hide one of the three SHOT RAD
+   *  wireframe spheres on a projectile. */
+  private setProjRadiusMesh(
+    radii: { collision?: THREE.LineSegments; primary?: THREE.LineSegments; secondary?: THREE.LineSegments },
+    key: 'collision' | 'primary' | 'secondary',
+    want: boolean,
+    x: number, y: number, z: number,
+    radius: number,
+    mat: THREE.LineBasicMaterial,
+  ): void {
+    if (!want || radius <= 0) {
+      const m = radii[key];
+      if (m) m.visible = false;
+      return;
+    }
+    let mesh = radii[key];
+    if (!mesh) {
+      mesh = new THREE.LineSegments(this.radiusSphereGeom, mat);
+      this.world.add(mesh);
+      radii[key] = mesh;
+    }
+    mesh.visible = true;
+    // sim(x,y,z) → three(x,z,y). Sphere already lives at origin; scale
+    // is the sim radius so its world size matches what the collision
+    // code tests against.
+    mesh.position.set(x, z, y);
+    mesh.scale.setScalar(radius);
   }
 
   destroy(): void {
+    // Range rings and SHOT RAD wireframes live in the world group, so
+    // they're already in the unit/projectile mesh graphs we tear down
+    // below — but the per-unit TURR RAD rings and per-projectile SHOT
+    // RAD spheres are separately parented to `world`, not to the unit/
+    // projectile group. Remove those before clearing the maps.
     for (const m of this.unitMeshes.values()) {
       destroyLocomotion(m.locomotion);
       this.world.remove(m.group);
+      if (m.buildRing) this.world.remove(m.buildRing);
+      for (const tm of m.turrets) {
+        if (tm.rangeRings) {
+          if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
+          if (tm.rangeRings.trackRelease)  this.world.remove(tm.rangeRings.trackRelease);
+          if (tm.rangeRings.engageAcquire) this.world.remove(tm.rangeRings.engageAcquire);
+          if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
+        }
+      }
     }
     for (const m of this.buildingMeshes.values()) this.world.remove(m.group);
     for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
+    for (const radii of this.projectileRadiusMeshes.values()) {
+      if (radii.collision) this.world.remove(radii.collision);
+      if (radii.primary) this.world.remove(radii.primary);
+      if (radii.secondary) this.world.remove(radii.secondary);
+    }
     this.unitMeshes.clear();
     this.buildingMeshes.clear();
     this.projectileMeshes.clear();
+    this.projectileRadiusMeshes.clear();
     disposeBodyGeoms();
     disposeBuildingGeoms();
     this.turretHeadGeom.dispose();
@@ -1079,9 +1383,18 @@ export class Render3DEntities {
     this.buildingGeom.dispose();
     this.ringGeom.dispose();
     this.radiusSphereGeom.dispose();
+    this.rangeRingGeom.dispose();
     this.radiusMatScale.dispose();
     this.radiusMatShot.dispose();
     this.radiusMatPush.dispose();
+    this.ringMatTrackAcquire.dispose();
+    this.ringMatTrackRelease.dispose();
+    this.ringMatEngageAcquire.dispose();
+    this.ringMatEngageRelease.dispose();
+    this.ringMatBuild.dispose();
+    this.projMatCollision.dispose();
+    this.projMatPrimary.dispose();
+    this.projMatSecondary.dispose();
     this.mirrorGeom.dispose();
     this.glintGeom.dispose();
     this.glintMatPrimary.dispose();
