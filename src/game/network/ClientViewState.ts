@@ -727,7 +727,9 @@ export class ClientViewState {
             this.serverTargets.delete(entity.id);
           }
         } else {
-          // Homing steering: turn velocity toward target (same math as server)
+          // Homing steering — 3D velocity rotation toward the target,
+          // identical math to the server's projectileSystem call so
+          // predicted and authoritative paths agree frame-for-frame.
           const proj = entity.projectile;
           if (proj.homingTargetId !== undefined) {
             const homingTarget = this.entities.get(proj.homingTargetId);
@@ -737,17 +739,14 @@ export class ClientViewState {
                 (homingTarget.building && homingTarget.building.hp > 0))
             ) {
               const steered = applyHomingSteering(
-                proj.velocityX,
-                proj.velocityY,
-                homingTarget.transform.x,
-                homingTarget.transform.y,
-                entity.transform.x,
-                entity.transform.y,
-                proj.homingTurnRate ?? 0,
-                dt,
+                proj.velocityX, proj.velocityY, proj.velocityZ,
+                homingTarget.transform.x, homingTarget.transform.y, homingTarget.transform.z,
+                entity.transform.x, entity.transform.y, entity.transform.z,
+                proj.homingTurnRate ?? 0, dt,
               );
               proj.velocityX = steered.velocityX;
               proj.velocityY = steered.velocityY;
+              proj.velocityZ = steered.velocityZ;
               entity.transform.rotation = steered.rotation;
             } else {
               proj.homingTargetId = undefined;

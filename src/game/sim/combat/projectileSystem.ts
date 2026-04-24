@@ -365,21 +365,25 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       }
     }
 
-    // Homing steers in the (x, y) plane only — tracking the target
-    // horizontally while gravity keeps dragging vz down. That matches
-    // BAR / TA-style homing missiles: they correct their heading on
-    // the ground plane but don't try to claw back against gravity.
+    // Homing rotates the full 3D velocity vector toward the target
+    // each tick (Rodrigues rotation around v×d, clamped to
+    // homingTurnRate·dt radians). Speed is preserved, so the missile
+    // "steers" like a thrust-guided weapon instead of independently
+    // fighting gravity on each axis. If the target is above the
+    // current heading, the missile pitches up; if to the side, it
+    // yaws — all along the direct great-circle arc toward the target.
     if (proj.homingTargetId !== undefined) {
       const homingTarget = world.getEntity(proj.homingTargetId);
       if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
         const steered = applyHomingSteering(
-          proj.velocityX, proj.velocityY,
-          homingTarget.transform.x, homingTarget.transform.y,
-          entity.transform.x, entity.transform.y,
-          proj.homingTurnRate ?? 0, dtSec
+          proj.velocityX, proj.velocityY, proj.velocityZ,
+          homingTarget.transform.x, homingTarget.transform.y, homingTarget.transform.z,
+          entity.transform.x, entity.transform.y, entity.transform.z,
+          proj.homingTurnRate ?? 0, dtSec,
         );
         proj.velocityX = steered.velocityX;
         proj.velocityY = steered.velocityY;
+        proj.velocityZ = steered.velocityZ;
         entity.transform.rotation = steered.rotation;
 
         const velTh = SNAPSHOT_CONFIG.velocityThreshold;
