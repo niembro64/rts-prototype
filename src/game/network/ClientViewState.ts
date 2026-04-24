@@ -172,6 +172,14 @@ export class ClientViewState {
   // Frame counter for beam path throttling (recompute every N frames instead of every frame)
   private frameCounter: number = 0;
 
+  // Per-frame cache of living enemy entities, built lazily the first
+  // time a rocket needs to re-acquire this frame. Subsequent rockets
+  // losing target in the same frame share the same scan result — so
+  // 10 rockets losing lock = 1 entity-map walk, not 10.
+  private _rocketEnemyCache: Entity[] = [];
+  private _rocketEnemyCacheFrame: number = -1;
+  private _rocketEnemyCacheOwnerId: PlayerId | null = null;
+
   constructor() {}
 
   private invalidateCaches(): void {
@@ -873,17 +881,35 @@ export class ClientViewState {
     ownerId: PlayerId,
   ): Entity | null {
     const ROCKET_REACQUIRE_RANGE_SQ = 800 * 800;
+    // Per-frame enemy cache. The first rocket to lose target walks
+    // the entity map and collects every living enemy; any further
+    // rockets from the same player that lose target this frame reuse
+    // the same list. Rebuilt if the frame counter OR the requesting
+    // owner changed (different player → different enemy set).
+    if (
+      this._rocketEnemyCacheFrame !== this.frameCounter ||
+      this._rocketEnemyCacheOwnerId !== ownerId
+    ) {
+      const list = this._rocketEnemyCache;
+      list.length = 0;
+      for (const e of this.entities.values()) {
+        if (e.ownership?.playerId === undefined || e.ownership.playerId === ownerId) continue;
+        if (e.unit) {
+          if (e.unit.hp <= 0) continue;
+        } else if (e.building) {
+          if (e.building.hp <= 0) continue;
+        } else {
+          continue;
+        }
+        list.push(e);
+      }
+      this._rocketEnemyCacheFrame = this.frameCounter;
+      this._rocketEnemyCacheOwnerId = ownerId;
+    }
+
     let nearest: Entity | null = null;
     let nearestDistSq = ROCKET_REACQUIRE_RANGE_SQ;
-    for (const e of this.entities.values()) {
-      if (e.ownership?.playerId === undefined || e.ownership.playerId === ownerId) continue;
-      if (e.unit) {
-        if (e.unit.hp <= 0) continue;
-      } else if (e.building) {
-        if (e.building.hp <= 0) continue;
-      } else {
-        continue;
-      }
+    for (const e of this._rocketEnemyCache) {
       const dx = e.transform.x - proj.transform.x;
       const dy = e.transform.y - proj.transform.y;
       const dz = e.transform.z - proj.transform.z;
@@ -1047,7 +1073,11 @@ export class ClientViewState {
   // === Selection management ===
 
   setSelectedIds(ids: Set<EntityId>): void {
-    this.selectedIds = new Set(ids);
+    // Reuse the existing Set rather than replacing it — consumers
+    // (including the `selectedIds` getter below) hold a stable
+    // reference across selection changes.
+    this.selectedIds.clear();
+    for (const id of ids) this.selectedIds.add(id);
     for (const entity of this.entities.values()) {
       if (entity.selectable) {
         entity.selectable.selected = this.selectedIds.has(entity.id);

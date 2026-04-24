@@ -172,6 +172,16 @@ export class Render3DEntities {
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
   private projectileMeshes = new Map<number, THREE.Mesh>();
+  // Reusable "seen this frame" sets — the four per-frame update loops
+  // (barrel-spin, unit, building, projectile) each need to track which
+  // entity ids were visited so stale Map entries get pruned. Keeping
+  // them as instance fields and calling `.clear()` at the top of each
+  // loop avoids allocating a fresh Set on every render frame — four
+  // Set allocations × 60 Hz = ~240 GC objects/sec otherwise.
+  private _seenUnitIds = new Set<EntityId>();
+  private _seenSpinIds = new Set<EntityId>();
+  private _seenBuildingIds = new Set<number>();
+  private _seenProjectileIds = new Set<number>();
   /** SHOT RAD overlay meshes per projectile. Wireframe spheres —
    *  not ground rings — because the matching sim checks ARE 3D
    *  (lineSphereIntersectionT for collision, sqrt(dx²+dy²+dz²) for
@@ -839,7 +849,8 @@ export class Render3DEntities {
    */
   private updateBarrelSpins(dt: number): void {
     const units = this.clientViewState.getUnits();
-    const seen = new Set<EntityId>();
+    const seen = this._seenSpinIds;
+    seen.clear();
 
     for (const entity of units) {
       if (!entity.turrets) continue;
@@ -882,7 +893,8 @@ export class Render3DEntities {
 
   private updateUnits(): void {
     const units = this.clientViewState.getUnits();
-    const seen = new Set<number>();
+    const seen = this._seenUnitIds;
+    seen.clear();
 
     for (const e of units) {
       seen.add(e.id);
@@ -1122,7 +1134,8 @@ export class Render3DEntities {
 
   private updateBuildings(): void {
     const buildings = this.clientViewState.getBuildings();
-    const seen = new Set<number>();
+    const seen = this._seenBuildingIds;
+    seen.clear();
 
     for (const e of buildings) {
       seen.add(e.id);
@@ -1216,7 +1229,8 @@ export class Render3DEntities {
 
   private updateProjectiles(): void {
     const projectiles = this.clientViewState.getProjectiles();
-    const seen = new Set<number>();
+    const seen = this._seenProjectileIds;
+    seen.clear();
 
     for (const e of projectiles) {
       // Skip beams/lasers — handled by BeamRenderer3D as line segments rather

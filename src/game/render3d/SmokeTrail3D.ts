@@ -80,6 +80,13 @@ export class SmokeTrail3D {
   private active: Puff[] = [];
   private pool: Puff[] = [];
   private emitters = new Map<EntityId, Emitter>();
+  // Scratch buffers reused across frames. `_seen` records which
+  // emitters were touched this tick so we can prune stale entries;
+  // `_eligible` gathers rockets with enough budget to emit at least
+  // one puff, for the round-robin pass. Reusing them avoids fresh
+  // Set + array allocations every render frame.
+  private _seen = new Set<EntityId>();
+  private _eligible: Entity[] = [];
 
   constructor(worldGroup: THREE.Group) {
     this.root = new THREE.Group();
@@ -131,8 +138,10 @@ export class SmokeTrail3D {
     //    projectiles early in the iteration could burn the entire
     //    cap on their own backlog and later rockets would silently
     //    produce no trail at all.
-    const seen = new Set<EntityId>();
-    const eligible: Entity[] = [];
+    const seen = this._seen;
+    const eligible = this._eligible;
+    seen.clear();
+    eligible.length = 0;
     for (const e of projectiles) {
       const shot = e.projectile?.config.shot;
       if (!shot || shot.type !== 'projectile') continue;
