@@ -371,6 +371,15 @@ export class RtsScene extends SceneShim {
     }
   }
 
+  // Center camera on the map center with no rotation — used by the
+  // demo / lobby background so the battlefield reads as a symmetric
+  // "map overview" instead of framing a specific commander's seat.
+  private centerCameraOnMap(): void {
+    this.cameras.main.rotation = 0;
+    this.cameras.main.centerOn(this.mapWidth / 2, this.mapHeight / 2);
+    this.hasCenteredCamera = true;
+  }
+
   // Handle game over (last commander standing)
   private handleGameOver(winnerId: PlayerId): void {
     if (this.isGameOver) return;
@@ -690,13 +699,14 @@ export class RtsScene extends SceneShim {
         this.handleGameOver(winnerId);
       }
 
-      // Center camera on the controlled player's commander on the
-      // first snapshot — same treatment for the real game and the
-      // demo, so the lobby view frames the player's seat naturally.
-      // (Initial zoom still differs via ZOOM_INITIAL_DEMO; centerOn
-      // doesn't touch zoom.)
+      // First-snapshot camera framing. Real games center on the
+      // player's commander so the initial view matches their seat;
+      // the demo / lobby background centers on the map so the whole
+      // battle is visible behind the UI. (Initial zoom differs via
+      // ZOOM_INITIAL_DEMO; centerOn doesn't touch zoom.)
       if (!this.hasCenteredCamera) {
-        this.centerCameraOnCommander();
+        if (this.backgroundMode) this.centerCameraOnMap();
+        else this.centerCameraOnCommander();
       }
     }
 

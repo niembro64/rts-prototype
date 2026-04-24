@@ -476,13 +476,14 @@ export class RtsScene3D {
       const winnerId = this.clientViewState.getGameOverWinnerId();
       if (winnerId !== null && !this.isGameOver) this.handleGameOver(winnerId);
 
-      // First-snapshot camera centering for the player's commander —
-      // applied in both the real game and the demo so the initial
-      // view always frames the seat the user is in. Zoom / distance
-      // stays at the ZOOM_INITIAL_DEMO value set in the constructor;
-      // centerCameraOnCommander only adjusts target + yaw.
+      // First-snapshot camera framing. Real games center on the
+      // player's commander (yaw tilts so the map center is forward);
+      // the demo / lobby background centers on the map itself so the
+      // whole battle is visible. Zoom / distance stays at
+      // ZOOM_INITIAL_DEMO from the constructor.
       if (!this.hasCenteredCamera) {
-        this.centerCameraOnCommander();
+        if (this.backgroundMode) this.centerCameraOnMap();
+        else this.centerCameraOnCommander();
       }
 
       this.selectionDirty = true;
@@ -652,6 +653,16 @@ export class RtsScene3D {
       }
       this.hasCenteredCamera = true;
     }
+  }
+
+  // Center the orbit camera on the map center — used by the demo /
+  // lobby background so the whole battlefield is visible instead of
+  // framing a specific commander's seat. Yaw stays at OrbitCamera's
+  // default (overhead-ish), only target moves.
+  private centerCameraOnMap(): void {
+    this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
+    this.threeApp.orbit.apply();
+    this.hasCenteredCamera = true;
   }
 
   private processLocalCommands(): void {
