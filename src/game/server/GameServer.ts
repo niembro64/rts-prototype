@@ -1,5 +1,5 @@
 // GameServer - Headless simulation server (no Phaser dependency)
-// Owns WorldState, Simulation, PhysicsEngine, and runs the game loop via setInterval
+// Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval
 
 import { WorldState } from '../sim/WorldState';
 import { Simulation } from '../sim/Simulation';
@@ -12,12 +12,11 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
-import { PhysicsEngine } from './PhysicsEngine';
-import { PhysicsEngineWasm, initPhysicsWasm } from './PhysicsEngineWasm';
-import type { IPhysicsEngine } from './IPhysicsEngine';
-import { setWasmBatchEngine, clearWasmBatchEngine } from './WasmBatch';
+import { PhysicsEngine3D } from './PhysicsEngine3D';
 import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
+import { GRID_CELL_SIZE } from '../sim/grid';
+import { getBuildingConfig } from '../sim/buildConfigs';
 import {
   MAP_SETTINGS,
   UNIT_THRUST_MULTIPLIER_GAME,
@@ -26,7 +25,6 @@ import {
   EMA_CONFIG,
   EMA_INITIAL_VALUES,
   MAX_TICK_DT_MS,
-  FORCE_WASM_PHYSICS,
   type KeyframeRatio,
 } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
@@ -39,7 +37,7 @@ export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
 
 export class GameServer {
-  private physics: IPhysicsEngine;
+  private physics: PhysicsEngine3D;
   private world: WorldState;
   private simulation: Simulation;
   private commandQueue: CommandQueue;
@@ -94,20 +92,14 @@ export class GameServer {
   // Public IP address (set by host component)
   private ipAddress: string = 'N/A';
 
-  /** Async factory — uses WASM or JS physics based on USE_WASM_PHYSICS config. */
+  /** Async factory — kept for API compatibility with the pre-3D branch
+   *  (host code still calls `GameServer.create(...)`) but there is no
+   *  longer a WASM path to initialize: the 3D engine is pure TS. */
   static async create(config: GameServerConfig): Promise<GameServer> {
-    if (FORCE_WASM_PHYSICS) {
-      await initPhysicsWasm();
-      const mapConfig = MAP_SETTINGS.game;
-      const physics = new PhysicsEngineWasm(mapConfig.width, mapConfig.height);
-      setWasmBatchEngine(physics.getWasmEngine(), PhysicsEngineWasm.getWasmMemory());
-      return new GameServer(config, physics);
-    }
-    // JS fallback — no WASM initialization
     return new GameServer(config);
   }
 
-  constructor(config: GameServerConfig, physics?: IPhysicsEngine) {
+  constructor(config: GameServerConfig, physics?: PhysicsEngine3D) {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
     this.tickRateHz = 60;
@@ -121,8 +113,8 @@ export class GameServer {
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
 
-    // Use provided physics engine (WASM) or fall back to JS
-    this.physics = physics ?? new PhysicsEngine(mapWidth, mapHeight);
+    // The physics engine is now fully 3D — same module for every path.
+    this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     this.world = new WorldState(42, mapWidth, mapHeight);
     this.world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player
@@ -397,7 +389,11 @@ export class GameServer {
 
       // Matter.js Verlet integration uses (F/m) * deltaTimeMs², our Euler engine uses (F/m) * dtSec.
       // Conversion: (ms)² / (sec)² = 1000² = 1e6. With friction-first ordering this is exact.
-      this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6);
+      // Horizontal thrust only — vertical motion is gravity-driven. If
+      // an external force accumulator ever adds a vertical channel
+      // (explosion launches the unit upward, say), it flows through a
+      // dedicated upgrade in M5.
+      this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6, 0);
     }
   }
 
@@ -408,9 +404,10 @@ export class GameServer {
       const body = entity.body.physicsBody;
       entity.transform.x = body.x;
       entity.transform.y = body.y;
-      // PhysicsBody velocities are already in px/sec — no conversion needed
+      entity.transform.z = body.z;
       entity.unit.velocityX = body.vx;
       entity.unit.velocityY = body.vy;
+      entity.unit.velocityZ = body.vz;
     }
   }
 
@@ -425,6 +422,7 @@ export class GameServer {
           entity.transform.y,
           entity.building.width,
           entity.building.height,
+          entity.building.depth,
           `building_${entity.id}`
         );
         entity.body = { physicsBody: body };

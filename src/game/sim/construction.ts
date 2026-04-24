@@ -115,6 +115,7 @@ export class ConstructionSystem {
       worldPos.y,
       config.gridWidth * GRID_CELL_SIZE,
       config.gridHeight * GRID_CELL_SIZE,
+      config.gridDepth * GRID_CELL_SIZE,
       playerId
     );
 
@@ -187,6 +188,7 @@ export class ConstructionSystem {
       centerY,
       config.gridWidth * GRID_CELL_SIZE,
       config.gridHeight * GRID_CELL_SIZE,
+      config.gridDepth * GRID_CELL_SIZE,
       playerId
     );
 

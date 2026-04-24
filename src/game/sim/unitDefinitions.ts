@@ -44,6 +44,7 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
       ranges,
       state: 'idle',
       rotation: 0,
+      pitch: 0,
       angularVelocity: 0,
       turnAccel,
       drag,

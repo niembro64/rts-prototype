@@ -329,10 +329,14 @@ export class WorldState {
   ): Entity {
     const id = this.generateEntityId();
 
+    // Initial altitude = the unit's sphere radius (its sphere rests on
+    // the ground). The physics engine clamps this to the ground plane
+    // on its first step anyway, but seeding it avoids a visible snap
+    // for any client that renders the entity before the first sim tick.
     const entity: Entity = {
       id,
       type: 'unit',
-      transform: { x, y, rotation: 0 },
+      transform: { x, y, z: unitRadiusCollider.push, rotation: 0 },
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
@@ -445,6 +449,7 @@ export class WorldState {
       ranges,
       state: 'idle',
       rotation: 0,
+      pitch: 0,
       angularVelocity: 0,
       turnAccel: accel,
       drag: drag,
@@ -489,15 +494,23 @@ export class WorldState {
   }
 
   // Create a building entity
-  createBuilding(x: number, y: number, width: number, height: number, playerId?: PlayerId): Entity {
+  createBuilding(
+    x: number, y: number,
+    width: number, height: number, depth: number,
+    playerId?: PlayerId,
+  ): Entity {
     const id = this.generateEntityId();
+    // Transform.z is the building's vertical center (base sits on
+    // z=0, so center = depth/2). The physics cuboid collider is
+    // created from the same data by GameServer.createPhysicsBodies.
     const entity: Entity = {
       id,
       type: 'building',
-      transform: { x, y, rotation: 0 },
+      transform: { x, y, z: depth / 2, rotation: 0 },
       building: {
         width,
         height,
+        depth,
         hp: 500,
         maxHp: 500,
       },
@@ -542,6 +555,10 @@ export class WorldState {
     // Always single hit (DGun overrides maxHits to Infinity after creation)
     const maxHits = 1;
 
+    // createProjectile's z/vz defaults to "fired horizontally at
+    // source turret height" — M6 (projectile ballistics) will override
+    // these with per-turret pitch and ballistic solutions. The point
+    // of this commit is just that the fields exist and get serialized.
     const projectile: Projectile = {
       ownerId,
       sourceEntityId,
@@ -549,6 +566,7 @@ export class WorldState {
       projectileType,
       velocityX,
       velocityY,
+      velocityZ: 0,
       timeAlive: 0,
       maxLifespan,
       hitEntities: new Set(),
@@ -556,12 +574,13 @@ export class WorldState {
       hasLeftSource: false,
       lastSentVelX: velocityX,
       lastSentVelY: velocityY,
+      lastSentVelZ: 0,
     };
 
     const entity: Entity = {
       id,
       type: 'shot',
-      transform: { x, y, rotation },
+      transform: { x, y, z: 0, rotation },
       ownership: { playerId: ownerId },
       projectile,
     };

@@ -13,6 +13,8 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     name: 'Solar Panel',
     gridWidth: 3,
     gridHeight: 3,
+    // Solar panels are short and low-slung — a single cell tall.
+    gridDepth: 1,
     hp: BUILDING_STATS.solar.hp,
     energyCost: BUILDING_STATS.solar.energyCost * COST_MULTIPLIER,
     manaCost: 20 * COST_MULTIPLIER,
@@ -23,6 +25,8 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     name: 'Factory',
     gridWidth: 5,
     gridHeight: 4,
+    // Factories are multi-story structures — taller than they are wide.
+    gridDepth: 3,
     hp: BUILDING_STATS.factory.hp,
     energyCost: BUILDING_STATS.factory.energyCost * COST_MULTIPLIER,
     manaCost: 50 * COST_MULTIPLIER,

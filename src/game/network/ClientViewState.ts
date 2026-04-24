@@ -848,10 +848,12 @@ export class ClientViewState {
       }
     }
 
+    // z/vz will come across the wire in M9 — for now the client
+    // seeds them at 0 and lets M6/M9 populate them properly.
     const entity: Entity = {
       id: spawn.id,
       type: 'shot',
-      transform: { x: spawnX, y: spawnY, rotation: spawn.rotation },
+      transform: { x: spawnX, y: spawnY, z: 0, rotation: spawn.rotation },
       ownership: { playerId: spawn.playerId },
       projectile: {
         ownerId: spawn.playerId,
@@ -860,6 +862,7 @@ export class ClientViewState {
         projectileType: spawn.projectileType as 'projectile' | 'beam' | 'laser',
         velocityX: spawn.velocity.x,
         velocityY: spawn.velocity.y,
+        velocityZ: 0,
         timeAlive: 0,
         maxLifespan:
           config.shot.type === 'beam'
@@ -873,8 +876,10 @@ export class ClientViewState {
         maxHits: 1,
         startX: spawn.beam?.start.x,
         startY: spawn.beam?.start.y,
+        startZ: 0,
         endX: spawn.beam?.end.x,
         endY: spawn.beam?.end.y,
+        endZ: 0,
       },
     };
     if (spawn.isDGun) {
