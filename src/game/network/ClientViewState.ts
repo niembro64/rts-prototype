@@ -805,9 +805,15 @@ export class ClientViewState {
           }
 
           // Traveling projectiles: dead-reckon using (possibly steered)
-          // velocity in full 3D. Gravity on vz mirrors the server so
-          // mortar arcs and cannon shells fall between snapshots.
-          entity.projectile.velocityZ -= GRAVITY * dt;
+          // velocity in full 3D. Ballistic projectiles take gravity;
+          // rockets (shot.ignoresGravity) travel on pure thrust and
+          // are bent only by homing — mirrors the server path so
+          // predicted arcs match authoritative arcs.
+          const shotCfg = entity.projectile.config.shot;
+          const ignoresGravity = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
+          if (!ignoresGravity) {
+            entity.projectile.velocityZ -= GRAVITY * dt;
+          }
           entity.transform.x += entity.projectile.velocityX * dt;
           entity.transform.y += entity.projectile.velocityY * dt;
           entity.transform.z += entity.projectile.velocityZ * dt;

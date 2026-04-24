@@ -92,6 +92,12 @@ export type ProjectileShotBlueprint = {
   hitSound?: SoundEntry;
   /** Cluster behavior — see {@link SubmunitionSpec}. */
   submunitions?: SubmunitionSpec;
+  /** When true, gravity is NOT applied to this projectile's vertical
+   *  velocity each tick. Use for rockets / missiles / railgun slugs
+   *  that travel by thrust rather than ballistic arc. Orthogonal to
+   *  homing — a gravity-less projectile without homing flies in a
+   *  perfectly straight line until it hits something. */
+  ignoresGravity?: boolean;
 };
 
 export type BeamShotBlueprint = {

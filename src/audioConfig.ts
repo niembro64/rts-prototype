@@ -78,7 +78,7 @@ export const AUDIO = {
         volume: 0.2,
         playSpeed: 0.3,
       },
-      shotgunTurret: {
+      salvoRocketTurret: {
         synth: 'burst-rifle' as SynthId,
         volume: 0.4,
         playSpeed: 0.2,
@@ -122,6 +122,7 @@ export const AUDIO = {
     // Per-projectile hit sounds
     hit: {
       lightShot: { synth: 'heavy' as SynthId, volume: 0.2, playSpeed: 0.5 },
+      lightRocket: { synth: 'heavy' as SynthId, volume: 0.3, playSpeed: 0.3 },
       mediumShot: { synth: 'heavy' as SynthId, volume: 0.5, playSpeed: 0.2 },
       mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
       heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },

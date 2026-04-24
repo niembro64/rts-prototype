@@ -174,6 +174,10 @@ export type ProjectileShot = {
   /** Cluster / flak-burst behavior — see SubmunitionSpec in types/blueprints.ts.
    *  Evaluated by the collision handler at the moment of explosion. */
   submunitions?: import('./blueprints').SubmunitionSpec;
+  /** Rocket/missile flag — gravity is not applied to vz while this
+   *  shot is in flight. Shared sim + client state so predicted arcs
+   *  match authoritative arcs. Orthogonal to homingTurnRate. */
+  ignoresGravity?: boolean;
 };
 
 // Beam shot — continuous line from turret, per-tick damage (no cooldown)

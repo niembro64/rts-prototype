@@ -340,10 +340,15 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.prevY = entity.transform.y;
     proj.prevZ = entity.transform.z;
 
-    // Gravity integration: vz loses GRAVITY·dt each tick. A shot fired
-    // horizontally drops into an arc; a shot fired with a positive
-    // vz ascends then falls (mortar ballistics).
-    proj.velocityZ -= GRAVITY * dtSec;
+    // Gravity integration: vz loses GRAVITY·dt each tick. Ballistic
+    // projectiles (shells, mortar rounds) arc under this; rockets
+    // opt out via `ignoresGravity`, so they travel in a straight
+    // line on thrust alone and are steered purely by homing.
+    const shotCfg = proj.config.shot;
+    const ignoresGravity = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
+    if (!ignoresGravity) {
+      proj.velocityZ -= GRAVITY * dtSec;
+    }
 
     entity.transform.x += proj.velocityX * dtSec;
     entity.transform.y += proj.velocityY * dtSec;

@@ -63,12 +63,18 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spread: { angle: Math.PI / 12 },
     audio: { fireSound: AUDIO.event.fire.lightTurret },
   },
-  shotgunTurret: {
-    id: 'shotgunTurret',
-    projectileId: 'mediumShot',
-    range: 145,
+  // Salvo rocket pod — fires one rocket per barrel in a single volley
+  // (pelletCount = barrelCount), each spawning from its own tube and
+  // fanning out in a modest cone. `lightRocket` ignores gravity and
+  // homes toward the acquired target at `homingTurnRate` rad/s, so
+  // the rockets visibly splay out of the pod then curve onto the
+  // target — classic RTS rocket-pod behavior.
+  salvoRocketTurret: {
+    id: 'salvoRocketTurret',
+    projectileId: 'lightRocket',
+    range: 400,
     cooldown: 1_500,
-    launchForce: 1600,
+    launchForce: 3600,
     homingTurnRate: 2,
     turretTurnAccel: 20,
     turretDrag: 0.15,
@@ -85,8 +91,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 1.4, pelletCount: 5 },
-    audio: { fireSound: AUDIO.event.fire.shotgunTurret },
+    spread: { angle: Math.PI / 8, pelletCount: 5 },
+    audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
   },
   cannonTurret: {
     id: 'cannonTurret',
@@ -110,7 +116,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'mortarShot',
     range: 320,
     cooldown: 6000,
-    launchForce: 40000,
+    launchForce: 20000,
     turretTurnAccel: 90,
     turretDrag: 0.4,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
@@ -200,7 +206,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // cooldown: 3000,
     turretTurnAccel: 100,
     turretDrag: 0.6,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: beamTurretBarrelLength },
+    barrel: {
+      type: 'simpleSingleBarrel',
+      barrelLength: beamTurretBarrelLength,
+    },
     launchForce: 1000,
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },

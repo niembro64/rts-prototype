@@ -75,6 +75,7 @@ function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate
     lifespan: bp.lifespan,
     homingTurnRate: homingTurnRate,
     submunitions: bp.submunitions,
+    ignoresGravity: bp.ignoresGravity,
   };
   return shot;
 }

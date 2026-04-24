@@ -61,6 +61,26 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     lifespan: 2000,
     hitSound: AUDIO.event.hit.mediumShot,
   },
+  // Rocket-class projectile. Flies in a straight line on pure thrust
+  // (ignoresGravity=true) and is bent only by homing — every salvo-
+  // rocket turret pairs this shot with a homingTurnRate so the rocket
+  // tracks its locked target. splashOnExpiry=true gives the volley a
+  // "dumb-fire detonates at end of lifespan" fallback when the seeker
+  // loses lock (target dies mid-flight).
+  lightRocket: {
+    type: 'projectile',
+    id: 'lightRocket',
+    mass: 4,
+    collision: { radius: 2.5, damage: 3 },
+    explosion: {
+      primary: { radius: 10, damage: 4, force: 800 },
+      secondary: { radius: 18, damage: 1, force: 800 },
+    },
+    splashOnExpiry: true,
+    lifespan: 2500,
+    ignoresGravity: true,
+    hitSound: AUDIO.event.hit.lightRocket,
+  },
   heavyShot: {
     type: 'projectile',
     id: 'heavyShot',
@@ -95,8 +115,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // The sim handles this declaratively — see SubmunitionSpec and
     // ProjectileCollisionHandler.
     submunitions: {
-      shotId: 'mediumShot',
-      count: 5,
+      shotId: 'lightShot',
+      count: 13,
       speed: 200,
       lifespanMs: 3000,
       collisionRadius: 4,
