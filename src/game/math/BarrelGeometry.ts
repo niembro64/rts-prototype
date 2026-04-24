@@ -133,19 +133,25 @@ export function getBarrelTip(
     };
   }
 
-  // coneMultiBarrel (shotgun). Each barrel runs from a `baseOrbit`-radius
-  // point on the near face to a `tipOrbit`-radius point on the far face,
-  // so each barrel's own axis tilts outward and a shot from barrel i
-  // comes out pointing along that tilted axis, not forward.
+  // coneMultiBarrel (shotgun / rocket pod). Each barrel runs from a
+  // `baseOrbit`-radius point on the near face to a `tipOrbit`-radius
+  // point on the far face, so each barrel's own axis tilts outward
+  // and a shot from barrel i comes out pointing along that tilted axis.
+  //
+  // Tip orbit can be specified two ways:
+  //   - Explicit `b.tipOrbit` (fraction of unit scale) — used when the
+  //     visible barrel splay should be decoupled from the firing cone,
+  //     e.g. a VLS pod with wide visible barrels but a narrow random
+  //     launch cone around vertical.
+  //   - Derived from `spread.angle` — the legacy behavior, for shotguns
+  //     where the visible cone and the firing cone match.
   const baseOrbitR = b.baseOrbit * unitScale;
-  // Tip orbit grows by `len · tan(halfSpread)` and clamps to the same
-  // TURRET_HEIGHT * 0.9 ceiling the 3D renderer uses, so the physically-
-  // spawned pellet emerges from the exact spot the visible barrel ends.
-  const spreadHalf = (config.spread?.angle ?? Math.PI / 5) / 2;
-  const tipOrbitR = Math.min(
-    baseOrbitR + barrelLen * Math.tan(spreadHalf),
-    TURRET_HEIGHT * 0.9,
-  );
+  const tipOrbitR = b.tipOrbit !== undefined
+    ? Math.min(b.tipOrbit * unitScale, TURRET_HEIGHT * 0.9)
+    : Math.min(
+        baseOrbitR + barrelLen * Math.tan((config.spread?.angle ?? Math.PI / 5) / 2),
+        TURRET_HEIGHT * 0.9,
+      );
 
   const tipUp = tipOrbitR * orbCos;
   const tipRight = tipOrbitR * orbSin;

@@ -91,6 +91,13 @@ export type BarrelShape =
       barrelLength: number;
       barrelThickness?: number;
       baseOrbit: number;
+      /** Explicit tip-orbit radius (as a fraction of unit scale). When
+       *  present, overrides the default derivation from `spread.angle`
+       *  — so the barrel cluster's visual splay can be specified
+       *  directly without also widening the firing spread. Useful for
+       *  vertical-launcher rocket pods where we want wide visible
+       *  barrel angles but a narrow firing cone around vertical. */
+      tipOrbit?: number;
       depthScale: number;
       spin: SpinConfig;
     }

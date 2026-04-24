@@ -42,7 +42,7 @@ import { getWeaponWorldPosition } from '../math';
 
 const BUILDING_HEIGHT = 120;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
-const TURRET_HEAD_FOOTPRINT = 0.55;  // head X/Z footprint as fraction of chassis radius
+const TURRET_HEAD_FOOTPRINT = 0.42;  // head X/Z footprint as fraction of chassis radius
 const BARREL_COLOR = 0xffffff;
 const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
 
@@ -463,16 +463,19 @@ export class Render3DEntities {
     } else if (barrel.type === 'coneMultiBarrel') {
       // Barrels diverge from base orbit to a wider tip orbit — a 3D cone
       // analogue of the 2D shotgun's perpendicular spread. Same firing-axis
-      // rotation center as the parallel case.
+      // rotation center as the parallel case. Mirrors the primitive in
+      // BarrelGeometry.getBarrelTip so the rendered barrel tips and the
+      // sim-spawned shot origins land at the same point.
       const baseOrbitR = Math.min(
         barrel.baseOrbit * unitRadius,
         TURRET_HEIGHT * 0.35,
       );
-      const spreadHalf = (turret.config.spread?.angle ?? Math.PI / 5) / 2;
-      const tipOrbitR = Math.min(
-        baseOrbitR + length * Math.tan(spreadHalf),
-        TURRET_HEIGHT * 0.9,
-      );
+      const tipOrbitR = barrel.tipOrbit !== undefined
+        ? Math.min(barrel.tipOrbit * unitRadius, TURRET_HEIGHT * 0.9)
+        : Math.min(
+            baseOrbitR + length * Math.tan((turret.config.spread?.angle ?? Math.PI / 5) / 2),
+            TURRET_HEIGHT * 0.9,
+          );
       const n = barrel.barrelCount;
       for (let i = 0; i < n; i++) {
         const a = (i + 0.5) / n * Math.PI * 2;

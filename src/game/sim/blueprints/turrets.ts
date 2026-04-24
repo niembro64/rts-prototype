@@ -29,7 +29,10 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
       range,
       turretTurnAccel: 100,
       turretDrag: 0.4,
-      barrel: { type: 'simpleSingleBarrel', barrelLength: beamTurretBarrelLength },
+      barrel: {
+        type: 'simpleSingleBarrel',
+        barrelLength: beamTurretBarrelLength,
+      },
       launchForce: 1000,
       rangeMultiplierOverrides: {
         tracking: { acquire: null, release: null },
@@ -76,15 +79,20 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'lightRocket',
     range: 400,
     cooldown: 1_500,
-    launchForce: 3600,
-    homingTurnRate: 2,
+    launchForce: 500,
+    homingTurnRate: 1,
     turretTurnAccel: 20,
     turretDrag: 0.15,
     barrel: {
       type: 'coneMultiBarrel',
       barrelCount: 5,
-      barrelLength: 0.6,
+      // Long tubes splayed out in the original wide cone. `tipOrbit`
+      // is specified explicitly so the visible barrel angles are
+      // decoupled from `spread.angle` — the latter now governs only
+      // the random firing cone around vertical.
+      barrelLength: 1.2,
       baseOrbit: 0.094,
+      tipOrbit: 0.9,
       depthScale: 0.12,
       spin: { idle: 2, max: 5, accel: 80, decel: 30 },
     },
