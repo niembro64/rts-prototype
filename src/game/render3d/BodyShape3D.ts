@@ -1,16 +1,22 @@
-// BodyShape3D — per-unit-renderer extruded chassis geometry.
+// BodyShape3D — per-unit-renderer 3D chassis geometry.
 //
-// Takes each 2D unit body shape (scout = diamond, brawl = wide diamond,
-// tank = pentagon, burst = triangle, mortar = hexagon, hippo = rectangle,
-// everyone else = circle) and extrudes it upward into a prism, matching
-// the 2D silhouette.
+// Each 2D unit body shape maps to one or more 3D meshes. Smooth shapes
+// (circle/oval/composite) become SphereGeometry scaled to spheroids so
+// the silhouette reads as a real volume instead of a flat extruded disk.
+// Angled shapes (polygon/rect) stay as ExtrudeGeometry prisms matching
+// their 2D silhouette.
 //
-// Geometries are cached per renderer ID. Each is built at a "unit-radius"
-// of 1 and extruded to CHASSIS_HEIGHT along Y. Call sites scale the mesh
-// X/Z by the unit's actual radius; Y scale stays 1 to preserve chassis
-// height. Each shape is already rotated so the chassis is at rotation=0
-// when the unit group is at rotation=0 — the `rotation` field in the 2D
-// drawPolygon call (e.g. scout's + π/4) is baked into the geometry.
+// Heights are proportional to each shape's horizontal dimensions — a
+// wide unit is taller than a narrow one, a spherical unit's height is
+// its own diameter, a flat pentagon's height is its inscribed-circle
+// diameter. The turret mount-point for each renderer is the top of the
+// tallest body segment, exposed via `getBodyTopY(renderer, unitRadius)`.
+//
+// All geometry is built in unit-radius-1 space. Callers scale the parent
+// group by the unit's render radius uniformly, which multiplies both
+// each part's center offset and its per-axis scale — keeping ratios
+// intact so two units with different `unitRadius` still look the same
+// shape, just bigger or smaller.
 
 import * as THREE from 'three';
 
@@ -20,10 +26,10 @@ export type BodyRendererId =
   | 'hippo'
   | 'beam' | 'arachnid' | 'snipe' | 'commander' | 'forceField' | 'loris';
 
-/** A part of a composite body (e.g. arachnid abdomen + prosoma). Offsets are
- *  in unit-radius-1 space along the unit's forward axis; positive = forward,
- *  negative = backward. All composites so far are axially symmetric so no
- *  lateral offset is needed. */
+/** A part of a composite body (e.g. arachnid abdomen + prosoma). Offsets
+ *  are in unit-radius-1 space along the unit's forward axis; positive =
+ *  forward, negative = backward. All composites so far are axially
+ *  symmetric so no lateral offset is needed. */
 type CompositePart =
   | { kind: 'circle'; offsetForward: number; radiusFrac: number }
   | {
@@ -42,9 +48,8 @@ type ShapeSpec =
   /** Single ellipse — e.g. the tick's whole body. `xFrac` is the forward
    *  half-extent, `zFrac` is the lateral half-extent. */
   | { kind: 'oval'; xFrac: number; zFrac: number }
-  /** Multi-segment body (e.g. arachnid spider = big abdomen + small
-   *  cephalothorax). Extruded as a single geometry via ExtrudeGeometry's
-   *  array-of-shapes overload. */
+  /** Multi-segment smooth body (e.g. arachnid = abdomen + cephalothorax).
+   *  Each part is rendered as its own sphere/spheroid. */
   | { kind: 'composite'; parts: CompositePart[] };
 
 /** Shape table derived from each 2D unit renderer's body. Values mirror
@@ -63,13 +68,11 @@ const SHAPES: Record<BodyRendererId, ShapeSpec> = {
   mortar:     { kind: 'polygon', sides: 6, radiusFrac: 0.55, rotation: 0 },
   // 2D: drawOrientedRect(x, y, r*0.7 /*length*/, r*1.6 /*width*/, bodyRot).
   // The hippo hull is SHORT along forward (length=0.7) and WIDE sideways
-  // (width=1.6) — the opposite of what a naive reading of the literals
-  // suggests. In our rect spec, lengthFrac is the forward axis, widthFrac
-  // the lateral axis.
+  // (width=1.6). In our rect spec, lengthFrac is the forward axis,
+  // widthFrac the lateral axis.
   hippo:      { kind: 'rect', lengthFrac: 0.7, widthFrac: 1.6 },
   // 2D BeamRenderer (tarantula): oval abdomen behind + circle cephalothorax
-  // in front. abdRx=0.65 (lateral), abdRy=0.9 (along body); abdomen offset
-  // (bodyOff − 0.95) ≈ −0.65; cephalothorax radius 0.6 at bodyOff ≈ 0.3.
+  // in front. Abdomen offset ≈ -0.65; prosoma at +0.3.
   beam: {
     kind: 'composite',
     parts: [
@@ -77,8 +80,8 @@ const SHAPES: Record<BodyRendererId, ShapeSpec> = {
       { kind: 'circle', offsetForward:  0.30, radiusFrac: 0.6 },
     ],
   },
-  // 2D ArachnidRenderer (widow): massive abdomen behind (r=1.15, offset
-  // -1.1) + smaller prosoma (r=0.55, forward offset +0.3).
+  // 2D ArachnidRenderer (widow): massive abdomen (r=1.15 at -1.1) +
+  // smaller prosoma (r=0.55 at +0.3).
   arachnid: {
     kind: 'composite',
     parts: [
@@ -86,11 +89,10 @@ const SHAPES: Record<BodyRendererId, ShapeSpec> = {
       { kind: 'circle', offsetForward:  0.3, radiusFrac: 0.55 },
     ],
   },
-  // 2D SnipeRenderer (tick): single oval idiosoma. rx=0.35 (lateral),
-  // ry=0.5 (along body). No separate cephalothorax lobe worth modeling.
+  // 2D SnipeRenderer (tick): single oval idiosoma. rx=0.5 (along body),
+  // rz=0.35 (lateral).
   snipe: { kind: 'oval', xFrac: 0.5, zFrac: 0.35 },
-  // 2D CommanderRenderer: oval rear (lateral=0.65, forward=0.7, offset
-  // -0.45) + front circle prosoma (r=0.5, offset +0.4).
+  // 2D CommanderRenderer: oval rear + front circle prosoma.
   commander: {
     kind: 'composite',
     parts: [
@@ -102,92 +104,171 @@ const SHAPES: Record<BodyRendererId, ShapeSpec> = {
   loris:      { kind: 'circle', radiusFrac: 0.55 },
 };
 
-export type BodyGeomEntry = {
+/** One mesh that makes up a unit body. Positions and scales are in
+ *  unit-radius-1 space — the caller multiplies both by the unit's
+ *  render radius (usually by uniformly scaling the chassis parent
+ *  group). Spheres use SphereGeometry; extrusions use ExtrudeGeometry
+ *  built with the per-renderer height already baked into `depth`. */
+export type BodyMeshPart = {
   geometry: THREE.BufferGeometry;
-  /** Horizontal scale multiplier to apply to the mesh so the visual radius
-   *  comes out correct. For polygons/circles: radius · radiusFrac. For
-   *  rects: separate X and Z handled by `scaleX` and `scaleZ` (same
-   *  convention, but different values). The mesh code uses these directly. */
-  radiusFrac: number;
-  /** For rectangles only — the X-axis (forward) scale fraction. */
-  scaleX?: number;
-  /** For rectangles only — the Z-axis (sideways) scale fraction. */
-  scaleZ?: number;
+  /** Center X (forward, +X) in unit-radius-1 space. */
+  x: number;
+  /** Center Y (up, +Y) in unit-radius-1 space. For spheres this is the
+   *  sphere center; for extrudes it's the bottom (geometry already
+   *  extrudes +Y from y=0). */
+  y: number;
+  /** Center Z (lateral, +Z) in unit-radius-1 space. */
+  z: number;
+  /** Per-axis half-extent scale. Sphere: semi-axes. Extrude: horizontal
+   *  footprint multipliers (Y is 1 — height is baked into the geometry). */
+  scaleX: number;
+  scaleY: number;
+  scaleZ: number;
 };
+
+export type BodyGeomEntry = {
+  parts: BodyMeshPart[];
+  /** Top-Y of the tallest body part in unit-radius-1 space. Multiply by
+   *  unitRadius to get the world-space height where the turret should
+   *  be mounted. */
+  topY: number;
+};
+
+// A single unit sphere is reused across every smooth body part — sphere
+// positioning and non-uniform scaling turn it into the final spheroid
+// without needing a separate BufferGeometry per renderer.
+let _unitSphere: THREE.SphereGeometry | null = null;
+function getUnitSphere(): THREE.SphereGeometry {
+  if (!_unitSphere) _unitSphere = new THREE.SphereGeometry(1, 24, 16);
+  return _unitSphere;
+}
+
+/** Polygon extrusion height (unit-radius-1). Uses the inscribed-circle
+ *  diameter (2·r·cos(π/N)) so tall-radius shapes like a pentagon rise
+ *  higher than a squat triangle, while everything stays proportional
+ *  to its own horizontal footprint. */
+function polygonHeight(radiusFrac: number, sides: number): number {
+  return 2 * radiusFrac * Math.cos(Math.PI / sides);
+}
+
+/** Rectangle extrusion height (unit-radius-1). Uses the mean of the
+ *  length and width fractions — a long-and-wide body stays squat
+ *  (hippo ≈ 1.15), a narrower rectangle comes out lower. */
+function rectHeight(lengthFrac: number, widthFrac: number): number {
+  return (lengthFrac + widthFrac) / 2;
+}
+
+/** Spheroid Y semi-axis (unit-radius-1). Mean of the two horizontal
+ *  half-extents — a more-elongated oval stays taller along its long
+ *  axis but drops lateral height with `zFrac`. */
+function spheroidRy(xFrac: number, zFrac: number): number {
+  return (xFrac + zFrac) / 2;
+}
+
+function buildCircleSpec(radiusFrac: number, offsetForward: number): BodyMeshPart {
+  const r = radiusFrac;
+  return {
+    geometry: getUnitSphere(),
+    x: offsetForward, y: r, z: 0,
+    scaleX: r, scaleY: r, scaleZ: r,
+  };
+}
+
+function buildOvalSpec(xFrac: number, zFrac: number, offsetForward: number): BodyMeshPart {
+  const ry = spheroidRy(xFrac, zFrac);
+  return {
+    geometry: getUnitSphere(),
+    x: offsetForward, y: ry, z: 0,
+    scaleX: xFrac, scaleY: ry, scaleZ: zFrac,
+  };
+}
+
+function buildEntry(spec: ShapeSpec): BodyGeomEntry {
+  if (spec.kind === 'polygon') {
+    const h = polygonHeight(spec.radiusFrac, spec.sides);
+    const shape = buildPolygonShape(spec.sides, 1, spec.rotation);
+    const geom = new THREE.ExtrudeGeometry(shape, {
+      depth: h,
+      bevelEnabled: false,
+      steps: 1,
+    });
+    // Extrusion along +Z with shape in XY → rotate so the shape lands on
+    // the XZ plane and extrude direction becomes +Y.
+    geom.rotateX(-Math.PI / 2);
+    return {
+      parts: [{
+        geometry: geom,
+        x: 0, y: 0, z: 0,
+        scaleX: spec.radiusFrac, scaleY: 1, scaleZ: spec.radiusFrac,
+      }],
+      topY: h,
+    };
+  }
+  if (spec.kind === 'rect') {
+    const h = rectHeight(spec.lengthFrac, spec.widthFrac);
+    const shape = buildRectShape(1, 1);
+    const geom = new THREE.ExtrudeGeometry(shape, {
+      depth: h,
+      bevelEnabled: false,
+      steps: 1,
+    });
+    geom.rotateX(-Math.PI / 2);
+    return {
+      parts: [{
+        geometry: geom,
+        x: 0, y: 0, z: 0,
+        scaleX: spec.lengthFrac, scaleY: 1, scaleZ: spec.widthFrac,
+      }],
+      topY: h,
+    };
+  }
+  if (spec.kind === 'circle') {
+    const part = buildCircleSpec(spec.radiusFrac, 0);
+    return { parts: [part], topY: 2 * spec.radiusFrac };
+  }
+  if (spec.kind === 'oval') {
+    const part = buildOvalSpec(spec.xFrac, spec.zFrac, 0);
+    return { parts: [part], topY: 2 * spheroidRy(spec.xFrac, spec.zFrac) };
+  }
+  // composite: each segment is its own sphere/spheroid.
+  const parts: BodyMeshPart[] = [];
+  let topY = 0;
+  for (const p of spec.parts) {
+    if (p.kind === 'circle') {
+      parts.push(buildCircleSpec(p.radiusFrac, p.offsetForward));
+      topY = Math.max(topY, 2 * p.radiusFrac);
+    } else {
+      parts.push(buildOvalSpec(p.xFrac, p.zFrac, p.offsetForward));
+      topY = Math.max(topY, 2 * spheroidRy(p.xFrac, p.zFrac));
+    }
+  }
+  return { parts, topY };
+}
 
 const CACHE: Map<string, BodyGeomEntry> = new Map();
 
-/** Look up or build an extruded chassis geometry for a 2D renderer ID. The
- *  geometry sits from y=0 to y=height and is scaled horizontally by the
- *  caller using `mesh.scale.set(radius · radiusFrac, 1, radius · radiusFrac)`
- *  for polygons/circles. Rectangles use scaleX/scaleZ explicitly. */
-export function getBodyGeom(
-  renderer: string,
-  height: number,
-): BodyGeomEntry {
-  const spec = SHAPES[renderer as BodyRendererId] ?? SHAPES.arachnid;
-  const key = `${renderer}|${height}`;
-  const cached = CACHE.get(key);
+/** Look up or build the 3D chassis geometry for a 2D renderer ID.
+ *  Returned parts live in unit-radius-1 space; call sites scale the
+ *  chassis parent group by the unit's render radius so each part's
+ *  offset and scale both multiply uniformly. */
+export function getBodyGeom(renderer: string): BodyGeomEntry {
+  const cached = CACHE.get(renderer);
   if (cached) return cached;
-
-  // `shapes` can be a single Shape or Shape[]; ExtrudeGeometry accepts both.
-  let shapes: THREE.Shape | THREE.Shape[];
-  let radiusFrac = 1;
-  let scaleX: number | undefined;
-  let scaleZ: number | undefined;
-
-  if (spec.kind === 'polygon') {
-    shapes = buildPolygonShape(spec.sides, 1, spec.rotation);
-    radiusFrac = spec.radiusFrac;
-  } else if (spec.kind === 'circle') {
-    shapes = buildCircleShape(1, 24);
-    radiusFrac = spec.radiusFrac;
-  } else if (spec.kind === 'oval') {
-    // Oval = unit circle with separate X/Z scale. Caller scales mesh by
-    // radius · xFrac (forward) and radius · zFrac (lateral).
-    shapes = buildCircleShape(1, 24);
-    radiusFrac = 1;
-    scaleX = spec.xFrac;
-    scaleZ = spec.zFrac;
-  } else if (spec.kind === 'composite') {
-    // Multi-segment body. Each part's vertices are baked in at unit-
-    // radius-1 coordinates (with its declared offset already applied),
-    // so the mesh's uniform `radius` scale enlarges everything correctly.
-    shapes = buildCompositeShapes(spec.parts);
-    radiusFrac = 1;
-  } else {
-    // Rectangle — unit shape is ±0.5 on each axis; caller scales by
-    // radius · lengthFrac (forward = X) and radius · widthFrac (side = Z).
-    shapes = buildRectShape(1, 1);
-    radiusFrac = 1;
-    scaleX = spec.lengthFrac;
-    scaleZ = spec.widthFrac;
-  }
-
-  const geom = new THREE.ExtrudeGeometry(shapes, {
-    depth: height,
-    bevelEnabled: false,
-    steps: 1,
-  });
-  // ExtrudeGeometry extrudes along +Z with the shape in the XY plane. Rotate
-  // -π/2 around X so the shape lands on the XZ ground plane and the extrude
-  // direction becomes +Y (up).
-  geom.rotateX(-Math.PI / 2);
-
-  const entry: BodyGeomEntry = {
-    geometry: geom,
-    radiusFrac,
-    scaleX,
-    scaleZ,
-  };
-  CACHE.set(key, entry);
+  const spec = SHAPES[renderer as BodyRendererId] ?? SHAPES.arachnid;
+  const entry = buildEntry(spec);
+  CACHE.set(renderer, entry);
   return entry;
 }
 
+/** World-space Y of the body top for the given renderer + unit radius.
+ *  Used by the turret-mount path so each unit type's turret sits on
+ *  its own body instead of a shared CHASSIS_HEIGHT constant. */
+export function getBodyTopY(renderer: string, unitRadius: number): number {
+  return getBodyGeom(renderer).topY * unitRadius;
+}
+
 function buildPolygonShape(sides: number, radius: number, rotation: number): THREE.Shape {
-  // Matches 2D drawPolygon: vertices at angle = rotation + (i/sides)·2π,
-  // with X = cos(a)·r, Y = sin(a)·r. That XY plane becomes XZ after the
-  // -π/2 rotation around X done by getBodyGeom.
+  // Matches 2D drawPolygon: vertices at angle = rotation + (i/sides)·2π.
   const pts: THREE.Vector2[] = [];
   for (let i = 0; i < sides; i++) {
     const a = rotation + (i / sides) * Math.PI * 2;
@@ -196,49 +277,7 @@ function buildPolygonShape(sides: number, radius: number, rotation: number): THR
   return new THREE.Shape(pts);
 }
 
-function buildCircleShape(radius: number, segments: number): THREE.Shape {
-  const pts: THREE.Vector2[] = [];
-  for (let i = 0; i < segments; i++) {
-    const a = (i / segments) * Math.PI * 2;
-    pts.push(new THREE.Vector2(Math.cos(a) * radius, Math.sin(a) * radius));
-  }
-  return new THREE.Shape(pts);
-}
-
-/** Build a list of Shapes for a composite body (e.g. abdomen + prosoma).
- *  Each part's vertices are pre-translated by its `offsetForward` so
- *  ExtrudeGeometry extrudes the full composite in one call without needing
- *  per-part transforms. All offsets are along shape-X (the unit's forward
- *  axis after the extrude+rotate pipeline). */
-function buildCompositeShapes(parts: CompositePart[]): THREE.Shape[] {
-  const shapes: THREE.Shape[] = [];
-  for (const p of parts) {
-    const pts: THREE.Vector2[] = [];
-    const segments = 24;
-    if (p.kind === 'circle') {
-      for (let i = 0; i < segments; i++) {
-        const a = (i / segments) * Math.PI * 2;
-        pts.push(new THREE.Vector2(
-          p.offsetForward + Math.cos(a) * p.radiusFrac,
-          Math.sin(a) * p.radiusFrac,
-        ));
-      }
-    } else {
-      for (let i = 0; i < segments; i++) {
-        const a = (i / segments) * Math.PI * 2;
-        pts.push(new THREE.Vector2(
-          p.offsetForward + Math.cos(a) * p.xFrac,
-          Math.sin(a) * p.zFrac,
-        ));
-      }
-    }
-    shapes.push(new THREE.Shape(pts));
-  }
-  return shapes;
-}
-
 function buildRectShape(width: number, length: number): THREE.Shape {
-  // Same extents 2D drawOrientedRect uses — half-extents in both directions.
   const hw = width / 2;
   const hl = length / 2;
   return new THREE.Shape([
@@ -251,7 +290,7 @@ function buildRectShape(width: number, length: number): THREE.Shape {
 
 /** One 3D edge slab that represents a side of the unit's extruded body.
  *  Centered at (x, z) in unit-local coords, `length` along the edge
- *  direction, `thickness` along the normal, standing full chassis height.
+ *  direction, `thickness` along the normal, standing full body height.
  *  `yaw` is the rotation around Y that lays the edge tangent to the shape. */
 export type BodyEdgeTemplate = {
   x: number;
@@ -260,14 +299,15 @@ export type BodyEdgeTemplate = {
   length: number;
   /** Depth (perpendicular to the edge, in world units). */
   thickness: number;
+  /** World-space height of this slab (matches the body segment it's
+   *  derived from). */
+  height: number;
 };
 
-/** Approximate the 3D chassis as a set of edge slabs, one per polygon side
- *  (or four sides for rectangles, or N tangent chunks for circles). Each
- *  edge sits at the polygon perimeter at the unit's visual radius and has
- *  a length matching the true edge length of the shape — so a tank pentagon
- *  emits five pentagon edges, a scout diamond emits four, a circle-bodied
- *  unit emits a ring of tangent chunks.
+/** Approximate the 3D chassis as a set of edge slabs, one per polygon
+ *  side (or four sides for rectangles, or N tangent chunks for circles).
+ *  Each edge sits at the polygon perimeter at the unit's visual radius
+ *  and has a length matching the true edge length of the shape.
  *
  *  Used by Debris3D to produce "body chunk" pieces the same size and
  *  position as the panels of the source chassis, not generic small boxes. */
@@ -278,70 +318,61 @@ export function getBodyEdgeTemplates(
   const spec = SHAPES[renderer as BodyRendererId] ?? SHAPES.arachnid;
   const out: BodyEdgeTemplate[] = [];
 
-  // The extruded chassis geometry in getBodyGeom() builds its shape in the
-  // XY plane then applies geom.rotateX(-π/2), which maps shape (x, y, 0) to
-  // world (x, 0, -y). So a shape-space vertex at angle `a` (i.e. cos(a),
-  // sin(a)) lands at world position (cos(a), 0, -sin(a)). Edge midpoints
-  // and tangent directions must use the same Z negation — otherwise the
-  // debris edges end up mirrored across the unit's forward axis.
   if (spec.kind === 'polygon') {
     const r = unitRadius * spec.radiusFrac;
     const sides = spec.sides;
     const edgeLen = 2 * r * Math.sin(Math.PI / sides);
     const midR = r * Math.cos(Math.PI / sides);
+    const height = polygonHeight(spec.radiusFrac, sides) * unitRadius;
     for (let i = 0; i < sides; i++) {
       const a = spec.rotation + ((i + 0.5) / sides) * Math.PI * 2;
       out.push({
         x: Math.cos(a) * midR,
-        // Z is negated because ExtrudeGeometry + rotateX(-π/2) maps shape-Y
-        // onto world-−Z.
+        // Shape-Y maps to world-−Z after the extrude+rotate pipeline.
         z: -Math.sin(a) * midR,
-        // Edge tangent in world (after the same Z negation) is
-        // (sin(a), 0, cos(a)); the yaw that rotates the slab's +X axis to
-        // match is π/2 − a.
         yaw: Math.PI / 2 - a,
         length: edgeLen,
         thickness: Math.max(2, unitRadius * 0.08),
+        height,
       });
     }
   } else if (spec.kind === 'rect') {
-    const length = unitRadius * spec.lengthFrac;   // along X (forward)
-    const width = unitRadius * spec.widthFrac;     // along Z (side)
+    const length = unitRadius * spec.lengthFrac;
+    const width = unitRadius * spec.widthFrac;
     const thickness = Math.max(2, unitRadius * 0.08);
-    // Four sides of the rectangle — two long (front/back) and two short
-    // (left/right). Each slab sits along the edge it represents.
-    out.push({ x:  length / 2, z: 0, yaw: Math.PI / 2, length: width,  thickness });
-    out.push({ x: -length / 2, z: 0, yaw: Math.PI / 2, length: width,  thickness });
-    out.push({ x: 0, z:  width / 2, yaw: 0,            length: length, thickness });
-    out.push({ x: 0, z: -width / 2, yaw: 0,            length: length, thickness });
+    const height = rectHeight(spec.lengthFrac, spec.widthFrac) * unitRadius;
+    out.push({ x:  length / 2, z: 0, yaw: Math.PI / 2, length: width,  thickness, height });
+    out.push({ x: -length / 2, z: 0, yaw: Math.PI / 2, length: width,  thickness, height });
+    out.push({ x: 0, z:  width / 2, yaw: 0,            length: length, thickness, height });
+    out.push({ x: 0, z: -width / 2, yaw: 0,            length: length, thickness, height });
   } else if (spec.kind === 'circle') {
-    // Circle body — 10 tangent chunks around the perimeter. Same Z-negation
-    // + yaw convention as the polygon case so tangents line up with the
-    // extruded geometry.
-    pushCircleEdges(out, 0, unitRadius * spec.radiusFrac, unitRadius);
+    const height = 2 * spec.radiusFrac * unitRadius;
+    pushCircleEdges(out, 0, unitRadius * spec.radiusFrac, unitRadius, height);
   } else if (spec.kind === 'oval') {
-    // Single ellipse — tangent edges at varying lengths around the
-    // ellipse perimeter.
+    const height = 2 * spheroidRy(spec.xFrac, spec.zFrac) * unitRadius;
     pushOvalEdges(
       out,
       /* offsetX */ 0,
       /* xR */ unitRadius * spec.xFrac,
       /* zR */ unitRadius * spec.zFrac,
       unitRadius,
+      height,
     );
   } else if (spec.kind === 'composite') {
-    // Each part contributes its own edge ring at its forward offset.
     for (const part of spec.parts) {
       const offsetX = part.offsetForward * unitRadius;
       if (part.kind === 'circle') {
-        pushCircleEdges(out, offsetX, part.radiusFrac * unitRadius, unitRadius);
+        const height = 2 * part.radiusFrac * unitRadius;
+        pushCircleEdges(out, offsetX, part.radiusFrac * unitRadius, unitRadius, height);
       } else {
+        const height = 2 * spheroidRy(part.xFrac, part.zFrac) * unitRadius;
         pushOvalEdges(
           out,
           offsetX,
           part.xFrac * unitRadius,
           part.zFrac * unitRadius,
           unitRadius,
+          height,
         );
       }
     }
@@ -350,13 +381,12 @@ export function getBodyEdgeTemplates(
   return out;
 }
 
-/** Push tangent edges around a circle of radius `r` centered at (offsetX, 0)
- *  in unit-local space, into `out`. */
 function pushCircleEdges(
   out: BodyEdgeTemplate[],
   offsetX: number,
   r: number,
   unitRadius: number,
+  height: number,
 ): void {
   const sides = 10;
   const edgeLen = 2 * r * Math.sin(Math.PI / sides);
@@ -369,20 +399,18 @@ function pushCircleEdges(
       yaw: Math.PI / 2 - a,
       length: edgeLen,
       thickness: Math.max(2, unitRadius * 0.08),
+      height,
     });
   }
 }
 
-/** Push tangent edges around an ellipse with half-extents (xR, zR) centered
- *  at (offsetX, 0). Uses the discrete perimeter between N evenly-spaced
- *  parametric points, so each edge's length matches the local ellipse
- *  curvature — longer edges where the ellipse is straighter. */
 function pushOvalEdges(
   out: BodyEdgeTemplate[],
   offsetX: number,
   xR: number,
   zR: number,
   unitRadius: number,
+  height: number,
 ): void {
   const segments = 12;
   for (let i = 0; i < segments; i++) {
@@ -401,11 +429,20 @@ function pushOvalEdges(
       yaw: Math.atan2(dz, dx),
       length,
       thickness: Math.max(2, unitRadius * 0.08),
+      height,
     });
   }
 }
 
 export function disposeBodyGeoms(): void {
-  for (const entry of CACHE.values()) entry.geometry.dispose();
+  for (const entry of CACHE.values()) {
+    for (const part of entry.parts) {
+      if (part.geometry !== _unitSphere) part.geometry.dispose();
+    }
+  }
   CACHE.clear();
+  if (_unitSphere) {
+    _unitSphere.dispose();
+    _unitSphere = null;
+  }
 }

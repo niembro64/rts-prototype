@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SpinConfig } from '../../config';
-import { CHASSIS_HEIGHT, TURRET_HEIGHT } from '../../config';
+import { TURRET_HEIGHT } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   buildLocomotion,
@@ -49,12 +49,11 @@ const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
 // turret/mirror rotates independently of the hull.
 // Mirror panels span at least the full unit silhouette so they actually
 // read as deflector armor. Start just above the ground to avoid clipping
-// into the tile layer, end at CHASSIS_HEIGHT + TURRET_HEIGHT so the top
-// of the panel is flush with the top of the turret head (which is the
-// tallest part of the unit).
+// into the tile layer, end at the unit's body top + TURRET_HEIGHT so the
+// top of the panel is flush with the top of the turret head (which is the
+// tallest part of the unit). The top is computed per-unit now that body
+// heights vary.
 const MIRROR_BASE_Y = 2;             // bottom of the mirror panel above ground
-const MIRROR_HEIGHT =                // top at y = CHASSIS_HEIGHT + TURRET_HEIGHT
-  CHASSIS_HEIGHT + TURRET_HEIGHT - MIRROR_BASE_Y;
 
 type TurretMesh = {
   root: THREE.Group;       // positioned at turret.offset, rotated to turret rotation
@@ -93,7 +92,14 @@ type MirrorMesh = {
 
 type EntityMesh = {
   group: THREE.Group;
-  chassis: THREE.Mesh;
+  /** Parent for the chassis body parts. For units this is uniformly
+   *  scaled by unitRadius so each BodyMeshPart's unit-radius-1 offset
+   *  and per-axis scale both enlarge correctly. For buildings the group
+   *  holds a single box mesh that's sized each frame to (w, renderH, d). */
+  chassis: THREE.Group;
+  /** All meshes inside `chassis` that carry the team primary material —
+   *  updated whenever the owner changes (team reassignment, capture). */
+  chassisMeshes: THREE.Mesh[];
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
@@ -427,11 +433,15 @@ export class Render3DEntities {
     panels: readonly { halfWidth: number; halfHeight: number; offsetX: number; offsetY: number; angle: number }[],
     pid: PlayerId | undefined,
     gfx: GraphicsConfig,
+    panelTopY: number,
   ): MirrorMesh {
     const root = new THREE.Group();
     parent.add(root);
     const meshes: THREE.Mesh[] = [];
     const glints: MirrorGlint[] = [];
+    // Panel extends from MIRROR_BASE_Y up to the unit's turret top
+    // (body top + TURRET_HEIGHT). Per-unit now that body heights vary.
+    const mirrorHeight = Math.max(panelTopY - MIRROR_BASE_Y, 1);
 
     // Panel material tier:
     //   barrelSpin = false → Lambert secondary (flat team color).
@@ -453,8 +463,8 @@ export class Render3DEntities {
       // so the combined chassis → mirrorRoot → panel transforms put the
       // edge in world direction (turret.rotation + panel.angle + π/2).
       m.rotation.y = -(p.angle + Math.PI / 2);
-      m.scale.set(p.halfWidth * 2, MIRROR_HEIGHT, p.halfHeight * 2);
-      m.position.set(p.offsetX, MIRROR_BASE_Y + MIRROR_HEIGHT / 2, p.offsetY);
+      m.scale.set(p.halfWidth * 2, mirrorHeight, p.halfHeight * 2);
+      m.position.set(p.offsetX, MIRROR_BASE_Y + mirrorHeight / 2, p.offsetY);
       root.add(m);
       meshes.push(m);
 
@@ -471,7 +481,7 @@ export class Render3DEntities {
 
       // Sphere radius in world units — scaled off mirror height so it
       // stays proportional to unit silhouette.
-      const glintR = MIRROR_HEIGHT * 0.05;
+      const glintR = mirrorHeight * 0.05;
 
       const primary = new THREE.Mesh(this.glintGeom, this.glintMatPrimary);
       primary.scale.setScalar(glintR);
@@ -683,14 +693,31 @@ export class Render3DEntities {
       if (!m) {
         const group = new THREE.Group();
         // Pull the 2D renderer id from the unit blueprint and use the
-        // matching extruded body shape (scout=diamond, tank=pentagon, etc.).
-        // Falls back to a circle body for unknown renderers.
+        // matching 3D body (scout=diamond, tank=pentagon, arachnid=big
+        // sphere + small sphere, etc.). Falls back to arachnid for
+        // unknown renderers.
         let rendererId = 'arachnid';
         try { rendererId = getUnitBlueprint(e.unit!.unitType).renderer ?? 'arachnid'; }
         catch { /* leave default */ }
-        const bodyEntry = getBodyGeom(rendererId, CHASSIS_HEIGHT);
-        const chassis = new THREE.Mesh(bodyEntry.geometry, this.getPrimaryMat(pid));
+        const bodyEntry = getBodyGeom(rendererId);
+        // The chassis is a group so composite bodies (arachnid, beam,
+        // commander — multiple spheres/spheroids) and single-part bodies
+        // (tank, loris, …) share one code path. Each BodyMeshPart's
+        // center offset and per-axis scale are expressed in
+        // unit-radius-1 space, so we uniformly scale the whole chassis
+        // group by the unit's render radius below and every part ends
+        // up at the right world size and position.
+        const chassis = new THREE.Group();
         chassis.userData.entityId = e.id;
+        const chassisMeshes: THREE.Mesh[] = [];
+        for (const part of bodyEntry.parts) {
+          const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(pid));
+          mesh.position.set(part.x, part.y, part.z);
+          mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
+          mesh.userData.entityId = e.id;
+          chassis.add(mesh);
+          chassisMeshes.push(mesh);
+        }
         group.add(chassis);
 
         // Build one TurretMesh per actual turret on the entity. Each turret
@@ -713,7 +740,7 @@ export class Render3DEntities {
         }
 
         this.world.add(group);
-        m = { group, chassis, turrets: turretMeshes, lodKey: this.lod.key };
+        m = { group, chassis, chassisMeshes, turrets: turretMeshes, lodKey: this.lod.key };
 
         // Locomotion (tank treads / vehicle wheels / arachnid legs). Built
         // once per unit at the current LOD.
@@ -728,7 +755,10 @@ export class Render3DEntities {
         // Mirror panels (e.g. Loris): standing slabs that track the turret.
         const mirrorPanels = e.unit?.mirrorPanels;
         if (mirrorPanels && mirrorPanels.length > 0) {
-          m.mirrors = this.buildMirrorMesh(group, mirrorPanels, pid, this.lod.gfx);
+          // Panel top is the unit's body top plus the turret head so
+          // the mirror is flush with the tallest point of the unit.
+          const panelTopY = bodyEntry.topY * radius + TURRET_HEIGHT;
+          m.mirrors = this.buildMirrorMesh(group, mirrorPanels, pid, this.lod.gfx, panelTopY);
           for (const panel of m.mirrors.panels) {
             panel.userData.entityId = e.id;
           }
@@ -736,7 +766,8 @@ export class Render3DEntities {
 
         this.unitMeshes.set(e.id, m);
       } else {
-        m.chassis.material = this.getPrimaryMat(pid);
+        const primaryMat = this.getPrimaryMat(pid);
+        for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
         for (const tm of m.turrets) {
           if (tm.head) tm.head.material = this.getSecondaryMat(pid);
         }
@@ -753,24 +784,24 @@ export class Render3DEntities {
       m.group.position.set(e.transform.x, e.transform.z - unitRadius, e.transform.y);
       m.group.rotation.y = -e.transform.rotation;
 
-      // Chassis shape is an extruded 2D body (BodyShape3D). The geometry
-      // already sits from y=0 to y=CHASSIS_HEIGHT and is built at unit
-      // horizontal scale — scale X/Z by radius·radiusFrac to reach the
-      // correct visual size, leaving Y at 1 so chassis height stays fixed.
-      const bodyEntry = getBodyGeom(
-        (() => {
-          try { return getUnitBlueprint(e.unit!.unitType).renderer ?? 'arachnid'; }
-          catch { return 'arachnid'; }
-        })(),
-        CHASSIS_HEIGHT,
-      );
+      // Chassis body lives entirely in unit-radius-1 space (see
+      // BodyShape3D). Uniformly scaling the chassis group by the unit's
+      // render radius multiplies every child part's offset AND per-axis
+      // scale by the same factor — so a sphere part at (x=0.3, y=0.55,
+      // z=0) with scale (0.55, 0.55, 0.55) lands at the right place and
+      // the right size automatically.
+      const rendererId = (() => {
+        try { return getUnitBlueprint(e.unit!.unitType).renderer ?? 'arachnid'; }
+        catch { return 'arachnid'; }
+      })();
+      const bodyEntry = getBodyGeom(rendererId);
       m.chassis.position.set(0, 0, 0);
-      if (bodyEntry.scaleX !== undefined && bodyEntry.scaleZ !== undefined) {
-        // Rectangle: explicit per-axis fractions (length vs width).
-        m.chassis.scale.set(radius * bodyEntry.scaleX, 1, radius * bodyEntry.scaleZ);
-      } else {
-        m.chassis.scale.set(radius * bodyEntry.radiusFrac, 1, radius * bodyEntry.radiusFrac);
-      }
+      m.chassis.scale.setScalar(radius);
+      // Turrets now mount on top of the per-unit body instead of a
+      // shared CHASSIS_HEIGHT constant. Spheroid-bodied units like the
+      // arachnid get a tall mount; squat polygons (scout, burst) get a
+      // lower one.
+      const bodyTopY = bodyEntry.topY * radius;
 
       // Selection ring (flat ring on ground under the unit)
       const selected = e.selectable?.selected === true;
@@ -812,7 +843,7 @@ export class Render3DEntities {
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
-        tm.root.position.set(t.offset.x, CHASSIS_HEIGHT, t.offset.y);
+        tm.root.position.set(t.offset.x, bodyTopY, t.offset.y);
         // Turret's world firing direction = t.rotation. Parent group is already
         // rotated by -chassis.rotation, so we compensate: child local Y rot =
         // -(t.rotation - chassis.rotation), which makes local +X point in the
@@ -897,12 +928,19 @@ export class Render3DEntities {
         // so they don't re-color across teams.
         const shape = buildBuildingShape(shapeType, w, d, this.getPrimaryMat(pid));
         shape.primary.userData.entityId = e.id;
-        group.add(shape.primary);
+        // Wrap the primary slab in an unscaled group so EntityMesh's
+        // shared `chassis: Group` / `chassisMeshes: Mesh[]` shape works
+        // for both buildings and units. The per-frame update below
+        // positions and scales the primary slab directly.
+        const chassis = new THREE.Group();
+        chassis.add(shape.primary);
+        group.add(chassis);
         for (const detail of shape.details) group.add(detail);
         this.world.add(group);
         m = {
           group,
-          chassis: shape.primary,
+          chassis,
+          chassisMeshes: [shape.primary],
           turrets: [],
           lodKey: this.lod.key,
           // Store the accent meshes separately so the LOD-key rebuild
@@ -913,7 +951,8 @@ export class Render3DEntities {
         };
         this.buildingMeshes.set(e.id, m);
       } else {
-        m.chassis.material = this.getPrimaryMat(pid);
+        const primaryMat = this.getPrimaryMat(pid);
+        for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
       }
 
       // Group at ground; box elevated inside so it sits on the ground plane.
@@ -933,8 +972,13 @@ export class Render3DEntities {
           ? Math.max(0.05, Math.min(1, buildable.buildProgress))
           : 1;
       const renderH = h * progress;
-      m.chassis.position.set(0, renderH / 2, 0);
-      m.chassis.scale.set(w, renderH, d);
+      // Buildings own the single primary slab at chassisMeshes[0]; scale
+      // it directly instead of the chassis wrapper group (which stays
+      // at identity so the building-detail meshes added alongside it
+      // aren't affected).
+      const primary = m.chassisMeshes[0];
+      primary.position.set(0, renderH / 2, 0);
+      primary.scale.set(w, renderH, d);
       if (m.buildingDetails) {
         const detailsVisible = progress >= 1;
         for (const dMesh of m.buildingDetails) dMesh.visible = detailsVisible;
