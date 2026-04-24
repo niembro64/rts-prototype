@@ -24,6 +24,7 @@ import type {
   UnitRadiusType,
 } from './types/client';
 import type { RendererMode } from './types/game';
+import { persist, persistJson } from './persistence';
 import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
   LOD_THRESHOLDS,
@@ -420,11 +421,7 @@ export function getGraphicsQuality(): GraphicsQuality {
 
 export function setGraphicsQuality(quality: GraphicsQuality): void {
   currentQuality = quality;
-  try {
-    localStorage.setItem(STORAGE_KEY, quality);
-  } catch {
-    /* */
-  }
+  persist(STORAGE_KEY, quality);
 }
 
 export function setCurrentZoom(zoom: number): void {
@@ -533,11 +530,7 @@ export function getRenderMode(): RenderMode {
 
 export function setRenderMode(mode: RenderMode): void {
   currentRenderMode = mode;
-  try {
-    localStorage.setItem(RENDER_MODE_STORAGE_KEY, mode);
-  } catch {
-    /* */
-  }
+  persist(RENDER_MODE_STORAGE_KEY, mode);
 }
 
 export function getRangeToggle(type: RangeType): boolean {
@@ -546,14 +539,7 @@ export function getRangeToggle(type: RangeType): boolean {
 
 export function setRangeToggle(type: RangeType, show: boolean): void {
   currentRangeToggles[type] = show;
-  try {
-    localStorage.setItem(
-      RANGE_TOGGLES_STORAGE_KEY,
-      JSON.stringify(currentRangeToggles),
-    );
-  } catch {
-    /* */
-  }
+  persistJson(RANGE_TOGGLES_STORAGE_KEY, currentRangeToggles);
 }
 
 export function anyRangeToggleActive(): boolean {
@@ -566,14 +552,7 @@ export function getProjRangeToggle(type: ProjRangeType): boolean {
 
 export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
   currentProjRangeToggles[type] = show;
-  try {
-    localStorage.setItem(
-      PROJ_RANGE_TOGGLES_STORAGE_KEY,
-      JSON.stringify(currentProjRangeToggles),
-    );
-  } catch {
-    /* */
-  }
+  persistJson(PROJ_RANGE_TOGGLES_STORAGE_KEY, currentProjRangeToggles);
 }
 
 export function anyProjRangeToggleActive(): boolean {
@@ -586,14 +565,7 @@ export function getUnitRadiusToggle(type: UnitRadiusType): boolean {
 
 export function setUnitRadiusToggle(type: UnitRadiusType, show: boolean): void {
   currentUnitRadiusToggles[type] = show;
-  try {
-    localStorage.setItem(
-      UNIT_RADIUS_TOGGLES_STORAGE_KEY,
-      JSON.stringify(currentUnitRadiusToggles),
-    );
-  } catch {
-    /* */
-  }
+  persistJson(UNIT_RADIUS_TOGGLES_STORAGE_KEY, currentUnitRadiusToggles);
 }
 
 export function anyUnitRadiusToggleActive(): boolean {
@@ -606,11 +578,7 @@ export function getAudioScope(): AudioScope {
 
 export function setAudioScope(scope: AudioScope): void {
   currentAudioScope = scope;
-  try {
-    localStorage.setItem(AUDIO_SCOPE_STORAGE_KEY, scope);
-  } catch {
-    /* */
-  }
+  persist(AUDIO_SCOPE_STORAGE_KEY, scope);
 }
 
 export function getAudioSmoothing(): boolean {
@@ -619,11 +587,7 @@ export function getAudioSmoothing(): boolean {
 
 export function setAudioSmoothing(enabled: boolean): void {
   currentAudioSmoothing = enabled;
-  try {
-    localStorage.setItem(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
-  } catch {
-    /* */
-  }
+  persist(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
 }
 
 export function getBurnMarks(): boolean {
@@ -632,11 +596,7 @@ export function getBurnMarks(): boolean {
 
 export function setBurnMarks(enabled: boolean): void {
   currentBurnMarks = enabled;
-  try {
-    localStorage.setItem(BURN_MARKS_STORAGE_KEY, String(enabled));
-  } catch {
-    /* */
-  }
+  persist(BURN_MARKS_STORAGE_KEY, String(enabled));
 }
 
 export function getDriftMode(): DriftMode {
@@ -645,11 +605,7 @@ export function getDriftMode(): DriftMode {
 
 export function setDriftMode(mode: DriftMode): void {
   currentDriftMode = mode;
-  try {
-    localStorage.setItem(DRIFT_MODE_STORAGE_KEY, mode);
-  } catch {
-    /* */
-  }
+  persist(DRIFT_MODE_STORAGE_KEY, mode);
 }
 
 /** Persisted renderer choice (2d Pixi / 3d Three.js). Read at module
@@ -661,11 +617,7 @@ export function getRendererMode(): RendererMode {
 
 export function setRendererMode(mode: RendererMode): void {
   currentRendererMode = mode;
-  try {
-    localStorage.setItem(RENDERER_MODE_STORAGE_KEY, mode);
-  } catch {
-    /* */
-  }
+  persist(RENDERER_MODE_STORAGE_KEY, mode);
 }
 
 export function getSoundToggle(category: SoundCategory): boolean {
@@ -677,14 +629,7 @@ export function setSoundToggle(
   enabled: boolean,
 ): void {
   currentSoundToggles[category] = enabled;
-  try {
-    localStorage.setItem(
-      SOUND_TOGGLES_STORAGE_KEY,
-      JSON.stringify(currentSoundToggles),
-    );
-  } catch {
-    /* */
-  }
+  persistJson(SOUND_TOGGLES_STORAGE_KEY, currentSoundToggles);
 }
 
 export function getEdgeScrollEnabled(): boolean {
@@ -693,11 +638,7 @@ export function getEdgeScrollEnabled(): boolean {
 
 export function setEdgeScrollEnabled(enabled: boolean): void {
   currentEdgeScrollEnabled = enabled;
-  try {
-    localStorage.setItem(EDGE_SCROLL_STORAGE_KEY, String(enabled));
-  } catch {
-    /* */
-  }
+  persist(EDGE_SCROLL_STORAGE_KEY, String(enabled));
 }
 
 export function getDragPanEnabled(): boolean {
@@ -706,11 +647,7 @@ export function getDragPanEnabled(): boolean {
 
 export function setDragPanEnabled(enabled: boolean): void {
   currentDragPanEnabled = enabled;
-  try {
-    localStorage.setItem(DRAG_PAN_STORAGE_KEY, String(enabled));
-  } catch {
-    /* */
-  }
+  persist(DRAG_PAN_STORAGE_KEY, String(enabled));
 }
 
 export function getBottomBarsHeight(): number {
@@ -727,9 +664,7 @@ export function getLobbyVisible(): boolean {
 
 export function setLobbyVisible(visible: boolean): void {
   currentLobbyVisible = visible;
-  try {
-    localStorage.setItem(LOBBY_VISIBLE_STORAGE_KEY, String(visible));
-  } catch { /* */ }
+  persist(LOBBY_VISIBLE_STORAGE_KEY, String(visible));
 }
 
 // ── Grid Overlay ──
@@ -752,7 +687,5 @@ export function getGridOverlayIntensity(): number {
 
 export function setGridOverlay(mode: GridOverlay): void {
   currentGridOverlay = mode;
-  try {
-    localStorage.setItem(GRID_OVERLAY_STORAGE_KEY, mode);
-  } catch { /* */ }
+  persist(GRID_OVERLAY_STORAGE_KEY, mode);
 }

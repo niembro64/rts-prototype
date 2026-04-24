@@ -1,4 +1,5 @@
 import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './types/server';
+import { persist, readPersisted } from './persistence';
 
 export const SERVER_CONFIG = {
   tickRate: {
@@ -30,62 +31,54 @@ const STORAGE_TICK_RATE = 'rts-tick-rate';
 const STORAGE_GRID_INFO = 'rts-grid-info';
 
 export function loadStoredSnapshotRate(): SnapshotRate {
-  try {
-    const stored = localStorage.getItem(STORAGE_SNAPSHOT_RATE);
-    if (stored === 'none') return 'none';
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  } catch { /* localStorage unavailable */ }
+  const stored = readPersisted(STORAGE_SNAPSHOT_RATE);
+  if (stored === 'none') return 'none';
+  if (stored) {
+    const num = Number(stored);
+    if (!isNaN(num) && num > 0) return num;
+  }
   return SERVER_CONFIG.snapshot.default;
 }
 
 export function saveSnapshotRate(rate: SnapshotRate): void {
-  try { localStorage.setItem(STORAGE_SNAPSHOT_RATE, String(rate)); } catch { /* */ }
+  persist(STORAGE_SNAPSHOT_RATE, String(rate));
 }
 
 export function loadStoredKeyframeRatio(): KeyframeRatio {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEYFRAME_RATIO);
-    if (stored === 'ALL') return 'ALL';
-    if (stored === 'NONE') return 'NONE';
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num)) return num;
-    }
-  } catch { /* localStorage unavailable */ }
+  const stored = readPersisted(STORAGE_KEYFRAME_RATIO);
+  if (stored === 'ALL') return 'ALL';
+  if (stored === 'NONE') return 'NONE';
+  if (stored) {
+    const num = Number(stored);
+    if (!isNaN(num)) return num;
+  }
   return SERVER_CONFIG.keyframe.default;
 }
 
 export function saveKeyframeRatio(ratio: KeyframeRatio): void {
-  try { localStorage.setItem(STORAGE_KEYFRAME_RATIO, String(ratio)); } catch { /* */ }
+  persist(STORAGE_KEYFRAME_RATIO, String(ratio));
 }
 
 export function loadStoredTickRate(): TickRate {
-  try {
-    const stored = localStorage.getItem(STORAGE_TICK_RATE);
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  } catch { /* localStorage unavailable */ }
+  const stored = readPersisted(STORAGE_TICK_RATE);
+  if (stored) {
+    const num = Number(stored);
+    if (!isNaN(num) && num > 0) return num;
+  }
   return SERVER_CONFIG.tickRate.default;
 }
 
 export function saveTickRate(rate: TickRate): void {
-  try { localStorage.setItem(STORAGE_TICK_RATE, String(rate)); } catch { /* */ }
+  persist(STORAGE_TICK_RATE, String(rate));
 }
 
 export function loadStoredGridInfo(): boolean {
-  try {
-    const stored = localStorage.getItem(STORAGE_GRID_INFO);
-    if (stored === 'false') return false;
-    if (stored === 'true') return true;
-  } catch { /* localStorage unavailable */ }
+  const stored = readPersisted(STORAGE_GRID_INFO);
+  if (stored === 'false') return false;
+  if (stored === 'true') return true;
   return SERVER_CONFIG.gridInfo.default;
 }
 
 export function saveGridInfo(enabled: boolean): void {
-  try { localStorage.setItem(STORAGE_GRID_INFO, String(enabled)); } catch { /* */ }
+  persist(STORAGE_GRID_INFO, String(enabled));
 }

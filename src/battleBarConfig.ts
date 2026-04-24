@@ -1,4 +1,5 @@
 import type { BattleBarConfig } from './types/battle';
+import { persist, persistJson, readPersisted } from './persistence';
 
 export const BATTLE_CONFIG = {
   units: {
@@ -49,19 +50,35 @@ const STORAGE_FF_ACCEL_UNITS = 'rts-ff-accel-units';
 const STORAGE_FF_ACCEL_SHOTS = 'rts-ff-accel-shots';
 const STORAGE_FF_DMG_UNITS = 'rts-ff-dmg-units';
 
+/** "true"/"false" → boolean, null otherwise. Keeps each loader a
+ *  one-liner now that the try/catch is pushed into readPersisted. */
+function loadBool(key: string): boolean | null {
+  const s = readPersisted(key);
+  if (s === 'true') return true;
+  if (s === 'false') return false;
+  return null;
+}
+
+/** "<positive-number>" → number, null otherwise. */
+function loadPosNum(key: string): number | null {
+  const s = readPersisted(key);
+  if (!s) return null;
+  const n = Number(s);
+  return !isNaN(n) && n > 0 ? n : null;
+}
+
 export function loadStoredDemoUnits(): string[] | null {
+  const stored = readPersisted(STORAGE_DEMO_UNITS);
+  if (!stored) return null;
   try {
-    const stored = localStorage.getItem(STORAGE_DEMO_UNITS);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch { /* localStorage unavailable */ }
+    const parsed = JSON.parse(stored);
+    if (Array.isArray(parsed)) return parsed;
+  } catch { /* malformed JSON */ }
   return null;
 }
 
 export function saveDemoUnits(units: string[]): void {
-  try { localStorage.setItem(STORAGE_DEMO_UNITS, JSON.stringify(units)); } catch { /* */ }
+  persistJson(STORAGE_DEMO_UNITS, units);
 }
 
 export function getDefaultDemoUnits(): string[] {
@@ -71,124 +88,73 @@ export function getDefaultDemoUnits(): string[] {
 }
 
 export function loadStoredMaxTotalUnits(): number {
-  try {
-    const stored = localStorage.getItem(STORAGE_MAX_TOTAL_UNITS);
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  } catch { /* localStorage unavailable */ }
-  return BATTLE_CONFIG.cap.default;
+  return loadPosNum(STORAGE_MAX_TOTAL_UNITS) ?? BATTLE_CONFIG.cap.default;
 }
 
 export function saveMaxTotalUnits(value: number): void {
-  try { localStorage.setItem(STORAGE_MAX_TOTAL_UNITS, String(value)); } catch { /* */ }
+  persist(STORAGE_MAX_TOTAL_UNITS, String(value));
 }
 
 export function loadStoredDemoCap(): number {
-  try {
-    const stored = localStorage.getItem(STORAGE_DEMO_CAP);
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  } catch { /* localStorage unavailable */ }
-  return DEMO_CAP_DEFAULT;
+  return loadPosNum(STORAGE_DEMO_CAP) ?? DEMO_CAP_DEFAULT;
 }
 
 export function saveDemoCap(value: number): void {
-  try { localStorage.setItem(STORAGE_DEMO_CAP, String(value)); } catch { /* */ }
+  persist(STORAGE_DEMO_CAP, String(value));
 }
 
 export function loadStoredRealCap(): number {
-  try {
-    const stored = localStorage.getItem(STORAGE_REAL_CAP);
-    if (stored) {
-      const num = Number(stored);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  } catch { /* localStorage unavailable */ }
-  return REAL_CAP_DEFAULT;
+  return loadPosNum(STORAGE_REAL_CAP) ?? REAL_CAP_DEFAULT;
 }
 
 export function saveRealCap(value: number): void {
-  try { localStorage.setItem(STORAGE_REAL_CAP, String(value)); } catch { /* */ }
+  persist(STORAGE_REAL_CAP, String(value));
 }
 
 export function loadStoredDemoGrid(): boolean {
-  try {
-    const stored = localStorage.getItem(STORAGE_DEMO_GRID);
-    if (stored === 'false') return false;
-    if (stored === 'true') return true;
-  } catch { /* localStorage unavailable */ }
-  return true; // default ON for demo
+  return loadBool(STORAGE_DEMO_GRID) ?? true; // default ON for demo
 }
 
 export function saveDemoGrid(enabled: boolean): void {
-  try { localStorage.setItem(STORAGE_DEMO_GRID, String(enabled)); } catch { /* */ }
+  persist(STORAGE_DEMO_GRID, String(enabled));
 }
 
 export function loadStoredRealGrid(): boolean {
-  try {
-    const stored = localStorage.getItem(STORAGE_REAL_GRID);
-    if (stored === 'false') return false;
-    if (stored === 'true') return true;
-  } catch { /* localStorage unavailable */ }
-  return false; // default OFF for real
+  return loadBool(STORAGE_REAL_GRID) ?? false; // default OFF for real
 }
 
 export function saveRealGrid(enabled: boolean): void {
-  try { localStorage.setItem(STORAGE_REAL_GRID, String(enabled)); } catch { /* */ }
+  persist(STORAGE_REAL_GRID, String(enabled));
 }
 
 export function loadStoredProjVelInherit(): boolean {
-  try {
-    const stored = localStorage.getItem(STORAGE_PROJ_VEL_INHERIT);
-    if (stored === 'false') return false;
-    if (stored === 'true') return true;
-  } catch { /* localStorage unavailable */ }
-  return BATTLE_CONFIG.projVelInherit.default;
+  return loadBool(STORAGE_PROJ_VEL_INHERIT) ?? BATTLE_CONFIG.projVelInherit.default;
 }
 
 export function saveProjVelInherit(enabled: boolean): void {
-  try { localStorage.setItem(STORAGE_PROJ_VEL_INHERIT, String(enabled)); } catch { /* */ }
+  persist(STORAGE_PROJ_VEL_INHERIT, String(enabled));
 }
 
 export function loadStoredFfAccelUnits(): boolean {
-  try {
-    const stored = localStorage.getItem(STORAGE_FF_ACCEL_UNITS);
-    if (stored === 'false') return false;
-    if (stored === 'true') return true;
-  } catch { /* localStorage unavailable */ }
-  return BATTLE_CONFIG.ffAccelUnits.default;
+  return loadBool(STORAGE_FF_ACCEL_UNITS) ?? BATTLE_CONFIG.ffAccelUnits.default;
 }
 
 export function saveFfAccelUnits(enabled: boolean): void {
-  try { localStorage.setItem(STORAGE_FF_ACCEL_UNITS, String(enabled)); } catch { /* */ }
+  persist(STORAGE_FF_ACCEL_UNITS, String(enabled));
 }
 
 export function loadStoredFfAccelShots(): boolean {
-  try {
-    const stored = localStorage.getItem(STORAGE_FF_ACCEL_SHOTS);
-    if (stored === 'false') return false;
-    if (stored === 'true') return true;
-  } catch { /* localStorage unavailable */ }
-  return BATTLE_CONFIG.ffAccelShots.default;
+  return loadBool(STORAGE_FF_ACCEL_SHOTS) ?? BATTLE_CONFIG.ffAccelShots.default;
 }
 
 export function saveFfAccelShots(enabled: boolean): void {
-  try { localStorage.setItem(STORAGE_FF_ACCEL_SHOTS, String(enabled)); } catch { /* */ }
+  persist(STORAGE_FF_ACCEL_SHOTS, String(enabled));
 }
 
 export function loadStoredFfDmgUnits(): boolean {
-  try {
-    const stored = localStorage.getItem(STORAGE_FF_DMG_UNITS);
-    if (stored === 'false') return false;
-    if (stored === 'true') return true;
-  } catch { /* localStorage unavailable */ }
-  return BATTLE_CONFIG.ffDmgUnits.default;
+  return loadBool(STORAGE_FF_DMG_UNITS) ?? BATTLE_CONFIG.ffDmgUnits.default;
 }
 
 export function saveFfDmgUnits(enabled: boolean): void {
-  try { localStorage.setItem(STORAGE_FF_DMG_UNITS, String(enabled)); } catch { /* */ }
+  persist(STORAGE_FF_DMG_UNITS, String(enabled));
 }
