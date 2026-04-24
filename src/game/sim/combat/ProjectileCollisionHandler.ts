@@ -162,7 +162,7 @@ export function checkProjectileCollisions(
         applyKnockbackForces(primaryResult.knockbacks, forceAccumulator);
 
         // Track killed entities and merge death contexts from primary
-        collectKillsAndDeathContexts(primaryResult, unitsToRemove, buildingsToRemove, deathContexts);
+        collectKillsAndDeathContexts(primaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
         // Secondary zone
         if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
@@ -179,7 +179,7 @@ export function checkProjectileCollisions(
           });
 
           applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
-          collectKillsAndDeathContexts(secondaryResult, unitsToRemove, buildingsToRemove, deathContexts);
+          collectKillsAndDeathContexts(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
         }
 
         // Add explosion audio event if there were hits or it's a mortar
@@ -364,7 +364,7 @@ export function checkProjectileCollisions(
         proj.hasExploded = true;
 
         applyKnockbackForces(primarySplash.knockbacks, forceAccumulator);
-        collectKillsAndDeathContexts(primarySplash, unitsToRemove, buildingsToRemove, deathContexts);
+        collectKillsAndDeathContexts(primarySplash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
         // Secondary zone
         if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
@@ -381,7 +381,7 @@ export function checkProjectileCollisions(
           });
 
           applyKnockbackForces(secondarySplash.knockbacks, forceAccumulator);
-          collectKillsAndDeathContexts(secondarySplash, unitsToRemove, buildingsToRemove, deathContexts);
+          collectKillsAndDeathContexts(secondarySplash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
         }
 
         // Cluster flak: spawn submunitions after direct-hit splash.

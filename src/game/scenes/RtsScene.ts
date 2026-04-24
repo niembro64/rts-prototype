@@ -657,6 +657,7 @@ export class RtsScene extends SceneShim {
         this.audioInitialized,
         cam.worldView,
         cam.zoom,
+        this.clientViewState,
       );
     });
 
@@ -691,6 +692,7 @@ export class RtsScene extends SceneShim {
               this.audioInitialized,
               cam.worldView,
               cam.zoom,
+              this.clientViewState,
             );
           },
         );

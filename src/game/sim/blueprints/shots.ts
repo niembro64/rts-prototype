@@ -81,7 +81,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     collision: { radius: 7, damage: 10 },
     explosion: {
       primary: { radius: 20, damage: 80, force: 20_000 },
-      secondary: { radius: 50, damage: 6, force: 20_000 },
+      secondary: { radius: 25, damage: 6, force: 20_000 },
     },
     splashOnExpiry: true,
     lifespan: 2300,
@@ -92,8 +92,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // not a secondary volley. The sim handles this declaratively — see
     // SubmunitionSpec and ProjectileCollisionHandler.
     submunitions: {
-      shotId: 'lightShot',
-      count: 10,
+      shotId: 'mediumShot',
+      count: 5,
       speed: 200,
       lifespanMs: 300,
     },

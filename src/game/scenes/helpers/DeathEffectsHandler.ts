@@ -3,6 +3,7 @@
 import type { Viewport } from '../../Camera';
 import type { EntityRenderer } from '../../render/renderEntities';
 import type { SimEvent } from '../../sim/combat';
+import type { ClientViewState } from '../../network/ClientViewState';
 import { audioManager } from '../../audio/AudioManager';
 import { AUDIO } from '../../../audioConfig';
 import { getTurretBlueprint } from '../../sim/blueprints';
@@ -14,6 +15,7 @@ import {
   FIRE_EXPLOSION,
 } from '../../../explosionConfig';
 import { TURRET_CONFIGS } from '../../sim/turretConfigs';
+import { PLAYER_COLORS } from '../../sim/types';
 import { magnitude } from '../../math';
 import { getAudioScope, getSoundToggle } from '@/clientBarConfig';
 
@@ -45,6 +47,7 @@ export function handleSimEvent(
   audioInitialized: boolean,
   viewport?: Viewport,
   zoom: number = 1,
+  clientViewState?: ClientViewState,
 ): void {
   // Always handle visual effects even if audio not initialized
   if (event.type === 'hit' || event.type === 'projectileExpire') {
@@ -106,8 +109,42 @@ export function handleSimEvent(
   }
 
   // Handle death explosions (visual) - uses death context from event
-  if (event.type === 'death' && event.deathContext) {
-    const ctx = event.deathContext;
+  if (event.type === 'death') {
+    // Reconstruct a minimal deathContext when the event didn't carry one
+    // (splash / DoT / safety-net kills). Mirrors the 3D fallback so 2D
+    // units don't silently vanish without a material explosion.
+    let ctx = event.deathContext;
+    if (!ctx && event.entityId !== undefined && clientViewState) {
+      const ent = clientViewState.getEntity(event.entityId);
+      if (ent) {
+        const pid = ent.ownership?.playerId;
+        const tcol =
+          pid !== undefined
+            ? PLAYER_COLORS[pid]?.primary ?? 0xcccccc
+            : 0xcccccc;
+        ctx = {
+          unitVel: {
+            x: ent.unit?.velocityX ?? 0,
+            y: ent.unit?.velocityY ?? 0,
+          },
+          hitDir: { x: 0, y: 0 },
+          projectileVel: { x: 0, y: 0 },
+          attackMagnitude: 25,
+          radius: ent.unit?.unitRadiusCollider.shot ?? 15,
+          color: tcol,
+          unitType: ent.unit?.unitType,
+          rotation: ent.transform.rotation,
+        };
+      }
+    }
+    if (!ctx) ctx = {
+      unitVel: { x: 0, y: 0 },
+      hitDir: { x: 0, y: 0 },
+      projectileVel: { x: 0, y: 0 },
+      attackMagnitude: 25,
+      radius: 15,
+      color: 0xcccccc,
+    };
     const radius = ctx.radius * 2.5; // Death explosions are 2.5x collision radius
 
     // Apply same multipliers as host-side death handling
