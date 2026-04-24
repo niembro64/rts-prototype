@@ -38,7 +38,7 @@ import { getUnitRadiusToggle } from '@/clientBarConfig';
 // originate from the ends of the turret barrels instead of the chassis center.
 const CHASSIS_HEIGHT = 28;           // Y extent of every unit chassis
 const TURRET_HEIGHT = 16;            // Y extent of every turret head
-const SHOT_HEIGHT = CHASSIS_HEIGHT + TURRET_HEIGHT / 2; // world Y of projectiles/barrel tips
+// (SHOT_HEIGHT is gone — projectile altitude is authoritative sim state.)
 
 const BUILDING_HEIGHT = 120;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible

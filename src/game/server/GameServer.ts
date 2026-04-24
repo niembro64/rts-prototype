@@ -15,8 +15,6 @@ import { beamIndex } from '../sim/BeamIndex';
 import { PhysicsEngine3D } from './PhysicsEngine3D';
 import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
-import { GRID_CELL_SIZE } from '../sim/grid';
-import { getBuildingConfig } from '../sim/buildConfigs';
 import {
   MAP_SETTINGS,
   UNIT_THRUST_MULTIPLIER_GAME,
@@ -277,9 +275,6 @@ export class GameServer {
     }
     this.snapshotListeners.length = 0;
     this.gameOverListeners.length = 0;
-
-    // The 2D WASM batch engine is gone on this branch — nothing to
-    // clear here. M12 removes the remaining WasmBatch shim file.
 
     // Clear simulation singletons so entity refs don't survive across sessions
     spatialGrid.clear();

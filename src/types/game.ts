@@ -80,22 +80,6 @@ export type GameServerConfig = {
   maxSnapshotsPerSec?: number;
 };
 
-export type PhysicsBody = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
-  mass: number;
-  invMass: number;
-  frictionAir: number;
-  restitution: number;
-  isStatic: boolean;
-  label: string;
-  halfW?: number;
-  halfH?: number;
-};
-
 export type EmaConfig = {
   avg: number;
   low: { drop: number; recovery: number };

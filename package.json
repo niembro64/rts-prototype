@@ -4,10 +4,9 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build:wasm": "cd rts-physics-wasm && . \"$HOME/.cargo/env\" && wasm-pack build --target web --out-dir ../src/game/server/physics-wasm/pkg",
     "start": "vite --host",
     "dev": "vite --host",
-    "build": "npm run build:wasm && vue-tsc && vite build",
+    "build": "vue-tsc && vite build",
     "build:web": "vue-tsc && vite build",
     "preview": "vite preview --host",
     "tauri:dev": "npx tauri dev",

@@ -133,9 +133,6 @@ export const EMA_INITIAL_VALUES = {
  *  Prevents spiral-of-death when a tick takes longer than the interval. */
 export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
 
-/** Force WASM physics engine. true = WASM (breaks if unavailable), false = JS fallback. */
-export const FORCE_WASM_PHYSICS = true;
-
 // =============================================================================
 // ECONOMY & RESOURCES
 // =============================================================================
