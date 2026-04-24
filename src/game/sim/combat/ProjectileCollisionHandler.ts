@@ -81,26 +81,39 @@ function spawnSubmunitions(
   // in a random ring; gravity then shapes the arc.
   const startAngle = Math.random() * Math.PI * 2;
   const stepAngle = spread / spec.count;
+  // Every submunition's pitch is sampled between 45° and 90° above
+  // horizontal — some go straight up, some lean outward, none spray
+  // sideways or downward. Total launch speed stays at spec.speed, so
+  // horizontal reach shrinks as pitch steepens (classic cone-of-flak
+  // spray shape for a detonating shell).
+  const PITCH_MIN = Math.PI / 4;  // 45°
+  const PITCH_RANGE = Math.PI / 4; // +45° = 90° ceiling
   for (let i = 0; i < spec.count; i++) {
     const jitter = (Math.random() - 0.5) * stepAngle * 0.6;
     const angle = startAngle + i * stepAngle + jitter;
-    const vx = Math.cos(angle) * spec.speed;
-    const vy = Math.sin(angle) * spec.speed;
+    const pitch = PITCH_MIN + Math.random() * PITCH_RANGE;
+    const horizSpeed = spec.speed * Math.cos(pitch);
+    const vz = spec.speed * Math.sin(pitch);
+    const vx = Math.cos(angle) * horizSpeed;
+    const vy = Math.sin(angle) * horizSpeed;
     const proj = world.createProjectile(
       x, y, vx, vy, ownerId, sourceEntityId, childCfg, 'projectile',
     );
     if (proj.projectile) {
       // Children start outside any source hitbox (parent already exploded).
       proj.projectile.hasLeftSource = true;
-      // Inherit the parent's altitude at detonation; no initial vz.
+      // Inherit the parent's altitude at detonation. Vertical velocity
+      // from the pitched launch comes through below.
       proj.transform.z = z;
+      proj.projectile.velocityZ = vz;
+      proj.projectile.lastSentVelZ = vz;
     }
     outProjectiles.push(proj);
     outSpawnEvents.push({
       id: proj.id,
       pos: { x, y, z },
       rotation: angle,
-      velocity: { x: vx, y: vy, z: 0 },
+      velocity: { x: vx, y: vy, z: vz },
       projectileType: 'projectile',
       // Synthetic ID so the client can resolve the same TurretConfig
       // (with the lifespan / radius overrides baked in) that the server used.

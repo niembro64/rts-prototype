@@ -98,7 +98,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       shotId: 'mediumShot',
       count: 5,
       speed: 200,
-      lifespanMs: 300,
+      lifespanMs: 3000,
       collisionRadius: 4,
     },
   },
