@@ -34,7 +34,10 @@ export class ViewportFootprint {
   private minY = -Infinity;
   private maxY = Infinity;
   private mode: RenderMode = 'all';
-  /** Cached "padded" extra margin, = 30% of max(width, height). */
+  /** Cached "padded" extra margin, = 30% of the viewport's visible
+   *  edge length (NOT the AABB diagonal — under camera rotation or
+   *  3D pitch the AABB is much larger than the visible quad and
+   *  would over-pad, defeating the point of PAD vs ALL). */
   private paddedExtra = 0;
 
   /** Update the footprint from 4 world-space corners (same as the
@@ -53,10 +56,20 @@ export class ViewportFootprint {
     this.minX = minX; this.maxX = maxX;
     this.minY = minY; this.maxY = maxY;
     this.mode = getRenderMode() as RenderMode;
-    this.paddedExtra =
-      this.mode === 'padded'
-        ? Math.max(maxX - minX, maxY - minY) * 0.3
-        : 0;
+    if (this.mode === 'padded') {
+      // Average of the two "width" edges (top TL→TR, bottom BL→BR)
+      // and the two "height" edges (left TL→BL, right TR→BR). For a
+      // rotated 2D rect all four are equal; for a 3D trapezoid this
+      // balances near-edge and far-edge lengths into a stable metric.
+      const tl = quad[0], tr = quad[1], br = quad[2], bl = quad[3];
+      const edgeLen = (a: Vec2, b: Vec2) =>
+        Math.hypot(a.x - b.x, a.y - b.y);
+      const avgW = (edgeLen(tl, tr) + edgeLen(bl, br)) * 0.5;
+      const avgH = (edgeLen(tl, bl) + edgeLen(tr, br)) * 0.5;
+      this.paddedExtra = Math.max(avgW, avgH) * 0.3;
+    } else {
+      this.paddedExtra = 0;
+    }
   }
 
   /** The 4 corners in screen order (TL, TR, BR, BL), sim coords. */
@@ -73,7 +86,8 @@ export class ViewportFootprint {
   /** Conservative AABB scope test:
    *   - mode='all'     → always true (no culling).
    *   - mode='window'  → AABB + per-entity padding.
-   *   - mode='padded'  → AABB + 30% of its larger axis + per-entity padding.
+   *   - mode='padded'  → AABB + 30% of the quad's average edge length
+   *                      + per-entity padding.
    *
    *  `padding` is in sim world units and represents the entity's own
    *  extent so a unit whose visual radius or spawned effect extends
