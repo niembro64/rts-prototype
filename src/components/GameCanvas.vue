@@ -1881,6 +1881,33 @@ onUnmounted(() => {
             <span class="bar-label-text">PLAYER CLIENT</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
+          <!--
+            Live 2D↔3D renderer toggle. Flipping this tears down the
+            current scene + renderer (Pixi for 2D, Three.js for 3D) and
+            rebuilds the other kind, reusing the existing GameConnection
+            + ClientViewState so entity state, selection, and prediction
+            don't skip a beat. Camera framing is captured and re-applied
+            across the swap. Choice persists to localStorage
+            (`rts-renderer-mode`) so a page refresh remembers it.
+          -->
+          <div class="button-group view-toggle">
+            <button
+              class="control-btn"
+              :class="{ active: currentRendererMode === '2d' }"
+              title="Switch to the Pixi 2D renderer"
+              @click="changeRendererMode('2d')"
+            >
+              2D
+            </button>
+            <button
+              class="control-btn"
+              :class="{ active: currentRendererMode === '3d' }"
+              title="Switch to the Three.js 3D renderer"
+              @click="changeRendererMode('3d')"
+            >
+              3D
+            </button>
+          </div>
         </div>
         <BarDivider />
         <div class="bar-controls">
@@ -1896,41 +1923,6 @@ onUnmounted(() => {
             title="Public IP address"
             >{{ localIpAddress }}</span
           >
-          <BarDivider />
-          <!--
-            Live 2D↔3D renderer toggle. Flipping this tears down the
-            current scene + renderer (Pixi for 2D, Three.js for 3D) and
-            rebuilds the other kind, reusing the existing GameConnection
-            + ClientViewState so entity state, selection, and prediction
-            don't skip a beat. Camera framing is captured and re-applied
-            across the swap. Choice persists to localStorage
-            (`rts-renderer-mode`) so a page refresh remembers it.
-          -->
-          <div class="control-group">
-            <span
-              class="control-label"
-              title="Live 2D / 3D view toggle — swaps the renderer without restarting the match."
-              >VIEW:</span
-            >
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{ active: currentRendererMode === '2d' }"
-                title="Switch to the Pixi 2D renderer"
-                @click="changeRendererMode('2d')"
-              >
-                2D
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: currentRendererMode === '3d' }"
-                title="Switch to the Three.js 3D renderer"
-                @click="changeRendererMode('3d')"
-              >
-                3D
-              </button>
-            </div>
-          </div>
           <BarDivider />
           <div class="control-group">
             <span class="control-label">GRID:</span>
@@ -2938,6 +2930,10 @@ onUnmounted(() => {
 
 .button-group .control-btn:last-child {
   border-radius: 0 3px 3px 0;
+}
+
+.button-group.view-toggle {
+  width: 105px;
 }
 
 .control-btn {
