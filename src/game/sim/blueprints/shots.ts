@@ -80,8 +80,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 400,
     collision: { radius: 7, damage: 10 },
     explosion: {
-      primary: { radius: 70, damage: 80, force: 20_000 },
-      secondary: { radius: 110, damage: 6, force: 20_000 },
+      primary: { radius: 20, damage: 80, force: 20_000 },
+      secondary: { radius: 50, damage: 6, force: 20_000 },
     },
     splashOnExpiry: true,
     lifespan: 2300,
