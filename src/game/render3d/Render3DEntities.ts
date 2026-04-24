@@ -142,7 +142,11 @@ export class Render3DEntities {
 
   // Shared geometries & per-team materials (avoid per-entity allocation).
   // Unit chassis geometries are per-renderer extrusions handled by BodyShape3D.
-  private turretHeadGeom = new THREE.CylinderGeometry(1, 1, 1, 18);
+  // Sphere (not cylinder) so the barrels can pivot freely in any
+  // direction — the head reads as a turret ball the barrels swing
+  // around, letting pitch aim up toward AA targets without the
+  // barrels clipping through a flat cylinder top.
+  private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -267,10 +271,13 @@ export class Render3DEntities {
     let head: THREE.Mesh | undefined;
     if (!hideHead) {
       head = new THREE.Mesh(this.turretHeadGeom, this.getSecondaryMat(pid));
-      const headRadius = unitRadius * TURRET_HEAD_FOOTPRINT;
-      // CylinderGeometry has radius 1 → scale x/z become the actual radius.
-      // Keep x and z equal so the head is a round turret top, not an ellipse.
-      head.scale.set(headRadius, TURRET_HEIGHT, headRadius);
+      // Sphere head: scale by a single radius so it's a true ball (not
+      // a stretched ellipsoid). The ball sits at TURRET_HEIGHT/2 so its
+      // center is at the same height the old cylinder's center was —
+      // barrel mounts stay in place. Radius is tied to TURRET_HEIGHT so
+      // the ball visually matches the turret's vertical extent.
+      const headRadius = Math.max(unitRadius * TURRET_HEAD_FOOTPRINT, TURRET_HEIGHT / 2);
+      head.scale.setScalar(headRadius);
       head.position.set(0, TURRET_HEIGHT / 2, 0);
       root.add(head);
     }
@@ -298,28 +305,24 @@ export class Render3DEntities {
     // CylinderGeometry is unit radius = 1, so physical radius = scale.x = diameter/2.
     const cylRadius = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
 
-    // Multi-barrel types get a dedicated sub-group so the whole cluster can
-    // rotate around the firing axis (+X) to produce the gatling spin effect.
-    // The group is positioned at (0, barrelCenterY, 0) so its local X axis
-    // passes through the center of the barrel cluster — i.e. exactly where a
-    // single barrel would sit. Barrels added to the group use zero Y/Z offset
-    // from that center, so `rotation.x` orbits each barrel around the firing
-    // axis at the correct radius.
-    // Single barrels don't spin, so they're parented to the turret root
-    // directly and positioned with the raw barrelCenterY offset.
+    // Every turret gets a barrelGroup now — it's the pivot that
+    // carries BOTH pitch (rotation.z, tilts firing direction up/down)
+    // and gatling spin (rotation.x, rotates around firing axis). The
+    // group sits at (0, barrelCenterY, 0) so its local axes line up
+    // with the firing direction: +X = forward, +Y = up, +Z = side.
+    // Previous revision only created this group for multi-barrel
+    // turrets, so single-barrel cannons couldn't pitch — their
+    // barrels stayed flat regardless of the weapon's elevation.
     const isMultiBarrel =
       barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel';
-    let barrelGroup: THREE.Group | undefined;
-    if (isMultiBarrel) {
-      barrelGroup = new THREE.Group();
-      barrelGroup.position.set(0, barrelCenterY, 0);
-      root.add(barrelGroup);
-    }
-    const barrelParent: THREE.Object3D = barrelGroup ?? root;
-    // When inside barrelGroup the parent is already elevated to barrelCenterY,
-    // so barrel coords should omit that offset. Single-barrel cylinders (no
-    // group) still need to include it.
-    const parentBaseY = barrelGroup ? 0 : barrelCenterY;
+    const barrelGroup = new THREE.Group();
+    barrelGroup.position.set(0, barrelCenterY, 0);
+    root.add(barrelGroup);
+    const barrelParent: THREE.Object3D = barrelGroup;
+    // Barrels now always attach to the pitched group with Y=0 local
+    // coords (group's origin is already at barrelCenterY).
+    const parentBaseY = 0;
+    void isMultiBarrel;
 
     // Place one cylinder segment spanning (base) → (tip) in local coords. Used
     // for straight (gatling) and cone (shotgun) barrels alike.
