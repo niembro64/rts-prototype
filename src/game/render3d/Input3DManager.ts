@@ -34,6 +34,18 @@ import {
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 
+/** Approximate world-space vertical center for box-select projection,
+ *  picked per entity kind so the screen-projected point lands near
+ *  the visible body. Keep these in rough lockstep with Render3DEntities
+ *  chassis/turret heights — exact values don't matter, but "ground
+ *  plane" (0) for a unit would project far below the visible sprite.
+ *  Tune with the 3D renderer, not guess-and-commit. */
+function selectionCenterY(entity: Entity): number {
+  if (entity.type === 'building') return 3; // short, flat footprint
+  if (entity.commander) return 14; // commanders are tall
+  return 8; // generic unit chassis center
+}
+
 type EntitySource = {
   getUnits: () => Entity[];
   getBuildings: () => Entity[];
@@ -542,8 +554,12 @@ export class Input3DManager {
         minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y),
       },
       this.context.activePlayerId,
-      (worldX, worldY, out) => {
-        v.set(worldX, 10, worldY).project(cam);
+      (entity, out) => {
+        // Pick a vertical center per entity kind so screen projection
+        // lands on the visible body, not a magic constant.
+        // (If aerial units ever exist, add a case here.)
+        const centerY = selectionCenterY(entity);
+        v.set(entity.transform.x, centerY, entity.transform.y).project(cam);
         out.x = (v.x * 0.5 + 0.5) * rect.width + rect.left;
         out.y = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
         out.behind = v.z >= 1;

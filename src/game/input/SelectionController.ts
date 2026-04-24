@@ -138,8 +138,8 @@ export class SelectionController {
       this.entitySource,
       { minX, minY, maxX, maxY },
       pid,
-      (worldX, worldY, out) => {
-        const s = camera.getScreenPoint(worldX, worldY);
+      (entity, out) => {
+        const s = camera.getScreenPoint(entity.transform.x, entity.transform.y);
         out.x = s.x;
         out.y = s.y;
         // 2D has no perspective — every world point is in front.

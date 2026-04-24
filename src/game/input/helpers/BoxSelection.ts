@@ -5,7 +5,7 @@
 // only renderer-specific bit is the projection itself — abstracted
 // here as a ProjectToScreen callback.
 
-import type { EntityId, PlayerId } from '../../sim/types';
+import type { Entity, EntityId, PlayerId } from '../../sim/types';
 import type { SelectionEntitySource } from './SelectionHelper';
 
 export type ScreenRect = {
@@ -15,13 +15,17 @@ export type ScreenRect = {
   maxY: number;
 };
 
-/** Project a world-space (x, z on the ground plane, == sim x / y) to
- *  screen-pixel coords. The `behind` flag lets 3D callers reject
- *  points behind the camera (NDC z >= 1 after project()) — the 2D
- *  path never sets it. */
+/** Project an entity's visual center to screen-pixel coords. Callers
+ *  receive the full entity so the 3D path can pick an appropriate
+ *  vertical height per entity kind (commanders are taller than
+ *  regular units, buildings sit flat on the ground) instead of a
+ *  single magic constant that's wrong for most of them.
+ *
+ *  The `behind` flag lets 3D callers reject points behind the
+ *  camera (NDC z >= 1 after project()) — the 2D path never sets it.
+ */
 export type ProjectToScreen = (
-  worldX: number,
-  worldY: number,
+  entity: Entity,
   out: { x: number; y: number; behind: boolean },
 ) => void;
 
@@ -39,27 +43,27 @@ export function selectEntitiesInScreenRect(
   // Reuse one out object to avoid per-entity allocations on a hot path.
   const out = { x: 0, y: 0, behind: false };
 
-  const tryPush = (worldX: number, worldY: number, id: EntityId): void => {
+  const tryPush = (entity: Entity): void => {
     out.behind = false;
-    project(worldX, worldY, out);
+    project(entity, out);
     if (out.behind) return;
     if (
       out.x >= rect.minX && out.x <= rect.maxX &&
       out.y >= rect.minY && out.y <= rect.maxY
     ) {
-      ids.push(id);
+      ids.push(entity.id);
     }
   };
 
   for (const u of source.getUnits()) {
     if (u.ownership?.playerId !== playerId) continue;
-    tryPush(u.transform.x, u.transform.y, u.id);
+    tryPush(u);
   }
   if (ids.length > 0) return ids;
 
   for (const b of source.getBuildings()) {
     if (b.ownership?.playerId !== playerId) continue;
-    tryPush(b.transform.x, b.transform.y, b.id);
+    tryPush(b);
   }
   return ids;
 }
