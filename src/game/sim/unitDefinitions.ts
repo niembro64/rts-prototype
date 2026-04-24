@@ -46,6 +46,7 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
       rotation: 0,
       pitch: 0,
       angularVelocity: 0,
+      pitchVelocity: 0,
       turnAccel,
       drag,
       offset: { x: offsetX, y: offsetY },

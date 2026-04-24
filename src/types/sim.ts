@@ -270,6 +270,13 @@ export type Turret = {
   rotation: number;
   pitch: number;
   angularVelocity: number;
+  /** Angular velocity of the pitch axis (rad/s). Driven by the
+   *  damped-spring integrator in turretSystem — the solver sets a
+   *  target pitch each tick and the damper converges on it without
+   *  overshoot, so tick-to-tick jitter in the ballistic solution
+   *  (e.g. from moving targets) doesn't propagate into visible
+   *  barrel oscillation. */
+  pitchVelocity: number;
   turnAccel: number;
   drag: number;
   offset: Vec2;

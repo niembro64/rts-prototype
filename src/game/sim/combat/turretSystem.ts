@@ -1,32 +1,41 @@
-// Turret rotation system — yaw slew via angular velocity, pitch set
-// directly from the elevation to the target. Pure TS path: the old
-// WASM-batched integrator was 2D-only (no pitch) and is gone.
+// Turret rotation system — damped-spring integrator on both yaw and
+// pitch. The solver picks a target pose each tick (target bearing for
+// yaw, ballistic-arc angle for pitch); the damper converges the
+// weapon's current pose on that target along an overshoot-free curve,
+// so tick-to-tick jitter in the solver (e.g. a ballistic solution
+// that wobbles slightly as the target moves) doesn't propagate into
+// visible barrel oscillation.
+//
+// Per-axis dynamics (rotation axis shown as θ):
+//
+//   accel = (targetθ − θ) · k  −  θ̇ · c
+//   θ̇   += accel · dt
+//   θ   += θ̇ · dt
+//
+// where k = turretTurnAccel (reused as stiffness so existing per-
+// turret tuning carries over — stiffer turret = snappier track) and
+// c = 2·√k gives critical damping. `turretDrag` from the old bang-
+// bang integrator no longer scales velocity directly; instead it's
+// applied as an EXTRA damping coefficient on top of critical. A drag
+// of 0 produces exactly critical damping; positive values overdamp
+// (slower, no-overshoot response).
 
 import type { WorldState } from '../WorldState';
-import { normalizeAngle, getMovementAngle, resolveWeaponWorldPos, getUnitMuzzleHeight } from './combatUtils';
-import { getTransformCosSin, solveBallisticPitch, getBarrelTip } from '../../math';
+import { getMovementAngle, resolveWeaponWorldPos, getUnitMuzzleHeight } from './combatUtils';
+import { getTransformCosSin, solveBallisticPitch, getBarrelTip, normalizeAngle } from '../../math';
 import {
   TURRET_RETURN_TO_FORWARD,
   GRAVITY,
 } from '../../../config';
 
-// Cache for drag factors
-const _dragFactorCache = new Map<number, number>();
+/** Pitch is clamped to straight-down → straight-up. Matches the
+ *  renderer's pitch range and keeps the ballistic solver from driving
+ *  the barrel through the body. */
+const PITCH_MIN = -Math.PI / 2;
+const PITCH_MAX = Math.PI / 2;
 
 export function updateTurretRotation(world: WorldState, dtMs: number): void {
-  updateTurretRotationJS(world, dtMs);
-}
-
-// JS fallback path (original implementation). Yaw is velocity-damped
-// (slews via angularVelocity); pitch tracks the elevation to the
-// current target every frame without its own angular-velocity path —
-// simpler and matches the game feel of RTS turrets that "tilt" freely
-// while their heavy horizontal swing has inertia. Pitch is zeroed
-// when there's no target.
-function updateTurretRotationJS(world: WorldState, dtMs: number): void {
   const dtSec = dtMs / 1000;
-  const dtFrames = dtSec * 60;
-  _dragFactorCache.clear();
 
   for (const unit of world.getUnits()) {
     if (!unit.unit || !unit.ownership || !unit.turrets) continue;
@@ -47,10 +56,13 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
         weapon.rotation = 0;
         weapon.angularVelocity = 0;
         weapon.pitch = Math.PI / 2;
+        weapon.pitchVelocity = 0;
         continue;
       }
 
+      // --- 1) Derive per-axis target pose for this tick. ---
       let targetAngle: number | null = null;
+      let targetPitch = 0;
       let hasActiveTarget = false;
 
       if (weapon.target !== null) {
@@ -61,6 +73,7 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
           targetAngle = Math.atan2(dy, dx);
+
           // Ballistic arcs are solved from the actual barrel tip (not
           // the turret mount) — otherwise shots would fire from a point
           // one barrel-length farther back than the pitch was solved
@@ -68,20 +81,11 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           //
           // The primitive returns a tip in world coords that already
           // accounts for the barrel's orbit offset, pitch contribution,
-          // and yaw direction. Use barrelIndex = 0 here since this is
-          // the "aim point" reference — the next fired shot may come
-          // from a different barrel in the cluster, but the cluster is
-          // tight enough that solving from barrel 0 is indistinguishable
-          // at gameplay range.
+          // and yaw direction. Use barrelIndex = 0 (reference barrel)
+          // and the CURRENT weapon.pitch — as the damper converges,
+          // the solver input settles along with it.
           const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
           const mountZ = unitGroundZ + getUnitMuzzleHeight(unit);
-          // Scale the barrel length by the SAME radius the 3D renderer
-          // uses (`.scale`, not `.shot`). The renderer draws the barrel
-          // at unitRadius.scale · barrelLength; spawning shots from a
-          // different fraction would put the sim's muzzle at a point
-          // behind or in front of the visible tip. `.scale` and `.shot`
-          // diverge on most units (e.g. scout 8 vs 6), so using the
-          // wrong one is visible as beams floating off the barrel.
           const tipRef = getBarrelTip(
             weaponX, weaponY, mountZ,
             targetAngle, weapon.pitch,
@@ -97,7 +101,7 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
           const shot = weapon.config.shot;
           if (shot.type === 'projectile') {
             const launchSpeed = shot.launchForce / shot.mass;
-            weapon.pitch = solveBallisticPitch(
+            targetPitch = solveBallisticPitch(
               horizDist,
               heightDiff,
               launchSpeed,
@@ -106,37 +110,51 @@ function updateTurretRotationJS(world: WorldState, dtMs: number): void {
             );
           } else {
             // Beam / laser / force — direct aim, no ballistic drop.
-            weapon.pitch = Math.atan2(heightDiff, horizDist);
+            targetPitch = Math.atan2(heightDiff, horizDist);
           }
           hasActiveTarget = true;
         }
       }
 
-      let dragFactor = _dragFactorCache.get(weapon.drag);
-      if (dragFactor === undefined) {
-        dragFactor = Math.pow(1 - weapon.drag, dtFrames);
-        _dragFactorCache.set(weapon.drag, dragFactor);
-      }
-
       if (!hasActiveTarget) {
-        // No target → pitch settles to 0 (barrel horizontal).
-        weapon.pitch = 0;
+        // No target: pitch settles to 0 (barrel horizontal); yaw
+        // either glides toward forward (match movement direction)
+        // or coasts via the damper with target = current angle (no
+        // pull), letting the existing damping bleed velocity off.
+        targetPitch = 0;
         if (TURRET_RETURN_TO_FORWARD) {
           targetAngle = getMovementAngle(unit);
         } else {
-          weapon.angularVelocity *= dragFactor;
-          weapon.rotation += weapon.angularVelocity * dtSec;
-          weapon.rotation = normalizeAngle(weapon.rotation);
-          continue;
+          targetAngle = weapon.rotation;
         }
       }
 
-      const angleDiff = normalizeAngle(targetAngle! - weapon.rotation);
-      const accelDirection = Math.sign(angleDiff);
-      weapon.angularVelocity += accelDirection * weapon.turnAccel * dtSec;
-      weapon.angularVelocity *= dragFactor;
-      weapon.rotation += weapon.angularVelocity * dtSec;
-      weapon.rotation = normalizeAngle(weapon.rotation);
+      // --- 2) Damped-spring integrate both axes toward targets. ---
+      // k = stiffness; c = 2·√k for critical damping. `weapon.drag`
+      // is an optional EXTRA damping coefficient (0 = exactly
+      // critical). Tuning `turretTurnAccel` higher gives a snappier
+      // response; tuning `turretDrag` higher keeps it smooth-but-
+      // slower.
+      const k = Math.max(weapon.turnAccel, 1);
+      const cCritical = 2 * Math.sqrt(k);
+      const c = cCritical * (1 + weapon.drag);
+
+      // Yaw — use normalized angle difference so we always turn the
+      // short way around and don't blow up near ±π.
+      const yawDiff = normalizeAngle(targetAngle! - weapon.rotation);
+      const yawAccel = yawDiff * k - weapon.angularVelocity * c;
+      weapon.angularVelocity += yawAccel * dtSec;
+      weapon.rotation = normalizeAngle(weapon.rotation + weapon.angularVelocity * dtSec);
+
+      // Pitch — straight difference; clamp the integrated pitch so
+      // the barrel doesn't rotate past vertical.
+      const pitchDiff = targetPitch - weapon.pitch;
+      const pitchAccel = pitchDiff * k - weapon.pitchVelocity * c;
+      weapon.pitchVelocity += pitchAccel * dtSec;
+      let newPitch = weapon.pitch + weapon.pitchVelocity * dtSec;
+      if (newPitch < PITCH_MIN) { newPitch = PITCH_MIN; weapon.pitchVelocity = 0; }
+      else if (newPitch > PITCH_MAX) { newPitch = PITCH_MAX; weapon.pitchVelocity = 0; }
+      weapon.pitch = newPitch;
     }
   }
 }

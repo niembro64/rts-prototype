@@ -103,6 +103,11 @@ function createUnitFromNetwork(
         rotation: t.angular.rot,
         pitch: t.angular.pitch,
         angularVelocity: t.angular.vel,
+        // Pitch velocity isn't synced over the wire (one more float
+        // per turret per snapshot isn't worth it); the client
+        // reconstructs it locally as the damper integrates toward
+        // the authoritative pitch values that DO stream in.
+        pitchVelocity: 0,
         turnAccel: t.angular.acc,
         drag: t.angular.drag,
         offset: { x: t.pos.offset.x, y: t.pos.offset.y },

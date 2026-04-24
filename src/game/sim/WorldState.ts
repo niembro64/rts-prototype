@@ -461,6 +461,7 @@ export class WorldState {
       rotation: 0,
       pitch: 0,
       angularVelocity: 0,
+      pitchVelocity: 0,
       turnAccel: accel,
       drag: drag,
       offset: { x: 0, y: 0 },
