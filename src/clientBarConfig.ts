@@ -416,7 +416,10 @@ function loadFromStorage(): void {
   }
 }
 
-loadFromStorage();
+// NOTE: loadFromStorage() is invoked at the very bottom of this file,
+// after every module-level `let current*` declaration — otherwise the
+// grid-overlay block below would hit a temporal-dead-zone ReferenceError
+// because that state variable is declared later in the file.
 
 // ── Getters / setters ──
 
@@ -694,3 +697,8 @@ export function setGridOverlay(mode: GridOverlay): void {
   currentGridOverlay = mode;
   persist(GRID_OVERLAY_STORAGE_KEY, mode);
 }
+
+// Run the localStorage loader AFTER every state variable above has
+// been declared. Keeping this at the bottom is load-bearing — moving
+// it back near the loader definition will crash on module init.
+loadFromStorage();
