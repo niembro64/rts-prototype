@@ -123,6 +123,7 @@ import {
   setLobbyVisible,
   getGridOverlay,
   setGridOverlay,
+  setRendererMode,
   setCurrentTpsRatio,
   setCurrentFpsRatio,
   setLocalServerRunning,
@@ -916,16 +917,14 @@ function toggleBurnMarks(): void {
 
 /**
  * Handler for the PLAYER CLIENT `VIEW: 2D / 3D` button group. Persists
- * the chosen mode so a page refresh remembers it, then delegates to
- * `switchRenderer()` which does the actual scene+renderer swap. No-op
- * if the mode is unchanged (switchRenderer also guards this, but the
- * early return here avoids the localStorage write churn).
+ * the chosen mode via clientBarConfig.setRendererMode (same helper the
+ * URL /2d /3d paths call from App.vue, so both entry points stay in
+ * sync), then delegates to `switchRenderer()` which does the actual
+ * scene+renderer swap. No-op if the mode is unchanged.
  */
 function changeRendererMode(mode: RendererMode): void {
   if (mode === currentRendererMode.value) return;
-  try {
-    localStorage.setItem('rts-renderer-mode', mode);
-  } catch { /* */ }
+  setRendererMode(mode);
   switchRenderer(mode);
 }
 

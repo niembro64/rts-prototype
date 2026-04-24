@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import GameCanvas from './components/GameCanvas.vue';
 import type { RendererMode } from './types/game';
+import { getRendererMode, setRendererMode } from './clientBarConfig';
 
 /**
  * Route → renderer resolution:
@@ -11,48 +12,37 @@ import type { RendererMode } from './types/game';
  *                            flips the mode live without navigating.
  *   /2d, /3d               — compatibility aliases. The path sets the
  *                            initial mode and is persisted to
- *                            localStorage; the toggle still works
- *                            during the session.
+ *                            localStorage (via setRendererMode — same
+ *                            code path as pressing the button) so the
+ *                            next visit to /budget-annihilation keeps
+ *                            whichever was chosen.
  *   anything else          — redirect to /budget-annihilation.
  *
  * The URL is not kept in sync with runtime toggles — that would churn
- * browser history on every click. The chosen mode is persisted via
- * localStorage so a page refresh remembers it.
+ * browser history on every click. Persistence goes through
+ * clientBarConfig's getRendererMode/setRendererMode so the storage key
+ * and format stay shared with every other setting.
  */
-const RENDERER_MODE_STORAGE_KEY = 'rts-renderer-mode';
 const CANONICAL_PATH = '/budget-annihilation';
 
 const path = window.location.pathname;
 const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
 const after = path.startsWith(base) ? path.slice(base.length) : path;
 
-function readStoredMode(): RendererMode | null {
-  try {
-    const v = localStorage.getItem(RENDERER_MODE_STORAGE_KEY);
-    return v === '2d' || v === '3d' ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredMode(mode: RendererMode): void {
-  try { localStorage.setItem(RENDERER_MODE_STORAGE_KEY, mode); } catch { /* */ }
-}
-
 let mode: RendererMode;
 
 if (after.startsWith('/3d')) {
   mode = '3d';
-  writeStoredMode('3d');
+  setRendererMode('3d');
 } else if (after.startsWith('/2d')) {
   mode = '2d';
-  writeStoredMode('2d');
+  setRendererMode('2d');
 } else if (after.startsWith(CANONICAL_PATH)) {
-  mode = readStoredMode() ?? '2d';
+  mode = getRendererMode();
 } else {
   // Unknown route — redirect to the canonical path and use whichever
   // mode was last chosen (or 2D on first visit).
-  mode = readStoredMode() ?? '2d';
+  mode = getRendererMode();
   window.history.replaceState(
     null,
     '',
