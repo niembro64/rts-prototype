@@ -23,7 +23,7 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
       _laserStopOwner.push({
         type: 'laserStop',
         turretId: config.id,
-        pos: { x: entity.transform.x, y: entity.transform.y },
+        pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
         entityId: entity.id * 100 + i,
       });
     }
@@ -48,7 +48,7 @@ export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): 
       _laserStopTarget.push({
         type: 'laserStop',
         turretId: config.id,
-        pos: { x: unit.transform.x, y: unit.transform.y },
+        pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
         entityId: unit.id * 100 + i,
       });
     }
@@ -86,7 +86,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
         audioEvents.push({
           type: 'laserStop',
           turretId: config.id,
-          pos: { x: unit.transform.x, y: unit.transform.y },
+          pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
           entityId: soundEntityId,
         });
         continue;
@@ -115,14 +115,14 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
         audioEvents.push({
           type: 'laserStart',
           turretId: config.id,
-          pos: { x: unit.transform.x, y: unit.transform.y },
+          pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
           entityId: soundEntityId,
         });
       } else {
         audioEvents.push({
           type: 'laserStop',
           turretId: config.id,
-          pos: { x: unit.transform.x, y: unit.transform.y },
+          pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
           entityId: soundEntityId,
         });
       }

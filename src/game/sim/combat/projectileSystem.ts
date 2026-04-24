@@ -8,7 +8,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, MUZZLE_HEIGHT_ABOVE_GROUND } from '../../../config';
+import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, MUZZLE_HEIGHT_ABOVE_GROUND, GRAVITY } from '../../../config';
 import { getBarrelTipOffset, resolveWeaponWorldPos, getBarrelTipWorldPos } from './combatUtils';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 
@@ -122,12 +122,19 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
       }
 
-      // Add fire event (skip continuous beams — they use start/stop lifecycle)
+      // Add fire event (skip continuous beams — they use start/stop lifecycle).
+      // The event fires AT the turret (hull altitude + turret head height)
+      // so the muzzle-flash visual lines up with the barrel tip the
+      // projectile is about to leave. Muzzle exact z is
+      // unit.transform.z + CHASSIS_HEIGHT/2 + TURRET_HEIGHT/2 roughly;
+      // using the muzzle-height-above-ground formula keeps this in lock
+      // step with the projectile spawn z.
       if (shot.type !== 'beam') {
+        const fireGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
         audioEvents.push({
           type: 'fire',
           turretId: config.id,
-          pos: { x: weaponX, y: weaponY },
+          pos: { x: weaponX, y: weaponY, z: fireGroundZ + MUZZLE_HEIGHT_ABOVE_GROUND },
         });
       }
 
@@ -279,13 +286,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 // Reusable array for homing velocity updates (avoid per-frame allocation)
 const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
 
-// 3D projectile integration: explicit-Euler advance on (x, y, z) with
-// gravity pulling -z. Tuned well below the main physics engine's
-// GRAVITY (900) — "realistic" gravity makes shells plummet too fast
-// for RTS-scale ballistics. 250 gives visible arcs at cannon speeds
-// without the ground hurrying up to meet every shot. Client
-// dead-reckoning (ClientViewState) has an identical constant.
-const PROJECTILE_GRAVITY = 250;
+// 3D projectile integration: explicit-Euler advance on (x, y, z).
+// Gravity constant lives in config.ts so it's shared with the physics
+// engine, client dead-reckoning, debris, and explosion sparks.
 
 function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
   for (const entity of world.getProjectiles()) {
@@ -304,7 +307,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // Gravity integration: vz loses GRAVITY·dt each tick. A shot fired
     // horizontally drops into an arc; a shot fired with a positive
     // vz ascends then falls (mortar ballistics).
-    proj.velocityZ -= PROJECTILE_GRAVITY * dtSec;
+    proj.velocityZ -= GRAVITY * dtSec;
 
     entity.transform.x += proj.velocityX * dtSec;
     entity.transform.y += proj.velocityY * dtSec;

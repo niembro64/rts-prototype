@@ -114,7 +114,11 @@ export function buildUnitDeathEvent(
   return {
     type: 'death',
     turretId: turretOrUnitId,
-    pos: { x: target?.transform.x ?? 0, y: target?.transform.y ?? 0 },
+    pos: {
+      x: target?.transform.x ?? 0,
+      y: target?.transform.y ?? 0,
+      z: target?.transform.z ?? 0,
+    },
     entityId: id,
     deathContext,
   };
@@ -135,7 +139,11 @@ export function buildBuildingDeathEvent(
   return {
     type: 'death',
     turretId: turretOrBuildingId,
-    pos: { x: building?.transform.x ?? 0, y: building?.transform.y ?? 0 },
+    pos: {
+      x: building?.transform.x ?? 0,
+      y: building?.transform.y ?? 0,
+      z: building?.transform.z ?? 0,
+    },
     entityId: id,
     deathContext: {
       unitVel: { x: 0, y: 0 },
@@ -244,7 +252,7 @@ export function emitBeamHitAudio(
       if (entity) {
         audioEvents.push({
           type: 'hit', turretId: (config.shot as BeamShot | LaserShot).id,
-          pos: { x: entity.transform.x, y: entity.transform.y },
+          pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
           impactContext: buildImpactContext(
             config, impactX, impactY,
             beamDirX * BEAM_EXPLOSION_MAGNITUDE, beamDirY * BEAM_EXPLOSION_MAGNITUDE,

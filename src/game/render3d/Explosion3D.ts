@@ -24,10 +24,9 @@
 import * as THREE from 'three';
 import { getGraphicsConfig } from '@/clientBarConfig';
 
-// Height at which projectiles/impacts visually read — matches SHOT_HEIGHT
-// used by Render3DEntities and BeamRenderer3D so beam-hit glows line up
-// vertically with the beam's cylinder.
-const SHOT_HEIGHT = 28 + 16 / 2;
+// (SHOT_HEIGHT is gone — every explosion takes its altitude from the
+// SimEvent's pos.z so visuals line up with the sim's exact impact
+// point. Callers pass simX / simY / simZ explicitly.)
 
 // Per-spawn defaults. All three layers use a white palette — the low-LOD
 // flash-only look was just the core ball, which users liked, so higher
@@ -58,9 +57,10 @@ function durationMultiplier(radius: number): number {
   return 1 + Math.log2(Math.max(1, radius / DURATION_BASE_RADIUS));
 }
 
-// Sparks are affected by gravity so they arc. Chosen so a 100 u/s launch
-// peaks around ~0.25 s and lands before fading out.
-const SPARK_GRAVITY = 900; // world units / s² (downward)
+// Sparks are affected by gravity so they arc. Imported from config.ts
+// so explosion sparks, debris, projectiles, and physics all share one
+// gravity value.
+import { GRAVITY as SPARK_GRAVITY } from '../../config';
 
 // Fireball starts slightly smaller than its final size and expands while it
 // brightens, then fades while still expanding. Multipliers are over the base
@@ -145,8 +145,14 @@ export class Explosion3D {
    * 2D code for team-tinted death blasts; unused here now that all
    * explosions are white).
    */
+  /**
+   * Fire an impact explosion at a full 3D sim position.
+   *   `simX` / `simY`  = horizontal plane (sim.x / sim.y)
+   *   `simZ`           = altitude (sim.z, authoritative event altitude)
+   * Internally maps to Three.js (x=simX, y=simZ, z=simY).
+   */
   spawnImpact(
-    x: number, z: number, radius: number,
+    simX: number, simY: number, simZ: number, radius: number,
     momentumX: number = 0, momentumZ: number = 0,
     shellColor?: number,
   ): void {
@@ -159,13 +165,13 @@ export class Explosion3D {
     // Always render a core even at the cheapest LOD — a plain white ball is
     // the simplest "something happened here" signal.
     this.addPuff(
-      x, z, CORE_COLOR, CORE_LIFETIME_MS * durMult,
+      simX, simY, simZ, CORE_COLOR, CORE_LIFETIME_MS * durMult,
       r * CORE_EXPAND_START, r * CORE_EXPAND_END, false,
     );
     if (style === 'flash') return;
 
     this.addPuff(
-      x, z, shellColor ?? FIRE_COLOR, FIRE_LIFETIME_MS * durMult,
+      simX, simY, simZ, shellColor ?? FIRE_COLOR, FIRE_LIFETIME_MS * durMult,
       r * FIRE_EXPAND_START, r * FIRE_EXPAND_END, true,
     );
     if (style === 'spark') return;
@@ -173,7 +179,7 @@ export class Explosion3D {
     const lod = LOD_TABLE[style];
     if (lod.sparks > 0) {
       this.addSparks(
-        x, z, r * lod.sparkReach, lod.sparks,
+        simX, simY, simZ, r * lod.sparkReach, lod.sparks,
         SPARK_LIFETIME_MS * durMult,
         momentumX, momentumZ,
       );
@@ -191,14 +197,15 @@ export class Explosion3D {
    * unit was pushed when it died.
    */
   spawnDeath(
-    x: number, z: number, radius: number,
+    simX: number, simY: number, simZ: number, radius: number,
     momentumX: number = 0, momentumZ: number = 0,
   ): void {
-    this.spawnImpact(x, z, radius * 2.5, momentumX, momentumZ);
+    this.spawnImpact(simX, simY, simZ, radius * 2.5, momentumX, momentumZ);
   }
 
   private addPuff(
-    x: number, z: number, color: number, lifetime: number,
+    simX: number, simY: number, simZ: number,
+    color: number, lifetime: number,
     startR: number, endR: number, isShell: boolean,
   ): void {
     const pooled = this.puffPool.pop();
@@ -221,7 +228,10 @@ export class Explosion3D {
       mesh.renderOrder = 14;
       this.root.add(mesh);
     }
-    mesh.position.set(x, SHOT_HEIGHT, z);
+    // Three.js (x, y, z) ← sim (x, z, y): simX goes to three-x, sim
+    // altitude (simZ) goes to three-y, sim.y (ground plane) goes to
+    // three-z. This is the canonical sim-to-render axis swap.
+    mesh.position.set(simX, simZ, simY);
     mesh.scale.setScalar(startR);
 
     this.puffs.push({
@@ -231,7 +241,8 @@ export class Explosion3D {
   }
 
   private addSparks(
-    x: number, z: number, reach: number, count: number, lifetime: number,
+    simX: number, simY: number, simZ: number,
+    reach: number, count: number, lifetime: number,
     momentumX: number = 0, momentumZ: number = 0,
   ): void {
     // Sparks spray over the full sphere so the explosion reads in 3D from any
@@ -279,7 +290,7 @@ export class Explosion3D {
       const vy = Math.sin(phi) * speed;
 
       const size = 0.9 + Math.random() * 1.2;
-      mesh.position.set(x, SHOT_HEIGHT, z);
+      mesh.position.set(simX, simZ, simY);
       mesh.scale.setScalar(size);
 
       this.sparks.push({

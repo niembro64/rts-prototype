@@ -37,7 +37,14 @@ export type SimEvent = {
     | 'forceFieldStop'
     | 'projectileExpire';
   turretId: TurretAudioId;
-  pos: Vec2;
+  /** Event origin in full 3D sim coords. For a shell hitting the
+   *  ground the z is 0; for an airburst it's the projectile's
+   *  altitude at detonation; for a death event it's the dying
+   *  entity's position. 2D clients ignore z, 3D clients use it to
+   *  place the explosion / debris visuals at the exact impact
+   *  altitude so the event visuals line up with what the sim
+   *  computed. */
+  pos: Vec3;
   entityId?: EntityId;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;

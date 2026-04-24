@@ -160,6 +160,15 @@ export const TURRET_HEIGHT = 16;
  *  then fire from the right height without a special case. */
 export const MUZZLE_HEIGHT_ABOVE_GROUND = CHASSIS_HEIGHT + TURRET_HEIGHT / 2;
 
+/** Universal gravity acceleration (world units / s², pulling −z).
+ *  Single source of truth for every falling thing — physics engine's
+ *  unit bodies, projectile ballistic integration, debris chunks,
+ *  explosion spark particles, client-side dead-reckoning. Tuned for
+ *  RTS-scale ballistics rather than real-world 9.8 m/s²; the map is
+ *  ~3000 wu wide and shots travel hundreds of units per second, so
+ *  heavier gravity would flatten every arc into a short lob. */
+export const GRAVITY = 250;
+
 // =============================================================================
 // ECONOMY & RESOURCES
 // =============================================================================

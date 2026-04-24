@@ -21,7 +21,7 @@ export function emitForceFieldStopsForEntity(entity: Entity): SimEvent[] {
     _forceFieldStopOwner.push({
       type: 'forceFieldStop',
       turretId: config.id,
-      pos: { x: entity.transform.x, y: entity.transform.y },
+      pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
       entityId: entity.id * 100 + i,
     });
   }
@@ -50,14 +50,14 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
         _forceFieldSimEvents.push({
           type: 'forceFieldStop',
           turretId: config.id,
-          pos: { x: unit.transform.x, y: unit.transform.y },
+          pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
           entityId: soundEntityId,
         });
       } else {
         _forceFieldSimEvents.push({
           type: 'forceFieldStart',
           turretId: config.id,
-          pos: { x: unit.transform.x, y: unit.transform.y },
+          pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
           entityId: soundEntityId,
         });
       }

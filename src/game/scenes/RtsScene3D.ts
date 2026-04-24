@@ -725,11 +725,13 @@ export class RtsScene3D {
           ctx.projectile.vel.y * 0.3 +
           ctx.entity.vel.y * 0.3;
       }
-      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, r, mx, mz);
+      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, event.pos.z, r, mx, mz);
     } else if (event.type === 'projectileExpire') {
       // Ground / expired-projectile fire — always a small pop, no meaningful
-      // momentum (the projectile stopped).
-      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, 8);
+      // momentum (the projectile stopped). event.pos.z carries the exact
+      // altitude the sim computed — ground-impact events have z=0, aerial
+      // splash-on-expiry have whatever altitude the shot reached.
+      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, event.pos.z, 8);
     } else if (event.type === 'death') {
       // Some kill paths (splash, bleed-out, force-field zone damage) emit
       // a death event with no deathContext. Rather than skipping the
@@ -785,11 +787,11 @@ export class RtsScene3D {
         ctx.projectileVel.y * 0.3 +
         ctx.unitVel.y * 0.5;
       this.explosionRenderer.spawnDeath(
-        event.pos.x, event.pos.y,
+        event.pos.x, event.pos.y, event.pos.z,
         Math.max(ctx.radius, 6),
         mx, mz,
       );
-      this.debrisRenderer.spawn(event.pos.x, event.pos.y, ctx);
+      this.debrisRenderer.spawn(event.pos.x, event.pos.y, event.pos.z, ctx);
     }
   }
 

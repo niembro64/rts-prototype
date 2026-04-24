@@ -45,7 +45,7 @@
 // for an RTS with a few hundred units this is enough and keeps the
 // code small enough to audit at a glance.
 
-import { UNIT_MASS_MULTIPLIER } from '../../config';
+import { UNIT_MASS_MULTIPLIER, GRAVITY } from '../../config';
 
 /** A body participating in the 3D physics simulation. One shape type
  *  per body ('sphere' or 'cuboid'); spheres are always dynamic, cuboids
@@ -77,11 +77,12 @@ export type Body3D = {
   label: string;
 };
 
-// Realistic gravity in world-units / s² — tuned for the game's scale
-// (~20 sim units per cell, units are ~10 units tall). 900 matches the
-// existing Debris3D constant so material fragments and physics bodies
-// fall at visually consistent rates.
-const GRAVITY = 900;
+// Gravity is imported from src/config.ts as the single source of
+// truth (see `export const GRAVITY`). Every falling thing — units
+// under this engine, projectiles integrated in projectileSystem,
+// debris in Debris3D, explosion sparks in Explosion3D, client
+// dead-reckoning — uses the same value so visually consistent fall
+// rates are free.
 
 // Max velocity-correction iterations per step for overlapping spheres.
 // Pile-ups beyond this cap will have some residual overlap but no

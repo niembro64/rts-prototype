@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import type { SimDeathContext } from '@/types/combat';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { MAP_BG_COLOR } from '../../config';
+import { MAP_BG_COLOR, GRAVITY } from '../../config';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { leftSideConfigsForStyle } from './Locomotion3D';
@@ -59,7 +59,8 @@ const GLOBAL_MAX_PIECES = 800;
 // Physics. Linear drag mirrors the 2D DebrisSystem (~0.99/frame at 60Hz).
 // Angular drag is lower so spin decays noticeably faster than travel — the
 // "start fast, slow to a stop" behavior the user asked for.
-const GRAVITY = 900;
+// Gravity is imported from config.ts — single value shared with everything
+// that falls (physics engine, projectile arc, client prediction).
 const LINEAR_DRAG = 0.985;
 const ANGULAR_DRAG = 0.955;
 
@@ -149,14 +150,23 @@ export class Debris3D {
     parentWorld.add(this.root);
   }
 
-  /** Spawn a full debris cluster for a dying unit. */
-  spawn(x: number, z: number, ctx: SimDeathContext): void {
+  /** Spawn a full debris cluster for a dying unit at a full 3D sim pos.
+   *  (simX, simY) is the horizontal footprint, simZ is the unit's sim
+   *  altitude at death. Debris piece template y coords are local-to-
+   *  ground; emitPiece adds (simZ − unit radius) so an airborne unit
+   *  dying at z=100 has its debris spawn up there instead of at the
+   *  ground. A ground-resting unit's math reduces to the old path
+   *  because simZ − radius = 0. */
+  spawn(simX: number, simY: number, simZ: number, ctx: SimDeathContext): void {
     const style = (getGraphicsConfig().deathExplosionStyle ?? 'scatter') as DebrisStyle;
     const stride = STYLE_STRIDE[style];
 
     const r = Math.max(ctx.radius ?? 10, 6);
     const primary = ctx.color ?? 0xcccccc;
     const rotation = ctx.rotation ?? 0;
+    // Vertical lift of the piece's local-y so aerial deaths shed
+    // debris at altitude rather than at ground level.
+    const groundZ = simZ - r;
 
     const templates = this.buildTemplates(ctx, r, primary);
 
@@ -176,7 +186,7 @@ export class Debris3D {
     const sinR = Math.sin(rotation);
 
     for (let i = 0; i < templates.length; i += stride) {
-      this.emitPiece(templates[i], x, z, cosR, sinR, rotation, biasX, biasZ, uvx, uvz);
+      this.emitPiece(templates[i], simX, simY, groundZ, cosR, sinR, rotation, biasX, biasZ, uvx, uvz);
     }
 
     // Evict oldest pieces if we blew past the global cap.
@@ -404,6 +414,10 @@ export class Debris3D {
     t: DebrisTemplate,
     unitX: number,
     unitZ: number,
+    /** The unit's ground-footprint altitude (simZ − radius). Added to
+     *  every piece's local y so airborne-kill debris spawns at
+     *  altitude. 0 for a ground-resting unit. */
+    groundLift: number,
     cosR: number,
     sinR: number,
     unitRot: number,
@@ -452,7 +466,7 @@ export class Debris3D {
       // Position: rotate local (x, z) by Ry(−unitRot) — same transform the
       // chassis group applies (its rotation.y is −transform.rotation).
       wcx = unitX + cosR * t.x - sinR * t.z;
-      wcy = t.y;
+      wcy = t.y + groundLift;
       wcz = unitZ + sinR * t.x + cosR * t.z;
       localX = t.x;
       localZ = t.z;
@@ -472,10 +486,10 @@ export class Debris3D {
       // midpoint with length = |b-a| and axis aligned to (b-a). Same math as
       // Locomotion3D's setCylinderBetween.
       const awx = unitX + cosR * t.ax - sinR * t.az;
-      const awy = t.ay;
+      const awy = t.ay + groundLift;
       const awz = unitZ + sinR * t.ax + cosR * t.az;
       const bwx = unitX + cosR * t.bx - sinR * t.bz;
-      const bwy = t.by;
+      const bwy = t.by + groundLift;
       const bwz = unitZ + sinR * t.bx + cosR * t.bz;
       const dx = bwx - awx;
       const dy = bwy - awy;

@@ -39,7 +39,7 @@ import {
   getWeaponWorldPosition,
   applyHomingSteering,
 } from '../math';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../config';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 /** Frame-rate independent EMA blend factor from a half-life (seconds).
@@ -51,10 +51,8 @@ function halfLifeBlend(dt: number, halfLife: number): number {
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
-// Projectile gravity (world units / s²) — must match the server's
-// PROJECTILE_GRAVITY in projectileSystem.ts so client dead-reckoning
-// between snapshots falls at the same rate as authoritative sim.
-const PROJECTILE_GRAVITY = 250;
+// Gravity imported from config.ts — single value shared with server
+// sim and every other falling-thing system.
 
 // Reusable buffer for client-side force field prediction (avoids allocations per frame)
 type ActiveForceField = {
@@ -793,7 +791,7 @@ export class ClientViewState {
           // Traveling projectiles: dead-reckon using (possibly steered)
           // velocity in full 3D. Gravity on vz mirrors the server so
           // mortar arcs and cannon shells fall between snapshots.
-          entity.projectile.velocityZ -= PROJECTILE_GRAVITY * dt;
+          entity.projectile.velocityZ -= GRAVITY * dt;
           entity.transform.x += entity.projectile.velocityX * dt;
           entity.transform.y += entity.projectile.velocityY * dt;
           entity.transform.z += entity.projectile.velocityZ * dt;

@@ -30,7 +30,8 @@ export type NetworkServerSnapshotSimEvent = {
     | 'forceFieldStop'
     | 'projectileExpire';
   turretId: TurretAudioId;
-  pos: Vec2;
+  /** Event origin in 3D sim coords. See SimEvent in types/combat.ts. */
+  pos: Vec3;
   entityId?: number;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;

@@ -296,10 +296,12 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     isDGun: true,
   });
 
-  // Emit audio event
+  // Emit audio event — muzzle-flash position matches the projectile
+  // spawn z (commander ground-footprint + muzzle height) so the
+  // visible flash aligns with where the shot actually came out.
   const dgunSimEvent: SimEvent = {
     type: 'fire',
-    pos: { x: spawnX, y: spawnY },
+    pos: { x: spawnX, y: spawnY, z: dgunFireZ },
     turretId: 'dgunTurret',
   };
   ctx.onSimEvent?.(dgunSimEvent);

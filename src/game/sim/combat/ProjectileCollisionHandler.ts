@@ -216,7 +216,7 @@ export function checkProjectileCollisions(
           audioEvents.push({
             type: 'hit',
             turretId: shotId,
-            pos: { x: projEntity.transform.x, y: projEntity.transform.y },
+            pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -241,7 +241,7 @@ export function checkProjectileCollisions(
         audioEvents.push({
           type: 'projectileExpire',
           turretId: shotId,
-          pos: { x: projEntity.transform.x, y: projEntity.transform.y },
+          pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,
             proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -363,7 +363,7 @@ export function checkProjectileCollisions(
           audioEvents.push({
             type: 'hit',
             turretId: shotId,
-            pos: { x: projEntity.transform.x, y: projEntity.transform.y },
+            pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -433,7 +433,7 @@ export function checkProjectileCollisions(
         audioEvents.push({
           type: 'projectileExpire',
           turretId: shotId,
-          pos: { x: projEntity.transform.x, y: projEntity.transform.y },
+          pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,
             proj.velocityX ?? 0, proj.velocityY ?? 0,
