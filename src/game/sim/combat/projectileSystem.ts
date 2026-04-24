@@ -248,7 +248,12 @@ const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] 
 // Reusable arrays for WASM batch projectile processing
 let _projEntities: Entity[] = [];
 
-// JS fallback: update traveling projectile positions + homing (original code)
+// 3D projectile integration: explicit-Euler advance on (x, y, z) with
+// gravity pulling -z. Matches the main physics engine's GRAVITY for
+// visually consistent fall rates between projectiles, debris, and
+// knocked-up units.
+const PROJECTILE_GRAVITY = 900;
+
 function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
   for (const entity of world.getProjectiles()) {
     if (!entity.projectile) continue;
@@ -258,10 +263,19 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
 
     proj.timeAlive += dtMs;
 
+    // Stash prev-state for swept 3D collision in ProjectileCollisionHandler.
     proj.prevX = entity.transform.x;
     proj.prevY = entity.transform.y;
+    proj.prevZ = entity.transform.z;
+
+    // Gravity integration: vz loses GRAVITY·dt each tick. A shot fired
+    // horizontally drops into an arc; a shot fired with a positive
+    // vz ascends then falls (mortar ballistics).
+    proj.velocityZ -= PROJECTILE_GRAVITY * dtSec;
+
     entity.transform.x += proj.velocityX * dtSec;
     entity.transform.y += proj.velocityY * dtSec;
+    entity.transform.z += proj.velocityZ * dtSec;
 
     if (!proj.hasLeftSource) {
       const source = world.getEntity(proj.sourceEntityId);
@@ -270,7 +284,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       } else {
         const dx = proj.prevX - source.transform.x;
         const dy = proj.prevY - source.transform.y;
-        const distSq = dx * dx + dy * dy;
+        const dz = (proj.prevZ ?? 0) - source.transform.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
         const clearance = source.unit.unitRadiusCollider.shot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
         if (distSq > clearance * clearance) {
           proj.hasLeftSource = true;
@@ -278,6 +293,10 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       }
     }
 
+    // Homing steers in the (x, y) plane only — tracking the target
+    // horizontally while gravity keeps dragging vz down. That matches
+    // BAR / TA-style homing missiles: they correct their heading on
+    // the ground plane but don't try to claw back against gravity.
     if (proj.homingTargetId !== undefined) {
       const homingTarget = world.getEntity(proj.homingTargetId);
       if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
@@ -294,10 +313,13 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         const velTh = SNAPSHOT_CONFIG.velocityThreshold;
         const lastVx = proj.lastSentVelX ?? proj.velocityX;
         const lastVy = proj.lastSentVelY ?? proj.velocityY;
+        const lastVz = proj.lastSentVelZ ?? proj.velocityZ;
         if (Math.abs(proj.velocityX - lastVx) > velTh ||
-            Math.abs(proj.velocityY - lastVy) > velTh) {
+            Math.abs(proj.velocityY - lastVy) > velTh ||
+            Math.abs(proj.velocityZ - lastVz) > velTh) {
           proj.lastSentVelX = proj.velocityX;
           proj.lastSentVelY = proj.velocityY;
+          proj.lastSentVelZ = proj.velocityZ;
           _homingVelocityUpdates.push({
             id: entity.id,
             pos: { x: entity.transform.x, y: entity.transform.y },
@@ -438,14 +460,10 @@ export function updateProjectiles(
   const despawnEvents: ProjectileDespawnEvent[] = [];
   _homingVelocityUpdates.length = 0;
 
-  // Phase 4: batch position integration + homing for traveling projectiles via WASM
-  const wasmEngine = getWasmEngine();
-  const wasmMemory = getWasmMemory();
-  if (wasmEngine && wasmMemory) {
-    _updateTravelingProjectilesWasm(world, dtMs, dtSec, wasmEngine, wasmMemory);
-  } else {
-    _updateTravelingProjectilesJS(world, dtMs, dtSec);
-  }
+  // Position integration + homing for traveling projectiles. The
+  // WASM-batched path was 2D-only and is disabled on this branch —
+  // M12 deletes it entirely. The JS path below is the 3D authority.
+  _updateTravelingProjectilesJS(world, dtMs, dtSec);
 
   for (const entity of world.getProjectiles()) {
     if (!entity.projectile) continue;
