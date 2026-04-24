@@ -60,7 +60,7 @@ export const CLIENT_CONFIG = {
   },
   audioSmoothing: { default: true },
   burnMarks: { default: true },
-  driftMode: { default: 'fast' as const },
+  driftMode: { default: 'mid' as const },
   edgeScroll: { default: false },
   dragPan: { default: true },
   sounds: {
