@@ -2,7 +2,7 @@
 
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
-  playerCount: 10,
+  playerCount: 27,
 
   /** Number of factories per player. Scaled down for the 10-team
    *  layout — each team's angular sector is only 2π/10 = 36° (30.6°
