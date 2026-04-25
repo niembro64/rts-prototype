@@ -22,7 +22,7 @@
 
 import type { WorldState } from '../WorldState';
 import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
-import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle } from '../../math';
+import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle, getWeaponWorldPosition } from '../../math';
 import {
   TURRET_RETURN_TO_FORWARD,
   GRAVITY,
@@ -115,6 +115,51 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
           let aimX = target.transform.x;
           let aimY = target.transform.y;
           let aimZ = target.transform.z;
+
+          // Passive (mirror) turrets: aim the panel normal at the
+          // ENEMY'S BEAM-TURRET BARREL TIP, not its body center. With
+          // angle-0 panels on a chassis, the optimal turret rotation θ
+          // satisfies (panel-normal) ∥ (B − M), where B is the beam
+          // source and M is the mirror unit's chassis position. The
+          // panel's chassis-local offset cancels out:
+          //
+          //   P(θ) = M + offset · (cos θ, sin θ)
+          //   n(θ) =     1     · (cos θ, sin θ)
+          //   n ∥ (B − P)
+          //   ⇒  cos θ · (B.y − M.y) − sin θ · (B.x − M.x)  =  0
+          //   ⇒  θ = atan2(B.y − M.y, B.x − M.x)
+          //
+          // i.e. aim the chassis-rooted turret rotation at B and the
+          // panel automatically retro-reflects the beam back along its
+          // incoming line, hitting the enemy unit's body.
+          if (weapon.config.passive && target.turrets) {
+            for (let ti = 0; ti < target.turrets.length; ti++) {
+              const enemyTurret = target.turrets[ti];
+              if (enemyTurret.config.passive) continue;
+              const eShotType = enemyTurret.config.shot.type;
+              if (eShotType !== 'beam' && eShotType !== 'laser') continue;
+              const tCS = getTransformCosSin(target.transform);
+              const ewp = getWeaponWorldPosition(
+                target.transform.x, target.transform.y,
+                tCS.cos, tCS.sin,
+                enemyTurret.offset.x, enemyTurret.offset.y,
+              );
+              const eGroundZ = target.transform.z - (target.unit?.unitRadiusCollider.push ?? 0);
+              const eMountZ = eGroundZ + getTurretMountHeight(target, ti);
+              const eTip = getBarrelTip(
+                ewp.x, ewp.y, eMountZ,
+                enemyTurret.rotation, enemyTurret.pitch,
+                enemyTurret.config,
+                target.unit?.unitRadiusCollider.scale ?? 15,
+                0,
+              );
+              aimX = eTip.x;
+              aimY = eTip.y;
+              aimZ = eTip.z;
+              targetAngle = Math.atan2(aimY - weaponY, aimX - weaponX);
+              break;
+            }
+          }
 
           if (shot.type === 'projectile') {
             const launchSpeed = shot.launchForce / shot.mass;

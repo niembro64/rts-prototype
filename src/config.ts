@@ -424,8 +424,10 @@ export const UNIT_THRUST_MULTIPLIER_DEMO = 6.0;
 // =============================================================================
 
 export const MAP_SETTINGS: Record<string, MapSize> = {
+  // Single map size for both the main game and the demo / lobby
+  // background battle — they share GameServer.ts which always reads
+  // MAP_SETTINGS.game.
   game: { width: 3_000, height: 3_000 },
-  demo: { width: 1_600, height: 7_00 },
 };
 
 // =============================================================================

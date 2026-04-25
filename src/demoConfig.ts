@@ -55,9 +55,21 @@ export const DEMO_CONFIG = {
    */
   aiInverseCostWeighting: true,
 
-  /** Number of units per player to spawn near map center on startup. */
+  /** Number of units per player to spawn near each team's base on startup. */
   centerSpawnPerPlayer: 16,
 
-  /** Spawn circle radius as a ratio of map height. 0.5 = half the map height. */
-  centerSpawnRadius: 0.3,
+  /**
+   * Initial unit spawn radius from map center, as a ratio of map height.
+   * Units cluster on an arc near their team's base sector at this radius
+   * (between map center and the spawn circle) and fight toward the
+   * opposite side through center. 0.5 = half the map height.
+   */
+  centerSpawnRadius: 0.4,
+
+  /**
+   * Angular spread of each team's initial unit cluster, as a fraction
+   * of that team's full angular sector (2π / playerCount). Smaller =
+   * tighter team grouping at spawn.
+   */
+  centerSpawnSectorFraction: 0.6,
 };
