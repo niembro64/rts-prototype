@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
+import { BEAM_MAX_LENGTH } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 
 // Fallback altitude for beams whose proj.startZ / endZ haven't been
@@ -50,6 +51,12 @@ export class BeamRenderer3D {
   // One material per (team, projectileType). Lasers and beams render the same
   // shape but at different opacities.
   private matCache = new Map<string, BeamMat>();
+
+  // One MUTABLE material per pool slot, used to apply per-segment
+  // distance-based alpha decay. Cloned from the team/type material on
+  // first acquire; per-frame updates rewrite color (in case the slot
+  // is reused for a different team) and opacity (the fade).
+  private segmentMats: THREE.MeshBasicMaterial[] = [];
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
@@ -97,6 +104,24 @@ export class BeamRenderer3D {
     }
     mesh.visible = true;
     return mesh;
+  }
+
+  /** Per-pool-slot mutable material so each segment can carry its own
+   *  alpha (set from the distance-fade math). Cloned lazily from the
+   *  team/type base material; color + opacity rewritten each frame. */
+  private acquireSegmentMat(
+    i: number,
+    base: THREE.MeshBasicMaterial,
+    fadeMul: number,
+  ): THREE.MeshBasicMaterial {
+    let mat = this.segmentMats[i];
+    if (!mat) {
+      mat = base.clone();
+      this.segmentMats[i] = mat;
+    }
+    mat.color.copy(base.color);
+    mat.opacity = base.opacity * fadeMul;
+    return mat;
   }
 
   private placeSegment(
@@ -163,29 +188,44 @@ export class BeamRenderer3D {
       if (shot && (shot.type === 'beam' || shot.type === 'laser')) {
         cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE);
       }
-      const material = this.getMaterial(proj.ownerId, pt);
+      const baseMat = this.getMaterial(proj.ownerId, pt);
 
       // Build the path: start → reflections[0..n-1] → end. Each
       // consecutive pair is one cylinder segment. Each reflection
       // carries its own z so pitched beams bouncing off vertical
-      // mirrors trace the correct 3D polyline.
+      // mirrors trace the correct 3D polyline. Cumulative distance
+      // along the polyline drives a linear alpha fade so the beam
+      // visually "decays" with range — fully bright at the muzzle,
+      // fading to invisible at BEAM_MAX_LENGTH (which is also the
+      // hard collision cutoff on the sim side, so the visual fade
+      // hits zero at exactly the same place the beam itself ends).
       let prevX = startX;
       let prevY = startY;
       let prevZ = startZ;
+      let cumDist = 0;
       const reflections = proj.reflections;
       if (reflections) {
         for (let i = 0; i < reflections.length; i++) {
           const r = reflections[i];
-          const mesh = this.acquireSegment(segIdx++);
-          mesh.material = material;
+          const segLen = Math.hypot(r.x - prevX, r.y - prevY, r.z - prevZ);
+          const midDist = cumDist + segLen / 2;
+          const fade = Math.max(0, 1 - midDist / BEAM_MAX_LENGTH);
+          const slot = segIdx++;
+          const mesh = this.acquireSegment(slot);
+          mesh.material = this.acquireSegmentMat(slot, baseMat, fade);
           this.placeSegment(mesh, prevX, prevY, r.x, r.y, prevZ, r.z, cylRadius);
           prevX = r.x;
           prevY = r.y;
           prevZ = r.z;
+          cumDist += segLen;
         }
       }
-      const mesh = this.acquireSegment(segIdx++);
-      mesh.material = material;
+      const finalLen = Math.hypot(endX - prevX, endY - prevY, endZ - prevZ);
+      const finalMid = cumDist + finalLen / 2;
+      const finalFade = Math.max(0, 1 - finalMid / BEAM_MAX_LENGTH);
+      const finalSlot = segIdx++;
+      const mesh = this.acquireSegment(finalSlot);
+      mesh.material = this.acquireSegmentMat(finalSlot, baseMat, finalFade);
       this.placeSegment(mesh, prevX, prevY, endX, endY, prevZ, endZ, cylRadius);
     }
 
@@ -198,6 +238,8 @@ export class BeamRenderer3D {
   destroy(): void {
     for (const mesh of this.segmentPool) this.root.remove(mesh);
     this.segmentPool.length = 0;
+    for (const mat of this.segmentMats) mat.dispose();
+    this.segmentMats.length = 0;
     this.segmentGeom.dispose();
     for (const { material } of this.matCache.values()) material.dispose();
     this.matCache.clear();
