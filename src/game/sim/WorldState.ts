@@ -3,7 +3,7 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, MIRROR_BASE_Y, UNIT_HP_MULTIPLIER } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT, UNIT_HP_MULTIPLIER } from '../../config';
 import { getBodyTopY } from '../math/BodyDimensions';
 import { getTurretHeadRadius } from '../math';
 import { dropWeaponsForUnit } from './combat/targetIndex';
@@ -396,12 +396,12 @@ export class WorldState {
     entity.turrets = createTurretsFromDefinition(unitId, bp.unitRadiusCollider.scale);
 
     // Cache mirror panels for fast beam collision checks (avoids blueprint
-    // lookup per tick). Vertical span = MIRROR_BASE_Y → host turret's
-    // top above the unit's ground footprint, where the host turret's
-    // top is `bodyTop + 2 × hostHeadRadius` (matches the renderer's
-    // own panel-mesh sizing — see the matching computation in
-    // Render3DEntities.updateUnits). Per-host bodyRadius makes the
-    // panel column scale with the mirror-host turret's declared size.
+    // lookup per tick). The panel is REGULARIZED to a perfect square:
+    // vertical span = MIRROR_BASE_Y → bodyTop + 2·hostHeadRadius +
+    // MIRROR_EXTRA_HEIGHT, and the edge length equals that vertical
+    // span. Sim collision and the 3D mesh share this single canonical
+    // rectangle so the bisector reflection math operates on the exact
+    // plane the player sees.
     const rendererId = bp.renderer ?? 'arachnid';
     const panelBaseY = MIRROR_BASE_Y;
     const bodyTop = getBodyTopY(rendererId, bp.unitRadiusCollider.scale);
@@ -414,21 +414,22 @@ export class WorldState {
           // looks at — bodyRadius is the only field it reads.
           { bodyRadius: tb.bodyRadius } as unknown as TurretConfig,
         );
-        const panelTopY = bodyTop + 2 * hostHeadRadius;
+        const panelTopY = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
+        const halfSide = (panelTopY - panelBaseY) / 2;
         const panels = entity.unit!.mirrorPanels;
         let maxR = 0;
         for (const p of tb.mirrorPanels) {
           panels.push({
-            halfWidth: p.width / 2,
-            halfHeight: p.height / 2,
+            halfWidth: halfSide,
+            halfHeight: halfSide,
             offsetX: p.offsetX,
             offsetY: p.offsetY,
             angle: p.angle,
             baseY: panelBaseY,
             topY: panelTopY,
           });
-          // Bound radius: distance from center to farthest panel edge endpoint
-          const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + p.width / 2;
+          // Bound radius: distance from center to farthest panel edge endpoint.
+          const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + halfSide;
           if (dist > maxR) maxR = dist;
         }
         entity.unit!.mirrorBoundRadius = maxR;

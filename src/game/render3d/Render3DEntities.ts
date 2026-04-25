@@ -232,7 +232,13 @@ export class Render3DEntities {
   private projectileMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
-  private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
+  // Mirror panel = flat unit square plane. Default orientation: face
+  // in XY plane with normal +Z; we rotate it into the panel-local frame
+  // (edge → +Z, normal → +X) per panel below. Plane has zero physical
+  // thickness so the visible mesh and the sim collision rectangle live
+  // on EXACTLY the same surface — no front/back offset where a beam
+  // could appear to clip the visible chrome but miss the sim plane.
+  private mirrorGeom = new THREE.PlaneGeometry(1, 1);
   // Thin ring for the selection indicator (flat, sits just above the ground plane)
   private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
   // Unit-radius indicator wireframe spheres (SCAL/SHOT/PUSH). Unit
@@ -280,8 +286,11 @@ export class Render3DEntities {
   // scene's PMREM-processed RoomEnvironment cube set on the scene in
   // ThreeApp. One material per team color (plus a neutral).
   private mirrorShinyMats = new Map<PlayerId, THREE.MeshStandardMaterial>();
+  // DoubleSide so the flat plane is visible from either side — beams
+  // can come from any angle, and a single-sided plane would silently
+  // disappear when viewed from behind.
   private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
-    color: 0xdddddd, metalness: 1.0, roughness: 0.0,
+    color: 0xdddddd, metalness: 1.0, roughness: 0.0, side: THREE.DoubleSide,
   });
 
   // ── LOW-tier instanced sphere ─────────────────────────────────────
@@ -367,6 +376,7 @@ export class Render3DEntities {
         color: getPlayerColors(pid).primary,
         metalness: 1.0,
         roughness: 0.0,
+        side: THREE.DoubleSide,
       });
       this.mirrorShinyMats.set(pid, mat);
     }
@@ -585,7 +595,7 @@ export class Render3DEntities {
    */
   private buildMirrorMesh(
     parent: THREE.Group,
-    panels: readonly { halfWidth: number; halfHeight: number; offsetX: number; offsetY: number; angle: number }[],
+    panels: readonly { offsetX: number; offsetY: number; angle: number }[],
     pid: PlayerId | undefined,
     gfx: GraphicsConfig,
     panelTopY: number,
@@ -594,6 +604,10 @@ export class Render3DEntities {
     parent.add(root);
     const meshes: THREE.Mesh[] = [];
     const mirrorHeight = Math.max(panelTopY - MIRROR_BASE_Y, 1);
+    // Panel is a SQUARE: edge length = vertical extent. Single source
+    // of truth for both axes; matches the sim's CachedMirrorPanel which
+    // sets halfWidth = halfHeight = (topY − baseY) / 2.
+    const side = mirrorHeight;
 
     // Mirrors are always the super-shiny PBR chrome material — no LOD
     // downgrade to flat Lambert, and no orbital sparkle meshes; the
@@ -604,16 +618,18 @@ export class Render3DEntities {
     for (let i = 0; i < panels.length; i++) {
       const p = panels[i];
       const m = new THREE.Mesh(this.mirrorGeom, mat);
-      // Default box +X runs along the "edge" (length); +Z runs along the
-      // panel normal (thickness). Set local rotation.y = -(panel.angle + π/2)
-      // so the combined chassis → mirrorRoot → panel transforms put the
-      // edge in world direction (turret.rotation + panel.angle + π/2).
-      // Euler order YXZ so the pitch (rotation.x) is applied INSIDE the
-      // panel-local frame after the yaw flip — i.e. pitch rotates around
-      // the panel's edge axis instead of the world X axis.
+      // PlaneGeometry default lies in the XY plane with normal +Z.
+      // Rotate around local Y by -(angle + π/2) so the combined
+      // chassis → mirrorRoot → panel transforms put the panel's
+      // EDGE direction (originally +X) along world (turret.rotation +
+      // angle + π/2), and its NORMAL (originally +Z) along world
+      // (turret.rotation + angle). Pitch (rotation.x = -mirrorPitch)
+      // is applied AFTER the yaw flip in YXZ order so it rotates the
+      // panel around its edge axis — same convention the sim uses for
+      // panel orientation in MirrorPanelHit.
       m.rotation.order = 'YXZ';
       m.rotation.y = -(p.angle + Math.PI / 2);
-      m.scale.set(p.halfWidth * 2, mirrorHeight, p.halfHeight * 2);
+      m.scale.set(side, side, 1);
       m.position.set(p.offsetX, MIRROR_BASE_Y + mirrorHeight / 2, p.offsetY);
       root.add(m);
       meshes.push(m);

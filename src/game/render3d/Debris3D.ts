@@ -442,18 +442,20 @@ export class Debris3D {
         }
       }
 
-      // Mirror panels — for mirror-bearing turrets (e.g. Loris) emit
-      // one slab per panel matching what Render3DEntities draws:
-      // panel center at chassis-local (mount + panel.offset), vertical
-      // mid-height of MIRROR_BASE_Y → bodyTop + 2·headR +
-      // MIRROR_EXTRA_HEIGHT, length = panel.width along the panel's
-      // edge axis (yaw = -(panel.angle + π/2) to match the rendered
-      // box's rotation), thickness = panel.height. Color matches the
-      // team secondary so the chrome reads as the unit's faction.
+      // Mirror panels — emit one slab per panel matching what
+      // Render3DEntities draws: a square plane (edge = vertical span)
+      // centered at chassis-local (mount + panel.offset), running from
+      // MIRROR_BASE_Y to bodyTop + 2·headR + MIRROR_EXTRA_HEIGHT, yawed
+      // by -(panel.angle + π/2) to align the edge with the rendered
+      // mesh. A small Z thickness is applied to the debris box ONLY
+      // (the live mesh is a flat plane); shattering paper-thin slivers
+      // would be invisible mid-tumble, so debris pieces get a token
+      // 1-wu thickness for visibility.
       if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
         const panelTop = bodyTopY + 2 * headR + MIRROR_EXTRA_HEIGHT;
         const mirrorH = Math.max(panelTop - MIRROR_BASE_Y, 1);
         const panelCenterY = MIRROR_BASE_Y + mirrorH / 2;
+        const side = mirrorH;
         for (const panel of tb.mirrorPanels) {
           out.push({
             shape: 'box',
@@ -461,9 +463,9 @@ export class Debris3D {
             y: panelCenterY,
             z: toz + panel.offsetY,
             yaw: -(panel.angle + Math.PI / 2),
-            sx: panel.width,
-            sy: mirrorH,
-            sz: panel.height,
+            sx: side,
+            sy: side,
+            sz: 1,
             color: primary,
           });
         }

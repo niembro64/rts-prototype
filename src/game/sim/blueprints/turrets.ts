@@ -271,15 +271,15 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // visual), so bodyRadius is set for consistency with sibling
     // turrets but has no rendered effect.
     bodyRadius: 5,
-    // Single forward-facing square reflector. Normal angle 0 means the
-    // panel's normal points along the turret's facing direction; the
-    // panel's edge direction (perpendicular to normal) runs left-right
-    // across the turret's front. width matches the panel's vertical
-    // extent so the front face reads as a square (vertical extent is
-    // mirrorHeight = bodyTop + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT
-    // − MIRROR_BASE_Y, ≈ 40 for the Loris).
+    // Single forward-facing square reflector. angle=0 ⇒ panel normal
+    // points along the turret's facing direction; the panel's edge runs
+    // left-right across the turret's front. Size is regularized — the
+    // panel is always a perfect square whose side equals its vertical
+    // extent (topY − baseY = bodyTop + 2·hostHeadRadius +
+    // MIRROR_EXTRA_HEIGHT − MIRROR_BASE_Y), so sim collision and the
+    // visible mesh share one canonical rectangle.
     mirrorPanels: [
-      { width: 40, height: 4, offsetX: 18, offsetY: 0, angle: 0 },
+      { offsetX: 18, offsetY: 0, angle: 0 },
     ],
   },
   ...generateBeamTurrets(),

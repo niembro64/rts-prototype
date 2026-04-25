@@ -197,12 +197,18 @@ export type LaserShotBlueprint = {
 
 export type ShotBlueprint = ProjectileShotBlueprint | BeamShotBlueprint | LaserShotBlueprint;
 
+/** A reflective mirror panel mount on a turret. The panel itself is a
+ *  PERFECT SQUARE flat plane — its side length is derived from the
+ *  unit's vertical span (topY - baseY, populated at entity-creation
+ *  time from the renderer body height + mirror panel column geometry).
+ *  The blueprint specifies only WHERE the panel sits (offset relative
+ *  to the turret) and WHICH WAY it points (angle relative to turret
+ *  forward); the size is regularized so sim collision and 3D mesh
+ *  always agree on a single canonical rectangle. */
 export type MirrorPanel = {
-  width: number;    // length of reflective edge
-  height: number;   // panel thickness (rendering only)
   offsetX: number;  // forward offset from unit center (turret-local)
   offsetY: number;  // lateral offset (positive = left, turret-local)
-  angle: number;    // rotation relative to turret forward (radians)
+  angle: number;    // rotation of the panel normal relative to turret forward (radians)
 };
 
 export type TurretBlueprint = {

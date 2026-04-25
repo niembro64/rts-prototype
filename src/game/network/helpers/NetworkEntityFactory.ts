@@ -122,14 +122,13 @@ function createUnitFromNetwork(
     entity.turrets = turrets;
   }
 
-  // Cache mirror panels for fast beam collision checks
+  // Cache mirror panels for fast beam collision checks. Mirror panel
+  // is regularized to a square: side = (topY − baseY), where topY =
+  // bodyTop + 2·hostHeadRadius + MIRROR_EXTRA_HEIGHT. Sim collision
+  // and the 3D mesh share one canonical rectangle, so the beam tracer
+  // hits the exact plane the player sees.
   try {
     const bp = getUnitBlueprint(u?.unitType ?? 'jackal');
-    // Panel vertical span = (MIRROR_BASE_Y, bodyTop + 2·hostHeadRadius +
-    // MIRROR_EXTRA_HEIGHT) above the unit's ground. Same per-unit value
-    // the 3D renderer uses for the panel mesh, so the beam tracer hits
-    // the exact rectangle the player sees. Per-host bodyRadius scales
-    // the column with the mirror-host turret's declared size.
     const rendererId = bp.renderer ?? 'arachnid';
     const baseY = MIRROR_BASE_Y;
     const bodyTop = getBodyTopY(rendererId, entity.unit!.unitRadiusCollider.scale);
@@ -141,19 +140,20 @@ function createUnitFromNetwork(
           { bodyRadius: tb.bodyRadius } as unknown as TurretConfig,
         );
         const topY = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
+        const halfSide = (topY - baseY) / 2;
         const panels = entity.unit!.mirrorPanels;
         let maxR = 0;
         for (const p of tb.mirrorPanels) {
           panels.push({
-            halfWidth: p.width / 2,
-            halfHeight: p.height / 2,
+            halfWidth: halfSide,
+            halfHeight: halfSide,
             offsetX: p.offsetX,
             offsetY: p.offsetY,
             angle: p.angle,
             baseY,
             topY,
           });
-          const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + p.width / 2;
+          const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + halfSide;
           if (dist > maxR) maxR = dist;
         }
         entity.unit!.mirrorBoundRadius = maxR;
