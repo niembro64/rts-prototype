@@ -508,6 +508,10 @@ export class Render3DEntities {
       // panel normal (thickness). Set local rotation.y = -(panel.angle + π/2)
       // so the combined chassis → mirrorRoot → panel transforms put the
       // edge in world direction (turret.rotation + panel.angle + π/2).
+      // Euler order YXZ so the pitch (rotation.x) is applied INSIDE the
+      // panel-local frame after the yaw flip — i.e. pitch rotates around
+      // the panel's edge axis instead of the world X axis.
+      m.rotation.order = 'YXZ';
       m.rotation.y = -(p.angle + Math.PI / 2);
       m.scale.set(p.halfWidth * 2, mirrorHeight, p.halfHeight * 2);
       m.position.set(p.offsetX, MIRROR_BASE_Y + mirrorHeight / 2, p.offsetY);
@@ -1017,11 +1021,22 @@ export class Render3DEntities {
         }
       }
 
-      // Mirror panels: track the first turret's rotation (same rule the 2D
-      // LorisRenderer uses — `mirrorRot = turret?.rotation ?? bodyRot`).
+      // Mirror panels: track the first turret's rotation (same rule the
+      // 2D LorisRenderer uses — `mirrorRot = turret?.rotation ?? bodyRot`).
+      // Pitch tilts each panel around its edge axis so the panel's 3D
+      // normal points at the beam source. With the panel mesh on Euler
+      // order YXZ, rotation.x is applied AFTER the yaw flip — so it
+      // genuinely rotates around the panel-local edge axis. The sign is
+      // negated because positive sim/turret pitch (= "tilt up") in the
+      // mesh frame corresponds to a negative Euler X rotation after the
+      // yaw flip.
       if (m.mirrors) {
         const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
+        const mirrorPitch = turrets[0]?.pitch ?? 0;
         m.mirrors.root.rotation.y = -(mirrorRot - e.transform.rotation);
+        for (const panel of m.mirrors.panels) {
+          panel.rotation.x = -mirrorPitch;
+        }
       }
 
       // Locomotion: spin tread wheels per velocity; wheels/legs are static.

@@ -17,7 +17,8 @@ import type {
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
-import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, rayVerticalRectIntersectionT, isPointInSlice } from '../../math';
+import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice } from '../../math';
+import { findClosestPanelHit } from '../combat/MirrorPanelHit';
 import { getTargetRadius } from '../combat/combatUtils';
 
 
@@ -54,12 +55,12 @@ export function resetDamageBuffers(): void {
   _reusableHits.length = 0;
 }
 
-// Reusable result for findBeamSegmentHit.
-// `z` is the world altitude of the hit point; `normalX/Y` is the
-// panel's outward-facing horizontal normal (mirror panels are upright,
-// so normalZ is always 0 — see the reflection formula in findBeamPath
-// where d.z is preserved through the bounce).
-const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, panelIndex: -1 };
+// Reusable result for findBeamSegmentHit. `z` is the world altitude
+// of the hit point; `normalX/Y/Z` is the panel's outward-facing 3D
+// normal (yaw-and-pitch rotated, so a pitched mirror redirects the
+// beam's vertical component as well as horizontal — see the
+// reflection formula in findBeamPath).
+const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, normalZ: 0, panelIndex: -1 };
 
 // Compute distance-based falloff damage for area effects
 function computeFalloffDamage(dist: number, radius: number, baseDamage: number, falloff: number): number {
@@ -195,15 +196,14 @@ export class DamageSystem {
       const beamDirY = segDy / segLen;
       const beamDirZ = segDz / segLen;
 
-      // Reflect around the panel's horizontal normal. normalZ is 0 for
-      // yaw-only panels, so d.z comes out unchanged — a pitched beam
-      // exits the mirror with the same vertical slope it arrived at,
-      // just mirrored horizontally (the natural result for a vertical
-      // mirror).
-      const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY;
+      // Reflect around the panel's full 3D normal so a pitched mirror
+      // redirects vertical aim as well as horizontal — perfect retro-
+      // reflection requires n to point at the beam source in 3D, and
+      // d_out = d_in − 2(d_in · n) n with the full-3D dot product.
+      const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY + beamDirZ * hit.normalZ;
       const reflDirX = beamDirX - 2 * dotDN * hit.normalX;
       const reflDirY = beamDirY - 2 * dotDN * hit.normalY;
-      const reflDirZ = beamDirZ;
+      const reflDirZ = beamDirZ - 2 * dotDN * hit.normalZ;
       const remaining = segLen * (1 - hit.t);
 
       curSX = hit.x;
@@ -257,51 +257,34 @@ export class DamageSystem {
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
       if (panels.length > 0) {
-        // Mirror unit: 3D ray-vs-upright-rectangle for each panel.
-        let mirrorRot = unit.transform.rotation;
-        if (unit.turrets && unit.turrets.length > 0) {
-          mirrorRot = unit.turrets[0].rotation;
-        }
-        const fwdX = Math.cos(mirrorRot);
-        const fwdY = Math.sin(mirrorRot);
-        const perpX = -fwdY;
-        const perpY = fwdX;
-
-        // Panel vertical range in world-z = unit's ground footprint
-        // altitude (transform.z − push radius when the unit is resting)
-        // plus the panel's per-unit base/top offsets above ground.
+        // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
+        // (yaw + pitch from the mirror turret rotation/pitch).
+        const mirrorRot = unit.turrets && unit.turrets.length > 0
+          ? unit.turrets[0].rotation
+          : unit.transform.rotation;
+        const mirrorPitch = unit.turrets && unit.turrets.length > 0
+          ? unit.turrets[0].pitch
+          : 0;
         const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-
-        for (let pi = 0; pi < panels.length; pi++) {
-          if (isExcludedEntity && pi === excludePanelIndex) continue;
-
-          const panel = panels[pi];
-          const pcx = unit.transform.x + fwdX * panel.offsetX + perpX * panel.offsetY;
-          const pcy = unit.transform.y + fwdY * panel.offsetX + perpY * panel.offsetY;
-          const panelAngle = mirrorRot + panel.angle;
-          const pnx = Math.cos(panelAngle);
-          const pny = Math.sin(panelAngle);
-
-          const t = rayVerticalRectIntersectionT(
-            startX, startY, startZ,
-            endX, endY, endZ,
-            pcx, pcy,
-            pnx, pny,
-            panel.halfWidth,
-            unitGroundZ + panel.baseY,
-            unitGroundZ + panel.topY,
-          );
-          if (t !== null && t < bestT) {
-            bestT = t; found = true;
-            _segHit.t = t;
-            _segHit.x = startX + t * dx;
-            _segHit.y = startY + t * dy;
-            _segHit.z = startZ + t * dz;
-            _segHit.entityId = unit.id;
-            _segHit.isMirror = true;
-            _segHit.normalX = pnx; _segHit.normalY = pny;
-            _segHit.panelIndex = pi;
-          }
+        const panelExclude = isExcludedEntity ? excludePanelIndex : -1;
+        const hit = findClosestPanelHit(
+          panels, mirrorRot, mirrorPitch,
+          unit.transform.x, unit.transform.y, unitGroundZ,
+          startX, startY, startZ, endX, endY, endZ,
+          panelExclude,
+        );
+        if (hit !== null && hit.t < bestT) {
+          bestT = hit.t; found = true;
+          _segHit.t = hit.t;
+          _segHit.x = hit.x;
+          _segHit.y = hit.y;
+          _segHit.z = hit.z;
+          _segHit.entityId = unit.id;
+          _segHit.isMirror = true;
+          _segHit.normalX = hit.normalX;
+          _segHit.normalY = hit.normalY;
+          _segHit.normalZ = hit.normalZ;
+          _segHit.panelIndex = hit.panelIndex;
         }
       }
 

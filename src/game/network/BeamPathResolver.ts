@@ -12,8 +12,8 @@
 import {
   lineSphereIntersectionT,
   rayBoxIntersectionT,
-  rayVerticalRectIntersectionT,
 } from '../math';
+import { findClosestPanelHit } from '../sim/combat/MirrorPanelHit';
 import type { EntityCacheManager } from '../sim/EntityCacheManager';
 
 // Reusable result for findBeamSegmentHit (avoids per-call allocations)
@@ -26,6 +26,7 @@ const _segHit = {
   isMirror: false,
   normalX: 0,
   normalY: 0,
+  normalZ: 0,
   panelIndex: -1,
 };
 
@@ -90,11 +91,12 @@ export function findBeamPath(
     const beamDirY = segDy / segLen;
     const beamDirZ = segDz / segLen;
 
-    // Reflect around panel's horizontal normal; d.z preserved.
-    const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY;
+    // Reflect around the panel's full 3D normal so a pitched mirror
+    // redirects the beam's vertical component as well as horizontal.
+    const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY + beamDirZ * hit.normalZ;
     const reflDirX = beamDirX - 2 * dotDN * hit.normalX;
     const reflDirY = beamDirY - 2 * dotDN * hit.normalY;
-    const reflDirZ = beamDirZ;
+    const reflDirZ = beamDirZ - 2 * dotDN * hit.normalZ;
     const remaining = segLen * (1 - hit.t);
 
     curSX = hit.x;
@@ -145,50 +147,33 @@ function findBeamSegmentHit(
     if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
     if (panels.length > 0) {
-      let mirrorRot = unit.transform.rotation;
-      if (unit.turrets && unit.turrets.length > 0) {
-        mirrorRot = unit.turrets[0].rotation;
-      }
-      const fwdX = Math.cos(mirrorRot),
-        fwdY = Math.sin(mirrorRot);
-      const perpX = -fwdY,
-        perpY = fwdX;
+      const mirrorRot = unit.turrets && unit.turrets.length > 0
+        ? unit.turrets[0].rotation
+        : unit.transform.rotation;
+      const mirrorPitch = unit.turrets && unit.turrets.length > 0
+        ? unit.turrets[0].pitch
+        : 0;
       const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-
-      for (let pi = 0; pi < panels.length; pi++) {
-        if (isExcludedEntity && pi === excludePanelIndex) continue;
-
-        const panel = panels[pi];
-        const pcx =
-          unit.transform.x + fwdX * panel.offsetX + perpX * panel.offsetY;
-        const pcy =
-          unit.transform.y + fwdY * panel.offsetX + perpY * panel.offsetY;
-        const panelAngle = mirrorRot + panel.angle;
-        const pnx = Math.cos(panelAngle);
-        const pny = Math.sin(panelAngle);
-
-        const t = rayVerticalRectIntersectionT(
-          sx, sy, sz,
-          ex, ey, ez,
-          pcx, pcy,
-          pnx, pny,
-          panel.halfWidth,
-          unitGroundZ + panel.baseY,
-          unitGroundZ + panel.topY,
-        );
-        if (t !== null && t < bestT) {
-          bestT = t;
-          found = true;
-          _segHit.t = t;
-          _segHit.x = sx + t * dx;
-          _segHit.y = sy + t * dy;
-          _segHit.z = sz + t * dz;
-          _segHit.entityId = unit.id;
-          _segHit.isMirror = true;
-          _segHit.normalX = pnx;
-          _segHit.normalY = pny;
-          _segHit.panelIndex = pi;
-        }
+      const panelExclude = isExcludedEntity ? excludePanelIndex : -1;
+      const hit = findClosestPanelHit(
+        panels, mirrorRot, mirrorPitch,
+        unit.transform.x, unit.transform.y, unitGroundZ,
+        sx, sy, sz, ex, ey, ez,
+        panelExclude,
+      );
+      if (hit !== null && hit.t < bestT) {
+        bestT = hit.t;
+        found = true;
+        _segHit.t = hit.t;
+        _segHit.x = hit.x;
+        _segHit.y = hit.y;
+        _segHit.z = hit.z;
+        _segHit.entityId = unit.id;
+        _segHit.isMirror = true;
+        _segHit.normalX = hit.normalX;
+        _segHit.normalY = hit.normalY;
+        _segHit.normalZ = hit.normalZ;
+        _segHit.panelIndex = hit.panelIndex;
       }
     }
 
@@ -212,6 +197,7 @@ function findBeamSegmentHit(
         _segHit.isMirror = false;
         _segHit.normalX = 0;
         _segHit.normalY = 0;
+        _segHit.normalZ = 0;
         _segHit.panelIndex = -1;
       }
     }

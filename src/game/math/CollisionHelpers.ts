@@ -183,6 +183,52 @@ export function rayVerticalRectIntersectionT(
   return t;
 }
 
+/** 3D ray vs tilted rectangle. Generalizes rayVerticalRectIntersectionT
+ *  to any orientation — the panel's plane is fully arbitrary, defined
+ *  by its center, 3D normal, edge direction, and the two half-extents.
+ *
+ *  Inputs (all 3D):
+ *    s = ray start, e = ray end (parametric T ∈ [0, 1])
+ *    pc = panel center
+ *    n  = panel normal (UNIT)
+ *    ed = edge direction (UNIT, in plane, perpendicular to n)
+ *    halfW = half-extent along ed
+ *    halfH = half-extent along (n × ed) — the in-plane axis perpendicular to ed
+ *
+ *  Returns t in [0, 1] for the first hit, or null. */
+export function rayTiltedRectIntersectionT(
+  sx: number, sy: number, sz: number,
+  ex: number, ey: number, ez: number,
+  pcx: number, pcy: number, pcz: number,
+  nx: number, ny: number, nz: number,
+  edx: number, edy: number, edz: number,
+  halfW: number, halfH: number,
+): number | null {
+  const dx = ex - sx, dy = ey - sy, dz = ez - sz;
+  const denom = dx * nx + dy * ny + dz * nz;
+  if (Math.abs(denom) < 1e-9) return null;
+
+  const t = ((pcx - sx) * nx + (pcy - sy) * ny + (pcz - sz) * nz) / denom;
+  if (t < 0 || t > 1) return null;
+
+  const hx = sx + t * dx;
+  const hy = sy + t * dy;
+  const hz = sz + t * dz;
+  const lx = hx - pcx, ly = hy - pcy, lz = hz - pcz;
+
+  const along = lx * edx + ly * edy + lz * edz;
+  if (along < -halfW || along > halfW) return null;
+
+  // up-in-plane axis = n × ed
+  const ux = ny * edz - nz * edy;
+  const uy = nz * edx - nx * edz;
+  const uz = nx * edy - ny * edx;
+  const up = lx * ux + ly * uy + lz * uz;
+  if (up < -halfH || up > halfH) return null;
+
+  return t;
+}
+
 // Line-line intersection - returns T value for first line, or null
 export function lineLineIntersectionT(
   x1: number, y1: number, x2: number, y2: number,

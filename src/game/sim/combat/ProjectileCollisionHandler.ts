@@ -8,6 +8,7 @@ import type { SimEvent, CollisionResult, ProjectileDespawnEvent, ProjectileSpawn
 import { beamIndex } from '../BeamIndex';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
+import { findClosestPanelHit } from './MirrorPanelHit';
 import { getSubmunitionTurretConfig } from '../blueprints';
 import { encodeSubmunitionTurretId } from '../turretConfigs';
 
@@ -167,6 +168,54 @@ export function checkProjectileCollisions(
     // Projectile entities always use projectile/beam/laser shot types (never force)
     const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
 
+    // Mirror-panel impact — a traveling projectile whose flight path
+    // this tick crosses any reflective panel detonates at the panel,
+    // exactly like a ground hit. Same termination flow (splash on
+    // expiry → projectileExpire event → remove). Skipped for beams/
+    // lasers (they bounce off mirrors via the beam tracer, not here).
+    let hitMirrorPanel = false;
+    if (proj.projectileType === 'projectile') {
+      const prevX = proj.prevX ?? projEntity.transform.x;
+      const prevY = proj.prevY ?? projEntity.transform.y;
+      const prevZ = proj.prevZ ?? projEntity.transform.z;
+      const curX = projEntity.transform.x;
+      const curY = projEntity.transform.y;
+      const curZ = projEntity.transform.z;
+      let bestT = Infinity;
+      let bestX = 0, bestY = 0, bestZ = 0;
+      for (const u of world.getUnits()) {
+        if (u.id === proj.sourceEntityId) continue;
+        if (!u.unit || u.unit.hp <= 0) continue;
+        const panels = u.unit.mirrorPanels;
+        if (!panels || panels.length === 0) continue;
+        const mirrorRot = u.turrets && u.turrets.length > 0
+          ? u.turrets[0].rotation
+          : u.transform.rotation;
+        const mirrorPitch = u.turrets && u.turrets.length > 0
+          ? u.turrets[0].pitch
+          : 0;
+        const groundZ = u.transform.z - u.unit.unitRadiusCollider.push;
+        const hit = findClosestPanelHit(
+          panels, mirrorRot, mirrorPitch,
+          u.transform.x, u.transform.y, groundZ,
+          prevX, prevY, prevZ, curX, curY, curZ,
+          -1,
+        );
+        if (hit && hit.t < bestT) {
+          bestT = hit.t;
+          bestX = hit.x;
+          bestY = hit.y;
+          bestZ = hit.z;
+        }
+      }
+      if (bestT < Infinity) {
+        projEntity.transform.x = bestX;
+        projEntity.transform.y = bestY;
+        projEntity.transform.z = bestZ;
+        hitMirrorPanel = true;
+      }
+    }
+
     // Ground impact — a traveling projectile whose center drops below
     // the ground plane is treated exactly like lifespan expiry: if the
     // shot has splashOnExpiry the splash goes off at the impact point,
@@ -175,14 +224,15 @@ export function checkProjectileCollisions(
     // can't hit the ground (they're instantaneous lines, not falling
     // shots) so they skip this check.
     const hitGround =
+      !hitMirrorPanel &&
       proj.projectileType === 'projectile' &&
       projEntity.transform.z <= 0;
     if (hitGround) {
       projEntity.transform.z = 0;
     }
 
-    // Check if projectile expired (lifespan OR ground impact)
-    if (proj.timeAlive >= proj.maxLifespan || hitGround) {
+    // Check if projectile expired (lifespan OR ground impact OR mirror hit)
+    if (proj.timeAlive >= proj.maxLifespan || hitGround || hitMirrorPanel) {
       // Beam audio is handled by updateLaserSounds based on targeting state
 
       // Handle splash damage on expiration — only for projectile shots with splashOnExpiry enabled

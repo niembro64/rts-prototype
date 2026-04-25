@@ -116,31 +116,26 @@ export function spawnBackgroundUnitsStandalone(
   }
 
   if (initialSpawn) {
-    // Each team's units cluster on a narrow arc near their base sector
-    // at centerSpawnRadius and march toward the opposite side of the
-    // map (through map center). With 3 teams this gives three columns
-    // converging on the middle.
-    const spawnRadius = DEMO_CONFIG.centerSpawnRadius * mapHeight;
-    const sectorAngle = (2 * Math.PI / numPlayers) * DEMO_CONFIG.centerSpawnSectorFraction;
+    // All teams' initial units spawn at random positions inside a
+    // single circle around the map center (uniform area density via
+    // sqrt-sample). Each unit's fight waypoint is the diametrically
+    // opposite point through the center, so the units from every team
+    // intermix on launch and converge through the middle — the
+    // characteristic demo-battle clash.
+    const centerRadius = DEMO_CONFIG.centerSpawnRadius * mapHeight;
     const totalPerPlayer = DEMO_CONFIG.centerSpawnPerPlayer;
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = (p + 1) as PlayerId;
       const pUnits = world.getUnitsByPlayer(playerId).length;
-      const baseAngle = baseAngles[p];
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
-        // Random offset within the team's angular sector + radial
-        // jitter (sqrt for uniform area density on the band).
-        const offsetAngle = (Math.random() - 0.5) * sectorAngle;
-        const radialFrac = 0.6 + Math.sqrt(Math.random()) * 0.4; // 60–100% of spawnRadius
-        const a = baseAngle + offsetAngle;
-        const r = spawnRadius * radialFrac;
-        const spawnX = cx + Math.cos(a) * r;
-        const spawnY = cy + Math.sin(a) * r;
+        const spawnAngle = Math.random() * Math.PI * 2;
+        const spawnDist = Math.sqrt(Math.random()) * centerRadius;
+        const spawnX = cx + Math.cos(spawnAngle) * spawnDist;
+        const spawnY = cy + Math.sin(spawnAngle) * spawnDist;
 
-        // Fight waypoint: exact opposite point through center (so the
-        // unit marches across the map and meets enemy columns mid-way).
+        // Fight waypoint = diametrically opposite point through center.
         const targetX = cx - (spawnX - cx);
         const targetY = cy - (spawnY - cy);
 
