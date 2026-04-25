@@ -24,7 +24,8 @@ import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { getBodyTopY, getSegmentMidYAt } from '../math/BodyDimensions';
-import { PLAYER_COLORS } from '../sim/types';
+import { getPlayerColors } from '../sim/types';
+import type { PlayerId } from '../sim/types';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -688,12 +689,17 @@ export class Debris3D {
 // --- Helpers ---
 
 /** Reverse-lookup a player's secondary color by matching their primary.
- *  SimDeathContext.color is always the primary, so for turret-head debris
- *  we scan PLAYER_COLORS to find the matching entry and pull its secondary.
- *  Falls back to a mid-gray if the color doesn't belong to any known
- *  player (e.g. neutral / demo units). */
+ *  SimDeathContext.color is always the primary, so for turret-head
+ *  debris we scan getPlayerColors() over a generous pid range to find
+ *  the matching entry and pull its secondary. The scan range is sized
+ *  to comfortably exceed the demo's player count; getPlayerColors is
+ *  cached per slot so repeated scans are essentially free. Falls back
+ *  to mid-gray if the color doesn't belong to any known player (e.g.
+ *  neutral debris from a synthesized death context). */
+const REVERSE_LOOKUP_MAX_PID = 32;
 function lookupSecondaryColor(primary: number): number {
-  for (const pc of Object.values(PLAYER_COLORS)) {
+  for (let pid = 1 as PlayerId; pid <= REVERSE_LOOKUP_MAX_PID; pid++) {
+    const pc = getPlayerColors(pid);
     if (pc.primary === primary) return pc.secondary;
   }
   return 0x888888;

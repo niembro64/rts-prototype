@@ -67,6 +67,38 @@ const HARDCODED_PLAYER_COLORS: ReadonlyArray<PlayerColors> = [
   { primary: 0xd88050, secondary: 0xb06840, name: 'Orange' },   // Soft peach orange
 ];
 
+// Slot 1 of the curated palette = Red, and we want the LOCAL CLIENT
+// player to always render in red regardless of which raw pid the
+// server assigned them. The mapping is: local pid → slot 1; every
+// other pid → slot 2..N enumerated in ascending pid order, skipping
+// the local pid's own slot. The cache below is keyed by SLOT (not
+// pid) so the palette stays stable as long as the local player
+// doesn't change mid-session.
+let _localPlayerForColors: PlayerId | undefined = undefined;
+
+/** Tell the color helpers which pid is the local viewer's team — that
+ *  pid will render in slot 1 (Red) on this client. Other pids slide
+ *  into the remaining slots in ascending order. Calling with a new
+ *  value invalidates the slot cache (slot mapping changed). Pass
+ *  undefined to disable remapping (pid maps directly to slot). */
+export function setLocalPlayerForColors(playerId: PlayerId | undefined): void {
+  if (_localPlayerForColors === playerId) return;
+  _localPlayerForColors = playerId;
+  // Old cache reflected the previous remapping — clear it.
+  _playerColorCache.clear();
+}
+
+/** Map a real pid to its display slot under the current local-player
+ *  remapping. Slot 1 is reserved for the local player. */
+function pidToSlot(pid: PlayerId): PlayerId {
+  const local = _localPlayerForColors;
+  if (local === undefined) return pid;
+  if (pid === local) return 1 as PlayerId;
+  // pids below the local one shift up by one slot to make room for
+  // local at slot 1; pids above the local one keep their natural slot.
+  return (pid < local ? pid + 1 : pid) as PlayerId;
+}
+
 const _playerColorCache = new Map<PlayerId, PlayerColors>();
 
 /** Convert HSL (h ∈ [0, 360), s/l ∈ [0, 1]) to a 0xRRGGBB hex int. */
@@ -89,27 +121,30 @@ function hslToHex(h: number, s: number, l: number): number {
 }
 
 /** Resolve a player's color triplet (primary / secondary / display name).
- *  First six pids use the hardcoded curated palette to keep the iconic
+ *  First six SLOTS use the hardcoded curated palette to keep the iconic
  *  team look (red / blue / yellow / green / purple / orange). Beyond
- *  six, hues are spaced via the golden angle (~137.5°) so consecutive
- *  pids land far apart on the color wheel — any number of teams stays
- *  visually distinct without clustering. Cached so repeat lookups are
- *  free. */
+ *  six, slots are spaced via the golden angle (~137.5°) so consecutive
+ *  slots land far apart on the color wheel — any number of teams stays
+ *  visually distinct without clustering. The pid → slot remapping
+ *  (see setLocalPlayerForColors) puts the local viewer's team at slot
+ *  1 = Red so RED is always "you". Cached by slot so repeat lookups
+ *  are free. */
 export function getPlayerColors(playerId: PlayerId): PlayerColors {
-  let cached = _playerColorCache.get(playerId);
+  const slot = pidToSlot(playerId);
+  let cached = _playerColorCache.get(slot);
   if (cached) return cached;
-  if (playerId >= 1 && playerId <= HARDCODED_PLAYER_COLORS.length) {
-    cached = HARDCODED_PLAYER_COLORS[playerId - 1];
+  if (slot >= 1 && slot <= HARDCODED_PLAYER_COLORS.length) {
+    cached = HARDCODED_PLAYER_COLORS[slot - 1];
   } else {
-    // Golden-angle hue stepping. (pid − 1) so pid=1 lands at hue 0.
-    const hue = ((playerId - 1) * 137.50776405003785) % 360;
+    // Golden-angle hue stepping. (slot − 1) so slot=1 lands at hue 0.
+    const hue = ((slot - 1) * 137.50776405003785) % 360;
     cached = {
       primary: hslToHex(hue, 0.65, 0.62),
       secondary: hslToHex(hue, 0.55, 0.45),
       name: `Team ${playerId}`,
     };
   }
-  _playerColorCache.set(playerId, cached);
+  _playerColorCache.set(slot, cached);
   return cached;
 }
 

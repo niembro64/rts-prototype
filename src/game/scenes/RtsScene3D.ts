@@ -52,7 +52,7 @@ import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
-import { getPlayerPrimaryColor } from '../sim/types';
+import { getPlayerPrimaryColor, setLocalPlayerForColors } from '../sim/types';
 import type {
   Entity,
   EntityId,
@@ -252,6 +252,10 @@ export class RtsScene3D {
     this.threeApp = threeApp;
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
+    // Make Red always the local viewer's color, regardless of which
+    // raw pid the server assigned them. Other teams slot into 2..N
+    // around the curated palette and the golden-angle generator.
+    setLocalPlayerForColors(this.localPlayerId);
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;
@@ -917,6 +921,8 @@ export class RtsScene3D {
 
   public switchPlayer(playerId: PlayerId): void {
     this.localPlayerId = playerId;
+    // Re-pin Red on the new local player.
+    setLocalPlayerForColors(playerId);
     this.markSelectionDirty();
     this.onPlayerChange?.(playerId);
   }

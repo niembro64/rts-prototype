@@ -5,6 +5,7 @@ import { EntityRenderer } from '../render/renderEntities';
 import { InputManager, type InputContext } from '../input/inputBindings';
 import {
   PLAYER_COLORS,
+  setLocalPlayerForColors,
   type Entity,
   type PlayerId,
   type EntityId,
@@ -200,6 +201,8 @@ export class RtsScene extends SceneShim {
       this.playerIds = config.playerIds;
       this.backgroundMode = config.backgroundMode;
       this.gameConnection = config.gameConnection;
+      // Local viewer's team always renders Red regardless of pid.
+      setLocalPlayerForColors(this.localPlayerId);
       // ClientViewState is hoisted up to GameCanvas so its state (entities,
       // prediction, selection) survives a live renderer swap. On initial
       // boot GameCanvas constructs a fresh one.
@@ -402,6 +405,9 @@ export class RtsScene extends SceneShim {
   // Switch active player (for single-player mode)
   public switchPlayer(playerId: PlayerId): void {
     this.localPlayerId = playerId;
+    // The new local player should render in Red — re-pin the color
+    // remapping so the palette updates with the perspective change.
+    setLocalPlayerForColors(playerId);
     if (this.inputManager) {
       this.inputManager.destroy();
     }
