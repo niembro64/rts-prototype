@@ -249,13 +249,15 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: 0.45, release: 0.5 },
     },
     color: 0xffffff,
-    // V-shape reflector. The panels meet exactly at the inner apex when
-    // width = 2√2 · |offsetY| (for 45° panels): each panel's inner corner
-    // lands on (offsetX - |offsetY|, 0). Outer tips sit at
-    // (offsetX + |offsetY|, ±2·|offsetY|).
+    // Single forward-facing square reflector. Normal angle 0 means the
+    // panel's normal points along the turret's facing direction; the
+    // panel's edge direction (perpendicular to normal) runs left-right
+    // across the turret's front. width matches the panel's vertical
+    // extent so the front face reads as a square (vertical extent is
+    // mirrorHeight = bodyTop + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT
+    // − MIRROR_BASE_Y, ≈ 40 for the Loris).
     mirrorPanels: [
-      { width: 16 * Math.SQRT2, height: 4, offsetX: 18, offsetY: 8, angle: -Math.PI / 4 },
-      { width: 16 * Math.SQRT2, height: 4, offsetX: 18, offsetY: -8, angle: Math.PI / 4 },
+      { width: 40, height: 4, offsetX: 18, offsetY: 0, angle: 0 },
     ],
   },
   ...generateBeamTurrets(),

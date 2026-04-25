@@ -156,9 +156,12 @@ export const TURRET_HEIGHT = 16;
 export const MIRROR_BASE_Y = 2;
 
 /** Extra vertical height added above the unit's turret top when sizing
- *  mirror panels. Keeps the panel tall enough to catch pitched beams
- *  aimed over the chassis. Shared sim + render constant. */
-export const MIRROR_EXTRA_HEIGHT = 80;
+ *  mirror panels. Tuned so mirrorHeight (= bodyTop + TURRET_HEIGHT +
+ *  this − MIRROR_BASE_Y) matches the panel's edge length on a Loris,
+ *  giving a square front face (≈ 40 wu). Shared sim + render constant —
+ *  also drives the lift applied to non-mirror turrets on mirror-host
+ *  units (they sit on top of the panel stack). */
+export const MIRROR_EXTRA_HEIGHT = 15;
 
 /** Effective "infinite" length for a live beam's ray trace. Turrets
  *  still fire only when their target is within weapon.ranges — once
