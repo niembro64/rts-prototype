@@ -192,9 +192,10 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     // above so an out-of-range or dead target was cleared this tick.
     if (stride > 1 && ((unit.id + tick) % stride) !== 0) continue;
 
-    // Pre-scan: count weapons needing acquisition or re-evaluation,
-    // find max range + offset for batching
-    let needsQueryCount = 0;
+    // Pre-scan: find any weapon that needs an acquisition query plus
+    // the max acquire range + max weapon offset, so a single
+    // unit-centered query covers every weapon's reach.
+    let needsAnyQuery = false;
     let maxAcquireRange = 0;
     let maxWeaponOffset = 0;
     for (const weapon of weapons) {
@@ -202,7 +203,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       // Needs query if: no target (idle), or tracking but not engaged
       // (tracking weapons should re-evaluate for a closer engageable target)
       if (weapon.target === null || weapon.state === 'tracking') {
-        needsQueryCount++;
+        needsAnyQuery = true;
         const acquireRange = weapon.ranges.tracking.acquire;
         if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
         const offset = Math.abs(weapon.offset.x) + Math.abs(weapon.offset.y);
@@ -210,9 +211,14 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       }
     }
 
-    // Batch query: one grid traversal for multi-weapon units, copy into reusable buffer
-    const useBatch = needsQueryCount >= 2;
-    if (useBatch && needsQueryCount > 0) {
+    // Always batch when ANY weapon needs acquisition. The previous
+    // ≥2 threshold meant single-weapon units (the majority) fell
+    // through to per-weapon spatial-grid calls in passes 2 and 3 —
+    // each call does its own grid traversal even though a single
+    // unit-centered query covers everything. Per-weapon range
+    // filtering still happens inside the inner loops.
+    const useBatch = needsAnyQuery;
+    if (useBatch) {
       const batchRadius = maxAcquireRange + maxWeaponOffset;
       const enemies = spatialGrid.queryEnemyEntitiesInRadius(
         unit.transform.x, unit.transform.y, batchRadius, playerId
