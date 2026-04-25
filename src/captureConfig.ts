@@ -22,11 +22,4 @@ export const CAPTURE_CONFIG = {
    */
   contestedDecay: false,
   contestedDecayRate: 0.1,
-
-  /**
-   * Whether buildings (factories, solars, etc.) count as a unit
-   * for tile capture. If true, a factory on a tile acts like one
-   * friendly unit constantly raising the flag.
-   */
-  buildingsCapturesTiles: false,
 };
