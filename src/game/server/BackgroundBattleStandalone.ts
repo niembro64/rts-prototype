@@ -14,11 +14,32 @@ import { getPlayerBaseAngle } from '../sim/spawn';
 // Available unit types for background spawning (excludes commander)
 export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];
 
-// Pre-computed inverse-cost weights for background unit selection
+// Pre-computed inverse-cost weights for background unit selection.
+// Cached across spawn calls but RE-BUILT whenever the allowedTypes
+// signature changes — without this the original lazy cache would
+// keep picking from a stale type list after a toggle, then those
+// disallowed units would get wiped a tick later by the toggle
+// handler in GameServer.setBackgroundUnitTypeEnabled (which gave
+// the "spawning then despawning the wrong unit" behaviour).
 let backgroundUnitWeights: { type: string; cumWeight: number }[] = [];
+let cachedWeightSignature = '';
 
-function buildWeightTable(allowedTypes?: ReadonlySet<string>): void {
-  const types = allowedTypes ? BACKGROUND_UNIT_TYPES.filter(t => allowedTypes.has(t)) : BACKGROUND_UNIT_TYPES;
+/** Stable string signature for an allowedTypes set. Sorting keeps
+ *  signature equality independent of insertion order. */
+function signatureFor(allowedTypes?: ReadonlySet<string>): string {
+  if (!allowedTypes) return '*';
+  if (allowedTypes.size === 0) return '∅';
+  return [...allowedTypes].sort().join('|');
+}
+
+function ensureWeightTable(allowedTypes?: ReadonlySet<string>): void {
+  const sig = signatureFor(allowedTypes);
+  if (sig === cachedWeightSignature && backgroundUnitWeights.length > 0) return;
+  cachedWeightSignature = sig;
+
+  const types = allowedTypes
+    ? BACKGROUND_UNIT_TYPES.filter(t => allowedTypes.has(t))
+    : BACKGROUND_UNIT_TYPES;
   let totalWeight = 0;
   backgroundUnitWeights = [];
   for (const t of types) {
@@ -28,14 +49,17 @@ function buildWeightTable(allowedTypes?: ReadonlySet<string>): void {
     totalWeight += weight;
     backgroundUnitWeights.push({ type: t, cumWeight: totalWeight });
   }
-  // Normalize
-  for (const entry of backgroundUnitWeights) {
-    entry.cumWeight /= totalWeight;
+  // Normalize cumulative weights to [0, 1] for the random pick.
+  if (totalWeight > 0) {
+    for (const entry of backgroundUnitWeights) {
+      entry.cumWeight /= totalWeight;
+    }
   }
 }
 
-function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): string {
-  if (backgroundUnitWeights.length === 0) buildWeightTable(allowedTypes);
+function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): string | null {
+  ensureWeightTable(allowedTypes);
+  if (backgroundUnitWeights.length === 0) return null;
   const r = Math.random();
   for (const entry of backgroundUnitWeights) {
     if (r <= entry.cumWeight) return entry.type;
@@ -43,7 +67,9 @@ function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): string {
   return backgroundUnitWeights[backgroundUnitWeights.length - 1].type;
 }
 
-function selectUnitType(allowedTypes?: ReadonlySet<string>): string {
+function selectUnitType(allowedTypes?: ReadonlySet<string>): string | null {
+  // No allowed types → caller will skip the spawn.
+  if (allowedTypes && allowedTypes.size === 0) return null;
   if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
     return selectWeightedUnitType(allowedTypes);
   } else if (allowedTypes && allowedTypes.size > 0) {
@@ -67,6 +93,12 @@ function spawnUnit(
   if (allowedTypes && allowedTypes.size === 0) return null;
 
   const unitType = selectUnitType(allowedTypes);
+  // Defensive: only ever spawn from the allowed-types set. If
+  // selectUnitType signalled "nothing valid" (empty set, weight
+  // table empty after rebuild), skip the spawn entirely instead of
+  // creating a unit that would be wiped by the toggle handler a
+  // tick later.
+  if (!unitType) return null;
   const unit = world.createUnitFromBlueprint(x, y, playerId, unitType);
 
   unit.transform.rotation = Math.atan2(targetY - y, targetX - x);
