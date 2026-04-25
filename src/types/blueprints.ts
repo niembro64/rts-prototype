@@ -31,8 +31,11 @@ export type ForceFieldZoneRatioConfig = {
 };
 
 export type ShotCollision = {
+  /** Sphere radius for swept-collision and area-damage centering.
+   *  Damage now lives entirely in the explosion block (primary +
+   *  secondary zones); a direct hit triggers the explosion at the
+   *  contact point, the explosion deals the damage. */
   radius: number;
-  damage: number;
 };
 
 export type ShotExplosionZone = {

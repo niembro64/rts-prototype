@@ -496,12 +496,16 @@ export function checkProjectileCollisions(
       if (sourceGuard) proj.hitEntities.add(proj.sourceEntityId);
 
       // 3D swept: capsule from prev→current (the projectile's flight
-      // path this tick) vs each unit sphere.
+      // path this tick) vs each unit sphere. The swept hit itself
+      // does no damage — direct-impact damage now lives entirely in
+      // the explosion block. The hit just registers the impact and
+      // triggers the detonation pipeline below, which applies splash
+      // (primary + secondary) and any submunitions.
       const result = damageSystem.applyDamage({
         type: 'swept',
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
-        damage: projShot.collision.damage,
+        damage: 0,
         excludeEntities: proj.hitEntities,
         prev: { x: prevX, y: prevY, z: prevZ },
         current: { x: currentX, y: currentY, z: currentZ },

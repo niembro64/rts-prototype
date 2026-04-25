@@ -64,7 +64,7 @@ export function createTurretConfig(
     range: 100,
     cooldown: 1000,
     color: 0xffffff,
-    shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5, damage: 10 } },
+    shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5 } },
     ...base,
   };
 }

@@ -26,19 +26,28 @@ export function getWeaponValue(config: TurretConfig): number {
     // Continuous beam: dps IS dps
     baseDPS = shot.dps;
   } else if (isShotgun) {
+    // Projectile damage now lives in the explosion block (a hit
+    // detonates the shot at the contact point). Use the primary
+    // explosion zone's damage as the per-pellet hit damage.
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = ((shot as import('./types').ProjectileShot).collision.damage * config.spread!.pelletCount!) / cooldownSec;
+    const projShot = shot as import('./types').ProjectileShot;
+    const hitDamage = projShot.explosion?.primary.damage ?? 0;
+    baseDPS = (hitDamage * config.spread!.pelletCount!) / cooldownSec;
   } else if (isBurst) {
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = ((shot as import('./types').ProjectileShot).collision.damage * config.burst!.count!) / cooldownSec;
+    const projShot = shot as import('./types').ProjectileShot;
+    const hitDamage = projShot.explosion?.primary.damage ?? 0;
+    baseDPS = (hitDamage * config.burst!.count!) / cooldownSec;
   } else if (shot.type === 'laser') {
     // Pulsed laser: dps / cooldownSec
     const cooldownSec = config.cooldown / 1000;
     baseDPS = shot.dps / cooldownSec;
   } else {
-    // Standard projectile: damage / cooldownSec
+    // Standard projectile: explosion damage / cooldownSec.
     const cooldownSec = config.cooldown / 1000;
-    baseDPS = (shot as import('./types').ProjectileShot).collision.damage / cooldownSec;
+    const projShot = shot as import('./types').ProjectileShot;
+    const hitDamage = projShot.explosion?.primary.damage ?? 0;
+    baseDPS = hitDamage / cooldownSec;
   }
 
   // --- rangeFactor --- normalized to reference range 150, sqrt scaling

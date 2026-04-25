@@ -258,7 +258,7 @@ function createProjectileFromNetwork(
         : {
           id: 'unknown',
           angular: { turnAccel: 0, drag: 0 },
-          shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5, damage: 10 } },
+          shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5 } },
           range: 100,
           cooldown: 1000,
         },

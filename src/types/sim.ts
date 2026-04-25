@@ -178,7 +178,7 @@ export type ProjectileShot = {
   id: string;
   mass: number;
   launchForce: number;
-  collision: { radius: number; damage: number };
+  collision: { radius: number };
   explosion?: {
     primary: { radius: number; damage: number; force: number };
     secondary: { radius: number; damage: number; force: number };

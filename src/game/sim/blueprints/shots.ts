@@ -39,26 +39,26 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     type: 'projectile',
     id: 'lightShot',
     mass: 3,
-    collision: { radius: 1.6, damage: 2 },
+    collision: { radius: 1.6 },
     explosion: {
-      primary: { radius: 5, damage: 2, force: 500 },
-      secondary: { radius: 7, damage: 0.4, force: 500 },
+      primary: { radius: 5, damage: 3, force: 500 },
+      secondary: { radius: 7, damage: 1.4, force: 500 },
     },
     detonateOnExpiry: true,
-    lifespan: 1200,
+    lifespan: 4000,
     hitSound: AUDIO.event.hit.lightShot,
   },
   mediumShot: {
     type: 'projectile',
     id: 'mediumShot',
     mass: 8,
-    collision: { radius: 2.2, damage: 6 },
+    collision: { radius: 2.2 },
     explosion: {
       primary: { radius: 8, damage: 6, force: 1000 },
       secondary: { radius: 15, damage: 1.2, force: 1000 },
     },
     detonateOnExpiry: true,
-    lifespan: 2000,
+    lifespan: 4000,
     hitSound: AUDIO.event.hit.mediumShot,
   },
   // Rocket-class projectile. Flies in a straight line on pure thrust
@@ -71,7 +71,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     type: 'projectile',
     id: 'lightRocket',
     mass: 8,
-    collision: { radius: 2.5, damage: 3 },
+    collision: { radius: 2.5 },
     explosion: {
       primary: { radius: 10, damage: 4, force: 800 },
       secondary: { radius: 18, damage: 1, force: 800 },
@@ -100,7 +100,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     type: 'projectile',
     id: 'heavyShot',
     mass: 30.0,
-    collision: { radius: 4, damage: 100 },
+    collision: { radius: 4 },
     explosion: {
       primary: { radius: 25, damage: 100, force: 7_000 },
       secondary: { radius: 45, damage: 70, force: 7_000 },
@@ -117,30 +117,30 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // release submunitions on impact / lifespan expiry. All damage
     // comes from the lightShot fragments sprayed below.
     mass: 30,
-    collision: { radius: 7, damage: 0 },
+    collision: { radius: 6 },
     detonateOnExpiry: true,
     lifespan: 5000,
     hitSound: AUDIO.event.hit.mortarShot,
     submunitions: {
-      shotId: 'lightShot',
-      count: 15,
+      shotId: 'mediumShot',
+      count: 5,
       // Tight cone — the bounce direction does most of the work.
       // Bump this up if you want the burst to look more chaotic.
-      randomSpreadSpeed: 1,
+      randomSpreadSpeed: 15,
       // Soft bounce — submunitions retain ~40% of the carrier's
       // reflected velocity so the burst still reads as a bounce off
       // the surface, without launching the lightShots so far that
       // they leave the AOE the player expected. Tune up toward 1.0
       // for a more energetic bounce, down toward 0.0 to absorb the
       // momentum entirely.
-      reflectedVelocityDamper: 0.4,
+      reflectedVelocityDamper: 0.99,
     },
   },
   disruptorShot: {
     type: 'projectile',
     id: 'disruptorShot',
     mass: 20.0,
-    collision: { radius: 25, damage: 9999 },
+    collision: { radius: 25 },
     explosion: {
       primary: { radius: 40, damage: 10_000, force: 2499750 },
       secondary: { radius: 50, damage: 1000, force: 499950 },
