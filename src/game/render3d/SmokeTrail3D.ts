@@ -27,18 +27,20 @@ import type { FireExplosionStyle } from '@/types/graphics';
 import { getGraphicsConfig } from '@/clientBarConfig';
 
 // Base values are the "inferno" (max LOD) target. LOD_INTENSITY
-// scales them down for lower tiers.
-const BASE_EMIT_INTERVAL_MS = 60;  // ~17 puffs/sec per rocket at max LOD
-const BASE_LIFESPAN_MS = 900;
-const PARTICLE_START_RADIUS = 1.4;
-const PARTICLE_END_RADIUS = 4.5;
-const PARTICLE_START_ALPHA = 0.55;
+// scales them down for lower tiers. Tuned for salvo rockets to read
+// clearly as rockets at normal camera distance — denser, longer,
+// fatter puffs than the original whisper.
+const BASE_EMIT_INTERVAL_MS = 30;  // ~33 puffs/sec per rocket at max LOD
+const BASE_LIFESPAN_MS = 1400;
+const PARTICLE_START_RADIUS = 2.5;
+const PARTICLE_END_RADIUS = 8.0;
+const PARTICLE_START_ALPHA = 0.75;
 const SMOKE_COLOR = 0xcccccc;
 // Pool ceiling — bounded so heavy salvo spam can't unbounded-allocate.
-// At max LOD, steady state per rocket ≈ lifespan/emitInterval = 15
-// particles, so 1500 covers ~20 simultaneous 10-rocket salvos before
+// At max LOD, steady state per rocket ≈ lifespan/emitInterval ≈ 47
+// particles, so 4000 covers ~20 simultaneous 4-rocket salvos before
 // we start dropping emissions. Lower LODs use far fewer.
-const MAX_PARTICLES = 1500;
+const MAX_PARTICLES = 4000;
 
 /** LOD multiplier on emission rate. Mirrors the LOD_INTENSITY table
  *  SprayRenderer3D uses so every particle system on screen scales in
