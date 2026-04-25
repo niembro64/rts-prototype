@@ -119,20 +119,18 @@ export function getBarrelTip(
     };
   }
 
-  // The barrel attaches to the front face of the spherical turret
-  // head, so the tip is `headRadius + barrelLen` from the mount along
-  // the firing axis. Without this offset, small units (jackal, scout-
-  // class) ended up with the barrel cylinder embedded inside the head
-  // sphere because barrelLen happened to equal headRadius.
-  const headRadius = getTurretHeadRadius(unitScale);
+  // The barrel attaches at the CENTER of the spherical turret head.
+  // Tip is `barrelLen` from the mount along the firing axis — the
+  // visible cylinder runs from the head's interior outward through
+  // the surface. (Anything inside the sphere is occluded by the
+  // head mesh, so visually you only see the protruding portion.)
   const barrelLen = unitScale * b.barrelLength;
-  const tipForward = headRadius + barrelLen;
 
   if (b.type === 'simpleSingleBarrel') {
     return {
-      x: mountX + fwdX * tipForward,
-      y: mountY + fwdY * tipForward,
-      z: mountZ + fwdZ * tipForward,
+      x: mountX + fwdX * barrelLen,
+      y: mountY + fwdY * barrelLen,
+      z: mountZ + fwdZ * barrelLen,
       dirX: fwdX, dirY: fwdY, dirZ: fwdZ,
     };
   }
@@ -150,9 +148,9 @@ export function getBarrelTip(
     const offUp = orbitR * orbCos;
     const offRight = orbitR * orbSin;
     return {
-      x: mountX + fwdX * tipForward + upX * offUp + rightX * offRight,
-      y: mountY + fwdY * tipForward + upY * offUp + rightY * offRight,
-      z: mountZ + fwdZ * tipForward + upZ * offUp,  // rightZ is 0
+      x: mountX + fwdX * barrelLen + upX * offUp + rightX * offRight,
+      y: mountY + fwdY * barrelLen + upY * offUp + rightY * offRight,
+      z: mountZ + fwdZ * barrelLen + upZ * offUp,  // rightZ is 0
       dirX: fwdX, dirY: fwdY, dirZ: fwdZ,
     };
   }
@@ -182,9 +180,9 @@ export function getBarrelTip(
 
   const tipUp = tipOrbitR * orbCos;
   const tipRight = tipOrbitR * orbSin;
-  const tipX = mountX + fwdX * tipForward + upX * tipUp + rightX * tipRight;
-  const tipY = mountY + fwdY * tipForward + upY * tipUp + rightY * tipRight;
-  const tipZ = mountZ + fwdZ * tipForward + upZ * tipUp;
+  const tipX = mountX + fwdX * barrelLen + upX * tipUp + rightX * tipRight;
+  const tipY = mountY + fwdY * barrelLen + upY * tipUp + rightY * tipRight;
+  const tipZ = mountZ + fwdZ * barrelLen + upZ * tipUp;
 
   // Barrel direction = (tip − base) normalized. `base` sits on the
   // head's surface at orbit `baseOrbitR` (forward component =

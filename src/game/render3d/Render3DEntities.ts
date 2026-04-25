@@ -398,12 +398,6 @@ export class Render3DEntities {
     //    panels already represent that turret's body.
     const turretOff = gfx.turretStyle === 'none';
     const hideHead = turretOff || isForceField || isMirrorHost;
-    // The barrel attaches to the front face of the head sphere, so all
-    // barrel base offsets in this function start at headRadius along
-    // the firing axis. Computed up front so it's available even when
-    // we hide the head visually (in which case we leave it at 0 so the
-    // barrel base sits at the turret pivot like before).
-    const headRadius = hideHead ? 0 : getTurretHeadRadius(unitRadius);
 
     let head: THREE.Mesh | undefined;
     if (!hideHead) {
@@ -417,6 +411,7 @@ export class Render3DEntities {
       // center is at the same height the old cylinder's center was —
       // barrel mounts stay in place. Radius is tied to TURRET_HEIGHT so
       // the ball visually matches the turret's vertical extent.
+      const headRadius = getTurretHeadRadius(unitRadius);
       head.scale.setScalar(headRadius);
       head.position.set(0, TURRET_HEIGHT / 2, 0);
       root.add(head);
@@ -503,14 +498,16 @@ export class Render3DEntities {
     }
 
     if (barrel.type === 'simpleSingleBarrel') {
-      pushSegment(headRadius, parentBaseY, 0, headRadius + length, parentBaseY, 0);
+      // Barrel base sits at the turret pivot (head sphere center) and
+      // extends `length` along the firing axis. The portion inside the
+      // sphere is occluded by the head mesh so visually you only see
+      // whatever protrudes — proper turret look.
+      pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
     } else if (barrel.type === 'simpleMultiBarrel') {
       // Parallel barrels arranged in a YZ circle around the firing axis. The
       // barrelGroup's origin IS the firing axis (passes through the cluster
       // center), so rotating the group spins each barrel around that axis at
-      // its own orbit radius — like a real gatling. Barrels start at the
-      // head sphere's surface (X = headRadius) so the cluster pokes OUT
-      // of the turret rather than embedding inside it.
+      // its own orbit radius — like a real gatling.
       const orbitR = Math.min(
         barrel.orbitRadius * unitRadius,
         TURRET_HEIGHT * 0.45,
@@ -520,10 +517,7 @@ export class Render3DEntities {
         const a = (i + 0.5) / n * Math.PI * 2;
         const oy = Math.cos(a) * orbitR;
         const oz = Math.sin(a) * orbitR;
-        pushSegment(
-          headRadius, parentBaseY + oy, oz,
-          headRadius + length, parentBaseY + oy, oz,
-        );
+        pushSegment(0, parentBaseY + oy, oz, length, parentBaseY + oy, oz);
       }
     } else if (barrel.type === 'coneMultiBarrel') {
       // Barrels diverge from base orbit to a wider tip orbit — a 3D cone
@@ -550,8 +544,8 @@ export class Render3DEntities {
         const cosA = Math.cos(a);
         const sinA = Math.sin(a);
         pushSegment(
-          headRadius, parentBaseY + cosA * baseOrbitR, sinA * baseOrbitR,
-          headRadius + length, parentBaseY + cosA * tipOrbitR, sinA * tipOrbitR,
+          0, parentBaseY + cosA * baseOrbitR, sinA * baseOrbitR,
+          length, parentBaseY + cosA * tipOrbitR, sinA * tipOrbitR,
         );
       }
     }
