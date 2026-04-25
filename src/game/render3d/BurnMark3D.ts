@@ -306,7 +306,7 @@ export class BurnMark3D {
         }
         state.glow = glow;
       }
-      const coreR = Math.max(beamWidth * 3, 6);
+      const coreR = Math.max(beamWidth * 1.2, 2.5);
       state.glow.position.set(ex, endY3, ez);
       state.glow.scale.setScalar(coreR);
 
@@ -318,7 +318,7 @@ export class BurnMark3D {
         this.ensureFlareSparks(state);
         const baseAngle = this._time * 0.003;
         const orbit = coreR * 1.8;
-        const sparkR = Math.max(beamWidth * 0.8, 1.5);
+        const sparkR = Math.max(beamWidth * 0.35, 0.7);
         const sparks = state.flareSparks!;
         const step = (Math.PI * 2) / sparks.length;
         for (let i = 0; i < sparks.length; i++) {
