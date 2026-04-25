@@ -85,22 +85,16 @@ function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate
  * Build a synthetic TurretConfig for spawning a child projectile as
  * a submunition. Used by the collision handler when a parent shot
  * with `submunitions` explodes. This is NOT a turret anyone owns or
- * fires — it's only a vehicle for carrying the child shot config
- * into world.createProjectile, so fields like range/cooldown are
- * irrelevant and left at 0.
+ * fires — it's only a vehicle for carrying the child shot's actual
+ * blueprint into world.createProjectile, so fields like range and
+ * cooldown are irrelevant and left at 0.
  *
- * Cached per (childShotId, lifespanMs) key so repeated explosions
- * reuse the same config object and readers-of-projectile-config
- * (renderers, audio) see a stable identity.
+ * Cached per childShotId so repeated explosions reuse the same config
+ * object (stable identity for renderers / audio that key by config).
  */
 const _submunitionConfigCache = new Map<string, TurretConfig>();
-export function getSubmunitionTurretConfig(
-  childShotId: string,
-  lifespanMs: number | undefined,
-  collisionRadius?: number,
-): TurretConfig {
-  const cacheKey = `${childShotId}|${lifespanMs ?? ''}|${collisionRadius ?? ''}`;
-  const cached = _submunitionConfigCache.get(cacheKey);
+export function getSubmunitionTurretConfig(childShotId: string): TurretConfig {
+  const cached = _submunitionConfigCache.get(childShotId);
   if (cached) return cached;
 
   const bp = SHOT_BLUEPRINTS[childShotId];
@@ -110,13 +104,6 @@ export function getSubmunitionTurretConfig(
   }
 
   const shot = buildShotConfig(bp) as ProjectileShot;
-  if (lifespanMs !== undefined) shot.lifespan = lifespanMs;
-  if (collisionRadius !== undefined) {
-    // Clone collision so overriding one submunition variant's radius
-    // doesn't leak into the shared blueprint for normal lightShots etc.
-    shot.collision = { ...shot.collision, radius: collisionRadius };
-  }
-
   const config: TurretConfig = {
     id: `__sub:${childShotId}`,
     range: 0,
@@ -124,7 +111,7 @@ export function getSubmunitionTurretConfig(
     angular: { turnAccel: 0, drag: 0 },
     shot,
   };
-  _submunitionConfigCache.set(cacheKey, config);
+  _submunitionConfigCache.set(childShotId, config);
   return config;
 }
 

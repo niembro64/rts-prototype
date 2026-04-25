@@ -67,12 +67,8 @@ function spawnSubmunitions(
   const spec = parentShot.submunitions;
   if (!spec || spec.count <= 0) return;
 
-  const childCfg = getSubmunitionTurretConfig(
-    spec.shotId,
-    spec.lifespanMs,
-    spec.collisionRadius,
-  );
-  const spread = spec.angleSpread ?? Math.PI * 2;
+  const childCfg = getSubmunitionTurretConfig(spec.shotId);
+  const spread = Math.PI * 2;
   // Uniform-ish fan with a randomized offset, so multiple volleys in the
   // same tick don't visibly grid-align. Sim RNG isn't exposed here so
   // Math.random() is fine — submunition direction is purely cosmetic
@@ -117,10 +113,8 @@ function spawnSubmunitions(
       velocity: { x: vx, y: vy, z: vz },
       projectileType: 'projectile',
       // Synthetic ID so the client can resolve the same TurretConfig
-      // (with the lifespan / radius overrides baked in) that the server used.
-      turretId: encodeSubmunitionTurretId(
-        spec.shotId, spec.lifespanMs, spec.collisionRadius,
-      ),
+      // (which just wraps the child shot blueprint) that the server used.
+      turretId: encodeSubmunitionTurretId(spec.shotId),
       playerId: ownerId,
       sourceEntityId,
       turretIndex: 0,

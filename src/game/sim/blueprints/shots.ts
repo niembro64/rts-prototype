@@ -99,28 +99,28 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     type: 'projectile',
     id: 'mortarShot',
     mass: 80,
-    collision: { radius: 7, damage: 10 },
+    collision: { radius: 7, damage: 0 },
     explosion: {
-      primary: { radius: 20, damage: 80, force: 20_000 },
-      secondary: { radius: 25, damage: 6, force: 20_000 },
+      primary: { radius: 20, damage: 0, force: 20_000 },
+      secondary: { radius: 25, damage: 0, force: 20_000 },
     },
+    // collision: { radius: 7, damage: 10 },
+    // explosion: {
+    //   primary: { radius: 20, damage: 80, force: 20_000 },
+    //   secondary: { radius: 25, damage: 6, force: 20_000 },
+    // },
     splashOnExpiry: true,
     lifespan: 5000,
     hitSound: AUDIO.event.hit.mortarShot,
-    // Cluster flak: at the instant the mortar explodes, spray 5 mediumShot
-    // fragments in a full circle. Each child has a short 300 ms lifespan
-    // so it reads as a burst of fragments, not a secondary volley, and a
-    // bumped-up 4-unit collision radius so the 3D sphere representation
-    // is clearly visible in flight (at a typical camera distance a stock
-    // lightShot's 1.6-unit radius reads as a barely-perceptible dot).
-    // The sim handles this declaratively — see SubmunitionSpec and
-    // ProjectileCollisionHandler.
+    // Cluster flak: at the instant the mortar explodes, spray N
+    // lightShot fragments in a full circle. The child uses lightShot's
+    // own blueprint exactly — no per-spawn lifespan or radius
+    // overrides. If you want different behaviour for the cluster
+    // children, author a dedicated shot blueprint.
     submunitions: {
       shotId: 'lightShot',
-      count: 13,
-      speed: 200,
-      lifespanMs: 3000,
-      collisionRadius: 4,
+      count: 15,
+      speed: 100,
     },
   },
   disruptorShot: {

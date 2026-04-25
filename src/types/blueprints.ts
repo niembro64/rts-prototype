@@ -45,14 +45,11 @@ export type ShotExplosionZone = {
  * Cluster / submunition specification. When attached to a projectile
  * shot, the sim spawns `count` copies of `shotId` at the explosion
  * origin whenever the parent shot explodes (either via direct-hit
- * splash or `splashOnExpiry` timeout). Submunitions fly outward in
- * random directions within `angleSpread` radians (defaults to a full
- * 2π circle) at `speed` world-units/second.
- *
- * `lifespanMs` overrides the child shot's own blueprint lifespan for
- * just these spawned instances — lets you keep e.g. a standard lightShot
- * long enough to reach its targets normally, but give cluster-flak a
- * short, dramatic burst without a new blueprint entry.
+ * splash or `splashOnExpiry` timeout). Submunitions fly outward in a
+ * full 2π fan at `speed` world-units/second using the child shot's
+ * own blueprint as-is — no per-spawn property overrides. If you need
+ * a different lifespan, collision radius, or any other shot trait,
+ * author a separate shot blueprint and reference it here.
  *
  * Recursive submunitions (a child shot whose own blueprint has its
  * own `submunitions`) fire normally — the only requirement is that
@@ -65,17 +62,6 @@ export type SubmunitionSpec = {
   count: number;
   /** Launch speed for each child, world units / second. */
   speed: number;
-  /** Optional per-spawn lifespan override (ms). Falls back to the child
-   *  shot blueprint's own `lifespan` when omitted. */
-  lifespanMs?: number;
-  /** Total cone angle (radians). Omit for a full-circle fan. */
-  angleSpread?: number;
-  /** Optional collision-radius override. Affects both the 3D render
-   *  sphere size and the swept-collision footprint — handy when the
-   *  child shot's native radius is too small to read as a visible
-   *  fragment (e.g. lightShot at 1.6 nearly disappears at default
-   *  camera distance). Omit to use the child blueprint's own radius. */
-  collisionRadius?: number;
 };
 
 export type ProjectileShotBlueprint = {
