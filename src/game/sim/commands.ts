@@ -23,7 +23,6 @@ export type {
   SetProjVelInheritCommand,
   SetFfAccelUnitsCommand,
   SetFfAccelShotsCommand,
-  SetFfDmgUnitsCommand,
   Command,
 } from '@/types/commands';
 

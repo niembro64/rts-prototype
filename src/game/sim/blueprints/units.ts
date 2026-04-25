@@ -325,7 +325,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'LRS',
     hp: 200,
     moveSpeed: 160,
-    unitRadiusCollider: { scale: 10, shot: 8, push: 34 },
+    unitRadiusCollider: { scale: 10, shot: 8, push: 24 },
     mass: 20,
     energyCost: 190,
     manaCost: 10,

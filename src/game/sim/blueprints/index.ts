@@ -30,7 +30,6 @@ function computeZoneConfig(
     alpha: zone.alpha,
     particleAlpha: zone.particleAlpha,
     power: zone.power,
-    damage: zone.damage,
   };
 }
 

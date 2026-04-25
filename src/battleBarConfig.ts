@@ -31,7 +31,6 @@ export const BATTLE_CONFIG = {
   projVelInherit: { default: false },
   ffAccelUnits: { default: false },
   ffAccelShots: { default: true },
-  ffDmgUnits: { default: false },
 } as const satisfies BattleBarConfig;
 
 // Default caps per mode (must be values from BATTLE_CONFIG.cap.options)
@@ -48,7 +47,6 @@ const STORAGE_REAL_GRID = 'rts-real-grid';
 const STORAGE_PROJ_VEL_INHERIT = 'rts-proj-vel-inherit';
 const STORAGE_FF_ACCEL_UNITS = 'rts-ff-accel-units';
 const STORAGE_FF_ACCEL_SHOTS = 'rts-ff-accel-shots';
-const STORAGE_FF_DMG_UNITS = 'rts-ff-dmg-units';
 
 /** "true"/"false" → boolean, null otherwise. Keeps each loader a
  *  one-liner now that the try/catch is pushed into readPersisted. */
@@ -149,12 +147,4 @@ export function loadStoredFfAccelShots(): boolean {
 
 export function saveFfAccelShots(enabled: boolean): void {
   persist(STORAGE_FF_ACCEL_SHOTS, String(enabled));
-}
-
-export function loadStoredFfDmgUnits(): boolean {
-  return loadBool(STORAGE_FF_DMG_UNITS) ?? BATTLE_CONFIG.ffDmgUnits.default;
-}
-
-export function saveFfDmgUnits(enabled: boolean): void {
-  persist(STORAGE_FF_DMG_UNITS, String(enabled));
 }

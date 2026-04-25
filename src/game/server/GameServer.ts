@@ -542,7 +542,7 @@ export class GameServer {
           count: this.world.getUnits().length,
         },
         projVelInherit: this.world.projVelInherit,
-        ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots, dmgUnits: this.world.ffDmgUnits },
+        ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots },
         cpu: { avg: cpuAvg, hi: cpuHi },
       };
       this.lastSentServerTime = currentTime;
@@ -583,9 +583,6 @@ export class GameServer {
         return;
       case 'setFfAccelShots':
         this.world.ffAccelShots = command.enabled;
-        return;
-      case 'setFfDmgUnits':
-        this.world.ffDmgUnits = command.enabled;
         return;
     }
     this.commandQueue.enqueue(command);

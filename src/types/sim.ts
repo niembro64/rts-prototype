@@ -169,7 +169,6 @@ export type ForceFieldZoneConfig = {
   alpha: number;
   particleAlpha: number;
   power: number | null;
-  damage: number;
 };
 
 // Projectile shot — fire-and-forget, has mass, single-tick impact

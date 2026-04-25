@@ -129,7 +129,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   mortarTurret: {
     id: 'mortarTurret',
     projectileId: 'mortarShot',
-    range: 400,
+    range: 500,
     cooldown: 6000,
     launchForce: 8000,
     turretTurnAccel: 90,
@@ -153,7 +153,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // the rest of the way into a fragmentation ring around the
     // target. Designed in tandem with mortarShot.submunitions —
     // tune both knobs together.
-    groundAimFraction: 2 / 3,
+    groundAimFraction: 1,
   },
   pulseTurret: {
     id: 'pulseTurret',

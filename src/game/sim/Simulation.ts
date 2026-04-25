@@ -380,9 +380,9 @@ export class Simulation {
     // Update force field state (range transitions)
     updateForceFieldState(this.world, dtMs);
 
-    // Apply force field damage (continuous AoE for force field units)
-    // Pass force accumulator for force field pull effect
-    const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator, this.combatStatsTracker);
+    // Apply force field knockback (force fields no longer deal damage,
+    // only push enemy units / projectiles).
+    const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
     for (const event of forceFieldVelocityUpdates) {
       this.pendingProjectileVelocityUpdates.set(event.id, event);
     }

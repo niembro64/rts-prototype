@@ -17,11 +17,9 @@ export function getWeaponValue(config: TurretConfig): number {
   const isBurst = (config.burst?.count ?? 0) > 1;
 
   if (isForceField) {
-    // Force field: estimate DPS from push/pull zone damage
-    const push = shot.push;
-    const pull = shot.pull;
-    const maxDamage = Math.max(push?.damage ?? 0, pull?.damage ?? 0);
-    baseDPS = maxDamage * (0.5 / 0.6);
+    // Force fields no longer deal damage — they only push units and
+    // deflect projectiles. They contribute zero DPS for valuation.
+    baseDPS = 0;
   } else if (shot.type === 'beam') {
     // Continuous beam: dps IS dps
     baseDPS = shot.dps;

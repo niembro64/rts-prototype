@@ -20,7 +20,6 @@ import {
   loadStoredProjVelInherit,
   loadStoredFfAccelUnits,
   loadStoredFfAccelShots,
-  loadStoredFfDmgUnits,
   loadStoredDemoGrid,
   getDefaultDemoUnits,
 } from '../../battleBarConfig';
@@ -92,11 +91,6 @@ export async function createBackgroundBattle(
     type: 'setFfAccelShots',
     tick: 0,
     enabled: loadStoredFfAccelShots(),
-  });
-  server.receiveCommand({
-    type: 'setFfDmgUnits',
-    tick: 0,
-    enabled: loadStoredFfDmgUnits(),
   });
   server.receiveCommand({
     type: 'setSendGridInfo',

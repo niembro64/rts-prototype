@@ -22,8 +22,7 @@ export type CommandType =
   | 'setMaxTotalUnits'
   | 'setProjVelInherit'
   | 'setFfAccelUnits'
-  | 'setFfAccelShots'
-  | 'setFfDmgUnits';
+  | 'setFfAccelShots';
 
 export type BaseCommand = {
   type: CommandType;
@@ -163,11 +162,6 @@ export type SetFfAccelShotsCommand = BaseCommand & {
   enabled: boolean;
 };
 
-export type SetFfDmgUnitsCommand = BaseCommand & {
-  type: 'setFfDmgUnits';
-  enabled: boolean;
-};
-
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -188,5 +182,4 @@ export type Command =
   | SetMaxTotalUnitsCommand
   | SetProjVelInheritCommand
   | SetFfAccelUnitsCommand
-  | SetFfAccelShotsCommand
-  | SetFfDmgUnitsCommand;
+  | SetFfAccelShotsCommand;

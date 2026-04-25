@@ -27,7 +27,6 @@ export type ForceFieldZoneRatioConfig = {
   alpha: number;
   particleAlpha: number;
   power: number | null;
-  damage: number;
 };
 
 export type ShotCollision = {

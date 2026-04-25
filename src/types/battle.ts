@@ -11,5 +11,4 @@ export type BattleBarConfig = {
   readonly projVelInherit: BooleanSetting;
   readonly ffAccelUnits: BooleanSetting;
   readonly ffAccelShots: BooleanSetting;
-  readonly ffDmgUnits: BooleanSetting;
 };

@@ -3,7 +3,7 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, DEFAULT_FF_DMG_UNITS, MIRROR_BASE_Y, TURRET_HEIGHT, UNIT_HP_MULTIPLIER } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, MIRROR_BASE_Y, TURRET_HEIGHT, UNIT_HP_MULTIPLIER } from '../../config';
 import { getBodyTopY } from '../math/BodyDimensions';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 
@@ -69,8 +69,6 @@ export class WorldState {
   public ffAccelUnits: boolean = DEFAULT_FF_ACCEL_UNITS;
   // Whether force fields accelerate enemy projectiles
   public ffAccelShots: boolean = DEFAULT_FF_ACCEL_SHOTS;
-  // Whether force fields damage enemy units
-  public ffDmgUnits: boolean = DEFAULT_FF_DMG_UNITS;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call

@@ -4,7 +4,6 @@ import type { WorldState } from '../WorldState';
 import type { ForceShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type { ProjectileVelocityUpdateEvent } from './types';
 import { getTransformCosSin } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
@@ -84,16 +83,13 @@ export function applyForceFieldDamage(
   dtMs: number,
   _damageSystem: DamageSystem,
   forceAccumulator?: ForceAccumulator,
-  statsTracker?: CombatStatsTracker
 ): ProjectileVelocityUpdateEvent[] {
   const dtSec = dtMs / 1000;
   if (dtSec <= 0 || _activeForceFieldCount === 0) return [];
 
-  // All three force-field effect flags off → there's nothing the
-  // outer loop could accomplish (the per-section spatial queries
-  // already short-circuit, but the loop itself still iterates every
-  // ff-bearing unit and runs the per-weapon zone math). Skip wholesale.
-  if (!world.ffAccelUnits && !world.ffDmgUnits && !world.ffAccelShots) {
+  // Both effect flags off → there's nothing the outer loop could
+  // accomplish. Skip wholesale.
+  if (!world.ffAccelUnits && !world.ffAccelShots) {
     return [];
   }
 
@@ -120,46 +116,34 @@ export function applyForceFieldDamage(
       const zones = getForceFieldZones(push, progress);
       if (zones.pushOuter <= zones.pushInner) continue;
 
-      const damagePerFrame = push.damage * dtSec;
       const pushStrength = push.power * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER;
 
       // Force fields are always 360° — no angle checks needed
       const weaponX = unit.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y;
       const weaponY = unit.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y;
 
-      // --- Enemy units (skipped when both ffAccelUnits and ffDmgUnits are disabled) ---
-      const nearbyUnits = (world.ffAccelUnits || world.ffDmgUnits)
-        ? spatialGrid.queryEnemyUnitsInRadius(weaponX, weaponY, zones.pushOuter, sourcePlayerId)
-        : [];
+      // --- Enemy units (knockback only — force fields no longer
+      // deal damage; if ffAccelUnits is off there's nothing to do). ---
+      if (world.ffAccelUnits && forceAccumulator) {
+        const nearbyUnits = spatialGrid.queryEnemyUnitsInRadius(
+          weaponX, weaponY, zones.pushOuter, sourcePlayerId,
+        );
+        for (const target of nearbyUnits) {
+          if (!target.unit || target.unit.hp <= 0) continue;
+          if (target.id === unit.id) continue;
 
-      for (const target of nearbyUnits) {
-        if (!target.unit || target.unit.hp <= 0) continue;
-        if (target.id === unit.id) continue;
+          const targetRadius = target.unit.unitRadiusCollider.shot;
+          const dx = target.transform.x - weaponX;
+          const dy = target.transform.y - weaponY;
 
-        const targetRadius = target.unit.unitRadiusCollider.shot;
-        const dx = target.transform.x - weaponX;
-        const dy = target.transform.y - weaponY;
+          const distSq = dx * dx + dy * dy;
+          const maxDist = zones.pushOuter + targetRadius;
+          if (distSq > maxDist * maxDist) continue;
 
-        const distSq = dx * dx + dy * dy;
-        const maxDist = zones.pushOuter + targetRadius;
-        if (distSq > maxDist * maxDist) continue;
+          const dist = Math.sqrt(distSq);
+          if (zones.pushInner > 0 && dist + targetRadius < zones.pushInner) continue;
+          if (dist <= 0) continue;
 
-        const dist = Math.sqrt(distSq);
-        if (zones.pushInner > 0 && dist + targetRadius < zones.pushInner) continue;
-
-        if (world.ffDmgUnits) {
-          const wasAlive = target.unit.hp > 0;
-          if (wasAlive) {
-            const actualDamage = Math.min(damagePerFrame, target.unit.hp);
-            statsTracker?.recordDamage(unit.id, target.id, actualDamage);
-          }
-          target.unit.hp -= damagePerFrame;
-          if (wasAlive && target.unit.hp <= 0) {
-            statsTracker?.recordKill(unit.id, target.id);
-          }
-        }
-
-        if (world.ffAccelUnits && dist > 0 && forceAccumulator) {
           const targetMass = target.body?.physicsBody.mass ?? 1;
           const nx = dx / dist;  // push outward
           const ny = dy / dist;
@@ -170,36 +154,6 @@ export function applyForceFieldDamage(
             pushStrength, targetMass,
             true, 'force_field_push'
           );
-        }
-      }
-
-      // --- Buildings ---
-      const nearbyBuildings = spatialGrid.queryBuildingsInRadius(
-        weaponX, weaponY, zones.pushOuter
-      );
-
-      for (const building of nearbyBuildings) {
-        if (!building.building || building.building.hp <= 0) continue;
-        if (building.ownership?.playerId === sourcePlayerId) continue;
-
-        const buildingRadius = Math.max(building.building.width, building.building.height) / 2;
-        const bdx = building.transform.x - weaponX;
-        const bdy = building.transform.y - weaponY;
-        const bdistSq = bdx * bdx + bdy * bdy;
-        const bmaxDist = zones.pushOuter + buildingRadius;
-        if (bdistSq > bmaxDist * bmaxDist) continue;
-
-        const bdist = Math.sqrt(bdistSq);
-        if (zones.pushInner > 0 && bdist + buildingRadius < zones.pushInner) continue;
-
-        const bWasAlive = building.building.hp > 0;
-        if (bWasAlive) {
-          const actualDamage = Math.min(damagePerFrame, building.building.hp);
-          statsTracker?.recordDamage(unit.id, building.id, actualDamage);
-        }
-        building.building.hp -= damagePerFrame;
-        if (bWasAlive && building.building.hp <= 0) {
-          statsTracker?.recordKill(unit.id, building.id);
         }
       }
 

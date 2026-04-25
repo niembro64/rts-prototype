@@ -61,8 +61,6 @@ import {
   saveFfAccelUnits,
   loadStoredFfAccelShots,
   saveFfAccelShots,
-  loadStoredFfDmgUnits,
-  saveFfDmgUnits,
   getDefaultDemoUnits,
 } from '../battleBarConfig';
 import {
@@ -641,11 +639,6 @@ function setFfAccelShots(enabled: boolean): void {
   saveFfAccelShots(enabled);
 }
 
-function setFfDmgUnits(enabled: boolean): void {
-  activeConnection?.sendCommand({ type: 'setFfDmgUnits', tick: 0, enabled });
-  saveFfDmgUnits(enabled);
-}
-
 function resetDemoDefaults(): void {
   const defaultUnits = getDefaultDemoUnits();
   const defaultSet = new Set(defaultUnits);
@@ -667,7 +660,6 @@ function resetDemoDefaults(): void {
   saveProjVelInherit(BATTLE_CONFIG.projVelInherit.default);
   setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
   setFfAccelShots(BATTLE_CONFIG.ffAccelShots.default);
-  setFfDmgUnits(BATTLE_CONFIG.ffDmgUnits.default);
   // Reset grid to mode default
   const gridDefault = gameStarted.value ? false : true;
   if (displayGridInfo.value !== gridDefault) {
@@ -1161,11 +1153,6 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         type: 'setFfAccelShots',
         tick: 0,
         enabled: loadStoredFfAccelShots(),
-      });
-      currentServer.receiveCommand({
-        type: 'setFfDmgUnits',
-        tick: 0,
-        enabled: loadStoredFfDmgUnits(),
       });
       currentServer.receiveCommand({
         type: 'setSendGridInfo',
@@ -1686,20 +1673,6 @@ onUnmounted(() => {
             <BarDivider />
             <span class="control-label">FF:</span>
             <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{
-                  active: serverMetaFromSnapshot?.ffAccel.dmgUnits ?? true,
-                }"
-                title="Force field damages enemy units"
-                @click="
-                  setFfDmgUnits(
-                    !(serverMetaFromSnapshot?.ffAccel.dmgUnits ?? true),
-                  )
-                "
-              >
-                UNIT-DMG
-              </button>
               <button
                 class="control-btn"
                 :class="{

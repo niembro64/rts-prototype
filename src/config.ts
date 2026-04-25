@@ -73,7 +73,6 @@ export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_PROJ_VEL_INHERIT = BATTLE_CONFIG.projVelInherit.default;
 export const DEFAULT_FF_ACCEL_UNITS = BATTLE_CONFIG.ffAccelUnits.default;
 export const DEFAULT_FF_ACCEL_SHOTS = BATTLE_CONFIG.ffAccelShots.default;
-export const DEFAULT_FF_DMG_UNITS = BATTLE_CONFIG.ffDmgUnits.default;
 export const BAR_COLORS = BAR_THEMES;
 
 // =============================================================================
@@ -294,7 +293,6 @@ export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRat
     alpha: 0.05,
     particleAlpha: 0.2,
     power: 1400,
-    damage: 10,
   };
 
 /**
@@ -498,14 +496,15 @@ export const COMBAT_STATS_VISIBLE_ON_LOAD = false;
 export const ZOOM_MIN = 0.2;
 
 /** Maximum zoom level (zoomed in) */
-export const ZOOM_MAX = 5.0;
+export const ZOOM_MAX = 40.0;
 
 /**
  * Zoom multiplier per scroll wheel tick (exponential zoom).
  * Each scroll step multiplies/divides zoom by this factor.
  * 1.15 = 15% change per step, feels consistent at all zoom levels.
  */
-export const ZOOM_FACTOR = 1 + 1 / 8;
+export const ZOOM_FACTOR = 1 + 1 / 4;
+// export const ZOOM_FACTOR = 1 + 1 / 8;
 
 /** Initial zoom level for the demo game (zoomed out overview) */
 export const ZOOM_INITIAL_DEMO = 1.5;

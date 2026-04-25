@@ -41,8 +41,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 3,
     collision: { radius: 1.6 },
     explosion: {
-      primary: { radius: 5, damage: 3, force: 500 },
-      secondary: { radius: 7, damage: 1.4, force: 500 },
+      primary: { radius: 5, damage: 6, force: 500 },
+      secondary: { radius: 7, damage: 6, force: 500 },
     },
     detonateOnExpiry: true,
     lifespan: 4000,
@@ -54,8 +54,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 8,
     collision: { radius: 2.2 },
     explosion: {
-      primary: { radius: 8, damage: 6, force: 1000 },
-      secondary: { radius: 15, damage: 1.2, force: 1000 },
+      primary: { radius: 8, damage: 12, force: 1000 },
+      secondary: { radius: 15, damage: 12, force: 1000 },
     },
     detonateOnExpiry: true,
     lifespan: 4000,
@@ -74,7 +74,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     collision: { radius: 2.5 },
     explosion: {
       primary: { radius: 10, damage: 4, force: 800 },
-      secondary: { radius: 18, damage: 1, force: 800 },
+      secondary: { radius: 18, damage: 4, force: 800 },
     },
     detonateOnExpiry: true,
     lifespan: 5500,
@@ -91,7 +91,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       lifespanMs: 1400,     // each puff lingers ~1.4s
       startRadius: 0.5,
       endRadius: 8.0,
-      startAlpha: 0.75,
+      startAlpha: 0.9,
       color: 0xcccccc,
     },
     hitSound: AUDIO.event.hit.lightRocket,
@@ -102,8 +102,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 30.0,
     collision: { radius: 4 },
     explosion: {
-      primary: { radius: 25, damage: 100, force: 7_000 },
-      secondary: { radius: 45, damage: 70, force: 7_000 },
+      primary: { radius: 25, damage: 150, force: 7_000 },
+      secondary: { radius: 45, damage: 150, force: 7_000 },
     },
     detonateOnExpiry: true,
     lifespan: 3000,
@@ -128,15 +128,15 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       // arc outward instead of fountaining mostly upward. Bump
       // horizontal for a wider fan, vertical for a more chaotic
       // mix of launch angles.
-      randomSpreadSpeedHorizontal: 500,
-      randomSpreadSpeedVertical: 250,
+      randomSpreadSpeedHorizontal: 50,
+      randomSpreadSpeedVertical: 100,
       // Soft bounce — submunitions retain ~10% of the carrier's
       // reflected velocity so the burst still reads as a bounce off
       // the surface, without launching the lightShots so far that
       // they leave the AOE the player expected. Tune up toward 1.0
       // for a more energetic bounce, down toward 0.0 to absorb the
       // momentum entirely.
-      reflectedVelocityDamper: 0.1,
+      reflectedVelocityDamper: 0.001,
     },
   },
   disruptorShot: {
@@ -145,8 +145,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 20.0,
     collision: { radius: 25 },
     explosion: {
-      primary: { radius: 40, damage: 10_000, force: 2499750 },
-      secondary: { radius: 50, damage: 1000, force: 499950 },
+      primary: { radius: 40, damage: 999999, force: 2499750 },
+      secondary: { radius: 50, damage: 999999, force: 499950 },
     },
     detonateOnExpiry: true,
     lifespan: 2000,
