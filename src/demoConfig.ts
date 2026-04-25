@@ -2,7 +2,7 @@
 
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
-  playerCount: 5,
+  playerCount: 6,
 
   /** Number of factories per player. Scaled down from the 3-team
    *  layout (was 10) so each team's narrower angular sector still fits
