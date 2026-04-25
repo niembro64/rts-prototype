@@ -25,6 +25,8 @@ import { getShotBlueprint } from '../sim/blueprints/shots';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { getBodyTopY, getSegmentMidYAt } from '../math/BodyDimensions';
+import { getTurretHeadRadius } from '../math';
+import type { TurretConfig } from '../sim/types';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -40,11 +42,12 @@ const STYLE_STRIDE: Record<DebrisStyle, number> = {
 };
 
 // Must match the values in Render3DEntities for sizes to line up with the
-// source parts. CHASSIS_HEIGHT is now per-unit (derived from the unit's
-// render body shape via getBodyTopY) so tall-bodied units shed tall
-// debris and squat ones shed short debris.
+// source parts. Head sphere radius and per-turret column height come
+// from getTurretHeadRadius (per-turret bodyRadius wins, falling back to
+// the unit-scale default). TURRET_HEIGHT survives only as the legacy
+// orbit-cone safety clamp on auto-derived `tipOrbit` — same value the
+// renderer uses, so the two stay locked.
 const TURRET_HEIGHT = 16;
-const TURRET_HEAD_FOOTPRINT = 0.55;
 const BARREL_MIN_THICKNESS = 2;
 
 // Must match Locomotion3D. Hip Y is per-leg now (mid-height of the
@@ -325,27 +328,36 @@ export class Debris3D {
     // contrasting tint later.)
     const rendererId = bp.renderer ?? 'arachnid';
     const bodyTopY = getBodyTopY(rendererId, r);
-    const shotHeight = bodyTopY + TURRET_HEIGHT / 2;
     for (const mount of bp.turrets) {
       let tb;
       try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
       const tox = mount.offsetX;
       const toz = mount.offsetY;
 
+      // Per-turret head radius. Each turret column is 2·headRadius tall:
+      // sphere bottom touches chassis top, sphere top is the highest point
+      // of the turret. Barrels pivot through the sphere center. Mirror
+      // panels (when present) replace the sphere visually but use the
+      // same vertical span. Per-turret bodyRadius takes precedence over
+      // the auto-derived default — matches Render3DEntities.buildTurretMesh.
+      const headR = getTurretHeadRadius(
+        r,
+        { bodyRadius: tb.bodyRadius } as unknown as TurretConfig,
+      );
+      const shotHeight = bodyTopY + headR;
+
       // Skip the head + barrels for the mirror-host turret — its visible
       // body IS the mirror panels, not a separate cylinder. Render3DEntities
       // does the same skip via `isMirrorHost` in buildTurretMesh.
       const isMirrorHost = (tb.mirrorPanels?.length ?? 0) > 0;
       if (!isMirrorHost) {
-        // Turret head — SPHERE of radius max(r·0.55, TURRET_HEIGHT/2),
-        // centered at TURRET_HEIGHT/2 above the unit body. Render3DEntities
-        // draws this with SphereGeometry + uniform scale, so debris emits a
-        // matching sphere chunk (not a tall cylinder).
-        const headR = Math.max(r * TURRET_HEAD_FOOTPRINT, TURRET_HEIGHT / 2);
+        // Turret head — SPHERE of radius `headR`, centered at headR above
+        // the unit body so the sphere bottom touches chassis top. Mirrors
+        // Render3DEntities' head placement.
         out.push({
           shape: 'sphere',
           x: tox,
-          y: bodyTopY + TURRET_HEIGHT / 2,
+          y: bodyTopY + headR,
           z: toz,
           radius: headR,
           color: primary,
@@ -433,13 +445,13 @@ export class Debris3D {
       // Mirror panels — for mirror-bearing turrets (e.g. Loris) emit
       // one slab per panel matching what Render3DEntities draws:
       // panel center at chassis-local (mount + panel.offset), vertical
-      // mid-height of MIRROR_BASE_Y → bodyTop + TURRET_HEIGHT +
+      // mid-height of MIRROR_BASE_Y → bodyTop + 2·headR +
       // MIRROR_EXTRA_HEIGHT, length = panel.width along the panel's
       // edge axis (yaw = -(panel.angle + π/2) to match the rendered
       // box's rotation), thickness = panel.height. Color matches the
       // team secondary so the chrome reads as the unit's faction.
       if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
-        const panelTop = bodyTopY + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT;
+        const panelTop = bodyTopY + 2 * headR + MIRROR_EXTRA_HEIGHT;
         const mirrorH = Math.max(panelTop - MIRROR_BASE_Y, 1);
         const panelCenterY = MIRROR_BASE_Y + mirrorH / 2;
         for (const panel of tb.mirrorPanels) {

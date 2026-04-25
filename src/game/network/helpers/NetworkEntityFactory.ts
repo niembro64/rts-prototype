@@ -7,8 +7,10 @@ import { getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
-import { MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT, TURRET_HEIGHT } from '../../../config';
+import { MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../../config';
 import { getBodyTopY } from '../../math/BodyDimensions';
+import { getTurretHeadRadius } from '../../math';
+import type { TurretConfig } from '../../sim/types';
 
 /**
  * Create an Entity from NetworkServerSnapshotEntity data
@@ -123,17 +125,22 @@ function createUnitFromNetwork(
   // Cache mirror panels for fast beam collision checks
   try {
     const bp = getUnitBlueprint(u?.unitType ?? 'jackal');
-    // Panel vertical span = (MIRROR_BASE_Y, bodyTop + TURRET_HEIGHT) above
-    // the unit's ground. Same per-unit value the 3D renderer uses for
-    // the panel mesh, so the beam tracer hits the exact rectangle the
-    // player sees.
+    // Panel vertical span = (MIRROR_BASE_Y, bodyTop + 2·hostHeadRadius +
+    // MIRROR_EXTRA_HEIGHT) above the unit's ground. Same per-unit value
+    // the 3D renderer uses for the panel mesh, so the beam tracer hits
+    // the exact rectangle the player sees. Per-host bodyRadius scales
+    // the column with the mirror-host turret's declared size.
     const rendererId = bp.renderer ?? 'arachnid';
     const baseY = MIRROR_BASE_Y;
-    const topY = getBodyTopY(rendererId, entity.unit!.unitRadiusCollider.scale)
-      + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT;
+    const bodyTop = getBodyTopY(rendererId, entity.unit!.unitRadiusCollider.scale);
     for (const mount of bp.turrets) {
       const tb = getTurretBlueprint(mount.turretId);
       if (tb.mirrorPanels) {
+        const hostHeadRadius = getTurretHeadRadius(
+          entity.unit!.unitRadiusCollider.scale,
+          { bodyRadius: tb.bodyRadius } as unknown as TurretConfig,
+        );
+        const topY = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
         const panels = entity.unit!.mirrorPanels;
         let maxR = 0;
         for (const p of tb.mirrorPanels) {

@@ -1,10 +1,10 @@
 // Combat utility functions
 
 import type { Entity } from '../types';
-import { distance, normalizeAngle, magnitude, getWeaponWorldPosition } from '../../math';
-import { getMuzzleHeightAboveGround } from '../../math/BodyDimensions';
+import { distance, normalizeAngle, magnitude, getWeaponWorldPosition, getTurretHeadRadius } from '../../math';
+import { getBodyTopY } from '../../math/BodyDimensions';
 import { getUnitBlueprint } from '../blueprints';
-import { MIRROR_EXTRA_HEIGHT, TURRET_HEIGHT } from '../../../config';
+import { MIRROR_EXTRA_HEIGHT } from '../../../config';
 
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
@@ -35,34 +35,50 @@ export function resolveWeaponWorldPos(
   return getWeaponWorldPosition(entityX, entityY, cos, sin, turret.offset.x, turret.offset.y);
 }
 
-// Muzzle altitude above the unit's ground footprint at pitch=0, derived
-// from the unit blueprint's render body. Must use the SAME radius the
-// 3D renderer uses to size the body mesh (`unitRadiusCollider.scale`)
-// — any divergence puts the sim's spawn altitude above or below the
-// visible barrel. Falls back to the arachnid body for any unit whose
-// blueprint lookup throws.
-export function getUnitMuzzleHeight(unit: Entity): number {
+/** Per-turret mount height — distance above the unit's ground
+ *  footprint at which the barrel pivots (and shots spawn) at pitch=0.
+ *
+ *  Vertical layout for an ordinary turret:
+ *
+ *    chassis top (bodyTopY)               ← head sphere bottom
+ *    chassis top + headRadius             ← head sphere center  ← muzzle
+ *    chassis top + 2 × headRadius         ← head sphere top
+ *
+ *  Each turret's `bodyRadius` field drives `headRadius`; the renderer
+ *  uses the SAME number to anchor the visible head sphere, so spawn
+ *  altitude and visible barrel tip stay locked together at every
+ *  turret size.
+ *
+ *  On mirror-host units (e.g. Loris) the non-mirror turret sits ON TOP
+ *  OF the panel stack:
+ *
+ *    chassis top + 2 × hostHeadRadius  + MIRROR_EXTRA_HEIGHT
+ *      ← stacked turret's chassis-top equivalent
+ *      ← + headRadius                  ← stacked turret muzzle
+ */
+export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
   if (!unit.unit) return 0;
   const unitRadius = unit.unit.unitRadiusCollider.scale;
   let renderer = 'arachnid';
   try { renderer = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
   catch { /* keep fallback */ }
-  return getMuzzleHeightAboveGround(renderer, unitRadius);
-}
+  const bodyTop = getBodyTopY(renderer, unitRadius);
 
-// Per-turret mount height. On mirror-host units (e.g. Loris) the
-// projectile turret sits ON TOP OF the mirror stack. The mirror panel's
-// top is at bodyTopY + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT, so the
-// turret's root (bottom of its head) should rest there, making the head
-// center sit half a turret height above that. Lift above the default
-// muzzle (which is bodyTopY + TURRET_HEIGHT/2) = TURRET_HEIGHT +
-// MIRROR_EXTRA_HEIGHT.
-const MIRROR_TURRET_LIFT = MIRROR_EXTRA_HEIGHT + TURRET_HEIGHT;
-export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
-  const base = getUnitMuzzleHeight(unit);
-  const hasMirrors = (unit.unit?.mirrorPanels?.length ?? 0) > 0;
-  if (hasMirrors && turretIndex > 0) return base + MIRROR_TURRET_LIFT;
-  return base;
+  const turret = unit.turrets?.[turretIndex];
+  const headRadius = getTurretHeadRadius(unitRadius, turret?.config);
+
+  const hasMirrors = (unit.unit.mirrorPanels?.length ?? 0) > 0;
+  if (hasMirrors && turretIndex > 0) {
+    // Stacked turret rests on top of the mirror panel stack. Panel
+    // top is derived from the host turret's (index 0) own body
+    // radius — so a Loris with a chunkier mirror host has a
+    // proportionally taller panel column.
+    const hostTurret = unit.turrets?.[0];
+    const hostHeadRadius = getTurretHeadRadius(unitRadius, hostTurret?.config);
+    const panelTop = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
+    return panelTop + headRadius;
+  }
+  return bodyTop + headRadius;
 }
 
 // Get angle to face based on movement (or body direction if stationary)

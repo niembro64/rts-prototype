@@ -1,5 +1,3 @@
-import { TURRET_HEIGHT } from '../../config';
-
 // BodyDimensions — sim-safe (no-THREE) body-shape height math.
 //
 // The 3D renderer builds each unit's chassis as spheres/spheroids
@@ -114,15 +112,6 @@ export function getBodyTopFrac(renderer: string): number {
  *  physical radius (unit.unitRadiusCollider.push). */
 export function getBodyTopY(renderer: string, unitRadius: number): number {
   return getBodyTopFrac(renderer) * unitRadius;
-}
-
-/** World-space altitude of the barrel tip above the unit's ground
- *  footprint at pitch=0. Turret head sits atop the body; barrels pivot
- *  through the head's mid-height — so muzzle ≈ body top + TURRET_HEIGHT/2.
- *  Replaces the old shared MUZZLE_HEIGHT_ABOVE_GROUND constant so fire
- *  altitude tracks each unit's actual visible turret. */
-export function getMuzzleHeightAboveGround(renderer: string, unitRadius: number): number {
-  return getBodyTopY(renderer, unitRadius) + TURRET_HEIGHT / 2;
 }
 
 /** World-space Y for the mid-height of whichever body segment sits

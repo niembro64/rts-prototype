@@ -3,8 +3,9 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, MIRROR_BASE_Y, TURRET_HEIGHT, UNIT_HP_MULTIPLIER } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, MIRROR_BASE_Y, UNIT_HP_MULTIPLIER } from '../../config';
 import { getBodyTopY } from '../math/BodyDimensions';
+import { getTurretHeadRadius } from '../math';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 
 // Seeded random number generator for determinism
@@ -394,17 +395,26 @@ export class WorldState {
     // Create turrets from blueprint definition
     entity.turrets = createTurretsFromDefinition(unitId, bp.unitRadiusCollider.scale);
 
-    // Cache mirror panels for fast beam collision checks (avoids blueprint lookup per tick).
-    // Vertical span = MIRROR_BASE_Y → bodyTop + TURRET_HEIGHT above the
-    // unit's ground footprint; shared with the 3D renderer's panel mesh
-    // so collision geometry matches the visible rectangle.
+    // Cache mirror panels for fast beam collision checks (avoids blueprint
+    // lookup per tick). Vertical span = MIRROR_BASE_Y → host turret's
+    // top above the unit's ground footprint, where the host turret's
+    // top is `bodyTop + 2 × hostHeadRadius` (matches the renderer's
+    // own panel-mesh sizing — see the matching computation in
+    // Render3DEntities.updateUnits). Per-host bodyRadius makes the
+    // panel column scale with the mirror-host turret's declared size.
     const rendererId = bp.renderer ?? 'arachnid';
     const panelBaseY = MIRROR_BASE_Y;
-    const panelTopY = getBodyTopY(rendererId, bp.unitRadiusCollider.scale)
-      + TURRET_HEIGHT;
+    const bodyTop = getBodyTopY(rendererId, bp.unitRadiusCollider.scale);
     for (const mount of bp.turrets) {
       const tb = getTurretBlueprint(mount.turretId);
       if (tb.mirrorPanels) {
+        const hostHeadRadius = getTurretHeadRadius(
+          bp.unitRadiusCollider.scale,
+          // Stub the smallest TurretConfig surface getTurretHeadRadius
+          // looks at — bodyRadius is the only field it reads.
+          { bodyRadius: tb.bodyRadius } as unknown as TurretConfig,
+        );
+        const panelTopY = bodyTop + 2 * hostHeadRadius;
         const panels = entity.unit!.mirrorPanels;
         let maxR = 0;
         for (const p of tb.mirrorPanels) {

@@ -407,6 +407,14 @@ export class Render3DEntities {
     const turretOff = gfx.turretStyle === 'none';
     const hideHead = turretOff || isForceField || isMirrorHost;
 
+    // Resolved head radius drives BOTH the sphere mesh size AND its
+    // attachment height. Computed up front so the barrel block below
+    // can pivot at the head center even when the head itself is
+    // hidden (force-field / mirror-host / MIN LOD). Per-turret
+    // bodyRadius takes precedence; the auto-derived default is the
+    // fallback.
+    const headRadius = getTurretHeadRadius(unitRadius, turret.config);
+
     let head: THREE.Mesh | undefined;
     if (!hideHead) {
       // Turret head shares the chassis color (primary) so the unit
@@ -414,15 +422,14 @@ export class Render3DEntities {
       // previously used here, which produced a visible color/sat
       // step between body and turret.
       head = new THREE.Mesh(this.turretHeadGeom, this.getPrimaryMat(pid));
-      // Sphere head: scale by a single radius so it's a true ball (not
-      // a stretched ellipsoid). The ball sits at TURRET_HEIGHT/2 so its
-      // center is at the same height the old cylinder's center was —
-      // barrel mounts stay in place. The turret blueprint can override
-      // the auto-derived size via `bodyRadius`; otherwise we fall
-      // back to the unit-scale default.
-      const headRadius = getTurretHeadRadius(unitRadius, turret.config);
+      // The sphere's CENTER sits at y=headRadius above the turret root
+      // so the BOTTOM of the sphere touches y=0 — i.e. the head rests
+      // on the chassis top. Larger turrets sit higher; smaller ones
+      // sit lower; either way the head never floats above or clips
+      // into the chassis the way the old fixed-y=TURRET_HEIGHT/2
+      // anchor used to.
       head.scale.setScalar(headRadius);
-      head.position.set(0, TURRET_HEIGHT / 2, 0);
+      head.position.set(0, headRadius, 0);
       root.add(head);
     }
 
@@ -433,7 +440,11 @@ export class Render3DEntities {
       return { root, head, barrels, pitchGroup: undefined, spinGroup: undefined };
     }
 
-    const barrelCenterY = TURRET_HEIGHT / 2;
+    // Barrel pivots through the head's center, so its Y in turret-root
+    // local space is the head radius (mirror-host turrets that hide
+    // their head still pivot at the same conceptual height — that's
+    // why we computed headRadius before the hideHead branch).
+    const barrelCenterY = headRadius;
 
     // Barrel thickness is the shot width (for line shots) falling back to the
     // blueprint-derived barrelThickness. Matches the 2D single-barrel path.
@@ -1108,9 +1119,13 @@ export class Render3DEntities {
         // Mirror panels (e.g. Loris): standing slabs that track the turret.
         const mirrorPanels = e.unit?.mirrorPanels;
         if (mirrorPanels && mirrorPanels.length > 0) {
-          // Panel top is the unit's body top plus the turret head so
-          // the mirror is flush with the tallest point of the unit.
-          const panelTopY = bodyEntry.topY * radius + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT;
+          // Panel column rises 2 × hostHeadRadius above the chassis top
+          // — the same span the host turret's spherical head would
+          // occupy if it weren't hidden — plus MIRROR_EXTRA_HEIGHT so
+          // the panels read as taller than the head they replace. Host
+          // turret is index 0; its bodyRadius (when set) wins.
+          const hostHeadRadius = getTurretHeadRadius(radius, turrets[0]?.config);
+          const panelTopY = bodyEntry.topY * radius + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
           m.mirrors = this.buildMirrorMesh(group, mirrorPanels, pid, this.lod.gfx, panelTopY);
           for (const panel of m.mirrors.panels) {
             panel.userData.entityId = e.id;
@@ -1198,14 +1213,17 @@ export class Render3DEntities {
       // getTurretMountHeight() on the sim side.
       const spinState = this.barrelSpins.get(e.id);
       const unitHasMirrorsHere = (e.unit?.mirrorPanels?.length ?? 0) > 0;
+      const hostHeadRadiusForStack = unitHasMirrorsHere
+        ? getTurretHeadRadius(radius, turrets[0]?.config)
+        : 0;
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
         // Non-mirror turrets on mirror-host units sit ON TOP of the
-        // mirror panel stack: root Y = mirror panel top in chassis-local
-        // coords = bodyTopY + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT.
+        // mirror panel stack: root Y = panel top in chassis-local
+        // coords = bodyTopY + 2·hostHeadRadius + MIRROR_EXTRA_HEIGHT.
         const turretMountY = unitHasMirrorsHere && i > 0
-          ? bodyTopY + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT
+          ? bodyTopY + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
           : bodyTopY;
         tm.root.position.set(t.offset.x, turretMountY, t.offset.y);
         // Turret's world firing direction = t.rotation. Parent group is already
