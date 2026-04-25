@@ -279,23 +279,24 @@ export function checkProjectileCollisions(
             }
           }
 
-          // Detonation audio: emit when there was a splash hit, when
-          // it's a mortar (so the apex burst always sounds), or when
-          // the shot is a pure carrier (no splash, just submunitions
-          // — without this branch a fragmenting flak round would be
-          // silent at the apex).
-          if (splashHitCount > 0 || config.id === 'mortarTurret' || (!hasSplash && hasSubs)) {
-            audioEvents.push({
-              type: 'hit',
-              turretId: shotId,
-              pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-              impactContext: buildImpactContext(
-                config, projEntity.transform.x, projEntity.transform.y,
-                proj.velocityX ?? 0, proj.velocityY ?? 0,
-                projShot.collision.radius, firstSplashHit,
-              ),
-            });
-          }
+          // Detonation audio + explosion FX. Always emit when the
+          // shot actually detonates (`hasExploded` was just set to
+          // true above) — every projectile that explodes should LOOK
+          // like it explodes, regardless of whether anything was in
+          // splash range. The visual FX size comes from the shot's
+          // own primary/secondary explosion radii via impactContext,
+          // so a 0-radius pure carrier (e.g. mortarShot) still gets
+          // a small fragmentation pop sized by collision.radius.
+          audioEvents.push({
+            type: 'hit',
+            turretId: shotId,
+            pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+            impactContext: buildImpactContext(
+              config, projEntity.transform.x, projEntity.transform.y,
+              proj.velocityX ?? 0, proj.velocityY ?? 0,
+              projShot.collision.radius, firstSplashHit,
+            ),
+          });
 
           // Cluster flak: spawn submunitions on detonation.
           if (hasSubs) {
