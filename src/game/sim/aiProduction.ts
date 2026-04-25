@@ -67,6 +67,12 @@ export function updateAiProduction(
   allowedTypes?: ReadonlySet<string>,
 ): void {
   if (aiPlayerIds.size === 0) return;
+  // Honour an explicit empty selection — when the user has every
+  // unit type disabled, the AI must not produce anything. Without
+  // this guard pickRandomUnit fell through to the all-weights path
+  // and queued a random allowed-by-blueprint type, defeating the
+  // toggle.
+  if (allowedTypes && allowedTypes.size === 0) return;
 
   for (const entity of world.getBuildings()) {
     if (!entity.factory || !entity.buildable?.isComplete) continue;

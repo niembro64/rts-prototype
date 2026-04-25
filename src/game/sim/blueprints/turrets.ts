@@ -39,6 +39,7 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
         engage: { acquire: null, release: null },
       },
       color: 0xffffff,
+      bodyRadius: 6,
       audio: {
         fireSound: AUDIO.event.fire[`beamTurret${i}`],
         laserSound: AUDIO.event.laser[`beamTurret${i}`],
@@ -57,13 +58,14 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 380,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 1.0 },
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 1.5 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
     spread: { angle: Math.PI / 12 },
+    bodyRadius: 4,
     audio: { fireSound: AUDIO.event.fire.lightTurret },
   },
   // Salvo rocket pod — vertical-launch system. The turret is pinned
@@ -106,6 +108,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // straight up to horizontal; homing then bends each one onto the
     // target's line.
     spread: { angle: Math.PI / 2, pelletCount: 3 },
+    bodyRadius: 8,
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
     verticalLauncher: true,
   },
@@ -124,6 +127,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     color: 0xffffff,
     spread: { angle: Math.PI / 24 },
+    bodyRadius: 10,
     audio: { fireSound: AUDIO.event.fire.cannonTurret },
   },
   mortarTurret: {
@@ -141,6 +145,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     color: 0xffffff,
     spread: { angle: Math.PI / 24 },
+    bodyRadius: 9,
     audio: { fireSound: AUDIO.event.fire.mortarTurret },
     // Mortars lob — high-arc solution from the ballistic solver so
     // shells sail up and over whatever's in front of them.
@@ -178,6 +183,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     color: 0xffffff,
     spread: { angle: Math.PI / 32 },
     burst: { count: 2, delay: 80 },
+    bodyRadius: 7,
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
   },
   hippoGatlingTurret: {
@@ -203,6 +209,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     color: 0xffffff,
     spread: { angle: Math.PI / 8 },
     burst: { count: 1, delay: 80 },
+    bodyRadius: 12,
     audio: { fireSound: AUDIO.event.fire.hippoGatlingTurret },
   },
   dgunTurret: {
@@ -220,6 +227,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     isManualFire: true,
     color: 0xff8800,
+    bodyRadius: 7,
     audio: { fireSound: AUDIO.event.fire.dgunTurret },
   },
   laserTurret: {
@@ -241,6 +249,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     color: 0xffffff,
     spread: { angle: Math.PI / 32 },
+    bodyRadius: 5,
     audio: { fireSound: AUDIO.event.fire.laserTurret },
   },
   mirrorTurret: {
@@ -258,6 +267,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: 0.45, release: 0.5 },
     },
     color: 0xffffff,
+    // The mirror-host turret's head sphere is hidden (panels are the
+    // visual), so bodyRadius is set for consistency with sibling
+    // turrets but has no rendered effect.
+    bodyRadius: 5,
     // Single forward-facing square reflector. Normal angle 0 means the
     // panel's normal points along the turret's facing direction; the
     // panel's edge direction (perpendicular to normal) runs left-right
@@ -281,6 +294,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     rangeMultiplierOverrides: FORCE_TURRET_RANGE_MULTIPLIERS,
     color: 0xffffff,
+    // Force-field emitters render via ForceFieldRenderer3D's glowing
+    // sphere; the turret head itself is hidden, so this value has no
+    // rendered effect — set for consistency with sibling turrets.
+    bodyRadius: 12,
     forceField: {
       angle: Math.PI * 2,
       transitionTime: 500,
@@ -299,6 +316,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     rangeMultiplierOverrides: FORCE_TURRET_RANGE_MULTIPLIERS,
     color: 0xffffff,
+    // Force-field emitter — head is hidden, see forceTurretLarge.
+    bodyRadius: 10,
     forceField: {
       angle: Math.PI * 2,
       transitionTime: 1000,
