@@ -89,6 +89,14 @@ export function applyForceFieldDamage(
   const dtSec = dtMs / 1000;
   if (dtSec <= 0 || _activeForceFieldCount === 0) return [];
 
+  // All three force-field effect flags off → there's nothing the
+  // outer loop could accomplish (the per-section spatial queries
+  // already short-circuit, but the loop itself still iterates every
+  // ff-bearing unit and runs the per-weapon zone math). Skip wholesale.
+  if (!world.ffAccelUnits && !world.ffDmgUnits && !world.ffAccelShots) {
+    return [];
+  }
+
   _velocityUpdateMap.clear();
 
   for (const unit of world.getForceFieldUnits()) {
