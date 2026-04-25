@@ -160,6 +160,7 @@ export function buildTurretConfig(turretId: string): TurretConfig {
     highArc: wb.highArc ?? false,
     verticalLauncher: wb.verticalLauncher ?? false,
     groundAimFraction: wb.groundAimFraction,
+    bodyRadius: wb.bodyRadius,
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier

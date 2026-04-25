@@ -417,9 +417,10 @@ export class Render3DEntities {
       // Sphere head: scale by a single radius so it's a true ball (not
       // a stretched ellipsoid). The ball sits at TURRET_HEIGHT/2 so its
       // center is at the same height the old cylinder's center was —
-      // barrel mounts stay in place. Radius is tied to TURRET_HEIGHT so
-      // the ball visually matches the turret's vertical extent.
-      const headRadius = getTurretHeadRadius(unitRadius);
+      // barrel mounts stay in place. The turret blueprint can override
+      // the auto-derived size via `bodyRadius`; otherwise we fall
+      // back to the unit-scale default.
+      const headRadius = getTurretHeadRadius(unitRadius, turret.config);
       head.scale.setScalar(headRadius);
       head.position.set(0, TURRET_HEIGHT / 2, 0);
       root.add(head);

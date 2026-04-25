@@ -278,6 +278,9 @@ export type TurretConfig = {
    *  submunitions (if any) bounce + spread the rest of the way. See
    *  TurretBlueprint.groundAimFraction. */
   groundAimFraction?: number;
+  /** World-space radius of the rendered turret-head sphere. Overrides
+   *  the unit-scale-derived default. See TurretBlueprint.bodyRadius. */
+  bodyRadius?: number;
 };
 
 // Turret FSM state: idle → tracking → engaged

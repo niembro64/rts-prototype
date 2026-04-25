@@ -32,11 +32,16 @@ export const TURRET_HEAD_FOOTPRINT_FRAC = 0.42;
 
 /** Radius of the spherical turret head for a unit of the given render
  *  scale. Floored to TURRET_HEIGHT / 2 so very small units still get
- *  a visible head sphere. The barrel attaches to this sphere's surface
- *  on the firing axis, so the barrel-tip = mount + (headR + len) ·
- *  forward — both renderer and sim use this number to keep the
- *  visible barrel and the spawn point lined up. */
-export function getTurretHeadRadius(unitScale: number): number {
+ *  a visible head sphere. A turret blueprint can override this with
+ *  its own `bodyRadius` field — passing the config lets the renderer
+ *  prefer the per-turret value when present. */
+export function getTurretHeadRadius(
+  unitScale: number,
+  config?: TurretConfig,
+): number {
+  if (config?.bodyRadius !== undefined && config.bodyRadius > 0) {
+    return config.bodyRadius;
+  }
   return Math.max(unitScale * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
 }
 
