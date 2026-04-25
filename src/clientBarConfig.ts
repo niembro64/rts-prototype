@@ -23,7 +23,6 @@ import type {
   ProjRangeType,
   UnitRadiusType,
 } from './types/client';
-import type { RendererMode } from './types/game';
 import { persist, persistJson, readPersisted } from './persistence';
 import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
@@ -238,7 +237,6 @@ const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
 const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
 const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
 const GRID_OVERLAY_STORAGE_KEY = 'rts-grid-overlay';
-const RENDERER_MODE_STORAGE_KEY = 'rts-renderer-mode';
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
@@ -270,11 +268,6 @@ const currentSoundToggles: Record<SoundCategory, boolean> = {
 };
 let currentEdgeScrollEnabled: boolean = _cd.edgeScroll.default;
 let currentDragPanEnabled: boolean = _cd.dragPan.default;
-// Renderer mode (2d Pixi / 3d Three.js). No default in CLIENT_CONFIG
-// because the initial mode is resolved by App.vue (URL path → localStorage
-// → fallback '2d'); App.vue calls setRendererMode before this module's
-// first read so `currentRendererMode` always reflects the chosen value.
-let currentRendererMode: RendererMode = '2d';
 const _isMobile = typeof navigator !== 'undefined' &&
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 let currentLobbyVisible: boolean = _isMobile
@@ -414,10 +407,6 @@ function loadFromStorage(): void {
       storedGridOverlay === 'high')
   ) {
     currentGridOverlay = storedGridOverlay;
-  }
-  const storedRendererMode = readPersisted(RENDERER_MODE_STORAGE_KEY);
-  if (storedRendererMode === '2d' || storedRendererMode === '3d') {
-    currentRendererMode = storedRendererMode;
   }
 }
 
@@ -619,18 +608,6 @@ export function getDriftMode(): DriftMode {
 export function setDriftMode(mode: DriftMode): void {
   currentDriftMode = mode;
   persist(DRIFT_MODE_STORAGE_KEY, mode);
-}
-
-/** Persisted renderer choice (2d Pixi / 3d Three.js). Read at module
- *  init from localStorage; App.vue calls setRendererMode when the URL
- *  is /2d or /3d to let the path override the stored value. */
-export function getRendererMode(): RendererMode {
-  return currentRendererMode;
-}
-
-export function setRendererMode(mode: RendererMode): void {
-  currentRendererMode = mode;
-  persist(RENDERER_MODE_STORAGE_KEY, mode);
 }
 
 export function getSoundToggle(category: SoundCategory): boolean {

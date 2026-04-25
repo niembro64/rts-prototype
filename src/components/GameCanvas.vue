@@ -2,14 +2,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
 import { ClientViewState } from '../game/network/ClientViewState';
-import type { RendererMode } from '../types/game';
 import { type PlayerId, type WaypointType } from '../game/sim/types';
-
-const props = withDefaults(defineProps<{
-  rendererMode?: RendererMode;
-}>(), {
-  rendererMode: '2d',
-});
 import {
   createBackgroundBattle,
   destroyBackgroundBattle,
@@ -121,7 +114,6 @@ import {
   setLobbyVisible,
   getGridOverlay,
   setGridOverlay,
-  setRendererMode,
   setCurrentTpsRatio,
   setCurrentFpsRatio,
   setLocalServerRunning,
@@ -309,15 +301,6 @@ let gameInstance: GameInstance | null = null;
 // the match starts, cleared when the match ends.
 let clientViewState: ClientViewState | null = null;
 
-/**
- * Active renderer for the current game. Starts from the `rendererMode`
- * prop (URL-driven) but becomes mutable once the match is running so
- * the PLAYER CLIENT `VIEW: 2D / 3D` toggle can flip it live via
- * `switchRenderer()`. Kept as a ref so the template can bind
- * `:class="{ active: currentRendererMode === '2d' }"` on the buttons.
- */
-const currentRendererMode = ref<RendererMode>(props.rendererMode);
-
 // Polling interval IDs for cleanup
 let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
@@ -330,10 +313,6 @@ async function startBackgroundBattle(): Promise<void> {
   backgroundBattle = await createBackgroundBattle(
     backgroundContainerRef.value,
     localIpAddress.value,
-    // Use the live toggle's current value, not the URL-derived prop —
-    // so if the user switched to 3D in a previous session (persisted
-    // via localStorage) the demo comes up in 3D.
-    currentRendererMode.value,
   );
   activeConnection = backgroundBattle.connection;
   hasServer.value = true;
@@ -945,19 +924,6 @@ function toggleBurnMarks(): void {
   burnMarks.value = newValue;
 }
 
-/**
- * Handler for the PLAYER CLIENT `VIEW: 2D / 3D` button group. Persists
- * the chosen mode via clientBarConfig.setRendererMode (same helper the
- * URL /2d /3d paths call from App.vue, so both entry points stay in
- * sync), then delegates to `switchRenderer()` which does the actual
- * scene+renderer swap. No-op if the mode is unchanged.
- */
-function changeRendererMode(mode: RendererMode): void {
-  if (mode === currentRendererMode.value) return;
-  setRendererMode(mode);
-  switchRenderer(mode);
-}
-
 function changeDriftMode(mode: DriftMode): void {
   setDriftMode(mode);
   driftMode.value = mode;
@@ -1168,12 +1134,8 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       gameConnection = remoteConnection;
     }
 
-    // Create ClientViewState once per game session (outlives any single
-    // scene instance so a live renderer swap can reuse the same entity /
-    // prediction / selection state without waiting for a keyframe).
+    // Create ClientViewState once per game session.
     clientViewState = new ClientViewState();
-    // Remember the player roster so switchRenderer() can rebuild the
-    // game instance later without re-entering this bootstrap path.
     currentPlayerIds = playerIds;
 
     // Create game with player configuration
@@ -1188,141 +1150,11 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       mapWidth: getMapSize(false).width,
       mapHeight: getMapSize(false).height,
       backgroundMode: false,
-      rendererMode: currentRendererMode.value,
     });
 
     // Setup scene callbacks
     setupSceneCallbacks();
   }, 100);
-}
-
-/**
- * Flip between 2D and 3D renderers in the middle of a live game.
- *
- * Architecture:
- *  - GameConnection stays alive (owned above this function).
- *  - ClientViewState stays alive (entities/prediction/selection preserved).
- *  - The current scene's camera framing is captured first, then the
- *    scene + app (PixiApp or ThreeApp) are torn down and a fresh one of
- *    the other kind is built with the same connection + CVS. The saved
- *    camera state is re-applied to the new scene so the swap looks
- *    like a visual style change rather than a scene reset.
- *  - setupSceneCallbacks polls for the new scene ready and re-wires all
- *    the UI callbacks, so the HUD picks up where it left off.
- *
- * State that IS lost on swap: transient per-scene effects (in-flight
- * debris, burn-mark trails, audio queue, locomotion animation phase,
- * barrel spin angles). All of these are cosmetic/short-lived; the next
- * few frames of simulation events rebuild them.
- */
-function switchRenderer(newMode: RendererMode): void {
-  if (newMode === currentRendererMode.value) return;
-
-  // Demo / lobby case — main game hasn't started yet, but a background
-  // battle is running. Swap just its gameInstance in place, reusing the
-  // persistent server + connection + CVS so the demo doesn't restart.
-  if (!gameInstance && backgroundBattle && backgroundContainerRef.value) {
-    const savedCam = backgroundBattle.gameInstance.getScene()?.captureCameraState();
-    const rect = backgroundContainerRef.value.getBoundingClientRect();
-    // keepConnection: the demo's LocalGameConnection outlives this swap
-    // and is reused by the replacement scene.
-    destroyGame(backgroundBattle.gameInstance, { keepConnection: true });
-    backgroundBattle.gameInstance = createGame({
-      parent: backgroundContainerRef.value,
-      width: rect.width || window.innerWidth,
-      height: rect.height || window.innerHeight,
-      playerIds: [1, 2, 3, 4] as PlayerId[],
-      localPlayerId: 1,
-      gameConnection: backgroundBattle.connection,
-      clientViewState: backgroundBattle.clientViewState,
-      mapWidth: getMapSize(true).width,
-      mapHeight: getMapSize(true).height,
-      backgroundMode: true,
-      rendererMode: newMode,
-    });
-    currentRendererMode.value = newMode;
-    wireBackgroundSceneCallbacks();
-    if (savedCam) {
-      let attempts = 0;
-      const camTimer = setInterval(() => {
-        attempts++;
-        const scene = backgroundBattle?.gameInstance.getScene();
-        if (scene) {
-          scene.applyCameraState(savedCam);
-          clearInterval(camTimer);
-        } else if (attempts > 25) {
-          clearInterval(camTimer);
-        }
-      }, 20);
-    }
-    return;
-  }
-
-  // Main-game case — must have a live match, connection, CVS, and
-  // remembered player roster to rebuild with.
-  if (!gameInstance || !clientViewState || !activeConnection) return;
-  if (!containerRef.value) return;
-  if (!currentPlayerIds) return;
-
-  // Capture current framing before tearing down — both scenes expose
-  // the same `SceneCameraState` shape so this works across the swap.
-  const savedCam = gameInstance.getScene()?.captureCameraState();
-
-  // Cancel the polling setup interval from the previous build (if it's
-  // still running) — the new setupSceneCallbacks() call below restarts
-  // it for the fresh scene.
-  if (checkSceneInterval) {
-    clearInterval(checkSceneInterval);
-    checkSceneInterval = null;
-  }
-
-  // Tear down old scene + app; the connection and CVS are *not* owned
-  // by gameInstance so they survive. keepConnection is critical here:
-  // without it the scene's shutdown calls gameConnection.disconnect(),
-  // which clears networkManager.onStateReceived — remote clients then
-  // stop receiving snapshots permanently because we never build a new
-  // connection (we reuse the existing one for the new scene).
-  destroyGame(gameInstance, { keepConnection: true });
-  gameInstance = null;
-
-  currentRendererMode.value = newMode;
-
-  const rect = containerRef.value.getBoundingClientRect();
-  gameInstance = createGame({
-    parent: containerRef.value,
-    width: rect.width || window.innerWidth,
-    height: rect.height || window.innerHeight,
-    playerIds: currentPlayerIds,
-    localPlayerId: localPlayerId.value,
-    gameConnection: activeConnection,
-    clientViewState,
-    mapWidth: getMapSize(false).width,
-    mapHeight: getMapSize(false).height,
-    backgroundMode: false,
-    rendererMode: newMode,
-  });
-
-  // Re-wire HUD callbacks on the new scene and restore camera once it
-  // reports ready. setupSceneCallbacks polls via setInterval, so we
-  // schedule the camera restore inside the same poll loop by letting
-  // it run first (one tick) and then applying when we see the scene.
-  setupSceneCallbacks();
-  if (savedCam) {
-    // Poll briefly for the fresh scene to exist before applying — the
-    // scene instance isn't available until createGame finishes its
-    // initial ticks. Up to ~500ms of retry before giving up.
-    let attempts = 0;
-    const camTimer = setInterval(() => {
-      attempts++;
-      const scene = gameInstance?.getScene();
-      if (scene) {
-        scene.applyCameraState(savedCam);
-        clearInterval(camTimer);
-      } else if (attempts > 25) {
-        clearInterval(camTimer);
-      }
-    }, 20);
-  }
 }
 
 function setupSceneCallbacks(): void {
@@ -1891,33 +1723,6 @@ onUnmounted(() => {
             <span class="bar-label-text">PLAYER CLIENT</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </button>
-          <!--
-            Live 2D↔3D renderer toggle. Flipping this tears down the
-            current scene + renderer (Pixi for 2D, Three.js for 3D) and
-            rebuilds the other kind, reusing the existing GameConnection
-            + ClientViewState so entity state, selection, and prediction
-            don't skip a beat. Camera framing is captured and re-applied
-            across the swap. Choice persists to localStorage
-            (`rts-renderer-mode`) so a page refresh remembers it.
-          -->
-          <div class="button-group view-toggle">
-            <button
-              class="control-btn"
-              :class="{ active: currentRendererMode === '2d' }"
-              title="Switch to the Pixi 2D renderer"
-              @click="changeRendererMode('2d')"
-            >
-              2D
-            </button>
-            <button
-              class="control-btn"
-              :class="{ active: currentRendererMode === '3d' }"
-              title="Switch to the Three.js 3D renderer"
-              @click="changeRendererMode('3d')"
-            >
-              3D
-            </button>
-          </div>
         </div>
         <BarDivider />
         <div class="bar-controls">

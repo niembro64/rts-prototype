@@ -5,10 +5,6 @@ import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
 
-// '2d' → Pixi renderer, '3d' → Three.js renderer. Named RendererMode to avoid
-// colliding with the existing graphics-quality `RenderMode` in types/graphics.
-export type RendererMode = '2d' | '3d';
-
 export type GameConfig = {
   parent: HTMLElement;
   width: number;
@@ -17,44 +13,25 @@ export type GameConfig = {
   localPlayerId?: PlayerId;
   gameConnection: GameConnection;
   /** ClientViewState owned by GameCanvas so its contents (units, buildings,
-   *  prediction, selection, etc.) survive a live renderer swap without
-   *  waiting on a keyframe. On first boot the caller creates a fresh one. */
+   *  prediction, selection, etc.) survive a scene rebuild without waiting
+   *  on a keyframe. On first boot the caller creates a fresh one. */
   clientViewState: import('../game/network/ClientViewState').ClientViewState;
   mapWidth: number;
   mapHeight: number;
   backgroundMode?: boolean;
-  /** Which renderer to use. Defaults to '2d'. */
-  rendererMode?: RendererMode;
 };
 
-export type GameScene =
-  | import('../game/scenes/RtsScene').RtsScene
-  | import('../game/scenes/RtsScene3D').RtsScene3D;
+export type GameScene = import('../game/scenes/RtsScene3D').RtsScene3D;
 
-export type GameApp =
-  | import('../game/PixiApp').PixiApp
-  | import('../game/render3d/ThreeApp').ThreeApp;
+export type GameApp = import('../game/render3d/ThreeApp').ThreeApp;
 
 export type GameInstance = {
   app: GameApp;
   getScene: () => GameScene | null;
 };
 
-/**
- * Portable camera state for the live 2D↔3D renderer swap. Expressed in
- * the game's simulation coords + a single scalar zoom level so both
- * renderers can translate it into their own camera model:
- *
- *   2D (Pixi Camera)      — camera.zoom = zoom;
- *                           camera.centerOn(x, y).
- *   3D (OrbitCamera)      — orbit.setTarget(x, 0, y);
- *                           orbit.distance = baseDistance / zoom.
- *
- * Since zoom is expressed in 2D-equivalent units (1.0 = default
- * framing, 2.0 = twice as zoomed in), the 3D scene's cameraShim
- * `zoom` getter already does this conversion, so swapping between
- * renderers keeps the camera at the same apparent framing.
- */
+/** Portable camera state. Sim-space center + scalar zoom; the 3D scene's
+ *  cameraShim translates this into orbit distance / target. */
 export type SceneCameraState = {
   x: number;
   y: number;

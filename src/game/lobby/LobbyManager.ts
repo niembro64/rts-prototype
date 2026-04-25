@@ -2,7 +2,6 @@
 // Extracted from PhaserCanvas.vue to keep the component lean.
 
 import { createGame, destroyGame } from '../createGame';
-import type { RendererMode } from '../../types/game';
 import { GameServer } from '../server/GameServer';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { ClientViewState } from '../network/ClientViewState';
@@ -30,9 +29,9 @@ export type BackgroundBattleState = {
   gameInstance: GameInstance;
   server: GameServer;
   connection: LocalGameConnection;
-  /** Persistent ClientViewState — survives a live renderer swap of the
-   *  background demo so the new scene resumes from the current entity
-   *  state without waiting for a keyframe. */
+  /** Persistent ClientViewState — survives a scene rebuild so the new
+   *  scene resumes from the current entity state without waiting for a
+   *  keyframe. */
   clientViewState: ClientViewState;
 };
 
@@ -41,7 +40,6 @@ export type BackgroundBattleState = {
 export async function createBackgroundBattle(
   container: HTMLDivElement,
   ipAddress: string,
-  rendererMode: RendererMode = '2d',
 ): Promise<BackgroundBattleState> {
   const rect = container.getBoundingClientRect();
 
@@ -113,8 +111,7 @@ export async function createBackgroundBattle(
   server.start();
 
   // Background-battle CVS — owned by the returned gameInstance; destroyed
-  // when the lobby tears it down. Background demos don't support the live
-  // renderer swap, so no hoist beyond this function is needed.
+  // when the lobby tears it down.
   const clientViewState = new ClientViewState();
   const gameInstance = createGame({
     parent: container,
@@ -127,7 +124,6 @@ export async function createBackgroundBattle(
     mapWidth: getMapSize(true).width,
     mapHeight: getMapSize(true).height,
     backgroundMode: true,
-    rendererMode,
   });
 
   return { gameInstance, server, connection, clientViewState };
