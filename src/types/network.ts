@@ -1,6 +1,54 @@
 // Network types extracted from game/network/NetworkTypes.ts
 
 import type { EntityType, PlayerId, TurretRanges, TurretState } from './sim';
+
+// ── Bit-packed enum codes for the wire format ─────────────────────
+// String enums compress poorly even after msgpack — every "tracking"
+// is 8 bytes plus a length tag. These ints take 1 byte each.
+
+export const TURRET_STATE_IDLE = 0;
+export const TURRET_STATE_TRACKING = 1;
+export const TURRET_STATE_ENGAGED = 2;
+export type TurretStateCode = 0 | 1 | 2;
+
+const _TURRET_STATE_TO_CODE: Record<TurretState, TurretStateCode> = {
+  idle: TURRET_STATE_IDLE,
+  tracking: TURRET_STATE_TRACKING,
+  engaged: TURRET_STATE_ENGAGED,
+};
+const _CODE_TO_TURRET_STATE: TurretState[] = ['idle', 'tracking', 'engaged'];
+
+export function turretStateToCode(s: TurretState): TurretStateCode {
+  return _TURRET_STATE_TO_CODE[s] ?? TURRET_STATE_IDLE;
+}
+export function codeToTurretState(c: number): TurretState {
+  return _CODE_TO_TURRET_STATE[c] ?? 'idle';
+}
+
+export const ACTION_TYPE_MOVE = 0;
+export const ACTION_TYPE_PATROL = 1;
+export const ACTION_TYPE_FIGHT = 2;
+export const ACTION_TYPE_BUILD = 3;
+export const ACTION_TYPE_REPAIR = 4;
+export const ACTION_TYPE_ATTACK = 5;
+export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5;
+
+const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
+  move: ACTION_TYPE_MOVE,
+  patrol: ACTION_TYPE_PATROL,
+  fight: ACTION_TYPE_FIGHT,
+  build: ACTION_TYPE_BUILD,
+  repair: ACTION_TYPE_REPAIR,
+  attack: ACTION_TYPE_ATTACK,
+};
+const _CODE_TO_ACTION: string[] = ['move', 'patrol', 'fight', 'build', 'repair', 'attack'];
+
+export function actionTypeToCode(s: string): ActionTypeCode {
+  return _ACTION_TO_CODE[s] ?? ACTION_TYPE_MOVE;
+}
+export function codeToActionType(c: number): string {
+  return _CODE_TO_ACTION[c] ?? 'move';
+}
 import type { Command } from './commands';
 import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2, Vec3 } from './vec2';
@@ -139,7 +187,10 @@ export type NetworkServerSnapshotSprayTarget = {
 };
 
 export type NetworkServerSnapshotAction = {
-  type: string;
+  /** Bit-packed action type code (see ACTION_TYPE_* constants and
+   *  actionTypeToCode / codeToActionType helpers). String form used
+   *  to take 6-12 bytes per action; the int code is one byte. */
+  type: ActionTypeCode;
   pos?: Vec2;
   targetId?: number;
   buildingType?: string;
@@ -166,7 +217,9 @@ export type NetworkServerSnapshotTurret = {
     };
   };
   targetId?: number;
-  state: TurretState;
+  /** Bit-packed turret state code (see TURRET_STATE_* constants and
+   *  turretStateToCode / codeToTurretState helpers). */
+  state: TurretStateCode;
   currentForceFieldRange?: number;
 };
 

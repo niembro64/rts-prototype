@@ -11,6 +11,7 @@ import {
   ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
+  actionTypeToCode, turretStateToCode,
 } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 
@@ -32,13 +33,13 @@ function createPooledTurret(): NetworkServerSnapshotTurret {
       pos: { offset: { x: 0, y: 0 } },
     },
     targetId: undefined,
-    state: 'idle',
+    state: 0,
     currentForceFieldRange: undefined,
   };
 }
 
 function createPooledAction(): NetworkServerSnapshotAction {
-  return { type: '', pos: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
+  return { type: 0, pos: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
 }
 
 function createPooledWaypoint(): { pos: Vec2; type: string } {
@@ -748,7 +749,7 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
           for (let i = 0; i < count; i++) {
             const src = actions[i];
             const dst = pool.actions[i];
-            dst.type = src.type;
+            dst.type = actionTypeToCode(src.type);
             dst.pos = src.x !== undefined ? { x: src.x, y: src.y } : undefined;
             dst.targetId = src.targetId;
             dst.buildingType = src.buildingType;
@@ -786,7 +787,7 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
           t.pos.offset.x = src.offset.x;
           t.pos.offset.y = src.offset.y;
           dst.targetId = src.target ?? undefined;
-          dst.state = src.state;
+          dst.state = turretStateToCode(src.state);
           dst.currentForceFieldRange = src.forceField?.range;
         }
         u.turrets = pool.turrets;

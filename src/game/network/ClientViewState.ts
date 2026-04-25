@@ -30,6 +30,8 @@ import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_FACTORY,
+  codeToActionType,
+  codeToTurretState,
 } from '../../types/network';
 
 import { findBeamPath } from './BeamPathResolver';
@@ -473,7 +475,7 @@ export class ClientViewState {
           const na = src[i];
           if (!na.pos) continue;
           actions.push({
-            type: na.type as
+            type: codeToActionType(na.type) as
               | 'move'
               | 'patrol'
               | 'fight'
@@ -504,7 +506,7 @@ export class ClientViewState {
           i++
         ) {
           entity.turrets[i].target = su.turrets[i].targetId ?? null;
-          entity.turrets[i].state = su.turrets[i].state;
+          entity.turrets[i].state = codeToTurretState(su.turrets[i].state);
           // forceField.range is NOT snapped — dead-reckoned + drifted in applyPrediction()
         }
       }

@@ -2,6 +2,7 @@
 
 import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity } from '../NetworkManager';
+import { codeToActionType, codeToTurretState } from '../../../types/network';
 import { getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
@@ -46,7 +47,7 @@ function createUnitFromNetwork(
       const na = u.actions[i];
       if (!na.pos) continue;
       actions.push({
-        type: na.type as 'move' | 'patrol' | 'fight' | 'build' | 'repair' | 'attack',
+        type: codeToActionType(na.type) as 'move' | 'patrol' | 'fight' | 'build' | 'repair' | 'attack',
         x: na.pos.x,
         y: na.pos.y,
         targetId: na.targetId,
@@ -99,7 +100,7 @@ function createUnitFromNetwork(
           tracking: { ...t.ranges.tracking },
           engage: { ...t.ranges.engage },
         },
-        state: nw.state,
+        state: codeToTurretState(nw.state),
         rotation: t.angular.rot,
         pitch: t.angular.pitch,
         angularVelocity: t.angular.vel,
