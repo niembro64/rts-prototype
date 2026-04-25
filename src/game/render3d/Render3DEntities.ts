@@ -337,6 +337,14 @@ export class Render3DEntities {
     // first-frame initialization branch.
     this.unitInstanced.setColorAt(0, this._instColor.set(0xffffff));
     this.unitInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    // Frustum culling on an InstancedMesh uses the LOCAL geometry's
+    // bounding sphere — for our unit sphere that's a 1-radius ball at
+    // the origin. Instances live anywhere on the (up to 6000-wu) map,
+    // so the default cull would hide the whole mesh whenever the
+    // camera wasn't looking at world origin (which is most of the
+    // time). Disabling cull is cheap because hidden slots use a
+    // scale-0 matrix and contribute zero rasterized pixels.
+    this.unitInstanced.frustumCulled = false;
     // Hide every slot up front; updateUnitsInstanced fills active ones
     // each frame.
     for (let i = 0; i < Render3DEntities.LOW_INSTANCED_CAP; i++) {
