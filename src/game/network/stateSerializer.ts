@@ -8,7 +8,7 @@ import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUp
 import type { Vec2 } from '../../types/vec2';
 import type { GamePhase } from '../../types/network';
 import {
-  ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
+  ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
 } from '../../types/network';
@@ -55,6 +55,11 @@ type ShotSub = NonNullable<NetworkServerSnapshotEntity['shot']>;
 type PooledEntry = {
   entity: NetworkServerSnapshotEntity;
   unitSub: UnitSub;
+  /** Persistent velocity object the pool reuses across snapshots.
+   *  unitSub.velocity points at this on full records and is left
+   *  undefined on deltas — without a separate field we'd lose the
+   *  pooled allocation the moment we set unitSub.velocity = undefined. */
+  unitVel: { x: number; y: number; z: number };
   buildingSub: BuildingSub;
   factorySub: FactorySub;
   shotSub: ShotSub;
@@ -63,6 +68,26 @@ type PooledEntry = {
   waypoints: { pos: Vec2; type: string }[];
   buildQueue: string[];
 };
+
+/** Position quantization: round to integer world units. The renderer
+ *  clamps below 1 px anyway, the sim runs in floats, and JSON shaves
+ *  3-6 chars per number off the wire. */
+function qPos(n: number): number {
+  return Math.round(n);
+}
+
+/** Velocity quantization: 1 decimal place (0.1 wu/s). Drift integration
+ *  on the client uses this only for dead-reckoning between snapshots,
+ *  so 0.1 wu/s precision (~1 cm/s) is well below visible jitter. */
+function qVel(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/** Rotation quantization: ~0.001 rad (~0.06°). Below the threshold for
+ *  visible turret jitter and saves several chars per rotation field. */
+function qRot(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
 
 function createPooledEntry(): PooledEntry {
   const turrets: NetworkServerSnapshotTurret[] = [];
@@ -76,9 +101,13 @@ function createPooledEntry(): PooledEntry {
     unitSub: {
       unitType: '', hp: { curr: 0, max: 0 },
       collider: { scale: 0, shot: 0, push: 0 },
-      moveSpeed: 0, mass: 0, velocity: { x: 0, y: 0, z: 0 },
+      moveSpeed: 0, mass: 0,
+      // Pointer to pool.unitVel on full records; undefined on deltas.
+      // Initial value here is a placeholder overwritten on first use.
+      velocity: undefined,
       turretRotation: 0,
     },
+    unitVel: { x: 0, y: 0, z: 0 },
     buildingSub: {
       type: '', dim: { x: 0, y: 0 }, hp: { curr: 0, max: 0 },
       build: { progress: 0, complete: false },
@@ -183,7 +212,6 @@ function getPrevState(entityId: number): PrevEntityState {
 
 function getChangedFields(entity: Entity, prev: PrevEntityState): number {
   const posTh = SNAPSHOT_CONFIG.positionThreshold;
-  const velTh = SNAPSHOT_CONFIG.velocityThreshold;
   const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold;
   const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold;
 
@@ -198,10 +226,12 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
   }
 
   if (entity.unit) {
-    if (Math.abs((entity.unit.velocityX ?? 0) - prev.velocityX) > velTh ||
-        Math.abs((entity.unit.velocityY ?? 0) - prev.velocityY) > velTh) {
-      mask |= ENTITY_CHANGED_VEL;
-    }
+    // ENTITY_CHANGED_VEL is intentionally never set on deltas — velocity
+    // ships only on full keyframes / new-entity records. Between
+    // keyframes the client uses last-known velocity for dead-reckoning
+    // and snap-corrects position from each delta. Skipping velocity on
+    // deltas drops ~24 bytes (3 numbers as JSON) per moving unit per
+    // snapshot, which dominates a thousand-unit fight at 32 SPS.
     if (entity.unit.hp !== prev.hp) {
       mask |= ENTITY_CHANGED_HP;
     }
@@ -603,14 +633,16 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
 
   // Position — always set for full, only when changed for delta.
   // z is on the wire so 3D clients see altitude; 2D clients ignore it.
+  // Quantized to integer world units before going on the wire — keeps
+  // JSON encodings short without affecting render precision.
   if (isFull || (changedFields & ENTITY_CHANGED_POS)) {
-    ne.pos.x = entity.transform.x;
-    ne.pos.y = entity.transform.y;
-    ne.pos.z = entity.transform.z;
+    ne.pos.x = qPos(entity.transform.x);
+    ne.pos.y = qPos(entity.transform.y);
+    ne.pos.z = qPos(entity.transform.z);
   }
   // Rotation — always set for full, only when changed for delta
   if (isFull || (changedFields & ENTITY_CHANGED_ROT)) {
-    ne.rotation = entity.transform.rotation;
+    ne.rotation = qRot(entity.transform.rotation);
   }
 
   // Clear nested sub-objects (prevents stale data from previous frame leaking)
@@ -619,8 +651,11 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
   ne.shot = undefined;
 
   if (entity.type === 'unit' && entity.unit) {
-    // Determine which unit-specific field groups changed
-    const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
+    // Determine which unit-specific field groups changed.
+    // ENTITY_CHANGED_VEL omitted: velocity ships only on full / new-
+    // entity records, so a delta whose ONLY change was velocity is
+    // dropped entirely (no entity row sent at all).
+    const unitFieldMask = ENTITY_CHANGED_HP |
       ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS;
     const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
@@ -640,11 +675,16 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
         u.isCommander = entity.commander !== undefined ? true : undefined;
       }
 
-      // Velocity
-      if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
-        u.velocity.x = entity.unit.velocityX ?? 0;
-        u.velocity.y = entity.unit.velocityY ?? 0;
-        u.velocity.z = entity.unit.velocityZ ?? 0;
+      // Velocity ships only on full records (keyframe or new entity).
+      // On deltas u.velocity is left undefined and omitted by JSON, so
+      // a moving-only entity contributes ~24 fewer bytes per snapshot.
+      if (isFull) {
+        u.velocity = pool.unitVel;
+        u.velocity.x = qVel(entity.unit.velocityX ?? 0);
+        u.velocity.y = qVel(entity.unit.velocityY ?? 0);
+        u.velocity.z = qVel(entity.unit.velocityZ ?? 0);
+      } else {
+        u.velocity = undefined;
       }
 
       // HP

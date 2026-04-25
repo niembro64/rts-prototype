@@ -198,7 +198,12 @@ export type NetworkServerSnapshotEntity = {
     collider: { scale: number; shot: number; push: number };
     moveSpeed: number;
     mass: number;
-    velocity: Vec3;
+    /** Optional on delta snapshots — server only sends velocity on
+     *  full (keyframe / new-entity) records. Between keyframes the
+     *  client extrapolates using the last-known velocity, snap-
+     *  correcting position from each delta, so omitting velocity on
+     *  deltas saves N×8 bytes per moving unit per snapshot. */
+    velocity?: Vec3;
     turretRotation: number;
     isCommander?: boolean;
     buildTargetId?: number;

@@ -229,10 +229,17 @@ export class ClientViewState {
       if (isFull || cf! & ENTITY_CHANGED_ROT) {
         target.rotation = netEntity.rotation;
       }
+      // Velocity now ships only on full records (keyframe / new entity).
+      // On deltas the server omits it entirely and ENTITY_CHANGED_VEL is
+      // not set — fall back to the last-known velocity, snap-corrected
+      // by each delta's position.
       if (isFull || cf! & ENTITY_CHANGED_VEL) {
-        target.velocityX = netEntity.unit?.velocity.x ?? 0;
-        target.velocityY = netEntity.unit?.velocity.y ?? 0;
-        target.velocityZ = netEntity.unit?.velocity.z ?? 0;
+        const v = netEntity.unit?.velocity;
+        if (v !== undefined) {
+          target.velocityX = v.x;
+          target.velocityY = v.y;
+          target.velocityZ = v.z;
+        }
       }
       if (isFull || cf! & ENTITY_CHANGED_TURRETS) {
         const nw = netEntity.unit?.turrets;
