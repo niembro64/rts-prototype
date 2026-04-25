@@ -6,6 +6,7 @@ import { isLineShot } from '../types';
 import { getTargetRadius, getTurretMountHeight } from './combatUtils';
 import { getWeaponWorldPosition, getTransformCosSin, distance3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
+import { TARGETING_REACQUIRE_STRIDE } from '../../../config';
 
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
@@ -45,6 +46,14 @@ function isBeamUnit(entity: Entity): boolean {
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
 // PERFORMANCE: Multi-weapon units batch a single spatial query instead of per-weapon queries
 export function updateTargetingAndFiringState(world: WorldState): void {
+  // Stagger key — only this fraction of units does heavy spatial-grid
+  // re-acquisition work this tick. Per-tick state (target validation,
+  // FSM transitions, weapon position cache, priority targets) still
+  // runs for every unit so a target dying or running out of range
+  // disengages the firing weapon on the same tick.
+  const stride = Math.max(1, TARGETING_REACQUIRE_STRIDE | 0);
+  const tick = world.getTick();
+
   for (const unit of world.getUnits()) {
     if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
@@ -171,6 +180,14 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         }
       }
     }
+
+    // Stagger gate — each unit reaches the heavy reacquire passes only
+    // every Nth tick (offset by id so units stay desynced and the work
+    // spreads evenly). New / idle weapons acquire within at most one
+    // stride window (~67 ms at stride=4, 60 Hz), which is below the
+    // perceptible threshold for combat reaction. Validation already ran
+    // above so an out-of-range or dead target was cleared this tick.
+    if (stride > 1 && ((unit.id + tick) % stride) !== 0) continue;
 
     // Pre-scan: count weapons needing acquisition or re-evaluation,
     // find max range + offset for batching
