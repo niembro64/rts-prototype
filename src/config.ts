@@ -155,6 +155,11 @@ export const TURRET_HEIGHT = 16;
  *  value keeps the panel off the ground tile to avoid z-fighting. */
 export const MIRROR_BASE_Y = 2;
 
+/** Extra vertical height added above the unit's turret top when sizing
+ *  mirror panels. Keeps the panel tall enough to catch pitched beams
+ *  aimed over the chassis. Shared sim + render constant. */
+export const MIRROR_EXTRA_HEIGHT = 80;
+
 /** Universal gravity acceleration (world units / s², pulling −z).
  *  Single source of truth for every falling thing — physics engine's
  *  unit bodies, projectile ballistic integration, debris chunks,

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import { PLAYER_COLORS } from '../sim/types';
 import type { SpinConfig } from '../../config';
-import { TURRET_HEIGHT, MIRROR_BASE_Y } from '../../config';
+import { TURRET_HEIGHT, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   buildLocomotion,
@@ -281,12 +281,12 @@ export class Render3DEntities {
   private secondaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
   // Shiny PBR materials for mirror panels at MED+ LOD. metalness=1 +
-  // roughness=0.12 turns the panel into team-tinted chrome that reflects
-  // the scene's PMREM-processed RoomEnvironment cube set on the scene in
-  // ThreeApp. One material per team color (plus a neutral).
+  // near-zero roughness turns the panel into team-tinted chrome that
+  // reflects the scene's PMREM-processed RoomEnvironment cube set on the
+  // scene in ThreeApp. One material per team color (plus a neutral).
   private mirrorShinyMats = new Map<PlayerId, THREE.MeshStandardMaterial>();
   private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
-    color: 0x888888, metalness: 1.0, roughness: 0.12,
+    color: 0xcccccc, metalness: 1.0, roughness: 0.02,
   });
 
   constructor(
@@ -313,7 +313,7 @@ export class Render3DEntities {
         new THREE.MeshStandardMaterial({
           color: colors.secondary,
           metalness: 1.0,
-          roughness: 0.12,
+          roughness: 0.02,
         }),
       );
     }
@@ -983,7 +983,7 @@ export class Render3DEntities {
         if (mirrorPanels && mirrorPanels.length > 0) {
           // Panel top is the unit's body top plus the turret head so
           // the mirror is flush with the tallest point of the unit.
-          const panelTopY = bodyEntry.topY * radius + TURRET_HEIGHT;
+          const panelTopY = bodyEntry.topY * radius + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT;
           m.mirrors = this.buildMirrorMesh(group, mirrorPanels, pid, this.lod.gfx, panelTopY);
           for (const panel of m.mirrors.panels) {
             panel.userData.entityId = e.id;

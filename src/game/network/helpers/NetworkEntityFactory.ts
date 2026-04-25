@@ -6,7 +6,7 @@ import { getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
-import { MIRROR_BASE_Y, TURRET_HEIGHT } from '../../../config';
+import { MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT, TURRET_HEIGHT } from '../../../config';
 import { getBodyTopY } from '../../math/BodyDimensions';
 
 /**
@@ -129,7 +129,7 @@ function createUnitFromNetwork(
     const rendererId = bp.renderer ?? 'arachnid';
     const baseY = MIRROR_BASE_Y;
     const topY = getBodyTopY(rendererId, entity.unit!.unitRadiusCollider.scale)
-      + TURRET_HEIGHT;
+      + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT;
     for (const mount of bp.turrets) {
       const tb = getTurretBlueprint(mount.turretId);
       if (tb.mirrorPanels) {
