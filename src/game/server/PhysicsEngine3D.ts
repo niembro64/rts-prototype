@@ -92,12 +92,28 @@ export type Body3D = {
 // explosive separation — acceptable for an RTS where units jostle.
 const SPHERE_ITERATIONS = 4;
 
+// Broad-phase cell size for sphere-sphere contact checks. Two bodies
+// in the same cell or any of the 8 neighbors are pair-tested; pairs
+// further apart can't overlap as long as `radiusA + radiusB ≤
+// CONTACT_CELL_SIZE`. 100 wu comfortably covers the largest unit
+// pairings (heaviest commanders ≈ 30 wu radius). Bodies bucket by
+// CENTER (one cell each), and we de-dupe pairs by index ordering, so
+// the pair count is O(units × neighbors) ≈ O(N) rather than O(N²).
+const CONTACT_CELL_SIZE = 100;
+
 export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
   private dynamicBodies: Body3D[] = [];
   private staticBodies: Body3D[] = [];
   private mapWidth: number;
   private mapHeight: number;
+
+  // Broad-phase scratch state: cellKey → array of indices into
+  // `dynamicBodies`. Map and bucket arrays persist across calls and
+  // are cleared on each broad-phase rebuild — avoids per-step Map
+  // allocation churn.
+  private contactCells = new Map<number, number[]>();
+  private contactCellPool: number[][] = [];
 
   // Per-step accumulated force (cleared after integration). Stored
   // off-body so plain Body3D objects stay serializable.
@@ -340,6 +356,37 @@ export class PhysicsEngine3D {
     }
   }
 
+  /** Bucket every dynamic sphere into a single broad-phase cell keyed
+   *  by its center. Reused across the SPHERE_ITERATIONS sub-steps via
+   *  a single rebuild per call to resolveSphereSphereContacts; small
+   *  positional drift from the iterations is well below CONTACT_CELL_SIZE
+   *  so the buckets stay valid for all 4 sub-passes. */
+  private rebuildContactCells(): void {
+    // Recycle existing bucket arrays to avoid per-step allocations.
+    for (const bucket of this.contactCells.values()) {
+      bucket.length = 0;
+      this.contactCellPool.push(bucket);
+    }
+    this.contactCells.clear();
+    const cs = CONTACT_CELL_SIZE;
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const a = this.dynamicBodies[i];
+      if (a.shape !== 'sphere') continue;
+      const cx = Math.floor(a.x / cs);
+      const cy = Math.floor(a.y / cs);
+      // Bit-pack (cx, cy) into a single int — same encoding the
+      // sim-side SpatialGrid uses; 16-bit bias keeps negative cells
+      // legal under non-negative bit ops.
+      const key = ((cx + 32768) << 16) | (cy + 32768);
+      let bucket = this.contactCells.get(key);
+      if (!bucket) {
+        bucket = this.contactCellPool.pop() ?? [];
+        this.contactCells.set(key, bucket);
+      }
+      bucket.push(i);
+    }
+  }
+
   /** Sphere-sphere push: full 3D. Two units at the same altitude push
    *  each other horizontally exactly as the old 2D path did — because
    *  dz is zero, the contact normal lies entirely in the XY plane —
@@ -349,52 +396,79 @@ export class PhysicsEngine3D {
    *  shoved them sideways. Iterated SPHERE_ITERATIONS times per step
    *  so crowded pile-ups settle reasonably.
    *
+   *  Pair generation: a spatial-hash broad-phase keyed by sphere
+   *  center. Each body lives in its primary cell; pair tests run only
+   *  within that cell + the 8 neighbors. Pairs are de-duplicated by
+   *  index ordering (j > i), so the work is O(N) instead of the
+   *  O(N²) every-pair scan we had before — the difference shows up
+   *  immediately at a few hundred units.
+   *
    *  Projectile/laser vs unit collisions are ALSO 3D but handled
    *  outside this engine — see ProjectileCollisionHandler + DamageSystem. */
   private resolveSphereSphereContacts(): void {
-    const n = this.dynamicBodies.length;
-    for (let i = 0; i < n; i++) {
-      const a = this.dynamicBodies[i];
+    this.rebuildContactCells();
+    const cs = CONTACT_CELL_SIZE;
+    const bodies = this.dynamicBodies;
+    for (let i = 0; i < bodies.length; i++) {
+      const a = bodies[i];
       if (a.shape !== 'sphere') continue;
-      for (let j = i + 1; j < n; j++) {
-        const b = this.dynamicBodies[j];
-        if (b.shape !== 'sphere') continue;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const dz = b.z - a.z;
-        const rSum = a.radius + b.radius;
-        const distSq = dx * dx + dy * dy + dz * dz;
-        if (distSq >= rSum * rSum) continue;
-        const dist = Math.sqrt(distSq) || 1e-6;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        const nz = dz / dist;
-        const penetration = rSum - dist;
-        const wA = a.invMass / (a.invMass + b.invMass);
-        const wB = b.invMass / (a.invMass + b.invMass);
-        a.x -= nx * penetration * wA;
-        a.y -= ny * penetration * wA;
-        a.z -= nz * penetration * wA;
-        b.x += nx * penetration * wB;
-        b.y += ny * penetration * wB;
-        b.z += nz * penetration * wB;
-        // Relative velocity along the 3D contact normal.
-        const rvx = b.vx - a.vx;
-        const rvy = b.vy - a.vy;
-        const rvz = b.vz - a.vz;
-        const vDotN = rvx * nx + rvy * ny + rvz * nz;
-        if (vDotN >= 0) continue;
-        const e = Math.min(a.restitution, b.restitution);
-        const jMag = -(1 + e) * vDotN / (a.invMass + b.invMass);
-        const ix = jMag * nx;
-        const iy = jMag * ny;
-        const iz = jMag * nz;
-        a.vx -= ix * a.invMass;
-        a.vy -= iy * a.invMass;
-        a.vz -= iz * a.invMass;
-        b.vx += ix * b.invMass;
-        b.vy += iy * b.invMass;
-        b.vz += iz * b.invMass;
+      const acx = Math.floor(a.x / cs);
+      const acy = Math.floor(a.y / cs);
+      // 3×3 neighborhood (self + 8 neighbors). Two bodies that overlap
+      // must have centers within rA + rB ≤ CONTACT_CELL_SIZE of each
+      // other, so they share a cell or sit in adjacent cells.
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const key = (((acx + dx) + 32768) << 16) | ((acy + dy) + 32768);
+          const bucket = this.contactCells.get(key);
+          if (!bucket) continue;
+          for (let bi = 0; bi < bucket.length; bi++) {
+            const j = bucket[bi];
+            // Resolve each pair once: only when b's index is strictly
+            // greater than a's. Bodies sharing multiple buckets (none
+            // do here since we bucket by center) would otherwise be
+            // counted multiple times.
+            if (j <= i) continue;
+            const b = bodies[j];
+            // (b.shape === 'sphere' is implied — only spheres are bucketed.)
+            const ddx = b.x - a.x;
+            const ddy = b.y - a.y;
+            const ddz = b.z - a.z;
+            const rSum = a.radius + b.radius;
+            const distSq = ddx * ddx + ddy * ddy + ddz * ddz;
+            if (distSq >= rSum * rSum) continue;
+            const dist = Math.sqrt(distSq) || 1e-6;
+            const nx = ddx / dist;
+            const ny = ddy / dist;
+            const nz = ddz / dist;
+            const penetration = rSum - dist;
+            const wA = a.invMass / (a.invMass + b.invMass);
+            const wB = b.invMass / (a.invMass + b.invMass);
+            a.x -= nx * penetration * wA;
+            a.y -= ny * penetration * wA;
+            a.z -= nz * penetration * wA;
+            b.x += nx * penetration * wB;
+            b.y += ny * penetration * wB;
+            b.z += nz * penetration * wB;
+            // Relative velocity along the 3D contact normal.
+            const rvx = b.vx - a.vx;
+            const rvy = b.vy - a.vy;
+            const rvz = b.vz - a.vz;
+            const vDotN = rvx * nx + rvy * ny + rvz * nz;
+            if (vDotN >= 0) continue;
+            const e = Math.min(a.restitution, b.restitution);
+            const jMag = -(1 + e) * vDotN / (a.invMass + b.invMass);
+            const ix = jMag * nx;
+            const iy = jMag * ny;
+            const iz = jMag * nz;
+            a.vx -= ix * a.invMass;
+            a.vy -= iy * a.invMass;
+            a.vz -= iz * a.invMass;
+            b.vx += ix * b.invMass;
+            b.vy += iy * b.invMass;
+            b.vz += iz * b.invMass;
+          }
+        }
       }
     }
   }
