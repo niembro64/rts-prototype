@@ -52,8 +52,10 @@ export class GameServer {
   private lastSnapshotTime: number = 0;
   private keyframeRatioDisplay: number | 'ALL' | 'NONE';
 
-  // Background mode — allowed unit types for AI production & UI toggles
-  private backgroundAllowedTypes: Set<string> = new Set(BACKGROUND_UNIT_TYPES);
+  // Background mode — allowed unit types for AI production & UI toggles.
+  // Initial set comes from GameServerConfig.initialAllowedTypes when the
+  // caller restored saved demo settings; otherwise defaults to "all".
+  private backgroundAllowedTypes: Set<string>;
 
   // Snapshot listeners
   private snapshotListeners: SnapshotCallback[] = [];
@@ -121,6 +123,15 @@ export class GameServer {
     this.commandQueue = new CommandQueue();
     this.simulation = new Simulation(this.world, this.commandQueue);
     this.simulation.setPlayerIds(this.playerIds);
+
+    // Honour any saved demo-unit selection passed in by the caller —
+    // this MUST happen before spawnBackgroundUnitsStandalone so the
+    // initial spawn picks from the restricted set. Otherwise we'd
+    // create units of disallowed types and immediately wipe them via
+    // the toggle handler.
+    this.backgroundAllowedTypes = new Set(
+      config.initialAllowedTypes ?? BACKGROUND_UNIT_TYPES,
+    );
 
     // Setup simulation callbacks
     this.setupSimulationCallbacks();

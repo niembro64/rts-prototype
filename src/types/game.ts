@@ -78,6 +78,14 @@ export type GameServerConfig = {
   backgroundMode?: boolean;
   aiPlayerIds?: PlayerId[];
   maxSnapshotsPerSec?: number;
+  /** Restrict the demo battle's initial-unit spawn to this set of unit
+   *  types. When omitted the server falls back to "all background unit
+   *  types allowed" — but a caller restoring user-saved demo settings
+   *  should pass them here so the initial spawn doesn't create units
+   *  the user has deselected (which would then be wiped a tick later
+   *  by setBackgroundUnitTypeEnabled, leaving the player with far
+   *  fewer initial units than centerSpawnPerPlayer would suggest). */
+  initialAllowedTypes?: ReadonlySet<string>;
 };
 
 export type EmaConfig = {

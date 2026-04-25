@@ -50,10 +50,22 @@ export async function createBackgroundBattle(
   const demoPlayerIds: PlayerId[] = [];
   for (let i = 1; i <= DEMO_CONFIG.playerCount; i++) demoPlayerIds.push(i as PlayerId);
 
+  // Restore stored demo unit selection (fall back to config defaults).
+  // We resolve this BEFORE creating the GameServer so the constructor's
+  // initial-unit spawn picks only from the user's selected types — if
+  // we passed it through setBackgroundUnitTypeEnabled() afterwards, the
+  // toggle handler would wipe initial units of any disabled type and
+  // the player would see far fewer than centerSpawnPerPlayer.
+  const storedDemoUnits = loadStoredDemoUnits() ?? getDefaultDemoUnits();
+  const initialAllowedTypes = new Set(
+    BACKGROUND_UNIT_TYPES.filter(ut => storedDemoUnits.includes(ut)),
+  );
+
   // Create a GameServer for background mode (WASM physics)
   const server = await GameServer.create({
     playerIds: demoPlayerIds,
     backgroundMode: true,
+    initialAllowedTypes,
   });
 
   const connection = new LocalGameConnection(server);
@@ -62,13 +74,13 @@ export async function createBackgroundBattle(
   server.setKeyframeRatio(loadStoredKeyframeRatio());
   server.setIpAddress(ipAddress);
 
-  // Restore stored demo unit selection (fall back to config defaults)
-  const storedDemoUnits = loadStoredDemoUnits() ?? getDefaultDemoUnits();
+  // Tell the AI / UI layer about the same selection (the GameServer
+  // already used it for the initial spawn). Calling
+  // setBackgroundUnitTypeEnabled here is a no-op for already-enabled
+  // types and harmlessly idempotent for disabled ones — no units to
+  // wipe because the spawn path already skipped them.
   for (const ut of BACKGROUND_UNIT_TYPES) {
-    server.setBackgroundUnitTypeEnabled(
-      ut,
-      storedDemoUnits.includes(ut),
-    );
+    server.setBackgroundUnitTypeEnabled(ut, storedDemoUnits.includes(ut));
   }
 
   // Restore stored demo cap
