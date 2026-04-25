@@ -55,17 +55,12 @@ import type { PlayerId } from '@/types/sim';
 
 export type PlayerColors = { primary: number; secondary: number; name: string };
 
-// Curated palette for the first six players — balanced ~65% saturation
-// and ~70% lightness for a cohesive soft look. Player 1 = red is the
-// canonical "host" color; later players get the iconic blue/yellow/etc.
-const HARDCODED_PLAYER_COLORS: ReadonlyArray<PlayerColors> = [
-  { primary: 0xe05858, secondary: 0xb84040, name: 'Red' },      // Soft coral red
-  { primary: 0x5888e0, secondary: 0x4070b8, name: 'Blue' },     // Soft sky blue
-  { primary: 0xd8c050, secondary: 0xb0a040, name: 'Yellow' },   // Soft gold yellow
-  { primary: 0x58c058, secondary: 0x40a040, name: 'Green' },    // Soft grass green
-  { primary: 0xa068d0, secondary: 0x8050b0, name: 'Purple' },   // Soft lavender purple
-  { primary: 0xd88050, secondary: 0xb06840, name: 'Orange' },   // Soft peach orange
-];
+// Number of total players currently in the lobby / game. Drives the
+// evenly-spaced hue distribution: with N players slot k lands at hue
+// ((k − 1) / N) × 360°, so slot 1 is always red (0°) and slot 1 +
+// floor(N/2) sits exactly opposite on the color wheel — "red ↔
+// anti-red". Set via setPlayerCountForColors() at game/lobby init.
+let _playerCountForColors = 6;
 
 // Slot 1 of the curated palette = Red, and we want the LOCAL CLIENT
 // player to always render in red regardless of which raw pid the
@@ -85,6 +80,18 @@ export function setLocalPlayerForColors(playerId: PlayerId | undefined): void {
   if (_localPlayerForColors === playerId) return;
   _localPlayerForColors = playerId;
   // Old cache reflected the previous remapping — clear it.
+  _playerColorCache.clear();
+}
+
+/** Tell the color helpers how many total players are in the game so
+ *  the hue wheel divides evenly. With N players, hues land at
+ *  k × 360°/N for k = 0..N−1: slot 1 → 0° (Red), slot 1 + floor(N/2)
+ *  → 180° (Cyan, "anti-red"). Calling with a new count invalidates
+ *  the slot cache. */
+export function setPlayerCountForColors(count: number): void {
+  const next = Math.max(1, Math.floor(count));
+  if (_playerCountForColors === next) return;
+  _playerCountForColors = next;
   _playerColorCache.clear();
 }
 
@@ -121,29 +128,27 @@ function hslToHex(h: number, s: number, l: number): number {
 }
 
 /** Resolve a player's color triplet (primary / secondary / display name).
- *  First six SLOTS use the hardcoded curated palette to keep the iconic
- *  team look (red / blue / yellow / green / purple / orange). Beyond
- *  six, slots are spaced via the golden angle (~137.5°) so consecutive
- *  slots land far apart on the color wheel — any number of teams stays
- *  visually distinct without clustering. The pid → slot remapping
- *  (see setLocalPlayerForColors) puts the local viewer's team at slot
- *  1 = Red so RED is always "you". Cached by slot so repeat lookups
- *  are free. */
+ *  Hues are evenly distributed around the color wheel based on the
+ *  total player count: with N players, slot k is at hue
+ *  ((k − 1) / N) × 360°. Slot 1 = Red (always, regardless of N), and
+ *  slot 1 + floor(N/2) sits at "anti-red" (180° = Cyan). Saturation
+ *  and lightness are fixed for a cohesive palette. The pid → slot
+ *  remapping (see setLocalPlayerForColors) puts the local viewer at
+ *  slot 1 so RED is always "you". Cached by slot. */
 export function getPlayerColors(playerId: PlayerId): PlayerColors {
   const slot = pidToSlot(playerId);
   let cached = _playerColorCache.get(slot);
   if (cached) return cached;
-  if (slot >= 1 && slot <= HARDCODED_PLAYER_COLORS.length) {
-    cached = HARDCODED_PLAYER_COLORS[slot - 1];
-  } else {
-    // Golden-angle hue stepping. (slot − 1) so slot=1 lands at hue 0.
-    const hue = ((slot - 1) * 137.50776405003785) % 360;
-    cached = {
-      primary: hslToHex(hue, 0.65, 0.62),
-      secondary: hslToHex(hue, 0.55, 0.45),
-      name: `Team ${playerId}`,
-    };
-  }
+  // Use the larger of "configured player count" and "this slot index"
+  // so an out-of-range pid still gets a valid (if slightly off-circle)
+  // hue without divide-by-zero or wrap weirdness.
+  const total = Math.max(_playerCountForColors, slot);
+  const hue = ((slot - 1) / total) * 360;
+  cached = {
+    primary: hslToHex(hue, 0.65, 0.62),
+    secondary: hslToHex(hue, 0.55, 0.45),
+    name: `Team ${playerId}`,
+  };
   _playerColorCache.set(slot, cached);
   return cached;
 }

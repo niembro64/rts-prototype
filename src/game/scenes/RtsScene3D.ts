@@ -52,7 +52,7 @@ import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
-import { getPlayerPrimaryColor, setLocalPlayerForColors } from '../sim/types';
+import { getPlayerPrimaryColor, setLocalPlayerForColors, setPlayerCountForColors } from '../sim/types';
 import type {
   Entity,
   EntityId,
@@ -252,9 +252,11 @@ export class RtsScene3D {
     this.threeApp = threeApp;
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
-    // Make Red always the local viewer's color, regardless of which
-    // raw pid the server assigned them. Other teams slot into 2..N
-    // around the curated palette and the golden-angle generator.
+    // Pin the color wheel: Red is always the local viewer, and the
+    // remaining slots are evenly spaced around the hue circle based
+    // on the lobby's player count. Slot 1 + floor(N/2) sits at
+    // anti-red (180° = Cyan) so 2-team matches read as Red ↔ Cyan.
+    setPlayerCountForColors(this.playerIds.length);
     setLocalPlayerForColors(this.localPlayerId);
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;

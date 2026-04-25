@@ -6,6 +6,7 @@ import { InputManager, type InputContext } from '../input/inputBindings';
 import {
   PLAYER_COLORS,
   setLocalPlayerForColors,
+  setPlayerCountForColors,
   type Entity,
   type PlayerId,
   type EntityId,
@@ -201,7 +202,9 @@ export class RtsScene extends SceneShim {
       this.playerIds = config.playerIds;
       this.backgroundMode = config.backgroundMode;
       this.gameConnection = config.gameConnection;
-      // Local viewer's team always renders Red regardless of pid.
+      // Pin the color wheel for this lobby: N evenly-spaced hues with
+      // Red always at slot 1 (= the local viewer).
+      setPlayerCountForColors(this.playerIds.length);
       setLocalPlayerForColors(this.localPlayerId);
       // ClientViewState is hoisted up to GameCanvas so its state (entities,
       // prediction, selection) survives a live renderer swap. On initial
