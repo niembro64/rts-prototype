@@ -13,6 +13,10 @@ export class EntityCacheManager {
    *  ~few percent of units that actually fire beams instead of scanning
    *  every unit's turrets every tick. */
   private cachedBeamUnits: Entity[] = [];
+  /** Units with mirror panels (e.g. Loris). Used by the per-projectile
+   *  panel-impact check so it doesn't scan every unit looking for a
+   *  rare attribute. */
+  private cachedMirrorUnits: Entity[] = [];
   private cachedAll: Entity[] = [];
   private dirty: boolean = true;
 
@@ -28,6 +32,7 @@ export class EntityCacheManager {
     this.cachedProjectiles.length = 0;
     this.cachedForceFieldUnits.length = 0;
     this.cachedBeamUnits.length = 0;
+    this.cachedMirrorUnits.length = 0;
     this.cachedAll.length = 0;
 
     for (const entity of entities.values()) {
@@ -46,6 +51,9 @@ export class EntityCacheManager {
             }
             if (hasForceField) this.cachedForceFieldUnits.push(entity);
             if (hasBeam) this.cachedBeamUnits.push(entity);
+          }
+          if (entity.unit?.mirrorPanels && entity.unit.mirrorPanels.length > 0) {
+            this.cachedMirrorUnits.push(entity);
           }
           break;
         case 'building':
@@ -78,6 +86,10 @@ export class EntityCacheManager {
 
   getBeamUnits(): Entity[] {
     return this.cachedBeamUnits;
+  }
+
+  getMirrorUnits(): Entity[] {
+    return this.cachedMirrorUnits;
   }
 
   getAll(): Entity[] {

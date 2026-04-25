@@ -246,7 +246,11 @@ export function checkProjectileCollisions(
       const curZ = projEntity.transform.z;
       let bestT = Infinity;
       let bestX = 0, bestY = 0, bestZ = 0;
-      for (const u of world.getUnits()) {
+      // Iterate ONLY units with mirror panels (cached subset on the
+      // world). Mirror panels are rare — without this filter every
+      // projectile this tick scanned every unit looking for a
+      // typically-absent attribute.
+      for (const u of world.getMirrorUnits()) {
         if (u.id === proj.sourceEntityId) continue;
         if (!u.unit || u.unit.hp <= 0) continue;
         const panels = u.unit.mirrorPanels;
