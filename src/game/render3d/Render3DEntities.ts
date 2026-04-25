@@ -1066,11 +1066,18 @@ export class Render3DEntities {
       // Per-turret placement. Turret offset is chassis-local in sim coords
       // (x, y) which map to (x, z) in three. Root Y sits at the top of the
       // chassis; the head + barrels extend upward from there inside the root.
+      // On mirror-host units (e.g. Loris) turret[0] IS the mirror — any
+      // shooting turrets after it sit on top of the mirror stack, matching
+      // getTurretMountHeight() on the sim side.
       const spinState = this.barrelSpins.get(e.id);
+      const unitHasMirrorsHere = (e.unit?.mirrorPanels?.length ?? 0) > 0;
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
-        tm.root.position.set(t.offset.x, bodyTopY, t.offset.y);
+        const turretMountY = unitHasMirrorsHere && i > 0
+          ? bodyTopY + MIRROR_EXTRA_HEIGHT
+          : bodyTopY;
+        tm.root.position.set(t.offset.x, turretMountY, t.offset.y);
         // Turret's world firing direction = t.rotation. Parent group is already
         // rotated by -chassis.rotation, so we compensate: child local Y rot =
         // -(t.rotation - chassis.rotation), which makes local +X point in the

@@ -4,6 +4,7 @@ import type { Entity } from '../types';
 import { distance, normalizeAngle, magnitude, getWeaponWorldPosition } from '../../math';
 import { getMuzzleHeightAboveGround } from '../../math/BodyDimensions';
 import { getUnitBlueprint } from '../blueprints';
+import { MIRROR_EXTRA_HEIGHT } from '../../../config';
 
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
@@ -47,6 +48,17 @@ export function getUnitMuzzleHeight(unit: Entity): number {
   try { renderer = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
   catch { /* keep fallback */ }
   return getMuzzleHeightAboveGround(renderer, unitRadius);
+}
+
+// Per-turret mount height. On mirror-host units (e.g. Loris) the
+// projectile turret sits on top of the mirror stack: turret index 0 is
+// the mirror host, higher indices get lifted by MIRROR_EXTRA_HEIGHT so
+// their barrels clear the reflector panels.
+export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
+  const base = getUnitMuzzleHeight(unit);
+  const hasMirrors = (unit.unit?.mirrorPanels?.length ?? 0) > 0;
+  if (hasMirrors && turretIndex > 0) return base + MIRROR_EXTRA_HEIGHT;
+  return base;
 }
 
 // Get angle to face based on movement (or body direction if stationary)

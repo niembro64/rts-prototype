@@ -9,7 +9,7 @@ import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } 
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY } from '../../../config';
-import { resolveWeaponWorldPos, getUnitMuzzleHeight } from './combatUtils';
+import { resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { spatialGrid } from '../SpatialGrid';
 
@@ -174,7 +174,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // below so the muzzle-flash visual and audio come out of the
       // exact barrel the projectile did. `muzzleAboveGround` here is
       // still the shared barrel-pivot altitude everything derives from.
-      const muzzleAboveGround = getUnitMuzzleHeight(unit);
+      const muzzleAboveGround = getTurretMountHeight(unit, weaponIndex);
 
       // Fire the weapon along the turret's full 3D aim (yaw + pitch).
       const turretAngle = weapon.rotation;
@@ -585,7 +585,7 @@ export function updateProjectiles(
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
         const beamWP = resolveWeaponWorldPos(weapon, source.transform.x, source.transform.y, srcCos, srcSin);
         const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
-        const mountZ = unitGroundZ + getUnitMuzzleHeight(source);
+        const mountZ = unitGroundZ + getTurretMountHeight(source, weaponIndex);
         const tip = getBarrelTip(
           beamWP.x, beamWP.y, mountZ,
           turretAngle, turretPitch,

@@ -5,7 +5,7 @@ import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitC
 import type { Entity, UnitAction } from './types';
 import type { SimEvent } from './combat';
 import { magnitude, getWeaponWorldPosition, getTransformCosSin, getBarrelTip } from '../math';
-import { getUnitMuzzleHeight } from './combat/combatUtils';
+import { getTurretMountHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 
@@ -242,7 +242,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // renderer draws.
   const commanderGroundZ = commander.transform.z -
     (commander.unit?.unitRadiusCollider.push ?? 0);
-  const mountZ = commanderGroundZ + getUnitMuzzleHeight(commander);
+  const mountZ = commanderGroundZ + getTurretMountHeight(commander, dgunIdx);
   const tip = getBarrelTip(
     weaponPos.x, weaponPos.y, mountZ,
     fireAngle, dgunTurret.pitch,

@@ -249,9 +249,13 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: 0.45, release: 0.5 },
     },
     color: 0xffffff,
+    // V-shape reflector. The panels meet exactly at the inner apex when
+    // width = 2√2 · |offsetY| (for 45° panels): each panel's inner corner
+    // lands on (offsetX - |offsetY|, 0). Outer tips sit at
+    // (offsetX + |offsetY|, ±2·|offsetY|).
     mirrorPanels: [
-      { width: 30, height: 4, offsetX: 20, offsetY: 10, angle: -Math.PI / 4 },
-      { width: 30, height: 4, offsetX: 20, offsetY: -10, angle: Math.PI / 4 },
+      { width: 16 * Math.SQRT2, height: 4, offsetX: 18, offsetY: 8, angle: -Math.PI / 4 },
+      { width: 16 * Math.SQRT2, height: 4, offsetX: 18, offsetY: -8, angle: Math.PI / 4 },
     ],
   },
   ...generateBeamTurrets(),

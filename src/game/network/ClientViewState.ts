@@ -20,7 +20,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig } from '../sim/turretConfigs';
-import { getUnitMuzzleHeight } from '../sim/combat/combatUtils';
+import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import { getBarrelTip } from '../math';
 import {
   ENTITY_CHANGED_POS,
@@ -704,7 +704,7 @@ export class ClientViewState {
               weapon.offset.y,
             );
             const unitGroundZ = source.transform.z - source.unit!.unitRadiusCollider.push;
-            const mountZ = unitGroundZ + getUnitMuzzleHeight(source);
+            const mountZ = unitGroundZ + getTurretMountHeight(source, weaponIndex);
             const tip = getBarrelTip(
               wp.x, wp.y, mountZ,
               turretAngle, turretPitch,
@@ -994,7 +994,7 @@ export class ClientViewState {
           weapon.offset.y,
         );
         const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
-        const mountZ = unitGroundZ + getUnitMuzzleHeight(source);
+        const mountZ = unitGroundZ + getTurretMountHeight(source, spawn.turretIndex);
         const tip = getBarrelTip(
           wp.x, wp.y, mountZ,
           weapon.rotation, weapon.pitch,
