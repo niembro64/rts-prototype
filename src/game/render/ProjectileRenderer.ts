@@ -5,7 +5,7 @@ import type { Entity, EntityId } from '../sim/types';
 import { isLineShot } from '../sim/types';
 import type { BeamRandomOffsets, ProjectileTrail } from './types';
 import { COLORS } from './types';
-import { getPlayerColor, getProjectileColor } from './helpers';
+import { getProjectileColor } from './helpers';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ProjectileStyle } from '@/types/graphics';
 
@@ -52,11 +52,10 @@ export function renderProjectile(
 ): void {
   if (!entity.projectile) return;
 
-  const { transform, projectile, ownership } = entity;
+  const { transform, projectile } = entity;
   const { x, y } = transform;
   const config = projectile.config;
-  const baseColor = getPlayerColor(ownership?.playerId);
-  const color = getProjectileColor(baseColor);
+  const color = getProjectileColor();
 
   if (projectile.projectileType === 'beam' || projectile.projectileType === 'laser') {
     renderBeam(

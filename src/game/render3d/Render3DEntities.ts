@@ -198,6 +198,11 @@ export class Render3DEntities {
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
+  // White projectile mat — team-agnostic so any shot reads as "can hit
+  // anyone". Shooter identity comes from the turret/barrel and impact
+  // effects, not the projectile body. Matches the 2D getProjectileColor
+  // override.
+  private projectileMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -1152,15 +1157,11 @@ export class Render3DEntities {
       // Projectile shots have collision.radius
       let radius = 4;
       if (shot && shot.type === 'projectile') radius = shot.collision.radius;
-      const pid = e.projectile?.ownerId;
-
       let mesh = this.projectileMeshes.get(e.id);
       if (!mesh) {
-        mesh = new THREE.Mesh(this.projectileGeom, this.getSecondaryMat(pid));
+        mesh = new THREE.Mesh(this.projectileGeom, this.projectileMat);
         this.world.add(mesh);
         this.projectileMeshes.set(e.id, mesh);
-      } else {
-        mesh.material = this.getSecondaryMat(pid);
       }
 
       // Projectile altitude is authoritative sim state (arcs through
@@ -1311,6 +1312,7 @@ export class Render3DEntities {
     this.turretHeadGeom.dispose();
     this.barrelGeom.dispose();
     this.projectileGeom.dispose();
+    this.projectileMat.dispose();
     this.buildingGeom.dispose();
     this.ringGeom.dispose();
     this.radiusSphereGeom.dispose();

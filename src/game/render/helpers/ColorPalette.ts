@@ -68,10 +68,13 @@ export function tintColor(color: number, amount: number): number {
 }
 
 /**
- * Get projectile color (bright version of base color for visibility)
+ * Projectile color — always white so the visual reads as
+ * team-agnostic (any projectile can hit anyone). The shooter's team
+ * identity comes through the turret/barrel and impact effects, not
+ * through the projectile body itself.
  */
-export function getProjectileColor(baseColor: number): number {
-  return getPlayerColorLight(baseColor);
+export function getProjectileColor(): number {
+  return 0xffffff;
 }
 
 /**
