@@ -91,9 +91,19 @@ export function solveMirrorAim(
       : unitGroundZ;
     const panelOffsetX = panels.length > 0 ? panels[0].offsetX : 0;
 
-    // Victim selection — nearest enemy passing the same-side test.
-    // Seeded with the mirror's previous-tick panel pose; the bisector
-    // iteration below refines P with the freshly solved yaw.
+    // P (panel center) is computed below as
+    //   P = weaponMount + offsetX · (cos α, sin α)
+    // where α is the solved bisector yaw. This matches the sim's
+    // panel-center formula
+    //   P_sim = unitCenter + offsetX · (cos mirrorRot, sin mirrorRot)
+    //         + offsetY · (-sin mirrorRot, cos mirrorRot)
+    // ONLY when (a) the mirror panel's blueprint offsetY is 0 (panel
+    // sits on the turret's forward axis, no lateral shift) AND
+    // (b) the mirror turret itself is mounted at chassis-local (0, 0).
+    // The current Loris blueprint satisfies both. If a future mirror
+    // turret is mounted off-center on the chassis, weaponMount diverges
+    // from unitCenter and the bisector P would track the turret instead
+    // of the actual panel — a small mismatch but worth knowing about.
     const seedPx = weaponX + Math.cos(weapon.rotation) * panelOffsetX;
     const seedPy = weaponY + Math.sin(weapon.rotation) * panelOffsetX;
     const sSeedX = eTip.x - seedPx;
