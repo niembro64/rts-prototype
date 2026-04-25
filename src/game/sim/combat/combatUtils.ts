@@ -4,7 +4,7 @@ import type { Entity } from '../types';
 import { distance, normalizeAngle, magnitude, getWeaponWorldPosition } from '../../math';
 import { getMuzzleHeightAboveGround } from '../../math/BodyDimensions';
 import { getUnitBlueprint } from '../blueprints';
-import { MIRROR_EXTRA_HEIGHT } from '../../../config';
+import { MIRROR_EXTRA_HEIGHT, TURRET_HEIGHT } from '../../../config';
 
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
@@ -51,13 +51,17 @@ export function getUnitMuzzleHeight(unit: Entity): number {
 }
 
 // Per-turret mount height. On mirror-host units (e.g. Loris) the
-// projectile turret sits on top of the mirror stack: turret index 0 is
-// the mirror host, higher indices get lifted by MIRROR_EXTRA_HEIGHT so
-// their barrels clear the reflector panels.
+// projectile turret sits ON TOP OF the mirror stack. The mirror panel's
+// top is at bodyTopY + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT, so the
+// turret's root (bottom of its head) should rest there, making the head
+// center sit half a turret height above that. Lift above the default
+// muzzle (which is bodyTopY + TURRET_HEIGHT/2) = TURRET_HEIGHT +
+// MIRROR_EXTRA_HEIGHT.
+const MIRROR_TURRET_LIFT = MIRROR_EXTRA_HEIGHT + TURRET_HEIGHT;
 export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
   const base = getUnitMuzzleHeight(unit);
   const hasMirrors = (unit.unit?.mirrorPanels?.length ?? 0) > 0;
-  if (hasMirrors && turretIndex > 0) return base + MIRROR_EXTRA_HEIGHT;
+  if (hasMirrors && turretIndex > 0) return base + MIRROR_TURRET_LIFT;
   return base;
 }
 

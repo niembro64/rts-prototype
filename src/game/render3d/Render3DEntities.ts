@@ -89,27 +89,10 @@ type TurretMesh = {
   };
 };
 
-/** One animated sparkle (glint) riding the face of a mirror panel. Travels
- *  along the panel's length axis sinusoidally; the `phase` offset is
- *  per-panel so adjacent panels sparkle out-of-sync. */
-type MirrorGlint = {
-  mesh: THREE.Mesh;
-  material: THREE.MeshBasicMaterial;
-  halfWidth: number;
-  halfHeight: number;
-  phase: number;
-  /** 'primary' = bright, rides the front face (MED+).
-   *  'secondary' = dimmer, rides the back face (MAX only). */
-  variant: 'primary' | 'secondary';
-};
-
 type MirrorMesh = {
   /** Rotates with the turret (children of this rotate in turret frame). */
   root: THREE.Group;
   panels: THREE.Mesh[];
-  /** Sparkle meshes that pulse+travel along the panel edges. Empty below
-   *  MID LOD; one entry per panel at MID+; two per panel at MAX. */
-  glints: MirrorGlint[];
 };
 
 type EntityMesh = {
@@ -164,8 +147,8 @@ export class Render3DEntities {
   private clientViewState: ClientViewState;
   /** Visibility scope (RENDER: WIN/PAD/ALL). Each per-entity update
    *  loop early-outs when the entity is outside this rect — skipping
-   *  transform writes, locomotion IK, turret placement, mirror glint
-   *  animation, etc. Three.js still handles GPU-side culling for the
+   *  transform writes, locomotion IK, turret placement, etc.
+   *  Three.js still handles GPU-side culling for the
    *  meshes themselves; this guards the CPU-side setup. */
   private scope: ViewportFootprint;
 
@@ -218,25 +201,6 @@ export class Render3DEntities {
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
-  // Shared geometry + additive-blended white materials for mirror sparkles.
-  // Primary glint is brighter and larger than the secondary (MAX-only) one.
-  // AdditiveBlending + depthWrite:false sells the "bright point of light"
-  // read over the darker mirror panel behind it.
-  private glintGeom = new THREE.SphereGeometry(1, 10, 8);
-  private glintMatPrimary = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.8,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  private glintMatSecondary = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.35,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
   // Thin ring for the selection indicator (flat, sits just above the ground plane)
   private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
   // Unit-radius indicator wireframe spheres (SCAL/SHOT/PUSH). Unit
@@ -280,13 +244,13 @@ export class Render3DEntities {
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private secondaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
-  // Shiny PBR materials for mirror panels at MED+ LOD. metalness=1 +
-  // near-zero roughness turns the panel into team-tinted chrome that
-  // reflects the scene's PMREM-processed RoomEnvironment cube set on the
-  // scene in ThreeApp. One material per team color (plus a neutral).
+  // Super-shiny PBR materials for mirror panels. metalness=1 + near-zero
+  // roughness turns the panel into team-tinted chrome that reflects the
+  // scene's PMREM-processed RoomEnvironment cube set on the scene in
+  // ThreeApp. One material per team color (plus a neutral).
   private mirrorShinyMats = new Map<PlayerId, THREE.MeshStandardMaterial>();
   private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
-    color: 0xcccccc, metalness: 1.0, roughness: 0.02,
+    color: 0xdddddd, metalness: 1.0, roughness: 0.0,
   });
 
   constructor(
@@ -313,7 +277,7 @@ export class Render3DEntities {
         new THREE.MeshStandardMaterial({
           color: colors.secondary,
           metalness: 1.0,
-          roughness: 0.02,
+          roughness: 0.0,
         }),
       );
     }
@@ -524,22 +488,13 @@ export class Render3DEntities {
     const root = new THREE.Group();
     parent.add(root);
     const meshes: THREE.Mesh[] = [];
-    const glints: MirrorGlint[] = [];
-    // Panel extends from MIRROR_BASE_Y up to the unit's turret top
-    // (body top + TURRET_HEIGHT). Per-unit now that body heights vary.
     const mirrorHeight = Math.max(panelTopY - MIRROR_BASE_Y, 1);
 
-    // Panel material tier:
-    //   barrelSpin = false → Lambert secondary (flat team color).
-    //   barrelSpin = true  → PBR team-chrome (metalness=1, roughness≈0.12)
-    //                        that reflects scene.environment (PMREM cube).
-    // Sparkle gating reuses the same LOD flags:
-    //   barrelSpin = true  → primary glint on the front face.
-    //   beamGlow   = true  → dimmer secondary glint on the back face.
-    const shiny = gfx.barrelSpin;
-    const mat = shiny ? this.getMirrorShinyMat(pid) : this.getSecondaryMat(pid);
-    const wantPrimary = gfx.barrelSpin;
-    const wantSecondary = gfx.beamGlow;
+    // Mirrors are always the super-shiny PBR chrome material — no LOD
+    // downgrade to flat Lambert, and no orbital sparkle meshes; the
+    // near-zero-roughness reflection IS the shine.
+    void gfx;
+    const mat = this.getMirrorShinyMat(pid);
 
     for (let i = 0; i < panels.length; i++) {
       const p = panels[i];
@@ -553,52 +508,8 @@ export class Render3DEntities {
       m.position.set(p.offsetX, MIRROR_BASE_Y + mirrorHeight / 2, p.offsetY);
       root.add(m);
       meshes.push(m);
-
-      if (!wantPrimary) continue;
-
-      // A glint mesh sits in its own UNSCALED group that matches the
-      // panel's position + yaw. That way its sphere stays round (no
-      // stretch from the panel's anisotropic scale) while still using
-      // panel-local coordinates for the traveling animation.
-      const glintGroup = new THREE.Group();
-      glintGroup.position.copy(m.position);
-      glintGroup.rotation.y = m.rotation.y;
-      root.add(glintGroup);
-
-      // Sphere radius in world units — scaled off mirror height so it
-      // stays proportional to unit silhouette.
-      const glintR = mirrorHeight * 0.05;
-
-      const primary = new THREE.Mesh(this.glintGeom, this.glintMatPrimary);
-      primary.scale.setScalar(glintR);
-      glintGroup.add(primary);
-      glints.push({
-        mesh: primary,
-        material: this.glintMatPrimary,
-        halfWidth: p.halfWidth,
-        halfHeight: p.halfHeight,
-        // 2.1 rad per panel is the same offset 2D LorisRenderer uses —
-        // adjacent panels sparkle out of sync.
-        phase: i * 2.1,
-        variant: 'primary',
-      });
-
-      if (wantSecondary) {
-        const secondary = new THREE.Mesh(this.glintGeom, this.glintMatSecondary);
-        secondary.scale.setScalar(glintR * 0.85);
-        glintGroup.add(secondary);
-        glints.push({
-          mesh: secondary,
-          material: this.glintMatSecondary,
-          halfWidth: p.halfWidth,
-          halfHeight: p.halfHeight,
-          // Offset +1.8 rad behind the primary (same as 2D).
-          phase: i * 2.1 + 1.8,
-          variant: 'secondary',
-        });
-      }
     }
-    return { root, panels: meshes, glints };
+    return { root, panels: meshes };
   }
 
   private getPrimaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
@@ -1074,8 +985,11 @@ export class Render3DEntities {
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
+        // Non-mirror turrets on mirror-host units sit ON TOP of the
+        // mirror panel stack: root Y = mirror panel top in chassis-local
+        // coords = bodyTopY + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT.
         const turretMountY = unitHasMirrorsHere && i > 0
-          ? bodyTopY + MIRROR_EXTRA_HEIGHT
+          ? bodyTopY + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT
           : bodyTopY;
         tm.root.position.set(t.offset.x, turretMountY, t.offset.y);
         // Turret's world firing direction = t.rotation. Parent group is already
@@ -1103,21 +1017,6 @@ export class Render3DEntities {
       if (m.mirrors) {
         const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
         m.mirrors.root.rotation.y = -(mirrorRot - e.transform.rotation);
-        // Sparkle animation — travel each glint along its panel's edge axis
-        // and pulse its opacity. Travel rate + pulse rate + phase offsets
-        // mirror the 2D LorisRenderer's sparkle math.
-        if (m.mirrors.glints.length > 0) {
-          const tSec = this._lastSpinMs / 1000;
-          for (const g of m.mirrors.glints) {
-            const travel = Math.sin(tSec * 2.5 + g.phase) * 0.5 + 0.5;
-            const localX = -g.halfWidth + travel * g.halfWidth * 2;
-            // Primary rides the front face (+Z), secondary rides the back.
-            const faceZ = g.variant === 'primary'
-              ? g.halfHeight * 1.05
-              : -g.halfHeight * 1.05;
-            g.mesh.position.set(localX, 0, faceZ);
-          }
-        }
       }
 
       // Locomotion: spin tread wheels per velocity; wheels/legs are static.
@@ -1427,9 +1326,6 @@ export class Render3DEntities {
     this.projMatPrimary.dispose();
     this.projMatSecondary.dispose();
     this.mirrorGeom.dispose();
-    this.glintGeom.dispose();
-    this.glintMatPrimary.dispose();
-    this.glintMatSecondary.dispose();
     for (const m of this.mirrorShinyMats.values()) m.dispose();
     this.mirrorShinyMats.clear();
     this.mirrorShinyNeutralMat.dispose();

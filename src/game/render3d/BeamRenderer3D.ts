@@ -21,18 +21,18 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 // did pre-3D, rather than snapping to 0.
 const SHOT_HEIGHT = 28 + 16 / 2;
 
-// Cylinder radius is the sim's `shot.radius` (= shot.width / 2), floored so a
-// very-thin beam isn't invisible. Matches TurretRenderer.ts which draws beams
-// at `shot.width` pixels thick.
-const BEAM_MIN_RADIUS = 0.75;
-// Matches the 2D ProjectileRenderer aesthetic: beams are white lines at
-// low alpha — the team's identity shows through the turret / hit halo,
-// not through the beam color itself. 2D uses white @ alpha=0.33; 3D is
-// a volumetric cylinder so we need higher per-pixel alpha to read as a
-// glowing bar rather than a ghost. Tuned by eye: lasers slightly
-// brighter than plain beams to keep the existing "laser = hotter" feel.
-const BEAM_OPACITY = 0.55;
-const LASER_OPACITY_MAX = 0.7;
+// Cylinder radius is the sim's `shot.radius` (= shot.width / 2), scaled
+// down and floored so a very-thin beam still renders as a visible line.
+// BEAM_RADIUS_SCALE drops the cylinder thickness vs. the sim's 2D line
+// width — the 3D cylinder reads as chunkier than the 2D pixel stroke,
+// so we under-sample radius to keep beams looking crisp.
+const BEAM_MIN_RADIUS = 0.35;
+const BEAM_RADIUS_SCALE = 0.55;
+// Beams are white lines at low alpha — team identity comes from the
+// turret / impact context, not the beam itself. Tuned by eye: lasers
+// slightly brighter than plain beams to keep the "laser = hotter" feel.
+const BEAM_OPACITY = 0.28;
+const LASER_OPACITY_MAX = 0.4;
 const BEAM_COLOR = 0xffffff;
 
 type BeamMat = {
@@ -161,7 +161,7 @@ export class BeamRenderer3D {
       // directly as the cylinder scale makes the diameter = shot.width.
       let cylRadius = BEAM_MIN_RADIUS;
       if (shot && (shot.type === 'beam' || shot.type === 'laser')) {
-        cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius);
+        cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE);
       }
       const material = this.getMaterial(proj.ownerId, pt);
 
