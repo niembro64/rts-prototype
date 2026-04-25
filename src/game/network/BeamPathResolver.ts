@@ -229,6 +229,7 @@ function findBeamSegmentHit(
       _segHit.isMirror = false;
       _segHit.normalX = 0;
       _segHit.normalY = 0;
+      _segHit.normalZ = 0;
       _segHit.panelIndex = -1;
     }
   }

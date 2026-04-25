@@ -304,7 +304,7 @@ export class DamageSystem {
           _segHit.z = startZ + t * dz;
           _segHit.entityId = unit.id;
           _segHit.isMirror = false;
-          _segHit.normalX = 0; _segHit.normalY = 0;
+          _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
           _segHit.panelIndex = -1;
         }
       }
@@ -336,7 +336,7 @@ export class DamageSystem {
         _segHit.z = startZ + t * dz;
         _segHit.entityId = building.id;
         _segHit.isMirror = false;
-        _segHit.normalX = 0; _segHit.normalY = 0;
+        _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
         _segHit.panelIndex = -1;
       }
     }
