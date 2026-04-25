@@ -168,10 +168,6 @@ const clientTime = ref<string>('');
 
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
-/** Player IDs of the current match — stashed at game-start time so a
- *  live renderer swap can rebuild the game instance without re-running
- *  startGameWithPlayers(). Null until a match is running. */
-let currentPlayerIds: PlayerId[] | null = null;
 
 // Demo battle unit type list (state read from snapshots)
 const demoUnitTypes = BACKGROUND_UNIT_TYPES;
@@ -366,60 +362,6 @@ async function startBackgroundBattle(): Promise<void> {
       checkBgSceneInterval = null;
     }
   }, 100);
-}
-
-/**
- * Wire the HUD callbacks on the background-demo scene. Same logic as
- * the setInterval poll in startBackgroundBattle, but callable directly
- * once a scene is known to exist — used after a live renderer swap.
- */
-function wireBackgroundSceneCallbacks(): void {
-  let bgAttempts = 0;
-  const poll = setInterval(() => {
-    bgAttempts++;
-    if (bgAttempts > 50) {
-      clearInterval(poll);
-      return;
-    }
-    const bgScene = backgroundBattle?.gameInstance?.getScene();
-    if (bgScene) {
-      bgScene.onCombatStatsUpdate = (stats: NetworkServerSnapshotCombatStats) => {
-        const cloned = structuredClone(stats);
-        combatStats.value = cloned;
-        if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
-        combatStatsHistory.value.push({
-          timestamp: Date.now() - statsHistoryStartTime,
-          stats: cloned,
-        });
-        if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
-          combatStatsHistory.value.shift();
-        }
-      };
-      bgScene.onServerMetaUpdate = (meta: NetworkServerSnapshotMeta) => {
-        serverMetaFromSnapshot.value = meta;
-      };
-      bgScene.onEconomyChange = (info: EconomyInfo) => {
-        Object.assign(economyInfo, info);
-      };
-      bgScene.onSelectionChange = (info: SelectionInfo) => {
-        Object.assign(selectionInfo, info);
-      };
-      bgScene.onPlayerChange = (playerId: PlayerId) => {
-        activePlayer.value = playerId;
-      };
-      bgScene.onMinimapUpdate = (data: MinimapData) => {
-        // Entity refresh (throttled by the scene, ~20 Hz). The
-        // cameraQuad is live-updated separately below at full fps.
-        minimapData.entities = data.entities;
-        minimapData.mapWidth = data.mapWidth;
-        minimapData.mapHeight = data.mapHeight;
-      };
-      bgScene.onCameraQuadUpdate = (quad) => {
-        minimapData.cameraQuad = quad;
-      };
-      clearInterval(poll);
-    }
-  }, 50);
 }
 
 // Stop the background battle
@@ -1136,7 +1078,6 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
     // Create ClientViewState once per game session.
     clientViewState = new ClientViewState();
-    currentPlayerIds = playerIds;
 
     // Create game with player configuration
     gameInstance = createGame({
