@@ -7,12 +7,12 @@ export const DEMO_CONFIG = {
   /** Number of factories per player. With 3 teams each sector is 120°
    *  (102° usable at arcSectorFraction=0.85), so the arcs fit a much
    *  wider production line. */
-  factoryCount: 8,
+  factoryCount: 14,
 
   /** Number of solar panels per player. Same rationale as
    *  factoryCount — the wider sector at 3 teams accommodates a
    *  longer power-generation arc. */
-  solarCount: 12,
+  solarCount: 20,
 
   /**
    * Fraction of each player's angular sector on the spawn circle that is
