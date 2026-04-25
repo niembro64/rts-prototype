@@ -9,11 +9,6 @@ export {
 } from './PathDistribution';
 
 export {
-  WAYPOINT_COLORS,
-  getSnappedBuildPosition,
-} from './InputRenderHelper';
-
-export {
   type SelectionEntitySource,
   findClosestUnitToPoint,
   findClosestBuildingToPoint,
@@ -55,4 +50,4 @@ export {
   findAttackTargetAt,
 } from './AttackTargetHelper';
 
-export { canPlaceBuildingAt } from './BuildPlacementValidator';
+export { canPlaceBuildingAt, getSnappedBuildPosition } from './BuildPlacementValidator';

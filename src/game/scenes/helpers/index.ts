@@ -1,10 +1,6 @@
 // RtsScene helpers - re-exports
 
 export {
-  getExplosionRadius,
-  handleSimEvent,
-} from './DeathEffectsHandler';
-export {
   type UIEntitySource,
   type SelectionInfo,
   type EconomyInfo,

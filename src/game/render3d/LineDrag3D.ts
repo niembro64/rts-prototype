@@ -18,7 +18,7 @@
 
 import * as THREE from 'three';
 import type { WaypointType } from '../sim/types';
-import { WAYPOINT_COLORS } from '../render/types';
+import { WAYPOINT_COLORS } from '../uiLabels';
 
 // Lift values chosen so the preview reads above the tile layer (y=0) and the
 // burn-mark layer (y≈2.5), but below beam cylinders (y=SHOT_HEIGHT). Target

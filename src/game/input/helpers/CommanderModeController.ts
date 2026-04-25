@@ -12,7 +12,7 @@
 
 import type { Entity, BuildingType } from '../../sim/types';
 import type { StartBuildCommand, FireDGunCommand } from '../../sim/commands';
-import { getSnappedBuildPosition } from './InputRenderHelper';
+import { getSnappedBuildPosition } from './BuildPlacementValidator';
 
 const BUILDING_TYPES: readonly BuildingType[] = ['solar', 'factory'];
 

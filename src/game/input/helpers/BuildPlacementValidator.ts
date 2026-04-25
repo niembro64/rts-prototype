@@ -65,3 +65,21 @@ export function canPlaceBuildingAt(
 
   return true;
 }
+
+/** Snap a world-space cursor position to the canonical center of a
+ *  building footprint of the given type. Building cells are aligned to
+ *  the GRID_CELL_SIZE lattice; the building's center sits at the
+ *  midpoint of its (gridWidth × gridHeight) footprint anchored at the
+ *  cell containing the cursor. */
+export function getSnappedBuildPosition(
+  worldX: number,
+  worldY: number,
+  buildingType: BuildingType,
+): { x: number; y: number; gridX: number; gridY: number } {
+  const config = getBuildingConfig(buildingType);
+  const gridX = Math.floor(worldX / GRID_CELL_SIZE);
+  const gridY = Math.floor(worldY / GRID_CELL_SIZE);
+  const x = gridX * GRID_CELL_SIZE + (config.gridWidth * GRID_CELL_SIZE) / 2;
+  const y = gridY * GRID_CELL_SIZE + (config.gridHeight * GRID_CELL_SIZE) / 2;
+  return { x, y, gridX, gridY };
+}
