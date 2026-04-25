@@ -94,6 +94,12 @@ export type ProjectileShotBlueprint = {
    *  shot types can opt in independently of damage / homing / gravity
    *  behavior. Rockets naturally want this; ballistic shells don't. */
   leavesSmokeTrail?: boolean;
+  /** Cosmetic 3D-client mesh shape for the projectile body.
+   *  - 'sphere' (default): an isotropic ball, used for shells / orbs.
+   *  - 'cylinder': a long pill aligned with the flight direction. Use
+   *    for rockets / missiles so they read as oriented thrust-powered
+   *    bodies rather than blobs. */
+  shape?: 'sphere' | 'cylinder';
 };
 
 export type BeamShotBlueprint = {

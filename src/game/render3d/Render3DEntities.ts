@@ -208,6 +208,21 @@ export class Render3DEntities {
   private unitSphereLowGeom = new THREE.SphereGeometry(1, 10, 8);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
+  /** Velocity-aligned body for rocket-style projectiles (shot.shape ===
+   *  'cylinder'). Geometry has its long axis on Y; per-frame orientation
+   *  rotates that Y to match the projectile's velocity vector. */
+  private projectileCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
+  /** Reusable scratch objects for per-frame cylinder orientation —
+   *  every rocket would otherwise allocate a Vector3 + Quaternion per
+   *  frame. */
+  private _projDir = new THREE.Vector3();
+  private _projQuat = new THREE.Quaternion();
+  private static readonly _PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
+  /** Cylinder shape: world length = collision.radius × this; world
+   *  diameter = collision.radius × this fraction of length. Tuned so a
+   *  light rocket reads as a clear thrust-powered body, not a stick. */
+  private static readonly _PROJ_CYL_LENGTH_MULT = 4.0;
+  private static readonly _PROJ_CYL_DIAMETER_MULT = 1.4;
   // White projectile mat — team-agnostic so any shot reads as "can hit
   // anyone". Shooter identity comes from the turret/barrel and impact
   // effects, not the projectile body. Matches the 2D getProjectileColor
@@ -1349,9 +1364,23 @@ export class Render3DEntities {
       // Projectile shots have collision.radius
       let radius = 4;
       if (shot && shot.type === 'projectile') radius = shot.collision.radius;
+      const isCylinder = shot && shot.type === 'projectile' && shot.shape === 'cylinder';
+
       let mesh = this.projectileMeshes.get(e.id);
+      // Tear down + rebuild if the shape changed (rare — only happens
+      // when a slot is reused for a different shot type, which should
+      // not occur for a single live projectile but is safe regardless).
+      if (mesh) {
+        const wantsCyl = isCylinder ? this.projectileCylinderGeom : this.projectileGeom;
+        if (mesh.geometry !== wantsCyl) {
+          this.world.remove(mesh);
+          this.projectileMeshes.delete(e.id);
+          mesh = undefined;
+        }
+      }
       if (!mesh) {
-        mesh = new THREE.Mesh(this.projectileGeom, this.projectileMat);
+        const geom = isCylinder ? this.projectileCylinderGeom : this.projectileGeom;
+        mesh = new THREE.Mesh(geom, this.projectileMat);
         this.world.add(mesh);
         this.projectileMeshes.set(e.id, mesh);
       }
@@ -1361,12 +1390,40 @@ export class Render3DEntities {
       // no longer the truth — the sphere renders exactly where the
       // sim says it is.
       mesh.position.set(e.transform.x, e.transform.z, e.transform.y);
-      // Match 2D: `fillCircle(x, y, radius)` — the sphere's world-space radius
-      // equals the sim's shot.collision.radius. SphereGeometry has radius 1,
-      // so setScalar(radius) is the correct scale. Barrel diameter (= 2·cylRadius
-      // = shotRadius · 2 · BARREL_THICKNESS_MULTIPLIER) then sits naturally
-      // inside the projectile, matching the 2D relationship.
-      mesh.scale.setScalar(Math.max(radius, PROJECTILE_MIN_RADIUS));
+
+      if (isCylinder) {
+        // Cylinder rocket body: stretch along its local +Y, then rotate
+        // so +Y aligns with the projectile's velocity vector. World
+        // length = radius · LENGTH_MULT, world diameter = radius ·
+        // DIAMETER_MULT. The sim collision footprint stays a sphere of
+        // collision.radius — this is purely a render hint.
+        const r = Math.max(radius, PROJECTILE_MIN_RADIUS);
+        const length = r * Render3DEntities._PROJ_CYL_LENGTH_MULT;
+        const diameter = r * Render3DEntities._PROJ_CYL_DIAMETER_MULT;
+        mesh.scale.set(diameter, length, diameter);
+        const proj = e.projectile;
+        if (proj) {
+          // sim(x, y, z) → three(x, z, y), so velocity components map
+          // the same way. If velocity is near zero (just-spawned, paused)
+          // fall through to identity rotation rather than NaN.
+          const vx = proj.velocityX, vy = proj.velocityY, vz = proj.velocityZ;
+          const len2 = vx * vx + vy * vy + vz * vz;
+          if (len2 > 1e-6) {
+            const inv = 1 / Math.sqrt(len2);
+            this._projDir.set(vx * inv, vz * inv, vy * inv);
+            this._projQuat.setFromUnitVectors(
+              Render3DEntities._PROJ_CYL_AXIS,
+              this._projDir,
+            );
+            mesh.quaternion.copy(this._projQuat);
+          }
+        }
+      } else {
+        // Match 2D: `fillCircle(x, y, radius)` — the sphere's world-space radius
+        // equals the sim's shot.collision.radius. SphereGeometry has radius 1,
+        // so setScalar(radius) is the correct scale.
+        mesh.scale.setScalar(Math.max(radius, PROJECTILE_MIN_RADIUS));
+      }
 
       this.updateProjRadiusMeshes(e);
     }
@@ -1504,6 +1561,7 @@ export class Render3DEntities {
     this.turretHeadGeom.dispose();
     this.barrelGeom.dispose();
     this.projectileGeom.dispose();
+    this.projectileCylinderGeom.dispose();
     this.projectileMat.dispose();
     this.buildingGeom.dispose();
     this.ringGeom.dispose();

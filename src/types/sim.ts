@@ -197,6 +197,10 @@ export type ProjectileShot = {
   /** Cosmetic 3D-client flag — emit a smoke-puff trail behind this
    *  projectile. See ProjectileShotBlueprint.leavesSmokeTrail. */
   leavesSmokeTrail?: boolean;
+  /** Cosmetic 3D-client mesh shape. 'cylinder' aligns with velocity
+   *  for rockets/missiles; 'sphere' (default) is an isotropic ball.
+   *  Sim collision is always sphere-based — see ShotCollision.radius. */
+  shape?: 'sphere' | 'cylinder';
 };
 
 // Beam shot — continuous line from turret, per-tick damage (no cooldown)

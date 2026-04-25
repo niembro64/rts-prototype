@@ -80,6 +80,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     lifespan: 5500,
     ignoresGravity: true,
     leavesSmokeTrail: true,
+    // Render as a velocity-aligned cylinder (purely cosmetic — sim
+    // collision is still sphere-based via collision.radius).
+    shape: 'cylinder',
     hitSound: AUDIO.event.hit.lightRocket,
   },
   heavyShot: {
