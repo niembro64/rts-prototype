@@ -268,14 +268,26 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
       } else {
         let isEngagedBits = 0;
         let targetBits = 0;
+        // Once any turret has crossed a threshold the bit is set; we
+        // still need to compute the engaged / target bitmasks for the
+        // OTHER turrets on this unit (used as a dirty proxy below) so
+        // we can't break out of the loop early — but we CAN skip the
+        // 3-abs threshold check on subsequent turrets, which is the
+        // expensive part. At many turrets per unit this halves the
+        // work for active units (where any one turret moving means
+        // the row will be sent anyway).
+        let turretsAlreadyChanged = false;
         for (let i = 0; i < entity.turrets.length; i++) {
           const w = entity.turrets[i];
           if (w.state === 'engaged') isEngagedBits |= (1 << i);
           if (w.target) targetBits |= (1 << i);
-          if (Math.abs(w.rotation - prev.turretRots[i]) > rotPosTh ||
-              Math.abs(w.angularVelocity - prev.turretAngVels[i]) > rotVelTh ||
-              Math.abs((w.forceField?.range ?? 0) - prev.forceFieldRanges[i]) > 0.001) {
-            mask |= ENTITY_CHANGED_TURRETS;
+          if (!turretsAlreadyChanged) {
+            if (Math.abs(w.rotation - prev.turretRots[i]) > rotPosTh ||
+                Math.abs(w.angularVelocity - prev.turretAngVels[i]) > rotVelTh ||
+                Math.abs((w.forceField?.range ?? 0) - prev.forceFieldRanges[i]) > 0.001) {
+              mask |= ENTITY_CHANGED_TURRETS;
+              turretsAlreadyChanged = true;
+            }
           }
         }
         if (isEngagedBits !== prev.isEngagedBits || targetBits !== prev.targetBits) {
