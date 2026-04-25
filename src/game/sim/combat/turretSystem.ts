@@ -257,6 +257,23 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
               targetAngle = Math.atan2(aimY - weaponY, aimX - weaponX);
             }
 
+            // groundAimFraction: aim short of the lead-corrected
+            // target so the round lands on the ground at this
+            // fraction of the weapon→aim distance, then let the
+            // submunition bounce/spread carry the rest. Mortar uses
+            // this so its lightShots arc into the impact ring around
+            // the target instead of the carrier dropping directly on
+            // top. Applied after lead so the "aim point" we shorten
+            // is the predicted intercept, not the stale current pos.
+            const groundAimFraction = weapon.config.groundAimFraction;
+            if (groundAimFraction !== undefined && groundAimFraction > 0) {
+              const f = groundAimFraction;
+              aimX = weaponX + f * (aimX - weaponX);
+              aimY = weaponY + f * (aimY - weaponY);
+              aimZ = 0;
+              targetAngle = Math.atan2(aimY - weaponY, aimX - weaponX);
+            }
+
             const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
             const heightDiff = aimZ - tipRef.z;
             targetPitch = solveBallisticPitch(

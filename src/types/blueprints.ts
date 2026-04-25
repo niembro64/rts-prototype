@@ -235,6 +235,21 @@ export type TurretBlueprint = {
    *  homing-guided rocket is expected to take over from there. Pairs
    *  with the rocket-class shot flag `ignoresGravity`. */
   verticalLauncher?: boolean;
+  /** Aim short of the target so the round lands on the ground at
+   *  this fraction of the weapon→target distance, and let the
+   *  submunition bounce/spread carry the rest. The aim point is
+   *  computed as
+   *
+   *      aim = weapon + groundAimFraction × (target − weapon)
+   *      aim.z = 0
+   *
+   *  `0.667` means "land 2/3 of the way to the target"; the
+   *  fragment cluster's reflected velocity pushes the lightShots
+   *  the remaining third. Omit / set to undefined for the normal
+   *  "aim AT the target" behaviour. Only meaningful for
+   *  ballistic projectile turrets — beams / lasers / vertical
+   *  launchers ignore it. */
+  groundAimFraction?: number;
 };
 
 export type TurretMount = {

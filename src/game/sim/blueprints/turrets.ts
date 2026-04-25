@@ -77,7 +77,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   salvoRocketTurret: {
     id: 'salvoRocketTurret',
     projectileId: 'lightRocket',
-    range: 400,
+    range: 360,
     cooldown: 1_500,
     launchForce: 1000,
     homingTurnRate: 1,
@@ -85,17 +85,17 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     turretDrag: 0.15,
     barrel: {
       type: 'coneMultiBarrel',
-      barrelCount: 5,
+      barrelCount: 3,
       // Long tubes splayed out in a wide ~90° cone (45° per side from
       // the firing axis). `tipOrbit` is specified explicitly so the
       // visible barrel angles are decoupled from `spread.angle` — the
       // latter governs the random firing cone around vertical, and
       // the explicit value is no longer clamped by TURRET_HEIGHT.
-      barrelLength: 1.2,
-      baseOrbit: 0.094,
-      tipOrbit: 1.5,
-      depthScale: 0.12,
-      spin: { idle: 2, max: 5, accel: 80, decel: 30 },
+      barrelLength: 0.5,
+      baseOrbit: 0.01,
+      tipOrbit: 0.5,
+      depthScale: 0.02,
+      spin: { idle: 1, max: 10, accel: 10, decel: 30 },
     },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
@@ -105,14 +105,14 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // 90° max deviation from vertical — rockets launch anywhere from
     // straight up to horizontal; homing then bends each one onto the
     // target's line.
-    spread: { angle: Math.PI / 2, pelletCount: 10 },
+    spread: { angle: Math.PI / 2, pelletCount: 3 },
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
     verticalLauncher: true,
   },
   cannonTurret: {
     id: 'cannonTurret',
     projectileId: 'heavyShot',
-    range: 410,
+    range: 510,
     cooldown: 2300,
     launchForce: 10_000,
     turretTurnAccel: 200,
@@ -129,9 +129,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   mortarTurret: {
     id: 'mortarTurret',
     projectileId: 'mortarShot',
-    range: 320,
+    range: 400,
     cooldown: 6000,
-    launchForce: 20000,
+    launchForce: 8000,
     turretTurnAccel: 90,
     turretDrag: 0.4,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
@@ -145,6 +145,15 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // Mortars lob — high-arc solution from the ballistic solver so
     // shells sail up and over whatever's in front of them.
     highArc: true,
+    // Aim the carrier round to hit the GROUND 2/3 of the way to the
+    // target. The mortarShot detonates on ground impact, its 15
+    // lightShot submunitions bounce upward off the impact point in
+    // the carrier's flight direction (reflected velocity, damped to
+    // 40%), and the random spread + remaining momentum carry them
+    // the rest of the way into a fragmentation ring around the
+    // target. Designed in tandem with mortarShot.submunitions —
+    // tune both knobs together.
+    groundAimFraction: 2 / 3,
   },
   pulseTurret: {
     id: 'pulseTurret',

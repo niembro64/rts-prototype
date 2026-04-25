@@ -274,6 +274,11 @@ export type TurretConfig = {
    *  into a random cone around vertical. See TurretBlueprint
    *  .verticalLauncher. */
   verticalLauncher?: boolean;
+  /** Aim a fraction of the way to the target on the ground rather
+   *  than at the target itself; the round detonates short and its
+   *  submunitions (if any) bounce + spread the rest of the way. See
+   *  TurretBlueprint.groundAimFraction. */
+  groundAimFraction?: number;
 };
 
 // Turret FSM state: idle → tracking → engaged
