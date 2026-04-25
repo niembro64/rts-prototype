@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
-import { PLAYER_COLORS } from '../sim/types';
+import { getPlayerColors } from '../sim/types';
 import type { SpinConfig } from '../../config';
 import { TURRET_HEIGHT, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -266,31 +266,24 @@ export class Render3DEntities {
     this.world = world;
     this.clientViewState = clientViewState;
     this.scope = scope;
-
-    for (const [pidStr, colors] of Object.entries(PLAYER_COLORS)) {
-      const pid = Number(pidStr) as PlayerId;
-      this.primaryMats.set(
-        pid,
-        new THREE.MeshLambertMaterial({ color: colors.primary }),
-      );
-      this.secondaryMats.set(
-        pid,
-        new THREE.MeshLambertMaterial({ color: colors.secondary }),
-      );
-      this.mirrorShinyMats.set(
-        pid,
-        new THREE.MeshStandardMaterial({
-          color: colors.secondary,
-          metalness: 1.0,
-          roughness: 0.0,
-        }),
-      );
-    }
+    // Per-team materials are created lazily on first use (see
+    // getPrimaryMat / getSecondaryMat / getMirrorShinyMat). The
+    // player-color generator (sim/types.getPlayerColors) supports any
+    // pid, so we don't pre-allocate for a fixed table here.
   }
 
   private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
     if (pid === undefined) return this.mirrorShinyNeutralMat;
-    return this.mirrorShinyMats.get(pid) ?? this.mirrorShinyNeutralMat;
+    let mat = this.mirrorShinyMats.get(pid);
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({
+        color: getPlayerColors(pid).secondary,
+        metalness: 1.0,
+        roughness: 0.0,
+      });
+      this.mirrorShinyMats.set(pid, mat);
+    }
+    return mat;
   }
 
   /**
@@ -523,12 +516,22 @@ export class Render3DEntities {
 
   private getPrimaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
     if (pid === undefined) return this.neutralMat;
-    return this.primaryMats.get(pid) ?? this.neutralMat;
+    let mat = this.primaryMats.get(pid);
+    if (!mat) {
+      mat = new THREE.MeshLambertMaterial({ color: getPlayerColors(pid).primary });
+      this.primaryMats.set(pid, mat);
+    }
+    return mat;
   }
 
   private getSecondaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
     if (pid === undefined) return this.neutralMat;
-    return this.secondaryMats.get(pid) ?? this.neutralMat;
+    let mat = this.secondaryMats.get(pid);
+    if (!mat) {
+      mat = new THREE.MeshLambertMaterial({ color: getPlayerColors(pid).secondary });
+      this.secondaryMats.set(pid, mat);
+    }
+    return mat;
   }
 
   /**
