@@ -108,6 +108,40 @@ function pidToSlot(pid: PlayerId): PlayerId {
 
 const _playerColorCache = new Map<PlayerId, PlayerColors>();
 
+/** Map a hue (degrees, 0–360) to the closest canonical color name on a
+ *  12-slot wheel. Used so the displayed team name always matches what
+ *  the player actually sees on screen, regardless of how many players
+ *  are in the lobby (the wheel divides differently each time, so a
+ *  hardcoded "slot N → name" table would lie). */
+const _HUE_NAMES: ReadonlyArray<readonly [number, string]> = [
+  [0,   'Red'],
+  [30,  'Orange'],
+  [60,  'Yellow'],
+  [90,  'Lime'],
+  [120, 'Green'],
+  [150, 'Mint'],
+  [180, 'Cyan'],
+  [210, 'Sky'],
+  [240, 'Blue'],
+  [270, 'Purple'],
+  [300, 'Magenta'],
+  [330, 'Pink'],
+];
+function hueToName(hueDeg: number): string {
+  const h = ((hueDeg % 360) + 360) % 360;
+  let bestName = 'Red';
+  let bestDist = 360;
+  for (const [target, name] of _HUE_NAMES) {
+    const raw = Math.abs(h - target);
+    const d = Math.min(raw, 360 - raw);
+    if (d < bestDist) {
+      bestDist = d;
+      bestName = name;
+    }
+  }
+  return bestName;
+}
+
 /** Convert HSL (h ∈ [0, 360), s/l ∈ [0, 1]) to a 0xRRGGBB hex int. */
 function hslToHex(h: number, s: number, l: number): number {
   const c = (1 - Math.abs(2 * l - 1)) * s;
@@ -147,7 +181,7 @@ export function getPlayerColors(playerId: PlayerId): PlayerColors {
   cached = {
     primary: hslToHex(hue, 0.65, 0.62),
     secondary: hslToHex(hue, 0.55, 0.45),
-    name: `Team ${playerId}`,
+    name: hueToName(hue),
   };
   _playerColorCache.set(slot, cached);
   return cached;

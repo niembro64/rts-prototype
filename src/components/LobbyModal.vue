@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { PLAYER_COLORS, type PlayerId } from '../game/sim/types';
+import { ref, computed, watch } from 'vue';
+import { PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
 
 export type { LobbyPlayer } from '@/types/ui';
 import type { LobbyPlayer } from '@/types/ui';
@@ -53,9 +53,29 @@ async function copyCode() {
   }
 }
 
+// Keep the color wheel divided by however many players are currently
+// in the lobby so the colors and derived names match what the game
+// scene will use when it starts (RtsScene calls setPlayerCountForColors
+// with the same value). Without this the lobby uses a 6-slot wheel by
+// default and the in-game colors visibly shift on launch.
+watch(
+  () => props.players.length,
+  (n) => {
+    if (n > 0) setPlayerCountForColors(n);
+  },
+  { immediate: true },
+);
+
 function getPlayerColor(playerId: PlayerId): string {
   const color = PLAYER_COLORS[playerId]?.primary ?? 0x888888;
   return '#' + color.toString(16).padStart(6, '0');
+}
+
+/** Display name = derived from the rendered hue, so the label next to
+ *  each player's color swatch is always the actual color the player
+ *  sees. The server-assigned name (from NetworkManager) is ignored. */
+function getColorName(playerId: PlayerId): string {
+  return getPlayerColors(playerId).name;
 }
 
 function handleHost() {
@@ -169,7 +189,7 @@ const canJoin = computed(() => {
                 class="player-color"
                 :style="{ backgroundColor: getPlayerColor(player.playerId) }"
               ></span>
-              <span class="player-name">{{ player.name }}</span>
+              <span class="player-name">{{ getColorName(player.playerId) }}</span>
               <span v-if="player.isHost" class="host-badge">HOST</span>
               <span v-if="player.playerId === localPlayerId" class="you-badge">YOU</span>
             </li>
