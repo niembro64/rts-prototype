@@ -236,19 +236,21 @@ export class Debris3D {
         });
       }
     } else if (loc?.type === 'wheels') {
-      // Four corner wheels — each a slab at its actual mount position.
+      // Four corner wheels as short tire cylinders (matches the live
+      // renderer's buildWheels — axle along the unit's lateral axis,
+      // radius = r·wheelRadius, width = r·treadWidth).
       const cfg = loc.config;
-      const slabLength = r * cfg.treadLength;
-      const slabWidth = r * cfg.treadWidth;
+      const wheelR = Math.max(1, r * cfg.wheelRadius);
+      const tireWidth = Math.max(0.5, r * cfg.treadWidth);
       const fx = r * cfg.wheelDistX;
       const fz = r * cfg.wheelDistY;
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
           out.push({
-            shape: 'box',
-            x: sx * fx, y: TREAD_Y, z: sz * fz,
-            yaw: 0,
-            sx: slabLength, sy: TREAD_HEIGHT, sz: slabWidth,
+            shape: 'cyl',
+            ax: sx * fx, ay: wheelR, az: sz * fz - tireWidth / 2,
+            bx: sx * fx, by: wheelR, bz: sz * fz + tireWidth / 2,
+            thickness: wheelR,
             color: WHEEL_COLOR,
           });
         }

@@ -301,19 +301,36 @@ function buildWheels(
   r: number,
   cfg: WheelConfig,
 ): Locomotion3DMesh {
+  // Wheeled units (jackal, mongoose, …) get four real cylindrical
+  // wheels — not the four small tread-slabs the previous renderer
+  // used. The cylinder default axis is +Y; we wrap it in a group
+  // rotated so the axle points along the unit's lateral (+Z) axis,
+  // and the inner mesh spins around its own +Y for the rolling-
+  // tire animation when the unit moves.
   const group = new THREE.Group();
-  const slabLength = r * cfg.treadLength;
-  const slabWidth = r * cfg.treadWidth;
+  const wheelR = Math.max(1, r * cfg.wheelRadius);
+  const tireWidth = Math.max(0.5, r * cfg.treadWidth);
   const fx = r * cfg.wheelDistX;
   const fz = r * cfg.wheelDistY;
   const wheels: THREE.Mesh[] = [];
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
-      const slab = new THREE.Mesh(treadBoxGeom, treadMat);
-      slab.scale.set(slabLength, TREAD_HEIGHT, slabWidth);
-      slab.position.set(sx * fx, TREAD_Y, sz * fz);
-      group.add(slab);
-      wheels.push(slab);
+      // Outer group: position at the wheel mount, lay the cylinder
+      // on its side (axle parallel to lateral). Wheel center sits at
+      // y = wheelR so the bottom of the tire touches the ground.
+      const wheelGroup = new THREE.Group();
+      wheelGroup.position.set(sx * fx, wheelR, sz * fz);
+      wheelGroup.rotation.x = Math.PI / 2;
+      // Inner mesh — the spinning tire. Local +X / +Z scale to wheel
+      // radius (the disc face); local +Y scale to tire width (post-
+      // rotation, world lateral). Spin animation rotates this mesh
+      // around its own +Y, which after the parent's rotation.x is
+      // the lateral axis in the unit's frame.
+      const tire = new THREE.Mesh(wheelGeom, wheelMat);
+      tire.scale.set(wheelR, tireWidth, wheelR);
+      wheelGroup.add(tire);
+      group.add(wheelGroup);
+      wheels.push(tire);
     }
   }
   unitGroup.add(group);
@@ -634,6 +651,18 @@ export function updateLocomotion(
   const vy = entity.unit?.velocityY ?? 0;
   const speed = Math.hypot(vx, vy);
   const dt = dtMs / 1000;
+
+  if (mesh.type === 'wheels') {
+    if (speed <= 0.1) return;
+    // Wheels spin at ω = v / r so the tire's tangential surface
+    // speed matches the chassis's linear speed.
+    if (mesh.wheels.length > 0) {
+      const wheelR = Math.max(1, mesh.wheels[0].scale.x);
+      const rotDelta = (speed / wheelR) * dt;
+      for (const w of mesh.wheels) w.rotation.y += rotDelta;
+    }
+    return;
+  }
 
   if (mesh.type === 'treads') {
     if (speed <= 0.1) return;
