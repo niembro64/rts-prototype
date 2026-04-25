@@ -23,6 +23,23 @@
 import { TURRET_HEIGHT } from '../../config';
 import type { TurretConfig } from '../sim/types';
 
+/** X/Z footprint of the spherical turret head as a fraction of the
+ *  unit's render radius. Mirrors the constant in Render3DEntities so
+ *  the renderer (which draws the sphere) and the sim (which computes
+ *  shot spawn positions) agree on where the head ENDS and the barrel
+ *  BEGINS. */
+export const TURRET_HEAD_FOOTPRINT_FRAC = 0.42;
+
+/** Radius of the spherical turret head for a unit of the given render
+ *  scale. Floored to TURRET_HEIGHT / 2 so very small units still get
+ *  a visible head sphere. The barrel attaches to this sphere's surface
+ *  on the firing axis, so the barrel-tip = mount + (headR + len) ·
+ *  forward — both renderer and sim use this number to keep the
+ *  visible barrel and the spawn point lined up. */
+export function getTurretHeadRadius(unitScale: number): number {
+  return Math.max(unitScale * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
+}
+
 /** World-space 3D position + unit-vector firing direction for a single
  *  barrel. Every fire path returns one of these per shot. */
 export type BarrelEndpoint = {
@@ -102,13 +119,20 @@ export function getBarrelTip(
     };
   }
 
+  // The barrel attaches to the front face of the spherical turret
+  // head, so the tip is `headRadius + barrelLen` from the mount along
+  // the firing axis. Without this offset, small units (jackal, scout-
+  // class) ended up with the barrel cylinder embedded inside the head
+  // sphere because barrelLen happened to equal headRadius.
+  const headRadius = getTurretHeadRadius(unitScale);
   const barrelLen = unitScale * b.barrelLength;
+  const tipForward = headRadius + barrelLen;
 
   if (b.type === 'simpleSingleBarrel') {
     return {
-      x: mountX + fwdX * barrelLen,
-      y: mountY + fwdY * barrelLen,
-      z: mountZ + fwdZ * barrelLen,
+      x: mountX + fwdX * tipForward,
+      y: mountY + fwdY * tipForward,
+      z: mountZ + fwdZ * tipForward,
       dirX: fwdX, dirY: fwdY, dirZ: fwdZ,
     };
   }
@@ -126,9 +150,9 @@ export function getBarrelTip(
     const offUp = orbitR * orbCos;
     const offRight = orbitR * orbSin;
     return {
-      x: mountX + fwdX * barrelLen + upX * offUp + rightX * offRight,
-      y: mountY + fwdY * barrelLen + upY * offUp + rightY * offRight,
-      z: mountZ + fwdZ * barrelLen + upZ * offUp,  // rightZ is 0
+      x: mountX + fwdX * tipForward + upX * offUp + rightX * offRight,
+      y: mountY + fwdY * tipForward + upY * offUp + rightY * offRight,
+      z: mountZ + fwdZ * tipForward + upZ * offUp,  // rightZ is 0
       dirX: fwdX, dirY: fwdY, dirZ: fwdZ,
     };
   }
@@ -158,13 +182,14 @@ export function getBarrelTip(
 
   const tipUp = tipOrbitR * orbCos;
   const tipRight = tipOrbitR * orbSin;
-  const tipX = mountX + fwdX * barrelLen + upX * tipUp + rightX * tipRight;
-  const tipY = mountY + fwdY * barrelLen + upY * tipUp + rightY * tipRight;
-  const tipZ = mountZ + fwdZ * barrelLen + upZ * tipUp;
+  const tipX = mountX + fwdX * tipForward + upX * tipUp + rightX * tipRight;
+  const tipY = mountY + fwdY * tipForward + upY * tipUp + rightY * tipRight;
+  const tipZ = mountZ + fwdZ * tipForward + upZ * tipUp;
 
-  // Barrel direction = (tip − base) normalized. `base` sits at
-  // mount + baseOrbitR · (cosA·up + sinA·right); the subtraction keeps
-  // only the forward-plus-Δorbit components.
+  // Barrel direction = (tip − base) normalized. `base` sits on the
+  // head's surface at orbit `baseOrbitR` (forward component =
+  // headRadius); the subtraction over the forward span keeps only
+  // barrelLen + Δorbit so the splay direction is unchanged.
   const deltaOrbit = tipOrbitR - baseOrbitR;
   const dUp = deltaOrbit * orbCos;
   const dRight = deltaOrbit * orbSin;
