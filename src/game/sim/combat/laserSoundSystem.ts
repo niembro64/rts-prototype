@@ -59,12 +59,16 @@ export function emitLaserStopsForTarget(_world: WorldState, targetId: EntityId):
 }
 
 // Update laser sounds based on targeting state (not beam existence)
-// This is called every frame to ensure sounds match targeting state
+// This is called every frame to ensure sounds match targeting state.
+// Iterates ONLY units that have at least one beam weapon (cached on
+// the world via WorldState.getBeamUnits) — at typical compositions
+// that's a small minority of units, so we avoid the all-units scan
+// and per-turret type check the old loop did every tick.
 export function updateLaserSounds(world: WorldState): SimEvent[] {
   _laserSimEvents.length = 0;
   const audioEvents = _laserSimEvents;
 
-  for (const unit of world.getUnits()) {
+  for (const unit of world.getBeamUnits()) {
     if (!unit.turrets || !unit.unit || !unit.ownership) continue;
 
     // Dead units must still emit laserStop so the client releases audio nodes
