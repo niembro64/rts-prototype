@@ -415,6 +415,14 @@ export const BARREL_THICKNESS_MULTIPLIER = 0.8;
 export const UNIT_THRUST_MULTIPLIER_GAME = 6.0;
 export const UNIT_THRUST_MULTIPLIER_DEMO = 6.0;
 
+/**
+ * Global HP multiplier applied to every unit at creation time. The
+ * blueprint hp is the "base" stat; the unit's actual hp/maxHp at
+ * spawn is base × this. 1.0 = blueprint values; 2.0 = double defense
+ * (units take twice as many hits to kill at the same incoming DPS).
+ */
+export const UNIT_HP_MULTIPLIER = 2.0;
+
 // UNIT_STATS removed — now in blueprints
 
 // PROJECTILE_STATS removed — now in blueprints

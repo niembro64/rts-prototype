@@ -3,7 +3,7 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, DEFAULT_FF_DMG_UNITS, MIRROR_BASE_Y, TURRET_HEIGHT } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, DEFAULT_FF_DMG_UNITS, MIRROR_BASE_Y, TURRET_HEIGHT, UNIT_HP_MULTIPLIER } from '../../config';
 import { getBodyTopY } from '../math/BodyDimensions';
 
 // Seeded random number generator for determinism
@@ -371,7 +371,7 @@ export class WorldState {
       bp.unitRadiusCollider,
       bp.moveSpeed,
       bp.mass,
-      bp.hp,
+      bp.hp * UNIT_HP_MULTIPLIER,
     );
 
     // Create turrets from blueprint definition
