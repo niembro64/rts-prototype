@@ -73,11 +73,11 @@ function spawnUnit(
   aimTurretsToward(unit, targetX, targetY);
 
   if (unit.unit) {
-    // Plain 'move' (not 'fight'): demo units commit to the waypoint
-  // and don't pause to fire en route. Lets the converging columns
-  // actually meet at the centerpoint instead of bogging down at the
-  // first contact.
-  unit.unit.actions = [{ type: 'move', x: targetX, y: targetY }];
+    // 'fight' (not plain 'move'): demo units engage targets en route
+    // to the waypoint instead of running blind through the contact
+    // line. Lining up with the factory rally so initial units and
+    // factory-spawned units share behaviour.
+    unit.unit.actions = [{ type: 'fight', x: targetX, y: targetY }];
   }
 
   world.addEntity(unit);

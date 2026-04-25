@@ -2,7 +2,7 @@
 
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
-  playerCount: 27,
+  playerCount: 3,
 
   /** Number of factories per player. Scaled down for the 10-team
    *  layout — each team's angular sector is only 2π/10 = 36° (30.6°
@@ -42,12 +42,11 @@ export const DEMO_CONFIG = {
 
   /**
    * Factory rally/waypoint type. Units produced by factories get this
-   * action toward the map center. 'move' commits the unit to the
-   * waypoint without pausing to fire en route — converging demo
-   * columns actually reach the center; 'fight' would have them stop
-   * and engage at every line of sight.
+   * action toward the map center. 'fight' has them stop and engage
+   * along the way (default); 'move' commits to the waypoint without
+   * pausing to fire en route.
    */
-  factoryWaypointType: 'move' as const,
+  factoryWaypointType: 'fight' as const,
 
   /**
    * How far (as a fraction of factory→map-center distance) the default fight
