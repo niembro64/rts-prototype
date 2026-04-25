@@ -116,22 +116,34 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
           let aimY = target.transform.y;
           let aimZ = target.transform.z;
 
-          // Passive (mirror) turrets aim so that the reflected beam
-          // lands on the ENEMY UNIT'S CENTER, not back at its barrel
-          // tip. Reflection law: r = d − 2(d · n) n. To send an
-          // incoming ray from B (enemy barrel tip) to U (enemy unit
-          // center), the panel normal must bisect the angle between
-          // (P → B) and (P → U) at the panel center P:
+          // ── Passive (mirror) turret aim ──
           //
-          //     n  ∝  (B − P)/|B − P|  +  (U − P)/|U − P|
+          // Goal: an enemy beam fired from B (their barrel tip) along
+          // their aim line should reflect off our panel and land on U
+          // (their unit center).
           //
-          // Setting yaw α = atan2(n.y, n.x) and pitch
-          // β = atan2(n.z, hypot(n.x, n.y)) puts the mirror's 3D
-          // normal exactly along this bisector. (P is approximated as
-          // the chassis center for the X/Y; vertical uses the panel's
-          // own (baseY + topY)/2 since that differs meaningfully from
-          // the chassis ground for tall mirrors.) Pure retro-
-          // reflection is the special case U = B.
+          // Flat-panel reflection: r = d − 2(d · n) n. For an incoming
+          // ray to bend from (P → B) to (P → U) at the panel point P,
+          // the panel normal must BISECT the angle between those two
+          // rays:
+          //
+          //     n  ∝  (B − P) / |B − P|  +  (U − P) / |U − P|
+          //
+          // Yaw α = atan2(n.y, n.x), pitch β = atan2(n.z, hypot(n.x,
+          // n.y)) puts the mirror's 3D normal exactly along the
+          // bisector.
+          //
+          // Self-reference: P depends on α — the panel center sits at
+          // P(α) = M + offsetX · (cos α, sin α) in chassis-local
+          // coords, so the bisector formula at P(α₀) gives a slightly
+          // different α₁. With Loris's 18-wu offset and ~1000-wu
+          // engagements, the single-shot solution is off by ~1° per
+          // axis, which lands the bounced beam ~17 wu off the body.
+          // Two iterations of fixed-point refinement (P₀=M, then
+          // P₁=M+offset·(cos α₀, sin α₀)) drive the residual below
+          // 0.02° — well inside the unit body radius. Vertical P is
+          // independent of pitch (panel rotates around its center) so
+          // no iteration on β is needed.
           let mirrorPitchOverride: number | null = null;
           if (weapon.config.passive && target.turrets) {
             for (let ti = 0; ti < target.turrets.length; ti++) {
@@ -159,39 +171,51 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
               const panelCenterZ = panels.length > 0
                 ? unitGroundZ + (panels[0].baseY + panels[0].topY) / 2
                 : unitGroundZ;
-              const pcx = weaponX;
-              const pcy = weaponY;
+              const panelOffsetX = panels.length > 0 ? panels[0].offsetX : 0;
 
-              // Vector from panel center to incoming-beam source.
-              const sX = eTip.x - pcx;
-              const sY = eTip.y - pcy;
-              const sZ = eTip.z - panelCenterZ;
-              const sLen = Math.hypot(sX, sY, sZ);
-              // Vector from panel center to enemy unit center.
-              const cX = target.transform.x - pcx;
-              const cY = target.transform.y - pcy;
-              const cZ = target.transform.z - panelCenterZ;
-              const cLen = Math.hypot(cX, cY, cZ);
-
-              if (sLen > 1e-6 && cLen > 1e-6) {
+              // Iterate twice. Pass 1 uses P = chassis center to seed
+              // an α₀; pass 2 uses P = chassis + offset·(cos α₀, sin α₀)
+              // to land within ~0.02° of the true bisector.
+              let pcx = weaponX;
+              let pcy = weaponY;
+              let bisectorYaw = targetAngle ?? 0;
+              let bisectorPitch: number | null = null;
+              let valid = false;
+              for (let iter = 0; iter < 2; iter++) {
+                const sX = eTip.x - pcx;
+                const sY = eTip.y - pcy;
+                const sZ = eTip.z - panelCenterZ;
+                const sLen = Math.hypot(sX, sY, sZ);
+                const cX = target.transform.x - pcx;
+                const cY = target.transform.y - pcy;
+                const cZ = target.transform.z - panelCenterZ;
+                const cLen = Math.hypot(cX, cY, cZ);
+                if (sLen <= 1e-6 || cLen <= 1e-6) break;
                 const nx = sX / sLen + cX / cLen;
                 const ny = sY / sLen + cY / cLen;
                 const nz = sZ / sLen + cZ / cLen;
                 const nLen = Math.hypot(nx, ny, nz);
-                if (nLen > 1e-6) {
-                  const nxU = nx / nLen;
-                  const nyU = ny / nLen;
-                  const nzU = nz / nLen;
-                  targetAngle = Math.atan2(nyU, nxU);
-                  mirrorPitchOverride = Math.atan2(nzU, Math.hypot(nxU, nyU));
-                  // Aim point only used by downstream fallback code
-                  // (overridden below for passive). Leave it pointing
-                  // at the enemy CENTER so any non-pitch consumer
-                  // still gives a sane number.
-                  aimX = target.transform.x;
-                  aimY = target.transform.y;
-                  aimZ = target.transform.z;
-                }
+                if (nLen <= 1e-6) break;
+                bisectorYaw = Math.atan2(ny, nx);
+                bisectorPitch = Math.atan2(nz / nLen, Math.hypot(nx / nLen, ny / nLen));
+                valid = true;
+                // Refine P for the next iteration using the just-
+                // computed yaw. Panel center moves with α only
+                // horizontally; vertical stays at panelCenterZ.
+                pcx = weaponX + Math.cos(bisectorYaw) * panelOffsetX;
+                pcy = weaponY + Math.sin(bisectorYaw) * panelOffsetX;
+              }
+
+              if (valid && bisectorPitch !== null) {
+                targetAngle = bisectorYaw;
+                mirrorPitchOverride = bisectorPitch;
+                // Aim point only used by downstream fallback code
+                // (passive's pitch is overridden below). Point it at
+                // the enemy CENTER so any non-pitch consumer still
+                // gets a sensible value.
+                aimX = target.transform.x;
+                aimY = target.transform.y;
+                aimZ = target.transform.z;
               }
               break;
             }
