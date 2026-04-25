@@ -10,10 +10,10 @@
 // Coordinate mapping: sim (x, y) → three (x, z). Y is up. Ground at y=0.
 
 import * as THREE from 'three';
-import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
 import type { SpinConfig } from '../../config';
-import { TURRET_HEIGHT, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../config';
+import { MIRROR_EXTRA_HEIGHT } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   buildLocomotion,
@@ -22,7 +22,6 @@ import {
   type Locomotion3DMesh,
 } from './Locomotion3D';
 import { snapshotLod, type Lod3DState } from './Lod3D';
-import type { GraphicsConfig } from '@/types/graphics';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
 import {
   buildBuildingShape,
@@ -33,6 +32,8 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
 import { getWeaponWorldPosition, getTurretHeadRadius } from '../math';
+import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
+import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -43,7 +44,6 @@ import { getWeaponWorldPosition, getTurretHeadRadius } from '../math';
 const BUILDING_HEIGHT = 120;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
-const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
 
 // Module-level rotation axis reused by the LOW-tier instanced sphere
 // path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
@@ -61,43 +61,6 @@ const _INST_UP = new THREE.Vector3(0, 1, 0);
 // heights vary.
 // MIRROR_BASE_Y comes from src/config.ts — same value the sim uses so
 // the beam-reflection tracer and the rendered panel mesh line up.
-
-type TurretMesh = {
-  root: THREE.Group;       // positioned at turret.offset, rotated to turret rotation
-  /** Absent for turrets without a "body" — force fields (the glowing sphere
-   *  is the whole visual) and mirror units (the mirror panels are). */
-  head?: THREE.Mesh;
-  barrels: THREE.Mesh[];
-  /** Pitch pivot (rotation.z = pitch) — tilts the firing direction up/
-   *  down. Parent of spinGroup. Present on every turret with a barrel. */
-  pitchGroup?: THREE.Group;
-  /** Spin pivot, nested INSIDE pitchGroup. rotation.x = gatling angle.
-   *  Because it lives under pitchGroup, its local +X is the already-
-   *  pitched firing axis — so spin rotates the barrel cluster around
-   *  the real barrel direction (not around world-X). Without this
-   *  nesting, pitch+spin compose extrinsically and high-pitch gatling
-   *  barrels "cone" around the horizontal instead of spinning around
-   *  their own pitched axis. */
-  spinGroup?: THREE.Group;
-  /** Per-turret TURR RAD overlay spheres. The underlying sim checks
-   *  (tracking + engage distance) are now full 3D distance3(...) calls
-   *  that include altitude, so the viz is a 3D wireframe sphere —
-   *  centered at the weapon's mount point (world XY + mount Z) and
-   *  scaled to the range. Parented to the WORLD group so it stays
-   *  put in absolute world coords as the unit rotates/moves. */
-  rangeRings?: {
-    trackAcquire?: THREE.LineSegments;
-    trackRelease?: THREE.LineSegments;
-    engageAcquire?: THREE.LineSegments;
-    engageRelease?: THREE.LineSegments;
-  };
-};
-
-type MirrorMesh = {
-  /** Rotates with the turret (children of this rotate in turret frame). */
-  root: THREE.Group;
-  panels: THREE.Mesh[];
-};
 
 type EntityMesh = {
   group: THREE.Group;
@@ -397,259 +360,6 @@ export class Render3DEntities {
     return mat;
   }
 
-  /**
-   * Build a turret mesh matching a single Turret's barrel configuration.
-   * The turret's local +X is its firing direction; barrels point along +X
-   * (or at a slight outward tilt for cone barrels).
-   *
-   * Barrel dimensions mirror TurretRenderer.ts (the 2D renderer):
-   *   - length    = unitRadius · barrel.barrelLength
-   *   - thickness = shotWidth (line shots) ?? barrel.barrelThickness ?? 2
-   *     (barrelThickness is already derived from the shot size in blueprints)
-   *   - orbit     = (orbitRadius | baseOrbit) · unitRadius, clamped so barrels
-   *                 stay inside the head vertically
-   */
-  private buildTurretMesh(
-    parent: THREE.Group,
-    turret: Turret,
-    unitRadius: number,
-    pid: PlayerId | undefined,
-    isMirrorHost: boolean,
-    gfx: GraphicsConfig,
-  ): TurretMesh {
-    const root = new THREE.Group();
-    const barrel = turret.config.barrel;
-    const isForceField = barrel?.type === 'complexSingleEmitter';
-
-    // Skip the head cylinder entirely for:
-    //  - turretStyle='none' (min LOD): no body, no barrels — chassis only.
-    //  - force-field turrets at ANY LOD: the ForceFieldRenderer3D's glowing
-    //    sphere is the whole visual — a stubby cylinder underneath just
-    //    clips through the orb and reads as a separate piece.
-    //  - the mirror-host turret on mirror units (Loris index 0): the mirror
-    //    panels already represent that turret's body.
-    const turretOff = gfx.turretStyle === 'none';
-    const hideHead = turretOff || isForceField || isMirrorHost;
-
-    // Resolved head radius drives BOTH the sphere mesh size AND its
-    // attachment height. Computed up front so the barrel block below
-    // can pivot at the head center even when the head itself is
-    // hidden (force-field / mirror-host / MIN LOD). Per-turret
-    // bodyRadius takes precedence; the auto-derived default is the
-    // fallback.
-    const headRadius = getTurretHeadRadius(unitRadius, turret.config);
-
-    let head: THREE.Mesh | undefined;
-    if (!hideHead) {
-      // Turret head shares the chassis color (primary) so the unit
-      // reads as a single solid hue at any saturation. Secondary was
-      // previously used here, which produced a visible color/sat
-      // step between body and turret.
-      head = new THREE.Mesh(this.turretHeadGeom, this.getPrimaryMat(pid));
-      // The sphere's CENTER sits at y=headRadius above the turret root
-      // so the BOTTOM of the sphere touches y=0 — i.e. the head rests
-      // on the chassis top. Larger turrets sit higher; smaller ones
-      // sit lower; either way the head never floats above or clips
-      // into the chassis the way the old fixed-y=TURRET_HEIGHT/2
-      // anchor used to.
-      head.scale.setScalar(headRadius);
-      head.position.set(0, headRadius, 0);
-      root.add(head);
-    }
-
-    const barrels: THREE.Mesh[] = [];
-    if (!barrel || isForceField || turretOff) {
-      // No physical barrel for: force-field turrets, min LOD (turretOff).
-      parent.add(root);
-      return { root, head, barrels, pitchGroup: undefined, spinGroup: undefined };
-    }
-
-    // Barrel pivots through the head's center, so its Y in turret-root
-    // local space is the head radius (mirror-host turrets that hide
-    // their head still pivot at the same conceptual height — that's
-    // why we computed headRadius before the hideHead branch).
-    const barrelCenterY = headRadius;
-
-    // Barrel thickness is the shot width (for line shots) falling back to the
-    // blueprint-derived barrelThickness. Matches the 2D single-barrel path.
-    const shot = turret.config.shot;
-    const shotWidth =
-      shot && (shot.type === 'beam' || shot.type === 'laser')
-        ? shot.width
-        : undefined;
-    const diameter =
-      (barrel.type === 'simpleSingleBarrel' ? shotWidth : undefined)
-      ?? barrel.barrelThickness
-      ?? BARREL_MIN_THICKNESS;
-    // CylinderGeometry is unit radius = 1, so physical radius = scale.x = diameter/2.
-    const cylRadius = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
-
-    // Two nested pivots so pitch and spin don't fight each other:
-    //
-    //   root
-    //   └── pitchGroup   — rotation.z = pitch (tilts firing direction)
-    //       └── spinGroup — rotation.x = gatling spin
-    //           └── barrel meshes
-    //
-    // Because spinGroup is a child of pitchGroup, spinGroup's local +X
-    // is ALREADY the pitched firing direction. Rotating around its
-    // local +X therefore spins the barrel cluster around its real 3D
-    // firing axis at any pitch. A single group carrying both rotations
-    // would compose them extrinsically — spin around world-X after
-    // pitch — and high-elevation gatling barrels would cone around the
-    // horizontal instead of rolling around their own axis.
-    const pitchGroup = new THREE.Group();
-    pitchGroup.position.set(0, barrelCenterY, 0);
-    root.add(pitchGroup);
-    const spinGroup = new THREE.Group();
-    pitchGroup.add(spinGroup);
-    const barrelParent: THREE.Object3D = spinGroup;
-    // Barrels attach to spinGroup at Y=0 — pitchGroup's position already
-    // lifts everything to barrelCenterY.
-    const parentBaseY = 0;
-
-    // Place one cylinder segment spanning (base) → (tip) in local coords. Used
-    // for straight (gatling) and cone (shotgun) barrels alike.
-    const pushSegment = (
-      baseX: number, baseY: number, baseZ: number,
-      tipX: number, tipY: number, tipZ: number,
-    ): void => {
-      const dx = tipX - baseX;
-      const dy = tipY - baseY;
-      const dz = tipZ - baseZ;
-      const length = Math.hypot(dx, dy, dz);
-      if (length < 1e-4) return;
-      const m = new THREE.Mesh(this.barrelGeom, this.barrelMat);
-      m.scale.set(cylRadius, length, cylRadius);
-      m.position.set(
-        (baseX + tipX) / 2,
-        (baseY + tipY) / 2,
-        (baseZ + tipZ) / 2,
-      );
-      // Align cylinder's default +Y axis with the (base→tip) direction.
-      this._barrelUp.set(0, 1, 0);
-      this._barrelDir.set(dx / length, dy / length, dz / length);
-      m.quaternion.setFromUnitVectors(this._barrelUp, this._barrelDir);
-      barrelParent.add(m);
-      barrels.push(m);
-    };
-
-    const length = unitRadius * barrel.barrelLength;
-    // barrelLength=0 (e.g. commander's d-gun "emitter") → no visible barrel.
-    if (length < 1e-4) {
-      parent.add(root);
-      return { root, head, barrels, pitchGroup, spinGroup };
-    }
-
-    if (barrel.type === 'simpleSingleBarrel') {
-      // Barrel base sits at the turret pivot (head sphere center) and
-      // extends `length` along the firing axis. The portion inside the
-      // sphere is occluded by the head mesh so visually you only see
-      // whatever protrudes — proper turret look.
-      pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
-    } else if (barrel.type === 'simpleMultiBarrel') {
-      // Parallel barrels arranged in a YZ circle around the firing axis. The
-      // barrelGroup's origin IS the firing axis (passes through the cluster
-      // center), so rotating the group spins each barrel around that axis at
-      // its own orbit radius — like a real gatling.
-      const orbitR = Math.min(
-        barrel.orbitRadius * unitRadius,
-        TURRET_HEIGHT * 0.45,
-      );
-      const n = barrel.barrelCount;
-      for (let i = 0; i < n; i++) {
-        const a = (i + 0.5) / n * Math.PI * 2;
-        const oy = Math.cos(a) * orbitR;
-        const oz = Math.sin(a) * orbitR;
-        pushSegment(0, parentBaseY + oy, oz, length, parentBaseY + oy, oz);
-      }
-    } else if (barrel.type === 'coneMultiBarrel') {
-      // Barrels diverge from base orbit to a wider tip orbit — a 3D cone
-      // analogue of the 2D shotgun's perpendicular spread. Same firing-axis
-      // rotation center as the parallel case. Mirrors the primitive in
-      // BarrelGeometry.getBarrelTip so the rendered barrel tips and the
-      // sim-spawned shot origins land at the same point.
-      const baseOrbitR = Math.min(
-        barrel.baseOrbit * unitRadius,
-        TURRET_HEIGHT * 0.35,
-      );
-      // Explicit `tipOrbit` is trusted as-authored (no clamp) so VLS
-      // rocket pods can splay their tubes wider than the legacy
-      // shotgun safety. The auto-derived path keeps its clamp.
-      const tipOrbitR = barrel.tipOrbit !== undefined
-        ? barrel.tipOrbit * unitRadius
-        : Math.min(
-            baseOrbitR + length * Math.tan((turret.config.spread?.angle ?? Math.PI / 5) / 2),
-            TURRET_HEIGHT * 0.9,
-          );
-      const n = barrel.barrelCount;
-      for (let i = 0; i < n; i++) {
-        const a = (i + 0.5) / n * Math.PI * 2;
-        const cosA = Math.cos(a);
-        const sinA = Math.sin(a);
-        pushSegment(
-          0, parentBaseY + cosA * baseOrbitR, sinA * baseOrbitR,
-          length, parentBaseY + cosA * tipOrbitR, sinA * tipOrbitR,
-        );
-      }
-    }
-
-    parent.add(root);
-    return { root, head, barrels, pitchGroup, spinGroup };
-  }
-
-  // Scratch vectors reused across buildTurretMesh calls (no per-barrel allocations).
-  private _barrelUp = new THREE.Vector3();
-  private _barrelDir = new THREE.Vector3();
-
-  /**
-   * Build the mirror-panel slab set for a unit (e.g. Loris). Panels live in a
-   * sub-group that rotates with the TURRET, not the chassis — mirror units'
-   * armor plates follow the mirror emitter's aim, not the hull's heading.
-   */
-  private buildMirrorMesh(
-    parent: THREE.Group,
-    panels: readonly { offsetX: number; offsetY: number; angle: number }[],
-    pid: PlayerId | undefined,
-    gfx: GraphicsConfig,
-    panelTopY: number,
-  ): MirrorMesh {
-    const root = new THREE.Group();
-    parent.add(root);
-    const meshes: THREE.Mesh[] = [];
-    const mirrorHeight = Math.max(panelTopY - MIRROR_BASE_Y, 1);
-    // Panel is a SQUARE: edge length = vertical extent. Single source
-    // of truth for both axes; matches the sim's CachedMirrorPanel which
-    // sets halfWidth = halfHeight = (topY − baseY) / 2.
-    const side = mirrorHeight;
-
-    // Mirrors are always the super-shiny PBR chrome material — no LOD
-    // downgrade to flat Lambert, and no orbital sparkle meshes; the
-    // near-zero-roughness reflection IS the shine.
-    void gfx;
-    const mat = this.getMirrorShinyMat(pid);
-
-    for (let i = 0; i < panels.length; i++) {
-      const p = panels[i];
-      const m = new THREE.Mesh(this.mirrorGeom, mat);
-      // PlaneGeometry default lies in the XY plane with normal +Z.
-      // Rotate around local Y by -(angle + π/2) so the combined
-      // chassis → mirrorRoot → panel transforms put the panel's
-      // EDGE direction (originally +X) along world (turret.rotation +
-      // angle + π/2), and its NORMAL (originally +Z) along world
-      // (turret.rotation + angle). Pitch (rotation.x = -mirrorPitch)
-      // is applied AFTER the yaw flip in YXZ order so it rotates the
-      // panel around its edge axis — same convention the sim uses for
-      // panel orientation in MirrorPanelHit.
-      m.rotation.order = 'YXZ';
-      m.rotation.y = -(p.angle + Math.PI / 2);
-      m.scale.set(side, side, 1);
-      m.position.set(p.offsetX, MIRROR_BASE_Y + mirrorHeight / 2, p.offsetY);
-      root.add(m);
-      meshes.push(m);
-    }
-    return { root, panels: meshes };
-  }
 
   private getPrimaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
     if (pid === undefined) return this.neutralMat;
@@ -1122,7 +832,12 @@ export class Render3DEntities {
         for (let ti = 0; ti < turrets.length; ti++) {
           const t = turrets[ti];
           const isMirrorHost = unitHasMirrors && ti === 0;
-          const tm = this.buildTurretMesh(group, t, radius, pid, isMirrorHost, this.lod.gfx);
+          const tm = buildTurretMesh3D(group, t, radius, isMirrorHost, this.lod.gfx, {
+            headGeom: this.turretHeadGeom,
+            barrelGeom: this.barrelGeom,
+            barrelMat: this.barrelMat,
+            primaryMat: this.getPrimaryMat(pid),
+          });
           if (tm.head) tm.head.userData.entityId = e.id;
           for (const b of tm.barrels) b.userData.entityId = e.id;
           turretMeshes.push(tm);
@@ -1151,7 +866,10 @@ export class Render3DEntities {
           // turret is index 0; its bodyRadius (when set) wins.
           const hostHeadRadius = getTurretHeadRadius(radius, turrets[0]?.config);
           const panelTopY = bodyEntry.topY * radius + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
-          m.mirrors = this.buildMirrorMesh(group, mirrorPanels, pid, this.lod.gfx, panelTopY);
+          m.mirrors = buildMirrorMesh3D(
+            group, mirrorPanels, panelTopY,
+            this.mirrorGeom, this.getMirrorShinyMat(pid),
+          );
           for (const panel of m.mirrors.panels) {
             panel.userData.entityId = e.id;
           }
