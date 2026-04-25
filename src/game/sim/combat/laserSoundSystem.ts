@@ -5,6 +5,7 @@ import type { Entity, EntityId } from '../types';
 import type { SimEvent } from './types';
 import { distance, getTargetRadius } from './combatUtils';
 import { getWeaponWorldPosition, getTransformCosSin } from '../../math';
+import { getBeamWeaponsTargeting } from './targetIndex';
 
 // Reusable array for laser sound events (avoids per-frame allocation)
 const _laserSimEvents: SimEvent[] = [];
@@ -33,25 +34,26 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
 
 // Emit laserStop events for all beam weapons across the world that were targeting a dying entity.
 // This ensures sounds stop immediately when the target dies rather than waiting for retarget.
-export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): SimEvent[] {
+//
+// Reads the inverse target index (targetIndex.ts) instead of scanning every
+// unit × every turret on each death — at 1000 units × 8 turrets the old scan
+// was the dominant cost during battle peaks.
+export function emitLaserStopsForTarget(_world: WorldState, targetId: EntityId): SimEvent[] {
   _laserStopTarget.length = 0;
-
-  for (const unit of world.getUnits()) {
+  const refs = getBeamWeaponsTargeting(targetId);
+  for (let r = 0; r < refs.length; r++) {
+    const { unit, weaponIndex } = refs[r];
     if (!unit.turrets || !unit.unit || unit.unit.hp <= 0) continue;
-
-    for (let i = 0; i < unit.turrets.length; i++) {
-      const weapon = unit.turrets[i];
-      if (weapon.target !== targetId) continue;
-      const config = weapon.config;
-      if (config.shot.type !== 'beam') continue;
-
-      _laserStopTarget.push({
-        type: 'laserStop',
-        turretId: config.id,
-        pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
-        entityId: unit.id * 100 + i,
-      });
-    }
+    const weapon = unit.turrets[weaponIndex];
+    if (!weapon || weapon.target !== targetId) continue;
+    const config = weapon.config;
+    if (config.shot.type !== 'beam') continue;
+    _laserStopTarget.push({
+      type: 'laserStop',
+      turretId: config.id,
+      pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
+      entityId: unit.id * 100 + weaponIndex,
+    });
   }
   return _laserStopTarget;
 }

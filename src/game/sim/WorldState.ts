@@ -5,6 +5,7 @@ import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, DEFAULT_FF_DMG_UNITS, MIRROR_BASE_Y, TURRET_HEIGHT, UNIT_HP_MULTIPLIER } from '../../config';
 import { getBodyTopY } from '../math/BodyDimensions';
+import { dropWeaponsForUnit } from './combat/targetIndex';
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -147,6 +148,12 @@ export class WorldState {
 
   // Remove entity from world
   removeEntity(id: EntityId): void {
+    const entity = this.entities.get(id);
+    if (entity?.unit) {
+      // Drop any inverse-target index entries that referred to this
+      // unit's beam weapons before its bookkeeping is gone.
+      dropWeaponsForUnit(entity);
+    }
     this.entities.delete(id);
     this.cache.invalidate();
   }

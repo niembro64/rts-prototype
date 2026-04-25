@@ -18,6 +18,9 @@ import {
   updateForceFieldState,
   applyForceFieldDamage,
   resetForceFieldBuffers,
+} from './combat';
+import { clearTargetIndex } from './combat/targetIndex';
+import {
   updateProjectiles,
   checkProjectileCollisions,
   type SimEvent,
@@ -738,5 +741,6 @@ export class Simulation {
     this._deadBuildingIdsBuf.length = 0;
     resetEnergyBuffers(this.energyBuffers);
     resetForceFieldBuffers();
+    clearTargetIndex();
   }
 }

@@ -7,6 +7,7 @@ import { getTargetRadius, getTurretMountHeight } from './combatUtils';
 import { getWeaponWorldPosition, getTransformCosSin, distance3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { TARGETING_REACQUIRE_STRIDE } from '../../../config';
+import { setWeaponTarget } from './targetIndex';
 
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
@@ -101,16 +102,17 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       if (priorityTarget) {
         // ATTACK MODE: force all weapons to the priority target, engage ranges only
-        for (const weapon of weapons) {
+        for (let wi = 0; wi < weapons.length; wi++) {
+          const weapon = weapons[wi];
           if (weapon.config.isManualFire) continue;
           // Passive turrets (mirrors) only target beam units
           if (weapon.config.passive && !isBeamUnit(priorityTarget)) {
-            weapon.target = null;
+            setWeaponTarget(weapon, unit, wi, null);
             weapon.state = 'idle';
             continue;
           }
 
-          weapon.target = priorityId;
+          setWeaponTarget(weapon, unit, wi, priorityId);
           const dist = distance3(
             weapon.worldPos!.x, weapon.worldPos!.y, weapon.worldPos!.z,
             priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
@@ -133,7 +135,8 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     // AUTO MODE: standard hysteresis FSM
 
     // Pass 1: Validate existing targets with hysteresis
-    for (const weapon of weapons) {
+    for (let wi = 0; wi < weapons.length; wi++) {
+      const weapon = weapons[wi];
       if (weapon.config.isManualFire) continue;
       if (weapon.target === null) continue;
 
@@ -144,7 +147,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
       if (!targetIsValid || !target || (weapon.config.passive && !isBeamUnit(target))) {
-        weapon.target = null;
+        setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';
       } else {
         const r = weapon.ranges;
@@ -159,7 +162,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
             break;
           case 'tracking':
             if (dist > r.tracking.release + targetRadius) {
-              weapon.target = null;
+              setWeaponTarget(weapon, unit, wi, null);
               weapon.state = 'idle';
             } else if (dist <= r.engage.acquire + targetRadius) {
               weapon.state = 'engaged';
@@ -169,7 +172,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
             break;
           case 'engaged':
             if (dist > r.tracking.release + targetRadius) {
-              weapon.target = null;
+              setWeaponTarget(weapon, unit, wi, null);
               weapon.state = 'idle';
             } else if (dist > r.engage.release + targetRadius) {
               weapon.state = 'tracking';
@@ -221,7 +224,8 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     // Pass 2: Re-evaluate tracking weapons — if a closer engageable target
     // exists, switch to it instead of uselessly tracking an out-of-range enemy.
     // This uses per-turret ranges so each weapon evaluates independently.
-    for (const weapon of weapons) {
+    for (let wi = 0; wi < weapons.length; wi++) {
+      const weapon = weapons[wi];
       if (weapon.config.isManualFire) continue;
       if (weapon.state !== 'tracking' || weapon.target === null) continue;
 
@@ -253,13 +257,14 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       if (closestEngageable) {
         // Found a closer target we can actually fire at — switch to it
-        weapon.target = closestEngageable.id;
+        setWeaponTarget(weapon, unit, wi, closestEngageable.id);
         weapon.state = 'engaged';
       }
     }
 
     // Pass 3: Acquire targets for weapons with no target (idle)
-    for (const weapon of weapons) {
+    for (let wi = 0; wi < weapons.length; wi++) {
+      const weapon = weapons[wi];
       if (weapon.config.isManualFire) continue;
       if (weapon.target !== null) continue;
 
@@ -293,12 +298,12 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       }
 
       if (closestEnemy) {
-        weapon.target = closestEnemy.id;
+        setWeaponTarget(weapon, unit, wi, closestEnemy.id);
         const targetRadius = closestEnemy.unit ? closestEnemy.unit.unitRadiusCollider.shot
           : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
         weapon.state = closestDist <= r.engage.acquire + targetRadius ? 'engaged' : 'tracking';
       } else {
-        weapon.target = null;
+        setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';
       }
     }

@@ -10,6 +10,7 @@ import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, BEAM_MAX_LENGTH } from '../../../config';
 import { resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
+import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { spatialGrid } from '../SpatialGrid';
 
@@ -124,7 +125,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 
       const target = world.getEntity(weapon.target!);
       if (!target) {
-        weapon.target = null;
+        setWeaponTarget(weapon, unit, weaponIndex, null);
         weapon.state = 'idle';
         continue;
       }
