@@ -645,8 +645,8 @@ export class Simulation {
         const dy = attackTarget!.transform.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 5) {
-          unit.velocityX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
-          unit.velocityY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+          unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+          unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
         }
         continue;
       }
@@ -678,8 +678,8 @@ export class Simulation {
       }
 
       // Thrust toward waypoint
-      unit.velocityX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
-      unit.velocityY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+      unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+      unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
     }
   }
 
