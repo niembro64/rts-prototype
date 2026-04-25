@@ -970,20 +970,21 @@ export class Render3DEntities {
   }
 
   private updateUnits(): void {
-    // MIN / LOW tier: every unit is a single sphere drawn from one
+    // MIN tier only: every unit is a single sphere drawn from one
     // InstancedMesh — collapses thousands of per-unit draw calls into
-    // a single GPU dispatch. The high-tier per-unit Group path is
-    // skipped entirely, and any leftover per-unit Mesh from a previous
-    // MED+ render run was already wiped by rebuildAllUnitsOnLodChange()
-    // when the LOD key flipped.
-    const isLowTier = this.lod.gfx.tier === 'min' || this.lod.gfx.tier === 'low';
-    if (isLowTier) {
+    // a single GPU dispatch. LOW and above still build the full
+    // per-unit Group (chassis, turrets, legs/wheels, mirrors) so
+    // there's a visible step between MIN and LOW: MIN trades all
+    // detail for raw throughput, LOW keeps the simplified chassis
+    // shapes shown in the 2D LOW preset.
+    const isMinTier = this.lod.gfx.tier === 'min';
+    if (isMinTier) {
       this.updateUnitsInstanced();
       return;
     }
-    // We left LOW tier — release every instanced slot so stale ghosts
+    // We left MIN tier — release every instanced slot so stale ghosts
     // don't sit at scale 0 forever (and so colors recycle quickly when
-    // we go back to LOW).
+    // we drop back to MIN).
     if (this.unitInstancedSlot.size > 0) {
       this.releaseAllInstancedSlots();
     }
