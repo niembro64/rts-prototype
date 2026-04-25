@@ -331,10 +331,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 10,
     turrets: [
       { turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 },
-      { turretId: 'lightTurret', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [
-      { x: 0, y: 0 },
       { x: 0, y: 0 },
     ],
     locomotion: {
