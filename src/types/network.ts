@@ -10,7 +10,7 @@ export type NetworkPlayerActionMessage = { type: 'command'; data: Command };
 
 // Server → Client
 export type NetworkServerSnapshotMessage =
-  | { type: 'state'; data: NetworkServerSnapshot | string }
+  | { type: 'state'; data: NetworkServerSnapshot | string | Uint8Array | ArrayBuffer }
   | { type: 'playerAssignment'; playerId: PlayerId }
   | { type: 'gameStart'; playerIds: PlayerId[] }
   | { type: 'playerJoined'; playerId: PlayerId; playerName: string }

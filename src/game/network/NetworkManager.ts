@@ -1,4 +1,5 @@
 import Peer, { DataConnection } from 'peerjs';
+import { encode as msgpackEncode, decode as msgpackDecode } from '@msgpack/msgpack';
 import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';
 
@@ -337,9 +338,10 @@ export class NetworkManager {
   private handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): void {
     switch (message.type) {
       case 'state':
-        // Client receives state from host
-        // State is pre-serialized as JSON string by host to avoid expensive
-        // BinaryPack deserialization of deep object trees
+        // Client receives state from host. Host now ships state as a
+        // MessagePack Uint8Array; legacy JSON-string form is still
+        // accepted as a fallback so a mixed-version game doesn't crash
+        // on the first frame after upgrade.
         if (this.role === 'client') {
           this.snapshotsReceived++;
           if (this.snapshotsReceived % 100 === 0) {
@@ -347,9 +349,17 @@ export class NetworkManager {
             const dc = hostConn?.dataChannel;
             console.log(`[NET] Client received snapshot #${this.snapshotsReceived} (dc=${dc?.readyState ?? 'none'})`);
           }
-          const state: NetworkServerSnapshot = typeof message.data === 'string'
-            ? JSON.parse(message.data)
-            : message.data;
+          const raw = message.data;
+          let state: NetworkServerSnapshot;
+          if (raw instanceof Uint8Array) {
+            state = msgpackDecode(raw) as NetworkServerSnapshot;
+          } else if (raw instanceof ArrayBuffer) {
+            state = msgpackDecode(new Uint8Array(raw)) as NetworkServerSnapshot;
+          } else if (typeof raw === 'string') {
+            state = JSON.parse(raw);
+          } else {
+            state = raw as NetworkServerSnapshot;
+          }
           this.onStateReceived?.(state);
         }
         break;
@@ -412,14 +422,18 @@ export class NetworkManager {
   }
 
   // Send game state to all clients (host only)
-  // Pre-serializes to JSON string so PeerJS's BinaryPack only handles a flat
-  // string (trivial) instead of a deep object tree (expensive to pack/unpack).
+  // Pre-serializes to a MessagePack Uint8Array so PeerJS's BinaryPack
+  // only handles a flat byte buffer (trivial) instead of a deep object
+  // tree (expensive to pack/unpack). MessagePack typically halves wire
+  // size vs JSON because numbers go on as 1-9 bytes instead of 6-12
+  // ASCII chars and field names use a length-prefixed compact form.
   broadcastState(state: NetworkServerSnapshot): void {
     if (this.role !== 'host') return;
     this.snapshotsSent++;
 
-    // Pre-serialize once for all clients (V8-native JSON.stringify is fast)
-    const jsonString = JSON.stringify(state);
+    // Pre-serialize once for all clients (msgpack-javascript is fast,
+    // does no per-call allocations beyond the result buffer).
+    const buf = msgpackEncode(state);
 
     // Log every 100th snapshot with connection health + payload size
     if (this.snapshotsSent % 100 === 0) {
@@ -427,11 +441,11 @@ export class NetworkManager {
         const dc = conn.dataChannel;
         const buffered = dc ? dc.bufferedAmount : -1;
         const dcState = dc ? dc.readyState : 'no-dc';
-        console.log(`[NET] Host snapshot #${this.snapshotsSent} → player ${pid}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${jsonString.length}`);
+        console.log(`[NET] Host snapshot #${this.snapshotsSent} → player ${pid}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength}`);
       }
     }
 
-    this.broadcast({ type: 'state', data: jsonString });
+    this.broadcast({ type: 'state', data: buf });
   }
 
   // Send command to host (client only)
