@@ -35,7 +35,7 @@ import {
   type NetworkRole,
 } from '../game/network/NetworkManager';
 import {
-  MAP_SETTINGS,
+  getMapSize,
   COMBAT_STATS_HISTORY_MAX,
   COMBAT_STATS_VISIBLE_ON_LOAD,
 } from '../config';
@@ -1198,8 +1198,8 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       localPlayerId: localPlayerId.value,
       gameConnection,
       clientViewState,
-      mapWidth: MAP_SETTINGS.game.width,
-      mapHeight: MAP_SETTINGS.game.height,
+      mapWidth: getMapSize(false).width,
+      mapHeight: getMapSize(false).height,
       backgroundMode: false,
       rendererMode: currentRendererMode.value,
     });
@@ -1248,8 +1248,8 @@ function switchRenderer(newMode: RendererMode): void {
       localPlayerId: 1,
       gameConnection: backgroundBattle.connection,
       clientViewState: backgroundBattle.clientViewState,
-      mapWidth: MAP_SETTINGS.game.width,
-      mapHeight: MAP_SETTINGS.game.height,
+      mapWidth: getMapSize(true).width,
+      mapHeight: getMapSize(true).height,
       backgroundMode: true,
       rendererMode: newMode,
     });
@@ -1309,8 +1309,8 @@ function switchRenderer(newMode: RendererMode): void {
     localPlayerId: localPlayerId.value,
     gameConnection: activeConnection,
     clientViewState,
-    mapWidth: MAP_SETTINGS.game.width,
-    mapHeight: MAP_SETTINGS.game.height,
+    mapWidth: getMapSize(false).width,
+    mapHeight: getMapSize(false).height,
     backgroundMode: false,
     rendererMode: newMode,
   });

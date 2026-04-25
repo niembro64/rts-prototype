@@ -16,7 +16,7 @@ import { PhysicsEngine3D } from './PhysicsEngine3D';
 import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
 import {
-  MAP_SETTINGS,
+  getMapSize,
   UNIT_THRUST_MULTIPLIER_GAME,
   SNAPSHOT_CONFIG,
   DEFAULT_KEYFRAME_RATIO,
@@ -106,8 +106,9 @@ export class GameServer {
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
-    // Both modes use the game map (square, 3000x3000)
-    const mapConfig = MAP_SETTINGS.game;
+    // Demo / lobby battle uses MAP_SETTINGS.demo (larger); real game
+    // uses MAP_SETTINGS.game.
+    const mapConfig = getMapSize(this.backgroundMode);
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
 

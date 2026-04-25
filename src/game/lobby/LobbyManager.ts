@@ -6,7 +6,7 @@ import type { RendererMode } from '../../types/game';
 import { GameServer } from '../server/GameServer';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { ClientViewState } from '../network/ClientViewState';
-import { MAP_SETTINGS } from '../../config';
+import { getMapSize } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { BACKGROUND_UNIT_TYPES } from '../server/BackgroundBattleStandalone';
 import {
@@ -118,8 +118,8 @@ export async function createBackgroundBattle(
     localPlayerId: 1,
     gameConnection: connection,
     clientViewState,
-    mapWidth: MAP_SETTINGS.game.width,
-    mapHeight: MAP_SETTINGS.game.height,
+    mapWidth: getMapSize(true).width,
+    mapHeight: getMapSize(true).height,
     backgroundMode: true,
     rendererMode,
   });

@@ -434,11 +434,16 @@ export const UNIT_HP_MULTIPLIER = 2.0;
 // =============================================================================
 
 export const MAP_SETTINGS: Record<string, MapSize> = {
-  // Single map size for both the main game and the demo / lobby
-  // background battle — they share GameServer.ts which always reads
-  // MAP_SETTINGS.game.
+  // Real (foreground) match. Demo / lobby battle uses MAP_SETTINGS.demo
+  // (2× linear) so the AI vs. AI showcase has more breathing room.
   game: { width: 3_000, height: 3_000 },
+  demo: { width: 6_000, height: 6_000 },
 };
+
+/** Pick the map size for the current battle: demo (background) or game (real). */
+export function getMapSize(backgroundMode: boolean): MapSize {
+  return backgroundMode ? MAP_SETTINGS.demo : MAP_SETTINGS.game;
+}
 
 // =============================================================================
 // BACKGROUND GAME SETTINGS
