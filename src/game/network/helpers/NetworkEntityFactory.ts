@@ -70,9 +70,9 @@ function createUnitFromNetwork(
       hp: u?.hp.curr ?? 100,
       maxHp: u?.hp.max ?? 100,
       unitRadiusCollider: {
-        scale: u?.collider.scale ?? defaultRadius,
-        shot: u?.collider.shot ?? defaultRadius,
-        push: u?.collider.push ?? defaultRadius,
+        scale: u?.collider?.scale ?? defaultRadius,
+        shot: u?.collider?.shot ?? defaultRadius,
+        push: u?.collider?.push ?? defaultRadius,
       },
       moveSpeed: u?.moveSpeed ?? 100,
       mass: u?.mass ?? 25,
@@ -194,8 +194,8 @@ function createBuildingFromNetwork(
     ownership: { playerId },
     selectable: { selected: false },
     building: {
-      width: b?.dim.x ?? 100,
-      height: b?.dim.y ?? 100,
+      width: b?.dim?.x ?? 100,
+      height: b?.dim?.y ?? 100,
       depth,
       hp: b?.hp.curr ?? 500,
       maxHp: b?.hp.max ?? 500,

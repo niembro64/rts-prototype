@@ -55,6 +55,12 @@ type ShotSub = NonNullable<NetworkServerSnapshotEntity['shot']>;
 type PooledEntry = {
   entity: NetworkServerSnapshotEntity;
   unitSub: UnitSub;
+  /** Persistent collider object reused across snapshots — unitSub.collider
+   *  swaps between this and undefined depending on whether the entity
+   *  needs a static-fields seed. */
+  unitCollider: { scale: number; shot: number; push: number };
+  /** Persistent building dim reused across snapshots — same swap rule. */
+  buildingDim: { x: number; y: number };
   buildingSub: BuildingSub;
   factorySub: FactorySub;
   shotSub: ShotSub;
@@ -94,13 +100,15 @@ function createPooledEntry(): PooledEntry {
   return {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
     unitSub: {
-      unitType: '', hp: { curr: 0, max: 0 },
-      collider: { scale: 0, shot: 0, push: 0 },
-      moveSpeed: 0, mass: 0, velocity: { x: 0, y: 0, z: 0 },
+      unitType: undefined, hp: { curr: 0, max: 0 },
+      collider: undefined,
+      moveSpeed: undefined, mass: undefined, velocity: { x: 0, y: 0, z: 0 },
       turretRotation: 0,
     },
+    unitCollider: { scale: 0, shot: 0, push: 0 },
+    buildingDim: { x: 0, y: 0 },
     buildingSub: {
-      type: '', dim: { x: 0, y: 0 }, hp: { curr: 0, max: 0 },
+      type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
       build: { progress: 0, complete: false },
     },
     factorySub: {
@@ -181,6 +189,17 @@ const _prevStates = new Map<number, PrevEntityState>();
 const _prevEntityIds = new Set<number>();
 const _currentEntityIds = new Set<number>();
 const _removedIdsBuf: number[] = [];
+
+/** Entities that have already had their static (never-changes-after-
+ *  spawn) fields shipped at least once over this session's protocol —
+ *  unit type, collider, mass, moveSpeed, isCommander; building dim
+ *  and type; turret id / ranges / mount offset / acc / drag. The
+ *  static block is included on the FIRST full record we emit for an
+ *  entity and skipped on every full thereafter, so steady-state
+ *  keyframes carry only the per-tick numbers. resetProtocolSeeded()
+ *  forces the next pass to re-seed (new client connecting, game
+ *  restart). */
+const _protocolSeeded = new Set<number>();
 
 // Pool for PrevEntityState objects (avoid allocating on new entity)
 const _prevStatePool: PrevEntityState[] = [];
@@ -339,6 +358,15 @@ export function resetDeltaTracking(): void {
   _prevEntityIds.clear();
   _currentEntityIds.clear();
   _prevStatePoolIndex = 0;
+  _protocolSeeded.clear();
+}
+
+/** Force the next emitted snapshot to re-include static fields for
+ *  every entity. Call when a new client joins mid-game so they get the
+ *  full picture on their first keyframe; for single-host games this is
+ *  not normally needed. */
+export function resetProtocolSeeded(): void {
+  _protocolSeeded.clear();
 }
 
 // Reusable arrays to avoid per-snapshot allocations
@@ -451,6 +479,9 @@ export function serializeGameState(
       if (!_currentEntityIds.has(prevId)) {
         _removedIdsBuf.push(prevId);
         _prevStates.delete(prevId);
+        // Clear seeded entry too — if the entity ID is reused later
+        // we want the next full to re-seed its statics.
+        _protocolSeeded.delete(prevId);
       }
     }
   }
@@ -655,15 +686,27 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
       const u = pool.unitSub;
       ne.unit = u;
 
-      // Static fields (only on keyframes / new entities)
-      if (isFull) {
+      // Static fields ship only on the FIRST full record for this
+      // entity. Subsequent fulls skip them — the client already
+      // cached them on entity creation. Mid-game late joiners trigger
+      // resetProtocolSeeded() to re-seed everyone.
+      const needsSeed = isFull && !_protocolSeeded.has(entity.id);
+      if (needsSeed) {
         u.unitType = entity.unit.unitType;
+        u.collider = pool.unitCollider;
         u.collider.scale = entity.unit.unitRadiusCollider.scale;
         u.collider.shot = entity.unit.unitRadiusCollider.shot;
         u.collider.push = entity.unit.unitRadiusCollider.push;
         u.moveSpeed = entity.unit.moveSpeed;
         u.mass = entity.unit.mass;
         u.isCommander = entity.commander !== undefined ? true : undefined;
+        _protocolSeeded.add(entity.id);
+      } else {
+        u.unitType = undefined;
+        u.collider = undefined;
+        u.moveSpeed = undefined;
+        u.mass = undefined;
+        if (!isFull) u.isCommander = undefined;
       }
 
       // Velocity — full keyframes always carry it; on deltas it ships
@@ -767,11 +810,18 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
       const b = pool.buildingSub;
       ne.building = b;
 
-      // Static building fields (only on keyframes / new entities)
-      if (isFull) {
+      // Static building fields ship only on the FIRST full record for
+      // this entity. Same seeded-set logic as units above.
+      const needsBldSeed = isFull && !_protocolSeeded.has(entity.id);
+      if (needsBldSeed) {
+        b.dim = pool.buildingDim;
         b.dim.x = entity.building.width;
         b.dim.y = entity.building.height;
         b.type = entity.buildingType ?? '';
+        _protocolSeeded.add(entity.id);
+      } else {
+        b.dim = undefined;
+        b.type = undefined;
       }
 
       // HP

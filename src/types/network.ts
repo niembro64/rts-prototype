@@ -193,11 +193,15 @@ export type NetworkServerSnapshotEntity = {
   playerId: PlayerId;
   changedFields?: number;
   unit?: {
-    unitType: string;
+    /** Static fields (unitType, collider, moveSpeed, mass) ship only
+     *  on the FIRST full record we send for this entity. Subsequent
+     *  full records skip them — the client already cached them on
+     *  entity creation and they never change. */
+    unitType?: string;
     hp: { curr: number; max: number };
-    collider: { scale: number; shot: number; push: number };
-    moveSpeed: number;
-    mass: number;
+    collider?: { scale: number; shot: number; push: number };
+    moveSpeed?: number;
+    mass?: number;
     velocity: Vec3;
     turretRotation: number;
     isCommander?: boolean;
@@ -206,11 +210,13 @@ export type NetworkServerSnapshotEntity = {
     turrets?: NetworkServerSnapshotTurret[];
   };
   building?: {
-    type: string;
+    /** type / dim ship only on the FIRST full record we send for this
+     *  entity. Same rationale as the matching note on `unit` above. */
+    type?: string;
     /** Footprint in world units — planar xy is dim.x/dim.y. Full
      *  depth (vertical extent) lives on the building entity, not
      *  here — clients re-derive it from the blueprint. */
-    dim: Vec2;
+    dim?: Vec2;
     hp: { curr: number; max: number };
     build: { progress: number; complete: boolean };
     factory?: {

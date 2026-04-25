@@ -453,13 +453,17 @@ export class ClientViewState {
         entity.unit.hp = su.hp.curr;
         entity.unit.maxHp = su.hp.max;
       }
-      // Static fields only present on keyframes
-      if (isFull) {
+      // Static fields ship only on the FIRST full record for each
+      // entity (server seeds once per session). Read whenever they're
+      // present — they don't change after spawn so re-applying the
+      // same values is a no-op anyway.
+      if (su.collider) {
         entity.unit.unitRadiusCollider.scale = su.collider.scale;
         entity.unit.unitRadiusCollider.shot = su.collider.shot;
         entity.unit.unitRadiusCollider.push = su.collider.push;
-        entity.unit.moveSpeed = su.moveSpeed;
       }
+      if (su.moveSpeed !== undefined) entity.unit.moveSpeed = su.moveSpeed;
+      if (su.mass !== undefined) entity.unit.mass = su.mass;
 
       if ((isFull || cf! & ENTITY_CHANGED_ACTIONS) && su.actions) {
         const src = su.actions;
