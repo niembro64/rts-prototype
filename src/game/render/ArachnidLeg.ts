@@ -120,12 +120,14 @@ export class ArachnidLeg {
 
     const angleTriggered = Math.abs(angleDiff) > this.config.snapTriggerAngle;
 
-    const isBehindPerpendicular = Math.abs(angleDiff) > Math.PI * 0.5;
+    // Distance trigger: foot has stretched past its extension threshold
+    // in ANY direction (not just behind the unit). When triggered this
+    // way, the leg snaps to the OPPOSITE side of the attach to recover.
     const extThresh = this.totalLength * this.config.extensionThreshold;
-    const distanceTriggered = isBehindPerpendicular && distSq >= extThresh * extThresh;
+    const distanceTriggered = distSq >= extThresh * extThresh;
 
     if (distanceTriggered || angleTriggered) {
-      this.startLerp(attachX, attachY, unitRotation, velocityX, velocityY);
+      this.startLerp(attachX, attachY, unitRotation, velocityX, velocityY, distanceTriggered);
     }
 
     // Clamp foot to max leg reach — legs can never stretch beyond physical limits
@@ -166,29 +168,41 @@ export class ArachnidLeg {
     attachY: number,
     unitRotation: number,
     velocityX: number,
-    velocityY: number
+    velocityY: number,
+    overExtended: boolean = false,
   ): void {
     // Store current position as start
     this.startGroundX = this.groundX;
     this.startGroundY = this.groundY;
 
-    // Calculate target position using the snap target angle and distance
     const snapDistance = this.totalLength * this.config.snapDistanceMultiplier;
-    const snapAngle = unitRotation + this.config.snapTargetAngle;
 
-    // Add some velocity-based offset to place foot ahead of where we're going
-    const speed = magnitude(velocityX, velocityY);
-    const velocityOffset = Math.min(speed * 0.15, snapDistance * 0.3);
-
-    let targetAngle = snapAngle;
-    if (speed > 1) {
-      // Bias toward movement direction
-      const moveAngle = Math.atan2(velocityY, velocityX);
-      targetAngle = snapAngle * 0.7 + moveAngle * 0.3;
+    if (overExtended) {
+      // Distance-triggered: foot is stretched past max length. Snap to
+      // the OPPOSITE side of the attach so the leg recovers in the
+      // direction it was being pulled from. No velocity bias here —
+      // the snap is reactive recovery, not a forward step.
+      const dx = this.groundX - attachX;
+      const dy = this.groundY - attachY;
+      const dist = Math.hypot(dx, dy);
+      const oppX = dist > 1e-6 ? -dx / dist : Math.cos(unitRotation + this.config.snapTargetAngle);
+      const oppY = dist > 1e-6 ? -dy / dist : Math.sin(unitRotation + this.config.snapTargetAngle);
+      this.targetGroundX = attachX + oppX * snapDistance;
+      this.targetGroundY = attachY + oppY * snapDistance;
+    } else {
+      // Angle-triggered: return to configured rest pose with velocity
+      // bias toward unit movement direction (forward step).
+      const snapAngle = unitRotation + this.config.snapTargetAngle;
+      const speed = magnitude(velocityX, velocityY);
+      const velocityOffset = Math.min(speed * 0.15, snapDistance * 0.3);
+      let targetAngle = snapAngle;
+      if (speed > 1) {
+        const moveAngle = Math.atan2(velocityY, velocityX);
+        targetAngle = snapAngle * 0.7 + moveAngle * 0.3;
+      }
+      this.targetGroundX = attachX + Math.cos(targetAngle) * (snapDistance + velocityOffset);
+      this.targetGroundY = attachY + Math.sin(targetAngle) * (snapDistance + velocityOffset);
     }
-
-    this.targetGroundX = attachX + Math.cos(targetAngle) * (snapDistance + velocityOffset);
-    this.targetGroundY = attachY + Math.sin(targetAngle) * (snapDistance + velocityOffset);
 
     this.isSliding = true;
     this.lerpProgress = 0;

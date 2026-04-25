@@ -517,25 +517,37 @@ function updateLegPhysics(
   const groundAngle = Math.atan2(dz, dx);
   const angleDiff = normalizeAngle(groundAngle - unitR);
   const angleTriggered = Math.abs(angleDiff) > c.snapTriggerAngle;
-  const isBehindPerpendicular = Math.abs(angleDiff) > Math.PI * 0.5;
   const tl = totalLegLength(c);
   const extThresh = tl * c.extensionThreshold;
-  const distanceTriggered = isBehindPerpendicular && distSq >= extThresh * extThresh;
+  // Distance trigger fires for over-extension in ANY direction, not
+  // just behind the unit. Recovery target = OPPOSITE side of the
+  // attach so the leg flips back through the attach point.
+  const distanceTriggered = distSq >= extThresh * extThresh;
 
   if (distanceTriggered || angleTriggered) {
     leg.startGroundX = leg.groundX;
     leg.startGroundZ = leg.groundZ;
     const snapDistance = tl * c.snapDistanceMultiplier;
-    const snapAngle = unitR + c.snapTargetAngle;
-    const speed = magnitude(vx, vz);
-    const velocityOffset = Math.min(speed * 0.15, snapDistance * 0.3);
-    let targetAngle = snapAngle;
-    if (speed > 1) {
-      const moveAngle = Math.atan2(vz, vx);
-      targetAngle = snapAngle * 0.7 + moveAngle * 0.3;
+    if (distanceTriggered) {
+      // Snap to opposite of current stretch, no velocity bias.
+      const dist = Math.sqrt(distSq);
+      const oppX = dist > 1e-6 ? -dx / dist : Math.cos(unitR + c.snapTargetAngle);
+      const oppZ = dist > 1e-6 ? -dz / dist : Math.sin(unitR + c.snapTargetAngle);
+      leg.targetGroundX = attachX + oppX * snapDistance;
+      leg.targetGroundZ = attachZ + oppZ * snapDistance;
+    } else {
+      // Angle-triggered: return to configured rest pose with velocity bias.
+      const snapAngle = unitR + c.snapTargetAngle;
+      const speed = magnitude(vx, vz);
+      const velocityOffset = Math.min(speed * 0.15, snapDistance * 0.3);
+      let targetAngle = snapAngle;
+      if (speed > 1) {
+        const moveAngle = Math.atan2(vz, vx);
+        targetAngle = snapAngle * 0.7 + moveAngle * 0.3;
+      }
+      leg.targetGroundX = attachX + Math.cos(targetAngle) * (snapDistance + velocityOffset);
+      leg.targetGroundZ = attachZ + Math.sin(targetAngle) * (snapDistance + velocityOffset);
     }
-    leg.targetGroundX = attachX + Math.cos(targetAngle) * (snapDistance + velocityOffset);
-    leg.targetGroundZ = attachZ + Math.sin(targetAngle) * (snapDistance + velocityOffset);
     leg.isSliding = true;
     leg.lerpProgress = 0;
   }
