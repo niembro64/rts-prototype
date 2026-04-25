@@ -110,7 +110,7 @@ export class ThreeApp {
     // disc. This tone still feels neutral-dark enough to pass for
     // "earth / substrate" but contrasts cleanly against the
     // 0x0a0e0f scene bg.
-    const GROUND_DEPTH = 320;
+    const GROUND_DEPTH = 800;
     const GROUND_GAP = 4; // vertical separation between slab top and tiles
     const groundGeom = new THREE.BoxGeometry(mapWidth, GROUND_DEPTH, mapHeight);
     const groundMat = new THREE.MeshLambertMaterial({ color: 0x2a241c });

@@ -55,6 +55,12 @@ export class OrbitCamera {
   private lastMouseX = 0;
   private lastMouseY = 0;
 
+  // Reusable scratch objects so the wheel handler does no per-event
+  // allocations (zoom is the highest-frequency input on a trackpad).
+  private _zoomNdc = new THREE.Vector3();
+  private _zoomBefore = new THREE.Vector3();
+  private _zoomAfter = new THREE.Vector3();
+
   private canvas: HTMLElement;
   private onWheel: (e: WheelEvent) => void;
   private onMouseDown: (e: MouseEvent) => void;
@@ -85,12 +91,33 @@ export class OrbitCamera {
       //   scroll up   (deltaY < 0)  → zoom in  → distance divided by factor
       //   scroll down (deltaY > 0)  → zoom out → distance multiplied by factor
       if (e.deltaY === 0) return;
+
+      // Zoom-to-cursor: capture the world point under the cursor before
+      // changing distance, do the zoom, then shift the orbit target so
+      // the SAME world point lands under the SAME pixel afterwards.
+      // Mirrors the 2D camera, where wheel zoom anchors at the mouse.
+      const before = this.cursorWorldPoint(e.clientX, e.clientY, this._zoomBefore);
+
       const factor = e.deltaY > 0 ? this.zoomStepFactor : 1 / this.zoomStepFactor;
-      this.distance = Math.min(
+      const newDist = Math.min(
         this.maxDistance,
         Math.max(this.minDistance, this.distance * factor),
       );
+      if (newDist === this.distance) return; // already at clamp — nothing to do
+      this.distance = newDist;
       this.apply();
+
+      if (before) {
+        const after = this.cursorWorldPoint(e.clientX, e.clientY, this._zoomAfter);
+        if (after) {
+          // Shift target by (before − after) so the cursor pins to the
+          // world point it was over. Only x/z move — keeping y on the
+          // ground plane keeps the orbit math sane.
+          this.target.x += before.x - after.x;
+          this.target.z += before.z - after.z;
+          this.apply();
+        }
+      }
     };
 
     this.onMouseDown = (e) => {
@@ -172,6 +199,37 @@ export class OrbitCamera {
     canvas.addEventListener('contextmenu', this.onContextMenu);
 
     this.apply();
+  }
+
+  /** Project a screen-space cursor pixel onto the ground plane (y=0)
+   *  in world coordinates, writing the result into `out`. Returns
+   *  `out` on success, or `null` if the ray doesn't hit the plane (cam
+   *  parallel to plane, or ground is behind the camera). */
+  private cursorWorldPoint(
+    clientX: number,
+    clientY: number,
+    out: THREE.Vector3,
+  ): THREE.Vector3 | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -(((clientY - rect.top) / rect.height) * 2 - 1);
+    // Unproject NDC (z=0.5 = mid frustum, picked just to get a ray
+    // direction) back into world space; then shoot a ray from the
+    // camera through it and intersect the y=0 plane.
+    this._zoomNdc.set(ndcX, ndcY, 0.5).unproject(this.camera);
+    const dirX = this._zoomNdc.x - this.camera.position.x;
+    const dirY = this._zoomNdc.y - this.camera.position.y;
+    const dirZ = this._zoomNdc.z - this.camera.position.z;
+    if (Math.abs(dirY) < 1e-6) return null;
+    const t = -this.camera.position.y / dirY;
+    if (t < 0) return null; // intersection is behind the camera
+    out.set(
+      this.camera.position.x + t * dirX,
+      0,
+      this.camera.position.z + t * dirZ,
+    );
+    return out;
   }
 
   /** Recompute camera position from target + yaw + pitch + distance. */
