@@ -12,7 +12,7 @@
 
 import type { Entity } from '../sim/types';
 import type { WorldProjector, Vec2 } from './WorldProjector';
-import { UNIT_NAMES } from '../render/types';
+import { UNIT_NAMES } from '../uiLabels';
 
 export const SELECTION_LABEL_STYLE = {
   /** Distance in world units above the entity top where the label sits. */

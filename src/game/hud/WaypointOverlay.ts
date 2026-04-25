@@ -11,7 +11,7 @@
 
 import type { Entity } from '../sim/types';
 import type { WorldProjector, Vec2 } from './WorldProjector';
-import { ACTION_COLORS, WAYPOINT_COLORS } from '../render/types';
+import { ACTION_COLORS, WAYPOINT_COLORS } from '../uiLabels';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
