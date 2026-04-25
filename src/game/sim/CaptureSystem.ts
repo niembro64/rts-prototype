@@ -11,6 +11,10 @@ import { CAPTURE_CONFIG } from '../../captureConfig';
 export class CaptureSystem {
   private tiles: Map<number, TileState> = new Map();
   private dirtyTiles: Set<number> = new Set();
+  /** Running per-player flag-height totals, maintained incrementally
+   *  by update() so getFlagSumsByPlayer() returns in O(1) instead of
+   *  re-scanning every tile every tick. */
+  private flagSums: Map<PlayerId, number> = new Map();
 
   /** Process one tick. Each unit raises its team's flag and lowers others. */
   update(
@@ -46,6 +50,10 @@ export class CaptureSystem {
         if (raised !== prev) {
           tile.set(pid, raised);
           changed = true;
+          // Maintain the running per-player total incrementally so
+          // getFlagSumsByPlayer doesn't need its own scan over every
+          // tile.
+          this.flagSums.set(pid, (this.flagSums.get(pid) ?? 0) + (raised - prev));
         }
       }
 
@@ -56,9 +64,15 @@ export class CaptureSystem {
         if (lowered <= 0) {
           tile.delete(pid);
           changed = true;
+          // Removing the entry means the running total drops by the
+          // FULL old height (the tile entry vanishes from this.tiles).
+          const sum = (this.flagSums.get(pid) ?? 0) - height;
+          if (sum > 1e-9) this.flagSums.set(pid, sum);
+          else this.flagSums.delete(pid);
         } else if (lowered !== height) {
           tile.set(pid, lowered);
           changed = true;
+          this.flagSums.set(pid, (this.flagSums.get(pid) ?? 0) + (lowered - height));
         }
       }
 
@@ -102,27 +116,23 @@ export class CaptureSystem {
     return _snapshotTiles;
   }
 
-  /** Sum flag heights per player (for mana income). Reusable map — do NOT store. */
+  /** Sum flag heights per player (for mana income). Returns the live
+   *  per-tick incremental total — do NOT store the reference, do NOT
+   *  mutate. */
   getFlagSumsByPlayer(): Map<PlayerId, number> {
-    _flagSums.clear();
-    for (const [, tile] of this.tiles) {
-      for (const [pid, height] of tile) {
-        _flagSums.set(pid, (_flagSums.get(pid) ?? 0) + height);
-      }
-    }
-    return _flagSums;
+    return this.flagSums;
   }
 
   clear(): void {
     this.tiles.clear();
     this.dirtyTiles.clear();
+    this.flagSums.clear();
   }
 }
 
 // --- Module-level reusable buffers ---
 
 const _unitCounts: Map<PlayerId, number> = new Map();
-const _flagSums: Map<PlayerId, number> = new Map();
 const _snapshotTiles: NetworkCaptureTile[] = [];
 const _tilePool: NetworkCaptureTile[] = [];
 
