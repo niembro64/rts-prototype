@@ -21,8 +21,10 @@
 // (slower, no-overshoot response).
 
 import type { WorldState } from '../WorldState';
+import type { Entity } from '../types';
 import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
 import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle, getWeaponWorldPosition } from '../../math';
+import { spatialGrid } from '../SpatialGrid';
 import {
   TURRET_RETURN_TO_FORWARD,
   GRAVITY,
@@ -173,6 +175,52 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
                 : unitGroundZ;
               const panelOffsetX = panels.length > 0 ? panels[0].offsetX : 0;
 
+              // Pick the VICTIM V — the enemy unit the bounced beam
+              // should land on. Nearest enemy to the panel wins, with
+              // a same-side test (V must be in the same half-space as
+              // S relative to the panel point — otherwise the panel's
+              // front face can't physically see both). The source's
+              // own host (`target`) ALWAYS passes the same-side test
+              // (P→S and P→target are the same ray modulo the barrel
+              // offset) so it is a valid fallback whenever no other
+              // enemy qualifies, satisfying the "there's always a V"
+              // invariant the user spelled out.
+              //
+              // Seed P with the previous-tick panel pose — close enough
+              // to the post-iteration P for the same-side test to be
+              // stable. The bisector iteration below refines P with
+              // the actual solved yaw.
+              const seedPx = weaponX + Math.cos(weapon.rotation) * panelOffsetX;
+              const seedPy = weaponY + Math.sin(weapon.rotation) * panelOffsetX;
+              const sSeedX = eTip.x - seedPx;
+              const sSeedY = eTip.y - seedPy;
+              const sSeedZ = eTip.z - panelCenterZ;
+              const sSeedLen = Math.hypot(sSeedX, sSeedY, sSeedZ);
+              let victim: Entity = target;
+              let victimDist = Infinity;
+              if (sSeedLen > 1e-6 && unit.ownership) {
+                const enemies = spatialGrid.queryEnemyEntitiesInRadius(
+                  weaponX, weaponY,
+                  weapon.ranges.tracking.acquire,
+                  unit.ownership.playerId,
+                );
+                for (const enemy of enemies) {
+                  if (!enemy.unit || enemy.unit.hp <= 0) continue;
+                  const vX = enemy.transform.x - seedPx;
+                  const vY = enemy.transform.y - seedPy;
+                  const vZ = enemy.transform.z - panelCenterZ;
+                  const vLen = Math.hypot(vX, vY, vZ);
+                  if (vLen <= 1e-6) continue;
+                  // Same-side: cosθ between (P→S) and (P→V) > 0.
+                  const dot = sSeedX * vX + sSeedY * vY + sSeedZ * vZ;
+                  if (dot <= 0) continue;
+                  if (vLen < victimDist) {
+                    victimDist = vLen;
+                    victim = enemy;
+                  }
+                }
+              }
+
               // Iterate twice. Pass 1 uses P = chassis center to seed
               // an α₀; pass 2 uses P = chassis + offset·(cos α₀, sin α₀)
               // to land within ~0.02° of the true bisector.
@@ -186,9 +234,9 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
                 const sY = eTip.y - pcy;
                 const sZ = eTip.z - panelCenterZ;
                 const sLen = Math.hypot(sX, sY, sZ);
-                const cX = target.transform.x - pcx;
-                const cY = target.transform.y - pcy;
-                const cZ = target.transform.z - panelCenterZ;
+                const cX = victim.transform.x - pcx;
+                const cY = victim.transform.y - pcy;
+                const cZ = victim.transform.z - panelCenterZ;
                 const cLen = Math.hypot(cX, cY, cZ);
                 if (sLen <= 1e-6 || cLen <= 1e-6) break;
                 const nx = sX / sLen + cX / cLen;
@@ -211,11 +259,11 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
                 mirrorPitchOverride = bisectorPitch;
                 // Aim point only used by downstream fallback code
                 // (passive's pitch is overridden below). Point it at
-                // the enemy CENTER so any non-pitch consumer still
+                // the VICTIM center so any non-pitch consumer still
                 // gets a sensible value.
-                aimX = target.transform.x;
-                aimY = target.transform.y;
-                aimZ = target.transform.z;
+                aimX = victim.transform.x;
+                aimY = victim.transform.y;
+                aimZ = victim.transform.z;
               }
               break;
             }
