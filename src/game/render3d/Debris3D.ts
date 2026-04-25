@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import type { SimDeathContext } from '@/types/combat';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { MAP_BG_COLOR, GRAVITY } from '../../config';
+import { MAP_BG_COLOR, GRAVITY, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../config';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { leftSideConfigsForStyle } from './Locomotion3D';
@@ -372,6 +372,33 @@ export class Debris3D {
             bx: tox + len, by: shotHeight + oy, bz: toz + oz,
             thickness: thick,
             color: BARREL_COLOR,
+          });
+        }
+      }
+
+      // Mirror panels — for mirror-bearing turrets (e.g. Loris) emit
+      // one slab per panel matching what Render3DEntities draws:
+      // panel center at chassis-local (mount + panel.offset), vertical
+      // mid-height of MIRROR_BASE_Y → bodyTop + TURRET_HEIGHT +
+      // MIRROR_EXTRA_HEIGHT, length = panel.width along the panel's
+      // edge axis (yaw = -(panel.angle + π/2) to match the rendered
+      // box's rotation), thickness = panel.height. Color matches the
+      // team secondary so the chrome reads as the unit's faction.
+      if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
+        const panelTop = bodyTopY + TURRET_HEIGHT + MIRROR_EXTRA_HEIGHT;
+        const mirrorH = Math.max(panelTop - MIRROR_BASE_Y, 1);
+        const panelCenterY = MIRROR_BASE_Y + mirrorH / 2;
+        for (const panel of tb.mirrorPanels) {
+          out.push({
+            shape: 'box',
+            x: tox + panel.offsetX,
+            y: panelCenterY,
+            z: toz + panel.offsetY,
+            yaw: -(panel.angle + Math.PI / 2),
+            sx: panel.width,
+            sy: mirrorH,
+            sz: panel.height,
+            color: secondary,
           });
         }
       }
