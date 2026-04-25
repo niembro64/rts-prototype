@@ -21,6 +21,7 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import { MAP_BG_COLOR, GRAVITY, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../config';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
+import { getShotBlueprint } from '../sim/blueprints/shots';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { getBodyTopY, getSegmentMidYAt } from '../math/BodyDimensions';
@@ -115,6 +116,14 @@ type DebrisTemplate =
       /** Radius scale — the cylinder diameter = 2·thickness after scale. */
       thickness: number;
       color: number;
+    }
+  | {
+      shape: 'sphere';
+      /** Sphere center in unit-local coords. */
+      x: number; y: number; z: number;
+      /** Sphere radius. */
+      radius: number;
+      color: number;
     };
 
 type Piece = {
@@ -135,13 +144,17 @@ type Piece = {
 
 export class Debris3D {
   private root: THREE.Group;
-  // Shared geometries — box is unit cube, cylinder is unit radius/height.
+  // Shared geometries — box is unit cube, cylinder is unit radius/height,
+  // sphere is unit radius (used for turret heads, which Render3DEntities
+  // also draws as a sphere).
   private boxGeom = new THREE.BoxGeometry(1, 1, 1);
   private cylGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
+  private sphereGeom = new THREE.SphereGeometry(1, 10, 8);
 
   private pieces: Piece[] = [];
   private boxPool: { mesh: THREE.Mesh; material: THREE.MeshLambertMaterial }[] = [];
   private cylPool: { mesh: THREE.Mesh; material: THREE.MeshLambertMaterial }[] = [];
+  private spherePool: { mesh: THREE.Mesh; material: THREE.MeshLambertMaterial }[] = [];
 
   // Scratch vectors reused per emit — avoids per-piece allocation.
   private _up = new THREE.Vector3(0, 1, 0);
@@ -320,62 +333,101 @@ export class Debris3D {
       const tox = mount.offsetX;
       const toz = mount.offsetY;
 
-      // Turret head — standing cylinder of radius r·0.55 and height
-      // TURRET_HEIGHT, mounted on top of the unit body.
-      const headR = r * TURRET_HEAD_FOOTPRINT;
-      out.push({
-        shape: 'cyl',
-        ax: tox, ay: bodyTopY, az: toz,
-        bx: tox, by: bodyTopY + TURRET_HEIGHT, bz: toz,
-        thickness: headR,
-        color: secondary,
-      });
-
-      // Barrels — one cylinder per physical barrel. Length + thickness come
-      // from the turret blueprint so a commander d-gun produces a thicker
-      // barrel than a scout mini-gatling.
-      const bs = tb.barrel;
-      if (!bs) continue;
-      if (bs.type === 'simpleSingleBarrel') {
-        const len = r * bs.barrelLength;
-        if (len < 1) continue;
-        const diameter = Math.max(BARREL_MIN_THICKNESS, bs.barrelThickness ?? BARREL_MIN_THICKNESS);
-        const thick = diameter / 2;
-        // Barrel lies along unit-forward (+X in unit-local), starting at
-        // the turret mount, extending forward. Middle of the barrel sits
-        // at SHOT_HEIGHT so it lines up with the head's mid-line.
+      // Skip the head + barrels for the mirror-host turret — its visible
+      // body IS the mirror panels, not a separate cylinder. Render3DEntities
+      // does the same skip via `isMirrorHost` in buildTurretMesh.
+      const isMirrorHost = (tb.mirrorPanels?.length ?? 0) > 0;
+      if (!isMirrorHost) {
+        // Turret head — SPHERE of radius max(r·0.55, TURRET_HEIGHT/2),
+        // centered at TURRET_HEIGHT/2 above the unit body. Render3DEntities
+        // draws this with SphereGeometry + uniform scale, so debris emits a
+        // matching sphere chunk (not a tall cylinder).
+        const headR = Math.max(r * TURRET_HEAD_FOOTPRINT, TURRET_HEIGHT / 2);
         out.push({
-          shape: 'cyl',
-          ax: tox, ay: shotHeight, az: toz,
-          bx: tox + len, by: shotHeight, bz: toz,
-          thickness: thick,
-          color: BARREL_COLOR,
+          shape: 'sphere',
+          x: tox,
+          y: bodyTopY + TURRET_HEIGHT / 2,
+          z: toz,
+          radius: headR,
+          color: secondary,
         });
-      } else if (bs.type === 'simpleMultiBarrel' || bs.type === 'coneMultiBarrel') {
-        const len = r * bs.barrelLength;
-        if (len < 1) continue;
-        const diameter = Math.max(BARREL_MIN_THICKNESS, bs.barrelThickness ?? BARREL_MIN_THICKNESS);
-        const thick = diameter / 2;
-        const n = bs.barrelCount;
-        // Turret-local orbit matches Render3DEntities: barrels arranged in
-        // a YZ circle around the firing axis (+X). For the cone type we
-        // widen slightly at the tip; for the simple type barrels are
-        // parallel.
-        const baseOrbit =
-          bs.type === 'simpleMultiBarrel'
-            ? Math.min(bs.orbitRadius * r, TURRET_HEIGHT * 0.45)
-            : Math.min(bs.baseOrbit * r,   TURRET_HEIGHT * 0.35);
-        for (let i = 0; i < n; i++) {
-          const a = ((i + 0.5) / n) * Math.PI * 2;
-          const oy = Math.cos(a) * baseOrbit;
-          const oz = Math.sin(a) * baseOrbit;
+
+        // Barrels — one cylinder per physical barrel. Diameter mirrors
+        // Render3DEntities' barrel cylinder: for line shots (beam/laser)
+        // the diameter is shot.width; otherwise barrelThickness. Falls
+        // through to BARREL_MIN_THICKNESS only when neither is set.
+        const bs = tb.barrel;
+        if (!bs) continue;
+        let shotWidth: number | undefined;
+        if (tb.projectileId) {
+          try {
+            const sb = getShotBlueprint(tb.projectileId);
+            if (sb.type === 'beam' || sb.type === 'laser') {
+              shotWidth = sb.width;
+            }
+          } catch { /* unknown shot id — fall through to barrelThickness */ }
+        }
+        if (bs.type === 'simpleSingleBarrel') {
+          const len = r * bs.barrelLength;
+          if (len < 1) continue;
+          const diameter = (shotWidth ?? bs.barrelThickness ?? BARREL_MIN_THICKNESS);
+          const thick = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
           out.push({
             shape: 'cyl',
-            ax: tox,       ay: shotHeight + oy, az: toz + oz,
-            bx: tox + len, by: shotHeight + oy, bz: toz + oz,
+            ax: tox, ay: shotHeight, az: toz,
+            bx: tox + len, by: shotHeight, bz: toz,
             thickness: thick,
             color: BARREL_COLOR,
           });
+        } else if (bs.type === 'simpleMultiBarrel') {
+          // Parallel cluster of cylinders — base orbit = tip orbit.
+          const len = r * bs.barrelLength;
+          if (len < 1) continue;
+          const diameter = bs.barrelThickness ?? BARREL_MIN_THICKNESS;
+          const thick = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+          const n = bs.barrelCount;
+          const orbit = bs.orbitRadius * r;
+          for (let i = 0; i < n; i++) {
+            const a = ((i + 0.5) / n) * Math.PI * 2;
+            const oy = Math.cos(a) * orbit;
+            const oz = Math.sin(a) * orbit;
+            out.push({
+              shape: 'cyl',
+              ax: tox,       ay: shotHeight + oy, az: toz + oz,
+              bx: tox + len, by: shotHeight + oy, bz: toz + oz,
+              thickness: thick,
+              color: BARREL_COLOR,
+            });
+          }
+        } else if (bs.type === 'coneMultiBarrel') {
+          // Cone cluster — base sits at baseOrbit, tip splays out at
+          // tipOrbit (or, when unset, derived from spread.angle exactly
+          // the way Render3DEntities does it). Each barrel cylinder
+          // therefore tilts outward.
+          const len = r * bs.barrelLength;
+          if (len < 1) continue;
+          const diameter = bs.barrelThickness ?? BARREL_MIN_THICKNESS;
+          const thick = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+          const n = bs.barrelCount;
+          const baseOrbitR = bs.baseOrbit * r;
+          const tipOrbitR = bs.tipOrbit !== undefined
+            ? bs.tipOrbit * r
+            : Math.min(
+                baseOrbitR + len * Math.tan(((tb.spread?.angle ?? Math.PI / 5)) / 2),
+                TURRET_HEIGHT * 0.9,
+              );
+          for (let i = 0; i < n; i++) {
+            const a = ((i + 0.5) / n) * Math.PI * 2;
+            const cosA = Math.cos(a);
+            const sinA = Math.sin(a);
+            out.push({
+              shape: 'cyl',
+              ax: tox,       ay: shotHeight + cosA * baseOrbitR, az: toz + sinA * baseOrbitR,
+              bx: tox + len, by: shotHeight + cosA * tipOrbitR,  bz: toz + sinA * tipOrbitR,
+              thickness: thick,
+              color: BARREL_COLOR,
+            });
+          }
         }
       }
 
@@ -467,9 +519,12 @@ export class Debris3D {
     uvz: number,
   ): void {
     // --- Acquire the right mesh from the right pool ---
-    const isBox = t.shape === 'box';
-    const pool = isBox ? this.boxPool : this.cylPool;
-    const geom = isBox ? this.boxGeom : this.cylGeom;
+    const pool = t.shape === 'box' ? this.boxPool
+      : t.shape === 'cyl' ? this.cylPool
+      : this.spherePool;
+    const geom = t.shape === 'box' ? this.boxGeom
+      : t.shape === 'cyl' ? this.cylGeom
+      : this.sphereGeom;
     let mesh: THREE.Mesh;
     let material: THREE.MeshLambertMaterial;
     const pooled = pool.pop();
@@ -500,7 +555,7 @@ export class Debris3D {
     // Also compute the outward direction from the unit center (in world XZ)
     // so launch velocity points away from the center, not outward from the
     // piece's own origin.
-    let localX: number, localZ: number;
+    let localX = 0, localZ = 0;
 
     if (t.shape === 'box') {
       // Position: rotate local (x, z) by Ry(−unitRot) — same transform the
@@ -521,7 +576,23 @@ export class Debris3D {
         t.yaw - unitRot,
         (Math.random() - 0.5) * 0.4,
       );
-    } else {
+    } else if (t.shape === 'sphere') {
+      // Sphere: rotation-symmetric, only position + uniform scale matter.
+      // Add a random spin so each chunk tumbles uniquely.
+      wcx = unitX + cosR * t.x - sinR * t.z;
+      wcy = t.y + groundLift;
+      wcz = unitZ + sinR * t.x + cosR * t.z;
+      localX = t.x;
+      localZ = t.z;
+      mesh.scale.setScalar(t.radius);
+      mesh.position.set(wcx, wcy, wcz);
+      mesh.quaternion.identity();
+      mesh.rotation.set(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+      );
+    } else if (t.shape === 'cyl') {
       // Cylinder: transform both endpoints into world space, then place at
       // midpoint with length = |b-a| and axis aligned to (b-a). Same math as
       // Locomotion3D's setCylinderBetween.
@@ -579,7 +650,9 @@ export class Debris3D {
     const maxDim =
       t.shape === 'box'
         ? Math.max(t.sx, t.sy, t.sz)
-        : Math.max(t.thickness * 2, Math.hypot(t.bx - t.ax, t.by - t.ay, t.bz - t.az));
+        : t.shape === 'sphere'
+          ? t.radius * 2
+          : Math.max(t.thickness * 2, Math.hypot(t.bx - t.ax, t.by - t.ay, t.bz - t.az));
     const spinScale = Math.max(0.3, Math.min(1.2, 14 / Math.max(maxDim, 1)));
 
     const baseR = ((t.color >> 16) & 0xff) / 255;
@@ -659,6 +732,8 @@ export class Debris3D {
     // Geometry is shared by reference so we can identify pool by geom ptr.
     if (p.mesh.geometry === this.boxGeom) {
       this.boxPool.push({ mesh: p.mesh, material: p.material });
+    } else if (p.mesh.geometry === this.sphereGeom) {
+      this.spherePool.push({ mesh: p.mesh, material: p.material });
     } else {
       this.cylPool.push({ mesh: p.mesh, material: p.material });
     }
@@ -677,11 +752,17 @@ export class Debris3D {
       material.dispose();
       this.root.remove(mesh);
     }
+    for (const { mesh, material } of this.spherePool) {
+      material.dispose();
+      this.root.remove(mesh);
+    }
     this.pieces.length = 0;
     this.boxPool.length = 0;
     this.cylPool.length = 0;
+    this.spherePool.length = 0;
     this.boxGeom.dispose();
     this.cylGeom.dispose();
+    this.sphereGeom.dispose();
     this.root.parent?.remove(this.root);
   }
 }
