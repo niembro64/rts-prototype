@@ -25,8 +25,6 @@ import { getShotBlueprint } from '../sim/blueprints/shots';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { getBodyTopY, getSegmentMidYAt } from '../math/BodyDimensions';
-import { getPlayerColors } from '../sim/types';
-import type { PlayerId } from '../sim/types';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -320,10 +318,11 @@ export class Debris3D {
     // One piece per mounted turret head, plus one piece per barrel in each
     // turret's barrel config. Turret-local Y sits on top of the unit's
     // per-renderer body (tall-bodied units => turret debris spawns higher).
-    // The turret head uses the team's true secondary color (looked up from
-    // PLAYER_COLORS by matching primary) so it matches the live chassis —
-    // a darkened-primary approximation visibly drifts from the real color.
-    const secondary = lookupSecondaryColor(primary);
+    // The turret head and mirror panels use the same `primary` color as
+    // the chassis — Render3DEntities now does the same so unit body and
+    // turret read as one solid color at one saturation. (lookupSecondary-
+    // Color is unused here now but kept around in case someone wants a
+    // contrasting tint later.)
     const rendererId = bp.renderer ?? 'arachnid';
     const bodyTopY = getBodyTopY(rendererId, r);
     const shotHeight = bodyTopY + TURRET_HEIGHT / 2;
@@ -349,7 +348,7 @@ export class Debris3D {
           y: bodyTopY + TURRET_HEIGHT / 2,
           z: toz,
           radius: headR,
-          color: secondary,
+          color: primary,
         });
 
         // Barrels — one cylinder per physical barrel. Diameter mirrors
@@ -453,7 +452,7 @@ export class Debris3D {
             sx: panel.width,
             sy: mirrorH,
             sz: panel.height,
-            color: secondary,
+            color: primary,
           });
         }
       }
@@ -767,21 +766,5 @@ export class Debris3D {
   }
 }
 
-// --- Helpers ---
-
-/** Reverse-lookup a player's secondary color by matching their primary.
- *  SimDeathContext.color is always the primary, so for turret-head
- *  debris we scan getPlayerColors() over a generous pid range to find
- *  the matching entry and pull its secondary. The scan range is sized
- *  to comfortably exceed the demo's player count; getPlayerColors is
- *  cached per slot so repeated scans are essentially free. Falls back
- *  to mid-gray if the color doesn't belong to any known player (e.g.
- *  neutral debris from a synthesized death context). */
-const REVERSE_LOOKUP_MAX_PID = 32;
-function lookupSecondaryColor(primary: number): number {
-  for (let pid = 1 as PlayerId; pid <= REVERSE_LOOKUP_MAX_PID; pid++) {
-    const pc = getPlayerColors(pid);
-    if (pc.primary === primary) return pc.secondary;
-  }
-  return 0x888888;
-}
+// (Reverse-lookup helper removed: every part now emits the unit's
+// primary color, matching Render3DEntities' unified-hue scheme.)

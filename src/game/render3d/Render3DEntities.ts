@@ -247,7 +247,6 @@ export class Render3DEntities {
   private projMatSecondary = new THREE.LineBasicMaterial({ color: 0xffdd44, transparent: true, opacity: 0.30, depthWrite: false });
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
-  private secondaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
   // Super-shiny PBR materials for mirror panels. metalness=1 + near-zero
   // roughness turns the panel into team-tinted chrome that reflects the
@@ -276,8 +275,12 @@ export class Render3DEntities {
     if (pid === undefined) return this.mirrorShinyNeutralMat;
     let mat = this.mirrorShinyMats.get(pid);
     if (!mat) {
+      // Mirror panels share the team's primary color (same color +
+      // saturation as the chassis); the chrome look comes from
+      // metalness=1, near-zero roughness reflecting the scene's
+      // PMREM environment, not from a desaturated secondary tint.
       mat = new THREE.MeshStandardMaterial({
-        color: getPlayerColors(pid).secondary,
+        color: getPlayerColors(pid).primary,
         metalness: 1.0,
         roughness: 0.0,
       });
@@ -322,7 +325,11 @@ export class Render3DEntities {
 
     let head: THREE.Mesh | undefined;
     if (!hideHead) {
-      head = new THREE.Mesh(this.turretHeadGeom, this.getSecondaryMat(pid));
+      // Turret head shares the chassis color (primary) so the unit
+      // reads as a single solid hue at any saturation. Secondary was
+      // previously used here, which produced a visible color/sat
+      // step between body and turret.
+      head = new THREE.Mesh(this.turretHeadGeom, this.getPrimaryMat(pid));
       // Sphere head: scale by a single radius so it's a true ball (not
       // a stretched ellipsoid). The ball sits at TURRET_HEIGHT/2 so its
       // center is at the same height the old cylinder's center was —
@@ -524,15 +531,6 @@ export class Render3DEntities {
     return mat;
   }
 
-  private getSecondaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
-    if (pid === undefined) return this.neutralMat;
-    let mat = this.secondaryMats.get(pid);
-    if (!mat) {
-      mat = new THREE.MeshLambertMaterial({ color: getPlayerColors(pid).secondary });
-      this.secondaryMats.set(pid, mat);
-    }
-    return mat;
-  }
 
   /**
    * Show/hide the per-unit SCAL / SHOT / PUSH radius rings, matching the 2D
@@ -927,7 +925,7 @@ export class Render3DEntities {
         const primaryMat = this.getPrimaryMat(pid);
         for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
         for (const tm of m.turrets) {
-          if (tm.head) tm.head.material = this.getSecondaryMat(pid);
+          if (tm.head) tm.head.material = this.getPrimaryMat(pid);
         }
       }
 
@@ -1360,7 +1358,6 @@ export class Render3DEntities {
     this.mirrorShinyNeutralMat.dispose();
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
-    for (const m of this.secondaryMats.values()) m.dispose();
     this.neutralMat.dispose();
   }
 }
