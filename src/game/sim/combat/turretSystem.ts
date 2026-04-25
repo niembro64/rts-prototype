@@ -116,25 +116,22 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
           let aimY = target.transform.y;
           let aimZ = target.transform.z;
 
-          // Passive (mirror) turrets: aim the panel normal at the
-          // ENEMY'S BEAM-TURRET BARREL TIP, not its body center. With
-          // angle-0 panels on a chassis, the optimal turret rotation θ
-          // satisfies (panel-normal) ∥ (B − M), where B is the beam
-          // source and M is the mirror unit's chassis position. The
-          // panel's chassis-local offset cancels out:
+          // Passive (mirror) turrets aim so that the reflected beam
+          // lands on the ENEMY UNIT'S CENTER, not back at its barrel
+          // tip. Reflection law: r = d − 2(d · n) n. To send an
+          // incoming ray from B (enemy barrel tip) to U (enemy unit
+          // center), the panel normal must bisect the angle between
+          // (P → B) and (P → U) at the panel center P:
           //
-          //   P(θ) = M + offset · (cos θ, sin θ)
-          //   n(θ) =     1     · (cos θ, sin θ)
-          //   n ∥ (B − P)
-          //   ⇒  cos θ · (B.y − M.y) − sin θ · (B.x − M.x)  =  0
-          //   ⇒  θ = atan2(B.y − M.y, B.x − M.x)
+          //     n  ∝  (B − P)/|B − P|  +  (U − P)/|U − P|
           //
-          // i.e. aim the chassis-rooted turret rotation at B and the
-          // panel automatically retro-reflects the beam back along its
-          // incoming line, hitting the enemy unit's body. The same
-          // logic generalizes to PITCH: the panel rotates around its
-          // edge axis by atan2(B.z − panelCenterZ, horizDist) so the
-          // 3D normal points at the source for full retro-reflection.
+          // Setting yaw α = atan2(n.y, n.x) and pitch
+          // β = atan2(n.z, hypot(n.x, n.y)) puts the mirror's 3D
+          // normal exactly along this bisector. (P is approximated as
+          // the chassis center for the X/Y; vertical uses the panel's
+          // own (baseY + topY)/2 since that differs meaningfully from
+          // the chassis ground for tall mirrors.) Pure retro-
+          // reflection is the special case U = B.
           let mirrorPitchOverride: number | null = null;
           if (weapon.config.passive && target.turrets) {
             for (let ti = 0; ti < target.turrets.length; ti++) {
@@ -157,21 +154,43 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
                 target.unit?.unitRadiusCollider.scale ?? 15,
                 0,
               );
-              aimX = eTip.x;
-              aimY = eTip.y;
-              aimZ = eTip.z;
-              targetAngle = Math.atan2(aimY - weaponY, aimX - weaponX);
 
-              // Pitch override: the panel's pivot is its CENTER, not
-              // the chassis turret mount. Vertical center sits at
-              // (baseY + topY)/2 above the unit's ground footprint.
               const panels = unit.unit.mirrorPanels;
-              if (panels.length > 0) {
-                const panel = panels[0];
-                const panelCenterZ = unitGroundZ + (panel.baseY + panel.topY) / 2;
-                const horizDistToSource = Math.hypot(aimX - weaponX, aimY - weaponY);
-                if (horizDistToSource > 1e-6) {
-                  mirrorPitchOverride = Math.atan2(aimZ - panelCenterZ, horizDistToSource);
+              const panelCenterZ = panels.length > 0
+                ? unitGroundZ + (panels[0].baseY + panels[0].topY) / 2
+                : unitGroundZ;
+              const pcx = weaponX;
+              const pcy = weaponY;
+
+              // Vector from panel center to incoming-beam source.
+              const sX = eTip.x - pcx;
+              const sY = eTip.y - pcy;
+              const sZ = eTip.z - panelCenterZ;
+              const sLen = Math.hypot(sX, sY, sZ);
+              // Vector from panel center to enemy unit center.
+              const cX = target.transform.x - pcx;
+              const cY = target.transform.y - pcy;
+              const cZ = target.transform.z - panelCenterZ;
+              const cLen = Math.hypot(cX, cY, cZ);
+
+              if (sLen > 1e-6 && cLen > 1e-6) {
+                const nx = sX / sLen + cX / cLen;
+                const ny = sY / sLen + cY / cLen;
+                const nz = sZ / sLen + cZ / cLen;
+                const nLen = Math.hypot(nx, ny, nz);
+                if (nLen > 1e-6) {
+                  const nxU = nx / nLen;
+                  const nyU = ny / nLen;
+                  const nzU = nz / nLen;
+                  targetAngle = Math.atan2(nyU, nxU);
+                  mirrorPitchOverride = Math.atan2(nzU, Math.hypot(nxU, nyU));
+                  // Aim point only used by downstream fallback code
+                  // (overridden below for passive). Leave it pointing
+                  // at the enemy CENTER so any non-pitch consumer
+                  // still gives a sane number.
+                  aimX = target.transform.x;
+                  aimY = target.transform.y;
+                  aimZ = target.transform.z;
                 }
               }
               break;
