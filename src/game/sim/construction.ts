@@ -22,12 +22,22 @@ export class ConstructionSystem {
     return this.buildingGrid;
   }
 
-  // Update all construction in the world
+  // Update all construction in the world.
+  //
+  // Two narrow passes (over `getUnits()` for builders and
+  // `getBuildings()` for buildables) instead of the previous two
+  // passes over `getAllEntities()`, which also iterated every
+  // projectile entity for fields they don't have. Net effect: the
+  // working set drops from "all entities" (units + buildings +
+  // projectiles, easily 5–10× building count in a battle) to the
+  // narrow caches that already exist on EntityCacheManager.
   update(world: WorldState, _dtMs: number): void {
 
-    // Build reverse index of builders → targets once per tick (O(n) instead of O(n²))
+    // Pass 1: reverse index of builders → targets. Builders are
+    // commander units; iterating units is much smaller than iterating
+    // all entities (which includes thousands of in-flight projectiles).
     this.buildersByTarget.clear();
-    for (const entity of world.getAllEntities()) {
+    for (const entity of world.getUnits()) {
       const targetId = entity.builder?.currentBuildTarget;
       if (targetId == null) continue;
       let arr = this.buildersByTarget.get(targetId);
@@ -38,8 +48,9 @@ export class ConstructionSystem {
       arr.push(entity);
     }
 
-    // Process all buildable entities
-    for (const entity of world.getAllEntities()) {
+    // Pass 2: tick buildable buildings. Buildables only live on
+    // buildings, so getBuildings() is the right cache.
+    for (const entity of world.getBuildings()) {
       if (!entity.buildable || entity.buildable.isComplete || entity.buildable.isGhost) {
         continue;
       }
