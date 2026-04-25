@@ -4,16 +4,22 @@
 // a `ForceShot` (shot.type === 'force') configured with push/pull zone ranges.
 // It animates per-tick via `turret.forceField.range` (0 → 1 progress).
 //
-// Rendering:
-//   - A small pulsing sphere at the turret mount, color-lerping white → blue
-//     with progress, sine-pulsing at the turret's transitionTime period.
-//   - A translucent outer sphere the size of the push-zone's outerRange, so
-//     the force field looks like a spherical bubble enveloping the unit (a 3D
-//     analogue of the 2D annular zone).
+// Rendering tiers (driven by gfx.forceFieldStyle, mirroring the 2D
+// ForceFieldEffect contract):
+//   minimal — translucent bubble + emitter only.
+//   simple  — bubble + emitter + radial particle motes (HI LOD).
+//   enhanced — bubble + emitter + particles + electric arcs (MAX LOD).
+//
+// Particle motes are small bright spheres distributed across the bubble's
+// 3D surface that drift radially through the field's depth. Electric arcs
+// are short jagged BufferGeometry polylines inside the bubble that
+// re-randomize every arcFlickerMs to produce a crackling read.
 
 import * as THREE from 'three';
 import type { Entity, Turret } from '../sim/types';
 import { getWeaponWorldPosition } from '../math';
+import { getGraphicsConfig } from '@/clientBarConfig';
+import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 
 // Must match Render3DEntities to keep emitter spheres roughly at the turret's
@@ -25,6 +31,16 @@ const EMITTER_COLOR_B = 0x3366ff;  // active: blue
 const EMITTER_BASE_RADIUS = 4;
 const EMITTER_MAX_RADIUS = 10;
 
+// Per-LOD particle counts. The 3D field has 4π·r² worth of surface area
+// vs the 2D ring's 2π·r perimeter, so we emit a bit more than the 2D
+// `particleCount` baseline to keep visual density comparable.
+const PARTICLE_COUNT_SIMPLE = 28;
+const PARTICLE_COUNT_ENHANCED = 56;
+const PARTICLE_RADIUS = 1.4;   // world units per mote
+
+// Per-LOD arc counts (enhanced only).
+const ARC_COUNT_ENHANCED = 4;
+
 function isForceFieldTurret(t: Turret): boolean {
   return (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
 }
@@ -34,13 +50,31 @@ type FieldMesh = {
   emitterMat: THREE.MeshBasicMaterial;
   zone: THREE.Mesh;
   zoneMat: THREE.MeshBasicMaterial;
+  // Particle motes. Allocated lazily up to PARTICLE_COUNT_ENHANCED. Per
+  // frame we show only the LOD-appropriate prefix.
+  particles: THREE.Mesh[];
+  particleMat: THREE.MeshBasicMaterial;
+  // Electric arc geometry, allocated only on first 'enhanced' frame.
+  arcGeom?: THREE.BufferGeometry;
+  arcMat?: THREE.LineBasicMaterial;
+  arcLines?: THREE.LineSegments;
+  arcLastFlickerMs: number;
 };
+
+/** Deterministic 0..1 hash used by the particle layout + arc jitter so each
+ *  field has stable angular slots without per-frame allocation. Same shape
+ *  the 2D effect uses, with an additional seed mixed in. */
+function fieldHash(n: number, seed: number): number {
+  let h = (n | 0) * 2654435761 + (seed | 0) * 1597334677;
+  h = ((h >>> 16) ^ h) * 45679;
+  return ((h >>> 16) ^ h) / 4294967296 + 0.5;
+}
 
 export class ForceFieldRenderer3D {
   private root: THREE.Group;
-  // Unit sphere reused for both the small pulsing emitter and the large
-  // translucent force-field bubble (scaled per-instance).
+  // Unit sphere reused for the bubble, the emitter, and the particle motes.
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
+  private particleSphereGeom = new THREE.SphereGeometry(1, 6, 4);
   private fields = new Map<string, FieldMesh>();
   /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
    *  skip their per-frame animation work. */
@@ -83,14 +117,77 @@ export class ForceFieldRenderer3D {
     zone.renderOrder = 7;
     this.root.add(zone);
 
-    const field: FieldMesh = { emitter, emitterMat, zone, zoneMat };
+    // Bright particle material, additive so motes pop over the bubble.
+    const particleMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const field: FieldMesh = {
+      emitter,
+      emitterMat,
+      zone,
+      zoneMat,
+      particles: [],
+      particleMat,
+      arcLastFlickerMs: 0,
+    };
     this.fields.set(key, field);
     return field;
   }
 
+  /** Lazily allocate particle meshes up to the requested count. */
+  private ensureParticles(field: FieldMesh, count: number): void {
+    while (field.particles.length < count) {
+      const mesh = new THREE.Mesh(this.particleSphereGeom, field.particleMat);
+      mesh.renderOrder = 9;
+      mesh.visible = false;
+      this.root.add(mesh);
+      field.particles.push(mesh);
+    }
+  }
+
+  /** Lazily allocate the arc LineSegments mesh + supporting buffers. */
+  private ensureArcs(field: FieldMesh): void {
+    if (field.arcLines) return;
+    const v = FORCE_FIELD_VISUAL;
+    // 2 endpoints per segment × arcSegments segments × ARC_COUNT vertices,
+    // 3 floats each.
+    const totalVerts = ARC_COUNT_ENHANCED * v.arcSegments * 2;
+    const positions = new Float32Array(totalVerts * 3);
+    const arcGeom = new THREE.BufferGeometry();
+    arcGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+    const arcMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: v.arcOpacity,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const arcLines = new THREE.LineSegments(arcGeom, arcMat);
+    arcLines.renderOrder = 10;
+    arcLines.frustumCulled = false;
+    this.root.add(arcLines);
+    field.arcGeom = arcGeom;
+    field.arcMat = arcMat;
+    field.arcLines = arcLines;
+  }
+
   update(units: readonly Entity[]): void {
     const seen = new Set<string>();
-    const nowSec = performance.now() / 1000;
+    const nowMs = performance.now();
+    const nowSec = nowMs / 1000;
+
+    const gfx = getGraphicsConfig();
+    const style = gfx.forceFieldStyle;
+    const wantParticles = style === 'simple' || style === 'enhanced';
+    const wantArcs = style === 'enhanced';
+    const particleCount = style === 'enhanced' ? PARTICLE_COUNT_ENHANCED
+      : style === 'simple' ? PARTICLE_COUNT_SIMPLE
+      : 0;
 
     for (const unit of units) {
       if (!unit.turrets || !unit.unit) continue;
@@ -141,25 +238,160 @@ export class ForceFieldRenderer3D {
         // in sim units). Alpha fades in over the first third of progress.
         const push = shot.push;
         const outer = push.outerRange;
-        if (outer > 0) {
-          const fadeIn = Math.min(progress * 3, 1);
-          field.zoneMat.color.set(push.color);
-          field.zoneMat.opacity = push.alpha * fadeIn;
-          field.zone.scale.setScalar(outer);
-          field.zone.position.set(wp.x, SHOT_HEIGHT, wp.y);
-          field.zone.visible = true;
-        } else {
+        const inner = push.innerRange;
+        const cx = wp.x;
+        const cy = SHOT_HEIGHT;
+        const cz = wp.y;
+        if (outer <= 0) {
           field.zone.visible = false;
+          for (const p of field.particles) p.visible = false;
+          if (field.arcLines) field.arcLines.visible = false;
+          continue;
+        }
+        const fadeIn = Math.min(progress * 3, 1);
+        field.zoneMat.color.set(push.color);
+        field.zoneMat.opacity = push.alpha * fadeIn;
+        field.zone.scale.setScalar(outer);
+        field.zone.position.set(cx, cy, cz);
+        field.zone.visible = true;
+
+        // ── Particle motes (HI / MAX LOD) ──
+        // Each particle has a stable angular slot on the bubble's surface
+        // (random-but-deterministic theta/phi via fieldHash) and a phase
+        // that scrolls a radial fraction over time. Inner→outer travel
+        // (matches 2D's `pushOutward = false` default — particles head
+        // toward the bubble's interior).
+        if (wantParticles && particleCount > 0) {
+          this.ensureParticles(field, particleCount);
+          const v = FORCE_FIELD_VISUAL;
+          const seed = (unit.id * 31 + ti) | 0;
+          const speed = v.particleSpeed * (style === 'enhanced' ? 1.5 : 1);
+          const radialBand = Math.max(outer - inner, 1);
+          // Tint particles with the field's color so they read as part of
+          // the same effect (not generic white).
+          field.particleMat.color.set(push.color);
+          field.particleMat.opacity = push.alpha * 4 * fadeIn;
+          for (let pi = 0; pi < field.particles.length; pi++) {
+            const mote = field.particles[pi];
+            if (pi >= particleCount) {
+              mote.visible = false;
+              continue;
+            }
+            // Even-ish distribution on a 2-sphere: theta ∈ [0, 2π),
+            // phi via acos(2u − 1) so we don't pole-cluster.
+            const theta = fieldHash(pi * 9181, seed) * Math.PI * 2;
+            const phi = Math.acos(2 * fieldHash(pi * 5953 + 1, seed) - 1);
+            const offset = fieldHash(pi * 2143 + 2, seed);
+            const cycle = (nowSec * speed * 0.5 + offset) % 1;
+            const radius = inner + radialBand * cycle;
+            const rxy = Math.sin(phi);
+            const px = cx + Math.cos(theta) * rxy * radius;
+            const py = cy + Math.cos(phi) * radius;
+            const pz = cz + Math.sin(theta) * rxy * radius;
+            mote.position.set(px, py, pz);
+            mote.scale.setScalar(PARTICLE_RADIUS);
+            mote.visible = true;
+          }
+        } else {
+          for (const p of field.particles) p.visible = false;
+        }
+
+        // ── Electric arcs (MAX LOD only) ──
+        // Short jagged polylines inside the bubble that re-randomize every
+        // arcFlickerMs. Each arc is a chain of arcSegments line-segments
+        // (LineSegments expects 2 verts per segment, so we emit pairs of
+        // [endPrev, endCur] for s ∈ [1, segments]).
+        if (wantArcs) {
+          this.ensureArcs(field);
+          const arcLines = field.arcLines!;
+          const arcGeom = field.arcGeom!;
+          const arcMat = field.arcMat!;
+          arcLines.visible = true;
+          arcMat.color.set(push.color);
+          arcMat.opacity = FORCE_FIELD_VISUAL.arcOpacity * fadeIn;
+          const v = FORCE_FIELD_VISUAL;
+          const flickerSeed = Math.floor(nowMs / v.arcFlickerMs);
+          const positions = arcGeom.attributes.position.array as Float32Array;
+          const arcBand = Math.max(outer - inner, 1);
+          const fieldSeed = (unit.id * 31 + ti + flickerSeed * 137) | 0;
+
+          let writeIdx = 0;
+          for (let arc = 0; arc < ARC_COUNT_ENHANCED; arc++) {
+            const arcSeed = fieldSeed + arc * 1009;
+            // Pick a random axis for the arc (3D direction) and a length
+            // along the radial band. Each segment offsets the running
+            // endpoint by jitter perpendicular to the axis.
+            const axisTheta = fieldHash(arcSeed, 7) * Math.PI * 2;
+            const axisPhi = Math.acos(2 * fieldHash(arcSeed, 11) - 1);
+            const axRxy = Math.sin(axisPhi);
+            const axX = Math.cos(axisTheta) * axRxy;
+            const axY = Math.cos(axisPhi);
+            const axZ = Math.sin(axisTheta) * axRxy;
+            const r0 = inner + arcBand * fieldHash(arcSeed, 17);
+            const r1 = inner + arcBand * fieldHash(arcSeed, 23);
+            const rStart = Math.min(r0, r1);
+            const rEnd   = Math.max(r0, r1);
+            const startX = cx + axX * rStart;
+            const startY = cy + axY * rStart;
+            const startZ = cz + axZ * rStart;
+            const endX   = cx + axX * rEnd;
+            const endY   = cy + axY * rEnd;
+            const endZ   = cz + axZ * rEnd;
+
+            let prevX = startX, prevY = startY, prevZ = startZ;
+            for (let s = 1; s <= v.arcSegments; s++) {
+              const t = s / v.arcSegments;
+              const baseX = startX + (endX - startX) * t;
+              const baseY = startY + (endY - startY) * t;
+              const baseZ = startZ + (endZ - startZ) * t;
+              // Bell-shaped jitter: 0 at endpoints, max in the middle.
+              const bell = Math.sin(t * Math.PI);
+              const j1 = (fieldHash(arcSeed, 100 + s) - 0.5) * 2 * v.arcJitter * bell;
+              const j2 = (fieldHash(arcSeed, 200 + s) - 0.5) * 2 * v.arcJitter * bell;
+              // Two perpendicular axes to the arc: pick world up cross axis,
+              // then axis cross that, normalized. Cheap-but-stable basis.
+              let perp1X = -axZ, perp1Y = 0, perp1Z = axX;
+              const perp1Len = Math.hypot(perp1X, perp1Y, perp1Z) || 1;
+              perp1X /= perp1Len; perp1Z /= perp1Len;
+              const perp2X = axY * perp1Z - axZ * perp1Y;
+              const perp2Y = axZ * perp1X - axX * perp1Z;
+              const perp2Z = axX * perp1Y - axY * perp1X;
+              const px = baseX + perp1X * j1 + perp2X * j2;
+              const py = baseY + perp1Y * j1 + perp2Y * j2;
+              const pz = baseZ + perp1Z * j1 + perp2Z * j2;
+
+              positions[writeIdx++] = prevX; positions[writeIdx++] = prevY; positions[writeIdx++] = prevZ;
+              positions[writeIdx++] = px;    positions[writeIdx++] = py;    positions[writeIdx++] = pz;
+              prevX = px; prevY = py; prevZ = pz;
+            }
+          }
+          // Zero-fill any unused trailing buffer space (defensive — count
+          // is fixed so this is a no-op in steady state).
+          for (let i = writeIdx; i < positions.length; i++) positions[i] = 0;
+          arcGeom.attributes.position.needsUpdate = true;
+          field.arcLastFlickerMs = nowMs;
+        } else if (field.arcLines) {
+          field.arcLines.visible = false;
         }
       }
     }
 
-    // Hide (but don't destroy) meshes for fields that turned off or units gone.
+    // Tear down meshes for fields that turned off or whose unit is gone.
+    // Previously this just hid the meshes; over a long battle units die
+    // and respawn (or the lobby cycles demos) and orphaned FieldMesh
+    // entries accumulated forever. Now we fully release the resources.
     for (const [key, field] of this.fields) {
-      if (!seen.has(key)) {
-        field.emitter.visible = false;
-        field.zone.visible = false;
-      }
+      if (seen.has(key)) continue;
+      this.root.remove(field.emitter);
+      this.root.remove(field.zone);
+      for (const p of field.particles) this.root.remove(p);
+      if (field.arcLines) this.root.remove(field.arcLines);
+      field.emitterMat.dispose();
+      field.zoneMat.dispose();
+      field.particleMat.dispose();
+      if (field.arcGeom) field.arcGeom.dispose();
+      if (field.arcMat) field.arcMat.dispose();
+      this.fields.delete(key);
     }
   }
 
@@ -167,11 +399,17 @@ export class ForceFieldRenderer3D {
     for (const field of this.fields.values()) {
       this.root.remove(field.emitter);
       this.root.remove(field.zone);
+      for (const p of field.particles) this.root.remove(p);
+      if (field.arcLines) this.root.remove(field.arcLines);
       field.emitterMat.dispose();
       field.zoneMat.dispose();
+      field.particleMat.dispose();
+      if (field.arcGeom) field.arcGeom.dispose();
+      if (field.arcMat) field.arcMat.dispose();
     }
     this.fields.clear();
     this.sphereGeom.dispose();
+    this.particleSphereGeom.dispose();
     this.root.parent?.remove(this.root);
   }
 }

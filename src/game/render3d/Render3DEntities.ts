@@ -758,6 +758,15 @@ export class Render3DEntities {
         if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
       }
     }
+    // Selection ring is parented to m.group and would be GC'd along with
+    // it, but its per-unit ringMat is unique (created with new
+    // MeshBasicMaterial each time the unit got selected) so dispose
+    // explicitly to release the GPU resource.
+    if (m.ringMat) {
+      m.ringMat.dispose();
+      m.ringMat = undefined;
+    }
+    m.ring = undefined;
   }
 
 

@@ -73,6 +73,27 @@ export class SpatialGrid {
   }
 
   /**
+   * Drop a cell from the map if it has no units, buildings, or
+   * projectiles left. Without this, every cell that ever held an
+   * entity (units do walk across the whole map) lives forever in
+   * `this.cells` — a slow leak over a long game. Iteration paths
+   * (queries, capture-cell traversal) only inspect populated cells,
+   * so removing empties is purely an upkeep tax we pay at removal
+   * time instead of bloating the map.
+   */
+  private pruneCellIfEmpty(key: number): void {
+    const cell = this.cells.get(key);
+    if (
+      cell &&
+      cell.units.length === 0 &&
+      cell.buildings.length === 0 &&
+      cell.projectiles.length === 0
+    ) {
+      this.cells.delete(key);
+    }
+  }
+
+  /**
    * Full clear (for reset/restart)
    */
   clear(): void {
@@ -116,6 +137,7 @@ export class SpatialGrid {
           oldCell.units.pop();
         }
       }
+      this.pruneCellIfEmpty(oldKey);
     }
 
     // Add to new cell
@@ -144,6 +166,7 @@ export class SpatialGrid {
       }
     }
     this.unitCellKey.delete(id);
+    this.pruneCellIfEmpty(key);
   }
 
   /**
@@ -170,6 +193,7 @@ export class SpatialGrid {
           arr.pop();
         }
       }
+      this.pruneCellIfEmpty(oldKey);
     }
 
     // Add to new cell
@@ -199,6 +223,7 @@ export class SpatialGrid {
       }
     }
     this.projectileCellKey.delete(id);
+    this.pruneCellIfEmpty(key);
   }
 
   /**
@@ -251,6 +276,7 @@ export class SpatialGrid {
           cell.buildings.pop();
         }
       }
+      this.pruneCellIfEmpty(key);
     }
     this.buildingCellKeys.delete(id);
   }
