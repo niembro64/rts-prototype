@@ -212,7 +212,7 @@ export function checkProjectileCollisions(
 
     // Ground impact — a traveling projectile whose center drops below
     // the ground plane is treated exactly like lifespan expiry: if the
-    // shot has splashOnExpiry the splash goes off at the impact point,
+    // shot has detonateOnExpiry the splash goes off at the impact point,
     // otherwise just a projectileExpire visual. Snap z to 0 so splash
     // AOE is centered ON the ground, not below it. Beams and lasers
     // can't hit the ground (they're instantaneous lines, not falling
@@ -229,11 +229,11 @@ export function checkProjectileCollisions(
     if (proj.timeAlive >= proj.maxLifespan || hitGround || hitMirrorPanel) {
       // Beam audio is handled by updateLaserSounds based on targeting state
 
-      // Detonate on lifespan expiry when splashOnExpiry is set AND the
+      // Detonate on lifespan expiry when detonateOnExpiry is set AND the
       // shot has something to do at the apex (an explosion, submunitions,
       // or both). A pure carrier (no explosion, only submunitions) still
       // fragments here.
-      if (config.shot.type === 'projectile' && config.shot.splashOnExpiry && !proj.hasExploded) {
+      if (config.shot.type === 'projectile' && config.shot.detonateOnExpiry && !proj.hasExploded) {
         const projShot = config.shot;
         const hasSplash = !!projShot.explosion?.primary.radius;
         const hasSubs = !!projShot.submunitions;

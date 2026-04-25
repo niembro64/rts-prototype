@@ -71,7 +71,7 @@ function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate
     launchForce: launchForce ?? 0,
     collision: bp.collision,
     explosion: bp.explosion,
-    splashOnExpiry: bp.splashOnExpiry || undefined,
+    detonateOnExpiry: bp.detonateOnExpiry || undefined,
     lifespan: bp.lifespan,
     homingTurnRate: homingTurnRate,
     submunitions: bp.submunitions,

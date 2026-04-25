@@ -183,7 +183,10 @@ export type ProjectileShot = {
     primary: { radius: number; damage: number; force: number };
     secondary: { radius: number; damage: number; force: number };
   };
-  splashOnExpiry?: boolean;
+  /** When true, run detonation logic (splash damage if `explosion`,
+   *  submunition spawn if `submunitions`, audio either way) at the end
+   *  of `lifespan`. See ProjectileShotBlueprint.detonateOnExpiry. */
+  detonateOnExpiry?: boolean;
   lifespan?: number;
   homingTurnRate?: number;
   trailLength?: number;

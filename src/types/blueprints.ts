@@ -45,7 +45,7 @@ export type ShotExplosionZone = {
  * Cluster / submunition specification. When attached to a projectile
  * shot, the sim spawns `count` copies of `shotId` at the explosion
  * origin whenever the parent shot explodes (either via direct-hit
- * splash or `splashOnExpiry` timeout). Submunitions fly outward in a
+ * splash or `detonateOnExpiry` timeout). Submunitions fly outward in a
  * full 2π fan at `speed` world-units/second using the child shot's
  * own blueprint as-is — no per-spawn property overrides. If you need
  * a different lifespan, collision radius, or any other shot trait,
@@ -77,7 +77,12 @@ export type ProjectileShotBlueprint = {
     primary: ShotExplosionZone;
     secondary: ShotExplosionZone;
   };
-  splashOnExpiry: boolean;
+  /** When true, the projectile runs its detonation logic at the end
+   *  of `lifespan` (lifespan timer hits zero without a direct hit) —
+   *  splash damage if `explosion` is set, submunitions if
+   *  `submunitions` is set, both if both, and detonation audio either
+   *  way. When false, the projectile silently disappears at expiry. */
+  detonateOnExpiry: boolean;
   lifespan?: number;
   hitSound?: SoundEntry;
   /** Cluster behavior — see {@link SubmunitionSpec}. */

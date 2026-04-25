@@ -44,7 +44,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       primary: { radius: 5, damage: 2, force: 500 },
       secondary: { radius: 7, damage: 0.4, force: 500 },
     },
-    splashOnExpiry: false,
+    detonateOnExpiry: true,
     lifespan: 1200,
     hitSound: AUDIO.event.hit.lightShot,
   },
@@ -57,14 +57,14 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       primary: { radius: 8, damage: 6, force: 1000 },
       secondary: { radius: 15, damage: 1.2, force: 1000 },
     },
-    splashOnExpiry: false,
+    detonateOnExpiry: true,
     lifespan: 2000,
     hitSound: AUDIO.event.hit.mediumShot,
   },
   // Rocket-class projectile. Flies in a straight line on pure thrust
   // (ignoresGravity=true) and is bent only by homing — every salvo-
   // rocket turret pairs this shot with a homingTurnRate so the rocket
-  // tracks its locked target. splashOnExpiry=true gives the volley a
+  // tracks its locked target. detonateOnExpiry=true gives the volley a
   // "dumb-fire detonates at end of lifespan" fallback when the seeker
   // loses lock (target dies mid-flight).
   lightRocket: {
@@ -76,7 +76,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       primary: { radius: 10, damage: 4, force: 800 },
       secondary: { radius: 18, damage: 1, force: 800 },
     },
-    splashOnExpiry: true,
+    detonateOnExpiry: true,
     lifespan: 5500,
     ignoresGravity: true,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
@@ -105,7 +105,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       primary: { radius: 25, damage: 100, force: 7_000 },
       secondary: { radius: 45, damage: 70, force: 7_000 },
     },
-    splashOnExpiry: true,
+    detonateOnExpiry: true,
     lifespan: 3000,
     hitSound: AUDIO.event.hit.heavyShot,
   },
@@ -118,7 +118,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // comes from the lightShot fragments sprayed below.
     mass: 30,
     collision: { radius: 7, damage: 0 },
-    splashOnExpiry: true,
+    detonateOnExpiry: true,
     lifespan: 5000,
     hitSound: AUDIO.event.hit.mortarShot,
     submunitions: {
@@ -136,7 +136,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       primary: { radius: 40, damage: 10_000, force: 2499750 },
       secondary: { radius: 50, damage: 1000, force: 499950 },
     },
-    splashOnExpiry: true,
+    detonateOnExpiry: true,
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,
   },
