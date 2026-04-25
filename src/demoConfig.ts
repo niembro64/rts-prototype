@@ -19,6 +19,19 @@ export const DEMO_CONFIG = {
   arcSectorFraction: 0.85,
 
   /**
+   * Radial gap (in grid cells) between concentric building arcs —
+   * commander arc (outermost) → solar arc → factory arc (closest to
+   * map center). 1 cell = 20 px.
+   */
+  rowGapCells: 3,
+
+  /**
+   * Radial gap (in grid cells) between the commander arc and the solar
+   * arc directly inward of it. 1 cell = 20 px.
+   */
+  commanderGapCells: 2,
+
+  /**
    * Spawn radius margin in px. Distance from map edge to spawn point.
    * Larger = spawn points further from edge, more room behind base.
    */

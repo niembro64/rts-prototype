@@ -7,6 +7,7 @@ import { GameServer } from '../server/GameServer';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { ClientViewState } from '../network/ClientViewState';
 import { MAP_SETTINGS } from '../../config';
+import { DEMO_CONFIG } from '../../demoConfig';
 import { BACKGROUND_UNIT_TYPES } from '../server/BackgroundBattleStandalone';
 import {
   loadStoredTickRate,
@@ -45,9 +46,14 @@ export async function createBackgroundBattle(
 ): Promise<BackgroundBattleState> {
   const rect = container.getBoundingClientRect();
 
+  // Player IDs derived from DEMO_CONFIG.playerCount so a single source
+  // of truth controls how many teams the demo battle has.
+  const demoPlayerIds: PlayerId[] = [];
+  for (let i = 1; i <= DEMO_CONFIG.playerCount; i++) demoPlayerIds.push(i as PlayerId);
+
   // Create a GameServer for background mode (WASM physics)
   const server = await GameServer.create({
-    playerIds: [1, 2, 3, 4] as PlayerId[],
+    playerIds: demoPlayerIds,
     backgroundMode: true,
   });
 
@@ -108,7 +114,7 @@ export async function createBackgroundBattle(
     parent: container,
     width: rect.width || window.innerWidth,
     height: rect.height || window.innerHeight,
-    playerIds: [1, 2, 3, 4] as PlayerId[],
+    playerIds: demoPlayerIds,
     localPlayerId: 1,
     gameConnection: connection,
     clientViewState,

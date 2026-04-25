@@ -39,26 +39,35 @@ function spawnCommander(
   return commander;
 }
 
-// Calculate spawn positions on a circle for N players
+// Map center + spawn-circle radius (margined inside the playable area).
+// Single source of truth for every demo-layout function below.
+function getDemoCircle(world: WorldState): { cx: number; cy: number; radius: number } {
+  return {
+    cx: world.mapWidth / 2,
+    cy: world.mapHeight / 2,
+    radius: Math.min(world.mapWidth, world.mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx,
+  };
+}
+
+// Angular position of player i on the spawn circle. Players are spaced
+// evenly starting from the top (-π/2).
+function getPlayerBaseAngle(i: number, playerCount: number): number {
+  return (i / playerCount) * Math.PI * 2 - Math.PI / 2;
+}
+
+// Calculate spawn positions on the spawn circle for N players.
 function getSpawnPositions(
   world: WorldState,
   playerCount: number
 ): { x: number; y: number; facingAngle: number }[] {
-  const centerX = world.mapWidth / 2;
-  const centerY = world.mapHeight / 2;
-  const radius = Math.min(world.mapWidth, world.mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
-
+  const c = getDemoCircle(world);
   const positions: { x: number; y: number; facingAngle: number }[] = [];
-
   for (let i = 0; i < playerCount; i++) {
-    // Distribute evenly around circle, starting from top
-    const angle = (i / playerCount) * Math.PI * 2 - Math.PI / 2;
-    const x = centerX + Math.cos(angle) * radius;
-    const y = centerY + Math.sin(angle) * radius;
-    const facingAngle = Math.atan2(centerY - y, centerX - x);
-    positions.push({ x, y, facingAngle });
+    const angle = getPlayerBaseAngle(i, playerCount);
+    const x = c.cx + Math.cos(angle) * c.radius;
+    const y = c.cy + Math.sin(angle) * c.radius;
+    positions.push({ x, y, facingAngle: Math.atan2(c.cy - y, c.cx - x) });
   }
-
   return positions;
 }
 
@@ -157,15 +166,51 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
 }
 
 /**
- * Spawn a full base for each player along the same spawn circle that
- * holds the commander positions. Each player gets a contiguous arc of
- * the circle (an angular sector) and their commander + solar panels +
- * factories are distributed evenly across that arc, all facing toward
- * the map center.
+ * Place a row of buildings evenly distributed across an angular arc on
+ * a circle of given radius around (centerX, centerY). Each building
+ * faces toward the circle's center. Buildings overlap-snap-skip the same
+ * way they do in placeCompleteBuilding (returns null if no grid fit).
+ */
+function placeArcRow(
+  world: WorldState,
+  construction: ConstructionSystem,
+  buildingType: BuildingType,
+  count: number,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  baseAngle: number,
+  sectorAngle: number,
+  playerId: PlayerId,
+): Entity[] {
+  if (count <= 0) return [];
+  const entities: Entity[] = [];
+  const startAngle = baseAngle - sectorAngle / 2;
+  const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
+  for (let j = 0; j < count; j++) {
+    const a = count > 1 ? startAngle + j * angularStep : baseAngle;
+    const wx = centerX + Math.cos(a) * radius;
+    const wy = centerY + Math.sin(a) * radius;
+    const e = placeCompleteBuilding(world, construction, buildingType, wx, wy, playerId);
+    if (e) entities.push(e);
+  }
+  return entities;
+}
+
+/**
+ * Spawn a full base for each player on three concentric arcs centered
+ * on the map. Mirrors the original square layout's radial ordering —
+ * commander outermost (at the spawn circle), then solars, then factories
+ * closest to the map center — but each "row" is now an arc rather than
+ * a straight line:
  *
- *   sector layout per player: [solar × N] [COMMANDER] [factory × M]
+ *           commander  ← outermost (spawn radius)
+ *           solar arc
+ *           factory arc ← closest to map center
  *
- * Building counts and spacing controlled by DEMO_CONFIG.
+ * Each arc spans the same angular sector for the player, and every
+ * building faces the map center. Building counts and radial gaps are
+ * controlled by DEMO_CONFIG.
  */
 export function spawnInitialBases(
   world: WorldState,
@@ -181,37 +226,46 @@ export function spawnInitialBases(
   }
 
   const playerCount = playerIds.length;
-  const centerX = world.mapWidth / 2;
-  const centerY = world.mapHeight / 2;
-  const radius = Math.min(world.mapWidth, world.mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
+  const { cx, cy, radius: spawnRadius } = getDemoCircle(world);
 
-  const solarCount = DEMO_CONFIG.solarCount;
-  const factoryCount = DEMO_CONFIG.factoryCount;
-  const totalSlots = solarCount + 1 + factoryCount;
+  const solarConfig = getBuildingConfig('solar');
+  const factoryConfig = getBuildingConfig('factory');
+  const cellGap = DEMO_CONFIG.rowGapCells * GRID_CELL_SIZE;
+  const commanderGap = DEMO_CONFIG.commanderGapCells * GRID_CELL_SIZE;
+  const solarDepth = solarConfig.gridHeight * GRID_CELL_SIZE;
+  const factoryDepth = factoryConfig.gridHeight * GRID_CELL_SIZE;
+
+  // Three concentric radii — same radial order as the original square
+  // layout (commander outermost, then solars, then factories).
+  const commanderRadius = spawnRadius;
+  const solarRadius = commanderRadius - commanderGap - solarDepth / 2;
+  const factoryRadius = solarRadius - solarDepth / 2 - cellGap - factoryDepth / 2;
+
   const sectorAngle = (2 * Math.PI / playerCount) * DEMO_CONFIG.arcSectorFraction;
-  const angularStep = totalSlots > 1 ? sectorAngle / (totalSlots - 1) : 0;
 
   for (let i = 0; i < playerCount; i++) {
     const playerId = playerIds[i];
-    const baseAngle = (i / playerCount) * Math.PI * 2 - Math.PI / 2;
-    const startAngle = baseAngle - sectorAngle / 2;
+    const baseAngle = getPlayerBaseAngle(i, playerCount);
 
-    for (let s = 0; s < totalSlots; s++) {
-      const a = startAngle + s * angularStep;
-      const wx = centerX + Math.cos(a) * radius;
-      const wy = centerY + Math.sin(a) * radius;
-      const facingAngle = Math.atan2(centerY - wy, centerX - wx);
+    // Commander: single entity at the player's spawn point on the outer
+    // circle, facing the map center.
+    const cmdX = cx + Math.cos(baseAngle) * commanderRadius;
+    const cmdY = cy + Math.sin(baseAngle) * commanderRadius;
+    const cmdFacing = Math.atan2(cy - cmdY, cx - cmdX);
+    const commander = spawnCommander(world, playerId, cmdX, cmdY, cmdFacing);
+    entities.push(commander);
 
-      let entity: Entity | null = null;
-      if (s < solarCount) {
-        entity = placeCompleteBuilding(world, construction, 'solar', wx, wy, playerId);
-      } else if (s === solarCount) {
-        entity = spawnCommander(world, playerId, wx, wy, facingAngle);
-      } else {
-        entity = placeCompleteBuilding(world, construction, 'factory', wx, wy, playerId);
-      }
-      if (entity) entities.push(entity);
-    }
+    // Solar arc.
+    entities.push(...placeArcRow(
+      world, construction, 'solar', DEMO_CONFIG.solarCount,
+      cx, cy, solarRadius, baseAngle, sectorAngle, playerId,
+    ));
+
+    // Factory arc (closest to center).
+    entities.push(...placeArcRow(
+      world, construction, 'factory', DEMO_CONFIG.factoryCount,
+      cx, cy, factoryRadius, baseAngle, sectorAngle, playerId,
+    ));
   }
 
   return entities;
