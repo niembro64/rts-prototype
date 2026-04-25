@@ -53,6 +53,13 @@ function pickRandomUnit(allowedTypes?: ReadonlySet<string>): string {
 /**
  * For each AI player, find idle factories and queue a random unit.
  * Called once per tick from Simulation.update().
+ *
+ * Iterates `getBuildings()` rather than `getAllEntities()` — factories
+ * live on buildings, not units or projectiles, so the smaller cached
+ * subset already filters out 90%+ of irrelevant entities. With a
+ * thousand active projectiles in a battle, the old all-entities scan
+ * paid for thousands of skip-on-`!entity.factory` iterations every
+ * tick.
  */
 export function updateAiProduction(
   world: WorldState,
@@ -61,7 +68,7 @@ export function updateAiProduction(
 ): void {
   if (aiPlayerIds.size === 0) return;
 
-  for (const entity of world.getAllEntities()) {
+  for (const entity of world.getBuildings()) {
     if (!entity.factory || !entity.buildable?.isComplete) continue;
     if (!entity.ownership) continue;
     if (!aiPlayerIds.has(entity.ownership.playerId)) continue;
