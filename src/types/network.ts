@@ -198,12 +198,7 @@ export type NetworkServerSnapshotEntity = {
     collider: { scale: number; shot: number; push: number };
     moveSpeed: number;
     mass: number;
-    /** Optional: present on full records and on deltas where the
-     *  velocity changed more than SNAPSHOT_CONFIG.velocityThreshold.
-     *  On deltas where it didn't change meaningfully the field is
-     *  omitted entirely so we don't ship 24 stale bytes for every
-     *  steady-state unit. */
-    velocity?: Vec3;
+    velocity: Vec3;
     turretRotation: number;
     isCommander?: boolean;
     buildTargetId?: number;

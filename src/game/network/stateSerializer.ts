@@ -55,11 +55,6 @@ type ShotSub = NonNullable<NetworkServerSnapshotEntity['shot']>;
 type PooledEntry = {
   entity: NetworkServerSnapshotEntity;
   unitSub: UnitSub;
-  /** Persistent velocity object the pool reuses across snapshots.
-   *  unitSub.velocity points at this on full records and is left
-   *  undefined on deltas — without a separate field we'd lose the
-   *  pooled allocation the moment we set unitSub.velocity = undefined. */
-  unitVel: { x: number; y: number; z: number };
   buildingSub: BuildingSub;
   factorySub: FactorySub;
   shotSub: ShotSub;
@@ -101,13 +96,9 @@ function createPooledEntry(): PooledEntry {
     unitSub: {
       unitType: '', hp: { curr: 0, max: 0 },
       collider: { scale: 0, shot: 0, push: 0 },
-      moveSpeed: 0, mass: 0,
-      // Pointer to pool.unitVel on full records; undefined on deltas.
-      // Initial value here is a placeholder overwritten on first use.
-      velocity: undefined,
+      moveSpeed: 0, mass: 0, velocity: { x: 0, y: 0, z: 0 },
       turretRotation: 0,
     },
-    unitVel: { x: 0, y: 0, z: 0 },
     buildingSub: {
       type: '', dim: { x: 0, y: 0 }, hp: { curr: 0, max: 0 },
       build: { progress: 0, complete: false },
@@ -650,12 +641,16 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
   ne.shot = undefined;
 
   if (entity.type === 'unit' && entity.unit) {
-    // Determine which unit-specific field groups changed
+    // Attach the unit sub-object on every delta this entity appears
+    // in (any change at all). That way turret rotation can ship in
+    // every diff snap, not just the ones where the turret crossed
+    // its rotation threshold — keeps client-side turret aim smooth
+    // even while the unit is mid-traverse below the change threshold.
     const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
-      ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS;
+      ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
+      ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT;
     const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
-    // Only attach unit sub-object when at least one unit field changed
     if (hasUnitFields) {
       const u = pool.unitSub;
       ne.unit = u;
@@ -675,12 +670,9 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
       // when ENTITY_CHANGED_VEL is set (velocity moved more than the
       // threshold). Quantized to 0.1 wu/s for shorter JSON.
       if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
-        u.velocity = pool.unitVel;
         u.velocity.x = qVel(entity.unit.velocityX ?? 0);
         u.velocity.y = qVel(entity.unit.velocityY ?? 0);
         u.velocity.z = qVel(entity.unit.velocityZ ?? 0);
-      } else {
-        u.velocity = undefined;
       }
 
       // HP
@@ -689,14 +681,17 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
         u.hp.max = entity.unit.maxHp;
       }
 
-      // Turret rotation for network display (only when turrets changed)
-      if (isFull || (changedFields! & ENTITY_CHANGED_TURRETS)) {
+      // Turret rotation ships on EVERY delta where the unit is present
+      // — not gated by ENTITY_CHANGED_TURRETS. Smooth client-side
+      // turret aim depends on getting fresh angles even between the
+      // discrete state changes the bit tracks. Quantized to 0.001 rad.
+      {
         let turretRot = entity.transform.rotation;
         const weapons = entity.turrets ?? [];
         for (const weapon of weapons) {
           turretRot = weapon.rotation;
         }
-        u.turretRotation = turretRot;
+        u.turretRotation = qRot(turretRot);
       }
 
       // Actions
@@ -722,34 +717,36 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
       }
 
       // Turrets
+      // Turrets array now ships on every delta where the unit is
+      // present (gated only by "does the unit have turrets") so
+      // angular.rot / vel / pitch and target/state stay in sync with
+      // the client per-snapshot. Quantized angles keep the JSON small.
       u.turrets = undefined;
-      if (isFull || (changedFields! & ENTITY_CHANGED_TURRETS)) {
-        if (entity.turrets && entity.turrets.length > 0) {
-          const weapons = entity.turrets;
-          const count = weapons.length;
-          while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
-          pool.turrets.length = count;
-          for (let i = 0; i < count; i++) {
-            const src = weapons[i];
-            const dst = pool.turrets[i];
-            const t = dst.turret;
-            t.id = src.config.id;
-            const sr = src.ranges; const dr = t.ranges;
-            dr.tracking.acquire = sr.tracking.acquire; dr.tracking.release = sr.tracking.release;
-            dr.engage.acquire = sr.engage.acquire; dr.engage.release = sr.engage.release;
-            t.angular.rot = src.rotation;
-            t.angular.vel = src.angularVelocity;
-            t.angular.acc = src.turnAccel;
-            t.angular.drag = src.drag;
-            t.angular.pitch = src.pitch;
-            t.pos.offset.x = src.offset.x;
-            t.pos.offset.y = src.offset.y;
-            dst.targetId = src.target ?? undefined;
-            dst.state = src.state;
-            dst.currentForceFieldRange = src.forceField?.range;
-          }
-          u.turrets = pool.turrets;
+      if (entity.turrets && entity.turrets.length > 0) {
+        const weapons = entity.turrets;
+        const count = weapons.length;
+        while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
+        pool.turrets.length = count;
+        for (let i = 0; i < count; i++) {
+          const src = weapons[i];
+          const dst = pool.turrets[i];
+          const t = dst.turret;
+          t.id = src.config.id;
+          const sr = src.ranges; const dr = t.ranges;
+          dr.tracking.acquire = sr.tracking.acquire; dr.tracking.release = sr.tracking.release;
+          dr.engage.acquire = sr.engage.acquire; dr.engage.release = sr.engage.release;
+          t.angular.rot = qRot(src.rotation);
+          t.angular.vel = qRot(src.angularVelocity);
+          t.angular.acc = src.turnAccel;
+          t.angular.drag = src.drag;
+          t.angular.pitch = qRot(src.pitch);
+          t.pos.offset.x = src.offset.x;
+          t.pos.offset.y = src.offset.y;
+          dst.targetId = src.target ?? undefined;
+          dst.state = src.state;
+          dst.currentForceFieldRange = src.forceField?.range;
         }
+        u.turrets = pool.turrets;
       }
 
       // Serialize builder state (commander)

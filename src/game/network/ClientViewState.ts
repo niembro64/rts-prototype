@@ -28,7 +28,6 @@ import {
   ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_ACTIONS,
-  ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_FACTORY,
 } from '../../types/network';
@@ -240,7 +239,11 @@ export class ClientViewState {
           target.velocityZ = v.z;
         }
       }
-      if (isFull || cf! & ENTITY_CHANGED_TURRETS) {
+      // Server now ships u.turrets on every delta where the unit is
+      // present (not gated by ENTITY_CHANGED_TURRETS) so client-side
+      // turret aim stays smooth between threshold-crossing changes.
+      // Read whenever it's there.
+      {
         const nw = netEntity.unit?.turrets;
         if (nw) {
           while (target.turrets.length < nw.length) {
@@ -485,8 +488,8 @@ export class ClientViewState {
       }
 
       // Snap turret targeting state (turret rotation/velocity blended in applyPrediction)
+      // Now read whenever su.turrets is present, since the server ships it on every delta.
       if (
-        (isFull || cf! & ENTITY_CHANGED_TURRETS) &&
         su.turrets &&
         su.turrets.length > 0 &&
         entity.turrets
