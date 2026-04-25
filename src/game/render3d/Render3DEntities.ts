@@ -112,7 +112,10 @@ type EntityMesh = {
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
-  ringMat?: THREE.MeshBasicMaterial;
+  /** Selection ring mesh — material is the renderer-owned shared
+   *  `selectionRingMat` (white for every selection), so we don't store
+   *  a per-unit material reference. The mesh itself lives under
+   *  `m.group` and is GC'd with the group on death. */
   ring?: THREE.Mesh;
   /** UNIT RAD wireframe spheres. All three channels are now 3D in
    *  the sim:
@@ -269,6 +272,17 @@ export class Render3DEntities {
   private ringMatEngageAcquire = new THREE.LineBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.30, depthWrite: false });
   private ringMatEngageRelease = new THREE.LineBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.25, depthWrite: false });
   private ringMatBuild = new THREE.LineBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.30, depthWrite: false });
+  // Selection ring material — color is always white, so one shared
+  // instance covers every unit. Was previously allocated fresh on
+  // every (deselect → select) toggle, with a matching dispose on
+  // deselect/death; that churned a MeshBasicMaterial per click.
+  private selectionRingMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
 
   // SHOT RAD wireframe spheres. These sim checks ARE 3D
   // (lineSphereIntersectionT for collision, 3D sqrt(dx²+dy²+dz²) for
@@ -964,14 +978,9 @@ export class Render3DEntities {
         if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
       }
     }
-    // Selection ring is parented to m.group and would be GC'd along with
-    // it, but its per-unit ringMat is unique (created with new
-    // MeshBasicMaterial each time the unit got selected) so dispose
-    // explicitly to release the GPU resource.
-    if (m.ringMat) {
-      m.ringMat.dispose();
-      m.ringMat = undefined;
-    }
+    // Selection ring is parented to m.group and gets GC'd with the
+    // group; its material is the shared `selectionRingMat`, owned by
+    // the renderer, so no per-unit dispose.
     m.ring = undefined;
   }
 
@@ -1187,28 +1196,20 @@ export class Render3DEntities {
       // lower one.
       const bodyTopY = bodyEntry.topY * radius;
 
-      // Selection ring (flat ring on ground under the unit)
+      // Selection ring (flat ring on ground under the unit). Material
+      // is the renderer-owned shared instance; mesh is per-unit so its
+      // scale tracks the unit's render radius.
       const selected = e.selectable?.selected === true;
       if (selected && !m.ring) {
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: 0xffffff,
-          transparent: true,
-          opacity: 0.9,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        });
-        const ring = new THREE.Mesh(this.ringGeom, ringMat);
+        const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
         ring.rotation.x = -Math.PI / 2;
         // Group is at ground; ring sits just above ground to avoid z-fighting.
         ring.position.y = 1;
         m.group.add(ring);
         m.ring = ring;
-        m.ringMat = ringMat;
       } else if (!selected && m.ring) {
         m.group.remove(m.ring);
-        m.ringMat?.dispose();
         m.ring = undefined;
-        m.ringMat = undefined;
       }
       if (m.ring) {
         const ringR = radius * 1.35;
@@ -1629,6 +1630,7 @@ export class Render3DEntities {
     this.ringMatEngageAcquire.dispose();
     this.ringMatEngageRelease.dispose();
     this.ringMatBuild.dispose();
+    this.selectionRingMat.dispose();
     this.projMatCollision.dispose();
     this.projMatPrimary.dispose();
     this.projMatSecondary.dispose();
