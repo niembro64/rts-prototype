@@ -47,47 +47,60 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     arr.push(idx);
   };
 
-  // Single pass over all entities: collect builder targets, factories, and buildables
+  // Builder/buildable bookkeeping is split across the cached entity
+  // subsets — three passes total, but each touches only the relevant
+  // class of entity instead of the full getAllEntities() (which
+  // includes thousands of in-flight projectiles every battle).
   const buildTargets = buffers.buildTargetSet;
   buildTargets.clear();
   const maxEnergyUseRateByTarget = buffers.maxEnergyUseRateByTarget;
   maxEnergyUseRateByTarget.clear();
-  const allEntities = world.getAllEntities();
 
-  // First pass: collect builder targets + factory consumers + build rates per target
-  for (const entity of allEntities) {
+  // 1) Walk units once: builder fields only live on commander units,
+  //    so iterating units (not all entities) avoids touching every
+  //    projectile + building. Builds the buildTargets set + rate
+  //    index that pass 2 reads.
+  for (const entity of world.getUnits()) {
     const targetId = entity.builder?.currentBuildTarget;
-    if (targetId != null) {
-      buildTargets.add(targetId);
-      // Accumulate builder maxEnergyUseRate for this target (for non-commander building consumers)
-      const rate = entity.builder!.maxEnergyUseRate;
-      maxEnergyUseRateByTarget.set(targetId, (maxEnergyUseRateByTarget.get(targetId) ?? 0) + rate);
-    }
+    if (targetId == null) continue;
+    buildTargets.add(targetId);
+    const rate = entity.builder!.maxEnergyUseRate;
+    maxEnergyUseRateByTarget.set(targetId, (maxEnergyUseRateByTarget.get(targetId) ?? 0) + rate);
+  }
 
+  // 2) Walk buildings once: both factory consumers (buildings that
+  //    are producing units) AND buildable consumers (buildings under
+  //    construction) live on getBuildings(). One iteration handles
+  //    both checks per entity.
+  for (const entity of world.getBuildings()) {
+    // 2a) Factory producing a unit?
     if (entity.factory?.isProducing && entity.factory.buildQueue.length > 0 &&
         entity.ownership && entity.buildable?.isComplete) {
       // Don't spend energy if player is already at or over the unit cap
-      if (!world.canPlayerBuildUnit(entity.ownership.playerId)) continue;
-
-      const f = entity.factory;
-      const remaining = f.currentBuildCost * (1 - f.currentBuildProgress);
-      if (remaining > 0) {
-        const config = getBuildingConfig(entity.buildingType!);
-        const rateCap = (config.maxEnergyUseRate ?? Infinity) * dtSec;
-        addConsumer(entity.ownership.playerId, entity, 'factory', remaining, rateCap);
+      if (world.canPlayerBuildUnit(entity.ownership.playerId)) {
+        const f = entity.factory;
+        const remaining = f.currentBuildCost * (1 - f.currentBuildProgress);
+        if (remaining > 0) {
+          const config = getBuildingConfig(entity.buildingType!);
+          const rateCap = (config.maxEnergyUseRate ?? Infinity) * dtSec;
+          addConsumer(entity.ownership.playerId, entity, 'factory', remaining, rateCap);
+        }
       }
     }
-  }
 
-  // Second pass: find buildables with assigned builders
-  for (const entity of allEntities) {
-    if (!entity.buildable || entity.buildable.isComplete || entity.buildable.isGhost) continue;
-    if (!entity.ownership) continue;
-    if (!buildTargets.has(entity.id)) continue;
-    const remaining = entity.buildable.energyCost * (1 - entity.buildable.buildProgress);
-    if (remaining > 0) {
-      const rateCap = (maxEnergyUseRateByTarget.get(entity.id) ?? Infinity) * dtSec;
-      addConsumer(entity.ownership.playerId, entity, 'building', remaining, rateCap);
+    // 2b) Buildable being built by some commander?
+    if (
+      entity.buildable
+      && !entity.buildable.isComplete
+      && !entity.buildable.isGhost
+      && entity.ownership
+      && buildTargets.has(entity.id)
+    ) {
+      const remaining = entity.buildable.energyCost * (1 - entity.buildable.buildProgress);
+      if (remaining > 0) {
+        const rateCap = (maxEnergyUseRateByTarget.get(entity.id) ?? Infinity) * dtSec;
+        addConsumer(entity.ownership.playerId, entity, 'building', remaining, rateCap);
+      }
     }
   }
 
