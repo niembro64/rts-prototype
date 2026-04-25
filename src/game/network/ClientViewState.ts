@@ -229,10 +229,9 @@ export class ClientViewState {
       if (isFull || cf! & ENTITY_CHANGED_ROT) {
         target.rotation = netEntity.rotation;
       }
-      // Velocity now ships only on full records (keyframe / new entity).
-      // On deltas the server omits it entirely and ENTITY_CHANGED_VEL is
-      // not set — fall back to the last-known velocity, snap-corrected
-      // by each delta's position.
+      // Velocity ships on full records and on deltas where
+      // ENTITY_CHANGED_VEL is set. The wire field is still optional
+      // (older / future deltas may omit it) so guard with `?.`.
       if (isFull || cf! & ENTITY_CHANGED_VEL) {
         const v = netEntity.unit?.velocity;
         if (v !== undefined) {

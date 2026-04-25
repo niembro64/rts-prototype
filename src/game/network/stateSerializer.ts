@@ -8,7 +8,7 @@ import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUp
 import type { Vec2 } from '../../types/vec2';
 import type { GamePhase } from '../../types/network';
 import {
-  ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
 } from '../../types/network';
@@ -212,6 +212,7 @@ function getPrevState(entityId: number): PrevEntityState {
 
 function getChangedFields(entity: Entity, prev: PrevEntityState): number {
   const posTh = SNAPSHOT_CONFIG.positionThreshold;
+  const velTh = SNAPSHOT_CONFIG.velocityThreshold;
   const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold;
   const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold;
 
@@ -226,12 +227,10 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
   }
 
   if (entity.unit) {
-    // ENTITY_CHANGED_VEL is intentionally never set on deltas — velocity
-    // ships only on full keyframes / new-entity records. Between
-    // keyframes the client uses last-known velocity for dead-reckoning
-    // and snap-corrects position from each delta. Skipping velocity on
-    // deltas drops ~24 bytes (3 numbers as JSON) per moving unit per
-    // snapshot, which dominates a thousand-unit fight at 32 SPS.
+    if (Math.abs((entity.unit.velocityX ?? 0) - prev.velocityX) > velTh ||
+        Math.abs((entity.unit.velocityY ?? 0) - prev.velocityY) > velTh) {
+      mask |= ENTITY_CHANGED_VEL;
+    }
     if (entity.unit.hp !== prev.hp) {
       mask |= ENTITY_CHANGED_HP;
     }
@@ -651,11 +650,8 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
   ne.shot = undefined;
 
   if (entity.type === 'unit' && entity.unit) {
-    // Determine which unit-specific field groups changed.
-    // ENTITY_CHANGED_VEL omitted: velocity ships only on full / new-
-    // entity records, so a delta whose ONLY change was velocity is
-    // dropped entirely (no entity row sent at all).
-    const unitFieldMask = ENTITY_CHANGED_HP |
+    // Determine which unit-specific field groups changed
+    const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
       ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS;
     const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
@@ -675,10 +671,10 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
         u.isCommander = entity.commander !== undefined ? true : undefined;
       }
 
-      // Velocity ships only on full records (keyframe or new entity).
-      // On deltas u.velocity is left undefined and omitted by JSON, so
-      // a moving-only entity contributes ~24 fewer bytes per snapshot.
-      if (isFull) {
+      // Velocity — full keyframes always carry it; on deltas it ships
+      // when ENTITY_CHANGED_VEL is set (velocity moved more than the
+      // threshold). Quantized to 0.1 wu/s for shorter JSON.
+      if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
         u.velocity = pool.unitVel;
         u.velocity.x = qVel(entity.unit.velocityX ?? 0);
         u.velocity.y = qVel(entity.unit.velocityY ?? 0);
