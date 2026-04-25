@@ -40,7 +40,7 @@ import {
   getWeaponWorldPosition,
   applyHomingSteering,
 } from '../math';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY } from '../../config';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY, BEAM_MAX_LENGTH } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 /** Frame-rate independent EMA blend factor from a half-life (seconds).
@@ -716,7 +716,7 @@ export class ClientViewState {
             const startY = tip.y;
             const startZ = tip.z;
 
-            const beamLength = weapon.ranges.engage.acquire;
+            const beamLength = BEAM_MAX_LENGTH;
             const fullEndX = tip.x + tip.dirX * beamLength;
             const fullEndY = tip.y + tip.dirY * beamLength;
             const fullEndZ = tip.z + tip.dirZ * beamLength;

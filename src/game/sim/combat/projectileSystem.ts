@@ -8,7 +8,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, getBarrelTip, countBarrels } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY } from '../../../config';
+import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, BEAM_MAX_LENGTH } from '../../../config';
 import { resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { spatialGrid } from '../SpatialGrid';
@@ -269,11 +269,15 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
 
         if (isBeamWeapon) {
-          // Create beam using weapon's fireRange. End point is the
-          // full 3D direction × beamLength so the initial fire visual
-          // already shows the real pitched beam before the per-tick
-          // findBeamPath call refines it with reflections/obstructions.
-          const beamLength = weapon.ranges.engage.acquire;
+          // Create beam using an effectively-infinite trace length.
+          // Targeting is range-gated (weapon.state becomes 'engaged'
+          // only when a target is in range), but once firing the beam
+          // extends until it hits a mirror / unit / building. End point
+          // is the full 3D direction × beamLength so the initial fire
+          // visual already shows the real pitched beam before the
+          // per-tick findBeamPath call refines it with reflections /
+          // obstructions.
+          const beamLength = BEAM_MAX_LENGTH;
           const endX = spawnX + dirX * beamLength;
           const endY = spawnY + dirY * beamLength;
           const endZ = spawnZ + dirZ * beamLength;
@@ -597,7 +601,7 @@ export function updateProjectiles(
         proj.startY = tip.y;
         proj.startZ = tip.z;
 
-        const beamLength = weapon.ranges.engage.acquire;
+        const beamLength = BEAM_MAX_LENGTH;
         const fullEndX = tip.x + tip.dirX * beamLength;
         const fullEndY = tip.y + tip.dirY * beamLength;
         const fullEndZ = tip.z + tip.dirZ * beamLength;

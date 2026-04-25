@@ -160,6 +160,13 @@ export const MIRROR_BASE_Y = 2;
  *  aimed over the chassis. Shared sim + render constant. */
 export const MIRROR_EXTRA_HEIGHT = 80;
 
+/** Effective "infinite" length for a live beam's ray trace. Turrets
+ *  still fire only when their target is within weapon.ranges — once
+ *  firing, the beam extends this far along its aim until it hits a
+ *  mirror / unit / building. Large enough to span the map diagonally
+ *  with room to spare. */
+export const BEAM_MAX_LENGTH = 10000;
+
 /** Universal gravity acceleration (world units / s², pulling −z).
  *  Single source of truth for every falling thing — physics engine's
  *  unit bodies, projectile ballistic integration, debris chunks,
