@@ -4,14 +4,14 @@ export const DEMO_CONFIG = {
   /** Number of players in the demo game */
   playerCount: 10,
 
-  /** Number of factories per player. Scaled down from the 3-team
-   *  layout (was 10) so each team's narrower angular sector still fits
-   *  the row without buildings overlapping. */
-  factoryCount: 6,
+  /** Number of factories per player. Scaled down for the 10-team
+   *  layout — each team's angular sector is only 2π/10 = 36° (30.6°
+   *  usable), so fewer buildings keep the inner arc breathing room. */
+  factoryCount: 3,
 
-  /** Number of solar panels per player. Scaled down from the 3-team
-   *  layout (was 8) for the same reason as factoryCount. */
-  solarCount: 5,
+  /** Number of solar panels per player. Same rationale as
+   *  factoryCount. */
+  solarCount: 4,
 
   /**
    * Fraction of each player's angular sector on the spawn circle that is
