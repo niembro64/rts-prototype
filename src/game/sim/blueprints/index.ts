@@ -76,8 +76,9 @@ function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate
     homingTurnRate: homingTurnRate,
     submunitions: bp.submunitions,
     ignoresGravity: bp.ignoresGravity,
-    leavesSmokeTrail: bp.leavesSmokeTrail,
+    smokeTrail: bp.smokeTrail,
     shape: bp.shape,
+    cylinderShape: bp.cylinderShape,
   };
   return shot;
 }

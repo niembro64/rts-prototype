@@ -38,7 +38,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
     type: 'projectile',
     id: 'lightShot',
-    mass: 2,
+    mass: 3,
     collision: { radius: 1.6, damage: 2 },
     explosion: {
       primary: { radius: 5, damage: 2, force: 500 },
@@ -79,10 +79,21 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     splashOnExpiry: true,
     lifespan: 5500,
     ignoresGravity: true,
-    leavesSmokeTrail: true,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
     // collision is still sphere-based via collision.radius).
     shape: 'cylinder',
+    cylinderShape: {
+      lengthMult: 4.0,
+      diameterMult: 0.5,
+    },
+    smokeTrail: {
+      emitIntervalMs: 30,   // ~33 puffs/sec at max LOD
+      lifespanMs: 1400,     // each puff lingers ~1.4s
+      startRadius: 1.5,
+      endRadius: 8.0,
+      startAlpha: 0.75,
+      color: 0xcccccc,
+    },
     hitSound: AUDIO.event.hit.lightRocket,
   },
   heavyShot: {
@@ -105,7 +116,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // no splash explosion. Its only job is to fly to a point and
     // release submunitions on impact / lifespan expiry. All damage
     // comes from the lightShot fragments sprayed below.
-    mass: 80,
+    mass: 30,
     collision: { radius: 7, damage: 0 },
     splashOnExpiry: true,
     lifespan: 5000,

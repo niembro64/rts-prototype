@@ -194,13 +194,16 @@ export type ProjectileShot = {
    *  shot is in flight. Shared sim + client state so predicted arcs
    *  match authoritative arcs. Orthogonal to homingTurnRate. */
   ignoresGravity?: boolean;
-  /** Cosmetic 3D-client flag — emit a smoke-puff trail behind this
-   *  projectile. See ProjectileShotBlueprint.leavesSmokeTrail. */
-  leavesSmokeTrail?: boolean;
+  /** Cosmetic 3D-client trail config. Presence => smoke is on. See
+   *  ProjectileShotBlueprint.smokeTrail / SmokeTrailSpec for fields. */
+  smokeTrail?: import('./blueprints').SmokeTrailSpec;
   /** Cosmetic 3D-client mesh shape. 'cylinder' aligns with velocity
    *  for rockets/missiles; 'sphere' (default) is an isotropic ball.
    *  Sim collision is always sphere-based — see ShotCollision.radius. */
   shape?: 'sphere' | 'cylinder';
+  /** When shape === 'cylinder', overrides the default rendered pill
+   *  dimensions (multiples of collision.radius). */
+  cylinderShape?: import('./blueprints').CylinderShapeSpec;
 };
 
 // Beam shot — continuous line from turret, per-tick damage (no cooldown)

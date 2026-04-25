@@ -88,18 +88,49 @@ export type ProjectileShotBlueprint = {
    *  homing — a gravity-less projectile without homing flies in a
    *  perfectly straight line until it hits something. */
   ignoresGravity?: boolean;
-  /** Cosmetic — when true the 3D client renders a smoke trail of
-   *  fading puff particles behind this projectile while it flies.
-   *  Has no sim effect; declared on the shot blueprint so different
-   *  shot types can opt in independently of damage / homing / gravity
-   *  behavior. Rockets naturally want this; ballistic shells don't. */
-  leavesSmokeTrail?: boolean;
+  /** Cosmetic — declares this projectile leaves a fading smoke trail
+   *  in the 3D renderer. Presence of this field turns the trail on;
+   *  every individual property has an engine-wide default so authors
+   *  can pass `{}` to use the defaults verbatim. Sim-side: no effect. */
+  smokeTrail?: SmokeTrailSpec;
   /** Cosmetic 3D-client mesh shape for the projectile body.
    *  - 'sphere' (default): an isotropic ball, used for shells / orbs.
    *  - 'cylinder': a long pill aligned with the flight direction. Use
    *    for rockets / missiles so they read as oriented thrust-powered
    *    bodies rather than blobs. */
   shape?: 'sphere' | 'cylinder';
+  /** When `shape === 'cylinder'`, controls the rendered pill's size
+   *  relative to the projectile's collision radius. Both fields are
+   *  multiples of `collision.radius`. Engine defaults: length=4,
+   *  diameter=0.5. Has no effect when shape is sphere. */
+  cylinderShape?: CylinderShapeSpec;
+};
+
+/** Per-shot rocket-cylinder dimensions. Both values are multiples of
+ *  the projectile's `collision.radius`. */
+export type CylinderShapeSpec = {
+  /** World-space length of the rendered pill = collision.radius × this. */
+  lengthMult?: number;
+  /** World-space diameter of the rendered pill = collision.radius × this. */
+  diameterMult?: number;
+};
+
+/** Per-shot smoke-trail tunables. Every field is optional; the
+ *  3D renderer fills in engine-wide defaults for anything omitted. */
+export type SmokeTrailSpec = {
+  /** Milliseconds between consecutive puff spawns at max LOD.
+   *  Default: 30 (~33 puffs/sec). Higher LOD → faster emission. */
+  emitIntervalMs?: number;
+  /** Per-puff lifespan in ms at max LOD. Default: 1400. */
+  lifespanMs?: number;
+  /** Sphere radius the puff is born at, world units. Default: 2.5. */
+  startRadius?: number;
+  /** Sphere radius the puff swells to before it fully fades. Default: 8. */
+  endRadius?: number;
+  /** Puff opacity at birth (it fades to 0 over its lifespan). Default: 0.75. */
+  startAlpha?: number;
+  /** Puff color as a 0xRRGGBB hex int. Default: 0xcccccc (light grey). */
+  color?: number;
 };
 
 export type BeamShotBlueprint = {

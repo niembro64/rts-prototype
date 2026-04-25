@@ -218,11 +218,14 @@ export class Render3DEntities {
   private _projDir = new THREE.Vector3();
   private _projQuat = new THREE.Quaternion();
   private static readonly _PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
-  /** Cylinder shape: world length = collision.radius × this; world
-   *  diameter = collision.radius × this fraction of length. Tuned so a
-   *  light rocket reads as a clear thrust-powered body, not a stick. */
-  private static readonly _PROJ_CYL_LENGTH_MULT = 4.0;
-  private static readonly _PROJ_CYL_DIAMETER_MULT = 1.4;
+  /** Engine fallback values used when a shape:'cylinder' shot doesn't
+   *  define its own `cylinderShape` block. World length =
+   *  collision.radius × LENGTH_MULT; world diameter = collision.radius
+   *  × DIAMETER_MULT. Per-shot overrides live on the shot blueprint
+   *  (see CylinderShapeSpec) — these only kick in when the blueprint
+   *  is silent. */
+  private static readonly _PROJ_CYL_LENGTH_MULT_DEFAULT = 4.0;
+  private static readonly _PROJ_CYL_DIAMETER_MULT_DEFAULT = 0.5;
   // White projectile mat — team-agnostic so any shot reads as "can hit
   // anyone". Shooter identity comes from the turret/barrel and impact
   // effects, not the projectile body. Matches the 2D getProjectileColor
@@ -1394,12 +1397,18 @@ export class Render3DEntities {
       if (isCylinder) {
         // Cylinder rocket body: stretch along its local +Y, then rotate
         // so +Y aligns with the projectile's velocity vector. World
-        // length = radius · LENGTH_MULT, world diameter = radius ·
-        // DIAMETER_MULT. The sim collision footprint stays a sphere of
-        // collision.radius — this is purely a render hint.
+        // length = radius · lengthMult, world diameter = radius ·
+        // diameterMult — both pulled from the shot's `cylinderShape`
+        // block so a designer can tune rocket aspect ratios per blueprint
+        // (lightRocket vs heavyMissile vs torpedo etc.). The sim
+        // collision footprint stays a sphere of collision.radius —
+        // this is purely a render hint.
         const r = Math.max(radius, PROJECTILE_MIN_RADIUS);
-        const length = r * Render3DEntities._PROJ_CYL_LENGTH_MULT;
-        const diameter = r * Render3DEntities._PROJ_CYL_DIAMETER_MULT;
+        const cylSpec = (shot && shot.type === 'projectile') ? shot.cylinderShape : undefined;
+        const lengthMult = cylSpec?.lengthMult ?? Render3DEntities._PROJ_CYL_LENGTH_MULT_DEFAULT;
+        const diameterMult = cylSpec?.diameterMult ?? Render3DEntities._PROJ_CYL_DIAMETER_MULT_DEFAULT;
+        const length = r * lengthMult;
+        const diameter = r * diameterMult;
         mesh.scale.set(diameter, length, diameter);
         const proj = e.projectile;
         if (proj) {
