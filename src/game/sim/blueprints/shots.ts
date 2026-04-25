@@ -116,7 +116,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // no splash explosion. Its only job is to fly to a point and
     // release submunitions on impact / lifespan expiry. All damage
     // comes from the lightShot fragments sprayed below.
-    mass: 30,
+    mass: 60,
     collision: { radius: 4 },
     detonateOnExpiry: true,
     lifespan: 5000,
@@ -136,7 +136,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       // they leave the AOE the player expected. Tune up toward 1.0
       // for a more energetic bounce, down toward 0.0 to absorb the
       // momentum entirely.
-      reflectedVelocityDamper: 0.001,
+      reflectedVelocityDamper: 0.4,
     },
   },
   disruptorShot: {

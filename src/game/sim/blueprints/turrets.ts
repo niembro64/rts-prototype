@@ -115,7 +115,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   cannonTurret: {
     id: 'cannonTurret',
     projectileId: 'heavyShot',
-    range: 510,
+    range: 610,
     cooldown: 2300,
     launchForce: 10_000,
     turretTurnAccel: 200,
@@ -133,9 +133,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   mortarTurret: {
     id: 'mortarTurret',
     projectileId: 'mortarShot',
-    range: 500,
+    range: 600,
     cooldown: 6000,
-    launchForce: 8000,
+    launchForce: 30000,
     turretTurnAccel: 90,
     turretDrag: 0.4,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
@@ -255,9 +255,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   mirrorTurret: {
     id: 'mirrorTurret',
     projectileId: 'beamShot0',
-    range: 220,
-    turretTurnAccel: 30,
-    turretDrag: 0.5,
+    range: 400,
+    turretTurnAccel: 20,
+    turretDrag: 1,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
     launchForce: 0,
     passive: true,
