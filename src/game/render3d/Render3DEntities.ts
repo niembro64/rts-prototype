@@ -981,21 +981,25 @@ export class Render3DEntities {
         }
       }
 
-      // Mirror panels: track the first turret's rotation (same rule the
-      // 2D LorisRenderer uses — `mirrorRot = turret?.rotation ?? bodyRot`).
-      // Pitch tilts each panel around its edge axis so the panel's 3D
-      // normal points at the beam source. With the panel mesh on Euler
-      // order YXZ, rotation.x is applied AFTER the yaw flip — so it
-      // genuinely rotates around the panel-local edge axis. The sign is
-      // negated because positive sim/turret pitch (= "tilt up") in the
-      // mesh frame corresponds to a negative Euler X rotation after the
-      // yaw flip.
+      // Mirror panels: track the first turret's rotation. Pitch tilts
+      // each panel around its edge axis so the rectangle the player
+      // sees lines up with the rectangle the sim's beam tracer uses.
+      //
+      // SIGN of rotation.x: positive sim pitch means the panel's NORMAL
+      // tilts upward — which, for a normal that starts pointing forward
+      // (+sim X), requires the panel's TOP to lean BACKWARD. With Euler
+      // YXZ the X rotation is applied around the panel's default-local
+      // X axis (its width axis, before the Y flip). For our Y rotation
+      // of -(angle + π/2) the right sign is +mirrorPitch — using -mirrorPitch
+      // would tilt the visible panel forward while the sim treats it as
+      // tilting backward, so the rendered chrome would lean opposite to
+      // where the sim's reflection plane actually sits.
       if (m.mirrors) {
         const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
         const mirrorPitch = turrets[0]?.pitch ?? 0;
         m.mirrors.root.rotation.y = -(mirrorRot - e.transform.rotation);
         for (const panel of m.mirrors.panels) {
-          panel.rotation.x = -mirrorPitch;
+          panel.rotation.x = mirrorPitch;
         }
       }
 

@@ -255,8 +255,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   mirrorTurret: {
     id: 'mirrorTurret',
     projectileId: 'beamShot0',
-    range: 400,
-    turretTurnAccel: 20,
+    range: 500,
+    turretTurnAccel: 50,
     turretDrag: 1,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
     launchForce: 0,
