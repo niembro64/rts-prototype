@@ -38,6 +38,21 @@ const PARTICLE_COUNT_SIMPLE = 28;
 const PARTICLE_COUNT_ENHANCED = 56;
 const PARTICLE_RADIUS = 1.4;   // world units per mote
 
+// MAX-only particle TRAILS — comet-style ghost segments behind each
+// main mote, mirroring the 2D enhanced look (FORCE_FIELD_VISUAL.
+// trailSegments = 3, trailFalloff = 0.45 per step). Each trail spans
+// trailFrac of the radial band behind its parent mote.
+const TRAIL_SEGMENTS = 3;
+const TRAIL_FRAC_PER_STEP = 0.045;   // of (outer − inner)
+const TRAIL_OPACITY_FALLOFF = 0.5;   // multiplier per successive trail
+const TRAIL_SCALE_FALLOFF = 0.75;    // shrink factor per successive trail
+
+// Opacity multiplier on top of push.alpha so the field reads more
+// solid in 3D than the 2D translucent fill — applied uniformly to the
+// bubble, particles, and arcs. Doubling from 1.0 to 2.0 makes the
+// effect twice as opaque visually.
+const FIELD_OPACITY_BOOST = 2.0;
+
 // Per-LOD arc counts (enhanced only).
 const ARC_COUNT_ENHANCED = 4;
 
@@ -54,6 +69,11 @@ type FieldMesh = {
   // frame we show only the LOD-appropriate prefix.
   particles: THREE.Mesh[];
   particleMat: THREE.MeshBasicMaterial;
+  // MAX-only ghost trails behind each particle. Allocated lazily;
+  // index = particleIdx × TRAIL_SEGMENTS + trailIdx. Each trail uses
+  // its own material because the opacity decays per trail step.
+  trailMeshes: THREE.Mesh[];
+  trailMats: THREE.MeshBasicMaterial[];
   // Electric arc geometry, allocated only on first 'enhanced' frame.
   arcGeom?: THREE.BufferGeometry;
   arcMat?: THREE.LineBasicMaterial;
@@ -133,6 +153,8 @@ export class ForceFieldRenderer3D {
       zoneMat,
       particles: [],
       particleMat,
+      trailMeshes: [],
+      trailMats: [],
       arcLastFlickerMs: 0,
     };
     this.fields.set(key, field);
@@ -147,6 +169,29 @@ export class ForceFieldRenderer3D {
       mesh.visible = false;
       this.root.add(mesh);
       field.particles.push(mesh);
+    }
+  }
+
+  /** Lazily allocate the per-particle ghost trail meshes (MAX only).
+   *  Each main particle gets TRAIL_SEGMENTS ghosts; each ghost has its
+   *  own material so opacity decays per step. Color set per frame so
+   *  trails inherit field tint when the field switches teams. */
+  private ensureTrails(field: FieldMesh, particleCount: number, color: number): void {
+    const required = particleCount * TRAIL_SEGMENTS;
+    while (field.trailMeshes.length < required) {
+      const mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const mesh = new THREE.Mesh(this.particleSphereGeom, mat);
+      mesh.renderOrder = 9;
+      mesh.visible = false;
+      this.root.add(mesh);
+      field.trailMeshes.push(mesh);
+      field.trailMats.push(mat);
     }
   }
 
@@ -250,7 +295,7 @@ export class ForceFieldRenderer3D {
         }
         const fadeIn = Math.min(progress * 3, 1);
         field.zoneMat.color.set(push.color);
-        field.zoneMat.opacity = push.alpha * fadeIn;
+        field.zoneMat.opacity = push.alpha * fadeIn * FIELD_OPACITY_BOOST;
         field.zone.scale.setScalar(outer);
         field.zone.position.set(cx, cy, cz);
         field.zone.visible = true;
@@ -270,11 +315,18 @@ export class ForceFieldRenderer3D {
           // Tint particles with the field's color so they read as part of
           // the same effect (not generic white).
           field.particleMat.color.set(push.color);
-          field.particleMat.opacity = push.alpha * 4 * fadeIn;
+          field.particleMat.opacity = push.alpha * 4 * fadeIn * FIELD_OPACITY_BOOST;
+          // MAX-only: ghost trails behind each mote, fading per step.
+          if (wantArcs) this.ensureTrails(field, particleCount, push.color);
+          const baseTrailOpacity = field.particleMat.opacity;
           for (let pi = 0; pi < field.particles.length; pi++) {
             const mote = field.particles[pi];
             if (pi >= particleCount) {
               mote.visible = false;
+              for (let t = 0; t < TRAIL_SEGMENTS; t++) {
+                const trail = field.trailMeshes[pi * TRAIL_SEGMENTS + t];
+                if (trail) trail.visible = false;
+              }
               continue;
             }
             // Even-ish distribution on a 2-sphere: theta ∈ [0, 2π),
@@ -283,17 +335,46 @@ export class ForceFieldRenderer3D {
             const phi = Math.acos(2 * fieldHash(pi * 5953 + 1, seed) - 1);
             const offset = fieldHash(pi * 2143 + 2, seed);
             const cycle = (nowSec * speed * 0.5 + offset) % 1;
-            const radius = inner + radialBand * cycle;
             const rxy = Math.sin(phi);
-            const px = cx + Math.cos(theta) * rxy * radius;
-            const py = cy + Math.cos(phi) * radius;
-            const pz = cz + Math.sin(theta) * rxy * radius;
-            mote.position.set(px, py, pz);
+            const dirX = Math.cos(theta) * rxy;
+            const dirY = Math.cos(phi);
+            const dirZ = Math.sin(theta) * rxy;
+            const radius = inner + radialBand * cycle;
+            mote.position.set(cx + dirX * radius, cy + dirY * radius, cz + dirZ * radius);
             mote.scale.setScalar(PARTICLE_RADIUS);
             mote.visible = true;
+
+            // Place each ghost behind the mote at progressively earlier
+            // cycle fractions (wrapping mod 1 keeps trails on the same
+            // radial spoke when the mote loops back to inner).
+            if (wantArcs) {
+              for (let t = 1; t <= TRAIL_SEGMENTS; t++) {
+                const idx = pi * TRAIL_SEGMENTS + (t - 1);
+                const trail = field.trailMeshes[idx];
+                const trailMat = field.trailMats[idx];
+                if (!trail || !trailMat) continue;
+                const trailFrac = ((cycle - TRAIL_FRAC_PER_STEP * t) + 1) % 1;
+                const trailRadius = inner + radialBand * trailFrac;
+                trail.position.set(
+                  cx + dirX * trailRadius,
+                  cy + dirY * trailRadius,
+                  cz + dirZ * trailRadius,
+                );
+                trail.scale.setScalar(PARTICLE_RADIUS * Math.pow(TRAIL_SCALE_FALLOFF, t));
+                trailMat.color.set(push.color);
+                trailMat.opacity = baseTrailOpacity * Math.pow(TRAIL_OPACITY_FALLOFF, t);
+                trail.visible = true;
+              }
+            } else {
+              for (let t = 0; t < TRAIL_SEGMENTS; t++) {
+                const trail = field.trailMeshes[pi * TRAIL_SEGMENTS + t];
+                if (trail) trail.visible = false;
+              }
+            }
           }
         } else {
           for (const p of field.particles) p.visible = false;
+          for (const tr of field.trailMeshes) tr.visible = false;
         }
 
         // ── Electric arcs (MAX LOD only) ──
@@ -308,7 +389,7 @@ export class ForceFieldRenderer3D {
           const arcMat = field.arcMat!;
           arcLines.visible = true;
           arcMat.color.set(push.color);
-          arcMat.opacity = FORCE_FIELD_VISUAL.arcOpacity * fadeIn;
+          arcMat.opacity = FORCE_FIELD_VISUAL.arcOpacity * fadeIn * FIELD_OPACITY_BOOST;
           const v = FORCE_FIELD_VISUAL;
           const flickerSeed = Math.floor(nowMs / v.arcFlickerMs);
           const positions = arcGeom.attributes.position.array as Float32Array;
@@ -377,18 +458,17 @@ export class ForceFieldRenderer3D {
     }
 
     // Tear down meshes for fields that turned off or whose unit is gone.
-    // Previously this just hid the meshes; over a long battle units die
-    // and respawn (or the lobby cycles demos) and orphaned FieldMesh
-    // entries accumulated forever. Now we fully release the resources.
     for (const [key, field] of this.fields) {
       if (seen.has(key)) continue;
       this.root.remove(field.emitter);
       this.root.remove(field.zone);
       for (const p of field.particles) this.root.remove(p);
+      for (const tr of field.trailMeshes) this.root.remove(tr);
       if (field.arcLines) this.root.remove(field.arcLines);
       field.emitterMat.dispose();
       field.zoneMat.dispose();
       field.particleMat.dispose();
+      for (const tm of field.trailMats) tm.dispose();
       if (field.arcGeom) field.arcGeom.dispose();
       if (field.arcMat) field.arcMat.dispose();
       this.fields.delete(key);
@@ -400,10 +480,12 @@ export class ForceFieldRenderer3D {
       this.root.remove(field.emitter);
       this.root.remove(field.zone);
       for (const p of field.particles) this.root.remove(p);
+      for (const tr of field.trailMeshes) this.root.remove(tr);
       if (field.arcLines) this.root.remove(field.arcLines);
       field.emitterMat.dispose();
       field.zoneMat.dispose();
       field.particleMat.dispose();
+      for (const tm of field.trailMats) tm.dispose();
       if (field.arcGeom) field.arcGeom.dispose();
       if (field.arcMat) field.arcMat.dispose();
     }

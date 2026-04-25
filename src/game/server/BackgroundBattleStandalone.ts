@@ -73,7 +73,11 @@ function spawnUnit(
   aimTurretsToward(unit, targetX, targetY);
 
   if (unit.unit) {
-    unit.unit.actions = [{ type: 'fight', x: targetX, y: targetY }];
+    // Plain 'move' (not 'fight'): demo units commit to the waypoint
+  // and don't pause to fire en route. Lets the converging columns
+  // actually meet at the centerpoint instead of bogging down at the
+  // first contact.
+  unit.unit.actions = [{ type: 'move', x: targetX, y: targetY }];
   }
 
   world.addEntity(unit);

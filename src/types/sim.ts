@@ -116,6 +116,17 @@ export type CachedMirrorPanel = {
 // Unit component - movable entities. Velocities are 3D: X/Y are
 // horizontal (ground-plane) motion, Z is vertical (for units that
 // take off, get knocked up by explosions, or fall from overhangs).
+//
+// `velocityX/Y/Z` is the AUTHORITATIVE physics velocity, written only
+// by syncFromPhysics on the server (and by the network drift code on
+// the client). Anyone reading "how fast is this unit moving" — lead
+// prediction, debris recoil, locomotion animation — should read these.
+//
+// `thrustDirX/Y` is the desired-thrust unit vector (the action system's
+// "where do I want to go this tick?") that GameServer.applyForces
+// reads to push the body. Decoupling thrust from velocity prevents the
+// action system from clobbering the velocity field mid-tick before
+// turretSystem's lead math runs.
 export type Unit = {
   unitType: string;
   moveSpeed: number;
@@ -128,6 +139,11 @@ export type Unit = {
   velocityX?: number;
   velocityY?: number;
   velocityZ?: number;
+  /** Desired thrust direction for this tick. Magnitude is irrelevant
+   *  (applyForces normalizes), but the action system encodes
+   *  "stationary" as (0, 0). */
+  thrustDirX?: number;
+  thrustDirY?: number;
   priorityTargetId?: EntityId;
   mirrorPanels: CachedMirrorPanel[];
   mirrorBoundRadius: number;

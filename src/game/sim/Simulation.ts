@@ -558,8 +558,12 @@ export class Simulation {
     }
   }
 
-  // Update unit movement with action queue processing
-  // velocityX/Y represents thrust direction - if 0, no thrust is applied and friction slows the unit
+  // Update unit movement with action queue processing.
+  // unit.thrustDirX/Y is what GameServer.applyForces reads — a (0, 0)
+  // means "no thrust this tick, friction will slow us". The
+  // authoritative physics velocity stays in unit.velocityX/Y/Z and
+  // is only overwritten by syncFromPhysics, so lead-prediction in
+  // turretSystem reads the real velocity, not this thrust target.
   private updateUnits(): void {
     for (const entity of this.world.getUnits()) {
       if (!entity.unit || !entity.body) continue;
@@ -567,8 +571,8 @@ export class Simulation {
       const { unit, transform } = entity;
 
       // Default: no thrust (friction will slow the unit)
-      unit.velocityX = 0;
-      unit.velocityY = 0;
+      unit.thrustDirX = 0;
+      unit.thrustDirY = 0;
 
       // Clear priority target — re-set below if current action is attack
       unit.priorityTargetId = undefined;
@@ -606,8 +610,8 @@ export class Simulation {
         }
 
         // Thrust toward target
-        unit.velocityX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
-        unit.velocityY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+        unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+        unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
         continue;
       }
 

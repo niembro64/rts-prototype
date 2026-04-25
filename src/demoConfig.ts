@@ -41,10 +41,13 @@ export const DEMO_CONFIG = {
   spawnMarginPx: 100,
 
   /**
-   * Factory rally/waypoint type. Units produced by factories get this action
-   * toward the map center.
+   * Factory rally/waypoint type. Units produced by factories get this
+   * action toward the map center. 'move' commits the unit to the
+   * waypoint without pausing to fire en route — converging demo
+   * columns actually reach the center; 'fight' would have them stop
+   * and engage at every line of sight.
    */
-  factoryWaypointType: 'fight' as const,
+  factoryWaypointType: 'move' as const,
 
   /**
    * How far (as a fraction of factory→map-center distance) the default fight

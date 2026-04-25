@@ -359,8 +359,11 @@ export class GameServer {
       // purely a physics readback — thrust is always horizontal,
       // vertical motion is gravity-driven (or knockback-driven via the
       // force accumulator, when that channel lands).
-      const dirX = entity.unit.velocityX ?? 0;
-      const dirY = entity.unit.velocityY ?? 0;
+      // thrustDirX/Y is the dedicated thrust channel; velocityX/Y is
+      // the authoritative physics velocity (set by syncFromPhysics)
+      // and must NOT be overwritten by the action system.
+      const dirX = entity.unit.thrustDirX ?? 0;
+      const dirY = entity.unit.thrustDirY ?? 0;
       const dirMag = magnitude(dirX, dirY);
 
       // Update rotation to face movement direction
