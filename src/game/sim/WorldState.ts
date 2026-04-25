@@ -1,11 +1,10 @@
 import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileType } from './types';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
-import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
+import { getUnitBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT, UNIT_HP_MULTIPLIER } from '../../config';
-import { getBodyTopY } from '../math/BodyDimensions';
-import { turretHeadRadiusFromBodyRadius } from '../math';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, UNIT_HP_MULTIPLIER } from '../../config';
+import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 
 // Seeded random number generator for determinism
@@ -395,43 +394,12 @@ export class WorldState {
     // Create turrets from blueprint definition
     entity.turrets = createTurretsFromDefinition(unitId, bp.unitRadiusCollider.scale);
 
-    // Cache mirror panels for fast beam collision checks (avoids blueprint
-    // lookup per tick). The panel is REGULARIZED to a perfect square:
-    // vertical span = MIRROR_BASE_Y → bodyTop + 2·hostHeadRadius +
-    // MIRROR_EXTRA_HEIGHT, and the edge length equals that vertical
-    // span. Sim collision and the 3D mesh share this single canonical
-    // rectangle so the bisector reflection math operates on the exact
-    // plane the player sees.
-    const rendererId = bp.renderer ?? 'arachnid';
-    const panelBaseY = MIRROR_BASE_Y;
-    const bodyTop = getBodyTopY(rendererId, bp.unitRadiusCollider.scale);
-    for (const mount of bp.turrets) {
-      const tb = getTurretBlueprint(mount.turretId);
-      if (tb.mirrorPanels) {
-        const hostHeadRadius = turretHeadRadiusFromBodyRadius(
-          bp.unitRadiusCollider.scale, tb.bodyRadius,
-        );
-        const panelTopY = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
-        const halfSide = (panelTopY - panelBaseY) / 2;
-        const panels = entity.unit!.mirrorPanels;
-        let maxR = 0;
-        for (const p of tb.mirrorPanels) {
-          panels.push({
-            halfWidth: halfSide,
-            halfHeight: halfSide,
-            offsetX: p.offsetX,
-            offsetY: p.offsetY,
-            angle: p.angle,
-            baseY: panelBaseY,
-            topY: panelTopY,
-          });
-          // Bound radius: distance from center to farthest panel edge endpoint.
-          const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + halfSide;
-          if (dist > maxR) maxR = dist;
-        }
-        entity.unit!.mirrorBoundRadius = maxR;
-      }
-    }
+    // Cache mirror panels for fast beam collision checks. Same helper
+    // runs on the client (NetworkEntityFactory) so authoritative and
+    // hydrated entities share one canonical rectangle.
+    entity.unit!.mirrorBoundRadius = buildMirrorPanelCache(
+      bp, entity.unit!.mirrorPanels,
+    );
 
     // Attach builder component if blueprint specifies it
     if (bp.builder) {

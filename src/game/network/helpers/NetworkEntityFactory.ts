@@ -4,12 +4,10 @@ import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity } from '../NetworkManager';
 import { codeToActionType, codeToTurretState } from '../../../types/network';
 import { getTurretConfig } from '../../sim/turretConfigs';
-import { getUnitBlueprint, getTurretBlueprint } from '../../sim/blueprints';
+import { getUnitBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
-import { MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../../config';
-import { getBodyTopY } from '../../math/BodyDimensions';
-import { turretHeadRadiusFromBodyRadius } from '../../math';
+import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
 
 /**
  * Create an Entity from NetworkServerSnapshotEntity data
@@ -121,42 +119,14 @@ function createUnitFromNetwork(
     entity.turrets = turrets;
   }
 
-  // Cache mirror panels for fast beam collision checks. Mirror panel
-  // is regularized to a square: side = (topY − baseY), where topY =
-  // bodyTop + 2·hostHeadRadius + MIRROR_EXTRA_HEIGHT. Sim collision
-  // and the 3D mesh share one canonical rectangle, so the beam tracer
-  // hits the exact plane the player sees.
+  // Cache mirror panels for fast beam collision checks. Same helper
+  // runs on the host (WorldState.createUnitFromBlueprint) so the
+  // hydrated client and the authoritative sim share one rectangle.
   try {
     const bp = getUnitBlueprint(u?.unitType ?? 'jackal');
-    const rendererId = bp.renderer ?? 'arachnid';
-    const baseY = MIRROR_BASE_Y;
-    const bodyTop = getBodyTopY(rendererId, entity.unit!.unitRadiusCollider.scale);
-    for (const mount of bp.turrets) {
-      const tb = getTurretBlueprint(mount.turretId);
-      if (tb.mirrorPanels) {
-        const hostHeadRadius = turretHeadRadiusFromBodyRadius(
-          entity.unit!.unitRadiusCollider.scale, tb.bodyRadius,
-        );
-        const topY = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
-        const halfSide = (topY - baseY) / 2;
-        const panels = entity.unit!.mirrorPanels;
-        let maxR = 0;
-        for (const p of tb.mirrorPanels) {
-          panels.push({
-            halfWidth: halfSide,
-            halfHeight: halfSide,
-            offsetX: p.offsetX,
-            offsetY: p.offsetY,
-            angle: p.angle,
-            baseY,
-            topY,
-          });
-          const dist = Math.sqrt(p.offsetX * p.offsetX + p.offsetY * p.offsetY) + halfSide;
-          if (dist > maxR) maxR = dist;
-        }
-        entity.unit!.mirrorBoundRadius = maxR;
-      }
-    }
+    entity.unit!.mirrorBoundRadius = buildMirrorPanelCache(
+      bp, entity.unit!.mirrorPanels,
+    );
   } catch { /* */ }
 
   if (u?.isCommander) {
