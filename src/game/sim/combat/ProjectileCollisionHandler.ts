@@ -50,8 +50,21 @@ export function resetCollisionBuffers(): void {
 /**
  * Spawn cluster submunitions when a projectile with `submunitions`
  * detonates. Each child inherits the parent's owner + sourceEntityId
- * so any further kills still credit the original shooter, and fans
- * out from the explosion center in evenly-stepped random angles.
+ * so any further kills still credit the original shooter.
+ *
+ * Direction model: each submunition's velocity = R + spec.speed × U,
+ * where R is the parent's velocity reflected across the surface normal
+ * (V − 2(V·N)N) and U is a random unit 3D vector that gives each
+ * fragment its own offset around the bounce direction. This makes the
+ * fragments LOOK like they bounced off the impact point — a mortar
+ * hitting the ground sprays its lightShots upward in the direction it
+ * was flying horizontally; a mortar slamming into the side of a unit
+ * fountain sideways away from the unit; a mid-air detonation (no
+ * normal) just inherits forward velocity with random spread.
+ *
+ * `nx/ny/nz` is the world-space surface normal at the impact point
+ * (sim coords: z is up). Pass undefined / NaN-free zero vector when
+ * there is no surface (lifespan expiry mid-air).
  */
 function spawnSubmunitions(
   world: WorldState,
@@ -59,6 +72,12 @@ function spawnSubmunitions(
   x: number,
   y: number,
   z: number,
+  parentVx: number,
+  parentVy: number,
+  parentVz: number,
+  nx: number | undefined,
+  ny: number | undefined,
+  nz: number | undefined,
   ownerId: number,
   sourceEntityId: EntityId,
   outProjectiles: Entity[],
@@ -68,39 +87,56 @@ function spawnSubmunitions(
   if (!spec || spec.count <= 0) return;
 
   const childCfg = getSubmunitionTurretConfig(spec.shotId);
-  const spread = Math.PI * 2;
-  // Uniform-ish fan with a randomized offset, so multiple volleys in the
-  // same tick don't visibly grid-align. Sim RNG isn't exposed here so
-  // Math.random() is fine — submunition direction is purely cosmetic
-  // and doesn't feed back into deterministic sim state (damage/knockback
-  // still come from the parent explosion, not the fragments' flight).
-  // Children spawn at the explosion altitude (z) and spray HORIZONTALLY
-  // in a random ring; gravity then shapes the arc.
-  const startAngle = Math.random() * Math.PI * 2;
-  const stepAngle = spread / spec.count;
-  // Every submunition's pitch is sampled between 45° and 90° above
-  // horizontal — some go straight up, some lean outward, none spray
-  // sideways or downward. Total launch speed stays at spec.speed, so
-  // horizontal reach shrinks as pitch steepens (classic cone-of-flak
-  // spray shape for a detonating shell).
-  const PITCH_MIN = Math.PI / 4;  // 45°
-  const PITCH_RANGE = Math.PI / 4; // +45° = 90° ceiling
+
+  // Reflect the parent's velocity across the surface normal:
+  //   R = V − 2(V·N)N
+  // No normal (mid-air expiry) → just inherit forward velocity.
+  let rx = parentVx, ry = parentVy, rz = parentVz;
+  if (nx !== undefined && ny !== undefined && nz !== undefined) {
+    const nLen2 = nx * nx + ny * ny + nz * nz;
+    if (nLen2 > 1e-9) {
+      // Normalize n in case the caller passed an unnormalized vector.
+      const nInv = 1 / Math.sqrt(nLen2);
+      const nxx = nx * nInv, nyy = ny * nInv, nzz = nz * nInv;
+      const dot = parentVx * nxx + parentVy * nyy + parentVz * nzz;
+      rx = parentVx - 2 * dot * nxx;
+      ry = parentVy - 2 * dot * nyy;
+      rz = parentVz - 2 * dot * nzz;
+    }
+  }
+
+  // Sim RNG isn't exposed here, so Math.random() drives the cosmetic
+  // spread — submunition direction doesn't feed back into deterministic
+  // sim state (damage / knockback come from the parent's detonation
+  // and the fragments' own collisions, both of which use sim RNG).
   for (let i = 0; i < spec.count; i++) {
-    const jitter = (Math.random() - 0.5) * stepAngle * 0.6;
-    const angle = startAngle + i * stepAngle + jitter;
-    const pitch = PITCH_MIN + Math.random() * PITCH_RANGE;
-    const horizSpeed = spec.speed * Math.cos(pitch);
-    const vz = spec.speed * Math.sin(pitch);
-    const vx = Math.cos(angle) * horizSpeed;
-    const vy = Math.sin(angle) * horizSpeed;
+    // Uniform random unit vector via 3D rejection sampling — gives
+    // each fragment a different perturbation around the bounce
+    // direction. Repeat-until-inside-unit-ball avoids the cube-bias
+    // a naive (rand, rand, rand) would produce.
+    let ux = 0, uy = 0, uz = 0, ulen2 = 0;
+    do {
+      ux = Math.random() * 2 - 1;
+      uy = Math.random() * 2 - 1;
+      uz = Math.random() * 2 - 1;
+      ulen2 = ux * ux + uy * uy + uz * uz;
+    } while (ulen2 > 1 || ulen2 < 1e-6);
+    const uInv = 1 / Math.sqrt(ulen2);
+    ux *= uInv; uy *= uInv; uz *= uInv;
+
+    const vx = rx + spec.speed * ux;
+    const vy = ry + spec.speed * uy;
+    const vz = rz + spec.speed * uz;
+
     const proj = world.createProjectile(
       x, y, vx, vy, ownerId, sourceEntityId, childCfg, 'projectile',
     );
     if (proj.projectile) {
       // Children start outside any source hitbox (parent already exploded).
       proj.projectile.hasLeftSource = true;
-      // Inherit the parent's altitude at detonation. Vertical velocity
-      // from the pitched launch comes through below.
+      // Inherit the parent's altitude at detonation; vertical velocity
+      // from the bounce + perturbation is set on the projectile here so
+      // gravity integrates from the right initial vz next tick.
       proj.transform.z = z;
       proj.projectile.velocityZ = vz;
       proj.projectile.lastSentVelZ = vz;
@@ -109,7 +145,7 @@ function spawnSubmunitions(
     outSpawnEvents.push({
       id: proj.id,
       pos: { x, y, z },
-      rotation: angle,
+      rotation: Math.atan2(vy, vx),
       velocity: { x: vx, y: vy, z: vz },
       projectileType: 'projectile',
       // Synthetic ID so the client can resolve the same TurretConfig
@@ -298,11 +334,22 @@ export function checkProjectileCollisions(
             ),
           });
 
-          // Cluster flak: spawn submunitions on detonation.
+          // Cluster flak: spawn submunitions on detonation. The
+          // bounce-direction is computed from the parent's velocity
+          // reflected across the impact surface — ground hit (z=0)
+          // gets a vertical normal so submunitions spray upward in
+          // the direction the carrier was flying, mid-air expiry
+          // passes no normal so fragments just inherit the parent's
+          // forward velocity with random spread.
           if (hasSubs) {
+            const groundNormal = hitGround;
             spawnSubmunitions(
               world, projShot,
               projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+              proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
+              groundNormal ? 0 : undefined,
+              groundNormal ? 0 : undefined,
+              groundNormal ? 1 : undefined,
               projEntity.ownership.playerId, proj.sourceEntityId,
               newProjectiles, spawnEvents,
             );
@@ -497,11 +544,31 @@ export function checkProjectileCollisions(
           }
         }
 
-        // Cluster flak: spawn submunitions on detonation.
+        // Cluster flak: spawn submunitions on detonation. Surface
+        // normal at the impact point points from the hit entity's
+        // center outward to the projectile, so the bounce direction
+        // sprays fragments AWAY from the unit (or building) rather
+        // than INTO it. Falls back to "no normal" when the hit
+        // entity isn't resolvable (rare — would only happen if it
+        // was removed mid-tick), in which case fragments just inherit
+        // forward velocity with random spread.
         if (projShot.submunitions) {
+          let nx: number | undefined;
+          let ny: number | undefined;
+          let nz: number | undefined;
+          const hitEntity = result.hitEntityIds.length > 0
+            ? world.getEntity(result.hitEntityIds[0])
+            : undefined;
+          if (hitEntity) {
+            nx = projEntity.transform.x - hitEntity.transform.x;
+            ny = projEntity.transform.y - hitEntity.transform.y;
+            nz = projEntity.transform.z - hitEntity.transform.z;
+          }
           spawnSubmunitions(
             world, projShot,
             projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+            proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
+            nx, ny, nz,
             projEntity.ownership.playerId, proj.sourceEntityId,
             newProjectiles, spawnEvents,
           );
