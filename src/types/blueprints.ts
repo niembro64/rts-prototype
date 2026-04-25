@@ -69,7 +69,11 @@ export type ProjectileShotBlueprint = {
   id: string;
   mass: number;
   collision: ShotCollision;
-  explosion: {
+  /** Optional. Omit for "pure carrier" shots (e.g. a cluster mortar
+   *  that does no damage of its own and only releases submunitions
+   *  on detonation). When omitted, the projectile still detonates on
+   *  hit / on expiry but applies no splash damage. */
+  explosion?: {
     primary: ShotExplosionZone;
     secondary: ShotExplosionZone;
   };

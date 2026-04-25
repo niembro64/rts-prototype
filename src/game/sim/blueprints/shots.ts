@@ -98,25 +98,15 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   mortarShot: {
     type: 'projectile',
     id: 'mortarShot',
+    // Mortar is a pure carrier: it does no damage of its own and has
+    // no splash explosion. Its only job is to fly to a point and
+    // release submunitions on impact / lifespan expiry. All damage
+    // comes from the lightShot fragments sprayed below.
     mass: 80,
     collision: { radius: 7, damage: 0 },
-    explosion: {
-      primary: { radius: 20, damage: 0, force: 20_000 },
-      secondary: { radius: 25, damage: 0, force: 20_000 },
-    },
-    // collision: { radius: 7, damage: 10 },
-    // explosion: {
-    //   primary: { radius: 20, damage: 80, force: 20_000 },
-    //   secondary: { radius: 25, damage: 6, force: 20_000 },
-    // },
     splashOnExpiry: true,
     lifespan: 5000,
     hitSound: AUDIO.event.hit.mortarShot,
-    // Cluster flak: at the instant the mortar explodes, spray N
-    // lightShot fragments in a full circle. The child uses lightShot's
-    // own blueprint exactly — no per-spawn lifespan or radius
-    // overrides. If you want different behaviour for the cluster
-    // children, author a dedicated shot blueprint.
     submunitions: {
       shotId: 'lightShot',
       count: 15,

@@ -229,71 +229,84 @@ export function checkProjectileCollisions(
     if (proj.timeAlive >= proj.maxLifespan || hitGround || hitMirrorPanel) {
       // Beam audio is handled by updateLaserSounds based on targeting state
 
-      // Handle splash damage on expiration — only for projectile shots with splashOnExpiry enabled
-      if (config.shot.type === 'projectile' && config.shot.explosion?.primary.radius && config.shot.splashOnExpiry && !proj.hasExploded) {
+      // Detonate on lifespan expiry when splashOnExpiry is set AND the
+      // shot has something to do at the apex (an explosion, submunitions,
+      // or both). A pure carrier (no explosion, only submunitions) still
+      // fragments here.
+      if (config.shot.type === 'projectile' && config.shot.splashOnExpiry && !proj.hasExploded) {
         const projShot = config.shot;
-        const splashExcludes = getSplashExcludes(proj);
-        // Primary zone: explicit primary radius damage (excludes source if still inside)
-        const primaryResult = damageSystem.applyDamage({
-          type: 'area',
-          sourceEntityId: proj.sourceEntityId,
-          ownerId: projEntity.ownership.playerId,
-          damage: projShot.explosion!.primary.damage,
-          excludeEntities: splashExcludes,
-          center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-          radius: projShot.explosion!.primary.radius,
-          falloff: 1,
-          knockbackForce: projShot.explosion!.primary.force,
-        });
-        proj.hasExploded = true;
+        const hasSplash = !!projShot.explosion?.primary.radius;
+        const hasSubs = !!projShot.submunitions;
+        if (hasSplash || hasSubs) {
+          proj.hasExploded = true;
+          let firstSplashHit: Entity | undefined;
+          let splashHitCount = 0;
 
-        // Apply knockback from primary splash
-        applyKnockbackForces(primaryResult.knockbacks, forceAccumulator);
+          if (hasSplash) {
+            const splashExcludes = getSplashExcludes(proj);
+            // Primary zone: explicit primary radius damage (excludes source if still inside)
+            const primaryResult = damageSystem.applyDamage({
+              type: 'area',
+              sourceEntityId: proj.sourceEntityId,
+              ownerId: projEntity.ownership.playerId,
+              damage: projShot.explosion!.primary.damage,
+              excludeEntities: splashExcludes,
+              center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+              radius: projShot.explosion!.primary.radius,
+              falloff: 1,
+              knockbackForce: projShot.explosion!.primary.force,
+            });
+            applyKnockbackForces(primaryResult.knockbacks, forceAccumulator);
+            collectKillsAndDeathContexts(primaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+            splashHitCount = primaryResult.hitEntityIds.length;
+            firstSplashHit = splashHitCount > 0 ? world.getEntity(primaryResult.hitEntityIds[0]) ?? undefined : undefined;
 
-        // Track killed entities and merge death contexts from primary
-        collectKillsAndDeathContexts(primaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+            // Secondary zone
+            if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
+              const secondaryResult = damageSystem.applyDamage({
+                type: 'area',
+                sourceEntityId: proj.sourceEntityId,
+                ownerId: projEntity.ownership.playerId,
+                damage: projShot.explosion!.secondary.damage,
+                excludeEntities: splashExcludes,
+                center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+                radius: projShot.explosion!.secondary.radius,
+                falloff: 1,
+                knockbackForce: projShot.explosion!.secondary.force,
+              });
+              applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
+              collectKillsAndDeathContexts(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+            }
+          }
 
-        // Secondary zone
-        if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
-          const secondaryResult = damageSystem.applyDamage({
-            type: 'area',
-            sourceEntityId: proj.sourceEntityId,
-            ownerId: projEntity.ownership.playerId,
-            damage: projShot.explosion!.secondary.damage,
-            excludeEntities: splashExcludes,
-            center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-            radius: projShot.explosion!.secondary.radius,
-            falloff: 1,
-            knockbackForce: projShot.explosion!.secondary.force,
-          });
+          // Detonation audio: emit when there was a splash hit, when
+          // it's a mortar (so the apex burst always sounds), or when
+          // the shot is a pure carrier (no splash, just submunitions
+          // — without this branch a fragmenting flak round would be
+          // silent at the apex).
+          if (splashHitCount > 0 || config.id === 'mortarTurret' || (!hasSplash && hasSubs)) {
+            audioEvents.push({
+              type: 'hit',
+              turretId: shotId,
+              pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+              impactContext: buildImpactContext(
+                config, projEntity.transform.x, projEntity.transform.y,
+                proj.velocityX ?? 0, proj.velocityY ?? 0,
+                projShot.collision.radius, firstSplashHit,
+              ),
+            });
+          }
 
-          applyKnockbackForces(secondaryResult.knockbacks, forceAccumulator);
-          collectKillsAndDeathContexts(secondaryResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+          // Cluster flak: spawn submunitions on detonation.
+          if (hasSubs) {
+            spawnSubmunitions(
+              world, projShot,
+              projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+              projEntity.ownership.playerId, proj.sourceEntityId,
+              newProjectiles, spawnEvents,
+            );
+          }
         }
-
-        // Add explosion audio event if there were hits or it's a mortar
-        if (primaryResult.hitEntityIds.length > 0 || config.id === 'mortarTurret') {
-          const firstHitEntity = primaryResult.hitEntityIds.length > 0
-            ? world.getEntity(primaryResult.hitEntityIds[0]) : undefined;
-          audioEvents.push({
-            type: 'hit',
-            turretId: shotId,
-            pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-            impactContext: buildImpactContext(
-              config, projEntity.transform.x, projEntity.transform.y,
-              proj.velocityX ?? 0, proj.velocityY ?? 0,
-              projShot.collision.radius, firstHitEntity ?? undefined,
-            ),
-          });
-        }
-
-        // Cluster flak: spawn submunitions after expiry splash explodes.
-        spawnSubmunitions(
-          world, projShot,
-          projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
-          projEntity.ownership.playerId, proj.sourceEntityId,
-          newProjectiles, spawnEvents,
-        );
       }
 
       // Add projectile expire event for traveling projectiles (not beams)
@@ -439,51 +452,59 @@ export function checkProjectileCollisions(
       const hadHits = result.hitEntityIds.length > 0;
       collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
-      // Handle splash damage on first hit (excludes source if still inside)
-      if (hadHits && projShot.explosion?.primary.radius && !proj.hasExploded) {
-        const splashExcludes = getSplashExcludes(proj);
-        // Primary zone: additive (direct-hit unit also takes primary damage)
-        const primarySplash = damageSystem.applyDamage({
-          type: 'area',
-          sourceEntityId: proj.sourceEntityId,
-          ownerId: projEntity.ownership.playerId,
-          damage: projShot.explosion!.primary.damage,
-          excludeEntities: splashExcludes,
-          center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-          radius: projShot.explosion!.primary.radius,
-          falloff: 1,
-          knockbackForce: projShot.explosion!.primary.force,
-        });
+      // Detonate on direct hit when the shot has either an explosion
+      // or submunitions to release. A pure carrier (no explosion, only
+      // submunitions) still triggers fragmentation.
+      if (hadHits && !proj.hasExploded
+          && (projShot.explosion?.primary.radius || projShot.submunitions)) {
         proj.hasExploded = true;
 
-        applyKnockbackForces(primarySplash.knockbacks, forceAccumulator);
-        collectKillsAndDeathContexts(primarySplash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
-
-        // Secondary zone
-        if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
-          const secondarySplash = damageSystem.applyDamage({
+        if (projShot.explosion?.primary.radius) {
+          const splashExcludes = getSplashExcludes(proj);
+          // Primary zone: additive (direct-hit unit also takes primary damage)
+          const primarySplash = damageSystem.applyDamage({
             type: 'area',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: projShot.explosion!.secondary.damage,
+            damage: projShot.explosion!.primary.damage,
             excludeEntities: splashExcludes,
             center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-            radius: projShot.explosion!.secondary.radius,
+            radius: projShot.explosion!.primary.radius,
             falloff: 1,
-            knockbackForce: projShot.explosion!.secondary.force,
+            knockbackForce: projShot.explosion!.primary.force,
           });
 
-          applyKnockbackForces(secondarySplash.knockbacks, forceAccumulator);
-          collectKillsAndDeathContexts(secondarySplash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+          applyKnockbackForces(primarySplash.knockbacks, forceAccumulator);
+          collectKillsAndDeathContexts(primarySplash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+
+          // Secondary zone
+          if (projShot.explosion!.secondary.radius > projShot.explosion!.primary.radius) {
+            const secondarySplash = damageSystem.applyDamage({
+              type: 'area',
+              sourceEntityId: proj.sourceEntityId,
+              ownerId: projEntity.ownership.playerId,
+              damage: projShot.explosion!.secondary.damage,
+              excludeEntities: splashExcludes,
+              center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+              radius: projShot.explosion!.secondary.radius,
+              falloff: 1,
+              knockbackForce: projShot.explosion!.secondary.force,
+            });
+
+            applyKnockbackForces(secondarySplash.knockbacks, forceAccumulator);
+            collectKillsAndDeathContexts(secondarySplash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+          }
         }
 
-        // Cluster flak: spawn submunitions after direct-hit splash.
-        spawnSubmunitions(
-          world, projShot,
-          projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
-          projEntity.ownership.playerId, proj.sourceEntityId,
-          newProjectiles, spawnEvents,
-        );
+        // Cluster flak: spawn submunitions on detonation.
+        if (projShot.submunitions) {
+          spawnSubmunitions(
+            world, projShot,
+            projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+            projEntity.ownership.playerId, proj.sourceEntityId,
+            newProjectiles, spawnEvents,
+          );
+        }
       }
 
       // Clean up source guard (must happen after all damage processing for this projectile)
