@@ -22,7 +22,7 @@
 
 import type { WorldState } from '../WorldState';
 import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
-import { getTransformCosSin, solveBallisticPitch, getBarrelTip, normalizeAngle } from '../../math';
+import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle } from '../../math';
 import {
   TURRET_RETURN_TO_FORWARD,
   GRAVITY,
@@ -71,19 +71,20 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
         if (target) {
           const wp = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, cos, sin);
           const weaponX = wp.x, weaponY = wp.y;
-          const dx = target.transform.x - weaponX;
-          const dy = target.transform.y - weaponY;
-          targetAngle = Math.atan2(dy, dx);
+
+          // Initial unleaded aim — used to bootstrap the barrel tip
+          // reference. The lead step below replaces this with a
+          // velocity-predicted intercept point.
+          targetAngle = Math.atan2(target.transform.y - weaponY, target.transform.x - weaponX);
 
           // Ballistic arcs are solved from the actual barrel tip (not
-          // the turret mount) — otherwise shots would fire from a point
-          // one barrel-length farther back than the pitch was solved
-          // for, and every projectile would overshoot the target.
-          //
-          // The primitive returns a tip in world coords that already
+          // the turret mount) — otherwise shots would fire from a
+          // point one barrel-length farther back than the pitch was
+          // solved for, and every projectile would overshoot. The
+          // primitive returns a tip in world coords that already
           // accounts for the barrel's orbit offset, pitch contribution,
           // and yaw direction. Use barrelIndex = 0 (reference barrel)
-          // and the CURRENT weapon.pitch — as the damper converges,
+          // and the CURRENT weapon.pitch — as the damper converges
           // the solver input settles along with it.
           const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
           const mountZ = unitGroundZ + getTurretMountHeight(unit, weaponIndex);
@@ -94,23 +95,72 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
             unit.unit.unitRadiusCollider.scale,
             0,
           );
-          const horizDist = Math.hypot(
-            target.transform.x - tipRef.x,
-            target.transform.y - tipRef.y,
-          );
-          const heightDiff = target.transform.z - tipRef.z;
+
+          // Lead prediction: aim at where the target will be when the
+          // projectile arrives, not where it is now. Skip for:
+          //   - Beams/lasers: instant, no flight time.
+          //   - Homing shots (homingTurnRate > 0): the projectile
+          //     steers mid-flight, so initial aim doesn't need lead.
+          //   - Stationary or non-unit targets: no velocity to lead.
+          // For ballistic arcs we run a single refinement pass using
+          // the horizontal projectile speed (launchSpeed · cos(pitch))
+          // — gravity slows horizontal travel for high-arc shots, so
+          // the straight-line estimate undershoots flight time.
           const shot = weapon.config.shot;
+          const tvx = target.unit?.velocityX ?? 0;
+          const tvy = target.unit?.velocityY ?? 0;
+          const tvz = target.unit?.velocityZ ?? 0;
+          const tvMoves = (tvx * tvx + tvy * tvy + tvz * tvz) > 1e-6;
+
+          let aimX = target.transform.x;
+          let aimY = target.transform.y;
+          let aimZ = target.transform.z;
+
           if (shot.type === 'projectile') {
             const launchSpeed = shot.launchForce / shot.mass;
+            const isHoming = (shot.homingTurnRate ?? 0) > 0;
+
+            if (!isHoming && tvMoves) {
+              const dxT = target.transform.x - tipRef.x;
+              const dyT = target.transform.y - tipRef.y;
+              const dzT = target.transform.z - tipRef.z;
+
+              // First pass — closed-form intercept assuming straight-
+              // line projectile speed.
+              let tIntercept = computeInterceptTime(dxT, dyT, dzT, tvx, tvy, tvz, launchSpeed);
+
+              // Second pass — refine using the ballistic horizontal
+              // speed (gravity drag on the arc). Only meaningful for
+              // gravity-affected shots; ignoresGravity shots stay flat.
+              if (tIntercept > 0 && !shot.ignoresGravity) {
+                const px = target.transform.x + tvx * tIntercept;
+                const py = target.transform.y + tvy * tIntercept;
+                const pz = target.transform.z + tvz * tIntercept;
+                const horizD = Math.hypot(px - tipRef.x, py - tipRef.y);
+                const heightD = pz - tipRef.z;
+                const pitch0 = solveBallisticPitch(
+                  horizD, heightD, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
+                );
+                const horizSpeed = launchSpeed * Math.max(Math.cos(pitch0), 0.1);
+                const tRefined = computeInterceptTime(dxT, dyT, dzT, tvx, tvy, tvz, horizSpeed);
+                if (tRefined > 0) tIntercept = tRefined;
+              }
+
+              aimX = target.transform.x + tvx * tIntercept;
+              aimY = target.transform.y + tvy * tIntercept;
+              aimZ = target.transform.z + tvz * tIntercept;
+              targetAngle = Math.atan2(aimY - weaponY, aimX - weaponX);
+            }
+
+            const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
+            const heightDiff = aimZ - tipRef.z;
             targetPitch = solveBallisticPitch(
-              horizDist,
-              heightDiff,
-              launchSpeed,
-              GRAVITY,
-              weapon.config.highArc ?? false,
+              horizDist, heightDiff, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
             );
           } else {
             // Beam / laser / force — direct aim, no ballistic drop.
+            const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
+            const heightDiff = aimZ - tipRef.z;
             targetPitch = Math.atan2(heightDiff, horizDist);
           }
           hasActiveTarget = true;

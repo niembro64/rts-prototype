@@ -84,3 +84,57 @@ export function solveBallisticPitch(
   if (horizDist <= 1e-6) return heightDiff >= 0 ? Math.PI / 2 : -Math.PI / 2;
   return Math.PI / 4 + Math.atan2(heightDiff, horizDist) * 0.5;
 }
+
+/**
+ * Closed-form projectile-intercept time for a target moving with
+ * constant velocity. Solves
+ *
+ *     |T0 + v_t · t  −  P0| = v_p · t          (t > 0)
+ *
+ * where T0 = target position (relative to shooter), v_t = target
+ * velocity, v_p = projectile speed (assumed constant straight-line).
+ * Squaring gives a quadratic in t:
+ *
+ *     (|v_t|² − v_p²) · t²  +  2 (T0 · v_t) · t  +  |T0|²  =  0
+ *
+ * Returns the smallest positive root, or 0 when no intercept exists
+ * (target faster than projectile and pulling away, or moving with the
+ * shot speed in a non-converging direction). The caller should fall
+ * back to the unleaded target position when 0 is returned.
+ *
+ * The "straight-line at v_p" assumption is exact for non-ballistic
+ * shots (lasers don't apply, dgun-style straight shots do). For
+ * ballistic arcs it's a first-order approximation; pass v_p · cos(p)
+ * (horizontal projectile speed at solved pitch p) for a refinement
+ * pass on lobbed shots.
+ */
+export function computeInterceptTime(
+  dx: number, dy: number, dz: number,
+  vtx: number, vty: number, vtz: number,
+  vp: number,
+): number {
+  const distSq = dx * dx + dy * dy + dz * dz;
+  const vt2 = vtx * vtx + vty * vty + vtz * vtz;
+  const dotDV = dx * vtx + dy * vty + dz * vtz;
+  const a = vt2 - vp * vp;
+  const b = 2 * dotDV;
+  const c = distSq;
+
+  // Linear case: target speed equals projectile speed.
+  if (Math.abs(a) < 1e-9) {
+    if (Math.abs(b) < 1e-9) return 0;
+    const t = -c / b;
+    return t > 0 ? t : 0;
+  }
+
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return 0; // Target out-runs the projectile.
+
+  const sq = Math.sqrt(disc);
+  const t1 = (-b - sq) / (2 * a);
+  const t2 = (-b + sq) / (2 * a);
+  if (t1 > 0 && t2 > 0) return Math.min(t1, t2);
+  if (t1 > 0) return t1;
+  if (t2 > 0) return t2;
+  return 0;
+}

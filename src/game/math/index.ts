@@ -42,4 +42,5 @@ export {
   type BallisticSolution,
   ballisticSolutions,
   solveBallisticPitch,
+  computeInterceptTime,
 } from './Ballistics';
