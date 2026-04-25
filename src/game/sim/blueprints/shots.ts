@@ -124,7 +124,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     submunitions: {
       shotId: 'lightShot',
       count: 15,
-      speed: 100,
+      // Tight cone — the bounce direction does most of the work.
+      // Bump this up if you want the burst to look more chaotic.
+      randomSpreadSpeed: 1,
       // Soft bounce — submunitions retain ~40% of the carrier's
       // reflected velocity so the burst still reads as a bounce off
       // the surface, without launching the lightShots so far that
