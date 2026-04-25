@@ -60,8 +60,26 @@ export type SubmunitionSpec = {
   shotId: string;
   /** Number of children spawned per parent explosion. */
   count: number;
-  /** Launch speed for each child, world units / second. */
+  /** Launch speed for each child, world units / second. Each
+   *  submunition's velocity is `R × damper + speed × U`, where R is
+   *  the parent's velocity reflected across the impact surface, U is
+   *  a random unit vector, and `damper` is reflectedVelocityDamper
+   *  below. So `speed` is effectively the radius of the random spread
+   *  sphere centered on the bounce direction. */
   speed: number;
+  /** Multiplier applied to the parent's reflected velocity before it
+   *  becomes the submunition's base direction. Models energy loss on
+   *  impact (a coefficient-of-restitution-like knob).
+   *
+   *  - 1.0 = perfectly elastic bounce; carrier's full speed is
+   *    preserved in the reflected direction
+   *  - 0.5 = half the speed is preserved; the bounce reads softer
+   *  - 0.0 = parent velocity is fully absorbed by the surface; the
+   *    submunitions only have the random `speed` perturbation, no
+   *    inherited momentum (no visible bounce)
+   *
+   *  Defaults to 1.0 when omitted. */
+  reflectedVelocityDamper?: number;
 };
 
 export type ProjectileShotBlueprint = {

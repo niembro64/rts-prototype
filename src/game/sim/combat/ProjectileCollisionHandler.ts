@@ -90,7 +90,11 @@ function spawnSubmunitions(
 
   // Reflect the parent's velocity across the surface normal:
   //   R = V − 2(V·N)N
-  // No normal (mid-air expiry) → just inherit forward velocity.
+  // then scale by the spec's damper to model energy loss on impact
+  // (1.0 = elastic bounce, 0.0 = velocity fully absorbed, default 1.0).
+  // No normal (mid-air expiry) → just inherit forward velocity, still
+  // damped so a "soft" cluster shot can lose forward momentum too.
+  const damper = spec.reflectedVelocityDamper ?? 1.0;
   let rx = parentVx, ry = parentVy, rz = parentVz;
   if (nx !== undefined && ny !== undefined && nz !== undefined) {
     const nLen2 = nx * nx + ny * ny + nz * nz;
@@ -104,6 +108,9 @@ function spawnSubmunitions(
       rz = parentVz - 2 * dot * nzz;
     }
   }
+  rx *= damper;
+  ry *= damper;
+  rz *= damper;
 
   // Sim RNG isn't exposed here, so Math.random() drives the cosmetic
   // spread — submunition direction doesn't feed back into deterministic

@@ -83,13 +83,13 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // collision is still sphere-based via collision.radius).
     shape: 'cylinder',
     cylinderShape: {
-      lengthMult: 4.0,
-      diameterMult: 0.5,
+      lengthMult: 2.0,
+      diameterMult: 0.3,
     },
     smokeTrail: {
       emitIntervalMs: 30,   // ~33 puffs/sec at max LOD
       lifespanMs: 1400,     // each puff lingers ~1.4s
-      startRadius: 1.5,
+      startRadius: 0.5,
       endRadius: 8.0,
       startAlpha: 0.75,
       color: 0xcccccc,
@@ -125,6 +125,13 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       shotId: 'lightShot',
       count: 15,
       speed: 100,
+      // Soft bounce — submunitions retain ~40% of the carrier's
+      // reflected velocity so the burst still reads as a bounce off
+      // the surface, without launching the lightShots so far that
+      // they leave the AOE the player expected. Tune up toward 1.0
+      // for a more energetic bounce, down toward 0.0 to absorb the
+      // momentum entirely.
+      reflectedVelocityDamper: 0.4,
     },
   },
   disruptorShot: {
