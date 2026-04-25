@@ -218,8 +218,10 @@ export class Simulation {
       executeCommand(cmdCtx, command);
     }
 
-    // Update economy (income, production)
-    economyManager.update(dtMs);
+    // Update economy (income, production). Mana base income is gated
+    // on a living commander — pass the predicate so a team that's
+    // lost its commander stops earning passive mana.
+    economyManager.update(dtMs, (pid) => this.world.isCommanderAlive(pid));
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);

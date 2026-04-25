@@ -22,15 +22,19 @@ const emit = defineEmits<{
   togglePlayer: [];
 }>();
 
-// Fixed-width number formatting: always 5 chars wide (sign + 4 digits)
-function fmtFixed(n: number): string {
-  const sign = n < 0 ? '-' : '+';
+// Unsigned magnitude format. Used for the +income/-expenditure
+// columns where the sign is rendered as a separate prefix.
+function fmtMag(n: number): string {
   const abs = Math.abs(n);
-  let digits: string;
-  if (abs < 10) digits = abs.toFixed(1).padStart(4, ' ');
-  else if (abs < 1000) digits = abs.toFixed(0).padStart(4, ' ');
-  else digits = abs.toFixed(0).padStart(4, ' ');
-  return sign + digits;
+  if (abs < 10) return abs.toFixed(1).padStart(4, ' ');
+  return abs.toFixed(0).padStart(4, ' ');
+}
+
+// Signed format with explicit + or − prefix. Used for the net-flow
+// column so positive/negative is always unambiguous.
+function fmtSigned(n: number): string {
+  const sign = n < 0 ? '−' : '+';
+  return sign + fmtMag(n);
 }
 
 function fmtStock(n: number): string {
@@ -113,7 +117,9 @@ function flowColor(n: number): string {
         <div class="resource-bar-fill energy-fill" :style="{ width: energyPct + '%' }"></div>
       </div>
       <div class="resource-flows">
-        <span class="flow-item" :style="{ color: flowColor(economy.netFlow) }">{{ fmtFixed(economy.netFlow) }}/s</span>
+        <span class="flow-pos">+{{ fmtMag(economy.income.total) }}</span>
+        <span class="flow-neg" :class="{ inactive: economy.expenditure < 0.05 }">−{{ fmtMag(economy.expenditure) }}</span>
+        <span class="flow-net" :style="{ color: flowColor(economy.netFlow) }">={{ fmtSigned(economy.netFlow) }}</span>
       </div>
     </div>
 
@@ -132,7 +138,9 @@ function flowColor(n: number): string {
         <div class="resource-bar-fill mana-fill" :style="{ width: manaPct + '%' }"></div>
       </div>
       <div class="resource-flows">
-        <span class="flow-item" :style="{ color: flowColor(economy.mana.netFlow) }">{{ fmtFixed(economy.mana.netFlow) }}/s</span>
+        <span class="flow-pos">+{{ fmtMag(economy.mana.income.total) }}</span>
+        <span class="flow-neg" :class="{ inactive: economy.mana.expenditure < 0.05 }">−{{ fmtMag(economy.mana.expenditure) }}</span>
+        <span class="flow-net" :style="{ color: flowColor(economy.mana.netFlow) }">={{ fmtSigned(economy.mana.netFlow) }}</span>
       </div>
     </div>
   </div>
@@ -291,14 +299,16 @@ function flowColor(n: number): string {
 
 .resource-flows {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   font-size: 11px;
   white-space: pre;
-}
-
-.flow-item {
   font-weight: bold;
 }
+
+.flow-pos { color: #88ffaa; }
+.flow-neg { color: #ff8080; }
+.flow-neg.inactive { color: rgba(255, 255, 255, 0.25); }
+.flow-net { /* color set inline by flowColor() */ }
 
 /* ── Counts ── */
 .counts-section {

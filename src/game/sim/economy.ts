@@ -137,12 +137,20 @@ export class EconomyManager {
     economy.mana.expenditure += amount;
   }
 
-  // Update economy each tick (energy + mana income)
-  update(dtMs: number): void {
+  // Update economy each tick (energy + mana income).
+  //
+  // `hasCommander(playerId)` gates the BASE mana income: a team only
+  // earns its passive mana drip while it still has a living commander
+  // on the field. Lose your commander → mana production stops (you
+  // can still spend whatever's stockpiled). Energy stays unconditional
+  // so a commander-less team can at least keep paying for solar
+  // panels and existing builds. Predicate is optional — when omitted,
+  // both incomes credit unconditionally (single-player sandbox / tests).
+  update(dtMs: number, hasCommander?: (playerId: PlayerId) => boolean): void {
     const dtSec = dtMs / 1000;
 
-    for (const [, economy] of this.economies) {
-      // Energy income
+    for (const [playerId, economy] of this.economies) {
+      // Energy income — unconditional.
       const totalEnergy = economy.income.base + economy.income.production;
       economy.stockpile.curr = Math.min(
         economy.stockpile.curr + totalEnergy * dtSec,
@@ -150,8 +158,12 @@ export class EconomyManager {
       );
       economy.expenditure = 0;
 
-      // Mana income
-      const totalMana = economy.mana.income.base + economy.mana.income.territory;
+      // Mana income — base requires a living commander; territory
+      // income (capture-flag drip) keeps flowing because it's tied to
+      // physical map control, not commander presence.
+      const commanderAlive = hasCommander ? hasCommander(playerId) : true;
+      const baseManaThisTick = commanderAlive ? economy.mana.income.base : 0;
+      const totalMana = baseManaThisTick + economy.mana.income.territory;
       economy.mana.stockpile.curr = Math.min(
         economy.mana.stockpile.curr + totalMana * dtSec,
         economy.mana.stockpile.max,
