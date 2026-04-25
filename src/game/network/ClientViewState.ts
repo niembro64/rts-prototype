@@ -90,21 +90,21 @@ type DriftPreset = { movement: DriftAxis; rotation: DriftAxis };
 
 const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
   snap: { movement: { pos: 0, vel: 0 }, rotation: { pos: 0, vel: 0 } },
-  // FAST — about half the previous half-life, so corrections close
-  // twice as fast (still smoother than snap). MID is the geometric
-  // midpoint of new fast and slow on a log scale, which feels evenly
-  // placed when half-life is the perceptual axis.
+  // FAST — half the previous FAST half-life, corrections close
+  // ~twice as fast as before. The previous FAST values now live
+  // under MID so the slot order keeps a clean fast→mid→slow ramp.
+  // SLOW doubled so it's noticeably lazier than before.
   fast: {
+    movement: { pos: 0.0175, vel: 0.010 },
+    rotation: { pos: 0.0175, vel: 0.010 },
+  },
+  mid: {
     movement: { pos: 0.035, vel: 0.020 },
     rotation: { pos: 0.035, vel: 0.020 },
   },
-  mid: {
-    movement: { pos: 0.40, vel: 0.20 },
-    rotation: { pos: 0.40, vel: 0.20 },
-  },
   slow: {
-    movement: { pos: 4, vel: 2 },
-    rotation: { pos: 4, vel: 2 },
+    movement: { pos: 8, vel: 4 },
+    rotation: { pos: 8, vel: 4 },
   },
 };
 
