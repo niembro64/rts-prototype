@@ -196,6 +196,11 @@ export class Render3DEntities {
   // around, letting pitch aim up toward AA targets without the
   // barrels clipping through a flat cylinder top.
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
+  // Plain sphere used at MIN / LOW LOD as the entire unit body — mirrors
+  // the 2D "circles" representation. Coarser tessellation than the
+  // turret-head sphere because at low tiers we trade detail for draw
+  // speed and the unit count is what hurts.
+  private unitSphereLowGeom = new THREE.SphereGeometry(1, 10, 8);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   // White projectile mat — team-agnostic so any shot reads as "can hit
@@ -845,8 +850,34 @@ export class Render3DEntities {
       const pid = e.ownership?.playerId;
       const turrets = e.turrets ?? [];
 
+      const isLowTier = this.lod.gfx.tier === 'min' || this.lod.gfx.tier === 'low';
+
       let m = this.unitMeshes.get(e.id);
-      if (!m) {
+      if (!m && isLowTier) {
+        // MIN / LOW LOD: collapse the whole unit to a single sphere —
+        // no turrets, no legs/wheels, no mirrors. The chassis group is
+        // still uniformly scaled by `radius` each frame, so the sphere
+        // built here in unit-radius-1 space ends up at the right world
+        // size and elevation (center at y = radius, bottom flush with
+        // the ground). Skips locomotion and mirror builders entirely.
+        const group = new THREE.Group();
+        const chassis = new THREE.Group();
+        chassis.userData.entityId = e.id;
+        const sphere = new THREE.Mesh(this.unitSphereLowGeom, this.getPrimaryMat(pid));
+        // Center at y=1 (unit-radius space) so that after chassis is
+        // scaled by `radius` the sphere sits with its bottom on the
+        // ground plane — same anchor convention every other body uses.
+        sphere.position.set(0, 1, 0);
+        sphere.userData.entityId = e.id;
+        chassis.add(sphere);
+        group.add(chassis);
+        this.world.add(group);
+        m = {
+          group, chassis, chassisMeshes: [sphere],
+          turrets: [], lodKey: this.lod.key,
+        };
+        this.unitMeshes.set(e.id, m);
+      } else if (!m) {
         const group = new THREE.Group();
         // Pull the 2D renderer id from the unit blueprint and use the
         // matching 3D body (scout=diamond, tank=pentagon, arachnid=big

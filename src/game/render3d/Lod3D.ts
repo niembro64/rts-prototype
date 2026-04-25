@@ -19,6 +19,10 @@ import type { GraphicsConfig } from '@/types/graphics';
  *  were built against equivalent graphics settings. */
 export function lodKey(gfx: GraphicsConfig): string {
   return [
+    // Tier first — at min/low the 3D path collapses to a sphere only,
+    // skipping turrets/legs/mirrors entirely. Tier flips MUST trigger a
+    // mesh rebuild even if the per-axis fields happen to coincide.
+    gfx.tier,
     gfx.unitShape,
     gfx.legs,
     gfx.treadsAnimated ? 'tw' : 'ts',

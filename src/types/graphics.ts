@@ -24,6 +24,11 @@ export type UnitShape = 'circles' | 'full';
 export type LegStyle = 'none' | 'simple' | 'animated' | 'full';
 
 export type GraphicsConfig = {
+  /** The concrete tier this config was resolved to. Lets renderers
+   *  branch on the *level* (e.g. 3D draws units as plain spheres at
+   *  min/low) without having to reverse-engineer it from individual
+   *  field combinations. */
+  tier: ConcreteGraphicsQuality;
   unitShape: UnitShape;
   legs: LegStyle;
   treadsAnimated: boolean;

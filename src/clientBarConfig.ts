@@ -117,6 +117,7 @@ export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['visual', 'shot', 'push'];
 const D = PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL;
 const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   min: {
+    tier: 'min',
     unitShape: D.UNIT_SHAPE.min as UnitShape,
     legs: D.LEGS.min as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.min,
@@ -137,6 +138,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.min as DeathExplosionStyle,
   },
   low: {
+    tier: 'low',
     unitShape: D.UNIT_SHAPE.low as UnitShape,
     legs: D.LEGS.low as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.low,
@@ -157,6 +159,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.low as DeathExplosionStyle,
   },
   medium: {
+    tier: 'medium',
     unitShape: D.UNIT_SHAPE.medium as UnitShape,
     legs: D.LEGS.medium as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.medium,
@@ -177,6 +180,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.medium as DeathExplosionStyle,
   },
   high: {
+    tier: 'high',
     unitShape: D.UNIT_SHAPE.high as UnitShape,
     legs: D.LEGS.high as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.high,
@@ -197,6 +201,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.high as DeathExplosionStyle,
   },
   max: {
+    tier: 'max',
     unitShape: D.UNIT_SHAPE.max as UnitShape,
     legs: D.LEGS.max as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.max,
