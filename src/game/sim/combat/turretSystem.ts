@@ -21,7 +21,7 @@
 // (slower, no-overshoot response).
 
 import type { WorldState } from '../WorldState';
-import { getMovementAngle, resolveWeaponWorldPos, getUnitMuzzleHeight } from './combatUtils';
+import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
 import { getTransformCosSin, solveBallisticPitch, getBarrelTip, normalizeAngle } from '../../math';
 import {
   TURRET_RETURN_TO_FORWARD,
@@ -43,7 +43,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
 
     const { cos, sin } = getTransformCosSin(unit.transform);
 
-    for (const weapon of unit.turrets) {
+    for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
+      const weapon = unit.turrets[weaponIndex];
       // Vertical launchers skip the normal yaw/pitch aim math — the
       // turret always points straight up and each fired rocket picks
       // a random cone-from-vertical direction at launch (projectile-
@@ -85,7 +86,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
           // and the CURRENT weapon.pitch — as the damper converges,
           // the solver input settles along with it.
           const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-          const mountZ = unitGroundZ + getUnitMuzzleHeight(unit);
+          const mountZ = unitGroundZ + getTurretMountHeight(unit, weaponIndex);
           const tipRef = getBarrelTip(
             weaponX, weaponY, mountZ,
             targetAngle, weapon.pitch,

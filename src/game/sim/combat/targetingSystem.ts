@@ -3,7 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { isLineShot } from '../types';
-import { getTargetRadius, getUnitMuzzleHeight } from './combatUtils';
+import { getTargetRadius, getTurretMountHeight } from './combatUtils';
 import { getWeaponWorldPosition, getTransformCosSin, distance3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 
@@ -54,13 +54,15 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     const weapons = unit.turrets;
 
     // Pass 0: Compute weapon world positions (needed for both modes).
-    // All three axes are cached — altitude is the turret mount Z (unit
-    // ground footprint + per-unit muzzle height), the same point the
-    // ballistic solver aims from. Every downstream range check uses
-    // 3D distance, so the xy + z triple has to be kept in sync.
+    // All three axes are cached PER TURRET — altitude is that turret's
+    // own mount Z (unit ground footprint + per-turret muzzle height),
+    // the same point the ballistic solver and projectile spawn use.
+    // Using a unit-wide mount Z breaks mirror-host units (Loris) where
+    // turret 0 sits at the chassis top and turret 1+ sits lifted on top
+    // of the mirror panels — range checks must match the real firing Z.
     const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-    const mountZ = unitGroundZ + getUnitMuzzleHeight(unit);
-    for (const weapon of weapons) {
+    for (let i = 0; i < weapons.length; i++) {
+      const weapon = weapons[i];
       if (weapon.config.isManualFire) {
         weapon.state = 'idle';
         continue;
@@ -70,7 +72,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       if (!weapon.worldPos) weapon.worldPos = { x: 0, y: 0, z: 0 };
       weapon.worldPos.x = wp.x;
       weapon.worldPos.y = wp.y;
-      weapon.worldPos.z = mountZ;
+      weapon.worldPos.z = unitGroundZ + getTurretMountHeight(unit, i);
     }
 
     // Check for attack command priority target
