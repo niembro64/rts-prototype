@@ -623,7 +623,15 @@ export class SpatialGrid {
         }
       }
       for (const b of cell.buildings) {
-        if (b.ownership?.playerId && b.building && b.building.hp > 0) {
+        // Only fully-built buildings contribute to tile ownership.
+        // Ghost / under-construction buildings are visual placeholders
+        // — they shouldn't paint territory until they actually become
+        // a real, working building.
+        if (
+          b.ownership?.playerId
+          && b.building && b.building.hp > 0
+          && b.buildable?.isComplete
+        ) {
           players.push(b.ownership.playerId);
         }
       }
