@@ -5,7 +5,7 @@ import { getUnitBlueprint, getTurretBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT, UNIT_HP_MULTIPLIER } from '../../config';
 import { getBodyTopY } from '../math/BodyDimensions';
-import { getTurretHeadRadius } from '../math';
+import { turretHeadRadiusFromBodyRadius } from '../math';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 
 // Seeded random number generator for determinism
@@ -408,11 +408,8 @@ export class WorldState {
     for (const mount of bp.turrets) {
       const tb = getTurretBlueprint(mount.turretId);
       if (tb.mirrorPanels) {
-        const hostHeadRadius = getTurretHeadRadius(
-          bp.unitRadiusCollider.scale,
-          // Stub the smallest TurretConfig surface getTurretHeadRadius
-          // looks at — bodyRadius is the only field it reads.
-          { bodyRadius: tb.bodyRadius } as unknown as TurretConfig,
+        const hostHeadRadius = turretHeadRadiusFromBodyRadius(
+          bp.unitRadiusCollider.scale, tb.bodyRadius,
         );
         const panelTopY = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
         const halfSide = (panelTopY - panelBaseY) / 2;

@@ -9,8 +9,7 @@ import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
 import { MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../../config';
 import { getBodyTopY } from '../../math/BodyDimensions';
-import { getTurretHeadRadius } from '../../math';
-import type { TurretConfig } from '../../sim/types';
+import { turretHeadRadiusFromBodyRadius } from '../../math';
 
 /**
  * Create an Entity from NetworkServerSnapshotEntity data
@@ -135,9 +134,8 @@ function createUnitFromNetwork(
     for (const mount of bp.turrets) {
       const tb = getTurretBlueprint(mount.turretId);
       if (tb.mirrorPanels) {
-        const hostHeadRadius = getTurretHeadRadius(
-          entity.unit!.unitRadiusCollider.scale,
-          { bodyRadius: tb.bodyRadius } as unknown as TurretConfig,
+        const hostHeadRadius = turretHeadRadiusFromBodyRadius(
+          entity.unit!.unitRadiusCollider.scale, tb.bodyRadius,
         );
         const topY = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
         const halfSide = (topY - baseY) / 2;

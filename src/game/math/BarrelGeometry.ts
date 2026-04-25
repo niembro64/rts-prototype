@@ -45,6 +45,18 @@ export function getTurretHeadRadius(
   return Math.max(unitScale * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
 }
 
+/** Same as getTurretHeadRadius but takes the bodyRadius value directly,
+ *  so blueprint-side callers (which only have a `bodyRadius?: number`
+ *  field, not a full TurretConfig) don't have to forge a config stub
+ *  via `{ bodyRadius } as unknown as TurretConfig`. */
+export function turretHeadRadiusFromBodyRadius(
+  unitScale: number,
+  bodyRadius: number | undefined,
+): number {
+  if (bodyRadius !== undefined && bodyRadius > 0) return bodyRadius;
+  return Math.max(unitScale * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
+}
+
 /** World-space 3D position + unit-vector firing direction for a single
  *  barrel. Every fire path returns one of these per shot. */
 export type BarrelEndpoint = {

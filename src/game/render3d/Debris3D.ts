@@ -25,8 +25,7 @@ import { getShotBlueprint } from '../sim/blueprints/shots';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { getBodyTopY, getSegmentMidYAt } from '../math/BodyDimensions';
-import { getTurretHeadRadius } from '../math';
-import type { TurretConfig } from '../sim/types';
+import { turretHeadRadiusFromBodyRadius } from '../math';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -340,10 +339,7 @@ export class Debris3D {
       // panels (when present) replace the sphere visually but use the
       // same vertical span. Per-turret bodyRadius takes precedence over
       // the auto-derived default — matches Render3DEntities.buildTurretMesh.
-      const headR = getTurretHeadRadius(
-        r,
-        { bodyRadius: tb.bodyRadius } as unknown as TurretConfig,
-      );
+      const headR = turretHeadRadiusFromBodyRadius(r, tb.bodyRadius);
       const shotHeight = bodyTopY + headR;
 
       // Skip the head + barrels for the mirror-host turret — its visible

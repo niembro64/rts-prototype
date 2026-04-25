@@ -38,6 +38,7 @@ export {
   getBarrelTip,
   countBarrels,
   getTurretHeadRadius,
+  turretHeadRadiusFromBodyRadius,
   TURRET_HEAD_FOOTPRINT_FRAC,
 } from './BarrelGeometry';
 
