@@ -46,6 +46,11 @@ const TURRET_HEAD_FOOTPRINT = 0.42;  // head X/Z footprint as fraction of chassi
 const BARREL_COLOR = 0xffffff;
 const BARREL_MIN_THICKNESS = 2;      // fallback when blueprint didn't set one
 
+// Module-level rotation axis reused by the LOW-tier instanced sphere
+// path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
+// (input) Vector3, but never mutates it.
+const _INST_UP = new THREE.Vector3(0, 1, 0);
+
 // Mirror panels (reflective mirror-unit armor plates): standing rectangular
 // slabs positioned in the unit's TURRET frame (not chassis frame), since the
 // turret/mirror rotates independently of the hull.
@@ -262,6 +267,31 @@ export class Render3DEntities {
     color: 0xdddddd, metalness: 1.0, roughness: 0.0,
   });
 
+  // ── LOW-tier instanced sphere ─────────────────────────────────────
+  // At MIN / LOW LOD every unit is a single sphere. Stamping each one
+  // as a separate Mesh costs 1 draw call per unit; a single
+  // InstancedMesh collapses thousands of spheres into one draw + one
+  // shader invocation per instance. Per-unit transform/colour go into
+  // the instance buffers; unused slots are kept at scale 0 so they
+  // contribute no visible geometry.
+  private static readonly LOW_INSTANCED_CAP = 16384;
+  private unitInstanced: THREE.InstancedMesh | null = null;
+  /** Maps entityId → instance slot index for fast per-frame writes. */
+  private unitInstancedSlot = new Map<EntityId, number>();
+  /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
+  private unitInstancedFreeSlots: number[] = [];
+  /** High-water mark; everything ≥ this is unused. */
+  private unitInstancedNextSlot = 0;
+  /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
+  private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+  /** Reusable scratch matrix to avoid allocations in the per-instance write hot loop. */
+  private _instMatrix = new THREE.Matrix4();
+  /** Reusable scratch quaternion + vector. */
+  private _instQuat = new THREE.Quaternion();
+  private _instPos = new THREE.Vector3();
+  private _instScale = new THREE.Vector3();
+  private _instColor = new THREE.Color();
+
   constructor(
     world: THREE.Group,
     clientViewState: ClientViewState,
@@ -274,6 +304,30 @@ export class Render3DEntities {
     // getPrimaryMat / getSecondaryMat / getMirrorShinyMat). The
     // player-color generator (sim/types.getPlayerColors) supports any
     // pid, so we don't pre-allocate for a fixed table here.
+
+    // Build the LOW-tier instanced sphere up front. The material is
+    // white because per-instance colour comes from the InstancedMesh
+    // colour attribute (setColorAt). DynamicDrawUsage hints to the
+    // driver that the matrix buffer changes every frame.
+    const baseMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    this.unitInstanced = new THREE.InstancedMesh(
+      this.unitSphereLowGeom,
+      baseMat,
+      Render3DEntities.LOW_INSTANCED_CAP,
+    );
+    this.unitInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Allocate the instanceColor buffer so setColorAt works without a
+    // first-frame initialization branch.
+    this.unitInstanced.setColorAt(0, this._instColor.set(0xffffff));
+    this.unitInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    // Hide every slot up front; updateUnitsInstanced fills active ones
+    // each frame.
+    for (let i = 0; i < Render3DEntities.LOW_INSTANCED_CAP; i++) {
+      this.unitInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    this.unitInstanced.count = Render3DEntities.LOW_INSTANCED_CAP;
+    this.unitInstanced.instanceMatrix.needsUpdate = true;
+    this.world.add(this.unitInstanced);
   }
 
   private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
@@ -747,6 +801,95 @@ export class Render3DEntities {
     this.barrelSpins.clear();
   }
 
+  /** LOW-tier per-frame instance write. Each visible unit takes one
+   *  slot in the InstancedMesh; the slot's matrix encodes its world
+   *  pose (translation + Y-rotation + uniform scale by render radius)
+   *  and the color attribute carries its team primary. Slots vacated
+   *  by removed units go on the free list to be reused.
+   *
+   *  GPU cost: one draw call total + N vertex-shader invocations.
+   *  CPU cost: one Matrix4.compose + setMatrixAt + setColorAt per
+   *  visible unit per frame, no allocations. */
+  private updateUnitsInstanced(): void {
+    const im = this.unitInstanced;
+    if (!im) return;
+
+    const units = this.clientViewState.getUnits();
+    const seen = this._seenUnitIds;
+    seen.clear();
+
+    for (const e of units) {
+      seen.add(e.id);
+      // Out-of-scope units still get a slot (so they reappear instantly
+      // when the camera pans back) but their slot transform stays at
+      // the last known pose; instanced rendering doesn't have the
+      // per-unit destruction cost the per-Mesh path was avoiding.
+      if (!this.scope.inScope(e.transform.x, e.transform.y, 100)) continue;
+
+      let slot = this.unitInstancedSlot.get(e.id);
+      if (slot === undefined) {
+        if (this.unitInstancedFreeSlots.length > 0) {
+          slot = this.unitInstancedFreeSlots.pop()!;
+        } else if (this.unitInstancedNextSlot < Render3DEntities.LOW_INSTANCED_CAP) {
+          slot = this.unitInstancedNextSlot++;
+        } else {
+          // Cap exhausted — drop this unit's render. Sim still runs.
+          continue;
+        }
+        this.unitInstancedSlot.set(e.id, slot);
+      }
+
+      const radius = e.unit?.unitRadiusCollider.scale
+        ?? e.unit?.unitRadiusCollider.shot
+        ?? 15;
+      const pushR = e.unit?.unitRadiusCollider.push ?? 0;
+
+      // Mirror of the per-unit Mesh path: group at (x, z-pushR, y),
+      // chassis at origin, sphere at chassis-local y=1 with chassis
+      // scaled by radius. Composed into a single matrix here.
+      this._instPos.set(
+        e.transform.x,
+        e.transform.z - pushR + radius,
+        e.transform.y,
+      );
+      this._instQuat.setFromAxisAngle(_INST_UP, -e.transform.rotation);
+      this._instScale.set(radius, radius, radius);
+      this._instMatrix.compose(this._instPos, this._instQuat, this._instScale);
+      im.setMatrixAt(slot, this._instMatrix);
+
+      const pid = e.ownership?.playerId;
+      this._instColor.set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
+      im.setColorAt(slot, this._instColor);
+    }
+
+    // Free slots for units that disappeared this frame.
+    for (const [id, slot] of this.unitInstancedSlot) {
+      if (!seen.has(id)) {
+        im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+        this.unitInstancedFreeSlots.push(slot);
+        this.unitInstancedSlot.delete(id);
+      }
+    }
+
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  }
+
+  /** Tier flipped from LOW to MED+: hide every active instanced slot
+   *  and drop the slot map so the next LOW pass starts fresh (and
+   *  colors get re-applied to whatever pid currently owns each slot). */
+  private releaseAllInstancedSlots(): void {
+    const im = this.unitInstanced;
+    if (!im) return;
+    for (const slot of this.unitInstancedSlot.values()) {
+      im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    }
+    this.unitInstancedSlot.clear();
+    this.unitInstancedFreeSlots.length = 0;
+    this.unitInstancedNextSlot = 0;
+    im.instanceMatrix.needsUpdate = true;
+  }
+
   /** Remove every overlay mesh that lives in the world group (not the
    *  unit group) so a teardown/rebuild cycle doesn't leak them into
    *  the scene. TURR RAD spheres (per-turret) and BLD build sphere
@@ -827,6 +970,24 @@ export class Render3DEntities {
   }
 
   private updateUnits(): void {
+    // MIN / LOW tier: every unit is a single sphere drawn from one
+    // InstancedMesh — collapses thousands of per-unit draw calls into
+    // a single GPU dispatch. The high-tier per-unit Group path is
+    // skipped entirely, and any leftover per-unit Mesh from a previous
+    // MED+ render run was already wiped by rebuildAllUnitsOnLodChange()
+    // when the LOD key flipped.
+    const isLowTier = this.lod.gfx.tier === 'min' || this.lod.gfx.tier === 'low';
+    if (isLowTier) {
+      this.updateUnitsInstanced();
+      return;
+    }
+    // We left LOW tier — release every instanced slot so stale ghosts
+    // don't sit at scale 0 forever (and so colors recycle quickly when
+    // we go back to LOW).
+    if (this.unitInstancedSlot.size > 0) {
+      this.releaseAllInstancedSlots();
+    }
+
     const units = this.clientViewState.getUnits();
     const seen = this._seenUnitIds;
     seen.clear();
@@ -850,34 +1011,8 @@ export class Render3DEntities {
       const pid = e.ownership?.playerId;
       const turrets = e.turrets ?? [];
 
-      const isLowTier = this.lod.gfx.tier === 'min' || this.lod.gfx.tier === 'low';
-
       let m = this.unitMeshes.get(e.id);
-      if (!m && isLowTier) {
-        // MIN / LOW LOD: collapse the whole unit to a single sphere —
-        // no turrets, no legs/wheels, no mirrors. The chassis group is
-        // still uniformly scaled by `radius` each frame, so the sphere
-        // built here in unit-radius-1 space ends up at the right world
-        // size and elevation (center at y = radius, bottom flush with
-        // the ground). Skips locomotion and mirror builders entirely.
-        const group = new THREE.Group();
-        const chassis = new THREE.Group();
-        chassis.userData.entityId = e.id;
-        const sphere = new THREE.Mesh(this.unitSphereLowGeom, this.getPrimaryMat(pid));
-        // Center at y=1 (unit-radius space) so that after chassis is
-        // scaled by `radius` the sphere sits with its bottom on the
-        // ground plane — same anchor convention every other body uses.
-        sphere.position.set(0, 1, 0);
-        sphere.userData.entityId = e.id;
-        chassis.add(sphere);
-        group.add(chassis);
-        this.world.add(group);
-        m = {
-          group, chassis, chassisMeshes: [sphere],
-          turrets: [], lodKey: this.lod.key,
-        };
-        this.unitMeshes.set(e.id, m);
-      } else if (!m) {
+      if (!m) {
         const group = new THREE.Group();
         // Pull the 2D renderer id from the unit blueprint and use the
         // matching 3D body (scout=diamond, tank=pentagon, arachnid=big
@@ -1390,5 +1525,18 @@ export class Render3DEntities {
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     this.neutralMat.dispose();
+    if (this.unitInstanced) {
+      this.world.remove(this.unitInstanced);
+      // The InstancedMesh's geometry (unitSphereLowGeom) is also held
+      // as a class field disposed below; the material is a private
+      // MeshLambertMaterial only owned by this InstancedMesh, so
+      // dispose it via the mesh.
+      (this.unitInstanced.material as THREE.Material).dispose();
+      this.unitInstanced.dispose();
+      this.unitInstanced = null;
+    }
+    this.unitSphereLowGeom.dispose();
+    this.unitInstancedSlot.clear();
+    this.unitInstancedFreeSlots.length = 0;
   }
 }
