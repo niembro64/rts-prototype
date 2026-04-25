@@ -563,18 +563,27 @@ export function updateProjectiles(
           continue;
         }
 
-        // Continuous beams: stay alive while firing, remove immediately when not
-        const isContinuous = proj.config.shot.type === 'beam';
-        if (isContinuous) {
-          if (weapon.state === 'engaged') {
-            proj.timeAlive = 0;
-          } else {
-            // Remove immediately — no linger time
+        // Engagement-gated termination for both continuous beams and
+        // laser pulses: if the firing weapon is no longer 'engaged'
+        // (target died, moved out of engage range, etc.) the beam
+        // stops immediately. Continuous beams reset timeAlive so they
+        // don't hit their (Infinity) lifespan check; laser pulses
+        // keep accumulating timeAlive so they still expire at their
+        // configured duration if the weapon stays engaged the whole
+        // time. Without this gate the client's render path was
+        // disposing the beam at disengagement while the server kept
+        // dealing damage from the still-alive projectile.
+        const shotType = proj.config.shot.type;
+        const isContinuous = shotType === 'beam';
+        const isLaser = shotType === 'laser';
+        if (isContinuous || isLaser) {
+          if (weapon.state !== 'engaged') {
             beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
             projectilesToRemove.push(entity.id);
             despawnEvents.push({ id: entity.id });
             continue;
           }
+          if (isContinuous) proj.timeAlive = 0;
         }
 
         // Delegate the whole turret-rotation stack (unit yaw → turret
