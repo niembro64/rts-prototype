@@ -452,7 +452,14 @@ function initializeLegAt(leg: LegInstance, unitX: number, unitZ: number, unitR: 
   const attachX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
   const attachZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
   const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
-  const angle = unitR + c.snapTargetAngle;
+  // Right-side legs (side === 1) start halfway through their drift
+  // cycle (between snap rest and snap trigger angles) so they step out
+  // of phase with the left side once the unit moves — an alternating
+  // walk gait from spawn rather than all legs cycling in unison.
+  const initAngle = leg.side === 1
+    ? (c.snapTargetAngle + c.snapTriggerAngle * Math.sign(c.snapTargetAngle)) / 2
+    : c.snapTargetAngle;
+  const angle = unitR + initAngle;
   const gx = attachX + Math.cos(angle) * restDistance;
   const gz = attachZ + Math.sin(angle) * restDistance;
   leg.groundX = gx;

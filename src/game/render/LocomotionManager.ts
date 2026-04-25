@@ -271,8 +271,11 @@ export class LocomotionManager {
     const unitX = entity.transform.x;
     const unitY = entity.transform.y;
     const unitRotation = entity.transform.rotation;
-    for (const leg of legs) {
-      leg.initializeAt(unitX, unitY, unitRotation);
+    const leftCount = leftWithLerp.length;
+    for (let i = 0; i < legs.length; i++) {
+      // First half = left side (phase 0), second half = right side
+      // (phase 180°, mid-drift) so the gait alternates from spawn.
+      legs[i].initializeAt(unitX, unitY, unitRotation, i >= leftCount);
     }
 
     this.arachnidLegs.set(entity.id, legs);

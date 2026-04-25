@@ -53,16 +53,25 @@ export class ArachnidLeg {
   }
 
   // Initialize leg at a specific unit position (call immediately after construction)
-  // This prevents flickering from legs starting at (0,0)
-  initializeAt(unitX: number, unitY: number, unitRotation: number): void {
+  // This prevents flickering from legs starting at (0,0).
+  // `phaseHalfCycle` = true places the foot HALFWAY through its drift
+  // cycle (between snap rest and snap trigger angles) so right-side
+  // legs step out of phase with left-side legs once the unit moves —
+  // an alternating walk gait from frame 1 rather than all legs in sync.
+  initializeAt(unitX: number, unitY: number, unitRotation: number, phaseHalfCycle: boolean = false): void {
     const cos = Math.cos(unitRotation);
     const sin = Math.sin(unitRotation);
     const attachX = unitX + cos * this.config.attachOffsetX - sin * this.config.attachOffsetY;
     const attachY = unitY + sin * this.config.attachOffsetX + cos * this.config.attachOffsetY;
 
-    // Place foot at target snap angle and distance
+    // Place foot at target snap angle and distance, with optional phase
+    // offset to start the leg mid-drift.
     const restDistance = this.totalLength * this.config.snapDistanceMultiplier;
-    const angle = unitRotation + this.config.snapTargetAngle;
+    const initAngle = phaseHalfCycle
+      ? (this.config.snapTargetAngle
+          + this.config.snapTriggerAngle * Math.sign(this.config.snapTargetAngle)) / 2
+      : this.config.snapTargetAngle;
+    const angle = unitRotation + initAngle;
 
     this.groundX = attachX + Math.cos(angle) * restDistance;
     this.groundY = attachY + Math.sin(angle) * restDistance;
