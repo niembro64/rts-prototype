@@ -63,21 +63,27 @@ export type SubmunitionSpec = {
   shotId: string;
   /** Number of children spawned per parent explosion. */
   count: number;
-  /** Magnitude of the random spread velocity added on top of the
-   *  parent's bounce direction. Each submunition's launch velocity is
+  /** Horizontal random-spread magnitude (XY plane). Each submunition's
+   *  launch velocity is
    *
-   *      v = (R × reflectedVelocityDamper) + (randomSpreadSpeed × U)
+   *    v.x = bounceVx + randomSpreadSpeedHorizontal × ux
+   *    v.y = bounceVy + randomSpreadSpeedHorizontal × uy
+   *    v.z = bounceVz + randomSpreadSpeedVertical   × uz
    *
-   *  where R is the parent's velocity reflected across the impact
-   *  surface and U is a random unit 3D vector. So this knob is
-   *  effectively the *radius of the random spread sphere* centered
-   *  on the bounce direction:
-   *   - 0   → every fragment flies along the bounce direction with
-   *           identical velocity (no spread).
-   *   - small (e.g. 1–10) → tight cone hugging the bounce direction.
-   *   - >> |R × damper| → near-isotropic spray, bounce direction
-   *           barely visible. */
-  randomSpreadSpeed: number;
+   *  where (ux, uy, uz) is a uniform random unit 3D vector. So this
+   *  knob is the *horizontal radius* of the random offset ellipsoid
+   *  centered on the bounce direction:
+   *   - 0    → every fragment flies along the bounce direction's
+   *            horizontal projection with no horizontal jitter.
+   *   - small → tight horizontal cone.
+   *   - large → wide horizontal fan. */
+  randomSpreadSpeedHorizontal: number;
+  /** Vertical random-spread magnitude (Z axis). Independently controls
+   *  how much each fragment's launch angle deviates UP/DOWN from the
+   *  bounce direction. A small value keeps fragments hugging the
+   *  reflected vector vertically; a large value makes some go nearly
+   *  straight up while others stay near the surface. */
+  randomSpreadSpeedVertical: number;
   /** Multiplier applied to the parent's reflected velocity before it
    *  becomes the submunition's base direction. Models energy loss on
    *  impact (a coefficient-of-restitution-like knob).
@@ -86,7 +92,7 @@ export type SubmunitionSpec = {
    *    preserved in the reflected direction
    *  - 0.5 = half the speed is preserved; the bounce reads softer
    *  - 0.0 = parent velocity is fully absorbed by the surface; the
-   *    submunitions only have the randomSpreadSpeed perturbation, no
+   *    submunitions only have the random-spread perturbations, no
    *    inherited momentum (no visible bounce)
    *
    *  Defaults to 1.0 when omitted. */

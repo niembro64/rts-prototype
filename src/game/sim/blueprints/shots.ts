@@ -117,23 +117,26 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // release submunitions on impact / lifespan expiry. All damage
     // comes from the lightShot fragments sprayed below.
     mass: 30,
-    collision: { radius: 6 },
+    collision: { radius: 4 },
     detonateOnExpiry: true,
     lifespan: 5000,
     hitSound: AUDIO.event.hit.mortarShot,
     submunitions: {
       shotId: 'mediumShot',
       count: 5,
-      // Tight cone — the bounce direction does most of the work.
-      // Bump this up if you want the burst to look more chaotic.
-      randomSpreadSpeed: 15,
-      // Soft bounce — submunitions retain ~40% of the carrier's
+      // Wide horizontal sweep, lower vertical jitter so fragments
+      // arc outward instead of fountaining mostly upward. Bump
+      // horizontal for a wider fan, vertical for a more chaotic
+      // mix of launch angles.
+      randomSpreadSpeedHorizontal: 500,
+      randomSpreadSpeedVertical: 250,
+      // Soft bounce — submunitions retain ~10% of the carrier's
       // reflected velocity so the burst still reads as a bounce off
       // the surface, without launching the lightShots so far that
       // they leave the AOE the player expected. Tune up toward 1.0
       // for a more energetic bounce, down toward 0.0 to absorb the
       // momentum entirely.
-      reflectedVelocityDamper: 0.99,
+      reflectedVelocityDamper: 0.1,
     },
   },
   disruptorShot: {

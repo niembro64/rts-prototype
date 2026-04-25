@@ -132,7 +132,11 @@ function spawnSubmunitions(
   // spread — submunition direction doesn't feed back into deterministic
   // sim state (damage / knockback come from the parent's detonation
   // and the fragments' own collisions, both of which use sim RNG).
-  const randomSpreadSpeed = spec.randomSpreadSpeed;
+  // Horizontal and vertical spread magnitudes are independent so a
+  // shot can fan WIDE horizontally without launching half its fragments
+  // straight up (or vice versa).
+  const horizSpread = spec.randomSpreadSpeedHorizontal;
+  const vertSpread = spec.randomSpreadSpeedVertical;
   for (let i = 0; i < spec.count; i++) {
     // Uniform random unit vector via 3D rejection sampling — gives
     // each fragment a different perturbation around the bounce
@@ -156,9 +160,13 @@ function spawnSubmunitions(
     jitterDirY *= jitterInv;
     jitterDirZ *= jitterInv;
 
-    const launchVx = bounceVx + randomSpreadSpeed * jitterDirX;
-    const launchVy = bounceVy + randomSpreadSpeed * jitterDirY;
-    const launchVz = bounceVz + randomSpreadSpeed * jitterDirZ;
+    // Anisotropic scaling: horizontal speed for the XY component, a
+    // separate vertical speed for Z. The unit-vector input keeps the
+    // distribution shape uniform on the sphere; scaling per-axis
+    // turns the random offset into an ellipsoid.
+    const launchVx = bounceVx + horizSpread * jitterDirX;
+    const launchVy = bounceVy + horizSpread * jitterDirY;
+    const launchVz = bounceVz + vertSpread * jitterDirZ;
 
     const proj = world.createProjectile(
       detonationX, detonationY, launchVx, launchVy,
