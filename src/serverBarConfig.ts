@@ -1,4 +1,5 @@
 import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './types/server';
+import type { ServerSimQuality } from './types/serverSimLod';
 import { persist, readPersisted } from './persistence';
 
 export const SERVER_CONFIG = {
@@ -29,6 +30,24 @@ const STORAGE_SNAPSHOT_RATE = 'rts-snapshot-rate';
 const STORAGE_KEYFRAME_RATIO = 'rts-keyframe-ratio';
 const STORAGE_TICK_RATE = 'rts-tick-rate';
 const STORAGE_GRID_INFO = 'rts-grid-info';
+const STORAGE_SIM_QUALITY = 'rts-sim-quality';
+
+const VALID_SIM_QUALITIES: readonly ServerSimQuality[] = [
+  'auto', 'auto-tps', 'auto-cpu', 'auto-units',
+  'min', 'low', 'medium', 'high', 'max',
+];
+
+export function loadStoredSimQuality(): ServerSimQuality {
+  const stored = readPersisted(STORAGE_SIM_QUALITY);
+  if (stored && (VALID_SIM_QUALITIES as readonly string[]).includes(stored)) {
+    return stored as ServerSimQuality;
+  }
+  return 'auto';
+}
+
+export function saveSimQuality(q: ServerSimQuality): void {
+  persist(STORAGE_SIM_QUALITY, q);
+}
 
 export function loadStoredSnapshotRate(): SnapshotRate {
   const stored = readPersisted(STORAGE_SNAPSHOT_RATE);

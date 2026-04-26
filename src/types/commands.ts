@@ -22,7 +22,8 @@ export type CommandType =
   | 'setMaxTotalUnits'
   | 'setProjVelInherit'
   | 'setFfAccelUnits'
-  | 'setFfAccelShots';
+  | 'setFfAccelShots'
+  | 'setSimQuality';
 
 export type BaseCommand = {
   type: CommandType;
@@ -162,6 +163,13 @@ export type SetFfAccelShotsCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetSimQualityCommand = BaseCommand & {
+  type: 'setSimQuality';
+  // Stored as the raw string union — keeps the wire format simple
+  // and lets msgpack delta-encode by reference.
+  quality: string;
+};
+
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -182,4 +190,5 @@ export type Command =
   | SetMaxTotalUnitsCommand
   | SetProjVelInheritCommand
   | SetFfAccelUnitsCommand
-  | SetFfAccelShotsCommand;
+  | SetFfAccelShotsCommand
+  | SetSimQualityCommand;

@@ -12,6 +12,16 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
+import {
+  setSimQuality,
+  setSimTpsRatio,
+  setSimCpuRatio,
+  setSimUnitCount,
+  setSimUnitCap,
+  getSimQuality,
+  getEffectiveSimQuality,
+} from '../sim/simQuality';
+import type { ServerSimQuality } from '@/types/serverSimLod';
 import { PhysicsEngine3D } from './PhysicsEngine3D';
 import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
@@ -339,6 +349,14 @@ export class GameServer {
     const dtMs = Math.min(delta, MAX_TICK_DT_MS);
     const dtSec = dtMs / 1000;
 
+    // Push host signals into the SERVER LOD driver before the sim
+    // runs — every throttle decision inside the upcoming tick will
+    // read the freshly-resolved tier from getSimDetailConfig().
+    // Cheap (a few Number assignments + the rank resolver runs once
+    // per call to getSimDetailConfig, which the hot paths invoke
+    // a handful of times per tick at most).
+    this.refreshSimQualitySignals();
+
     // Update simulation (calculates thrust velocities, runs combat, etc.)
     this.simulation.update(dtMs);
 
@@ -607,6 +625,9 @@ export class GameServer {
       case 'setFfAccelShots':
         this.world.ffAccelShots = command.enabled;
         return;
+      case 'setSimQuality':
+        this.setSimQuality(command.quality as ServerSimQuality);
+        return;
     }
     this.commandQueue.enqueue(command);
   }
@@ -632,6 +653,48 @@ export class GameServer {
   setSnapshotRate(rate: number | 'none'): void {
     this.maxSnapshotsDisplay = rate;
     this.maxSnapshotIntervalMs = rate === 'none' ? 0 : 1000 / rate;
+  }
+
+  /** Change HOST SERVER LOD tier ('auto' / 'auto-tps' / 'auto-cpu' /
+   *  'auto-units' / 'min'..'max'). Drives sim throttling: targeting
+   *  reacquire stride, beam path stride, mirror bisector iters,
+   *  density-cap thresholds. The host client picks this in the UI. */
+  setSimQuality(q: ServerSimQuality): void {
+    setSimQuality(q);
+  }
+
+  getSimQuality(): ServerSimQuality {
+    return getSimQuality();
+  }
+
+  getEffectiveSimQuality(): ReturnType<typeof getEffectiveSimQuality> {
+    return getEffectiveSimQuality();
+  }
+
+  /** Push the host's current TPS / CPU / units stats into the LOD
+   *  driver. Called once per tick from `tick()`, immediately before
+   *  the sim runs, so every throttle that reads getSimDetailConfig()
+   *  this tick sees a freshly-resolved tier. */
+  private refreshSimQualitySignals(): void {
+    // TPS ratio = actual / target. We use the EMA-smoothed avg here
+    // (not the worst-case `low`) so the LOD doesn't bounce on a
+    // single laggy tick.
+    const tickStats = this.getTickStats();
+    setSimTpsRatio(tickStats.avgFps / Math.max(1, this.tickRateHz));
+
+    // CPU ratio = headroom = 1 − (cpu load / 100). The cpu fields
+    // live as percent-of-tick-budget; they can exceed 100 when
+    // we're falling behind. Clamp to [0, 1] for the LOD signal so
+    // a momentary overshoot doesn't push the rank below MIN.
+    const tickBudgetMs = 1000 / this.tickRateHz;
+    const cpuLoad = this.tickMsInitialized
+      ? Math.min(100, Math.max(0, (this.tickMsHi / tickBudgetMs) * 100))
+      : 0;
+    setSimCpuRatio(1 - cpuLoad / 100);
+
+    // Units fullness — same shape as the client side.
+    setSimUnitCount(this.world.getUnits().length);
+    setSimUnitCap(this.world.maxTotalUnits);
   }
 
   /** Multiplier on the snapshot interval that grows with unit count.
