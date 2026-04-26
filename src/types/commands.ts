@@ -21,6 +21,8 @@ export type CommandType =
   | 'setBackgroundUnitType'
   | 'setMaxTotalUnits'
   | 'setProjVelInherit'
+  | 'setFiringForce'
+  | 'setHitForce'
   | 'setFfAccelUnits'
   | 'setFfAccelShots'
   | 'setSimQuality'
@@ -154,6 +156,16 @@ export type SetProjVelInheritCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetFiringForceCommand = BaseCommand & {
+  type: 'setFiringForce';
+  enabled: boolean;
+};
+
+export type SetHitForceCommand = BaseCommand & {
+  type: 'setHitForce';
+  enabled: boolean;
+};
+
 export type SetFfAccelUnitsCommand = BaseCommand & {
   type: 'setFfAccelUnits';
   enabled: boolean;
@@ -199,6 +211,8 @@ export type Command =
   | SetBackgroundUnitTypeCommand
   | SetMaxTotalUnitsCommand
   | SetProjVelInheritCommand
+  | SetFiringForceCommand
+  | SetHitForceCommand
   | SetFfAccelUnitsCommand
   | SetFfAccelShotsCommand
   | SetSimQualityCommand

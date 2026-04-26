@@ -9,6 +9,8 @@ export type BattleBarConfig = {
   readonly units: Record<string, UnitToggleConfig>;
   readonly cap: OptionsConfig<number>;
   readonly projVelInherit: BooleanSetting;
+  readonly firingForce: BooleanSetting;
+  readonly hitForce: BooleanSetting;
   readonly ffAccelUnits: BooleanSetting;
   readonly ffAccelShots: BooleanSetting;
 };

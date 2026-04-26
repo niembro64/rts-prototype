@@ -29,6 +29,8 @@ export const BATTLE_CONFIG = {
     ] as readonly number[],
   },
   projVelInherit: { default: false },
+  firingForce: { default: true },
+  hitForce: { default: true },
   ffAccelUnits: { default: false },
   ffAccelShots: { default: true },
 } as const satisfies BattleBarConfig;
@@ -45,6 +47,8 @@ const STORAGE_REAL_CAP = 'rts-real-cap';
 const STORAGE_DEMO_GRID = 'rts-demo-grid';
 const STORAGE_REAL_GRID = 'rts-real-grid';
 const STORAGE_PROJ_VEL_INHERIT = 'rts-proj-vel-inherit';
+const STORAGE_FIRING_FORCE = 'rts-firing-force';
+const STORAGE_HIT_FORCE = 'rts-hit-force';
 const STORAGE_FF_ACCEL_UNITS = 'rts-ff-accel-units';
 const STORAGE_FF_ACCEL_SHOTS = 'rts-ff-accel-shots';
 
@@ -131,6 +135,22 @@ export function loadStoredProjVelInherit(): boolean {
 
 export function saveProjVelInherit(enabled: boolean): void {
   persist(STORAGE_PROJ_VEL_INHERIT, String(enabled));
+}
+
+export function loadStoredFiringForce(): boolean {
+  return loadBool(STORAGE_FIRING_FORCE) ?? BATTLE_CONFIG.firingForce.default;
+}
+
+export function saveFiringForce(enabled: boolean): void {
+  persist(STORAGE_FIRING_FORCE, String(enabled));
+}
+
+export function loadStoredHitForce(): boolean {
+  return loadBool(STORAGE_HIT_FORCE) ?? BATTLE_CONFIG.hitForce.default;
+}
+
+export function saveHitForce(enabled: boolean): void {
+  persist(STORAGE_HIT_FORCE, String(enabled));
 }
 
 export function loadStoredFfAccelUnits(): boolean {

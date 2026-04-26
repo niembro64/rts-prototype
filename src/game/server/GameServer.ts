@@ -612,6 +612,8 @@ export class GameServer {
           count: this.world.getUnits().length,
         },
         projVelInherit: this.world.projVelInherit,
+        firingForce: this.world.firingForce,
+        hitForce: this.world.hitForce,
         ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots },
         cpu: { avg: cpuAvg, hi: cpuHi },
         simLod: {
@@ -652,6 +654,12 @@ export class GameServer {
         return;
       case 'setProjVelInherit':
         this.world.projVelInherit = command.enabled;
+        return;
+      case 'setFiringForce':
+        this.world.firingForce = command.enabled;
+        return;
+      case 'setHitForce':
+        this.world.hitForce = command.enabled;
         return;
       case 'setFfAccelUnits':
         this.world.ffAccelUnits = command.enabled;

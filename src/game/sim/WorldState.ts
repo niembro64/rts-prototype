@@ -3,7 +3,7 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, UNIT_HP_MULTIPLIER } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FIRING_FORCE, DEFAULT_HIT_FORCE, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, UNIT_HP_MULTIPLIER } from '../../config';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 
@@ -64,6 +64,11 @@ export class WorldState {
 
   // Whether projectiles inherit their firing unit's velocity
   public projVelInherit: boolean = DEFAULT_PROJ_VEL_INHERIT;
+
+  // Whether firing a weapon applies recoil to the firing unit
+  public firingForce: boolean = DEFAULT_FIRING_FORCE;
+  // Whether shots apply knockback to units they hit
+  public hitForce: boolean = DEFAULT_HIT_FORCE;
 
   // Whether force fields accelerate enemy units
   public ffAccelUnits: boolean = DEFAULT_FF_ACCEL_UNITS;

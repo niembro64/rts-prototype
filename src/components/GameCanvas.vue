@@ -50,6 +50,10 @@ import {
   saveRealGrid,
   loadStoredProjVelInherit,
   saveProjVelInherit,
+  loadStoredFiringForce,
+  saveFiringForce,
+  loadStoredHitForce,
+  saveHitForce,
   loadStoredFfAccelUnits,
   saveFfAccelUnits,
   loadStoredFfAccelShots,
@@ -660,6 +664,16 @@ function toggleProjVelInherit(): void {
   saveProjVelInherit(!current);
 }
 
+function setFiringForce(enabled: boolean): void {
+  activeConnection?.sendCommand({ type: 'setFiringForce', tick: 0, enabled });
+  saveFiringForce(enabled);
+}
+
+function setHitForce(enabled: boolean): void {
+  activeConnection?.sendCommand({ type: 'setHitForce', tick: 0, enabled });
+  saveHitForce(enabled);
+}
+
 function setFfAccelUnits(enabled: boolean): void {
   activeConnection?.sendCommand({ type: 'setFfAccelUnits', tick: 0, enabled });
   saveFfAccelUnits(enabled);
@@ -689,6 +703,8 @@ function resetDemoDefaults(): void {
     enabled: BATTLE_CONFIG.projVelInherit.default,
   });
   saveProjVelInherit(BATTLE_CONFIG.projVelInherit.default);
+  setFiringForce(BATTLE_CONFIG.firingForce.default);
+  setHitForce(BATTLE_CONFIG.hitForce.default);
   setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
   setFfAccelShots(BATTLE_CONFIG.ffAccelShots.default);
   // Reset grid to mode default
@@ -1194,6 +1210,16 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         enabled: loadStoredProjVelInherit(),
       });
       currentServer.receiveCommand({
+        type: 'setFiringForce',
+        tick: 0,
+        enabled: loadStoredFiringForce(),
+      });
+      currentServer.receiveCommand({
+        type: 'setHitForce',
+        tick: 0,
+        enabled: loadStoredHitForce(),
+      });
+      currentServer.receiveCommand({
         type: 'setFfAccelUnits',
         tick: 0,
         enabled: loadStoredFfAccelUnits(),
@@ -1615,6 +1641,46 @@ onUnmounted(() => {
             >
               ADD
             </button>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">FORCE:</span>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{
+                  active:
+                    serverMetaFromSnapshot?.firingForce ??
+                    BATTLE_CONFIG.firingForce.default,
+                }"
+                title="Apply recoil to the firing unit when its weapon fires"
+                @click="
+                  setFiringForce(
+                    !(serverMetaFromSnapshot?.firingForce ??
+                      BATTLE_CONFIG.firingForce.default),
+                  )
+                "
+              >
+                FIRING
+              </button>
+              <button
+                class="control-btn"
+                :class="{
+                  active:
+                    serverMetaFromSnapshot?.hitForce ??
+                    BATTLE_CONFIG.hitForce.default,
+                }"
+                title="Apply knockback to units when shots hit them"
+                @click="
+                  setHitForce(
+                    !(serverMetaFromSnapshot?.hitForce ??
+                      BATTLE_CONFIG.hitForce.default),
+                  )
+                "
+              >
+                HIT
+              </button>
+            </div>
           </div>
           <div class="control-group">
             <BarDivider />

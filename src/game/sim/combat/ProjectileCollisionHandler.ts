@@ -338,7 +338,7 @@ export function checkProjectileCollisions(
               radius: projShot.explosion!.radius,
               knockbackForce: projShot.explosion!.force,
             });
-            applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
+            if (world.hitForce) applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
             collectKillsAndDeathContexts(splashResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
             splashHitCount = splashResult.hitEntityIds.length;
             firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
@@ -444,10 +444,10 @@ export function checkProjectileCollisions(
         knockbackForce: tickForce,
       });
 
-      applyKnockbackForces(result.knockbacks, forceAccumulator);
+      if (world.hitForce) applyKnockbackForces(result.knockbacks, forceAccumulator);
 
       // Apply beam force (knockback only, no damage) to each mirror entity
-      if (proj.reflections && proj.reflections.length > 0 && forceAccumulator) {
+      if (world.hitForce && proj.reflections && proj.reflections.length > 0 && forceAccumulator) {
         const startX = proj.startX ?? projEntity.transform.x;
         const startY = proj.startY ?? projEntity.transform.y;
         let prevX = startX;
@@ -507,7 +507,7 @@ export function checkProjectileCollisions(
       });
 
       // Apply knockback from projectile hit
-      applyKnockbackForces(result.knockbacks, forceAccumulator);
+      if (world.hitForce) applyKnockbackForces(result.knockbacks, forceAccumulator);
       // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets()
 
       // Track hits
@@ -559,7 +559,7 @@ export function checkProjectileCollisions(
             knockbackForce: projShot.explosion.force,
           });
 
-          applyKnockbackForces(splash.knockbacks, forceAccumulator);
+          if (world.hitForce) applyKnockbackForces(splash.knockbacks, forceAccumulator);
           collectKillsAndDeathContexts(splash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
         }
 
