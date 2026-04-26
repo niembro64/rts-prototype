@@ -106,22 +106,6 @@ export class ThreeApp {
     // between a separate slab and the cube floors.
     void backgroundColor;
 
-    // Map boundary outline — sits just above the tile layer (which is at y=0)
-    // so it traces the playable edge without z-fighting the tiles.
-    const BOUNDS_Y = 0.5;
-    const boundsGeom = new THREE.BufferGeometry();
-    const boundsVerts = new Float32Array([
-      0, BOUNDS_Y, 0,  mapWidth, BOUNDS_Y, 0,
-      mapWidth, BOUNDS_Y, 0,  mapWidth, BOUNDS_Y, mapHeight,
-      mapWidth, BOUNDS_Y, mapHeight,  0, BOUNDS_Y, mapHeight,
-      0, BOUNDS_Y, mapHeight,  0, BOUNDS_Y, 0,
-    ]);
-    boundsGeom.setAttribute('position', new THREE.BufferAttribute(boundsVerts, 3));
-    // Match the 2D drawGrid boundary stroke color (0x4444aa).
-    const boundsMat = new THREE.LineBasicMaterial({ color: 0x4444aa });
-    const bounds = new THREE.LineSegments(boundsGeom, boundsMat);
-    this.scene.add(bounds);
-
     // World group for entities
     this.world = new THREE.Group();
     this.scene.add(this.world);
