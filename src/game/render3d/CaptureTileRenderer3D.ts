@@ -120,6 +120,12 @@ export class CaptureTileRenderer3D {
     this.positions = new Float32Array(tileCount * VERTS_PER_TILE * 3);
     this.colors = new Float32Array(tileCount * VERTS_PER_TILE * 3);
     this.indices = new Uint32Array(tileCount * TRIS_PER_TILE * 3);
+    // Hand-computed normals: top-corner normals come from the
+    // heightmap GRADIENT at that corner, NOT from this tile's local
+    // triangle topology. Adjacent tiles share corners → same gradient
+    // → same normal → continuous shading across the whole surface.
+    // Flat regions all get +Y; only sloped (ripple) topography varies.
+    const normals = new Float32Array(tileCount * VERTS_PER_TILE * 3);
 
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
@@ -150,6 +156,41 @@ export class CaptureTileRenderer3D {
         this.positions[vBase + 15] = x1; this.positions[vBase + 16] = CUBE_FLOOR_Y; this.positions[vBase + 17] = z0;
         this.positions[vBase + 18] = x1; this.positions[vBase + 19] = CUBE_FLOOR_Y; this.positions[vBase + 20] = z1;
         this.positions[vBase + 21] = x0; this.positions[vBase + 22] = CUBE_FLOOR_Y; this.positions[vBase + 23] = z1;
+
+        // Top-corner normals from the heightmap gradient at that
+        // (x, z) — finite differences with eps=1 unit. For surface
+        // P(x, z) = (x, h(x, z), z), tangents are (1, ∂h/∂x, 0) and
+        // (0, ∂h/∂z, 1); their cross product is (∂h/∂x, -1, ∂h/∂z),
+        // so the upward normal is (-∂h/∂x, 1, -∂h/∂z) normalized.
+        // Floor corners get a straight-down (0,-1,0) normal — face
+        // is hidden but the side walls' bottom verts inherit it,
+        // giving each side wall a smooth top-bright bottom-dim
+        // gradient that reads as natural ground.
+        const writeTopNormal = (vIdx: number, wx: number, wz: number) => {
+          const eps = 1;
+          const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
+          const hxm = getTerrainHeight(wx - eps, wz, this.mapWidth, this.mapHeight);
+          const hzp = getTerrainHeight(wx, wz + eps, this.mapWidth, this.mapHeight);
+          const hzm = getTerrainHeight(wx, wz - eps, this.mapWidth, this.mapHeight);
+          const dHdx = (hxp - hxm) / (2 * eps);
+          const dHdz = (hzp - hzm) / (2 * eps);
+          let nx = -dHdx, ny = 1, nz = -dHdz;
+          const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+          nx /= len; ny /= len; nz /= len;
+          normals[vBase + vIdx * 3 + 0] = nx;
+          normals[vBase + vIdx * 3 + 1] = ny;
+          normals[vBase + vIdx * 3 + 2] = nz;
+        };
+        writeTopNormal(0, x0, z0);
+        writeTopNormal(1, x1, z0);
+        writeTopNormal(2, x1, z1);
+        writeTopNormal(3, x0, z1);
+        // Floor normals — straight down.
+        for (let v = 4; v < 8; v++) {
+          normals[vBase + v * 3 + 0] = 0;
+          normals[vBase + v * 3 + 1] = -1;
+          normals[vBase + v * 3 + 2] = 0;
+        }
 
         // Initial neutral color for every vertex of this tile.
         const cBase = i * VERTS_PER_TILE * 3;
@@ -187,8 +228,8 @@ export class CaptureTileRenderer3D {
       'color',
       new THREE.BufferAttribute(this.colors, 3).setUsage(THREE.DynamicDrawUsage),
     );
+    this.geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
     this.geometry.setIndex(new THREE.BufferAttribute(this.indices, 1));
-    this.geometry.computeVertexNormals();
   }
 
   update(): void {
