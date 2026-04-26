@@ -59,6 +59,14 @@ export class GameServer {
   private gameLoopInterval: ReturnType<typeof setInterval> | null = null;
   private lastTickTime: number = 0;
   private tickRateHz: number;
+  /** User's configured target. The setInterval rate (`tickRateHz`)
+   *  may be auto-lowered below this when the host can't keep up;
+   *  this field is the ceiling adaptation can claw back toward. */
+  private userTickRateHz: number;
+  /** Tick counter for the adaptive-rate check (separate from
+   *  world.tick because the check fires every N ticks regardless of
+   *  the world's own counter). */
+  private _adaptCheckTicks = 0;
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
   private maxSnapshotsDisplay: number | 'none';
   private lastSnapshotTime: number = 0;
@@ -115,6 +123,7 @@ export class GameServer {
     this.playerIds = config.playerIds;
     this.backgroundMode = config.backgroundMode ?? false;
     this.tickRateHz = 60;
+    this.userTickRateHz = 60;
     const maxSnaps = config.maxSnapshotsPerSec ?? 30;
     this.maxSnapshotIntervalMs = maxSnaps > 0 ? 1000 / maxSnaps : 0;
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
@@ -300,6 +309,13 @@ export class GameServer {
           ? 0.5 * this.tickMsHi + 0.5 * workMs
           : 0.9999 * this.tickMsHi + 0.0001 * workMs;
       }
+
+      // Adaptive rate: every ~64 ticks check whether we're chronically
+      // over (halve effective rate) or chronically under (claw back
+      // toward user's pick). This is the FLOOR that guarantees the
+      // tick loop completes even when the host genuinely can't do
+      // userTickRateHz worth of work per second.
+      this.maybeAdaptTickRate();
     }, 1000 / this.tickRateHz);
   }
 
@@ -747,11 +763,60 @@ export class GameServer {
     return Math.max(unitMul, cpuMul);
   }
 
-  // Change simulation tick rate (restarts the game loop interval)
+  // Change simulation tick rate (restarts the game loop interval).
+  // This is the user's configured target — adaptive rate may
+  // lower the EFFECTIVE rate below this when the host is overloaded.
   setTickRate(hz: number): void {
+    this.userTickRateHz = hz;
     this.tickRateHz = hz;
     if (this.gameLoopInterval) {
       this.startGameLoop();
+    }
+  }
+
+  /** Adaptive rate evaluation. Called every N ticks. When the EMA
+   *  per-tick CPU load is sustained above 150% of the budget, halve
+   *  the effective tick rate (down to 4 Hz floor). When it's
+   *  sustained below 50%, double back up toward the user's pick.
+   *
+   *  Why not the LOD ladder alone: the LOD throttles cut targeting,
+   *  beam tracing, force fields, capture — but every other system
+   *  (physics step, projectile motion, collision) still runs every
+   *  tick. If the host can only do 16 ticks of work per second,
+   *  trying to fire 128 of them just buries the loop. Drop the
+   *  target, complete every tick, sim runs slower in real time but
+   *  the game stays responsive.
+   *
+   *  Floor at 4 Hz. Below that the snapshot rate is too low for
+   *  remote clients to interpolate cleanly anyway, and the host
+   *  has bigger problems. */
+  private maybeAdaptTickRate(): void {
+    this._adaptCheckTicks++;
+    // Check every ~64 ticks. At a healthy 60 TPS that's ~1s, at a
+    // crushed 6 TPS it's ~10s — both reasonable cadences for an
+    // automated rate change.
+    if (this._adaptCheckTicks < 64) return;
+    this._adaptCheckTicks = 0;
+
+    if (!this.tickMsInitialized) return;
+
+    const tickBudgetMs = 1000 / this.tickRateHz;
+    const loadAvg = this.tickMsAvg / tickBudgetMs;
+
+    const FLOOR_HZ = 4;
+    if (loadAvg > 1.5 && this.tickRateHz > FLOOR_HZ) {
+      // Halve, snapping to int. Don't drop below floor.
+      const next = Math.max(FLOOR_HZ, Math.floor(this.tickRateHz / 2));
+      if (next !== this.tickRateHz) {
+        this.tickRateHz = next;
+        if (this.gameLoopInterval) this.startGameLoop();
+      }
+    } else if (loadAvg < 0.5 && this.tickRateHz < this.userTickRateHz) {
+      const next = Math.min(this.userTickRateHz, this.tickRateHz * 2);
+      if (next !== this.tickRateHz) {
+        this.tickRateHz = next;
+        if (this.gameLoopInterval) this.startGameLoop();
+      }
     }
   }
 
