@@ -26,19 +26,18 @@ import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTileTerrainHeight } from '../sim/Terrain';
 
-// Floor of the mana cube — every tile extends DOWN to this y value
-// so the cube has a visible thickness even where terrain height is
-// zero. Negative so the cube tops at exactly `terrainHeight` (units
-// stand at that height) and the slab thickness is hidden below the
-// ground slab.
-const CUBE_FLOOR_Y = -8;
+// Floor of every mana cube — pulled deep below y=0 so the cube is
+// also the world's substrate. There is no separate ground slab any
+// more; the cube side walls (visible from oblique angles) form the
+// "earth" mass beneath the playable surface. Match the old slab's
+// total depth so the world's silhouette reads the same when looking
+// at the map edge from a low camera.
+const CUBE_FLOOR_Y = -800;
 
 // Minimum visible thickness above the floor for cube top. Set to 0
 // so flat tiles sit exactly at world y=0 — units (whose sphere bottom
 // rests at sim z = terrain) align flush with the cube top instead of
-// floating a fraction above it. The cube body still reads as 3D
-// because it extends DOWN to CUBE_FLOOR_Y (slab top is at -4, so the
-// cube exposes ~4 units of side wall in flat regions).
+// floating a fraction above it.
 const MIN_CUBE_TOP_Y = 0;
 
 // Color for unowned cells. Slightly lighter than MAP_BG_COLOR so the

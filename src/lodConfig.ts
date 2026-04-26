@@ -74,10 +74,10 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
   // Whether the cap is 1k or 16k, the LOD ladder steps at the same
   // proportional milestones.
   units: {
-    low: 0.05,    // ratio >= 0.05 (≤95% full) → low or better
-    medium: 0.25, // ratio >= 0.25 (≤75% full) → medium or better
-    high: 0.50,   // ratio >= 0.50 (≤50% full) → high or better
-    max: 0.75,    // ratio >= 0.75 (≤25% full) → max
+    low: 0.1,    // ratio >= 0.05 (≤95% full) → low or better
+    medium: 0.2, // ratio >= 0.25 (≤75% full) → medium or better
+    high: 0.3,   // ratio >= 0.50 (≤50% full) → high or better
+    max: 0.4,    // ratio >= 0.75 (≤25% full) → max
   },
 };
 

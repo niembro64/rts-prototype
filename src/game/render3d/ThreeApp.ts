@@ -97,35 +97,14 @@ export class ThreeApp {
     this.scene.add(sun);
     this.scene.add(sun.target);
 
-    // Ground slab — a thick box so the world clearly reads as a solid
-    // piece of terrain when viewed from an oblique camera. Top surface
-    // sits at y=-GROUND_GAP, i.e. just below the tile layer which is
-    // at y=0. Units and buildings play ON the tiles (y=0), not under
-    // them.
-    //
-    // Color is a warm dark charcoal that's distinct from the scene
-    // background — previously the slab was painted MAP_BG_COLOR (same
-    // as the scene clear color), so the exposed side walls blended
-    // invisibly into the background and the world read as a flat
-    // disc. This tone still feels neutral-dark enough to pass for
-    // "earth / substrate" but contrasts cleanly against the
-    // 0x0a0e0f scene bg.
-    const GROUND_DEPTH = 800;
-    const GROUND_GAP = 4; // vertical separation between slab top and tiles
-    const groundGeom = new THREE.BoxGeometry(mapWidth, GROUND_DEPTH, mapHeight);
-    const groundMat = new THREE.MeshLambertMaterial({ color: 0x2a241c });
-    void backgroundColor; // still used for the scene clear color above
-    const ground = new THREE.Mesh(groundGeom, groundMat);
-    ground.position.set(
-      mapWidth / 2,
-      -GROUND_GAP - GROUND_DEPTH / 2,
-      mapHeight / 2,
-    );
-    this.scene.add(ground);
-
-    // No grid lines on the floor — matches 2D, where MAP_GRID_COLOR equals
-    // MAP_BG_COLOR at low alpha (effectively invisible). The only color that
-    // paints the floor is the capture-tile / flag-ownership overlay.
+    // No standalone ground slab — the mana cubes ARE the world's
+    // mass. CaptureTileRenderer3D extends each tile cube far below
+    // y=0 (see CUBE_FLOOR_Y) so the side walls read as the substrate
+    // / "earth" of the map when viewed from oblique angles. This
+    // keeps a single source of truth for the ground surface (the
+    // terrain heightmap drives the cubes) and avoids z-fighting
+    // between a separate slab and the cube floors.
+    void backgroundColor;
 
     // Map boundary outline — sits just above the tile layer (which is at y=0)
     // so it traces the playable edge without z-fighting the tiles.
