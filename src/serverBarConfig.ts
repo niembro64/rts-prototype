@@ -13,7 +13,6 @@ export const SERVER_CONFIG = {
     options: [1, 4, 8, 16, 32, 64, 128] as readonly SnapshotRate[],
     // 'none' removed — uncapped SPS at high TPS causes delta snapshot issues
   },
-  gridInfo: { default: false },
   keyframe: {
     default: (1 / Math.pow(2, 6)) as KeyframeRatio,
     options: [
@@ -30,7 +29,6 @@ export const SERVER_CONFIG = {
 const STORAGE_SNAPSHOT_RATE = 'rts-snapshot-rate';
 const STORAGE_KEYFRAME_RATIO = 'rts-keyframe-ratio';
 const STORAGE_TICK_RATE = 'rts-tick-rate';
-const STORAGE_GRID_INFO = 'rts-grid-info';
 const STORAGE_SIM_QUALITY = 'rts-sim-quality';
 
 // Includes legacy auto-tps / auto-cpu / auto-units for backward
@@ -136,13 +134,3 @@ export function saveTickRate(rate: TickRate): void {
   persist(STORAGE_TICK_RATE, String(rate));
 }
 
-export function loadStoredGridInfo(): boolean {
-  const stored = readPersisted(STORAGE_GRID_INFO);
-  if (stored === 'false') return false;
-  if (stored === 'true') return true;
-  return SERVER_CONFIG.gridInfo.default;
-}
-
-export function saveGridInfo(enabled: boolean): void {
-  persist(STORAGE_GRID_INFO, String(enabled));
-}

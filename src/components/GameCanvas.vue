@@ -39,7 +39,6 @@ import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
   BATTLE_CONFIG,
   saveDemoUnits,
-  saveMaxTotalUnits,
   saveDemoCap,
   loadStoredRealCap,
   saveRealCap,
@@ -68,7 +67,6 @@ import {
   saveKeyframeRatio,
   loadStoredTickRate,
   saveTickRate,
-  saveGridInfo,
   loadStoredSimQuality,
   saveSimQuality,
   loadStoredSimSignalStates,
@@ -644,8 +642,6 @@ function changeMaxTotalUnits(value: number): void {
     tick: 0,
     maxTotalUnits: value,
   });
-  saveMaxTotalUnits(value);
-  // Save to mode-specific storage
   if (gameStarted.value) {
     saveRealCap(value);
   } else {
@@ -1402,7 +1398,6 @@ function toggleSendGridInfo(): void {
     tick: 0,
     enabled: !current,
   });
-  saveGridInfo(!current);
   if (gameStarted.value) {
     saveRealGrid(!current);
   } else {

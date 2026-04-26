@@ -41,7 +41,6 @@ export const REAL_CAP_DEFAULT = Math.pow(2, 12);   // 4096 ≈ 4e+3
 
 // ── localStorage keys (module-private) ──
 const STORAGE_DEMO_UNITS = 'rts-demo-units';
-const STORAGE_MAX_TOTAL_UNITS = 'rts-max-total-units';
 const STORAGE_DEMO_CAP = 'rts-demo-cap';
 const STORAGE_REAL_CAP = 'rts-real-cap';
 const STORAGE_DEMO_GRID = 'rts-demo-grid';
@@ -87,14 +86,6 @@ export function getDefaultDemoUnits(): string[] {
   return Object.entries(BATTLE_CONFIG.units)
     .filter(([, cfg]) => cfg.default)
     .map(([id]) => id);
-}
-
-export function loadStoredMaxTotalUnits(): number {
-  return loadPosNum(STORAGE_MAX_TOTAL_UNITS) ?? BATTLE_CONFIG.cap.default;
-}
-
-export function saveMaxTotalUnits(value: number): void {
-  persist(STORAGE_MAX_TOTAL_UNITS, String(value));
 }
 
 export function loadStoredDemoCap(): number {
