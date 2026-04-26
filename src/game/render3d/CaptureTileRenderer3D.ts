@@ -56,7 +56,7 @@ const TRIS_PER_TILE = 10;
 export class CaptureTileRenderer3D {
   private mesh: THREE.Mesh;
   private geometry: THREE.BufferGeometry;
-  private material: THREE.MeshLambertMaterial;
+  private material: THREE.MeshBasicMaterial;
 
   private positions: Float32Array = new Float32Array(0);
   private colors: Float32Array = new Float32Array(0);
@@ -82,13 +82,11 @@ export class CaptureTileRenderer3D {
     this.mapHeight = mapHeight;
 
     this.geometry = new THREE.BufferGeometry();
-    // Lambert lights the side walls so the post depth reads as 3D
-    // mass when the camera tilts. vertexColors=true lets per-tile
-    // capture tints flow into the geometry without per-tile
-    // materials. DoubleSide protects against any wrong-winding
-    // edge cases — the perf hit is small (10 tris per tile) and we
-    // only ever look at the world from above-and-outside anyway.
-    this.material = new THREE.MeshLambertMaterial({
+    // Unlit material — flat per-tile color with no shading on the
+    // side walls. The capture overlay's job is to communicate
+    // ownership at a glance; light-response shading muddies that
+    // signal and reads as an unwanted shadow effect.
+    this.material = new THREE.MeshBasicMaterial({
       vertexColors: true,
       side: THREE.DoubleSide,
     });
