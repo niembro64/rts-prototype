@@ -57,6 +57,14 @@ const _INST_UP = new THREE.Vector3(0, 1, 0);
 const _threeUp = new THREE.Vector3(0, 1, 0);
 const _tiltSurfaceN = new THREE.Vector3();
 const _tiltQuat = new THREE.Quaternion();
+// Inverse of the tilt quaternion — used to project a world barrel
+// direction into the chassis-local (tiltGroup) frame so the turret's
+// articulated yaw + pitch can compensate for the chassis tilt and
+// the rendered barrel still points at the sim's world target.
+const _invTiltQuat = new THREE.Quaternion();
+// Scratch direction vector reused by every turret's compensation
+// math each frame.
+const _aimDir = new THREE.Vector3();
 
 // Mirror panels (reflective mirror-unit armor plates): standing rectangular
 // slabs positioned in the unit's TURRET frame (not chassis frame), since the
@@ -859,7 +867,12 @@ export class Render3DEntities {
         for (let ti = 0; ti < turrets.length; ti++) {
           const t = turrets[ti];
           const isMirrorHost = unitHasMirrors && ti === 0;
-          const tm = buildTurretMesh3D(group, t, radius, isMirrorHost, this.lod.gfx, {
+          // Turrets parent to `tiltGroup` so the base stays attached
+          // to the chassis on slopes — the unit reads as one rigid
+          // body. Articulated yaw + pitch (per-frame, below) then
+          // compensate for the tilt so the world barrel direction
+          // still matches the sim's weapon.rotation / weapon.pitch.
+          const tm = buildTurretMesh3D(tiltGroup, t, radius, isMirrorHost, this.lod.gfx, {
             headGeom: this.turretHeadGeom,
             barrelGeom: this.barrelGeom,
             barrelMat: this.barrelMat,
@@ -892,8 +905,12 @@ export class Render3DEntities {
           // turret is index 0; its bodyRadius (when set) wins.
           const hostHeadRadius = getTurretHeadRadius(radius, turrets[0]?.config);
           const panelTopY = bodyEntry.topY * radius + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
+          // Mirror panels parent to tiltGroup like turrets — they're
+          // physically attached to the chassis. The per-frame update
+          // path inverse-tilts the panel orientation so the rendered
+          // surface still aligns with the sim's beam-tracer plane.
           m.mirrors = buildMirrorMesh3D(
-            group, mirrorPanels, panelTopY,
+            tiltGroup, mirrorPanels, panelTopY,
             this.mirrorGeom, this.getMirrorShinyMat(pid),
           );
           for (const panel of m.mirrors.panels) {
@@ -920,19 +937,21 @@ export class Render3DEntities {
       const unitRadius = e.unit?.unitRadiusCollider.push ?? 0;
       m.group.position.set(e.transform.x, e.transform.z - unitRadius, e.transform.y);
 
-      // unitGroup carries POSITION + YAW only — no tilt. Turrets and
-      // mirror attachments are children of unitGroup (siblings of
-      // tiltGroup) so they inherit position and yaw but never the tilt;
-      // heads stay upright in world space exactly the way the player
-      // expects on a slope.
+      // unitGroup carries POSITION + YAW only — no tilt. tiltGroup
+      // (the chassis hull) sits inside it and applies the surface
+      // normal as one rigid rotation so the chassis, locomotion,
+      // turrets, and mirror panels all read as one rigid body
+      // attached to the chassis.
       const yaw = -e.transform.rotation;
       m.group.rotation.set(0, yaw, 0);
 
       // Surface tilt — one quaternion per frame, written to the chassis
-      // tilt subgroup so chassis body + locomotion both lean with the
-      // slope as one rigid hull. Outside the ripple disc the gradient
-      // is exactly zero and we fast-path to identity (no quaternion
-      // math, no allocations).
+      // tilt subgroup so chassis body + locomotion + turrets lean
+      // with the slope as one rigid hull. Outside the ripple disc the
+      // gradient is exactly zero and we fast-path to identity. We
+      // ALSO cache the inverse onto a per-unit field so the per-turret
+      // compensation below can run without re-inverting.
+      let chassisTilted = false;
       if (m.tiltGroup) {
         const n = getSurfaceNormal(
           e.transform.x, e.transform.y,
@@ -942,13 +961,14 @@ export class Render3DEntities {
         if (n.nx === 0 && n.ny === 0) {
           m.tiltGroup.quaternion.identity();
         } else {
-          // sim normal (nx, ny, nz=up) → three.js (nx, nz, ny). The
-          // unit group already carries yaw, so the tilt subgroup just
-          // needs the up-to-normal rotation; no need to compose with
-          // yaw here.
+          // sim normal (nx, ny, nz=up) → three.js (nx, nz, ny).
           _tiltSurfaceN.set(n.nx, n.nz, n.ny);
           _tiltQuat.setFromUnitVectors(_threeUp, _tiltSurfaceN);
           m.tiltGroup.quaternion.copy(_tiltQuat);
+          // Invert in place for the per-turret aim compensation; this
+          // mutates _tiltQuat so we copy() into _invTiltQuat first.
+          _invTiltQuat.copy(_tiltQuat).invert();
+          chassisTilted = true;
         }
       }
 
@@ -1014,19 +1034,46 @@ export class Render3DEntities {
           ? bodyTopY + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
           : bodyTopY;
         tm.root.position.set(t.offset.x, turretMountY, t.offset.y);
-        // Turret's world firing direction = t.rotation. Parent group is already
-        // rotated by -chassis.rotation, so we compensate: child local Y rot =
-        // -(t.rotation - chassis.rotation), which makes local +X point in the
-        // correct world firing direction after both rotations compose.
-        tm.root.rotation.y = -(t.rotation - e.transform.rotation);
-        // Pitch (vertical aim) tilts the pitch group around local Z so
-        // positive pitch rotates +X (the barrel's firing direction)
-        // toward +Y (up). Spin then rotates the nested spin group
-        // around its OWN local +X — which, because spinGroup lives
-        // under pitchGroup, is the pitched firing axis. So gatling
-        // barrels roll around the real barrel direction at any
-        // elevation, not around world-X.
-        if (tm.pitchGroup) tm.pitchGroup.rotation.z = t.pitch;
+
+        // Tilt-compensated yaw + pitch. The turret is a child of
+        // tiltGroup, so without compensation its barrel direction
+        // would be tilt * yaw * pitch * +X — different from the sim's
+        // intended world barrel direction (= the projectile launch
+        // direction). We solve for the LOCAL angles that produce the
+        // sim's world direction after the tiltGroup transform:
+        //
+        //   1. Build the unit-local target direction (after undoing
+        //      the unitGroup yaw): an azimuth = e.rotation - t.rotation
+        //      vector at pitch t.pitch.
+        //   2. Inverse-rotate by the chassis tilt to get the chassis-
+        //      local (tiltGroup-local) target direction.
+        //   3. Decompose into yaw (around local +Y) and pitch (around
+        //      local Z, applied AFTER the yaw) — exactly the structure
+        //      tm.root + tm.pitchGroup encode.
+        //
+        // On flat ground (chassisTilted == false) the inverse-tilt is
+        // identity and step 3 collapses to the original Euler formula
+        // -(t.rotation - e.transform.rotation), so the fast path
+        // matches existing visuals byte-for-byte.
+        const rotDiff = e.transform.rotation - t.rotation;
+        const cosRotDiff = Math.cos(rotDiff);
+        const sinRotDiff = Math.sin(rotDiff);
+        const cosPitch = Math.cos(t.pitch);
+        const sinPitch = Math.sin(t.pitch);
+        // Unit-local target direction in three.js coords: x=forward,
+        // y=up, z=right-ish (sim.y → three.z with the existing handedness).
+        _aimDir.set(cosRotDiff * cosPitch, sinPitch, -sinRotDiff * cosPitch);
+        if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
+        // Decompose into Ry(localYaw) * Rz(localPitch) * +X.
+        const localYaw = Math.atan2(-_aimDir.z, _aimDir.x);
+        const ny = _aimDir.y;
+        const localPitch = Math.asin(ny < -1 ? -1 : ny > 1 ? 1 : ny);
+        tm.root.rotation.y = localYaw;
+        if (tm.pitchGroup) tm.pitchGroup.rotation.z = localPitch;
+        // Spin: gatling roll around the LOCAL +X of the pitch group,
+        // which is now the actual barrel axis even after tilt
+        // compensation (pitchGroup is a child of tm.root, so it sees
+        // both the tilt-aware yaw above and our pitch).
         if (tm.spinGroup) {
           tm.spinGroup.rotation.x = this.lod.gfx.barrelSpin
             ? spinState?.angle ?? 0
@@ -1050,7 +1097,21 @@ export class Render3DEntities {
       if (m.mirrors) {
         const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
         const mirrorPitch = turrets[0]?.pitch ?? 0;
-        m.mirrors.root.rotation.y = -(mirrorRot - e.transform.rotation);
+        // Mirror root is a child of tiltGroup (rigid hull) — same
+        // tilt-compensated yaw the turret-aim path uses, so the
+        // visible panel yaw still matches the sim's beam-tracer plane
+        // when the chassis is tilted. The panel-pitch (rotation.x on
+        // each panel) is in the panel's LOCAL frame, applied AFTER
+        // the parent yaw — when the parent has been built to undo
+        // tilt, that local pitch is also already in the right frame
+        // and reads as a world horizontal-axis tilt of the panel
+        // surface.
+        const mRotDiff = e.transform.rotation - mirrorRot;
+        const mCos = Math.cos(mRotDiff);
+        const mSin = Math.sin(mRotDiff);
+        _aimDir.set(mCos, 0, -mSin);
+        if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
+        m.mirrors.root.rotation.y = Math.atan2(-_aimDir.z, _aimDir.x);
         for (const panel of m.mirrors.panels) {
           panel.rotation.x = mirrorPitch;
         }
