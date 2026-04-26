@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { createGame, destroyGame, type GameInstance } from '../game/createGame';
 import { ClientViewState } from '../game/network/ClientViewState';
 import { type PlayerId, type WaypointType } from '../game/sim/types';
@@ -474,6 +474,25 @@ const displayTickRate = computed(
 const serverSimQuality = ref<ServerSimQuality>(loadStoredSimQuality());
 const effectiveSimQuality = computed(
   () => serverMetaFromSnapshot.value?.simLod?.effective ?? '',
+);
+// Reconcile from server snapshot. The host's localStorage is the
+// source of truth at boot (the `setSimQuality` command goes from
+// host client to GameServer). For REMOTE clients connecting to
+// someone else's server, their localStorage is irrelevant — the
+// host already chose. Sync from `simLod.picked` whenever it differs
+// from the local ref so the bar lights the correct "active" button.
+const VALID_SIM_QUALITIES = new Set<string>([
+  'auto', 'auto-tps', 'auto-cpu', 'auto-units',
+  'min', 'low', 'medium', 'high', 'max',
+]);
+watch(
+  () => serverMetaFromSnapshot.value?.simLod?.picked,
+  (picked) => {
+    if (!picked) return;
+    if (!VALID_SIM_QUALITIES.has(picked)) return;
+    if (picked === serverSimQuality.value) return;
+    serverSimQuality.value = picked as ServerSimQuality;
+  },
 );
 const displaySnapshotRate = computed(
   () =>
