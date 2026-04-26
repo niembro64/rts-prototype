@@ -63,10 +63,14 @@ function findNearestEnemyForRocket(
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
-// Reusable arrays for fireTurrets (avoids per-frame allocation)
+// Reusable arrays for fireTurrets + updateProjectilesPostMove (avoids
+// per-frame allocation). Caller consumes each array before the next
+// tick, so reusing between calls is safe.
 const _fireNewProjectiles: Entity[] = [];
 const _fireSimEvents: import('./types').SimEvent[] = [];
 const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
+const _orphanedIds: EntityId[] = [];
+const _despawnEvents: ProjectileDespawnEvent[] = [];
 
 // Reset module-level reusable buffers between game sessions
 // (prevents stale entity references from surviving across sessions)
@@ -76,6 +80,8 @@ export function resetProjectileBuffers(): void {
   _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
   _homingVelocityUpdates.length = 0;
+  _orphanedIds.length = 0;
+  _despawnEvents.length = 0;
 }
 
 // Check if a specific weapon has an active beam (by weapon index)
@@ -521,9 +527,11 @@ export function updateProjectiles(
   damageSystem: DamageSystem
 ): { orphanedIds: EntityId[]; despawnEvents: ProjectileDespawnEvent[]; velocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] } {
   const dtSec = dtMs / 1000;
-  const projectilesToRemove: EntityId[] = [];
-  const despawnEvents: ProjectileDespawnEvent[] = [];
+  _orphanedIds.length = 0;
+  _despawnEvents.length = 0;
   _homingVelocityUpdates.length = 0;
+  const projectilesToRemove = _orphanedIds;
+  const despawnEvents = _despawnEvents;
 
   // Position integration + homing for traveling projectiles. The
   // WASM-batched path was 2D-only and is disabled on this branch —
