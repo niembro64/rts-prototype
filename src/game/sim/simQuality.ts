@@ -151,6 +151,8 @@ function buildDetail(tier: ConcreteServerSimQuality): ServerSimDetailConfig {
     mirrorBisectorIterations: SERVER_SIM_DETAIL.MIRROR_BISECTOR_ITERATIONS[tier],
     targetingDensityThreshold: SERVER_SIM_DETAIL.TARGETING_DENSITY_THRESHOLD[tier],
     targetingDensityStride: SERVER_SIM_DETAIL.TARGETING_DENSITY_STRIDE[tier],
+    forceFieldStride: SERVER_SIM_DETAIL.FORCE_FIELD_STRIDE[tier],
+    captureStride: SERVER_SIM_DETAIL.CAPTURE_STRIDE[tier],
   };
 }
 

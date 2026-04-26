@@ -64,6 +64,26 @@ export const SERVER_SIM_DETAIL: ServerSimDetailTable = {
     high: 3,
     max: 2,
   },
+  // Force-field knockback application — every Nth tick at low LOD.
+  // The on-apply call gets dt × N so total impulse over time matches
+  // the every-tick path. With many force-field turrets active this
+  // is the single biggest per-tick saving past the targeting trims.
+  FORCE_FIELD_STRIDE: {
+    min: 4,
+    low: 2,
+    medium: 1,
+    high: 1,
+    max: 1,
+  },
+  // Capture system — same skip+scale-dt trick. Walks every occupied
+  // cell every tick, so on a packed map this is non-trivial.
+  CAPTURE_STRIDE: {
+    min: 4,
+    low: 2,
+    medium: 1,
+    high: 1,
+    max: 1,
+  },
 };
 
 // Auto-mode thresholds. Same direction as client TPS/FPS/UNITS:

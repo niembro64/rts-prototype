@@ -8,6 +8,7 @@ import type { ProjectileVelocityUpdateEvent } from './types';
 import { getTransformCosSin } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
+import { getSimDetailConfig } from '../simQuality';
 
 // Module-level dedup map: keyed by projectile entity ID, keeps only the last velocity state
 // when a projectile is affected by multiple force fields in the same tick.
@@ -84,6 +85,16 @@ export function applyForceFieldDamage(
   _damageSystem: DamageSystem,
   forceAccumulator?: ForceAccumulator,
 ): ProjectileVelocityUpdateEvent[] {
+  // HOST SERVER LOD throttle: at low tiers run every Nth tick. The
+  // skipped ticks contribute zero force; on the apply tick we scale
+  // dt by the stride so the time-integral of force matches the
+  // every-tick path. Push pulses get coarser at low LOD but the
+  // average velocity change over time stays the same.
+  const stride = Math.max(1, getSimDetailConfig().forceFieldStride | 0);
+  if (stride > 1) {
+    if (world.getTick() % stride !== 0) return [];
+    dtMs = dtMs * stride;
+  }
   const dtSec = dtMs / 1000;
   if (dtSec <= 0 || _activeForceFieldCount === 0) return [];
 
