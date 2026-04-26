@@ -56,7 +56,7 @@ const TRIS_PER_TILE = 10;
 export class CaptureTileRenderer3D {
   private mesh: THREE.Mesh;
   private geometry: THREE.BufferGeometry;
-  private material: THREE.MeshBasicMaterial;
+  private material: THREE.MeshLambertMaterial;
 
   private positions: Float32Array = new Float32Array(0);
   private colors: Float32Array = new Float32Array(0);
@@ -82,11 +82,13 @@ export class CaptureTileRenderer3D {
     this.mapHeight = mapHeight;
 
     this.geometry = new THREE.BufferGeometry();
-    // Unlit material — flat per-tile color with no shading on the
-    // side walls. The capture overlay's job is to communicate
-    // ownership at a glance; light-response shading muddies that
-    // signal and reads as an unwanted shadow effect.
-    this.material = new THREE.MeshBasicMaterial({
+    // Lambert lighting so slopes inside the ripple disc shade with
+    // their normal — faces tilted toward the sun read brighter,
+    // faces tilted away read darker, exactly the angle-of-incidence
+    // signal that sells the topography. Flat tiles outside the disc
+    // (normal +Y everywhere) shade uniformly so they keep their
+    // clean per-tile capture color.
+    this.material = new THREE.MeshLambertMaterial({
       vertexColors: true,
       side: THREE.DoubleSide,
     });
