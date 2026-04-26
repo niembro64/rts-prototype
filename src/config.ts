@@ -44,16 +44,86 @@ export const SPATIAL_GRID_CELL_SIZE = 150;
 // SNAPSHOT / NETWORKING
 // =============================================================================
 
+// =============================================================================
+// SNAPSHOT THRESHOLDS — what makes a delta "worth sending"
+// =============================================================================
+//
+// On every delta snap the serializer (stateSerializer.ts:getChangedFields)
+// compares each entity's current state to the version the client last
+// saw and sets a bit in `changedFields` for any field whose change
+// exceeds its threshold. Entities with `changedFields === 0` are
+// SKIPPED ENTIRELY for that snap — those are the bytes deltas save.
+//
+// The right values are a balance:
+//   - too LOW  → every micro-motion goes on the wire; deltas approach
+//                the bandwidth of full keyframes.
+//   - too HIGH → motion appears to teleport / turret aim looks
+//                choppy / stale state visible through interpolation.
+//
+// The values below were tuned for a 30-SPS / 60-TPS workload at the
+// existing client interpolation buffer. If you change SPS or the
+// client-side interpolation, revisit these.
 export const SNAPSHOT_CONFIG: SnapshotConfig = {
-  /** Enable delta snapshots (only send changed entities). When false, every snapshot is a full keyframe. */
+  /** Master switch — false ⇒ every snap is a full keyframe (debug
+   *  only; bandwidth roughly 5–10× higher in active play). */
   deltaEnabled: true,
-  /** Position change threshold (px). Entity x/y must change by more than this to be sent. */
-  positionThreshold: 0.1,
-  /** Linear velocity change threshold (px/tick). Entity velocityX/Y must change by more than this. */
-  velocityThreshold: 0.1,
-  /** Rotation position threshold (radians). Body rotation and turret rotations must change by more than this. */
-  rotationPositionThreshold: Math.PI / 64,
-  /** Rotation velocity threshold (rad/tick). Turret angular velocities must change by more than this. */
+
+  /** Entity x/y must change by more than this many world units to
+   *  re-send the position. (Vertical z piggybacks on the same flag.)
+   *
+   *  Realistic values:
+   *    0.1 — extreme: virtually every tick triggers; minimal savings.
+   *    0.5 — DEFAULT. A unit moving 100 wu/s crosses ~0.5 wu every
+   *          5 ms, so any moving unit sends every snap; idle units
+   *          stay quiet (their drift from physics jitter sits below
+   *          the threshold).
+   *    1.0 — twice as cheap; barely visible on slow movers, choppy
+   *          on snipers / fast units.
+   *    2.0+ — visible "teleporting" between snapshots; not
+   *          recommended unless bandwidth is the absolute bottleneck. */
+  positionThreshold: 0.5,
+
+  /** velocityX/Y must change by more than this (world units / tick)
+   *  to ship a velocity update. Used by the snapshot serializer AND
+   *  the projectile / force-field paths that emit dedicated velocity
+   *  events.
+   *
+   *  Realistic values:
+   *    0.1 — every accel/decel; fine for low entity counts.
+   *    0.5 — DEFAULT. Catches knockback hits, thrust changes, force-
+   *          field pushes; ignores integration jitter.
+   *    1.0 — only meaningful velocity changes (collisions, big AoE).
+   *          Client extrapolation looks fine but accel curves coarsen.
+   *    2.0+ — only the largest events; visible "jerky" velocity. */
+  velocityThreshold: 0.5,
+
+  /** Body rotation + turret rotations must change by more than this
+   *  many radians to re-send. The default is π/32 (about 5.6°).
+   *
+   *  Realistic values:
+   *    π/64 ≈ 2.8°  — very tight; turrets repaint smoothly even
+   *                   during slow tracking, but every small rotation
+   *                   ships on the wire.
+   *    π/32 ≈ 5.6°  — DEFAULT. Smooth turret aim with client-side
+   *                   damped-spring interpolation; idle bodies stay
+   *                   quiet.
+   *    π/16 ≈ 11.25° — visibly stuttery turret tracking on slow
+   *                    targets.
+   *    π/8  ≈ 22.5°  — too coarse for combat. */
+  rotationPositionThreshold: Math.PI / 32,
+
+  /** Turret angular-velocity must change by more than this many
+   *  rad/tick to re-send the angular velocity. At 60 TPS, 0.1
+   *  rad/tick ≈ 6 rad/s ≈ 344°/s — i.e. only meaningful changes
+   *  in rotation rate.
+   *
+   *  Realistic values:
+   *    0.01 — twitchy: every micro-correction sent.
+   *    0.1  — DEFAULT. Catches turret target-switches and big
+   *           rotation accelerations; ignores spring-damper jitter
+   *           around steady aim.
+   *    0.5  — only major events (target swap, unit death, snap-
+   *           home behaviour). Client extrapolation coarsens. */
   rotationVelocityThreshold: 0.1,
 };
 
