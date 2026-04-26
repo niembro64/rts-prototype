@@ -43,7 +43,8 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
-import { MANA_PER_TILE_PER_SECOND } from '../../config';
+import { MANA_PER_TILE_PER_SECOND, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { getSurfaceNormal } from '../sim/Terrain';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -430,29 +431,54 @@ export class GameServer {
       entity.transform.y = body.y;
       entity.transform.z = body.z;
 
-      // Horizontal thrust target from the action system. velocityZ is
-      // purely a physics readback — thrust is always horizontal,
-      // vertical motion is gravity-driven (or knockback-driven via the
-      // force accumulator, when that channel lands).
-      // thrustDirX/Y is the dedicated thrust channel; velocityX/Y is
-      // the authoritative physics velocity (set by syncFromPhysics)
-      // and must NOT be overwritten by the action system.
+      // Action-system thrust target — a HORIZONTAL direction at the
+      // unit's chosen `moveSpeed`. Sloped terrain gets the direction
+      // projected onto the local surface tangent below so units climb
+      // / descend along the actual ground instead of trying to push
+      // straight through it. velocityX/Y/Z is authoritative physics,
+      // not touched here.
       const dirX = entity.unit.thrustDirX ?? 0;
       const dirY = entity.unit.thrustDirY ?? 0;
       const dirMag = magnitude(dirX, dirY);
 
-      // Update rotation to face movement direction
+      // Unit faces its movement direction (yaw only — chassis tilt
+      // is a render concern; sim transform.rotation stays a 2D yaw).
       if (dirMag > 0.01) {
         entity.transform.rotation = Math.atan2(dirY, dirX);
       }
 
       let thrustForceX = 0;
       let thrustForceY = 0;
+      let thrustForceZ = 0;
       if (dirMag > 0) {
         const MATTER_FORCE_SCALE = 150000;
         const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
-        thrustForceX = (dirX / dirMag) * thrustMagnitude;
-        thrustForceY = (dirY / dirMag) * thrustMagnitude;
+
+        // Project the desired horizontal direction onto the surface
+        // tangent plane:  tangent = horizontal − (horizontal · n) · n.
+        // Re-normalized to preserve thrust magnitude. Result: on flat
+        // ground (n = (0,0,1)) this collapses to the original 2D
+        // thrust; on a slope the force tilts so it follows the
+        // surface — pushing "north" on a north-rising hill produces
+        // a north-AND-up vector tangent to the slope, exactly the way
+        // a vehicle's drive force points along the road, not through
+        // the road. Cost: 1 surface-normal lookup + a few mults per
+        // moving unit per tick.
+        const hx = dirX / dirMag;
+        const hy = dirY / dirMag;
+        const n = getSurfaceNormal(
+          body.x, body.y,
+          this.world.mapWidth, this.world.mapHeight,
+          SPATIAL_GRID_CELL_SIZE,
+        );
+        const dot = hx * n.nx + hy * n.ny;  // (hx, hy, 0) · (nx, ny, nz)
+        const tx = hx - dot * n.nx;
+        const ty = hy - dot * n.ny;
+        const tz = -dot * n.nz;
+        const tMag = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1;
+        thrustForceX = (tx / tMag) * thrustMagnitude;
+        thrustForceY = (ty / tMag) * thrustMagnitude;
+        thrustForceZ = (tz / tMag) * thrustMagnitude;
       }
 
       // Get external forces from the accumulator
@@ -462,18 +488,23 @@ export class GameServer {
 
       let totalForceX = thrustForceX + externalFx;
       let totalForceY = thrustForceY + externalFy;
+      let totalForceZ = thrustForceZ;
 
-      if (!Number.isFinite(totalForceX) || !Number.isFinite(totalForceY)) {
+      if (
+        !Number.isFinite(totalForceX) ||
+        !Number.isFinite(totalForceY) ||
+        !Number.isFinite(totalForceZ)
+      ) {
         continue;
       }
 
       // Matter.js Verlet integration uses (F/m) * deltaTimeMs², our Euler engine uses (F/m) * dtSec.
       // Conversion: (ms)² / (sec)² = 1000² = 1e6. With friction-first ordering this is exact.
-      // Horizontal thrust only — vertical motion is gravity-driven. If
-      // an external force accumulator ever adds a vertical channel
-      // (explosion launches the unit upward, say), it flows through a
-      // dedicated upgrade in M5.
-      this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6, 0);
+      // The Z thrust component lifts the unit along the slope when
+      // climbing; gravity continues to pull through the integrator
+      // and the ground-contact resolver clamps to the surface, so the
+      // unit settles onto the rendered tile triangle each tick.
+      this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6, totalForceZ * 1e6);
     }
   }
 
