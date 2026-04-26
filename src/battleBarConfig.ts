@@ -29,8 +29,8 @@ export const BATTLE_CONFIG = {
     ] as readonly number[],
   },
   projVelInherit: { default: false },
-  firingForce: { default: true },
-  hitForce: { default: true },
+  firingForce: { default: false },
+  hitForce: { default: false },
   ffAccelUnits: { default: false },
   ffAccelShots: { default: true },
 } as const satisfies BattleBarConfig;

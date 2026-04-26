@@ -58,10 +58,10 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
     max: 0.8,
   },
   fps: {
-    low: 0.1,
-    medium: 0.2,
-    high: 0.3,
-    max: 0.4,
+    low: 0.2,
+    medium: 0.3,
+    high: 0.5,
+    max: 0.8,
   },
   // UNIT-FULLNESS THRESHOLDS — fractions of the user-configured unit
   // cap. The ratio fed in is `1 − unitCount / unitCap`, so an empty
