@@ -522,8 +522,13 @@ export const UNIT_HP_MULTIPLIER = 2.0;
 export const MAP_SETTINGS: Record<string, MapSize> = {
   // Real (foreground) match. Demo / lobby battle uses MAP_SETTINGS.demo
   // (2× linear) so the AI vs. AI showcase has more breathing room.
-  game: { width: 3_000, height: 3_000 },
-  demo: { width: 6_000, height: 6_000 },
+  //
+  // Sized to a multiple of SPATIAL_GRID_CELL_SIZE * (2k+1) so each axis
+  // ends up with an ODD number of tiles, giving the map a single
+  // central tile (the ripple-disc visualization is centered there).
+  // 3150 / 150 = 21 tiles per axis (game); 6150 / 150 = 41 (demo).
+  game: { width: 3_150, height: 3_150 },
+  demo: { width: 6_150, height: 6_150 },
 };
 
 /** Pick the map size for the current battle: demo (background) or game (real). */
