@@ -4,10 +4,12 @@ import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { isLineShot } from '../types';
 import { getTargetRadius, getTurretMountHeight } from './combatUtils';
-import { getWeaponWorldPosition, getTransformCosSin, distance3 } from '../../math';
+import { getTransformCosSin, distance3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
+import { getSurfaceNormal, applySurfaceTilt } from '../Terrain';
+import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
 
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
@@ -83,7 +85,19 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     // Using a unit-wide mount Z breaks mirror-host units (Loris) where
     // turret 0 sits at the chassis top and turret 1+ sits lifted on top
     // of the mirror panels — range checks must match the real firing Z.
+    //
+    // Chassis tilt: every turret is rigidly attached to the tilted
+    // hull, so the world mount = unitBase + Rz(yaw) · tilt · mount_local.
+    // We sample the surface normal at the unit's footprint ONCE here
+    // and reuse it for every turret on this unit; flat ground takes
+    // the early-return inside applySurfaceTilt so the per-turret
+    // cost is then identical to the old yaw-only path.
     const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+    const surfaceN = getSurfaceNormal(
+      unit.transform.x, unit.transform.y,
+      world.mapWidth, world.mapHeight,
+      SPATIAL_GRID_CELL_SIZE,
+    );
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
       if (weapon.config.isManualFire) {
@@ -91,11 +105,19 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         continue;
       }
 
-      const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offset.x, weapon.offset.y);
+      const mountHeight = getTurretMountHeight(unit, i);
+      // mount_local in chassis-frame sim coords (z is up):
+      //   x = forward offset, y = lateral offset, z = mount height.
+      // Tilt rotates that vector around an axis in the XY plane so it
+      // ends up resting on the local surface tangent.
+      const mountTilted = applySurfaceTilt(weapon.offset.x, weapon.offset.y, mountHeight, surfaceN);
+      // Then yaw around sim Z, then translate to the unit base.
+      const yawedX = cos * mountTilted.x - sin * mountTilted.y;
+      const yawedY = sin * mountTilted.x + cos * mountTilted.y;
       if (!weapon.worldPos) weapon.worldPos = { x: 0, y: 0, z: 0 };
-      weapon.worldPos.x = wp.x;
-      weapon.worldPos.y = wp.y;
-      weapon.worldPos.z = unitGroundZ + getTurretMountHeight(unit, i);
+      weapon.worldPos.x = unit.transform.x + yawedX;
+      weapon.worldPos.y = unit.transform.y + yawedY;
+      weapon.worldPos.z = unitGroundZ + mountTilted.z;
     }
 
     // Check for attack command priority target

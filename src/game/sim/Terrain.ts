@@ -79,20 +79,22 @@ export function getTerrainHeight(
 }
 
 /** Surface-tangent normal at world point (x, z) in SIM coords (z is
- *  up). The bilinear surface inside a tile has linear gradients in
- *  both axes:
+ *  up). The renderer triangulates each tile into TWO flat triangles
+ *  along the diagonal from the (x0, z0) corner to the (x1, z1)
+ *  corner, so the rendered surface inside a tile is piecewise flat
+ *  with TWO different face normals. Returning the bilinear gradient
+ *  here would put the unit tilt out of sync with the visible
+ *  triangle it stands on; instead, we return the exact face normal
+ *  of the triangle the (x, z) sample lies in.
  *
- *    ∂h/∂x = (1−fz)(h10−h00) + fz(h11−h01)
- *    ∂h/∂z = (1−fx)(h01−h00) + fx(h11−h10)
+ *  Triangle A (corners h00, h10, h11) covers fz ≤ fx;
+ *  Triangle B (corners h00, h11, h01) covers fz > fx.
+ *  Each triangle's surface is z = h00 + ax·fx + az·fz, so its upward
+ *  normal in sim coords is (-ax/cs, -az/cs, 1) normalized — discrete
+ *  along the diagonal but identical to what the renderer draws.
  *
- *  The upward normal of the surface z = h(x, z) is then
- *  (-∂h/∂x, -∂h/∂z, 1) normalized — sim Z is up, so the third
- *  component is positive. Outside the ripple disc gradients are zero
- *  and the normal collapses to (0, 0, 1).
- *
- *  Use this where a single surface-orientation matters per query —
- *  unit locomotion tilt, projectile bounce-off-ground reflection,
- *  debris settle pose. */
+ *  Outside the ripple disc all four corners are 0 and the normal
+ *  collapses to (0, 0, 1). */
 export function getSurfaceNormal(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
@@ -101,39 +103,81 @@ export function getSurfaceNormal(
   const cx = Math.floor(x / cellSize);
   const cz = Math.floor(z / cellSize);
   const x0 = cx * cellSize;
-  const x1 = x0 + cellSize;
   const z0 = cz * cellSize;
-  const z1 = z0 + cellSize;
   const h00 = getTerrainHeight(x0, z0, mapWidth, mapHeight);
-  const h10 = getTerrainHeight(x1, z0, mapWidth, mapHeight);
-  const h11 = getTerrainHeight(x1, z1, mapWidth, mapHeight);
-  const h01 = getTerrainHeight(x0, z1, mapWidth, mapHeight);
+  const h10 = getTerrainHeight(x0 + cellSize, z0, mapWidth, mapHeight);
+  const h11 = getTerrainHeight(x0 + cellSize, z0 + cellSize, mapWidth, mapHeight);
+  const h01 = getTerrainHeight(x0, z0 + cellSize, mapWidth, mapHeight);
   const fx = (x - x0) / cellSize;
   const fz = (z - z0) / cellSize;
-  // Bilinear partials (as derived from the bilinear surface).
-  const dHdx = ((1 - fz) * (h10 - h00) + fz * (h11 - h01)) / cellSize;
-  const dHdz = ((1 - fx) * (h01 - h00) + fx * (h11 - h10)) / cellSize;
-  // Sim normal: surface up is (-dHdx, -dHdz, 1).
-  const nx = -dHdx;
-  const ny = -dHdz;
+  let ax: number;
+  let az: number;
+  if (fz <= fx) {
+    // Triangle A: h(fx, fz) = h00 + (h10−h00)·fx + (h11−h10)·fz.
+    ax = h10 - h00;
+    az = h11 - h10;
+  } else {
+    // Triangle B: h(fx, fz) = h00 + (h11−h01)·fx + (h01−h00)·fz.
+    ax = h11 - h01;
+    az = h01 - h00;
+  }
+  // Sim normal: surface up is (-∂h/∂x, -∂h/∂z, 1) where ∂h/∂x = ax/cs.
+  const nx = -ax / cellSize;
+  const ny = -az / cellSize;
   const nz = 1;
   const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
   return { nx: nx / len, ny: ny / len, nz: nz / len };
 }
 
-/** Canonical ground-surface height at world point (x, z). Bilinear
- *  interpolation of the four corner heights of the tile that
- *  contains (x, z). This matches the renderer's drawn surface
- *  EXACTLY along tile edges and very closely within tiles — the
- *  renderer triangulates each tile into two triangles, while this
- *  uses bilinear, so the two agree pixel-perfect on all four edges
- *  and differ only by tiny saddle-vs-fold variation in the interior.
+/** Apply the surface tilt rotation (the one that takes sim's +Z up
+ *  vector to the surface normal `n`) to a 3D vector `v`. Used by the
+ *  sim to compute the world position of a turret mount that sits on
+ *  the tilted chassis surface, so projectile spawn coords agree
+ *  pixel-perfect with the renderer's tilted mesh hierarchy.
  *
- *  Use this for every gameplay/physics ground query — unit footing,
- *  building base, projectile-vs-ground hit, client dead-reckoning
- *  ground clamp. With every consumer reading the same function on
- *  both sides, the simulation surface and the rendered surface are
- *  the same surface, full stop. */
+ *  Rodrigues' rotation around axis k = (0,0,1) × n / |…| by angle θ
+ *  with cos θ = n.z, sin θ = √(n.x² + n.y²). Flat-ground fast path
+ *  early-returns on |sin θ|² < epsilon so units outside the ripple
+ *  disc pay nothing. */
+export function applySurfaceTilt(
+  vx: number, vy: number, vz: number,
+  n: { nx: number; ny: number; nz: number },
+): { x: number; y: number; z: number } {
+  const sinT2 = n.nx * n.nx + n.ny * n.ny;
+  if (sinT2 < 1e-12) return { x: vx, y: vy, z: vz };
+  const sinT = Math.sqrt(sinT2);
+  const cosT = n.nz;
+  // Unit rotation axis in sim coords: (-ny, nx, 0) normalized.
+  const kx = -n.ny / sinT;
+  const ky = n.nx / sinT;
+  // (k · v) — k_z is 0, so this is kx·vx + ky·vy.
+  const kdotv = kx * vx + ky * vy;
+  // (k × v) with k_z = 0: (ky·vz, -kx·vz, kx·vy − ky·vx).
+  const crossX = ky * vz;
+  const crossY = -kx * vz;
+  const crossZ = kx * vy - ky * vx;
+  const oneMinusCos = 1 - cosT;
+  return {
+    x: vx * cosT + crossX * sinT + kx * kdotv * oneMinusCos,
+    y: vy * cosT + crossY * sinT + ky * kdotv * oneMinusCos,
+    z: vz * cosT + crossZ * sinT,
+  };
+}
+
+/** Canonical ground-surface height at world point (x, z). Returns
+ *  the exact height of the rendered triangle at that point — the
+ *  renderer splits each tile along the diagonal from (x0, z0) to
+ *  (x1, z1) into two flat triangles, and this picks the right one
+ *  based on whether fz ≤ fx (triangle A: corners h00 / h10 / h11)
+ *  or fz > fx (triangle B: corners h00 / h11 / h01). Both formulas
+ *  agree along the diagonal (= h00 + fx·(h11 − h00) when fx = fz),
+ *  along all four edges, and at the four corners — so the surface
+ *  is C0-continuous across tiles and inside a tile.
+ *
+ *  Sim, physics, and client dead-reckoning all read this. With every
+ *  consumer reading the same triangle-exact function on both sides,
+ *  the simulation surface and the rendered surface are identical
+ *  pixel-perfect — units stand exactly on the visible slope. */
 export function getSurfaceHeight(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
@@ -142,17 +186,17 @@ export function getSurfaceHeight(
   const cx = Math.floor(x / cellSize);
   const cz = Math.floor(z / cellSize);
   const x0 = cx * cellSize;
-  const x1 = x0 + cellSize;
   const z0 = cz * cellSize;
-  const z1 = z0 + cellSize;
   const h00 = getTerrainHeight(x0, z0, mapWidth, mapHeight);
-  const h10 = getTerrainHeight(x1, z0, mapWidth, mapHeight);
-  const h11 = getTerrainHeight(x1, z1, mapWidth, mapHeight);
-  const h01 = getTerrainHeight(x0, z1, mapWidth, mapHeight);
+  const h10 = getTerrainHeight(x0 + cellSize, z0, mapWidth, mapHeight);
+  const h11 = getTerrainHeight(x0 + cellSize, z0 + cellSize, mapWidth, mapHeight);
+  const h01 = getTerrainHeight(x0, z0 + cellSize, mapWidth, mapHeight);
   const fx = (x - x0) / cellSize;
   const fz = (z - z0) / cellSize;
-  // Bilinear: lerp along x at z=z0 and z=z1, then lerp those by fz.
-  const hX0 = h00 * (1 - fx) + h10 * fx;
-  const hX1 = h01 * (1 - fx) + h11 * fx;
-  return hX0 * (1 - fz) + hX1 * fz;
+  if (fz <= fx) {
+    // Triangle A: h00, h10, h11.
+    return h00 + (h10 - h00) * fx + (h11 - h10) * fz;
+  }
+  // Triangle B: h00, h11, h01.
+  return h00 + (h11 - h01) * fx + (h01 - h00) * fz;
 }

@@ -188,12 +188,15 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const turretAngle = weapon.rotation;
       const turretPitch = weapon.pitch;
 
-      // Turret mount point in world (XY from cached weaponWP, Z derived
-      // from unit altitude + per-unit muzzle height). Every barrel's
-      // transform chain starts here — getBarrelTip just picks the
-      // barrel-index-specific offset off this shared mount.
+      // Turret mount point in world (full XYZ from cached weaponWP).
+      // Targeting wrote the tilt-rotated mount into worldPos.z each
+      // tick, so the fire path lifts straight from there — projectile
+      // spawn and the rendered turret base agree pixel-perfect on
+      // sloped ground. Fallback (no cache) recomputes the flat-ground
+      // height for parity with the legacy path.
       const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-      const mountZ = unitGroundZ + muzzleAboveGround;
+      const mountZ = weapon.worldPos?.z ?? (unitGroundZ + muzzleAboveGround);
+      void muzzleAboveGround; // kept for fallback above; eslint-pleasing
 
       const pellets = config.spread?.pelletCount ?? 1;
       const spreadAngle = config.spread?.angle ?? 0;
@@ -608,7 +611,9 @@ export function updateProjectiles(
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
         const beamWP = resolveWeaponWorldPos(weapon, source.transform.x, source.transform.y, srcCos, srcSin);
         const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
-        const mountZ = unitGroundZ + getTurretMountHeight(source, weaponIndex);
+        // Same tilt-aware lift as the projectile spawn path above —
+        // beams emerge from the same world mount the turret renders at.
+        const mountZ = weapon.worldPos?.z ?? (unitGroundZ + getTurretMountHeight(source, weaponIndex));
         const tip = getBarrelTip(
           beamWP.x, beamWP.y, mountZ,
           turretAngle, turretPitch,

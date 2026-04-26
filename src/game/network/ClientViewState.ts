@@ -38,11 +38,10 @@ import { findBeamPath } from './BeamPathResolver';
 import {
   lerp,
   lerpAngle,
-  getWeaponWorldPosition,
   applyHomingSteering,
 } from '../math';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY, BEAM_MAX_LENGTH } from '../../config';
-import { getSurfaceHeight } from '../sim/Terrain';
+import { getSurfaceHeight, getSurfaceNormal, applySurfaceTilt } from '../sim/Terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
@@ -736,18 +735,21 @@ export class ClientViewState {
             const turretPitch = weapon.pitch;
             const unitCos = Math.cos(source.transform.rotation);
             const unitSin = Math.sin(source.transform.rotation);
-            const wp = getWeaponWorldPosition(
-              source.transform.x,
-              source.transform.y,
-              unitCos,
-              unitSin,
-              weapon.offset.x,
-              weapon.offset.y,
+            // Tilt-aware mount: lift from the same heightmap normal
+            // the renderer uses, so the predicted beam start point
+            // matches the visible turret tip on a slope.
+            const sn = getSurfaceNormal(
+              source.transform.x, source.transform.y,
+              this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE,
             );
+            const mountHeight = getTurretMountHeight(source, weaponIndex);
+            const mTilted = applySurfaceTilt(weapon.offset.x, weapon.offset.y, mountHeight, sn);
+            const wpX = source.transform.x + unitCos * mTilted.x - unitSin * mTilted.y;
+            const wpY = source.transform.y + unitSin * mTilted.x + unitCos * mTilted.y;
             const unitGroundZ = source.transform.z - source.unit!.unitRadiusCollider.push;
-            const mountZ = unitGroundZ + getTurretMountHeight(source, weaponIndex);
+            const mountZ = unitGroundZ + mTilted.z;
             const tip = getBarrelTip(
-              wp.x, wp.y, mountZ,
+              wpX, wpY, mountZ,
               turretAngle, turretPitch,
               entity.projectile.config,
               source.unit!.unitRadiusCollider.scale,
@@ -1043,18 +1045,22 @@ export class ClientViewState {
       if (source && source.unit && weapon) {
         const unitCos = Math.cos(source.transform.rotation);
         const unitSin = Math.sin(source.transform.rotation);
-        const wp = getWeaponWorldPosition(
-          source.transform.x,
-          source.transform.y,
-          unitCos,
-          unitSin,
-          weapon.offset.x,
-          weapon.offset.y,
+        // Same tilt-aware mount as the beam-prediction path above.
+        // Without this, projectile-spawn prediction places the muzzle
+        // at the flat-ground mount and the visible barrel tip drifts
+        // away from where the predicted shot starts on slopes.
+        const sn = getSurfaceNormal(
+          source.transform.x, source.transform.y,
+          this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE,
         );
+        const mountHeight = getTurretMountHeight(source, spawn.turretIndex);
+        const mTilted = applySurfaceTilt(weapon.offset.x, weapon.offset.y, mountHeight, sn);
+        const wpX = source.transform.x + unitCos * mTilted.x - unitSin * mTilted.y;
+        const wpY = source.transform.y + unitSin * mTilted.x + unitCos * mTilted.y;
         const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
-        const mountZ = unitGroundZ + getTurretMountHeight(source, spawn.turretIndex);
+        const mountZ = unitGroundZ + mTilted.z;
         const tip = getBarrelTip(
-          wp.x, wp.y, mountZ,
+          wpX, wpY, mountZ,
           weapon.rotation, weapon.pitch,
           config,
           source.unit.unitRadiusCollider.scale,
