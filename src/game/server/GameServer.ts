@@ -20,6 +20,7 @@ import {
   setSimUnitCap,
   getSimQuality,
   getEffectiveSimQuality,
+  tickSimQuality,
 } from '../sim/simQuality';
 import type { ServerSimQuality } from '@/types/serverSimLod';
 import { PhysicsEngine3D } from './PhysicsEngine3D';
@@ -349,13 +350,13 @@ export class GameServer {
     const dtMs = Math.min(delta, MAX_TICK_DT_MS);
     const dtSec = dtMs / 1000;
 
-    // Push host signals into the SERVER LOD driver before the sim
-    // runs — every throttle decision inside the upcoming tick will
-    // read the freshly-resolved tier from getSimDetailConfig().
-    // Cheap (a few Number assignments + the rank resolver runs once
-    // per call to getSimDetailConfig, which the hot paths invoke
-    // a handful of times per tick at most).
+    // Push host signals into the SERVER LOD driver, then resolve
+    // the effective tier ONCE for this tick. Every getSimDetailConfig()
+    // call inside the upcoming sim systems hits the cached answer
+    // instead of re-running the AUTO resolver per beam projectile /
+    // per mirror turret.
     this.refreshSimQualitySignals();
+    tickSimQuality();
 
     // Update simulation (calculates thrust velocities, runs combat, etc.)
     this.simulation.update(dtMs);

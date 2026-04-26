@@ -99,6 +99,21 @@ export function setSimUnitCap(cap: number): void {
   if (cap > 0) currentUnitCap = cap;
 }
 
+// Per-tick cache for the resolved detail config. The hot paths
+// (beam tracer, mirror solver) called getSimDetailConfig() per
+// projectile / per turret which re-ran the AUTO resolver every
+// invocation. With 100+ beams + mirrors that was hundreds of
+// redundant ratioToRank passes per tick.
+//
+// `tickSimQuality()` is called once per tick by the host loop AFTER
+// signals have been pushed; it resolves the tier and stores the
+// answer here. `getSimDetailConfig()` returns the cached value.
+let _cachedDetail: ServerSimDetailConfig | null = null;
+
+export function tickSimQuality(): void {
+  _cachedDetail = RESOLVED[getEffectiveSimQuality()];
+}
+
 export function getEffectiveSimQuality(): ConcreteServerSimQuality {
   switch (currentQuality) {
     case 'auto': {
@@ -148,7 +163,12 @@ function buildDetail(tier: ConcreteServerSimQuality): ServerSimDetailConfig {
 }
 
 export function getSimDetailConfig(): ServerSimDetailConfig {
-  return RESOLVED[getEffectiveSimQuality()];
+  // Fast path: return the cache that tickSimQuality() filled at the
+  // top of this tick. Fallback to the live resolver for paths that
+  // run before the first tickSimQuality() (e.g. very first tick of a
+  // new session) — costs one extra resolver pass, then the cache
+  // takes over.
+  return _cachedDetail ?? RESOLVED[getEffectiveSimQuality()];
 }
 
 export function getSimDetailConfigFor(
