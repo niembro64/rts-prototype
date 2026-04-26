@@ -1,22 +1,27 @@
 // CaptureTileRenderer3D — 3D mana cubes that double as terrain.
 //
-// Every tile in the spatial grid is rendered as a cube. The cube's
-// top face sits at the local terrain height for that tile (so the
-// central ripple disc rises into a stack of varying-height cubes
-// while the rest of the map stays at the baseline thickness). Units
-// and buildings stand on the cube tops.
+// Each tile is a "post" rising from a deep floor (CUBE_FLOOR_Y) up to
+// its top quad. Top quad corners are sampled from the CONTINUOUS
+// terrain heightmap (not the tile-aligned one), so adjacent tiles
+// share the same height at their shared corner — the four-tile
+// surface joins seamlessly into a continuous, sloped piece of
+// terrain. Inside the central ripple disc the corners stair up and
+// down following the heightmap; outside the disc every corner is at
+// y=0 and the surface is perfectly flat.
 //
-// Color: neutral for unowned tiles, lerped toward the dominant team
-// color when ownership flags rise. Same blending math as the old 2D
-// overlay; only the geometry has gone from flat quads to boxes.
+// Each tile keeps its OWN copy of every vertex (no sharing across
+// tiles) so the per-tile capture color stays sharp at the boundary —
+// shared vertices would smear team colors across neighboring tiles.
 //
-// Geometry: one `BoxGeometry(1, 1, 1)` shared across an InstancedMesh
-// — positions and scales are baked into per-instance matrices, colors
-// into the InstancedMesh's instanceColor buffer. Cube heights are
-// fixed (terrain doesn't deform at runtime), so matrices are written
-// once when the grid is built and never touched again. Per-frame the
-// only work is overwriting `instanceColor` for tiles whose ownership
-// changed — cheap even for 60×60 grids.
+// Sides + top are drawn; bottom is omitted (it's always under the
+// world and never visible). Lighting uses computed vertex normals
+// from face winding — `flatShading` would make per-face normals,
+// but the mild smoothing across each tile's own corners helps sell
+// the continuous-surface look on the top face.
+//
+// Capture-overlay color: per-tile uniform color, written to all 8
+// vertices of that tile's posts. Same blend math as the old 2D
+// overlay (lerp neutral → dominant team color by intensity * height).
 
 import * as THREE from 'three';
 import type { PlayerId } from '../sim/types';
@@ -24,21 +29,11 @@ import { PLAYER_COLORS } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getTileTerrainHeight } from '../sim/Terrain';
+import { getTerrainHeight } from '../sim/Terrain';
 
-// Floor of every mana cube — pulled deep below y=0 so the cube is
-// also the world's substrate. There is no separate ground slab any
-// more; the cube side walls (visible from oblique angles) form the
-// "earth" mass beneath the playable surface. Match the old slab's
-// total depth so the world's silhouette reads the same when looking
-// at the map edge from a low camera.
+// Floor of every mana tile post — pulled deep below y=0 so the
+// substrate has visible mass at oblique camera angles.
 const CUBE_FLOOR_Y = -800;
-
-// Minimum visible thickness above the floor for cube top. Set to 0
-// so flat tiles sit exactly at world y=0 — units (whose sphere bottom
-// rests at sim z = terrain) align flush with the cube top instead of
-// floating a fraction above it.
-const MIN_CUBE_TOP_Y = 0;
 
 // Color for unowned cells. Slightly lighter than MAP_BG_COLOR so the
 // grid is visible as "floor" rather than merging into the scene
@@ -47,29 +42,30 @@ const NEUTRAL_R = ((MAP_BG_COLOR >> 16) & 0xff) / 255;
 const NEUTRAL_G = ((MAP_BG_COLOR >> 8) & 0xff) / 255;
 const NEUTRAL_B = (MAP_BG_COLOR & 0xff) / 255;
 
+// Vertex layout per tile (all positions in three.js coords):
+//   0..3  — top corners CCW from above:
+//             0=(x0,h00,z0), 1=(x1,h10,z0), 2=(x1,h11,z1), 3=(x0,h01,z1)
+//   4..7  — floor corners directly below 0..3.
+// Each tile owns its 8 vertices outright (no sharing with neighbors)
+// so per-tile color writes don't smear.
+const VERTS_PER_TILE = 8;
+// Triangles drawn per tile: top (2) + 4 sides (2 each) = 10. Bottom
+// is omitted.
+const TRIS_PER_TILE = 10;
+
 export class CaptureTileRenderer3D {
-  private mesh: THREE.InstancedMesh | null = null;
-  private geometry: THREE.BoxGeometry;
+  private mesh: THREE.Mesh;
+  private geometry: THREE.BufferGeometry;
   private material: THREE.MeshLambertMaterial;
-  // Parent group for the instanced cubes. Stored so `destroy()` can
-  // detach a fresh InstancedMesh built later in the lifecycle.
-  private parentWorld: THREE.Group;
+
+  private positions: Float32Array = new Float32Array(0);
+  private colors: Float32Array = new Float32Array(0);
+  private indices: Uint32Array = new Uint32Array(0);
 
   /** Dimensions of the last-built grid; rebuilt only when these change. */
   private gridCellsX = 0;
   private gridCellsY = 0;
   private gridCellSize = 0;
-
-  /** Per-tile cached terrain height — `terrainTop[i]` is the top-face
-   *  Y for tile i, used both at color-update time (to know whether a
-   *  tile is in the ripple disc) and as the public anchor for unit /
-   *  building tops. */
-  private terrainTop: Float32Array = new Float32Array(0);
-
-  // Reusable scratch instances to avoid per-frame allocation when
-  // writing per-instance matrices and colors.
-  private _scratchMat = new THREE.Matrix4();
-  private _scratchColor = new THREE.Color();
 
   private clientViewState: ClientViewState;
   private mapWidth: number;
@@ -84,135 +80,154 @@ export class CaptureTileRenderer3D {
     this.clientViewState = clientViewState;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
-    this.parentWorld = parentWorld;
 
-    this.geometry = new THREE.BoxGeometry(1, 1, 1);
-    // Lambert lights the cube faces with simple directional shading
-    // — without it the side faces look identical to the top and the
-    // 3D-ness of the terrain disappears at oblique angles. Vertex
-    // colors carry the per-tile team tint via `instanceColor`.
+    this.geometry = new THREE.BufferGeometry();
+    // Lambert lights the side walls so the post depth reads as 3D
+    // mass when the camera tilts. vertexColors=true lets per-tile
+    // capture tints flow into the geometry without per-tile
+    // materials. DoubleSide protects against any wrong-winding
+    // edge cases — the perf hit is small (10 tris per tile) and we
+    // only ever look at the world from above-and-outside anyway.
     this.material = new THREE.MeshLambertMaterial({
-      vertexColors: false,
+      vertexColors: true,
+      side: THREE.DoubleSide,
     });
+    this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    parentWorld.add(this.mesh);
   }
 
   /**
-   * (Re)build the InstancedMesh when cell size / map dims first become
-   * known. Per-instance matrices encode each tile's box transform
-   * (position + scale to terrain height); they're static after this.
-   * Per-instance colors are rewritten every frame in `update()`.
+   * (Re)build the geometry when cell size / map dims first become
+   * known. Positions and indices are static after this — only the
+   * per-vertex color buffer is rewritten per frame.
    */
   private rebuildGridIfNeeded(cellSize: number): void {
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / cellSize));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / cellSize));
     if (
-      this.mesh !== null &&
       cellsX === this.gridCellsX &&
       cellsY === this.gridCellsY &&
       cellSize === this.gridCellSize
     ) return;
-
-    // Tear down any prior mesh — happens when the map resizes mid-
-    // session (very rare) or when cellSize changes after the first
-    // capture event lands.
-    if (this.mesh !== null) {
-      this.parentWorld.remove(this.mesh);
-      this.mesh.dispose();
-      this.mesh = null;
-    }
 
     this.gridCellsX = cellsX;
     this.gridCellsY = cellsY;
     this.gridCellSize = cellSize;
 
     const tileCount = cellsX * cellsY;
-    this.terrainTop = new Float32Array(tileCount);
-    this.mesh = new THREE.InstancedMesh(this.geometry, this.material, tileCount);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    // No frustum culling: the bounding sphere of the unit cube
-    // doesn't account for per-instance scaling, so a far-from-origin
-    // tall tile would be incorrectly culled.
-    this.mesh.frustumCulled = false;
-    // Instance colors live on a buffer attached to the mesh; allocate
-    // it once and stamp neutral colors so first-frame uncaptured tiles
-    // already render correctly.
-    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(
-      new Float32Array(tileCount * 3), 3,
-    );
-    this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    this.positions = new Float32Array(tileCount * VERTS_PER_TILE * 3);
+    this.colors = new Float32Array(tileCount * VERTS_PER_TILE * 3);
+    this.indices = new Uint32Array(tileCount * TRIS_PER_TILE * 3);
 
-    // Bake per-instance matrices: each tile is a box of size
-    // (cellSize, topY - CUBE_FLOOR_Y, cellSize) centered at
-    // (tileCenterX, (topY + CUBE_FLOOR_Y) / 2, tileCenterY) in three
-    // coords (sim Y → three Z, sim Z → three Y).
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
         const i = cy * cellsX + cx;
-        const wx = cx * cellSize + cellSize / 2;
-        const wy = cy * cellSize + cellSize / 2;
-        const rawTop = getTileTerrainHeight(wx, wy, cellSize, this.mapWidth, this.mapHeight);
-        const topY = Math.max(rawTop, MIN_CUBE_TOP_Y);
-        this.terrainTop[i] = topY;
+        const x0 = cx * cellSize;
+        const x1 = x0 + cellSize;
+        const z0 = cy * cellSize;
+        const z1 = z0 + cellSize;
 
-        const sx = cellSize;
-        const sy = topY - CUBE_FLOOR_Y; // total cube height
-        const sz = cellSize;
-        const px = wx;
-        const py = (topY + CUBE_FLOOR_Y) / 2;
-        const pz = wy;
+        // Heights at the 4 tile corners come from the CONTINUOUS
+        // terrain function (not the tile-aligned one). Adjacent
+        // tiles' shared corners therefore evaluate to the same
+        // height and the surface is C0-continuous across the whole
+        // map.
+        const h00 = getTerrainHeight(x0, z0, this.mapWidth, this.mapHeight);
+        const h10 = getTerrainHeight(x1, z0, this.mapWidth, this.mapHeight);
+        const h11 = getTerrainHeight(x1, z1, this.mapWidth, this.mapHeight);
+        const h01 = getTerrainHeight(x0, z1, this.mapWidth, this.mapHeight);
 
-        this._scratchMat.makeScale(sx, sy, sz);
-        this._scratchMat.setPosition(px, py, pz);
-        this.mesh.setMatrixAt(i, this._scratchMat);
+        const vBase = i * VERTS_PER_TILE * 3;
+        // Top corners (indices 0..3)
+        this.positions[vBase + 0] = x0;  this.positions[vBase + 1] = h00; this.positions[vBase + 2] = z0;
+        this.positions[vBase + 3] = x1;  this.positions[vBase + 4] = h10; this.positions[vBase + 5] = z0;
+        this.positions[vBase + 6] = x1;  this.positions[vBase + 7] = h11; this.positions[vBase + 8] = z1;
+        this.positions[vBase + 9] = x0;  this.positions[vBase + 10] = h01; this.positions[vBase + 11] = z1;
+        // Floor corners (indices 4..7) — directly below the top corners
+        this.positions[vBase + 12] = x0; this.positions[vBase + 13] = CUBE_FLOOR_Y; this.positions[vBase + 14] = z0;
+        this.positions[vBase + 15] = x1; this.positions[vBase + 16] = CUBE_FLOOR_Y; this.positions[vBase + 17] = z0;
+        this.positions[vBase + 18] = x1; this.positions[vBase + 19] = CUBE_FLOOR_Y; this.positions[vBase + 20] = z1;
+        this.positions[vBase + 21] = x0; this.positions[vBase + 22] = CUBE_FLOOR_Y; this.positions[vBase + 23] = z1;
 
-        // Default neutral color — overwritten every frame anyway, but
-        // gives a sensible look on the first post-build paint.
-        this._scratchColor.setRGB(NEUTRAL_R, NEUTRAL_G, NEUTRAL_B);
-        this.mesh.setColorAt(i, this._scratchColor);
+        // Initial neutral color for every vertex of this tile.
+        const cBase = i * VERTS_PER_TILE * 3;
+        for (let v = 0; v < VERTS_PER_TILE; v++) {
+          this.colors[cBase + v * 3 + 0] = NEUTRAL_R;
+          this.colors[cBase + v * 3 + 1] = NEUTRAL_G;
+          this.colors[cBase + v * 3 + 2] = NEUTRAL_B;
+        }
+
+        // Triangles, per face, CCW from outside the cube. Bottom
+        // face omitted (always underground).
+        const v = i * VERTS_PER_TILE;
+        const iBase = i * TRIS_PER_TILE * 3;
+        let k = iBase;
+        // TOP (+Y normal)
+        this.indices[k++] = v + 0; this.indices[k++] = v + 1; this.indices[k++] = v + 2;
+        this.indices[k++] = v + 0; this.indices[k++] = v + 2; this.indices[k++] = v + 3;
+        // FRONT (-Z): top-left=0, top-right=1, bot-right=5, bot-left=4
+        this.indices[k++] = v + 0; this.indices[k++] = v + 4; this.indices[k++] = v + 5;
+        this.indices[k++] = v + 0; this.indices[k++] = v + 5; this.indices[k++] = v + 1;
+        // BACK (+Z): 2,3,7,6
+        this.indices[k++] = v + 2; this.indices[k++] = v + 6; this.indices[k++] = v + 7;
+        this.indices[k++] = v + 2; this.indices[k++] = v + 7; this.indices[k++] = v + 3;
+        // LEFT (-X): 3,0,4,7
+        this.indices[k++] = v + 3; this.indices[k++] = v + 7; this.indices[k++] = v + 4;
+        this.indices[k++] = v + 3; this.indices[k++] = v + 4; this.indices[k++] = v + 0;
+        // RIGHT (+X): 1,2,6,5
+        this.indices[k++] = v + 1; this.indices[k++] = v + 5; this.indices[k++] = v + 6;
+        this.indices[k++] = v + 1; this.indices[k++] = v + 6; this.indices[k++] = v + 2;
       }
     }
 
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    this.parentWorld.add(this.mesh);
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.geometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(this.colors, 3).setUsage(THREE.DynamicDrawUsage),
+    );
+    this.geometry.setIndex(new THREE.BufferAttribute(this.indices, 1));
+    this.geometry.computeVertexNormals();
   }
 
   update(): void {
     if (getGridOverlay() === 'off') {
-      if (this.mesh) this.mesh.visible = false;
+      this.mesh.visible = false;
       return;
     }
 
     // The server only sends `capture.cellSize` once a tile actually
-    // becomes captured, so for a fresh game (no ownership yet) the
-    // client's value is 0. Fall back to the same SPATIAL_GRID_CELL_SIZE
-    // the server uses for capture so cell placement matches once
+    // becomes captured, so on a fresh game it's 0. Fall back to
+    // SPATIAL_GRID_CELL_SIZE so cell placement matches once
     // ownership arrives.
     let cellSize = this.clientViewState.getCaptureCellSize();
     if (cellSize <= 0) cellSize = SPATIAL_GRID_CELL_SIZE;
 
     this.rebuildGridIfNeeded(cellSize);
-    if (!this.mesh) return;
 
     const intensity = getGridOverlayIntensity();
     const tiles = this.clientViewState.getCaptureTiles();
+    const col = this.colors;
     const cellsX = this.gridCellsX;
     const cellsY = this.gridCellsY;
-    const tileCount = cellsX * cellsY;
 
-    // Pass 1: write neutral color to every instance. A subsequent pass
-    // overwrites just the captured tiles. Looping the whole buffer is
-    // O(cells) of plain floats — cheap for 60×60.
-    for (let i = 0; i < tileCount; i++) {
-      this._scratchColor.setRGB(NEUTRAL_R, NEUTRAL_G, NEUTRAL_B);
-      this.mesh.setColorAt(i, this._scratchColor);
+    // Pass 1: stamp neutral color across every vertex. Cheap linear
+    // sweep over the color buffer.
+    for (let cy = 0; cy < cellsY; cy++) {
+      for (let cx = 0; cx < cellsX; cx++) {
+        const cBase = (cy * cellsX + cx) * VERTS_PER_TILE * 3;
+        for (let v = 0; v < VERTS_PER_TILE; v++) {
+          col[cBase + v * 3 + 0] = NEUTRAL_R;
+          col[cBase + v * 3 + 1] = NEUTRAL_G;
+          col[cBase + v * 3 + 2] = NEUTRAL_B;
+        }
+      }
     }
 
-    // Pass 2: blend dominant-team color onto captured tiles. Same math
-    // the old 2D overlay used: weight RGB by per-team flag heights,
-    // then lerp from neutral by `intensity * 3 * maxHeight` (capped 1).
-    for (let ti = 0; ti < tiles.length; ti++) {
-      const tile = tiles[ti];
+    // Pass 2: blend dominant-team color onto captured tiles.
+    for (let i = 0; i < tiles.length; i++) {
+      const tile = tiles[i];
       const cx = tile.cx;
       const cy = tile.cy;
       if (cx < 0 || cx >= cellsX || cy < 0 || cy >= cellsY) continue;
@@ -244,22 +259,21 @@ export class CaptureTileRenderer3D {
       const lerpG = NEUTRAL_G * (1 - mix) + tg * mix;
       const lerpB = NEUTRAL_B * (1 - mix) + tb * mix;
 
-      const i = cy * cellsX + cx;
-      this._scratchColor.setRGB(lerpR, lerpG, lerpB);
-      this.mesh.setColorAt(i, this._scratchColor);
+      const cBase = (cy * cellsX + cx) * VERTS_PER_TILE * 3;
+      for (let v = 0; v < VERTS_PER_TILE; v++) {
+        col[cBase + v * 3 + 0] = lerpR;
+        col[cBase + v * 3 + 1] = lerpG;
+        col[cBase + v * 3 + 2] = lerpB;
+      }
     }
 
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    (this.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     this.mesh.visible = true;
   }
 
   destroy(): void {
-    if (this.mesh) {
-      this.parentWorld.remove(this.mesh);
-      this.mesh.dispose();
-      this.mesh = null;
-    }
     this.geometry.dispose();
     this.material.dispose();
+    this.mesh.parent?.remove(this.mesh);
   }
 }

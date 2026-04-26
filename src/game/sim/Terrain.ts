@@ -27,7 +27,7 @@
 // where you want the smooth surface (projectile-vs-ground impact
 // snapping, debris settling) so things don't pop.
 
-const RIPPLE_AMPLITUDE = 30;
+const RIPPLE_AMPLITUDE = 150;
 // Ripples occupy this fraction of `min(mapWidth, mapHeight)` from
 // the map center outward. With a 2000×2000 map and 0.25, the
 // ripple zone is a disc of radius 500 centered on the map.
