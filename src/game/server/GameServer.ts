@@ -585,6 +585,10 @@ export class GameServer {
         projVelInherit: this.world.projVelInherit,
         ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots },
         cpu: { avg: cpuAvg, hi: cpuHi },
+        simLod: {
+          picked: this.getSimQuality(),
+          effective: this.getEffectiveSimQuality(),
+        },
       };
       this.lastSentServerTime = currentTime;
     }

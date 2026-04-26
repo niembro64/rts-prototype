@@ -466,8 +466,15 @@ const displayTickRate = computed(
 );
 // HOST SERVER LOD pick — driven from local persistence + sent to the
 // server via setSimQuality command. Effective tier (after the auto
-// resolver) is read from a separate computed below.
+// resolver) is read from the server's snapshot meta — the server
+// runs the resolver each tick and ships both the picked AND
+// effective values, so the bar lights the picked button as
+// background AND the effective tier as white text just like the
+// PLAYER CLIENT bar does.
 const serverSimQuality = ref<ServerSimQuality>(loadStoredSimQuality());
+const effectiveSimQuality = computed(
+  () => serverMetaFromSnapshot.value?.simLod?.effective ?? '',
+);
 const displaySnapshotRate = computed(
   () =>
     serverMetaFromSnapshot.value?.snaps.rate ??
@@ -1726,7 +1733,12 @@ onUnmounted(() => {
                 v-for="opt in CLIENT_CONFIG.graphics.options"
                 :key="opt.value"
                 class="control-btn"
-                :class="{ active: serverSimQuality === opt.value }"
+                :class="{
+                  active: serverSimQuality === opt.value,
+                  'active-level':
+                    effectiveSimQuality === opt.value &&
+                    serverSimQuality !== opt.value,
+                }"
                 :title="`Lock sim throttling to ${opt.value} tier`"
                 @click="setSimQualityValue(opt.value)"
               >
