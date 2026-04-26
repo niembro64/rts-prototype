@@ -190,6 +190,16 @@ const effectiveQuality = ref<ConcreteGraphicsQuality>(
 // re-reads it after each cycle; the template binds button classes
 // against this object.
 const clientSignalStates = ref({ ...getLodSignalStates() });
+// True when ANY client signal is SOLO. The SOLO signal becomes the
+// "level in the hierarchy that's running"; AUTO drops to a white-
+// text indicator (it's the parent mode, still relevant), and other
+// active signals stop showing white text (they're overridden).
+const clientAnySolo = computed(() =>
+  clientSignalStates.value.zoom === 'solo' ||
+  clientSignalStates.value.tps === 'solo' ||
+  clientSignalStates.value.fps === 'solo' ||
+  clientSignalStates.value.units === 'solo',
+);
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
@@ -485,6 +495,14 @@ const serverSimQuality = ref<ServerSimQuality>(loadStoredSimQuality());
 // HOST SERVER per-signal tri-state — persisted locally and pushed
 // to the server via setSimSignalStates command.
 const serverSignalStates = ref<ServerSimSignalStates>(loadStoredSimSignalStates());
+// True when any HOST SERVER signal is SOLO. Same role as
+// clientAnySolo — controls whether AUTO is the level (background)
+// or just a parent indicator (white text).
+const serverAnySolo = computed(() =>
+  serverSignalStates.value.tps === 'solo' ||
+  serverSignalStates.value.cpu === 'solo' ||
+  serverSignalStates.value.units === 'solo',
+);
 // effective is one of the concrete tiers ('min'..'max') or '' before
 // the first snapshot. The wire format is plain string; narrow the
 // computed result so the v-bind class equality checks don't fall
@@ -1791,7 +1809,10 @@ onUnmounted(() => {
             <span class="control-label">LOD:</span>
             <button
               class="control-btn"
-              :class="{ active: serverSimQuality === 'auto' }"
+              :class="{
+                active: serverSimQuality === 'auto' && !serverAnySolo,
+                'active-level': serverSimQuality === 'auto' && serverAnySolo,
+              }"
               title="Auto-adjust sim throttling (lowest of TPS, CPU, units)"
               @click="setSimQualityValue('auto')"
             >
@@ -1803,8 +1824,11 @@ onUnmounted(() => {
                 class="control-btn signal-btn"
                 :class="{
                   'signal-off': serverSignalStates.tps === 'off',
-                  'active-level': serverSimQuality === 'auto' && serverSignalStates.tps === 'active',
                   active: serverSimQuality === 'auto' && serverSignalStates.tps === 'solo',
+                  'active-level':
+                    serverSimQuality === 'auto'
+                    && serverSignalStates.tps === 'active'
+                    && !serverAnySolo,
                 }"
                 :title="`Server TPS signal — click to cycle off / active / solo. Currently ${serverSignalStates.tps}.`"
                 @click="cycleServerSignal('tps')"
@@ -1816,8 +1840,11 @@ onUnmounted(() => {
                 class="control-btn signal-btn"
                 :class="{
                   'signal-off': serverSignalStates.cpu === 'off',
-                  'active-level': serverSimQuality === 'auto' && serverSignalStates.cpu === 'active',
                   active: serverSimQuality === 'auto' && serverSignalStates.cpu === 'solo',
+                  'active-level':
+                    serverSimQuality === 'auto'
+                    && serverSignalStates.cpu === 'active'
+                    && !serverAnySolo,
                 }"
                 :title="`Host CPU load signal — click to cycle off / active / solo. Currently ${serverSignalStates.cpu}.`"
                 @click="cycleServerSignal('cpu')"
@@ -1829,8 +1856,11 @@ onUnmounted(() => {
                 class="control-btn signal-btn"
                 :class="{
                   'signal-off': serverSignalStates.units === 'off',
-                  'active-level': serverSimQuality === 'auto' && serverSignalStates.units === 'active',
                   active: serverSimQuality === 'auto' && serverSignalStates.units === 'solo',
+                  'active-level':
+                    serverSimQuality === 'auto'
+                    && serverSignalStates.units === 'active'
+                    && !serverAnySolo,
                 }"
                 :title="`World fullness signal — click to cycle off / active / solo. Currently ${serverSignalStates.units}.`"
                 @click="cycleServerSignal('units')"
@@ -2209,7 +2239,10 @@ onUnmounted(() => {
             <span class="control-label">LOD:</span>
             <button
               class="control-btn"
-              :class="{ active: graphicsQuality === 'auto' }"
+              :class="{
+                active: graphicsQuality === 'auto' && !clientAnySolo,
+                'active-level': graphicsQuality === 'auto' && clientAnySolo,
+              }"
               title="Auto-adjust graphics quality (lowest of zoom, TPS, FPS, units)"
               @click="changeGraphicsQuality('auto')"
             >
@@ -2221,8 +2254,11 @@ onUnmounted(() => {
                 class="control-btn signal-btn"
                 :class="{
                   'signal-off': clientSignalStates.zoom === 'off',
-                  'active-level': graphicsQuality === 'auto' && clientSignalStates.zoom === 'active',
                   active: graphicsQuality === 'auto' && clientSignalStates.zoom === 'solo',
+                  'active-level':
+                    graphicsQuality === 'auto'
+                    && clientSignalStates.zoom === 'active'
+                    && !clientAnySolo,
                 }"
                 :title="`Zoom signal — click to cycle off / active / solo. Currently ${clientSignalStates.zoom}.`"
                 @click="cycleClientSignal('zoom')"
@@ -2234,8 +2270,12 @@ onUnmounted(() => {
                 class="control-btn signal-btn"
                 :class="{
                   'signal-off': clientSignalStates.tps === 'off',
-                  'active-level': graphicsQuality === 'auto' && clientSignalStates.tps === 'active' && hasServer,
                   active: graphicsQuality === 'auto' && clientSignalStates.tps === 'solo',
+                  'active-level':
+                    graphicsQuality === 'auto'
+                    && clientSignalStates.tps === 'active'
+                    && !clientAnySolo
+                    && hasServer,
                 }"
                 :title="`Server TPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.tps}.`"
                 @click="cycleClientSignal('tps')"
@@ -2247,8 +2287,11 @@ onUnmounted(() => {
                 class="control-btn signal-btn"
                 :class="{
                   'signal-off': clientSignalStates.fps === 'off',
-                  'active-level': graphicsQuality === 'auto' && clientSignalStates.fps === 'active',
                   active: graphicsQuality === 'auto' && clientSignalStates.fps === 'solo',
+                  'active-level':
+                    graphicsQuality === 'auto'
+                    && clientSignalStates.fps === 'active'
+                    && !clientAnySolo,
                 }"
                 :title="`Client FPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.fps}.`"
                 @click="cycleClientSignal('fps')"
@@ -2260,8 +2303,11 @@ onUnmounted(() => {
                 class="control-btn signal-btn"
                 :class="{
                   'signal-off': clientSignalStates.units === 'off',
-                  'active-level': graphicsQuality === 'auto' && clientSignalStates.units === 'active',
                   active: graphicsQuality === 'auto' && clientSignalStates.units === 'solo',
+                  'active-level':
+                    graphicsQuality === 'auto'
+                    && clientSignalStates.units === 'active'
+                    && !clientAnySolo,
                 }"
                 :title="`World fullness signal — click to cycle off / active / solo. Currently ${clientSignalStates.units}.`"
                 @click="cycleClientSignal('units')"
