@@ -1902,9 +1902,8 @@ onUnmounted(() => {
             <div class="button-group">
               <button
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.tps"
-                class="control-btn signal-btn"
+                class="control-btn"
                 :class="{
-                  'signal-off': serverSignalStates.tps === 'off',
                   active: serverSimQuality === 'auto' && serverSignalStates.tps === 'solo',
                   'active-level':
                     serverSimQuality === 'auto'
@@ -1918,9 +1917,8 @@ onUnmounted(() => {
               </button>
               <button
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.cpu"
-                class="control-btn signal-btn"
+                class="control-btn"
                 :class="{
-                  'signal-off': serverSignalStates.cpu === 'off',
                   active: serverSimQuality === 'auto' && serverSignalStates.cpu === 'solo',
                   'active-level':
                     serverSimQuality === 'auto'
@@ -1934,9 +1932,8 @@ onUnmounted(() => {
               </button>
               <button
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.units"
-                class="control-btn signal-btn"
+                class="control-btn"
                 :class="{
-                  'signal-off': serverSignalStates.units === 'off',
                   active: serverSimQuality === 'auto' && serverSignalStates.units === 'solo',
                   'active-level':
                     serverSimQuality === 'auto'
@@ -2373,9 +2370,8 @@ onUnmounted(() => {
             <div class="button-group">
               <button
                 v-if="LOD_SIGNALS_ENABLED.zoom"
-                class="control-btn signal-btn"
+                class="control-btn"
                 :class="{
-                  'signal-off': clientSignalStates.zoom === 'off',
                   active: graphicsQuality === 'auto' && clientSignalStates.zoom === 'solo',
                   'active-level':
                     graphicsQuality === 'auto'
@@ -2389,9 +2385,8 @@ onUnmounted(() => {
               </button>
               <button
                 v-if="LOD_SIGNALS_ENABLED.tps"
-                class="control-btn signal-btn"
+                class="control-btn"
                 :class="{
-                  'signal-off': clientSignalStates.tps === 'off',
                   active: graphicsQuality === 'auto' && clientSignalStates.tps === 'solo',
                   'active-level':
                     graphicsQuality === 'auto'
@@ -2406,9 +2401,8 @@ onUnmounted(() => {
               </button>
               <button
                 v-if="LOD_SIGNALS_ENABLED.fps"
-                class="control-btn signal-btn"
+                class="control-btn"
                 :class="{
-                  'signal-off': clientSignalStates.fps === 'off',
                   active: graphicsQuality === 'auto' && clientSignalStates.fps === 'solo',
                   'active-level':
                     graphicsQuality === 'auto'
@@ -2422,9 +2416,8 @@ onUnmounted(() => {
               </button>
               <button
                 v-if="LOD_SIGNALS_ENABLED.units"
-                class="control-btn signal-btn"
+                class="control-btn"
                 :class="{
-                  'signal-off': clientSignalStates.units === 'off',
                   active: graphicsQuality === 'auto' && clientSignalStates.units === 'solo',
                   'active-level':
                     graphicsQuality === 'auto'
@@ -3154,17 +3147,6 @@ onUnmounted(() => {
 
 .control-btn.active-level {
   color: white;
-}
-
-/* Tri-state LOD signal buttons. ACTIVE = white text via .active-level
- * (defined above). SOLO = full background via .active. OFF = dim
- * via this class — visually conveys "this signal is parked, click
- * to bring it back into the mix." */
-.control-btn.signal-btn.signal-off {
-  opacity: 0.35;
-}
-.control-btn.signal-btn.signal-off:hover {
-  opacity: 0.6;
 }
 
 .bar-readonly .control-btn {
