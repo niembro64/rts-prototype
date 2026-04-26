@@ -65,7 +65,10 @@ import {
   loadStoredTickRate,
   saveTickRate,
   saveGridInfo,
+  loadStoredSimQuality,
+  saveSimQuality,
 } from '../serverBarConfig';
+import type { ServerSimQuality } from '../types/serverSimLod';
 import { CLIENT_CONFIG } from '../clientBarConfig';
 import { BAR_THEMES } from '../barThemes';
 import {
@@ -461,6 +464,10 @@ const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ?? SERVER_CONFIG.tickRate.default,
 );
+// HOST SERVER LOD pick — driven from local persistence + sent to the
+// server via setSimQuality command. Effective tier (after the auto
+// resolver) is read from a separate computed below.
+const serverSimQuality = ref<ServerSimQuality>(loadStoredSimQuality());
 const displaySnapshotRate = computed(
   () =>
     serverMetaFromSnapshot.value?.snaps.rate ??
@@ -1052,6 +1059,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       currentServer.setTickRate(loadStoredTickRate());
       currentServer.setSnapshotRate(loadStoredSnapshotRate());
       currentServer.setKeyframeRatio(loadStoredKeyframeRatio());
+      currentServer.setSimQuality(serverSimQuality.value);
       currentServer.setIpAddress(localIpAddress.value);
       currentServer.receiveCommand({
         type: 'setMaxTotalUnits',
@@ -1190,6 +1198,12 @@ function setNetworkUpdateRate(rate: SnapshotRate): void {
 function setTickRateValue(rate: TickRate): void {
   activeConnection?.sendCommand({ type: 'setTickRate', tick: 0, rate });
   saveTickRate(rate);
+}
+
+function setSimQualityValue(q: ServerSimQuality): void {
+  activeConnection?.sendCommand({ type: 'setSimQuality', tick: 0, quality: q });
+  saveSimQuality(q);
+  serverSimQuality.value = q;
 }
 
 function secPerFullsnap(ratio: number): string {
@@ -1658,6 +1672,65 @@ onUnmounted(() => {
                       ? 'NONE'
                       : `1e-${Math.round(-Math.log10(opt as number))}`
                 }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">LOD:</span>
+            <button
+              class="control-btn"
+              :class="{ active: serverSimQuality === 'auto' }"
+              title="Auto-adjust sim throttling (lowest of TPS, CPU, units)"
+              @click="setSimQualityValue('auto')"
+            >
+              AUTO
+            </button>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{
+                  active: serverSimQuality === 'auto-tps',
+                  'active-level': serverSimQuality === 'auto',
+                }"
+                title="Auto-adjust sim throttling based on actual server TPS"
+                @click="setSimQualityValue('auto-tps')"
+              >
+                TPS
+              </button>
+              <button
+                class="control-btn"
+                :class="{
+                  active: serverSimQuality === 'auto-cpu',
+                  'active-level': serverSimQuality === 'auto',
+                }"
+                title="Auto-adjust sim throttling based on host CPU load"
+                @click="setSimQualityValue('auto-cpu')"
+              >
+                CPU
+              </button>
+              <button
+                class="control-btn"
+                :class="{
+                  active: serverSimQuality === 'auto-units',
+                  'active-level': serverSimQuality === 'auto',
+                }"
+                title="Auto-adjust sim throttling based on world FULLNESS (unit count ÷ cap)"
+                @click="setSimQualityValue('auto-units')"
+              >
+                UNITS
+              </button>
+            </div>
+            <div class="button-group">
+              <button
+                v-for="opt in CLIENT_CONFIG.graphics.options"
+                :key="opt.value"
+                class="control-btn"
+                :class="{ active: serverSimQuality === opt.value }"
+                :title="`Lock sim throttling to ${opt.value} tier`"
+                @click="setSimQualityValue(opt.value)"
+              >
+                {{ opt.label }}
               </button>
             </div>
           </div>
