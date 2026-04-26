@@ -12,6 +12,19 @@ import { setWeaponTarget } from './targetIndex';
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
 
+// Cap on per-weapon candidate scans inside the inner targeting loops.
+// In dense crowds the spatial-grid query can return 200+ enemies per
+// query — at that scale every weapon becomes O(k) on the same big k,
+// and the targeting system dominates a tick.
+//
+// When the candidate set exceeds this threshold we STRIDE-sample with
+// a tick-rotating offset, so each weapon scans 1 / STRIDE_DENSITY of
+// the candidates this tick but covers the rest over the next few
+// ticks. Worst case the chosen target lags by a couple ticks; in
+// return the targeting cost stays bounded as crowds grow.
+const TARGETING_DENSITY_THRESHOLD = 96;
+const TARGETING_DENSITY_STRIDE = 4;
+
 // Check if an entity is a beam unit (has at least one non-passive beam or laser turret)
 function isBeamUnit(entity: Entity): boolean {
   if (!entity.turrets) return false;
@@ -247,7 +260,11 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       let closestEngageable: Entity | null = null;
       let closestDist = Infinity;
 
-      for (const enemy of candidates) {
+      const denseScan = candidates.length > TARGETING_DENSITY_THRESHOLD;
+      const stride = denseScan ? TARGETING_DENSITY_STRIDE : 1;
+      const start = denseScan ? tick % stride : 0;
+      for (let ci = start; ci < candidates.length; ci += stride) {
+        const enemy = candidates[ci];
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
         const dist = distance3(
@@ -287,7 +304,11 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       let closestEnemy: Entity | null = null;
       let closestDist = Infinity;
 
-      for (const enemy of candidates) {
+      const denseScan = candidates.length > TARGETING_DENSITY_THRESHOLD;
+      const stride = denseScan ? TARGETING_DENSITY_STRIDE : 1;
+      const start = denseScan ? tick % stride : 0;
+      for (let ci = start; ci < candidates.length; ci += stride) {
+        const enemy = candidates[ci];
         // Passive turrets (mirrors) only target beam units
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
 
