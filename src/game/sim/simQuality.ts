@@ -143,14 +143,6 @@ export function getEffectiveSimQuality(): ConcreteServerSimQuality {
   }
 }
 
-const RESOLVED: Record<ConcreteServerSimQuality, ServerSimDetailConfig> = {
-  min: buildDetail('min'),
-  low: buildDetail('low'),
-  medium: buildDetail('medium'),
-  high: buildDetail('high'),
-  max: buildDetail('max'),
-};
-
 function buildDetail(tier: ConcreteServerSimQuality): ServerSimDetailConfig {
   return {
     tier,
@@ -161,6 +153,14 @@ function buildDetail(tier: ConcreteServerSimQuality): ServerSimDetailConfig {
     targetingDensityStride: SERVER_SIM_DETAIL.TARGETING_DENSITY_STRIDE[tier],
   };
 }
+
+const RESOLVED: Record<ConcreteServerSimQuality, ServerSimDetailConfig> = {
+  min: buildDetail('min'),
+  low: buildDetail('low'),
+  medium: buildDetail('medium'),
+  high: buildDetail('high'),
+  max: buildDetail('max'),
+};
 
 export function getSimDetailConfig(): ServerSimDetailConfig {
   // Fast path: return the cache that tickSimQuality() filled at the
