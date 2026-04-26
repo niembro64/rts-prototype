@@ -20,6 +20,7 @@ import {
   setSimUnitCap,
   getSimQuality,
   getEffectiveSimQuality,
+  getSimDetailConfig,
   tickSimQuality,
 } from '../sim/simQuality';
 import type { ServerSimQuality } from '@/types/serverSimLod';
@@ -370,8 +371,17 @@ export class GameServer {
     // Sync positions/velocities from physics to entities
     this.syncFromPhysics();
 
-    // Update territory capture (uses spatial grid occupancy)
-    this.captureSystem.update(spatialGrid.getOccupiedCellsForCapture(), dtSec);
+    // Update territory capture (uses spatial grid occupancy). Same
+    // skip-and-scale-dt pattern as applyForceFieldDamage at low
+    // LOD: the time-integral of flag accumulation matches the
+    // every-tick path; tile colours just step in coarser intervals.
+    const captureStride = Math.max(1, getSimDetailConfig().captureStride | 0);
+    if (captureStride === 1 || this.world.getTick() % captureStride === 0) {
+      this.captureSystem.update(
+        spatialGrid.getOccupiedCellsForCapture(),
+        dtSec * captureStride,
+      );
+    }
 
     // Update mana income from territory (proportional to flag heights)
     const flagSums = this.captureSystem.getFlagSumsByPlayer();
