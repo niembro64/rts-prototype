@@ -81,7 +81,7 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
    *          on snipers / fast units.
    *    2.0+ — visible "teleporting" between snapshots; not
    *          recommended unless bandwidth is the absolute bottleneck. */
-  positionThreshold: 0.5,
+  positionThreshold: 0.1,
 
   /** velocityX/Y must change by more than this (world units / tick)
    *  to ship a velocity update. Used by the snapshot serializer AND
@@ -95,7 +95,7 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
    *    1.0 — only meaningful velocity changes (collisions, big AoE).
    *          Client extrapolation looks fine but accel curves coarsen.
    *    2.0+ — only the largest events; visible "jerky" velocity. */
-  velocityThreshold: 0.5,
+  velocityThreshold: 0.1,
 
   /** Body rotation + turret rotations must change by more than this
    *  many radians to re-send. The default is π/32 (about 5.6°).

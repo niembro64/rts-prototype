@@ -257,6 +257,12 @@ const actualAvgFPS = ref(0);
 const actualWorstFPS = ref(0);
 const snapAvgRate = ref(0);
 const snapWorstRate = ref(0);
+// Parallel pair tracking ONLY full-keyframe arrivals — used by the
+// FSPS stat bar so the user can see how often the protocol re-seeds
+// statics. Hosts with a tight keyframe ratio show a high FSPS;
+// 'NONE' keyframe ratio holds FSPS at zero after the initial snap.
+const fullSnapAvgRate = ref(0);
+const fullSnapWorstRate = ref(0);
 const currentZoom = ref(0.4);
 let fpsUpdateInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -562,6 +568,18 @@ const displayKeyframeRatio = computed(
     serverMetaFromSnapshot.value?.snaps.keyframes ??
     SERVER_CONFIG.keyframe.default,
 );
+// Bar-fill target for FSPS. The host's keyframe ratio describes
+// "every Nth snapshot is a keyframe" — so the expected FSPS is
+// snapsPerSec × ratio. 'ALL' clamps to the snapshot rate; 'NONE'
+// has no recurring keyframes so we still draw a tiny non-zero
+// target (1 fps) so the bar isn't divide-by-zero.
+const fullSnapBarTarget = computed(() => {
+  const sps = displaySnapshotRate.value === 'none' ? 60 : displaySnapshotRate.value;
+  const kf = displayKeyframeRatio.value;
+  if (kf === 'NONE') return 1;
+  if (kf === 'ALL') return sps;
+  return Math.max(0.1, sps * (kf as number));
+});
 const displayGridInfo = computed(
   () => serverMetaFromSnapshot.value?.grid ?? false,
 );
@@ -1065,6 +1083,9 @@ function updateFPSStats(): void {
     const snapStats = scene.getSnapshotStats();
     snapAvgRate.value = snapStats.avgRate;
     snapWorstRate.value = snapStats.worstRate;
+    const fullSnapStats = scene.getFullSnapshotStats();
+    fullSnapAvgRate.value = fullSnapStats.avgRate;
+    fullSnapWorstRate.value = fullSnapStats.worstRate;
   }
   const fpsVal = LOD_EMA_SOURCE.fps === 'avg' ? actualAvgFPS.value : actualWorstFPS.value;
   const tpsVal = LOD_EMA_SOURCE.tps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
@@ -2137,6 +2158,47 @@ onUnmounted(() => {
                           : displaySnapshotRate,
                       )
                     "
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- FSPS — full snapshots per second. Counts only keyframes
+               (state.isDelta === false). The bar is scaled by the host's
+               configured keyframeRatio × snapshotRate so a healthy
+               host fills the bar. A high reading means the protocol
+               is re-seeding statics often (catch-up cheap, late-joiner
+               friendly); a low reading saves bandwidth at the cost of
+               longer recovery if a delta gets lost. -->
+          <div class="control-group">
+            <BarDivider />
+            <span
+              class="control-label"
+              title="Full keyframe snapshots received per second (state.isDelta === false). Driven by the host's keyframe ratio."
+              >FSPS:</span
+            >
+            <div class="stat-bar-group">
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(fullSnapAvgRate) }}</span>
+                  <span class="fps-label">avg</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="statBarStyle(fullSnapAvgRate, fullSnapBarTarget)"
+                  ></div>
+                </div>
+              </div>
+              <div class="stat-bar">
+                <div class="stat-bar-top">
+                  <span class="fps-value">{{ fmt4(fullSnapWorstRate) }}</span>
+                  <span class="fps-label">low</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div
+                    class="stat-bar-fill"
+                    :style="statBarStyle(fullSnapWorstRate, fullSnapBarTarget)"
                   ></div>
                 </div>
               </div>

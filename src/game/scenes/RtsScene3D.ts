@@ -155,6 +155,10 @@ export class RtsScene3D {
   // Performance trackers (mirror RtsScene)
   private fpsTracker = new EmaTracker(EMA_CONFIG.fps, EMA_INITIAL_VALUES.fps);
   private snapTracker = new EmaTracker(EMA_CONFIG.snaps, EMA_INITIAL_VALUES.snaps);
+  // Parallel tracker that ONLY updates on full keyframes (state.isDelta=false).
+  // The displayed FSPS lets the user see how often the protocol re-seeds
+  // statics — a flicker means the host's keyframe ratio is set tight.
+  private fullSnapTracker = new EmaTracker(EMA_CONFIG.snaps, EMA_INITIAL_VALUES.snaps);
   private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
   private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
   private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
@@ -179,6 +183,9 @@ export class RtsScene3D {
 
   // Snapshot-arrival tracking for snap-rate EMA
   private lastSnapArrivalMs = 0;
+  // Separate timestamp for the full-keyframe rate. Stays 0 until the
+  // first keyframe arrives, then updates only on subsequent keyframes.
+  private lastFullSnapArrivalMs = 0;
 
   // Entity source adapter, kept shape-compatible with RtsScene's for UI helpers
   private entitySourceAdapter!: {
@@ -462,6 +469,16 @@ export class RtsScene3D {
         if (dt > 0) this.snapTracker.update(1000 / dt);
       }
       this.lastSnapArrivalMs = now;
+      // Full-keyframe rate — only ticks on keyframe snaps. The first
+      // keyframe seeds; the second one starts producing a non-zero
+      // EMA reading.
+      if (!state.isDelta) {
+        if (this.lastFullSnapArrivalMs > 0) {
+          const dt = now - this.lastFullSnapArrivalMs;
+          if (dt > 0) this.fullSnapTracker.update(1000 / dt);
+        }
+        this.lastFullSnapArrivalMs = now;
+      }
 
       // Schedule any new SimEvents that came in with this snapshot. Smoothing
       // staggers one-shot events across the snapshot interval; continuous
@@ -1047,6 +1064,17 @@ export class RtsScene3D {
     return {
       avgRate: this.snapTracker.getAvg(),
       worstRate: this.snapTracker.getLow(),
+    };
+  }
+
+  /** Full-keyframe arrival rate. Only counts snaps where
+   *  `state.isDelta === false`. Useful for spotting an aggressive
+   *  keyframe ratio (full snaps every tick) vs a sparse one (full
+   *  every few seconds). */
+  public getFullSnapshotStats(): { avgRate: number; worstRate: number } {
+    return {
+      avgRate: this.fullSnapTracker.getAvg(),
+      worstRate: this.fullSnapTracker.getLow(),
     };
   }
 
