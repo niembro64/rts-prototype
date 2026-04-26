@@ -7,13 +7,35 @@ import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 const MAX_UNIT_SHOT_RADIUS = 45;
 
 /**
- * Spatial hash grid for efficient range queries.
- * Divides the world into cells and tracks which entities are in each cell.
- * This reduces O(n) searches to O(k) where k = entities in nearby cells.
+ * 3D voxel spatial hash for efficient sphere/segment range queries.
  *
- * Uses INCREMENTAL UPDATES: units update only when they cross cell boundaries.
- * Buildings are static and only added/removed on creation/destruction.
- * Uses numeric cell keys (bit-packed) to avoid string allocation overhead.
+ * The world is divided into uniform CUBES of side `cellSize`. Every
+ * entity (unit / projectile / building footprint) is bucketed into
+ * the cube that contains its center; queries iterate only the cubes
+ * intersecting the query volume.
+ *
+ * Ground convention: z=0 sits at the CENTER of the bottom cube, not
+ * its lower edge. The bottom cube spans z ∈ [-cellSize/2, +cellSize/2);
+ * units standing on the ground (z≈0) and units bobbing slightly
+ * below (transient client prediction) all bucket to the same cube.
+ * Above-ground cubes stack upward in `cellSize` increments.
+ *
+ * Cell key: 16-bit cx + 16-bit cy + 16-bit cz packed into a 48-bit
+ * integer via multiplication. JavaScript number type handles 53-bit
+ * integers safely, so the packed key fits with margin. Bit ops are
+ * 32-bit-only in JS, so the key uses multiplication; the per-tick
+ * cost difference is negligible because we hit Map.get with a single
+ * number, not three.
+ *
+ * Uses INCREMENTAL UPDATES: units update only when they cross cube
+ * boundaries. Buildings are static — added on creation, removed on
+ * destruction. Buildings span the cubes their (width × height × depth)
+ * footprint touches.
+ *
+ * Aircraft-ready: a bomber at (100, 100, 500) and a flak unit at
+ * (100, 100, 10) with cellSize=100 occupy DIFFERENT cubes (cz=5 vs
+ * cz=0), so a query around the flak unit's altitude no longer
+ * traverses every projectile sitting in the airspace overhead.
  */
 
 type GridCell = {
@@ -24,8 +46,21 @@ type GridCell = {
 
 export type CaptureCell = { key: number; players: PlayerId[] };
 
+// 16-bit bias for each axis — keeps Math.floor results positive
+// before packing so the cell key is always a non-negative integer.
+// Range: cell index ∈ [-32768, +32767], i.e. up to ~6.5M world units
+// per axis at cellSize=100. Plenty for any reasonable map.
+const CELL_BIAS = 32768;
+const CELL_MASK = 0xFFFF;
+// Power-of-two multipliers for packing (avoid bit shifts since JS bit
+// ops truncate to 32 bits). cx occupies the high 16 bits, cy the
+// middle 16, cz the low 16 — total 48 bits, well inside safe integers.
+const CX_MULT = 0x100000000;     // 2^32
+const CY_MULT = 0x10000;         // 2^16
+
 export class SpatialGrid {
   private cellSize: number;
+  private halfCellSize: number;
   private cells: Map<number, GridCell> = new Map();
 
   // Track which cell each unit is in (single cell per unit)
@@ -49,15 +84,31 @@ export class SpatialGrid {
 
   constructor(cellSize: number = SPATIAL_GRID_CELL_SIZE) {
     this.cellSize = cellSize;
+    this.halfCellSize = cellSize / 2;
   }
 
   /**
-   * Get numeric cell key for a world position (bit-packed, no string allocation)
+   * Pack a (cx, cy, cz) integer cell coordinate into a single numeric
+   * key. Each axis is 16-bit biased; the packed value is a 48-bit
+   * non-negative integer.
    */
-  private getCellKey(x: number, y: number): number {
-    const cx = (Math.floor(x / this.cellSize) + 32768) & 0xFFFF;
-    const cy = (Math.floor(y / this.cellSize) + 32768) & 0xFFFF;
-    return (cx << 16) | cy;
+  private packCell(cx: number, cy: number, cz: number): number {
+    const cxB = (cx + CELL_BIAS) & CELL_MASK;
+    const cyB = (cy + CELL_BIAS) & CELL_MASK;
+    const czB = (cz + CELL_BIAS) & CELL_MASK;
+    return cxB * CX_MULT + cyB * CY_MULT + czB;
+  }
+
+  /**
+   * Get numeric cell key for a 3D world position.
+   * Z is biased by half a cell so z=0 sits at the CENTER of cube 0
+   * (cube 0 spans z ∈ [−cellSize/2, +cellSize/2)).
+   */
+  private getCellKey(x: number, y: number, z: number): number {
+    const cx = Math.floor(x / this.cellSize);
+    const cy = Math.floor(y / this.cellSize);
+    const cz = Math.floor((z + this.halfCellSize) / this.cellSize);
+    return this.packCell(cx, cy, cz);
   }
 
   /**
@@ -118,7 +169,7 @@ export class SpatialGrid {
       return;
     }
 
-    const newKey = this.getCellKey(entity.transform.x, entity.transform.y);
+    const newKey = this.getCellKey(entity.transform.x, entity.transform.y, entity.transform.z);
     const oldKey = this.unitCellKey.get(entity.id);
 
     if (oldKey === newKey) return; // Same cell — no work needed
@@ -173,7 +224,7 @@ export class SpatialGrid {
    * Update a projectile's position in the grid. O(1) if cell didn't change.
    */
   updateProjectile(entity: Entity): void {
-    const newKey = this.getCellKey(entity.transform.x, entity.transform.y);
+    const newKey = this.getCellKey(entity.transform.x, entity.transform.y, entity.transform.z);
     const oldKey = this.projectileCellKey.get(entity.id);
 
     if (oldKey === newKey) return;
@@ -227,29 +278,38 @@ export class SpatialGrid {
   }
 
   /**
-   * Add a building to the grid (may span multiple cells). Buildings don't move.
-   * Safe to call multiple times — skips if already tracked.
+   * Add a building to the grid. Buildings span every cube their
+   * (width × height × depth) AABB touches. The footprint is centered
+   * on the building's transform XY; the column rises from z=0 up to
+   * z=depth. Buildings don't move, so no incremental rebucket — only
+   * add (idempotent) and remove on destruction.
    */
   addBuilding(entity: Entity): void {
     if (!entity.building) return;
     if (this.buildingCellKeys.has(entity.id)) return; // Already tracked
 
     const { x, y } = entity.transform;
-    const { width, height } = entity.building;
+    const { width, height, depth } = entity.building;
 
     const minCx = Math.floor((x - width / 2) / this.cellSize);
     const maxCx = Math.floor((x + width / 2) / this.cellSize);
     const minCy = Math.floor((y - height / 2) / this.cellSize);
     const maxCy = Math.floor((y + height / 2) / this.cellSize);
+    // Building footprint sits on the ground (z=0) and rises to z=depth.
+    // The ground=middle Z convention puts z=0 inside cube 0.
+    const minCz = Math.floor((0 + this.halfCellSize) / this.cellSize);
+    const maxCz = Math.floor((depth + this.halfCellSize) / this.cellSize);
 
     const keys: number[] = [];
 
     for (let cx = minCx; cx <= maxCx; cx++) {
       for (let cy = minCy; cy <= maxCy; cy++) {
-        const key = ((cx + 32768) & 0xFFFF) << 16 | ((cy + 32768) & 0xFFFF);
-        const cell = this.getOrCreateCell(key);
-        cell.buildings.push(entity);
-        keys.push(key);
+        for (let cz = minCz; cz <= maxCz; cz++) {
+          const key = this.packCell(cx, cy, cz);
+          const cell = this.getOrCreateCell(key);
+          cell.buildings.push(entity);
+          keys.push(key);
+        }
       }
     }
 
@@ -295,30 +355,37 @@ export class SpatialGrid {
   }
 
   /**
-   * Get all cells within a radius of a point (for circular range queries)
+   * Collect cells whose cube intersects an axis-aligned cube of side
+   * `2*radius` centered on (x, y, z). Used as the broad-phase volume
+   * for sphere queries — the per-entity loop then refines with the
+   * exact 3D distance test.
    */
-  private getCellsInRadius(x: number, y: number, radius: number): void {
+  private getCellsInRadius(x: number, y: number, z: number, radius: number): void {
     this.nearbyCells.length = 0;
 
     const minCx = Math.floor((x - radius) / this.cellSize);
     const maxCx = Math.floor((x + radius) / this.cellSize);
     const minCy = Math.floor((y - radius) / this.cellSize);
     const maxCy = Math.floor((y + radius) / this.cellSize);
+    const minCz = Math.floor((z - radius + this.halfCellSize) / this.cellSize);
+    const maxCz = Math.floor((z + radius + this.halfCellSize) / this.cellSize);
 
     for (let cx = minCx; cx <= maxCx; cx++) {
       for (let cy = minCy; cy <= maxCy; cy++) {
-        this.nearbyCells.push(((cx + 32768) & 0xFFFF) << 16 | ((cy + 32768) & 0xFFFF));
+        for (let cz = minCz; cz <= maxCz; cz++) {
+          this.nearbyCells.push(this.packCell(cx, cy, cz));
+        }
       }
     }
   }
 
   /**
-   * Query units within a radius of a point
-   * Returns a reused array - DO NOT STORE THE REFERENCE
+   * Query units within a 3D sphere of `radius` around (x, y, z).
+   * Returns a reused array — DO NOT STORE THE REFERENCE.
    */
-  queryUnitsInRadius(x: number, y: number, radius: number): Entity[] {
+  queryUnitsInRadius(x: number, y: number, z: number, radius: number): Entity[] {
     this.queryResultUnits.length = 0;
-    this.getCellsInRadius(x, y, radius);
+    this.getCellsInRadius(x, y, z, radius);
 
     const radiusSq = radius * radius;
 
@@ -329,7 +396,8 @@ export class SpatialGrid {
       for (const unit of cell.units) {
         const dx = unit.transform.x - x;
         const dy = unit.transform.y - y;
-        if (dx * dx + dy * dy <= radiusSq) {
+        const dz = unit.transform.z - z;
+        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
           this.queryResultUnits.push(unit);
         }
       }
@@ -339,15 +407,21 @@ export class SpatialGrid {
   }
 
   /**
-   * Query buildings within a radius of a point
-   * Returns a reused array - DO NOT STORE THE REFERENCE
+   * Query buildings within a 3D sphere of `radius` around (x, y, z).
+   * Buildings are AABB columns from z=0 to z=depth — the test uses
+   * sphere-vs-AABB closest-point distance so a sphere centered above
+   * a tall building gets a hit, while a sphere centered far below
+   * the ground plane (deep negative z) does not.
+   * Returns a reused array — DO NOT STORE THE REFERENCE.
    */
-  queryBuildingsInRadius(x: number, y: number, radius: number): Entity[] {
+  queryBuildingsInRadius(x: number, y: number, z: number, radius: number): Entity[] {
     this.queryResultBuildings.length = 0;
-    this.getCellsInRadius(x, y, radius);
+    this.getCellsInRadius(x, y, z, radius);
 
     // Reusable dedup set (buildings can span multiple cells)
     this._dedup.clear();
+
+    const radiusSq = radius * radius;
 
     for (const key of this.nearbyCells) {
       const cell = this.cells.get(key);
@@ -357,12 +431,23 @@ export class SpatialGrid {
         if (this._dedup.has(building.id)) continue;
         this._dedup.add(building.id);
 
-        const dx = building.transform.x - x;
-        const dy = building.transform.y - y;
-        const buildingRadius = Math.max(building.building!.width, building.building!.height) / 2;
-        const checkRadius = radius + buildingRadius;
+        // Sphere-vs-AABB: closest point on the building box to the
+        // query center, then squared distance compared to (radius)².
+        const b = building.building!;
+        const minX = building.transform.x - b.width / 2;
+        const maxX = building.transform.x + b.width / 2;
+        const minY = building.transform.y - b.height / 2;
+        const maxY = building.transform.y + b.height / 2;
+        const minZ = 0;
+        const maxZ = b.depth;
+        const cxp = x < minX ? minX : x > maxX ? maxX : x;
+        const cyp = y < minY ? minY : y > maxY ? maxY : y;
+        const czp = z < minZ ? minZ : z > maxZ ? maxZ : z;
+        const dx = cxp - x;
+        const dy = cyp - y;
+        const dz = czp - z;
 
-        if (dx * dx + dy * dy <= checkRadius * checkRadius) {
+        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
           this.queryResultBuildings.push(building);
         }
       }
@@ -372,18 +457,18 @@ export class SpatialGrid {
   }
 
   /**
-   * Query all entities (units + buildings) within a radius
+   * Query all entities (units + buildings) within a 3D sphere
    * Returns a reused array - DO NOT STORE THE REFERENCE
    */
-  queryEntitiesInRadius(x: number, y: number, radius: number): Entity[] {
+  queryEntitiesInRadius(x: number, y: number, z: number, radius: number): Entity[] {
     this.queryResultAll.length = 0;
 
-    const units = this.queryUnitsInRadius(x, y, radius);
+    const units = this.queryUnitsInRadius(x, y, z, radius);
     for (const unit of units) {
       this.queryResultAll.push(unit);
     }
 
-    const buildings = this.queryBuildingsInRadius(x, y, radius);
+    const buildings = this.queryBuildingsInRadius(x, y, z, radius);
     for (const building of buildings) {
       this.queryResultAll.push(building);
     }
@@ -392,12 +477,12 @@ export class SpatialGrid {
   }
 
   /**
-   * Query enemy units within a radius (filtered by player)
+   * Query enemy units within a 3D sphere (filtered by player)
    * Returns a reused array - DO NOT STORE THE REFERENCE
    */
-  queryEnemyUnitsInRadius(x: number, y: number, radius: number, excludePlayerId: PlayerId): Entity[] {
+  queryEnemyUnitsInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     this.queryResultUnits.length = 0;
-    this.getCellsInRadius(x, y, radius);
+    this.getCellsInRadius(x, y, z, radius);
 
     const radiusSq = radius * radius;
 
@@ -410,7 +495,8 @@ export class SpatialGrid {
 
         const dx = unit.transform.x - x;
         const dy = unit.transform.y - y;
-        if (dx * dx + dy * dy <= radiusSq) {
+        const dz = unit.transform.z - z;
+        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
           this.queryResultUnits.push(unit);
         }
       }
@@ -420,12 +506,12 @@ export class SpatialGrid {
   }
 
   /**
-   * Query enemy projectiles within a radius (filtered by owner player)
+   * Query enemy projectiles within a 3D sphere (filtered by owner player)
    * Only returns 'projectile' type projectiles. Returns a reused array - DO NOT STORE THE REFERENCE
    */
-  queryEnemyProjectilesInRadius(x: number, y: number, radius: number, excludePlayerId: PlayerId): Entity[] {
+  queryEnemyProjectilesInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     this.queryResultProjectiles.length = 0;
-    this.getCellsInRadius(x, y, radius);
+    this.getCellsInRadius(x, y, z, radius);
 
     const radiusSq = radius * radius;
 
@@ -439,7 +525,8 @@ export class SpatialGrid {
 
         const dx = proj.transform.x - x;
         const dy = proj.transform.y - y;
-        if (dx * dx + dy * dy <= radiusSq) {
+        const dz = proj.transform.z - z;
+        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
           this.queryResultProjectiles.push(proj);
         }
       }
@@ -452,16 +539,16 @@ export class SpatialGrid {
    * Combined enemy-units + enemy-projectiles query in a single
    * cell sweep. Force-field turrets need both, every tick — calling
    * the two solo helpers back-to-back rebuilds `nearbyCells` twice
-   * for the same (x, y, radius). This single-sweep version fills
+   * for the same (x, y, z, radius). This single-sweep version fills
    * both reusable arrays in one pass over the cells. Returns the
    * shared `_unitsAndProjResult` wrapper — DO NOT STORE THE REFERENCE.
    */
   queryEnemyUnitsAndProjectilesInRadius(
-    x: number, y: number, radius: number, excludePlayerId: PlayerId,
+    x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId,
   ): { units: Entity[]; projectiles: Entity[] } {
     this.queryResultUnits.length = 0;
     this.queryResultProjectiles.length = 0;
-    this.getCellsInRadius(x, y, radius);
+    this.getCellsInRadius(x, y, z, radius);
 
     const radiusSq = radius * radius;
 
@@ -473,7 +560,8 @@ export class SpatialGrid {
         if (unit.ownership?.playerId === excludePlayerId) continue;
         const dx = unit.transform.x - x;
         const dy = unit.transform.y - y;
-        if (dx * dx + dy * dy <= radiusSq) {
+        const dz = unit.transform.z - z;
+        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
           this.queryResultUnits.push(unit);
         }
       }
@@ -483,7 +571,8 @@ export class SpatialGrid {
         if (proj.projectile.ownerId === excludePlayerId) continue;
         const dx = proj.transform.x - x;
         const dy = proj.transform.y - y;
-        if (dx * dx + dy * dy <= radiusSq) {
+        const dz = proj.transform.z - z;
+        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
           this.queryResultProjectiles.push(proj);
         }
       }
@@ -498,14 +587,14 @@ export class SpatialGrid {
   };
 
   /**
-   * Query enemy entities (units + buildings) within a radius
+   * Query enemy entities (units + buildings) within a 3D sphere
    * Returns a reused array - DO NOT STORE THE REFERENCE
    */
-  queryEnemyEntitiesInRadius(x: number, y: number, radius: number, excludePlayerId: PlayerId): Entity[] {
+  queryEnemyEntitiesInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     this.queryResultAll.length = 0;
     // Pad cell search by max shot radius so units at radius + shot collider boundary
     // are in searched cells (per-unit distance check below does precise filtering)
-    this.getCellsInRadius(x, y, radius + MAX_UNIT_SHOT_RADIUS);
+    this.getCellsInRadius(x, y, z, radius + MAX_UNIT_SHOT_RADIUS);
     this._dedup.clear();
 
     for (const key of this.nearbyCells) {
@@ -518,10 +607,11 @@ export class SpatialGrid {
 
         const dx = unit.transform.x - x;
         const dy = unit.transform.y - y;
+        const dz = unit.transform.z - z;
         // Add unit shot collider radius to distance check (matches building behavior)
         // so units at edge of seeRange + radius are not incorrectly excluded
         const unitCheckRadius = radius + unit.unit.unitRadiusCollider.shot;
-        if (dx * dx + dy * dy <= unitCheckRadius * unitCheckRadius) {
+        if (dx * dx + dy * dy + dz * dz <= unitCheckRadius * unitCheckRadius) {
           this.queryResultAll.push(unit);
         }
       }
@@ -532,12 +622,22 @@ export class SpatialGrid {
         if (!building.building || building.building.hp <= 0) continue;
         this._dedup.add(building.id);
 
-        const dx = building.transform.x - x;
-        const dy = building.transform.y - y;
-        const buildingRadius = Math.max(building.building.width, building.building.height) / 2;
-        const checkRadius = radius + buildingRadius;
+        // Sphere-vs-AABB closest-point distance (matches queryBuildingsInRadius).
+        const b = building.building;
+        const minX = building.transform.x - b.width / 2;
+        const maxX = building.transform.x + b.width / 2;
+        const minY = building.transform.y - b.height / 2;
+        const maxY = building.transform.y + b.height / 2;
+        const minZ = 0;
+        const maxZ = b.depth;
+        const cxp = x < minX ? minX : x > maxX ? maxX : x;
+        const cyp = y < minY ? minY : y > maxY ? maxY : y;
+        const czp = z < minZ ? minZ : z > maxZ ? maxZ : z;
+        const dx = cxp - x;
+        const dy = cyp - y;
+        const dz = czp - z;
 
-        if (dx * dx + dy * dy <= checkRadius * checkRadius) {
+        if (dx * dx + dy * dy + dz * dz <= radius * radius) {
           this.queryResultAll.push(building);
         }
       }
@@ -547,9 +647,17 @@ export class SpatialGrid {
   }
 
   /**
-   * Get cells along a line (for beam collision)
+   * Collect cells whose cube intersects the AABB around a 3D segment
+   * (x1,y1,z1) → (x2,y2,z2) padded by `lineWidth/2` on every axis.
+   * Beam paths arc through 3D space; this AABB is the loosest possible
+   * broad-phase volume — the per-entity test downstream refines with
+   * a real 3D segment-vs-sphere or segment-vs-AABB intersection.
    */
-  queryCellsAlongLine(x1: number, y1: number, x2: number, y2: number, lineWidth: number): void {
+  queryCellsAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): void {
     this.nearbyCells.length = 0;
 
     const halfWidth = lineWidth / 2;
@@ -557,25 +665,35 @@ export class SpatialGrid {
     const maxX = Math.max(x1, x2) + halfWidth;
     const minY = Math.min(y1, y2) - halfWidth;
     const maxY = Math.max(y1, y2) + halfWidth;
+    const minZ = Math.min(z1, z2) - halfWidth;
+    const maxZ = Math.max(z1, z2) + halfWidth;
 
     const minCx = Math.floor(minX / this.cellSize);
     const maxCx = Math.floor(maxX / this.cellSize);
     const minCy = Math.floor(minY / this.cellSize);
     const maxCy = Math.floor(maxY / this.cellSize);
+    const minCz = Math.floor((minZ + this.halfCellSize) / this.cellSize);
+    const maxCz = Math.floor((maxZ + this.halfCellSize) / this.cellSize);
 
     for (let cx = minCx; cx <= maxCx; cx++) {
       for (let cy = minCy; cy <= maxCy; cy++) {
-        this.nearbyCells.push(((cx + 32768) & 0xFFFF) << 16 | ((cy + 32768) & 0xFFFF));
+        for (let cz = minCz; cz <= maxCz; cz++) {
+          this.nearbyCells.push(this.packCell(cx, cy, cz));
+        }
       }
     }
   }
 
   /**
-   * Query units along a line (for beam weapons)
+   * Query units along a 3D segment (for beam weapons)
    */
-  queryUnitsAlongLine(x1: number, y1: number, x2: number, y2: number, lineWidth: number): Entity[] {
+  queryUnitsAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): Entity[] {
     this.queryResultUnits.length = 0;
-    this.queryCellsAlongLine(x1, y1, x2, y2, lineWidth);
+    this.queryCellsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
 
     this._dedup.clear();
 
@@ -594,11 +712,15 @@ export class SpatialGrid {
   }
 
   /**
-   * Query buildings along a line (for beam weapons)
+   * Query buildings along a 3D segment (for beam weapons)
    */
-  queryBuildingsAlongLine(x1: number, y1: number, x2: number, y2: number, lineWidth: number): Entity[] {
+  queryBuildingsAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): Entity[] {
     this.queryResultBuildings.length = 0;
-    this.queryCellsAlongLine(x1, y1, x2, y2, lineWidth);
+    this.queryCellsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
 
     this._dedup.clear();
 
@@ -625,18 +747,22 @@ export class SpatialGrid {
 
   /**
    * Get all occupied cells with player occupancy info (for debug visualization).
-   * Returns array of { cell: { x, y }, players[] } for cells containing at least one unit.
+   * Returns array of { cell: { x, y, z }, players[] } for cells containing at least one unit.
+   * Wire format extended with z so the client overlay can stack per altitude.
    */
-  getOccupiedCells(): { cell: { x: number; y: number }; players: number[] }[] {
-    const result: { cell: { x: number; y: number }; players: number[] }[] = [];
+  getOccupiedCells(): { cell: { x: number; y: number; z: number }; players: number[] }[] {
+    const result: { cell: { x: number; y: number; z: number }; players: number[] }[] = [];
     const playerSet = new Set<number>();
 
     for (const [key, cell] of this.cells) {
       if (cell.units.length === 0) continue;
 
-      // Decode bit-packed cell key
-      const cx = ((key >> 16) & 0xFFFF) - 32768;
-      const cy = (key & 0xFFFF) - 32768;
+      // Decode bit-packed cell key: cx * 2^32 + cy * 2^16 + cz, each
+      // axis biased by CELL_BIAS. Use Math.floor + arithmetic since
+      // JS bit ops truncate to 32 bits.
+      const cz = (key & CELL_MASK) - CELL_BIAS;
+      const cy = (Math.floor(key / CY_MULT) & CELL_MASK) - CELL_BIAS;
+      const cx = Math.floor(key / CX_MULT) - CELL_BIAS;
 
       // Collect unique player IDs in this cell
       playerSet.clear();
@@ -647,7 +773,7 @@ export class SpatialGrid {
       }
 
       if (playerSet.size > 0) {
-        result.push({ cell: { x: cx, y: cy }, players: Array.from(playerSet) });
+        result.push({ cell: { x: cx, y: cy, z: cz }, players: Array.from(playerSet) });
       }
     }
 
@@ -659,6 +785,16 @@ export class SpatialGrid {
    * Unlike getOccupiedCells(), players are NOT deduplicated — 3 red units
    * on a tile yield [1,1,1] so the capture system can count them.
    * Buildings contribute one vote per cell they span, just like a unit.
+   *
+   * Territory capture is a GROUND concept: a tile is the XY footprint
+   * of a column of cubes. Units stacked in the air above the same XY
+   * cube all vote into the same tile. The returned key is therefore
+   * the 2D (cx, cy) packed key, NOT the full 3D cube key — the
+   * capture system stays 2D even though the spatial grid is 3D. When
+   * aircraft arrive and the question of "do flying units capture?"
+   * gets answered, gate the unit/building loop here on the unit's
+   * altitude instead of changing the key shape.
+   *
    * Returns a reusable array — do NOT store the reference.
    */
   getOccupiedCellsForCapture(): CaptureCell[] {
@@ -667,10 +803,34 @@ export class SpatialGrid {
     for (const c of _captureCells) _capturePool.push(c);
     _captureCells.length = 0;
 
-    for (const [key, cell] of this.cells) {
+    // Aggregate by 2D (cx, cy) tile key, summing contributions from
+    // every cube in the Z column. Two units at the same XY but
+    // different altitudes both vote into the same ground tile.
+    const byTile: Map<number, { key: number; players: PlayerId[] }> = _captureByTile;
+    byTile.clear();
+
+    for (const [cubeKey, cell] of this.cells) {
       if (cell.units.length === 0 && cell.buildings.length === 0) continue;
-      const entry = _capturePool.pop() ?? { key: 0, players: [] };
-      entry.players.length = 0;
+
+      // Drop cz from the 3D cube key to get a 2D tile key. The
+      // packing is `cx * 2^32 + cy * 2^16 + cz` (each axis 16-bit
+      // biased), so the cx/cy bits live in the high 32 bits.
+      const cz = (cubeKey & CELL_MASK) - CELL_BIAS;
+      const cy = (Math.floor(cubeKey / CY_MULT) & CELL_MASK) - CELL_BIAS;
+      const cx = Math.floor(cubeKey / CX_MULT) - CELL_BIAS;
+      void cz; // intentional: column-collapsed, cz unused for capture
+      // 2D tile key — same bit-packing the legacy 2D grid produced,
+      // so the existing CaptureSystem decoder stays valid.
+      const tileKey = (((cx + CELL_BIAS) & CELL_MASK) << 16) | ((cy + CELL_BIAS) & CELL_MASK);
+
+      let entry = byTile.get(tileKey);
+      if (!entry) {
+        entry = _capturePool.pop() ?? { key: 0, players: [] };
+        entry.players.length = 0;
+        entry.key = tileKey;
+        byTile.set(tileKey, entry);
+      }
+
       for (const unit of cell.units) {
         if (unit.ownership?.playerId && unit.unit && unit.unit.hp > 0) {
           entry.players.push(unit.ownership.playerId);
@@ -689,13 +849,16 @@ export class SpatialGrid {
           entry.players.push(b.ownership.playerId);
         }
       }
+    }
+
+    for (const entry of byTile.values()) {
       if (entry.players.length > 0) {
-        entry.key = key;
         _captureCells.push(entry);
       } else {
         _capturePool.push(entry);
       }
     }
+    byTile.clear();
     return _captureCells;
   }
 }
@@ -705,6 +868,10 @@ const _captureCells: { key: number; players: PlayerId[] }[] = [];
 // the peak occupied-cell count then stops; eliminates per-tick array
 // allocations in the capture-tick hot path.
 const _capturePool: { key: number; players: PlayerId[] }[] = [];
+// Reusable XY-tile aggregator used by getOccupiedCellsForCapture to
+// merge multiple Z-cubes that share an XY footprint into one capture
+// tile entry. Cleared at the start of every call.
+const _captureByTile: Map<number, { key: number; players: PlayerId[] }> = new Map();
 
 // Singleton instance for the game
 export const spatialGrid = new SpatialGrid();

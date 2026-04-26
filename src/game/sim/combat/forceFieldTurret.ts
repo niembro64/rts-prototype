@@ -132,6 +132,10 @@ export function applyForceFieldDamage(
       // Force fields are always 360° — no angle checks needed
       const weaponX = unit.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y;
       const weaponY = unit.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y;
+      // Mount points are 2D (XY offset on the unit chassis); the
+      // emitter's altitude is the unit's. Force-field zones are now
+      // true 3D spheres around (weaponX, weaponY, weaponZ).
+      const weaponZ = unit.transform.z;
 
       // Single combined cell sweep when BOTH unit and projectile pushes
       // are enabled — saves rebuilding `nearbyCells` twice for the same
@@ -141,7 +145,7 @@ export function applyForceFieldDamage(
         (world.ffAccelUnits && forceAccumulator !== null) && world.ffAccelShots;
       const combined = useCombinedQuery
         ? spatialGrid.queryEnemyUnitsAndProjectilesInRadius(
-            weaponX, weaponY, zones.pushOuter, sourcePlayerId,
+            weaponX, weaponY, weaponZ, zones.pushOuter, sourcePlayerId,
           )
         : null;
 
@@ -151,7 +155,7 @@ export function applyForceFieldDamage(
         const nearbyUnits = combined
           ? combined.units
           : spatialGrid.queryEnemyUnitsInRadius(
-              weaponX, weaponY, zones.pushOuter, sourcePlayerId,
+              weaponX, weaponY, weaponZ, zones.pushOuter, sourcePlayerId,
             );
         for (const target of nearbyUnits) {
           if (!target.unit || target.unit.hp <= 0) continue;
@@ -160,8 +164,9 @@ export function applyForceFieldDamage(
           const targetRadius = target.unit.unitRadiusCollider.shot;
           const dx = target.transform.x - weaponX;
           const dy = target.transform.y - weaponY;
+          const dz = target.transform.z - weaponZ;
 
-          const distSq = dx * dx + dy * dy;
+          const distSq = dx * dx + dy * dy + dz * dz;
           const maxDist = zones.pushOuter + targetRadius;
           if (distSq > maxDist * maxDist) continue;
 
@@ -170,7 +175,13 @@ export function applyForceFieldDamage(
           if (dist <= 0) continue;
 
           const targetMass = target.body?.physicsBody.mass ?? 1;
-          const nx = dx / dist;  // push outward
+          // Force-field push is currently a 2D shove on the horizontal
+          // plane — the addNormalizedDirectionalForce API only accepts
+          // (nx, ny). Vertical separation between emitter and target
+          // is correctly used to gate IN/OUT (3D distance check above)
+          // but the impulse itself is horizontal. When the force API
+          // grows a Z component, this can become a true 3D push.
+          const nx = dx / dist;
           const ny = dy / dist;
 
           forceAccumulator.addNormalizedDirectionalForce(
@@ -187,7 +198,7 @@ export function applyForceFieldDamage(
         ? []
         : combined
           ? combined.projectiles
-          : spatialGrid.queryEnemyProjectilesInRadius(weaponX, weaponY, zones.pushOuter, sourcePlayerId);
+          : spatialGrid.queryEnemyProjectilesInRadius(weaponX, weaponY, weaponZ, zones.pushOuter, sourcePlayerId);
 
       for (const projEntity of nearbyProjectiles) {
         const proj = projEntity.projectile!;
@@ -195,7 +206,8 @@ export function applyForceFieldDamage(
 
         const dx = projEntity.transform.x - weaponX;
         const dy = projEntity.transform.y - weaponY;
-        const distSq = dx * dx + dy * dy;
+        const dz = projEntity.transform.z - weaponZ;
+        const distSq = dx * dx + dy * dy + dz * dz;
         const pmaxDist = zones.pushOuter + projRadius;
         if (distSq > pmaxDist * pmaxDist) continue;
 
@@ -205,10 +217,15 @@ export function applyForceFieldDamage(
         const projMass = (proj.config.shot.type === 'projectile' ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
         const pushAccel = pushStrength / projMass;
 
+        // 3D push: scale outward direction along all three axes so a
+        // projectile passing high above the emitter gets shoved up as
+        // well as out, and one passing below gets shoved down.
         const dirX = dist > 0 ? dx / dist : 0;
         const dirY = dist > 0 ? dy / dist : 0;
-        proj.velocityX += dirX * pushAccel * dtSec;  // push outward
+        const dirZ = dist > 0 ? dz / dist : 0;
+        proj.velocityX += dirX * pushAccel * dtSec;
         proj.velocityY += dirY * pushAccel * dtSec;
+        proj.velocityZ += dirZ * pushAccel * dtSec;
 
         projEntity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
 
@@ -216,8 +233,10 @@ export function applyForceFieldDamage(
         const velTh = SNAPSHOT_CONFIG.velocityThreshold;
         const lastVx = proj.lastSentVelX ?? proj.velocityX;
         const lastVy = proj.lastSentVelY ?? proj.velocityY;
+        const lastVz = proj.lastSentVelZ ?? proj.velocityZ;
         if (Math.abs(proj.velocityX - lastVx) > velTh ||
-            Math.abs(proj.velocityY - lastVy) > velTh) {
+            Math.abs(proj.velocityY - lastVy) > velTh ||
+            Math.abs(proj.velocityZ - lastVz) > velTh) {
           proj.lastSentVelX = proj.velocityX;
           proj.lastSentVelY = proj.velocityY;
           proj.lastSentVelZ = proj.velocityZ;

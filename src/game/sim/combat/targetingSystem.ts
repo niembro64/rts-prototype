@@ -234,7 +234,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
     if (useBatch) {
       const batchRadius = maxAcquireRange + maxWeaponOffset;
       const enemies = spatialGrid.queryEnemyEntitiesInRadius(
-        unit.transform.x, unit.transform.y, batchRadius, playerId
+        unit.transform.x, unit.transform.y, unit.transform.z, batchRadius, playerId
       );
       _batchedEnemies.length = enemies.length;
       for (let i = 0; i < enemies.length; i++) _batchedEnemies[i] = enemies[i];
@@ -255,7 +255,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
 
       const candidates = useBatch
         ? _batchedEnemies
-        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, r.tracking.acquire, playerId);
+        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, r.tracking.acquire, playerId);
 
       let closestEngageable: Entity | null = null;
       let closestDist = Infinity;
@@ -299,7 +299,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
       // Use batched results for multi-weapon units, per-weapon query for single-weapon
       const candidates = useBatch
         ? _batchedEnemies
-        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, r.tracking.acquire, playerId);
+        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, r.tracking.acquire, playerId);
 
       let closestEnemy: Entity | null = null;
       let closestDist = Infinity;

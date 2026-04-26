@@ -904,21 +904,28 @@ export class GameServer {
 
       const x = unit.transform.x;
       const y = unit.transform.y;
+      const z = unit.transform.z;
+      const halfCell = cellSize / 2;
       const minCx = Math.floor((x - maxSeeRange) / cellSize);
       const maxCx = Math.floor((x + maxSeeRange) / cellSize);
       const minCy = Math.floor((y - maxSeeRange) / cellSize);
       const maxCy = Math.floor((y + maxSeeRange) / cellSize);
+      const minCz = Math.floor((z - maxSeeRange + halfCell) / cellSize);
+      const maxCz = Math.floor((z + maxSeeRange + halfCell) / cellSize);
 
-      for (let cy = minCy; cy <= maxCy; cy++) {
-        for (let cx = minCx; cx <= maxCx; cx++) {
-          // Bit-pack key: offset by 10000 to handle negative coords
-          const key = (cx + 10000) * 20000 + (cy + 10000);
-          let players = cellMap.get(key);
-          if (!players) {
-            players = new Set();
-            cellMap.set(key, players);
+      for (let cz = minCz; cz <= maxCz; cz++) {
+        for (let cy = minCy; cy <= maxCy; cy++) {
+          for (let cx = minCx; cx <= maxCx; cx++) {
+            // Bit-pack key: offset by 10000 (gives cell index range
+            // [-10000, +10000]) and pack three axes into one int.
+            const key = (cx + 10000) * 20000 * 20000 + (cy + 10000) * 20000 + (cz + 10000);
+            let players = cellMap.get(key);
+            if (!players) {
+              players = new Set();
+              cellMap.set(key, players);
+            }
+            players.add(playerId);
           }
-          players.add(playerId);
         }
       }
     }
@@ -926,9 +933,10 @@ export class GameServer {
     // Convert to NetworkServerSnapshotGridCell array
     const result: NetworkServerSnapshotGridCell[] = [];
     for (const [key, players] of cellMap) {
-      const cx = Math.floor(key / 20000) - 10000;
-      const cy = (key % 20000) - 10000;
-      result.push({ cell: { x: cx, y: cy }, players: Array.from(players) });
+      const cz = (key % 20000) - 10000;
+      const cy = (Math.floor(key / 20000) % 20000) - 10000;
+      const cx = Math.floor(key / (20000 * 20000)) - 10000;
+      result.push({ cell: { x: cx, y: cy, z: cz }, players: Array.from(players) });
     }
     return result;
   }

@@ -33,7 +33,7 @@ function findNearestEnemyForRocket(
   ownerId: number,
 ): Entity | null {
   const candidates = spatialGrid.queryEnemyEntitiesInRadius(
-    proj.transform.x, proj.transform.y, ROCKET_REACQUIRE_RANGE, ownerId,
+    proj.transform.x, proj.transform.y, proj.transform.z, ROCKET_REACQUIRE_RANGE, ownerId,
   );
   let nearest: Entity | null = null;
   let nearestDistSq = Infinity;

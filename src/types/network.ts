@@ -120,7 +120,7 @@ export type NetworkServerSnapshotVelocityUpdate = {
 };
 
 export type NetworkServerSnapshotGridCell = {
-  cell: Vec2;
+  cell: Vec3;
   players: number[];
 };
 

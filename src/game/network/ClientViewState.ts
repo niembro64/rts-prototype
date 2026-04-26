@@ -857,7 +857,22 @@ export class ClientViewState {
           // velocity updates carry a vz — force-field deflections and
           // homing corrections in the vertical axis propagate instead
           // of being lost.
+          //
+          // The server only emits velocity-update events on homing /
+          // knockback, NOT on gravity decay. So `target.velocityZ`
+          // would stay frozen at the launch vz between updates; the
+          // lerp below would then pull `proj.velocityZ` back up to
+          // launch vz every tick, fighting against the local gravity
+          // application a few lines down. Apply gravity to the target
+          // here so the extrapolated drift target decays exactly the
+          // way the server's authoritative state does — high-arc
+          // shells stop flying up forever.
           if (target) {
+            const targetShotCfg = entity.projectile.config.shot;
+            const targetIgnoresGravity = targetShotCfg.type === 'projectile' && targetShotCfg.ignoresGravity === true;
+            if (!targetIgnoresGravity) {
+              target.velocityZ -= GRAVITY * dt;
+            }
             target.x += target.velocityX * dt;
             target.y += target.velocityY * dt;
             target.z += target.velocityZ * dt;

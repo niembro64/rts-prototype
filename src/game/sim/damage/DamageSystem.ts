@@ -111,8 +111,8 @@ export class DamageSystem {
   // Returns the parametric T value (0-1) and entity ID of first hit
   // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
   findLineObstruction(
-    startX: number, startY: number,
-    endX: number, endY: number,
+    startX: number, startY: number, startZ: number,
+    endX: number, endY: number, endZ: number,
     sourceEntityId: EntityId,
     lineWidth: number
   ): { t: number; entityId: EntityId } | null {
@@ -120,8 +120,8 @@ export class DamageSystem {
     let closestEntityId: EntityId | null = null;
 
     // PERFORMANCE: Query only entities near the line using spatial grid
-    const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, endX, endY, lineWidth + 50);
-    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, endX, endY, lineWidth + 100);
+    const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 50);
+    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 100);
 
     // Check units
     for (const unit of nearbyUnits) {
@@ -260,7 +260,7 @@ export class DamageSystem {
     const dz = endZ - startZ;
     const segLenSq = dx * dx + dy * dy;
 
-    const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, endX, endY, lineWidth + 60);
+    const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 60);
 
     for (const unit of nearbyUnits) {
       const isExcludedEntity = unit.id === excludeEntityId;
@@ -334,7 +334,7 @@ export class DamageSystem {
 
     // Buildings: 3D ray-vs-AABB (x/y footprint × z depth). A beam arcing
     // over a short building correctly misses; clipping the wall stops.
-    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, endX, endY, lineWidth + 100);
+    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 100);
     for (const building of nearbyBuildings) {
       if (!building.building || building.building.hp <= 0) continue;
       const bWidth = building.building.width;
@@ -385,10 +385,12 @@ export class DamageSystem {
 
     // PERFORMANCE: Query only entities near the line using spatial grid
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(
-      source.start.x, source.start.y, source.end.x, source.end.y, source.width + 50
+      source.start.x, source.start.y, source.start.z,
+      source.end.x, source.end.y, source.end.z, source.width + 50
     );
     const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
-      source.start.x, source.start.y, source.end.x, source.end.y, source.width + 100
+      source.start.x, source.start.y, source.start.z,
+      source.end.x, source.end.y, source.end.z, source.width + 100
     );
 
     // Check units — 3D segment-vs-sphere: the beam is a line in 3D
@@ -500,10 +502,12 @@ export class DamageSystem {
 
     // PERFORMANCE: Query only entities near the projectile path using spatial grid
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(
-      source.prev.x, source.prev.y, source.current.x, source.current.y, source.radius + 50
+      source.prev.x, source.prev.y, source.prev.z,
+      source.current.x, source.current.y, source.current.z, source.radius + 50
     );
     const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
-      source.prev.x, source.prev.y, source.current.x, source.current.y, source.radius + 100
+      source.prev.x, source.prev.y, source.prev.z,
+      source.current.x, source.current.y, source.current.z, source.radius + 100
     );
 
     // Check units using swept 3D collision — segment prev→current vs a
@@ -612,8 +616,8 @@ export class DamageSystem {
     const sliceDirection = source.sliceDirection ?? 0;
 
     // PERFORMANCE: Query only entities within the damage radius using spatial grid
-    const nearbyUnits = spatialGrid.queryUnitsInRadius(source.center.x, source.center.y, source.radius + 50);
-    const nearbyBuildings = spatialGrid.queryBuildingsInRadius(source.center.x, source.center.y, source.radius + 100);
+    const nearbyUnits = spatialGrid.queryUnitsInRadius(source.center.x, source.center.y, source.center.z, source.radius + 50);
+    const nearbyBuildings = spatialGrid.queryBuildingsInRadius(source.center.x, source.center.y, source.center.z, source.radius + 100);
 
     // Check units — full 3D sphere-vs-sphere: the AOE sphere around
     // source.center must overlap the unit's collision sphere. A mortar

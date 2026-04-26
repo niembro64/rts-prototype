@@ -115,7 +115,7 @@ export function solveMirrorAim(
     let victimDist = Infinity;
     if (sSeedLen > 1e-6 && unit.ownership) {
       const enemies = spatialGrid.queryEnemyEntitiesInRadius(
-        weaponX, weaponY,
+        weaponX, weaponY, unitGroundZ,
         weapon.ranges.tracking.acquire,
         unit.ownership.playerId,
       );

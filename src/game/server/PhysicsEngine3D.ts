@@ -50,6 +50,22 @@
 
 import { UNIT_MASS_MULTIPLIER, GRAVITY } from '../../config';
 
+// Pack a (cx, cy, cz) integer cell coordinate into a single numeric
+// key. Each axis is 16-bit biased; the packed value is a 48-bit
+// non-negative safe integer (well under JS's 2^53 ceiling). Mirrors
+// the encoding the sim-side SpatialGrid uses so the two indices are
+// readable side by side.
+const CONTACT_CELL_BIAS = 32768;
+const CONTACT_CELL_MASK = 0xFFFF;
+const CONTACT_CX_MULT = 0x100000000;  // 2^32
+const CONTACT_CY_MULT = 0x10000;      // 2^16
+function packContactCellKey(cx: number, cy: number, cz: number): number {
+  const cxB = (cx + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK;
+  const cyB = (cy + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK;
+  const czB = (cz + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK;
+  return cxB * CONTACT_CX_MULT + cyB * CONTACT_CY_MULT + czB;
+}
+
 /** A body participating in the 3D physics simulation. One shape type
  *  per body ('sphere' or 'cuboid'); spheres are always dynamic, cuboids
  *  are always static in the current scope. */
@@ -356,11 +372,17 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Bucket every dynamic sphere into a single broad-phase cell keyed
+  /** Bucket every dynamic sphere into a single broad-phase cube keyed
    *  by its center. Reused across the SPHERE_ITERATIONS sub-steps via
    *  a single rebuild per call to resolveSphereSphereContacts; small
    *  positional drift from the iterations is well below CONTACT_CELL_SIZE
-   *  so the buckets stay valid for all 4 sub-passes. */
+   *  so the buckets stay valid for all 4 sub-passes.
+   *
+   *  Cell key matches the sim-side SpatialGrid encoding: 16-bit cx +
+   *  16-bit cy + 16-bit cz packed into a 48-bit safe integer via
+   *  multiplication. The Z axis is biased by half a cell so z=0 sits
+   *  at the CENTER of the bottom cube — ground units cluster
+   *  predictably instead of straddling a cube edge. */
   private rebuildContactCells(): void {
     // Recycle existing bucket arrays to avoid per-step allocations.
     for (const bucket of this.contactCells.values()) {
@@ -369,15 +391,14 @@ export class PhysicsEngine3D {
     }
     this.contactCells.clear();
     const cs = CONTACT_CELL_SIZE;
+    const halfCs = cs / 2;
     for (let i = 0; i < this.dynamicBodies.length; i++) {
       const a = this.dynamicBodies[i];
       if (a.shape !== 'sphere') continue;
       const cx = Math.floor(a.x / cs);
       const cy = Math.floor(a.y / cs);
-      // Bit-pack (cx, cy) into a single int — same encoding the
-      // sim-side SpatialGrid uses; 16-bit bias keeps negative cells
-      // legal under non-negative bit ops.
-      const key = ((cx + 32768) << 16) | (cy + 32768);
+      const cz = Math.floor((a.z + halfCs) / cs);
+      const key = packContactCellKey(cx, cy, cz);
       let bucket = this.contactCells.get(key);
       if (!bucket) {
         bucket = this.contactCellPool.pop() ?? [];
@@ -408,27 +429,32 @@ export class PhysicsEngine3D {
   private resolveSphereSphereContacts(): void {
     this.rebuildContactCells();
     const cs = CONTACT_CELL_SIZE;
+    const halfCs = cs / 2;
     const bodies = this.dynamicBodies;
     for (let i = 0; i < bodies.length; i++) {
       const a = bodies[i];
       if (a.shape !== 'sphere') continue;
       const acx = Math.floor(a.x / cs);
       const acy = Math.floor(a.y / cs);
-      // 3×3 neighborhood (self + 8 neighbors). Two bodies that overlap
-      // must have centers within rA + rB ≤ CONTACT_CELL_SIZE of each
-      // other, so they share a cell or sit in adjacent cells.
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const key = (((acx + dx) + 32768) << 16) | ((acy + dy) + 32768);
-          const bucket = this.contactCells.get(key);
-          if (!bucket) continue;
-          for (let bi = 0; bi < bucket.length; bi++) {
-            const j = bucket[bi];
-            // Resolve each pair once: only when b's index is strictly
-            // greater than a's. Bodies sharing multiple buckets (none
-            // do here since we bucket by center) would otherwise be
-            // counted multiple times.
-            if (j <= i) continue;
+      const acz = Math.floor((a.z + halfCs) / cs);
+      // 3×3×3 neighborhood (self + 26 neighbors). Two bodies that
+      // overlap must have centers within rA + rB ≤ CONTACT_CELL_SIZE
+      // of each other, so they share a cube or sit in an adjacent
+      // cube along any axis (including +/- z for stacked airborne
+      // units above ground units).
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const key = packContactCellKey(acx + dx, acy + dy, acz + dz);
+            const bucket = this.contactCells.get(key);
+            if (!bucket) continue;
+            for (let bi = 0; bi < bucket.length; bi++) {
+              const j = bucket[bi];
+              // Resolve each pair once: only when b's index is strictly
+              // greater than a's. Bodies sharing multiple buckets (none
+              // do here since we bucket by center) would otherwise be
+              // counted multiple times.
+              if (j <= i) continue;
             const b = bodies[j];
             // (b.shape === 'sphere' is implied — only spheres are bucketed.)
             const ddx = b.x - a.x;
@@ -467,6 +493,7 @@ export class PhysicsEngine3D {
             b.vx += ix * b.invMass;
             b.vy += iy * b.invMass;
             b.vz += iz * b.invMass;
+            }
           }
         }
       }
