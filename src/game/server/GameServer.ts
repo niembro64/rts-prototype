@@ -712,20 +712,39 @@ export class GameServer {
     setSimUnitCap(this.world.maxTotalUnits);
   }
 
-  /** Multiplier on the snapshot interval that grows with unit count.
-   *  The intent: at high counts the per-snapshot serialization plus
-   *  network bytes dominate the tick, so trade snapshot rate for
-   *  CPU/bandwidth headroom. Returns 1.0 below the first threshold
-   *  so light battles are unaffected. The thresholds line up with the
-   *  UNITS auto-LOD ladder (2k/4k/8k/12k) so visual quality and
-   *  network rate scale down together. */
+  /** Multiplier on the snapshot interval, driven by unit count AND
+   *  CPU load — whichever forces the bigger multiplier wins. The
+   *  intent: at high unit counts the per-snapshot serialization plus
+   *  network bytes dominate the tick; at high CPU load the snapshot
+   *  emission itself fights the sim for the budget, so stretch the
+   *  interval the same way. Returns 1.0 in calm conditions; both
+   *  signals only kick in past their thresholds.
+   *
+   *  Unit-count thresholds line up with the UNITS auto-LOD ladder
+   *  (2k/4k/8k/12k). CPU thresholds line up with "have we missed
+   *  the budget for a sustained period" — 100% load is the budget,
+   *  150%+ is in trouble. */
   private snapshotIntervalMultiplier(): number {
     const n = this.world.getUnits().length;
-    if (n < 2000) return 1;
-    if (n < 4000) return 1.5;
-    if (n < 8000) return 2;
-    if (n < 12000) return 3;
-    return 4;
+    let unitMul = 1;
+    if (n >= 12000) unitMul = 4;
+    else if (n >= 8000) unitMul = 3;
+    else if (n >= 4000) unitMul = 2;
+    else if (n >= 2000) unitMul = 1.5;
+
+    // tickMsHi is the EMA-spike CPU load. At >100% the host is
+    // already over budget; throttle snapshots to free up CPU.
+    const tickBudgetMs = 1000 / this.tickRateHz;
+    const cpuPct = this.tickMsInitialized
+      ? (this.tickMsHi / tickBudgetMs) * 100
+      : 0;
+    let cpuMul = 1;
+    if (cpuPct >= 250) cpuMul = 4;
+    else if (cpuPct >= 175) cpuMul = 3;
+    else if (cpuPct >= 125) cpuMul = 2;
+    else if (cpuPct >= 100) cpuMul = 1.5;
+
+    return Math.max(unitMul, cpuMul);
   }
 
   // Change simulation tick rate (restarts the game loop interval)
