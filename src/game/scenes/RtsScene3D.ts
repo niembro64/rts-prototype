@@ -156,9 +156,17 @@ export class RtsScene3D {
   private fpsTracker = new EmaTracker(EMA_CONFIG.fps, EMA_INITIAL_VALUES.fps);
   private snapTracker = new EmaTracker(EMA_CONFIG.snaps, EMA_INITIAL_VALUES.snaps);
   // Parallel tracker that ONLY updates on full keyframes (state.isDelta=false).
-  // The displayed FSPS lets the user see how often the protocol re-seeds
-  // statics — a flicker means the host's keyframe ratio is set tight.
-  private fullSnapTracker = new EmaTracker(EMA_CONFIG.snaps, EMA_INITIAL_VALUES.snaps);
+  //
+  // No initialValue passed on purpose — the EMA's "wait for first
+  // sample" mode seeds at the actual rate as soon as a real interval
+  // is observed. Using the same optimistic 60-fps init that SPS gets
+  // would produce a multi-minute convergence problem on this signal:
+  // FSPS samples arrive at ~0.5 Hz (default keyframe ratio = 1/64 of
+  // 32 SPS), so an EMA with α = 0.01 takes ~100 samples × 2s = ~200
+  // seconds to decay from 60 down to the real reading — long enough
+  // that the user sees FSPS displayed higher than SPS, which is
+  // logically impossible (FSPS is a strict subset of SPS).
+  private fullSnapTracker = new EmaTracker(EMA_CONFIG.snaps);
   private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
   private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
   private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
