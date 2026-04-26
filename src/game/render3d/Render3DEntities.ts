@@ -72,6 +72,11 @@ type EntityMesh = {
   /** All meshes inside `chassis` that carry the team primary material —
    *  updated whenever the owner changes (team reassignment, capture). */
   chassisMeshes: THREE.Mesh[];
+  /** Cached renderer id (e.g. 'arachnid', 'tank') resolved once at
+   *  mesh-build time. Unit-blueprint lookups in the per-frame update
+   *  loop are wasted work — the unitType never changes for a live
+   *  entity, so we stash the result here. */
+  rendererId: string;
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
@@ -844,7 +849,7 @@ export class Render3DEntities {
         }
 
         this.world.add(group);
-        m = { group, chassis, chassisMeshes, turrets: turretMeshes, lodKey: this.lod.key };
+        m = { group, chassis, chassisMeshes, rendererId, turrets: turretMeshes, lodKey: this.lod.key };
 
         // Locomotion (tank treads / vehicle wheels / arachnid legs). Built
         // once per unit at the current LOD.
@@ -901,11 +906,7 @@ export class Render3DEntities {
       // scale by the same factor — so a sphere part at (x=0.3, y=0.55,
       // z=0) with scale (0.55, 0.55, 0.55) lands at the right place and
       // the right size automatically.
-      const rendererId = (() => {
-        try { return getUnitBlueprint(e.unit!.unitType).renderer ?? 'arachnid'; }
-        catch { return 'arachnid'; }
-      })();
-      const bodyEntry = getBodyGeom(rendererId);
+      const bodyEntry = getBodyGeom(m.rendererId);
       m.chassis.position.set(0, 0, 0);
       m.chassis.scale.setScalar(radius);
       // Turrets now mount on top of the per-unit body instead of a
@@ -1063,6 +1064,11 @@ export class Render3DEntities {
           group,
           chassis,
           chassisMeshes: [shape.primary],
+          // Buildings don't use a unit-renderer body shape (they have
+          // their own BuildingShape3D path), so the field is unused
+          // here — empty string is fine since the unit-update loop
+          // never reaches a building.
+          rendererId: '',
           turrets: [],
           lodKey: this.lod.key,
           // Store the accent meshes separately so the LOD-key rebuild
