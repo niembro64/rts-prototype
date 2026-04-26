@@ -28,6 +28,7 @@ import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
   LOD_THRESHOLDS,
   LOD_HYSTERESIS,
+  LOD_SIGNALS_ENABLED,
 } from '@/lodConfig';
 
 export const CLIENT_CONFIG = {
@@ -111,6 +112,10 @@ export const PROJ_RANGE_TYPES: ProjRangeType[] = [
 ];
 
 export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['visual', 'shot', 'push'];
+
+// Re-export the per-signal toggles so the UI layer can hide buttons
+// for disabled signals without importing lodConfig directly.
+export { LOD_SIGNALS_ENABLED } from '@/lodConfig';
 
 // ── Graphics quality configs (built from lodConfig) ──
 const D = PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL;
@@ -523,29 +528,45 @@ function unitsRatio(): number {
 export function getEffectiveQuality(): ConcreteGraphicsQuality {
   switch (currentQuality) {
     case 'auto': {
-      // AUTO = min over every available signal. Each sub-mode keeps
+      // AUTO = min over every ENABLED signal. Each sub-mode keeps
       // its own running rank (so hysteresis state survives a swap to
       // its dedicated mode and back). TPS only participates when the
       // local server is running — remote clients have no TPS signal.
-      prevZoomRank = zoomToRank(prevZoomRank);
-      prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
-      prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
-      if (localServerRunning) {
-        prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
-        return RANK_TO_QUALITY[Math.min(prevZoomRank, prevTpsRank, prevFpsRank, prevUnitsRank)];
+      // A signal disabled in LOD_SIGNALS_ENABLED is skipped entirely;
+      // if all signals are disabled we fall back to MAX.
+      let minRank = 4; // Optimistic floor; lowered below by enabled signals.
+      if (LOD_SIGNALS_ENABLED.zoom) {
+        prevZoomRank = zoomToRank(prevZoomRank);
+        if (prevZoomRank < minRank) minRank = prevZoomRank;
       }
-      return RANK_TO_QUALITY[Math.min(prevZoomRank, prevFpsRank, prevUnitsRank)];
+      if (LOD_SIGNALS_ENABLED.fps) {
+        prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
+        if (prevFpsRank < minRank) minRank = prevFpsRank;
+      }
+      if (LOD_SIGNALS_ENABLED.units) {
+        prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
+        if (prevUnitsRank < minRank) minRank = prevUnitsRank;
+      }
+      if (LOD_SIGNALS_ENABLED.tps && localServerRunning) {
+        prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
+        if (prevTpsRank < minRank) minRank = prevTpsRank;
+      }
+      return RANK_TO_QUALITY[minRank];
     }
     case 'auto-zoom':
+      if (!LOD_SIGNALS_ENABLED.zoom) return RANK_TO_QUALITY[4];
       prevZoomRank = zoomToRank(prevZoomRank);
       return RANK_TO_QUALITY[prevZoomRank];
     case 'auto-tps':
+      if (!LOD_SIGNALS_ENABLED.tps) return RANK_TO_QUALITY[4];
       prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
       return RANK_TO_QUALITY[prevTpsRank];
     case 'auto-fps':
+      if (!LOD_SIGNALS_ENABLED.fps) return RANK_TO_QUALITY[4];
       prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
       return RANK_TO_QUALITY[prevFpsRank];
     case 'auto-units':
+      if (!LOD_SIGNALS_ENABLED.units) return RANK_TO_QUALITY[4];
       prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
       return RANK_TO_QUALITY[prevUnitsRank];
     case 'min':

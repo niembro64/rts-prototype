@@ -23,6 +23,7 @@ import {
   SERVER_SIM_DETAIL,
   SERVER_SIM_LOD_THRESHOLDS,
   SERVER_SIM_HYSTERESIS,
+  SERVER_SIM_LOD_SIGNALS_ENABLED,
 } from '../../serverSimLodConfig';
 
 let currentQuality: ServerSimQuality = 'auto';
@@ -117,21 +118,36 @@ export function tickSimQuality(): void {
 export function getEffectiveSimQuality(): ConcreteServerSimQuality {
   switch (currentQuality) {
     case 'auto': {
-      // AUTO = min over every signal. Each sub-mode keeps its own
-      // running rank so hysteresis state survives a swap to the
-      // dedicated mode and back.
-      prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, SERVER_SIM_HYSTERESIS.tps);
-      prevCpuRank = ratioToRank(currentCpuRatio, CPU_THRESHOLDS, prevCpuRank, SERVER_SIM_HYSTERESIS.cpu);
-      prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, SERVER_SIM_HYSTERESIS.units);
-      return RANK_TO_QUALITY[Math.min(prevTpsRank, prevCpuRank, prevUnitsRank)];
+      // AUTO = min over every ENABLED signal. Each sub-mode keeps
+      // its own running rank so hysteresis state survives a swap to
+      // the dedicated mode and back. A signal disabled in
+      // SERVER_SIM_LOD_SIGNALS_ENABLED is skipped entirely; if all
+      // signals are disabled the resolver falls back to MAX.
+      let minRank = 4;
+      if (SERVER_SIM_LOD_SIGNALS_ENABLED.tps) {
+        prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, SERVER_SIM_HYSTERESIS.tps);
+        if (prevTpsRank < minRank) minRank = prevTpsRank;
+      }
+      if (SERVER_SIM_LOD_SIGNALS_ENABLED.cpu) {
+        prevCpuRank = ratioToRank(currentCpuRatio, CPU_THRESHOLDS, prevCpuRank, SERVER_SIM_HYSTERESIS.cpu);
+        if (prevCpuRank < minRank) minRank = prevCpuRank;
+      }
+      if (SERVER_SIM_LOD_SIGNALS_ENABLED.units) {
+        prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, SERVER_SIM_HYSTERESIS.units);
+        if (prevUnitsRank < minRank) minRank = prevUnitsRank;
+      }
+      return RANK_TO_QUALITY[minRank];
     }
     case 'auto-tps':
+      if (!SERVER_SIM_LOD_SIGNALS_ENABLED.tps) return RANK_TO_QUALITY[4];
       prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, SERVER_SIM_HYSTERESIS.tps);
       return RANK_TO_QUALITY[prevTpsRank];
     case 'auto-cpu':
+      if (!SERVER_SIM_LOD_SIGNALS_ENABLED.cpu) return RANK_TO_QUALITY[4];
       prevCpuRank = ratioToRank(currentCpuRatio, CPU_THRESHOLDS, prevCpuRank, SERVER_SIM_HYSTERESIS.cpu);
       return RANK_TO_QUALITY[prevCpuRank];
     case 'auto-units':
+      if (!SERVER_SIM_LOD_SIGNALS_ENABLED.units) return RANK_TO_QUALITY[4];
       prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, SERVER_SIM_HYSTERESIS.units);
       return RANK_TO_QUALITY[prevUnitsRank];
     case 'min':

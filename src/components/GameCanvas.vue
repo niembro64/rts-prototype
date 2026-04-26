@@ -69,7 +69,8 @@ import {
   saveSimQuality,
 } from '../serverBarConfig';
 import type { ServerSimQuality } from '../types/serverSimLod';
-import { CLIENT_CONFIG } from '../clientBarConfig';
+import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
+import { SERVER_SIM_LOD_SIGNALS_ENABLED } from '../serverSimLodConfig';
 import { BAR_THEMES } from '../barThemes';
 import {
   formatDuration,
@@ -1724,6 +1725,7 @@ onUnmounted(() => {
             </button>
             <div class="button-group">
               <button
+                v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.tps"
                 class="control-btn"
                 :class="{
                   active: serverSimQuality === 'auto-tps',
@@ -1735,6 +1737,7 @@ onUnmounted(() => {
                 TPS
               </button>
               <button
+                v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.cpu"
                 class="control-btn"
                 :class="{
                   active: serverSimQuality === 'auto-cpu',
@@ -1746,6 +1749,7 @@ onUnmounted(() => {
                 CPU
               </button>
               <button
+                v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.units"
                 class="control-btn"
                 :class="{
                   active: serverSimQuality === 'auto-units',
@@ -2136,6 +2140,7 @@ onUnmounted(() => {
             </button>
             <div class="button-group">
               <button
+                v-if="LOD_SIGNALS_ENABLED.zoom"
                 class="control-btn"
                 :class="{
                   active: graphicsQuality === 'auto-zoom',
@@ -2147,6 +2152,7 @@ onUnmounted(() => {
                 ZOOM
               </button>
               <button
+                v-if="LOD_SIGNALS_ENABLED.tps"
                 class="control-btn"
                 :class="{
                   active: graphicsQuality === 'auto-tps',
@@ -2158,6 +2164,7 @@ onUnmounted(() => {
                 TPS
               </button>
               <button
+                v-if="LOD_SIGNALS_ENABLED.fps"
                 class="control-btn"
                 :class="{
                   active: graphicsQuality === 'auto-fps',
@@ -2169,6 +2176,7 @@ onUnmounted(() => {
                 FPS
               </button>
               <button
+                v-if="LOD_SIGNALS_ENABLED.units"
                 class="control-btn"
                 :class="{
                   active: graphicsQuality === 'auto-units',

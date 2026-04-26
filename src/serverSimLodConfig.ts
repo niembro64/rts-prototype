@@ -25,6 +25,26 @@ import type {
   ServerSimHysteresis,
 } from './types/serverSimLod';
 
+// =============================================================================
+// HOST SERVER LOD — SIGNAL TOGGLES
+// =============================================================================
+
+// Per-signal enable flags. Set false to remove a signal from the LOD
+// system entirely:
+//   - The AUTO mode no longer factors that signal into its min().
+//   - The dedicated auto-{signal} mode resolves to MAX (a no-op).
+//   - The matching button is hidden in the HOST SERVER LOD bar.
+//
+// Mirrors LOD_SIGNALS_ENABLED on the client side. Toggle here to
+// debug a single signal in isolation or to disable a signal you
+// don't want feeding the resolver (e.g. CPU when running on a
+// machine whose CPU readings are unreliable).
+export const SERVER_SIM_LOD_SIGNALS_ENABLED = {
+  tps: true,
+  cpu: true,
+  units: true,
+} as const;
+
 export const SERVER_SIM_DETAIL: ServerSimDetailTable = {
   TARGETING_REACQUIRE_STRIDE: {
     min: 16,

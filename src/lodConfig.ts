@@ -7,6 +7,26 @@ import type {
 } from './types/lod';
 
 // =============================================================================
+// PLAYER CLIENT LOD — SIGNAL TOGGLES
+// =============================================================================
+
+// Per-signal enable flags. Set false to remove a signal from the LOD
+// system entirely:
+//   - The AUTO mode no longer factors that signal into its min().
+//   - The dedicated auto-{signal} mode resolves to MAX (a no-op).
+//   - The matching button is hidden in the PLAYER CLIENT LOD bar.
+//
+// Toggle here to debug a single signal in isolation, or to disable a
+// signal that doesn't apply to your runtime (e.g. drop ZOOM if you
+// always run a fixed-camera demo).
+export const LOD_SIGNALS_ENABLED = {
+  zoom: true,
+  tps: true,
+  fps: true,
+  units: true,
+} as const;
+
+// =============================================================================
 // TPS BASELINE
 // =============================================================================
 
