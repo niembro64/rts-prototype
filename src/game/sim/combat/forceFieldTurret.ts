@@ -122,12 +122,26 @@ export function applyForceFieldDamage(
       const weaponX = unit.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y;
       const weaponY = unit.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y;
 
+      // Single combined cell sweep when BOTH unit and projectile pushes
+      // are enabled — saves rebuilding `nearbyCells` twice for the same
+      // (weaponX, weaponY, pushOuter). When only one is enabled we fall
+      // through to the targeted helper.
+      const useCombinedQuery =
+        (world.ffAccelUnits && forceAccumulator !== null) && world.ffAccelShots;
+      const combined = useCombinedQuery
+        ? spatialGrid.queryEnemyUnitsAndProjectilesInRadius(
+            weaponX, weaponY, zones.pushOuter, sourcePlayerId,
+          )
+        : null;
+
       // --- Enemy units (knockback only — force fields no longer
       // deal damage; if ffAccelUnits is off there's nothing to do). ---
       if (world.ffAccelUnits && forceAccumulator) {
-        const nearbyUnits = spatialGrid.queryEnemyUnitsInRadius(
-          weaponX, weaponY, zones.pushOuter, sourcePlayerId,
-        );
+        const nearbyUnits = combined
+          ? combined.units
+          : spatialGrid.queryEnemyUnitsInRadius(
+              weaponX, weaponY, zones.pushOuter, sourcePlayerId,
+            );
         for (const target of nearbyUnits) {
           if (!target.unit || target.unit.hp <= 0) continue;
           if (target.id === unit.id) continue;
@@ -158,9 +172,11 @@ export function applyForceFieldDamage(
       }
 
       // --- Projectiles (skipped when ffAccelShots is disabled) ---
-      const nearbyProjectiles = world.ffAccelShots
-        ? spatialGrid.queryEnemyProjectilesInRadius(weaponX, weaponY, zones.pushOuter, sourcePlayerId)
-        : [];
+      const nearbyProjectiles = !world.ffAccelShots
+        ? []
+        : combined
+          ? combined.projectiles
+          : spatialGrid.queryEnemyProjectilesInRadius(weaponX, weaponY, zones.pushOuter, sourcePlayerId);
 
       for (const projEntity of nearbyProjectiles) {
         const proj = projEntity.projectile!;

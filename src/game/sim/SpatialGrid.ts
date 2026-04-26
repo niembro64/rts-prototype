@@ -449,6 +449,55 @@ export class SpatialGrid {
   }
 
   /**
+   * Combined enemy-units + enemy-projectiles query in a single
+   * cell sweep. Force-field turrets need both, every tick — calling
+   * the two solo helpers back-to-back rebuilds `nearbyCells` twice
+   * for the same (x, y, radius). This single-sweep version fills
+   * both reusable arrays in one pass over the cells. Returns the
+   * shared `_unitsAndProjResult` wrapper — DO NOT STORE THE REFERENCE.
+   */
+  queryEnemyUnitsAndProjectilesInRadius(
+    x: number, y: number, radius: number, excludePlayerId: PlayerId,
+  ): { units: Entity[]; projectiles: Entity[] } {
+    this.queryResultUnits.length = 0;
+    this.queryResultProjectiles.length = 0;
+    this.getCellsInRadius(x, y, radius);
+
+    const radiusSq = radius * radius;
+
+    for (const key of this.nearbyCells) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+
+      for (const unit of cell.units) {
+        if (unit.ownership?.playerId === excludePlayerId) continue;
+        const dx = unit.transform.x - x;
+        const dy = unit.transform.y - y;
+        if (dx * dx + dy * dy <= radiusSq) {
+          this.queryResultUnits.push(unit);
+        }
+      }
+
+      for (const proj of cell.projectiles) {
+        if (!proj.projectile || proj.projectile.projectileType !== 'projectile') continue;
+        if (proj.projectile.ownerId === excludePlayerId) continue;
+        const dx = proj.transform.x - x;
+        const dy = proj.transform.y - y;
+        if (dx * dx + dy * dy <= radiusSq) {
+          this.queryResultProjectiles.push(proj);
+        }
+      }
+    }
+
+    this._unitsAndProjResult.units = this.queryResultUnits;
+    this._unitsAndProjResult.projectiles = this.queryResultProjectiles;
+    return this._unitsAndProjResult;
+  }
+  private _unitsAndProjResult: { units: Entity[]; projectiles: Entity[] } = {
+    units: [], projectiles: [],
+  };
+
+  /**
    * Query enemy entities (units + buildings) within a radius
    * Returns a reused array - DO NOT STORE THE REFERENCE
    */
