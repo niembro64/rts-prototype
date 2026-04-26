@@ -67,23 +67,30 @@ export const SERVER_SIM_DETAIL: ServerSimDetailTable = {
 };
 
 // Auto-mode thresholds. Same direction as client TPS/FPS/UNITS:
-// ratio >= threshold ⇒ tier eligible. Tighter than the client side
-// because the SERVER is what actually loads the host's CPU — we want
-// to react before the host hits the wall.
+// ratio >= threshold ⇒ tier eligible. The server LOD reacts much
+// EARLIER than the client side: by the time the host's TPS is at
+// 50% of target the simulation is already drowning, and the LOD's
+// only useful action is to drop work fast. So MAX requires nearly
+// full headroom and HIGH demands ≥75% — tighter than the client's
+// equivalent TPS thresholds.
 export const SERVER_SIM_LOD_THRESHOLDS: ServerSimAutoModeConfig = {
   tps: {
-    low: 0.05,
-    medium: 0.1,
-    high: 0.4,
-    max: 0.9,
+    // Below 30% TPS we collapse to MIN — anything more permissive
+    // and the LOD lets the host stay buried under work it can't do.
+    low: 0.3,
+    medium: 0.5,
+    high: 0.75,
+    max: 0.95,
   },
   // CPU ratio is fed in as `1 − cpuLoad / 100` (cpu load is a percent
-  // of tick budget). 1.0 = idle; 0.0 = saturating.
+  // of tick budget). 1.0 = idle; 0.0 = saturating. By the time CPU
+  // load is 50% (ratio 0.5) we've already lost half the budget — the
+  // ladder tightens accordingly.
   cpu: {
-    low: 0.05,
-    medium: 0.2,
-    high: 0.5,
-    max: 0.8,
+    low: 0.2,
+    medium: 0.4,
+    high: 0.65,
+    max: 0.85,
   },
   // Units fullness — same as the client's UNITS auto mode.
   units: {
