@@ -10,11 +10,19 @@
 // own actual tick rate vs target), CPU (per-tick budget consumption),
 // and UNITS (count vs configured cap).
 
-export type AutoServerSimQuality =
-  | 'auto'
-  | 'auto-tps'
-  | 'auto-cpu'
-  | 'auto-units';
+// AUTO is the meta-mode; per-signal contribution is set via
+// ServerSimSignalStates. Legacy 'auto-tps' / 'auto-cpu' / 'auto-units'
+// values are folded into the signal-state model and migrated at
+// load time.
+export type AutoServerSimQuality = 'auto';
+
+/** Per-signal tri-state on the HOST SERVER LOD ladder. Same shape
+ *  as the client side, with the server's own three signals. */
+export type ServerSimSignalStates = {
+  tps: import('./lod').SignalState;
+  cpu: import('./lod').SignalState;
+  units: import('./lod').SignalState;
+};
 
 export type ConcreteServerSimQuality = 'min' | 'low' | 'medium' | 'high' | 'max';
 

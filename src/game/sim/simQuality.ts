@@ -18,7 +18,9 @@ import type {
   ServerSimQuality,
   ConcreteServerSimQuality,
   ServerSimDetailConfig,
+  ServerSimSignalStates,
 } from '../../types/serverSimLod';
+import type { SignalState } from '../../types/lod';
 import {
   SERVER_SIM_DETAIL,
   SERVER_SIM_LOD_THRESHOLDS,
@@ -36,6 +38,15 @@ let currentUnitCap: number = 4096;
 let prevTpsRank: number = 4;
 let prevCpuRank: number = 4;
 let prevUnitsRank: number = 4;
+
+// Per-signal tri-state. Mirrors the client side; default ACTIVE
+// for every signal. setSimSignalStates() replaces wholesale (sent
+// from the host client as a single struct).
+let currentSignalStates: ServerSimSignalStates = {
+  tps: 'active',
+  cpu: 'active',
+  units: 'active',
+};
 
 const RANK_TO_QUALITY: ConcreteServerSimQuality[] = [
   'min', 'low', 'medium', 'high', 'max',
@@ -100,6 +111,21 @@ export function setSimUnitCap(cap: number): void {
   if (cap > 0) currentUnitCap = cap;
 }
 
+/** Replace all per-signal tri-states. Sent from the host client as
+ *  a single struct (see SetSimSignalStatesCommand). Validates each
+ *  field; bad values fall through to the existing state. */
+export function setSimSignalStates(states: Partial<ServerSimSignalStates>): void {
+  const valid = (s: unknown): s is SignalState =>
+    s === 'off' || s === 'active' || s === 'solo';
+  if (valid(states.tps)) currentSignalStates.tps = states.tps;
+  if (valid(states.cpu)) currentSignalStates.cpu = states.cpu;
+  if (valid(states.units)) currentSignalStates.units = states.units;
+}
+
+export function getSimSignalStates(): Readonly<ServerSimSignalStates> {
+  return currentSignalStates;
+}
+
 // Per-tick cache for the resolved detail config. The hot paths
 // (beam tracer, mirror solver) called getSimDetailConfig() per
 // projectile / per turret which re-ran the AUTO resolver every
@@ -118,38 +144,32 @@ export function tickSimQuality(): void {
 export function getEffectiveSimQuality(): ConcreteServerSimQuality {
   switch (currentQuality) {
     case 'auto': {
-      // AUTO = min over every ENABLED signal. Each sub-mode keeps
-      // its own running rank so hysteresis state survives a swap to
-      // the dedicated mode and back. A signal disabled in
-      // SERVER_SIM_LOD_SIGNALS_ENABLED is skipped entirely; if all
-      // signals are disabled the resolver falls back to MAX.
+      // AUTO mode honors per-signal tri-state (mirror of client side).
+      // SERVER_SIM_LOD_SIGNALS_ENABLED gates the signal entirely
+      // (dev-level kill switch); the user-level state then picks
+      // off / active / solo within the enabled set.
+      const states = currentSignalStates;
+      const tpsEligible = SERVER_SIM_LOD_SIGNALS_ENABLED.tps && states.tps !== 'off';
+      const cpuEligible = SERVER_SIM_LOD_SIGNALS_ENABLED.cpu && states.cpu !== 'off';
+      const unitsEligible = SERVER_SIM_LOD_SIGNALS_ENABLED.units && states.units !== 'off';
+
+      if (tpsEligible) prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, SERVER_SIM_HYSTERESIS.tps);
+      if (cpuEligible) prevCpuRank = ratioToRank(currentCpuRatio, CPU_THRESHOLDS, prevCpuRank, SERVER_SIM_HYSTERESIS.cpu);
+      if (unitsEligible) prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, SERVER_SIM_HYSTERESIS.units);
+
+      // Solo override.
+      if (tpsEligible && states.tps === 'solo') return RANK_TO_QUALITY[prevTpsRank];
+      if (cpuEligible && states.cpu === 'solo') return RANK_TO_QUALITY[prevCpuRank];
+      if (unitsEligible && states.units === 'solo') return RANK_TO_QUALITY[prevUnitsRank];
+
+      // Min over actives.
       let minRank = 4;
-      if (SERVER_SIM_LOD_SIGNALS_ENABLED.tps) {
-        prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, SERVER_SIM_HYSTERESIS.tps);
-        if (prevTpsRank < minRank) minRank = prevTpsRank;
-      }
-      if (SERVER_SIM_LOD_SIGNALS_ENABLED.cpu) {
-        prevCpuRank = ratioToRank(currentCpuRatio, CPU_THRESHOLDS, prevCpuRank, SERVER_SIM_HYSTERESIS.cpu);
-        if (prevCpuRank < minRank) minRank = prevCpuRank;
-      }
-      if (SERVER_SIM_LOD_SIGNALS_ENABLED.units) {
-        prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, SERVER_SIM_HYSTERESIS.units);
-        if (prevUnitsRank < minRank) minRank = prevUnitsRank;
-      }
-      return RANK_TO_QUALITY[minRank];
+      let any = false;
+      if (tpsEligible && states.tps === 'active') { any = true; if (prevTpsRank < minRank) minRank = prevTpsRank; }
+      if (cpuEligible && states.cpu === 'active') { any = true; if (prevCpuRank < minRank) minRank = prevCpuRank; }
+      if (unitsEligible && states.units === 'active') { any = true; if (prevUnitsRank < minRank) minRank = prevUnitsRank; }
+      return any ? RANK_TO_QUALITY[minRank] : RANK_TO_QUALITY[4];
     }
-    case 'auto-tps':
-      if (!SERVER_SIM_LOD_SIGNALS_ENABLED.tps) return RANK_TO_QUALITY[4];
-      prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, SERVER_SIM_HYSTERESIS.tps);
-      return RANK_TO_QUALITY[prevTpsRank];
-    case 'auto-cpu':
-      if (!SERVER_SIM_LOD_SIGNALS_ENABLED.cpu) return RANK_TO_QUALITY[4];
-      prevCpuRank = ratioToRank(currentCpuRatio, CPU_THRESHOLDS, prevCpuRank, SERVER_SIM_HYSTERESIS.cpu);
-      return RANK_TO_QUALITY[prevCpuRank];
-    case 'auto-units':
-      if (!SERVER_SIM_LOD_SIGNALS_ENABLED.units) return RANK_TO_QUALITY[4];
-      prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, SERVER_SIM_HYSTERESIS.units);
-      return RANK_TO_QUALITY[prevUnitsRank];
     case 'min':
     case 'low':
     case 'medium':

@@ -22,6 +22,8 @@ import {
   getEffectiveSimQuality,
   getSimDetailConfig,
   tickSimQuality,
+  setSimSignalStates,
+  getSimSignalStates,
 } from '../sim/simQuality';
 import type { ServerSimQuality } from '@/types/serverSimLod';
 import { PhysicsEngine3D } from './PhysicsEngine3D';
@@ -615,6 +617,7 @@ export class GameServer {
         simLod: {
           picked: this.getSimQuality(),
           effective: this.getEffectiveSimQuality(),
+          signals: { ...getSimSignalStates() },
         },
       };
       this.lastSentServerTime = currentTime;
@@ -658,6 +661,15 @@ export class GameServer {
         return;
       case 'setSimQuality':
         this.setSimQuality(command.quality as ServerSimQuality);
+        return;
+      case 'setSimSignalStates':
+        // Each field is optional; only the ones the user just clicked
+        // will be present. setSimSignalStates validates internally.
+        setSimSignalStates({
+          tps: command.tps as ('off' | 'active' | 'solo' | undefined),
+          cpu: command.cpu as ('off' | 'active' | 'solo' | undefined),
+          units: command.units as ('off' | 'active' | 'solo' | undefined),
+        });
         return;
     }
     this.commandQueue.enqueue(command);

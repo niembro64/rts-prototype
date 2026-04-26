@@ -23,7 +23,8 @@ export type CommandType =
   | 'setProjVelInherit'
   | 'setFfAccelUnits'
   | 'setFfAccelShots'
-  | 'setSimQuality';
+  | 'setSimQuality'
+  | 'setSimSignalStates';
 
 export type BaseCommand = {
   type: CommandType;
@@ -170,6 +171,15 @@ export type SetSimQualityCommand = BaseCommand & {
   quality: string;
 };
 
+export type SetSimSignalStatesCommand = BaseCommand & {
+  type: 'setSimSignalStates';
+  // Each field is one of 'off' | 'active' | 'solo'. Sent whenever
+  // the host client cycles a signal's state.
+  tps?: string;
+  cpu?: string;
+  units?: string;
+};
+
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -191,4 +201,5 @@ export type Command =
   | SetProjVelInheritCommand
   | SetFfAccelUnitsCommand
   | SetFfAccelShotsCommand
-  | SetSimQualityCommand;
+  | SetSimQualityCommand
+  | SetSimSignalStatesCommand;

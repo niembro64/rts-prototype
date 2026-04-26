@@ -148,13 +148,18 @@ export type NetworkServerSnapshotMeta = {
    *  on jumps and decays slowly. Both can exceed 100 when the server is
    *  falling behind (tick work > tick budget). */
   cpu?: { avg: number; hi: number };
-  /** HOST SERVER LOD state. `picked` is the user's choice (auto / one
-   *  of the auto-* / a fixed tier). `effective` is the concrete tier
-   *  that's actually driving sim throttling this tick (after the auto
-   *  resolver runs). The PLAYER CLIENT bar uses these to light the
-   *  picked button as background and the effective tier as white text.
-   *  Wire format is the bare strings — keeps msgpack delta-friendly. */
-  simLod?: { picked: string; effective: string };
+  /** HOST SERVER LOD state. `picked` is the user's choice (auto or a
+   *  fixed tier). `effective` is the concrete tier that's actually
+   *  driving sim throttling this tick (after the auto resolver
+   *  runs). `signals` carries the per-signal tri-state so the host
+   *  bar can render off / active / solo on each button — same shape
+   *  the client side uses for its own LOD bar. Wire format is bare
+   *  strings — keeps msgpack delta-friendly. */
+  simLod?: {
+    picked: string;
+    effective: string;
+    signals?: { tps: string; cpu: string; units: string };
+  };
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';

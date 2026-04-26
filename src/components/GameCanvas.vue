@@ -67,8 +67,11 @@ import {
   saveGridInfo,
   loadStoredSimQuality,
   saveSimQuality,
+  loadStoredSimSignalStates,
+  saveSimSignalStates,
 } from '../serverBarConfig';
-import type { ServerSimQuality } from '../types/serverSimLod';
+import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
+import type { SignalState } from '../types/lod';
 import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
 import { SERVER_SIM_LOD_SIGNALS_ENABLED } from '../serverSimLodConfig';
 import { BAR_THEMES } from '../barThemes';
@@ -479,6 +482,9 @@ const displayTickRate = computed(
 // background AND the effective tier as white text just like the
 // PLAYER CLIENT bar does.
 const serverSimQuality = ref<ServerSimQuality>(loadStoredSimQuality());
+// HOST SERVER per-signal tri-state — persisted locally and pushed
+// to the server via setSimSignalStates command.
+const serverSignalStates = ref<ServerSimSignalStates>(loadStoredSimSignalStates());
 // effective is one of the concrete tiers ('min'..'max') or '' before
 // the first snapshot. The wire format is plain string; narrow the
 // computed result so the v-bind class equality checks don't fall
@@ -510,6 +516,23 @@ watch(
     if (picked === serverSimQuality.value) return;
     serverSimQuality.value = picked as ServerSimQuality;
   },
+);
+// Same reconciliation for the per-signal tri-state — non-host
+// clients pick up whatever the host actually configured.
+watch(
+  () => serverMetaFromSnapshot.value?.simLod?.signals,
+  (signals) => {
+    if (!signals) return;
+    const valid = (s: unknown): s is SignalState =>
+      s === 'off' || s === 'active' || s === 'solo';
+    const updated: ServerSimSignalStates = { ...serverSignalStates.value };
+    let changed = false;
+    if (valid(signals.tps) && signals.tps !== updated.tps) { updated.tps = signals.tps; changed = true; }
+    if (valid(signals.cpu) && signals.cpu !== updated.cpu) { updated.cpu = signals.cpu; changed = true; }
+    if (valid(signals.units) && signals.units !== updated.units) { updated.units = signals.units; changed = true; }
+    if (changed) serverSignalStates.value = updated;
+  },
+  { deep: true },
 );
 const displaySnapshotRate = computed(
   () =>
@@ -1114,6 +1137,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       currentServer.setSnapshotRate(loadStoredSnapshotRate());
       currentServer.setKeyframeRatio(loadStoredKeyframeRatio());
       currentServer.setSimQuality(serverSimQuality.value);
+      currentServer.receiveCommand({
+        type: 'setSimSignalStates',
+        tick: 0,
+        tps: serverSignalStates.value.tps,
+        cpu: serverSignalStates.value.cpu,
+        units: serverSignalStates.value.units,
+      });
       currentServer.setIpAddress(localIpAddress.value);
       currentServer.receiveCommand({
         type: 'setMaxTotalUnits',
@@ -1258,6 +1288,33 @@ function setSimQualityValue(q: ServerSimQuality): void {
   activeConnection?.sendCommand({ type: 'setSimQuality', tick: 0, quality: q });
   saveSimQuality(q);
   serverSimQuality.value = q;
+}
+
+// Tri-state click handler for the HOST SERVER signal buttons. Same
+// shape as cycleClientSignal, but the canonical state lives on the
+// server — we cycle locally for snappy UI, persist, and ship the
+// resolved struct via setSimSignalStates command. Snapshot brings
+// it back for non-host clients (see watcher below).
+function cycleServerSignal(signal: keyof ServerSimSignalStates): void {
+  const cur = serverSignalStates.value[signal];
+  const next: SignalState =
+    cur === 'off' ? 'active' : cur === 'active' ? 'solo' : 'off';
+  const updated: ServerSimSignalStates = { ...serverSignalStates.value, [signal]: next };
+  if (next === 'solo') {
+    // Demote any other SOLO so only one signal is solo at a time.
+    (Object.keys(updated) as (keyof ServerSimSignalStates)[]).forEach((k) => {
+      if (k !== signal && updated[k] === 'solo') updated[k] = 'active';
+    });
+  }
+  serverSignalStates.value = updated;
+  saveSimSignalStates(updated);
+  activeConnection?.sendCommand({
+    type: 'setSimSignalStates',
+    tick: 0,
+    tps: updated.tps,
+    cpu: updated.cpu,
+    units: updated.units,
+  });
 }
 
 function secPerFullsnap(ratio: number): string {
@@ -1743,37 +1800,40 @@ onUnmounted(() => {
             <div class="button-group">
               <button
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.tps"
-                class="control-btn"
+                class="control-btn signal-btn"
                 :class="{
-                  active: serverSimQuality === 'auto-tps',
-                  'active-level': serverSimQuality === 'auto',
+                  'signal-off': serverSignalStates.tps === 'off',
+                  'active-level': serverSimQuality === 'auto' && serverSignalStates.tps === 'active',
+                  active: serverSimQuality === 'auto' && serverSignalStates.tps === 'solo',
                 }"
-                title="Auto-adjust sim throttling based on actual server TPS"
-                @click="setSimQualityValue('auto-tps')"
+                :title="`Server TPS signal — click to cycle off / active / solo. Currently ${serverSignalStates.tps}.`"
+                @click="cycleServerSignal('tps')"
               >
                 TPS
               </button>
               <button
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.cpu"
-                class="control-btn"
+                class="control-btn signal-btn"
                 :class="{
-                  active: serverSimQuality === 'auto-cpu',
-                  'active-level': serverSimQuality === 'auto',
+                  'signal-off': serverSignalStates.cpu === 'off',
+                  'active-level': serverSimQuality === 'auto' && serverSignalStates.cpu === 'active',
+                  active: serverSimQuality === 'auto' && serverSignalStates.cpu === 'solo',
                 }"
-                title="Auto-adjust sim throttling based on host CPU load"
-                @click="setSimQualityValue('auto-cpu')"
+                :title="`Host CPU load signal — click to cycle off / active / solo. Currently ${serverSignalStates.cpu}.`"
+                @click="cycleServerSignal('cpu')"
               >
                 CPU
               </button>
               <button
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.units"
-                class="control-btn"
+                class="control-btn signal-btn"
                 :class="{
-                  active: serverSimQuality === 'auto-units',
-                  'active-level': serverSimQuality === 'auto',
+                  'signal-off': serverSignalStates.units === 'off',
+                  'active-level': serverSimQuality === 'auto' && serverSignalStates.units === 'active',
+                  active: serverSimQuality === 'auto' && serverSignalStates.units === 'solo',
                 }"
-                title="Auto-adjust sim throttling based on world FULLNESS (unit count ÷ cap)"
-                @click="setSimQualityValue('auto-units')"
+                :title="`World fullness signal — click to cycle off / active / solo. Currently ${serverSignalStates.units}.`"
+                @click="cycleServerSignal('units')"
               >
                 UNITS
               </button>
