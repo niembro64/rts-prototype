@@ -21,9 +21,13 @@ export type LodAutoModeConfig = {
   zoom: LodThresholds;
   tps: LodThresholds;
   fps: LodThresholds;
-  /** Unit-count thresholds, interpreted as MAXIMUM unit count for the
-   *  given tier. count <= threshold means eligible for that tier or
-   *  better. (Inverse of zoom/tps/fps where ratio >= threshold.) */
+  /** Unit-fullness thresholds. The ratio fed in is
+   *      (1 − unitCount / unitCap)
+   *  so 1.0 = empty world, 0.0 = at the cap. Same direction as tps/fps:
+   *  ratio >= threshold means tier is eligible — a sparser world earns
+   *  a higher tier. Expressing thresholds as fractions of the player's
+   *  configured cap means the LOD ladder works the same whether the
+   *  cap is 1k or 16k. */
   units: LodThresholds;
 };
 
@@ -31,8 +35,7 @@ export type LodHysteresis = {
   zoom: number;
   tps: number;
   fps: number;
-  /** Hysteresis band on the unit-count thresholds. Same units as the
-   *  thresholds themselves (raw unit count). */
+  /** Hysteresis on the unit-fullness ratio (also a 0–1 number). */
   units: number;
 };
 

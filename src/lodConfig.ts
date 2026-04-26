@@ -43,29 +43,32 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
     high: 0.3,
     max: 0.4,
   },
-  // UNIT-COUNT THRESHOLDS — read as MAXIMUM unit count for the tier.
-  //   count <= threshold ⇒ tier is eligible.
-  // The instanced LOW path costs ~1 draw call total; everything above
-  // MIN costs many draws per unit. So we drop fast: at >2k units we
-  // forbid MAX; past 8k we force MIN, which is the only mode that
-  // scales to ten thousand units.
+  // UNIT-FULLNESS THRESHOLDS — fractions of the user-configured unit
+  // cap. The ratio fed in is `1 − unitCount / unitCap`, so an empty
+  // world is 1.0 and a full one is 0.0. Same direction as tps/fps:
+  // ratio >= threshold ⇒ tier eligible.
+  //
+  // Defaults: full visuals while the world is below 1/4 full; drop
+  // to MIN once it's past 95% — that's the band where the instanced
+  // sphere path becomes the only viable renderer regardless of cap.
+  // Whether the cap is 1k or 16k, the LOD ladder steps at the same
+  // proportional milestones.
   units: {
-    low: 8000,
-    medium: 4000,
-    high: 2000,
-    max: 1000,
+    low: 0.05,    // ratio >= 0.05 (≤95% full) → low or better
+    medium: 0.25, // ratio >= 0.25 (≤75% full) → medium or better
+    high: 0.50,   // ratio >= 0.50 (≤50% full) → high or better
+    max: 0.75,    // ratio >= 0.75 (≤25% full) → max
   },
 };
 
 // Hysteresis band applied to each threshold.
 // When upgrading quality, ratio must exceed threshold + hysteresis.
 // When downgrading, ratio must drop below threshold − hysteresis.
-// Units hysteresis is in raw unit-count, not a 0–1 ratio.
 export const LOD_HYSTERESIS: LodHysteresis = {
   zoom: 0,
   tps: 0.05,
   fps: 0.05,
-  units: 250,
+  units: 0.05,
 };
 
 // Which EMA stat to use for each LOD ratio: 'avg' or 'low' (worst-case).

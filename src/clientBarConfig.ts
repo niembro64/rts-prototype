@@ -278,6 +278,11 @@ let currentZoom: number = 1.0;
 let currentTpsRatio: number = 1.0;
 let currentFpsRatio: number = 1.0;
 let currentUnitCount: number = 0;
+// Default cap matches MAX_TOTAL_UNITS in config (2^12 = 4096) so the
+// units LOD has a sensible reading before any server snapshot lands.
+// GameCanvas overrides this every frame with the authoritative cap
+// from serverMeta.units.max.
+let currentUnitCap: number = 4096;
 let prevZoomRank: number = 4;
 let prevTpsRank: number = 4;
 let prevFpsRank: number = 4;
@@ -445,6 +450,12 @@ export function setCurrentUnitCount(count: number): void {
   currentUnitCount = count;
 }
 
+export function setCurrentUnitCap(cap: number): void {
+  // Guard against 0 — `count / cap` would NaN out and break the ratio
+  // ladder. The default (4096) stays in place until a real cap arrives.
+  if (cap > 0) currentUnitCap = cap;
+}
+
 export function setLocalServerRunning(running: boolean): void {
   localServerRunning = running;
 }
@@ -495,23 +506,18 @@ function zoomToRank(prevRank: number): number {
   return rank;
 }
 
-/** Map current unit count to a quality rank (0=min … 4=max). Inverse
- *  semantics from ratioToRank: a tier's threshold is the MAX unit
- *  count that tier can sustain, so a LOWER count earns a HIGHER tier.
- *  Hysteresis logic mirrors the ratio version with sign-flipped
- *  bands: harder to upgrade (stricter cap), easier to stay (looser
- *  cap). */
-function unitsToRank(prevRank: number): number {
-  const h = LOD_HYSTERESIS.units;
-  let rank = 0;
-  for (let i = 0; i < UNITS_THRESHOLDS.length; i++) {
-    const threshold = UNITS_THRESHOLDS[i];
-    const effectiveCap = i + 1 > prevRank
-      ? threshold - h   // upgrading from below — strict cap
-      : threshold + h;  // already here — looser cap to stay
-    if (currentUnitCount <= effectiveCap) rank = i + 1;
-  }
-  return rank;
+/** Current unit-fullness ratio, normalized so it shares the
+ *  ratioToRank semantics with TPS/FPS:
+ *      ratio = 1 − count / cap
+ *  An empty world is 1.0; a full world is 0.0. Higher ratio earns
+ *  a higher tier — same direction as the other auto modes, so the
+ *  shared ratioToRank helper drives all four signals. */
+function unitsRatio(): number {
+  if (currentUnitCap <= 0) return 1;
+  const fullness = currentUnitCount / currentUnitCap;
+  if (fullness <= 0) return 1;
+  if (fullness >= 1) return 0;
+  return 1 - fullness;
 }
 
 export function getEffectiveQuality(): ConcreteGraphicsQuality {
@@ -523,7 +529,7 @@ export function getEffectiveQuality(): ConcreteGraphicsQuality {
       // local server is running — remote clients have no TPS signal.
       prevZoomRank = zoomToRank(prevZoomRank);
       prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
-      prevUnitsRank = unitsToRank(prevUnitsRank);
+      prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
       if (localServerRunning) {
         prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
         return RANK_TO_QUALITY[Math.min(prevZoomRank, prevTpsRank, prevFpsRank, prevUnitsRank)];
@@ -540,7 +546,7 @@ export function getEffectiveQuality(): ConcreteGraphicsQuality {
       prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
       return RANK_TO_QUALITY[prevFpsRank];
     case 'auto-units':
-      prevUnitsRank = unitsToRank(prevUnitsRank);
+      prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
       return RANK_TO_QUALITY[prevUnitsRank];
     case 'min':
     case 'low':

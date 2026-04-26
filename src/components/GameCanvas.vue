@@ -117,6 +117,7 @@ import {
   setCurrentTpsRatio,
   setCurrentFpsRatio,
   setCurrentUnitCount,
+  setCurrentUnitCap,
   setLocalServerRunning,
 } from '../clientBarConfig';
 import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../types/graphics';
@@ -967,11 +968,15 @@ function updateFPSStats(): void {
   const tpsVal = LOD_EMA_SOURCE.tps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
   setCurrentFpsRatio(fpsVal / 60);
   setCurrentTpsRatio(tpsVal / GOOD_TPS);
-  // Total unit count across all players — drives the UNITS auto-LOD
-  // mode and feeds the AUTO mode's min-over-signals decision. Reads
-  // the server's snapshot meta when available (authoritative count);
-  // pre-snapshot it stays at 0 so we don't yo-yo at game start.
-  setCurrentUnitCount(serverMetaFromSnapshot.value?.units.count ?? 0);
+  // UNITS auto-LOD reads (count, cap) from the server's snapshot
+  // meta. The LOD ladder operates on `1 − count/cap` (fullness ratio)
+  // so visual quality drops at the same proportional milestones
+  // whether the cap is 1k or 16k. Pre-snapshot the count stays at
+  // 0 (sparse world ⇒ MAX tier) and the cap falls back to the
+  // bundled default until a real snapshot arrives.
+  const meta = serverMetaFromSnapshot.value;
+  setCurrentUnitCount(meta?.units.count ?? 0);
+  if (meta?.units.max !== undefined) setCurrentUnitCap(meta.units.max);
   setLocalServerRunning(hasServer.value);
   effectiveQuality.value = getEffectiveQuality();
 }
@@ -2055,7 +2060,7 @@ onUnmounted(() => {
                   active: graphicsQuality === 'auto-units',
                   'active-level': graphicsQuality === 'auto',
                 }"
-                title="Auto-adjust graphics quality based on total unit count — drops to MIN past the threshold so the instanced-sphere path can carry 10k+ units"
+                title="Auto-adjust graphics quality based on world FULLNESS (unit count ÷ cap). Past 95% of cap drops to MIN so the instanced-sphere path takes over."
                 @click="changeGraphicsQuality('auto-units')"
               >
                 UNITS
