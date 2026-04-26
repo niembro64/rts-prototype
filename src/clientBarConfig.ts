@@ -30,6 +30,7 @@ import {
   LOD_HYSTERESIS,
   LOD_SIGNALS_ENABLED,
 } from '@/lodConfig';
+import type { SignalState, LodSignalStates } from './types/lod';
 
 export const CLIENT_CONFIG = {
   graphics: {
@@ -242,6 +243,7 @@ const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
 const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
 const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
 const GRID_OVERLAY_STORAGE_KEY = 'rts-grid-overlay';
+const LOD_SIGNAL_STATES_STORAGE_KEY = 'rts-lod-signal-states';
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
@@ -291,6 +293,15 @@ let currentUnitCap: number = 4096;
 let prevZoomRank: number = 4;
 let prevTpsRank: number = 4;
 let prevFpsRank: number = 4;
+// Per-signal tri-state. Default: every enabled signal is ACTIVE
+// (contributes to AUTO's min). Click-cycle updates this; the
+// resolver consults it on every getEffectiveQuality() call.
+let currentSignalStates: LodSignalStates = {
+  zoom: 'active',
+  tps: 'active',
+  fps: 'active',
+  units: 'active',
+};
 let prevUnitsRank: number = 4;
 let localServerRunning: boolean = false;
 
@@ -304,20 +315,50 @@ let localServerRunning: boolean = false;
 // just ignored instead of poisoning the loader.
 function loadFromStorage(): void {
   const storedQuality = readPersisted(STORAGE_KEY);
-  if (
-    storedQuality &&
-    (storedQuality === 'auto' ||
-      storedQuality === 'auto-zoom' ||
-      storedQuality === 'auto-tps' ||
-      storedQuality === 'auto-fps' ||
-      storedQuality === 'auto-units' ||
+  if (storedQuality) {
+    // Migrate legacy 'auto-X' values to 'auto' + a SOLO state on the
+    // matching signal (others OFF). The user clicked "auto-tps" in a
+    // previous session, so they meant "let TPS alone drive the LOD" —
+    // exactly what the new SOLO state expresses.
+    if (storedQuality === 'auto-zoom') {
+      currentQuality = 'auto';
+      currentSignalStates = { zoom: 'solo', tps: 'off', fps: 'off', units: 'off' };
+    } else if (storedQuality === 'auto-tps') {
+      currentQuality = 'auto';
+      currentSignalStates = { zoom: 'off', tps: 'solo', fps: 'off', units: 'off' };
+    } else if (storedQuality === 'auto-fps') {
+      currentQuality = 'auto';
+      currentSignalStates = { zoom: 'off', tps: 'off', fps: 'solo', units: 'off' };
+    } else if (storedQuality === 'auto-units') {
+      currentQuality = 'auto';
+      currentSignalStates = { zoom: 'off', tps: 'off', fps: 'off', units: 'solo' };
+    } else if (
+      storedQuality === 'auto' ||
       storedQuality === 'min' ||
       storedQuality === 'low' ||
       storedQuality === 'medium' ||
       storedQuality === 'high' ||
-      storedQuality === 'max')
-  ) {
-    currentQuality = storedQuality;
+      storedQuality === 'max'
+    ) {
+      currentQuality = storedQuality;
+    }
+  }
+  // Per-signal tri-state — separate key so it survives manual-tier
+  // picks. Validates each field independently; a malformed key just
+  // falls through to the default ('active').
+  const storedSignals = readPersisted(LOD_SIGNAL_STATES_STORAGE_KEY);
+  if (storedSignals) {
+    try {
+      const parsed = JSON.parse(storedSignals);
+      const valid = (s: unknown): s is SignalState =>
+        s === 'off' || s === 'active' || s === 'solo';
+      if (parsed && typeof parsed === 'object') {
+        if (valid(parsed.zoom)) currentSignalStates.zoom = parsed.zoom;
+        if (valid(parsed.tps)) currentSignalStates.tps = parsed.tps;
+        if (valid(parsed.fps)) currentSignalStates.fps = parsed.fps;
+        if (valid(parsed.units)) currentSignalStates.units = parsed.units;
+      }
+    } catch { /* ignore malformed */ }
   }
   const storedRenderMode = readPersisted(RENDER_MODE_STORAGE_KEY);
   if (
@@ -439,6 +480,37 @@ export function setGraphicsQuality(quality: GraphicsQuality): void {
   persist(STORAGE_KEY, quality);
 }
 
+/** Read the current state of one PLAYER CLIENT LOD signal. */
+export function getLodSignalState(signal: keyof LodSignalStates): SignalState {
+  return currentSignalStates[signal];
+}
+
+/** Read the whole signal-state object (read-only view). The UI uses
+ *  this to compute button classes per signal in one pass. */
+export function getLodSignalStates(): Readonly<LodSignalStates> {
+  return currentSignalStates;
+}
+
+/** Click-cycle: OFF → ACTIVE → SOLO → OFF. Promoting a signal to
+ *  SOLO demotes any previously-SOLO signal back to ACTIVE so that
+ *  exactly one SOLO is held at a time. Persisted on every change. */
+export function cycleLodSignalState(signal: keyof LodSignalStates): SignalState {
+  const cur = currentSignalStates[signal];
+  const next: SignalState =
+    cur === 'off' ? 'active' : cur === 'active' ? 'solo' : 'off';
+  if (next === 'solo') {
+    // Demote whoever else was SOLO (at most one).
+    (Object.keys(currentSignalStates) as (keyof LodSignalStates)[]).forEach((k) => {
+      if (k !== signal && currentSignalStates[k] === 'solo') {
+        currentSignalStates[k] = 'active';
+      }
+    });
+  }
+  currentSignalStates = { ...currentSignalStates, [signal]: next };
+  persistJson(LOD_SIGNAL_STATES_STORAGE_KEY, currentSignalStates);
+  return next;
+}
+
 export function setCurrentZoom(zoom: number): void {
   currentZoom = zoom;
 }
@@ -528,47 +600,47 @@ function unitsRatio(): number {
 export function getEffectiveQuality(): ConcreteGraphicsQuality {
   switch (currentQuality) {
     case 'auto': {
-      // AUTO = min over every ENABLED signal. Each sub-mode keeps
-      // its own running rank (so hysteresis state survives a swap to
-      // its dedicated mode and back). TPS only participates when the
-      // local server is running — remote clients have no TPS signal.
-      // A signal disabled in LOD_SIGNALS_ENABLED is skipped entirely;
-      // if all signals are disabled we fall back to MAX.
-      let minRank = 4; // Optimistic floor; lowered below by enabled signals.
-      if (LOD_SIGNALS_ENABLED.zoom) {
-        prevZoomRank = zoomToRank(prevZoomRank);
-        if (prevZoomRank < minRank) minRank = prevZoomRank;
-      }
-      if (LOD_SIGNALS_ENABLED.fps) {
-        prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
-        if (prevFpsRank < minRank) minRank = prevFpsRank;
-      }
-      if (LOD_SIGNALS_ENABLED.units) {
-        prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
-        if (prevUnitsRank < minRank) minRank = prevUnitsRank;
-      }
-      if (LOD_SIGNALS_ENABLED.tps && localServerRunning) {
-        prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
-        if (prevTpsRank < minRank) minRank = prevTpsRank;
-      }
-      return RANK_TO_QUALITY[minRank];
+      // AUTO mode honors per-signal tri-state.
+      //
+      // 1. Compute each signal's rank (only for signals enabled in
+      //    LOD_SIGNALS_ENABLED — disabled signals are completely
+      //    invisible to the resolver, regardless of user state).
+      // 2. If ANY signal is in SOLO state: that one alone drives the
+      //    rank; everything else is ignored. (Click-cycle ensures at
+      //    most one signal is SOLO.)
+      // 3. Otherwise: min over all signals in ACTIVE state.
+      // 4. If no signals contribute (all OFF or all disabled), fall
+      //    back to MAX.
+      //
+      // Rank state (prevXRank) is updated whenever the signal is at
+      // least eligible (enabled + not OFF) so a flip from ACTIVE
+      // back to SOLO doesn't see a stale rank.
+      const states = currentSignalStates;
+      const zoomEligible = LOD_SIGNALS_ENABLED.zoom && states.zoom !== 'off';
+      const fpsEligible = LOD_SIGNALS_ENABLED.fps && states.fps !== 'off';
+      const unitsEligible = LOD_SIGNALS_ENABLED.units && states.units !== 'off';
+      const tpsEligible = LOD_SIGNALS_ENABLED.tps && states.tps !== 'off' && localServerRunning;
+
+      if (zoomEligible) prevZoomRank = zoomToRank(prevZoomRank);
+      if (fpsEligible) prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
+      if (unitsEligible) prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
+      if (tpsEligible) prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
+
+      // Solo override.
+      if (zoomEligible && states.zoom === 'solo') return RANK_TO_QUALITY[prevZoomRank];
+      if (fpsEligible && states.fps === 'solo') return RANK_TO_QUALITY[prevFpsRank];
+      if (unitsEligible && states.units === 'solo') return RANK_TO_QUALITY[prevUnitsRank];
+      if (tpsEligible && states.tps === 'solo') return RANK_TO_QUALITY[prevTpsRank];
+
+      // Min over actives.
+      let minRank = 4;
+      let any = false;
+      if (zoomEligible && states.zoom === 'active') { any = true; if (prevZoomRank < minRank) minRank = prevZoomRank; }
+      if (fpsEligible && states.fps === 'active') { any = true; if (prevFpsRank < minRank) minRank = prevFpsRank; }
+      if (unitsEligible && states.units === 'active') { any = true; if (prevUnitsRank < minRank) minRank = prevUnitsRank; }
+      if (tpsEligible && states.tps === 'active') { any = true; if (prevTpsRank < minRank) minRank = prevTpsRank; }
+      return any ? RANK_TO_QUALITY[minRank] : RANK_TO_QUALITY[4];
     }
-    case 'auto-zoom':
-      if (!LOD_SIGNALS_ENABLED.zoom) return RANK_TO_QUALITY[4];
-      prevZoomRank = zoomToRank(prevZoomRank);
-      return RANK_TO_QUALITY[prevZoomRank];
-    case 'auto-tps':
-      if (!LOD_SIGNALS_ENABLED.tps) return RANK_TO_QUALITY[4];
-      prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
-      return RANK_TO_QUALITY[prevTpsRank];
-    case 'auto-fps':
-      if (!LOD_SIGNALS_ENABLED.fps) return RANK_TO_QUALITY[4];
-      prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
-      return RANK_TO_QUALITY[prevFpsRank];
-    case 'auto-units':
-      if (!LOD_SIGNALS_ENABLED.units) return RANK_TO_QUALITY[4];
-      prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
-      return RANK_TO_QUALITY[prevUnitsRank];
     case 'min':
     case 'low':
     case 'medium':

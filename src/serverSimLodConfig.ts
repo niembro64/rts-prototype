@@ -41,8 +41,8 @@ import type {
 // machine whose CPU readings are unreliable).
 export const SERVER_SIM_LOD_SIGNALS_ENABLED = {
   tps: true,
-  cpu: true,
-  units: true,
+  cpu: false,
+  units: false,
 } as const;
 
 export const SERVER_SIM_DETAIL: ServerSimDetailTable = {

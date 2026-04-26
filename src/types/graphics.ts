@@ -1,4 +1,9 @@
-export type AutoGraphicsQuality = 'auto' | 'auto-zoom' | 'auto-tps' | 'auto-fps' | 'auto-units';
+// AUTO is the meta-mode; specific signals are toggled per-signal via
+// their tri-state ('off' | 'active' | 'solo'). The legacy
+// 'auto-zoom' / 'auto-tps' / 'auto-fps' / 'auto-units' values were
+// effectively single-signal SOLO modes; they're folded into the
+// signal-state model now and migrated at load time.
+export type AutoGraphicsQuality = 'auto';
 export type ConcreteGraphicsQuality = 'min' | 'low' | 'medium' | 'high' | 'max';
 export type GraphicsQuality = AutoGraphicsQuality | ConcreteGraphicsQuality;
 export type RenderMode = 'window' | 'padded' | 'all';

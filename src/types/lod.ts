@@ -13,6 +13,25 @@ import type {
 
 export type EmaStat = 'avg' | 'low';
 
+/** Per-signal state in the LOD ladder. The user click-cycles each
+ *  signal through these:
+ *    - 'off'   — signal doesn't contribute to the AUTO min.
+ *    - 'active' — contributes (with all other actives).
+ *    - 'solo'  — overrides every other signal; only this one drives
+ *                the rank. At most one signal can be SOLO at a time;
+ *                clicking a signal to SOLO demotes any prior SOLO
+ *                back to ACTIVE.
+ *  Identical shape on the HOST SERVER side (see types/serverSimLod.ts). */
+export type SignalState = 'off' | 'active' | 'solo';
+
+/** PLAYER CLIENT signals that can be toggled. */
+export type LodSignalStates = {
+  zoom: SignalState;
+  tps: SignalState;
+  fps: SignalState;
+  units: SignalState;
+};
+
 export type LodTierMap<T> = Record<ConcreteGraphicsQuality, T>;
 
 export type LodThresholds = Record<Exclude<ConcreteGraphicsQuality, 'min'>, number>;

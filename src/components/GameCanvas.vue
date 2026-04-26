@@ -87,6 +87,8 @@ import type { GameConnection } from '../game/server/GameConnection';
 import {
   getGraphicsQuality,
   setGraphicsQuality,
+  cycleLodSignalState,
+  getLodSignalStates,
   getEffectiveQuality,
   getRenderMode,
   setRenderMode,
@@ -181,6 +183,10 @@ const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<ConcreteGraphicsQuality>(
   getEffectiveQuality(),
 );
+// Reactive snapshot of the per-signal tri-state. cycleClientSignal()
+// re-reads it after each cycle; the template binds button classes
+// against this object.
+const clientSignalStates = ref({ ...getLodSignalStates() });
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
@@ -831,6 +837,17 @@ function toggleSpectateMode(): void {
 function changeGraphicsQuality(quality: GraphicsQuality): void {
   setGraphicsQuality(quality);
   graphicsQuality.value = quality;
+}
+
+// Tri-state click handler for the LOD signal buttons. Cycles the
+// signal's state OFF → ACTIVE → SOLO → OFF and bumps the reactive
+// ref so the template repaints without polling. Note: clicking a
+// signal does NOT change the global mode — the user has to pick
+// AUTO or a manual tier separately.
+function cycleClientSignal(signal: 'zoom' | 'tps' | 'fps' | 'units'): void {
+  cycleLodSignalState(signal);
+  // Trigger reactivity by re-reading the snapshot.
+  clientSignalStates.value = { ...getLodSignalStates() };
 }
 
 function changeRenderMode(mode: RenderMode): void {
@@ -2141,49 +2158,53 @@ onUnmounted(() => {
             <div class="button-group">
               <button
                 v-if="LOD_SIGNALS_ENABLED.zoom"
-                class="control-btn"
+                class="control-btn signal-btn"
                 :class="{
-                  active: graphicsQuality === 'auto-zoom',
-                  'active-level': graphicsQuality === 'auto',
+                  'signal-off': clientSignalStates.zoom === 'off',
+                  'active-level': graphicsQuality === 'auto' && clientSignalStates.zoom === 'active',
+                  active: graphicsQuality === 'auto' && clientSignalStates.zoom === 'solo',
                 }"
-                title="Auto-adjust graphics quality based on zoom level"
-                @click="changeGraphicsQuality('auto-zoom')"
+                :title="`Zoom signal — click to cycle off / active / solo. Currently ${clientSignalStates.zoom}.`"
+                @click="cycleClientSignal('zoom')"
               >
                 ZOOM
               </button>
               <button
                 v-if="LOD_SIGNALS_ENABLED.tps"
-                class="control-btn"
+                class="control-btn signal-btn"
                 :class="{
-                  active: graphicsQuality === 'auto-tps',
-                  'active-level': graphicsQuality === 'auto' && hasServer,
+                  'signal-off': clientSignalStates.tps === 'off',
+                  'active-level': graphicsQuality === 'auto' && clientSignalStates.tps === 'active' && hasServer,
+                  active: graphicsQuality === 'auto' && clientSignalStates.tps === 'solo',
                 }"
-                title="Auto-adjust graphics quality based on server TPS"
-                @click="changeGraphicsQuality('auto-tps')"
+                :title="`Server TPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.tps}.`"
+                @click="cycleClientSignal('tps')"
               >
                 TPS
               </button>
               <button
                 v-if="LOD_SIGNALS_ENABLED.fps"
-                class="control-btn"
+                class="control-btn signal-btn"
                 :class="{
-                  active: graphicsQuality === 'auto-fps',
-                  'active-level': graphicsQuality === 'auto',
+                  'signal-off': clientSignalStates.fps === 'off',
+                  'active-level': graphicsQuality === 'auto' && clientSignalStates.fps === 'active',
+                  active: graphicsQuality === 'auto' && clientSignalStates.fps === 'solo',
                 }"
-                title="Auto-adjust graphics quality based on client FPS"
-                @click="changeGraphicsQuality('auto-fps')"
+                :title="`Client FPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.fps}.`"
+                @click="cycleClientSignal('fps')"
               >
                 FPS
               </button>
               <button
                 v-if="LOD_SIGNALS_ENABLED.units"
-                class="control-btn"
+                class="control-btn signal-btn"
                 :class="{
-                  active: graphicsQuality === 'auto-units',
-                  'active-level': graphicsQuality === 'auto',
+                  'signal-off': clientSignalStates.units === 'off',
+                  'active-level': graphicsQuality === 'auto' && clientSignalStates.units === 'active',
+                  active: graphicsQuality === 'auto' && clientSignalStates.units === 'solo',
                 }"
-                title="Auto-adjust graphics quality based on world FULLNESS (unit count ÷ cap). Past 95% of cap drops to MIN so the instanced-sphere path takes over."
-                @click="changeGraphicsQuality('auto-units')"
+                :title="`World fullness signal — click to cycle off / active / solo. Currently ${clientSignalStates.units}.`"
+                @click="cycleClientSignal('units')"
               >
                 UNITS
               </button>
@@ -2913,6 +2934,17 @@ onUnmounted(() => {
 
 .control-btn.active-level {
   color: white;
+}
+
+/* Tri-state LOD signal buttons. ACTIVE = white text via .active-level
+ * (defined above). SOLO = full background via .active. OFF = dim
+ * via this class — visually conveys "this signal is parked, click
+ * to bring it back into the mix." */
+.control-btn.signal-btn.signal-off {
+  opacity: 0.35;
+}
+.control-btn.signal-btn.signal-off:hover {
+  opacity: 0.6;
 }
 
 .bar-readonly .control-btn {
