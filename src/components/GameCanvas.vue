@@ -472,8 +472,18 @@ const displayTickRate = computed(
 // background AND the effective tier as white text just like the
 // PLAYER CLIENT bar does.
 const serverSimQuality = ref<ServerSimQuality>(loadStoredSimQuality());
-const effectiveSimQuality = computed(
-  () => serverMetaFromSnapshot.value?.simLod?.effective ?? '',
+// effective is one of the concrete tiers ('min'..'max') or '' before
+// the first snapshot. The wire format is plain string; narrow the
+// computed result so the v-bind class equality checks don't fall
+// through TypeScript's `any` widening.
+const effectiveSimQuality = computed<ConcreteGraphicsQuality | ''>(
+  () => {
+    const v = serverMetaFromSnapshot.value?.simLod?.effective;
+    if (v === 'min' || v === 'low' || v === 'medium' || v === 'high' || v === 'max') {
+      return v;
+    }
+    return '';
+  },
 );
 // Reconcile from server snapshot. The host's localStorage is the
 // source of truth at boot (the `setSimQuality` command goes from
