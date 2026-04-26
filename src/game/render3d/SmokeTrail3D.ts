@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
 import type { FireExplosionStyle } from '@/types/graphics';
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig, getEffectiveQuality } from '@/clientBarConfig';
 
 // Engine fallbacks for any SmokeTrailSpec field a shot blueprint
 // leaves unset. Per-shot overrides live on the projectile blueprint
@@ -148,6 +148,16 @@ export class SmokeTrail3D {
     //    projectiles early in the iteration could burn the entire
     //    cap on their own backlog and later rockets would silently
     //    produce no trail at all.
+    //
+    //    MIN tier emits zero new puffs — the LOD floor cuts smoke
+    //    entirely. Already-live puffs above keep fading naturally; we
+    //    just stop spawning new ones and clear emitter state below so
+    //    a tier flip back up doesn't dump a backlogged burst.
+    const minTier = getEffectiveQuality() === 'min';
+    if (minTier) {
+      this.emitters.clear();
+      return;
+    }
     const seen = this._seen;
     const eligible = this._eligible;
     seen.clear();
