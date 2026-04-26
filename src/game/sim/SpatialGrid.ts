@@ -613,13 +613,18 @@ export class SpatialGrid {
    * Returns a reusable array — do NOT store the reference.
    */
   getOccupiedCellsForCapture(): CaptureCell[] {
+    // Return last tick's entries (and their inner players arrays) to
+    // the pool — both get reused on this tick instead of reallocated.
+    for (const c of _captureCells) _capturePool.push(c);
     _captureCells.length = 0;
+
     for (const [key, cell] of this.cells) {
       if (cell.units.length === 0 && cell.buildings.length === 0) continue;
-      const players: PlayerId[] = [];
+      const entry = _capturePool.pop() ?? { key: 0, players: [] };
+      entry.players.length = 0;
       for (const unit of cell.units) {
         if (unit.ownership?.playerId && unit.unit && unit.unit.hp > 0) {
-          players.push(unit.ownership.playerId);
+          entry.players.push(unit.ownership.playerId);
         }
       }
       for (const b of cell.buildings) {
@@ -632,11 +637,14 @@ export class SpatialGrid {
           && b.building && b.building.hp > 0
           && b.buildable?.isComplete
         ) {
-          players.push(b.ownership.playerId);
+          entry.players.push(b.ownership.playerId);
         }
       }
-      if (players.length > 0) {
-        _captureCells.push({ key, players });
+      if (entry.players.length > 0) {
+        entry.key = key;
+        _captureCells.push(entry);
+      } else {
+        _capturePool.push(entry);
       }
     }
     return _captureCells;
@@ -644,6 +652,10 @@ export class SpatialGrid {
 }
 
 const _captureCells: { key: number; players: PlayerId[] }[] = [];
+// Spare entries + inner players arrays, reused across calls. Grows to
+// the peak occupied-cell count then stops; eliminates per-tick array
+// allocations in the capture-tick hot path.
+const _capturePool: { key: number; players: PlayerId[] }[] = [];
 
 // Singleton instance for the game
 export const spatialGrid = new SpatialGrid();
