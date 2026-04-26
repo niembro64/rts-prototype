@@ -421,22 +421,9 @@ export const UNIT_THRUST_MULTIPLIER_DEMO = 6.0;
  */
 export const UNIT_HP_MULTIPLIER = 2.0;
 
-/**
- * Stagger stride for non-tight-loop sim work. Units whose
- * `(id + tick) % stride !== 0` skip the throttle-tolerant passes for
- * that tick (heavy spatial-grid queries for new target acquisition,
- * "is there a closer engageable target than the one I'm tracking?").
- * Per-frame state updates (target validation, weapon position cache,
- * cooldown decay, turret damped-spring rotation, projectile motion,
- * collisions) all stay every-tick — the spread only applies to work
- * that tolerates a few ticks of staleness.
- *
- * 1 = no stagger (every unit, every tick).
- * N = each unit re-queries every Nth tick. With N=4 at 60 Hz the
- *     worst-case latency for a new acquisition is ~67 ms which is
- *     imperceptible in combat but cuts spatial-grid work 4×.
- */
-export const TARGETING_REACQUIRE_STRIDE = 4;
+// TARGETING_REACQUIRE_STRIDE moved to serverSimLodConfig.ts as part of
+// the HOST SERVER LOD ladder — the stride is now picked per-tick from
+// the resolved sim quality tier. See simQuality.getSimDetailConfig().
 
 // UNIT_STATS removed — now in blueprints
 

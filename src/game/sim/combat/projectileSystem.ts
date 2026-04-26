@@ -13,6 +13,7 @@ import { resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { spatialGrid } from '../SpatialGrid';
+import { getSimDetailConfig } from '../simQuality';
 
 /** Rocket seeker re-acquisition radius. When a rocket's homing target
  *  dies, it scans this radius around its current position for the
@@ -625,10 +626,14 @@ export function updateProjectiles(
         const fullEndZ = tip.z + tip.dirZ * beamLength;
 
         // Find beam path (with possible reflections off mirror units).
-        // Throttle: only recompute every 3 ticks (beam visuals tolerate slight staleness).
+        // Throttle stride comes from the HOST SERVER LOD tier — MAX
+        // re-traces every tick, MIN every 8. Beam visuals tolerate
+        // slight staleness so the trade is mostly invisible until
+        // pretty low tiers.
         const currentTick = world.getTick();
         const collisionRadius = isLineShot(proj.config.shot) ? proj.config.shot.radius : 2;
-        if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= 3) {
+        const beamStride = Math.max(1, getSimDetailConfig().beamPathStride | 0);
+        if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= beamStride) {
           const beamPath = damageSystem.findBeamPath(
             proj.startX, proj.startY, proj.startZ,
             fullEndX, fullEndY, fullEndZ,

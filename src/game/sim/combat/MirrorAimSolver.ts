@@ -42,6 +42,7 @@ import type { Entity, Turret } from '../types';
 import { getTransformCosSin, getBarrelTip, getWeaponWorldPosition } from '../../math';
 import { getTurretMountHeight } from './combatUtils';
 import { spatialGrid } from '../SpatialGrid';
+import { getSimDetailConfig } from '../simQuality';
 
 export type MirrorAim = {
   targetAngle: number;
@@ -140,7 +141,11 @@ export function solveMirrorAim(
     let bisectorYaw = fallbackYaw;
     let bisectorPitch: number | null = null;
     let valid = false;
-    for (let iter = 0; iter < 2; iter++) {
+    // Iteration count comes from the HOST SERVER LOD tier. 2 iters
+    // ⇒ ≤0.02° residual (well inside body radius); 1 iter ⇒ ≤1°
+    // (still hits inside the unit body in normal engagements).
+    const iters = Math.max(1, getSimDetailConfig().mirrorBisectorIterations | 0);
+    for (let iter = 0; iter < iters; iter++) {
       const sX = eTip.x - pcx;
       const sY = eTip.y - pcy;
       const sZ = eTip.z - panelCenterZ;
