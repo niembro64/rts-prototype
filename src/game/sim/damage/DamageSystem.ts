@@ -13,6 +13,7 @@ import type {
   DamageResult,
   HitInfo,
   DeathContext,
+  KnockbackInfo,
 } from './types';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
@@ -30,11 +31,36 @@ const _reusableResult: DamageResult = {
   knockbacks: [],
   deathContexts: new Map(),
 };
+// Pool for KnockbackInfo + its inner Vec2. The result.knockbacks array
+// itself is reused, but each entry pushed during an explosion was a
+// fresh `{ entityId, force: { x, y } }` allocation — and big splashes
+// drop these by the hundred per second. Pool both the outer entry
+// AND the inner force vector; pushKnockback() rents an entry, fills
+// it, and appends. resetResult() returns the previous tick's entries
+// to the pool before clearing the result.
+const _knockbackPool: KnockbackInfo[] = [];
+function rentKnockback(): KnockbackInfo {
+  return _knockbackPool.pop() ?? { entityId: 0, force: { x: 0, y: 0 } };
+}
+function pushKnockback(
+  result: DamageResult,
+  entityId: number,
+  fx: number,
+  fy: number,
+): void {
+  const k = rentKnockback();
+  k.entityId = entityId;
+  k.force.x = fx;
+  k.force.y = fy;
+  result.knockbacks.push(k);
+}
 function resetResult(): DamageResult {
   _reusableResult.hitEntityIds.length = 0;
   _reusableResult.killedUnitIds.clear();
   _reusableResult.killedBuildingIds.clear();
   _reusableResult.truncationT = undefined;
+  // Recycle prior tick's knockback entries before clearing the array.
+  for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
   _reusableResult.recoil = undefined;
   _reusableResult.deathContexts.clear();
@@ -50,6 +76,7 @@ export function resetDamageBuffers(): void {
   _reusableResult.hitEntityIds.length = 0;
   _reusableResult.killedUnitIds.clear();
   _reusableResult.killedBuildingIds.clear();
+  for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
   _reusableResult.deathContexts.clear();
   _reusableHits.length = 0;
@@ -447,10 +474,7 @@ export class DamageSystem {
 
       // Add knockback for units (buildings don't get pushed)
       if (hit.isUnit && lineMomentum > 0) {
-        result.knockbacks.push({
-          entityId: hit.entityId,
-          force: { x: forceX, y: forceY },
-        });
+        pushKnockback(result, hit.entityId, forceX, forceY);
       }
 
       // Always truncate at first hit
@@ -576,10 +600,7 @@ export class DamageSystem {
 
       // Add knockback for units (buildings don't get pushed)
       if (hit.isUnit && projMass > 0) {
-        result.knockbacks.push({
-          entityId: hit.entityId,
-          force: { x: forceX, y: forceY },
-        });
+        pushKnockback(result, hit.entityId, forceX, forceY);
       }
     }
 
@@ -652,10 +673,7 @@ export class DamageSystem {
 
       // Add knockback (direction is from center outward)
       if (force > 0 && dist > 0) {
-        result.knockbacks.push({
-          entityId: unit.id,
-          force: { x: forceX, y: forceY },
-        });
+        pushKnockback(result, unit.id, forceX, forceY);
       }
     }
 
