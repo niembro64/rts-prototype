@@ -300,7 +300,7 @@ export function checkProjectileCollisions(
     // detonation 30+ units above absolute z=0. Beams and lasers can't
     // hit the ground (they're instantaneous lines, not falling shots)
     // so they skip this check.
-    const groundZAtProj = world.getContinuousGroundZ(projEntity.transform.x, projEntity.transform.y);
+    const groundZAtProj = world.getGroundZ(projEntity.transform.x, projEntity.transform.y);
     const hitGround =
       !hitMirrorPanel &&
       proj.projectileType === 'projectile' &&

@@ -4,7 +4,7 @@ import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FIRING_FORCE, DEFAULT_HIT_FORCE, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, UNIT_HP_MULTIPLIER, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getTerrainHeight, getTileTerrainHeight } from './Terrain';
+import { getSurfaceHeight } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 
@@ -89,22 +89,14 @@ export class WorldState {
     this.mapHeight = mapHeight;
   }
 
-  /** Tile-aligned ground elevation at world point (x, y). Every unit
-   *  on a given tile stands on the same flat top face — crossing a
-   *  tile boundary steps cleanly between adjacent cube heights, which
-   *  matches the "3D mana cube" terrain visualization. Use this for
-   *  unit/building spawn z and for the physics ground-contact clamp. */
+  /** Canonical ground-surface elevation at world point (x, y). One
+   *  source of truth for "what is the ground here?" — sim, physics,
+   *  client dead-reckoning, and the tile renderer all read this
+   *  bilinear interpolation of the 4 corner heights of the tile
+   *  that contains (x, y). The surface returned matches what the
+   *  player sees with no tile-center stepping. */
   getGroundZ(x: number, y: number): number {
-    return getTileTerrainHeight(x, y, SPATIAL_GRID_CELL_SIZE, this.mapWidth, this.mapHeight);
-  }
-
-  /** Continuous (non-tile-aligned) ground elevation. Use this where
-   *  a smooth surface matters more than tile-cube alignment — e.g.,
-   *  a projectile striking the ground should detonate ON the smooth
-   *  surface, not pop to a stepped tile height that may be a few
-   *  units off horizontally. */
-  getContinuousGroundZ(x: number, y: number): number {
-    return getTerrainHeight(x, y, this.mapWidth, this.mapHeight);
+    return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
   }
 
   private rebuildCachesIfNeeded(): void {

@@ -42,7 +42,8 @@ import {
   applyHomingSteering,
 } from '../math';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY, BEAM_MAX_LENGTH } from '../../config';
-import { getTerrainHeight } from '../sim/Terrain';
+import { getSurfaceHeight } from '../sim/Terrain';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 /** Frame-rate independent EMA blend factor from a half-life (seconds).
@@ -921,7 +922,7 @@ export class ClientViewState {
           // Clamp to the local terrain height so projectiles arcing
           // toward a raised cube tile rest on its top face instead of
           // burrowing into z=0 underneath the cube.
-          const groundZ = getTerrainHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight);
+          const groundZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
           if (entity.transform.z < groundZ) {
             entity.transform.z = groundZ;
             if (entity.projectile.velocityZ < 0) entity.projectile.velocityZ = 0;

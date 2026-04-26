@@ -16,28 +16,32 @@
 // dimensions, a seeded RNG, etc. — so the heightmap stays the same
 // on both sides without networking the heightmap itself.
 //
-// Tile alignment: `getTileTerrainHeight` snaps (x, y) to the spatial
-// grid's tile and returns the height at the tile center. Use this
-// for unit ground levels — every unit on a tile stands on the SAME
-// flat top face, so a unit walking across the tile doesn't bob up
-// and down with the underlying continuous heightmap. Crossing a tile
-// boundary then steps cleanly between the two cube tops.
+// Two functions, one canonical surface:
 //
-// `getTerrainHeight` is the underlying continuous version; use it
-// where you want the smooth surface (projectile-vs-ground impact
-// snapping, debris settling) so things don't pop.
+//   `getTerrainHeight(x, z)` — raw continuous heightmap. ONLY the
+//   renderer calls it directly, to sample tile-corner heights and
+//   the shading gradient.
+//
+//   `getSurfaceHeight(x, z, cellSize)` — THE one and only "what is
+//   the ground at (x, z)?" answer that gameplay reads. It bilinearly
+//   interpolates the four corner heights of the tile that contains
+//   (x, z), so the surface it returns matches EXACTLY what the tile
+//   renderer draws across the top of every cube. Sim, physics, and
+//   client dead-reckoning all call this — units, projectiles, and
+//   buildings settle on the same surface the player sees, with no
+//   tile-center stepping when crossing a cell boundary.
 
-const RIPPLE_AMPLITUDE = 150;
+const RIPPLE_AMPLITUDE = 800;
 // Ripples occupy this fraction of `min(mapWidth, mapHeight)` from
 // the map center outward. With a 2000×2000 map and 0.25, the
 // ripple zone is a disc of radius 500 centered on the map.
-const RIPPLE_RADIUS_FRACTION = 0.25;
+const RIPPLE_RADIUS_FRACTION = 0.4;
 // Wavelengths for the three sinusoids that combine into the
 // ripple pattern. Mixing irrational ratios prevents the layers
 // from harmonizing into a clean grid.
-const RIPPLE_W1 = 80;
-const RIPPLE_W2 = 130;
-const RIPPLE_W3 = 200;
+const RIPPLE_W1 = 200;
+const RIPPLE_W2 = 50;
+const RIPPLE_W3 = 500;
 // Phase offset on the second sinusoid so the bumps don't all
 // peak at the same dist value.
 const RIPPLE_PHASE = 1.7;
@@ -74,22 +78,38 @@ export function getTerrainHeight(
   return RIPPLE_AMPLITUDE * fade * norm;
 }
 
-/** Tile-aligned ground height. Units, buildings and capture cubes
- *  sample this so each cell has ONE flat top face — gameplay reads
- *  cleanly as block terrain instead of as a continuous slope, and
- *  units don't bob up and down crossing a tile.
+/** Canonical ground-surface height at world point (x, z). Bilinear
+ *  interpolation of the four corner heights of the tile that
+ *  contains (x, z). This matches the renderer's drawn surface
+ *  EXACTLY along tile edges and very closely within tiles — the
+ *  renderer triangulates each tile into two triangles, while this
+ *  uses bilinear, so the two agree pixel-perfect on all four edges
+ *  and differ only by tiny saddle-vs-fold variation in the interior.
  *
- *  Crossing a tile boundary still steps between the two cube tops
- *  exactly like climbing a stair, which matches the "3D mana cube"
- *  visualization. */
-export function getTileTerrainHeight(
-  x: number, y: number,
-  cellSize: number,
+ *  Use this for every gameplay/physics ground query — unit footing,
+ *  building base, projectile-vs-ground hit, client dead-reckoning
+ *  ground clamp. With every consumer reading the same function on
+ *  both sides, the simulation surface and the rendered surface are
+ *  the same surface, full stop. */
+export function getSurfaceHeight(
+  x: number, z: number,
   mapWidth: number, mapHeight: number,
+  cellSize: number,
 ): number {
   const cx = Math.floor(x / cellSize);
-  const cy = Math.floor(y / cellSize);
-  const centerX = cx * cellSize + cellSize / 2;
-  const centerY = cy * cellSize + cellSize / 2;
-  return getTerrainHeight(centerX, centerY, mapWidth, mapHeight);
+  const cz = Math.floor(z / cellSize);
+  const x0 = cx * cellSize;
+  const x1 = x0 + cellSize;
+  const z0 = cz * cellSize;
+  const z1 = z0 + cellSize;
+  const h00 = getTerrainHeight(x0, z0, mapWidth, mapHeight);
+  const h10 = getTerrainHeight(x1, z0, mapWidth, mapHeight);
+  const h11 = getTerrainHeight(x1, z1, mapWidth, mapHeight);
+  const h01 = getTerrainHeight(x0, z1, mapWidth, mapHeight);
+  const fx = (x - x0) / cellSize;
+  const fz = (z - z0) / cellSize;
+  // Bilinear: lerp along x at z=z0 and z=z1, then lerp those by fz.
+  const hX0 = h00 * (1 - fx) + h10 * fx;
+  const hX1 = h01 * (1 - fx) + h11 * fx;
+  return hX0 * (1 - fz) + hX1 * fz;
 }
