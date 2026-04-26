@@ -258,7 +258,19 @@ export class GameServer {
       this.tick(delta);
 
       const elapsed = tickNow - this.lastSnapshotTime;
-      if (this.maxSnapshotIntervalMs === 0 || elapsed >= this.maxSnapshotIntervalMs) {
+      // Auto-throttle: at high unit counts the snapshot serialization +
+      // bandwidth dominates, so stretch the interval as the world
+      // gets denser. The base interval comes from the user-configured
+      // maxSnapshotsPerSec; the multiplier is 1× below 2k units and
+      // climbs to 4× past 12k. Below the threshold the gate is
+      // identical to before. Manual `none` (interval = 0) still
+      // means "every tick" — no reason to throttle when the user has
+      // explicitly opted out.
+      const baseInterval = this.maxSnapshotIntervalMs;
+      const effectiveInterval = baseInterval === 0
+        ? 0
+        : baseInterval * this.snapshotIntervalMultiplier();
+      if (effectiveInterval === 0 || elapsed >= effectiveInterval) {
         this.lastSnapshotTime = tickNow;
         this.emitSnapshot();
       }
@@ -620,6 +632,22 @@ export class GameServer {
   setSnapshotRate(rate: number | 'none'): void {
     this.maxSnapshotsDisplay = rate;
     this.maxSnapshotIntervalMs = rate === 'none' ? 0 : 1000 / rate;
+  }
+
+  /** Multiplier on the snapshot interval that grows with unit count.
+   *  The intent: at high counts the per-snapshot serialization plus
+   *  network bytes dominate the tick, so trade snapshot rate for
+   *  CPU/bandwidth headroom. Returns 1.0 below the first threshold
+   *  so light battles are unaffected. The thresholds line up with the
+   *  UNITS auto-LOD ladder (2k/4k/8k/12k) so visual quality and
+   *  network rate scale down together. */
+  private snapshotIntervalMultiplier(): number {
+    const n = this.world.getUnits().length;
+    if (n < 2000) return 1;
+    if (n < 4000) return 1.5;
+    if (n < 8000) return 2;
+    if (n < 12000) return 3;
+    return 4;
   }
 
   // Change simulation tick rate (restarts the game loop interval)
