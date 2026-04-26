@@ -11,6 +11,8 @@ import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, c
 import { findClosestPanelHit } from './MirrorPanelHit';
 import { getSubmunitionTurretConfig } from '../blueprints';
 import { encodeSubmunitionTurretId } from '../turretConfigs';
+import { getSurfaceNormal } from '../Terrain';
+import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
@@ -374,12 +376,25 @@ export function checkProjectileCollisions(
           // passes no normal so fragments just inherit the parent's
           // forward velocity with random spread.
           if (hasSubs) {
-            // Ground impact gets a world-up surface normal (0, 0, 1)
-            // so submunitions bounce up; mid-air expiry passes
-            // undefined so fragments just inherit forward velocity.
-            const surfaceNormalX = hitGround ? 0 : undefined;
-            const surfaceNormalY = hitGround ? 0 : undefined;
-            const surfaceNormalZ = hitGround ? 1 : undefined;
+            // Ground impact gets the actual surface tangent normal at
+            // (x, y) — bilinear gradient of the heightmap, NOT a flat
+            // (0, 0, 1). On a sloped ripple cube the bounce direction
+            // tracks the slope, so cluster fragments spray AWAY from
+            // the hill instead of always straight up. Mid-air expiry
+            // (no ground hit) passes undefined so fragments inherit
+            // forward velocity.
+            let surfaceNormalX: number | undefined;
+            let surfaceNormalY: number | undefined;
+            let surfaceNormalZ: number | undefined;
+            if (hitGround) {
+              const n = getSurfaceNormal(
+                projEntity.transform.x, projEntity.transform.y,
+                world.mapWidth, world.mapHeight, SPATIAL_GRID_CELL_SIZE,
+              );
+              surfaceNormalX = n.nx;
+              surfaceNormalY = n.ny;
+              surfaceNormalZ = n.nz;
+            }
             spawnSubmunitions(
               world, projShot,
               projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,

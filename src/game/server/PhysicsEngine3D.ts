@@ -286,7 +286,17 @@ export class PhysicsEngine3D {
 
   /** Explicit-Euler integration: accel → velocity → position.
    *  Gravity applies to every dynamic body; external forces already
-   *  live on the accel* maps courtesy of applyForce. */
+   *  live on the accel* maps courtesy of applyForce.
+   *
+   *  Damping model: `frictionAir` is GROUND DRAG — friction between a
+   *  unit's hull and the surface it's sliding on. It applies to the
+   *  HORIZONTAL plane (vx/vy) so units don't slide forever after a
+   *  knockback. Vertical velocity (vz) is left to gravity alone:
+   *  damping vz the same way made units descend on a slow exponential
+   *  terminal velocity instead of accelerating freely under gravity,
+   *  which read as "floating". A future air-drag pass for high-flying
+   *  units (bombers etc.) can add a separate, much smaller vz damping
+   *  term, but it should not equal frictionAir. */
   private integrate(dtSec: number): void {
     for (const b of this.dynamicBodies) {
       const ax = this.accelX.get(b) ?? 0;
@@ -295,11 +305,10 @@ export class PhysicsEngine3D {
       b.vx += ax * dtSec;
       b.vy += ay * dtSec;
       b.vz += az * dtSec;
-      // Air friction — frame-rate-aware exponential damping.
+      // Horizontal-only ground drag — see comment above.
       const damp = Math.pow(1 - b.frictionAir, dtSec * 60);
       b.vx *= damp;
       b.vy *= damp;
-      b.vz *= damp;
       b.x += b.vx * dtSec;
       b.y += b.vy * dtSec;
       b.z += b.vz * dtSec;

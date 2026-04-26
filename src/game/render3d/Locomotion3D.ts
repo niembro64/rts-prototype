@@ -701,6 +701,12 @@ export function updateLocomotion(
     const unitX = entity.transform.x;
     const unitZ = entity.transform.y;  // 2D's y = 3D's z
     const unitR = entity.transform.rotation;
+    // Unit base in WORLD Y = altitude − sphere radius. Legs are
+    // parented to the world group, so foot/hip Y positions need this
+    // offset added or feet stay pinned at world y=1 while units walk
+    // up onto raised terrain cubes (and the legs vanish inside the
+    // cube body).
+    const baseY = entity.transform.z - (entity.unit?.unitRadiusCollider.push ?? 0);
     const cos = Math.cos(unitR);
     const sin = Math.sin(unitR);
 
@@ -718,10 +724,11 @@ export function updateLocomotion(
       // Both 'animated' and 'full' LODs render a 2-segment leg with knee
       // bent upward in the vertical hip-foot plane. The difference is only
       // whether joint spheres are shown ('full' only).
-      const hipY = leg.hipY;
+      const hipY = baseY + leg.hipY;
+      const footY = baseY + FOOT_Y;
       const knee = kneeFromIK(
         hipX, hipY, hipZ,
-        footX, FOOT_Y, footZ,
+        footX, footY, footZ,
         c.upperLegLength, c.lowerLegLength,
       );
       setCylinderBetween(
@@ -734,13 +741,13 @@ export function updateLocomotion(
         setCylinderBetween(
           leg.lower,
           knee.x, knee.y, knee.z,
-          footX, FOOT_Y, footZ,
+          footX, footY, footZ,
           leg.lowerThick,
         );
       }
       if (leg.hipJoint)  leg.hipJoint.position.set(hipX, hipY, hipZ);
       if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
-      if (leg.footJoint) leg.footJoint.position.set(footX, FOOT_Y, footZ);
+      if (leg.footJoint) leg.footJoint.position.set(footX, footY, footZ);
     }
   } else if (mesh.type === 'legs' && mesh.legLod === 'simple') {
     // 'simple' LOD: hip-to-foot cylinder with no walk cycle. The foot is
@@ -752,6 +759,7 @@ export function updateLocomotion(
     const unitX = entity.transform.x;
     const unitZ = entity.transform.y;
     const unitR = entity.transform.rotation;
+    const baseY = entity.transform.z - (entity.unit?.unitRadiusCollider.push ?? 0);
     const cos = Math.cos(unitR);
     const sin = Math.sin(unitR);
     for (const leg of mesh.legs) {
@@ -764,8 +772,8 @@ export function updateLocomotion(
       const hipZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
       setCylinderBetween(
         leg.upper,
-        hipX, leg.hipY, hipZ,
-        leg.groundX, FOOT_Y, leg.groundZ,
+        hipX, baseY + leg.hipY, hipZ,
+        leg.groundX, baseY + FOOT_Y, leg.groundZ,
         leg.upperThick,
       );
     }

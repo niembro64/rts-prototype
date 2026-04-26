@@ -212,6 +212,11 @@ export class ClientViewState {
     this.mapHeight = mapHeight;
   }
 
+  /** Read map dimensions for renderers / overlays that need to sample
+   *  the deterministic terrain heightmap. */
+  getMapWidth(): number { return this.mapWidth; }
+  getMapHeight(): number { return this.mapHeight; }
+
   private invalidateCaches(): void {
     this.cache.invalidate();
   }

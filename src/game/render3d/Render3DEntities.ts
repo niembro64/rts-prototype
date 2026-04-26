@@ -13,7 +13,8 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
 import type { SpinConfig } from '../../config';
-import { MIRROR_EXTRA_HEIGHT } from '../../config';
+import { MIRROR_EXTRA_HEIGHT, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { getSurfaceNormal } from '../sim/Terrain';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   buildLocomotion,
@@ -49,6 +50,14 @@ const BARREL_COLOR = 0xffffff;
 // path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
 // (input) Vector3, but never mutates it.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
+
+// Scratch globals reused by the per-unit surface-tilt path so the
+// per-frame loop allocates no quaternions/vectors. Tilt is applied
+// to every unit, every frame — keep this fast.
+const _threeUp = new THREE.Vector3(0, 1, 0);
+const _tiltSurfaceN = new THREE.Vector3();
+const _tiltQuat = new THREE.Quaternion();
+const _yawQuat = new THREE.Quaternion();
 
 // Mirror panels (reflective mirror-unit armor plates): standing rectangular
 // slabs positioned in the unit's TURRET frame (not chassis frame), since the
@@ -896,7 +905,35 @@ export class Render3DEntities {
       // lifts with it — no per-child Y touchups needed.
       const unitRadius = e.unit?.unitRadiusCollider.push ?? 0;
       m.group.position.set(e.transform.x, e.transform.z - unitRadius, e.transform.y);
-      m.group.rotation.y = -e.transform.rotation;
+
+      // Surface tilt — one rotation per unit per frame, computed from
+      // the heightmap gradient at the unit's footprint. Aligns local
+      // +Y with the surface normal so wheels, treads, and the chassis
+      // all "lean" with the slope; legs (parented to the world group)
+      // are positioned in world space and inherit the unit's altitude
+      // but not the tilt — see Locomotion3D for the per-leg world Y
+      // adjustment. Outside the ripple disc (flat terrain) the gradient
+      // is zero and we take a fast path that just sets yaw on the
+      // Euler — no quaternion math.
+      const n = getSurfaceNormal(
+        e.transform.x, e.transform.y,
+        this.clientViewState.getMapWidth(), this.clientViewState.getMapHeight(),
+        SPATIAL_GRID_CELL_SIZE,
+      );
+      const yaw = -e.transform.rotation;
+      if (n.nx === 0 && n.ny === 0) {
+        // Flat ground — yaw only, identity tilt.
+        m.group.rotation.set(0, yaw, 0);
+      } else {
+        // sim normal (nx, ny, nz=up) → three.js (nx, nz, ny). Build a
+        // tilt quaternion that maps world +Y to that normal, then
+        // pre-yaw around world Y so the unit faces correctly under
+        // the tilted local frame.
+        _tiltSurfaceN.set(n.nx, n.nz, n.ny);
+        _tiltQuat.setFromUnitVectors(_threeUp, _tiltSurfaceN);
+        _yawQuat.setFromAxisAngle(_threeUp, yaw);
+        m.group.quaternion.copy(_tiltQuat).multiply(_yawQuat);
+      }
 
       // Chassis body lives entirely in unit-radius-1 space (see
       // BodyShape3D). Uniformly scaling the chassis group by the unit's

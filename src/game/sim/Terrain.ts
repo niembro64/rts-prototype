@@ -40,7 +40,7 @@ const RIPPLE_RADIUS_FRACTION = 0.4;
 // ripple pattern. Mixing irrational ratios prevents the layers
 // from harmonizing into a clean grid.
 const RIPPLE_W1 = 200;
-const RIPPLE_W2 = 50;
+const RIPPLE_W2 = 500;
 const RIPPLE_W3 = 500;
 // Phase offset on the second sinusoid so the bumps don't all
 // peak at the same dist value.
@@ -76,6 +76,49 @@ export function getTerrainHeight(
   // and joins the surrounding flat terrain seamlessly.
   const norm = (sum + 1) * 0.5;
   return RIPPLE_AMPLITUDE * fade * norm;
+}
+
+/** Surface-tangent normal at world point (x, z) in SIM coords (z is
+ *  up). The bilinear surface inside a tile has linear gradients in
+ *  both axes:
+ *
+ *    ∂h/∂x = (1−fz)(h10−h00) + fz(h11−h01)
+ *    ∂h/∂z = (1−fx)(h01−h00) + fx(h11−h10)
+ *
+ *  The upward normal of the surface z = h(x, z) is then
+ *  (-∂h/∂x, -∂h/∂z, 1) normalized — sim Z is up, so the third
+ *  component is positive. Outside the ripple disc gradients are zero
+ *  and the normal collapses to (0, 0, 1).
+ *
+ *  Use this where a single surface-orientation matters per query —
+ *  unit locomotion tilt, projectile bounce-off-ground reflection,
+ *  debris settle pose. */
+export function getSurfaceNormal(
+  x: number, z: number,
+  mapWidth: number, mapHeight: number,
+  cellSize: number,
+): { nx: number; ny: number; nz: number } {
+  const cx = Math.floor(x / cellSize);
+  const cz = Math.floor(z / cellSize);
+  const x0 = cx * cellSize;
+  const x1 = x0 + cellSize;
+  const z0 = cz * cellSize;
+  const z1 = z0 + cellSize;
+  const h00 = getTerrainHeight(x0, z0, mapWidth, mapHeight);
+  const h10 = getTerrainHeight(x1, z0, mapWidth, mapHeight);
+  const h11 = getTerrainHeight(x1, z1, mapWidth, mapHeight);
+  const h01 = getTerrainHeight(x0, z1, mapWidth, mapHeight);
+  const fx = (x - x0) / cellSize;
+  const fz = (z - z0) / cellSize;
+  // Bilinear partials (as derived from the bilinear surface).
+  const dHdx = ((1 - fz) * (h10 - h00) + fz * (h11 - h01)) / cellSize;
+  const dHdz = ((1 - fx) * (h01 - h00) + fx * (h11 - h10)) / cellSize;
+  // Sim normal: surface up is (-dHdx, -dHdz, 1).
+  const nx = -dHdx;
+  const ny = -dHdz;
+  const nz = 1;
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+  return { nx: nx / len, ny: ny / len, nz: nz / len };
 }
 
 /** Canonical ground-surface height at world point (x, z). Bilinear
