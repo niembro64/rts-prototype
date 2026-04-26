@@ -108,8 +108,7 @@ export const RANGE_TYPES: RangeType[] = [
 
 export const PROJ_RANGE_TYPES: ProjRangeType[] = [
   'collision',
-  'primary',
-  'secondary',
+  'explosion',
 ];
 
 export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['visual', 'shot', 'push'];
@@ -258,8 +257,7 @@ const currentRangeToggles: Record<RangeType, boolean> = {
 };
 const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
   collision: _cd.projRangeToggles.default,
-  primary: _cd.projRangeToggles.default,
-  secondary: _cd.projRangeToggles.default,
+  explosion: _cd.projRangeToggles.default,
 };
 const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
   visual: _cd.unitRadiusToggles.default,

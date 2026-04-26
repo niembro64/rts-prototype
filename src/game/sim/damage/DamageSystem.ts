@@ -89,11 +89,6 @@ export function resetDamageBuffers(): void {
 // reflection formula in findBeamPath).
 const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, normalZ: 0, panelIndex: -1 };
 
-// Compute distance-based falloff damage for area effects
-function computeFalloffDamage(dist: number, radius: number, baseDamage: number, falloff: number): number {
-  const distRatio = Math.max(0, Math.min(1, dist / radius));
-  return baseDamage * (1 - distRatio * (1 - falloff));
-}
 
 export class DamageSystem {
   public statsTracker?: CombatStatsTracker;
@@ -651,10 +646,12 @@ export class DamageSystem {
         )) continue;
       }
 
-      // Calculate damage with falloff
-      const damage = computeFalloffDamage(dist, source.radius, source.damage, source.falloff);
+      // Boolean AoE: full damage, full force — no distance falloff.
+      // The sphere-vs-sphere overlap test above is the entire gate.
+      const damage = source.damage;
 
-      // Calculate knockback direction (from center outward)
+      // Knockback direction is still from center outward so units are
+      // pushed AWAY from the blast, not in a fixed direction.
       const dirX = dist > 0 ? dx / dist : 0;
       const dirY = dist > 0 ? dy / dist : 0;
       const force = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
@@ -709,8 +706,6 @@ export class DamageSystem {
       const distSq = dx * dx + dy * dy + dz * dz;
       if (distSq > source.radius * source.radius) continue;
 
-      const dist = Math.sqrt(distSq);
-
       // Slice (wave-weapon cone) stays a horizontal test — the wave
       // direction is a yaw, not a 3D vector — using the horizontal
       // delta from explosion center to building center.
@@ -728,7 +723,8 @@ export class DamageSystem {
         )) continue;
       }
 
-      const damage = computeFalloffDamage(dist, source.radius, source.damage, source.falloff);
+      // Boolean AoE damage to buildings — same as units above.
+      const damage = source.damage;
 
       // Knockback direction: from the AABB's closest point back toward
       // the sphere center, flattened to horizontal because buildings

@@ -45,15 +45,16 @@ export type SweptDamageSource = DamageSourceBase & {
   projectileMass?: number;
 };
 
-/** Splash / AOE damage: 3D sphere of `radius` around `center`. Unit
- *  must have its collision sphere intersect this sphere to take the
- *  splash. `sliceAngle`/`sliceDirection` are still planar — force-field
- *  cones stay on the ground plane. */
+/** Splash / AOE damage: 3D sphere of `radius` around `center`. Unit's
+ *  shot collider must intersect this sphere — pure boolean overlap
+ *  test, no distance falloff. Damage + knockback are applied at full
+ *  magnitude inside the sphere, zero outside. `sliceAngle` /
+ *  `sliceDirection` are still planar — force-field cones stay on the
+ *  ground plane. */
 export type AreaDamageSource = DamageSourceBase & {
   type: 'area';
   center: Vec3;
   radius: number;
-  falloff: number;
   sliceAngle?: number;
   sliceDirection?: number;
   knockbackForce?: number;

@@ -23,7 +23,7 @@ export type RangeType =
   | 'engageAcquire'
   | 'engageRelease'
   | 'build';
-export type ProjRangeType = 'collision' | 'primary' | 'secondary';
+export type ProjRangeType = 'collision' | 'explosion';
 export type UnitRadiusType = 'visual' | 'shot' | 'push';
 
 export type SoundDefaults = Record<SoundCategory, boolean>;

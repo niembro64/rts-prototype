@@ -148,8 +148,7 @@ export class Render3DEntities {
    *  the buttons doesn't churn GPU allocations. */
   private projectileRadiusMeshes = new Map<number, {
     collision?: THREE.LineSegments;
-    primary?: THREE.LineSegments;
-    secondary?: THREE.LineSegments;
+    explosion?: THREE.LineSegments;
   }>();
 
   // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
@@ -258,8 +257,7 @@ export class Render3DEntities {
   // the real volume the sim tests. Separate materials per toggle so
   // overlapping spheres stay visually distinct.
   private projMatCollision = new THREE.LineBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.55, depthWrite: false });
-  private projMatPrimary = new THREE.LineBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.35, depthWrite: false });
-  private projMatSecondary = new THREE.LineBasicMaterial({ color: 0xffdd44, transparent: true, opacity: 0.30, depthWrite: false });
+  private projMatExplosion = new THREE.LineBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.35, depthWrite: false });
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
@@ -1222,22 +1220,21 @@ export class Render3DEntities {
     for (const [id, radii] of this.projectileRadiusMeshes) {
       if (!seen.has(id)) {
         if (radii.collision) this.world.remove(radii.collision);
-        if (radii.primary) this.world.remove(radii.primary);
-        if (radii.secondary) this.world.remove(radii.secondary);
+        if (radii.explosion) this.world.remove(radii.explosion);
         this.projectileRadiusMeshes.delete(id);
       }
     }
   }
 
   /** Show/hide the per-projectile SHOT RAD wireframe spheres. COL is
-   *  the actual collision capsule the swept-line 3D test uses; PRM/SEC
-   *  are the splash-damage spheres for area damage on detonation.
+   *  the actual collision capsule the swept-line 3D test uses; EXP is
+   *  the boolean splash-damage sphere applied at detonation.
    *
    *  Spheres (not rings) because every one of these sim checks is 3D:
-   *  `lineSphereIntersectionT` for COL, `sqrt(dx²+dy²+dz²)` for PRM/SEC
-   *  against units. Drawing flat rings would under-sell what the sim
-   *  tests — a high-arc shell's primary blast genuinely catches airborne
-   *  targets above it. */
+   *  `lineSphereIntersectionT` for COL, sphere-vs-sphere intersection
+   *  for EXP. Drawing flat rings would under-sell what the sim tests —
+   *  a high-arc shell's blast genuinely catches airborne targets above
+   *  it. */
   private updateProjRadiusMeshes(entity: Entity): void {
     const proj = entity.projectile;
     if (!proj) return;
@@ -1245,17 +1242,15 @@ export class Render3DEntities {
     if (shot.type !== 'projectile') return;
 
     const wantCol = getProjRangeToggle('collision');
-    const wantPrm = getProjRangeToggle('primary');
-    const wantSec = getProjRangeToggle('secondary');
-    if (!wantCol && !wantPrm && !wantSec) {
+    const wantExp = getProjRangeToggle('explosion');
+    if (!wantCol && !wantExp) {
       // Fast path — nothing to show. Hide anything that was visible
       // last frame so flipping the toggle off doesn't leave a stale
       // sphere floating around.
       const existing = this.projectileRadiusMeshes.get(entity.id);
       if (existing) {
         if (existing.collision) existing.collision.visible = false;
-        if (existing.primary) existing.primary.visible = false;
-        if (existing.secondary) existing.secondary.visible = false;
+        if (existing.explosion) existing.explosion.visible = false;
       }
       return;
     }
@@ -1277,24 +1272,18 @@ export class Render3DEntities {
       this.projMatCollision,
     );
     this.setProjRadiusMesh(
-      radii, 'primary', wantPrm && !proj.hasExploded,
+      radii, 'explosion', wantExp && !proj.hasExploded,
       projX, projY, projZ,
-      shot.explosion?.primary.radius ?? 0,
-      this.projMatPrimary,
-    );
-    this.setProjRadiusMesh(
-      radii, 'secondary', wantSec && !proj.hasExploded,
-      projX, projY, projZ,
-      shot.explosion?.secondary.radius ?? 0,
-      this.projMatSecondary,
+      shot.explosion?.radius ?? 0,
+      this.projMatExplosion,
     );
   }
 
-  /** Internal helper — create/show/hide one of the three SHOT RAD
+  /** Internal helper — create/show/hide one of the SHOT RAD
    *  wireframe spheres on a projectile. */
   private setProjRadiusMesh(
-    radii: { collision?: THREE.LineSegments; primary?: THREE.LineSegments; secondary?: THREE.LineSegments },
-    key: 'collision' | 'primary' | 'secondary',
+    radii: { collision?: THREE.LineSegments; explosion?: THREE.LineSegments },
+    key: 'collision' | 'explosion',
     want: boolean,
     x: number, y: number, z: number,
     radius: number,
@@ -1333,8 +1322,7 @@ export class Render3DEntities {
     for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
     for (const radii of this.projectileRadiusMeshes.values()) {
       if (radii.collision) this.world.remove(radii.collision);
-      if (radii.primary) this.world.remove(radii.primary);
-      if (radii.secondary) this.world.remove(radii.secondary);
+      if (radii.explosion) this.world.remove(radii.explosion);
     }
     this.unitMeshes.clear();
     this.buildingMeshes.clear();
@@ -1360,8 +1348,7 @@ export class Render3DEntities {
     this.ringMatBuild.dispose();
     this.selectionRingMat.dispose();
     this.projMatCollision.dispose();
-    this.projMatPrimary.dispose();
-    this.projMatSecondary.dispose();
+    this.projMatExplosion.dispose();
     this.mirrorGeom.dispose();
     for (const m of this.mirrorShinyMats.values()) m.dispose();
     this.mirrorShinyMats.clear();

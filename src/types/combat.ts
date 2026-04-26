@@ -8,8 +8,11 @@ export type TurretAudioId = string;
 
 export type ImpactContext = {
   collisionRadius: number;
-  primaryRadius: number;
-  secondaryRadius: number;
+  /** Splash radius for the rendered explosion / death effect. With
+   *  the boolean AoE model there's a single radius per shot;
+   *  collisionRadius is the body-vs-body radius for direct hits and
+   *  this is the splash sphere's radius if the shot has one. */
+  explosionRadius: number;
   projectile: { pos: Vec2; vel: Vec2 };
   entity: { vel: Vec2; collisionRadius: number };
   penetrationDir: Vec2;

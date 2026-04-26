@@ -746,7 +746,7 @@ export class RtsScene3D {
       // localized sparks the size of the beam, not as a 8-unit
       // pop that looks like a bullet impact.
       const r = ctx
-        ? Math.max(ctx.collisionRadius, ctx.primaryRadius, ctx.secondaryRadius)
+        ? Math.max(ctx.collisionRadius, ctx.explosionRadius)
         : 2;
       // Combined impulse vector (sim X/Y → world X/Z): penetration direction
       // dominates because that's the intended "away from attacker" push, with

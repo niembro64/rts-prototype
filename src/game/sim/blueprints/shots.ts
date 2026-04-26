@@ -40,10 +40,11 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'lightShot',
     mass: 3,
     collision: { radius: 1.6 },
-    explosion: {
-      primary: { radius: 5, damage: 6, force: 500 },
-      secondary: { radius: 7, damage: 6, force: 500 },
-    },
+    // Single boolean explosion sphere. Anything whose shot collider
+    // intersects this radius takes the FULL damage and force; nothing
+    // outside it. No falloff. Trim the radius down if shots feel too
+    // generous now that there's no near-zone bonus.
+    explosion: { radius: 5, damage: 6, force: 500 },
     detonateOnExpiry: true,
     lifespan: 4000,
     hitSound: AUDIO.event.hit.lightShot,
@@ -53,10 +54,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'mediumShot',
     mass: 8,
     collision: { radius: 2.2 },
-    explosion: {
-      primary: { radius: 8, damage: 12, force: 1000 },
-      secondary: { radius: 15, damage: 12, force: 1000 },
-    },
+    explosion: { radius: 8, damage: 12, force: 1000 },
     detonateOnExpiry: true,
     lifespan: 4000,
     hitSound: AUDIO.event.hit.mediumShot,
@@ -72,10 +70,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'lightRocket',
     mass: 8,
     collision: { radius: 2.5 },
-    explosion: {
-      primary: { radius: 10, damage: 4, force: 800 },
-      secondary: { radius: 18, damage: 4, force: 800 },
-    },
+    explosion: { radius: 10, damage: 4, force: 800 },
     detonateOnExpiry: true,
     lifespan: 5500,
     ignoresGravity: true,
@@ -101,10 +96,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'heavyShot',
     mass: 30.0,
     collision: { radius: 4 },
-    explosion: {
-      primary: { radius: 25, damage: 150, force: 7_000 },
-      secondary: { radius: 45, damage: 150, force: 7_000 },
-    },
+    explosion: { radius: 25, damage: 150, force: 7_000 },
     detonateOnExpiry: true,
     lifespan: 3000,
     hitSound: AUDIO.event.hit.heavyShot,
@@ -144,10 +136,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'disruptorShot',
     mass: 20.0,
     collision: { radius: 25 },
-    explosion: {
-      primary: { radius: 40, damage: 999999, force: 2499750 },
-      secondary: { radius: 50, damage: 999999, force: 499950 },
-    },
+    explosion: { radius: 40, damage: 999999, force: 2499750 },
     detonateOnExpiry: true,
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,

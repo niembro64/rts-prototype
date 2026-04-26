@@ -18,14 +18,14 @@ export function buildImpactContext(
   collisionRadius: number,
   entity?: Entity,
 ): ImpactContext {
-  let primaryRadius = collisionRadius;
-  let secondaryRadius = collisionRadius;
+  // Single explosion radius now (no primary/secondary). Direct-hit
+  // collision falls through to collisionRadius when the shot has no
+  // splash zone (pure carrier or non-splashing line shot).
+  let explosionRadius = collisionRadius;
   if (config.shot.type === 'projectile') {
-    primaryRadius = config.shot.explosion?.primary.radius ?? collisionRadius;
-    secondaryRadius = config.shot.explosion?.secondary.radius ?? primaryRadius;
+    explosionRadius = config.shot.explosion?.radius ?? collisionRadius;
   } else if (isLineShot(config.shot)) {
-    primaryRadius = config.shot.radius;
-    secondaryRadius = primaryRadius;
+    explosionRadius = config.shot.radius;
   }
 
   let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
@@ -55,8 +55,7 @@ export function buildImpactContext(
 
   return {
     collisionRadius,
-    primaryRadius,
-    secondaryRadius,
+    explosionRadius,
     projectile: { pos: { x: projectileX, y: projectileY }, vel: { x: projectileVelX, y: projectileVelY } },
     entity: { vel: { x: entityVelX, y: entityVelY }, collisionRadius: entityCollisionRadius },
     penetrationDir: { x: penDirX, y: penDirY },

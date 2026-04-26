@@ -178,10 +178,9 @@ export type ProjectileShot = {
   mass: number;
   launchForce: number;
   collision: { radius: number };
-  explosion?: {
-    primary: { radius: number; damage: number; force: number };
-    secondary: { radius: number; damage: number; force: number };
-  };
+  /** Splash AoE — single radius, boolean damage + force application.
+   *  See ShotExplosion in types/blueprints. */
+  explosion?: { radius: number; damage: number; force: number };
   /** When true, run detonation logic (splash damage if `explosion`,
    *  submunition spawn if `submunitions`, audio either way) at the end
    *  of `lifespan`. See ProjectileShotBlueprint.detonateOnExpiry. */

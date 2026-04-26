@@ -37,7 +37,12 @@ export type ShotCollision = {
   radius: number;
 };
 
-export type ShotExplosionZone = {
+/** Splash AoE for a projectile. SINGLE radius — damage and force are
+ *  applied as a boolean overlap test: a unit's shot collider whose
+ *  sphere intersects this radius takes the FULL `damage` and FULL
+ *  `force` (no distance falloff). Outside the sphere, nothing.
+ *  Reduce `radius` if a shot is feeling overly generous. */
+export type ShotExplosion = {
   radius: number;
   damage: number;
   force: number;
@@ -106,11 +111,9 @@ export type ProjectileShotBlueprint = {
   /** Optional. Omit for "pure carrier" shots (e.g. a cluster mortar
    *  that does no damage of its own and only releases submunitions
    *  on detonation). When omitted, the projectile still detonates on
-   *  hit / on expiry but applies no splash damage. */
-  explosion?: {
-    primary: ShotExplosionZone;
-    secondary: ShotExplosionZone;
-  };
+   *  hit / on expiry but applies no splash damage. Single radius —
+   *  damage + force are applied boolean (sphere-vs-sphere intersect). */
+  explosion?: ShotExplosion;
   /** When true, the projectile runs its detonation logic at the end
    *  of `lifespan` (lifespan timer hits zero without a direct hit) —
    *  splash damage if `explosion` is set, submunitions if

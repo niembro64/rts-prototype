@@ -226,8 +226,7 @@ const rangeToggles = reactive<Record<RangeType, boolean>>({
 });
 const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
   collision: getProjRangeToggle('collision'),
-  primary: getProjRangeToggle('primary'),
-  secondary: getProjRangeToggle('secondary'),
+  explosion: getProjRangeToggle('explosion'),
 });
 const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
   visual: getUnitRadiusToggle('visual'),
@@ -2551,19 +2550,11 @@ onUnmounted(() => {
               </button>
               <button
                 class="control-btn"
-                :class="{ active: projRangeToggles.primary }"
-                title="Show projectile primary damage radius"
-                @click="toggleProjRange('primary')"
+                :class="{ active: projRangeToggles.explosion }"
+                title="Show projectile explosion radius"
+                @click="toggleProjRange('explosion')"
               >
-                PRM
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: projRangeToggles.secondary }"
-                title="Show projectile secondary damage radius"
-                @click="toggleProjRange('secondary')"
-              >
-                SEC
+                EXP
               </button>
             </div>
           </div>
