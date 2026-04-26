@@ -1241,6 +1241,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
     // Create ClientViewState once per game session.
     clientViewState = new ClientViewState();
+    clientViewState.setMapDimensions(getMapSize(false).width, getMapSize(false).height);
 
     // Create game with player configuration
     gameInstance = createGame({

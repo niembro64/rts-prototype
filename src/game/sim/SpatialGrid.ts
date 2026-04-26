@@ -280,25 +280,29 @@ export class SpatialGrid {
   /**
    * Add a building to the grid. Buildings span every cube their
    * (width × height × depth) AABB touches. The footprint is centered
-   * on the building's transform XY; the column rises from z=0 up to
-   * z=depth. Buildings don't move, so no incremental rebucket — only
-   * add (idempotent) and remove on destruction.
+   * on the building's transform XY; the vertical column runs from
+   * `transform.z − depth/2` (base) up to `transform.z + depth/2`
+   * (top). With non-flat terrain a building's base sits on the
+   * local ground cube top, so two buildings of the same depth on
+   * different terrain heights occupy different Z cubes. Buildings
+   * don't move, so no incremental rebucket — only add (idempotent)
+   * and remove on destruction.
    */
   addBuilding(entity: Entity): void {
     if (!entity.building) return;
     if (this.buildingCellKeys.has(entity.id)) return; // Already tracked
 
-    const { x, y } = entity.transform;
+    const { x, y, z } = entity.transform;
     const { width, height, depth } = entity.building;
+    const baseZ = z - depth / 2;
+    const topZ = z + depth / 2;
 
     const minCx = Math.floor((x - width / 2) / this.cellSize);
     const maxCx = Math.floor((x + width / 2) / this.cellSize);
     const minCy = Math.floor((y - height / 2) / this.cellSize);
     const maxCy = Math.floor((y + height / 2) / this.cellSize);
-    // Building footprint sits on the ground (z=0) and rises to z=depth.
-    // The ground=middle Z convention puts z=0 inside cube 0.
-    const minCz = Math.floor((0 + this.halfCellSize) / this.cellSize);
-    const maxCz = Math.floor((depth + this.halfCellSize) / this.cellSize);
+    const minCz = Math.floor((baseZ + this.halfCellSize) / this.cellSize);
+    const maxCz = Math.floor((topZ + this.halfCellSize) / this.cellSize);
 
     const keys: number[] = [];
 
@@ -433,13 +437,16 @@ export class SpatialGrid {
 
         // Sphere-vs-AABB: closest point on the building box to the
         // query center, then squared distance compared to (radius)².
+        // Building Z range is `transform.z ± depth/2` so terrain-lifted
+        // buildings (base on a tall cube tile) test against the right
+        // vertical column.
         const b = building.building!;
         const minX = building.transform.x - b.width / 2;
         const maxX = building.transform.x + b.width / 2;
         const minY = building.transform.y - b.height / 2;
         const maxY = building.transform.y + b.height / 2;
-        const minZ = 0;
-        const maxZ = b.depth;
+        const minZ = building.transform.z - b.depth / 2;
+        const maxZ = building.transform.z + b.depth / 2;
         const cxp = x < minX ? minX : x > maxX ? maxX : x;
         const cyp = y < minY ? minY : y > maxY ? maxY : y;
         const czp = z < minZ ? minZ : z > maxZ ? maxZ : z;
@@ -628,8 +635,8 @@ export class SpatialGrid {
         const maxX = building.transform.x + b.width / 2;
         const minY = building.transform.y - b.height / 2;
         const maxY = building.transform.y + b.height / 2;
-        const minZ = 0;
-        const maxZ = b.depth;
+        const minZ = building.transform.z - b.depth / 2;
+        const maxZ = building.transform.z + b.depth / 2;
         const cxp = x < minX ? minX : x > maxX ? maxX : x;
         const cyp = y < minY ? minY : y > maxY ? maxY : y;
         const czp = z < minZ ? minZ : z > maxZ ? maxZ : z;

@@ -344,11 +344,13 @@ export class DamageSystem {
       const minY = building.transform.y - bHeight / 2;
       const maxX = building.transform.x + bWidth / 2;
       const maxY = building.transform.y + bHeight / 2;
+      const minZ = building.transform.z - bDepth / 2;
+      const maxZ = building.transform.z + bDepth / 2;
       const t = rayBoxIntersectionT(
         startX, startY, startZ,
         endX, endY, endZ,
-        minX, minY, 0,
-        maxX, maxY, bDepth,
+        minX, minY, minZ,
+        maxX, maxY, maxZ,
       );
       if (t !== null && t < bestT) {
         bestT = t; found = true;
@@ -696,8 +698,8 @@ export class DamageSystem {
       const bMaxX = building.transform.x + hw;
       const bMinY = building.transform.y - hh;
       const bMaxY = building.transform.y + hh;
-      const bMinZ = 0;
-      const bMaxZ = bd;
+      const bMinZ = building.transform.z - bd / 2;
+      const bMaxZ = building.transform.z + bd / 2;
 
       // Closest point on the AABB to the sphere center.
       const cx = source.center.x < bMinX ? bMinX : source.center.x > bMaxX ? bMaxX : source.center.x;

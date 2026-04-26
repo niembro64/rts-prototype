@@ -113,6 +113,7 @@ export async function createBackgroundBattle(
   // Background-battle CVS — owned by the returned gameInstance; destroyed
   // when the lobby tears it down.
   const clientViewState = new ClientViewState();
+  clientViewState.setMapDimensions(getMapSize(true).width, getMapSize(true).height);
   const gameInstance = createGame({
     parent: container,
     width: rect.width || window.innerWidth,

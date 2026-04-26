@@ -3,7 +3,8 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FIRING_FORCE, DEFAULT_HIT_FORCE, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, UNIT_HP_MULTIPLIER } from '../../config';
+import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FIRING_FORCE, DEFAULT_HIT_FORCE, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, UNIT_HP_MULTIPLIER, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { getTerrainHeight, getTileTerrainHeight } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 
@@ -86,6 +87,24 @@ export class WorldState {
     this.rng = new SeededRNG(seed);
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+  }
+
+  /** Tile-aligned ground elevation at world point (x, y). Every unit
+   *  on a given tile stands on the same flat top face — crossing a
+   *  tile boundary steps cleanly between adjacent cube heights, which
+   *  matches the "3D mana cube" terrain visualization. Use this for
+   *  unit/building spawn z and for the physics ground-contact clamp. */
+  getGroundZ(x: number, y: number): number {
+    return getTileTerrainHeight(x, y, SPATIAL_GRID_CELL_SIZE, this.mapWidth, this.mapHeight);
+  }
+
+  /** Continuous (non-tile-aligned) ground elevation. Use this where
+   *  a smooth surface matters more than tile-cube alignment — e.g.,
+   *  a projectile striking the ground should detonate ON the smooth
+   *  surface, not pop to a stepped tile height that may be a few
+   *  units off horizontally. */
+  getContinuousGroundZ(x: number, y: number): number {
+    return getTerrainHeight(x, y, this.mapWidth, this.mapHeight);
   }
 
   private rebuildCachesIfNeeded(): void {
@@ -352,14 +371,18 @@ export class WorldState {
   ): Entity {
     const id = this.generateEntityId();
 
-    // Initial altitude = the unit's sphere radius (its sphere rests on
-    // the ground). The physics engine clamps this to the ground plane
-    // on its first step anyway, but seeding it avoids a visible snap
-    // for any client that renders the entity before the first sim tick.
+    // Initial altitude = the local terrain height + the unit's sphere
+    // radius (its sphere rests on the top face of the cube tile under
+    // it). The physics engine clamps to the same terrain height on
+    // its first step anyway, but seeding it avoids a visible snap for
+    // any client that renders the entity before the first sim tick.
+    // Units spawned in the central ripple disc come in already on top
+    // of the elevated cubes; corner spawns sit at z = push as before.
+    const groundZ = this.getGroundZ(x, y);
     const entity: Entity = {
       id,
       type: 'unit',
-      transform: { x, y, z: unitRadiusCollider.push, rotation: 0 },
+      transform: { x, y, z: groundZ + unitRadiusCollider.push, rotation: 0 },
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
@@ -509,13 +532,17 @@ export class WorldState {
     playerId?: PlayerId,
   ): Entity {
     const id = this.generateEntityId();
-    // Transform.z is the building's vertical center (base sits on
-    // z=0, so center = depth/2). The physics cuboid collider is
-    // created from the same data by GameServer.createPhysicsBodies.
+    // Transform.z is the building's vertical CENTER. Base sits on the
+    // local terrain (cube top) under the building's footprint, so
+    // center = groundZ + depth/2. The physics cuboid collider is
+    // created with the same `baseZ` so the static AABB lines up.
+    // Buildings placed in the ripple disc rise with the terrain;
+    // anywhere else groundZ is 0 and behavior is unchanged.
+    const baseZ = this.getGroundZ(x, y);
     const entity: Entity = {
       id,
       type: 'building',
-      transform: { x, y, z: depth / 2, rotation: 0 },
+      transform: { x, y, z: baseZ + depth / 2, rotation: 0 },
       building: {
         width,
         height,

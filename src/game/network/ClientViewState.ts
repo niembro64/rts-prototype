@@ -42,6 +42,7 @@ import {
   applyHomingSteering,
 } from '../math';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY, BEAM_MAX_LENGTH } from '../../config';
+import { getTerrainHeight } from '../sim/Terrain';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 
 /** Frame-rate independent EMA blend factor from a half-life (seconds).
@@ -193,7 +194,22 @@ export class ClientViewState {
   private _rocketEnemyCacheFrame: number = -1;
   private _rocketEnemyCacheOwnerId: PlayerId | null = null;
 
+  // Map dimensions — needed to evaluate the deterministic terrain
+  // heightmap on the client side (server and client share the same
+  // pure function so projectile dead-reckoning lifts off raised
+  // cube tiles correctly without networking the heightmap).
+  private mapWidth: number = 2000;
+  private mapHeight: number = 2000;
+
   constructor() {}
+
+  /** Plumb in the map dimensions so client-side projectile dead-
+   *  reckoning can evaluate the same terrain heightmap the server
+   *  uses. Call once after constructing. */
+  setMapDimensions(mapWidth: number, mapHeight: number): void {
+    this.mapWidth = mapWidth;
+    this.mapHeight = mapHeight;
+  }
 
   private invalidateCaches(): void {
     this.cache.invalidate();
@@ -902,10 +918,12 @@ export class ClientViewState {
           // Don't let the visual sink through the ground — the server
           // will despawn-and-explode the projectile on its next tick,
           // but the client may run a few prediction frames ahead.
-          // Clamping vz to 0 at the ground keeps the sphere pinned on
-          // the surface for those frames instead of burrowing.
-          if (entity.transform.z < 0) {
-            entity.transform.z = 0;
+          // Clamp to the local terrain height so projectiles arcing
+          // toward a raised cube tile rest on its top face instead of
+          // burrowing into z=0 underneath the cube.
+          const groundZ = getTerrainHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight);
+          if (entity.transform.z < groundZ) {
+            entity.transform.z = groundZ;
             if (entity.projectile.velocityZ < 0) entity.projectile.velocityZ = 0;
           }
 

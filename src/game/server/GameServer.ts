@@ -140,6 +140,10 @@ export class GameServer {
     // The physics engine is now fully 3D — same module for every path.
     this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     this.world = new WorldState(42, mapWidth, mapHeight);
+    // Wire the heightmap into physics so ground contacts settle units
+    // on top of their terrain cube tile (returns 0 outside the ripple
+    // disc, so corner spawns stay flat).
+    this.physics.setGroundLookup((x, y) => this.world.getGroundZ(x, y));
     this.world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player
 
@@ -493,12 +497,17 @@ export class GameServer {
     // Pass 1: create building bodies
     for (const entity of entities) {
       if (entity.type === 'building' && entity.building) {
+        // baseZ matches WorldState.createBuilding's terrain lookup so
+        // the static cuboid body sits where the entity transform says
+        // it does — base on the local cube tile top.
+        const baseZ = entity.transform.z - entity.building.depth / 2;
         const body = this.physics.createBuildingBody(
           entity.transform.x,
           entity.transform.y,
           entity.building.width,
           entity.building.height,
           entity.building.depth,
+          baseZ,
           `building_${entity.id}`
         );
         entity.body = { physicsBody: body };

@@ -142,9 +142,24 @@ export class PhysicsEngine3D {
   // collide with its own factory as it exits.
   private ignoreStatic: Map<Body3D, Body3D> = new Map();
 
+  /** Callback that returns the ground elevation under any (x, y).
+   *  Defaults to a flat z=0 plane; the simulator overrides it with
+   *  `world.getGroundZ` so units settle on top of the local terrain
+   *  cube tile (and projectiles striking the ground detonate at the
+   *  correct elevation). Pure function — same input always yields
+   *  the same output, so the client can run the same lookup. */
+  private getGroundZ: (x: number, y: number) => number = () => 0;
+
   constructor(mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+  }
+
+  /** Wire in a terrain heightmap so the ground contact resolver lifts
+   *  units to the top face of their cube tile instead of always
+   *  clamping to z=0. Call once after constructing the engine. */
+  setGroundLookup(fn: (x: number, y: number) => number): void {
+    this.getGroundZ = fn;
   }
 
   /** Dynamic sphere body (units). Spawns at (x, y) on the ground,
@@ -182,20 +197,23 @@ export class PhysicsEngine3D {
 
   /** Static cuboid body (buildings). `width` and `height` are the
    *  building's 2D footprint on the ground plane; `depth` is the
-   *  vertical extent (how tall the building stands). Center sits at
-   *  (x, y, depth/2) so the base rests on the ground. */
+   *  vertical extent (how tall the building stands). `baseZ` is the
+   *  local terrain elevation under the footprint (cube tile top in
+   *  the central ripple disc, 0 elsewhere). Center sits at
+   *  (x, y, baseZ + depth/2) so the base rests on the local ground. */
   createBuildingBody(
     x: number,
     y: number,
     width: number,
     height: number,
     depth: number,
+    baseZ: number,
     label: string,
   ): Body3D {
     const body: Body3D = {
       x,
       y,
-      z: depth / 2,
+      z: baseZ + depth / 2,
       vx: 0,
       vy: 0,
       vz: 0,
@@ -288,15 +306,21 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Ground plane at z=0. Sphere bodies can't pass through; if they
-   *  try, snap them back to rest and zero their downward velocity
-   *  (restitution applied). */
+  /** Ground contact: a heightmap surface, not a uniform z=0 plane.
+   *  Each sphere samples the terrain elevation under its (x, y) and
+   *  rests with its bottom touching the local surface — sphere
+   *  center sits at `groundZ + radius`. Penetration is measured from
+   *  that resting altitude, not from absolute z=0. Outside the
+   *  ripple disc the heightmap returns 0 so behavior matches the
+   *  flat-ground baseline. */
   private resolveGroundContacts(): void {
     for (const b of this.dynamicBodies) {
       if (b.shape !== 'sphere') continue;
-      const penetration = b.radius - b.z;
+      const groundZ = this.getGroundZ(b.x, b.y);
+      const restingZ = groundZ + b.radius;
+      const penetration = restingZ - b.z;
       if (penetration > 0) {
-        b.z = b.radius;
+        b.z = restingZ;
         if (b.vz < 0) b.vz = -b.vz * b.restitution;
       }
     }

@@ -294,16 +294,19 @@ export function checkProjectileCollisions(
     // Ground impact — a traveling projectile whose center drops below
     // the ground plane is treated exactly like lifespan expiry: if the
     // shot has detonateOnExpiry the splash goes off at the impact point,
-    // otherwise just a projectileExpire visual. Snap z to 0 so splash
-    // AOE is centered ON the ground, not below it. Beams and lasers
-    // can't hit the ground (they're instantaneous lines, not falling
-    // shots) so they skip this check.
+    // otherwise just a projectileExpire visual. Snap z to the local
+    // terrain so splash AOE is centered ON the ground, not below it
+    // — for tiles in the central ripple disc the snap can lift the
+    // detonation 30+ units above absolute z=0. Beams and lasers can't
+    // hit the ground (they're instantaneous lines, not falling shots)
+    // so they skip this check.
+    const groundZAtProj = world.getContinuousGroundZ(projEntity.transform.x, projEntity.transform.y);
     const hitGround =
       !hitMirrorPanel &&
       proj.projectileType === 'projectile' &&
-      projEntity.transform.z <= 0;
+      projEntity.transform.z <= groundZAtProj;
     if (hitGround) {
-      projEntity.transform.z = 0;
+      projEntity.transform.z = groundZAtProj;
     }
 
     // Check if projectile expired (lifespan OR ground impact OR mirror hit)
