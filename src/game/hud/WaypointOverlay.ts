@@ -32,6 +32,12 @@ function hexToCss(hex: number): string {
 export class WaypointOverlay {
   private svg: SVGSVGElement;
   private projector: WorldProjector;
+  /** Callback that returns the ground-surface elevation under (x, y).
+   *  Waypoint markers should sit ON the terrain, not floating at z=0,
+   *  so every waypoint position projects with the terrain z under it.
+   *  Default flat ground is preserved if the caller doesn't supply
+   *  one — keeps tests / 2D paths working with no plumbing. */
+  private getGroundZ: (x: number, y: number) => number;
 
   private linePool: SVGLineElement[] = [];
   private circlePool: SVGCircleElement[] = [];
@@ -41,8 +47,13 @@ export class WaypointOverlay {
   private _scratchA: Vec2 = { x: 0, y: 0 };
   private _scratchB: Vec2 = { x: 0, y: 0 };
 
-  constructor(parent: HTMLElement, projector: WorldProjector) {
+  constructor(
+    parent: HTMLElement,
+    projector: WorldProjector,
+    getGroundZ?: (x: number, y: number) => number,
+  ) {
     this.projector = projector;
+    this.getGroundZ = getGroundZ ?? (() => 0);
     if (getComputedStyle(parent).position === 'static') {
       parent.style.position = 'relative';
     }
@@ -149,9 +160,11 @@ export class WaypointOverlay {
     color: number, alpha: number,
     counts: { L: number; C: number; R: number; P: number },
   ): void {
+    // Both endpoints sit on the terrain — the line follows the slope
+    // up and down ripple cubes instead of clipping into them.
     if (
-      !this.projector.project(ax, ay, this._scratchA) ||
-      !this.projector.project(bx, by, this._scratchB)
+      !this.projector.project(ax, ay, this.getGroundZ(ax, ay), this._scratchA) ||
+      !this.projector.project(bx, by, this.getGroundZ(bx, by), this._scratchB)
     ) return;
     const line = this.acquireLine(counts.L++);
     line.setAttribute('x1', String(this._scratchA.x));
@@ -167,7 +180,7 @@ export class WaypointOverlay {
     x: number, y: number, color: number,
     counts: { L: number; C: number; R: number; P: number },
   ): void {
-    if (!this.projector.project(x, y, this._scratchA)) return;
+    if (!this.projector.project(x, y, this.getGroundZ(x, y), this._scratchA)) return;
     const sx = String(this._scratchA.x);
     const sy = String(this._scratchA.y);
 
@@ -195,7 +208,7 @@ export class WaypointOverlay {
     x: number, y: number, color: number,
     counts: { L: number; C: number; R: number; P: number },
   ): void {
-    if (!this.projector.project(x, y, this._scratchA)) return;
+    if (!this.projector.project(x, y, this.getGroundZ(x, y), this._scratchA)) return;
     const r = this.acquireRect(counts.R++);
     const size = DOT_RADIUS_PX * 2;
     r.setAttribute('x', String(this._scratchA.x - DOT_RADIUS_PX));
@@ -212,7 +225,7 @@ export class WaypointOverlay {
     x: number, y: number, color: number,
     counts: { L: number; C: number; R: number; P: number },
   ): void {
-    if (!this.projector.project(x, y, this._scratchA)) return;
+    if (!this.projector.project(x, y, this.getGroundZ(x, y), this._scratchA)) return;
     // Flag: triangle + vertical pole. Pole rises from (cx, cy) to (cx, cy - FLAG_SIZE).
     // Triangle fills (cx, cy - FLAG_SIZE), (cx + FLAG_SIZE, cy - FLAG_SIZE/2), (cx, cy).
     const cx = this._scratchA.x;

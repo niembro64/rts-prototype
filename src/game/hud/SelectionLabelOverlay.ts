@@ -105,7 +105,7 @@ export class SelectionLabelOverlay {
       const radius = u.unit.unitRadiusCollider.scale;
       used = this.renderLabel(
         used,
-        u.transform.x, u.transform.y,
+        u.transform.x, u.transform.y, u.transform.z,
         radius,
         labelTextForUnit(u),
       );
@@ -114,9 +114,13 @@ export class SelectionLabelOverlay {
     for (const b of selectedBuildings) {
       if (!b.building || b.building.hp <= 0) continue;
       const halfExtent = Math.max(b.building.width, b.building.height) / 2;
+      // Anchor at the building's top face (transform.z is center, +depth/2
+      // is the top) so the label sits cleanly above terrain-lifted
+      // structures, not buried inside them.
+      const topZ = b.transform.z + b.building.depth / 2;
       used = this.renderLabel(
         used,
-        b.transform.x, b.transform.y,
+        b.transform.x, b.transform.y, topZ,
         halfExtent,
         labelTextForBuilding(b),
       );
@@ -129,12 +133,12 @@ export class SelectionLabelOverlay {
 
   private renderLabel(
     used: number,
-    worldX: number, worldY: number,
+    worldX: number, worldY: number, worldZ: number,
     worldHalfExtent: number,
     text: string,
   ): number {
-    if (!this.projector.project(worldX, worldY, this._scratch)) return used;
-    const scale = this.projector.worldToScreenScale(worldX, worldY);
+    if (!this.projector.project(worldX, worldY, worldZ, this._scratch)) return used;
+    const scale = this.projector.worldToScreenScale(worldX, worldY, worldZ);
     if (scale <= 0) return used;
 
     // Anchor above the entity's top edge — above where the HP bar sits. Use

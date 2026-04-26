@@ -1,16 +1,15 @@
 // ThreeWorldProjector — 3D renderer's implementation of WorldProjector.
-// Projects sim (x, y) through the Three.js perspective camera to overlay
-// pixel coords. `worldToScreenScale` returns pixels-per-world-unit based on
-// the point's distance from the camera (so HP bars shrink with perspective
-// just like the 2D ones shrink with zoom).
+// Projects sim (x, y, z) through the Three.js perspective camera to overlay
+// pixel coords. The previous version used a fixed three.js Y constant
+// (chassis+turret height) for every entity, which placed every overlay as
+// if every unit were at z=0 — fine for flat ground, but broken now that
+// units sit on top of terrain cubes that may rise hundreds of units. The
+// caller now passes the SIM altitude of the point being projected (unit
+// center, building center, terrain surface at a waypoint, etc.) and the
+// projector wires it straight through as three.js Y.
 
 import * as THREE from 'three';
 import type { WorldProjector, Vec2 } from '../hud/WorldProjector';
-
-// Y level at which we project unit/building anchors. Same constant as in
-// Render3DEntities (chassis + turret height) — kept in sync manually to avoid
-// a circular import; update both if the 3D vertical layout changes.
-const PROJECTION_Y = 28 + 16; // CHASSIS_HEIGHT + TURRET_HEIGHT
 
 export class ThreeWorldProjector implements WorldProjector {
   private camera: THREE.PerspectiveCamera;
@@ -42,8 +41,10 @@ export class ThreeWorldProjector implements WorldProjector {
     this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
   }
 
-  project(worldX: number, worldY: number, out: Vec2): boolean {
-    this._v.set(worldX, PROJECTION_Y, worldY);
+  project(worldX: number, worldY: number, worldZ: number, out: Vec2): boolean {
+    // sim (x, y, z) → three.js (x, z, y): sim Y is the ground-plane axis,
+    // sim Z is altitude.
+    this._v.set(worldX, worldZ, worldY);
     this._v.project(this.camera);
     // After project(), z > 1 means behind the near plane or camera.
     if (this._v.z > 1) return false;
@@ -52,10 +53,10 @@ export class ThreeWorldProjector implements WorldProjector {
     return true;
   }
 
-  worldToScreenScale(worldX: number, worldY: number): number {
+  worldToScreenScale(worldX: number, worldY: number, worldZ: number): number {
     const cam = this.camera;
     const dx = worldX - cam.position.x;
-    const dy = PROJECTION_Y - cam.position.y;
+    const dy = worldZ - cam.position.y;
     const dz = worldY - cam.position.z;
     const distance = Math.hypot(dx, dy, dz);
     if (distance <= 0) return 1;

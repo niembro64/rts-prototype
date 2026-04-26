@@ -46,6 +46,8 @@ import { HealthBarOverlay } from '../hud/HealthBarOverlay';
 import { WaypointOverlay } from '../hud/WaypointOverlay';
 import { SelectionLabelOverlay } from '../hud/SelectionLabelOverlay';
 import { ThreeWorldProjector } from '../render3d/ThreeWorldProjector';
+import { getSurfaceHeight } from '../sim/Terrain';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 
 import type { GameConnection } from '../server/GameConnection';
 import type {
@@ -403,7 +405,15 @@ export class RtsScene3D {
         this.threeApp.canvas,
       );
       this.healthBarOverlay = new HealthBarOverlay(canvasParent, projector);
-      this.waypointOverlay = new WaypointOverlay(canvasParent, projector);
+      // Waypoint markers project at the terrain surface under each
+      // command point so they ride the ripple cubes instead of
+      // floating at z=0.
+      const mapW = this.mapWidth;
+      const mapH = this.mapHeight;
+      this.waypointOverlay = new WaypointOverlay(
+        canvasParent, projector,
+        (x, y) => getSurfaceHeight(x, y, mapW, mapH, SPATIAL_GRID_CELL_SIZE),
+      );
       this.selectionLabelOverlay = new SelectionLabelOverlay(canvasParent, projector);
     }
 

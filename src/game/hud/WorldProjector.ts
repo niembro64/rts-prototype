@@ -1,6 +1,5 @@
 // WorldProjector — minimal interface a HUD overlay uses to position itself
-// over a world-space entity. Implemented separately by the 2D and 3D renderers
-// (one uses the Pixi orthographic camera, the other uses Three.js perspective).
+// over a world-space entity.
 
 export type Vec2 = { x: number; y: number };
 
@@ -14,17 +13,20 @@ export interface WorldProjector {
   refreshViewport(): void;
 
   /**
-   * Project a sim (x, y) point to overlay pixel coordinates. Writes result
-   * into `out` and returns true if the point is visible (in-frustum, in front
+   * Project a sim (x, y, z) point to overlay pixel coordinates. The z arg
+   * is the SIM altitude — the unit's center, the building's center, the
+   * terrain surface at a waypoint, etc. Without it the overlay can't
+   * follow units that have walked onto raised terrain. Writes result into
+   * `out` and returns true if the point is visible (in-frustum, in front
    * of the camera). If it returns false, the overlay should skip drawing.
    */
-  project(worldX: number, worldY: number, out: Vec2): boolean;
+  project(worldX: number, worldY: number, worldZ: number, out: Vec2): boolean;
 
   /**
    * Pixels-per-world-unit scale at the given world point. Used to size
-   * screen-space UI proportional to entity size.
-   *   - 2D orthographic: constant (camera.zoom)
-   *   - 3D perspective:  varies with camera distance
+   * screen-space UI proportional to entity size. The z arg is the same
+   * sim altitude passed to project — perspective scale depends on camera
+   * distance, which is now altitude-aware.
    */
-  worldToScreenScale(worldX: number, worldY: number): number;
+  worldToScreenScale(worldX: number, worldY: number, worldZ: number): number;
 }

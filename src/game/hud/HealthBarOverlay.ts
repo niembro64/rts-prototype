@@ -111,7 +111,7 @@ export class HealthBarOverlay {
       const radius = u.unit.unitRadiusCollider.scale;
       used = this.renderBar(
         used,
-        u.transform.x, u.transform.y,
+        u.transform.x, u.transform.y, u.transform.z,
         radius, 2 * radius,
         hp / maxHp,
         'health',
@@ -125,12 +125,16 @@ export class HealthBarOverlay {
       if (!b.building) continue;
       const halfExtent = Math.max(b.building.width, b.building.height) / 2;
       const width = b.building.width;
+      // Anchor the bar at the building's TOP face (transform.z is the
+      // vertical center; +depth/2 raises it to the top). On terrain-
+      // lifted buildings this already includes the local cube height.
+      const topZ = b.transform.z + b.building.depth / 2;
 
       if (b.buildable && !b.buildable.isComplete) {
         const progress = Math.max(0, Math.min(1, b.buildable.buildProgress));
         used = this.renderBar(
           used,
-          b.transform.x, b.transform.y,
+          b.transform.x, b.transform.y, topZ,
           halfExtent, width,
           progress,
           'build',
@@ -143,7 +147,7 @@ export class HealthBarOverlay {
       if (hp <= 0 || (HEALTH_BAR_STYLE.hideAtFull && hp >= maxHp)) continue;
       used = this.renderBar(
         used,
-        b.transform.x, b.transform.y,
+        b.transform.x, b.transform.y, topZ,
         halfExtent, width,
         hp / maxHp,
         'health',
@@ -158,13 +162,13 @@ export class HealthBarOverlay {
 
   private renderBar(
     used: number,
-    worldX: number, worldY: number,
+    worldX: number, worldY: number, worldZ: number,
     worldTopHalfExtent: number, worldWidth: number,
     percent: number,
     kind: 'health' | 'build',
   ): number {
-    if (!this.projector.project(worldX, worldY, this._scratch)) return used;
-    const scale = this.projector.worldToScreenScale(worldX, worldY);
+    if (!this.projector.project(worldX, worldY, worldZ, this._scratch)) return used;
+    const scale = this.projector.worldToScreenScale(worldX, worldY, worldZ);
     if (scale <= 0) return used;
 
     const widthPx = worldWidth * scale;

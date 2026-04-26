@@ -42,9 +42,13 @@ import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
  *  plane" (0) for a unit would project far below the visible sprite.
  *  Tune with the 3D renderer, not guess-and-commit. */
 function selectionCenterY(entity: Entity): number {
-  if (entity.type === 'building') return 3; // short, flat footprint
-  if (entity.commander) return 14; // commanders are tall
-  return 8; // generic unit chassis center
+  // Visual center in three.js Y. The entity's transform.z is its
+  // current sim altitude (sphere center for units, vertical center
+  // for buildings) — already terrain-aware, so for box selection
+  // we just project at that altitude. Constants like the old
+  // hand-tuned 8/14/3 assumed flat ground at z=0 and silently
+  // missed any unit standing on a raised cube.
+  return entity.transform.z;
 }
 
 type EntitySource = {
