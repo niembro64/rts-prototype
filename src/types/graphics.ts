@@ -1,4 +1,4 @@
-export type AutoGraphicsQuality = 'auto' | 'auto-zoom' | 'auto-tps' | 'auto-fps';
+export type AutoGraphicsQuality = 'auto' | 'auto-zoom' | 'auto-tps' | 'auto-fps' | 'auto-units';
 export type ConcreteGraphicsQuality = 'min' | 'low' | 'medium' | 'high' | 'max';
 export type GraphicsQuality = AutoGraphicsQuality | ConcreteGraphicsQuality;
 export type RenderMode = 'window' | 'padded' | 'all';

@@ -21,12 +21,19 @@ export type LodAutoModeConfig = {
   zoom: LodThresholds;
   tps: LodThresholds;
   fps: LodThresholds;
+  /** Unit-count thresholds, interpreted as MAXIMUM unit count for the
+   *  given tier. count <= threshold means eligible for that tier or
+   *  better. (Inverse of zoom/tps/fps where ratio >= threshold.) */
+  units: LodThresholds;
 };
 
 export type LodHysteresis = {
   zoom: number;
   tps: number;
   fps: number;
+  /** Hysteresis band on the unit-count thresholds. Same units as the
+   *  thresholds themselves (raw unit count). */
+  units: number;
 };
 
 export type LodEmaSource = {

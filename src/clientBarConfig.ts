@@ -58,7 +58,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   audioSmoothing: { default: true },
-  burnMarks: { default: true },
+  burnMarks: { default: false },
   driftMode: { default: 'mid' as const },
   edgeScroll: { default: false },
   dragPan: { default: true },
@@ -277,9 +277,11 @@ let currentBottomBarsHeight: number = 0;
 let currentZoom: number = 1.0;
 let currentTpsRatio: number = 1.0;
 let currentFpsRatio: number = 1.0;
+let currentUnitCount: number = 0;
 let prevZoomRank: number = 4;
 let prevTpsRank: number = 4;
 let prevFpsRank: number = 4;
+let prevUnitsRank: number = 4;
 let localServerRunning: boolean = false;
 
 // ── Load from localStorage on module init ──
@@ -298,6 +300,7 @@ function loadFromStorage(): void {
       storedQuality === 'auto-zoom' ||
       storedQuality === 'auto-tps' ||
       storedQuality === 'auto-fps' ||
+      storedQuality === 'auto-units' ||
       storedQuality === 'min' ||
       storedQuality === 'low' ||
       storedQuality === 'medium' ||
@@ -438,6 +441,10 @@ export function setCurrentFpsRatio(ratio: number): void {
   currentFpsRatio = ratio;
 }
 
+export function setCurrentUnitCount(count: number): void {
+  currentUnitCount = count;
+}
+
 export function setLocalServerRunning(running: boolean): void {
   localServerRunning = running;
 }
@@ -457,6 +464,7 @@ function toArray(t: { low: number; medium: number; high: number; max: number }):
 const ZOOM_THRESHOLDS = toArray(LOD_THRESHOLDS.zoom);
 const TPS_THRESHOLDS = toArray(LOD_THRESHOLDS.tps);
 const FPS_THRESHOLDS = toArray(LOD_THRESHOLDS.fps);
+const UNITS_THRESHOLDS = toArray(LOD_THRESHOLDS.units);
 
 function ratioToRank(
   ratio: number,
@@ -487,16 +495,40 @@ function zoomToRank(prevRank: number): number {
   return rank;
 }
 
+/** Map current unit count to a quality rank (0=min … 4=max). Inverse
+ *  semantics from ratioToRank: a tier's threshold is the MAX unit
+ *  count that tier can sustain, so a LOWER count earns a HIGHER tier.
+ *  Hysteresis logic mirrors the ratio version with sign-flipped
+ *  bands: harder to upgrade (stricter cap), easier to stay (looser
+ *  cap). */
+function unitsToRank(prevRank: number): number {
+  const h = LOD_HYSTERESIS.units;
+  let rank = 0;
+  for (let i = 0; i < UNITS_THRESHOLDS.length; i++) {
+    const threshold = UNITS_THRESHOLDS[i];
+    const effectiveCap = i + 1 > prevRank
+      ? threshold - h   // upgrading from below — strict cap
+      : threshold + h;  // already here — looser cap to stay
+    if (currentUnitCount <= effectiveCap) rank = i + 1;
+  }
+  return rank;
+}
+
 export function getEffectiveQuality(): ConcreteGraphicsQuality {
   switch (currentQuality) {
     case 'auto': {
+      // AUTO = min over every available signal. Each sub-mode keeps
+      // its own running rank (so hysteresis state survives a swap to
+      // its dedicated mode and back). TPS only participates when the
+      // local server is running — remote clients have no TPS signal.
       prevZoomRank = zoomToRank(prevZoomRank);
       prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
+      prevUnitsRank = unitsToRank(prevUnitsRank);
       if (localServerRunning) {
         prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
-        return RANK_TO_QUALITY[Math.min(prevZoomRank, prevTpsRank, prevFpsRank)];
+        return RANK_TO_QUALITY[Math.min(prevZoomRank, prevTpsRank, prevFpsRank, prevUnitsRank)];
       }
-      return RANK_TO_QUALITY[Math.min(prevZoomRank, prevFpsRank)];
+      return RANK_TO_QUALITY[Math.min(prevZoomRank, prevFpsRank, prevUnitsRank)];
     }
     case 'auto-zoom':
       prevZoomRank = zoomToRank(prevZoomRank);
@@ -507,6 +539,9 @@ export function getEffectiveQuality(): ConcreteGraphicsQuality {
     case 'auto-fps':
       prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
       return RANK_TO_QUALITY[prevFpsRank];
+    case 'auto-units':
+      prevUnitsRank = unitsToRank(prevUnitsRank);
+      return RANK_TO_QUALITY[prevUnitsRank];
     case 'min':
     case 'low':
     case 'medium':

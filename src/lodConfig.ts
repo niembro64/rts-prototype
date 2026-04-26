@@ -43,15 +43,29 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
     high: 0.3,
     max: 0.4,
   },
+  // UNIT-COUNT THRESHOLDS — read as MAXIMUM unit count for the tier.
+  //   count <= threshold ⇒ tier is eligible.
+  // The instanced LOW path costs ~1 draw call total; everything above
+  // MIN costs many draws per unit. So we drop fast: at >2k units we
+  // forbid MAX; past 8k we force MIN, which is the only mode that
+  // scales to ten thousand units.
+  units: {
+    low: 8000,
+    medium: 4000,
+    high: 2000,
+    max: 1000,
+  },
 };
 
 // Hysteresis band applied to each threshold.
 // When upgrading quality, ratio must exceed threshold + hysteresis.
 // When downgrading, ratio must drop below threshold − hysteresis.
+// Units hysteresis is in raw unit-count, not a 0–1 ratio.
 export const LOD_HYSTERESIS: LodHysteresis = {
   zoom: 0,
   tps: 0.05,
   fps: 0.05,
+  units: 250,
 };
 
 // Which EMA stat to use for each LOD ratio: 'avg' or 'low' (worst-case).

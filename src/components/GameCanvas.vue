@@ -116,6 +116,7 @@ import {
   setGridOverlay,
   setCurrentTpsRatio,
   setCurrentFpsRatio,
+  setCurrentUnitCount,
   setLocalServerRunning,
 } from '../clientBarConfig';
 import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../types/graphics';
@@ -966,6 +967,11 @@ function updateFPSStats(): void {
   const tpsVal = LOD_EMA_SOURCE.tps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
   setCurrentFpsRatio(fpsVal / 60);
   setCurrentTpsRatio(tpsVal / GOOD_TPS);
+  // Total unit count across all players — drives the UNITS auto-LOD
+  // mode and feeds the AUTO mode's min-over-signals decision. Reads
+  // the server's snapshot meta when available (authoritative count);
+  // pre-snapshot it stays at 0 so we don't yo-yo at game start.
+  setCurrentUnitCount(serverMetaFromSnapshot.value?.units.count ?? 0);
   setLocalServerRunning(hasServer.value);
   effectiveQuality.value = getEffectiveQuality();
 }
@@ -2004,7 +2010,7 @@ onUnmounted(() => {
             <button
               class="control-btn"
               :class="{ active: graphicsQuality === 'auto' }"
-              title="Auto-adjust graphics quality (lowest of zoom, TPS, FPS)"
+              title="Auto-adjust graphics quality (lowest of zoom, TPS, FPS, units)"
               @click="changeGraphicsQuality('auto')"
             >
               AUTO
@@ -2042,6 +2048,17 @@ onUnmounted(() => {
                 @click="changeGraphicsQuality('auto-fps')"
               >
                 FPS
+              </button>
+              <button
+                class="control-btn"
+                :class="{
+                  active: graphicsQuality === 'auto-units',
+                  'active-level': graphicsQuality === 'auto',
+                }"
+                title="Auto-adjust graphics quality based on total unit count — drops to MIN past the threshold so the instanced-sphere path can carry 10k+ units"
+                @click="changeGraphicsQuality('auto-units')"
+              >
+                UNITS
               </button>
             </div>
             <div class="button-group">
