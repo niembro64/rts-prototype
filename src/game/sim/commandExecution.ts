@@ -8,7 +8,7 @@ import { magnitude, getWeaponWorldPosition, getTransformCosSin, getBarrelTip } f
 import { getTurretMountHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
-import { findPath } from './Pathfinder';
+import { expandPathActions } from './Pathfinder';
 
 export type { CommandContext } from '@/types/ui';
 import type { CommandContext } from '@/types/ui';
@@ -392,9 +392,9 @@ function addPathActions(
   queue: boolean,
   ctx: CommandContext,
 ): void {
-  const path = findPath(
+  const actions = expandPathActions(
     unit.transform.x, unit.transform.y,
-    goalX, goalY,
+    goalX, goalY, type,
     ctx.world.mapWidth, ctx.world.mapHeight,
     ctx.constructionSystem.getGrid(),
   );
@@ -402,9 +402,7 @@ function addPathActions(
   // The remaining waypoints always append regardless — they belong
   // to the same "do this trip" intent and queue:true keeps them
   // ordered after the first.
-  for (let i = 0; i < path.length; i++) {
-    const wp = path[i];
-    const action: UnitAction = { type, x: wp.x, y: wp.y };
-    addActionToUnit(unit, action, i === 0 ? queue : true);
+  for (let i = 0; i < actions.length; i++) {
+    addActionToUnit(unit, actions[i], i === 0 ? queue : true);
   }
 }

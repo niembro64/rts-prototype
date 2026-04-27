@@ -593,8 +593,15 @@ export const ZOOM_STEP_FRACTION = 0.2;
 /** Initial zoom level for the demo game (zoomed out overview) */
 export const ZOOM_INITIAL_DEMO = 1.5;
 
-/** Initial zoom level when a real game starts */
-export const ZOOM_INITIAL_GAME = 0.5;
+/** Initial zoom level when a real game starts. Higher = closer.
+ *  3.0 frames the local commander as a clearly visible sphere
+ *  (~50 px on a 3150-wu map at default FOV) so the player has
+ *  something to look AT on spawn instead of a featureless ground
+ *  with two distant dots. The 0.5 default that came over from the
+ *  2D era put the camera ~2× baseDistance away — fine when the
+ *  map is full of units, useless when a real game opens with just
+ *  two commanders. The user can wheel out to see the opponent. */
+export const ZOOM_INITIAL_GAME = 3.0;
 
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = 6.0;

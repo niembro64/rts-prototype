@@ -1,8 +1,10 @@
 import type { WorldState } from './WorldState';
 import type { Entity, UnitAction } from './types';
+import type { BuildingGrid } from './grid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
+import { expandPathActions } from './Pathfinder';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
@@ -13,7 +15,7 @@ export class FactoryProductionSystem {
   // getAllEntities() — factories only exist on buildings, never on
   // units or projectiles, so the smaller cached subset filters out
   // 80%+ of irrelevant entities every tick.
-  update(world: WorldState, _dtMs: number): FactoryProductionResult {
+  update(world: WorldState, _dtMs: number, buildingGrid: BuildingGrid): FactoryProductionResult {
     const completedUnits: Entity[] = [];
 
     for (const factory of world.getBuildings()) {
@@ -62,7 +64,7 @@ export class FactoryProductionSystem {
         }
 
         // Create the unit
-        const unit = this.createUnit(world, factory, currentUnitType);
+        const unit = this.createUnit(world, factory, currentUnitType, buildingGrid);
         if (unit) {
           completedUnits.push(unit);
         }
@@ -78,7 +80,10 @@ export class FactoryProductionSystem {
   }
 
   // Create a completed unit from factory using blueprints
-  private createUnit(world: WorldState, factory: Entity, unitType: string): Entity | null {
+  private createUnit(
+    world: WorldState, factory: Entity, unitType: string,
+    buildingGrid: BuildingGrid,
+  ): Entity | null {
     if (!factory.ownership || !factory.factory) return null;
 
     const factoryComp = factory.factory;
@@ -90,19 +95,36 @@ export class FactoryProductionSystem {
     // Create unit from blueprint
     const unit = world.createUnitFromBlueprint(spawnX, spawnY, factory.ownership.playerId, unitType);
 
-    // Copy factory's waypoints to the new unit as actions
+    // Copy factory's waypoints to the new unit, but with each leg
+    // expanded into a multi-waypoint path that routes around water /
+    // mountains / building lines. Anchor for the first leg is the
+    // factory's spawn position; each successive leg's anchor is the
+    // previous waypoint (so the unit's intent stays "go from W[i] to
+    // W[i+1]" but the path it takes between them avoids obstacles).
     if (unit.unit && factoryComp.waypoints.length > 0) {
-      // Convert waypoints to actions
-      unit.unit.actions = factoryComp.waypoints.map(wp => ({
-        type: wp.type,  // WaypointType maps directly to ActionType
-        x: wp.x,
-        y: wp.y,
-      } as UnitAction));
-
-      // Find first patrol action to set patrolStartIndex
-      const firstPatrolIndex = factoryComp.waypoints.findIndex(wp => wp.type === 'patrol');
-      if (firstPatrolIndex !== -1) {
-        unit.unit.patrolStartIndex = firstPatrolIndex;
+      const actions: UnitAction[] = [];
+      let anchorX = spawnX;
+      let anchorY = spawnY;
+      // Patrol-loop start needs to point at the first action that
+      // came from a patrol-typed factory waypoint, even though each
+      // factory waypoint may now expand to multiple actions.
+      let patrolStartActionIndex = -1;
+      for (let w = 0; w < factoryComp.waypoints.length; w++) {
+        const wp = factoryComp.waypoints[w];
+        const leg = expandPathActions(
+          anchorX, anchorY, wp.x, wp.y, wp.type,
+          world.mapWidth, world.mapHeight, buildingGrid,
+        );
+        if (wp.type === 'patrol' && patrolStartActionIndex === -1) {
+          patrolStartActionIndex = actions.length;
+        }
+        for (let i = 0; i < leg.length; i++) actions.push(leg[i]);
+        anchorX = wp.x;
+        anchorY = wp.y;
+      }
+      unit.unit.actions = actions;
+      if (patrolStartActionIndex !== -1) {
+        unit.unit.patrolStartIndex = patrolStartActionIndex;
       }
     }
 

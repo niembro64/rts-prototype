@@ -455,16 +455,20 @@ export class OrbitCamera {
     this.apply();
   }
 
-  /** Cursor → world position. Uses the user-supplied 3D raycaster
-   *  callback if present; otherwise falls back to a y=0 plane
-   *  projection (which is correct for flat ground but misses the
-   *  actual surface elevation when terrain is hilly). */
+  /** Cursor → world position. Tries the user-supplied 3D raycaster
+   *  first (CursorGround, which hits the terrain tile mesh — the
+   *  exact surface the user sees on land). If that misses — cursor
+   *  over water / sky / off-map — falls back to a y=0 ground-plane
+   *  projection so the wheel handler always has SOME anchor and
+   *  the zoom keeps tracking the cursor instead of collapsing to
+   *  the orbit target (which the user perceives as "zoom snaps to
+   *  the centre of the map"). The plane projection is exact for
+   *  flat ground and slightly above the water surface for water
+   *  cells — close enough that the cursor stays visually pinned. */
   private _cursorWorldPoint(clientX: number, clientY: number): THREE.Vector3 | null {
     if (this.getCursorWorldPoint) {
-      // The picker may return the same scratch Vector3 across calls;
-      // the wheel handler captures coordinates as numbers (`beforeX`
-      // / `beforeZ` etc.) so a shared reference is fine.
-      return this.getCursorWorldPoint(clientX, clientY);
+      const hit = this.getCursorWorldPoint(clientX, clientY);
+      if (hit) return hit;
     }
     return this._cursorWorldPointGroundPlane(clientX, clientY, this._zoomGroundOut);
   }

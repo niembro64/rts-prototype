@@ -11,6 +11,8 @@ import {
 import { DEMO_CONFIG } from '../../demoConfig';
 import { getPlayerBaseAngle } from '../sim/spawn';
 import { isFarFromWater } from '../sim/Terrain';
+import { expandPathActions } from '../sim/Pathfinder';
+import type { BuildingGrid } from '../sim/grid';
 
 // Available unit types for background spawning (excludes commander)
 export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];
@@ -89,6 +91,7 @@ function spawnUnit(
   y: number,
   targetX: number,
   targetY: number,
+  buildingGrid: BuildingGrid,
   allowedTypes?: ReadonlySet<string>,
 ): Entity | null {
   if (allowedTypes && allowedTypes.size === 0) return null;
@@ -109,8 +112,13 @@ function spawnUnit(
     // 'fight' (not plain 'move'): demo units engage targets en route
     // to the waypoint instead of running blind through the contact
     // line. Lining up with the factory rally so initial units and
-    // factory-spawned units share behaviour.
-    unit.unit.actions = [{ type: 'fight', x: targetX, y: targetY }];
+    // factory-spawned units share behaviour. Path-expand so the
+    // unit routes around lakes / mountains / building lines instead
+    // of pressing into a shore it can't cross.
+    unit.unit.actions = expandPathActions(
+      x, y, targetX, targetY, 'fight',
+      world.mapWidth, world.mapHeight, buildingGrid,
+    );
   }
 
   world.addEntity(unit);
@@ -135,6 +143,7 @@ export function spawnBackgroundUnitsStandalone(
   world: WorldState,
   physics: PhysicsEngine,
   initialSpawn: boolean,
+  buildingGrid: BuildingGrid,
   allowedTypes?: ReadonlySet<string>,
 ): Entity[] {
   const spawned: Entity[] = [];
@@ -193,7 +202,7 @@ export function spawnBackgroundUnitsStandalone(
         const targetX = cx - (spawnX - cx);
         const targetY = cy - (spawnY - cy);
 
-        const unit = spawnUnit(world, physics, playerId, spawnX, spawnY, targetX, targetY, allowedTypes);
+        const unit = spawnUnit(world, physics, playerId, spawnX, spawnY, targetX, targetY, buildingGrid, allowedTypes);
         if (unit) spawned.push(unit);
       }
     }
@@ -214,7 +223,7 @@ export function spawnBackgroundUnitsStandalone(
       const x = cx + Math.cos(a) * r;
       const y = cy + Math.sin(a) * r;
 
-      const unit = spawnUnit(world, physics, playerId, x, y, cx, cy, allowedTypes);
+      const unit = spawnUnit(world, physics, playerId, x, y, cx, cy, buildingGrid, allowedTypes);
       if (unit) spawned.push(unit);
     }
   }

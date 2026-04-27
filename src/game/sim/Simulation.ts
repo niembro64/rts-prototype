@@ -236,7 +236,10 @@ export class Simulation {
     updateAiProduction(this.world, this.aiPlayerIds, this.aiAllowedUnitTypes);
 
     // Update factory production
-    const productionResult = factoryProductionSystem.update(this.world, dtMs);
+    const productionResult = factoryProductionSystem.update(
+      this.world, dtMs,
+      this.constructionSystem.getGrid(),
+    );
     // Record production stats and notify about newly spawned units (need physics bodies)
     if (productionResult.completedUnits.length > 0) {
       for (const unit of productionResult.completedUnits) {

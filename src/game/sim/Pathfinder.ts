@@ -29,6 +29,7 @@
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
 import { isWaterAt, getSurfaceNormal } from './Terrain';
+import type { ActionType, UnitAction } from './types';
 
 type Vec2 = { x: number; y: number };
 
@@ -56,6 +57,16 @@ const MAX_EXPANDED_NODES = 8000;
  *  (when DIVIDERS = MOUNTAIN) become impassable, but gentle ripples
  *  in the central LAKE pattern stay walkable. */
 const SLOPE_BLOCK_NZ = 0.85;
+
+/** When the start or goal cell is blocked, scan outward this many
+ *  cells in a Chebyshev-distance spiral looking for the nearest
+ *  open cell to use as a substitute. 8 cells = 160 wu — generous
+ *  enough to escape the inside of any single building footprint
+ *  (factories are 5×4 cells; the centre is at most 2 cells from a
+ *  boundary), short enough that a click on the middle of a deep
+ *  lake still falls through to the straight-line fallback rather
+ *  than rerouting to some unrelated open cell across the map. */
+const NEAREST_OPEN_RADIUS = 8;
 
 const CARDINAL_COST = 1;
 const DIAGONAL_COST = SQRT2;
@@ -95,20 +106,16 @@ export function findPath(
   const ggx = clampInt(Math.floor(goalX / GRID_CELL_SIZE), 0, gridW - 1);
   const ggy = clampInt(Math.floor(goalY / GRID_CELL_SIZE), 0, gridH - 1);
 
-  // Same cell — no planning needed.
-  if (sgx === ggx && sgy === ggy) {
-    return [{ x: goalX, y: goalY }];
-  }
-
-  // Per-query blocked-cell cache — terrain sampling and grid lookups
-  // are cheap individually but A* hits each visited cell up to 8
-  // times across diagonal neighbour checks. Memoising drops the
-  // visited-cell sample count by ~7×.
-  const blockedCache = new Int8Array(gridW * gridH); // 0 unknown, 1 blocked, 2 clear
-  const isBlocked = (gx: number, gy: number): boolean => {
+  // Per-query HARD-blocked cell cache (water / building / steep
+  // slope). Terrain sampling and grid lookups are cheap individually
+  // but each cell is visited up to 18 times across A*'s 8 neighbour
+  // expansions plus the inflation halo below; memoising drops the
+  // sample count by an order of magnitude.
+  const hardBlockedCache = new Int8Array(gridW * gridH); // 0 unknown, 1 blocked, 2 clear
+  const isHardBlocked = (gx: number, gy: number): boolean => {
     if (gx < 0 || gy < 0 || gx >= gridW || gy >= gridH) return true;
     const idx = gy * gridW + gx;
-    const cached = blockedCache[idx];
+    const cached = hardBlockedCache[idx];
     if (cached !== 0) return cached === 1;
     let blocked = false;
     const cell = buildingGrid.getCell(gx, gy);
@@ -124,23 +131,81 @@ export function findPath(
         if (n.nz < SLOPE_BLOCK_NZ) blocked = true;
       }
     }
-    blockedCache[idx] = blocked ? 1 : 2;
+    hardBlockedCache[idx] = blocked ? 1 : 2;
     return blocked;
   };
 
-  // Goal landed on a blocked cell — player clicked into water /
-  // onto a building / on a peak. Fall back to a single straight-
-  // line action so intent is still visible and physics handles
-  // the stop.
-  if (isBlocked(ggx, ggy)) {
-    return [{ x: goalX, y: goalY }];
-  }
+  // Configuration-space inflation. The planner reasons about cell
+  // CENTRES; the unit is a sphere of radius ~10–30 wu = 0.5–1.5 cells
+  // (GRID_CELL_SIZE = 20 wu). A path that hugs a coast/wall — even
+  // one all of whose cells are technically dry — puts the unit's
+  // body across the obstacle boundary, which trips
+  // `GameServer.applyForces`' lookahead water-thrust gate and the
+  // unit halts as if no path were planned. Treating any cell whose
+  // 8-neighbour ring contains a hard-blocked cell as ALSO blocked
+  // gives the path a one-cell buffer (20 wu of clearance) and the
+  // unit's body stays clear of the shoreline / building boundary
+  // while following waypoints.
+  //
+  // `isBlocked` is what A* and LOS smoothing both call. We never
+  // directly use the un-inflated predicate after this point — the
+  // snap-to-nearest-open helper, the diagonal-corner-clip check,
+  // and Bresenham LOS all run against the inflated definition.
+  const isBlocked = (gx: number, gy: number): boolean => {
+    if (isHardBlocked(gx, gy)) return true;
+    if (isHardBlocked(gx - 1, gy - 1)) return true;
+    if (isHardBlocked(gx,     gy - 1)) return true;
+    if (isHardBlocked(gx + 1, gy - 1)) return true;
+    if (isHardBlocked(gx - 1, gy    )) return true;
+    if (isHardBlocked(gx + 1, gy    )) return true;
+    if (isHardBlocked(gx - 1, gy + 1)) return true;
+    if (isHardBlocked(gx,     gy + 1)) return true;
+    if (isHardBlocked(gx + 1, gy + 1)) return true;
+    return false;
+  };
 
-  // Start landed on a blocked cell — unit is somehow inside a
-  // forbidden cell (knockback into water, building destruction
-  // dropping it on a tile). Skip planning and let physics push
-  // it out; a re-issued command after escape will plan correctly.
+  // Snap blocked endpoints to the nearest open cell within a small
+  // spiral search. This is what makes pathfinding actually useful in
+  // practice:
+  //
+  //   - Factory-produced units spawn at `factory.transform` which is
+  //     INSIDE the factory's own occupied cells — the start is
+  //     always blocked. Without snapping, every factory-produced
+  //     unit would fall through to the straight-line fallback and
+  //     never route around water/buildings (the dominant case in a
+  //     demo battle).
+  //
+  //   - The user clicks into water / onto a building / on a peak —
+  //     the goal cell is blocked. With snapping, the unit walks to
+  //     the nearest accessible cell instead of pressing into the
+  //     shoreline / wall. Cleaner UX than "I clicked, nothing
+  //     happens."
+  //
+  // Snap radius is small (NEAREST_OPEN_RADIUS) so a deeply-blocked
+  // target (e.g. middle of a lake) still falls through to straight-
+  // line — we don't want the unit to walk to some random open cell
+  // far from the user's actual intent.
+  let snappedStart = { gx: sgx, gy: sgy };
   if (isBlocked(sgx, sgy)) {
+    const open = findNearestOpenCell(sgx, sgy, gridW, gridH, isBlocked);
+    if (!open) return [{ x: goalX, y: goalY }];
+    snappedStart = open;
+  }
+  let snappedGoal = { gx: ggx, gy: ggy };
+  let goalWasSnapped = false;
+  if (isBlocked(ggx, ggy)) {
+    const open = findNearestOpenCell(ggx, ggy, gridW, gridH, isBlocked);
+    if (!open) return [{ x: goalX, y: goalY }];
+    snappedGoal = open;
+    goalWasSnapped = true;
+  }
+  const startCellGx = snappedStart.gx;
+  const startCellGy = snappedStart.gy;
+  const goalCellGx = snappedGoal.gx;
+  const goalCellGy = snappedGoal.gy;
+
+  // Same-cell after snapping → no planning needed.
+  if (startCellGx === goalCellGx && startCellGy === goalCellGy) {
     return [{ x: goalX, y: goalY }];
   }
 
@@ -157,10 +222,10 @@ export function findPath(
   fScore.fill(Infinity);
   parent.fill(-1);
 
-  const startIdx = sgy * gridW + sgx;
-  const goalIdx = ggy * gridW + ggx;
+  const startIdx = startCellGy * gridW + startCellGx;
+  const goalIdx = goalCellGy * gridW + goalCellGx;
   gScore[startIdx] = 0;
-  fScore[startIdx] = octile(sgx, sgy, ggx, ggy) * HEURISTIC_TIE_BREAK;
+  fScore[startIdx] = octile(startCellGx, startCellGy, goalCellGx, goalCellGy) * HEURISTIC_TIE_BREAK;
 
   const heap = new MinHeap(fScore);
   heap.push(startIdx);
@@ -201,7 +266,7 @@ export function findPath(
       if (tentative < gScore[neighbourIdx]) {
         parent[neighbourIdx] = current;
         gScore[neighbourIdx] = tentative;
-        fScore[neighbourIdx] = tentative + octile(ngx, ngy, ggx, ggy) * HEURISTIC_TIE_BREAK;
+        fScore[neighbourIdx] = tentative + octile(ngx, ngy, goalCellGx, goalCellGy) * HEURISTIC_TIE_BREAK;
         heap.push(neighbourIdx);
       }
     }
@@ -246,12 +311,48 @@ export function findPath(
       anchorY = candY;
     }
   }
-  // Last waypoint is the user's actual click coordinates, not the
-  // cell centre — keeps "click here exactly" precision intact even
-  // though intermediate waypoints snap to cell centres.
-  smoothed.push({ x: goalX, y: goalY });
+  // Last waypoint:
+  //   - Goal NOT snapped → user's actual click coordinates, preserving
+  //     "click here exactly" precision.
+  //   - Goal SNAPPED (click landed on water / building / peak) → use
+  //     the snapped cell's centre, the actual reachable point. Falling
+  //     back to the original click here would put the final waypoint
+  //     inside an impassable cell, and the unit would press at the
+  //     shore/wall via the thrust-block instead of stopping cleanly.
+  if (goalWasSnapped) {
+    smoothed.push({
+      x: (snappedGoal.gx + 0.5) * GRID_CELL_SIZE,
+      y: (snappedGoal.gy + 0.5) * GRID_CELL_SIZE,
+    });
+  } else {
+    smoothed.push({ x: goalX, y: goalY });
+  }
 
   return smoothed;
+}
+
+/** Plan a path from (startX, startY) to (goalX, goalY) and return one
+ *  UnitAction per smoothed waypoint, all with the given `type`. Used by
+ *  every code path that ASSIGNS unit.actions for a movement intent —
+ *  player commands (commandExecution.executeMoveCommand), demo-battle
+ *  unit spawn (BackgroundBattleStandalone.spawnUnit), and factory unit
+ *  spawn (factoryProduction.createUnit). All three previously wrote a
+ *  single straight-line action; routing them through `findPath` here
+ *  is what actually makes water / building / mountain avoidance happen
+ *  for AI-driven units (the player-driven case was already wired). */
+export function expandPathActions(
+  startX: number, startY: number,
+  goalX: number, goalY: number,
+  type: ActionType,
+  mapWidth: number, mapHeight: number,
+  buildingGrid: BuildingGrid,
+): UnitAction[] {
+  const path = findPath(startX, startY, goalX, goalY, mapWidth, mapHeight, buildingGrid);
+  const out: UnitAction[] = [];
+  for (let i = 0; i < path.length; i++) {
+    out.push({ type, x: path[i].x, y: path[i].y });
+  }
+  return out;
 }
 
 function octile(x1: number, y1: number, x2: number, y2: number): number {
@@ -262,6 +363,41 @@ function octile(x1: number, y1: number, x2: number, y2: number): number {
 
 function clampInt(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+/** Spiral search outward from (gx, gy) for the nearest cell where
+ *  `isBlocked` returns false, using Chebyshev distance (8-connected
+ *  rings) so the search fans out one ring per radius step. Returns
+ *  null if nothing within `NEAREST_OPEN_RADIUS` is open. The order
+ *  inside a ring is arbitrary — first hit wins. Bounded loop, no
+ *  allocations besides the return object. */
+function findNearestOpenCell(
+  gx: number, gy: number,
+  gridW: number, gridH: number,
+  isBlocked: (gx: number, gy: number) => boolean,
+): { gx: number; gy: number } | null {
+  for (let r = 1; r <= NEAREST_OPEN_RADIUS; r++) {
+    // Top + bottom rows of the ring.
+    for (let dx = -r; dx <= r; dx++) {
+      const nxTop = gx + dx, nyTop = gy - r;
+      if (nxTop >= 0 && nyTop >= 0 && nxTop < gridW && nyTop < gridH
+        && !isBlocked(nxTop, nyTop)) return { gx: nxTop, gy: nyTop };
+      const nxBot = gx + dx, nyBot = gy + r;
+      if (nxBot >= 0 && nyBot >= 0 && nxBot < gridW && nyBot < gridH
+        && !isBlocked(nxBot, nyBot)) return { gx: nxBot, gy: nyBot };
+    }
+    // Left + right columns of the ring (excluding corners already
+    // covered by the top/bottom rows above).
+    for (let dy = -r + 1; dy <= r - 1; dy++) {
+      const nxL = gx - r, nyL = gy + dy;
+      if (nxL >= 0 && nyL >= 0 && nxL < gridW && nyL < gridH
+        && !isBlocked(nxL, nyL)) return { gx: nxL, gy: nyL };
+      const nxR = gx + r, nyR = gy + dy;
+      if (nxR >= 0 && nyR >= 0 && nxR < gridW && nyR < gridH
+        && !isBlocked(nxR, nyR)) return { gx: nxR, gy: nyR };
+    }
+  }
+  return null;
 }
 
 /** Bresenham line-of-sight: returns true iff every cell the line

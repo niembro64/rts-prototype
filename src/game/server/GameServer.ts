@@ -190,7 +190,11 @@ export class GameServer {
 
       // Background mode: spawn a cluster of units near center for immediate combat
       if (this.backgroundMode) {
-        spawnBackgroundUnitsStandalone(this.world, this.physics, true, this.backgroundAllowedTypes);
+        spawnBackgroundUnitsStandalone(
+          this.world, this.physics, true,
+          constructionSystem.getGrid(),
+          this.backgroundAllowedTypes,
+        );
       }
     } else {
       const entities = spawnInitialEntities(this.world, this.playerIds);

@@ -96,6 +96,10 @@ export class ForceFieldRenderer3D {
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
   private particleSphereGeom = new THREE.SphereGeometry(1, 6, 4);
   private fields = new Map<string, FieldMesh>();
+  /** Reused across `update()` calls to track which fields are still
+   *  active this frame (everything not in here gets pruned). Allocating
+   *  a fresh Set per frame is wasted GC pressure — clear-and-reuse. */
+  private _seenFieldKeys = new Set<string>();
   /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
    *  skip their per-frame animation work. */
   private scope: ViewportFootprint;
@@ -222,7 +226,8 @@ export class ForceFieldRenderer3D {
   }
 
   update(units: readonly Entity[]): void {
-    const seen = new Set<string>();
+    const seen = this._seenFieldKeys;
+    seen.clear();
     const nowMs = performance.now();
     const nowSec = nowMs / 1000;
 
