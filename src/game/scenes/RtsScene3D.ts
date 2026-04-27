@@ -26,6 +26,11 @@ import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
+import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
+
+/** Same color the per-mesh leg path used. Single uniform value
+ *  across the whole shared pool — legs aren't team-tinted. */
+const LEG_COLOR = 0x2a2f36;
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
@@ -113,6 +118,10 @@ export class RtsScene3D {
 
   private clientViewState!: ClientViewState;
   private entityRenderer!: Render3DEntities;
+  /** Shared instanced cylinder pool driving every leg in the scene.
+   *  Owned at the scene level so its lifetime brackets the entity
+   *  renderer's; passed in by reference. */
+  private legInstancedRenderer!: LegInstancedRenderer;
   private beamRenderer!: BeamRenderer3D;
   private forceFieldRenderer!: ForceFieldRenderer3D;
   private captureTileRenderer!: CaptureTileRenderer3D;
@@ -388,10 +397,23 @@ export class RtsScene3D {
       if (!this.isGameOver) this.handleGameOver(winnerId);
     });
 
+    // Single shared cylinder pool for every leg in the scene. Every
+    // unit's locomotion writes into this each frame; the GPU then
+    // draws every leg cylinder in 2 instanced draw calls (upper,
+    // lower). Replaces the old per-leg THREE.Mesh pattern that
+    // produced 2 draw calls per leg → 16 per arachnid → 8000+ at
+    // 500 units. Construct BEFORE the entity renderer because the
+    // renderer takes the leg pool as a constructor dependency and
+    // forwards it through every locomotion build/update/destroy.
+    this.legInstancedRenderer = new LegInstancedRenderer(
+      this.threeApp.world,
+      LEG_COLOR,
+    );
     this.entityRenderer = new Render3DEntities(
       this.threeApp.world,
       this.clientViewState,
       this.renderScope,
+      this.legInstancedRenderer,
     );
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world, this.renderScope);
     this.forceFieldRenderer = new ForceFieldRenderer3D(this.threeApp.world, this.renderScope);

@@ -22,6 +22,7 @@ import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import type { LegInstancedRenderer } from './LegInstancedRenderer';
 
 /** Per-unit step-circle radius as a fraction of the unit's LONGEST
  *  leg (upperLegLength + lowerLegLength). One value shared by every
@@ -103,11 +104,14 @@ export type Locomotion3DMesh =
     } & LocomotionBase)
   | ({ type: 'wheels'; group: THREE.Group; wheels: THREE.Mesh[] } & LocomotionBase)
   | ({ type: 'legs';
-       /** Container for all leg meshes — parented to the WORLD group
-        *  (not the unit's chassis frame) so world-planted feet aren't
-        *  disturbed by the unit's translation, rotation, or tilt.
-        *  Hip + foot positions are written in world coords every
-        *  frame and the cylinders go between them directly. */
+       /** Container for non-instanced leg parts — joint spheres at
+        *  'full' LOD, the LEGS-RAD viz sphere, etc. Parented to the
+        *  WORLD group so per-leg state stays in world coords. The
+        *  CYLINDERS themselves are NOT children of this group; they
+        *  live in the shared LegInstancedRenderer's two
+        *  InstancedBufferGeometries (one upper-leg, one lower-leg)
+        *  and render in a combined two draw calls for the entire
+        *  scene. Each leg keeps a slot index into those buffers. */
        group: THREE.Group;
        legs: LegInstance[];
        style: LegStyle;
@@ -165,11 +169,19 @@ type LegInstance = {
   lerpDuration: number;
   initialized: boolean;
 
-  // Meshes — parented to the WORLD group so their geometry is built
-  // directly in world coords each frame from the world hip and world
-  // foot positions. No chassis-local intermediate frame.
-  upper: THREE.Mesh;
-  lower?: THREE.Mesh;
+  /** Slot index into LegInstancedRenderer's upper-cylinder pool. -1
+   *  means "no slot" (pool exhausted on alloc, or leg has no upper
+   *  cylinder). The renderer flushes all slot writes once per frame
+   *  so the dirty flag overhead is shared. */
+  upperSlot: number;
+  /** Slot index into the lower-cylinder pool. Only allocated for
+   *  'animated' / 'full' LOD; 'simple' LOD legs are a single
+   *  upper-cylinder spanning hip → foot directly. */
+  lowerSlot: number;
+  /** Joint spheres — only built at 'full' LOD. NOT instanced yet;
+   *  per-Mesh draw calls are kept here as a smaller follow-up.
+   *  Cylinders dominate the per-leg draw-call budget so this is
+   *  fine for now. */
   hipJoint?: THREE.Mesh;
   kneeJoint?: THREE.Mesh;
   footJoint?: THREE.Mesh;
@@ -183,7 +195,8 @@ type LegInstance = {
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
-const legGeom = new THREE.CylinderGeometry(1, 1, 1, 8);
+// Leg cylinders no longer need a per-mesh geometry — every leg
+// renders through the LegInstancedRenderer's shared pool.
 const jointGeom = new THREE.SphereGeometry(1, 8, 6);
 
 // Unit wireframe sphere — the rest-sphere viz. Each leg gets one
@@ -281,6 +294,7 @@ export function buildLocomotion(
   gfx: GraphicsConfig,
   mapWidth: number,
   mapHeight: number,
+  legRenderer: LegInstancedRenderer,
 ): Locomotion3DMesh {
   if (!entity.unit) return undefined;
   let bp;
@@ -309,7 +323,7 @@ export function buildLocomotion(
       const renderer = bp.renderer ?? 'arachnid';
       const mesh = buildLegs(
         worldGroup, entity, unitRadius, loc.style, loc.config,
-        gfx.legs, renderer, mapWidth, mapHeight,
+        gfx.legs, renderer, mapWidth, mapHeight, legRenderer,
       );
       if (mesh) mesh.lodKey = lodKey;
       return mesh;
@@ -443,6 +457,7 @@ function buildLegs(
   renderer: string,
   mapWidth: number,
   mapHeight: number,
+  legRenderer: LegInstancedRenderer,
 ): Locomotion3DMesh {
   if (legLod === 'none') return undefined;
 
@@ -482,24 +497,25 @@ function buildLegs(
     const sideParity = side === 1 ? 1 : 0;
     const phaseShift01 = ((sideIndex & 1) ^ sideParity) as 0 | 1;
 
-    const upper = new THREE.Mesh(legGeom, legMat);
-    group.add(upper);
-    let lower: THREE.Mesh | undefined;
+    // Cylinders are NOT per-Mesh anymore — they're slots in the
+    // shared LegInstancedRenderer's two InstancedBufferGeometries
+    // (upper + lower). Allocate one upper-slot for every leg; only
+    // allocate a lower-slot for 'animated'/'full' (the IK-bend
+    // tiers — 'simple' is a single hip→foot cylinder in the upper
+    // pool). If the pool is exhausted, alloc returns -1 and the
+    // leg quietly skips rendering.
+    const upperSlot = legRenderer.allocUpper();
+    let lowerSlot = -1;
+    if (legLod === 'animated' || legLod === 'full') {
+      lowerSlot = legRenderer.allocLower();
+    }
+
+    // Joint spheres at 'full' LOD only (still per-Mesh — instancing
+    // those is a smaller follow-up; cylinders dominate the per-leg
+    // draw count and are the dominant win to capture first).
     let hipJoint: THREE.Mesh | undefined;
     let kneeJoint: THREE.Mesh | undefined;
     let footJoint: THREE.Mesh | undefined;
-
-    // Two-segment legs whenever we're animating: 'animated' and 'full' both
-    // get an upper + lower cylinder with the knee bending upward via IK.
-    // This mirrors 2D, where medium LOD ('animated') already splits the leg
-    // into hip→knee and knee→foot lines (just without joint circles).
-    //
-    // Joint spheres are reserved for 'full' LOD only, matching 2D where
-    // hip/knee/foot dots only show at the highest tier.
-    if (legLod === 'animated' || legLod === 'full') {
-      lower = new THREE.Mesh(legGeom, legMat);
-      group.add(lower);
-    }
     if (legLod === 'full') {
       hipJoint = new THREE.Mesh(jointGeom, legMat);
       hipJoint.scale.setScalar(Math.max(1, cfg.hipRadius));
@@ -529,8 +545,8 @@ function buildLegs(
       lerpProgress: 0,
       lerpDuration,
       initialized: false,
-      upper,
-      lower,
+      upperSlot,
+      lowerSlot,
       hipJoint,
       kneeJoint,
       footJoint,
@@ -744,6 +760,7 @@ export function updateLocomotion(
   dtMs: number,
   mapWidth: number,
   mapHeight: number,
+  legRenderer: LegInstancedRenderer,
 ): void {
   if (!mesh) return;
   const vx = entity.unit?.velocityX ?? 0;
@@ -1006,11 +1023,20 @@ export function updateLocomotion(
         footZ = hipWorldZ + clampDz * scale;
       }
 
-      // Render leg cylinders directly in world coords. Leg group is
-      // a child of the world THREE.Group, so position/scale on each
-      // cylinder is the cylinder's actual world position.
+      // Write the leg's two cylinder slots into the shared
+      // instanced renderer's per-instance buffers. After this loop
+      // (across every unit's every leg), the scene calls
+      // legRenderer.flush() once and the GPU draws every leg
+      // cylinder in two draw calls total.
       if (mesh.legLod === 'simple') {
-        setCylinderBetween(leg.upper, hipWorldX, hipWorldY, hipWorldZ, footX, footY, footZ, leg.upperThick);
+        // 'simple' = single cylinder hip → foot, no knee bend.
+        legRenderer.updateUpper(
+          leg.upperSlot,
+          hipWorldX, hipWorldY, hipWorldZ,
+          footX, footY, footZ,
+          leg.upperThick,
+        );
+        // No lower slot allocated; nothing to do.
       } else {
         const knee = kneeFromIK(
           hipWorldX, hipWorldY, hipWorldZ,
@@ -1018,10 +1044,18 @@ export function updateLocomotion(
           c.upperLegLength, c.lowerLegLength,
           chassisUpX, chassisUpY, chassisUpZ,
         );
-        setCylinderBetween(leg.upper, hipWorldX, hipWorldY, hipWorldZ, knee.x, knee.y, knee.z, leg.upperThick);
-        if (leg.lower) {
-          setCylinderBetween(leg.lower, knee.x, knee.y, knee.z, footX, footY, footZ, leg.lowerThick);
-        }
+        legRenderer.updateUpper(
+          leg.upperSlot,
+          hipWorldX, hipWorldY, hipWorldZ,
+          knee.x, knee.y, knee.z,
+          leg.upperThick,
+        );
+        legRenderer.updateLower(
+          leg.lowerSlot,
+          knee.x, knee.y, knee.z,
+          footX, footY, footZ,
+          leg.lowerThick,
+        );
         if (leg.hipJoint)  leg.hipJoint.position.set(hipWorldX, hipWorldY, hipWorldZ);
         if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
         if (leg.footJoint) leg.footJoint.position.set(footX, footY, footZ);
@@ -1034,26 +1068,24 @@ function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
 
-const _up = new THREE.Vector3(0, 1, 0);
-const _dir = new THREE.Vector3();
+// setCylinderBetween was the per-mesh transform path for legs —
+// it's gone; legs now write into the LegInstancedRenderer's
+// per-instance attribute buffers and the GPU shader does the
+// equivalent transform from instStart, instEnd, instThickness.
 
-function setCylinderBetween(
-  mesh: THREE.Mesh,
-  ax: number, ay: number, az: number,
-  bx: number, by: number, bz: number,
-  thickness: number,
+export function destroyLocomotion(
+  mesh: Locomotion3DMesh,
+  legRenderer: LegInstancedRenderer,
 ): void {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const dz = bz - az;
-  const len = Math.max(1e-3, Math.hypot(dx, dy, dz));
-  mesh.scale.set(thickness, len, thickness);
-  mesh.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
-  _dir.set(dx / len, dy / len, dz / len);
-  mesh.quaternion.setFromUnitVectors(_up, _dir);
-}
-
-export function destroyLocomotion(mesh: Locomotion3DMesh): void {
   if (!mesh) return;
+  // Free any cylinder slots back into the shared pool so other
+  // units can reuse them. Joint Meshes get cleaned up when the
+  // parent group is removed below.
+  if (mesh.type === 'legs') {
+    for (const leg of mesh.legs) {
+      legRenderer.freeUpper(leg.upperSlot);
+      legRenderer.freeLower(leg.lowerSlot);
+    }
+  }
   mesh.group.parent?.remove(mesh.group);
 }

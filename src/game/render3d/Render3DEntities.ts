@@ -22,6 +22,7 @@ import {
   destroyLocomotion,
   type Locomotion3DMesh,
 } from './Locomotion3D';
+import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { snapshotLod, type Lod3DState } from './Lod3D';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
 import {
@@ -150,6 +151,11 @@ export class Render3DEntities {
    *  Three.js still handles GPU-side culling for the
    *  meshes themselves; this guards the CPU-side setup. */
   private scope: ViewportFootprint;
+  /** Shared instanced cylinder pool for every leg in the scene.
+   *  Flushed once per frame after every unit's locomotion has
+   *  written into it; the GPU then draws all leg cylinders in 2
+   *  draw calls (upper + lower). */
+  private legRenderer!: LegInstancedRenderer;
 
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
@@ -325,10 +331,12 @@ export class Render3DEntities {
     world: THREE.Group,
     clientViewState: ClientViewState,
     scope: ViewportFootprint,
+    legRenderer: LegInstancedRenderer,
   ) {
     this.world = world;
     this.clientViewState = clientViewState;
     this.scope = scope;
+    this.legRenderer = legRenderer;
     // Per-team materials are created lazily on first use (see
     // getPrimaryMat / getSecondaryMat / getMirrorShinyMat). The
     // player-color generator (sim/types.getPlayerColors) supports any
@@ -594,6 +602,11 @@ export class Render3DEntities {
     this.updateUnits();
     this.updateBuildings();
     this.updateProjectiles();
+    // One flush per frame uploads the per-instance leg cylinder
+    // buffers (start / end / thickness) to the GPU. Every leg in
+    // every unit wrote into the same shared pool above; the GPU
+    // now draws all leg cylinders in two draw calls (upper, lower).
+    this.legRenderer.flush();
   }
 
   private _spinDt = 0;
@@ -605,7 +618,7 @@ export class Render3DEntities {
    *  — their per-frame loops already read the LOD snapshot directly. */
   private rebuildAllUnitsOnLodChange(): void {
     for (const m of this.unitMeshes.values()) {
-      destroyLocomotion(m.locomotion);
+      destroyLocomotion(m.locomotion, this.legRenderer);
       this.world.remove(m.group);
       this.disposeWorldParentedOverlays(m);
     }
@@ -895,6 +908,7 @@ export class Render3DEntities {
           yawGroup, this.world, e, radius, pid, this.lod.gfx,
           this.clientViewState.getMapWidth(),
           this.clientViewState.getMapHeight(),
+          this.legRenderer,
         );
 
 
@@ -1115,12 +1129,14 @@ export class Render3DEntities {
         }
       }
 
-      // Locomotion: spin tread wheels per velocity; wheels/legs are static.
+      // Locomotion: spin tread wheels per velocity; legs write per-
+      // instance buffers in the shared cylinder pool.
       if (m.locomotion) {
         updateLocomotion(
           m.locomotion, e, this._currentDtMs,
           this.clientViewState.getMapWidth(),
           this.clientViewState.getMapHeight(),
+          this.legRenderer,
         );
       }
 
@@ -1131,7 +1147,7 @@ export class Render3DEntities {
     // Remove meshes for units no longer present.
     for (const [id, m] of this.unitMeshes) {
       if (!seen.has(id)) {
-        destroyLocomotion(m.locomotion);
+        destroyLocomotion(m.locomotion, this.legRenderer);
         this.world.remove(m.group);
         this.disposeWorldParentedOverlays(m);
         this.unitMeshes.delete(id);
@@ -1439,7 +1455,7 @@ export class Render3DEntities {
     // they stay flat on the ground regardless of unit rotation /
     // altitude — destroy() has to release them explicitly.
     for (const m of this.unitMeshes.values()) {
-      destroyLocomotion(m.locomotion);
+      destroyLocomotion(m.locomotion, this.legRenderer);
       this.world.remove(m.group);
       this.disposeWorldParentedOverlays(m);
     }
