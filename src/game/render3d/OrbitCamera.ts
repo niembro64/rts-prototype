@@ -109,18 +109,20 @@ export class OrbitCamera {
   private lastMouseX = 0;
   private lastMouseY = 0;
 
-  /** Distance from camera to the cursor's 3D anchor point at the
-   *  moment a pan drag started. Used to compute world-per-pixel
-   *  during the drag so the cursor's anchor world-point tracks the
-   *  cursor exactly, regardless of camera tilt or terrain elevation
-   *  at the cursor. Falls back to `this.distance` if the cursor
-   *  picker returns null. */
-  private panAnchorDistance = 0;
+  /** 3D anchor point captured at drag-start (pan) — the actual
+   *  rendered ground point the cursor was over when the user pressed
+   *  the middle button. Stored in full XYZ so the drag math can
+   *  raycast subsequent cursor positions against the horizontal
+   *  plane at panAnchor.y, giving exact 3D pinning: P0 stays under
+   *  the cursor for the entire drag. */
+  private panAnchor = new THREE.Vector3();
+  private panAnchorValid = false;
 
   // Reusable scratch objects so the wheel handler does no per-event
   // allocations (zoom is the highest-frequency input on a trackpad).
   private _zoomNdc = new THREE.Vector3();
   private _zoomGroundOut = new THREE.Vector3();
+  private _planeRayOut = new THREE.Vector3();
 
   private canvas: HTMLElement;
   private onWheel: (e: WheelEvent) => void;
@@ -169,53 +171,52 @@ export class OrbitCamera {
       );
       if (newToDistance === this.toDistance) return; // already at clamp
 
-      // Zoom-to-cursor: capture the world point under the cursor
-      // BEFORE the dolly (sampled against the to-state — i.e. where
-      // the camera is heading, so chained scrolls compound), change
-      // the to-distance, sample AFTER, shift the to-target so the
-      // SAME world point lands under the SAME pixel after the eased
-      // dolly completes. We temporarily push the to-state into the
-      // rendered camera to do the projection math, then restore
-      // (rendered-state-restoration matters when smoothing is on so
-      // the camera doesn't visually jump).
+      // Exact 3D zoom-to-cursor:
+      //   1. P0 = the actual rendered ground point under the cursor
+      //      RIGHT NOW (raycast against the terrain mesh — what the
+      //      user sees and intends to zoom into).
+      //   2. Apply new to-distance (with current to-target) to a
+      //      hypothetical camera; raycast cursor against the
+      //      HORIZONTAL PLANE at y = P0.y to find Pc — the world
+      //      point that would be under the cursor at the new camera
+      //      pose if we DIDN'T shift the target.
+      //   3. Shift to-target by (P0 − Pc). After that shift, the
+      //      camera (when EMA settles to to-state) will project P0
+      //      back to the same cursor pixel — exact 3D anchor pin
+      //      regardless of camera tilt or terrain elevation
+      //      anywhere else.
+      //
+      // The horizontal-plane raycast is what makes the pin EXACT:
+      // raycasting terrain again post-dolly would land on a
+      // different terrain elevation and the pin would drift. The
+      // plane at P0.y intersects the cursor ray at the unique world
+      // point that needs to land under the cursor.
       const renderedDist = this.distance;
       const renderedTargetX = this.target.x;
       const renderedTargetZ = this.target.z;
-      this.distance = this.toDistance;
-      this.target.x = this.toTargetX;
-      this.target.z = this.toTargetZ;
-      this.apply();
 
-      const beforeRaw = this._cursorWorldPoint(e.clientX, e.clientY);
-      let beforeX = 0;
-      let beforeZ = 0;
-      let haveBefore = false;
-      if (beforeRaw) {
-        beforeX = beforeRaw.x;
-        beforeZ = beforeRaw.z;
-        haveBefore = true;
-      }
+      // (1) capture P0 against the rendered camera (what the user sees).
+      const p0 = this._cursorWorldPoint(e.clientX, e.clientY);
+      let p0X = 0, p0Y = 0, p0Z = 0;
+      const haveP0 = !!p0;
+      if (p0) { p0X = p0.x; p0Y = p0.y; p0Z = p0.z; }
 
-      this.distance = newToDistance;
-      this.apply();
-      let afterX = 0;
-      let afterZ = 0;
-      let haveAfter = false;
-      if (haveBefore) {
-        const afterRaw = this._cursorWorldPoint(e.clientX, e.clientY);
-        if (afterRaw) {
-          afterX = afterRaw.x;
-          afterZ = afterRaw.z;
-          haveAfter = true;
-        }
-      }
-
-      // Build the new to-state: distance changed, target shifted by
-      // (before − after) so the cursor pin holds.
       this.toDistance = newToDistance;
-      if (haveBefore && haveAfter) {
-        this.toTargetX += beforeX - afterX;
-        this.toTargetZ += beforeZ - afterZ;
+
+      if (haveP0) {
+        // (2) put camera at the post-zoom to-state (new distance,
+        //     existing to-target) and raycast the cursor against the
+        //     plane at y = p0Y.
+        this.distance = newToDistance;
+        this.target.x = this.toTargetX;
+        this.target.z = this.toTargetZ;
+        this.apply();
+        const pc = this._cursorWorldPointAtPlaneY(e.clientX, e.clientY, p0Y);
+        if (pc) {
+          // (3) shift to-target so P0 lands at the cursor pixel.
+          this.toTargetX += p0X - pc.x;
+          this.toTargetZ += p0Z - pc.z;
+        }
       }
 
       // Restore rendered state (or, in snap mode, leave at to-state).
@@ -241,19 +242,20 @@ export class OrbitCamera {
       this.lastMouseY = e.clientY;
       this.dragOriginScreen = { x: e.clientX, y: e.clientY };
       if (this.dragMode === 'pan') {
-        // Capture the cursor's 3D anchor distance so the drag's
-        // world-per-pixel scaling is accurate to terrain depth, not
-        // to the orbit target's depth. The result: the world point
-        // under the cursor at drag-start tracks the cursor exactly
-        // through the entire drag.
+        // Capture the cursor's 3D ground point as the pan anchor.
+        // The full XYZ is stored — every subsequent mousemove
+        // raycasts against the horizontal plane at panAnchor.y to
+        // find the world point currently under the cursor, then
+        // shifts the to-target by (panAnchor − Pc). That makes the
+        // anchor stay locked under the cursor for the whole drag,
+        // regardless of camera tilt or terrain elevation — exact
+        // 3D drag-the-world panning, not pixel-delta approximation.
         const hit = this._cursorWorldPoint(e.clientX, e.clientY);
         if (hit) {
-          const cdx = this.camera.position.x - hit.x;
-          const cdy = this.camera.position.y - hit.y;
-          const cdz = this.camera.position.z - hit.z;
-          this.panAnchorDistance = Math.hypot(cdx, cdy, cdz);
+          this.panAnchor.copy(hit);
+          this.panAnchorValid = true;
         } else {
-          this.panAnchorDistance = this.distance;
+          this.panAnchorValid = false;
         }
       }
     };
@@ -291,28 +293,68 @@ export class OrbitCamera {
         this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
         this.apply();
       } else if (this.dragMode === 'pan') {
-        // World-per-pixel at the cursor's 3D anchor depth — the
-        // depth of whatever the cursor was over at drag-start.
-        // Using this depth (instead of the orbit-target depth)
-        // makes the cursor's world anchor track the cursor exactly
-        // even on tilted views or hilly terrain.
-        const vFovRad = (this.camera.fov * Math.PI) / 180;
-        const worldPerPixel =
-          (2 * Math.tan(vFovRad / 2) * this.panAnchorDistance) / this.canvas.clientHeight;
-        const scale = worldPerPixel * this.panMultiplier;
-        // Right + forward vectors at current yaw, on the ground plane.
-        // Y (forward) is inverted vs X so vertical drag matches the
-        // 2D camera's direction (drag down → camera moves south).
-        const rx = Math.cos(this.yaw);
-        const rz = Math.sin(this.yaw);
-        const fx = Math.sin(this.yaw);
-        const fz = -Math.cos(this.yaw);
-        this.toTargetX -= dx * scale * rx - dy * scale * fx;
-        this.toTargetZ -= dx * scale * rz - dy * scale * fz;
-        if (this.smoothTauSec === 0) {
+        // Exact 3D drag-the-world pan. We solve for the to-target
+        // shift that puts the captured panAnchor (drag-start
+        // ground point, full XYZ) back under the current cursor
+        // pixel: temporarily evaluate the to-state camera, raycast
+        // the cursor against the horizontal plane at panAnchor.y to
+        // get the world point Pc that's currently under the cursor
+        // at the to-state pose, then shift to-target by
+        // (panAnchor − Pc). After the shift the cursor exactly
+        // anchors panAnchor — no tilt approximation, no per-pixel
+        // scale factor, no isotropic-screen-space assumption.
+        if (this.panAnchorValid) {
+          const renderedDist = this.distance;
+          const renderedTargetX = this.target.x;
+          const renderedTargetZ = this.target.z;
+          // Apply to-state camera so the raycast uses the pose the
+          // pin will EVENTUALLY settle at; this keeps the anchor
+          // intent-correct under EMA smoothing too (the rendered
+          // state catches up via tick() in the next few frames).
+          this.distance = this.toDistance;
           this.target.x = this.toTargetX;
           this.target.z = this.toTargetZ;
           this.apply();
+          const pc = this._cursorWorldPointAtPlaneY(
+            e.clientX, e.clientY, this.panAnchor.y,
+          );
+          if (pc) {
+            this.toTargetX += this.panAnchor.x - pc.x;
+            this.toTargetZ += this.panAnchor.z - pc.z;
+          }
+          // In snap mode, the pose IS the to-state — leave the
+          // camera at its new (just-shifted) to-state. In smooth
+          // mode, restore rendered state so the EMA can lerp.
+          if (this.smoothTauSec === 0) {
+            this.target.x = this.toTargetX;
+            this.target.z = this.toTargetZ;
+            this.apply();
+          } else {
+            this.distance = renderedDist;
+            this.target.x = renderedTargetX;
+            this.target.z = renderedTargetZ;
+            this.apply();
+          }
+        } else {
+          // No anchor (drag started off-canvas / past the map edge).
+          // Fall back to the legacy pixel-delta-with-distance pan so
+          // the drag still does SOMETHING useful even if the 3D pin
+          // can't be solved.
+          const vFovRad = (this.camera.fov * Math.PI) / 180;
+          const worldPerPixel =
+            (2 * Math.tan(vFovRad / 2) * this.distance) / this.canvas.clientHeight;
+          const scale = worldPerPixel * this.panMultiplier;
+          const rx = Math.cos(this.yaw);
+          const rz = Math.sin(this.yaw);
+          const fx = Math.sin(this.yaw);
+          const fz = -Math.cos(this.yaw);
+          this.toTargetX -= dx * scale * rx - dy * scale * fx;
+          this.toTargetZ -= dx * scale * rz - dy * scale * fz;
+          if (this.smoothTauSec === 0) {
+            this.target.x = this.toTargetX;
+            this.target.z = this.toTargetZ;
+            this.apply();
+          }
         }
       }
     };
@@ -374,6 +416,40 @@ export class OrbitCamera {
       this.camera.position.z + t * dirZ,
     );
     return out;
+  }
+
+  /** Project the screen cursor onto the HORIZONTAL plane y=planeY.
+   *  Returns the world point on that plane that the cursor's ray
+   *  hits, or null if the ray is parallel to the plane / behind the
+   *  camera. Used by both pan-drag and wheel-zoom to find "where
+   *  would the cursor map to in world right now if we used a
+   *  consistent ground plane through the captured anchor's
+   *  elevation". The plane (rather than re-raycasting terrain) is
+   *  what makes the anchor pin EXACT — terrain elevation is
+   *  generally NOT constant under the cursor as the camera moves,
+   *  but a plane at the captured anchor's Y is. */
+  private _cursorWorldPointAtPlaneY(
+    clientX: number,
+    clientY: number,
+    planeY: number,
+  ): THREE.Vector3 | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -(((clientY - rect.top) / rect.height) * 2 - 1);
+    this._zoomNdc.set(ndcX, ndcY, 0.5).unproject(this.camera);
+    const dirX = this._zoomNdc.x - this.camera.position.x;
+    const dirY = this._zoomNdc.y - this.camera.position.y;
+    const dirZ = this._zoomNdc.z - this.camera.position.z;
+    if (Math.abs(dirY) < 1e-6) return null;
+    const t = (planeY - this.camera.position.y) / dirY;
+    if (t < 0) return null;
+    this._planeRayOut.set(
+      this.camera.position.x + t * dirX,
+      planeY,
+      this.camera.position.z + t * dirZ,
+    );
+    return this._planeRayOut;
   }
 
   /** Recompute camera position from target + yaw + pitch + distance.
