@@ -459,6 +459,17 @@ function totalLegLength(c: ArachnidLegConfig): number {
   return c.upperLegLength + c.lowerLegLength;
 }
 
+/** Rest-circle radius for a leg. Honors an explicit `stepRadius`
+ *  override when present; otherwise derives a value from the legacy
+ *  `snapTriggerAngle` so per-style tuning stays compatible — the
+ *  chord across the trigger angle gives the same gait cadence the
+ *  old dual-trigger logic produced. */
+function stepRadiusFor(c: ArachnidLegConfig): number {
+  if (c.stepRadius !== undefined && c.stepRadius > 0) return c.stepRadius;
+  const restDist = totalLegLength(c) * c.snapDistanceMultiplier;
+  return 2 * restDist * Math.sin(c.snapTriggerAngle / 2);
+}
+
 function initializeLegAt(leg: LegInstance, unitX: number, unitZ: number, unitR: number): void {
   const cos = Math.cos(unitR);
   const sin = Math.sin(unitR);
@@ -620,14 +631,14 @@ export function updateLocomotion(
     const sinYaw = Math.sin(yaw);
     const vLocalForward = cosYaw * vx + sinYaw * vy;   // chassis +X
     const vLocalLateral = -sinYaw * vx + cosYaw * vy;  // chassis +Y in sim → three +Z
-    const localSpeed = Math.hypot(vLocalForward, vLocalLateral);
 
     for (const leg of mesh.legs) {
       const c = leg.config;
       const tl = totalLegLength(c);
       const restDistance = tl * c.snapDistanceMultiplier;
-      // Right-side legs straddle the snap rest + trigger angles so
-      // the gait alternates by side from the first frame.
+      const stepRadius = stepRadiusFor(c);
+      // Right-side legs straddle the rest direction by half the
+      // step-radius angle so the gait alternates by side from frame 1.
       const initAngle = leg.side === 1
         ? (c.snapTargetAngle + c.snapTriggerAngle * Math.sign(c.snapTargetAngle)) / 2
         : c.snapTargetAngle;
@@ -636,17 +647,22 @@ export function updateLocomotion(
       const hipX = c.attachOffsetX;
       const hipY = leg.hipY;
       const hipZ = c.attachOffsetY;
+      // The leg's REST CENTER — the chassis-local point the foot
+      // wanders around. Defined entirely by hip + (rest distance,
+      // rest angle); changing snapDistanceMultiplier moves the
+      // circle in/out, snapTargetAngle rotates it around the hip.
+      const restCenterX = hipX + Math.cos(initAngle) * restDistance;
+      const restCenterZ = hipZ + Math.sin(initAngle) * restDistance;
 
-      // First frame: seat the foot at its rest pose.
+      // First frame: seat the foot at the rest center so it starts
+      // "in the middle" of its allowed wandering region.
       if (!leg.initialized) {
-        const sx = hipX + Math.cos(initAngle) * restDistance;
-        const sz = hipZ + Math.sin(initAngle) * restDistance;
-        leg.groundX = sx;
-        leg.groundZ = sz;
-        leg.startGroundX = sx;
-        leg.startGroundZ = sz;
-        leg.targetGroundX = sx;
-        leg.targetGroundZ = sz;
+        leg.groundX = restCenterX;
+        leg.groundZ = restCenterZ;
+        leg.startGroundX = restCenterX;
+        leg.startGroundZ = restCenterZ;
+        leg.targetGroundX = restCenterX;
+        leg.targetGroundZ = restCenterZ;
         leg.initialized = true;
       }
 
@@ -677,44 +693,30 @@ export function updateLocomotion(
         leg.groundZ -= vLocalLateral * dt;
       }
 
-      // Trigger conditions: too-stretched OR foot has rotated off
-      // its rest direction by more than snapTriggerAngle. Same logic
-      // as the world-frame version, but every quantity is in
-      // chassis-local coords now.
-      const dx = leg.groundX - hipX;
-      const dz = leg.groundZ - hipZ;
+      // REST-CIRCLE TRIGGER. The foot is allowed to wander anywhere
+      // inside a circle of radius `stepRadius` around the rest
+      // center; once it crosses the boundary the foot snaps to the
+      // diametrically opposite point on that circle's edge — that's
+      // the next stride. The same single test handles both forward
+      // overshoot (body moved past the foot) and rotational overshoot
+      // (body yawed and the foot is now off to the side); both cases
+      // produce a foot that exits the circle in the appropriate
+      // direction and snaps to the natural opposite stride point.
+      const dx = leg.groundX - restCenterX;
+      const dz = leg.groundZ - restCenterZ;
       const distSq = dx * dx + dz * dz;
-      const extThresh = tl * c.extensionThreshold;
-      const distanceTriggered = distSq >= extThresh * extThresh;
-      const groundAngle = Math.atan2(dz, dx);
-      let angleDelta = groundAngle - initAngle;
-      while (angleDelta > Math.PI) angleDelta -= 2 * Math.PI;
-      while (angleDelta < -Math.PI) angleDelta += 2 * Math.PI;
-      const angleTriggered = Math.abs(angleDelta) > c.snapTriggerAngle;
 
-      if ((distanceTriggered || angleTriggered) && !leg.isSliding) {
+      if (!leg.isSliding && distSq > stepRadius * stepRadius) {
+        const dist = Math.sqrt(distSq);
+        // Unit vector pointing FROM rest center TO current foot;
+        // the snap target is the opposite-edge point of the rest
+        // circle, i.e. rest center − that direction × stepRadius.
+        const ux = dist > 1e-6 ? dx / dist : Math.cos(initAngle);
+        const uz = dist > 1e-6 ? dz / dist : Math.sin(initAngle);
         leg.startGroundX = leg.groundX;
         leg.startGroundZ = leg.groundZ;
-        if (distanceTriggered) {
-          // Over-extended — snap to the OPPOSITE side so the leg
-          // recovers through the hip rather than dragging further out.
-          const dist = Math.sqrt(distSq);
-          const oppX = dist > 1e-6 ? -dx / dist : Math.cos(initAngle);
-          const oppZ = dist > 1e-6 ? -dz / dist : Math.sin(initAngle);
-          leg.targetGroundX = hipX + oppX * restDistance;
-          leg.targetGroundZ = hipZ + oppZ * restDistance;
-        } else {
-          // Angle-triggered — return to the rest direction with a
-          // velocity bias so fast units stride out further forward.
-          const velocityOffset = Math.min(localSpeed * 0.15, restDistance * 0.3);
-          let targetAngle = initAngle;
-          if (localSpeed > 1) {
-            const moveAngle = Math.atan2(vLocalLateral, vLocalForward);
-            targetAngle = initAngle * 0.7 + moveAngle * 0.3;
-          }
-          leg.targetGroundX = hipX + Math.cos(targetAngle) * (restDistance + velocityOffset);
-          leg.targetGroundZ = hipZ + Math.sin(targetAngle) * (restDistance + velocityOffset);
-        }
+        leg.targetGroundX = restCenterX - ux * stepRadius;
+        leg.targetGroundZ = restCenterZ - uz * stepRadius;
         leg.isSliding = true;
         leg.lerpProgress = 0;
       }
