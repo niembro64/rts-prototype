@@ -31,11 +31,49 @@
 //   buildings settle on the same surface the player sees, with no
 //   tile-center stepping when crossing a cell boundary.
 
-const RIPPLE_AMPLITUDE = 800;
+const RIPPLE_AMPLITUDE = 1000;
 // Ripples occupy this fraction of `min(mapWidth, mapHeight)` from
 // the map center outward. With a 2000×2000 map and 0.25, the
 // ripple zone is a disc of radius 500 centered on the map.
 const RIPPLE_RADIUS_FRACTION = 0.4;
+
+// ── TEAM SEPARATION RIDGES ───────────────────────────────────────
+//
+// On top of the central ripple disc the heightmap can carve a radial
+// barrier system that funnels each team toward the center: 2N angular
+// sections (N team areas alternating with N barrier areas) and a
+// mountain ridge running the full length of every barrier. Each
+// ridge's height profile:
+//
+//   peak  =  RIDGE_PEAK_FACTOR · RIPPLE_AMPLITUDE  at r = spawnRadius
+//   dips down to 0 at r = 0 (the central neutral area)
+//   plateaus past the spawn radius (toward the map edge)
+//
+// Angularly the ridge tapers smoothly from 0 at the team-area edge
+// to peak at the barrier center via a cosine ease, so the
+// boundary between "open team area" and "tall mountain" is a soft
+// cliff rather than a hard wall.
+//
+// Set the team count via `setTerrainTeamCount` once the player count
+// is known (GameServer constructor for real battles, the demo battle
+// initializer for the lobby). Default 0 → no ridges, equivalent to
+// the pre-team-separation behavior.
+let teamCount = 0;
+const RIDGE_PEAK_FACTOR = 2;
+// Spawn margin in sim units — matches DEMO_CONFIG.spawnMarginPx.
+// Inlined to keep Terrain.ts free of a demoConfig import.
+const SPAWN_MARGIN = 100;
+
+export function setTerrainTeamCount(n: number): void {
+  teamCount = Math.max(0, n | 0);
+}
+
+/** Read the team-separation ridge count back. Useful for tests /
+ *  diagnostics; the heightmap reads directly from the module-level
+ *  `teamCount` for hot-path queries. */
+export function getTerrainTeamCount(): number {
+  return teamCount;
+}
 // Wavelengths for the three sinusoids that combine into the
 // ripple pattern. Mixing irrational ratios prevents the layers
 // from harmonizing into a clean grid.
@@ -46,8 +84,8 @@ const RIPPLE_W3 = 500;
 // peak at the same dist value.
 const RIPPLE_PHASE = 1.7;
 
-/** Raw continuous terrain height at world point (x, y). Always
- *  ≥ 0. Outside the ripple disc, returns exactly 0. */
+/** Raw continuous terrain height at world point (x, y) =
+ *  central ripple disc + radial team-separation ridges. Always ≥ 0. */
 export function getTerrainHeight(
   x: number, y: number,
   mapWidth: number, mapHeight: number,
@@ -57,25 +95,58 @@ export function getTerrainHeight(
   const dx = x - cxw;
   const dy = y - cyw;
   const dist = Math.sqrt(dx * dx + dy * dy);
+
+  // ── Central ripple component ────────────────────────────────────
+  let ripple = 0;
   const maxDist = Math.min(mapWidth, mapHeight) * RIPPLE_RADIUS_FRACTION;
-  if (dist >= maxDist || maxDist <= 0) return 0;
+  if (dist < maxDist && maxDist > 0) {
+    // Cosine fade: 1 at center, 0 at the ripple edge.
+    const fadeT = (dist / maxDist) * (Math.PI / 2);
+    const fade = Math.cos(fadeT);
+    // Three sinusoids in dist + a directional ridge. Sum lives in
+    // roughly [-1, +1]; normalize into [0, 1] so tiles never produce
+    // negative heights.
+    const a = Math.cos(dist / RIPPLE_W1);
+    const b = Math.cos(dist / RIPPLE_W2 + RIPPLE_PHASE);
+    const c = Math.sin((dx + dy) / RIPPLE_W3);
+    const sum = (a * 0.5 + b * 0.3 + c * 0.2);
+    const norm = (sum + 1) * 0.5;
+    ripple = RIPPLE_AMPLITUDE * fade * norm;
+  }
 
-  // Cosine fade: 1 at center, 0 at the ripple edge.
-  const fadeT = (dist / maxDist) * (Math.PI / 2);
-  const fade = Math.cos(fadeT);
+  // ── Team-separation ridge component ─────────────────────────────
+  let ridge = 0;
+  if (teamCount > 0 && dist > 0) {
+    const theta = Math.atan2(dy, dx);
+    // Pattern: team_center → barrier_center → next team_center
+    // repeats every 2π/N. Within one cycle:
+    //   pos = 0          → team area center (player base angle)
+    //   pos = cycle/2    → barrier (mountain ridge) center
+    //   pos = cycle      → next team center
+    // Player 0 is anchored at theta = -π/2 by spawn.ts'
+    // getPlayerBaseAngle, so we phase-shift by +π/2 to make pos=0
+    // coincide with player 0.
+    const cycle = (2 * Math.PI) / teamCount;
+    let pos = (theta + Math.PI / 2) % cycle;
+    if (pos < 0) pos += cycle;
+    const barrierMid = cycle / 2;
+    const halfBarrier = cycle / 4; // half-width = π/(2N)
+    const distFromBarrierCenter = Math.abs(pos - barrierMid);
+    if (distFromBarrierCenter < halfBarrier) {
+      // Angular profile: cosine ease, peak at barrier center, 0 at
+      // the boundary with the team area.
+      const angT = distFromBarrierCenter / halfBarrier; // 0..1
+      const angFalloff = Math.cos(angT * (Math.PI / 2));
+      // Radial profile: 0 at center, ramp linearly up to the spawn
+      // ring, plateau beyond. The user-spec is "starts at 2x
+      // amplitude from the outer ring of the starting circle".
+      const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - SPAWN_MARGIN;
+      const radT = spawnRadius > 0 ? Math.min(dist / spawnRadius, 1) : 0;
+      ridge = RIPPLE_AMPLITUDE * RIDGE_PEAK_FACTOR * angFalloff * radT;
+    }
+  }
 
-  // Three sinusoids in dist + a directional ridge. Sum lives in
-  // roughly [-1, +1]; normalize into [0, 1] before scaling so tiles
-  // don't produce negative heights.
-  const a = Math.cos(dist / RIPPLE_W1);
-  const b = Math.cos(dist / RIPPLE_W2 + RIPPLE_PHASE);
-  const c = Math.sin((dx + dy) / RIPPLE_W3);
-  const sum = (a * 0.5 + b * 0.3 + c * 0.2);
-  // Map (-1..+1) to (0..1) then to amplitude. The fade taper
-  // attenuates by distance so the ripple disc edge sits at z=0
-  // and joins the surrounding flat terrain seamlessly.
-  const norm = (sum + 1) * 0.5;
-  return RIPPLE_AMPLITUDE * fade * norm;
+  return ripple + ridge;
 }
 
 /** Step size for the finite-difference gradient that drives the

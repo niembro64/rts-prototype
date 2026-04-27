@@ -44,7 +44,7 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
 import { MANA_PER_TILE_PER_SECOND, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getSurfaceNormal, projectHorizontalOntoSlope } from '../sim/Terrain';
+import { getSurfaceNormal, projectHorizontalOntoSlope, setTerrainTeamCount } from '../sim/Terrain';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -137,6 +137,13 @@ export class GameServer {
     const mapConfig = getMapSize(this.backgroundMode);
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
+
+    // Tell the heightmap how many teams are playing so it can lay
+    // down the radial team-separation ridges. Set BEFORE the
+    // WorldState (which spawns commanders / bases) and the renderer
+    // (which bakes terrain geometry once at construction) so every
+    // downstream consumer reads the same surface.
+    setTerrainTeamCount(this.playerIds.length);
 
     // The physics engine is now fully 3D — same module for every path.
     this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
