@@ -29,11 +29,12 @@ import { PLAYER_COLORS } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getTerrainHeight } from '../sim/Terrain';
+import { getTerrainHeight, TILE_FLOOR_Y } from '../sim/Terrain';
 
-// Floor of every mana tile post — pulled deep below y=0 so the
-// substrate has visible mass at oblique camera angles.
-const CUBE_FLOOR_Y = -800;
+// Floor of every mana tile post — sourced from the canonical
+// TILE_FLOOR_Y in Terrain so the heightmap clamp, the water level,
+// and this tile geometry all agree on where the world's bottom is.
+const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 
 // Color for unowned cells. Slightly lighter than MAP_BG_COLOR so the
 // grid is visible as "floor" rather than merging into the scene

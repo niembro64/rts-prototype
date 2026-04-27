@@ -31,7 +31,37 @@
 //   buildings settle on the same surface the player sees, with no
 //   tile-center stepping when crossing a cell boundary.
 
-const RIPPLE_AMPLITUDE = 1000;
+/** Floor of the world's vertical extent — the BOTTOM face of every
+ *  3D tile cube the renderer draws. Anything in the heightmap that
+ *  would dip below this is clamped up to it (the math otherwise
+ *  produces inverted tile geometry where the "top" is below the
+ *  floor). Also the lower bound for the water level. Set in this
+ *  module so every consumer (terrain, water, tile renderer) reads
+ *  one canonical value. */
+export const TILE_FLOOR_Y = -800;
+
+/** Water surface elevation: midpoint between the world's "ground
+ *  zero" (where buildings sit, terrain Y = 0 outside the ripple
+ *  disc) and the bottom of the 3D tile blocks. Anywhere the
+ *  heightmap dips below this level, water is what's actually
+ *  visible (semi-transparent plane drawn by WaterRenderer3D), and
+ *  units walk on top of it — `getSurfaceHeight` clamps to this
+ *  value so physics treats the water surface as the ground. */
+export const WATER_LEVEL = (TILE_FLOOR_Y + 0) / 2;
+
+/** Amplitude of the central ripple zone — the cosmetic surface
+ *  variation in the middle of the map. Negative carves the ripple
+ *  DOWNWARD (a basin / crater); positive lifts it. Independent of
+ *  the team-separator amplitude so each can be tuned without
+ *  affecting the other. */
+const MOUNTAIN_RIPPLE_AMPLITUDE = -1000;
+
+/** Peak amplitude of the team-separator ridges — the radial
+ *  barriers between team areas. Negative carves trenches between
+ *  teams (the barriers are below ground); positive raises walls.
+ *  Independent of the central-ripple amplitude. */
+const MOUNTAIN_SEPARATOR_AMPLITUDE = -2000;
+
 // Ripples occupy this fraction of `min(mapWidth, mapHeight)` from
 // the map center outward. With a 2000×2000 map and 0.25, the
 // ripple zone is a disc of radius 500 centered on the map.
@@ -59,7 +89,6 @@ const RIPPLE_RADIUS_FRACTION = 0.4;
 // initializer for the lobby). Default 0 → no ridges, equivalent to
 // the pre-team-separation behavior.
 let teamCount = 0;
-const RIDGE_PEAK_FACTOR = 2;
 // Spawn margin in sim units — matches DEMO_CONFIG.spawnMarginPx.
 // Inlined to keep Terrain.ts free of a demoConfig import.
 const SPAWN_MARGIN = 100;
@@ -111,7 +140,7 @@ export function getTerrainHeight(
     const c = Math.sin((dx + dy) / RIPPLE_W3);
     const sum = (a * 0.5 + b * 0.3 + c * 0.2);
     const norm = (sum + 1) * 0.5;
-    ripple = RIPPLE_AMPLITUDE * fade * norm;
+    ripple = MOUNTAIN_RIPPLE_AMPLITUDE * fade * norm;
   }
 
   // ── Team-separation ridge component ─────────────────────────────
@@ -149,11 +178,16 @@ export function getTerrainHeight(
       // amplitude from the outer ring of the starting circle".
       const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - SPAWN_MARGIN;
       const radT = spawnRadius > 0 ? Math.min(dist / spawnRadius, 1) : 0;
-      ridge = RIPPLE_AMPLITUDE * RIDGE_PEAK_FACTOR * angFalloff * radT;
+      ridge = MOUNTAIN_SEPARATOR_AMPLITUDE * angFalloff * radT;
     }
   }
 
-  return ripple + ridge;
+  // Clamp to the tile floor — the heightmap defines the TOP of every
+  // 3D tile cube and tiles can't physically extend below their floor.
+  // Without this clamp, a strongly-negative amplitude (e.g. carved
+  // trenches) would invert the tile geometry: top vertex lower than
+  // floor vertex, faces flipped, sides facing inward.
+  return Math.max(TILE_FLOOR_Y, ripple + ridge);
 }
 
 /** Step size for the finite-difference gradient that drives the
@@ -180,13 +214,18 @@ const NORMAL_GRADIENT_EPS = 1;
 export function getSurfaceNormal(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
-  _cellSize: number,
+  cellSize: number,
 ): { nx: number; ny: number; nz: number } {
   const eps = NORMAL_GRADIENT_EPS;
-  const hxp = getTerrainHeight(x + eps, z, mapWidth, mapHeight);
-  const hxm = getTerrainHeight(x - eps, z, mapWidth, mapHeight);
-  const hzp = getTerrainHeight(x, z + eps, mapWidth, mapHeight);
-  const hzm = getTerrainHeight(x, z - eps, mapWidth, mapHeight);
+  // Sample the SURFACE (water-clamped) height, not the raw terrain.
+  // Where the terrain dips below water level, both eps-offset samples
+  // hit the flat water plane, the gradient cancels to zero, and the
+  // normal collapses to (0, 0, 1) — units stand flat on the water
+  // surface instead of inheriting the carved-terrain slope below.
+  const hxp = getSurfaceHeight(x + eps, z, mapWidth, mapHeight, cellSize);
+  const hxm = getSurfaceHeight(x - eps, z, mapWidth, mapHeight, cellSize);
+  const hzp = getSurfaceHeight(x, z + eps, mapWidth, mapHeight, cellSize);
+  const hzm = getSurfaceHeight(x, z - eps, mapWidth, mapHeight, cellSize);
   const dHdx = (hxp - hxm) / (2 * eps);
   const dHdz = (hzp - hzm) / (2 * eps);
   // Sim normal: surface up is (-∂h/∂x, -∂h/∂z, 1).
@@ -257,14 +296,19 @@ export function applySurfaceTilt(
   };
 }
 
-/** Canonical ground-surface height at world point (x, z). Returns
- *  the smooth analytical heightmap directly — no tile-aligned
- *  triangulation. The tile renderer subdivides each big tile into a
- *  fine sub-grid and samples the same heightmap at every sub-vertex,
- *  so the rendered surface approximates this function to sub-pixel
- *  accuracy. Sim, physics, client dead-reckoning, and the renderer
- *  agree on one continuous surface; unit tilt and altitude
- *  transition smoothly anywhere on the map.
+/** Canonical ground-surface height at world point (x, z) — what the
+ *  PHYSICS sees as "the ground" everywhere on the map. Returns the
+ *  raw heightmap value, but clamped UP to WATER_LEVEL: anywhere the
+ *  terrain dips below the water surface, the water plane is what
+ *  units walk on. So getSurfaceHeight(x, z) == max(terrain, water).
+ *
+ *  The RENDERER (CaptureTileRenderer3D) reads `getTerrainHeight`
+ *  directly so it can draw the actual carved terrain below the
+ *  water; WaterRenderer3D draws a translucent flat plane on top at
+ *  WATER_LEVEL. The combination gives the visual: deep terrain
+ *  → submerged below water; shallow / above-water terrain → dry
+ *  land. Physics treats both cases uniformly: the unit's "ground"
+ *  is whichever surface is on top.
  *
  *  `cellSize` is unused here but kept in the signature for API
  *  parity with the rest of the heightmap helpers. */
@@ -273,5 +317,5 @@ export function getSurfaceHeight(
   mapWidth: number, mapHeight: number,
   _cellSize: number,
 ): number {
-  return getTerrainHeight(x, z, mapWidth, mapHeight);
+  return Math.max(WATER_LEVEL, getTerrainHeight(x, z, mapWidth, mapHeight));
 }

@@ -25,6 +25,7 @@ import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
+import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 
@@ -125,6 +126,7 @@ export class RtsScene3D {
   private beamRenderer!: BeamRenderer3D;
   private forceFieldRenderer!: ForceFieldRenderer3D;
   private captureTileRenderer!: CaptureTileRenderer3D;
+  private waterRenderer!: WaterRenderer3D;
   private explosionRenderer!: Explosion3D;
   private debrisRenderer!: Debris3D;
   /** Per-frame world-XY visibility footprint driven by the PLAYER
@@ -423,6 +425,19 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
     );
+    // Translucent water plane sits at WATER_LEVEL (the halfway point
+    // between the tile-cube floor and the building-zero ground), so
+    // any terrain that dips below WATER_LEVEL reads as submerged
+    // through the blue tint. Physics treats the water surface as the
+    // walkable ground (Terrain.getSurfaceHeight clamps UP to
+    // WATER_LEVEL), so units never enter the water — they walk on
+    // top of it. GPU-driven sin/cos wave displacement, no per-frame
+    // CPU buffer churn.
+    this.waterRenderer = new WaterRenderer3D(
+      this.threeApp.world,
+      this.mapWidth,
+      this.mapHeight,
+    );
     // Build the canonical cursor → 3D ground picker now that the
     // terrain mesh exists. ONE raycaster, ONE terrain mesh, two
     // lenses (three.js coords for the orbit camera, sim coords for
@@ -671,6 +686,10 @@ export class RtsScene3D {
     // at runtime takes effect on the next zoom.
     this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
     this.threeApp.orbit.tick(effectDt / 1000);
+    // Advance the water-surface time uniform — the actual GPU draw
+    // happens on the next render pass, this just nudges the wave
+    // phase. Cheap (single uniform write), no buffer upload.
+    this.waterRenderer.update(effectDt / 1000);
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
     this.burnMarkRenderer.update(projectiles, effectDt);
@@ -1252,6 +1271,7 @@ export class RtsScene3D {
     this.beamRenderer?.destroy();
     this.forceFieldRenderer?.destroy();
     this.captureTileRenderer?.destroy();
+    this.waterRenderer?.destroy();
     this.explosionRenderer?.destroy();
     this.debrisRenderer?.destroy();
     this.burnMarkRenderer?.destroy();
