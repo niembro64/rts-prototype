@@ -194,14 +194,23 @@ export class CaptureTileRenderer3D {
         this.positions[fOff + 3]  = x1; this.positions[fOff + 4]  = CUBE_FLOOR_Y; this.positions[fOff + 5]  = z0;
         this.positions[fOff + 6]  = x1; this.positions[fOff + 7]  = CUBE_FLOOR_Y; this.positions[fOff + 8]  = z1;
         this.positions[fOff + 9]  = x0; this.positions[fOff + 10] = CUBE_FLOOR_Y; this.positions[fOff + 11] = z1;
-        // Floor normals — straight down. Side walls borrow these for
-        // their bottom edge, giving the wall a top-bright bottom-dim
-        // gradient that reads as natural ground when lit.
+        // Floor normals: copy from the top corner directly overhead so
+        // each side wall's top and bottom edges share the same shading
+        // signal. The wall reads as a single uniform extension of the
+        // top surface rather than a "lit lid + dark base" gradient.
+        // Floor corner order matches outer top corners: f00, f10, f11, f01.
+        const cornerSrc = [
+          topIdx(0, 0),
+          topIdx(SUBDIV, 0),
+          topIdx(SUBDIV, SUBDIV),
+          topIdx(0, SUBDIV),
+        ];
         for (let f = 0; f < FLOOR_VERTS_PER_TILE; f++) {
-          const off = vBase + (FLOOR_IDX_BASE + f) * 3;
-          normals[off]     = 0;
-          normals[off + 1] = -1;
-          normals[off + 2] = 0;
+          const dstOff = vBase + (FLOOR_IDX_BASE + f) * 3;
+          const srcOff = vBase + cornerSrc[f] * 3;
+          normals[dstOff]     = normals[srcOff];
+          normals[dstOff + 1] = normals[srcOff + 1];
+          normals[dstOff + 2] = normals[srcOff + 2];
         }
 
         // Initial neutral color for every vertex of this tile.
