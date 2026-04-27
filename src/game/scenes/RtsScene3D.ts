@@ -38,6 +38,7 @@ import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
   getAudioSmoothing,
   getBottomBarsHeight,
+  getCameraSmooth,
   setCurrentZoom,
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
@@ -305,6 +306,7 @@ export class RtsScene3D {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.threeApp.orbit.distance = this._baseDistance / initialZoom;
     this.threeApp.orbit.yaw = this._povYawForLocalSeat();
+    this.threeApp.orbit.setSmoothing(getCameraSmooth());
     this.threeApp.orbit.apply();
 
     // Redefine cameras.main as live getters bound to orbit + renderer
@@ -602,6 +604,14 @@ export class RtsScene3D {
       ? 0
       : Math.min(effectNow - this.lastEffectsTickMs, 100);
     this.lastEffectsTickMs = effectNow;
+    // Smooth-zoom animation steps once per frame using the same
+    // clamped dt the effects systems do, so the eased dolly stays
+    // in lockstep with everything else (and a tab-defocus pause
+    // doesn't fast-forward the zoom). The toggle is rechecked here
+    // (cheap idempotent set) so flipping CAMERA: SNAP/SMOOTH at
+    // runtime takes effect on the next zoom.
+    this.threeApp.orbit.setSmoothing(getCameraSmooth());
+    this.threeApp.orbit.tick(effectDt / 1000);
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
     this.burnMarkRenderer.update(projectiles, effectDt);

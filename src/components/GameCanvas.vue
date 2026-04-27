@@ -105,6 +105,8 @@ import {
   setUnitRadiusToggle,
   getLegsRadiusToggle,
   setLegsRadiusToggle,
+  getCameraSmooth,
+  setCameraSmooth,
   RANGE_TYPES,
   PROJ_RANGE_TYPES,
   UNIT_RADIUS_TYPES,
@@ -241,6 +243,10 @@ const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
 // chassis-local circle each foot wanders inside before snapping to the
 // opposite edge. Useful for tuning leg gait visually.
 const legsRadiusToggle = ref(getLegsRadiusToggle());
+// CAMERA: SNAP / SMOOTH — when SMOOTH, OrbitCamera eases zoom
+// transitions over ~250 ms; when SNAP, each wheel tick applies its
+// full effect immediately (original behavior).
+const cameraSmoothToggle = ref(getCameraSmooth());
 
 // Frame timing tracking (EMA-based, polled from scene)
 const frameMsAvg = ref(0);
@@ -959,6 +965,12 @@ function toggleLegsRadius(): void {
   const newValue = !legsRadiusToggle.value;
   setLegsRadiusToggle(newValue);
   legsRadiusToggle.value = newValue;
+}
+
+function toggleCameraSmooth(): void {
+  const newValue = !cameraSmoothToggle.value;
+  setCameraSmooth(newValue);
+  cameraSmoothToggle.value = newValue;
 }
 
 // "ALL" helpers for each radius/range section — same behavior as
@@ -2674,6 +2686,28 @@ onUnmounted(() => {
             >
               RAD
             </button>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">CAMERA:</span>
+            <div class="button-group">
+              <button
+                class="control-btn"
+                :class="{ active: !cameraSmoothToggle }"
+                title="Wheel zoom snaps to the new distance instantly (original behavior)"
+                @click="cameraSmoothToggle && toggleCameraSmooth()"
+              >
+                SNAP
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: cameraSmoothToggle }"
+                title="Wheel zoom eases over ~250 ms with an ease-out cubic curve"
+                @click="!cameraSmoothToggle && toggleCameraSmooth()"
+              >
+                SMOOTH
+              </button>
+            </div>
           </div>
         </div>
       </div>

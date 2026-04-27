@@ -239,6 +239,7 @@ const RANGE_TOGGLES_STORAGE_KEY = 'rts-range-toggles';
 const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'rts-proj-range-toggles';
 const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
 const LEGS_RADIUS_STORAGE_KEY = 'rts-legs-radius';
+const CAMERA_SMOOTH_STORAGE_KEY = 'rts-camera-smooth';
 const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
 const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
 const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
@@ -269,6 +270,11 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
 // circle each foot wanders inside before snapping to the opposite
 // edge). Off by default — purely a debug viz.
 let currentLegsRadius = false;
+// Whether the 3D orbit camera eases zoom transitions. SNAP (false) =
+// each wheel tick applies its full effect immediately, identical to
+// the original behavior. SMOOTH (true) = OrbitCamera animates the
+// dolly + cursor-pin shift over ~250 ms with an ease-out-cubic curve.
+let currentCameraSmooth = false;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
@@ -393,6 +399,10 @@ function loadFromStorage(): void {
   const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
   if (storedLegsRadius !== null) {
     currentLegsRadius = storedLegsRadius === 'true';
+  }
+  const storedCameraSmooth = readPersisted(CAMERA_SMOOTH_STORAGE_KEY);
+  if (storedCameraSmooth !== null) {
+    currentCameraSmooth = storedCameraSmooth === 'true';
   }
   const storedDriftMode = readPersisted(DRIFT_MODE_STORAGE_KEY);
   if (
@@ -722,6 +732,15 @@ export function getLegsRadiusToggle(): boolean {
 export function setLegsRadiusToggle(show: boolean): void {
   currentLegsRadius = show;
   persist(LEGS_RADIUS_STORAGE_KEY, String(show));
+}
+
+export function getCameraSmooth(): boolean {
+  return currentCameraSmooth;
+}
+
+export function setCameraSmooth(enabled: boolean): void {
+  currentCameraSmooth = enabled;
+  persist(CAMERA_SMOOTH_STORAGE_KEY, String(enabled));
 }
 
 export function getAudioScope(): AudioScope {

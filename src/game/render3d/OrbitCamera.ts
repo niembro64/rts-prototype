@@ -61,6 +61,24 @@ export class OrbitCamera {
   private _zoomBefore = new THREE.Vector3();
   private _zoomAfter = new THREE.Vector3();
 
+  // Smooth-zoom animation state. When smoothEnabled is true, wheel
+  // events compute a "from" (current rendered) and "to" (post-zoom)
+  // state, then `tick(dt)` interpolates the rendered camera between
+  // them over `smoothDurationSec`. Successive scrolls during an
+  // active animation chain off the existing "to" state, so the user
+  // can flick the wheel multiple times and the camera dollies once
+  // smoothly to the final position.
+  public smoothEnabled = false;
+  public smoothDurationSec = 0.25;
+  private isAnimating = false;
+  private animElapsedSec = 0;
+  private animFromDistance = 0;
+  private animFromTargetX = 0;
+  private animFromTargetZ = 0;
+  private animToDistance = 0;
+  private animToTargetX = 0;
+  private animToTargetZ = 0;
+
   private canvas: HTMLElement;
   private onWheel: (e: WheelEvent) => void;
   private onMouseDown: (e: MouseEvent) => void;
@@ -87,36 +105,77 @@ export class OrbitCamera {
 
     this.onWheel = (e) => {
       e.preventDefault();
-      // Match the 2D camera: per-wheel-tick discrete step, sign-only.
-      //   scroll up   (deltaY < 0)  → zoom in  → distance divided by factor
-      //   scroll down (deltaY > 0)  → zoom out → distance multiplied by factor
+      // Per-wheel-tick discrete step, sign-only.
+      //   scroll up   (deltaY < 0)  → zoom in
+      //   scroll down (deltaY > 0)  → zoom out
       if (e.deltaY === 0) return;
 
-      // Zoom-to-cursor: capture the world point under the cursor before
-      // changing distance, do the zoom, then shift the orbit target so
-      // the SAME world point lands under the SAME pixel afterwards.
-      // Mirrors the 2D camera, where wheel zoom anchors at the mouse.
-      const before = this.cursorWorldPoint(e.clientX, e.clientY, this._zoomBefore);
+      // The "from" state for any new smooth animation is the camera's
+      // current rendered state. The "base" state for the zoom-to-
+      // cursor math is the END of any animation already in progress
+      // (so successive scrolls during a smooth zoom chain off the
+      // existing destination instead of re-starting from where the
+      // camera happens to be visually at this moment).
+      const fromDist = this.distance;
+      const fromTargetX = this.target.x;
+      const fromTargetZ = this.target.z;
+      const baseDist = this.isAnimating ? this.animToDistance : fromDist;
+      const baseTargetX = this.isAnimating ? this.animToTargetX : fromTargetX;
+      const baseTargetZ = this.isAnimating ? this.animToTargetZ : fromTargetZ;
 
+      // Run the zoom-to-cursor math against the base state. Temporarily
+      // apply base, sample world point, change distance, sample again,
+      // shift target.
+      this.distance = baseDist;
+      this.target.x = baseTargetX;
+      this.target.z = baseTargetZ;
+      this.apply();
+      const before = this.cursorWorldPoint(e.clientX, e.clientY, this._zoomBefore);
       const factor = e.deltaY > 0 ? this.zoomStepFactor : 1 / this.zoomStepFactor;
       const newDist = Math.min(
         this.maxDistance,
         Math.max(this.minDistance, this.distance * factor),
       );
-      if (newDist === this.distance) return; // already at clamp — nothing to do
+      if (newDist === this.distance) {
+        // Already at clamp — restore rendered state and bail.
+        this.distance = fromDist;
+        this.target.x = fromTargetX;
+        this.target.z = fromTargetZ;
+        this.apply();
+        return;
+      }
       this.distance = newDist;
       this.apply();
-
       if (before) {
         const after = this.cursorWorldPoint(e.clientX, e.clientY, this._zoomAfter);
         if (after) {
-          // Shift target by (before − after) so the cursor pins to the
-          // world point it was over. Only x/z move — keeping y on the
-          // ground plane keeps the orbit math sane.
           this.target.x += before.x - after.x;
           this.target.z += before.z - after.z;
-          this.apply();
         }
+      }
+      // After the math: this.distance / target hold the new "to".
+      const toDist = this.distance;
+      const toTargetX = this.target.x;
+      const toTargetZ = this.target.z;
+
+      if (this.smoothEnabled) {
+        // Reset to the FROM state and arm the animation. tick(dt)
+        // will lerp the camera from FROM → TO over smoothDurationSec.
+        this.animFromDistance = fromDist;
+        this.animFromTargetX = fromTargetX;
+        this.animFromTargetZ = fromTargetZ;
+        this.animToDistance = toDist;
+        this.animToTargetX = toTargetX;
+        this.animToTargetZ = toTargetZ;
+        this.distance = fromDist;
+        this.target.x = fromTargetX;
+        this.target.z = fromTargetZ;
+        this.isAnimating = true;
+        this.animElapsedSec = 0;
+        this.apply();
+      } else {
+        // Snap mode: rendered state IS the "to" state. apply() already
+        // ran inside the math above; nothing more to do.
       }
     };
 
@@ -243,9 +302,47 @@ export class OrbitCamera {
     this.camera.lookAt(this.target);
   }
 
-  /** Set orbit target without changing distance/yaw/pitch. */
+  /** Set orbit target without changing distance/yaw/pitch. Cancels
+   *  any in-flight smooth zoom animation since explicitly snapping
+   *  the target invalidates the animation's destination. */
   setTarget(x: number, y: number, z: number): void {
     this.target.set(x, y, z);
+    this.isAnimating = false;
+    this.apply();
+  }
+
+  /** Toggle smooth zoom. Snap mode (false) is the original behavior:
+   *  every wheel event applies its full effect immediately. Smooth
+   *  mode (true) eases each zoom over `smoothDurationSec`. */
+  setSmoothing(enabled: boolean): void {
+    if (this.smoothEnabled === enabled) return;
+    this.smoothEnabled = enabled;
+    if (!enabled && this.isAnimating) {
+      // Switching to snap while a smooth zoom is in flight: jump
+      // straight to the destination so the camera doesn't look
+      // frozen at the from-state.
+      this.distance = this.animToDistance;
+      this.target.x = this.animToTargetX;
+      this.target.z = this.animToTargetZ;
+      this.isAnimating = false;
+      this.apply();
+    }
+  }
+
+  /** Per-frame integration step for the smooth zoom animation. Called
+   *  from the scene's update loop with the frame dt in seconds. No-op
+   *  when no animation is in flight. */
+  tick(dtSec: number): void {
+    if (!this.isAnimating) return;
+    this.animElapsedSec += dtSec;
+    const t = Math.min(1, this.animElapsedSec / this.smoothDurationSec);
+    // Ease-out cubic: fast start, gentle settle. Same curve the leg
+    // snap-lerp uses, so all camera/leg motions share a feel.
+    const ease = 1 - Math.pow(1 - t, 3);
+    this.distance = this.animFromDistance + (this.animToDistance - this.animFromDistance) * ease;
+    this.target.x = this.animFromTargetX + (this.animToTargetX - this.animFromTargetX) * ease;
+    this.target.z = this.animFromTargetZ + (this.animToTargetZ - this.animFromTargetZ) * ease;
+    if (t >= 1) this.isAnimating = false;
     this.apply();
   }
 
