@@ -52,6 +52,9 @@ type Label = {
 };
 
 export class SelectionLabel3D {
+  /** Module-shared scratch vector for per-frame frustum probes. */
+  private static readonly _probeVec = new THREE.Vector3();
+
   private parent: THREE.Group;
   private camera: THREE.PerspectiveCamera;
   private getViewport: () => { width: number; height: number };
@@ -125,6 +128,7 @@ export class SelectionLabel3D {
   update(
     selectedUnits: readonly Entity[],
     selectedBuildings: readonly Entity[],
+    frustum?: THREE.Frustum,
   ): void {
     let used = 0;
 
@@ -141,9 +145,18 @@ export class SelectionLabel3D {
     const pxToScale = vp.height > 0
       ? 2 * Math.tan(fovRad / 2) / vp.height
       : 0;
+    const probe = SelectionLabel3D._probeVec;
 
     for (const u of selectedUnits) {
       if (!u.unit || u.unit.hp <= 0) continue;
+      const radius = u.unit.unitRadiusCollider.scale;
+      const worldX = u.transform.x;
+      const worldY = u.transform.z + radius + STYLE.worldOffsetAbove;
+      const worldZ = u.transform.y;
+      if (frustum) {
+        probe.set(worldX, worldY, worldZ);
+        if (!frustum.containsPoint(probe)) continue;
+      }
       const text = labelTextForUnit(u);
       const label = this.acquire(used++);
       const canvasWidth = this.repaintIfChanged(label, text);
@@ -151,16 +164,19 @@ export class SelectionLabel3D {
       const pxH = STYLE.pixelHeight;
       const pxW = pxH * aspect;
       label.sprite.scale.set(pxW * pxToScale, pxH * pxToScale, 1);
-      const radius = u.unit.unitRadiusCollider.scale;
-      label.sprite.position.set(
-        u.transform.x,
-        u.transform.z + radius + STYLE.worldOffsetAbove,
-        u.transform.y,
-      );
+      label.sprite.position.set(worldX, worldY, worldZ);
     }
 
     for (const b of selectedBuildings) {
       if (!b.building || b.building.hp <= 0) continue;
+      const halfDepth = b.building.depth / 2;
+      const worldX = b.transform.x;
+      const worldY = b.transform.z + halfDepth + STYLE.worldOffsetAbove;
+      const worldZ = b.transform.y;
+      if (frustum) {
+        probe.set(worldX, worldY, worldZ);
+        if (!frustum.containsPoint(probe)) continue;
+      }
       const text = labelTextForBuilding(b);
       const label = this.acquire(used++);
       const canvasWidth = this.repaintIfChanged(label, text);
@@ -168,12 +184,7 @@ export class SelectionLabel3D {
       const pxH = STYLE.pixelHeight;
       const pxW = pxH * aspect;
       label.sprite.scale.set(pxW * pxToScale, pxH * pxToScale, 1);
-      const halfDepth = b.building.depth / 2;
-      label.sprite.position.set(
-        b.transform.x,
-        b.transform.z + halfDepth + STYLE.worldOffsetAbove,
-        b.transform.y,
-      );
+      label.sprite.position.set(worldX, worldY, worldZ);
     }
 
     for (let i = used; i < this.pool.length; i++) {

@@ -52,6 +52,10 @@ type Bar = {
 };
 
 export class HealthBar3D {
+  /** Module-shared scratch vector reused by every frustum probe so
+   *  the per-frame loop allocates nothing. */
+  private static readonly _probeVec = new THREE.Vector3();
+
   private parent: THREE.Group;
   private pool: Bar[] = [];
 
@@ -110,29 +114,41 @@ export class HealthBar3D {
     bar.texture.needsUpdate = true;
   }
 
-  update(units: readonly Entity[], buildings: readonly Entity[]): void {
+  update(
+    units: readonly Entity[],
+    buildings: readonly Entity[],
+    frustum?: THREE.Frustum,
+  ): void {
     let used = 0;
+    // Reused per-iteration vector so the frustum check allocates
+    // nothing on the hot path.
+    const probe = HealthBar3D._probeVec;
 
     for (const u of units) {
       if (!u.unit) continue;
       const hp = u.unit.hp;
       const maxHp = u.unit.maxHp;
       if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) continue;
+      const radius = u.unit.unitRadiusCollider.scale;
+      // Sample the bar's intended world position. If it's off-camera,
+      // skip the canvas bake and the position write entirely. The
+      // sprite's slot stays unused this frame; the pool is iterated
+      // from 0..used at the end so any leftover sprites get hidden.
+      const worldX = u.transform.x;
+      const worldY = u.transform.z + radius + STYLE.worldOffsetAbove;
+      const worldZ = u.transform.y;
+      if (frustum) {
+        probe.set(worldX, worldY, worldZ);
+        if (!frustum.containsPoint(probe)) continue;
+      }
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
       const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
       const bar = this.acquire(used++);
       this.repaintIfChanged(bar, ratio, mode);
 
-      const radius = u.unit.unitRadiusCollider.scale;
       const worldWidth = radius * 2;
       bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
-      // sim.x → three.x, sim.z → three.y, sim.y → three.z. Place the
-      // sprite center above the unit's top in world coords.
-      bar.sprite.position.set(
-        u.transform.x,
-        u.transform.z + radius + STYLE.worldOffsetAbove,
-        u.transform.y,
-      );
+      bar.sprite.position.set(worldX, worldY, worldZ);
     }
 
     for (const b of buildings) {
@@ -149,17 +165,20 @@ export class HealthBar3D {
         ratio = Math.max(0, Math.min(1, hp / maxHp));
         mode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
       }
+      const halfDepth = b.building.depth / 2;
+      const worldX = b.transform.x;
+      const worldY = b.transform.z + halfDepth + STYLE.worldOffsetAbove;
+      const worldZ = b.transform.y;
+      if (frustum) {
+        probe.set(worldX, worldY, worldZ);
+        if (!frustum.containsPoint(probe)) continue;
+      }
       const bar = this.acquire(used++);
       this.repaintIfChanged(bar, ratio, mode);
 
-      const halfDepth = b.building.depth / 2;
       const worldWidth = b.building.width;
       bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
-      bar.sprite.position.set(
-        b.transform.x,
-        b.transform.z + halfDepth + STYLE.worldOffsetAbove,
-        b.transform.y,
-      );
+      bar.sprite.position.set(worldX, worldY, worldZ);
     }
 
     // Hide everything past the in-use prefix; sprites stay in the

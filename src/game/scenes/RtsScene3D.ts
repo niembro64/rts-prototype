@@ -142,6 +142,14 @@ export class RtsScene3D {
   private waypoint3D: Waypoint3D | null = null;
   private selectionLabel3D: SelectionLabel3D | null = null;
 
+  // Camera frustum cached once per frame and shared with the HUD
+  // renderers (HP bars, selection labels) so they can skip the bake
+  // / position update for every entity outside the view. With ~5k
+  // units on the map but only a few hundred visible at any zoom the
+  // savings are large; the test itself is six plane dot products.
+  private _frustum = new THREE.Frustum();
+  private _frustumMatrix = new THREE.Matrix4();
+
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
   private mapWidth: number;
@@ -607,9 +615,17 @@ export class RtsScene3D {
     if (this.inputManager) {
       this.lineDragRenderer.update(this.inputManager.getLineDragState());
     }
+    // Refresh the camera frustum once per frame from the current
+    // view-projection matrix; HUD renderers test entity positions
+    // against it to skip off-screen work.
+    const cam = this.threeApp.camera;
+    this._frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    this._frustum.setFromProjectionMatrix(this._frustumMatrix);
+
     this.healthBar3D?.update(
       this.clientViewState.getUnits(),
       this.clientViewState.getBuildings(),
+      this._frustum,
     );
     this.waypoint3D?.update(
       this._cachedSelectedUnits,
@@ -618,6 +634,7 @@ export class RtsScene3D {
     this.selectionLabel3D?.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
+      this._frustum,
     );
     const renderEnd = performance.now();
 
