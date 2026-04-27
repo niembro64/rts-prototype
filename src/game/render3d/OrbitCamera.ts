@@ -111,18 +111,44 @@ export class OrbitCamera {
 
   /** 3D anchor point captured at drag-start (pan) — the actual
    *  rendered ground point the cursor was over when the user pressed
-   *  the middle button. Stored in full XYZ so the drag math can
-   *  raycast subsequent cursor positions against the horizontal
-   *  plane at panAnchor.y, giving exact 3D pinning: P0 stays under
-   *  the cursor for the entire drag. */
+   *  the middle button. The pan rate is computed using the camera-
+   *  to-anchor distance so the pan magnitude is right for the depth
+   *  the user grabbed (not the orbit target depth) — bounded at all
+   *  camera pitches, no per-pixel anomalies near horizontal views. */
   private panAnchor = new THREE.Vector3();
   private panAnchorValid = false;
+  /** Distance from camera to panAnchor at drag-start, used as the
+   *  reference depth for worldPerPixel during the pan. Locked at
+   *  drag-start so EMA-driven camera motion during the drag doesn't
+   *  feed back into the pan rate. */
+  private panAnchorDistance = 0;
+
+  /** Rigid-tumble orbit state — preserves camera position AND
+   *  orientation at orbit drag-start. Subsequent yaw/pitch deltas
+   *  rotate the camera around `orbitPivot` rigidly: pivot stays
+   *  exactly where it was on screen, no re-centering jump on the
+   *  first frame. After the drag ends, the orbit state (target,
+   *  yaw, pitch, distance) is synthesized from the new camera
+   *  position so future pan/zoom/apply behave normally. */
+  private orbitPivotActive = false;
+  private orbitPivot = new THREE.Vector3();
+  private orbitStartCamPos = new THREE.Vector3();
+  private orbitStartYaw = 0;
+  private orbitStartPitch = 0;
+  private orbitStartDistance = 0;
+  private orbitYawAccum = 0;
+  private orbitPitchAccum = 0;
 
   // Reusable scratch objects so the wheel handler does no per-event
   // allocations (zoom is the highest-frequency input on a trackpad).
   private _zoomNdc = new THREE.Vector3();
   private _zoomGroundOut = new THREE.Vector3();
   private _planeRayOut = new THREE.Vector3();
+  private _orbitOffsetTmp = new THREE.Vector3();
+  private _orbitYawQuatTmp = new THREE.Quaternion();
+  private _orbitPitchQuatTmp = new THREE.Quaternion();
+  private _orbitRightTmp = new THREE.Vector3();
+  private static _ORBIT_WORLD_Y = new THREE.Vector3(0, 1, 0);
 
   private canvas: HTMLElement;
   private onWheel: (e: WheelEvent) => void;
@@ -242,40 +268,48 @@ export class OrbitCamera {
       this.lastMouseY = e.clientY;
       this.dragOriginScreen = { x: e.clientX, y: e.clientY };
       if (this.dragMode === 'pan') {
-        // Capture the cursor's 3D ground point as the pan anchor.
-        // The full XYZ is stored — every subsequent mousemove
-        // raycasts against the horizontal plane at panAnchor.y to
-        // find the world point currently under the cursor, then
-        // shifts the to-target by (Pc − panAnchor). That makes the
-        // camera move exactly the world-distance the cursor swept
-        // at the anchor depth — move-the-camera direction, no tilt
-        // approximation.
+        // Capture the cursor's 3D ground point + camera-to-anchor
+        // distance. The distance is what worldPerPixel keys off
+        // during the drag — bounded at every camera pitch (no
+        // blowup at near-horizontal views), and accurate to the
+        // depth the user actually grabbed.
         const hit = this._cursorWorldPoint(e.clientX, e.clientY);
         if (hit) {
           this.panAnchor.copy(hit);
+          const dxh = this.camera.position.x - hit.x;
+          const dyh = this.camera.position.y - hit.y;
+          const dzh = this.camera.position.z - hit.z;
+          this.panAnchorDistance = Math.hypot(dxh, dyh, dzh);
           this.panAnchorValid = true;
         } else {
           this.panAnchorValid = false;
+          this.panAnchorDistance = this.distance;
         }
       } else if (this.dragMode === 'orbit') {
-        // Orbit pivots around `target`. To make the orbit pivot
-        // around the cursor's 3D ground point, we jump the target
-        // (and the to-target, so EMA doesn't fight us) to the
-        // cursor's world hit at drag-start. Subsequent yaw / pitch
-        // updates then rotate the camera around that point. After
-        // the drag ends, target stays at the new pivot — which is
-        // what the user wants: orbit around what I clicked, then
-        // any further pan / zoom is centered on that point.
+        // Capture pivot + start camera position + start yaw/pitch
+        // for a RIGID tumble around the cursor's 3D ground point.
+        // Nothing about the camera (position, orientation, yaw,
+        // pitch) changes at drag-start — the camera stays exactly
+        // where it was, looking exactly where it was. Only on
+        // subsequent mousemoves do yaw/pitch deltas accumulate and
+        // drive a rigid rotation of the camera around the pivot,
+        // so the pivot stays anchored on screen but the camera
+        // doesn't re-center on it.
         const hit = this._cursorWorldPoint(e.clientX, e.clientY);
         if (hit) {
-          this.target.set(hit.x, hit.y, hit.z);
-          this.toTargetX = hit.x;
-          this.toTargetZ = hit.z;
-          // Cancel any in-flight EMA so the pivot relocation lands
-          // immediately — orbit feels broken if the camera is mid-
-          // glide somewhere else when you start tumbling.
-          this.distance = this.toDistance;
+          this.orbitPivot.copy(hit);
+          // Make sure the camera position is up-to-date before we
+          // capture it as the rigid-rotation reference.
           this.apply();
+          this.orbitStartCamPos.copy(this.camera.position);
+          this.orbitStartYaw = this.yaw;
+          this.orbitStartPitch = this.pitch;
+          this.orbitStartDistance = this.distance;
+          this.orbitYawAccum = 0;
+          this.orbitPitchAccum = 0;
+          this.orbitPivotActive = true;
+        } else {
+          this.orbitPivotActive = false;
         }
       }
     };
@@ -302,81 +336,132 @@ export class OrbitCamera {
       }
 
       if (this.dragMode === 'orbit') {
-        // Orbit (yaw / pitch) is applied directly to the rendered
-        // values — no EMA — because orbit changes the rendering
-        // basis vectors and any in-flight pan / zoom animations
-        // computed against the OLD basis would be subtly wrong.
-        // Drag up → camera tilts up; drag down → camera tilts down
-        // (Blender / Maya / Unity convention).
-        this.yaw -= dx * this.rotateSpeed;
-        this.pitch += dy * this.rotateSpeed;
-        this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
-        this.apply();
+        // RIGID TUMBLE around the cursor's 3D ground pivot. The
+        // total yaw/pitch deltas since drag-start are applied as a
+        // single rigid rotation of the camera around `orbitPivot`:
+        //
+        //   1. Take the start offset (orbitStartCamPos − pivot).
+        //   2. Rotate it around world Y by the world-rotation that
+        //      corresponds to the yaw delta (= R_y(−Δyaw_value),
+        //      since our orbit "yaw" increases as the camera swings
+        //      counterclockwise around target → world rotation is
+        //      negative-yaw-value).
+        //   3. Then rotate it around the new yaw's right axis by
+        //      the world-rotation that matches the pitch delta
+        //      (= +Δpitch_value around right_world).
+        //   4. New camera position = pivot + rotated offset.
+        //   5. Camera looks at a SYNTHESIZED target = camera_pos −
+        //      distance · dir(newYaw, newPitch). That target sits
+        //      on the back-extension of the camera's view direction,
+        //      and lookAt(target) reproduces the rigid-rotation
+        //      orientation exactly. After drag-end, future pan/zoom
+        //      operate on this target naturally.
+        //
+        // Net result: camera position AND orientation are unchanged
+        // when the drag starts (Δ = 0 → R = identity → camera at
+        // startCamPos, looking at startTarget). As the user drags,
+        // both rotate rigidly around the pivot — pivot stays
+        // exactly under the same screen pixel through the whole
+        // drag.
+        if (this.orbitPivotActive) {
+          this.orbitYawAccum -= dx * this.rotateSpeed;
+          this.orbitPitchAccum += dy * this.rotateSpeed;
+          // Clamp the EFFECTIVE pitch (start + accum) to the orbit
+          // range so the camera can't flip upside-down.
+          let newPitch = this.orbitStartPitch + this.orbitPitchAccum;
+          if (newPitch < this.minPitch) {
+            newPitch = this.minPitch;
+            this.orbitPitchAccum = newPitch - this.orbitStartPitch;
+          } else if (newPitch > this.maxPitch) {
+            newPitch = this.maxPitch;
+            this.orbitPitchAccum = newPitch - this.orbitStartPitch;
+          }
+          const newYaw = this.orbitStartYaw + this.orbitYawAccum;
+
+          // Rigid rotation: yaw around world Y, then pitch around
+          // the (post-yaw) right axis. Apply to the start offset
+          // from pivot; result is the new camera world position.
+          this._orbitOffsetTmp.copy(this.orbitStartCamPos).sub(this.orbitPivot);
+          // Yaw: world Y by −Δyaw_value (see header comment).
+          this._orbitYawQuatTmp.setFromAxisAngle(
+            OrbitCamera._ORBIT_WORLD_Y,
+            -this.orbitYawAccum,
+          );
+          this._orbitOffsetTmp.applyQuaternion(this._orbitYawQuatTmp);
+          // Pitch axis: right_world at the NEW yaw. For our orbit
+          // convention, right_world(yaw) = (−cos(yaw), 0, −sin(yaw)).
+          this._orbitRightTmp.set(-Math.cos(newYaw), 0, -Math.sin(newYaw));
+          this._orbitPitchQuatTmp.setFromAxisAngle(
+            this._orbitRightTmp,
+            this.orbitPitchAccum,
+          );
+          this._orbitOffsetTmp.applyQuaternion(this._orbitPitchQuatTmp);
+
+          // New camera position = pivot + rigid-rotated offset.
+          // Synthesize target so that with new yaw/pitch/distance
+          // (distance unchanged), apply() produces this same camera
+          // position AND lookAt(target) gives the rigid orientation.
+          this.yaw = newYaw;
+          this.pitch = newPitch;
+          // distance stays at orbitStartDistance — rigid rotation
+          // preserves camera-to-pivot distance, but our orbit
+          // distance is camera-to-target which is what apply() uses.
+          this.distance = this.orbitStartDistance;
+          this.toDistance = this.orbitStartDistance;
+          const cx = this.orbitPivot.x + this._orbitOffsetTmp.x;
+          const cy = this.orbitPivot.y + this._orbitOffsetTmp.y;
+          const cz = this.orbitPivot.z + this._orbitOffsetTmp.z;
+          // dir(yaw, pitch) — the unit vector from target → camera.
+          const sinP = Math.sin(this.pitch);
+          const cosP = Math.cos(this.pitch);
+          const dirX = sinP * Math.sin(this.yaw);
+          const dirY = cosP;
+          const dirZ = sinP * -Math.cos(this.yaw);
+          // target = camera − distance · dir.
+          this.target.set(
+            cx - this.distance * dirX,
+            cy - this.distance * dirY,
+            cz - this.distance * dirZ,
+          );
+          this.toTargetX = this.target.x;
+          this.toTargetZ = this.target.z;
+          // apply() will write camera.position = target + d·dir = (cx,cy,cz)
+          // and camera.lookAt(target) = lookAt the synthesized point,
+          // giving the rigid-rotation orientation.
+          this.apply();
+        } else {
+          // Fallback: no pivot — orbit around the existing target
+          // exactly the way the camera always did before this fix.
+          this.yaw -= dx * this.rotateSpeed;
+          this.pitch += dy * this.rotateSpeed;
+          this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
+          this.apply();
+        }
       } else if (this.dragMode === 'pan') {
-        // Exact 3D MOVE-THE-CAMERA pan (cursor drags the camera in
-        // the world, not the world under the cursor — RTS / 2D-camera
-        // convention: drag down → camera glides south). We solve for
-        // the to-target shift that pushes the camera by exactly the
-        // world-distance the cursor swept, measured at the cursor's
-        // 3D anchor depth: temporarily evaluate the to-state camera,
-        // raycast the cursor against the horizontal plane at
-        // panAnchor.y to get the world point Pc currently under the
-        // cursor at the to-state pose, then shift to-target by
-        // (Pc − panAnchor). That makes the camera follow the cursor
-        // in world space at exactly the anchor depth's pixel-to-world
-        // scale — no tilt approximation, no isotropic-screen-space
-        // assumption, no terrain-elevation drift over the drag.
-        if (this.panAnchorValid) {
-          const renderedDist = this.distance;
-          const renderedTargetX = this.target.x;
-          const renderedTargetZ = this.target.z;
-          // Apply to-state camera so the raycast uses the pose the
-          // shift will eventually settle at; keeps the anchor math
-          // intent-correct under EMA smoothing too.
-          this.distance = this.toDistance;
+        // Move-the-camera pan with bounded magnitude: world-per-pixel
+        // is keyed to the camera-to-anchor distance captured at
+        // drag-start (not the orbit target distance, not the
+        // current rendered distance). That gives the right pan rate
+        // for the depth the user grabbed, but stays bounded at
+        // every camera pitch — no exact-3D plane-raycast blowup
+        // when the camera is near horizontal. Drag direction is
+        // RTS / 2D-camera convention: cursor drag direction =
+        // camera drag direction in world.
+        const refDist = this.panAnchorValid ? this.panAnchorDistance : this.distance;
+        const vFovRad = (this.camera.fov * Math.PI) / 180;
+        const worldPerPixel =
+          (2 * Math.tan(vFovRad / 2) * refDist) / this.canvas.clientHeight;
+        const scale = worldPerPixel * this.panMultiplier;
+        const rx = Math.cos(this.yaw);
+        const rz = Math.sin(this.yaw);
+        const fx = Math.sin(this.yaw);
+        const fz = -Math.cos(this.yaw);
+        this.toTargetX -= dx * scale * rx - dy * scale * fx;
+        this.toTargetZ -= dx * scale * rz - dy * scale * fz;
+        if (this.smoothTauSec === 0) {
           this.target.x = this.toTargetX;
           this.target.z = this.toTargetZ;
           this.apply();
-          const pc = this._cursorWorldPointAtPlaneY(
-            e.clientX, e.clientY, this.panAnchor.y,
-          );
-          if (pc) {
-            this.toTargetX += pc.x - this.panAnchor.x;
-            this.toTargetZ += pc.z - this.panAnchor.z;
-          }
-          // In snap mode, the pose IS the to-state — leave the
-          // camera at its new (just-shifted) to-state. In smooth
-          // mode, restore rendered state so the EMA can lerp.
-          if (this.smoothTauSec === 0) {
-            this.target.x = this.toTargetX;
-            this.target.z = this.toTargetZ;
-            this.apply();
-          } else {
-            this.distance = renderedDist;
-            this.target.x = renderedTargetX;
-            this.target.z = renderedTargetZ;
-            this.apply();
-          }
-        } else {
-          // No anchor (drag started off-canvas / past the map edge).
-          // Fall back to the legacy pixel-delta-with-distance pan so
-          // the drag still does SOMETHING useful even if the 3D pin
-          // can't be solved.
-          const vFovRad = (this.camera.fov * Math.PI) / 180;
-          const worldPerPixel =
-            (2 * Math.tan(vFovRad / 2) * this.distance) / this.canvas.clientHeight;
-          const scale = worldPerPixel * this.panMultiplier;
-          const rx = Math.cos(this.yaw);
-          const rz = Math.sin(this.yaw);
-          const fx = Math.sin(this.yaw);
-          const fz = -Math.cos(this.yaw);
-          this.toTargetX -= dx * scale * rx - dy * scale * fx;
-          this.toTargetZ -= dx * scale * rz - dy * scale * fz;
-          if (this.smoothTauSec === 0) {
-            this.target.x = this.toTargetX;
-            this.target.z = this.toTargetZ;
-            this.apply();
-          }
         }
       }
     };
@@ -384,6 +469,7 @@ export class OrbitCamera {
     this.onMouseUp = (e) => {
       if (e.button !== 1) return;
       this.dragMode = 'none';
+      this.orbitPivotActive = false;
       this.onPanState?.(0, 0, 0);
     };
 
