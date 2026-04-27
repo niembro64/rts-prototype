@@ -129,6 +129,31 @@ export function getSurfaceNormal(
   return { nx: nx / len, ny: ny / len, nz: nz / len };
 }
 
+/** Project a horizontal direction (hx, hy) onto the local surface
+ *  tangent plane, returning a UNIT vector along the slope. Used by
+ *  the physics force pass so a unit driving "north" on a north-rising
+ *  hill produces a north-AND-up force tangent to the slope, not a
+ *  flat-horizontal force that pushes the unit through the ground.
+ *
+ *  Math: tangent = horizontal − (horizontal · n) · n, then
+ *  normalized. Flat ground (n = (0, 0, 1)) collapses to a
+ *  pass-through with z = 0 and (x, y) = (hx, hy) unchanged.
+ *
+ *  `hx`, `hy` should already be the unit-magnitude horizontal
+ *  direction the action system wants — the magnitude returned here
+ *  is always 1, and the caller multiplies by `thrustMagnitude`. */
+export function projectHorizontalOntoSlope(
+  hx: number, hy: number,
+  n: { nx: number; ny: number; nz: number },
+): { x: number; y: number; z: number } {
+  const dot = hx * n.nx + hy * n.ny;  // horizontal hz = 0 cancels out
+  const tx = hx - dot * n.nx;
+  const ty = hy - dot * n.ny;
+  const tz = -dot * n.nz;
+  const m = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1;
+  return { x: tx / m, y: ty / m, z: tz / m };
+}
+
 /** Apply the surface tilt rotation (the one that takes sim's +Z up
  *  vector to the surface normal `n`) to a 3D vector `v`. Used by the
  *  sim to compute the world position of a turret mount that sits on

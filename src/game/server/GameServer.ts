@@ -44,7 +44,7 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
 import { MANA_PER_TILE_PER_SECOND, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getSurfaceNormal } from '../sim/Terrain';
+import { getSurfaceNormal, projectHorizontalOntoSlope } from '../sim/Terrain';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -454,31 +454,21 @@ export class GameServer {
         const MATTER_FORCE_SCALE = 150000;
         const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
 
-        // Project the desired horizontal direction onto the surface
-        // tangent plane:  tangent = horizontal − (horizontal · n) · n.
-        // Re-normalized to preserve thrust magnitude. Result: on flat
-        // ground (n = (0,0,1)) this collapses to the original 2D
-        // thrust; on a slope the force tilts so it follows the
-        // surface — pushing "north" on a north-rising hill produces
-        // a north-AND-up vector tangent to the slope, exactly the way
-        // a vehicle's drive force points along the road, not through
-        // the road. Cost: 1 surface-normal lookup + a few mults per
-        // moving unit per tick.
-        const hx = dirX / dirMag;
-        const hy = dirY / dirMag;
+        // Project the desired horizontal thrust onto the slope's
+        // tangent plane via the shared `projectHorizontalOntoSlope`
+        // helper. Pushing "north" on a north-rising hill becomes a
+        // north-AND-up vector tangent to the slope, the way a
+        // vehicle's drive force points along the road, not through
+        // it. Flat ground hits the helper's identity case for free.
         const n = getSurfaceNormal(
           body.x, body.y,
           this.world.mapWidth, this.world.mapHeight,
           SPATIAL_GRID_CELL_SIZE,
         );
-        const dot = hx * n.nx + hy * n.ny;  // (hx, hy, 0) · (nx, ny, nz)
-        const tx = hx - dot * n.nx;
-        const ty = hy - dot * n.ny;
-        const tz = -dot * n.nz;
-        const tMag = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1;
-        thrustForceX = (tx / tMag) * thrustMagnitude;
-        thrustForceY = (ty / tMag) * thrustMagnitude;
-        thrustForceZ = (tz / tMag) * thrustMagnitude;
+        const t = projectHorizontalOntoSlope(dirX / dirMag, dirY / dirMag, n);
+        thrustForceX = t.x * thrustMagnitude;
+        thrustForceY = t.y * thrustMagnitude;
+        thrustForceZ = t.z * thrustMagnitude;
       }
 
       // Get external forces from the accumulator
