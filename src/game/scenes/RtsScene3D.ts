@@ -41,6 +41,7 @@ import {
   setCurrentZoom,
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
+import { getPlayerBaseAngle } from '../sim/spawn';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
@@ -292,14 +293,18 @@ export class RtsScene3D {
     // Seed orbit camera on map center (ThreeApp did this too, but we honor the
     // game vs demo initial-zoom distinction like RtsScene).
     //
-    // Default yaw = π so the camera sits on the +Z side of the map looking
-    // toward −Z. That puts sim-Y = 0 (the "top" of the map in the 2D view,
-    // where red team spawns) at the top of the 3D screen — matching the
-    // 2D orientation instead of flipping the board upside-down.
+    // Initial yaw is set to the local seat's POV — camera "behind" the
+    // viewer's team, looking toward the map center. For real battles
+    // that's the local player's spawn angle on the commander circle;
+    // for the demo battle (no real player) we always pick red (player
+    // index 0) so the demo always reads as if you were watching from
+    // red's seat. centerCameraOnCommander() refines this once entities
+    // are alive (in case the commander has drifted off its spawn);
+    // centerCameraOnMap() preserves yaw so demo-mode framing stays put.
     const initialZoom = this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.threeApp.orbit.distance = this._baseDistance / initialZoom;
-    this.threeApp.orbit.yaw = Math.PI;
+    this.threeApp.orbit.yaw = this._povYawForLocalSeat();
     this.threeApp.orbit.apply();
 
     // Redefine cameras.main as live getters bound to orbit + renderer
@@ -720,12 +725,40 @@ export class RtsScene3D {
 
   // Center the orbit camera on the map center — used by the demo /
   // lobby background so the whole battlefield is visible instead of
-  // framing a specific commander's seat. Yaw stays at OrbitCamera's
-  // default (overhead-ish), only target moves.
+  // framing a specific commander's seat. Yaw is held at red's POV
+  // (set in the constructor via _povYawForLocalSeat) so demo always
+  // reads as "watching from red's seat" even though the target is
+  // the map center, not the commander.
   private centerCameraOnMap(): void {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.threeApp.orbit.apply();
     this.hasCenteredCamera = true;
+  }
+
+  /** Compute the orbit yaw that would put the camera "behind" a
+   *  player's spawn position on the commander circle, looking toward
+   *  the map center. For real battles we use the local player's
+   *  index in `playerIds`; for demo / background battles we always
+   *  use red (index 0) so the framing reads consistently regardless
+   *  of which client is viewing. Math mirrors centerCameraOnCommander:
+   *  yaw = atan2(−forwardX, forwardZ) where forward is the unit
+   *  vector from the player's spawn to the map center. */
+  private _povYawForLocalSeat(): number {
+    const playerCount = Math.max(1, this.playerIds.length);
+    const seatIndex = this.backgroundMode
+      ? 0
+      : Math.max(0, this.playerIds.indexOf(this.localPlayerId));
+    const angle = getPlayerBaseAngle(seatIndex, playerCount);
+    // Spawn position relative to map center: (cos(angle), sin(angle))
+    // scaled by the spawn radius. The spawn → center forward vector is
+    // therefore the negation of that direction. We don't need the
+    // actual radius — yaw only depends on direction.
+    const forwardSimX = -Math.cos(angle);
+    const forwardSimY = -Math.sin(angle);
+    // sim x → three x, sim y → three z.
+    const fx = forwardSimX;
+    const fz = forwardSimY;
+    return Math.atan2(-fx, fz);
   }
 
   private processLocalCommands(): void {
