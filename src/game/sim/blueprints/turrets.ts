@@ -158,7 +158,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // the rest of the way into a fragmentation ring around the
     // target. Designed in tandem with mortarShot.submunitions —
     // tune both knobs together.
-    groundAimFraction: 1,
+    groundAimFraction: 0.97,
   },
   pulseTurret: {
     id: 'pulseTurret',

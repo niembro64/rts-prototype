@@ -6,6 +6,7 @@ import { aimTurretsToward } from './turretInit';
 import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
 import { DEMO_CONFIG } from '../../demoConfig';
+import { isWaterAt } from './Terrain';
 
 /**
  * Compute a factory's default fight waypoint along the factory → map-center axis.
@@ -94,6 +95,11 @@ function placeCompleteBuilding(
   }
 
   const center = grid.getBuildingCenter(gx, gy, config.gridWidth, config.gridHeight);
+
+  // Skip placements over water — water tiles are impassable.
+  if (isWaterAt(center.x, center.y, world.mapWidth, world.mapHeight)) {
+    return null;
+  }
 
   const entity = world.createBuilding(
     center.x, center.y,
@@ -243,7 +249,13 @@ export function spawnInitialBases(
   const solarRadius = commanderRadius - commanderGap - solarDepth / 2;
   const factoryRadius = solarRadius - solarDepth / 2 - cellGap - factoryDepth / 2;
 
-  const sectorAngle = (2 * Math.PI / playerCount) * DEMO_CONFIG.arcSectorFraction;
+  // Each player's slice of the spawn circle is ONE HALF of the
+  // 2π/N angular cycle — the other half is the team-separator
+  // barrier slice (the mountain ridge in Terrain.ts). With N=3 the
+  // map has 6 slices total: 3 team slices alternating with 3 barrier
+  // slices. arcSectorFraction trims a bit off the team slice so
+  // buildings don't kiss the barrier edges.
+  const sectorAngle = (Math.PI / playerCount) * DEMO_CONFIG.arcSectorFraction;
 
   for (let i = 0; i < playerCount; i++) {
     const playerId = playerIds[i];

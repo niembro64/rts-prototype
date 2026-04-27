@@ -8,6 +8,7 @@ import { magnitude, getWeaponWorldPosition, getTransformCosSin, getBarrelTip } f
 import { getTurretMountHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
+import { findPath } from './Pathfinder';
 
 export type { CommandContext } from '@/types/ui';
 import type { CommandContext } from '@/types/ui';
@@ -76,12 +77,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       const unit = ctx.world.getEntity(entityIds[i]);
       if (!unit || unit.type !== 'unit' || !unit.unit) continue;
       const target = command.individualTargets[i];
-      const action: UnitAction = {
-        type: command.waypointType,
-        x: target.x,
-        y: target.y,
-      };
-      addActionToUnit(unit, action, command.queue);
+      addPathActions(unit, target.x, target.y, command.waypointType, command.queue, ctx);
     }
   } else if (command.targetX !== undefined && command.targetY !== undefined) {
     // Group move with formation spreading
@@ -99,12 +95,14 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
       const offsetY = (row - (unitCount / unitsPerRow - 1) / 2) * spacing;
 
-      const action: UnitAction = {
-        type: command.waypointType,
-        x: command.targetX! + offsetX,
-        y: command.targetY! + offsetY,
-      };
-      addActionToUnit(unit, action, command.queue);
+      addPathActions(
+        unit,
+        command.targetX! + offsetX,
+        command.targetY! + offsetY,
+        command.waypointType,
+        command.queue,
+        ctx,
+      );
       index++;
     }
   }
@@ -377,5 +375,36 @@ export function addActionToUnit(entity: Entity, action: UnitAction, queue: boole
   if (action.type === 'patrol' && entity.unit.patrolStartIndex === null) {
     // Mark the start of patrol loop
     entity.unit.patrolStartIndex = entity.unit.actions.length - 1;
+  }
+}
+
+/** Plan a path from the unit's current position to (goalX, goalY) and
+ *  enqueue one action per smoothed waypoint. All waypoints share the
+ *  same `type` — fight/patrol intermediates still let the unit engage
+ *  along the way, which is what the player's chosen mode implies.
+ *  Falls through to the legacy single-waypoint behaviour when the
+ *  pathfinder returns one waypoint (no obstacles between unit and
+ *  goal, or no path under the planning budget). */
+function addPathActions(
+  unit: Entity,
+  goalX: number, goalY: number,
+  type: UnitAction['type'],
+  queue: boolean,
+  ctx: CommandContext,
+): void {
+  const path = findPath(
+    unit.transform.x, unit.transform.y,
+    goalX, goalY,
+    ctx.world.mapWidth, ctx.world.mapHeight,
+    ctx.constructionSystem.getGrid(),
+  );
+  // First action either replaces the queue (queue=false) or appends.
+  // The remaining waypoints always append regardless — they belong
+  // to the same "do this trip" intent and queue:true keeps them
+  // ordered after the first.
+  for (let i = 0; i < path.length; i++) {
+    const wp = path[i];
+    const action: UnitAction = { type, x: wp.x, y: wp.y };
+    addActionToUnit(unit, action, i === 0 ? queue : true);
   }
 }

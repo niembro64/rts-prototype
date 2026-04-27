@@ -44,7 +44,7 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
 import { MANA_PER_TILE_PER_SECOND, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getSurfaceNormal, projectHorizontalOntoSlope, setTerrainTeamCount } from '../sim/Terrain';
+import { getSurfaceNormal, projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt } from '../sim/Terrain';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -464,24 +464,39 @@ export class GameServer {
       let thrustForceY = 0;
       let thrustForceZ = 0;
       if (dirMag > 0) {
-        const MATTER_FORCE_SCALE = 150000;
-        const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
+        // Block thrust toward water: sample the position one body-
+        // radius ahead in the requested direction. If that sample is
+        // over water the unit is about to walk into the surf, so we
+        // suppress horizontal thrust and let velocity damping bring
+        // them to a stop at the shoreline. The renderer's water plane
+        // is impassable terrain, not ground.
+        const lookahead = (body.radius || 10) + 4;
+        const ndx = dirX / dirMag;
+        const ndy = dirY / dirMag;
+        const aheadX = body.x + ndx * lookahead;
+        const aheadY = body.y + ndy * lookahead;
+        const aheadIsWater = isWaterAt(aheadX, aheadY, this.world.mapWidth, this.world.mapHeight);
 
-        // Project the desired horizontal thrust onto the slope's
-        // tangent plane via the shared `projectHorizontalOntoSlope`
-        // helper. Pushing "north" on a north-rising hill becomes a
-        // north-AND-up vector tangent to the slope, the way a
-        // vehicle's drive force points along the road, not through
-        // it. Flat ground hits the helper's identity case for free.
-        const n = getSurfaceNormal(
-          body.x, body.y,
-          this.world.mapWidth, this.world.mapHeight,
-          SPATIAL_GRID_CELL_SIZE,
-        );
-        const t = projectHorizontalOntoSlope(dirX / dirMag, dirY / dirMag, n);
-        thrustForceX = t.x * thrustMagnitude;
-        thrustForceY = t.y * thrustMagnitude;
-        thrustForceZ = t.z * thrustMagnitude;
+        if (!aheadIsWater) {
+          const MATTER_FORCE_SCALE = 150000;
+          const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
+
+          // Project the desired horizontal thrust onto the slope's
+          // tangent plane via the shared `projectHorizontalOntoSlope`
+          // helper. Pushing "north" on a north-rising hill becomes a
+          // north-AND-up vector tangent to the slope, the way a
+          // vehicle's drive force points along the road, not through
+          // it. Flat ground hits the helper's identity case for free.
+          const n = getSurfaceNormal(
+            body.x, body.y,
+            this.world.mapWidth, this.world.mapHeight,
+            SPATIAL_GRID_CELL_SIZE,
+          );
+          const t = projectHorizontalOntoSlope(ndx, ndy, n);
+          thrustForceX = t.x * thrustMagnitude;
+          thrustForceY = t.y * thrustMagnitude;
+          thrustForceZ = t.z * thrustMagnitude;
+        }
       }
 
       // Get external forces from the accumulator

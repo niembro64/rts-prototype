@@ -4,21 +4,22 @@ export const DEMO_CONFIG = {
   /** Number of players in the demo game */
   playerCount: 3,
 
-  /** Number of factories per player. With 3 teams each sector is 120°
-   *  (102° usable at arcSectorFraction=0.85), so the arcs fit a much
-   *  wider production line. */
+  /** Number of factories per player. Each player's TEAM slice is
+   *  180°/N wide (the other 180°/N of every 360°/N cycle is the
+   *  barrier slice between teams) — with N=3 that's 60° per team
+   *  slice, ~51° usable at arcSectorFraction=0.85. */
   factoryCount: 14,
 
   /** Number of solar panels per player. Same rationale as
-   *  factoryCount — the wider sector at 3 teams accommodates a
-   *  longer power-generation arc. */
+   *  factoryCount — buildings have to fit inside the team slice. */
   solarCount: 20,
 
   /**
-   * Fraction of each player's angular sector on the spawn circle that is
-   * actually used for placing buildings (commander + solars + factories).
-   * The remainder is left as a gap between adjacent players' arcs.
-   * 0.85 = use 85% of the sector, leave 15% as inter-player gap.
+   * Fraction of each player's TEAM slice (180°/N wide, half of the
+   * 360°/N angular cycle) actually used for placing buildings
+   * (commander + solars + factories). The remainder is left as a
+   * gap so buildings don't crowd the barrier-slice edges.
+   * 0.85 = use 85% of the team slice, leave 15% as buffer.
    */
   arcSectorFraction: 0.85,
 
@@ -78,4 +79,23 @@ export const DEMO_CONFIG = {
    * tighter team grouping at spawn.
    */
   centerSpawnSectorFraction: 0.6,
+
+  /**
+   * Minimum sim-unit clearance from any water cell when picking an
+   * initial spawn position. Each candidate (x, y) and 8 cardinal
+   * points at this radius are tested; if any is over water the
+   * candidate is rejected. 0 disables the check (legacy behaviour).
+   * Tuned ≈ 2 grid cells = 40 wu so units land with collision-radius
+   * slack and a tick of inertia headroom before they could possibly
+   * brush the shoreline.
+   */
+  centerSpawnWaterBufferPx: 40,
+
+  /**
+   * How many candidate positions to try per unit when rejection-
+   * sampling away from water. After this many failures the spawn is
+   * skipped (no fallback into water). 32 keeps total work bounded
+   * even on maps where most of the central disk is submerged.
+   */
+  centerSpawnWaterMaxAttempts: 32,
 };

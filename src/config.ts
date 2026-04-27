@@ -575,12 +575,20 @@ export const ZOOM_MIN = 0.2;
 export const ZOOM_MAX = 40.0;
 
 /**
- * Zoom multiplier per scroll wheel tick (exponential zoom).
- * Each scroll step multiplies/divides zoom by this factor.
- * 1.15 = 15% change per step, feels consistent at all zoom levels.
+ * Per-wheel-tick zoom fraction. Each scroll-IN moves the camera
+ * this fraction of the way toward the world point under the
+ * cursor (the actual rendered ground/water hit, not a flat-plane
+ * approximation). Scroll-OUT applies the inverse factor 1/(1−f),
+ * so a scroll-in followed by a scroll-out lands back at the same
+ * camera state.
+ *
+ *   factor_in  = (1 − f)         → distance shrinks by f
+ *   factor_out = 1 / (1 − f)     → exact inverse of factor_in
+ *
+ * 0.125 keeps roughly the historical 1.125-multiplier "feel" but
+ * the cursor's world point stays pinned through the move.
  */
-export const ZOOM_FACTOR = 1 + 1 / 4;
-// export const ZOOM_FACTOR = 1 + 1 / 8;
+export const ZOOM_STEP_FRACTION = 0.2;
 
 /** Initial zoom level for the demo game (zoomed out overview) */
 export const ZOOM_INITIAL_DEMO = 1.5;
@@ -590,64 +598,6 @@ export const ZOOM_INITIAL_GAME = 0.5;
 
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = 6.0;
-
-const ARROW_COLOR = 0xffffff;
-const ARROW_ALPHA = 0.1;
-const ARROW_SIZE_MULT = 20;
-
-const OVAL_ALPHA = 0.0;
-
-/** Edge scroll configuration */
-export const EDGE_SCROLL = {
-  // --- Behavior ---
-  borderRatioInner: 0.3, // inset from viewport edge for inner oval (larger = smaller oval)
-  borderRatioOuter: 0.1, // inset from viewport edge for outer oval (smaller = larger oval)
-  speed: 3000, // world units/sec at zoom 1.0 (scales inversely with zoom)
-  intensityCurve: 1, // exponent on intensity (1 = linear, 2 = quadratic, 0.5 = sqrt)
-  topBarHeight: 50, // fixed top bar exclusion (px)
-  depth: 999, // z-depth of the overlay graphics layer
-  ovalSegments: 10, // number of segments for both ellipses
-
-  // --- Inner oval (safe zone boundary) ---
-  innerOvalFillColor: 0x0044aa,
-  innerOvalFillAlpha: OVAL_ALPHA,
-  innerOvalStrokeColor: 0x4488ff,
-  innerOvalStrokeAlpha: OVAL_ALPHA,
-  innerOvalStrokeWidth: 2,
-
-  // --- Outer oval (pan zone outer boundary) ---
-  outerOvalStrokeColor: 0xff4444,
-  outerOvalStrokeAlpha: OVAL_ALPHA,
-  outerOvalStrokeWidth: 2,
-
-  // --- Ring (pan zone between inner and outer ovals) ---
-  ringFillColor: 0xff6600,
-  ringFillAlpha: OVAL_ALPHA,
-
-  // --- Arrow general ---
-  arrowMaxLength: 300, // max arrow length (screen px)
-  arrowGap: 10, // gap from screen center before shaft starts (screen px)
-  arrowDragMaxDist: 100, // mouse displacement (px) for full intensity during drag pan
-
-  // --- Arrow shaft ---
-  shaftColor: ARROW_COLOR,
-  shaftAlpha: ARROW_ALPHA,
-  shaftWidth: 1 * ARROW_SIZE_MULT, // line width (screen px)
-
-  // --- Arrow head ---
-  headFillColor: ARROW_COLOR,
-  headFillAlpha: ARROW_ALPHA,
-  headStrokeColor: ARROW_COLOR,
-  headStrokeAlpha: 0.0,
-  headStrokeWidth: 1, // head outline width (screen px)
-  headLength: 1.5 * ARROW_SIZE_MULT, // arrowhead length (screen px)
-  headWidth: 1.2 * ARROW_SIZE_MULT, // arrowhead half-width (screen px)
-
-  // --- Arrow outline (drawn behind shaft+head for contrast) ---
-  outlineColor: 0x000000,
-  outlineAlpha: 0.0,
-  outlineWidth: 1, // extra width added around shaft/head (screen px)
-};
 
 /**
  * World padding as a percentage of map dimensions.

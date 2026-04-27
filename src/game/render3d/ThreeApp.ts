@@ -9,10 +9,9 @@ import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import {
   CAMERA_PAN_MULTIPLIER,
-  ZOOM_FACTOR,
+  ZOOM_STEP_FRACTION,
   ZOOM_MIN,
   ZOOM_MAX,
-  EDGE_SCROLL,
 } from '../../config';
 
 export class ThreeApp {
@@ -78,9 +77,8 @@ export class ThreeApp {
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
       minDistance: baseDistance / ZOOM_MAX,
       maxDistance: baseDistance / ZOOM_MIN,
-      zoomStepFactor: ZOOM_FACTOR,
+      zoomStepFraction: ZOOM_STEP_FRACTION,
       panMultiplier: CAMERA_PAN_MULTIPLIER,
-      arrowDragMaxDist: EDGE_SCROLL.arrowDragMaxDist,
     });
     // Center on map, pulled in for a useful RTS default view
     this.orbit.setTarget(mapWidth / 2, 0, mapHeight / 2);

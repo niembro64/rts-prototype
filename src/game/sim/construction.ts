@@ -5,6 +5,7 @@ import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
+import { isWaterAt } from './Terrain';
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -119,6 +120,23 @@ export class ConstructionSystem {
 
     // Get world position for building center
     const worldPos = this.buildingGrid.getBuildingCenter(gridX, gridY, config.gridWidth, config.gridHeight);
+
+    // Reject placements over water — buildings can't sit on the
+    // water plane. Sample the footprint corners + center; if any is
+    // submerged, the cell is impassable.
+    const halfW = (config.gridWidth * GRID_CELL_SIZE) / 2;
+    const halfH = (config.gridHeight * GRID_CELL_SIZE) / 2;
+    const mw = world.mapWidth;
+    const mh = world.mapHeight;
+    if (
+      isWaterAt(worldPos.x, worldPos.y, mw, mh) ||
+      isWaterAt(worldPos.x - halfW + 1, worldPos.y - halfH + 1, mw, mh) ||
+      isWaterAt(worldPos.x + halfW - 1, worldPos.y - halfH + 1, mw, mh) ||
+      isWaterAt(worldPos.x - halfW + 1, worldPos.y + halfH - 1, mw, mh) ||
+      isWaterAt(worldPos.x + halfW - 1, worldPos.y + halfH - 1, mw, mh)
+    ) {
+      return null;
+    }
 
     // Create the building entity
     const entity = world.createBuilding(

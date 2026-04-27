@@ -57,8 +57,14 @@ import {
   saveFfAccelUnits,
   loadStoredFfAccelShots,
   saveFfAccelShots,
+  loadStoredTerrainCenter,
+  saveTerrainCenter,
+  loadStoredTerrainDividers,
+  saveTerrainDividers,
   getDefaultDemoUnits,
 } from '../battleBarConfig';
+import { setTerrainCenterShape, setTerrainDividersShape } from '../game/sim/Terrain';
+import type { TerrainShape } from '../types/terrain';
 import {
   SERVER_CONFIG,
   loadStoredSnapshotRate,
@@ -189,6 +195,15 @@ let activeConnection: GameConnection | null = null;
 
 // Demo battle unit type list (state read from snapshots)
 const demoUnitTypes = BACKGROUND_UNIT_TYPES;
+
+// Terrain-shape selection. Source of truth is localStorage; the
+// refs below mirror it so the battle bar can reactively highlight
+// the active option. Changing the shape rebuilds the heightmap on
+// the next game construction (background battle restart for live
+// preview, or first real-game start), so click handlers save the
+// new value AND restart the demo battle when one is running.
+const terrainCenter = ref<TerrainShape>(loadStoredTerrainCenter());
+const terrainDividers = ref<TerrainShape>(loadStoredTerrainDividers());
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<ConcreteGraphicsQuality>(
   getEffectiveQuality(),
@@ -694,6 +709,32 @@ function setFfAccelShots(enabled: boolean): void {
   saveFfAccelShots(enabled);
 }
 
+/** Pick a new terrain shape (CENTER or DIVIDERS). Persists the choice
+ *  and, if a demo battle is running, restarts it so the new heightmap
+ *  takes effect immediately. The demo path stops + recreates the
+ *  background server (which is what `restartGame` does for the lobby
+ *  return); we skip the network teardown since we're staying in the
+ *  same lobby. During a real battle, the choice is saved but won't
+ *  be visible until the next game start — terrain meshes are baked
+ *  once at scene construction. */
+function applyTerrainShape(kind: 'center' | 'dividers', shape: TerrainShape): void {
+  if (kind === 'center') {
+    terrainCenter.value = shape;
+    saveTerrainCenter(shape);
+  } else {
+    terrainDividers.value = shape;
+    saveTerrainDividers(shape);
+  }
+  // Live preview only when the demo battle is the active scene; a real
+  // battle keeps the host's choice queued for the next game start.
+  if (!gameStarted.value) {
+    stopBackgroundBattle();
+    nextTick(() => {
+      startBackgroundBattle();
+    });
+  }
+}
+
 function resetDemoDefaults(): void {
   const defaultUnits = getDefaultDemoUnits();
   const defaultSet = new Set(defaultUnits);
@@ -717,6 +758,25 @@ function resetDemoDefaults(): void {
   setHitForce(BATTLE_CONFIG.hitForce.default);
   setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
   setFfAccelShots(BATTLE_CONFIG.ffAccelShots.default);
+  // Reset terrain shape to defaults. applyTerrainShape handles the
+  // demo-battle restart so the new heightmap is visible immediately.
+  // Skip the restart if both values already match the defaults — a
+  // restart wipes in-flight units in the current demo and would feel
+  // janky for a no-op click on RESET DEFAULTS.
+  const centerDefault = BATTLE_CONFIG.center.default;
+  const dividersDefault = BATTLE_CONFIG.dividers.default;
+  if (terrainCenter.value !== centerDefault || terrainDividers.value !== dividersDefault) {
+    terrainCenter.value = centerDefault;
+    terrainDividers.value = dividersDefault;
+    saveTerrainCenter(centerDefault);
+    saveTerrainDividers(dividersDefault);
+    if (!gameStarted.value) {
+      stopBackgroundBattle();
+      nextTick(() => {
+        startBackgroundBattle();
+      });
+    }
+  }
   // Reset grid to mode default
   const gridDefault = gameStarted.value ? false : true;
   if (displayGridInfo.value !== gridDefault) {
@@ -1187,6 +1247,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
     let gameConnection: GameConnection;
 
     if (networkRole.value !== 'client') {
+      // Apply terrain shape BEFORE creating the server — the
+      // constructor samples the heightmap when laying out bases. See
+      // LobbyManager.createBackgroundBattle for the same dance on the
+      // demo path.
+      setTerrainCenterShape(loadStoredTerrainCenter());
+      setTerrainDividersShape(loadStoredTerrainDividers());
+
       // Create GameServer for host/offline (WASM physics)
       currentServer = await GameServer.create({ playerIds, aiPlayerIds });
 
@@ -1630,6 +1697,43 @@ onUnmounted(() => {
                 @click="changeMaxTotalUnits(opt)"
               >
                 {{ opt.toExponential(0).toUpperCase() }}
+              </button>
+            </div>
+          </div>
+          <!-- CENTER / DIVIDERS only in DEMO BATTLE — terrain is baked
+               into the heightmap at game construction, so changing it
+               mid-real-battle would desync against the rendered tile
+               mesh. Lobby modal owns the same controls for picking a
+               shape before the real battle starts. -->
+          <div v-if="!gameStarted" class="control-group">
+            <BarDivider />
+            <span class="control-label">CENTER:</span>
+            <div class="button-group">
+              <button
+                v-for="opt in BATTLE_CONFIG.center.options"
+                :key="opt.value"
+                class="control-btn"
+                :class="{ active: terrainCenter === opt.value }"
+                :title="`Set the central ripple to ${opt.label.toLowerCase()}`"
+                @click="applyTerrainShape('center', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div v-if="!gameStarted" class="control-group">
+            <BarDivider />
+            <span class="control-label">DIVIDERS:</span>
+            <div class="button-group">
+              <button
+                v-for="opt in BATTLE_CONFIG.dividers.options"
+                :key="opt.value"
+                class="control-btn"
+                :class="{ active: terrainDividers === opt.value }"
+                :title="`Set the team-separator ridges to ${opt.label.toLowerCase()}`"
+                @click="applyTerrainShape('dividers', opt.value)"
+              >
+                {{ opt.label }}
               </button>
             </div>
           </div>
@@ -2739,12 +2843,16 @@ onUnmounted(() => {
       :local-player-id="localPlayerId"
       :error="lobbyError"
       :is-connecting="isConnecting"
+      :terrain-center="terrainCenter"
+      :terrain-dividers="terrainDividers"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"
       @cancel="handleLobbyCancel"
       @offline="handleOffline"
       @spectate="toggleSpectateMode"
+      @set-terrain-center="(s) => applyTerrainShape('center', s)"
+      @set-terrain-dividers="(s) => applyTerrainShape('dividers', s)"
     />
 
     <!-- Spectate mode toggle (show menu button when spectating) -->

@@ -279,7 +279,7 @@ let currentLegsRadius = false;
 // Both wheel zoom and pan-drag feed the same EMA, so they animate
 // simultaneously without fighting each other.
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
-let currentCameraSmoothMode: CameraSmoothMode = 'snap';
+let currentCameraSmoothMode: CameraSmoothMode = 'mid';
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
@@ -294,7 +294,6 @@ const _isMobile = typeof navigator !== 'undefined' &&
 let currentLobbyVisible: boolean = _isMobile
   ? _cd.lobbyVisible.default.mobile
   : _cd.lobbyVisible.default.desktop;
-let currentBottomBarsHeight: number = 0;
 let currentZoom: number = 1.0;
 let currentTpsRatio: number = 1.0;
 let currentFpsRatio: number = 1.0;
@@ -822,14 +821,6 @@ export function getDragPanEnabled(): boolean {
 export function setDragPanEnabled(enabled: boolean): void {
   currentDragPanEnabled = enabled;
   persist(DRAG_PAN_STORAGE_KEY, String(enabled));
-}
-
-export function getBottomBarsHeight(): number {
-  return currentBottomBarsHeight;
-}
-
-export function setBottomBarsHeight(height: number): void {
-  currentBottomBarsHeight = height;
 }
 
 export function getLobbyVisible(): boolean {

@@ -1,4 +1,5 @@
-import type { BooleanSetting, OptionsConfig } from './bars';
+import type { BooleanSetting, LabeledOptionsConfig, OptionsConfig } from './bars';
+import type { TerrainShape } from './terrain';
 
 export type UnitToggleConfig = {
   readonly shortName: string;
@@ -13,4 +14,8 @@ export type BattleBarConfig = {
   readonly hitForce: BooleanSetting;
   readonly ffAccelUnits: BooleanSetting;
   readonly ffAccelShots: BooleanSetting;
+  /** Shape of the central ripple zone (CENTER button group). */
+  readonly center: LabeledOptionsConfig<TerrainShape>;
+  /** Shape of the team-separator ridges (DIVIDERS button group). */
+  readonly dividers: LabeledOptionsConfig<TerrainShape>;
 };

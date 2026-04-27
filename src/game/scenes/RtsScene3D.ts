@@ -44,15 +44,12 @@ import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
   getAudioSmoothing,
-  getBottomBarsHeight,
   getCameraSmoothMode,
   setCurrentZoom,
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { getPlayerBaseAngle } from '../sim/spawn';
-import { getSurfaceHeight } from '../sim/Terrain';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { PanArrowOverlay } from '../hud/PanArrowOverlay';
+import { getTerrainHeight } from '../sim/Terrain';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
 import { SelectionLabel3D } from '../render3d/SelectionLabel3D';
@@ -63,6 +60,7 @@ import type {
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
 import { getPlayerPrimaryColor, setLocalPlayerForColors, setPlayerCountForColors } from '../sim/types';
+import { setTerrainTeamCount } from '../sim/Terrain';
 import type {
   Entity,
   EntityId,
@@ -153,7 +151,6 @@ export class RtsScene3D {
   // (scene.updateSelectionInfo reads these each frame).
   private currentBuildType: BuildingType | null = null;
   private currentDGunActive = false;
-  private panArrowOverlay: PanArrowOverlay | null = null;
   private healthBar3D: HealthBar3D | null = null;
   private waypoint3D: Waypoint3D | null = null;
   private selectionLabel3D: SelectionLabel3D | null = null;
@@ -303,6 +300,15 @@ export class RtsScene3D {
     // anti-red (180° = Cyan) so 2-team matches read as Red ↔ Cyan.
     setPlayerCountForColors(this.playerIds.length);
     setLocalPlayerForColors(this.localPlayerId);
+    // Also seed the heightmap's team-separator count from the same
+    // source. The host's GameServer constructor sets this too, but
+    // remote clients don't construct a GameServer locally — without
+    // this call the joiner's `getTerrainHeight` would default to 0
+    // separator ridges (or carry over the demo's count) and the
+    // baked tile mesh would diverge from the host's. Setting it on
+    // EVERY scene init makes the local Terrain module agree with
+    // the lobby's player count regardless of role.
+    setTerrainTeamCount(this.playerIds.length);
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;
@@ -453,11 +459,17 @@ export class RtsScene3D {
       () => this.captureTileRenderer.getMesh(),
     );
     this.threeApp.orbit.setCursorPicker((cx, cy) => this.cursorGround.pickWorld(cx, cy));
-    // Terrain clearance: feed the orbit camera the canonical
-    // heightmap sampler so the camera can never dip below the
-    // ground. Cheap analytical lookup — no raycast per frame.
+    // Camera-clearance sampler — sample the RAW carved heightmap
+    // (`getTerrainHeight`) instead of `getSurfaceHeight`. The
+    // surface variant clamps up to WATER_LEVEL because that's what
+    // UNITS walk on; using it for the camera made the water plane
+    // an artificial floor for zoom-in (camera couldn't dip below
+    // water + clearance, even though the real basin extends down
+    // to TILE_FLOOR_Y). Raw terrain lets the player zoom toward
+    // the actual lake bed; the heightmap's own TILE_FLOOR_Y clamp
+    // is the true world floor.
     this.threeApp.orbit.setTerrainSampler((x, z) =>
-      getSurfaceHeight(x, z, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE)
+      getTerrainHeight(x, z, this.mapWidth, this.mapHeight)
     );
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(this.threeApp.world);
@@ -467,18 +479,8 @@ export class RtsScene3D {
     this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
     this.smokeTrailRenderer = new SmokeTrail3D(this.threeApp.world);
 
-    // Shared pan-direction arrow (same DOM/SVG overlay the 2D path uses).
     const canvasParent = this.threeApp.canvas.parentElement;
     if (canvasParent) {
-      this.panArrowOverlay = new PanArrowOverlay(canvasParent, () => ({
-        top: 50,
-        bottom: getBottomBarsHeight(),
-      }));
-      const overlay = this.panArrowOverlay;
-      this.threeApp.orbit.setOnPanState(
-        (dirX, dirY, intensity) => overlay.set(dirX, dirY, intensity),
-      );
-
       // HUD elements live in the 3D scene now: pooled sprites + line
       // buffers parented to the world group so they get full GPU
       // depth-occlusion against the terrain (a unit behind a hill
@@ -944,25 +946,41 @@ export class RtsScene3D {
       // from the entity if it's still in view state; otherwise synthesize
       // a generic fallback so debris still fires.
       let ctx = event.deathContext;
-      if (!ctx && event.entityId !== undefined) {
-        const ent = this.clientViewState.getEntity(event.entityId);
-        if (ent) {
-          const pid = ent.ownership?.playerId;
-          const tcol = getPlayerPrimaryColor(pid);
-          ctx = {
-            unitVel: {
-              x: ent.unit?.velocityX ?? 0,
-              y: ent.unit?.velocityY ?? 0,
-            },
-            hitDir: { x: 0, y: 0 },
-            projectileVel: { x: 0, y: 0 },
-            attackMagnitude: 25,
-            radius: ent.unit?.unitRadiusCollider.shot ?? 15,
-            color: tcol,
-            unitType: ent.unit?.unitType,
-            rotation: ent.transform.rotation,
-          };
-        }
+      // The entity may already be gone from view state if the death
+      // event is processed after the snapshot that removed it. We
+      // look it up either to synthesize a missing context (legacy
+      // path) OR — when the server-supplied context is missing
+      // turret poses — to enrich it with the live per-turret yaw /
+      // pitch so debris cylinders spawn where the actual barrels
+      // were pointing at death.
+      const ent = event.entityId !== undefined
+        ? this.clientViewState.getEntity(event.entityId)
+        : undefined;
+      if (!ctx && ent) {
+        const pid = ent.ownership?.playerId;
+        const tcol = getPlayerPrimaryColor(pid);
+        ctx = {
+          unitVel: {
+            x: ent.unit?.velocityX ?? 0,
+            y: ent.unit?.velocityY ?? 0,
+          },
+          hitDir: { x: 0, y: 0 },
+          projectileVel: { x: 0, y: 0 },
+          attackMagnitude: 25,
+          radius: ent.unit?.unitRadiusCollider.shot ?? 15,
+          color: tcol,
+          unitType: ent.unit?.unitType,
+          rotation: ent.transform.rotation,
+        };
+      }
+      if (ctx && ent && !ctx.turretPoses && ent.turrets && ent.turrets.length > 0) {
+        ctx = {
+          ...ctx,
+          turretPoses: ent.turrets.map((t) => ({
+            rotation: t.rotation,
+            pitch: t.pitch,
+          })),
+        };
       }
       if (!ctx) {
         // Entity already gone and no server-supplied context — synthesize a
@@ -1258,9 +1276,6 @@ export class RtsScene3D {
   public shutdown(opts: { keepConnection?: boolean } = {}): void {
     this.inputManager?.destroy();
     this.inputManager = null;
-    this.threeApp.orbit.setOnPanState(undefined);
-    this.panArrowOverlay?.destroy();
-    this.panArrowOverlay = null;
     this.healthBar3D?.destroy();
     this.healthBar3D = null;
     this.waypoint3D?.destroy();

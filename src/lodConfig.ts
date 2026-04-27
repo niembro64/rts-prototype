@@ -23,7 +23,7 @@ export const LOD_SIGNALS_ENABLED = {
   zoom: true,
   tps: true,
   fps: true,
-  units: true,
+  units: false,
 } as const;
 
 // =============================================================================

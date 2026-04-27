@@ -10,6 +10,7 @@ import {
 } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { getPlayerBaseAngle } from '../sim/spawn';
+import { isFarFromWater } from '../sim/Terrain';
 
 // Available unit types for background spawning (excludes commander)
 export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];
@@ -158,18 +159,35 @@ export function spawnBackgroundUnitsStandalone(
     // opposite point through the center, so the units from every team
     // intermix on launch and converge through the middle — the
     // characteristic demo-battle clash.
+    //
+    // Water exclusion: each candidate (x, y) is rejection-sampled
+    // against `isFarFromWater`. After centerSpawnWaterMaxAttempts
+    // failures the unit is skipped — the central disk is the SAME
+    // sample area as before, just with the wet portion carved out.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * mapHeight;
     const totalPerPlayer = DEMO_CONFIG.centerSpawnPerPlayer;
+    const waterBuffer = DEMO_CONFIG.centerSpawnWaterBufferPx;
+    const maxAttempts = DEMO_CONFIG.centerSpawnWaterMaxAttempts;
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = (p + 1) as PlayerId;
       const pUnits = world.getUnitsByPlayer(playerId).length;
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
-        const spawnAngle = Math.random() * Math.PI * 2;
-        const spawnDist = Math.sqrt(Math.random()) * centerRadius;
-        const spawnX = cx + Math.cos(spawnAngle) * spawnDist;
-        const spawnY = cy + Math.sin(spawnAngle) * spawnDist;
+        let spawnX = 0;
+        let spawnY = 0;
+        let found = false;
+        for (let k = 0; k < maxAttempts; k++) {
+          const spawnAngle = Math.random() * Math.PI * 2;
+          const spawnDist = Math.sqrt(Math.random()) * centerRadius;
+          spawnX = cx + Math.cos(spawnAngle) * spawnDist;
+          spawnY = cy + Math.sin(spawnAngle) * spawnDist;
+          if (isFarFromWater(spawnX, spawnY, mapWidth, mapHeight, waterBuffer)) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) continue;
 
         // Fight waypoint = diametrically opposite point through center.
         const targetX = cx - (spawnX - cx);

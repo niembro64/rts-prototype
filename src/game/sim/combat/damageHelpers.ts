@@ -86,6 +86,15 @@ export function buildUnitDeathEvent(
   const radius = target?.unit?.unitRadiusCollider.shot ?? 15;
   const unitType = target?.unit?.unitType;
   const rotation = target?.transform.rotation ?? 0;
+  // Per-turret yaw + pitch at death — Debris3D rotates each barrel
+  // template by these so the cylinder spawns where the live mesh
+  // was, not at the chassis-aligned default. Captured here on the
+  // authoritative side so remote clients don't have to rely on the
+  // entity still being present in their view state.
+  const turretPoses = target?.turrets?.map((t) => ({
+    rotation: t.rotation,
+    pitch: t.pitch,
+  }));
   // ctx present → rich directional context from the killing blow.
   // ctx absent → synthesize a neutral one so the renderer still fires
   //   material debris (splash kills, DoT, cleanup-pass kills).
@@ -99,6 +108,7 @@ export function buildUnitDeathEvent(
         color: playerColor,
         unitType,
         rotation,
+        turretPoses,
       }
     : {
         unitVel,
@@ -109,6 +119,7 @@ export function buildUnitDeathEvent(
         color: playerColor,
         unitType,
         rotation,
+        turretPoses,
       };
   return {
     type: 'death',

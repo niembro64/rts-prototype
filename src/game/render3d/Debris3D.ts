@@ -327,11 +327,49 @@ export class Debris3D {
     // contrasting tint later.)
     const rendererId = bp.renderer ?? 'arachnid';
     const bodyTopY = getBodyTopY(rendererId, r);
-    for (const mount of bp.turrets) {
+
+    // Each barrel template is built in chassis-local coords assuming
+    // the turret was aimed straight ahead (yaw=0, pitch=0). At death
+    // we want every cylinder to spawn where it physically WAS — so
+    // we rotate its endpoint offsets around the turret mount by the
+    // live (chassisLocalYaw, pitch) before emitting. World yaw on
+    // the sim side is `t.rotation`; chassis-local = world − body
+    // yaw. Sim convention: +X forward, +Y left, +Z up. Yaw rotates
+    // around +Z, pitch lifts +X toward +Z (rotation around -Y).
+    const bodyYaw = ctx.rotation ?? 0;
+    const rotateBarrelOffset = (
+      dx: number, dy: number, dz: number,
+      chassisYaw: number, pitch: number,
+    ): { x: number; y: number; z: number } => {
+      const cP = Math.cos(pitch);
+      const sP = Math.sin(pitch);
+      // Pitch (lifts +X toward +Z, leaves +Y untouched).
+      const px = dx * cP - dz * sP;
+      const py = dy;
+      const pz = dx * sP + dz * cP;
+      const cY = Math.cos(chassisYaw);
+      const sY = Math.sin(chassisYaw);
+      // Yaw (rotation around +Z, sweeps +X toward +Y).
+      return {
+        x: px * cY - py * sY,
+        y: px * sY + py * cY,
+        z: pz,
+      };
+    };
+
+    for (let ti = 0; ti < bp.turrets.length; ti++) {
+      const mount = bp.turrets[ti];
       let tb;
       try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
       const tox = mount.offsetX;
       const toz = mount.offsetY;
+      // Live turret pose at death (when supplied by the death event
+      // handler). Without it we fall back to chassis-aligned, which
+      // is only correct when the turret happened to be facing
+      // forward at death.
+      const pose = ctx.turretPoses?.[ti];
+      const chassisYaw = pose ? pose.rotation - bodyYaw : 0;
+      const pitch = pose ? pose.pitch : 0;
 
       // Per-turret head radius. Each turret column is 2·headRadius tall:
       // sphere bottom touches chassis top, sphere top is the highest point
@@ -374,18 +412,34 @@ export class Debris3D {
             }
           } catch { /* unknown shot id — fall through to barrelThickness */ }
         }
+        // Each barrel is built as a chassis-aligned segment from
+        // (baseDx, baseDy, baseDz) to (tipDx, tipDy, tipDz) in
+        // local-to-mount sim coords (dx along default firing axis,
+        // dy lateral, dz vertical orbit). rotateBarrelOffset rotates
+        // the endpoint by the live (chassisYaw, pitch) so the
+        // emitted cylinder lands at the world pose its live mesh had.
+        const emitBarrel = (
+          baseDx: number, baseDy: number, baseDz: number,
+          tipDx: number, tipDy: number, tipDz: number,
+          thick: number,
+        ): void => {
+          const a = rotateBarrelOffset(baseDx, baseDy, baseDz, chassisYaw, pitch);
+          const b = rotateBarrelOffset(tipDx, tipDy, tipDz, chassisYaw, pitch);
+          out.push({
+            shape: 'cyl',
+            ax: tox + a.x, ay: shotHeight + a.z, az: toz + a.y,
+            bx: tox + b.x, by: shotHeight + b.z, bz: toz + b.y,
+            thickness: thick,
+            color: BARREL_COLOR,
+          });
+        };
+
         if (bs.type === 'simpleSingleBarrel') {
           const len = r * bs.barrelLength;
           if (len < 1) continue;
           const diameter = (shotWidth ?? bs.barrelThickness ?? BARREL_MIN_THICKNESS);
           const thick = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
-          out.push({
-            shape: 'cyl',
-            ax: tox, ay: shotHeight, az: toz,
-            bx: tox + len, by: shotHeight, bz: toz,
-            thickness: thick,
-            color: BARREL_COLOR,
-          });
+          emitBarrel(0, 0, 0, len, 0, 0, thick);
         } else if (bs.type === 'simpleMultiBarrel') {
           // Parallel cluster of cylinders — base orbit = tip orbit.
           const len = r * bs.barrelLength;
@@ -394,17 +448,15 @@ export class Debris3D {
           const thick = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
           const n = bs.barrelCount;
           const orbit = bs.orbitRadius * r;
+          // Renderer's `oy` is along three.js Y (vertical = sim Z),
+          // `oz` is along three.js Z (lateral = sim Y). Map both
+          // accordingly so the rotated debris cylinders trace the
+          // same orbit the live render did.
           for (let i = 0; i < n; i++) {
             const a = ((i + 0.5) / n) * Math.PI * 2;
-            const oy = Math.cos(a) * orbit;
-            const oz = Math.sin(a) * orbit;
-            out.push({
-              shape: 'cyl',
-              ax: tox,       ay: shotHeight + oy, az: toz + oz,
-              bx: tox + len, by: shotHeight + oy, bz: toz + oz,
-              thickness: thick,
-              color: BARREL_COLOR,
-            });
+            const orbVert = Math.cos(a) * orbit; // sim Z
+            const orbLat = Math.sin(a) * orbit;  // sim Y
+            emitBarrel(0, orbLat, orbVert, len, orbLat, orbVert, thick);
           }
         } else if (bs.type === 'coneMultiBarrel') {
           // Cone cluster — base sits at baseOrbit, tip splays out at
@@ -427,13 +479,11 @@ export class Debris3D {
             const a = ((i + 0.5) / n) * Math.PI * 2;
             const cosA = Math.cos(a);
             const sinA = Math.sin(a);
-            out.push({
-              shape: 'cyl',
-              ax: tox,       ay: shotHeight + cosA * baseOrbitR, az: toz + sinA * baseOrbitR,
-              bx: tox + len, by: shotHeight + cosA * tipOrbitR,  bz: toz + sinA * tipOrbitR,
-              thickness: thick,
-              color: BARREL_COLOR,
-            });
+            emitBarrel(
+              0, sinA * baseOrbitR, cosA * baseOrbitR,
+              len, sinA * tipOrbitR, cosA * tipOrbitR,
+              thick,
+            );
           }
         }
       }
@@ -452,13 +502,23 @@ export class Debris3D {
         const mirrorH = Math.max(panelTop - MIRROR_BASE_Y, 1);
         const panelCenterY = MIRROR_BASE_Y + mirrorH / 2;
         const side = mirrorH;
+        // Mirror panels track the host turret's yaw — when the mirror
+        // is aimed off the chassis +X, every panel pivots around the
+        // mount with it. Rotate each panel offset by chassisYaw and
+        // bake the same yaw into the debris box's `yaw` so the slab
+        // tumbles in the orientation it had at death (not the
+        // chassis-aligned default).
+        const cY = Math.cos(chassisYaw);
+        const sY = Math.sin(chassisYaw);
         for (const panel of tb.mirrorPanels) {
+          const px = panel.offsetX;
+          const py = panel.offsetY;
           out.push({
             shape: 'box',
-            x: tox + panel.offsetX,
+            x: tox + px * cY - py * sY,
             y: panelCenterY,
-            z: toz + panel.offsetY,
-            yaw: -(panel.angle + Math.PI / 2),
+            z: toz + px * sY + py * cY,
+            yaw: -(panel.angle + Math.PI / 2) + chassisYaw,
             sx: side,
             sy: side,
             sz: 1,

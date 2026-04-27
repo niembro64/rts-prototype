@@ -20,8 +20,11 @@ import {
   loadStoredFfAccelUnits,
   loadStoredFfAccelShots,
   loadStoredDemoGrid,
+  loadStoredTerrainCenter,
+  loadStoredTerrainDividers,
   getDefaultDemoUnits,
 } from '../../battleBarConfig';
+import { setTerrainCenterShape, setTerrainDividersShape } from '../sim/Terrain';
 import type { PlayerId } from '../sim/types';
 import type { GameInstance } from '@/types/game';
 
@@ -47,6 +50,15 @@ export async function createBackgroundBattle(
   // of truth controls how many teams the demo battle has.
   const demoPlayerIds: PlayerId[] = [];
   for (let i = 1; i <= DEMO_CONFIG.playerCount; i++) demoPlayerIds.push(i as PlayerId);
+
+  // Apply the host's terrain-shape choice BEFORE constructing the
+  // GameServer. The constructor calls spawnInitialBases (which samples
+  // the heightmap to skip building placements over water) and the
+  // renderer bakes its tile mesh once when the scene is created — both
+  // must read the current shape, not the module's compile-time
+  // default.
+  setTerrainCenterShape(loadStoredTerrainCenter());
+  setTerrainDividersShape(loadStoredTerrainDividers());
 
   // Restore stored demo unit selection (fall back to config defaults).
   // We resolve this BEFORE creating the GameServer so the constructor's

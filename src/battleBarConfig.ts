@@ -1,4 +1,5 @@
 import type { BattleBarConfig } from './types/battle';
+import type { TerrainShape } from './types/terrain';
 import { persist, persistJson, readPersisted } from './persistence';
 
 export const BATTLE_CONFIG = {
@@ -33,6 +34,29 @@ export const BATTLE_CONFIG = {
   hitForce: { default: false },
   ffAccelUnits: { default: false },
   ffAccelShots: { default: true },
+  // Terrain shape — applied at game-construction time via
+  // setTerrainCenterShape / setTerrainDividersShape (Terrain.ts).
+  // Default 'lake' for both: the central basin floods to a body of
+  // water and the team-separator slices become trenches between
+  // teams. The host's choice is read from localStorage when the
+  // demo battle starts and again when the host launches the real
+  // battle.
+  center: {
+    default: 'lake',
+    options: [
+      { value: 'lake', label: 'LAKE' },
+      { value: 'mountain', label: 'MOUNTAIN' },
+      { value: 'flat', label: 'FLAT' },
+    ],
+  },
+  dividers: {
+    default: 'lake',
+    options: [
+      { value: 'lake', label: 'LAKES' },
+      { value: 'mountain', label: 'MOUNTAINS' },
+      { value: 'flat', label: 'FLAT' },
+    ],
+  },
 } as const satisfies BattleBarConfig;
 
 // Default caps per mode (must be values from BATTLE_CONFIG.cap.options)
@@ -50,6 +74,8 @@ const STORAGE_FIRING_FORCE = 'rts-firing-force';
 const STORAGE_HIT_FORCE = 'rts-hit-force';
 const STORAGE_FF_ACCEL_UNITS = 'rts-ff-accel-units';
 const STORAGE_FF_ACCEL_SHOTS = 'rts-ff-accel-shots';
+const STORAGE_TERRAIN_CENTER = 'rts-terrain-center';
+const STORAGE_TERRAIN_DIVIDERS = 'rts-terrain-dividers';
 
 /** "true"/"false" → boolean, null otherwise. Keeps each loader a
  *  one-liner now that the try/catch is pushed into readPersisted. */
@@ -158,4 +184,30 @@ export function loadStoredFfAccelShots(): boolean {
 
 export function saveFfAccelShots(enabled: boolean): void {
   persist(STORAGE_FF_ACCEL_SHOTS, String(enabled));
+}
+
+/** Validate a string against the known TerrainShape values. Anything
+ *  else (corrupted localStorage, removed value) returns null so the
+ *  caller falls back to the config default. */
+function parseTerrainShape(s: string | null): TerrainShape | null {
+  if (s === 'lake' || s === 'mountain' || s === 'flat') return s;
+  return null;
+}
+
+export function loadStoredTerrainCenter(): TerrainShape {
+  return parseTerrainShape(readPersisted(STORAGE_TERRAIN_CENTER))
+    ?? BATTLE_CONFIG.center.default;
+}
+
+export function saveTerrainCenter(shape: TerrainShape): void {
+  persist(STORAGE_TERRAIN_CENTER, shape);
+}
+
+export function loadStoredTerrainDividers(): TerrainShape {
+  return parseTerrainShape(readPersisted(STORAGE_TERRAIN_DIVIDERS))
+    ?? BATTLE_CONFIG.dividers.default;
+}
+
+export function saveTerrainDividers(shape: TerrainShape): void {
+  persist(STORAGE_TERRAIN_DIVIDERS, shape);
 }

@@ -19,6 +19,7 @@
 import type { Entity, BuildingType } from '../../sim/types';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
+import { isWaterAt } from '../../sim/Terrain';
 
 /** Returns true if a building of `candidateType` placed with its center
  *  at (centerX, centerY) would fit in the map and not overlap any
@@ -46,6 +47,19 @@ export function canPlaceBuildingAt(
     candRight > mapWidth || candBottom > mapHeight
   ) {
     return false;
+  }
+
+  // Buildings can't sit on water — sample the four corners and the
+  // center; if any is over water, the cell is impassable.
+  const samples: [number, number][] = [
+    [candLeft + 1, candTop + 1],
+    [candRight - 1, candTop + 1],
+    [candLeft + 1, candBottom - 1],
+    [candRight - 1, candBottom - 1],
+    [centerX, centerY],
+  ];
+  for (const [sx, sy] of samples) {
+    if (isWaterAt(sx, sy, mapWidth, mapHeight)) return false;
   }
 
   for (const b of buildings) {

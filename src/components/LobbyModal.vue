@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
+import { BATTLE_CONFIG } from '../battleBarConfig';
+import type { TerrainShape } from '@/types/terrain';
 
 export type { LobbyPlayer } from '@/types/ui';
 import type { LobbyPlayer } from '@/types/ui';
@@ -13,6 +15,8 @@ const props = defineProps<{
   localPlayerId: PlayerId;
   error: string | null;
   isConnecting: boolean;
+  terrainCenter: TerrainShape;
+  terrainDividers: TerrainShape;
 }>();
 
 const emit = defineEmits<{
@@ -21,7 +25,25 @@ const emit = defineEmits<{
   (e: 'start'): void;
   (e: 'cancel'): void;
   (e: 'spectate'): void;
+  (e: 'setTerrainCenter', shape: TerrainShape): void;
+  (e: 'setTerrainDividers', shape: TerrainShape): void;
 }>();
+
+// Surface the labeled-options arrays to the template. The host
+// clicks one to pick the shape; non-hosts see the same UI but the
+// click handler is gated on isHost so only the host can change it.
+const centerOptions = BATTLE_CONFIG.center.options;
+const dividersOptions = BATTLE_CONFIG.dividers.options;
+
+function pickTerrainCenter(shape: TerrainShape): void {
+  if (!props.isHost) return;
+  emit('setTerrainCenter', shape);
+}
+
+function pickTerrainDividers(shape: TerrainShape): void {
+  if (!props.isHost) return;
+  emit('setTerrainDividers', shape);
+}
 
 const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 
@@ -194,6 +216,37 @@ const canJoin = computed(() => {
               <span v-if="player.playerId === localPlayerId" class="you-badge">YOU</span>
             </li>
           </ul>
+        </div>
+
+        <div class="terrain-section">
+          <div class="terrain-row">
+            <span class="terrain-label">CENTER:</span>
+            <div class="terrain-options">
+              <button
+                v-for="opt in centerOptions"
+                :key="opt.value"
+                class="terrain-btn"
+                :class="{ active: terrainCenter === opt.value }"
+                :disabled="!isHost"
+                :title="isHost ? `Set the central ripple to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                @click="pickTerrainCenter(opt.value)"
+              >{{ opt.label }}</button>
+            </div>
+          </div>
+          <div class="terrain-row">
+            <span class="terrain-label">DIVIDERS:</span>
+            <div class="terrain-options">
+              <button
+                v-for="opt in dividersOptions"
+                :key="opt.value"
+                class="terrain-btn"
+                :class="{ active: terrainDividers === opt.value }"
+                :disabled="!isHost"
+                :title="isHost ? `Set the team-separator ridges to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                @click="pickTerrainDividers(opt.value)"
+              >{{ opt.label }}</button>
+            </div>
+          </div>
         </div>
 
         <div v-if="error" class="error-message">{{ error }}</div>
@@ -534,6 +587,70 @@ const canJoin = computed(() => {
   font-size: 14px;
   color: #888;
   padding: 14px 20px;
+}
+
+.terrain-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 20px 0;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(68, 68, 170, 0.35);
+  border-radius: 8px;
+}
+
+.terrain-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-start;
+}
+
+.terrain-label {
+  font-family: monospace;
+  font-size: 13px;
+  color: #aaa;
+  width: 90px;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.terrain-options {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.terrain-btn {
+  flex: 1;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #444477;
+  border-radius: 6px;
+  color: #aaa;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  letter-spacing: 1px;
+}
+
+.terrain-btn:hover:not(:disabled):not(.active) {
+  background: rgba(68, 68, 170, 0.2);
+  border-color: #6666aa;
+  color: #ddd;
+}
+
+.terrain-btn.active {
+  background: rgba(74, 158, 255, 0.25);
+  border-color: #4a9eff;
+  color: #4a9eff;
+}
+
+.terrain-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .error-message {

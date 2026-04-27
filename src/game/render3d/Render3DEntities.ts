@@ -807,13 +807,28 @@ export class Render3DEntities {
       // shows its spin where it should be (not paused at last on-screen
       // position).
       this.advanceBarrelSpin(e, spinDt);
-      // RENDER scope gate — skip all per-frame work for units outside
-      // the camera rect. `seen` is still populated above so an off-
-      // scope unit isn't mistakenly removed from the mesh map. The
-      // mesh, if it exists, stays at its last-known pose; Three.js
-      // frustum-culls it so there's nothing visible anyway. When the
-      // unit re-enters scope the next frame's update repositions it.
-      if (!this.scope.inScope(e.transform.x, e.transform.y, 100)) continue;
+      // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME, scope or no scope.
+      // The unit group carries the chassis AND its child turret /
+      // mirror groups (both parented to yawGroup). Skipping the
+      // group-level position/yaw update for off-scope units would
+      // leave the whole rigid body — turrets included — frozen at
+      // its last on-screen pose; if the camera then panned to it
+      // before the next in-scope tick, the user would see a unit
+      // floating somewhere it isn't. Cheap to set unconditionally.
+      const inScope = this.scope.inScope(e.transform.x, e.transform.y, 100);
+      const existing = this.unitMeshes.get(e.id);
+      if (existing) {
+        const r0 = e.unit?.unitRadiusCollider.push ?? 0;
+        existing.group.position.set(e.transform.x, e.transform.z - r0, e.transform.y);
+        if (existing.yawGroup) existing.yawGroup.rotation.set(0, -e.transform.rotation, 0);
+      }
+      // The expensive per-frame work below (terrain normal, slope tilt,
+      // locomotion, mirror tracking, range rings, turret-aim math) IS
+      // scope-gated. Off-scope units keep their last-known turret yaw /
+      // pitch and last-known leg positions; three.js frustum-culls them
+      // so the staleness isn't visible until they come back into scope,
+      // at which point the next in-scope tick refreshes them.
+      if (!inScope) continue;
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of

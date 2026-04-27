@@ -42,7 +42,7 @@ import type {
 export const SERVER_SIM_LOD_SIGNALS_ENABLED = {
   tps: true,
   cpu: true,
-  units: true,
+  units: false,
 } as const;
 
 export const SERVER_SIM_DETAIL: ServerSimDetailTable = {

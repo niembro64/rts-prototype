@@ -1,3 +1,6 @@
+import type { TerrainShape } from '@/types/terrain';
+export type { TerrainShape } from '@/types/terrain';
+
 // Terrain — deterministic heightmap generator.
 //
 // Returns the ground elevation at any world (x, y). The world starts
@@ -40,27 +43,66 @@
  *  one canonical value. */
 export const TILE_FLOOR_Y = -800;
 
-/** Water surface elevation: midpoint between the world's "ground
- *  zero" (where buildings sit, terrain Y = 0 outside the ripple
- *  disc) and the bottom of the 3D tile blocks. Anywhere the
- *  heightmap dips below this level, water is what's actually
- *  visible (semi-transparent plane drawn by WaterRenderer3D), and
- *  units walk on top of it — `getSurfaceHeight` clamps to this
- *  value so physics treats the water surface as the ground. */
-export const WATER_LEVEL = (TILE_FLOOR_Y + 0) / 2;
+/** Where the water surface sits between the tile floor (0.0) and
+ *  ground level Y=0 (1.0). 0.5 → halfway between TILE_FLOOR_Y and
+ *  0, which is the historical hardcoded value. 0.0 disables water
+ *  entirely (the surface coincides with the tile floor — no terrain
+ *  ever dips below it, so isWaterAt is always false). 1.0 floods up
+ *  to the ground plane. Read once at module load — runtime tweaks
+ *  to the config should reload the page so client and server agree
+ *  on the same surface. */
+export const WATER_LEVEL_FRACTION = 0.4;
 
-/** Amplitude of the central ripple zone — the cosmetic surface
- *  variation in the middle of the map. Negative carves the ripple
- *  DOWNWARD (a basin / crater); positive lifts it. Independent of
- *  the team-separator amplitude so each can be tuned without
- *  affecting the other. */
-const MOUNTAIN_RIPPLE_AMPLITUDE = -1000;
+/** Water surface elevation in sim units. Linear interpolation:
+ *  fraction=0 → TILE_FLOOR_Y, fraction=1 → 0. Anywhere the heightmap
+ *  dips below this level, water is what's actually visible
+ *  (semi-transparent plane drawn by WaterRenderer3D); units cannot
+ *  enter those cells — `isWaterAt` flags them as impassable so the
+ *  thrust-application step zeros horizontal force pointing into
+ *  water. */
+export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
-/** Peak amplitude of the team-separator ridges — the radial
- *  barriers between team areas. Negative carves trenches between
- *  teams (the barriers are below ground); positive raises walls.
- *  Independent of the central-ripple amplitude. */
-const MOUNTAIN_SEPARATOR_AMPLITUDE = -2000;
+/** |amplitude| in sim units when shape is 'lake' or 'mountain'.
+ *  Magnitude only — the sign is picked from the shape. Tuned so a
+ *  lake is deep enough to flood meaningfully under WATER_LEVEL=0.5
+ *  and a mountain is tall enough to actually block sightlines. */
+const TERRAIN_SHAPE_MAGNITUDE = 750;
+
+/** Mutable amplitude for the central ripple zone. Negative = basin
+ *  (lake), positive = peak (mountain), 0 = flat. Default 'lake'.
+ *  Set via `setTerrainCenterShape`; read on the heightmap hot path
+ *  by `getTerrainHeight`. */
+let mountainRippleAmplitude = -TERRAIN_SHAPE_MAGNITUDE;
+
+/** Mutable peak amplitude for the team-separator ridges. Same
+ *  sign convention as the central ripple. Default 'lake'. Set via
+ *  `setTerrainDividersShape`. */
+let mountainSeparatorAmplitude = -TERRAIN_SHAPE_MAGNITUDE;
+
+function shapeToAmplitude(shape: TerrainShape): number {
+  switch (shape) {
+    case 'lake': return -TERRAIN_SHAPE_MAGNITUDE;
+    case 'mountain': return TERRAIN_SHAPE_MAGNITUDE;
+    case 'flat': return 0;
+    default: throw new Error(`Unknown terrain shape: ${shape as string}`);
+  }
+}
+
+/** Apply the host's CENTER choice. Must be called BEFORE
+ *  GameServer construction (which spawns buildings using
+ *  getTerrainHeight) and before the renderer bakes its tile
+ *  geometry. Changing it mid-game leaves stale meshes in the
+ *  scene; the lobby restarts the background battle to pick up a
+ *  new value. */
+export function setTerrainCenterShape(shape: TerrainShape): void {
+  mountainRippleAmplitude = shapeToAmplitude(shape);
+}
+
+/** Apply the host's DIVIDERS choice. Same lifecycle constraints
+ *  as `setTerrainCenterShape`. */
+export function setTerrainDividersShape(shape: TerrainShape): void {
+  mountainSeparatorAmplitude = shapeToAmplitude(shape);
+}
 
 // Ripples occupy this fraction of `min(mapWidth, mapHeight)` from
 // the map center outward. With a 2000×2000 map and 0.25, the
@@ -140,7 +182,7 @@ export function getTerrainHeight(
     const c = Math.sin((dx + dy) / RIPPLE_W3);
     const sum = (a * 0.5 + b * 0.3 + c * 0.2);
     const norm = (sum + 1) * 0.5;
-    ripple = MOUNTAIN_RIPPLE_AMPLITUDE * fade * norm;
+    ripple = mountainRippleAmplitude * fade * norm;
   }
 
   // ── Team-separation ridge component ─────────────────────────────
@@ -178,7 +220,7 @@ export function getTerrainHeight(
       // amplitude from the outer ring of the starting circle".
       const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - SPAWN_MARGIN;
       const radT = spawnRadius > 0 ? Math.min(dist / spawnRadius, 1) : 0;
-      ridge = MOUNTAIN_SEPARATOR_AMPLITUDE * angFalloff * radT;
+      ridge = mountainSeparatorAmplitude * angFalloff * radT;
     }
   }
 
@@ -318,4 +360,41 @@ export function getSurfaceHeight(
   _cellSize: number,
 ): number {
   return Math.max(WATER_LEVEL, getTerrainHeight(x, z, mapWidth, mapHeight));
+}
+
+/** True iff (x, z) is over water — i.e. the raw terrain dips below
+ *  the water surface. Used by movement and building placement to
+ *  treat water cells as impassable. With WATER_LEVEL_FRACTION=0
+ *  (water at the tile floor) this always returns false. */
+export function isWaterAt(
+  x: number, z: number,
+  mapWidth: number, mapHeight: number,
+): boolean {
+  return getTerrainHeight(x, z, mapWidth, mapHeight) < WATER_LEVEL;
+}
+
+/** Number of cardinal points sampled around the candidate when
+ *  testing water clearance. 8 catches concave shorelines that a
+ *  single-point check at the center would skip. */
+const WATER_CLEARANCE_SAMPLES = 8;
+
+/** True iff (x, z) is on dry land AND no point within `bufferPx`
+ *  of (x, z) is water. Used by the demo-game spawner so initial
+ *  units land safely away from the shoreline (the unit's collision
+ *  radius + a little slack). With WATER_LEVEL_FRACTION=0 this
+ *  collapses to "always true" since `isWaterAt` is always false. */
+export function isFarFromWater(
+  x: number, z: number,
+  mapWidth: number, mapHeight: number,
+  bufferPx: number,
+): boolean {
+  if (isWaterAt(x, z, mapWidth, mapHeight)) return false;
+  if (bufferPx <= 0) return true;
+  for (let i = 0; i < WATER_CLEARANCE_SAMPLES; i++) {
+    const a = (i / WATER_CLEARANCE_SAMPLES) * Math.PI * 2;
+    const px = x + Math.cos(a) * bufferPx;
+    const pz = z + Math.sin(a) * bufferPx;
+    if (isWaterAt(px, pz, mapWidth, mapHeight)) return false;
+  }
+  return true;
 }
