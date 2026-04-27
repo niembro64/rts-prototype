@@ -108,13 +108,13 @@ export type Body3D = {
 // explosive separation — acceptable for an RTS where units jostle.
 const SPHERE_ITERATIONS = 4;
 
-// Tolerance band for "is this body on the ground?" — small enough
-// that everyday slope driving snaps cleanly to the surface, large
-// enough that one tick's gravity + thrust integration drift can't
-// flicker a grounded body to airborne and back. Above this band the
-// body is treated as airborne (knockback from an explosion etc.) and
-// gravity takes over uncontested.
-const GROUND_TOLERANCE = 1.5;
+// Floor used by resolveGroundContacts as a safety net when something
+// (sphere-sphere push, sphere-cuboid push, map clamp) leaves a unit
+// below the surface — we snap up. Per-tick driving on slopes is
+// handled inside `integrate` via a hard surface-stick model that
+// keeps every grounded unit at z = surface every tick, so this
+// resolver no longer needs a tolerance band; it's a backstop.
+const GROUND_PENETRATION_EPS = 1e-3;
 
 // Broad-phase cell size for sphere-sphere contact checks. Two bodies
 // in the same cell or any of the 8 neighbors are pair-tested; pairs
@@ -305,108 +305,139 @@ export class PhysicsEngine3D {
     this.accelZ.clear();
   }
 
-  /** Explicit-Euler integration with surface-constraint forces.
+  /** Explicit-Euler integration with HARD surface-stick for spheres.
    *
-   *  Per body per tick:
-   *   1. If GROUNDED, the slope acts as a constraint:
-   *      a) Project EXISTING velocity onto the slope tangent plane.
-   *         This handles surface changes between ticks — peaks,
-   *         valleys, edges — where the carried-over velocity from
-   *         a previous slope no longer matches the local tangent.
-   *         Without this step, a unit cresting a hill keeps its
-   *         climbing +vz and flies off the peak.
-   *      b) Project the accel (external + gravity) onto the same
-   *         tangent plane. Gravity's downhill component stays;
-   *         the perpendicular component is absorbed by the
-   *         implicit normal force. Same for thrust's climb
-   *         component when going UP a slope.
-   *   2. Velocity += accel · dt. Already-tangent v plus tangent
-   *      accel stays tangent.
-   *   3. Damp the HORIZONTAL components of velocity (frictionAir =
-   *      ground drag). vz is governed by the constraint above.
-   *   4. Position += velocity · dt — moves along the tangent, so
-   *      b.z stays at restingZ within numerical precision.
+   *  Each unit is treated as a vehicle constrained to the ground —
+   *  its position is always exactly on the surface and its velocity
+   *  is always exactly tangent to it. There's no tolerance band and
+   *  no airborne flag for ground units; the only failure mode is a
+   *  near-vertical local surface (n.z → 0), which we guard against
+   *  by zeroing vz instead of dividing.
    *
-   *  Knockback / explosions: in this strict-glue model, a unit on
-   *  the surface can't be launched into the air by an instant
-   *  velocity impulse — the projection in step 1a kills the
-   *  upward component on the next tick. That's intentional for an
-   *  RTS where everything stays on the ground. When aircraft come
-   *  online they'll have a separate non-grounded force pipeline. */
+   *  Per sphere per tick:
+   *   1. Project existing velocity onto the local tangent at the
+   *      CURRENT position. Cleans up any drift that built up from
+   *      the previous tick's tangent recompute landing on a
+   *      slightly different slope angle.
+   *   2. Project accel (gravity + thrust + external) onto the same
+   *      tangent plane. Gravity's downhill component stays;
+   *      perpendicular is absorbed by the implicit normal force.
+   *      Same for thrust's slope-aligned component.
+   *   3. Velocity += accel · dt.
+   *   4. Damp the horizontal velocity components (ground drag).
+   *   5. HORIZONTAL position update only: x += vx·dt, y += vy·dt.
+   *      Don't touch z yet — the tangent is only valid at the OLD
+   *      position, so straight-line tangent integration through z
+   *      drifts off curved surfaces (this was the "flies off the
+   *      crest of a hill" bug).
+   *   6. Snap z to the new surface: z = ground(x_new, y_new) +
+   *      radius. The unit ALWAYS sits on the ground, regardless of
+   *      slope curvature or speed.
+   *   7. Recompute vz from the slope-tangent constraint at the new
+   *      position: v · n_new = 0 → vz = −(vx·n.x + vy·n.y) / n.z.
+   *      Velocity is now tangent to the new surface, ready for the
+   *      next tick's projection.
+   *
+   *  Steep slopes are stable: even a 70° slope (n.z ≈ 0.34, sin ≈
+   *  0.94) just produces a vz roughly 2.8× the horizontal speed,
+   *  which is then snapped to the surface and re-tangent-aligned
+   *  on the next tick. Cresting a hill is stable too: step 6's
+   *  snap absorbs the curvature drift.
+   *
+   *  Knockback / explosions: this strict-glue model can't launch a
+   *  unit into the air via an instantaneous velocity or force
+   *  impulse — the projection in step 1/2 kills any normal-direction
+   *  component. That matches the RTS-where-everything-stays-on-the-
+   *  ground design intent; when aircraft come online they'll need
+   *  their own non-grounded integration pipeline. */
   private integrate(dtSec: number): void {
     for (const b of this.dynamicBodies) {
       let ax = this.accelX.get(b) ?? 0;
       let ay = this.accelY.get(b) ?? 0;
       let az = (this.accelZ.get(b) ?? 0) - GRAVITY;
-      if (b.shape === 'sphere') {
-        const groundZ = this.getGroundZ(b.x, b.y);
-        const restingZ = groundZ + b.radius;
-        if (b.z <= restingZ + GROUND_TOLERANCE) {
-          const n = this.getGroundNormal(b.x, b.y);
-          // 1a) Project existing velocity onto slope tangent.
-          //     v ← v − (v · n) · n
-          const vDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
-          b.vx -= vDotN * n.nx;
-          b.vy -= vDotN * n.ny;
-          b.vz -= vDotN * n.nz;
-          // 1b) Project accel onto slope tangent.
-          //     a ← a − (a · n) · n
-          const aDotN = ax * n.nx + ay * n.ny + az * n.nz;
-          ax -= aDotN * n.nx;
-          ay -= aDotN * n.ny;
-          az -= aDotN * n.nz;
-        }
+
+      if (b.shape !== 'sphere') {
+        // Static cuboids never get here (isStatic skips), but for
+        // completeness any non-sphere dynamic body uses standard
+        // 3D Euler. No surface stick.
+        b.vx += ax * dtSec;
+        b.vy += ay * dtSec;
+        b.vz += az * dtSec;
+        const damp = Math.pow(1 - b.frictionAir, dtSec * 60);
+        b.vx *= damp;
+        b.vy *= damp;
+        b.x += b.vx * dtSec;
+        b.y += b.vy * dtSec;
+        b.z += b.vz * dtSec;
+        continue;
       }
+
+      // Sphere = unit. Hard ground stick.
+      // (1) project velocity onto tangent at current position.
+      const n0 = this.getGroundNormal(b.x, b.y);
+      const vDotN0 = b.vx * n0.nx + b.vy * n0.ny + b.vz * n0.nz;
+      b.vx -= vDotN0 * n0.nx;
+      b.vy -= vDotN0 * n0.ny;
+      b.vz -= vDotN0 * n0.nz;
+      // (2) project accel onto tangent.
+      const aDotN0 = ax * n0.nx + ay * n0.ny + az * n0.nz;
+      ax -= aDotN0 * n0.nx;
+      ay -= aDotN0 * n0.ny;
+      az -= aDotN0 * n0.nz;
+      // (3) velocity update.
       b.vx += ax * dtSec;
       b.vy += ay * dtSec;
       b.vz += az * dtSec;
-      // Horizontal-only ground drag.
+      // (4) horizontal drag.
       const damp = Math.pow(1 - b.frictionAir, dtSec * 60);
       b.vx *= damp;
       b.vy *= damp;
+      // (5) horizontal position update only — z is owned by step 6.
       b.x += b.vx * dtSec;
       b.y += b.vy * dtSec;
-      b.z += b.vz * dtSec;
+      // (6) snap z to surface at the new (x, y). This is the line
+      //     that prevents flight on hill crests / steep climbs:
+      //     curvature drift gets absorbed every tick instead of
+      //     accumulating until the unit is "airborne" by tolerance.
+      b.z = this.getGroundZ(b.x, b.y) + b.radius;
+      // (7) recompute vz from the slope constraint at the new
+      //     position so velocity is tangent to wherever we just
+      //     landed. Near-vertical surfaces (n.z ≈ 0) would divide
+      //     by zero; clamp vz to 0 there. Horizontal speed is
+      //     preserved; vz becomes whatever the new slope demands.
+      const n1 = this.getGroundNormal(b.x, b.y);
+      if (Math.abs(n1.nz) > 1e-3) {
+        b.vz = -(b.vx * n1.nx + b.vy * n1.ny) / n1.nz;
+      } else {
+        b.vz = 0;
+      }
     }
   }
 
-  /** Ground contact: heightmap surface + velocity tangent constraint.
-   *
-   *  Each sphere samples the local surface (height + normal) under
-   *  its (x, y). The body is GROUNDED when its center is at or below
-   *  `restingZ + GROUND_TOLERANCE`; AIRBORNE otherwise. Knockback
-   *  that launches the body well above the surface (explosion blast
-   *  etc.) leaves it airborne so gravity + arc physics take over
-   *  naturally; everyday driving on the slope is grounded.
-   *
-   *  Grounded behavior:
-   *    1. Snap z to restingZ — no penetration, no float.
-   *    2. Project velocity onto the slope tangent plane:
-   *         v ← v − (v · n) · n
-   *       This eliminates the residual normal-direction velocity
-   *       that builds up from discrete-step gravity + thrust drift,
-   *       so units don't bob along slopes and don't launch off
-   *       slope transitions ("shoots into the sky going up, falls
-   *       back going down"). vz becomes whatever the slope demands
-   *       of the unit's (vx, vy) — exactly what a vehicle on a
-   *       road sees. */
+  /** Ground-penetration backstop. The integrator already keeps
+   *  every grounded sphere exactly on the surface (z = ground +
+   *  radius) every tick, so this resolver is only here to catch
+   *  cases where one of the LATER step phases pushes a unit below
+   *  ground — sphere-sphere push, sphere-cuboid push, or the map-
+   *  bounds clamp. If a unit ends up below the surface we lift it
+   *  back up and zero out any inward-normal velocity component so
+   *  the next integrate doesn't fight the surface. */
   private resolveGroundContacts(): void {
     for (const b of this.dynamicBodies) {
       if (b.shape !== 'sphere') continue;
       const groundZ = this.getGroundZ(b.x, b.y);
       const restingZ = groundZ + b.radius;
-      const heightAbove = b.z - restingZ;
-      if (heightAbove > GROUND_TOLERANCE) {
-        // Genuinely airborne — let gravity work.
-        continue;
-      }
-      // Grounded: snap z + project velocity onto slope tangent.
+      if (b.z >= restingZ - GROUND_PENETRATION_EPS) continue;
+      // Penetrated — lift up and re-tangent the velocity so it
+      // doesn't keep pushing through the surface next tick.
       b.z = restingZ;
       const n = this.getGroundNormal(b.x, b.y);
       const vDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
-      b.vx -= vDotN * n.nx;
-      b.vy -= vDotN * n.ny;
-      b.vz -= vDotN * n.nz;
+      if (vDotN < 0) {
+        b.vx -= vDotN * n.nx;
+        b.vy -= vDotN * n.ny;
+        b.vz -= vDotN * n.nz;
+      }
     }
   }
 
