@@ -602,33 +602,138 @@ export function updateLocomotion(
   }
 
   if (mesh.type === 'legs') {
-    // Legs are children of yawGroup now — same parent as wheels and
-    // treads — so the unit's position, surface tilt, and yaw are all
-    // inherited from the parent chain. Each leg is just a fixed
-    // arrangement in chassis-local coords; no world-space tracking,
-    // no walk cycle, no special case. Tilting and turning behave
-    // exactly like every other locomotion type.
-    void entity; void vx; void vy; void dtMs;
+    // Walk cycle in CHASSIS-LOCAL frame. Legs are children of
+    // yawGroup so the world-space "feet plant while the unit moves"
+    // gait of the original 2D port has been re-expressed as
+    // "feet drag BACKWARD in unit-local frame as the unit moves
+    // forward". The visual is identical (foot stays put against
+    // the ground while the chassis moves over it) but the math now
+    // lives in the same frame as the rest pose, the parent yaw +
+    // tilt come from the scene graph, and there is one update path.
+    //
+    // Rotate the WORLD velocity into chassis-local frame so the
+    // drag is applied along the unit's body axes:
+    //   v_local_sim = R(-yaw) · v_world_sim
+    // Then sim x → three.x, sim y → three.z (the existing handedness).
+    const yaw = entity.transform.rotation;
+    const cosYaw = Math.cos(yaw);
+    const sinYaw = Math.sin(yaw);
+    const vLocalForward = cosYaw * vx + sinYaw * vy;   // chassis +X
+    const vLocalLateral = -sinYaw * vx + cosYaw * vy;  // chassis +Y in sim → three +Z
+    const localSpeed = Math.hypot(vLocalForward, vLocalLateral);
+
     for (const leg of mesh.legs) {
       const c = leg.config;
-      // Rest-pose foot angle (relative to chassis forward). Right
-      // legs straddle the snap rest + trigger angles to spread the
-      // stance horizontally without animating the gait.
+      const tl = totalLegLength(c);
+      const restDistance = tl * c.snapDistanceMultiplier;
+      // Right-side legs straddle the snap rest + trigger angles so
+      // the gait alternates by side from the first frame.
       const initAngle = leg.side === 1
         ? (c.snapTargetAngle + c.snapTriggerAngle * Math.sign(c.snapTargetAngle)) / 2
         : c.snapTargetAngle;
-      const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
-      // Hip in chassis-local three.js coords (sim x → three.x,
-      // sim z (up) → three.y, sim y (lateral) → three.z).
+      // Hip in chassis-local three.js coords. (sim x → three.x,
+      // sim z (up) → three.y, sim y (lateral) → three.z.)
       const hipX = c.attachOffsetX;
       const hipY = leg.hipY;
       const hipZ = c.attachOffsetY;
-      // Foot at the chassis-local rest pose. The foot's vertical
-      // offset (FOOT_Y) is small — chassis-local Y=0 is the unit
-      // base, so feet sit just above the contact patch.
-      const footX = c.attachOffsetX + Math.cos(initAngle) * restDistance;
+
+      // First frame: seat the foot at its rest pose.
+      if (!leg.initialized) {
+        const sx = hipX + Math.cos(initAngle) * restDistance;
+        const sz = hipZ + Math.sin(initAngle) * restDistance;
+        leg.groundX = sx;
+        leg.groundZ = sz;
+        leg.startGroundX = sx;
+        leg.startGroundZ = sz;
+        leg.targetGroundX = sx;
+        leg.targetGroundZ = sz;
+        leg.initialized = true;
+      }
+
+      // Either: lerp the foot toward its snap target (mid-step), or
+      // drag the planted foot backward in chassis-local frame.
+      if (leg.isSliding) {
+        if (leg.lerpDuration <= 0) {
+          leg.groundX = leg.targetGroundX;
+          leg.groundZ = leg.targetGroundZ;
+          leg.isSliding = false;
+        } else {
+          leg.lerpProgress += dtMs / leg.lerpDuration;
+          if (leg.lerpProgress >= 1) {
+            leg.lerpProgress = 1;
+            leg.groundX = leg.targetGroundX;
+            leg.groundZ = leg.targetGroundZ;
+            leg.isSliding = false;
+          } else {
+            const t = easeOutCubic(leg.lerpProgress);
+            leg.groundX = leg.startGroundX + (leg.targetGroundX - leg.startGroundX) * t;
+            leg.groundZ = leg.startGroundZ + (leg.targetGroundZ - leg.startGroundZ) * t;
+          }
+        }
+      } else {
+        // Foot stays world-planted: in unit-local frame, drag opposite
+        // the unit's local velocity.
+        leg.groundX -= vLocalForward * dt;
+        leg.groundZ -= vLocalLateral * dt;
+      }
+
+      // Trigger conditions: too-stretched OR foot has rotated off
+      // its rest direction by more than snapTriggerAngle. Same logic
+      // as the world-frame version, but every quantity is in
+      // chassis-local coords now.
+      const dx = leg.groundX - hipX;
+      const dz = leg.groundZ - hipZ;
+      const distSq = dx * dx + dz * dz;
+      const extThresh = tl * c.extensionThreshold;
+      const distanceTriggered = distSq >= extThresh * extThresh;
+      const groundAngle = Math.atan2(dz, dx);
+      let angleDelta = groundAngle - initAngle;
+      while (angleDelta > Math.PI) angleDelta -= 2 * Math.PI;
+      while (angleDelta < -Math.PI) angleDelta += 2 * Math.PI;
+      const angleTriggered = Math.abs(angleDelta) > c.snapTriggerAngle;
+
+      if ((distanceTriggered || angleTriggered) && !leg.isSliding) {
+        leg.startGroundX = leg.groundX;
+        leg.startGroundZ = leg.groundZ;
+        if (distanceTriggered) {
+          // Over-extended — snap to the OPPOSITE side so the leg
+          // recovers through the hip rather than dragging further out.
+          const dist = Math.sqrt(distSq);
+          const oppX = dist > 1e-6 ? -dx / dist : Math.cos(initAngle);
+          const oppZ = dist > 1e-6 ? -dz / dist : Math.sin(initAngle);
+          leg.targetGroundX = hipX + oppX * restDistance;
+          leg.targetGroundZ = hipZ + oppZ * restDistance;
+        } else {
+          // Angle-triggered — return to the rest direction with a
+          // velocity bias so fast units stride out further forward.
+          const velocityOffset = Math.min(localSpeed * 0.15, restDistance * 0.3);
+          let targetAngle = initAngle;
+          if (localSpeed > 1) {
+            const moveAngle = Math.atan2(vLocalLateral, vLocalForward);
+            targetAngle = initAngle * 0.7 + moveAngle * 0.3;
+          }
+          leg.targetGroundX = hipX + Math.cos(targetAngle) * (restDistance + velocityOffset);
+          leg.targetGroundZ = hipZ + Math.sin(targetAngle) * (restDistance + velocityOffset);
+        }
+        leg.isSliding = true;
+        leg.lerpProgress = 0;
+      }
+
+      // Clamp to physical reach so a fast snap can't visually
+      // over-extend the segments past their hinge limit.
+      const clampDx = leg.groundX - hipX;
+      const clampDz = leg.groundZ - hipZ;
+      const clampDistSq = clampDx * clampDx + clampDz * clampDz;
+      if (clampDistSq > tl * tl) {
+        const clampDist = Math.sqrt(clampDistSq);
+        const scale = tl / clampDist;
+        leg.groundX = hipX + clampDx * scale;
+        leg.groundZ = hipZ + clampDz * scale;
+      }
+
+      const footX = leg.groundX;
       const footY = FOOT_Y;
-      const footZ = c.attachOffsetY + Math.sin(initAngle) * restDistance;
+      const footZ = leg.groundZ;
       if (mesh.legLod === 'simple') {
         setCylinderBetween(leg.upper, hipX, hipY, hipZ, footX, footY, footZ, leg.upperThick);
       } else {
@@ -647,6 +752,10 @@ export function updateLocomotion(
       }
     }
   }
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 const _up = new THREE.Vector3(0, 1, 0);
