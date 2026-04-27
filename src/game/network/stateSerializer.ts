@@ -39,11 +39,11 @@ function createPooledTurret(): NetworkServerSnapshotTurret {
 }
 
 function createPooledAction(): NetworkServerSnapshotAction {
-  return { type: 0, pos: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
+  return { type: 0, pos: undefined, posZ: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
 }
 
-function createPooledWaypoint(): { pos: Vec2; type: string } {
-  return { pos: { x: 0, y: 0 }, type: '' };
+function createPooledWaypoint(): { pos: Vec2; posZ?: number; type: string } {
+  return { pos: { x: 0, y: 0 }, posZ: undefined, type: '' };
 }
 
 // Pre-allocated sub-objects for the nested NetworkServerSnapshotEntity shape
@@ -67,7 +67,7 @@ type PooledEntry = {
   shotSub: ShotSub;
   turrets: NetworkServerSnapshotTurret[];
   actions: NetworkServerSnapshotAction[];
-  waypoints: { pos: Vec2; type: string }[];
+  waypoints: { pos: Vec2; posZ?: number; type: string }[];
   buildQueue: string[];
 };
 
@@ -96,7 +96,7 @@ function createPooledEntry(): PooledEntry {
   for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) turrets.push(createPooledTurret());
   const actions: NetworkServerSnapshotAction[] = [];
   for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createPooledAction());
-  const waypoints: { pos: Vec2; type: string }[] = [];
+  const waypoints: { pos: Vec2; posZ?: number; type: string }[] = [];
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createPooledWaypoint());
   return {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
@@ -254,6 +254,7 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
           const a = actions[i];
           hash = (hash * 31 + a.x * 1000) | 0;
           hash = (hash * 31 + a.y * 1000) | 0;
+          hash = (hash * 31 + (a.z !== undefined ? a.z * 1000 : 0)) | 0;
           hash = (hash * 31 + a.type.charCodeAt(0)) | 0;
         }
       }
@@ -333,6 +334,7 @@ function updatePrevState(entity: Entity, prev: PrevEntityState): void {
         const a = actions[i];
         hash = (hash * 31 + a.x * 1000) | 0;
         hash = (hash * 31 + a.y * 1000) | 0;
+        hash = (hash * 31 + (a.z !== undefined ? a.z * 1000 : 0)) | 0;
         hash = (hash * 31 + a.type.charCodeAt(0)) | 0;
       }
     }
@@ -763,6 +765,11 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
             const dst = pool.actions[i];
             dst.type = actionTypeToCode(src.type);
             dst.pos = src.x !== undefined ? { x: src.x, y: src.y } : undefined;
+            // src.z is the click-derived altitude (or terrain sample
+            // for path-expanded intermediates) — ship it so joining
+            // clients render dots at the same altitude as the issuing
+            // client, no terrain re-sample needed.
+            dst.posZ = src.z;
             dst.targetId = src.targetId;
             dst.buildingType = src.buildingType;
             dst.grid = src.gridX !== undefined ? { x: src.gridX, y: src.gridY! } : undefined;
@@ -878,10 +885,12 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
         pool.waypoints.length = wpCount;
         pool.waypoints[0].pos.x = entity.factory.rallyX;
         pool.waypoints[0].pos.y = entity.factory.rallyY;
+        pool.waypoints[0].posZ = undefined;
         pool.waypoints[0].type = 'move';
         for (let i = 0; i < wps.length; i++) {
           pool.waypoints[i + 1].pos.x = wps[i].x;
           pool.waypoints[i + 1].pos.y = wps[i].y;
+          pool.waypoints[i + 1].posZ = wps[i].z;
           pool.waypoints[i + 1].type = wps[i].type;
         }
         f.waypoints = pool.waypoints;

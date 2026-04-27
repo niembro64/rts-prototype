@@ -23,8 +23,18 @@ import { WAYPOINT_COLORS } from '../uiLabels';
 // Lift values chosen so the preview reads above the tile layer (y=0) and the
 // burn-mark layer (y≈2.5), but below beam cylinders (y=SHOT_HEIGHT). Target
 // dots sit slightly higher than the line so they don't z-fight with it.
-const LINE_Y = 3.5;
-const DOT_Y = 5.0;
+//
+// The DragState's points / targets carry the click-altitude `z` from
+// CursorGround.pickSim (sim coord = three.y), so the preview rides the
+// rendered terrain instead of a fixed plane. LINE_LIFT / DOT_LIFT are
+// added on top of that altitude so the ribbon clears the ground without
+// z-fighting on slopes. The constants below are the legacy fixed-plane
+// values, used only as a fallback when a point's z is missing
+// (degenerate / 2D-only callers).
+const LINE_LIFT = 3.5;
+const DOT_LIFT = 5.0;
+const LEGACY_LINE_Y = 3.5;
+const LEGACY_DOT_Y = 5.0;
 
 // Visual sizing. Ribbon width is constant in world units (it's a 3D scene —
 // dividing by camera zoom the way the 2D overlay does would fight the
@@ -35,8 +45,8 @@ const DOT_RADIUS = 6;
 
 type DragState = {
   active: boolean;
-  points: ReadonlyArray<{ x: number; y: number }>;
-  targets: ReadonlyArray<{ x: number; y: number }>;
+  points: ReadonlyArray<{ x: number; y: number; z?: number }>;
+  targets: ReadonlyArray<{ x: number; y: number; z?: number }>;
   mode: WaypointType;
 };
 
@@ -88,7 +98,12 @@ export class LineDrag3D {
 
     // --- Path ribbon ---
     // Each consecutive pair of points becomes one segment box, rotated around
-    // Y so its local X axis points along the segment direction.
+    // Y so its local X axis points along the segment direction. Each
+    // segment is short (LINE_PATH_SEGMENT_MIN ≈ 10wu — the minimum
+    // distance between accumulated samples), so picking the box's
+    // height as the average of the two endpoints' click-altitudes
+    // tracks the terrain closely without needing per-pixel
+    // re-tessellation.
     const pts = state.points;
     let segIdx = 0;
     for (let i = 1; i < pts.length; i++) {
@@ -102,7 +117,10 @@ export class LineDrag3D {
       seg.material = fill;
       const angle = Math.atan2(dz, dx);
       seg.rotation.set(0, -angle, 0);
-      seg.position.set((a.x + b.x) / 2, LINE_Y, (a.y + b.y) / 2);
+      const segY = a.z !== undefined && b.z !== undefined
+        ? (a.z + b.z) * 0.5 + LINE_LIFT
+        : LEGACY_LINE_Y;
+      seg.position.set((a.x + b.x) / 2, segY, (a.y + b.y) / 2);
       seg.scale.set(length, 1, LINE_WIDTH);
     }
     for (let i = segIdx; i < this.segmentPool.length; i++) {
@@ -113,13 +131,14 @@ export class LineDrag3D {
     const targets = state.targets;
     for (let i = 0; i < targets.length; i++) {
       const t = targets[i];
+      const dotY = t.z !== undefined ? t.z + DOT_LIFT : LEGACY_DOT_Y;
       const dot = this.acquireDot(i);
       dot.material = fill;
-      dot.position.set(t.x, DOT_Y, t.y);
+      dot.position.set(t.x, dotY, t.y);
       dot.scale.setScalar(DOT_RADIUS);
 
       const ring = this.acquireRing(i);
-      ring.position.set(t.x, DOT_Y, t.y);
+      ring.position.set(t.x, dotY, t.y);
       ring.scale.setScalar(DOT_RADIUS);
     }
     for (let i = targets.length; i < this.dotPool.length; i++) {

@@ -52,7 +52,7 @@
 
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
-import { isWaterAt, getSurfaceNormal } from './Terrain';
+import { isWaterAt, getSurfaceNormal, getSurfaceHeight } from './Terrain';
 import type { ActionType, UnitAction } from './types';
 
 type Vec2 = { x: number; y: number };
@@ -83,11 +83,26 @@ const MAX_JP_EXPANSIONS = 30000;
 
 /** Slope passability threshold. Surface normals are sampled at cell
  *  centres; nz=1 is flat ground, nz=0 is a vertical cliff. Below
- *  this value the cell is treated as a wall — chosen so that the
- *  carved/lifted ridges produced by `MOUNTAIN_SEPARATOR_AMPLITUDE`
- *  (when DIVIDERS = MOUNTAIN) become impassable, but gentle ripples
- *  in the central LAKE pattern stay walkable. */
-const SLOPE_BLOCK_NZ = 0.85;
+ *  this value the cell is treated as a wall.
+ *
+ *  Tuned to match what the PHYSICS engine can actually walk —
+ *  `PhysicsEngine3D.integrate`'s slope-projection model is stable up
+ *  to ~70° (nz ≈ 0.34, see its file comment). Anything physics can
+ *  walk should be passable to the planner, otherwise the planner
+ *  refuses paths the units could actually follow.
+ *
+ *  Why this matters: the central ripple pattern (LAKE or MOUNTAIN
+ *  centre) has rolling sinusoidal slopes up to ~60° around its lake
+ *  basins. With the old 0.85 threshold (~32°), every cell of those
+ *  slopes was slope-blocked, which — combined with C-space inflation
+ *  — sealed the thin near-centre corridor that physically connects
+ *  the team slices when DIVIDERS=LAKE. The user could see the path
+ *  visually (units walking around the lake shore) but JPS bailed
+ *  with `no-path` because every crossing route hit the slope halo.
+ *  Land is connected as long as it stays above WATER_LEVEL; the
+ *  slope check should only reject genuine vertical cliffs that
+ *  physics itself can't traverse, not gentle bumps. */
+const SLOPE_BLOCK_NZ = 0.34;
 
 /** When the start or goal cell is blocked, scan outward this many
  *  cells in a Chebyshev-distance spiral looking for the nearest
@@ -394,13 +409,26 @@ export function findPath(
  *  spawn (factoryProduction.createUnit). All three previously wrote a
  *  single straight-line action; routing them through `findPath` here
  *  is what actually makes water / building / mountain avoidance happen
- *  for AI-driven units (the player-driven case was already wired). */
+ *  for AI-driven units (the player-driven case was already wired).
+ *
+ *  `goalZ` is the altitude of the actual 3D ground point the player
+ *  clicked (from CursorGround.pickSim). When provided AND the planner
+ *  did NOT have to snap the goal to a different cell, it's used
+ *  verbatim as the final waypoint's `z` — preserving the precise
+ *  altitude the user saw under the cursor end-to-end. When the goal
+ *  was snapped (click landed on water / building / peak), the click's
+ *  altitude is no longer the right one for the waypoint marker; the
+ *  snapped-cell terrain altitude is used instead. Intermediate
+ *  waypoints (cells the JPS smoother kept) get terrain-sampled z so
+ *  every waypoint has a meaningful altitude regardless of click
+ *  origin. */
 export function expandPathActions(
   startX: number, startY: number,
   goalX: number, goalY: number,
   type: ActionType,
   mapWidth: number, mapHeight: number,
   buildingGrid: BuildingGrid,
+  goalZ?: number,
 ): UnitAction[] {
   const path = findPath(startX, startY, goalX, goalY, mapWidth, mapHeight, buildingGrid);
   // Diagnostic: when the planner falls through to the straight-line
@@ -413,7 +441,14 @@ export function expandPathActions(
   if (path.length === 1) {
     const dx = goalX - startX;
     const dy = goalY - startY;
-    if (dx * dx + dy * dy > PATH_BAIL_LOG_DISTANCE_SQ) {
+    // Sample-rate the diagnostic so a chokepoint pile-up doesn't
+    // flood the console with hundreds of identical bail lines per
+    // second. 2% sampling still surfaces a representative trickle
+    // of every distinct failure mode without becoming spam.
+    if (
+      dx * dx + dy * dy > PATH_BAIL_LOG_DISTANCE_SQ
+      && Math.random() < 0.02
+    ) {
       // eslint-disable-next-line no-console
       console.warn(
         '[Pathfinder] BAIL[%s]: start=(%d,%d) goal=(%d,%d) dist=%d',
@@ -424,9 +459,31 @@ export function expandPathActions(
       );
     }
   }
+  // Annotate every waypoint with an altitude (`z`).
+  //   - Final waypoint: when the planner returned the user's click
+  //     unchanged (path's last point is goalX/goalY exactly) AND the
+  //     caller passed a click-derived `goalZ`, prefer the click's
+  //     altitude — preserves "the cursor was there, the dot is there"
+  //     end-to-end.
+  //   - All other waypoints (intermediates from JPS / smoother, or a
+  //     final waypoint that was snapped to a reachable cell): sample
+  //     the terrain so the z reflects the actual ground at that XY.
+  // Without this, downstream renderers would have to re-sample the
+  // terrain to visualize each waypoint, which is exactly what we're
+  // trying to avoid (the click altitude can differ from the terrain
+  // sample, e.g. when CursorGround's submerged-hit fallback projected
+  // to y=0 on a lake-shore click).
   const out: UnitAction[] = [];
+  const lastIdx = path.length - 1;
   for (let i = 0; i < path.length; i++) {
-    out.push({ type, x: path[i].x, y: path[i].y });
+    const px = path[i].x;
+    const py = path[i].y;
+    const isFinalUnsnapped =
+      i === lastIdx && goalZ !== undefined && px === goalX && py === goalY;
+    const z = isFinalUnsnapped
+      ? goalZ
+      : getSurfaceHeight(px, py, mapWidth, mapHeight, GRID_CELL_SIZE);
+    out.push({ type, x: px, y: py, z });
   }
   return out;
 }

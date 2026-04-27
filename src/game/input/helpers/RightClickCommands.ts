@@ -28,7 +28,9 @@ const LINE_PATH_MIN_LENGTH = 20;
 
 /** Build an attack command if an enemy (unit or building) is under
  *  the given world point, else return null. The caller decides how
- *  to dispatch it (local queue vs server send). */
+ *  to dispatch it (local queue vs server send). Attack targets the
+ *  entity by id, so click altitude isn't needed here — the resolved
+ *  target's transform.z is what command execution reads. */
 export function buildAttackCommandAt(
   source: AttackEntitySource,
   worldX: number,
@@ -74,6 +76,7 @@ export function buildLinePathMoveCommand(
       entityIds: selectedUnits.map((u) => u.id),
       targetX: finalPoint.x,
       targetY: finalPoint.y,
+      targetZ: finalPoint.z,
       waypointType: mode,
       queue,
     };
@@ -89,7 +92,7 @@ export function buildLinePathMoveCommand(
     const target = assignments.get(unit.id);
     if (target) {
       entityIds.push(unit.id);
-      individualTargets.push({ x: target.x, y: target.y });
+      individualTargets.push({ x: target.x, y: target.y, z: target.z });
     }
   }
 

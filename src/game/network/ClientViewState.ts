@@ -506,6 +506,7 @@ export class ClientViewState {
               | 'attack',
             x: na.pos.x,
             y: na.pos.y,
+            z: na.posZ,
             targetId: na.targetId,
             buildingType: na.buildingType as BuildingType | undefined,
             gridX: na.grid?.x,
@@ -565,6 +566,7 @@ export class ClientViewState {
         entity.factory.waypoints[i - 1] = {
           x: wps[i].pos.x,
           y: wps[i].pos.y,
+          z: wps[i].posZ,
           type: wps[i].type as 'move' | 'fight' | 'patrol',
         };
       }

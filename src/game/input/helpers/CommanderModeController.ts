@@ -104,14 +104,19 @@ export class CommanderModeController {
   }
 
   /** Build a fireDGun command targeting a world-space point.
-   *  Unlike startBuild there's no precondition on mode state —
-   *  callers are expected to only call this when isInDGunMode is
-   *  true, but the command itself is always well-formed. */
+   *  `worldZ` is the click altitude on the rendered 3D ground (from
+   *  CursorGround.pickSim) — passed through so the d-gun handler
+   *  can lay the projectile target at the actual clicked altitude
+   *  instead of re-deriving it from a y=0 plane projection. Unlike
+   *  startBuild there's no precondition on mode state — callers are
+   *  expected to only call this when isInDGunMode is true, but the
+   *  command itself is always well-formed. */
   buildFireDGunCommand(
     commander: Entity,
     worldX: number,
     worldY: number,
     tick: number,
+    worldZ?: number,
   ): FireDGunCommand {
     return {
       type: 'fireDGun',
@@ -119,6 +124,7 @@ export class CommanderModeController {
       commanderId: commander.id,
       targetX: worldX,
       targetY: worldY,
+      targetZ: worldZ,
     };
   }
 }

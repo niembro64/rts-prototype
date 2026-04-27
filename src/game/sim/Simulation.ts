@@ -75,6 +75,18 @@ const STUCK_TICK_THRESHOLD = 30;
  *  cap keeps a chokepoint-pileup from spiking the tick budget. */
 const MAX_REPLANS_PER_TICK = 5;
 
+/** When a replan attempt fails (planner bailed, or eligibility
+ *  check rejected the action type), set the unit's stuckTicks
+ *  to this NEGATIVE cooldown value instead of leaving it at the
+ *  threshold. The stuckTicks counter ticks UP each frame the
+ *  unit's still wedged, so a value of −60 introduces a 60-tick
+ *  (~2-second) gap before the unit is eligible for another
+ *  replan attempt. Without this, a unit whose replans
+ *  consistently bail (planner can't find a route) hammers the
+ *  planner once every 30 ticks indefinitely — burning CPU on
+ *  a problem that won't improve from one tick to the next. */
+const REPLAN_FAILURE_COOLDOWN = -60;
+
 
 export class Simulation {
   private world: WorldState;
@@ -763,6 +775,17 @@ export class Simulation {
       if (this.tryReplan(entity)) {
         unit.stuckTicks = 0;
         this.replansThisTick++;
+      } else {
+        // Replan didn't improve the unit's path — most often the
+        // planner bailed (target unreachable from current position
+        // under the JP-expansion budget) or the action type isn't
+        // replan-eligible (patrol / build / repair). Either way,
+        // hammering the planner again next tick won't help. Set
+        // stuckTicks to a negative cooldown so the unit waits a
+        // few seconds before its next eligibility window. The
+        // current path stays untouched (tryReplan didn't replace
+        // it) so the unit keeps trying its existing route.
+        unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
       }
     }
   }
@@ -787,12 +810,16 @@ export class Simulation {
     ) {
       return false;
     }
+    // Forward the original action's altitude so a replan keeps the
+    // click-derived final-waypoint z (used by Waypoint3D rendering)
+    // instead of falling back to a fresh terrain sample.
     const newPath = expandPathActions(
       entity.transform.x, entity.transform.y,
       finalAction.x, finalAction.y,
       finalAction.type,
       this.world.mapWidth, this.world.mapHeight,
       this.constructionSystem.getGrid(),
+      finalAction.z,
     );
     if (newPath.length === 0) return false;
     // CRITICAL: a single-waypoint result is the planner's

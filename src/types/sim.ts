@@ -69,10 +69,16 @@ export type Ownership = {
 // Waypoint types for unit movement
 export type WaypointType = 'move' | 'fight' | 'patrol';
 
-// Single waypoint in a unit's path queue
+// Single waypoint in a unit's path queue. Altitude (`z`) is optional —
+// player-issued waypoints carry the click's actual 3D ground altitude
+// (from CursorGround.pickSim) so renderers / handlers don't have to
+// re-sample terrain to visualize them. AI-issued or path-expanded
+// intermediate waypoints leave it undefined and fall back to a
+// terrain sample at the (x, y).
 export type Waypoint = {
   x: number;
   y: number;
+  z?: number;
   type: WaypointType;
 };
 
@@ -82,11 +88,20 @@ export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'att
 // Building type identifiers
 export type BuildingType = 'solar' | 'factory';
 
-// Unified action for any unit command
+// Unified action for any unit command. Altitude (`z`) carries the
+// actual 3D ground point the user clicked (from CursorGround.pickSim
+// — the canonical "where on the rendered terrain is the cursor")
+// through the command pipeline so renderers visualize waypoints at
+// the precise altitude the player saw under the cursor, instead of
+// extrapolating it back from (x, y) via a terrain re-sample. Optional
+// because AI-issued / path-expanded intermediate waypoints don't
+// have a click point — those callers leave it undefined and the
+// renderer falls back to a fresh terrain sample.
 export type UnitAction = {
   type: ActionType;
   x: number;
   y: number;
+  z?: number;
   buildingType?: BuildingType;
   gridX?: number;
   gridY?: number;

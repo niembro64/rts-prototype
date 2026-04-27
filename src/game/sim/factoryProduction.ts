@@ -111,9 +111,14 @@ export class FactoryProductionSystem {
       let patrolStartActionIndex = -1;
       for (let w = 0; w < factoryComp.waypoints.length; w++) {
         const wp = factoryComp.waypoints[w];
+        // wp.z is the player's click altitude (preserved by
+        // SetFactoryWaypointsCommand) — feed it through so the leg's
+        // final waypoint inherits the same altitude the player saw
+        // when placing the rally point.
         const leg = expandPathActions(
           anchorX, anchorY, wp.x, wp.y, wp.type,
           world.mapWidth, world.mapHeight, buildingGrid,
+          wp.z,
         );
         if (wp.type === 'patrol' && patrolStartActionIndex === -1) {
           patrolStartActionIndex = actions.length;

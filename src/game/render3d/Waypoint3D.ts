@@ -138,8 +138,17 @@ export class Waypoint3D {
 
   // ── helpers ──────────────────────────────────────────────────────
 
-  private surfaceZ(x: number, y: number): number {
-    return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE) + STYLE.worldLift;
+  /** Resolve the rendered y for a waypoint XY. Prefers `hint` when
+   *  provided — that's the action's stored z, which carries either
+   *  the user's click altitude (from CursorGround.pickSim) or the
+   *  pathfinder's terrain sample at a JPS-introduced intermediate.
+   *  Falls back to a fresh terrain sample only when the action lacks
+   *  z (synthetic / legacy data with no click origin). The added
+   *  worldLift stays identical to the original "surfaceZ" semantics
+   *  so tuning carries over verbatim. */
+  private resolveY(x: number, y: number, hint?: number): number {
+    return (hint ?? getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE))
+      + STYLE.worldLift;
   }
 
   private growLineCap(needed: number): void {
@@ -197,11 +206,17 @@ export class Waypoint3D {
 
   /** Push a long line A→B as several short sub-segments that follow
    *  the terrain so the line hugs the ground instead of cutting
-   *  through hills. */
+   *  through hills. Endpoints (`az`, `bz`) optionally pin the line
+   *  start / end to the action's stored altitude — when the click
+   *  landed on a hilltop, the line's final point sits exactly on the
+   *  hilltop instead of a half-cell-rounded terrain re-sample. The
+   *  intermediate steps still terrain-sample so the line traces the
+   *  ground between waypoints (the unit walks the ground). */
   private pushTerrainLine(
     state: { lineSeg: number },
     ax: number, ay: number, bx: number, by: number,
     color: number, alpha: number,
+    az?: number, bz?: number,
   ): void {
     const r = (((color >> 16) & 0xff) / 255) * alpha;
     const g = (((color >> 8) & 0xff) / 255) * alpha;
@@ -212,12 +227,14 @@ export class Waypoint3D {
     const steps = Math.max(1, Math.ceil(length / STYLE.subStep));
     let prevX = ax;
     let prevY = ay;
-    let prevZ = this.surfaceZ(prevX, prevY);
+    let prevZ = this.resolveY(prevX, prevY, az);
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const nx = ax + dx * t;
       const ny = ay + dy * t;
-      const nz = this.surfaceZ(nx, ny);
+      // Last step pins to the b-endpoint's altitude (when provided)
+      // so a click on a hilltop's final dot meets the line cleanly.
+      const nz = i === steps ? this.resolveY(nx, ny, bz) : this.resolveY(nx, ny);
       this.pushSegment(state, prevX, prevY, prevZ, nx, ny, nz, r, g, b);
       prevX = nx; prevY = ny; prevZ = nz;
     }
@@ -228,13 +245,13 @@ export class Waypoint3D {
    *  the same line buffer as path lines. */
   private pushRectOutline(
     state: { lineSeg: number },
-    x: number, y: number, color: number,
+    x: number, y: number, color: number, zHint?: number,
   ): void {
     const r = (((color >> 16) & 0xff) / 255) * STYLE.lineAlpha;
     const g = (((color >> 8) & 0xff) / 255) * STYLE.lineAlpha;
     const b = ((color & 0xff) / 255) * STYLE.lineAlpha;
     const h = STYLE.rectWorldSize / 2;
-    const z = this.surfaceZ(x, y);
+    const z = this.resolveY(x, y, zHint);
     // Four corners traversed counterclockwise.
     const cx0 = x - h, cy0 = y - h;
     const cx1 = x + h, cy1 = y - h;
@@ -248,13 +265,13 @@ export class Waypoint3D {
 
   private pushDot(
     state: { dotCount: number },
-    x: number, y: number, color: number,
+    x: number, y: number, color: number, zHint?: number,
   ): void {
     if (state.dotCount + 1 > this.dotCap) {
       this.growDotCap(state.dotCount + 1);
     }
     const o = state.dotCount * 3;
-    const z = this.surfaceZ(x, y);
+    const z = this.resolveY(x, y, zHint);
     this.dotPositions[o + 0] = x;
     this.dotPositions[o + 1] = z;
     this.dotPositions[o + 2] = y;
@@ -266,7 +283,7 @@ export class Waypoint3D {
 
   /** Pool slot for a flag sprite. Lazily creates a small canvas
    *  on first use; recolors only when the team color changes. */
-  private acquireFlag(i: number, color: number, x: number, y: number): void {
+  private acquireFlag(i: number, color: number, x: number, y: number, zHint?: number): void {
     let slot = this.flagPool[i];
     if (!slot) {
       const canvas = document.createElement('canvas');
@@ -307,7 +324,7 @@ export class Waypoint3D {
       slot.texture.needsUpdate = true;
     }
     slot.sprite.visible = true;
-    const z = this.surfaceZ(x, y);
+    const z = this.resolveY(x, y, zHint);
     // Centerline of the sprite raised by half its height so the pole
     // base meets the terrain rather than hovering above it.
     slot.sprite.position.set(x, z + STYLE.flagWorldSize / 2, y);
@@ -322,23 +339,28 @@ export class Waypoint3D {
     const state = { lineSeg: 0, dotCount: 0 };
     let flagCount = 0;
 
-    // Per-unit action chains.
+    // Per-unit action chains. Action `z` (when present) is the
+    // click-derived altitude carried through from CursorGround.pickSim
+    // — used directly so a waypoint dot on a hilltop sits ON the
+    // hilltop, not at a terrain re-sample that may differ.
     for (const u of selectedUnits) {
       const actions = u.unit?.actions;
       if (!actions || actions.length === 0) continue;
       let prevX = u.transform.x;
       let prevY = u.transform.y;
+      let prevZ: number | undefined = u.transform.z;
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
         const color = ACTION_COLORS[a.type] ?? 0xffffff;
-        this.pushTerrainLine(state, prevX, prevY, a.x, a.y, color, STYLE.lineAlpha);
+        this.pushTerrainLine(state, prevX, prevY, a.x, a.y, color, STYLE.lineAlpha, prevZ, a.z);
         if (a.type === 'build' || a.type === 'repair') {
-          this.pushRectOutline(state, a.x, a.y, color);
+          this.pushRectOutline(state, a.x, a.y, color, a.z);
         } else {
-          this.pushDot(state, a.x, a.y, color);
+          this.pushDot(state, a.x, a.y, color, a.z);
         }
         prevX = a.x;
         prevY = a.y;
+        prevZ = a.z;
       }
       // Patrol return — link last patrol waypoint back to the first
       // patrol waypoint with a dimmer line.
@@ -350,6 +372,7 @@ export class Waypoint3D {
             state,
             last.x, last.y, first.x, first.y,
             ACTION_COLORS['patrol'], STYLE.patrolReturnAlpha,
+            last.z, first.z,
           );
         }
       }
@@ -361,16 +384,18 @@ export class Waypoint3D {
       if (!wps || wps.length === 0) continue;
       let prevX = b.transform.x;
       let prevY = b.transform.y;
+      let prevZ: number | undefined = b.transform.z;
       for (let i = 0; i < wps.length; i++) {
         const w = wps[i];
         const color = WAYPOINT_COLORS[w.type] ?? 0xffffff;
-        this.pushTerrainLine(state, prevX, prevY, w.x, w.y, color, STYLE.lineAlpha);
-        this.pushDot(state, w.x, w.y, color);
+        this.pushTerrainLine(state, prevX, prevY, w.x, w.y, color, STYLE.lineAlpha, prevZ, w.z);
+        this.pushDot(state, w.x, w.y, color, w.z);
         if (i === wps.length - 1) {
-          this.acquireFlag(flagCount++, color, w.x, w.y);
+          this.acquireFlag(flagCount++, color, w.x, w.y, w.z);
         }
         prevX = w.x;
         prevY = w.y;
+        prevZ = w.z;
       }
       // Factory patrol return arc.
       if (wps.length > 0) {
@@ -383,6 +408,7 @@ export class Waypoint3D {
               state,
               last.x, last.y, first.x, first.y,
               WAYPOINT_COLORS['patrol'], STYLE.patrolReturnAlpha,
+              last.z, first.z,
             );
           }
         }

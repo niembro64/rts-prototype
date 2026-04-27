@@ -39,9 +39,14 @@ export type SelectCommand = BaseCommand & {
   additive: boolean;
 };
 
+// `z` is the altitude of the actual 3D ground point the user clicked
+// (from CursorGround.pickSim). Optional so server-issued / synthetic
+// commands without a click source can omit it; downstream code falls
+// back to terrain sampling when missing.
 export type WaypointTarget = {
   x: number;
   y: number;
+  z?: number;
 };
 
 export type MoveCommand = BaseCommand & {
@@ -49,6 +54,7 @@ export type MoveCommand = BaseCommand & {
   entityIds: EntityId[];
   targetX?: number;
   targetY?: number;
+  targetZ?: number;
   individualTargets?: WaypointTarget[];
   waypointType: WaypointType;
   queue: boolean;
@@ -89,6 +95,7 @@ export type SetRallyPointCommand = BaseCommand & {
 export type FactoryWaypoint = {
   x: number;
   y: number;
+  z?: number;
   type: WaypointType;
 };
 
@@ -104,6 +111,7 @@ export type FireDGunCommand = BaseCommand & {
   commanderId: EntityId;
   targetX: number;
   targetY: number;
+  targetZ?: number;
 };
 
 export type RepairCommand = BaseCommand & {

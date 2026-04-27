@@ -41,8 +41,12 @@ export function buildRepairCommandAt(
 /** Build one SetFactoryWaypointsCommand per selected factory at the
  *  given world point. Used when the user right-clicks with no units
  *  selected but one or more factories — each factory inherits the
- *  same single-waypoint list. Callers filter factories beforehand
- *  (only truthy .factory + owned by active player). */
+ *  same single-waypoint list. `worldZ` is the click altitude from
+ *  CursorGround.pickSim; carried through so factory-spawned units
+ *  use the player's clicked 3D ground point as the waypoint goal
+ *  instead of a re-sampled terrain altitude. Callers filter
+ *  factories beforehand (only truthy .factory + owned by active
+ *  player). */
 export function buildFactoryWaypointCommands(
   factories: readonly Entity[],
   worldX: number,
@@ -50,6 +54,7 @@ export function buildFactoryWaypointCommands(
   mode: WaypointType,
   tick: number,
   queue: boolean,
+  worldZ?: number,
 ): SetFactoryWaypointsCommand[] {
   const cmds: SetFactoryWaypointsCommand[] = [];
   for (const f of factories) {
@@ -58,7 +63,7 @@ export function buildFactoryWaypointCommands(
       type: 'setFactoryWaypoints',
       tick,
       factoryId: f.id,
-      waypoints: [{ x: worldX, y: worldY, type: mode }],
+      waypoints: [{ x: worldX, y: worldY, z: worldZ, type: mode }],
       queue,
     });
   }

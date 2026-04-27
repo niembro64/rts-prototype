@@ -17,10 +17,14 @@ export function getPathLength(points: readonly WorldPoint[]): number {
   return length;
 }
 
-// Get a point at a specific distance along the path
+// Get a point at a specific distance along the path. Altitude (`z`) is
+// linearly interpolated between segment endpoints when both carry one
+// (the right-drag accumulator's points each come from CursorGround.pickSim
+// so z is present in normal play); the result preserves z so downstream
+// command builders can keep the click-altitude all the way through.
 export function getPointAtDistance(points: readonly WorldPoint[], targetDist: number): WorldPoint {
   if (points.length === 0) return { x: 0, y: 0 };
-  if (points.length === 1) return { x: points[0].x, y: points[0].y };
+  if (points.length === 1) return { x: points[0].x, y: points[0].y, z: points[0].z };
 
   let traveled = 0;
   for (let i = 1; i < points.length; i++) {
@@ -32,16 +36,21 @@ export function getPointAtDistance(points: readonly WorldPoint[], targetDist: nu
       // The target point is on this segment
       const remaining = targetDist - traveled;
       const t = segmentLength > 0 ? remaining / segmentLength : 0;
+      const za = points[i - 1].z;
+      const zb = points[i].z;
+      const z = za !== undefined && zb !== undefined ? za + (zb - za) * t : undefined;
       return {
         x: points[i - 1].x + dx * t,
         y: points[i - 1].y + dy * t,
+        z,
       };
     }
     traveled += segmentLength;
   }
 
   // Return the last point if we've gone past the end
-  return { x: points[points.length - 1].x, y: points[points.length - 1].y };
+  const last = points[points.length - 1];
+  return { x: last.x, y: last.y, z: last.z };
 }
 
 // Calculate target positions distributed evenly along the path
@@ -59,7 +68,7 @@ export function calculateLinePathTargets(
   if (unitCount === 1) {
     // Single unit goes to the end of the path
     const lastPoint = linePathPoints[linePathPoints.length - 1];
-    targets.push({ x: lastPoint.x, y: lastPoint.y });
+    targets.push({ x: lastPoint.x, y: lastPoint.y, z: lastPoint.z });
   } else {
     // Distribute units evenly along the path
     for (let i = 0; i < unitCount; i++) {

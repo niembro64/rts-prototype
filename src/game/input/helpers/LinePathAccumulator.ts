@@ -23,13 +23,16 @@ export class LinePathAccumulator {
   get points(): readonly WorldPoint[] { return this._points; }
   get targets(): readonly WorldPoint[] { return this._targets; }
 
-  /** Start a new path seeded at (x, y). Any previous path is
+  /** Start a new path seeded at (x, y, z?). Any previous path is
    *  discarded. Callers pass the initial unit count so the target
    *  list starts populated — factory-waypoint callers can pass 1
-   *  to mark the seed point as the single target. */
-  start(x: number, y: number, unitCount: number): void {
+   *  to mark the seed point as the single target. `z` is the
+   *  altitude of the cursor's 3D ground hit (from CursorGround.pickSim);
+   *  preserved through the accumulator so emitted commands carry the
+   *  click-altitude. 2D callers omit it. */
+  start(x: number, y: number, unitCount: number, z?: number): void {
     this._active = true;
-    this._points = [{ x, y }];
+    this._points = [{ x, y, z }];
     this._targets = [];
     this.recomputeTargets(unitCount);
   }
@@ -38,20 +41,20 @@ export class LinePathAccumulator {
    *  the single placed point *is* the target, not something
    *  distributed across a path). Mirrors the 2D CommandController's
    *  factory-path start. */
-  startWithFixedTarget(x: number, y: number): void {
+  startWithFixedTarget(x: number, y: number, z?: number): void {
     this._active = true;
-    this._points = [{ x, y }];
-    this._targets = [{ x, y }];
+    this._points = [{ x, y, z }];
+    this._targets = [{ x, y, z }];
   }
 
   /** Record a new cursor sample. Dropped as a duplicate if it's
    *  closer than LINE_PATH_SEGMENT_MIN to the previous point. On
    *  append, targets are recomputed. No-op if not active. */
-  append(x: number, y: number, unitCount: number): void {
+  append(x: number, y: number, unitCount: number, z?: number): void {
     if (!this._active || this._points.length === 0) return;
     const last = this._points[this._points.length - 1];
     if (magnitude(x - last.x, y - last.y) < LINE_PATH_SEGMENT_MIN) return;
-    this._points.push({ x, y });
+    this._points.push({ x, y, z });
     this.recomputeTargets(unitCount);
   }
 

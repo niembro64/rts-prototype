@@ -49,6 +49,7 @@ function createUnitFromNetwork(
         type: codeToActionType(na.type) as 'move' | 'patrol' | 'fight' | 'build' | 'repair' | 'attack',
         x: na.pos.x,
         y: na.pos.y,
+        z: na.posZ,
         targetId: na.targetId,
         buildingType: na.buildingType as BuildingType | undefined,
         gridX: na.grid?.x,
@@ -191,10 +192,10 @@ function createBuildingFromNetwork(
     // waypoints[0] = rally point, rest = user-set waypoints
     const wps = f.waypoints;
     const rally = wps[0];
-    const waypoints: { x: number; y: number; type: 'move' | 'fight' | 'patrol' }[] = [];
+    const waypoints: { x: number; y: number; z?: number; type: 'move' | 'fight' | 'patrol' }[] = [];
     for (let i = 1; i < wps.length; i++) {
       const wp = wps[i];
-      waypoints.push({ x: wp.pos.x, y: wp.pos.y, type: wp.type as 'move' | 'fight' | 'patrol' });
+      waypoints.push({ x: wp.pos.x, y: wp.pos.y, z: wp.posZ, type: wp.type as 'move' | 'fight' | 'patrol' });
     }
     entity.factory = {
       buildQueue: f.queue,

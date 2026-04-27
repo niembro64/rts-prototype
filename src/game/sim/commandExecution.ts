@@ -77,7 +77,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       const unit = ctx.world.getEntity(entityIds[i]);
       if (!unit || unit.type !== 'unit' || !unit.unit) continue;
       const target = command.individualTargets[i];
-      addPathActions(unit, target.x, target.y, command.waypointType, command.queue, ctx);
+      addPathActions(unit, target.x, target.y, command.waypointType, command.queue, ctx, target.z);
     }
   } else if (command.targetX !== undefined && command.targetY !== undefined) {
     // Group move with formation spreading
@@ -95,6 +95,11 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
       const offsetY = (row - (unitCount / unitsPerRow - 1) / 2) * spacing;
 
+      // Click altitude is shared by the formation centre — every
+      // unit's per-cell offset stays at the same z plane. The
+      // pathfinder only consults `goalZ` when the goal cell wasn't
+      // snapped, so an offset that happens to land on a blocked cell
+      // still gets a terrain-sampled altitude for its final waypoint.
       addPathActions(
         unit,
         command.targetX! + offsetX,
@@ -102,6 +107,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         command.waypointType,
         command.queue,
         ctx,
+        command.targetZ,
       );
       index++;
     }
@@ -129,11 +135,16 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     return;
   }
 
-  // Create build action with building info
+  // Create build action with building info. The building's transform.z
+  // already reflects the actual ground altitude under its footprint
+  // (set during construction-system placement), so the action's z
+  // matches what the player sees — the build-rect overlay sits on
+  // top of the ground at the build site.
   const action: UnitAction = {
     type: 'build',
     x: building.transform.x,
     y: building.transform.y,
+    z: building.transform.z,
     buildingType: command.buildingType,
     gridX: command.gridX,
     gridY: command.gridY,
@@ -173,16 +184,16 @@ function executeSetFactoryWaypointsCommand(ctx: CommandContext, command: SetFact
   if (!factory?.factory) return;
 
   if (command.queue) {
-    // Add to existing waypoints
+    // Add to existing waypoints (preserving the click-altitude `z`).
     for (const wp of command.waypoints) {
-      factory.factory.waypoints.push({ x: wp.x, y: wp.y, type: wp.type });
+      factory.factory.waypoints.push({ x: wp.x, y: wp.y, z: wp.z, type: wp.type });
     }
   } else {
     // Replace waypoints (reuse array)
     factory.factory.waypoints.length = command.waypoints.length;
     for (let i = 0; i < command.waypoints.length; i++) {
       const wp = command.waypoints[i];
-      factory.factory.waypoints[i] = { x: wp.x, y: wp.y, type: wp.type };
+      factory.factory.waypoints[i] = { x: wp.x, y: wp.y, z: wp.z, type: wp.type };
     }
   }
 
@@ -324,11 +335,16 @@ function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void
 
   if (!isIncompleteBuilding && !isDamagedUnit) return;
 
-  // Create repair action
+  // Create repair action — the action's z is the target's actual
+  // altitude (already correct on the entity's transform), not a
+  // re-sample of the terrain at (x, y). For a damaged unit this
+  // tracks the unit's current altitude; for a building it sits on
+  // the ground above its footprint.
   const action: UnitAction = {
     type: 'repair',
     x: target.transform.x,
     y: target.transform.y,
+    z: target.transform.z,
     targetId: command.targetId,
   };
 
@@ -352,6 +368,7 @@ function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void
       type: 'attack',
       x: target.transform.x,
       y: target.transform.y,
+      z: target.transform.z,
       targetId: command.targetId,
     };
     addActionToUnit(entity, action, command.queue);
@@ -384,19 +401,24 @@ export function addActionToUnit(entity: Entity, action: UnitAction, queue: boole
  *  along the way, which is what the player's chosen mode implies.
  *  Falls through to the legacy single-waypoint behaviour when the
  *  pathfinder returns one waypoint (no obstacles between unit and
- *  goal, or no path under the planning budget). */
+ *  goal, or no path under the planning budget). `goalZ` is the
+ *  click-derived altitude (from CursorGround.pickSim → MoveCommand);
+ *  threaded into expandPathActions so the final waypoint records the
+ *  click's z when the goal cell wasn't snapped. */
 function addPathActions(
   unit: Entity,
   goalX: number, goalY: number,
   type: UnitAction['type'],
   queue: boolean,
   ctx: CommandContext,
+  goalZ?: number,
 ): void {
   const actions = expandPathActions(
     unit.transform.x, unit.transform.y,
     goalX, goalY, type,
     ctx.world.mapWidth, ctx.world.mapHeight,
     ctx.constructionSystem.getGrid(),
+    goalZ,
   );
   // First action either replaces the queue (queue=false) or appends.
   // The remaining waypoints always append regardless — they belong

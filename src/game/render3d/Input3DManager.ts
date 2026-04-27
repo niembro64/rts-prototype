@@ -436,7 +436,7 @@ export class Input3DManager {
     const world = this.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const cmd = this.mode.buildFireDGunCommand(
-      commander, world.x, world.y, this.context.getTick(),
+      commander, world.x, world.y, this.context.getTick(), world.z,
     );
     this.localCommandQueue.enqueue(cmd);
   }
@@ -481,7 +481,7 @@ export class Input3DManager {
       const world = this.raycastGround(e.clientX, e.clientY);
       if (!world) return;
       const unitCount = this.entitySource.getSelectedUnits().length;
-      this.linePath.append(world.x, world.y, unitCount);
+      this.linePath.append(world.x, world.y, unitCount, world.z);
       this.linePath.recomputeTargets(unitCount);
     }
   }
@@ -646,7 +646,7 @@ export class Input3DManager {
       }
       // Start drawing a line path of waypoints.
       this.rightDown = true;
-      this.linePath.start(world.x, world.y, selectedUnits.length);
+      this.linePath.start(world.x, world.y, selectedUnits.length, world.z);
       return;
     }
 
@@ -656,7 +656,7 @@ export class Input3DManager {
     const factories = this.getSelectedFactories();
     if (factories.length > 0) {
       this.rightDown = true;
-      this.linePath.startWithFixedTarget(world.x, world.y);
+      this.linePath.startWithFixedTarget(world.x, world.y, world.z);
     }
   }
 
@@ -670,11 +670,13 @@ export class Input3DManager {
 
   /** State shape consumed by the 3D line-drag overlay. Populated
    *  while the user is actively right-dragging; reset when the drag
-   *  ends. Points/targets come from the shared accumulator. */
+   *  ends. Points/targets come from the shared accumulator and carry
+   *  the click-altitude `z` so the preview lays on the rendered
+   *  ground instead of a fixed-height plane. */
   getLineDragState(): {
     active: boolean;
-    points: ReadonlyArray<{ x: number; y: number }>;
-    targets: ReadonlyArray<{ x: number; y: number }>;
+    points: ReadonlyArray<{ x: number; y: number; z?: number }>;
+    targets: ReadonlyArray<{ x: number; y: number; z?: number }>;
     mode: WaypointType;
   } {
     return {
@@ -720,7 +722,7 @@ export class Input3DManager {
       const finalPoint = points[points.length - 1];
       const cmds = buildFactoryWaypointCommands(
         factories, finalPoint.x, finalPoint.y,
-        this.waypointMode, tick, shiftHeld,
+        this.waypointMode, tick, shiftHeld, finalPoint.z,
       );
       for (const cmd of cmds) this.localCommandQueue.enqueue(cmd);
     }

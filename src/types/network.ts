@@ -206,6 +206,13 @@ export type NetworkServerSnapshotAction = {
    *  to take 6-12 bytes per action; the int code is one byte. */
   type: ActionTypeCode;
   pos?: Vec2;
+  /** Altitude (sim.z = three.y) of the action's 3D ground point —
+   *  the original click point that produced this action, preserved
+   *  so joining clients see waypoint markers at the same altitude
+   *  the issuing client did. Sent only when the action carries a
+   *  click-derived z (renderers fall back to a terrain sample when
+   *  absent). */
+  posZ?: number;
   targetId?: number;
   buildingType?: string;
   grid?: Vec2;
@@ -290,7 +297,10 @@ export type NetworkServerSnapshotEntity = {
       queue: string[];
       progress: number;
       producing: boolean;
-      waypoints: { pos: Vec2; type: string }[];
+      /** `posZ` carries the click-altitude of the player-issued
+       *  factory waypoint; absent for synthetic / legacy waypoints
+       *  (renderers fall back to terrain sample). */
+      waypoints: { pos: Vec2; posZ?: number; type: string }[];
     };
   };
   shot?: {

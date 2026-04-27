@@ -2,10 +2,15 @@
 
 import type { Entity, EntityId, PlayerId, WaypointType, BuildingType } from './sim';
 
-// Point in world space
+// Point in world space (sim coords). `z` is the altitude of the
+// rendered 3D ground at this XY (from CursorGround.pickSim) and is
+// optional — 2D-only callers and synthetic interior points (path
+// distribution interpolations) can omit it; renderers fall back to a
+// terrain sample when missing.
 export type WorldPoint = {
   x: number;
   y: number;
+  z?: number;
 };
 
 // Entity source for input detection
