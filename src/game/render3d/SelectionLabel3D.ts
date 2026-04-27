@@ -17,12 +17,14 @@ const STYLE = {
   /** Distance above the entity's top in world units where the label
    *  centerline sits. Above the HP bar so they don't overlap. */
   worldOffsetAbove: 26,
-  /** Sprite height in world units; width is computed from the
-   *  measured text width so wide labels read fully. */
-  worldHeight: 8,
+  /** TARGET pixel height of the label on screen, regardless of
+   *  camera distance — sprites use sizeAttenuation: false so the
+   *  text always reads at this size whether the unit is close or
+   *  way out at the edge of the map. */
+  pixelHeight: 18,
   /** Canvas resolution. The font fills the canvas height; width
-   *  grows with measured text width (rounded up to a power of two
-   *  is unnecessary for non-mipped textures). */
+   *  grows with the measured text width. With non-mipped textures
+   *  there's no benefit to power-of-two sizing. */
   canvasHeight: 64,
   fontSize: 40,
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -47,10 +49,18 @@ type Label = {
 
 export class SelectionLabel3D {
   private parent: THREE.Group;
+  private camera: THREE.PerspectiveCamera;
+  private getViewport: () => { width: number; height: number };
   private pool: Label[] = [];
 
-  constructor(parent: THREE.Group) {
+  constructor(
+    parent: THREE.Group,
+    camera: THREE.PerspectiveCamera,
+    getViewport: () => { width: number; height: number },
+  ) {
     this.parent = parent;
+    this.camera = camera;
+    this.getViewport = getViewport;
   }
 
   private acquire(i: number): Label {
@@ -69,6 +79,7 @@ export class SelectionLabel3D {
         map: texture,
         transparent: true,
         depthTest: true,
+        sizeAttenuation: false,
       });
       const sprite = new THREE.Sprite(material);
       this.parent.add(sprite);
@@ -113,16 +124,29 @@ export class SelectionLabel3D {
   ): void {
     let used = 0;
 
+    // For sprites with sizeAttenuation: false on a perspective
+    // camera, the on-screen pixel size of a sprite equals
+    //   scale * projection[1][1] * viewportHeight / 2
+    // where projection[1][1] = 1 / tan(fovy/2). Solving for scale
+    // (so that any pixel target → matching scale) yields the
+    // pxToScale factor below; both axes use the same factor since
+    // the projection's x scaling already accounts for aspect ratio
+    // when sizeAttenuation is off.
+    const vp = this.getViewport();
+    const fovRad = this.camera.fov * Math.PI / 180;
+    const pxToScale = vp.height > 0
+      ? 2 * Math.tan(fovRad / 2) / vp.height
+      : 0;
+
     for (const u of selectedUnits) {
       if (!u.unit || u.unit.hp <= 0) continue;
       const text = labelTextForUnit(u);
       const label = this.acquire(used++);
       const canvasWidth = this.repaintIfChanged(label, text);
-      // World height is fixed; world width scales with canvas aspect
-      // so wide labels stay readable.
       const aspect = canvasWidth / STYLE.canvasHeight;
-      const worldWidth = STYLE.worldHeight * aspect;
-      label.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
+      const pxH = STYLE.pixelHeight;
+      const pxW = pxH * aspect;
+      label.sprite.scale.set(pxW * pxToScale, pxH * pxToScale, 1);
       const radius = u.unit.unitRadiusCollider.scale;
       label.sprite.position.set(
         u.transform.x,
@@ -137,8 +161,9 @@ export class SelectionLabel3D {
       const label = this.acquire(used++);
       const canvasWidth = this.repaintIfChanged(label, text);
       const aspect = canvasWidth / STYLE.canvasHeight;
-      const worldWidth = STYLE.worldHeight * aspect;
-      label.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
+      const pxH = STYLE.pixelHeight;
+      const pxW = pxH * aspect;
+      label.sprite.scale.set(pxW * pxToScale, pxH * pxToScale, 1);
       const halfDepth = b.building.depth / 2;
       label.sprite.position.set(
         b.transform.x,

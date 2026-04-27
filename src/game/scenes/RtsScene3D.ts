@@ -401,7 +401,14 @@ export class RtsScene3D {
       // depth-occlusion against the terrain (a unit behind a hill
       // has its bar/label/waypoint markers naturally clipped).
       this.healthBar3D = new HealthBar3D(this.threeApp.world);
-      this.selectionLabel3D = new SelectionLabel3D(this.threeApp.world);
+      this.selectionLabel3D = new SelectionLabel3D(
+        this.threeApp.world,
+        this.threeApp.camera,
+        () => ({
+          width: this.threeApp.renderer.domElement.clientWidth,
+          height: this.threeApp.renderer.domElement.clientHeight,
+        }),
+      );
       this.waypoint3D = new Waypoint3D(
         this.threeApp.world,
         this.mapWidth, this.mapHeight,
