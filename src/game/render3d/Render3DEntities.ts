@@ -161,7 +161,6 @@ export class Render3DEntities {
   // loop avoids allocating a fresh Set on every render frame — four
   // Set allocations × 60 Hz = ~240 GC objects/sec otherwise.
   private _seenUnitIds = new Set<EntityId>();
-  private _seenSpinIds = new Set<EntityId>();
   private _seenBuildingIds = new Set<number>();
   private _seenProjectileIds = new Set<number>();
   /** SHOT RAD overlay meshes per projectile. Wireframe spheres —
@@ -588,11 +587,16 @@ export class Render3DEntities {
     this._lastSpinMs = now;
     this._currentDtMs = spinDt * 1000;
 
-    this.updateBarrelSpins(spinDt);
+    // Barrel-spin advancement is fused into updateUnits' per-entity
+    // loop so the unit list is iterated once instead of twice. Cache
+    // the dt on the instance so the per-unit body can read it.
+    this._spinDt = spinDt;
     this.updateUnits();
     this.updateBuildings();
     this.updateProjectiles();
   }
+
+  private _spinDt = 0;
 
   private _currentDtMs = 0;
 
@@ -722,54 +726,40 @@ export class Render3DEntities {
   }
 
 
-  /**
-   * Advance each unit's barrel-spin state (angle, speed). Mirrors the 2D
-   * updateBarrelSpins loop exactly: pick the first multi-barrel turret on
-   * each unit for its spin config, accelerate toward max while any turret
-   * is engaged, decelerate toward idle otherwise.
-   */
-  private updateBarrelSpins(dt: number): void {
-    const units = this.clientViewState.getUnits();
-    const seen = this._seenSpinIds;
-    seen.clear();
-
-    for (const entity of units) {
-      if (!entity.turrets) continue;
-      seen.add(entity.id);
-
-      let spinConfig: SpinConfig | undefined;
-      for (const w of entity.turrets) {
-        const bc = w.config.barrel;
-        if (
-          bc
-          && (bc.type === 'simpleMultiBarrel' || bc.type === 'coneMultiBarrel')
-        ) {
-          spinConfig = bc.spin;
-          break;
-        }
+  /** Advance the barrel-spin state for one unit. Picks the first
+   *  multi-barrel turret as the spin source, accelerates toward max
+   *  while any turret is engaged, decelerates toward idle otherwise.
+   *  Called inline from the per-entity loop in updateUnits — fuses
+   *  what used to be a separate full sweep over getUnits(). */
+  private advanceBarrelSpin(entity: Entity, dt: number): void {
+    if (!entity.turrets) return;
+    let spinConfig: SpinConfig | undefined;
+    for (const w of entity.turrets) {
+      const bc = w.config.barrel;
+      if (
+        bc
+        && (bc.type === 'simpleMultiBarrel' || bc.type === 'coneMultiBarrel')
+      ) {
+        spinConfig = bc.spin;
+        break;
       }
-      if (!spinConfig) continue;
+    }
+    if (!spinConfig) return;
 
-      let state = this.barrelSpins.get(entity.id);
-      if (!state) {
-        state = { angle: 0, speed: spinConfig.idle };
-        this.barrelSpins.set(entity.id, state);
-      }
-
-      const firing = entity.turrets.some((w) => w.state === 'engaged');
-      if (firing) {
-        state.speed = Math.min(state.speed + spinConfig.accel * dt, spinConfig.max);
-      } else {
-        state.speed = Math.max(state.speed - spinConfig.decel * dt, spinConfig.idle);
-      }
-      // Keep angle bounded to [0, 2π) so Float32 precision doesn't drift over long games.
-      state.angle = (state.angle + state.speed * dt) % (Math.PI * 2);
+    let state = this.barrelSpins.get(entity.id);
+    if (!state) {
+      state = { angle: 0, speed: spinConfig.idle };
+      this.barrelSpins.set(entity.id, state);
     }
 
-    // Drop state for units that no longer exist.
-    for (const id of this.barrelSpins.keys()) {
-      if (!seen.has(id)) this.barrelSpins.delete(id);
+    const firing = entity.turrets.some((w) => w.state === 'engaged');
+    if (firing) {
+      state.speed = Math.min(state.speed + spinConfig.accel * dt, spinConfig.max);
+    } else {
+      state.speed = Math.max(state.speed - spinConfig.decel * dt, spinConfig.idle);
     }
+    // Keep angle bounded to [0, 2π) so Float32 precision doesn't drift over long games.
+    state.angle = (state.angle + state.speed * dt) % (Math.PI * 2);
   }
 
   private updateUnits(): void {
@@ -795,9 +785,15 @@ export class Render3DEntities {
     const units = this.clientViewState.getUnits();
     const seen = this._seenUnitIds;
     seen.clear();
+    const spinDt = this._spinDt;
 
     for (const e of units) {
       seen.add(e.id);
+      // Barrel-spin state advances for ALL units regardless of camera
+      // scope, matching pre-fuse behavior so a unit that pans into view
+      // shows its spin where it should be (not paused at last on-screen
+      // position).
+      this.advanceBarrelSpin(e, spinDt);
       // RENDER scope gate — skip all per-frame work for units outside
       // the camera rect. `seen` is still populated above so an off-
       // scope unit isn't mistakenly removed from the mesh map. The
@@ -1130,6 +1126,12 @@ export class Render3DEntities {
         this.disposeWorldParentedOverlays(m);
         this.unitMeshes.delete(id);
       }
+    }
+    // Drop barrel-spin state for units that no longer exist. Reuses
+    // the same `seen` set populated by the unit loop above — no
+    // separate sweep needed.
+    for (const id of this.barrelSpins.keys()) {
+      if (!seen.has(id)) this.barrelSpins.delete(id);
     }
   }
 
