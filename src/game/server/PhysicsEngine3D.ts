@@ -305,28 +305,48 @@ export class PhysicsEngine3D {
     this.accelZ.clear();
   }
 
-  /** Explicit-Euler integration: accel → velocity → position.
-   *  Gravity applies to every dynamic body; external forces already
-   *  live on the accel* maps courtesy of applyForce.
+  /** Explicit-Euler integration with surface-constraint forces.
    *
-   *  Damping model: `frictionAir` is GROUND DRAG — friction between a
-   *  unit's hull and the surface it's sliding on. It applies to the
-   *  HORIZONTAL plane (vx/vy) so units don't slide forever after a
-   *  knockback. Vertical velocity (vz) is left to gravity alone:
-   *  damping vz the same way made units descend on a slow exponential
-   *  terminal velocity instead of accelerating freely under gravity,
-   *  which read as "floating". A future air-drag pass for high-flying
-   *  units (bombers etc.) can add a separate, much smaller vz damping
-   *  term, but it should not equal frictionAir. */
+   *  Per body per tick:
+   *   1. Accel = external (accel*) + gravity.
+   *   2. If GROUNDED, project accel onto the slope tangent plane —
+   *      the surface absorbs any normal component (= an implicit
+   *      ground reaction force). Gravity's downhill component
+   *      stays, the perpendicular component is canceled. Same
+   *      treatment for thrust's upward component on a climb.
+   *   3. Velocity += accel · dt. Because the accel was already
+   *      tangent, velocity stays tangent and position stays on the
+   *      surface to integration precision. No drift, no fly-up.
+   *   4. Damp the HORIZONTAL components of velocity (frictionAir =
+   *      ground drag). vz is left to the constraint above.
+   *   5. Position += velocity · dt.
+   *
+   *  Airborne bodies (knockback, explosions, thrown units) skip the
+   *  projection: gravity acts uncontested, the body arcs back down,
+   *  resolveGroundContacts catches the landing. */
   private integrate(dtSec: number): void {
     for (const b of this.dynamicBodies) {
-      const ax = this.accelX.get(b) ?? 0;
-      const ay = this.accelY.get(b) ?? 0;
-      const az = (this.accelZ.get(b) ?? 0) - GRAVITY;
+      let ax = this.accelX.get(b) ?? 0;
+      let ay = this.accelY.get(b) ?? 0;
+      let az = (this.accelZ.get(b) ?? 0) - GRAVITY;
+      if (b.shape === 'sphere') {
+        const groundZ = this.getGroundZ(b.x, b.y);
+        const restingZ = groundZ + b.radius;
+        if (b.z <= restingZ + GROUND_TOLERANCE) {
+          // Project (ax, ay, az) onto the slope tangent plane:
+          //   a ← a − (a · n) · n
+          // where n is the unit surface normal in sim coords.
+          const n = this.getGroundNormal(b.x, b.y);
+          const aDotN = ax * n.nx + ay * n.ny + az * n.nz;
+          ax -= aDotN * n.nx;
+          ay -= aDotN * n.ny;
+          az -= aDotN * n.nz;
+        }
+      }
       b.vx += ax * dtSec;
       b.vy += ay * dtSec;
       b.vz += az * dtSec;
-      // Horizontal-only ground drag — see comment above.
+      // Horizontal-only ground drag.
       const damp = Math.pow(1 - b.frictionAir, dtSec * 60);
       b.vx *= damp;
       b.vy *= damp;

@@ -54,10 +54,15 @@ const TOP_VERTS_PER_TILE = TOP_VERTS_PER_ROW * TOP_VERTS_PER_ROW;
 // Floor: 4 outer corners (sides connect outer top corners to these).
 const FLOOR_VERTS_PER_TILE = 4;
 const VERTS_PER_TILE = TOP_VERTS_PER_TILE + FLOOR_VERTS_PER_TILE;
-// Triangles: SUBDIV² sub-quads × 2 on top + 4 sides × 2 on the
-// outside (bottom face omitted, always underground).
+// Triangles: SUBDIV² sub-quads × 2 on top + 4 sides × (SUBDIV+1)
+// fan triangles on each outside wall (bottom face omitted, always
+// underground). Each side wall reuses the SUBDIV+1 subdivided top
+// vertices along its boundary edge so the side surface follows the
+// exact same heightmap curve the top does — no top-to-side seam,
+// no visible gap at tile boundaries.
 const TOP_TRIS_PER_TILE = SUBDIV * SUBDIV * 2;
-const SIDE_TRIS_PER_TILE = 4 * 2;
+const SIDE_TRIS_PER_FACE = SUBDIV + 1;
+const SIDE_TRIS_PER_TILE = SIDE_TRIS_PER_FACE * 4;
 const TRIS_PER_TILE = TOP_TRIS_PER_TILE + SIDE_TRIS_PER_TILE;
 // Floor vertex indices, after the (SUBDIV+1)² top vertices.
 const FLOOR_IDX_BASE = TOP_VERTS_PER_TILE;
@@ -225,31 +230,49 @@ export class CaptureTileRenderer3D {
           }
         }
 
-        // SIDES — connect outer top edges to floor corners. Outer
-        // top corners use sub-grid indices at the boundary
-        // (i ∈ {0, SUBDIV}, j ∈ {0, SUBDIV}); floor corners are at
-        // FLOOR_IDX_BASE + 0..3 (matching the top-corner traversal
-        // 0,0 → SUBDIV,0 → SUBDIV,SUBDIV → 0,SUBDIV).
-        const t00 = v + topIdx(0, 0);
-        const t10 = v + topIdx(SUBDIV, 0);
-        const t11 = v + topIdx(SUBDIV, SUBDIV);
-        const t01 = v + topIdx(0, SUBDIV);
+        // SIDES — each face uses the SUBDIV+1 subdivided top vertices
+        // along its edge plus 2 floor corners. Triangulate as a fan
+        // anchored to ONE floor corner, walking the top edge:
+        //
+        //   for s = 0..SUBDIV-1:  (anchor, top_s, top_{s+1})
+        //   closing triangle:     (anchor, top_SUBDIV, far_floor)
+        //
+        // Total per face = SUBDIV + 1 triangles. The face fully
+        // covers the rectangle bounded by the curved top edge, the
+        // two vertical edges, and the floor edge — no top-to-side
+        // gap at tile boundaries.
         const f00 = v + FLOOR_IDX_BASE + 0;
         const f10 = v + FLOOR_IDX_BASE + 1;
         const f11 = v + FLOOR_IDX_BASE + 2;
         const f01 = v + FLOOR_IDX_BASE + 3;
-        // FRONT (−Z)
-        this.indices[k++] = t00; this.indices[k++] = f00; this.indices[k++] = f10;
-        this.indices[k++] = t00; this.indices[k++] = f10; this.indices[k++] = t10;
-        // BACK (+Z)
-        this.indices[k++] = t11; this.indices[k++] = f11; this.indices[k++] = f01;
-        this.indices[k++] = t11; this.indices[k++] = f01; this.indices[k++] = t01;
-        // LEFT (−X)
-        this.indices[k++] = t01; this.indices[k++] = f01; this.indices[k++] = f00;
-        this.indices[k++] = t01; this.indices[k++] = f00; this.indices[k++] = t00;
-        // RIGHT (+X)
-        this.indices[k++] = t10; this.indices[k++] = f10; this.indices[k++] = f11;
-        this.indices[k++] = t10; this.indices[k++] = f11; this.indices[k++] = t11;
+        // FRONT (−Z): top edge is j=0, i=0..SUBDIV. Anchor f00.
+        for (let s = 0; s < SUBDIV; s++) {
+          this.indices[k++] = f00;
+          this.indices[k++] = v + topIdx(s, 0);
+          this.indices[k++] = v + topIdx(s + 1, 0);
+        }
+        this.indices[k++] = f00; this.indices[k++] = v + topIdx(SUBDIV, 0); this.indices[k++] = f10;
+        // BACK (+Z): top edge is j=SUBDIV, i=SUBDIV..0. Anchor f11.
+        for (let s = 0; s < SUBDIV; s++) {
+          this.indices[k++] = f11;
+          this.indices[k++] = v + topIdx(SUBDIV - s, SUBDIV);
+          this.indices[k++] = v + topIdx(SUBDIV - s - 1, SUBDIV);
+        }
+        this.indices[k++] = f11; this.indices[k++] = v + topIdx(0, SUBDIV); this.indices[k++] = f01;
+        // LEFT (−X): top edge is i=0, j=SUBDIV..0. Anchor f01.
+        for (let s = 0; s < SUBDIV; s++) {
+          this.indices[k++] = f01;
+          this.indices[k++] = v + topIdx(0, SUBDIV - s);
+          this.indices[k++] = v + topIdx(0, SUBDIV - s - 1);
+        }
+        this.indices[k++] = f01; this.indices[k++] = v + topIdx(0, 0); this.indices[k++] = f00;
+        // RIGHT (+X): top edge is i=SUBDIV, j=0..SUBDIV. Anchor f10.
+        for (let s = 0; s < SUBDIV; s++) {
+          this.indices[k++] = f10;
+          this.indices[k++] = v + topIdx(SUBDIV, s);
+          this.indices[k++] = v + topIdx(SUBDIV, s + 1);
+        }
+        this.indices[k++] = f10; this.indices[k++] = v + topIdx(SUBDIV, SUBDIV); this.indices[k++] = f11;
       }
     }
 
