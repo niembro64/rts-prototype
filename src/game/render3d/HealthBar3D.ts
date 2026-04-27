@@ -124,23 +124,22 @@ export class HealthBar3D {
     // nothing on the hot path.
     const probe = HealthBar3D._probeVec;
 
+    // Stable slot assignment: every visible entity (HP > 0, not full)
+    // gets its own pool slot in iteration order, regardless of
+    // frustum visibility. Skipping out-of-frustum entities entirely
+    // would reassign slots when units enter/leave the camera, which
+    // briefly shows the wrong color/ratio bar over the wrong entity
+    // until the next repaint catches up. Frustum culling here is a
+    // per-sprite visibility flag, not a slot-skip.
     for (const u of units) {
       if (!u.unit) continue;
       const hp = u.unit.hp;
       const maxHp = u.unit.maxHp;
       if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) continue;
       const radius = u.unit.unitRadiusCollider.scale;
-      // Sample the bar's intended world position. If it's off-camera,
-      // skip the canvas bake and the position write entirely. The
-      // sprite's slot stays unused this frame; the pool is iterated
-      // from 0..used at the end so any leftover sprites get hidden.
       const worldX = u.transform.x;
       const worldY = u.transform.z + radius + STYLE.worldOffsetAbove;
       const worldZ = u.transform.y;
-      if (frustum) {
-        probe.set(worldX, worldY, worldZ);
-        if (!frustum.containsPoint(probe)) continue;
-      }
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
       const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
       const bar = this.acquire(used++);
@@ -149,6 +148,10 @@ export class HealthBar3D {
       const worldWidth = radius * 2;
       bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
       bar.sprite.position.set(worldX, worldY, worldZ);
+      if (frustum) {
+        probe.set(worldX, worldY, worldZ);
+        bar.sprite.visible = frustum.containsPoint(probe);
+      }
     }
 
     for (const b of buildings) {
@@ -169,16 +172,16 @@ export class HealthBar3D {
       const worldX = b.transform.x;
       const worldY = b.transform.z + halfDepth + STYLE.worldOffsetAbove;
       const worldZ = b.transform.y;
-      if (frustum) {
-        probe.set(worldX, worldY, worldZ);
-        if (!frustum.containsPoint(probe)) continue;
-      }
       const bar = this.acquire(used++);
       this.repaintIfChanged(bar, ratio, mode);
 
       const worldWidth = b.building.width;
       bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
       bar.sprite.position.set(worldX, worldY, worldZ);
+      if (frustum) {
+        probe.set(worldX, worldY, worldZ);
+        bar.sprite.visible = frustum.containsPoint(probe);
+      }
     }
 
     // Hide everything past the in-use prefix; sprites stay in the

@@ -147,16 +147,20 @@ export class SelectionLabel3D {
       : 0;
     const probe = SelectionLabel3D._probeVec;
 
+    // Stable slot assignment: every selected entity gets its own
+    // pool slot in iteration order, regardless of frustum visibility.
+    // This is critical — if we skip out-of-frustum entities entirely
+    // we'd reassign slots when units enter/leave the camera, and the
+    // labels would visibly flip between entities (a Tick label
+    // ending up briefly on a Commander, etc.) until the next text
+    // repaint catches up. Frustum culling here is a per-sprite
+    // visibility flag, not a slot-skip.
     for (const u of selectedUnits) {
       if (!u.unit || u.unit.hp <= 0) continue;
       const radius = u.unit.unitRadiusCollider.scale;
       const worldX = u.transform.x;
       const worldY = u.transform.z + radius + STYLE.worldOffsetAbove;
       const worldZ = u.transform.y;
-      if (frustum) {
-        probe.set(worldX, worldY, worldZ);
-        if (!frustum.containsPoint(probe)) continue;
-      }
       const text = labelTextForUnit(u);
       const label = this.acquire(used++);
       const canvasWidth = this.repaintIfChanged(label, text);
@@ -165,6 +169,10 @@ export class SelectionLabel3D {
       const pxW = pxH * aspect;
       label.sprite.scale.set(pxW * pxToScale, pxH * pxToScale, 1);
       label.sprite.position.set(worldX, worldY, worldZ);
+      if (frustum) {
+        probe.set(worldX, worldY, worldZ);
+        label.sprite.visible = frustum.containsPoint(probe);
+      }
     }
 
     for (const b of selectedBuildings) {
@@ -173,10 +181,6 @@ export class SelectionLabel3D {
       const worldX = b.transform.x;
       const worldY = b.transform.z + halfDepth + STYLE.worldOffsetAbove;
       const worldZ = b.transform.y;
-      if (frustum) {
-        probe.set(worldX, worldY, worldZ);
-        if (!frustum.containsPoint(probe)) continue;
-      }
       const text = labelTextForBuilding(b);
       const label = this.acquire(used++);
       const canvasWidth = this.repaintIfChanged(label, text);
@@ -185,6 +189,10 @@ export class SelectionLabel3D {
       const pxW = pxH * aspect;
       label.sprite.scale.set(pxW * pxToScale, pxH * pxToScale, 1);
       label.sprite.position.set(worldX, worldY, worldZ);
+      if (frustum) {
+        probe.set(worldX, worldY, worldZ);
+        label.sprite.visible = frustum.containsPoint(probe);
+      }
     }
 
     for (let i = used; i < this.pool.length; i++) {
