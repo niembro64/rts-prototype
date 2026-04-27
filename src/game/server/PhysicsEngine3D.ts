@@ -308,22 +308,31 @@ export class PhysicsEngine3D {
   /** Explicit-Euler integration with surface-constraint forces.
    *
    *  Per body per tick:
-   *   1. Accel = external (accel*) + gravity.
-   *   2. If GROUNDED, project accel onto the slope tangent plane —
-   *      the surface absorbs any normal component (= an implicit
-   *      ground reaction force). Gravity's downhill component
-   *      stays, the perpendicular component is canceled. Same
-   *      treatment for thrust's upward component on a climb.
-   *   3. Velocity += accel · dt. Because the accel was already
-   *      tangent, velocity stays tangent and position stays on the
-   *      surface to integration precision. No drift, no fly-up.
-   *   4. Damp the HORIZONTAL components of velocity (frictionAir =
-   *      ground drag). vz is left to the constraint above.
-   *   5. Position += velocity · dt.
+   *   1. If GROUNDED, the slope acts as a constraint:
+   *      a) Project EXISTING velocity onto the slope tangent plane.
+   *         This handles surface changes between ticks — peaks,
+   *         valleys, edges — where the carried-over velocity from
+   *         a previous slope no longer matches the local tangent.
+   *         Without this step, a unit cresting a hill keeps its
+   *         climbing +vz and flies off the peak.
+   *      b) Project the accel (external + gravity) onto the same
+   *         tangent plane. Gravity's downhill component stays;
+   *         the perpendicular component is absorbed by the
+   *         implicit normal force. Same for thrust's climb
+   *         component when going UP a slope.
+   *   2. Velocity += accel · dt. Already-tangent v plus tangent
+   *      accel stays tangent.
+   *   3. Damp the HORIZONTAL components of velocity (frictionAir =
+   *      ground drag). vz is governed by the constraint above.
+   *   4. Position += velocity · dt — moves along the tangent, so
+   *      b.z stays at restingZ within numerical precision.
    *
-   *  Airborne bodies (knockback, explosions, thrown units) skip the
-   *  projection: gravity acts uncontested, the body arcs back down,
-   *  resolveGroundContacts catches the landing. */
+   *  Knockback / explosions: in this strict-glue model, a unit on
+   *  the surface can't be launched into the air by an instant
+   *  velocity impulse — the projection in step 1a kills the
+   *  upward component on the next tick. That's intentional for an
+   *  RTS where everything stays on the ground. When aircraft come
+   *  online they'll have a separate non-grounded force pipeline. */
   private integrate(dtSec: number): void {
     for (const b of this.dynamicBodies) {
       let ax = this.accelX.get(b) ?? 0;
@@ -333,10 +342,15 @@ export class PhysicsEngine3D {
         const groundZ = this.getGroundZ(b.x, b.y);
         const restingZ = groundZ + b.radius;
         if (b.z <= restingZ + GROUND_TOLERANCE) {
-          // Project (ax, ay, az) onto the slope tangent plane:
-          //   a ← a − (a · n) · n
-          // where n is the unit surface normal in sim coords.
           const n = this.getGroundNormal(b.x, b.y);
+          // 1a) Project existing velocity onto slope tangent.
+          //     v ← v − (v · n) · n
+          const vDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
+          b.vx -= vDotN * n.nx;
+          b.vy -= vDotN * n.ny;
+          b.vz -= vDotN * n.nz;
+          // 1b) Project accel onto slope tangent.
+          //     a ← a − (a · n) · n
           const aDotN = ax * n.nx + ay * n.ny + az * n.nz;
           ax -= aDotN * n.nx;
           ay -= aDotN * n.ny;
