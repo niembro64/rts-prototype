@@ -671,17 +671,24 @@ function initializeLegAt(
   leg.initialized = true;
 }
 
-/** 3D IK (law of cosines, lifted into 3D) — returns the knee world position
- *  for a leg given hip + foot and upper/lower segment lengths. The knee is
- *  placed in the VERTICAL plane that contains the hip→foot line, bending
- *  upward (toward +Y) instead of sideways in the ground plane. All the
- *  trigonometry (cos/sin of the law-of-cosines angle B) is unchanged — we
- *  just take the step perpendicular to the hip-foot direction along the
- *  in-plane "up" vector rather than a horizontal perpendicular. */
+/** 3D IK (law of cosines, lifted into 3D) — returns the knee world
+ *  position for a leg given hip + foot and upper/lower segment
+ *  lengths. The knee is placed in the plane that contains the hip→
+ *  foot line and the chassis-up axis (the surface normal at the
+ *  unit's footprint), bending toward chassis-up. On flat ground
+ *  chassis-up collapses to world +Y and the math matches the
+ *  pre-tilt behavior; on a slope the knee bends "up" relative to
+ *  the unit instead of "up" in world coords — so legs always look
+ *  knees-pointing-skyward from the unit's perspective, even when
+ *  the unit is leaning hard on a hillside.
+ *
+ *  upX/upY/upZ MUST be a unit vector (the caller computes it once
+ *  per unit per frame via the surface-normal sampler). */
 function kneeFromIK(
   hipX: number, hipY: number, hipZ: number,
   footX: number, footY: number, footZ: number,
   upperLen: number, lowerLen: number,
+  upX: number, upY: number, upZ: number,
 ): { x: number; y: number; z: number } {
   const dx = footX - hipX;
   const dy = footY - hipY;
@@ -694,8 +701,7 @@ function kneeFromIK(
   const c = clampedDist;
   let cosB = (a * a + c * c - b * b) / (2 * a * c);
   cosB = Math.max(-1, Math.min(1, cosB));
-  // sin(B) positive → knee bends upward. (Same angle B as the 2D version;
-  // only the axis it's swept around changes.)
+  // sin(B) positive → knee bends along the chassis-up direction.
   const sinB = Math.sqrt(Math.max(0, 1 - cosB * cosB));
 
   // Unit vector hip → foot
@@ -703,21 +709,22 @@ function kneeFromIK(
   const ny = dy / dist;
   const nz = dz / dist;
 
-  // In-plane "up" = world up (0,1,0) with its component along `n` removed,
-  // then normalized. This keeps the knee in the vertical plane containing
-  // the leg, bending toward +Y. If the leg happens to be exactly vertical
-  // (rare — hips sit above feet), fall back to world up.
-  const dotUpN = ny;
-  let ux = -dotUpN * nx;
-  let uy = 1 - dotUpN * ny;
-  let uz = -dotUpN * nz;
+  // In-plane "up" = chassis-up (passed in) with its component along
+  // `n` removed, then normalized. This keeps the knee in the
+  // up-axis-containing plane that includes the leg, bending toward
+  // the chassis-up direction. If the leg happens to be exactly
+  // aligned with chassis-up (degenerate), fall back to chassis-up.
+  const dotUpN = upX * nx + upY * ny + upZ * nz;
+  let ux = upX - dotUpN * nx;
+  let uy = upY - dotUpN * ny;
+  let uz = upZ - dotUpN * nz;
   const uLen = Math.hypot(ux, uy, uz);
   if (uLen > 1e-6) {
     ux /= uLen;
     uy /= uLen;
     uz /= uLen;
   } else {
-    ux = 0; uy = 1; uz = 0;
+    ux = upX; uy = upY; uz = upZ;
   }
 
   return {
@@ -811,6 +818,19 @@ export function updateLocomotion(
     const unitRadius = entity.unit?.unitRadiusCollider.push ?? 0;
     const stepRadius = mesh.stepRadius;
     const showViz = getLegsRadiusToggle();
+    // Chassis-UP direction in three.js world coords — the surface
+    // normal at the unit's footprint, mapped from sim (sim z up) to
+    // three (sim z → three y). Sampled once per unit per frame and
+    // shared across every leg's IK so all legs bend their knees
+    // along the same chassis-relative "up", regardless of slope.
+    // On flat ground this collapses to (0, 1, 0) = world up.
+    const sn = getSurfaceNormal(
+      entity.transform.x, entity.transform.y,
+      mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE,
+    );
+    const chassisUpX = sn.nx;
+    const chassisUpY = sn.nz;
+    const chassisUpZ = sn.ny;
     // Body velocity rotated into chassis-local frame, used for the
     // snap target's lookahead. sim x/y → three x/z (the existing
     // handedness); chassis +X = body forward.
@@ -996,6 +1016,7 @@ export function updateLocomotion(
           hipWorldX, hipWorldY, hipWorldZ,
           footX, footY, footZ,
           c.upperLegLength, c.lowerLegLength,
+          chassisUpX, chassisUpY, chassisUpZ,
         );
         setCylinderBetween(leg.upper, hipWorldX, hipWorldY, hipWorldZ, knee.x, knee.y, knee.z, leg.upperThick);
         if (leg.lower) {
