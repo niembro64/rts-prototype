@@ -884,12 +884,18 @@ export class Render3DEntities {
         this.world.add(group);
         m = { group, yawGroup, chassis, chassisMeshes, rendererId, turrets: turretMeshes, lodKey: this.lod.key };
 
-        // Locomotion (tank treads / vehicle wheels / arachnid legs)
-        // ALL parent to `yawGroup` now — legs are no longer a special
-        // case with their own world-space foot planting. The whole
-        // unit (chassis + every locomotion type + turrets + mirrors)
-        // reads as one rigid body that yaws and tilts together.
-        m.locomotion = buildLocomotion(yawGroup, yawGroup, e, radius, pid, this.lod.gfx);
+        // Locomotion (tank treads / vehicle wheels / arachnid legs).
+        // Treads + wheels parent to `yawGroup` so they yaw + tilt
+        // with the chassis. LEGS are world-space again — they parent
+        // to `this.world` so each foot can be planted at a real
+        // terrain XYZ that doesn't move when the body moves or yaws.
+        // The map dims feed the leg builder + per-frame logic so
+        // snap targets can sample terrain elevation directly.
+        m.locomotion = buildLocomotion(
+          yawGroup, this.world, e, radius, pid, this.lod.gfx,
+          this.clientViewState.getMapWidth(),
+          this.clientViewState.getMapHeight(),
+        );
 
 
         // Mirror panels (e.g. Loris): standing slabs that track the turret.
@@ -1111,7 +1117,11 @@ export class Render3DEntities {
 
       // Locomotion: spin tread wheels per velocity; wheels/legs are static.
       if (m.locomotion) {
-        updateLocomotion(m.locomotion, e, this._currentDtMs);
+        updateLocomotion(
+          m.locomotion, e, this._currentDtMs,
+          this.clientViewState.getMapWidth(),
+          this.clientViewState.getMapHeight(),
+        );
       }
 
       // Health bar handled by HealthBar3D (billboarded sprite in the

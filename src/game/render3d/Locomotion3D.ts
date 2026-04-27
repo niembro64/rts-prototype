@@ -20,6 +20,8 @@ import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
+import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 
 /** Per-unit step-circle radius as a fraction of the unit's LONGEST
  *  leg (upperLegLength + lowerLegLength). One value shared by every
@@ -70,19 +72,22 @@ export type Locomotion3DMesh =
     } & LocomotionBase)
   | ({ type: 'wheels'; group: THREE.Group; wheels: THREE.Mesh[] } & LocomotionBase)
   | ({ type: 'legs';
-       /** Container for all leg meshes — parented to the WORLD group (not
-        *  the unit group) so world-space foot planting isn't disturbed by
-        *  the unit's rotation. */
+       /** Container for all leg meshes — parented to the WORLD group
+        *  (not the unit's chassis frame) so world-planted feet aren't
+        *  disturbed by the unit's translation, rotation, or tilt.
+        *  Hip + foot positions are written in world coords every
+        *  frame and the cylinders go between them directly. */
        group: THREE.Group;
        legs: LegInstance[];
        style: LegStyle;
        config: BlueprintLegConfig;
        legLod: LegLod;
-       /** Per-UNIT rest-circle radius (chassis-local world units). Every
-        *  leg on this unit shares the same circle size — it scales with
-        *  the unit's longest leg so a Daddy gets a much larger stride
-        *  budget than a Tick, but two legs of the same unit always
-        *  agree on how far a foot can wander before snapping. */
+       /** Per-UNIT rest-sphere radius (world units). Every leg on
+        *  this unit shares the same sphere size — it scales with
+        *  the unit's longest leg so a Daddy gets a much larger
+        *  stride budget than a Tick, but two legs of the same unit
+        *  always agree on how far a foot can wander before
+        *  snapping. */
        stepRadius: number;
     } & LocomotionBase)
   | undefined;
@@ -91,32 +96,41 @@ type LocomotionBase = {
   lodKey: string;
 };
 
-/** State for a single leg, matching the 2D ArachnidLeg fields. Foot position
- *  is tracked in world XZ coords; when the hip moves too far or the leg
- *  rotates past the snap angle, the foot lerps to a new snap position. */
+/** State for a single leg. The foot is planted at a real WORLD XYZ
+ *  point on the terrain — it stays at that exact ground spot
+ *  regardless of how the body moves or yaws, just like a real foot
+ *  pinned against the ground. The trigger / snap test happens in
+ *  world frame against the leg's rest sphere (whose CENTER is in
+ *  chassis-local space and therefore moves + rotates with the body). */
 type LegInstance = {
   config: ArachnidLegConfig;
   /** Knee bends outward: +1 for right side, -1 for left. */
   side: number;
-  /** Hip Y in world coords (= mid-height of the body segment this leg
-   *  attaches to). Baked per-leg when the leg set is built so composite
-   *  units like the arachnid get tall rear legs + shorter front legs. */
+  /** Hip Y in chassis-local coords (= mid-height of the body segment
+   *  this leg attaches to). Baked per-leg when the leg set is built
+   *  so composite units like the arachnid get tall rear legs +
+   *  shorter front legs. */
   hipY: number;
 
-  // World XZ foot position (2D "x, y" maps to 3D "x, z").
-  groundX: number;
-  groundZ: number;
-  startGroundX: number;
-  startGroundZ: number;
-  targetGroundX: number;
-  targetGroundZ: number;
+  /** Current foot world position. Y is sampled from terrain — when
+   *  the foot is planted (not sliding) this XYZ doesn't change at
+   *  all, which is exactly what "planted on the ground" means. */
+  worldX: number;
+  worldY: number;
+  worldZ: number;
+  /** Lerp endpoints (world XYZ) used during the snap-and-step
+   *  animation that takes the foot from where it lifted off to its
+   *  newly chosen ground spot. */
+  startWorldX: number; startWorldY: number; startWorldZ: number;
+  targetWorldX: number; targetWorldY: number; targetWorldZ: number;
   isSliding: boolean;
   lerpProgress: number;
   lerpDuration: number;
   initialized: boolean;
 
-  // Meshes — all parented to the world-space group. Geometry is rebuilt
-  // between hip/knee/foot each frame from the current state.
+  // Meshes — parented to the WORLD group so their geometry is built
+  // directly in world coords each frame from the world hip and world
+  // foot positions. No chassis-local intermediate frame.
   upper: THREE.Mesh;
   lower?: THREE.Mesh;
   hipJoint?: THREE.Mesh;
@@ -124,10 +138,10 @@ type LegInstance = {
   footJoint?: THREE.Mesh;
   upperThick: number;
   lowerThick: number;
-  /** LEGS-radius debug viz: a flat ring lying in the chassis-local
-   *  XZ plane at the leg's rest center. Lazy-built the first time
-   *  the toggle is on; hidden (not destroyed) when off. */
-  restCircle?: THREE.LineLoop;
+  /** LEGS-radius debug viz: a wireframe SPHERE centered at this
+   *  leg's rest-sphere world position. Lazy-built; hidden (not
+   *  destroyed) when off. */
+  restSphere?: THREE.LineSegments;
 };
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -135,21 +149,16 @@ const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 const legGeom = new THREE.CylinderGeometry(1, 1, 1, 8);
 const jointGeom = new THREE.SphereGeometry(1, 8, 6);
 
-// Unit circle (radius 1) in the XZ plane at y=0 — instanced per leg
-// at runtime by translating to rest center and scaling by stepRadius.
-const restCircleGeom = (() => {
-  const segs = 48;
-  const pts: THREE.Vector3[] = [];
-  for (let i = 0; i < segs; i++) {
-    const t = (i / segs) * Math.PI * 2;
-    pts.push(new THREE.Vector3(Math.cos(t), 0, Math.sin(t)));
-  }
-  return new THREE.BufferGeometry().setFromPoints(pts);
-})();
-const restCircleMat = new THREE.LineBasicMaterial({
+// Unit wireframe sphere — the rest-sphere viz. Each leg gets one
+// LineSegments instance scaled up to stepRadius and positioned at the
+// leg's rest-sphere CENTER in world coords. A real 3D ball, not a
+// flat ground ring, so on uneven terrain the foot can actually find
+// a valid ground spot inside it.
+const restSphereGeom = new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 16, 12));
+const restSphereMat = new THREE.LineBasicMaterial({
   color: 0x44ffcc,
   transparent: true,
-  opacity: 0.55,
+  opacity: 0.4,
   depthWrite: false,
 });
 
@@ -233,6 +242,8 @@ export function buildLocomotion(
   unitRadius: number,
   _pid: PlayerId | undefined,
   gfx: GraphicsConfig,
+  mapWidth: number,
+  mapHeight: number,
 ): Locomotion3DMesh {
   if (!entity.unit) return undefined;
   let bp;
@@ -259,7 +270,10 @@ export function buildLocomotion(
     }
     case 'legs': {
       const renderer = bp.renderer ?? 'arachnid';
-      const mesh = buildLegs(worldGroup, entity, unitRadius, loc.style, loc.config, gfx.legs, renderer);
+      const mesh = buildLegs(
+        worldGroup, entity, unitRadius, loc.style, loc.config,
+        gfx.legs, renderer, mapWidth, mapHeight,
+      );
       if (mesh) mesh.lodKey = lodKey;
       return mesh;
     }
@@ -390,6 +404,8 @@ function buildLegs(
   cfg: BlueprintLegConfig,
   legLod: LegLod,
   renderer: string,
+  mapWidth: number,
+  mapHeight: number,
 ): Locomotion3DMesh {
   if (legLod === 'none') return undefined;
 
@@ -459,12 +475,9 @@ function buildLegs(
       config: legCfg,
       side,
       hipY,
-      groundX: 0,
-      groundZ: 0,
-      startGroundX: 0,
-      startGroundZ: 0,
-      targetGroundX: 0,
-      targetGroundZ: 0,
+      worldX: 0, worldY: 0, worldZ: 0,
+      startWorldX: 0, startWorldY: 0, startWorldZ: 0,
+      targetWorldX: 0, targetWorldY: 0, targetWorldZ: 0,
       isSliding: false,
       lerpProgress: 0,
       lerpDuration,
@@ -479,15 +492,8 @@ function buildLegs(
     });
   }
 
-  // Seat each foot at its snap-target rest pose so legs don't flicker from
-  // (0,0) on the first frame.
-  const unitX = entity.transform.x;
-  const unitY = entity.transform.y;
-  const unitR = entity.transform.rotation;
-  for (const leg of legs) initializeLegAt(leg, unitX, unitY, unitR);
-
-  // Unit-level step-circle radius. Every leg on this unit shares the
-  // same rest-circle size; we anchor it to the LONGEST leg so units
+  // Unit-level step-sphere radius. Every leg on this unit shares the
+  // same rest-sphere size; we anchor it to the LONGEST leg so units
   // with mixed-length legs (e.g. the daddy's slightly shorter middle
   // pair) all step on the same scale.
   let maxLegLength = 0;
@@ -496,6 +502,12 @@ function buildLegs(
     if (tl > maxLegLength) maxLegLength = tl;
   }
   const stepRadius = maxLegLength * STEP_CIRCLE_RADIUS_FRAC;
+
+  // Seat each foot at its rest-sphere CENTER on the actual ground so
+  // there's no first-frame flicker from (0,0,0). We transform the
+  // chassis-local rest center to world coords and then sample
+  // terrain Y at that XZ — the foot starts planted on real ground.
+  for (const leg of legs) initializeLegAt(leg, entity, r, mapWidth, mapHeight);
 
   return {
     type: 'legs',
@@ -517,29 +529,90 @@ function totalLegLength(c: ArachnidLegConfig): number {
   return c.upperLegLength + c.lowerLegLength;
 }
 
-function initializeLegAt(leg: LegInstance, unitX: number, unitZ: number, unitR: number): void {
-  const cos = Math.cos(unitR);
-  const sin = Math.sin(unitR);
+// Reused by the chassis→world transform on the legs hot path so the
+// per-frame loop allocates no quaternions / vectors.
+const _chassisVec = new THREE.Vector3();
+const _chassisTilt = new THREE.Quaternion();
+const _chassisUp = new THREE.Vector3(0, 1, 0);
+const _chassisN = new THREE.Vector3();
+
+/** Given a chassis-local point (cx, cy, cz) and a unit's transform,
+ *  return the corresponding WORLD point (writes into out). The
+ *  transform chain matches Render3DEntities exactly:
+ *
+ *    world = T(unit_base) · tilt · Ry(yaw) · chassis_local
+ *
+ *  where unit_base is (sim.x, sim.z − unitRadius, sim.y), yaw is
+ *  −sim.rotation, and tilt is built from the surface normal at the
+ *  unit's footprint. Surface normal sampling is done inline so the
+ *  caller doesn't need to thread it through. */
+function transformChassisToWorld(
+  cx: number, cy: number, cz: number,
+  entity: Entity,
+  unitRadius: number,
+  mapWidth: number,
+  mapHeight: number,
+  out: { x: number; y: number; z: number },
+): void {
+  const rot = entity.transform.rotation;
+  const cosR = Math.cos(rot);
+  const sinR = Math.sin(rot);
+  // Yaw: yawGroup applies rotation.y = −rot. Apply that to (cx, cy, cz).
+  const yx = cosR * cx - sinR * cz;
+  const yy = cy;
+  const yz = sinR * cx + cosR * cz;
+  // Tilt: build the same surface-normal quaternion the renderer uses.
+  const n = getSurfaceNormal(
+    entity.transform.x, entity.transform.y,
+    mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE,
+  );
+  if (n.nx === 0 && n.ny === 0) {
+    out.x = entity.transform.x + yx;
+    out.y = entity.transform.z - unitRadius + yy;
+    out.z = entity.transform.y + yz;
+    return;
+  }
+  // sim normal (nx, ny, nz=up) → three.js (nx, nz, ny)
+  _chassisN.set(n.nx, n.nz, n.ny);
+  _chassisTilt.setFromUnitVectors(_chassisUp, _chassisN);
+  _chassisVec.set(yx, yy, yz).applyQuaternion(_chassisTilt);
+  out.x = entity.transform.x + _chassisVec.x;
+  out.y = entity.transform.z - unitRadius + _chassisVec.y;
+  out.z = entity.transform.y + _chassisVec.z;
+}
+
+// Scratch output struct reused across the per-leg loop.
+const _worldOut = { x: 0, y: 0, z: 0 };
+
+function initializeLegAt(
+  leg: LegInstance,
+  entity: Entity,
+  unitRadius: number,
+  mapWidth: number,
+  mapHeight: number,
+): void {
   const c = leg.config;
-  const attachX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
-  const attachZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
   const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
   // Right-side legs (side === 1) start halfway through their drift
-  // cycle (between snap rest and snap trigger angles) so they step out
-  // of phase with the left side once the unit moves — an alternating
-  // walk gait from spawn rather than all legs cycling in unison.
+  // cycle so the gait alternates by side from frame 1.
   const initAngle = leg.side === 1
     ? (c.snapTargetAngle + c.snapTriggerAngle * Math.sign(c.snapTargetAngle)) / 2
     : c.snapTargetAngle;
-  const angle = unitR + initAngle;
-  const gx = attachX + Math.cos(angle) * restDistance;
-  const gz = attachZ + Math.sin(angle) * restDistance;
-  leg.groundX = gx;
-  leg.groundZ = gz;
-  leg.startGroundX = gx;
-  leg.startGroundZ = gz;
-  leg.targetGroundX = gx;
-  leg.targetGroundZ = gz;
+  // Chassis-local rest center: hip + (cos restAngle, sin restAngle) ×
+  // restDistance. Y component is FOOT_Y so the rest sphere sits at
+  // foot level on flat ground.
+  const cx = c.attachOffsetX + Math.cos(initAngle) * restDistance;
+  const cy = FOOT_Y;
+  const cz = c.attachOffsetY + Math.sin(initAngle) * restDistance;
+  // Transform to world to find the foot's spawn XZ, then snap Y to
+  // the actual terrain elevation so the foot lands ON the ground.
+  transformChassisToWorld(cx, cy, cz, entity, unitRadius, mapWidth, mapHeight, _worldOut);
+  const groundY = getSurfaceHeight(_worldOut.x, _worldOut.z, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
+  leg.worldX = _worldOut.x;
+  leg.worldY = groundY;
+  leg.worldZ = _worldOut.z;
+  leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
+  leg.targetWorldX = leg.worldX; leg.targetWorldY = leg.worldY; leg.targetWorldZ = leg.worldZ;
   leg.initialized = true;
 }
 
@@ -607,6 +680,8 @@ export function updateLocomotion(
   mesh: Locomotion3DMesh,
   entity: Entity,
   dtMs: number,
+  mapWidth: number,
+  mapHeight: number,
 ): void {
   if (!mesh) return;
   const vx = entity.unit?.velocityX ?? 0;
@@ -660,163 +735,171 @@ export function updateLocomotion(
   }
 
   if (mesh.type === 'legs') {
-    // Walk cycle in CHASSIS-LOCAL frame. Legs are children of
-    // yawGroup so the world-space "feet plant while the unit moves"
-    // gait of the original 2D port has been re-expressed as
-    // "feet drag BACKWARD in unit-local frame as the unit moves
-    // forward". The visual is identical (foot stays put against
-    // the ground while the chassis moves over it) but the math now
-    // lives in the same frame as the rest pose, the parent yaw +
-    // tilt come from the scene graph, and there is one update path.
-    //
-    // Rotate the WORLD velocity into chassis-local frame so the
-    // drag is applied along the unit's body axes:
-    //   v_local_sim = R(-yaw) · v_world_sim
-    // Then sim x → three.x, sim y → three.z (the existing handedness).
-    const yaw = entity.transform.rotation;
-    const cosYaw = Math.cos(yaw);
-    const sinYaw = Math.sin(yaw);
-    const vLocalForward = cosYaw * vx + sinYaw * vy;   // chassis +X
-    const vLocalLateral = -sinYaw * vx + cosYaw * vy;  // chassis +Y in sim → three +Z
-
-    // One rest-circle radius for the whole unit, baked at build time.
+    // World-planted feet. Each foot sits at a real world XYZ point on
+    // the terrain and stays there until the rest sphere (which moves
+    // and yaws and tilts with the body) gets far enough away that the
+    // foot exits the sphere — at which point it lifts off, lerps to a
+    // new world ground spot inside the OPPOSITE side of the sphere,
+    // and plants again. The unit's translation, rotation, and surface
+    // tilt all naturally fall out of the world-frame test: when the
+    // body moves the rest sphere moves; when the body yaws the rest
+    // sphere yaws around the unit's center; when the body tilts the
+    // sphere tilts with it. The foot never moves until a snap fires.
+    const unitRadius = entity.unit?.unitRadiusCollider.push ?? 0;
     const stepRadius = mesh.stepRadius;
+    const showViz = getLegsRadiusToggle();
+
     for (const leg of mesh.legs) {
       const c = leg.config;
       const tl = totalLegLength(c);
-      const restDistance = tl * c.snapDistanceMultiplier;
       // Right-side legs straddle the rest direction by half the
       // step-radius angle so the gait alternates by side from frame 1.
       const initAngle = leg.side === 1
         ? (c.snapTargetAngle + c.snapTriggerAngle * Math.sign(c.snapTargetAngle)) / 2
         : c.snapTargetAngle;
-      // Hip in chassis-local three.js coords. (sim x → three.x,
-      // sim z (up) → three.y, sim y (lateral) → three.z.)
-      const hipX = c.attachOffsetX;
-      const hipY = leg.hipY;
-      const hipZ = c.attachOffsetY;
-      // The leg's REST CENTER — the chassis-local point the foot
-      // wanders around. Defined entirely by hip + (rest distance,
-      // rest angle); changing snapDistanceMultiplier moves the
-      // circle in/out, snapTargetAngle rotates it around the hip.
-      const restCenterX = hipX + Math.cos(initAngle) * restDistance;
-      const restCenterZ = hipZ + Math.sin(initAngle) * restDistance;
+      const restDistance = tl * c.snapDistanceMultiplier;
+      // Chassis-local hip and rest-sphere center. Both get
+      // transformed to world coords each frame so they ride along
+      // with the body's translation, yaw, and surface tilt.
+      const hipLocalX = c.attachOffsetX;
+      const hipLocalY = leg.hipY;
+      const hipLocalZ = c.attachOffsetY;
+      const restLocalX = hipLocalX + Math.cos(initAngle) * restDistance;
+      const restLocalY = FOOT_Y;
+      const restLocalZ = hipLocalZ + Math.sin(initAngle) * restDistance;
 
-      // LEGS-radius debug viz: ring sitting at the foot plane (FOOT_Y
-      // in chassis-local coords) centered on the leg's rest center,
-      // scaled to stepRadius. Lazy-creates on first show; persists in
-      // the leg group so subsequent toggles are just a visibility flip.
-      if (getLegsRadiusToggle()) {
-        if (!leg.restCircle) {
-          leg.restCircle = new THREE.LineLoop(restCircleGeom, restCircleMat);
-          mesh.group.add(leg.restCircle);
+      transformChassisToWorld(
+        hipLocalX, hipLocalY, hipLocalZ,
+        entity, unitRadius, mapWidth, mapHeight, _worldOut,
+      );
+      const hipWorldX = _worldOut.x;
+      const hipWorldY = _worldOut.y;
+      const hipWorldZ = _worldOut.z;
+
+      transformChassisToWorld(
+        restLocalX, restLocalY, restLocalZ,
+        entity, unitRadius, mapWidth, mapHeight, _worldOut,
+      );
+      const restWorldX = _worldOut.x;
+      const restWorldY = _worldOut.y;
+      const restWorldZ = _worldOut.z;
+
+      // LEGS-radius viz: a wireframe SPHERE in world space at the
+      // rest center, scaled to stepRadius. Lazy-build / cheap toggle.
+      if (showViz) {
+        if (!leg.restSphere) {
+          leg.restSphere = new THREE.LineSegments(restSphereGeom, restSphereMat);
+          mesh.group.add(leg.restSphere);
         }
-        leg.restCircle.visible = true;
-        leg.restCircle.position.set(restCenterX, FOOT_Y, restCenterZ);
-        leg.restCircle.scale.set(stepRadius, 1, stepRadius);
-      } else if (leg.restCircle) {
-        leg.restCircle.visible = false;
+        leg.restSphere.visible = true;
+        leg.restSphere.position.set(restWorldX, restWorldY, restWorldZ);
+        leg.restSphere.scale.setScalar(stepRadius);
+      } else if (leg.restSphere) {
+        leg.restSphere.visible = false;
       }
 
-      // First frame: seat the foot at the rest center so it starts
-      // "in the middle" of its allowed wandering region.
       if (!leg.initialized) {
-        leg.groundX = restCenterX;
-        leg.groundZ = restCenterZ;
-        leg.startGroundX = restCenterX;
-        leg.startGroundZ = restCenterZ;
-        leg.targetGroundX = restCenterX;
-        leg.targetGroundZ = restCenterZ;
-        leg.initialized = true;
+        // Defer init to the helper so the build-time and "lazy on
+        // first update" paths stay in sync.
+        initializeLegAt(leg, entity, unitRadius, mapWidth, mapHeight);
       }
 
-      // Either: lerp the foot toward its snap target (mid-step), or
-      // drag the planted foot backward in chassis-local frame.
+      // Lerp the foot through 3D world space when mid-step. Otherwise
+      // the foot is PLANTED — its world XYZ doesn't change at all.
       if (leg.isSliding) {
         if (leg.lerpDuration <= 0) {
-          leg.groundX = leg.targetGroundX;
-          leg.groundZ = leg.targetGroundZ;
+          leg.worldX = leg.targetWorldX;
+          leg.worldY = leg.targetWorldY;
+          leg.worldZ = leg.targetWorldZ;
           leg.isSliding = false;
         } else {
           leg.lerpProgress += dtMs / leg.lerpDuration;
           if (leg.lerpProgress >= 1) {
             leg.lerpProgress = 1;
-            leg.groundX = leg.targetGroundX;
-            leg.groundZ = leg.targetGroundZ;
+            leg.worldX = leg.targetWorldX;
+            leg.worldY = leg.targetWorldY;
+            leg.worldZ = leg.targetWorldZ;
             leg.isSliding = false;
           } else {
             const t = easeOutCubic(leg.lerpProgress);
-            leg.groundX = leg.startGroundX + (leg.targetGroundX - leg.startGroundX) * t;
-            leg.groundZ = leg.startGroundZ + (leg.targetGroundZ - leg.startGroundZ) * t;
+            leg.worldX = leg.startWorldX + (leg.targetWorldX - leg.startWorldX) * t;
+            leg.worldY = leg.startWorldY + (leg.targetWorldY - leg.startWorldY) * t;
+            leg.worldZ = leg.startWorldZ + (leg.targetWorldZ - leg.startWorldZ) * t;
           }
         }
-      } else {
-        // Foot stays world-planted: in unit-local frame, drag opposite
-        // the unit's local velocity.
-        leg.groundX -= vLocalForward * dt;
-        leg.groundZ -= vLocalLateral * dt;
       }
 
-      // REST-CIRCLE TRIGGER. The foot is allowed to wander anywhere
-      // inside a circle of radius `stepRadius` around the rest
-      // center; once it crosses the boundary the foot snaps to the
-      // diametrically opposite point on that circle's edge — that's
-      // the next stride. The same single test handles both forward
-      // overshoot (body moved past the foot) and rotational overshoot
-      // (body yawed and the foot is now off to the side); both cases
-      // produce a foot that exits the circle in the appropriate
-      // direction and snaps to the natural opposite stride point.
-      const dx = leg.groundX - restCenterX;
-      const dz = leg.groundZ - restCenterZ;
-      const distSq = dx * dx + dz * dz;
+      // REST-SPHERE TRIGGER. Test foot ↔ rest center in 3D world
+      // coords. The same single check covers translation, yaw, AND
+      // tilt change — the rest sphere's center moves with all three,
+      // the foot stays put, so any of them can carry the foot out
+      // of the sphere.
+      const dx = leg.worldX - restWorldX;
+      const dy = leg.worldY - restWorldY;
+      const dz = leg.worldZ - restWorldZ;
+      const distSq = dx * dx + dy * dy + dz * dz;
 
       if (!leg.isSliding && distSq > stepRadius * stepRadius) {
         const dist = Math.sqrt(distSq);
-        // Unit vector pointing FROM rest center TO current foot.
-        // Snap target sits 85% of the radius along the OPPOSITE
-        // direction — strictly inside the circle, not on the edge.
-        // The 15% inset gives hysteresis so a body that's jittering
-        // can't immediately re-trigger a back-snap (the foot has to
-        // traverse 1.85 R worth of drift before exiting again).
+        // Unit vector from rest center to current foot, in world
+        // frame. Snap target = rest center − that direction ×
+        // stepRadius × SNAP_TARGET_INSET (lands inside the OPPOSITE
+        // side of the sphere, 15% inside the boundary). After the
+        // snap target XZ is chosen, sample the terrain to lock the
+        // target Y to the actual ground at that spot — feet always
+        // land on real terrain, not a flat plane.
         const ux = dist > 1e-6 ? dx / dist : Math.cos(initAngle);
         const uz = dist > 1e-6 ? dz / dist : Math.sin(initAngle);
         const snapDist = stepRadius * SNAP_TARGET_INSET;
-        leg.startGroundX = leg.groundX;
-        leg.startGroundZ = leg.groundZ;
-        leg.targetGroundX = restCenterX - ux * snapDist;
-        leg.targetGroundZ = restCenterZ - uz * snapDist;
+        const tWorldX = restWorldX - ux * snapDist;
+        const tWorldZ = restWorldZ - uz * snapDist;
+        // Y comes from the actual terrain at the chosen XZ — feet
+        // always land on real ground, not a plane through the rest
+        // sphere's center.
+        const groundY = getSurfaceHeight(tWorldX, tWorldZ, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
+
+        leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
+        leg.targetWorldX = tWorldX;
+        leg.targetWorldY = groundY;
+        leg.targetWorldZ = tWorldZ;
         leg.isSliding = true;
         leg.lerpProgress = 0;
       }
 
-      // Clamp to physical reach so a fast snap can't visually
-      // over-extend the segments past their hinge limit.
-      const clampDx = leg.groundX - hipX;
-      const clampDz = leg.groundZ - hipZ;
-      const clampDistSq = clampDx * clampDx + clampDz * clampDz;
+      // Clamp visual leg length to physical reach so a fast snap or
+      // a freshly tilted body can't render a leg that visibly stretches
+      // past its hinge limit. Done in world space against the world hip.
+      const clampDx = leg.worldX - hipWorldX;
+      const clampDy = leg.worldY - hipWorldY;
+      const clampDz = leg.worldZ - hipWorldZ;
+      const clampDistSq = clampDx * clampDx + clampDy * clampDy + clampDz * clampDz;
+      let footX = leg.worldX;
+      let footY = leg.worldY;
+      let footZ = leg.worldZ;
       if (clampDistSq > tl * tl) {
         const clampDist = Math.sqrt(clampDistSq);
         const scale = tl / clampDist;
-        leg.groundX = hipX + clampDx * scale;
-        leg.groundZ = hipZ + clampDz * scale;
+        footX = hipWorldX + clampDx * scale;
+        footY = hipWorldY + clampDy * scale;
+        footZ = hipWorldZ + clampDz * scale;
       }
 
-      const footX = leg.groundX;
-      const footY = FOOT_Y;
-      const footZ = leg.groundZ;
+      // Render leg cylinders directly in world coords. Leg group is
+      // a child of the world THREE.Group, so position/scale on each
+      // cylinder is the cylinder's actual world position.
       if (mesh.legLod === 'simple') {
-        setCylinderBetween(leg.upper, hipX, hipY, hipZ, footX, footY, footZ, leg.upperThick);
+        setCylinderBetween(leg.upper, hipWorldX, hipWorldY, hipWorldZ, footX, footY, footZ, leg.upperThick);
       } else {
         const knee = kneeFromIK(
-          hipX, hipY, hipZ,
+          hipWorldX, hipWorldY, hipWorldZ,
           footX, footY, footZ,
           c.upperLegLength, c.lowerLegLength,
         );
-        setCylinderBetween(leg.upper, hipX, hipY, hipZ, knee.x, knee.y, knee.z, leg.upperThick);
+        setCylinderBetween(leg.upper, hipWorldX, hipWorldY, hipWorldZ, knee.x, knee.y, knee.z, leg.upperThick);
         if (leg.lower) {
           setCylinderBetween(leg.lower, knee.x, knee.y, knee.z, footX, footY, footZ, leg.lowerThick);
         }
-        if (leg.hipJoint)  leg.hipJoint.position.set(hipX, hipY, hipZ);
+        if (leg.hipJoint)  leg.hipJoint.position.set(hipWorldX, hipWorldY, hipWorldZ);
         if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
         if (leg.footJoint) leg.footJoint.position.set(footX, footY, footZ);
       }
