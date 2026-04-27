@@ -2,7 +2,7 @@
 
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
-  playerCount: 3,
+  playerCount: 4,
 
   /** Number of factories per player. Each player's TEAM slice is
    *  180°/N wide (the other 180°/N of every 360°/N cycle is the
@@ -54,7 +54,7 @@ export const DEMO_CONFIG = {
    * How far (as a fraction of factory→map-center distance) the default fight
    * waypoint is placed.  0.5 = halfway to center, 1.0 = center, 1.5 = past center.
    */
-  factoryFightDistance: 1.5,
+  factoryFightDistance: 1.22,
 
   /**
    * Whether AI uses inverse-cost weighting when picking units to queue.

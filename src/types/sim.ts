@@ -147,6 +147,14 @@ export type Unit = {
   priorityTargetId?: EntityId;
   mirrorPanels: CachedMirrorPanel[];
   mirrorBoundRadius: number;
+  /** Consecutive ticks the unit has wanted to move but failed to make
+   *  meaningful progress. Reset on either no-movement-intent ticks or
+   *  ticks where physics velocity exceeds the stuck threshold. When
+   *  this exceeds the simulation's stuck threshold the planner gets
+   *  re-run from the unit's current position to the trip's final
+   *  destination, replacing the stale path. Tick-only state, never
+   *  serialised. */
+  stuckTicks?: number;
 };
 
 // Building component - static structures with a real 3D extent.

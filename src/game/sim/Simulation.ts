@@ -41,9 +41,39 @@ import { transitionPhase } from '@/gamePhase';
 import { getUnitBlueprint } from './blueprints/units';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
+import { expandPathActions } from './Pathfinder';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
+
+// ── Stuck-detection / replanning constants ────────────────────────
+//
+// A unit that wants to move (thrust set) but isn't actually moving
+// is a strong signal its current path is stale — a building went up
+// across it, an explosion knocked it sideways, or another unit is
+// physically blocking the next waypoint. Replanning from the unit's
+// CURRENT position to the trip's final destination produces a fresh
+// route that respects the new world state.
+//
+// Replans aren't cheap (each is a bounded A* run), so we cap them
+// per tick so the steady-state cost stays bounded even when many
+// units are simultaneously stuck (e.g. a chokepoint pile-up). Stuck
+// units that don't get a replan slot this tick keep their counter
+// at the threshold and try again next tick.
+
+/** Body speed (wu/sec) below which a unit counts as "not moving". */
+const STUCK_VEL_THRESHOLD = 5;
+
+/** Consecutive stuck ticks before we force a replan. At a 30 Hz
+ *  tick rate that's ~1 second — long enough to filter out brief
+ *  collision rebounds, short enough that the user notices the
+ *  recovery before they manually re-issue the order. */
+const STUCK_TICK_THRESHOLD = 30;
+
+/** Hard cap on replans per tick. Each replan is one bounded A*
+ *  run plus path smoothing — typically well under 1 ms, but a
+ *  cap keeps a chokepoint-pileup from spiking the tick budget. */
+const MAX_REPLANS_PER_TICK = 5;
 
 
 export class Simulation {
@@ -59,6 +89,10 @@ export class Simulation {
 
   // Player IDs participating in this game
   private playerIds: PlayerId[] = [1, 2];
+  /** How many path replans we've spent this tick (capped at
+   *  MAX_REPLANS_PER_TICK so a chokepoint pile-up can't burn the
+   *  tick budget on planning). Reset at the top of `update()`. */
+  private replansThisTick = 0;
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
@@ -205,6 +239,9 @@ export class Simulation {
   // Run one simulation step with the given timestep
   update(dtMs: number): void {
     if (this.gamePhase === 'init') this.gamePhase = transitionPhase('init', 'battle');
+
+    // Replan budget resets each tick — see updateUnits / stuck detection.
+    this.replansThisTick = 0;
 
     const tick = this.world.getTick();
 
@@ -687,6 +724,95 @@ export class Simulation {
       unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
       unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
     }
+
+    // Stuck-detection / replan pass — runs after every unit has had
+    // its thrust set this tick. Looking at thrust + actual physics
+    // velocity tells us "this unit wants to move but isn't getting
+    // anywhere," which is the canonical sign that its planned route
+    // has gone stale (a building went up, an explosion knocked it
+    // sideways, a chokepoint pile-up, etc.). Capped at
+    // MAX_REPLANS_PER_TICK so a 100-unit pile-up doesn't burn the
+    // tick budget on planning — units that don't get a slot this
+    // tick stay at the threshold and try again next tick.
+    this.evaluateStuckAndReplan();
+  }
+
+  /** Per-tick stuck check. For each unit that wanted to move this
+   *  tick but is barely moving, increment its stuck counter; once
+   *  past the threshold and within the per-tick replan budget, run
+   *  a fresh A* from the unit's current position to the trip's
+   *  final destination and replace its action queue. */
+  private evaluateStuckAndReplan(): void {
+    for (const entity of this.world.getUnits()) {
+      if (!entity.unit || !entity.body) continue;
+      const unit = entity.unit;
+      const wantsMove = (unit.thrustDirX ?? 0) !== 0 || (unit.thrustDirY ?? 0) !== 0;
+      if (!wantsMove) {
+        unit.stuckTicks = 0;
+        continue;
+      }
+      const body = entity.body.physicsBody;
+      const speed = magnitude(body.vx, body.vy);
+      if (speed >= STUCK_VEL_THRESHOLD) {
+        unit.stuckTicks = 0;
+        continue;
+      }
+      unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
+      if (unit.stuckTicks <= STUCK_TICK_THRESHOLD) continue;
+      if (this.replansThisTick >= MAX_REPLANS_PER_TICK) continue;
+      if (this.tryReplan(entity)) {
+        unit.stuckTicks = 0;
+        this.replansThisTick++;
+      }
+    }
+  }
+
+  /** Replan the given unit's path from its current position to the
+   *  final waypoint of its existing action queue. Returns true on a
+   *  successful replan (queue replaced), false when the action type
+   *  isn't replan-eligible (patrol loops have wrap semantics that
+   *  break under naive replan; build/repair are short-range and
+   *  bound to specific targets). Attack-action target IDs are
+   *  preserved on the new final waypoint so the unit keeps tracking
+   *  the right enemy through the new route. */
+  private tryReplan(entity: Entity): boolean {
+    if (!entity.unit) return false;
+    const actions = entity.unit.actions;
+    if (actions.length === 0) return false;
+    const finalAction = actions[actions.length - 1];
+    if (
+      finalAction.type !== 'move' &&
+      finalAction.type !== 'fight' &&
+      finalAction.type !== 'attack'
+    ) {
+      return false;
+    }
+    const newPath = expandPathActions(
+      entity.transform.x, entity.transform.y,
+      finalAction.x, finalAction.y,
+      finalAction.type,
+      this.world.mapWidth, this.world.mapHeight,
+      this.constructionSystem.getGrid(),
+    );
+    if (newPath.length === 0) return false;
+    // CRITICAL: a single-waypoint result is the planner's
+    // straight-line fallback — it fires when JPS hit its expansion
+    // cap, when the snap couldn't find an open cell within radius,
+    // or when the goal was unreachable. Overwriting the unit's
+    // existing multi-waypoint path with that single-waypoint
+    // fallback would REPLACE a good route with a beeline straight
+    // at the obstacle the unit was already routing around. The
+    // existing path is strictly more useful than the fallback;
+    // keep it and let the unit's current motion resolve via
+    // physics push or by reaching the next waypoint. Stuck
+    // detection re-fires next tick if the unit is still wedged,
+    // so we'll retry the replan on the next stuck-tick threshold.
+    if (newPath.length <= 1 && actions.length > 1) return false;
+    if (finalAction.type === 'attack' && finalAction.targetId !== undefined) {
+      newPath[newPath.length - 1].targetId = finalAction.targetId;
+    }
+    entity.unit.actions = newPath;
+    return true;
   }
 
   // Get force accumulator for external force application (used by RtsScene)

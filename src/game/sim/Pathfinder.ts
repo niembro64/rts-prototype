@@ -1,4 +1,4 @@
-// Pathfinder — A* on the building grid + line-of-sight smoothing.
+// Pathfinder — Jump Point Search on the building grid + LOS smoothing.
 //
 // Planning happens once at command-execution time. The planner takes
 // the unit's current position and the player's clicked goal, finds a
@@ -9,22 +9,46 @@
 // existing Simulation.updateUnits()/advanceAction() loop walks the
 // path one segment at a time.
 //
-// Cell semantics — a cell is blocked iff:
+// Algorithm — JPS (Harabor & Grastien, AAAI 2011), the canonical
+// industry-standard upgrade over vanilla A* for uniform-cost grids.
+// The outer loop is still A* — same heap, same gScore, same parent
+// chain — but instead of expanding the 8 neighbours of every popped
+// node, we "jump" in each pruned direction until hitting a jump
+// point (a cell whose 8-neighbourhood contains a "forced" neighbour
+// that wouldn't be reachable along an optimal path without bending
+// here). On open ground this collapses thousands of redundant
+// symmetric A* expansions into a single straight-line jump,
+// producing the same path quality at a fraction of the node visits.
+//
+// Cell semantics — a cell is HARD-blocked iff:
 //   - out of map bounds, or
 //   - occupied by a building (BuildingGrid.getCell(...).occupied), or
 //   - over water (isWaterAt — from the water-impassable feature), or
 //   - terrain slope is too steep (mountain dividers / peaks).
 //
-// The A* uses 8-connected neighbours with octile heuristic (admissible
-// for diagonal moves at √2 cost). Diagonal corner-clipping is
-// disallowed — the diagonal step is rejected unless BOTH adjacent
-// cardinals are clear, so a unit can't slip between two buildings
-// touching at a corner.
+// `isBlocked` is HARD-blocked OR any 8-neighbour is hard-blocked
+// (configuration-space inflation). All JPS predicates run against
+// this inflated definition so the path keeps a 1-cell buffer (20 wu)
+// from every obstacle and the unit's body radius doesn't trip the
+// runtime water-thrust gate while following waypoints.
 //
-// Performance — bounded expansion (MAX_EXPANDED_NODES) keeps a
-// hopeless target from stalling the tick; the binary-heap open list,
-// flat Float32/Int32/Uint8 scratch arrays, and duplicate-push (vs
-// decrease-key) keep the inner loop allocation-free per node visit.
+// Variant: canonical CORNER-CUTTING JPS (the original 2011 paper's
+// formulation). The "no corner cut" safety property is provided
+// instead by C-space inflation: any cell whose 8-neighbour ring
+// contains a hard-blocked cell is itself blocked. So a diagonal
+// step that would have skimmed the corner of a hard obstacle hits
+// the inflated blocked cell at the diagonal destination and is
+// rejected by the standard `isBlocked` check. Inflation also
+// strictly dominates per-step corner-cut rejection in coverage —
+// the no-corner-cut variant is provably incomplete (misses paths
+// in some L-shaped obstacle configurations) under canonical JPS
+// pruning rules, whereas corner-cut JPS + inflation is complete
+// AND optimal AND has simpler rules.
+//
+// Performance — bounded jump-point expansion (MAX_JP_EXPANSIONS)
+// keeps a hopeless target from stalling the tick. The heap, scratch
+// arrays, and duplicate-push idiom from the prior A* implementation
+// carry over verbatim — JPS only changes which nodes get pushed.
 
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
@@ -42,13 +66,20 @@ const SQRT2_MINUS_1 = SQRT2 - 1;
  *  RTS purposes. */
 const HEURISTIC_TIE_BREAK = 1.001;
 
-/** Hard cap on A* expansions per query. With a 308×308 grid (largest
- *  current map) the worst legitimate path explores a few thousand
- *  cells; 8000 is a generous ceiling that catches infinite searches
- *  (target inside a sealed mountain) without sacrificing reachable
- *  paths. When hit, the planner falls back to the straight-line
- *  waypoint and lets physics resolve any local block. */
-const MAX_EXPANDED_NODES = 8000;
+/** Hard cap on jump-point expansions per query. JPS expansions are
+ *  rarer than vanilla A* expansions — each pop from the heap may
+ *  walk hundreds of grid cells in a single jump — but on a demo
+ *  map with high obstacle-edge density (e.g. 5 radial LAKE
+ *  dividers + LAKE centre + multiple buildings) every water-
+ *  adjacent cell becomes a potential JP, and a cross-map query
+ *  can push an order of magnitude more JPs than the JP-count of
+ *  the actual optimal path. 30000 ≈ 30% of the largest current
+ *  grid (308×308 = ~95k cells) and is generous enough to cover
+ *  any legitimately-reachable target on terrain we ship; the
+ *  cap exists strictly to bail on truly unreachable goals
+ *  (target inside a sealed-off pocket) rather than throttling
+ *  complex-but-reachable searches. */
+const MAX_JP_EXPANSIONS = 30000;
 
 /** Slope passability threshold. Surface normals are sampled at cell
  *  centres; nz=1 is flat ground, nz=0 is a vertical cliff. Below
@@ -60,29 +91,24 @@ const SLOPE_BLOCK_NZ = 0.85;
 
 /** When the start or goal cell is blocked, scan outward this many
  *  cells in a Chebyshev-distance spiral looking for the nearest
- *  open cell to use as a substitute. 8 cells = 160 wu — generous
- *  enough to escape the inside of any single building footprint
- *  (factories are 5×4 cells; the centre is at most 2 cells from a
- *  boundary), short enough that a click on the middle of a deep
- *  lake still falls through to the straight-line fallback rather
- *  than rerouting to some unrelated open cell across the map. */
-const NEAREST_OPEN_RADIUS = 8;
+ *  open cell to use as a substitute. 32 cells = 640 wu — covers
+ *  the demo map's full central-water diameter under a default
+ *  LAKE configuration. The factory fight-target geometry
+ *  (`factoryFightDistance = 1.22`, with factories at radial
+ *  ~2800 wu) puts the *intended* goal ~617 wu past centre on the
+ *  opposite side, i.e. inside the central water region. With
+ *  this radius the snap can always reach a valid shore cell on
+ *  the goal's side; the unit walks the path and stops at that
+ *  shore. Smaller radii surfaced as "factory units walk straight
+ *  into water" because the snap returned null and findPath fell
+ *  through to a single straight-line waypoint. */
+const NEAREST_OPEN_RADIUS = 32;
 
-const CARDINAL_COST = 1;
-const DIAGONAL_COST = SQRT2;
-
-/** Eight neighbour deltas in (dx, dy, cost) groups: cardinals first,
- *  then diagonals. Order matters because the diagonal-clip check
- *  references the two cardinal neighbours as already-known states. */
-const NEIGHBOURS: ReadonlyArray<readonly [number, number, number]> = [
-  [ 1, 0, CARDINAL_COST],
-  [-1, 0, CARDINAL_COST],
-  [ 0, 1, CARDINAL_COST],
-  [ 0,-1, CARDINAL_COST],
-  [ 1, 1, DIAGONAL_COST],
-  [ 1,-1, DIAGONAL_COST],
-  [-1, 1, DIAGONAL_COST],
-  [-1,-1, DIAGONAL_COST],
+/** All 8 neighbour direction deltas — used at the START node where
+ *  no parent direction is defined. Cardinals first, diagonals after. */
+const ALL_8_DIRS: ReadonlyArray<readonly [number, number]> = [
+  [ 1, 0], [-1, 0], [ 0, 1], [ 0,-1],
+  [ 1, 1], [ 1,-1], [-1, 1], [-1,-1],
 ];
 
 /** Plan a path from (startX, startY) to (goalX, goalY) in world
@@ -185,17 +211,24 @@ export function findPath(
   // target (e.g. middle of a lake) still falls through to straight-
   // line — we don't want the unit to walk to some random open cell
   // far from the user's actual intent.
+  _lastBailReason = 'ok';
   let snappedStart = { gx: sgx, gy: sgy };
   if (isBlocked(sgx, sgy)) {
     const open = findNearestOpenCell(sgx, sgy, gridW, gridH, isBlocked);
-    if (!open) return [{ x: goalX, y: goalY }];
+    if (!open) {
+      _lastBailReason = 'start-snap';
+      return [{ x: goalX, y: goalY }];
+    }
     snappedStart = open;
   }
   let snappedGoal = { gx: ggx, gy: ggy };
   let goalWasSnapped = false;
   if (isBlocked(ggx, ggy)) {
     const open = findNearestOpenCell(ggx, ggy, gridW, gridH, isBlocked);
-    if (!open) return [{ x: goalX, y: goalY }];
+    if (!open) {
+      _lastBailReason = 'goal-snap';
+      return [{ x: goalX, y: goalY }];
+    }
     snappedGoal = open;
     goalWasSnapped = true;
   }
@@ -206,6 +239,7 @@ export function findPath(
 
   // Same-cell after snapping → no planning needed.
   if (startCellGx === goalCellGx && startCellGy === goalCellGy) {
+    _lastBailReason = 'same-cell';
     return [{ x: goalX, y: goalY }];
   }
 
@@ -232,42 +266,62 @@ export function findPath(
 
   let expanded = 0;
   let foundGoal = false;
+  // Scratch result struct reused across every jump() call to avoid
+  // allocation in the hot loop. `jump` writes to (gx, gy) and
+  // returns true on a hit, false on miss — output-parameter idiom.
+  const jpResult = { gx: 0, gy: 0 };
   while (heap.size() > 0) {
     const current = heap.pop();
     if (closed[current]) continue;
     closed[current] = 1;
-    expanded++;
     if (current === goalIdx) {
       foundGoal = true;
       break;
     }
-    if (expanded >= MAX_EXPANDED_NODES) break;
+    expanded++;
+    if (expanded >= MAX_JP_EXPANSIONS) break;
 
     const cgx = current % gridW;
     const cgy = (current - cgx) / gridW;
+    const parentIdx = parent[current];
 
-    for (let i = 0; i < NEIGHBOURS.length; i++) {
-      const [dx, dy, cost] = NEIGHBOURS[i];
-      const ngx = cgx + dx;
-      const ngy = cgy + dy;
-      if (ngx < 0 || ngy < 0 || ngx >= gridW || ngy >= gridH) continue;
-      if (isBlocked(ngx, ngy)) continue;
-      // Disallow diagonal corner clipping — both adjacent
-      // cardinals must be clear for the diagonal step to be
-      // legal. Without this, units squirt through the corner
-      // joint between two buildings touching at a vertex.
-      if (dx !== 0 && dy !== 0) {
-        if (isBlocked(cgx + dx, cgy)) continue;
-        if (isBlocked(cgx, cgy + dy)) continue;
-      }
-      const neighbourIdx = ngy * gridW + ngx;
-      if (closed[neighbourIdx]) continue;
-      const tentative = gScore[current] + cost;
-      if (tentative < gScore[neighbourIdx]) {
-        parent[neighbourIdx] = current;
-        gScore[neighbourIdx] = tentative;
-        fScore[neighbourIdx] = tentative + octile(ngx, ngy, goalCellGx, goalCellGy) * HEURISTIC_TIE_BREAK;
-        heap.push(neighbourIdx);
+    // Determine which directions to jump in. From the start node
+    // (no parent) try all 8; from any other node, prune based on
+    // the direction we arrived from — the JPS symmetry-breaking
+    // rules say most directions are dominated by an alternate
+    // path that skipped this node entirely, so we only need to
+    // jump along the "natural" successor and any forced
+    // successors created by nearby obstacles.
+    let pdx = 0;
+    let pdy = 0;
+    if (parentIdx >= 0) {
+      const pgx = parentIdx % gridW;
+      const pgy = (parentIdx - pgx) / gridW;
+      // Parent might be a JP many cells away, so direction is the
+      // sign of the delta, not the delta itself.
+      pdx = Math.sign(cgx - pgx);
+      pdy = Math.sign(cgy - pgy);
+    }
+
+    const dirs = parentIdx < 0
+      ? ALL_8_DIRS
+      : prunedSuccessorDirs(cgx, cgy, pdx, pdy, isBlocked);
+
+    for (let i = 0; i < dirs.length; i++) {
+      const dx = dirs[i][0];
+      const dy = dirs[i][1];
+      if (!jump(cgx, cgy, dx, dy, goalCellGx, goalCellGy, gridW, gridH, isBlocked, jpResult)) continue;
+      const jx = jpResult.gx;
+      const jy = jpResult.gy;
+      const jIdx = jy * gridW + jx;
+      if (closed[jIdx]) continue;
+      const stepCost = octile(cgx, cgy, jx, jy);
+      const tentative = gScore[current] + stepCost;
+      if (tentative < gScore[jIdx]) {
+        parent[jIdx] = current;
+        gScore[jIdx] = tentative;
+        fScore[jIdx] = tentative + octile(jx, jy, goalCellGx, goalCellGy) * HEURISTIC_TIE_BREAK;
+        heap.push(jIdx);
       }
     }
   }
@@ -275,6 +329,7 @@ export function findPath(
   if (!foundGoal) {
     // No path under the budget — let the caller's straight-line
     // intent stand. Rare in normal play; the budget is generous.
+    _lastBailReason = 'no-path';
     return [{ x: goalX, y: goalY }];
   }
 
@@ -348,6 +403,27 @@ export function expandPathActions(
   buildingGrid: BuildingGrid,
 ): UnitAction[] {
   const path = findPath(startX, startY, goalX, goalY, mapWidth, mapHeight, buildingGrid);
+  // Diagnostic: when the planner falls through to the straight-line
+  // fallback on a NON-trivial query (goal is far from start), it's
+  // a strong signal that JPS hit the expansion cap or the snap
+  // logic surfaced a same-cell degenerate. We log it so the user
+  // can paste console output and we can pinpoint which case fired.
+  // Only fires for real "go across the map" queries — short moves
+  // that legitimately collapse to one waypoint stay quiet.
+  if (path.length === 1) {
+    const dx = goalX - startX;
+    const dy = goalY - startY;
+    if (dx * dx + dy * dy > PATH_BAIL_LOG_DISTANCE_SQ) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[Pathfinder] BAIL[%s]: start=(%d,%d) goal=(%d,%d) dist=%d',
+        _lastBailReason,
+        Math.round(startX), Math.round(startY),
+        Math.round(goalX), Math.round(goalY),
+        Math.round(Math.sqrt(dx * dx + dy * dy)),
+      );
+    }
+  }
   const out: UnitAction[] = [];
   for (let i = 0; i < path.length; i++) {
     out.push({ type, x: path[i].x, y: path[i].y });
@@ -355,10 +431,242 @@ export function expandPathActions(
   return out;
 }
 
+/** Squared distance threshold above which a single-waypoint path
+ *  result is logged as a bail. 200 wu = 10 cells; below this is a
+ *  legitimately-short move (unit clicked just next to itself, or
+ *  goal collapsed to start cell after snapping). */
+const PATH_BAIL_LOG_DISTANCE_SQ = 200 * 200;
+
+/** Why the most recent `findPath` query produced a single-waypoint
+ *  fallback — set by `findPath` on every bail and read by
+ *  `expandPathActions` to surface the reason in its diagnostic
+ *  log. Module-level because findPath is sequential (not
+ *  re-entrant) and a single shared slot is simpler than threading
+ *  a reason through the return type. Possible values:
+ *    'ok'         — non-fallback success.
+ *    'start-snap' — start cell was blocked AND the spiral snap
+ *                   couldn't find an open cell within
+ *                   NEAREST_OPEN_RADIUS.
+ *    'goal-snap'  — goal cell was blocked AND likewise.
+ *    'same-cell'  — start and goal mapped to the same cell after
+ *                   snapping — no path needed.
+ *    'no-path'    — JPS-A* exhausted MAX_JP_EXPANSIONS without
+ *                   reaching the goal, OR the open list ran out
+ *                   (target unreachable). */
+let _lastBailReason: 'ok' | 'start-snap' | 'goal-snap' | 'same-cell' | 'no-path' = 'ok';
+
 function octile(x1: number, y1: number, x2: number, y2: number): number {
   const dx = Math.abs(x1 - x2);
   const dy = Math.abs(y1 - y2);
   return Math.max(dx, dy) + SQRT2_MINUS_1 * Math.min(dx, dy);
+}
+
+// ── Jump Point Search internals ──────────────────────────────────
+//
+// Reference: Harabor & Grastien, "Online Graph Pruning for
+// Pathfinding On Grid Maps" (AAAI 2011). Canonical corner-cutting
+// formulation. Safety against units squeezing through obstacle
+// corners is provided by C-space inflation in the outer
+// `isBlocked` predicate, not by per-step corner-cut rejection in
+// `jump` — see the file header for the justification.
+//
+// Two operations:
+//
+//   `prunedSuccessorDirs(cgx, cgy, pdx, pdy, isBlocked)` — given
+//   the direction (pdx, pdy) the search reached (cgx, cgy) from,
+//   returns the directions worth jumping in:
+//
+//     • The "natural" successor (continue straight in the parent
+//       direction — and for diagonals, also the two cardinal
+//       components of the parent direction).
+//     • Any "forced" successor — a direction that's only worth
+//       expanding because an obstacle adjacent to (cgx, cgy)
+//       blocks an otherwise-symmetric alternative path.
+//
+//   `jump(startGx, startGy, dx, dy, ...)` — walks from the given
+//   start in direction (dx, dy) until either:
+//
+//     • The current cell is blocked or out of bounds → no JP.
+//     • The current cell is the goal → JP.
+//     • The current cell has a forced neighbour in this direction
+//       → JP (must stop here so the outer A* can later re-expand
+//       and reach the forced cell).
+//     • The diagonal cardinal-recursion finds a JP → JP at the
+//       diagonal cell (so the outer A* can later expand in the
+//       cardinal sub-direction that produced the hit).
+//
+//   Hit/miss is signalled via the boolean return; on hit, the JP's
+//   (gx, gy) is written into the caller's reusable scratch struct
+//   so the inner loop never allocates.
+
+/** Module-level scratch struct used inside `jump`'s diagonal
+ *  cardinal-recursion. Reused across every recursive call — JPS
+ *  jumps are sequential (not concurrent) so a single shared buffer
+ *  is safe. The outer caller passes its own `jpResult` for the
+ *  top-level jump. */
+const _jumpRecursionScratch = { gx: 0, gy: 0 };
+
+/** Module-level scratch list reused across `prunedSuccessorDirs`
+ *  calls. JPS expansion is sequential, so one buffer is fine.
+ *  Capped at 5 entries (max forced+natural directions for any
+ *  parent direction); cleared via .length = 0 at the top of every
+ *  call. */
+const _prunedDirsScratch: Array<readonly [number, number]> = [];
+
+function prunedSuccessorDirs(
+  cgx: number, cgy: number,
+  pdx: number, pdy: number,
+  isBlocked: (gx: number, gy: number) => boolean,
+): ReadonlyArray<readonly [number, number]> {
+  const out = _prunedDirsScratch;
+  out.length = 0;
+  if (pdx !== 0 && pdy !== 0) {
+    // Diagonal parent direction. Natural successors:
+    //   (pdx, 0), (0, pdy), (pdx, pdy)
+    out.push([pdx, 0]);
+    out.push([0, pdy]);
+    out.push([pdx, pdy]);
+    // Forced diagonal successors (no-corner-cut variant): if a
+    // back-side cardinal is blocked AND its diagonal continuation
+    // is open, we have to expand into that diagonal because the
+    // obstacle prevents the symmetric alternate path that would
+    // have skipped (cgx, cgy) entirely.
+    if (isBlocked(cgx - pdx, cgy) && !isBlocked(cgx - pdx, cgy + pdy)) {
+      out.push([-pdx, pdy]);
+    }
+    if (isBlocked(cgx, cgy - pdy) && !isBlocked(cgx + pdx, cgy - pdy)) {
+      out.push([pdx, -pdy]);
+    }
+  } else if (pdx !== 0) {
+    // Horizontal parent direction (pdx ≠ 0, pdy = 0).
+    // Natural successor: (pdx, 0).
+    out.push([pdx, 0]);
+    // Forced diagonal successors: if a perpendicular cell
+    // is blocked AND the diagonal continuation past it is open,
+    // expand into that diagonal.
+    if (isBlocked(cgx, cgy + 1) && !isBlocked(cgx + pdx, cgy + 1)) {
+      out.push([pdx, 1]);
+    }
+    if (isBlocked(cgx, cgy - 1) && !isBlocked(cgx + pdx, cgy - 1)) {
+      out.push([pdx, -1]);
+    }
+  } else {
+    // Vertical parent direction (pdx = 0, pdy ≠ 0).
+    out.push([0, pdy]);
+    if (isBlocked(cgx + 1, cgy) && !isBlocked(cgx + 1, cgy + pdy)) {
+      out.push([1, pdy]);
+    }
+    if (isBlocked(cgx - 1, cgy) && !isBlocked(cgx - 1, cgy + pdy)) {
+      out.push([-1, pdy]);
+    }
+  }
+  return out;
+}
+
+/** Walk from (startGx, startGy) in direction (dx, dy) until finding
+ *  a jump point (writes JP coords into `out` and returns true) or
+ *  hitting an obstacle / map edge (returns false). The starting
+ *  cell itself is NOT inspected — we step first.
+ *
+ *  Canonical corner-cutting JPS: a diagonal step is rejected only
+ *  when the destination cell itself is blocked. Per-step corner-
+ *  cut rejection is NOT performed here because the outer
+ *  `isBlocked` predicate already includes C-space inflation
+ *  (every cell within a 1-cell ring of a hard obstacle is also
+ *  blocked), so any diagonal that would have skimmed an obstacle
+ *  corner naturally lands in the inflation halo and is rejected.
+ *
+ *  Recursion (only for diagonal cardinal-recursion) is bounded by
+ *  gridW + gridH (a single jump can't visit more cells than the
+ *  grid's diagonal). The diagonal cardinal-recursion uses a
+ *  module-level scratch to avoid per-level allocation. */
+function jump(
+  startGx: number, startGy: number,
+  dx: number, dy: number,
+  goalGx: number, goalGy: number,
+  gridW: number, gridH: number,
+  isBlocked: (gx: number, gy: number) => boolean,
+  out: { gx: number; gy: number },
+): boolean {
+  let x = startGx;
+  let y = startGy;
+  // Iterative inner loop along the (dx, dy) ray; recursion only
+  // happens for diagonal steps that need to check cardinal sub-jumps.
+  for (;;) {
+    x += dx;
+    y += dy;
+
+    // Bounds + occupancy. With C-space inflation baked into
+    // `isBlocked`, this single check rejects both hard obstacles
+    // and any cell within 1 cell of one — covering the corner-cut
+    // case without needing a separate per-step check.
+    if (x < 0 || y < 0 || x >= gridW || y >= gridH) return false;
+    if (isBlocked(x, y)) return false;
+
+    // Reached the goal cell — that's a JP by definition.
+    if (x === goalGx && y === goalGy) {
+      out.gx = x;
+      out.gy = y;
+      return true;
+    }
+
+    // Forced-neighbour check. The cardinal/diagonal rules below
+    // describe when an obstacle adjacent to (x, y) creates a
+    // neighbour that's only reachable along an optimal path
+    // through (x, y) — meaning we can't keep jumping past it.
+    if (dx !== 0 && dy !== 0) {
+      // Diagonal step at (x, y), arrived from (x−dx, y−dy).
+      // Forced if a "back-side" cardinal is blocked AND its
+      // diagonal continuation is open.
+      if (
+        (isBlocked(x - dx, y) && !isBlocked(x - dx, y + dy)) ||
+        (isBlocked(x, y - dy) && !isBlocked(x + dx, y - dy))
+      ) {
+        out.gx = x;
+        out.gy = y;
+        return true;
+      }
+      // Diagonal cardinal-recursion: from (x, y), jump in each
+      // cardinal sub-direction. If either finds a JP, (x, y) itself
+      // becomes a JP — the outer A* must expand from here so that
+      // the cardinal sub-jumps' targets can be reached.
+      if (jump(x, y, dx, 0, goalGx, goalGy, gridW, gridH, isBlocked, _jumpRecursionScratch)) {
+        out.gx = x;
+        out.gy = y;
+        return true;
+      }
+      if (jump(x, y, 0, dy, goalGx, goalGy, gridW, gridH, isBlocked, _jumpRecursionScratch)) {
+        out.gx = x;
+        out.gy = y;
+        return true;
+      }
+    } else if (dx !== 0) {
+      // Horizontal step. Forced when the perpendicular neighbour is
+      // blocked AND its forward continuation is open — the
+      // diagonal (x + dx, y ± 1) becomes the only way to reach
+      // those cells without backtracking.
+      if (
+        (isBlocked(x, y + 1) && !isBlocked(x + dx, y + 1)) ||
+        (isBlocked(x, y - 1) && !isBlocked(x + dx, y - 1))
+      ) {
+        out.gx = x;
+        out.gy = y;
+        return true;
+      }
+    } else {
+      // Vertical step (dy ≠ 0).
+      if (
+        (isBlocked(x + 1, y) && !isBlocked(x + 1, y + dy)) ||
+        (isBlocked(x - 1, y) && !isBlocked(x - 1, y + dy))
+      ) {
+        out.gx = x;
+        out.gy = y;
+        return true;
+      }
+    }
+
+    // No JP found at (x, y); continue jumping along (dx, dy).
+  }
 }
 
 function clampInt(v: number, lo: number, hi: number): number {
