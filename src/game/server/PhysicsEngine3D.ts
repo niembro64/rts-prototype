@@ -108,6 +108,14 @@ export type Body3D = {
 // explosive separation — acceptable for an RTS where units jostle.
 const SPHERE_ITERATIONS = 4;
 
+// Tolerance band for "is this body on the ground?" — small enough
+// that everyday slope driving snaps cleanly to the surface, large
+// enough that one tick's gravity + thrust integration drift can't
+// flicker a grounded body to airborne and back. Above this band the
+// body is treated as airborne (knockback from an explosion etc.) and
+// gravity takes over uncontested.
+const GROUND_TOLERANCE = 1.5;
+
 // Broad-phase cell size for sphere-sphere contact checks. Two bodies
 // in the same cell or any of the 8 neighbors are pair-tested; pairs
 // further apart can't overlap as long as `radiusA + radiusB ≤
@@ -150,16 +158,29 @@ export class PhysicsEngine3D {
    *  the same output, so the client can run the same lookup. */
   private getGroundZ: (x: number, y: number) => number = () => 0;
 
+  /** Surface tangent normal at (x, y). Used by the ground-contact
+   *  resolver to project a grounded body's velocity onto the slope
+   *  tangent plane every tick — keeps units glued to the surface as
+   *  they climb / descend instead of bobbing or launching off slope
+   *  transitions. Defaults to flat-up (0, 0, 1) so unwired engines
+   *  stay correct on flat ground. */
+  private getGroundNormal: (x: number, y: number) => { nx: number; ny: number; nz: number } = () => ({ nx: 0, ny: 0, nz: 1 });
+
   constructor(mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
   }
 
-  /** Wire in a terrain heightmap so the ground contact resolver lifts
-   *  units to the top face of their cube tile instead of always
-   *  clamping to z=0. Call once after constructing the engine. */
-  setGroundLookup(fn: (x: number, y: number) => number): void {
-    this.getGroundZ = fn;
+  /** Wire in the terrain heightmap so the ground contact resolver
+   *  lifts units to the top face of their cube tile (and projects
+   *  their velocity onto the slope tangent plane). Call once after
+   *  constructing the engine. */
+  setGroundLookup(
+    getZ: (x: number, y: number) => number,
+    getNormal: (x: number, y: number) => { nx: number; ny: number; nz: number },
+  ): void {
+    this.getGroundZ = getZ;
+    this.getGroundNormal = getNormal;
   }
 
   /** Dynamic sphere body (units). Spawns at (x, y) on the ground,
@@ -315,23 +336,43 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Ground contact: a heightmap surface, not a uniform z=0 plane.
-   *  Each sphere samples the terrain elevation under its (x, y) and
-   *  rests with its bottom touching the local surface — sphere
-   *  center sits at `groundZ + radius`. Penetration is measured from
-   *  that resting altitude, not from absolute z=0. Outside the
-   *  ripple disc the heightmap returns 0 so behavior matches the
-   *  flat-ground baseline. */
+  /** Ground contact: heightmap surface + velocity tangent constraint.
+   *
+   *  Each sphere samples the local surface (height + normal) under
+   *  its (x, y). The body is GROUNDED when its center is at or below
+   *  `restingZ + GROUND_TOLERANCE`; AIRBORNE otherwise. Knockback
+   *  that launches the body well above the surface (explosion blast
+   *  etc.) leaves it airborne so gravity + arc physics take over
+   *  naturally; everyday driving on the slope is grounded.
+   *
+   *  Grounded behavior:
+   *    1. Snap z to restingZ — no penetration, no float.
+   *    2. Project velocity onto the slope tangent plane:
+   *         v ← v − (v · n) · n
+   *       This eliminates the residual normal-direction velocity
+   *       that builds up from discrete-step gravity + thrust drift,
+   *       so units don't bob along slopes and don't launch off
+   *       slope transitions ("shoots into the sky going up, falls
+   *       back going down"). vz becomes whatever the slope demands
+   *       of the unit's (vx, vy) — exactly what a vehicle on a
+   *       road sees. */
   private resolveGroundContacts(): void {
     for (const b of this.dynamicBodies) {
       if (b.shape !== 'sphere') continue;
       const groundZ = this.getGroundZ(b.x, b.y);
       const restingZ = groundZ + b.radius;
-      const penetration = restingZ - b.z;
-      if (penetration > 0) {
-        b.z = restingZ;
-        if (b.vz < 0) b.vz = -b.vz * b.restitution;
+      const heightAbove = b.z - restingZ;
+      if (heightAbove > GROUND_TOLERANCE) {
+        // Genuinely airborne — let gravity work.
+        continue;
       }
+      // Grounded: snap z + project velocity onto slope tangent.
+      b.z = restingZ;
+      const n = this.getGroundNormal(b.x, b.y);
+      const vDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
+      b.vx -= vDotN * n.nx;
+      b.vy -= vDotN * n.ny;
+      b.vz -= vDotN * n.nz;
     }
   }
 

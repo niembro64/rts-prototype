@@ -18,7 +18,6 @@ import type {
 } from '@/types/blueprints';
 import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
-import { normalizeAngle, magnitude } from '../math';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
 
 const TREAD_COLOR = 0x1a1d22;
@@ -452,11 +451,9 @@ function buildLegs(
   };
 }
 
-// --- Leg physics (ported from 2D ArachnidLeg) ---
-
-function easeOutCubic(t: number): number {
-  return 1 - Math.pow(1 - t, 3);
-}
+// --- Leg geometry (rest-pose; legs share the same yawGroup parent as
+// every other locomotion type so animation lives in the parent
+// chain, not in per-leg world-space tracking) ---
 
 function totalLegLength(c: ArachnidLegConfig): number {
   return c.upperLegLength + c.lowerLegLength;
@@ -486,99 +483,6 @@ function initializeLegAt(leg: LegInstance, unitX: number, unitZ: number, unitR: 
   leg.targetGroundX = gx;
   leg.targetGroundZ = gz;
   leg.initialized = true;
-}
-
-function updateLegPhysics(
-  leg: LegInstance,
-  unitX: number,
-  unitZ: number,
-  unitR: number,
-  cos: number,
-  sin: number,
-  vx: number,
-  vz: number,
-  dtMs: number,
-): void {
-  const c = leg.config;
-  const attachX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
-  const attachZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
-
-  if (!leg.initialized) {
-    initializeLegAt(leg, unitX, unitZ, unitR);
-    return;
-  }
-
-  if (leg.isSliding) {
-    if (leg.lerpDuration <= 0) {
-      leg.groundX = leg.targetGroundX;
-      leg.groundZ = leg.targetGroundZ;
-      leg.isSliding = false;
-    } else {
-      leg.lerpProgress += dtMs / leg.lerpDuration;
-      if (leg.lerpProgress >= 1) {
-        leg.lerpProgress = 1;
-        leg.groundX = leg.targetGroundX;
-        leg.groundZ = leg.targetGroundZ;
-        leg.isSliding = false;
-      } else {
-        const t = easeOutCubic(leg.lerpProgress);
-        leg.groundX = leg.startGroundX + (leg.targetGroundX - leg.startGroundX) * t;
-        leg.groundZ = leg.startGroundZ + (leg.targetGroundZ - leg.startGroundZ) * t;
-      }
-    }
-  }
-
-  const dx = leg.groundX - attachX;
-  const dz = leg.groundZ - attachZ;
-  const distSq = dx * dx + dz * dz;
-  const groundAngle = Math.atan2(dz, dx);
-  const angleDiff = normalizeAngle(groundAngle - unitR);
-  const angleTriggered = Math.abs(angleDiff) > c.snapTriggerAngle;
-  const tl = totalLegLength(c);
-  const extThresh = tl * c.extensionThreshold;
-  // Distance trigger fires for over-extension in ANY direction, not
-  // just behind the unit. Recovery target = OPPOSITE side of the
-  // attach so the leg flips back through the attach point.
-  const distanceTriggered = distSq >= extThresh * extThresh;
-
-  if (distanceTriggered || angleTriggered) {
-    leg.startGroundX = leg.groundX;
-    leg.startGroundZ = leg.groundZ;
-    const snapDistance = tl * c.snapDistanceMultiplier;
-    if (distanceTriggered) {
-      // Snap to opposite of current stretch, no velocity bias.
-      const dist = Math.sqrt(distSq);
-      const oppX = dist > 1e-6 ? -dx / dist : Math.cos(unitR + c.snapTargetAngle);
-      const oppZ = dist > 1e-6 ? -dz / dist : Math.sin(unitR + c.snapTargetAngle);
-      leg.targetGroundX = attachX + oppX * snapDistance;
-      leg.targetGroundZ = attachZ + oppZ * snapDistance;
-    } else {
-      // Angle-triggered: return to configured rest pose with velocity bias.
-      const snapAngle = unitR + c.snapTargetAngle;
-      const speed = magnitude(vx, vz);
-      const velocityOffset = Math.min(speed * 0.15, snapDistance * 0.3);
-      let targetAngle = snapAngle;
-      if (speed > 1) {
-        const moveAngle = Math.atan2(vz, vx);
-        targetAngle = snapAngle * 0.7 + moveAngle * 0.3;
-      }
-      leg.targetGroundX = attachX + Math.cos(targetAngle) * (snapDistance + velocityOffset);
-      leg.targetGroundZ = attachZ + Math.sin(targetAngle) * (snapDistance + velocityOffset);
-    }
-    leg.isSliding = true;
-    leg.lerpProgress = 0;
-  }
-
-  // Clamp to reach so the foot never over-extends past physical leg length.
-  const finalDx = leg.groundX - attachX;
-  const finalDz = leg.groundZ - attachZ;
-  const finalDistSq = finalDx * finalDx + finalDz * finalDz;
-  if (finalDistSq > tl * tl) {
-    const finalDist = Math.sqrt(finalDistSq);
-    const scale = tl / finalDist;
-    leg.groundX = attachX + finalDx * scale;
-    leg.groundZ = attachZ + finalDz * scale;
-  }
 }
 
 /** 3D IK (law of cosines, lifted into 3D) — returns the knee world position
@@ -697,85 +601,50 @@ export function updateLocomotion(
     return;
   }
 
-  if (mesh.type === 'legs' && mesh.legLod !== 'simple') {
-    const unitX = entity.transform.x;
-    const unitZ = entity.transform.y;  // 2D's y = 3D's z
-    const unitR = entity.transform.rotation;
-    // Unit base in WORLD Y = altitude − sphere radius. Legs are
-    // parented to the world group, so foot/hip Y positions need this
-    // offset added or feet stay pinned at world y=1 while units walk
-    // up onto raised terrain cubes (and the legs vanish inside the
-    // cube body).
-    const baseY = entity.transform.z - (entity.unit?.unitRadiusCollider.push ?? 0);
-    const cos = Math.cos(unitR);
-    const sin = Math.sin(unitR);
-
+  if (mesh.type === 'legs') {
+    // Legs are children of yawGroup now — same parent as wheels and
+    // treads — so the unit's position, surface tilt, and yaw are all
+    // inherited from the parent chain. Each leg is just a fixed
+    // arrangement in chassis-local coords; no world-space tracking,
+    // no walk cycle, no special case. Tilting and turning behave
+    // exactly like every other locomotion type.
+    void entity; void vx; void vy; void dtMs;
     for (const leg of mesh.legs) {
-      updateLegPhysics(leg, unitX, unitZ, unitR, cos, sin, vx, vy, dtMs);
-
-      // Hip world position (same formula as updateLegPhysics above — keep in
-      // sync when tweaking).
       const c = leg.config;
-      const hipX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
-      const hipZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
-      const footX = leg.groundX;
-      const footZ = leg.groundZ;
-
-      // Both 'animated' and 'full' LODs render a 2-segment leg with knee
-      // bent upward in the vertical hip-foot plane. The difference is only
-      // whether joint spheres are shown ('full' only).
-      const hipY = baseY + leg.hipY;
-      const footY = baseY + FOOT_Y;
-      const knee = kneeFromIK(
-        hipX, hipY, hipZ,
-        footX, footY, footZ,
-        c.upperLegLength, c.lowerLegLength,
-      );
-      setCylinderBetween(
-        leg.upper,
-        hipX, hipY, hipZ,
-        knee.x, knee.y, knee.z,
-        leg.upperThick,
-      );
-      if (leg.lower) {
-        setCylinderBetween(
-          leg.lower,
-          knee.x, knee.y, knee.z,
+      // Rest-pose foot angle (relative to chassis forward). Right
+      // legs straddle the snap rest + trigger angles to spread the
+      // stance horizontally without animating the gait.
+      const initAngle = leg.side === 1
+        ? (c.snapTargetAngle + c.snapTriggerAngle * Math.sign(c.snapTargetAngle)) / 2
+        : c.snapTargetAngle;
+      const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
+      // Hip in chassis-local three.js coords (sim x → three.x,
+      // sim z (up) → three.y, sim y (lateral) → three.z).
+      const hipX = c.attachOffsetX;
+      const hipY = leg.hipY;
+      const hipZ = c.attachOffsetY;
+      // Foot at the chassis-local rest pose. The foot's vertical
+      // offset (FOOT_Y) is small — chassis-local Y=0 is the unit
+      // base, so feet sit just above the contact patch.
+      const footX = c.attachOffsetX + Math.cos(initAngle) * restDistance;
+      const footY = FOOT_Y;
+      const footZ = c.attachOffsetY + Math.sin(initAngle) * restDistance;
+      if (mesh.legLod === 'simple') {
+        setCylinderBetween(leg.upper, hipX, hipY, hipZ, footX, footY, footZ, leg.upperThick);
+      } else {
+        const knee = kneeFromIK(
+          hipX, hipY, hipZ,
           footX, footY, footZ,
-          leg.lowerThick,
+          c.upperLegLength, c.lowerLegLength,
         );
+        setCylinderBetween(leg.upper, hipX, hipY, hipZ, knee.x, knee.y, knee.z, leg.upperThick);
+        if (leg.lower) {
+          setCylinderBetween(leg.lower, knee.x, knee.y, knee.z, footX, footY, footZ, leg.lowerThick);
+        }
+        if (leg.hipJoint)  leg.hipJoint.position.set(hipX, hipY, hipZ);
+        if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
+        if (leg.footJoint) leg.footJoint.position.set(footX, footY, footZ);
       }
-      if (leg.hipJoint)  leg.hipJoint.position.set(hipX, hipY, hipZ);
-      if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
-      if (leg.footJoint) leg.footJoint.position.set(footX, footY, footZ);
-    }
-  } else if (mesh.type === 'legs' && mesh.legLod === 'simple') {
-    // 'simple' LOD: hip-to-foot cylinder with no walk cycle. The foot is
-    // always pinned to the unit's rest-pose offset, so it translates and
-    // rotates with the unit every frame. (Previously we only ran the
-    // foot-placement math on first frame via `initialized`, which left
-    // the foot planted at its spawn position — legs stretched out as the
-    // unit drove away.)
-    const unitX = entity.transform.x;
-    const unitZ = entity.transform.y;
-    const unitR = entity.transform.rotation;
-    const baseY = entity.transform.z - (entity.unit?.unitRadiusCollider.push ?? 0);
-    const cos = Math.cos(unitR);
-    const sin = Math.sin(unitR);
-    for (const leg of mesh.legs) {
-      // Re-anchor groundX/Z to the rest pose every frame so the foot
-      // follows the unit. No walk cycle needed — the leg is just a rigid
-      // offset from the hip.
-      initializeLegAt(leg, unitX, unitZ, unitR);
-      const c = leg.config;
-      const hipX = unitX + cos * c.attachOffsetX - sin * c.attachOffsetY;
-      const hipZ = unitZ + sin * c.attachOffsetX + cos * c.attachOffsetY;
-      setCylinderBetween(
-        leg.upper,
-        hipX, baseY + leg.hipY, hipZ,
-        leg.groundX, baseY + FOOT_Y, leg.groundZ,
-        leg.upperThick,
-      );
     }
   }
 }

@@ -888,14 +888,12 @@ export class Render3DEntities {
         this.world.add(group);
         m = { group, yawGroup, chassis, chassisMeshes, rendererId, turrets: turretMeshes, lodKey: this.lod.key };
 
-        // Locomotion (tank treads / vehicle wheels / arachnid legs).
-        // Treads / wheels go inside `yawGroup` (sibling of chassis)
-        // so they share the unit's yaw + the parent group's surface
-        // tilt as one rigid hull. Legs are parented to the WORLD
-        // group so feet can plant in world space during the snap-lerp
-        // gait — they pick up the unit's altitude inside updateLeg
-        // without inheriting the chassis tilt.
-        m.locomotion = buildLocomotion(yawGroup, this.world, e, radius, pid, this.lod.gfx);
+        // Locomotion (tank treads / vehicle wheels / arachnid legs)
+        // ALL parent to `yawGroup` now — legs are no longer a special
+        // case with their own world-space foot planting. The whole
+        // unit (chassis + every locomotion type + turrets + mirrors)
+        // reads as one rigid body that yaws and tilts together.
+        m.locomotion = buildLocomotion(yawGroup, yawGroup, e, radius, pid, this.lod.gfx);
 
 
         // Mirror panels (e.g. Loris): standing slabs that track the turret.

@@ -142,9 +142,15 @@ export class GameServer {
     this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     this.world = new WorldState(42, mapWidth, mapHeight);
     // Wire the heightmap into physics so ground contacts settle units
-    // on top of their terrain cube tile (returns 0 outside the ripple
-    // disc, so corner spawns stay flat).
-    this.physics.setGroundLookup((x, y) => this.world.getGroundZ(x, y));
+    // on top of their terrain cube tile AND project their velocity
+    // onto the slope tangent each tick — keeps units glued to the
+    // surface as they climb / descend instead of bobbing or
+    // launching off slope transitions. Both lookups return flat-up
+    // outside the ripple disc, so corner spawns stay flat.
+    this.physics.setGroundLookup(
+      (x, y) => this.world.getGroundZ(x, y),
+      (x, y) => getSurfaceNormal(x, y, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE),
+    );
     this.world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player
 
