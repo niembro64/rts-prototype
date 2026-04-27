@@ -135,6 +135,8 @@ import {
   setLobbyVisible,
   getGridOverlay,
   setGridOverlay,
+  getWaypointDetail,
+  setWaypointDetail,
   setCurrentTpsRatio,
   setCurrentFpsRatio,
   setCurrentUnitCount,
@@ -151,6 +153,7 @@ import type {
   RangeType,
   ProjRangeType,
   UnitRadiusType,
+  WaypointDetail,
 } from '../types/client';
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
@@ -230,6 +233,7 @@ const driftMode = ref<DriftMode>(getDriftMode());
 const edgeScrollEnabled = ref(getEdgeScrollEnabled());
 const dragPanEnabled = ref(getDragPanEnabled());
 const gridOverlay = ref<GridOverlay>(getGridOverlay());
+const waypointDetail = ref<WaypointDetail>(getWaypointDetail());
 const soundToggles = reactive<Record<SoundCategory, boolean>>({
   fire: getSoundToggle('fire'),
   hit: getSoundToggle('hit'),
@@ -819,6 +823,8 @@ function resetClientDefaults(): void {
   }
   gridOverlay.value = cd.gridOverlay.default;
   setGridOverlay(cd.gridOverlay.default);
+  waypointDetail.value = cd.waypointDetail.default;
+  setWaypointDetail(cd.waypointDetail.default);
 }
 
 function togglePlayer(): void {
@@ -1503,6 +1509,11 @@ function changeGridOverlay(mode: GridOverlay): void {
   gridOverlay.value = mode;
 }
 
+function changeWaypointDetail(mode: WaypointDetail): void {
+  setWaypointDetail(mode);
+  waypointDetail.value = mode;
+}
+
 function dismissGameOver(): void {
   gameOverWinner.value = null;
 }
@@ -2134,6 +2145,22 @@ onUnmounted(() => {
                 :class="{ active: gridOverlay === opt.value }"
                 title="Territory capture overlay intensity"
                 @click="changeGridOverlay(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">WAYPOINTS:</span>
+            <div class="button-group">
+              <button
+                v-for="opt in CLIENT_CONFIG.waypointDetail.options"
+                :key="opt.value"
+                class="control-btn"
+                :class="{ active: waypointDetail === opt.value }"
+                title="Waypoint visualization — SIMPLE shows only your click points; DETAILED shows the planner's intermediates too"
+                @click="changeWaypointDetail(opt.value)"
               >
                 {{ opt.label }}
               </button>

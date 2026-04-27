@@ -12,10 +12,34 @@ export class BuildingGrid {
   private cells: Map<string, GridCell> = new Map();
   private gridWidth: number;
   private gridHeight: number;
+  /** Monotonic version bumped on every mutation (place / remove).
+   *  Caches that key off "the current set of occupied cells" — the
+   *  pathfinder's per-query building-inflation precompute is the
+   *  one consumer today — read this and rebuild only when it
+   *  differs from the recorded value. */
+  private _version = 1;
 
   constructor(mapWidth: number, mapHeight: number) {
     this.gridWidth = Math.ceil(mapWidth / GRID_CELL_SIZE);
     this.gridHeight = Math.ceil(mapHeight / GRID_CELL_SIZE);
+  }
+
+  getVersion(): number {
+    return this._version;
+  }
+
+  /** Iterate every occupied cell as `[gx, gy, cell]` triples. The
+   *  pathfinder uses this to dilate the building footprint into an
+   *  inflation cache once per query instead of doing 9 `getCell`
+   *  calls per visited cell during JPS expansion. */
+  *occupiedCells(): IterableIterator<{ gx: number; gy: number; cell: GridCell }> {
+    for (const [key, cell] of this.cells) {
+      if (!cell.occupied) continue;
+      const comma = key.indexOf(',');
+      const gx = +key.slice(0, comma);
+      const gy = +key.slice(comma + 1);
+      yield { gx, gy, cell };
+    }
   }
 
   // Convert world coordinates to grid coordinates
@@ -117,6 +141,7 @@ export class BuildingGrid {
         });
       }
     }
+    this._version++;
   }
 
   // Remove a building (clear cells)
@@ -129,6 +154,7 @@ export class BuildingGrid {
         this.cells.delete(key);
       }
     }
+    this._version++;
   }
 
   // Remove by entity ID (find and remove all cells for this entity)
@@ -142,6 +168,7 @@ export class BuildingGrid {
     for (const key of keysToRemove) {
       this.cells.delete(key);
     }
+    if (keysToRemove.length > 0) this._version++;
   }
 
   // Get all valid placement positions for a building within commander's range

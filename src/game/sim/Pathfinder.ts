@@ -52,7 +52,7 @@
 
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
-import { isWaterAt, getSurfaceNormal, getSurfaceHeight } from './Terrain';
+import { isWaterAt, getSurfaceNormal, getSurfaceHeight, getTerrainVersion } from './Terrain';
 import type { ActionType, UnitAction } from './types';
 
 type Vec2 = { x: number; y: number };
@@ -66,20 +66,28 @@ const SQRT2_MINUS_1 = SQRT2 - 1;
  *  RTS purposes. */
 const HEURISTIC_TIE_BREAK = 1.001;
 
-/** Hard cap on jump-point expansions per query. JPS expansions are
- *  rarer than vanilla A* expansions — each pop from the heap may
- *  walk hundreds of grid cells in a single jump — but on a demo
- *  map with high obstacle-edge density (e.g. 5 radial LAKE
- *  dividers + LAKE centre + multiple buildings) every water-
- *  adjacent cell becomes a potential JP, and a cross-map query
- *  can push an order of magnitude more JPs than the JP-count of
- *  the actual optimal path. 30000 ≈ 30% of the largest current
- *  grid (308×308 = ~95k cells) and is generous enough to cover
- *  any legitimately-reachable target on terrain we ship; the
- *  cap exists strictly to bail on truly unreachable goals
- *  (target inside a sealed-off pocket) rather than throttling
+/** Hard cap on jump-point expansions per query (heap-pops). With
+ *  the precomputed terrain + building inflation masks each
+ *  expansion is just two array reads in `isBlocked`, so we can
+ *  afford a generous limit. 100k ≈ 105% of the largest current
+ *  grid (308×308 = ~95k cells) — the cap exists strictly to bail
+ *  on truly unreachable goals rather than throttling
  *  complex-but-reachable searches. */
-const MAX_JP_EXPANSIONS = 30000;
+const MAX_JP_EXPANSIONS = 100_000;
+
+/** Hard cap on TOTAL cells visited inside `jump` calls per query.
+ *  JPS does most of its work inside the diagonal-step cardinal
+ *  sub-recursion — for an N-cell diagonal jump in open ground,
+ *  each step recurses into 2 cardinal sub-jumps that walk all the
+ *  way to the next obstacle / map edge, costing N × (2 × edge
+ *  distance) cell visits per heap-pop. Without this cap a single
+ *  pathological query could visit billions of cells while staying
+ *  well under the expansion cap, blocking the tick.
+ *
+ *  2 million cells ≈ 21 full-grid sweeps; comfortably above any
+ *  realistic query but well below "stalls the simulation". When
+ *  hit, the planner bails with `no-path`. */
+const MAX_JUMP_CELL_VISITS = 2_000_000;
 
 /** Slope passability threshold. Surface normals are sampled at cell
  *  centres; nz=1 is flat ground, nz=0 is a vertical cliff. Below
@@ -104,20 +112,87 @@ const MAX_JP_EXPANSIONS = 30000;
  *  physics itself can't traverse, not gentle bumps. */
 const SLOPE_BLOCK_NZ = 0.34;
 
+/** C-space inflation radii (in cells), specified separately for
+ *  terrain (water + slope + map-edge OOB) and buildings. The
+ *  blocked-cell masks are dilated by these radii so paths and
+ *  smoothed lines keep at least `radius * GRID_CELL_SIZE` world
+ *  units of clearance from each obstacle type.
+ *
+ *  Why split: the two obstacle classes interact with units very
+ *  differently.
+ *
+ *    Water — impassable to physics. The water-pusher in
+ *    GameServer.applyForces ejects any unit whose body centre
+ *    crosses the shoreline, so we need the planner to keep the
+ *    body fully clear. Largest unit `push` radius is ~54 wu
+ *    (mammoth/widow); 2 cells = 40 wu of clearance lets every
+ *    unit smaller than 40 wu fully clear water at every waypoint,
+ *    and the few units larger than that get nudged back inland by
+ *    the pusher when they overhang the inflation halo.
+ *
+ *    Buildings — physics-pushable. Rigid-body collision in
+ *    PhysicsEngine3D pushes a unit off any building it touches,
+ *    so the planner doesn't need to keep the body fully clear of
+ *    building walls. A 1-cell buffer is enough for path quality
+ *    (avoids waypoints exactly at building edges) without sealing
+ *    the demo map's narrow factory-to-factory and arc-to-arc gaps.
+ *
+ *  Sealing math (load-bearing): the demo battle places 14
+ *  factories per player on a 45° arc at radius 2800. Centre-to-
+ *  centre spacing is ~157 wu, edge-to-edge gap is ~77 wu = 3.85
+ *  cells. With BUILDING=1 the inflated gap is 3.85 − 2 = 1.85
+ *  cells of passable space. With BUILDING=2 the gap goes to
+ *  −0.15 cells — every team's base is sealed and units can't
+ *  pathfind out. Don't increase BUILDING_INFLATION_CELLS without
+ *  re-checking these numbers against the current demo geometry. */
+const TERRAIN_INFLATION_CELLS = 2;
+const BUILDING_INFLATION_CELLS = 1;
+
 /** When the start or goal cell is blocked, scan outward this many
- *  cells in a Chebyshev-distance spiral looking for the nearest
- *  open cell to use as a substitute. 32 cells = 640 wu — covers
- *  the demo map's full central-water diameter under a default
- *  LAKE configuration. The factory fight-target geometry
- *  (`factoryFightDistance = 1.22`, with factories at radial
- *  ~2800 wu) puts the *intended* goal ~617 wu past centre on the
- *  opposite side, i.e. inside the central water region. With
- *  this radius the snap can always reach a valid shore cell on
- *  the goal's side; the unit walks the path and stops at that
- *  shore. Smaller radii surfaced as "factory units walk straight
- *  into water" because the snap returned null and findPath fell
- *  through to a single straight-line waypoint. */
+ *  cells looking for the nearest open cell to use as a substitute.
+ *  32 cells = 640 wu — covers the demo map's full central-water
+ *  diameter under a default LAKE configuration. */
 const NEAREST_OPEN_RADIUS = 32;
+
+/** Pre-sorted (dx, dy) offsets within `NEAREST_OPEN_RADIUS`, ordered
+ *  by Euclidean distance from the centre. This is what makes
+ *  `findNearestOpenCell` return the actual nearest dry cell — not
+ *  the first one a directionally-biased ring scan happens to hit.
+ *
+ *  The previous implementation iterated Chebyshev rings and within
+ *  each ring tested top-row first, then bottom, then left-col,
+ *  then right-col. For a unit in inflated space with all 4
+ *  cardinals open, the snap deterministically picked the NW corner
+ *  cell (top, leftmost-tested-first) — a real directional bias.
+ *  Two units mirroring each other across an axis got snapped in
+ *  the same world direction, producing visibly asymmetric routes.
+ *
+ *  By sorting by Euclidean distance the snap target is independent
+ *  of compass direction: the 4 cardinals all sit at distance 1 and
+ *  precede the 4 diagonals at distance √2. Within a tie band the
+ *  iteration is still some fixed order, but the bias is now
+ *  sub-cell rather than the prior "always grab NW corner" pattern. */
+const _snapOffsets: Int16Array = (() => {
+  const r = NEAREST_OPEN_RADIUS;
+  const list: Array<{ dx: number; dy: number; d2: number }> = [];
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r * r) continue; // strict Euclidean disc, not Chebyshev square
+      list.push({ dx, dy, d2 });
+    }
+  }
+  list.sort((a, b) => a.d2 - b.d2);
+  // Pack as (dx, dy) pairs in a single Int16Array for cache locality
+  // on the hot scan.
+  const buf = new Int16Array(list.length * 2);
+  for (let i = 0; i < list.length; i++) {
+    buf[i * 2] = list[i].dx;
+    buf[i * 2 + 1] = list[i].dy;
+  }
+  return buf;
+})();
 
 /** All 8 neighbour direction deltas — used at the START node where
  *  no parent direction is defined. Cardinals first, diagonals after. */
@@ -125,6 +200,221 @@ const ALL_8_DIRS: ReadonlyArray<readonly [number, number]> = [
   [ 1, 0], [-1, 0], [ 0, 1], [ 0,-1],
   [ 1, 1], [ 1,-1], [-1, 1], [-1,-1],
 ];
+
+// ── Module-level scratch + caches ────────────────────────────────
+//
+// All sized to (gridW × gridH) for the most-recently-queried map.
+// On a map-size change (new lobby battle / different terrain) we
+// reallocate; otherwise these arrays are reused across every
+// findPath call, eliminating ~hundreds-of-KB-per-query allocations
+// and the GC pressure that came with them.
+
+let _scratchGridW = 0;
+let _scratchGridH = 0;
+let _scratchGScore: Float32Array | null = null;
+let _scratchFScore: Float32Array | null = null;
+let _scratchParent: Int32Array | null = null;
+let _scratchClosed: Uint8Array | null = null;
+
+function ensureScratch(gridW: number, gridH: number): void {
+  if (gridW === _scratchGridW && gridH === _scratchGridH) {
+    // Same dimensions — wipe to fresh state (.fill is fast — TypedArray.fill).
+    _scratchGScore!.fill(Infinity);
+    _scratchFScore!.fill(Infinity);
+    _scratchParent!.fill(-1);
+    _scratchClosed!.fill(0);
+    return;
+  }
+  const n = gridW * gridH;
+  _scratchGScore = new Float32Array(n);
+  _scratchFScore = new Float32Array(n);
+  _scratchParent = new Int32Array(n);
+  _scratchClosed = new Uint8Array(n);
+  _scratchGScore.fill(Infinity);
+  _scratchFScore.fill(Infinity);
+  _scratchParent.fill(-1);
+  _scratchGridW = gridW;
+  _scratchGridH = gridH;
+}
+
+/** Terrain-blocked cache (water + slope). Independent of buildings —
+ *  it's a pure function of the heightmap and the SLOPE_BLOCK_NZ
+ *  threshold, so we keep it across queries and invalidate ONLY when
+ *  Terrain bumps its version (terrain shape / team count change).
+ *  Massive win: filling this at first call is O(n) terrain samples,
+ *  and every subsequent query becomes a pure array lookup —
+ *  isWaterAt and getSurfaceNormal are NOT called per cell on the
+ *  hot path anymore. 0 = unknown (uninitialised), 1 = blocked,
+ *  2 = clear. */
+let _terrainBlockedCache: Uint8Array | null = null;
+let _terrainBlockedVersion = -1;
+let _terrainBlockedGridW = 0;
+let _terrainBlockedGridH = 0;
+let _terrainBlockedMapW = 0;
+let _terrainBlockedMapH = 0;
+
+function ensureTerrainBlocked(
+  gridW: number, gridH: number,
+  mapWidth: number, mapHeight: number,
+): Uint8Array {
+  const ver = getTerrainVersion();
+  if (
+    _terrainBlockedCache !== null &&
+    _terrainBlockedVersion === ver &&
+    _terrainBlockedGridW === gridW &&
+    _terrainBlockedGridH === gridH &&
+    _terrainBlockedMapW === mapWidth &&
+    _terrainBlockedMapH === mapHeight
+  ) {
+    return _terrainBlockedCache;
+  }
+  const n = gridW * gridH;
+  if (_terrainBlockedCache === null || _terrainBlockedCache.length !== n) {
+    _terrainBlockedCache = new Uint8Array(n);
+  } else {
+    _terrainBlockedCache.fill(0);
+  }
+  // Populate every cell once — water + slope at this terrain config.
+  // Sampling at cell centres mirrors the per-query check this used to
+  // do. The slope test calls `getSurfaceNormal` (4 height samples per
+  // cell) — paying that cost ONCE here, not per JPS query.
+  const cache = _terrainBlockedCache;
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      const cx = (gx + 0.5) * GRID_CELL_SIZE;
+      const cy = (gy + 0.5) * GRID_CELL_SIZE;
+      let blocked = false;
+      if (isWaterAt(cx, cy, mapWidth, mapHeight)) {
+        blocked = true;
+      } else {
+        const normal = getSurfaceNormal(cx, cy, mapWidth, mapHeight, GRID_CELL_SIZE);
+        if (normal.nz < SLOPE_BLOCK_NZ) blocked = true;
+      }
+      cache[gy * gridW + gx] = blocked ? 1 : 2;
+    }
+  }
+  _terrainBlockedVersion = ver;
+  _terrainBlockedGridW = gridW;
+  _terrainBlockedGridH = gridH;
+  _terrainBlockedMapW = mapWidth;
+  _terrainBlockedMapH = mapHeight;
+  return cache;
+}
+
+/** Inflated terrain-blocked mask. A cell is set iff itself OR any
+ *  cell within Chebyshev distance `TERRAIN_INFLATION_CELLS` is
+ *  terrain-blocked — i.e. C-space inflation applied to the terrain
+ *  layer alone. Same version-key as `_terrainBlockedCache` so it's
+ *  only rebuilt when terrain config changes. The `isBlocked`
+ *  predicate becomes a SINGLE array lookup for the terrain side
+ *  instead of a per-cell stencil scan, which dominates the JPS
+ *  hot loop's cost. */
+let _terrainInflatedCache: Uint8Array | null = null;
+let _terrainInflatedVersion = -1;
+let _terrainInflatedGridW = 0;
+let _terrainInflatedGridH = 0;
+
+function ensureTerrainInflated(
+  gridW: number, gridH: number,
+  mapWidth: number, mapHeight: number,
+): Uint8Array {
+  const ver = getTerrainVersion();
+  if (
+    _terrainInflatedCache !== null &&
+    _terrainInflatedVersion === ver &&
+    _terrainInflatedGridW === gridW &&
+    _terrainInflatedGridH === gridH
+  ) {
+    return _terrainInflatedCache;
+  }
+  const tBlocked = ensureTerrainBlocked(gridW, gridH, mapWidth, mapHeight);
+  const n = gridW * gridH;
+  if (_terrainInflatedCache === null || _terrainInflatedCache.length !== n) {
+    _terrainInflatedCache = new Uint8Array(n);
+  } else {
+    _terrainInflatedCache.fill(0);
+  }
+  const out = _terrainInflatedCache;
+  // Dilation pass: mark every cell whose (2k+1)×(2k+1) neighbourhood
+  // contains a blocked cell, where k = TERRAIN_INFLATION_CELLS.
+  // Out-of-bounds is treated as blocked — a cell within k of the map
+  // edge is adjacent to OOB and therefore inflated.
+  const k = TERRAIN_INFLATION_CELLS;
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      let blocked = 0;
+      if (gx < k || gy < k || gx >= gridW - k || gy >= gridH - k) {
+        blocked = 1;
+      } else {
+        // (2k+1)×(2k+1) stencil scan; bail on first blocked.
+        outer: for (let dy = -k; dy <= k; dy++) {
+          const row = (gy + dy) * gridW;
+          for (let dx = -k; dx <= k; dx++) {
+            if (tBlocked[row + gx + dx] === 1) { blocked = 1; break outer; }
+          }
+        }
+      }
+      out[gy * gridW + gx] = blocked;
+    }
+  }
+  _terrainInflatedVersion = ver;
+  _terrainInflatedGridW = gridW;
+  _terrainInflatedGridH = gridH;
+  return out;
+}
+
+/** Inflated building-blocked mask. Rebuilt only when the building
+ *  grid mutates (BuildingGrid.getVersion bumps on place/remove).
+ *  Iterates the building grid's occupiedCells() and stamps the
+ *  (2k+1)² stencil around each occupied cell into the mask, where
+ *  k = BUILDING_INFLATION_CELLS — far cheaper than walking every
+ *  cell in the grid since most cells are never near a building. */
+let _buildingInflatedCache: Uint8Array | null = null;
+let _buildingInflatedVersion = -1;
+let _buildingInflatedGridW = 0;
+let _buildingInflatedGridH = 0;
+let _buildingInflatedGrid: BuildingGrid | null = null;
+
+function ensureBuildingInflated(
+  buildingGrid: BuildingGrid,
+  gridW: number, gridH: number,
+): Uint8Array {
+  const ver = buildingGrid.getVersion();
+  if (
+    _buildingInflatedCache !== null &&
+    _buildingInflatedGrid === buildingGrid &&
+    _buildingInflatedVersion === ver &&
+    _buildingInflatedGridW === gridW &&
+    _buildingInflatedGridH === gridH
+  ) {
+    return _buildingInflatedCache;
+  }
+  const n = gridW * gridH;
+  if (_buildingInflatedCache === null || _buildingInflatedCache.length !== n) {
+    _buildingInflatedCache = new Uint8Array(n);
+  } else {
+    _buildingInflatedCache.fill(0);
+  }
+  const out = _buildingInflatedCache;
+  const k = BUILDING_INFLATION_CELLS;
+  for (const { gx, gy } of buildingGrid.occupiedCells()) {
+    for (let dy = -k; dy <= k; dy++) {
+      const ny = gy + dy;
+      if (ny < 0 || ny >= gridH) continue;
+      const row = ny * gridW;
+      for (let dx = -k; dx <= k; dx++) {
+        const nx = gx + dx;
+        if (nx < 0 || nx >= gridW) continue;
+        out[row + nx] = 1;
+      }
+    }
+  }
+  _buildingInflatedVersion = ver;
+  _buildingInflatedGrid = buildingGrid;
+  _buildingInflatedGridW = gridW;
+  _buildingInflatedGridH = gridH;
+  return out;
+}
 
 /** Plan a path from (startX, startY) to (goalX, goalY) in world
  *  coords. Returns the ORDERED list of waypoints the unit should
@@ -147,62 +437,34 @@ export function findPath(
   const ggx = clampInt(Math.floor(goalX / GRID_CELL_SIZE), 0, gridW - 1);
   const ggy = clampInt(Math.floor(goalY / GRID_CELL_SIZE), 0, gridH - 1);
 
-  // Per-query HARD-blocked cell cache (water / building / steep
-  // slope). Terrain sampling and grid lookups are cheap individually
-  // but each cell is visited up to 18 times across A*'s 8 neighbour
-  // expansions plus the inflation halo below; memoising drops the
-  // sample count by an order of magnitude.
-  const hardBlockedCache = new Int8Array(gridW * gridH); // 0 unknown, 1 blocked, 2 clear
-  const isHardBlocked = (gx: number, gy: number): boolean => {
+  // Reuse module-level scratch (gScore / fScore / parent / closed).
+  ensureScratch(gridW, gridH);
+
+  // Inflated-blocked predicate, built from two precomputed masks
+  // that the planner used to recompute on every cell visit:
+  //
+  //   1. terrainInflated — terrain (water + slope) dilated by 1
+  //      cell. Cached at module level, version-keyed to
+  //      Terrain.getTerrainVersion(); rebuilt only when the host
+  //      changes the lobby's CENTER / DIVIDERS / team count.
+  //
+  //   2. buildingInflated — occupied building cells dilated by 1
+  //      cell. Cached at module level, version-keyed to
+  //      BuildingGrid.getVersion(); rebuilt when buildings are
+  //      placed or destroyed.
+  //
+  // `isBlocked` reduces to `terrainInflated[idx] || buildingInflated[idx]`
+  // — two contiguous TypedArray reads per cell visit, replacing the
+  // old 9-call hard-blocked + inflation-ring predicate that did up
+  // to 9 Map.get calls into BuildingGrid per visit. Inflation
+  // semantics are unchanged: any cell whose 8-neighbour ring
+  // contains a hard-blocked cell is still itself blocked.
+  const terrainInflated = ensureTerrainInflated(gridW, gridH, mapWidth, mapHeight);
+  const buildingInflated = ensureBuildingInflated(buildingGrid, gridW, gridH);
+  const isBlocked = (gx: number, gy: number): boolean => {
     if (gx < 0 || gy < 0 || gx >= gridW || gy >= gridH) return true;
     const idx = gy * gridW + gx;
-    const cached = hardBlockedCache[idx];
-    if (cached !== 0) return cached === 1;
-    let blocked = false;
-    const cell = buildingGrid.getCell(gx, gy);
-    if (cell?.occupied) {
-      blocked = true;
-    } else {
-      const cx = (gx + 0.5) * GRID_CELL_SIZE;
-      const cy = (gy + 0.5) * GRID_CELL_SIZE;
-      if (isWaterAt(cx, cy, mapWidth, mapHeight)) {
-        blocked = true;
-      } else {
-        const n = getSurfaceNormal(cx, cy, mapWidth, mapHeight, GRID_CELL_SIZE);
-        if (n.nz < SLOPE_BLOCK_NZ) blocked = true;
-      }
-    }
-    hardBlockedCache[idx] = blocked ? 1 : 2;
-    return blocked;
-  };
-
-  // Configuration-space inflation. The planner reasons about cell
-  // CENTRES; the unit is a sphere of radius ~10–30 wu = 0.5–1.5 cells
-  // (GRID_CELL_SIZE = 20 wu). A path that hugs a coast/wall — even
-  // one all of whose cells are technically dry — puts the unit's
-  // body across the obstacle boundary, which trips
-  // `GameServer.applyForces`' lookahead water-thrust gate and the
-  // unit halts as if no path were planned. Treating any cell whose
-  // 8-neighbour ring contains a hard-blocked cell as ALSO blocked
-  // gives the path a one-cell buffer (20 wu of clearance) and the
-  // unit's body stays clear of the shoreline / building boundary
-  // while following waypoints.
-  //
-  // `isBlocked` is what A* and LOS smoothing both call. We never
-  // directly use the un-inflated predicate after this point — the
-  // snap-to-nearest-open helper, the diagonal-corner-clip check,
-  // and Bresenham LOS all run against the inflated definition.
-  const isBlocked = (gx: number, gy: number): boolean => {
-    if (isHardBlocked(gx, gy)) return true;
-    if (isHardBlocked(gx - 1, gy - 1)) return true;
-    if (isHardBlocked(gx,     gy - 1)) return true;
-    if (isHardBlocked(gx + 1, gy - 1)) return true;
-    if (isHardBlocked(gx - 1, gy    )) return true;
-    if (isHardBlocked(gx + 1, gy    )) return true;
-    if (isHardBlocked(gx - 1, gy + 1)) return true;
-    if (isHardBlocked(gx,     gy + 1)) return true;
-    if (isHardBlocked(gx + 1, gy + 1)) return true;
-    return false;
+    return terrainInflated[idx] === 1 || buildingInflated[idx] === 1;
   };
 
   // Snap blocked endpoints to the nearest open cell within a small
@@ -226,13 +488,26 @@ export function findPath(
   // target (e.g. middle of a lake) still falls through to straight-
   // line — we don't want the unit to walk to some random open cell
   // far from the user's actual intent.
+  // BAIL POLICY. When the planner can't produce a valid route, it
+  // emits a single waypoint at the unit's CURRENT position
+  // (startX, startY) — i.e. "stay put". The previous behaviour was
+  // to fall back to a single waypoint at the user's click point,
+  // which let physics/water-pusher handle the rest, but it had two
+  // bad UX consequences: the visualized path drew a straight line
+  // from the unit through any obstacle the click was past (often
+  // crossing water), and on the rare goal-snap fail the unit
+  // beelined at the obstacle until the water-pusher stopped them.
+  // Returning the unit's own position visualizes nothing and tells
+  // the action system "queue is replaced with a no-op", which
+  // resolves on the next tick. Bail counters are still tracked
+  // through `_lastBailReason` for diagnostics.
   _lastBailReason = 'ok';
   let snappedStart = { gx: sgx, gy: sgy };
   if (isBlocked(sgx, sgy)) {
     const open = findNearestOpenCell(sgx, sgy, gridW, gridH, isBlocked);
     if (!open) {
       _lastBailReason = 'start-snap';
-      return [{ x: goalX, y: goalY }];
+      return [{ x: startX, y: startY }];
     }
     snappedStart = open;
   }
@@ -242,7 +517,7 @@ export function findPath(
     const open = findNearestOpenCell(ggx, ggy, gridW, gridH, isBlocked);
     if (!open) {
       _lastBailReason = 'goal-snap';
-      return [{ x: goalX, y: goalY }];
+      return [{ x: startX, y: startY }];
     }
     snappedGoal = open;
     goalWasSnapped = true;
@@ -252,31 +527,43 @@ export function findPath(
   const goalCellGx = snappedGoal.gx;
   const goalCellGy = snappedGoal.gy;
 
-  // Same-cell after snapping → no planning needed.
+  // Same-cell after snapping → no planning needed. If the goal was
+  // snapped (user clicked on water / a building / a peak that
+  // collapsed to the unit's own snap target) the original click is
+  // inside an impassable cell — walking to it would beeline at the
+  // obstacle. Use the snapped cell's centre instead. Otherwise the
+  // click cell is the goal cell and walking to the unsnapped coords
+  // preserves "click here exactly" precision.
   if (startCellGx === goalCellGx && startCellGy === goalCellGy) {
     _lastBailReason = 'same-cell';
+    if (goalWasSnapped) {
+      return [{
+        x: (snappedGoal.gx + 0.5) * GRID_CELL_SIZE,
+        y: (snappedGoal.gy + 0.5) * GRID_CELL_SIZE,
+      }];
+    }
     return [{ x: goalX, y: goalY }];
   }
 
-  // Scratch arrays scoped to this query. Allocating per call keeps
-  // the planner stateless (no module-level dirty-bit bookkeeping)
-  // at a few hundred KB / query for the largest map — pathfinding
-  // is rare enough that the allocation noise is negligible.
-  const cellCount = gridW * gridH;
-  const gScore = new Float32Array(cellCount);
-  const fScore = new Float32Array(cellCount);
-  const parent = new Int32Array(cellCount);
-  const closed = new Uint8Array(cellCount);
-  gScore.fill(Infinity);
-  fScore.fill(Infinity);
-  parent.fill(-1);
+  // Module-level scratch already wiped at the top of the function.
+  const gScore = _scratchGScore!;
+  const fScore = _scratchFScore!;
+  const parent = _scratchParent!;
+  const closed = _scratchClosed!;
 
   const startIdx = startCellGy * gridW + startCellGx;
   const goalIdx = goalCellGy * gridW + goalCellGx;
   gScore[startIdx] = 0;
   fScore[startIdx] = octile(startCellGx, startCellGy, goalCellGx, goalCellGy) * HEURISTIC_TIE_BREAK;
 
-  const heap = new MinHeap(fScore);
+  // Reset the per-query cell-visit budget consumed by `jump`.
+  _jumpCellsRemaining = MAX_JUMP_CELL_VISITS;
+
+  // Reuse the module-level heap; cheaper than allocating a fresh
+  // `number[]` each query.
+  const heap = _heap;
+  heap.setScores(fScore);
+  heap.reset();
   heap.push(startIdx);
 
   let expanded = 0;
@@ -342,10 +629,12 @@ export function findPath(
   }
 
   if (!foundGoal) {
-    // No path under the budget — let the caller's straight-line
-    // intent stand. Rare in normal play; the budget is generous.
+    // No path under the budget — return the unit's own position
+    // (stay-put). Rare in normal play with our caches and 30k
+    // expansion budget; if it does fire, the goal really is
+    // unreachable and beelining at it would cross water.
     _lastBailReason = 'no-path';
-    return [{ x: goalX, y: goalY }];
+    return [{ x: startX, y: startY }];
   }
 
   // Reconstruct grid-cell path (start excluded, goal included).
@@ -361,9 +650,32 @@ export function findPath(
   // staircases unstep into a clean slope. The unit's actual position
   // (startX/Y) is the implicit first anchor — we never emit it as a
   // waypoint, just use it for the first LOS test.
+  //
+  // EXCEPT when the start was snapped: the unit's actual position
+  // is inside an inflated/blocked cell (knocked there, spawned
+  // there, etc.) and the first hasLineOfSight call would test
+  // those blocked cells and immediately return false anyway. Worse,
+  // the unit's first MOTION goes from `(startX, startY)` straight
+  // to whatever first waypoint we emit — and that line can cross
+  // water if the start is on the wrong side of an inflation halo
+  // from the JPS path. Inserting the snap-target cell as the first
+  // waypoint keeps that initial segment short and inside the snap
+  // radius (which is by definition open ground), so the unit walks
+  // to safe ground BEFORE following the JPS route.
   const smoothed: Vec2[] = [];
-  let anchorX = startX;
-  let anchorY = startY;
+  let anchorX: number;
+  let anchorY: number;
+  const startWasSnapped = snappedStart.gx !== sgx || snappedStart.gy !== sgy;
+  if (startWasSnapped) {
+    const snapX = (snappedStart.gx + 0.5) * GRID_CELL_SIZE;
+    const snapY = (snappedStart.gy + 0.5) * GRID_CELL_SIZE;
+    smoothed.push({ x: snapX, y: snapY });
+    anchorX = snapX;
+    anchorY = snapY;
+  } else {
+    anchorX = startX;
+    anchorY = startY;
+  }
   for (let i = 0; i < cellPath.length - 1; i++) {
     const candIdx = cellPath[i];
     const nextIdx = cellPath[i + 1];
@@ -438,17 +750,14 @@ export function expandPathActions(
   // can paste console output and we can pinpoint which case fired.
   // Only fires for real "go across the map" queries — short moves
   // that legitimately collapse to one waypoint stay quiet.
-  if (path.length === 1) {
+  if (path.length === 1 && _lastBailReason !== 'ok') {
     const dx = goalX - startX;
     const dy = goalY - startY;
-    // Sample-rate the diagnostic so a chokepoint pile-up doesn't
-    // flood the console with hundreds of identical bail lines per
-    // second. 2% sampling still surfaces a representative trickle
-    // of every distinct failure mode without becoming spam.
-    if (
-      dx * dx + dy * dy > PATH_BAIL_LOG_DISTANCE_SQ
-      && Math.random() < 0.02
-    ) {
+    if (dx * dx + dy * dy > PATH_BAIL_LOG_DISTANCE_SQ) {
+      // Log every bail (no sampling). With the new bail-policy the
+      // unit stays put on bail, so a flood here means a real
+      // pathfinding failure the user can act on. Trim back to
+      // sampling once bail rates are low again.
       // eslint-disable-next-line no-console
       console.warn(
         '[Pathfinder] BAIL[%s]: start=(%d,%d) goal=(%d,%d) dist=%d',
@@ -459,31 +768,29 @@ export function expandPathActions(
       );
     }
   }
-  // Annotate every waypoint with an altitude (`z`).
-  //   - Final waypoint: when the planner returned the user's click
-  //     unchanged (path's last point is goalX/goalY exactly) AND the
-  //     caller passed a click-derived `goalZ`, prefer the click's
-  //     altitude — preserves "the cursor was there, the dot is there"
-  //     end-to-end.
-  //   - All other waypoints (intermediates from JPS / smoother, or a
-  //     final waypoint that was snapped to a reachable cell): sample
-  //     the terrain so the z reflects the actual ground at that XY.
-  // Without this, downstream renderers would have to re-sample the
-  // terrain to visualize each waypoint, which is exactly what we're
-  // trying to avoid (the click altitude can differ from the terrain
-  // sample, e.g. when CursorGround's submerged-hit fallback projected
-  // to y=0 on a lake-shore click).
+  // Annotate every waypoint with an altitude (`z`) and an
+  // `isPathExpansion` flag.
+  //   - Final waypoint: the user's click point. When the planner
+  //     returned that click unchanged (path's last point is
+  //     goalX/goalY exactly) AND the caller passed a click-derived
+  //     `goalZ`, use the click's altitude. Not flagged as expansion.
+  //   - Intermediate waypoints (everything else): cells that JPS /
+  //     smoother inserted along the route. Z falls back to terrain
+  //     sample, isPathExpansion=true so renderers can hide them in
+  //     SIMPLE mode while still letting units physically follow them.
   const out: UnitAction[] = [];
   const lastIdx = path.length - 1;
   for (let i = 0; i < path.length; i++) {
     const px = path[i].x;
     const py = path[i].y;
-    const isFinalUnsnapped =
-      i === lastIdx && goalZ !== undefined && px === goalX && py === goalY;
+    const isFinal = i === lastIdx;
+    const isFinalUnsnapped = isFinal && goalZ !== undefined && px === goalX && py === goalY;
     const z = isFinalUnsnapped
       ? goalZ
       : getSurfaceHeight(px, py, mapWidth, mapHeight, GRID_CELL_SIZE);
-    out.push({ type, x: px, y: py, z });
+    const action: UnitAction = { type, x: px, y: py, z };
+    if (!isFinal) action.isPathExpansion = true;
+    out.push(action);
   }
   return out;
 }
@@ -562,6 +869,15 @@ function octile(x1: number, y1: number, x2: number, y2: number): number {
  *  is safe. The outer caller passes its own `jpResult` for the
  *  top-level jump. */
 const _jumpRecursionScratch = { gx: 0, gy: 0 };
+
+/** Cell-visit budget for the current query. Decremented inside
+ *  `jump`'s inner loop and reset to `MAX_JUMP_CELL_VISITS` at the
+ *  top of `findPath`. When it hits 0 the next jump call returns
+ *  false; the outer A* loop sees no successors, drains the heap,
+ *  and bails with `no-path`. Module-level because the cap is
+ *  shared across diagonal-step cardinal sub-recursions within a
+ *  single query. */
+let _jumpCellsRemaining = 0;
 
 /** Module-level scratch list reused across `prunedSuccessorDirs`
  *  calls. JPS expansion is sequential, so one buffer is fine.
@@ -652,6 +968,13 @@ function jump(
   for (;;) {
     x += dx;
     y += dy;
+    // Per-query cell-visit budget. Returning false here makes the
+    // outer A* think this direction has no JP; subsequent
+    // expansions will keep draining the heap until empty, at
+    // which point findPath bails with `no-path`. Prevents a single
+    // query from visiting billions of cells via diagonal-step
+    // cardinal recursion in open ground.
+    if (--_jumpCellsRemaining <= 0) return false;
 
     // Bounds + occupancy. With C-space inflation baked into
     // `isBlocked`, this single check rejects both hard obstacles
@@ -730,44 +1053,38 @@ function clampInt(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-/** Spiral search outward from (gx, gy) for the nearest cell where
- *  `isBlocked` returns false, using Chebyshev distance (8-connected
- *  rings) so the search fans out one ring per radius step. Returns
- *  null if nothing within `NEAREST_OPEN_RADIUS` is open. The order
- *  inside a ring is arbitrary — first hit wins. Bounded loop, no
+/** Walk the precomputed Euclidean-sorted offset list and return the
+ *  first open cell relative to (gx, gy). True nearest-by-Euclidean
+ *  semantics — no Chebyshev-ring direction bias. Bounded loop, no
  *  allocations besides the return object. */
 function findNearestOpenCell(
   gx: number, gy: number,
   gridW: number, gridH: number,
   isBlocked: (gx: number, gy: number) => boolean,
 ): { gx: number; gy: number } | null {
-  for (let r = 1; r <= NEAREST_OPEN_RADIUS; r++) {
-    // Top + bottom rows of the ring.
-    for (let dx = -r; dx <= r; dx++) {
-      const nxTop = gx + dx, nyTop = gy - r;
-      if (nxTop >= 0 && nyTop >= 0 && nxTop < gridW && nyTop < gridH
-        && !isBlocked(nxTop, nyTop)) return { gx: nxTop, gy: nyTop };
-      const nxBot = gx + dx, nyBot = gy + r;
-      if (nxBot >= 0 && nyBot >= 0 && nxBot < gridW && nyBot < gridH
-        && !isBlocked(nxBot, nyBot)) return { gx: nxBot, gy: nyBot };
-    }
-    // Left + right columns of the ring (excluding corners already
-    // covered by the top/bottom rows above).
-    for (let dy = -r + 1; dy <= r - 1; dy++) {
-      const nxL = gx - r, nyL = gy + dy;
-      if (nxL >= 0 && nyL >= 0 && nxL < gridW && nyL < gridH
-        && !isBlocked(nxL, nyL)) return { gx: nxL, gy: nyL };
-      const nxR = gx + r, nyR = gy + dy;
-      if (nxR >= 0 && nyR >= 0 && nxR < gridW && nyR < gridH
-        && !isBlocked(nxR, nyR)) return { gx: nxR, gy: nyR };
-    }
+  const offs = _snapOffsets;
+  const n = offs.length;
+  for (let i = 0; i < n; i += 2) {
+    const nx = gx + offs[i];
+    const ny = gy + offs[i + 1];
+    if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+    if (!isBlocked(nx, ny)) return { gx: nx, gy: ny };
   }
   return null;
 }
 
-/** Bresenham line-of-sight: returns true iff every cell the line
- *  from (x0, y0) to (x1, y1) crosses is unblocked. World coords in,
- *  cell sampling internal. Used by the post-process smoother. */
+/** Supercover (thick) Bresenham line-of-sight: returns true iff
+ *  EVERY cell the line from (x0, y0) to (x1, y1) crosses is
+ *  unblocked. Standard Bresenham steps diagonally past 4-cell
+ *  intersections and only samples the cells on its primary track,
+ *  so a smoothed line could "corner-cut" past a single inflated
+ *  halo cell — visually shaving the corner of a water patch. The
+ *  thick variant fixes that by also checking the two cardinal
+ *  cells the line passes through whenever it takes a diagonal step
+ *  (advances both x and y in the same iteration).
+ *
+ *  World coords in, cell sampling internal. Used by the post-process
+ *  smoother in `findPath`. */
 function hasLineOfSight(
   x0: number, y0: number, x1: number, y1: number,
   gridW: number, gridH: number,
@@ -791,8 +1108,17 @@ function hasLineOfSight(
     if (isBlocked(gx0, gy0)) return false;
     if (gx0 === gx1 && gy0 === gy1) return true;
     const e2 = 2 * err;
-    if (e2 > -dy) { err -= dy; gx0 += sx; }
-    if (e2 <  dx) { err += dx; gy0 += sy; }
+    const advX = e2 > -dy;
+    const advY = e2 < dx;
+    if (advX && advY) {
+      // True diagonal step — line grazes the two cardinal cells
+      // adjacent to the diagonal corner. Reject if either is
+      // blocked, otherwise the line corner-cuts inflation.
+      if (isBlocked(gx0 + sx, gy0)) return false;
+      if (isBlocked(gx0, gy0 + sy)) return false;
+    }
+    if (advX) { err -= dy; gx0 += sx; }
+    if (advY) { err += dx; gy0 += sy; }
   }
   return false;
 }
@@ -801,13 +1127,23 @@ function hasLineOfSight(
  *  Push duplicates instead of decrease-key — when a duplicate is
  *  popped after the node is already closed, the caller skips it.
  *  Standard A* idiom and faster than maintaining heap-index back-
- *  pointers in JS. */
+ *  pointers in JS.
+ *
+ *  Single instance reused across every findPath call: `reset` clears
+ *  the array length without freeing the backing storage, and
+ *  `setScores` swaps the fScore reference if needed (in practice
+ *  it's the same reused `_scratchFScore` so the swap is a no-op,
+ *  but the API is here for clarity). */
 class MinHeap {
   private heap: number[] = [];
-  private f: Float32Array;
+  private f: Float32Array | null = null;
 
-  constructor(fScores: Float32Array) {
+  setScores(fScores: Float32Array): void {
     this.f = fScores;
+  }
+
+  reset(): void {
+    this.heap.length = 0;
   }
 
   size(): number {
@@ -831,7 +1167,7 @@ class MinHeap {
 
   private siftUp(i: number): void {
     const heap = this.heap;
-    const f = this.f;
+    const f = this.f!;
     while (i > 0) {
       const parent = (i - 1) >> 1;
       if (f[heap[i]] < f[heap[parent]]) {
@@ -843,7 +1179,7 @@ class MinHeap {
 
   private siftDown(i: number): void {
     const heap = this.heap;
-    const f = this.f;
+    const f = this.f!;
     const n = heap.length;
     for (;;) {
       const l = (i << 1) + 1;
@@ -857,3 +1193,5 @@ class MinHeap {
     }
   }
 }
+
+const _heap = new MinHeap();

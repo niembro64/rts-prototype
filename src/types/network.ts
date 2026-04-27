@@ -213,6 +213,11 @@ export type NetworkServerSnapshotAction = {
    *  click-derived z (renderers fall back to a terrain sample when
    *  absent). */
   posZ?: number;
+  /** True for path-expansion intermediates (cells the planner
+   *  inserted along the route). Used by the client renderer to hide
+   *  these in SIMPLE waypoint mode. Omitted when false to save bytes
+   *  — the renderer treats `undefined` as `false`. */
+  pathExp?: boolean;
   targetId?: number;
   buildingType?: string;
   grid?: Vec2;

@@ -43,7 +43,13 @@ export class LongtaskTracker {
           this.windowCount++;
         }
       });
-      this.observer.observe({ entryTypes: ['longtask'], buffered: true });
+      // Use the singular `type` form (not `entryTypes`) because the
+      // `buffered` flag is only valid alongside the singular form per
+      // the PerformanceObserver spec — Chrome logs a warning when
+      // `entryTypes` is paired with `buffered`. Since we only watch
+      // a single entry kind here, the singular call is the right
+      // shape.
+      this.observer.observe({ type: 'longtask', buffered: true });
       this.windowStartMs = performance.now();
     } catch {
       this.observer = null;

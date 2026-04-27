@@ -97,6 +97,14 @@ export type BuildingType = 'solar' | 'factory';
 // because AI-issued / path-expanded intermediate waypoints don't
 // have a click point — those callers leave it undefined and the
 // renderer falls back to a fresh terrain sample.
+//
+// `isPathExpansion` is true on every intermediate waypoint produced by
+// JPS smoothing — the cells inserted along the route that the unit
+// must visit but the user did NOT click. The user-clicked endpoint of
+// a `findPath` query keeps it false/undefined. Renderers use this flag
+// to draw "simple" waypoint visuals (just the user's click points,
+// shortcut lines between them) vs. "detailed" (every intermediate
+// drawn). Doesn't affect movement — the unit still walks every action.
 export type UnitAction = {
   type: ActionType;
   x: number;
@@ -107,6 +115,7 @@ export type UnitAction = {
   gridY?: number;
   buildingId?: EntityId;
   targetId?: EntityId;
+  isPathExpansion?: boolean;
 };
 
 // Cached mirror panel geometry (pre-computed from blueprint at entity creation).

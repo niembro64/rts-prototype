@@ -23,6 +23,7 @@ import type { Entity } from '../sim/types';
 import { ACTION_COLORS, WAYPOINT_COLORS } from '../uiLabels';
 import { getSurfaceHeight } from '../sim/Terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { getWaypointDetail } from '../../clientBarConfig';
 
 const STYLE = {
   /** Vertical lift above the terrain so lines / dots / flags float
@@ -343,6 +344,13 @@ export class Waypoint3D {
     // click-derived altitude carried through from CursorGround.pickSim
     // — used directly so a waypoint dot on a hilltop sits ON the
     // hilltop, not at a terrain re-sample that may differ.
+    //
+    // SIMPLE mode skips path-expansion intermediates: only the user's
+    // click points get drawn, with a single shortcut line between
+    // consecutive user-issued actions. The unit still walks every
+    // intermediate (movement is unaffected) — this is purely a viz
+    // mode that matches the convention in most RTS games.
+    const simple = getWaypointDetail() === 'simple';
     for (const u of selectedUnits) {
       const actions = u.unit?.actions;
       if (!actions || actions.length === 0) continue;
@@ -351,6 +359,7 @@ export class Waypoint3D {
       let prevZ: number | undefined = u.transform.z;
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
+        if (simple && a.isPathExpansion) continue;
         const color = ACTION_COLORS[a.type] ?? 0xffffff;
         this.pushTerrainLine(state, prevX, prevY, a.x, a.y, color, STYLE.lineAlpha, prevZ, a.z);
         if (a.type === 'build' || a.type === 'repair') {
@@ -363,11 +372,17 @@ export class Waypoint3D {
         prevZ = a.z;
       }
       // Patrol return — link last patrol waypoint back to the first
-      // patrol waypoint with a dimmer line.
+      // patrol waypoint with a dimmer line. In SIMPLE mode pick the
+      // last NON-expansion patrol action so the loop-back stays on
+      // user-clicked endpoints.
       if (u.unit!.patrolStartIndex !== null && actions.length > 0) {
-        const last = actions[actions.length - 1];
+        let lastIdx = actions.length - 1;
+        if (simple) {
+          while (lastIdx >= 0 && actions[lastIdx].isPathExpansion) lastIdx--;
+        }
+        const last = lastIdx >= 0 ? actions[lastIdx] : null;
         const first = actions[u.unit!.patrolStartIndex];
-        if (last.type === 'patrol' && first) {
+        if (last && last.type === 'patrol' && first) {
           this.pushTerrainLine(
             state,
             last.x, last.y, first.x, first.y,

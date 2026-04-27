@@ -88,6 +88,17 @@ function shapeToAmplitude(shape: TerrainShape): number {
   }
 }
 
+/** Monotonically-increasing token bumped whenever the heightmap's
+ *  parameters change (centre amplitude, divider amplitude, team
+ *  count). Caches that key off "this terrain config" — primarily
+ *  the pathfinder's water / slope blocked-cell precompute — read
+ *  this and invalidate when it differs from the value they
+ *  recorded. Pure read, no allocation. */
+let _terrainVersion = 1;
+export function getTerrainVersion(): number {
+  return _terrainVersion;
+}
+
 /** Apply the host's CENTER choice. Must be called BEFORE
  *  GameServer construction (which spawns buildings using
  *  getTerrainHeight) and before the renderer bakes its tile
@@ -95,13 +106,19 @@ function shapeToAmplitude(shape: TerrainShape): number {
  *  scene; the lobby restarts the background battle to pick up a
  *  new value. */
 export function setTerrainCenterShape(shape: TerrainShape): void {
-  mountainRippleAmplitude = shapeToAmplitude(shape);
+  const next = shapeToAmplitude(shape);
+  if (next === mountainRippleAmplitude) return;
+  mountainRippleAmplitude = next;
+  _terrainVersion++;
 }
 
 /** Apply the host's DIVIDERS choice. Same lifecycle constraints
  *  as `setTerrainCenterShape`. */
 export function setTerrainDividersShape(shape: TerrainShape): void {
-  mountainSeparatorAmplitude = shapeToAmplitude(shape);
+  const next = shapeToAmplitude(shape);
+  if (next === mountainSeparatorAmplitude) return;
+  mountainSeparatorAmplitude = next;
+  _terrainVersion++;
 }
 
 // Ripples occupy this fraction of `min(mapWidth, mapHeight)` from
@@ -136,7 +153,10 @@ let teamCount = 0;
 const SPAWN_MARGIN = 100;
 
 export function setTerrainTeamCount(n: number): void {
-  teamCount = Math.max(0, n | 0);
+  const next = Math.max(0, n | 0);
+  if (next === teamCount) return;
+  teamCount = next;
+  _terrainVersion++;
 }
 
 /** Read the team-separation ridge count back. Useful for tests /
@@ -239,37 +259,75 @@ export function getTerrainHeight(
 const NORMAL_GRADIENT_EPS = 1;
 
 /** Surface-tangent normal at world point (x, z) in SIM coords (z is
- *  up). Continuous finite-difference gradient of the underlying
- *  heightmap — NOT the per-triangle face normal of the rendered
- *  geometry. The renderer subdivides each tile finely enough that
- *  the visible surface approximates the smooth heightmap, so the
- *  smooth gradient here matches the rendered surface visually and
- *  the unit's tilt transitions continuously across the map (no jump
- *  along tile diagonals).
+ *  up). Continuous finite-difference gradient of the LAND heightmap
+ *  — water samples are explicitly excluded so that water never
+ *  affects a unit's tilt.
+ *
+ *  Why: at the shoreline, a unit's body straddles dry-land and
+ *  below-water cells. With water-clamped sampling, the +eps and
+ *  −eps samples land on different surfaces (one on rising land,
+ *  one on the flat water plane). Tiny position oscillations from
+ *  physics integration flip whether the cross-axis sample lands
+ *  on water or land, so the gradient flickers and the unit's
+ *  rendered chassis jitters between "leaning down toward water"
+ *  and "level with water". The user's complaint: a unit on the
+ *  rim of a lake never wants to tilt because of the water; if it
+ *  has a tilt at all it should reflect the LAND alone.
+ *
+ *  Algorithm (per axis):
+ *    - both samples dry → standard central difference
+ *    - one sample dry → one-sided difference using `h0` (centre)
+ *      in place of the wet sample
+ *    - both wet (only possible if h0 itself is in water) → handled
+ *      by the early return below: a unit physically standing in
+ *      water gets a flat normal so it slides along the shore
+ *      instead of inheriting the carved underwater terrain's tilt
  *
  *  Outside the ripple disc the heightmap is exactly flat; the
- *  finite differences cancel out, the normal collapses to (0, 0, 1)
- *  and downstream early-returns kick in.
+ *  finite differences cancel and the normal collapses to (0, 0, 1)
+ *  immediately.
  *
  *  `cellSize` is unused here but kept in the signature so the public
  *  API stays the same as `getSurfaceHeight`. */
 export function getSurfaceNormal(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
-  cellSize: number,
+  _cellSize: number,
 ): { nx: number; ny: number; nz: number } {
+  // Centre-sample raw terrain. If the centre is itself in water,
+  // the unit either is currently being pushed out by the water-
+  // pusher (transient), or this normal is being asked for at a
+  // point where there isn't really a unit (e.g. projectile splash).
+  // Either way returning the flat normal is the right answer:
+  // water surface is flat; a unit standing on it should not tilt.
+  const h0 = getTerrainHeight(x, z, mapWidth, mapHeight);
+  if (h0 < WATER_LEVEL) return { nx: 0, ny: 0, nz: 1 };
+
   const eps = NORMAL_GRADIENT_EPS;
-  // Sample the SURFACE (water-clamped) height, not the raw terrain.
-  // Where the terrain dips below water level, both eps-offset samples
-  // hit the flat water plane, the gradient cancels to zero, and the
-  // normal collapses to (0, 0, 1) — units stand flat on the water
-  // surface instead of inheriting the carved-terrain slope below.
-  const hxp = getSurfaceHeight(x + eps, z, mapWidth, mapHeight, cellSize);
-  const hxm = getSurfaceHeight(x - eps, z, mapWidth, mapHeight, cellSize);
-  const hzp = getSurfaceHeight(x, z + eps, mapWidth, mapHeight, cellSize);
-  const hzm = getSurfaceHeight(x, z - eps, mapWidth, mapHeight, cellSize);
-  const dHdx = (hxp - hxm) / (2 * eps);
-  const dHdz = (hzp - hzm) / (2 * eps);
+  const hxp = getTerrainHeight(x + eps, z, mapWidth, mapHeight);
+  const hxm = getTerrainHeight(x - eps, z, mapWidth, mapHeight);
+  const hzp = getTerrainHeight(x, z + eps, mapWidth, mapHeight);
+  const hzm = getTerrainHeight(x, z - eps, mapWidth, mapHeight);
+
+  // Per-axis gradient: skip wet samples. When one neighbour is wet
+  // we substitute the centre value, which gives a one-sided
+  // difference using only land. When both neighbours are wet (rare
+  // — would require a tiny dry island narrower than 2*eps) the
+  // gradient on that axis is zero.
+  const xpDry = hxp >= WATER_LEVEL;
+  const xmDry = hxm >= WATER_LEVEL;
+  let dHdx = 0;
+  if (xpDry && xmDry) dHdx = (hxp - hxm) / (2 * eps);
+  else if (xpDry) dHdx = (hxp - h0) / eps;
+  else if (xmDry) dHdx = (h0 - hxm) / eps;
+
+  const zpDry = hzp >= WATER_LEVEL;
+  const zmDry = hzm >= WATER_LEVEL;
+  let dHdz = 0;
+  if (zpDry && zmDry) dHdz = (hzp - hzm) / (2 * eps);
+  else if (zpDry) dHdz = (hzp - h0) / eps;
+  else if (zmDry) dHdz = (h0 - hzm) / eps;
+
   // Sim normal: surface up is (-∂h/∂x, -∂h/∂z, 1).
   const nx = -dHdx;
   const ny = -dHdz;

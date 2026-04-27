@@ -467,40 +467,81 @@ export class GameServer {
       let thrustForceX = 0;
       let thrustForceY = 0;
       let thrustForceZ = 0;
-      if (dirMag > 0) {
-        // Block thrust toward water: sample the position one body-
-        // radius ahead in the requested direction. If that sample is
-        // over water the unit is about to walk into the surf, so we
-        // suppress horizontal thrust and let velocity damping bring
-        // them to a stop at the shoreline. The renderer's water plane
-        // is impassable terrain, not ground.
-        const lookahead = (body.radius || 10) + 4;
+
+      // Water as a "pusher", not a wall. The pathfinder routes around
+      // water with a 1-cell inflated halo, so units shouldn't enter
+      // it under normal command — but knockbacks, spawn edge cases,
+      // shore-adjacent waypoints, and physics push-out from
+      // collisions can all dump a unit into water. The OLD model was
+      // a thrust gate (zero horizontal force when the position one
+      // body-radius ahead was wet) which made entry impossible but
+      // also made escape impossible: once IN water, every direction
+      // looked like more water and the unit froze.
+      //
+      // New model: when the unit's body centre is over water, IGNORE
+      // the action system's thrust direction and apply an escape
+      // force pointing toward the nearest dry land. On dry land,
+      // standard thrust applies, no entry gate. Net effect: units
+      // can momentarily clip into water but slide back to shore on
+      // their own within a few ticks; planner edge cases stop being
+      // permanent traps.
+      const radius = body.radius || 10;
+      const inWater = isWaterAt(body.x, body.y, this.world.mapWidth, this.world.mapHeight);
+
+      if (inWater) {
+        // Compute the escape direction: sample 8 cardinal points
+        // around the body and accumulate unit vectors toward each
+        // DRY sample. Sum then normalize → direction "outward" from
+        // the wet centroid. If the first ring is fully wet (deep
+        // lake), expand the probe radius — guarantees an escape
+        // direction even if the unit was teleported deep into water,
+        // up to a 6× body-radius search.
+        let escX = 0;
+        let escY = 0;
+        const RINGS = [radius * 1.5, radius * 3, radius * 6];
+        for (const r of RINGS) {
+          for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            const sx = body.x + Math.cos(a) * r;
+            const sy = body.y + Math.sin(a) * r;
+            if (!isWaterAt(sx, sy, this.world.mapWidth, this.world.mapHeight)) {
+              escX += Math.cos(a);
+              escY += Math.sin(a);
+            }
+          }
+          if (escX !== 0 || escY !== 0) break;
+        }
+        const escMag = magnitude(escX, escY);
+        if (escMag > 0) {
+          const MATTER_FORCE_SCALE = 150000;
+          const pushMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
+          // Water surface is flat (everything below WATER_LEVEL
+          // clamps up via getSurfaceHeight), so no slope projection
+          // needed — push horizontal, z stays 0.
+          thrustForceX = (escX / escMag) * pushMagnitude;
+          thrustForceY = (escY / escMag) * pushMagnitude;
+        }
+      } else if (dirMag > 0) {
+        const MATTER_FORCE_SCALE = 150000;
+        const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
         const ndx = dirX / dirMag;
         const ndy = dirY / dirMag;
-        const aheadX = body.x + ndx * lookahead;
-        const aheadY = body.y + ndy * lookahead;
-        const aheadIsWater = isWaterAt(aheadX, aheadY, this.world.mapWidth, this.world.mapHeight);
 
-        if (!aheadIsWater) {
-          const MATTER_FORCE_SCALE = 150000;
-          const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
-
-          // Project the desired horizontal thrust onto the slope's
-          // tangent plane via the shared `projectHorizontalOntoSlope`
-          // helper. Pushing "north" on a north-rising hill becomes a
-          // north-AND-up vector tangent to the slope, the way a
-          // vehicle's drive force points along the road, not through
-          // it. Flat ground hits the helper's identity case for free.
-          const n = getSurfaceNormal(
-            body.x, body.y,
-            this.world.mapWidth, this.world.mapHeight,
-            SPATIAL_GRID_CELL_SIZE,
-          );
-          const t = projectHorizontalOntoSlope(ndx, ndy, n);
-          thrustForceX = t.x * thrustMagnitude;
-          thrustForceY = t.y * thrustMagnitude;
-          thrustForceZ = t.z * thrustMagnitude;
-        }
+        // Project the desired horizontal thrust onto the slope's
+        // tangent plane via the shared `projectHorizontalOntoSlope`
+        // helper. Pushing "north" on a north-rising hill becomes a
+        // north-AND-up vector tangent to the slope, the way a
+        // vehicle's drive force points along the road, not through
+        // it. Flat ground hits the helper's identity case for free.
+        const n = getSurfaceNormal(
+          body.x, body.y,
+          this.world.mapWidth, this.world.mapHeight,
+          SPATIAL_GRID_CELL_SIZE,
+        );
+        const t = projectHorizontalOntoSlope(ndx, ndy, n);
+        thrustForceX = t.x * thrustMagnitude;
+        thrustForceY = t.y * thrustMagnitude;
+        thrustForceZ = t.z * thrustMagnitude;
       }
 
       // Get external forces from the accumulator

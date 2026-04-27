@@ -22,6 +22,7 @@ import type {
   RangeType,
   ProjRangeType,
   UnitRadiusType,
+  WaypointDetail,
 } from './types/client';
 import { persist, persistJson, readPersisted } from './persistence';
 import {
@@ -84,6 +85,13 @@ export const CLIENT_CONFIG = {
       { value: 'off' as const, label: 'OFF' },
       { value: 'low' as const, label: 'LOW' },
       { value: 'high' as const, label: 'HI' },
+    ],
+  },
+  waypointDetail: {
+    default: 'simple' as const,
+    options: [
+      { value: 'simple' as const, label: 'SIMPLE' },
+      { value: 'detailed' as const, label: 'DETAILED' },
     ],
   },
 } as const satisfies ClientBarConfig;
@@ -245,6 +253,7 @@ const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
 const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
 const GRID_OVERLAY_STORAGE_KEY = 'rts-grid-overlay';
 const LOD_SIGNAL_STATES_STORAGE_KEY = 'rts-lod-signal-states';
+const WAYPOINT_DETAIL_STORAGE_KEY = 'rts-waypoint-detail';
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
@@ -492,6 +501,10 @@ function loadFromStorage(): void {
       storedGridOverlay === 'high')
   ) {
     currentGridOverlay = storedGridOverlay;
+  }
+  const storedWaypointDetail = readPersisted(WAYPOINT_DETAIL_STORAGE_KEY);
+  if (storedWaypointDetail === 'simple' || storedWaypointDetail === 'detailed') {
+    currentWaypointDetail = storedWaypointDetail;
   }
 }
 
@@ -853,6 +866,19 @@ export function getGridOverlayIntensity(): number {
 export function setGridOverlay(mode: GridOverlay): void {
   currentGridOverlay = mode;
   persist(GRID_OVERLAY_STORAGE_KEY, mode);
+}
+
+// ── Waypoint detail mode ──
+
+let currentWaypointDetail: WaypointDetail = _cd.waypointDetail.default;
+
+export function getWaypointDetail(): WaypointDetail {
+  return currentWaypointDetail;
+}
+
+export function setWaypointDetail(mode: WaypointDetail): void {
+  currentWaypointDetail = mode;
+  persist(WAYPOINT_DETAIL_STORAGE_KEY, mode);
 }
 
 // Run the localStorage loader AFTER every state variable above has

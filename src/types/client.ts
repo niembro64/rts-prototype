@@ -9,6 +9,12 @@ import type { ConcreteGraphicsQuality, GraphicsQuality, RenderMode } from './gra
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type GridOverlay = 'off' | 'low' | 'high';
+/** Waypoint visualization detail. SIMPLE shows only the user-issued
+ *  click points and shortcut lines between them — the convention in
+ *  most RTS games. DETAILED shows every intermediate waypoint that
+ *  the pathfinder inserted along the route, so the player can see
+ *  how units route around obstacles. */
+export type WaypointDetail = 'simple' | 'detailed';
 export type SoundCategory =
   | 'fire'
   | 'hit'
@@ -46,4 +52,5 @@ export type ClientBarConfig = {
   readonly unitRadiusToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
   readonly gridOverlay: LabeledOptionsConfig<GridOverlay>;
+  readonly waypointDetail: LabeledOptionsConfig<WaypointDetail>;
 };

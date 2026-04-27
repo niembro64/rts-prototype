@@ -50,6 +50,7 @@ function createUnitFromNetwork(
         x: na.pos.x,
         y: na.pos.y,
         z: na.posZ,
+        isPathExpansion: na.pathExp,
         targetId: na.targetId,
         buildingType: na.buildingType as BuildingType | undefined,
         gridX: na.grid?.x,

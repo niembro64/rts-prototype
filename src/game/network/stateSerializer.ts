@@ -39,7 +39,7 @@ function createPooledTurret(): NetworkServerSnapshotTurret {
 }
 
 function createPooledAction(): NetworkServerSnapshotAction {
-  return { type: 0, pos: undefined, posZ: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
+  return { type: 0, pos: undefined, posZ: undefined, pathExp: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
 }
 
 function createPooledWaypoint(): { pos: Vec2; posZ?: number; type: string } {
@@ -770,6 +770,9 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
             // clients render dots at the same altitude as the issuing
             // client, no terrain re-sample needed.
             dst.posZ = src.z;
+            // Only send the flag when true — saves bytes; clients
+            // treat undefined as false.
+            dst.pathExp = src.isPathExpansion ? true : undefined;
             dst.targetId = src.targetId;
             dst.buildingType = src.buildingType;
             dst.grid = src.gridX !== undefined ? { x: src.gridX, y: src.gridY! } : undefined;
