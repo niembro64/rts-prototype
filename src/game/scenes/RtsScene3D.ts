@@ -152,6 +152,13 @@ export class RtsScene3D {
   private _frustum = new THREE.Frustum();
   private _frustumMatrix = new THREE.Matrix4();
 
+  // Reusable raycaster + scratch vec for cursor 3D-picking. Built
+  // once per scene; the orbit camera holds a closure over the
+  // _raycastTerrainAtCursor method below.
+  private _cursorRaycaster: THREE.Raycaster | null = null;
+  private _cursorRaycasterNdc = new THREE.Vector2();
+  private _cursorRaycastHit = new THREE.Vector3();
+
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
   private mapWidth: number;
@@ -306,7 +313,7 @@ export class RtsScene3D {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.threeApp.orbit.distance = this._baseDistance / initialZoom;
     this.threeApp.orbit.yaw = this._povYawForLocalSeat();
-    this.threeApp.orbit.setSmoothDuration(this._cameraSmoothDurationSec());
+    this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
     this.threeApp.orbit.apply();
 
     // Redefine cameras.main as live getters bound to orbit + renderer
@@ -391,6 +398,12 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
     );
+    // Install the 3D cursor picker on the orbit camera now that the
+    // terrain mesh exists. Wheel zoom + pan-drag use it so the
+    // anchor point under the cursor is the actual rendered ground
+    // (correctly tracking hills / valleys), not a flat y=0 plane.
+    this._cursorRaycaster = new THREE.Raycaster();
+    this.threeApp.orbit.setCursorPicker((cx, cy) => this._raycastTerrainAtCursor(cx, cy));
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(this.threeApp.world);
     this.burnMarkRenderer = new BurnMark3D(this.threeApp.world, this.renderScope);
@@ -610,7 +623,7 @@ export class RtsScene3D {
     // doesn't fast-forward the zoom). The mode is rechecked here
     // (cheap idempotent set) so flipping CAMERA: SNAP / FAST / SLOW
     // at runtime takes effect on the next zoom.
-    this.threeApp.orbit.setSmoothDuration(this._cameraSmoothDurationSec());
+    this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
     this.threeApp.orbit.tick(effectDt / 1000);
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
@@ -745,13 +758,44 @@ export class RtsScene3D {
     this.hasCenteredCamera = true;
   }
 
+  /** Cursor → world-space anchor point on the rendered terrain.
+   *  Used by the orbit camera for both zoom-to-cursor and pan-around-
+   *  cursor: the anchor is the actual point on the rendered surface
+   *  under the cursor, not a flat y=0 plane projection. Returns null
+   *  when the cursor doesn't hit terrain (cursor outside canvas, ray
+   *  misses past the map edge, etc.) — the orbit camera falls back
+   *  to its plane projection in that case. */
+  private _raycastTerrainAtCursor(clientX: number, clientY: number): THREE.Vector3 | null {
+    const rc = this._cursorRaycaster;
+    if (!rc) return null;
+    const canvas = this.threeApp.renderer.domElement;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    this._cursorRaycasterNdc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -(((clientY - rect.top) / rect.height) * 2 - 1),
+    );
+    rc.setFromCamera(this._cursorRaycasterNdc, this.threeApp.camera);
+    const terrainMesh = this.captureTileRenderer.getMesh();
+    const hits = rc.intersectObject(terrainMesh, false);
+    if (hits.length === 0) return null;
+    // First hit is the closest by default.
+    this._cursorRaycastHit.copy(hits[0].point);
+    return this._cursorRaycastHit;
+  }
+
   /** Translate the persisted camera-smooth mode into the orbit
-   *  camera's animation duration in seconds. Snap = 0 (instant);
-   *  the FAST / SLOW windows were picked to feel snappy without
-   *  being abrupt and to feel deliberate without being sluggish. */
-  private _cameraSmoothDurationSec(): number {
+   *  camera's EMA time-constant (seconds). 0 = snap (no animation).
+   *  Larger τ = gentler easing. After τ seconds the rendered camera
+   *  is ~63% of the way to the to-state; after 3·τ it's ~95%.
+   *
+   *    fast → ~150 ms perceived settle.
+   *    mid  → ~360 ms.
+   *    slow → ~1.2 s — properly slow / weighty. */
+  private _cameraSmoothTauSec(): number {
     switch (getCameraSmoothMode()) {
-      case 'fast': return 0.15;
+      case 'fast': return 0.05;
+      case 'mid':  return 0.12;
       case 'slow': return 0.4;
       case 'snap':
       default: return 0;

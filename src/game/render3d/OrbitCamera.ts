@@ -3,8 +3,27 @@
 // Controls:
 //   - Scroll wheel        → zoom (dolly along view direction)
 //   - Alt + middle drag   → orbit (yaw + pitch)
-//   - Middle drag         → pan (move target on ground plane)
+//   - Middle drag         → pan (slide target on the world ground)
 //   - Shift + middle drag → pan (alias)
+//
+// Architecture: every input that changes the camera (wheel, pan drag,
+// orbit drag) writes into a single TO-STATE — `(toDistance,
+// toTargetX, toTargetZ)` plus `yaw / pitch` for orbit — that
+// represents wherever the camera is heading. The rendered state
+// (`distance`, `target.x`, `target.z`) lerps toward the to-state
+// every frame via standard EMA: `alpha = 1 − exp(−dt / tau)`. When
+// tau == 0 (snap mode) inputs apply directly to the rendered state.
+// Both pan and zoom feed the same to-state, so they animate together
+// without fighting each other — a wheel zoom mid-pan-drag produces
+// one continuous eased motion to the combined destination.
+//
+// Cursor pinning is 3D-accurate when a `getCursorWorldPoint` callback
+// is supplied: the scene raycasts the actual rendered geometry
+// (terrain, etc.) instead of a flat y=0 plane, so wheel zoom anchors
+// at the real point under the cursor and pan drag uses the cursor's
+// actual world depth to compute world-per-pixel — meaning the world
+// point under the cursor at drag-start follows the cursor exactly,
+// regardless of terrain elevation under it.
 
 import * as THREE from 'three';
 
@@ -25,18 +44,36 @@ export type OrbitCameraOptions = {
   /** Fired during drag-pan so a shared HUD overlay (pan arrow) can render.
    *  direction is a unit vector (screen space); intensity ∈ [0, 1]. */
   onPanState?: (dirX: number, dirY: number, intensity: number) => void;
+  /** OPTIONAL 3D cursor picker — if set, the orbit camera uses real
+   *  raycasting against the scene to find the world point under the
+   *  cursor. Used for both wheel zoom-to-cursor and pan-around-cursor.
+   *  When unset, we fall back to a flat y=0 plane projection. */
+  getCursorWorldPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
 };
 
 export class OrbitCamera {
   public camera: THREE.PerspectiveCamera;
-  /** World-space point the camera orbits around. */
+
+  // RENDERED state — what the camera is at right now. Read by `apply()`
+  // to position the THREE camera.
   public target = new THREE.Vector3(0, 0, 0);
-  /** Distance from target. */
   public distance = 1500;
   /** Yaw (rotation around world-Y), radians. */
   public yaw = 0;
   /** Pitch (tilt from vertical), radians. 0 = straight down, PI/2 = horizontal. */
   public pitch = Math.PI * 0.25;
+
+  // TO state — what the camera is heading toward. Inputs (wheel, pan
+  // drag, setTarget) write here; tick() lerps the rendered state
+  // toward it. In snap mode (tau == 0) inputs also apply directly.
+  private toDistance = 1500;
+  private toTargetX = 0;
+  private toTargetZ = 0;
+
+  /** EMA time-constant in seconds. 0 disables smoothing (snap mode).
+   *  After tau seconds the rendered state is ~63% of the way to the
+   *  to-state; after 3·tau ~95%. */
+  public smoothTauSec = 0;
 
   private minDistance: number;
   private maxDistance: number;
@@ -47,6 +84,7 @@ export class OrbitCamera {
   private panMultiplier: number;
   private arrowDragMaxDist: number;
   private onPanState?: (dirX: number, dirY: number, intensity: number) => void;
+  private getCursorWorldPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
 
   // Tracks drag origin in screen pixels so we can emit pan-arrow state.
   private dragOriginScreen = { x: 0, y: 0 };
@@ -55,29 +93,18 @@ export class OrbitCamera {
   private lastMouseX = 0;
   private lastMouseY = 0;
 
+  /** Distance from camera to the cursor's 3D anchor point at the
+   *  moment a pan drag started. Used to compute world-per-pixel
+   *  during the drag so the cursor's anchor world-point tracks the
+   *  cursor exactly, regardless of camera tilt or terrain elevation
+   *  at the cursor. Falls back to `this.distance` if the cursor
+   *  picker returns null. */
+  private panAnchorDistance = 0;
+
   // Reusable scratch objects so the wheel handler does no per-event
   // allocations (zoom is the highest-frequency input on a trackpad).
   private _zoomNdc = new THREE.Vector3();
-  private _zoomBefore = new THREE.Vector3();
-  private _zoomAfter = new THREE.Vector3();
-
-  // Smooth-zoom animation state. When smoothDurationSec > 0, wheel
-  // events compute a "from" (current rendered) and "to" (post-zoom)
-  // state, then `tick(dt)` interpolates the rendered camera between
-  // them over smoothDurationSec. Successive scrolls during an active
-  // animation chain off the existing "to" state, so the user can
-  // flick the wheel multiple times and the camera dollies once
-  // smoothly to the final position. Set duration to 0 to disable
-  // smoothing (snap mode — each wheel tick applies instantly).
-  public smoothDurationSec = 0;
-  private isAnimating = false;
-  private animElapsedSec = 0;
-  private animFromDistance = 0;
-  private animFromTargetX = 0;
-  private animFromTargetZ = 0;
-  private animToDistance = 0;
-  private animToTargetX = 0;
-  private animToTargetZ = 0;
+  private _zoomGroundOut = new THREE.Vector3();
 
   private canvas: HTMLElement;
   private onWheel: (e: WheelEvent) => void;
@@ -102,6 +129,11 @@ export class OrbitCamera {
     this.panMultiplier = opts.panMultiplier ?? 1.0;
     this.arrowDragMaxDist = opts.arrowDragMaxDist ?? 100;
     this.onPanState = opts.onPanState;
+    this.getCursorWorldPoint = opts.getCursorWorldPoint;
+
+    this.toDistance = this.distance;
+    this.toTargetX = this.target.x;
+    this.toTargetZ = this.target.z;
 
     this.onWheel = (e) => {
       e.preventDefault();
@@ -110,72 +142,73 @@ export class OrbitCamera {
       //   scroll down (deltaY > 0)  → zoom out
       if (e.deltaY === 0) return;
 
-      // The "from" state for any new smooth animation is the camera's
-      // current rendered state. The "base" state for the zoom-to-
-      // cursor math is the END of any animation already in progress
-      // (so successive scrolls during a smooth zoom chain off the
-      // existing destination instead of re-starting from where the
-      // camera happens to be visually at this moment).
-      const fromDist = this.distance;
-      const fromTargetX = this.target.x;
-      const fromTargetZ = this.target.z;
-      const baseDist = this.isAnimating ? this.animToDistance : fromDist;
-      const baseTargetX = this.isAnimating ? this.animToTargetX : fromTargetX;
-      const baseTargetZ = this.isAnimating ? this.animToTargetZ : fromTargetZ;
-
-      // Run the zoom-to-cursor math against the base state. Temporarily
-      // apply base, sample world point, change distance, sample again,
-      // shift target.
-      this.distance = baseDist;
-      this.target.x = baseTargetX;
-      this.target.z = baseTargetZ;
-      this.apply();
-      const before = this.cursorWorldPoint(e.clientX, e.clientY, this._zoomBefore);
       const factor = e.deltaY > 0 ? this.zoomStepFactor : 1 / this.zoomStepFactor;
-      const newDist = Math.min(
+      const newToDistance = Math.min(
         this.maxDistance,
-        Math.max(this.minDistance, this.distance * factor),
+        Math.max(this.minDistance, this.toDistance * factor),
       );
-      if (newDist === this.distance) {
-        // Already at clamp — restore rendered state and bail.
-        this.distance = fromDist;
-        this.target.x = fromTargetX;
-        this.target.z = fromTargetZ;
-        this.apply();
-        return;
-      }
-      this.distance = newDist;
+      if (newToDistance === this.toDistance) return; // already at clamp
+
+      // Zoom-to-cursor: capture the world point under the cursor
+      // BEFORE the dolly (sampled against the to-state — i.e. where
+      // the camera is heading, so chained scrolls compound), change
+      // the to-distance, sample AFTER, shift the to-target so the
+      // SAME world point lands under the SAME pixel after the eased
+      // dolly completes. We temporarily push the to-state into the
+      // rendered camera to do the projection math, then restore
+      // (rendered-state-restoration matters when smoothing is on so
+      // the camera doesn't visually jump).
+      const renderedDist = this.distance;
+      const renderedTargetX = this.target.x;
+      const renderedTargetZ = this.target.z;
+      this.distance = this.toDistance;
+      this.target.x = this.toTargetX;
+      this.target.z = this.toTargetZ;
       this.apply();
-      if (before) {
-        const after = this.cursorWorldPoint(e.clientX, e.clientY, this._zoomAfter);
-        if (after) {
-          this.target.x += before.x - after.x;
-          this.target.z += before.z - after.z;
+
+      const beforeRaw = this._cursorWorldPoint(e.clientX, e.clientY);
+      let beforeX = 0;
+      let beforeZ = 0;
+      let haveBefore = false;
+      if (beforeRaw) {
+        beforeX = beforeRaw.x;
+        beforeZ = beforeRaw.z;
+        haveBefore = true;
+      }
+
+      this.distance = newToDistance;
+      this.apply();
+      let afterX = 0;
+      let afterZ = 0;
+      let haveAfter = false;
+      if (haveBefore) {
+        const afterRaw = this._cursorWorldPoint(e.clientX, e.clientY);
+        if (afterRaw) {
+          afterX = afterRaw.x;
+          afterZ = afterRaw.z;
+          haveAfter = true;
         }
       }
-      // After the math: this.distance / target hold the new "to".
-      const toDist = this.distance;
-      const toTargetX = this.target.x;
-      const toTargetZ = this.target.z;
 
-      if (this.smoothDurationSec > 0) {
-        // Reset to the FROM state and arm the animation. tick(dt)
-        // will lerp the camera from FROM → TO over smoothDurationSec.
-        this.animFromDistance = fromDist;
-        this.animFromTargetX = fromTargetX;
-        this.animFromTargetZ = fromTargetZ;
-        this.animToDistance = toDist;
-        this.animToTargetX = toTargetX;
-        this.animToTargetZ = toTargetZ;
-        this.distance = fromDist;
-        this.target.x = fromTargetX;
-        this.target.z = fromTargetZ;
-        this.isAnimating = true;
-        this.animElapsedSec = 0;
+      // Build the new to-state: distance changed, target shifted by
+      // (before − after) so the cursor pin holds.
+      this.toDistance = newToDistance;
+      if (haveBefore && haveAfter) {
+        this.toTargetX += beforeX - afterX;
+        this.toTargetZ += beforeZ - afterZ;
+      }
+
+      // Restore rendered state (or, in snap mode, leave at to-state).
+      if (this.smoothTauSec > 0) {
+        this.distance = renderedDist;
+        this.target.x = renderedTargetX;
+        this.target.z = renderedTargetZ;
         this.apply();
       } else {
-        // Snap mode: rendered state IS the "to" state. apply() already
-        // ran inside the math above; nothing more to do.
+        this.distance = this.toDistance;
+        this.target.x = this.toTargetX;
+        this.target.z = this.toTargetZ;
+        this.apply();
       }
     };
 
@@ -187,6 +220,22 @@ export class OrbitCamera {
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
       this.dragOriginScreen = { x: e.clientX, y: e.clientY };
+      if (this.dragMode === 'pan') {
+        // Capture the cursor's 3D anchor distance so the drag's
+        // world-per-pixel scaling is accurate to terrain depth, not
+        // to the orbit target's depth. The result: the world point
+        // under the cursor at drag-start tracks the cursor exactly
+        // through the entire drag.
+        const hit = this._cursorWorldPoint(e.clientX, e.clientY);
+        if (hit) {
+          const cdx = this.camera.position.x - hit.x;
+          const cdy = this.camera.position.y - hit.y;
+          const cdz = this.camera.position.z - hit.z;
+          this.panAnchorDistance = Math.hypot(cdx, cdy, cdz);
+        } else {
+          this.panAnchorDistance = this.distance;
+        }
+      }
     };
 
     this.onMouseMove = (e) => {
@@ -211,34 +260,41 @@ export class OrbitCamera {
       }
 
       if (this.dragMode === 'orbit') {
+        // Orbit (yaw / pitch) is applied directly to the rendered
+        // values — no EMA — because orbit changes the rendering
+        // basis vectors and any in-flight pan / zoom animations
+        // computed against the OLD basis would be subtly wrong.
+        // Drag up → camera tilts up; drag down → camera tilts down
+        // (Blender / Maya / Unity convention).
         this.yaw -= dx * this.rotateSpeed;
-        // Drag up → camera tilts up (sees more horizon); drag down → camera
-        // tilts down (more top-down). Matches the "grab-and-drag the view"
-        // convention common to 3D DCC tools (Blender/Unity/Maya).
         this.pitch += dy * this.rotateSpeed;
         this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
+        this.apply();
       } else if (this.dragMode === 'pan') {
-        // Pan in screen-space X/Y of the camera's ground-plane projection.
-        // World-per-pixel at the ground plane = (2 · tan(fov/2) · distance) /
-        // canvasHeight. The result is then scaled by panMultiplier — the same
-        // CAMERA_PAN_MULTIPLIER the 2D camera uses, so drag feel is consistent.
-        //
-        // Y (forward) is inverted vs X so vertical drag matches the 2D camera's
-        // direction (drag down → camera moves south in world).
+        // World-per-pixel at the cursor's 3D anchor depth — the
+        // depth of whatever the cursor was over at drag-start.
+        // Using this depth (instead of the orbit-target depth)
+        // makes the cursor's world anchor track the cursor exactly
+        // even on tilted views or hilly terrain.
         const vFovRad = (this.camera.fov * Math.PI) / 180;
         const worldPerPixel =
-          (2 * Math.tan(vFovRad / 2) * this.distance) / this.canvas.clientHeight;
+          (2 * Math.tan(vFovRad / 2) * this.panAnchorDistance) / this.canvas.clientHeight;
         const scale = worldPerPixel * this.panMultiplier;
-        // Right vector (world-space) at current yaw
+        // Right + forward vectors at current yaw, on the ground plane.
+        // Y (forward) is inverted vs X so vertical drag matches the
+        // 2D camera's direction (drag down → camera moves south).
         const rx = Math.cos(this.yaw);
         const rz = Math.sin(this.yaw);
-        // Forward vector projected onto ground plane
         const fx = Math.sin(this.yaw);
         const fz = -Math.cos(this.yaw);
-        this.target.x -= dx * scale * rx - dy * scale * fx;
-        this.target.z -= dx * scale * rz - dy * scale * fz;
+        this.toTargetX -= dx * scale * rx - dy * scale * fx;
+        this.toTargetZ -= dx * scale * rz - dy * scale * fz;
+        if (this.smoothTauSec === 0) {
+          this.target.x = this.toTargetX;
+          this.target.z = this.toTargetZ;
+          this.apply();
+        }
       }
-      this.apply();
     };
 
     this.onMouseUp = (e) => {
@@ -260,11 +316,23 @@ export class OrbitCamera {
     this.apply();
   }
 
-  /** Project a screen-space cursor pixel onto the ground plane (y=0)
-   *  in world coordinates, writing the result into `out`. Returns
-   *  `out` on success, or `null` if the ray doesn't hit the plane (cam
-   *  parallel to plane, or ground is behind the camera). */
-  private cursorWorldPoint(
+  /** Cursor → world position. Uses the user-supplied 3D raycaster
+   *  callback if present; otherwise falls back to a y=0 plane
+   *  projection (which is correct for flat ground but misses the
+   *  actual surface elevation when terrain is hilly). */
+  private _cursorWorldPoint(clientX: number, clientY: number): THREE.Vector3 | null {
+    if (this.getCursorWorldPoint) {
+      // The picker may return the same scratch Vector3 across calls;
+      // the wheel handler captures coordinates as numbers (`beforeX`
+      // / `beforeZ` etc.) so a shared reference is fine.
+      return this.getCursorWorldPoint(clientX, clientY);
+    }
+    return this._cursorWorldPointGroundPlane(clientX, clientY, this._zoomGroundOut);
+  }
+
+  /** Fallback: project screen-space cursor onto the y=0 ground
+   *  plane. Used only when `getCursorWorldPoint` is not installed. */
+  private _cursorWorldPointGroundPlane(
     clientX: number,
     clientY: number,
     out: THREE.Vector3,
@@ -273,9 +341,6 @@ export class OrbitCamera {
     if (rect.width <= 0 || rect.height <= 0) return null;
     const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -(((clientY - rect.top) / rect.height) * 2 - 1);
-    // Unproject NDC (z=0.5 = mid frustum, picked just to get a ray
-    // direction) back into world space; then shoot a ray from the
-    // camera through it and intersect the y=0 plane.
     this._zoomNdc.set(ndcX, ndcY, 0.5).unproject(this.camera);
     const dirX = this._zoomNdc.x - this.camera.position.x;
     const dirY = this._zoomNdc.y - this.camera.position.y;
@@ -302,50 +367,71 @@ export class OrbitCamera {
     this.camera.lookAt(this.target);
   }
 
-  /** Set orbit target without changing distance/yaw/pitch. Cancels
-   *  any in-flight smooth zoom animation since explicitly snapping
-   *  the target invalidates the animation's destination. */
+  /** Set orbit target (and the to-target) without changing
+   *  distance/yaw/pitch. Useful for explicit camera centers — e.g.
+   *  centerCameraOnCommander — that should NOT animate via EMA
+   *  (they're meant to be hard cuts). */
   setTarget(x: number, y: number, z: number): void {
     this.target.set(x, y, z);
-    this.isAnimating = false;
+    this.toTargetX = x;
+    this.toTargetZ = z;
     this.apply();
   }
 
-  /** Set the smooth-zoom animation length in seconds. 0 = snap (each
-   *  wheel tick applies instantly, original behavior). Any positive
-   *  value enables ease-out-cubic smoothing of the wheel-driven
-   *  dolly + cursor-pin shift over that duration. Idempotent — no
-   *  cost if the value is unchanged. Setting to 0 mid-animation
-   *  jumps the camera straight to the destination so it doesn't
-   *  look frozen mid-lerp. */
-  setSmoothDuration(seconds: number): void {
+  /** Set the EMA time-constant in seconds for smooth zoom + pan.
+   *  0 = snap (each input applies instantly, original behavior).
+   *  Any positive value enables exponential smoothing of all
+   *  to-state changes (zoom dolly + pan target shift) at that
+   *  time-constant. Idempotent. Setting to 0 mid-animation jumps
+   *  the rendered state to the to-state so it doesn't look frozen. */
+  setSmoothTau(seconds: number): void {
     const clamped = Math.max(0, seconds);
-    if (this.smoothDurationSec === clamped) return;
-    this.smoothDurationSec = clamped;
-    if (clamped === 0 && this.isAnimating) {
-      this.distance = this.animToDistance;
-      this.target.x = this.animToTargetX;
-      this.target.z = this.animToTargetZ;
-      this.isAnimating = false;
+    if (this.smoothTauSec === clamped) return;
+    this.smoothTauSec = clamped;
+    if (clamped === 0) {
+      this.distance = this.toDistance;
+      this.target.x = this.toTargetX;
+      this.target.z = this.toTargetZ;
       this.apply();
     }
   }
 
-  /** Per-frame integration step for the smooth zoom animation. Called
-   *  from the scene's update loop with the frame dt in seconds. No-op
-   *  when no animation is in flight. */
+  /** Per-frame integration step. Lerps the rendered state toward
+   *  the to-state via EMA: alpha = 1 − exp(−dt / tau). Cheap no-op
+   *  when tau is 0 or already converged. */
   tick(dtSec: number): void {
-    if (!this.isAnimating) return;
-    this.animElapsedSec += dtSec;
-    const t = Math.min(1, this.animElapsedSec / this.smoothDurationSec);
-    // Ease-out cubic: fast start, gentle settle. Same curve the leg
-    // snap-lerp uses, so all camera/leg motions share a feel.
-    const ease = 1 - Math.pow(1 - t, 3);
-    this.distance = this.animFromDistance + (this.animToDistance - this.animFromDistance) * ease;
-    this.target.x = this.animFromTargetX + (this.animToTargetX - this.animFromTargetX) * ease;
-    this.target.z = this.animFromTargetZ + (this.animToTargetZ - this.animFromTargetZ) * ease;
-    if (t >= 1) this.isAnimating = false;
+    if (this.smoothTauSec <= 0) return;
+    const dDist = this.toDistance - this.distance;
+    const dX = this.toTargetX - this.target.x;
+    const dZ = this.toTargetZ - this.target.z;
+    // Settled — snap to exact and stop spinning the integrator.
+    if (
+      Math.abs(dDist) < 1e-3 &&
+      Math.abs(dX) < 1e-3 &&
+      Math.abs(dZ) < 1e-3
+    ) {
+      if (dDist !== 0 || dX !== 0 || dZ !== 0) {
+        this.distance = this.toDistance;
+        this.target.x = this.toTargetX;
+        this.target.z = this.toTargetZ;
+        this.apply();
+      }
+      return;
+    }
+    const alpha = 1 - Math.exp(-dtSec / this.smoothTauSec);
+    this.distance += dDist * alpha;
+    this.target.x += dX * alpha;
+    this.target.z += dZ * alpha;
     this.apply();
+  }
+
+  /** Install / replace the 3D cursor picker callback. The scene calls
+   *  this once it has its terrain mesh ready; the orbit camera then
+   *  uses the picker for all zoom + pan cursor pinning. */
+  setCursorPicker(
+    cb: ((clientX: number, clientY: number) => THREE.Vector3 | null) | undefined,
+  ): void {
+    this.getCursorWorldPoint = cb;
   }
 
   /** Register a callback for drag-pan state (used by the shared HUD overlay). */

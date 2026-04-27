@@ -65,7 +65,7 @@ export const SERVER_SIM_DETAIL: ServerSimDetailTable = {
     low: 1,
     medium: 2,
     high: 2,
-    max: 2,
+    max: 3,
   },
   TARGETING_DENSITY_THRESHOLD: {
     min: 32,
@@ -118,9 +118,9 @@ export const SERVER_SIM_LOD_THRESHOLDS: ServerSimAutoModeConfig = {
     // Below 30% TPS we collapse to MIN — anything more permissive
     // and the LOD lets the host stay buried under work it can't do.
     low: 0.3,
-    medium: 0.5,
-    high: 0.75,
-    max: 0.95,
+    medium: 0.4,
+    high: 0.6,
+    max: 0.8,
   },
   // CPU ratio is fed in as `1 − cpuLoad / 100` (cpu load is a percent
   // of tick budget). 1.0 = idle; 0.0 = saturating. By the time CPU
@@ -134,10 +134,10 @@ export const SERVER_SIM_LOD_THRESHOLDS: ServerSimAutoModeConfig = {
   },
   // Units fullness — same as the client's UNITS auto mode.
   units: {
-    low: 0.05,
-    medium: 0.25,
-    high: 0.5,
-    max: 0.75,
+    low: 0.2,
+    medium: 0.3,
+    high: 0.4,
+    max: 0.5,
   },
 };
 

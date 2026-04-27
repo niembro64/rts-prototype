@@ -374,6 +374,13 @@ export class CaptureTileRenderer3D {
     this.mesh.visible = true;
   }
 
+  /** The terrain mesh — exposed so the orbit camera (and any other
+   *  cursor-picking consumer) can raycast against the actual rendered
+   *  ground geometry rather than approximating with a y=0 plane. */
+  getMesh(): THREE.Mesh {
+    return this.mesh;
+  }
+
   destroy(): void {
     this.geometry.dispose();
     this.material.dispose();

@@ -270,13 +270,15 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
 // circle each foot wanders inside before snapping to the opposite
 // edge). Off by default — purely a debug viz.
 let currentLegsRadius = false;
-// 3D orbit camera zoom-easing mode:
-//   'snap' = each wheel tick applies its full effect immediately
-//            (original behavior, no animation).
-//   'fast' = OrbitCamera eases the dolly + cursor-pin shift over a
-//            short window (~150 ms ease-out-cubic).
-//   'slow' = same animation, longer window (~400 ms) — gentler feel.
-export type CameraSmoothMode = 'snap' | 'fast' | 'slow';
+// 3D orbit camera EMA mode for zoom AND pan:
+//   'snap' = inputs apply immediately, no animation.
+//   'fast' = small EMA tau (~50 ms) — quick settle, still eased.
+//   'mid'  = medium EMA tau (~120 ms) — default-feeling smoothness.
+//   'slow' = large EMA tau (~400 ms) — deliberate, weighty feel.
+//
+// Both wheel zoom and pan-drag feed the same EMA, so they animate
+// simultaneously without fighting each other.
+export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
 let currentCameraSmoothMode: CameraSmoothMode = 'snap';
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
@@ -404,13 +406,18 @@ function loadFromStorage(): void {
     currentLegsRadius = storedLegsRadius === 'true';
   }
   const storedCameraSmooth = readPersisted(CAMERA_SMOOTH_STORAGE_KEY);
-  if (storedCameraSmooth === 'snap' || storedCameraSmooth === 'fast' || storedCameraSmooth === 'slow') {
+  if (
+    storedCameraSmooth === 'snap'
+    || storedCameraSmooth === 'fast'
+    || storedCameraSmooth === 'mid'
+    || storedCameraSmooth === 'slow'
+  ) {
     currentCameraSmoothMode = storedCameraSmooth;
   } else if (storedCameraSmooth === 'true') {
     // Backward-compat: the old boolean toggle wrote 'true' / 'false';
-    // map 'true' (smooth-on) to 'fast' so existing users don't lose
-    // their preference, and ignore 'false' (default 'snap' covers it).
-    currentCameraSmoothMode = 'fast';
+    // map 'true' (smooth-on) to 'mid' so existing users land at the
+    // middle setting, and ignore 'false' (default 'snap' covers it).
+    currentCameraSmoothMode = 'mid';
   }
   const storedDriftMode = readPersisted(DRIFT_MODE_STORAGE_KEY);
   if (

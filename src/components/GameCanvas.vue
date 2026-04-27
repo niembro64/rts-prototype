@@ -244,9 +244,10 @@ const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
 // chassis-local circle each foot wanders inside before snapping to the
 // opposite edge. Useful for tuning leg gait visually.
 const legsRadiusToggle = ref(getLegsRadiusToggle());
-// CAMERA: SNAP / FAST / SLOW — controls the OrbitCamera zoom-easing
-// duration. SNAP applies each wheel tick instantly (original
-// behavior); FAST eases over 150 ms; SLOW eases over 400 ms.
+// CAMERA: SNAP / FAST / MID / SLOW — controls the OrbitCamera EMA
+// time-constant for both zoom and pan. SNAP applies inputs
+// instantly; FAST / MID / SLOW use exponential smoothing with
+// progressively larger τ.
 const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
 
 // Frame timing tracking (EMA-based, polled from scene)
@@ -2694,7 +2695,7 @@ onUnmounted(() => {
               <button
                 class="control-btn"
                 :class="{ active: cameraSmoothMode === 'snap' }"
-                title="Wheel zoom snaps to the new distance instantly (original behavior)"
+                title="Zoom and pan apply instantly — original behavior, no animation"
                 @click="setCameraMode('snap')"
               >
                 SNAP
@@ -2702,15 +2703,23 @@ onUnmounted(() => {
               <button
                 class="control-btn"
                 :class="{ active: cameraSmoothMode === 'fast' }"
-                title="Wheel zoom eases over ~150 ms with an ease-out cubic curve"
+                title="Zoom and pan ease with EMA τ ≈ 50 ms — quick settle"
                 @click="setCameraMode('fast')"
               >
                 FAST
               </button>
               <button
                 class="control-btn"
+                :class="{ active: cameraSmoothMode === 'mid' }"
+                title="Zoom and pan ease with EMA τ ≈ 120 ms — default-feeling smoothness"
+                @click="setCameraMode('mid')"
+              >
+                MID
+              </button>
+              <button
+                class="control-btn"
                 :class="{ active: cameraSmoothMode === 'slow' }"
-                title="Wheel zoom eases over ~400 ms with an ease-out cubic curve"
+                title="Zoom and pan ease with EMA τ ≈ 400 ms — deliberate, weighty feel"
                 @click="setCameraMode('slow')"
               >
                 SLOW
