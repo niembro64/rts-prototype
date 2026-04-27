@@ -246,16 +246,36 @@ export class OrbitCamera {
         // The full XYZ is stored — every subsequent mousemove
         // raycasts against the horizontal plane at panAnchor.y to
         // find the world point currently under the cursor, then
-        // shifts the to-target by (panAnchor − Pc). That makes the
-        // anchor stay locked under the cursor for the whole drag,
-        // regardless of camera tilt or terrain elevation — exact
-        // 3D drag-the-world panning, not pixel-delta approximation.
+        // shifts the to-target by (Pc − panAnchor). That makes the
+        // camera move exactly the world-distance the cursor swept
+        // at the anchor depth — move-the-camera direction, no tilt
+        // approximation.
         const hit = this._cursorWorldPoint(e.clientX, e.clientY);
         if (hit) {
           this.panAnchor.copy(hit);
           this.panAnchorValid = true;
         } else {
           this.panAnchorValid = false;
+        }
+      } else if (this.dragMode === 'orbit') {
+        // Orbit pivots around `target`. To make the orbit pivot
+        // around the cursor's 3D ground point, we jump the target
+        // (and the to-target, so EMA doesn't fight us) to the
+        // cursor's world hit at drag-start. Subsequent yaw / pitch
+        // updates then rotate the camera around that point. After
+        // the drag ends, target stays at the new pivot — which is
+        // what the user wants: orbit around what I clicked, then
+        // any further pan / zoom is centered on that point.
+        const hit = this._cursorWorldPoint(e.clientX, e.clientY);
+        if (hit) {
+          this.target.set(hit.x, hit.y, hit.z);
+          this.toTargetX = hit.x;
+          this.toTargetZ = hit.z;
+          // Cancel any in-flight EMA so the pivot relocation lands
+          // immediately — orbit feels broken if the camera is mid-
+          // glide somewhere else when you start tumbling.
+          this.distance = this.toDistance;
+          this.apply();
         }
       }
     };
@@ -293,24 +313,26 @@ export class OrbitCamera {
         this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
         this.apply();
       } else if (this.dragMode === 'pan') {
-        // Exact 3D drag-the-world pan. We solve for the to-target
-        // shift that puts the captured panAnchor (drag-start
-        // ground point, full XYZ) back under the current cursor
-        // pixel: temporarily evaluate the to-state camera, raycast
-        // the cursor against the horizontal plane at panAnchor.y to
-        // get the world point Pc that's currently under the cursor
-        // at the to-state pose, then shift to-target by
-        // (panAnchor − Pc). After the shift the cursor exactly
-        // anchors panAnchor — no tilt approximation, no per-pixel
-        // scale factor, no isotropic-screen-space assumption.
+        // Exact 3D MOVE-THE-CAMERA pan (cursor drags the camera in
+        // the world, not the world under the cursor — RTS / 2D-camera
+        // convention: drag down → camera glides south). We solve for
+        // the to-target shift that pushes the camera by exactly the
+        // world-distance the cursor swept, measured at the cursor's
+        // 3D anchor depth: temporarily evaluate the to-state camera,
+        // raycast the cursor against the horizontal plane at
+        // panAnchor.y to get the world point Pc currently under the
+        // cursor at the to-state pose, then shift to-target by
+        // (Pc − panAnchor). That makes the camera follow the cursor
+        // in world space at exactly the anchor depth's pixel-to-world
+        // scale — no tilt approximation, no isotropic-screen-space
+        // assumption, no terrain-elevation drift over the drag.
         if (this.panAnchorValid) {
           const renderedDist = this.distance;
           const renderedTargetX = this.target.x;
           const renderedTargetZ = this.target.z;
           // Apply to-state camera so the raycast uses the pose the
-          // pin will EVENTUALLY settle at; this keeps the anchor
-          // intent-correct under EMA smoothing too (the rendered
-          // state catches up via tick() in the next few frames).
+          // shift will eventually settle at; keeps the anchor math
+          // intent-correct under EMA smoothing too.
           this.distance = this.toDistance;
           this.target.x = this.toTargetX;
           this.target.z = this.toTargetZ;
@@ -319,8 +341,8 @@ export class OrbitCamera {
             e.clientX, e.clientY, this.panAnchor.y,
           );
           if (pc) {
-            this.toTargetX += this.panAnchor.x - pc.x;
-            this.toTargetZ += this.panAnchor.z - pc.z;
+            this.toTargetX += pc.x - this.panAnchor.x;
+            this.toTargetZ += pc.z - this.panAnchor.z;
           }
           // In snap mode, the pose IS the to-state — leave the
           // camera at its new (just-shifted) to-state. In smooth
