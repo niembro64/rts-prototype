@@ -78,54 +78,44 @@ export function getTerrainHeight(
   return RIPPLE_AMPLITUDE * fade * norm;
 }
 
+/** Step size for the finite-difference gradient that drives the
+ *  surface normal. Small enough to track ripples (RIPPLE_W2 = 50)
+ *  faithfully, large enough that single-precision noise on the
+ *  heightmap function doesn't show up as gradient jitter. */
+const NORMAL_GRADIENT_EPS = 1;
+
 /** Surface-tangent normal at world point (x, z) in SIM coords (z is
- *  up). The renderer triangulates each tile into TWO flat triangles
- *  along the diagonal from the (x0, z0) corner to the (x1, z1)
- *  corner, so the rendered surface inside a tile is piecewise flat
- *  with TWO different face normals. Returning the bilinear gradient
- *  here would put the unit tilt out of sync with the visible
- *  triangle it stands on; instead, we return the exact face normal
- *  of the triangle the (x, z) sample lies in.
+ *  up). Continuous finite-difference gradient of the underlying
+ *  heightmap — NOT the per-triangle face normal of the rendered
+ *  geometry. The renderer subdivides each tile finely enough that
+ *  the visible surface approximates the smooth heightmap, so the
+ *  smooth gradient here matches the rendered surface visually and
+ *  the unit's tilt transitions continuously across the map (no jump
+ *  along tile diagonals).
  *
- *  Triangle A (corners h00, h10, h11) covers fz ≤ fx;
- *  Triangle B (corners h00, h11, h01) covers fz > fx.
- *  Each triangle's surface is z = h00 + ax·fx + az·fz, so its upward
- *  normal in sim coords is (-ax/cs, -az/cs, 1) normalized — discrete
- *  along the diagonal but identical to what the renderer draws.
+ *  Outside the ripple disc the heightmap is exactly flat; the
+ *  finite differences cancel out, the normal collapses to (0, 0, 1)
+ *  and downstream early-returns kick in.
  *
- *  Outside the ripple disc all four corners are 0 and the normal
- *  collapses to (0, 0, 1). */
+ *  `cellSize` is unused here but kept in the signature so the public
+ *  API stays the same as `getSurfaceHeight`. */
 export function getSurfaceNormal(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
-  cellSize: number,
+  _cellSize: number,
 ): { nx: number; ny: number; nz: number } {
-  const cx = Math.floor(x / cellSize);
-  const cz = Math.floor(z / cellSize);
-  const x0 = cx * cellSize;
-  const z0 = cz * cellSize;
-  const h00 = getTerrainHeight(x0, z0, mapWidth, mapHeight);
-  const h10 = getTerrainHeight(x0 + cellSize, z0, mapWidth, mapHeight);
-  const h11 = getTerrainHeight(x0 + cellSize, z0 + cellSize, mapWidth, mapHeight);
-  const h01 = getTerrainHeight(x0, z0 + cellSize, mapWidth, mapHeight);
-  const fx = (x - x0) / cellSize;
-  const fz = (z - z0) / cellSize;
-  let ax: number;
-  let az: number;
-  if (fz <= fx) {
-    // Triangle A: h(fx, fz) = h00 + (h10−h00)·fx + (h11−h10)·fz.
-    ax = h10 - h00;
-    az = h11 - h10;
-  } else {
-    // Triangle B: h(fx, fz) = h00 + (h11−h01)·fx + (h01−h00)·fz.
-    ax = h11 - h01;
-    az = h01 - h00;
-  }
-  // Sim normal: surface up is (-∂h/∂x, -∂h/∂z, 1) where ∂h/∂x = ax/cs.
-  const nx = -ax / cellSize;
-  const ny = -az / cellSize;
+  const eps = NORMAL_GRADIENT_EPS;
+  const hxp = getTerrainHeight(x + eps, z, mapWidth, mapHeight);
+  const hxm = getTerrainHeight(x - eps, z, mapWidth, mapHeight);
+  const hzp = getTerrainHeight(x, z + eps, mapWidth, mapHeight);
+  const hzm = getTerrainHeight(x, z - eps, mapWidth, mapHeight);
+  const dHdx = (hxp - hxm) / (2 * eps);
+  const dHdz = (hzp - hzm) / (2 * eps);
+  // Sim normal: surface up is (-∂h/∂x, -∂h/∂z, 1).
+  const nx = -dHdx;
+  const ny = -dHdz;
   const nz = 1;
-  const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
   return { nx: nx / len, ny: ny / len, nz: nz / len };
 }
 
@@ -190,38 +180,20 @@ export function applySurfaceTilt(
 }
 
 /** Canonical ground-surface height at world point (x, z). Returns
- *  the exact height of the rendered triangle at that point — the
- *  renderer splits each tile along the diagonal from (x0, z0) to
- *  (x1, z1) into two flat triangles, and this picks the right one
- *  based on whether fz ≤ fx (triangle A: corners h00 / h10 / h11)
- *  or fz > fx (triangle B: corners h00 / h11 / h01). Both formulas
- *  agree along the diagonal (= h00 + fx·(h11 − h00) when fx = fz),
- *  along all four edges, and at the four corners — so the surface
- *  is C0-continuous across tiles and inside a tile.
+ *  the smooth analytical heightmap directly — no tile-aligned
+ *  triangulation. The tile renderer subdivides each big tile into a
+ *  fine sub-grid and samples the same heightmap at every sub-vertex,
+ *  so the rendered surface approximates this function to sub-pixel
+ *  accuracy. Sim, physics, client dead-reckoning, and the renderer
+ *  agree on one continuous surface; unit tilt and altitude
+ *  transition smoothly anywhere on the map.
  *
- *  Sim, physics, and client dead-reckoning all read this. With every
- *  consumer reading the same triangle-exact function on both sides,
- *  the simulation surface and the rendered surface are identical
- *  pixel-perfect — units stand exactly on the visible slope. */
+ *  `cellSize` is unused here but kept in the signature for API
+ *  parity with the rest of the heightmap helpers. */
 export function getSurfaceHeight(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
-  cellSize: number,
+  _cellSize: number,
 ): number {
-  const cx = Math.floor(x / cellSize);
-  const cz = Math.floor(z / cellSize);
-  const x0 = cx * cellSize;
-  const z0 = cz * cellSize;
-  const h00 = getTerrainHeight(x0, z0, mapWidth, mapHeight);
-  const h10 = getTerrainHeight(x0 + cellSize, z0, mapWidth, mapHeight);
-  const h11 = getTerrainHeight(x0 + cellSize, z0 + cellSize, mapWidth, mapHeight);
-  const h01 = getTerrainHeight(x0, z0 + cellSize, mapWidth, mapHeight);
-  const fx = (x - x0) / cellSize;
-  const fz = (z - z0) / cellSize;
-  if (fz <= fx) {
-    // Triangle A: h00, h10, h11.
-    return h00 + (h10 - h00) * fx + (h11 - h10) * fz;
-  }
-  // Triangle B: h00, h11, h01.
-  return h00 + (h11 - h01) * fx + (h01 - h00) * fz;
+  return getTerrainHeight(x, z, mapWidth, mapHeight);
 }

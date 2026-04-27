@@ -42,16 +42,30 @@ const NEUTRAL_R = ((MAP_BG_COLOR >> 16) & 0xff) / 255;
 const NEUTRAL_G = ((MAP_BG_COLOR >> 8) & 0xff) / 255;
 const NEUTRAL_B = (MAP_BG_COLOR & 0xff) / 255;
 
-// Vertex layout per tile (all positions in three.js coords):
-//   0..3  — top corners CCW from above:
-//             0=(x0,h00,z0), 1=(x1,h10,z0), 2=(x1,h11,z1), 3=(x0,h01,z1)
-//   4..7  — floor corners directly below 0..3.
-// Each tile owns its 8 vertices outright (no sharing with neighbors)
-// so per-tile color writes don't smear.
-const VERTS_PER_TILE = 8;
-// Triangles drawn per tile: top (2) + 4 sides (2 each) = 10. Bottom
-// is omitted.
-const TRIS_PER_TILE = 10;
+// Tile top is subdivided into SUBDIV × SUBDIV sub-cells so the
+// rendered surface tracks the smooth heightmap continuously instead
+// of folding at the tile diagonal. Increasing SUBDIV softens the
+// fold further at the cost of more triangles + heightmap evaluations
+// per tile. SUBDIV=4 holds up against ripple amplitude 800 with
+// 150-unit tiles while keeping the per-map triangle count modest.
+const SUBDIV = 4;
+const TOP_VERTS_PER_ROW = SUBDIV + 1;
+const TOP_VERTS_PER_TILE = TOP_VERTS_PER_ROW * TOP_VERTS_PER_ROW;
+// Floor: 4 outer corners (sides connect outer top corners to these).
+const FLOOR_VERTS_PER_TILE = 4;
+const VERTS_PER_TILE = TOP_VERTS_PER_TILE + FLOOR_VERTS_PER_TILE;
+// Triangles: SUBDIV² sub-quads × 2 on top + 4 sides × 2 on the
+// outside (bottom face omitted, always underground).
+const TOP_TRIS_PER_TILE = SUBDIV * SUBDIV * 2;
+const SIDE_TRIS_PER_TILE = 4 * 2;
+const TRIS_PER_TILE = TOP_TRIS_PER_TILE + SIDE_TRIS_PER_TILE;
+// Floor vertex indices, after the (SUBDIV+1)² top vertices.
+const FLOOR_IDX_BASE = TOP_VERTS_PER_TILE;
+// Convenience: index of an outer top corner in the per-tile vertex
+// block (used to wire side faces between top edges and floor corners).
+function topIdx(i: number, j: number): number {
+  return j * TOP_VERTS_PER_ROW + i;
+}
 
 export class CaptureTileRenderer3D {
   private mesh: THREE.Mesh;
@@ -127,69 +141,62 @@ export class CaptureTileRenderer3D {
     // Flat regions all get +Y; only sloped (ripple) topography varies.
     const normals = new Float32Array(tileCount * VERTS_PER_TILE * 3);
 
+    const eps = 1;
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
         const i = cy * cellsX + cx;
         const x0 = cx * cellSize;
-        const x1 = x0 + cellSize;
         const z0 = cy * cellSize;
-        const z1 = z0 + cellSize;
-
-        // Heights at the 4 tile corners come from the CONTINUOUS
-        // terrain function (not the tile-aligned one). Adjacent
-        // tiles' shared corners therefore evaluate to the same
-        // height and the surface is C0-continuous across the whole
-        // map.
-        const h00 = getTerrainHeight(x0, z0, this.mapWidth, this.mapHeight);
-        const h10 = getTerrainHeight(x1, z0, this.mapWidth, this.mapHeight);
-        const h11 = getTerrainHeight(x1, z1, this.mapWidth, this.mapHeight);
-        const h01 = getTerrainHeight(x0, z1, this.mapWidth, this.mapHeight);
-
         const vBase = i * VERTS_PER_TILE * 3;
-        // Top corners (indices 0..3)
-        this.positions[vBase + 0] = x0;  this.positions[vBase + 1] = h00; this.positions[vBase + 2] = z0;
-        this.positions[vBase + 3] = x1;  this.positions[vBase + 4] = h10; this.positions[vBase + 5] = z0;
-        this.positions[vBase + 6] = x1;  this.positions[vBase + 7] = h11; this.positions[vBase + 8] = z1;
-        this.positions[vBase + 9] = x0;  this.positions[vBase + 10] = h01; this.positions[vBase + 11] = z1;
-        // Floor corners (indices 4..7) — directly below the top corners
-        this.positions[vBase + 12] = x0; this.positions[vBase + 13] = CUBE_FLOOR_Y; this.positions[vBase + 14] = z0;
-        this.positions[vBase + 15] = x1; this.positions[vBase + 16] = CUBE_FLOOR_Y; this.positions[vBase + 17] = z0;
-        this.positions[vBase + 18] = x1; this.positions[vBase + 19] = CUBE_FLOOR_Y; this.positions[vBase + 20] = z1;
-        this.positions[vBase + 21] = x0; this.positions[vBase + 22] = CUBE_FLOOR_Y; this.positions[vBase + 23] = z1;
 
-        // Top-corner normals from the heightmap gradient at that
-        // (x, z) — finite differences with eps=1 unit. For surface
-        // P(x, z) = (x, h(x, z), z), tangents are (1, ∂h/∂x, 0) and
-        // (0, ∂h/∂z, 1); their cross product is (∂h/∂x, -1, ∂h/∂z),
-        // so the upward normal is (-∂h/∂x, 1, -∂h/∂z) normalized.
-        // Floor corners get a straight-down (0,-1,0) normal — face
-        // is hidden but the side walls' bottom verts inherit it,
-        // giving each side wall a smooth top-bright bottom-dim
-        // gradient that reads as natural ground.
-        const writeTopNormal = (vIdx: number, wx: number, wz: number) => {
-          const eps = 1;
-          const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
-          const hxm = getTerrainHeight(wx - eps, wz, this.mapWidth, this.mapHeight);
-          const hzp = getTerrainHeight(wx, wz + eps, this.mapWidth, this.mapHeight);
-          const hzm = getTerrainHeight(wx, wz - eps, this.mapWidth, this.mapHeight);
-          const dHdx = (hxp - hxm) / (2 * eps);
-          const dHdz = (hzp - hzm) / (2 * eps);
-          let nx = -dHdx, ny = 1, nz = -dHdz;
-          const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-          nx /= len; ny /= len; nz /= len;
-          normals[vBase + vIdx * 3 + 0] = nx;
-          normals[vBase + vIdx * 3 + 1] = ny;
-          normals[vBase + vIdx * 3 + 2] = nz;
-        };
-        writeTopNormal(0, x0, z0);
-        writeTopNormal(1, x1, z0);
-        writeTopNormal(2, x1, z1);
-        writeTopNormal(3, x0, z1);
-        // Floor normals — straight down.
-        for (let v = 4; v < 8; v++) {
-          normals[vBase + v * 3 + 0] = 0;
-          normals[vBase + v * 3 + 1] = -1;
-          normals[vBase + v * 3 + 2] = 0;
+        // Top sub-grid: SUBDIV+1 vertices per row × per column. Each
+        // sub-vertex's height comes from the underlying heightmap
+        // directly, so the visible surface tracks the smooth function
+        // and adjacent tiles share corner heights for free (the
+        // gradient is the same at the shared world point).
+        for (let j = 0; j <= SUBDIV; j++) {
+          const wz = z0 + (j / SUBDIV) * cellSize;
+          for (let ix = 0; ix <= SUBDIV; ix++) {
+            const wx = x0 + (ix / SUBDIV) * cellSize;
+            const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight);
+            const idx = j * TOP_VERTS_PER_ROW + ix;
+            const off = vBase + idx * 3;
+            this.positions[off]     = wx;
+            this.positions[off + 1] = h;
+            this.positions[off + 2] = wz;
+            // Continuous gradient normal at the same world point.
+            // Surface z = h(x, z) → upward normal = (-∂h/∂x, 1, -∂h/∂z)
+            // normalized.
+            const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
+            const hxm = getTerrainHeight(wx - eps, wz, this.mapWidth, this.mapHeight);
+            const hzp = getTerrainHeight(wx, wz + eps, this.mapWidth, this.mapHeight);
+            const hzm = getTerrainHeight(wx, wz - eps, this.mapWidth, this.mapHeight);
+            const dHdx = (hxp - hxm) / (2 * eps);
+            const dHdz = (hzp - hzm) / (2 * eps);
+            let nx = -dHdx, ny = 1, nz = -dHdz;
+            const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+            nx /= len; ny /= len; nz /= len;
+            normals[off]     = nx;
+            normals[off + 1] = ny;
+            normals[off + 2] = nz;
+          }
+        }
+        // Floor: 4 outer corners directly below the outer top corners.
+        const fOff = vBase + FLOOR_IDX_BASE * 3;
+        const x1 = x0 + cellSize;
+        const z1 = z0 + cellSize;
+        this.positions[fOff + 0]  = x0; this.positions[fOff + 1]  = CUBE_FLOOR_Y; this.positions[fOff + 2]  = z0;
+        this.positions[fOff + 3]  = x1; this.positions[fOff + 4]  = CUBE_FLOOR_Y; this.positions[fOff + 5]  = z0;
+        this.positions[fOff + 6]  = x1; this.positions[fOff + 7]  = CUBE_FLOOR_Y; this.positions[fOff + 8]  = z1;
+        this.positions[fOff + 9]  = x0; this.positions[fOff + 10] = CUBE_FLOOR_Y; this.positions[fOff + 11] = z1;
+        // Floor normals — straight down. Side walls borrow these for
+        // their bottom edge, giving the wall a top-bright bottom-dim
+        // gradient that reads as natural ground when lit.
+        for (let f = 0; f < FLOOR_VERTS_PER_TILE; f++) {
+          const off = vBase + (FLOOR_IDX_BASE + f) * 3;
+          normals[off]     = 0;
+          normals[off + 1] = -1;
+          normals[off + 2] = 0;
         }
 
         // Initial neutral color for every vertex of this tile.
@@ -200,26 +207,49 @@ export class CaptureTileRenderer3D {
           this.colors[cBase + v * 3 + 2] = NEUTRAL_B;
         }
 
-        // Triangles, per face, CCW from outside the cube. Bottom
-        // face omitted (always underground).
+        // Triangles, written into the shared index buffer offset.
         const v = i * VERTS_PER_TILE;
         const iBase = i * TRIS_PER_TILE * 3;
         let k = iBase;
-        // TOP (+Y normal)
-        this.indices[k++] = v + 0; this.indices[k++] = v + 1; this.indices[k++] = v + 2;
-        this.indices[k++] = v + 0; this.indices[k++] = v + 2; this.indices[k++] = v + 3;
-        // FRONT (-Z): top-left=0, top-right=1, bot-right=5, bot-left=4
-        this.indices[k++] = v + 0; this.indices[k++] = v + 4; this.indices[k++] = v + 5;
-        this.indices[k++] = v + 0; this.indices[k++] = v + 5; this.indices[k++] = v + 1;
-        // BACK (+Z): 2,3,7,6
-        this.indices[k++] = v + 2; this.indices[k++] = v + 6; this.indices[k++] = v + 7;
-        this.indices[k++] = v + 2; this.indices[k++] = v + 7; this.indices[k++] = v + 3;
-        // LEFT (-X): 3,0,4,7
-        this.indices[k++] = v + 3; this.indices[k++] = v + 7; this.indices[k++] = v + 4;
-        this.indices[k++] = v + 3; this.indices[k++] = v + 4; this.indices[k++] = v + 0;
-        // RIGHT (+X): 1,2,6,5
-        this.indices[k++] = v + 1; this.indices[k++] = v + 5; this.indices[k++] = v + 6;
-        this.indices[k++] = v + 1; this.indices[k++] = v + 6; this.indices[k++] = v + 2;
+
+        // TOP — SUBDIV² sub-quads, each split into two triangles
+        // (CCW from above). Indices reference the per-row sub-grid.
+        for (let j = 0; j < SUBDIV; j++) {
+          for (let ix = 0; ix < SUBDIV; ix++) {
+            const a = topIdx(ix, j);
+            const b = topIdx(ix + 1, j);
+            const c = topIdx(ix + 1, j + 1);
+            const d = topIdx(ix, j + 1);
+            this.indices[k++] = v + a; this.indices[k++] = v + b; this.indices[k++] = v + c;
+            this.indices[k++] = v + a; this.indices[k++] = v + c; this.indices[k++] = v + d;
+          }
+        }
+
+        // SIDES — connect outer top edges to floor corners. Outer
+        // top corners use sub-grid indices at the boundary
+        // (i ∈ {0, SUBDIV}, j ∈ {0, SUBDIV}); floor corners are at
+        // FLOOR_IDX_BASE + 0..3 (matching the top-corner traversal
+        // 0,0 → SUBDIV,0 → SUBDIV,SUBDIV → 0,SUBDIV).
+        const t00 = v + topIdx(0, 0);
+        const t10 = v + topIdx(SUBDIV, 0);
+        const t11 = v + topIdx(SUBDIV, SUBDIV);
+        const t01 = v + topIdx(0, SUBDIV);
+        const f00 = v + FLOOR_IDX_BASE + 0;
+        const f10 = v + FLOOR_IDX_BASE + 1;
+        const f11 = v + FLOOR_IDX_BASE + 2;
+        const f01 = v + FLOOR_IDX_BASE + 3;
+        // FRONT (−Z)
+        this.indices[k++] = t00; this.indices[k++] = f00; this.indices[k++] = f10;
+        this.indices[k++] = t00; this.indices[k++] = f10; this.indices[k++] = t10;
+        // BACK (+Z)
+        this.indices[k++] = t11; this.indices[k++] = f11; this.indices[k++] = f01;
+        this.indices[k++] = t11; this.indices[k++] = f01; this.indices[k++] = t01;
+        // LEFT (−X)
+        this.indices[k++] = t01; this.indices[k++] = f01; this.indices[k++] = f00;
+        this.indices[k++] = t01; this.indices[k++] = f00; this.indices[k++] = t00;
+        // RIGHT (+X)
+        this.indices[k++] = t10; this.indices[k++] = f10; this.indices[k++] = f11;
+        this.indices[k++] = t10; this.indices[k++] = f11; this.indices[k++] = t11;
       }
     }
 
