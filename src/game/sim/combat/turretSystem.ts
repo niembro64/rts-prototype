@@ -70,25 +70,44 @@ export function updateTurretRotation(world: WorldState, dtMs: number): void {
       if (weapon.target !== null) {
         const target = world.getEntity(weapon.target);
         if (target) {
-          const wp = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, cos, sin);
-          const weaponX = wp.x, weaponY = wp.y;
+          // Origin (weapon mount) in true 3D world coords. The
+          // targeting system runs earlier in the same tick and
+          // populates `weapon.worldPos.{x,y,z}` via getTurretWorldMount,
+          // which applies the chassis tilt to the chassis-local mount
+          // — exactly the same point projectile spawn and beam tracer
+          // use. Reading those three numbers here keeps aim, fire,
+          // and the rendered barrel locked together on slopes; if for
+          // any reason worldPos isn't populated (very first tick on a
+          // newly spawned unit) we fall back to the upright math.
+          const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+          let weaponX: number;
+          let weaponY: number;
+          let mountZ: number;
+          if (weapon.worldPos) {
+            weaponX = weapon.worldPos.x;
+            weaponY = weapon.worldPos.y;
+            mountZ = weapon.worldPos.z;
+          } else {
+            const wp = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, cos, sin);
+            weaponX = wp.x;
+            weaponY = wp.y;
+            mountZ = unitGroundZ + getTurretMountHeight(unit, weaponIndex);
+          }
 
           // Initial unleaded aim — used to bootstrap the barrel tip
           // reference. The lead step below replaces this with a
           // velocity-predicted intercept point.
           targetAngle = Math.atan2(target.transform.y - weaponY, target.transform.x - weaponX);
 
-          // Ballistic arcs are solved from the actual barrel tip (not
+          // Ballistic arcs are solved from the actual barrel TIP (not
           // the turret mount) — otherwise shots would fire from a
           // point one barrel-length farther back than the pitch was
           // solved for, and every projectile would overshoot. The
-          // primitive returns a tip in world coords that already
+          // primitive returns the tip in world coords that already
           // accounts for the barrel's orbit offset, pitch contribution,
           // and yaw direction. Use barrelIndex = 0 (reference barrel)
           // and the CURRENT weapon.pitch — as the damper converges
           // the solver input settles along with it.
-          const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-          const mountZ = unitGroundZ + getTurretMountHeight(unit, weaponIndex);
           const tipRef = getBarrelTip(
             weaponX, weaponY, mountZ,
             targetAngle, weapon.pitch,
