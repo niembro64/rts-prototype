@@ -9,12 +9,19 @@
 // Camera pan/orbit/zoom (middle mouse + scroll) is handled by OrbitCamera, so
 // this class only cares about left (button 0) and right (button 2).
 //
-// Mouse positions are raycast against a Y=0 ground plane to get world (x, z)
-// coords, which are mapped to sim (x, y).
+// Cursor → world-point picking goes through the shared CursorGround
+// service: every command point (move target, attack-move target,
+// build click, dgun target, factory rally / waypoint, line-path
+// chain) is the ACTUAL 3D ground point the user clicked on the
+// rendered terrain mesh. No y=0 plane projection anywhere in the
+// input pipeline; the same picker the camera zoom + pan uses also
+// drives every command, so cursor anchoring is consistent across
+// all input flows.
 
 import * as THREE from 'three';
 import type { ThreeApp } from './ThreeApp';
 import type { BuildGhost3D } from './BuildGhost3D';
+import type { CursorGround, SimGroundPoint } from './CursorGround';
 import type { CommandQueue } from '../sim/commands';
 import type { InputContext } from '@/types/input';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
@@ -110,8 +117,16 @@ export class Input3DManager {
   // Visual selection rectangle overlay (CSS div over the canvas)
   private marquee: HTMLDivElement;
 
+  /** Shared cursor → 3D ground picker. Single canonical source of
+   *  truth for every command-point in this manager — passed in by
+   *  the scene so the camera and the input manager hit the same
+   *  rendered terrain mesh through the same raycaster. */
+  private cursorGround: CursorGround;
+  /** Local raycaster for ENTITY picking (not ground picking) — runs
+   *  against the world group recursively to find unit / building
+   *  meshes. The CursorGround service is exclusively for terrain
+   *  hits; this raycaster handles "which entity did I click on?". */
   private raycaster = new THREE.Raycaster();
-  private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   // Reusable scratch vector for projecting entities in selectEntitiesInScreenRect.
   // One allocation for the lifetime of the manager keeps the hot loop alloc-free.
   private _selectV = new THREE.Vector3();
@@ -131,12 +146,14 @@ export class Input3DManager {
     context: InputContext,
     entitySource: EntitySource,
     localCommandQueue: CommandQueue,
+    cursorGround: CursorGround,
   ) {
     this.threeApp = threeApp;
     this.canvas = threeApp.renderer.domElement;
     this.context = context;
     this.entitySource = entitySource;
     this.localCommandQueue = localCommandQueue;
+    this.cursorGround = cursorGround;
 
     // Selection marquee overlay
     this.marquee = document.createElement('div');
@@ -327,16 +344,17 @@ export class Input3DManager {
     this.raycaster.setFromCamera(ndc, this.threeApp.camera);
   }
 
-  /** Intersect the ground plane (y=0) and return world (x, z).
-   *  Returns null if the ray is parallel or misses (should not happen for a
-   *  downward-tilted camera). */
-  private raycastGround(clientX: number, clientY: number): { x: number; y: number } | null {
-    this.castRay(clientX, clientY);
-    const hit = new THREE.Vector3();
-    const ok = this.raycaster.ray.intersectPlane(this.groundPlane, hit);
-    if (!ok) return null;
-    // three (x, z) → sim (x, y)
-    return { x: hit.x, y: hit.z };
+  /** Cursor → 3D ground point on the actual rendered terrain.
+   *  Returns sim coords {x, y, z} where (x, y) is the horizontal
+   *  XY of the hit and z is the terrain altitude there. Goes
+   *  through the shared CursorGround service so this manager and
+   *  the orbit camera use the SAME raycast against the SAME mesh.
+   *  Returns null if the cursor's ray misses the terrain (cursor
+   *  over the sky / past the map edge / terrain not yet built);
+   *  every command call site that uses this guards on null and
+   *  drops the command in that case. */
+  private raycastGround(clientX: number, clientY: number): SimGroundPoint | null {
+    return this.cursorGround.pickSim(clientX, clientY);
   }
 
   /** Raycast against entity meshes in the world group. Returns closest hit's entityId. */

@@ -25,6 +25,7 @@ import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
+import { CursorGround } from '../render3d/CursorGround';
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
@@ -154,12 +155,12 @@ export class RtsScene3D {
   private _frustum = new THREE.Frustum();
   private _frustumMatrix = new THREE.Matrix4();
 
-  // Reusable raycaster + scratch vec for cursor 3D-picking. Built
-  // once per scene; the orbit camera holds a closure over the
-  // _raycastTerrainAtCursor method below.
-  private _cursorRaycaster: THREE.Raycaster | null = null;
-  private _cursorRaycasterNdc = new THREE.Vector2();
-  private _cursorRaycastHit = new THREE.Vector3();
+  // Single canonical cursor → 3D ground picker (raycaster against
+  // the rendered terrain mesh). Shared by the orbit camera and the
+  // input manager so every cursor-anchored point — camera zoom,
+  // camera pan, move/attack/dgun/build clicks, waypoint chains,
+  // factory rallies — comes from the same true-3D source.
+  private cursorGround!: CursorGround;
 
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
@@ -400,12 +401,21 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
     );
-    // Install the 3D cursor picker on the orbit camera now that the
-    // terrain mesh exists. Wheel zoom + pan-drag use it so the
-    // anchor point under the cursor is the actual rendered ground
-    // (correctly tracking hills / valleys), not a flat y=0 plane.
-    this._cursorRaycaster = new THREE.Raycaster();
-    this.threeApp.orbit.setCursorPicker((cx, cy) => this._raycastTerrainAtCursor(cx, cy));
+    // Build the canonical cursor → 3D ground picker now that the
+    // terrain mesh exists. ONE raycaster, ONE terrain mesh, two
+    // lenses (three.js coords for the orbit camera, sim coords for
+    // commands). Used by EVERY input flow that needs to know "where
+    // on the actual ground is the cursor": camera zoom + pan, every
+    // command builder via Input3DManager (move waypoints, attack-
+    // moves, build clicks, dgun targets, rally points, factory
+    // waypoints…). Stops anyone in the input pipeline from
+    // approximating with a y=0 plane projection.
+    this.cursorGround = new CursorGround(
+      this.threeApp.camera,
+      this.threeApp.renderer.domElement,
+      () => this.captureTileRenderer.getMesh(),
+    );
+    this.threeApp.orbit.setCursorPicker((cx, cy) => this.cursorGround.pickWorld(cx, cy));
     // Terrain clearance: feed the orbit camera the canonical
     // heightmap sampler so the camera can never dip below the
     // ground. Cheap analytical lookup — no raycast per frame.
@@ -451,7 +461,12 @@ export class RtsScene3D {
       );
     }
 
-    // Wire raycast-based selection + move commands
+    // Wire raycast-based selection + move commands. The shared
+    // CursorGround is passed in so EVERY command point Input3DManager
+    // computes (move targets, build clicks, dgun targets, factory
+    // rallies, line-path waypoints) comes from the actual rendered
+    // 3D ground — same source the camera uses, no y=0 plane in the
+    // input pipeline.
     this.inputManager = new Input3DManager(
       this.threeApp,
       {
@@ -460,6 +475,7 @@ export class RtsScene3D {
       },
       this.entitySourceAdapter,
       this.localCommandQueue,
+      this.cursorGround,
     );
     // Hand the build-ghost renderer to the input manager so it can
     // drive preview updates on mouse-move-in-build-mode (hidden on
@@ -764,32 +780,6 @@ export class RtsScene3D {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.threeApp.orbit.apply();
     this.hasCenteredCamera = true;
-  }
-
-  /** Cursor → world-space anchor point on the rendered terrain.
-   *  Used by the orbit camera for both zoom-to-cursor and pan-around-
-   *  cursor: the anchor is the actual point on the rendered surface
-   *  under the cursor, not a flat y=0 plane projection. Returns null
-   *  when the cursor doesn't hit terrain (cursor outside canvas, ray
-   *  misses past the map edge, etc.) — the orbit camera falls back
-   *  to its plane projection in that case. */
-  private _raycastTerrainAtCursor(clientX: number, clientY: number): THREE.Vector3 | null {
-    const rc = this._cursorRaycaster;
-    if (!rc) return null;
-    const canvas = this.threeApp.renderer.domElement;
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    this._cursorRaycasterNdc.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -(((clientY - rect.top) / rect.height) * 2 - 1),
-    );
-    rc.setFromCamera(this._cursorRaycasterNdc, this.threeApp.camera);
-    const terrainMesh = this.captureTileRenderer.getMesh();
-    const hits = rc.intersectObject(terrainMesh, false);
-    if (hits.length === 0) return null;
-    // First hit is the closest by default.
-    this._cursorRaycastHit.copy(hits[0].point);
-    return this._cursorRaycastHit;
   }
 
   /** Translate the persisted camera-smooth mode into the orbit
