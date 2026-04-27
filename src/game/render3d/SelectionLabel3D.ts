@@ -15,8 +15,12 @@ import { labelTextForUnit, labelTextForBuilding } from '../uiLabels';
 
 const STYLE = {
   /** Distance above the entity's top in world units where the label
-   *  centerline sits. Above the HP bar so they don't overlap. */
-  worldOffsetAbove: 26,
+   *  centerline sits. The collider radius / building half-depth is
+   *  only a coarse "top" — visual elements like turrets, mirrors,
+   *  legs, and roof structures often extend well above it, so the
+   *  offset is generous enough to clear them and leave the HP bar
+   *  visibly separated below the text. */
+  worldOffsetAbove: 90,
   /** TARGET pixel height of the label on screen, regardless of
    *  camera distance — sprites use sizeAttenuation: false so the
    *  text always reads at this size whether the unit is close or

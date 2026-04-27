@@ -3,20 +3,15 @@
 import type { PlayerId, WaypointType } from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
+import { getUnitBlueprint } from '../../sim/blueprints';
 
-// Unit type to display label
-const UNIT_LABELS: Record<string, string> = {
-  jackal: 'Jackal',
-  lynx: 'Lynx',
-  daddy: 'Daddy',
-  badger: 'Badger',
-  mongoose: 'Mongoose',
-  tick: 'Tick',
-  mammoth: 'Mammoth',
-  widow: 'Widow',
-  tarantula: 'Tarantula',
-  commander: 'Commander',
-};
+function unitLabel(unitType: string): string {
+  try {
+    return getUnitBlueprint(unitType).name;
+  } catch {
+    return unitType;
+  }
+}
 
 export type {
   UIEntitySource,
@@ -53,7 +48,7 @@ export function buildSelectionInfo(
     const f = factory.factory;
     factoryQueue = f.buildQueue.map(unitType => ({
       unitId: unitType,
-      label: UNIT_LABELS[unitType] ?? unitType,
+      label: unitLabel(unitType),
     }));
     factoryProgress = f.currentBuildProgress;
     factoryIsProducing = f.isProducing;

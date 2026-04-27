@@ -3,7 +3,9 @@
 // pulling in the rendering layer. Lifted out of render/types.ts so the
 // HUD doesn't depend on the 2D module.
 
-import type { WaypointType, ActionType } from './sim/types';
+import type { WaypointType, ActionType, BuildingType } from './sim/types';
+import { getUnitBlueprint } from './sim/blueprints';
+import { getBuildingConfig } from './sim/buildConfigs';
 
 /** Waypoint marker colors by type — legacy factory rally points. */
 export const WAYPOINT_COLORS: Record<WaypointType, number> = {
@@ -22,32 +24,23 @@ export const ACTION_COLORS: Record<ActionType, number> = {
   attack: 0xff0000,  // Red for attack
 };
 
-/** Text shown above a selected unit. Commander short-circuits to a
- *  shared label; everything else looks up the unit's blueprint id. */
+/** Text shown above a selected unit — the blueprint's canonical
+ *  display name (e.g. 'Commander', 'Tick', 'Mammoth'). Falls back to
+ *  the raw unitType id if the blueprint can't be resolved. */
 export function labelTextForUnit(entity: import('./sim/types').Entity): string {
-  if (entity.commander) return 'Commander';
-  const unitType = entity.unit?.unitType ?? 'jackal';
-  return UNIT_NAMES[unitType] ?? unitType;
+  const unitType = entity.unit?.unitType;
+  if (!unitType) return 'Unit';
+  try {
+    return getUnitBlueprint(unitType).name;
+  } catch {
+    return unitType;
+  }
 }
 
-/** Text shown above a selected building. */
+/** Text shown above a selected building — the building config's
+ *  canonical display name (e.g. 'Solar Panel', 'Factory'). */
 export function labelTextForBuilding(entity: import('./sim/types').Entity): string {
-  if (entity.buildingType === 'factory') return 'Factory';
-  if (entity.buildingType === 'solar') return 'Solar';
-  return 'Building';
+  const t = entity.buildingType as BuildingType | undefined;
+  if (!t) return 'Building';
+  return getBuildingConfig(t)?.name ?? 'Building';
 }
-
-/** Display names by unit blueprint id. */
-export const UNIT_NAMES: Record<string, string> = {
-  jackal: 'Jackal',
-  lynx: 'Lynx',
-  daddy: 'Daddy',
-  badger: 'Badger',
-  mongoose: 'Mongoose',
-  tick: 'Tick',
-  mammoth: 'Mammoth',
-  widow: 'Widow',
-  tarantula: 'Tarantula',
-  loris: 'Loris',
-  hippo: 'Hippo',
-};
