@@ -19,6 +19,7 @@ import type {
 import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
+import { getLegsRadiusToggle } from '@/clientBarConfig';
 
 const TREAD_COLOR = 0x1a1d22;
 const TREAD_HEIGHT = 10;
@@ -100,12 +101,34 @@ type LegInstance = {
   footJoint?: THREE.Mesh;
   upperThick: number;
   lowerThick: number;
+  /** LEGS-radius debug viz: a flat ring lying in the chassis-local
+   *  XZ plane at the leg's rest center. Lazy-built the first time
+   *  the toggle is on; hidden (not destroyed) when off. */
+  restCircle?: THREE.LineLoop;
 };
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 const legGeom = new THREE.CylinderGeometry(1, 1, 1, 8);
 const jointGeom = new THREE.SphereGeometry(1, 8, 6);
+
+// Unit circle (radius 1) in the XZ plane at y=0 — instanced per leg
+// at runtime by translating to rest center and scaling by stepRadius.
+const restCircleGeom = (() => {
+  const segs = 48;
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i < segs; i++) {
+    const t = (i / segs) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(t), 0, Math.sin(t)));
+  }
+  return new THREE.BufferGeometry().setFromPoints(pts);
+})();
+const restCircleMat = new THREE.LineBasicMaterial({
+  color: 0x44ffcc,
+  transparent: true,
+  opacity: 0.55,
+  depthWrite: false,
+});
 
 const treadMat = new THREE.MeshLambertMaterial({ color: TREAD_COLOR });
 const wheelMat = new THREE.MeshLambertMaterial({ color: WHEEL_COLOR });
@@ -653,6 +676,22 @@ export function updateLocomotion(
       // circle in/out, snapTargetAngle rotates it around the hip.
       const restCenterX = hipX + Math.cos(initAngle) * restDistance;
       const restCenterZ = hipZ + Math.sin(initAngle) * restDistance;
+
+      // LEGS-radius debug viz: ring sitting at the foot plane (FOOT_Y
+      // in chassis-local coords) centered on the leg's rest center,
+      // scaled to stepRadius. Lazy-creates on first show; persists in
+      // the leg group so subsequent toggles are just a visibility flip.
+      if (getLegsRadiusToggle()) {
+        if (!leg.restCircle) {
+          leg.restCircle = new THREE.LineLoop(restCircleGeom, restCircleMat);
+          mesh.group.add(leg.restCircle);
+        }
+        leg.restCircle.visible = true;
+        leg.restCircle.position.set(restCenterX, FOOT_Y, restCenterZ);
+        leg.restCircle.scale.set(stepRadius, 1, stepRadius);
+      } else if (leg.restCircle) {
+        leg.restCircle.visible = false;
+      }
 
       // First frame: seat the foot at the rest center so it starts
       // "in the middle" of its allowed wandering region.

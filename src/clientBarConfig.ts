@@ -238,6 +238,7 @@ const SOUND_TOGGLES_STORAGE_KEY = 'rts-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'rts-range-toggles';
 const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'rts-proj-range-toggles';
 const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
+const LEGS_RADIUS_STORAGE_KEY = 'rts-legs-radius';
 const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
 const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
 const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
@@ -264,6 +265,10 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
   shot: _cd.unitRadiusToggles.default,
   push: _cd.unitRadiusToggles.default,
 };
+// Whether to render the per-leg "rest circle" (the chassis-local
+// circle each foot wanders inside before snapping to the opposite
+// edge). Off by default — purely a debug viz.
+let currentLegsRadius = false;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
@@ -384,6 +389,10 @@ function loadFromStorage(): void {
   const storedBurnMarks = readPersisted(BURN_MARKS_STORAGE_KEY);
   if (storedBurnMarks !== null) {
     currentBurnMarks = storedBurnMarks === 'true';
+  }
+  const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
+  if (storedLegsRadius !== null) {
+    currentLegsRadius = storedLegsRadius === 'true';
   }
   const storedDriftMode = readPersisted(DRIFT_MODE_STORAGE_KEY);
   if (
@@ -704,6 +713,15 @@ export function setUnitRadiusToggle(type: UnitRadiusType, show: boolean): void {
 
 export function anyUnitRadiusToggleActive(): boolean {
   return UNIT_RADIUS_TYPES.some((urt) => currentUnitRadiusToggles[urt]);
+}
+
+export function getLegsRadiusToggle(): boolean {
+  return currentLegsRadius;
+}
+
+export function setLegsRadiusToggle(show: boolean): void {
+  currentLegsRadius = show;
+  persist(LEGS_RADIUS_STORAGE_KEY, String(show));
 }
 
 export function getAudioScope(): AudioScope {

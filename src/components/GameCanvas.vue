@@ -103,6 +103,8 @@ import {
   setProjRangeToggle,
   getUnitRadiusToggle,
   setUnitRadiusToggle,
+  getLegsRadiusToggle,
+  setLegsRadiusToggle,
   RANGE_TYPES,
   PROJ_RANGE_TYPES,
   UNIT_RADIUS_TYPES,
@@ -235,6 +237,10 @@ const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
   shot: getUnitRadiusToggle('shot'),
   push: getUnitRadiusToggle('push'),
 });
+// LEGS-radius (single boolean): show the per-leg "rest circle" — the
+// chassis-local circle each foot wanders inside before snapping to the
+// opposite edge. Useful for tuning leg gait visually.
+const legsRadiusToggle = ref(getLegsRadiusToggle());
 
 // Frame timing tracking (EMA-based, polled from scene)
 const frameMsAvg = ref(0);
@@ -947,6 +953,12 @@ function toggleUnitRadius(type: UnitRadiusType): void {
   const newValue = !unitRadiusToggles[type];
   setUnitRadiusToggle(type, newValue);
   unitRadiusToggles[type] = newValue;
+}
+
+function toggleLegsRadius(): void {
+  const newValue = !legsRadiusToggle.value;
+  setLegsRadiusToggle(newValue);
+  legsRadiusToggle.value = newValue;
 }
 
 // "ALL" helpers for each radius/range section — same behavior as
@@ -2650,6 +2662,18 @@ onUnmounted(() => {
                 PUSH
               </button>
             </div>
+          </div>
+          <div class="control-group">
+            <BarDivider />
+            <span class="control-label">LEGS:</span>
+            <button
+              class="control-btn"
+              :class="{ active: legsRadiusToggle }"
+              title="Show each leg's rest circle (chassis-local — the foot wanders inside this radius before snapping to the opposite edge)"
+              @click="toggleLegsRadius"
+            >
+              RAD
+            </button>
           </div>
         </div>
       </div>
