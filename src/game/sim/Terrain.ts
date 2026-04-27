@@ -133,10 +133,17 @@ export function getTerrainHeight(
     const halfBarrier = cycle / 4; // half-width = π/(2N)
     const distFromBarrierCenter = Math.abs(pos - barrierMid);
     if (distFromBarrierCenter < halfBarrier) {
-      // Angular profile: cosine ease, peak at barrier center, 0 at
-      // the boundary with the team area.
+      // Angular profile: RAISED COSINE half-wave (Hann window),
+      //   f(t) = (1 + cos(πt)) / 2
+      // — peak = 1 at the barrier center (t=0, top), 0 at the team-
+      // area boundary (t=1, bottom). The derivative is zero at BOTH
+      // ends, so the ridge transitions smoothly out of the team
+      // zone (no sharp angular slope where flat ground meets the
+      // mountain face) AND smoothly through the peak. Replaces the
+      // earlier quarter-cosine which was smooth only at the top
+      // and steep at the trough.
       const angT = distFromBarrierCenter / halfBarrier; // 0..1
-      const angFalloff = Math.cos(angT * (Math.PI / 2));
+      const angFalloff = (1 + Math.cos(angT * Math.PI)) * 0.5;
       // Radial profile: 0 at center, ramp linearly up to the spawn
       // ring, plateau beyond. The user-spec is "starts at 2x
       // amplitude from the outer ring of the starting circle".
