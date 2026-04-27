@@ -49,6 +49,17 @@ export type OrbitCameraOptions = {
    *  cursor. Used for both wheel zoom-to-cursor and pan-around-cursor.
    *  When unset, we fall back to a flat y=0 plane projection. */
   getCursorWorldPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
+  /** OPTIONAL terrain-height sampler — if set, the orbit camera
+   *  lifts the rendered camera position so it never dips below the
+   *  terrain plus `minTerrainClearance`. The clamp runs after the
+   *  orbit math computes the position; lookAt(target) is called
+   *  after the lift, so the camera keeps the target framed but
+   *  glides above terrain when the orbit math would have buried it. */
+  getTerrainHeight?: (x: number, z: number) => number;
+  /** Minimum world-Y gap between the camera and the terrain
+   *  beneath it. Defaults to 30 wu — enough to clear z-fighting and
+   *  still let the camera get genuinely close to a hilltop. */
+  minTerrainClearance?: number;
 };
 
 export class OrbitCamera {
@@ -85,6 +96,11 @@ export class OrbitCamera {
   private arrowDragMaxDist: number;
   private onPanState?: (dirX: number, dirY: number, intensity: number) => void;
   private getCursorWorldPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
+  private getTerrainHeight?: (x: number, z: number) => number;
+  /** Minimum gap (world-Y) between the camera and terrain beneath
+   *  it. The camera position is lifted in `apply()` whenever its
+   *  computed Y would fall below `terrain + this`. */
+  public minTerrainClearance = 30;
 
   // Tracks drag origin in screen pixels so we can emit pan-arrow state.
   private dragOriginScreen = { x: 0, y: 0 };
@@ -130,6 +146,10 @@ export class OrbitCamera {
     this.arrowDragMaxDist = opts.arrowDragMaxDist ?? 100;
     this.onPanState = opts.onPanState;
     this.getCursorWorldPoint = opts.getCursorWorldPoint;
+    this.getTerrainHeight = opts.getTerrainHeight;
+    if (opts.minTerrainClearance !== undefined) {
+      this.minTerrainClearance = Math.max(0, opts.minTerrainClearance);
+    }
 
     this.toDistance = this.distance;
     this.toTargetX = this.target.x;
@@ -356,13 +376,27 @@ export class OrbitCamera {
     return out;
   }
 
-  /** Recompute camera position from target + yaw + pitch + distance. */
+  /** Recompute camera position from target + yaw + pitch + distance.
+   *
+   *  Terrain clearance: after the orbit math gives a candidate
+   *  camera position, we sample the terrain at the camera's XZ and
+   *  LIFT the camera so it never sits below `terrain +
+   *  minTerrainClearance`. The lookAt(target) below then re-aims the
+   *  camera; the result is a smooth "glide above terrain" — the
+   *  camera always stays above the surface, even when the user has
+   *  pitched it horizontal and the line-of-sight pivot would have
+   *  buried it inside a hill. */
   apply(): void {
     const sinP = Math.sin(this.pitch);
     const cosP = Math.cos(this.pitch);
     const x = this.target.x + this.distance * sinP * Math.sin(this.yaw);
-    const y = this.target.y + this.distance * cosP;
+    let y = this.target.y + this.distance * cosP;
     const z = this.target.z + this.distance * sinP * -Math.cos(this.yaw);
+    if (this.getTerrainHeight) {
+      const groundY = this.getTerrainHeight(x, z);
+      const minY = groundY + this.minTerrainClearance;
+      if (y < minY) y = minY;
+    }
     this.camera.position.set(x, y, z);
     this.camera.lookAt(this.target);
   }
@@ -432,6 +466,15 @@ export class OrbitCamera {
     cb: ((clientX: number, clientY: number) => THREE.Vector3 | null) | undefined,
   ): void {
     this.getCursorWorldPoint = cb;
+  }
+
+  /** Install / replace the terrain-height sampler. While set, every
+   *  apply() lifts the camera above the local terrain by at least
+   *  `minTerrainClearance` — the camera can't dip into geometry. */
+  setTerrainSampler(
+    cb: ((x: number, z: number) => number) | undefined,
+  ): void {
+    this.getTerrainHeight = cb;
   }
 
   /** Register a callback for drag-pan state (used by the shared HUD overlay). */

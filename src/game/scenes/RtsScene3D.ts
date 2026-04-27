@@ -43,6 +43,8 @@ import {
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { getPlayerBaseAngle } from '../sim/spawn';
+import { getSurfaceHeight } from '../sim/Terrain';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
@@ -404,6 +406,12 @@ export class RtsScene3D {
     // (correctly tracking hills / valleys), not a flat y=0 plane.
     this._cursorRaycaster = new THREE.Raycaster();
     this.threeApp.orbit.setCursorPicker((cx, cy) => this._raycastTerrainAtCursor(cx, cy));
+    // Terrain clearance: feed the orbit camera the canonical
+    // heightmap sampler so the camera can never dip below the
+    // ground. Cheap analytical lookup — no raycast per frame.
+    this.threeApp.orbit.setTerrainSampler((x, z) =>
+      getSurfaceHeight(x, z, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE)
+    );
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(this.threeApp.world);
     this.burnMarkRenderer = new BurnMark3D(this.threeApp.world, this.renderScope);
