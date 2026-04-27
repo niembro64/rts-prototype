@@ -21,6 +21,23 @@ import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
 
+/** Per-unit step-circle radius as a fraction of the unit's LONGEST
+ *  leg (upperLegLength + lowerLegLength). One value shared by every
+ *  leg on the unit. Bigger → longer stride / slower step cadence;
+ *  smaller → shorter / faster. Stays well inside physical leg reach
+ *  given the typical rest-distance multipliers (0.5–0.74) so the
+ *  foot can fully reach the far edge of the circle without the leg
+ *  over-extending. */
+const STEP_CIRCLE_RADIUS_FRAC = 0.35;
+
+/** When the foot exits the rest circle, the snap target sits at this
+ *  fraction of the radius INSIDE the circle (along the opposite
+ *  direction), not on the boundary. Provides hysteresis: after a
+ *  snap the foot is 15% inside the boundary, so the body has to drag
+ *  it through (1 + 0.85) = 1.85 radii before another snap fires —
+ *  no immediate back-and-forth flicker if the body is jittering. */
+const SNAP_TARGET_INSET = 0.85;
+
 const TREAD_COLOR = 0x1a1d22;
 const TREAD_HEIGHT = 10;
 const TREAD_Y = TREAD_HEIGHT / 2;
@@ -61,6 +78,12 @@ export type Locomotion3DMesh =
        style: LegStyle;
        config: BlueprintLegConfig;
        legLod: LegLod;
+       /** Per-UNIT rest-circle radius (chassis-local world units). Every
+        *  leg on this unit shares the same circle size — it scales with
+        *  the unit's longest leg so a Daddy gets a much larger stride
+        *  budget than a Tick, but two legs of the same unit always
+        *  agree on how far a foot can wander before snapping. */
+       stepRadius: number;
     } & LocomotionBase)
   | undefined;
 
@@ -463,6 +486,17 @@ function buildLegs(
   const unitR = entity.transform.rotation;
   for (const leg of legs) initializeLegAt(leg, unitX, unitY, unitR);
 
+  // Unit-level step-circle radius. Every leg on this unit shares the
+  // same rest-circle size; we anchor it to the LONGEST leg so units
+  // with mixed-length legs (e.g. the daddy's slightly shorter middle
+  // pair) all step on the same scale.
+  let maxLegLength = 0;
+  for (const c of allConfigs) {
+    const tl = totalLegLength(c);
+    if (tl > maxLegLength) maxLegLength = tl;
+  }
+  const stepRadius = maxLegLength * STEP_CIRCLE_RADIUS_FRAC;
+
   return {
     type: 'legs',
     group,
@@ -470,6 +504,7 @@ function buildLegs(
     style,
     config: cfg,
     legLod,
+    stepRadius,
     lodKey: '',
   };
 }
@@ -480,17 +515,6 @@ function buildLegs(
 
 function totalLegLength(c: ArachnidLegConfig): number {
   return c.upperLegLength + c.lowerLegLength;
-}
-
-/** Rest-circle radius for a leg. Honors an explicit `stepRadius`
- *  override when present; otherwise derives a value from the legacy
- *  `snapTriggerAngle` so per-style tuning stays compatible — the
- *  chord across the trigger angle gives the same gait cadence the
- *  old dual-trigger logic produced. */
-function stepRadiusFor(c: ArachnidLegConfig): number {
-  if (c.stepRadius !== undefined && c.stepRadius > 0) return c.stepRadius;
-  const restDist = totalLegLength(c) * c.snapDistanceMultiplier;
-  return 2 * restDist * Math.sin(c.snapTriggerAngle / 2);
 }
 
 function initializeLegAt(leg: LegInstance, unitX: number, unitZ: number, unitR: number): void {
@@ -655,11 +679,12 @@ export function updateLocomotion(
     const vLocalForward = cosYaw * vx + sinYaw * vy;   // chassis +X
     const vLocalLateral = -sinYaw * vx + cosYaw * vy;  // chassis +Y in sim → three +Z
 
+    // One rest-circle radius for the whole unit, baked at build time.
+    const stepRadius = mesh.stepRadius;
     for (const leg of mesh.legs) {
       const c = leg.config;
       const tl = totalLegLength(c);
       const restDistance = tl * c.snapDistanceMultiplier;
-      const stepRadius = stepRadiusFor(c);
       // Right-side legs straddle the rest direction by half the
       // step-radius angle so the gait alternates by side from frame 1.
       const initAngle = leg.side === 1
@@ -747,15 +772,19 @@ export function updateLocomotion(
 
       if (!leg.isSliding && distSq > stepRadius * stepRadius) {
         const dist = Math.sqrt(distSq);
-        // Unit vector pointing FROM rest center TO current foot;
-        // the snap target is the opposite-edge point of the rest
-        // circle, i.e. rest center − that direction × stepRadius.
+        // Unit vector pointing FROM rest center TO current foot.
+        // Snap target sits 85% of the radius along the OPPOSITE
+        // direction — strictly inside the circle, not on the edge.
+        // The 15% inset gives hysteresis so a body that's jittering
+        // can't immediately re-trigger a back-snap (the foot has to
+        // traverse 1.85 R worth of drift before exiting again).
         const ux = dist > 1e-6 ? dx / dist : Math.cos(initAngle);
         const uz = dist > 1e-6 ? dz / dist : Math.sin(initAngle);
+        const snapDist = stepRadius * SNAP_TARGET_INSET;
         leg.startGroundX = leg.groundX;
         leg.startGroundZ = leg.groundZ;
-        leg.targetGroundX = restCenterX - ux * stepRadius;
-        leg.targetGroundZ = restCenterZ - uz * stepRadius;
+        leg.targetGroundX = restCenterX - ux * snapDist;
+        leg.targetGroundZ = restCenterZ - uz * snapDist;
         leg.isSliding = true;
         leg.lerpProgress = 0;
       }

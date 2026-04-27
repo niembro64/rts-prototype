@@ -11,18 +11,12 @@
  *  Foot motion model (rest-circle):
  *    The leg's "rest center" is the chassis-local point at angle
  *    `snapTargetAngle` and distance `snapDistanceMultiplier × leg
- *    length` from the hip. The foot may drift anywhere INSIDE a
- *    circle of radius `stepRadius` around that rest center. Once the
- *    foot leaves the circle (the body has moved or yawed enough that
- *    the planted foot is now beyond the allowed wandering range)
- *    it snaps to the diametrically opposite point on the circle's
- *    edge — the natural "next stride" target.
- *
- *  `snapTriggerAngle` is retained as a convenience: when
- *  `stepRadius` isn't given it defaults to `2 × restDistance ×
- *  sin(snapTriggerAngle / 2)` (the chord across the trigger
- *  angle), so existing per-style tunings produce the same step
- *  cadence they did before. */
+ *    length` from the hip. The foot drifts inside a circle around
+ *    that rest center; once it leaves the circle it snaps to a
+ *    point inside the opposite side. The circle's RADIUS is a
+ *    unit-level property (every leg on the unit shares one value
+ *    derived from the longest leg) — see Locomotion3D's
+ *    STEP_CIRCLE_RADIUS_FRAC and SNAP_TARGET_INSET constants. */
 export type ArachnidLegConfig = {
   attachOffsetX: number;
   attachOffsetY: number;
@@ -32,10 +26,6 @@ export type ArachnidLegConfig = {
   snapTargetAngle: number;
   snapDistanceMultiplier: number;
   extensionThreshold: number;
-  /** Optional explicit rest-circle radius in chassis-local world
-   *  units. When omitted, derived from snapTriggerAngle as a chord
-   *  across the trigger angle (see type doc above). */
-  stepRadius?: number;
   lerpDuration?: number;
 };
 
