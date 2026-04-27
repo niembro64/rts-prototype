@@ -30,15 +30,13 @@ import { SPATIAL_GRID_CELL_SIZE } from '../../config';
  *  given the typical rest-distance multipliers (0.5–0.74) so the
  *  foot can fully reach the far edge of the circle without the leg
  *  over-extending. */
-const STEP_CIRCLE_RADIUS_FRAC = 0.35;
+const STEP_CIRCLE_RADIUS_FRAC = 0.5;
 
-/** When the foot exits the rest circle, the snap target sits at this
- *  fraction of the radius INSIDE the circle (along the opposite
- *  direction), not on the boundary. Provides hysteresis: after a
- *  snap the foot is 15% inside the boundary, so the body has to drag
- *  it through (1 + 0.85) = 1.85 radii before another snap fires —
- *  no immediate back-and-forth flicker if the body is jittering. */
-const SNAP_TARGET_INSET = 0.85;
+/** Right-side legs are initialized half a step BACKWARD of rest along
+ *  the chassis forward axis so they trigger their first snap before
+ *  the left side does — alternating gait from frame 1 instead of all
+ *  legs stepping in unison. Fraction of stepRadius. */
+const RIGHT_SIDE_PHASE_SHIFT = 0.5;
 
 const TREAD_COLOR = 0x1a1d22;
 const TREAD_HEIGHT = 10;
@@ -503,11 +501,11 @@ function buildLegs(
   }
   const stepRadius = maxLegLength * STEP_CIRCLE_RADIUS_FRAC;
 
-  // Seat each foot at its rest-sphere CENTER on the actual ground so
-  // there's no first-frame flicker from (0,0,0). We transform the
-  // chassis-local rest center to world coords and then sample
-  // terrain Y at that XZ — the foot starts planted on real ground.
-  for (const leg of legs) initializeLegAt(leg, entity, r, mapWidth, mapHeight);
+  // Seat each foot at its rest position on the actual ground so
+  // there's no first-frame flicker from (0,0,0). Right-side legs are
+  // seeded half a step backward of rest for an alternating gait —
+  // see initializeLegAt.
+  for (const leg of legs) initializeLegAt(leg, entity, r, mapWidth, mapHeight, stepRadius);
 
   return {
     type: 'legs',
@@ -590,20 +588,25 @@ function initializeLegAt(
   unitRadius: number,
   mapWidth: number,
   mapHeight: number,
+  stepRadius: number,
 ): void {
   const c = leg.config;
   const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
-  // Right-side legs (side === 1) start halfway through their drift
-  // cycle so the gait alternates by side from frame 1.
-  const initAngle = leg.side === 1
-    ? (c.snapTargetAngle + c.snapTriggerAngle * Math.sign(c.snapTargetAngle)) / 2
-    : c.snapTargetAngle;
-  // Chassis-local rest center: hip + (cos restAngle, sin restAngle) ×
-  // restDistance. Y component is FOOT_Y so the rest sphere sits at
-  // foot level on flat ground.
-  const cx = c.attachOffsetX + Math.cos(initAngle) * restDistance;
-  const cy = FOOT_Y;
-  const cz = c.attachOffsetY + Math.sin(initAngle) * restDistance;
+  // Both sides use the leg's canonical rest direction
+  // (c.snapTargetAngle is already mirrored for right-side legs at
+  // build time). Chassis-local rest position = hip + outward × dist.
+  const restLocalX = c.attachOffsetX + Math.cos(c.snapTargetAngle) * restDistance;
+  const restLocalY = FOOT_Y;
+  const restLocalZ = c.attachOffsetY + Math.sin(c.snapTargetAngle) * restDistance;
+  // PHASE OFFSET for alternating gait: right-side legs (side === 1)
+  // are seated half a step BACKWARD along the chassis forward axis
+  // (chassis-local −X). They'll trigger their first snap before the
+  // left side does, kicking off an alternating walk pattern from
+  // frame 1 instead of every leg stepping in sync.
+  const phaseShiftX = leg.side === 1 ? -stepRadius * RIGHT_SIDE_PHASE_SHIFT : 0;
+  const cx = restLocalX + phaseShiftX;
+  const cy = restLocalY;
+  const cz = restLocalZ;
   // Transform to world to find the foot's spawn XZ, then snap Y to
   // the actual terrain elevation so the foot lands ON the ground.
   transformChassisToWorld(cx, cy, cz, entity, unitRadius, mapWidth, mapHeight, _worldOut);
@@ -736,37 +739,48 @@ export function updateLocomotion(
 
   if (mesh.type === 'legs') {
     // World-planted feet. Each foot sits at a real world XYZ point on
-    // the terrain and stays there until the rest sphere (which moves
-    // and yaws and tilts with the body) gets far enough away that the
-    // foot exits the sphere — at which point it lifts off, lerps to a
-    // new world ground spot inside the OPPOSITE side of the sphere,
-    // and plants again. The unit's translation, rotation, and surface
-    // tilt all naturally fall out of the world-frame test: when the
-    // body moves the rest sphere moves; when the body yaws the rest
-    // sphere yaws around the unit's center; when the body tilts the
-    // sphere tilts with it. The foot never moves until a snap fires.
+    // the terrain and stays there until the body has moved or yawed
+    // or tilted enough that the planted foot exits the leg's REST
+    // SPHERE — a chassis-local 3D ball centered at the leg's rest
+    // position. When the foot exits, it lifts and lerps to a new
+    // world ground spot AT the rest position (with a velocity
+    // lookahead that exactly cancels body motion during the lerp,
+    // so the foot ends up at chassis-local rest by lerp completion).
+    //
+    // Why this avoids "under the body" and leg crossing:
+    //   - Rest position = hip + outward × restDistance, sitting OUTSIDE
+    //     the body silhouette by construction.
+    //   - Snap target = rest position + small lookahead, which stays
+    //     near rest — the foot returns home, never to the opposite
+    //     side of the sphere or across the body's centerline.
+    //   - stepRadius < restDistance, so the rest sphere never includes
+    //     the hip; the foot can drift toward the body but the trigger
+    //     always fires before the foot crosses the body's footprint.
     const unitRadius = entity.unit?.unitRadiusCollider.push ?? 0;
     const stepRadius = mesh.stepRadius;
     const showViz = getLegsRadiusToggle();
+    // Body velocity rotated into chassis-local frame, used for the
+    // snap target's lookahead. sim x/y → three x/z (the existing
+    // handedness); chassis +X = body forward.
+    const yaw = entity.transform.rotation;
+    const cosYaw = Math.cos(yaw);
+    const sinYaw = Math.sin(yaw);
+    const vLocalForward = cosYaw * vx + sinYaw * vy;
+    const vLocalLateral = -sinYaw * vx + cosYaw * vy;
 
     for (const leg of mesh.legs) {
       const c = leg.config;
       const tl = totalLegLength(c);
-      // Right-side legs straddle the rest direction by half the
-      // step-radius angle so the gait alternates by side from frame 1.
-      const initAngle = leg.side === 1
-        ? (c.snapTargetAngle + c.snapTriggerAngle * Math.sign(c.snapTargetAngle)) / 2
-        : c.snapTargetAngle;
       const restDistance = tl * c.snapDistanceMultiplier;
-      // Chassis-local hip and rest-sphere center. Both get
-      // transformed to world coords each frame so they ride along
-      // with the body's translation, yaw, and surface tilt.
+      // Chassis-local hip and rest position. Both transform to world
+      // each frame so they ride along with the body's translation,
+      // yaw, and surface tilt.
       const hipLocalX = c.attachOffsetX;
       const hipLocalY = leg.hipY;
       const hipLocalZ = c.attachOffsetY;
-      const restLocalX = hipLocalX + Math.cos(initAngle) * restDistance;
+      const restLocalX = hipLocalX + Math.cos(c.snapTargetAngle) * restDistance;
       const restLocalY = FOOT_Y;
-      const restLocalZ = hipLocalZ + Math.sin(initAngle) * restDistance;
+      const restLocalZ = hipLocalZ + Math.sin(c.snapTargetAngle) * restDistance;
 
       transformChassisToWorld(
         hipLocalX, hipLocalY, hipLocalZ,
@@ -801,7 +815,7 @@ export function updateLocomotion(
       if (!leg.initialized) {
         // Defer init to the helper so the build-time and "lazy on
         // first update" paths stay in sync.
-        initializeLegAt(leg, entity, unitRadius, mapWidth, mapHeight);
+        initializeLegAt(leg, entity, unitRadius, mapWidth, mapHeight, stepRadius);
       }
 
       // Lerp the foot through 3D world space when mid-step. Otherwise
@@ -840,22 +854,27 @@ export function updateLocomotion(
       const distSq = dx * dx + dy * dy + dz * dz;
 
       if (!leg.isSliding && distSq > stepRadius * stepRadius) {
-        const dist = Math.sqrt(distSq);
-        // Unit vector from rest center to current foot, in world
-        // frame. Snap target = rest center − that direction ×
-        // stepRadius × SNAP_TARGET_INSET (lands inside the OPPOSITE
-        // side of the sphere, 15% inside the boundary). After the
-        // snap target XZ is chosen, sample the terrain to lock the
-        // target Y to the actual ground at that spot — feet always
-        // land on real terrain, not a flat plane.
-        const ux = dist > 1e-6 ? dx / dist : Math.cos(initAngle);
-        const uz = dist > 1e-6 ? dz / dist : Math.sin(initAngle);
-        const snapDist = stepRadius * SNAP_TARGET_INSET;
-        const tWorldX = restWorldX - ux * snapDist;
-        const tWorldZ = restWorldZ - uz * snapDist;
-        // Y comes from the actual terrain at the chosen XZ — feet
-        // always land on real ground, not a plane through the rest
-        // sphere's center.
+        // Snap target = REST POSITION (not opposite side). The foot
+        // lifts and returns home. A velocity lookahead in chassis-
+        // local frame shifts the target forward by exactly the
+        // distance the body will travel during the lerp, so by the
+        // time the lerp completes the body has caught up and the
+        // foot ends up at chassis-local rest. No infinite snap
+        // loops at high speed, no "behind the body" lag, and no
+        // way for the foot to land under the body or across the
+        // leg's outward axis.
+        const lookaheadT = leg.lerpDuration / 1000;
+        const targetLocalX = restLocalX + vLocalForward * lookaheadT;
+        const targetLocalY = restLocalY;
+        const targetLocalZ = restLocalZ + vLocalLateral * lookaheadT;
+        transformChassisToWorld(
+          targetLocalX, targetLocalY, targetLocalZ,
+          entity, unitRadius, mapWidth, mapHeight, _worldOut,
+        );
+        const tWorldX = _worldOut.x;
+        const tWorldZ = _worldOut.z;
+        // Y comes from actual terrain at the chosen XZ — feet always
+        // land on real ground, not a plane through the rest center.
         const groundY = getSurfaceHeight(tWorldX, tWorldZ, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
 
         leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
