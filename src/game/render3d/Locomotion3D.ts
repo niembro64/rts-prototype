@@ -30,13 +30,27 @@ import { SPATIAL_GRID_CELL_SIZE } from '../../config';
  *  given the typical rest-distance multipliers (0.5–0.74) so the
  *  foot can fully reach the far edge of the circle without the leg
  *  over-extending. */
-const STEP_CIRCLE_RADIUS_FRAC = 0.5;
+const STEP_CIRCLE_RADIUS_FRAC = 0.85;
 
-/** Right-side legs are initialized half a step BACKWARD of rest along
- *  the chassis forward axis so they trigger their first snap before
- *  the left side does — alternating gait from frame 1 instead of all
- *  legs stepping in unison. Fraction of stepRadius. */
-const RIGHT_SIDE_PHASE_SHIFT = 0.5;
+/** Per-leg phase pattern. Each leg is either at PHASE 0 (initial
+ *  foot position = rest) or PHASE 180 (initial foot position =
+ *  rest minus a full stepRadius along chassis +X, i.e. backward of
+ *  rest along the body's forward axis). The pattern below — read
+ *  index 0 = front-most leg, last index = rear-most leg — gives:
+ *
+ *    Left side:   0,   180, 0,   180, …
+ *    Right side:  180, 0,   180, 0,   …
+ *
+ *  i.e. adjacent legs on the same side are inverted, AND the two
+ *  sides are inverted relative to each other (so diagonals share
+ *  a phase). Encoded as an XOR of within-side index parity and
+ *  side parity:
+ *
+ *    phaseShift01 = (sideIndex & 1) ^ (side === 1 ? 1 : 0)
+ *
+ *  The 0/1 result becomes the multiplier on stepRadius for the
+ *  initial backward chassis-local offset (see initializeLegAt). */
+const PHASE_180_BACKWARD_FRACTION = 1.0;
 
 const TREAD_COLOR = 0x1a1d22;
 const TREAD_HEIGHT = 10;
@@ -109,6 +123,12 @@ type LegInstance = {
    *  so composite units like the arachnid get tall rear legs +
    *  shorter front legs. */
   hipY: number;
+  /** Initial phase: 0 = foot starts AT rest, 1 = foot starts a full
+   *  stepRadius BEHIND rest in chassis +X (= phase 180°). Computed
+   *  per-leg in buildLegs so adjacent legs on the same side are
+   *  inverted and the two sides are inverted from each other —
+   *  diagonal-pair alternating gait from frame 1. */
+  phaseShift01: 0 | 1;
 
   /** Current foot world position. Y is sampled from terrain — when
    *  the foot is planted (not sliding) this XYZ doesn't change at
@@ -430,9 +450,18 @@ function buildLegs(
   const upperThick = Math.max(cfg.upperThickness, 1) * 0.6;
   const lowerThick = Math.max(cfg.lowerThickness, 1) * 0.6;
 
+  const sideLegCount = leftWithLerp.length;
   for (let i = 0; i < allConfigs.length; i++) {
     const legCfg = allConfigs[i];
     const side = sides[i];
+    // Within-side index: 0 = front-most leg, last = rear-most.
+    // Phase pattern (front → back):
+    //   left:   0,   180, 0,   180, …   ← within-side parity drives it
+    //   right:  180, 0,   180, 0,   …   ← side flip inverts that
+    // Encoded as XOR of within-side parity and side parity.
+    const sideIndex = i < sideLegCount ? i : i - sideLegCount;
+    const sideParity = side === 1 ? 1 : 0;
+    const phaseShift01 = ((sideIndex & 1) ^ sideParity) as 0 | 1;
 
     const upper = new THREE.Mesh(legGeom, legMat);
     group.add(upper);
@@ -473,6 +502,7 @@ function buildLegs(
       config: legCfg,
       side,
       hipY,
+      phaseShift01,
       worldX: 0, worldY: 0, worldZ: 0,
       startWorldX: 0, startWorldY: 0, startWorldZ: 0,
       targetWorldX: 0, targetWorldY: 0, targetWorldZ: 0,
@@ -502,9 +532,9 @@ function buildLegs(
   const stepRadius = maxLegLength * STEP_CIRCLE_RADIUS_FRAC;
 
   // Seat each foot at its rest position on the actual ground so
-  // there's no first-frame flicker from (0,0,0). Right-side legs are
-  // seeded half a step backward of rest for an alternating gait —
-  // see initializeLegAt.
+  // there's no first-frame flicker from (0,0,0). Each leg's
+  // phaseShift01 (set just above) decides whether it starts AT rest
+  // or a full stepRadius backward of rest — see initializeLegAt.
   for (const leg of legs) initializeLegAt(leg, entity, r, mapWidth, mapHeight, stepRadius);
 
   return {
@@ -598,12 +628,15 @@ function initializeLegAt(
   const restLocalX = c.attachOffsetX + Math.cos(c.snapTargetAngle) * restDistance;
   const restLocalY = FOOT_Y;
   const restLocalZ = c.attachOffsetY + Math.sin(c.snapTargetAngle) * restDistance;
-  // PHASE OFFSET for alternating gait: right-side legs (side === 1)
-  // are seated half a step BACKWARD along the chassis forward axis
-  // (chassis-local −X). They'll trigger their first snap before the
-  // left side does, kicking off an alternating walk pattern from
-  // frame 1 instead of every leg stepping in sync.
-  const phaseShiftX = leg.side === 1 ? -stepRadius * RIGHT_SIDE_PHASE_SHIFT : 0;
+  // PHASE OFFSET for alternating gait: each leg is at phase 0 (foot
+  // at rest) or phase 180 (foot a full stepRadius BACKWARD of rest
+  // along chassis +X). The pattern, set in buildLegs, alternates
+  // along each side AND inverts between sides — so diagonal pairs
+  // share a phase and the unit walks with a diagonal-trot gait
+  // from frame 1 instead of every leg stepping in unison.
+  const phaseShiftX = leg.phaseShift01 === 1
+    ? -stepRadius * PHASE_180_BACKWARD_FRACTION
+    : 0;
   const cx = restLocalX + phaseShiftX;
   const cy = restLocalY;
   const cz = restLocalZ;
