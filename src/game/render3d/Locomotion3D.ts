@@ -52,6 +52,25 @@ const STEP_CIRCLE_RADIUS_FRAC = 0.85;
  *  initial backward chassis-local offset (see initializeLegAt). */
 const PHASE_180_BACKWARD_FRACTION = 1.0;
 
+/** Cap on the velocity-lookahead offset added to the snap target,
+ *  as a fraction of stepRadius. Keeps the snap target strictly
+ *  INSIDE the rest sphere even at high body speeds (e.g. a unit
+ *  pushed hard by a collision or explosion). Without this cap a
+ *  fast push produces a snap target outside the sphere, the foot
+ *  lands outside, the trigger immediately re-fires on the next
+ *  tick, and visually the foot looks like it's just dragging
+ *  through space instead of actually stepping — exactly the "feet
+ *  drag when the unit is pushed backward / sideways" bug. */
+const SNAP_LOOKAHEAD_MAX_FRACTION = 0.7;
+
+/** Watchdog: if the foot's distance-from-rest exceeds this many
+ *  stepRadii DURING an in-flight slide, abort the slide and snap
+ *  to a fresh target. Catches the case where the body's velocity
+ *  reversed mid-step (push → thrust the other way) and the
+ *  in-flight target is now wrong relative to the body's actual
+ *  motion. */
+const SLIDE_INTERRUPT_FRACTION = 2.0;
+
 const TREAD_COLOR = 0x1a1d22;
 const TREAD_HEIGHT = 10;
 const TREAD_Y = TREAD_HEIGHT / 2;
@@ -880,26 +899,57 @@ export function updateLocomotion(
       // coords. The same single check covers translation, yaw, AND
       // tilt change — the rest sphere's center moves with all three,
       // the foot stays put, so any of them can carry the foot out
-      // of the sphere.
+      // of the sphere. The trigger is direction-agnostic, so it
+      // fires equally for forward, backward, sideways, and yaw-only
+      // motion of the body.
       const dx = leg.worldX - restWorldX;
       const dy = leg.worldY - restWorldY;
       const dz = leg.worldZ - restWorldZ;
       const distSq = dx * dx + dy * dy + dz * dz;
+      const stepRSq = stepRadius * stepRadius;
 
-      if (!leg.isSliding && distSq > stepRadius * stepRadius) {
-        // Snap target = REST POSITION (not opposite side). The foot
-        // lifts and returns home. A velocity lookahead in chassis-
-        // local frame shifts the target forward by exactly the
-        // distance the body will travel during the lerp, so by the
-        // time the lerp completes the body has caught up and the
-        // foot ends up at chassis-local rest. No infinite snap
-        // loops at high speed, no "behind the body" lag, and no
-        // way for the foot to land under the body or across the
-        // leg's outward axis.
+      // Watchdog: if the foot is way outside the sphere mid-slide
+      // (body changed direction during the step, or we're snapping
+      // to an old target the body has since outrun), abort and
+      // re-trigger to a fresh target.
+      if (
+        leg.isSliding
+        && distSq > stepRSq * SLIDE_INTERRUPT_FRACTION * SLIDE_INTERRUPT_FRACTION
+      ) {
+        leg.isSliding = false;
+      }
+
+      if (!leg.isSliding && distSq > stepRSq) {
+        // Snap target = REST POSITION + velocity lookahead. The foot
+        // lifts and lands near home, then drift restarts. The
+        // lookahead in chassis-local frame shifts the target along
+        // the body's motion direction by velocity × lerpDuration —
+        // so by the time the lerp completes, the body has caught
+        // up and the foot is at chassis-local rest. Direction-
+        // agnostic: works the same for forward thrust, backward
+        // push, sideways slide, etc.
+        //
+        // The offset is CAPPED at SNAP_LOOKAHEAD_MAX_FRACTION of
+        // stepRadius so the target always lands inside the rest
+        // sphere even when the body is moving fast. Without that
+        // cap, fast motion (especially backward / sideways pushes
+        // from collisions) produces a target outside the sphere,
+        // the foot lands outside, and the trigger fires again
+        // immediately on the next tick — visually reading as
+        // "dragging" because each step is a no-op micro-snap.
         const lookaheadT = leg.lerpDuration / 1000;
-        const targetLocalX = restLocalX + vLocalForward * lookaheadT;
+        let offsetX = vLocalForward * lookaheadT;
+        let offsetZ = vLocalLateral * lookaheadT;
+        const offsetMag = Math.hypot(offsetX, offsetZ);
+        const offsetMax = stepRadius * SNAP_LOOKAHEAD_MAX_FRACTION;
+        if (offsetMag > offsetMax) {
+          const scale = offsetMax / offsetMag;
+          offsetX *= scale;
+          offsetZ *= scale;
+        }
+        const targetLocalX = restLocalX + offsetX;
         const targetLocalY = restLocalY;
-        const targetLocalZ = restLocalZ + vLocalLateral * lookaheadT;
+        const targetLocalZ = restLocalZ + offsetZ;
         transformChassisToWorld(
           targetLocalX, targetLocalY, targetLocalZ,
           entity, unitRadius, mapWidth, mapHeight, _worldOut,
