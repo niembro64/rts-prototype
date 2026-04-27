@@ -270,11 +270,14 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
 // circle each foot wanders inside before snapping to the opposite
 // edge). Off by default — purely a debug viz.
 let currentLegsRadius = false;
-// Whether the 3D orbit camera eases zoom transitions. SNAP (false) =
-// each wheel tick applies its full effect immediately, identical to
-// the original behavior. SMOOTH (true) = OrbitCamera animates the
-// dolly + cursor-pin shift over ~250 ms with an ease-out-cubic curve.
-let currentCameraSmooth = false;
+// 3D orbit camera zoom-easing mode:
+//   'snap' = each wheel tick applies its full effect immediately
+//            (original behavior, no animation).
+//   'fast' = OrbitCamera eases the dolly + cursor-pin shift over a
+//            short window (~150 ms ease-out-cubic).
+//   'slow' = same animation, longer window (~400 ms) — gentler feel.
+export type CameraSmoothMode = 'snap' | 'fast' | 'slow';
+let currentCameraSmoothMode: CameraSmoothMode = 'snap';
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
@@ -401,8 +404,13 @@ function loadFromStorage(): void {
     currentLegsRadius = storedLegsRadius === 'true';
   }
   const storedCameraSmooth = readPersisted(CAMERA_SMOOTH_STORAGE_KEY);
-  if (storedCameraSmooth !== null) {
-    currentCameraSmooth = storedCameraSmooth === 'true';
+  if (storedCameraSmooth === 'snap' || storedCameraSmooth === 'fast' || storedCameraSmooth === 'slow') {
+    currentCameraSmoothMode = storedCameraSmooth;
+  } else if (storedCameraSmooth === 'true') {
+    // Backward-compat: the old boolean toggle wrote 'true' / 'false';
+    // map 'true' (smooth-on) to 'fast' so existing users don't lose
+    // their preference, and ignore 'false' (default 'snap' covers it).
+    currentCameraSmoothMode = 'fast';
   }
   const storedDriftMode = readPersisted(DRIFT_MODE_STORAGE_KEY);
   if (
@@ -734,13 +742,13 @@ export function setLegsRadiusToggle(show: boolean): void {
   persist(LEGS_RADIUS_STORAGE_KEY, String(show));
 }
 
-export function getCameraSmooth(): boolean {
-  return currentCameraSmooth;
+export function getCameraSmoothMode(): CameraSmoothMode {
+  return currentCameraSmoothMode;
 }
 
-export function setCameraSmooth(enabled: boolean): void {
-  currentCameraSmooth = enabled;
-  persist(CAMERA_SMOOTH_STORAGE_KEY, String(enabled));
+export function setCameraSmoothMode(mode: CameraSmoothMode): void {
+  currentCameraSmoothMode = mode;
+  persist(CAMERA_SMOOTH_STORAGE_KEY, mode);
 }
 
 export function getAudioScope(): AudioScope {

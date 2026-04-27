@@ -61,15 +61,15 @@ export class OrbitCamera {
   private _zoomBefore = new THREE.Vector3();
   private _zoomAfter = new THREE.Vector3();
 
-  // Smooth-zoom animation state. When smoothEnabled is true, wheel
+  // Smooth-zoom animation state. When smoothDurationSec > 0, wheel
   // events compute a "from" (current rendered) and "to" (post-zoom)
   // state, then `tick(dt)` interpolates the rendered camera between
-  // them over `smoothDurationSec`. Successive scrolls during an
-  // active animation chain off the existing "to" state, so the user
-  // can flick the wheel multiple times and the camera dollies once
-  // smoothly to the final position.
-  public smoothEnabled = false;
-  public smoothDurationSec = 0.25;
+  // them over smoothDurationSec. Successive scrolls during an active
+  // animation chain off the existing "to" state, so the user can
+  // flick the wheel multiple times and the camera dollies once
+  // smoothly to the final position. Set duration to 0 to disable
+  // smoothing (snap mode — each wheel tick applies instantly).
+  public smoothDurationSec = 0;
   private isAnimating = false;
   private animElapsedSec = 0;
   private animFromDistance = 0;
@@ -158,7 +158,7 @@ export class OrbitCamera {
       const toTargetX = this.target.x;
       const toTargetZ = this.target.z;
 
-      if (this.smoothEnabled) {
+      if (this.smoothDurationSec > 0) {
         // Reset to the FROM state and arm the animation. tick(dt)
         // will lerp the camera from FROM → TO over smoothDurationSec.
         this.animFromDistance = fromDist;
@@ -311,16 +311,18 @@ export class OrbitCamera {
     this.apply();
   }
 
-  /** Toggle smooth zoom. Snap mode (false) is the original behavior:
-   *  every wheel event applies its full effect immediately. Smooth
-   *  mode (true) eases each zoom over `smoothDurationSec`. */
-  setSmoothing(enabled: boolean): void {
-    if (this.smoothEnabled === enabled) return;
-    this.smoothEnabled = enabled;
-    if (!enabled && this.isAnimating) {
-      // Switching to snap while a smooth zoom is in flight: jump
-      // straight to the destination so the camera doesn't look
-      // frozen at the from-state.
+  /** Set the smooth-zoom animation length in seconds. 0 = snap (each
+   *  wheel tick applies instantly, original behavior). Any positive
+   *  value enables ease-out-cubic smoothing of the wheel-driven
+   *  dolly + cursor-pin shift over that duration. Idempotent — no
+   *  cost if the value is unchanged. Setting to 0 mid-animation
+   *  jumps the camera straight to the destination so it doesn't
+   *  look frozen mid-lerp. */
+  setSmoothDuration(seconds: number): void {
+    const clamped = Math.max(0, seconds);
+    if (this.smoothDurationSec === clamped) return;
+    this.smoothDurationSec = clamped;
+    if (clamped === 0 && this.isAnimating) {
       this.distance = this.animToDistance;
       this.target.x = this.animToTargetX;
       this.target.z = this.animToTargetZ;

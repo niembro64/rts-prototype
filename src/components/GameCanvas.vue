@@ -105,8 +105,8 @@ import {
   setUnitRadiusToggle,
   getLegsRadiusToggle,
   setLegsRadiusToggle,
-  getCameraSmooth,
-  setCameraSmooth,
+  getCameraSmoothMode,
+  setCameraSmoothMode,
   RANGE_TYPES,
   PROJ_RANGE_TYPES,
   UNIT_RADIUS_TYPES,
@@ -135,6 +135,7 @@ import {
   setCurrentUnitCap,
   setLocalServerRunning,
 } from '../clientBarConfig';
+import type { CameraSmoothMode } from '../clientBarConfig';
 import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../types/graphics';
 import type {
   AudioScope,
@@ -243,10 +244,10 @@ const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
 // chassis-local circle each foot wanders inside before snapping to the
 // opposite edge. Useful for tuning leg gait visually.
 const legsRadiusToggle = ref(getLegsRadiusToggle());
-// CAMERA: SNAP / SMOOTH — when SMOOTH, OrbitCamera eases zoom
-// transitions over ~250 ms; when SNAP, each wheel tick applies its
-// full effect immediately (original behavior).
-const cameraSmoothToggle = ref(getCameraSmooth());
+// CAMERA: SNAP / FAST / SLOW — controls the OrbitCamera zoom-easing
+// duration. SNAP applies each wheel tick instantly (original
+// behavior); FAST eases over 150 ms; SLOW eases over 400 ms.
+const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
 
 // Frame timing tracking (EMA-based, polled from scene)
 const frameMsAvg = ref(0);
@@ -967,10 +968,9 @@ function toggleLegsRadius(): void {
   legsRadiusToggle.value = newValue;
 }
 
-function toggleCameraSmooth(): void {
-  const newValue = !cameraSmoothToggle.value;
-  setCameraSmooth(newValue);
-  cameraSmoothToggle.value = newValue;
+function setCameraMode(mode: CameraSmoothMode): void {
+  setCameraSmoothMode(mode);
+  cameraSmoothMode.value = mode;
 }
 
 // "ALL" helpers for each radius/range section — same behavior as
@@ -2693,19 +2693,27 @@ onUnmounted(() => {
             <div class="button-group">
               <button
                 class="control-btn"
-                :class="{ active: !cameraSmoothToggle }"
+                :class="{ active: cameraSmoothMode === 'snap' }"
                 title="Wheel zoom snaps to the new distance instantly (original behavior)"
-                @click="cameraSmoothToggle && toggleCameraSmooth()"
+                @click="setCameraMode('snap')"
               >
                 SNAP
               </button>
               <button
                 class="control-btn"
-                :class="{ active: cameraSmoothToggle }"
-                title="Wheel zoom eases over ~250 ms with an ease-out cubic curve"
-                @click="!cameraSmoothToggle && toggleCameraSmooth()"
+                :class="{ active: cameraSmoothMode === 'fast' }"
+                title="Wheel zoom eases over ~150 ms with an ease-out cubic curve"
+                @click="setCameraMode('fast')"
               >
-                SMOOTH
+                FAST
+              </button>
+              <button
+                class="control-btn"
+                :class="{ active: cameraSmoothMode === 'slow' }"
+                title="Wheel zoom eases over ~400 ms with an ease-out cubic curve"
+                @click="setCameraMode('slow')"
+              >
+                SLOW
               </button>
             </div>
           </div>

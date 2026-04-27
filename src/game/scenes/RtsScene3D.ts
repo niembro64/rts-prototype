@@ -38,7 +38,7 @@ import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
   getAudioSmoothing,
   getBottomBarsHeight,
-  getCameraSmooth,
+  getCameraSmoothMode,
   setCurrentZoom,
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
@@ -306,7 +306,7 @@ export class RtsScene3D {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.threeApp.orbit.distance = this._baseDistance / initialZoom;
     this.threeApp.orbit.yaw = this._povYawForLocalSeat();
-    this.threeApp.orbit.setSmoothing(getCameraSmooth());
+    this.threeApp.orbit.setSmoothDuration(this._cameraSmoothDurationSec());
     this.threeApp.orbit.apply();
 
     // Redefine cameras.main as live getters bound to orbit + renderer
@@ -607,10 +607,10 @@ export class RtsScene3D {
     // Smooth-zoom animation steps once per frame using the same
     // clamped dt the effects systems do, so the eased dolly stays
     // in lockstep with everything else (and a tab-defocus pause
-    // doesn't fast-forward the zoom). The toggle is rechecked here
-    // (cheap idempotent set) so flipping CAMERA: SNAP/SMOOTH at
-    // runtime takes effect on the next zoom.
-    this.threeApp.orbit.setSmoothing(getCameraSmooth());
+    // doesn't fast-forward the zoom). The mode is rechecked here
+    // (cheap idempotent set) so flipping CAMERA: SNAP / FAST / SLOW
+    // at runtime takes effect on the next zoom.
+    this.threeApp.orbit.setSmoothDuration(this._cameraSmoothDurationSec());
     this.threeApp.orbit.tick(effectDt / 1000);
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
@@ -743,6 +743,19 @@ export class RtsScene3D {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.threeApp.orbit.apply();
     this.hasCenteredCamera = true;
+  }
+
+  /** Translate the persisted camera-smooth mode into the orbit
+   *  camera's animation duration in seconds. Snap = 0 (instant);
+   *  the FAST / SLOW windows were picked to feel snappy without
+   *  being abrupt and to feel deliberate without being sluggish. */
+  private _cameraSmoothDurationSec(): number {
+    switch (getCameraSmoothMode()) {
+      case 'fast': return 0.15;
+      case 'slow': return 0.4;
+      case 'snap':
+      default: return 0;
+    }
   }
 
   /** Compute the orbit yaw that would put the camera "behind" a
