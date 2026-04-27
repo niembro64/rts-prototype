@@ -42,12 +42,9 @@ import {
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { PanArrowOverlay } from '../hud/PanArrowOverlay';
-import { HealthBarOverlay } from '../hud/HealthBarOverlay';
-import { WaypointOverlay } from '../hud/WaypointOverlay';
-import { SelectionLabelOverlay } from '../hud/SelectionLabelOverlay';
-import { ThreeWorldProjector } from '../render3d/ThreeWorldProjector';
-import { getSurfaceHeight } from '../sim/Terrain';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { HealthBar3D } from '../render3d/HealthBar3D';
+import { Waypoint3D } from '../render3d/Waypoint3D';
+import { SelectionLabel3D } from '../render3d/SelectionLabel3D';
 
 import type { GameConnection } from '../server/GameConnection';
 import type {
@@ -141,9 +138,9 @@ export class RtsScene3D {
   private currentBuildType: BuildingType | null = null;
   private currentDGunActive = false;
   private panArrowOverlay: PanArrowOverlay | null = null;
-  private healthBarOverlay: HealthBarOverlay | null = null;
-  private waypointOverlay: WaypointOverlay | null = null;
-  private selectionLabelOverlay: SelectionLabelOverlay | null = null;
+  private healthBar3D: HealthBar3D | null = null;
+  private waypoint3D: Waypoint3D | null = null;
+  private selectionLabel3D: SelectionLabel3D | null = null;
 
   private localPlayerId: PlayerId;
   private playerIds: PlayerId[];
@@ -399,22 +396,16 @@ export class RtsScene3D {
         (dirX, dirY, intensity) => overlay.set(dirX, dirY, intensity),
       );
 
-      // Shared health-bar + waypoint overlays (same SVG layers the 2D path uses).
-      const projector = new ThreeWorldProjector(
-        this.threeApp.camera,
-        this.threeApp.canvas,
+      // HUD elements live in the 3D scene now: pooled sprites + line
+      // buffers parented to the world group so they get full GPU
+      // depth-occlusion against the terrain (a unit behind a hill
+      // has its bar/label/waypoint markers naturally clipped).
+      this.healthBar3D = new HealthBar3D(this.threeApp.world);
+      this.selectionLabel3D = new SelectionLabel3D(this.threeApp.world);
+      this.waypoint3D = new Waypoint3D(
+        this.threeApp.world,
+        this.mapWidth, this.mapHeight,
       );
-      this.healthBarOverlay = new HealthBarOverlay(canvasParent, projector);
-      // Waypoint markers project at the terrain surface under each
-      // command point so they ride the ripple cubes instead of
-      // floating at z=0.
-      const mapW = this.mapWidth;
-      const mapH = this.mapHeight;
-      this.waypointOverlay = new WaypointOverlay(
-        canvasParent, projector,
-        (x, y) => getSurfaceHeight(x, y, mapW, mapH, SPATIAL_GRID_CELL_SIZE),
-      );
-      this.selectionLabelOverlay = new SelectionLabelOverlay(canvasParent, projector);
     }
 
     // Wire raycast-based selection + move commands
@@ -609,15 +600,15 @@ export class RtsScene3D {
     if (this.inputManager) {
       this.lineDragRenderer.update(this.inputManager.getLineDragState());
     }
-    this.healthBarOverlay?.update(
+    this.healthBar3D?.update(
       this.clientViewState.getUnits(),
       this.clientViewState.getBuildings(),
     );
-    this.waypointOverlay?.update(
+    this.waypoint3D?.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
     );
-    this.selectionLabelOverlay?.update(
+    this.selectionLabel3D?.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
     );
@@ -1107,12 +1098,12 @@ export class RtsScene3D {
     this.threeApp.orbit.setOnPanState(undefined);
     this.panArrowOverlay?.destroy();
     this.panArrowOverlay = null;
-    this.healthBarOverlay?.destroy();
-    this.healthBarOverlay = null;
-    this.waypointOverlay?.destroy();
-    this.waypointOverlay = null;
-    this.selectionLabelOverlay?.destroy();
-    this.selectionLabelOverlay = null;
+    this.healthBar3D?.destroy();
+    this.healthBar3D = null;
+    this.waypoint3D?.destroy();
+    this.waypoint3D = null;
+    this.selectionLabel3D?.destroy();
+    this.selectionLabel3D = null;
     this.entityRenderer?.destroy();
     this.beamRenderer?.destroy();
     this.forceFieldRenderer?.destroy();

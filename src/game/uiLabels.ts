@@ -22,6 +22,21 @@ export const ACTION_COLORS: Record<ActionType, number> = {
   attack: 0xff0000,  // Red for attack
 };
 
+/** Text shown above a selected unit. Commander short-circuits to a
+ *  shared label; everything else looks up the unit's blueprint id. */
+export function labelTextForUnit(entity: import('./sim/types').Entity): string {
+  if (entity.commander) return 'Commander';
+  const unitType = entity.unit?.unitType ?? 'jackal';
+  return UNIT_NAMES[unitType] ?? unitType;
+}
+
+/** Text shown above a selected building. */
+export function labelTextForBuilding(entity: import('./sim/types').Entity): string {
+  if (entity.buildingType === 'factory') return 'Factory';
+  if (entity.buildingType === 'solar') return 'Solar';
+  return 'Building';
+}
+
 /** Display names by unit blueprint id. */
 export const UNIT_NAMES: Record<string, string> = {
   jackal: 'Jackal',

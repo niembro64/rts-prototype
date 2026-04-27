@@ -1118,7 +1118,8 @@ export class Render3DEntities {
         updateLocomotion(m.locomotion, e, this._currentDtMs);
       }
 
-      // Health bar handled by the shared HealthBarOverlay (SVG layer).
+      // Health bar handled by HealthBar3D (billboarded sprite in the
+      // world group, depth-occluded by terrain).
     }
 
     // Remove meshes for units no longer present.
@@ -1221,7 +1222,8 @@ export class Render3DEntities {
         for (const dMesh of m.buildingDetails) dMesh.visible = detailsVisible;
       }
 
-      // Health + build-progress bars handled by the shared HealthBarOverlay.
+      // Health + build-progress bars handled by HealthBar3D
+      // (billboarded sprite in the world group).
     }
 
     for (const [id, m] of this.buildingMeshes) {
