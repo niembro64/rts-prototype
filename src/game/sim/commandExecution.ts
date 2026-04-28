@@ -140,6 +140,11 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
   // (set during construction-system placement), so the action's z
   // matches what the player sees — the build-rect overlay sits on
   // top of the ground at the build site.
+  //
+  // Route through pathfinding so the builder walks AROUND water /
+  // mountain ridges to reach the build site instead of bee-lining
+  // through them. The final waypoint inherits the build metadata so
+  // the construction handler still fires once the unit arrives.
   const action: UnitAction = {
     type: 'build',
     x: building.transform.x,
@@ -151,7 +156,7 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     buildingId: building.id,
   };
 
-  addActionToUnit(builder, action, command.queue);
+  addPathActionsWithFinal(builder, action, command.queue, ctx);
 }
 
 function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand): void {
@@ -340,6 +345,12 @@ function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void
   // re-sample of the terrain at (x, y). For a damaged unit this
   // tracks the unit's current altitude; for a building it sits on
   // the ground above its footprint.
+  //
+  // Route through pathfinding so the commander walks AROUND water
+  // to reach the repair target — straight lines toward a target
+  // across a lake used to push the commander into the shore. The
+  // final waypoint keeps targetId so the repair handler fires when
+  // the commander arrives.
   const action: UnitAction = {
     type: 'repair',
     x: target.transform.x,
@@ -348,7 +359,7 @@ function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void
     targetId: command.targetId,
   };
 
-  addActionToUnit(commander, action, command.queue);
+  addPathActionsWithFinal(commander, action, command.queue, ctx);
 }
 
 function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void {
@@ -364,6 +375,14 @@ function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (!entity || entity.type !== 'unit' || !entity.unit) continue;
 
+    // Route the approach through pathfinding so the unit walks
+    // AROUND water / mountains to reach the attack target. Without
+    // this, an `attack` action whose (x, y) is the target's
+    // position bee-lined the unit straight at the target — even
+    // through a lake — leaving the visualized line cutting across
+    // water while the unit pressed into the shore. The final
+    // waypoint keeps targetId so the targeting handler engages
+    // the right entity once the unit is in range.
     const action: UnitAction = {
       type: 'attack',
       x: target.transform.x,
@@ -371,7 +390,7 @@ function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void
       z: target.transform.z,
       targetId: command.targetId,
     };
-    addActionToUnit(entity, action, command.queue);
+    addPathActionsWithFinal(entity, action, command.queue, ctx);
   }
 }
 
@@ -424,6 +443,62 @@ function addPathActions(
   // The remaining waypoints always append regardless — they belong
   // to the same "do this trip" intent and queue:true keeps them
   // ordered after the first.
+  for (let i = 0; i < actions.length; i++) {
+    addActionToUnit(unit, actions[i], i === 0 ? queue : true);
+  }
+}
+
+/** Plan a path to (goalX, goalY) and enqueue intermediate `move`
+ *  waypoints + a single FINAL waypoint that carries the action-
+ *  specific type and metadata (targetId / buildingType / buildingId
+ *  / etc). Used by attack / repair / build commands so the unit
+ *  pathfinds AROUND water and obstacles to reach the action's
+ *  target instead of writing a single bee-line action that walks
+ *  the unit straight at the target's coordinates.
+ *
+ *  Why this matters: a `repair` / `attack` / `build` action whose
+ *  (x, y) is across water made the unit press into the shoreline
+ *  with the water-pusher catching them, while the visualized line
+ *  cut straight across the lake — exactly the "paths over water"
+ *  artifact the user reported. Routing through `expandPathActions`
+ *  here makes the planner do its job (water/building/mountain
+ *  avoidance) and the visualized path matches what the unit
+ *  actually walks. The final waypoint inherits the original
+ *  action's metadata so the per-action handler at the destination
+ *  (attack the target, repair the target, build the building)
+ *  still runs as before. */
+function addPathActionsWithFinal(
+  unit: Entity,
+  finalAction: UnitAction,
+  queue: boolean,
+  ctx: CommandContext,
+): void {
+  const actions = expandPathActions(
+    unit.transform.x, unit.transform.y,
+    finalAction.x, finalAction.y, 'move',
+    ctx.world.mapWidth, ctx.world.mapHeight,
+    ctx.constructionSystem.getGrid(),
+    finalAction.z,
+  );
+  if (actions.length === 0) return;
+  // Promote the LAST waypoint to the original action's type and
+  // copy its metadata across (targetId / buildingType / buildingId
+  // / gridX / gridY). The (x, y, z) on the last waypoint were
+  // already set by the planner — when the goal was snapped to a
+  // reachable cell, we use that cell's centre instead of the
+  // target's own position so the unit stops on the dry-land
+  // approach to the target rather than pushing into water.
+  const last = actions[actions.length - 1];
+  last.type = finalAction.type;
+  if (finalAction.targetId !== undefined) last.targetId = finalAction.targetId;
+  if (finalAction.buildingType !== undefined) last.buildingType = finalAction.buildingType;
+  if (finalAction.buildingId !== undefined) last.buildingId = finalAction.buildingId;
+  if (finalAction.gridX !== undefined) last.gridX = finalAction.gridX;
+  if (finalAction.gridY !== undefined) last.gridY = finalAction.gridY;
+  // The last waypoint is the user-issued endpoint, not a planner
+  // intermediate, so make sure the SIMPLE-mode renderer marks it
+  // as such.
+  last.isPathExpansion = undefined;
   for (let i = 0; i < actions.length; i++) {
     addActionToUnit(unit, actions[i], i === 0 ? queue : true);
   }
