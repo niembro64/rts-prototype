@@ -383,6 +383,7 @@ export class PhysicsEngine3D {
     this.integrate(dtSec);
     this.resolveGroundContacts();
     this.resolveSphereCuboidContacts();
+    this.rebuildContactCells();
     for (let i = 0; i < SPHERE_ITERATIONS; i++) {
       this.resolveSphereSphereContacts();
     }
@@ -695,7 +696,6 @@ export class PhysicsEngine3D {
    *  Projectile/laser vs unit collisions are ALSO 3D but handled
    *  outside this engine — see ProjectileCollisionHandler + DamageSystem. */
   private resolveSphereSphereContacts(): void {
-    this.rebuildContactCells();
     const cs = CONTACT_CELL_SIZE;
     const halfCs = cs / 2;
     const bodies = this.dynamicBodies;
