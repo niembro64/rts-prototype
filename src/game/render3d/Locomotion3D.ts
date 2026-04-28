@@ -119,7 +119,6 @@ export function getChassisLift(
   }
 }
 const WHEEL_COLOR = 0x2a2f36;
-const LEG_COLOR = 0x2a2f36;
 
 // Vertical layout for legs. Feet stay on the ground, hips attach at
 // each leg's per-body-segment midpoint — computed once when the leg
@@ -221,13 +220,19 @@ type LegInstance = {
    *  'animated' / 'full' LOD; 'simple' LOD legs are a single
    *  upper-cylinder spanning hip → foot directly. */
   lowerSlot: number;
-  /** Joint spheres — only built at 'full' LOD. NOT instanced yet;
-   *  per-Mesh draw calls are kept here as a smaller follow-up.
-   *  Cylinders dominate the per-leg draw-call budget so this is
-   *  fine for now. */
-  hipJoint?: THREE.Mesh;
-  kneeJoint?: THREE.Mesh;
-  footJoint?: THREE.Mesh;
+  /** Slot indices into LegInstancedRenderer's joint-sphere pool —
+   *  only allocated at 'full' LOD; -1 elsewhere (or when the pool
+   *  is exhausted, in which case the leg quietly skips that joint).
+   *  All three joints across the whole scene draw in a single shared
+   *  InstancedMesh call. The radius is baked once at build (joint
+   *  sizes are constant) and re-encoded into the per-frame matrix
+   *  alongside the world position. */
+  hipJointSlot: number;
+  kneeJointSlot: number;
+  footJointSlot: number;
+  hipJointRadius: number;
+  kneeJointRadius: number;
+  footJointRadius: number;
   upperThick: number;
   lowerThick: number;
   /** LEGS-radius debug viz: a wireframe SPHERE centered at this
@@ -238,9 +243,9 @@ type LegInstance = {
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
-// Leg cylinders no longer need a per-mesh geometry — every leg
-// renders through the LegInstancedRenderer's shared pool.
-const jointGeom = new THREE.SphereGeometry(1, 8, 6);
+// Leg cylinders AND joint spheres no longer need a per-mesh
+// geometry — every leg cylinder + joint sphere renders through the
+// LegInstancedRenderer's shared pools.
 
 // Unit wireframe sphere — the rest-sphere viz. Each leg gets one
 // LineSegments instance scaled up to stepRadius and positioned at the
@@ -257,7 +262,9 @@ const restSphereMat = new THREE.LineBasicMaterial({
 
 const treadMat = new THREE.MeshLambertMaterial({ color: TREAD_COLOR });
 const wheelMat = new THREE.MeshLambertMaterial({ color: WHEEL_COLOR });
-const legMat = new THREE.MeshLambertMaterial({ color: LEG_COLOR });
+// Leg cylinders + joint spheres now live in LegInstancedRenderer's
+// shared pools; their materials are owned there. No module-level
+// legMat remains.
 // Lighter gray for the animated cleats, mirroring the 2D drawAnimatedTread
 // track-line color (`GRAY_LIGHT`) so the moving highlights read over the
 // dark tread slab.
@@ -553,20 +560,22 @@ function buildLegs(
       lowerSlot = legRenderer.allocLower();
     }
 
-    // Joint spheres at 'full' LOD only (still per-Mesh — instancing
-    // those is a smaller follow-up; cylinders dominate the per-leg
-    // draw count and are the dominant win to capture first).
-    let hipJoint: THREE.Mesh | undefined;
-    let kneeJoint: THREE.Mesh | undefined;
-    let footJoint: THREE.Mesh | undefined;
+    // Joint spheres at 'full' LOD only — all three slots allocate
+    // into the shared joint-sphere InstancedMesh pool. Radii are
+    // baked here (joint sizes are constant per leg config) and
+    // re-applied each frame alongside the world position via the
+    // slot's instanceMatrix. -1 means "no slot" (non-full LOD or
+    // the pool was exhausted; the leg just skips that joint).
+    let hipJointSlot = -1;
+    let kneeJointSlot = -1;
+    let footJointSlot = -1;
+    const hipJointRadius = Math.max(1, cfg.hipRadius);
+    const kneeJointRadius = Math.max(1, cfg.kneeRadius);
+    const footJointRadius = Math.max(1, cfg.footRadius);
     if (legLod === 'full') {
-      hipJoint = new THREE.Mesh(jointGeom, legMat);
-      hipJoint.scale.setScalar(Math.max(1, cfg.hipRadius));
-      kneeJoint = new THREE.Mesh(jointGeom, legMat);
-      kneeJoint.scale.setScalar(Math.max(1, cfg.kneeRadius));
-      footJoint = new THREE.Mesh(jointGeom, legMat);
-      footJoint.scale.setScalar(Math.max(1, cfg.footRadius));
-      group.add(hipJoint, kneeJoint, footJoint);
+      hipJointSlot = legRenderer.allocJoint();
+      kneeJointSlot = legRenderer.allocJoint();
+      footJointSlot = legRenderer.allocJoint();
     }
 
     // Hip Y is the vertical mid-point of whichever body segment the
@@ -590,9 +599,12 @@ function buildLegs(
       initialized: false,
       upperSlot,
       lowerSlot,
-      hipJoint,
-      kneeJoint,
-      footJoint,
+      hipJointSlot,
+      kneeJointSlot,
+      footJointSlot,
+      hipJointRadius,
+      kneeJointRadius,
+      footJointRadius,
       upperThick,
       lowerThick,
     });
@@ -1099,9 +1111,9 @@ export function updateLocomotion(
           footX, footY, footZ,
           leg.lowerThick,
         );
-        if (leg.hipJoint)  leg.hipJoint.position.set(hipWorldX, hipWorldY, hipWorldZ);
-        if (leg.kneeJoint) leg.kneeJoint.position.set(knee.x, knee.y, knee.z);
-        if (leg.footJoint) leg.footJoint.position.set(footX, footY, footZ);
+        if (leg.hipJointSlot >= 0)  legRenderer.updateJoint(leg.hipJointSlot,  hipWorldX, hipWorldY, hipWorldZ, leg.hipJointRadius);
+        if (leg.kneeJointSlot >= 0) legRenderer.updateJoint(leg.kneeJointSlot, knee.x, knee.y, knee.z, leg.kneeJointRadius);
+        if (leg.footJointSlot >= 0) legRenderer.updateJoint(leg.footJointSlot, footX, footY, footZ, leg.footJointRadius);
       }
     }
   }
@@ -1121,13 +1133,16 @@ export function destroyLocomotion(
   legRenderer: LegInstancedRenderer,
 ): void {
   if (!mesh) return;
-  // Free any cylinder slots back into the shared pool so other
-  // units can reuse them. Joint Meshes get cleaned up when the
-  // parent group is removed below.
+  // Free every leg slot (cylinder + joint) back into the shared
+  // pools so other units can reuse them. The slots are zero-scaled
+  // by free() and pushed onto the pool's free-list.
   if (mesh.type === 'legs') {
     for (const leg of mesh.legs) {
       legRenderer.freeUpper(leg.upperSlot);
       legRenderer.freeLower(leg.lowerSlot);
+      legRenderer.freeJoint(leg.hipJointSlot);
+      legRenderer.freeJoint(leg.kneeJointSlot);
+      legRenderer.freeJoint(leg.footJointSlot);
     }
   }
   mesh.group.parent?.remove(mesh.group);
