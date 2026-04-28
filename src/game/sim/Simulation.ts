@@ -404,17 +404,22 @@ export class Simulation {
     updateTargetingAndFiringState(this.world);
 
     // Update laser sounds based on targeting state (every frame)
-    const laserSimEvents = updateLaserSounds(this.world);
-    for (const event of laserSimEvents) {
-      this.onSimEvent?.(event);
-      this.pendingSimEvents.push(event);
+    if (this.world.getBeamUnits().length > 0) {
+      const laserSimEvents = updateLaserSounds(this.world);
+      for (const event of laserSimEvents) {
+        this.onSimEvent?.(event);
+        this.pendingSimEvents.push(event);
+      }
     }
 
     // Update force field sounds based on transition progress (every frame)
-    const forceFieldSimEvents = updateForceFieldSounds(this.world.getForceFieldUnits());
-    for (const event of forceFieldSimEvents) {
-      this.onSimEvent?.(event);
-      this.pendingSimEvents.push(event);
+    const forceFieldUnits = this.world.getForceFieldUnits();
+    if (forceFieldUnits.length > 0) {
+      const forceFieldSimEvents = updateForceFieldSounds(forceFieldUnits);
+      for (const event of forceFieldSimEvents) {
+        this.onSimEvent?.(event);
+        this.pendingSimEvents.push(event);
+      }
     }
 
     // Update turret rotation (before firing, so weapons fire in turret direction)
@@ -438,92 +443,98 @@ export class Simulation {
     }
 
     // Update force field state (range transitions)
-    updateForceFieldState(this.world, dtMs);
+    if (forceFieldUnits.length > 0) {
+      updateForceFieldState(this.world, dtMs);
+    }
 
     // Apply force field knockback (force fields no longer deal damage,
     // only push enemy units / projectiles).
-    const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
-    for (const event of forceFieldVelocityUpdates) {
-      this.pendingProjectileVelocityUpdates.set(event.id, event);
+    if (forceFieldUnits.length > 0) {
+      const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
+      for (const event of forceFieldVelocityUpdates) {
+        this.pendingProjectileVelocityUpdates.set(event.id, event);
+      }
     }
 
     // Update projectile positions and remove orphaned beams (from dead units)
-    const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
-    for (const id of updateResult.orphanedIds) {
-      spatialGrid.removeProjectile(id);
-      this.world.removeEntity(id);
-    }
-    for (const event of updateResult.despawnEvents) {
-      spatialGrid.removeProjectile(event.id);
-      this.pendingProjectileDespawns.push(event);
-    }
-    // Collect homing projectile velocity updates
-    for (const event of updateResult.velocityUpdates) {
-      this.pendingProjectileVelocityUpdates.set(event.id, event);
-    }
+    if (this.world.getProjectiles().length > 0) {
+      const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
+      for (const id of updateResult.orphanedIds) {
+        spatialGrid.removeProjectile(id);
+        this.world.removeEntity(id);
+      }
+      for (const event of updateResult.despawnEvents) {
+        spatialGrid.removeProjectile(event.id);
+        this.pendingProjectileDespawns.push(event);
+      }
+      // Collect homing projectile velocity updates
+      for (const event of updateResult.velocityUpdates) {
+        this.pendingProjectileVelocityUpdates.set(event.id, event);
+      }
 
-    // Check projectile collisions and get dead units
-    const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);
+      // Check projectile collisions and get dead units
+      const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);
 
-    // Add submunition / cluster projectiles spawned at explosion points,
-    // and mirror their spawn events to the network queue so clients see
-    // them the same way they see any freshly-fired round.
-    for (const proj of collisionResult.newProjectiles) {
-      this.world.addEntity(proj);
-    }
-    for (const event of collisionResult.spawnEvents) {
-      this.pendingProjectileSpawns.push(event);
-    }
+      // Add submunition / cluster projectiles spawned at explosion points,
+      // and mirror their spawn events to the network queue so clients see
+      // them the same way they see any freshly-fired round.
+      for (const proj of collisionResult.newProjectiles) {
+        this.world.addEntity(proj);
+      }
+      for (const event of collisionResult.spawnEvents) {
+        this.pendingProjectileSpawns.push(event);
+      }
 
-    // Collect projectile despawn events from collisions
-    for (const event of collisionResult.despawnEvents) {
-      spatialGrid.removeProjectile(event.id);
-      this.pendingProjectileDespawns.push(event);
-    }
+      // Collect projectile despawn events from collisions
+      for (const event of collisionResult.despawnEvents) {
+        spatialGrid.removeProjectile(event.id);
+        this.pendingProjectileDespawns.push(event);
+      }
 
-    // Emit hit/death audio events
-    for (const event of collisionResult.events) {
-      this.onSimEvent?.(event);
-      this.pendingSimEvents.push(event);
-    }
+      // Emit hit/death audio events
+      for (const event of collisionResult.events) {
+        this.onSimEvent?.(event);
+        this.pendingSimEvents.push(event);
+      }
 
-    // Remove dead entities from spatial grid and notify callbacks
-    if (collisionResult.deadUnitIds.size > 0) {
-      const buf = this._deadUnitIdsBuf;
-      buf.length = 0;
-      for (const id of collisionResult.deadUnitIds) {
-        const entity = this.world.getEntity(id);
-        if (entity) {
-          // Emit laserStop for the dying entity's own beam weapons
-          for (const evt of emitLaserStopsForEntity(entity)) {
-            this.pendingSimEvents.push(evt);
+      // Remove dead entities from spatial grid and notify callbacks
+      if (collisionResult.deadUnitIds.size > 0) {
+        const buf = this._deadUnitIdsBuf;
+        buf.length = 0;
+        for (const id of collisionResult.deadUnitIds) {
+          const entity = this.world.getEntity(id);
+          if (entity) {
+            // Emit laserStop for the dying entity's own beam weapons
+            for (const evt of emitLaserStopsForEntity(entity)) {
+              this.pendingSimEvents.push(evt);
+            }
+            // Emit laserStop for any beam weapons across the world targeting this entity
+            for (const evt of emitLaserStopsForTarget(this.world, id)) {
+              this.pendingSimEvents.push(evt);
+            }
+            // Emit forceFieldStop for the dying entity's force field weapons
+            for (const evt of emitForceFieldStopsForEntity(entity)) {
+              this.pendingSimEvents.push(evt);
+            }
+            if (entity.unit?.unitType && entity.ownership) {
+              this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
+            }
           }
-          // Emit laserStop for any beam weapons across the world targeting this entity
-          for (const evt of emitLaserStopsForTarget(this.world, id)) {
-            this.pendingSimEvents.push(evt);
-          }
-          // Emit forceFieldStop for the dying entity's force field weapons
-          for (const evt of emitForceFieldStopsForEntity(entity)) {
-            this.pendingSimEvents.push(evt);
-          }
-          if (entity.unit?.unitType && entity.ownership) {
-            this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
-          }
+          spatialGrid.removeUnit(id);
+          buf.push(id);
         }
-        spatialGrid.removeUnit(id);
-        buf.push(id);
+        this.onUnitDeath?.(buf, collisionResult.deathContexts);
       }
-      this.onUnitDeath?.(buf, collisionResult.deathContexts);
-    }
 
-    if (collisionResult.deadBuildingIds.size > 0) {
-      const buf = this._deadBuildingIdsBuf;
-      buf.length = 0;
-      for (const id of collisionResult.deadBuildingIds) {
-        spatialGrid.removeBuilding(id);
-        buf.push(id);
+      if (collisionResult.deadBuildingIds.size > 0) {
+        const buf = this._deadBuildingIdsBuf;
+        buf.length = 0;
+        for (const id of collisionResult.deadBuildingIds) {
+          spatialGrid.removeBuilding(id);
+          buf.push(id);
+        }
+        this.onBuildingDeath?.(buf);
       }
-      this.onBuildingDeath?.(buf);
     }
 
     // Prune stale combat stats registry entries (rate-limited internally)
