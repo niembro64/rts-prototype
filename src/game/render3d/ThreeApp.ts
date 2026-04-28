@@ -86,10 +86,14 @@ export class ThreeApp {
       panMultiplier: CAMERA_PAN_MULTIPLIER,
     });
     // Center on map, pulled in for a useful RTS default view
-    this.orbit.setTarget(mapWidth / 2, 0, mapHeight / 2);
-    this.orbit.distance = baseDistance;
-    this.orbit.pitch = Math.PI * 0.28;
-    this.orbit.apply();
+    this.orbit.setState({
+      targetX: mapWidth / 2,
+      targetY: 0,
+      targetZ: mapHeight / 2,
+      distance: baseDistance,
+      yaw: this.orbit.yaw,
+      pitch: Math.PI * 0.28,
+    });
 
     // Lighting
     const ambient = new THREE.AmbientLight(0xffffff, 0.55);

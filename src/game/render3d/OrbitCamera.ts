@@ -123,6 +123,10 @@ export class OrbitCamera {
   public altitudeMax: number;
   private minPitch: number;
   private maxPitch: number;
+  private targetMinX = -Infinity;
+  private targetMaxX = Infinity;
+  private targetMinZ = -Infinity;
+  private targetMaxZ = Infinity;
   private zoomStepFraction: number;
   private rotateSpeed: number;
   private panMultiplier: number;
@@ -542,6 +546,20 @@ export class OrbitCamera {
     this.apply();
   }
 
+  /** Clamp both rendered target and smooth destination target to the
+   *  camera's active map bounds. Keeping the two states constrained
+   *  together avoids a smoothing tug-of-war at map edges. */
+  private constrainTargets(): void {
+    if (Number.isFinite(this.targetMinX) || Number.isFinite(this.targetMaxX)) {
+      this.target.x = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.target.x));
+      this.toTargetX = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.toTargetX));
+    }
+    if (Number.isFinite(this.targetMinZ) || Number.isFinite(this.targetMaxZ)) {
+      this.target.z = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.target.z));
+      this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
+    }
+  }
+
   /** Cursor → world position. Tries the user-supplied 3D raycaster
    *  first (CursorGround, which hits the terrain tile mesh — the
    *  exact surface the user sees on land). If that misses — cursor
@@ -597,6 +615,7 @@ export class OrbitCamera {
    *  pitched it horizontal and the line-of-sight pivot would have
    *  buried it inside a hill. */
   apply(): void {
+    this.constrainTargets();
     const sinP = Math.sin(this.pitch);
     const cosP = Math.cos(this.pitch);
     const x = this.target.x + this.distance * sinP * Math.sin(this.yaw);
@@ -620,6 +639,46 @@ export class OrbitCamera {
     this.toTargetX = x;
     this.toTargetY = y;
     this.toTargetZ = z;
+    this.apply();
+  }
+
+  setDistance(distance: number): void {
+    const d = Math.min(this.maxDistance, Math.max(this.minDistance, distance));
+    this.distance = d;
+    this.toDistance = d;
+    this.apply();
+  }
+
+  setOrbitAngles(yaw: number, pitch: number): void {
+    this.yaw = yaw;
+    this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, pitch));
+    this.apply();
+  }
+
+  setTargetBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
+    this.targetMinX = minX;
+    this.targetMaxX = maxX;
+    this.targetMinZ = minZ;
+    this.targetMaxZ = maxZ;
+    this.apply();
+  }
+
+  setState(state: {
+    targetX: number;
+    targetY: number;
+    targetZ: number;
+    distance: number;
+    yaw: number;
+    pitch: number;
+  }): void {
+    this.target.set(state.targetX, state.targetY, state.targetZ);
+    this.toTargetX = state.targetX;
+    this.toTargetY = state.targetY;
+    this.toTargetZ = state.targetZ;
+    this.distance = Math.min(this.maxDistance, Math.max(this.minDistance, state.distance));
+    this.toDistance = this.distance;
+    this.yaw = state.yaw;
+    this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, state.pitch));
     this.apply();
   }
 

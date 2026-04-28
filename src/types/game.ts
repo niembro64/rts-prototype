@@ -36,6 +36,9 @@ export type SceneCameraState = {
   x: number;
   y: number;
   zoom: number;
+  targetZ?: number;
+  yaw?: number;
+  pitch?: number;
 };
 
 export type SnapshotCallback = (state: NetworkServerSnapshot) => void;

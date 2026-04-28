@@ -354,11 +354,15 @@ export class RtsScene3D {
     // are alive (in case the commander has drifted off its spawn);
     // centerCameraOnMap() preserves yaw so demo-mode framing stays put.
     const initialZoom = this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
-    this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
-    this.threeApp.orbit.distance = this._baseDistance / initialZoom;
-    this.threeApp.orbit.yaw = this._povYawForLocalSeat();
+    this.threeApp.orbit.setState({
+      targetX: this.mapWidth / 2,
+      targetY: 0,
+      targetZ: this.mapHeight / 2,
+      distance: this._baseDistance / initialZoom,
+      yaw: this._povYawForLocalSeat(),
+      pitch: this.threeApp.orbit.pitch,
+    });
     this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
-    this.threeApp.orbit.apply();
 
     // Redefine cameras.main as live getters bound to orbit + renderer
     Object.defineProperties(this.cameras.main, {
@@ -582,16 +586,12 @@ export class RtsScene3D {
     // Camera clamping: keep the orbit target inside a padded map region.
     const paddingX = this.mapWidth * WORLD_PADDING_PERCENT;
     const paddingY = this.mapHeight * WORLD_PADDING_PERCENT;
-    const minX = -paddingX;
-    const minZ = -paddingY;
-    const maxX = this.mapWidth + paddingX;
-    const maxZ = this.mapHeight + paddingY;
-    const originalApply = this.threeApp.orbit.apply.bind(this.threeApp.orbit);
-    this.threeApp.orbit.apply = () => {
-      this.threeApp.orbit.target.x = Math.min(maxX, Math.max(minX, this.threeApp.orbit.target.x));
-      this.threeApp.orbit.target.z = Math.min(maxZ, Math.max(minZ, this.threeApp.orbit.target.z));
-      originalApply();
-    };
+    this.threeApp.orbit.setTargetBounds(
+      -paddingX,
+      -paddingY,
+      this.mapWidth + paddingX,
+      this.mapHeight + paddingY,
+    );
   }
 
   update(_time: number, delta: number): void {
@@ -863,8 +863,10 @@ export class RtsScene3D {
       const forwardX = this.mapWidth / 2 - cx;
       const forwardZ = this.mapHeight / 2 - cz;
       if (forwardX * forwardX + forwardZ * forwardZ > 1) {
-        this.threeApp.orbit.yaw = Math.atan2(-forwardX, forwardZ);
-        this.threeApp.orbit.apply();
+        this.threeApp.orbit.setOrbitAngles(
+          Math.atan2(-forwardX, forwardZ),
+          this.threeApp.orbit.pitch,
+        );
       }
       this.hasCenteredCamera = true;
     }
@@ -878,7 +880,6 @@ export class RtsScene3D {
   // the map center, not the commander.
   private centerCameraOnMap(): void {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
-    this.threeApp.orbit.apply();
     this.hasCenteredCamera = true;
   }
 
@@ -1293,6 +1294,9 @@ export class RtsScene3D {
       x: orbit.target.x,
       y: orbit.target.z,
       zoom: this._baseDistance / orbit.distance,
+      targetZ: orbit.target.y,
+      yaw: orbit.yaw,
+      pitch: orbit.pitch,
     };
   }
 
@@ -1301,9 +1305,14 @@ export class RtsScene3D {
    *  maps back to an orbit distance via the scene's base distance. */
   public applyCameraState(state: SceneCameraState): void {
     const orbit = this.threeApp.orbit;
-    orbit.setTarget(state.x, 0, state.y);
-    orbit.distance = this._baseDistance / Math.max(state.zoom, 0.001);
-    orbit.apply();
+    orbit.setState({
+      targetX: state.x,
+      targetY: state.targetZ ?? 0,
+      targetZ: state.y,
+      distance: this._baseDistance / Math.max(state.zoom, 0.001),
+      yaw: state.yaw ?? orbit.yaw,
+      pitch: state.pitch ?? orbit.pitch,
+    });
   }
 
   public getFrameTiming(): {
