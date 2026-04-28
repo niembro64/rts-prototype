@@ -363,6 +363,30 @@ export class Render3DEntities {
   private _instScale = new THREE.Vector3();
   private _instColor = new THREE.Color();
 
+  private markInstanceMatrixRange(
+    mesh: THREE.InstancedMesh,
+    minSlot: number,
+    maxSlot: number,
+  ): void {
+    if (maxSlot < minSlot) return;
+    const attr = mesh.instanceMatrix;
+    attr.clearUpdateRanges();
+    attr.addUpdateRange(minSlot * 16, (maxSlot - minSlot + 1) * 16);
+    attr.needsUpdate = true;
+  }
+
+  private markInstanceColorRange(
+    mesh: THREE.InstancedMesh,
+    minSlot: number,
+    maxSlot: number,
+  ): void {
+    if (!mesh.instanceColor || maxSlot < minSlot) return;
+    const attr = mesh.instanceColor;
+    attr.clearUpdateRanges();
+    attr.addUpdateRange(minSlot * 3, (maxSlot - minSlot + 1) * 3);
+    attr.needsUpdate = true;
+  }
+
   // ── LOW+ tier smooth-body chassis InstancedMesh ─────────────────
   // At MED+ LOD every smooth-body unit (arachnid, beam, snipe / tick,
   // commander, forceField, loris) used to stamp one Mesh per body
@@ -998,6 +1022,10 @@ export class Render3DEntities {
     const seen = this._seenUnitIds;
     seen.clear();
     let colorDirty = false;
+    let matrixMinSlot = Number.POSITIVE_INFINITY;
+    let matrixMaxSlot = -1;
+    let colorMinSlot = Number.POSITIVE_INFINITY;
+    let colorMaxSlot = -1;
 
     for (const e of units) {
       seen.add(e.id);
@@ -1037,6 +1065,8 @@ export class Render3DEntities {
       this._instScale.set(radius, radius, radius);
       this._instMatrix.compose(this._instPos, this._instQuat, this._instScale);
       im.setMatrixAt(slot, this._instMatrix);
+      if (slot < matrixMinSlot) matrixMinSlot = slot;
+      if (slot > matrixMaxSlot) matrixMaxSlot = slot;
 
       const pid = e.ownership?.playerId;
       const colorKey = pid ?? -1;
@@ -1045,6 +1075,8 @@ export class Render3DEntities {
         im.setColorAt(slot, this._instColor);
         this.unitInstancedColorKey.set(e.id, colorKey);
         colorDirty = true;
+        if (slot < colorMinSlot) colorMinSlot = slot;
+        if (slot > colorMaxSlot) colorMaxSlot = slot;
       }
     }
 
@@ -1052,6 +1084,8 @@ export class Render3DEntities {
     for (const [id, slot] of this.unitInstancedSlot) {
       if (!seen.has(id)) {
         im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+        if (slot < matrixMinSlot) matrixMinSlot = slot;
+        if (slot > matrixMaxSlot) matrixMaxSlot = slot;
         this.unitInstancedFreeSlots.push(slot);
         this.unitInstancedSlot.delete(id);
         this.unitInstancedColorKey.delete(id);
@@ -1069,8 +1103,8 @@ export class Render3DEntities {
     // fragments) but stable-slot allocation keeps churn-induced
     // waste bounded — peak active count is the steady-state ceiling.
     im.count = this.unitInstancedNextSlot;
-    im.instanceMatrix.needsUpdate = true;
-    if (colorDirty && im.instanceColor) im.instanceColor.needsUpdate = true;
+    this.markInstanceMatrixRange(im, matrixMinSlot, matrixMaxSlot);
+    if (colorDirty) this.markInstanceColorRange(im, colorMinSlot, colorMaxSlot);
   }
 
   /** Tier flipped from LOW to MED+: hide every active instanced slot
