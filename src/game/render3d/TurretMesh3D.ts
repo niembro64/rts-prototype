@@ -21,10 +21,25 @@ const BARREL_MIN_THICKNESS = 2;
 
 export type TurretMesh = {
   root: THREE.Group;
-  /** Absent for turrets without a "body" — force fields (the glowing
-   *  sphere is the whole visual) and mirror units (the mirror panels
-   *  are). */
+  /** Absent for:
+   *   - force fields (the glowing sphere is the whole visual)
+   *   - mirror units (the mirror panels are the body)
+   *   - units routing the head through the shared `turretHeadInstanced`
+   *     InstancedMesh (deps.skipHead=true) — caller sets `headSlot`
+   *     and the per-frame writer fills the slot with the head's
+   *     world transform + team color. */
   head?: THREE.Mesh;
+  /** Slot index in Render3DEntities.turretHeadInstanced when the head
+   *  is rendered via the shared InstancedMesh. Undefined for hidden
+   *  heads (force-field / mirror-host / min-tier) and for the per-
+   *  Mesh fallback (when the cap is exhausted). The caller assigns
+   *  this after buildTurretMesh3D returns. */
+  headSlot?: number;
+  /** Cached head sphere radius in world units. Set whenever a head
+   *  exists (per-Mesh OR instanced) so the per-frame writer doesn't
+   *  re-call getTurretHeadRadius — the value is constant per-turret
+   *  (depends on unitRadius + turret config, neither of which change). */
+  headRadius?: number;
   barrels: THREE.Mesh[];
   /** Pitch pivot (rotation.z = pitch) — tilts firing direction up/down.
    *  Parent of spinGroup. */
@@ -49,6 +64,11 @@ export type TurretMesh3DDeps = {
   barrelMat: THREE.Material;
   /** Resolved primary (player color) material for this unit. */
   primaryMat: THREE.Material;
+  /** When true, skip building the per-Mesh head sphere — the caller
+   *  is rendering the head through the shared InstancedMesh path
+   *  instead. Barrels still build and pivot at headRadius regardless,
+   *  same as the existing hideHead-but-with-barrels path. */
+  skipHead?: boolean;
 };
 
 // Scratch vectors reused across all turret builds — module-local so
@@ -74,8 +94,12 @@ export function buildTurretMesh3D(
   //    sphere is the whole visual.
   //  - the mirror-host turret on mirror units (Loris index 0): the mirror
   //    panels already represent that turret's body.
+  //  - deps.skipHead=true: the caller is rendering the head through the
+  //    shared `turretHeadInstanced` InstancedMesh path — see
+  //    Render3DEntities.allocTurretHeadSlot.
   const turretOff = gfx.turretStyle === 'none';
   const hideHead = turretOff || isForceField || isMirrorHost;
+  const skipHeadMesh = hideHead || deps.skipHead === true;
 
   // Resolved head radius drives BOTH the sphere mesh size AND its
   // attachment height. Computed up front so the barrel block can pivot
@@ -83,17 +107,24 @@ export function buildTurretMesh3D(
   const headRadius = getTurretHeadRadius(unitRadius, turret.config);
 
   let head: THREE.Mesh | undefined;
-  if (!hideHead) {
+  if (!skipHeadMesh) {
     head = new THREE.Mesh(deps.headGeom, deps.primaryMat);
     head.scale.setScalar(headRadius);
     head.position.set(0, headRadius, 0);
     root.add(head);
   }
 
+  // Cache headRadius on the returned mesh whenever the head is
+  // visible (per-Mesh OR via the instanced path) so the per-frame
+  // writer can read the resolved value without re-calling
+  // getTurretHeadRadius. Hidden heads (force-field / mirror-host /
+  // turret-off) don't need it — leave headRadius undefined.
+  const cachedHeadRadius = hideHead ? undefined : headRadius;
+
   const barrels: THREE.Mesh[] = [];
   if (!barrel || isForceField || turretOff) {
     parent.add(root);
-    return { root, head, barrels };
+    return { root, head, headRadius: cachedHeadRadius, barrels };
   }
 
   // Barrel pivots through the head's center, so its Y in turret-root
@@ -166,7 +197,7 @@ export function buildTurretMesh3D(
   // barrelLength=0 (e.g. commander's d-gun "emitter") → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);
-    return { root, head, barrels, pitchGroup, spinGroup };
+    return { root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup };
   }
 
   if (barrel.type === 'simpleSingleBarrel') {
@@ -203,5 +234,5 @@ export function buildTurretMesh3D(
   }
 
   parent.add(root);
-  return { root, head, barrels, pitchGroup, spinGroup };
+  return { root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup };
 }

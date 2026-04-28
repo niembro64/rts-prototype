@@ -446,6 +446,35 @@ export class Render3DEntities {
     nextSlot: number;
   }>();
 
+  // ── LOW+ tier turret-head InstancedMesh ──────────────────────────
+  // Every visible turret head across every unit on the map renders
+  // through ONE shared InstancedMesh — same draw-call collapse the
+  // chassis pools achieved, applied to the next-largest per-unit
+  // visual after chassis (heads can be 1-7 per unit; widow has 6
+  // beam turrets + 1 force-field, so up to 6 heads / unit at the
+  // upper end).
+  //
+  // Heads are simple unit spheres: per-instance world position
+  // (unit + tilt + yaw + lift + turret offset + headRadius lift),
+  // uniform scale = headRadius, team color via instanceColor.
+  // Position is NOT affected by turret yaw/pitch — the head sits
+  // on the +Y axis of the turret root, which is the rotation axis
+  // for both yaw and pitch, so the head's chassis-local position
+  // is rotation-invariant.
+  //
+  // Slots are stable-allocated per turret (turretMesh.headSlot)
+  // and rewritten every frame; slots persist across frames so
+  // count tracks nextSlot like the chassis pools.
+  //
+  // Hidden heads (turretStyle=none / force-field / mirror-host)
+  // don't get a slot — they have no visible head at all. Heads
+  // that would be visible but hit the cap fall back to per-Mesh
+  // (TurretMesh.head) — same fallback the chassis pools use.
+  private static readonly TURRET_HEAD_CAP = 16384;
+  private turretHeadInstanced: THREE.InstancedMesh | null = null;
+  private turretHeadFreeSlots: number[] = [];
+  private turretHeadNextSlot = 0;
+
   constructor(
     world: THREE.Group,
     clientViewState: ClientViewState,
@@ -530,6 +559,30 @@ export class Render3DEntities {
     this.smoothChassis.count = 0;
     this.smoothChassis.instanceMatrix.needsUpdate = true;
     this.world.add(this.smoothChassis);
+
+    // Turret-head InstancedMesh — reuses the existing turretHeadGeom
+    // (16×12 unit sphere). Per-instance team color via instanceColor
+    // modulates against the white shared MeshLambertMaterial — same
+    // pattern smoothChassis uses, so team-changes are picked up by
+    // the per-frame setColorAt without touching any material.
+    const headMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    this.turretHeadInstanced = new THREE.InstancedMesh(
+      this.turretHeadGeom,
+      headMat,
+      Render3DEntities.TURRET_HEAD_CAP,
+    );
+    this.turretHeadInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.turretHeadInstanced.setColorAt(0, this._instColor.set(0xffffff));
+    this.turretHeadInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    // Same culling caveat as the chassis pools — instances are
+    // anywhere on the map, source-geom bounding sphere is at origin.
+    this.turretHeadInstanced.frustumCulled = false;
+    for (let i = 0; i < Render3DEntities.TURRET_HEAD_CAP; i++) {
+      this.turretHeadInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    this.turretHeadInstanced.count = 0;
+    this.turretHeadInstanced.instanceMatrix.needsUpdate = true;
+    this.world.add(this.turretHeadInstanced);
   }
 
   private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
@@ -786,6 +839,7 @@ export class Render3DEntities {
     // units route through smoothChassis and re-allocate fresh.
     this.releaseAllSmoothChassisSlots();
     this.releaseAllPolyChassisSlots();
+    this.releaseAllTurretHeadSlots();
   }
 
   /** LOW-tier per-frame instance write. Each visible unit takes one
@@ -1026,6 +1080,45 @@ export class Render3DEntities {
     pool.mesh.instanceMatrix.needsUpdate = true;
   }
 
+  /** Reserve a slot for a turret head. Returns slot index, or null
+   *  when the cap is exhausted (caller falls back to per-Mesh head
+   *  via TurretMesh3D's normal head-creation path). */
+  private allocTurretHeadSlot(): number | null {
+    if (!this.turretHeadInstanced) return null;
+    if (this.turretHeadFreeSlots.length > 0) {
+      return this.turretHeadFreeSlots.pop()!;
+    }
+    if (this.turretHeadNextSlot < Render3DEntities.TURRET_HEAD_CAP) {
+      return this.turretHeadNextSlot++;
+    }
+    return null;
+  }
+
+  /** Hide one turret-head slot and push it back on the free list.
+   *  Called from the seen-pruning loop on unit despawn (each turret
+   *  on the unit gets its head slot freed). */
+  private freeTurretHeadSlot(slot: number): void {
+    const im = this.turretHeadInstanced;
+    if (!im || slot < 0) return;
+    im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    this.turretHeadFreeSlots.push(slot);
+    im.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Wipe every active turret-head slot (LOD flip). The mesh stays
+   *  in the scene with count = 0 until allocations refill it. */
+  private releaseAllTurretHeadSlots(): void {
+    const im = this.turretHeadInstanced;
+    if (!im) return;
+    for (let i = 0; i < this.turretHeadNextSlot; i++) {
+      im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    this.turretHeadFreeSlots.length = 0;
+    this.turretHeadNextSlot = 0;
+    im.count = 0;
+    im.instanceMatrix.needsUpdate = true;
+  }
+
   /** Wipe every active polygonal-chassis slot across every per-renderer
    *  pool (LOD flip). The pool meshes stay in the scene with count = 0
    *  (no GPU draw work) until the next allocation refills them. */
@@ -1256,9 +1349,25 @@ export class Render3DEntities {
         // additional turrets render normally with their own cylinder body.
         const unitHasMirrors = (e.unit?.mirrorPanels?.length ?? 0) > 0;
         const turretMeshes: TurretMesh[] = [];
+        const turretOff = this.lod.gfx.turretStyle === 'none';
         for (let ti = 0; ti < turrets.length; ti++) {
           const t = turrets[ti];
           const isMirrorHost = unitHasMirrors && ti === 0;
+          // Decide whether to route this turret's head through the
+          // shared `turretHeadInstanced` InstancedMesh. The same
+          // hideHead conditions buildTurretMesh3D uses (turret-off
+          // / force-field / mirror-host) skip the slot entirely; for
+          // visible heads, alloc a slot and pass `skipHead: true`
+          // so buildTurretMesh3D doesn't ALSO build a per-Mesh head
+          // (would double-render). Slot alloc returns null on cap
+          // exhaustion → fall back to per-Mesh head.
+          const isForceField = (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
+          const hideHead = turretOff || isForceField || isMirrorHost;
+          let headSlot: number | undefined;
+          if (!hideHead) {
+            const allocated = this.allocTurretHeadSlot();
+            if (allocated !== null) headSlot = allocated;
+          }
           // Turrets parent to `liftGroup` so they ride on top of the
           // chassis at the locomotion's lift height — wheels carry
           // both chassis AND turret, treads do the same. Articulated
@@ -1271,9 +1380,11 @@ export class Render3DEntities {
             barrelGeom: this.barrelGeom,
             barrelMat: this.barrelMat,
             primaryMat: this.getPrimaryMat(pid),
+            skipHead: headSlot !== undefined,
           });
           if (tm.head) tm.head.userData.entityId = e.id;
           for (const b of tm.barrels) b.userData.entityId = e.id;
+          tm.headSlot = headSlot;
           turretMeshes.push(tm);
         }
 
@@ -1545,6 +1656,47 @@ export class Render3DEntities {
           : bodyTopY;
         tm.root.position.set(t.offset.x, turretMountY, t.offset.y);
 
+        // Head InstancedMesh write — the head sphere's chassis-local
+        // position is (offset.x, mountY + headRadius, offset.y) inside
+        // liftGroup, which world-transforms via:
+        //   worldPos = groupPos + R(tilt·yaw)·(localX, lift + localY, localZ)
+        //   matrix   = T(worldPos) · S(headRadius)
+        // Head is rotation-invariant (sphere on the +Y rotation axis
+        // of the turret root, where turret yaw rotates around — pitch
+        // lives on a sub-group below the head). headRadius is cached
+        // on the TurretMesh so we don't re-call getTurretHeadRadius.
+        if (
+          tm.headSlot !== undefined
+          && this.turretHeadInstanced
+          && tm.headRadius !== undefined
+        ) {
+          const lift = m.chassisLift ?? 0;
+          this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
+          this._smoothParentQuat
+            .copy(m.group.quaternion)
+            .multiply(this._smoothYawQuat);
+          this._smoothPartLocalPos.set(
+            t.offset.x,
+            lift + turretMountY + tm.headRadius,
+            t.offset.y,
+          );
+          this._smoothPartLocalPos.applyQuaternion(this._smoothParentQuat);
+          this._smoothLiftedPos
+            .copy(m.group.position)
+            .add(this._smoothPartLocalPos);
+          this._smoothPartScale.set(tm.headRadius, tm.headRadius, tm.headRadius);
+          this._smoothPartMat.compose(
+            this._smoothLiftedPos,
+            Render3DEntities._IDENTITY_QUAT,
+            this._smoothPartScale,
+          );
+          this.turretHeadInstanced.setMatrixAt(tm.headSlot, this._smoothPartMat);
+          this._instColor.set(
+            pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+          );
+          this.turretHeadInstanced.setColorAt(tm.headSlot, this._instColor);
+        }
+
         // Turret aim through the new hierarchy:
         //
         //   world barrel = tilt · Ry(yawGroup) · Ry(localYaw) · Rz(localPitch) · +X
@@ -1655,6 +1807,11 @@ export class Render3DEntities {
         if (m.polyChassisSlot !== undefined) {
           this.freePolyChassisSlotForEntity(m.rendererId, id);
         }
+        // Turret-head slots — one per turret on the unit that had a
+        // visible head routed through the InstancedMesh path.
+        for (const tm of m.turrets) {
+          if (tm.headSlot !== undefined) this.freeTurretHeadSlot(tm.headSlot);
+        }
         this.unitMeshes.delete(id);
       }
     }
@@ -1687,6 +1844,17 @@ export class Render3DEntities {
       if (pool.slots.size === 0) continue;
       pool.mesh.instanceMatrix.needsUpdate = true;
       if (pool.mesh.instanceColor) pool.mesh.instanceColor.needsUpdate = true;
+    }
+    // Same for the turret-head InstancedMesh — one shared draw call
+    // for every visible turret head across every unit on the map.
+    if (this.turretHeadInstanced) {
+      this.turretHeadInstanced.count = this.turretHeadNextSlot;
+      if (this.turretHeadNextSlot > 0) {
+        this.turretHeadInstanced.instanceMatrix.needsUpdate = true;
+        if (this.turretHeadInstanced.instanceColor) {
+          this.turretHeadInstanced.instanceColor.needsUpdate = true;
+        }
+      }
     }
   }
 
@@ -2077,5 +2245,17 @@ export class Render3DEntities {
     this.smoothChassisGeom.dispose();
     this.smoothChassisSlots.clear();
     this.smoothChassisFreeSlots.length = 0;
+    if (this.turretHeadInstanced) {
+      this.world.remove(this.turretHeadInstanced);
+      // Same pattern as smoothChassis — material is a private
+      // MeshLambertMaterial owned by the InstancedMesh; dispose via
+      // the mesh. Geometry is `turretHeadGeom` (still owned by this
+      // class as a per-Mesh head fallback for cap-exhaust units, so
+      // don't dispose here).
+      (this.turretHeadInstanced.material as THREE.Material).dispose();
+      this.turretHeadInstanced.dispose();
+      this.turretHeadInstanced = null;
+    }
+    this.turretHeadFreeSlots.length = 0;
   }
 }
