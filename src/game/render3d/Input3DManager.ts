@@ -626,6 +626,12 @@ export class Input3DManager {
       e.shiftKey,
     );
     if (repairCmd) {
+      // eslint-disable-next-line no-console
+      console.log(
+        '[click] repair: clicked at (%d, %d, %d) → target #%d',
+        Math.round(world.x), Math.round(world.y), Math.round(world.z),
+        repairCmd.targetId,
+      );
       this.localCommandQueue.enqueue(repairCmd);
       return;
     }
@@ -641,10 +647,25 @@ export class Input3DManager {
         e.shiftKey,
       );
       if (attackCmd) {
+        // eslint-disable-next-line no-console
+        console.log(
+          '[click] attack: clicked at (%d, %d, %d) → target #%d, %d unit(s)',
+          Math.round(world.x), Math.round(world.y), Math.round(world.z),
+          attackCmd.targetId, selectedUnits.length,
+        );
         this.localCommandQueue.enqueue(attackCmd);
         return;
       }
-      // Start drawing a line path of waypoints.
+      // Start drawing a line path of waypoints. The single-click case
+      // (mouse goes up before any drag motion) finalises this as a
+      // group-move to the click point — so log the click here so we
+      // see both endpoints of any drag the user does.
+      // eslint-disable-next-line no-console
+      console.log(
+        '[click] move-start: clicked at (%d, %d, %d), %d unit(s) selected',
+        Math.round(world.x), Math.round(world.y), Math.round(world.z),
+        selectedUnits.length,
+      );
       this.rightDown = true;
       this.linePath.start(world.x, world.y, selectedUnits.length, world.z);
       return;
@@ -655,6 +676,12 @@ export class Input3DManager {
     // (no distribution), so seed the accumulator with a fixed target.
     const factories = this.getSelectedFactories();
     if (factories.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log(
+        '[click] factory-waypoint-start: clicked at (%d, %d, %d), %d factory(s) selected',
+        Math.round(world.x), Math.round(world.y), Math.round(world.z),
+        factories.length,
+      );
       this.rightDown = true;
       this.linePath.startWithFixedTarget(world.x, world.y, world.z);
     }
@@ -704,6 +731,13 @@ export class Input3DManager {
         tick, shiftHeld,
       );
       if (repairCmd) {
+        // eslint-disable-next-line no-console
+        console.log(
+          '[click] repair-on-release: released at (%d, %d, %d) → target #%d',
+          Math.round(finalPoint.x), Math.round(finalPoint.y),
+          finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
+          repairCmd.targetId,
+        );
         this.localCommandQueue.enqueue(repairCmd);
         this.linePath.reset();
         return;
@@ -711,7 +745,30 @@ export class Input3DManager {
       const moveCmd = buildLinePathMoveCommand(
         this.linePath, selectedUnits, this.waypointMode, tick, shiftHeld,
       );
-      if (moveCmd) this.localCommandQueue.enqueue(moveCmd);
+      if (moveCmd) {
+        // eslint-disable-next-line no-console
+        console.log(
+          '[click] move: released at (%d, %d, %d), %d unit(s), %d drag sample(s), waypointType=%s',
+          Math.round(finalPoint.x), Math.round(finalPoint.y),
+          finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
+          selectedUnits.length, points.length, moveCmd.waypointType,
+        );
+        // Per-unit individualTargets — useful when the line was a
+        // multi-sample drag and units got distributed along it.
+        if (moveCmd.individualTargets && moveCmd.individualTargets.length > 0) {
+          for (let i = 0; i < moveCmd.individualTargets.length; i++) {
+            const t = moveCmd.individualTargets[i];
+            // eslint-disable-next-line no-console
+            console.log(
+              '  [click]   unit #%d → (%d, %d, %d)',
+              moveCmd.entityIds[i],
+              Math.round(t.x), Math.round(t.y),
+              t.z !== undefined ? Math.round(t.z) : -1,
+            );
+          }
+        }
+        this.localCommandQueue.enqueue(moveCmd);
+      }
       this.linePath.reset();
       return;
     }
@@ -720,6 +777,13 @@ export class Input3DManager {
     const factories = this.getSelectedFactories();
     if (factories.length > 0 && points.length > 0) {
       const finalPoint = points[points.length - 1];
+      // eslint-disable-next-line no-console
+      console.log(
+        '[click] factory-waypoint: released at (%d, %d, %d), %d factory(s)',
+        Math.round(finalPoint.x), Math.round(finalPoint.y),
+        finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
+        factories.length,
+      );
       const cmds = buildFactoryWaypointCommands(
         factories, finalPoint.x, finalPoint.y,
         this.waypointMode, tick, shiftHeld, finalPoint.z,
