@@ -126,6 +126,26 @@ export function setTerrainDividersShape(shape: TerrainShape): void {
 // ripple zone is a disc of radius 500 centered on the map.
 const RIPPLE_RADIUS_FRACTION = 0.4;
 
+// Team-separator ridges grow from a flat central plain to a peak
+// plateau that fills out toward the map edge. Profile (all radii
+// are fractions of min(mapW, mapH)):
+//
+//   r ≤ RIDGE_INNER_RADIUS_FRACTION   → 0     (flat near the map centre — no ridge)
+//   r between inner and outer         → linear ramp from 0 up to peak
+//   r ≥ RIDGE_OUTER_RADIUS_FRACTION   → peak  (plateau, propagates to the map edge)
+//
+// • RIDGE_INNER_RADIUS_FRACTION (the smaller one) — the radius at
+//   which the ridge starts rising. Inside it, the divider has zero
+//   height so the centre of the map stays as an open arena.
+// • RIDGE_OUTER_RADIUS_FRACTION — the radius at which the ridge
+//   reaches peak height. The peak then propagates outward all the
+//   way to the map edge — the divider mountains form a continuous
+//   wall behind the team areas.
+// Set inner = outer for an instant step (a sheer cliff at that
+// radius); set inner = outer = 0 to plateau across the entire map.
+const RIDGE_INNER_RADIUS_FRACTION = 0.1;
+const RIDGE_OUTER_RADIUS_FRACTION = 0.2;
+
 // ── TEAM SEPARATION RIDGES ───────────────────────────────────────
 //
 // On top of the central ripple disc the heightmap can carve a radial
@@ -148,9 +168,6 @@ const RIPPLE_RADIUS_FRACTION = 0.4;
 // initializer for the lobby). Default 0 → no ridges, equivalent to
 // the pre-team-separation behavior.
 let teamCount = 0;
-// Spawn margin in sim units — matches DEMO_CONFIG.spawnMarginPx.
-// Inlined to keep Terrain.ts free of a demoConfig import.
-const SPAWN_MARGIN = 100;
 
 export function setTerrainTeamCount(n: number): void {
   const next = Math.max(0, n | 0);
@@ -238,11 +255,23 @@ export function getTerrainHeight(
       // and steep at the trough.
       const angT = distFromBarrierCenter / halfBarrier; // 0..1
       const angFalloff = (1 + Math.cos(angT * Math.PI)) * 0.5;
-      // Radial profile: 0 at center, ramp linearly up to the spawn
-      // ring, plateau beyond. The user-spec is "starts at 2x
-      // amplitude from the outer ring of the starting circle".
-      const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - SPAWN_MARGIN;
-      const radT = spawnRadius > 0 ? Math.min(dist / spawnRadius, 1) : 0;
+      // Radial profile — see RIDGE_INNER_RADIUS_FRACTION /
+      // RIDGE_OUTER_RADIUS_FRACTION up top.
+      const minDim = Math.min(mapWidth, mapHeight);
+      const innerR = minDim * RIDGE_INNER_RADIUS_FRACTION;
+      const outerR = minDim * RIDGE_OUTER_RADIUS_FRACTION;
+      let radT: number;
+      if (dist >= outerR) {
+        // Peak plateau — propagates outward to the map edge.
+        radT = 1;
+      } else if (dist <= innerR) {
+        // Flat inner plain — no ridge near the map centre.
+        radT = 0;
+      } else {
+        // Ramp from 0 at innerR up to 1 at outerR.
+        const span = outerR - innerR;
+        radT = span > 0 ? (dist - innerR) / span : 1;
+      }
       ridge = mountainSeparatorAmplitude * angFalloff * radT;
     }
   }

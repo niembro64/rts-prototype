@@ -6,14 +6,14 @@ export const CAPTURE_CONFIG = {
    * the flag at this rate. Two units raise at 2× this rate, etc.
    * At 0.5, one unit takes 2 seconds to fully raise a flag from 0→1.
    */
-  raiseRatePerUnit: 0.5,
+  raiseRatePerUnit: 0.9,
 
   /**
    * Flag lower rate per enemy unit per second. Each enemy unit on a tile
    * lowers the flag at this rate. Set equal to raiseRatePerUnit for
    * symmetric offense/defense, or lower for a defensive advantage.
    */
-  lowerRatePerUnit: 0.5,
+  lowerRatePerUnit: 0.1,
 
   /**
    * When a tile is contested (net rate = 0, equal teams), should the
@@ -52,7 +52,7 @@ export const CAPTURE_CONFIG = {
  *  the default mana amount (`BASE_MANA_PER_SECOND`). 1.0 → no
  *  hotspot (uniform production); 3.0 → the centre tile produces
  *  3× a perimeter tile. */
-export const MANA_CENTER_TILE_MULTIPLIER = 50.0;
+export const MANA_CENTER_TILE_MULTIPLIER = 20.0;
 
 /** Hotspot disc radius as a fraction of min(mapWidth, mapHeight).
  *  Inside the disc the rate ramps linearly from the default mana
