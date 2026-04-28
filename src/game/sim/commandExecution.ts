@@ -432,8 +432,26 @@ function addPathActions(
   ctx: CommandContext,
   goalZ?: number,
 ): void {
+  // When appending to an existing queue (queue=true), plan from the
+  // END of the current queue, not from the unit's CURRENT position.
+  // By the time the unit starts executing this new path it will
+  // already be at the last queued waypoint — planning from
+  // `unit.transform` would give the planner the wrong start, and
+  // the connecting chord between consecutive queued goals would
+  // never get pathfinder-checked. That manifests as the visualised
+  // chain dipping through water between two queued goals on
+  // opposite sides of a divider lake (each individual segment was
+  // planned correctly, but the connecting hop between them was
+  // never planned at all).
+  let planStartX = unit.transform.x;
+  let planStartY = unit.transform.y;
+  if (queue && unit.unit && unit.unit.actions.length > 0) {
+    const last = unit.unit.actions[unit.unit.actions.length - 1];
+    planStartX = last.x;
+    planStartY = last.y;
+  }
   const actions = expandPathActions(
-    unit.transform.x, unit.transform.y,
+    planStartX, planStartY,
     goalX, goalY, type,
     ctx.world.mapWidth, ctx.world.mapHeight,
     ctx.constructionSystem.getGrid(),
@@ -507,8 +525,20 @@ function addPathActionsWithFinal(
   queue: boolean,
   ctx: CommandContext,
 ): void {
+  // Same queue-tail planning fix as addPathActions: when appending
+  // to an existing queue, plan from the last queued waypoint
+  // instead of from the unit's current position. Otherwise the
+  // implicit chord between two consecutively queued goals is
+  // never pathfinder-checked and can cross water.
+  let planStartX = unit.transform.x;
+  let planStartY = unit.transform.y;
+  if (queue && unit.unit && unit.unit.actions.length > 0) {
+    const last = unit.unit.actions[unit.unit.actions.length - 1];
+    planStartX = last.x;
+    planStartY = last.y;
+  }
   const actions = expandPathActions(
-    unit.transform.x, unit.transform.y,
+    planStartX, planStartY,
     finalAction.x, finalAction.y, 'move',
     ctx.world.mapWidth, ctx.world.mapHeight,
     ctx.constructionSystem.getGrid(),
