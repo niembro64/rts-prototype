@@ -178,10 +178,11 @@ export class GameServer {
     // Setup simulation callbacks
     this.setupSimulationCallbacks();
 
-    // Pre-paint the capture grid into per-team radial sectors with a
-    // neutral disc at the map center. Same angular layout the spawn
-    // circle and terrain dividers use, so each team starts with the
-    // territory directly in front of their base. Tiles flagged dirty
+    // Pre-paint the capture grid into per-team radial sectors. Same
+    // angular layout the spawn circle and terrain dividers use, so
+    // each team starts with the territory in front of their base.
+    // Border tiles get area-weighted partial ownership (the centre
+    // tile is naturally split among all teams). Tiles flagged dirty
     // here flow out in the next snapshot regardless of keyframe / delta.
     {
       // Tell the capture system about the map up front so its
@@ -190,12 +191,10 @@ export class GameServer {
       // below. The renderer pulls the same weights so on-screen
       // brightness and income stay in lockstep.
       this.captureSystem.setMapSize(mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
-      const minDim = Math.min(mapWidth, mapHeight);
-      const neutralRadius = minDim * CAPTURE_CONFIG.initialOwnershipNeutralRadiusFraction;
       this.captureSystem.initializeRadialOwnership(
         mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE,
         this.playerIds, FIRST_PLAYER_ANGLE,
-        neutralRadius, CAPTURE_CONFIG.initialOwnershipHeight,
+        CAPTURE_CONFIG.initialOwnershipHeight,
       );
     }
 

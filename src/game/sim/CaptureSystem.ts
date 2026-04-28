@@ -179,22 +179,31 @@ export class CaptureSystem {
     this.productionRates.clear();
   }
 
-  /** Pre-capture every grid cell outside a central neutral disc to the
-   *  team whose radial sector contains it, so the map starts already
-   *  partitioned along the same angular sectors the spawn-circle and
-   *  terrain-divider ridges use.
+  /** Pre-capture every grid cell to the team whose radial sector
+   *  contains it, so the map starts already partitioned along the
+   *  same angular sectors the spawn-circle and terrain-divider
+   *  ridges use.
+   *
+   *  Tiles fully inside one slice get height = ownerHeight for that
+   *  team. Tiles that straddle a sector boundary are split AREA-
+   *  WEIGHTED across the teams whose slices touch them — a tile
+   *  30% in A, 10% in B, 60% in C ends up with heights
+   *  (0.30, 0.10, 0.60) × ownerHeight respectively. The split is
+   *  computed by sub-sampling the tile on a regular sub-grid and
+   *  counting which slice each sample falls in; the centre tile
+   *  naturally ends up shared roughly equally among all N teams,
+   *  so there's no need for a separate neutral disc.
    *
    *  Sector math mirrors spawn.ts → getPlayerBaseAngle: player i is
-   *  centered at `(i / N) * 2π + firstPlayerAngle`, so we shift the
-   *  cell's angle by `-firstPlayerAngle + π/N` (half a sector width)
-   *  before dividing into N buckets — the result lands player 0's
-   *  sector at index 0.
+   *  centred at `(i / N) * 2π + firstPlayerAngle`, so we shift each
+   *  sample's angle by `-firstPlayerAngle + π/N` (half a sector
+   *  width) before dividing into N buckets — the result lands
+   *  player 0's sector at index 0.
    *
-   *  Each touched tile is added to dirtyTiles so the very next snapshot
-   *  (whether keyframe or delta) ships the new ownership. The running
-   *  per-player production-rate total is bumped per team so mana
-   *  income reflects starting territory (plus its hotspot weighting)
-   *  before any unit moves.
+   *  Each touched tile is added to dirtyTiles so the next snapshot
+   *  ships the ownership. Per-player production-rate totals are
+   *  bumped so mana income reflects starting territory (plus its
+   *  hotspot weighting) from frame 1.
    *
    *  Safe to call only on a fresh system — assumes no existing tiles. */
   initializeRadialOwnership(
@@ -203,7 +212,6 @@ export class CaptureSystem {
     cellSize: number,
     playerIds: PlayerId[],
     firstPlayerAngle: number,
-    neutralRadius: number,
     ownerHeight: number,
   ): void {
     const N = playerIds.length;
@@ -214,38 +222,59 @@ export class CaptureSystem {
     const cellsX = Math.max(1, Math.ceil(mapWidth / cellSize));
     const cellsY = Math.max(1, Math.ceil(mapHeight / cellSize));
     const sectorWidth = (Math.PI * 2) / N;
-    const neutralRadiusSq = neutralRadius * neutralRadius;
     const TWO_PI = Math.PI * 2;
+
+    // Sub-sample each tile on an SxS grid and count which slice
+    // each sample falls in. S=8 → 64 samples/tile, ~1.6% accuracy
+    // on slice fractions, well below visual / sim discrimination.
+    const S = 8;
+    const subStep = cellSize / S;
+    const subStart = subStep * 0.5; // first sample at sub-cell centre
+    const sampleCounts = new Array<number>(N).fill(0);
+    const totalSamples = S * S;
+    const angleShift = -firstPlayerAngle + sectorWidth * 0.5;
 
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
-        // Cell centroid in world coords (matches the spatial-grid /
-        // capture-tile encoding used everywhere else).
+        const x0 = cx * cellSize;
+        const y0 = cy * cellSize;
+
+        for (let n = 0; n < N; n++) sampleCounts[n] = 0;
+
+        for (let sj = 0; sj < S; sj++) {
+          const dy = y0 + subStart + sj * subStep - cy0;
+          for (let si = 0; si < S; si++) {
+            const dx = x0 + subStart + si * subStep - cx0;
+            let theta = Math.atan2(dy, dx) + angleShift;
+            theta = ((theta % TWO_PI) + TWO_PI) % TWO_PI;
+            const idx = Math.floor(theta / sectorWidth) % N;
+            sampleCounts[idx]++;
+          }
+        }
+
+        // Per-tile mana production at the cell's centroid — same
+        // rate the sim and renderer use for this tile.
         const wx = (cx + 0.5) * cellSize;
         const wy = (cy + 0.5) * cellSize;
-        const dx = wx - cx0;
-        const dy = wy - cy0;
-        if (dx * dx + dy * dy <= neutralRadiusSq) continue;
-
-        // Angle in [0, 2π), then shift into the player-0-at-0 frame.
-        let theta = Math.atan2(dy, dx) - firstPlayerAngle + sectorWidth * 0.5;
-        theta = ((theta % TWO_PI) + TWO_PI) % TWO_PI;
-        const idx = Math.floor(theta / sectorWidth) % N;
-        const pid = playerIds[idx];
+        const tileProd = getManaTileProductionPerSecond(wx, wy, mapWidth, mapHeight);
 
         const key = ((cx + 32768) << 16) | (cy + 32768);
         const tile: TileState = new Map();
-        tile.set(pid, ownerHeight);
-        this.tiles.set(key, tile);
-        this.dirtyTiles.add(key);
-        // Production rate increment uses the per-tile mana/sec rate
-        // at this cell — center tiles inside the hotspot disc count
-        // for more income from frame 1.
-        const tileProd = getManaTileProductionPerSecond(wx, wy, mapWidth, mapHeight);
-        this.productionRates.set(
-          pid,
-          (this.productionRates.get(pid) ?? 0) + ownerHeight * tileProd,
-        );
+        for (let n = 0; n < N; n++) {
+          const count = sampleCounts[n];
+          if (count === 0) continue;
+          const height = ownerHeight * (count / totalSamples);
+          const pid = playerIds[n];
+          tile.set(pid, height);
+          this.productionRates.set(
+            pid,
+            (this.productionRates.get(pid) ?? 0) + height * tileProd,
+          );
+        }
+        if (tile.size > 0) {
+          this.tiles.set(key, tile);
+          this.dirtyTiles.add(key);
+        }
       }
     }
   }
