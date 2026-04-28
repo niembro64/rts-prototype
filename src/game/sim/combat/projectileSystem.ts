@@ -416,6 +416,12 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
 
     proj.timeAlive += dtMs;
 
+    if (proj.collisionStartX === undefined) {
+      proj.collisionStartX = entity.transform.x;
+      proj.collisionStartY = entity.transform.y;
+      proj.collisionStartZ = entity.transform.z;
+    }
+
     // Stash prev-state for swept 3D collision in ProjectileCollisionHandler.
     proj.prevX = entity.transform.x;
     proj.prevY = entity.transform.y;

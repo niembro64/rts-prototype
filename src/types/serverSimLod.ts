@@ -61,6 +61,13 @@ export type ServerSimDetailConfig = {
    *  (units feel pushes in pulses) but at high counts FF push is
    *  one of the heaviest per-tick systems. */
   forceFieldStride: number;
+  /** Projectile collision stride. Traveling projectiles still move
+   *  every tick, but their expensive unit/mirror collision sweep can
+   *  be staggered. The projectile stores its last checked sweep start
+   *  so a skipped tick widens the next swept segment instead of
+   *  creating tunneling gaps. Beam/laser damage scales dt by this
+   *  stride on processed ticks. */
+  projectileCollisionStride: number;
   /** Capture-system stride. captureSystem.update walks every
    *  occupied cell each tick; same skip+scale-dt trick. Lower-tier
    *  flag heights climb at the same long-term rate but coarsen. */
@@ -102,5 +109,6 @@ export type ServerSimDetailTable = {
   TARGETING_DENSITY_THRESHOLD: ServerSimTierMap<number>;
   TARGETING_DENSITY_STRIDE: ServerSimTierMap<number>;
   FORCE_FIELD_STRIDE: ServerSimTierMap<number>;
+  PROJECTILE_COLLISION_STRIDE: ServerSimTierMap<number>;
   CAPTURE_STRIDE: ServerSimTierMap<number>;
 };

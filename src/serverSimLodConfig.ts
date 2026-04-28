@@ -114,6 +114,16 @@ export const SERVER_SIM_DETAIL: ServerSimDetailTable = {
     high: 1,
     max: 1,
   },
+  // Projectile collision/damage work. Movement still integrates each
+  // tick; the expensive swept collision / beam damage path is
+  // staggered at lower tiers with accumulated swept segments.
+  PROJECTILE_COLLISION_STRIDE: {
+    min: 4,
+    low: 3,
+    medium: 2,
+    high: 1,
+    max: 1,
+  },
   // Capture system — same skip+scale-dt trick. Walks every occupied
   // cell every tick, so on a packed map this is non-trivial.
   CAPTURE_STRIDE: {

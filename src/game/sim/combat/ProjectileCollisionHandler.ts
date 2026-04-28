@@ -12,6 +12,7 @@ import { findClosestPanelHit } from './MirrorPanelHit';
 import { getSubmunitionTurretConfig } from '../blueprints';
 import { encodeSubmunitionTurretId } from '../turretConfigs';
 import { getSurfaceNormal } from '../Terrain';
+import { getSimDetailConfig } from '../simQuality';
 import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
@@ -232,12 +233,17 @@ export function checkProjectileCollisions(
   const deathContexts = _collisionDeathContexts;
   const newProjectiles = _collisionNewProjectiles;
   const spawnEvents = _collisionSpawnEvents;
+  const projectileCollisionStride = Math.max(1, getSimDetailConfig().projectileCollisionStride | 0);
+  const collisionDtMs = dtMs * projectileCollisionStride;
+  const tick = world.getTick();
 
   for (const projEntity of world.getProjectiles()) {
     if (!projEntity.projectile || !projEntity.ownership) continue;
 
     const proj = projEntity.projectile;
     const config = proj.config;
+    const processCollision = projectileCollisionStride === 1 ||
+      ((projEntity.id + tick) % projectileCollisionStride) === 0;
     // Projectile entities always use projectile/beam/laser shot types (never force)
     const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
 
@@ -247,10 +253,10 @@ export function checkProjectileCollisions(
     // expiry → projectileExpire event → remove). Skipped for beams/
     // lasers (they bounce off mirrors via the beam tracer, not here).
     let hitMirrorPanel = false;
-    if (proj.projectileType === 'projectile') {
-      const prevX = proj.prevX ?? projEntity.transform.x;
-      const prevY = proj.prevY ?? projEntity.transform.y;
-      const prevZ = proj.prevZ ?? projEntity.transform.z;
+    if (processCollision && proj.projectileType === 'projectile') {
+      const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
+      const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
+      const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
       const curX = projEntity.transform.x;
       const curY = projEntity.transform.y;
       const curZ = projEntity.transform.z;
@@ -430,12 +436,16 @@ export function checkProjectileCollisions(
 
     // Handle different projectile types with unified damage system
     if (proj.projectileType === 'beam' || proj.projectileType === 'laser') {
+      if (!processCollision) {
+        // Beam endpoints still update every tick in updateProjectiles();
+        // only the expensive damage query is staggered under server LOD.
+      } else {
       // Beam/laser damage: single area zone at truncated endpoint
       const beamShot = config.shot as BeamShot | LaserShot;
       const impactX = proj.endX ?? projEntity.transform.x;
       const impactY = proj.endY ?? projEntity.transform.y;
       const impactZ = proj.endZ ?? projEntity.transform.z;
-      const dtSec = dtMs / 1000;
+      const dtSec = collisionDtMs / 1000;
 
       // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
       const tickDamage = beamShot.dps * dtSec;
@@ -489,13 +499,18 @@ export function checkProjectileCollisions(
       collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
       // Note: beam recoil is applied in fireTurrets() based on weapon.state
+      }
     } else {
+      if (!processCollision) {
+        // Keep collisionStart intact so the next processed tick sweeps
+        // the full skipped path instead of only the most recent segment.
+      } else {
       // Traveling projectiles use swept 3D volume collision (prevents tunneling)
       const projShot = config.shot as ProjectileShot;
       const projRadius = projShot.collision.radius;
-      const prevX = proj.prevX ?? projEntity.transform.x;
-      const prevY = proj.prevY ?? projEntity.transform.y;
-      const prevZ = proj.prevZ ?? projEntity.transform.z;
+      const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
+      const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
+      const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
       const currentX = projEntity.transform.x;
       const currentY = projEntity.transform.y;
       const currentZ = projEntity.transform.z;
@@ -632,6 +647,10 @@ export function checkProjectileCollisions(
         projectilesToRemove.push(projEntity.id);
         despawnEvents.push({ id: projEntity.id });
         continue;
+      }
+      proj.collisionStartX = currentX;
+      proj.collisionStartY = currentY;
+      proj.collisionStartZ = currentZ;
       }
     }
 

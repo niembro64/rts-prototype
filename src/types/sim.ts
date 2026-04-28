@@ -375,6 +375,9 @@ export type Projectile = {
   prevX?: number;
   prevY?: number;
   prevZ?: number;
+  collisionStartX?: number;
+  collisionStartY?: number;
+  collisionStartZ?: number;
   timeAlive: number;
   maxLifespan: number;
   startX?: number;
