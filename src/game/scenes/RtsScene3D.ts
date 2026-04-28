@@ -32,6 +32,21 @@ import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 /** Same color the per-mesh leg path used. Single uniform value
  *  across the whole shared pool — legs aren't team-tinted. */
 const LEG_COLOR = 0x2a2f36;
+const MASS_RENDER_UNIT_THRESHOLD = 5000;
+const MASS_HUD_FRAME_STRIDE = {
+  min: 4,
+  low: 3,
+  medium: 2,
+  high: 1,
+  max: 1,
+} as const;
+const MASS_EFFECT_FRAME_STRIDE = {
+  min: 4,
+  low: 3,
+  medium: 2,
+  high: 1,
+  max: 1,
+} as const;
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
@@ -45,6 +60,7 @@ import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
   getAudioSmoothing,
   getCameraSmoothMode,
+  getGraphicsConfig,
   setCurrentZoom,
   getGridOverlay,
   getGridOverlayIntensity,
@@ -164,6 +180,9 @@ export class RtsScene3D {
   private smokeTrailRenderer!: SmokeTrail3D;
   private audioScheduler = new AudioEventScheduler();
   private lastEffectsTickMs = 0;
+  private renderFrameIndex = 0;
+  private burnMarkAccumMs = 0;
+  private smokeTrailAccumMs = 0;
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
   private snapshotBuffer = new SnapshotBuffer();
@@ -685,6 +704,13 @@ export class RtsScene3D {
     // camera shim's `zoom` accessor already derives a 2D-equivalent
     // zoom from baseDistance / orbit.distance.
     setCurrentZoom(this.cameras.main.zoom);
+    this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
+    const graphicsConfig = getGraphicsConfig();
+    const massRenderMode = this.clientViewState.getUnits().length >= MASS_RENDER_UNIT_THRESHOLD;
+    const hudFrameStride = massRenderMode ? MASS_HUD_FRAME_STRIDE[graphicsConfig.tier] : 1;
+    const effectFrameStride = massRenderMode ? MASS_EFFECT_FRAME_STRIDE[graphicsConfig.tier] : 1;
+    const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
+    const updateEffectsThisFrame = effectFrameStride <= 1 || this.renderFrameIndex % effectFrameStride === 0;
     // Refresh the shared visibility footprint once per frame so every
     // per-entity hot loop below can early-out on off-screen entities
     // without re-querying camera state or getRenderMode(). The same
@@ -726,14 +752,22 @@ export class RtsScene3D {
     this.waterRenderer.update(effectDt / 1000);
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
-    this.burnMarkRenderer.update(lineProjectiles, effectDt);
+    this.burnMarkAccumMs += effectDt;
+    if (updateEffectsThisFrame) {
+      this.burnMarkRenderer.update(lineProjectiles, this.burnMarkAccumMs);
+      this.burnMarkAccumMs = 0;
+    }
     // Commander build / heal spray trails — read straight from sim state
     // via ClientViewState, same list the 2D renderer consumes.
     this.sprayRenderer.update(this.clientViewState.getSprayTargets(), effectDt);
     // Rocket smoke trails: reads the same projectile list the beam
     // renderer consumes; puffs fall back to pooled meshes once their
     // fade completes.
-    this.smokeTrailRenderer.update(travelingProjectiles, effectDt, this.renderScope);
+    this.smokeTrailAccumMs += effectDt;
+    if (updateEffectsThisFrame) {
+      this.smokeTrailRenderer.update(travelingProjectiles, this.smokeTrailAccumMs, this.renderScope);
+      this.smokeTrailAccumMs = 0;
+    }
     // Per-frame input bookkeeping — currently just the shared
     // SelectionChangeTracker, which resets waypoint mode when the
     // selection changes (matches the 2D path's InputManager.update).
@@ -769,7 +803,7 @@ export class RtsScene3D {
     }
     this.forceFieldRenderer.endFrame();
 
-    if (this.healthBar3D) {
+    if (this.healthBar3D && updateHudThisFrame) {
       this.healthBar3D.beginFrame(hudFrustum);
       for (const u of this.clientViewState.getDamagedUnits()) {
         this.healthBar3D.perUnit(u);
@@ -779,15 +813,17 @@ export class RtsScene3D {
       }
       this.healthBar3D.endFrame();
     }
-    this.waypoint3D?.update(
-      this._cachedSelectedUnits,
-      this._cachedSelectedBuildings,
-    );
-    this.selectionLabel3D?.update(
-      this._cachedSelectedUnits,
-      this._cachedSelectedBuildings,
-      hudFrustum,
-    );
+    if (updateHudThisFrame) {
+      this.waypoint3D?.update(
+        this._cachedSelectedUnits,
+        this._cachedSelectedBuildings,
+      );
+      this.selectionLabel3D?.update(
+        this._cachedSelectedUnits,
+        this._cachedSelectedBuildings,
+        hudFrustum,
+      );
+    }
     const renderEnd = performance.now();
 
     // UI updates — throttled like RtsScene. A producing factory's
