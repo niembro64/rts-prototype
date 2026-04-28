@@ -95,8 +95,16 @@ type EntityMesh = {
    *  holds a single box mesh that's sized each frame to (w, renderH, d). */
   chassis: THREE.Group;
   /** All meshes inside `chassis` that carry the team primary material —
-   *  updated whenever the owner changes (team reassignment, capture). */
+   *  updated whenever the owner changes (team reassignment, capture).
+   *  Empty for smooth-body units that route their chassis through the
+   *  shared `smoothChassis` InstancedMesh — see `smoothChassisSlots`. */
   chassisMeshes: THREE.Mesh[];
+  /** Slot indices into the renderer's `smoothChassis` InstancedMesh,
+   *  one per body part. Present on smooth-body units (arachnid, beam,
+   *  snipe, commander, forceField, loris) at LOW+ tier; undefined for
+   *  polygon / rect bodies (which use chassisMeshes) and at MIN tier
+   *  (where the LOW-tier `unitInstanced` path takes over entirely). */
+  smoothChassisSlots?: number[];
   /** Cached renderer id (e.g. 'arachnid', 'tank') resolved once at
    *  mesh-build time. Unit-blueprint lookups in the per-frame update
    *  loop are wasted work — the unitType never changes for a live
@@ -327,6 +335,57 @@ export class Render3DEntities {
   private _instScale = new THREE.Vector3();
   private _instColor = new THREE.Color();
 
+  // ── LOW+ tier smooth-body chassis InstancedMesh ─────────────────
+  // At MED+ LOD every smooth-body unit (arachnid, beam, snipe / tick,
+  // commander, forceField, loris) used to stamp one Mesh per body
+  // segment — composite arachnids/commanders ate 2 draw calls each
+  // before any turret/leg work. This InstancedMesh collapses every
+  // smooth body part across every smooth-body unit on the map into
+  // ONE shared draw call.
+  //
+  // Per-instance attributes:
+  //   - instanceMatrix encodes the part's full world transform:
+  //       T(group_pos) · R(tilt · Ry(yaw)) · S(radius) · T(part.local) · S(part.scale)
+  //     — exactly what the per-Mesh scenegraph chain
+  //     (group → yawGroup → chassis → mesh) produced.
+  //   - instanceColor carries the team primary, modulated against the
+  //     shared material's white base color (same trick MIN-tier uses).
+  //
+  // Polygon / rect bodies (scout, brawl, tank, burst, mortar, hippo)
+  // need ExtrudeGeometry per renderer and so still go through the
+  // per-Mesh chassis path; bodyEntry.isSmooth flags the routing.
+  //
+  // The yawGroup hierarchy is still built for smooth-body units —
+  // turrets, legs, and mirror panels still parent to it. Only the
+  // chassis Mesh children are skipped; the chassis Group stays empty.
+  private static readonly SMOOTH_CHASSIS_CAP = 16384;
+  private smoothChassisGeom = new THREE.SphereGeometry(1, 24, 16);
+  private smoothChassis: THREE.InstancedMesh | null = null;
+  /** Maps entityId → list of slot indices, one per body part. Composite
+   *  bodies (arachnid, commander, beam) get a slot per segment; single-
+   *  part smooth bodies (snipe, loris, forceField) get exactly one. */
+  private smoothChassisSlots = new Map<EntityId, number[]>();
+  /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
+  private smoothChassisFreeSlots: number[] = [];
+  /** High-water mark; everything ≥ this is unused. */
+  private smoothChassisNextSlot = 0;
+  /** Per-frame scratch: combined parent (group + yaw + radius-scale) matrix
+   *  cached once per smooth-body unit, then multiplied with each part's
+   *  local matrix to produce the per-slot world matrix. */
+  private _smoothParentMat = new THREE.Matrix4();
+  private _smoothPartMat = new THREE.Matrix4();
+  private _smoothFinalMat = new THREE.Matrix4();
+  /** Per-frame scratch: combined `tilt · Ry(yaw)` quaternion + scratch
+   *  yaw-only quaternion + uniform-radius scale vector + part local
+   *  position + part per-axis scale + identity quaternion. Module-local
+   *  axis (`_INST_UP`) drives the yaw quaternion. */
+  private _smoothParentQuat = new THREE.Quaternion();
+  private _smoothYawQuat = new THREE.Quaternion();
+  private _smoothParentScale = new THREE.Vector3();
+  private _smoothPartLocalPos = new THREE.Vector3();
+  private _smoothPartScale = new THREE.Vector3();
+  private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
+
   constructor(
     world: THREE.Group,
     clientViewState: ClientViewState,
@@ -373,6 +432,36 @@ export class Render3DEntities {
     this.unitInstanced.count = Render3DEntities.LOW_INSTANCED_CAP;
     this.unitInstanced.instanceMatrix.needsUpdate = true;
     this.world.add(this.unitInstanced);
+
+    // Smooth-body chassis InstancedMesh — one shared draw call covers
+    // every smooth body part across every smooth-body unit on the map
+    // at LOW+ tier. Material is white because per-instance colour comes
+    // from setColorAt (same trick the MIN-tier instanced mesh uses).
+    // 24×16 tessellation matches the per-Mesh smooth-body sphere from
+    // BodyShape3D so the visual is byte-for-byte identical when the LOD
+    // routing flips a unit between paths.
+    const smoothMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    this.smoothChassis = new THREE.InstancedMesh(
+      this.smoothChassisGeom,
+      smoothMat,
+      Render3DEntities.SMOOTH_CHASSIS_CAP,
+    );
+    this.smoothChassis.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Allocate the instanceColor buffer up front so setColorAt works
+    // without a first-frame initialization branch.
+    this.smoothChassis.setColorAt(0, this._instColor.set(0xffffff));
+    this.smoothChassis.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    // Same culling caveat as unitInstanced: source geom's bounding
+    // sphere is at origin radius 1; instances live anywhere on the map,
+    // so disable frustum cull. Hidden slots use a scale-0 matrix and
+    // contribute zero rasterized pixels.
+    this.smoothChassis.frustumCulled = false;
+    for (let i = 0; i < Render3DEntities.SMOOTH_CHASSIS_CAP; i++) {
+      this.smoothChassis.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    this.smoothChassis.count = Render3DEntities.SMOOTH_CHASSIS_CAP;
+    this.smoothChassis.instanceMatrix.needsUpdate = true;
+    this.world.add(this.smoothChassis);
   }
 
   private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
@@ -624,6 +713,10 @@ export class Render3DEntities {
     }
     this.unitMeshes.clear();
     this.barrelSpins.clear();
+    // Smooth-chassis slot indices are tied to specific entityIds + the
+    // current LOD's geometry path; on a tier flip we re-discover which
+    // units route through smoothChassis and re-allocate fresh.
+    this.releaseAllSmoothChassisSlots();
   }
 
   /** LOW-tier per-frame instance write. Each visible unit takes one
@@ -712,6 +805,65 @@ export class Render3DEntities {
     this.unitInstancedSlot.clear();
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedNextSlot = 0;
+    im.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Reserve N consecutive logical slots in `smoothChassis` for one
+   *  unit. Returns the allocated slot indices, or null if the cap is
+   *  exhausted (caller falls back to per-Mesh chassis). Slots are
+   *  drawn from the free list LIFO so a long game doesn't burn
+   *  through the high-water mark. */
+  private allocSmoothChassisSlots(count: number): number[] | null {
+    if (count <= 0) return [];
+    const out: number[] = [];
+    for (let k = 0; k < count; k++) {
+      let slot: number;
+      if (this.smoothChassisFreeSlots.length > 0) {
+        slot = this.smoothChassisFreeSlots.pop()!;
+      } else if (this.smoothChassisNextSlot < Render3DEntities.SMOOTH_CHASSIS_CAP) {
+        slot = this.smoothChassisNextSlot++;
+      } else {
+        // Cap exhausted — return what we got so far so the caller can
+        // free them; the unit will fall back to whatever path the
+        // caller chooses (currently: drop the chassis render).
+        for (const s of out) this.smoothChassisFreeSlots.push(s);
+        return null;
+      }
+      out.push(slot);
+    }
+    return out;
+  }
+
+  /** Hide every smooth-chassis slot the entity owns, free them back to
+   *  the pool, and forget the entity. Called from the per-frame
+   *  seen-pruning loop (unit despawned) and from the LOD-flip rebuild
+   *  path. The InstancedMesh's instanceMatrix dirty flag is set by the
+   *  per-frame writer; a freed-but-unwritten slot at scale 0 contributes
+   *  zero pixels until the next write reuses it. */
+  private freeSmoothChassisSlotsForEntity(eid: EntityId): void {
+    const im = this.smoothChassis;
+    if (!im) return;
+    const slots = this.smoothChassisSlots.get(eid);
+    if (!slots) return;
+    for (const slot of slots) {
+      im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+      this.smoothChassisFreeSlots.push(slot);
+    }
+    this.smoothChassisSlots.delete(eid);
+    im.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Wipe every active smooth-chassis slot (LOD flip / teardown). Same
+   *  shape as releaseAllInstancedSlots above. */
+  private releaseAllSmoothChassisSlots(): void {
+    const im = this.smoothChassis;
+    if (!im) return;
+    for (const slots of this.smoothChassisSlots.values()) {
+      for (const slot of slots) im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    }
+    this.smoothChassisSlots.clear();
+    this.smoothChassisFreeSlots.length = 0;
+    this.smoothChassisNextSlot = 0;
     im.instanceMatrix.needsUpdate = true;
   }
 
@@ -869,13 +1021,25 @@ export class Render3DEntities {
         const chassis = new THREE.Group();
         chassis.userData.entityId = e.id;
         const chassisMeshes: THREE.Mesh[] = [];
-        for (const part of bodyEntry.parts) {
-          const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(pid));
-          mesh.position.set(part.x, part.y, part.z);
-          mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
-          mesh.userData.entityId = e.id;
-          chassis.add(mesh);
-          chassisMeshes.push(mesh);
+        // Smooth-body units route their chassis through the shared
+        // `smoothChassis` InstancedMesh — one draw call covers every
+        // smooth body part across every unit. Per-instance matrix +
+        // color are written by the per-frame transform pipeline
+        // below. Polygon / rect bodies fall back to the per-Mesh path
+        // (one Mesh per part, sharing the team-primary material).
+        let smoothChassisSlots: number[] | undefined;
+        if (bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
+          smoothChassisSlots = this.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
+        }
+        if (!smoothChassisSlots) {
+          for (const part of bodyEntry.parts) {
+            const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(pid));
+            mesh.position.set(part.x, part.y, part.z);
+            mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
+            mesh.userData.entityId = e.id;
+            chassis.add(mesh);
+            chassisMeshes.push(mesh);
+          }
         }
         yawGroup.add(chassis);
 
@@ -910,7 +1074,14 @@ export class Render3DEntities {
         }
 
         this.world.add(group);
-        m = { group, yawGroup, chassis, chassisMeshes, rendererId, turrets: turretMeshes, lodKey: this.lod.key };
+        m = {
+          group, yawGroup, chassis, chassisMeshes, rendererId,
+          turrets: turretMeshes, lodKey: this.lod.key,
+          smoothChassisSlots,
+        };
+        if (smoothChassisSlots) {
+          this.smoothChassisSlots.set(e.id, smoothChassisSlots);
+        }
 
         // Locomotion (tank treads / vehicle wheels / arachnid legs).
         // Treads + wheels parent to `yawGroup` so they yaw + tilt
@@ -1011,6 +1182,55 @@ export class Render3DEntities {
       const bodyEntry = getBodyGeom(m.rendererId);
       m.chassis.position.set(0, 0, 0);
       m.chassis.scale.setScalar(radius);
+
+      // Smooth-body chassis: write each part's per-instance world
+      // matrix + team color into the shared `smoothChassis`
+      // InstancedMesh. The composition mirrors the per-Mesh
+      // scenegraph chain (group → yawGroup → chassis → mesh):
+      //
+      //   parentMat = T(group.position)
+      //             · R(group.quaternion · Ry(yaw))
+      //             · S(radius, radius, radius)
+      //   partMat   = T(part.x, part.y, part.z) · S(part.scale*)
+      //   slotMat   = parentMat · partMat
+      //
+      // Doing it per-part means an arachnid's two segments take two
+      // slots, a snipe / loris / forceField takes one. All slots feed
+      // the same shared draw call.
+      if (m.smoothChassisSlots && this.smoothChassis) {
+        this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
+        this._smoothParentQuat
+          .copy(m.group.quaternion)
+          .multiply(this._smoothYawQuat);
+        this._smoothParentScale.set(radius, radius, radius);
+        this._smoothParentMat.compose(
+          m.group.position,
+          this._smoothParentQuat,
+          this._smoothParentScale,
+        );
+        this._instColor.set(
+          pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+        );
+        const slotCount = Math.min(bodyEntry.parts.length, m.smoothChassisSlots.length);
+        for (let pi = 0; pi < slotCount; pi++) {
+          const part = bodyEntry.parts[pi];
+          const slot = m.smoothChassisSlots[pi];
+          this._smoothPartLocalPos.set(part.x, part.y, part.z);
+          this._smoothPartScale.set(part.scaleX, part.scaleY, part.scaleZ);
+          this._smoothPartMat.compose(
+            this._smoothPartLocalPos,
+            Render3DEntities._IDENTITY_QUAT,
+            this._smoothPartScale,
+          );
+          this._smoothFinalMat.multiplyMatrices(
+            this._smoothParentMat,
+            this._smoothPartMat,
+          );
+          this.smoothChassis.setMatrixAt(slot, this._smoothFinalMat);
+          this.smoothChassis.setColorAt(slot, this._instColor);
+        }
+      }
+
       // Turrets now mount on top of the per-unit body instead of a
       // shared CHASSIS_HEIGHT constant. Spheroid-bodied units like the
       // arachnid get a tall mount; squat polygons (scout, burst) get a
@@ -1165,6 +1385,10 @@ export class Render3DEntities {
         destroyLocomotion(m.locomotion, this.legRenderer);
         this.world.remove(m.group);
         this.disposeWorldParentedOverlays(m);
+        // Smooth-chassis slots are owned by this entity; release them
+        // back to the pool so future smooth-body units can recycle the
+        // slot indices.
+        if (m.smoothChassisSlots) this.freeSmoothChassisSlotsForEntity(id);
         this.unitMeshes.delete(id);
       }
     }
@@ -1173,6 +1397,16 @@ export class Render3DEntities {
     // separate sweep needed.
     for (const id of this.barrelSpins.keys()) {
       if (!seen.has(id)) this.barrelSpins.delete(id);
+    }
+    // Flush smooth-chassis instance buffers if any slot was touched
+    // this frame. Once-per-frame upload, regardless of how many
+    // smooth-body units wrote slots — same pattern legRenderer.flush()
+    // and updateUnitsInstanced use.
+    if (this.smoothChassis && this.smoothChassisSlots.size > 0) {
+      this.smoothChassis.instanceMatrix.needsUpdate = true;
+      if (this.smoothChassis.instanceColor) {
+        this.smoothChassis.instanceColor.needsUpdate = true;
+      }
     }
   }
 
@@ -1525,5 +1759,17 @@ export class Render3DEntities {
     this.unitSphereLowGeom.dispose();
     this.unitInstancedSlot.clear();
     this.unitInstancedFreeSlots.length = 0;
+    if (this.smoothChassis) {
+      this.world.remove(this.smoothChassis);
+      // Material is a private MeshLambertMaterial only owned by this
+      // InstancedMesh — dispose via the mesh. Geometry is the class
+      // field below.
+      (this.smoothChassis.material as THREE.Material).dispose();
+      this.smoothChassis.dispose();
+      this.smoothChassis = null;
+    }
+    this.smoothChassisGeom.dispose();
+    this.smoothChassisSlots.clear();
+    this.smoothChassisFreeSlots.length = 0;
   }
 }

@@ -132,6 +132,15 @@ export type BodyGeomEntry = {
    *  unitRadius to get the world-space height where the turret should
    *  be mounted. */
   topY: number;
+  /** True when every part is a unit-sphere instance (kind = 'circle' /
+   *  'oval' / composite-of-those). Smooth-body chassis can be batched
+   *  through Render3DEntities' shared smooth-chassis InstancedMesh —
+   *  one shared draw call covers every smooth body part across every
+   *  unit, with per-instance team color and per-axis scale baked into
+   *  the instance matrix. False for polygon / rect bodies (scout,
+   *  brawl, tank, burst, mortar, hippo) which use ExtrudeGeometry —
+   *  those still go through the per-Mesh chassis path. */
+  isSmooth: boolean;
 };
 
 // A single unit sphere is reused across every smooth body part — sphere
@@ -202,6 +211,7 @@ function buildEntry(spec: ShapeSpec): BodyGeomEntry {
         scaleX: spec.radiusFrac, scaleY: 1, scaleZ: spec.radiusFrac,
       }],
       topY: h,
+      isSmooth: false,
     };
   }
   if (spec.kind === 'rect') {
@@ -220,15 +230,16 @@ function buildEntry(spec: ShapeSpec): BodyGeomEntry {
         scaleX: spec.lengthFrac, scaleY: 1, scaleZ: spec.widthFrac,
       }],
       topY: h,
+      isSmooth: false,
     };
   }
   if (spec.kind === 'circle') {
     const part = buildCircleSpec(spec.radiusFrac, 0);
-    return { parts: [part], topY: 2 * spec.radiusFrac };
+    return { parts: [part], topY: 2 * spec.radiusFrac, isSmooth: true };
   }
   if (spec.kind === 'oval') {
     const part = buildOvalSpec(spec.xFrac, spec.zFrac, 0);
-    return { parts: [part], topY: 2 * spheroidRy(spec.xFrac, spec.zFrac) };
+    return { parts: [part], topY: 2 * spheroidRy(spec.xFrac, spec.zFrac), isSmooth: true };
   }
   // composite: each segment is its own sphere/spheroid.
   const parts: BodyMeshPart[] = [];
@@ -242,7 +253,7 @@ function buildEntry(spec: ShapeSpec): BodyGeomEntry {
       topY = Math.max(topY, 2 * spheroidRy(p.xFrac, p.zFrac));
     }
   }
-  return { parts, topY };
+  return { parts, topY, isSmooth: true };
 }
 
 const CACHE: Map<string, BodyGeomEntry> = new Map();
