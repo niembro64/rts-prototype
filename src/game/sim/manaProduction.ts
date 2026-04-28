@@ -8,8 +8,9 @@
 //   • A tile fully captured by one team produces `tileRate` mana/sec
 //     for that team. `tileRate` ramps linearly from
 //     `manaPerTilePerimeter` at the edge of the central hotspot disc
-//     up to `manaPerTileCenter` at the exact map centre, and is
-//     constant at the perimeter rate everywhere outside the disc.
+//     up to `manaPerTilePerimeter × manaCenterTileMultiplier` at the
+//     exact map centre, and is constant at the perimeter rate
+//     everywhere outside the disc.
 //   • A team's actual income from a tile is its FLAG HEIGHT (its
 //     ownership ratio in [0, 1]) multiplied by `tileRate`. Multiple
 //     teams on the same contested tile each earn proportional to
@@ -31,9 +32,9 @@ export function getManaTileProductionPerSecond(
   mapHeight: number,
 ): number {
   const perimeter = CAPTURE_CONFIG.manaPerTilePerimeter;
-  const center = CAPTURE_CONFIG.manaPerTileCenter;
+  const centerMult = CAPTURE_CONFIG.manaCenterTileMultiplier;
   const radiusFrac = CAPTURE_CONFIG.manaHotspotRadiusFraction;
-  if (radiusFrac <= 0 || center <= perimeter) return perimeter;
+  if (radiusFrac <= 0 || centerMult <= 1) return perimeter;
   const radius = Math.min(mapWidth, mapHeight) * radiusFrac;
   if (radius <= 0) return perimeter;
   const dx = cellCenterX - mapWidth / 2;
@@ -41,7 +42,7 @@ export function getManaTileProductionPerSecond(
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist >= radius) return perimeter;
   const t = 1 - dist / radius;
-  return perimeter + (center - perimeter) * t;
+  return perimeter * (1 + (centerMult - 1) * t);
 }
 
 /** Same as getManaTileProductionPerSecond but indexed by integer
@@ -96,8 +97,8 @@ export function getCaptureTileBlendFactors(
   intensity: number,
 ): { saturation: number; glow: number } {
   const perimeter = CAPTURE_CONFIG.manaPerTilePerimeter;
-  const center = CAPTURE_CONFIG.manaPerTileCenter;
-  const span = center - perimeter;
+  const centerMult = CAPTURE_CONFIG.manaCenterTileMultiplier;
+  const span = perimeter * (centerMult - 1);
   const hotspotShare =
     span > 0
       ? Math.max(0, Math.min(1, (tileProductionPerSec - perimeter) / span))

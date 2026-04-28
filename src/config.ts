@@ -287,10 +287,10 @@ export const MAX_MANA = 1000;
 export const BASE_MANA_PER_SECOND = 5;
 
 // Per-tile territory mana income lives in captureConfig.ts —
-// `manaPerTilePerimeter` / `manaPerTileCenter`. There is no global
-// MANA_PER_TILE constant any more; a team's per-tile income is
-// `flag_height × tile_rate`, where the flag height is its OWNERSHIP
-// RATIO and the tile rate comes from the hotspot falloff.
+// `manaPerTilePerimeter` plus `manaCenterTileMultiplier`. There is
+// no global MANA_PER_TILE constant any more; a team's per-tile
+// income is `flag_height × tile_rate`, where the flag height is its
+// OWNERSHIP RATIO and the tile rate comes from the hotspot falloff.
 
 // =============================================================================
 // UNIT CAP

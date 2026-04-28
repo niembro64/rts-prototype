@@ -47,27 +47,26 @@ export const CAPTURE_CONFIG = {
   initialOwnershipHeight: 1.0,
 
   /**
-   * Mana production rates per tile, in mana per second when the
-   * tile is fully captured by a single team. A team's actual
-   * income from a tile is its flag-height (its OWNERSHIP RATIO,
-   * 0–1) multiplied by the tile's rate — there is no separate
-   * MANA_PER_TILE constant. The same rate drives tile colour
-   * brightness in the GRID overlay so on-screen brightness and
-   * mana income come from one number.
+   * Mana production per tile. A team's actual income from a tile is
+   * its flag-height (its OWNERSHIP RATIO, 0–1) multiplied by the
+   * tile's rate — there is no separate MANA_PER_TILE constant. The
+   * same rate drives tile colour brightness in the GRID overlay so
+   * on-screen brightness and mana income come from one number.
    *
-   *  manaPerTilePerimeter — rate at the edge of the hotspot disc
-   *    AND everywhere outside it. Effectively the map's baseline
-   *    income per fully-owned tile.
-   *  manaPerTileCenter — rate at the exact map centre (peak of
-   *    the hotspot). Set equal to `manaPerTilePerimeter` to
-   *    disable the hotspot (uniform production everywhere).
+   *  manaPerTilePerimeter — mana/sec from a fully-captured tile at
+   *    the edge of the hotspot disc and everywhere outside it.
+   *    Effectively the map's baseline tile-income.
+   *  manaCenterTileMultiplier — peak hotspot multiplier at the map
+   *    centre, applied on top of `manaPerTilePerimeter`. 1.0 → no
+   *    hotspot (uniform production); 3.0 → the centre tile produces
+   *    3× a perimeter tile (= 30 mana/sec at the defaults below).
    *  manaHotspotRadiusFraction — disc radius as a fraction of
    *    min(mapWidth, mapHeight). Inside the disc the rate ramps
-   *    linearly from perimeter at the edge to centre at the
-   *    middle. 0.0 disables the hotspot; 1.0 covers the entire
-   *    map.
+   *    linearly from perimeter at the edge to perimeter ×
+   *    centerMultiplier at the middle. 0.0 disables the hotspot;
+   *    1.0 covers the entire map.
    */
   manaPerTilePerimeter: 10.0,
-  manaPerTileCenter: 30.0,
+  manaCenterTileMultiplier: 3.0,
   manaHotspotRadiusFraction: 0.30,
 };
