@@ -682,6 +682,7 @@ export class GameServer {
     for (const entity of this.world.getUnits()) {
       if (!entity.body?.physicsBody || !entity.unit) continue;
       const body = entity.body.physicsBody;
+      if (body.sleeping) continue;
       entity.transform.x = body.x;
       entity.transform.y = body.y;
       entity.transform.z = body.z;
