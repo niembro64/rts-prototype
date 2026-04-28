@@ -51,11 +51,18 @@ function getDemoCircle(world: WorldState): { cx: number; cy: number; radius: num
 }
 
 // Angular position of player i on the spawn circle. Players are spaced
-// evenly starting from the top (-π/2). Exported so the background-
-// battle unit spawner can place each team's units on the same arc as
-// their base.
+// evenly starting from FIRST_PLAYER_ANGLE. Anchor is rotated 45°
+// counterclockwise from the top (-π/2) so player 0 lands at -π/4 —
+// a corner of a square map (northeast in screen coords with +Y down)
+// — instead of the middle of a flat edge. With this anchor + the
+// matching terrain phase shift in `getTerrainHeight`, the team-area
+// arcs sit at the four corners and the divider ridges run along the
+// four cardinal directions, so each team's back is to a corner of
+// the map. Exported so the background-battle unit spawner can place
+// each team's units on the same arc as their base.
+const FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
 export function getPlayerBaseAngle(i: number, playerCount: number): number {
-  return (i / playerCount) * Math.PI * 2 - Math.PI / 2;
+  return (i / playerCount) * Math.PI * 2 + FIRST_PLAYER_ANGLE;
 }
 
 // Calculate spawn positions on the spawn circle for N players.

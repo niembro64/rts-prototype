@@ -214,11 +214,14 @@ export function getTerrainHeight(
     //   pos = 0          → team area center (player base angle)
     //   pos = cycle/2    → barrier (mountain ridge) center
     //   pos = cycle      → next team center
-    // Player 0 is anchored at theta = -π/2 by spawn.ts'
-    // getPlayerBaseAngle, so we phase-shift by +π/2 to make pos=0
-    // coincide with player 0.
+    // Player 0 is anchored at theta = -π/4 by spawn.ts'
+    // getPlayerBaseAngle (FIRST_PLAYER_ANGLE = -π/2 + π/4 = -π/4), so
+    // we phase-shift by +π/4 to make pos=0 coincide with player 0.
+    // Net effect with teamCount=4: team-area arcs sit at the four
+    // corners and divider ridges run along the four cardinal
+    // directions, so each team's back is to a corner of the map.
     const cycle = (2 * Math.PI) / teamCount;
-    let pos = (theta + Math.PI / 2) % cycle;
+    let pos = (theta + Math.PI / 4) % cycle;
     if (pos < 0) pos += cycle;
     const barrierMid = cycle / 2;
     const halfBarrier = cycle / 4; // half-width = π/(2N)
