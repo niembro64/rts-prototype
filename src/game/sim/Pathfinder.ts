@@ -306,16 +306,43 @@ function ensureTerrainBlocked(
     _terrainBlockedCache.fill(0);
   }
   // Populate every cell once — water + slope at this terrain config.
-  // Sampling at cell centres mirrors the per-query check this used to
-  // do. The slope test calls `getSurfaceNormal` (4 height samples per
-  // cell) — paying that cost ONCE here, not per JPS query.
+  //
+  // Water test uses MULTI-POINT sampling (cell centre + 4 corners).
+  // The cell is marked as water if ANY of those points lies below
+  // the water level. Centre-only sampling would mis-classify cells
+  // straddling the shoreline: with smooth heightmap functions and
+  // 20-wu cells, a cell's centre can be a hair above water while
+  // one or more corners are submerged. The unit, walking through
+  // the cell from waypoint to waypoint, would visually drift over
+  // those submerged corners — exactly the "paths over water"
+  // artifact users have observed. The 5-sample test
+  // conservatively marks any cell that even partially covers water
+  // as blocked, so the inflation halo and JPS routing both stay
+  // strictly on dry land.
+  //
+  // Slope test stays centre-only — slope is a continuous gradient,
+  // so the cell-average behaviour is what matters; we don't want
+  // to block cells where a single corner happens to clip a steep
+  // pixel.
+  //
+  // Cost: 5x more `isWaterAt` calls than the prior centre-only
+  // version. Each `isWaterAt` is a single heightmap evaluation;
+  // ~475k calls on the largest grid run in a few ms, paid ONCE
+  // per terrain-version change (not per query).
   const cache = _terrainBlockedCache;
+  const half = GRID_CELL_SIZE / 2;
   for (let gy = 0; gy < gridH; gy++) {
     for (let gx = 0; gx < gridW; gx++) {
       const cx = (gx + 0.5) * GRID_CELL_SIZE;
       const cy = (gy + 0.5) * GRID_CELL_SIZE;
       let blocked = false;
-      if (isWaterAt(cx, cy, mapWidth, mapHeight)) {
+      if (
+        isWaterAt(cx, cy, mapWidth, mapHeight) ||
+        isWaterAt(cx - half, cy - half, mapWidth, mapHeight) ||
+        isWaterAt(cx + half, cy - half, mapWidth, mapHeight) ||
+        isWaterAt(cx - half, cy + half, mapWidth, mapHeight) ||
+        isWaterAt(cx + half, cy + half, mapWidth, mapHeight)
+      ) {
         blocked = true;
       } else {
         const normal = getSurfaceNormal(cx, cy, mapWidth, mapHeight, GRID_CELL_SIZE);
