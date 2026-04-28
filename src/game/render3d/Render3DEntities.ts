@@ -54,6 +54,9 @@ const BARREL_COLOR = 0xffffff;
 // (input) Vector3, but never mutates it.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
 const AUTO_MASS_UNIT_RENDER_THRESHOLD = 5000;
+const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
+const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
+const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
 
 // Scratch globals reused by the per-unit surface-tilt path so the
 // per-frame loop allocates no quaternions/vectors. Tilt is applied
@@ -350,12 +353,15 @@ export class Render3DEntities {
   private unitInstanced: THREE.InstancedMesh | null = null;
   /** Maps entityId → instance slot index for fast per-frame writes. */
   private unitInstancedSlot = new Map<EntityId, number>();
+  /** Reverse lookup so low-tier compaction can move tail slots into holes in O(1). */
+  private unitInstancedEntityBySlot: (EntityId | undefined)[] = [];
   /** Maps entityId → last owner color key written into its instance slot. */
   private unitInstancedColorKey = new Map<EntityId, number>();
   /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
   private unitInstancedFreeSlots: number[] = [];
   /** High-water mark; everything ≥ this is unused. */
   private unitInstancedNextSlot = 0;
+  private unitInstancedCompactFrame = 0;
   /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   /** Reusable scratch matrix to avoid allocations in the per-instance write hot loop. */
@@ -987,6 +993,76 @@ export class Render3DEntities {
     return nextSlot;
   }
 
+  private compactUnitInstancedSlots(
+    im: THREE.InstancedMesh,
+  ): {
+    matrixMinSlot: number;
+    matrixMaxSlot: number;
+    colorMinSlot: number;
+    colorMaxSlot: number;
+    colorDirty: boolean;
+  } {
+    const result = {
+      matrixMinSlot: Number.POSITIVE_INFINITY,
+      matrixMaxSlot: -1,
+      colorMinSlot: Number.POSITIVE_INFINITY,
+      colorMaxSlot: -1,
+      colorDirty: false,
+    };
+
+    if (this.unitInstancedFreeSlots.length < LOW_INSTANCED_COMPACT_MIN_FREE) return result;
+    if ((this.unitInstancedCompactFrame++ % LOW_INSTANCED_COMPACT_INTERVAL_FRAMES) !== 0) return result;
+
+    this.unitInstancedFreeSlots.sort((a, b) => a - b);
+    let moves = 0;
+    let nextSlot = this.unitInstancedNextSlot;
+
+    for (let freeIndex = 0; freeIndex < this.unitInstancedFreeSlots.length && moves < LOW_INSTANCED_COMPACT_MAX_MOVES;) {
+      nextSlot = this.trimFreeTail(this.unitInstancedFreeSlots, nextSlot);
+      const freeSlot = this.unitInstancedFreeSlots[freeIndex];
+      if (freeSlot >= nextSlot) {
+        this.unitInstancedFreeSlots.splice(freeIndex, 1);
+        continue;
+      }
+
+      let tailSlot = nextSlot - 1;
+      while (tailSlot > freeSlot && this.unitInstancedEntityBySlot[tailSlot] === undefined) {
+        const tailFreeIdx = this.unitInstancedFreeSlots.indexOf(tailSlot);
+        if (tailFreeIdx >= 0) this.unitInstancedFreeSlots.splice(tailFreeIdx, 1);
+        nextSlot = tailSlot;
+        tailSlot = nextSlot - 1;
+      }
+      if (tailSlot <= freeSlot) break;
+
+      const tailEntityId = this.unitInstancedEntityBySlot[tailSlot];
+      if (tailEntityId === undefined) break;
+
+      im.getMatrixAt(tailSlot, this._instMatrix);
+      im.setMatrixAt(freeSlot, this._instMatrix);
+      im.setMatrixAt(tailSlot, Render3DEntities._ZERO_MATRIX);
+      if (im.instanceColor) {
+        im.getColorAt(tailSlot, this._instColor);
+        im.setColorAt(freeSlot, this._instColor);
+        result.colorDirty = true;
+        result.colorMinSlot = Math.min(result.colorMinSlot, freeSlot, tailSlot);
+        result.colorMaxSlot = Math.max(result.colorMaxSlot, freeSlot, tailSlot);
+      }
+
+      this.unitInstancedSlot.set(tailEntityId, freeSlot);
+      this.unitInstancedEntityBySlot[freeSlot] = tailEntityId;
+      this.unitInstancedEntityBySlot[tailSlot] = undefined;
+
+      this.unitInstancedFreeSlots.splice(freeIndex, 1);
+      this.unitInstancedFreeSlots.push(tailSlot);
+      result.matrixMinSlot = Math.min(result.matrixMinSlot, freeSlot, tailSlot);
+      result.matrixMaxSlot = Math.max(result.matrixMaxSlot, freeSlot, tailSlot);
+      moves++;
+    }
+
+    this.unitInstancedNextSlot = this.trimFreeTail(this.unitInstancedFreeSlots, nextSlot);
+    return result;
+  }
+
   /** Wipe every cached unit mesh so the next updateUnits() rebuilds them at
    *  the current LOD. Explosions / projectiles / tile grid don't need a rebuild
    *  — their per-frame loops already read the LOD snapshot directly. */
@@ -1048,6 +1124,7 @@ export class Render3DEntities {
           continue;
         }
         this.unitInstancedSlot.set(e.id, slot);
+        this.unitInstancedEntityBySlot[slot] = e.id;
       }
 
       const radius = e.unit?.unitRadiusCollider.scale
@@ -1089,6 +1166,7 @@ export class Render3DEntities {
         if (slot < matrixMinSlot) matrixMinSlot = slot;
         if (slot > matrixMaxSlot) matrixMaxSlot = slot;
         this.unitInstancedFreeSlots.push(slot);
+        this.unitInstancedEntityBySlot[slot] = undefined;
         this.unitInstancedSlot.delete(id);
         this.unitInstancedColorKey.delete(id);
       }
@@ -1097,6 +1175,16 @@ export class Render3DEntities {
       this.unitInstancedFreeSlots,
       this.unitInstancedNextSlot,
     );
+    const compacted = this.compactUnitInstancedSlots(im);
+    if (compacted.matrixMaxSlot >= compacted.matrixMinSlot) {
+      matrixMinSlot = Math.min(matrixMinSlot, compacted.matrixMinSlot);
+      matrixMaxSlot = Math.max(matrixMaxSlot, compacted.matrixMaxSlot);
+    }
+    if (compacted.colorDirty) {
+      colorDirty = true;
+      colorMinSlot = Math.min(colorMinSlot, compacted.colorMinSlot);
+      colorMaxSlot = Math.max(colorMaxSlot, compacted.colorMaxSlot);
+    }
 
     // Tighten draw bound to the high-water mark so the GPU doesn't
     // run the vertex shader on the (CAP - nextSlot) trailing slots
@@ -1119,9 +1207,11 @@ export class Render3DEntities {
       im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
     }
     this.unitInstancedSlot.clear();
+    this.unitInstancedEntityBySlot.length = 0;
     this.unitInstancedColorKey.clear();
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedNextSlot = 0;
+    this.unitInstancedCompactFrame = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
   }
@@ -2776,7 +2866,9 @@ export class Render3DEntities {
     }
     this.unitSphereLowGeom.dispose();
     this.unitInstancedSlot.clear();
+    this.unitInstancedEntityBySlot.length = 0;
     this.unitInstancedFreeSlots.length = 0;
+    this.unitInstancedCompactFrame = 0;
     if (this.smoothChassis) {
       this.world.remove(this.smoothChassis);
       // Material is a private MeshLambertMaterial only owned by this
