@@ -94,6 +94,161 @@ const WHEEL_COLOR = 0x2a2f36;
 const LEG_COLOR = 0x2a2f36;
 const BARREL_COLOR = 0xffffff;
 
+// ── Lambert + per-instance alpha/color shader patch ─────────────
+// We keep MeshLambertMaterial (so debris shades under scene ambient
+// + sun lighting the same way live unit meshes do — matches the
+// source-part colors), but onBeforeCompile-inject per-instance
+// `aAlpha` / `aColor` attributes and override the shader's
+// `diffuseColor` to use them. The same `vec4(vColor, vAlpha)`
+// fragment contract the rest of the unified-particles family
+// (SmokeTrail3D, Explosion3D, SprayRenderer3D) uses, but routed
+// through the Lambert lighting stack instead of a flat shader.
+function makeInstancedLambertMaterial(): THREE.MeshLambertMaterial {
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0xffffff, // ignored — `vColor` overrides via the patch below
+    transparent: true,
+    opacity: 1,
+    depthWrite: false,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        [
+          'attribute float aAlpha;',
+          'attribute vec3 aColor;',
+          'varying float vAlpha;',
+          'varying vec3 vColor;',
+          '#include <common>',
+        ].join('\n'),
+      )
+      .replace(
+        '#include <begin_vertex>',
+        [
+          '#include <begin_vertex>',
+          'vAlpha = aAlpha;',
+          'vColor = aColor;',
+        ].join('\n'),
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        [
+          'varying float vAlpha;',
+          'varying vec3 vColor;',
+          '#include <common>',
+        ].join('\n'),
+      )
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        'vec4 diffuseColor = vec4( vColor, vAlpha );',
+      );
+  };
+  return mat;
+}
+
+/** One InstancedMesh pool — holds either box, cylinder, or sphere
+ *  debris pieces. Per-instance position/rotation/scale ride on
+ *  instanceMatrix; per-instance alpha + color ride on aAlpha / aColor
+ *  InstancedBufferAttributes read by the Lambert+patch material above.
+ *  Slot allocation is stable per piece (allocated on emit, freed on
+ *  death) — matches the chassis pool pattern, with `count = nextSlot`
+ *  per frame to bound the GPU's draw work to the high-water mark. */
+class InstancedDebrisPool {
+  readonly geom: THREE.BufferGeometry;
+  readonly mat: THREE.MeshLambertMaterial;
+  readonly mesh: THREE.InstancedMesh;
+  private alphaArr: Float32Array;
+  private colorArr: Float32Array;
+  private alphaAttr: THREE.InstancedBufferAttribute;
+  private colorAttr: THREE.InstancedBufferAttribute;
+  freeSlots: number[] = [];
+  nextSlot = 0;
+  readonly cap: number;
+  // Scratch — reused across the per-frame write loop, no allocations.
+  private scratchMat = new THREE.Matrix4();
+  private scratchPos = new THREE.Vector3();
+  private scratchEuler = new THREE.Euler();
+  private scratchQuat = new THREE.Quaternion();
+  private scratchScale = new THREE.Vector3();
+  private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+
+  constructor(parent: THREE.Group, geom: THREE.BufferGeometry, cap: number) {
+    this.geom = geom;
+    this.cap = cap;
+    this.alphaArr = new Float32Array(cap);
+    this.colorArr = new Float32Array(cap * 3);
+    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
+    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
+    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
+    geom.setAttribute('aAlpha', this.alphaAttr);
+    geom.setAttribute('aColor', this.colorAttr);
+    this.mat = makeInstancedLambertMaterial();
+    this.mesh = new THREE.InstancedMesh(geom, this.mat, cap);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.count = 0;
+    // Frustum culling on InstancedMesh uses the source geometry's
+    // bounding sphere — instances live anywhere on the map, so
+    // disable cull. Same caveat as the chassis + particle pools.
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 13;
+    parent.add(this.mesh);
+  }
+
+  alloc(): number | null {
+    if (this.freeSlots.length > 0) return this.freeSlots.pop()!;
+    if (this.nextSlot < this.cap) return this.nextSlot++;
+    return null;
+  }
+
+  free(slot: number): void {
+    if (slot < 0) return;
+    this.mesh.setMatrixAt(slot, InstancedDebrisPool._ZERO_MATRIX);
+    this.alphaArr[slot] = 0;
+    this.freeSlots.push(slot);
+  }
+
+  /** Write a piece's full state to its slot — matrix from
+   *  `T(pos) · R(EulerXYZ(rx,ry,rz)) · S(sx,sy,sz)`, plus the time-
+   *  faded color + alpha. Called every frame the piece is alive. */
+  write(
+    slot: number,
+    px: number, py: number, pz: number,
+    rx: number, ry: number, rz: number,
+    sx: number, sy: number, sz: number,
+    r: number, g: number, b: number,
+    alpha: number,
+  ): void {
+    this.scratchPos.set(px, py, pz);
+    this.scratchEuler.set(rx, ry, rz, 'XYZ');
+    this.scratchQuat.setFromEuler(this.scratchEuler);
+    this.scratchScale.set(sx, sy, sz);
+    this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
+    this.mesh.setMatrixAt(slot, this.scratchMat);
+    this.alphaArr[slot] = alpha;
+    this.colorArr[slot * 3]     = r;
+    this.colorArr[slot * 3 + 1] = g;
+    this.colorArr[slot * 3 + 2] = b;
+  }
+
+  flush(): void {
+    this.mesh.count = this.nextSlot;
+    if (this.nextSlot > 0) {
+      this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.needsUpdate = true;
+      this.colorAttr.needsUpdate = true;
+    }
+  }
+
+  destroy(): void {
+    this.mesh.parent?.remove(this.mesh);
+    this.mesh.dispose();
+    this.mat.dispose();
+    this.geom.dispose();
+  }
+}
+
 /** A piece template. Boxes describe (position + yaw + size); cylinders
  *  describe (endpoint A, endpoint B, thickness) — the cylinder spans A→B
  *  with its axis aligned to the delta, matching how Locomotion3D places
@@ -126,43 +281,80 @@ type DebrisTemplate =
       color: number;
     };
 
+/** All piece state held as flat numbers. Per frame we step physics
+ *  + Euler rotation + age, then write the slot's instance matrix +
+ *  alpha + color. No Mesh / Material allocation per piece — the
+ *  pool's shared InstancedMesh handles it. */
 type Piece = {
-  mesh: THREE.Mesh;
-  material: THREE.MeshLambertMaterial;
-  vx: number;
-  vy: number;
-  vz: number;
-  avx: number;
-  avy: number;
-  avz: number;
+  shape: 'box' | 'cyl' | 'sphere';
+  /** Slot index in `boxPool` / `cylPool` / `spherePool` (depending on
+   *  `shape`). Stable for the piece's lifetime — released on death. */
+  slot: number;
+  px: number; py: number; pz: number;
+  vx: number; vy: number; vz: number;
+  /** Rotation as Euler XYZ — initialized from the per-shape base
+   *  orientation (cylinder alignment from setFromUnitVectors → Euler;
+   *  boxes get a small random pitch/roll plus the template yaw;
+   *  spheres get full random Euler). Per frame the angular velocity
+   *  increments these; matrix compose converts back to Quaternion
+   *  via setFromEuler. */
+  rx: number; ry: number; rz: number;
+  avx: number; avy: number; avz: number;
+  /** Per-axis scale baked from the template at emit time (constant
+   *  for the piece's lifetime). For box: (sx, sy, sz). For cylinder:
+   *  (thickness, length, thickness). For sphere: (radius, radius,
+   *  radius). */
+  sx: number; sy: number; sz: number;
   age: number;
   lifetime: number;
-  baseR: number;
-  baseG: number;
-  baseB: number;
+  baseR: number; baseG: number; baseB: number;
 };
 
 export class Debris3D {
   private root: THREE.Group;
-  // Shared geometries — box is unit cube, cylinder is unit radius/height,
-  // sphere is unit radius (used for turret heads, which Render3DEntities
-  // also draws as a sphere).
-  private boxGeom = new THREE.BoxGeometry(1, 1, 1);
-  private cylGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
-  private sphereGeom = new THREE.SphereGeometry(1, 10, 8);
+  // Three InstancedMesh pools — one per shape. Each holds up to
+  // GLOBAL_MAX_PIECES so a worst-case all-of-one-shape spawn fits.
+  private boxPool: InstancedDebrisPool;
+  private cylPool: InstancedDebrisPool;
+  private spherePool: InstancedDebrisPool;
 
+  /** Active pieces in INSERTION ORDER — front of array is oldest.
+   *  Eviction (when over GLOBAL_MAX_PIECES) shifts from front; per-
+   *  frame death (age >= lifetime) splices from anywhere. */
   private pieces: Piece[] = [];
-  private boxPool: { mesh: THREE.Mesh; material: THREE.MeshLambertMaterial }[] = [];
-  private cylPool: { mesh: THREE.Mesh; material: THREE.MeshLambertMaterial }[] = [];
-  private spherePool: { mesh: THREE.Mesh; material: THREE.MeshLambertMaterial }[] = [];
 
   // Scratch vectors reused per emit — avoids per-piece allocation.
   private _up = new THREE.Vector3(0, 1, 0);
   private _dir = new THREE.Vector3();
+  /** Scratch Quaternion + Euler for cylinder alignment — convert the
+   *  setFromUnitVectors quaternion to Euler XYZ to seed `rx, ry, rz`
+   *  on emit, so subsequent angular-velocity updates accumulate from
+   *  the correct base orientation. Same conversion mesh.rotation
+   *  did implicitly in the per-Mesh path. */
+  private _emitQuat = new THREE.Quaternion();
+  private _emitEuler = new THREE.Euler();
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
+    // Allocate pool buffers up front. Each pool's geometry is owned
+    // by the pool and disposed in destroy().
+    this.boxPool = new InstancedDebrisPool(
+      this.root, new THREE.BoxGeometry(1, 1, 1), GLOBAL_MAX_PIECES,
+    );
+    this.cylPool = new InstancedDebrisPool(
+      this.root, new THREE.CylinderGeometry(1, 1, 1, 10), GLOBAL_MAX_PIECES,
+    );
+    this.spherePool = new InstancedDebrisPool(
+      this.root, new THREE.SphereGeometry(1, 10, 8), GLOBAL_MAX_PIECES,
+    );
+  }
+
+  /** Pick the right pool for a piece's shape. */
+  private poolFor(shape: 'box' | 'cyl' | 'sphere'): InstancedDebrisPool {
+    return shape === 'box' ? this.boxPool
+      : shape === 'cyl' ? this.cylPool
+      : this.spherePool;
   }
 
   /** Spawn a full debris cluster for a dying unit at a full 3D sim pos.
@@ -207,7 +399,7 @@ export class Debris3D {
     // Evict oldest pieces if we blew past the global cap.
     while (this.pieces.length > GLOBAL_MAX_PIECES) {
       const dropped = this.pieces.shift();
-      if (dropped) this.releaseToPool(dropped);
+      if (dropped) this.poolFor(dropped.shape).free(dropped.slot);
     }
   }
 
@@ -587,81 +779,52 @@ export class Debris3D {
     uvx: number,
     uvz: number,
   ): void {
-    // --- Acquire the right mesh from the right pool ---
-    const pool = t.shape === 'box' ? this.boxPool
-      : t.shape === 'cyl' ? this.cylPool
-      : this.spherePool;
-    const geom = t.shape === 'box' ? this.boxGeom
-      : t.shape === 'cyl' ? this.cylGeom
-      : this.sphereGeom;
-    let mesh: THREE.Mesh;
-    let material: THREE.MeshLambertMaterial;
-    const pooled = pool.pop();
-    if (pooled) {
-      mesh = pooled.mesh;
-      material = pooled.material;
-      material.color.setHex(t.color);
-      material.opacity = 1;
-      mesh.visible = true;
-    } else {
-      // Lambert (not Basic) so debris shades under the scene's ambient +
-      // sun lighting the same way the live chassis/turret/tread meshes
-      // do — matches the colors of the parts they were generated from.
-      material = new THREE.MeshLambertMaterial({
-        color: t.color,
-        transparent: true,
-        opacity: 1,
-        depthWrite: false,
-      });
-      mesh = new THREE.Mesh(geom, material);
-      mesh.renderOrder = 13;
-      this.root.add(mesh);
-    }
+    // --- Allocate slot in the right pool ---
+    const pool = this.poolFor(t.shape);
+    const slot = pool.alloc();
+    if (slot === null) return; // pool full — drop this piece silently
 
-    // --- Position + orientation in world space ---
-    // Unit-local (lx, ly, lz) → world = (unitX + rot(lx,lz), ly, unitZ + rot(lx,lz))
-    let wcx: number, wcy: number, wcz: number;
+    // --- Position + orientation, scale ---
+    // Unit-local (lx, ly, lz) → world = (unitX + rot(lx,lz), ly + groundLift, unitZ + rot(lx,lz))
     // Also compute the outward direction from the unit center (in world XZ)
     // so launch velocity points away from the center, not outward from the
     // piece's own origin.
+    let px = 0, py = 0, pz = 0;
+    let rx = 0, ry = 0, rz = 0;
+    let sx = 1, sy = 1, sz = 1;
     let localX = 0, localZ = 0;
+    let maxDim = 1;
 
     if (t.shape === 'box') {
       // Position: rotate local (x, z) by Ry(−unitRot) — same transform the
       // chassis group applies (its rotation.y is −transform.rotation).
-      wcx = unitX + cosR * t.x - sinR * t.z;
-      wcy = t.y + groundLift;
-      wcz = unitZ + sinR * t.x + cosR * t.z;
+      px = unitX + cosR * t.x - sinR * t.z;
+      py = t.y + groundLift;
+      pz = unitZ + sinR * t.x + cosR * t.z;
       localX = t.x;
       localZ = t.z;
-      mesh.scale.set(t.sx, t.sy, t.sz);
-      mesh.position.set(wcx, wcy, wcz);
-      mesh.quaternion.identity();
+      sx = t.sx; sy = t.sy; sz = t.sz;
       // Yaw: group rotates by −unitRot around Y, children add their local
       // yaw on top, so world yaw = t.yaw − unitRot. A bit of random roll +
       // pitch gives each piece a unique tumble seed.
-      mesh.rotation.set(
-        (Math.random() - 0.5) * 0.4,
-        t.yaw - unitRot,
-        (Math.random() - 0.5) * 0.4,
-      );
+      rx = (Math.random() - 0.5) * 0.4;
+      ry = t.yaw - unitRot;
+      rz = (Math.random() - 0.5) * 0.4;
+      maxDim = Math.max(t.sx, t.sy, t.sz);
     } else if (t.shape === 'sphere') {
       // Sphere: rotation-symmetric, only position + uniform scale matter.
       // Add a random spin so each chunk tumbles uniquely.
-      wcx = unitX + cosR * t.x - sinR * t.z;
-      wcy = t.y + groundLift;
-      wcz = unitZ + sinR * t.x + cosR * t.z;
+      px = unitX + cosR * t.x - sinR * t.z;
+      py = t.y + groundLift;
+      pz = unitZ + sinR * t.x + cosR * t.z;
       localX = t.x;
       localZ = t.z;
-      mesh.scale.setScalar(t.radius);
-      mesh.position.set(wcx, wcy, wcz);
-      mesh.quaternion.identity();
-      mesh.rotation.set(
-        Math.random() * Math.PI,
-        Math.random() * Math.PI,
-        Math.random() * Math.PI,
-      );
-    } else if (t.shape === 'cyl') {
+      sx = sy = sz = t.radius;
+      rx = Math.random() * Math.PI;
+      ry = Math.random() * Math.PI;
+      rz = Math.random() * Math.PI;
+      maxDim = t.radius * 2;
+    } else { // 'cyl'
       // Cylinder: transform both endpoints into world space, then place at
       // midpoint with length = |b-a| and axis aligned to (b-a). Same math as
       // Locomotion3D's setCylinderBetween.
@@ -675,19 +838,27 @@ export class Debris3D {
       const dy = bwy - awy;
       const dz = bwz - awz;
       const length = Math.max(1e-3, Math.hypot(dx, dy, dz));
-      wcx = (awx + bwx) / 2;
-      wcy = (awy + bwy) / 2;
-      wcz = (awz + bwz) / 2;
+      px = (awx + bwx) / 2;
+      py = (awy + bwy) / 2;
+      pz = (awz + bwz) / 2;
       // Local outward direction from center of unit for velocity — use
       // midpoint of (ax,az)/(bx,bz).
       localX = (t.ax + t.bx) / 2;
       localZ = (t.az + t.bz) / 2;
       // Scale X/Z by thickness (radius), Y by length — the unit cylinder's
       // default axis is +Y so we then rotate it to the segment direction.
-      mesh.scale.set(t.thickness, length, t.thickness);
-      mesh.position.set(wcx, wcy, wcz);
+      sx = t.thickness; sy = length; sz = t.thickness;
+      // Convert the alignment quaternion (setFromUnitVectors of +Y to
+      // segment direction) to Euler XYZ so subsequent angular-velocity
+      // updates accumulate from the correct base orientation. Same
+      // sync the per-Mesh path did implicitly via mesh.rotation reads.
       this._dir.set(dx / length, dy / length, dz / length);
-      mesh.quaternion.setFromUnitVectors(this._up, this._dir);
+      this._emitQuat.setFromUnitVectors(this._up, this._dir);
+      this._emitEuler.setFromQuaternion(this._emitQuat, 'XYZ');
+      rx = this._emitEuler.x;
+      ry = this._emitEuler.y;
+      rz = this._emitEuler.z;
+      maxDim = Math.max(t.thickness * 2, length);
     }
 
     // --- Launch velocity ---
@@ -716,28 +887,30 @@ export class Debris3D {
     // --- Initial spin ---
     // Scale angular velocity down for very big pieces (full tread slabs)
     // so they don't whip too fast. Clamped so tiny chunks still spin fast.
-    const maxDim =
-      t.shape === 'box'
-        ? Math.max(t.sx, t.sy, t.sz)
-        : t.shape === 'sphere'
-          ? t.radius * 2
-          : Math.max(t.thickness * 2, Math.hypot(t.bx - t.ax, t.by - t.ay, t.bz - t.az));
     const spinScale = Math.max(0.3, Math.min(1.2, 14 / Math.max(maxDim, 1)));
 
     const baseR = ((t.color >> 16) & 0xff) / 255;
-    const baseG = ((t.color >> 8) & 0xff) / 255;
-    const baseB = (t.color & 0xff) / 255;
+    const baseG = ((t.color >>  8) & 0xff) / 255;
+    const baseB = ( t.color        & 0xff) / 255;
 
-    this.pieces.push({
-      mesh, material,
+    const piece: Piece = {
+      shape: t.shape,
+      slot,
+      px, py, pz,
       vx, vy, vz,
+      rx, ry, rz,
       avx: (Math.random() - 0.5) * ANGULAR_INIT * 2 * spinScale,
       avy: (Math.random() - 0.5) * ANGULAR_INIT * 2 * spinScale,
       avz: (Math.random() - 0.5) * ANGULAR_INIT * 2 * spinScale,
+      sx, sy, sz,
       age: 0,
       lifetime: BASE_LIFETIME_MS + Math.random() * LIFETIME_JITTER_MS,
       baseR, baseG, baseB,
-    });
+    };
+    this.pieces.push(piece);
+    // Write initial state to the slot so the piece is visible from
+    // frame 0 (the per-frame update loop will keep it fresh).
+    pool.write(slot, px, py, pz, rx, ry, rz, sx, sy, sz, baseR, baseG, baseB, 1);
   }
 
   update(dtMs: number): void {
@@ -750,17 +923,18 @@ export class Debris3D {
       const p = this.pieces[i];
       p.age += dtMs;
 
+      // Linear physics — gravity + drag + integrate position.
       p.vy -= GRAVITY * dtSec;
       p.vx *= linDrag;
       p.vy *= linDrag;
       p.vz *= linDrag;
-      p.mesh.position.x += p.vx * dtSec;
-      p.mesh.position.y += p.vy * dtSec;
-      p.mesh.position.z += p.vz * dtSec;
+      p.px += p.vx * dtSec;
+      p.py += p.vy * dtSec;
+      p.pz += p.vz * dtSec;
 
       // Ground bounce with heavy damping.
-      if (p.mesh.position.y < 0.5) {
-        p.mesh.position.y = 0.5;
+      if (p.py < 0.5) {
+        p.py = 0.5;
         if (p.vy < 0) {
           p.vy = -p.vy * 0.25;
           p.vx *= 0.55;
@@ -771,67 +945,50 @@ export class Debris3D {
         }
       }
 
-      p.mesh.rotation.x += p.avx * dtSec;
-      p.mesh.rotation.y += p.avy * dtSec;
-      p.mesh.rotation.z += p.avz * dtSec;
+      // Tumble — Euler XYZ accumulates angular velocity, drag decays.
+      p.rx += p.avx * dtSec;
+      p.ry += p.avy * dtSec;
+      p.rz += p.avz * dtSec;
       p.avx *= angDrag;
       p.avy *= angDrag;
       p.avz *= angDrag;
 
       const t = p.age / p.lifetime;
       if (t >= 1) {
-        this.releaseToPool(p);
+        this.poolFor(p.shape).free(p.slot);
         this.pieces.splice(i, 1);
         continue;
       }
 
       // Color fade toward map background; opacity taper in the last 40%.
       const cLerp = Math.min(1, t * 1.4);
-      p.material.color.setRGB(
-        p.baseR + (BG_R - p.baseR) * cLerp,
-        p.baseG + (BG_G - p.baseG) * cLerp,
-        p.baseB + (BG_B - p.baseB) * cLerp,
-      );
-      p.material.opacity = t < 0.6 ? 1 : Math.max(0, (1 - t) / 0.4);
-    }
-  }
+      const r = p.baseR + (BG_R - p.baseR) * cLerp;
+      const g = p.baseG + (BG_G - p.baseG) * cLerp;
+      const b = p.baseB + (BG_B - p.baseB) * cLerp;
+      const alpha = t < 0.6 ? 1 : Math.max(0, (1 - t) / 0.4);
 
-  private releaseToPool(p: Piece): void {
-    p.mesh.visible = false;
-    // Geometry is shared by reference so we can identify pool by geom ptr.
-    if (p.mesh.geometry === this.boxGeom) {
-      this.boxPool.push({ mesh: p.mesh, material: p.material });
-    } else if (p.mesh.geometry === this.sphereGeom) {
-      this.spherePool.push({ mesh: p.mesh, material: p.material });
-    } else {
-      this.cylPool.push({ mesh: p.mesh, material: p.material });
+      this.poolFor(p.shape).write(
+        p.slot,
+        p.px, p.py, p.pz,
+        p.rx, p.ry, p.rz,
+        p.sx, p.sy, p.sz,
+        r, g, b, alpha,
+      );
     }
+
+    // Flush all three pools — push instance buffer updates + tighten
+    // count to nextSlot so the GPU only runs the vertex shader on
+    // active slots.
+    this.boxPool.flush();
+    this.cylPool.flush();
+    this.spherePool.flush();
   }
 
   destroy(): void {
-    for (const p of this.pieces) {
-      p.material.dispose();
-      this.root.remove(p.mesh);
-    }
-    for (const { mesh, material } of this.boxPool) {
-      material.dispose();
-      this.root.remove(mesh);
-    }
-    for (const { mesh, material } of this.cylPool) {
-      material.dispose();
-      this.root.remove(mesh);
-    }
-    for (const { mesh, material } of this.spherePool) {
-      material.dispose();
-      this.root.remove(mesh);
-    }
     this.pieces.length = 0;
-    this.boxPool.length = 0;
-    this.cylPool.length = 0;
-    this.spherePool.length = 0;
-    this.boxGeom.dispose();
-    this.cylGeom.dispose();
-    this.sphereGeom.dispose();
+    this.boxPool.destroy();
+    this.cylPool.destroy();
+    this.spherePool.destroy();
     this.root.parent?.remove(this.root);
   }
 }
