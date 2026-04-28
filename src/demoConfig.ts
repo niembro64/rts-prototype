@@ -2,7 +2,7 @@
 
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
-  playerCount: 4,
+  playerCount: 6,
 
   /** Number of factories per player. Each player's TEAM slice is
    *  180°/N wide (the other 180°/N of every 360°/N cycle is the
