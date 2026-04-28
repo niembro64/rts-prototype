@@ -4,8 +4,7 @@ import { getTerrainHeight, WATER_LEVEL } from '@/game/sim/Terrain';
 import { PLAYER_COLORS } from '@/game/sim/types';
 import type { PlayerId } from '@/game/sim/types';
 import { MAP_BG_COLOR } from '@/config';
-import { CAPTURE_CONFIG } from '@/captureConfig';
-import { getManaCellMultiplier } from '@/game/sim/manaProduction';
+import { getManaCellMultiplier, getCaptureTileBlendFactors } from '@/game/sim/manaProduction';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
@@ -97,33 +96,28 @@ function drawEntityLayer(): void {
   // its world coords to a (cx, cy) and hits these arrays — no nested
   // dict lookups inside the hot loop.
   //
-  // Same blend formula the 3D CaptureTileRenderer3D uses:
-  //     productionFraction = maxHeight * hotspotMultiplier / centerMultiplier
-  //     mix                = clamp(intensity * 3 * productionFraction, 0, 1)
-  //     out_rgb            = neutral * (1 − mix) + teamColor * mix
-  // Identical math = identical brightness in both views. The hotspot
-  // multiplier is the same number that drives a tile's mana income,
-  // so on the minimap "brighter = more mana per tick" exactly.
-  // When captureCellSize is 0 (no data yet) or intensity is 0 (GRID
-  // off) we skip the overlay — the minimap reads pure terrain
-  // shading instead.
+  // Identical two-axis blend (saturation + glow toward white) the 3D
+  // CaptureTileRenderer3D uses — see manaProduction.ts. We pre-resolve
+  // the FINAL blended RGB per tile once, then the per-pixel hot loop
+  // is a flat array lookup. The hotspot's centre-of-map glow shows up
+  // here exactly as it does in the 3D scene because both views go
+  // through getCaptureTileBlendFactors.
   const { captureTiles, captureCellSize, gridOverlayIntensity, showTerrain } = props.data;
   const overlayActive = showTerrain && captureCellSize > 0 && gridOverlayIntensity > 0 && captureTiles.length > 0;
-  const centerMult = Math.max(1, CAPTURE_CONFIG.manaHotspotCenterMultiplier);
-  let tileTeamR: Float32Array | null = null;
-  let tileTeamG: Float32Array | null = null;
-  let tileTeamB: Float32Array | null = null;
-  let tileProdFrac: Float32Array | null = null;
+  let tileFinalR: Uint8ClampedArray | null = null;
+  let tileFinalG: Uint8ClampedArray | null = null;
+  let tileFinalB: Uint8ClampedArray | null = null;
+  let tileHasColor: Uint8Array | null = null;
   let tileCellsX = 0;
   let tileCellsY = 0;
   if (overlayActive) {
     tileCellsX = Math.max(1, Math.ceil(mapWidth / captureCellSize));
     tileCellsY = Math.max(1, Math.ceil(mapHeight / captureCellSize));
     const n = tileCellsX * tileCellsY;
-    tileTeamR = new Float32Array(n);
-    tileTeamG = new Float32Array(n);
-    tileTeamB = new Float32Array(n);
-    tileProdFrac = new Float32Array(n);
+    tileFinalR = new Uint8ClampedArray(n);
+    tileFinalG = new Uint8ClampedArray(n);
+    tileFinalB = new Uint8ClampedArray(n);
+    tileHasColor = new Uint8Array(n);
     for (let i = 0; i < captureTiles.length; i++) {
       const tile = captureTiles[i];
       const { cx, cy } = tile;
@@ -144,12 +138,20 @@ function drawEntityLayer(): void {
         if (height > maxHeight) maxHeight = height;
       }
       if (totalWeight <= 0) continue;
-      const idx = cy * tileCellsX + cx;
-      tileTeamR[idx] = r / totalWeight;
-      tileTeamG[idx] = g / totalWeight;
-      tileTeamB[idx] = b / totalWeight;
+      const tr = r / totalWeight;
+      const tg = g / totalWeight;
+      const tb = b / totalWeight;
       const tileMult = getManaCellMultiplier(cx, cy, captureCellSize, mapWidth, mapHeight);
-      tileProdFrac[idx] = (maxHeight * tileMult) / centerMult;
+      const { saturation, glow } = getCaptureTileBlendFactors(tileMult, maxHeight, gridOverlayIntensity);
+      const invSat = 1 - saturation;
+      const invGlow = 1 - glow;
+      const idx = cy * tileCellsX + cx;
+      // Stage 1: neutral → team colour by saturation.
+      // Stage 2: that result → white (255) by glow (hotspot brightness).
+      tileFinalR[idx] = (NEUTRAL_R * invSat + tr * saturation) * invGlow + 255 * glow;
+      tileFinalG[idx] = (NEUTRAL_G * invSat + tg * saturation) * invGlow + 255 * glow;
+      tileFinalB[idx] = (NEUTRAL_B * invSat + tb * saturation) * invGlow + 255 * glow;
+      tileHasColor[idx] = 1;
     }
   }
 
@@ -158,7 +160,6 @@ function drawEntityLayer(): void {
   // Lake color same family as the 3D water plane; background mirrors
   // the previous fillStyle = '#1a1a2e' (= NEUTRAL_*).
   const lakeR = 0x2a, lakeG = 0x55, lakeB = 0x9a;
-  const intensity3 = gridOverlayIntensity * 3;
   let pi = 0;
   if (!showTerrain) {
     // GRID = OFF: 3D scene hides the capture-tile mesh entirely (no
@@ -187,17 +188,14 @@ function drawEntityLayer(): void {
           outR = lakeR; outG = lakeG; outB = lakeB;
         } else {
           outR = NEUTRAL_R; outG = NEUTRAL_G; outB = NEUTRAL_B;
-          if (overlayActive && tileTeamR && tileTeamG && tileTeamB && tileProdFrac) {
+          if (overlayActive && tileFinalR && tileFinalG && tileFinalB && tileHasColor) {
             const tx = Math.floor(worldX / captureCellSize);
             if (tx >= 0 && tx < tileCellsX && ty >= 0 && ty < tileCellsY) {
               const idx = ty * tileCellsX + tx;
-              const prodFrac = tileProdFrac[idx];
-              if (prodFrac > 0) {
-                const mix = Math.min(1, intensity3 * prodFrac);
-                const inv = 1 - mix;
-                outR = NEUTRAL_R * inv + tileTeamR[idx] * mix;
-                outG = NEUTRAL_G * inv + tileTeamG[idx] * mix;
-                outB = NEUTRAL_B * inv + tileTeamB[idx] * mix;
+              if (tileHasColor[idx]) {
+                outR = tileFinalR[idx];
+                outG = tileFinalG[idx];
+                outB = tileFinalB[idx];
               }
             }
           }

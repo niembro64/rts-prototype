@@ -69,3 +69,57 @@ export function getManaCellMultiplier(
   const wy = (cy + 0.5) * size;
   return getManaTileMultiplier(wx, wy, mapWidth, mapHeight);
 }
+
+// =============================================================================
+// GRID-overlay colour model
+// =============================================================================
+//
+// Colour brightness ties directly to a tile's mana-per-second so what
+// you see on the GRID matches what you earn. Brightness factors into
+// two axes that mirror the production formula:
+//
+//   production = MANA_PER_TILE × multiplier × dominantHeight
+//                                ^^^^^^^^^^   ^^^^^^^^^^^^^^^
+//                                glow axis    saturation axis
+//
+//   • SATURATION blends neutral → team colour, driven by the
+//     dominant team's flag height. Identical to the pre-hotspot
+//     behaviour — a fully captured tile saturates to its team's
+//     primary colour regardless of where it is on the map.
+//
+//   • GLOW blends team colour → white, driven by how far the tile's
+//     hotspot multiplier exceeds the perimeter baseline. Capped so
+//     the brightest centre tile is visibly luminous yet still
+//     readable as the team's colour, not pure white.
+//
+// Both factors are scaled by the GRID-overlay intensity so the OFF /
+// LOW / MEDIUM / HIGH dimmer keeps tiles from screaming at low
+// settings. Producing this from one helper means the 3D capture-tile
+// mesh and the 2D minimap render IDENTICAL gradients.
+
+/** Maximum lerp toward white at the hottest, fully captured tile.
+ *  Lower → centre tiles stay closer to team colour; higher →
+ *  centre tiles glow more aggressively. 0.6 reads as "noticeably
+ *  brighter, still clearly the team's colour." */
+export const CAPTURE_TILE_GLOW_CAP = 0.6;
+
+/** Two-axis brightness factors for one captured tile, given the
+ *  per-tile hotspot multiplier, the dominant team's flag height,
+ *  and the global GRID-overlay intensity. The renderer then lerps
+ *  neutral → team colour by `saturation`, then team colour → white
+ *  by `glow`. Both factors are clamped to safe display ranges. */
+export function getCaptureTileBlendFactors(
+  tileMultiplier: number,
+  dominantHeight: number,
+  intensity: number,
+): { saturation: number; glow: number } {
+  const centerMult = Math.max(1, CAPTURE_CONFIG.manaHotspotCenterMultiplier);
+  const saturation = Math.min(1, intensity * 3 * dominantHeight);
+  const hotspotShare =
+    centerMult > 1 ? (tileMultiplier - 1) / (centerMult - 1) : 0;
+  const glow = Math.min(
+    CAPTURE_TILE_GLOW_CAP,
+    intensity * hotspotShare * dominantHeight,
+  );
+  return { saturation, glow };
+}

@@ -30,8 +30,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TILE_FLOOR_Y } from '../sim/Terrain';
-import { CAPTURE_CONFIG } from '../../captureConfig';
-import { getManaCellMultiplier } from '../sim/manaProduction';
+import { getManaCellMultiplier, getCaptureTileBlendFactors } from '../sim/manaProduction';
 
 // Floor of every mana tile post — sourced from the canonical
 // TILE_FLOOR_Y in Terrain so the heightmap clamp, the water level,
@@ -331,16 +330,13 @@ export class CaptureTileRenderer3D {
       }
     }
 
-    // Pass 2: blend dominant-team color onto captured tiles.
-    //
-    // Brightness is tied to ABSOLUTE mana production: we scale the
-    // blend factor by `multiplier / centerMultiplier`, where
-    // `multiplier` is the same hotspot weight the sim uses for
-    // income. A fully-captured perimeter tile reaches
-    // 1 / centerMultiplier of full saturation; a fully-captured
-    // centre tile reaches full saturation. Same number drives
-    // colour and mana — what you see really is what you earn.
-    const centerMult = Math.max(1, CAPTURE_CONFIG.manaHotspotCenterMultiplier);
+    // Pass 2: blend dominant-team colour onto captured tiles using
+    // the shared two-axis (saturation + glow) model — see
+    // manaProduction.ts. Each tile's brightness scales with its
+    // mana-per-second: ownership height drives saturation toward
+    // team colour, hotspot multiplier drives glow toward white.
+    // 3D mesh and 2D minimap consume the SAME factor function so
+    // the gradient looks identical in both views.
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i];
       const cx = tile.cx;
@@ -369,12 +365,14 @@ export class CaptureTileRenderer3D {
       const tg = (g / totalWeight) / 255;
       const tb = (b / totalWeight) / 255;
       const tileMult = getManaCellMultiplier(cx, cy, cellSize, this.mapWidth, this.mapHeight);
-      const productionFraction = (maxHeight * tileMult) / centerMult;
-      const mix = Math.min(1, intensity * 3 * productionFraction);
-
-      const lerpR = NEUTRAL_R * (1 - mix) + tr * mix;
-      const lerpG = NEUTRAL_G * (1 - mix) + tg * mix;
-      const lerpB = NEUTRAL_B * (1 - mix) + tb * mix;
+      const { saturation, glow } = getCaptureTileBlendFactors(tileMult, maxHeight, intensity);
+      const invSat = 1 - saturation;
+      const invGlow = 1 - glow;
+      // Stage 1: neutral → team colour by saturation.
+      // Stage 2: that result → white by glow (hotspot brightness).
+      const lerpR = (NEUTRAL_R * invSat + tr * saturation) * invGlow + glow;
+      const lerpG = (NEUTRAL_G * invSat + tg * saturation) * invGlow + glow;
+      const lerpB = (NEUTRAL_B * invSat + tb * saturation) * invGlow + glow;
 
       const cBase = (cy * cellsX + cx) * VERTS_PER_TILE * 3;
       for (let v = 0; v < VERTS_PER_TILE; v++) {
