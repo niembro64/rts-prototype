@@ -10,17 +10,58 @@ import { AUDIO } from '../../../audioConfig';
 import type { UnitBlueprint, MountPoint, UnitBodyShape } from './types';
 
 const BODY_SHAPES = {
-  scout: { kind: 'polygon', sides: 4, radiusFrac: 0.55, heightFrac: 2 * 0.55 * Math.cos(Math.PI / 4), rotation: Math.PI / 4 },
-  brawl: { kind: 'polygon', sides: 4, radiusFrac: 0.8, heightFrac: 2 * 0.8 * Math.cos(Math.PI / 4), rotation: 0 },
-  tank: { kind: 'polygon', sides: 5, radiusFrac: 0.85, heightFrac: 2 * 0.85 * Math.cos(Math.PI / 5), rotation: 0 },
-  burst: { kind: 'polygon', sides: 3, radiusFrac: 0.6, heightFrac: 2 * 0.6 * Math.cos(Math.PI / 3), rotation: Math.PI },
-  mortar: { kind: 'polygon', sides: 6, radiusFrac: 0.55, heightFrac: 2 * 0.55 * Math.cos(Math.PI / 6), rotation: 0 },
-  hippo: { kind: 'rect', lengthFrac: 0.7, widthFrac: 1.6, heightFrac: (0.7 + 1.6) / 2 },
+  scout: {
+    kind: 'polygon',
+    sides: 4,
+    radiusFrac: 0.55,
+    heightFrac: 0.3,
+    rotation: Math.PI / 4,
+  },
+  brawl: {
+    kind: 'polygon',
+    sides: 4,
+    radiusFrac: 0.8,
+    heightFrac: 0.3,
+    rotation: 0,
+  },
+  tank: {
+    kind: 'polygon',
+    sides: 5,
+    radiusFrac: 0.85,
+    heightFrac: 0.3,
+    rotation: 0,
+  },
+  burst: {
+    kind: 'polygon',
+    sides: 3,
+    radiusFrac: 0.6,
+    heightFrac: 0.3,
+    rotation: Math.PI,
+  },
+  mortar: {
+    kind: 'polygon',
+    sides: 6,
+    radiusFrac: 0.55,
+    heightFrac: 0.3,
+    rotation: 0,
+  },
+  hippo: {
+    kind: 'rect',
+    lengthFrac: 0.7,
+    widthFrac: 1.6,
+    heightFrac: 0.6,
+  },
   beam: {
     kind: 'composite',
     parts: [
-      { kind: 'oval', offsetForward: -0.65, xFrac: 0.9, yFrac: (0.9 + 0.65) / 2, zFrac: 0.65 },
-      { kind: 'circle', offsetForward: 0.30, radiusFrac: 0.6, yFrac: 0.6 },
+      {
+        kind: 'oval',
+        offsetForward: -0.65,
+        xFrac: 0.9,
+        yFrac: (0.9 + 0.65) / 2,
+        zFrac: 0.65,
+      },
+      { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.6, yFrac: 0.6 },
     ],
   },
   arachnid: {
@@ -34,7 +75,13 @@ const BODY_SHAPES = {
   commander: {
     kind: 'composite',
     parts: [
-      { kind: 'oval', offsetForward: -0.45, xFrac: 0.7, yFrac: (0.7 + 0.65) / 2, zFrac: 0.65 },
+      {
+        kind: 'oval',
+        offsetForward: -0.45,
+        xFrac: 0.7,
+        yFrac: (0.7 + 0.65) / 2,
+        zFrac: 0.65,
+      },
       { kind: 'circle', offsetForward: 0.4, radiusFrac: 0.5, yFrac: 0.5 },
     ],
   },
@@ -308,12 +355,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 1500,
     energyCost: 2500,
     manaCost: 10,
-    turrets: [
-      { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
-    ],
-    chassisMounts: [
-      { x: 0.2, y: 0 },
-    ],
+    turrets: [{ turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 }],
+    chassisMounts: [{ x: 0.2, y: 0 }],
     bodyShape: BODY_SHAPES.hippo,
     locomotion: {
       type: 'treads',
@@ -368,12 +411,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 20,
     energyCost: 190,
     manaCost: 10,
-    turrets: [
-      { turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 },
-    ],
-    chassisMounts: [
-      { x: 0, y: 0 },
-    ],
+    turrets: [{ turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 }],
+    chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.loris,
     locomotion: {
       type: 'treads',
@@ -471,7 +510,10 @@ function getCostNorms(): { maxEnergy: number; maxMana: number } {
   return _costNormsCache;
 }
 
-export function getNormalizedUnitCost(bp: { energyCost: number; manaCost: number }): number {
+export function getNormalizedUnitCost(bp: {
+  energyCost: number;
+  manaCost: number;
+}): number {
   const { maxEnergy, maxMana } = getCostNorms();
   const eNorm = maxEnergy > 0 ? bp.energyCost / maxEnergy : 0;
   const mNorm = maxMana > 0 ? bp.manaCost / maxMana : 0;

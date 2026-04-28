@@ -144,7 +144,18 @@ const RIPPLE_RADIUS_FRACTION = 0.4;
 // Set inner = outer for an instant step (a sheer cliff at that
 // radius); set inner = outer = 0 to plateau across the entire map.
 const RIDGE_INNER_RADIUS_FRACTION = 0.1;
-const RIDGE_OUTER_RADIUS_FRACTION = 0.2;
+const RIDGE_OUTER_RADIUS_FRACTION = 0.4;
+
+// Half-width of one divider ridge in physical sim units, expressed
+// as a fraction of min(mapWidth, mapHeight). The angular cross-
+// section of each ridge is a Hann window in PHYSICAL distance from
+// the radial barrier line — not in angular distance — so the slope
+// (height per unit distance) is uniform along the entire ridge,
+// regardless of how far it is from the map centre. The earlier
+// angular-Hann formulation made ridges sharp near the centre and
+// gentle near the perimeter; this one keeps them looking the same
+// thickness everywhere.
+const RIDGE_HALF_WIDTH_FRACTION = 0.08;
 
 // ── TEAM SEPARATION RIDGES ───────────────────────────────────────
 //
@@ -241,23 +252,24 @@ export function getTerrainHeight(
     let pos = (theta + Math.PI / 4) % cycle;
     if (pos < 0) pos += cycle;
     const barrierMid = cycle / 2;
-    const halfBarrier = cycle / 4; // half-width = π/(2N)
     const distFromBarrierCenter = Math.abs(pos - barrierMid);
-    if (distFromBarrierCenter < halfBarrier) {
-      // Angular profile: RAISED COSINE half-wave (Hann window),
-      //   f(t) = (1 + cos(πt)) / 2
-      // — peak = 1 at the barrier center (t=0, top), 0 at the team-
-      // area boundary (t=1, bottom). The derivative is zero at BOTH
-      // ends, so the ridge transitions smoothly out of the team
-      // zone (no sharp angular slope where flat ground meets the
-      // mountain face) AND smoothly through the peak. Replaces the
-      // earlier quarter-cosine which was smooth only at the top
-      // and steep at the trough.
-      const angT = distFromBarrierCenter / halfBarrier; // 0..1
-      const angFalloff = (1 + Math.cos(angT * Math.PI)) * 0.5;
+
+    // Cross-section profile: RAISED COSINE half-wave (Hann window),
+    //   f(t) = (1 + cos(πt)) / 2
+    // — peak = 1 at the barrier centreline (t=0), 0 at the ridge's
+    // outer edge (t=1). The Hann is keyed off PHYSICAL perpendicular
+    // distance to the radial barrier line, so the slope of the
+    // mountain (height per unit distance) is the same everywhere
+    // along its length — no more "sharp at the centre, gentle at
+    // the edge" artifact from the old angular-Hann formulation.
+    const minDim = Math.min(mapWidth, mapHeight);
+    const halfWidth = minDim * RIDGE_HALF_WIDTH_FRACTION;
+    const perpDist = dist * Math.sin(distFromBarrierCenter);
+    if (perpDist < halfWidth) {
+      const widthT = perpDist / halfWidth; // 0..1
+      const angFalloff = (1 + Math.cos(widthT * Math.PI)) * 0.5;
       // Radial profile — see RIDGE_INNER_RADIUS_FRACTION /
       // RIDGE_OUTER_RADIUS_FRACTION up top.
-      const minDim = Math.min(mapWidth, mapHeight);
       const innerR = minDim * RIDGE_INNER_RADIUS_FRACTION;
       const outerR = minDim * RIDGE_OUTER_RADIUS_FRACTION;
       let radT: number;
