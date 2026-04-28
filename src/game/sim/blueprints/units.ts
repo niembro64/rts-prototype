@@ -9,13 +9,13 @@
 import { AUDIO } from '../../../audioConfig';
 import type { UnitBlueprint, MountPoint } from './types';
 
-// Compute widow's mount points: 6 beam turrets on abdomen edge, force field on prosoma
+// Compute widow's mount points: 4 beam turrets on abdomen edge, force field on prosoma
 function computeWidowMounts(): MountPoint[] {
   const abdomenR = 1.15; // matches abdomen radius in renderer
   const abdomenFwd = -1.1; // matches abdomen offset in renderer
   const mounts: MountPoint[] = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (i * Math.PI) / 3 + Math.PI / 6;
+  for (let i = 0; i < 4; i++) {
+    const angle = Math.PI / 4 + (i * Math.PI) / 2;
     mounts.push({
       x: Math.cos(angle) * abdomenR + abdomenFwd,
       y: Math.sin(angle) * abdomenR,
@@ -235,10 +235,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [
       { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
       { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
-      { turretId: 'beamTurret4', offsetX: 0, offsetY: 0 }, // back
       { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-right
       { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-right
-      { turretId: 'beamTurret7', offsetX: 0, offsetY: 0 }, // front
       { turretId: 'forceTurretMedium', offsetX: 0, offsetY: 0 }, // center
     ],
     chassisMounts: computeWidowMounts(),
@@ -271,11 +269,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 10,
     turrets: [
       { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
-      { turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [
-      { x: 0.2, y: -0.7 },
-      { x: 0.2, y: 0.7 },
+      { x: 0.2, y: 0 },
     ],
     locomotion: {
       type: 'treads',
