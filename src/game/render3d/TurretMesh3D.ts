@@ -40,7 +40,20 @@ export type TurretMesh = {
    *  re-call getTurretHeadRadius — the value is constant per-turret
    *  (depends on unitRadius + turret config, neither of which change). */
   headRadius?: number;
+  /** Barrel cylinder Mesh objects. When `deps.skipBarrels` was true
+   *  these are NOT in the scene — they're kept here purely as data
+   *  carriers (.position / .quaternion / .scale set by pushSegment
+   *  hold the per-barrel base transform within spinGroup-local), and
+   *  the shared `barrelInstanced` InstancedMesh does the rendering.
+   *  When `deps.skipBarrels` was false (cap exhausted on alloc), the
+   *  Meshes are parented to spinGroup and render normally. */
   barrels: THREE.Mesh[];
+  /** Slot index into Render3DEntities.barrelInstanced for each barrel
+   *  in `barrels`, set after alloc by the caller (Render3DEntities).
+   *  `barrelSlots[i]` is the slot for `barrels[i]`. Empty when no
+   *  barrels are routed through the InstancedMesh path (per-Mesh
+   *  fallback). */
+  barrelSlots?: number[];
   /** Pitch pivot (rotation.z = pitch) — tilts firing direction up/down.
    *  Parent of spinGroup. */
   pitchGroup?: THREE.Group;
@@ -69,6 +82,13 @@ export type TurretMesh3DDeps = {
    *  instead. Barrels still build and pivot at headRadius regardless,
    *  same as the existing hideHead-but-with-barrels path. */
   skipHead?: boolean;
+  /** When true, BUILD the per-barrel Mesh objects but DON'T attach
+   *  them to spinGroup — the caller is rendering barrels through the
+   *  shared `barrelInstanced` InstancedMesh and reads the Mesh's
+   *  position / quaternion / scale as the per-barrel base transform.
+   *  The Meshes still live in TurretMesh.barrels[] as data carriers
+   *  but are never drawn directly. */
+  skipBarrels?: boolean;
 };
 
 // Scratch vectors reused across all turret builds — module-local so
@@ -168,7 +188,12 @@ export function buildTurretMesh3D(
   const parentBaseY = 0;
 
   // Place one cylinder segment spanning (base) → (tip) in local coords. Used
-  // for straight (gatling) and cone (shotgun) barrels alike.
+  // for straight (gatling) and cone (shotgun) barrels alike. The Mesh is
+  // built either way (its position / quaternion / scale carry the per-
+  // barrel base transform read by Render3DEntities' instance writer).
+  // When `deps.skipBarrels` is true the Mesh is built but NOT attached
+  // to spinGroup — kept in `barrels[]` purely as a data carrier; the
+  // shared `barrelInstanced` InstancedMesh does the rendering.
   const pushSegment = (
     baseX: number, baseY: number, baseZ: number,
     tipX: number, tipY: number, tipZ: number,
@@ -189,7 +214,7 @@ export function buildTurretMesh3D(
     _barrelUp.set(0, 1, 0);
     _barrelDir.set(dx / length, dy / length, dz / length);
     m.quaternion.setFromUnitVectors(_barrelUp, _barrelDir);
-    barrelParent.add(m);
+    if (!deps.skipBarrels) barrelParent.add(m);
     barrels.push(m);
   };
 

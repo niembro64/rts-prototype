@@ -422,6 +422,19 @@ export class Render3DEntities {
   private _smoothLiftedPos = new THREE.Vector3();
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
 
+  /** Scratch state for the per-barrel instance write. The chain
+   *  group → yawGroup → liftGroup → turretRoot → pitchGroup →
+   *  spinGroup is composed progressively into `_barrelParentMat`
+   *  per turret, then each barrel's `T·R·S` local matrix is
+   *  multiplied in to produce the final world matrix. `_barrelOneVec`
+   *  / `_barrelZeroVec` / `_barrelLiftVec` are immutable / overwritten-
+   *  each-step scratch Vector3s so the inner loop allocates nothing. */
+  private _barrelParentMat = new THREE.Matrix4();
+  private _barrelStepMat = new THREE.Matrix4();
+  private _barrelOneVec = new THREE.Vector3(1, 1, 1);
+  private _barrelZeroVec = new THREE.Vector3(0, 0, 0);
+  private _barrelLiftVec = new THREE.Vector3();
+
   // ── LOW+ tier polygonal/rect chassis InstancedMeshes ──────────────
   // One InstancedMesh per polygonal renderer (scout / brawl / tank /
   // burst / mortar — all ExtrudeGeometry from BodyShape3D's per-
@@ -474,6 +487,33 @@ export class Render3DEntities {
   private turretHeadInstanced: THREE.InstancedMesh | null = null;
   private turretHeadFreeSlots: number[] = [];
   private turretHeadNextSlot = 0;
+
+  // ── LOW+ tier barrel InstancedMesh ──────────────────────────────
+  // Every barrel cylinder across every turret across every unit
+  // renders through ONE shared InstancedMesh draw call. Continuation
+  // of the chassis + head instancing — barrels are the largest
+  // remaining per-unit visual after those (unit can have 1-7
+  // turrets × 1-7 barrels each; widow with multi-barrel beam emitters
+  // can push 14+ barrels alone).
+  //
+  // Each barrel carries a static base transform (position +
+  // quaternion + scale, set by TurretMesh3D's pushSegment) within
+  // its turret's spinGroup-local frame. Per frame we compose
+  // `parentMat = group · yawGroup · liftGroup · turretRoot ·
+  // pitchGroup · spinGroup` once per turret and `worldMat = parentMat
+  // · barrelLocalMat` per barrel. Per-instance team color isn't
+  // needed (barrels are always white in the current visual contract,
+  // matching this.barrelMat); we still expose instanceColor in case
+  // future per-team / per-state tints are added — unused slots stay
+  // at the default white init.
+  //
+  // Slot allocation is stable per turret-barrel, freed on unit
+  // despawn. count = nextSlot per frame matches the chassis-pool
+  // tightening from commit a165b65.
+  private static readonly BARREL_CAP = 32768;
+  private barrelInstanced: THREE.InstancedMesh | null = null;
+  private barrelFreeSlots: number[] = [];
+  private barrelNextSlot = 0;
 
   constructor(
     world: THREE.Group,
@@ -583,6 +623,31 @@ export class Render3DEntities {
     this.turretHeadInstanced.count = 0;
     this.turretHeadInstanced.instanceMatrix.needsUpdate = true;
     this.world.add(this.turretHeadInstanced);
+
+    // Barrel InstancedMesh — reuses the existing barrelGeom
+    // (10-segment cylinder, radius 1, height 1; the per-instance
+    // scale shapes it to (cylRadius, length, cylRadius)). Material
+    // is the same shared white barrelMat the per-Mesh path used —
+    // not a new MeshLambertMaterial — so team-color updates AREN'T
+    // applied (barrels stay white across teams, matching the
+    // existing visual contract). We still allocate instanceColor so
+    // a future per-instance tint hook can land without recreating
+    // the mesh.
+    this.barrelInstanced = new THREE.InstancedMesh(
+      this.barrelGeom,
+      this.barrelMat,
+      Render3DEntities.BARREL_CAP,
+    );
+    this.barrelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.barrelInstanced.setColorAt(0, this._instColor.set(0xffffff));
+    this.barrelInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    this.barrelInstanced.frustumCulled = false;
+    for (let i = 0; i < Render3DEntities.BARREL_CAP; i++) {
+      this.barrelInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    this.barrelInstanced.count = 0;
+    this.barrelInstanced.instanceMatrix.needsUpdate = true;
+    this.world.add(this.barrelInstanced);
   }
 
   private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
@@ -840,6 +905,7 @@ export class Render3DEntities {
     this.releaseAllSmoothChassisSlots();
     this.releaseAllPolyChassisSlots();
     this.releaseAllTurretHeadSlots();
+    this.releaseAllBarrelSlots();
   }
 
   /** LOW-tier per-frame instance write. Each visible unit takes one
@@ -1119,6 +1185,44 @@ export class Render3DEntities {
     im.instanceMatrix.needsUpdate = true;
   }
 
+  /** Reserve a slot for a single barrel cylinder. Returns slot
+   *  index, or null when the cap is exhausted (caller falls back to
+   *  per-Mesh barrels for the whole turret — see TurretMesh3D's
+   *  skipBarrels path). */
+  private allocBarrelSlot(): number | null {
+    if (!this.barrelInstanced) return null;
+    if (this.barrelFreeSlots.length > 0) return this.barrelFreeSlots.pop()!;
+    if (this.barrelNextSlot < Render3DEntities.BARREL_CAP) {
+      return this.barrelNextSlot++;
+    }
+    return null;
+  }
+
+  /** Hide one barrel slot and push it back on the free list. Used by
+   *  the seen-pruning loop on unit despawn (each barrel on each
+   *  turret on the unit gets its slot freed). */
+  private freeBarrelSlot(slot: number): void {
+    const im = this.barrelInstanced;
+    if (!im || slot < 0) return;
+    im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    this.barrelFreeSlots.push(slot);
+    im.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Wipe every active barrel slot (LOD flip / teardown). Same
+   *  shape as the head + chassis releases. */
+  private releaseAllBarrelSlots(): void {
+    const im = this.barrelInstanced;
+    if (!im) return;
+    for (let i = 0; i < this.barrelNextSlot; i++) {
+      im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    this.barrelFreeSlots.length = 0;
+    this.barrelNextSlot = 0;
+    im.count = 0;
+    im.instanceMatrix.needsUpdate = true;
+  }
+
   /** Wipe every active polygonal-chassis slot across every per-renderer
    *  pool (LOD flip). The pool meshes stay in the scene with count = 0
    *  (no GPU draw work) until the next allocation refills them. */
@@ -1368,6 +1472,24 @@ export class Render3DEntities {
             const allocated = this.allocTurretHeadSlot();
             if (allocated !== null) headSlot = allocated;
           }
+          // Decide whether to route this turret's barrels through the
+          // shared `barrelInstanced` InstancedMesh. Force-field and
+          // turretOff turrets have no barrels; mirror-host turrets
+          // also skip (they're a panel host, not a shooter). For
+          // shooting turrets, we don't yet know how many barrels
+          // until buildTurretMesh3D runs (multiBarrel patterns vary
+          // by config). Build first; if barrels are produced, walk
+          // them and try to alloc slots. If ALL allocs succeed, skip
+          // attaching to spinGroup (we re-parent them to nowhere
+          // below). If ANY alloc fails, free the partials and let
+          // the per-Mesh path render — keeps the fallback simple,
+          // never a hybrid render where some barrels of a turret are
+          // instanced and some aren't.
+          //
+          // To support this, we build with skipBarrels = false first,
+          // then re-detach on the success path. Simpler than running
+          // pushSegment twice or threading a "build silently then
+          // attach later" flag through TurretMesh3D.
           // Turrets parent to `liftGroup` so they ride on top of the
           // chassis at the locomotion's lift height — wheels carry
           // both chassis AND turret, treads do the same. Articulated
@@ -1381,10 +1503,34 @@ export class Render3DEntities {
             barrelMat: this.barrelMat,
             primaryMat: this.getPrimaryMat(pid),
             skipHead: headSlot !== undefined,
+            skipBarrels: false, // try to attach for fallback safety
           });
           if (tm.head) tm.head.userData.entityId = e.id;
           for (const b of tm.barrels) b.userData.entityId = e.id;
           tm.headSlot = headSlot;
+          // Try to allocate one barrel slot per barrel. All-or-nothing:
+          // partial allocations get freed and we leave the per-Mesh
+          // barrels in the scene as the fallback.
+          if (tm.barrels.length > 0 && this.barrelInstanced) {
+            const barrelSlots: number[] = [];
+            let allAlloc = true;
+            for (let bi = 0; bi < tm.barrels.length; bi++) {
+              const slot = this.allocBarrelSlot();
+              if (slot === null) { allAlloc = false; break; }
+              barrelSlots.push(slot);
+            }
+            if (allAlloc) {
+              tm.barrelSlots = barrelSlots;
+              // Detach the per-Mesh barrels from spinGroup so they
+              // don't double-render — we still keep the Mesh
+              // references in tm.barrels[] as the per-frame writer
+              // reads .position / .quaternion / .scale off them.
+              for (const b of tm.barrels) b.parent?.remove(b);
+            } else {
+              // Partial alloc → free what we got, fall back to per-Mesh.
+              for (const slot of barrelSlots) this.freeBarrelSlot(slot);
+            }
+          }
           turretMeshes.push(tm);
         }
 
@@ -1697,6 +1843,78 @@ export class Render3DEntities {
           this.turretHeadInstanced.setColorAt(tm.headSlot, this._instColor);
         }
 
+        // Barrel InstancedMesh write — compose the FULL chain
+        // (group · yawGroup · liftGroup · turretRoot · pitchGroup ·
+        // spinGroup) once per turret, then for each barrel multiply
+        // by its base local matrix (T(base.pos) · R(base.quat) ·
+        // S(base.scale) — read off the per-Mesh barrel which holds
+        // those values from pushSegment at build time even though
+        // the Mesh is no longer attached to the scene). Each per-
+        // turret matrix step uses Matrix4.compose on the relevant
+        // group's stored position / rotation / scale so we don't
+        // depend on THREE's lazy matrixWorld update timing.
+        if (
+          tm.barrelSlots
+          && this.barrelInstanced
+          && tm.barrels.length > 0
+          && tm.barrelSlots.length === tm.barrels.length
+        ) {
+          // _barrelParentMat = group · yawGroup · liftGroup · turretRoot · pitchGroup · spinGroup
+          // Build progressively: each step multiplies in the next
+          // group's local matrix. ONE_VEC scratch for unit scale; the
+          // chain has no scaling until we add the per-barrel scale at
+          // the end.
+          this._barrelParentMat.compose(
+            m.group.position, m.group.quaternion, this._barrelOneVec,
+          );
+          // yawGroup: T(0) · Ry(yaw) · S(1)
+          this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
+          this._barrelStepMat.compose(
+            this._barrelZeroVec, this._smoothYawQuat, this._barrelOneVec,
+          );
+          this._barrelParentMat.multiply(this._barrelStepMat);
+          // liftGroup: T(0, lift, 0)
+          this._barrelLiftVec.set(0, m.chassisLift ?? 0, 0);
+          this._barrelStepMat.compose(
+            this._barrelLiftVec, Render3DEntities._IDENTITY_QUAT, this._barrelOneVec,
+          );
+          this._barrelParentMat.multiply(this._barrelStepMat);
+          // turretRoot: T(turret root pos) · R(turret root quat) · S(1).
+          // Read directly off the (still-extant, in-scene) tm.root
+          // so the per-frame yaw rotation set above is reflected.
+          this._barrelStepMat.compose(
+            tm.root.position, tm.root.quaternion, this._barrelOneVec,
+          );
+          this._barrelParentMat.multiply(this._barrelStepMat);
+          // pitchGroup: T(pitch pos) · R(pitch quat) · S(1)
+          if (tm.pitchGroup) {
+            this._barrelStepMat.compose(
+              tm.pitchGroup.position, tm.pitchGroup.quaternion, this._barrelOneVec,
+            );
+            this._barrelParentMat.multiply(this._barrelStepMat);
+          }
+          // spinGroup: T(0) · R(spin quat) · S(1)
+          if (tm.spinGroup) {
+            this._barrelStepMat.compose(
+              tm.spinGroup.position, tm.spinGroup.quaternion, this._barrelOneVec,
+            );
+            this._barrelParentMat.multiply(this._barrelStepMat);
+          }
+          // Per-barrel: barrelLocalMat = T(barrel.pos) · R(barrel.quat) · S(barrel.scale)
+          // worldMat = parentMat · barrelLocalMat
+          for (let bi = 0; bi < tm.barrels.length; bi++) {
+            const barrel = tm.barrels[bi];
+            const slot = tm.barrelSlots[bi];
+            this._barrelStepMat.compose(
+              barrel.position, barrel.quaternion, barrel.scale,
+            );
+            this._smoothFinalMat.multiplyMatrices(
+              this._barrelParentMat, this._barrelStepMat,
+            );
+            this.barrelInstanced.setMatrixAt(slot, this._smoothFinalMat);
+          }
+        }
+
         // Turret aim through the new hierarchy:
         //
         //   world barrel = tilt · Ry(yawGroup) · Ry(localYaw) · Rz(localPitch) · +X
@@ -1811,6 +2029,11 @@ export class Render3DEntities {
         // visible head routed through the InstancedMesh path.
         for (const tm of m.turrets) {
           if (tm.headSlot !== undefined) this.freeTurretHeadSlot(tm.headSlot);
+          // Barrel slots — one per barrel on each turret routed
+          // through the barrel InstancedMesh path.
+          if (tm.barrelSlots) {
+            for (const slot of tm.barrelSlots) this.freeBarrelSlot(slot);
+          }
         }
         this.unitMeshes.delete(id);
       }
@@ -1854,6 +2077,17 @@ export class Render3DEntities {
         if (this.turretHeadInstanced.instanceColor) {
           this.turretHeadInstanced.instanceColor.needsUpdate = true;
         }
+      }
+    }
+    // Barrels — one shared draw call for every barrel across every
+    // turret on every unit. Color isn't written per frame (barrels
+    // stay white in the current visual contract); the instanceColor
+    // buffer was zeroed at construction so unused slots are white-on-
+    // empty-matrix and nothing extra needs flushing.
+    if (this.barrelInstanced) {
+      this.barrelInstanced.count = this.barrelNextSlot;
+      if (this.barrelNextSlot > 0) {
+        this.barrelInstanced.instanceMatrix.needsUpdate = true;
       }
     }
   }
@@ -2257,5 +2491,18 @@ export class Render3DEntities {
       this.turretHeadInstanced = null;
     }
     this.turretHeadFreeSlots.length = 0;
+    if (this.barrelInstanced) {
+      this.world.remove(this.barrelInstanced);
+      // Material is the SHARED `this.barrelMat` — already disposed
+      // above by the existing `this.barrelMat.dispose()` call. We
+      // disposed it at the unitMeshes-clear point upstream so the
+      // InstancedMesh just dispose()s its own internal buffers
+      // (instanceMatrix / instanceColor) without touching the
+      // shared material. Geometry `barrelGeom` is also a class
+      // field disposed below by `this.barrelGeom.dispose()`.
+      this.barrelInstanced.dispose();
+      this.barrelInstanced = null;
+    }
+    this.barrelFreeSlots.length = 0;
   }
 }
