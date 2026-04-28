@@ -221,7 +221,7 @@ function getPrevState(entityId: number): PrevEntityState {
   return prev;
 }
 
-function getChangedFields(entity: Entity, prev: PrevEntityState): number {
+function getChangedFields(entity: Entity, prev: PrevEntityState, next: PrevEntityState): number {
   const posTh = SNAPSHOT_CONFIG.positionThreshold;
   const velTh = SNAPSHOT_CONFIG.velocityThreshold;
   const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold;
@@ -229,46 +229,30 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
 
   let mask = 0;
 
-  if (Math.abs(entity.transform.x - prev.x) > posTh ||
-      Math.abs(entity.transform.y - prev.y) > posTh) {
+  if (Math.abs(next.x - prev.x) > posTh ||
+      Math.abs(next.y - prev.y) > posTh) {
     mask |= ENTITY_CHANGED_POS;
   }
-  if (Math.abs(entity.transform.rotation - prev.rotation) > rotPosTh) {
+  if (Math.abs(next.rotation - prev.rotation) > rotPosTh) {
     mask |= ENTITY_CHANGED_ROT;
   }
 
   if (entity.unit) {
-    if (Math.abs((entity.unit.velocityX ?? 0) - prev.velocityX) > velTh ||
-        Math.abs((entity.unit.velocityY ?? 0) - prev.velocityY) > velTh) {
+    if (Math.abs(next.velocityX - prev.velocityX) > velTh ||
+        Math.abs(next.velocityY - prev.velocityY) > velTh) {
       mask |= ENTITY_CHANGED_VEL;
     }
-    if (entity.unit.hp !== prev.hp) {
+    if (next.hp !== prev.hp) {
       mask |= ENTITY_CHANGED_HP;
     }
-    {
-      const actions = entity.unit.actions;
-      const count = actions?.length ?? 0;
-      let hash = count;
-      if (actions) {
-        for (let i = 0; i < count; i++) {
-          const a = actions[i];
-          hash = (hash * 31 + a.x * 1000) | 0;
-          hash = (hash * 31 + a.y * 1000) | 0;
-          hash = (hash * 31 + (a.z !== undefined ? a.z * 1000 : 0)) | 0;
-          hash = (hash * 31 + a.type.charCodeAt(0)) | 0;
-        }
-      }
-      if (count !== prev.actionCount || hash !== prev.actionHash) {
-        mask |= ENTITY_CHANGED_ACTIONS;
-      }
+    if (next.actionCount !== prev.actionCount || next.actionHash !== prev.actionHash) {
+      mask |= ENTITY_CHANGED_ACTIONS;
     }
 
     if (entity.turrets) {
-      if (entity.turrets.length !== prev.weaponCount) {
+      if (next.weaponCount !== prev.weaponCount) {
         mask |= ENTITY_CHANGED_TURRETS;
       } else {
-        let isEngagedBits = 0;
-        let targetBits = 0;
         // Once any turret has crossed a threshold the bit is set; we
         // still need to compute the engaged / target bitmasks for the
         // OTHER turrets on this unit (used as a dirty proxy below) so
@@ -278,20 +262,17 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
         // work for active units (where any one turret moving means
         // the row will be sent anyway).
         let turretsAlreadyChanged = false;
-        for (let i = 0; i < entity.turrets.length; i++) {
-          const w = entity.turrets[i];
-          if (w.state === 'engaged') isEngagedBits |= (1 << i);
-          if (w.target) targetBits |= (1 << i);
+        for (let i = 0; i < next.weaponCount; i++) {
           if (!turretsAlreadyChanged) {
-            if (Math.abs(w.rotation - prev.turretRots[i]) > rotPosTh ||
-                Math.abs(w.angularVelocity - prev.turretAngVels[i]) > rotVelTh ||
-                Math.abs((w.forceField?.range ?? 0) - prev.forceFieldRanges[i]) > 0.001) {
+            if (Math.abs(next.turretRots[i] - prev.turretRots[i]) > rotPosTh ||
+                Math.abs(next.turretAngVels[i] - prev.turretAngVels[i]) > rotVelTh ||
+                Math.abs(next.forceFieldRanges[i] - prev.forceFieldRanges[i]) > 0.001) {
               mask |= ENTITY_CHANGED_TURRETS;
               turretsAlreadyChanged = true;
             }
           }
         }
-        if (isEngagedBits !== prev.isEngagedBits || targetBits !== prev.targetBits) {
+        if (next.isEngagedBits !== prev.isEngagedBits || next.targetBits !== prev.targetBits) {
           mask |= ENTITY_CHANGED_TURRETS;
         }
       }
@@ -299,16 +280,16 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
   }
 
   if (entity.building) {
-    if (entity.building.hp !== prev.hp) {
+    if (next.hp !== prev.hp) {
       mask |= ENTITY_CHANGED_HP;
     }
-    if ((entity.buildable?.buildProgress ?? 0) !== prev.buildProgress) {
+    if (next.buildProgress !== prev.buildProgress) {
       mask |= ENTITY_CHANGED_BUILDING;
     }
     if (entity.factory) {
-      if ((entity.factory.currentBuildProgress ?? 0) !== prev.factoryProgress ||
-          (entity.factory.isProducing ? 1 : 0) !== prev.isProducing ||
-          entity.factory.buildQueue.length !== prev.buildQueueLen) {
+      if (next.factoryProgress !== prev.factoryProgress ||
+          next.isProducing !== prev.isProducing ||
+          next.buildQueueLen !== prev.buildQueueLen) {
         mask |= ENTITY_CHANGED_FACTORY;
       }
     }
@@ -317,7 +298,7 @@ function getChangedFields(entity: Entity, prev: PrevEntityState): number {
   return mask;
 }
 
-function updatePrevState(entity: Entity, prev: PrevEntityState): void {
+function captureEntityState(entity: Entity, prev: PrevEntityState): void {
   prev.x = entity.transform.x;
   prev.y = entity.transform.y;
   prev.rotation = entity.transform.rotation;
@@ -366,6 +347,36 @@ function updatePrevState(entity: Entity, prev: PrevEntityState): void {
   prev.isProducing = entity.factory?.isProducing ? 1 : 0;
   prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
 }
+
+function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {
+  to.x = from.x;
+  to.y = from.y;
+  to.rotation = from.rotation;
+  to.velocityX = from.velocityX;
+  to.velocityY = from.velocityY;
+  to.hp = from.hp;
+  to.actionCount = from.actionCount;
+  to.actionHash = from.actionHash;
+  to.isEngagedBits = from.isEngagedBits;
+  to.targetBits = from.targetBits;
+  to.weaponCount = from.weaponCount;
+  while (to.turretRots.length < from.weaponCount) {
+    to.turretRots.push(0);
+    to.turretAngVels.push(0);
+    to.forceFieldRanges.push(0);
+  }
+  for (let i = 0; i < from.weaponCount; i++) {
+    to.turretRots[i] = from.turretRots[i];
+    to.turretAngVels[i] = from.turretAngVels[i];
+    to.forceFieldRanges[i] = from.forceFieldRanges[i];
+  }
+  to.buildProgress = from.buildProgress;
+  to.factoryProgress = from.factoryProgress;
+  to.isProducing = from.isProducing;
+  to.buildQueueLen = from.buildQueueLen;
+}
+
+const _nextStateScratch = createPrevEntityState();
 
 /** Reset delta tracking state (call between game sessions). */
 export function resetDeltaTracking(): void {
@@ -455,17 +466,18 @@ export function serializeGameState(
     if (deltaEnabled) {
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
-      const changedFields = isNew ? undefined : getChangedFields(entity, prev);
+      captureEntityState(entity, _nextStateScratch);
+      const changedFields = isNew ? undefined : getChangedFields(entity, prev, _nextStateScratch);
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntity(entity, changedFields);
         if (netEntity) _entityBuf.push(netEntity);
-        updatePrevState(entity, prev);
+        copyPrevState(_nextStateScratch, prev);
       }
     } else {
       const netEntity = serializeEntity(entity, undefined);
       if (netEntity) _entityBuf.push(netEntity);
       const prev = getPrevState(entity.id);
-      updatePrevState(entity, prev);
+      captureEntityState(entity, prev);
     }
   }
   for (const entity of world.getBuildings()) {
@@ -473,17 +485,18 @@ export function serializeGameState(
     if (deltaEnabled) {
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
-      const changedFields = isNew ? undefined : getChangedFields(entity, prev);
+      captureEntityState(entity, _nextStateScratch);
+      const changedFields = isNew ? undefined : getChangedFields(entity, prev, _nextStateScratch);
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntity(entity, changedFields);
         if (netEntity) _entityBuf.push(netEntity);
-        updatePrevState(entity, prev);
+        copyPrevState(_nextStateScratch, prev);
       }
     } else {
       const netEntity = serializeEntity(entity, undefined);
       if (netEntity) _entityBuf.push(netEntity);
       const prev = getPrevState(entity.id);
-      updatePrevState(entity, prev);
+      captureEntityState(entity, prev);
     }
   }
 
