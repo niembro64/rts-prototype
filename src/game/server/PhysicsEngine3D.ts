@@ -118,6 +118,8 @@ export type Body3D = {
 // Pile-ups beyond this cap will have some residual overlap but no
 // explosive separation — acceptable for an RTS where units jostle.
 const SPHERE_ITERATIONS = 4;
+const SPHERE_ITERATIONS_MID_COUNT = 2500;
+const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
 
 // Floor used by resolveGroundContacts as a safety net when something
 // (sphere-sphere push, sphere-cuboid push, map clamp) leaves a unit
@@ -384,7 +386,8 @@ export class PhysicsEngine3D {
     this.resolveGroundContacts();
     this.resolveSphereCuboidContacts();
     this.rebuildContactCells();
-    for (let i = 0; i < SPHERE_ITERATIONS; i++) {
+    const sphereIterations = this.getSphereIterationBudget();
+    for (let i = 0; i < sphereIterations; i++) {
       this.resolveSphereSphereContacts();
     }
     this.clampToMapBounds();
@@ -394,6 +397,13 @@ export class PhysicsEngine3D {
       body.ay = 0;
       body.az = 0;
     }
+  }
+
+  private getSphereIterationBudget(): number {
+    const count = this.dynamicBodies.length;
+    if (count >= SPHERE_ITERATIONS_HIGH_COUNT) return 1;
+    if (count >= SPHERE_ITERATIONS_MID_COUNT) return 2;
+    return SPHERE_ITERATIONS;
   }
 
   /** Explicit-Euler integration with HARD surface-stick for spheres.
