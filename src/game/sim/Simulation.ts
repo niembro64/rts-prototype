@@ -323,11 +323,12 @@ export class Simulation {
     // Clear force accumulator for this frame
     this.forceAccumulator.clear();
 
-    // Update all units movement (calculates target velocities)
+    // Update all units movement (calculates target velocities) and
+    // refresh their spatial-grid cells in the same pass.
     this.updateUnits();
 
-    // Update spatial grid AFTER physics sync so grid cells match actual positions
-    // (PERFORMANCE CRITICAL: O(1) per unit that didn't cross cell boundary)
+    // Update non-unit spatial indices. Unit cells are refreshed inside
+    // updateUnits() to avoid another full unit walk.
     this.updateSpatialGrid();
 
     // Update combat systems (adds external forces like force field pull)
@@ -344,11 +345,6 @@ export class Simulation {
 
   // Update spatial grid incrementally
   private updateSpatialGrid(): void {
-    // Update unit positions (O(1) per unit that stayed in same cell)
-    for (const unit of this.world.getUnits()) {
-      spatialGrid.updateUnit(unit);
-    }
-
     // Ensure buildings are tracked (addBuilding skips if already present)
     const buildingVersion = this.world.getBuildingVersion();
     if (buildingVersion !== this.spatialGridBuildingVersion) {
@@ -640,6 +636,7 @@ export class Simulation {
   // turretSystem reads the real velocity, not this thrust target.
   private updateUnits(): void {
     for (const entity of this.world.getUnits()) {
+      spatialGrid.updateUnit(entity);
       if (!entity.unit || !entity.body) continue;
 
       const { unit, transform } = entity;
