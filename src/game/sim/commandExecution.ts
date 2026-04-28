@@ -439,6 +439,31 @@ function addPathActions(
     ctx.constructionSystem.getGrid(),
     goalZ,
   );
+  // Diagnostic: dump the plan for player-issued move commands so we
+  // can correlate "I clicked here" → "the unit got these waypoints".
+  // Only fires for paths going through this function (player Move /
+  // Attack-via-PathActionsWithFinal / Repair-via-PathActionsWithFinal
+  // / Build), NOT for factory-production paths or stuck-replan paths
+  // — keeps the console focused on user-driven commands.
+  // eslint-disable-next-line no-console
+  console.log(
+    '[plan] unit #%d (%d,%d)→(%d,%d) type=%s: %d waypoint(s)',
+    unit.id,
+    Math.round(unit.transform.x), Math.round(unit.transform.y),
+    Math.round(goalX), Math.round(goalY),
+    type,
+    actions.length,
+  );
+  for (let i = 0; i < actions.length; i++) {
+    const a = actions[i];
+    // eslint-disable-next-line no-console
+    console.log(
+      '  [plan]   wp %d: (%d, %d, %d)%s',
+      i, Math.round(a.x), Math.round(a.y),
+      a.z !== undefined ? Math.round(a.z) : -1,
+      a.isPathExpansion ? ' [intermediate]' : '',
+    );
+  }
   // First action either replaces the queue (queue=false) or appends.
   // The remaining waypoints always append regardless — they belong
   // to the same "do this trip" intent and queue:true keeps them
