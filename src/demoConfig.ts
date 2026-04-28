@@ -63,7 +63,7 @@ export const DEMO_CONFIG = {
   aiInverseCostWeighting: true,
 
   /** Number of units per player to spawn near each team's base on startup. */
-  centerSpawnPerPlayer: 16,
+  centerSpawnPerPlayer: 64,
 
   /**
    * Initial unit spawn radius from map center, as a ratio of map height.
