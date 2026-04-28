@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { UnitBodyShape } from '@/types/blueprints';
 import { getPlayerColors } from '../sim/types';
 import type { SpinConfig } from '../../config';
 import { MIRROR_EXTRA_HEIGHT } from '../../config';
@@ -136,6 +137,7 @@ type EntityMesh = {
    *  loop are wasted work — the unitType never changes for a live
    *  entity, so we stash the result here. */
   rendererId: string;
+  bodyShape?: UnitBodyShape;
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
@@ -1545,10 +1547,18 @@ export class Render3DEntities {
         // matching 3D body (scout=diamond, tank=pentagon, arachnid=big
         // sphere + small sphere, etc.). Falls back to arachnid for
         // unknown renderers.
-        let rendererId = 'arachnid';
-        try { rendererId = getUnitBlueprint(e.unit!.unitType).renderer ?? 'arachnid'; }
-        catch { /* leave default */ }
-        const bodyEntry = getBodyGeom(rendererId);
+        let bp;
+        try { bp = getUnitBlueprint(e.unit!.unitType); }
+        catch { /* leave undefined; fallback handled below */ }
+        const rendererId = bp?.renderer ?? 'arachnid';
+        const bodyShape = bp?.bodyShape ?? {
+          kind: 'composite',
+          parts: [
+            { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
+            { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
+          ],
+        } satisfies UnitBodyShape;
+        const bodyEntry = getBodyGeom(bodyShape);
         // The chassis is a group so composite bodies (arachnid, beam,
         // commander — multiple spheres/spheroids) and single-part bodies
         // (tank, loris, …) share one code path. Each BodyMeshPart's
@@ -1574,9 +1584,6 @@ export class Render3DEntities {
         // once at build time — TREAD_HEIGHT for treads, full wheel
         // diameter for wheels, 0 for legs (the leg-unit body sphere
         // is already raised by its own geometry).
-        let bp;
-        try { bp = getUnitBlueprint(e.unit!.unitType); }
-        catch { /* keep undefined; lift defaults to 0 */ }
         const liftGroup = new THREE.Group();
         liftGroup.userData.entityId = e.id;
         liftGroup.position.y = bp ? getChassisLift(bp, radius) : 0;
@@ -1711,7 +1718,7 @@ export class Render3DEntities {
 
         this.world.add(group);
         m = {
-          group, yawGroup, liftGroup, chassis, chassisMeshes, rendererId,
+          group, yawGroup, liftGroup, chassis, chassisMeshes, rendererId, bodyShape,
           turrets: turretMeshes, lodKey: this.lod.key,
           smoothChassisSlots,
           polyChassisSlot,
@@ -1845,7 +1852,7 @@ export class Render3DEntities {
       // scale by the same factor — so a sphere part at (x=0.3, y=0.55,
       // z=0) with scale (0.55, 0.55, 0.55) lands at the right place and
       // the right size automatically.
-      const bodyEntry = getBodyGeom(m.rendererId);
+      const bodyEntry = getBodyGeom(m.bodyShape!);
       m.chassis.position.set(0, 0, 0);
       m.chassis.scale.setScalar(radius);
 

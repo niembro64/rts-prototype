@@ -59,10 +59,10 @@ export function resolveWeaponWorldPos(
 export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
   if (!unit.unit) return 0;
   const unitRadius = unit.unit.unitRadiusCollider.scale;
-  let renderer = 'arachnid';
-  try { renderer = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
+  let bp;
+  try { bp = getUnitBlueprint(unit.unit.unitType); }
   catch { /* keep fallback */ }
-  const bodyTop = getBodyTopY(renderer, unitRadius);
+  const bodyTop = bp ? getBodyTopY(bp.bodyShape, unitRadius) : 2.3 * unitRadius;
 
   const turret = unit.turrets?.[turretIndex];
   const headRadius = getTurretHeadRadius(unitRadius, turret?.config);

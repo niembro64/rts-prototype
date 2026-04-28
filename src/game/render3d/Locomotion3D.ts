@@ -15,6 +15,7 @@ import type {
   WheelConfig,
   LegConfig as BlueprintLegConfig,
   LegStyle,
+  UnitBodyShape,
 } from '@/types/blueprints';
 import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
@@ -370,10 +371,9 @@ export function buildLocomotion(
       return mesh;
     }
     case 'legs': {
-      const renderer = bp.renderer ?? 'arachnid';
       const mesh = buildLegs(
         worldGroup, entity, unitRadius, loc.style, loc.config,
-        gfx.legs, renderer, mapWidth, mapHeight, legRenderer,
+        gfx.legs, bp.bodyShape, mapWidth, mapHeight, legRenderer,
       );
       if (mesh) mesh.lodKey = lodKey;
       return mesh;
@@ -504,7 +504,7 @@ function buildLegs(
   style: LegStyle,
   cfg: BlueprintLegConfig,
   legLod: LegLod,
-  renderer: string,
+  bodyShape: UnitBodyShape,
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
@@ -583,7 +583,7 @@ function buildLegs(
     // segment by forward offset — so an arachnid's rear legs hook
     // into the tall abdomen while front legs hook into the shorter
     // prosoma.
-    const hipY = getSegmentMidYAt(renderer, r, legCfg.attachOffsetX);
+    const hipY = getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
 
     legs.push({
       config: legCfg,

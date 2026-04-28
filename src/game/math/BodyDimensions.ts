@@ -12,70 +12,10 @@
 // projectile spawn Z lines up with the drawn barrel tip regardless of
 // how tall the unit's body happens to be.
 
-/** Renderer IDs — mirror the `renderer` field on UnitBlueprint. */
-export type BodyRendererId =
-  | 'scout' | 'brawl' | 'tank' | 'burst' | 'mortar'
-  | 'hippo'
-  | 'beam' | 'arachnid' | 'snipe' | 'commander' | 'forceField' | 'loris';
+import type { UnitBodyShape, UnitBodyShapePart } from '@/types/blueprints';
 
-type CompositePart =
-  | { kind: 'circle'; offsetForward: number; radiusFrac: number }
-  | { kind: 'oval'; offsetForward: number; xFrac: number; zFrac: number };
-
-type ShapeSpec =
-  | { kind: 'polygon'; sides: number; radiusFrac: number; rotation: number }
-  | { kind: 'rect'; widthFrac: number; lengthFrac: number }
-  | { kind: 'circle'; radiusFrac: number }
-  | { kind: 'oval'; xFrac: number; zFrac: number }
-  | { kind: 'composite'; parts: CompositePart[] };
-
-// Keep in sync with SHAPES in BodyShape3D.ts — the two tables describe
-// the same per-renderer body. Duplicating the constants (instead of
-// importing them from BodyShape3D) keeps the sim free of any THREE
-// transitively-pulled dependency.
-const SHAPES: Record<BodyRendererId, ShapeSpec> = {
-  scout:      { kind: 'polygon', sides: 4, radiusFrac: 0.55, rotation: Math.PI / 4 },
-  brawl:      { kind: 'polygon', sides: 4, radiusFrac: 0.8,  rotation: 0 },
-  tank:       { kind: 'polygon', sides: 5, radiusFrac: 0.85, rotation: 0 },
-  burst:      { kind: 'polygon', sides: 3, radiusFrac: 0.6,  rotation: Math.PI },
-  mortar:     { kind: 'polygon', sides: 6, radiusFrac: 0.55, rotation: 0 },
-  hippo:      { kind: 'rect', lengthFrac: 0.7, widthFrac: 1.6 },
-  beam: {
-    kind: 'composite',
-    parts: [
-      { kind: 'oval',   offsetForward: -0.65, xFrac: 0.9,  zFrac: 0.65 },
-      { kind: 'circle', offsetForward:  0.30, radiusFrac: 0.6 },
-    ],
-  },
-  arachnid: {
-    kind: 'composite',
-    parts: [
-      { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15 },
-      { kind: 'circle', offsetForward:  0.3, radiusFrac: 0.55 },
-    ],
-  },
-  snipe: { kind: 'oval', xFrac: 0.5, zFrac: 0.35 },
-  commander: {
-    kind: 'composite',
-    parts: [
-      { kind: 'oval',   offsetForward: -0.45, xFrac: 0.7, zFrac: 0.65 },
-      { kind: 'circle', offsetForward:  0.4,  radiusFrac: 0.5 },
-    ],
-  },
-  forceField: { kind: 'circle', radiusFrac: 0.55 },
-  loris:      { kind: 'circle', radiusFrac: 0.55 },
-};
-
-function polygonHeight(radiusFrac: number, sides: number): number {
-  return 2 * radiusFrac * Math.cos(Math.PI / sides);
-}
-
-function rectHeight(lengthFrac: number, widthFrac: number): number {
-  return (lengthFrac + widthFrac) / 2;
-}
-
-function spheroidRy(xFrac: number, zFrac: number): number {
-  return (xFrac + zFrac) / 2;
+function circleYFrac(radiusFrac: number, yFrac?: number): number {
+  return yFrac ?? radiusFrac;
 }
 
 const TOP_Y_CACHE: Map<string, number> = new Map();
@@ -83,35 +23,36 @@ const TOP_Y_CACHE: Map<string, number> = new Map();
 /** Body-top height in unit-radius-1 space for the given renderer id.
  *  Multiply by a unit's render radius to get the world-space Y where
  *  the turret mounts (and therefore the barrel base height). */
-export function getBodyTopFrac(renderer: string): number {
-  const cached = TOP_Y_CACHE.get(renderer);
+export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
+  const key = JSON.stringify(bodyShape);
+  const cached = TOP_Y_CACHE.get(key);
   if (cached !== undefined) return cached;
-  const spec = SHAPES[renderer as BodyRendererId] ?? SHAPES.arachnid;
+  const spec = bodyShape;
   let topY = 0;
   if (spec.kind === 'polygon') {
-    topY = polygonHeight(spec.radiusFrac, spec.sides);
+    topY = spec.heightFrac;
   } else if (spec.kind === 'rect') {
-    topY = rectHeight(spec.lengthFrac, spec.widthFrac);
+    topY = spec.heightFrac;
   } else if (spec.kind === 'circle') {
-    topY = 2 * spec.radiusFrac;
+    topY = 2 * circleYFrac(spec.radiusFrac, spec.yFrac);
   } else if (spec.kind === 'oval') {
-    topY = 2 * spheroidRy(spec.xFrac, spec.zFrac);
+    topY = 2 * spec.yFrac;
   } else {
     for (const p of spec.parts) {
       const segTop = p.kind === 'circle'
-        ? 2 * p.radiusFrac
-        : 2 * spheroidRy(p.xFrac, p.zFrac);
+        ? 2 * circleYFrac(p.radiusFrac, p.yFrac)
+        : 2 * p.yFrac;
       if (segTop > topY) topY = segTop;
     }
   }
-  TOP_Y_CACHE.set(renderer, topY);
+  TOP_Y_CACHE.set(key, topY);
   return topY;
 }
 
 /** World-space body-top Y for a unit with the given renderer and
  *  physical radius (unit.unitRadiusCollider.push). */
-export function getBodyTopY(renderer: string, unitRadius: number): number {
-  return getBodyTopFrac(renderer) * unitRadius;
+export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): number {
+  return getBodyTopFrac(bodyShape) * unitRadius;
 }
 
 /** World-space Y for the mid-height of whichever body segment sits
@@ -122,28 +63,28 @@ export function getBodyTopY(renderer: string, unitRadius: number): number {
  *  behind hooks into the tall abdomen, and simple-bodied units just
  *  hook into their single segment. */
 export function getSegmentMidYAt(
-  renderer: string,
+  bodyShape: UnitBodyShape,
   unitRadius: number,
   forwardX: number,
 ): number {
-  const spec = SHAPES[renderer as BodyRendererId] ?? SHAPES.arachnid;
+  const spec = bodyShape;
   if (spec.kind === 'polygon') {
-    return polygonHeight(spec.radiusFrac, spec.sides) * unitRadius / 2;
+    return spec.heightFrac * unitRadius / 2;
   }
   if (spec.kind === 'rect') {
-    return rectHeight(spec.lengthFrac, spec.widthFrac) * unitRadius / 2;
+    return spec.heightFrac * unitRadius / 2;
   }
   if (spec.kind === 'circle') {
-    return spec.radiusFrac * unitRadius;
+    return circleYFrac(spec.radiusFrac, spec.yFrac) * unitRadius;
   }
   if (spec.kind === 'oval') {
-    return spheroidRy(spec.xFrac, spec.zFrac) * unitRadius;
+    return spec.yFrac * unitRadius;
   }
   // Composite: find the segment whose center is nearest the leg's
   // forward-X (in unit-local coords, so divide by unitRadius to get
   // back into the same unit-radius-1 space the spec parts live in).
   const targetUL = forwardX / unitRadius;
-  let best = spec.parts[0];
+  let best: UnitBodyShapePart = spec.parts[0];
   let bestDist = Math.abs(targetUL - best.offsetForward);
   for (const p of spec.parts) {
     const d = Math.abs(targetUL - p.offsetForward);
@@ -152,6 +93,6 @@ export function getSegmentMidYAt(
       bestDist = d;
     }
   }
-  if (best.kind === 'circle') return best.radiusFrac * unitRadius;
-  return spheroidRy(best.xFrac, best.zFrac) * unitRadius;
+  if (best.kind === 'circle') return circleYFrac(best.radiusFrac, best.yFrac) * unitRadius;
+  return best.yFrac * unitRadius;
 }

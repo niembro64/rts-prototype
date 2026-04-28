@@ -316,6 +316,34 @@ export type LocomotionBlueprint =
   | { type: 'treads'; config: TreadConfig }
   | { type: 'legs'; style: LegStyle; config: LegConfig };
 
+export type UnitBodyShapePart =
+  | {
+      kind: 'circle';
+      offsetForward: number;
+      offsetLateral?: number;
+      radiusFrac: number;
+      /** Vertical half-height. Defaults to radiusFrac for legacy spheres. */
+      yFrac?: number;
+    }
+  | {
+      kind: 'oval';
+      offsetForward: number;
+      offsetLateral?: number;
+      /** Forward half-extent along the unit's +X axis. */
+      xFrac: number;
+      /** Vertical half-height. */
+      yFrac: number;
+      /** Lateral half-extent along the unit's side axis. */
+      zFrac: number;
+    };
+
+export type UnitBodyShape =
+  | { kind: 'polygon'; sides: number; radiusFrac: number; heightFrac: number; rotation: number }
+  | { kind: 'rect'; lengthFrac: number; widthFrac: number; heightFrac: number }
+  | { kind: 'circle'; radiusFrac: number; yFrac?: number }
+  | { kind: 'oval'; xFrac: number; yFrac: number; zFrac: number }
+  | { kind: 'composite'; parts: UnitBodyShapePart[] };
+
 export type UnitBlueprint = {
   id: string;
   name: string;
@@ -328,6 +356,8 @@ export type UnitBlueprint = {
   manaCost: number;
   turrets: TurretMount[];
   chassisMounts: MountPoint[];
+  /** 3D chassis/body shape in unit-radius-1 space. */
+  bodyShape: UnitBodyShape;
   locomotion: LocomotionBlueprint;
   renderer: string;
   builder?: { buildRange: number; maxEnergyUseRate: number };

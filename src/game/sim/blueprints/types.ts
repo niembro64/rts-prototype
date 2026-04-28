@@ -31,6 +31,8 @@ export type {
   TreadConfig,
   LegConfig,
   LegStyle,
+  UnitBodyShape,
+  UnitBodyShapePart,
   LocomotionBlueprint,
   UnitBlueprint,
 } from '@/types/blueprints';

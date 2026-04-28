@@ -506,11 +506,18 @@ export class ForceFieldRenderer3D {
         // straight into emitter / zone / particle / arc positions
         // and the scenegraph chain places them in world.
         const unitRadius = unit.unit.unitRadiusCollider.scale;
-        let rendererId = 'arachnid';
-        try { rendererId = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
+        let bp;
+        try { bp = getUnitBlueprint(unit.unit.unitType); }
         catch { /* keep fallback */ }
         const mountTopY = getBodyMountTopY(
-          rendererId, unitRadius,
+          bp?.bodyShape ?? {
+            kind: 'composite',
+            parts: [
+              { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
+              { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
+            ],
+          },
+          unitRadius,
           turret.offset.x, turret.offset.y,
         );
         const localX = turret.offset.x;

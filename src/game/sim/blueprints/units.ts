@@ -7,7 +7,40 @@
  */
 
 import { AUDIO } from '../../../audioConfig';
-import type { UnitBlueprint, MountPoint } from './types';
+import type { UnitBlueprint, MountPoint, UnitBodyShape } from './types';
+
+const BODY_SHAPES = {
+  scout: { kind: 'polygon', sides: 4, radiusFrac: 0.55, heightFrac: 2 * 0.55 * Math.cos(Math.PI / 4), rotation: Math.PI / 4 },
+  brawl: { kind: 'polygon', sides: 4, radiusFrac: 0.8, heightFrac: 2 * 0.8 * Math.cos(Math.PI / 4), rotation: 0 },
+  tank: { kind: 'polygon', sides: 5, radiusFrac: 0.85, heightFrac: 2 * 0.85 * Math.cos(Math.PI / 5), rotation: 0 },
+  burst: { kind: 'polygon', sides: 3, radiusFrac: 0.6, heightFrac: 2 * 0.6 * Math.cos(Math.PI / 3), rotation: Math.PI },
+  mortar: { kind: 'polygon', sides: 6, radiusFrac: 0.55, heightFrac: 2 * 0.55 * Math.cos(Math.PI / 6), rotation: 0 },
+  hippo: { kind: 'rect', lengthFrac: 0.7, widthFrac: 1.6, heightFrac: (0.7 + 1.6) / 2 },
+  beam: {
+    kind: 'composite',
+    parts: [
+      { kind: 'oval', offsetForward: -0.65, xFrac: 0.9, yFrac: (0.9 + 0.65) / 2, zFrac: 0.65 },
+      { kind: 'circle', offsetForward: 0.30, radiusFrac: 0.6, yFrac: 0.6 },
+    ],
+  },
+  arachnid: {
+    kind: 'composite',
+    parts: [
+      { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
+      { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
+    ],
+  },
+  snipe: { kind: 'oval', xFrac: 0.5, yFrac: (0.5 + 0.35) / 2, zFrac: 0.35 },
+  commander: {
+    kind: 'composite',
+    parts: [
+      { kind: 'oval', offsetForward: -0.45, xFrac: 0.7, yFrac: (0.7 + 0.65) / 2, zFrac: 0.65 },
+      { kind: 'circle', offsetForward: 0.4, radiusFrac: 0.5, yFrac: 0.5 },
+    ],
+  },
+  forceField: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.55 },
+  loris: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.55 },
+} satisfies Record<string, UnitBodyShape>;
 
 // Compute widow's mount points: 4 beam turrets on abdomen edge, force field on prosoma
 function computeWidowMounts(): MountPoint[] {
@@ -38,6 +71,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 10,
     turrets: [{ turretId: 'lightTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
+    bodyShape: BODY_SHAPES.scout,
     locomotion: {
       type: 'wheels',
       config: {
@@ -65,6 +99,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 10,
     turrets: [{ turretId: 'pulseTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
+    bodyShape: BODY_SHAPES.burst,
     locomotion: {
       type: 'treads',
       config: {
@@ -99,6 +134,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       { x: 0.5, y: 0.4 }, // front-right laser
       { x: 0, y: 0 }, // center force field
     ],
+    bodyShape: BODY_SHAPES.forceField,
     locomotion: {
       type: 'legs',
       style: 'daddy',
@@ -127,6 +163,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 10,
     turrets: [{ turretId: 'salvoRocketTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
+    bodyShape: BODY_SHAPES.brawl,
     locomotion: {
       type: 'treads',
       config: {
@@ -153,6 +190,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 10,
     turrets: [{ turretId: 'mortarTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
+    bodyShape: BODY_SHAPES.mortar,
     locomotion: {
       type: 'wheels',
       config: {
@@ -180,6 +218,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 35,
     turrets: [{ turretId: 'laserTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: -0.45, y: 0 }],
+    bodyShape: BODY_SHAPES.snipe,
     locomotion: {
       type: 'legs',
       style: 'tick',
@@ -208,6 +247,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 10,
     turrets: [{ turretId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
+    bodyShape: BODY_SHAPES.tank,
     locomotion: {
       type: 'treads',
       config: {
@@ -240,6 +280,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       { turretId: 'forceTurretMedium', offsetX: 0, offsetY: 0 }, // center
     ],
     chassisMounts: computeWidowMounts(),
+    bodyShape: BODY_SHAPES.arachnid,
     locomotion: {
       type: 'legs',
       style: 'widow',
@@ -273,6 +314,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     chassisMounts: [
       { x: 0.2, y: 0 },
     ],
+    bodyShape: BODY_SHAPES.hippo,
     locomotion: {
       type: 'treads',
       config: {
@@ -299,6 +341,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 300,
     turrets: [{ turretId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0.1, y: 0 }],
+    bodyShape: BODY_SHAPES.beam,
     locomotion: {
       type: 'legs',
       style: 'tarantula',
@@ -331,6 +374,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     chassisMounts: [
       { x: 0, y: 0 },
     ],
+    bodyShape: BODY_SHAPES.loris,
     locomotion: {
       type: 'treads',
       config: {
@@ -363,6 +407,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       { x: 0.3, y: 0 },
       { x: 0, y: 0 },
     ],
+    bodyShape: BODY_SHAPES.commander,
     locomotion: {
       type: 'legs',
       style: 'commander',

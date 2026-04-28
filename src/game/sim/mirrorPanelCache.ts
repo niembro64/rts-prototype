@@ -24,9 +24,8 @@ export function buildMirrorPanelCache(
   panelsOut: CachedMirrorPanel[],
 ): number {
   const unitScale = bp.unitRadiusCollider.scale;
-  const rendererId = bp.renderer ?? 'arachnid';
   const baseY = MIRROR_BASE_Y;
-  const bodyTop = getBodyTopY(rendererId, unitScale);
+  const bodyTop = getBodyTopY(bp.bodyShape, unitScale);
   let mirrorBoundRadius = 0;
 
   for (const mount of bp.turrets) {

@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import type { SimDeathContext } from '@/types/combat';
+import type { UnitBodyShape } from '@/types/blueprints';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { MAP_BG_COLOR, GRAVITY, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../config';
 import { getUnitBlueprint } from '../sim/blueprints';
@@ -493,13 +494,12 @@ export class Debris3D {
       const all = [...left, ...right];
       const upperThick = Math.max(1, loc.config.upperThickness) * 0.6;
       const lowerThick = Math.max(1, loc.config.lowerThickness) * 0.6;
-      const legRendererId = bp.renderer ?? 'arachnid';
       for (const lc of all) {
         const hipX = lc.attachOffsetX;
         const hipZ = lc.attachOffsetY;
         // Hip Y matches Locomotion3D: mid-height of whichever body
         // segment this leg attaches to.
-        const hipY = getSegmentMidYAt(legRendererId, r, hipX);
+        const hipY = getSegmentMidYAt(bp.bodyShape, r, hipX);
         const restDist =
           (lc.upperLegLength + lc.lowerLegLength) * lc.snapDistanceMultiplier;
         const footA = lc.snapTargetAngle;
@@ -536,8 +536,8 @@ export class Debris3D {
     // turret read as one solid color at one saturation. (lookupSecondary-
     // Color is unused here now but kept around in case someone wants a
     // contrasting tint later.)
-    const rendererId = bp.renderer ?? 'arachnid';
-    const bodyTopY = getBodyTopY(rendererId, r);
+    const bodyShape = bp.bodyShape;
+    const bodyTopY = getBodyTopY(bodyShape, r);
 
     // Each barrel template is built in chassis-local coords assuming
     // the turret was aimed straight ahead (yaw=0, pitch=0). At death
@@ -746,7 +746,7 @@ export class Debris3D {
     // the body segment it came from, so debris slab heights match the
     // live unit silhouette (composite bodies shed tall abdomen debris
     // and short head debris).
-    const edges = getBodyEdgeTemplates(rendererId, r);
+    const edges = getBodyEdgeTemplates(bodyShape, r);
     for (const e of edges) {
       out.push({
         shape: 'box',
@@ -768,7 +768,14 @@ export class Debris3D {
     const poly = r * 0.7;
     const edgeLen = 2 * poly * Math.sin(Math.PI / sides);
     // Fallback chassis height: arachnid-ish big sphere top.
-    const fallbackH = getBodyTopY('arachnid', r);
+    const fallbackShape: UnitBodyShape = {
+      kind: 'composite',
+      parts: [
+        { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
+        { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
+      ],
+    };
+    const fallbackH = getBodyTopY(fallbackShape, r);
     for (let i = 0; i < sides; i++) {
       const a = ((i + 0.5) / sides) * Math.PI * 2;
       out.push({
