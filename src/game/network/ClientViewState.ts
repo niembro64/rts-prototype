@@ -1155,6 +1155,11 @@ export class ClientViewState {
     return this.cache.getLineProjectiles();
   }
 
+  getForceFieldUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getForceFieldUnits();
+  }
+
   getSprayTargets(): SprayTarget[] {
     return this.sprayTargets;
   }

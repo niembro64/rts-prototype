@@ -759,18 +759,20 @@ export class RtsScene3D {
     this._frustum.setFromProjectionMatrix(this._frustumMatrix);
     const hudFrustum = this.renderScope.getMode() === 'all' ? undefined : this._frustum;
 
-    // Fused per-unit / per-building iteration: one walk over getUnits()
-    // dispatches into both ForceFieldRenderer3D and HealthBar3D, and
-    // one walk over getBuildings() dispatches into HealthBar3D. Saves
-    // an iteration vs. each renderer doing its own getUnits() loop —
-    // and keeps the per-unit branches (force-field-turret check,
-    // hp <= 0 check) in cache-warm proximity.
+    // Force fields are rare compared to total unit count, so feed the
+    // renderer its cached subset instead of asking every normal unit
+    // to run the force-field branch. Health bars still walk broad
+    // entity lists because HP/build progress are dynamic per snapshot.
     this.forceFieldRenderer.beginFrame();
+    for (const u of this.clientViewState.getForceFieldUnits()) {
+      this.forceFieldRenderer.perUnit(u);
+    }
+    this.forceFieldRenderer.endFrame();
+
     this.healthBar3D?.beginFrame(hudFrustum);
     {
       const units = this.clientViewState.getUnits();
       for (const u of units) {
-        this.forceFieldRenderer.perUnit(u);
         this.healthBar3D?.perUnit(u);
       }
       const buildings = this.clientViewState.getBuildings();
@@ -778,7 +780,6 @@ export class RtsScene3D {
         this.healthBar3D?.perBuilding(b);
       }
     }
-    this.forceFieldRenderer.endFrame();
     this.healthBar3D?.endFrame();
     this.waypoint3D?.update(
       this._cachedSelectedUnits,
