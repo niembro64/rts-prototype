@@ -277,35 +277,102 @@ export class ForceFieldRenderer3D {
     field.arcLines = arcLines;
   }
 
-  update(units: readonly Entity[]): void {
-    const seen = this._seenFieldKeys;
-    seen.clear();
-    const nowMs = performance.now();
-    const nowSec = nowMs / 1000;
+  // Per-frame state computed in beginFrame(), read in perUnit(),
+  // cleaned up in endFrame(). The fused-iteration entry points let
+  // RtsScene3D walk units once and dispatch into multiple per-unit
+  // renderers, instead of each renderer doing its own iteration.
+  private _frameNowMs = 0;
+  private _frameNowSec = 0;
+  private _frameStyle: import('@/types/graphics').FireExplosionStyle | 'minimal' | 'simple' | 'enhanced' = 'minimal';
+  private _frameWantParticles = false;
+  private _frameWantArcs = false;
+  private _frameParticleCount = 0;
 
+  /** Begin a fused per-frame iteration. Caller follows with a series
+   *  of perUnit calls and finishes with endFrame. Recomputes LOD-
+   *  derived counts once per frame so the inner loop is tight. */
+  beginFrame(): void {
+    this._seenFieldKeys.clear();
+    this._frameNowMs = performance.now();
+    this._frameNowSec = this._frameNowMs / 1000;
     const gfx = getGraphicsConfig();
-    const style = gfx.forceFieldStyle;
-    const wantParticles = style === 'simple' || style === 'enhanced';
-    const wantArcs = style === 'enhanced';
-    const particleCount = style === 'enhanced' ? PARTICLE_COUNT_ENHANCED
+    this._frameStyle = gfx.forceFieldStyle as never;
+    const style = this._frameStyle as string;
+    this._frameWantParticles = style === 'simple' || style === 'enhanced';
+    this._frameWantArcs = style === 'enhanced';
+    this._frameParticleCount = style === 'enhanced' ? PARTICLE_COUNT_ENHANCED
       : style === 'simple' ? PARTICLE_COUNT_SIMPLE
       : 0;
+  }
 
-    for (const unit of units) {
-      if (!unit.turrets || !unit.unit) continue;
-      // Scope gate — force-field bubbles can be large (up to ~push.outerRange
-      // units across), so pad generously so a turret just off-screen with
-      // its bubble reaching in still updates.
-      if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) continue;
+  /** Process one unit. Same body the previous monolithic update()
+   *  ran inside its for-of loop — extracted so RtsScene3D can dispatch
+   *  here from a single fused unit walk. */
+  perUnit(unit: Entity): void {
+    if (!unit.turrets || !unit.unit) return;
+    // Force-field bubbles can be large (up to ~push.outerRange
+    // units across), so pad generously so a turret just off-screen
+    // with its bubble reaching in still updates.
+    if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
+    this._processUnit(unit);
+  }
 
-      // Force-field meshes attach to the unit's yaw subgroup like a
-      // regular turret root — the scenegraph chain (group → yawGroup →
-      // field meshes) handles position + tilt + yaw automatically. If
-      // the unit's mesh hasn't been built yet (off-scope at scene
-      // start) or was torn down (LOD flip mid-frame), skip; we'll
-      // re-acquire when it's back.
-      const yawGroup = this.getYawGroup(unit.id);
-      if (!yawGroup) continue;
+  /** End a fused-iteration frame: tear down fields that didn't get
+   *  visited (unit despawned, force-field disabled, or off-scope).
+   *  Was the second half of the original update(); same logic. */
+  endFrame(): void {
+    const seen = this._seenFieldKeys;
+    for (const [key, field] of this.fields) {
+      if (seen.has(key)) continue;
+      field.emitter.parent?.remove(field.emitter);
+      field.zone.parent?.remove(field.zone);
+      for (const p of field.particles) p.parent?.remove(p);
+      for (const tr of field.trailMeshes) tr.parent?.remove(tr);
+      field.arcLines?.parent?.remove(field.arcLines);
+      field.emitterMat.dispose();
+      field.zoneMat.dispose();
+      field.particleMat.dispose();
+      for (const tm of field.trailMats) tm.dispose();
+      if (field.arcGeom) field.arcGeom.dispose();
+      if (field.arcMat) field.arcMat.dispose();
+      this.fields.delete(key);
+    }
+  }
+
+  /** Legacy all-in-one entry — calls beginFrame / per-unit / endFrame
+   *  internally so existing callers don't have to migrate. */
+  update(units: readonly Entity[]): void {
+    this.beginFrame();
+    for (const unit of units) this.perUnit(unit);
+    this.endFrame();
+  }
+
+  /** Internal per-unit body, extracted from the previous monolithic
+   *  update(). Reads frame state set by beginFrame(); the only thing
+   *  changed from the original is that the outer for/scope/seen-clear
+   *  was lifted up into the begin/perUnit/endFrame trio. */
+  private _processUnit(unit: Entity): void {
+    const seen = this._seenFieldKeys;
+    const nowMs = this._frameNowMs;
+    const nowSec = this._frameNowSec;
+    const style = this._frameStyle as string;
+    const wantParticles = this._frameWantParticles;
+    const wantArcs = this._frameWantArcs;
+    const particleCount = this._frameParticleCount;
+
+    // Sanity guard — perUnit already filtered, but check again so
+    // _processUnit is safe to call directly. Any of these mean
+    // "nothing to do for this unit" (bail without writing).
+    if (!unit.turrets || !unit.unit) return;
+    if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
+    // Force-field meshes attach to the unit's yaw subgroup like a
+    // regular turret root — the scenegraph chain (group → yawGroup →
+    // field meshes) handles position + tilt + yaw automatically. If
+    // the unit's mesh hasn't been built yet (off-scope at scene
+    // start) or was torn down (LOD flip mid-frame), skip; we'll
+    // re-acquire when it's back.
+    const yawGroup = this.getYawGroup(unit.id);
+    if (!yawGroup) return;
 
       for (let ti = 0; ti < unit.turrets.length; ti++) {
         const turret = unit.turrets[ti];
@@ -565,27 +632,6 @@ export class ForceFieldRenderer3D {
           field.arcLines.visible = false;
         }
       }
-    }
-
-    // Tear down meshes for fields that turned off or whose unit is
-    // gone. Meshes can live on the renderer's root OR a host unit's
-    // yawGroup, so detach via the actual parent each one happens to
-    // be on.
-    for (const [key, field] of this.fields) {
-      if (seen.has(key)) continue;
-      field.emitter.parent?.remove(field.emitter);
-      field.zone.parent?.remove(field.zone);
-      for (const p of field.particles) p.parent?.remove(p);
-      for (const tr of field.trailMeshes) tr.parent?.remove(tr);
-      field.arcLines?.parent?.remove(field.arcLines);
-      field.emitterMat.dispose();
-      field.zoneMat.dispose();
-      field.particleMat.dispose();
-      for (const tm of field.trailMats) tm.dispose();
-      if (field.arcGeom) field.arcGeom.dispose();
-      if (field.arcMat) field.arcMat.dispose();
-      this.fields.delete(key);
-    }
   }
 
   destroy(): void {

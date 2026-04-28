@@ -708,7 +708,9 @@ export class RtsScene3D {
     this.captureTileRenderer.update();
     const projectiles = this.clientViewState.getProjectiles();
     this.beamRenderer.update(projectiles);
-    this.forceFieldRenderer.update(this.clientViewState.getUnits());
+    // Force-field iteration is deferred — fused with HealthBar3D's
+    // per-unit walk below, after the camera frustum is computed.
+    // Single getUnits() iteration drives both per-unit renderers.
 
     // Effects: explosions / debris integrate their own physics each frame;
     // burn marks sample live beams to trace scorches on the ground. We feed
@@ -755,11 +757,27 @@ export class RtsScene3D {
     this._frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     this._frustum.setFromProjectionMatrix(this._frustumMatrix);
 
-    this.healthBar3D?.update(
-      this.clientViewState.getUnits(),
-      this.clientViewState.getBuildings(),
-      this._frustum,
-    );
+    // Fused per-unit / per-building iteration: one walk over getUnits()
+    // dispatches into both ForceFieldRenderer3D and HealthBar3D, and
+    // one walk over getBuildings() dispatches into HealthBar3D. Saves
+    // an iteration vs. each renderer doing its own getUnits() loop —
+    // and keeps the per-unit branches (force-field-turret check,
+    // hp <= 0 check) in cache-warm proximity.
+    this.forceFieldRenderer.beginFrame();
+    this.healthBar3D?.beginFrame(this._frustum);
+    {
+      const units = this.clientViewState.getUnits();
+      for (const u of units) {
+        this.forceFieldRenderer.perUnit(u);
+        this.healthBar3D?.perUnit(u);
+      }
+      const buildings = this.clientViewState.getBuildings();
+      for (const b of buildings) {
+        this.healthBar3D?.perBuilding(b);
+      }
+    }
+    this.forceFieldRenderer.endFrame();
+    this.healthBar3D?.endFrame();
     this.waypoint3D?.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,

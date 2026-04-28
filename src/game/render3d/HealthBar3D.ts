@@ -114,81 +114,109 @@ export class HealthBar3D {
     bar.texture.needsUpdate = true;
   }
 
+  /** Frame-state cursor. The fused-iteration entry points (beginFrame /
+   *  perUnit / perBuilding / endFrame) advance this in sequence, so
+   *  callers walking units + buildings together can interleave the
+   *  per-entity calls in any order they like. The legacy `update`
+   *  wrapper still exists for callers that want the all-in-one form. */
+  private _used = 0;
+  /** Optional frustum reference set per frame by the caller — null
+   *  disables sprite-visibility frustum culling (every visible bar
+   *  draws). Stored on the instance so perUnit / perBuilding don't
+   *  have to re-thread it through arguments. */
+  private _frustum: THREE.Frustum | null = null;
+
+  /** Fused-iteration entry: reset frame state. Caller follows with a
+   *  series of perUnit / perBuilding calls and finishes with endFrame. */
+  beginFrame(frustum?: THREE.Frustum): void {
+    this._used = 0;
+    this._frustum = frustum ?? null;
+  }
+
+  /** Fused-iteration entry: process one unit. Caller's outer loop
+   *  walks `getUnits()` once and dispatches here (and to other
+   *  per-unit renderers like ForceFieldRenderer3D). */
+  perUnit(u: Entity): void {
+    if (!u.unit) return;
+    const hp = u.unit.hp;
+    const maxHp = u.unit.maxHp;
+    if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) return;
+    const radius = u.unit.unitRadiusCollider.scale;
+    const worldX = u.transform.x;
+    const worldY = u.transform.z + radius + STYLE.worldOffsetAbove;
+    const worldZ = u.transform.y;
+    const ratio = Math.max(0, Math.min(1, hp / maxHp));
+    const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
+    const bar = this.acquire(this._used++);
+    this.repaintIfChanged(bar, ratio, mode);
+
+    const worldWidth = radius * 2;
+    bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
+    bar.sprite.position.set(worldX, worldY, worldZ);
+    if (this._frustum) {
+      const probe = HealthBar3D._probeVec;
+      probe.set(worldX, worldY, worldZ);
+      bar.sprite.visible = this._frustum.containsPoint(probe);
+    } else {
+      bar.sprite.visible = true;
+    }
+  }
+
+  /** Fused-iteration entry: process one building. */
+  perBuilding(b: Entity): void {
+    if (!b.building) return;
+    let ratio: number;
+    let mode: BarMode;
+    if (b.buildable && !b.buildable.isComplete) {
+      ratio = Math.max(0, Math.min(1, b.buildable.buildProgress));
+      mode = 'build';
+    } else {
+      const hp = b.building.hp;
+      const maxHp = b.building.maxHp;
+      if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) return;
+      ratio = Math.max(0, Math.min(1, hp / maxHp));
+      mode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
+    }
+    const halfDepth = b.building.depth / 2;
+    const worldX = b.transform.x;
+    const worldY = b.transform.z + halfDepth + STYLE.worldOffsetAbove;
+    const worldZ = b.transform.y;
+    const bar = this.acquire(this._used++);
+    this.repaintIfChanged(bar, ratio, mode);
+
+    const worldWidth = b.building.width;
+    bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
+    bar.sprite.position.set(worldX, worldY, worldZ);
+    if (this._frustum) {
+      const probe = HealthBar3D._probeVec;
+      probe.set(worldX, worldY, worldZ);
+      bar.sprite.visible = this._frustum.containsPoint(probe);
+    } else {
+      bar.sprite.visible = true;
+    }
+  }
+
+  /** Fused-iteration entry: hide trailing pool entries past the live
+   *  prefix. Sprites stay in the pool ready for the next frame. */
+  endFrame(): void {
+    for (let i = this._used; i < this.pool.length; i++) {
+      this.pool[i].sprite.visible = false;
+    }
+    this._frustum = null;
+  }
+
+  /** Legacy all-in-one entry — calls the fused-iteration methods
+   *  internally so the behaviour matches the begin/per/end path
+   *  exactly. Kept for callers not yet migrated to the fused API. */
   update(
     units: readonly Entity[],
     buildings: readonly Entity[],
     frustum?: THREE.Frustum,
   ): void {
-    let used = 0;
-    // Reused per-iteration vector so the frustum check allocates
-    // nothing on the hot path.
-    const probe = HealthBar3D._probeVec;
-
-    // Stable slot assignment: every visible entity (HP > 0, not full)
-    // gets its own pool slot in iteration order, regardless of
-    // frustum visibility. Skipping out-of-frustum entities entirely
-    // would reassign slots when units enter/leave the camera, which
-    // briefly shows the wrong color/ratio bar over the wrong entity
-    // until the next repaint catches up. Frustum culling here is a
-    // per-sprite visibility flag, not a slot-skip.
-    for (const u of units) {
-      if (!u.unit) continue;
-      const hp = u.unit.hp;
-      const maxHp = u.unit.maxHp;
-      if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) continue;
-      const radius = u.unit.unitRadiusCollider.scale;
-      const worldX = u.transform.x;
-      const worldY = u.transform.z + radius + STYLE.worldOffsetAbove;
-      const worldZ = u.transform.y;
-      const ratio = Math.max(0, Math.min(1, hp / maxHp));
-      const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
-      const bar = this.acquire(used++);
-      this.repaintIfChanged(bar, ratio, mode);
-
-      const worldWidth = radius * 2;
-      bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
-      bar.sprite.position.set(worldX, worldY, worldZ);
-      if (frustum) {
-        probe.set(worldX, worldY, worldZ);
-        bar.sprite.visible = frustum.containsPoint(probe);
-      }
-    }
-
-    for (const b of buildings) {
-      if (!b.building) continue;
-      let ratio: number;
-      let mode: BarMode;
-      if (b.buildable && !b.buildable.isComplete) {
-        ratio = Math.max(0, Math.min(1, b.buildable.buildProgress));
-        mode = 'build';
-      } else {
-        const hp = b.building.hp;
-        const maxHp = b.building.maxHp;
-        if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) continue;
-        ratio = Math.max(0, Math.min(1, hp / maxHp));
-        mode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
-      }
-      const halfDepth = b.building.depth / 2;
-      const worldX = b.transform.x;
-      const worldY = b.transform.z + halfDepth + STYLE.worldOffsetAbove;
-      const worldZ = b.transform.y;
-      const bar = this.acquire(used++);
-      this.repaintIfChanged(bar, ratio, mode);
-
-      const worldWidth = b.building.width;
-      bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
-      bar.sprite.position.set(worldX, worldY, worldZ);
-      if (frustum) {
-        probe.set(worldX, worldY, worldZ);
-        bar.sprite.visible = frustum.containsPoint(probe);
-      }
-    }
-
-    // Hide everything past the in-use prefix; sprites stay in the
-    // pool ready for the next frame.
-    for (let i = used; i < this.pool.length; i++) {
-      this.pool[i].sprite.visible = false;
-    }
+    this.beginFrame(frustum);
+    for (const u of units) this.perUnit(u);
+    for (const b of buildings) this.perBuilding(b);
+    this.endFrame();
   }
 
   destroy(): void {
