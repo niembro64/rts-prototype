@@ -347,6 +347,8 @@ export class Render3DEntities {
   private unitInstanced: THREE.InstancedMesh | null = null;
   /** Maps entityId → instance slot index for fast per-frame writes. */
   private unitInstancedSlot = new Map<EntityId, number>();
+  /** Maps entityId → last owner color key written into its instance slot. */
+  private unitInstancedColorKey = new Map<EntityId, number>();
   /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
   private unitInstancedFreeSlots: number[] = [];
   /** High-water mark; everything ≥ this is unused. */
@@ -391,6 +393,8 @@ export class Render3DEntities {
    *  bodies (arachnid, commander, beam) get a slot per segment; single-
    *  part smooth bodies (snipe, loris, forceField) get exactly one. */
   private smoothChassisSlots = new Map<EntityId, number[]>();
+  /** Maps entityId → last owner color key written into its smooth slots. */
+  private smoothChassisColorKey = new Map<EntityId, number>();
   /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
   private smoothChassisFreeSlots: number[] = [];
   /** High-water mark; everything ≥ this is unused. */
@@ -462,6 +466,8 @@ export class Render3DEntities {
   private polyChassis = new Map<string, {
     mesh: THREE.InstancedMesh;
     slots: Map<EntityId, number>;
+    colorKeys: Map<EntityId, number>;
+    colorDirty: boolean;
     freeSlots: number[];
     nextSlot: number;
   }>();
@@ -492,6 +498,8 @@ export class Render3DEntities {
   // (TurretMesh.head) — same fallback the chassis pools use.
   private static readonly TURRET_HEAD_CAP = 16384;
   private turretHeadInstanced: THREE.InstancedMesh | null = null;
+  private turretHeadColorKey = new Map<number, number>();
+  private turretHeadColorDirty = false;
   private turretHeadFreeSlots: number[] = [];
   private turretHeadNextSlot = 0;
 
@@ -534,6 +542,8 @@ export class Render3DEntities {
   // scene, not the material, so it applies to all instances.
   private static readonly MIRROR_PANEL_CAP = 1024;
   private mirrorPanelInstanced: THREE.InstancedMesh | null = null;
+  private mirrorPanelColorKey = new Map<number, number>();
+  private mirrorPanelColorDirty = false;
   private mirrorPanelFreeSlots: number[] = [];
   private mirrorPanelNextSlot = 0;
 
@@ -987,6 +997,7 @@ export class Render3DEntities {
     const units = this.clientViewState.getUnits();
     const seen = this._seenUnitIds;
     seen.clear();
+    let colorDirty = false;
 
     for (const e of units) {
       seen.add(e.id);
@@ -1028,8 +1039,13 @@ export class Render3DEntities {
       im.setMatrixAt(slot, this._instMatrix);
 
       const pid = e.ownership?.playerId;
-      this._instColor.set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
-      im.setColorAt(slot, this._instColor);
+      const colorKey = pid ?? -1;
+      if (this.unitInstancedColorKey.get(e.id) !== colorKey) {
+        this._instColor.set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
+        im.setColorAt(slot, this._instColor);
+        this.unitInstancedColorKey.set(e.id, colorKey);
+        colorDirty = true;
+      }
     }
 
     // Free slots for units that disappeared this frame.
@@ -1038,6 +1054,7 @@ export class Render3DEntities {
         im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
         this.unitInstancedFreeSlots.push(slot);
         this.unitInstancedSlot.delete(id);
+        this.unitInstancedColorKey.delete(id);
       }
     }
     this.unitInstancedNextSlot = this.trimFreeTail(
@@ -1053,7 +1070,7 @@ export class Render3DEntities {
     // waste bounded — peak active count is the steady-state ceiling.
     im.count = this.unitInstancedNextSlot;
     im.instanceMatrix.needsUpdate = true;
-    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    if (colorDirty && im.instanceColor) im.instanceColor.needsUpdate = true;
   }
 
   /** Tier flipped from LOW to MED+: hide every active instanced slot
@@ -1066,6 +1083,7 @@ export class Render3DEntities {
       im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
     }
     this.unitInstancedSlot.clear();
+    this.unitInstancedColorKey.clear();
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedNextSlot = 0;
     im.count = 0;
@@ -1114,6 +1132,7 @@ export class Render3DEntities {
       this.smoothChassisFreeSlots.push(slot);
     }
     this.smoothChassisSlots.delete(eid);
+    this.smoothChassisColorKey.delete(eid);
     im.instanceMatrix.needsUpdate = true;
   }
 
@@ -1126,6 +1145,7 @@ export class Render3DEntities {
       for (const slot of slots) im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
     }
     this.smoothChassisSlots.clear();
+    this.smoothChassisColorKey.clear();
     this.smoothChassisFreeSlots.length = 0;
     this.smoothChassisNextSlot = 0;
     im.count = 0;
@@ -1143,6 +1163,8 @@ export class Render3DEntities {
   ): {
     mesh: THREE.InstancedMesh;
     slots: Map<EntityId, number>;
+    colorKeys: Map<EntityId, number>;
+    colorDirty: boolean;
     freeSlots: number[];
     nextSlot: number;
   } {
@@ -1170,7 +1192,14 @@ export class Render3DEntities {
     mesh.count = 0;
     mesh.instanceMatrix.needsUpdate = true;
     this.world.add(mesh);
-    pool = { mesh, slots: new Map(), freeSlots: [], nextSlot: 0 };
+    pool = {
+      mesh,
+      slots: new Map(),
+      colorKeys: new Map(),
+      colorDirty: false,
+      freeSlots: [],
+      nextSlot: 0,
+    };
     this.polyChassis.set(rendererId, pool);
     return pool;
   }
@@ -1210,6 +1239,7 @@ export class Render3DEntities {
     pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
     pool.freeSlots.push(slot);
     pool.slots.delete(eid);
+    pool.colorKeys.delete(eid);
     pool.mesh.instanceMatrix.needsUpdate = true;
   }
 
@@ -1235,6 +1265,7 @@ export class Render3DEntities {
     if (!im || slot < 0) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
     this.turretHeadFreeSlots.push(slot);
+    this.turretHeadColorKey.delete(slot);
     im.instanceMatrix.needsUpdate = true;
   }
 
@@ -1247,6 +1278,8 @@ export class Render3DEntities {
       im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
     }
     this.turretHeadFreeSlots.length = 0;
+    this.turretHeadColorKey.clear();
+    this.turretHeadColorDirty = false;
     this.turretHeadNextSlot = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
@@ -1307,6 +1340,7 @@ export class Render3DEntities {
     if (!im || slot < 0) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
     this.mirrorPanelFreeSlots.push(slot);
+    this.mirrorPanelColorKey.delete(slot);
     im.instanceMatrix.needsUpdate = true;
   }
 
@@ -1317,6 +1351,8 @@ export class Render3DEntities {
       im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
     }
     this.mirrorPanelFreeSlots.length = 0;
+    this.mirrorPanelColorKey.clear();
+    this.mirrorPanelColorDirty = false;
     this.mirrorPanelNextSlot = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
@@ -1331,6 +1367,8 @@ export class Render3DEntities {
         pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
       }
       pool.slots.clear();
+      pool.colorKeys.clear();
+      pool.colorDirty = false;
       pool.freeSlots.length = 0;
       pool.nextSlot = 0;
       pool.mesh.count = 0;
@@ -1422,6 +1460,9 @@ export class Render3DEntities {
     const seen = this._seenUnitIds;
     seen.clear();
     const spinDt = this._spinDt;
+    let smoothColorDirty = false;
+    this.turretHeadColorDirty = false;
+    this.mirrorPanelColorDirty = false;
 
     for (const e of units) {
       seen.add(e.id);
@@ -1460,6 +1501,7 @@ export class Render3DEntities {
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
       const pid = e.ownership?.playerId;
+      const colorKey = pid ?? -1;
       const turrets = e.turrets ?? [];
 
       let m = this.unitMeshes.get(e.id);
@@ -1825,9 +1867,14 @@ export class Render3DEntities {
           this._smoothParentQuat,
           this._smoothParentScale,
         );
-        this._instColor.set(
-          pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-        );
+        const writeColor = this.smoothChassisColorKey.get(e.id) !== colorKey;
+        if (writeColor) {
+          this._instColor.set(
+            pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+          );
+          this.smoothChassisColorKey.set(e.id, colorKey);
+          smoothColorDirty = true;
+        }
         const slotCount = Math.min(bodyEntry.parts.length, m.smoothChassisSlots.length);
         for (let pi = 0; pi < slotCount; pi++) {
           const part = bodyEntry.parts[pi];
@@ -1844,7 +1891,7 @@ export class Render3DEntities {
             this._smoothPartMat,
           );
           this.smoothChassis.setMatrixAt(slot, this._smoothFinalMat);
-          this.smoothChassis.setColorAt(slot, this._instColor);
+          if (writeColor) this.smoothChassis.setColorAt(slot, this._instColor);
         }
       } else if (m.polyChassisSlot !== undefined) {
         // Polygonal/rect chassis: same parentMat × partMat composition
@@ -1859,9 +1906,14 @@ export class Render3DEntities {
             this._smoothParentQuat,
             this._smoothParentScale,
           );
-          this._instColor.set(
-            pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-          );
+          const writeColor = pool.colorKeys.get(e.id) !== colorKey;
+          if (writeColor) {
+            this._instColor.set(
+              pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+            );
+            pool.colorKeys.set(e.id, colorKey);
+            pool.colorDirty = true;
+          }
           const part = bodyEntry.parts[0];
           this._smoothPartLocalPos.set(part.x, part.y, part.z);
           this._smoothPartScale.set(part.scaleX, part.scaleY, part.scaleZ);
@@ -1875,7 +1927,7 @@ export class Render3DEntities {
             this._smoothPartMat,
           );
           pool.mesh.setMatrixAt(m.polyChassisSlot, this._smoothFinalMat);
-          pool.mesh.setColorAt(m.polyChassisSlot, this._instColor);
+          if (writeColor) pool.mesh.setColorAt(m.polyChassisSlot, this._instColor);
         }
       }
 
@@ -1971,10 +2023,14 @@ export class Render3DEntities {
             this._smoothPartScale,
           );
           this.turretHeadInstanced.setMatrixAt(tm.headSlot, this._smoothPartMat);
-          this._instColor.set(
-            pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-          );
-          this.turretHeadInstanced.setColorAt(tm.headSlot, this._instColor);
+          if (this.turretHeadColorKey.get(tm.headSlot) !== colorKey) {
+            this._instColor.set(
+              pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+            );
+            this.turretHeadInstanced.setColorAt(tm.headSlot, this._instColor);
+            this.turretHeadColorKey.set(tm.headSlot, colorKey);
+            this.turretHeadColorDirty = true;
+          }
         }
 
         // Barrel InstancedMesh write — compose the FULL chain
@@ -2134,9 +2190,13 @@ export class Render3DEntities {
           );
           this._barrelParentMat.multiply(this._barrelStepMat);
 
-          this._instColor.set(
-            pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-          );
+          const writeColor = this.mirrorPanelColorKey.get(m.mirrors.panelSlots[0]) !== colorKey;
+          if (writeColor) {
+            this._instColor.set(
+              pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+            );
+            this.mirrorPanelColorDirty = true;
+          }
           const slotCount = Math.min(
             m.mirrors.panels.length,
             m.mirrors.panelSlots.length,
@@ -2156,7 +2216,10 @@ export class Render3DEntities {
               this._barrelParentMat, this._barrelStepMat,
             );
             this.mirrorPanelInstanced.setMatrixAt(slot, this._smoothFinalMat);
-            this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
+            if (writeColor) {
+              this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
+              this.mirrorPanelColorKey.set(slot, colorKey);
+            }
           }
         }
       }
@@ -2243,7 +2306,7 @@ export class Render3DEntities {
       this.smoothChassis.count = this.smoothChassisNextSlot;
       if (this.smoothChassisSlots.size > 0) {
         this.smoothChassis.instanceMatrix.needsUpdate = true;
-        if (this.smoothChassis.instanceColor) {
+        if (smoothColorDirty && this.smoothChassis.instanceColor) {
           this.smoothChassis.instanceColor.needsUpdate = true;
         }
       }
@@ -2256,7 +2319,10 @@ export class Render3DEntities {
       pool.mesh.count = pool.nextSlot;
       if (pool.slots.size === 0) continue;
       pool.mesh.instanceMatrix.needsUpdate = true;
-      if (pool.mesh.instanceColor) pool.mesh.instanceColor.needsUpdate = true;
+      if (pool.colorDirty && pool.mesh.instanceColor) {
+        pool.mesh.instanceColor.needsUpdate = true;
+        pool.colorDirty = false;
+      }
     }
     // Same for the turret-head InstancedMesh — one shared draw call
     // for every visible turret head across every unit on the map.
@@ -2264,7 +2330,7 @@ export class Render3DEntities {
       this.turretHeadInstanced.count = this.turretHeadNextSlot;
       if (this.turretHeadNextSlot > 0) {
         this.turretHeadInstanced.instanceMatrix.needsUpdate = true;
-        if (this.turretHeadInstanced.instanceColor) {
+        if (this.turretHeadColorDirty && this.turretHeadInstanced.instanceColor) {
           this.turretHeadInstanced.instanceColor.needsUpdate = true;
         }
       }
@@ -2285,7 +2351,7 @@ export class Render3DEntities {
       this.mirrorPanelInstanced.count = this.mirrorPanelNextSlot;
       if (this.mirrorPanelNextSlot > 0) {
         this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
-        if (this.mirrorPanelInstanced.instanceColor) {
+        if (this.mirrorPanelColorDirty && this.mirrorPanelInstanced.instanceColor) {
           this.mirrorPanelInstanced.instanceColor.needsUpdate = true;
         }
       }
