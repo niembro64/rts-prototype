@@ -1502,11 +1502,6 @@ export class Render3DEntities {
 
     for (const e of units) {
       seen.add(e.id);
-      // Barrel-spin state advances for ALL units regardless of camera
-      // scope, matching pre-fuse behavior so a unit that pans into view
-      // shows its spin where it should be (not paused at last on-screen
-      // position).
-      this.advanceBarrelSpin(e, spinDt);
       // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME, scope or no scope.
       // The unit group carries the chassis AND its child turret /
       // mirror groups (both parented to yawGroup). Skipping the
@@ -1529,6 +1524,10 @@ export class Render3DEntities {
       // so the staleness isn't visible until they come back into scope,
       // at which point the next in-scope tick refreshes them.
       if (!inScope) continue;
+      // Barrel spin is visual-only, so advance it only for units that
+      // are in the active render scope. Off-scope units catch up to
+      // their current firing/idle state on the first visible frame.
+      this.advanceBarrelSpin(e, spinDt);
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of
