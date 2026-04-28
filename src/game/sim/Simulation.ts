@@ -358,8 +358,10 @@ export class Simulation {
       this.spatialGridBuildingVersion = buildingVersion;
     }
 
-    // Update projectile positions (for force field spatial queries)
-    for (const proj of this.world.getProjectiles()) {
+    // Update traveling projectile positions for force-field spatial
+    // queries. Beam/laser line shots are handled by beam pathing and
+    // do not participate as pushable projectile bodies.
+    for (const proj of this.world.getTravelingProjectiles()) {
       spatialGrid.updateProjectile(proj);
     }
   }
