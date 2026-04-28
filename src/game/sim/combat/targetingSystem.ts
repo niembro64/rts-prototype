@@ -8,9 +8,7 @@ import { getTransformCosSin, distance3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
-import { getSurfaceNormal } from '../Terrain';
 import { getTurretWorldMount } from '../../math/MountGeometry';
-import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
 
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
@@ -127,11 +125,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // helper. Flat ground takes the early-return inside the helper
     // and the math collapses to the legacy yaw-only path.
     const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
-    const surfaceN = getSurfaceNormal(
-      unit.transform.x, unit.transform.y,
-      world.mapWidth, world.mapHeight,
-      SPATIAL_GRID_CELL_SIZE,
-    );
+    const surfaceN = world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y);
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
       if (weapon.config.isManualFire) {

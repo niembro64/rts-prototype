@@ -4,9 +4,12 @@ import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FIRING_FORCE, DEFAULT_HIT_FORCE, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, UNIT_HP_MULTIPLIER, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getSurfaceHeight } from './Terrain';
+import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
+
+const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
+type SurfaceNormal = { nx: number; ny: number; nz: number };
 
 // Seeded random number generator for determinism
 export class SeededRNG {
@@ -49,6 +52,7 @@ export class WorldState {
   private removedSnapshotEntityIds: EntityId[] = [];
   private snapshotDirtyIds = new Set<EntityId>();
   private snapshotDirtyFields = new Map<EntityId, number>();
+  private surfaceNormalCache = new Map<number, SurfaceNormal>();
   public rng: SeededRNG;
 
   // Current player being controlled
@@ -101,6 +105,26 @@ export class WorldState {
    *  player sees with no tile-center stepping. */
   getGroundZ(x: number, y: number): number {
     return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
+  }
+
+  private surfaceNormalCacheKey(x: number, y: number): number {
+    const cx = Math.floor(x / TERRAIN_NORMAL_CACHE_CELL_SIZE) + 32768;
+    const cy = Math.floor(y / TERRAIN_NORMAL_CACHE_CELL_SIZE) + 32768;
+    return cx * 0x10000 + cy;
+  }
+
+  getCachedSurfaceNormal(x: number, y: number): SurfaceNormal {
+    const key = this.surfaceNormalCacheKey(x, y);
+    let normal = this.surfaceNormalCache.get(key);
+    if (!normal) {
+      normal = getSurfaceNormal(
+        x, y,
+        this.mapWidth, this.mapHeight,
+        SPATIAL_GRID_CELL_SIZE,
+      );
+      this.surfaceNormalCache.set(key, normal);
+    }
+    return normal;
   }
 
   private rebuildCachesIfNeeded(): void {
