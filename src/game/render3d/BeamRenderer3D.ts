@@ -47,6 +47,7 @@ export class BeamRenderer3D {
   // Unit cylinder along +Y; rotated/positioned to span each segment
   private segmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
   private segmentPool: THREE.Mesh[] = [];
+  private activeSegmentCount = 0;
 
   // One material per (team, projectileType). Lasers and beams render the same
   // shape but at different opacities.
@@ -150,6 +151,8 @@ export class BeamRenderer3D {
   }
 
   update(projectiles: readonly Entity[]): void {
+    if (projectiles.length === 0 && this.activeSegmentCount === 0) return;
+
     let segIdx = 0;
 
     for (const e of projectiles) {
@@ -233,6 +236,7 @@ export class BeamRenderer3D {
     for (let i = segIdx; i < this.segmentPool.length; i++) {
       this.segmentPool[i].visible = false;
     }
+    this.activeSegmentCount = segIdx;
   }
 
   destroy(): void {

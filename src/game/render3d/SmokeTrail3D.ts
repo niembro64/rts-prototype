@@ -196,6 +196,8 @@ export class SmokeTrail3D {
     dtMs: number,
     scope?: ViewportFootprint,
   ): void {
+    if (projectiles.length === 0 && this.active.length === 0 && this.emitters.size === 0) return;
+
     const dtSec = dtMs / 1000;
 
     // Sample LOD once per frame. Emission rate and lifespan are

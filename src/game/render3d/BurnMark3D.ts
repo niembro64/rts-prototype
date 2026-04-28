@@ -174,6 +174,8 @@ export class BurnMark3D {
   }
 
   update(projectiles: readonly Entity[], dtMs: number): void {
+    if (projectiles.length === 0 && this.marks.length === 0 && this.beams.size === 0) return;
+
     // Snapshot the graphics config once per frame — the hot path below
     // reads burnMarkFramesSkip / burnMarkAlphaCutoff so re-querying it
     // per beam would multiply the config lookup cost.
