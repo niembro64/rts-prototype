@@ -95,6 +95,25 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
 
+    const priorityId = unit.unit!.priorityTargetId;
+    let hasLiveWeaponState = false;
+    for (let i = 0; i < weapons.length; i++) {
+      const weapon = weapons[i];
+      if (
+        weapon.target !== null ||
+        weapon.state !== 'idle' ||
+        Math.abs(weapon.angularVelocity) > 0.0001 ||
+        Math.abs(weapon.pitchVelocity) > 0.0001
+      ) {
+        hasLiveWeaponState = true;
+        break;
+      }
+    }
+    const shouldReacquire = stride <= 1 || ((unit.id + tick) % stride) === 0;
+    if (priorityId === undefined && !hasLiveWeaponState && !shouldReacquire) {
+      continue;
+    }
+
     // Pass 0: Compute weapon world positions (needed for both modes).
     // All three axes are cached PER TURRET — altitude is that turret's
     // own mount Z (unit ground footprint + per-turret muzzle height),
@@ -132,7 +151,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
 
     // Check for attack command priority target
-    const priorityId = unit.unit!.priorityTargetId;
     if (priorityId !== undefined) {
       // Validate priority target is alive
       const pt = world.getEntity(priorityId);
@@ -237,7 +255,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // stride window (~67 ms at stride=4, 60 Hz), which is below the
     // perceptible threshold for combat reaction. Validation already ran
     // above so an out-of-range or dead target was cleared this tick.
-    if (stride > 1 && ((unit.id + tick) % stride) !== 0) continue;
+    if (!shouldReacquire) continue;
 
     // Pre-scan: find any weapon that needs an acquisition query plus
     // the max acquire range + max weapon offset, so a single
