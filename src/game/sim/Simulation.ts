@@ -139,6 +139,7 @@ export class Simulation {
   // Reusable buffers for cleanupDeadEntities (avoid per-tick allocations)
   private _deadUnitIdsBuf: EntityId[] = [];
   private _deadBuildingIdsBuf: EntityId[] = [];
+  private _movingUnitsBuf: Entity[] = [];
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -641,6 +642,9 @@ export class Simulation {
   // is only overwritten by syncFromPhysics, so lead-prediction in
   // turretSystem reads the real velocity, not this thrust target.
   private updateUnits(): void {
+    const movingUnits = this._movingUnitsBuf;
+    movingUnits.length = 0;
+
     for (const entity of this.world.getUnits()) {
       spatialGrid.updateUnit(entity);
       if (!entity.unit || !entity.body) continue;
@@ -668,6 +672,7 @@ export class Simulation {
 
       // No actions - no thrust needed
       if (unit.actions.length === 0) {
+        unit.stuckTicks = 0;
         continue;
       }
 
@@ -683,12 +688,14 @@ export class Simulation {
 
         // In range - no thrust needed
         if (distance <= buildRange) {
+          unit.stuckTicks = 0;
           continue;
         }
 
         // Thrust toward target
         unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
         unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+        movingUnits.push(entity);
         continue;
       }
 
@@ -713,6 +720,7 @@ export class Simulation {
           }
           const stopRatio = getUnitBlueprint(unit.unitType).fightStopEngagedRatio;
           if (engagedCount >= turrets.length * stopRatio) {
+            unit.stuckTicks = 0;
             continue;
           }
         }
@@ -724,6 +732,9 @@ export class Simulation {
         if (distance > 5) {
           unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
           unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+          movingUnits.push(entity);
+        } else {
+          unit.stuckTicks = 0;
         }
         continue;
       }
@@ -738,6 +749,7 @@ export class Simulation {
           }
           const stopRatio = getUnitBlueprint(unit.unitType).fightStopEngagedRatio;
           if (engagedCount >= turrets.length * stopRatio) {
+            unit.stuckTicks = 0;
             continue;
           }
         }
@@ -751,12 +763,14 @@ export class Simulation {
       // Close enough to waypoint - advance to next action, no thrust
       if (distance < 15) {
         this.advanceAction(entity);
+        unit.stuckTicks = 0;
         continue;
       }
 
       // Thrust toward waypoint
       unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
       unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+      movingUnits.push(entity);
     }
 
     // Stuck-detection / replan pass — runs after every unit has had
@@ -768,7 +782,7 @@ export class Simulation {
     // MAX_REPLANS_PER_TICK so a 100-unit pile-up doesn't burn the
     // tick budget on planning — units that don't get a slot this
     // tick stay at the threshold and try again next tick.
-    this.evaluateStuckAndReplan();
+    this.evaluateStuckAndReplan(movingUnits);
   }
 
   /** Per-tick stuck check. For each unit that wanted to move this
@@ -776,15 +790,10 @@ export class Simulation {
    *  past the threshold and within the per-tick replan budget, run
    *  a fresh A* from the unit's current position to the trip's
    *  final destination and replace its action queue. */
-  private evaluateStuckAndReplan(): void {
-    for (const entity of this.world.getUnits()) {
+  private evaluateStuckAndReplan(movingUnits: readonly Entity[]): void {
+    for (const entity of movingUnits) {
       if (!entity.unit || !entity.body) continue;
       const unit = entity.unit;
-      const wantsMove = (unit.thrustDirX ?? 0) !== 0 || (unit.thrustDirY ?? 0) !== 0;
-      if (!wantsMove) {
-        unit.stuckTicks = 0;
-        continue;
-      }
       const body = entity.body.physicsBody;
       const speed = magnitude(body.vx, body.vy);
       if (speed >= STUCK_VEL_THRESHOLD) {
