@@ -169,8 +169,8 @@ export function getTerrainTeamCount(): number {
 // ripple pattern. Mixing irrational ratios prevents the layers
 // from harmonizing into a clean grid.
 const RIPPLE_W1 = 200;
-const RIPPLE_W2 = 500;
-const RIPPLE_W3 = 500;
+const RIPPLE_W2 = 600;
+const RIPPLE_W3 = 600;
 // Phase offset on the second sinusoid so the bumps don't all
 // peak at the same dist value.
 const RIPPLE_PHASE = 1.7;
@@ -332,6 +332,43 @@ export function getSurfaceNormal(
   else if (zmDry) dHdz = (h0 - hzm) / eps;
 
   // Sim normal: surface up is (-∂h/∂x, -∂h/∂z, 1).
+  const nx = -dHdx;
+  const ny = -dHdz;
+  const nz = 1;
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  return { nx: nx / len, ny: ny / len, nz: nz / len };
+}
+
+/** Visual-only ground normal at world point (x, z) in SIM coords.
+ *  Never returns the flat WATER normal — it always reflects the
+ *  underlying LAND gradient, regardless of whether the centre sample
+ *  is below WATER_LEVEL.
+ *
+ *  Why a separate function: `getSurfaceNormal` has water-aware
+ *  branches (early-return flat when the centre is wet, partial-wet
+ *  one-sided differences) that are correct for the SIM — physics
+ *  body tilt, knockback projection, capture-cell occupancy. But on
+ *  the rendered chassis those branches manifest as a hard switch
+ *  between two normals at the shoreline: one frame a unit's centre
+ *  samples 0.001 above WATER_LEVEL → tilted, next frame it dips
+ *  0.001 below → flat. Users see this as visible chassis flicker.
+ *
+ *  This visual variant always uses centered finite differences over
+ *  the raw heightmap, so the rendered tilt is a continuous function
+ *  of position. Units on shoreline tiles tilt with the ground beneath
+ *  them, never with the water above. Sim/physics paths must KEEP
+ *  using `getSurfaceNormal`; only renderers should call this. */
+export function getGroundNormal(
+  x: number, z: number,
+  mapWidth: number, mapHeight: number,
+): { nx: number; ny: number; nz: number } {
+  const eps = NORMAL_GRADIENT_EPS;
+  const hxp = getTerrainHeight(x + eps, z, mapWidth, mapHeight);
+  const hxm = getTerrainHeight(x - eps, z, mapWidth, mapHeight);
+  const hzp = getTerrainHeight(x, z + eps, mapWidth, mapHeight);
+  const hzm = getTerrainHeight(x, z - eps, mapWidth, mapHeight);
+  const dHdx = (hxp - hxm) / (2 * eps);
+  const dHdz = (hzp - hzm) / (2 * eps);
   const nx = -dHdx;
   const ny = -dHdz;
   const nz = 1;

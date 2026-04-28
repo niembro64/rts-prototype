@@ -13,8 +13,8 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
 import type { SpinConfig } from '../../config';
-import { MIRROR_EXTRA_HEIGHT, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getSurfaceNormal } from '../sim/Terrain';
+import { MIRROR_EXTRA_HEIGHT } from '../../config';
+import { getGroundNormal } from '../sim/Terrain';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   buildLocomotion,
@@ -1721,10 +1721,9 @@ export class Render3DEntities {
       // to identity — same fast path as before.
       const yaw = -e.transform.rotation;
       let chassisTilted = false;
-      const n = getSurfaceNormal(
+      const n = getGroundNormal(
         e.transform.x, e.transform.y,
         this.clientViewState.getMapWidth(), this.clientViewState.getMapHeight(),
-        SPATIAL_GRID_CELL_SIZE,
       );
       if (n.nx === 0 && n.ny === 0) {
         m.group.quaternion.identity();

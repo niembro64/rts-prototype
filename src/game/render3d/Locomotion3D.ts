@@ -20,7 +20,7 @@ import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
-import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
+import { getSurfaceHeight, getGroundNormal } from '../sim/Terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 
@@ -680,9 +680,9 @@ function transformChassisToWorld(
   const yy = cy;
   const yz = sinR * cx + cosR * cz;
   // Tilt: build the same surface-normal quaternion the renderer uses.
-  const n = getSurfaceNormal(
+  const n = getGroundNormal(
     entity.transform.x, entity.transform.y,
-    mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE,
+    mapWidth, mapHeight,
   );
   if (n.nx === 0 && n.ny === 0) {
     out.x = entity.transform.x + yx;
@@ -896,9 +896,9 @@ export function updateLocomotion(
     // shared across every leg's IK so all legs bend their knees
     // along the same chassis-relative "up", regardless of slope.
     // On flat ground this collapses to (0, 1, 0) = world up.
-    const sn = getSurfaceNormal(
+    const sn = getGroundNormal(
       entity.transform.x, entity.transform.y,
-      mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE,
+      mapWidth, mapHeight,
     );
     const chassisUpX = sn.nx;
     const chassisUpY = sn.nz;
