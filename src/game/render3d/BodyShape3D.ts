@@ -278,6 +278,51 @@ export function getBodyTopY(renderer: string, unitRadius: number): number {
   return getBodyGeom(renderer).topY * unitRadius;
 }
 
+/** World-space Y of the body top AT the chassis-local (mountX, mountZ)
+ *  position. For composite bodies (arachnid / commander / beam) this
+ *  picks the per-PART top so a turret mounted on the small front
+ *  prosoma sits on the prosoma's top — not floating at the global
+ *  body top, which is the (much taller) abdomen on the widow.
+ *
+ *  Single-part bodies fall through to the global topY (same value as
+ *  `getBodyTopY`).
+ *
+ *  `mountX` / `mountZ` are CHASSIS-LOCAL forward / lateral offsets in
+ *  WORLD units (i.e. already multiplied by unitRadius — same units as
+ *  `turret.offset.x` / `turret.offset.y` after `unitDefinitions.ts`
+ *  scales `chassisMount.{x,y} * radius`). The match is by Euclidean
+ *  distance to each part's center; ties go to the first-listed part
+ *  but BodyShape3D's composite specs are well-separated so ties
+ *  don't actually arise.
+ *
+ *  Composite bodies are guaranteed all-circle/oval (BodyShape3D's
+ *  `composite` spec only accepts `circle` and `oval` parts), so for
+ *  every composite part `top y = part.y + part.scaleY` in unit-
+ *  radius-1 space. */
+export function getBodyMountTopY(
+  renderer: string,
+  unitRadius: number,
+  mountX: number,
+  mountZ: number,
+): number {
+  const entry = getBodyGeom(renderer);
+  if (entry.parts.length <= 1) return entry.topY * unitRadius;
+  let bestDist = Infinity;
+  let bestTopY = entry.topY;
+  for (const part of entry.parts) {
+    const px = part.x * unitRadius;
+    const pz = part.z * unitRadius;
+    const dx = mountX - px;
+    const dz = mountZ - pz;
+    const dist = Math.hypot(dx, dz);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestTopY = part.y + part.scaleY;
+    }
+  }
+  return bestTopY * unitRadius;
+}
+
 function buildPolygonShape(sides: number, radius: number, rotation: number): THREE.Shape {
   // Matches 2D drawPolygon: vertices at angle = rotation + (i/sides)·2π.
   const pts: THREE.Vector2[] = [];

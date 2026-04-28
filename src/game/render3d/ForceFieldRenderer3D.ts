@@ -17,8 +17,9 @@
 
 import * as THREE from 'three';
 import type { Entity, Turret } from '../sim/types';
-import { getWeaponWorldPosition } from '../math';
-import { getTurretMountHeight } from '../sim/combat/combatUtils';
+import { getWeaponWorldPosition, getTurretHeadRadius } from '../math';
+import { getBodyMountTopY } from './BodyShape3D';
+import { getUnitBlueprint } from '../sim/blueprints';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -263,26 +264,43 @@ export class ForceFieldRenderer3D {
         seen.add(key);
         const field = this.acquire(key);
 
-        // World altitude of the turret mount = unit's chassis-bottom in
-        // three coords + sim height of the turret muzzle above that
-        // ground. Three.y of chassis bottom = unit.transform.z (sim
-        // altitude of unit center) - push radius (Render3DEntities uses
-        // the same offset to position the unit group).
-        // getTurretMountHeight returns bodyTop + headRadius and handles
-        // the mirror-host stacking case, so the force field stays glued
-        // to the same point a regular turret head would render at — no
-        // matter what altitude the host unit is at, what renderer it
-        // uses, or whether it's a mirror unit.
-        // Was: a hard-coded SHOT_HEIGHT = 36, which is the OLD
-        // CHASSIS_HEIGHT + TURRET_HEIGHT/2 from when chassis height was
-        // a flat constant. With per-unit body heights AND units flying
-        // / sitting on hills / sitting in basins, the constant detached
-        // the force field from its host the moment terrain or altitude
-        // diverged from "flat ground at sim.z = radius".
+        // World altitude of the force-field emitter — must match the
+        // SPECIFIC body part the turret is mounted on, not the unit's
+        // global body top.
+        //
+        // For a widow (arachnid composite body), the abdomen is the
+        // tallest part (radiusFrac 1.15 → top y ≈ 2.3·radius) and the
+        // prosoma is much shorter (radiusFrac 0.55 → top y ≈ 1.1·
+        // radius). The force-field turret is mounted on the prosoma
+        // (chassisMount = (0.3, 0)), but `getTurretMountHeight` (and
+        // `getBodyTopY`) return the GLOBAL body top — i.e. the abdomen
+        // top. Using that put the force field ~36wu above the prosoma
+        // dome instead of resting on it.
+        //
+        // `getBodyMountTopY(renderer, radius, mountX, mountZ)` finds
+        // the body part nearest the mount and returns THAT part's top
+        // in world units. For a single-part body (every non-composite
+        // renderer) it just returns the global topY, so non-composite
+        // hosts behave exactly the same. Plus headRadius gives the
+        // emitter sphere center, matching the formula a regular turret
+        // head uses.
+        //
+        // World Y = chassis-bottom three.y + per-mount muzzle height.
+        // chassis-bottom three.y = unit.transform.z (sim altitude of
+        // unit center) − push radius (Render3DEntities uses the same
+        // offset to position the unit group).
+        const unitRadius = unit.unit.unitRadiusCollider.scale;
         const pushRadius = unit.unit.unitRadiusCollider.push ?? 0;
+        let rendererId = 'arachnid';
+        try { rendererId = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
+        catch { /* keep fallback */ }
+        const mountTopY = getBodyMountTopY(
+          rendererId, unitRadius,
+          turret.offset.x, turret.offset.y,
+        );
+        const headRadius = getTurretHeadRadius(unitRadius, turret.config);
         const groundY = unit.transform.z - pushRadius;
-        const mountY = getTurretMountHeight(unit, ti);
-        const turretWorldY = groundY + mountY;
+        const turretWorldY = groundY + mountTopY + headRadius;
 
         // Central pulsing emitter sphere: lerp white → blue, radius scales with progress.
         const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
