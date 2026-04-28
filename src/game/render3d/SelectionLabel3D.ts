@@ -59,6 +59,7 @@ export class SelectionLabel3D {
   private camera: THREE.PerspectiveCamera;
   private getViewport: () => { width: number; height: number };
   private pool: Label[] = [];
+  private hadVisible = false;
 
   constructor(
     parent: THREE.Group,
@@ -130,6 +131,16 @@ export class SelectionLabel3D {
     selectedBuildings: readonly Entity[],
     frustum?: THREE.Frustum,
   ): void {
+    if (selectedUnits.length === 0 && selectedBuildings.length === 0) {
+      if (this.hadVisible) {
+        for (let i = 0; i < this.pool.length; i++) {
+          this.pool[i].sprite.visible = false;
+        }
+        this.hadVisible = false;
+      }
+      return;
+    }
+
     let used = 0;
 
     // For sprites with sizeAttenuation: false on a perspective
@@ -198,6 +209,7 @@ export class SelectionLabel3D {
     for (let i = used; i < this.pool.length; i++) {
       this.pool[i].sprite.visible = false;
     }
+    this.hadVisible = used > 0;
   }
 
   destroy(): void {

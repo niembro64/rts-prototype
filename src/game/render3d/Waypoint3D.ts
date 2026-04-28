@@ -82,6 +82,7 @@ export class Waypoint3D {
 
   // Pooled flag sprites.
   private flagPool: FlagSlot[] = [];
+  private hadVisible = false;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
     this.parent = parent;
@@ -337,6 +338,18 @@ export class Waypoint3D {
     selectedUnits: readonly Entity[],
     selectedBuildings: readonly Entity[],
   ): void {
+    if (selectedUnits.length === 0 && selectedBuildings.length === 0) {
+      if (this.hadVisible) {
+        this.lineGeom.setDrawRange(0, 0);
+        this.dotGeom.setDrawRange(0, 0);
+        for (let i = 0; i < this.flagPool.length; i++) {
+          this.flagPool[i].sprite.visible = false;
+        }
+        this.hadVisible = false;
+      }
+      return;
+    }
+
     const state = { lineSeg: 0, dotCount: 0 };
     let flagCount = 0;
 
@@ -454,6 +467,7 @@ export class Waypoint3D {
     for (let i = flagCount; i < this.flagPool.length; i++) {
       this.flagPool[i].sprite.visible = false;
     }
+    this.hadVisible = state.lineSeg > 0 || state.dotCount > 0 || flagCount > 0;
   }
 
   destroy(): void {
