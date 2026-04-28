@@ -677,26 +677,6 @@ export function expandPathActions(
   const path = findPath(startX, startY, goalX, goalY, mapWidth, mapHeight, buildingGrid);
   if (VALIDATE_PATHS) {
     validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
-    // Path-shape log so we can read the exact waypoint sequence the
-    // browser's planner emitted for any given click. Pair with the
-    // [click] logs in Input3DManager — same coordinates, same query.
-    // eslint-disable-next-line no-console
-    console.log(
-      '[plan] (%d,%d)→(%d,%d): %d waypoint(s)%s',
-      Math.round(startX), Math.round(startY),
-      Math.round(goalX), Math.round(goalY),
-      path.length,
-      path.length === 1
-        ? ` — single (%${Math.round(path[0].x)},${Math.round(path[0].y)}) [stay-put or direct]`
-        : '',
-    );
-    for (let i = 0; i < path.length; i++) {
-      // eslint-disable-next-line no-console
-      console.log(
-        '  [plan]   wp %d: (%d, %d)',
-        i, Math.round(path[i].x), Math.round(path[i].y),
-      );
-    }
   }
   const out: UnitAction[] = [];
   const lastIdx = path.length - 1;
