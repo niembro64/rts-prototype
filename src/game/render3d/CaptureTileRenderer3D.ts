@@ -87,6 +87,8 @@ export class CaptureTileRenderer3D {
   private gridCellsX = 0;
   private gridCellsY = 0;
   private gridCellSize = 0;
+  private lastCaptureVersion = -1;
+  private lastOverlayIntensity = -1;
 
   private clientViewState: ClientViewState;
   private mapWidth: number;
@@ -124,18 +126,19 @@ export class CaptureTileRenderer3D {
    * known. Positions and indices are static after this — only the
    * per-vertex color buffer is rewritten per frame.
    */
-  private rebuildGridIfNeeded(cellSize: number): void {
+  private rebuildGridIfNeeded(cellSize: number): boolean {
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / cellSize));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / cellSize));
     if (
       cellsX === this.gridCellsX &&
       cellsY === this.gridCellsY &&
       cellSize === this.gridCellSize
-    ) return;
+    ) return false;
 
     this.gridCellsX = cellsX;
     this.gridCellsY = cellsY;
     this.gridCellSize = cellSize;
+    this.lastCaptureVersion = -1;
 
     const tileCount = cellsX * cellsY;
     this.positions = new Float32Array(tileCount * VERTS_PER_TILE * 3);
@@ -294,6 +297,7 @@ export class CaptureTileRenderer3D {
     );
     this.geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
     this.geometry.setIndex(new THREE.BufferAttribute(this.indices, 1));
+    return true;
   }
 
   update(): void {
@@ -309,9 +313,21 @@ export class CaptureTileRenderer3D {
     let cellSize = this.clientViewState.getCaptureCellSize();
     if (cellSize <= 0) cellSize = SPATIAL_GRID_CELL_SIZE;
 
-    this.rebuildGridIfNeeded(cellSize);
+    const rebuilt = this.rebuildGridIfNeeded(cellSize);
 
     const intensity = getGridOverlayIntensity();
+    const captureVersion = this.clientViewState.getCaptureVersion();
+    if (
+      !rebuilt &&
+      captureVersion === this.lastCaptureVersion &&
+      intensity === this.lastOverlayIntensity
+    ) {
+      this.mesh.visible = true;
+      return;
+    }
+    this.lastCaptureVersion = captureVersion;
+    this.lastOverlayIntensity = intensity;
+
     const tiles = this.clientViewState.getCaptureTiles();
     const col = this.colors;
     const cellsX = this.gridCellsX;

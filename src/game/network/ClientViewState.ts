@@ -173,6 +173,7 @@ export class ClientViewState {
   private captureTileMap: Map<number, import('@/types/capture').NetworkCaptureTile> = new Map();
   private captureTilesCache: import('@/types/capture').NetworkCaptureTile[] = [];
   private captureTilesDirty: boolean = true;
+  private captureVersion: number = 0;
   private captureCellSize: number = 0;
 
   // Combat stats from latest snapshot
@@ -444,10 +445,12 @@ export class ClientViewState {
         }
       }
       this.captureTilesDirty = true;
+      this.captureVersion++;
     } else if (!state.isDelta) {
       // Keyframe with no capture data: clear
       this.captureTileMap.clear();
       this.captureTilesDirty = true;
+      this.captureVersion++;
     }
 
     // Store combat stats
@@ -1299,6 +1302,10 @@ export class ClientViewState {
     return this.captureCellSize;
   }
 
+  getCaptureVersion(): number {
+    return this.captureVersion;
+  }
+
   getCombatStats(): NetworkServerSnapshotCombatStats | null {
     return this.combatStats;
   }
@@ -1320,6 +1327,7 @@ export class ClientViewState {
     this.captureTileMap.clear();
     this.captureTilesCache = [];
     this.captureTilesDirty = true;
+    this.captureVersion++;
     this.captureCellSize = 0;
     this.serverMeta = null;
     this.frameCounter = 0;
