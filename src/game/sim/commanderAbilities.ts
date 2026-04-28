@@ -2,6 +2,7 @@ import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
 import { distance3 } from '../math';
 import { economyManager } from './economy';
+import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 // Note: economyManager still used for onConstructionComplete (addProduction)
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -37,6 +38,7 @@ export class CommanderAbilitiesSystem {
         if (currentTarget.buildable.buildProgress >= 1) {
           currentTarget.buildable.buildProgress = 1;
           currentTarget.buildable.isComplete = true;
+          world.markSnapshotDirty(currentTarget.id, ENTITY_CHANGED_BUILDING);
           this.onConstructionComplete(world, currentTarget, playerId);
           completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
         }

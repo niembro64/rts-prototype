@@ -21,6 +21,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice } from '../../math';
 import { findClosestPanelHit } from '../combat/MirrorPanelHit';
 import { getTargetRadius } from '../combat/combatUtils';
+import { ENTITY_CHANGED_HP } from '../../../types/network';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -766,6 +767,7 @@ export class DamageSystem {
       const actualDamage = Math.min(damage, entity.unit.hp);
       this.statsTracker?.recordDamage(sourceEntityId, entity.id, actualDamage);
       entity.unit.hp -= damage;
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
       if (entity.unit.hp <= 0 && !result.killedUnitIds.has(entity.id)) {
         result.killedUnitIds.add(entity.id);
         this.statsTracker?.recordKill(sourceEntityId, entity.id);
@@ -778,6 +780,7 @@ export class DamageSystem {
       const actualDamage = Math.min(damage, entity.building.hp);
       this.statsTracker?.recordDamage(sourceEntityId, entity.id, actualDamage);
       entity.building.hp -= damage;
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
       if (entity.building.hp <= 0 && !result.killedBuildingIds.has(entity.id)) {
         result.killedBuildingIds.add(entity.id);
         this.statsTracker?.recordKill(sourceEntityId, entity.id);

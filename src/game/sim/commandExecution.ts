@@ -3,12 +3,14 @@
 
 import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, RepairCommand, AttackCommand } from './commands';
 import type { Entity, UnitAction } from './types';
+import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
 import { magnitude, getWeaponWorldPosition, getTransformCosSin, getBarrelTip } from '../math';
 import { getTurretMountHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions } from './Pathfinder';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 
 export type { CommandContext } from '@/types/ui';
 import type { CommandContext } from '@/types/ui';
@@ -166,14 +168,18 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
   // Don't allow queueing if player is at unit cap (including already-queued units)
   if (!ctx.world.canPlayerQueueUnit(factory.ownership.playerId)) return;
 
-  factoryProductionSystem.queueUnit(factory, command.unitId);
+  if (factoryProductionSystem.queueUnit(factory, command.unitId)) {
+    ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+  }
 }
 
 function executeCancelQueueItemCommand(ctx: CommandContext, command: CancelQueueItemCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
   if (!factory?.factory) return;
 
-  factoryProductionSystem.dequeueUnit(factory, command.index);
+  if (factoryProductionSystem.dequeueUnit(factory, command.index)) {
+    ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+  }
 }
 
 function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPointCommand): void {
@@ -182,6 +188,7 @@ function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPoint
 
   factory.factory.rallyX = command.rallyX;
   factory.factory.rallyY = command.rallyY;
+  ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
 }
 
 function executeSetFactoryWaypointsCommand(ctx: CommandContext, command: SetFactoryWaypointsCommand): void {
@@ -207,6 +214,7 @@ function executeSetFactoryWaypointsCommand(ctx: CommandContext, command: SetFact
     factory.factory.rallyX = command.waypoints[0].x;
     factory.factory.rallyY = command.waypoints[0].y;
   }
+  ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
 }
 
 function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): void {
@@ -241,6 +249,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // Snap dgun turret to target direction
   dgunTurret.rotation = fireAngle;
   dgunTurret.angularVelocity = 0;
+  ctx.world.markSnapshotDirty(commander.id, ENTITY_CHANGED_TURRETS);
 
   // Compute turret world position from unit transform + turret offset
   const { cos, sin } = getTransformCosSin(commander.transform);
@@ -395,7 +404,7 @@ function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void
 }
 
 // Add an action to a unit (respecting queue flag)
-export function addActionToUnit(entity: Entity, action: UnitAction, queue: boolean): void {
+export function addActionToUnit(entity: Entity, action: UnitAction, queue: boolean, world?: WorldState): void {
   if (!entity.unit) return;
 
   if (!queue) {
@@ -412,6 +421,8 @@ export function addActionToUnit(entity: Entity, action: UnitAction, queue: boole
     // Mark the start of patrol loop
     entity.unit.patrolStartIndex = entity.unit.actions.length - 1;
   }
+
+  world?.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
 }
 
 /** Plan a path from the unit's current position to (goalX, goalY) and
@@ -489,7 +500,7 @@ function addPathActions(
   // to the same "do this trip" intent and queue:true keeps them
   // ordered after the first.
   for (let i = 0; i < actions.length; i++) {
-    addActionToUnit(unit, actions[i], i === 0 ? queue : true);
+    addActionToUnit(unit, actions[i], i === 0 ? queue : true, ctx.world);
   }
   // Confirm the queue actually got replaced/extended as expected.
   const afterLen = unit.unit?.actions.length ?? 0;
@@ -564,6 +575,6 @@ function addPathActionsWithFinal(
   // as such.
   last.isPathExpansion = undefined;
   for (let i = 0; i < actions.length; i++) {
-    addActionToUnit(unit, actions[i], i === 0 ? queue : true);
+    addActionToUnit(unit, actions[i], i === 0 ? queue : true, ctx.world);
   }
 }

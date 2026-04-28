@@ -47,6 +47,8 @@ export class WorldState {
   private tick: number = 0;
   private buildingVersion: number = 0;
   private removedSnapshotEntityIds: EntityId[] = [];
+  private snapshotDirtyIds = new Set<EntityId>();
+  private snapshotDirtyFields = new Map<EntityId, number>();
   public rng: SeededRNG;
 
   // Current player being controlled
@@ -160,6 +162,7 @@ export class WorldState {
   addEntity(entity: Entity): void {
     this.entities.set(entity.id, entity);
     if (entity.type === 'building') this.buildingVersion++;
+    this.markSnapshotDirty(entity.id, 0xff);
     this.cache.invalidate();
   }
 
@@ -175,8 +178,29 @@ export class WorldState {
     if (entity?.type === 'unit' || entity?.type === 'building') {
       this.removedSnapshotEntityIds.push(id);
     }
+    this.snapshotDirtyIds.delete(id);
+    this.snapshotDirtyFields.delete(id);
     this.entities.delete(id);
     this.cache.invalidate();
+  }
+
+  markSnapshotDirty(id: EntityId, fields: number): void {
+    if (fields === 0) return;
+    const entity = this.entities.get(id);
+    if (!entity || (entity.type !== 'unit' && entity.type !== 'building')) return;
+    this.snapshotDirtyIds.add(id);
+    this.snapshotDirtyFields.set(id, (this.snapshotDirtyFields.get(id) ?? 0) | fields);
+  }
+
+  drainSnapshotDirtyEntities(outIds: EntityId[], outFields: number[]): void {
+    outIds.length = 0;
+    outFields.length = 0;
+    for (const id of this.snapshotDirtyIds) {
+      outIds.push(id);
+      outFields.push(this.snapshotDirtyFields.get(id) ?? 0);
+    }
+    this.snapshotDirtyIds.clear();
+    this.snapshotDirtyFields.clear();
   }
 
   drainRemovedSnapshotEntityIds(out: EntityId[]): void {

@@ -5,6 +5,7 @@ import type { PlayerId } from './types';
 import { BUILDABLE_UNIT_IDS, getNormalizedUnitCost, getUnitBlueprint } from './blueprints';
 import { factoryProductionSystem } from './factoryProduction';
 import { DEMO_CONFIG } from '../../demoConfig';
+import { ENTITY_CHANGED_FACTORY } from '../../types/network';
 
 // Precomputed inverse-cost weights (cheaper units queued more often)
 let weights: { id: string; weight: number }[] = [];
@@ -81,7 +82,9 @@ export function updateAiProduction(
 
     // Queue a unit if the factory is idle and player is under cap
     if (entity.factory.buildQueue.length === 0 && world.canPlayerQueueUnit(entity.ownership.playerId)) {
-      factoryProductionSystem.queueUnit(entity, pickRandomUnit(allowedTypes));
+      if (factoryProductionSystem.queueUnit(entity, pickRandomUnit(allowedTypes))) {
+        world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
+      }
     }
   }
 }

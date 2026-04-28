@@ -11,6 +11,7 @@ import type { NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
+import { ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL } from '../../types/network';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import {
@@ -511,7 +512,11 @@ export class GameServer {
       // Unit faces its movement direction (yaw only — chassis tilt
       // is a render concern; sim transform.rotation stays a 2D yaw).
       if (dirMag > 0.01) {
-        entity.transform.rotation = Math.atan2(dirY, dirX);
+        const nextRotation = Math.atan2(dirY, dirX);
+        if (nextRotation !== entity.transform.rotation) {
+          entity.transform.rotation = nextRotation;
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
+        }
       }
 
       if (body.sleeping && dirMag <= 0.01 && !hasExternalForce) {
@@ -732,6 +737,7 @@ export class GameServer {
       entity.unit.velocityX = body.vx;
       entity.unit.velocityY = body.vy;
       entity.unit.velocityZ = body.vz;
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
     }
   }
 

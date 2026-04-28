@@ -1,5 +1,5 @@
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, PlayerId } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
 import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
@@ -190,6 +190,15 @@ const _prevStates = new Map<number, PrevEntityState>();
 const _prevEntityIds = new Set<number>();
 const _currentEntityIds = new Set<number>();
 const _removedIdsBuf: number[] = [];
+const _dirtyEntityIdsBuf: EntityId[] = [];
+const _dirtyEntityFieldsBuf: number[] = [];
+
+const SNAPSHOT_DIRTY_FORCE_FIELDS =
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_ACTIONS |
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY;
 
 /** Entities that have already had their static (never-changes-after-
  *  spawn) fields shipped at least once over this session's protocol —
@@ -219,51 +228,6 @@ function getPrevState(entityId: number): PrevEntityState {
     _prevStates.set(entityId, prev);
   }
   return prev;
-}
-
-function canSkipDeltaFingerprint(entity: Entity, prev: PrevEntityState): boolean {
-  const posTh = SNAPSHOT_CONFIG.positionThreshold;
-  const velTh = SNAPSHOT_CONFIG.velocityThreshold;
-  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold;
-  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold;
-
-  if (entity.unit) {
-    // Sleeping, commandless units are the dominant 10k-army idle case.
-    // Compare only cheap scalar state first and avoid action hashing +
-    // turret-array capture when nothing material changed.
-    if (!entity.body?.physicsBody?.sleeping) return false;
-    if ((entity.unit.actions?.length ?? 0) !== prev.actionCount) return false;
-    if (entity.unit.hp !== prev.hp) return false;
-    if (Math.abs(entity.transform.x - prev.x) > posTh ||
-        Math.abs(entity.transform.y - prev.y) > posTh ||
-        Math.abs(entity.transform.rotation - prev.rotation) > rotPosTh) return false;
-    if (Math.abs((entity.unit.velocityX ?? 0) - prev.velocityX) > velTh ||
-        Math.abs((entity.unit.velocityY ?? 0) - prev.velocityY) > velTh) return false;
-
-    const turrets = entity.turrets;
-    const count = turrets?.length ?? 0;
-    if (count !== prev.weaponCount) return false;
-    for (let i = 0; i < count; i++) {
-      const w = turrets![i];
-      if (w.state !== 'idle' || w.target !== null) return false;
-      if (Math.abs(w.rotation - prev.turretRots[i]) > rotPosTh ||
-          Math.abs(w.angularVelocity - prev.turretAngVels[i]) > rotVelTh ||
-          Math.abs((w.forceField?.range ?? 0) - prev.forceFieldRanges[i]) > 0.001) {
-        return false;
-      }
-    }
-    return prev.isEngagedBits === 0 && prev.targetBits === 0;
-  }
-
-  if (entity.building) {
-    // Completed, non-factory buildings are static most of the game.
-    if (entity.factory) return false;
-    if (entity.buildable && !entity.buildable.isComplete) return false;
-    const buildProgress = entity.buildable?.buildProgress ?? 0;
-    return entity.building.hp === prev.hp && buildProgress === prev.buildProgress;
-  }
-
-  return false;
 }
 
 function getChangedFields(entity: Entity, prev: PrevEntityState, next: PrevEntityState): number {
@@ -503,48 +467,43 @@ export function serializeGameState(
 
   // Serialize units and buildings (projectiles handled via spawn/despawn events)
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
-  if (!deltaEnabled) _currentEntityIds.clear();
-  for (const entity of world.getUnits()) {
-    if (deltaEnabled) {
+  if (deltaEnabled) {
+    world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
+    for (let i = 0; i < _dirtyEntityIdsBuf.length; i++) {
+      const entity = world.getEntity(_dirtyEntityIdsBuf[i]);
+      if (!entity || (entity.type !== 'unit' && entity.type !== 'building')) continue;
+      const dirtyFields = _dirtyEntityFieldsBuf[i] ?? 0;
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
       _prevEntityIds.add(entity.id);
-      if (!isNew && canSkipDeltaFingerprint(entity, prev)) continue;
       captureEntityState(entity, _nextStateScratch);
-      const changedFields = isNew ? undefined : getChangedFields(entity, prev, _nextStateScratch);
+      const changedFields = isNew
+        ? undefined
+        : getChangedFields(entity, prev, _nextStateScratch) |
+          (dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS);
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntity(entity, changedFields);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(_nextStateScratch, prev);
       }
-    } else {
+    }
+  } else {
+    _currentEntityIds.clear();
+    for (const entity of world.getUnits()) {
       _currentEntityIds.add(entity.id);
       const netEntity = serializeEntity(entity, undefined);
       if (netEntity) _entityBuf.push(netEntity);
       const prev = getPrevState(entity.id);
       captureEntityState(entity, prev);
     }
-  }
-  for (const entity of world.getBuildings()) {
-    if (deltaEnabled) {
-      const prev = getPrevState(entity.id);
-      const isNew = !_prevEntityIds.has(entity.id);
-      _prevEntityIds.add(entity.id);
-      if (!isNew && canSkipDeltaFingerprint(entity, prev)) continue;
-      captureEntityState(entity, _nextStateScratch);
-      const changedFields = isNew ? undefined : getChangedFields(entity, prev, _nextStateScratch);
-      if (isNew || changedFields! > 0) {
-        const netEntity = serializeEntity(entity, changedFields);
-        if (netEntity) _entityBuf.push(netEntity);
-        copyPrevState(_nextStateScratch, prev);
-      }
-    } else {
+    for (const entity of world.getBuildings()) {
       _currentEntityIds.add(entity.id);
       const netEntity = serializeEntity(entity, undefined);
       if (netEntity) _entityBuf.push(netEntity);
       const prev = getPrevState(entity.id);
       captureEntityState(entity, prev);
     }
+    world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
   }
 
   // Detect removed entities (were in previous snapshot but not current)

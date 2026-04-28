@@ -5,6 +5,7 @@ import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
 import { expandPathActions } from './Pathfinder';
+import { ENTITY_CHANGED_FACTORY } from '../../types/network';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
@@ -28,7 +29,10 @@ export class FactoryProductionSystem {
 
       // Check if we have something to build
       if (factoryComp.buildQueue.length === 0) {
-        factoryComp.isProducing = false;
+        if (factoryComp.isProducing) {
+          factoryComp.isProducing = false;
+          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+        }
         continue;
       }
 
@@ -39,6 +43,7 @@ export class FactoryProductionSystem {
       if (!bp) {
         // Invalid unit, remove from queue
         factoryComp.buildQueue.shift();
+        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
         continue;
       }
 
@@ -48,6 +53,7 @@ export class FactoryProductionSystem {
         factoryComp.currentBuildProgress = 0;
         factoryComp.currentBuildCost = bp.energyCost * COST_MULTIPLIER;
         factoryComp.currentBuildManaCost = bp.manaCost * COST_MULTIPLIER;
+        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       }
 
       // Energy spending is handled by the shared energy distribution system.
@@ -60,6 +66,7 @@ export class FactoryProductionSystem {
           // At unit cap - pause production (don't remove from queue)
           factoryComp.isProducing = false;
           factoryComp.currentBuildProgress = 1; // Keep at 100% ready
+          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
           continue;
         }
 
@@ -73,6 +80,7 @@ export class FactoryProductionSystem {
         factoryComp.buildQueue.shift();
         factoryComp.isProducing = false;
         factoryComp.currentBuildProgress = 0;
+        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       }
     }
 

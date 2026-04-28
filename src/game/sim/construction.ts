@@ -6,6 +6,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
 import { isWaterAt } from './Terrain';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -71,19 +72,21 @@ export class ConstructionSystem {
       if (buildable.buildProgress >= 1) {
         buildable.buildProgress = 1;
         buildable.isComplete = true;
+        world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
         this.onConstructionComplete(world, entity);
       }
     }
   }
 
   // Called when construction completes
-  private onConstructionComplete(_world: WorldState, entity: Entity): void {
+  private onConstructionComplete(world: WorldState, entity: Entity): void {
     // Clear all builder targets for this entity using the reverse index (O(k) not O(n))
     const builders = this.buildersByTarget.get(entity.id);
     if (builders) {
       for (const builder of builders) {
         if (builder.builder) {
           builder.builder.currentBuildTarget = null;
+          world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
         }
       }
     }
@@ -191,6 +194,7 @@ export class ConstructionSystem {
     const builder = world.getEntity(builderId);
     if (builder?.builder && !builder.commander) {
       builder.builder.currentBuildTarget = entity.id;
+      world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
     }
 
     return entity;
@@ -281,6 +285,7 @@ export class ConstructionSystem {
     }
 
     builder.builder.currentBuildTarget = targetId;
+    world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
     return true;
   }
 

@@ -38,6 +38,7 @@ import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
 import { getUnitBlueprint } from './blueprints/units';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import { expandPathActions } from './Pathfinder';
@@ -452,6 +453,10 @@ export class Simulation {
       }
     }
 
+    for (const unit of activeCombatUnits) {
+      this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+    }
+
     // Update projectile positions and remove orphaned beams (from dead units)
     if (this.world.getProjectiles().length > 0) {
       const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
@@ -657,6 +662,7 @@ export class Simulation {
       unit.priorityTargetId = undefined;
 
       // Sweep queued attack actions whose targets are dead/gone
+      let actionsChanged = false;
       for (let i = unit.actions.length - 1; i >= 0; i--) {
         const a = unit.actions[i];
         if (a.type !== 'attack' || a.targetId === undefined) continue;
@@ -665,7 +671,11 @@ export class Simulation {
           ((t.unit && t.unit.hp > 0) || (t.building && t.building.hp > 0));
         if (!alive) {
           unit.actions.splice(i, 1);
+          actionsChanged = true;
         }
+      }
+      if (actionsChanged) {
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
 
       // No actions - no thrust needed
@@ -868,6 +878,7 @@ export class Simulation {
       newPath[newPath.length - 1].targetId = finalAction.targetId;
     }
     entity.unit.actions = newPath;
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     return true;
   }
 
@@ -904,6 +915,8 @@ export class Simulation {
     if (unit.actions.length === 0) {
       unit.patrolStartIndex = null;
     }
+
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
 
   // Reset all session state (call between game sessions to free stale references)

@@ -6,6 +6,7 @@ import type { Entity, PlayerId } from './types';
 import { distance3 } from '../math';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
+import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 
 export type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 import type { EnergyBuffers } from '@/types/ui';
@@ -189,7 +190,10 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         // Actual progress is the minimum of both
         const progress = Math.min(energyProgress, manaProgress, remaining);
 
-        f.currentBuildProgress += progress;
+        if (progress > 0) {
+          f.currentBuildProgress += progress;
+          world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_FACTORY);
+        }
         const energySpent = progress * totalEnergyCost;
         const manaSpent = progress * totalManaCost;
         totalEnergySpent += energySpent;
@@ -208,7 +212,10 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           : remaining;
         const progress = Math.min(energyProgress, manaProgress, remaining);
 
-        b.buildProgress += progress;
+        if (progress > 0) {
+          b.buildProgress += progress;
+          world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_BUILDING);
+        }
         const energySpent = progress * totalEnergyCost;
         const manaSpent = progress * totalManaCost;
         totalEnergySpent += energySpent;
@@ -219,7 +226,11 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         totalEnergySpent += energyToSpend;
         const hpHealed = energyToSpend / 0.5;
         const unit = c.entity.unit!;
-        unit.hp = Math.min(unit.hp + hpHealed, unit.maxHp);
+        const nextHp = Math.min(unit.hp + hpHealed, unit.maxHp);
+        if (nextHp !== unit.hp) {
+          unit.hp = nextHp;
+          world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_HP);
+        }
       }
     }
 
