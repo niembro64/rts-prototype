@@ -50,6 +50,17 @@ import { getSurfaceNormal, projectHorizontalOntoSlope, setTerrainTeamCount, isWa
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
 
+const WATER_PROBE_DX = [
+  1, 0.7071067811865476, 0, -0.7071067811865475,
+  -1, -0.7071067811865477, 0, 0.7071067811865474,
+];
+const WATER_PROBE_DY = [
+  0, 0.7071067811865475, 1, 0.7071067811865476,
+  0, -0.7071067811865475, -1, -0.7071067811865477,
+];
+const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
+const MATTER_FORCE_SCALE = 150000;
+
 export class GameServer {
   private physics: PhysicsEngine3D;
   private world: WorldState;
@@ -458,6 +469,8 @@ export class GameServer {
   // Apply thrust and external forces to physics bodies
   private applyForces(): void {
     const forceAccumulator = this.simulation.getForceAccumulator();
+    const mw = this.world.mapWidth;
+    const mh = this.world.mapHeight;
 
     for (const entity of this.world.getUnits()) {
       if (!entity.body?.physicsBody || !entity.unit) continue;
@@ -522,46 +535,27 @@ export class GameServer {
       // its surface, and they bounce off the boundary like it's a
       // building wall.
       const radius = body.radius || 10;
-      const mw = this.world.mapWidth;
-      const mh = this.world.mapHeight;
       const inWater = isWaterAt(body.x, body.y, mw, mh);
-
-      // Helper: compute "outward from water" direction at (x, y).
-      // Samples 8 points around (x, y) at the given probe radius and
-      // averages unit vectors toward dry samples. Returns null if
-      // every sample is wet (deeply submerged).
-      const probeOutward = (x: number, y: number, probeR: number): { x: number; y: number } | null => {
-        let ox = 0, oy = 0;
-        for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * Math.PI * 2;
-          const sx = x + Math.cos(a) * probeR;
-          const sy = y + Math.sin(a) * probeR;
-          if (!isWaterAt(sx, sy, mw, mh)) {
-            ox += Math.cos(a);
-            oy += Math.sin(a);
-          }
-        }
-        const m = Math.sqrt(ox * ox + oy * oy);
-        if (m > 0) return { x: ox / m, y: oy / m };
-        return null;
-      };
 
       if (inWater) {
         // ESCAPE FORCE — push toward dry land. Try expanding probe
         // radii so even a unit teleported deep into a lake gets a
         // valid outward direction.
-        let outDir: { x: number; y: number } | null = null;
-        for (const r of [radius * 1.5, radius * 3, radius * 6]) {
-          outDir = probeOutward(body.x, body.y, r);
-          if (outDir) break;
+        let hasOutDir = false;
+        for (let i = 0; i < WATER_ESCAPE_PROBE_MULTS.length; i++) {
+          hasOutDir = this.probeWaterOutward(
+            body.x, body.y,
+            radius * WATER_ESCAPE_PROBE_MULTS[i],
+            mw, mh,
+          );
+          if (hasOutDir) break;
         }
-        if (outDir) {
-          const MATTER_FORCE_SCALE = 150000;
+        if (hasOutDir) {
           // 3× normal thrust strength — feels like a hard wall pushing
           // the unit out, not a gentle current.
           const wallPush = 3 * (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
-          thrustForceX = outDir.x * wallPush;
-          thrustForceY = outDir.y * wallPush;
+          thrustForceX = this._waterOutX * wallPush;
+          thrustForceY = this._waterOutY * wallPush;
           // No z thrust — water surface is flat, no slope to climb out of.
         }
       } else if (dirMag > 0) {
@@ -577,15 +571,14 @@ export class GameServer {
         const aheadX = body.x + useDirX * probe;
         const aheadY = body.y + useDirY * probe;
         if (isWaterAt(aheadX, aheadY, mw, mh)) {
-          const out = probeOutward(aheadX, aheadY, radius);
-          if (out) {
+          if (this.probeWaterOutward(aheadX, aheadY, radius, mw, mh)) {
             // Decompose useDir against outward direction.
             // dotOut > 0 ⇒ thrust outward (away from water) — fine.
             // dotOut < 0 ⇒ thrust has inward component — remove it.
-            const dotOut = useDirX * out.x + useDirY * out.y;
+            const dotOut = useDirX * this._waterOutX + useDirY * this._waterOutY;
             if (dotOut < 0) {
-              useDirX -= dotOut * out.x;
-              useDirY -= dotOut * out.y;
+              useDirX -= dotOut * this._waterOutX;
+              useDirY -= dotOut * this._waterOutY;
               const m = Math.sqrt(useDirX * useDirX + useDirY * useDirY);
               if (m > 1e-3) {
                 useDirX /= m;
@@ -601,7 +594,6 @@ export class GameServer {
         }
 
         if (useDirX !== 0 || useDirY !== 0) {
-          const MATTER_FORCE_SCALE = 150000;
           const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
           // Project horizontal thrust onto the slope tangent so
           // hill-climbing produces the right z-aware force. Slope
@@ -645,6 +637,36 @@ export class GameServer {
       // unit settles onto the rendered tile triangle each tick.
       this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6, totalForceZ * 1e6);
     }
+  }
+
+  private _waterOutX = 0;
+  private _waterOutY = 0;
+
+  // Compute "outward from water" direction at (x, y). Samples 8
+  // fixed directions at probeR and stores the normalized dry-sample
+  // average into _waterOutX/Y. Returns false if every sample is wet.
+  private probeWaterOutward(
+    x: number,
+    y: number,
+    probeR: number,
+    mapWidth: number,
+    mapHeight: number,
+  ): boolean {
+    let ox = 0;
+    let oy = 0;
+    for (let i = 0; i < WATER_PROBE_DX.length; i++) {
+      const dx = WATER_PROBE_DX[i];
+      const dy = WATER_PROBE_DY[i];
+      if (!isWaterAt(x + dx * probeR, y + dy * probeR, mapWidth, mapHeight)) {
+        ox += dx;
+        oy += dy;
+      }
+    }
+    const m = Math.sqrt(ox * ox + oy * oy);
+    if (m <= 0) return false;
+    this._waterOutX = ox / m;
+    this._waterOutY = oy / m;
+    return true;
   }
 
   // Sync positions and velocities from physics bodies to entities
