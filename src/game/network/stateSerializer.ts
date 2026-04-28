@@ -221,6 +221,51 @@ function getPrevState(entityId: number): PrevEntityState {
   return prev;
 }
 
+function canSkipDeltaFingerprint(entity: Entity, prev: PrevEntityState): boolean {
+  const posTh = SNAPSHOT_CONFIG.positionThreshold;
+  const velTh = SNAPSHOT_CONFIG.velocityThreshold;
+  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold;
+  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold;
+
+  if (entity.unit) {
+    // Sleeping, commandless units are the dominant 10k-army idle case.
+    // Compare only cheap scalar state first and avoid action hashing +
+    // turret-array capture when nothing material changed.
+    if (!entity.body?.physicsBody?.sleeping) return false;
+    if ((entity.unit.actions?.length ?? 0) !== prev.actionCount) return false;
+    if (entity.unit.hp !== prev.hp) return false;
+    if (Math.abs(entity.transform.x - prev.x) > posTh ||
+        Math.abs(entity.transform.y - prev.y) > posTh ||
+        Math.abs(entity.transform.rotation - prev.rotation) > rotPosTh) return false;
+    if (Math.abs((entity.unit.velocityX ?? 0) - prev.velocityX) > velTh ||
+        Math.abs((entity.unit.velocityY ?? 0) - prev.velocityY) > velTh) return false;
+
+    const turrets = entity.turrets;
+    const count = turrets?.length ?? 0;
+    if (count !== prev.weaponCount) return false;
+    for (let i = 0; i < count; i++) {
+      const w = turrets![i];
+      if (w.state !== 'idle' || w.target !== null) return false;
+      if (Math.abs(w.rotation - prev.turretRots[i]) > rotPosTh ||
+          Math.abs(w.angularVelocity - prev.turretAngVels[i]) > rotVelTh ||
+          Math.abs((w.forceField?.range ?? 0) - prev.forceFieldRanges[i]) > 0.001) {
+        return false;
+      }
+    }
+    return prev.isEngagedBits === 0 && prev.targetBits === 0;
+  }
+
+  if (entity.building) {
+    // Completed, non-factory buildings are static most of the game.
+    if (entity.factory) return false;
+    if (entity.buildable && !entity.buildable.isComplete) return false;
+    const buildProgress = entity.buildable?.buildProgress ?? 0;
+    return entity.building.hp === prev.hp && buildProgress === prev.buildProgress;
+  }
+
+  return false;
+}
+
 function getChangedFields(entity: Entity, prev: PrevEntityState, next: PrevEntityState): number {
   const posTh = SNAPSHOT_CONFIG.positionThreshold;
   const velTh = SNAPSHOT_CONFIG.velocityThreshold;
@@ -466,6 +511,7 @@ export function serializeGameState(
     if (deltaEnabled) {
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
+      if (!isNew && canSkipDeltaFingerprint(entity, prev)) continue;
       captureEntityState(entity, _nextStateScratch);
       const changedFields = isNew ? undefined : getChangedFields(entity, prev, _nextStateScratch);
       if (isNew || changedFields! > 0) {
@@ -485,6 +531,7 @@ export function serializeGameState(
     if (deltaEnabled) {
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
+      if (!isNew && canSkipDeltaFingerprint(entity, prev)) continue;
       captureEntityState(entity, _nextStateScratch);
       const changedFields = isNew ? undefined : getChangedFields(entity, prev, _nextStateScratch);
       if (isNew || changedFields! > 0) {
