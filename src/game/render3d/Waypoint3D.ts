@@ -345,11 +345,17 @@ export class Waypoint3D {
     // — used directly so a waypoint dot on a hilltop sits ON the
     // hilltop, not at a terrain re-sample that may differ.
     //
-    // SIMPLE mode skips path-expansion intermediates: only the user's
-    // click points get drawn, with a single shortcut line between
-    // consecutive user-issued actions. The unit still walks every
-    // intermediate (movement is unaffected) — this is purely a viz
-    // mode that matches the convention in most RTS games.
+    // SIMPLE mode keeps the LINES tracing the unit's actual route
+    // (so the visualization is geometrically honest — lines stay on
+    // dry land instead of cutting straight across water) but draws
+    // dots / rect markers ONLY at the user-issued endpoints. The
+    // result: less visual clutter than DETAILED, but the line still
+    // matches what the unit walks. The earlier SIMPLE behaviour
+    // skipped lines for path-expansion actions too, which produced
+    // a single chord from the unit straight to its final waypoint —
+    // that chord could cross water while the unit walked around it,
+    // which read as "the planner suggested a path through water"
+    // even though the unit's actual route was correct.
     const simple = getWaypointDetail() === 'simple';
     for (const u of selectedUnits) {
       const actions = u.unit?.actions;
@@ -359,13 +365,19 @@ export class Waypoint3D {
       let prevZ: number | undefined = u.transform.z;
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
-        if (simple && a.isPathExpansion) continue;
         const color = ACTION_COLORS[a.type] ?? 0xffffff;
+        // Always draw the connecting line — this traces the unit's
+        // physical route, regardless of mode.
         this.pushTerrainLine(state, prevX, prevY, a.x, a.y, color, STYLE.lineAlpha, prevZ, a.z);
-        if (a.type === 'build' || a.type === 'repair') {
-          this.pushRectOutline(state, a.x, a.y, color, a.z);
-        } else {
-          this.pushDot(state, a.x, a.y, color, a.z);
+        // Endpoint markers (dots / rect outlines) get suppressed in
+        // SIMPLE mode for path-expansion intermediates so only
+        // user-issued endpoints carry a visible marker.
+        if (!simple || !a.isPathExpansion) {
+          if (a.type === 'build' || a.type === 'repair') {
+            this.pushRectOutline(state, a.x, a.y, color, a.z);
+          } else {
+            this.pushDot(state, a.x, a.y, color, a.z);
+          }
         }
         prevX = a.x;
         prevY = a.y;
