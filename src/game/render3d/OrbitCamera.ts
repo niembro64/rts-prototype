@@ -28,8 +28,23 @@
 import * as THREE from 'three';
 
 export type OrbitCameraOptions = {
+  /** Distance clamps act as safety bounds — the wheel-zoom rail
+   *  primarily clamps on `altitudeMin` / `altitudeMax`. Keep
+   *  distance clamps generous because at near-horizontal pitch the
+   *  resulting altitude depends weakly on distance (cos(pitch) → 0),
+   *  so distance is the only thing keeping the orbit math sane. */
   minDistance?: number;
   maxDistance?: number;
+  /** Camera altitude clamps (world Y, distance from the y=0 ground
+   *  plane). These are what the user actually feels — at altitudeMin
+   *  the camera is grazing the surface, at altitudeMax it's a
+   *  panoramic overview. Replaces distance as the primary wheel-
+   *  zoom rail so the user can't get "stuck on min zoom while close
+   *  to the surface" or "stuck on max zoom while far away" — those
+   *  states arose because distance and altitude diverged after
+   *  cursor-pin shifts and target-y tracking. */
+  altitudeMin?: number;
+  altitudeMax?: number;
   minPitch?: number;
   maxPitch?: number;
   /** Per-wheel-tick zoom fraction. Each scroll-IN moves the
@@ -95,6 +110,17 @@ export class OrbitCamera {
 
   private minDistance: number;
   private maxDistance: number;
+  /** Wheel-zoom altitude clamps (camera world Y, distance from the
+   *  y=0 ground plane along its normal). Replaces the previous
+   *  distance-based clamps as the primary "you can't zoom further"
+   *  rail because altitude is the axis the user actually feels — at
+   *  altitudeMin the camera is grazing the surface, at altitudeMax
+   *  it's a panoramic overview. Distance clamps stay as safety
+   *  bounds (near-horizontal pitch makes altitude weakly dependent
+   *  on distance, so a sane distance ceiling protects against
+   *  runaway distance when cos(pitch) ≈ 0). */
+  public altitudeMin: number;
+  public altitudeMax: number;
   private minPitch: number;
   private maxPitch: number;
   private zoomStepFraction: number;
@@ -167,6 +193,8 @@ export class OrbitCamera {
     this.canvas = canvas;
     this.minDistance = opts.minDistance ?? 100;
     this.maxDistance = opts.maxDistance ?? 8000;
+    this.altitudeMin = opts.altitudeMin ?? 50;
+    this.altitudeMax = opts.altitudeMax ?? 5000;
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
     this.zoomStepFraction = opts.zoomStepFraction ?? 0.125;
@@ -220,34 +248,72 @@ export class OrbitCamera {
       // equivalent to P0 ≡ target, which leaves toTarget unchanged.
       const f = this.zoomStepFraction;
       const wantFactor = e.deltaY > 0 ? 1 / (1 - f) : 1 - f;
-      const wantedDistance = this.toDistance * wantFactor;
+      const p0 = this._cursorWorldPoint(e.clientX, e.clientY);
+
+      // Cursor-pin formula: post-zoom camera position is
+      //   c' = α · c + (1 − α) · p0
+      // where p0 is the world point under the cursor (or the orbit
+      // target if the cursor doesn't hit anything). Inverting on the Y
+      // axis lets us solve for the α that lands camera.y on a chosen
+      // altitude, which is how we clamp.
+      //
+      // Build "to-state" camera Y from the to-state target + distance:
+      //   c.y = target.y + distance · cos(pitch)
+      const cosP = Math.cos(this.pitch);
+      const cameraY = this.toTargetY + this.toDistance * cosP;
+      const anchorY = p0 ? p0.y : this.toTargetY;
+
+      // Clamp on ALTITUDE rather than distance — that's the rail the
+      // user feels. With the previous distance clamp + cursor-pin +
+      // toTargetY tracking, target.y could drift far enough that
+      // camera altitude diverged wildly from `baseDistance / distance`,
+      // leaving you "stuck on min zoom while close to the surface" or
+      // "stuck on max zoom while far away". Solving for α directly
+      // from a target altitude makes those states unreachable.
+      let actualFactor = wantFactor;
+      const candidateCameraY = actualFactor * cameraY + (1 - actualFactor) * anchorY;
+      if (candidateCameraY < this.altitudeMin || candidateCameraY > this.altitudeMax) {
+        // Solve α from cursor-pin formula:
+        //   target_y = α · cameraY + (1 − α) · anchorY
+        //   α = (target_y − anchorY) / (cameraY − anchorY)
+        const targetY = candidateCameraY < this.altitudeMin
+          ? this.altitudeMin
+          : this.altitudeMax;
+        const denom = cameraY - anchorY;
+        if (Math.abs(denom) > 1e-6) {
+          actualFactor = (targetY - anchorY) / denom;
+        } else {
+          // cameraY ≈ anchorY: any α produces camera.y ≈ anchorY, and
+          // anchorY is already outside the altitude band. Bail without
+          // moving — there's no α that brings altitude into range.
+          return;
+        }
+      }
+      // Distance safety clamp — at near-horizontal pitch (cos pitch
+      // → 0) altitude depends weakly on distance, so a runaway
+      // distance is possible without hitting altitude bounds. The
+      // generous distance clamp catches that without normally
+      // triggering.
+      const wantedDistance = this.toDistance * actualFactor;
       const newToDistance = Math.min(
         this.maxDistance,
         Math.max(this.minDistance, wantedDistance),
       );
       if (newToDistance === this.toDistance) return; // already at clamp
-
-      // Re-derive the actual factor after clamping so the target
-      // shift uses the same (possibly-clamped) ratio as distance.
-      // Otherwise hitting min/maxDistance would partially apply the
-      // distance change but fully apply the target shift, drifting
-      // the cursor pin.
-      const actualFactor = newToDistance / this.toDistance;
-      const p0 = this._cursorWorldPoint(e.clientX, e.clientY);
+      // If the distance clamp fired, re-derive actualFactor so the
+      // target shift stays in sync — otherwise the cursor pin drifts.
+      actualFactor = newToDistance / this.toDistance;
 
       this.toDistance = newToDistance;
       if (p0) {
         const k = 1 - actualFactor;
         // Blend ALL THREE target axes toward p0 — Y matters because
         // the cursor pin invariant is c'_new = α·c + (1-α)·p0 in 3D,
-        // not just XZ. Skipping Y means newCamera.y = α·c.y + (1-α)·
-        // target.y instead of α·c.y + (1-α)·p0.y, and the cursor pin
-        // drifts vertically by (1-α)·(p0.y - target.y) per scroll
-        // whenever the user zooms over terrain at a different height
-        // than target.y. The drift compounds across scrolls and
-        // eventually leaves the orbit basis far from where the cursor
-        // actually points, breaking the pin permanently — that's the
-        // "zoom occasionally breaks and never goes back" behaviour.
+        // not just XZ. Skipping Y leaves newCamera.y at α·c.y +
+        // (1-α)·target.y instead of α·c.y + (1-α)·p0.y, and the
+        // cursor pin drifts vertically by (1-α)·(p0.y - target.y)
+        // per scroll whenever the user zooms over terrain at a
+        // different height than target.y.
         this.toTargetX = actualFactor * this.toTargetX + k * p0.x;
         this.toTargetY = actualFactor * this.toTargetY + k * p0.y;
         this.toTargetZ = actualFactor * this.toTargetZ + k * p0.z;

@@ -106,17 +106,21 @@ export type RtsScene3DConfig = {
 //                that needs a multiplicative scalar relative to the default
 //                framing. Counts wheel ticks multiplicatively.
 //
-//   `viewSpan` — Visible vertical world span at the focal plane, in world
-//                units: `2 · orbit.distance · tan(fov / 2)`. Universal
-//                physical measurement — same view → same number regardless
-//                of how the camera got there (pan / wheel history /
-//                terrain-clearance lift). Smaller = more zoomed in.
-//                Surfaced for UI display where users want a meaningful
-//                length they can read at a glance.
+//   `altitude` — Camera world Y, i.e. distance from the y=0 ground plane
+//                along its normal. Universal: same physical state → same
+//                number, regardless of pan / wheel / target-y history.
+//                Smaller = closer to surface, larger = farther up. The
+//                wheel-zoom rail also clamps on this (in OrbitCamera) so
+//                hitting "min/max zoom" matches what the user feels — at
+//                the floor you're grazing the surface, at the ceiling
+//                you're at panoramic altitude. Replaces the old
+//                `viewSpan` (focal-plane span) which was meaningful in
+//                isolation but didn't match the wheel clamp's actual
+//                rail.
 type CameraShim = {
   main: {
     zoom: number;
-    viewSpan: number;
+    altitude: number;
     scrollX: number;
     scrollY: number;
     width: number;
@@ -301,7 +305,7 @@ export class RtsScene3D {
   public readonly cameras: CameraShim = {
     main: {
       // Filled by the getters below via Object.defineProperty in constructor
-      zoom: 0, viewSpan: 0, scrollX: 0, scrollY: 0, width: 0, height: 0,
+      zoom: 0, altitude: 0, scrollX: 0, scrollY: 0, width: 0, height: 0,
     },
   };
 
@@ -358,18 +362,12 @@ export class RtsScene3D {
       zoom: {
         get: () => this._baseDistance / this.threeApp.orbit.distance,
       },
-      // Visible vertical world-units at the focal plane. Same value
-      // = same view regardless of where the user got there from. The
-      // perspective formula is `2 · distance · tan(vFov / 2)`; tan
-      // half-FOV is computed from the perspective camera's `fov`
-      // field (in degrees, so divide by 360 instead of 180 — extra
-      // /2 for the half-angle).
-      viewSpan: {
-        get: () => {
-          const distance = this.threeApp.orbit.distance;
-          const fovRad = (this.threeApp.camera.fov * Math.PI) / 180;
-          return 2 * distance * Math.tan(fovRad / 2);
-        },
+      // Camera altitude (world Y, distance from the y=0 ground plane
+      // along its normal). Read directly off the rendered camera so
+      // it reflects the actual displayed framing — including any
+      // terrain-clearance lift `apply()` may have applied.
+      altitude: {
+        get: () => this.threeApp.camera.position.y,
       },
       scrollX: {
         get: () => this.threeApp.orbit.target.x - this._visibleHalfWidth(),

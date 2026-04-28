@@ -1164,12 +1164,14 @@ const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
 function updateFPSStats(): void {
   const scene = backgroundBattle?.gameInstance?.getScene() ?? gameInstance?.getScene();
   if (scene) {
-    // Display the visible-world-span value (smaller = zoomed in,
-    // larger = zoomed out, same view → same number regardless of
-    // wheel-tick history). The `zoom` ratio is still used internally
-    // for LOD + save/restore but isn't a meaningful number to expose
-    // to the user.
-    currentZoom.value = scene.cameras.main.viewSpan ?? scene.cameras.main.zoom;
+    // Display camera altitude — distance from the y=0 ground plane
+    // along its normal. Universal: same physical state → same number
+    // regardless of pan / wheel-tick / target-y history. The wheel
+    // clamp also rides on altitude (in OrbitCamera), so "min/max
+    // zoom" matches what the user feels: at the floor you're grazing
+    // the surface, at the ceiling you're at panoramic altitude. The
+    // `zoom` ratio is still used internally for LOD + save/restore.
+    currentZoom.value = scene.cameras.main.altitude ?? scene.cameras.main.zoom;
 
     const timing = scene.getFrameTiming();
     frameMsAvg.value = timing.frameMsAvg;
@@ -2330,7 +2332,7 @@ onUnmounted(() => {
             <div class="fps-stats">
               <span
                 class="control-label"
-                title="Visible world span at focal plane (world units). Smaller = more zoomed in. Same view → same number regardless of how you got there."
+                title="Camera altitude (world units, distance from the ground plane). Smaller = closer to surface. Wheel clamp rides on altitude too — at the floor / ceiling you're at the actual physical limit, no more 'stuck' states."
                 >ZOOM:</span
               >
               <span class="fps-value">{{ fmt4(currentZoom) }}</span>
