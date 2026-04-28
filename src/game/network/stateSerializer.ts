@@ -501,16 +501,14 @@ export function serializeGameState(
   _poolIndex = 0;
   _entityBuf.length = 0;
 
-  // Track current entity IDs for removal detection
-  _currentEntityIds.clear();
-
   // Serialize units and buildings (projectiles handled via spawn/despawn events)
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
+  if (!deltaEnabled) _currentEntityIds.clear();
   for (const entity of world.getUnits()) {
-    _currentEntityIds.add(entity.id);
     if (deltaEnabled) {
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
+      _prevEntityIds.add(entity.id);
       if (!isNew && canSkipDeltaFingerprint(entity, prev)) continue;
       captureEntityState(entity, _nextStateScratch);
       const changedFields = isNew ? undefined : getChangedFields(entity, prev, _nextStateScratch);
@@ -520,6 +518,7 @@ export function serializeGameState(
         copyPrevState(_nextStateScratch, prev);
       }
     } else {
+      _currentEntityIds.add(entity.id);
       const netEntity = serializeEntity(entity, undefined);
       if (netEntity) _entityBuf.push(netEntity);
       const prev = getPrevState(entity.id);
@@ -527,10 +526,10 @@ export function serializeGameState(
     }
   }
   for (const entity of world.getBuildings()) {
-    _currentEntityIds.add(entity.id);
     if (deltaEnabled) {
       const prev = getPrevState(entity.id);
       const isNew = !_prevEntityIds.has(entity.id);
+      _prevEntityIds.add(entity.id);
       if (!isNew && canSkipDeltaFingerprint(entity, prev)) continue;
       captureEntityState(entity, _nextStateScratch);
       const changedFields = isNew ? undefined : getChangedFields(entity, prev, _nextStateScratch);
@@ -540,6 +539,7 @@ export function serializeGameState(
         copyPrevState(_nextStateScratch, prev);
       }
     } else {
+      _currentEntityIds.add(entity.id);
       const netEntity = serializeEntity(entity, undefined);
       if (netEntity) _entityBuf.push(netEntity);
       const prev = getPrevState(entity.id);
@@ -550,25 +550,23 @@ export function serializeGameState(
   // Detect removed entities (were in previous snapshot but not current)
   _removedIdsBuf.length = 0;
   if (deltaEnabled) {
-    for (const prevId of _prevEntityIds) {
-      if (!_currentEntityIds.has(prevId)) {
-        _removedIdsBuf.push(prevId);
-        _prevStates.delete(prevId);
-        // Clear seeded entry too — if the entity ID is reused later
-        // we want the next full to re-seed its statics.
-        _protocolSeeded.delete(prevId);
-      }
+    world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
+    for (const id of _removedIdsBuf) {
+      _prevEntityIds.delete(id);
+      _prevStates.delete(id);
+      // Clear seeded entry too — if the entity ID is reused later
+      // we want the next full to re-seed its statics.
+      _protocolSeeded.delete(id);
     }
-  }
-
-  // Update previous entity ID set for next frame
-  _prevEntityIds.clear();
-  for (const id of _currentEntityIds) {
-    _prevEntityIds.add(id);
-  }
-
-  // Clean up prevStates for entities that no longer exist
-  if (!deltaEnabled) {
+  } else {
+    _removedIdsBuf.length = 0;
+    world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
+    // Update previous entity ID set for next frame
+    _prevEntityIds.clear();
+    for (const id of _currentEntityIds) {
+      _prevEntityIds.add(id);
+    }
+    // Clean up prevStates for entities that no longer exist
     for (const id of _prevStates.keys()) {
       if (!_currentEntityIds.has(id)) {
         _prevStates.delete(id);

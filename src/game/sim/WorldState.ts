@@ -46,6 +46,7 @@ export class WorldState {
   private nextEntityId: EntityId = 1;
   private tick: number = 0;
   private buildingVersion: number = 0;
+  private removedSnapshotEntityIds: EntityId[] = [];
   public rng: SeededRNG;
 
   // Current player being controlled
@@ -171,8 +172,18 @@ export class WorldState {
       dropWeaponsForUnit(entity);
     }
     if (entity?.type === 'building') this.buildingVersion++;
+    if (entity?.type === 'unit' || entity?.type === 'building') {
+      this.removedSnapshotEntityIds.push(id);
+    }
     this.entities.delete(id);
     this.cache.invalidate();
+  }
+
+  drainRemovedSnapshotEntityIds(out: EntityId[]): void {
+    for (let i = 0; i < this.removedSnapshotEntityIds.length; i++) {
+      out.push(this.removedSnapshotEntityIds[i]);
+    }
+    this.removedSnapshotEntityIds.length = 0;
   }
 
   getBuildingVersion(): number {
