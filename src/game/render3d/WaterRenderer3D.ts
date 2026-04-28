@@ -23,6 +23,7 @@
 
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
+import { getGridOverlay } from '@/clientBarConfig';
 
 /** Subdivisions for the wave displacement. 96×96 is a sweet spot:
  *  enough resolution that the sin/cos waves read smoothly across a
@@ -114,8 +115,19 @@ export class WaterRenderer3D {
   }
 
   /** Per-frame tick — advances the wave time. Called from the
-   *  scene's update loop with the (clamped) frame dt in seconds. */
+   *  scene's update loop with the (clamped) frame dt in seconds.
+   *
+   *  Visibility piggybacks on the GRID overlay toggle: GRID:OFF hides
+   *  the capture-tile colour overlay (CaptureTileRenderer3D treats the
+   *  same setting as a master "show world topography decorations"
+   *  switch) and we hide the water plane along with it so a fully-
+   *  unadorned terrain view shows the raw tile geometry without the
+   *  translucent blue layer on top. Skip advancing the time uniform
+   *  while invisible — no waves, no shader cost. */
   update(dtSec: number): void {
+    const visible = getGridOverlay() !== 'off';
+    this.mesh.visible = visible;
+    if (!visible) return;
     this.timeUniform.value += dtSec;
   }
 
