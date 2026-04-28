@@ -471,7 +471,13 @@ export class Render3DEntities {
     for (let i = 0; i < Render3DEntities.LOW_INSTANCED_CAP; i++) {
       this.unitInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
     }
-    this.unitInstanced.count = Render3DEntities.LOW_INSTANCED_CAP;
+    // Start with count = 0 so an empty pool doesn't spin the GPU
+    // through 16k empty vertex-shader invocations every frame. The
+    // per-frame writer bumps count up to nextSlot (the high-water
+    // mark of allocated slot indices) at the end of each update —
+    // see updateUnitsInstanced. CAP is the buffer SIZE; count is the
+    // DRAW BOUND.
+    this.unitInstanced.count = 0;
     this.unitInstanced.instanceMatrix.needsUpdate = true;
     this.world.add(this.unitInstanced);
 
@@ -501,7 +507,9 @@ export class Render3DEntities {
     for (let i = 0; i < Render3DEntities.SMOOTH_CHASSIS_CAP; i++) {
       this.smoothChassis.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
     }
-    this.smoothChassis.count = Render3DEntities.SMOOTH_CHASSIS_CAP;
+    // Same draw-bound logic as unitInstanced — start at 0, bump to
+    // smoothChassisNextSlot per frame in updateUnits.
+    this.smoothChassis.count = 0;
     this.smoothChassis.instanceMatrix.needsUpdate = true;
     this.world.add(this.smoothChassis);
   }
@@ -832,6 +840,13 @@ export class Render3DEntities {
       }
     }
 
+    // Tighten draw bound to the high-water mark so the GPU doesn't
+    // run the vertex shader on the (CAP - nextSlot) trailing slots
+    // that have never been allocated. Freed slots within [0,
+    // nextSlot) still incur VS cost (their matrix is scale-0 so no
+    // fragments) but stable-slot allocation keeps churn-induced
+    // waste bounded — peak active count is the steady-state ceiling.
+    im.count = this.unitInstancedNextSlot;
     im.instanceMatrix.needsUpdate = true;
     if (im.instanceColor) im.instanceColor.needsUpdate = true;
   }
@@ -848,6 +863,7 @@ export class Render3DEntities {
     this.unitInstancedSlot.clear();
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedNextSlot = 0;
+    im.count = 0;
     im.instanceMatrix.needsUpdate = true;
   }
 
@@ -907,6 +923,7 @@ export class Render3DEntities {
     this.smoothChassisSlots.clear();
     this.smoothChassisFreeSlots.length = 0;
     this.smoothChassisNextSlot = 0;
+    im.count = 0;
     im.instanceMatrix.needsUpdate = true;
   }
 
@@ -942,7 +959,10 @@ export class Render3DEntities {
     for (let i = 0; i < Render3DEntities.POLY_CHASSIS_CAP; i++) {
       mesh.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
     }
-    mesh.count = Render3DEntities.POLY_CHASSIS_CAP;
+    // Same draw-bound logic — count tracks allocated slots, not the
+    // buffer's static cap. Per-frame writer bumps count to
+    // pool.nextSlot at end-of-update.
+    mesh.count = 0;
     mesh.instanceMatrix.needsUpdate = true;
     this.world.add(mesh);
     pool = { mesh, slots: new Map(), freeSlots: [], nextSlot: 0 };
@@ -989,8 +1009,8 @@ export class Render3DEntities {
   }
 
   /** Wipe every active polygonal-chassis slot across every per-renderer
-   *  pool (LOD flip). The pool meshes themselves stay in the scene with
-   *  count = CAP and all-zero matrices — next allocations refill them. */
+   *  pool (LOD flip). The pool meshes stay in the scene with count = 0
+   *  (no GPU draw work) until the next allocation refills them. */
   private releaseAllPolyChassisSlots(): void {
     for (const pool of this.polyChassis.values()) {
       for (const slot of pool.slots.values()) {
@@ -999,6 +1019,7 @@ export class Render3DEntities {
       pool.slots.clear();
       pool.freeSlots.length = 0;
       pool.nextSlot = 0;
+      pool.mesh.count = 0;
       pool.mesh.instanceMatrix.needsUpdate = true;
     }
   }
@@ -1609,19 +1630,26 @@ export class Render3DEntities {
     for (const id of this.barrelSpins.keys()) {
       if (!seen.has(id)) this.barrelSpins.delete(id);
     }
-    // Flush smooth-chassis instance buffers if any slot was touched
-    // this frame. Once-per-frame upload, regardless of how many
-    // smooth-body units wrote slots — same pattern legRenderer.flush()
-    // and updateUnitsInstanced use.
-    if (this.smoothChassis && this.smoothChassisSlots.size > 0) {
-      this.smoothChassis.instanceMatrix.needsUpdate = true;
-      if (this.smoothChassis.instanceColor) {
-        this.smoothChassis.instanceColor.needsUpdate = true;
+    // Flush smooth-chassis instance buffers + tighten draw bound
+    // to the high-water mark so the GPU stops running the vertex
+    // shader on the (CAP - nextSlot) trailing slots that have never
+    // been allocated. count = nextSlot scales the VS load with peak
+    // population instead of with the buffer's static cap (16384).
+    if (this.smoothChassis) {
+      this.smoothChassis.count = this.smoothChassisNextSlot;
+      if (this.smoothChassisSlots.size > 0) {
+        this.smoothChassis.instanceMatrix.needsUpdate = true;
+        if (this.smoothChassis.instanceColor) {
+          this.smoothChassis.instanceColor.needsUpdate = true;
+        }
       }
     }
-    // Same for every per-renderer polygonal pool. Skip pools that have
-    // no live slots to avoid uploading static all-zero buffers.
+    // Same for every per-renderer polygonal pool. count rides on
+    // each pool's nextSlot independently so a pool serving 50 units
+    // doesn't get stuck running 4096 VS invocations per frame just
+    // because it shares the architecture with a busier renderer.
     for (const pool of this.polyChassis.values()) {
+      pool.mesh.count = pool.nextSlot;
       if (pool.slots.size === 0) continue;
       pool.mesh.instanceMatrix.needsUpdate = true;
       if (pool.mesh.instanceColor) pool.mesh.instanceColor.needsUpdate = true;
