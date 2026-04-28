@@ -35,7 +35,7 @@ export const CAPTURE_CONFIG = {
    * value of 0.15 carves out a 450-unit-radius neutral circle around
    * the map center.
    */
-  initialOwnershipNeutralRadiusFraction: 0.15,
+  initialOwnershipNeutralRadiusFraction: 0.25,
 
   /**
    * Per-team flag height stamped onto every tile inside that team's
@@ -53,23 +53,22 @@ export const CAPTURE_CONFIG = {
 // =============================================================================
 //
 // A team's actual income from a tile is its flag-height (its
-// OWNERSHIP RATIO, 0–1) multiplied by the tile's rate — there is no
-// separate MANA_PER_TILE constant. The same rate drives tile colour
-// brightness in the GRID overlay so on-screen brightness and mana
-// income come from one number.
-
-/** Mana/sec from a fully-captured tile at the edge of the hotspot
- *  disc and everywhere outside it. Effectively the map's baseline
- *  per-tile income. */
-export const MANA_PER_TILE_PERIMETER = 10.0;
+// OWNERSHIP RATIO, 0–1) multiplied by the tile's rate. The
+// perimeter rate is just the default mana amount —
+// `BASE_MANA_PER_SECOND` from config.ts — there is no separate
+// perimeter constant. The hotspot multiplier scales that baseline
+// up as you approach the map centre. The same rate drives tile
+// colour brightness in the GRID overlay so on-screen brightness
+// and mana income come from one number.
 
 /** Peak hotspot multiplier at the map centre, applied on top of
- *  `MANA_PER_TILE_PERIMETER`. 1.0 → no hotspot (uniform production);
- *  3.0 → the centre tile produces 3× a perimeter tile. */
+ *  the default mana amount (`BASE_MANA_PER_SECOND`). 1.0 → no
+ *  hotspot (uniform production); 3.0 → the centre tile produces
+ *  3× a perimeter tile. */
 export const MANA_CENTER_TILE_MULTIPLIER = 50.0;
 
 /** Hotspot disc radius as a fraction of min(mapWidth, mapHeight).
- *  Inside the disc the rate ramps linearly from perimeter at the
- *  edge to `perimeter × centerMultiplier` at the middle. 0.0
- *  disables the hotspot; 1.0 covers the entire map. */
+ *  Inside the disc the rate ramps linearly from the default mana
+ *  amount at the edge to `default × centerMultiplier` at the
+ *  middle. 0.0 disables the hotspot; 1.0 covers the entire map. */
 export const MANA_HOTSPOT_RADIUS_FRACTION = 0.30;
