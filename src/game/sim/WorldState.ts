@@ -222,6 +222,16 @@ export class WorldState {
     return this.cache.getProjectiles();
   }
 
+  getTravelingProjectiles(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getTravelingProjectiles();
+  }
+
+  getLineProjectiles(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getLineProjectiles();
+  }
+
   // Get units with force field weapons (cached - DO NOT MODIFY returned array)
   getForceFieldUnits(): Entity[] {
     this.rebuildCachesIfNeeded();

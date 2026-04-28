@@ -7,6 +7,8 @@ export class EntityCacheManager {
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
   private cachedProjectiles: Entity[] = [];
+  private cachedTravelingProjectiles: Entity[] = [];
+  private cachedLineProjectiles: Entity[] = [];
   private cachedForceFieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
@@ -36,6 +38,8 @@ export class EntityCacheManager {
     this.cachedUnits.length = 0;
     this.cachedBuildings.length = 0;
     this.cachedProjectiles.length = 0;
+    this.cachedTravelingProjectiles.length = 0;
+    this.cachedLineProjectiles.length = 0;
     this.cachedForceFieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
@@ -73,6 +77,11 @@ export class EntityCacheManager {
           break;
         case 'shot':
           this.cachedProjectiles.push(entity);
+          if (entity.projectile?.projectileType === 'projectile') {
+            this.cachedTravelingProjectiles.push(entity);
+          } else if (entity.projectile?.projectileType === 'beam' || entity.projectile?.projectileType === 'laser') {
+            this.cachedLineProjectiles.push(entity);
+          }
           break;
       }
     }
@@ -90,6 +99,14 @@ export class EntityCacheManager {
 
   getProjectiles(): Entity[] {
     return this.cachedProjectiles;
+  }
+
+  getTravelingProjectiles(): Entity[] {
+    return this.cachedTravelingProjectiles;
+  }
+
+  getLineProjectiles(): Entity[] {
+    return this.cachedLineProjectiles;
   }
 
   getForceFieldUnits(): Entity[] {

@@ -410,11 +410,9 @@ const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] 
 // engine, client dead-reckoning, debris, and explosion sparks.
 
 function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
-  for (const entity of world.getProjectiles()) {
+  for (const entity of world.getTravelingProjectiles()) {
     if (!entity.projectile) continue;
     const proj = entity.projectile;
-
-    if (proj.projectileType !== 'projectile') continue;
 
     proj.timeAlive += dtMs;
 
@@ -542,13 +540,10 @@ export function updateProjectiles(
   // M12 deletes it entirely. The JS path below is the 3D authority.
   _updateTravelingProjectilesJS(world, dtMs, dtSec);
 
-  for (const entity of world.getProjectiles()) {
+  for (const entity of world.getLineProjectiles()) {
     if (!entity.projectile) continue;
 
     const proj = entity.projectile;
-
-    // Traveling projectiles already handled in pre-pass (WASM or JS)
-    if (proj.projectileType === 'projectile') continue;
 
     // Update beam/laser positions to follow turret direction
     if (proj.projectileType === 'beam' || proj.projectileType === 'laser') {
