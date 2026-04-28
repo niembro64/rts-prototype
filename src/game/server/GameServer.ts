@@ -495,10 +495,23 @@ export class GameServer {
       const dirY = entity.unit.thrustDirY ?? 0;
       const dirMag = magnitude(dirX, dirY);
 
+      // Get external forces from the accumulator before the expensive
+      // terrain/water path. A sleeping unit with no thrust and no
+      // external force can stay parked without probing shorelines or
+      // sampling surface normals this tick.
+      const externalForce = forceAccumulator.getFinalForce(entity.id);
+      const externalFx = (externalForce?.fx ?? 0) / 3600;
+      const externalFy = (externalForce?.fy ?? 0) / 3600;
+      const hasExternalForce = externalFx !== 0 || externalFy !== 0;
+
       // Unit faces its movement direction (yaw only — chassis tilt
       // is a render concern; sim transform.rotation stays a 2D yaw).
       if (dirMag > 0.01) {
         entity.transform.rotation = Math.atan2(dirY, dirX);
+      }
+
+      if (body.sleeping && dirMag <= 0.01 && !hasExternalForce) {
+        continue;
       }
 
       let thrustForceX = 0;
@@ -611,11 +624,6 @@ export class GameServer {
           thrustForceZ = t.z * thrustMagnitude;
         }
       }
-
-      // Get external forces from the accumulator
-      const externalForce = forceAccumulator.getFinalForce(entity.id);
-      const externalFx = (externalForce?.fx ?? 0) / 3600;
-      const externalFy = (externalForce?.fy ?? 0) / 3600;
 
       let totalForceX = thrustForceX + externalFx;
       let totalForceY = thrustForceY + externalFy;
