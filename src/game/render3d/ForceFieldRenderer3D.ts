@@ -140,10 +140,18 @@ void main() {
 }
 `;
 
-/** Cap on shared emitter+zone instances. Each active force field
- *  occupies 2 slots (1 emitter + 1 zone), so 2048 fields fit. Real
- *  scenes peak in the hundreds — generous headroom. */
-const SPHERE_INSTANCED_CAP = 4096;
+/** Cap on shared sphere instances. Each active force field can
+ *  consume up to:
+ *    - 1 emitter slot (always)
+ *    - 1 zone slot (always)
+ *    - particleCount (28 / 56) particle slots at HI / MAX LOD
+ *    - particleCount × TRAIL_SEGMENTS trail slots at MAX LOD
+ *  → up to 1 + 1 + 56 + 168 = 226 slots per field at MAX. Cap of
+ *  16384 fits ~72 simultaneous MAX-tier fields, well above any
+ *  realistic concurrent count (typical scenes have at most a few
+ *  dozen active force fields). HI tier needs 1+1+28 = 30 slots /
+ *  field → 540 fields fit. */
+const SPHERE_INSTANCED_CAP = 16384;
 
 export class ForceFieldRenderer3D {
   private root: THREE.Group;
@@ -180,6 +188,7 @@ export class ForceFieldRenderer3D {
   private _sphereScratchPos = new THREE.Vector3();
   private _sphereScratchScale = new THREE.Vector3();
   private _sphereLocalPos = new THREE.Vector3();
+  private _sphereParticlePos = new THREE.Vector3();
   private _sphereParentQuat = new THREE.Quaternion();
   private _sphereYawQuat = new THREE.Quaternion();
   private static readonly _SPHERE_UP = new THREE.Vector3(0, 1, 0);
@@ -284,42 +293,12 @@ export class ForceFieldRenderer3D {
     return field;
   }
 
-  /** Lazily allocate particle meshes up to the requested count.
-   *  New meshes parent to the SAME group the field's emitter is in —
-   *  after reparentFieldTo, that's the host unit's yawGroup, so motes
-   *  spawn directly into the chassis-local frame. */
-  private ensureParticles(field: FieldMesh, count: number): void {
-    while (field.particles.length < count) {
-      const mesh = new THREE.Mesh(this.particleSphereGeom, field.particleMat);
-      mesh.renderOrder = 9;
-      mesh.visible = false;
-      (field.emitter.parent ?? this.root).add(mesh);
-      field.particles.push(mesh);
-    }
-  }
-
-  /** Lazily allocate the per-particle ghost trail meshes (MAX only).
-   *  Each main particle gets TRAIL_SEGMENTS ghosts; each ghost has its
-   *  own material so opacity decays per step. Color set per frame so
-   *  trails inherit field tint when the field switches teams. */
-  private ensureTrails(field: FieldMesh, particleCount: number, color: number): void {
-    const required = particleCount * TRAIL_SEGMENTS;
-    while (field.trailMeshes.length < required) {
-      const mat = new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.0,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const mesh = new THREE.Mesh(this.particleSphereGeom, mat);
-      mesh.renderOrder = 9;
-      mesh.visible = false;
-      (field.emitter.parent ?? this.root).add(mesh);
-      field.trailMeshes.push(mesh);
-      field.trailMats.push(mat);
-    }
-  }
+  // Particles + trails are no longer per-Mesh — they write into the
+  // shared `sphereInstancedMesh` slots in the per-frame loop. The
+  // previous ensureParticles / ensureTrails lazy allocators have
+  // been removed; FieldMesh.particles / trailMeshes / trailMats stay
+  // on the type for one-time cleanup of any pre-instancing-commit
+  // leftovers (see the cleanup loop in _processUnit).
 
   /** Reparent every mesh in a FieldMesh from its current parent (the
    *  renderer's `root` group on first frame, or the previous host's
@@ -651,30 +630,29 @@ export class ForceFieldRenderer3D {
         // (random-but-deterministic theta/phi via fieldHash) and a phase
         // that scrolls a radial fraction over time. Inner→outer travel
         // (matches 2D's `pushOutward = false` default — particles head
-        // toward the bubble's interior).
-        if (wantParticles && particleCount > 0) {
-          this.ensureParticles(field, particleCount);
+        // toward the bubble's interior). Particles + trails write into
+        // the same shared sphereInstancedMesh as emitter+zone — one
+        // shared draw call per frame regardless of LOD.
+        if (
+          wantParticles
+          && particleCount > 0
+          && havePosition
+          && this.sphereInstancedMesh
+        ) {
           const v = FORCE_FIELD_VISUAL;
           const seed = (unit.id * 31 + ti) | 0;
           const speed = v.particleSpeed * (style === 'enhanced' ? 1.5 : 1);
           const radialBand = Math.max(outer - inner, 1);
-          // Tint particles with the field's color so they read as part of
-          // the same effect (not generic white).
-          field.particleMat.color.set(push.color);
-          field.particleMat.opacity = push.alpha * 4 * fadeIn * FIELD_OPACITY_BOOST;
-          // MAX-only: ghost trails behind each mote, fading per step.
-          if (wantArcs) this.ensureTrails(field, particleCount, push.color);
-          const baseTrailOpacity = field.particleMat.opacity;
-          for (let pi = 0; pi < field.particles.length; pi++) {
-            const mote = field.particles[pi];
-            if (pi >= particleCount) {
-              mote.visible = false;
-              for (let t = 0; t < TRAIL_SEGMENTS; t++) {
-                const trail = field.trailMeshes[pi * TRAIL_SEGMENTS + t];
-                if (trail) trail.visible = false;
-              }
-              continue;
-            }
+          // Per-particle alpha + color (constant across particles in
+          // the same field this frame; per-particle radial offset
+          // changes only the matrix).
+          const particleAlpha = push.alpha * 4 * fadeIn * FIELD_OPACITY_BOOST;
+          const pColorR = ((push.color >> 16) & 0xff) / 255;
+          const pColorG = ((push.color >>  8) & 0xff) / 255;
+          const pColorB = ( push.color        & 0xff) / 255;
+
+          for (let pi = 0; pi < particleCount; pi++) {
+            if (this._sphereCursor >= SPHERE_INSTANCED_CAP) break;
             // Even-ish distribution on a 2-sphere: theta ∈ [0, 2π),
             // phi via acos(2u − 1) so we don't pole-cluster.
             const theta = fieldHash(pi * 9181, seed) * Math.PI * 2;
@@ -686,41 +664,94 @@ export class ForceFieldRenderer3D {
             const dirY = Math.cos(phi);
             const dirZ = Math.sin(theta) * rxy;
             const radius = inner + radialBand * cycle;
-            mote.position.set(cx + dirX * radius, cy + dirY * radius, cz + dirZ * radius);
-            mote.scale.setScalar(PARTICLE_RADIUS);
-            mote.visible = true;
 
-            // Place each ghost behind the mote at progressively earlier
-            // cycle fractions (wrapping mod 1 keeps trails on the same
-            // radial spoke when the mote loops back to inner).
+            // World position = field-center-world + R(parentQuat) ·
+            // (dirX*r, dirY*r, dirZ*r). The radial offsets are
+            // unit-local (so the particle cloud rotates with the
+            // unit's yaw / tilt, matching the previous per-Mesh
+            // path which was parented to liftGroup).
+            this._sphereLocalPos.set(dirX * radius, dirY * radius, dirZ * radius);
+            this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
+            this._sphereParticlePos.set(
+              this._sphereScratchPos.x + this._sphereLocalPos.x,
+              this._sphereScratchPos.y + this._sphereLocalPos.y,
+              this._sphereScratchPos.z + this._sphereLocalPos.z,
+            );
+            this._sphereScratchScale.set(PARTICLE_RADIUS, PARTICLE_RADIUS, PARTICLE_RADIUS);
+            this._sphereScratchMat.compose(
+              this._sphereParticlePos,
+              ForceFieldRenderer3D._IDENTITY_QUAT,
+              this._sphereScratchScale,
+            );
+            this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
+            this.sphereAlphaArr[this._sphereCursor] = particleAlpha;
+            this.sphereColorArr[this._sphereCursor * 3]     = pColorR;
+            this.sphereColorArr[this._sphereCursor * 3 + 1] = pColorG;
+            this.sphereColorArr[this._sphereCursor * 3 + 2] = pColorB;
+            this._sphereCursor++;
+
+            // Place each ghost trail behind the mote at progressively
+            // earlier cycle fractions. Same shared instance pool —
+            // trail i for particle pi just takes the next cursor slot.
+            // MAX-LOD only (`wantArcs` doubles as "draw trails" since
+            // arcs and trails are both enhanced-tier features).
             if (wantArcs) {
-              for (let t = 1; t <= TRAIL_SEGMENTS; t++) {
-                const idx = pi * TRAIL_SEGMENTS + (t - 1);
-                const trail = field.trailMeshes[idx];
-                const trailMat = field.trailMats[idx];
-                if (!trail || !trailMat) continue;
-                const trailFrac = ((cycle - TRAIL_FRAC_PER_STEP * t) + 1) % 1;
+              for (let trailIdx = 1; trailIdx <= TRAIL_SEGMENTS; trailIdx++) {
+                if (this._sphereCursor >= SPHERE_INSTANCED_CAP) break;
+                const trailFrac = ((cycle - TRAIL_FRAC_PER_STEP * trailIdx) + 1) % 1;
                 const trailRadius = inner + radialBand * trailFrac;
-                trail.position.set(
-                  cx + dirX * trailRadius,
-                  cy + dirY * trailRadius,
-                  cz + dirZ * trailRadius,
+                this._sphereLocalPos.set(
+                  dirX * trailRadius,
+                  dirY * trailRadius,
+                  dirZ * trailRadius,
                 );
-                trail.scale.setScalar(PARTICLE_RADIUS * Math.pow(TRAIL_SCALE_FALLOFF, t));
-                trailMat.color.set(push.color);
-                trailMat.opacity = baseTrailOpacity * Math.pow(TRAIL_OPACITY_FALLOFF, t);
-                trail.visible = true;
-              }
-            } else {
-              for (let t = 0; t < TRAIL_SEGMENTS; t++) {
-                const trail = field.trailMeshes[pi * TRAIL_SEGMENTS + t];
-                if (trail) trail.visible = false;
+                this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
+                this._sphereParticlePos.set(
+                  this._sphereScratchPos.x + this._sphereLocalPos.x,
+                  this._sphereScratchPos.y + this._sphereLocalPos.y,
+                  this._sphereScratchPos.z + this._sphereLocalPos.z,
+                );
+                const trailScale = PARTICLE_RADIUS * Math.pow(TRAIL_SCALE_FALLOFF, trailIdx);
+                this._sphereScratchScale.set(trailScale, trailScale, trailScale);
+                this._sphereScratchMat.compose(
+                  this._sphereParticlePos,
+                  ForceFieldRenderer3D._IDENTITY_QUAT,
+                  this._sphereScratchScale,
+                );
+                this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
+                this.sphereAlphaArr[this._sphereCursor] =
+                  particleAlpha * Math.pow(TRAIL_OPACITY_FALLOFF, trailIdx);
+                this.sphereColorArr[this._sphereCursor * 3]     = pColorR;
+                this.sphereColorArr[this._sphereCursor * 3 + 1] = pColorG;
+                this.sphereColorArr[this._sphereCursor * 3 + 2] = pColorB;
+                this._sphereCursor++;
               }
             }
           }
-        } else {
-          for (const p of field.particles) p.visible = false;
-          for (const tr of field.trailMeshes) tr.visible = false;
+        }
+        // Hide any per-Mesh particle / trail leftover from a previous
+        // tier (the InstancedMesh handles all visible particles now;
+        // any pre-existing per-Mesh particles are dead and just
+        // clutter the scenegraph). The legacy ensure paths are no
+        // longer called, but the particles[] / trailMeshes[] arrays
+        // could still hold meshes from before this commit landed —
+        // this loop is a one-time cleanup that becomes a no-op once
+        // the field is rebuilt.
+        if (field.particles.length > 0) {
+          for (const p of field.particles) {
+            p.parent?.remove(p);
+            (p.material as THREE.Material).dispose();
+          }
+          field.particles.length = 0;
+        }
+        if (field.trailMeshes.length > 0) {
+          for (let i = 0; i < field.trailMeshes.length; i++) {
+            const tr = field.trailMeshes[i];
+            tr.parent?.remove(tr);
+            field.trailMats[i]?.dispose();
+          }
+          field.trailMeshes.length = 0;
+          field.trailMats.length = 0;
         }
 
         // ── Electric arcs (MAX LOD only) ──
