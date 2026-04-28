@@ -4,7 +4,8 @@
 import { WorldState } from '../sim/WorldState';
 import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
-import { spawnInitialEntities, spawnInitialBases } from '../sim/spawn';
+import { spawnInitialEntities, spawnInitialBases, FIRST_PLAYER_ANGLE } from '../sim/spawn';
+import { CAPTURE_CONFIG } from '../../captureConfig';
 import { serializeGameState, resetDeltaTracking } from '../network/stateSerializer';
 import type { NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
@@ -176,6 +177,21 @@ export class GameServer {
 
     // Setup simulation callbacks
     this.setupSimulationCallbacks();
+
+    // Pre-paint the capture grid into per-team radial sectors with a
+    // neutral disc at the map center. Same angular layout the spawn
+    // circle and terrain dividers use, so each team starts with the
+    // territory directly in front of their base. Tiles flagged dirty
+    // here flow out in the next snapshot regardless of keyframe / delta.
+    {
+      const minDim = Math.min(mapWidth, mapHeight);
+      const neutralRadius = minDim * CAPTURE_CONFIG.initialOwnershipNeutralRadiusFraction;
+      this.captureSystem.initializeRadialOwnership(
+        mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE,
+        this.playerIds, FIRST_PLAYER_ANGLE,
+        neutralRadius, CAPTURE_CONFIG.initialOwnershipHeight,
+      );
+    }
 
     // AI player configuration
     const aiPlayerIds = config.aiPlayerIds ?? (this.backgroundMode ? [...this.playerIds] : []);

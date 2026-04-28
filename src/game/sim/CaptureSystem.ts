@@ -128,6 +128,69 @@ export class CaptureSystem {
     this.dirtyTiles.clear();
     this.flagSums.clear();
   }
+
+  /** Pre-capture every grid cell outside a central neutral disc to the
+   *  team whose radial sector contains it, so the map starts already
+   *  partitioned along the same angular sectors the spawn-circle and
+   *  terrain-divider ridges use.
+   *
+   *  Sector math mirrors spawn.ts → getPlayerBaseAngle: player i is
+   *  centered at `(i / N) * 2π + firstPlayerAngle`, so we shift the
+   *  cell's angle by `-firstPlayerAngle + π/N` (half a sector width)
+   *  before dividing into N buckets — the result lands player 0's
+   *  sector at index 0.
+   *
+   *  Each touched tile is added to dirtyTiles so the very next snapshot
+   *  (whether keyframe or delta) ships the new ownership. flagSums is
+   *  bumped per team so mana income reflects starting territory before
+   *  any unit moves.
+   *
+   *  Safe to call only on a fresh system — assumes no existing tiles. */
+  initializeRadialOwnership(
+    mapWidth: number,
+    mapHeight: number,
+    cellSize: number,
+    playerIds: PlayerId[],
+    firstPlayerAngle: number,
+    neutralRadius: number,
+    ownerHeight: number,
+  ): void {
+    const N = playerIds.length;
+    if (N <= 0 || ownerHeight <= 0) return;
+
+    const cx0 = mapWidth / 2;
+    const cy0 = mapHeight / 2;
+    const cellsX = Math.max(1, Math.ceil(mapWidth / cellSize));
+    const cellsY = Math.max(1, Math.ceil(mapHeight / cellSize));
+    const sectorWidth = (Math.PI * 2) / N;
+    const neutralRadiusSq = neutralRadius * neutralRadius;
+    const TWO_PI = Math.PI * 2;
+
+    for (let cy = 0; cy < cellsY; cy++) {
+      for (let cx = 0; cx < cellsX; cx++) {
+        // Cell centroid in world coords (matches the spatial-grid /
+        // capture-tile encoding used everywhere else).
+        const wx = (cx + 0.5) * cellSize;
+        const wy = (cy + 0.5) * cellSize;
+        const dx = wx - cx0;
+        const dy = wy - cy0;
+        if (dx * dx + dy * dy <= neutralRadiusSq) continue;
+
+        // Angle in [0, 2π), then shift into the player-0-at-0 frame.
+        let theta = Math.atan2(dy, dx) - firstPlayerAngle + sectorWidth * 0.5;
+        theta = ((theta % TWO_PI) + TWO_PI) % TWO_PI;
+        const idx = Math.floor(theta / sectorWidth) % N;
+        const pid = playerIds[idx];
+
+        const key = ((cx + 32768) << 16) | (cy + 32768);
+        const tile: TileState = new Map();
+        tile.set(pid, ownerHeight);
+        this.tiles.set(key, tile);
+        this.dirtyTiles.add(key);
+        this.flagSums.set(pid, (this.flagSums.get(pid) ?? 0) + ownerHeight);
+      }
+    }
+  }
 }
 
 // --- Module-level reusable buffers ---

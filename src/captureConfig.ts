@@ -22,4 +22,27 @@ export const CAPTURE_CONFIG = {
    */
   contestedDecay: false,
   contestedDecayRate: 0.1,
+
+  /**
+   * On game init, every tile outside a central neutral disc is pre-
+   * captured by the team whose radial sector contains it (matching
+   * the spawn-circle layout in spawn.ts → getPlayerBaseAngle). The
+   * neutral disc keeps the very center of the map up for grabs so
+   * teams have something to fight over from frame 1 instead of
+   * starting on a fully-painted board.
+   *
+   * Fraction of min(mapWidth, mapHeight) — i.e. on a 4000×3000 map a
+   * value of 0.15 carves out a 450-unit-radius neutral circle around
+   * the map center.
+   */
+  initialOwnershipNeutralRadiusFraction: 0.15,
+
+  /**
+   * Per-team flag height stamped onto every tile inside that team's
+   * radial sector at init. 1.0 = fully captured (max mana income from
+   * that tile); lower values let opposing units flip the territory
+   * faster. Defaults to fully captured — the radial layout is the
+   * starting state, not a soft tint.
+   */
+  initialOwnershipHeight: 1.0,
 };

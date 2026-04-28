@@ -46,6 +46,8 @@ import {
   getAudioSmoothing,
   getCameraSmoothMode,
   setCurrentZoom,
+  getGridOverlay,
+  getGridOverlayIntensity,
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { getPlayerBaseAngle } from '../sim/spawn';
@@ -1112,12 +1114,23 @@ export class RtsScene3D {
     // The camera quad is already computed once per frame for the
     // shared ViewportFootprint (scope culling); the minimap just
     // reads it so we don't pay 4× raycasts twice per frame.
+    //
+    // Capture-overlay parity: hand the minimap the same tiles +
+    // cellSize the 3D CaptureTileRenderer3D consumes, plus the GRID
+    // intensity from clientBarConfig (off=0 → minimap skips the
+    // overlay). One switch keeps the two views in lockstep.
+    const captureTiles = this.clientViewState.getCaptureTiles();
+    const captureCellSize = this.clientViewState.getCaptureCellSize();
+    const intensity = getGridOverlay() === 'off' ? 0 : getGridOverlayIntensity();
     this.onMinimapUpdate(
       buildMinimapData(
         this.entitySourceAdapter,
         this.mapWidth,
         this.mapHeight,
         this._cameraQuad,
+        captureTiles,
+        captureCellSize,
+        intensity,
       ),
     );
   }

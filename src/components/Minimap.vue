@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { getTerrainHeight, WATER_LEVEL } from '@/game/sim/Terrain';
+import { PLAYER_COLORS } from '@/game/sim/types';
+import type { PlayerId } from '@/game/sim/types';
+import { MAP_BG_COLOR } from '@/config';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
+
+// Same neutral baseline the 3D CaptureTileRenderer3D uses (lifted from
+// MAP_BG_COLOR), so unowned cells on the minimap match unowned cells in
+// the 3D scene exactly.
+const NEUTRAL_R = (MAP_BG_COLOR >> 16) & 0xff;
+const NEUTRAL_G = (MAP_BG_COLOR >> 8) & 0xff;
+const NEUTRAL_B = MAP_BG_COLOR & 0xff;
 
 const props = defineProps<{
   data: MinimapData;
@@ -80,22 +90,98 @@ function drawEntityLayer(): void {
   // putImageData ignores canvas composite ops (it stamps raw RGBA),
   // so writing a fully-opaque per-pixel color avoids the alpha-mask
   // dance you'd need with a transparent overlay.
+  // Pre-resolve the per-tile dominant-team color + max flag height into
+  // flat lookup arrays before the per-pixel loop. Each pixel just maps
+  // its world coords to a (cx, cy) and hits these arrays — no nested
+  // dict lookups inside the hot loop.
+  //
+  // Same blend formula the 3D CaptureTileRenderer3D uses:
+  //     mix     = clamp(intensity * 3 * maxHeight, 0, 1)
+  //     out_rgb = neutral * (1 − mix) + teamColor * mix
+  // Identical math = identical brightness in both views. When
+  // captureCellSize is 0 (no data yet) or intensity is 0 (GRID off) we
+  // skip the overlay — the minimap reads pure terrain shading instead.
+  const { captureTiles, captureCellSize, gridOverlayIntensity } = props.data;
+  const overlayActive = captureCellSize > 0 && gridOverlayIntensity > 0 && captureTiles.length > 0;
+  let tileTeamR: Float32Array | null = null;
+  let tileTeamG: Float32Array | null = null;
+  let tileTeamB: Float32Array | null = null;
+  let tileMaxH: Float32Array | null = null;
+  let tileCellsX = 0;
+  let tileCellsY = 0;
+  if (overlayActive) {
+    tileCellsX = Math.max(1, Math.ceil(mapWidth / captureCellSize));
+    tileCellsY = Math.max(1, Math.ceil(mapHeight / captureCellSize));
+    const n = tileCellsX * tileCellsY;
+    tileTeamR = new Float32Array(n);
+    tileTeamG = new Float32Array(n);
+    tileTeamB = new Float32Array(n);
+    tileMaxH  = new Float32Array(n);
+    for (let i = 0; i < captureTiles.length; i++) {
+      const tile = captureTiles[i];
+      const { cx, cy } = tile;
+      if (cx < 0 || cx >= tileCellsX || cy < 0 || cy >= tileCellsY) continue;
+      let totalWeight = 0;
+      let r = 0, g = 0, b = 0;
+      let maxHeight = 0;
+      for (const pidStr in tile.heights) {
+        const height = tile.heights[Number(pidStr)];
+        if (height <= 0) continue;
+        const pc = PLAYER_COLORS[Number(pidStr) as PlayerId];
+        if (!pc) continue;
+        const color = pc.primary;
+        totalWeight += height;
+        r += ((color >> 16) & 0xff) * height;
+        g += ((color >> 8) & 0xff) * height;
+        b += (color & 0xff) * height;
+        if (height > maxHeight) maxHeight = height;
+      }
+      if (totalWeight <= 0) continue;
+      const idx = cy * tileCellsX + cx;
+      tileTeamR[idx] = r / totalWeight;
+      tileTeamG[idx] = g / totalWeight;
+      tileTeamB[idx] = b / totalWeight;
+      tileMaxH[idx]  = maxHeight;
+    }
+  }
+
   const lakeImg = ctx.createImageData(w, h);
   const lakePixels = lakeImg.data;
   // Lake color same family as the 3D water plane; background mirrors
-  // the previous fillStyle = '#1a1a2e'.
+  // the previous fillStyle = '#1a1a2e' (= NEUTRAL_*).
   const lakeR = 0x2a, lakeG = 0x55, lakeB = 0x9a;
-  const bgR = 0x1a, bgG = 0x1a, bgB = 0x2e;
+  const intensity3 = gridOverlayIntensity * 3;
   let pi = 0;
   for (let py = 0; py < h; py++) {
     const worldY = py / scaleY;
+    const ty = overlayActive ? Math.floor(worldY / captureCellSize) : 0;
     for (let px = 0; px < w; px++, pi += 4) {
       const worldX = px / scaleX;
       const height = getTerrainHeight(worldX, worldY, mapWidth, mapHeight);
       const wet = height < WATER_LEVEL;
-      lakePixels[pi]     = wet ? lakeR : bgR;
-      lakePixels[pi + 1] = wet ? lakeG : bgG;
-      lakePixels[pi + 2] = wet ? lakeB : bgB;
+      let outR: number, outG: number, outB: number;
+      if (wet) {
+        outR = lakeR; outG = lakeG; outB = lakeB;
+      } else {
+        outR = NEUTRAL_R; outG = NEUTRAL_G; outB = NEUTRAL_B;
+        if (overlayActive && tileTeamR && tileTeamG && tileTeamB && tileMaxH) {
+          const tx = Math.floor(worldX / captureCellSize);
+          if (tx >= 0 && tx < tileCellsX && ty >= 0 && ty < tileCellsY) {
+            const idx = ty * tileCellsX + tx;
+            const maxH = tileMaxH[idx];
+            if (maxH > 0) {
+              const mix = Math.min(1, intensity3 * maxH);
+              const inv = 1 - mix;
+              outR = NEUTRAL_R * inv + tileTeamR[idx] * mix;
+              outG = NEUTRAL_G * inv + tileTeamG[idx] * mix;
+              outB = NEUTRAL_B * inv + tileTeamB[idx] * mix;
+            }
+          }
+        }
+      }
+      lakePixels[pi]     = outR;
+      lakePixels[pi + 1] = outG;
+      lakePixels[pi + 2] = outB;
       lakePixels[pi + 3] = 0xff;
     }
   }
@@ -213,7 +299,14 @@ function handleClick(event: MouseEvent) {
 // in-place, flip this to `deep: true` or this watch will silently stop
 // firing.
 watch(
-  () => [props.data.entities, props.data.mapWidth, props.data.mapHeight],
+  () => [
+    props.data.entities,
+    props.data.mapWidth,
+    props.data.mapHeight,
+    props.data.captureTiles,
+    props.data.captureCellSize,
+    props.data.gridOverlayIntensity,
+  ],
   () => { drawEntityLayer(); compose(); },
   { deep: false },
 );

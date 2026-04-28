@@ -60,7 +60,7 @@ function getDemoCircle(world: WorldState): { cx: number; cy: number; radius: num
 // four cardinal directions, so each team's back is to a corner of
 // the map. Exported so the background-battle unit spawner can place
 // each team's units on the same arc as their base.
-const FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
+export const FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
 export function getPlayerBaseAngle(i: number, playerCount: number): number {
   return (i / playerCount) * Math.PI * 2 + FIRST_PLAYER_ANGLE;
 }

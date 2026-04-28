@@ -19,9 +19,10 @@ export type {
   EconomyInfo,
   MinimapEntity,
   MinimapData,
+  MinimapCaptureTile,
   UIInputState as InputState,
 } from '@/types/ui';
-import type { UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, UIInputState as InputState } from '@/types/ui';
+import type { UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, MinimapCaptureTile, UIInputState as InputState } from '@/types/ui';
 
 // Build selection info from entity source and input state
 export function buildSelectionInfo(
@@ -111,12 +112,20 @@ export function buildEconomyInfo(
   };
 }
 
-// Build minimap data from entities
+// Build minimap data from entities. captureTiles + captureCellSize +
+// gridOverlayIntensity flow straight through to Minimap.vue so the
+// minimap can paint the same per-team color overlay (with the same
+// blend math) the 3D CaptureTileRenderer3D paints. When intensity is
+// 0 (GRID overlay = off) the minimap renderer skips the overlay
+// entirely — one switch ties minimap brightness to 3D brightness.
 export function buildMinimapData(
   entitySource: UIEntitySource,
   mapWidth: number,
   mapHeight: number,
   cameraQuad: MinimapData['cameraQuad'],
+  captureTiles: readonly MinimapCaptureTile[],
+  captureCellSize: number,
+  gridOverlayIntensity: number,
 ): MinimapData {
   const entities: MinimapEntity[] = [];
 
@@ -147,5 +156,8 @@ export function buildMinimapData(
     mapHeight,
     entities,
     cameraQuad,
+    captureTiles,
+    captureCellSize,
+    gridOverlayIntensity,
   };
 }

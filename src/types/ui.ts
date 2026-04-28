@@ -60,6 +60,17 @@ export type MinimapEntity = {
   isSelected?: boolean;
 };
 
+/** One captured grid cell carried across to the minimap. Mirrors the
+ *  3D CaptureTileRenderer3D's per-tile data exactly so the two
+ *  renderers can share a blend formula. cx / cy are integer cell
+ *  indices into the `cellSize`-spaced grid; `heights` is a sparse
+ *  per-team flag-height map (0–1). */
+export type MinimapCaptureTile = {
+  cx: number;
+  cy: number;
+  heights: Record<number, number>;
+};
+
 export type MinimapData = {
   mapWidth: number;
   mapHeight: number;
@@ -72,6 +83,20 @@ export type MinimapData = {
    *  as a polygon so the shape always matches the actual viewport,
    *  including the trapezoidal ground-plane projection in 3D. */
   cameraQuad: readonly [Vec2, Vec2, Vec2, Vec2];
+
+  /** Per-tile capture data, paralleled with the 3D capture-tile
+   *  renderer. Empty array when the GRID overlay is OFF — the minimap
+   *  uses this as the signal to skip the team-color overlay (one
+   *  switch keeps minimap brightness in lockstep with the 3D grid). */
+  captureTiles: readonly MinimapCaptureTile[];
+  /** World-units side length of a capture grid cell. 0 means "no
+   *  capture data this frame" (e.g. server hasn't sent anything yet);
+   *  the minimap renderer falls back to skipping the overlay. */
+  captureCellSize: number;
+  /** Lerp factor from neutral → dominant team color. Mirrors the
+   *  PLAYER CLIENT GRID intensity (off → 0, low → 0.1, high → 0.8)
+   *  so minimap brightness tracks the 3D scene's brightness exactly. */
+  gridOverlayIntensity: number;
 };
 
 // Lobby player (used in both component and network)
