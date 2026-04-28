@@ -448,6 +448,24 @@ export class NetworkManager {
     this.broadcast({ type: 'state', data: buf });
   }
 
+  sendStateTo(playerId: PlayerId, state: NetworkServerSnapshot): void {
+    if (this.role !== 'host') return;
+    const conn = this.connections.get(playerId);
+    if (!conn || !conn.open) return;
+
+    this.snapshotsSent++;
+    const buf = msgpackEncode(state);
+
+    if (this.snapshotsSent % 100 === 0) {
+      const dc = conn.dataChannel;
+      const buffered = dc ? dc.bufferedAmount : -1;
+      const dcState = dc ? dc.readyState : 'no-dc';
+      console.log(`[NET] Host snapshot #${this.snapshotsSent} -> player ${playerId}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength}`);
+    }
+
+    this.sendTo(playerId, { type: 'state', data: buf });
+  }
+
   // Send command to host (client only)
   sendCommand(command: Command): void {
     if (this.role !== 'client') return;
@@ -488,6 +506,10 @@ export class NetworkManager {
 
   getPlayers(): LobbyPlayer[] {
     return Array.from(this.players.values());
+  }
+
+  getConnectedPlayerIds(): PlayerId[] {
+    return Array.from(this.connections.keys()).sort((a, b) => a - b);
   }
 
   getPlayerCount(): number {

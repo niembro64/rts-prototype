@@ -7,7 +7,8 @@ import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities, spawnInitialBases, FIRST_PLAYER_ANGLE } from '../sim/spawn';
 import { CAPTURE_CONFIG } from '../../captureConfig';
 import { serializeGameState, resetDeltaTracking } from '../network/stateSerializer';
-import type { NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
+import type { SerializeGameStateOptions, SnapshotInterest } from '../network/stateSerializer';
+import type { NetworkServerSnapshot, NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
@@ -64,6 +65,18 @@ const MATTER_FORCE_SCALE = 150000;
 const WATER_OUT_CACHE_CELL_SIZE = 25;
 const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
+const SNAPSHOT_AOI_PADDING = 1200;
+
+type SnapshotListenerEntry = {
+  callback: SnapshotCallback;
+  playerId?: PlayerId;
+  trackingKey: string;
+};
+
+type SnapshotInterestPlan = {
+  predicate?: SnapshotInterest;
+  candidateEntityIds?: EntityId[];
+};
 
 export class GameServer {
   private physics: PhysicsEngine3D;
@@ -97,7 +110,12 @@ export class GameServer {
   private backgroundAllowedTypes: Set<string>;
 
   // Snapshot listeners
-  private snapshotListeners: SnapshotCallback[] = [];
+  private snapshotListeners: SnapshotListenerEntry[] = [];
+  private snapshotListenerId: number = 0;
+  private snapshotDirtyIdsBuf: EntityId[] = [];
+  private snapshotDirtyFieldsBuf: number[] = [];
+  private snapshotRemovedIdsBuf: EntityId[] = [];
+  private snapshotInterestCandidateIdsBuf: EntityId[] = [];
   private gameOverListeners: GameOverCallback[] = [];
 
   // Game over tracking
@@ -812,19 +830,20 @@ export class GameServer {
       }
     }
 
-    const state = serializeGameState(this.world, isDelta, gamePhase, winnerId, sprayTargets, audioEvents, projectileSpawns, projectileDespawns, projectileVelocityUpdates, gridCells, gridSearchCells, gridCellSize);
+    this.snapshotDirtyIdsBuf.length = 0;
+    this.snapshotDirtyFieldsBuf.length = 0;
+    this.snapshotRemovedIdsBuf.length = 0;
+    this.world.drainSnapshotDirtyEntities(this.snapshotDirtyIdsBuf, this.snapshotDirtyFieldsBuf);
+    this.world.drainRemovedSnapshotEntityIds(this.snapshotRemovedIdsBuf);
 
     // Add capture tile data (delta-aware: only changed tiles on delta snapshots)
     const captureTiles = this.captureSystem.consumeSnapshot(isDelta);
-    if (captureTiles.length > 0) {
-      state.capture = { tiles: captureTiles, cellSize: spatialGrid.getCellSize() };
-    }
 
-    // Add combat stats to snapshot
-    state.combatStats = this.simulation.getCombatStatsSnapshot();
+    const combatStats = this.simulation.getCombatStatsSnapshot();
 
     // Add server metadata to snapshot
     // On delta snapshots, only include serverMeta when the time string changed (once per second)
+    let serverMeta: NetworkServerSnapshot['serverMeta'] | undefined;
     const currentTime = this.formatServerTime();
     const timeChanged = currentTime !== this.lastSentServerTime;
     if (!isDelta || timeChanged) {
@@ -838,7 +857,7 @@ export class GameServer {
       const cpuHi = this.tickMsInitialized
         ? (this.tickMsHi / tickBudgetMs) * 100
         : 0;
-      state.serverMeta = {
+      serverMeta = {
         ticks: { avg: tickStats.avgFps, low: tickStats.worstFps, rate: this.tickRateHz },
         snaps: { rate: this.maxSnapshotsDisplay, keyframes: this.keyframeRatioDisplay },
         server: { time: currentTime, ip: this.ipAddress },
@@ -863,7 +882,38 @@ export class GameServer {
     }
 
     for (const listener of this.snapshotListeners) {
-      listener(state);
+      const interest = this.buildSnapshotInterest(listener.playerId);
+      const serializeOptions: SerializeGameStateOptions = {
+        trackingKey: listener.trackingKey,
+        dirtyEntityIds: this.snapshotDirtyIdsBuf,
+        dirtyEntityFields: this.snapshotDirtyFieldsBuf,
+        removedEntityIds: this.snapshotRemovedIdsBuf,
+        interest: interest.predicate,
+        candidateEntityIds: interest.candidateEntityIds,
+      };
+      const state = serializeGameState(
+        this.world,
+        isDelta,
+        gamePhase,
+        winnerId,
+        sprayTargets,
+        audioEvents,
+        projectileSpawns,
+        projectileDespawns,
+        projectileVelocityUpdates,
+        gridCells,
+        gridSearchCells,
+        gridCellSize,
+        serializeOptions,
+      );
+
+      if (captureTiles.length > 0) {
+        state.capture = { tiles: captureTiles, cellSize: spatialGrid.getCellSize() };
+      }
+      state.combatStats = combatStats;
+      state.serverMeta = serverMeta;
+
+      listener.callback(state);
     }
   }
 
@@ -920,9 +970,71 @@ export class GameServer {
     this.commandQueue.enqueue(command);
   }
 
+  private buildSnapshotInterest(playerId?: PlayerId): SnapshotInterestPlan {
+    if (playerId === undefined || this.backgroundMode) {
+      return {};
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let hasOwnedEntity = false;
+
+    const includeOwnedBounds = (entity: Entity): void => {
+      if (entity.ownership?.playerId !== playerId) return;
+      hasOwnedEntity = true;
+      const x = entity.transform.x;
+      const y = entity.transform.y;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    };
+
+    for (const unit of this.world.getUnits()) {
+      includeOwnedBounds(unit);
+    }
+    for (const building of this.world.getBuildings()) {
+      includeOwnedBounds(building);
+    }
+
+    if (hasOwnedEntity) {
+      minX -= SNAPSHOT_AOI_PADDING;
+      minY -= SNAPSHOT_AOI_PADDING;
+      maxX += SNAPSHOT_AOI_PADDING;
+      maxY += SNAPSHOT_AOI_PADDING;
+    }
+
+    const predicate: SnapshotInterest = (entity) => {
+      if (entity.type === 'building') return true;
+      if (entity.ownership?.playerId === playerId) return true;
+      if (!hasOwnedEntity) return false;
+      const x = entity.transform.x;
+      const y = entity.transform.y;
+      return x >= minX && x <= maxX && y >= minY && y <= maxY;
+    };
+
+    const candidates = this.snapshotInterestCandidateIdsBuf;
+    candidates.length = 0;
+    for (const unit of this.world.getUnits()) {
+      if (predicate(unit)) candidates.push(unit.id);
+    }
+    for (const building of this.world.getBuildings()) {
+      candidates.push(building.id);
+    }
+
+    return { predicate, candidateEntityIds: candidates };
+  }
+
   // Add a snapshot listener
-  addSnapshotListener(callback: SnapshotCallback): void {
-    this.snapshotListeners.push(callback);
+  addSnapshotListener(callback: SnapshotCallback, playerId?: PlayerId): void {
+    const trackingScope = playerId === undefined ? 'global' : `player-${playerId}`;
+    this.snapshotListeners.push({
+      callback,
+      playerId,
+      trackingKey: `${trackingScope}-${this.snapshotListenerId++}`,
+    });
   }
 
   // Add a game over listener

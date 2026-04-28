@@ -186,9 +186,28 @@ function createPrevEntityState(): PrevEntityState {
   };
 }
 
-const _prevStates = new Map<number, PrevEntityState>();
-const _prevEntityIds = new Set<number>();
-const _currentEntityIds = new Set<number>();
+type DeltaTrackingState = {
+  prevStates: Map<number, PrevEntityState>;
+  prevEntityIds: Set<number>;
+  currentEntityIds: Set<number>;
+  protocolSeeded: Set<number>;
+  prevStatePool: PrevEntityState[];
+  prevStatePoolIndex: number;
+};
+
+function createDeltaTrackingState(): DeltaTrackingState {
+  return {
+    prevStates: new Map<number, PrevEntityState>(),
+    prevEntityIds: new Set<number>(),
+    currentEntityIds: new Set<number>(),
+    protocolSeeded: new Set<number>(),
+    prevStatePool: [],
+    prevStatePoolIndex: 0,
+  };
+}
+
+const DEFAULT_TRACKING_KEY = 'default';
+const _trackingStates = new Map<string, DeltaTrackingState>();
 const _removedIdsBuf: number[] = [];
 const _dirtyEntityIdsBuf: EntityId[] = [];
 const _dirtyEntityFieldsBuf: number[] = [];
@@ -209,23 +228,31 @@ const SNAPSHOT_DIRTY_FORCE_FIELDS =
  *  keyframes carry only the per-tick numbers. resetProtocolSeeded()
  *  forces the next pass to re-seed (new client connecting, game
  *  restart). */
-const _protocolSeeded = new Set<number>();
+function getTrackingKey(key: string | number | undefined): string {
+  return key === undefined ? DEFAULT_TRACKING_KEY : String(key);
+}
 
-// Pool for PrevEntityState objects (avoid allocating on new entity)
-const _prevStatePool: PrevEntityState[] = [];
-let _prevStatePoolIndex = 0;
+function getDeltaTrackingState(key: string | number | undefined): DeltaTrackingState {
+  const trackingKey = getTrackingKey(key);
+  let tracking = _trackingStates.get(trackingKey);
+  if (!tracking) {
+    tracking = createDeltaTrackingState();
+    _trackingStates.set(trackingKey, tracking);
+  }
+  return tracking;
+}
 
-function getPrevState(entityId: number): PrevEntityState {
-  let prev = _prevStates.get(entityId);
+function getPrevState(tracking: DeltaTrackingState, entityId: number): PrevEntityState {
+  let prev = tracking.prevStates.get(entityId);
   if (!prev) {
-    if (_prevStatePoolIndex < _prevStatePool.length) {
-      prev = _prevStatePool[_prevStatePoolIndex++];
+    if (tracking.prevStatePoolIndex < tracking.prevStatePool.length) {
+      prev = tracking.prevStatePool[tracking.prevStatePoolIndex++];
     } else {
       prev = createPrevEntityState();
-      _prevStatePool.push(prev);
-      _prevStatePoolIndex++;
+      tracking.prevStatePool.push(prev);
+      tracking.prevStatePoolIndex++;
     }
-    _prevStates.set(entityId, prev);
+    tracking.prevStates.set(entityId, prev);
   }
   return prev;
 }
@@ -389,11 +416,7 @@ const _nextStateScratch = createPrevEntityState();
 
 /** Reset delta tracking state (call between game sessions). */
 export function resetDeltaTracking(): void {
-  _prevStates.clear();
-  _prevEntityIds.clear();
-  _currentEntityIds.clear();
-  _prevStatePoolIndex = 0;
-  _protocolSeeded.clear();
+  _trackingStates.clear();
 }
 
 /** Force the next emitted snapshot to re-include static fields for
@@ -401,7 +424,9 @@ export function resetDeltaTracking(): void {
  *  full picture on their first keyframe; for single-host games this is
  *  not normally needed. */
 export function resetProtocolSeeded(): void {
-  _protocolSeeded.clear();
+  for (const tracking of _trackingStates.values()) {
+    tracking.protocolSeeded.clear();
+  }
 }
 
 // Reusable arrays to avoid per-snapshot allocations
@@ -444,6 +469,26 @@ const _snapshotBuf: NetworkServerSnapshot = {
   removedEntityIds: undefined,
 };
 
+export type SnapshotInterest = (entity: Entity) => boolean;
+
+export type SerializeGameStateOptions = {
+  /**
+   * Delta histories are per recipient. Without this, AOI-filtered
+   * snapshots would leak prev-state/removal bookkeeping across players.
+   */
+  trackingKey?: string | number;
+  dirtyEntityIds?: readonly EntityId[];
+  dirtyEntityFields?: readonly number[];
+  removedEntityIds?: readonly EntityId[];
+  interest?: SnapshotInterest;
+  /**
+   * Entities that may have entered this recipient's interest set even if
+   * they did not mutate this tick. Used to discover AOI entrants without
+   * hashing the whole world in the serializer.
+   */
+  candidateEntityIds?: readonly EntityId[];
+};
+
 // Serialize WorldState to network format.
 // When isDelta=true, only changed/new entities are included plus removedEntityIds.
 // When isDelta=false (keyframe), all entities are included (same as before).
@@ -459,76 +504,140 @@ export function serializeGameState(
   projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[],
   gridCells?: NetworkServerSnapshotGridCell[],
   gridSearchCells?: NetworkServerSnapshotGridCell[],
-  gridCellSize?: number
+  gridCellSize?: number,
+  options?: SerializeGameStateOptions
 ): NetworkServerSnapshot {
+  const tracking = getDeltaTrackingState(options?.trackingKey);
+  const interest = options?.interest;
+
   // Reset entity pool for this frame
   _poolIndex = 0;
   _entityBuf.length = 0;
+  _removedIdsBuf.length = 0;
 
   // Serialize units and buildings (projectiles handled via spawn/despawn events)
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
+  const acceptsEntity = (entity: Entity): boolean =>
+    (entity.type === 'unit' || entity.type === 'building') &&
+    (!interest || interest(entity));
+
+  const forgetTrackedEntity = (id: EntityId, emitRemoval: boolean): void => {
+    const wasVisible = tracking.prevEntityIds.delete(id);
+    tracking.prevStates.delete(id);
+    tracking.protocolSeeded.delete(id);
+    if (emitRemoval && wasVisible) {
+      _removedIdsBuf.push(id);
+    }
+  };
+
   if (deltaEnabled) {
-    world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
-    for (let i = 0; i < _dirtyEntityIdsBuf.length; i++) {
-      const entity = world.getEntity(_dirtyEntityIdsBuf[i]);
-      if (!entity || (entity.type !== 'unit' && entity.type !== 'building')) continue;
-      const dirtyFields = _dirtyEntityFieldsBuf[i] ?? 0;
-      const prev = getPrevState(entity.id);
-      const isNew = !_prevEntityIds.has(entity.id);
-      _prevEntityIds.add(entity.id);
+    const removedIds = options?.removedEntityIds;
+    if (removedIds) {
+      for (let i = 0; i < removedIds.length; i++) {
+        forgetTrackedEntity(removedIds[i], true);
+      }
+    } else {
+      world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
+      for (const id of _removedIdsBuf) {
+        tracking.prevEntityIds.delete(id);
+        tracking.prevStates.delete(id);
+        // Clear seeded entry too — if the entity ID is reused later
+        // we want the next full to re-seed its statics.
+        tracking.protocolSeeded.delete(id);
+      }
+    }
+
+    // AOI departures are client-local removals: the entity still exists
+    // in the world, but this recipient should stop retaining it.
+    if (interest) {
+      for (const id of tracking.prevEntityIds) {
+        const entity = world.getEntity(id);
+        if (!entity || !acceptsEntity(entity)) {
+          forgetTrackedEntity(id, true);
+        }
+      }
+    }
+
+    const dirtyIds = options?.dirtyEntityIds;
+    const dirtyFieldsList = options?.dirtyEntityFields;
+    if (!dirtyIds) {
+      world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
+    }
+    const sourceDirtyIds = dirtyIds ?? _dirtyEntityIdsBuf;
+    const sourceDirtyFields = dirtyFieldsList ?? _dirtyEntityFieldsBuf;
+
+    for (let i = 0; i < sourceDirtyIds.length; i++) {
+      const entity = world.getEntity(sourceDirtyIds[i]);
+      if (!entity || !acceptsEntity(entity)) continue;
+      const dirtyFields = sourceDirtyFields[i] ?? 0;
+      const prev = getPrevState(tracking, entity.id);
+      const isNew = !tracking.prevEntityIds.has(entity.id);
+      tracking.prevEntityIds.add(entity.id);
       captureEntityState(entity, _nextStateScratch);
       const changedFields = isNew
         ? undefined
         : getChangedFields(entity, prev, _nextStateScratch) |
           (dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS);
       if (isNew || changedFields! > 0) {
-        const netEntity = serializeEntity(entity, changedFields);
+        const netEntity = serializeEntity(entity, changedFields, tracking.protocolSeeded);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(_nextStateScratch, prev);
       }
     }
+
+    // New AOI entrants may not be dirty (for example, an idle enemy that
+    // became relevant because this player's front line moved). Candidate
+    // lists let the server discover those without hashing every entity.
+    if (interest && options?.candidateEntityIds) {
+      for (let i = 0; i < options.candidateEntityIds.length; i++) {
+        const id = options.candidateEntityIds[i];
+        if (tracking.prevEntityIds.has(id)) continue;
+        const entity = world.getEntity(id);
+        if (!entity || !acceptsEntity(entity)) continue;
+        tracking.prevEntityIds.add(id);
+        const prev = getPrevState(tracking, id);
+        captureEntityState(entity, prev);
+        const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded);
+        if (netEntity) _entityBuf.push(netEntity);
+      }
+    }
   } else {
-    _currentEntityIds.clear();
+    tracking.currentEntityIds.clear();
     for (const entity of world.getUnits()) {
-      _currentEntityIds.add(entity.id);
-      const netEntity = serializeEntity(entity, undefined);
+      if (!acceptsEntity(entity)) continue;
+      tracking.currentEntityIds.add(entity.id);
+      const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded);
       if (netEntity) _entityBuf.push(netEntity);
-      const prev = getPrevState(entity.id);
+      const prev = getPrevState(tracking, entity.id);
       captureEntityState(entity, prev);
     }
     for (const entity of world.getBuildings()) {
-      _currentEntityIds.add(entity.id);
-      const netEntity = serializeEntity(entity, undefined);
+      if (!acceptsEntity(entity)) continue;
+      tracking.currentEntityIds.add(entity.id);
+      const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded);
       if (netEntity) _entityBuf.push(netEntity);
-      const prev = getPrevState(entity.id);
+      const prev = getPrevState(tracking, entity.id);
       captureEntityState(entity, prev);
     }
-    world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
-  }
+    if (!options?.dirtyEntityIds) {
+      world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
+    }
 
-  // Detect removed entities (were in previous snapshot but not current)
-  _removedIdsBuf.length = 0;
-  if (deltaEnabled) {
-    world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
-    for (const id of _removedIdsBuf) {
-      _prevEntityIds.delete(id);
-      _prevStates.delete(id);
-      // Clear seeded entry too — if the entity ID is reused later
-      // we want the next full to re-seed its statics.
-      _protocolSeeded.delete(id);
+    if (!options?.removedEntityIds) {
+      world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
     }
-  } else {
-    _removedIdsBuf.length = 0;
-    world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
+
     // Update previous entity ID set for next frame
-    _prevEntityIds.clear();
-    for (const id of _currentEntityIds) {
-      _prevEntityIds.add(id);
+    tracking.prevEntityIds.clear();
+    for (const id of tracking.currentEntityIds) {
+      tracking.prevEntityIds.add(id);
     }
-    // Clean up prevStates for entities that no longer exist
-    for (const id of _prevStates.keys()) {
-      if (!_currentEntityIds.has(id)) {
-        _prevStates.delete(id);
+    // Clean up prevStates for entities that no longer exist or are
+    // outside this recipient's AOI after a keyframe.
+    for (const id of tracking.prevStates.keys()) {
+      if (!tracking.currentEntityIds.has(id)) {
+        tracking.prevStates.delete(id);
+        tracking.protocolSeeded.delete(id);
       }
     }
   }
@@ -673,7 +782,11 @@ export function serializeGameState(
 
 // Serialize a single entity using pooled objects (zero allocation).
 // changedFields: undefined = full (keyframe/new entity), bitmask = only changed groups.
-function serializeEntity(entity: Entity, changedFields: number | undefined): NetworkServerSnapshotEntity | null {
+function serializeEntity(
+  entity: Entity,
+  changedFields: number | undefined,
+  protocolSeeded: Set<number>,
+): NetworkServerSnapshotEntity | null {
   const pool = getPooledEntry();
   const ne = pool.entity;
   const isFull = changedFields === undefined;
@@ -722,7 +835,7 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
       // entity. Subsequent fulls skip them — the client already
       // cached them on entity creation. Mid-game late joiners trigger
       // resetProtocolSeeded() to re-seed everyone.
-      const needsSeed = isFull && !_protocolSeeded.has(entity.id);
+      const needsSeed = isFull && !protocolSeeded.has(entity.id);
       if (needsSeed) {
         u.unitType = entity.unit.unitType;
         u.collider = pool.unitCollider;
@@ -732,7 +845,7 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
         u.moveSpeed = entity.unit.moveSpeed;
         u.mass = entity.unit.mass;
         u.isCommander = entity.commander !== undefined ? true : undefined;
-        _protocolSeeded.add(entity.id);
+        protocolSeeded.add(entity.id);
       } else {
         u.unitType = undefined;
         u.collider = undefined;
@@ -852,13 +965,13 @@ function serializeEntity(entity: Entity, changedFields: number | undefined): Net
 
       // Static building fields ship only on the FIRST full record for
       // this entity. Same seeded-set logic as units above.
-      const needsBldSeed = isFull && !_protocolSeeded.has(entity.id);
+      const needsBldSeed = isFull && !protocolSeeded.has(entity.id);
       if (needsBldSeed) {
         b.dim = pool.buildingDim;
         b.dim.x = entity.building.width;
         b.dim.y = entity.building.height;
         b.type = entity.buildingType ?? '';
-        _protocolSeeded.add(entity.id);
+        protocolSeeded.add(entity.id);
       } else {
         b.dim = undefined;
         b.type = undefined;

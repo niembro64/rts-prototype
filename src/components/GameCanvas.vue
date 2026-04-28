@@ -1297,22 +1297,25 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       // Create GameServer for host/offline (WASM physics)
       currentServer = await GameServer.create({ playerIds, aiPlayerIds });
 
-      // Create LocalGameConnection for the host client
-      const localConnection = new LocalGameConnection(currentServer);
-      activeConnection = localConnection;
-      gameConnection = localConnection;
-
       // If hosting, also broadcast snapshots to remote clients
       if (networkRole.value === 'host') {
-        currentServer.addSnapshotListener((state) => {
-          networkManager.broadcastState(state);
-        });
+        for (const remotePlayerId of networkManager.getConnectedPlayerIds()) {
+          currentServer.addSnapshotListener((state) => {
+            networkManager.sendStateTo(remotePlayerId, state);
+          }, remotePlayerId);
+        }
 
         // Receive commands from remote clients
         networkManager.onCommandReceived = (command, _fromPlayerId) => {
           currentServer?.receiveCommand(command);
         };
       }
+
+      // Create LocalGameConnection for the host client after remote
+      // listeners so its zero-copy snapshot is the last serialization.
+      const localConnection = new LocalGameConnection(currentServer, localPlayerId.value);
+      activeConnection = localConnection;
+      gameConnection = localConnection;
 
       // Configure snapshot rate and start (restore from localStorage)
       currentServer.setTickRate(loadStoredTickRate());

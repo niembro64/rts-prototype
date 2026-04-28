@@ -3,19 +3,20 @@
 import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallback } from './GameConnection';
 import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
+import type { PlayerId } from '../sim/types';
 
 export class LocalGameConnection implements GameConnection {
   private server: GameServer;
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
 
-  constructor(server: GameServer) {
+  constructor(server: GameServer, playerId: PlayerId = 1) {
     this.server = server;
 
     // Wire server snapshot emissions to this connection
     server.addSnapshotListener((state) => {
       this.snapshotCallback?.(state);
-    });
+    }, playerId);
 
     server.addGameOverListener((winnerId) => {
       this.gameOverCallback?.(winnerId);
