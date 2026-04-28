@@ -49,6 +49,19 @@
 // keeps a hopeless target from stalling the tick. The heap, scratch
 // arrays, and duplicate-push idiom from the prior A* implementation
 // carry over verbatim — JPS only changes which nodes get pushed.
+//
+// Connected-component preflight — every JPS query is gated on a
+// precomputed CC label lookup (`ensureConnectedComponents`). If the
+// start and goal labels differ, we KNOW JPS will fail no matter how
+// big the budget is, so we snap the goal to the nearest cell in
+// start's component instead. This turns "click on an unreachable
+// region" into "walk to the closest reachable shore" in O(1) cell
+// lookups, and guarantees JPS proper always succeeds within budget
+// since start and goal are in the same component by construction.
+// The CC labels are version-keyed to (terrain × buildings), so they
+// rebuild only when the lobby config changes or a building is
+// placed/destroyed — and the rebuild is one BFS over the grid
+// (~1 ms on a 308×308 map).
 
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
@@ -434,6 +447,148 @@ function ensureBuildingInflated(
   return out;
 }
 
+/** Connected-component labels for the inflation-clear cells.
+ *
+ *  Each cell gets a label: 0 = blocked (terrain or building inflation),
+ *  1+ = component id (cells with the same id are 8-connected through
+ *  the inflation-clear set). Two cells with different non-zero labels
+ *  are physically unreachable from each other under the current
+ *  inflation tier — JPS would explore the entire component before
+ *  bailing.
+ *
+ *  Why we need this:
+ *    - Pre-flight check: if start and goal labels differ, JPS won't
+ *      find a path no matter how big the budget. Detect in O(1) and
+ *      snap the goal to the nearest cell in start's component (or
+ *      bail with a clear reason).
+ *    - User UX: a click on a small unreachable peninsula resolves to
+ *      "walk to the closest reachable shore", not "do nothing".
+ *    - Performance: eliminates the worst case where JPS hits the
+ *      expansion / cell-visit cap exploring the wrong half-graph.
+ *
+ *  Cache lifecycle: rebuilt whenever EITHER the terrain version OR
+ *  the building version bumps — components depend on both inflation
+ *  layers. BFS from each unlabelled clear seed; ~O(n) per rebuild.
+ *  Memory: Int16Array of gridW × gridH (308×308 = 190 KB max),
+ *  capable of representing up to 32k distinct components which is
+ *  far more than any real map needs. */
+let _ccLabels: Int16Array | null = null;
+let _ccTerrainVersion = -1;
+let _ccBuildingVersion = -1;
+let _ccGridW = 0;
+let _ccGridH = 0;
+/** BFS scratch queue, reused across CC rebuilds. Holds cell
+ *  indices; sized to grid cell count (1 entry per cell at most). */
+let _ccBfsQueue: Int32Array | null = null;
+
+function ensureConnectedComponents(
+  buildingGrid: BuildingGrid,
+  gridW: number, gridH: number,
+  mapWidth: number, mapHeight: number,
+): Int16Array {
+  const tVer = getTerrainVersion();
+  const bVer = buildingGrid.getVersion();
+  if (
+    _ccLabels !== null &&
+    _ccTerrainVersion === tVer &&
+    _ccBuildingVersion === bVer &&
+    _ccGridW === gridW &&
+    _ccGridH === gridH
+  ) {
+    return _ccLabels;
+  }
+
+  const terrainInflated = ensureTerrainInflated(gridW, gridH, mapWidth, mapHeight);
+  const buildingInflated = ensureBuildingInflated(buildingGrid, gridW, gridH);
+
+  const n = gridW * gridH;
+  if (_ccLabels === null || _ccLabels.length !== n) {
+    _ccLabels = new Int16Array(n);
+  } else {
+    _ccLabels.fill(0);
+  }
+  if (_ccBfsQueue === null || _ccBfsQueue.length < n) {
+    _ccBfsQueue = new Int32Array(n);
+  }
+  const labels = _ccLabels;
+  const queue = _ccBfsQueue;
+  let nextLabel = 1;
+
+  // BFS from each unlabelled clear cell. Using FIFO (head/tail
+  // counters) instead of `Array.shift()` keeps the inner loop
+  // O(1) per cell.
+  for (let seed = 0; seed < n; seed++) {
+    if (labels[seed] !== 0) continue;
+    if (terrainInflated[seed] === 1 || buildingInflated[seed] === 1) continue;
+
+    if (nextLabel > 32_000) break; // Int16 overflow guard — never expected
+    labels[seed] = nextLabel;
+    let qHead = 0;
+    let qTail = 0;
+    queue[qTail++] = seed;
+
+    while (qHead < qTail) {
+      const idx = queue[qHead++];
+      const gx = idx % gridW;
+      const gy = (idx - gx) / gridW;
+
+      // 8-connected neighbours.
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = gy + dy;
+        if (ny < 0 || ny >= gridH) continue;
+        const nrow = ny * gridW;
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = gx + dx;
+          if (nx < 0 || nx >= gridW) continue;
+          const nidx = nrow + nx;
+          if (labels[nidx] !== 0) continue;
+          if (terrainInflated[nidx] === 1 || buildingInflated[nidx] === 1) continue;
+          labels[nidx] = nextLabel;
+          queue[qTail++] = nidx;
+        }
+      }
+    }
+    nextLabel++;
+  }
+
+  _ccTerrainVersion = tVer;
+  _ccBuildingVersion = bVer;
+  _ccGridW = gridW;
+  _ccGridH = gridH;
+  return labels;
+}
+
+/** Walk the precomputed Euclidean-sorted offset list and return the
+ *  first cell whose CC label matches `componentLabel`. Same shape
+ *  as `findNearestOpenCell` but with a stricter accept predicate —
+ *  used to remap a goal that landed in a different component (or
+ *  in blocked space adjacent to a different component) to the
+ *  nearest cell that's actually reachable from the start.
+ *
+ *  Returns null when no cell in the target component is within
+ *  NEAREST_OPEN_RADIUS — the goal is genuinely unreachable from
+ *  this start under the current inflation tier. */
+function findNearestCellInComponent(
+  gx: number, gy: number,
+  componentLabel: number,
+  gridW: number, gridH: number,
+  ccLabels: Int16Array,
+): { gx: number; gy: number } | null {
+  if (componentLabel <= 0) return null;
+  const offs = _snapOffsets;
+  const n = offs.length;
+  for (let i = 0; i < n; i += 2) {
+    const nx = gx + offs[i];
+    const ny = gy + offs[i + 1];
+    if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+    if (ccLabels[ny * gridW + nx] === componentLabel) {
+      return { gx: nx, gy: ny };
+    }
+  }
+  return null;
+}
+
 /** Plan a path from (startX, startY) to (goalX, goalY) in world
  *  coords. Returns the ORDERED list of waypoints the unit should
  *  visit, ending at the goal. Always returns at least one waypoint
@@ -479,6 +634,7 @@ export function findPath(
   // contains a hard-blocked cell is still itself blocked.
   const terrainInflated = ensureTerrainInflated(gridW, gridH, mapWidth, mapHeight);
   const buildingInflated = ensureBuildingInflated(buildingGrid, gridW, gridH);
+  const ccLabels = ensureConnectedComponents(buildingGrid, gridW, gridH, mapWidth, mapHeight);
   const isBlocked = (gx: number, gy: number): boolean => {
     if (gx < 0 || gy < 0 || gx >= gridW || gy >= gridH) return true;
     const idx = gy * gridW + gx;
@@ -520,6 +676,12 @@ export function findPath(
   // resolves on the next tick. Bail counters are still tracked
   // through `_lastBailReason` for diagnostics.
   _lastBailReason = 'ok';
+  // Start-snap: any open cell will do — the unit's actual position
+  // determines which CC the path planner should target. (If the
+  // unit was knocked into water near component boundary, we snap
+  // to whatever shore is closest, even if that's a different CC
+  // than where they came from. The new CC then guides the goal
+  // snap.)
   let snappedStart = { gx: sgx, gy: sgy };
   if (isBlocked(sgx, sgy)) {
     const open = findNearestOpenCell(sgx, sgy, gridW, gridH, isBlocked);
@@ -529,15 +691,26 @@ export function findPath(
     }
     snappedStart = open;
   }
+
+  // Connected-component guard. Look up the start's CC label, then
+  // require the goal to live in the same component. If it doesn't —
+  // either because the goal is blocked, in a different reachable
+  // region, or in a sealed pocket — snap the goal to the nearest
+  // cell in start's component. This is what makes "click on an
+  // unreachable peninsula" resolve to the closest reachable shore
+  // and guarantees JPS will succeed within budget below: a path
+  // exists by definition once start and goal are in the same CC.
+  const startLabel = ccLabels[snappedStart.gy * gridW + snappedStart.gx];
   let snappedGoal = { gx: ggx, gy: ggy };
   let goalWasSnapped = false;
-  if (isBlocked(ggx, ggy)) {
-    const open = findNearestOpenCell(ggx, ggy, gridW, gridH, isBlocked);
-    if (!open) {
+  const goalLabel = ccLabels[ggy * gridW + ggx];
+  if (goalLabel !== startLabel) {
+    const remapped = findNearestCellInComponent(ggx, ggy, startLabel, gridW, gridH, ccLabels);
+    if (!remapped) {
       _lastBailReason = 'goal-snap';
       return [{ x: startX, y: startY }];
     }
-    snappedGoal = open;
+    snappedGoal = remapped;
     goalWasSnapped = true;
   }
   const startCellGx = snappedStart.gx;
