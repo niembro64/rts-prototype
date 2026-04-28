@@ -55,7 +55,7 @@ function isBeamUnit(entity: Entity): boolean {
 //
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
 // PERFORMANCE: Multi-weapon units batch a single spatial query instead of per-weapon queries
-export function updateTargetingAndFiringState(world: WorldState): Entity[] {
+export function updateTargetingAndFiringState(world: WorldState, dtMs: number): Entity[] {
   _activeCombatUnits.length = 0;
   // Stagger key — only this fraction of units does heavy spatial-grid
   // re-acquisition work this tick. Per-tick state (target validation,
@@ -78,8 +78,22 @@ export function updateTargetingAndFiringState(world: WorldState): Entity[] {
     if (unit.unit.hp <= 0) continue;
 
     const playerId = unit.ownership.playerId;
+    unit.transform.rotCos = Math.cos(unit.transform.rotation);
+    unit.transform.rotSin = Math.sin(unit.transform.rotation);
     const { cos, sin } = getTransformCosSin(unit.transform);
     const weapons = unit.turrets;
+
+    for (const weapon of weapons) {
+      if (weapon.cooldown > 0) {
+        weapon.cooldown -= dtMs;
+        if (weapon.cooldown < 0) weapon.cooldown = 0;
+      }
+
+      if (weapon.burst?.cooldown !== undefined && weapon.burst.cooldown > 0) {
+        weapon.burst.cooldown -= dtMs;
+        if (weapon.burst.cooldown < 0) weapon.burst.cooldown = 0;
+      }
+    }
 
     // Pass 0: Compute weapon world positions (needed for both modes).
     // All three axes are cached PER TURRET — altitude is that turret's

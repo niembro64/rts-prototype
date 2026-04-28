@@ -8,7 +8,6 @@ import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyB
 import {
   updateTargetingAndFiringState,
   updateTurretRotation,
-  updateWeaponCooldowns,
   updateLaserSounds,
   emitLaserStopsForEntity,
   emitLaserStopsForTarget,
@@ -397,11 +396,8 @@ export class Simulation {
 
   // Update combat systems
   private updateCombat(dtMs: number): void {
-    // Update weapon cooldowns + cache rotation sin/cos (merged into single loop)
-    updateWeaponCooldowns(this.world, dtMs);
-
-    // Update auto-targeting and firing state in a single pass
-    const activeCombatUnits = updateTargetingAndFiringState(this.world);
+    // Update weapon cooldowns, targeting, and firing state in one armed-unit pass.
+    const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
 
     // Update laser sounds based on targeting state (every frame)
     if (this.world.getBeamUnits().length > 0) {
