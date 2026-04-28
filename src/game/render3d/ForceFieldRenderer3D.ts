@@ -71,6 +71,20 @@ function isForceFieldTurret(t: Turret): boolean {
 }
 
 type FieldMesh = {
+  // Emitter + zone are NEVER rendered — they're invisible per-field
+  // data anchors that:
+  //   (1) the particles / trails / arcs lazy-alloc path uses to find
+  //       the field's host parent (`field.emitter.parent ?? this.root`),
+  //       so newly-created motes attach to the right yawGroup;
+  //   (2) keep the parent-identity check in _processUnit cheap
+  //       (`field.emitter.parent !== yawGroup` triggers a reparent
+  //       when LOD rebuilds give the unit a new yawGroup).
+  // The actual emitter + zone visuals come from the shared
+  // `sphereInstancedMesh` — per-frame we write transient slots for
+  // each active field, so what's drawn is one InstancedMesh draw call
+  // for every emitter+zone in the scene instead of two Meshes per
+  // field. Visible flag stays false on these — they exist purely to
+  // host the particle / trail / arc children.
   emitter: THREE.Mesh;
   emitterMat: THREE.MeshBasicMaterial;
   zone: THREE.Mesh;
@@ -100,12 +114,76 @@ function fieldHash(n: number, seed: number): number {
   return ((h >>> 16) ^ h) / 4294967296 + 0.5;
 }
 
+// Shader for the sphereInstanced pool — same shape as
+// SmokeTrail3D / Explosion3D / SprayRenderer3D. Per-instance `aAlpha`
+// + `aColor` ride on InstancedBufferAttributes; the fragment is just
+// `vec4(vColor, vAlpha)`. Both emitter and zone use this shader: the
+// emitter writes alpha=1 with a pulsing white→blue color, the zone
+// writes its push.color with the fade-in alpha.
+const FIELD_SPHERE_VS = `
+attribute float aAlpha;
+attribute vec3 aColor;
+varying float vAlpha;
+varying vec3 vColor;
+void main() {
+  vAlpha = aAlpha;
+  vColor = aColor;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+}
+`;
+
+const FIELD_SPHERE_FS = `
+varying float vAlpha;
+varying vec3 vColor;
+void main() {
+  gl_FragColor = vec4(vColor, vAlpha);
+}
+`;
+
+/** Cap on shared emitter+zone instances. Each active force field
+ *  occupies 2 slots (1 emitter + 1 zone), so 2048 fields fit. Real
+ *  scenes peak in the hundreds — generous headroom. */
+const SPHERE_INSTANCED_CAP = 4096;
+
 export class ForceFieldRenderer3D {
   private root: THREE.Group;
   // Unit sphere reused for the bubble, the emitter, and the particle motes.
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
   private particleSphereGeom = new THREE.SphereGeometry(1, 6, 4);
   private fields = new Map<string, FieldMesh>();
+
+  /** Shared InstancedMesh covering every emitter + zone sphere across
+   *  every active force field on the map. Slots are allocated TRANSIENT
+   *  per frame: walk active fields, write [0, count). count is set
+   *  to the live prefix at end-of-frame so off-screen / inactive fields
+   *  cost zero GPU time.
+   *
+   *  Particles, trails, and arcs (LOD-only) are not instanced here —
+   *  they stay per-Mesh on FieldMesh, allocated lazily on first
+   *  enhanced/simple-LOD render. The win for the always-rendered
+   *  emitter+zone alone is meaningful on its own (every active force
+   *  field is 2 draws today; this collapses them all to 1). */
+  private sphereInstancedMesh: THREE.InstancedMesh;
+  private sphereInstancedMat: THREE.ShaderMaterial;
+  private sphereAlphaArr = new Float32Array(SPHERE_INSTANCED_CAP);
+  private sphereColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
+  private sphereAlphaAttr: THREE.InstancedBufferAttribute;
+  private sphereColorAttr: THREE.InstancedBufferAttribute;
+  /** Per-frame transient slot cursor — reset in beginFrame, advanced
+   *  per emitter + per zone in _processUnit, used as the count at
+   *  end-of-frame. */
+  private _sphereCursor = 0;
+  /** Scratch matrices for the emitter+zone instance write. Same
+   *  pattern as the chassis pools — compose `T(worldPos) · S(scale)`
+   *  per slot, no per-frame allocations. */
+  private _sphereScratchMat = new THREE.Matrix4();
+  private _sphereScratchPos = new THREE.Vector3();
+  private _sphereScratchScale = new THREE.Vector3();
+  private _sphereLocalPos = new THREE.Vector3();
+  private _sphereParentQuat = new THREE.Quaternion();
+  private _sphereYawQuat = new THREE.Quaternion();
+  private static readonly _SPHERE_UP = new THREE.Vector3(0, 1, 0);
+  private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
   /** Reused across `update()` calls to track which fields are still
    *  active this frame (everything not in here gets pruned). Allocating
    *  a fresh Set per frame is wasted GC pressure — clear-and-reuse. */
@@ -132,40 +210,59 @@ export class ForceFieldRenderer3D {
     parentWorld.add(this.root);
     this.scope = scope;
     this.getYawGroup = getYawGroup;
+
+    // Build the shared emitter+zone InstancedMesh. Same construction
+    // pattern as SmokeTrail3D / Explosion3D / SprayRenderer3D.
+    this.sphereAlphaAttr = new THREE.InstancedBufferAttribute(this.sphereAlphaArr, 1);
+    this.sphereAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.sphereColorAttr = new THREE.InstancedBufferAttribute(this.sphereColorArr, 3);
+    this.sphereColorAttr.setUsage(THREE.DynamicDrawUsage);
+    this.sphereGeom.setAttribute('aAlpha', this.sphereAlphaAttr);
+    this.sphereGeom.setAttribute('aColor', this.sphereColorAttr);
+
+    this.sphereInstancedMat = new THREE.ShaderMaterial({
+      vertexShader: FIELD_SPHERE_VS,
+      fragmentShader: FIELD_SPHERE_FS,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,  // zone bubble visible from inside too
+    });
+
+    this.sphereInstancedMesh = new THREE.InstancedMesh(
+      this.sphereGeom,
+      this.sphereInstancedMat,
+      SPHERE_INSTANCED_CAP,
+    );
+    this.sphereInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.sphereInstancedMesh.count = 0;
+    // Source-geom bounding sphere is at origin (radius 1); instances
+    // live anywhere on the map.
+    this.sphereInstancedMesh.frustumCulled = false;
+    // Slightly higher render-order than the per-particle effects so
+    // the zone bubble's translucency composites on top of smoke
+    // particles passing through it.
+    this.sphereInstancedMesh.renderOrder = 7;
+    this.root.add(this.sphereInstancedMesh);
   }
 
   private acquire(key: string): FieldMesh {
     const existing = this.fields.get(key);
-    if (existing) {
-      existing.emitter.visible = true;
-      existing.zone.visible = true;
-      return existing;
-    }
-    const emitterMat = new THREE.MeshBasicMaterial({
-      color: EMITTER_COLOR_A,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-    });
+    if (existing) return existing;
+    // Emitter + zone are invisible parent-anchor Meshes (see FieldMesh
+    // doc). Allocate cheap MeshBasicMaterials with visible=false so
+    // they cost zero rasterized pixels but keep the parent-tracking
+    // path in particles / trails / arcs working unchanged.
+    const emitterMat = new THREE.MeshBasicMaterial({ visible: false });
     const emitter = new THREE.Mesh(this.sphereGeom, emitterMat);
-    emitter.renderOrder = 8; // draw on top of the bubble
+    emitter.visible = false;
     this.root.add(emitter);
-
-    // Spherical force-field bubble. The 2D annular push zone becomes a single
-    // translucent sphere at outerRange in 3D; the inner-radius shrinkage is
-    // conveyed via alpha (fades in with progress).
-    const zoneMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.0,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
+    const zoneMat = new THREE.MeshBasicMaterial({ visible: false });
     const zone = new THREE.Mesh(this.sphereGeom, zoneMat);
-    zone.renderOrder = 7;
+    zone.visible = false;
     this.root.add(zone);
-
     // Bright particle material, additive so motes pop over the bubble.
+    // Particles + trails + arcs are still per-Mesh; only emitter +
+    // zone visuals moved to the shared InstancedMesh path.
     const particleMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
@@ -175,10 +272,8 @@ export class ForceFieldRenderer3D {
     });
 
     const field: FieldMesh = {
-      emitter,
-      emitterMat,
-      zone,
-      zoneMat,
+      emitter, emitterMat,
+      zone, zoneMat,
       particles: [],
       particleMat,
       trailMeshes: [],
@@ -293,6 +388,7 @@ export class ForceFieldRenderer3D {
    *  derived counts once per frame so the inner loop is tight. */
   beginFrame(): void {
     this._seenFieldKeys.clear();
+    this._sphereCursor = 0;
     this._frameNowMs = performance.now();
     this._frameNowSec = this._frameNowMs / 1000;
     const gfx = getGraphicsConfig();
@@ -321,6 +417,17 @@ export class ForceFieldRenderer3D {
    *  visited (unit despawned, force-field disabled, or off-scope).
    *  Was the second half of the original update(); same logic. */
   endFrame(): void {
+    // Flush the sphereInstancedMesh — count rides on the cursor we
+    // advanced per emitter+zone write in _processUnit, so off-scope /
+    // inactive fields cost zero GPU time.
+    this.sphereInstancedMesh.count = this._sphereCursor;
+    if (this._sphereCursor > 0) {
+      this.sphereInstancedMesh.instanceMatrix.needsUpdate = true;
+      this.sphereAlphaAttr.needsUpdate = true;
+      this.sphereColorAttr.needsUpdate = true;
+    }
+    // Tear down per-field state for fields that didn't get visited
+    // this frame (unit despawned, force-field disabled, off-scope).
     const seen = this._seenFieldKeys;
     for (const [key, field] of this.fields) {
       if (seen.has(key)) continue;
@@ -429,7 +536,12 @@ export class ForceFieldRenderer3D {
         // already there — handles first-frame attachment AND LOD
         // rebuilds (which create a new yawGroup and would leave the
         // field stranded on the old one). Cheap when steady state:
-        // one identity check per mesh per frame.
+        // one identity check per mesh per frame. Emitter + zone are
+        // invisible data anchors used here as the parent-tracking
+        // pivot for particles / trails / arcs (they all live under
+        // `field.emitter.parent` so the lazy-alloc path attaches new
+        // motes to the right yawGroup); the actual emitter+zone
+        // visuals come from sphereInstancedMesh below.
         if (field.emitter.parent !== yawGroup) {
           this.reparentFieldTo(field, yawGroup);
         }
@@ -437,20 +549,62 @@ export class ForceFieldRenderer3D {
         // Central pulsing emitter sphere: lerp white → blue, radius scales with progress.
         const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
         const pulse = (Math.sin(nowSec * freq) * 0.5 + 0.5) * progress;
-        const r =
+        const er =
           ((EMITTER_COLOR_A >> 16) & 0xff)
           + (((EMITTER_COLOR_B >> 16) & 0xff) - ((EMITTER_COLOR_A >> 16) & 0xff)) * pulse;
-        const g =
+        const eg =
           ((EMITTER_COLOR_A >> 8) & 0xff)
           + (((EMITTER_COLOR_B >> 8) & 0xff) - ((EMITTER_COLOR_A >> 8) & 0xff)) * pulse;
-        const b =
+        const eb =
           (EMITTER_COLOR_A & 0xff)
           + ((EMITTER_COLOR_B & 0xff) - (EMITTER_COLOR_A & 0xff)) * pulse;
-        field.emitterMat.color.setRGB(r / 255, g / 255, b / 255);
         const emitterRadius = EMITTER_BASE_RADIUS
           + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * progress;
-        field.emitter.scale.setScalar(emitterRadius);
-        field.emitter.position.set(localX, localY, localZ);
+
+        // Compose the field's WORLD position from the unit's parent
+        // chain — group → realYawGroup → liftGroup. The InstancedMesh
+        // slots live in the renderer's world group (not parented to
+        // the unit), so we reproduce what the scenegraph would do for
+        // a child of liftGroup at chassis-local (localX, localY,
+        // localZ). Same algebra the chassis / head / mirror writers
+        // use: `worldPos = groupPos + R(tilt · Ry(yaw)) · (localX,
+        // lift + localY, localZ)`.
+        const liftGroupNode = yawGroup; // getYawGroup returns liftGroup
+        const realYawGroup = liftGroupNode.parent;
+        const groupOuter = realYawGroup?.parent;
+        let havePosition = false;
+        if (realYawGroup && groupOuter) {
+          this._sphereYawQuat.setFromAxisAngle(
+            ForceFieldRenderer3D._SPHERE_UP,
+            realYawGroup.rotation.y,
+          );
+          this._sphereParentQuat
+            .copy(groupOuter.quaternion)
+            .multiply(this._sphereYawQuat);
+          this._sphereLocalPos.set(localX, liftGroupNode.position.y + localY, localZ);
+          this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
+          this._sphereScratchPos
+            .copy(groupOuter.position)
+            .add(this._sphereLocalPos);
+          havePosition = true;
+
+          // Write the emitter slot now — opaque white→blue pulse.
+          // (Zone slot is written below after we've read shot.push.)
+          if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
+            this._sphereScratchScale.set(emitterRadius, emitterRadius, emitterRadius);
+            this._sphereScratchMat.compose(
+              this._sphereScratchPos,
+              ForceFieldRenderer3D._IDENTITY_QUAT,
+              this._sphereScratchScale,
+            );
+            this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
+            this.sphereAlphaArr[this._sphereCursor] = 0.9; // emitter base opacity
+            this.sphereColorArr[this._sphereCursor * 3]     = er / 255;
+            this.sphereColorArr[this._sphereCursor * 3 + 1] = eg / 255;
+            this.sphereColorArr[this._sphereCursor * 3 + 2] = eb / 255;
+            this._sphereCursor++;
+          }
+        }
 
         // Spherical force-field zone — scale = outerRange (= push-zone radius
         // in sim units). Alpha fades in over the first third of progress.
@@ -471,11 +625,26 @@ export class ForceFieldRenderer3D {
           continue;
         }
         const fadeIn = Math.min(progress * 3, 1);
-        field.zoneMat.color.set(push.color);
-        field.zoneMat.opacity = push.alpha * fadeIn * FIELD_OPACITY_BOOST;
-        field.zone.scale.setScalar(outer);
-        field.zone.position.set(cx, cy, cz);
-        field.zone.visible = true;
+
+        // Write the zone slot — translucent push.color sphere with
+        // fade-in alpha. Reuses the world position computed for the
+        // emitter slot above (`_sphereScratchPos`) since emitter and
+        // zone are concentric. Skip if we couldn't compose the world
+        // position (off-scope unit / missing parent chain).
+        if (havePosition && this.sphereInstancedMesh && this._sphereCursor < SPHERE_INSTANCED_CAP) {
+          this._sphereScratchScale.set(outer, outer, outer);
+          this._sphereScratchMat.compose(
+            this._sphereScratchPos,
+            ForceFieldRenderer3D._IDENTITY_QUAT,
+            this._sphereScratchScale,
+          );
+          this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
+          this.sphereAlphaArr[this._sphereCursor] = push.alpha * fadeIn * FIELD_OPACITY_BOOST;
+          this.sphereColorArr[this._sphereCursor * 3]     = ((push.color >> 16) & 0xff) / 255;
+          this.sphereColorArr[this._sphereCursor * 3 + 1] = ((push.color >>  8) & 0xff) / 255;
+          this.sphereColorArr[this._sphereCursor * 3 + 2] = ( push.color        & 0xff) / 255;
+          this._sphereCursor++;
+        }
 
         // ── Particle motes (HI / MAX LOD) ──
         // Each particle has a stable angular slot on the bubble's surface
@@ -649,6 +818,10 @@ export class ForceFieldRenderer3D {
       if (field.arcMat) field.arcMat.dispose();
     }
     this.fields.clear();
+    // Tear down the shared emitter+zone InstancedMesh.
+    this.root.remove(this.sphereInstancedMesh);
+    this.sphereInstancedMesh.dispose();
+    this.sphereInstancedMat.dispose();
     this.sphereGeom.dispose();
     this.particleSphereGeom.dispose();
     this.root.parent?.remove(this.root);
