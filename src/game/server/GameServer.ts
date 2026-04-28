@@ -60,6 +60,9 @@ const WATER_PROBE_DY = [
 ];
 const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
 const MATTER_FORCE_SCALE = 150000;
+const WATER_OUT_CACHE_CELL_SIZE = 25;
+const WATER_OUT_CACHE_BUCKET_SCALE = 10;
+type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
 
 export class GameServer {
   private physics: PhysicsEngine3D;
@@ -649,6 +652,14 @@ export class GameServer {
 
   private _waterOutX = 0;
   private _waterOutY = 0;
+  private waterOutCache = new Map<number, WaterOutCacheEntry>();
+
+  private waterOutCacheKey(x: number, y: number, probeR: number): number {
+    const cx = Math.floor(x / WATER_OUT_CACHE_CELL_SIZE) + 32768;
+    const cy = Math.floor(y / WATER_OUT_CACHE_CELL_SIZE) + 32768;
+    const rb = Math.max(0, Math.min(255, Math.round(probeR / WATER_OUT_CACHE_BUCKET_SCALE)));
+    return cx * 0x1000000 + cy * 0x100 + rb;
+  }
 
   // Compute "outward from water" direction at (x, y). Samples 8
   // fixed directions at probeR and stores the normalized dry-sample
@@ -660,6 +671,14 @@ export class GameServer {
     mapWidth: number,
     mapHeight: number,
   ): boolean {
+    const key = this.waterOutCacheKey(x, y, probeR);
+    const cached = this.waterOutCache.get(key);
+    if (cached) {
+      this._waterOutX = cached.x;
+      this._waterOutY = cached.y;
+      return cached.ok;
+    }
+
     let ox = 0;
     let oy = 0;
     for (let i = 0; i < WATER_PROBE_DX.length; i++) {
@@ -671,9 +690,15 @@ export class GameServer {
       }
     }
     const m = Math.sqrt(ox * ox + oy * oy);
-    if (m <= 0) return false;
+    if (m <= 0) {
+      this._waterOutX = 0;
+      this._waterOutY = 0;
+      this.waterOutCache.set(key, { ok: false, x: 0, y: 0 });
+      return false;
+    }
     this._waterOutX = ox / m;
     this._waterOutY = oy / m;
+    this.waterOutCache.set(key, { ok: true, x: this._waterOutX, y: this._waterOutY });
     return true;
   }
 
