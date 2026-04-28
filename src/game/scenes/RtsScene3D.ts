@@ -259,6 +259,7 @@ export class RtsScene3D {
   };
   private _cachedSelectedUnits: Entity[] = [];
   private _cachedSelectedBuildings: Entity[] = [];
+  private _selectedEntityCacheDirty = true;
   private _cachedPlayerUnits: Entity[] = [];
   private _cachedPlayerBuildings: Entity[] = [];
   private _cachedPlayerIdForUnits: PlayerId = -1 as PlayerId;
@@ -660,26 +661,14 @@ export class RtsScene3D {
       }
 
       this.selectionDirty = true;
+      this._selectedEntityCacheDirty = true;
     }
 
     // Process local commands — select/clearSelection apply to ClientViewState,
     // everything else gets forwarded to the server via GameConnection
     this.processLocalCommands();
 
-    // Rebuild selected-entity caches after selection commands have been applied
-    this._cachedSelectedUnits.length = 0;
-    this._cachedSelectedBuildings.length = 0;
-    const pid = this.localPlayerId;
-    for (const e of this.clientViewState.getUnits()) {
-      if (e.selectable?.selected && e.ownership?.playerId === pid) {
-        this._cachedSelectedUnits.push(e);
-      }
-    }
-    for (const b of this.clientViewState.getBuildings()) {
-      if (b.selectable?.selected && b.ownership?.playerId === pid) {
-        this._cachedSelectedBuildings.push(b);
-      }
-    }
+    this.rebuildSelectedEntityCachesIfNeeded();
 
     // Dead-reckon + drift every frame so units animate between snapshots
     this.clientViewState.applyPrediction(delta);
@@ -946,11 +935,32 @@ export class RtsScene3D {
         if (!sc.additive) this.clientViewState.clearSelection();
         for (const id of sc.entityIds) this.clientViewState.selectEntity(id);
         this.selectionDirty = true;
+        this._selectedEntityCacheDirty = true;
       } else if (command.type === 'clearSelection') {
         this.clientViewState.clearSelection();
         this.selectionDirty = true;
+        this._selectedEntityCacheDirty = true;
       } else {
         this.gameConnection.sendCommand(command);
+      }
+    }
+  }
+
+  private rebuildSelectedEntityCachesIfNeeded(): void {
+    if (!this._selectedEntityCacheDirty) return;
+    this._selectedEntityCacheDirty = false;
+
+    this._cachedSelectedUnits.length = 0;
+    this._cachedSelectedBuildings.length = 0;
+    const pid = this.localPlayerId;
+    for (const e of this.clientViewState.getUnits()) {
+      if (e.selectable?.selected && e.ownership?.playerId === pid) {
+        this._cachedSelectedUnits.push(e);
+      }
+    }
+    for (const b of this.clientViewState.getBuildings()) {
+      if (b.selectable?.selected && b.ownership?.playerId === pid) {
+        this._cachedSelectedBuildings.push(b);
       }
     }
   }
