@@ -1164,7 +1164,12 @@ const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
 function updateFPSStats(): void {
   const scene = backgroundBattle?.gameInstance?.getScene() ?? gameInstance?.getScene();
   if (scene) {
-    currentZoom.value = scene.cameras.main.zoom;
+    // Display the visible-world-span value (smaller = zoomed in,
+    // larger = zoomed out, same view → same number regardless of
+    // wheel-tick history). The `zoom` ratio is still used internally
+    // for LOD + save/restore but isn't a meaningful number to expose
+    // to the user.
+    currentZoom.value = scene.cameras.main.viewSpan ?? scene.cameras.main.zoom;
 
     const timing = scene.getFrameTiming();
     frameMsAvg.value = timing.frameMsAvg;
@@ -2323,7 +2328,9 @@ onUnmounted(() => {
           <div class="control-group">
             <BarDivider />
             <div class="fps-stats">
-              <span class="control-label" title="Current camera zoom level"
+              <span
+                class="control-label"
+                title="Visible world span at focal plane (world units). Smaller = more zoomed in. Same view → same number regardless of how you got there."
                 >ZOOM:</span
               >
               <span class="fps-value">{{ fmt4(currentZoom) }}</span>

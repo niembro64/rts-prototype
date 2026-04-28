@@ -97,9 +97,26 @@ export type RtsScene3DConfig = {
 // Mini "camera" accessor that PhaserCanvas.vue reads for zoom display. We derive
 // a Pixi-equivalent zoom number from the 3D orbit distance so UI sliders show a
 // consistent value. baseDistance is the default camera distance.
+//
+// Two zoom-shaped values:
+//
+//   `zoom`     — LOD ratio (`baseDistance / orbit.distance`). Higher = more
+//                zoomed in. Used for save/restore camera state, the LOD
+//                signal (clientBarConfig.setCurrentZoom), and any code path
+//                that needs a multiplicative scalar relative to the default
+//                framing. Counts wheel ticks multiplicatively.
+//
+//   `viewSpan` — Visible vertical world span at the focal plane, in world
+//                units: `2 · orbit.distance · tan(fov / 2)`. Universal
+//                physical measurement — same view → same number regardless
+//                of how the camera got there (pan / wheel history /
+//                terrain-clearance lift). Smaller = more zoomed in.
+//                Surfaced for UI display where users want a meaningful
+//                length they can read at a glance.
 type CameraShim = {
   main: {
     zoom: number;
+    viewSpan: number;
     scrollX: number;
     scrollY: number;
     width: number;
@@ -284,7 +301,7 @@ export class RtsScene3D {
   public readonly cameras: CameraShim = {
     main: {
       // Filled by the getters below via Object.defineProperty in constructor
-      zoom: 0, scrollX: 0, scrollY: 0, width: 0, height: 0,
+      zoom: 0, viewSpan: 0, scrollX: 0, scrollY: 0, width: 0, height: 0,
     },
   };
 
@@ -340,6 +357,19 @@ export class RtsScene3D {
     Object.defineProperties(this.cameras.main, {
       zoom: {
         get: () => this._baseDistance / this.threeApp.orbit.distance,
+      },
+      // Visible vertical world-units at the focal plane. Same value
+      // = same view regardless of where the user got there from. The
+      // perspective formula is `2 · distance · tan(vFov / 2)`; tan
+      // half-FOV is computed from the perspective camera's `fov`
+      // field (in degrees, so divide by 360 instead of 180 — extra
+      // /2 for the half-angle).
+      viewSpan: {
+        get: () => {
+          const distance = this.threeApp.orbit.distance;
+          const fovRad = (this.threeApp.camera.fov * Math.PI) / 180;
+          return 2 * distance * Math.tan(fovRad / 2);
+        },
       },
       scrollX: {
         get: () => this.threeApp.orbit.target.x - this._visibleHalfWidth(),
