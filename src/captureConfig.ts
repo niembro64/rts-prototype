@@ -46,27 +46,30 @@ export const CAPTURE_CONFIG = {
    */
   initialOwnershipHeight: 1.0,
 
-  /**
-   * Mana production per tile. A team's actual income from a tile is
-   * its flag-height (its OWNERSHIP RATIO, 0–1) multiplied by the
-   * tile's rate — there is no separate MANA_PER_TILE constant. The
-   * same rate drives tile colour brightness in the GRID overlay so
-   * on-screen brightness and mana income come from one number.
-   *
-   *  manaPerTilePerimeter — mana/sec from a fully-captured tile at
-   *    the edge of the hotspot disc and everywhere outside it.
-   *    Effectively the map's baseline tile-income.
-   *  manaCenterTileMultiplier — peak hotspot multiplier at the map
-   *    centre, applied on top of `manaPerTilePerimeter`. 1.0 → no
-   *    hotspot (uniform production); 3.0 → the centre tile produces
-   *    3× a perimeter tile (= 30 mana/sec at the defaults below).
-   *  manaHotspotRadiusFraction — disc radius as a fraction of
-   *    min(mapWidth, mapHeight). Inside the disc the rate ramps
-   *    linearly from perimeter at the edge to perimeter ×
-   *    centerMultiplier at the middle. 0.0 disables the hotspot;
-   *    1.0 covers the entire map.
-   */
-  manaPerTilePerimeter: 10.0,
-  manaCenterTileMultiplier: 3.0,
-  manaHotspotRadiusFraction: 0.30,
 };
+
+// =============================================================================
+// Mana production per tile
+// =============================================================================
+//
+// A team's actual income from a tile is its flag-height (its
+// OWNERSHIP RATIO, 0–1) multiplied by the tile's rate — there is no
+// separate MANA_PER_TILE constant. The same rate drives tile colour
+// brightness in the GRID overlay so on-screen brightness and mana
+// income come from one number.
+
+/** Mana/sec from a fully-captured tile at the edge of the hotspot
+ *  disc and everywhere outside it. Effectively the map's baseline
+ *  per-tile income. */
+export const MANA_PER_TILE_PERIMETER = 10.0;
+
+/** Peak hotspot multiplier at the map centre, applied on top of
+ *  `MANA_PER_TILE_PERIMETER`. 1.0 → no hotspot (uniform production);
+ *  3.0 → the centre tile produces 3× a perimeter tile. */
+export const MANA_CENTER_TILE_MULTIPLIER = 50.0;
+
+/** Hotspot disc radius as a fraction of min(mapWidth, mapHeight).
+ *  Inside the disc the rate ramps linearly from perimeter at the
+ *  edge to `perimeter × centerMultiplier` at the middle. 0.0
+ *  disables the hotspot; 1.0 covers the entire map. */
+export const MANA_HOTSPOT_RADIUS_FRACTION = 0.30;

@@ -7,9 +7,9 @@
 // Production model:
 //   • A tile fully captured by one team produces `tileRate` mana/sec
 //     for that team. `tileRate` ramps linearly from
-//     `manaPerTilePerimeter` at the edge of the central hotspot disc
-//     up to `manaPerTilePerimeter × manaCenterTileMultiplier` at the
-//     exact map centre, and is constant at the perimeter rate
+//     `MANA_PER_TILE_PERIMETER` at the edge of the central hotspot
+//     disc up to `MANA_PER_TILE_PERIMETER × MANA_CENTER_TILE_MULTIPLIER`
+//     at the exact map centre, and is constant at the perimeter rate
 //     everywhere outside the disc.
 //   • A team's actual income from a tile is its FLAG HEIGHT (its
 //     ownership ratio in [0, 1]) multiplied by `tileRate`. Multiple
@@ -18,7 +18,11 @@
 //     tile's rate is the only multiplicative factor besides the
 //     team's ownership ratio.
 
-import { CAPTURE_CONFIG } from '../../captureConfig';
+import {
+  MANA_PER_TILE_PERIMETER,
+  MANA_CENTER_TILE_MULTIPLIER,
+  MANA_HOTSPOT_RADIUS_FRACTION,
+} from '../../captureConfig';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 
 /** Mana per second a tile at (cellCenterX, cellCenterY) produces
@@ -31,18 +35,17 @@ export function getManaTileProductionPerSecond(
   mapWidth: number,
   mapHeight: number,
 ): number {
-  const perimeter = CAPTURE_CONFIG.manaPerTilePerimeter;
-  const centerMult = CAPTURE_CONFIG.manaCenterTileMultiplier;
-  const radiusFrac = CAPTURE_CONFIG.manaHotspotRadiusFraction;
-  if (radiusFrac <= 0 || centerMult <= 1) return perimeter;
-  const radius = Math.min(mapWidth, mapHeight) * radiusFrac;
-  if (radius <= 0) return perimeter;
+  if (MANA_HOTSPOT_RADIUS_FRACTION <= 0 || MANA_CENTER_TILE_MULTIPLIER <= 1) {
+    return MANA_PER_TILE_PERIMETER;
+  }
+  const radius = Math.min(mapWidth, mapHeight) * MANA_HOTSPOT_RADIUS_FRACTION;
+  if (radius <= 0) return MANA_PER_TILE_PERIMETER;
   const dx = cellCenterX - mapWidth / 2;
   const dy = cellCenterY - mapHeight / 2;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist >= radius) return perimeter;
+  if (dist >= radius) return MANA_PER_TILE_PERIMETER;
   const t = 1 - dist / radius;
-  return perimeter * (1 + (centerMult - 1) * t);
+  return MANA_PER_TILE_PERIMETER * (1 + (MANA_CENTER_TILE_MULTIPLIER - 1) * t);
 }
 
 /** Same as getManaTileProductionPerSecond but indexed by integer
@@ -96,12 +99,10 @@ export function getCaptureTileBlendFactors(
   dominantHeight: number,
   intensity: number,
 ): { saturation: number; glow: number } {
-  const perimeter = CAPTURE_CONFIG.manaPerTilePerimeter;
-  const centerMult = CAPTURE_CONFIG.manaCenterTileMultiplier;
-  const span = perimeter * (centerMult - 1);
+  const span = MANA_PER_TILE_PERIMETER * (MANA_CENTER_TILE_MULTIPLIER - 1);
   const hotspotShare =
     span > 0
-      ? Math.max(0, Math.min(1, (tileProductionPerSec - perimeter) / span))
+      ? Math.max(0, Math.min(1, (tileProductionPerSec - MANA_PER_TILE_PERIMETER) / span))
       : 0;
   const saturation = Math.min(1, intensity * 3 * dominantHeight);
   const glow = Math.min(
