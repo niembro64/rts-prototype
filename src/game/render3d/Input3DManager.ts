@@ -41,6 +41,7 @@ import {
   getSnappedBuildPosition,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
+import { isWaterAt } from '../sim/Terrain';
 
 /** Approximate world-space vertical center for box-select projection,
  *  picked per entity kind so the screen-projected point lands near
@@ -746,26 +747,42 @@ export class Input3DManager {
         this.linePath, selectedUnits, this.waypointMode, tick, shiftHeld,
       );
       if (moveCmd) {
+        const mw = this.mapWidth, mh = this.mapHeight;
+        const finalWet = isFinite(mw) && isFinite(mh)
+          ? isWaterAt(finalPoint.x, finalPoint.y, mw, mh)
+          : null;
         // eslint-disable-next-line no-console
         console.log(
-          '[click] move: released at (%d, %d, %d), %d unit(s), %d drag sample(s), waypointType=%s',
+          '[click] move: released at (%d, %d, %d) wet=%s, %d unit(s), %d drag sample(s), waypointType=%s',
           Math.round(finalPoint.x), Math.round(finalPoint.y),
           finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
+          finalWet,
           selectedUnits.length, points.length, moveCmd.waypointType,
         );
-        // Per-unit individualTargets — useful when the line was a
-        // multi-sample drag and units got distributed along it.
-        if (moveCmd.individualTargets && moveCmd.individualTargets.length > 0) {
-          for (let i = 0; i < moveCmd.individualTargets.length; i++) {
-            const t = moveCmd.individualTargets[i];
-            // eslint-disable-next-line no-console
-            console.log(
-              '  [click]   unit #%d → (%d, %d, %d)',
-              moveCmd.entityIds[i],
-              Math.round(t.x), Math.round(t.y),
-              t.z !== undefined ? Math.round(t.z) : -1,
-            );
-          }
+        // Each unit's CURRENT position + wet flag, so we can replay the
+        // exact pathfinder query offline. (The unit might be in transit
+        // from a previous move command and standing on a wet cell at
+        // click-time — that's the most common reason a path's first
+        // visualised segment looks like it crosses water.)
+        for (let i = 0; i < selectedUnits.length; i++) {
+          const u = selectedUnits[i];
+          const ux = u.transform.x;
+          const uy = u.transform.y;
+          const uz = u.transform.z;
+          const uWet = isFinite(mw) && isFinite(mh)
+            ? isWaterAt(ux, uy, mw, mh)
+            : null;
+          const tgt = moveCmd.individualTargets?.[i];
+          // eslint-disable-next-line no-console
+          console.log(
+            '  [click]   unit #%d at (%d, %d, %d) wet=%s%s',
+            u.id,
+            Math.round(ux), Math.round(uy), Math.round(uz),
+            uWet,
+            tgt
+              ? ` → (${Math.round(tgt.x)}, ${Math.round(tgt.y)}, ${tgt.z !== undefined ? Math.round(tgt.z) : -1})`
+              : ` → (${Math.round(finalPoint.x)}, ${Math.round(finalPoint.y)}, ${finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1})`,
+          );
         }
         this.localCommandQueue.enqueue(moveCmd);
       }
