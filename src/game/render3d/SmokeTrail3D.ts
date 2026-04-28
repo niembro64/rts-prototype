@@ -67,6 +67,14 @@ const LOD_EMIT_MULT: Record<FireExplosionStyle, number> = {
   inferno: 1.0,
 };
 
+const LOD_PARTICLE_CAP: Record<FireExplosionStyle, number> = {
+  flash: 700,
+  spark: 1200,
+  burst: 2200,
+  blaze: 3200,
+  inferno: MAX_PARTICLES,
+};
+
 /** LOD multiplier on particle lifespan. Blended gently so low LODs
  *  don't produce invisibly-short puffs — min tier stays at 50% of
  *  max tier's lifespan. */
@@ -208,6 +216,7 @@ export class SmokeTrail3D {
     const style = (getGraphicsConfig().fireExplosionStyle as FireExplosionStyle) ?? 'burst';
     const lodEmitMult = LOD_EMIT_MULT[style] ?? 0.55;
     const lodLifeMult = lodLifespanMult(lodEmitMult);
+    const particleCap = Math.min(MAX_PARTICLES, LOD_PARTICLE_CAP[style] ?? 2200);
 
     // 1) Advance + fade existing puffs in place. Dead ones are
     //    swap-popped: the last live puff takes the dead slot's index,
@@ -293,10 +302,10 @@ export class SmokeTrail3D {
       // salvo.
       if (eligible.length > 0) {
         let progress = true;
-        while (progress && this.active.length < MAX_PARTICLES) {
+        while (progress && this.active.length < particleCap) {
           progress = false;
           for (const e of eligible) {
-            if (this.active.length >= MAX_PARTICLES) break;
+            if (this.active.length >= particleCap) break;
             const em = this.emitters.get(e.id)!;
             const spec = (e.projectile!.config.shot as { smokeTrail?: import('@/types/blueprints').SmokeTrailSpec }).smokeTrail!;
             const baseInterval = spec.emitIntervalMs ?? DEFAULT_EMIT_INTERVAL_MS;
@@ -330,8 +339,15 @@ export class SmokeTrail3D {
     //    live-puff prefix.
     this.mesh.count = this.active.length;
     if (this.active.length > 0) {
+      const count = this.active.length;
+      this.mesh.instanceMatrix.clearUpdateRanges();
+      this.mesh.instanceMatrix.addUpdateRange(0, count * 16);
       this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.clearUpdateRanges();
+      this.alphaAttr.addUpdateRange(0, count);
       this.alphaAttr.needsUpdate = true;
+      this.colorAttr.clearUpdateRanges();
+      this.colorAttr.addUpdateRange(0, count * 3);
       this.colorAttr.needsUpdate = true;
     }
   }
