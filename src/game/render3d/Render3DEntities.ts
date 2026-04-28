@@ -433,7 +433,14 @@ export class Render3DEntities {
   private _barrelStepMat = new THREE.Matrix4();
   private _barrelOneVec = new THREE.Vector3(1, 1, 1);
   private _barrelZeroVec = new THREE.Vector3(0, 0, 0);
-  private _barrelLiftVec = new THREE.Vector3();
+
+  /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
+   *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
+   *  once at the top of the per-unit body. Reused as the BARREL parent-
+   *  chain seed so the per-turret loop's first three composes /
+   *  multiplies (which used to rebuild this chain from m.group every
+   *  turret) collapse to a single `Matrix4.copy()`. */
+  private _unitChainMat = new THREE.Matrix4();
 
   // ── LOW+ tier polygonal/rect chassis InstancedMeshes ──────────────
   // One InstancedMesh per polygonal renderer (scout / brawl / tank /
@@ -1748,6 +1755,34 @@ export class Render3DEntities {
       m.chassis.position.set(0, 0, 0);
       m.chassis.scale.setScalar(radius);
 
+      // ── Per-unit chain cache ───────────────────────────────────────
+      // The scenegraph chain `group · yawGroup · liftGroup` is used by
+      // THREE downstream passes per unit: chassis (1×), turret-head
+      // (K×), barrel (K×). Recomputing the parent quaternion + lifted
+      // position 2K + 1 times — and rebuilding the barrel-chain prefix
+      // matrix from m.group up via three Matrix4.compose / .multiply
+      // pairs every turret — is wasted work that scales with turret
+      // count. Precompute once here, then every consumer pulls from
+      // the cached scratch vars (`_smoothParentQuat`, `_smoothLiftedPos`)
+      // and the cached prefix matrix `_unitChainMat`.
+      this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
+      this._smoothParentQuat
+        .copy(m.group.quaternion)
+        .multiply(this._smoothYawQuat);
+      {
+        const lift = m.chassisLift ?? 0;
+        this._smoothLiftOffset.set(0, lift, 0).applyQuaternion(this._smoothParentQuat);
+        this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
+      }
+      // Unscaled prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`.
+      // Barrel chain seeds from this; chassis paths still apply their
+      // own radius scale on top of the cached parentQuat / liftedPos.
+      this._unitChainMat.compose(
+        this._smoothLiftedPos,
+        this._smoothParentQuat,
+        this._barrelOneVec,
+      );
+
       // Smooth-body chassis: write each part's per-instance world
       // matrix + team color into the shared `smoothChassis`
       // InstancedMesh. The composition mirrors the per-Mesh
@@ -1763,21 +1798,10 @@ export class Render3DEntities {
       // slots, a snipe / loris / forceField takes one. All slots feed
       // the same shared draw call.
       if (m.smoothChassisSlots && this.smoothChassis) {
-        this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
-        this._smoothParentQuat
-          .copy(m.group.quaternion)
-          .multiply(this._smoothYawQuat);
+        // Reuse cached parentQuat / liftedPos from the per-unit prefix
+        // block above. Chassis adds its own radius scale on top of the
+        // shared chain. parentMat = T(liftedPos) · R(parentQuat) · S(radius).
         this._smoothParentScale.set(radius, radius, radius);
-        // parentMat = T(groupPos) · R(tilt·yaw) · T(0, lift, 0) · S(radius)
-        //           = T(groupPos + R(tilt·yaw)·(0, lift, 0)) · R(tilt·yaw) · S(radius)
-        // Rotate the lift offset by parentQuat and add to groupPos
-        // so the composed parentMat correctly encodes the liftGroup
-        // translation (which the scenegraph chain applies AFTER yaw
-        // and BEFORE chassis scale). When lift = 0 the offset is
-        // (0, 0, 0) and this collapses to the original compose.
-        const lift = m.chassisLift ?? 0;
-        this._smoothLiftOffset.set(0, lift, 0).applyQuaternion(this._smoothParentQuat);
-        this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
         this._smoothParentMat.compose(
           this._smoothLiftedPos,
           this._smoothParentQuat,
@@ -1809,14 +1833,9 @@ export class Render3DEntities {
         // as the smooth path, including the lift translation.
         const pool = this.polyChassis.get(m.rendererId);
         if (pool) {
-          this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
-          this._smoothParentQuat
-            .copy(m.group.quaternion)
-            .multiply(this._smoothYawQuat);
+          // Same per-unit chain as smooth chassis — reuse cached
+          // parentQuat / liftedPos.
           this._smoothParentScale.set(radius, radius, radius);
-          const lift = m.chassisLift ?? 0;
-          this._smoothLiftOffset.set(0, lift, 0).applyQuaternion(this._smoothParentQuat);
-          this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
           this._smoothParentMat.compose(
             this._smoothLiftedPos,
             this._smoothParentQuat,
@@ -1911,10 +1930,13 @@ export class Render3DEntities {
           && tm.headRadius !== undefined
         ) {
           const lift = m.chassisLift ?? 0;
-          this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
-          this._smoothParentQuat
-            .copy(m.group.quaternion)
-            .multiply(this._smoothYawQuat);
+          // parentQuat is already cached for this unit. Compute the
+          // turret-head position by rotating its chassis-local offset
+          // through parentQuat and adding to group.position. Note the
+          // cached liftedPos already includes the lift offset, but the
+          // head's own y-component supplies (lift + mountY + headRadius)
+          // explicitly here so we go from raw m.group.position, not
+          // from liftedPos, to avoid double-counting lift.
           this._smoothPartLocalPos.set(
             t.offset.x,
             lift + turretMountY + tm.headRadius,
@@ -1954,25 +1976,14 @@ export class Render3DEntities {
           && tm.barrelSlots.length === tm.barrels.length
         ) {
           // _barrelParentMat = group · yawGroup · liftGroup · turretRoot · pitchGroup · spinGroup
-          // Build progressively: each step multiplies in the next
-          // group's local matrix. ONE_VEC scratch for unit scale; the
-          // chain has no scaling until we add the per-barrel scale at
-          // the end.
-          this._barrelParentMat.compose(
-            m.group.position, m.group.quaternion, this._barrelOneVec,
-          );
-          // yawGroup: T(0) · Ry(yaw) · S(1)
-          this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
-          this._barrelStepMat.compose(
-            this._barrelZeroVec, this._smoothYawQuat, this._barrelOneVec,
-          );
-          this._barrelParentMat.multiply(this._barrelStepMat);
-          // liftGroup: T(0, lift, 0)
-          this._barrelLiftVec.set(0, m.chassisLift ?? 0, 0);
-          this._barrelStepMat.compose(
-            this._barrelLiftVec, Render3DEntities._IDENTITY_QUAT, this._barrelOneVec,
-          );
-          this._barrelParentMat.multiply(this._barrelStepMat);
+          // The first three groups (group · yawGroup · liftGroup) are
+          // identical across every turret + every chassis pass on this
+          // unit, so they're precomposed into `_unitChainMat` at the
+          // top of the per-unit body. Seed _barrelParentMat from that
+          // cached prefix matrix — saves three Matrix4.compose +
+          // two Matrix4.multiply calls per turret per frame, plus the
+          // setFromAxisAngle that built the yaw quaternion.
+          this._barrelParentMat.copy(this._unitChainMat);
           // turretRoot: T(turret root pos) · R(turret root quat) · S(1).
           // Read directly off the (still-extant, in-scene) tm.root
           // so the per-frame yaw rotation set above is reflected.
@@ -2095,19 +2106,9 @@ export class Render3DEntities {
         // (rotation.x just got the per-frame pitch update above), so
         // the InstancedMesh writer reads them as data.
         if (m.mirrors.panelSlots && this.mirrorPanelInstanced) {
-          const lift = m.chassisLift ?? 0;
-          // parentMat = group · yawGroup · liftGroup · mirrors.root
-          this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
-          this._smoothParentQuat
-            .copy(m.group.quaternion)
-            .multiply(this._smoothYawQuat);
-          this._smoothLiftOffset.set(0, lift, 0).applyQuaternion(this._smoothParentQuat);
-          this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
-          this._barrelParentMat.compose(
-            this._smoothLiftedPos,
-            this._smoothParentQuat,
-            this._barrelOneVec,
-          );
+          // parentMat = group · yawGroup · liftGroup · mirrors.root —
+          // first three groups are the cached unit chain.
+          this._barrelParentMat.copy(this._unitChainMat);
           // Mirror root rotation around Y in the lift-space frame.
           this._smoothYawQuat.setFromAxisAngle(_INST_UP, m.mirrors.root.rotation.y);
           this._barrelStepMat.compose(
