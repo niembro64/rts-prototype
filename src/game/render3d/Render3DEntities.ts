@@ -1887,6 +1887,20 @@ export class Render3DEntities {
     mesh.scale.setScalar(radius);
   }
 
+  /** Look up the yaw subgroup for a unit's mesh. Returned group is
+   *  parented to the unit's outer group (which carries world position
+   *  + tilt). Renderers that need to attach extra meshes to the unit
+   *  in a way that tracks position + tilt + yaw automatically — e.g.
+   *  the force-field bubble — parent to this group at chassis-local
+   *  positions and let the scenegraph chain place them in world.
+   *  Returns undefined for units whose mesh hasn't been built yet
+   *  (off-scope at scene start) or has been torn down (despawn /
+   *  LOD-flip mid-frame). Buildings have no yaw plumbing so this
+   *  is unit-only. */
+  getUnitYawGroup(eid: EntityId): THREE.Group | undefined {
+    return this.unitMeshes.get(eid)?.yawGroup;
+  }
+
   destroy(): void {
     // Per-unit overlays (TURR RAD rings, BLD ring, SCAL + PUSH rings)
     // are parented to the world group rather than the unit group so

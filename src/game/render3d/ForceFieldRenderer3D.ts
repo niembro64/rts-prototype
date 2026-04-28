@@ -16,9 +16,9 @@
 // re-randomize every arcFlickerMs to produce a crackling read.
 
 import * as THREE from 'three';
-import type { Entity, Turret } from '../sim/types';
-import { getWeaponWorldPosition, getTurretHeadRadius } from '../math';
-import { getBodyMountTopY } from './BodyShape3D';
+import type { Entity, EntityId, Turret } from '../sim/types';
+import { getTurretHeadRadius } from '../math';
+import { getBodyTopY } from './BodyShape3D';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
@@ -101,11 +101,25 @@ export class ForceFieldRenderer3D {
   /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
    *  skip their per-frame animation work. */
   private scope: ViewportFootprint;
+  /** Look up the unit's yaw subgroup. Force-field meshes attach to
+   *  this group like a regular turret root — the scenegraph chain
+   *  (group → yawGroup → field meshes) handles position, tilt, and
+   *  yaw automatically, so the field stays glued to its host through
+   *  every kind of motion the unit can do. Returns undefined when
+   *  the unit's mesh hasn't been built yet (off-scope at scene
+   *  start) or was torn down (LOD flip mid-frame); we skip the field
+   *  for that frame and re-acquire when the mesh is back. */
+  private getYawGroup: (eid: EntityId) => THREE.Group | undefined;
 
-  constructor(parentWorld: THREE.Group, scope: ViewportFootprint) {
+  constructor(
+    parentWorld: THREE.Group,
+    scope: ViewportFootprint,
+    getYawGroup: (eid: EntityId) => THREE.Group | undefined,
+  ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;
+    this.getYawGroup = getYawGroup;
   }
 
   private acquire(key: string): FieldMesh {
@@ -163,13 +177,16 @@ export class ForceFieldRenderer3D {
     return field;
   }
 
-  /** Lazily allocate particle meshes up to the requested count. */
+  /** Lazily allocate particle meshes up to the requested count.
+   *  New meshes parent to the SAME group the field's emitter is in —
+   *  after reparentFieldTo, that's the host unit's yawGroup, so motes
+   *  spawn directly into the chassis-local frame. */
   private ensureParticles(field: FieldMesh, count: number): void {
     while (field.particles.length < count) {
       const mesh = new THREE.Mesh(this.particleSphereGeom, field.particleMat);
       mesh.renderOrder = 9;
       mesh.visible = false;
-      this.root.add(mesh);
+      (field.emitter.parent ?? this.root).add(mesh);
       field.particles.push(mesh);
     }
   }
@@ -191,10 +208,32 @@ export class ForceFieldRenderer3D {
       const mesh = new THREE.Mesh(this.particleSphereGeom, mat);
       mesh.renderOrder = 9;
       mesh.visible = false;
-      this.root.add(mesh);
+      (field.emitter.parent ?? this.root).add(mesh);
       field.trailMeshes.push(mesh);
       field.trailMats.push(mat);
     }
+  }
+
+  /** Reparent every mesh in a FieldMesh from its current parent (the
+   *  renderer's `root` group on first frame, or the previous host's
+   *  yawGroup after a LOD-flip rebuild) onto `target` (the current
+   *  host's yawGroup). Particles and trails are lazily allocated, so
+   *  this iterates the live arrays — newly-allocated meshes inside
+   *  ensureParticles / ensureTrails parent to `field.emitter.parent`
+   *  (which by then equals `target`), so they land in the right
+   *  group from birth. */
+  private reparentFieldTo(field: FieldMesh, target: THREE.Group): void {
+    const move = (m: THREE.Object3D | undefined): void => {
+      if (!m) return;
+      if (m.parent === target) return;
+      m.parent?.remove(m);
+      target.add(m);
+    };
+    move(field.emitter);
+    move(field.zone);
+    for (const p of field.particles) move(p);
+    for (const tr of field.trailMeshes) move(tr);
+    move(field.arcLines);
   }
 
   /** Lazily allocate the arc LineSegments mesh + supporting buffers. */
@@ -217,7 +256,10 @@ export class ForceFieldRenderer3D {
     const arcLines = new THREE.LineSegments(arcGeom, arcMat);
     arcLines.renderOrder = 10;
     arcLines.frustumCulled = false;
-    this.root.add(arcLines);
+    // Same parent rule as ensureParticles / ensureTrails — land in the
+    // host yawGroup if the field is already attached, otherwise the
+    // renderer's root (will be moved on first reparent).
+    (field.emitter.parent ?? this.root).add(arcLines);
     field.arcGeom = arcGeom;
     field.arcMat = arcMat;
     field.arcLines = arcLines;
@@ -243,8 +285,15 @@ export class ForceFieldRenderer3D {
       // units across), so pad generously so a turret just off-screen with
       // its bubble reaching in still updates.
       if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) continue;
-      const cos = Math.cos(unit.transform.rotation);
-      const sin = Math.sin(unit.transform.rotation);
+
+      // Force-field meshes attach to the unit's yaw subgroup like a
+      // regular turret root — the scenegraph chain (group → yawGroup →
+      // field meshes) handles position + tilt + yaw automatically. If
+      // the unit's mesh hasn't been built yet (off-scope at scene
+      // start) or was torn down (LOD flip mid-frame), skip; we'll
+      // re-acquire when it's back.
+      const yawGroup = this.getYawGroup(unit.id);
+      if (!yawGroup) continue;
 
       for (let ti = 0; ti < unit.turrets.length; ti++) {
         const turret = unit.turrets[ti];
@@ -255,52 +304,44 @@ export class ForceFieldRenderer3D {
         const shot = turret.config.shot;
         if (shot.type !== 'force' || !shot.push) continue;
 
-        const wp = getWeaponWorldPosition(
-          unit.transform.x, unit.transform.y,
-          cos, sin,
-          turret.offset.x, turret.offset.y,
-        );
         const key = `${unit.id}-${ti}`;
         seen.add(key);
         const field = this.acquire(key);
 
-        // World altitude of the force-field emitter — must match the
-        // SPECIFIC body part the turret is mounted on, not the unit's
-        // global body top.
+        // Chassis-local mount position — exactly the same coords a
+        // regular turret root takes when buildTurretMesh3D parents it
+        // to yawGroup. Y is the GLOBAL body top + headRadius, so the
+        // emitter sphere sits where any other turret head on this
+        // unit would sit. For composite bodies (widow / commander /
+        // beam) "global body top" is the tallest part; the force
+        // field shares its altitude with the regular turret heads on
+        // the same unit, which is the "act just like any other
+        // turret" behaviour the user expects.
         //
-        // For a widow (arachnid composite body), the abdomen is the
-        // tallest part (radiusFrac 1.15 → top y ≈ 2.3·radius) and the
-        // prosoma is much shorter (radiusFrac 0.55 → top y ≈ 1.1·
-        // radius). The force-field turret is mounted on the prosoma
-        // (chassisMount = (0.3, 0)), but `getTurretMountHeight` (and
-        // `getBodyTopY`) return the GLOBAL body top — i.e. the abdomen
-        // top. Using that put the force field ~36wu above the prosoma
-        // dome instead of resting on it.
-        //
-        // `getBodyMountTopY(renderer, radius, mountX, mountZ)` finds
-        // the body part nearest the mount and returns THAT part's top
-        // in world units. For a single-part body (every non-composite
-        // renderer) it just returns the global topY, so non-composite
-        // hosts behave exactly the same. Plus headRadius gives the
-        // emitter sphere center, matching the formula a regular turret
-        // head uses.
-        //
-        // World Y = chassis-bottom three.y + per-mount muzzle height.
-        // chassis-bottom three.y = unit.transform.z (sim altitude of
-        // unit center) − push radius (Render3DEntities uses the same
-        // offset to position the unit group).
+        // turret.offset is already in world units (chassisMount.{x,y}
+        // × radius, baked at unit-creation time). yawGroup has scale
+        // 1, so its local space is in world units relative to the
+        // chassis-bottom origin — these chassis-local coords write
+        // straight into emitter / zone / particle / arc positions
+        // and the scenegraph chain places them in world.
         const unitRadius = unit.unit.unitRadiusCollider.scale;
-        const pushRadius = unit.unit.unitRadiusCollider.push ?? 0;
         let rendererId = 'arachnid';
         try { rendererId = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
         catch { /* keep fallback */ }
-        const mountTopY = getBodyMountTopY(
-          rendererId, unitRadius,
-          turret.offset.x, turret.offset.y,
-        );
+        const bodyTopY = getBodyTopY(rendererId, unitRadius);
         const headRadius = getTurretHeadRadius(unitRadius, turret.config);
-        const groundY = unit.transform.z - pushRadius;
-        const turretWorldY = groundY + mountTopY + headRadius;
+        const localX = turret.offset.x;
+        const localY = bodyTopY + headRadius;
+        const localZ = turret.offset.y;
+
+        // Reparent every field mesh to the unit's yawGroup if not
+        // already there — handles first-frame attachment AND LOD
+        // rebuilds (which create a new yawGroup and would leave the
+        // field stranded on the old one). Cheap when steady state:
+        // one identity check per mesh per frame.
+        if (field.emitter.parent !== yawGroup) {
+          this.reparentFieldTo(field, yawGroup);
+        }
 
         // Central pulsing emitter sphere: lerp white → blue, radius scales with progress.
         const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
@@ -318,16 +359,20 @@ export class ForceFieldRenderer3D {
         const emitterRadius = EMITTER_BASE_RADIUS
           + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * progress;
         field.emitter.scale.setScalar(emitterRadius);
-        field.emitter.position.set(wp.x, turretWorldY, wp.y);
+        field.emitter.position.set(localX, localY, localZ);
 
         // Spherical force-field zone — scale = outerRange (= push-zone radius
         // in sim units). Alpha fades in over the first third of progress.
         const push = shot.push;
         const outer = push.outerRange;
         const inner = push.innerRange;
-        const cx = wp.x;
-        const cy = turretWorldY;
-        const cz = wp.y;
+        // Chassis-local field center; particles + arcs orbit relative
+        // to this. Same coords for emitter / zone / motes / arcs so
+        // they all live in the same yawGroup-local frame and the
+        // scenegraph chain transforms them together.
+        const cx = localX;
+        const cy = localY;
+        const cz = localZ;
         if (outer <= 0) {
           field.zone.visible = false;
           for (const p of field.particles) p.visible = false;
@@ -498,14 +543,17 @@ export class ForceFieldRenderer3D {
       }
     }
 
-    // Tear down meshes for fields that turned off or whose unit is gone.
+    // Tear down meshes for fields that turned off or whose unit is
+    // gone. Meshes can live on the renderer's root OR a host unit's
+    // yawGroup, so detach via the actual parent each one happens to
+    // be on.
     for (const [key, field] of this.fields) {
       if (seen.has(key)) continue;
-      this.root.remove(field.emitter);
-      this.root.remove(field.zone);
-      for (const p of field.particles) this.root.remove(p);
-      for (const tr of field.trailMeshes) this.root.remove(tr);
-      if (field.arcLines) this.root.remove(field.arcLines);
+      field.emitter.parent?.remove(field.emitter);
+      field.zone.parent?.remove(field.zone);
+      for (const p of field.particles) p.parent?.remove(p);
+      for (const tr of field.trailMeshes) tr.parent?.remove(tr);
+      field.arcLines?.parent?.remove(field.arcLines);
       field.emitterMat.dispose();
       field.zoneMat.dispose();
       field.particleMat.dispose();
@@ -518,11 +566,11 @@ export class ForceFieldRenderer3D {
 
   destroy(): void {
     for (const field of this.fields.values()) {
-      this.root.remove(field.emitter);
-      this.root.remove(field.zone);
-      for (const p of field.particles) this.root.remove(p);
-      for (const tr of field.trailMeshes) this.root.remove(tr);
-      if (field.arcLines) this.root.remove(field.arcLines);
+      field.emitter.parent?.remove(field.emitter);
+      field.zone.parent?.remove(field.zone);
+      for (const p of field.particles) p.parent?.remove(p);
+      for (const tr of field.trailMeshes) tr.parent?.remove(tr);
+      field.arcLines?.parent?.remove(field.arcLines);
       field.emitterMat.dispose();
       field.zoneMat.dispose();
       field.particleMat.dispose();

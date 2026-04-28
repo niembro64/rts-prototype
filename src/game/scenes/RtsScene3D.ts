@@ -424,7 +424,17 @@ export class RtsScene3D {
       this.legInstancedRenderer,
     );
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world, this.renderScope);
-    this.forceFieldRenderer = new ForceFieldRenderer3D(this.threeApp.world, this.renderScope);
+    // ForceFieldRenderer3D parents each unit's force-field meshes onto
+    // that unit's yaw subgroup (like a regular turret root) so the
+    // bubble inherits position + tilt + yaw from the scenegraph
+    // chain. The lookup is via Render3DEntities since that's where
+    // the per-unit mesh hierarchy lives; entityRenderer was just
+    // constructed above so the callback resolves immediately.
+    this.forceFieldRenderer = new ForceFieldRenderer3D(
+      this.threeApp.world,
+      this.renderScope,
+      (eid) => this.entityRenderer.getUnitYawGroup(eid),
+    );
     this.captureTileRenderer = new CaptureTileRenderer3D(
       this.threeApp.world,
       this.clientViewState,
