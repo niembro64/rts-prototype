@@ -45,4 +45,22 @@ export const CAPTURE_CONFIG = {
    * starting state, not a soft tint.
    */
   initialOwnershipHeight: 1.0,
+
+  /**
+   * Central mana-production hotspot. Each tile's mana income is
+   * scaled by a multiplier that ramps linearly from 1.0 at the edge
+   * of the hotspot disc up to `manaHotspotCenterMultiplier` at the
+   * exact map center. The same multiplier drives tile colour
+   * intensity in the GRID overlay so what you SEE is what the tile
+   * actually produces.
+   *
+   *  manaHotspotRadiusFraction — disc radius as a fraction of
+   *    min(mapWidth, mapHeight). 0.0 disables the hotspot (uniform
+   *    production); 1.0 covers the entire map.
+   *  manaHotspotCenterMultiplier — peak multiplier at the map
+   *    center. 1.0 → no hotspot (everything uniform); 3.0 → centre
+   *    tile produces 3× a perimeter tile.
+   */
+  manaHotspotRadiusFraction: 0.30,
+  manaHotspotCenterMultiplier: 3.0,
 };

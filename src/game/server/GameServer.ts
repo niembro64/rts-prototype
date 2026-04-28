@@ -44,7 +44,7 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
-import { MANA_PER_TILE_PER_SECOND, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getSurfaceNormal, projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt } from '../sim/Terrain';
 
 export type { GameServerConfig } from '@/types/game';
@@ -184,6 +184,12 @@ export class GameServer {
     // territory directly in front of their base. Tiles flagged dirty
     // here flow out in the next snapshot regardless of keyframe / delta.
     {
+      // Tell the capture system about the map up front so its
+      // per-tile mana-production weights (hotspot multiplier) are
+      // available during update() AND for the initial radial paint
+      // below. The renderer pulls the same weights so on-screen
+      // brightness and income stay in lockstep.
+      this.captureSystem.setMapSize(mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
       const minDim = Math.min(mapWidth, mapHeight);
       const neutralRadius = minDim * CAPTURE_CONFIG.initialOwnershipNeutralRadiusFraction;
       this.captureSystem.initializeRadialOwnership(
@@ -439,11 +445,14 @@ export class GameServer {
       );
     }
 
-    // Update mana income from territory (proportional to flag heights)
-    const flagSums = this.captureSystem.getFlagSumsByPlayer();
+    // Update mana income from territory. The capture system's
+    // running totals are already in mana/sec, weighted per-tile by
+    // the central-hotspot multiplier — same weighting the GRID
+    // renderer uses for tile brightness, so what you see is what
+    // you earn.
+    const productionRates = this.captureSystem.getManaProductionRatesByPlayer();
     for (const playerId of this.playerIds) {
-      const flagSum = flagSums.get(playerId) ?? 0;
-      economyManager.setManaTerritory(playerId, flagSum * MANA_PER_TILE_PER_SECOND);
+      economyManager.setManaTerritory(playerId, productionRates.get(playerId) ?? 0);
     }
   }
 

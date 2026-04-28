@@ -7,14 +7,51 @@
 import type { PlayerId } from './types';
 import type { TileState, NetworkCaptureTile } from '@/types/capture';
 import { CAPTURE_CONFIG } from '../../captureConfig';
+import { getManaTileProductionPerSecond } from './manaProduction';
+import { MANA_PER_TILE_PER_SECOND } from '../../config';
 
 export class CaptureSystem {
   private tiles: Map<number, TileState> = new Map();
   private dirtyTiles: Set<number> = new Set();
-  /** Running per-player flag-height totals, maintained incrementally
-   *  by update() so getFlagSumsByPlayer() returns in O(1) instead of
-   *  re-scanning every tile every tick. */
-  private flagSums: Map<PlayerId, number> = new Map();
+  /** Running per-player mana income totals (mana/sec), maintained
+   *  incrementally by update() so getManaProductionRatesByPlayer()
+   *  returns in O(1) instead of re-scanning every tile every tick.
+   *  Each tile's contribution = height × MANA_PER_TILE_PER_SECOND ×
+   *  hotspot-multiplier(tile-center) — the same multiplier the GRID
+   *  renderer uses for tile colour brightness, so income and colour
+   *  share one source of truth. */
+  private productionRates: Map<PlayerId, number> = new Map();
+
+  /** Map dimensions cached from setMapSize(); needed to evaluate the
+   *  hotspot multiplier at each tile centre. Defaults make the system
+   *  fall back to the uniform behaviour if setMapSize was never
+   *  called (e.g. an empty test harness). */
+  private mapWidth = 0;
+  private mapHeight = 0;
+  private cellSize = 0;
+
+  /** Tell the system the map it lives on so per-tile mana production
+   *  rates can be computed. Must be called before update() runs.
+   *  Idempotent — safe to call once at construction. */
+  setMapSize(mapWidth: number, mapHeight: number, cellSize: number): void {
+    this.mapWidth = mapWidth;
+    this.mapHeight = mapHeight;
+    this.cellSize = cellSize;
+  }
+
+  /** Mana per second a single tile produces when fully captured by
+   *  one team. Computed from the cached map dimensions + cell size
+   *  so the renderer and the income code stay in lockstep. Returns
+   *  the uniform base rate when setMapSize hasn't been called yet. */
+  private getTileProduction(key: number): number {
+    // No map size yet → uniform base rate (fallback for tests / empty harness).
+    if (this.cellSize <= 0) return MANA_PER_TILE_PER_SECOND;
+    const cx = ((key >> 16) & 0xFFFF) - 32768;
+    const cy = (key & 0xFFFF) - 32768;
+    const wx = (cx + 0.5) * this.cellSize;
+    const wy = (cy + 0.5) * this.cellSize;
+    return getManaTileProductionPerSecond(wx, wy, this.mapWidth, this.mapHeight);
+  }
 
   /** Process one tick. Each unit raises its team's flag and lowers others. */
   update(
@@ -42,6 +79,10 @@ export class CaptureSystem {
 
       const totalUnits = players.length;
       let changed = false;
+      // Per-tile mana-per-second rate (constant for this cell). Each
+      // height delta contributes deltaHeight × tileProd to its
+      // owning player's running income total.
+      const tileProd = this.getTileProduction(key);
 
       // Raise flags for teams with units present
       for (const [pid, count] of _unitCounts) {
@@ -51,9 +92,12 @@ export class CaptureSystem {
           tile.set(pid, raised);
           changed = true;
           // Maintain the running per-player total incrementally so
-          // getFlagSumsByPlayer doesn't need its own scan over every
-          // tile.
-          this.flagSums.set(pid, (this.flagSums.get(pid) ?? 0) + (raised - prev));
+          // getManaProductionRatesByPlayer doesn't need its own scan
+          // over every tile.
+          this.productionRates.set(
+            pid,
+            (this.productionRates.get(pid) ?? 0) + (raised - prev) * tileProd,
+          );
         }
       }
 
@@ -66,13 +110,16 @@ export class CaptureSystem {
           changed = true;
           // Removing the entry means the running total drops by the
           // FULL old height (the tile entry vanishes from this.tiles).
-          const sum = (this.flagSums.get(pid) ?? 0) - height;
-          if (sum > 1e-9) this.flagSums.set(pid, sum);
-          else this.flagSums.delete(pid);
+          const rate = (this.productionRates.get(pid) ?? 0) - height * tileProd;
+          if (rate > 1e-9) this.productionRates.set(pid, rate);
+          else this.productionRates.delete(pid);
         } else if (lowered !== height) {
           tile.set(pid, lowered);
           changed = true;
-          this.flagSums.set(pid, (this.flagSums.get(pid) ?? 0) + (lowered - height));
+          this.productionRates.set(
+            pid,
+            (this.productionRates.get(pid) ?? 0) + (lowered - height) * tileProd,
+          );
         }
       }
 
@@ -116,17 +163,18 @@ export class CaptureSystem {
     return _snapshotTiles;
   }
 
-  /** Sum flag heights per player (for mana income). Returns the live
-   *  per-tick incremental total — do NOT store the reference, do NOT
-   *  mutate. */
-  getFlagSumsByPlayer(): Map<PlayerId, number> {
-    return this.flagSums;
+  /** Per-player mana income from territory, in mana per second.
+   *  Already weighted by per-tile hotspot multipliers — no further
+   *  scaling needed at the call site. Returns the live per-tick
+   *  incremental total — do NOT store the reference, do NOT mutate. */
+  getManaProductionRatesByPlayer(): Map<PlayerId, number> {
+    return this.productionRates;
   }
 
   clear(): void {
     this.tiles.clear();
     this.dirtyTiles.clear();
-    this.flagSums.clear();
+    this.productionRates.clear();
   }
 
   /** Pre-capture every grid cell outside a central neutral disc to the
@@ -141,9 +189,10 @@ export class CaptureSystem {
    *  sector at index 0.
    *
    *  Each touched tile is added to dirtyTiles so the very next snapshot
-   *  (whether keyframe or delta) ships the new ownership. flagSums is
-   *  bumped per team so mana income reflects starting territory before
-   *  any unit moves.
+   *  (whether keyframe or delta) ships the new ownership. The running
+   *  per-player production-rate total is bumped per team so mana
+   *  income reflects starting territory (plus its hotspot weighting)
+   *  before any unit moves.
    *
    *  Safe to call only on a fresh system — assumes no existing tiles. */
   initializeRadialOwnership(
@@ -187,7 +236,14 @@ export class CaptureSystem {
         tile.set(pid, ownerHeight);
         this.tiles.set(key, tile);
         this.dirtyTiles.add(key);
-        this.flagSums.set(pid, (this.flagSums.get(pid) ?? 0) + ownerHeight);
+        // Production rate increment uses the per-tile mana/sec rate
+        // at this cell — center tiles inside the hotspot disc count
+        // for more income from frame 1.
+        const tileProd = getManaTileProductionPerSecond(wx, wy, mapWidth, mapHeight);
+        this.productionRates.set(
+          pid,
+          (this.productionRates.get(pid) ?? 0) + ownerHeight * tileProd,
+        );
       }
     }
   }

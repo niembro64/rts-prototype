@@ -4,6 +4,8 @@ import { getTerrainHeight, WATER_LEVEL } from '@/game/sim/Terrain';
 import { PLAYER_COLORS } from '@/game/sim/types';
 import type { PlayerId } from '@/game/sim/types';
 import { MAP_BG_COLOR } from '@/config';
+import { CAPTURE_CONFIG } from '@/captureConfig';
+import { getManaCellMultiplier } from '@/game/sim/manaProduction';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
@@ -96,17 +98,22 @@ function drawEntityLayer(): void {
   // dict lookups inside the hot loop.
   //
   // Same blend formula the 3D CaptureTileRenderer3D uses:
-  //     mix     = clamp(intensity * 3 * maxHeight, 0, 1)
-  //     out_rgb = neutral * (1 − mix) + teamColor * mix
-  // Identical math = identical brightness in both views. When
-  // captureCellSize is 0 (no data yet) or intensity is 0 (GRID off) we
-  // skip the overlay — the minimap reads pure terrain shading instead.
+  //     productionFraction = maxHeight * hotspotMultiplier / centerMultiplier
+  //     mix                = clamp(intensity * 3 * productionFraction, 0, 1)
+  //     out_rgb            = neutral * (1 − mix) + teamColor * mix
+  // Identical math = identical brightness in both views. The hotspot
+  // multiplier is the same number that drives a tile's mana income,
+  // so on the minimap "brighter = more mana per tick" exactly.
+  // When captureCellSize is 0 (no data yet) or intensity is 0 (GRID
+  // off) we skip the overlay — the minimap reads pure terrain
+  // shading instead.
   const { captureTiles, captureCellSize, gridOverlayIntensity, showTerrain } = props.data;
   const overlayActive = showTerrain && captureCellSize > 0 && gridOverlayIntensity > 0 && captureTiles.length > 0;
+  const centerMult = Math.max(1, CAPTURE_CONFIG.manaHotspotCenterMultiplier);
   let tileTeamR: Float32Array | null = null;
   let tileTeamG: Float32Array | null = null;
   let tileTeamB: Float32Array | null = null;
-  let tileMaxH: Float32Array | null = null;
+  let tileProdFrac: Float32Array | null = null;
   let tileCellsX = 0;
   let tileCellsY = 0;
   if (overlayActive) {
@@ -116,7 +123,7 @@ function drawEntityLayer(): void {
     tileTeamR = new Float32Array(n);
     tileTeamG = new Float32Array(n);
     tileTeamB = new Float32Array(n);
-    tileMaxH  = new Float32Array(n);
+    tileProdFrac = new Float32Array(n);
     for (let i = 0; i < captureTiles.length; i++) {
       const tile = captureTiles[i];
       const { cx, cy } = tile;
@@ -141,7 +148,8 @@ function drawEntityLayer(): void {
       tileTeamR[idx] = r / totalWeight;
       tileTeamG[idx] = g / totalWeight;
       tileTeamB[idx] = b / totalWeight;
-      tileMaxH[idx]  = maxHeight;
+      const tileMult = getManaCellMultiplier(cx, cy, captureCellSize, mapWidth, mapHeight);
+      tileProdFrac[idx] = (maxHeight * tileMult) / centerMult;
     }
   }
 
@@ -179,13 +187,13 @@ function drawEntityLayer(): void {
           outR = lakeR; outG = lakeG; outB = lakeB;
         } else {
           outR = NEUTRAL_R; outG = NEUTRAL_G; outB = NEUTRAL_B;
-          if (overlayActive && tileTeamR && tileTeamG && tileTeamB && tileMaxH) {
+          if (overlayActive && tileTeamR && tileTeamG && tileTeamB && tileProdFrac) {
             const tx = Math.floor(worldX / captureCellSize);
             if (tx >= 0 && tx < tileCellsX && ty >= 0 && ty < tileCellsY) {
               const idx = ty * tileCellsX + tx;
-              const maxH = tileMaxH[idx];
-              if (maxH > 0) {
-                const mix = Math.min(1, intensity3 * maxH);
+              const prodFrac = tileProdFrac[idx];
+              if (prodFrac > 0) {
+                const mix = Math.min(1, intensity3 * prodFrac);
                 const inv = 1 - mix;
                 outR = NEUTRAL_R * inv + tileTeamR[idx] * mix;
                 outG = NEUTRAL_G * inv + tileTeamG[idx] * mix;
