@@ -160,9 +160,17 @@ const BUILDING_INFLATION_CELLS = 1;
 
 /** When the start or goal cell is blocked, scan outward this many
  *  cells looking for the nearest open cell to use as a substitute.
- *  32 cells = 640 wu — covers the demo map's full central-water
- *  diameter under a default LAKE configuration. */
-const NEAREST_OPEN_RADIUS = 32;
+ *  64 cells = 1280 wu — generous enough that a click in the deep
+ *  middle of the central lake (radius ~700 wu, plus a 60 wu
+ *  inflation halo, ≈ 38 cells from the user's intent to the
+ *  nearest dry shore) still snaps to the right shore on the
+ *  unit's side. The cost of the larger search is bounded — the
+ *  scan walks the precomputed `_snapOffsets` Euclidean-sorted
+ *  list and returns on first hit, which for a click on dry land
+ *  is one iteration regardless of `NEAREST_OPEN_RADIUS`. The
+ *  larger value only matters when the click is buried in
+ *  blocked terrain. */
+const NEAREST_OPEN_RADIUS = 64;
 
 /** Pre-sorted (dx, dy) offsets within `NEAREST_OPEN_RADIUS`, ordered
  *  by Euclidean distance from the centre. This is what makes
