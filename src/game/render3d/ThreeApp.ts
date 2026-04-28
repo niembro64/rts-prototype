@@ -32,6 +32,9 @@ export class ThreeApp {
   private _running = false;
   private _rafId = 0;
   private _resizeObserver: ResizeObserver;
+  private _nativePixelRatio = 1;
+  private _activePixelRatio = 1;
+  private _lastPixelRatioAdjustMs = 0;
 
   constructor(
     parent: HTMLElement,
@@ -45,7 +48,9 @@ export class ThreeApp {
     this.scene.background = new THREE.Color(backgroundColor);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
+    this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
+    this._activePixelRatio = this._nativePixelRatio;
+    this.renderer.setPixelRatio(this._activePixelRatio);
     this.renderer.setSize(width, height);
     this.renderer.shadowMap.enabled = false;
     parent.appendChild(this.renderer.domElement);
@@ -151,9 +156,33 @@ export class ThreeApp {
       // results arrive 2-3 frames after the begin/end pair, so `getGpuMs()`
       // always reflects slightly stale data (acceptable for a UI readout).
       this.gpuTimer.poll();
+      this.adjustPixelRatio(now, delta);
       this._rafId = requestAnimationFrame(tick);
     };
     this._rafId = requestAnimationFrame(tick);
+  }
+
+  private adjustPixelRatio(now: number, frameDeltaMs: number): void {
+    if (this._nativePixelRatio <= 1) return;
+    if (now - this._lastPixelRatioAdjustMs < 750) return;
+
+    const gpuMs = this.gpuTimer.getGpuMs();
+    const hasGpuMs = this.gpuTimer.isSupported() && gpuMs > 0;
+    const overloaded = hasGpuMs ? gpuMs > 18 : frameDeltaMs > 24;
+    const comfortable = hasGpuMs ? gpuMs < 10 : frameDeltaMs < 15;
+    let next = this._activePixelRatio;
+    if (overloaded) {
+      next = Math.max(1, this._activePixelRatio - 0.25);
+    } else if (comfortable) {
+      next = Math.min(this._nativePixelRatio, this._activePixelRatio + 0.25);
+    }
+    if (Math.abs(next - this._activePixelRatio) < 0.01) return;
+
+    this._activePixelRatio = next;
+    this._lastPixelRatioAdjustMs = now;
+    this.renderer.setPixelRatio(this._activePixelRatio);
+    const canvas = this.renderer.domElement;
+    this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
   }
 
   stop(): void {
