@@ -1,32 +1,39 @@
 // Explosion3D — short-lived "fire explosion" effects for projectile impacts
 // and unit deaths in the 3D view.
 //
-// Each spawn creates two nested spheres (a bright yellow-white core + an orange
-// fireball shell) plus a small number of radial ember sparks that arc outward
-// with gravity. Everything fades on a quadratic alpha curve and is released
-// back to a mesh pool when its lifetime expires. Positions and scales animate
-// in place — no per-frame Mesh allocation after warmup.
+// Each spawn emits a bright white core puff plus (above 'flash' LOD) a
+// cool-tinted shell puff and (above 'spark' LOD) a radial spray of ember
+// sparks that arc outward with gravity. Everything fades on a
+// quadratic/cubic alpha curve and is dropped from the active list when
+// its lifetime expires.
+//
+// Rendering: every puff and every spark is one slot in one of two
+// shared InstancedMeshes. Per-instance scale/position go in the
+// instance matrix; per-instance alpha + color go in custom
+// InstancedBufferAttributes (aAlpha, aColor) read by a tiny custom
+// shader (gl_FragColor = vec4(vColor, vAlpha);). Cost is two draw
+// calls regardless of how many explosions are on screen — replaces the
+// old per-Mesh + per-MeshBasicMaterial pool which paid one draw call
+// per particle.
 //
 // LOD:
 //   fireExplosionStyle =
 //     - 'flash'   : core only (cheapest)
-//     - 'spark'   : core + small shell, no sparks
+//     - 'spark'   : core + shell, no sparks
 //     - 'burst'   : core + shell, ~6 sparks
 //     - 'blaze'   : core + shell, ~12 sparks
 //     - 'inferno' : core + shell, ~20 sparks with longer trails
 //
-// Units/ground share the same world Y for impact height, matching the Y used
-// by the 2D ExplosionRenderer's xy-plane effects.
-//
-// Triggered by SimEvents of type 'hit' and 'projectileExpire'; the scene calls
-// `spawnImpact()` directly with positions/colors pulled from impactContext.
+// Triggered by SimEvents of type 'hit' and 'projectileExpire'; the
+// scene calls `spawnImpact()` directly with positions/colors pulled
+// from impactContext.
 
 import * as THREE from 'three';
 import { getGraphicsConfig } from '@/clientBarConfig';
-
-// (SHOT_HEIGHT is gone — every explosion takes its altitude from the
-// SimEvent's pos.z so visuals line up with the sim's exact impact
-// point. Callers pass simX / simY / simZ explicitly.)
+// Sparks are affected by gravity so they arc. Imported from config.ts
+// so explosion sparks, debris, projectiles, and physics all share one
+// gravity value.
+import { GRAVITY as SPARK_GRAVITY } from '../../config';
 
 // Per-spawn defaults. All three layers use a white palette — the low-LOD
 // flash-only look was just the core ball, which users liked, so higher
@@ -57,11 +64,6 @@ function durationMultiplier(radius: number): number {
   return 1 + Math.log2(Math.max(1, radius / DURATION_BASE_RADIUS));
 }
 
-// Sparks are affected by gravity so they arc. Imported from config.ts
-// so explosion sparks, debris, projectiles, and physics all share one
-// gravity value.
-import { GRAVITY as SPARK_GRAVITY } from '../../config';
-
 // Fireball starts slightly smaller than its final size and expands while it
 // brightens, then fades while still expanding. Multipliers are over the base
 // impact radius passed in from ImpactContext.
@@ -83,58 +85,172 @@ const LOD_TABLE: Record<ExplosionStyle, { sparks: number; sparkReach: number }> 
   inferno: { sparks: 20, sparkReach: 2.8 },
 };
 
+// Pool ceilings — bounded so heavy salvo spam can't unbounded-allocate.
+// Steady-state estimates: each impact emits at most 2 puffs (core + shell)
+// living up to ~280ms × ~5× duration mult; sparks emit up to 20 lasting
+// ~450ms × ~5× mult. 2048 puffs / 4096 sparks comfortably absorb
+// dozens of concurrent inferno-tier impacts.
+const MAX_PUFFS = 2048;
+const MAX_SPARKS = 4096;
+
 type Puff = {
-  mesh: THREE.Mesh;
-  material: THREE.MeshBasicMaterial;
   startR: number;
   endR: number;
-  lifetime: number;
-  age: number;
-  baseColor: number;
+  lifetimeMs: number;
+  ageMs: number;
   /** true for the outer fireball so it fades quadratically; core fades cubically. */
   isShell: boolean;
+  // Position in three coords (sim x → three x, sim z → three y, sim y → three z).
+  px: number;
+  py: number;
+  pz: number;
+  // Unpacked sRGB color [0,1] for this puff.
+  r: number;
+  g: number;
+  b: number;
 };
 
 type Spark = {
-  mesh: THREE.Mesh;
-  material: THREE.MeshBasicMaterial;
-  /** World-space velocity — sim plane is XZ, +Y is up. */
+  /** World-space velocity — three coords (sim XZ plane → three XZ; +Y up). */
   vx: number;
   vy: number;
   vz: number;
   size: number;
-  lifetime: number;
-  age: number;
+  lifetimeMs: number;
+  ageMs: number;
+  px: number;
+  py: number;
+  pz: number;
+  r: number;
+  g: number;
+  b: number;
 };
+
+const PARTICLE_VERTEX_SHADER = `
+attribute float aAlpha;
+attribute vec3 aColor;
+varying float vAlpha;
+varying vec3 vColor;
+void main() {
+  vAlpha = aAlpha;
+  vColor = aColor;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+}
+`;
+
+const PARTICLE_FRAGMENT_SHADER = `
+varying float vAlpha;
+varying vec3 vColor;
+void main() {
+  gl_FragColor = vec4(vColor, vAlpha);
+}
+`;
+
+/** A bounded InstancedMesh of unit spheres with per-instance alpha + color.
+ *  Slot index i corresponds to the active[i] entry in the owning system's
+ *  swap-pop array — the active prefix is kept dense so `mesh.count` is the
+ *  exact draw bound. Same shader contract as SmokeTrail3D so all three
+ *  particle systems share one fragment behavior (vec4(color, alpha)). */
+class InstancedSpherePool {
+  private geom: THREE.SphereGeometry;
+  private mat: THREE.ShaderMaterial;
+  readonly mesh: THREE.InstancedMesh;
+  private alphaArr: Float32Array;
+  private colorArr: Float32Array;
+  private alphaAttr: THREE.InstancedBufferAttribute;
+  private colorAttr: THREE.InstancedBufferAttribute;
+  // Reusable scratch matrix to avoid allocations in the per-frame write loop.
+  private scratch = new THREE.Matrix4();
+  readonly cap: number;
+
+  constructor(parent: THREE.Group, cap: number, renderOrder: number) {
+    this.cap = cap;
+    this.geom = new THREE.SphereGeometry(1, 12, 10);
+    this.alphaArr = new Float32Array(cap);
+    this.colorArr = new Float32Array(cap * 3);
+    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
+    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
+    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
+    this.geom.setAttribute('aAlpha', this.alphaAttr);
+    this.geom.setAttribute('aColor', this.colorAttr);
+    this.mat = new THREE.ShaderMaterial({
+      vertexShader: PARTICLE_VERTEX_SHADER,
+      fragmentShader: PARTICLE_FRAGMENT_SHADER,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.mesh = new THREE.InstancedMesh(this.geom, this.mat, cap);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.count = 0;
+    // Frustum culling on InstancedMesh uses the source geometry's bounding
+    // sphere (origin, radius 1) — instances live anywhere on the map, so
+    // disable cull. Empty slots leave count at the active prefix length.
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = renderOrder;
+    parent.add(this.mesh);
+  }
+
+  write(
+    i: number,
+    x: number, y: number, z: number,
+    scale: number,
+    r: number, g: number, b: number,
+    alpha: number,
+  ): void {
+    this.scratch.makeScale(scale, scale, scale);
+    this.scratch.setPosition(x, y, z);
+    this.mesh.setMatrixAt(i, this.scratch);
+    this.alphaArr[i] = alpha;
+    this.colorArr[i * 3]     = r;
+    this.colorArr[i * 3 + 1] = g;
+    this.colorArr[i * 3 + 2] = b;
+  }
+
+  setCount(n: number): void {
+    this.mesh.count = n;
+    if (n > 0) {
+      this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.needsUpdate = true;
+      this.colorAttr.needsUpdate = true;
+    }
+  }
+
+  destroy(): void {
+    this.mesh.parent?.remove(this.mesh);
+    this.mesh.dispose();
+    this.mat.dispose();
+    this.geom.dispose();
+  }
+}
 
 export class Explosion3D {
   private root: THREE.Group;
-
-  // Shared geometry — all puffs and sparks are unit spheres scaled per-use.
-  private sphereGeom = new THREE.SphereGeometry(1, 12, 10);
-
-  // Active effects, updated each frame. When their age exceeds lifetime the
-  // mesh is hidden (not removed) and appended back to the pool.
+  private puffPool: InstancedSpherePool;
+  private sparkPool: InstancedSpherePool;
+  // Active particles, kept dense at the front of the array via swap-pop.
+  // Index i in puffs[] corresponds to slot i in puffPool.mesh, same for sparks.
   private puffs: Puff[] = [];
   private sparks: Spark[] = [];
-
-  // Mesh pools for cheap reuse. Each pool entry caches (mesh, material) pairs
-  // so we avoid re-allocating MeshBasicMaterials for every hit.
-  private puffPool: { mesh: THREE.Mesh; material: THREE.MeshBasicMaterial }[] = [];
-  private sparkPool: { mesh: THREE.Mesh; material: THREE.MeshBasicMaterial }[] = [];
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
+    // renderOrder mirrors the old per-Mesh values: puffs at 14, sparks at
+    // 15 so sparks consistently composite over the fireball shell.
+    this.puffPool = new InstancedSpherePool(this.root, MAX_PUFFS, 14);
+    this.sparkPool = new InstancedSpherePool(this.root, MAX_SPARKS, 15);
   }
 
   /**
-   * Spawn a fire explosion at (x, z) with a given base radius. Called by
-   * the scene's SimEvent dispatcher for 'hit' and 'projectileExpire'.
+   * Fire an impact explosion at a full 3D sim position.
+   *   `simX` / `simY`  = horizontal plane (sim.x / sim.y)
+   *   `simZ`           = altitude (sim.z, authoritative event altitude)
+   * Internally maps to Three.js (x=simX, y=simZ, z=simY).
    *
    * `momentumX/Z` is an optional bias (sim X/Y → world X/Z units per
-   * second) that gets added to every spark's random launch velocity, so
-   * the spark cloud drifts in the direction of the combined impact
+   * second) added to every spark's random launch velocity, so the
+   * spark cloud drifts in the direction of the combined impact
    * momentum rather than radiating uniformly. Callers pre-compute it
    * from a weighted combination of the projectile velocity, penetration
    * direction, and target velocity — matching the 2D
@@ -144,12 +260,6 @@ export class Explosion3D {
    * `shellColor` overrides the default cool-white shell (used by the
    * 2D code for team-tinted death blasts; unused here now that all
    * explosions are white).
-   */
-  /**
-   * Fire an impact explosion at a full 3D sim position.
-   *   `simX` / `simY`  = horizontal plane (sim.x / sim.y)
-   *   `simZ`           = altitude (sim.z, authoritative event altitude)
-   * Internally maps to Three.js (x=simX, y=simZ, z=simY).
    */
   spawnImpact(
     simX: number, simY: number, simZ: number, radius: number,
@@ -210,44 +320,25 @@ export class Explosion3D {
 
   private addPuff(
     simX: number, simY: number, simZ: number,
-    color: number, lifetime: number,
+    color: number, lifetimeMs: number,
     startR: number, endR: number, isShell: boolean,
   ): void {
-    const pooled = this.puffPool.pop();
-    let mesh: THREE.Mesh;
-    let material: THREE.MeshBasicMaterial;
-    if (pooled) {
-      mesh = pooled.mesh;
-      material = pooled.material;
-      material.color.setHex(color);
-      material.opacity = 1;
-      mesh.visible = true;
-    } else {
-      material = new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 1,
-        depthWrite: false,
-      });
-      mesh = new THREE.Mesh(this.sphereGeom, material);
-      mesh.renderOrder = 14;
-      this.root.add(mesh);
-    }
-    // Three.js (x, y, z) ← sim (x, z, y): simX goes to three-x, sim
-    // altitude (simZ) goes to three-y, sim.y (ground plane) goes to
-    // three-z. This is the canonical sim-to-render axis swap.
-    mesh.position.set(simX, simZ, simY);
-    mesh.scale.setScalar(startR);
-
+    if (this.puffs.length >= MAX_PUFFS) return;
+    const r = ((color >> 16) & 0xff) / 255;
+    const g = ((color >> 8)  & 0xff) / 255;
+    const b = ( color        & 0xff) / 255;
+    // Three.js (x, y, z) ← sim (x, z, y): simX → three-x, sim altitude
+    // (simZ) → three-y, sim.y (ground plane) → three-z. Canonical axis swap.
     this.puffs.push({
-      mesh, material, startR, endR, lifetime, age: 0,
-      baseColor: color, isShell,
+      startR, endR, lifetimeMs, ageMs: 0, isShell,
+      px: simX, py: simZ, pz: simY,
+      r, g, b,
     });
   }
 
   private addSparks(
     simX: number, simY: number, simZ: number,
-    reach: number, count: number, lifetime: number,
+    reach: number, count: number, lifetimeMs: number,
     momentumX: number = 0, momentumZ: number = 0,
   ): void {
     // Sparks spray over the full sphere so the explosion reads in 3D from any
@@ -259,28 +350,11 @@ export class Explosion3D {
     const BIAS_FACTOR = 0.35;
     const biasX = momentumX * BIAS_FACTOR;
     const biasZ = momentumZ * BIAS_FACTOR;
+    const r = ((SPARK_COLOR >> 16) & 0xff) / 255;
+    const g = ((SPARK_COLOR >> 8)  & 0xff) / 255;
+    const b = ( SPARK_COLOR        & 0xff) / 255;
     for (let i = 0; i < count; i++) {
-      const pooled = this.sparkPool.pop();
-      let mesh: THREE.Mesh;
-      let material: THREE.MeshBasicMaterial;
-      if (pooled) {
-        mesh = pooled.mesh;
-        material = pooled.material;
-        material.color.setHex(SPARK_COLOR);
-        material.opacity = 1;
-        mesh.visible = true;
-      } else {
-        material = new THREE.MeshBasicMaterial({
-          color: SPARK_COLOR,
-          transparent: true,
-          opacity: 1,
-          depthWrite: false,
-        });
-        mesh = new THREE.Mesh(this.sphereGeom, material);
-        mesh.renderOrder = 15;
-        this.root.add(mesh);
-      }
-
+      if (this.sparks.length >= MAX_SPARKS) break;
       // Random direction biased slightly upward — sparks that go under the
       // ground get culled, so biasing up yields fewer wasted particles.
       const theta = Math.random() * Math.PI * 2;
@@ -289,18 +363,15 @@ export class Explosion3D {
       // `reach` world units over the extended lifetime — longer-lasting
       // explosions have slower drifting sparks rather than faster-traveling
       // ones, which keeps the explosion's visible footprint reasonable.
-      const speed = (0.6 + Math.random() * 0.5) * reach * (1000 / lifetime);
+      const speed = (0.6 + Math.random() * 0.5) * reach * (1000 / lifetimeMs);
       const vx = Math.cos(theta) * Math.cos(phi) * speed + biasX;
       const vz = Math.sin(theta) * Math.cos(phi) * speed + biasZ;
       const vy = Math.sin(phi) * speed;
-
       const size = 0.9 + Math.random() * 1.2;
-      mesh.position.set(simX, simZ, simY);
-      mesh.scale.setScalar(size);
-
       this.sparks.push({
-        mesh, material, vx, vy, vz, size,
-        lifetime, age: 0,
+        vx, vy, vz, size, lifetimeMs, ageMs: 0,
+        px: simX, py: simZ, pz: simY,
+        r, g, b,
       });
     }
   }
@@ -308,45 +379,54 @@ export class Explosion3D {
   update(dtMs: number): void {
     const dtSec = dtMs / 1000;
 
-    // Animate puffs: expand radius linearly with progress, fade alpha.
-    for (let i = this.puffs.length - 1; i >= 0; i--) {
+    // 1) Puffs: expand radius linearly with progress, fade alpha. Core fades
+    //    cubically (stays bright then disappears quickly); shell fades
+    //    quadratically so the warm glow lingers. Swap-pop drops dead puffs.
+    let i = 0;
+    while (i < this.puffs.length) {
       const p = this.puffs[i];
-      p.age += dtMs;
-      const t = Math.min(1, p.age / p.lifetime);
-      const r = p.startR + (p.endR - p.startR) * t;
-      p.mesh.scale.setScalar(r);
-      // Core fades cubically (stays bright then disappears quickly); shell
-      // fades quadratically so the warm glow lingers.
-      const fade = p.isShell ? (1 - t) * (1 - t) : (1 - t) * (1 - t) * (1 - t);
-      p.material.opacity = fade;
-      if (p.age >= p.lifetime) {
-        p.mesh.visible = false;
-        this.puffPool.push({ mesh: p.mesh, material: p.material });
-        this.puffs.splice(i, 1);
+      p.ageMs += dtMs;
+      if (p.ageMs >= p.lifetimeMs) {
+        const last = this.puffs.length - 1;
+        if (i !== last) this.puffs[i] = this.puffs[last];
+        this.puffs.pop();
+        continue;
       }
+      const t = p.ageMs / p.lifetimeMs;
+      const scale = p.startR + (p.endR - p.startR) * t;
+      const fade = p.isShell
+        ? (1 - t) * (1 - t)
+        : (1 - t) * (1 - t) * (1 - t);
+      this.puffPool.write(i, p.px, p.py, p.pz, scale, p.r, p.g, p.b, fade);
+      i++;
     }
+    this.puffPool.setCount(this.puffs.length);
 
-    // Integrate sparks with gravity; fade alpha and scale toward zero.
-    for (let i = this.sparks.length - 1; i >= 0; i--) {
-      const s = this.sparks[i];
-      s.age += dtMs;
-      const t = Math.min(1, s.age / s.lifetime);
-      s.vy -= SPARK_GRAVITY * dtSec;
-      s.mesh.position.x += s.vx * dtSec;
-      s.mesh.position.y += s.vy * dtSec;
-      s.mesh.position.z += s.vz * dtSec;
-      // Hide sparks that fall below the ground so we don't see fire under the
-      // terrain slab.
-      if (s.mesh.position.y < 0) s.mesh.position.y = 0;
-      const fade = (1 - t) * (1 - t);
-      s.material.opacity = fade;
-      s.mesh.scale.setScalar(s.size * (0.3 + 0.7 * fade));
-      if (s.age >= s.lifetime) {
-        s.mesh.visible = false;
-        this.sparkPool.push({ mesh: s.mesh, material: s.material });
-        this.sparks.splice(i, 1);
+    // 2) Sparks: integrate gravity, drift with velocity, fade + shrink.
+    //    A spark that falls below ground is clamped at y=0 (so we don't
+    //    see fire under the terrain slab). Swap-pop drops dead sparks.
+    let j = 0;
+    while (j < this.sparks.length) {
+      const s = this.sparks[j];
+      s.ageMs += dtMs;
+      if (s.ageMs >= s.lifetimeMs) {
+        const last = this.sparks.length - 1;
+        if (j !== last) this.sparks[j] = this.sparks[last];
+        this.sparks.pop();
+        continue;
       }
+      s.vy -= SPARK_GRAVITY * dtSec;
+      s.px += s.vx * dtSec;
+      s.py += s.vy * dtSec;
+      s.pz += s.vz * dtSec;
+      if (s.py < 0) s.py = 0;
+      const t = s.ageMs / s.lifetimeMs;
+      const fade = (1 - t) * (1 - t);
+      const scale = s.size * (0.3 + 0.7 * fade);
+      this.sparkPool.write(j, s.px, s.py, s.pz, scale, s.r, s.g, s.b, fade);
+      j++;
     }
+    this.sparkPool.setCount(this.sparks.length);
   }
 
   private getStyle(): ExplosionStyle {
@@ -354,27 +434,10 @@ export class Explosion3D {
   }
 
   destroy(): void {
-    for (const p of this.puffs) {
-      p.material.dispose();
-      this.root.remove(p.mesh);
-    }
-    for (const s of this.sparks) {
-      s.material.dispose();
-      this.root.remove(s.mesh);
-    }
-    for (const { mesh, material } of this.puffPool) {
-      material.dispose();
-      this.root.remove(mesh);
-    }
-    for (const { mesh, material } of this.sparkPool) {
-      material.dispose();
-      this.root.remove(mesh);
-    }
     this.puffs.length = 0;
     this.sparks.length = 0;
-    this.puffPool.length = 0;
-    this.sparkPool.length = 0;
-    this.sphereGeom.dispose();
+    this.puffPool.destroy();
+    this.sparkPool.destroy();
     this.root.parent?.remove(this.root);
   }
 }
