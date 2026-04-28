@@ -92,8 +92,15 @@ export type Body3D = {
   /** Bounciness on contact (0..1). 0 = inelastic, 1 = full bounce. */
   restitution: number;
   isStatic: boolean;
+  /** Per-step accumulated acceleration. Cleared after each physics step. */
+  ax: number;
+  ay: number;
+  az: number;
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
+  /** Internal broad-phase query stamp. Avoids duplicate narrow-phase
+   *  checks when a large static cuboid spans several queried cells. */
+  _staticQueryStamp?: number;
 };
 
 // Gravity is imported from src/config.ts as the single source of
@@ -139,11 +146,12 @@ export class PhysicsEngine3D {
   private contactCells = new Map<number, number[]>();
   private contactCellPool: number[][] = [];
 
-  // Per-step accumulated force (cleared after integration). Stored
-  // off-body so plain Body3D objects stay serializable.
-  private accelX: Map<Body3D, number> = new Map();
-  private accelY: Map<Body3D, number> = new Map();
-  private accelZ: Map<Body3D, number> = new Map();
+  // Static cuboid broad-phase: buildings do not move, so index them
+  // once on creation into every CONTACT_CELL_SIZE cell overlapped by
+  // their AABB. Unit-vs-building collision then only checks cells
+  // touched by the unit sphere instead of every building in the game.
+  private staticCells = new Map<number, Body3D[]>();
+  private staticQueryStamp = 0;
 
   // Ignore a specific static body for a specific dynamic body. Same
   // purpose as the 2D engine: a newly spawned unit shouldn't immediately
@@ -210,6 +218,9 @@ export class PhysicsEngine3D {
       frictionAir: 0.15,
       restitution: 0.2,
       isStatic: false,
+      ax: 0,
+      ay: 0,
+      az: 0,
       label,
     };
     this.addBody(body);
@@ -248,6 +259,9 @@ export class PhysicsEngine3D {
       frictionAir: 0,
       restitution: 0.1,
       isStatic: true,
+      ax: 0,
+      ay: 0,
+      az: 0,
       label,
     };
     this.addBody(body);
@@ -256,8 +270,12 @@ export class PhysicsEngine3D {
 
   private addBody(body: Body3D): void {
     this.bodies.push(body);
-    if (body.isStatic) this.staticBodies.push(body);
-    else this.dynamicBodies.push(body);
+    if (body.isStatic) {
+      this.staticBodies.push(body);
+      this.addStaticToBroadphase(body);
+    } else {
+      this.dynamicBodies.push(body);
+    }
   }
 
   removeBody(body: Body3D): void {
@@ -266,10 +284,10 @@ export class PhysicsEngine3D {
     const j = this.dynamicBodies.indexOf(body);
     if (j >= 0) this.dynamicBodies.splice(j, 1);
     const k = this.staticBodies.indexOf(body);
-    if (k >= 0) this.staticBodies.splice(k, 1);
-    this.accelX.delete(body);
-    this.accelY.delete(body);
-    this.accelZ.delete(body);
+    if (k >= 0) {
+      this.staticBodies.splice(k, 1);
+      this.removeStaticFromBroadphase(body);
+    }
     // Purge any ignore-pairs referencing this body.
     for (const [dyn, stat] of this.ignoreStatic) {
       if (dyn === body || stat === body) this.ignoreStatic.delete(dyn);
@@ -280,15 +298,70 @@ export class PhysicsEngine3D {
    *  step() call, then integrates as F/m → Δv. */
   applyForce(body: Body3D, fx: number, fy: number, fz: number): void {
     if (body.isStatic) return;
-    this.accelX.set(body, (this.accelX.get(body) ?? 0) + fx * body.invMass);
-    this.accelY.set(body, (this.accelY.get(body) ?? 0) + fy * body.invMass);
-    this.accelZ.set(body, (this.accelZ.get(body) ?? 0) + fz * body.invMass);
+    body.ax += fx * body.invMass;
+    body.ay += fy * body.invMass;
+    body.az += fz * body.invMass;
   }
 
   /** Mark that `dynamicBody` should not collide with `staticBody`.
    *  Used for units spawning inside their factory. */
   setIgnoreStatic(dynamicBody: Body3D, staticBody: Body3D): void {
     this.ignoreStatic.set(dynamicBody, staticBody);
+  }
+
+  private cellCoordXy(v: number): number {
+    return Math.floor(v / CONTACT_CELL_SIZE);
+  }
+
+  private cellCoordZ(v: number): number {
+    return Math.floor((v + CONTACT_CELL_SIZE / 2) / CONTACT_CELL_SIZE);
+  }
+
+  private addStaticToBroadphase(body: Body3D): void {
+    if (body.shape !== 'cuboid') return;
+    const minCx = this.cellCoordXy(body.x - body.halfX);
+    const maxCx = this.cellCoordXy(body.x + body.halfX);
+    const minCy = this.cellCoordXy(body.y - body.halfY);
+    const maxCy = this.cellCoordXy(body.y + body.halfY);
+    const minCz = this.cellCoordZ(body.z - body.halfZ);
+    const maxCz = this.cellCoordZ(body.z + body.halfZ);
+
+    for (let cz = minCz; cz <= maxCz; cz++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          const key = packContactCellKey(cx, cy, cz);
+          let bucket = this.staticCells.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.staticCells.set(key, bucket);
+          }
+          bucket.push(body);
+        }
+      }
+    }
+  }
+
+  private removeStaticFromBroadphase(body: Body3D): void {
+    if (body.shape !== 'cuboid') return;
+    const minCx = this.cellCoordXy(body.x - body.halfX);
+    const maxCx = this.cellCoordXy(body.x + body.halfX);
+    const minCy = this.cellCoordXy(body.y - body.halfY);
+    const maxCy = this.cellCoordXy(body.y + body.halfY);
+    const minCz = this.cellCoordZ(body.z - body.halfZ);
+    const maxCz = this.cellCoordZ(body.z + body.halfZ);
+
+    for (let cz = minCz; cz <= maxCz; cz++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          const key = packContactCellKey(cx, cy, cz);
+          const bucket = this.staticCells.get(key);
+          if (!bucket) continue;
+          const i = bucket.indexOf(body);
+          if (i >= 0) bucket.splice(i, 1);
+          if (bucket.length === 0) this.staticCells.delete(key);
+        }
+      }
+    }
   }
 
   step(dtSec: number): void {
@@ -300,9 +373,11 @@ export class PhysicsEngine3D {
     }
     this.clampToMapBounds();
     // Clear per-step force accumulator.
-    this.accelX.clear();
-    this.accelY.clear();
-    this.accelZ.clear();
+    for (const body of this.dynamicBodies) {
+      body.ax = 0;
+      body.ay = 0;
+      body.az = 0;
+    }
   }
 
   /** Explicit-Euler integration with HARD surface-stick for spheres.
@@ -352,9 +427,9 @@ export class PhysicsEngine3D {
    *  their own non-grounded integration pipeline. */
   private integrate(dtSec: number): void {
     for (const b of this.dynamicBodies) {
-      let ax = this.accelX.get(b) ?? 0;
-      let ay = this.accelY.get(b) ?? 0;
-      let az = (this.accelZ.get(b) ?? 0) - GRAVITY;
+      let ax = b.ax;
+      let ay = b.ay;
+      let az = b.az - GRAVITY;
 
       if (b.shape !== 'sphere') {
         // Static cuboids never get here (isStatic skips), but for
@@ -447,67 +522,89 @@ export class PhysicsEngine3D {
   private resolveSphereCuboidContacts(): void {
     for (const dyn of this.dynamicBodies) {
       if (dyn.shape !== 'sphere') continue;
+      const stamp = ++this.staticQueryStamp;
       const ignored = this.ignoreStatic.get(dyn);
-      for (const st of this.staticBodies) {
-        if (st.shape !== 'cuboid') continue;
-        if (st === ignored) continue;
-        // Closest point on AABB (aligned cuboid) to sphere center.
-        const dx = dyn.x - st.x;
-        const dy = dyn.y - st.y;
-        const dz = dyn.z - st.z;
-        const cx = Math.max(-st.halfX, Math.min(dx, st.halfX));
-        const cy = Math.max(-st.halfY, Math.min(dy, st.halfY));
-        const cz = Math.max(-st.halfZ, Math.min(dz, st.halfZ));
-        const sepX = dx - cx;
-        const sepY = dy - cy;
-        const sepZ = dz - cz;
-        const distSq = sepX * sepX + sepY * sepY + sepZ * sepZ;
-        if (distSq >= dyn.radius * dyn.radius) continue;
-        const dist = Math.sqrt(distSq);
-        // Degenerate case: sphere center inside the box. Push out along
-        // the shortest face normal.
-        let nx: number;
-        let ny: number;
-        let nz: number;
-        let penetration: number;
-        if (dist < 1e-6) {
-          const overX = st.halfX - Math.abs(dx);
-          const overY = st.halfY - Math.abs(dy);
-          const overZ = st.halfZ - Math.abs(dz);
-          if (overX <= overY && overX <= overZ) {
-            nx = Math.sign(dx) || 1;
-            ny = 0;
-            nz = 0;
-            penetration = overX + dyn.radius;
-          } else if (overY <= overZ) {
-            nx = 0;
-            ny = Math.sign(dy) || 1;
-            nz = 0;
-            penetration = overY + dyn.radius;
-          } else {
-            nx = 0;
-            ny = 0;
-            nz = Math.sign(dz) || 1;
-            penetration = overZ + dyn.radius;
+      const minCx = this.cellCoordXy(dyn.x - dyn.radius);
+      const maxCx = this.cellCoordXy(dyn.x + dyn.radius);
+      const minCy = this.cellCoordXy(dyn.y - dyn.radius);
+      const maxCy = this.cellCoordXy(dyn.y + dyn.radius);
+      const minCz = this.cellCoordZ(dyn.z - dyn.radius);
+      const maxCz = this.cellCoordZ(dyn.z + dyn.radius);
+
+      for (let cz = minCz; cz <= maxCz; cz++) {
+        for (let cy = minCy; cy <= maxCy; cy++) {
+          for (let cx = minCx; cx <= maxCx; cx++) {
+            const bucket = this.staticCells.get(packContactCellKey(cx, cy, cz));
+            if (!bucket) continue;
+            for (let bi = 0; bi < bucket.length; bi++) {
+              const st = bucket[bi];
+              if (st._staticQueryStamp === stamp) continue;
+              st._staticQueryStamp = stamp;
+              if (st === ignored) continue;
+              this.resolveSphereCuboidPair(dyn, st);
+            }
           }
-        } else {
-          nx = sepX / dist;
-          ny = sepY / dist;
-          nz = sepZ / dist;
-          penetration = dyn.radius - dist;
-        }
-        dyn.x += nx * penetration;
-        dyn.y += ny * penetration;
-        dyn.z += nz * penetration;
-        // Velocity reflection along the contact normal if moving into it.
-        const vDotN = dyn.vx * nx + dyn.vy * ny + dyn.vz * nz;
-        if (vDotN < 0) {
-          const j = (1 + dyn.restitution) * vDotN;
-          dyn.vx -= j * nx;
-          dyn.vy -= j * ny;
-          dyn.vz -= j * nz;
         }
       }
+    }
+  }
+
+  private resolveSphereCuboidPair(dyn: Body3D, st: Body3D): void {
+    // Closest point on AABB (aligned cuboid) to sphere center.
+    const dx = dyn.x - st.x;
+    const dy = dyn.y - st.y;
+    const dz = dyn.z - st.z;
+    const cx = Math.max(-st.halfX, Math.min(dx, st.halfX));
+    const cy = Math.max(-st.halfY, Math.min(dy, st.halfY));
+    const cz = Math.max(-st.halfZ, Math.min(dz, st.halfZ));
+    const sepX = dx - cx;
+    const sepY = dy - cy;
+    const sepZ = dz - cz;
+    const distSq = sepX * sepX + sepY * sepY + sepZ * sepZ;
+    if (distSq >= dyn.radius * dyn.radius) return;
+    const dist = Math.sqrt(distSq);
+    // Degenerate case: sphere center inside the box. Push out along
+    // the shortest face normal.
+    let nx: number;
+    let ny: number;
+    let nz: number;
+    let penetration: number;
+    if (dist < 1e-6) {
+      const overX = st.halfX - Math.abs(dx);
+      const overY = st.halfY - Math.abs(dy);
+      const overZ = st.halfZ - Math.abs(dz);
+      if (overX <= overY && overX <= overZ) {
+        nx = Math.sign(dx) || 1;
+        ny = 0;
+        nz = 0;
+        penetration = overX + dyn.radius;
+      } else if (overY <= overZ) {
+        nx = 0;
+        ny = Math.sign(dy) || 1;
+        nz = 0;
+        penetration = overY + dyn.radius;
+      } else {
+        nx = 0;
+        ny = 0;
+        nz = Math.sign(dz) || 1;
+        penetration = overZ + dyn.radius;
+      }
+    } else {
+      nx = sepX / dist;
+      ny = sepY / dist;
+      nz = sepZ / dist;
+      penetration = dyn.radius - dist;
+    }
+    dyn.x += nx * penetration;
+    dyn.y += ny * penetration;
+    dyn.z += nz * penetration;
+    // Velocity reflection along the contact normal if moving into it.
+    const vDotN = dyn.vx * nx + dyn.vy * ny + dyn.vz * nz;
+    if (vDotN < 0) {
+      const j = (1 + dyn.restitution) * vDotN;
+      dyn.vx -= j * nx;
+      dyn.vy -= j * ny;
+      dyn.vz -= j * nz;
     }
   }
 
