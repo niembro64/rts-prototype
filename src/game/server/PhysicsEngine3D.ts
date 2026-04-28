@@ -96,6 +96,10 @@ export type Body3D = {
   ax: number;
   ay: number;
   az: number;
+  /** Idle-body sleep state. Sleeping spheres skip integration and
+   *  static/ground contact work until a force or collision wakes them. */
+  sleeping: boolean;
+  sleepTicks: number;
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
   /** Internal broad-phase query stamp. Avoids duplicate narrow-phase
@@ -131,6 +135,9 @@ const GROUND_PENETRATION_EPS = 1e-3;
 // CENTER (one cell each), and we de-dupe pairs by index ordering, so
 // the pair count is O(units × neighbors) ≈ O(N) rather than O(N²).
 const CONTACT_CELL_SIZE = 100;
+const SLEEP_SPEED_SQ = 0.25;
+const SLEEP_ACCEL_SQ = 1e-6;
+const SLEEP_TICKS = 12;
 
 export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
@@ -221,6 +228,8 @@ export class PhysicsEngine3D {
       ax: 0,
       ay: 0,
       az: 0,
+      sleeping: false,
+      sleepTicks: 0,
       label,
     };
     this.addBody(body);
@@ -262,6 +271,8 @@ export class PhysicsEngine3D {
       ax: 0,
       ay: 0,
       az: 0,
+      sleeping: false,
+      sleepTicks: 0,
       label,
     };
     this.addBody(body);
@@ -298,6 +309,10 @@ export class PhysicsEngine3D {
    *  step() call, then integrates as F/m → Δv. */
   applyForce(body: Body3D, fx: number, fy: number, fz: number): void {
     if (body.isStatic) return;
+    if ((fx * fx + fy * fy + fz * fz) > 0) {
+      body.sleeping = false;
+      body.sleepTicks = 0;
+    }
     body.ax += fx * body.invMass;
     body.ay += fy * body.invMass;
     body.az += fz * body.invMass;
@@ -427,6 +442,7 @@ export class PhysicsEngine3D {
    *  their own non-grounded integration pipeline. */
   private integrate(dtSec: number): void {
     for (const b of this.dynamicBodies) {
+      if (b.sleeping) continue;
       let ax = b.ax;
       let ay = b.ay;
       let az = b.az - GRAVITY;
@@ -486,6 +502,20 @@ export class PhysicsEngine3D {
       } else {
         b.vz = 0;
       }
+
+      const accelSq = b.ax * b.ax + b.ay * b.ay + b.az * b.az;
+      const speedSq = b.vx * b.vx + b.vy * b.vy;
+      if (accelSq <= SLEEP_ACCEL_SQ && speedSq <= SLEEP_SPEED_SQ) {
+        b.sleepTicks++;
+        if (b.sleepTicks >= SLEEP_TICKS) {
+          b.vx = 0;
+          b.vy = 0;
+          b.vz = 0;
+          b.sleeping = true;
+        }
+      } else {
+        b.sleepTicks = 0;
+      }
     }
   }
 
@@ -499,6 +529,7 @@ export class PhysicsEngine3D {
    *  the next integrate doesn't fight the surface. */
   private resolveGroundContacts(): void {
     for (const b of this.dynamicBodies) {
+      if (b.sleeping) continue;
       if (b.shape !== 'sphere') continue;
       const groundZ = this.getGroundZ(b.x, b.y);
       const restingZ = groundZ + b.radius;
@@ -521,6 +552,7 @@ export class PhysicsEngine3D {
    *  along the contact normal. Static cuboid doesn't move. */
   private resolveSphereCuboidContacts(): void {
     for (const dyn of this.dynamicBodies) {
+      if (dyn.sleeping) continue;
       if (dyn.shape !== 'sphere') continue;
       const stamp = ++this.staticQueryStamp;
       const ignored = this.ignoreStatic.get(dyn);
@@ -669,6 +701,7 @@ export class PhysicsEngine3D {
     const bodies = this.dynamicBodies;
     for (let i = 0; i < bodies.length; i++) {
       const a = bodies[i];
+      if (a.sleeping) continue;
       if (a.shape !== 'sphere') continue;
       const acx = Math.floor(a.x / cs);
       const acy = Math.floor(a.y / cs);
@@ -699,6 +732,10 @@ export class PhysicsEngine3D {
             const rSum = a.radius + b.radius;
             const distSq = ddx * ddx + ddy * ddy + ddz * ddz;
             if (distSq >= rSum * rSum) continue;
+            a.sleeping = false;
+            b.sleeping = false;
+            a.sleepTicks = 0;
+            b.sleepTicks = 0;
             const dist = Math.sqrt(distSq) || 1e-6;
             const nx = ddx / dist;
             const ny = ddy / dist;
@@ -741,6 +778,7 @@ export class PhysicsEngine3D {
    *  ground plane and above implicitly by gravity. */
   private clampToMapBounds(): void {
     for (const b of this.dynamicBodies) {
+      if (b.sleeping) continue;
       if (b.shape !== 'sphere') continue;
       if (b.x < b.radius) { b.x = b.radius; if (b.vx < 0) b.vx = 0; }
       else if (b.x > this.mapWidth - b.radius) {
