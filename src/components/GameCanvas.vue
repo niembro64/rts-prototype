@@ -77,6 +77,7 @@ import {
   saveSimQuality,
   loadStoredSimSignalStates,
   saveSimSignalStates,
+  resetSimSignalStates,
 } from '../serverBarConfig';
 import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
 import type { SignalState } from '../types/lod';
@@ -99,6 +100,7 @@ import {
   getGraphicsQuality,
   setGraphicsQuality,
   cycleLodSignalState,
+  resetLodSignalStates,
   getLodSignalStates,
   getEffectiveQuality,
   getRenderMode,
@@ -792,6 +794,18 @@ function resetServerDefaults(): void {
   setTickRateValue(SERVER_CONFIG.tickRate.default);
   setNetworkUpdateRate(SERVER_CONFIG.snapshot.default);
   setKeyframeRatioValue(SERVER_CONFIG.keyframe.default);
+  // Reset every HOST SERVER LOD signal to the centralized
+  // SERVER_SIM_LOD_SIGNAL_DEFAULTS table, persist, and ship the new
+  // states so the simulation's auto-LOD picks them up immediately.
+  const fresh = resetSimSignalStates();
+  serverSignalStates.value = fresh;
+  activeConnection?.sendCommand({
+    type: 'setSimSignalStates',
+    tick: 0,
+    tps: fresh.tps,
+    cpu: fresh.cpu,
+    units: fresh.units,
+  });
 }
 
 function resetClientDefaults(): void {
@@ -825,6 +839,11 @@ function resetClientDefaults(): void {
   setGridOverlay(cd.gridOverlay.default);
   waypointDetail.value = cd.waypointDetail.default;
   setWaypointDetail(cd.waypointDetail.default);
+  // Reset every PLAYER CLIENT LOD signal to the centralized
+  // LOD_SIGNAL_DEFAULTS table, then refresh the reactive ref the
+  // bar template reads from so the buttons repaint immediately.
+  resetLodSignalStates();
+  clientSignalStates.value = { ...getLodSignalStates() };
 }
 
 function togglePlayer(): void {

@@ -4,6 +4,7 @@ import type {
   LodHysteresis,
   LodEmaSource,
   GraphicsDetailConfig,
+  LodSignalStates,
 } from './types/lod';
 
 // =============================================================================
@@ -23,8 +24,25 @@ export const LOD_SIGNALS_ENABLED = {
   zoom: true,
   tps: true,
   fps: true,
-  units: false,
+  units: true,
 } as const;
+
+// Default per-signal tri-state, applied:
+//   1) on first browser load (before localStorage is populated), and
+//   2) when the user clicks DEFAULTS on the PLAYER CLIENT bar.
+//
+// Single source of truth — clientBarConfig.ts seeds `currentSignalStates`
+// from this, and the DEFAULTS reset path re-applies it. To change what a
+// signal does on first load, edit this table and nothing else.
+//
+// Currently OFF by default: UNITS (most users don't care about a unit-
+// fullness LOD signal until they actually hit the cap).
+export const LOD_SIGNAL_DEFAULTS: LodSignalStates = {
+  zoom: 'active',
+  tps: 'active',
+  fps: 'active',
+  units: 'off',
+};
 
 // =============================================================================
 // TPS BASELINE

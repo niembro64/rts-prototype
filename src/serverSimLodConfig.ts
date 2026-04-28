@@ -23,6 +23,7 @@ import type {
   ServerSimAutoModeConfig,
   ServerSimDetailTable,
   ServerSimHysteresis,
+  ServerSimSignalStates,
 } from './types/serverSimLod';
 
 // =============================================================================
@@ -42,8 +43,26 @@ import type {
 export const SERVER_SIM_LOD_SIGNALS_ENABLED = {
   tps: true,
   cpu: true,
-  units: false,
+  units: true,
 } as const;
+
+// Default per-signal tri-state, applied:
+//   1) on first browser load (before localStorage is populated), and
+//   2) when the user clicks DEFAULTS on the HOST SERVER bar.
+//
+// Single source of truth — serverBarConfig.ts seeds the loader fallback
+// from this, and the DEFAULTS reset path re-applies it. To change what a
+// signal does on first load, edit this table and nothing else.
+//
+// Currently OFF by default: CPU and UNITS (TPS alone is enough to drive
+// the auto-LOD on most hardware; CPU readings are noisy on browsers
+// without performance.now sub-ms resolution and UNITS only matters near
+// the cap).
+export const SERVER_SIM_LOD_SIGNAL_DEFAULTS: ServerSimSignalStates = {
+  tps: 'active',
+  cpu: 'off',
+  units: 'off',
+};
 
 export const SERVER_SIM_DETAIL: ServerSimDetailTable = {
   TARGETING_REACQUIRE_STRIDE: {

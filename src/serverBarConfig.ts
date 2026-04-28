@@ -2,6 +2,7 @@ import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './t
 import type { ServerSimQuality, ServerSimSignalStates } from './types/serverSimLod';
 import type { SignalState } from './types/lod';
 import { persist, persistJson, readPersisted } from './persistence';
+import { SERVER_SIM_LOD_SIGNAL_DEFAULTS } from './serverSimLodConfig';
 
 export const SERVER_CONFIG = {
   tickRate: {
@@ -60,8 +61,9 @@ export function saveSimQuality(q: ServerSimQuality): void {
 const STORAGE_SIM_SIGNAL_STATES = 'rts-sim-signal-states';
 
 export function loadStoredSimSignalStates(): ServerSimSignalStates {
-  // Default: every signal ACTIVE (contributes to AUTO's min).
-  const def: ServerSimSignalStates = { tps: 'active', cpu: 'active', units: 'active' };
+  // Seed from the centralized SERVER_SIM_LOD_SIGNAL_DEFAULTS table
+  // (single source of truth for first-load + DEFAULTS-button state).
+  const def: ServerSimSignalStates = { ...SERVER_SIM_LOD_SIGNAL_DEFAULTS };
 
   // Migration path: a previous session may have stored an
   // auto-{signal} string in STORAGE_SIM_QUALITY. Translate that
@@ -90,6 +92,16 @@ export function loadStoredSimSignalStates(): ServerSimSignalStates {
 
 export function saveSimSignalStates(states: ServerSimSignalStates): void {
   persistJson(STORAGE_SIM_SIGNAL_STATES, states);
+}
+
+/** Reset every HOST SERVER LOD signal to its
+ *  SERVER_SIM_LOD_SIGNAL_DEFAULTS value and persist. Wired to the
+ *  DEFAULTS button in the host-server bar so first-load defaults and
+ *  the reset button stay in lockstep. */
+export function resetSimSignalStates(): ServerSimSignalStates {
+  const fresh: ServerSimSignalStates = { ...SERVER_SIM_LOD_SIGNAL_DEFAULTS };
+  persistJson(STORAGE_SIM_SIGNAL_STATES, fresh);
+  return fresh;
 }
 
 export function loadStoredSnapshotRate(): SnapshotRate {

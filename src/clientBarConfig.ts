@@ -30,6 +30,7 @@ import {
   LOD_THRESHOLDS,
   LOD_HYSTERESIS,
   LOD_SIGNALS_ENABLED,
+  LOD_SIGNAL_DEFAULTS,
 } from '@/lodConfig';
 import type { SignalState, LodSignalStates } from './types/lod';
 
@@ -315,15 +316,11 @@ let currentUnitCap: number = 4096;
 let prevZoomRank: number = 4;
 let prevTpsRank: number = 4;
 let prevFpsRank: number = 4;
-// Per-signal tri-state. Default: every enabled signal is ACTIVE
-// (contributes to AUTO's min). Click-cycle updates this; the
-// resolver consults it on every getEffectiveQuality() call.
-let currentSignalStates: LodSignalStates = {
-  zoom: 'active',
-  tps: 'active',
-  fps: 'active',
-  units: 'active',
-};
+// Per-signal tri-state. Seeded from LOD_SIGNAL_DEFAULTS (the single
+// source of truth for first-load + DEFAULTS-button state); click-cycle
+// updates this and the resolver consults it on every getEffectiveQuality()
+// call.
+let currentSignalStates: LodSignalStates = { ...LOD_SIGNAL_DEFAULTS };
 let prevUnitsRank: number = 4;
 let localServerRunning: boolean = false;
 
@@ -553,6 +550,15 @@ export function cycleLodSignalState(signal: keyof LodSignalStates): SignalState 
   currentSignalStates = { ...currentSignalStates, [signal]: next };
   persistJson(LOD_SIGNAL_STATES_STORAGE_KEY, currentSignalStates);
   return next;
+}
+
+/** Reset every PLAYER CLIENT LOD signal to its LOD_SIGNAL_DEFAULTS
+ *  value and persist. Wired to the DEFAULTS button in the client bar
+ *  so first-load defaults and the reset button stay in lockstep. */
+export function resetLodSignalStates(): LodSignalStates {
+  currentSignalStates = { ...LOD_SIGNAL_DEFAULTS };
+  persistJson(LOD_SIGNAL_STATES_STORAGE_KEY, currentSignalStates);
+  return currentSignalStates;
 }
 
 export function setCurrentZoom(zoom: number): void {
