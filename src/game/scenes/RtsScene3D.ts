@@ -769,18 +769,16 @@ export class RtsScene3D {
     }
     this.forceFieldRenderer.endFrame();
 
-    this.healthBar3D?.beginFrame(hudFrustum);
-    {
-      const units = this.clientViewState.getUnits();
-      for (const u of units) {
-        this.healthBar3D?.perUnit(u);
+    if (this.healthBar3D) {
+      this.healthBar3D.beginFrame(hudFrustum);
+      for (const u of this.clientViewState.getDamagedUnits()) {
+        this.healthBar3D.perUnit(u);
       }
-      const buildings = this.clientViewState.getBuildings();
-      for (const b of buildings) {
-        this.healthBar3D?.perBuilding(b);
+      for (const b of this.clientViewState.getHealthBarBuildings()) {
+        this.healthBar3D.perBuilding(b);
       }
+      this.healthBar3D.endFrame();
     }
-    this.healthBar3D?.endFrame();
     this.waypoint3D?.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,

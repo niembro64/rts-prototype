@@ -1160,6 +1160,16 @@ export class ClientViewState {
     return this.cache.getForceFieldUnits();
   }
 
+  getDamagedUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getDamagedUnits();
+  }
+
+  getHealthBarBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getHealthBarBuildings();
+  }
+
   getSprayTargets(): SprayTarget[] {
     return this.sprayTargets;
   }

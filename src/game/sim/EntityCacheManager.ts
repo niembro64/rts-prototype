@@ -9,6 +9,8 @@ export class EntityCacheManager {
   private cachedProjectiles: Entity[] = [];
   private cachedTravelingProjectiles: Entity[] = [];
   private cachedLineProjectiles: Entity[] = [];
+  private cachedDamagedUnits: Entity[] = [];
+  private cachedHealthBarBuildings: Entity[] = [];
   private cachedForceFieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
@@ -40,6 +42,8 @@ export class EntityCacheManager {
     this.cachedProjectiles.length = 0;
     this.cachedTravelingProjectiles.length = 0;
     this.cachedLineProjectiles.length = 0;
+    this.cachedDamagedUnits.length = 0;
+    this.cachedHealthBarBuildings.length = 0;
     this.cachedForceFieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
@@ -53,6 +57,9 @@ export class EntityCacheManager {
       switch (entity.type) {
         case 'unit':
           this.cachedUnits.push(entity);
+          if (entity.unit && entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp) {
+            this.cachedDamagedUnits.push(entity);
+          }
           if (entity.turrets) {
             if (entity.turrets.length > 0) this.cachedArmedUnits.push(entity);
             let hasForceField = false;
@@ -74,6 +81,13 @@ export class EntityCacheManager {
           break;
         case 'building':
           this.cachedBuildings.push(entity);
+          if (
+            entity.building &&
+            entity.building.hp > 0 &&
+            (entity.building.hp < entity.building.maxHp || (entity.buildable && !entity.buildable.isComplete))
+          ) {
+            this.cachedHealthBarBuildings.push(entity);
+          }
           break;
         case 'shot':
           this.cachedProjectiles.push(entity);
@@ -107,6 +121,14 @@ export class EntityCacheManager {
 
   getLineProjectiles(): Entity[] {
     return this.cachedLineProjectiles;
+  }
+
+  getDamagedUnits(): Entity[] {
+    return this.cachedDamagedUnits;
+  }
+
+  getHealthBarBuildings(): Entity[] {
+    return this.cachedHealthBarBuildings;
   }
 
   getForceFieldUnits(): Entity[] {
