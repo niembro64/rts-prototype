@@ -69,6 +69,21 @@ const SNAP_RADIUS_CELLS = 32;
  *  from stalling a tick. */
 const MAX_A_STAR_NODES = 50_000;
 
+/** When true, every path produced by `expandPathActions` is walked
+ *  segment-by-segment and any world-space sample that lands over
+ *  water is logged. Self-check for the planner's correctness — the
+ *  output of A* + LOS smoothing should never put a line over water,
+ *  so any log here is a real bug. Set to false to silence in
+ *  production once the planner is trusted. */
+const VALIDATE_PATHS = true;
+
+/** Spacing (world units) between water-check samples along each
+ *  segment during path validation. 5 wu = quarter-cell resolution
+ *  on a 20 wu grid; small enough to catch sub-cell water that
+ *  cell-centred classification might miss, large enough not to
+ *  flood the console. */
+const VALIDATE_SAMPLE_STEP_WU = 5;
+
 const SQRT2 = Math.SQRT2;
 const SQRT2_MINUS_1 = SQRT2 - 1;
 
@@ -531,6 +546,64 @@ function findPath(
   return smoothed;
 }
 
+// ── Path validator (developer self-check) ────────────────────────
+
+/** Walks every segment of `path` (starting from the unit's actual
+ *  position) and samples world points at VALIDATE_SAMPLE_STEP_WU
+ *  spacing. If any sample lands over water, logs the offending
+ *  segment + sample location. Returns true iff a violation was
+ *  found, false otherwise.
+ *
+ *  This is a SELF-CHECK on the planner: A* runs over a blocked
+ *  mask that already includes water + a 2-cell halo, and the LOS
+ *  smoother only collapses runs whose Bresenham trace stays in
+ *  unblocked cells. If the FINAL output still crosses water in
+ *  world space, something has gone wrong upstream — the
+ *  classification missed sub-cell water, the inflation didn't
+ *  reach far enough, or a caller is bypassing the planner. The
+ *  log gives the exact (x, y) and the segment that produced it
+ *  so the bug can be tracked down. */
+function validatePathDoesNotCrossWater(
+  startX: number, startY: number,
+  goalX: number, goalY: number,
+  path: ReadonlyArray<Vec2>,
+  mapWidth: number, mapHeight: number,
+): boolean {
+  let prevX = startX;
+  let prevY = startY;
+  for (let segIdx = 0; segIdx < path.length; segIdx++) {
+    const wp = path[segIdx];
+    const dx = wp.x - prevX;
+    const dy = wp.y - prevY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length >= 1) {
+      const samples = Math.max(2, Math.ceil(length / VALIDATE_SAMPLE_STEP_WU));
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const x = prevX + dx * t;
+        const y = prevY + dy * t;
+        if (isWaterAt(x, y, mapWidth, mapHeight)) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            '[Pathfinder] segment %d crosses water at (%d,%d) — segment (%d,%d)→(%d,%d), full path (%d,%d)→(%d,%d) with %d waypoints',
+            segIdx,
+            Math.round(x), Math.round(y),
+            Math.round(prevX), Math.round(prevY),
+            Math.round(wp.x), Math.round(wp.y),
+            Math.round(startX), Math.round(startY),
+            Math.round(goalX), Math.round(goalY),
+            path.length,
+          );
+          return true;
+        }
+      }
+    }
+    prevX = wp.x;
+    prevY = wp.y;
+  }
+  return false;
+}
+
 // ── Public entry: expandPathActions ──────────────────────────────
 
 /** Plan a path from (startX, startY) to (goalX, goalY) and return one
@@ -553,6 +626,9 @@ export function expandPathActions(
   goalZ?: number,
 ): UnitAction[] {
   const path = findPath(startX, startY, goalX, goalY, mapWidth, mapHeight, buildingGrid);
+  if (VALIDATE_PATHS) {
+    validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
+  }
   const out: UnitAction[] = [];
   const lastIdx = path.length - 1;
   for (let i = 0; i < path.length; i++) {
