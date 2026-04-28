@@ -20,6 +20,7 @@ import {
   buildLocomotion,
   updateLocomotion,
   destroyLocomotion,
+  getChassisLift,
   type Locomotion3DMesh,
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
@@ -83,12 +84,22 @@ type EntityMesh = {
   group: THREE.Group;
   /** Yaw subgroup. Hierarchy: `group` carries position + the surface
    *  TILT (world-frame), `yawGroup` carries the unit's facing yaw
-   *  (around the chassis-local up axis = the slope's up). All visible
-   *  unit parts — chassis, locomotion, turrets, mirror panels — live
-   *  inside `yawGroup`, so the entire unit reads as one rigid body
-   *  that tilts with the slope and yaws within the slope tangent
-   *  plane. Undefined for buildings (no tilt / yaw plumbing). */
+   *  (around the chassis-local up axis = the slope's up). Locomotion
+   *  (treads / wheels) lives directly inside `yawGroup` at ground
+   *  level. The BODY (chassis, turrets, mirrors, force-field) lives
+   *  inside `liftGroup` which is itself inside yawGroup but offset
+   *  upward — so the locomotion stays on the ground while the body
+   *  is held aloft, like a vehicle riding on its wheels.
+   *  Undefined for buildings (no tilt / yaw plumbing). */
   yawGroup?: THREE.Group;
+  /** Lift subgroup. Sits inside `yawGroup` with a positive Y offset
+   *  (`Locomotion3D.getChassisLift(blueprint, unitRadius)`) — chassis,
+   *  turret roots, mirror panels, and force-field meshes all parent
+   *  here so they ride above the ground at the locomotion's natural
+   *  height. Undefined for buildings; for units the offset is fixed
+   *  at build time (locomotion config doesn't change) so no per-frame
+   *  update is needed. */
+  liftGroup?: THREE.Group;
   /** Parent for the chassis body parts. For units this is uniformly
    *  scaled by unitRadius so each BodyMeshPart's unit-radius-1 offset
    *  and per-axis scale both enlarge correctly. For buildings the group
@@ -1143,6 +1154,23 @@ export class Render3DEntities {
         yawGroup.userData.entityId = e.id;
         group.add(yawGroup);
 
+        // Lift subgroup. Treads / wheels / legs (locomotion) live
+        // directly inside yawGroup and touch the ground; the BODY
+        // (chassis, turret roots, mirrors, force-field) lives in
+        // liftGroup and rides above the ground at the locomotion's
+        // natural height. Vehicle on its wheels, spider on its legs.
+        // `getChassisLift` reads the blueprint's locomotion config
+        // once at build time — TREAD_HEIGHT for treads, full wheel
+        // diameter for wheels, 0 for legs (the leg-unit body sphere
+        // is already raised by its own geometry).
+        let bp;
+        try { bp = getUnitBlueprint(e.unit!.unitType); }
+        catch { /* keep undefined; lift defaults to 0 */ }
+        const liftGroup = new THREE.Group();
+        liftGroup.userData.entityId = e.id;
+        liftGroup.position.y = bp ? getChassisLift(bp, radius) : 0;
+        yawGroup.add(liftGroup);
+
         const chassis = new THREE.Group();
         chassis.userData.entityId = e.id;
         const chassisMeshes: THREE.Mesh[] = [];
@@ -1177,7 +1205,7 @@ export class Render3DEntities {
             chassisMeshes.push(mesh);
           }
         }
-        yawGroup.add(chassis);
+        liftGroup.add(chassis);
 
         // Build one TurretMesh per actual turret on the entity. Each turret
         // has an optional head + barrel cylinders matching its barrel config.
@@ -1192,13 +1220,14 @@ export class Render3DEntities {
         for (let ti = 0; ti < turrets.length; ti++) {
           const t = turrets[ti];
           const isMirrorHost = unitHasMirrors && ti === 0;
-          // Turrets parent to `yawGroup` so the base stays attached
-          // to the chassis on slopes — the unit reads as one rigid
-          // body. Articulated yaw + pitch (per-frame, below)
-          // compensate for the chassis tilt so the world barrel
-          // direction still matches the sim's weapon.rotation /
-          // weapon.pitch even though the parent chain is tilted.
-          const tm = buildTurretMesh3D(yawGroup, t, radius, isMirrorHost, this.lod.gfx, {
+          // Turrets parent to `liftGroup` so they ride on top of the
+          // chassis at the locomotion's lift height — wheels carry
+          // both chassis AND turret, treads do the same. Articulated
+          // yaw + pitch (per-frame, below) compensate for chassis
+          // tilt so the world barrel direction still matches the
+          // sim's weapon.rotation / weapon.pitch even though the
+          // parent chain is tilted.
+          const tm = buildTurretMesh3D(liftGroup, t, radius, isMirrorHost, this.lod.gfx, {
             headGeom: this.turretHeadGeom,
             barrelGeom: this.barrelGeom,
             barrelMat: this.barrelMat,
@@ -1211,7 +1240,7 @@ export class Render3DEntities {
 
         this.world.add(group);
         m = {
-          group, yawGroup, chassis, chassisMeshes, rendererId,
+          group, yawGroup, liftGroup, chassis, chassisMeshes, rendererId,
           turrets: turretMeshes, lodKey: this.lod.key,
           smoothChassisSlots,
           polyChassisSlot,
@@ -1248,12 +1277,12 @@ export class Render3DEntities {
           // turret is index 0; its bodyRadius (when set) wins.
           const hostHeadRadius = getTurretHeadRadius(radius, turrets[0]?.config);
           const panelTopY = bodyEntry.topY * radius + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
-          // Mirror panels parent to yawGroup like turrets — they're
+          // Mirror panels parent to liftGroup like turrets — they're
           // physically attached to the chassis. The per-frame update
           // path inverse-tilts the panel orientation so the rendered
           // surface still aligns with the sim's beam-tracer plane.
           m.mirrors = buildMirrorMesh3D(
-            yawGroup, mirrorPanels, panelTopY,
+            liftGroup, mirrorPanels, panelTopY,
             this.mirrorGeom, this.getMirrorShinyMat(pid),
           );
           for (const panel of m.mirrors.panels) {
@@ -1887,18 +1916,19 @@ export class Render3DEntities {
     mesh.scale.setScalar(radius);
   }
 
-  /** Look up the yaw subgroup for a unit's mesh. Returned group is
-   *  parented to the unit's outer group (which carries world position
-   *  + tilt). Renderers that need to attach extra meshes to the unit
-   *  in a way that tracks position + tilt + yaw automatically — e.g.
-   *  the force-field bubble — parent to this group at chassis-local
-   *  positions and let the scenegraph chain place them in world.
-   *  Returns undefined for units whose mesh hasn't been built yet
-   *  (off-scope at scene start) or has been torn down (despawn /
-   *  LOD-flip mid-frame). Buildings have no yaw plumbing so this
-   *  is unit-only. */
+  /** Look up the lift subgroup for a unit's mesh. The lift group
+   *  carries the body's vertical lift (so it sits on top of the
+   *  locomotion instead of embedded in it) AND is parented through
+   *  yawGroup → group, so it inherits position + tilt + yaw + lift.
+   *  Renderers that attach extra meshes to a unit's BODY (not its
+   *  locomotion) — e.g. the force-field bubble — parent to this
+   *  group at chassis-local positions; the scenegraph chain places
+   *  them in world. Returns undefined for units whose mesh hasn't
+   *  been built yet (off-scope at scene start) or has been torn
+   *  down (despawn / LOD-flip mid-frame). Buildings have no
+   *  liftGroup so this is unit-only. */
   getUnitYawGroup(eid: EntityId): THREE.Group | undefined {
-    return this.unitMeshes.get(eid)?.yawGroup;
+    return this.unitMeshes.get(eid)?.liftGroup;
   }
 
   destroy(): void {

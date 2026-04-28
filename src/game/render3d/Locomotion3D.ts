@@ -73,8 +73,40 @@ const SNAP_LOOKAHEAD_MAX_FRACTION = 0.7;
 const SLIDE_INTERRUPT_FRACTION = 2.0;
 
 const TREAD_COLOR = 0x1a1d22;
-const TREAD_HEIGHT = 10;
+export const TREAD_HEIGHT = 10;
 const TREAD_Y = TREAD_HEIGHT / 2;
+
+/** Vertical offset (world units) by which the unit's BODY (chassis,
+ *  turrets, mirrors, force-field) sits above the ground plane —
+ *  treads / wheels / legs touch the ground at y = 0, the body
+ *  hovers above so the locomotion looks like it's actually
+ *  carrying the chassis instead of being embedded in it.
+ *
+ *    treads → TREAD_HEIGHT (chassis sits on top of the slab)
+ *    wheels → 2 · wheel_radius (chassis sits on top of the wheels)
+ *    legs   → 0 (the body sphere is already raised by its own
+ *             geometry; lifting it further makes a leggy unit
+ *             look like it's floating)
+ *
+ *  Returned in WORLD UNITS — used as `liftGroup.position.y` in
+ *  Render3DEntities. */
+export function getChassisLift(
+  blueprint: import('@/types/blueprints').UnitBlueprint,
+  unitRadius: number,
+): number {
+  const loc = blueprint.locomotion;
+  if (!loc) return 0;
+  switch (loc.type) {
+    case 'treads':
+      return TREAD_HEIGHT;
+    case 'wheels': {
+      const wheelR = Math.max(1, unitRadius * loc.config.wheelRadius);
+      return 2 * wheelR;
+    }
+    case 'legs':
+      return 0;
+  }
+}
 const WHEEL_COLOR = 0x2a2f36;
 const LEG_COLOR = 0x2a2f36;
 
