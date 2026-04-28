@@ -105,6 +105,8 @@ export class BurnMark3D {
   private mat: THREE.MeshBasicMaterial;
   private posAttr: THREE.BufferAttribute;
   private colAttr: THREE.BufferAttribute;
+  private posDirty = false;
+  private colDirty = false;
 
   // Active marks, packed — `marks[mark.slot] === mark` invariant.
   private marks: Mark[] = [];
@@ -272,9 +274,26 @@ export class BurnMark3D {
       const g = HOT_LIN.g * hotDecay + COOL_LIN.g * coolBlend;
       const b = HOT_LIN.b * hotDecay + COOL_LIN.b * coolBlend;
       this.writeQuadColor(i, r, g, b, alpha);
+      this.colDirty = true;
     }
 
-    if (this.marks.length > 0) this.colAttr.needsUpdate = true;
+    if (this.marks.length > 0) {
+      if (this.posDirty) {
+        this.posAttr.clearUpdateRanges();
+        this.posAttr.addUpdateRange(0, this.marks.length * 12);
+        this.posAttr.needsUpdate = true;
+        this.posDirty = false;
+      }
+      if (this.colDirty) {
+        this.colAttr.clearUpdateRanges();
+        this.colAttr.addUpdateRange(0, this.marks.length * 16);
+        this.colAttr.needsUpdate = true;
+        this.colDirty = false;
+      }
+    } else {
+      this.posDirty = false;
+      this.colDirty = false;
+    }
   }
 
   /** Append one mitered quad to the trail. `appendX/Y` is the NEW endpoint;
@@ -369,8 +388,8 @@ export class BurnMark3D {
     // over from the next frame. Writing once here avoids a 1-frame flicker.
     this.writeQuadColor(slot, HOT_LIN.r, HOT_LIN.g, HOT_LIN.b, 1);
 
-    this.posAttr.needsUpdate = true;
-    this.colAttr.needsUpdate = true;
+    this.posDirty = true;
+    this.colDirty = true;
     this.geometry.setDrawRange(0, this.marks.length * 6);
 
     state.lastEndX = endX;
@@ -410,7 +429,7 @@ export class BurnMark3D {
     const b = slot * 12;
     p[b +  6] = eRx; p[b +  7] = MARK_Y; p[b +  8] = eRz;
     p[b +  9] = eLx; p[b + 10] = MARK_Y; p[b + 11] = eLz;
-    this.posAttr.needsUpdate = true;
+    this.posDirty = true;
   }
 
   private writeQuadColor(
@@ -442,8 +461,8 @@ export class BurnMark3D {
       for (let k = 0; k < 16; k++) colBase[cDst + k] = colBase[cSrc + k];
       moved.slot = i;
       this.marks[i] = moved;
-      this.posAttr.needsUpdate = true;
-      this.colAttr.needsUpdate = true;
+      this.posDirty = true;
+      this.colDirty = true;
     }
     this.marks.pop();
     this.geometry.setDrawRange(0, this.marks.length * 6);
@@ -456,6 +475,8 @@ export class BurnMark3D {
     this.marks.length = 0;
     this.geometry.setDrawRange(0, 0);
     for (const state of this.beams.values()) state.prevMark = null;
+    this.posDirty = false;
+    this.colDirty = false;
   }
 
   destroy(): void {
