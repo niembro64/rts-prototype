@@ -1145,6 +1145,16 @@ export class ClientViewState {
     return this.cache.getProjectiles();
   }
 
+  getTravelingProjectiles(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getTravelingProjectiles();
+  }
+
+  getLineProjectiles(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getLineProjectiles();
+  }
+
   getSprayTargets(): SprayTarget[] {
     return this.sprayTargets;
   }

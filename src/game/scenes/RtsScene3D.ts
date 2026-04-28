@@ -697,8 +697,9 @@ export class RtsScene3D {
     this.onCameraQuadUpdate?.(this._cameraQuad);
     this.entityRenderer.update();
     this.captureTileRenderer.update();
-    const projectiles = this.clientViewState.getProjectiles();
-    this.beamRenderer.update(projectiles);
+    const lineProjectiles = this.clientViewState.getLineProjectiles();
+    const travelingProjectiles = this.clientViewState.getTravelingProjectiles();
+    this.beamRenderer.update(lineProjectiles);
     // Force-field iteration is deferred — fused with HealthBar3D's
     // per-unit walk below, after the camera frustum is computed.
     // Single getUnits() iteration drives both per-unit renderers.
@@ -725,14 +726,14 @@ export class RtsScene3D {
     this.waterRenderer.update(effectDt / 1000);
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
-    this.burnMarkRenderer.update(projectiles, effectDt);
+    this.burnMarkRenderer.update(lineProjectiles, effectDt);
     // Commander build / heal spray trails — read straight from sim state
     // via ClientViewState, same list the 2D renderer consumes.
     this.sprayRenderer.update(this.clientViewState.getSprayTargets(), effectDt);
     // Rocket smoke trails: reads the same projectile list the beam
     // renderer consumes; puffs fall back to pooled meshes once their
     // fade completes.
-    this.smokeTrailRenderer.update(projectiles, effectDt, this.renderScope);
+    this.smokeTrailRenderer.update(travelingProjectiles, effectDt, this.renderScope);
     // Per-frame input bookkeeping — currently just the shared
     // SelectionChangeTracker, which resets waypoint mode when the
     // selection changes (matches the 2D path's InputManager.update).
