@@ -78,18 +78,29 @@ const TREAD_Y = TREAD_HEIGHT / 2;
 
 /** Vertical offset (world units) by which the unit's BODY (chassis,
  *  turrets, mirrors, force-field) sits above the ground plane —
- *  treads / wheels / legs touch the ground at y = 0, the body
- *  hovers above so the locomotion looks like it's actually
- *  carrying the chassis instead of being embedded in it.
+ *  the LOWEST visible parts (treads / wheels / feet) touch the
+ *  ground at y ≈ 0, the body hovers above so the locomotion looks
+ *  like it's actually carrying the chassis instead of being embedded
+ *  in it.
  *
  *    treads → TREAD_HEIGHT (chassis sits on top of the slab)
  *    wheels → 2 · wheel_radius (chassis sits on top of the wheels)
- *    legs   → 0 (the body sphere is already raised by its own
- *             geometry; lifting it further makes a leggy unit
- *             look like it's floating)
+ *    legs   → unitRadius · LEG_BODY_LIFT_FRAC (body floats above the
+ *             feet so the spider-style "body suspended on legs" look
+ *             reads — without this the body sphere's bottom touches
+ *             the ground at the same height as the feet, and
+ *             nothing visibly distinguishes the body from the
+ *             locomotion). The hip joint stays at the body segment's
+ *             mid-Y in chassis-local coords (legs use their own
+ *             worldGroup math, unaffected by liftGroup), so after
+ *             the lift the hip falls naturally inside the lower
+ *             half of the body sphere — legs read as emerging from
+ *             the body's underside, which is the natural
+ *             quadruped / arachnid look.
  *
  *  Returned in WORLD UNITS — used as `liftGroup.position.y` in
  *  Render3DEntities. */
+const LEG_BODY_LIFT_FRAC = 0.5;
 export function getChassisLift(
   blueprint: import('@/types/blueprints').UnitBlueprint,
   unitRadius: number,
@@ -104,7 +115,7 @@ export function getChassisLift(
       return 2 * wheelR;
     }
     case 'legs':
-      return 0;
+      return unitRadius * LEG_BODY_LIFT_FRAC;
   }
 }
 const WHEEL_COLOR = 0x2a2f36;
