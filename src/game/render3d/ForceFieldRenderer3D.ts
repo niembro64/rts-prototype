@@ -17,12 +17,24 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
-import { getTurretHeadRadius } from '../math';
-import { getBodyTopY } from './BodyShape3D';
+import { getBodyMountTopY } from './BodyShape3D';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
+
+/** How far the force-field emitter sphere is embedded into the body
+ *  part it's mounted on. Expressed as a chassis-local Y offset added
+ *  to the part's top:
+ *
+ *    insetY = -INSET_BELOW_DOME_FRAC × emitter_max_radius
+ *
+ *  At 0 the emitter sphere center sits exactly at the dome's top
+ *  (bottom hemisphere embedded in the body, top hemisphere above).
+ *  Positive values would lift the emitter; negative values sink it
+ *  further. We use 0 — half-embedded — which reads as a turret
+ *  emitter "sunk into the head" without disappearing entirely. */
+const INSET_DEPTH_BELOW_DOME = 0;
 
 const EMITTER_COLOR_A = 0xf0f0f0;  // idle: white
 const EMITTER_COLOR_B = 0x3366ff;  // active: blue
@@ -308,15 +320,25 @@ export class ForceFieldRenderer3D {
         seen.add(key);
         const field = this.acquire(key);
 
-        // Chassis-local mount position — exactly the same coords a
-        // regular turret root takes when buildTurretMesh3D parents it
-        // to yawGroup. Y is the GLOBAL body top + headRadius, so the
-        // emitter sphere sits where any other turret head on this
-        // unit would sit. For composite bodies (widow / commander /
-        // beam) "global body top" is the tallest part; the force
-        // field shares its altitude with the regular turret heads on
-        // the same unit, which is the "act just like any other
-        // turret" behaviour the user expects.
+        // Chassis-local mount position. Force-field emitter sphere
+        // is positioned to sit ON the body part the chassisMount
+        // points at, INSET into it — emitter center at the dome's
+        // top so the bottom hemisphere is embedded in the body and
+        // the top hemisphere reads as a glowing dome jutting out.
+        // (A regular turret head adds +headRadius to lift the
+        // sphere clear of the dome; force fields skip that lift on
+        // purpose — the "head" of a force-field unit IS the emitter,
+        // not a stack of turret + dome.)
+        //
+        // `getBodyMountTopY(renderer, radius, offsetX, offsetZ)`
+        // finds the body part nearest the mount and returns ITS top
+        // y in world units — for the widow (arachnid composite) the
+        // force-field mount at chassisMount (0.3, 0) lands on the
+        // prosoma (front sphere, top y ≈ 1.1·radius), not the
+        // taller abdomen. For the daddy (forceField renderer, single
+        // circle body) it returns the global topY since there's
+        // only one part. Both units get the "inset emitter on top of
+        // the body" look from one formula.
         //
         // turret.offset is already in world units (chassisMount.{x,y}
         // × radius, baked at unit-creation time). yawGroup has scale
@@ -328,10 +350,12 @@ export class ForceFieldRenderer3D {
         let rendererId = 'arachnid';
         try { rendererId = getUnitBlueprint(unit.unit.unitType).renderer ?? 'arachnid'; }
         catch { /* keep fallback */ }
-        const bodyTopY = getBodyTopY(rendererId, unitRadius);
-        const headRadius = getTurretHeadRadius(unitRadius, turret.config);
+        const mountTopY = getBodyMountTopY(
+          rendererId, unitRadius,
+          turret.offset.x, turret.offset.y,
+        );
         const localX = turret.offset.x;
-        const localY = bodyTopY + headRadius;
+        const localY = mountTopY + INSET_DEPTH_BELOW_DOME;
         const localZ = turret.offset.y;
 
         // Reparent every field mesh to the unit's yawGroup if not
