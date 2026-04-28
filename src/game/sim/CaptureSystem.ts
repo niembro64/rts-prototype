@@ -8,7 +8,6 @@ import type { PlayerId } from './types';
 import type { TileState, NetworkCaptureTile } from '@/types/capture';
 import { CAPTURE_CONFIG } from '../../captureConfig';
 import { getManaTileProductionPerSecond } from './manaProduction';
-import { MANA_PER_TILE_PER_SECOND } from '../../config';
 
 export class CaptureSystem {
   private tiles: Map<number, TileState> = new Map();
@@ -16,10 +15,10 @@ export class CaptureSystem {
   /** Running per-player mana income totals (mana/sec), maintained
    *  incrementally by update() so getManaProductionRatesByPlayer()
    *  returns in O(1) instead of re-scanning every tile every tick.
-   *  Each tile's contribution = height × MANA_PER_TILE_PER_SECOND ×
-   *  hotspot-multiplier(tile-center) — the same multiplier the GRID
-   *  renderer uses for tile colour brightness, so income and colour
-   *  share one source of truth. */
+   *  Each tile's contribution = ownership-height × tile-rate, where
+   *  the tile rate comes from getManaTileProductionPerSecond (the
+   *  same function the GRID renderer uses for colour brightness, so
+   *  income and on-screen brightness share one source of truth). */
   private productionRates: Map<PlayerId, number> = new Map();
 
   /** Map dimensions cached from setMapSize(); needed to evaluate the
@@ -41,11 +40,14 @@ export class CaptureSystem {
 
   /** Mana per second a single tile produces when fully captured by
    *  one team. Computed from the cached map dimensions + cell size
-   *  so the renderer and the income code stay in lockstep. Returns
-   *  the uniform base rate when setMapSize hasn't been called yet. */
+   *  so the renderer and the income code stay in lockstep. Calling
+   *  the helper with zeroed dimensions returns the perimeter base
+   *  rate, which is the desired fallback when setMapSize hasn't
+   *  been called yet (tests / empty harness). */
   private getTileProduction(key: number): number {
-    // No map size yet → uniform base rate (fallback for tests / empty harness).
-    if (this.cellSize <= 0) return MANA_PER_TILE_PER_SECOND;
+    if (this.cellSize <= 0) {
+      return getManaTileProductionPerSecond(0, 0, 0, 0);
+    }
     const cx = ((key >> 16) & 0xFFFF) - 32768;
     const cy = (key & 0xFFFF) - 32768;
     const wx = (cx + 0.5) * this.cellSize;

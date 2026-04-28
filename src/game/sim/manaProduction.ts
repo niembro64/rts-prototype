@@ -1,63 +1,53 @@
 // Per-tile mana production — single source of truth for both the
-// economy (how much mana a captured tile generates per second) and
-// the GRID renderer (how bright that tile looks). A tile near the
-// map center is in a "hotspot" disc whose multiplier ramps linearly
-// from 1.0 at the disc edge up to `manaHotspotCenterMultiplier` at
-// the exact center. Outside the disc the multiplier is exactly 1.0
-// — uniform production, identical to the pre-hotspot behaviour.
+// economy (mana/sec a team earns from each tile they own) and the
+// GRID renderer (how bright each tile looks). One position-keyed
+// function returns absolute mana/sec; the colour model is built on
+// top of it so brightness in the overlay tracks income exactly.
+//
+// Production model:
+//   • A tile fully captured by one team produces `tileRate` mana/sec
+//     for that team. `tileRate` ramps linearly from
+//     `manaPerTilePerimeter` at the edge of the central hotspot disc
+//     up to `manaPerTileCenter` at the exact map centre, and is
+//     constant at the perimeter rate everywhere outside the disc.
+//   • A team's actual income from a tile is its FLAG HEIGHT (its
+//     ownership ratio in [0, 1]) multiplied by `tileRate`. Multiple
+//     teams on the same contested tile each earn proportional to
+//     their height. There is no global MANA_PER_TILE constant — the
+//     tile's rate is the only multiplicative factor besides the
+//     team's ownership ratio.
 
 import { CAPTURE_CONFIG } from '../../captureConfig';
-import { MANA_PER_TILE_PER_SECOND, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 
-/** Production multiplier for a tile whose centre is at (cellCenterX,
- *  cellCenterY) on a map of the given dimensions. Always ≥ 1. */
-export function getManaTileMultiplier(
-  cellCenterX: number,
-  cellCenterY: number,
-  mapWidth: number,
-  mapHeight: number,
-): number {
-  const radiusFrac = CAPTURE_CONFIG.manaHotspotRadiusFraction;
-  const centerMult = CAPTURE_CONFIG.manaHotspotCenterMultiplier;
-  if (radiusFrac <= 0 || centerMult <= 1) return 1;
-  const radius = Math.min(mapWidth, mapHeight) * radiusFrac;
-  if (radius <= 0) return 1;
-  const dx = cellCenterX - mapWidth / 2;
-  const dy = cellCenterY - mapHeight / 2;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist >= radius) return 1;
-  const t = 1 - dist / radius;
-  return 1 + (centerMult - 1) * t;
-}
-
-/** Mana per second a tile produces when fully captured by a single
- *  player (height = 1). Multiplying by the player's flag height on
- *  that tile gives their actual income contribution. */
+/** Mana per second a tile at (cellCenterX, cellCenterY) produces
+ *  when fully captured by a single team (height = 1). Multiplying
+ *  by a team's flag height on that tile gives that team's income
+ *  contribution. */
 export function getManaTileProductionPerSecond(
   cellCenterX: number,
   cellCenterY: number,
   mapWidth: number,
   mapHeight: number,
 ): number {
-  return (
-    MANA_PER_TILE_PER_SECOND *
-    getManaTileMultiplier(cellCenterX, cellCenterY, mapWidth, mapHeight)
-  );
+  const perimeter = CAPTURE_CONFIG.manaPerTilePerimeter;
+  const center = CAPTURE_CONFIG.manaPerTileCenter;
+  const radiusFrac = CAPTURE_CONFIG.manaHotspotRadiusFraction;
+  if (radiusFrac <= 0 || center <= perimeter) return perimeter;
+  const radius = Math.min(mapWidth, mapHeight) * radiusFrac;
+  if (radius <= 0) return perimeter;
+  const dx = cellCenterX - mapWidth / 2;
+  const dy = cellCenterY - mapHeight / 2;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist >= radius) return perimeter;
+  const t = 1 - dist / radius;
+  return perimeter + (center - perimeter) * t;
 }
 
-/** Peak per-tile production rate (mana/sec) used by the renderer to
- *  normalise colour brightness — a fully captured centre tile maps
- *  to brightness 1.0, a fully captured perimeter tile to
- *  1 / centerMultiplier. Always ≥ MANA_PER_TILE_PER_SECOND. */
-export function getMaxManaTileProductionPerSecond(): number {
-  const mult = Math.max(1, CAPTURE_CONFIG.manaHotspotCenterMultiplier);
-  return MANA_PER_TILE_PER_SECOND * mult;
-}
-
-/** Same as getManaTileMultiplier but indexed by integer cell coords
- *  + cell size — the form the capture system and renderers
- *  consume. */
-export function getManaCellMultiplier(
+/** Same as getManaTileProductionPerSecond but indexed by integer
+ *  cell coords + cell size — the form the capture system and
+ *  renderers consume. */
+export function getManaCellProductionPerSecond(
   cx: number,
   cy: number,
   cellSize: number,
@@ -67,56 +57,52 @@ export function getManaCellMultiplier(
   const size = cellSize > 0 ? cellSize : SPATIAL_GRID_CELL_SIZE;
   const wx = (cx + 0.5) * size;
   const wy = (cy + 0.5) * size;
-  return getManaTileMultiplier(wx, wy, mapWidth, mapHeight);
+  return getManaTileProductionPerSecond(wx, wy, mapWidth, mapHeight);
 }
 
 // =============================================================================
 // GRID-overlay colour model
 // =============================================================================
 //
-// Colour brightness ties directly to a tile's mana-per-second so what
-// you see on the GRID matches what you earn. Brightness factors into
-// two axes that mirror the production formula:
-//
-//   production = MANA_PER_TILE × multiplier × dominantHeight
-//                                ^^^^^^^^^^   ^^^^^^^^^^^^^^^
-//                                glow axis    saturation axis
+// Tile brightness is split along two visual axes that mirror the
+// production formula `tileIncome = ownershipHeight × tileRate`:
 //
 //   • SATURATION blends neutral → team colour, driven by the
-//     dominant team's flag height. Identical to the pre-hotspot
-//     behaviour — a fully captured tile saturates to its team's
-//     primary colour regardless of where it is on the map.
+//     dominant team's flag height (its ownership ratio). A fully
+//     owned tile saturates to its team's primary colour regardless
+//     of where it is on the map.
+//   • GLOW blends team colour → white, driven by how much the
+//     tile's production rate exceeds the perimeter baseline. Capped
+//     so even the brightest centre tile reads as the team's colour
+//     rather than washing out to pure white.
 //
-//   • GLOW blends team colour → white, driven by how far the tile's
-//     hotspot multiplier exceeds the perimeter baseline. Capped so
-//     the brightest centre tile is visibly luminous yet still
-//     readable as the team's colour, not pure white.
-//
-// Both factors are scaled by the GRID-overlay intensity so the OFF /
-// LOW / MEDIUM / HIGH dimmer keeps tiles from screaming at low
-// settings. Producing this from one helper means the 3D capture-tile
-// mesh and the 2D minimap render IDENTICAL gradients.
+// Both factors scale by the GRID-overlay intensity (OFF / LOW /
+// MEDIUM / HIGH dimmer). Both renderers (3D mesh + 2D minimap)
+// consume this so they paint identical gradients.
 
-/** Maximum lerp toward white at the hottest, fully captured tile.
+/** Maximum lerp toward white at the hottest, fully-captured tile.
  *  Lower → centre tiles stay closer to team colour; higher →
  *  centre tiles glow more aggressively. 0.6 reads as "noticeably
  *  brighter, still clearly the team's colour." */
 export const CAPTURE_TILE_GLOW_CAP = 0.6;
 
 /** Two-axis brightness factors for one captured tile, given the
- *  per-tile hotspot multiplier, the dominant team's flag height,
- *  and the global GRID-overlay intensity. The renderer then lerps
- *  neutral → team colour by `saturation`, then team colour → white
- *  by `glow`. Both factors are clamped to safe display ranges. */
+ *  tile's mana-per-second rate (from getManaTileProductionPerSecond),
+ *  the dominant team's flag height, and the global GRID-overlay
+ *  intensity. */
 export function getCaptureTileBlendFactors(
-  tileMultiplier: number,
+  tileProductionPerSec: number,
   dominantHeight: number,
   intensity: number,
 ): { saturation: number; glow: number } {
-  const centerMult = Math.max(1, CAPTURE_CONFIG.manaHotspotCenterMultiplier);
-  const saturation = Math.min(1, intensity * 3 * dominantHeight);
+  const perimeter = CAPTURE_CONFIG.manaPerTilePerimeter;
+  const center = CAPTURE_CONFIG.manaPerTileCenter;
+  const span = center - perimeter;
   const hotspotShare =
-    centerMult > 1 ? (tileMultiplier - 1) / (centerMult - 1) : 0;
+    span > 0
+      ? Math.max(0, Math.min(1, (tileProductionPerSec - perimeter) / span))
+      : 0;
+  const saturation = Math.min(1, intensity * 3 * dominantHeight);
   const glow = Math.min(
     CAPTURE_TILE_GLOW_CAP,
     intensity * hotspotShare * dominantHeight,

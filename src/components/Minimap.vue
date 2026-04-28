@@ -4,7 +4,7 @@ import { getTerrainHeight, WATER_LEVEL } from '@/game/sim/Terrain';
 import { PLAYER_COLORS } from '@/game/sim/types';
 import type { PlayerId } from '@/game/sim/types';
 import { MAP_BG_COLOR } from '@/config';
-import { getManaCellMultiplier, getCaptureTileBlendFactors } from '@/game/sim/manaProduction';
+import { getManaCellProductionPerSecond, getCaptureTileBlendFactors } from '@/game/sim/manaProduction';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
@@ -141,8 +141,8 @@ function drawEntityLayer(): void {
       const tr = r / totalWeight;
       const tg = g / totalWeight;
       const tb = b / totalWeight;
-      const tileMult = getManaCellMultiplier(cx, cy, captureCellSize, mapWidth, mapHeight);
-      const { saturation, glow } = getCaptureTileBlendFactors(tileMult, maxHeight, gridOverlayIntensity);
+      const tileProd = getManaCellProductionPerSecond(cx, cy, captureCellSize, mapWidth, mapHeight);
+      const { saturation, glow } = getCaptureTileBlendFactors(tileProd, maxHeight, gridOverlayIntensity);
       const invSat = 1 - saturation;
       const invGlow = 1 - glow;
       const idx = cy * tileCellsX + cx;

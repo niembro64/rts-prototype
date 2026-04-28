@@ -30,7 +30,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TILE_FLOOR_Y } from '../sim/Terrain';
-import { getManaCellMultiplier, getCaptureTileBlendFactors } from '../sim/manaProduction';
+import { getManaCellProductionPerSecond, getCaptureTileBlendFactors } from '../sim/manaProduction';
 
 // Floor of every mana tile post — sourced from the canonical
 // TILE_FLOOR_Y in Terrain so the heightmap clamp, the water level,
@@ -364,8 +364,8 @@ export class CaptureTileRenderer3D {
       const tr = (r / totalWeight) / 255;
       const tg = (g / totalWeight) / 255;
       const tb = (b / totalWeight) / 255;
-      const tileMult = getManaCellMultiplier(cx, cy, cellSize, this.mapWidth, this.mapHeight);
-      const { saturation, glow } = getCaptureTileBlendFactors(tileMult, maxHeight, intensity);
+      const tileProd = getManaCellProductionPerSecond(cx, cy, cellSize, this.mapWidth, this.mapHeight);
+      const { saturation, glow } = getCaptureTileBlendFactors(tileProd, maxHeight, intensity);
       const invSat = 1 - saturation;
       const invGlow = 1 - glow;
       // Stage 1: neutral → team colour by saturation.
