@@ -8,11 +8,11 @@
 //
 // Architecture: every input that changes the camera (wheel, pan drag,
 // orbit drag) writes into a single TO-STATE — `(toDistance,
-// toTargetX, toTargetZ)` plus `yaw / pitch` for orbit — that
-// represents wherever the camera is heading. The rendered state
-// (`distance`, `target.x`, `target.z`) lerps toward the to-state
-// every frame via standard EMA: `alpha = 1 − exp(−dt / tau)`. When
-// tau == 0 (snap mode) inputs apply directly to the rendered state.
+// toTargetX, toTargetY, toTargetZ)` plus `yaw / pitch` for orbit —
+// that represents wherever the camera is heading. The rendered state
+// (`distance`, `target.x`, `target.y`, `target.z`) lerps toward the
+// to-state every frame via standard EMA: `alpha = 1 − exp(−dt / tau)`.
+// When tau == 0 (snap mode) inputs apply directly to the rendered state.
 // Both pan and zoom feed the same to-state, so they animate together
 // without fighting each other — a wheel zoom mid-pan-drag produces
 // one continuous eased motion to the combined destination.
@@ -77,8 +77,15 @@ export class OrbitCamera {
   // TO state — what the camera is heading toward. Inputs (wheel, pan
   // drag, setTarget) write here; tick() lerps the rendered state
   // toward it. In snap mode (tau == 0) inputs also apply directly.
+  // Y is tracked alongside X/Z because the cursor-pin formula needs
+  // to blend target.y toward the cursor world point's altitude every
+  // wheel tick — without that, zooming over terrain at any height
+  // ≠ target.y drifts the cursor pin vertically by (1-α)·(p0.y -
+  // target.y) per scroll, and the drift accumulates until the cursor
+  // pin is permanently broken.
   private toDistance = 1500;
   private toTargetX = 0;
+  private toTargetY = 0;
   private toTargetZ = 0;
 
   /** EMA time-constant in seconds. 0 disables smoothing (snap mode).
@@ -173,6 +180,7 @@ export class OrbitCamera {
 
     this.toDistance = this.distance;
     this.toTargetX = this.target.x;
+    this.toTargetY = this.target.y;
     this.toTargetZ = this.target.z;
 
     this.onWheel = (e) => {
@@ -230,7 +238,18 @@ export class OrbitCamera {
       this.toDistance = newToDistance;
       if (p0) {
         const k = 1 - actualFactor;
+        // Blend ALL THREE target axes toward p0 — Y matters because
+        // the cursor pin invariant is c'_new = α·c + (1-α)·p0 in 3D,
+        // not just XZ. Skipping Y means newCamera.y = α·c.y + (1-α)·
+        // target.y instead of α·c.y + (1-α)·p0.y, and the cursor pin
+        // drifts vertically by (1-α)·(p0.y - target.y) per scroll
+        // whenever the user zooms over terrain at a different height
+        // than target.y. The drift compounds across scrolls and
+        // eventually leaves the orbit basis far from where the cursor
+        // actually points, breaking the pin permanently — that's the
+        // "zoom occasionally breaks and never goes back" behaviour.
         this.toTargetX = actualFactor * this.toTargetX + k * p0.x;
+        this.toTargetY = actualFactor * this.toTargetY + k * p0.y;
         this.toTargetZ = actualFactor * this.toTargetZ + k * p0.z;
       }
 
@@ -239,6 +258,7 @@ export class OrbitCamera {
       if (this.smoothTauSec === 0) {
         this.distance = this.toDistance;
         this.target.x = this.toTargetX;
+        this.target.y = this.toTargetY;
         this.target.z = this.toTargetZ;
         this.apply();
       }
@@ -394,6 +414,7 @@ export class OrbitCamera {
             cz - this.distance * dirZ,
           );
           this.toTargetX = this.target.x;
+          this.toTargetY = this.target.y;
           this.toTargetZ = this.target.z;
           // apply() will write camera.position = target + d·dir = (cx,cy,cz)
           // and camera.lookAt(target) = lookAt the synthesized point,
@@ -531,6 +552,7 @@ export class OrbitCamera {
   setTarget(x: number, y: number, z: number): void {
     this.target.set(x, y, z);
     this.toTargetX = x;
+    this.toTargetY = y;
     this.toTargetZ = z;
     this.apply();
   }
@@ -548,6 +570,7 @@ export class OrbitCamera {
     if (clamped === 0) {
       this.distance = this.toDistance;
       this.target.x = this.toTargetX;
+      this.target.y = this.toTargetY;
       this.target.z = this.toTargetZ;
       this.apply();
     }
@@ -560,16 +583,19 @@ export class OrbitCamera {
     if (this.smoothTauSec <= 0) return;
     const dDist = this.toDistance - this.distance;
     const dX = this.toTargetX - this.target.x;
+    const dY = this.toTargetY - this.target.y;
     const dZ = this.toTargetZ - this.target.z;
     // Settled — snap to exact and stop spinning the integrator.
     if (
       Math.abs(dDist) < 1e-3 &&
       Math.abs(dX) < 1e-3 &&
+      Math.abs(dY) < 1e-3 &&
       Math.abs(dZ) < 1e-3
     ) {
-      if (dDist !== 0 || dX !== 0 || dZ !== 0) {
+      if (dDist !== 0 || dX !== 0 || dY !== 0 || dZ !== 0) {
         this.distance = this.toDistance;
         this.target.x = this.toTargetX;
+        this.target.y = this.toTargetY;
         this.target.z = this.toTargetZ;
         this.apply();
       }
@@ -578,6 +604,7 @@ export class OrbitCamera {
     const alpha = 1 - Math.exp(-dtSec / this.smoothTauSec);
     this.distance += dDist * alpha;
     this.target.x += dX * alpha;
+    this.target.y += dY * alpha;
     this.target.z += dZ * alpha;
     this.apply();
   }
