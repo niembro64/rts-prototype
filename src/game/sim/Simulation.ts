@@ -105,6 +105,10 @@ export class Simulation {
    *  MAX_REPLANS_PER_TICK so a chokepoint pile-up can't burn the
    *  tick budget on planning). Reset at the top of `update()`. */
   private replansThisTick = 0;
+  /** Last WorldState building-version reflected into the spatial
+   *  grid. Buildings are static, so we only need to rescan them when
+   *  one is added or removed instead of every simulation tick. */
+  private spatialGridBuildingVersion = -1;
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
@@ -346,10 +350,14 @@ export class Simulation {
     }
 
     // Ensure buildings are tracked (addBuilding skips if already present)
-    for (const building of this.world.getBuildings()) {
-      if (building.building && building.building.hp > 0) {
-        spatialGrid.addBuilding(building);
+    const buildingVersion = this.world.getBuildingVersion();
+    if (buildingVersion !== this.spatialGridBuildingVersion) {
+      for (const building of this.world.getBuildings()) {
+        if (building.building && building.building.hp > 0) {
+          spatialGrid.addBuilding(building);
+        }
       }
+      this.spatialGridBuildingVersion = buildingVersion;
     }
 
     // Update projectile positions (for force field spatial queries)
@@ -898,5 +906,6 @@ export class Simulation {
     resetEnergyBuffers(this.energyBuffers);
     resetForceFieldBuffers();
     clearTargetIndex();
+    this.spatialGridBuildingVersion = -1;
   }
 }

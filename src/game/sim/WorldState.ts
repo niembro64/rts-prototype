@@ -45,6 +45,7 @@ export class WorldState {
   private entities: Map<EntityId, Entity> = new Map();
   private nextEntityId: EntityId = 1;
   private tick: number = 0;
+  private buildingVersion: number = 0;
   public rng: SeededRNG;
 
   // Current player being controlled
@@ -157,6 +158,7 @@ export class WorldState {
   // Add entity to world
   addEntity(entity: Entity): void {
     this.entities.set(entity.id, entity);
+    if (entity.type === 'building') this.buildingVersion++;
     this.cache.invalidate();
   }
 
@@ -168,8 +170,13 @@ export class WorldState {
       // unit's beam weapons before its bookkeeping is gone.
       dropWeaponsForUnit(entity);
     }
+    if (entity?.type === 'building') this.buildingVersion++;
     this.entities.delete(id);
     this.cache.invalidate();
+  }
+
+  getBuildingVersion(): number {
+    return this.buildingVersion;
   }
 
   // Get entity by ID
