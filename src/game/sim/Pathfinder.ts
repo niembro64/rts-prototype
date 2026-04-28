@@ -36,7 +36,14 @@
 
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
-import { isWaterAt, getSurfaceNormal, getSurfaceHeight, getTerrainVersion } from './Terrain';
+import {
+  isWaterAt,
+  getSurfaceNormal,
+  getSurfaceHeight,
+  getTerrainVersion,
+  getTerrainHeight,
+  WATER_LEVEL,
+} from './Terrain';
 import type { ActionType, UnitAction } from './types';
 
 type Vec2 = { x: number; y: number };
@@ -62,6 +69,21 @@ const SLOPE_BLOCK_NZ = 0.34;
  *  enough to find a shore from the deepest part of the demo's
  *  central lake. */
 const SNAP_RADIUS_CELLS = 32;
+
+/** Pathfinder-internal water margin (world units). When classifying
+ *  cells as blocked, we treat any sample whose terrain height is
+ *  within this margin of the visible water surface as "water".
+ *  Does NOT affect Terrain.isWaterAt / the water plane / physics
+ *  water-pusher / construction / spawn / etc. — those keep using
+ *  the strict water level. The margin exists strictly to keep the
+ *  PLANNER's cell classification away from the water boundary,
+ *  where floating-point noise on terrain samples can otherwise
+ *  flip a cell's wet/dry status from query to query. With a 5 wu
+ *  margin the planner's blocked mask treats anything within 5 wu
+ *  of vertical water level as water — combined with the 2-cell
+ *  inflation that adds 40 wu of horizontal clearance, paths stay
+ *  comfortably clear of the visible shoreline. */
+const WATER_BLOCK_MARGIN_WU = 5;
 
 /** Hard cap on A* expansions per query. With the CC pre-flight
  *  we should never come close (the path is guaranteed to exist),
@@ -111,12 +133,28 @@ function ensureMaskAndCC(
   const half = GRID_CELL_SIZE / 2;
 
   // Step 1 — terrain mask. A cell is terrain-blocked iff any of
-  // (centre + 4 corners) is over water OR the centre's slope nz is
-  // below the walkable floor. Multi-point sampling catches shoreline
-  // cells whose centres are barely-above-water but whose perimeter
-  // dips below water level — without it the inflation halo wouldn't
-  // reach them and paths would visibly drift over the submerged
-  // corners.
+  // (centre + 4 corners) is at-or-near water OR the centre's slope
+  // nz is below the walkable floor. Multi-point sampling catches
+  // shoreline cells whose centres are barely-above-water but whose
+  // perimeter dips below water level.
+  //
+  // "At-or-near water" uses an internal `WATER_BLOCK_MARGIN_WU`
+  // buffer above the visible water level instead of the strict
+  // `isWaterAt` predicate. The visible water plane stays at
+  // WATER_LEVEL — physics, the water-pusher, construction,
+  // spawn, and the runtime validator all keep using the strict
+  // predicate so they detect REAL water. The planner alone
+  // treats "within 5 wu of water" as water, which keeps the
+  // cell classification away from floating-point noise at the
+  // boundary (a sample 0.001 wu above water at one frame and
+  // 0.001 wu below at the next would otherwise flip the cell's
+  // wet/dry status from query to query). 5 wu vertical, combined
+  // with the 2-cell horizontal inflation, gives the planner a
+  // stable shoreline that stays comfortably inland of the visible
+  // water.
+  const blockThreshold = WATER_LEVEL + WATER_BLOCK_MARGIN_WU;
+  const isWaterishAt = (x: number, y: number): boolean =>
+    getTerrainHeight(x, y, mapWidth, mapHeight) < blockThreshold;
   const terrainMask = new Uint8Array(n);
   for (let gy = 0; gy < gridH; gy++) {
     for (let gx = 0; gx < gridW; gx++) {
@@ -124,11 +162,11 @@ function ensureMaskAndCC(
       const cy = (gy + 0.5) * GRID_CELL_SIZE;
       let blk = false;
       if (
-        isWaterAt(cx, cy, mapWidth, mapHeight) ||
-        isWaterAt(cx - half, cy - half, mapWidth, mapHeight) ||
-        isWaterAt(cx + half, cy - half, mapWidth, mapHeight) ||
-        isWaterAt(cx - half, cy + half, mapWidth, mapHeight) ||
-        isWaterAt(cx + half, cy + half, mapWidth, mapHeight)
+        isWaterishAt(cx, cy) ||
+        isWaterishAt(cx - half, cy - half) ||
+        isWaterishAt(cx + half, cy - half) ||
+        isWaterishAt(cx - half, cy + half) ||
+        isWaterishAt(cx + half, cy + half)
       ) {
         blk = true;
       } else {
