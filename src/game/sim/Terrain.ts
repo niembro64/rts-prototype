@@ -51,7 +51,7 @@ export const TILE_FLOOR_Y = -1200;
  *  to the ground plane. Read once at module load — runtime tweaks
  *  to the config should reload the page so client and server agree
  *  on the same surface. */
-export const WATER_LEVEL_FRACTION = 0.8;
+export const WATER_LEVEL_FRACTION = 0.6;
 
 /** Water surface elevation in sim units. Linear interpolation:
  *  fraction=0 → TILE_FLOOR_Y, fraction=1 → 0. Anywhere the heightmap
@@ -66,7 +66,7 @@ export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
  *  Magnitude only — the sign is picked from the shape. Tuned so a
  *  lake is deep enough to flood meaningfully under WATER_LEVEL=0.5
  *  and a mountain is tall enough to actually block sightlines. */
-const TERRAIN_SHAPE_MAGNITUDE = 600;
+const TERRAIN_SHAPE_MAGNITUDE = 750;
 
 /** Mutable amplitude for the central ripple zone. Negative = basin
  *  (lake), positive = peak (mountain), 0 = flat. Default 'lake'.
@@ -165,36 +165,11 @@ export function setTerrainTeamCount(n: number): void {
 export function getTerrainTeamCount(): number {
   return teamCount;
 }
-
-// Outer extent of the team-separation ridge system, expressed as a
-// fraction of `min(mapWidth, mapHeight) / 2` (i.e. the closest map
-// edge measured radially from center). At 1.0 the ridges + lake
-// trenches extend all the way to the closest map edge — same as the
-// pre-radius-clamp behavior. At 0.5 they only reach halfway from
-// center to the edge. At 0.0 the divider math is fully suppressed
-// and only the central ripple disc remains.
-let separatorRadiusFraction = 1.0;
-
-/** Apply the host's DIVIDER REACH choice. Same lifecycle constraints
- *  as `setTerrainCenterShape` / `setTerrainDividersShape`. Clamped to
- *  [0, 1]; values outside that range are saturated, not rejected. */
-export function setSeparatorRadiusFraction(v: number): void {
-  const clamped = v < 0 ? 0 : v > 1 ? 1 : v;
-  if (clamped === separatorRadiusFraction) return;
-  separatorRadiusFraction = clamped;
-  _terrainVersion++;
-}
-
-/** Read the divider-reach fraction back. */
-export function getSeparatorRadiusFraction(): number {
-  return separatorRadiusFraction;
-}
-
 // Wavelengths for the three sinusoids that combine into the
 // ripple pattern. Mixing irrational ratios prevents the layers
 // from harmonizing into a clean grid.
-const RIPPLE_W1 = 100;
-const RIPPLE_W2 = 50;
+const RIPPLE_W1 = 200;
+const RIPPLE_W2 = 500;
 const RIPPLE_W3 = 500;
 // Phase offset on the second sinusoid so the bumps don't all
 // peak at the same dist value.
@@ -231,15 +206,8 @@ export function getTerrainHeight(
   }
 
   // ── Team-separation ridge component ─────────────────────────────
-  // Outer cutoff: past `separatorRadiusFraction · min(w,h)/2` the
-  // divider math contributes nothing. At fraction=1.0 the cutoff is
-  // the closest map edge (effectively no clamp on a square map),
-  // matching pre-clamp behavior. At lower fractions the ridges +
-  // lake trenches retract toward the center so units have an open
-  // outer ring to flank through.
   let ridge = 0;
-  const separatorMaxDist = Math.min(mapWidth, mapHeight) * 0.5 * separatorRadiusFraction;
-  if (teamCount > 0 && dist > 0 && dist <= separatorMaxDist) {
+  if (teamCount > 0 && dist > 0) {
     const theta = Math.atan2(dy, dx);
     // Pattern: team_center → barrier_center → next team_center
     // repeats every 2π/N. Within one cycle:
