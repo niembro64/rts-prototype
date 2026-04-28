@@ -63,6 +63,7 @@ const MATTER_FORCE_SCALE = 150000;
 const WATER_OUT_CACHE_CELL_SIZE = 25;
 const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
+type SurfaceNormal = { nx: number; ny: number; nz: number };
 
 export class GameServer {
   private physics: PhysicsEngine3D;
@@ -171,7 +172,7 @@ export class GameServer {
     // outside the ripple disc, so corner spawns stay flat.
     this.physics.setGroundLookup(
       (x, y) => this.world.getGroundZ(x, y),
-      (x, y) => getSurfaceNormal(x, y, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE),
+      (x, y) => this.getCachedSurfaceNormal(x, y),
     );
     this.world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player
@@ -616,11 +617,7 @@ export class GameServer {
           // normal is land-only (Terrain.getSurfaceNormal excludes
           // wet samples), so this never inherits the water plane's
           // tilt.
-          const n = getSurfaceNormal(
-            body.x, body.y,
-            mw, mh,
-            SPATIAL_GRID_CELL_SIZE,
-          );
+          const n = this.getCachedSurfaceNormal(body.x, body.y);
           const t = projectHorizontalOntoSlope(useDirX, useDirY, n);
           thrustForceX = t.x * thrustMagnitude;
           thrustForceY = t.y * thrustMagnitude;
@@ -653,6 +650,27 @@ export class GameServer {
   private _waterOutX = 0;
   private _waterOutY = 0;
   private waterOutCache = new Map<number, WaterOutCacheEntry>();
+  private surfaceNormalCache = new Map<number, SurfaceNormal>();
+
+  private surfaceNormalCacheKey(x: number, y: number): number {
+    const cx = Math.floor(x / WATER_OUT_CACHE_CELL_SIZE) + 32768;
+    const cy = Math.floor(y / WATER_OUT_CACHE_CELL_SIZE) + 32768;
+    return cx * 0x10000 + cy;
+  }
+
+  private getCachedSurfaceNormal(x: number, y: number): SurfaceNormal {
+    const key = this.surfaceNormalCacheKey(x, y);
+    let normal = this.surfaceNormalCache.get(key);
+    if (!normal) {
+      normal = getSurfaceNormal(
+        x, y,
+        this.world.mapWidth, this.world.mapHeight,
+        SPATIAL_GRID_CELL_SIZE,
+      );
+      this.surfaceNormalCache.set(key, normal);
+    }
+    return normal;
+  }
 
   private waterOutCacheKey(x: number, y: number, probeR: number): number {
     const cx = Math.floor(x / WATER_OUT_CACHE_CELL_SIZE) + 32768;
