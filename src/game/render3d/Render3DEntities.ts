@@ -515,6 +515,21 @@ export class Render3DEntities {
   private barrelFreeSlots: number[] = [];
   private barrelNextSlot = 0;
 
+  // ── LOW+ tier mirror-panel InstancedMesh ────────────────────────
+  // Loris-only feature, but each Loris carries 4 panels and chrome-
+  // PBR each — so a 100-Loris scene is 400 separate MeshStandardMaterial
+  // draws today. Routing them through ONE shared InstancedMesh with
+  // per-instance team color (instanceColor modulates against the
+  // shared material.color = white) collapses that to 1 draw call.
+  // metalness=1 + roughness=0 are material-level uniforms so they
+  // stay shared across teams; only the BASE color tints per team.
+  // The PMREM environment map for chrome reflection is set on the
+  // scene, not the material, so it applies to all instances.
+  private static readonly MIRROR_PANEL_CAP = 1024;
+  private mirrorPanelInstanced: THREE.InstancedMesh | null = null;
+  private mirrorPanelFreeSlots: number[] = [];
+  private mirrorPanelNextSlot = 0;
+
   constructor(
     world: THREE.Group,
     clientViewState: ClientViewState,
@@ -648,6 +663,32 @@ export class Render3DEntities {
     this.barrelInstanced.count = 0;
     this.barrelInstanced.instanceMatrix.needsUpdate = true;
     this.world.add(this.barrelInstanced);
+
+    // Mirror-panel InstancedMesh — one shared chrome-shiny material
+    // (metalness=1, roughness=0, double-sided so the panel reads
+    // from either side; PMREM environment is set on the scene), per-
+    // instance team color via instanceColor.
+    const mirrorMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      metalness: 1.0,
+      roughness: 0.0,
+      side: THREE.DoubleSide,
+    });
+    this.mirrorPanelInstanced = new THREE.InstancedMesh(
+      this.mirrorGeom,
+      mirrorMat,
+      Render3DEntities.MIRROR_PANEL_CAP,
+    );
+    this.mirrorPanelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mirrorPanelInstanced.setColorAt(0, this._instColor.set(0xffffff));
+    this.mirrorPanelInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    this.mirrorPanelInstanced.frustumCulled = false;
+    for (let i = 0; i < Render3DEntities.MIRROR_PANEL_CAP; i++) {
+      this.mirrorPanelInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    this.mirrorPanelInstanced.count = 0;
+    this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
+    this.world.add(this.mirrorPanelInstanced);
   }
 
   private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
@@ -906,6 +947,7 @@ export class Render3DEntities {
     this.releaseAllPolyChassisSlots();
     this.releaseAllTurretHeadSlots();
     this.releaseAllBarrelSlots();
+    this.releaseAllMirrorPanelSlots();
   }
 
   /** LOW-tier per-frame instance write. Each visible unit takes one
@@ -1219,6 +1261,38 @@ export class Render3DEntities {
     }
     this.barrelFreeSlots.length = 0;
     this.barrelNextSlot = 0;
+    im.count = 0;
+    im.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Reserve a slot for one mirror panel. Returns slot index, or
+   *  null when the cap is exhausted (caller falls back to per-Mesh
+   *  panels for the whole unit — all-or-nothing same as barrels). */
+  private allocMirrorPanelSlot(): number | null {
+    if (!this.mirrorPanelInstanced) return null;
+    if (this.mirrorPanelFreeSlots.length > 0) return this.mirrorPanelFreeSlots.pop()!;
+    if (this.mirrorPanelNextSlot < Render3DEntities.MIRROR_PANEL_CAP) {
+      return this.mirrorPanelNextSlot++;
+    }
+    return null;
+  }
+
+  private freeMirrorPanelSlot(slot: number): void {
+    const im = this.mirrorPanelInstanced;
+    if (!im || slot < 0) return;
+    im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    this.mirrorPanelFreeSlots.push(slot);
+    im.instanceMatrix.needsUpdate = true;
+  }
+
+  private releaseAllMirrorPanelSlots(): void {
+    const im = this.mirrorPanelInstanced;
+    if (!im) return;
+    for (let i = 0; i < this.mirrorPanelNextSlot; i++) {
+      im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    this.mirrorPanelFreeSlots.length = 0;
+    this.mirrorPanelNextSlot = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
   }
@@ -1580,13 +1654,34 @@ export class Render3DEntities {
           const hostHeadRadius = getTurretHeadRadius(radius, turrets[0]?.config);
           const panelTopY = bodyEntry.topY * radius + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
           // Mirror panels parent to liftGroup like turrets — they're
-          // physically attached to the chassis. The per-frame update
-          // path inverse-tilts the panel orientation so the rendered
-          // surface still aligns with the sim's beam-tracer plane.
+          // physically attached to the chassis. Try to alloc one
+          // slot per panel through the shared mirrorPanelInstanced
+          // (all-or-nothing: partial alloc gets freed and per-Mesh
+          // panels stay attached as the fallback). On success, the
+          // per-Mesh panels are kept in m.mirrors.panels[] purely
+          // as data carriers (their .position / .quaternion / .scale
+          // are read each frame to compose the world matrix written
+          // to the slot).
+          const panelCount = mirrorPanels.length;
+          const allocedPanelSlots: number[] = [];
+          let allMirrorAlloc = panelCount > 0 && this.mirrorPanelInstanced !== null;
+          if (allMirrorAlloc) {
+            for (let pi = 0; pi < panelCount; pi++) {
+              const slot = this.allocMirrorPanelSlot();
+              if (slot === null) { allMirrorAlloc = false; break; }
+              allocedPanelSlots.push(slot);
+            }
+            if (!allMirrorAlloc) {
+              for (const slot of allocedPanelSlots) this.freeMirrorPanelSlot(slot);
+              allocedPanelSlots.length = 0;
+            }
+          }
           m.mirrors = buildMirrorMesh3D(
             liftGroup, mirrorPanels, panelTopY,
             this.mirrorGeom, this.getMirrorShinyMat(pid),
+            allMirrorAlloc, // skipPerMesh when instancing is on
           );
+          if (allMirrorAlloc) m.mirrors.panelSlots = allocedPanelSlots;
           for (const panel of m.mirrors.panels) {
             panel.userData.entityId = e.id;
           }
@@ -1992,6 +2087,60 @@ export class Render3DEntities {
         for (const panel of m.mirrors.panels) {
           panel.rotation.x = mirrorPitch;
         }
+
+        // Mirror-panel InstancedMesh write — same chain-compose
+        // pattern as barrels (group · yawGroup · liftGroup · mirrors.root),
+        // multiplied by each panel's local T·R·S. Even when
+        // skipPerMesh detached the per-Mesh panels from `mirrors.root`,
+        // each panel's .position / .rotation / .scale are still set
+        // (rotation.x just got the per-frame pitch update above), so
+        // the InstancedMesh writer reads them as data.
+        if (m.mirrors.panelSlots && this.mirrorPanelInstanced) {
+          const lift = m.chassisLift ?? 0;
+          // parentMat = group · yawGroup · liftGroup · mirrors.root
+          this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
+          this._smoothParentQuat
+            .copy(m.group.quaternion)
+            .multiply(this._smoothYawQuat);
+          this._smoothLiftOffset.set(0, lift, 0).applyQuaternion(this._smoothParentQuat);
+          this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
+          this._barrelParentMat.compose(
+            this._smoothLiftedPos,
+            this._smoothParentQuat,
+            this._barrelOneVec,
+          );
+          // Mirror root rotation around Y in the lift-space frame.
+          this._smoothYawQuat.setFromAxisAngle(_INST_UP, m.mirrors.root.rotation.y);
+          this._barrelStepMat.compose(
+            this._barrelZeroVec, this._smoothYawQuat, this._barrelOneVec,
+          );
+          this._barrelParentMat.multiply(this._barrelStepMat);
+
+          this._instColor.set(
+            pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+          );
+          const slotCount = Math.min(
+            m.mirrors.panels.length,
+            m.mirrors.panelSlots.length,
+          );
+          for (let pi = 0; pi < slotCount; pi++) {
+            const panel = m.mirrors.panels[pi];
+            const slot = m.mirrors.panelSlots[pi];
+            // panel.quaternion auto-syncs with panel.rotation
+            // (Euler XYZ for the rotation-order detection — note
+            // mirror panels use 'YXZ' order for the panel→world
+            // sandwich; THREE syncs whichever order is set on
+            // .rotation.order).
+            this._barrelStepMat.compose(
+              panel.position, panel.quaternion, panel.scale,
+            );
+            this._smoothFinalMat.multiplyMatrices(
+              this._barrelParentMat, this._barrelStepMat,
+            );
+            this.mirrorPanelInstanced.setMatrixAt(slot, this._smoothFinalMat);
+            this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
+          }
+        }
       }
 
       // Locomotion: spin tread wheels per velocity; legs write per-
@@ -2034,6 +2183,10 @@ export class Render3DEntities {
           if (tm.barrelSlots) {
             for (const slot of tm.barrelSlots) this.freeBarrelSlot(slot);
           }
+        }
+        // Mirror-panel slots (Loris-only).
+        if (m.mirrors?.panelSlots) {
+          for (const slot of m.mirrors.panelSlots) this.freeMirrorPanelSlot(slot);
         }
         this.unitMeshes.delete(id);
       }
@@ -2088,6 +2241,16 @@ export class Render3DEntities {
       this.barrelInstanced.count = this.barrelNextSlot;
       if (this.barrelNextSlot > 0) {
         this.barrelInstanced.instanceMatrix.needsUpdate = true;
+      }
+    }
+    // Mirror panels — one shared chrome PBR draw call.
+    if (this.mirrorPanelInstanced) {
+      this.mirrorPanelInstanced.count = this.mirrorPanelNextSlot;
+      if (this.mirrorPanelNextSlot > 0) {
+        this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
+        if (this.mirrorPanelInstanced.instanceColor) {
+          this.mirrorPanelInstanced.instanceColor.needsUpdate = true;
+        }
       }
     }
   }
@@ -2504,5 +2667,15 @@ export class Render3DEntities {
       this.barrelInstanced = null;
     }
     this.barrelFreeSlots.length = 0;
+    if (this.mirrorPanelInstanced) {
+      this.world.remove(this.mirrorPanelInstanced);
+      // Material is a private MeshStandardMaterial owned by this
+      // InstancedMesh — dispose via the mesh. Geometry is
+      // `this.mirrorGeom`, disposed earlier in destroy().
+      (this.mirrorPanelInstanced.material as THREE.Material).dispose();
+      this.mirrorPanelInstanced.dispose();
+      this.mirrorPanelInstanced = null;
+    }
+    this.mirrorPanelFreeSlots.length = 0;
   }
 }
