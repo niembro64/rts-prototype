@@ -240,8 +240,14 @@ export class SprayRenderer3D {
     // happen to hold from previous frames) don't render.
     this.mesh.count = visibleCount;
     if (visibleCount > 0) {
+      this.mesh.instanceMatrix.clearUpdateRanges();
+      this.mesh.instanceMatrix.addUpdateRange(0, visibleCount * 16);
       this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.clearUpdateRanges();
+      this.alphaAttr.addUpdateRange(0, visibleCount);
       this.alphaAttr.needsUpdate = true;
+      this.colorAttr.clearUpdateRanges();
+      this.colorAttr.addUpdateRange(0, visibleCount * 3);
       this.colorAttr.needsUpdate = true;
     }
   }

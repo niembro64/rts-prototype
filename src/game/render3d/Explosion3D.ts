@@ -210,8 +210,14 @@ class InstancedSpherePool {
   setCount(n: number): void {
     this.mesh.count = n;
     if (n > 0) {
+      this.mesh.instanceMatrix.clearUpdateRanges();
+      this.mesh.instanceMatrix.addUpdateRange(0, n * 16);
       this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.clearUpdateRanges();
+      this.alphaAttr.addUpdateRange(0, n);
       this.alphaAttr.needsUpdate = true;
+      this.colorAttr.clearUpdateRanges();
+      this.colorAttr.addUpdateRange(0, n * 3);
       this.colorAttr.needsUpdate = true;
     }
   }

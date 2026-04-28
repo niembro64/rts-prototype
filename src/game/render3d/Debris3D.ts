@@ -164,6 +164,8 @@ class InstancedDebrisPool {
   private colorAttr: THREE.InstancedBufferAttribute;
   freeSlots: number[] = [];
   nextSlot = 0;
+  private dirtyMinSlot = Number.POSITIVE_INFINITY;
+  private dirtyMaxSlot = -1;
   readonly cap: number;
   // Scratch — reused across the per-frame write loop, no allocations.
   private scratchMat = new THREE.Matrix4();
@@ -207,6 +209,12 @@ class InstancedDebrisPool {
     this.mesh.setMatrixAt(slot, InstancedDebrisPool._ZERO_MATRIX);
     this.alphaArr[slot] = 0;
     this.freeSlots.push(slot);
+    this.markDirty(slot);
+  }
+
+  private markDirty(slot: number): void {
+    if (slot < this.dirtyMinSlot) this.dirtyMinSlot = slot;
+    if (slot > this.dirtyMaxSlot) this.dirtyMaxSlot = slot;
   }
 
   /** Write a piece's full state to its slot — matrix from
@@ -230,14 +238,25 @@ class InstancedDebrisPool {
     this.colorArr[slot * 3]     = r;
     this.colorArr[slot * 3 + 1] = g;
     this.colorArr[slot * 3 + 2] = b;
+    this.markDirty(slot);
   }
 
   flush(): void {
     this.mesh.count = this.nextSlot;
-    if (this.nextSlot > 0) {
+    if (this.dirtyMaxSlot >= this.dirtyMinSlot) {
+      const start = this.dirtyMinSlot;
+      const count = this.dirtyMaxSlot - this.dirtyMinSlot + 1;
+      this.mesh.instanceMatrix.clearUpdateRanges();
+      this.mesh.instanceMatrix.addUpdateRange(start * 16, count * 16);
       this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.clearUpdateRanges();
+      this.alphaAttr.addUpdateRange(start, count);
       this.alphaAttr.needsUpdate = true;
+      this.colorAttr.clearUpdateRanges();
+      this.colorAttr.addUpdateRange(start * 3, count * 3);
       this.colorAttr.needsUpdate = true;
+      this.dirtyMinSlot = Number.POSITIVE_INFINITY;
+      this.dirtyMaxSlot = -1;
     }
   }
 
