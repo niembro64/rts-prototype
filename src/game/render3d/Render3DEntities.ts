@@ -100,6 +100,14 @@ type EntityMesh = {
    *  at build time (locomotion config doesn't change) so no per-frame
    *  update is needed. */
   liftGroup?: THREE.Group;
+  /** Cached lift amount (world units) computed at unit-add from
+   *  `getChassisLift(blueprint, unitRadius)`. Used by the chassis
+   *  InstancedMesh writers (smoothChassis + polyChassis) to apply the
+   *  lift inside their manual matrix composition — those slots are
+   *  parented to the world group, NOT the unit's liftGroup, so the
+   *  scenegraph chain doesn't apply the lift for them. Cached on the
+   *  EntityMesh to avoid re-looking-up the blueprint each frame. */
+  chassisLift?: number;
   /** Parent for the chassis body parts. For units this is uniformly
    *  scaled by unitRadius so each BodyMeshPart's unit-radius-1 offset
    *  and per-axis scale both enlarge correctly. For buildings the group
@@ -402,6 +410,16 @@ export class Render3DEntities {
   private _smoothParentScale = new THREE.Vector3();
   private _smoothPartLocalPos = new THREE.Vector3();
   private _smoothPartScale = new THREE.Vector3();
+  /** Lift offset (0, chassisLift, 0) rotated by parentQuat, added to
+   *  groupPos so parentMat reproduces the scenegraph chain
+   *    group → yawGroup → liftGroup → chassis
+   *  (which inserts T(0, lift, 0) after Ry(yaw) and before S(radius)).
+   *  Without this, smooth-chassis + poly-chassis instances render at
+   *  the OLD ground height while per-Mesh chassis (correctly parented
+   *  through liftGroup) render lifted — visible mismatch on every
+   *  chassis-instanced unit at LOW+ tier. */
+  private _smoothLiftOffset = new THREE.Vector3();
+  private _smoothLiftedPos = new THREE.Vector3();
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
 
   // ── LOW+ tier polygonal/rect chassis InstancedMeshes ──────────────
@@ -1265,6 +1283,12 @@ export class Render3DEntities {
           turrets: turretMeshes, lodKey: this.lod.key,
           smoothChassisSlots,
           polyChassisSlot,
+          // Cache the lift so the chassis instance writers can
+          // reproduce the liftGroup translation in their manual
+          // matrix composition (their slots are parented to the
+          // world group, not liftGroup, so the scenegraph chain
+          // doesn't apply lift for them).
+          chassisLift: liftGroup.position.y,
         };
         if (smoothChassisSlots) {
           this.smoothChassisSlots.set(e.id, smoothChassisSlots);
@@ -1393,8 +1417,18 @@ export class Render3DEntities {
           .copy(m.group.quaternion)
           .multiply(this._smoothYawQuat);
         this._smoothParentScale.set(radius, radius, radius);
+        // parentMat = T(groupPos) · R(tilt·yaw) · T(0, lift, 0) · S(radius)
+        //           = T(groupPos + R(tilt·yaw)·(0, lift, 0)) · R(tilt·yaw) · S(radius)
+        // Rotate the lift offset by parentQuat and add to groupPos
+        // so the composed parentMat correctly encodes the liftGroup
+        // translation (which the scenegraph chain applies AFTER yaw
+        // and BEFORE chassis scale). When lift = 0 the offset is
+        // (0, 0, 0) and this collapses to the original compose.
+        const lift = m.chassisLift ?? 0;
+        this._smoothLiftOffset.set(0, lift, 0).applyQuaternion(this._smoothParentQuat);
+        this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
         this._smoothParentMat.compose(
-          m.group.position,
+          this._smoothLiftedPos,
           this._smoothParentQuat,
           this._smoothParentScale,
         );
@@ -1421,10 +1455,7 @@ export class Render3DEntities {
         }
       } else if (m.polyChassisSlot !== undefined) {
         // Polygonal/rect chassis: same parentMat × partMat composition
-        // as the smooth path, but the slot lives in the per-renderer
-        // poly pool (lazily created on first allocation) and there is
-        // exactly one part per body. Reuse the smooth-chassis scratch
-        // matrices — they're scratch, not state.
+        // as the smooth path, including the lift translation.
         const pool = this.polyChassis.get(m.rendererId);
         if (pool) {
           this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
@@ -1432,8 +1463,11 @@ export class Render3DEntities {
             .copy(m.group.quaternion)
             .multiply(this._smoothYawQuat);
           this._smoothParentScale.set(radius, radius, radius);
+          const lift = m.chassisLift ?? 0;
+          this._smoothLiftOffset.set(0, lift, 0).applyQuaternion(this._smoothParentQuat);
+          this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
           this._smoothParentMat.compose(
-            m.group.position,
+            this._smoothLiftedPos,
             this._smoothParentQuat,
             this._smoothParentScale,
           );
