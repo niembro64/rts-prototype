@@ -53,6 +53,7 @@ const BARREL_COLOR = 0xffffff;
 // path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
 // (input) Vector3, but never mutates it.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
+const AUTO_MASS_UNIT_RENDER_THRESHOLD = 5000;
 
 // Scratch globals reused by the per-unit surface-tilt path so the
 // per-frame loop allocates no quaternions/vectors. Tilt is applied
@@ -1016,11 +1017,10 @@ export class Render3DEntities {
    *  GPU cost: one draw call total + N vertex-shader invocations.
    *  CPU cost: one Matrix4.compose + setMatrixAt + setColorAt per
    *  visible unit per frame, no allocations. */
-  private updateUnitsInstanced(): void {
+  private updateUnitsInstanced(units = this.clientViewState.getUnits()): void {
     const im = this.unitInstanced;
     if (!im) return;
 
-    const units = this.clientViewState.getUnits();
     const seen = this._seenUnitIds;
     seen.clear();
     let colorDirty = false;
@@ -1473,6 +1473,7 @@ export class Render3DEntities {
   }
 
   private updateUnits(): void {
+    const units = this.clientViewState.getUnits();
     // MIN tier only: every unit is a single sphere drawn from one
     // InstancedMesh — collapses thousands of per-unit draw calls into
     // a single GPU dispatch. LOW and above still build the full
@@ -1480,9 +1481,13 @@ export class Render3DEntities {
     // there's a visible step between MIN and LOW: MIN trades all
     // detail for raw throughput, LOW keeps the simplified chassis
     // shapes shown in the 2D LOW preset.
-    const isMinTier = this.lod.gfx.tier === 'min';
-    if (isMinTier) {
-      this.updateUnitsInstanced();
+    const useMassInstancing = this.lod.gfx.tier === 'min' ||
+      units.length >= AUTO_MASS_UNIT_RENDER_THRESHOLD;
+    if (useMassInstancing) {
+      if (this.unitMeshes.size > 0) {
+        this.rebuildAllUnitsOnLodChange();
+      }
+      this.updateUnitsInstanced(units);
       return;
     }
     // We left MIN tier — release every instanced slot so stale ghosts
@@ -1492,7 +1497,6 @@ export class Render3DEntities {
       this.releaseAllInstancedSlots();
     }
 
-    const units = this.clientViewState.getUnits();
     const seen = this._seenUnitIds;
     seen.clear();
     const spinDt = this._spinDt;
