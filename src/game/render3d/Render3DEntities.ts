@@ -102,9 +102,16 @@ type EntityMesh = {
   /** Slot indices into the renderer's `smoothChassis` InstancedMesh,
    *  one per body part. Present on smooth-body units (arachnid, beam,
    *  snipe, commander, forceField, loris) at LOW+ tier; undefined for
-   *  polygon / rect bodies (which use chassisMeshes) and at MIN tier
+   *  polygon / rect bodies (which use polyChassisSlot) and at MIN tier
    *  (where the LOW-tier `unitInstanced` path takes over entirely). */
   smoothChassisSlots?: number[];
+  /** Single slot index into the per-renderer polygonal-chassis
+   *  InstancedMesh (one InstancedMesh per polygon / rect renderer:
+   *  scout, brawl, tank, burst, mortar, hippo). Present on polygon /
+   *  rect units at LOW+ tier; undefined for smooth bodies (which use
+   *  smoothChassisSlots) and at MIN tier. The pool that owns the slot
+   *  is keyed by `rendererId`. */
+  polyChassisSlot?: number;
   /** Cached renderer id (e.g. 'arachnid', 'tank') resolved once at
    *  mesh-build time. Unit-blueprint lookups in the per-frame update
    *  loop are wasted work — the unitType never changes for a live
@@ -385,6 +392,30 @@ export class Render3DEntities {
   private _smoothPartLocalPos = new THREE.Vector3();
   private _smoothPartScale = new THREE.Vector3();
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
+
+  // ── LOW+ tier polygonal/rect chassis InstancedMeshes ──────────────
+  // One InstancedMesh per polygonal renderer (scout / brawl / tank /
+  // burst / mortar — all ExtrudeGeometry from BodyShape3D's per-
+  // renderer cache) plus one for the rect renderer (hippo). Lazily
+  // created the first time a unit of that renderer enters the scene,
+  // because the geometry isn't built until BodyShape3D's
+  // `getBodyGeom(renderer)` is called. Each pool's mesh references the
+  // SAME geometry object that BodyShape3D's CACHE owns — disposed by
+  // BodyShape3D's `disposeBodyGeoms()` in destroy(), not by us, so we
+  // tear down `polyChassis` pool meshes BEFORE that call.
+  //
+  // Polygonal bodies always have parts.length === 1 (single
+  // ExtrudeGeometry per renderer), so each unit takes exactly one slot
+  // in its renderer's pool. Composite-or-multi-part polygonal bodies
+  // would need a slot list like smoothChassisSlots — for now the
+  // BodyShape3D shapes guarantee single-part.
+  private static readonly POLY_CHASSIS_CAP = 4096;
+  private polyChassis = new Map<string, {
+    mesh: THREE.InstancedMesh;
+    slots: Map<EntityId, number>;
+    freeSlots: number[];
+    nextSlot: number;
+  }>();
 
   constructor(
     world: THREE.Group,
@@ -717,6 +748,7 @@ export class Render3DEntities {
     // current LOD's geometry path; on a tier flip we re-discover which
     // units route through smoothChassis and re-allocate fresh.
     this.releaseAllSmoothChassisSlots();
+    this.releaseAllPolyChassisSlots();
   }
 
   /** LOW-tier per-frame instance write. Each visible unit takes one
@@ -865,6 +897,99 @@ export class Render3DEntities {
     this.smoothChassisFreeSlots.length = 0;
     this.smoothChassisNextSlot = 0;
     im.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Look up or lazily create the InstancedMesh pool for a polygonal /
+   *  rect renderer. The geometry is BodyShape3D's per-renderer
+   *  ExtrudeGeometry — already cached and shared, so we just take a
+   *  reference. Material is a private MeshLambertMaterial owned by the
+   *  pool; per-instance team color modulates against its white base. */
+  private getOrCreatePolyPool(
+    rendererId: string,
+    geom: THREE.BufferGeometry,
+  ): {
+    mesh: THREE.InstancedMesh;
+    slots: Map<EntityId, number>;
+    freeSlots: number[];
+    nextSlot: number;
+  } {
+    let pool = this.polyChassis.get(rendererId);
+    if (pool) return pool;
+    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const mesh = new THREE.InstancedMesh(
+      geom,
+      mat,
+      Render3DEntities.POLY_CHASSIS_CAP,
+    );
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.setColorAt(0, this._instColor.set(0xffffff));
+    mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    // Frustum culling: same caveat as smoothChassis / unitInstanced.
+    // Source geometry's bounding sphere is at origin; instances live
+    // anywhere on the map.
+    mesh.frustumCulled = false;
+    for (let i = 0; i < Render3DEntities.POLY_CHASSIS_CAP; i++) {
+      mesh.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+    }
+    mesh.count = Render3DEntities.POLY_CHASSIS_CAP;
+    mesh.instanceMatrix.needsUpdate = true;
+    this.world.add(mesh);
+    pool = { mesh, slots: new Map(), freeSlots: [], nextSlot: 0 };
+    this.polyChassis.set(rendererId, pool);
+    return pool;
+  }
+
+  /** Reserve one slot for entity `eid` in the per-renderer poly pool.
+   *  Returns the slot index, or null when the cap is exhausted (caller
+   *  falls back to per-Mesh chassis). */
+  private allocPolyChassisSlot(
+    eid: EntityId,
+    rendererId: string,
+    geom: THREE.BufferGeometry,
+  ): number | null {
+    const pool = this.getOrCreatePolyPool(rendererId, geom);
+    let slot: number;
+    if (pool.freeSlots.length > 0) {
+      slot = pool.freeSlots.pop()!;
+    } else if (pool.nextSlot < Render3DEntities.POLY_CHASSIS_CAP) {
+      slot = pool.nextSlot++;
+    } else {
+      return null;
+    }
+    pool.slots.set(eid, slot);
+    return slot;
+  }
+
+  /** Release entity `eid`'s slot in renderer `rendererId`'s pool back
+   *  to the free list. Called from the per-frame seen-pruning loop on
+   *  unit despawn. */
+  private freePolyChassisSlotForEntity(
+    rendererId: string,
+    eid: EntityId,
+  ): void {
+    const pool = this.polyChassis.get(rendererId);
+    if (!pool) return;
+    const slot = pool.slots.get(eid);
+    if (slot === undefined) return;
+    pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    pool.freeSlots.push(slot);
+    pool.slots.delete(eid);
+    pool.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Wipe every active polygonal-chassis slot across every per-renderer
+   *  pool (LOD flip). The pool meshes themselves stay in the scene with
+   *  count = CAP and all-zero matrices — next allocations refill them. */
+  private releaseAllPolyChassisSlots(): void {
+    for (const pool of this.polyChassis.values()) {
+      for (const slot of pool.slots.values()) {
+        pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+      }
+      pool.slots.clear();
+      pool.freeSlots.length = 0;
+      pool.nextSlot = 0;
+      pool.mesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   /** Remove every overlay mesh that lives in the world group (not the
@@ -1021,17 +1146,28 @@ export class Render3DEntities {
         const chassis = new THREE.Group();
         chassis.userData.entityId = e.id;
         const chassisMeshes: THREE.Mesh[] = [];
-        // Smooth-body units route their chassis through the shared
-        // `smoothChassis` InstancedMesh — one draw call covers every
-        // smooth body part across every unit. Per-instance matrix +
-        // color are written by the per-frame transform pipeline
-        // below. Polygon / rect bodies fall back to the per-Mesh path
-        // (one Mesh per part, sharing the team-primary material).
+        // Chassis routing — three paths in priority order:
+        //   1. Smooth body  → `smoothChassis` InstancedMesh (one shared
+        //      sphere geometry, multiple slots per composite).
+        //   2. Polygon / rect → per-renderer `polyChassis` pool (one
+        //      InstancedMesh per renderer ID, single slot per unit
+        //      because polygonal bodies are single-part).
+        //   3. Cap exhausted → fall back to per-Mesh chassis (one Mesh
+        //      per part, shared team-primary material).
+        // Per-instance matrix + color are written by the per-frame
+        // transform pipeline below; the per-Mesh fallback is rendered
+        // by the scenegraph chain like before.
         let smoothChassisSlots: number[] | undefined;
+        let polyChassisSlot: number | undefined;
         if (bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
           smoothChassisSlots = this.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
+        } else if (!bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
+          const allocated = this.allocPolyChassisSlot(
+            e.id, rendererId, bodyEntry.parts[0].geometry,
+          );
+          if (allocated !== null) polyChassisSlot = allocated;
         }
-        if (!smoothChassisSlots) {
+        if (!smoothChassisSlots && polyChassisSlot === undefined) {
           for (const part of bodyEntry.parts) {
             const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(pid));
             mesh.position.set(part.x, part.y, part.z);
@@ -1078,10 +1214,14 @@ export class Render3DEntities {
           group, yawGroup, chassis, chassisMeshes, rendererId,
           turrets: turretMeshes, lodKey: this.lod.key,
           smoothChassisSlots,
+          polyChassisSlot,
         };
         if (smoothChassisSlots) {
           this.smoothChassisSlots.set(e.id, smoothChassisSlots);
         }
+        // (polyChassisSlot is already registered in the pool's slots
+        // map by allocPolyChassisSlot above — no extra bookkeeping
+        // needed here.)
 
         // Locomotion (tank treads / vehicle wheels / arachnid legs).
         // Treads + wheels parent to `yawGroup` so they yaw + tilt
@@ -1228,6 +1368,42 @@ export class Render3DEntities {
           );
           this.smoothChassis.setMatrixAt(slot, this._smoothFinalMat);
           this.smoothChassis.setColorAt(slot, this._instColor);
+        }
+      } else if (m.polyChassisSlot !== undefined) {
+        // Polygonal/rect chassis: same parentMat × partMat composition
+        // as the smooth path, but the slot lives in the per-renderer
+        // poly pool (lazily created on first allocation) and there is
+        // exactly one part per body. Reuse the smooth-chassis scratch
+        // matrices — they're scratch, not state.
+        const pool = this.polyChassis.get(m.rendererId);
+        if (pool) {
+          this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
+          this._smoothParentQuat
+            .copy(m.group.quaternion)
+            .multiply(this._smoothYawQuat);
+          this._smoothParentScale.set(radius, radius, radius);
+          this._smoothParentMat.compose(
+            m.group.position,
+            this._smoothParentQuat,
+            this._smoothParentScale,
+          );
+          this._instColor.set(
+            pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+          );
+          const part = bodyEntry.parts[0];
+          this._smoothPartLocalPos.set(part.x, part.y, part.z);
+          this._smoothPartScale.set(part.scaleX, part.scaleY, part.scaleZ);
+          this._smoothPartMat.compose(
+            this._smoothPartLocalPos,
+            Render3DEntities._IDENTITY_QUAT,
+            this._smoothPartScale,
+          );
+          this._smoothFinalMat.multiplyMatrices(
+            this._smoothParentMat,
+            this._smoothPartMat,
+          );
+          pool.mesh.setMatrixAt(m.polyChassisSlot, this._smoothFinalMat);
+          pool.mesh.setColorAt(m.polyChassisSlot, this._instColor);
         }
       }
 
@@ -1389,6 +1565,12 @@ export class Render3DEntities {
         // back to the pool so future smooth-body units can recycle the
         // slot indices.
         if (m.smoothChassisSlots) this.freeSmoothChassisSlotsForEntity(id);
+        // Polygonal-chassis slot lives in the per-renderer pool keyed
+        // by m.rendererId — release it back so a future unit of the
+        // same renderer can take the slot.
+        if (m.polyChassisSlot !== undefined) {
+          this.freePolyChassisSlotForEntity(m.rendererId, id);
+        }
         this.unitMeshes.delete(id);
       }
     }
@@ -1407,6 +1589,13 @@ export class Render3DEntities {
       if (this.smoothChassis.instanceColor) {
         this.smoothChassis.instanceColor.needsUpdate = true;
       }
+    }
+    // Same for every per-renderer polygonal pool. Skip pools that have
+    // no live slots to avoid uploading static all-zero buffers.
+    for (const pool of this.polyChassis.values()) {
+      if (pool.slots.size === 0) continue;
+      pool.mesh.instanceMatrix.needsUpdate = true;
+      if (pool.mesh.instanceColor) pool.mesh.instanceColor.needsUpdate = true;
     }
   }
 
@@ -1718,6 +1907,17 @@ export class Render3DEntities {
     this.buildingMeshes.clear();
     this.projectileMeshes.clear();
     this.projectileRadiusMeshes.clear();
+    // Polygonal-chassis pools must tear down BEFORE disposeBodyGeoms()
+    // — their InstancedMeshes reference the BodyShape3D-owned per-
+    // renderer ExtrudeGeometry objects that disposeBodyGeoms() releases.
+    // Don't dispose the geometry here; that's BodyShape3D's
+    // responsibility (called immediately below).
+    for (const pool of this.polyChassis.values()) {
+      this.world.remove(pool.mesh);
+      (pool.mesh.material as THREE.Material).dispose();
+      pool.mesh.dispose();
+    }
+    this.polyChassis.clear();
     disposeBodyGeoms();
     disposeBuildingGeoms();
     this.turretHeadGeom.dispose();
