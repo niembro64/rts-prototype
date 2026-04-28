@@ -56,11 +56,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   const maxEnergyUseRateByTarget = buffers.maxEnergyUseRateByTarget;
   maxEnergyUseRateByTarget.clear();
 
-  // 1) Walk units once: builder fields only live on commander units,
-  //    so iterating units (not all entities) avoids touching every
-  //    projectile + building. Builds the buildTargets set + rate
+  // 1) Walk builder units once. Builds the buildTargets set + rate
   //    index that pass 2 reads.
-  for (const entity of world.getUnits()) {
+  for (const entity of world.getBuilderUnits()) {
     const targetId = entity.builder?.currentBuildTarget;
     if (targetId == null) continue;
     buildTargets.add(targetId);
@@ -105,7 +103,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   }
 
   // 3. Commander consumers — building or healing targets
-  for (const commander of world.getUnits()) {
+  for (const commander of world.getCommanderUnits()) {
     if (!commander.commander || !commander.builder || !commander.ownership) continue;
     if (!commander.unit || commander.unit.hp <= 0) continue;
     const actions = commander.unit.actions;

@@ -15,7 +15,7 @@ export class CommanderAbilitiesSystem {
     const completedBuildings: { commanderId: EntityId; buildingId: EntityId }[] = [];
 
     // Find all commanders
-    for (const commander of world.getUnits()) {
+    for (const commander of world.getCommanderUnits()) {
       if (!commander.commander || !commander.builder || !commander.ownership) continue;
       if (!commander.unit || commander.unit.hp <= 0) continue;
 

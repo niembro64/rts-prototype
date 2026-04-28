@@ -228,6 +228,16 @@ export class WorldState {
     return this.cache.getForceFieldUnits();
   }
 
+  getCommanderUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getCommanderUnits();
+  }
+
+  getBuilderUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getBuilderUnits();
+  }
+
   // Get units with beam weapons (cached - DO NOT MODIFY returned array)
   getBeamUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
@@ -276,9 +286,10 @@ export class WorldState {
 
   // Get commander for a player
   getCommander(playerId: PlayerId): Entity | undefined {
-    return this.getUnits().find(
-      (e) => e.ownership?.playerId === playerId && e.commander !== undefined
-    );
+    for (const e of this.getCommanderUnits()) {
+      if (e.ownership?.playerId === playerId) return e;
+    }
+    return undefined;
   }
 
   // Get buildings by player — returns reusable array, DO NOT STORE the reference

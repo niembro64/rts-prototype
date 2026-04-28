@@ -35,10 +35,10 @@ export class ConstructionSystem {
   update(world: WorldState, _dtMs: number): void {
 
     // Pass 1: reverse index of builders → targets. Builders are
-    // commander units; iterating units is much smaller than iterating
-    // all entities (which includes thousands of in-flight projectiles).
+    // commander/builder units; iterating the cached builder subset is
+    // much smaller than iterating every combat unit.
     this.buildersByTarget.clear();
-    for (const entity of world.getUnits()) {
+    for (const entity of world.getBuilderUnits()) {
       const targetId = entity.builder?.currentBuildTarget;
       if (targetId == null) continue;
       let arr = this.buildersByTarget.get(targetId);
