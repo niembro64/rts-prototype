@@ -936,6 +936,20 @@ export class Render3DEntities {
 
   private _currentDtMs = 0;
 
+  private trimFreeTail(freeSlots: number[], nextSlot: number): number {
+    // Stable slot allocation can leave freed slots below the high-water
+    // mark. When the freed slots are at the tail, lower nextSlot so the
+    // InstancedMesh draw count stops paying vertex cost for them.
+    while (nextSlot > 0) {
+      const tail = nextSlot - 1;
+      const i = freeSlots.indexOf(tail);
+      if (i < 0) break;
+      freeSlots.splice(i, 1);
+      nextSlot = tail;
+    }
+    return nextSlot;
+  }
+
   /** Wipe every cached unit mesh so the next updateUnits() rebuilds them at
    *  the current LOD. Explosions / projectiles / tile grid don't need a rebuild
    *  — their per-frame loops already read the LOD snapshot directly. */
@@ -1026,6 +1040,10 @@ export class Render3DEntities {
         this.unitInstancedSlot.delete(id);
       }
     }
+    this.unitInstancedNextSlot = this.trimFreeTail(
+      this.unitInstancedFreeSlots,
+      this.unitInstancedNextSlot,
+    );
 
     // Tighten draw bound to the high-water mark so the GPU doesn't
     // run the vertex shader on the (CAP - nextSlot) trailing slots
@@ -2197,6 +2215,25 @@ export class Render3DEntities {
     for (const id of this.barrelSpins.keys()) {
       if (!seen.has(id)) this.barrelSpins.delete(id);
     }
+    this.smoothChassisNextSlot = this.trimFreeTail(
+      this.smoothChassisFreeSlots,
+      this.smoothChassisNextSlot,
+    );
+    for (const pool of this.polyChassis.values()) {
+      pool.nextSlot = this.trimFreeTail(pool.freeSlots, pool.nextSlot);
+    }
+    this.turretHeadNextSlot = this.trimFreeTail(
+      this.turretHeadFreeSlots,
+      this.turretHeadNextSlot,
+    );
+    this.barrelNextSlot = this.trimFreeTail(
+      this.barrelFreeSlots,
+      this.barrelNextSlot,
+    );
+    this.mirrorPanelNextSlot = this.trimFreeTail(
+      this.mirrorPanelFreeSlots,
+      this.mirrorPanelNextSlot,
+    );
     // Flush smooth-chassis instance buffers + tighten draw bound
     // to the high-water mark so the GPU stops running the vertex
     // shader on the (CAP - nextSlot) trailing slots that have never
