@@ -743,7 +743,7 @@ export class RtsScene3D {
     // Rocket smoke trails: reads the same projectile list the beam
     // renderer consumes; puffs fall back to pooled meshes once their
     // fade completes.
-    this.smokeTrailRenderer.update(projectiles, effectDt);
+    this.smokeTrailRenderer.update(projectiles, effectDt, this.renderScope);
     // Per-frame input bookkeeping — currently just the shared
     // SelectionChangeTracker, which resets waypoint mode when the
     // selection changes (matches the 2D path's InputManager.update).
@@ -755,9 +755,19 @@ export class RtsScene3D {
     // Refresh the camera frustum once per frame from the current
     // view-projection matrix; HUD renderers test entity positions
     // against it to skip off-screen work.
+    //
+    // RENDER mode integration: when the player explicitly selected
+    // RENDER:ALL they want every HP bar / selection label visible,
+    // including off-screen ones (e.g. for AOE awareness during a
+    // pulled-back screenshot). Pass `undefined` instead of the
+    // frustum so the HUD renderers skip the per-sprite cull. WIN
+    // and PAD modes still get the precise per-pixel frustum test —
+    // for HUD elements with negligible world-space footprint, frustum
+    // is the right tool (AABB scope's padding doesn't add value).
     const cam = this.threeApp.camera;
     this._frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     this._frustum.setFromProjectionMatrix(this._frustumMatrix);
+    const hudFrustum = this.renderScope.getMode() === 'all' ? undefined : this._frustum;
 
     // Fused per-unit / per-building iteration: one walk over getUnits()
     // dispatches into both ForceFieldRenderer3D and HealthBar3D, and
@@ -766,7 +776,7 @@ export class RtsScene3D {
     // and keeps the per-unit branches (force-field-turret check,
     // hp <= 0 check) in cache-warm proximity.
     this.forceFieldRenderer.beginFrame();
-    this.healthBar3D?.beginFrame(this._frustum);
+    this.healthBar3D?.beginFrame(hudFrustum);
     {
       const units = this.clientViewState.getUnits();
       for (const u of units) {
@@ -787,7 +797,7 @@ export class RtsScene3D {
     this.selectionLabel3D?.update(
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
-      this._frustum,
+      hudFrustum,
     );
     const renderEnd = performance.now();
 

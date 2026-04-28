@@ -28,6 +28,16 @@ import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
 import type { FireExplosionStyle } from '@/types/graphics';
 import { getGraphicsConfig, getEffectiveQuality } from '@/clientBarConfig';
+import type { ViewportFootprint } from '../ViewportFootprint';
+
+/** Per-puff scope padding in sim-world units. Smoke trails extend
+ *  BEHIND the projectile along its flight path, so a rocket whose
+ *  current position is just barely off-screen could still be the
+ *  source of a puff that's plainly inside the viewport. 200 mirrors
+ *  the projectile padding BeamRenderer3D / Render3DEntities use for
+ *  the same reason — projectile visuals routinely overhang the
+ *  entity's center by more than a unit's body radius. */
+const SMOKE_SCOPE_PADDING = 200;
 
 // Engine fallbacks for any SmokeTrailSpec field a shot blueprint
 // leaves unset. Per-shot overrides live on the projectile blueprint
@@ -170,8 +180,22 @@ export class SmokeTrail3D {
   /** Per-frame tick: advance existing puffs, emit new ones behind
    *  each qualifying projectile, drop emitter state for projectiles
    *  no longer present. `dtMs` is the clamped effect dt the scene
-   *  uses for other particle systems. */
-  update(projectiles: readonly Entity[], dtMs: number): void {
+   *  uses for other particle systems.
+   *
+   *  RENDER-mode aware: when `scope` is provided and its mode is
+   *  not 'all', projectiles whose current position is outside the
+   *  padded scope are skipped — no `seen.add()`, no emitter-state
+   *  advance, no eligibility. Their emitter state is dropped by the
+   *  cleanup pass and they resume from a clean `sinceLastEmit = 0`
+   *  if they re-enter the viewport, so off-screen salvos cost
+   *  effectively zero on the smoke-trail pipeline. Already-live
+   *  puffs are NOT culled — they fade in place naturally as the
+   *  camera pans away from them. */
+  update(
+    projectiles: readonly Entity[],
+    dtMs: number,
+    scope?: ViewportFootprint,
+  ): void {
     const dtSec = dtMs / 1000;
 
     // Sample LOD once per frame. Emission rate and lifespan are
@@ -239,6 +263,12 @@ export class SmokeTrail3D {
         if (!shot || shot.type !== 'projectile') continue;
         const spec = shot.smokeTrail;
         if (!spec) continue;
+        // RENDER scope cull: if the projectile is outside the padded
+        // viewport, drop it from `seen` so the cleanup pass below
+        // releases its emitter state. No emission work, no slot
+        // allocation. Re-entering scope on a future frame restarts
+        // from sinceLastEmit = 0 — natural cadence, no backlog burst.
+        if (scope && !scope.inScope(e.transform.x, e.transform.y, SMOKE_SCOPE_PADDING)) continue;
         seen.add(e.id);
 
         const baseInterval = spec.emitIntervalMs ?? DEFAULT_EMIT_INTERVAL_MS;
