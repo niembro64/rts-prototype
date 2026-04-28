@@ -18,13 +18,10 @@
 import * as THREE from 'three';
 import type { Entity, Turret } from '../sim/types';
 import { getWeaponWorldPosition } from '../math';
+import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
-
-// Must match Render3DEntities to keep emitter spheres roughly at the turret's
-// vertical center.
-const SHOT_HEIGHT = 28 + 16 / 2;   // CHASSIS_HEIGHT + TURRET_HEIGHT/2
 
 const EMITTER_COLOR_A = 0xf0f0f0;  // idle: white
 const EMITTER_COLOR_B = 0x3366ff;  // active: blue
@@ -266,6 +263,27 @@ export class ForceFieldRenderer3D {
         seen.add(key);
         const field = this.acquire(key);
 
+        // World altitude of the turret mount = unit's chassis-bottom in
+        // three coords + sim height of the turret muzzle above that
+        // ground. Three.y of chassis bottom = unit.transform.z (sim
+        // altitude of unit center) - push radius (Render3DEntities uses
+        // the same offset to position the unit group).
+        // getTurretMountHeight returns bodyTop + headRadius and handles
+        // the mirror-host stacking case, so the force field stays glued
+        // to the same point a regular turret head would render at — no
+        // matter what altitude the host unit is at, what renderer it
+        // uses, or whether it's a mirror unit.
+        // Was: a hard-coded SHOT_HEIGHT = 36, which is the OLD
+        // CHASSIS_HEIGHT + TURRET_HEIGHT/2 from when chassis height was
+        // a flat constant. With per-unit body heights AND units flying
+        // / sitting on hills / sitting in basins, the constant detached
+        // the force field from its host the moment terrain or altitude
+        // diverged from "flat ground at sim.z = radius".
+        const pushRadius = unit.unit.unitRadiusCollider.push ?? 0;
+        const groundY = unit.transform.z - pushRadius;
+        const mountY = getTurretMountHeight(unit, ti);
+        const turretWorldY = groundY + mountY;
+
         // Central pulsing emitter sphere: lerp white → blue, radius scales with progress.
         const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
         const pulse = (Math.sin(nowSec * freq) * 0.5 + 0.5) * progress;
@@ -282,7 +300,7 @@ export class ForceFieldRenderer3D {
         const emitterRadius = EMITTER_BASE_RADIUS
           + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * progress;
         field.emitter.scale.setScalar(emitterRadius);
-        field.emitter.position.set(wp.x, SHOT_HEIGHT, wp.y);
+        field.emitter.position.set(wp.x, turretWorldY, wp.y);
 
         // Spherical force-field zone — scale = outerRange (= push-zone radius
         // in sim units). Alpha fades in over the first third of progress.
@@ -290,7 +308,7 @@ export class ForceFieldRenderer3D {
         const outer = push.outerRange;
         const inner = push.innerRange;
         const cx = wp.x;
-        const cy = SHOT_HEIGHT;
+        const cy = turretWorldY;
         const cz = wp.y;
         if (outer <= 0) {
           field.zone.visible = false;
