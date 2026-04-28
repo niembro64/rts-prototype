@@ -238,6 +238,11 @@ export class WorldState {
     return this.cache.getBuilderUnits();
   }
 
+  getArmedUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getArmedUnits();
+  }
+
   // Get units with beam weapons (cached - DO NOT MODIFY returned array)
   getBeamUnits(): Entity[] {
     this.rebuildCachesIfNeeded();

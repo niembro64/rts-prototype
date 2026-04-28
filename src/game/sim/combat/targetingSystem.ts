@@ -14,6 +14,7 @@ import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
 
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
+const _activeCombatUnits: Entity[] = [];
 
 // Density-cap thresholds + stride for the dense-crowd fallback used
 // inside the inner targeting loops are now read per-tick from the
@@ -54,7 +55,8 @@ function isBeamUnit(entity: Entity): boolean {
 //
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
 // PERFORMANCE: Multi-weapon units batch a single spatial query instead of per-weapon queries
-export function updateTargetingAndFiringState(world: WorldState): void {
+export function updateTargetingAndFiringState(world: WorldState): Entity[] {
+  _activeCombatUnits.length = 0;
   // Stagger key — only this fraction of units does heavy spatial-grid
   // re-acquisition work this tick. Per-tick state (target validation,
   // FSM transitions, weapon position cache, priority targets) still
@@ -71,7 +73,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
   const densityThreshold = lod.targetingDensityThreshold;
   const densityStride = Math.max(1, lod.targetingDensityStride | 0);
 
-  for (const unit of world.getUnits()) {
+  for (const unit of world.getArmedUnits()) {
     if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
 
@@ -157,6 +159,7 @@ export function updateTargetingAndFiringState(world: WorldState): void {
             weapon.state = 'tracking';
           }
         }
+        _activeCombatUnits.push(unit);
         continue; // Skip auto-targeting entirely for this unit
       }
       // Priority target dead/gone — fall through to auto-targeting
@@ -351,12 +354,24 @@ export function updateTargetingAndFiringState(world: WorldState): void {
         weapon.state = 'idle';
       }
     }
+
+    let hasActiveCombatState = false;
+    for (let wi = 0; wi < weapons.length; wi++) {
+      const weapon = weapons[wi];
+      if (weapon.target !== null || weapon.state !== 'idle' || Math.abs(weapon.angularVelocity) > 0.0001 || Math.abs(weapon.pitchVelocity) > 0.0001) {
+        hasActiveCombatState = true;
+        break;
+      }
+    }
+    if (hasActiveCombatState) _activeCombatUnits.push(unit);
   }
+
+  return _activeCombatUnits;
 }
 
 // Update weapon cooldowns and cache rotation sin/cos (merged to avoid extra iteration)
 export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
-  for (const unit of world.getUnits()) {
+  for (const unit of world.getArmedUnits()) {
     // Cache rotation sin/cos (used by targeting, turret, firing, beam systems)
     unit.transform.rotCos = Math.cos(unit.transform.rotation);
     unit.transform.rotSin = Math.sin(unit.transform.rotation);

@@ -10,6 +10,10 @@ export class EntityCacheManager {
   private cachedForceFieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
+  /** Units with at least one turret. Used by hot combat systems so
+   *  workers, commanders, or future unarmed utility units do not pay
+   *  weapon-loop costs every tick. */
+  private cachedArmedUnits: Entity[] = [];
   /** Units with at least one beam-type turret. Populated alongside
    *  cachedForceFieldUnits so updateLaserSounds can iterate just the
    *  ~few percent of units that actually fire beams instead of scanning
@@ -35,6 +39,7 @@ export class EntityCacheManager {
     this.cachedForceFieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
+    this.cachedArmedUnits.length = 0;
     this.cachedBeamUnits.length = 0;
     this.cachedMirrorUnits.length = 0;
     this.cachedAll.length = 0;
@@ -45,6 +50,7 @@ export class EntityCacheManager {
         case 'unit':
           this.cachedUnits.push(entity);
           if (entity.turrets) {
+            if (entity.turrets.length > 0) this.cachedArmedUnits.push(entity);
             let hasForceField = false;
             let hasBeam = false;
             for (let i = 0; i < entity.turrets.length; i++) {
@@ -96,6 +102,10 @@ export class EntityCacheManager {
 
   getBuilderUnits(): Entity[] {
     return this.cachedBuilderUnits;
+  }
+
+  getArmedUnits(): Entity[] {
+    return this.cachedArmedUnits;
   }
 
   getBeamUnits(): Entity[] {

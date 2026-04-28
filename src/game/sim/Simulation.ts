@@ -398,7 +398,7 @@ export class Simulation {
     updateWeaponCooldowns(this.world, dtMs);
 
     // Update auto-targeting and firing state in a single pass
-    updateTargetingAndFiringState(this.world);
+    const activeCombatUnits = updateTargetingAndFiringState(this.world);
 
     // Update laser sounds based on targeting state (every frame)
     if (this.world.getBeamUnits().length > 0) {
@@ -420,10 +420,10 @@ export class Simulation {
     }
 
     // Update turret rotation (before firing, so weapons fire in turret direction)
-    updateTurretRotation(this.world, dtMs);
+    updateTurretRotation(this.world, dtMs, activeCombatUnits);
 
     // Fire weapons and create projectiles (with recoil force for projectiles)
-    const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator);
+    const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator, activeCombatUnits);
     for (const proj of fireResult.projectiles) {
       this.world.addEntity(proj);
     }

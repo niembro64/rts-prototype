@@ -21,6 +21,7 @@
 // (slower, no-overshoot response).
 
 import type { WorldState } from '../WorldState';
+import type { Entity } from '../types';
 import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
 import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
@@ -35,10 +36,10 @@ import {
 const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
 
-export function updateTurretRotation(world: WorldState, dtMs: number): void {
+export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedUnits()): void {
   const dtSec = dtMs / 1000;
 
-  for (const unit of world.getUnits()) {
+  for (const unit of units) {
     if (!unit.unit || !unit.ownership || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
 

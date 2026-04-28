@@ -93,7 +93,7 @@ function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, turretIndex: 
 
 // Fire weapons at targets - unified for all units
 // Each weapon fires independently based on its own state
-export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: ForceAccumulator): FireTurretsResult {
+export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: ForceAccumulator, units: readonly Entity[] = world.getArmedUnits()): FireTurretsResult {
   _fireNewProjectiles.length = 0;
   _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
@@ -101,7 +101,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
   const audioEvents = _fireSimEvents;
   const spawnEvents = _fireSpawnEvents;
 
-  for (const unit of world.getUnits()) {
+  for (const unit of units) {
     if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
 
