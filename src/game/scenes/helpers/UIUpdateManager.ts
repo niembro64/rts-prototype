@@ -126,6 +126,7 @@ export function buildMinimapData(
   captureTiles: readonly MinimapCaptureTile[],
   captureCellSize: number,
   gridOverlayIntensity: number,
+  showTerrain: boolean,
 ): MinimapData {
   const entities: MinimapEntity[] = [];
 
@@ -159,5 +160,6 @@ export function buildMinimapData(
     captureTiles,
     captureCellSize,
     gridOverlayIntensity,
+    showTerrain,
   };
 }

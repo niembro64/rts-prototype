@@ -101,8 +101,8 @@ function drawEntityLayer(): void {
   // Identical math = identical brightness in both views. When
   // captureCellSize is 0 (no data yet) or intensity is 0 (GRID off) we
   // skip the overlay — the minimap reads pure terrain shading instead.
-  const { captureTiles, captureCellSize, gridOverlayIntensity } = props.data;
-  const overlayActive = captureCellSize > 0 && gridOverlayIntensity > 0 && captureTiles.length > 0;
+  const { captureTiles, captureCellSize, gridOverlayIntensity, showTerrain } = props.data;
+  const overlayActive = showTerrain && captureCellSize > 0 && gridOverlayIntensity > 0 && captureTiles.length > 0;
   let tileTeamR: Float32Array | null = null;
   let tileTeamG: Float32Array | null = null;
   let tileTeamB: Float32Array | null = null;
@@ -152,37 +152,53 @@ function drawEntityLayer(): void {
   const lakeR = 0x2a, lakeG = 0x55, lakeB = 0x9a;
   const intensity3 = gridOverlayIntensity * 3;
   let pi = 0;
-  for (let py = 0; py < h; py++) {
-    const worldY = py / scaleY;
-    const ty = overlayActive ? Math.floor(worldY / captureCellSize) : 0;
-    for (let px = 0; px < w; px++, pi += 4) {
-      const worldX = px / scaleX;
-      const height = getTerrainHeight(worldX, worldY, mapWidth, mapHeight);
-      const wet = height < WATER_LEVEL;
-      let outR: number, outG: number, outB: number;
-      if (wet) {
-        outR = lakeR; outG = lakeG; outB = lakeB;
-      } else {
-        outR = NEUTRAL_R; outG = NEUTRAL_G; outB = NEUTRAL_B;
-        if (overlayActive && tileTeamR && tileTeamG && tileTeamB && tileMaxH) {
-          const tx = Math.floor(worldX / captureCellSize);
-          if (tx >= 0 && tx < tileCellsX && ty >= 0 && ty < tileCellsY) {
-            const idx = ty * tileCellsX + tx;
-            const maxH = tileMaxH[idx];
-            if (maxH > 0) {
-              const mix = Math.min(1, intensity3 * maxH);
-              const inv = 1 - mix;
-              outR = NEUTRAL_R * inv + tileTeamR[idx] * mix;
-              outG = NEUTRAL_G * inv + tileTeamG[idx] * mix;
-              outB = NEUTRAL_B * inv + tileTeamB[idx] * mix;
+  if (!showTerrain) {
+    // GRID = OFF: 3D scene hides the capture-tile mesh entirely (no
+    // land), so the minimap mirrors that — stamp the dark map bg under
+    // every pixel and let the entity dots ride on top. Skipping the
+    // per-pixel terrain sample is also a meaningful speedup on the
+    // canvas-render path.
+    for (let py = 0; py < h; py++) {
+      for (let px = 0; px < w; px++, pi += 4) {
+        lakePixels[pi]     = NEUTRAL_R;
+        lakePixels[pi + 1] = NEUTRAL_G;
+        lakePixels[pi + 2] = NEUTRAL_B;
+        lakePixels[pi + 3] = 0xff;
+      }
+    }
+  } else {
+    for (let py = 0; py < h; py++) {
+      const worldY = py / scaleY;
+      const ty = overlayActive ? Math.floor(worldY / captureCellSize) : 0;
+      for (let px = 0; px < w; px++, pi += 4) {
+        const worldX = px / scaleX;
+        const height = getTerrainHeight(worldX, worldY, mapWidth, mapHeight);
+        const wet = height < WATER_LEVEL;
+        let outR: number, outG: number, outB: number;
+        if (wet) {
+          outR = lakeR; outG = lakeG; outB = lakeB;
+        } else {
+          outR = NEUTRAL_R; outG = NEUTRAL_G; outB = NEUTRAL_B;
+          if (overlayActive && tileTeamR && tileTeamG && tileTeamB && tileMaxH) {
+            const tx = Math.floor(worldX / captureCellSize);
+            if (tx >= 0 && tx < tileCellsX && ty >= 0 && ty < tileCellsY) {
+              const idx = ty * tileCellsX + tx;
+              const maxH = tileMaxH[idx];
+              if (maxH > 0) {
+                const mix = Math.min(1, intensity3 * maxH);
+                const inv = 1 - mix;
+                outR = NEUTRAL_R * inv + tileTeamR[idx] * mix;
+                outG = NEUTRAL_G * inv + tileTeamG[idx] * mix;
+                outB = NEUTRAL_B * inv + tileTeamB[idx] * mix;
+              }
             }
           }
         }
+        lakePixels[pi]     = outR;
+        lakePixels[pi + 1] = outG;
+        lakePixels[pi + 2] = outB;
+        lakePixels[pi + 3] = 0xff;
       }
-      lakePixels[pi]     = outR;
-      lakePixels[pi + 1] = outG;
-      lakePixels[pi + 2] = outB;
-      lakePixels[pi + 3] = 0xff;
     }
   }
   ctx.putImageData(lakeImg, 0, 0);
@@ -306,6 +322,7 @@ watch(
     props.data.captureTiles,
     props.data.captureCellSize,
     props.data.gridOverlayIntensity,
+    props.data.showTerrain,
   ],
   () => { drawEntityLayer(); compose(); },
   { deep: false },

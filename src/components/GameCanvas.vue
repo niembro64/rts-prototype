@@ -350,6 +350,7 @@ const minimapData = reactive<MinimapData>({
   captureTiles: [],
   captureCellSize: 0,
   gridOverlayIntensity: 0,
+  showTerrain: true,
 });
 
 // Combat stats state
@@ -427,6 +428,7 @@ async function startBackgroundBattle(): Promise<void> {
         minimapData.captureTiles = data.captureTiles;
         minimapData.captureCellSize = data.captureCellSize;
         minimapData.gridOverlayIntensity = data.gridOverlayIntensity;
+        minimapData.showTerrain = data.showTerrain;
       };
       bgScene.onCameraQuadUpdate = (quad) => {
         minimapData.cameraQuad = quad;
@@ -1428,6 +1430,7 @@ function setupSceneCallbacks(): void {
         minimapData.captureTiles = data.captureTiles;
         minimapData.captureCellSize = data.captureCellSize;
         minimapData.gridOverlayIntensity = data.gridOverlayIntensity;
+        minimapData.showTerrain = data.showTerrain;
       };
       scene.onCameraQuadUpdate = (quad) => {
         minimapData.cameraQuad = quad;

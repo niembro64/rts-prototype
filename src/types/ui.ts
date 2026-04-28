@@ -94,9 +94,17 @@ export type MinimapData = {
    *  the minimap renderer falls back to skipping the overlay. */
   captureCellSize: number;
   /** Lerp factor from neutral → dominant team color. Mirrors the
-   *  PLAYER CLIENT GRID intensity (off → 0, low → 0.1, high → 0.8)
-   *  so minimap brightness tracks the 3D scene's brightness exactly. */
+   *  PLAYER CLIENT GRID intensity (zero → 0, low → 0.04, medium →
+   *  0.1, high → 0.8) so minimap brightness tracks the 3D scene's
+   *  brightness exactly. */
   gridOverlayIntensity: number;
+  /** Whether the GRID setting is anything other than OFF — i.e. the
+   *  3D capture-tile mesh is currently visible. The minimap mirrors
+   *  this to decide whether to draw the terrain (land + water) layer
+   *  at all: when GRID = OFF the 3D scene shows no land tiles, so the
+   *  minimap skips the terrain pass too and just stamps the dark map
+   *  background under the entity dots. */
+  showTerrain: boolean;
 };
 
 // Lobby player (used in both component and network)

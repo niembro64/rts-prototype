@@ -84,7 +84,9 @@ export const CLIENT_CONFIG = {
     default: 'low' as const,
     options: [
       { value: 'off' as const, label: 'OFF' },
+      { value: 'zero' as const, label: 'ZERO' },
       { value: 'low' as const, label: 'LOW' },
+      { value: 'medium' as const, label: 'MED' },
       { value: 'high' as const, label: 'HI' },
     ],
   },
@@ -494,7 +496,9 @@ function loadFromStorage(): void {
   if (
     storedGridOverlay &&
     (storedGridOverlay === 'off' ||
+      storedGridOverlay === 'zero' ||
       storedGridOverlay === 'low' ||
+      storedGridOverlay === 'medium' ||
       storedGridOverlay === 'high')
   ) {
     currentGridOverlay = storedGridOverlay;
@@ -853,9 +857,24 @@ export function setLobbyVisible(visible: boolean): void {
 
 // ── Grid Overlay ──
 
+// Lerp factor from neutral → dominant team color in the capture-tile
+// blend (mix = clamp(intensity * 3 * height, 0, 1)).
+//
+// Tier semantics:
+//   off     — capture-tile mesh hidden entirely (3D scene shows no
+//             land tiles, only water + units). The minimap mirrors
+//             this: terrain layer is skipped, only entities + bg.
+//   zero    — mesh shown, NO team-color blend. Lets the player see
+//             terrain topology (elevation shading) without the
+//             team-ownership overlay distracting from it.
+//   low     — gentle team tint (subtle ownership read at a glance).
+//   medium  — old "low" intensity, the previous default.
+//   high    — saturated team color, used as a strategic overview.
 const GRID_OVERLAY_INTENSITIES: Record<GridOverlay, number> = {
   off: 0.0,
-  low: 0.1,
+  zero: 0.0,
+  low: 0.04,
+  medium: 0.1,
   high: 0.8,
 };
 

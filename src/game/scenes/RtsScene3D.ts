@@ -1121,7 +1121,9 @@ export class RtsScene3D {
     // overlay). One switch keeps the two views in lockstep.
     const captureTiles = this.clientViewState.getCaptureTiles();
     const captureCellSize = this.clientViewState.getCaptureCellSize();
-    const intensity = getGridOverlay() === 'off' ? 0 : getGridOverlayIntensity();
+    const gridMode = getGridOverlay();
+    const showTerrain = gridMode !== 'off';
+    const intensity = showTerrain ? getGridOverlayIntensity() : 0;
     this.onMinimapUpdate(
       buildMinimapData(
         this.entitySourceAdapter,
@@ -1131,6 +1133,7 @@ export class RtsScene3D {
         captureTiles,
         captureCellSize,
         intensity,
+        showTerrain,
       ),
     );
   }
