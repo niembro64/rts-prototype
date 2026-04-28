@@ -401,8 +401,14 @@ export class ForceFieldRenderer3D {
     // inactive fields cost zero GPU time.
     this.sphereInstancedMesh.count = this._sphereCursor;
     if (this._sphereCursor > 0) {
+      this.sphereInstancedMesh.instanceMatrix.clearUpdateRanges();
+      this.sphereInstancedMesh.instanceMatrix.addUpdateRange(0, this._sphereCursor * 16);
       this.sphereInstancedMesh.instanceMatrix.needsUpdate = true;
+      this.sphereAlphaAttr.clearUpdateRanges();
+      this.sphereAlphaAttr.addUpdateRange(0, this._sphereCursor);
       this.sphereAlphaAttr.needsUpdate = true;
+      this.sphereColorAttr.clearUpdateRanges();
+      this.sphereColorAttr.addUpdateRange(0, this._sphereCursor * 3);
       this.sphereColorAttr.needsUpdate = true;
     }
     // Tear down per-field state for fields that didn't get visited
