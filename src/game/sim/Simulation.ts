@@ -109,6 +109,7 @@ export class Simulation {
    *  grid. Buildings are static, so we only need to rescan them when
    *  one is added or removed instead of every simulation tick. */
   private spatialGridBuildingVersion = -1;
+  private static readonly SAFETY_CLEANUP_STRIDE = 8;
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
@@ -536,8 +537,13 @@ export class Simulation {
     // Prune stale combat stats registry entries (rate-limited internally)
     this.combatStatsTracker.pruneRegistry();
 
-    // Safety cleanup - remove any dead entities that slipped through
-    this.cleanupDeadEntities();
+    // Safety cleanup - remove any dead entities that slipped through.
+    // Normal combat deaths are handled in the collision path above;
+    // this fallback is rate-limited so it does not rescan the world on
+    // every combat tick.
+    if (this.world.getTick() % Simulation.SAFETY_CLEANUP_STRIDE === 0) {
+      this.cleanupDeadEntities();
+    }
   }
 
   // Cleanup pass - removes any entities with HP <= 0 that weren't caught by normal death handling
