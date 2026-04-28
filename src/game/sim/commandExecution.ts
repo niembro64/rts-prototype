@@ -441,17 +441,19 @@ function addPathActions(
   );
   // Diagnostic: dump the plan for player-issued move commands so we
   // can correlate "I clicked here" → "the unit got these waypoints".
-  // Only fires for paths going through this function (player Move /
-  // Attack-via-PathActionsWithFinal / Repair-via-PathActionsWithFinal
-  // / Build), NOT for factory-production paths or stuck-replan paths
-  // — keeps the console focused on user-driven commands.
+  // Now also reports queue=false/true and the unit's existing
+  // actions.length so we can see if non-shift clicks are actually
+  // replacing the queue or just appending.
+  const beforeLen = unit.unit?.actions.length ?? 0;
   // eslint-disable-next-line no-console
   console.log(
-    '[plan] unit #%d (%d,%d)→(%d,%d) type=%s: %d waypoint(s)',
+    '[plan] unit #%d (%d,%d)→(%d,%d) type=%s queue=%s: prev queue had %d action(s), planner emits %d waypoint(s)',
     unit.id,
     Math.round(unit.transform.x), Math.round(unit.transform.y),
     Math.round(goalX), Math.round(goalY),
     type,
+    queue,
+    beforeLen,
     actions.length,
   );
   for (let i = 0; i < actions.length; i++) {
@@ -471,6 +473,13 @@ function addPathActions(
   for (let i = 0; i < actions.length; i++) {
     addActionToUnit(unit, actions[i], i === 0 ? queue : true);
   }
+  // Confirm the queue actually got replaced/extended as expected.
+  const afterLen = unit.unit?.actions.length ?? 0;
+  // eslint-disable-next-line no-console
+  console.log(
+    '  [plan]   → unit #%d actions.length now = %d',
+    unit.id, afterLen,
+  );
 }
 
 /** Plan a path to (goalX, goalY) and enqueue intermediate `move`
