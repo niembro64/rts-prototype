@@ -125,10 +125,13 @@ const SLOPE_BLOCK_NZ = 0.34;
  *    GameServer.applyForces ejects any unit whose body centre
  *    crosses the shoreline, so we need the planner to keep the
  *    body fully clear. Largest unit `push` radius is ~54 wu
- *    (mammoth/widow); 2 cells = 40 wu of clearance lets every
- *    unit smaller than 40 wu fully clear water at every waypoint,
- *    and the few units larger than that get nudged back inland by
- *    the pusher when they overhang the inflation halo.
+ *    (mammoth/widow); 3 cells = 60 wu of clearance is strictly
+ *    above every unit's radius, so even the biggest tanks fully
+ *    clear water with their bodies when walking the path's
+ *    centreline through cells the planner emitted. The earlier
+ *    2-cell value (40 wu) left large units overhanging by 14 wu
+ *    and relying on the water-pusher to round them back inland —
+ *    correct but reactive; 3 cells is proactive.
  *
  *    Buildings — physics-pushable. Rigid-body collision in
  *    PhysicsEngine3D pushes a unit off any building it touches,
@@ -144,8 +147,15 @@ const SLOPE_BLOCK_NZ = 0.34;
  *  cells of passable space. With BUILDING=2 the gap goes to
  *  −0.15 cells — every team's base is sealed and units can't
  *  pathfind out. Don't increase BUILDING_INFLATION_CELLS without
- *  re-checking these numbers against the current demo geometry. */
-const TERRAIN_INFLATION_CELLS = 2;
+ *  re-checking these numbers against the current demo geometry.
+ *
+ *  Terrain corridor math: the cross-team central corridor is at
+ *  least 27 angular cells wide at radius 1000 (where dividers
+ *  start dipping into water). With TERRAIN=3 the inflation eats
+ *  6 cells, leaving ≥21 cells of dry channel — comfortably
+ *  passable for any unit. Bumping further (4+) starts to risk
+ *  pinching this channel. */
+const TERRAIN_INFLATION_CELLS = 3;
 const BUILDING_INFLATION_CELLS = 1;
 
 /** When the start or goal cell is blocked, scan outward this many
