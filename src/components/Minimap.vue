@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
+import { getTerrainHeight, WATER_LEVEL } from '@/game/sim/Terrain';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
@@ -67,8 +68,38 @@ function drawEntityLayer(): void {
   const w = size.value.w;
   const h = size.value.h;
 
-  ctx.fillStyle = '#1a1a2e';
-  ctx.fillRect(0, 0, w, h);
+  // Lake / background — single pass over every minimap pixel, sample
+  // the heightmap once per pixel, write either lake-blue or the dark
+  // background color into a single ImageData buffer with full alpha,
+  // then putImageData stamps the whole tile in one shot. The minimap
+  // is at most 180×180, so this is ~32K terrain samples (each a
+  // handful of trig ops); well under a millisecond. drawEntityLayer
+  // only fires on entities / mapWidth / mapHeight change — not every
+  // frame — so the cost is effectively one-time per data refresh.
+  //
+  // putImageData ignores canvas composite ops (it stamps raw RGBA),
+  // so writing a fully-opaque per-pixel color avoids the alpha-mask
+  // dance you'd need with a transparent overlay.
+  const lakeImg = ctx.createImageData(w, h);
+  const lakePixels = lakeImg.data;
+  // Lake color same family as the 3D water plane; background mirrors
+  // the previous fillStyle = '#1a1a2e'.
+  const lakeR = 0x2a, lakeG = 0x55, lakeB = 0x9a;
+  const bgR = 0x1a, bgG = 0x1a, bgB = 0x2e;
+  let pi = 0;
+  for (let py = 0; py < h; py++) {
+    const worldY = py / scaleY;
+    for (let px = 0; px < w; px++, pi += 4) {
+      const worldX = px / scaleX;
+      const height = getTerrainHeight(worldX, worldY, mapWidth, mapHeight);
+      const wet = height < WATER_LEVEL;
+      lakePixels[pi]     = wet ? lakeR : bgR;
+      lakePixels[pi + 1] = wet ? lakeG : bgG;
+      lakePixels[pi + 2] = wet ? lakeB : bgB;
+      lakePixels[pi + 3] = 0xff;
+    }
+  }
+  ctx.putImageData(lakeImg, 0, 0);
 
   // Subtle world grid
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
