@@ -260,6 +260,9 @@ export class Render3DEntities {
    *  frame. */
   private _projDir = new THREE.Vector3();
   private _projQuat = new THREE.Quaternion();
+  private _projPos = new THREE.Vector3();
+  private _projScale = new THREE.Vector3();
+  private _projMatrix = new THREE.Matrix4();
   private static readonly _PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
   /** Engine fallback values used when a shape:'cylinder' shot doesn't
    *  define its own `cylinderShape` block. World length =
@@ -274,6 +277,9 @@ export class Render3DEntities {
   // effects, not the projectile body. Matches the 2D getProjectileColor
   // override.
   private projectileMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  private static readonly PROJECTILE_INSTANCED_CAP = 8192;
+  private projectileSphereInstanced: THREE.InstancedMesh | null = null;
+  private projectileCylinderInstanced: THREE.InstancedMesh | null = null;
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   // Mirror panel = flat unit square plane. Default orientation: face
@@ -750,6 +756,26 @@ export class Render3DEntities {
     this.mirrorPanelInstanced.count = 0;
     this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
     this.world.add(this.mirrorPanelInstanced);
+
+    this.projectileSphereInstanced = new THREE.InstancedMesh(
+      this.projectileGeom,
+      this.projectileMat,
+      Render3DEntities.PROJECTILE_INSTANCED_CAP,
+    );
+    this.projectileSphereInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.projectileSphereInstanced.frustumCulled = false;
+    this.projectileSphereInstanced.count = 0;
+    this.world.add(this.projectileSphereInstanced);
+
+    this.projectileCylinderInstanced = new THREE.InstancedMesh(
+      this.projectileCylinderGeom,
+      this.projectileMat,
+      Render3DEntities.PROJECTILE_INSTANCED_CAP,
+    );
+    this.projectileCylinderInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.projectileCylinderInstanced.frustumCulled = false;
+    this.projectileCylinderInstanced.count = 0;
+    this.world.add(this.projectileCylinderInstanced);
   }
 
   private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
@@ -2668,6 +2694,15 @@ export class Render3DEntities {
     const projectiles = this.clientViewState.getProjectiles();
     const seen = this._seenProjectileIds;
     seen.clear();
+    const sphereMesh = this.projectileSphereInstanced;
+    const cylinderMesh = this.projectileCylinderInstanced;
+    let sphereCount = 0;
+    let cylinderCount = 0;
+
+    if (this.projectileMeshes.size > 0) {
+      for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
+      this.projectileMeshes.clear();
+    }
 
     for (const e of projectiles) {
       // Skip beams/lasers — handled by BeamRenderer3D as line segments rather
@@ -2678,39 +2713,35 @@ export class Render3DEntities {
 
       seen.add(e.id);
       // Scope gate — tighter padding (projectiles are small and moving fast).
-      if (!this.scope.inScope(e.transform.x, e.transform.y, 50)) continue;
+      if (!this.scope.inScope(e.transform.x, e.transform.y, 50)) {
+        const radii = this.projectileRadiusMeshes.get(e.id);
+        if (radii) {
+          if (radii.collision) radii.collision.visible = false;
+          if (radii.explosion) radii.explosion.visible = false;
+        }
+        continue;
+      }
       const shot = e.projectile?.config.shot;
       // Projectile shots have collision.radius
       let radius = 4;
       if (shot && shot.type === 'projectile') radius = shot.collision.radius;
       const isCylinder = shot && shot.type === 'projectile' && shot.shape === 'cylinder';
 
-      let mesh = this.projectileMeshes.get(e.id);
-      // Tear down + rebuild if the shape changed (rare — only happens
-      // when a slot is reused for a different shot type, which should
-      // not occur for a single live projectile but is safe regardless).
-      if (mesh) {
-        const wantsCyl = isCylinder ? this.projectileCylinderGeom : this.projectileGeom;
-        if (mesh.geometry !== wantsCyl) {
-          this.world.remove(mesh);
-          this.projectileMeshes.delete(e.id);
-          mesh = undefined;
-        }
-      }
-      if (!mesh) {
-        const geom = isCylinder ? this.projectileCylinderGeom : this.projectileGeom;
-        mesh = new THREE.Mesh(geom, this.projectileMat);
-        this.world.add(mesh);
-        this.projectileMeshes.set(e.id, mesh);
-      }
-
       // Projectile altitude is authoritative sim state (arcs through
       // real z from turret muzzle to ground / target). SHOT_HEIGHT is
       // no longer the truth — the sphere renders exactly where the
       // sim says it is.
-      mesh.position.set(e.transform.x, e.transform.z, e.transform.y);
+      this._projPos.set(e.transform.x, e.transform.z, e.transform.y);
 
       if (isCylinder) {
+        if (!cylinderMesh || cylinderCount >= Render3DEntities.PROJECTILE_INSTANCED_CAP) {
+          const radii = this.projectileRadiusMeshes.get(e.id);
+          if (radii) {
+            if (radii.collision) radii.collision.visible = false;
+            if (radii.explosion) radii.explosion.visible = false;
+          }
+          continue;
+        }
         // Cylinder rocket body: stretch along its local +Y, then rotate
         // so +Y aligns with the projectile's velocity vector. World
         // length = radius · lengthMult, world diameter = radius ·
@@ -2725,7 +2756,8 @@ export class Render3DEntities {
         const diameterMult = cylSpec?.diameterMult ?? Render3DEntities._PROJ_CYL_DIAMETER_MULT_DEFAULT;
         const length = r * lengthMult;
         const diameter = r * diameterMult;
-        mesh.scale.set(diameter, length, diameter);
+        this._projScale.set(diameter, length, diameter);
+        this._projQuat.identity();
         const proj = e.projectile;
         if (proj) {
           // sim(x, y, z) → three(x, z, y), so velocity components map
@@ -2740,17 +2772,42 @@ export class Render3DEntities {
               Render3DEntities._PROJ_CYL_AXIS,
               this._projDir,
             );
-            mesh.quaternion.copy(this._projQuat);
           }
         }
+        this._projMatrix.compose(this._projPos, this._projQuat, this._projScale);
+        cylinderMesh.setMatrixAt(cylinderCount++, this._projMatrix);
       } else {
+        if (!sphereMesh || sphereCount >= Render3DEntities.PROJECTILE_INSTANCED_CAP) {
+          const radii = this.projectileRadiusMeshes.get(e.id);
+          if (radii) {
+            if (radii.collision) radii.collision.visible = false;
+            if (radii.explosion) radii.explosion.visible = false;
+          }
+          continue;
+        }
         // Match 2D: `fillCircle(x, y, radius)` — the sphere's world-space radius
         // equals the sim's shot.collision.radius. SphereGeometry has radius 1,
         // so setScalar(radius) is the correct scale.
-        mesh.scale.setScalar(Math.max(radius, PROJECTILE_MIN_RADIUS));
+        const r = Math.max(radius, PROJECTILE_MIN_RADIUS);
+        this._projScale.set(r, r, r);
+        this._projMatrix.compose(
+          this._projPos,
+          Render3DEntities._IDENTITY_QUAT,
+          this._projScale,
+        );
+        sphereMesh.setMatrixAt(sphereCount++, this._projMatrix);
       }
 
       this.updateProjRadiusMeshes(e);
+    }
+
+    if (sphereMesh) {
+      sphereMesh.count = sphereCount;
+      if (sphereCount > 0) this.markInstanceMatrixRange(sphereMesh, 0, sphereCount - 1);
+    }
+    if (cylinderMesh) {
+      cylinderMesh.count = cylinderCount;
+      if (cylinderCount > 0) this.markInstanceMatrixRange(cylinderMesh, 0, cylinderCount - 1);
     }
 
     for (const [id, mesh] of this.projectileMeshes) {
@@ -2878,6 +2935,16 @@ export class Render3DEntities {
     }
     for (const m of this.buildingMeshes.values()) this.world.remove(m.group);
     for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
+    if (this.projectileSphereInstanced) {
+      this.world.remove(this.projectileSphereInstanced);
+      this.projectileSphereInstanced.dispose();
+      this.projectileSphereInstanced = null;
+    }
+    if (this.projectileCylinderInstanced) {
+      this.world.remove(this.projectileCylinderInstanced);
+      this.projectileCylinderInstanced.dispose();
+      this.projectileCylinderInstanced = null;
+    }
     for (const radii of this.projectileRadiusMeshes.values()) {
       if (radii.collision) this.world.remove(radii.collision);
       if (radii.explosion) this.world.remove(radii.explosion);
