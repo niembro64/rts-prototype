@@ -667,7 +667,13 @@ export class WorldState {
     } else if (config.shot.type === 'laser') {
       maxLifespan = config.shot.duration;
     } else if (config.shot.type === 'projectile') {
-      maxLifespan = config.shot.lifespan ?? 2000;
+      const baseLifespan = config.shot.lifespan ?? 2000;
+      const variance = Math.max(0, config.shot.lifespanVariance ?? 0);
+      maxLifespan = baseLifespan;
+      if (variance > 0) {
+        const factor = 1 + (this.rng.next() * 2 - 1) * variance;
+        maxLifespan = Math.max(0, baseLifespan * factor);
+      }
     } else {
       maxLifespan = 2000;
     }

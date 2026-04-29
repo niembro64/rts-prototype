@@ -42,6 +42,7 @@ import {
   MAX_TICK_DT_MS,
   type KeyframeRatio,
 } from '../../config';
+import { SERVER_SIM_LOD_EMA_SOURCE } from '../../serverSimLodConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
@@ -1097,19 +1098,27 @@ export class GameServer {
    *  the sim runs, so every throttle that reads getSimDetailConfig()
    *  this tick sees a freshly-resolved tier. */
   private refreshSimQualitySignals(): void {
-    // TPS ratio = actual / target. We use the EMA-smoothed avg here
-    // (not the worst-case `low`) so the LOD doesn't bounce on a
-    // single laggy tick.
+    // TPS ratio = actual / target. Source is configurable in
+    // serverSimLodConfig.ts so HOST SERVER TPS can use either steady
+    // avg or pessimistic low without touching this runtime path.
     const tickStats = this.getTickStats();
-    setSimTpsRatio(tickStats.avgFps / Math.max(1, this.tickRateHz));
+    const tpsForLod = SERVER_SIM_LOD_EMA_SOURCE.tps === 'avg'
+      ? tickStats.avgFps
+      : tickStats.worstFps;
+    setSimTpsRatio(tpsForLod / Math.max(1, this.tickRateHz));
 
     // CPU ratio = headroom = 1 − (cpu load / 100). The cpu fields
     // live as percent-of-tick-budget; they can exceed 100 when
-    // we're falling behind. Clamp to [0, 1] for the LOD signal so
-    // a momentary overshoot doesn't push the rank below MIN.
+    // we're falling behind. Source is configurable: 'avg' uses steady
+    // load, while 'low' uses the spike/high load because that produces
+    // lower pessimistic headroom. Clamp to [0, 1] for the LOD signal
+    // so a momentary overshoot doesn't push the rank below MIN.
     const tickBudgetMs = 1000 / this.tickRateHz;
+    const tickMsForLod = SERVER_SIM_LOD_EMA_SOURCE.cpu === 'avg'
+      ? this.tickMsAvg
+      : this.tickMsHi;
     const cpuLoad = this.tickMsInitialized
-      ? Math.min(100, Math.max(0, (this.tickMsHi / tickBudgetMs) * 100))
+      ? Math.min(100, Math.max(0, (tickMsForLod / tickBudgetMs) * 100))
       : 0;
     setSimCpuRatio(1 - cpuLoad / 100);
 

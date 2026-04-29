@@ -10,6 +10,8 @@
 // own actual tick rate vs target), CPU (per-tick budget consumption),
 // and UNITS (count vs configured cap).
 
+import type { EmaStat, SignalState } from './lod';
+
 // AUTO is the meta-mode; per-signal contribution is set via
 // ServerSimSignalStates. Legacy 'auto-tps' / 'auto-cpu' / 'auto-units'
 // values are folded into the signal-state model and migrated at
@@ -19,9 +21,19 @@ export type AutoServerSimQuality = 'auto';
 /** Per-signal tri-state on the HOST SERVER LOD ladder. Same shape
  *  as the client side, with the server's own three signals. */
 export type ServerSimSignalStates = {
-  tps: import('./lod').SignalState;
-  cpu: import('./lod').SignalState;
-  units: import('./lod').SignalState;
+  tps: SignalState;
+  cpu: SignalState;
+  units: SignalState;
+};
+
+/** Which EMA sample feeds each HOST SERVER auto-LOD signal.
+ *  `low` means the pessimistic sample:
+ *    - TPS: lower/worst tick-rate EMA
+ *    - CPU: higher/spike CPU-load EMA, which becomes lower headroom
+ */
+export type ServerSimEmaSource = {
+  tps: EmaStat;
+  cpu: EmaStat;
 };
 
 export type ConcreteServerSimQuality = 'min' | 'low' | 'medium' | 'high' | 'max';

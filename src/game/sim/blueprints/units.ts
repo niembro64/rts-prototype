@@ -71,6 +71,14 @@ const BODY_SHAPES = {
       { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
     ],
   },
+  formik: {
+    kind: 'composite',
+    parts: [
+      { kind: 'oval', offsetForward: -0.85, xFrac: 0.75, yFrac: 0.85, zFrac: 0.68 },
+      { kind: 'oval', offsetForward: 0.05, xFrac: 0.7, yFrac: 0.72, zFrac: 0.55 },
+      { kind: 'circle', offsetForward: 0.78, radiusFrac: 0.38, yFrac: 0.38 },
+    ],
+  },
   snipe: { kind: 'oval', xFrac: 0.5, yFrac: (0.5 + 0.35) / 2, zFrac: 0.35 },
   commander: {
     kind: 'composite',
@@ -322,10 +330,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     manaCost: 4000,
     turrets: [{ turretId: 'gatlingMortarTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0.3, y: 0 }],
-    bodyShape: BODY_SHAPES.arachnid,
+    bodyShape: BODY_SHAPES.formik,
     locomotion: {
       type: 'legs',
-      style: 'widow',
+      style: 'formik',
       config: {
         // Bigger thorax = beefier legs. Bumped over widow's
         // (7/6/4/6/3.5) to keep limb thickness in proportion to
@@ -338,7 +346,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         lerpDuration: 320,
       },
     },
-    renderer: 'arachnid',
+    renderer: 'formik',
     seeRange: 500,
     deathSound: AUDIO.event.death.formik,
     fightStopEngagedRatio: 0.9,

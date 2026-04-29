@@ -46,7 +46,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // generous now that there's no near-zone bonus.
     explosion: { radius: 5, damage: 6, force: 500 },
     detonateOnExpiry: true,
-    lifespan: 4000,
+    lifespan: 10_000,
     hitSound: AUDIO.event.hit.lightShot,
   },
   mediumShot: {
@@ -56,7 +56,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     collision: { radius: 2.2 },
     explosion: { radius: 8, damage: 12, force: 1000 },
     detonateOnExpiry: true,
-    lifespan: 4000,
+    lifespan: 10_000,
     hitSound: AUDIO.event.hit.mediumShot,
   },
   // Rocket-class projectile. Flies in a straight line on pure thrust
@@ -82,8 +82,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       diameterMult: 0.3,
     },
     smokeTrail: {
-      emitIntervalMs: 30,   // ~33 puffs/sec at max LOD
-      lifespanMs: 1400,     // each puff lingers ~1.4s
+      emitIntervalMs: 30, // ~33 puffs/sec at max LOD
+      lifespanMs: 1400, // each puff lingers ~1.4s
       startRadius: 0.5,
       endRadius: 8.0,
       startAlpha: 0.9,
@@ -102,8 +102,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.heavyShot,
   },
   // Cluster mortar — carries `mortarShot`s as submunitions. The
-  // outer carrier flies a high arc and detonates on impact / lifespan
-  // expiry; each spawned child IS a mortarShot, so it then runs
+  // outer carrier follows its turret's selected arc and detonates on
+  // impact / lifespan expiry; each spawned child IS a mortarShot, so it
+  // then runs
   // mortarShot's own submunition chain (5 mediumShot fragments) when
   // IT lands. Net effect: one trigger pull → 4 mortar-bursts spread
   // around the impact zone.
@@ -116,17 +117,19 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 80,
     collision: { radius: 5 },
     detonateOnExpiry: true,
-    lifespan: 5000,
+    lifespan: 3000,
+    // Per projectile instance, roll max lifespan within ±10% of lifespan.
+    lifespanVariance: 0.5,
     hitSound: AUDIO.event.hit.advancedMortarShot,
     submunitions: {
       shotId: 'mortarShot',
-      count: 4,
+      count: 5,
       // Wide horizontal sweep so the four mortar children spread
       // around the carrier's ground impact, not stack on top of
       // each other. Vertical kick keeps them lofted long enough
       // to land in a ring around the original aim point.
-      randomSpreadSpeedHorizontal: 80,
-      randomSpreadSpeedVertical: 140,
+      randomSpreadSpeedHorizontal: 20,
+      randomSpreadSpeedVertical: 20,
       reflectedVelocityDamper: 0.4,
     },
   },
@@ -140,7 +143,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 60,
     collision: { radius: 4 },
     detonateOnExpiry: true,
-    lifespan: 5000,
+    lifespan: 1000,
+    // Per projectile instance, roll max lifespan within ±10% of lifespan.
+    lifespanVariance: 0.8,
     hitSound: AUDIO.event.hit.mortarShot,
     submunitions: {
       shotId: 'mediumShot',
@@ -149,8 +154,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       // arc outward instead of fountaining mostly upward. Bump
       // horizontal for a wider fan, vertical for a more chaotic
       // mix of launch angles.
-      randomSpreadSpeedHorizontal: 50,
-      randomSpreadSpeedVertical: 100,
+      randomSpreadSpeedHorizontal: 20,
+      randomSpreadSpeedVertical: 20,
       // Soft bounce — submunitions retain ~10% of the carrier's
       // reflected velocity so the burst still reads as a bounce off
       // the surface, without launching the lightShots so far that
@@ -158,6 +163,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       // for a more energetic bounce, down toward 0.0 to absorb the
       // momentum entirely.
       reflectedVelocityDamper: 0.4,
+      // reflectedVelocityDamper: 0.4,
     },
   },
   disruptorShot: {

@@ -1095,7 +1095,7 @@ export class ClientViewState {
             : config.shot.type === 'laser'
               ? config.shot.duration
               : config.shot.type === 'projectile'
-                ? (config.shot.lifespan ?? 2000)
+                ? (spawn.maxLifespan ?? config.shot.lifespan ?? 2000)
                 : 2000,
         hitEntities: new Set(),
         maxHits: 1,

@@ -23,7 +23,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { computeTurretPointVelocity, getEntityVelocity3, getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
-import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle } from '../../math';
+import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, countBarrels, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
 import {
   TURRET_RETURN_TO_FORWARD,
@@ -119,15 +119,17 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           // solved for, and every projectile would overshoot. The
           // primitive returns the tip in world coords that already
           // accounts for the barrel's orbit offset, pitch contribution,
-          // and yaw direction. Use barrelIndex = 0 (reference barrel)
-          // and the CURRENT weapon.pitch — as the damper converges
-          // the solver input settles along with it.
-          const tipRef = getBarrelTip(
+          // and yaw direction. Multi-barrel weapons must solve from
+          // the next barrel that will actually fire; otherwise a wide
+          // gatling cluster aims from barrel 0 while the projectile
+          // spawns from barrel 1/2/3/etc.
+          const referenceBarrelIndex = (weapon.barrelFireIndex ?? 0) % countBarrels(weapon.config);
+          let tipRef = getBarrelTip(
             weaponX, weaponY, mountZ,
             targetAngle, weapon.pitch,
             weapon.config,
             unit.unit.unitRadiusCollider.scale,
-            0,
+            referenceBarrelIndex,
           );
 
           // Lead prediction: aim at where the target will be when the
@@ -214,7 +216,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               aimX = target.transform.x + relVx * tIntercept;
               aimY = target.transform.y + relVy * tIntercept;
               aimZ = target.transform.z + relVz * tIntercept;
-              targetAngle = Math.atan2(aimY - weaponY, aimX - weaponX);
+              targetAngle = Math.atan2(aimY - tipRef.y, aimX - tipRef.x);
             }
 
             // groundAimFraction: aim short of the lead-corrected
@@ -226,14 +228,36 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
             // top. Applied after lead so the "aim point" we shorten
             // is the predicted intercept, not the stale current pos.
             const groundAimFraction = weapon.config.groundAimFraction;
+            const leadAimX = aimX;
+            const leadAimY = aimY;
             if (groundAimFraction !== undefined && groundAimFraction > 0) {
               const f = groundAimFraction;
-              aimX = weaponX + f * (aimX - weaponX);
-              aimY = weaponY + f * (aimY - weaponY);
+              aimX = tipRef.x + f * (aimX - tipRef.x);
+              aimY = tipRef.y + f * (aimY - tipRef.y);
               aimZ = 0;
-              targetAngle = Math.atan2(aimY - weaponY, aimX - weaponX);
             }
 
+            targetAngle = Math.atan2(aimY - tipRef.y, aimX - tipRef.x);
+            tipRef = getBarrelTip(
+              weaponX, weaponY, mountZ,
+              targetAngle, weapon.pitch,
+              weapon.config,
+              unit.unit.unitRadiusCollider.scale,
+              referenceBarrelIndex,
+            );
+            if (groundAimFraction !== undefined && groundAimFraction > 0) {
+              const f = groundAimFraction;
+              aimX = tipRef.x + f * (leadAimX - tipRef.x);
+              aimY = tipRef.y + f * (leadAimY - tipRef.y);
+              targetAngle = Math.atan2(aimY - tipRef.y, aimX - tipRef.x);
+              tipRef = getBarrelTip(
+                weaponX, weaponY, mountZ,
+                targetAngle, weapon.pitch,
+                weapon.config,
+                unit.unit.unitRadiusCollider.scale,
+                referenceBarrelIndex,
+              );
+            }
             const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
             const heightDiff = aimZ - tipRef.z;
             targetPitch = solveBallisticPitch(
@@ -241,6 +265,14 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
             );
           } else {
             // Beam / laser / force — direct aim, no ballistic drop.
+            targetAngle = Math.atan2(aimY - tipRef.y, aimX - tipRef.x);
+            tipRef = getBarrelTip(
+              weaponX, weaponY, mountZ,
+              targetAngle, weapon.pitch,
+              weapon.config,
+              unit.unit.unitRadiusCollider.scale,
+              referenceBarrelIndex,
+            );
             const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
             const heightDiff = aimZ - tipRef.z;
             targetPitch = Math.atan2(heightDiff, horizDist);

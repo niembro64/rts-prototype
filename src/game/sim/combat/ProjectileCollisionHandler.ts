@@ -68,17 +68,20 @@ export function resetCollisionBuffers(): void {
  *
  * Direction model — each submunition's launch velocity is:
  *
- *     v = bounceVelocity * reflectedVelocityDamper
- *       + jitterDir       * randomSpreadSpeed
+ *     surface hit: v = reflectedVelocity * reflectedVelocityDamper
+ *                  + jitterDir         * randomSpreadSpeed
+ *     airburst:    v = parentVelocity
+ *                  + jitterDir * randomSpreadSpeed
  *
- * where `bounceVelocity` is the parent's velocity reflected across
+ * where `reflectedVelocity` is the parent's velocity reflected across
  * the impact surface (V − 2(V·N)N) and `jitterDir` is a random unit
  * 3D vector. The reflected component gives the cluster a "bounce off
  * the impact surface" feel; the jitter component gives each fragment
  * its own offset within a sphere of radius `randomSpreadSpeed` around
- * the bounce direction. Mid-air detonation (no surface normal) skips
- * the reflection — fragments inherit the parent's forward velocity
- * with random spread.
+ * the base direction. Mid-air detonation (no surface normal) skips
+ * both the reflection and the reflected-velocity damper, so fragments
+ * start from the parent's position and velocity with only configured
+ * random spread added.
  *
  * `surfaceNormalX/Y/Z` is the world-space surface normal at the
  * impact point (sim coords: z is up). Pass undefined for all three
@@ -110,8 +113,7 @@ function spawnSubmunitions(
   //   bounce = V − 2(V·N)N
   // then scale by the spec's damper to model energy loss on impact
   // (1.0 = elastic bounce, 0.0 = velocity fully absorbed, default 1.0).
-  // No normal (mid-air expiry) → just inherit forward velocity, still
-  // damped so a "soft" cluster shot can lose forward momentum too.
+  // No valid normal (mid-air expiry) → inherit parent velocity directly.
   const reflectedVelocityDamper = spec.reflectedVelocityDamper ?? 1.0;
   let bounceVx = parentVx;
   let bounceVy = parentVy;
@@ -133,14 +135,11 @@ function spawnSubmunitions(
       const normalZ = surfaceNormalZ * normalInv;
       const velocityDotNormal =
         parentVx * normalX + parentVy * normalY + parentVz * normalZ;
-      bounceVx = parentVx - 2 * velocityDotNormal * normalX;
-      bounceVy = parentVy - 2 * velocityDotNormal * normalY;
-      bounceVz = parentVz - 2 * velocityDotNormal * normalZ;
+      bounceVx = (parentVx - 2 * velocityDotNormal * normalX) * reflectedVelocityDamper;
+      bounceVy = (parentVy - 2 * velocityDotNormal * normalY) * reflectedVelocityDamper;
+      bounceVz = (parentVz - 2 * velocityDotNormal * normalZ) * reflectedVelocityDamper;
     }
   }
-  bounceVx *= reflectedVelocityDamper;
-  bounceVy *= reflectedVelocityDamper;
-  bounceVz *= reflectedVelocityDamper;
 
   // Sim RNG isn't exposed here, so Math.random() drives the cosmetic
   // spread — submunition direction doesn't feed back into deterministic
@@ -203,6 +202,7 @@ function spawnSubmunitions(
       rotation: Math.atan2(launchVy, launchVx),
       velocity: { x: launchVx, y: launchVy, z: launchVz },
       projectileType: 'projectile',
+      maxLifespan: proj.projectile?.maxLifespan,
       // Synthetic ID so the client can resolve the same TurretConfig
       // (which just wraps the child shot blueprint) that the server used.
       turretId: encodeSubmunitionTurretId(spec.shotId),

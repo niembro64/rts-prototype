@@ -19,6 +19,7 @@ function circleYFrac(radiusFrac: number, yFrac?: number): number {
 }
 
 const TOP_Y_CACHE: Map<string, number> = new Map();
+const BODY_PART_CONTAIN_EPS = 1e-6;
 
 export const TREAD_CHASSIS_LIFT_Y = 10;
 export const LEG_BODY_LIFT_FRAC = 0.5;
@@ -78,6 +79,59 @@ export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
  *  physical radius (unit.unitRadiusCollider.push). */
 export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): number {
   return getBodyTopFrac(bodyShape) * unitRadius;
+}
+
+function bodyPartTopFrac(part: UnitBodyShapePart): number {
+  return part.kind === 'circle'
+    ? 2 * circleYFrac(part.radiusFrac, part.yFrac)
+    : 2 * part.yFrac;
+}
+
+function bodyPartNormalizedDistanceSq(
+  part: UnitBodyShapePart,
+  forwardX: number,
+  lateralY: number,
+): number {
+  const dx = forwardX - part.offsetForward;
+  const dy = lateralY - (part.offsetLateral ?? 0);
+  if (part.kind === 'circle') {
+    const r = Math.max(part.radiusFrac, BODY_PART_CONTAIN_EPS);
+    return (dx * dx + dy * dy) / (r * r);
+  }
+  const rx = Math.max(part.xFrac, BODY_PART_CONTAIN_EPS);
+  const ry = Math.max(part.zFrac, BODY_PART_CONTAIN_EPS);
+  return (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+}
+
+/** World-space Y of the body top under a chassis-local mount point.
+ *  Composite bodies select the body segment whose horizontal footprint
+ *  contains the mount. That keeps widow beam turrets on the abdomen
+ *  edge while allowing Formik's centered mortar to sit on its own
+ *  thorax instead of the tallest rear segment. */
+export function getBodyMountTopY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+  mountX: number,
+  mountY: number,
+): number {
+  const spec = bodyShape;
+  if (spec.kind !== 'composite') return getBodyTopY(bodyShape, unitRadius);
+  if (unitRadius <= BODY_PART_CONTAIN_EPS || spec.parts.length === 0) return 0;
+
+  const targetX = mountX / unitRadius;
+  const targetY = mountY / unitRadius;
+  let best = spec.parts[0];
+  let bestScore = Infinity;
+
+  for (const part of spec.parts) {
+    const score = bodyPartNormalizedDistanceSq(part, targetX, targetY);
+    if (score < bestScore) {
+      best = part;
+      bestScore = score;
+    }
+  }
+
+  return bodyPartTopFrac(best) * unitRadius;
 }
 
 /** World-space Y for the mid-height of whichever body segment sits

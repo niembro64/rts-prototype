@@ -94,7 +94,7 @@ export const CLIENT_CONFIG = {
   rangeToggles: { default: false },
   projRangeToggles: { default: false },
   unitRadiusToggles: { default: false },
-  lobbyVisible: { default: { mobile: false, desktop: false } },
+  lobbyVisible: { default: { mobile: true, desktop: true } },
   unitCapFallback: { default: MAX_TOTAL_UNITS },
   gridOverlay: {
     default: 'high' as const,

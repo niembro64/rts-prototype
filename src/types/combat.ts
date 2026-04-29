@@ -66,6 +66,9 @@ export type ProjectileSpawnEvent = {
   rotation: number;
   velocity: Vec3;
   projectileType: string;
+  /** Resolved per-instance max lifespan in ms. Present for projectiles
+   *  whose blueprint lifespan may be randomized. */
+  maxLifespan?: number;
   turretId: string;
   playerId: PlayerId;
   sourceEntityId: EntityId;

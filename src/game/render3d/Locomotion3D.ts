@@ -292,6 +292,16 @@ export function leftSideConfigsForStyle(style: LegStyle, radius: number): Arachn
       { attachOffsetX: -radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
     ];
   }
+  if (style === 'formik') {
+    const legLength = radius * 1.75;
+    const upperLen = legLength * 0.52;
+    const lowerLen = upperLen * 1.16;
+    return [
+      { attachOffsetX:  radius * 0.42, attachOffsetY: -radius * 0.28, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.42, snapTargetAngle: -Math.PI * 0.28, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.96 },
+      { attachOffsetX:  radius * 0.02, attachOffsetY: -radius * 0.36, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: -Math.PI * 0.45, snapDistanceMultiplier: 0.62, extensionThreshold: 0.98 },
+      { attachOffsetX: -radius * 0.48, attachOffsetY: -radius * 0.3,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 1.02, snapTargetAngle: -Math.PI * 0.62, snapDistanceMultiplier: 0.54, extensionThreshold: 0.99 },
+    ];
+  }
   if (style === 'tick') {
     const legLength = radius * 1.0;
     const upperLen = legLength * 0.5;

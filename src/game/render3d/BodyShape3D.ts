@@ -21,6 +21,7 @@
 import * as THREE from 'three';
 import type { UnitBodyShape } from '@/types/blueprints';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getBodyMountTopY as getBodyMountTopYShared } from '../math/BodyDimensions';
 
 const FALLBACK_BODY_SHAPE: UnitBodyShape = {
   kind: 'composite',
@@ -216,37 +217,14 @@ export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): numbe
  *  `mountX` / `mountZ` are CHASSIS-LOCAL forward / lateral offsets in
  *  WORLD units (i.e. already multiplied by unitRadius — same units as
  *  `turret.offset.x` / `turret.offset.y` after `unitDefinitions.ts`
- *  scales `chassisMount.{x,y} * radius`). The match is by Euclidean
- *  distance to each part's center; ties go to the first-listed part
- *  but BodyShape3D's composite specs are well-separated so ties
- *  don't actually arise.
- *
- *  Composite bodies are guaranteed all-circle/oval (BodyShape3D's
- *  `composite` spec only accepts `circle` and `oval` parts), so for
- *  every composite part `top y = part.y + part.scaleY` in unit-
- *  radius-1 space. */
+ *  scales `chassisMount.{x,y} * radius`). */
 export function getBodyMountTopY(
   bodyShape: UnitBodyShape,
   unitRadius: number,
   mountX: number,
   mountZ: number,
 ): number {
-  const entry = getBodyGeom(bodyShape);
-  if (entry.parts.length <= 1) return entry.topY * unitRadius;
-  let bestDist = Infinity;
-  let bestTopY = entry.topY;
-  for (const part of entry.parts) {
-    const px = part.x * unitRadius;
-    const pz = part.z * unitRadius;
-    const dx = mountX - px;
-    const dz = mountZ - pz;
-    const dist = Math.hypot(dx, dz);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestTopY = part.y + part.scaleY;
-    }
-  }
-  return bestTopY * unitRadius;
+  return getBodyMountTopYShared(bodyShape, unitRadius, mountX, mountZ);
 }
 
 function buildPolygonShape(sides: number, radius: number, rotation: number): THREE.Shape {

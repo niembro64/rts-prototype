@@ -22,6 +22,7 @@
 import type {
   ServerSimAutoModeConfig,
   ServerSimDetailTable,
+  ServerSimEmaSource,
   ServerSimHysteresis,
   ServerSimQuality,
   ServerSimSignalStates,
@@ -198,4 +199,15 @@ export const SERVER_SIM_HYSTERESIS: ServerSimHysteresis = {
   tps: 0.05,
   cpu: 0.05,
   units: 0.05,
+};
+
+// Which HOST SERVER EMA sample drives each auto-LOD signal.
+// Toggle these between 'avg' and 'low' when tuning how quickly the
+// sim throttles:
+//   - tps 'avg' = steady tick rate, 'low' = pessimistic/worst tick rate.
+//   - cpu 'avg' = steady CPU load, 'low' = pessimistic high CPU load
+//     converted into lower headroom for the LOD ladder.
+export const SERVER_SIM_LOD_EMA_SOURCE: ServerSimEmaSource = {
+  tps: 'avg',
+  cpu: 'low',
 };

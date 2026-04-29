@@ -209,15 +209,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const prevTick = weapon.worldPosTick;
       if (!weapon.worldPos) weapon.worldPos = { x: 0, y: 0, z: 0 };
       if (!weapon.worldVelocity) weapon.worldVelocity = { x: 0, y: 0, z: 0 };
-      if (prevPos && prevTick !== undefined && tick > prevTick && dtMs > 0) {
-        const invElapsedSec = 1000 / (dtMs * (tick - prevTick));
+      const ticksElapsed = prevTick !== undefined ? tick - prevTick : 0;
+      if (prevPos && ticksElapsed === 1 && dtMs > 0) {
+        const invElapsedSec = 1000 / (dtMs * ticksElapsed);
         weapon.worldVelocity.x = (mount.x - prevPos.x) * invElapsedSec;
         weapon.worldVelocity.y = (mount.y - prevPos.y) * invElapsedSec;
         weapon.worldVelocity.z = (mount.z - prevPos.z) * invElapsedSec;
       } else {
-        weapon.worldVelocity.x = 0;
-        weapon.worldVelocity.y = 0;
-        weapon.worldVelocity.z = 0;
+        weapon.worldVelocity.x = unit.unit.velocityX ?? 0;
+        weapon.worldVelocity.y = unit.unit.velocityY ?? 0;
+        weapon.worldVelocity.z = unit.unit.velocityZ ?? 0;
       }
       weapon.worldPos.x = mount.x;
       weapon.worldPos.y = mount.y;

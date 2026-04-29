@@ -30,7 +30,7 @@ import {
   snapshotLod,
   type Lod3DState,
 } from './Lod3D';
-import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
+import { getBodyGeom, getBodyMountTopY, disposeBodyGeoms } from './BodyShape3D';
 import {
   buildBuildingShape,
   disposeBuildingGeoms,
@@ -2225,15 +2225,29 @@ export class Render3DEntities {
       const hostHeadRadiusForStack = unitHasMirrorsHere
         ? getTurretHeadRadius(radius, turrets[0]?.config)
         : 0;
+      const hostBodyTopYForStack = unitHasMirrorsHere
+        ? getBodyMountTopY(
+            m.bodyShape!,
+            radius,
+            turrets[0]?.offset.x ?? 0,
+            turrets[0]?.offset.y ?? 0,
+          )
+        : bodyTopY;
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
+        const bodyMountTopY = getBodyMountTopY(
+          m.bodyShape!,
+          radius,
+          t.offset.x,
+          t.offset.y,
+        );
         // Non-mirror turrets on mirror-host units sit ON TOP of the
         // mirror panel stack: root Y = panel top in chassis-local
-        // coords = bodyTopY + 2·hostHeadRadius + MIRROR_EXTRA_HEIGHT.
+        // coords = hostBodyTopY + 2·hostHeadRadius + MIRROR_EXTRA_HEIGHT.
         const turretMountY = unitHasMirrorsHere && i > 0
-          ? bodyTopY + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
-          : bodyTopY;
+          ? hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
+          : bodyMountTopY;
         tm.root.position.set(t.offset.x, turretMountY, t.offset.y);
 
         // Head InstancedMesh write — the head sphere's chassis-local

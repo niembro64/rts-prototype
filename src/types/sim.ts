@@ -229,6 +229,9 @@ export type ProjectileShot = {
    *  of `lifespan`. See ProjectileShotBlueprint.detonateOnExpiry. */
   detonateOnExpiry?: boolean;
   lifespan?: number;
+  /** Fractional per-instance variance applied to maxLifespan at
+   *  projectile creation time. `0.1` means ±10%. */
+  lifespanVariance?: number;
   homingTurnRate?: number;
   trailLength?: number;
   /** Cluster / flak-burst behavior — see SubmunitionSpec in types/blueprints.ts.

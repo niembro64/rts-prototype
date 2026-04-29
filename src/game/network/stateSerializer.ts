@@ -707,6 +707,7 @@ export function serializeGameState(
         pos: ps.pos, rotation: ps.rotation,
         velocity: ps.velocity,
         projectileType: ps.projectileType,
+        maxLifespan: ps.maxLifespan,
         turretId: ps.turretId,
         playerId: ps.playerId,
         sourceEntityId: ps.sourceEntityId,

@@ -135,6 +135,8 @@ export type NetworkServerSnapshotProjectileSpawn = {
   rotation: number;
   velocity: Vec3;
   projectileType: string;
+  /** Resolved per-instance max lifespan in ms. */
+  maxLifespan?: number;
   turretId: string;
   playerId: number;
   sourceEntityId: number;

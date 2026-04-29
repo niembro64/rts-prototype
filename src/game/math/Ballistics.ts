@@ -77,11 +77,16 @@ export function solveBallisticPitch(
   const sol = ballisticSolutions(horizDist, heightDiff, launchSpeed, gravity);
   if (sol) return preferHigh ? sol.high : sol.low;
 
-  // Out of range. Maximum-range pitch for a launch that lands at a
-  // height `h` relative to launcher is π/4 + atan(h/d)/2 (for large
-  // enough v); at shorter v this collapses toward 45°. Use that as the
-  // best-we-can-do aim.
+  // Out of range. Keep low-arc weapons low even when no exact solution
+  // exists; otherwise `highArc: false` and `highArc: true` collapse to
+  // the same 45-degree fallback at the edge of reach.
   if (horizDist <= 1e-6) return heightDiff >= 0 ? Math.PI / 2 : -Math.PI / 2;
+  if (!preferHigh) return Math.atan2(heightDiff, horizDist);
+
+  // High-arc fallback: maximum-range pitch for a launch that lands at
+  // a height `h` relative to launcher is π/4 + atan(h/d)/2 (for large
+  // enough v); at shorter v this collapses toward 45°. Use that as the
+  // best-we-can-do lob.
   return Math.PI / 4 + Math.atan2(heightDiff, horizDist) * 0.5;
 }
 

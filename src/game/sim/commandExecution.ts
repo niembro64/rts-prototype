@@ -338,6 +338,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     rotation: fireAngle,
     velocity: { x: velocityX, y: velocityY, z: velocityZ },
     projectileType: 'projectile',
+    maxLifespan: projectile.projectile?.maxLifespan,
     turretId: 'dgunTurret',
     playerId,
     sourceEntityId: commander.id,

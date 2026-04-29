@@ -158,7 +158,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // the rest of the way into a fragmentation ring around the
     // target. Designed in tandem with mortarShot.submunitions —
     // tune both knobs together.
-    groundAimFraction: 0.95,
+    groundAimFraction: 1.00,
   },
   pulseTurret: {
     id: 'pulseTurret',
@@ -195,9 +195,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   gatlingMortarTurret: {
     id: 'gatlingMortarTurret',
     projectileId: 'advancedMortarShot',
-    range: 700,
-    cooldown: 350,
-    launchForce: 32_000,
+    range: 1000,
+    cooldown: 2000,
+    launchForce: 50_000,
     turretTurnAccel: 80,
     turretDrag: 0.4,
     barrel: {
@@ -216,12 +216,12 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spread: { angle: Math.PI / 32 },
     bodyRadius: 14,
     audio: { fireSound: AUDIO.event.fire.gatlingMortarTurret },
-    // Lobs cluster carriers like a regular mortar.
+    // Uses the low ballistic solution; the submunitions do the area spread.
     highArc: true,
     // Aim short so the cluster carrier lands inside the target
     // group; the bouncing mortar children carry the rest of the
     // fragmentation outward.
-    groundAimFraction: 0.95,
+    groundAimFraction: 1.00,
   },
   hippoGatlingTurret: {
     id: 'hippoGatlingTurret',
@@ -315,9 +315,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // extent (topY − baseY = bodyTop + 2·hostHeadRadius +
     // MIRROR_EXTRA_HEIGHT − MIRROR_BASE_Y), so sim collision and the
     // visible mesh share one canonical rectangle.
-    mirrorPanels: [
-      { offsetX: 18, offsetY: 0, angle: 0 },
-    ],
+    mirrorPanels: [{ offsetX: 18, offsetY: 0, angle: 0 }],
   },
   ...generateBeamTurrets(),
   forceTurretLarge: {

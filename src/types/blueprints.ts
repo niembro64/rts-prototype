@@ -121,6 +121,10 @@ export type ProjectileShotBlueprint = {
    *  way. When false, the projectile silently disappears at expiry. */
   detonateOnExpiry: boolean;
   lifespan?: number;
+  /** Fractional per-instance lifespan variance. `0.1` means each
+   *  projectile rolls a max lifespan in the range ±10% around
+   *  `lifespan` when it is created. */
+  lifespanVariance?: number;
   hitSound?: SoundEntry;
   /** Cluster behavior — see {@link SubmunitionSpec}. */
   submunitions?: SubmunitionSpec;
@@ -309,7 +313,7 @@ export type LegConfig = {
   lerpDuration: number;
 };
 
-export type LegStyle = 'widow' | 'daddy' | 'tarantula' | 'tick' | 'commander';
+export type LegStyle = 'widow' | 'formik' | 'daddy' | 'tarantula' | 'tick' | 'commander';
 
 export type LocomotionBlueprint =
   | { type: 'wheels'; config: WheelConfig }

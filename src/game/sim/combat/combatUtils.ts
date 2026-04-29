@@ -2,7 +2,7 @@
 
 import type { Entity } from '../types';
 import { distance, normalizeAngle, magnitude, getWeaponWorldPosition, getTurretHeadRadius } from '../../math';
-import { getBodyTopY, getChassisLiftY } from '../../math/BodyDimensions';
+import { getBodyMountTopY, getChassisLiftY } from '../../math/BodyDimensions';
 import { getUnitBlueprint } from '../blueprints';
 import { MIRROR_EXTRA_HEIGHT } from '../../../config';
 import type { Vec3 } from '@/types/vec2';
@@ -64,9 +64,16 @@ export function getTurretMountHeight(unit: Entity, turretIndex: number): number 
   try { bp = getUnitBlueprint(unit.unit.unitType); }
   catch { /* keep fallback */ }
   const chassisLift = bp ? getChassisLiftY(bp, unitRadius) : 0;
-  const bodyTop = chassisLift + (bp ? getBodyTopY(bp.bodyShape, unitRadius) : 2.3 * unitRadius);
 
   const turret = unit.turrets?.[turretIndex];
+  const bodyTop = chassisLift + (bp
+    ? getBodyMountTopY(
+        bp.bodyShape,
+        unitRadius,
+        turret?.offset.x ?? 0,
+        turret?.offset.y ?? 0,
+      )
+    : 2.3 * unitRadius);
   const headRadius = getTurretHeadRadius(unitRadius, turret?.config);
 
   const hasMirrors = (unit.unit.mirrorPanels?.length ?? 0) > 0;
@@ -77,7 +84,15 @@ export function getTurretMountHeight(unit: Entity, turretIndex: number): number 
     // proportionally taller panel column.
     const hostTurret = unit.turrets?.[0];
     const hostHeadRadius = getTurretHeadRadius(unitRadius, hostTurret?.config);
-    const panelTop = bodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
+    const hostBodyTop = chassisLift + (bp
+      ? getBodyMountTopY(
+          bp.bodyShape,
+          unitRadius,
+          hostTurret?.offset.x ?? 0,
+          hostTurret?.offset.y ?? 0,
+        )
+      : 2.3 * unitRadius);
+    const panelTop = hostBodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
     return panelTop + headRadius;
   }
   return bodyTop + headRadius;

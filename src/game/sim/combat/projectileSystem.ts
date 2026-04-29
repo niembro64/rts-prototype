@@ -497,6 +497,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: yaw,
             velocity: { x: projVx, y: projVy, z: projVz },
             projectileType: 'projectile',
+            maxLifespan: projectile.projectile?.maxLifespan,
             turretId: config.id,
             playerId,
             sourceEntityId: unit.id,

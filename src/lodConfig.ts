@@ -107,7 +107,11 @@ export const LOD_HYSTERESIS: LodHysteresis = {
   units: 0.05,
 };
 
-// Which EMA stat to use for each LOD ratio: 'avg' or 'low' (worst-case).
+// Which PLAYER CLIENT EMA sample drives each auto-LOD signal.
+// Toggle these between 'avg' and 'low' when tuning how quickly the
+// renderer drops detail:
+//   - tps 'avg' = steady server tick rate, 'low' = lower/worst tick rate.
+//   - fps 'avg' = steady frame rate, 'low' = lower/worst frame rate.
 export const LOD_EMA_SOURCE: LodEmaSource = {
   tps: 'low',
   fps: 'low',
