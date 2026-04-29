@@ -633,10 +633,11 @@ export class OrbitCamera {
 
   private panByTouchScreenDelta(dx: number, dy: number): void {
     // Mobile uses the standard map gesture: the world follows the
-    // finger. The desktop middle-drag helper intentionally moves the
-    // camera with the cursor, so invert touch deltas at this boundary
-    // and leave mouse controls unchanged.
-    this.panByScreenDelta(-dx, -dy);
+    // finger. Desktop middle-drag still uses the configured
+    // CAMERA_PAN_MULTIPLIER, but touch should feel 1:1, so divide it
+    // out before going through the shared pan math.
+    const multiplier = this.panMultiplier > 0 ? this.panMultiplier : 1;
+    this.panByScreenDelta(-dx / multiplier, -dy / multiplier);
   }
 
   private rotateYawAroundScreenPoint(clientX: number, clientY: number, yawDelta: number): void {
