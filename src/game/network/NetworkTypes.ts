@@ -20,4 +20,7 @@ export type {
   NetworkServerSnapshotEconomy,
   LobbyPlayer,
   NetworkRole,
+  BattleHandoff,
 } from '@/types/network';
+
+export { BATTLE_HANDOFF_PROTOCOL } from '@/types/network';

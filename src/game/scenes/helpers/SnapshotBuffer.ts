@@ -58,7 +58,17 @@ export class SnapshotBuffer {
           this.bufferedVelocityUpdates.set(vu.id, vu);
         }
       }
-      this.pendingSnapshot = state;
+      // Never let startup deltas overwrite an unapplied full
+      // keyframe. A delta cannot create entities that the client has
+      // never seen, so dropping the first full snapshot during the
+      // lobby -> real-battle scene transition leaves the map empty
+      // until the next keyframe. Full snapshots are cloned because
+      // the local server reuses its serializer object for later deltas.
+      if (!this.pendingSnapshot || !state.isDelta || this.pendingSnapshot.isDelta) {
+        this.pendingSnapshot = state.isDelta
+          ? state
+          : structuredClone(state) as NetworkServerSnapshot;
+      }
     });
   }
 

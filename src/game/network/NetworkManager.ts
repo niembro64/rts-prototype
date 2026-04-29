@@ -24,10 +24,15 @@ export type {
   NetworkServerSnapshotMeta,
   LobbyPlayer,
   NetworkRole,
+  BattleHandoff,
 } from './NetworkTypes';
 
+import {
+  BATTLE_HANDOFF_PROTOCOL,
+  type BattleHandoff,
+  type LobbySettings,
+} from '@/types/network';
 import type { NetworkServerSnapshot, LobbyPlayer, NetworkMessage, NetworkRole } from './NetworkTypes';
-import type { LobbySettings } from '@/types/network';
 
 // Generate a short room code (4 characters)
 function generateRoomCode(): string {
@@ -37,6 +42,19 @@ function generateRoomCode(): string {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
+}
+
+function normalizeRoomCode(roomCode: string): string {
+  return roomCode.trim().toUpperCase();
+}
+
+function roomCodeToGameId(roomCode: string): string {
+  return `ba-${normalizeRoomCode(roomCode)}`;
+}
+
+function getDefaultPlayerName(playerId: PlayerId): string {
+  const colorNames = ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange'];
+  return colorNames[playerId - 1] || `Player ${playerId}`;
 }
 
 export class NetworkManager {
@@ -50,6 +68,7 @@ export class NetworkManager {
   private gameStarted: boolean = false;
   private snapshotsSent: number = 0;
   private snapshotsReceived: number = 0;
+  private pendingReceivedState: NetworkServerSnapshot | null = null;
 
   // Heartbeat presence tracking. The lobby uses a short timeout so
   // the roster reacts to silent disconnects quickly. Once the real
@@ -69,7 +88,7 @@ export class NetworkManager {
   public onPlayerLeft?: (playerId: PlayerId) => void;
   public onStateReceived?: (state: NetworkServerSnapshot) => void;
   public onCommandReceived?: (command: Command, fromPlayerId: PlayerId) => void;
-  public onGameStart?: (playerIds: PlayerId[]) => void;
+  public onGameStart?: (handoff: BattleHandoff) => void;
   public onPlayerAssignment?: (playerId: PlayerId) => void;
   public onError?: (error: string) => void;
   public onConnected?: () => void;
@@ -123,7 +142,7 @@ export class NetworkManager {
 
       // Use room code as peer ID prefix for discoverability
       // Configure with debug off and connection settings
-      this.peer = new Peer(`ba-${this.roomCode}`, {
+      this.peer = new Peer(this.getUniversalGameId(), {
         debug: 0,
         config: {
           iceServers: [
@@ -158,7 +177,7 @@ export class NetworkManager {
           // Room code already in use, try another
           this.peer?.destroy();
           this.roomCode = generateRoomCode();
-          this.peer = new Peer(`ba-${this.roomCode}`);
+          this.peer = new Peer(this.getUniversalGameId());
           this.peer.on('open', () => {
             if (resolved) return;
             resolved = true;
@@ -195,7 +214,7 @@ export class NetworkManager {
 
   // Join an existing game
   async joinGame(roomCode: string): Promise<void> {
-    this.roomCode = roomCode.toUpperCase();
+    this.roomCode = normalizeRoomCode(roomCode);
     this.role = 'client';
     this.players.clear();
     this.connections.clear();
@@ -216,7 +235,7 @@ export class NetworkManager {
       this.peer.on('open', () => {
         console.log('Client peer opened, connecting to host...');
 
-        const conn = this.peer!.connect(`ba-${this.roomCode}`, {
+        const conn = this.peer!.connect(this.getUniversalGameId(), {
           reliable: true,
         });
 
@@ -296,9 +315,7 @@ export class NetworkManager {
       this.lastHeartbeatReceived.set(playerId, Date.now());
       this.startHeartbeats();
 
-      // Get color name for this player
-      const colorNames = ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange'];
-      const playerName = colorNames[playerId - 1] || `Player ${playerId}`;
+      const playerName = getDefaultPlayerName(playerId);
 
       const player: LobbyPlayer = {
         playerId,
@@ -308,7 +325,11 @@ export class NetworkManager {
       this.players.set(playerId, player);
 
       // Send player their assignment
-      this.sendTo(playerId, { type: 'playerAssignment', playerId });
+      this.sendTo(playerId, {
+        type: 'playerAssignment',
+        playerId,
+        gameId: this.getUniversalGameId(),
+      });
 
       // Send current player list to new player, plus any IP /
        // location info already known about each. Without the
@@ -318,6 +339,7 @@ export class NetworkManager {
       for (const p of this.players.values()) {
         this.sendTo(playerId, {
           type: 'playerJoined',
+          gameId: this.getUniversalGameId(),
           playerId: p.playerId,
           playerName: p.name,
         });
@@ -328,6 +350,7 @@ export class NetworkManager {
         ) {
           this.sendTo(playerId, {
             type: 'playerInfoUpdate',
+            gameId: this.getUniversalGameId(),
             playerId: p.playerId,
             ipAddress: p.ipAddress,
             location: p.location,
@@ -337,7 +360,12 @@ export class NetworkManager {
       }
 
       // Notify all players about new player
-      this.broadcast({ type: 'playerJoined', playerId, playerName });
+      this.broadcast({
+        type: 'playerJoined',
+        gameId: this.getUniversalGameId(),
+        playerId,
+        playerName,
+      });
       this.onPlayerJoined?.(player);
 
       // Bring the new player up to date on the host's current
@@ -348,7 +376,11 @@ export class NetworkManager {
       // clients during the lobby idle state.
       const settings = this.getLobbySettings?.();
       if (settings) {
-        this.sendTo(playerId, { type: 'lobbySettings', settings });
+        this.sendTo(playerId, {
+          type: 'lobbySettings',
+          gameId: this.getUniversalGameId(),
+          settings,
+        });
       }
 
       this.setupConnectionHandlers(conn, playerId);
@@ -370,7 +402,11 @@ export class NetworkManager {
       this.onPlayerLeft?.(playerId);
 
       if (this.role === 'host') {
-        this.broadcast({ type: 'playerLeft', playerId });
+        this.broadcast({
+          type: 'playerLeft',
+          gameId: this.getUniversalGameId(),
+          playerId,
+        });
       }
     });
 
@@ -406,6 +442,55 @@ export class NetworkManager {
     });
   }
 
+  private isMessageForCurrentGame(message: { gameId?: string }): boolean {
+    return !message.gameId || message.gameId === this.getUniversalGameId();
+  }
+
+  private buildBattleHandoff(playerIds: PlayerId[]): BattleHandoff {
+    const normalizedPlayerIds = [...new Set(playerIds)].sort((a, b) => a - b);
+    const players = normalizedPlayerIds.map((playerId) => {
+      const existing = this.players.get(playerId);
+      return existing
+        ? { ...existing }
+        : {
+            playerId,
+            name: getDefaultPlayerName(playerId),
+            isHost: playerId === 1,
+          };
+    });
+    return {
+      protocol: BATTLE_HANDOFF_PROTOCOL,
+      gameId: this.getUniversalGameId(),
+      roomCode: this.getRoomCode(),
+      hostPlayerId: 1 as PlayerId,
+      playerIds: normalizedPlayerIds,
+      players,
+    };
+  }
+
+  private normalizeBattleHandoff(message: { gameId?: string; playerIds: PlayerId[]; handoff?: BattleHandoff }): BattleHandoff {
+    const handoff = message.handoff;
+    if (
+      handoff &&
+      handoff.protocol === BATTLE_HANDOFF_PROTOCOL &&
+      handoff.gameId === this.getUniversalGameId()
+    ) {
+      return {
+        ...handoff,
+        roomCode: normalizeRoomCode(handoff.roomCode),
+        playerIds: [...new Set(handoff.playerIds)].sort((a, b) => a - b),
+        players: handoff.players.map((player) => ({ ...player })),
+      };
+    }
+    return this.buildBattleHandoff(message.playerIds);
+  }
+
+  private applyBattleHandoff(handoff: BattleHandoff): void {
+    for (const player of handoff.players) {
+      this.players.set(player.playerId, { ...player });
+    }
+  }
+
   // Handle incoming message
   private handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): void {
     // Any inbound message is also a sign of life — refresh the
@@ -418,6 +503,7 @@ export class NetworkManager {
     }
     switch (message.type) {
       case 'heartbeat':
+        if (!this.isMessageForCurrentGame(message)) return;
         // Bookkeeping only — the unconditional refresh above
         // already updated the timestamp. Nothing else to do.
         return;
@@ -427,6 +513,7 @@ export class NetworkManager {
         // accepted as a fallback so a mixed-version game doesn't crash
         // on the first frame after upgrade.
         if (this.role === 'client') {
+          if (!this.isMessageForCurrentGame(message)) return;
           this.snapshotsReceived++;
           if (this.snapshotsReceived % 100 === 0) {
             const hostConn = this.connections.get(1);
@@ -444,13 +531,18 @@ export class NetworkManager {
           } else {
             state = raw as NetworkServerSnapshot;
           }
-          this.onStateReceived?.(state);
+          if (this.onStateReceived) {
+            this.onStateReceived(state);
+          } else if (!this.pendingReceivedState || (this.pendingReceivedState.isDelta && !state.isDelta)) {
+            this.pendingReceivedState = state;
+          }
         }
         break;
 
       case 'command':
         // Host receives command from client
         if (this.role === 'host') {
+          if (!this.isMessageForCurrentGame(message)) return;
           this.onCommandReceived?.(message.data, fromPlayerId);
         }
         break;
@@ -462,6 +554,7 @@ export class NetworkManager {
         // (including the originator — keeps every end pulling
         // from one canonical record set, no special-casing).
         if (this.role === 'host') {
+          if (!this.isMessageForCurrentGame(message)) return;
           const player = this.players.get(fromPlayerId);
           if (player) {
             player.ipAddress = message.ipAddress;
@@ -470,6 +563,7 @@ export class NetworkManager {
             this.onPlayerInfoUpdate?.(player);
             this.broadcast({
               type: 'playerInfoUpdate',
+              gameId: this.getUniversalGameId(),
               playerId: fromPlayerId,
               ipAddress: message.ipAddress,
               location: message.location,
@@ -482,6 +576,7 @@ export class NetworkManager {
       case 'playerAssignment':
         // Client receives their player ID
         if (this.role === 'client') {
+          if (!this.isMessageForCurrentGame(message)) return;
           this.localPlayerId = message.playerId;
           this.onPlayerAssignment?.(message.playerId);
         }
@@ -490,12 +585,16 @@ export class NetworkManager {
       case 'gameStart':
         // Client receives game start signal
         if (this.role === 'client') {
+          if (!this.isMessageForCurrentGame(message)) return;
+          const handoff = this.normalizeBattleHandoff(message);
+          this.applyBattleHandoff(handoff);
           this.gameStarted = true;
-          this.onGameStart?.(message.playerIds);
+          this.onGameStart?.(handoff);
         }
         break;
 
       case 'playerJoined':
+        if (!this.isMessageForCurrentGame(message)) return;
         // Update player list
         this.players.set(message.playerId, {
           playerId: message.playerId,
@@ -506,6 +605,7 @@ export class NetworkManager {
         break;
 
       case 'playerLeft':
+        if (!this.isMessageForCurrentGame(message)) return;
         this.players.delete(message.playerId);
         this.onPlayerLeft?.(message.playerId);
         break;
@@ -515,6 +615,7 @@ export class NetworkManager {
         // Update the matching record so every client's player
         // list stays in sync.
         if (this.role === 'client') {
+          if (!this.isMessageForCurrentGame(message)) return;
           const target = this.players.get(message.playerId);
           if (target) {
             target.ipAddress = message.ipAddress;
@@ -529,6 +630,7 @@ export class NetworkManager {
         // Only meaningful client-side — the host owns the source
         // of truth and never broadcasts to itself.
         if (this.role === 'client') {
+          if (!this.isMessageForCurrentGame(message)) return;
           this.onLobbySettings?.(message.settings);
         }
         break;
@@ -541,7 +643,11 @@ export class NetworkManager {
    *  No-op on clients. */
   broadcastLobbySettings(settings: LobbySettings): void {
     if (this.role !== 'host') return;
-    this.broadcast({ type: 'lobbySettings', settings });
+    this.broadcast({
+      type: 'lobbySettings',
+      gameId: this.getUniversalGameId(),
+      settings,
+    });
   }
 
   /** Begin emitting heartbeat pings to every open connection +
@@ -555,7 +661,11 @@ export class NetworkManager {
       this.lastHeartbeatReceived.set(pid, now);
     }
     this.heartbeatSendInterval = setInterval(() => {
-      const beat: NetworkMessage = { type: 'heartbeat', playerId: this.localPlayerId };
+      const beat: NetworkMessage = {
+        type: 'heartbeat',
+        gameId: this.getUniversalGameId(),
+        playerId: this.localPlayerId,
+      };
       for (const conn of this.connections.values()) {
         this.safeSend(conn, beat);
       }
@@ -611,6 +721,7 @@ export class NetworkManager {
         this.onPlayerInfoUpdate?.(self);
         this.broadcast({
           type: 'playerInfoUpdate',
+          gameId: this.getUniversalGameId(),
           playerId: this.localPlayerId,
           ipAddress,
           location,
@@ -619,7 +730,15 @@ export class NetworkManager {
       }
     } else if (this.role === 'client') {
       const hostConn = this.connections.get(1);
-      if (hostConn) this.safeSend(hostConn, { type: 'playerInfo', ipAddress, location, timezone });
+      if (hostConn) {
+        this.safeSend(hostConn, {
+          type: 'playerInfo',
+          gameId: this.getUniversalGameId(),
+          ipAddress,
+          location,
+          timezone,
+        });
+      }
     }
   }
 
@@ -673,7 +792,11 @@ export class NetworkManager {
       }
     }
 
-    this.broadcast({ type: 'state', data: buf });
+    this.broadcast({
+      type: 'state',
+      gameId: this.getUniversalGameId(),
+      data: buf,
+    });
   }
 
   sendStateTo(playerId: PlayerId, state: NetworkServerSnapshot): void {
@@ -691,14 +814,30 @@ export class NetworkManager {
       console.log(`[NET] Host snapshot #${this.snapshotsSent} -> player ${playerId}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength}`);
     }
 
-    this.sendTo(playerId, { type: 'state', data: buf });
+    this.sendTo(playerId, {
+      type: 'state',
+      gameId: this.getUniversalGameId(),
+      data: buf,
+    });
   }
 
   // Send command to host (client only)
   sendCommand(command: Command): void {
     if (this.role !== 'client') return;
     const hostConn = this.connections.get(1);
-    if (hostConn) this.safeSend(hostConn, { type: 'command', data: command });
+    if (hostConn) {
+      this.safeSend(hostConn, {
+        type: 'command',
+        gameId: this.getUniversalGameId(),
+        data: command,
+      });
+    }
+  }
+
+  consumePendingState(): NetworkServerSnapshot | null {
+    const state = this.pendingReceivedState;
+    this.pendingReceivedState = null;
+    return state;
   }
 
   // Start the game (host only)
@@ -706,15 +845,31 @@ export class NetworkManager {
     if (this.role !== 'host') return;
     this.gameStarted = true;
 
-    let playerIds = Array.from(this.players.keys()).sort((a, b) => a - b);
+    let playerIds = this.getGamePlayerIds();
 
     // Single player mode: spawn 2 commanders so player can toggle between sides
     if (playerIds.length === 1) {
       playerIds = [1, 2];
     }
 
-    this.broadcast({ type: 'gameStart', playerIds });
-    this.onGameStart?.(playerIds);
+    const handoff = this.buildBattleHandoff(playerIds);
+    this.applyBattleHandoff(handoff);
+
+    this.broadcast({
+      type: 'gameStart',
+      gameId: handoff.gameId,
+      playerIds: handoff.playerIds,
+      handoff,
+    });
+    this.onGameStart?.(handoff);
+  }
+
+  private getGamePlayerIds(): PlayerId[] {
+    const ids = new Set<PlayerId>([1 as PlayerId]);
+    for (const [playerId, conn] of this.connections) {
+      if (conn.open) ids.add(playerId);
+    }
+    return Array.from(ids).sort((a, b) => a - b);
   }
 
   // Getters
@@ -724,6 +879,10 @@ export class NetworkManager {
 
   getRoomCode(): string {
     return this.roomCode;
+  }
+
+  getUniversalGameId(): string {
+    return roomCodeToGameId(this.roomCode);
   }
 
   getLocalPlayerId(): PlayerId {
@@ -762,6 +921,7 @@ export class NetworkManager {
     this.role = null;
     this.gameStarted = false;
     this.players.clear();
+    this.pendingReceivedState = null;
 
     // Clear all callbacks to release closure references
     this.onPlayerJoined = undefined;

@@ -8,11 +8,16 @@ import { networkManager } from '../network/NetworkManager';
 export class RemoteGameConnection implements GameConnection {
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
+  private pendingSnapshot: NetworkServerSnapshot | null = null;
 
   constructor() {
     // Wire NetworkManager's state received callback
     networkManager.onStateReceived = (state: NetworkServerSnapshot) => {
-      this.snapshotCallback?.(state);
+      if (this.snapshotCallback) {
+        this.snapshotCallback(state);
+      } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
+        this.pendingSnapshot = state;
+      }
 
       // Check for game over in received state
       if (state.gameState?.phase === 'gameOver' && state.gameState.winnerId !== undefined) {
@@ -27,6 +32,13 @@ export class RemoteGameConnection implements GameConnection {
 
   onSnapshot(callback: SnapshotCallback): void {
     this.snapshotCallback = callback;
+    const pendingFromNetworkManager = networkManager.consumePendingState();
+    const pending = !this.pendingSnapshot ||
+      (this.pendingSnapshot.isDelta && pendingFromNetworkManager && !pendingFromNetworkManager.isDelta)
+      ? pendingFromNetworkManager
+      : this.pendingSnapshot;
+    this.pendingSnapshot = null;
+    if (pending) callback(pending);
   }
 
   onSimEvent(_callback: SimEventCallback): void {
@@ -40,6 +52,7 @@ export class RemoteGameConnection implements GameConnection {
   disconnect(): void {
     this.snapshotCallback = null;
     this.gameOverCallback = null;
+    this.pendingSnapshot = null;
     networkManager.onStateReceived = undefined;
   }
 }

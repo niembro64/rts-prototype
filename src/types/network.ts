@@ -54,14 +54,16 @@ import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2, Vec3 } from './vec2';
 import type { TerrainShape } from './terrain';
 
+export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
+
 // Client → Server
 export type NetworkPlayerActionMessage =
-  | { type: 'command'; data: Command }
+  | { type: 'command'; gameId?: string; data: Command }
   // Client reports its own IP / location / timezone to the host.
   // The host updates the local LobbyPlayer record and re-broadcasts
   // (see `playerInfoUpdate` below) so every connected client sees
   // the same player list with IP + location columns populated.
-  | { type: 'playerInfo'; ipAddress?: string; location?: string; timezone?: string }
+  | { type: 'playerInfo'; gameId?: string; ipAddress?: string; location?: string; timezone?: string }
   // Heartbeat ping. Both directions (client→host AND host→client)
   // — every peer sends one every couple seconds while the GAME
   // LOBBY is alive, and every peer monitors what it's received
@@ -69,7 +71,7 @@ export type NetworkPlayerActionMessage =
   // its connection forcibly closed, which triggers the regular
   // `playerLeft` cleanup. Catches silent disconnects (frozen
   // tabs, network drops) that don't fire PeerJS's `close` event.
-  | { type: 'heartbeat'; playerId: PlayerId };
+  | { type: 'heartbeat'; gameId?: string; playerId: PlayerId };
 
 // Host → Client lobby-settings sync. Carries the host's
 // pre-game choices (terrain shape today, extensible to other
@@ -88,17 +90,17 @@ export type LobbySettings = {
 
 // Server → Client
 export type NetworkServerSnapshotMessage =
-  | { type: 'state'; data: NetworkServerSnapshot | string | Uint8Array | ArrayBuffer }
-  | { type: 'playerAssignment'; playerId: PlayerId }
-  | { type: 'gameStart'; playerIds: PlayerId[] }
-  | { type: 'playerJoined'; playerId: PlayerId; playerName: string }
-  | { type: 'playerLeft'; playerId: PlayerId }
-  | { type: 'lobbySettings'; settings: LobbySettings }
+  | { type: 'state'; gameId?: string; data: NetworkServerSnapshot | string | Uint8Array | ArrayBuffer }
+  | { type: 'playerAssignment'; playerId: PlayerId; gameId?: string }
+  | { type: 'gameStart'; playerIds: PlayerId[]; gameId?: string; handoff?: BattleHandoff }
+  | { type: 'playerJoined'; gameId?: string; playerId: PlayerId; playerName: string }
+  | { type: 'playerLeft'; gameId?: string; playerId: PlayerId }
+  | { type: 'lobbySettings'; gameId?: string; settings: LobbySettings }
   // Host fans a player's IP + location out to every connected
   // client (whoever just resolved their ipapi.co lookup, or a
   // back-fill on `playerJoined` for late-joiners). Carries
   // playerId so receivers can match it to their player list.
-  | { type: 'playerInfoUpdate'; playerId: PlayerId; ipAddress?: string; location?: string; timezone?: string };
+  | { type: 'playerInfoUpdate'; gameId?: string; playerId: PlayerId; ipAddress?: string; location?: string; timezone?: string };
 
 // Combined (transport envelope)
 export type NetworkMessage = NetworkPlayerActionMessage | NetworkServerSnapshotMessage;
@@ -383,6 +385,15 @@ export type LobbyPlayer = {
    *  player's CURRENT local time + timezone abbreviation in
    *  the lobby roster, ticking live in their own browser. */
   timezone?: string;
+};
+
+export type BattleHandoff = {
+  protocol: typeof BATTLE_HANDOFF_PROTOCOL;
+  gameId: string;
+  roomCode: string;
+  hostPlayerId: PlayerId;
+  playerIds: PlayerId[];
+  players: LobbyPlayer[];
 };
 
 export type NetworkRole = 'host' | 'client';

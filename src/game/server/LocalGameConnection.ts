@@ -4,18 +4,28 @@ import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallba
 import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
+import type { NetworkServerSnapshot } from '../network/NetworkTypes';
+
+function cloneSnapshot(state: NetworkServerSnapshot): NetworkServerSnapshot {
+  return structuredClone(state) as NetworkServerSnapshot;
+}
 
 export class LocalGameConnection implements GameConnection {
   private server: GameServer;
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
+  private pendingSnapshot: NetworkServerSnapshot | null = null;
 
-  constructor(server: GameServer, playerId: PlayerId = 1) {
+  constructor(server: GameServer, playerId?: PlayerId) {
     this.server = server;
 
     // Wire server snapshot emissions to this connection
     server.addSnapshotListener((state) => {
-      this.snapshotCallback?.(state);
+      if (this.snapshotCallback) {
+        this.snapshotCallback(state);
+      } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
+        this.pendingSnapshot = cloneSnapshot(state);
+      }
     }, playerId);
 
     server.addGameOverListener((winnerId) => {
@@ -29,6 +39,11 @@ export class LocalGameConnection implements GameConnection {
 
   onSnapshot(callback: SnapshotCallback): void {
     this.snapshotCallback = callback;
+    if (this.pendingSnapshot) {
+      const pending = this.pendingSnapshot;
+      this.pendingSnapshot = null;
+      callback(pending);
+    }
   }
 
   onSimEvent(_callback: SimEventCallback): void {
@@ -42,5 +57,6 @@ export class LocalGameConnection implements GameConnection {
   disconnect(): void {
     this.snapshotCallback = null;
     this.gameOverCallback = null;
+    this.pendingSnapshot = null;
   }
 }

@@ -30,6 +30,7 @@ import type { StatsSnapshot } from './combatStatsUtils';
 import {
   networkManager,
   type NetworkRole,
+  type BattleHandoff,
 } from '../game/network/NetworkManager';
 import {
   getMapSize,
@@ -1184,8 +1185,8 @@ async function handleHost(): Promise<void> {
     isConnecting.value = true;
     lobbyError.value = null;
 
-    const code = await networkManager.hostGame();
-    roomCode.value = code;
+    await networkManager.hostGame();
+    roomCode.value = networkManager.getRoomCode();
     isHost.value = true;
     networkRole.value = 'host';
     localPlayerId.value = 1;
@@ -1244,7 +1245,7 @@ async function handleJoin(code: string): Promise<void> {
     setupNetworkCallbacks();
 
     await networkManager.joinGame(code);
-    roomCode.value = code;
+    roomCode.value = networkManager.getRoomCode();
     isHost.value = false;
 
     // Same eager-report rule as `handleHost` above — timezone is
@@ -1548,8 +1549,10 @@ function setupNetworkCallbacks(): void {
     activePlayer.value = playerId;
   };
 
-  networkManager.onGameStart = (playerIds: PlayerId[]) => {
-    startGameWithPlayers(playerIds);
+  networkManager.onGameStart = (handoff: BattleHandoff) => {
+    roomCode.value = handoff.roomCode;
+    lobbyPlayers.value = handoff.players.map((player) => ({ ...player }));
+    startGameWithPlayers(handoff.playerIds);
   };
 
   networkManager.onError = (error: string) => {
@@ -1615,6 +1618,10 @@ function applyLobbySettingsFromHost(settings: {
 async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
   showLobby.value = false;
   gameStarted.value = true;
+  if (networkRole.value !== null) {
+    localPlayerId.value = networkManager.getLocalPlayerId();
+    activePlayer.value = localPlayerId.value;
+  }
 
   // Stop the background battle first
   stopBackgroundBattle();
