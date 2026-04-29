@@ -67,6 +67,7 @@ export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
  *  lake is deep enough to flood meaningfully under WATER_LEVEL=0.5
  *  and a mountain is tall enough to actually block sightlines. */
 const TERRAIN_SHAPE_MAGNITUDE = 750;
+export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Mutable amplitude for the central ripple zone. Negative = basin
  *  (lake), positive = peak (mountain), 0 = flat. Default 'lake'.

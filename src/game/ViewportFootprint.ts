@@ -21,6 +21,12 @@ import type { RenderMode } from '@/types/graphics';
 import { getRenderMode } from '@/clientBarConfig';
 
 export type Vec2 = { x: number; y: number };
+export type FootprintBounds = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
 
 /** 4 world-space points (sim x / y) in screen order: TL, TR, BR, BL. */
 export type FootprintQuad = readonly [Vec2, Vec2, Vec2, Vec2];
@@ -41,9 +47,13 @@ export class ViewportFootprint {
   private paddedExtra = 0;
 
   /** Update the footprint from 4 world-space corners (same as the
-   *  minimap's cameraQuad). Also refreshes the current render mode
-   *  from clientBarConfig so inScope() checks it atomically. */
-  setQuad(quad: FootprintQuad): void {
+   *  minimap's cameraQuad). `scopeBounds`, when supplied, is a more
+   *  conservative culling AABB than the visible ground-plane quad:
+   *  3D terrain can sit far above/below y=0, so RtsScene3D expands
+   *  the scope from a vertical height band while leaving `_quad`
+   *  unchanged for minimap drawing. Also refreshes the current render
+   *  mode from clientBarConfig so inScope() checks it atomically. */
+  setQuad(quad: FootprintQuad, scopeBounds?: FootprintBounds): void {
     this._quad = quad;
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
@@ -52,6 +62,12 @@ export class ViewportFootprint {
       if (p.x > maxX) maxX = p.x;
       if (p.y < minY) minY = p.y;
       if (p.y > maxY) maxY = p.y;
+    }
+    if (scopeBounds) {
+      minX = Math.min(minX, scopeBounds.minX);
+      maxX = Math.max(maxX, scopeBounds.maxX);
+      minY = Math.min(minY, scopeBounds.minY);
+      maxY = Math.max(maxY, scopeBounds.maxY);
     }
     this.minX = minX; this.maxX = maxX;
     this.minY = minY; this.maxY = maxY;

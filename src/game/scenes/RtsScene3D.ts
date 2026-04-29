@@ -33,6 +33,7 @@ import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
  *  across the whole shared pool — legs aren't team-tinted. */
 const LEG_COLOR = 0x2a2f36;
 import { ViewportFootprint } from '../ViewportFootprint';
+import type { FootprintBounds, FootprintQuad } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { Explosion3D } from '../render3d/Explosion3D';
@@ -52,7 +53,12 @@ import {
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { getPlayerBaseAngle } from '../sim/spawn';
-import { getTerrainHeight } from '../sim/Terrain';
+import {
+  getTerrainHeight,
+  setTerrainTeamCount,
+  TERRAIN_MAX_RENDER_Y,
+  TILE_FLOOR_Y,
+} from '../sim/Terrain';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
 import { SelectionLabel3D } from '../render3d/SelectionLabel3D';
@@ -63,7 +69,6 @@ import type {
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
 import { getPlayerPrimaryColor, setLocalPlayerForColors, setPlayerCountForColors } from '../sim/types';
-import { setTerrainTeamCount } from '../sim/Terrain';
 import type {
   Entity,
   EntityId,
@@ -81,6 +86,18 @@ import {
   ZOOM_INITIAL_GAME,
   ZOOM_INITIAL_DEMO,
 } from '../../config';
+
+const RENDER_SCOPE_AERIAL_HEADROOM_Y = 700;
+const RENDER_SCOPE_PLANE_Y = [
+  TILE_FLOOR_Y,
+  0,
+  TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
+] as const;
+const RENDER_SCOPE_NDC_SAMPLES = [
+  [-1,  1], [0,  1], [1,  1],
+  [-1,  0], [0,  0], [1,  0],
+  [-1, -1], [0, -1], [1, -1],
+] as const;
 
 export type RtsScene3DConfig = {
   playerIds: PlayerId[];
@@ -226,13 +243,18 @@ export class RtsScene3D {
   private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
   private longtaskTracker = new LongtaskTracker();
 
-  // Reusable raycaster + ground plane for projecting viewport corners
-  // onto the world when building the minimap footprint. Allocated once;
-  // every updateMinimapData() reuses them.
+  // Reusable raycaster + horizontal-plane scratch for projecting
+  // viewport samples into world/sim space. Allocated once; every
+  // frame reuses them for the minimap quad and render scope.
   private _minimapRay = new THREE.Raycaster();
-  private _minimapGround = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private _minimapNdc = new THREE.Vector2();
   private _minimapHit = new THREE.Vector3();
+  private _renderScopeBounds: FootprintBounds = {
+    minX: -Infinity,
+    maxX: Infinity,
+    minY: -Infinity,
+    maxY: Infinity,
+  };
 
   // UI update throttling (mirror RtsScene)
   private selectionDirty = true;
@@ -700,7 +722,10 @@ export class RtsScene3D {
     // without re-querying camera state or getRenderMode(). The same
     // quad feeds the minimap (see updateMinimapData).
     this._cameraQuad = this.computeCameraQuad();
-    this.renderScope.setQuad(this._cameraQuad);
+    this.renderScope.setQuad(
+      this._cameraQuad,
+      this.computeRenderScopeBounds(this._cameraQuad),
+    );
     // Emit the quad every frame — the minimap's camera box reads
     // this directly so it stays pinned to the view regardless of
     // the (throttled) entity-list refresh.
@@ -1207,22 +1232,67 @@ export class RtsScene3D {
     { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
   ];
 
+  private computeRenderScopeBounds(
+    baseQuad: FootprintQuad,
+  ): FootprintBounds {
+    const b = this._renderScopeBounds;
+    b.minX = Infinity;
+    b.maxX = -Infinity;
+    b.minY = Infinity;
+    b.maxY = -Infinity;
+    const include = (p: { x: number; y: number }) => {
+      if (p.x < b.minX) b.minX = p.x;
+      if (p.x > b.maxX) b.maxX = p.x;
+      if (p.y < b.minY) b.minY = p.y;
+      if (p.y > b.maxY) b.maxY = p.y;
+    };
+
+    for (const p of baseQuad) include(p);
+
+    // WIN/PAD culling must be conservative in 3D. The minimap quad is
+    // intentionally the y=0 ground-plane footprint, but visible units
+    // can stand on mountains above that plane or on lowered/water
+    // terrain below it. Sample a small NDC grid against the world
+    // height band and use the AABB of those intersections for CPU
+    // scope tests. That keeps "window" mode from popping hilltop
+    // units as the camera pitches or yaws.
+    for (const [ndcX, ndcY] of RENDER_SCOPE_NDC_SAMPLES) {
+      for (const planeY of RENDER_SCOPE_PLANE_Y) {
+        include(this.pointOnHorizontalPlane(ndcX, ndcY, planeY));
+      }
+    }
+
+    return b;
+  }
+
   /** Project a viewport corner (in NDC: x,y ∈ [-1,1]) onto the y=0
    *  ground plane. When the corner ray points above the horizon (no
    *  intersection with positive t), fall back to a point far along
    *  the ray's ground-plane projection so the minimap still draws a
    *  non-degenerate quad. */
   private cornerOnGround(ndcX: number, ndcY: number): { x: number; y: number } {
+    return this.pointOnHorizontalPlane(ndcX, ndcY, 0);
+  }
+
+  private pointOnHorizontalPlane(
+    ndcX: number,
+    ndcY: number,
+    worldY: number,
+  ): { x: number; y: number } {
     this._minimapNdc.set(ndcX, ndcY);
     this._minimapRay.setFromCamera(this._minimapNdc, this.threeApp.camera);
     const ray = this._minimapRay.ray;
-    // Prefer true ground intersection when the ray actually crosses y=0
-    // ahead of the camera (t > 0). For near-horizontal camera pitch the
-    // upper corners can point above the horizon — in that case, project
-    // the ray's direction onto the XZ plane and step out a big-but-
-    // finite distance so the minimap still gets a quad.
-    if (ray.intersectPlane(this._minimapGround, this._minimapHit)) {
-      return { x: this._minimapHit.x, y: this._minimapHit.z };
+    const denom = ray.direction.y;
+    if (Math.abs(denom) > 1e-6) {
+      const t = (worldY - ray.origin.y) / denom;
+      if (t >= 0) {
+        this._minimapHit.set(
+          ray.origin.x + ray.direction.x * t,
+          worldY,
+          ray.origin.z + ray.direction.z * t,
+        );
+        return { x: this._minimapHit.x, y: this._minimapHit.z };
+      }
     }
     const origin = ray.origin;
     const dir = ray.direction;
