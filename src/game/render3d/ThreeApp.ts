@@ -16,6 +16,18 @@ import {
   ZOOM_MAX,
 } from '../../config';
 
+const MOBILE_PIXEL_RATIO_CAP = 2;
+
+function isMobileLikeBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const uaMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i
+    .test(navigator.userAgent);
+  const coarsePointer = typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+  return uaMobile || (coarsePointer && (navigator.maxTouchPoints ?? 0) > 0);
+}
+
 export class ThreeApp {
   public renderer: THREE.WebGLRenderer;
   public scene: THREE.Scene;
@@ -37,6 +49,9 @@ export class ThreeApp {
   private _nativePixelRatio = 1;
   private _activePixelRatio = 1;
   private _lastPixelRatioAdjustMs = 0;
+  private _dynamicPixelRatioEnabled = true;
+  private _lastCssWidth = 0;
+  private _lastCssHeight = 0;
 
   constructor(
     parent: HTMLElement,
@@ -50,10 +65,15 @@ export class ThreeApp {
     this.scene.background = new THREE.Color(backgroundColor);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    const mobileLike = isMobileLikeBrowser();
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
-    this._activePixelRatio = this._nativePixelRatio;
+    this._dynamicPixelRatioEnabled = !mobileLike;
+    this._activePixelRatio = mobileLike
+      ? Math.min(this._nativePixelRatio, MOBILE_PIXEL_RATIO_CAP)
+      : this._nativePixelRatio;
     this.renderer.setPixelRatio(this._activePixelRatio);
-    this.renderer.setSize(width, height);
+    this.camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000);
+    this.resizeRenderer(width, height);
     this.renderer.shadowMap.enabled = false;
     parent.appendChild(this.renderer.domElement);
 
@@ -73,8 +93,6 @@ export class ThreeApp {
       }
     });
     pmrem.dispose();
-
-    this.camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000);
 
     // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
     // region of the map as the 2D camera at its default zoom. Min/max distance
@@ -129,9 +147,7 @@ export class ThreeApp {
       for (const entry of entries) {
         const { width: w, height: h } = entry.contentRect;
         if (w > 0 && h > 0) {
-          this.renderer.setSize(w, h);
-          this.camera.aspect = w / h;
-          this.camera.updateProjectionMatrix();
+          this.resizeRenderer(w, h);
         }
       }
     });
@@ -171,6 +187,11 @@ export class ThreeApp {
   }
 
   private adjustPixelRatio(now: number, frameDeltaMs: number): void {
+    // Mobile browsers, especially Edge/Chromium shells on high-DPR
+    // phones, can visibly flash the entire WebGL canvas when the
+    // backing buffer is reallocated by setPixelRatio()+setSize(). Keep
+    // mobile DPR stable; desktop keeps the adaptive quality loop.
+    if (!this._dynamicPixelRatioEnabled) return;
     if (this._nativePixelRatio <= 1) return;
     if (now - this._lastPixelRatioAdjustMs < 750) return;
 
@@ -190,7 +211,23 @@ export class ThreeApp {
     this._lastPixelRatioAdjustMs = now;
     this.renderer.setPixelRatio(this._activePixelRatio);
     const canvas = this.renderer.domElement;
-    this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    this.resizeRenderer(canvas.clientWidth, canvas.clientHeight, false, true);
+  }
+
+  private resizeRenderer(
+    width: number,
+    height: number,
+    updateStyle = true,
+    force = false,
+  ): void {
+    const w = Math.max(1, Math.round(width));
+    const h = Math.max(1, Math.round(height));
+    if (!force && w === this._lastCssWidth && h === this._lastCssHeight) return;
+    this._lastCssWidth = w;
+    this._lastCssHeight = h;
+    this.renderer.setSize(w, h, updateStyle);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
   }
 
   stop(): void {
