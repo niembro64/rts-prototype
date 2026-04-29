@@ -209,5 +209,5 @@ export const SERVER_SIM_HYSTERESIS: ServerSimHysteresis = {
 //     converted into lower headroom for the LOD ladder.
 export const SERVER_SIM_LOD_EMA_SOURCE: ServerSimEmaSource = {
   tps: 'avg',
-  cpu: 'low',
+  cpu: 'avg',
 };

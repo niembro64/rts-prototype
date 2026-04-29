@@ -115,7 +115,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // damage of its own, no splash. Slightly heavier so the arc
     // matches a "bigger payload" look.
     mass: 80,
-    collision: { radius: 5 },
+    collision: { radius: 6 },
     detonateOnExpiry: true,
     lifespan: 3000,
     // Per projectile instance, roll max lifespan within ±10% of lifespan.
