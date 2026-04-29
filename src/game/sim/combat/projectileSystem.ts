@@ -7,9 +7,9 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
-import { getTransformCosSin, applyHomingSteering, getBarrelTip, countBarrels } from '../../math';
+import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, BEAM_MAX_LENGTH } from '../../../config';
-import { resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
+import { computeTurretPointVelocity, getEntityVelocity3, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { spatialGrid } from '../SpatialGrid';
@@ -87,6 +87,8 @@ let _packedProjectileTimeAlive = new Float64Array(0);
 let _packedProjectileHasGravity = new Uint8Array(0);
 const _packedProjectileEntities: Entity[] = [];
 const _packedProjectileSlots = new Map<EntityId, number>();
+const _fireMuzzleVelocity = { x: 0, y: 0, z: 0 };
+const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 
 function turretMaskIncludes(mask: number | undefined, index: number): boolean {
   if (mask === undefined) return true;
@@ -453,22 +455,20 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           let projVx = dirX * speed;
           let projVy = dirY * speed;
           let projVz = dirZ * speed;
-          if (world.projVelInherit && unit.unit) {
-            // Unit linear velocity (3D — vertical inheritance handles
-            // falling/jumping units firing while airborne).
-            projVx += unit.unit.velocityX ?? 0;
-            projVy += unit.unit.velocityY ?? 0;
-            projVz += unit.unit.velocityZ ?? 0;
-            // Turret rotational velocity at fire point (tangential =
-            // omega × horizontal-lever-arm). Use the actual horizontal
-            // distance from the turret pivot to the barrel tip so
-            // orbit-offset barrels on a rotating turret inherit the
-            // correct tangential velocity.
-            const dxMount = spawnX - weaponX;
-            const dyMount = spawnY - weaponY;
-            const omega = weapon.angularVelocity;
-            projVx += -dyMount * omega;
-            projVy += dxMount * omega;
+          if (world.projVelInherit) {
+            // Inherit the turret muzzle's own 3D velocity, not just
+            // the carrier unit's velocity. The mount velocity is
+            // cached from world-position deltas; yaw/pitch angular
+            // velocity adds the barrel-tip tangential component.
+            const inherited = computeTurretPointVelocity(
+              weapon,
+              weaponX, weaponY, mountZ,
+              spawnX, spawnY, spawnZ,
+              _fireMuzzleVelocity,
+            );
+            projVx += inherited.x;
+            projVy += inherited.y;
+            projVz += inherited.z;
           }
           const projectile = world.createProjectile(
             spawnX,
@@ -657,12 +657,13 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       }
     }
 
-    // Homing rotates the full 3D velocity vector toward the target
-    // each tick (Rodrigues rotation around v×d, clamped to
-    // homingTurnRate·dt radians). `homingTarget.transform.x/y/z` is
-    // read LIVE — rockets always chase the unit's current position,
-    // not where it was when the rocket was fired. Speed is preserved,
-    // so the missile "steers" like a thrust-guided weapon.
+    // Homing rotates the full 3D velocity vector toward a live
+    // intercept point (Rodrigues rotation around v×d, clamped to
+    // homingTurnRate·dt radians). The target's current 3D position
+    // and 3D velocity are read every tick, so rockets steer toward
+    // where the target is likely to be instead of chasing stale
+    // center points. Speed is preserved, so the missile still behaves
+    // like a thrust-guided weapon.
     //
     // Rocket-class shots (ignoresGravity=true) take an additional
     // seeker-behavior step: if the locked target dies or leaves the
@@ -689,9 +690,36 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         }
       }
       if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
+        let steerX = homingTarget.transform.x;
+        let steerY = homingTarget.transform.y;
+        let steerZ = homingTarget.transform.z;
+        const targetVelocity = getEntityVelocity3(homingTarget, _homingTargetVelocity);
+        const targetSpeedSq =
+          targetVelocity.x * targetVelocity.x +
+          targetVelocity.y * targetVelocity.y +
+          targetVelocity.z * targetVelocity.z;
+        const projectileSpeed = Math.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
+        if (targetSpeedSq > 1e-6 && projectileSpeed > 1e-6) {
+          const tLead = computeInterceptTime(
+            steerX - entity.transform.x,
+            steerY - entity.transform.y,
+            steerZ - entity.transform.z,
+            targetVelocity.x, targetVelocity.y, targetVelocity.z,
+            projectileSpeed,
+          );
+          if (tLead > 0) {
+            const remainingSec = Number.isFinite(proj.maxLifespan)
+              ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
+              : tLead;
+            const leadT = remainingSec > 0 ? Math.min(tLead, remainingSec) : tLead;
+            steerX += targetVelocity.x * leadT;
+            steerY += targetVelocity.y * leadT;
+            steerZ += targetVelocity.z * leadT;
+          }
+        }
         const steered = applyHomingSteering(
           proj.velocityX, proj.velocityY, proj.velocityZ,
-          homingTarget.transform.x, homingTarget.transform.y, homingTarget.transform.z,
+          steerX, steerY, steerZ,
           entity.transform.x, entity.transform.y, entity.transform.z,
           proj.homingTurnRate ?? 0, dtSec,
         );

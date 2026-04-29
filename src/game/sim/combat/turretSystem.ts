@@ -22,7 +22,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
-import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
+import { computeTurretPointVelocity, getEntityVelocity3, getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
 import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
 import {
@@ -36,6 +36,8 @@ import {
 const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
 const TURRET_MASK_MAX_INDEX = 30;
+const _targetVelocity = { x: 0, y: 0, z: 0 };
+const _muzzleVelocity = { x: 0, y: 0, z: 0 };
 
 function turretMaskIncludes(mask: number | undefined, index: number): boolean {
   if (mask === undefined) return true;
@@ -129,20 +131,14 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           );
 
           // Lead prediction: aim at where the target will be when the
-          // projectile arrives, not where it is now. Skip for:
-          //   - Beams/lasers: instant, no flight time.
-          //   - Homing shots (homingTurnRate > 0): the projectile
-          //     steers mid-flight, so initial aim doesn't need lead.
-          //   - Stationary or non-unit targets: no velocity to lead.
-          // For ballistic arcs we run a single refinement pass using
-          // the horizontal projectile speed (launchSpeed · cos(pitch))
-          // — gravity slows horizontal travel for high-arc shots, so
-          // the straight-line estimate undershoots flight time.
+          // projectile arrives, in the moving turret's frame. That
+          // means the relative velocity is target velocity minus the
+          // turret's own muzzle velocity, not merely the carrier unit's
+          // velocity. For ballistic arcs we run a single refinement
+          // pass using horizontal projectile speed (launchSpeed ·
+          // cos(pitch)) because high arcs spend longer in flight.
           const shot = weapon.config.shot;
-          const tvx = target.unit?.velocityX ?? 0;
-          const tvy = target.unit?.velocityY ?? 0;
-          const tvz = target.unit?.velocityZ ?? 0;
-          const tvMoves = (tvx * tvx + tvy * tvy + tvz * tvz) > 1e-6;
+          const targetVelocity = getEntityVelocity3(target, _targetVelocity);
 
           let aimX = target.transform.x;
           let aimY = target.transform.y;
@@ -171,37 +167,53 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
 
           if (shot.type === 'projectile') {
             const launchSpeed = shot.launchForce / shot.mass;
-            const isHoming = (shot.homingTurnRate ?? 0) > 0;
+            const muzzleVelocity = _muzzleVelocity;
+            if (world.projVelInherit) {
+              computeTurretPointVelocity(
+                weapon,
+                weaponX, weaponY, mountZ,
+                tipRef.x, tipRef.y, tipRef.z,
+                muzzleVelocity,
+              );
+            } else {
+              muzzleVelocity.x = 0;
+              muzzleVelocity.y = 0;
+              muzzleVelocity.z = 0;
+            }
+            const relVx = targetVelocity.x - muzzleVelocity.x;
+            const relVy = targetVelocity.y - muzzleVelocity.y;
+            const relVz = targetVelocity.z - muzzleVelocity.z;
+            const relMoves = (relVx * relVx + relVy * relVy + relVz * relVz) > 1e-6;
 
-            if (!isHoming && tvMoves) {
+            if (relMoves) {
               const dxT = target.transform.x - tipRef.x;
               const dyT = target.transform.y - tipRef.y;
               const dzT = target.transform.z - tipRef.z;
 
               // First pass — closed-form intercept assuming straight-
-              // line projectile speed.
-              let tIntercept = computeInterceptTime(dxT, dyT, dzT, tvx, tvy, tvz, launchSpeed);
+              // line projectile speed in the turret's moving frame.
+              let tIntercept = computeInterceptTime(dxT, dyT, dzT, relVx, relVy, relVz, launchSpeed);
 
               // Second pass — refine using the ballistic horizontal
               // speed (gravity drag on the arc). Only meaningful for
               // gravity-affected shots; ignoresGravity shots stay flat.
               if (tIntercept > 0 && !shot.ignoresGravity) {
-                const px = target.transform.x + tvx * tIntercept;
-                const py = target.transform.y + tvy * tIntercept;
-                const pz = target.transform.z + tvz * tIntercept;
+                const px = target.transform.x + relVx * tIntercept;
+                const py = target.transform.y + relVy * tIntercept;
+                const pz = target.transform.z + relVz * tIntercept;
                 const horizD = Math.hypot(px - tipRef.x, py - tipRef.y);
                 const heightD = pz - tipRef.z;
                 const pitch0 = solveBallisticPitch(
                   horizD, heightD, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
                 );
                 const horizSpeed = launchSpeed * Math.max(Math.cos(pitch0), 0.1);
-                const tRefined = computeInterceptTime(dxT, dyT, dzT, tvx, tvy, tvz, horizSpeed);
+                const tRefined = computeInterceptTime(dxT, dyT, dzT, relVx, relVy, relVz, horizSpeed);
                 if (tRefined > 0) tIntercept = tRefined;
               }
 
-              aimX = target.transform.x + tvx * tIntercept;
-              aimY = target.transform.y + tvy * tIntercept;
-              aimZ = target.transform.z + tvz * tIntercept;
+              aimX = target.transform.x + relVx * tIntercept;
+              aimY = target.transform.y + relVy * tIntercept;
+              aimZ = target.transform.z + relVz * tIntercept;
               targetAngle = Math.atan2(aimY - weaponY, aimX - weaponX);
             }
 

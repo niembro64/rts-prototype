@@ -205,10 +205,24 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         weapon.offset.x, weapon.offset.y, getTurretMountHeight(unit, i),
         surfaceN,
       );
+      const prevPos = weapon.worldPos;
+      const prevTick = weapon.worldPosTick;
       if (!weapon.worldPos) weapon.worldPos = { x: 0, y: 0, z: 0 };
+      if (!weapon.worldVelocity) weapon.worldVelocity = { x: 0, y: 0, z: 0 };
+      if (prevPos && prevTick !== undefined && tick > prevTick && dtMs > 0) {
+        const invElapsedSec = 1000 / (dtMs * (tick - prevTick));
+        weapon.worldVelocity.x = (mount.x - prevPos.x) * invElapsedSec;
+        weapon.worldVelocity.y = (mount.y - prevPos.y) * invElapsedSec;
+        weapon.worldVelocity.z = (mount.z - prevPos.z) * invElapsedSec;
+      } else {
+        weapon.worldVelocity.x = 0;
+        weapon.worldVelocity.y = 0;
+        weapon.worldVelocity.z = 0;
+      }
       weapon.worldPos.x = mount.x;
       weapon.worldPos.y = mount.y;
       weapon.worldPos.z = mount.z;
+      weapon.worldPosTick = tick;
     }
 
     // Check for attack command priority target

@@ -7,11 +7,14 @@ import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin, getBarrelTip } from '../math';
 import { getTurretWorldMount } from '../math/MountGeometry';
-import { getTurretMountHeight } from './combat/combatUtils';
+import { computeTurretPointVelocity, getTurretMountHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions } from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
+
+const _dgunFallbackMountVelocity = { x: 0, y: 0, z: 0 };
+const _dgunMuzzleVelocity = { x: 0, y: 0, z: 0 };
 
 export type { CommandContext } from '@/types/ui';
 import type { CommandContext } from '@/types/ui';
@@ -286,16 +289,25 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const speed = dgunShot.type === 'projectile' ? dgunShot.launchForce / dgunShot.mass : 350;
   let velocityX = tip.dirX * speed;
   let velocityY = tip.dirY * speed;
+  let velocityZ = tip.dirZ * speed;
   if (ctx.world.projVelInherit && commander.unit) {
-    // Unit linear velocity
-    velocityX += commander.unit.velocityX ?? 0;
-    velocityY += commander.unit.velocityY ?? 0;
-    // Turret rotational velocity at fire point (tangential = omega × lever arm).
-    const barrelDx = tip.x - mount.x;
-    const barrelDy = tip.y - mount.y;
-    const omega = dgunTurret.angularVelocity;
-    velocityX += -barrelDy * omega;
-    velocityY += barrelDx * omega;
+    // Manual D-gun shots may not have passed through the normal
+    // targeting cache this tick, so fall back to the commander body's
+    // current 3D velocity for the mount and still add the turret's own
+    // yaw/pitch tangential muzzle motion.
+    _dgunFallbackMountVelocity.x = commander.unit.velocityX ?? 0;
+    _dgunFallbackMountVelocity.y = commander.unit.velocityY ?? 0;
+    _dgunFallbackMountVelocity.z = commander.unit.velocityZ ?? 0;
+    const inherited = computeTurretPointVelocity(
+      dgunTurret,
+      mount.x, mount.y, mount.z,
+      tip.x, tip.y, tip.z,
+      _dgunMuzzleVelocity,
+      _dgunFallbackMountVelocity,
+    );
+    velocityX += inherited.x;
+    velocityY += inherited.y;
+    velocityZ += inherited.z;
   }
 
   // Create D-gun projectile
@@ -309,6 +321,12 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     dgunTurret.config
   );
 
+  projectile.transform.z = dgunFireZ;
+  if (projectile.projectile) {
+    projectile.projectile.velocityZ = velocityZ;
+    projectile.projectile.lastSentVelZ = velocityZ;
+  }
+
   ctx.world.addEntity(projectile);
 
   // Emit projectile spawn event for D-gun. Spawn pos + altitude came
@@ -318,7 +336,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     id: projectile.id,
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },
     rotation: fireAngle,
-    velocity: { x: velocityX, y: velocityY, z: 0 },
+    velocity: { x: velocityX, y: velocityY, z: velocityZ },
     projectileType: 'projectile',
     turretId: 'dgunTurret',
     playerId,

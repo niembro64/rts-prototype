@@ -355,7 +355,17 @@ export type Turret = {
   turnAccel: number;
   drag: number;
   offset: Vec2;
+  /** Cached authoritative world-space mount position, written by the
+   *  server targeting pass. This is sim-only hot-path state; snapshots
+   *  still serialize offset/rotation/pitch, not this derived value. */
   worldPos?: Vec3;
+  /** Cached world-space mount velocity computed from worldPos deltas.
+   *  This is the turret's own 3D motion, not just the carrier unit's
+   *  velocity, so moving/tilted/offset mounts feed projectile lead and
+   *  inherited muzzle velocity correctly. */
+  worldVelocity?: Vec3;
+  /** Simulation tick corresponding to worldPos/worldVelocity. */
+  worldPosTick?: number;
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
   /** Round-robin pointer across the physical barrels on this turret.

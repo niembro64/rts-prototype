@@ -280,8 +280,6 @@ export function leftSideConfigsForStyle(style: LegStyle, radius: number): Arachn
     const lowerLen = upperLen * 1.2;
     return [
       { attachOffsetX:  radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen,        lowerLegLength: lowerLen,        snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-      { attachOffsetX:  radius * 0.1,  attachOffsetY: -radius * 0.25, upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.97 },
-      { attachOffsetX: -radius * 0.1,  attachOffsetY: -radius * 0.4,  upperLegLength: upperLen * 0.95, lowerLegLength: lowerLen * 0.95, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.4,  snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
       { attachOffsetX: -radius * 0.3,  attachOffsetY: -radius * 0.3,  upperLegLength: upperLen,        lowerLegLength: lowerLen,        snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
     ];
   }
@@ -291,8 +289,6 @@ export function leftSideConfigsForStyle(style: LegStyle, radius: number): Arachn
     const lowerLen = upperLen * 1.2;
     return [
       { attachOffsetX:  radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-      { attachOffsetX:  radius * 0.1,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.97 },
-      { attachOffsetX: -radius * 0.1,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.4,  snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
       { attachOffsetX: -radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
     ];
   }
@@ -302,8 +298,6 @@ export function leftSideConfigsForStyle(style: LegStyle, radius: number): Arachn
     const lowerLen = upperLen * 1.1;
     return [
       { attachOffsetX:  radius * 0.25, attachOffsetY: -radius * 0.15, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-      { attachOffsetX:  radius * 0.08, attachOffsetY: -radius * 0.18, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.97 },
-      { attachOffsetX: -radius * 0.08, attachOffsetY: -radius * 0.18, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.4,  snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
       { attachOffsetX: -radius * 0.25, attachOffsetY: -radius * 0.15, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
     ];
   }
@@ -316,14 +310,12 @@ export function leftSideConfigsForStyle(style: LegStyle, radius: number): Arachn
       { attachOffsetX: -radius * 0.4,  attachOffsetY: -radius * 0.5,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
     ];
   }
-  // Default: widow (4 legs per side)
+  // Default: widow (2 legs per side)
   const legLength = radius * 1.9;
   const upperLen = legLength * 0.55;
   const lowerLen = upperLen * 1.2;
   return [
     { attachOffsetX:  radius * 0.4,  attachOffsetY: -radius * 0.4,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-    { attachOffsetX:  radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.65, snapTargetAngle: -Math.PI * 0.39, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.97 },
-    { attachOffsetX: -radius * 0.15, attachOffsetY: -radius * 0.45, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.89, snapTargetAngle: -Math.PI * 0.4,  snapDistanceMultiplier: 0.71, extensionThreshold: 0.98 },
     { attachOffsetX: -radius * 0.4,  attachOffsetY: -radius * 0.4,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
   ];
 }

@@ -3,8 +3,8 @@
 // upper-leg cylinders, one for lower-leg cylinders, one for joint
 // spheres). Replaces the old per-leg THREE.Mesh + per-frame
 // setCylinderBetween() pattern, which produced 2 draw calls per leg
-// → 16 per 8-leg arachnid → 8000+ at 500 such units. Joints (full-
-// LOD only) collapse from 3 spheres × 8 legs × N units → 1 shared
+// → 8 per 4-leg unit → 4000+ at 500 such units. Joints (full-
+// LOD only) collapse from 3 spheres × 4 legs × N units → 1 shared
 // InstancedMesh draw.
 //
 // Each leg cylinder is a single instance in one of the two
@@ -36,8 +36,8 @@
 
 import * as THREE from 'three';
 
-/** Pool capacity. With 8 legs per arachnid and ~1000 leg-equipped
- *  units on the map, peak demand is ~8000 upper-leg slots and ~8000
+/** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
+ *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
  *  lower-leg slots. 16384 gives generous headroom; if the cap is
  *  ever hit, alloc() returns -1 and the leg quietly skips rendering
  *  (logic still updates its planted-foot state). */
