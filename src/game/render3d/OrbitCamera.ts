@@ -471,7 +471,7 @@ export class OrbitCamera {
       const center = this.touchCenter(e);
       const dx = center.x - this.touchLastCenterX;
       const dy = center.y - this.touchLastCenterY;
-      this.panByScreenDelta(dx, dy);
+      this.panByTouchScreenDelta(dx, dy);
 
       if (nextMode === 'pinch') {
         const dist = this.touchDistance(e);
@@ -629,6 +629,14 @@ export class OrbitCamera {
     this.toTargetX -= dx * scale * rx - dy * scale * fx;
     this.toTargetZ -= dx * scale * rz - dy * scale * fz;
     this.applyDestinationIfSnap();
+  }
+
+  private panByTouchScreenDelta(dx: number, dy: number): void {
+    // Mobile uses the standard map gesture: the world follows the
+    // finger. The desktop middle-drag helper intentionally moves the
+    // camera with the cursor, so invert touch deltas at this boundary
+    // and leave mouse controls unchanged.
+    this.panByScreenDelta(-dx, -dy);
   }
 
   private rotateYawAroundScreenPoint(clientX: number, clientY: number, yawDelta: number): void {
