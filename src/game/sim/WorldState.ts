@@ -689,7 +689,6 @@ export class WorldState {
       velocityZ: 0,
       timeAlive: 0,
       maxLifespan,
-      hitEntities: new Set(),
       maxHits,
       hasLeftSource: false,
       lastSentVelX: velocityX,

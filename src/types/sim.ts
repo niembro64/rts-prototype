@@ -400,7 +400,7 @@ export type Projectile = {
   targetEntityId?: EntityId;
   obstructionT?: number;
   obstructionTick?: number;
-  hitEntities: Set<EntityId>;
+  hitEntities?: Set<EntityId>;
   maxHits: number;
   hasExploded?: boolean;
   hasLeftSource?: boolean;

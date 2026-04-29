@@ -40,6 +40,14 @@ function getSplashExcludes(proj: { hasLeftSource?: boolean; sourceEntityId: Enti
   return _sourceExcludeSet;
 }
 
+function ensureProjectileHitEntities(proj: { hitEntities?: Set<EntityId> }): Set<EntityId> {
+  return proj.hitEntities ?? (proj.hitEntities = new Set<EntityId>());
+}
+
+function getProjectileHitCount(proj: { hitEntities?: Set<EntityId> }): number {
+  return proj.hitEntities?.size ?? 0;
+}
+
 // Reset collision-specific reusable buffers between game sessions
 // (prevents stale entity references from surviving across sessions)
 export function resetCollisionBuffers(): void {
@@ -532,7 +540,10 @@ export function checkProjectileCollisions(
 
       // Source-entity exit guard: temporarily exclude source from collision while still inside hitbox
       const sourceGuard = !proj.hasLeftSource;
-      if (sourceGuard) proj.hitEntities.add(proj.sourceEntityId);
+      const hitEntities = sourceGuard
+        ? ensureProjectileHitEntities(proj)
+        : (proj.hitEntities ?? _emptyExcludeSet);
+      if (sourceGuard) hitEntities.add(proj.sourceEntityId);
 
       // 3D swept: capsule from prev→current (the projectile's flight
       // path this tick) vs each unit sphere. The swept hit itself
@@ -545,11 +556,11 @@ export function checkProjectileCollisions(
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
         damage: 0,
-        excludeEntities: proj.hitEntities,
+        excludeEntities: hitEntities,
         prev: { x: prevX, y: prevY, z: prevZ },
         current: { x: currentX, y: currentY, z: currentZ },
         radius: projRadius,
-        maxHits: proj.maxHits - proj.hitEntities.size + (sourceGuard ? 1 : 0), // Compensate for phantom guard entry
+        maxHits: proj.maxHits - getProjectileHitCount(proj) + (sourceGuard ? 1 : 0), // Compensate for phantom guard entry
         velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
         projectileMass: projShot.mass,
       });
@@ -560,7 +571,7 @@ export function checkProjectileCollisions(
 
       // Track hits
       for (const hitId of result.hitEntityIds) {
-        proj.hitEntities.add(hitId);
+        ensureProjectileHitEntities(proj).add(hitId);
 
         // Add hit audio event with impact context for directional flame explosions
         // Position at the projectile's location (not the unit's center)
@@ -644,10 +655,10 @@ export function checkProjectileCollisions(
       }
 
       // Clean up source guard (must happen after all damage processing for this projectile)
-      if (sourceGuard) proj.hitEntities.delete(proj.sourceEntityId);
+      if (sourceGuard) proj.hitEntities?.delete(proj.sourceEntityId);
 
       // Remove projectile if max hits reached
-      if (proj.hitEntities.size >= proj.maxHits) {
+      if (getProjectileHitCount(proj) >= proj.maxHits) {
         // Always emit projectileExpire at the projectile's position so it produces a termination explosion
         audioEvents.push({
           type: 'projectileExpire',

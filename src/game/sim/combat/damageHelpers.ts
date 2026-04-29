@@ -256,8 +256,9 @@ export function emitBeamHitAudio(
   audioEvents: SimEvent[],
 ): void {
   if (config.shot.type === 'beam') return; // Skip continuous beams
+  const hitEntities = proj.hitEntities ?? (proj.hitEntities = new Set<EntityId>());
   for (const hitId of hitEntityIds) {
-    if (!proj.hitEntities.has(hitId)) {
+    if (!hitEntities.has(hitId)) {
       const entity = world.getEntity(hitId);
       if (entity) {
         audioEvents.push({
@@ -269,7 +270,7 @@ export function emitBeamHitAudio(
             collisionRadius, entity,
           ),
         });
-        proj.hitEntities.add(hitId);
+        hitEntities.add(hitId);
       }
     }
   }
