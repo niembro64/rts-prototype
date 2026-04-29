@@ -53,7 +53,9 @@ const BARREL_COLOR = 0xffffff;
 // path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
 // (input) Vector3, but never mutates it.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
-const AUTO_MASS_UNIT_RENDER_THRESHOLD = 5000;
+const AUTO_MASS_UNIT_RENDER_THRESHOLD = 1500;
+const MASS_RICH_UNIT_CAP = 192;
+const MASS_RICH_NEAR_RADIUS = 650;
 const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
 const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
 const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
@@ -357,6 +359,8 @@ export class Render3DEntities {
   private unitInstancedEntityBySlot: (EntityId | undefined)[] = [];
   /** Maps entityId → last owner color key written into its instance slot. */
   private unitInstancedColorKey = new Map<EntityId, number>();
+  private massRichUnitIds = new Set<EntityId>();
+  private massRichUnits: Entity[] = [];
   /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
   private unitInstancedFreeSlots: number[] = [];
   /** High-water mark; everything ≥ this is unused. */
@@ -1093,7 +1097,10 @@ export class Render3DEntities {
    *  GPU cost: one draw call total + N vertex-shader invocations.
    *  CPU cost: one Matrix4.compose + setMatrixAt + setColorAt per
    *  visible unit per frame, no allocations. */
-  private updateUnitsInstanced(units = this.clientViewState.getUnits()): void {
+  private updateUnitsInstanced(
+    units = this.clientViewState.getUnits(),
+    hiddenIds?: ReadonlySet<EntityId>,
+  ): void {
     const im = this.unitInstanced;
     if (!im) return;
 
@@ -1107,6 +1114,15 @@ export class Render3DEntities {
 
     for (const e of units) {
       seen.add(e.id);
+      if (hiddenIds?.has(e.id)) {
+        const slot = this.unitInstancedSlot.get(e.id);
+        if (slot !== undefined) {
+          im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+          if (slot < matrixMinSlot) matrixMinSlot = slot;
+          if (slot > matrixMaxSlot) matrixMaxSlot = slot;
+        }
+        continue;
+      }
       // Out-of-scope units still get a slot (so they reappear instantly
       // when the camera pans back) but their slot transform stays at
       // the last known pose; instanced rendering doesn't have the
@@ -1562,31 +1578,74 @@ export class Render3DEntities {
     state.angle = (state.angle + state.speed * dt) % (Math.PI * 2);
   }
 
+  private collectMassRichUnits(units: readonly Entity[]): readonly Entity[] {
+    const ids = this.massRichUnitIds;
+    const rich = this.massRichUnits;
+    ids.clear();
+    rich.length = 0;
+
+    const quad = this.scope.quad;
+    const cx = (quad[0].x + quad[1].x + quad[2].x + quad[3].x) * 0.25;
+    const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) * 0.25;
+    const nearRadiusSq = MASS_RICH_NEAR_RADIUS * MASS_RICH_NEAR_RADIUS;
+
+    const add = (entity: Entity): boolean => {
+      if (ids.has(entity.id)) return rich.length < MASS_RICH_UNIT_CAP;
+      if (rich.length >= MASS_RICH_UNIT_CAP) return false;
+      ids.add(entity.id);
+      rich.push(entity);
+      return true;
+    };
+
+    for (const entity of units) {
+      if (!this.scope.inScope(entity.transform.x, entity.transform.y, 100)) continue;
+      if (
+        entity.selectable?.selected === true ||
+        entity.commander !== undefined
+      ) {
+        if (!add(entity)) return rich;
+      }
+    }
+
+    for (const entity of units) {
+      if (ids.has(entity.id)) continue;
+      if (!this.scope.inScope(entity.transform.x, entity.transform.y, 100)) continue;
+      const dx = entity.transform.x - cx;
+      const dy = entity.transform.y - cy;
+      if (dx * dx + dy * dy <= nearRadiusSq && !add(entity)) break;
+    }
+
+    return rich;
+  }
+
   private updateUnits(): void {
     const units = this.clientViewState.getUnits();
-    // MIN tier only: every unit is a single sphere drawn from one
-    // InstancedMesh — collapses thousands of per-unit draw calls into
-    // a single GPU dispatch. LOW and above still build the full
-    // per-unit Group (chassis, turrets, legs/wheels, mirrors) so
-    // there's a visible step between MIN and LOW: MIN trades all
-    // detail for raw throughput, LOW keeps the simplified chassis
-    // shapes shown in the 2D LOW preset.
-    const useMassInstancing = this.lod.gfx.tier === 'min' ||
+    const forceMassOnly = this.lod.gfx.tier === 'min';
+    const useMassInstancing = forceMassOnly ||
       units.length >= AUTO_MASS_UNIT_RENDER_THRESHOLD;
-    if (useMassInstancing) {
+
+    if (forceMassOnly) {
       if (this.unitMeshes.size > 0) {
         this.rebuildAllUnitsOnLodChange();
       }
       this.updateUnitsInstanced(units);
       return;
     }
-    // We left MIN tier — release every instanced slot so stale ghosts
-    // don't sit at scale 0 forever (and so colors recycle quickly when
-    // we drop back to MIN).
+
+    if (useMassInstancing) {
+      const richUnits = this.collectMassRichUnits(units);
+      this.updateUnitsInstanced(units, this.massRichUnitIds);
+      this.updateUnitMeshes(richUnits);
+      return;
+    }
+
     if (this.unitInstancedSlot.size > 0) {
       this.releaseAllInstancedSlots();
     }
+    this.updateUnitMeshes(units);
+  }
 
+  private updateUnitMeshes(units: readonly Entity[]): void {
     const seen = this._seenUnitIds;
     seen.clear();
     const spinDt = this._spinDt;

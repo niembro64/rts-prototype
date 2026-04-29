@@ -32,7 +32,7 @@ import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 /** Same color the per-mesh leg path used. Single uniform value
  *  across the whole shared pool — legs aren't team-tinted. */
 const LEG_COLOR = 0x2a2f36;
-const MASS_RENDER_UNIT_THRESHOLD = 5000;
+const MASS_RENDER_UNIT_THRESHOLD = 1500;
 const MASS_HUD_FRAME_STRIDE = {
   min: 4,
   low: 3,
