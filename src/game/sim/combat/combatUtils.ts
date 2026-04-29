@@ -2,7 +2,7 @@
 
 import type { Entity } from '../types';
 import { distance, normalizeAngle, magnitude, getWeaponWorldPosition, getTurretHeadRadius } from '../../math';
-import { getBodyTopY } from '../../math/BodyDimensions';
+import { getBodyTopY, getChassisLiftY } from '../../math/BodyDimensions';
 import { getUnitBlueprint } from '../blueprints';
 import { MIRROR_EXTRA_HEIGHT } from '../../../config';
 
@@ -40,9 +40,9 @@ export function resolveWeaponWorldPos(
  *
  *  Vertical layout for an ordinary turret:
  *
- *    chassis top (bodyTopY)               ← head sphere bottom
- *    chassis top + headRadius             ← head sphere center  ← muzzle
- *    chassis top + 2 × headRadius         ← head sphere top
+ *    chassis lift + bodyTopY              ← head sphere bottom
+ *    chassis lift + bodyTopY + headRadius ← head sphere center  ← muzzle
+ *    chassis lift + bodyTopY + 2 × headRadius ← head sphere top
  *
  *  Each turret's `bodyRadius` field drives `headRadius`; the renderer
  *  uses the SAME number to anchor the visible head sphere, so spawn
@@ -62,7 +62,8 @@ export function getTurretMountHeight(unit: Entity, turretIndex: number): number 
   let bp;
   try { bp = getUnitBlueprint(unit.unit.unitType); }
   catch { /* keep fallback */ }
-  const bodyTop = bp ? getBodyTopY(bp.bodyShape, unitRadius) : 2.3 * unitRadius;
+  const chassisLift = bp ? getChassisLiftY(bp, unitRadius) : 0;
+  const bodyTop = chassisLift + (bp ? getBodyTopY(bp.bodyShape, unitRadius) : 2.3 * unitRadius);
 
   const turret = unit.turrets?.[turretIndex];
   const headRadius = getTurretHeadRadius(unitRadius, turret?.config);

@@ -1732,8 +1732,7 @@ export class Render3DEntities {
         // natural height. Vehicle on its wheels, spider on its legs.
         // `getChassisLift` reads the blueprint's locomotion config
         // once at build time — TREAD_HEIGHT for treads, full wheel
-        // diameter for wheels, 0 for legs (the leg-unit body sphere
-        // is already raised by its own geometry).
+        // diameter for wheels, and a small per-radius lift for legs.
         const liftGroup = new THREE.Group();
         liftGroup.userData.entityId = e.id;
         liftGroup.position.y = bp ? getChassisLift(bp, radius) : 0;

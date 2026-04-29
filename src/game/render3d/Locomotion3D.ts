@@ -19,7 +19,11 @@ import type {
 } from '@/types/blueprints';
 import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
-import { getSegmentMidYAt } from '../math/BodyDimensions';
+import {
+  getChassisLiftY,
+  getSegmentMidYAt,
+  TREAD_CHASSIS_LIFT_Y,
+} from '../math/BodyDimensions';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
 import { getSurfaceHeight, getGroundNormal } from '../sim/Terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
@@ -74,7 +78,7 @@ const SNAP_LOOKAHEAD_MAX_FRACTION = 0.7;
 const SLIDE_INTERRUPT_FRACTION = 2.0;
 
 const TREAD_COLOR = 0x1a1d22;
-export const TREAD_HEIGHT = 10;
+export const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
 const TREAD_Y = TREAD_HEIGHT / 2;
 
 /** Vertical offset (world units) by which the unit's BODY (chassis,
@@ -101,23 +105,11 @@ const TREAD_Y = TREAD_HEIGHT / 2;
  *
  *  Returned in WORLD UNITS — used as `liftGroup.position.y` in
  *  Render3DEntities. */
-const LEG_BODY_LIFT_FRAC = 0.5;
 export function getChassisLift(
   blueprint: import('@/types/blueprints').UnitBlueprint,
   unitRadius: number,
 ): number {
-  const loc = blueprint.locomotion;
-  if (!loc) return 0;
-  switch (loc.type) {
-    case 'treads':
-      return TREAD_HEIGHT;
-    case 'wheels': {
-      const wheelR = Math.max(1, unitRadius * loc.config.wheelRadius);
-      return 2 * wheelR;
-    }
-    case 'legs':
-      return unitRadius * LEG_BODY_LIFT_FRAC;
-  }
+  return getChassisLiftY(blueprint, unitRadius);
 }
 const WHEEL_COLOR = 0x2a2f36;
 

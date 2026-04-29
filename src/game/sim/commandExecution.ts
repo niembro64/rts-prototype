@@ -5,7 +5,8 @@ import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitC
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
-import { magnitude, getWeaponWorldPosition, getTransformCosSin, getBarrelTip } from '../math';
+import { magnitude, getTransformCosSin, getBarrelTip } from '../math';
+import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTurretMountHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
@@ -251,13 +252,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   dgunTurret.angularVelocity = 0;
   ctx.world.markSnapshotDirty(commander.id, ENTITY_CHANGED_TURRETS);
 
-  // Compute turret world position from unit transform + turret offset
   const { cos, sin } = getTransformCosSin(commander.transform);
-  const weaponPos = getWeaponWorldPosition(
-    commander.transform.x, commander.transform.y,
-    cos, sin,
-    dgunTurret.offset.x, dgunTurret.offset.y
-  );
 
   // Resolve the d-gun's barrel tip + direction through the shared
   // primitive — exactly the same call AI turrets use — so the
@@ -265,9 +260,18 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // renderer draws.
   const commanderGroundZ = commander.transform.z -
     (commander.unit?.unitRadiusCollider.push ?? 0);
-  const mountZ = commanderGroundZ + getTurretMountHeight(commander, dgunIdx);
+  const surfaceN = ctx.world.getCachedSurfaceNormal(
+    commander.transform.x, commander.transform.y,
+  );
+  const mount = getTurretWorldMount(
+    commander.transform.x, commander.transform.y, commanderGroundZ,
+    cos, sin,
+    dgunTurret.offset.x, dgunTurret.offset.y,
+    getTurretMountHeight(commander, dgunIdx),
+    surfaceN,
+  );
   const tip = getBarrelTip(
-    weaponPos.x, weaponPos.y, mountZ,
+    mount.x, mount.y, mount.z,
     fireAngle, dgunTurret.pitch,
     dgunTurret.config,
     commander.unit!.unitRadiusCollider.scale,
@@ -287,8 +291,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     velocityX += commander.unit.velocityX ?? 0;
     velocityY += commander.unit.velocityY ?? 0;
     // Turret rotational velocity at fire point (tangential = omega × lever arm).
-    const barrelDx = tip.x - weaponPos.x;
-    const barrelDy = tip.y - weaponPos.y;
+    const barrelDx = tip.x - mount.x;
+    const barrelDy = tip.y - mount.y;
     const omega = dgunTurret.angularVelocity;
     velocityX += -barrelDy * omega;
     velocityY += barrelDx * omega;

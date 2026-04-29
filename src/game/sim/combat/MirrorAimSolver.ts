@@ -69,15 +69,18 @@ export function solveMirrorAim(
     const eShotType = enemyTurret.config.shot.type;
     if (eShotType !== 'beam' && eShotType !== 'laser') continue;
 
-    // Source S = the enemy beam barrel tip in world.
+    // Source S = the enemy beam barrel tip in world. Prefer the
+    // targeting system's cached mount because it already includes
+    // chassis lift and slope tilt; fall back to upright mount math for
+    // first-frame/stale targets.
     const tCS = getTransformCosSin(target.transform);
-    const ewp = getWeaponWorldPosition(
+    const eGroundZ = target.transform.z - (target.unit?.unitRadiusCollider.push ?? 0);
+    const ewp = enemyTurret.worldPos ?? getWeaponWorldPosition(
       target.transform.x, target.transform.y,
       tCS.cos, tCS.sin,
       enemyTurret.offset.x, enemyTurret.offset.y,
     );
-    const eGroundZ = target.transform.z - (target.unit?.unitRadiusCollider.push ?? 0);
-    const eMountZ = eGroundZ + getTurretMountHeight(target, ti);
+    const eMountZ = enemyTurret.worldPos?.z ?? (eGroundZ + getTurretMountHeight(target, ti));
     const eTip = getBarrelTip(
       ewp.x, ewp.y, eMountZ,
       enemyTurret.rotation, enemyTurret.pitch,

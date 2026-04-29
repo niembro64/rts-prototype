@@ -12,13 +12,38 @@
 // projectile spawn Z lines up with the drawn barrel tip regardless of
 // how tall the unit's body happens to be.
 
-import type { UnitBodyShape, UnitBodyShapePart } from '@/types/blueprints';
+import type { UnitBlueprint, UnitBodyShape, UnitBodyShapePart } from '@/types/blueprints';
 
 function circleYFrac(radiusFrac: number, yFrac?: number): number {
   return yFrac ?? radiusFrac;
 }
 
 const TOP_Y_CACHE: Map<string, number> = new Map();
+
+export const TREAD_CHASSIS_LIFT_Y = 10;
+export const LEG_BODY_LIFT_FRAC = 0.5;
+
+/** World-space lift applied to the visible body/chassis above the unit's
+ *  ground footprint. This is shared by sim muzzle math and renderer
+ *  scenegraph layout so projectiles leave the visual turret, not the old
+ *  unlifted chassis position. */
+export function getChassisLiftY(
+  blueprint: Pick<UnitBlueprint, 'locomotion'> | undefined,
+  unitRadius: number,
+): number {
+  const loc = blueprint?.locomotion;
+  if (!loc) return 0;
+  switch (loc.type) {
+    case 'treads':
+      return TREAD_CHASSIS_LIFT_Y;
+    case 'wheels': {
+      const wheelR = Math.max(1, unitRadius * loc.config.wheelRadius);
+      return 2 * wheelR;
+    }
+    case 'legs':
+      return unitRadius * LEG_BODY_LIFT_FRAC;
+  }
+}
 
 /** Body-top height in unit-radius-1 space for the given renderer id.
  *  Multiply by a unit's render radius to get the world-space Y where

@@ -32,8 +32,8 @@ const BEAM_RADIUS_SCALE = 0.55;
 // Beams are white lines at low alpha — team identity comes from the
 // turret / impact context, not the beam itself. Tuned by eye: lasers
 // slightly brighter than plain beams to keep the "laser = hotter" feel.
-const BEAM_OPACITY = 0.28;
-const LASER_OPACITY_MAX = 0.4;
+const BEAM_OPACITY = 0.16;
+const LASER_OPACITY_MAX = 0.24;
 const BEAM_COLOR = 0xffffff;
 
 type BeamMat = {
