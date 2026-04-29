@@ -220,14 +220,11 @@ const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_FACTORY;
 
 /** Entities that have already had their static (never-changes-after-
- *  spawn) fields shipped at least once over this session's protocol —
- *  unit type, collider, mass, moveSpeed, isCommander; building dim
- *  and type; turret id / ranges / mount offset / acc / drag. The
- *  static block is included on the FIRST full record we emit for an
- *  entity and skipped on every full thereafter, so steady-state
- *  keyframes carry only the per-tick numbers. resetProtocolSeeded()
- *  forces the next pass to re-seed (new client connecting, game
- *  restart). */
+ *  spawn) fields shipped at least once over this session's protocol.
+ *  Delta snapshots use this to avoid re-sending unit type/collider,
+ *  building type/dimensions, and turret static config after creation.
+ *  Full keyframes remain self-contained so a client that missed an
+ *  earlier keyframe can recover. */
 function getTrackingKey(key: string | number | undefined): string {
   return key === undefined ? DEFAULT_TRACKING_KEY : String(key);
 }
@@ -795,7 +792,11 @@ function serializeEntity(
   ne.id = entity.id;
   ne.type = entity.type;
   ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
-  ne.changedFields = changedFields;
+  if (isFull) {
+    delete ne.changedFields;
+  } else {
+    ne.changedFields = changedFields;
+  }
 
   // Position — always set for full, only when changed for delta.
   // z is on the wire so 3D clients see altitude; 2D clients ignore it.
@@ -831,12 +832,12 @@ function serializeEntity(
       const u = pool.unitSub;
       ne.unit = u;
 
-      // Static fields ship only on the FIRST full record for this
-      // entity. Subsequent fulls skip them — the client already
-      // cached them on entity creation. Mid-game late joiners trigger
-      // resetProtocolSeeded() to re-seed everyone.
-      const needsSeed = isFull && !protocolSeeded.has(entity.id);
-      if (needsSeed) {
+      // Full records must be self-contained. Remote clients can miss
+      // the first real-battle keyframe during lobby -> battle handoff;
+      // if later keyframes omit unitType/collider/commander statics,
+      // the client can never create those entities and renders an
+      // empty battlefield even while snapshots keep arriving.
+      if (isFull) {
         u.unitType = entity.unit.unitType;
         u.collider = pool.unitCollider;
         u.collider.scale = entity.unit.unitRadiusCollider.scale;
@@ -851,7 +852,7 @@ function serializeEntity(
         u.collider = undefined;
         u.moveSpeed = undefined;
         u.mass = undefined;
-        if (!isFull) u.isCommander = undefined;
+        u.isCommander = undefined;
       }
 
       // Velocity — full keyframes always carry it; on deltas it ships
@@ -962,10 +963,11 @@ function serializeEntity(
       const b = pool.buildingSub;
       ne.building = b;
 
-      // Static building fields ship only on the FIRST full record for
-      // this entity. Same seeded-set logic as units above.
-      const needsBldSeed = isFull && !protocolSeeded.has(entity.id);
-      if (needsBldSeed) {
+      // Full records must be self-contained for the same reason as
+      // unit records: clients can miss the first keyframe during a
+      // network handoff and still need later keyframes to create
+      // every entity from scratch.
+      if (isFull) {
         b.dim = pool.buildingDim;
         b.dim.x = entity.building.width;
         b.dim.y = entity.building.height;

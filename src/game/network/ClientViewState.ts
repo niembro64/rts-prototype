@@ -242,7 +242,7 @@ export class ClientViewState {
         this.serverTargets.set(netEntity.id, target);
       }
       const cf = netEntity.changedFields;
-      const isFull = cf === undefined;
+      const isFull = cf == null;
       if (isFull || cf! & ENTITY_CHANGED_POS) {
         target.x = netEntity.pos.x;
         target.y = netEntity.pos.y;
@@ -297,7 +297,7 @@ export class ClientViewState {
         // Only create entities from full data (keyframes or new-entity entries).
         // Delta snapshots with changedFields set may be missing unit type, HP, etc.
         // The entity will be created on the next keyframe.
-        if (netEntity.changedFields !== undefined) continue;
+        if (netEntity.changedFields != null) continue;
 
         const newEntity = createEntityFromNetwork(netEntity);
         if (newEntity) {
@@ -473,17 +473,16 @@ export class ClientViewState {
     server: NetworkServerSnapshotEntity,
   ): void {
     const cf = server.changedFields;
-    const isFull = cf === undefined;
+    const isFull = cf == null;
     const su = server.unit;
     if (entity.unit && su) {
       if (isFull || cf! & ENTITY_CHANGED_HP) {
         entity.unit.hp = su.hp.curr;
         entity.unit.maxHp = su.hp.max;
       }
-      // Static fields ship only on the FIRST full record for each
-      // entity (server seeds once per session). Read whenever they're
-      // present — they don't change after spawn so re-applying the
-      // same values is a no-op anyway.
+      // Static fields are present on full records and may be omitted
+      // from ordinary deltas. Read whenever they're present; they do
+      // not change after spawn, so re-applying them is a no-op.
       if (su.collider) {
         entity.unit.unitRadiusCollider.scale = su.collider.scale;
         entity.unit.unitRadiusCollider.shot = su.collider.shot;

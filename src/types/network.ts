@@ -288,7 +288,9 @@ export type NetworkServerSnapshotTurret = {
 };
 
 // Bitmask for per-field delta updates within an entity.
-// When undefined (keyframe or new entity), all fields are present.
+// When absent/null (keyframe or new entity), all fields are present.
+// MessagePack decodes own `undefined` properties as null, so network
+// clients must accept both absent and null as "full record".
 // When set (delta update), only flagged field groups are populated.
 export const ENTITY_CHANGED_POS       = 1 << 0;
 export const ENTITY_CHANGED_ROT       = 1 << 1;
@@ -308,12 +310,10 @@ export type NetworkServerSnapshotEntity = {
   rotation: number;
   posEnd?: Vec3;
   playerId: PlayerId;
-  changedFields?: number;
+  changedFields?: number | null;
   unit?: {
-    /** Static fields (unitType, collider, moveSpeed, mass) ship only
-     *  on the FIRST full record we send for this entity. Subsequent
-     *  full records skip them — the client already cached them on
-     *  entity creation and they never change. */
+    /** Static fields are present on full records and omitted from
+     *  ordinary deltas after the entity has been created. */
     unitType?: string;
     hp: { curr: number; max: number };
     collider?: { scale: number; shot: number; push: number };
@@ -327,8 +327,8 @@ export type NetworkServerSnapshotEntity = {
     turrets?: NetworkServerSnapshotTurret[];
   };
   building?: {
-    /** type / dim ship only on the FIRST full record we send for this
-     *  entity. Same rationale as the matching note on `unit` above. */
+    /** type / dim are present on full records and omitted from
+     *  ordinary deltas after the entity has been created. */
     type?: string;
     /** Footprint in world units — planar xy is dim.x/dim.y. Full
      *  depth (vertical extent) lives on the building entity, not

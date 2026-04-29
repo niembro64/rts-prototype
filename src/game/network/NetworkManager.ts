@@ -70,18 +70,15 @@ export class NetworkManager {
   private snapshotsReceived: number = 0;
   private pendingReceivedState: NetworkServerSnapshot | null = null;
 
-  // Heartbeat presence tracking. The lobby uses a short timeout so
-  // the roster reacts to silent disconnects quickly. Once the real
-  // game starts, use a wider timeout: a busy renderer or host tick
-  // can stall the browser long enough to miss a few heartbeat sends,
-  // and closing an otherwise healthy WebRTC channel would kill the
-  // match.
+  // Heartbeat presence tracking for the lobby roster. Once the real
+  // battle starts, we keep sending heartbeats but stop force-closing
+  // peers from this timer; WebRTC's own close/error events are the
+  // source of truth for an active match.
   private lastHeartbeatReceived: Map<PlayerId, number> = new Map();
   private heartbeatSendInterval: ReturnType<typeof setInterval> | null = null;
   private heartbeatCheckInterval: ReturnType<typeof setInterval> | null = null;
   private readonly heartbeatSendIntervalMs = 2000;
-  private readonly heartbeatTimeoutMs = 6000;
-  private readonly heartbeatBattleTimeoutMs = 30000;
+  private readonly heartbeatTimeoutMs = 30000;
 
   // Callbacks
   public onPlayerJoined?: (player: LobbyPlayer) => void;
@@ -220,6 +217,7 @@ export class NetworkManager {
     this.connections.clear();
 
     return new Promise((resolve, reject) => {
+      let opened = false;
       // Generate a random ID for the client
       const clientId = `ba-client-${Math.random().toString(36).substring(2, 10)}`;
       this.peer = new Peer(clientId, {
@@ -239,10 +237,12 @@ export class NetworkManager {
           reliable: true,
         });
 
+        this.connections.set(1, conn); // Host is always player 1
+        this.setupConnectionHandlers(conn, 1);
+
         conn.on('open', () => {
+          opened = true;
           console.log('Connected to host');
-          this.connections.set(1, conn); // Host is always player 1
-          this.setupConnectionHandlers(conn, 1);
           // Track host's heartbeats — if the host stops sending
           // for too long, the check loop closes our side of the
           // connection and the regular `playerLeft` path fires.
@@ -282,7 +282,7 @@ export class NetworkManager {
 
       // Timeout after 10 seconds
       setTimeout(() => {
-        if (this.connections.size === 0) {
+        if (!opened) {
           reject(new Error('Connection timeout - room may not exist'));
         }
       }, 10000);
@@ -305,6 +305,7 @@ export class NetworkManager {
 
     const playerId = this.nextPlayerId++;
     this.connections.set(playerId, conn);
+    this.setupConnectionHandlers(conn, playerId);
 
     conn.on('open', () => {
       console.log(`Player ${playerId} connected`);
@@ -382,8 +383,6 @@ export class NetworkManager {
           settings,
         });
       }
-
-      this.setupConnectionHandlers(conn, playerId);
     });
   }
 
@@ -671,10 +670,8 @@ export class NetworkManager {
       }
     }, this.heartbeatSendIntervalMs);
     this.heartbeatCheckInterval = setInterval(() => {
-      const timeoutMs = this.gameStarted
-        ? this.heartbeatBattleTimeoutMs
-        : this.heartbeatTimeoutMs;
-      const cutoff = Date.now() - timeoutMs;
+      if (this.gameStarted) return;
+      const cutoff = Date.now() - this.heartbeatTimeoutMs;
       for (const [pid, lastSeen] of this.lastHeartbeatReceived) {
         if (lastSeen < cutoff) {
           // Force-close the silent connection — its close handler

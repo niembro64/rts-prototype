@@ -1728,6 +1728,16 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         enabled: loadStoredRealGrid(),
       });
       currentServer.start();
+      if (networkRole.value === 'host') {
+        const serverForRecoveryKeyframes = currentServer;
+        for (const delayMs of [500, 1500]) {
+          setTimeout(() => {
+            if (currentServer === serverForRecoveryKeyframes) {
+              serverForRecoveryKeyframes.forceNextSnapshotKeyframe();
+            }
+          }, delayMs);
+        }
+      }
       hasServer.value = true;
     } else {
       // Client: create RemoteGameConnection wrapping networkManager
@@ -1940,18 +1950,9 @@ onMounted(() => {
   fpsUpdateInterval = setInterval(updateFPSStats, 100); // Update 10x per second
 
   // Public IP + coarse location for the server bar AND the GAME
-  // LOBBY player list. Three-stage chain so location is ALWAYS
-  // populated (even when the IP services fail / rate-limit / lie):
-  //
-  //   1. ipwho.is  — primary; returns IP + city + country.
-  //   2. ipify     — fallback for IP only if (1) fails.
-  //   3. Intl tz   — last-resort location from the browser's
-  //                  resolved timezone (e.g. "America/Los_Angeles"
-  //                  → "Los Angeles, America"). Always available,
-  //                  zero network, no rate limits — so even users
-  //                  on networks that block geo-IP services or
-  //                  whose IP isn't in any geo database still get
-  //                  something readable in the lobby roster.
+  // LOBBY player list. Avoid geo-IP providers that commonly return
+  // browser-visible 403s; use ipify for the IP and derive the
+  // readable location from the browser timezone.
   function deriveLocationFromTimezone(): string {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1965,29 +1966,12 @@ onMounted(() => {
     }
   }
 
-  fetch('https://ipwho.is/')
-    .then((r) => r.json())
-    .then((data) => {
-      if (!data || typeof data !== 'object' || data.success === false) {
-        throw new Error('ipwho.is returned non-success');
-      }
-      return {
-        ip: typeof data.ip === 'string' ? data.ip : '',
-        city: typeof data.city === 'string' ? data.city : '',
-        country: typeof data.country === 'string' ? data.country : '',
-      };
-    })
-    .catch(() => fetch('https://api.ipify.org?format=text')
-      .then((r) => r.text())
-      .then((ip) => ({ ip: ip.trim(), city: '', country: '' }))
-      .catch(() => ({ ip: '', city: '', country: '' })),
-    )
-    .then(({ ip, city, country }) => {
-      let loc = [city, country].filter((s) => s.length > 0).join(', ');
-      // Last-resort: timezone-derived location if no city/country
-      // came back from the IP services. Coarser ("Los Angeles,
-      // America") but always populated.
-      if (!loc) loc = deriveLocationFromTimezone();
+  fetch('https://api.ipify.org?format=text')
+    .then((r) => (r.ok ? r.text() : ''))
+    .catch(() => '')
+    .then((ipText) => {
+      const ip = ipText.trim();
+      const loc = deriveLocationFromTimezone();
       if (ip) {
         localIpAddress.value = ip;
         backgroundBattle?.server.setIpAddress(ip);

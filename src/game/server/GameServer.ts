@@ -6,7 +6,7 @@ import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities, spawnInitialBases, FIRST_PLAYER_ANGLE } from '../sim/spawn';
 import { CAPTURE_CONFIG } from '../../captureConfig';
-import { serializeGameState, resetDeltaTracking } from '../network/stateSerializer';
+import { serializeGameState, resetDeltaTracking, resetProtocolSeeded } from '../network/stateSerializer';
 import type { SerializeGameStateOptions, SnapshotInterest } from '../network/stateSerializer';
 import type { NetworkServerSnapshot, NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
@@ -1057,6 +1057,16 @@ export class GameServer {
   setKeyframeRatio(ratio: KeyframeRatio): void {
     this.keyframeRatioDisplay = ratio;
     this.keyframeRatio = ratio === 'ALL' ? 1 : ratio === 'NONE' ? 0 : ratio;
+    this.snapshotCounter = 0;
+  }
+
+  // Force the next emitted snapshot to be a self-contained keyframe.
+  // Used after network battle start so clients that attach their
+  // render scene slightly after the first server tick still receive
+  // commander/unit creation data even when KEYFRAMES is set to NONE.
+  forceNextSnapshotKeyframe(): void {
+    resetProtocolSeeded();
+    this.isFirstSnapshot = true;
     this.snapshotCounter = 0;
   }
 
