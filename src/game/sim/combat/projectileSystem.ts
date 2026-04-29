@@ -551,6 +551,9 @@ export function updateProjectiles(
   _homingVelocityUpdates.length = 0;
   const projectilesToRemove = _orphanedIds;
   const despawnEvents = _despawnEvents;
+  const simDetail = getSimDetailConfig();
+  const beamTraceBudget = Math.max(1, simDetail.beamPathTraceBudget | 0);
+  let beamTracesThisTick = 0;
 
   // Position integration + homing for traveling projectiles. The
   // WASM-batched path was 2D-only and is disabled on this branch —
@@ -649,22 +652,29 @@ export function updateProjectiles(
         // pretty low tiers.
         const currentTick = world.getTick();
         const collisionRadius = isLineShot(proj.config.shot) ? proj.config.shot.radius : 2;
-        const beamStride = Math.max(1, getSimDetailConfig().beamPathStride | 0);
+        const beamStride = Math.max(1, simDetail.beamPathStride | 0);
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= beamStride) {
-          const beamPath = damageSystem.findBeamPath(
-            proj.startX, proj.startY, proj.startZ,
-            fullEndX, fullEndY, fullEndZ,
-            proj.sourceEntityId,
-            collisionRadius
-          );
-          proj.endX = beamPath.endX;
-          proj.endY = beamPath.endY;
-          proj.endZ = beamPath.endZ;
-          proj.obstructionT = beamPath.obstructionT;
-          proj.reflections = beamPath.reflections.length > 0
-            ? beamPath.reflections
-            : undefined;
-          proj.obstructionTick = currentTick;
+          if (beamTracesThisTick < beamTraceBudget) {
+            beamTracesThisTick++;
+            const beamPath = damageSystem.findBeamPath(
+              proj.startX, proj.startY, proj.startZ,
+              fullEndX, fullEndY, fullEndZ,
+              proj.sourceEntityId,
+              collisionRadius
+            );
+            proj.endX = beamPath.endX;
+            proj.endY = beamPath.endY;
+            proj.endZ = beamPath.endZ;
+            proj.obstructionT = beamPath.obstructionT;
+            proj.reflections = beamPath.reflections.length > 0
+              ? beamPath.reflections
+              : undefined;
+            proj.obstructionTick = currentTick;
+          } else if (proj.endX === undefined) {
+            proj.endX = fullEndX;
+            proj.endY = fullEndY;
+            proj.endZ = fullEndZ;
+          }
         } else {
           if (proj.endX === undefined) {
             proj.endX = fullEndX;

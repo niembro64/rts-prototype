@@ -41,6 +41,10 @@ export type ServerSimDetailConfig = {
    *  beam follows the turret aim every tick visually; this only
    *  throttles the collision/reflection ray-trace. */
   beamPathStride: number;
+  /** Maximum expensive beam/reflection path traces per tick. Beam
+   *  starts still follow their turrets every tick; this caps the
+   *  mirror/building/unit ray work during beam-heavy fights. */
+  beamPathTraceBudget: number;
   /** Number of fixed-point iterations the mirror-aim bisector runs.
    *  2 = ~0.02° accuracy; 1 = ~1° accuracy (still inside body
    *  radius at typical engagement distances). */
@@ -105,6 +109,7 @@ export type ServerSimHysteresis = {
 export type ServerSimDetailTable = {
   TARGETING_REACQUIRE_STRIDE: ServerSimTierMap<number>;
   BEAM_PATH_STRIDE: ServerSimTierMap<number>;
+  BEAM_PATH_TRACE_BUDGET: ServerSimTierMap<number>;
   MIRROR_BISECTOR_ITERATIONS: ServerSimTierMap<number>;
   TARGETING_DENSITY_THRESHOLD: ServerSimTierMap<number>;
   TARGETING_DENSITY_STRIDE: ServerSimTierMap<number>;

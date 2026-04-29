@@ -79,6 +79,17 @@ export const SERVER_SIM_DETAIL: ServerSimDetailTable = {
     high: 2,
     max: 1,
   },
+  // Hard cap for expensive beam path traces per tick. This is the
+  // safety valve for beam/mirror-heavy battles: muzzle/end visuals
+  // still update every frame, but obstruction/reflection solves are
+  // spread across ticks instead of all beams retracing at once.
+  BEAM_PATH_TRACE_BUDGET: {
+    min: 32,
+    low: 64,
+    medium: 96,
+    high: 160,
+    max: 256,
+  },
   MIRROR_BISECTOR_ITERATIONS: {
     min: 1,
     low: 1,

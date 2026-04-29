@@ -184,6 +184,7 @@ function buildDetail(tier: ConcreteServerSimQuality): ServerSimDetailConfig {
     tier,
     targetingReacquireStride: SERVER_SIM_DETAIL.TARGETING_REACQUIRE_STRIDE[tier],
     beamPathStride: SERVER_SIM_DETAIL.BEAM_PATH_STRIDE[tier],
+    beamPathTraceBudget: SERVER_SIM_DETAIL.BEAM_PATH_TRACE_BUDGET[tier],
     mirrorBisectorIterations: SERVER_SIM_DETAIL.MIRROR_BISECTOR_ITERATIONS[tier],
     targetingDensityThreshold: SERVER_SIM_DETAIL.TARGETING_DENSITY_THRESHOLD[tier],
     targetingDensityStride: SERVER_SIM_DETAIL.TARGETING_DENSITY_STRIDE[tier],

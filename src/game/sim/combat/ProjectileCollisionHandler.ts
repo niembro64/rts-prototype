@@ -440,8 +440,14 @@ export function checkProjectileCollisions(
         // Beam endpoints still update every tick in updateProjectiles();
         // only the expensive damage query is staggered under server LOD.
       } else {
-      // Beam/laser damage: single area zone at truncated endpoint
-      const beamShot = config.shot as BeamShot | LaserShot;
+        if (proj.obstructionTick === undefined) {
+          // Path tracing is globally budgeted. A newly-created beam that
+          // has not received its first authoritative trace should not deal
+          // endpoint damage at its provisional max-range visual endpoint.
+          continue;
+        }
+        // Beam/laser damage: single area zone at truncated endpoint
+        const beamShot = config.shot as BeamShot | LaserShot;
       const impactX = proj.endX ?? projEntity.transform.x;
       const impactY = proj.endY ?? projEntity.transform.y;
       const impactZ = proj.endZ ?? projEntity.transform.z;
