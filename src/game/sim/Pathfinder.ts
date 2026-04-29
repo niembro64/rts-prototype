@@ -36,12 +36,13 @@
 
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import {
   isWaterAt,
   getSurfaceNormal,
   getSurfaceHeight,
   getTerrainVersion,
-  getTerrainHeight,
+  getTerrainMeshHeight,
   WATER_LEVEL,
 } from './Terrain';
 import type { ActionType, UnitAction } from './types';
@@ -154,7 +155,7 @@ function ensureMaskAndCC(
   // water.
   const blockThreshold = WATER_LEVEL + WATER_BLOCK_MARGIN_WU;
   const isWaterishAt = (x: number, y: number): boolean =>
-    getTerrainHeight(x, y, mapWidth, mapHeight) < blockThreshold;
+    getTerrainMeshHeight(x, y, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE) < blockThreshold;
   const terrainMask = new Uint8Array(n);
   for (let gy = 0; gy < gridH; gy++) {
     for (let gx = 0; gx < gridW; gx++) {
@@ -170,7 +171,7 @@ function ensureMaskAndCC(
       ) {
         blk = true;
       } else {
-        const norm = getSurfaceNormal(cx, cy, mapWidth, mapHeight, GRID_CELL_SIZE);
+        const norm = getSurfaceNormal(cx, cy, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
         if (norm.nz < SLOPE_BLOCK_NZ) blk = true;
       }
       if (blk) terrainMask[gy * gridW + gx] = 1;
@@ -687,7 +688,7 @@ export function expandPathActions(
     const isFinalUnsnapped = isFinal && goalZ !== undefined && px === goalX && py === goalY;
     const z = isFinalUnsnapped
       ? goalZ
-      : getSurfaceHeight(px, py, mapWidth, mapHeight, GRID_CELL_SIZE);
+      : getSurfaceHeight(px, py, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
     const action: UnitAction = { type, x: px, y: py, z };
     if (!isFinal) action.isPathExpansion = true;
     out.push(action);

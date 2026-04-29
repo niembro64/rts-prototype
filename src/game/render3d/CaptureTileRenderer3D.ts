@@ -29,7 +29,7 @@ import { PLAYER_COLORS } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getTerrainHeight, TILE_FLOOR_Y } from '../sim/Terrain';
+import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getManaCellProductionPerSecond, getCaptureTileBrightness } from '../sim/manaProduction';
 
 // Floor of every mana tile post — sourced from the canonical
@@ -44,13 +44,13 @@ const NEUTRAL_R = ((MAP_BG_COLOR >> 16) & 0xff) / 255;
 const NEUTRAL_G = ((MAP_BG_COLOR >> 8) & 0xff) / 255;
 const NEUTRAL_B = (MAP_BG_COLOR & 0xff) / 255;
 
-// Tile top is subdivided into SUBDIV × SUBDIV sub-cells so the
+// Tile top is subdivided into SUBDIV x SUBDIV sub-cells so the
 // rendered surface tracks the smooth heightmap continuously instead
 // of folding at the tile diagonal. Increasing SUBDIV softens the
 // fold further at the cost of more triangles + heightmap evaluations
-// per tile. SUBDIV=4 holds up against ripple amplitude 800 with
-// 150-unit tiles while keeping the per-map triangle count modest.
-const SUBDIV = 4;
+// per tile. Sourced from Terrain.ts so gameplay and rendering agree
+// on the exact triangle mesh surface.
+const SUBDIV = TERRAIN_MESH_SUBDIV;
 const TOP_VERTS_PER_ROW = SUBDIV + 1;
 const TOP_VERTS_PER_TILE = TOP_VERTS_PER_ROW * TOP_VERTS_PER_ROW;
 // Floor: 4 outer corners (sides connect outer top corners to these).

@@ -1,4 +1,5 @@
 import type { TerrainShape } from '@/types/terrain';
+import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 export type { TerrainShape } from '@/types/terrain';
 
 // Terrain — deterministic heightmap generator.
@@ -21,18 +22,16 @@ export type { TerrainShape } from '@/types/terrain';
 //
 // Two functions, one canonical surface:
 //
-//   `getTerrainHeight(x, z)` — raw continuous heightmap. ONLY the
-//   renderer calls it directly, to sample tile-corner heights and
-//   the shading gradient.
+//   `getTerrainHeight(x, z)` — raw continuous heightmap. The terrain
+//   mesh sampler and renderer call it to sample tile-corner heights
+//   and the shading gradient.
 //
 //   `getSurfaceHeight(x, z, cellSize)` — THE one and only "what is
-//   the ground at (x, z)?" answer that gameplay reads. It bilinearly
-//   interpolates the four corner heights of the tile that contains
-//   (x, z), so the surface it returns matches EXACTLY what the tile
-//   renderer draws across the top of every cube. Sim, physics, and
-//   client dead-reckoning all call this — units, projectiles, and
-//   buildings settle on the same surface the player sees, with no
-//   tile-center stepping when crossing a cell boundary.
+//   the ground at (x, z)?" answer that gameplay reads. It samples the
+//   same subdivided triangle mesh that CaptureTileRenderer3D draws
+//   across every tile top. Sim, physics, and client dead-reckoning
+//   all call this — units, projectiles, and buildings settle on the
+//   same surface the player sees.
 
 /** Floor of the world's vertical extent — the BOTTOM face of every
  *  3D tile cube the renderer draws. Anything in the heightmap that
@@ -61,6 +60,12 @@ export const WATER_LEVEL_FRACTION = 0.6;
  *  thrust-application step zeros horizontal force pointing into
  *  water. */
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
+
+// Tile tops are rendered as TERRAIN_MESH_SUBDIV x TERRAIN_MESH_SUBDIV
+// sub-cells, split with the same diagonal in every sub-cell. Keep the
+// value here so the host sim and all clients share the same surface
+// interpolation instead of each module carrying its own copy.
+export const TERRAIN_MESH_SUBDIV = 4;
 
 /** |amplitude| in sim units when shape is 'lake' or 'mountain'.
  *  Magnitude only — the sign is picked from the shape. Tuned so a
@@ -297,16 +302,118 @@ export function getTerrainHeight(
   return Math.max(TILE_FLOOR_Y, ripple + ridge);
 }
 
-/** Step size for the finite-difference gradient that drives the
- *  surface normal. Small enough to track ripples (RIPPLE_W2 = 50)
- *  faithfully, large enough that single-precision noise on the
- *  heightmap function doesn't show up as gradient jitter. */
+type TerrainMeshSample = {
+  u: number;
+  v: number;
+  subSize: number;
+  h00: number;
+  h10: number;
+  h11: number;
+  h01: number;
+};
+
+function terrainCellSize(cellSize: number | undefined): number {
+  return cellSize !== undefined && cellSize > 0 ? cellSize : SPATIAL_GRID_CELL_SIZE;
+}
+
+function clampToMeshExtent(value: number, cells: number, cellSize: number): number {
+  const max = cells * cellSize;
+  if (value <= 0) return 0;
+  if (value >= max) return max;
+  return value;
+}
+
+function getTerrainMeshSample(
+  x: number, z: number,
+  mapWidth: number, mapHeight: number,
+  cellSize: number = SPATIAL_GRID_CELL_SIZE,
+): TerrainMeshSample {
+  const size = terrainCellSize(cellSize);
+  const cellsX = Math.max(1, Math.ceil(mapWidth / size));
+  const cellsZ = Math.max(1, Math.ceil(mapHeight / size));
+  const px = clampToMeshExtent(x, cellsX, size);
+  const pz = clampToMeshExtent(z, cellsZ, size);
+  const cellX = Math.min(cellsX - 1, Math.max(0, Math.floor(px / size)));
+  const cellZ = Math.min(cellsZ - 1, Math.max(0, Math.floor(pz / size)));
+  const subSize = size / TERRAIN_MESH_SUBDIV;
+  const localX = px - cellX * size;
+  const localZ = pz - cellZ * size;
+  const subX = Math.min(
+    TERRAIN_MESH_SUBDIV - 1,
+    Math.max(0, Math.floor(localX / subSize)),
+  );
+  const subZ = Math.min(
+    TERRAIN_MESH_SUBDIV - 1,
+    Math.max(0, Math.floor(localZ / subSize)),
+  );
+  const x0 = cellX * size + subX * subSize;
+  const z0 = cellZ * size + subZ * subSize;
+  const x1 = x0 + subSize;
+  const z1 = z0 + subSize;
+  const u = Math.max(0, Math.min(1, (px - x0) / subSize));
+  const v = Math.max(0, Math.min(1, (pz - z0) / subSize));
+
+  return {
+    u,
+    v,
+    subSize,
+    h00: getTerrainHeight(x0, z0, mapWidth, mapHeight),
+    h10: getTerrainHeight(x1, z0, mapWidth, mapHeight),
+    h11: getTerrainHeight(x1, z1, mapWidth, mapHeight),
+    h01: getTerrainHeight(x0, z1, mapWidth, mapHeight),
+  };
+}
+
+function terrainMeshHeightFromSample(sample: TerrainMeshSample): number {
+  const { u, v, h00, h10, h11, h01 } = sample;
+  if (u >= v) {
+    return (1 - u) * h00 + (u - v) * h10 + v * h11;
+  }
+  return (1 - v) * h00 + u * h11 + (v - u) * h01;
+}
+
+function terrainMeshNormalFromSample(sample: TerrainMeshSample): { nx: number; ny: number; nz: number } {
+  const { u, v, subSize, h00, h10, h11, h01 } = sample;
+  const dHdx = u >= v ? (h10 - h00) / subSize : (h11 - h01) / subSize;
+  const dHdz = u >= v ? (h11 - h10) / subSize : (h01 - h00) / subSize;
+  const nx = -dHdx;
+  const ny = -dHdz;
+  const nz = 1;
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  return { nx: nx / len, ny: ny / len, nz: nz / len };
+}
+
+/** Raw terrain height on the exact triangle mesh drawn by
+ *  CaptureTileRenderer3D. Use this when code needs the rendered
+ *  ground surface instead of the underlying continuous height field. */
+export function getTerrainMeshHeight(
+  x: number, z: number,
+  mapWidth: number, mapHeight: number,
+  cellSize: number = SPATIAL_GRID_CELL_SIZE,
+): number {
+  return terrainMeshHeightFromSample(
+    getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize),
+  );
+}
+
+export function getTerrainMeshNormal(
+  x: number, z: number,
+  mapWidth: number, mapHeight: number,
+  cellSize: number = SPATIAL_GRID_CELL_SIZE,
+): { nx: number; ny: number; nz: number } {
+  return terrainMeshNormalFromSample(
+    getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize),
+  );
+}
+
+/** Step size for the finite-difference gradient used by visual-only
+ *  normals that intentionally read the continuous heightmap. */
 const NORMAL_GRADIENT_EPS = 1;
 
 /** Surface-tangent normal at world point (x, z) in SIM coords (z is
- *  up). Continuous finite-difference gradient of the LAND heightmap
- *  — water samples are explicitly excluded so that water never
- *  affects a unit's tilt.
+ *  up). This is the normal of the same subdivided terrain triangle
+ *  that CaptureTileRenderer3D draws. Water samples still return flat
+ *  up so the water plane never tilts units.
  *
  *  Why: at the shoreline, a unit's body straddles dry-land and
  *  below-water cells. With water-clamped sampling, the +eps and
@@ -319,66 +426,24 @@ const NORMAL_GRADIENT_EPS = 1;
  *  rim of a lake never wants to tilt because of the water; if it
  *  has a tilt at all it should reflect the LAND alone.
  *
- *  Algorithm (per axis):
- *    - both samples dry → standard central difference
- *    - one sample dry → one-sided difference using `h0` (centre)
- *      in place of the wet sample
- *    - both wet (only possible if h0 itself is in water) → handled
- *      by the early return below: a unit physically standing in
- *      water gets a flat normal so it slides along the shore
- *      instead of inheriting the carved underwater terrain's tilt
- *
- *  Outside the ripple disc the heightmap is exactly flat; the
- *  finite differences cancel and the normal collapses to (0, 0, 1)
- *  immediately.
- *
- *  `cellSize` is unused here but kept in the signature so the public
- *  API stays the same as `getSurfaceHeight`. */
+ *  Outside the ripple disc the sampled mesh is exactly flat, so the
+ *  normal collapses to (0, 0, 1) immediately. */
 export function getSurfaceNormal(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
-  _cellSize: number,
+  cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): { nx: number; ny: number; nz: number } {
-  // Centre-sample raw terrain. If the centre is itself in water,
+  const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize);
+  const h0 = terrainMeshHeightFromSample(sample);
+
+  // Centre-sample mesh terrain. If the centre is itself in water,
   // the unit either is currently being pushed out by the water-
   // pusher (transient), or this normal is being asked for at a
   // point where there isn't really a unit (e.g. projectile splash).
   // Either way returning the flat normal is the right answer:
   // water surface is flat; a unit standing on it should not tilt.
-  const h0 = getTerrainHeight(x, z, mapWidth, mapHeight);
   if (h0 < WATER_LEVEL) return { nx: 0, ny: 0, nz: 1 };
-
-  const eps = NORMAL_GRADIENT_EPS;
-  const hxp = getTerrainHeight(x + eps, z, mapWidth, mapHeight);
-  const hxm = getTerrainHeight(x - eps, z, mapWidth, mapHeight);
-  const hzp = getTerrainHeight(x, z + eps, mapWidth, mapHeight);
-  const hzm = getTerrainHeight(x, z - eps, mapWidth, mapHeight);
-
-  // Per-axis gradient: skip wet samples. When one neighbour is wet
-  // we substitute the centre value, which gives a one-sided
-  // difference using only land. When both neighbours are wet (rare
-  // — would require a tiny dry island narrower than 2*eps) the
-  // gradient on that axis is zero.
-  const xpDry = hxp >= WATER_LEVEL;
-  const xmDry = hxm >= WATER_LEVEL;
-  let dHdx = 0;
-  if (xpDry && xmDry) dHdx = (hxp - hxm) / (2 * eps);
-  else if (xpDry) dHdx = (hxp - h0) / eps;
-  else if (xmDry) dHdx = (h0 - hxm) / eps;
-
-  const zpDry = hzp >= WATER_LEVEL;
-  const zmDry = hzm >= WATER_LEVEL;
-  let dHdz = 0;
-  if (zpDry && zmDry) dHdz = (hzp - hzm) / (2 * eps);
-  else if (zpDry) dHdz = (hzp - h0) / eps;
-  else if (zmDry) dHdz = (h0 - hzm) / eps;
-
-  // Sim normal: surface up is (-∂h/∂x, -∂h/∂z, 1).
-  const nx = -dHdx;
-  const ny = -dHdz;
-  const nz = 1;
-  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-  return { nx: nx / len, ny: ny / len, nz: nz / len };
+  return terrainMeshNormalFromSample(sample);
 }
 
 /** Visual-only ground normal at world point (x, z) in SIM coords.
@@ -386,14 +451,13 @@ export function getSurfaceNormal(
  *  underlying LAND gradient, regardless of whether the centre sample
  *  is below WATER_LEVEL.
  *
- *  Why a separate function: `getSurfaceNormal` has water-aware
- *  branches (early-return flat when the centre is wet, partial-wet
- *  one-sided differences) that are correct for the SIM — physics
- *  body tilt, knockback projection, capture-cell occupancy. But on
- *  the rendered chassis those branches manifest as a hard switch
- *  between two normals at the shoreline: one frame a unit's centre
- *  samples 0.001 above WATER_LEVEL → tilted, next frame it dips
- *  0.001 below → flat. Users see this as visible chassis flicker.
+ *  Why a separate function: `getSurfaceNormal` has a water-aware
+ *  branch that is correct for the SIM — physics body tilt, knockback
+ *  projection, capture-cell occupancy. But on the rendered chassis
+ *  that branch manifests as a hard switch at the shoreline: one frame
+ *  a unit's centre samples 0.001 above WATER_LEVEL → tilted, next
+ *  frame it dips 0.001 below → flat. Users see this as visible
+ *  chassis flicker.
  *
  *  This visual variant always uses centered finite differences over
  *  the raw heightmap, so the rendered tilt is a continuous function
@@ -480,9 +544,9 @@ export function applySurfaceTilt(
 
 /** Canonical ground-surface height at world point (x, z) — what the
  *  PHYSICS sees as "the ground" everywhere on the map. Returns the
- *  raw heightmap value, but clamped UP to WATER_LEVEL: anywhere the
- *  terrain dips below the water surface, the water plane is what
- *  units walk on. So getSurfaceHeight(x, z) == max(terrain, water).
+ *  rendered terrain-mesh value, but clamped UP to WATER_LEVEL:
+ *  anywhere the terrain dips below the water surface, the water
+ *  plane is what units walk on.
  *
  *  The RENDERER (CaptureTileRenderer3D) reads `getTerrainHeight`
  *  directly so it can draw the actual carved terrain below the
@@ -492,25 +556,28 @@ export function applySurfaceTilt(
  *  land. Physics treats both cases uniformly: the unit's "ground"
  *  is whichever surface is on top.
  *
- *  `cellSize` is unused here but kept in the signature for API
- *  parity with the rest of the heightmap helpers. */
+ *  `cellSize` must match the capture/spatial tile size used by
+ *  CaptureTileRenderer3D; callers normally pass SPATIAL_GRID_CELL_SIZE
+ *  or omit it for that default. */
 export function getSurfaceHeight(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
-  _cellSize: number,
+  cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): number {
-  return Math.max(WATER_LEVEL, getTerrainHeight(x, z, mapWidth, mapHeight));
+  return Math.max(WATER_LEVEL, getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize));
 }
 
-/** True iff (x, z) is over water — i.e. the raw terrain dips below
- *  the water surface. Used by movement and building placement to
- *  treat water cells as impassable. With WATER_LEVEL_FRACTION=0
- *  (water at the tile floor) this always returns false. */
+/** True iff (x, z) is over water — i.e. the rendered terrain mesh
+ *  dips below the water surface. Used by movement and building
+ *  placement to treat water cells as impassable. With
+ *  WATER_LEVEL_FRACTION=0 (water at the tile floor) this always
+ *  returns false. */
 export function isWaterAt(
   x: number, z: number,
   mapWidth: number, mapHeight: number,
+  cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): boolean {
-  return getTerrainHeight(x, z, mapWidth, mapHeight) < WATER_LEVEL;
+  return getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize) < WATER_LEVEL;
 }
 
 /** Number of cardinal points sampled around the candidate when

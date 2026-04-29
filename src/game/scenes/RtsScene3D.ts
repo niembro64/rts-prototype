@@ -54,7 +54,7 @@ import {
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
 import {
-  getTerrainHeight,
+  getTerrainMeshHeight,
   setTerrainTeamCount,
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
@@ -567,17 +567,17 @@ export class RtsScene3D {
       () => this.captureTileRenderer.getMesh(),
     );
     this.threeApp.orbit.setCursorPicker((cx, cy) => this.cursorGround.pickWorld(cx, cy));
-    // Camera-clearance sampler — sample the RAW carved heightmap
-    // (`getTerrainHeight`) instead of `getSurfaceHeight`. The
+    // Camera-clearance sampler — sample the RAW rendered terrain mesh
+    // (`getTerrainMeshHeight`) instead of `getSurfaceHeight`. The
     // surface variant clamps up to WATER_LEVEL because that's what
     // UNITS walk on; using it for the camera made the water plane
     // an artificial floor for zoom-in (camera couldn't dip below
     // water + clearance, even though the real basin extends down
-    // to TILE_FLOOR_Y). Raw terrain lets the player zoom toward
+    // to TILE_FLOOR_Y). Raw mesh terrain lets the player zoom toward
     // the actual lake bed; the heightmap's own TILE_FLOOR_Y clamp
     // is the true world floor.
     this.threeApp.orbit.setTerrainSampler((x, z) =>
-      getTerrainHeight(x, z, this.mapWidth, this.mapHeight)
+      getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight)
     );
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(this.threeApp.world);
