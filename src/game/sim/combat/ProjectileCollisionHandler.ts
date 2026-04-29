@@ -13,7 +13,10 @@ import { getSubmunitionTurretConfig } from '../blueprints';
 import { encodeSubmunitionTurretId } from '../turretConfigs';
 import { getSurfaceNormal } from '../Terrain';
 import { getSimDetailConfig } from '../simQuality';
+import { spatialGrid } from '../SpatialGrid';
 import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
+
+const MIRROR_PROJECTILE_QUERY_PAD = 96;
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
@@ -262,33 +265,39 @@ export function checkProjectileCollisions(
       const curZ = projEntity.transform.z;
       let bestT = Infinity;
       let bestX = 0, bestY = 0, bestZ = 0;
-      // Iterate ONLY units with mirror panels (cached subset on the
-      // world). Mirror panels are rare — without this filter every
-      // projectile this tick scanned every unit looking for a
-      // typically-absent attribute.
-      for (const u of world.getMirrorUnits()) {
-        if (u.id === proj.sourceEntityId) continue;
-        if (!u.unit || u.unit.hp <= 0) continue;
-        const panels = u.unit.mirrorPanels;
-        if (!panels || panels.length === 0) continue;
-        const mirrorRot = u.turrets && u.turrets.length > 0
-          ? u.turrets[0].rotation
-          : u.transform.rotation;
-        const mirrorPitch = u.turrets && u.turrets.length > 0
-          ? u.turrets[0].pitch
-          : 0;
-        const groundZ = u.transform.z - u.unit.unitRadiusCollider.push;
-        const hit = findClosestPanelHit(
-          panels, mirrorRot, mirrorPitch,
-          u.transform.x, u.transform.y, groundZ,
-          prevX, prevY, prevZ, curX, curY, curZ,
-          -1,
+      if (world.getMirrorUnits().length > 0) {
+        const projectileRadius = config.shot.type === 'projectile'
+          ? config.shot.collision.radius
+          : 5;
+        const mirrorCandidates = spatialGrid.queryUnitsAlongLine(
+          prevX, prevY, prevZ,
+          curX, curY, curZ,
+          projectileRadius * 2 + MIRROR_PROJECTILE_QUERY_PAD * 2,
         );
-        if (hit && hit.t < bestT) {
-          bestT = hit.t;
-          bestX = hit.x;
-          bestY = hit.y;
-          bestZ = hit.z;
+        for (const u of mirrorCandidates) {
+          if (u.id === proj.sourceEntityId) continue;
+          if (!u.unit || u.unit.hp <= 0) continue;
+          const panels = u.unit.mirrorPanels;
+          if (!panels || panels.length === 0) continue;
+          const mirrorRot = u.turrets && u.turrets.length > 0
+            ? u.turrets[0].rotation
+            : u.transform.rotation;
+          const mirrorPitch = u.turrets && u.turrets.length > 0
+            ? u.turrets[0].pitch
+            : 0;
+          const groundZ = u.transform.z - u.unit.unitRadiusCollider.push;
+          const hit = findClosestPanelHit(
+            panels, mirrorRot, mirrorPitch,
+            u.transform.x, u.transform.y, groundZ,
+            prevX, prevY, prevZ, curX, curY, curZ,
+            -1,
+          );
+          if (hit && hit.t < bestT) {
+            bestT = hit.t;
+            bestX = hit.x;
+            bestY = hit.y;
+            bestZ = hit.z;
+          }
         }
       }
       if (bestT < Infinity) {
