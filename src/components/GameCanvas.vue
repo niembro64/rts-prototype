@@ -168,6 +168,7 @@ const isMobile =
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 const mobileBarsVisible = ref(false);
+const bottomBarsCollapsed = ref(false);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 
@@ -1683,14 +1684,19 @@ onUnmounted(() => {
     </div>
 
     <!-- Bottom control bars (desktop: hidden when lobby modal visible; mobile: toggled) -->
-    <div v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible" class="bottom-controls">
-      <!-- BATTLE CONTROLS -->
-      <div
-        v-if="showServerControls"
-        class="control-bar"
-        :class="{ 'bar-readonly': serverBarReadonly }"
-        :style="battleBarVars"
-      >
+    <div
+      v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible"
+      class="bottom-controls-shell"
+      :class="{ collapsed: !isMobile && bottomBarsCollapsed }"
+    >
+      <div v-show="isMobile || !bottomBarsCollapsed" class="bottom-controls">
+        <!-- BATTLE CONTROLS -->
+        <div
+          v-if="showServerControls"
+          class="control-bar"
+          :class="{ 'bar-readonly': serverBarReadonly }"
+          :style="battleBarVars"
+        >
         <div class="bar-info">
           <button
             class="control-btn active bar-label"
@@ -2901,7 +2907,22 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+        </div>
       </div>
+
+      <button
+        v-if="!isMobile"
+        class="bottom-controls-toggle"
+        :class="{ collapsed: bottomBarsCollapsed }"
+        :aria-expanded="!bottomBarsCollapsed"
+        :aria-label="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
+        :title="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
+        @click="bottomBarsCollapsed = !bottomBarsCollapsed"
+      >
+        <span class="toggle-dot"></span>
+        <span class="toggle-dot"></span>
+        <span class="toggle-dot"></span>
+      </button>
     </div>
 
     <!-- Lobby Modal (full-screen overlay, covers bars too) -->
@@ -3170,13 +3191,76 @@ onUnmounted(() => {
 }
 
 /* Bottom control bars */
-.bottom-controls {
+.bottom-controls-shell {
   flex-shrink: 0;
   z-index: 3001;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  width: 100%;
+  pointer-events: none;
+}
+
+.bottom-controls-shell.collapsed {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 72px;
+  background: transparent;
+}
+
+.bottom-controls {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   pointer-events: none;
+}
+
+.bottom-controls-toggle {
+  flex: 0 0 18px;
+  align-self: stretch;
+  min-height: 100%;
+  padding: 0;
+  background: rgba(18, 18, 26, 0.92);
+  border: 1px solid #444;
+  border-left: none;
+  border-radius: 0;
+  color: #888;
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.bottom-controls-toggle.collapsed {
+  height: 100%;
+  min-height: 72px;
+  border-left: 1px solid #444;
+}
+
+.bottom-controls-toggle:hover {
+  background: rgba(35, 35, 48, 0.96);
+  border-color: #777;
+}
+
+.bottom-controls-toggle:active {
+  background: rgba(12, 12, 18, 0.98);
+  border-color: #666;
+}
+
+.toggle-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  display: block;
 }
 
 .control-bar {
