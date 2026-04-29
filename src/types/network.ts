@@ -282,7 +282,7 @@ export type NetworkServerSnapshotEntity = {
     moveSpeed?: number;
     mass?: number;
     velocity: Vec3;
-    turretRotation: number;
+    turretRotation?: number;
     isCommander?: boolean;
     buildTargetId?: number;
     actions?: NetworkServerSnapshotAction[];

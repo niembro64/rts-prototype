@@ -873,6 +873,7 @@ function serializeEntity(
       // deltas. Active combat units mark ENTITY_CHANGED_TURRETS every
       // tick; idle movers no longer resend turret pose just because
       // their body position/velocity changed.
+      u.turretRotation = undefined;
       if (isFull || (changedFields! & ENTITY_CHANGED_TURRETS)) {
         let turretRot = entity.transform.rotation;
         const weapons = entity.turrets ?? [];
