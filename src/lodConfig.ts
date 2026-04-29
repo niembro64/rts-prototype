@@ -142,14 +142,14 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     low: 'hybrid',
     medium: 'hybrid',
     high: 'hybrid',
-    max: 'rich',
+    max: 'hybrid',
   },
   RICH_UNIT_CAP: {
     min: 0,
     low: 96,
     medium: 192,
     high: 384,
-    max: 768,
+    max: 512,
   },
   // Object-level view LOD. This is intentionally separate from the
   // global AUTO quality tier: zoom/camera distance should decide
@@ -160,7 +160,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     low: 14,
     medium: 10,
     high: 7,
-    max: 0,
+    max: 5,
   },
   HUD_FRAME_STRIDE: {
     min: 4,
