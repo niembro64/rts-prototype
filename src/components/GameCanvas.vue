@@ -1689,6 +1689,20 @@ onUnmounted(() => {
       class="bottom-controls-shell"
       :class="{ collapsed: !isMobile && bottomBarsCollapsed }"
     >
+      <button
+        v-if="!isMobile"
+        class="bottom-controls-toggle"
+        :class="{ collapsed: bottomBarsCollapsed }"
+        :aria-expanded="!bottomBarsCollapsed"
+        :aria-label="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
+        :title="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
+        @click="bottomBarsCollapsed = !bottomBarsCollapsed"
+      >
+        <span class="toggle-dot"></span>
+        <span class="toggle-dot"></span>
+        <span class="toggle-dot"></span>
+      </button>
+
       <div v-show="isMobile || !bottomBarsCollapsed" class="bottom-controls">
         <!-- BATTLE CONTROLS -->
         <div
@@ -2910,19 +2924,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <button
-        v-if="!isMobile"
-        class="bottom-controls-toggle"
-        :class="{ collapsed: bottomBarsCollapsed }"
-        :aria-expanded="!bottomBarsCollapsed"
-        :aria-label="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
-        :title="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
-        @click="bottomBarsCollapsed = !bottomBarsCollapsed"
-      >
-        <span class="toggle-dot"></span>
-        <span class="toggle-dot"></span>
-        <span class="toggle-dot"></span>
-      </button>
     </div>
 
     <!-- Lobby Modal (full-screen overlay, covers bars too) -->
@@ -3196,14 +3197,14 @@ onUnmounted(() => {
   z-index: 3001;
   display: flex;
   align-items: stretch;
-  justify-content: flex-end;
+  justify-content: flex-start;
   width: 100%;
   pointer-events: none;
 }
 
 .bottom-controls-shell.collapsed {
   position: absolute;
-  right: 0;
+  left: 0;
   bottom: 0;
   width: 18px;
   height: 72px;
@@ -3226,7 +3227,7 @@ onUnmounted(() => {
   padding: 0;
   background: rgba(18, 18, 26, 0.92);
   border: 1px solid #444;
-  border-left: none;
+  border-right: none;
   border-radius: 0;
   color: #888;
   cursor: pointer;
@@ -3242,7 +3243,7 @@ onUnmounted(() => {
 .bottom-controls-toggle.collapsed {
   height: 100%;
   min-height: 72px;
-  border-left: 1px solid #444;
+  border-right: 1px solid #444;
 }
 
 .bottom-controls-toggle:hover {
