@@ -141,13 +141,18 @@ export class ConstructionSystem {
       return null;
     }
 
-    // Create the building entity
+    const physicalSize = {
+      width: config.gridWidth * GRID_CELL_SIZE,
+      height: config.gridHeight * GRID_CELL_SIZE,
+      depth: config.gridDepth * GRID_CELL_SIZE,
+    };
+
     const entity = world.createBuilding(
       worldPos.x,
       worldPos.y,
-      config.gridWidth * GRID_CELL_SIZE,
-      config.gridHeight * GRID_CELL_SIZE,
-      config.gridDepth * GRID_CELL_SIZE,
+      physicalSize.width,
+      physicalSize.height,
+      physicalSize.depth,
       playerId
     );
 
@@ -184,7 +189,8 @@ export class ConstructionSystem {
       };
     }
 
-    // Register in grid
+    // Register the real blocking footprint. Factories no longer reserve
+    // an invisible yard; only the tower cells are occupied.
     this.buildingGrid.place(gridX, gridY, config.gridWidth, config.gridHeight, entity.id, playerId);
 
     // Add to world

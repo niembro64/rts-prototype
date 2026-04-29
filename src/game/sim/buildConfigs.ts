@@ -23,10 +23,11 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   factory: {
     id: 'factory',
     name: 'Factory',
-    gridWidth: 5,
-    gridHeight: 4,
-    // Factories are multi-story structures — taller than they are wide.
-    gridDepth: 3,
+    // Factories are just their construction tower. Units are assembled
+    // outside this small blocking footprint, not inside a reserved yard.
+    gridWidth: 2,
+    gridHeight: 2,
+    gridDepth: 6,
     hp: BUILDING_STATS.factory.hp,
     energyCost: BUILDING_STATS.factory.energyCost * COST_MULTIPLIER,
     manaCost: 50 * COST_MULTIPLIER,

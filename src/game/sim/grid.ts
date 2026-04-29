@@ -28,13 +28,17 @@ export class BuildingGrid {
     return this._version;
   }
 
-  /** Iterate every occupied cell as `[gx, gy, cell]` triples. The
+  /** Iterate every path-blocking occupied cell as `[gx, gy, cell]`
+   *  triples. `blocksMovement=false` remains available for future
+   *  reservation-only cells, but normal buildings occupy movement.
+   *
    *  pathfinder uses this to dilate the building footprint into an
    *  inflation cache once per query instead of doing 9 `getCell`
    *  calls per visited cell during JPS expansion. */
   *occupiedCells(): IterableIterator<{ gx: number; gy: number; cell: GridCell }> {
     for (const [key, cell] of this.cells) {
       if (!cell.occupied) continue;
+      if (cell.blocksMovement === false) continue;
       const comma = key.indexOf(',');
       const gx = +key.slice(0, comma);
       const gy = +key.slice(comma + 1);
@@ -128,7 +132,15 @@ export class BuildingGrid {
   }
 
   // Place a building (mark cells as occupied)
-  place(gx: number, gy: number, gridWidth: number, gridHeight: number, entityId: EntityId, playerId: PlayerId): void {
+  place(
+    gx: number,
+    gy: number,
+    gridWidth: number,
+    gridHeight: number,
+    entityId: EntityId,
+    playerId: PlayerId,
+    blocksMovement: boolean = true,
+  ): void {
     for (let dx = 0; dx < gridWidth; dx++) {
       for (let dy = 0; dy < gridHeight; dy++) {
         const cellX = gx + dx;
@@ -138,6 +150,7 @@ export class BuildingGrid {
           occupied: true,
           entityId,
           playerId,
+          blocksMovement,
         });
       }
     }

@@ -42,6 +42,7 @@ import {
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getFactoryBuildSpot, getFactoryConstructionRadius } from '../sim/factoryConstructionSite';
 import { getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
 import { getWeaponWorldPosition, getTurretHeadRadius } from '../math';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
@@ -203,7 +204,7 @@ type EntityMesh = {
   buildRing?: THREE.LineSegments;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary
-   *  slab. Empty / undefined for units. */
+   *  body. Empty / undefined for units. */
   buildingDetails?: BuildingDetailMesh[];
   factoryRig?: FactoryConstructionRig;
   /** Per-building render height (solar is shorter than the default). */
@@ -2671,8 +2672,6 @@ export class Render3DEntities {
       seen.add(e.id);
       // Scope gate — larger padding for buildings (bigger footprint).
       if (!this.scope.inScope(e.transform.x, e.transform.y, 200)) continue;
-      const w = e.building?.width ?? 100;
-      const d = e.building?.height ?? 100;
       const pid = e.ownership?.playerId;
       // Building type drives the per-type shape (factory, solar, …) —
       // fallback to 'unknown' for anything the art doesn't cover yet.
@@ -2680,24 +2679,30 @@ export class Render3DEntities {
         e.buildingType === 'factory' || e.buildingType === 'solar'
           ? e.buildingType
           : 'unknown';
+      const w = e.building?.width ?? 100;
+      const d = e.building?.height ?? 100;
 
       let m = this.buildingMeshes.get(e.id);
       if (!m) {
         const group = new THREE.Group();
-        // Build the type-specific mesh set (primary slab + decorative
-        // accents like chimney, solar cells). Primary material is the
+        group.userData.entityId = e.id;
+        // Build the type-specific mesh set. Primary material is the
         // team primary color; details carry their own shared materials
         // so they don't re-color across teams.
         const shape = buildBuildingShape(shapeType, w, d, this.getPrimaryMat(pid));
         shape.primary.userData.entityId = e.id;
-        // Wrap the primary slab in an unscaled group so EntityMesh's
+        // Wrap the primary body in an unscaled group so EntityMesh's
         // shared `chassis: Group` / `chassisMeshes: Mesh[]` shape works
         // for both buildings and units. The per-frame update below
-        // positions and scales the primary slab directly.
+        // positions and scales the primary body directly.
         const chassis = new THREE.Group();
+        chassis.userData.entityId = e.id;
         chassis.add(shape.primary);
         group.add(chassis);
-        for (const detail of shape.details) group.add(detail.mesh);
+        for (const detail of shape.details) {
+          detail.mesh.userData.entityId = e.id;
+          group.add(detail.mesh);
+        }
         this.world.add(group);
         m = {
           group,
@@ -2729,7 +2734,7 @@ export class Render3DEntities {
       const h = m.buildingHeight ?? BUILDING_HEIGHT;
 
       // Build-progress visual — mirrors the 2D BuildingRenderer's
-      // bottom-up fill. Primary slab scales vertically by buildProgress
+      // bottom-up fill. Primary body scales vertically by buildProgress
       // (clamped to a small minimum so a 0% building still catches
       // light and is clickable); accent meshes (chimney, solar cells)
       // stay hidden until the building is complete so they don't pop
@@ -2740,7 +2745,7 @@ export class Render3DEntities {
           ? Math.max(0.05, Math.min(1, buildable.buildProgress))
           : 1;
       const renderH = h * progress;
-      // Buildings own the single primary slab at chassisMeshes[0]; scale
+      // Buildings own the single primary body at chassisMeshes[0]; scale
       // it directly instead of the chassis wrapper group (which stays
       // at identity so the building-detail meshes added alongside it
       // aren't affected).
@@ -2818,16 +2823,21 @@ export class Render3DEntities {
     }
 
     let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
+    let buildSpotRadius = blueprintRadius;
     if (queuedUnitType) {
       try {
         const bp = getUnitBlueprint(queuedUnitType);
         blueprintRadius = bp.unitRadiusCollider.scale;
+        buildSpotRadius = bp.unitRadiusCollider.push;
       } catch {
         // Unknown queue ids should not break rendering; keep the generic bay ghost.
       }
     }
 
-    const maxBayRadius = Math.max(12, Math.min(footprintW, footprintD) * 0.18);
+    const maxBayRadius = Math.max(
+      12,
+      Math.min(getFactoryConstructionRadius() * 0.34, blueprintRadius * 1.35),
+    );
     const baseRadius = Math.max(8, Math.min(maxBayRadius, blueprintRadius * 1.15));
     const easedProgress = progress * progress * (3 - 2 * progress);
     const radius = baseRadius * (0.28 + easedProgress * 0.72);
@@ -2835,18 +2845,28 @@ export class Render3DEntities {
     const phase = timeSec * 4.7 + e.id * 0.19;
     const pulse = 1 + Math.sin(phase * 1.7) * 0.035;
     const centerY = rig.bayBaseY + Math.max(5, radius * 0.68);
+    const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
+      mapWidth: this.clientViewState.getMapWidth(),
+      mapHeight: this.clientViewState.getMapHeight(),
+    });
+    const spotDx = buildSpot.x - e.transform.x;
+    const spotDz = buildSpot.y - e.transform.y;
+    const cos = Math.cos(e.transform.rotation);
+    const sin = Math.sin(e.transform.rotation);
+    const localSpotX = cos * spotDx + sin * spotDz;
+    const localSpotZ = -sin * spotDx + cos * spotDz;
 
     rig.unitGhost.visible = buildingTierAtLeast(tier, 'medium');
-    rig.unitGhost.position.set(0, centerY, 0);
+    rig.unitGhost.position.set(localSpotX, centerY, localSpotZ);
     rig.unitGhost.scale.set(radius * 1.22 * pulse, Math.max(5, radius * 0.64), radius * pulse);
 
     rig.unitCore.visible = buildingTierAtLeast(tier, 'high');
-    rig.unitCore.position.set(0, centerY + radius * 0.08, 0);
+    rig.unitCore.position.set(localSpotX, centerY + radius * 0.08, localSpotZ);
     rig.unitCore.scale.setScalar(Math.max(3, radius * 0.18));
 
     if (buildingTierAtLeast(tier, 'high') && e.ownership) {
       group.updateWorldMatrix(true, false);
-      this._factorySprayTargetLocal.copy(rig.targetLocal);
+      this._factorySprayTargetLocal.set(localSpotX, 0, localSpotZ);
       this._factorySprayTargetLocal.y = centerY + radius * 0.06;
       this._factorySpraySourceWorld.copy(rig.nozzleLocal).applyMatrix4(group.matrixWorld);
       this._factorySprayTargetWorld.copy(this._factorySprayTargetLocal).applyMatrix4(group.matrixWorld);
@@ -2877,9 +2897,9 @@ export class Render3DEntities {
       const sparkPhase = phase * 1.8 + i * 1.37;
       const sparkRadius = radius * (0.2 + (i % 3) * 0.1);
       spark.position.set(
-        Math.cos(sparkPhase) * sparkRadius,
+        localSpotX + Math.cos(sparkPhase) * sparkRadius,
         centerY + Math.sin(sparkPhase * 1.23) * radius * 0.38,
-        Math.sin(sparkPhase) * sparkRadius,
+        localSpotZ + Math.sin(sparkPhase) * sparkRadius,
       );
       spark.scale.setScalar(Math.max(2.2, radius * (0.055 + (i % 2) * 0.015)));
     }

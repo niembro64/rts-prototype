@@ -4,10 +4,9 @@
 // the headless GameServer, so the client can't ask it directly. But
 // the rules are simple enough that we can re-check them from entity
 // state: the candidate footprint must be fully in-bounds and must not
-// overlap an existing building's footprint. We use the entity's stored
-// `building.width/height` (which construction.ts populates from the
-// building config's gridWidth * GRID_CELL_SIZE) so this stays correct
-// if building sizes change.
+// overlap an existing building footprint. Existing dimensions are
+// derived from the building config when possible so the preview mirrors
+// server-side placement.
 //
 // This is a *preview* check, not authoritative — the server runs the
 // real BuildingGrid.canPlace when the build command arrives. A race
@@ -64,8 +63,9 @@ export function canPlaceBuildingAt(
 
   for (const b of buildings) {
     if (!b.building) continue;
-    const bw = b.building.width;
-    const bh = b.building.height;
+    const existingConfig = b.buildingType ? getBuildingConfig(b.buildingType) : undefined;
+    const bw = existingConfig ? existingConfig.gridWidth * GRID_CELL_SIZE : b.building.width;
+    const bh = existingConfig ? existingConfig.gridHeight * GRID_CELL_SIZE : b.building.height;
     const bLeft = b.transform.x - bw / 2;
     const bTop = b.transform.y - bh / 2;
     const bRight = bLeft + bw;

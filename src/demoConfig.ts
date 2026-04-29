@@ -8,11 +8,11 @@ export const DEMO_CONFIG = {
    *  180°/N wide (the other 180°/N of every 360°/N cycle is the
    *  barrier slice between teams) — with N=3 that's 60° per team
    *  slice, ~51° usable at arcSectorFraction=0.85. */
-  factoryCount: 14,
+  factoryCount: 6,
 
   /** Number of solar panels per player. Same rationale as
    *  factoryCount — buildings have to fit inside the team slice. */
-  solarCount: 20,
+  solarCount: 10,
 
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the

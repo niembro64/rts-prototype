@@ -1,12 +1,12 @@
 // BuildingShape3D — per-type 3D geometry for player-built buildings.
 //
 // Each building type gets its own recognizable silhouette, built from a
-// team-colored primary slab plus LOD-tagged type-specific accents:
+// team-colored primary body plus LOD-tagged type-specific accents:
 //
 //   solar   — raised photovoltaic modules. No coplanar/near-coplanar
 //             paper-thin overlays, so distant zoom levels do not shimmer.
-//   factory — fully open construction pad: low team deck, machinery
-//             plinths, tower/nozzle, build ghost, and spray particles.
+//   factory — compact radial construction tower. Produced units are
+//             assembled outside the tower footprint by spray particles.
 //
 // Shapes are additive — the caller owns a `THREE.Group` containing the
 // whole building and plugs in the primary + detail meshes returned by
@@ -40,20 +40,19 @@ export type FactoryConstructionRig = {
   unitCore: THREE.Mesh;
   sparks: THREE.Mesh[];
   nozzleLocal: THREE.Vector3;
-  targetLocal: THREE.Vector3;
   bayBaseY: number;
 };
 
 /** What the caller receives back from `buildBuildingShape()`. */
 export type BuildingShape = {
-  /** Team-primary-colored main slab. Scaled per-instance at the call
+  /** Team-primary-colored main body. Scaled per-instance at the call
    *  site to the building's (width, height, depth). */
   primary: THREE.Mesh;
   /** Decorative accent meshes already positioned relative to the primary
-   *  slab. Each declares the client LOD tier range where it should exist. */
+   *  body. Each declares the client LOD tier range where it should exist. */
   details: BuildingDetailMesh[];
   /** The building's render height so the caller can position the
-   *  primary slab correctly on the ground plane. */
+   *  primary body correctly on the ground plane. */
   height: number;
   factoryRig?: FactoryConstructionRig;
 };
@@ -64,14 +63,17 @@ const DEFAULT_HEIGHT = 120;
 /** Solar collector silhouette is much shorter and wider — reads as a
  *  flat panel array, not a building. */
 const SOLAR_HEIGHT = 30;
-/** Factory primary is just the deck; the open-air frame/tower are details. */
-const FACTORY_BASE_HEIGHT = 24;
+/** Factory primary is the compact cylindrical base of the tower. */
+const FACTORY_BASE_HEIGHT = 30;
 
 // ── Shared cached geometries ───────────────────────────────────────────
 // Unit box reused for all building slabs + accents; each caller scales
 // it to the right dimensions. Shared across instances so every factory
 // and every solar uses the same backing BufferGeometry.
 const boxGeom = new THREE.BoxGeometry(1, 1, 1);
+const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
+const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
+const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
 
 // Slightly lighter gray for structural columns/gantries.
 const chimneyMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
@@ -107,7 +109,6 @@ void main() {
   side: THREE.DoubleSide,
 });
 const factoryFrameMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
-const factoryDarkDeckMat = new THREE.MeshLambertMaterial({ color: 0x20242a });
 const constructionGhostMat = new THREE.MeshLambertMaterial({
   color: 0x8fdcff,
   transparent: true,
@@ -242,80 +243,68 @@ function buildSolar(
   return { primary, details, height: SOLAR_HEIGHT };
 }
 
-/** Factory: fully open construction pad. No walls around the build spot;
- *  the silhouette comes from the machinery pad and construction tower. */
+/** Factory: compact radial construction tower. No yard geometry is
+ *  drawn; only the small tower footprint exists visually/gameplay-wise. */
 function buildFactory(
   width: number,
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
-  const primary = new THREE.Mesh(boxGeom, primaryMat);
+  const primary = new THREE.Mesh(cylinderGeom, primaryMat);
   const details: BuildingDetailMesh[] = [];
 
   const minDim = Math.min(width, depth);
-  const plinthW = Math.max(18, minDim * 0.11);
-  const plinthH = 18;
-  const plinthX = width * 0.34;
-  const plinthZ = depth * 0.28;
+  const towerRadius = Math.max(7, minDim * 0.22);
+  const collarRadius = Math.max(towerRadius * 1.35, minDim * 0.34);
+  const towerH = Math.max(78, minDim * 1.9);
+  const towerBaseY = FACTORY_BASE_HEIGHT;
 
-  // LOW LOD: open pad + squat machinery plinths only. These give the
-  // factory footprint without enclosing the unit build spot.
-  for (const x of [-plinthX, plinthX]) {
-    for (const z of [-plinthZ, plinthZ]) {
-      details.push(detail(
-        makeBox(factoryFrameMat, plinthW, plinthH, plinthW, x, FACTORY_BASE_HEIGHT + plinthH / 2, z),
-        'low',
-      ));
-    }
+  details.push(detail(
+    makeCylinder(factoryFrameMat, collarRadius, 10, 0, FACTORY_BASE_HEIGHT + 5, 0, hexCylinderGeom),
+    'low',
+  ));
+  details.push(detail(
+    makeCylinder(chimneyMat, towerRadius, towerH, 0, towerBaseY + towerH / 2, 0),
+    'low',
+  ));
+
+  const pylonRadius = Math.max(2.3, minDim * 0.055);
+  const pylonOffset = Math.min(minDim * 0.38, collarRadius * 1.15);
+  const pylonH = towerH * 0.66;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    details.push(detail(
+      makeCylinder(
+        factoryFrameMat,
+        pylonRadius,
+        pylonH,
+        Math.cos(a) * pylonOffset,
+        towerBaseY + pylonH / 2,
+        Math.sin(a) * pylonOffset,
+      ),
+      'medium',
+    ));
   }
 
-  const deckInset = makeBox(
-    factoryDarkDeckMat,
-    width * 0.56,
-    5,
-    depth * 0.5,
-    0,
-    FACTORY_BASE_HEIGHT + 3,
-    0,
-  );
-  details.push(detail(deckInset, 'medium'));
-
-  details.push(detail(makeBox(chimneyMat, width * 0.42, 8, minDim * 0.06, 0, FACTORY_BASE_HEIGHT + 10, -depth * 0.16), 'medium'));
-  details.push(detail(makeBox(chimneyMat, minDim * 0.06, 8, depth * 0.38, -width * 0.18, FACTORY_BASE_HEIGHT + 10, 0), 'medium'));
-  details.push(detail(makeBox(chimneyMat, minDim * 0.06, 8, depth * 0.38, width * 0.18, FACTORY_BASE_HEIGHT + 10, 0), 'medium'));
-
-  const towerW = Math.max(18, minDim * 0.105);
-  const towerH = 128;
-  const towerX = -width * 0.28;
-  const towerZ = -depth * 0.3;
-  const towerBaseY = FACTORY_BASE_HEIGHT + plinthH;
   details.push(detail(
-    makeBox(chimneyMat, towerW, towerH, towerW, towerX, towerBaseY + towerH / 2, towerZ),
-    'medium',
-  ));
-  details.push(detail(
-    makeBox(factoryFrameMat, towerW * 1.45, towerW * 0.42, towerW * 1.45, towerX, towerBaseY + towerW * 0.21, towerZ),
+    makeCylinder(factoryFrameMat, collarRadius * 0.82, 8, 0, towerBaseY + towerH * 0.56, 0, hexCylinderGeom),
     'medium',
   ));
 
-  const boomY = towerBaseY + towerH - towerW * 0.4;
-  const boomX = towerX * 0.46;
+  const capY = towerBaseY + towerH + 5;
   details.push(detail(
-    makeBox(factoryFrameMat, Math.abs(towerX) + width * 0.2, towerW * 0.5, towerW * 0.46, boomX, boomY, towerZ),
+    makeCylinder(factoryFrameMat, collarRadius * 0.72, 10, 0, capY, 0, hexCylinderGeom),
     'medium',
   ));
-  details.push(detail(
-    makeBox(chimneyMat, towerW * 0.38, towerH * 0.52, towerW * 0.38, towerX + towerW * 0.52, towerBaseY + towerH * 0.34, towerZ + towerW * 0.52),
-    'high',
-  ));
-  const nozzle = makeBox(
+
+  const nozzleRadius = Math.max(6, towerRadius * 0.95);
+  const nozzleY = capY + 5 + nozzleRadius * 0.45;
+  const nozzle = makeSphere(
     constructionCoreMat,
-    towerW * 0.78,
-    towerW * 0.62,
-    towerW * 0.78,
-    width * 0.05,
-    boomY - towerW * 0.45,
-    towerZ,
+    nozzleRadius,
+    0,
+    nozzleY,
+    0,
   );
   details.push(detail(nozzle, 'high'));
 
@@ -345,11 +334,10 @@ function buildFactory(
       sparks,
       nozzleLocal: new THREE.Vector3(
         nozzle.position.x,
-        nozzle.position.y - towerW * 0.2,
+        nozzle.position.y,
         nozzle.position.z,
       ),
-      targetLocal: new THREE.Vector3(0, FACTORY_BASE_HEIGHT + 16, depth * 0.02),
-      bayBaseY: FACTORY_BASE_HEIGHT,
+      bayBaseY: 0,
     },
   };
 }
@@ -371,6 +359,34 @@ function makeBox(
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(boxGeom, material);
   mesh.scale.set(sx, sy, sz);
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
+function makeCylinder(
+  material: THREE.Material,
+  radius: number,
+  height: number,
+  x: number,
+  y: number,
+  z: number,
+  geom: THREE.BufferGeometry = cylinderGeom,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(geom, material);
+  mesh.scale.set(radius * 2, height, radius * 2);
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
+function makeSphere(
+  material: THREE.Material,
+  radius: number,
+  x: number,
+  y: number,
+  z: number,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(factorySphereGeom, material);
+  mesh.scale.setScalar(radius);
   mesh.position.set(x, y, z);
   return mesh;
 }
@@ -416,13 +432,15 @@ function detail(
  *  (Render3DEntities.destroy) invoke once at app teardown. */
 export function disposeBuildingGeoms(): void {
   boxGeom.dispose();
+  cylinderGeom.dispose();
+  hexCylinderGeom.dispose();
+  factorySphereGeom.dispose();
   solarShineGeom.dispose();
   constructionOrbGeom.dispose();
   chimneyMat.dispose();
   solarCellMat.dispose();
   solarShineMat.dispose();
   factoryFrameMat.dispose();
-  factoryDarkDeckMat.dispose();
   constructionGhostMat.dispose();
   constructionCoreMat.dispose();
   constructionSparkMat.dispose();

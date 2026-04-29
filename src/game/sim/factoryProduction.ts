@@ -6,6 +6,7 @@ import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
 import { expandPathActions } from './Pathfinder';
 import { ENTITY_CHANGED_FACTORY } from '../../types/network';
+import { getFactoryBuildSpot } from './factoryConstructionSite';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
@@ -97,7 +98,10 @@ export class FactoryProductionSystem {
     const factoryComp = factory.factory;
 
     const bp = getUnitBlueprint(unitType);
-    const spawn = this.computeSpawnOutsideFactory(world, factory, bp.unitRadiusCollider.push);
+    const spawn = getFactoryBuildSpot(factory, bp.unitRadiusCollider.push, {
+      mapWidth: world.mapWidth,
+      mapHeight: world.mapHeight,
+    });
     const spawnX = spawn.x;
     const spawnY = spawn.y;
 
@@ -107,9 +111,9 @@ export class FactoryProductionSystem {
     // Copy factory's waypoints to the new unit, but with each leg
     // expanded into a multi-waypoint path that routes around water /
     // mountains / building lines. Anchor for the first leg is the
-    // factory's spawn position; each successive leg's anchor is the
-    // previous waypoint (so the unit's intent stays "go from W[i] to
-    // W[i+1]" but the path it takes between them avoids obstacles).
+    // factory build spot outside the tower footprint. Each successive leg's
+    // anchor is the previous waypoint, so the unit's intent stays
+    // "go from W[i] to W[i+1]" while the route avoids obstacles.
     if (unit.unit && factoryComp.waypoints.length > 0) {
       const actions: UnitAction[] = [];
       let anchorX = spawnX;
@@ -149,41 +153,6 @@ export class FactoryProductionSystem {
     world.addEntity(unit);
 
     return unit;
-  }
-
-  private computeSpawnOutsideFactory(
-    world: WorldState,
-    factory: Entity,
-    unitRadius: number,
-  ): { x: number; y: number } {
-    const factoryComp = factory.factory!;
-    const waypoint = factoryComp.waypoints[0];
-    const targetX = waypoint?.x ?? factoryComp.rallyX;
-    const targetY = waypoint?.y ?? factoryComp.rallyY;
-    let dx = targetX - factory.transform.x;
-    let dy = targetY - factory.transform.y;
-    let len = Math.hypot(dx, dy);
-    if (len < 1e-3) {
-      dx = Math.cos(factory.transform.rotation);
-      dy = Math.sin(factory.transform.rotation);
-      len = Math.hypot(dx, dy);
-    }
-    const dirX = dx / len;
-    const dirY = dy / len;
-
-    const halfW = (factory.building?.width ?? 100) / 2;
-    const halfD = (factory.building?.height ?? 100) / 2;
-    const edgeAlongDir = Math.min(
-      Math.abs(dirX) > 1e-3 ? halfW / Math.abs(dirX) : Number.POSITIVE_INFINITY,
-      Math.abs(dirY) > 1e-3 ? halfD / Math.abs(dirY) : Number.POSITIVE_INFINITY,
-    );
-    const offset = edgeAlongDir + unitRadius + 12;
-    const x = factory.transform.x + dirX * offset;
-    const y = factory.transform.y + dirY * offset;
-    return {
-      x: Math.max(unitRadius, Math.min(world.mapWidth - unitRadius, x)),
-      y: Math.max(unitRadius, Math.min(world.mapHeight - unitRadius, y)),
-    };
   }
 
   // Add a unit to factory's build queue (cap-checked externally via canPlayerQueueUnit)

@@ -153,6 +153,7 @@ export type GridCell = {
   occupied: boolean;
   entityId: EntityId | null;
   playerId: PlayerId | null;
+  blocksMovement?: boolean;
 };
 
 // Force contribution

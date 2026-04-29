@@ -131,11 +131,17 @@ function placeCompleteBuilding(
     return null;
   }
 
+  const physicalSize = {
+    width: config.gridWidth * GRID_CELL_SIZE,
+    height: config.gridHeight * GRID_CELL_SIZE,
+    depth: config.gridDepth * GRID_CELL_SIZE,
+  };
+
   const entity = world.createBuilding(
     center.x, center.y,
-    config.gridWidth * GRID_CELL_SIZE,
-    config.gridHeight * GRID_CELL_SIZE,
-    config.gridDepth * GRID_CELL_SIZE,
+    physicalSize.width,
+    physicalSize.height,
+    physicalSize.depth,
     playerId,
   );
 
